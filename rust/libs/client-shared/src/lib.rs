@@ -8,15 +8,17 @@ use tunnel::messages::client::EgressMessages;
 pub use tunnel::messages::client::{IngressMessages, ResourceDescription};
 
 use anyhow::Result;
-use connlib_model::{ResourceId, ResourceList};
+use connlib_model::{ResourceId, ResourceView};
 use eventloop::{Command, Eventloop};
-use futures::future::Fuse;
+use futures::future::{Fuse, FusedFuture as _};
 use futures::{FutureExt, StreamExt};
 use phoenix_channel::{PhoenixChannel, PublicKeyParam};
+use serde::{Deserialize, Serialize};
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 use std::collections::HashSet;
 use std::future;
 use std::net::IpAddr;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::task::{Context, Poll};
 use tokio::sync::mpsc;
@@ -43,8 +45,9 @@ pub struct Session {
 #[derive(Debug)]
 pub struct EventStream {
     eventloop: Fuse<JoinHandle<Result<(), DisconnectError>>>,
-    resource_list_receiver: WatchStream<ResourceList>,
+    resource_list_receiver: WatchStream<Vec<ResourceView>>,
     tun_config_receiver: WatchStream<Option<TunConfig>>,
+    connected_as_receiver: WatchStream<Option<ConnectedAs>>,
     user_notification_receiver: mpsc::Receiver<UserNotification>,
 
     seen_notifications: HashSet<UserNotification>,
@@ -56,13 +59,22 @@ pub enum Event {
     /// The TUN device configuration has been updated.
     TunInterfaceUpdated(TunConfig),
     /// The resource list has been updated.
-    ResourcesUpdated(ResourceList),
+    ResourcesUpdated(Vec<ResourceView>),
+    /// Connlib connected to the portal, which named the account and actor this session belongs to.
+    ConnectedToPortal(ConnectedAs),
     /// Establishing a tunnel for a resource failed because all Gateways are offline in the corresponding site.
     AllGatewaysOffline { resource_id: ResourceId },
     /// Establishing a tunnel for a resource failed because there are no version-compatible Gateways in the corresponding site.
     GatewayVersionMismatch { resource_id: ResourceId },
     /// Connlib has been permanently disconnected from the portal and the tunnel has been shut down.
     Disconnected(DisconnectError),
+}
+
+/// Who the portal says this session belongs to.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ConnectedAs {
+    pub account_slug: String,
+    pub actor_name: String,
 }
 
 impl Session {
@@ -72,20 +84,28 @@ impl Session {
         portal: PhoenixChannel<(), EgressMessages, IngressMessages, PublicKeyParam>,
         is_internet_resource_active: bool,
         dns_servers: Vec<IpAddr>,
+        flow_logs_dir: Option<PathBuf>,
+        local_flow_logs: bool,
         handle: tokio::runtime::Handle,
     ) -> (Self, EventStream) {
         let (cmd_tx, cmd_rx) = mpsc::unbounded_channel();
         let event_stream = EventStream::new(
-            |resource_list_sender, tun_config_sender, user_notification_sender| {
+            |resource_list_sender,
+             tun_config_sender,
+             connected_as_sender,
+             user_notification_sender| {
                 Eventloop::new(
                     tcp_socket_factory,
                     udp_socket_factory,
                     is_internet_resource_active,
                     dns_servers,
+                    flow_logs_dir,
+                    local_flow_logs,
                     portal,
                     cmd_rx,
                     resource_list_sender,
                     tun_config_sender,
+                    connected_as_sender,
                     user_notification_sender,
                 )
                 .run()
@@ -129,11 +149,24 @@ impl Session {
     pub fn stop(&self) {
         let _ = self.channel.send(Command::Stop);
     }
+
+    /// Resolves once the event-loop has finished, including its graceful shutdown.
+    pub async fn closed(&self) {
+        self.channel.closed().await
+    }
 }
 
 impl EventStream {
     pub fn poll_next(&mut self, cx: &mut Context) -> Poll<Option<Event>> {
         loop {
+            // Polled first so the account and actor are known before anything else the
+            // same `init` produced.
+            if let Poll::Ready(Some(Some(connected))) =
+                self.connected_as_receiver.poll_next_unpin(cx)
+            {
+                return Poll::Ready(Some(Event::ConnectedToPortal(connected)));
+            }
+
             if let Poll::Ready(Some(resources)) = self.resource_list_receiver.poll_next_unpin(cx) {
                 return Poll::Ready(Some(Event::ResourcesUpdated(resources)));
             }
@@ -173,6 +206,13 @@ impl EventStream {
                 Poll::Pending => {}
             }
 
+            // A resolved `Fuse` parks forever and the senders above died with the
+            // event-loop, so nothing is left that could wake us: whatever we just
+            // yielded was the last event.
+            if self.eventloop.is_terminated() {
+                return Poll::Ready(None);
+            }
+
             return Poll::Pending;
         }
     }
@@ -197,8 +237,9 @@ impl Drop for Session {
 impl EventStream {
     fn new<E>(
         make_event_loop: impl FnOnce(
-            watch::Sender<ResourceList>,
+            watch::Sender<Vec<ResourceView>>,
             watch::Sender<Option<TunConfig>>,
+            watch::Sender<Option<ConnectedAs>>,
             mpsc::Sender<UserNotification>,
         ) -> E,
         handle: tokio::runtime::Handle,
@@ -207,13 +248,14 @@ impl EventStream {
         E: Future<Output = Result<(), DisconnectError>> + Send + 'static,
     {
         let (tun_config_sender, tun_config_receiver) = watch::channel(None);
-        let (resource_list_sender, resource_list_receiver) =
-            watch::channel(ResourceList::default());
+        let (resource_list_sender, resource_list_receiver) = watch::channel(Vec::default());
+        let (connected_as_sender, connected_as_receiver) = watch::channel(None);
         let (user_notification_sender, user_notification_receiver) = mpsc::channel(128);
 
         let event_loop = make_event_loop(
             resource_list_sender,
             tun_config_sender,
+            connected_as_sender,
             user_notification_sender,
         );
 
@@ -223,6 +265,7 @@ impl EventStream {
             eventloop: eventloop.fuse(),
             resource_list_receiver: WatchStream::from_changes(resource_list_receiver),
             tun_config_receiver: WatchStream::from_changes(tun_config_receiver),
+            connected_as_receiver: WatchStream::from_changes(connected_as_receiver),
             user_notification_receiver,
             seen_notifications: Default::default(),
         }
@@ -236,7 +279,7 @@ mod tests {
     #[tokio::test]
     async fn event_stream_turn_panic_into_disconnected() {
         let mut stream = EventStream::new(
-            |_, _, _| async move { panic!("Boom!") },
+            |_, _, _, _| async move { panic!("Boom!") },
             tokio::runtime::Handle::current(),
         );
 
@@ -250,20 +293,62 @@ mod tests {
     #[tokio::test]
     async fn repeated_polls_dont_panic() {
         let mut stream = EventStream::new(
-            |_, _, _| async move { panic!("Boom!") },
+            |_, _, _, _| async move { panic!("Boom!") },
             tokio::runtime::Handle::current(),
         );
 
         let _next = stream.next().await.unwrap();
         let poll = stream.poll_next(&mut Context::from_waker(futures::task::noop_waker_ref()));
 
-        assert!(poll.is_pending());
+        assert!(matches!(poll, Poll::Ready(None)));
+    }
+
+    #[tokio::test]
+    async fn stream_ends_after_disconnect() {
+        let mut stream = EventStream::new(
+            |_, _, _, _| async move { Err(DisconnectError::from(anyhow::anyhow!("Boom!"))) },
+            tokio::runtime::Handle::current(),
+        );
+
+        let Event::Disconnected(_) = stream.next().await.unwrap() else {
+            panic!("Unexpected event!");
+        };
+
+        assert!(
+            stream.next().await.is_none(),
+            "stream should be closed once the event-loop has disconnected"
+        );
+    }
+
+    #[tokio::test]
+    async fn connected_to_portal_precedes_resources_from_the_same_init() {
+        let mut stream = EventStream::new(
+            |resource_list, _, connected_as, _| async move {
+                connected_as
+                    .send(Some(ConnectedAs {
+                        account_slug: "acme".to_owned(),
+                        actor_name: "Jane Doe".to_owned(),
+                    }))
+                    .unwrap();
+                resource_list.send(Vec::default()).unwrap();
+
+                Ok(())
+            },
+            tokio::runtime::Handle::current(),
+        );
+
+        let Event::ConnectedToPortal(connected) = stream.next().await.unwrap() else {
+            panic!("Unexpected event")
+        };
+
+        assert_eq!(connected.account_slug, "acme");
+        assert_eq!(connected.actor_name, "Jane Doe");
     }
 
     #[tokio::test]
     async fn deduplicates_offline_notifications() {
         let mut stream = EventStream::new(
-            |_, _, sender| async move {
+            |_, _, _, sender| async move {
                 sender
                     .send(UserNotification::AllGatewaysOffline {
                         resource_id: ResourceId::from_u128(1),
@@ -296,7 +381,7 @@ mod tests {
     #[tokio::test]
     async fn deduplicates_version_mismatch_notifications() {
         let mut stream = EventStream::new(
-            |_, _, sender| async move {
+            |_, _, _, sender| async move {
                 sender
                     .send(UserNotification::GatewayVersionMismatch {
                         resource_id: ResourceId::from_u128(1),

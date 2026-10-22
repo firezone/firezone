@@ -81,16 +81,27 @@ defmodule Portal.TokenFixtures do
 
   @doc """
   Generate a gateway token using Portal.GatewayToken schema.
+
+  Pass `gateway: device` to build a single-owner token bound to that gateway
+  instead of a multi-owner site token.
   """
   def gateway_token_fixture(attrs \\ %{}) do
     attrs = Enum.into(attrs, %{})
 
-    account = Map.get(attrs, :account) || account_fixture()
-    site = Map.get(attrs, :site) || site_fixture(account: account)
+    case Map.pop(attrs, :gateway) do
+      {nil, attrs} ->
+        account = Map.get(attrs, :account) || account_fixture()
+        site = Map.get(attrs, :site) || site_fixture(account: account)
 
-    attrs
-    |> Map.put(:account_id, account.id)
-    |> Map.put(:site_id, site.id)
+        attrs
+        |> Map.put(:account_id, account.id)
+        |> Map.put(:site_id, site.id)
+
+      {gateway, attrs} ->
+        attrs
+        |> Map.put(:account_id, gateway.account_id)
+        |> Map.put(:device_id, gateway.id)
+    end
     |> infrastructure_token_secrets()
     |> then(&struct!(Portal.GatewayToken, &1))
     |> Portal.Repo.insert!()
@@ -101,7 +112,8 @@ defmodule Portal.TokenFixtures do
       name: "Test API Token",
       secret_fragment: generate_secret_fragment(),
       secret_salt: generate_salt(),
-      expires_at: DateTime.utc_now() |> DateTime.add(30, :day)
+      expires_at: DateTime.utc_now() |> DateTime.add(30, :day),
+      scopes: Portal.Scope.all()
     }
   end
 

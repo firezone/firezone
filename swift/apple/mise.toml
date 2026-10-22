@@ -1,10 +1,8 @@
 # Firezone Apple Client - mise configuration
-# Usage: mise run <task> (from this directory) or mise //swift/apple:<task> (from repo root)
+# Usage: mise run <task> (from this directory) or mise run //swift/apple:<task> (from repo root)
 #
 # Tasks are auto-discovered from mise-tasks/ directory.
-# Task names match filenames (e.g., mise-tasks/build.sh -> //swift/apple:build.sh)
-#
-# Requires: MISE_EXPERIMENTAL=1 for monorepo task discovery
+# Task names are the filenames without extension (e.g., mise-tasks/build.sh -> //swift/apple:build)
 
 [settings]
 auto_install = false
@@ -17,6 +15,9 @@ PLATFORM = "macOS"
 CONFIGURATION = "Debug"
 # Set consistent environment to prevent Rust rebuilds (must match Xcode project setting)
 MACOSX_DEPLOYMENT_TARGET = "13.0"
+
+[tools]
+"github:rorkai/App-Store-Connect-CLI" = { version = "4.11.0", version_prefix = "", bin = "asc", os = ["linux"] }
 
 # =============================================================================
 # Composite Tasks (can't be auto-discovered)

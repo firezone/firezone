@@ -42,24 +42,33 @@ jobs:
             artifact_name: aarch64
 
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.sha }}
-          fetch-depth: 0 # Required to make `setup-rust-target-cache` effective.
 
+      - uses: ./.github/actions/setup-rust-binary-cache
+        id: binary-cache
+        with:
+          path: rust/target/${{ matrix.target }}/release/${{ matrix.binary }}
+          key: firezone-loadtest-${{ matrix.target }}-release
+
+      # A restored binary skips the build below, so the toolchain that only
+      # exists to compile it is skipped too.
       - uses: ./.github/actions/setup-rust-stable
+        if: steps.binary-cache.outputs.cache-hit != 'true'
         with:
           targets: ${{ matrix.target }}
 
-      - uses: ./.github/actions/setup-rust-target-workspace-cache
+      - uses: ./.github/actions/setup-rust-sccache
+        if: steps.binary-cache.outputs.cache-hit != 'true'
         with:
-          save-if: ${{ github.ref == 'refs/heads/main' }}
+          azure-connection-string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
 
       - name: Install dependencies (Linux)
-        if: matrix.os == 'linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y musl-tools
+        if: matrix.os == 'linux' && steps.binary-cache.outputs.cache-hit != 'true'
+        uses: ./.github/actions/apt-install
+        with:
+          packages: musl-tools
 
       - name: Install Azure CLI (macOS)
         if: matrix.os == 'macos'
@@ -73,6 +82,7 @@ jobs:
           Write-Host "Event Log source 'FirezoneLoadtest' registered (or already exists)"
 
       - name: Build loadtest binary
+        if: steps.binary-cache.outputs.cache-hit != 'true'
         shell: bash
         run: |
           set -e
@@ -81,7 +91,9 @@ jobs:
             --target ${{ matrix.target }} \
             --package firezone-loadtest
 
-          cp target/${{ matrix.target }}/release/${{ matrix.binary }} ${{ matrix.binary }}
+      - name: Package binary
+        shell: bash
+        run: cp target/${{ matrix.target }}/release/${{ matrix.binary }} ${{ matrix.binary }}
 
       - name: Generate checksum (Linux/Windows)
         if: matrix.os != 'macos'
@@ -93,7 +105,7 @@ jobs:
         run: shasum -a 256 ${{ matrix.binary }} > ${{ matrix.binary }}.sha256sum.txt
 
       - name: Upload artifact to GitHub
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: firezone-loadtest-${{ matrix.os }}-${{ matrix.artifact_name }}
           path: |
@@ -102,7 +114,7 @@ jobs:
 
       - name: Azure login (OIDC)
         if: github.ref == 'refs/heads/main'
-        uses: azure/login@532459ea530d8321f2fb9bb10d1e0bcf23869a43 # v3.0.0
+        uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
         with:
           client-id: ${{ secrets.AZURE_QA_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_QA_TENANT_ID }}

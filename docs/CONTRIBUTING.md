@@ -38,11 +38,22 @@ To maximize your chances of getting your pull request approved, please abide by
 the following general guidelines:
 
 1. Please adhere to our [code of conduct](CODE_OF_CONDUCT.md).
+1. For Rust code, follow the
+   [Rust coding guidelines](../rust/CODING_GUIDELINES.md).
 1. Please test your code and include unit tests when possible.
 1. It is up to you, the contributor, to make a case for why your change is a
    good idea.
 1. For any security issues, please **do not** open a Github Issue. Please follow
    responsible disclosure practices laid out in [SECURITY.md](SECURITY.md)
+
+## AI policy
+
+Using AI (LLMs) as tools for coding is welcome.
+We hold a high bar for all contributions to this project, regardless of which tools have been used to create them.
+
+AI should not be used to generate comments when communicating with maintainers.
+Comments are expected to be written by humans.
+Comments, issues or pull requests from external contributors that are believed to be written by AI may be closed without notice.
 
 ## Quick Start
 
@@ -103,7 +114,7 @@ After this you will have running:
 - A gateway connected to the portal
 - A headless Linux client connected to the portal
 - A relay connected to the portal
-- A resource with IP `172.20.0.100` on a separate network shared with the
+- A resource with IP `10.20.0.100` on a separate network shared with the
   gateway
 
 ### Generating a self-signed cert
@@ -123,7 +134,7 @@ openssl req -x509 -newkey rsa:2048 -nodes -sha256 -days 365 \
     -keyout priv/cert/selfsigned-key.pem \
     -out priv/cert/selfsigned.pem \
     -subj "/O=Firezone Development/CN=localhost" \
-    -addext "subjectAltName=DNS:localhost,IP:127.0.0.1" \
+    -addext "subjectAltName=DNS:localhost,DNS:host.docker.internal,IP:127.0.0.1" \
     -addext "basicConstraints=critical,CA:FALSE" \
     -addext "keyUsage=critical,digitalSignature,keyEncipherment" \
     -addext "extendedKeyUsage=critical,serverAuth"
@@ -145,7 +156,7 @@ macOS system keychain by default. To trust the certificate in Firefox, either:
 
 ```sh
 # To test that a client can ping the resource
-docker compose exec -it client ping 172.20.0.100
+docker compose exec -it client ping 10.20.0.100
 
 # You can also directly use the client
 docker compose exec -it client /bin/sh

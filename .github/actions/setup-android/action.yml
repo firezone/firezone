@@ -1,6 +1,11 @@
 # From https://tauri.app/v1/guides/getting-started/prerequisites
 name: "Setup Android"
 description: "Sets up the dependencies for building our Android app"
+inputs:
+  sccache-azure-connection-string:
+    description: "Forwarded to setup-rust-sccache"
+    required: false
+    default: ""
 runs:
   using: "composite"
   steps:
@@ -13,8 +18,10 @@ runs:
         targets: armv7-linux-androideabi aarch64-linux-android x86_64-linux-android i686-linux-android
 
     - uses: ./.github/actions/setup-rust-sccache
+      with:
+        azure-connection-string: ${{ inputs.sccache-azure-connection-string }}
 
-    - uses: gradle/actions/setup-gradle@3f131e8634966bd73d06cc69884922b02e6faf92 # v6.2.0
+    - uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
 
     - uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4.0.1
       with:
@@ -23,11 +30,11 @@ runs:
         packages: ""
 
     # No NDK install step: we always pin `ndkVersion` in app/build.gradle.kts to a
-    # version preinstalled on the ubuntu-24.04 runner (currently 28.2.13676358), so
+    # version preinstalled on the ubuntu-24.04 runner (currently 29.0.14206865), so
     # there is nothing to download. Keep them in sync when bumping runner images.
 
     - name: Validate Gradle wrapper
-      uses: gradle/actions/wrapper-validation@3f131e8634966bd73d06cc69884922b02e6faf92 # v6.2.0
+      uses: gradle/actions/wrapper-validation@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
 
     - run: touch local.properties
       shell: bash

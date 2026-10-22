@@ -3,7 +3,7 @@
 set -euox pipefail
 
 function client() {
-    docker compose exec -T client-1 "$@"
+    docker compose exec -T primary-client "$@"
 }
 
 function gateway() {
@@ -18,8 +18,8 @@ function relay2() {
     docker compose exec -T relay-2 "$@"
 }
 
-function client2() {
-    docker compose exec -T client-2 "$@"
+function pool_member() {
+    docker compose exec -T pool-member "$@"
 }
 
 function client_curl() {
@@ -46,8 +46,12 @@ Application.ensure_all_started(:portal)
 account_id = \"c89bcc8c-9392-4dae-a40d-888aef6d28e0\"
 
 site = Portal.Repo.get_by!(Portal.Site, account_id: account_id, name: \"$site_name\")
-[gateway_id | _] = Portal.Presence.Gateways.Site.list(site.id) |> Map.keys()
-[client_id | _] = Portal.Presence.Clients.Account.list(account_id) |> Map.keys()
+online = Portal.Presence.Devices.Account.list(account_id)
+
+[gateway_id | _] =
+  for {id, %{metas: [%{type: :gateway, site_id: site_id} | _]}} <- online, site_id == site.id, do: id
+
+[client_id | _] = for {id, %{metas: [%{type: :client} | _]}} <- online, do: id
 resource = Portal.Repo.get_by!(Portal.Resource, account_id: account_id, name: \"$resource_name\")
 
 PortalAPI.Gateway.Channel.revoke_pair_access(gateway_id, client_id, resource.id)
@@ -139,7 +143,7 @@ function get_flow_logs() {
     local protocol="$1"
 
     docker compose logs gateway --since 30s 2>/dev/null |
-        grep "flow_logs::${protocol}.*flow completed" |
+        grep "flow_logs.*${protocol^^} flow completed" |
         grep -v "rx_bytes=0 tx_bytes=0" || true
 }
 
@@ -159,7 +163,7 @@ function get_flow_field() {
 # recovery that happens afterwards.
 function last_wg_handshake_ms() {
     local raw
-    raw=$(docker compose logs client-1 --since 60s 2>/dev/null |
+    raw=$(docker compose logs primary-client --since 60s 2>/dev/null |
         grep "Completed wireguard handshake" |
         tail -n 1 |
         grep -oP 'duration_since_intent=\K[^ ]+')

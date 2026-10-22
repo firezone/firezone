@@ -1,10 +1,21 @@
 defmodule PortalWeb.GroupsTest do
   use PortalWeb.ConnCase, async: true
 
+  import Phoenix.LiveViewTest, except: [live: 2]
+
+  # The table loads in an async task, so wait for it before returning.
+  defp live(conn, path) do
+    case Phoenix.LiveViewTest.live(conn, path) do
+      {:ok, lv, _html} -> {:ok, lv, render_async(lv)}
+      other -> other
+    end
+  end
+
   alias Portal.{Group, Membership, Policy, Repo}
   alias Portal.Changes.Change
 
   import Portal.AccountFixtures
+  import Portal.DevicePostureFixtures
   import Portal.ActorFixtures
   import Portal.GroupFixtures
   import Portal.MembershipFixtures
@@ -32,6 +43,20 @@ defmodule PortalWeb.GroupsTest do
   end
 
   describe "index (default action)" do
+    test "loads the table only after the socket connects", %{conn: conn, account: account, actor: actor} do
+      group_fixture(account: account)
+
+      conn = authorize_conn(conn, actor)
+
+      static = conn |> get(~p"/#{account}/groups") |> html_response(200) |> Floki.parse_document!()
+      assert [_] = Floki.find(static, "#groups-skeleton")
+      assert Floki.find(static, "#groups-rows tr") == []
+
+      {:ok, lv, _html} = live(conn, ~p"/#{account}/groups")
+      assert has_element?(lv, "#groups-rows tr")
+      refute has_element?(lv, "#groups-skeleton")
+    end
+
     test "renders groups page", %{conn: conn, account: account, actor: actor} do
       {:ok, _lv, html} =
         conn
@@ -149,6 +174,26 @@ defmodule PortalWeb.GroupsTest do
       assert html =~ group.name
     end
 
+    test "ignores a tab switch queued while the group panel is closing", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      group = group_fixture(account: account)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/groups/#{group}")
+
+      render_click(lv, "close_panel")
+      assert_patch(lv, ~p"/#{account}/groups")
+
+      render_click(lv, "switch_group_tab", %{"tab" => "resources"})
+
+      refute has_element?(lv, "#group-panel > div")
+    end
+
     test "shows group member list", %{conn: conn, account: account, actor: actor} do
       group = group_fixture(account: account)
       other_actor = actor_fixture(account: account)
@@ -198,6 +243,88 @@ defmodule PortalWeb.GroupsTest do
       html = render_click(lv, "open_grant_resource_form")
       assert html =~ "Grant access"
       assert render_click(lv, "close_grant_resource_form") =~ resource.name
+    end
+
+    test "grants access with device postures", %{conn: conn} do
+      account = device_posture_account_fixture()
+      actor = admin_actor_fixture(account: account)
+      group = group_fixture(account: account)
+      resource = resource_fixture(account: account)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/groups/#{group}")
+
+      render_click(lv, "switch_group_tab", %{"tab" => "resources"})
+      html = render_click(lv, "open_grant_resource_form")
+      assert html =~ "Device posture"
+
+      render_click(lv, "toggle_grant_resource", %{"resource_id" => resource.id})
+      html = render_click(lv, "postures_toggle_check", %{"name" => "client_up_to_date"})
+      assert html =~ ~s(&quot;field&quot;:&quot;firezone.last_seen_version&quot;)
+
+      lv
+      |> form("#grant-resource-form")
+      |> render_submit()
+
+      policy = Repo.get_by!(Policy, group_id: group.id, resource_id: resource.id)
+      {:ok, check} = PortalWeb.Policies.Postures.Checks.fetch(:client_up_to_date)
+      assert Portal.Policies.Postures.to_map(policy.postures) == check.expansion
+    end
+
+    test "grants access with flow log reporting disabled", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      group = group_fixture(account: account)
+      resource = resource_fixture(account: account)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/groups/#{group}?tab=resources")
+
+      html = render_click(lv, "open_grant_resource_form")
+      assert html =~ "Flow log reporting"
+
+      render_click(lv, "toggle_grant_resource", %{"resource_id" => resource.id})
+
+      lv
+      |> form("#grant-resource-form", policy: %{flow_log_uploads_enabled: false})
+      |> render_submit()
+
+      policy = Repo.get_by!(Policy, group_id: group.id, resource_id: resource.id)
+      assert policy.flow_log_uploads_enabled == false
+    end
+
+    test "defaults flow log reporting off when granting access to the Internet Resource",
+         %{conn: conn} do
+      account = account_fixture(features: %{internet_resource: true})
+      actor = admin_actor_fixture(account: account)
+      group = group_fixture(account: account)
+      resource = internet_resource_fixture(account: account)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/groups/#{group}?tab=resources")
+
+      render_click(lv, "open_grant_resource_form")
+
+      html = render_click(lv, "toggle_grant_resource", %{"resource_id" => resource.id})
+      assert html =~ "Flow log reporting"
+
+      assert html =~
+               "Enabling flow log collection for the internet resource can result in substantial log volume."
+
+      lv
+      |> form("#grant-resource-form")
+      |> render_submit()
+
+      policy = Repo.get_by!(Policy, group_id: group.id, resource_id: resource.id)
+      assert policy.flow_log_uploads_enabled == false
     end
 
     test "grants access to multiple resources at once", %{
@@ -268,6 +395,27 @@ defmodule PortalWeb.GroupsTest do
       refute html =~ "Already Granted Resource"
     end
 
+    test "resource row links to the granting policy and menu links to the resource", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      group = group_fixture(account: account)
+      resource = resource_fixture(account: account, name: "Internal DB")
+      policy = policy_fixture(account: account, group: group, resource: resource)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/groups/#{group}?tab=resources")
+
+      html = render_click(lv, "toggle_resource_access_actions", %{"resource_id" => resource.id})
+
+      assert html =~ ~p"/#{account}/policies/#{policy.id}"
+      assert html =~ "Go to Resource"
+      assert html =~ ~p"/#{account}/resources/#{resource.id}"
+    end
+
     test "disables, enables, and removes resource access", %{
       conn: conn,
       account: account,
@@ -288,7 +436,7 @@ defmodule PortalWeb.GroupsTest do
       render_click(lv, "disable_resource_access", %{"resource_id" => resource.id})
 
       policy = Repo.get_by!(Policy, group_id: group.id, resource_id: resource.id)
-      assert policy.disabled_at
+      assert policy.is_disabled
 
       assert render_click(lv, "toggle_resource_access_actions", %{"resource_id" => resource.id}) =~
                "Enable"
@@ -296,7 +444,7 @@ defmodule PortalWeb.GroupsTest do
       render_click(lv, "enable_resource_access", %{"resource_id" => resource.id})
 
       policy = Repo.get_by!(Policy, group_id: group.id, resource_id: resource.id)
-      assert is_nil(policy.disabled_at)
+      refute policy.is_disabled
 
       assert render_click(lv, "toggle_resource_access_actions", %{"resource_id" => resource.id}) =~
                "Remove access"
@@ -365,7 +513,7 @@ defmodule PortalWeb.GroupsTest do
           account: account,
           group: group,
           resource: resource,
-          disabled_at: DateTime.utc_now()
+          is_disabled: true
         )
 
       {:ok, lv, _html} =
@@ -622,7 +770,7 @@ defmodule PortalWeb.GroupsTest do
 
       render_click(lv, "delete", %{"id" => group.id})
 
-      html = render(lv)
+      html = render_async(lv)
       refute html =~ group.name
     end
   end
@@ -634,7 +782,7 @@ defmodule PortalWeb.GroupsTest do
       {:ok, lv, html} =
         conn
         |> authorize_conn(actor)
-        |> live(~p"/#{account}/groups")
+        |> Phoenix.LiveViewTest.live(~p"/#{account}/groups")
 
       assert html =~ "Loading..."
 
@@ -698,6 +846,112 @@ defmodule PortalWeb.GroupsTest do
       html = render(lv)
       assert html =~ "0"
       assert html =~ "Total"
+    end
+  end
+  describe "live table filters across panel operations" do
+    setup %{account: account} do
+      matching = group_fixture(account: account, name: "Engineering Team")
+      other = group_fixture(account: account, name: "Marketing Team")
+      filter = %{"groups_filter[name]" => "Engineering"}
+      %{matching: matching, other: other, filter: filter}
+    end
+
+    test "are kept when creating a group", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      other: other,
+      filter: filter
+    } do
+      {:ok, lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/groups?#{filter}")
+
+      refute html =~ other.name
+
+      new_link = "a[href='#{~p"/#{account}/groups/new?#{filter}"}']"
+
+      lv |> element(new_link) |> render_click()
+      assert_patch(lv, ~p"/#{account}/groups/new?#{filter}")
+
+      render_click(lv, "close_panel")
+      assert_patch(lv, ~p"/#{account}/groups?#{filter}")
+
+      lv |> element(new_link) |> render_click()
+
+      lv
+      |> form("#group-form", group: %{name: "Engineering Ops", member_search: ""})
+      |> render_submit()
+
+      group = Portal.Repo.get_by!(Group, account_id: account.id, name: "Engineering Ops")
+      assert_patch(lv, ~p"/#{account}/groups/#{group.id}?#{filter}")
+
+      html = render(lv)
+      assert html =~ "Engineering Ops"
+      refute html =~ other.name
+    end
+
+    test "are kept when editing a group", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      matching: matching,
+      other: other,
+      filter: filter
+    } do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/groups/#{matching}?#{filter}")
+
+      lv
+      |> element("a[href='#{~p"/#{account}/groups/#{matching}/edit?#{filter}"}']")
+      |> render_click()
+
+      assert_patch(lv, ~p"/#{account}/groups/#{matching}/edit?#{filter}")
+
+      lv
+      |> form("#group-form", group: %{name: "Engineering Renamed", member_search: ""})
+      |> render_submit()
+
+      assert_patch(lv, ~p"/#{account}/groups/#{matching}?#{filter}")
+
+      html = render(lv)
+      assert html =~ "Engineering Renamed"
+      refute html =~ other.name
+    end
+
+    test "are kept when granting access to a resource", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      matching: matching,
+      other: other,
+      filter: filter
+    } do
+      resource = resource_fixture(account: account, name: "Private API")
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/groups/#{matching}?#{filter}")
+
+      render_click(lv, "switch_group_tab", %{"tab" => "resources"})
+      assert_patch(lv, ~p"/#{account}/groups/#{matching}?#{Map.put(filter, "tab", "resources")}")
+
+      render_click(lv, "open_grant_resource_form")
+      render_click(lv, "toggle_grant_resource", %{"resource_id" => resource.id})
+
+      html =
+        lv
+        |> form("#grant-resource-form")
+        |> render_submit()
+
+      assert Portal.Repo.get_by!(Policy, group_id: matching.id, resource_id: resource.id)
+      assert html =~ resource.name
+      refute html =~ other.name
+      assert has_element?(lv, "input[name='groups[name]'][value='Engineering']")
     end
   end
 end

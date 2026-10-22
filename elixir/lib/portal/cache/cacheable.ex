@@ -26,6 +26,7 @@ defimpl Portal.Cache.Cacheable, for: Portal.Resource do
     %Portal.Cache.Cacheable.Resource{
       id: Ecto.UUID.dump!(resource.id),
       type: resource.type,
+      device_membership_criteria: resource.device_membership_criteria,
       name: resource.name,
       address: resource.address,
       address_description: resource.address_description,
@@ -43,7 +44,9 @@ defimpl Portal.Cache.Cacheable, for: Portal.Policy do
       resource_id: Ecto.UUID.dump!(policy.resource_id),
       # group_id is nullable for orphaned policies (before IdP group reconciliation).
       group_id: dump_uuid_or_nil(policy.group_id),
-      conditions: Enum.map(policy.conditions, &Map.from_struct/1)
+      conditions: Enum.map(policy.conditions, &Map.from_struct/1),
+      postures: policy.postures,
+      flow_log_uploads_enabled: policy.flow_log_uploads_enabled
     }
   end
 

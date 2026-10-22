@@ -16,7 +16,12 @@ defmodule Portal.Google.DirectoryTest do
     test "validates required fields", %{account: account} do
       changeset =
         %Directory{account_id: account.id}
-        |> Ecto.Changeset.cast(%{}, [:name, :domain, :impersonation_email, :is_verified])
+        |> Ecto.Changeset.cast(%{}, [
+          :name,
+          :domain,
+          :impersonation_email,
+          :is_verified
+        ])
         |> Directory.changeset()
 
       refute changeset.valid?
@@ -207,6 +212,7 @@ defmodule Portal.Google.DirectoryTest do
       assert Ecto.Changeset.get_field(changeset, :is_verified) == false
       assert Ecto.Changeset.get_field(changeset, :group_sync_mode) == :all
       assert Ecto.Changeset.get_field(changeset, :orgunit_sync_enabled) == false
+      assert Ecto.Changeset.get_field(changeset, :sync_all_domains) == true
     end
 
     test "accepts all valid group_sync_mode values", %{account: account} do

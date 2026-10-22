@@ -1,0 +1,1156 @@
+//! Client related messages that are needed within connlib
+
+use crate::messages::{
+    Filter, FlowLogsConfig, IceCredentials, IceRole, IngestToken, Interface, Key, Relay,
+    RelaysPresence, SecretKey, SnownetCapabilities, WarnOnInvalidFilter,
+};
+use connlib_model::{
+    ClientId, GatewayId, IceCandidate, IpStack, RelayId, ResourceId, Site, SiteId,
+};
+use ip_network::IpNetwork;
+use serde::{Deserialize, Serialize};
+use serde_with::{DurationSeconds, VecSkipError, serde_as};
+use std::net::{Ipv4Addr, Ipv6Addr};
+use std::time::Duration;
+
+pub use crate::messages::Authorization;
+
+/// Description of a resource that maps to a DNS record.
+#[serde_as]
+#[derive(Debug, Deserialize)]
+pub struct ResourceDescriptionDns {
+    /// Resource's id.
+    pub id: ResourceId,
+    /// Internal resource's domain name.
+    pub address: String,
+    /// Name of the resource.
+    ///
+    /// Used only for display.
+    pub name: String,
+
+    pub address_description: Option<String>,
+    #[serde(rename = "gateway_groups", alias = "sites")]
+    pub sites: Vec<Site>,
+
+    /// The IP stack supported by this resource.
+    #[serde(default)]
+    pub ip_stack: Option<IpStack>,
+
+    #[serde_as(as = "VecSkipError<_, WarnOnInvalidFilter>")]
+    #[serde(default)]
+    pub filters: Vec<Filter>,
+}
+
+/// Description of a resource that maps to a CIDR.
+#[serde_as]
+#[derive(Debug, Deserialize)]
+pub struct ResourceDescriptionCidr {
+    /// Resource's id.
+    pub id: ResourceId,
+    /// CIDR that this resource points to.
+    pub address: IpNetwork,
+    /// Name of the resource.
+    ///
+    /// Used only for display.
+    pub name: String,
+
+    pub address_description: Option<String>,
+    #[serde(rename = "gateway_groups", alias = "sites")]
+    pub sites: Vec<Site>,
+
+    #[serde_as(as = "VecSkipError<_, WarnOnInvalidFilter>")]
+    #[serde(default)]
+    pub filters: Vec<Filter>,
+}
+
+fn internet_resource_name() -> String {
+    "Internet Resource".to_string()
+}
+
+/// A pool of devices the portal admits by its membership criteria.
+///
+/// Members are never sent: a packet to a tunnel address asks the portal for access with
+/// [`EgressMessages::RequestAccess`], and the portal answers with the pool it granted.
+#[serde_as]
+#[derive(Debug, Deserialize)]
+pub struct ResourceDescriptionDevicePool {
+    pub id: ResourceId,
+    pub name: String,
+    #[serde_as(as = "VecSkipError<_, WarnOnInvalidFilter>")]
+    #[serde(default)]
+    pub filters: Vec<Filter>,
+}
+
+/// Description of an internet resource.
+#[derive(Debug, Deserialize)]
+pub struct ResourceDescriptionInternet {
+    /// Name of the resource.
+    ///
+    /// Used only for display.
+    #[serde(default = "internet_resource_name")]
+    pub name: String,
+    /// Resource's id.
+    pub id: ResourceId,
+    /// Sites for the internet resource
+    #[serde(rename = "gateway_groups", alias = "sites")]
+    pub sites: Vec<Site>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum ResourceDescription {
+    Dns(serde_json::Value),
+    Cidr(serde_json::Value),
+    Internet(serde_json::Value),
+    DevicePool(serde_json::Value),
+    #[serde(other)]
+    Unknown, // Important for forwards-compatibility with future resource types.
+}
+
+#[derive(Debug, Deserialize)]
+pub struct InitClient {
+    pub interface: Interface,
+    #[serde(default)]
+    pub resources: Vec<ResourceDescription>,
+    #[serde(default)]
+    pub relays: Vec<Relay>,
+    /// Currently-valid inbound client-to-client authorizations, used to
+    /// resync on (re)connect.
+    #[serde(default)]
+    pub authorizations: Vec<Authorization>,
+    pub flow_logs: FlowLogsConfig,
+    pub account_slug: String,
+    pub actor_name: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ConfigUpdate {
+    pub interface: Interface,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct AuthorizationCreated {
+    pub resource_id: ResourceId,
+    pub gateway_id: GatewayId,
+    pub gateway_public_key: Key,
+    pub gateway_ipv4: Ipv4Addr,
+    pub gateway_ipv6: Ipv6Addr,
+    #[serde(rename = "gateway_group_id", alias = "site_id")]
+    pub site_id: SiteId,
+    pub preshared_key: SecretKey,
+    pub client_ice_credentials: IceCredentials,
+    pub gateway_ice_credentials: IceCredentials,
+    #[serde(default)]
+    pub use_iceless: bool,
+
+    /// The initiator-side ingest token for this flow's logs.
+    pub flow_logs_ingest_token: IngestToken,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct AuthorizationCreationFailed {
+    pub resource_id: ResourceId,
+    pub reason: FailReason,
+    #[serde(default)]
+    pub violated_properties: Vec<ViolatedProperty>,
+}
+
+/// Sent by the portal once both peers in a device pool flow agree to connect.
+/// The recipient is the target device when `resource` is `Some` (and must apply
+/// the filters / expiry to its inbound authorization) and the initiating device
+/// when `resource_id` is `Some`.
+#[serde_as]
+#[derive(Debug, Deserialize, Clone)]
+pub struct ClientDeviceAccessAuthorized {
+    pub client_id: ClientId,
+    pub client_name: String,
+    pub client_slug: String,
+    pub client_public_key: Key,
+    pub client_ipv4: Ipv4Addr,
+    pub client_ipv6: Ipv6Addr,
+    pub preshared_key: SecretKey,
+    pub local_ice_credentials: IceCredentials,
+    pub remote_ice_credentials: IceCredentials,
+    pub ice_role: IceRole,
+    #[serde(default)]
+    pub use_iceless: bool,
+
+    /// The pool the portal picked for the flow we asked about. `None` on the
+    /// receiving side.
+    #[serde(default)]
+    pub resource_id: Option<ResourceId>,
+
+    /// The resource authorising this connection on the receiving side, as the
+    /// portal's minimal `{id, filters}` view. `None` on the initiating side.
+    #[serde(default)]
+    pub resource: Option<AuthorizedResource>,
+
+    /// When the authorization expires, as a unix timestamp. `None` when it
+    /// never expires or on the initiating side.
+    #[serde_as(as = "Option<DurationSeconds<u64>>")]
+    #[serde(default)]
+    pub expires_at: Option<Duration>,
+
+    /// This device's ingest token: the initiator token on the initiating side,
+    /// the responder token on the receiving side.
+    pub flow_logs_ingest_token: IngestToken,
+}
+
+/// The portal's minimal `{id, filters}` resource view embedded in
+/// [`ClientDeviceAccessAuthorized`] for the target device. Other resource
+/// fields the portal sends (name, type, devices) are ignored.
+#[serde_as]
+#[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
+pub struct AuthorizedResource {
+    pub id: ResourceId,
+    #[serde_as(as = "VecSkipError<_, WarnOnInvalidFilter>")]
+    #[serde(default)]
+    pub filters: Vec<Filter>,
+}
+
+/// Authorization metadata granted by a resource for an inbound peer
+/// connection. Built on the target side from [`ClientDeviceAccessAuthorized`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResourceAuthorization {
+    /// The authorising resource ID.
+    pub resource_id: ResourceId,
+
+    /// Filters that govern inbound traffic the remote peer is allowed to
+    /// send to us through this resource.
+    pub filters: Vec<Filter>,
+
+    /// When the authorization expires, measured from the unix epoch.
+    pub expires_at: Option<Duration>,
+}
+
+/// Sent by the portal when a resource's filters change while access remains
+/// authorized. Receivers must update the inbound filter for any peer the
+/// resource currently authorizes.
+#[serde_as]
+#[derive(Debug, Deserialize, Clone)]
+pub struct ResourceFiltersUpdated {
+    pub id: ResourceId,
+    #[serde_as(as = "VecSkipError<_, WarnOnInvalidFilter>")]
+    pub filters: Vec<Filter>,
+}
+
+/// Sent by the portal to revoke a previously-authorized client-to-client
+/// access. The receiver drops the inbound authorization keyed by
+/// `resource_id` for `client_id`.
+#[derive(Debug, Deserialize, Clone)]
+pub struct ClientRejectAccess {
+    pub client_id: ClientId,
+    pub resource_id: ResourceId,
+}
+
+/// OBSOLETE - safe to remove this when <https://github.com/firezone/firezone/pull/13714> is deployed to production.
+#[serde_as]
+#[derive(Debug, Deserialize, Clone)]
+pub struct ClientAccessAuthorizationExpiryUpdated {
+    pub client_id: ClientId,
+    pub resource_id: ResourceId,
+    #[serde_as(as = "DurationSeconds<u64>")]
+    pub expires_at: Duration,
+}
+
+/// Portal's denial of a device access request.
+///
+/// Either or both of `ipv4` / `ipv6` may be absent depending on the denial reason.
+#[derive(Debug, Deserialize, Clone)]
+pub struct ClientDeviceAccessDenied {
+    #[serde(default)]
+    pub ipv4: Option<Ipv4Addr>,
+    #[serde(default)]
+    pub ipv6: Option<Ipv6Addr>,
+    pub reason: FailReason,
+}
+
+/// Sent by the portal when our ICE candidates could not be delivered to a target peer.
+#[derive(Debug, Deserialize, Clone)]
+pub struct ClientIceCandidateError {
+    pub client_id: ClientId,
+    pub reason: FailReason,
+}
+
+/// Portal's response when a device name is resolved.
+#[derive(Debug, Deserialize, Clone)]
+pub struct DeviceDomainResolved {
+    pub domain: String,
+    pub ipv4: Ipv4Addr,
+    pub ipv6: Ipv6Addr,
+}
+
+/// Portal's response when a device name cannot be resolved.
+#[derive(Debug, Deserialize, Clone)]
+pub struct DeviceDomainResolutionFailed {
+    pub domain: String,
+    pub reason: FailReason,
+}
+
+/// Portal's answer to a PTR query in the device domain.
+#[derive(Debug, Deserialize, Clone)]
+pub struct DeviceDomainBrowsed {
+    pub domain: String,
+    pub names: Vec<String>,
+    /// How long, in seconds, the answer may be cached.
+    pub ttl: u32,
+    /// How many names there are in all, more than `names` holds if the portal capped them.
+    pub total: usize,
+}
+
+/// Portal's response when a PTR query in the device domain cannot be answered.
+#[derive(Debug, Deserialize, Clone)]
+pub struct DeviceDomainBrowseFailed {
+    pub domain: String,
+    pub reason: FailReason,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+#[serde(rename_all = "snake_case")]
+pub enum FailReason {
+    NotFound,
+    Offline,
+    VersionMismatch,
+    Forbidden,
+    Disabled,
+    AmbiguousAddress,
+    MissingAddress,
+    InvalidAddress,
+    NotADevice,
+    #[serde(other)]
+    Unknown,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+#[serde(rename_all = "snake_case")]
+pub enum ViolatedProperty {
+    RemoteIpLocationRegion,
+    RemoteIp,
+    ProviderId,
+    CurrentUtcDatetime,
+    ClientVerified,
+    #[serde(other)]
+    Unknown,
+}
+
+// These messages are the messages that can be received
+// by a client.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "snake_case", tag = "event", content = "payload")]
+pub enum IngressMessages {
+    Init(InitClient),
+
+    // Resources: arrive in an orderly fashion
+    ResourceCreatedOrUpdated(ResourceDescription),
+    ResourceDeleted(ResourceId),
+
+    // Backwards compatibility prior to client <> client feature.
+    #[serde(alias = "ice_candidates")]
+    GatewayIceCandidates(GatewayIceCandidates),
+    // Backwards compatibility prior to client <> client feature.
+    #[serde(alias = "invalidate_ice_candidates")]
+    InvalidateGatewayIceCandidates(GatewayIceCandidates),
+
+    ClientIceCandidates(ClientIceCandidates),
+    InvalidateClientIceCandidates(ClientIceCandidates),
+
+    ConfigChanged(ConfigUpdate),
+
+    RelaysPresence(RelaysPresence),
+
+    AuthorizationCreated(AuthorizationCreated),
+    AuthorizationCreationFailed(AuthorizationCreationFailed),
+
+    ClientDeviceAccessAuthorized(ClientDeviceAccessAuthorized),
+    ClientDeviceAccessDenied(ClientDeviceAccessDenied),
+    ClientIceCandidateError(ClientIceCandidateError),
+
+    DeviceDomainResolved(DeviceDomainResolved),
+    DeviceDomainResolutionFailed(DeviceDomainResolutionFailed),
+    DeviceDomainBrowsed(DeviceDomainBrowsed),
+    DeviceDomainBrowseFailed(DeviceDomainBrowseFailed),
+
+    /// A resource's filters have changed while at least one authorization
+    /// referencing it remains active.
+    ResourceFiltersUpdated(ResourceFiltersUpdated),
+
+    /// A previously-authorized peer-to-peer access has been revoked.
+    RejectAccess(ClientRejectAccess),
+
+    /// OBSOLETE - safe to remove this when <https://github.com/firezone/firezone/pull/13714> is deployed to production.
+    AccessAuthorizationExpiryUpdated(ClientAccessAuthorizationExpiryUpdated),
+}
+
+#[serde_with::serde_as]
+#[derive(Debug, Serialize, Deserialize, PartialEq)]
+pub struct GatewayIceCandidates {
+    /// Gateway's id the ice candidates are sent to / received from
+    pub gateway_id: GatewayId,
+    /// Actual RTC ice candidates
+    #[serde_as(as = "serde_with::VecSkipError<_>")]
+    pub candidates: Vec<IceCandidate>,
+}
+
+#[serde_with::serde_as]
+#[derive(Debug, Serialize, Deserialize, PartialEq)]
+pub struct ClientIceCandidates {
+    /// Client's id the ice candidates are sent to / received from
+    pub client_id: ClientId,
+    /// Actual RTC ice candidates
+    #[serde_as(as = "serde_with::VecSkipError<_>")]
+    pub candidates: Vec<IceCandidate>,
+}
+
+// These messages can be sent from a client to a control pane
+#[derive(Debug, Serialize, PartialEq)]
+#[serde(rename_all = "snake_case", tag = "event", content = "payload")]
+// enum_variant_names: These are the names in the portal!
+pub enum EgressMessages {
+    /// Asks for access through the named resources, most preferred first.
+    ///
+    /// A packet for a device in the tunnel range names every pool whose filters permit
+    /// it and carries the device's address; the portal grants the first pool that holds
+    /// the device and answers with [`ClientDeviceAccessAuthorized`] or
+    /// [`ClientDeviceAccessDenied`]. Any other packet names the matching resources,
+    /// and the portal answers with [`AuthorizationCreated`] or
+    /// [`AuthorizationCreationFailed`].
+    RequestAccess {
+        resource_ids: Vec<ResourceId>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        ipv4: Option<Ipv4Addr>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        ipv6: Option<Ipv6Addr>,
+        #[serde(rename = "connected_gateway_ids")]
+        preferred_gateways: Vec<GatewayId>,
+    },
+    ResolveDeviceDomain {
+        domain: String,
+    },
+    BrowseDeviceDomain {
+        domain: String,
+    },
+    NoRelays {
+        excluded_relay_ids: Vec<RelayId>,
+    },
+    NewGatewayIceCandidates(GatewayIceCandidates),
+    InvalidateGatewayIceCandidates(GatewayIceCandidates),
+    NewClientIceCandidates(ClientIceCandidates),
+    InvalidateClientIceCandidates(ClientIceCandidates),
+    SetSnownetCapabilities(SnownetCapabilities),
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn can_deserialize_init_with_flow_logs_config() {
+        let init = r#"{
+            "interface": { "ipv4": "100.64.0.1", "ipv6": "fd00:2021:1111::1" },
+            "account_slug": "acme",
+            "actor_name": "Jane Doe",
+            "flow_logs": {
+                "api_url": "https://flow-api.firezone.dev",
+                "upload_interval_secs": 60,
+                "upload_batch_size": 1000
+            }
+        }"#;
+
+        let init = serde_json::from_str::<InitClient>(init).unwrap();
+
+        assert_eq!(init.flow_logs.api_url, "https://flow-api.firezone.dev");
+        assert_eq!(init.flow_logs.upload_interval_secs, 60);
+        assert_eq!(init.flow_logs.upload_batch_size, 1000);
+        assert!(init.flow_logs.upload_enabled());
+    }
+
+    #[test]
+    fn can_deserialize_init_with_account_slug() {
+        let init = r#"{
+            "interface": { "ipv4": "100.64.0.1", "ipv6": "fd00:2021:1111::1" },
+            "account_slug": "acme",
+            "actor_name": "Jane Doe",
+            "flow_logs": {
+                "api_url": "https://flow-api.firezone.dev",
+                "upload_interval_secs": 60,
+                "upload_batch_size": 1000
+            }
+        }"#;
+
+        let init = serde_json::from_str::<InitClient>(init).unwrap();
+
+        assert_eq!(init.account_slug, "acme");
+    }
+
+    #[test]
+    fn init_without_account_slug_is_rejected() {
+        let init = r#"{
+            "interface": { "ipv4": "100.64.0.1", "ipv6": "fd00:2021:1111::1" },
+            "actor_name": "Jane Doe",
+            "flow_logs": {
+                "api_url": "https://flow-api.firezone.dev",
+                "upload_interval_secs": 60,
+                "upload_batch_size": 1000
+            }
+        }"#;
+
+        serde_json::from_str::<InitClient>(init).unwrap_err();
+    }
+
+    #[test]
+    fn can_deserialize_init_with_actor_name() {
+        let init = r#"{
+            "interface": { "ipv4": "100.64.0.1", "ipv6": "fd00:2021:1111::1" },
+            "account_slug": "acme",
+            "actor_name": "Jane Doe",
+            "flow_logs": {
+                "api_url": "https://flow-api.firezone.dev",
+                "upload_interval_secs": 60,
+                "upload_batch_size": 1000
+            }
+        }"#;
+
+        let init = serde_json::from_str::<InitClient>(init).unwrap();
+
+        assert_eq!(init.actor_name, "Jane Doe");
+    }
+
+    #[test]
+    fn init_without_actor_name_is_rejected() {
+        let init = r#"{
+            "interface": { "ipv4": "100.64.0.1", "ipv6": "fd00:2021:1111::1" },
+            "account_slug": "acme",
+            "flow_logs": {
+                "api_url": "https://flow-api.firezone.dev",
+                "upload_interval_secs": 60,
+                "upload_batch_size": 1000
+            }
+        }"#;
+
+        serde_json::from_str::<InitClient>(init).unwrap_err();
+    }
+
+    #[test]
+    fn init_without_flow_logs_config_is_rejected() {
+        let init = r#"{
+            "interface": { "ipv4": "100.64.0.1", "ipv6": "fd00:2021:1111::1" },
+            "account_slug": "acme",
+            "actor_name": "Jane Doe"
+        }"#;
+
+        serde_json::from_str::<InitClient>(init).unwrap_err();
+    }
+
+    #[test]
+    fn can_deserialize_internet_resource() {
+        let resources = r#"[
+            {
+                "id": "73037362-715d-4a83-a749-f18eadd970e6",
+                "type": "cidr",
+                "name": "172.172.0.0/16",
+                "address": "172.172.0.0/16",
+                "address_description": "cidr resource",
+                "gateway_groups": [{"name": "test", "id": "bf56f32d-7b2c-4f5d-a784-788977d014a4"}]
+            },
+            {
+                "id": "03000143-e25e-45c7-aafb-144990e57dcd",
+                "type": "dns",
+                "name": "gitlab.mycorp.com",
+                "address": "gitlab.mycorp.com",
+                "address_description": "dns resource",
+                "sites": [{"name": "test", "id": "bf56f32d-7b2c-4f5d-a784-788977d014a4"}]
+            },
+            {
+                "id": "1106047c-cd5d-4151-b679-96b93da7383b",
+                "type": "internet",
+                "name": "Internet Resource",
+                "gateway_groups": [{"name": "test", "id": "eb94482a-94f4-47cb-8127-14fb3afa5516"}],
+                "not": "relevant",
+                "some_other": [
+                    "field"
+                ]
+            }
+        ]"#;
+
+        serde_json::from_str::<Vec<ResourceDescription>>(resources).unwrap();
+    }
+
+    #[test]
+    fn can_deserialize_unknown_resource() {
+        let resources = r#"[
+            {
+                "id": "73037362-715d-4a83-a749-f18eadd970e6",
+                "type": "cidr",
+                "name": "172.172.0.0/16",
+                "address": "172.172.0.0/16",
+                "address_description": "cidr resource",
+                "gateway_groups": [{"name": "test", "id": "bf56f32d-7b2c-4f5d-a784-788977d014a4"}]
+            },
+            {
+                "id": "03000143-e25e-45c7-aafb-144990e57dcd",
+                "type": "dns",
+                "name": "gitlab.mycorp.com",
+                "address": "gitlab.mycorp.com",
+                "address_description": "dns resource",
+                "sites": [{"name": "test", "id": "bf56f32d-7b2c-4f5d-a784-788977d014a4"}]
+            },
+            {
+                "id": "1106047c-cd5d-4151-b679-96b93da7383b",
+                "type": "internet",
+                "name": "Internet Resource",
+                "gateway_groups": [{"name": "test", "id": "eb94482a-94f4-47cb-8127-14fb3afa5516"}],
+                "not": "relevant",
+                "some_other": [
+                    "field"
+                ]
+            },
+            {
+                "type": "what_is_this"
+            }
+        ]"#;
+
+        serde_json::from_str::<Vec<ResourceDescription>>(resources).unwrap();
+    }
+
+    #[test]
+    fn can_deserialize_ice_candidates_message() {
+        let json = r#"{"topic":"client","event":"ice_candidates","payload":{"gateway_id":"b3d34a15-55ab-40df-994b-a838e75d65d7","candidates":["candidate:7031633958891736544 1 udp 50331391 35.244.108.190 53909 typ relay"]},"ref":6}"#;
+
+        let message = serde_json::from_str::<IngressMessages>(json).unwrap();
+
+        assert!(matches!(message, IngressMessages::GatewayIceCandidates(_)));
+    }
+
+    #[test]
+    fn can_deserialize_invalidate_ice_candidates_message() {
+        let json = r#"{"event":"invalidate_ice_candidates","ref":null,"topic":"client","payload":{"candidates":["candidate:7854631899965427361 1 udp 1694498559 172.28.0.100 47717 typ srflx"],"gateway_id":"2b1524e6-239e-4570-bc73-70a188e12101"}}"#;
+
+        let message = serde_json::from_str::<IngressMessages>(json).unwrap();
+
+        assert!(matches!(
+            message,
+            IngressMessages::InvalidateGatewayIceCandidates(_)
+        ));
+    }
+
+    #[test]
+    fn can_deserialize_authorization_created() {
+        let token = flow_tracker::TEST_INGEST_TOKEN;
+        let json = format!(
+            r#"{{"event":"authorization_created","ref":null,"topic":"client","payload":{{"gateway_group_id":"ef42a07f-87d0-40da-baa7-e881e619ea1c","gateway_id":"d263d490-a0bb-452a-8990-01d27a1f1144","resource_id":"733e8d14-c18d-4931-af30-3639fa09c0c0","preshared_key":"anX2T9RH9mimT5Xd5+HqNGV0bfCodWDHQch1DLiFNls=","client_ice_credentials":{{"username":"resc","password":"rqi3ibvfikfaxj3wgp7muh"}},"gateway_ice_credentials":{{"username":"jbi4","password":"a6oeevhlutevykcifd5r2a"}},"gateway_public_key":"uMBCkAxTewfSgypIyxdQ18uCi84HLtKmQJy0wvQrYWY=","gateway_ipv4":"100.72.145.83","gateway_ipv6":"fd00:2021:1111::5:bcfd","flow_logs_ingest_token":"{token}"}}}}"#
+        );
+
+        let message = serde_json::from_str::<IngressMessages>(&json).unwrap();
+
+        let IngressMessages::AuthorizationCreated(flow) = message else {
+            panic!("expected AuthorizationCreated");
+        };
+        // Old portals don't send the flag; default is `false`.
+        assert!(!flow.use_iceless);
+    }
+
+    #[test]
+    fn authorization_created_picks_up_use_iceless() {
+        let token = flow_tracker::TEST_INGEST_TOKEN;
+        let json = format!(
+            r#"{{"event":"authorization_created","ref":null,"topic":"client","payload":{{"gateway_group_id":"ef42a07f-87d0-40da-baa7-e881e619ea1c","gateway_id":"d263d490-a0bb-452a-8990-01d27a1f1144","resource_id":"733e8d14-c18d-4931-af30-3639fa09c0c0","preshared_key":"anX2T9RH9mimT5Xd5+HqNGV0bfCodWDHQch1DLiFNls=","client_ice_credentials":{{"username":"resc","password":"rqi3ibvfikfaxj3wgp7muh"}},"gateway_ice_credentials":{{"username":"jbi4","password":"a6oeevhlutevykcifd5r2a"}},"gateway_public_key":"uMBCkAxTewfSgypIyxdQ18uCi84HLtKmQJy0wvQrYWY=","gateway_ipv4":"100.72.145.83","gateway_ipv6":"fd00:2021:1111::5:bcfd","use_iceless":true,"flow_logs_ingest_token":"{token}"}}}}"#
+        );
+
+        let message = serde_json::from_str::<IngressMessages>(&json).unwrap();
+
+        let IngressMessages::AuthorizationCreated(flow) = message else {
+            panic!("expected AuthorizationCreated");
+        };
+        assert!(flow.use_iceless);
+    }
+
+    #[test]
+    fn authorization_created_requires_ingest_token() {
+        let json = r#"{"event":"authorization_created","ref":null,"topic":"client","payload":{"gateway_group_id":"ef42a07f-87d0-40da-baa7-e881e619ea1c","gateway_id":"d263d490-a0bb-452a-8990-01d27a1f1144","resource_id":"733e8d14-c18d-4931-af30-3639fa09c0c0","preshared_key":"anX2T9RH9mimT5Xd5+HqNGV0bfCodWDHQch1DLiFNls=","client_ice_credentials":{"username":"resc","password":"rqi3ibvfikfaxj3wgp7muh"},"gateway_ice_credentials":{"username":"jbi4","password":"a6oeevhlutevykcifd5r2a"},"gateway_public_key":"uMBCkAxTewfSgypIyxdQ18uCi84HLtKmQJy0wvQrYWY=","gateway_ipv4":"100.72.145.83","gateway_ipv6":"fd00:2021:1111::5:bcfd"}}"#;
+
+        serde_json::from_str::<IngressMessages>(json).unwrap_err();
+    }
+
+    #[test]
+    fn authorization_created_carries_ingest_token() {
+        let token = flow_tracker::TEST_INGEST_TOKEN;
+        let json = format!(
+            r#"{{"event":"authorization_created","ref":null,"topic":"client","payload":{{"gateway_group_id":"ef42a07f-87d0-40da-baa7-e881e619ea1c","gateway_id":"d263d490-a0bb-452a-8990-01d27a1f1144","resource_id":"733e8d14-c18d-4931-af30-3639fa09c0c0","preshared_key":"anX2T9RH9mimT5Xd5+HqNGV0bfCodWDHQch1DLiFNls=","client_ice_credentials":{{"username":"resc","password":"rqi3ibvfikfaxj3wgp7muh"}},"gateway_ice_credentials":{{"username":"jbi4","password":"a6oeevhlutevykcifd5r2a"}},"gateway_public_key":"uMBCkAxTewfSgypIyxdQ18uCi84HLtKmQJy0wvQrYWY=","gateway_ipv4":"100.72.145.83","gateway_ipv6":"fd00:2021:1111::5:bcfd","flow_logs_ingest_token":"{token}"}}}}"#
+        );
+
+        let message = serde_json::from_str::<IngressMessages>(&json).unwrap();
+
+        let IngressMessages::AuthorizationCreated(flow) = message else {
+            panic!("expected AuthorizationCreated");
+        };
+        assert_eq!(flow.flow_logs_ingest_token.as_str(), token);
+    }
+
+    #[test]
+    fn client_device_access_authorized_carries_ingest_token() {
+        let token = flow_tracker::TEST_INGEST_TOKEN;
+        let json = format!(
+            r#"{{"event":"client_device_access_authorized","ref":null,"topic":"client","payload":{{"client_id":"d263d490-a0bb-452a-8990-01d27a1f1144","client_name":"Test Device","client_slug":"test-device","client_public_key":"uMBCkAxTewfSgypIyxdQ18uCi84HLtKmQJy0wvQrYWY=","client_ipv4":"100.72.145.83","client_ipv6":"fd00:2021:1111::5:bcfd","preshared_key":"anX2T9RH9mimT5Xd5+HqNGV0bfCodWDHQch1DLiFNls=","local_ice_credentials":{{"username":"resc","password":"rqi3ibvfikfaxj3wgp7muh"}},"remote_ice_credentials":{{"username":"jbi4","password":"a6oeevhlutevykcifd5r2a"}},"ice_role":"controlled","resource":{{"id":"733e8d14-c18d-4931-af30-3639fa09c0c0","filters":[]}},"expires_at":1729813989,"flow_logs_ingest_token":"{token}"}}}}"#
+        );
+
+        let message = serde_json::from_str::<IngressMessages>(&json).unwrap();
+
+        let IngressMessages::ClientDeviceAccessAuthorized(authorized) = message else {
+            panic!("expected ClientDeviceAccessAuthorized");
+        };
+        assert_eq!(authorized.flow_logs_ingest_token.as_str(), token);
+        assert_eq!(authorized.client_slug, "test-device");
+        assert_eq!(authorized.expires_at, Some(Duration::from_secs(1729813989)));
+        assert_eq!(
+            authorized.resource,
+            Some(AuthorizedResource {
+                id: "733e8d14-c18d-4931-af30-3639fa09c0c0".parse().unwrap(),
+                filters: vec![],
+            })
+        );
+    }
+
+    #[test]
+    fn can_deserialize_config_changed_message() {
+        let json = r#"
+        {
+            "event": "config_changed",
+            "ref": null,
+            "topic": "client",
+            "payload": {
+              "interface": {
+                "ipv6": "fd00:2021:1111::e:65ea",
+                "upstream_dns": [
+                  {
+                    "protocol": "ip_port",
+                    "address": "1.1.1.1:53"
+                  }
+                ],
+                "ipv4": "100.67.138.25"
+              }
+            }
+          }
+        "#;
+
+        let message = serde_json::from_str::<IngressMessages>(json).unwrap();
+
+        assert!(matches!(message, IngressMessages::ConfigChanged(_)))
+    }
+
+    #[test]
+    fn can_deserialize_init_message() {
+        let json = r#"{
+            "event": "init",
+            "payload": {
+                "interface": {
+                    "ipv4": "100.72.112.111",
+                    "ipv6": "fd00:2021:1111::13:efb9",
+                    "upstream_dns": []
+                },
+                "account_slug": "acme",
+                "actor_name": "Jane Doe",
+                "resources": [
+                    {
+                        "address": "172.172.0.0/16",
+                        "id": "73037362-715d-4a83-a749-f18eadd970e6",
+                        "name": "172.172.0.0/16",
+                        "address_description": "cidr resource",
+                        "gateway_groups": [{"name": "test", "id": "bf56f32d-7b2c-4f5d-a784-788977d014a4"}],
+                        "type": "cidr"
+                    },
+                    {
+                        "address": "172.173.0.0/16",
+                        "id": "73037362-715d-4a83-a749-f18eadd970e7",
+                        "name": "172.173.0.0/16",
+                        "address_description": null,
+                        "sites": [{"name": "test", "id": "bf56f32d-7b2c-4f5d-a784-788977d014a4"}],
+                        "type": "cidr"
+                    },
+                    {
+                        "address": "gitlab.mycorp.com",
+                        "id": "03000143-e25e-45c7-aafb-144990e57dcd",
+                        "ipv4": "100.126.44.50",
+                        "ipv6": "fd00:2021:1111::e:7758",
+                        "name": "gitlab.mycorp.com",
+                        "address_description": "dns resource",
+                        "gateway_groups": [{"name": "test", "id": "bf56f32d-7b2c-4f5d-a784-788977d014a4"}],
+                        "type": "dns"
+                    },
+                    {
+                        "address": "github.mycorp.com",
+                        "id": "03000143-e25e-45c7-aafb-144990e57dce",
+                        "name": "github.mycorp.com",
+                        "gateway_groups": [{"name": "test", "id": "bf56f32d-7b2c-4f5d-a784-788977d014a4"}],
+                        "type": "dns"
+                    }
+                ],
+                "flow_logs": {
+                    "api_url": "https://flow-api.firezone.dev",
+                    "upload_interval_secs": 60,
+                    "upload_batch_size": 1000
+                }
+            },
+            "ref": null,
+            "topic": "client"
+        }"#;
+
+        let message = serde_json::from_str::<IngressMessages>(json).unwrap();
+
+        assert!(matches!(message, IngressMessages::Init(_)));
+    }
+
+    #[test]
+    fn can_deserialize_bad_resources() {
+        let json = r#"{
+            "event": "init",
+            "payload": {
+                "interface": {
+                    "ipv4": "100.72.112.111",
+                    "ipv6": "fd00:2021:1111::13:efb9",
+                    "upstream_dns": []
+                },
+                "account_slug": "acme",
+                "actor_name": "Jane Doe",
+                "resources": [
+                    {
+                        "address_foobar": "172.172.0.0/16",
+                        "id": "73037362-715d-4a83-a749-f18eadd970e6",
+                        "type": "cidr"
+                    },
+                    {
+                        "i_am_not_a_valid_field": null,
+                        "type": "cidr"
+                    },
+                    {
+                        "what": "gitlab.mycorp.com",
+                        "type": "dns"
+                    },
+                    {
+                        "address": "github.mycorp.com",
+                        "id": "03000143-e25e-45c7-aafb-144990e57dce",
+                        "name": "github.mycorp.com",
+                        "gateway_groups": [{"name": "test", "id": "bf56f32d-7b2c-4f5d-a784-788977d014a4"}],
+                        "type": "dns"
+                    }
+                ],
+                "flow_logs": {
+                    "api_url": "https://flow-api.firezone.dev",
+                    "upload_interval_secs": 60,
+                    "upload_batch_size": 1000
+                }
+            },
+            "ref": null,
+            "topic": "client"
+        }"#;
+
+        let message = serde_json::from_str::<IngressMessages>(json).unwrap();
+
+        assert!(matches!(message, IngressMessages::Init(_)));
+    }
+
+    #[test]
+    fn can_deserialize_relay_presence() {
+        let json = r#"
+            {
+                "event": "relays_presence",
+                "ref": null,
+                "topic": "client",
+                "payload": {
+                    "disconnected_ids": [
+                        "e95f9517-2152-4677-a16a-fbb2687050a3",
+                        "b0724bd1-a8cc-4faf-88cd-f21159cfec47"
+                    ],
+                    "connected": [
+                        {
+                            "id": "0a133356-7a9e-4b9a-b413-0d95a5720fd8",
+                            "type": "turn",
+                            "username": "1719367575:ZQHcVGkdnfgGmcP1",
+                            "password": "ZWYiBeFHOJyYq0mcwAXjRpcuXIJJpzWlOXVdxwttrWg",
+                            "addr": "172.28.0.101:3478",
+                            "expires_at": 1719367575
+                        }
+                    ]
+                }
+            }
+            "#;
+
+        let message = serde_json::from_str::<IngressMessages>(json).unwrap();
+
+        assert!(matches!(message, IngressMessages::RelaysPresence(_)));
+    }
+
+    #[test]
+    fn can_deserialize_unknown_authorization_creation_failed_err() {
+        let json = r#"{"event":"authorization_creation_failed","ref":null,"topic":"client","payload":{"resource_id":"f16ecfa0-a94f-4bfd-a2ef-1cc1f2ef3da3","reason":"foobar"}}"#;
+
+        let message = serde_json::from_str::<IngressMessages>(json).unwrap();
+
+        assert!(matches!(
+            message,
+            IngressMessages::AuthorizationCreationFailed(AuthorizationCreationFailed {
+                reason: FailReason::Unknown,
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn can_deserialize_known_authorization_creation_failed_err() {
+        let json = r#"{"event":"authorization_creation_failed","ref":null,"topic":"client","payload":{"resource_id":"f16ecfa0-a94f-4bfd-a2ef-1cc1f2ef3da3","reason":"offline"}}"#;
+
+        let message = serde_json::from_str::<IngressMessages>(json).unwrap();
+
+        assert!(matches!(
+            message,
+            IngressMessages::AuthorizationCreationFailed(AuthorizationCreationFailed {
+                reason: FailReason::Offline,
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn serialize_request_access_message_for_resources() {
+        let message = EgressMessages::RequestAccess {
+            resource_ids: vec![
+                "f16ecfa0-a94f-4bfd-a2ef-1cc1f2ef3da3".parse().unwrap(),
+                "73037362-715d-4a83-a749-f18eadd970e6".parse().unwrap(),
+            ],
+            ipv4: None,
+            ipv6: None,
+            preferred_gateways: Vec::new(),
+        };
+        let expected_json = r#"{"event":"request_access","payload":{"resource_ids":["f16ecfa0-a94f-4bfd-a2ef-1cc1f2ef3da3","73037362-715d-4a83-a749-f18eadd970e6"],"connected_gateway_ids":[]}}"#;
+        let actual_json = serde_json::to_string(&message).unwrap();
+
+        assert_eq!(actual_json, expected_json);
+    }
+
+    #[test]
+    fn serialize_request_access_message_for_a_device() {
+        let message = EgressMessages::RequestAccess {
+            resource_ids: vec![
+                "f16ecfa0-a94f-4bfd-a2ef-1cc1f2ef3da3".parse().unwrap(),
+                "73037362-715d-4a83-a749-f18eadd970e6".parse().unwrap(),
+            ],
+            ipv4: Some(Ipv4Addr::new(100, 65, 0, 1)),
+            ipv6: None,
+            preferred_gateways: Vec::new(),
+        };
+        let expected_json = r#"{"event":"request_access","payload":{"resource_ids":["f16ecfa0-a94f-4bfd-a2ef-1cc1f2ef3da3","73037362-715d-4a83-a749-f18eadd970e6"],"ipv4":"100.65.0.1","connected_gateway_ids":[]}}"#;
+        let actual_json = serde_json::to_string(&message).unwrap();
+
+        assert_eq!(actual_json, expected_json);
+    }
+
+    #[test]
+    fn serialize_no_relays_message() {
+        let message = EgressMessages::NoRelays {
+            excluded_relay_ids: vec!["c5a1b2d3-0e8f-4a6b-9c7d-2e1f0a3b4c5d".parse().unwrap()],
+        };
+        let expected_json = r#"{"event":"no_relays","payload":{"excluded_relay_ids":["c5a1b2d3-0e8f-4a6b-9c7d-2e1f0a3b4c5d"]}}"#;
+        let actual_json = serde_json::to_string(&message).unwrap();
+
+        assert_eq!(actual_json, expected_json);
+    }
+
+    #[test]
+    fn serialize_set_snownet_capabilities_message() {
+        let message = EgressMessages::SetSnownetCapabilities(SnownetCapabilities::LOCAL);
+        let expected_json = r#"{"event":"set_snownet_capabilities","payload":{"iceless":true}}"#;
+        let actual_json = serde_json::to_string(&message).unwrap();
+
+        assert_eq!(actual_json, expected_json);
+    }
+
+    #[test]
+    fn can_deserialize_device_pool_resource() {
+        let resources = r#"[
+            {
+                "id": "b2c3d4e5-f6a7-8901-bcde-f12345678901",
+                "type": "device_pool",
+                "name": "Employee Laptops",
+                "filters": [
+                    {
+                        "protocol": "tcp",
+                        "port_range_start": 22,
+                        "port_range_end": 22
+                    }
+                ]
+            }
+        ]"#;
+
+        let parsed = serde_json::from_str::<Vec<ResourceDescription>>(resources).unwrap();
+
+        let ResourceDescription::DevicePool(json) = &parsed[0] else {
+            panic!("Expected DevicePool");
+        };
+        let desc = ResourceDescriptionDevicePool::deserialize(json).unwrap();
+        assert_eq!(desc.name, "Employee Laptops");
+        assert_eq!(
+            desc.filters,
+            vec![Filter::Tcp(crate::messages::PortRange::single(22))]
+        );
+    }
+
+    #[test]
+    fn resolve_device_domain_serialises_correctly() {
+        let msg = EgressMessages::ResolveDeviceDomain {
+            domain: "device-42.firezone.network".to_owned(),
+        };
+
+        let actual = serde_json::to_value(&msg).unwrap();
+        let expected = serde_json::json!({
+            "event": "resolve_device_domain",
+            "payload": {
+                "domain": "device-42.firezone.network",
+            }
+        });
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn can_deserialize_device_domain_resolved() {
+        let json = serde_json::json!({
+            "event": "device_domain_resolved",
+            "payload": {
+                "domain": "device-42.firezone.network",
+                "ipv4": "100.64.0.42",
+                "ipv6": "fd00:2021:1111::42"
+            }
+        });
+
+        let msg: IngressMessages = serde_json::from_value(json).unwrap();
+        let IngressMessages::DeviceDomainResolved(resolved) = msg else {
+            panic!("expected DeviceDomainResolved")
+        };
+        assert_eq!(resolved.ipv4, "100.64.0.42".parse::<Ipv4Addr>().unwrap());
+        assert_eq!(
+            resolved.ipv6,
+            "fd00:2021:1111::42".parse::<Ipv6Addr>().unwrap()
+        );
+    }
+
+    #[test]
+    fn can_deserialize_client_ice_candidate_error() {
+        let json = serde_json::json!({
+            "event": "client_ice_candidate_error",
+            "payload": {
+                "client_id": "a3632404-4b03-4468-9fc0-4a4c82415ade",
+                "reason": "offline"
+            }
+        });
+
+        let msg: IngressMessages = serde_json::from_value(json).unwrap();
+        let IngressMessages::ClientIceCandidateError(error) = msg else {
+            panic!("expected ClientIceCandidateError")
+        };
+        assert!(matches!(error.reason, FailReason::Offline));
+    }
+
+    #[test]
+    fn can_deserialize_device_domain_resolution_failed() {
+        let json = serde_json::json!({
+            "event": "device_domain_resolution_failed",
+            "payload": {
+                "domain": "device-42.firezone.network",
+                "reason": "not_found"
+            }
+        });
+
+        let msg: IngressMessages = serde_json::from_value(json).unwrap();
+        assert!(matches!(
+            msg,
+            IngressMessages::DeviceDomainResolutionFailed(_)
+        ));
+    }
+
+    #[test]
+    fn can_deserialize_not_a_device_reason() {
+        let json = serde_json::json!({
+            "event": "device_domain_resolution_failed",
+            "payload": {
+                "domain": "your-devices.firezone.network",
+                "reason": "not_a_device"
+            }
+        });
+
+        let msg: IngressMessages = serde_json::from_value(json).unwrap();
+        let IngressMessages::DeviceDomainResolutionFailed(failed) = msg else {
+            panic!("expected DeviceDomainResolutionFailed")
+        };
+        assert!(matches!(failed.reason, FailReason::NotADevice));
+    }
+
+    #[test]
+    fn browse_device_domain_serialises_correctly() {
+        let msg = EgressMessages::BrowseDeviceDomain {
+            domain: "firezone.network".to_owned(),
+        };
+
+        let actual = serde_json::to_value(&msg).unwrap();
+        let expected = serde_json::json!({
+            "event": "browse_device_domain",
+            "payload": {
+                "domain": "firezone.network",
+            }
+        });
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn can_deserialize_device_domain_browsed() {
+        let json = serde_json::json!({
+            "event": "device_domain_browsed",
+            "payload": {
+                "domain": "your-devices.firezone.network",
+                "names": ["alice-laptop.firezone.network", "alice-desktop.firezone.network"],
+                "ttl": 30,
+                "total": 5
+            }
+        });
+
+        let msg: IngressMessages = serde_json::from_value(json).unwrap();
+        let IngressMessages::DeviceDomainBrowsed(browsed) = msg else {
+            panic!("expected DeviceDomainBrowsed")
+        };
+        assert_eq!(browsed.domain, "your-devices.firezone.network");
+        assert_eq!(
+            browsed.names,
+            [
+                "alice-laptop.firezone.network",
+                "alice-desktop.firezone.network"
+            ]
+        );
+        assert_eq!(browsed.ttl, 30);
+        assert_eq!(browsed.total, 5);
+    }
+
+    #[test]
+    fn can_deserialize_device_domain_browse_failed() {
+        let json = serde_json::json!({
+            "event": "device_domain_browse_failed",
+            "payload": {
+                "domain": "ghost.firezone.network",
+                "reason": "not_found"
+            }
+        });
+
+        let msg: IngressMessages = serde_json::from_value(json).unwrap();
+        let IngressMessages::DeviceDomainBrowseFailed(failed) = msg else {
+            panic!("expected DeviceDomainBrowseFailed")
+        };
+        assert!(matches!(failed.reason, FailReason::NotFound));
+    }
+
+    #[test]
+    fn faulty_candidate_get_skipped() {
+        let bad_candidates = serde_json::json!({ "gateway_id": "f16ecfa0-a94f-4bfd-a2ef-1cc1f2ef3da3", "candidates": ["foo", "bar", "baz", "candidate:fffeff6435be70ddbf995982 1 udp 1694498559 87.121.72.60 57114 typ srflx raddr 0.0.0.0 rport 0"] });
+
+        let gateway_candidates = GatewayIceCandidates::deserialize(bad_candidates).unwrap();
+
+        assert_eq!(gateway_candidates.candidates.len(), 1);
+    }
+}

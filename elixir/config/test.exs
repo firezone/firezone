@@ -1,5 +1,7 @@
 import Config
 
+config :sentry, test_mode: true
+
 ###############################
 ##### Portal ##################
 ###############################
@@ -11,20 +13,14 @@ partition_suffix =
     ""
   end
 
+database = "#{System.get_env("DATABASE_NAME", "firezone")}_test#{partition_suffix}"
+
 config :portal, sql_sandbox: true
-# Replica is not used in tests; use the primary DB instead
-config :portal, replica_repo: Portal.Repo
 
 config :portal, run_manual_migrations: true
 
 config :portal, Portal.Repo,
-  database: "firezone_test#{partition_suffix}",
-  pool: Ecto.Adapters.SQL.Sandbox,
-  pool_size: 5,
-  queue_target: 1000
-
-config :portal, Portal.Repo.Replica,
-  database: "firezone_test#{partition_suffix}",
+  database: database,
   pool: Ecto.Adapters.SQL.Sandbox,
   pool_size: 5,
   queue_target: 1000
@@ -32,11 +28,11 @@ config :portal, Portal.Repo.Replica,
 for repo <- [
       Portal.Repo.Web,
       Portal.Repo.Api,
-      Portal.Repo.Replica.Web,
-      Portal.Repo.Replica.Api
+      Portal.Repo.Job,
+      Portal.Repo.Poller
     ] do
   config :portal, repo,
-    database: "firezone_test#{partition_suffix}",
+    database: database,
     pool: Ecto.Adapters.SQL.Sandbox,
     pool_size: 5,
     queue_target: 1000
@@ -45,6 +41,7 @@ end
 # Oban has its own config validation that prevents overriding config in runtime.exs,
 # so we explicitly set the config in dev.exs, test.exs, and runtime.exs (for prod) only.
 config :portal, Oban,
+  notifier: Oban.Notifiers.PG,
   # Periodic jobs don't make sense in tests
   plugins: [
     # Keep the last 90 days of completed, cancelled, and discarded jobs
@@ -67,21 +64,15 @@ config :portal, Oban,
   engine: Oban.Engines.Basic,
   repo: Portal.Repo
 
-config :portal, Portal.ChangeLogs.ReplicationConnection,
+config :portal, Portal.ChangeLogs.Consumer,
   replication_slot_name: "test_change_logs_slot",
   publication_name: "test_change_logs_publication",
-  enabled: false,
-  connection_opts: [
-    database: "firezone_test#{partition_suffix}"
-  ]
+  enabled: false
 
-config :portal, Portal.Changes.ReplicationConnection,
+config :portal, Portal.Changes.Consumer,
   replication_slot_name: "test_changes_slot",
   publication_name: "test_changes_publication",
-  enabled: false,
-  connection_opts: [
-    database: "firezone_test#{partition_suffix}"
-  ]
+  enabled: false
 
 config :portal, Portal.Billing,
   enabled: true,
@@ -93,11 +84,11 @@ config :portal, Portal.Billing,
     "prod_test_starter",
     # Team
     "prod_test_team",
+    # Business
+    "prod_test_business",
     # Enterprise
     "prod_test_enterprise"
-  ],
-  # Adhoc Device
-  adhoc_device_product_id: "prod_test_adhoc_device"
+  ]
 
 config :portal, Portal.Billing.Stripe.APIClient,
   endpoint: "https://api.stripe.com",
@@ -112,26 +103,139 @@ config :portal, Portal.Okta.APIClient,
     retry: false
   ]
 
-config :portal, Portal.Entra.APIClient,
-  client_id: "test_client_id",
-  client_secret: "test_client_secret",
-  endpoint: "https://graph.microsoft.com",
+config :portal, Portal.Splunk.APIClient,
+  req_opts: [
+    plug: {Req.Test, Portal.Splunk.APIClient},
+    retry: false
+  ]
+
+config :portal, Portal.Datadog.APIClient,
+  req_opts: [
+    plug: {Req.Test, Portal.Datadog.APIClient},
+    retry: false
+  ]
+
+config :portal, Portal.NewRelic.APIClient,
+  req_opts: [
+    plug: {Req.Test, Portal.NewRelic.APIClient},
+    retry: false
+  ]
+
+config :portal, Portal.Elastic.APIClient,
+  req_opts: [
+    plug: {Req.Test, Portal.Elastic.APIClient},
+    retry: false
+  ]
+
+config :portal, Portal.Sentinel.APIClient,
+  client_id: "test_sentinel_client_id",
+  client_secret: "test_sentinel_client_secret",
   token_base_url: "https://login.microsoftonline.com",
   req_opts: [
-    plug: {Req.Test, Portal.Entra.APIClient},
+    plug: {Req.Test, Portal.Sentinel.APIClient},
+    retry: false
+  ]
+config :portal, Portal.S3.APIClient,
+  req_opts: [
+    plug: {Req.Test, Portal.S3.APIClient},
+    retry: false
+  ],
+  access_key_id: "test-aws-access-key-id",
+  secret_access_key: "test-aws-secret-access-key",
+  aws_account_id: "123456789012"
+
+config :portal, Portal.QRadar.APIClient,
+  req_opts: [
+    plug: {Req.Test, Portal.QRadar.APIClient},
+    retry: false
+  ]
+
+config :portal, Portal.HTTP.APIClient,
+  req_opts: [
+    plug: {Req.Test, Portal.HTTP.APIClient},
+    retry: false
+  ]
+
+config :portal, Portal.LogSinks.Delivery, visibility_lag_seconds: 0
+
+config :portal, Portal.Azure.ManagedIdentity,
+  client_id: "test-azure-client-id",
+  req_opts: [
+    plug: {Req.Test, Portal.Azure.ManagedIdentity},
+    retry: false
+  ]
+
+config :portal, Portal.Microsoft.Graph.APIClient,
+  endpoint: "https://graph.microsoft.com",
+  token_base_url: "https://login.microsoftonline.com",
+  applications: [
+    entra: [client_id: "test_client_id", client_secret: "test_client_secret"],
+    intune: [client_id: "test_intune_client_id", client_secret: "test_intune_client_secret"],
+    windows_updates: [client_id: "test_windows_updates_client_id", client_secret: nil]
+  ],
+  req_opts: [
+    plug: {Req.Test, Portal.Microsoft.Graph.APIClient},
+    retry: false
+  ]
+
+config :portal, Portal.Defender.APIClient,
+  endpoint: "https://api.security.microsoft.com",
+  token_base_url: "https://login.microsoftonline.com",
+  token_scope: "https://api.securitycenter.microsoft.com/.default",
+  client_id: "test_defender_client_id",
+  client_secret: "test_defender_client_secret",
+  req_opts: [
+    plug: {Req.Test, Portal.Defender.APIClient},
+    retry: false
+  ]
+
+config :portal, Portal.Iru.APIClient,
+  api_domains: [us: "api.kandji.io", eu: "api.eu.kandji.io"],
+  req_opts: [
+    plug: {Req.Test, Portal.Iru.APIClient},
+    retry: false
+  ]
+
+config :portal, Portal.Santa.APIClient,
+  req_opts: [
+    plug: {Req.Test, Portal.Santa.APIClient},
+    retry: false
+  ]
+
+config :portal, Portal.SentinelOne.APIClient,
+  req_opts: [
+    plug: {Req.Test, Portal.SentinelOne.APIClient},
+    retry: false
+  ]
+
+config :portal, Portal.Sophos.APIClient,
+  req_opts: [
+    plug: {Req.Test, Portal.Sophos.APIClient},
     retry: false
   ]
 
 config :portal, Portal.Workers.SyncErrorNotification, []
+
+config :portal, Portal.Workers.LogSinkErrorNotification, []
 
 config :portal, Portal.Telemetry, enabled: false
 
 config :opentelemetry_experimental, sdk_disabled: true
 
 config :portal, Portal.ConnectivityChecks, enabled: false
+config :portal, Portal.ClockDriftAlarm, enabled: false
 config :portal, :client_session_queue, enabled: false
 config :portal, :gateway_session_queue, enabled: false
 config :portal, :policy_authorization_queue, enabled: false
+config :portal, :revocation_endpoint_queue, enabled: false
+
+config :portal, Portal.OSReleases, reload_every: false
+
+config :portal, Portal.OSReleases.Sync,
+  req_opts: [
+    plug: {Req.Test, Portal.OSReleases.Sync},
+    retry: false
+  ]
 
 config :portal, Portal.ComponentVersions,
   fetch_from_url: false,
@@ -148,15 +252,68 @@ config :portal, Portal.ComponentVersions,
   ]
 
 config :portal, Portal.Google.APIClient,
-  endpoint: "https://admin.googleapis.com",
-  token_endpoint: "https://oauth2.googleapis.com/token",
+  # Never inherit a developer's real Google credentials from the shell
+  # config/config.exs reads these from env, and tests must control them
+  # explicitly via put_env_override/3.
+  service_account_key: nil,
+  service_account_email: nil,
+  workload_identity_provider: nil,
+  workload_identity_audience: nil,
   req_opts: [
     retry: false,
     plug: {Req.Test, Portal.Google.APIClient}
   ]
 
+config :portal, Portal.Crl.Sync,
+  req_opts: [
+    retry: false,
+    plug: {Req.Test, Portal.Crl.Sync}
+  ]
+
+config :portal, Portal.OAuth.ClientMetadata,
+  req_opts: [
+    retry: false,
+    plug: {Req.Test, Portal.OAuth.ClientMetadata}
+  ],
+  # Req.Test never connects, but the mandatory protection still resolves before
+  # handing a request to its adapter. Use a known-public answer so metadata
+  # tests can keep descriptive fake hostnames (and localhost origin fixtures).
+  ssrf_protection_opts: [
+    resolver: fn
+      _host, :inet -> {:ok, [{8, 8, 8, 8}]}
+      _host, :inet6 -> {:error, :nxdomain}
+    end
+  ]
+
+config :portal, Portal.Ocsp.Sync,
+  req_opts: [
+    retry: false,
+    plug: {Req.Test, Portal.Ocsp.Sync}
+  ]
+
+config :portal, Portal.TokenCache, enabled: false
+
 # Auth provider configs with Req.Test for OIDC mocking
 config :portal, Portal.Google.AuthProvider,
+  req_opts: [
+    retry: false,
+    plug: {Req.Test, PortalWeb.OIDC}
+  ]
+
+config :portal, Portal.GitHub.AuthProvider,
+  client_id: "test_github_client_id",
+  client_secret: "test_github_client_secret",
+  authorize_endpoint: "https://github.test/login/oauth/authorize",
+  token_endpoint: "https://github.test/login/oauth/access_token",
+  api_endpoint: "https://api.github.test",
+  req_opts: [
+    retry: false,
+    plug: {Req.Test, PortalWeb.GitHub}
+  ]
+
+config :portal, Portal.Google.SyncAuthorization,
+  client_id: "test_google_sync_authz_client_id",
+  client_secret: "test_google_sync_authz_client_secret",
   req_opts: [
     retry: false,
     plug: {Req.Test, PortalWeb.OIDC}
@@ -197,10 +354,20 @@ config :portal, PortalWeb.Endpoint,
   url: [port: 13_100],
   server: true
 
+# Poll quickly so tests waiting on the getting started guide don't sit idle
+config :portal, PortalWeb.GettingStarted, poll_interval_ms: 20
+
 # Keep the endpoint limiter effectively disabled in general tests to avoid
 # cross-test interference from shared localhost IPs. Dedicated rate-limit tests
 # override this config with strict values.
 config :portal, PortalWeb.RateLimit,
+  refill_rate: 100_000,
+  capacity: 1_000_000
+
+# MCP controller tests share the loopback source IP, so dedicated limiter tests
+# pass strict values directly while the general suite uses a practically
+# unbounded bucket.
+config :portal, PortalAPI.Plugs.MCPRateLimit,
   refill_rate: 100_000,
   capacity: 1_000_000
 
@@ -216,11 +383,14 @@ config :portal, PortalWeb.Plugs.PutSecurityHeaders,
     "default-src 'self' https://firezone.statuspage.io",
     "img-src 'self' data: https://www.gravatar.com https://firezone.statuspage.io",
     "style-src 'self'",
-    "script-src 'self' 'nonce-${nonce}'"
+    "script-src 'self' 'nonce-${nonce}'",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "frame-ancestors 'none'"
   ]
 
 config :portal, :constant_execution_time, 1
-config :portal, replica_repo: Portal.Repo
+config :portal, :pending_verification_timeout, 1_000
 
 ###############################
 ##### PortalAPI Endpoint ######
@@ -247,6 +417,9 @@ config :portal, relays_presence_debounce_timeout_ms: 100
 config :portal, Portal.Mailer, adapter: Portal.Mailer.TestAdapter
 config :portal, Portal.Mailer.Secondary, adapter: Portal.Mailer.TestAdapter
 
+# Disable HTTP retries so error-path OIDC tests don't back off and retry
+config :portal, OpenIDConnect, retry: false
+
 # Allow asserting on info logs and higher
 config :logger, level: :info
 
@@ -254,7 +427,7 @@ config :argon2_elixir, t_cost: 1, m_cost: 8
 
 config :geolix,
   databases: [
-    %{id: :city, adapter: Geolix.Adapter.Fake, data: %{}}
+    %{id: :city, adapter: Portal.Test.GeoAdapter, data: %{}}
   ]
 
 default_assert_receive_timeout = 1_000
@@ -278,3 +451,14 @@ config :phoenix, :plug_init_mode, :runtime
 
 config :sentry,
   environment_name: :test
+
+# Test-only destinations; production ad configuration comes from runtime env vars.
+config :portal, Portal.Analytics.OpenAI,
+  api_key: nil,
+  pixel_id: "test-openai-pixel",
+  endpoint: "https://bzr.openai.com/v1/events",
+  req_opts: [retry: false]
+
+config :portal, Portal.Analytics.GoogleAds,
+  endpoint: "https://datamanager.googleapis.com/v1/events:ingest",
+  req_opts: [retry: false]

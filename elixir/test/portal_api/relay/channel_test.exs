@@ -2,10 +2,18 @@ defmodule PortalAPI.Relay.ChannelTest do
   use PortalAPI.ChannelCase, async: true
 
   import ExUnit.CaptureLog
+  import Portal.AccountFixtures
+  import Portal.Changes.Hooks.Accounts
   import Portal.RelayFixtures
   import Portal.TokenFixtures
 
   setup do
+    Portal.Config.put_env_override(
+      :portal,
+      :account_changes_topic,
+      "accounts:#{inspect(make_ref())}"
+    )
+
     relay = relay_fixture()
     token = relay_token_fixture()
 
@@ -26,7 +34,7 @@ defmodule PortalAPI.Relay.ChannelTest do
 
   describe "join/3" do
     test "tracks presence after join", %{relay: relay} do
-      presence = Portal.Presence.Relays.Global.list()
+      presence = Portal.Presence.Relays.list()
 
       assert %{metas: [%{ipv4: _, phx_ref: _ref}]} = Map.fetch!(presence, relay.id)
     end
@@ -63,6 +71,59 @@ defmodule PortalAPI.Relay.ChannelTest do
       assert_push "init", %{}
     end
 
+    test "includes account IDs in init only for Relays that support account validation" do
+      assert_push "init", %{}
+      account = account_fixture()
+      relay = relay_fixture()
+      token = relay_token_fixture()
+
+      {:ok, _, _socket} =
+        PortalAPI.Relay.Socket
+        |> socket("relay:#{relay.stamp_secret}", %{
+          token_id: token.id,
+          relay: relay,
+          opentelemetry_ctx: OpenTelemetry.Ctx.new(),
+          opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test")
+        })
+        |> subscribe_and_join(PortalAPI.Relay.Channel, "relay", %{
+          stamp_secret: relay.stamp_secret,
+          turn_account_validation: true
+      })
+
+      assert_push "init", %{account_ids: account_ids}
+      assert account.id in account_ids
+    end
+
+    test "forwards account lifecycle changes to capable Relays" do
+      assert_push "init", %{}
+      relay = relay_fixture()
+      token = relay_token_fixture()
+
+      {:ok, _, _socket} =
+        PortalAPI.Relay.Socket
+        |> socket("relay:#{relay.stamp_secret}", %{
+          token_id: token.id,
+          relay: relay,
+          opentelemetry_ctx: OpenTelemetry.Ctx.new(),
+          opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test")
+        })
+        |> subscribe_and_join(PortalAPI.Relay.Channel, "relay", %{
+          stamp_secret: relay.stamp_secret,
+          turn_account_validation: true
+        })
+
+      assert_push "init", %{account_ids: _account_ids}
+
+      account_id = "00000000-0000-0000-0000-000000000004"
+      :ok = on_insert(1, %{"id" => account_id, "is_disabled" => false})
+
+      assert_push "account_added", %{account_id: ^account_id}
+
+      :ok = on_delete(2, %{"id" => account_id})
+
+      assert_push "account_removed", %{account_id: ^account_id}
+    end
+
     test "kills existing connection when new relay connects with same id" do
       # Create a new relay with a known stamp_secret
       relay = relay_fixture()
@@ -70,7 +131,7 @@ defmodule PortalAPI.Relay.ChannelTest do
       test_pid = self()
 
       # Capture the test-specific topic before spawning
-      topic = Portal.Presence.Relays.Global.topic()
+      topic = Portal.Presence.Relays.topic()
 
       # First "connection" - spawn a process that tracks presence directly
       first_pid =
@@ -96,7 +157,7 @@ defmodule PortalAPI.Relay.ChannelTest do
       assert_receive :first_connected, 1000
 
       # Verify first connection is tracked
-      presence = Portal.Presence.Relays.Global.list()
+      presence = Portal.Presence.Relays.list()
       assert %{metas: [%{ipv4: _}]} = Map.fetch!(presence, relay.id)
 
       # Monitor the first process

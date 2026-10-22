@@ -2,9 +2,11 @@ use crate::TUNNEL_NAME;
 use anyhow::Result;
 use dashmap::DashMap;
 use logging::err_with_src;
+use socket_factory::RoutingLoopPreventionFailed;
 use socket_factory::SocketFactory;
 use socket_factory::{TcpSocket, UdpSocket};
 use std::{
+    cmp,
     cmp::Ordering,
     io,
     mem::MaybeUninit,
@@ -100,7 +102,8 @@ pub fn tcp_socket_factory(addr: SocketAddr) -> io::Result<TcpSocket> {
     // To avoid routing loops, all TCP sockets are bound to the "best" source IP.
     // Additionally, we add a dedicated route for the given address to route via the default interface.
     socket.bind((route.addr, 0).into())?;
-    let entry = RoutingTableEntry::create(addr.ip(), route.original)?;
+    let entry = RoutingTableEntry::create(addr.ip(), route.original)
+        .map_err(RoutingLoopPreventionFailed::new)?;
 
     socket.pack(entry);
 
@@ -212,6 +215,10 @@ fn delete_all_routing_entries_matching(addr: IpAddr) -> io::Result<()> {
 
         // Safety: The `entry` is initialised.
         if let Err(e) = unsafe { DeleteIpForwardEntry2(entry) }.ok() {
+            if e.code() == error::NOT_FOUND {
+                continue;
+            }
+
             tracing::warn!("Failed to remove routing entry: {}", err_with_src(&e));
             continue;
         };
@@ -397,9 +404,21 @@ struct Route {
     original: MIB_IPFORWARD_ROW2,
 }
 
+impl Route {
+    /// Windows selects routes by longest prefix first and only breaks ties on
+    /// the metric, e.g. a directly-connected subnet wins over a default route
+    /// with a better metric.
+    fn precedence(&self) -> (cmp::Reverse<u8>, u32) {
+        (
+            cmp::Reverse(self.original.DestinationPrefix.PrefixLength),
+            self.metric,
+        )
+    }
+}
+
 impl Ord for Route {
     fn cmp(&self, other: &Self) -> Ordering {
-        self.metric.cmp(&other.metric)
+        self.precedence().cmp(&other.precedence())
     }
 }
 
@@ -411,7 +430,7 @@ impl PartialOrd for Route {
 
 impl PartialEq for Route {
     fn eq(&self, other: &Self) -> bool {
-        self.metric.eq(&other.metric) && self.addr.eq(&other.addr)
+        self.precedence() == other.precedence()
     }
 }
 
@@ -474,6 +493,7 @@ unsafe fn to_ip_addr(addr: SOCKADDR_INET, dst: IpAddr) -> Option<IpAddr> {
 #[cfg(test)]
 mod test {
     use super::*;
+    use windows::Win32::NetworkManagement::IpHelper::IP_ADDRESS_PREFIX;
 
     #[test]
     fn best_route_ip4_does_not_panic_or_segfault() {
@@ -483,5 +503,35 @@ mod test {
     #[test]
     fn best_route_ip6_does_not_panic_or_segfault() {
         let _ = get_best_non_tunnel_route("2404:6800:4006:811::200e".parse().unwrap());
+    }
+
+    #[test]
+    fn prefers_longer_prefix_over_lower_metric() {
+        let connected_subnet = route(20, 5000);
+        let default_route = route(0, 5);
+
+        assert!(connected_subnet < default_route);
+    }
+
+    #[test]
+    fn breaks_prefix_ties_on_the_metric() {
+        let low_metric = route(0, 5);
+        let high_metric = route(0, 50);
+
+        assert!(low_metric < high_metric);
+    }
+
+    fn route(prefix_len: u8, metric: u32) -> Route {
+        Route {
+            metric,
+            addr: Ipv4Addr::UNSPECIFIED.into(),
+            original: MIB_IPFORWARD_ROW2 {
+                DestinationPrefix: IP_ADDRESS_PREFIX {
+                    PrefixLength: prefix_len,
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+        }
     }
 }

@@ -28,8 +28,7 @@
         android:label="@string/app_name"
         android:screenOrientation="portrait"
         android:supportsRtl="true"
-        android:theme="@style/AppTheme.Base"
-        android:usesCleartextTraffic="true">
+        android:theme="@style/AppTheme.Base">
 
         <receiver
             android:name=".core.BootReceiver"
@@ -42,13 +41,12 @@
 
         <activity
             android:name=".core.presentation.MainActivity"
-            android:exported="true">
+            android:exported="true"
+            android:theme="@style/AppTheme.Starting">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-
-            <nav-graph android:value="@navigation/app_nav_graph" />
         </activity>
 
         <activity
@@ -63,21 +61,11 @@
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="firezone-fd0020211111" />
+                <data
+                    android:host="handle_client_sign_in_callback"
+                    android:scheme="firezone-fd0020211111" />
             </intent-filter>
         </activity>
-
-        <activity
-            android:name="dev.firezone.android.features.permission.vpn.ui.VpnPermissionActivity"
-            android:exported="false" />
-
-        <activity
-            android:name="dev.firezone.android.features.permission.notification.ui.NotificationPermissionActivity"
-            android:exported="false" />
-
-        <activity
-            android:name="dev.firezone.android.features.session.ui.SessionActivity"
-            android:exported="false" />
 
         <activity
             android:name="dev.firezone.android.features.settings.ui.SettingsActivity"

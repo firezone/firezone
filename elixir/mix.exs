@@ -16,10 +16,11 @@ defmodule Portal.MixProject do
     [
       app: :portal,
       version: version(),
-      elixir: "~> 1.14",
+      elixir: "~> 1.15",
       elixirc_paths: elixirc_paths(Mix.env()),
       start_permanent: Mix.env() == :prod,
       test_coverage: [tool: ExCoveralls],
+      test_ignore_filters: [~r"^test/fixtures/"],
       listeners: listeners(),
       docs: [
         logo: "assets/static/images/logo.svg",
@@ -76,11 +77,11 @@ defmodule Portal.MixProject do
       {:phoenix, "~> 1.8"},
       {:phoenix_pubsub, "~> 2.0"},
       {:phoenix_html, "~> 4.0"},
-      {:phoenix_template, "~> 1.0.4"},
+      {:phoenix_template, "~> 1.1.0"},
       {:phoenix_live_view, "~> 1.1"},
       {:phoenix_live_dashboard, "~> 0.8"},
       {:phoenix_live_reload, "~> 1.2", only: :dev},
-      {:bandit, "~> 1.0"},
+      {:bandit, "~> 1.3"},
       {:plug, "~> 1.15"},
       {:gettext, "~> 1.0"},
       {:remote_ip, "~> 1.1"},
@@ -88,8 +89,6 @@ defmodule Portal.MixProject do
       # Auth
       {:plug_crypto, "~> 2.0"},
       {:jose, "~> 1.11"},
-      {:openid_connect,
-       github: "firezone/openid_connect", ref: "a38b96eb63bef690328ad2fd08202b8ffe36460f"},
       {:argon2_elixir, "~> 4.0"},
 
       # Background jobs
@@ -103,7 +102,7 @@ defmodule Portal.MixProject do
 
       # Email
       {:gen_smtp, "~> 1.0"},
-      {:swoosh, "~> 1.26.0"},
+      {:swoosh, "~> 1.28.0"},
       {:phoenix_swoosh, "~> 1.0"},
 
       # IP Geolocation
@@ -113,14 +112,17 @@ defmodule Portal.MixProject do
       # API / OpenAPI
       {:open_api_spex, "~> 3.22.0"},
       {:ymlr, "~> 5.0"},
-      {:hammer, "~> 7.4.0"},
+      {:hammer, "~> 7.5.0"},
+
+      # AWS request signing
+      {:aws_signature, "~> 0.4"},
 
       # Observability
       {:telemetry, "~> 1.0"},
       {:telemetry_poller, "~> 1.0"},
       {:telemetry_metrics, "~> 1.0"},
       {:recon, "~> 2.5"},
-      {:observer_cli, "~> 1.7"},
+      {:observer_cli, "~> 2.0"},
       {:opentelemetry, "~> 1.5"},
       {:opentelemetry_logger_metadata, "~> 0.2.0"},
       {:opentelemetry_api_experimental,
@@ -146,7 +148,7 @@ defmodule Portal.MixProject do
       {:opentelemetry_semantic_conventions, "~> 1.27", override: true},
       {:sentry, "~> 13.1"},
       {:logger_json, "~> 7.0"},
-      {:req, "~> 0.6.2"},
+      {:req, "~> 0.7.2"},
 
       # Asset pipeline
       {:esbuild, "~> 0.7", runtime: Mix.env() == :dev},
@@ -197,7 +199,10 @@ defmodule Portal.MixProject do
       "assets.build": ["tailwind portal", "esbuild portal"],
       "assets.deploy": ["tailwind portal --minify", "esbuild portal --minify", "phx.digest"],
       "phx.server": ["ecto.create --quiet", "ecto.migrate", "phx.server"],
-      test: ["ecto.create --quiet", "ecto.migrate", "test"],
+      "openapi.generate": [
+        "openapi.spec.json --spec PortalAPI.ApiSpec --pretty=true --vendor-extensions=false --filename priv/static/openapi.json --no-start-app"
+      ],
+      test: ["ecto.create --quiet", "ecto.migrate", "openapi.generate", "test"],
       start: ["compile --no-validate-compile-env", "phx.server", "run --no-halt"]
     ]
   end

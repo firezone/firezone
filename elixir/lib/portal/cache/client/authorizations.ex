@@ -157,7 +157,7 @@ defmodule Portal.Cache.Client.Authorizations do
         [policy_authorizations: pa],
         {pa.id, pa.initiating_device_id, pa.resource_id, pa.expires_at}
       )
-      |> Safe.unscoped(:replica)
+      |> Safe.unscoped()
       |> Safe.all()
     end
   end

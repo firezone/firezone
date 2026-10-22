@@ -17,17 +17,29 @@ public enum BundleHelper {
     return false
   }
 
-  static var gitSha: String {
+  /// Whether telemetry was switched off when this bundle was built. Apple builds
+  /// default to no telemetry; official release scripts explicitly opt in.
+  static var noTelemetry: Bool {
+    Bundle.main.object(forInfoDictionaryKey: "NoTelemetry") as? String == "true"
+  }
+
+  static var gitSha: String? {
     guard let gitSha = Bundle.main.object(forInfoDictionaryKey: "GitSha") as? String,
       !gitSha.isEmpty
-    else { return "unknown" }
+    else { return nil }
 
-    return String(gitSha.prefix(8))
+    return gitSha
+  }
+
+  /// The app group the app shares with its extensions, or `nil` when the bundle's
+  /// Info.plist declares no `AppGroupIdentifier`, which is every process except the app
+  /// and its extensions (a test, most obviously).
+  static var appGroupIdIfPresent: String? {
+    Bundle.main.object(forInfoDictionaryKey: "AppGroupIdentifier") as? String
   }
 
   public static var appGroupId: String {
-    guard let appGroupId = Bundle.main.object(forInfoDictionaryKey: "AppGroupIdentifier") as? String
-    else {
+    guard let appGroupId = appGroupIdIfPresent else {
       fatalError("AppGroupIdentifier missing in app's Info.plist")
     }
     return appGroupId

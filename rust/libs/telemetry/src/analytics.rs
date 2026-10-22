@@ -25,8 +25,17 @@ pub fn new_session(maybe_legacy_id: String, api_url: String) {
     });
 }
 
-/// Associate several properties with the current telemetry user.
-pub fn identify(release: String, account_slug: Option<String>) {
+/// Associates the release, account slug, and certificate-derived account and
+/// actor attributes with the current installation; `None` clears an attribute.
+pub fn identify(
+    release: String,
+    account_slug: impl Into<Option<String>>,
+    account_id: impl Into<Option<String>>,
+    actor_email: impl Into<Option<String>>,
+) {
+    let account_slug = account_slug.into();
+    let account_id = account_id.into();
+    let actor_email = actor_email.into();
     let Some(env) = current_env() else {
         tracing::debug!("Cannot send $identify: Unknown env");
         return;
@@ -46,6 +55,8 @@ pub fn identify(release: String, account_slug: Option<String>) {
                     set: PersonProperties {
                         release,
                         account_slug,
+                        account_id,
+                        actor_email,
                         os: std::env::consts::OS.to_owned(),
                     },
                 },
@@ -53,36 +64,6 @@ pub fn identify(release: String, account_slug: Option<String>) {
             .await
             {
                 tracing::debug!("Failed to log `$identify` event: {e:#}");
-            }
-        }
-    });
-}
-
-pub fn feature_flag_called(name: impl Into<String>) {
-    let Some(env) = current_env() else {
-        tracing::debug!("Cannot send $feature_flag_called: Unknown env");
-        return;
-    };
-    let Some(distinct_id) = current_user() else {
-        tracing::debug!("Cannot send $feature_flag_called: Unknown user");
-        return;
-    };
-    let feature_flag = name.into();
-
-    ingest::RUNTIME.spawn({
-        async move {
-            if let Err(e) = capture(
-                "$feature_flag_called",
-                distinct_id,
-                env,
-                FeatureFlagCalledProperties {
-                    feature_flag,
-                    feature_flag_response: "true".to_owned(),
-                },
-            )
-            .await
-            {
-                tracing::debug!("Failed to log `$feature_flag_called` event: {e:#}");
             }
         }
     });
@@ -155,14 +136,10 @@ struct PersonProperties {
     release: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     account_slug: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    account_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    actor_email: Option<String>,
     #[serde(rename = "$os")]
     os: String,
-}
-
-#[derive(serde::Serialize)]
-struct FeatureFlagCalledProperties {
-    #[serde(rename = "$feature_flag")]
-    feature_flag: String,
-    #[serde(rename = "$feature_flag_response")]
-    feature_flag_response: String,
 }

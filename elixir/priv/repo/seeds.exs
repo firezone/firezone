@@ -7,30 +7,41 @@ defmodule Portal.Repo.Seeds do
 
   alias Portal.{
     Repo,
+    APIRequestLog,
     Authentication,
     AuthProvider,
     Account,
     Actor,
-    ClientSession,
+    ChangeLog,
     Crypto,
     EmailOTP,
     Entra,
+    Defender,
     ExternalIdentity,
     Device,
+    FlowLog,
     PolicyAuthorization,
-    GatewaySession,
     Google,
     Group,
+    Intune,
+    Iru,
     Membership,
     NameGenerator,
     OIDC,
     Policy,
     Resource,
     Safe,
+    Santa,
+    SentinelOne,
+    SessionLog,
+    Sophos,
     Site,
     ClientToken,
-    Userpass
+    Userpass,
+    X509
   }
+
+  alias Portal.Types.LogId
 
   # User agent strings for seeded clients and gateways.
   # Update these when bumping the connlib version used in dev/test.
@@ -111,11 +122,110 @@ defmodule Portal.Repo.Seeds do
         address: attrs[:address] || attrs["address"],
         address_description: attrs[:address_description] || attrs["address_description"],
         filters: attrs[:filters] || attrs["filters"] || [],
-        site_id: attrs[:site_id] || attrs["site_id"]
+        site_id: attrs[:site_id] || attrs["site_id"],
+        device_membership_criteria: attrs[:device_membership_criteria]
       }
       |> Repo.insert!()
 
     {:ok, resource}
+  end
+
+  @load_actors 1_000
+  @load_devices_per_actor 100
+
+  # Enough devices to make the pool bitmaps worth measuring, seeded before the clients
+  # below so the address trigger steers their random addresses around these. They sit
+  # at 100.80.0.0 and fd00:2021:1111::18:0 upwards, well above the pinned addresses.
+  defp seed_device_pool_load(account, admin_subject, everyone_group) do
+    now = DateTime.utc_now()
+
+    actors =
+      for i <- 1..@load_actors do
+        %{
+          id: Ecto.UUID.generate(),
+          account_id: account.id,
+          type: :account_user,
+          name: "Load user #{i}",
+          email: "load-user-#{i}@localhost.local",
+          inserted_at: now,
+          updated_at: now
+        }
+      end
+
+    actors |> Enum.chunk_every(1_000) |> Enum.each(&Repo.insert_all(Actor, &1))
+
+    group =
+      %Group{account_id: account.id, name: "Load test", type: :static}
+      |> Repo.insert!()
+
+    actors
+    |> Enum.take(div(@load_actors, 2))
+    |> Enum.map(&%{account_id: account.id, group_id: group.id, actor_id: &1.id})
+    |> Enum.chunk_every(1_000)
+    |> Enum.each(&Repo.insert_all(Membership, &1))
+
+    actors
+    |> Enum.with_index()
+    |> Enum.flat_map(fn {actor, index} ->
+      for d <- 1..@load_devices_per_actor do
+        n = index * @load_devices_per_actor + d
+
+        %{
+          account_id: account.id,
+          actor_id: actor.id,
+          type: :client,
+          name: "Load device #{n}",
+          firezone_id: "load-device-#{n}",
+          slug: "load-device-#{n}",
+          ipv4: {100, 80 + div(n, 65_536), rem(div(n, 256), 256), rem(n, 256)},
+          ipv6: {0xFD00, 0x2021, 0x1111, 0, 0, 0, 0x18 + div(n, 65_536), rem(n, 65_536)},
+          inserted_at: now,
+          updated_at: now
+        }
+      end
+    end)
+    |> Enum.chunk_every(5_000)
+    |> Enum.each(&Repo.insert_all(Device, &1))
+
+    {:ok, all_devices} =
+      create_resource(
+        %{
+          type: :device_pool,
+          name: "All devices",
+          address_description: "Every client device in the account",
+          device_membership_criteria: Portal.Resource.DeviceMembershipCriteria.all_devices()
+        },
+        admin_subject
+      )
+
+    {:ok, group_devices} =
+      create_resource(
+        %{
+          type: :device_pool,
+          name: "Load test group devices",
+          address_description: "The devices of the Load test group's members",
+          device_membership_criteria: Portal.Resource.DeviceMembershipCriteria.actor_group(group.id)
+        },
+        admin_subject
+      )
+
+    for resource <- [all_devices, group_devices] do
+      %Policy{
+        account_id: account.id,
+        group_id: everyone_group.id,
+        resource_id: resource.id,
+        description: "Everyone reaches the #{resource.name} pool"
+      }
+      |> Repo.insert!()
+    end
+
+    IO.puts("Created #{@load_actors * @load_devices_per_actor} load test devices:")
+    IO.puts("  #{@load_actors} actors, #{div(@load_actors, 2)} of them in the Load test group")
+    IO.puts("  #{all_devices.name} - Device Pool - policy: Everyone")
+    IO.puts("  #{group_devices.name} - Device Pool - policy: Everyone")
+    IO.puts("")
+
+    [all_devices, group_devices]
   end
 
   # Helper function to create gateway directly without context module
@@ -150,6 +260,7 @@ defmodule Portal.Repo.Seeds do
       |> Ecto.Changeset.put_change(:type, :gateway)
       |> Ecto.Changeset.put_change(:account_id, site.account_id)
       |> Ecto.Changeset.put_change(:site_id, site_id)
+      |> Portal.Devices.put_free_slug(site.account_id, nil)
       |> Device.changeset()
       |> Safe.unscoped()
       |> Safe.insert()
@@ -171,23 +282,23 @@ defmodule Portal.Repo.Seeds do
         )
       )
 
-    # Create a gateway session
     {location_region, location_city, location_lat, location_lon} = Enum.random(@locations)
 
-    %GatewaySession{
-      account_id: site.account_id,
-      device_id: gateway.id,
-      gateway_token_id: gateway_token.id,
-      public_key: public_key,
-      user_agent: context.user_agent,
-      remote_ip: context.remote_ip,
-      remote_ip_location_region: location_region,
-      remote_ip_location_city: location_city,
-      remote_ip_location_lat: location_lat,
-      remote_ip_location_lon: location_lon,
-      version: version
-    }
-    |> Repo.insert!()
+    gateway =
+      gateway
+      |> Ecto.Changeset.change(
+        public_key: public_key,
+        last_seen_user_agent: context.user_agent,
+        last_seen_remote_ip: context.remote_ip,
+        last_seen_remote_ip_location_region: location_region,
+        last_seen_remote_ip_location_city: location_city,
+        last_seen_remote_ip_location_lat: location_lat,
+        last_seen_remote_ip_location_lon: location_lon,
+        last_seen_version: version,
+        last_seen_at: DateTime.utc_now(),
+        gateway_token_id: gateway_token.id
+      )
+      |> Repo.update!()
 
     {:ok, gateway}
   end
@@ -220,6 +331,7 @@ defmodule Portal.Repo.Seeds do
       |> Ecto.Changeset.put_change(:type, :client)
       |> Ecto.Changeset.put_change(:account_id, subject.account.id)
       |> Ecto.Changeset.put_change(:actor_id, subject.actor.id)
+      |> Portal.Devices.put_free_slug(subject.account.id, Portal.Devices.owner_name(subject.actor))
       |> Device.changeset()
       |> Safe.unscoped()
       |> Safe.insert()
@@ -233,23 +345,2241 @@ defmodule Portal.Repo.Seeds do
 
     {location_region, location_city, location_lat, location_lon} = Enum.random(@locations)
 
-    # Create a client session
-    Repo.insert!(%ClientSession{
-      account_id: subject.account.id,
-      device_id: client.id,
-      client_token_id: client_token_id,
-      public_key: public_key,
-      user_agent: user_agent,
-      remote_ip: subject.context.remote_ip,
-      remote_ip_location_region: location_region,
-      remote_ip_location_city: location_city,
-      remote_ip_location_lat: location_lat,
-      remote_ip_location_lon: location_lon,
-      version: version
-    })
+    client =
+      client
+      |> Ecto.Changeset.change(
+        public_key: public_key,
+        last_seen_user_agent: user_agent,
+        last_seen_remote_ip: subject.context.remote_ip,
+        last_seen_remote_ip_location_region: location_region,
+        last_seen_remote_ip_location_city: location_city,
+        last_seen_remote_ip_location_lat: location_lat,
+        last_seen_remote_ip_location_lon: location_lon,
+        last_seen_version: version,
+        last_seen_at: DateTime.utc_now(),
+        client_token_id: client_token_id
+      )
+      |> Repo.update!()
 
     {:ok, client}
   end
+
+  defp create_seed_policy_authorization(
+         subject,
+         initiating_device,
+         receiving_device,
+         resource,
+         policy,
+         membership
+       ) do
+    %PolicyAuthorization{
+      initiating_device_id: initiating_device.id,
+      receiving_device_id: receiving_device.id,
+      resource_id: resource.id,
+      policy_id: policy.id,
+      membership_id: membership && membership.id,
+      account_id: subject.account.id,
+      token_id: subject.credential.id,
+      initiator_remote_ip: {127, 0, 0, 1},
+      initiator_user_agent: @ua_ios,
+      receiver_remote_ip: %Postgrex.INET{address: {189, 172, 73, 153}, netmask: nil},
+      expires_at: subject.expires_at || DateTime.add(DateTime.utc_now(), 1, :hour)
+    }
+    |> Repo.insert!()
+  end
+
+  # Seeds logs from each device rather than pre-aggregated flows. The recent rows
+  # deliberately cover the states the Flow Logs UI needs to communicate:
+  # paired TCP/UDP logs, an open initiator log, a responder-only log,
+  # an invalid-looking interval caused by clock skew, and a one-to-many
+  # overlap that must be labeled ambiguous rather than silently rolled up.
+  defp seed_flow_logs(account, actor, initiator, auth_provider_id, contexts) do
+    now = DateTime.utc_now()
+
+    base = %{
+      account: account,
+      actor: actor,
+      initiator: initiator,
+      auth_provider_id: auth_provider_id,
+      inserted_at: now
+    }
+
+    google = Map.merge(base, contexts.google)
+    httpbin = Map.merge(base, contexts.httpbin)
+    network = Map.merge(base, contexts.network)
+    iperf = Map.merge(base, contexts.iperf)
+
+    open_report =
+      seed_flow_log_row(google, %{
+        role: :initiator,
+        protocol: :tcp,
+        inner_src_port: 54_001,
+        inner_dst_port: 443,
+        flow_start: DateTime.add(now, -2, :minute),
+        flow_end: nil
+      })
+
+    recent_tcp =
+      paired_seed_flow_logs(httpbin, %{
+        protocol: :tcp,
+        inner_src_port: 54_002,
+        inner_dst_port: 443,
+        flow_start: DateTime.add(now, -8, :minute),
+        flow_end: DateTime.add(now, -3, :minute),
+        tx_packets: 6_240,
+        rx_packets: 5_980,
+        tx_bytes: 8_400_000,
+        rx_bytes: 42_700_000
+      })
+
+    recent_udp =
+      paired_seed_flow_logs(google, %{
+        protocol: :udp,
+        inner_src_port: 54_003,
+        inner_dst_port: 53,
+        flow_start: DateTime.add(now, -14, :minute),
+        flow_end: DateTime.add(now, -12, :minute),
+        tx_packets: 24,
+        rx_packets: 22,
+        tx_bytes: 2_480,
+        rx_bytes: 9_720
+      })
+
+    responder_only =
+      seed_flow_log_row(network, %{
+        role: :responder,
+        protocol: :tcp,
+        inner_src_port: 54_004,
+        inner_dst_port: 22,
+        flow_start: DateTime.add(now, -22, :minute),
+        flow_end: DateTime.add(now, -20, :minute)
+      })
+
+    clock_skewed =
+      seed_flow_log_row(iperf, %{
+        role: :initiator,
+        protocol: :tcp,
+        inner_src_port: 54_005,
+        inner_dst_port: 5_201,
+        flow_start: DateTime.add(now, -30, :minute),
+        flow_end: DateTime.add(now, -31, :minute),
+        tx_packets: 8_440,
+        rx_packets: 8_120,
+        tx_bytes: 640_000_000,
+        rx_bytes: 612_000_000
+      })
+
+    # The initiator sees one long flow while the responder sees two sequential
+    # windows for the same tuple. Both overlap the initiator window, so neither
+    # responder can be selected as a guaranteed match from the current fields.
+    ambiguous_attrs = %{
+      protocol: :tcp,
+      inner_src_port: 54_006,
+      inner_dst_port: 80
+    }
+
+    ambiguous = [
+      seed_flow_log_row(
+        httpbin,
+        Map.merge(ambiguous_attrs, %{
+          role: :initiator,
+          flow_start: DateTime.add(now, -55, :minute),
+          flow_end: DateTime.add(now, -30, :minute),
+          tx_packets: 940,
+          rx_packets: 860,
+          tx_bytes: 2_800_000,
+          rx_bytes: 18_600_000
+        })
+      ),
+      seed_flow_log_row(
+        httpbin,
+        Map.merge(ambiguous_attrs, %{
+          role: :responder,
+          flow_start: DateTime.add(now, -54, :minute),
+          flow_end: DateTime.add(now, -43, :minute),
+          tx_packets: 410,
+          rx_packets: 380,
+          tx_bytes: 1_200_000,
+          rx_bytes: 8_100_000
+        })
+      ),
+      seed_flow_log_row(
+        httpbin,
+        Map.merge(ambiguous_attrs, %{
+          role: :responder,
+          flow_start: DateTime.add(now, -42, :minute),
+          flow_end: DateTime.add(now, -29, :minute),
+          tx_packets: 525,
+          rx_packets: 475,
+          tx_bytes: 1_580_000,
+          rx_bytes: 10_420_000
+        })
+      )
+    ]
+
+    historical =
+      1..6
+      |> Enum.flat_map(fn i ->
+        context = Enum.at([google, httpbin, iperf], rem(i - 1, 3))
+        protocol = if rem(i, 3) == 0, do: :udp, else: :tcp
+        started_at = DateTime.add(now, -i * 8, :hour)
+
+        paired_seed_flow_logs(context, %{
+          protocol: protocol,
+          inner_src_port: 55_000 + i,
+          inner_dst_port: if(protocol == :udp, do: 5_201, else: context.default_port),
+          flow_start: started_at,
+          flow_end: DateTime.add(started_at, 90 + i * 20, :second),
+          tx_packets: 80 * i,
+          rx_packets: 65 * i,
+          tx_bytes: 240_000 * i,
+          rx_bytes: 1_100_000 * i
+        })
+      end)
+
+    rows =
+      [open_report]
+      |> Kernel.++(recent_tcp)
+      |> Kernel.++(recent_udp)
+      |> Kernel.++([responder_only, clock_skewed])
+      |> Kernel.++(ambiguous)
+      |> Kernel.++(historical)
+
+    {count, _} = Repo.insert_all(FlowLog, rows)
+    IO.puts("Created #{count} flow logs")
+    IO.puts("")
+  end
+
+  defp paired_seed_flow_logs(context, attrs) do
+    initiator = seed_flow_log_row(context, Map.put(attrs, :role, :initiator))
+
+    responder_attrs =
+      attrs
+      |> Map.put(:role, :responder)
+      |> Map.update!(:flow_start, &DateTime.add(&1, 2, :second))
+      |> Map.update!(:flow_end, &DateTime.add(&1, 3, :second))
+      |> Map.put(:tx_packets, max(Map.get(attrs, :tx_packets, 120) - 2, 0))
+      |> Map.put(:rx_packets, max(Map.get(attrs, :rx_packets, 96) - 2, 0))
+      |> Map.put(:tx_bytes, max(Map.get(attrs, :tx_bytes, 600_000) - 1_200, 0))
+      |> Map.put(:rx_bytes, max(Map.get(attrs, :rx_bytes, 1_800_000) - 2_400, 0))
+
+    [initiator, seed_flow_log_row(context, responder_attrs)]
+  end
+
+  defp seed_flow_log_row(context, attrs) do
+    flow_end = Map.fetch!(attrs, :flow_end)
+    closed? = not is_nil(flow_end)
+
+    %{
+      account_id: context.account.id,
+      log_id: LogId.build_flow_log(),
+      initiator_device_id: context.initiator.id,
+      responder_device_id: context.authorization.receiving_device_id,
+      role: Map.fetch!(attrs, :role),
+      policy_authorization_id: context.authorization.id,
+      policy_id: context.authorization.policy_id,
+      resource_id: context.resource.id,
+      resource_name: context.resource.name,
+      resource_address: context.resource.address,
+      authorized_at: context.authorization.inserted_at,
+      authorization_expires_at: context.authorization.expires_at,
+      initiator_actor_id: context.actor.id,
+      initiator_actor_name: context.actor.name,
+      initiator_actor_email: context.actor.email,
+      initiator_auth_provider_id: context.auth_provider_id,
+      initiator_client_version: context.initiator.last_seen_version,
+      initiator_device_os_name: "iOS",
+      initiator_device_os_version: "18.7.7",
+      initiator_device_serial: context.initiator.device_serial,
+      initiator_device_uuid: context.initiator.device_uuid,
+      initiator_device_identifier_for_vendor: context.initiator.identifier_for_vendor,
+      initiator_device_firebase_installation_id: context.initiator.firebase_installation_id,
+      protocol: Map.fetch!(attrs, :protocol),
+      inner_src_ip: context.initiator.ipv4,
+      inner_src_port: Map.fetch!(attrs, :inner_src_port),
+      inner_dst_ip: context.inner_dst_ip,
+      inner_dst_port: Map.fetch!(attrs, :inner_dst_port),
+      domain: context.domain,
+      # connlib normalizes both logs to initiator -> responder, including the
+      # WireGuard tuple, so paired logs intentionally carry the same values.
+      outers:
+        if(closed?,
+          do: [
+            %FlowLog.Outer{
+              src_ip: "203.0.113.44",
+              src_port: 62_000,
+              dst_ip: "189.172.73.153",
+              dst_port: 51_820
+            }
+          ]
+        ),
+      flow_start: Map.fetch!(attrs, :flow_start),
+      flow_end: flow_end,
+      last_packet: if(closed?, do: Map.get(attrs, :last_packet, DateTime.add(flow_end, -1, :second))),
+      tx_packets: if(closed?, do: Map.get(attrs, :tx_packets, 120)),
+      rx_packets: if(closed?, do: Map.get(attrs, :rx_packets, 96)),
+      tx_bytes: if(closed?, do: Map.get(attrs, :tx_bytes, 600_000)),
+      rx_bytes: if(closed?, do: Map.get(attrs, :rx_bytes, 1_800_000)),
+      inserted_at: context.inserted_at
+    }
+  end
+
+  # Seeds a mix of change_logs, session_logs, and api_request_logs so the
+  # Audit UI has realistic entries out of the box: recent admin sign-ins,
+  # a few days of REST API traffic, and configuration change history with
+  # varied operations, objects, and geographic sources.
+  defp seed_audit_logs(account, subjects, api_actor, api_token_id) do
+    seq = :atomics.new(1, [])
+    now = DateTime.utc_now()
+
+    seed_change_logs(account, subjects, now, seq)
+    seed_session_logs(account, subjects, now)
+    seed_api_request_logs(account, api_actor, api_token_id, now)
+  end
+
+  defp seed_change_logs(account, subjects, now, seq) do
+    admin_subj = subjects.admin
+    unpriv_subj = subjects.unpriv
+
+    # Each spec: {mins_ago, subject_or_nil, object, op, before_map, after_map}.
+    # `before` and `after` mirror what the WAL replicator captures: full row
+    # snapshots on both sides of an update, so the diff renders every field
+    # (unchanged ones in muted text) instead of just the changed keys. For
+    # updates we build a full base row once and derive `after` from it so
+    # identity columns (id, account_id, etc.) show as unchanged.
+    policy_a = policy_row(description: "Legacy", name: "Engineering full access")
+    policy_a_updated = Map.put(policy_a, "description", "Engineering full access")
+
+    resource_a = resource_row(name: "Staging DB", address: "10.0.0.99")
+    resource_a_updated = Map.put(resource_a, "address", "10.0.0.100")
+
+    group_a = group_row(name: "engineers")
+    group_a_updated = Map.put(group_a, "name", "Engineering")
+
+    actor_a = actor_row(name: "Sam", email: "sam@example.com", type: "account_user")
+    actor_a_updated = Map.put(actor_a, "type", "account_admin_user")
+
+    provider_a = provider_row(name: "Google")
+    provider_a_updated = Map.put(provider_a, "name", "Google Workspace")
+
+    client_a = client_row(name: "MacBook")
+    client_a_updated = Map.put(client_a, "name", "Alex's MacBook")
+
+    policy_b = policy_row(name: "Contractors: region gate", conditions: [])
+
+    policy_b_updated =
+      Map.put(policy_b, "conditions", [
+        %{"property" => "remote_ip_location_region", "operator" => "is_in"}
+      ])
+
+    actor_b = actor_row(name: "Casey", email: "casey@example.com", disabled_at: nil)
+    actor_b_updated = Map.put(actor_b, "disabled_at", DateTime.utc_now() |> DateTime.to_iso8601())
+
+    specs = [
+      {5, admin_subj, "policies", :update, policy_a, policy_a_updated},
+      {8, admin_subj, "resources", :insert, nil,
+       resource_row(name: "Prod DB", address: "10.0.0.42", type: "cidr")},
+      {17, admin_subj, "groups", :update, group_a, group_a_updated},
+      {28, admin_subj, "resources", :update, resource_a, resource_a_updated},
+      {42, admin_subj, "policies", :insert, nil,
+       policy_row(name: "Contractors read-only")},
+      {55, admin_subj, "actors", :update, actor_a, actor_a_updated},
+      {70, admin_subj, "auth_providers", :update, provider_a, provider_a_updated},
+      {90, admin_subj, "groups", :insert, nil, group_row(name: "Contractors")},
+      {120, admin_subj, "actors", :insert, nil,
+       actor_row(name: "Alex", email: "alex@example.com", type: "account_user")},
+      {180, unpriv_subj, "clients", :update, client_a, client_a_updated},
+      {220, admin_subj, "resources", :delete,
+       resource_row(name: "Old staging DB", address: "10.0.0.55"), nil},
+      {60 * 5, admin_subj, "policies", :update, policy_b, policy_b_updated},
+      {60 * 6, admin_subj, "sites", :insert, nil, site_row(name: "us-east-2")},
+      {60 * 8, admin_subj, "gateway_tokens", :insert, nil,
+       gateway_token_row(name: "us-east-2 provisioning")},
+      {60 * 12, admin_subj, "api_tokens", :insert, nil,
+       api_token_row(name: "terraform-ci")},
+      {60 * 24, admin_subj, "policies", :delete, policy_row(name: "Legacy VPN"), nil},
+      {60 * 26, nil, "workers", :delete,
+       %{"queue" => "default", "attempts" => 3, "count" => 481}, nil},
+      {60 * 30, admin_subj, "actors", :update, actor_b, actor_b_updated},
+      {60 * 48, admin_subj, "resources", :insert, nil,
+       resource_row(name: "GitHub", address: "github.com", type: "dns")},
+      {60 * 72, admin_subj, "auth_providers", :insert, nil, provider_row(name: "Entra")}
+    ]
+
+    rows =
+      Enum.map(specs, fn {mins_ago, subject, object, op, before_map, after_map} ->
+        timestamp = DateTime.add(now, -mins_ago * 60, :second)
+        lsn = :atomics.add_get(seq, 1, 1)
+
+        %{
+          log_id: LogId.build_change_log(System.os_time(:microsecond), lsn),
+          account_id: account.id,
+          timestamp: timestamp,
+          lsn: lsn,
+          object: object,
+          operation: op,
+          before: before_map,
+          after: after_map,
+          subject: subject,
+          vsn: 0
+        }
+      end)
+
+    Repo.insert_all(ChangeLog, rows)
+  end
+
+  defp seed_session_logs(account, subjects, now) do
+    admin_subj = subjects.admin
+    unpriv_subj = subjects.unpriv
+
+    # Each spec: {mins_ago, context, subject}
+    specs = [
+      {2, :portal, admin_subj},
+      {15, :client, unpriv_subj},
+      {35, :client, subject_at(unpriv_subj, "US-NY", "New York", 40.7128, -74.006)},
+      {60, :gateway, gateway_subject(account, "US-CA", "San Francisco", 37.7749, -122.4194)},
+      {90, :portal, subject_at(admin_subj, "GB", "London", 51.5074, -0.1278)},
+      {150, :client, subject_at(unpriv_subj, "DE", "Berlin", 52.52, 13.405)},
+      {180, :gateway, gateway_subject(account, "SG", "Singapore", 1.3521, 103.8198)},
+      {60 * 4, :portal, admin_subj},
+      {60 * 6, :client, subject_at(unpriv_subj, "FR", "Paris", 48.8566, 2.3522)},
+      {60 * 12, :portal, admin_subj},
+      {60 * 18, :client, subject_at(unpriv_subj, "JP", "Tokyo", 35.6762, 139.6503)},
+      {60 * 24, :gateway, gateway_subject(account, "US-CA", "San Francisco", 37.7749, -122.4194)},
+      {60 * 30, :portal, subject_at(admin_subj, "AU", "Sydney", -33.8688, 151.2093)},
+      {60 * 40, :client, subject_at(unpriv_subj, "NL", "Amsterdam", 52.3676, 4.9041)},
+      {60 * 48, :portal, admin_subj}
+    ]
+
+    rows =
+      Enum.map(specs, fn {mins_ago, context, subject} ->
+        timestamp = DateTime.add(now, -mins_ago * 60, :second)
+
+        %{
+          log_id: LogId.build_session_log(),
+          account_id: account.id,
+          timestamp: timestamp,
+          context: context,
+          subject: subject
+        }
+      end)
+
+    Repo.insert_all(SessionLog, rows)
+  end
+
+  defp seed_api_request_logs(account, api_actor, api_token_id, now) do
+    uas = [
+      "curl/8.7.1",
+      "terraform/1.6.0 (+https://www.terraform.io) terraform-provider-firezone/0.5.0",
+      "python-requests/2.31.0",
+      "Go-http-client/1.1",
+      "gh/2.42.0"
+    ]
+
+    # {method, path, size}
+    endpoints = [
+      {"GET", "/account", nil},
+      {"GET", "/resources", nil},
+      {"GET", "/resources?limit=25", nil},
+      {"POST", "/resources", 412},
+      {"GET", "/policies", nil},
+      {"POST", "/policies", 218},
+      {"PATCH", "/policies/#{Ecto.UUID.generate()}", 96},
+      {"GET", "/actors", nil},
+      {"GET", "/actors?limit=25", nil},
+      {"GET", "/groups", nil},
+      {"POST", "/groups", 84},
+      {"DELETE", "/groups/#{Ecto.UUID.generate()}", nil},
+      {"GET", "/sites", nil},
+      {"GET", "/clients", nil},
+      {"GET", "/logs?type=change", nil},
+      {"GET", "/logs?type=session", nil},
+      {"GET", "/logs?type=api_request", nil},
+      {"GET", "/email_otp_auth_providers", nil},
+      {"GET", "/oidc_auth_providers", nil},
+      {"GET", "/entra_directories", nil}
+    ]
+
+    locations = [
+      %Postgrex.INET{address: {8, 8, 8, 8}},
+      %Postgrex.INET{address: {185, 199, 108, 153}},
+      %Postgrex.INET{address: {203, 13, 32, 10}}
+    ]
+
+    location_meta = [
+      {"US-CA", "Mountain View", 37.4056, -122.0775},
+      {"NL", "Amsterdam", 52.3676, 4.9041},
+      {"AU", "Sydney", -33.8688, 151.2093}
+    ]
+
+    rows =
+      for i <- 0..49 do
+        {method, path, size} = Enum.at(endpoints, rem(i, length(endpoints)))
+        ua = Enum.at(uas, rem(i, length(uas)))
+        idx = rem(i, length(locations))
+        ip = Enum.at(locations, idx)
+        {region, city, lat, lon} = Enum.at(location_meta, idx)
+        # Spread across ~4 days, tighter density in the last hour.
+        secs_ago = trunc(:math.pow(i + 1, 1.7) * 60)
+
+        %{
+          log_id: LogId.build_api_request_log(),
+          account_id: account.id,
+          actor_id: api_actor.id,
+          api_token_id: api_token_id,
+          method: method,
+          path: path,
+          content_length: size,
+          request_id: "seed-" <> Base.encode16(:crypto.strong_rand_bytes(6), case: :lower),
+          user_agent: ua,
+          ip: ip,
+          ip_region: region,
+          ip_city: city,
+          ip_lat: lat,
+          ip_lon: lon,
+          inserted_at: DateTime.add(now, -secs_ago, :second)
+        }
+      end
+
+    Repo.insert_all(APIRequestLog, rows)
+  end
+
+  # Rewrites subject IP/geo to a new location so successive session logs from
+  # the same actor look plausibly geo-distributed.
+  defp subject_at(base_subject, region, city, lat, lon) do
+    base_subject
+    |> Map.put("ip", ip_from_geo(lat, lon))
+    |> Map.put("ip_region", region)
+    |> Map.put("ip_city", city)
+    |> Map.put("ip_lat", lat)
+    |> Map.put("ip_lon", lon)
+  end
+
+  defp gateway_subject(account, region, city, lat, lon) do
+    %{
+      "actor_id" => nil,
+      "actor_name" => "Gateway",
+      "actor_email" => nil,
+      "actor_type" => nil,
+      "auth_provider_id" => nil,
+      "account_id" => account.id,
+      "ip" => ip_from_geo(lat, lon),
+      "ip_region" => region,
+      "ip_city" => city,
+      "ip_lat" => lat,
+      "ip_lon" => lon,
+      "user_agent" => @ua_gateway
+    }
+  end
+
+  # Row-snapshot helpers. Mirror the shape the WAL replicator captures so
+  # change_log diffs render every column, not just the one that changed.
+  # Callers supply keyword overrides for the fields they care about.
+  defp policy_row(overrides) do
+    Map.merge(
+      %{
+        "id" => Ecto.UUID.generate(),
+        "account_id" => Ecto.UUID.generate(),
+        "name" => "Engineering full access",
+        "description" => "Engineering full access",
+        "actor_group_id" => Ecto.UUID.generate(),
+        "resource_id" => Ecto.UUID.generate(),
+        "conditions" => [],
+        "disabled_at" => nil,
+        "created_at" => "2026-07-01T09:00:00Z",
+        "updated_at" => "2026-07-09T12:34:56Z"
+      },
+      stringify(overrides)
+    )
+  end
+
+  defp resource_row(overrides) do
+    Map.merge(
+      %{
+        "id" => Ecto.UUID.generate(),
+        "account_id" => Ecto.UUID.generate(),
+        "name" => "Prod DB",
+        "address" => "10.0.0.42",
+        "type" => "cidr",
+        "filters" => [],
+        "site_id" => Ecto.UUID.generate(),
+        "created_at" => "2026-07-01T09:00:00Z",
+        "updated_at" => "2026-07-09T12:34:56Z"
+      },
+      stringify(overrides)
+    )
+  end
+
+  defp group_row(overrides) do
+    Map.merge(
+      %{
+        "id" => Ecto.UUID.generate(),
+        "account_id" => Ecto.UUID.generate(),
+        "name" => "Engineering",
+        "type" => "manual",
+        "provider_id" => nil,
+        "created_at" => "2026-07-01T09:00:00Z",
+        "updated_at" => "2026-07-09T12:34:56Z"
+      },
+      stringify(overrides)
+    )
+  end
+
+  defp actor_row(overrides) do
+    Map.merge(
+      %{
+        "id" => Ecto.UUID.generate(),
+        "account_id" => Ecto.UUID.generate(),
+        "name" => "Alex",
+        "email" => "alex@example.com",
+        "type" => "account_user",
+        "disabled_at" => nil,
+        "allow_email_otp_sign_in" => false,
+        "created_at" => "2026-07-01T09:00:00Z",
+        "updated_at" => "2026-07-09T12:34:56Z"
+      },
+      stringify(overrides)
+    )
+  end
+
+  defp provider_row(overrides) do
+    Map.merge(
+      %{
+        "id" => Ecto.UUID.generate(),
+        "account_id" => Ecto.UUID.generate(),
+        "name" => "Google",
+        "adapter" => "google_workspace",
+        "disabled_at" => nil,
+        "created_at" => "2026-07-01T09:00:00Z",
+        "updated_at" => "2026-07-09T12:34:56Z"
+      },
+      stringify(overrides)
+    )
+  end
+
+  defp client_row(overrides) do
+    Map.merge(
+      %{
+        "id" => Ecto.UUID.generate(),
+        "account_id" => Ecto.UUID.generate(),
+        "name" => "MacBook",
+        "actor_id" => Ecto.UUID.generate(),
+        "type" => "client",
+        "ipv4" => "100.64.0.5",
+        "ipv6" => "fd00:2021:1111::5",
+        "created_at" => "2026-07-01T09:00:00Z",
+        "updated_at" => "2026-07-09T12:34:56Z"
+      },
+      stringify(overrides)
+    )
+  end
+
+  defp site_row(overrides) do
+    Map.merge(
+      %{
+        "id" => Ecto.UUID.generate(),
+        "account_id" => Ecto.UUID.generate(),
+        "name" => "us-east-2",
+        "created_at" => "2026-07-01T09:00:00Z",
+        "updated_at" => "2026-07-09T12:34:56Z"
+      },
+      stringify(overrides)
+    )
+  end
+
+  defp gateway_token_row(overrides) do
+    Map.merge(
+      %{
+        "id" => Ecto.UUID.generate(),
+        "account_id" => Ecto.UUID.generate(),
+        "name" => "us-east-2 provisioning",
+        "site_id" => Ecto.UUID.generate(),
+        "created_at" => "2026-07-01T09:00:00Z",
+        "expires_at" => "2027-07-01T09:00:00Z"
+      },
+      stringify(overrides)
+    )
+  end
+
+  defp api_token_row(overrides) do
+    Map.merge(
+      %{
+        "id" => Ecto.UUID.generate(),
+        "account_id" => Ecto.UUID.generate(),
+        "actor_id" => Ecto.UUID.generate(),
+        "name" => "terraform-ci",
+        "created_at" => "2026-07-01T09:00:00Z",
+        "expires_at" => "2027-07-01T09:00:00Z",
+        "last_seen_at" => nil
+      },
+      stringify(overrides)
+    )
+  end
+
+  defp stringify(overrides) do
+    Map.new(overrides, fn {k, v} -> {to_string(k), v} end)
+  end
+
+  # Deterministic-but-plausible looking source IP derived from lat/lon so each
+  # geo pin gets its own address without a real MaxMind lookup.
+  defp ip_from_geo(lat, lon) do
+    a = Integer.mod(trunc(lat * 3), 223) + 1
+    b = Integer.mod(trunc(lon * 3), 254) + 1
+    c = Integer.mod(trunc(lat * lon * 7), 254) + 1
+    d = Integer.mod(trunc(lat + lon + 100), 254) + 1
+    "#{a}.#{b}.#{c}.#{d}"
+  end
+
+  defp subject_map_from_authentication(%Authentication.Subject{} = s, region, city, lat, lon) do
+    %{
+      "actor_id" => s.actor.id,
+      "actor_name" => s.actor.name,
+      "actor_email" => s.actor.email,
+      "actor_type" => to_string(s.actor.type),
+      "auth_provider_id" => nil,
+      "ip" => ip_from_geo(lat, lon),
+      "ip_region" => region,
+      "ip_city" => city,
+      "ip_lat" => lat,
+      "ip_lon" => lon,
+      "user_agent" => s.context.user_agent
+    }
+  end
+
+
+  # ---------------------------------------------------------------------------
+  # Device posture inventory
+  # ---------------------------------------------------------------------------
+
+  # One fleet of people, reused across every provider, so the same person shows
+  # up consistently wherever a device of theirs is inventoried.
+  @posture_people [
+    {"Alice Nguyen", "alice"},
+    {"Ben Okafor", "ben"},
+    {"Carla Ruiz", "carla"},
+    {"Dmitri Volkov", "dmitri"},
+    {"Elena Petrova", "elena"},
+    {"Farhan Ahmed", "farhan"},
+    {"Grace Lim", "grace"},
+    {"Hugo Martins", "hugo"},
+    {"Ingrid Sorensen", "ingrid"},
+    {"Jonas Weber", "jonas"},
+    {"Keiko Tanaka", "keiko"},
+    {"Liam Doyle", "liam"},
+    {"Maya Shah", "maya"},
+    {"Noah Brenner", "noah"},
+    {"Olivia Fontaine", "olivia"},
+    {"Priya Raman", "priya"}
+  ]
+
+  @posture_domain "contoso.com"
+
+  # Serial numbers are generated rather than listed so the fleet can grow
+  # without hand-writing plausible strings. The alphabet drops I and O, which
+  # is what real serials do so they cannot be confused with 1 and 0.
+  @serial_alphabet ~c"0123456789ABCDEFGHJKLMNPQRSTUVWXYZ"
+
+  defp seed_device_posture(account, clients) do
+    now = DateTime.utc_now() |> DateTime.truncate(:microsecond)
+
+    intune =
+      create_posture_provider(account, :intune, "Contoso Intune", Intune.PostureProvider, %{
+        tenant_id: "8a1e5f22-4c7b-4a10-9c8e-2f3b6d5a71c4",
+        is_verified: true,
+        synced_at: DateTime.add(now, -11, :minute)
+      })
+
+    iru =
+      create_posture_provider(account, :iru, "Iru Apple Fleet", Iru.PostureProvider, %{
+        subdomain: "contoso",
+        region: :us,
+        api_token: "iru_dev_api_token",
+        is_verified: true,
+        synced_at: DateTime.add(now, -23, :minute)
+      })
+
+    defender =
+      create_posture_provider(
+        account,
+        :defender,
+        "Defender for Endpoint",
+        Defender.PostureProvider,
+        %{
+          tenant_id: "8a1e5f22-4c7b-4a10-9c8e-2f3b6d5a71c4",
+          is_verified: true,
+          synced_at: DateTime.add(now, -7, :minute)
+        }
+      )
+
+    santa =
+      create_posture_provider(account, :santa, "Santa Workshop", Santa.PostureProvider, %{
+        api_url: "https://contoso.workshop.cloud",
+        api_key: "npsws_sk_dev_seed_key",
+        is_verified: true,
+        synced_at: DateTime.add(now, -4, :minute)
+      })
+
+    sentinelone =
+      create_posture_provider(
+        account,
+        :sentinelone,
+        "SentinelOne Production",
+        SentinelOne.PostureProvider,
+        %{
+          management_url: "https://contoso.sentinelone.net",
+          api_token: "s1_dev_api_token",
+          is_verified: true,
+          synced_at: DateTime.add(now, -2, :minute)
+        }
+      )
+
+    sophos =
+      create_posture_provider(account, :sophos, "Sophos Central", Sophos.PostureProvider, %{
+        client_id: "3f4b1c6e-5a2d-4e8f-9b7a-1c2d3e4f5a6b",
+        client_secret: "sophos_dev_client_secret",
+        tenant_id: "57ca9a6b-885f-4e36-95ec-290548c26059",
+        data_region_url: "https://api-us03.central.sophos.com",
+        is_verified: true,
+        synced_at: DateTime.add(now, -6, :minute)
+      })
+
+    # The identifiers the seeded certificates attest. Each is also written into
+    # the provider row that should match on it, so the Posture tab of a seeded
+    # Client demonstrates one rung of the matching ladder. The Surface also
+    # carries an Entra device id on its Intune row and on a Defender machine,
+    # which is how a Defender record is reached at all.
+    issuer = posture_issuer_der("Contoso Device CA")
+    admin_intune_id = "5f3c1a90-7d24-4b8e-9a61-c0d2e4f68b31"
+    surface_intune_id = "1d84b7e0-92af-4c35-b6d1-70e5a3c8f429"
+    surface_entra_id = "b71d2e88-3f56-4c09-8ad4-6e19f7c2a5d0"
+    iphone_iru_id = "0c9a4f61-8b23-4de7-95f0-31a8c6b74e29"
+    kiosk_intune_id = "7e4a9c13-2b68-4f05-a3d7-16c8e0b492f5"
+    macbook_air_iru_id = "d3927f5a-6c40-4e81-b2a9-5087c1d6e34b"
+
+    admin = attest_posture_client(clients.admin_laptop, admin_intune_id, "FVFHF246Q72Z", issuer, "3A7F2C91", now)
+    surface = attest_posture_client(clients.user_surface, surface_intune_id, "046120283253", issuer, "5B1D8E04", now)
+    iphone = attest_posture_client(clients.user_iphone, iphone_iru_id, "DX3QK7WPL9GH", issuer, "9E4C6A72", now)
+
+    # An MDM template that stamps a device id and nothing else. Neither of these
+    # attests a serial, so the only serial the list can show for them is the one
+    # their provider record holds against that device id.
+    kiosk = attest_mdm_device_id(clients.user_kiosk, kiosk_intune_id, issuer, "7C0B3F15", now)
+
+    macbook_air =
+      attest_mdm_device_id(clients.user_macbook_air, macbook_air_iru_id, issuer, "2D9A5E68", now)
+
+    # The rendering station never attested anything, so its only serial is
+    # self-reported. Its SentinelOne match is the case the panel labels.
+    rendering = Repo.update!(change(clients.user_rendering_station, device_serial: "PF0J4KX2"))
+
+    # Valid, revoked, and unknown, so the panel's three certificate states are
+    # all reachable from seeded data.
+    Repo.insert!(%Portal.OcspStatus{
+      account_id: account.id,
+      issuer: issuer,
+      serial: admin.last_attested_cert_serial,
+      status: "good",
+      produced_at: DateTime.add(now, -90, :minute) |> DateTime.truncate(:second),
+      this_update: DateTime.add(now, -90, :minute) |> DateTime.truncate(:second),
+      next_update: DateTime.add(now, 3, :day) |> DateTime.truncate(:second),
+      updated_at: now
+    })
+
+    Repo.insert!(%Portal.CrlRevocation{
+      account_id: account.id,
+      issuer: issuer,
+      serial: iphone.last_attested_cert_serial,
+      distribution_point: "http://crl.contoso.com/device-ca.crl",
+      revoked_at: DateTime.add(now, -2, :day) |> DateTime.truncate(:second),
+      reason: "keyCompromise"
+    })
+
+    seed_intune_devices(account, intune, now, admin, surface, surface_entra_id, kiosk)
+    seed_iru_devices(account, iru, now, iphone, macbook_air)
+    seed_defender_devices(account, defender, now, surface_entra_id)
+    seed_santa_devices(account, santa, now, admin)
+    seed_sentinelone_devices(account, sentinelone, now, admin, rendering)
+
+    IO.puts("Device posture providers created")
+    IO.puts("  Contoso Intune, Iru Apple Fleet, Defender for Endpoint, Santa Workshop, SentinelOne Production, Sophos Central")
+    IO.puts("  #{admin.name}: attested, matched by MDM device id")
+    IO.puts("  #{surface.name}: attested, matched by MDM device id and linked into Defender")
+    IO.puts("  #{iphone.name}: attested with a revoked certificate")
+    IO.puts("  #{rendering.name}: unattested, matched by a self-reported serial")
+    IO.puts("  #{kiosk.name}: attested a device id only, serial comes from Intune")
+    IO.puts("  #{macbook_air.name}: attested a device id only, serial comes from Iru")
+    IO.puts("")
+
+    %{intune: intune, iru: iru, defender: defender, santa: santa, sentinelone: sentinelone, sophos: sophos}
+  end
+
+  # A disabled provider's rows count as absent, so seeded providers stay
+  # enabled. Their credentials are made up, which is why dev.exs leaves the
+  # posture schedulers off unless POSTURE_SYNC_DEV_SCHEDULE is set.
+  defp create_posture_provider(account, type, name, typed_module, typed_attrs) do
+    id = Ecto.UUID.generate()
+
+    shared =
+      %Portal.PostureProvider{}
+      |> change(%{id: id, account_id: account.id, type: type, name: name})
+      |> Portal.PostureProvider.changeset()
+      |> Repo.insert!()
+
+    attrs = Map.merge(typed_attrs, %{id: id, account_id: account.id, name: name})
+
+    typed_module
+    |> struct(posture_provider: shared)
+    |> cast(attrs, Map.keys(attrs))
+    |> typed_module.changeset()
+    |> Repo.insert!()
+  end
+
+  # Writes what a client certificate would have proved about this device onto
+  # the row, so the seeded Clients cover every rung of the matching ladder.
+  defp attest_posture_client(client, mdm_device_id, serial, issuer, cert_serial, now) do
+    client
+    |> change(
+      device_serial: serial,
+      last_attested_device_serial: serial,
+      last_attested_mdm_device_id: mdm_device_id,
+      last_attested_cert_serial: cert_serial,
+      last_attested_cert_fingerprint: posture_fingerprint(cert_serial),
+      last_attested_cert_issuer: issuer,
+      last_attested_at: DateTime.add(now, -3, :hour)
+    )
+    |> Repo.update!()
+  end
+
+  defp attest_mdm_device_id(client, mdm_device_id, issuer, cert_serial, now) do
+    client
+    |> change(
+      last_attested_mdm_device_id: mdm_device_id,
+      last_attested_cert_serial: cert_serial,
+      last_attested_cert_fingerprint: posture_fingerprint(cert_serial),
+      last_attested_cert_issuer: issuer,
+      last_attested_at: DateTime.add(now, -3, :hour)
+    )
+    |> Repo.update!()
+  end
+
+  defp seed_intune_devices(account, provider, now, admin, surface, surface_entra_id, kiosk) do
+    matched = [
+      %{
+        intune_id: admin.last_attested_mdm_device_id,
+        device_name: "ENG-MBP-014",
+        serial_number: admin.last_attested_device_serial,
+        operating_system: "macOS",
+        os_version: "15.6.1",
+        model: "MacBook Pro 16-inch (M3 Max, 2024)",
+        manufacturer: "Apple",
+        device_enrollment_type: "appleBulkWithUser",
+        compliance_state: "compliant",
+        person: 0
+      },
+      %{
+        intune_id: surface.last_attested_mdm_device_id,
+        entra_device_id: surface_entra_id,
+        device_name: "ENG-SURFACE-07",
+        serial_number: surface.last_attested_device_serial,
+        operating_system: "Windows",
+        os_version: "10.0.26100.2894",
+        model: "Surface Laptop 6",
+        manufacturer: "Microsoft Corporation",
+        device_enrollment_type: "windowsAzureADJoin",
+        compliance_state: "compliant",
+        person: 1
+      },
+      %{
+        intune_id: kiosk.last_attested_mdm_device_id,
+        device_name: "ENG-KIOSK-03",
+        serial_number: dell_tag(77),
+        operating_system: "Windows",
+        os_version: "10.0.26100.2894",
+        model: "OptiPlex 7010",
+        manufacturer: "Dell Inc.",
+        device_enrollment_type: "windowsAzureADJoin",
+        compliance_state: "compliant",
+        person: 6
+      },
+      %{
+        intune_id: "6b02f5c4-1e79-4a63-8d50-92fb37e6c184",
+        device_name: "ENG-WIN-042",
+        serial_number: dell_tag(42),
+        operating_system: "Windows",
+        os_version: "10.0.26100.2894",
+        model: "Latitude 7450",
+        manufacturer: "Dell Inc.",
+        device_enrollment_type: "windowsAzureADJoin",
+        compliance_state: "noncompliant",
+        person: 2
+      }
+    ]
+
+    generated =
+      for i <- 1..15 do
+        {os, version, model, manufacturer, enrollment, serial} = intune_hardware(i)
+
+        %{
+          intune_id: Ecto.UUID.generate(),
+          device_name: "#{intune_prefix(os)}-#{String.pad_leading(Integer.to_string(100 + i), 3, "0")}",
+          serial_number: serial,
+          operating_system: os,
+          os_version: version,
+          model: model,
+          manufacturer: manufacturer,
+          device_enrollment_type: enrollment,
+          compliance_state: Enum.at(~w[compliant compliant compliant noncompliant inGracePeriod], rem(i, 5)),
+          person: i + 2
+        }
+      end
+
+    for {row, i} <- Enum.with_index(matched ++ generated) do
+      {display_name, login} = posture_person(row.person)
+
+      %Intune.Device{}
+      |> Intune.Device.changeset(%{
+        account_id: account.id,
+        posture_provider_id: provider.id,
+        intune_id: row.intune_id,
+        device_name: row.device_name,
+        managed_device_name: "#{login}_#{String.replace(row.model, " ", "")}_#{8 + rem(i, 4)}/#{1 + rem(i, 28)}/2026",
+        serial_number: row.serial_number,
+        entra_device_id: Map.get(row, :entra_device_id, Ecto.UUID.generate()),
+        enrollment_profile_name: "Corporate Devices",
+        device_category_display_name: "Engineering",
+        user_id: Ecto.UUID.generate(),
+        user_principal_name: "#{login}@#{@posture_domain}",
+        user_display_name: display_name,
+        email_address: "#{login}@#{@posture_domain}",
+        operating_system: row.operating_system,
+        os_version: row.os_version,
+        model: row.model,
+        manufacturer: row.manufacturer,
+        udid: Ecto.UUID.generate(),
+        wifi_mac_address: posture_mac(i),
+        ethernet_mac_address: posture_mac(i + 128),
+        total_storage_space_bytes: 494_384_795_648 * (1 + rem(i, 3)),
+        free_storage_space_bytes: 121_856_204_800 + i * 1_073_741_824,
+        physical_memory_bytes: 17_179_869_184 * (1 + rem(i, 2)),
+        compliance_state: row.compliance_state,
+        management_state: "managed",
+        management_agent: "mdm",
+        managed_device_owner_type: if(rem(i, 7) == 0, do: "personal", else: "company"),
+        device_enrollment_type: row.device_enrollment_type,
+        device_registration_state: "registered",
+        partner_reported_threat_state: "unknown",
+        jail_broken: false,
+        is_encrypted: rem(i, 9) != 0,
+        is_supervised: row.operating_system in ["iOS", "macOS"],
+        entra_registered: true,
+        enrolled_at: DateTime.add(now, -(120 + i * 9), :day),
+        last_sync_at: DateTime.add(now, -(17 + i * 13), :minute),
+        management_certificate_expires_at: DateTime.add(now, 240 - i, :day),
+        synced_at: provider.synced_at
+      })
+      |> Repo.insert!()
+    end
+  end
+
+  defp seed_iru_devices(account, provider, now, iphone, macbook_air) do
+    matched = [
+      %{
+        iru_id: iphone.last_attested_mdm_device_id,
+        device_name: "ENG-IPHONE-02",
+        serial_number: iphone.last_attested_device_serial,
+        platform: "iPhone",
+        os_name: "iOS",
+        os_version: "18.6",
+        model: "iPhone 16 Pro",
+        model_identifier: "iPhone17,1",
+        blueprint_name: "Mobile Standard",
+        person: 2
+      },
+      %{
+        iru_id: macbook_air.last_attested_mdm_device_id,
+        device_name: "ENG-MBA-021",
+        # Deliberately not the stale serial the Client still reports.
+        serial_number: "C02XY1CDKH6J",
+        platform: "Mac",
+        os_name: "macOS",
+        os_version: "15.6.1",
+        model: "MacBook Air 15-inch (M4, 2025)",
+        model_identifier: "Mac16,12",
+        blueprint_name: "Standard Laptop",
+        person: 3
+      }
+    ]
+
+    generated =
+      for i <- 1..11 do
+        {platform, os_name, version, model, identifier} = iru_hardware(i)
+
+        %{
+          iru_id: Ecto.UUID.generate(),
+          device_name: "#{posture_person(i + 3) |> elem(1)}-#{String.downcase(String.replace(model, " ", "-"))}",
+          serial_number: apple_serial(i * 31),
+          platform: platform,
+          os_name: os_name,
+          os_version: version,
+          model: model,
+          model_identifier: identifier,
+          blueprint_name: Enum.at(["Standard Laptop", "Engineering Laptop", "Mobile Standard"], rem(i, 3)),
+          person: i + 3
+        }
+      end
+
+    for {row, i} <- Enum.with_index(matched ++ generated) do
+      {display_name, login} = posture_person(row.person)
+      mac? = row.platform == "Mac"
+
+      %Iru.Device{}
+      |> Iru.Device.changeset(%{
+        account_id: account.id,
+        posture_provider_id: provider.id,
+        iru_id: row.iru_id,
+        device_name: row.device_name,
+        serial_number: row.serial_number,
+        platform: row.platform,
+        os_name: row.os_name,
+        os_version: row.os_version,
+        display_os_version: row.os_version,
+        os_build: "24G8#{rem(i, 10)}",
+        model: row.model,
+        model_name: row.model,
+        model_identifier: row.model_identifier,
+        device_family: row.platform,
+        device_capacity_gb: 256.0 * (1 + rem(i, 3)),
+        host_name: row.device_name,
+        local_hostname: row.device_name,
+        apple_silicon: true,
+        user_id: Ecto.UUID.generate(),
+        user_name: display_name,
+        user_email: "#{login}@#{@posture_domain}",
+        user_is_archived: false,
+        asset_tag: "CT-#{String.pad_leading(Integer.to_string(4200 + i), 4, "0")}",
+        blueprint_id: Ecto.UUID.generate(),
+        blueprint_name: row.blueprint_name,
+        mdm_enabled: true,
+        agent_installed: mac?,
+        agent_version: if(mac?, do: "5.4.1", else: nil),
+        is_missing: false,
+        is_removed: false,
+        first_enrolled_at: DateTime.add(now, -(200 + i * 11), :day),
+        last_enrolled_at: DateTime.add(now, -(200 + i * 11), :day),
+        last_check_in_at: DateTime.add(now, -(9 + i * 17), :minute),
+        tags: ["engineering"],
+        inventory_collected_at: DateTime.add(now, -(30 + i), :minute),
+        filevault_enabled: mac? and rem(i, 8) != 0,
+        filevault_key_type: if(mac?, do: "Personal", else: nil),
+        filevault_key_escrowed: mac?,
+        filevault_collected_at: if(mac?, do: DateTime.add(now, -(30 + i), :minute), else: nil),
+        firewall_enabled: mac?,
+        firewall_stealth_mode: mac? and rem(i, 3) == 0,
+        firewall_collected_at: if(mac?, do: DateTime.add(now, -(30 + i), :minute), else: nil),
+        gatekeeper_enabled: mac?,
+        gatekeeper_trusted_developers: mac?,
+        xprotect_version: if(mac?, do: "5312", else: nil),
+        gatekeeper_collected_at: if(mac?, do: DateTime.add(now, -(30 + i), :minute), else: nil),
+        sip_enabled: mac?,
+        ssv_enabled: mac?,
+        bootstrap_token_escrowed: mac?,
+        secure_boot_level: if(mac?, do: "full", else: nil),
+        startup_settings_collected_at: if(mac?, do: DateTime.add(now, -(30 + i), :minute), else: nil),
+        activation_lock_supported: true,
+        device_activation_lock_enabled: rem(i, 4) == 0,
+        activation_lock_collected_at: DateTime.add(now, -(30 + i), :minute),
+        synced_at: provider.synced_at
+      })
+      |> Repo.insert!()
+    end
+  end
+
+  defp seed_defender_devices(account, provider, now, surface_entra_id) do
+    matched = [
+      %{
+        defender_id: "2f8c1b47ad9e05c3716b4d820ea935f1c6d704b8",
+        entra_device_id: surface_entra_id,
+        computer_dns_name: "eng-surface-07.#{@posture_domain}",
+        os_platform: "Windows11",
+        version: "24H2",
+        os_build: 26_100,
+        health_status: "Active",
+        risk_score: "Low",
+        exposure_level: "Low"
+      }
+    ]
+
+    generated =
+      for i <- 1..13 do
+        {platform, version, build, health, risk, exposure} = defender_posture(i)
+
+        %{
+          defender_id: Base.encode16(:crypto.hash(:sha, "defender-seed-#{i}"), case: :lower),
+          entra_device_id: Ecto.UUID.generate(),
+          computer_dns_name: "#{defender_prefix(platform)}-#{String.pad_leading(Integer.to_string(200 + i), 3, "0")}.#{@posture_domain}",
+          os_platform: platform,
+          version: version,
+          os_build: build,
+          health_status: health,
+          risk_score: risk,
+          exposure_level: exposure
+        }
+      end
+
+    for {row, i} <- Enum.with_index(matched ++ generated) do
+      %Defender.Device{}
+      |> Defender.Device.changeset(%{
+        account_id: account.id,
+        posture_provider_id: provider.id,
+        defender_id: row.defender_id,
+        computer_dns_name: row.computer_dns_name,
+        entra_device_id: row.entra_device_id,
+        entra_joined: true,
+        machine_tags: ["engineering", "corp-managed"],
+        os_platform: row.os_platform,
+        version: row.version,
+        os_build: row.os_build,
+        os_processor: "x64",
+        os_architecture: "64-bit",
+        last_ip_address: "10.20.#{rem(i, 250)}.#{10 + rem(i * 7, 200)}",
+        last_external_ip_address: "203.0.113.#{10 + rem(i * 3, 200)}",
+        agent_version: "10.8760.26100.#{2000 + i}",
+        health_status: row.health_status,
+        onboarding_status: "Onboarded",
+        managed_by: "Intune",
+        managed_by_status: "Success",
+        risk_score: row.risk_score,
+        exposure_level: row.exposure_level,
+        device_value: if(rem(i, 6) == 0, do: "High", else: "Normal"),
+        rbac_group_id: 140,
+        rbac_group_name: "Engineering",
+        is_potential_duplication: false,
+        is_excluded: false,
+        ip_addresses: [
+          %{
+            "ipAddress" => "10.20.#{rem(i, 250)}.#{10 + rem(i * 7, 200)}",
+            "macAddress" => String.replace(posture_mac(i), ":", ""),
+            "operationalStatus" => "Up",
+            "type" => "Ethernet"
+          }
+        ],
+        first_seen_at: DateTime.add(now, -(180 + i * 7), :day),
+        last_seen_at: DateTime.add(now, -(5 + i * 11), :minute),
+        synced_at: provider.synced_at
+      })
+      |> Repo.insert!()
+    end
+  end
+
+  defp seed_santa_devices(account, provider, now, admin) do
+    matched = [
+      %{
+        santa_id: "9C1F4A72-3B6D-4E80-A5C9-27D0F8B1E463",
+        hostname: "eng-mbp-014",
+        serial_number: admin.last_attested_device_serial,
+        machine_model: "Mac16,7",
+        os_version: "15.6.1",
+        client_mode: "LOCKDOWN",
+        person: 0
+      }
+    ]
+
+    generated =
+      for i <- 1..9 do
+        %{
+          santa_id: String.upcase(Ecto.UUID.generate()),
+          hostname: "#{posture_person(i) |> elem(1)}-mbp",
+          serial_number: apple_serial(i * 17),
+          machine_model: Enum.at(~w[Mac16,7 Mac15,3 Mac14,2 MacBookPro18,3], rem(i, 4)),
+          os_version: Enum.at(~w[15.6.1 15.5 14.7.2], rem(i, 3)),
+          client_mode: if(rem(i, 3) == 0, do: "MONITOR", else: "LOCKDOWN"),
+          person: i
+        }
+      end
+
+    for {row, i} <- Enum.with_index(matched ++ generated) do
+      {_display_name, login} = posture_person(row.person)
+
+      %Santa.Device{}
+      |> Santa.Device.changeset(%{
+        account_id: account.id,
+        posture_provider_id: provider.id,
+        santa_id: row.santa_id,
+        hostname: row.hostname,
+        serial_number: row.serial_number,
+        machine_model: row.machine_model,
+        os_version: row.os_version,
+        os_build: "24G8#{rem(i, 10)}",
+        os_type: "OS_TYPE_MACOS",
+        sip_status: 1,
+        primary_user: "#{login}@#{@posture_domain}",
+        primary_user_locked: false,
+        primary_user_groups: ["engineering"],
+        santa_version: "2026.7",
+        santanetd_version: "2026.7",
+        last_seen_client_mode: row.client_mode,
+        configured_client_mode: row.client_mode,
+        last_sync_at: DateTime.add(now, -(6 + i * 13), :minute),
+        rule_sync_at: DateTime.add(now, -(6 + i * 13), :minute),
+        last_preflight_at: DateTime.add(now, -(6 + i * 13), :minute),
+        last_preflight_ip: "10.30.#{rem(i, 250)}.#{20 + rem(i * 5, 200)}",
+        tags: ["engineering"],
+        tags_locked: false,
+        tags_truncated: false,
+        first_seen_at: DateTime.add(now, -(150 + i * 8), :day),
+        synced_at: provider.synced_at
+      })
+      |> Repo.insert!()
+    end
+  end
+
+  defp seed_sentinelone_devices(account, provider, now, admin, rendering) do
+    matched = [
+      %{
+        computer_name: "ENG-MBP-014",
+        serial_number: admin.last_attested_device_serial,
+        model_name: "MacBookPro16,7",
+        machine_type: "laptop",
+        os_name: "macOS",
+        os_revision: "15.6.1",
+        os_type: "macos",
+        network_status: "connected",
+        person: 0
+      },
+      %{
+        computer_name: "ENG-RENDER-01",
+        serial_number: rendering.device_serial,
+        model_name: "ThinkStation P620",
+        machine_type: "desktop",
+        os_name: "Ubuntu",
+        os_revision: "24.04.2 LTS",
+        os_type: "linux",
+        network_status: "connected",
+        person: 3
+      }
+    ]
+
+    generated =
+      for i <- 1..13 do
+        {os_name, revision, os_type, model, machine_type, serial} = sentinelone_hardware(i)
+
+        %{
+          computer_name: "#{sentinelone_prefix(os_type)}-#{String.pad_leading(Integer.to_string(300 + i), 3, "0")}",
+          serial_number: serial,
+          model_name: model,
+          machine_type: machine_type,
+          os_name: os_name,
+          os_revision: revision,
+          os_type: os_type,
+          network_status: if(rem(i, 6) == 0, do: "disconnected", else: "connected"),
+          person: i + 4
+        }
+      end
+
+    for {row, i} <- Enum.with_index(matched ++ generated) do
+      {_display_name, login} = posture_person(row.person)
+      infected? = rem(i, 11) == 0 and i > 0
+
+      %SentinelOne.Device{}
+      |> SentinelOne.Device.changeset(%{
+        account_id: account.id,
+        posture_provider_id: provider.id,
+        uuid: Ecto.UUID.generate(),
+        sentinelone_id: Integer.to_string(1_845_000_000_000_000_000 + i),
+        sentinelone_account_id: "1845000000000000001",
+        account_name: "Contoso",
+        site_id: "1845000000000000002",
+        site_name: "Default site",
+        group_id: "1845000000000000003",
+        group_name: "Engineering",
+        computer_name: row.computer_name,
+        serial_number: row.serial_number,
+        model_name: row.model_name,
+        machine_type: row.machine_type,
+        domain: @posture_domain,
+        os_name: row.os_name,
+        os_revision: row.os_revision,
+        os_type: row.os_type,
+        os_arch: "64 bit",
+        os_username: login,
+        last_logged_in_user_name: login,
+        agent_version: "24.2.3.#{270 + rem(i, 9)}",
+        total_memory: 16_384 * (1 + rem(i, 2)),
+        cpu_count: 1,
+        core_count: Enum.at([8, 10, 12, 16], rem(i, 4)),
+        cpu_id: "Apple M3 Max",
+        external_ip: "203.0.113.#{20 + rem(i * 5, 200)}",
+        network_status: row.network_status,
+        is_active: row.network_status == "connected",
+        is_up_to_date: rem(i, 7) != 0,
+        infected: infected?,
+        active_threats: if(infected?, do: 1, else: 0),
+        threat_reboot_required: false,
+        encrypted_applications: true,
+        firewall_enabled: true,
+        scan_status: "finished",
+        scan_started_at: DateTime.add(now, -(2 + i), :day),
+        scan_finished_at: DateTime.add(now, -(2 + i), :day) |> DateTime.add(41, :minute),
+        last_successful_scan_at: DateTime.add(now, -(2 + i), :day),
+        mitigation_mode: "protect",
+        mitigation_mode_suspicious: "detect",
+        is_pending_uninstall: false,
+        is_uninstalled: false,
+        is_decommissioned: false,
+        registered_at: DateTime.add(now, -(160 + i * 6), :day),
+        last_active_at: DateTime.add(now, -(3 + i * 9), :minute),
+        network_interfaces: [
+          %{
+            "id" => "1845000000000#{String.pad_leading(Integer.to_string(i), 6, "0")}",
+            "name" => "en0",
+            "physical" => posture_mac(i),
+            "inet" => ["10.40.#{rem(i, 250)}.#{30 + rem(i * 3, 200)}"]
+          }
+        ],
+        tags: [],
+        synced_at: provider.synced_at
+      })
+      |> Repo.insert!()
+    end
+  end
+
+  defp posture_person(index) do
+    Enum.at(@posture_people, rem(index, length(@posture_people)))
+  end
+
+  # A DER-encoded X.509 name, which is how the portal stores a certificate
+  # issuer: a serial only identifies a certificate together with who issued it.
+  defp posture_issuer_der(common_name) do
+    :public_key.der_encode(
+      :Name,
+      {:rdnSequence, [[{:AttributeTypeAndValue, {2, 5, 4, 3}, {:utf8String, common_name}}]]}
+    )
+  end
+
+  defp posture_fingerprint(cert_serial) do
+    :sha256
+    |> :crypto.hash(cert_serial)
+    |> Base.encode16(case: :lower)
+    |> String.to_charlist()
+    |> Enum.chunk_every(2)
+    |> Enum.map_join(":", &List.to_string/1)
+  end
+
+  defp posture_mac(index) do
+    for offset <- 0..5 do
+      :io_lib.format("~2.16.0b", [rem(index * 37 + offset * 61 + 16, 256)]) |> List.to_string()
+    end
+    |> Enum.join(":")
+  end
+
+  defp apple_serial(index), do: "C02" <> serial_chunk(index * 7919, 9)
+  defp dell_tag(index), do: serial_chunk(index * 104_729, 7)
+  defp lenovo_serial(index), do: "PF" <> serial_chunk(index * 65_537, 6)
+
+  defp serial_chunk(value, size) do
+    base = length(@serial_alphabet)
+
+    {_remaining, characters} =
+      Enum.reduce(1..size, {value, []}, fn _position, {remaining, acc} ->
+        {div(remaining, base), [Enum.at(@serial_alphabet, rem(remaining, base)) | acc]}
+      end)
+
+    List.to_string(characters)
+  end
+
+  defp intune_hardware(index) do
+    case rem(index, 4) do
+      0 ->
+        {"Windows", "10.0.26100.2894", "Latitude 7450", "Dell Inc.", "windowsAzureADJoin",
+         dell_tag(index)}
+
+      1 ->
+        {"macOS", "15.6.1", "MacBook Air 15-inch (M3, 2024)", "Apple", "appleBulkWithUser",
+         apple_serial(index)}
+
+      2 ->
+        {"iOS", "18.6", "iPhone 15", "Apple", "appleUserEnrollment", apple_serial(index * 3)}
+
+      _ ->
+        {"Windows", "10.0.22631.4602", "ThinkPad X1 Carbon Gen 12", "LENOVO", "windowsAzureADJoin",
+         lenovo_serial(index)}
+    end
+  end
+
+  defp intune_prefix("Windows"), do: "ENG-WIN"
+  defp intune_prefix("macOS"), do: "ENG-MAC"
+  defp intune_prefix("iOS"), do: "ENG-IOS"
+  defp intune_prefix(_other), do: "ENG-DEV"
+
+  defp iru_hardware(index) do
+    case rem(index, 3) do
+      0 -> {"Mac", "macOS", "15.6.1", "MacBook Pro 14-inch", "Mac16,1"}
+      1 -> {"Mac", "macOS", "14.7.2", "MacBook Air", "Mac14,2"}
+      _ -> {"iPad", "iPadOS", "18.6", "iPad Pro 11-inch", "iPad16,3"}
+    end
+  end
+
+  defp defender_posture(index) do
+    case rem(index, 4) do
+      0 -> {"Windows11", "24H2", 26_100, "Active", "None", "Low"}
+      1 -> {"Windows10", "22H2", 19_045, "Active", "Low", "Medium"}
+      2 -> {"macOS", "15.6.1", 0, "Active", "Medium", "Medium"}
+      _ -> {"Linux", "24.04", 0, "Inactive", "None", "Low"}
+    end
+  end
+
+  defp defender_prefix("Windows11"), do: "eng-win11"
+  defp defender_prefix("Windows10"), do: "eng-win10"
+  defp defender_prefix("macOS"), do: "eng-mac"
+  defp defender_prefix(_other), do: "eng-linux"
+
+  defp sentinelone_hardware(index) do
+    case rem(index, 4) do
+      0 ->
+        {"Windows 11 Pro", "24H2", "windows", "Latitude 7450", "laptop", dell_tag(index * 11)}
+
+      1 ->
+        {"macOS", "15.6.1", "macos", "MacBookPro16,1", "laptop", apple_serial(index * 13)}
+
+      2 ->
+        {"Ubuntu", "24.04.2 LTS", "linux", "PowerEdge R660", "server", dell_tag(index * 19)}
+
+      _ ->
+        {"Windows Server 2022", "21H2", "windows", "PowerEdge R750", "server",
+         dell_tag(index * 23)}
+    end
+  end
+
+  defp sentinelone_prefix("windows"), do: "ENG-WIN"
+  defp sentinelone_prefix("macos"), do: "ENG-MAC"
+  defp sentinelone_prefix(_other), do: "ENG-LNX"
+
+  # ---------------------------------------------------------------------------
+  # Device posture fleet
+  # ---------------------------------------------------------------------------
+
+  # Thousands of synced rows with plausible spread, so posture rules have
+  # something to bite on. Each fleet device lands in the providers that would
+  # really know about it (a Windows laptop in Intune, Defender and SentinelOne;
+  # a Mac in Iru, Santa and SentinelOne; a phone in one MDM only), and some get
+  # a Firezone Client so every rung of the matching ladder is exercised.
+
+  @fleet_first_names ~w[Ava Bo Chen Dara Emil Freya Gus Hana Ivo Jade Kai Lena Milo Nia Omar Pia Quinn Rui Sana Tomas Uma Vik Wren Xia Yara Zed]
+  @fleet_last_names ~w[Adeyemi Baker Castillo Dubois Eriksen Fischer Garcia Haddad Ibarra Jansen Kowalski Larsen Moreau Nakamura Okoro Patel Quiroga Rossi Silva Tremblay Ueda Varga Walsh Xu Yilmaz Zhang]
+  @fleet_departments ~w[Engineering Sales Finance Support Executive Marketing]
+
+  @fleet_profiles [
+    {:windows_laptop, 38},
+    {:mac_laptop, 30},
+    {:iphone, 10},
+    {:ipad, 4},
+    {:android, 4},
+    {:linux_server, 7},
+    {:windows_server, 7}
+  ]
+
+  defp seed_posture_fleet(account, providers, now) do
+    size = "SEED_FLEET_SIZE" |> System.get_env("2500") |> String.to_integer()
+    people = fleet_people(account)
+    members = for index <- 1..size, do: fleet_member(index, people, now)
+
+    %{
+      members: size,
+      people: length(people),
+      intune: insert_fleet_rows(Intune.Device, members, &fleet_intune_row(&1, account, providers.intune, now)),
+      iru: insert_fleet_rows(Iru.Device, members, &fleet_iru_row(&1, account, providers.iru, now)),
+      defender: insert_fleet_rows(Defender.Device, members, &fleet_defender_row(&1, account, providers.defender, now)),
+      santa: insert_fleet_rows(Santa.Device, members, &fleet_santa_row(&1, account, providers.santa, now)),
+      sentinelone: insert_fleet_rows(SentinelOne.Device, members, &fleet_sentinelone_row(&1, account, providers.sentinelone, now)),
+      sophos: insert_fleet_rows(Sophos.Device, members, &fleet_sophos_row(&1, account, providers.sophos, now)),
+      clients: members |> Enum.map(&fleet_client(&1, account, now)) |> Enum.count(& &1)
+    }
+  end
+
+  defp insert_fleet_rows(module, members, build) do
+    rows = Enum.flat_map(members, build)
+
+    rows
+    |> Enum.chunk_every(500)
+    |> Enum.each(&Repo.insert_all(module, &1))
+
+    length(rows)
+  end
+
+  defp fleet_people(account) do
+    for index <- 1..160 do
+      first = Enum.at(@fleet_first_names, rem(index, length(@fleet_first_names)))
+      last = Enum.at(@fleet_last_names, rem(div(index, 26) + index, length(@fleet_last_names)))
+      login = String.downcase("#{first}.#{last}")
+
+      {:ok, actor} =
+        Repo.insert(%Actor{
+          account_id: account.id,
+          type: :account_user,
+          name: "#{first} #{last}",
+          email: "#{login}@#{@posture_domain}"
+        })
+
+      %{actor: actor, display_name: "#{first} #{last}", login: login, department: Enum.random(@fleet_departments)}
+    end
+  end
+
+  defp fleet_member(index, people, now) do
+    profile = weighted(@fleet_profiles)
+    person = Enum.at(people, rem(index * 7, length(people)))
+    {os_name, os_version, model, manufacturer, model_identifier} = fleet_hardware(profile)
+    mobile? = profile in [:iphone, :ipad, :android]
+    server? = profile in [:linux_server, :windows_server]
+    apple? = profile in [:mac_laptop, :iphone, :ipad]
+
+    mdm =
+      case profile do
+        :windows_laptop -> if chance(96), do: :intune, else: :none
+        :mac_laptop -> weighted([{:iru, 60}, {:intune, 32}, {:none, 8}])
+        :android -> if chance(92), do: :intune, else: :none
+        _apple_mobile when apple? -> weighted([{:intune, 45}, {:iru, 45}, {:none, 10}])
+        _server -> :none
+      end
+
+    minutes_ago =
+      case weighted([{:fresh, 70}, {:days, 20}, {:stale, 10}]) do
+        :fresh -> :rand.uniform(1_440)
+        :days -> 1_440 + :rand.uniform(8_640)
+        :stale -> 10_080 + :rand.uniform(54_720)
+      end
+
+    %{
+      index: index,
+      profile: profile,
+      mobile?: mobile?,
+      server?: server?,
+      apple?: apple?,
+      person: person,
+      os_name: os_name,
+      os_version: os_version,
+      model: model,
+      manufacturer: manufacturer,
+      model_identifier: model_identifier,
+      serial: fleet_serial(profile, index),
+      hostname: fleet_hostname(profile, person, index),
+      intune_id: Ecto.UUID.generate(),
+      iru_id: Ecto.UUID.generate(),
+      entra_id: Ecto.UUID.generate(),
+      mdm: mdm,
+      defender?: fleet_in_defender?(profile, mdm),
+      santa?: profile == :mac_laptop and chance(60),
+      sentinelone?: fleet_in_sentinelone?(profile),
+      sophos?: fleet_in_sophos?(profile),
+      client: fleet_client_kind(profile, mdm),
+      last_active_at: DateTime.add(now, -minutes_ago, :minute),
+      enrolled_at: DateTime.add(now, -(20 + :rand.uniform(700)), :day),
+      encrypted?: chance(93),
+      compromised?: mobile? and chance(2)
+    }
+  end
+
+  defp fleet_in_defender?(:windows_laptop, mdm), do: mdm == :intune and chance(85)
+  defp fleet_in_defender?(:windows_server, _mdm), do: chance(70)
+  defp fleet_in_defender?(:mac_laptop, _mdm), do: chance(15)
+  defp fleet_in_defender?(:linux_server, _mdm), do: chance(40)
+  defp fleet_in_defender?(_profile, _mdm), do: false
+
+  defp fleet_in_sentinelone?(:windows_laptop), do: chance(60)
+  defp fleet_in_sentinelone?(:mac_laptop), do: chance(50)
+  defp fleet_in_sentinelone?(:linux_server), do: chance(90)
+  defp fleet_in_sentinelone?(:windows_server), do: chance(90)
+  defp fleet_in_sentinelone?(_profile), do: false
+
+  defp fleet_in_sophos?(:windows_laptop), do: chance(25)
+  defp fleet_in_sophos?(:mac_laptop), do: chance(25)
+  defp fleet_in_sophos?(:linux_server), do: chance(30)
+  defp fleet_in_sophos?(:windows_server), do: chance(30)
+  defp fleet_in_sophos?(_profile), do: false
+
+  defp fleet_client_kind(profile, _mdm) when profile in [:linux_server, :windows_server], do: :none
+
+  defp fleet_client_kind(_profile, mdm) do
+    case weighted([{:none, 60}, {:attested, 22}, {:serial, 10}, {:bare, 8}]) do
+      :attested when mdm == :none -> :serial
+      kind -> kind
+    end
+  end
+
+  defp fleet_hardware(:windows_laptop) do
+    {model, manufacturer} =
+      Enum.random([
+        {"Latitude 7450", "Dell Inc."},
+        {"ThinkPad X1 Carbon Gen 12", "LENOVO"},
+        {"Surface Laptop 7", "Microsoft Corporation"},
+        {"EliteBook 840 G11", "HP"}
+      ])
+
+    version = weighted([{"10.0.26100.4652", 45}, {"10.0.26100.2894", 25}, {"10.0.22631.5472", 20}, {"10.0.19045.6093", 10}])
+    {"Windows", version, model, manufacturer, nil}
+  end
+
+  defp fleet_hardware(:mac_laptop) do
+    {model, identifier} =
+      Enum.random([
+        {"MacBook Pro 14-inch (M4, 2024)", "Mac16,1"},
+        {"MacBook Air 13-inch (M3, 2024)", "Mac15,12"},
+        {"MacBook Pro 16-inch (M3 Max, 2023)", "Mac15,9"},
+        {"MacBook Air 15-inch (M2, 2023)", "Mac14,15"}
+      ])
+
+    version = weighted([{"15.6.1", 50}, {"15.5", 20}, {"14.7.6", 20}, {"13.7.6", 10}])
+    {"macOS", version, model, "Apple", identifier}
+  end
+
+  defp fleet_hardware(:iphone) do
+    {model, identifier} =
+      Enum.random([{"iPhone 16 Pro", "iPhone17,1"}, {"iPhone 15", "iPhone15,4"}, {"iPhone 13", "iPhone14,5"}])
+
+    {"iOS", weighted([{"18.6", 55}, {"18.5", 25}, {"17.7.2", 15}, {"16.7.10", 5}]), model, "Apple", identifier}
+  end
+
+  defp fleet_hardware(:ipad) do
+    {model, identifier} = Enum.random([{"iPad Pro 11-inch (M4)", "iPad16,3"}, {"iPad Air 11-inch (M2)", "iPad14,8"}])
+    {"iPadOS", weighted([{"18.6", 70}, {"17.7.2", 30}]), model, "Apple", identifier}
+  end
+
+  defp fleet_hardware(:android) do
+    {model, manufacturer} = Enum.random([{"Pixel 9", "Google"}, {"Galaxy S24", "samsung"}, {"Pixel 8a", "Google"}])
+    {"Android", weighted([{"15", 60}, {"14", 30}, {"13", 10}]), model, manufacturer, nil}
+  end
+
+  defp fleet_hardware(:linux_server) do
+    {model, manufacturer} = Enum.random([{"PowerEdge R660", "Dell Inc."}, {"Standard_D4s_v5", "Microsoft Azure"}])
+    {"Ubuntu", weighted([{"24.04.2 LTS", 70}, {"22.04.5 LTS", 30}]), model, manufacturer, nil}
+  end
+
+  defp fleet_hardware(:windows_server) do
+    {model, manufacturer} = Enum.random([{"PowerEdge R750", "Dell Inc."}, {"Standard_D8s_v5", "Microsoft Azure"}])
+    {"Windows Server", weighted([{"10.0.20348.3807", 60}, {"10.0.26100.4652", 40}]), model, manufacturer, nil}
+  end
+
+  defp fleet_serial(profile, index) when profile in [:mac_laptop, :iphone, :ipad], do: apple_serial(10_000 + index * 7)
+  defp fleet_serial(:android, index), do: "R5CX" <> serial_chunk(index * 48_611, 7)
+  defp fleet_serial(:windows_laptop, index) when rem(index, 3) == 0, do: lenovo_serial(10_000 + index)
+  defp fleet_serial(_profile, index), do: dell_tag(50_000 + index)
+
+  defp fleet_hostname(profile, person, index) do
+    number = String.pad_leading(Integer.to_string(1_000 + index), 4, "0")
+
+    case profile do
+      :windows_laptop -> "CT-WIN-#{number}"
+      :mac_laptop -> "#{person.login}-mbp"
+      :iphone -> "#{person.login}-iphone"
+      :ipad -> "#{person.login}-ipad"
+      :android -> "#{person.login}-android"
+      :linux_server -> "srv-lnx-#{number}"
+      :windows_server -> "srv-win-#{number}"
+    end
+  end
+
+  defp fleet_intune_row(%{mdm: :intune} = member, account, provider, now) do
+    person = member.person
+    compliance_state = weighted([{"compliant", 78}, {"noncompliant", 10}, {"inGracePeriod", 6}, {"unknown", 3}, {"error", 2}, {"conflict", 1}])
+    personal? = chance(15)
+    windows? = member.profile == :windows_laptop
+    total_storage = Enum.random([256, 512, 1_024, 2_048]) * 1_073_741_824
+
+    [
+      %{
+        account_id: account.id,
+        posture_provider_id: provider.id,
+        intune_id: member.intune_id,
+        device_name: member.hostname,
+        managed_device_name: "#{person.login}_#{String.replace(member.os_name, " ", "")}_#{Calendar.strftime(member.enrolled_at, "%-m/%-d/%Y")}",
+        serial_number: member.serial,
+        entra_device_id: member.entra_id,
+        enrollment_profile_name: if(personal?, do: "BYOD", else: "Corporate Devices"),
+        device_category_display_name: person.department,
+        user_id: Ecto.UUID.generate(),
+        user_principal_name: "#{person.login}@#{@posture_domain}",
+        user_display_name: person.display_name,
+        email_address: "#{person.login}@#{@posture_domain}",
+        operating_system: if(member.profile == :ipad, do: "iOS", else: member.os_name),
+        os_version: member.os_version,
+        model: member.model,
+        manufacturer: member.manufacturer,
+        udid: Ecto.UUID.generate(),
+        wifi_mac_address: posture_mac(2_000 + member.index),
+        ethernet_mac_address: if(member.mobile?, do: nil, else: posture_mac(6_000 + member.index)),
+        total_storage_space_bytes: total_storage,
+        free_storage_space_bytes: div(total_storage * (5 + :rand.uniform(80)), 100),
+        physical_memory_bytes: Enum.random([8, 16, 32, 64]) * 1_073_741_824,
+        compliance_state: compliance_state,
+        compliance_grace_period_expiration_at:
+          if(compliance_state == "inGracePeriod", do: DateTime.add(now, :rand.uniform(10), :day), else: nil),
+        management_state: weighted([{"managed", 95}, {"retirePending", 3}, {"wipePending", 1}, {"unhealthy", 1}]),
+        management_agent: if(member.profile == :android, do: "googleCloudDevicePolicyController", else: "mdm"),
+        managed_device_owner_type: if(personal?, do: "personal", else: "company"),
+        device_enrollment_type: fleet_enrollment_type(member.profile, personal?),
+        device_registration_state: weighted([{"registered", 97}, {"notRegistered", 3}]),
+        partner_reported_threat_state:
+          weighted([{"secured", 55}, {"unknown", 30}, {"lowSeverity", 8}, {"mediumSeverity", 5}, {"highSeverity", 2}]),
+        jail_broken: member.compromised?,
+        is_encrypted: member.encrypted?,
+        is_supervised: member.apple? and not personal?,
+        entra_registered: chance(96),
+        enrolled_at: member.enrolled_at,
+        last_sync_at: member.last_active_at,
+        management_certificate_expires_at: DateTime.add(now, -5 + :rand.uniform(370), :day),
+        android_security_patch_level:
+          if(member.profile == :android, do: Enum.random([~D[2026-09-05], ~D[2026-08-05], ~D[2026-06-05], ~D[2026-02-05]]), else: nil),
+        attestation_supported: windows?,
+        attestation_secure_boot: windows? and chance(92),
+        attestation_bit_locker_enabled: windows? and member.encrypted?,
+        attestation_tpm_version: if(windows?, do: "2.0", else: nil),
+        attestation_code_integrity: windows? and chance(95),
+        attestation_boot_debugging: windows? and chance(1),
+        attestation_test_signing: windows? and chance(1),
+        attestation_safe_mode: windows? and chance(1),
+        attestation_virtual_secure_mode: windows? and chance(60),
+        attestation_issued_at: if(windows?, do: member.last_active_at, else: nil),
+        synced_at: provider.synced_at,
+        inserted_at: now,
+        updated_at: now
+      }
+    ]
+  end
+
+  defp fleet_intune_row(_member, _account, _provider, _now), do: []
+
+  defp fleet_enrollment_type(:windows_laptop, _personal?),
+    do: weighted([{"windowsAzureADJoin", 70}, {"windowsAutoEnrollment", 20}, {"windowsBulkAzureDomainJoin", 10}])
+
+  defp fleet_enrollment_type(:mac_laptop, personal?), do: if(personal?, do: "userEnrollment", else: "appleBulkWithUser")
+  defp fleet_enrollment_type(:android, personal?), do: if(personal?, do: "androidEnterpriseWorkProfile", else: "androidEnterpriseFullyManaged")
+  defp fleet_enrollment_type(_apple_mobile, personal?), do: if(personal?, do: "appleUserEnrollment", else: "appleBulkWithUser")
+
+  defp fleet_iru_row(%{mdm: :iru} = member, account, provider, now) do
+    person = member.person
+    mac? = member.profile == :mac_laptop
+    collected_at = DateTime.add(member.last_active_at, -:rand.uniform(30), :minute)
+    platform = %{mac_laptop: "Mac", iphone: "iPhone", ipad: "iPad"} |> Map.fetch!(member.profile)
+    filevault? = mac? and chance(90)
+
+    [
+      %{
+        account_id: account.id,
+        posture_provider_id: provider.id,
+        iru_id: member.iru_id,
+        device_name: member.hostname,
+        serial_number: member.serial,
+        platform: platform,
+        os_name: member.os_name,
+        os_version: member.os_version,
+        display_os_version: member.os_version,
+        os_build: "24G#{80 + rem(member.index, 20)}",
+        model: member.model,
+        model_name: member.model,
+        model_identifier: member.model_identifier,
+        device_family: platform,
+        device_capacity_gb: Enum.random([256.0, 512.0, 1_024.0]),
+        host_name: member.hostname,
+        local_hostname: member.hostname,
+        apple_silicon: true,
+        user_id: Ecto.UUID.generate(),
+        user_name: person.display_name,
+        user_email: "#{person.login}@#{@posture_domain}",
+        user_is_archived: chance(2),
+        asset_tag: "CT-#{String.pad_leading(Integer.to_string(10_000 + member.index), 5, "0")}",
+        blueprint_id: Ecto.UUID.generate(),
+        blueprint_name:
+          if(mac?,
+            do: weighted([{"Standard Laptop", 60}, {"Engineering Laptop", 30}, {"Executive Laptop", 10}]),
+            else: "Mobile Standard"
+          ),
+        mdm_enabled: chance(98),
+        agent_installed: mac? and chance(95),
+        agent_version: if(mac?, do: weighted([{"5.4.1", 60}, {"5.3.0", 30}, {"5.2.2", 10}]), else: nil),
+        is_missing: chance(1),
+        is_removed: chance(1),
+        first_enrolled_at: member.enrolled_at,
+        last_enrolled_at: member.enrolled_at,
+        last_check_in_at: member.last_active_at,
+        tags: Enum.take_random(~w[engineering remote contractor executive lab], :rand.uniform(3) - 1),
+        inventory_collected_at: collected_at,
+        filevault_enabled: filevault?,
+        filevault_key_type: if(filevault?, do: weighted([{"Personal", 80}, {"Institutional", 20}]), else: nil),
+        filevault_key_escrowed: filevault? and chance(90),
+        filevault_collected_at: if(mac?, do: collected_at, else: nil),
+        firewall_enabled: mac? and chance(80),
+        firewall_stealth_mode: mac? and chance(30),
+        firewall_collected_at: if(mac?, do: collected_at, else: nil),
+        gatekeeper_enabled: mac? and chance(96),
+        gatekeeper_trusted_developers: mac? and chance(90),
+        xprotect_version: if(mac?, do: weighted([{"5312", 70}, {"5308", 20}, {"5290", 10}]), else: nil),
+        gatekeeper_collected_at: if(mac?, do: collected_at, else: nil),
+        sip_enabled: mac? and chance(97),
+        ssv_enabled: mac? and chance(97),
+        bootstrap_token_escrowed: mac? and chance(85),
+        secure_boot_level: if(mac?, do: weighted([{"full", 85}, {"medium", 10}, {"off", 5}]), else: nil),
+        startup_settings_collected_at: if(mac?, do: collected_at, else: nil),
+        activation_lock_supported: true,
+        device_activation_lock_enabled: chance(25),
+        activation_lock_collected_at: collected_at,
+        synced_at: provider.synced_at,
+        inserted_at: now,
+        updated_at: now
+      }
+    ]
+  end
+
+  defp fleet_iru_row(_member, _account, _provider, _now), do: []
+
+  defp fleet_defender_row(%{defender?: true} = member, account, provider, now) do
+    {os_platform, version, build} = fleet_defender_os(member)
+    server? = member.server?
+    cloud? = member.manufacturer == "Microsoft Azure"
+    last_ip = fleet_ip(10, 20, rem(member.index, 250), 10 + rem(member.index * 7, 200))
+    health = weighted([{"Active", 85}, {"Inactive", 8}, {"ImpairedCommunication", 5}, {"NoSensorData", 2}])
+
+    [
+      %{
+        account_id: account.id,
+        posture_provider_id: provider.id,
+        defender_id: Base.encode16(:crypto.hash(:sha, "defender-fleet-#{member.index}"), case: :lower),
+        computer_dns_name: "#{String.downcase(member.hostname)}.#{@posture_domain}",
+        entra_device_id: if(member.mdm == :intune, do: member.entra_id, else: nil),
+        entra_joined: member.mdm == :intune,
+        machine_tags: Enum.take_random(~w[engineering corp-managed pci high-value lab], :rand.uniform(3) - 1),
+        os_platform: os_platform,
+        version: version,
+        os_build: build,
+        os_processor: if(member.apple?, do: "arm64", else: "x64"),
+        os_architecture: "64-bit",
+        last_ip_address: last_ip,
+        last_external_ip_address: fleet_ip(203, 0, 113, 1 + rem(member.index * 3, 250)),
+        agent_version: weighted([{"10.8760.26100.3212", 60}, {"10.8760.26100.2894", 30}, {"10.8750.22621.4602", 10}]),
+        health_status: health,
+        onboarding_status: weighted([{"Onboarded", 94}, {"InsufficientInfo", 4}, {"CanBeOnboarded", 2}]),
+        managed_by: if(member.mdm == :intune, do: "Intune", else: weighted([{"MDE", 70}, {"Unknown", 30}])),
+        managed_by_status: weighted([{"Success", 92}, {"Failed", 5}, {"NotApplicable", 3}]),
+        risk_score: weighted([{"None", 55}, {"Informational", 15}, {"Low", 15}, {"Medium", 10}, {"High", 5}]),
+        exposure_level: weighted([{"Low", 55}, {"Medium", 35}, {"High", 8}, {"None", 2}]),
+        device_value: if(server? or chance(8), do: "High", else: "Normal"),
+        rbac_group_id: if(server?, do: 141, else: 140),
+        rbac_group_name: if(server?, do: "Servers", else: member.person.department),
+        is_potential_duplication: chance(1),
+        is_excluded: chance(2),
+        vm_cloud_provider: if(cloud?, do: "Azure", else: nil),
+        vm_id: if(cloud?, do: Ecto.UUID.generate(), else: nil),
+        ip_addresses: [
+          %{
+            "ipAddress" => to_string(last_ip),
+            "macAddress" => String.replace(posture_mac(6_000 + member.index), ":", ""),
+            "operationalStatus" => if(health == "Active", do: "Up", else: "Down"),
+            "type" => if(member.server?, do: "Ethernet", else: "Wireless80211")
+          }
+        ],
+        first_seen_at: member.enrolled_at,
+        last_seen_at: member.last_active_at,
+        synced_at: provider.synced_at,
+        inserted_at: now,
+        updated_at: now
+      }
+    ]
+  end
+
+  defp fleet_defender_row(_member, _account, _provider, _now), do: []
+
+  defp fleet_defender_os(%{profile: :windows_laptop, os_version: version}) do
+    case version do
+      "10.0.26100." <> _rest -> {"Windows11", "24H2", 26_100}
+      "10.0.22631." <> _rest -> {"Windows11", "23H2", 22_631}
+      _other -> {"Windows10", "22H2", 19_045}
+    end
+  end
+
+  defp fleet_defender_os(%{profile: :windows_server, os_version: version}) do
+    if String.starts_with?(version, "10.0.26100."), do: {"WindowsServer2025", "24H2", 26_100}, else: {"WindowsServer2022", "21H2", 20_348}
+  end
+
+  defp fleet_defender_os(%{profile: :mac_laptop, os_version: version}), do: {"macOS", version, 0}
+  defp fleet_defender_os(%{os_version: version}), do: {"Linux", version, 0}
+
+  defp fleet_santa_row(%{santa?: true} = member, account, provider, now) do
+    client_mode = weighted([{"LOCKDOWN", 75}, {"MONITOR", 25}])
+    santa_version = weighted([{"2026.7", 60}, {"2026.5", 30}, {"2025.11", 10}])
+
+    [
+      %{
+        account_id: account.id,
+        id: Ecto.UUID.generate(),
+        posture_provider_id: provider.id,
+        santa_id: String.upcase(Ecto.UUID.generate()),
+        hostname: member.hostname,
+        serial_number: member.serial,
+        machine_model: member.model_identifier,
+        os_version: member.os_version,
+        os_build: "24G#{80 + rem(member.index, 20)}",
+        os_type: "OS_TYPE_MACOS",
+        sip_status: if(chance(97), do: 1, else: 0),
+        primary_user: "#{member.person.login}@#{@posture_domain}",
+        primary_user_locked: false,
+        primary_user_groups: [String.downcase(member.person.department)],
+        santa_version: santa_version,
+        santanetd_version: santa_version,
+        last_seen_client_mode: if(chance(95), do: client_mode, else: "MONITOR"),
+        configured_client_mode: client_mode,
+        last_sync_at: member.last_active_at,
+        rule_sync_at: member.last_active_at,
+        last_preflight_at: member.last_active_at,
+        last_preflight_ip: fleet_ip(10, 30, rem(member.index, 250), 20 + rem(member.index * 5, 200)),
+        temporary_monitor_mode_ends_at: if(chance(3), do: DateTime.add(now, :rand.uniform(240), :minute), else: nil),
+        tags: Enum.take_random(~w[engineering developer designer], :rand.uniform(2) - 1),
+        tags_locked: false,
+        tags_truncated: false,
+        first_seen_at: member.enrolled_at,
+        synced_at: provider.synced_at,
+        inserted_at: now,
+        updated_at: now
+      }
+    ]
+  end
+
+  defp fleet_santa_row(_member, _account, _provider, _now), do: []
+
+  defp fleet_sentinelone_row(%{sentinelone?: true} = member, account, provider, now) do
+    {os_type, os_name, machine_type} = fleet_sentinelone_os(member)
+    infected? = chance(2)
+    network_status = weighted([{"connected", 88}, {"disconnected", 10}, {"connecting", 2}])
+    scan_status = weighted([{"finished", 85}, {"started", 8}, {"aborted", 4}, {"none", 3}])
+    scanned_at = DateTime.add(member.last_active_at, -:rand.uniform(20), :day)
+
+    [
+      %{
+        account_id: account.id,
+        posture_provider_id: provider.id,
+        uuid: Ecto.UUID.generate(),
+        sentinelone_id: Integer.to_string(1_845_000_000_000_100_000 + member.index),
+        sentinelone_account_id: "1845000000000000001",
+        account_name: "Contoso",
+        site_id: "1845000000000000002",
+        site_name: "Default site",
+        group_id: if(member.server?, do: "1845000000000000004", else: "1845000000000000003"),
+        group_name: if(member.server?, do: "Servers", else: member.person.department),
+        computer_name: member.hostname,
+        serial_number: member.serial,
+        model_name: member.model_identifier || member.model,
+        machine_type: machine_type,
+        domain: @posture_domain,
+        os_name: os_name,
+        os_revision: member.os_version,
+        os_type: os_type,
+        os_arch: "64 bit",
+        os_username: member.person.login,
+        last_logged_in_user_name: member.person.login,
+        agent_version: weighted([{"24.2.3.471", 55}, {"24.1.5.277", 30}, {"23.4.2.214", 15}]),
+        total_memory: Enum.random([8_192, 16_384, 32_768, 65_536]),
+        cpu_count: if(member.server?, do: 2, else: 1),
+        core_count: Enum.random([8, 10, 12, 16, 32]),
+        cpu_id: if(member.apple?, do: "Apple M3", else: "Intel(R) Xeon(R) Platinum 8370C"),
+        external_ip: fleet_ip(203, 0, 113, 1 + rem(member.index * 5, 250)),
+        network_status: network_status,
+        is_active: network_status == "connected",
+        is_up_to_date: chance(85),
+        infected: infected?,
+        active_threats: if(infected?, do: :rand.uniform(3), else: 0),
+        threat_reboot_required: infected? and chance(50),
+        encrypted_applications: chance(90),
+        firewall_enabled: chance(88),
+        network_quarantine_enabled: infected? and chance(40),
+        apps_vulnerability_status: weighted([{"up_to_date", 70}, {"patch_required", 25}, {"not_applicable", 5}]),
+        scan_status: scan_status,
+        scan_started_at: scanned_at,
+        scan_finished_at: if(scan_status == "finished", do: DateTime.add(scanned_at, 41, :minute), else: nil),
+        last_successful_scan_at: scanned_at,
+        mitigation_mode: weighted([{"protect", 85}, {"detect", 15}]),
+        mitigation_mode_suspicious: weighted([{"detect", 70}, {"protect", 30}]),
+        is_pending_uninstall: chance(1),
+        is_uninstalled: false,
+        is_decommissioned: chance(2),
+        registered_at: member.enrolled_at,
+        last_active_at: member.last_active_at,
+        network_interfaces: [
+          %{
+            "id" => "1845000000#{String.pad_leading(Integer.to_string(member.index), 9, "0")}",
+            "name" => if(member.apple?, do: "en0", else: "eth0"),
+            "physical" => posture_mac(6_000 + member.index),
+            "inet" => ["10.40.#{rem(member.index, 250)}.#{30 + rem(member.index * 3, 200)}"]
+          }
+        ],
+        tags: [],
+        synced_at: provider.synced_at,
+        inserted_at: now,
+        updated_at: now
+      }
+    ]
+  end
+
+  defp fleet_sentinelone_row(_member, _account, _provider, _now), do: []
+
+  # Linux endpoints often report no hardware serial to Sophos.
+  defp fleet_sophos_row(%{sophos?: true} = member, account, provider, now) do
+    {platform, os_name} = fleet_sophos_os(member)
+    [major, minor, build] =
+      (String.split(member.os_version, ".") ++ ["0", "0", "0"])
+      |> Enum.take(3)
+      |> Enum.map(fn part -> part |> Integer.parse() |> elem(0) end)
+
+    threats = weighted([{"good", 96}, {"suspicious", 2}, {"bad", 2}])
+    services = weighted([{"good", 92}, {"bad", 8}])
+
+    overall =
+      cond do
+        "bad" in [threats, services] -> "bad"
+        threats == "suspicious" -> "suspicious"
+        true -> "good"
+      end
+
+    [
+      %{
+        account_id: account.id,
+        posture_provider_id: provider.id,
+        sophos_id: Ecto.UUID.generate(),
+        type: if(member.server?, do: "server", else: "computer"),
+        sophos_tenant_id: provider.tenant_id,
+        hostname: member.hostname,
+        health_overall: overall,
+        health_threats_status: threats,
+        health_services_status: services,
+        health_service_details: [%{"name" => "Sophos MCS Client", "status" => if(services == "good", do: "running", else: "stopped")}],
+        os_is_server: member.server?,
+        os_platform: platform,
+        os_name: os_name,
+        os_major_version: major,
+        os_minor_version: minor,
+        os_build: build,
+        ipv4_addresses: ["10.50.#{rem(member.index, 250)}.#{30 + rem(member.index * 3, 200)}"],
+        mac_addresses: [posture_mac(9_000 + member.index)],
+        group_id: if(member.server?, do: "7b1e7c5a-2f0a-4a39-9d4e-2a8f8c1e0b01", else: "7b1e7c5a-2f0a-4a39-9d4e-2a8f8c1e0b02"),
+        group_name: if(member.server?, do: "Servers", else: member.person.department),
+        associated_person_name: if(member.server?, do: nil, else: member.person.display_name),
+        associated_person_via_login: if(member.server?, do: nil, else: member.person.login),
+        tamper_protection_supported: true,
+        tamper_protection_enabled: chance(90),
+        assigned_products: [%{"code" => "interceptX", "version" => "2024.3.1.5", "status" => "installed"}, %{"code" => "xdr", "version" => "2024.3.1.5", "status" => "installed"}],
+        last_seen_at: member.last_active_at,
+        last_agent_update_at: DateTime.add(member.last_active_at, -:rand.uniform(14), :day),
+        serial_number: if(platform != "linux" or chance(50), do: member.serial),
+        encryption_overall_status: if(member.encrypted?, do: "encrypted", else: "notEncrypted"),
+        online: DateTime.diff(now, member.last_active_at, :minute) < 60,
+        isolation_status: "notIsolated",
+        isolation_admin_isolated: false,
+        isolation_self_isolated: false,
+        cloned: false,
+        synced_at: provider.synced_at,
+        inserted_at: now,
+        updated_at: now
+      }
+    ]
+  end
+
+  defp fleet_sophos_row(_member, _account, _provider, _now), do: []
+
+  defp fleet_sophos_os(%{profile: :mac_laptop}), do: {"macOS", "macOS"}
+  defp fleet_sophos_os(%{profile: :linux_server}), do: {"linux", "Ubuntu"}
+  defp fleet_sophos_os(%{profile: :windows_server}), do: {"windows", "Windows Server"}
+  defp fleet_sophos_os(_member), do: {"windows", "Windows 11 Pro"}
+
+  defp fleet_sentinelone_os(%{profile: :windows_laptop}), do: {"windows", "Windows 11 Pro", "laptop"}
+  defp fleet_sentinelone_os(%{profile: :windows_server, os_version: version}), do: {"windows", "Windows Server #{if(String.starts_with?(version, "10.0.26100."), do: "2025", else: "2022")}", "server"}
+  defp fleet_sentinelone_os(%{profile: :mac_laptop}), do: {"macos", "macOS", "laptop"}
+  defp fleet_sentinelone_os(_member), do: {"linux", "Ubuntu", "server"}
+
+  # A Firezone Client for a fleet device. `:attested` proves the MDM id and the
+  # serial through a client certificate, `:serial` only self-reports the serial,
+  # and `:bare` gives the matcher nothing at all.
+  defp fleet_client(%{client: :none}, _account, _now), do: nil
+
+  defp fleet_client(member, account, _now) do
+    {user_agent, version} = fleet_user_agent(member)
+    {location_region, location_city, location_lat, location_lon} = Enum.random(@locations)
+
+    client =
+      %Device{}
+      |> Ecto.Changeset.cast(
+        %{
+          name: "#{member.person.display_name}'s #{member.model}",
+          firezone_id: Ecto.UUID.generate(),
+          device_uuid: Ecto.UUID.generate(),
+          device_serial: if(member.client in [:attested, :serial], do: member.serial, else: nil)
+        },
+        [:name, :firezone_id, :device_uuid, :device_serial]
+      )
+      |> Ecto.Changeset.put_change(:type, :client)
+      |> Ecto.Changeset.put_change(:account_id, account.id)
+      |> Ecto.Changeset.put_change(:actor_id, member.person.actor.id)
+      |> Portal.Devices.put_free_slug(account.id, Portal.Devices.owner_name(member.person.actor))
+      |> Device.changeset()
+      |> Safe.unscoped()
+      |> Safe.insert()
+      |> case do
+        {:ok, client} -> client
+        {:error, changeset} -> raise Ecto.InvalidChangesetError, action: :insert, changeset: changeset
+      end
+
+    attested =
+      if member.client == :attested do
+        cert_serial = String.upcase(Integer.to_string(0x10000000 + member.index, 16))
+
+        [
+          last_attested_device_serial: member.serial,
+          last_attested_mdm_device_id: if(member.mdm == :intune, do: member.intune_id, else: member.iru_id),
+          last_attested_cert_serial: cert_serial,
+          last_attested_cert_fingerprint: posture_fingerprint(cert_serial),
+          last_attested_cert_issuer: posture_issuer_der("Contoso Device CA"),
+          last_attested_at: member.last_active_at
+        ]
+      else
+        []
+      end
+
+    client
+    |> change(
+      [
+        public_key: :crypto.strong_rand_bytes(32) |> Base.encode64(),
+        last_seen_user_agent: user_agent,
+        last_seen_remote_ip: %Postgrex.INET{address: {203, 0, 113, 1 + rem(member.index, 250)}},
+        last_seen_remote_ip_location_region: location_region,
+        last_seen_remote_ip_location_city: location_city,
+        last_seen_remote_ip_location_lat: location_lat,
+        last_seen_remote_ip_location_lon: location_lon,
+        last_seen_version: version,
+        last_seen_at: member.last_active_at
+      ] ++ attested
+    )
+    |> Repo.update!()
+  end
+
+  defp fleet_user_agent(member) do
+    version = weighted([{"1.5.20", 60}, {"1.5.19", 25}, {"1.5.16", 15}])
+
+    case member.profile do
+      :windows_laptop -> {"Windows/#{member.os_version} windows-client/#{version}", version}
+      :mac_laptop -> {"macOS/#{member.os_version} apple-client/#{version}", version}
+      :iphone -> {"iOS/#{member.os_version} apple-client/#{version}", version}
+      :ipad -> {"iPadOS/#{member.os_version} apple-client/#{version}", version}
+      :android -> {"Android/#{member.os_version} android-client/#{version}", version}
+    end
+  end
+
+  defp weighted(choices) do
+    total = choices |> Enum.map(&elem(&1, 1)) |> Enum.sum()
+
+    Enum.reduce_while(choices, :rand.uniform(total), fn {value, weight}, left ->
+      if left <= weight, do: {:halt, value}, else: {:cont, left - weight}
+    end)
+  end
+
+  defp chance(percent), do: :rand.uniform(100) <= percent
+
+  # insert_all does not cast, so IP columns need the struct the type dumps.
+  defp fleet_ip(a, b, c, d), do: %Postgrex.INET{address: {a, b, c, d}}
 
   def seed do
     # Seeds can be run both with MIX_ENV=prod and MIX_ENV=test, for test env we don't have
@@ -260,7 +2590,11 @@ defmodule Portal.Repo.Seeds do
     :rand.seed(:exsss, {1, 2, 3})
 
     Repo.query!(
-      "INSERT INTO features (feature, enabled) VALUES ('client_to_client', true) ON CONFLICT (feature) DO UPDATE SET enabled = true"
+      """
+      INSERT INTO features (feature, enabled)
+      VALUES ('x509_auth', true)
+      ON CONFLICT (feature) DO UPDATE SET enabled = true
+      """
     )
 
     account =
@@ -281,12 +2615,11 @@ defmodule Portal.Repo.Seeds do
       |> put_change(:id, "c89bcc8c-9392-4dae-a40d-888aef6d28e0")
       |> put_change(:features, %{
         policy_conditions: true,
-        traffic_filters: true,
         idp_sync: true,
-        rest_api: true,
         internet_resource: true,
-        client_to_client: true,
-        iceless: System.get_env("FEATURE_ICELESS_ENABLED") == "true"
+        iceless: System.get_env("FEATURE_ICELESS_ENABLED") == "true",
+        log_sinks: true,
+        device_posture: true
       })
       |> put_change(:metadata, %{
         stripe: %{
@@ -298,11 +2631,15 @@ defmodule Portal.Repo.Seeds do
         }
       })
       |> put_change(:limits, %{
-        users_count: 100,
+        users_count: nil,
         monthly_active_users_count: 100,
-        service_accounts_count: 10,
-        sites_count: 3,
-        account_admin_users_count: 5
+        service_accounts_count: nil,
+        sites_count: nil,
+        account_admin_users_count: nil,
+        # The OpenAPI fuzzer (scripts/tests/openapi-fuzz.sh) sends hundreds of
+        # requests per second at this account.
+        api_refill_rate: 10_000,
+        api_capacity: 100_000
       })
       |> Repo.insert!()
 
@@ -373,7 +2710,7 @@ defmodule Portal.Repo.Seeds do
       }
       |> Repo.insert!()
 
-    _everyone_group =
+    other_everyone_group =
       %Group{
         account_id: other_account.id,
         name: "Everyone",
@@ -381,11 +2718,37 @@ defmodule Portal.Repo.Seeds do
       }
       |> Repo.insert!()
 
+    [self_device_pool, _other_self_device_pool] =
+      for {seed_account, seed_everyone_group} <- [
+            {account, everyone_group},
+            {other_account, other_everyone_group}
+          ] do
+        self_device_pool =
+          %Resource{account_id: seed_account.id}
+          |> cast(Resource.self_device_pool_attrs(), [:type, :device_membership_criteria, :name])
+          |> Resource.changeset()
+          |> Repo.insert!()
+
+        %Policy{
+          account_id: seed_account.id,
+          group_id: seed_everyone_group.id,
+          resource_id: self_device_pool.id,
+          description: "Lets every actor reach their own devices."
+        }
+        |> Repo.insert!()
+
+        IO.puts("Created #{self_device_pool.name} pool for #{seed_account.name}:")
+        IO.puts("  <slug>.#{Portal.Device.domain()} - Device Pool - policy: Everyone")
+        IO.puts("")
+
+        self_device_pool
+      end
+
     # Create auth providers for main account
     system_subject = %Authentication.Subject{
       account: account,
       actor: %Actor{type: :system, id: Ecto.UUID.generate(), name: "System"},
-      credential: %Authentication.Credential{type: :token, id: Ecto.UUID.generate()},
+      credential: %Authentication.Credential.ClientToken{id: Ecto.UUID.generate()},
       expires_at: DateTime.utc_now() |> DateTime.add(1, :hour),
       context: %Authentication.Context{
         type: :client,
@@ -396,6 +2759,13 @@ defmodule Portal.Repo.Seeds do
 
     {:ok, _email_provider} =
       create_auth_provider(EmailOTP.AuthProvider, %{name: "Email OTP"}, system_subject)
+
+    {:ok, _x509_provider} =
+      create_auth_provider(
+        X509.AuthProvider,
+        %{name: "X.509", context: :clients_only, is_disabled: true},
+        system_subject
+      )
 
     {:ok, userpass_provider} =
       create_auth_provider(
@@ -447,7 +2817,10 @@ defmodule Portal.Repo.Seeds do
     other_system_subject = %Authentication.Subject{
       account: other_account,
       actor: %Actor{type: :system, id: Ecto.UUID.generate(), name: "System"},
-      credential: %Authentication.Credential{type: :portal_session, id: Ecto.UUID.generate()},
+      credential: %Authentication.Credential.PortalSession{
+        id: Ecto.UUID.generate(),
+        auth_provider_id: Ecto.UUID.generate()
+      },
       expires_at: DateTime.utc_now() |> DateTime.add(1, :hour),
       context: %Authentication.Context{
         type: :portal,
@@ -458,6 +2831,13 @@ defmodule Portal.Repo.Seeds do
 
     {:ok, _other_email_provider} =
       create_auth_provider(EmailOTP.AuthProvider, %{name: "Email OTP"}, other_system_subject)
+
+    {:ok, _other_x509_provider} =
+      create_auth_provider(
+        X509.AuthProvider,
+        %{name: "X.509", context: :clients_only, is_disabled: true},
+        other_system_subject
+      )
 
     {:ok, _other_userpass_provider} =
       create_auth_provider(
@@ -505,11 +2885,11 @@ defmodule Portal.Repo.Seeds do
         allow_email_otp_sign_in: true
       })
 
-    {:ok, service_account_actor} =
+    {:ok, primary_client_actor} =
       Repo.insert(%Actor{
         account_id: account.id,
         type: :service_account,
-        name: "Backup Manager"
+        name: "CI Primary Client"
       })
 
     {:ok, pool_member_actor} =
@@ -630,6 +3010,7 @@ defmodule Portal.Repo.Seeds do
           |> Ecto.Changeset.put_change(:type, :client)
           |> Ecto.Changeset.put_change(:account_id, subject.account.id)
           |> Ecto.Changeset.put_change(:actor_id, subject.actor.id)
+          |> Portal.Devices.put_free_slug(subject.account.id, Portal.Devices.owner_name(subject.actor))
           |> Device.changeset()
           |> Safe.unscoped()
           |> Safe.insert()
@@ -643,20 +3024,20 @@ defmodule Portal.Repo.Seeds do
 
         {location_region, location_city, location_lat, location_lon} = Enum.random(@locations)
 
-        # Create a client session
-        Repo.insert!(%ClientSession{
-          account_id: subject.account.id,
-          device_id: client.id,
-          client_token_id: token.id,
+        client
+        |> Ecto.Changeset.change(
           public_key: :crypto.strong_rand_bytes(32) |> Base.encode64(),
-          user_agent: user_agent,
-          remote_ip: subject.context.remote_ip,
-          remote_ip_location_region: location_region,
-          remote_ip_location_city: location_city,
-          remote_ip_location_lat: location_lat,
-          remote_ip_location_lon: location_lon,
-          version: version
-        })
+          last_seen_user_agent: user_agent,
+          last_seen_remote_ip: subject.context.remote_ip,
+          last_seen_remote_ip_location_region: location_region,
+          last_seen_remote_ip_location_city: location_city,
+          last_seen_remote_ip_location_lat: location_lat,
+          last_seen_remote_ip_location_lon: location_lon,
+          last_seen_version: version,
+          last_seen_at: DateTime.utc_now(),
+          client_token_id: token.id
+        )
+        |> Repo.update!()
       end
     end
 
@@ -736,7 +3117,10 @@ defmodule Portal.Repo.Seeds do
     admin_subject = %Authentication.Subject{
       account: account,
       actor: admin_actor,
-      credential: %Authentication.Credential{type: :portal_session, id: Ecto.UUID.generate()},
+      credential: %Authentication.Credential.PortalSession{
+        id: Ecto.UUID.generate(),
+        auth_provider_id: userpass_provider.id
+      },
       expires_at: DateTime.utc_now() |> DateTime.add(1, :hour),
       context: %Authentication.Context{
         type: :portal,
@@ -748,7 +3132,10 @@ defmodule Portal.Repo.Seeds do
     unprivileged_subject = %Authentication.Subject{
       account: account,
       actor: unprivileged_actor,
-      credential: %Authentication.Credential{type: :token, id: unprivileged_client_token.id},
+      credential: %Authentication.Credential.ClientToken{
+        id: unprivileged_client_token.id,
+        auth_provider_id: unprivileged_client_token.auth_provider_id
+      },
       expires_at: unprivileged_client_token.expires_at,
       context: %Authentication.Context{
         type: :client,
@@ -757,11 +3144,11 @@ defmodule Portal.Repo.Seeds do
       }
     }
 
-    service_account_token =
+    primary_client_token =
       %ClientToken{
         id: "7da7d1cd-111c-44a7-b5ac-4027b9d230e5",
-        account_id: service_account_actor.account_id,
-        actor_id: service_account_actor.id,
+        account_id: primary_client_actor.account_id,
+        actor_id: primary_client_actor.id,
         secret_salt: "kKKA7dtf3TJk0-1O2D9N1w",
         secret_hash: "5c1d6795ea1dd08b6f4fd331eeaffc12032ba171d227f328446f2d26b96437e5",
         expires_at: DateTime.utc_now() |> DateTime.add(365, :day)
@@ -782,7 +3169,7 @@ defmodule Portal.Repo.Seeds do
     pool_member_subject = %Authentication.Subject{
       account: account,
       actor: pool_member_actor,
-      credential: %Authentication.Credential{type: :token, id: pool_member_token.id},
+      credential: %Authentication.Credential.ClientToken{id: pool_member_token.id},
       expires_at: pool_member_token.expires_at,
       context: %Authentication.Context{
         type: :client,
@@ -791,8 +3178,8 @@ defmodule Portal.Repo.Seeds do
       }
     }
 
-    service_account_actor_encoded_token =
-      "n" <> Authentication.encode_fragment!(service_account_token)
+    primary_client_encoded_token =
+      "n" <> Authentication.encode_fragment!(primary_client_token)
 
     # Email tokens are generated during sign-in flow, not pre-generated
     unprivileged_actor_email_token = "<generated during sign-in>"
@@ -810,8 +3197,10 @@ defmodule Portal.Repo.Seeds do
       )
     end
 
-    IO.puts("  #{service_account_actor.name} token: #{service_account_actor_encoded_token}")
+    IO.puts("  #{primary_client_actor.name} token: #{primary_client_encoded_token}")
     IO.puts("")
+
+    load_device_pools = seed_device_pool_load(account, admin_subject, everyone_group)
 
     # Pinned so auto-assigned IPs never randomly collide with the pool member's 100.64.0.2.
     {:ok, user_iphone} =
@@ -844,13 +3233,14 @@ defmodule Portal.Repo.Seeds do
         @ua_android
       )
 
-    {:ok, _user_windows_laptop} =
+    {:ok, user_windows_laptop} =
       create_client(
         %{
           name: "FZ User Surface",
           firezone_id: Ecto.UUID.generate(),
           public_key: :crypto.strong_rand_bytes(32) |> Base.encode64(),
           device_uuid: "WIN-#{Ecto.UUID.generate()}",
+          device_serial: "046120283253",
           ipv4: "100.64.0.12",
           ipv6: "fd00:2021:1111::12"
         },
@@ -859,7 +3249,7 @@ defmodule Portal.Repo.Seeds do
         @ua_windows
       )
 
-    {:ok, _user_linux_laptop} =
+    {:ok, user_linux_laptop} =
       create_client(
         %{
           name: "FZ User Rendering Station",
@@ -874,7 +3264,40 @@ defmodule Portal.Repo.Seeds do
         @ua_ubuntu
       )
 
-    {:ok, _admin_laptop} =
+    {:ok, user_kiosk} =
+      create_client(
+        %{
+          name: "FZ User Kiosk",
+          firezone_id: Ecto.UUID.generate(),
+          public_key: :crypto.strong_rand_bytes(32) |> Base.encode64(),
+          device_uuid: "WIN-#{Ecto.UUID.generate()}",
+          ipv4: "100.64.0.15",
+          ipv6: "fd00:2021:1111::15"
+        },
+        unprivileged_subject,
+        unprivileged_client_token.id,
+        @ua_windows
+      )
+
+    {:ok, user_macbook_air} =
+      create_client(
+        %{
+          name: "FZ User MacBook Air",
+          firezone_id: Ecto.UUID.generate(),
+          public_key: :crypto.strong_rand_bytes(32) |> Base.encode64(),
+          device_uuid: "MAC-#{Ecto.UUID.generate()}",
+          # Stale: the machine was reimaged and the Client never picked up the
+          # new serial, so the one Iru holds is the current one.
+          device_serial: "C02WX0ABJG5H",
+          ipv4: "100.64.0.16",
+          ipv6: "fd00:2021:1111::16"
+        },
+        unprivileged_subject,
+        unprivileged_client_token.id,
+        @ua_macos
+      )
+
+    {:ok, admin_laptop} =
       create_client(
         %{
           name: "FZ Admin Laptop",
@@ -899,7 +3322,7 @@ defmodule Portal.Repo.Seeds do
           firezone_id: pool_member_firezone_id,
           public_key: :crypto.strong_rand_bytes(32) |> Base.encode64(),
           device_uuid: "POOL-#{Ecto.UUID.generate()}",
-          # Pinned so the static-device-pool test can target a known tun IP.
+          # Pinned so the browse-device-pools test can check the address its member resolves to.
           ipv4: "100.64.0.2",
           ipv6: "fd00:2021:1111::2"
         },
@@ -918,13 +3341,23 @@ defmodule Portal.Repo.Seeds do
     IO.puts("Clients created")
     IO.puts("")
 
+    posture_providers =
+      seed_device_posture(account, %{
+      admin_laptop: admin_laptop,
+      user_surface: user_windows_laptop,
+      user_iphone: user_iphone,
+      user_rendering_station: user_linux_laptop,
+      user_kiosk: user_kiosk,
+      user_macbook_air: user_macbook_air
+    })
+
     IO.puts("Created Groups: ")
 
     # Collect all actors for this account
     all_actors = [
       unprivileged_actor,
       admin_actor,
-      service_account_actor | other_actors
+      primary_client_actor | other_actors
     ]
 
     actor_ids = Enum.map(all_actors, & &1.id)
@@ -1066,11 +3499,11 @@ defmodule Portal.Repo.Seeds do
     }
     |> Repo.insert!()
 
-    # Add service account (Backup Manager) to synced group
+    # Add service account (CI Primary Client) to synced group
     %Membership{
       group_id: synced_group.id,
-      actor_id: service_account_actor.id,
-      account_id: service_account_actor.account_id
+      actor_id: primary_client_actor.id,
+      account_id: primary_client_actor.account_id
     }
     |> Repo.insert!()
 
@@ -1158,6 +3591,36 @@ defmodule Portal.Repo.Seeds do
     IO.puts("  #{site.name} token: #{gateway_encoded_token}")
     IO.puts("")
 
+    # Static API token for the OpenAPI fuzz run, see scripts/tests/openapi-fuzz.sh.
+    {:ok, fuzz_actor} =
+      Repo.insert(%Actor{
+        id: "8f1a5d2c-6b3e-4c7a-9d0f-1e2b3c4d5e6f",
+        account_id: account.id,
+        type: :api_client,
+        name: "OpenAPI Fuzzer"
+      })
+
+    fuzz_secret_fragment = "OPENAPIFUZZ0000000000000000000000000000000000000000000000"
+    fuzz_secret_salt = "openapi-fuzz-salt"
+
+    fuzz_api_token =
+      %Portal.APIToken{
+        id: "4c2d9a0e-7f6b-4e1c-8a3d-2b5c6d7e8f90",
+        account_id: account.id,
+        actor_id: fuzz_actor.id,
+        name: "openapi-fuzz",
+        scopes: Portal.Scope.all(),
+        secret_fragment: fuzz_secret_fragment,
+        secret_salt: fuzz_secret_salt,
+        secret_hash: Crypto.hash(:sha3_256, fuzz_secret_fragment <> fuzz_secret_salt),
+        expires_at: ~U[2099-01-01 00:00:00.000000Z]
+      }
+      |> Repo.insert!()
+
+    IO.puts("Created API token for the OpenAPI fuzzer:")
+    IO.puts("  Token: #{Authentication.encode_fragment!(fuzz_api_token)}")
+    IO.puts("")
+
     # Pinned so auto-assigned IPs never randomly collide with the pool member's 100.64.0.2.
     {:ok, gateway1} =
       create_gateway(
@@ -1238,26 +3701,26 @@ defmodule Portal.Repo.Seeds do
         admin_subject
       )
 
-    {:ok, firez_one} =
+    {:ok, wikipedia} =
       create_resource(
         %{
           type: :dns,
-          name: "**.firez.one",
-          address: "**.firez.one",
-          address_description: "https://firez.one/",
+          name: "**.wikipedia.org",
+          address: "**.wikipedia.org",
+          address_description: "https://www.wikipedia.org/",
           site_id: site.id,
           filters: []
         },
         admin_subject
       )
 
-    {:ok, firezone_dev} =
+    {:ok, github} =
       create_resource(
         %{
           type: :dns,
-          name: "*.firezone.dev",
-          address: "*.firezone.dev",
-          address_description: "https://www.firezone.dev/",
+          name: "*.github.com",
+          address: "*.github.com",
+          address_description: "https://github.com/",
           site_id: site.id,
           filters: []
         },
@@ -1341,8 +3804,8 @@ defmodule Portal.Repo.Seeds do
         %{
           type: :cidr,
           name: "MyCorp Network",
-          address: "172.20.0.0/16",
-          address_description: "172.20.0.0/16",
+          address: "10.20.0.0/16",
+          address_description: "10.20.0.0/16",
           site_id: site.id,
           filters: []
         },
@@ -1354,8 +3817,8 @@ defmodule Portal.Repo.Seeds do
         %{
           type: :cidr,
           name: "MyCorp Network (IPv6)",
-          address: "172:20::/64",
-          address_description: "172:20::/64",
+          address: "10:20::/64",
+          address_description: "10:20::/64",
           site_id: site.id,
           filters: []
         },
@@ -1396,38 +3859,49 @@ defmodule Portal.Repo.Seeds do
         admin_subject
       )
 
+    {:ok, iperf_resource} =
+      create_resource(
+        %{
+          type: :dns,
+          name: "iperf3.test",
+          address: "iperf3.test",
+          address_description: "iperf3 server for performance tests",
+          site_id: site.id,
+          filters: [
+            %{ports: ["5201"], protocol: :tcp},
+            %{ports: ["5201"], protocol: :udp},
+            %{protocol: :icmp}
+          ]
+        },
+        admin_subject
+      )
+
     {:ok, pool_resource} =
       create_resource(
         %{
-          type: :static_device_pool,
-          name: "CI Static Pool",
-          address_description: "CI integration test static device pool",
-          site_id: site.id,
+          type: :device_pool,
+          name: "CI Pool",
+          address_description: "CI integration test device pool",
+          device_membership_criteria:
+            Portal.Resource.DeviceMembershipCriteria.devices([pool_member_device.id]),
           filters: []
         },
         admin_subject
       )
 
-    %Portal.StaticDevicePoolMember{
-      account_id: account.id,
-      resource_id: pool_resource.id,
-      device_id: pool_member_device.id,
-      device_type: :client
-    }
-    |> Repo.insert!()
-
     IO.puts("Created resources:")
     IO.puts("  #{dns_google_resource.address} - DNS - gateways: #{gateway_name}")
     IO.puts("  #{address_description_null_resource.address} - DNS - gateways: #{gateway_name}")
     IO.puts("  #{dns_gitlab_resource.address} - DNS - gateways: #{gateway_name}")
-    IO.puts("  #{firez_one.address} - DNS - gateways: #{gateway_name}")
-    IO.puts("  #{firezone_dev.address} - DNS - gateways: #{gateway_name}")
+    IO.puts("  #{wikipedia.address} - DNS - gateways: #{gateway_name}")
+    IO.puts("  #{github.address} - DNS - gateways: #{gateway_name}")
     IO.puts("  #{example_dns.address} - DNS - gateways: #{gateway_name}")
     IO.puts("  #{ip_resource.address} - IP - gateways: #{gateway_name}")
     IO.puts("  #{cidr_resource.address} - CIDR - gateways: #{gateway_name}")
     IO.puts("  #{ipv6_resource.address} - CIDR - gateways: #{gateway_name}")
     IO.puts("  #{dns_httpbin_resource.address} - DNS - gateways: #{gateway_name}")
     IO.puts("  #{search_domain_resource.address} - DNS - gateways: #{gateway_name}")
+    IO.puts("  #{iperf_resource.address} - DNS - gateways: #{gateway_name}")
     IO.puts("")
 
     # Helper function to create policy directly without context module
@@ -1445,7 +3919,7 @@ defmodule Portal.Repo.Seeds do
       {:ok, policy}
     end
 
-    {:ok, policy} =
+    {:ok, google_policy} =
       create_policy.(
         %{
           description: "All Access To Google",
@@ -1458,9 +3932,9 @@ defmodule Portal.Repo.Seeds do
     {:ok, _} =
       create_policy.(
         %{
-          description: "All Access To firez.one",
+          description: "All Access To wikipedia.org",
           group_id: synced_group.id,
-          resource_id: firez_one.id
+          resource_id: wikipedia.id
         },
         admin_subject
       )
@@ -1468,7 +3942,7 @@ defmodule Portal.Repo.Seeds do
     {:ok, _} =
       create_policy.(
         %{
-          description: "All Access To firez.one",
+          description: "All Access To wikipedia.org",
           group_id: everyone_group.id,
           resource_id: example_dns.id
         },
@@ -1478,9 +3952,9 @@ defmodule Portal.Repo.Seeds do
     {:ok, _} =
       create_policy.(
         %{
-          description: "All Access To firezone.dev",
+          description: "All Access To github.com",
           group_id: everyone_group.id,
-          resource_id: firezone_dev.id
+          resource_id: github.id
         },
         admin_subject
       )
@@ -1515,7 +3989,7 @@ defmodule Portal.Repo.Seeds do
         admin_subject
       )
 
-    {:ok, _} =
+    {:ok, cidr_policy} =
       create_policy.(
         %{
           description: "All Access To Network",
@@ -1535,7 +4009,7 @@ defmodule Portal.Repo.Seeds do
         admin_subject
       )
 
-    {:ok, _} =
+    {:ok, httpbin_policy} =
       create_policy.(
         %{
           description: "All Access To **.httpbin",
@@ -1575,16 +4049,48 @@ defmodule Portal.Repo.Seeds do
         admin_subject
       )
 
+    {:ok, iperf_policy} =
+      create_policy.(
+        %{
+          description: "All Access To iperf3.test",
+          group_id: everyone_group.id,
+          resource_id: iperf_resource.id
+        },
+        admin_subject
+      )
+
     {:ok, _} =
       create_policy.(
         %{
-          description: "All Access To CI Static Pool",
+          description: "Synced Group Access To iperf3.test",
+          group_id: synced_group.id,
+          resource_id: iperf_resource.id
+        },
+        admin_subject
+      )
+
+    {:ok, _} =
+      create_policy.(
+        %{
+          description: "All Access To CI Pool",
           # synced_group, not everyone_group: service accounts don't auto-join Everyone.
           group_id: synced_group.id,
           resource_id: pool_resource.id
         },
         admin_subject
       )
+
+    for resource <- [self_device_pool | load_device_pools] do
+      {:ok, _} =
+        create_policy.(
+          %{
+            description: "Synced Group Access To #{resource.name}",
+            group_id: synced_group.id,
+            resource_id: resource.id
+          },
+          admin_subject
+        )
+    end
 
     IO.puts("Policies Created")
     IO.puts("")
@@ -1602,22 +4108,110 @@ defmodule Portal.Repo.Seeds do
         actor_id: unprivileged_actor.id
       )
 
-    # Create policy_authorization directly without context module
-    _policy_authorization =
-      %PolicyAuthorization{
-        initiating_device_id: user_iphone.id,
-        receiving_device_id: gateway1.id,
-        resource_id: cidr_resource.id,
-        policy_id: policy.id,
-        membership_id: membership.id,
-        account_id: unprivileged_subject.account.id,
-        token_id: unprivileged_subject.credential.id,
-        initiator_remote_ip: {127, 0, 0, 1},
-        initiator_user_agent: @ua_ios,
-        receiver_remote_ip: %Postgrex.INET{address: {189, 172, 73, 153}, netmask: nil},
-        expires_at: unprivileged_subject.expires_at || DateTime.utc_now() |> DateTime.add(3600)
+    cidr_authorization =
+      create_seed_policy_authorization(
+        unprivileged_subject,
+        user_iphone,
+        gateway1,
+        cidr_resource,
+        cidr_policy,
+        membership
+      )
+
+    google_authorization =
+      create_seed_policy_authorization(
+        unprivileged_subject,
+        user_iphone,
+        gateway1,
+        dns_google_resource,
+        google_policy,
+        nil
+      )
+
+    httpbin_authorization =
+      create_seed_policy_authorization(
+        unprivileged_subject,
+        user_iphone,
+        gateway1,
+        dns_httpbin_resource,
+        httpbin_policy,
+        nil
+      )
+
+    iperf_authorization =
+      create_seed_policy_authorization(
+        unprivileged_subject,
+        user_iphone,
+        gateway1,
+        iperf_resource,
+        iperf_policy,
+        nil
+      )
+
+    seed_flow_logs(account, unprivileged_actor, user_iphone, userpass_provider.id, %{
+      google: %{
+        authorization: google_authorization,
+        resource: dns_google_resource,
+        inner_dst_ip: {100, 96, 0, 10},
+        domain: dns_google_resource.address,
+        default_port: 443
+      },
+      httpbin: %{
+        authorization: httpbin_authorization,
+        resource: dns_httpbin_resource,
+        inner_dst_ip: {100, 96, 0, 20},
+        domain: "api.httpbin",
+        default_port: 443
+      },
+      network: %{
+        authorization: cidr_authorization,
+        resource: cidr_resource,
+        inner_dst_ip: {172, 20, 10, 25},
+        domain: nil,
+        default_port: 22
+      },
+      iperf: %{
+        authorization: iperf_authorization,
+        resource: iperf_resource,
+        inner_dst_ip: {100, 96, 0, 30},
+        domain: iperf_resource.address,
+        default_port: 5_201
       }
-      |> Repo.insert!()
+    })
+
+    # Populate the audit log tables so /logs pages have realistic data on
+    # first boot. Uses a spread of recent timestamps across the seeded
+    # actors and a rotation of world locations.
+    api_token_id = Ecto.UUID.generate()
+
+    subjects = %{
+      admin:
+        subject_map_from_authentication(
+          admin_subject,
+          "US-CA",
+          "San Francisco",
+          37.7749,
+          -122.4194
+        ),
+      unpriv:
+        subject_map_from_authentication(
+          unprivileged_subject,
+          "US-NY",
+          "New York",
+          40.7128,
+          -74.006
+        )
+    }
+
+    seed_audit_logs(account, subjects, primary_client_actor, api_token_id)
+
+    # Last, so the fleet's auto-assigned tunnel addresses cannot collide with
+    # the hand-picked ones the Clients and Gateways above are seeded with.
+    fleet = seed_posture_fleet(account, posture_providers, DateTime.utc_now() |> DateTime.truncate(:microsecond))
+
+    IO.puts("Device posture fleet seeded (#{fleet.members} devices, SEED_FLEET_SIZE to change)")
+    IO.puts("  Intune #{fleet.intune}, Iru #{fleet.iru}, Defender #{fleet.defender}, Santa #{fleet.santa}, SentinelOne #{fleet.sentinelone}, Sophos #{fleet.sophos}")
+    IO.puts("  #{fleet.clients} Firezone Clients across #{fleet.people} people")
   end
 end
 

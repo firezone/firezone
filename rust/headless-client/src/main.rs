@@ -2,11 +2,14 @@
 
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
+#[global_allocator]
+static ALLOC: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 use anyhow::{Context as _, Result, anyhow};
 use backoff::ExponentialBackoffBuilder;
 use bin_shared::{
     DnsControlMethod, DnsController, TOKEN_ENV_KEY, TunDeviceManager, device_id, device_info,
-    new_dns_notifier, new_network_notifier,
+    new_dns_notifier, new_network_notifier, new_resume_notifier,
     platform::{UdpSocketFactory, tcp_socket_factory},
     signals,
 };
@@ -26,6 +29,7 @@ use std::{
 };
 use telemetry::{SentryMeterProvider, analytics, otel};
 use tokio::time::Instant;
+use x509_keystore::ValidationError;
 
 #[cfg(target_os = "linux")]
 #[path = "linux.rs"]
@@ -142,6 +146,14 @@ struct Cli {
     /// Increase the `core.rmem_max` and `core.wmem_max` kernel parameters.
     #[arg(long, env = "FIREZONE_INC_BUF", hide = true, default_value_t = false)]
     inc_buf: bool,
+
+    /// Track flow logs even when the portal has them disabled, and emit them
+    /// to the log output by adding the `flow_logs=trace` log directive.
+    ///
+    /// Flows tracked only because of this flag stay on the log output;
+    /// spooling and uploading them is always controlled by the portal.
+    #[arg(long, env = "FIREZONE_FLOW_LOGS", default_value_t = false)]
+    flow_logs: bool,
 }
 
 #[derive(Debug, Clone, Copy, clap::ValueEnum)]
@@ -187,6 +199,9 @@ enum Cmd {
         #[arg(long, short)]
         force: bool,
     },
+
+    /// Show the X.509 client certificate the platform keystore holds
+    X509,
 }
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -229,6 +244,11 @@ fn try_main() -> Result<()> {
 
             return Ok(());
         }
+        Some(Cmd::X509) => {
+            handle_x509()?;
+
+            return Ok(());
+        }
         Some(Cmd::Standalone) | None => {
             // Continue with normal operation
         }
@@ -257,12 +277,17 @@ fn try_main() -> Result<()> {
         .as_deref()
         .map(|dir| logging::file::layer(dir, "firezone-headless-client"))
         .unzip();
-    logging::setup_global_subscriber(
-        std::env::var("RUST_LOG").unwrap_or_else(|_| "info".to_string()),
-        layer,
-        false,
-    )
-    .context("Failed to set up logging")?;
+    let mut directives = std::env::var("RUST_LOG").unwrap_or_else(|_| "info".to_string());
+    if cli.flow_logs {
+        directives.push_str(",flow_logs=trace");
+    }
+
+    let flow_logs_dir = known_dirs::flow_logs();
+    let (flow_log_layer, _flow_log_guard) =
+        flow_logs_dir.clone().map(flow_log_writer::layer).unzip();
+
+    logging::setup_global_subscriber(directives, layer, flow_log_layer, false)
+        .context("Failed to set up logging")?;
 
     tracing::info!(
         arch = std::env::consts::ARCH,
@@ -323,28 +348,43 @@ fn try_main() -> Result<()> {
         None => device_id::get_or_create_client().context("Could not get `firezone_id` from CLI, could not read it from disk, could not generate it and save it to disk")?.id,
     };
 
+    tunnel_bypass_resolver::configure(
+        Arc::new(tcp_socket_factory),
+        Arc::new(UdpSocketFactory::default()),
+    );
+
     if cli.is_telemetry_allowed() {
-        telemetry::configure(
-            Arc::new(tcp_socket_factory),
-            Arc::new(UdpSocketFactory::default()),
-        );
+        telemetry::configure(Arc::new(tcp_socket_factory));
 
         telemetry::start(cli.api_url.as_ref(), RELEASE, telemetry::HEADLESS_DSN);
-        rt.block_on(telemetry::set_firezone_id(firezone_id.clone()));
+        telemetry::set_firezone_id(firezone_id.clone());
 
-        analytics::identify(RELEASE.to_owned(), None);
+        analytics::identify(RELEASE.to_owned(), None, None, None);
     }
 
     tracing::info!(arch = std::env::consts::ARCH, version = VERSION);
 
-    let token = get_token(token_env_var, &cli.token_path)?.with_context(|| {
-        format!(
-            "Can't find the Firezone token in ${TOKEN_ENV_KEY} or in `{}`",
-            cli.token_path.display()
-        )
-    })?;
+    let token = get_token(token_env_var, &cli.token_path)?
+        .context("Cannot authenticate without a token")?;
     // TODO: Should this default to 30 days?
     let max_partition_time = cli.max_partition_time.map(|d| d.into());
+
+    // The certificate is optional device attestation. A keystore or private-key failure must
+    // not prevent a token-authenticated session from reaching the portal.
+    let certificate = match x509_keystore::identity() {
+        Ok(Some(identity)) => match identity.client_certificate() {
+            Ok(certificate) => Some(certificate),
+            Err(error) => {
+                tracing::debug!(%error, "Failed to load the device certificate");
+                None
+            }
+        },
+        Ok(None) => None,
+        Err(error) => {
+            tracing::debug!(%error, "Failed to read the platform keystore");
+            None
+        }
+    };
 
     let url = LoginUrl::client(
         cli.api_url.clone(),
@@ -355,6 +395,7 @@ fn try_main() -> Result<()> {
             device_uuid: device_info::uuid(),
             ..Default::default()
         },
+        certificate,
     )?;
 
     if cli.check {
@@ -368,9 +409,9 @@ fn try_main() -> Result<()> {
     rt.block_on(async {
         if let Some(backend) = cli.metrics {
             let resource = otel::default_resource_with([
-                otel::attr::service_name!(),
-                otel::attr::service_version!(),
-                otel::attr::service_instance_id(firezone_id.clone()),
+                otel_attributes::service_name!(),
+                otel_attributes::service_version!(),
+                otel::service_instance_id(firezone_id.clone()),
             ]);
 
             match (backend, cli.otlp_grpc_endpoint) {
@@ -406,7 +447,7 @@ fn try_main() -> Result<()> {
         // When running interactively, it is useful for the user to see that we can't reach the portal.
         let portal = PhoenixChannel::disconnected(
             url,
-            token,
+            Some(token),
             get_user_agent("headless-client", env!("CARGO_PKG_VERSION")),
             "client",
             (),
@@ -417,12 +458,18 @@ fn try_main() -> Result<()> {
             },
             Arc::new(tcp_socket_factory),
         );
+        if let Some(dir) = flow_logs_dir.clone() {
+            flow_log_upload::spawn(dir, Arc::new(tcp_socket_factory));
+        }
+
         let (session, mut event_stream) = client_shared::Session::connect(
             Arc::new(tcp_socket_factory),
             Arc::new(UdpSocketFactory::default()),
             portal,
             cli.activate_internet_resource,
             dns_controller.system_resolvers(),
+            flow_logs_dir.clone(),
+            cli.flow_logs,
             rt.handle().clone(),
         );
 
@@ -440,6 +487,10 @@ fn try_main() -> Result<()> {
         let mut network_notifier = new_network_notifier()
             .await
             .inspect_err(|e| tracing::info!("Failed to initialize network change monitor: {e:#}"))
+            .unwrap_or_default();
+        let mut resume_notifier = new_resume_notifier()
+            .await
+            .inspect_err(|e| tracing::info!("Failed to initialize resume monitor: {e:#}"))
             .unwrap_or_default();
         drop(tokio_handle);
 
@@ -469,11 +520,16 @@ fn try_main() -> Result<()> {
                     session.reset("network changed".to_owned());
                     continue;
                 },
+                result = resume_notifier.next() => {
+                    result.context("Resume notifier stream ended")??;
+                    session.reset("resumed from sleep".to_owned());
+                    continue;
+                },
                 event = event_stream.next() => event.context("event stream unexpectedly ran empty")?,
             };
 
             match event {
-                client_shared::Event::Disconnected(error) => break Err(anyhow!(error).context("Firezone disconnected")),
+                client_shared::Event::Disconnected(error) => break Err(anyhow!(error.log_message()).context("Firezone disconnected")),
                 client_shared::Event::ResourcesUpdated(_) => {
                     // On every Resources update, flush DNS to mitigate <https://github.com/firezone/firezone/issues/5052>
                     dns_controller.flush()?;
@@ -498,6 +554,11 @@ fn try_main() -> Result<()> {
                         break Ok(());
                     }
                 }
+                client_shared::Event::ConnectedToPortal(connected) => {
+                    telemetry::set_account_slug(connected.account_slug.clone());
+
+                    analytics::identify(RELEASE.to_owned(), connected.account_slug, None, None);
+                }
                 client_shared::Event::GatewayVersionMismatch { .. } | client_shared::Event::AllGatewaysOffline { .. } => {},
             }
         };
@@ -507,7 +568,7 @@ fn try_main() -> Result<()> {
         // Drain the event-stream to allow the event-loop to gracefully shutdown.
         let _ = tokio::time::timeout(Duration::from_secs(1), event_stream.drain()).await;
 
-        telemetry::stop().await;
+        telemetry::stop();
 
         result
     })?;
@@ -515,6 +576,47 @@ fn try_main() -> Result<()> {
     rt.shutdown_timeout(Duration::from_secs(1));
 
     Ok(())
+}
+
+#[expect(
+    clippy::print_stdout,
+    reason = "This diagnostics command is designed to print to stdout"
+)]
+fn handle_x509() -> Result<()> {
+    let Some(identity) = x509_keystore::identity()? else {
+        println!("The platform keystore holds no Firezone client certificate.");
+
+        return Ok(());
+    };
+    let certificate = identity.certificate;
+
+    for field in certificate.detail_fields() {
+        println!("{}:", field.label);
+
+        for line in field.value.as_deref().unwrap_or("Not present").split('\n') {
+            println!("  {line}");
+        }
+
+        if let Some(problem) = field.problem {
+            println!("  ({})", validation_error_text(problem));
+        }
+    }
+
+    Ok(())
+}
+
+fn validation_error_text(error: ValidationError) -> &'static str {
+    match error {
+        ValidationError::Empty => "Empty",
+        ValidationError::TooLong => "Too long",
+        ValidationError::Ambiguous => "Ambiguous",
+        ValidationError::PlaceholderIdentifier => "Placeholder identifier",
+        ValidationError::UnknownAttribute => "Unrecognized attribute",
+        ValidationError::NotYetValid => "Not yet valid",
+        ValidationError::Expired => "Expired",
+        ValidationError::MissingClientAuthEku => "Missing client authentication EKU",
+        ValidationError::DigitalSignatureNotAllowed => "Digital signature not allowed",
+    }
 }
 
 /// Constructs the authentication URL for browser-based sign-in.
@@ -663,11 +765,19 @@ fn read_token_file(path: &Path) -> Result<Option<SecretString>> {
         tracing::info!(?path, "Token file existed but now is unreadable");
         return Ok(None);
     };
-    let token = String::from_utf8(bytes)?.trim().to_string();
-    let token = SecretString::from(token);
+    let token = SecretString::from(parse_token(&bytes));
 
     tracing::info!(?path, "Loaded token from disk");
     Ok(Some(token))
+}
+
+/// Tokens are ASCII, so dropping everything else also handles BOMs and UTF-16
+/// files, as written by Notepad or PowerShell on Windows.
+fn parse_token(bytes: &[u8]) -> String {
+    String::from_utf8_lossy(bytes)
+        .chars()
+        .filter(char::is_ascii_graphic)
+        .collect()
 }
 
 fn tonic_otlp_exporter(
@@ -803,7 +913,7 @@ mod tests {
 
     /// Verifies that `set_token_permissions` produces a file that passes `check_token_permissions`.
     /// On Linux, this requires running as root (CI runs in Docker as root).
-    /// On macOS/Windows, both functions are no-ops so this always passes.
+    /// On macOS, both functions are no-ops so this always passes.
     #[test]
     fn set_token_permissions_satisfies_check() {
         use std::io::Write;
@@ -938,6 +1048,23 @@ mod tests {
 
         let removed = super::remove_token_file(&token_path).unwrap();
         assert!(!removed);
+    }
+
+    #[test]
+    fn parse_token_handles_windows_encodings() {
+        let token = "abc.DEF-123_xyz";
+        let utf16le = token.encode_utf16().flat_map(u16::to_le_bytes);
+        let utf16be = token.encode_utf16().flat_map(u16::to_be_bytes);
+
+        for bytes in [
+            format!("{token}\r\n").into_bytes(),
+            [&[0xEF, 0xBB, 0xBF][..], token.as_bytes()].concat(),
+            utf16le.clone().collect(),
+            [0xFF, 0xFE].into_iter().chain(utf16le).collect(),
+            [0xFE, 0xFF].into_iter().chain(utf16be).collect(),
+        ] {
+            assert_eq!(super::parse_token(&bytes), token);
+        }
     }
 
     #[test]

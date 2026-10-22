@@ -1,0 +1,1505 @@
+//! Flow-log tracking shared by the Gateway and the Client.
+//!
+//! A [`Tracker`] turns a stream of packet observations into [`Record`]s, each of
+//! which is emitted as a structured tracing event (target `flow_logs`). The tracker is generic over a [`Scope`] `S` that identifies
+//! which authorization a flow belongs to; the scope plus the inner 4-tuple keys a
+//! flow. Packets are recorded in one of two directions:
+//!
+//! - "tx" for packets in the initiator-to-responder direction.
+//!   This is where flows are created, split and TCP-closed.
+//! - "rx" for packets in the responder-to-initiator direction.
+//!   This only updates the counters (and TCP-closes) of an already-open flow.
+//!
+//! "tx" / "rx" are defined from the *initiator's* perspective regardless of which
+//! device observes the packet, so the initiator and responder label the same
+//! direction identically.
+//!
+//! Processing a packet begins with [`Tracker::begin_tun_packet`] /
+//! [`Tracker::begin_network_packet`], which marks the thread-local [`FlowData`]
+//! as gathering a packet that the call sites processing it fill in via the
+//! `record_*` functions. Dropping the returned [`CurrentFlowGuard`] inserts
+//! the gathered data on every exit path; incomplete data (e.g. because packet
+//! processing bailed early or the packet was internal traffic) is discarded.
+
+#![cfg_attr(test, allow(clippy::unwrap_used))]
+
+use std::{
+    cell::RefCell,
+    collections::{HashMap, hash_map},
+    fmt::Debug,
+    hash::Hash,
+    net::{IpAddr, SocketAddr},
+    time::{Duration, Instant},
+};
+
+use chrono::{DateTime, Utc};
+use connlib_model::{ClientId, ClientOrGatewayId, ResourceId};
+use dns_types::DomainName;
+use fast_random_state::FastRandomState;
+use ip_packet::{IcmpError, IpPacket, Protocol, TcpFlags, UnsupportedProtocol};
+use smallvec::{SmallVec, smallvec};
+
+mod token;
+
+pub use token::{IngestToken, IngestTokenClaims, IngestTokenRole, TEST_INGEST_TOKEN};
+
+/// A flow is closed if no packet is seen for this long.
+const FLOW_TIMEOUT: Duration = Duration::from_mins(2);
+
+/// A flow records at most this many outer (transport) tuples.
+///
+/// The outer tuple changes only on rare path events such as roaming or a relay
+/// switchover; the cap bounds the tracker's memory and the emitted record's
+/// size. A change past the cap splits the flow instead of going unrecorded, so
+/// a peer cannot flap its path to keep later tuples out of the log.
+const MAX_CONTEXTS_PER_FLOW: usize = 16;
+
+thread_local! {
+    /// The [`FlowData`] for the packet currently being processed on this thread.
+    static CURRENT_FLOW: RefCell<FlowData> = const { RefCell::new(FlowData::EMPTY) };
+}
+
+/// Identifies which authorization a flow belongs to on one device.
+///
+/// A scope is assembled from the facts gathered while processing a packet; the
+/// scope plus the inner 4-tuple keys a flow.
+pub trait Scope: Copy + Eq + Hash + Debug {
+    fn from_flow(peer: ClientOrGatewayId, resource: Option<ResourceId>) -> Option<Self>;
+}
+
+/// The Client scopes its flows by the peer they are tunneled through.
+impl Scope for ClientOrGatewayId {
+    fn from_flow(peer: ClientOrGatewayId, _: Option<ResourceId>) -> Option<Self> {
+        Some(peer)
+    }
+}
+
+/// The Gateway scopes its flows by the client and the resource it accesses.
+impl Scope for (ClientId, ResourceId) {
+    fn from_flow(peer: ClientOrGatewayId, resource: Option<ResourceId>) -> Option<Self> {
+        match peer {
+            ClientOrGatewayId::Client(cid) => Some((cid, resource?)),
+            ClientOrGatewayId::Gateway(_) => None,
+        }
+    }
+}
+
+/// Tracks active flows for one device and turns them into [`Record`]s.
+///
+/// `S` is the per-authorization scope that, together with the inner 4-tuple,
+/// identifies a flow (see the module docs).
+#[derive(Debug)]
+pub struct Tracker<S> {
+    active_tcp_flows: HashMap<TcpFlowKey<S>, TcpFlowValue, FastRandomState>,
+    active_udp_flows: HashMap<UdpFlowKey<S>, UdpFlowValue, FastRandomState>,
+
+    /// The most recently recorded ingest token, lent to each packet's
+    /// [`FlowData`] so that recording it again needs no refcount update.
+    mru_ingest_token: Option<IngestToken>,
+
+    enabled: bool,
+    clock: Clock,
+}
+
+/// One packet in the initiator-to-responder direction.
+///
+/// Recording this creates, updates or splits a flow.
+struct TxPacket<'a, S> {
+    scope: S,
+    /// The outer (transport) 4-tuple this packet was tunneled over.
+    context: FlowContext<Instant>,
+    src_ip: IpAddr,
+    dst_ip: IpAddr,
+    src_proto: Protocol,
+    dst_proto: Protocol,
+    tcp_syn: bool,
+    tcp_ack: bool,
+    tcp_fin: bool,
+    tcp_rst: bool,
+    payload_len: usize,
+    ingest_token: &'a IngestToken,
+    domain: Option<DomainName>,
+}
+
+/// One packet in the responder-to-initiator direction.
+///
+/// Recording this only updates the counters of an already-open flow; `src` /
+/// `dst` are in the packet's natural orientation and are flipped to match the key.
+struct RxPacket<S> {
+    scope: S,
+    src_ip: IpAddr,
+    dst_ip: IpAddr,
+    src_proto: Protocol,
+    dst_proto: Protocol,
+    tcp_fin: bool,
+    tcp_rst: bool,
+    payload_len: usize,
+}
+
+impl<S> Tracker<S> {
+    /// Creates a new tracker; it starts disabled.
+    pub fn new(now: Instant, unix_ts: Duration) -> Self {
+        let created_at_utc = i64::try_from(unix_ts.as_secs())
+            .ok()
+            .and_then(|secs| DateTime::from_timestamp(secs, unix_ts.subsec_nanos()))
+            .unwrap_or(DateTime::UNIX_EPOCH);
+
+        Self {
+            active_tcp_flows: HashMap::default(),
+            active_udp_flows: HashMap::default(),
+            mru_ingest_token: None,
+            enabled: false,
+            clock: Clock {
+                created_at: now,
+                created_at_utc,
+            },
+        }
+    }
+
+    /// Enables or disables flow tracking at runtime.
+    ///
+    /// When disabled, no flow data is gathered and no records are emitted.
+    pub fn set_enabled(&mut self, enabled: bool) {
+        if self.enabled != enabled {
+            tracing::info!(enabled, "Flow tracking toggled");
+        }
+
+        self.enabled = enabled;
+    }
+}
+
+impl<S> Tracker<S>
+where
+    S: Scope,
+{
+    /// Begins gathering flow data for one packet read from the TUN device.
+    ///
+    /// Dropping the returned guard inserts the gathered flow data.
+    pub fn begin_tun_packet(&mut self, packet: &IpPacket, now: Instant) -> CurrentFlowGuard<'_, S> {
+        if self.enabled {
+            set_current_flow(
+                Entry::Tun,
+                Some(InnerFlow::from(packet)),
+                now,
+                self.mru_ingest_token.take(),
+            );
+        }
+
+        CurrentFlowGuard { tracker: self, now }
+    }
+
+    /// Begins gathering flow data for one packet received on the network interface.
+    ///
+    /// Dropping the returned guard inserts the gathered flow data.
+    pub fn begin_network_packet(
+        &mut self,
+        local: SocketAddr,
+        remote: SocketAddr,
+        now: Instant,
+    ) -> CurrentFlowGuard<'_, S> {
+        if self.enabled {
+            set_current_flow(
+                Entry::Network { local, remote },
+                None,
+                now,
+                self.mru_ingest_token.take(),
+            );
+        }
+
+        CurrentFlowGuard { tracker: self, now }
+    }
+
+    fn insert_flow(&mut self, data: &mut FlowData, now: Instant) {
+        let FlowData {
+            packet: Some(CurrentPacket { entry, now: _ }),
+            inner:
+                Some(InnerFlow {
+                    src_ip,
+                    dst_ip,
+                    src_proto: Ok(src_proto),
+                    dst_proto: Ok(dst_proto),
+                    tcp_syn,
+                    tcp_ack,
+                    tcp_fin,
+                    tcp_rst,
+                    payload_len,
+                }),
+            outer_tx,
+            peer: Some((peer, role)),
+            resource,
+            ref ingest_token,
+            mru_ingest_token: _,
+            ref mut domain,
+            icmp_error: _, // TODO: What to do with ICMP errors?
+        } = *data
+        else {
+            tracing::trace!(?data, "Cannot create flow with missing data");
+
+            return;
+        };
+
+        let Some(scope) = S::from_flow(peer, resource) else {
+            tracing::trace!(%peer, ?resource, "Cannot assemble flow scope");
+
+            return;
+        };
+
+        match (entry, role) {
+            // The initiator observes the tx direction on its TUN device; count the
+            // packet only once it was actually encapsulated and handed to the
+            // network (packets buffered during connection setup are recorded by
+            // the responder once they arrive).
+            (Entry::Tun, Role::Initiator) => {
+                let Some(context) = outer_tx else {
+                    tracing::trace!("Not recording flow for packet that was never sent");
+
+                    return;
+                };
+
+                // Every authorization carries an ingest token, so a packet
+                // without one was never matched to an authorization and its
+                // flow is not tracked.
+                let Some(ingest_token) = ingest_token else {
+                    tracing::trace!("Flow carries no ingest token; not tracking it");
+
+                    return;
+                };
+
+                self.record_tx(
+                    TxPacket {
+                        scope,
+                        context,
+                        src_ip,
+                        dst_ip,
+                        src_proto,
+                        dst_proto,
+                        tcp_syn,
+                        tcp_ack,
+                        tcp_fin,
+                        tcp_rst,
+                        payload_len,
+                        ingest_token,
+                        domain: domain.take(),
+                    },
+                    now,
+                );
+            }
+            // The responder observes the tx direction arriving over the network.
+            (Entry::Network { local, remote }, Role::Responder) => {
+                // Every authorization carries an ingest token, so a packet
+                // without one was never matched to an authorization and its
+                // flow is not tracked.
+                let Some(ingest_token) = ingest_token else {
+                    tracing::trace!("Flow carries no ingest token; not tracking it");
+
+                    return;
+                };
+
+                self.record_tx(
+                    TxPacket {
+                        scope,
+                        context: FlowContext::new(remote, local, now),
+                        src_ip,
+                        dst_ip,
+                        src_proto,
+                        dst_proto,
+                        tcp_syn,
+                        tcp_ack,
+                        tcp_fin,
+                        tcp_rst,
+                        payload_len,
+                        ingest_token,
+                        domain: domain.take(),
+                    },
+                    now,
+                );
+            }
+            // The responder observes the rx direction on its TUN device; same
+            // send-gate as above.
+            (Entry::Tun, Role::Responder) => {
+                if outer_tx.is_none() {
+                    tracing::trace!("Not recording flow for packet that was never sent");
+
+                    return;
+                }
+
+                self.record_rx(
+                    RxPacket {
+                        scope,
+                        src_ip,
+                        dst_ip,
+                        src_proto,
+                        dst_proto,
+                        tcp_fin,
+                        tcp_rst,
+                        payload_len,
+                    },
+                    now,
+                );
+            }
+            // The initiator observes the rx direction arriving over the network.
+            (Entry::Network { .. }, Role::Initiator) => {
+                self.record_rx(
+                    RxPacket {
+                        scope,
+                        src_ip,
+                        dst_ip,
+                        src_proto,
+                        dst_proto,
+                        tcp_fin,
+                        tcp_rst,
+                        payload_len,
+                    },
+                    now,
+                );
+            }
+        }
+    }
+
+    /// Pushes a close record for every currently-active flow, e.g. on shutdown.
+    pub fn close_all(&mut self, now: Instant) {
+        for (key, value) in self.active_tcp_flows.drain() {
+            emit(&Record::tcp_close(key, value, now, self.clock));
+        }
+        for (key, value) in self.active_udp_flows.drain() {
+            emit(&Record::udp_close(key, value, now, self.clock));
+        }
+    }
+
+    pub fn handle_timeout(&mut self, now: Instant) {
+        for (key, value) in self
+            .active_tcp_flows
+            .extract_if(|_, value| now.duration_since(value.last_packet) > FLOW_TIMEOUT)
+        {
+            tracing::debug!(?key, "Terminating TCP flow; timeout");
+
+            emit(&Record::tcp_close(key, value, now, self.clock));
+        }
+
+        for (key, value) in self
+            .active_udp_flows
+            .extract_if(|_, value| now.duration_since(value.last_packet) > FLOW_TIMEOUT)
+        {
+            tracing::debug!(?key, "Terminating UDP flow; timeout");
+
+            emit(&Record::udp_close(key, value, now, self.clock));
+        }
+
+        for (key, value) in self
+            .active_tcp_flows
+            .extract_if(|_, value| value.fin_rx && value.fin_tx)
+        {
+            let end = value.last_packet;
+
+            tracing::debug!(?key, "Terminating TCP flow; FIN sent & received");
+
+            emit(&Record::tcp_close(key, value, end, self.clock));
+        }
+    }
+
+    /// Records a packet in the initiator-to-responder direction (see module docs).
+    fn record_tx(&mut self, tx: TxPacket<'_, S>, now: Instant) {
+        debug_assert!(self.enabled, "flow data is only gathered while enabled");
+
+        let clock = self.clock;
+        let TxPacket {
+            scope,
+            context,
+            src_ip,
+            dst_ip,
+            src_proto,
+            dst_proto,
+            tcp_syn,
+            tcp_ack,
+            tcp_fin,
+            tcp_rst,
+            payload_len,
+            ingest_token,
+            domain,
+        } = tx;
+
+        match (src_proto, dst_proto) {
+            (Protocol::Tcp(src_port), Protocol::Tcp(dst_port)) => {
+                let key = TcpFlowKey {
+                    scope,
+                    src_ip,
+                    dst_ip,
+                    src_port,
+                    dst_port,
+                };
+
+                match self.active_tcp_flows.entry(key) {
+                    hash_map::Entry::Vacant(vacant) => {
+                        if tcp_fin || tcp_rst {
+                            // Don't create new flows for FIN/RST packets.
+                            return;
+                        }
+
+                        // A bare ACK cannot start a connection; it is the tail
+                        // of a flow that was already closed, e.g. the final ACK
+                        // of a FIN handshake arriving after the close sweep.
+                        if tcp_ack && !tcp_syn && payload_len == 0 {
+                            return;
+                        }
+
+                        tracing::debug!(key = ?vacant.key(), ?context, syn = %tcp_syn, "Creating new TCP flow");
+
+                        let value = TcpFlowValue {
+                            start: now,
+                            last_packet: now,
+                            stats: FlowStats::default().with_tx(payload_len as u64),
+                            contexts: smallvec![context],
+                            fin_tx: false,
+                            fin_rx: false,
+                            non_syn_tx: !tcp_syn,
+                            domain,
+                            ingest_token: ingest_token.clone(),
+                        };
+
+                        emit(&Record::tcp_open(&key, &value, clock));
+
+                        vacant.insert(value);
+                    }
+                    // A changed outer tuple splits the flow once the context
+                    // list is full, so a peer that keeps flapping its path
+                    // cannot make later tuples go unrecorded.
+                    hash_map::Entry::Occupied(occupied)
+                        if context_overflows(&occupied.get().contexts, context) =>
+                    {
+                        let (key, value) = occupied.remove_entry();
+
+                        tracing::debug!(?key, "Splitting existing TCP flow; context cap reached");
+
+                        emit(&Record::tcp_close(key, value, now, clock));
+
+                        let value = TcpFlowValue {
+                            start: now,
+                            last_packet: now,
+                            stats: FlowStats::default().with_tx(payload_len as u64),
+                            contexts: smallvec![context],
+                            fin_tx: false,
+                            fin_rx: false,
+                            non_syn_tx: !tcp_syn,
+                            domain,
+                            ingest_token: ingest_token.clone(),
+                        };
+
+                        emit(&Record::tcp_open(&key, &value, clock));
+
+                        self.active_tcp_flows.insert(key, value);
+                    }
+                    // A SYN only starts a new connection (i.e. reuses the tuple)
+                    // if the initiator moved past the handshake by sending a
+                    // non-SYN packet. Until then, a SYN is a retransmission and
+                    // just counts as another packet; return traffic proves
+                    // nothing because a SYN-ACK may get lost on its way back to
+                    // the initiator.
+                    hash_map::Entry::Occupied(occupied) if tcp_syn && occupied.get().non_syn_tx => {
+                        let (key, value) = occupied.remove_entry();
+
+                        tracing::debug!(?key, "Splitting existing TCP flow; new TCP SYN");
+
+                        emit(&Record::tcp_close(key, value, now, clock));
+
+                        let value = TcpFlowValue {
+                            start: now,
+                            last_packet: now,
+                            stats: FlowStats::default().with_tx(payload_len as u64),
+                            contexts: smallvec![context],
+                            fin_tx: false,
+                            fin_rx: false,
+                            non_syn_tx: !tcp_syn,
+                            domain,
+                            ingest_token: ingest_token.clone(),
+                        };
+
+                        emit(&Record::tcp_open(&key, &value, clock));
+
+                        self.active_tcp_flows.insert(key, value);
+                    }
+                    hash_map::Entry::Occupied(mut occupied) => {
+                        let key = *occupied.key();
+                        let value = occupied.get_mut();
+
+                        push_context(&key, &mut value.contexts, context);
+                        value.stats.inc_tx(payload_len as u64);
+                        value.last_packet = now;
+                        if tcp_fin {
+                            value.fin_tx = true;
+                        }
+                        if !tcp_syn {
+                            value.non_syn_tx = true;
+                        }
+
+                        if tcp_rst {
+                            let (key, value) = occupied.remove_entry();
+
+                            tracing::debug!(?key, "TCP flow completed on outbound RST");
+
+                            emit(&Record::tcp_close(key, value, now, clock));
+                        }
+                    }
+                };
+            }
+            (Protocol::Udp(src_port), Protocol::Udp(dst_port)) => {
+                let key = UdpFlowKey {
+                    scope,
+                    src_ip,
+                    dst_ip,
+                    src_port,
+                    dst_port,
+                };
+
+                match self.active_udp_flows.entry(key) {
+                    hash_map::Entry::Vacant(vacant) => {
+                        tracing::debug!(key = ?vacant.key(), "Creating new UDP flow");
+
+                        let value = UdpFlowValue {
+                            start: now,
+                            last_packet: now,
+                            stats: FlowStats::default().with_tx(payload_len as u64),
+                            contexts: smallvec![context],
+                            domain,
+                            ingest_token: ingest_token.clone(),
+                        };
+
+                        emit(&Record::udp_open(&key, &value, clock));
+
+                        vacant.insert(value);
+                    }
+                    // A changed outer tuple splits the flow once the context
+                    // list is full, so a peer that keeps flapping its path
+                    // cannot make later tuples go unrecorded.
+                    hash_map::Entry::Occupied(occupied)
+                        if context_overflows(&occupied.get().contexts, context) =>
+                    {
+                        let (key, value) = occupied.remove_entry();
+
+                        tracing::debug!(?key, "Splitting existing UDP flow; context cap reached");
+
+                        emit(&Record::udp_close(key, value, now, clock));
+
+                        let value = UdpFlowValue {
+                            start: now,
+                            last_packet: now,
+                            stats: FlowStats::default().with_tx(payload_len as u64),
+                            contexts: smallvec![context],
+                            domain,
+                            ingest_token: ingest_token.clone(),
+                        };
+
+                        emit(&Record::udp_open(&key, &value, clock));
+
+                        self.active_udp_flows.insert(key, value);
+                    }
+                    hash_map::Entry::Occupied(mut occupied) => {
+                        let key = *occupied.key();
+                        let value = occupied.get_mut();
+
+                        push_context(&key, &mut value.contexts, context);
+                        value.stats.inc_tx(payload_len as u64);
+                        value.last_packet = now;
+                    }
+                };
+            }
+            (Protocol::IcmpEcho(_), Protocol::IcmpEcho(_)) => {}
+            _ => {
+                tracing::trace!("src and dst protocol must be the same");
+            }
+        }
+    }
+
+    /// Records a packet in the responder-to-initiator direction (see module docs).
+    fn record_rx(&mut self, rx: RxPacket<S>, now: Instant) {
+        debug_assert!(self.enabled, "flow data is only gathered while enabled");
+
+        let clock = self.clock;
+        let RxPacket {
+            scope,
+            src_ip,
+            dst_ip,
+            src_proto,
+            dst_proto,
+            tcp_fin,
+            tcp_rst,
+            payload_len,
+        } = rx;
+
+        match (src_proto, dst_proto) {
+            (Protocol::Tcp(src_port), Protocol::Tcp(dst_port)) => {
+                // The packet is responder-to-initiator, so flip it to the key's
+                // (initiator-src, responder-dst) orientation.
+                let key = TcpFlowKey {
+                    scope,
+                    src_ip: dst_ip,
+                    dst_ip: src_ip,
+                    src_port: dst_port,
+                    dst_port: src_port,
+                };
+
+                match self.active_tcp_flows.entry(key) {
+                    hash_map::Entry::Vacant(vacant) => {
+                        tracing::trace!(key = ?vacant.key(), "No existing TCP flow for inbound packet");
+                    }
+                    hash_map::Entry::Occupied(mut occupied) => {
+                        let value = occupied.get_mut();
+                        value.stats.inc_rx(payload_len as u64);
+                        value.last_packet = now;
+
+                        if tcp_fin {
+                            value.fin_rx = true;
+                        }
+
+                        if tcp_rst {
+                            let (key, value) = occupied.remove_entry();
+
+                            tracing::debug!(?key, "TCP flow completed on inbound RST");
+
+                            emit(&Record::tcp_close(key, value, now, clock));
+                        }
+                    }
+                };
+            }
+            (Protocol::Udp(src_port), Protocol::Udp(dst_port)) => {
+                let key = UdpFlowKey {
+                    scope,
+                    src_ip: dst_ip,
+                    dst_ip: src_ip,
+                    src_port: dst_port,
+                    dst_port: src_port,
+                };
+
+                match self.active_udp_flows.entry(key) {
+                    hash_map::Entry::Vacant(vacant) => {
+                        tracing::trace!(key = ?vacant.key(), "No existing UDP flow for inbound packet");
+                    }
+                    hash_map::Entry::Occupied(mut occupied) => {
+                        let value = occupied.get_mut();
+                        value.stats.inc_rx(payload_len as u64);
+                        value.last_packet = now;
+                    }
+                };
+            }
+            (Protocol::IcmpEcho(_), Protocol::IcmpEcho(_)) => {}
+            _ => {
+                tracing::trace!("src and dst protocol must be the same");
+            }
+        }
+    }
+}
+
+/// Maps the [`Instant`]s a [`Tracker`] keeps to the UTC timestamps of its [`Record`]s.
+#[derive(Debug, Clone, Copy)]
+struct Clock {
+    created_at: Instant,
+    created_at_utc: DateTime<Utc>,
+}
+
+impl Clock {
+    fn to_utc(self, instant: Instant) -> DateTime<Utc> {
+        self.created_at_utc + instant.duration_since(self.created_at)
+    }
+
+    fn outers_to_utc(self, contexts: &[FlowContext<Instant>]) -> Vec<FlowContext> {
+        contexts
+            .iter()
+            .map(|context| FlowContext {
+                src_ip: context.src_ip,
+                src_port: context.src_port,
+                dst_ip: context.dst_ip,
+                dst_port: context.dst_port,
+                path_activated_at: self.to_utc(context.path_activated_at),
+            })
+            .collect()
+    }
+}
+
+/// Inserts the current packet's flow data into the tracker when dropped.
+///
+/// Holding the tracker's `&mut` also guarantees at most one packet is
+/// gathered at a time.
+#[must_use]
+pub struct CurrentFlowGuard<'a, S: Scope> {
+    tracker: &'a mut Tracker<S>,
+    now: Instant,
+}
+
+impl<S: Scope> Drop for CurrentFlowGuard<'_, S> {
+    fn drop(&mut self) {
+        CURRENT_FLOW.with_borrow_mut(|data| {
+            if data.packet.is_none() {
+                return;
+            }
+
+            self.tracker.insert_flow(data, self.now);
+            self.tracker.mru_ingest_token = data
+                .ingest_token
+                .take()
+                .or_else(|| data.mru_ingest_token.take());
+
+            data.clear();
+        });
+    }
+}
+
+/// This device's role in the flow a packet belongs to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Role {
+    /// We initiated the flow, i.e. we requested access to the peer / resource.
+    Initiator,
+    /// The remote peer initiated the flow towards us.
+    Responder,
+}
+
+/// How the packet currently being processed entered this device.
+#[derive(Debug, Clone, Copy)]
+enum Entry {
+    /// Read from the TUN device; it will leave via the network if routable.
+    Tun,
+    /// Received on the network interface `local` from `remote`.
+    Network {
+        local: SocketAddr,
+        remote: SocketAddr,
+    },
+}
+
+/// How and when the packet currently being processed entered this device.
+#[derive(Debug, Clone, Copy)]
+struct CurrentPacket {
+    entry: Entry,
+    now: Instant,
+}
+
+/// The facts gathered about one packet while it is being processed.
+///
+/// Which of these can be filled in depends on the entry point and this device's
+/// role; [`Tracker::insert_flow`] interprets them (see the module docs).
+struct FlowData {
+    /// The packet being gathered; `None` while no packet is being processed.
+    packet: Option<CurrentPacket>,
+    /// The inner (application) packet's flow fields.
+    inner: Option<InnerFlow>,
+    /// The outer (transport) 4-tuple a TUN-entry packet was encapsulated to,
+    /// in transmit direction. Absence means the packet was never sent.
+    outer_tx: Option<FlowContext<Instant>>,
+    /// The peer the packet is tunneled through and our role in the flow.
+    peer: Option<(ClientOrGatewayId, Role)>,
+    resource: Option<ResourceId>,
+    /// The portal's per-authorization ingest token (carries the attribution).
+    ingest_token: Option<IngestToken>,
+    /// The token the [`Tracker`] kept from the previous packet, reused instead
+    /// of cloning if this packet records the same one.
+    mru_ingest_token: Option<IngestToken>,
+    /// The domain name in case this packet is for a DNS resource.
+    domain: Option<DomainName>,
+    icmp_error: Option<IcmpError>,
+}
+
+/// Manual impl: `ingest_token` is a bearer credential and must never reach log
+/// output, not even at trace level.
+impl Debug for FlowData {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("FlowData")
+            .field("packet", &self.packet)
+            .field("inner", &self.inner)
+            .field("outer_tx", &self.outer_tx)
+            .field("peer", &self.peer)
+            .field("resource", &self.resource)
+            .field(
+                "ingest_token",
+                &self.ingest_token.as_ref().map(|_| "<redacted>"),
+            )
+            .field("domain", &self.domain)
+            .field("icmp_error", &self.icmp_error)
+            .finish()
+    }
+}
+
+impl FlowData {
+    const EMPTY: Self = Self {
+        packet: None,
+        inner: None,
+        outer_tx: None,
+        peer: None,
+        resource: None,
+        ingest_token: None,
+        mru_ingest_token: None,
+        domain: None,
+        icmp_error: None,
+    };
+
+    /// Releases the current packet and drops everything gathered about it.
+    fn clear(&mut self) {
+        self.packet = None;
+        self.inner = None;
+        self.outer_tx = None;
+        self.peer = None;
+        self.resource = None;
+        self.domain = None;
+        self.icmp_error = None;
+    }
+}
+
+fn set_current_flow(
+    entry: Entry,
+    inner: Option<InnerFlow>,
+    now: Instant,
+    mru_ingest_token: Option<IngestToken>,
+) {
+    CURRENT_FLOW.with_borrow_mut(|data| {
+        debug_assert!(
+            data.packet.is_none(),
+            "at most 1 flow should be active at any time"
+        );
+
+        data.packet = Some(CurrentPacket { entry, now });
+        data.inner = inner;
+        data.mru_ingest_token = mru_ingest_token;
+    });
+}
+
+fn update_current_flow(f: impl FnOnce(&mut FlowData)) {
+    CURRENT_FLOW.with_borrow_mut(|data| {
+        if data.packet.is_none() {
+            return;
+        }
+
+        f(data);
+    });
+}
+
+/// Records the peer the current packet is tunneled through and our role in the
+/// flow it belongs to.
+pub fn record_peer(peer: impl Into<ClientOrGatewayId>, role: Role) {
+    let peer = peer.into();
+
+    update_current_flow(|data| {
+        data.peer = Some((peer, role));
+    });
+}
+
+/// Records the resource the current packet accesses.
+pub fn record_resource(resource: ResourceId) {
+    update_current_flow(|data| {
+        data.resource = Some(resource);
+    });
+}
+
+/// Records the ingest token attributing the current packet's flow.
+///
+/// Only clones `token` if it differs from the previously recorded one.
+pub fn record_ingest_token(token: Option<&IngestToken>) {
+    update_current_flow(|data| {
+        data.ingest_token = token.map(|token| {
+            data.mru_ingest_token
+                .take_if(|previous| previous.ptr_eq(token))
+                .unwrap_or_else(|| token.clone())
+        });
+    });
+}
+
+/// Records the domain name in case the current packet is for a DNS resource.
+pub fn record_domain(domain: DomainName) {
+    update_current_flow(|data| {
+        data.domain = Some(domain);
+    });
+}
+
+/// Records the inner packet decrypted from a network-entry packet.
+pub fn record_decrypted_packet(packet: &IpPacket) {
+    update_current_flow(|data| {
+        data.inner = Some(InnerFlow::from(packet));
+    });
+}
+
+/// Records that NAT rewrote the current packet's destination to `dst` and its
+/// source protocol to `src_proto`.
+pub fn record_translated_destination(src_proto: Protocol, dst: IpAddr) {
+    update_current_flow(|data| {
+        let Some(inner) = data.inner.as_mut() else {
+            return;
+        };
+
+        inner.dst_ip = dst;
+        inner.src_proto = Ok(src_proto);
+    });
+}
+
+/// Records that the current packet was encapsulated and sent from `src` to `dst`.
+///
+/// `src` is unknown for relayed sends and omitted from the flow's outer tuple.
+pub fn record_transmit(src: Option<SocketAddr>, dst: SocketAddr) {
+    update_current_flow(|data| {
+        let Some(packet) = data.packet else {
+            return;
+        };
+
+        data.outer_tx = Some(FlowContext::new(src, dst, packet.now));
+    });
+}
+
+/// Records the ICMP error contained in the current packet, if any.
+pub fn record_icmp_error(packet: &IpPacket) {
+    let Ok(Some((_, icmp_error))) = packet.icmp_error() else {
+        return;
+    };
+
+    update_current_flow(|data| {
+        data.icmp_error = Some(icmp_error);
+    });
+}
+
+/// The flow-relevant fields of one inner (application) IP packet, in the packet's
+/// natural orientation.
+#[derive(Debug)]
+struct InnerFlow {
+    src_ip: IpAddr,
+    dst_ip: IpAddr,
+    src_proto: Result<Protocol, UnsupportedProtocol>,
+    dst_proto: Result<Protocol, UnsupportedProtocol>,
+
+    tcp_syn: bool,
+    tcp_ack: bool,
+    tcp_fin: bool,
+    tcp_rst: bool,
+
+    payload_len: usize,
+}
+
+impl From<&IpPacket> for InnerFlow {
+    #[inline(always)]
+    fn from(packet: &IpPacket) -> Self {
+        let tcp_flags = packet.tcp_flags().unwrap_or_default();
+
+        InnerFlow {
+            src_ip: packet.source(),
+            dst_ip: packet.destination(),
+            src_proto: packet.source_protocol(),
+            dst_proto: packet.destination_protocol(),
+            tcp_syn: tcp_flags.contains(TcpFlags::SYN),
+            tcp_ack: tcp_flags.contains(TcpFlags::ACK),
+            tcp_fin: tcp_flags.contains(TcpFlags::FIN),
+            tcp_rst: tcp_flags.contains(TcpFlags::RST),
+            payload_len: packet.layer4_payload_len(),
+        }
+    }
+}
+
+/// The transport protocol of a flow, as reported to the ingest API.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FlowProtocol {
+    Tcp,
+    Udp,
+}
+
+impl FlowProtocol {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            FlowProtocol::Tcp => "tcp",
+            FlowProtocol::Udp => "udp",
+        }
+    }
+}
+
+/// The closing half of a flow log, present only once the flow has ended.
+#[derive(Debug)]
+pub struct FlowClose {
+    pub flow_end: DateTime<Utc>,
+    pub last_packet: DateTime<Utc>,
+    pub rx_packets: u64,
+    pub tx_packets: u64,
+    pub rx_bytes: u64,
+    pub tx_bytes: u64,
+}
+
+/// A single flow log record, shaped like the portal's `/ingestion/flow_logs` body.
+///
+/// Attribution lives in the per-authorization `ingest_token`; `close` is `None`
+/// for an open record and `Some` once the flow has ended.
+#[derive(Debug)]
+pub struct Record {
+    pub ingest_token: IngestToken,
+    pub protocol: FlowProtocol,
+
+    pub inner_src_ip: IpAddr,
+    pub inner_src_port: u16,
+    pub inner_dst_ip: IpAddr,
+    pub inner_dst_port: u16,
+    pub domain: Option<DomainName>,
+
+    /// The outer (transport) tuples the flow has used, appended on every change,
+    /// so a tuple the flow returned to appears again.
+    pub outers: Vec<FlowContext>,
+
+    pub flow_start: DateTime<Utc>,
+    pub close: Option<FlowClose>,
+}
+
+impl Record {
+    fn tcp_open<S>(key: &TcpFlowKey<S>, value: &TcpFlowValue, clock: Clock) -> Self {
+        Self::new(
+            FlowProtocol::Tcp,
+            key.src_ip,
+            key.src_port,
+            key.dst_ip,
+            key.dst_port,
+            value.ingest_token.clone(),
+            value.domain.clone(),
+            clock.outers_to_utc(&value.contexts),
+            clock.to_utc(value.start),
+            None,
+        )
+    }
+
+    fn tcp_close<S>(key: TcpFlowKey<S>, value: TcpFlowValue, end: Instant, clock: Clock) -> Self {
+        let close = FlowClose::from_stats(
+            &value.stats,
+            clock.to_utc(end),
+            clock.to_utc(value.last_packet),
+        );
+
+        Self::new(
+            FlowProtocol::Tcp,
+            key.src_ip,
+            key.src_port,
+            key.dst_ip,
+            key.dst_port,
+            value.ingest_token,
+            value.domain,
+            clock.outers_to_utc(&value.contexts),
+            clock.to_utc(value.start),
+            Some(close),
+        )
+    }
+
+    fn udp_open<S>(key: &UdpFlowKey<S>, value: &UdpFlowValue, clock: Clock) -> Self {
+        Self::new(
+            FlowProtocol::Udp,
+            key.src_ip,
+            key.src_port,
+            key.dst_ip,
+            key.dst_port,
+            value.ingest_token.clone(),
+            value.domain.clone(),
+            clock.outers_to_utc(&value.contexts),
+            clock.to_utc(value.start),
+            None,
+        )
+    }
+
+    fn udp_close<S>(key: UdpFlowKey<S>, value: UdpFlowValue, end: Instant, clock: Clock) -> Self {
+        let close = FlowClose::from_stats(
+            &value.stats,
+            clock.to_utc(end),
+            clock.to_utc(value.last_packet),
+        );
+
+        Self::new(
+            FlowProtocol::Udp,
+            key.src_ip,
+            key.src_port,
+            key.dst_ip,
+            key.dst_port,
+            value.ingest_token,
+            value.domain,
+            clock.outers_to_utc(&value.contexts),
+            clock.to_utc(value.start),
+            Some(close),
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn new(
+        protocol: FlowProtocol,
+        inner_src_ip: IpAddr,
+        inner_src_port: u16,
+        inner_dst_ip: IpAddr,
+        inner_dst_port: u16,
+        ingest_token: IngestToken,
+        domain: Option<DomainName>,
+        outers: Vec<FlowContext>,
+        flow_start: DateTime<Utc>,
+        close: Option<FlowClose>,
+    ) -> Self {
+        Self {
+            ingest_token,
+            protocol,
+            inner_src_ip,
+            inner_src_port,
+            inner_dst_ip,
+            inner_dst_port,
+            domain,
+            outers,
+            flow_start,
+            close,
+        }
+    }
+}
+
+impl FlowClose {
+    fn from_stats(stats: &FlowStats, end: DateTime<Utc>, last_packet: DateTime<Utc>) -> Self {
+        Self {
+            flow_end: end,
+            last_packet,
+            rx_packets: stats.rx_packets,
+            tx_packets: stats.tx_packets,
+            rx_bytes: stats.rx_bytes,
+            tx_bytes: stats.tx_bytes,
+        }
+    }
+}
+
+/// Emits a flow log record as a structured tracing event.
+///
+/// The token's attribution claims are included; the token itself is not.
+pub fn emit(record: &Record) {
+    let attr = record.ingest_token.claims();
+
+    let close = record.close.as_ref();
+
+    macro_rules! emit {
+        ($message:literal) => {
+            tracing::trace!(
+                target: "flow_logs",
+                protocol = record.protocol.as_str(),
+
+                role = attr.role.as_str(),
+                initiator_device_id = attr.initiator_device_id.as_str(),
+                responder_device_id = attr.responder_device_id.as_str(),
+                policy_authorization_id = attr.policy_authorization_id.as_str(),
+                policy_id = attr.policy_id.as_str(),
+
+                resource_id = attr.resource_id.as_str(),
+                resource_name = attr.resource_name.as_str(),
+                resource_address = attr.resource_address.as_deref(),
+
+                initiator_actor_id = attr.initiator_actor_id.as_str(),
+                initiator_actor_email = attr.initiator_actor_email.as_deref(),
+                initiator_actor_name = attr.initiator_actor_name.as_str(),
+                initiator_auth_provider_id = attr.initiator_auth_provider_id.as_deref(),
+
+                authorized_at = attr.authorized_at.as_str(),
+                authorization_expires_at = attr.authorization_expires_at.as_str(),
+
+                initiator_client_version = attr.initiator_client_version.as_deref(),
+                initiator_device_os_name = attr.initiator_device_os_name.as_deref(),
+                initiator_device_os_version = attr.initiator_device_os_version.as_deref(),
+                initiator_device_serial = attr.initiator_device_serial.as_deref(),
+                initiator_device_uuid = attr.initiator_device_uuid.as_deref(),
+                initiator_device_identifier_for_vendor =
+                    attr.initiator_device_identifier_for_vendor.as_deref(),
+                initiator_device_firebase_installation_id =
+                    attr.initiator_device_firebase_installation_id.as_deref(),
+
+                inner_src_ip = %record.inner_src_ip,
+                inner_src_port = record.inner_src_port,
+                inner_dst_ip = %record.inner_dst_ip,
+                inner_dst_port = record.inner_dst_port,
+                domain = record.domain.as_ref().map(tracing::field::display),
+
+                outers = %Outers(&record.outers),
+
+                flow_start = ?record.flow_start,
+                flow_end = close.map(|c| tracing::field::debug(c.flow_end)),
+                last_packet = close.map(|c| tracing::field::debug(c.last_packet)),
+                rx_packets = close.map(|c| c.rx_packets),
+                tx_packets = close.map(|c| c.tx_packets),
+                rx_bytes = close.map(|c| c.rx_bytes),
+                tx_bytes = close.map(|c| c.tx_bytes),
+                $message
+            )
+        };
+    }
+
+    match (record.protocol, close.is_some()) {
+        (FlowProtocol::Tcp, false) => emit!("TCP flow started"),
+        (FlowProtocol::Tcp, true) => emit!("TCP flow completed"),
+        (FlowProtocol::Udp, false) => emit!("UDP flow started"),
+        (FlowProtocol::Udp, true) => emit!("UDP flow completed"),
+    }
+}
+
+/// Renders a record's outer tuples as one compact JSON array.
+///
+/// A tracing-event field holds a single scalar value, so the list rides as one
+/// JSON-encoded field that `flow-log-writer` decodes into the report payload.
+struct Outers<'a>(&'a [FlowContext]);
+
+impl std::fmt::Display for Outers<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        serde_json::to_writer(FmtWriter(f), self.0).map_err(|_| std::fmt::Error)?;
+
+        Ok(())
+    }
+}
+
+/// Adapts a [`std::fmt::Formatter`] to [`std::io::Write`] so serialising can
+/// stream into it without an intermediate `String`.
+///
+/// `serde_json` guarantees it feeds only valid UTF-8 sequences to the writer.
+struct FmtWriter<'a, 'b>(&'a mut std::fmt::Formatter<'b>);
+
+impl std::io::Write for FmtWriter<'_, '_> {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        let utf8 = std::str::from_utf8(buf).map_err(std::io::Error::other)?;
+
+        self.0.write_str(utf8).map_err(std::io::Error::other)?;
+
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy)]
+struct TcpFlowKey<S> {
+    scope: S,
+    src_ip: IpAddr,
+    dst_ip: IpAddr,
+    src_port: u16,
+    dst_port: u16,
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy)]
+struct UdpFlowKey<S> {
+    scope: S,
+    src_ip: IpAddr,
+    dst_ip: IpAddr,
+    src_port: u16,
+    dst_port: u16,
+}
+
+#[derive(Debug)]
+struct TcpFlowValue {
+    start: Instant,
+    last_packet: Instant,
+    stats: FlowStats,
+    /// The outer (transport) tuples the flow has used, appended on every change,
+    /// so a tuple the flow returned to appears again.
+    contexts: SmallVec<[FlowContext<Instant>; 4]>,
+
+    domain: Option<DomainName>,
+
+    /// The portal's per-authorization ingest token (carries the attribution).
+    ingest_token: IngestToken,
+
+    fin_tx: bool,
+    fin_rx: bool,
+    /// Whether the initiator has sent a packet other than a SYN.
+    non_syn_tx: bool,
+}
+
+#[derive(Debug)]
+struct UdpFlowValue {
+    start: Instant,
+    last_packet: Instant,
+    stats: FlowStats,
+    /// The outer (transport) tuples the flow has used, appended on every change,
+    /// so a tuple the flow returned to appears again.
+    contexts: SmallVec<[FlowContext<Instant>; 4]>,
+
+    domain: Option<DomainName>,
+
+    /// The portal's per-authorization ingest token (carries the attribution).
+    ingest_token: IngestToken,
+}
+
+#[derive(Debug, Default, Clone, Copy)]
+struct FlowStats {
+    rx_packets: u64,
+    tx_packets: u64,
+    rx_bytes: u64,
+    tx_bytes: u64,
+}
+
+impl FlowStats {
+    fn with_tx(mut self, payload_len: u64) -> Self {
+        self.inc_tx(payload_len);
+
+        self
+    }
+
+    fn inc_tx(&mut self, payload_len: u64) {
+        self.tx_packets += 1;
+        self.tx_bytes += payload_len;
+    }
+
+    fn inc_rx(&mut self, payload_len: u64) {
+        self.rx_packets += 1;
+        self.rx_bytes += payload_len;
+    }
+}
+
+/// The outer (transport) 4-tuple a flow is tunneled over.
+///
+/// The source is unknown for relayed sends; it is `None` there and omitted
+/// from the serialised tuple. `path_activated_at` is the time of the packet
+/// that revealed the tuple: the flow's first packet for the initial entry of
+/// [`Record::outers`], the first packet after a change for every later one.
+/// A [`Tracker`] keeps it as an [`Instant`] until it builds a [`Record`].
+#[derive(Debug, Clone, Copy, serde::Serialize)]
+pub struct FlowContext<T = DateTime<Utc>> {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub src_ip: Option<IpAddr>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub src_port: Option<u16>,
+    pub dst_ip: IpAddr,
+    pub dst_port: u16,
+    pub path_activated_at: T,
+}
+
+impl<T> FlowContext<T> {
+    /// Builds a context from the outer addresses as seen by the initiator: the
+    /// initiator side is the source, the responder side the destination.
+    pub fn new(
+        initiator: impl Into<Option<SocketAddr>>,
+        responder: SocketAddr,
+        path_activated_at: T,
+    ) -> Self {
+        let initiator = initiator.into();
+
+        Self {
+            src_ip: initiator.map(|initiator| initiator.ip()),
+            src_port: initiator.map(|initiator| initiator.port()),
+            dst_ip: responder.ip(),
+            dst_port: responder.port(),
+            path_activated_at,
+        }
+    }
+}
+
+/// Contexts compare by their tuple alone; `path_activated_at` only records when
+/// the flow started using it.
+impl<T> PartialEq for FlowContext<T> {
+    fn eq(&self, other: &Self) -> bool {
+        let Self {
+            src_ip,
+            src_port,
+            dst_ip,
+            dst_port,
+            path_activated_at: _,
+        } = self;
+
+        (*src_ip, *src_port, *dst_ip, *dst_port)
+            == (other.src_ip, other.src_port, other.dst_ip, other.dst_port)
+    }
+}
+
+impl<T> Eq for FlowContext<T> {}
+
+/// Appends `context` to a flow's outer tuples if it differs from the current one.
+///
+/// Callers split the flow before the list would grow past
+/// [`MAX_CONTEXTS_PER_FLOW`], see [`context_overflows`].
+fn push_context(
+    key: &impl Debug,
+    contexts: &mut SmallVec<[FlowContext<Instant>; 4]>,
+    context: FlowContext<Instant>,
+) {
+    let Some(current) = contexts.last().copied() else {
+        contexts.push(context);
+        return;
+    };
+
+    if current == context {
+        return;
+    }
+
+    let context_diff = FlowContextDiff::new(current, context);
+
+    tracing::debug!(?key, ?context_diff, "Context of flow changed");
+
+    contexts.push(context);
+
+    debug_assert!(contexts.len() <= MAX_CONTEXTS_PER_FLOW);
+}
+
+/// Whether recording `context` would grow the flow's outer tuples past
+/// [`MAX_CONTEXTS_PER_FLOW`].
+fn context_overflows(
+    contexts: &SmallVec<[FlowContext<Instant>; 4]>,
+    context: FlowContext<Instant>,
+) -> bool {
+    contexts.last() != Some(&context) && contexts.len() >= MAX_CONTEXTS_PER_FLOW
+}
+
+#[derive(PartialEq, Eq)]
+struct FlowContextDiff {
+    src_ip: Option<(Option<IpAddr>, Option<IpAddr>)>,
+    src_port: Option<(Option<u16>, Option<u16>)>,
+    dst_ip: Option<(IpAddr, IpAddr)>,
+    dst_port: Option<(u16, u16)>,
+}
+
+impl FlowContextDiff {
+    fn new<T>(old: FlowContext<T>, new: FlowContext<T>) -> Self {
+        let src_ip_diff = (old.src_ip != new.src_ip).then_some((old.src_ip, new.src_ip));
+        let src_port_diff = (old.src_port != new.src_port).then_some((old.src_port, new.src_port));
+        let dst_ip_diff = (old.dst_ip != new.dst_ip).then_some((old.dst_ip, new.dst_ip));
+        let dst_port_diff = (old.dst_port != new.dst_port).then_some((old.dst_port, new.dst_port));
+
+        Self {
+            src_ip: src_ip_diff,
+            src_port: src_port_diff,
+            dst_ip: dst_ip_diff,
+            dst_port: dst_port_diff,
+        }
+    }
+}
+
+impl std::fmt::Debug for FlowContextDiff {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut debug_struct = f.debug_struct("FlowContextDiff");
+
+        if let Some((old, new)) = self.src_ip {
+            debug_struct
+                .field("old_src_ip", &old)
+                .field("new_src_ip", &new);
+        }
+        if let Some((old, new)) = self.src_port {
+            debug_struct
+                .field("old_src_port", &old)
+                .field("new_src_port", &new);
+        }
+        if let Some((old, new)) = self.dst_ip {
+            debug_struct
+                .field("old_dst_ip", &old)
+                .field("new_dst_ip", &new);
+        }
+        if let Some((old, new)) = self.dst_port {
+            debug_struct
+                .field("old_dst_port", &old)
+                .field("new_dst_port", &new);
+        }
+
+        debug_struct.finish()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn flow_context_diff_rendering() {
+        let old = FlowContext::new(
+            "10.0.0.1:8080".parse::<SocketAddr>().unwrap(),
+            "192.168.0.1:443".parse().unwrap(),
+            DateTime::UNIX_EPOCH,
+        );
+        let new = FlowContext::new(
+            "1.1.1.1:50000".parse::<SocketAddr>().unwrap(),
+            "192.168.0.1:443".parse().unwrap(),
+            DateTime::UNIX_EPOCH,
+        );
+
+        let diff = FlowContextDiff::new(old, new);
+
+        assert_eq!(
+            "FlowContextDiff { old_src_ip: Some(10.0.0.1), new_src_ip: Some(1.1.1.1), old_src_port: Some(8080), new_src_port: Some(50000) }",
+            format!("{diff:?}")
+        );
+    }
+}

@@ -1,0 +1,67 @@
+[package]
+name = "tunnel-proto"
+version = "0.1.0"
+edition = { workspace = true }
+license = { workspace = true }
+
+[features]
+divan = ["dep:divan"]
+# Allows callers to bypass client-side resource filters. Only used by the
+# tunnel fuzzer to exercise the remote filtering path.
+malicious-behaviour = []
+# Consult telemetry's feature flags and report their use. Without this,
+# every flag keeps its default value.
+telemetry = ["dep:telemetry", "logging/telemetry"]
+
+[dependencies]
+anyhow = { workspace = true }
+base64 = { workspace = true, features = ["std"] }
+bimap = { workspace = true }
+chrono = { workspace = true }
+connlib-model = { workspace = true }
+derive_more = { workspace = true, features = ["debug", "from", "display"] }
+divan = { workspace = true, optional = true }
+dns-over-tcp = { workspace = true }
+dns-types = { workspace = true }
+fast-random-state = { workspace = true }
+flow-tracker = { workspace = true }
+glob = { workspace = true }
+ip-packet = { workspace = true }
+ip_network = { workspace = true }
+ip_network_table = { workspace = true }
+itertools = { workspace = true, features = ["use_std"] }
+l3-udp-dns-client = { workspace = true }
+logging = { workspace = true }
+lru = { workspace = true }
+opentelemetry = { workspace = true, features = ["metrics"] }
+otel-attributes = { workspace = true }
+otel-instruments = { workspace = true }
+rand = { workspace = true }
+rangemap = { workspace = true }
+ringbuffer = { workspace = true }
+sanstun = { workspace = true }
+secrecy = { workspace = true, features = ["serde"] }
+serde = { workspace = true, features = ["derive", "std"] }
+serde_json = { workspace = true }
+serde_with = { workspace = true }
+smallvec = { workspace = true, features = ["const_generics"] }
+snownet = { workspace = true }
+telemetry = { workspace = true, optional = true }
+thiserror = { workspace = true }
+tracing = { workspace = true, features = ["attributes"] }
+zeroize = { workspace = true }
+
+[dev-dependencies]
+ip-packet = { workspace = true, features = ["proptest"] }
+proptest = { workspace = true }
+rand = { workspace = true }
+test-case = { workspace = true }
+test-strategy = { workspace = true }
+
+[[bench]]
+name = "divan"
+harness = false
+required-features = ["divan"]
+
+[lints]
+workspace = true

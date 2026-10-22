@@ -21,7 +21,7 @@ defmodule Portal.Changes.Hooks.PoliciesTest do
         "account_id" => account.id,
         "group_id" => policy.group_id,
         "resource_id" => policy.resource_id,
-        "disabled_at" => nil
+        "is_disabled" => false
       }
 
       assert :ok == on_insert(0, data)
@@ -46,10 +46,10 @@ defmodule Portal.Changes.Hooks.PoliciesTest do
         "account_id" => account.id,
         "group_id" => policy.group_id,
         "resource_id" => policy.resource_id,
-        "disabled_at" => nil
+        "is_disabled" => false
       }
 
-      data = Map.put(old_data, "disabled_at", "2023-10-01T00:00:00Z")
+      data = Map.put(old_data, "is_disabled", true)
 
       policy_authorization =
         policy_authorization_fixture(policy: policy, resource: resource, account: account)
@@ -78,10 +78,10 @@ defmodule Portal.Changes.Hooks.PoliciesTest do
         "account_id" => account.id,
         "group_id" => policy.group_id,
         "resource_id" => policy.resource_id,
-        "disabled_at" => "2023-09-01T00:00:00Z"
+        "is_disabled" => true
       }
 
-      data = Map.put(old_data, "disabled_at", nil)
+      data = Map.put(old_data, "is_disabled", false)
 
       assert :ok == on_update(0, old_data, data)
       assert_receive %Change{op: :insert, struct: %Policy{} = broadcast_policy, lsn: 0}
@@ -103,7 +103,7 @@ defmodule Portal.Changes.Hooks.PoliciesTest do
         "account_id" => account.id,
         "group_id" => policy.group_id,
         "resource_id" => policy.resource_id,
-        "disabled_at" => nil
+        "is_disabled" => false
       }
 
       data = Map.put(old_data, "description", "Updated description")
@@ -180,6 +180,46 @@ defmodule Portal.Changes.Hooks.PoliciesTest do
         Map.put(old_data, "conditions", [
           %{"property" => "remote_ip", "operator" => "is_in", "values" => ["10.0.0.2"]}
         ])
+
+      policy_authorization = policy_authorization_fixture(policy: policy, account: account)
+
+      assert :ok = on_update(0, old_data, data)
+      refute Repo.get_by(PolicyAuthorization, id: policy_authorization.id)
+    end
+
+    test "breaking update on postures deletes policy authorizations" do
+      account = account_fixture()
+      policy = policy_fixture(account: account)
+
+      old_data = %{
+        "id" => policy.id,
+        "account_id" => account.id,
+        "group_id" => policy.group_id,
+        "resource_id" => policy.resource_id,
+        "conditions" => [],
+        "postures" => nil
+      }
+
+      data = Map.put(old_data, "postures", %{"field" => "intune.enrolled", "op" => "is", "value" => true})
+      policy_authorization = policy_authorization_fixture(policy: policy, account: account)
+
+      assert :ok = on_update(0, old_data, data)
+      refute Repo.get_by(PolicyAuthorization, id: policy_authorization.id)
+    end
+
+    test "flipping flow_log_uploads_enabled deletes policy authorizations" do
+      account = account_fixture()
+      policy = policy_fixture(account: account)
+
+      old_data = %{
+        "id" => policy.id,
+        "account_id" => account.id,
+        "group_id" => policy.group_id,
+        "resource_id" => policy.resource_id,
+        "flow_log_uploads_enabled" => true
+      }
+
+      data = Map.put(old_data, "flow_log_uploads_enabled", false)
 
       policy_authorization = policy_authorization_fixture(policy: policy, account: account)
 

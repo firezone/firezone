@@ -1,34 +1,36 @@
 import React from "react";
-import type { FC, ComponentProps } from "react";
-import { useNavigate, useLocation } from "react-router";
-import { SidebarItem } from "flowbite-react";
+import { useLocation, useNavigate } from "react-router";
+import RemixIcon, { RemixIconName } from "./RemixIcon";
+
+interface Props {
+  href: string;
+  icon: RemixIconName;
+  children: React.ReactNode;
+}
 
 export default function ReactRouterSidebarItem({
   href,
-  icon,
+  icon: Icon,
   children,
-}: {
-  href: string;
-  icon: FC<ComponentProps<"svg">>;
-  children: React.ReactNode;
-}) {
+}: Props) {
   const location = useLocation();
   const navigate = useNavigate();
+  const active = location.pathname.startsWith(href);
 
-  // Custom navigation handler for SidebarItems to avoid full page reloads
-  const handleClick = (event: React.MouseEvent<HTMLDivElement>) => {
+  const handleClick = (event: React.MouseEvent<HTMLAnchorElement>) => {
     event.preventDefault();
     navigate(href);
   };
 
   return (
-    <SidebarItem
-      active={location.pathname.startsWith(href)}
+    <a
+      aria-current={active ? "page" : undefined}
+      className={`nav-item ${active ? "nav-item-active" : ""}`}
       href={href}
-      icon={icon}
       onClick={handleClick}
     >
-      {children}
-    </SidebarItem>
+      <RemixIcon className="h-4 w-4" name={Icon} />
+      <span>{children}</span>
+    </a>
   );
 }

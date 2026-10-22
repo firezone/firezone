@@ -10,18 +10,18 @@ import SystemPackage
 
 // TODO: Use a more abstract IPC protocol to make this less terse
 
-enum IPCClient {
-  enum Error: Swift.Error {
+public enum IPCClient {
+  enum Error: LocalizedError {
     case decodeIPCDataFailed
     case noIPCData
     case invalidStatus(NEVPNStatus)
 
-    var localizedDescription: String {
+    var errorDescription: String? {
       switch self {
       case .decodeIPCDataFailed:
-        return "Decoding IPC data failed."
+        return "The tunnel's answer could not be read."
       case .noIPCData:
-        return "No IPC data returned from the XPC connection!"
+        return "The tunnel did not answer."
       case .invalidStatus(let status):
         return "The IPC operation couldn't complete because the VPN status is \(status)."
       }
@@ -32,21 +32,66 @@ enum IPCClient {
   private static let encoder = PropertyListEncoder()
   private static let decoder = PropertyListDecoder()
 
-  // Auto-connect: the GUI must save providerConfiguration before calling this so
-  // any MDM forced overrides are available to the provider.
+  private static let runningStatuses: [NEVPNStatus] = [.connected, .connecting, .reasserting]
+  private static let settlingStatuses: [NEVPNStatus] = runningStatuses + [.disconnecting]
+  private static let stopTimeout: Duration = .seconds(5)
+  private static let stopPollInterval: Duration = .milliseconds(100)
+  private static let statusAttempts = 5
+  private static let statusRetryInterval: Duration = .milliseconds(200)
+
+  // The GUI must save providerConfiguration before calling this so any MDM forced
+  // overrides are available to the provider.
+  // A `nil` token asks the provider to load the saved token. The identity reference
+  // pins the optional device certificate the app displayed.
   @MainActor
-  static func start(session: any TunnelSessionProtocol) throws {
+  public static func start(
+    session: any TunnelSessionProtocol,
+    token: String?,
+    identityReference: Data?
+  ) throws {
+    var options: [String: NSObject] = ["authentication": "tokenAndCertificate" as NSObject]
+
+    if let token {
+      options["token"] = token as NSObject
+    }
+    if let identityReference {
+      options["identityReference"] = identityReference as NSObject
+    }
+
+    try session.startTunnel(options: options)
+  }
+
+  /// A start that states no intent, as the system's own starts do: the provider derives the
+  /// credentials from the keychain and the profile.
+  @MainActor
+  public static func start(session: any TunnelSessionProtocol) throws {
     try session.startTunnel(options: nil)
   }
 
-  // Sign in
+  /// Stops the tunnel if it is running, and waits for the provider to go away.
+  ///
+  /// `stopTunnel` only asks. The provider is still up for a moment afterwards, so callers
+  /// that need it gone rather than going have to wait for the status to follow. Reports
+  /// whether there was a running tunnel, so the caller can put back what it took down.
   @MainActor
-  static func start(session: any TunnelSessionProtocol, token: String) throws {
-    try session.startTunnel(options: ["token": token as NSObject])
+  public static func stopIfRunning(session: any TunnelSessionProtocol) async -> Bool {
+    let wasRunning = runningStatuses.contains(session.status)
+
+    if wasRunning {
+      session.stopTunnel()
+    }
+
+    var waited: Duration = .zero
+    while !Task.isCancelled, settlingStatuses.contains(session.status), waited < stopTimeout {
+      try? await Task.sleep(for: stopPollInterval)
+      waited += stopPollInterval
+    }
+
+    return wasRunning
   }
 
   @MainActor
-  static func signOut(session: any TunnelSessionProtocol) async throws {
+  public static func signOut(session: any TunnelSessionProtocol) async throws {
     let message = ProviderMessage.signOut
     _ = try await sendProviderMessage(session: session, message: message)
 
@@ -54,21 +99,74 @@ enum IPCClient {
   }
 
   @MainActor
-  static func fetchState(
+  public static func pollUpdates(
     session: any TunnelSessionProtocol, currentHash: Data
-  ) async throws -> Data? {
-    let message = ProviderMessage.getState(currentHash)
+  ) async throws -> StatePollResponse {
+    let message = ProviderMessage.pollUpdates(StatePollRequest(stateHash: currentHash))
 
-    // Get data from the provider - if hash matches, provider returns nil
-    return try await sendProviderMessage(session: session, message: message)
+    guard
+      let data = try await sendProviderMessage(
+        session: session,
+        message: message,
+        cycleStartIfStopped: false
+      )
+    else {
+      throw Error.noIPCData
+    }
+
+    guard let response = try? decoder.decode(StatePollResponse.self, from: data) else {
+      throw Error.decodeIPCDataFailed
+    }
+
+    return response
+  }
+
+  /// Asks the extension what it knows about the session.
+  ///
+  /// By default a stopped tunnel is woken for the answer and stopped again, so the
+  /// caller gets a statement from the extension either way rather than guessing from
+  /// its silence. A caller that only wants to hear from a running tunnel opts out.
+  @MainActor
+  public static func status(
+    session: any TunnelSessionProtocol, wakeIfStopped: Bool = true
+  ) async throws -> TunnelStatus {
+    let isCycleStart = wakeIfStopped ? try await maybeCycleStart(session) : false
+
+    defer {
+      if isCycleStart { session.stopTunnel() }
+    }
+
+    var answer = try await send(.getStatus, to: session)
+
+    // The extension answers empty for a moment after it has started or been replaced.
+    for _ in 1..<statusAttempts where answer == nil {
+      try await Task.sleep(for: statusRetryInterval)
+      answer = try await send(.getStatus, to: session)
+    }
+
+    guard let data = answer else {
+      throw Error.noIPCData
+    }
+
+    guard let status = try? decoder.decode(TunnelStatus.self, from: data) else {
+      throw Error.decodeIPCDataFailed
+    }
+
+    return status
   }
 
   @MainActor
-  static func setInternetResourceEnabled(
+  public static func setInternetResourceEnabled(
     session: any TunnelSessionProtocol,
     _ enabled: Bool
   ) async throws {
     let message = ProviderMessage.setInternetResourceEnabled(enabled)
+    _ = try await sendProviderMessage(session: session, message: message)
+  }
+
+  @MainActor
+  static func drainFlowLogs(session: any TunnelSessionProtocol) async throws {
+    let message = ProviderMessage.drainFlowLogs
     _ = try await sendProviderMessage(session: session, message: message)
   }
 
@@ -137,44 +235,31 @@ enum IPCClient {
     }
   }
 
-  /// Returns a stream of VPN status updates for the given session.
+  /// Sends `message` to the provider, waking a stopped tunnel first if asked to.
   ///
-  /// Filters `NEVPNStatusDidChange` notifications to only those matching `session`.
-  /// The caller is responsible for consuming the stream in a task they manage.
-  static func vpnStatusUpdates(
-    session: any TunnelSessionProtocol
-  ) -> AsyncStream<NEVPNStatus> {
-    AsyncStream { continuation in
-      let task = Task {
-        for await notification in NotificationCenter.default.notifications(
-          named: .NEVPNStatusDidChange)
-        {
-          guard let notificationSession = notification.object as? NETunnelProviderSession
-          else {
-            return
-          }
-
-          if notificationSession === session {
-            continuation.yield(notificationSession.status)
-          }
-        }
-        continuation.finish()
-      }
-      continuation.onTermination = { _ in task.cancel() }
-    }
-  }
-
+  /// Polling opts out: cycle-starting from the poll loop would wake the extension
+  /// without a tunnel behind it, and the stop that follows churns the VPN status,
+  /// which starts the loop over again.
+  @MainActor
   private static func sendProviderMessage(
     session: any TunnelSessionProtocol,
     message: ProviderMessage,
+    cycleStartIfStopped: Bool = true
   ) async throws -> Data? {
-    let isCycleStart = try await maybeCycleStart(session)
+    let isCycleStart = cycleStartIfStopped ? try await maybeCycleStart(session) : false
 
     defer {
       if isCycleStart { session.stopTunnel() }
     }
 
-    return try await withCheckedThrowingContinuation { continuation in
+    return try await send(message, to: session)
+  }
+
+  @MainActor
+  private static func send(
+    _ message: ProviderMessage, to session: any TunnelSessionProtocol
+  ) async throws -> Data? {
+    try await withCheckedThrowingContinuation { continuation in
       do {
         try session.sendProviderMessage(encoder.encode(message)) { data in
           continuation.resume(returning: data)
@@ -188,6 +273,7 @@ enum IPCClient {
   /// On macOS, the tunnel needs to be in a connected, connecting, or reasserting state for the utun to be removed
   /// upon stopTunnel. We do this by ensuring the tunnel is "started" prior to any IPC call. If so, we return true
   /// so that the caller may stop the tunnel afterwards.
+  @MainActor
   private static func maybeCycleStart(_ session: any TunnelSessionProtocol) async throws -> Bool {
     if session.status == .invalid {
       throw Error.invalidStatus(session.status)

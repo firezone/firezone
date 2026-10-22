@@ -1,8 +1,6 @@
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig, Plugin } from "vite";
-import flowbiteReact from "flowbite-react/plugin/vite";
-import typescript from "vite-plugin-typescript";
 import { execSync } from "child_process";
 import { writeFileSync } from "fs";
 import { join } from "path";
@@ -20,21 +18,15 @@ function preserveGitkeep(): Plugin {
 
 const host = process.env.TAURI_DEV_HOST;
 const gitVersion =
-  process.env.GITHUB_SHA ?? execSync("git rev-parse --short HEAD").toString();
+  process.env.GITHUB_SHA ?? execSync("git rev-parse HEAD").toString().trim();
 
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [
-    react(),
-    flowbiteReact(),
-    tailwindcss(),
-    typescript(),
-    preserveGitkeep(),
-  ],
+  plugins: [react(), tailwindcss(), preserveGitkeep()],
 
   define: {
     // mark:next-gui-version
-    __APP_VERSION__: JSON.stringify("1.5.16"),
+    __APP_VERSION__: JSON.stringify("1.5.20"),
     __GIT_VERSION__: JSON.stringify(gitVersion),
   },
 

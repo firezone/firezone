@@ -9,13 +9,22 @@
 import Foundation
 
 public struct ConnectedDevice: Codable, Identifiable, Hashable, Sendable {
-  public let id: String
-  public let tunIPv4: String
-  public let pools: [String]
+  /// Appended to a device's slug to form the domain it answers DNS at.
+  public static let domainSuffix = ".firezone.network"
 
-  public init(id: String, tunIPv4: String, pools: [String]) {
+  public let id: String
+  public let name: String
+  public let slug: String
+  public let tunIPv4: String
+  public let tunIPv6: String
+
+  public var domain: String { slug + Self.domainSuffix }
+
+  public init(id: String, name: String, slug: String, tunIPv4: String, tunIPv6: String) {
     self.id = id
+    self.name = name
+    self.slug = slug
     self.tunIPv4 = tunIPv4
-    self.pools = pools
+    self.tunIPv6 = tunIPv6
   }
 }

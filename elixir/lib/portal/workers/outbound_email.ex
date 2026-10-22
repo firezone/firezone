@@ -15,8 +15,15 @@ defmodule Portal.Workers.OutboundEmail do
       |> deserialize()
       |> put_operation_id(job_id)
 
-    result = Mailer.deliver_secondary(email)
+    {result, email} = Mailer.deliver_secondary_with_email(email)
     persist_delivery_result(result, account_id, email)
+  end
+
+  # An empty response means the mailer skipped the send because every recipient
+  # was suppressed (or undeliverable) by the time the job ran; nothing to track.
+  defp persist_delivery_result({:ok, response}, _account_id, _email)
+       when map_size(response) == 0 do
+    :ok
   end
 
   defp persist_delivery_result({:ok, response}, account_id, email) do
@@ -78,11 +85,17 @@ defmodule Portal.Workers.OutboundEmail do
     |> maybe_put_recipients(:to, request["to"] || [])
     |> maybe_put_recipients(:cc, request["cc"] || [])
     |> maybe_put_recipients(:bcc, request["bcc"] || [])
+    |> maybe_put_reply_to(request["reply_to"] || [])
     |> Swoosh.Email.from({from["name"], from["address"]})
     |> Swoosh.Email.subject(subject)
     |> Swoosh.Email.html_body(html_body)
     |> Swoosh.Email.text_body(text_body)
   end
+
+  defp maybe_put_reply_to(email, []), do: email
+
+  defp maybe_put_reply_to(email, [%{"name" => name, "address" => address} | _]),
+    do: Swoosh.Email.reply_to(email, {name, address})
 
   defp maybe_put_recipients(email, _field, []), do: email
 

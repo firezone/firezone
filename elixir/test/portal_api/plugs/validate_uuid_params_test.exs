@@ -7,7 +7,7 @@ defmodule PortalAPI.Plugs.ValidateUUIDParamsTest do
   alias PortalAPI.Plugs.ValidateUUIDParams
 
   @valid_uuid "00000000-0000-0000-0000-000000000000"
-  @valid_event_id "c00060db0c2c8eb400000000"
+  @valid_log_id "c00060db0c2c8eb400000000"
   @opts ValidateUUIDParams.init([])
 
   defp build_conn(path_params) do
@@ -36,10 +36,17 @@ defmodule PortalAPI.Plugs.ValidateUUIDParamsTest do
       refute result.halted
     end
 
-    test "passes through when id param is a valid 24-char hex event_id" do
-      conn = build_conn(%{"id" => @valid_event_id})
+    test "passes through when id param is a valid 24-char hex log_id" do
+      conn = build_conn(%{"id" => @valid_log_id})
       result = ValidateUUIDParams.call(conn, @opts)
       refute result.halted
+    end
+
+    test "halts when id param is a raw 16-byte binary rather than a textual UUID" do
+      conn = build_conn(%{"id" => :crypto.strong_rand_bytes(16)})
+      result = ValidateUUIDParams.call(conn, @opts)
+      assert result.halted
+      assert result.status == 400
     end
 
     test "halts when id param is 24 chars but not hex" do

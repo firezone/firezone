@@ -58,7 +58,7 @@ defmodule Portal.Entra.SchedulerTest do
       # Disable the account
       disabled_account =
         disabled_account
-        |> Ecto.Changeset.change(disabled_at: DateTime.utc_now())
+        |> Ecto.Changeset.change(is_disabled: true)
         |> Repo.update!()
 
       _dir = entra_directory_fixture(account: disabled_account, name: "Directory")
@@ -115,7 +115,7 @@ defmodule Portal.Entra.SchedulerTest do
       # Verify job structure
       assert job.worker == "Portal.Entra.Sync"
       assert job.queue == "entra_sync"
-      assert job.args == %{"directory_id" => directory.id}
+      assert job.args == %{"account_id" => directory.account_id, "directory_id" => directory.id}
     end
 
     test "schedules multiple jobs for multiple accounts" do

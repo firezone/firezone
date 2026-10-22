@@ -1,0 +1,121 @@
+mod pattern;
+
+pub(crate) mod device_stub_resolver;
+pub(crate) mod resource_stub_resolver;
+
+pub(crate) use device_stub_resolver::DeviceStubResolver;
+pub(crate) use resource_stub_resolver::ResourceStubResolver;
+
+pub use pattern::Pattern;
+pub use resource_stub_resolver::DnsResourceRecord;
+
+/// The domain every client device is reached under, as `<slug>.firezone.network`.
+pub const DEVICE_DOMAIN: &str = "firezone.network";
+
+/// The slug of a device name, or `None` if `domain` is not one.
+pub fn device_slug(domain: &dns_types::DomainName) -> Option<String> {
+    let name = domain.to_string().to_lowercase();
+    let slug = name.strip_suffix(&format!(".{DEVICE_DOMAIN}"))?;
+
+    (!slug.is_empty() && !slug.contains('.')).then(|| slug.to_owned())
+}
+
+/// Whether `domain` is the device domain or a name under it.
+pub fn is_in_device_domain(domain: &dns_types::DomainName) -> bool {
+    let name = domain.to_string().to_lowercase();
+
+    name == DEVICE_DOMAIN || name.ends_with(&format!(".{DEVICE_DOMAIN}"))
+}
+
+use crate::dns::pattern::Candidate;
+use anyhow::Result;
+use dns_types::DoHUrl;
+use logging::err_with_src;
+use std::net::SocketAddr;
+use std::time::Instant;
+
+pub const DNS_PORT: u16 = 53;
+
+/// A query that needs to be forwarded to an upstream DNS server for resolution.
+#[derive(Debug)]
+pub struct RecursiveQuery {
+    /// The server we want to send the query to.
+    pub server: Upstream,
+
+    /// The local address we received the query on.
+    pub local: SocketAddr,
+
+    /// The client that sent us the query.
+    pub remote: SocketAddr,
+
+    /// The query we received from the client (and should forward).
+    pub message: dns_types::Query,
+
+    /// The transport we received the query on.
+    pub transport: Transport,
+}
+
+/// A response to a [`RecursiveQuery`].
+#[derive(Debug)]
+pub struct RecursiveResponse {
+    /// The server we sent the query to.
+    pub server: Upstream,
+
+    /// The local address we received the original query on.
+    pub local: SocketAddr,
+
+    /// The client that sent us the original query.
+    pub remote: SocketAddr,
+
+    /// The query we received from the client (and forwarded).
+    pub query: dns_types::Query,
+
+    /// The result of forwarding the DNS query.
+    pub message: Result<dns_types::Response>,
+
+    /// The transport we used.
+    pub transport: Transport,
+
+    /// When we sent the query, used to measure the lookup duration on completion.
+    pub started_at: Instant,
+
+    /// Whether the query was recursed locally or through the tunnel.
+    pub recursion: Recursion,
+}
+
+/// Whether a recursive query was resolved locally or forwarded through the tunnel.
+#[derive(Debug, Clone, Copy)]
+pub enum Recursion {
+    Local,
+    Tunnel,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, derive_more::Display)]
+pub enum Transport {
+    #[display("UDP")]
+    Udp,
+    #[display("TCP")]
+    Tcp,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, derive_more::Display)]
+pub enum Upstream {
+    #[display("Do53({server})")]
+    Do53 { server: SocketAddr },
+    #[display("DoH({server})")]
+    DoH { server: DoHUrl },
+}
+
+pub fn is_subdomain(name: &dns_types::DomainName, pattern: &str) -> bool {
+    let pattern = match Pattern::new(pattern) {
+        Ok(p) => p,
+        Err(e) => {
+            tracing::warn!(%pattern, "Unable to parse pattern: {}", err_with_src(&e));
+            return false;
+        }
+    };
+
+    let candidate = Candidate::from_domain(name);
+
+    pattern.matches(&candidate)
+}

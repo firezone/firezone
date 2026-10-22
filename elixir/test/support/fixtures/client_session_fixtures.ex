@@ -1,6 +1,7 @@
 defmodule Portal.ClientSessionFixtures do
   @moduledoc """
-  Test helpers for creating client sessions.
+  Test helpers for recording a client connect onto the device's
+  latest-session columns. Returns the updated `Portal.Device`.
   """
 
   import Portal.AccountFixtures
@@ -23,24 +24,34 @@ defmodule Portal.ClientSessionFixtures do
       |> Map.put_new(:remote_ip, {100, 64, 0, 1})
       |> Map.put_new(:remote_ip_location_region, "US")
       |> Map.put_new(:version, "1.3.0")
+      |> Map.put_new(:inserted_at, DateTime.utc_now())
 
-    {:ok, session} =
-      %Portal.ClientSession{}
-      |> Ecto.Changeset.cast(session_attrs, [
-        :user_agent,
-        :remote_ip,
-        :remote_ip_location_region,
-        :remote_ip_location_city,
-        :remote_ip_location_lat,
-        :remote_ip_location_lon,
-        :version
-      ])
-      |> Ecto.Changeset.put_change(:account_id, account.id)
-      |> Ecto.Changeset.put_change(:device_id, client.id)
-      |> Ecto.Changeset.put_change(:client_token_id, token.id)
-      |> Portal.ClientSession.changeset()
-      |> Portal.Repo.insert()
-
-    session
+    client
+    |> Ecto.Changeset.cast(
+      %{
+        public_key: session_attrs[:public_key],
+        last_seen_user_agent: session_attrs[:user_agent],
+        last_seen_remote_ip: session_attrs[:remote_ip],
+        last_seen_remote_ip_location_region: session_attrs[:remote_ip_location_region],
+        last_seen_remote_ip_location_city: session_attrs[:remote_ip_location_city],
+        last_seen_remote_ip_location_lat: session_attrs[:remote_ip_location_lat],
+        last_seen_remote_ip_location_lon: session_attrs[:remote_ip_location_lon],
+        last_seen_version: session_attrs[:version],
+        last_seen_at: session_attrs[:inserted_at]
+      },
+      [
+        :public_key,
+        :last_seen_user_agent,
+        :last_seen_remote_ip,
+        :last_seen_remote_ip_location_region,
+        :last_seen_remote_ip_location_city,
+        :last_seen_remote_ip_location_lat,
+        :last_seen_remote_ip_location_lon,
+        :last_seen_version,
+        :last_seen_at
+      ]
+    )
+    |> Ecto.Changeset.put_change(:client_token_id, token.id)
+    |> Portal.Repo.update!()
   end
 end

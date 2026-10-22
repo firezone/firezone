@@ -13,6 +13,7 @@
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-26.05";
+    crane.url = "github:ipetkov/crane";
     rust-overlay = {
       url = "github:oxalica/rust-overlay";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -23,6 +24,7 @@
     {
       self,
       nixpkgs,
+      crane,
       rust-overlay,
     }:
     let
@@ -47,7 +49,7 @@
     {
       overlays.default = lib.composeManyExtensions [
         rust-overlay.overlays.default
-        (import ./scripts/nix/overlay.nix)
+        (import ./scripts/nix/overlay.nix { inherit crane; })
       ];
 
       packages = forAllSystems (pkgs: {

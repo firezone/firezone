@@ -51,7 +51,7 @@ mod util;
 mod websocket;
 
 use crate::config::{HttpConfig, TcpConfig, TestType, TurnConfig, WebsocketConfig};
-use anyhow::Context as _;
+use anyhow::{Context as _, Result};
 use clap::{Parser, Subcommand};
 use config::LoadTestConfig;
 use rand::rngs::StdRng;
@@ -125,7 +125,7 @@ async fn main() {
     }
 }
 
-async fn try_main() -> anyhow::Result<()> {
+async fn try_main() -> Result<()> {
     let cli = Cli::parse();
 
     if cli.dump_config {
@@ -179,7 +179,7 @@ async fn try_main() -> anyhow::Result<()> {
 ///
 /// An explicitly-specified `--config` must exist; the default file is used only
 /// if it happens to be present.
-fn load_optional_config(explicit: Option<&Path>) -> anyhow::Result<Option<LoadTestConfig>> {
+fn load_optional_config(explicit: Option<&Path>) -> Result<Option<LoadTestConfig>> {
     match explicit {
         Some(path) => Ok(Some(LoadTestConfig::load(path)?)),
         None => {
@@ -205,7 +205,7 @@ async fn run_random(
     config: Option<LoadTestConfig>,
     selector: &mut TestSelector,
     seed: u64,
-) -> anyhow::Result<()> {
+) -> Result<()> {
     let config = config.context(
         "No config file found; create a loadtest.toml file or specify one with --config",
     )?;
@@ -343,7 +343,6 @@ impl TestSelector {
 
         let concurrent = self.rng.random_range(config.concurrent) as usize;
         let duration = Duration::from_secs(self.rng.random_range(config.duration_secs));
-        let timeout = Duration::from_secs(self.rng.random_range(config.timeout_secs));
         let echo_mode = config.echo_mode;
         let echo_payload_size = self.rng.random_range(config.echo_payload_size) as usize;
         let echo_interval = Some(Duration::from_secs(
@@ -356,7 +355,6 @@ impl TestSelector {
             target: address.to_owned(),
             concurrent,
             hold_duration: duration,
-            connect_timeout: timeout,
             echo_mode,
             echo_payload_size,
             echo_interval,

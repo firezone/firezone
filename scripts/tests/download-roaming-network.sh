@@ -2,14 +2,18 @@
 
 source "./scripts/tests/lib.sh"
 
-# Download 10MB at a max rate of 1MB/s. The first two UDP socket writes will fail as checksum offload is disabled.
-# Budget: 10s for the download + 5s pre-roam wait + ~7s reconnect overhead + buffer.
+# Download 10MB at a max rate of 300KB/s, i.e. ~33s of transfer.
+# The roam has to happen while the download is still in flight, and enough of it
+# has to remain afterwards for the gateway to record the reconnected path. That
+# window has to cover a slow `docker network disconnect`, which has taken as long
+# as 14s to take effect on a loaded runner, on top of the 5s pre-roam wait, the 3s
+# outage and the reconnect.
 client sh -c \
     "curl \
         --fail \
-        --max-time 25 \
+        --max-time 60 \
         --keepalive-time 1 \
-        --limit-rate 1000000 \
+        --limit-rate 300000 \
         --output download.file \
         http://download.httpbin/bytes?num=10000000" &
 
@@ -17,16 +21,13 @@ DOWNLOAD_PID=$!
 
 sleep 5 # Download a bit
 
-docker network disconnect firezone_client-1-internal firezone-client-1-1 # Disconnect the client
+docker network disconnect firezone_primary-client-internal firezone-primary-client-1 # Disconnect the client
 sleep 3
-docker network connect firezone_client-1-internal firezone-client-1-1 --ip 172.30.0.200 --ip6 172:30::200 # Reconnect client with a different IP
+docker network connect firezone_primary-client-internal firezone-primary-client-1 --ip 172.30.0.200 --ip6 172:30::200 # Reconnect client with a different IP
 
 # Add static route to internet subnet via router; they get removed when the network interface disappears
 client ip -4 route add 203.0.113.0/24 via 172.30.0.254
 client ip -6 route add 203:0:113::/64 via 172:30:0::254
-
-# Disable checksum offload again to calculate checksums in software so that checksum verification passes
-client ethtool -K eth0 tx off
 
 # Send SIGHUP, triggering `reconnect` internally
 sudo kill -s HUP "$(ps -C firezone-headless-client -o pid=)"
@@ -57,17 +58,20 @@ fi
 sleep 3
 readarray -t flows < <(get_flow_logs "tcp")
 
-assert_gteq "${#flows[@]}" 2
+# A roam must not split the flow: the whole download is one flow that
+# accumulates the reconnected path as another outer tuple.
+assert_eq "${#flows[@]}" 1
 
-declare -i non_standard_ports=0
+flow="${flows[0]}"
 
-for flow in "${flows[@]}"; do
-    # All flows should have same inner_dst_ip
-    assert_eq "$(get_flow_field "$flow" "inner_dst_ip")" "172.21.0.101"
+assert_eq "$(get_flow_field "$flow" "inner_dst_ip")" "172.21.0.101"
 
-    if [ "$(get_flow_field "$flow" "outer_src_port")" != "52625" ]; then
-        non_standard_ports+=1
-    fi
-done
+outers="$(get_flow_field "$flow" "outers")"
 
+num_tuples="$(echo "$outers" | grep -o '"dst_ip":' | wc -l || true)"
+assert_gteq "$num_tuples" 2
+
+# At least one tuple must come from the reconnected path, i.e. not from the
+# client's standard p2p port.
+non_standard_ports="$(echo "$outers" | grep -oP '"src_port":\K[0-9]+' | grep -cv '^52625$' || true)"
 assert_gteq "$non_standard_ports" 1

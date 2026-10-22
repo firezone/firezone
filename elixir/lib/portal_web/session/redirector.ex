@@ -8,9 +8,12 @@ defmodule PortalWeb.Session.Redirector do
   - Redirect path sanitization and validation
   """
   use PortalWeb, :verified_routes
+  alias Portal.Authentication.Credential
 
   alias Portal.Authentication
+  alias Portal.Analytics.PostHog
   alias Portal.ClientToken
+  alias PortalWeb.WebsiteAttribution
 
   @doc """
   Sanitizes and validates a redirect_to parameter.
@@ -67,6 +70,16 @@ defmodule PortalWeb.Session.Redirector do
 
   def portal_signed_in(%Plug.Conn{} = conn, %Portal.Account{} = account, params, actor) do
     redirect_to = sanitize_redirect_to(account, params["redirect_to"], actor)
+    {conn, website_attribution} = WebsiteAttribution.pop(conn)
+
+    PostHog.identify_actor(actor, account, website_attribution)
+
+    if match?(%Portal.Actor{type: :account_admin_user}, actor) do
+      Portal.Analytics.update_marketing_attribution(
+        account,
+        get_in(website_attribution || %{}, ["marketing"])
+      )
+    end
 
     conn
     |> PortalWeb.Cookie.RecentAccounts.prepend(account.id)
@@ -112,13 +125,6 @@ defmodule PortalWeb.Session.Redirector do
     else
       client_account_disabled(conn, account)
     end
-  end
-
-  @doc """
-  Alias for gui_client_signed_in for backward compatibility.
-  """
-  def client_signed_in(conn, account, actor_name, identifier, token, state) do
-    gui_client_signed_in(conn, account, actor_name, identifier, token, state)
   end
 
   @doc """
@@ -182,7 +188,7 @@ defmodule PortalWeb.Session.Redirector do
     post_sign_out_url = url(~p"/#{account_or_slug}")
 
     # Delete the portal session for the subject
-    %{type: :portal_session, id: portal_session_id} = subject.credential
+    %Credential.PortalSession{id: portal_session_id} = subject.credential
 
     :ok =
       Authentication.delete_portal_session(%Portal.PortalSession{
@@ -214,7 +220,7 @@ defmodule PortalWeb.Session.Redirector do
       :resources -> ~p"/#{account}/resources"
       :groups -> ~p"/#{account}/groups"
       :policies -> ~p"/#{account}/policies"
-      :clients -> ~p"/#{account}/clients"
+      :devices -> ~p"/#{account}/devices"
       :actors -> ~p"/#{account}/actors"
       :sites -> ~p"/#{account}/sites"
       _ -> ~p"/#{account}/sites"

@@ -11,6 +11,8 @@
 	</dict>
 	<key>AppGroupIdentifier</key>
 	<string>$(APP_GROUP_ID)</string>
+	<key>NoTelemetry</key>
+	<string>$(FIREZONE_NO_TELEMETRY)</string>
 	<key>LSEnvironment</key>
 	<dict>
 		<key>SWIFT_UNEXPECTED_EXECUTOR_LOG_LEVEL</key>

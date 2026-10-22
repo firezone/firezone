@@ -9,6 +9,7 @@ defmodule Portal.Workers.CheckAccountLimitsTest do
   import Portal.OutboundEmailTestHelpers
   import Portal.ClientSessionFixtures
 
+  alias Portal.Fixture
   alias Portal.Workers.CheckAccountLimits
 
   describe "perform/1" do
@@ -23,7 +24,35 @@ defmodule Portal.Workers.CheckAccountLimitsTest do
                  sites: 0,
                  admins: 0
                }
-             } == CheckAccountLimits.Database.fetch_counts_for_accounts([account.id])
+             } == CheckAccountLimits.Database.fetch_counts_for_accounts([account])
+    end
+
+    test "counts active service accounts as monthly active users" do
+      account = provisioned_account_fixture()
+      user = actor_fixture(account: account, type: :account_user)
+      service_account = actor_fixture(account: account, type: :service_account)
+
+      for actor <- [user, service_account] do
+        client = Portal.DeviceFixtures.client_fixture(account: account, actor: actor)
+        client_session_fixture(account: account, actor: actor, client: client)
+      end
+
+      assert %{active_users: 2} =
+               CheckAccountLimits.Database.fetch_counts_for_accounts([account])[account.id]
+    end
+
+    test "counts only service accounts beyond adhoc_service_accounts_count as monthly active users" do
+      account =
+        update_account(provisioned_account_fixture(), %{limits: %{adhoc_service_accounts_count: 1}})
+
+      for type <- [:account_user, :service_account, :service_account] do
+        actor = actor_fixture(account: account, type: type)
+        client = Portal.DeviceFixtures.client_fixture(account: account, actor: actor)
+        client_session_fixture(account: account, actor: actor, client: client)
+      end
+
+      assert %{active_users: 2} =
+               CheckAccountLimits.Database.fetch_counts_for_accounts([account])[account.id]
     end
 
     test "does nothing when limits are not violated" do
@@ -111,6 +140,50 @@ defmodule Portal.Workers.CheckAccountLimitsTest do
 
       # Verify count/limit format (3 admins / 1 limit)
       assert first_email.text_body =~ "account admins (3 / 1)"
+    end
+
+    test "sets limit flags but sends no email for an account with no session logs" do
+      account = dormant_provisioned_account_fixture()
+      admin_actor_fixture(account: account)
+      admin_actor_fixture(account: account)
+      admin_actor_fixture(account: account)
+
+      update_account(account, %{
+        limits: %{
+          account_admin_users_count: 1
+        }
+      })
+
+      assert :ok = perform_job(CheckAccountLimits, %{})
+
+      refute_email_queued(account.id)
+
+      account = Repo.get!(Portal.Account, account.id)
+      assert account.admins_limit_exceeded
+      # The reminder clock only starts once there is somebody to remind.
+      refute account.warning_last_sent_at
+    end
+
+    test "sends email to a paid account with no session logs" do
+      account =
+        dormant_provisioned_account_fixture(%{metadata: %{stripe: %{product_name: "Team"}}})
+
+      admin_actor_fixture(account: account)
+      admin_actor_fixture(account: account)
+      admin_actor_fixture(account: account)
+
+      update_account(account, %{
+        limits: %{
+          account_admin_users_count: 1
+        }
+      })
+
+      assert :ok = perform_job(CheckAccountLimits, %{})
+
+      assert [_email] = collect_queued_emails(account.id)
+
+      account = Repo.get!(Portal.Account, account.id)
+      assert account.warning_last_sent_at
     end
 
     test "does not send email if warning_last_sent_at is less than 3 days ago" do
@@ -222,7 +295,7 @@ defmodule Portal.Workers.CheckAccountLimitsTest do
 
       # Disable the account
       account
-      |> Ecto.Changeset.change(disabled_at: DateTime.utc_now(), disabled_reason: "Test")
+      |> Ecto.Changeset.change(is_disabled: true, disabled_reason: "Test")
       |> Repo.update!()
 
       assert :ok = perform_job(CheckAccountLimits, %{})
@@ -268,7 +341,7 @@ defmodule Portal.Workers.CheckAccountLimitsTest do
       disabled_admin = admin_actor_fixture(account: account)
 
       disabled_admin
-      |> Ecto.Changeset.change(disabled_at: DateTime.utc_now())
+      |> Ecto.Changeset.change(is_disabled: true)
       |> Repo.update!()
 
       # Create another enabled admin
@@ -385,6 +458,19 @@ defmodule Portal.Workers.CheckAccountLimitsTest do
       assert first_email.text_body =~ "contact your account manager"
     end
 
+    test "email shows Business plan CTA for Business accounts" do
+      account = provisioned_account_fixture(%{metadata: %{stripe: %{product_name: "Business"}}})
+      admin_actor_fixture(account: account)
+      admin_actor_fixture(account: account)
+
+      update_account(account, %{limits: %{account_admin_users_count: 1}})
+
+      assert :ok = perform_job(CheckAccountLimits, %{})
+
+      [first_email | _] = collect_queued_emails(account.id)
+      assert first_email.text_body =~ "Settings -> Account"
+    end
+
     test "logs warning when seats_limit_exceeded transitions from false to true" do
       account = provisioned_account_fixture()
       admin = admin_actor_fixture(account: account)
@@ -433,7 +519,7 @@ defmodule Portal.Workers.CheckAccountLimitsTest do
           assert :ok = perform_job(CheckAccountLimits, %{})
         end)
 
-      refute log =~ "Account seats limit exceeded"
+      refute Fixture.logged_lines(log, account.id) =~ "Account seats limit exceeded"
 
       # Flag should still be true
       account = Repo.get!(Portal.Account, account.id)
@@ -441,22 +527,313 @@ defmodule Portal.Workers.CheckAccountLimitsTest do
     end
   end
 
-  defp provisioned_account_fixture(attrs \\ %{}) do
-    account = account_fixture(attrs)
+  describe "seat warning emails" do
+    setup do
+      account = provisioned_account_fixture(%{metadata: %{stripe: %{product_name: "Business"}}})
+      admin = admin_actor_fixture(account: account)
 
-    stripe_attrs =
-      Map.merge(
-        %{
-          customer_id: "cus_#{System.unique_integer([:positive])}",
-          subscription_id: "sub_#{System.unique_integer([:positive])}",
-          product_name: "Team"
-        },
-        get_in(attrs, [:metadata, :stripe]) || %{}
+      account = update_account(account, %{limits: %{monthly_active_users_count: 10}})
+      %{account: account, admin: admin}
+    end
+
+    defp make_seats_active(account, count) do
+      for _ <- 1..count do
+        actor = actor_fixture(account: account)
+        client = Portal.DeviceFixtures.client_fixture(account: account, actor: actor)
+        client_session_fixture(account: account, actor: actor, client: client)
+      end
+    end
+
+    test "sends the approaching email when fewer than 10% of seats remain", %{
+      account: account,
+      admin: admin
+    } do
+      account = update_account(account, %{limits: %{monthly_active_users_count: 20}})
+      make_seats_active(account, 19)
+
+      assert :ok = perform_job(CheckAccountLimits, %{})
+
+      [email] = collect_queued_emails(account.id)
+      assert email.subject == "You are approaching your seat limit"
+      assert email.reply_to == [{"", "support@firezone.dev"}]
+      assert email.text_body =~ "Current monthly active users: 19"
+      assert email.text_body =~ "Seats in your subscription: 20"
+      assert email.text_body =~ "Seats remaining: 1"
+      assert email.text_body =~ "Settings -> Account"
+
+      assert email.to == [{"", admin.email}]
+      assert email.text_body =~ "Turn off these notifications: "
+
+      account = fetch_account!(account.id)
+      assert account.seats_warning_level == :approaching
+      assert account.seats_warning_last_sent_at
+    end
+
+    test "sends the at limit email when every seat is used", %{account: account} do
+      make_seats_active(account, 10)
+
+      assert :ok = perform_job(CheckAccountLimits, %{})
+
+      [email] = collect_queued_emails(account.id)
+      assert email.subject == "You have reached your seat limit"
+      assert email.text_body =~ "Seats remaining: 0"
+      assert email.text_body =~ "New users cannot sign in or connect"
+      assert fetch_account!(account.id).seats_warning_level == :at_limit
+    end
+
+    test "sends each level only once", %{account: account} do
+      make_seats_active(account, 10)
+
+      assert :ok = perform_job(CheckAccountLimits, %{})
+      assert [_email] = collect_queued_emails(account.id)
+
+      update_account(fetch_account!(account.id), %{
+        seats_warning_last_sent_at: DateTime.add(DateTime.utc_now(), -30, :day)
+      })
+
+      assert :ok = perform_job(CheckAccountLimits, %{})
+      assert [_email] = collect_queued_emails(account.id)
+    end
+
+    test "does not send the approaching email after the at limit email", %{account: account} do
+      account = update_account(account, %{limits: %{monthly_active_users_count: 20}})
+      make_seats_active(account, 19)
+
+      update_account(account, %{
+        seats_warning_level: :at_limit,
+        seats_warning_last_sent_at: DateTime.add(DateTime.utc_now(), -30, :day)
+      })
+
+      assert :ok = perform_job(CheckAccountLimits, %{})
+
+      assert collect_queued_emails(account.id) == []
+      assert fetch_account!(account.id).seats_warning_level == :at_limit
+    end
+
+    test "does not send a seat warning to Business accounts over the limit", %{account: account} do
+      account = update_account(account, %{limits: %{monthly_active_users_count: 3}})
+      make_seats_active(account, 4)
+
+      assert :ok = perform_job(CheckAccountLimits, %{})
+
+      assert [email] = collect_queued_emails(account.id)
+      assert email.subject == "Firezone Account Limits Exceeded"
+    end
+
+    test "sends the at limit email right away after an approaching email", %{account: account} do
+      make_seats_active(account, 10)
+
+      update_account(account, %{
+        seats_warning_level: :approaching,
+        seats_warning_last_sent_at: DateTime.add(DateTime.utc_now(), -1, :hour)
+      })
+
+      assert :ok = perform_job(CheckAccountLimits, %{})
+
+      [email] = collect_queued_emails(account.id)
+      assert email.subject == "You have reached your seat limit"
+      assert fetch_account!(account.id).seats_warning_level == :at_limit
+    end
+
+    test "does not downgrade to approaching within a week", %{account: account} do
+      account = update_account(account, %{limits: %{monthly_active_users_count: 20}})
+      make_seats_active(account, 19)
+
+      update_account(account, %{
+        seats_warning_level: :at_limit,
+        seats_warning_last_sent_at: DateTime.add(DateTime.utc_now(), -1, :day)
+      })
+
+      assert :ok = perform_job(CheckAccountLimits, %{})
+
+      assert collect_queued_emails(account.id) == []
+      assert fetch_account!(account.id).seats_warning_level == :at_limit
+    end
+
+    test "clears the warning state once plenty of seats are free", %{account: account} do
+      make_seats_active(account, 5)
+
+      update_account(account, %{
+        seats_warning_level: :at_limit,
+        seats_warning_last_sent_at: DateTime.utc_now()
+      })
+
+      assert :ok = perform_job(CheckAccountLimits, %{})
+
+      account = fetch_account!(account.id)
+      assert account.seats_warning_level == nil
+      assert account.seats_warning_last_sent_at == nil
+    end
+
+    test "sends only to enabled admins", %{account: account, admin: admin} do
+      disabled_actor_fixture(account: account, type: :account_admin_user)
+      make_seats_active(account, 10)
+
+      assert :ok = perform_job(CheckAccountLimits, %{})
+
+      assert [email] = collect_queued_emails(account.id)
+      assert email.to == [{"", admin.email}]
+    end
+
+    test "does not send to admins who turned seat warnings off", %{
+      account: account,
+      admin: admin
+    } do
+      actor_preferences_fixture(admin, notifications: %{seat_limit_warnings: []})
+      other_admin = admin_actor_fixture(account: account)
+      make_seats_active(account, 10)
+
+      assert :ok = perform_job(CheckAccountLimits, %{})
+
+      assert [email] = collect_queued_emails(account.id)
+      assert email.to == [{"", other_admin.email}]
+    end
+
+    test "does not send when every admin turned seat warnings off", %{
+      account: account,
+      admin: admin
+    } do
+      actor_preferences_fixture(admin, notifications: %{seat_limit_warnings: []})
+      make_seats_active(account, 10)
+
+      assert :ok = perform_job(CheckAccountLimits, %{})
+
+      assert collect_queued_emails(account.id) == []
+      assert fetch_account!(account.id).seats_warning_level == nil
+    end
+
+    test "sends one email per admin, each with its own unsubscribe link", %{account: account} do
+      admin_actor_fixture(account: account)
+      make_seats_active(account, 10)
+
+      assert :ok = perform_job(CheckAccountLimits, %{})
+
+      emails = collect_queued_emails(account.id)
+      assert length(emails) == 2
+
+      urls =
+        Enum.map(emails, fn email ->
+          [url] = Regex.run(~r{https?://\S+/unsubscribe/\S+}, email.text_body)
+          url
+        end)
+
+      assert length(Enum.uniq(urls)) == 2    end
+
+    test "does not warn Enterprise accounts before they go over the limit" do
+      account = provisioned_account_fixture(%{metadata: %{stripe: %{product_name: "Enterprise"}}})
+      admin_actor_fixture(account: account)
+      account = update_account(account, %{limits: %{monthly_active_users_count: 20}})
+      make_seats_active(account, 19)
+
+      assert :ok = perform_job(CheckAccountLimits, %{})
+      assert collect_queued_emails(account.id) == []
+
+      make_seats_active(account, 1)
+
+      assert :ok = perform_job(CheckAccountLimits, %{})
+      assert collect_queued_emails(account.id) == []
+    end
+
+    test "reports Enterprise overage to Firezone instead of the admins" do
+      Portal.Config.put_env_override(:portal, Portal.Mailer.InternalEmail,
+        recipient: "sales@example.com"
       )
 
-    account
-    |> Ecto.Changeset.cast(%{metadata: %{stripe: stripe_attrs}}, [])
-    |> Ecto.Changeset.cast_embed(:metadata)
-    |> Repo.update!()
+      account = provisioned_account_fixture(%{metadata: %{stripe: %{product_name: "Enterprise"}}})
+      admin_actor_fixture(account: account)
+      account = update_account(account, %{limits: %{monthly_active_users_count: 3}})
+      make_seats_active(account, 4)
+
+      assert :ok = perform_job(CheckAccountLimits, %{})
+
+      assert [email] = collect_queued_emails(account.id)
+      assert email.to == [{"", "sales@example.com"}]
+      assert email.subject == "Enterprise seat overage: #{account.name}"
+      assert email.text_body =~ "Monthly active users: 4"
+      assert email.text_body =~ "Seats in subscription: 3"
+      assert email.text_body =~ "Seats over: 1"
+      assert fetch_account!(account.id).seats_warning_level == :over
+    end
+
+    test "repeats the Enterprise overage report every 30 days" do
+      Portal.Config.put_env_override(:portal, Portal.Mailer.InternalEmail,
+        recipient: "sales@example.com"
+      )
+
+      account = provisioned_account_fixture(%{metadata: %{stripe: %{product_name: "Enterprise"}}})
+      account = update_account(account, %{limits: %{monthly_active_users_count: 3}})
+      make_seats_active(account, 4)
+
+      update_account(account, %{
+        seats_warning_level: :over,
+        seats_warning_last_sent_at: DateTime.add(DateTime.utc_now(), -29, :day)
+      })
+
+      assert :ok = perform_job(CheckAccountLimits, %{})
+      assert collect_queued_emails(account.id) == []
+
+      update_account(account, %{
+        seats_warning_last_sent_at: DateTime.add(DateTime.utc_now(), -30, :day)
+      })
+
+      assert :ok = perform_job(CheckAccountLimits, %{})
+      assert [_email] = collect_queued_emails(account.id)
+    end
+
+    test "does not record an Enterprise overage report when no recipient is set" do
+      Portal.Config.put_env_override(:portal, Portal.Mailer.InternalEmail, recipient: nil)
+
+      account = provisioned_account_fixture(%{metadata: %{stripe: %{product_name: "Enterprise"}}})
+      admin_actor_fixture(account: account)
+      account = update_account(account, %{limits: %{monthly_active_users_count: 3}})
+      make_seats_active(account, 4)
+
+      assert :ok = perform_job(CheckAccountLimits, %{})
+
+      assert collect_queued_emails(account.id) == []
+      assert fetch_account!(account.id).seats_warning_level == nil
+    end
+
+    test "still sends Enterprise the limits exceeded email for other limits" do
+      account = provisioned_account_fixture(%{metadata: %{stripe: %{product_name: "Enterprise"}}})
+      admin_actor_fixture(account: account)
+      admin_actor_fixture(account: account)
+
+      account =
+        update_account(account, %{
+          limits: %{monthly_active_users_count: 1, account_admin_users_count: 1}
+        })
+
+      make_seats_active(account, 2)
+
+      assert :ok = perform_job(CheckAccountLimits, %{})
+
+      limits_email =
+        account.id
+        |> collect_queued_emails()
+        |> Enum.find(&(&1.subject == "Firezone Account Limits Exceeded"))
+
+      assert limits_email.text_body =~ "account admins"
+      refute limits_email.text_body =~ "monthly active users"
+    end
+
+    test "does not send when enough seats remain", %{account: account} do
+      make_seats_active(account, 5)
+
+      assert :ok = perform_job(CheckAccountLimits, %{})
+
+      assert collect_queued_emails(account.id) == []
+    end
+
+    test "does not send for non-Business accounts" do
+      account = provisioned_account_fixture(%{metadata: %{stripe: %{product_name: "Team"}}})
+      admin_actor_fixture(account: account)
+      account = update_account(account, %{limits: %{monthly_active_users_count: 10}})
+      make_seats_active(account, 10)
+
+      assert :ok = perform_job(CheckAccountLimits, %{})
+
+      assert collect_queued_emails(account.id) == []
+    end
   end
 end

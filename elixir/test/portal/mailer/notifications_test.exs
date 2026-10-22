@@ -2,6 +2,7 @@ defmodule Portal.Mailer.NotificationsTest do
   use Portal.DataCase, async: true
   import Portal.Mailer.Notifications
   import Portal.AccountFixtures
+  import Portal.ActorFixtures
   import Portal.DeviceFixtures
   alias Portal.Authentication.Context
   alias Portal.ComponentVersions
@@ -97,11 +98,11 @@ defmodule Portal.Mailer.NotificationsTest do
     end
   end
 
-  describe "outdated_gateway_email/4" do
+  describe "outdated_gateway_email/5" do
     test "should contain current gateway version and list of outdated gateways", %{
       account: account
     } do
-      admin_email = "admin@foo.local"
+      admin = admin_actor_fixture(account: account)
 
       gateway_1 = gateway_fixture(account: account)
       gateway_2 = gateway_fixture(account: account)
@@ -116,8 +117,13 @@ defmodule Portal.Mailer.NotificationsTest do
           account,
           [gateway_1, gateway_2],
           incompatible_client_count,
-          admin_email
+          admin
         )
+
+      assert email_body.to == [{"", admin.email}]
+      assert unsubscribe_setting(email_body.text_body, admin) == :outdated_gateways
+      assert email_body.html_body =~ "/#{account.id}/unsubscribe/"
+      assert email_body.html_body =~ "Turn off these notifications"
 
       assert email_body.text_body =~ "The latest Firezone Gateway release is: #{current_version}"
       assert email_body.text_body =~ gateway_1.name
@@ -135,10 +141,75 @@ defmodule Portal.Mailer.NotificationsTest do
       assert email_body.html_body =~ gateway_2.name
 
       assert email_body.html_body =~
-               "/#{account.slug}/clients?clients_order_by=latest_session%3Aasc%3Aversion\" target=\"_blank\" rel=\"noopener noreferrer\">#{incompatible_client_count} recently connected client(s)</a> are not compatible"
+               "/#{account.slug}/devices?devices_order_by=devices%3Aasc%3Alast_seen_version\" target=\"_blank\" rel=\"noopener noreferrer\">#{incompatible_client_count} recently connected client(s)</a> are not compatible"
 
       assert email_body.html_body =~ "See all outdated clients"
     end
+  end
+
+  describe "seats_warning_email/4" do
+    test "is sent to one admin with a link to turn it off", %{account: account} do
+      admin = admin_actor_fixture(account: account)
+      email = seats_warning_email(account, :at_limit, 100, admin)
+
+      assert email.to == [{"", admin.email}]
+      assert email.subject == "You have reached your seat limit"
+      assert email.text_body =~ "Turn off these notifications: "
+      assert unsubscribe_setting(email.text_body, admin) == :seat_limit_warnings
+      assert email.html_body =~ "/#{account.id}/unsubscribe/"
+    end
+  end
+
+  describe "product_announcement_email/4" do
+    test "places the announcement inside the email layout", %{account: account} do
+      admin = admin_actor_fixture(account: account)
+
+      email =
+        product_announcement_email(
+          "What's new in Firezone",
+          "<h1>New features</h1><p>Device pools are here.</p>",
+          "New features\n\nDevice pools are here.",
+          admin
+        )
+
+      assert email.to == [{"", admin.email}]
+      assert email.subject == "What's new in Firezone"
+      assert email.html_body =~ "<h1>New features</h1><p>Device pools are here.</p>"
+      assert email.html_body =~ "<title>What&#39;s new in Firezone</title>"
+      assert email.html_body =~ "/#{account.id}/unsubscribe/"
+      assert email.text_body =~ "Device pools are here."
+      assert email.text_body =~ "Turn off these notifications: "
+      assert unsubscribe_setting(email.text_body, admin) == :product_announcements
+    end
+  end
+
+  describe "recipients" do
+    test "are only ever admins", %{account: account} do
+      user = actor_fixture(account: account, type: :account_user)
+
+      assert_raise FunctionClauseError, fn ->
+        outdated_gateway_email(account, [], 0, user)
+      end
+
+      assert_raise FunctionClauseError, fn ->
+        seats_warning_email(account, :approaching, 9, user)
+      end
+
+      assert_raise FunctionClauseError, fn ->
+        product_announcement_email("Subject", "<p>Hi</p>", "Hi", user)
+      end
+    end
+  end
+
+  defp unsubscribe_setting(text_body, actor) do
+    [token] =
+      Regex.run(~r{/#{actor.account_id}/unsubscribe/([A-Za-z0-9_.-]+)}, text_body,
+        capture: :all_but_first
+      )
+
+    {:ok, {account_id, actor_id, setting}} = Portal.UnsubscribeToken.verify(token)
+    assert {account_id, actor_id} == {actor.account_id, actor.id}
+    setting
   end
 
   defp set_current_version(version) do

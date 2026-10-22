@@ -4,5 +4,5 @@ mod client;
 mod codec;
 mod server;
 
-pub use client::{Client, QueryResult};
+pub use client::{Client, QueryResult, QueryToken};
 pub use server::{Query, Server};

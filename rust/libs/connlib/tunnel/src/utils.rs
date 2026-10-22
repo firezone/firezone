@@ -1,9 +1,10 @@
-use crate::{REALM, messages::Relay};
 use connlib_model::RelayId;
-use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use itertools::Itertools as _;
 use snownet::RelaySocket;
 use std::{collections::BTreeSet, net::SocketAddr};
+use tunnel_proto::messages::Relay;
+
+const REALM: &str = "firezone";
 
 pub fn turn(relays: &[Relay]) -> BTreeSet<(RelayId, RelaySocket, String, String, String)> {
     relays
@@ -55,20 +56,4 @@ pub fn turn(relays: &[Relay]) -> BTreeSet<(RelayId, RelaySocket, String, String,
             )
         })
         .collect()
-}
-
-#[expect(dead_code)]
-pub(crate) fn ipv4(ip: IpNetwork) -> Option<Ipv4Network> {
-    match ip {
-        IpNetwork::V4(v4) => Some(v4),
-        IpNetwork::V6(_) => None,
-    }
-}
-
-#[expect(dead_code)]
-pub(crate) fn ipv6(ip: IpNetwork) -> Option<Ipv6Network> {
-    match ip {
-        IpNetwork::V4(_) => None,
-        IpNetwork::V6(v6) => Some(v6),
-    }
 }

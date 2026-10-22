@@ -1,11 +1,15 @@
 defmodule Portal.Google.APIClientTest do
   use ExUnit.Case, async: true
-  import ExUnit.CaptureLog
+  import Portal.GoogleDirectoryFixtures
 
   alias Portal.Google.APIClient
+  alias Portal.TokenCache
 
   @test_domain "example.com"
   @test_access_token "test_access_token_123"
+  @workload_identity_provider "//iam.googleapis.com/projects/123456789/locations/global/workloadIdentityPools/azure-portal/providers/workspace-sync-staging"
+  @workload_identity_audience "api://tenant-id/google-workspace-sync-staging"
+  @service_account_email "directory-sync@project.iam.gserviceaccount.com"
   @test_private_key """
   -----BEGIN RSA PRIVATE KEY-----
   MIIEpAIBAAKCAQEA0Z3VS5JJcds3xfn/ygWyF8PbnGy0AHB7MaC6dCT6LsOpNkYe
@@ -44,6 +48,369 @@ defmodule Portal.Google.APIClientTest do
     :ok
   end
 
+  describe "federated access tokens" do
+    test "caches federated and delegated access tokens independently" do
+      configure_workload_identity()
+      test_pid = self()
+
+      Req.Test.stub(Portal.Azure.ManagedIdentity, fn conn ->
+        Req.Test.json(conn, %{"error" => "not mocked"})
+      end)
+
+      server = start_token_cache()
+      Req.Test.allow(APIClient, self(), server)
+      Req.Test.allow(Portal.Azure.ManagedIdentity, self(), server)
+
+      Req.Test.expect(Portal.Azure.ManagedIdentity, fn conn ->
+        params = URI.decode_query(conn.query_string)
+        assert params["resource"] == @workload_identity_audience
+
+        Req.Test.json(conn, %{
+          "access_token" => "azure-managed-identity-token",
+          "expires_on" => Integer.to_string(System.system_time(:second) + 3600)
+        })
+      end)
+
+      Req.Test.expect(APIClient, 5, fn conn ->
+        case conn.request_path do
+          "/v1/token" ->
+            {:ok, body, conn} = Plug.Conn.read_body(conn)
+            send(test_pid, {:sts_request, URI.decode_query(body)})
+
+            Req.Test.json(conn, %{
+              "access_token" => "federated-google-token",
+              "expires_in" => 3600,
+              "token_type" => "Bearer"
+            })
+
+          "/v1/projects/-/serviceAccounts/" <>
+              @service_account_email <> ":signJwt" ->
+            assert_authorization_header(conn, "federated-google-token")
+            {:ok, body, conn} = Plug.Conn.read_body(conn)
+            %{"payload" => payload} = JSON.decode!(body)
+            send(test_pid, {:sign_jwt_request, JSON.decode!(payload)})
+
+            Req.Test.json(conn, %{"signedJwt" => "google-signed-jwt"})
+
+          "/token" ->
+            {:ok, body, conn} = Plug.Conn.read_body(conn)
+            send(test_pid, {:workspace_token_request, URI.decode_query(body)})
+
+            Req.Test.json(conn, %{
+              "access_token" => "workspace-access-token",
+              "expires_in" => 3600,
+              "token_type" => "Bearer"
+            })
+        end
+      end)
+
+      assert APIClient.get_access_token("admin@example.com") ==
+               {:ok, "workspace-access-token"}
+
+      assert APIClient.get_access_token("admin@example.com") ==
+               {:ok, "workspace-access-token"}
+
+      assert APIClient.get_access_token("another-admin@example.com") ==
+               {:ok, "workspace-access-token"}
+
+      assert_receive {:sts_request, sts_params}
+      assert sts_params["audience"] == @workload_identity_provider
+      assert sts_params["grant_type"] == "urn:ietf:params:oauth:grant-type:token-exchange"
+
+      assert sts_params["requested_token_type"] ==
+               "urn:ietf:params:oauth:token-type:access_token"
+
+      assert sts_params["scope"] == "https://www.googleapis.com/auth/cloud-platform"
+      assert sts_params["subject_token"] == "azure-managed-identity-token"
+      assert sts_params["subject_token_type"] == "urn:ietf:params:oauth:token-type:jwt"
+
+      assert_receive {:sign_jwt_request, claims}
+      assert claims["iss"] == @service_account_email
+      assert claims["sub"] == "admin@example.com"
+      assert claims["aud"] == "https://oauth2.googleapis.com/token"
+      assert claims["exp"] - claims["iat"] == 3600
+
+      assert MapSet.new(String.split(claims["scope"])) ==
+               MapSet.new([
+                 "https://www.googleapis.com/auth/admin.directory.customer.readonly",
+                 "https://www.googleapis.com/auth/admin.directory.orgunit.readonly",
+                 "https://www.googleapis.com/auth/admin.directory.group.readonly",
+                 "https://www.googleapis.com/auth/admin.directory.user.readonly"
+               ])
+
+      assert_receive {:workspace_token_request, workspace_params}
+      assert workspace_params["grant_type"] == "urn:ietf:params:oauth:grant-type:jwt-bearer"
+      assert workspace_params["assertion"] == "google-signed-jwt"
+      refute_receive {:sts_request, _sts_params}
+    end
+
+    test "uses and caches a customer-read-only token separately from the sync token" do
+      configure_workload_identity()
+      test_pid = self()
+
+      Req.Test.stub(Portal.Azure.ManagedIdentity, fn conn ->
+        Req.Test.json(conn, %{"error" => "not mocked"})
+      end)
+
+      server = start_token_cache()
+      Req.Test.allow(APIClient, self(), server)
+      Req.Test.allow(Portal.Azure.ManagedIdentity, self(), server)
+
+      Req.Test.expect(Portal.Azure.ManagedIdentity, fn conn ->
+        Req.Test.json(conn, %{
+          "access_token" => "azure-managed-identity-token",
+          "expires_on" => Integer.to_string(System.system_time(:second) + 3600)
+        })
+      end)
+
+      Req.Test.expect(APIClient, 5, fn conn ->
+        case conn.request_path do
+          "/v1/token" ->
+            Req.Test.json(conn, %{
+              "access_token" => "federated-google-token",
+              "expires_in" => 3600
+            })
+
+          "/v1/projects/-/serviceAccounts/" <>
+              @service_account_email <> ":signJwt" ->
+            {:ok, body, conn} = Plug.Conn.read_body(conn)
+            %{"payload" => payload} = JSON.decode!(body)
+            claims = JSON.decode!(payload)
+            send(test_pid, {:delegated_claims, claims})
+
+            signed_jwt =
+              if claims["scope"] ==
+                   "https://www.googleapis.com/auth/admin.directory.customer.readonly" do
+                "customer-signed-jwt"
+              else
+                "sync-signed-jwt"
+              end
+
+            Req.Test.json(conn, %{"signedJwt" => signed_jwt})
+
+          "/token" ->
+            {:ok, body, conn} = Plug.Conn.read_body(conn)
+            params = URI.decode_query(body)
+
+            token =
+              case params["assertion"] do
+                "customer-signed-jwt" -> "customer-access-token"
+                "sync-signed-jwt" -> "sync-access-token"
+              end
+
+            Req.Test.json(conn, %{"access_token" => token, "expires_in" => 3600})
+        end
+      end)
+
+      assert {:ok, "sync-access-token"} = APIClient.get_access_token("admin@example.com")
+
+      assert {:ok, "customer-access-token"} =
+               APIClient.get_customer_access_token("admin@example.com")
+
+      assert {:ok, "sync-access-token"} = APIClient.get_access_token("admin@example.com")
+
+      assert {:ok, "customer-access-token"} =
+               APIClient.get_customer_access_token("admin@example.com")
+
+      assert_receive {:delegated_claims, sync_claims}
+      assert sync_claims["sub"] == "admin@example.com"
+
+      assert MapSet.new(String.split(sync_claims["scope"])) ==
+               MapSet.new([
+                 "https://www.googleapis.com/auth/admin.directory.customer.readonly",
+                 "https://www.googleapis.com/auth/admin.directory.orgunit.readonly",
+                 "https://www.googleapis.com/auth/admin.directory.group.readonly",
+                 "https://www.googleapis.com/auth/admin.directory.user.readonly"
+               ])
+
+      assert_receive {:delegated_claims, customer_claims}
+      assert customer_claims["sub"] == "admin@example.com"
+
+      assert customer_claims["scope"] ==
+               "https://www.googleapis.com/auth/admin.directory.customer.readonly"
+
+      refute_receive {:delegated_claims, _claims}
+    end
+
+    test "caches a service-account-key access token" do
+      server = start_token_cache()
+      Req.Test.allow(APIClient, self(), server)
+
+      Req.Test.expect(APIClient, fn conn ->
+        assert conn.request_path == "/token"
+        Req.Test.json(conn, %{
+          "access_token" => "key-backed-access-token",
+          "expires_in" => 3600
+        })
+      end)
+
+      key = %{
+        "client_email" => @service_account_email,
+        "private_key" => @test_private_key
+      }
+
+      assert {:ok, "key-backed-access-token"} =
+               APIClient.get_access_token("admin@example.com", key)
+
+      assert {:ok, "key-backed-access-token"} =
+               APIClient.get_access_token("admin@example.com", key)
+    end
+
+    test "does not fall back to a key when workload identity configuration is incomplete" do
+      Portal.Config.put_env_override(
+        :portal,
+        APIClient,
+        workload_identity_provider: @workload_identity_provider,
+        workload_identity_audience: nil,
+        service_account_email: nil,
+        service_account_key:
+          JSON.encode!(%{
+            "client_email" => @service_account_email,
+            "private_key" => @test_private_key
+          })
+      )
+
+      assert {:error, :incomplete_workload_identity_configuration} =
+               APIClient.get_access_token("admin@example.com")
+    end
+
+    test "returns a tagged error when Google rejects the workload identity token exchange" do
+      configure_workload_identity()
+
+      Req.Test.stub(Portal.Azure.ManagedIdentity, fn conn ->
+        Req.Test.json(conn, %{"error" => "not mocked"})
+      end)
+
+      server = start_token_cache()
+      Req.Test.allow(APIClient, self(), server)
+      Req.Test.allow(Portal.Azure.ManagedIdentity, self(), server)
+
+      Req.Test.expect(Portal.Azure.ManagedIdentity, fn conn ->
+        Req.Test.json(conn, %{
+          "access_token" => "azure-managed-identity-token",
+          "expires_on" => Integer.to_string(System.system_time(:second) + 3600)
+        })
+      end)
+
+      Req.Test.expect(APIClient, fn conn ->
+        conn
+        |> Plug.Conn.put_status(403)
+        |> Req.Test.json(%{"error" => "permission_denied"})
+      end)
+
+      assert {:error,
+              {:workload_identity_token_exchange,
+               %Req.Response{status: 403, body: %{"error" => "permission_denied"}}}} =
+               APIClient.get_access_token("admin@example.com")
+    end
+
+    test "falls back to the key when workload identity federation fails during migration" do
+      configure_workload_identity()
+
+      Portal.Config.put_env_override(
+        :portal,
+        APIClient,
+        service_account_key:
+          JSON.encode!(%{
+            "client_email" => @service_account_email,
+            "private_key" => @test_private_key
+          })
+      )
+
+      Req.Test.expect(Portal.Azure.ManagedIdentity, fn conn ->
+        Req.Test.json(conn, %{
+          "access_token" => "azure-managed-identity-token",
+          "expires_on" => Integer.to_string(System.system_time(:second) + 3600)
+        })
+      end)
+
+      Req.Test.expect(APIClient, 2, fn conn ->
+        case conn.request_path do
+          "/v1/token" ->
+            conn
+            |> Plug.Conn.put_status(403)
+            |> Req.Test.json(%{"error" => "permission_denied"})
+
+          "/token" ->
+            Req.Test.json(conn, %{
+              "access_token" => "fallback-access-token",
+              "expires_in" => 3600
+            })
+        end
+      end)
+
+      assert {:ok, "fallback-access-token"} =
+               APIClient.get_access_token("admin@example.com")
+    end
+  end
+
+  describe "get_user/2 missing flags" do
+    test "retries until both flags are present" do
+      Portal.Config.merge_env_override(:portal, APIClient, user_flags_retry_delay: 0)
+
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{"id" => "user1", "suspended" => false})
+      end)
+
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, google_api_user_fixture(%{"id" => "user1"}))
+      end)
+
+      assert {:ok, %Req.Response{body: %{"suspended" => false, "archived" => false}}} =
+               APIClient.get_user(@test_access_token, "user1")
+    end
+
+    test "returns an error when the flags remain missing past the deadline" do
+      Portal.Config.merge_env_override(:portal, APIClient, user_flags_retry_timeout: 0)
+
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{"id" => "user1", "archived" => false})
+      end)
+
+      assert {:error, {:missing_user_flags, "user1"}} =
+               APIClient.get_user(@test_access_token, "user1")
+    end
+
+    test "preserves a deletion response while retrying incomplete users" do
+      Portal.Config.merge_env_override(:portal, APIClient, user_flags_retry_delay: 0)
+      Req.Test.expect(APIClient, fn conn -> Req.Test.json(conn, %{"id" => "user1"}) end)
+      Req.Test.expect(APIClient, fn conn -> Plug.Conn.send_resp(conn, 404, "") end)
+
+      assert {:ok, %Req.Response{status: 404}} = APIClient.get_user(@test_access_token, "user1")
+    end
+
+    test "propagates missing flags errors from batch users" do
+      Portal.Config.merge_env_override(:portal, APIClient, user_flags_retry_timeout: 0)
+
+      Req.Test.expect(APIClient, fn conn ->
+        boundary = "incomplete_user"
+        body = build_batch_body(boundary, [{"HTTP/1.1 200 OK", JSON.encode!(%{"id" => "user1"})}])
+
+        conn
+        |> Plug.Conn.put_resp_header("content-type", "multipart/mixed; boundary=#{boundary}")
+        |> Plug.Conn.send_resp(200, body)
+      end)
+
+      Req.Test.expect(APIClient, fn conn -> Req.Test.json(conn, %{"id" => "user1"}) end)
+
+      assert {:error, {:missing_user_flags, "user1"}} =
+               APIClient.batch_get_users(@test_access_token, ["user1"])
+    end
+
+    test "propagates missing flags errors from streamed users" do
+      Portal.Config.merge_env_override(:portal, APIClient, user_flags_retry_timeout: 0)
+
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{"users" => [%{"id" => "user1"}]})
+      end)
+
+      Req.Test.expect(APIClient, fn conn -> Req.Test.json(conn, %{"id" => "user1"}) end)
+
+      assert [{:error, {:missing_user_flags, "user1"}}] =
+               APIClient.stream_users(@test_access_token) |> Enum.to_list()
+    end
+  end
+
   describe "get_access_token/2" do
     test "exchanges JWT for access token" do
       test_pid = self()
@@ -67,10 +434,8 @@ defmodule Portal.Google.APIClientTest do
         "private_key" => @test_private_key
       }
 
-      assert {:ok, %Req.Response{status: 200, body: body}} =
+      assert {:ok, "returned_access_token"} =
                APIClient.get_access_token("admin@example.com", key)
-
-      assert body["access_token"] == "returned_access_token"
 
       assert_receive {:token_request, request_body, conn}
       assert {"content-type", "application/x-www-form-urlencoded"} in conn.req_headers
@@ -256,190 +621,6 @@ defmodule Portal.Google.APIClientTest do
     end
   end
 
-  describe "stream_users/2" do
-    test "streams a single page of users" do
-      test_pid = self()
-
-      Req.Test.expect(APIClient, fn conn ->
-        conn = Plug.Conn.fetch_query_params(conn)
-        send(test_pid, {:users_request, conn})
-
-        Req.Test.json(conn, %{
-          "kind" => "admin#directory#users",
-          "users" => [
-            active_google_user(%{"id" => "user1", "primaryEmail" => "user1@example.com"}),
-            active_google_user(%{"id" => "user2", "primaryEmail" => "user2@example.com"})
-          ]
-        })
-      end)
-
-      result =
-        APIClient.stream_users(@test_access_token, @test_domain)
-        |> Enum.to_list()
-
-      assert [[%{"id" => "user1"}, %{"id" => "user2"}]] = result
-
-      assert_receive {:users_request, conn}
-      assert_authorization_header(conn, @test_access_token)
-      assert conn.query_params["customer"] == "my_customer"
-      assert conn.query_params["domain"] == @test_domain
-      assert conn.query_params["maxResults"] == "500"
-      assert conn.query_params["projection"] == "full"
-      assert conn.query_params["query"] == "isSuspended=false isArchived=false"
-    end
-
-    test "streams multiple pages using nextPageToken" do
-      test_pid = self()
-      page_count = :counters.new(1, [:atomics])
-
-      Req.Test.expect(APIClient, 3, fn conn ->
-        conn = Plug.Conn.fetch_query_params(conn)
-        current_page = :counters.get(page_count, 1)
-        :counters.add(page_count, 1, 1)
-        send(test_pid, {:users_page, current_page, conn.query_params})
-
-        response =
-          case current_page do
-            0 ->
-              %{
-                "users" => [active_google_user(%{"id" => "user1"})],
-                "nextPageToken" => "page2_token"
-              }
-
-            1 ->
-              %{
-                "users" => [active_google_user(%{"id" => "user2"})],
-                "nextPageToken" => "page3_token"
-              }
-
-            2 ->
-              %{"users" => [active_google_user(%{"id" => "user3"})]}
-          end
-
-        Req.Test.json(conn, response)
-      end)
-
-      result =
-        APIClient.stream_users(@test_access_token, @test_domain)
-        |> Enum.to_list()
-
-      assert [
-               [%{"id" => "user1"}],
-               [%{"id" => "user2"}],
-               [%{"id" => "user3"}]
-             ] = result
-
-      assert_receive {:users_page, 0, page1_params}
-      assert page1_params["query"] == "isSuspended=false isArchived=false"
-      refute Map.has_key?(page1_params, "pageToken")
-
-      assert_receive {:users_page, 1, page2_params}
-      assert page2_params["query"] == "isSuspended=false isArchived=false"
-      assert page2_params["pageToken"] == "page2_token"
-
-      assert_receive {:users_page, 2, page3_params}
-      assert page3_params["query"] == "isSuspended=false isArchived=false"
-      assert page3_params["pageToken"] == "page3_token"
-    end
-
-    test "returns error on non-200 response" do
-      Req.Test.expect(APIClient, fn conn ->
-        conn
-        |> Plug.Conn.put_status(403)
-        |> Req.Test.json(%{"error" => "Forbidden"})
-      end)
-
-      result =
-        APIClient.stream_users(@test_access_token, @test_domain)
-        |> Enum.to_list()
-
-      assert [{:error, %Req.Response{status: 403}}] = result
-    end
-
-    test "returns error when users key is missing" do
-      Req.Test.expect(APIClient, fn conn ->
-        Req.Test.json(conn, %{"kind" => "admin#directory#users"})
-      end)
-
-      result =
-        APIClient.stream_users(@test_access_token, @test_domain)
-        |> Enum.to_list()
-
-      assert [{:error, {:missing_key, message, _body}}] = result
-      assert message =~ "users"
-    end
-
-    test "returns error when users key is not a list" do
-      Req.Test.expect(APIClient, fn conn ->
-        Req.Test.json(conn, %{"users" => "not_a_list"})
-      end)
-
-      result =
-        APIClient.stream_users(@test_access_token, @test_domain)
-        |> Enum.to_list()
-
-      assert [{:error, {:invalid_response, message, _body}}] = result
-      assert message =~ "users is not a list"
-    end
-
-    test "returns error on network failure" do
-      Req.Test.expect(APIClient, fn conn ->
-        Req.Test.transport_error(conn, :econnrefused)
-      end)
-
-      result =
-        APIClient.stream_users(@test_access_token, @test_domain)
-        |> Enum.to_list()
-
-      assert [{:error, %Req.TransportError{reason: :econnrefused}}] = result
-    end
-
-    test "filters suspended and archived users from returned pages" do
-      Req.Test.expect(APIClient, fn conn ->
-        Req.Test.json(conn, %{
-          "users" => [
-            active_google_user(%{"id" => "user1", "primaryEmail" => "user1@example.com"}),
-            %{"id" => "user2", "primaryEmail" => "user2@example.com", "suspended" => true},
-            %{"id" => "user3", "primaryEmail" => "user3@example.com", "archived" => true}
-          ]
-        })
-      end)
-
-      result =
-        APIClient.stream_users(@test_access_token, @test_domain)
-        |> Enum.to_list()
-
-      assert [[%{"id" => "user1"}]] = result
-    end
-
-    test "logs and skips users missing suspended or archived flags" do
-      Req.Test.expect(APIClient, fn conn ->
-        Req.Test.json(conn, %{
-          "kind" => "admin#directory#users",
-          "users" => [
-            %{"id" => "user1", "primaryEmail" => "user1@example.com"},
-            active_google_user(%{
-              "id" => "user2",
-              "primaryEmail" => "user2@example.com"
-            })
-          ]
-        })
-      end)
-
-      log =
-        capture_log(fn ->
-          result =
-            APIClient.stream_users(@test_access_token, @test_domain)
-            |> Enum.to_list()
-
-          assert [[%{"id" => "user2"}]] = result
-        end)
-
-      assert log =~ "Skipping Google user with missing suspended/archived flags"
-      assert log =~ "user1"
-    end
-  end
-
   describe "stream_groups/2" do
     test "streams a single page of groups" do
       test_pid = self()
@@ -458,7 +639,7 @@ defmodule Portal.Google.APIClientTest do
       end)
 
       result =
-        APIClient.stream_groups(@test_access_token, @test_domain)
+        APIClient.stream_groups(@test_access_token)
         |> Enum.to_list()
 
       assert [[%{"id" => "group1"}, %{"id" => "group2"}]] = result
@@ -466,7 +647,7 @@ defmodule Portal.Google.APIClientTest do
       assert_receive {:groups_request, conn}
       assert_authorization_header(conn, @test_access_token)
       assert conn.query_params["customer"] == "my_customer"
-      assert conn.query_params["domain"] == @test_domain
+      refute Map.has_key?(conn.query_params, "domain")
       assert conn.query_params["maxResults"] == "200"
     end
 
@@ -488,7 +669,7 @@ defmodule Portal.Google.APIClientTest do
       end)
 
       result =
-        APIClient.stream_groups(@test_access_token, @test_domain)
+        APIClient.stream_groups(@test_access_token)
         |> Enum.to_list()
 
       assert [[%{"id" => "group1"}], [%{"id" => "group2"}]] = result
@@ -500,7 +681,7 @@ defmodule Portal.Google.APIClientTest do
       end)
 
       result =
-        APIClient.stream_groups(@test_access_token, @test_domain)
+        APIClient.stream_groups(@test_access_token)
         |> Enum.to_list()
 
       assert [[]] = result
@@ -607,6 +788,127 @@ defmodule Portal.Google.APIClientTest do
     end
   end
 
+  describe "retrying throttled requests" do
+    @usage_limits_body %{
+      "error" => %{
+        "code" => 403,
+        "message" => "Rate Limit Exceeded",
+        "errors" => [
+          %{
+            "domain" => "usageLimits",
+            "message" => "Rate Limit Exceeded",
+            "reason" => "userRateLimitExceeded"
+          }
+        ]
+      }
+    }
+
+    @permission_denied_body %{
+      "error" => %{
+        "code" => 403,
+        "message" => "Not Authorized to access this resource/api",
+        "errors" => [
+          %{"domain" => "global", "message" => "Forbidden", "reason" => "forbidden"}
+        ]
+      }
+    }
+
+    setup do
+      # test.exs switches retrying off suite-wide; drop just that key.
+      Portal.Config.delete_env_override(:portal, APIClient, [:req_opts, :retry])
+      Portal.Config.merge_env_override(:portal, APIClient, req_opts: [retry_delay: 0])
+
+      :ok
+    end
+
+    test "keeps the throttling predicate when config sets another retry strategy" do
+      Portal.Config.merge_env_override(:portal, APIClient,
+        req_opts: [retry: :transient, retry_delay: 0]
+      )
+
+      attempts = :counters.new(1, [:atomics])
+
+      Req.Test.expect(APIClient, 2, fn conn ->
+        :counters.add(attempts, 1, 1)
+
+        case :counters.get(attempts, 1) do
+          1 -> conn |> Plug.Conn.put_status(403) |> Req.Test.json(@usage_limits_body)
+          2 -> Req.Test.json(conn, %{"organizationUnits" => [%{"orgUnitId" => "ou1"}]})
+        end
+      end)
+
+      assert [[%{"orgUnitId" => "ou1"}]] =
+               APIClient.stream_organization_units(@test_access_token) |> Enum.to_list()
+
+      assert :counters.get(attempts, 1) == 2
+    end
+
+    test "lets config switch retrying off" do
+      Portal.Config.merge_env_override(:portal, APIClient, req_opts: [retry: false])
+
+      attempts = :counters.new(1, [:atomics])
+
+      Req.Test.stub(APIClient, fn conn ->
+        :counters.add(attempts, 1, 1)
+        conn |> Plug.Conn.put_status(403) |> Req.Test.json(@usage_limits_body)
+      end)
+
+      assert [{:error, %Req.Response{status: 403}}] =
+               APIClient.stream_organization_units(@test_access_token) |> Enum.to_list()
+
+      assert :counters.get(attempts, 1) == 1
+    end
+
+    test "retries a 403 caused by throttling and succeeds" do
+      attempts = :counters.new(1, [:atomics])
+
+      Req.Test.expect(APIClient, 2, fn conn ->
+        :counters.add(attempts, 1, 1)
+
+        case :counters.get(attempts, 1) do
+          1 ->
+            conn |> Plug.Conn.put_status(403) |> Req.Test.json(@usage_limits_body)
+
+          2 ->
+            Req.Test.json(conn, %{"organizationUnits" => [%{"orgUnitId" => "ou1"}]})
+        end
+      end)
+
+      assert [[%{"orgUnitId" => "ou1"}]] =
+               APIClient.stream_organization_units(@test_access_token) |> Enum.to_list()
+
+      assert :counters.get(attempts, 1) == 2
+    end
+
+    test "does not retry a 403 caused by a permission failure" do
+      attempts = :counters.new(1, [:atomics])
+
+      Req.Test.stub(APIClient, fn conn ->
+        :counters.add(attempts, 1, 1)
+        conn |> Plug.Conn.put_status(403) |> Req.Test.json(@permission_denied_body)
+      end)
+
+      assert [{:error, %Req.Response{status: 403}}] =
+               APIClient.stream_organization_units(@test_access_token) |> Enum.to_list()
+
+      assert :counters.get(attempts, 1) == 1
+    end
+
+    test "surfaces the error when throttling outlasts the retries" do
+      attempts = :counters.new(1, [:atomics])
+
+      Req.Test.stub(APIClient, fn conn ->
+        :counters.add(attempts, 1, 1)
+        conn |> Plug.Conn.put_status(403) |> Req.Test.json(@usage_limits_body)
+      end)
+
+      assert [{:error, %Req.Response{status: 403}}] =
+               APIClient.stream_organization_units(@test_access_token) |> Enum.to_list()
+
+      assert :counters.get(attempts, 1) == 6
+    end
+  end
+
   describe "stream_organization_units/1" do
     test "streams a single page of organization units" do
       test_pid = self()
@@ -704,8 +1006,8 @@ defmodule Portal.Google.APIClientTest do
         Req.Test.json(conn, %{
           "kind" => "admin#directory#users",
           "users" => [
-            active_google_user(%{"id" => "user1", "primaryEmail" => "user1@example.com"}),
-            active_google_user(%{"id" => "user2", "primaryEmail" => "user2@example.com"})
+            google_api_user_fixture(%{"id" => "user1", "primaryEmail" => "user1@example.com"}),
+            google_api_user_fixture(%{"id" => "user2", "primaryEmail" => "user2@example.com"})
           ]
         })
       end)
@@ -721,7 +1023,7 @@ defmodule Portal.Google.APIClientTest do
       assert conn.query_params["customer"] == "my_customer"
 
       assert conn.query_params["query"] ==
-               "orgUnitPath='/Engineering' isSuspended=false isArchived=false"
+               "orgUnitPath='/Engineering'"
 
       assert conn.query_params["maxResults"] == "500"
       assert conn.query_params["projection"] == "full"
@@ -739,12 +1041,12 @@ defmodule Portal.Google.APIClientTest do
           case current_page do
             0 ->
               %{
-                "users" => [active_google_user(%{"id" => "user1"})],
+                "users" => [google_api_user_fixture(%{"id" => "user1"})],
                 "nextPageToken" => "next_page"
               }
 
             1 ->
-              %{"users" => [active_google_user(%{"id" => "user2"})]}
+              %{"users" => [google_api_user_fixture(%{"id" => "user2"})]}
           end
 
         Req.Test.json(conn, response)
@@ -788,13 +1090,13 @@ defmodule Portal.Google.APIClientTest do
       assert [{:error, %Req.Response{status: 403}}] = result
     end
 
-    test "filters suspended and archived org unit users from returned pages" do
+    test "returns suspended and archived org unit users with their flags" do
       Req.Test.expect(APIClient, fn conn ->
         Req.Test.json(conn, %{
           "users" => [
-            active_google_user(%{"id" => "user1", "primaryEmail" => "user1@example.com"}),
-            %{"id" => "user2", "primaryEmail" => "user2@example.com", "suspended" => true},
-            %{"id" => "user3", "primaryEmail" => "user3@example.com", "archived" => true}
+            google_api_user_fixture(%{"id" => "user1", "primaryEmail" => "user1@example.com"}),
+            %{"id" => "user2", "primaryEmail" => "user2@example.com", "suspended" => true, "archived" => false},
+            %{"id" => "user3", "primaryEmail" => "user3@example.com", "archived" => true, "suspended" => false}
           ]
         })
       end)
@@ -803,7 +1105,13 @@ defmodule Portal.Google.APIClientTest do
         APIClient.stream_organization_unit_members(@test_access_token, "/Engineering")
         |> Enum.to_list()
 
-      assert [[%{"id" => "user1"}]] = result
+      assert [
+               [
+                 %{"id" => "user1"},
+                 %{"id" => "user2", "suspended" => true},
+                 %{"id" => "user3", "archived" => true}
+               ]
+             ] = result
     end
   end
 
@@ -829,7 +1137,7 @@ defmodule Portal.Google.APIClientTest do
           build_batch_body(boundary, [
             {"HTTP/1.1 200 OK",
              JSON.encode!(
-               active_google_user(%{"id" => "user1", "primaryEmail" => "user1@example.com"})
+               google_api_user_fixture(%{"id" => "user1", "primaryEmail" => "user1@example.com"})
              )}
           ])
 
@@ -853,7 +1161,7 @@ defmodule Portal.Google.APIClientTest do
           build_batch_body(boundary, [
             {"HTTP/1.1 200 OK",
              JSON.encode!(
-               active_google_user(%{"id" => "user1", "primaryEmail" => "user1@example.com"})
+               google_api_user_fixture(%{"id" => "user1", "primaryEmail" => "user1@example.com"})
              )}
           ])
 
@@ -901,6 +1209,24 @@ defmodule Portal.Google.APIClientTest do
       assert {:ok, []} = APIClient.batch_get_users(@test_access_token, ["deleted-user"])
     end
 
+    test "skips soft-deleted 412 users in batch response" do
+      Req.Test.expect(APIClient, fn conn ->
+        boundary = "deleted_boundary"
+
+        body =
+          build_batch_body(boundary, [
+            {"HTTP/1.1 412 Precondition Failed",
+             JSON.encode!(%{"error" => %{"code" => 412, "message" => "User is deleted."}})}
+          ])
+
+        conn
+        |> Plug.Conn.put_resp_header("content-type", "multipart/mixed; boundary=#{boundary}")
+        |> Plug.Conn.send_resp(200, body)
+      end)
+
+      assert {:ok, []} = APIClient.batch_get_users(@test_access_token, ["deleted-user"])
+    end
+
     test "handles iodata response body for multipart parsing" do
       Req.Test.expect(APIClient, fn conn ->
         boundary = "iodata_boundary"
@@ -909,7 +1235,7 @@ defmodule Portal.Google.APIClientTest do
           build_batch_body(boundary, [
             {"HTTP/1.1 200 OK",
              JSON.encode!(
-               active_google_user(%{"id" => "user1", "primaryEmail" => "user1@example.com"})
+               google_api_user_fixture(%{"id" => "user1", "primaryEmail" => "user1@example.com"})
              )}
           ])
 
@@ -933,13 +1259,95 @@ defmodule Portal.Google.APIClientTest do
                APIClient.batch_get_users(@test_access_token, ["user1"])
     end
 
-    test "returns error for non-404 per-part status in batch response" do
+    test "returns error for a 403 part rather than skipping it" do
+      # 403 also means throttling, and skipping a user gets them deleted.
       Req.Test.expect(APIClient, fn conn ->
         boundary = "forbidden_part_boundary"
 
         body =
           build_batch_body(boundary, [
-            {"HTTP/1.1 403 Forbidden", JSON.encode!(%{"error" => %{"message" => "forbidden"}})}
+            {"HTTP/1.1 200 OK",
+             JSON.encode!(
+               google_api_user_fixture(%{"id" => "user1", "primaryEmail" => "user1@example.com"})
+             )},
+            {"HTTP/1.1 403 Forbidden",
+             JSON.encode!(%{"error" => %{"message" => "userRateLimitExceeded"}})}
+          ])
+
+        conn
+        |> Plug.Conn.put_resp_header("content-type", "multipart/mixed; boundary=#{boundary}")
+        |> Plug.Conn.send_resp(200, body)
+      end)
+
+      assert {:error, %Req.Response{status: 403}} =
+               APIClient.batch_get_users(@test_access_token, ["user1", "extuser"])
+    end
+
+    test "returns error for unexpected per-part status in batch response" do
+      Req.Test.expect(APIClient, fn conn ->
+        boundary = "teapot_part_boundary"
+
+        body =
+          build_batch_body(boundary, [
+            {"HTTP/1.1 418 I'm a teapot", JSON.encode!(%{"error" => %{"message" => "boom"}})}
+          ])
+
+        conn
+        |> Plug.Conn.put_resp_header("content-type", "multipart/mixed; boundary=#{boundary}")
+        |> Plug.Conn.send_resp(200, body)
+      end)
+
+      assert {:error, %Req.Response{status: 418}} =
+               APIClient.batch_get_users(@test_access_token, ["user1"])
+    end
+
+    test "retries the whole chunk when a part is throttled" do
+      Portal.Config.put_env_override(:portal, APIClient,
+        req_opts: [retry_delay: 0, plug: {Req.Test, APIClient}]
+      )
+
+      attempts = :counters.new(1, [:atomics])
+
+      Req.Test.expect(APIClient, 2, fn conn ->
+        :counters.add(attempts, 1, 1)
+        boundary = "throttled_part_boundary"
+
+        second_part =
+          case :counters.get(attempts, 1) do
+            1 -> {"HTTP/1.1 403 Forbidden", JSON.encode!(throttled_error())}
+            2 -> {"HTTP/1.1 200 OK", JSON.encode!(google_api_user_fixture(%{"id" => "user2"}))}
+          end
+
+        body =
+          build_batch_body(boundary, [
+            {"HTTP/1.1 200 OK", JSON.encode!(google_api_user_fixture(%{"id" => "user1"}))},
+            second_part
+          ])
+
+        conn
+        |> Plug.Conn.put_resp_header("content-type", "multipart/mixed; boundary=#{boundary}")
+        |> Plug.Conn.send_resp(200, body)
+      end)
+
+      assert {:ok, users} = APIClient.batch_get_users(@test_access_token, ["user1", "user2"])
+      assert Enum.map(users, & &1["id"]) == ["user1", "user2"]
+      assert :counters.get(attempts, 1) == 2
+    end
+
+    test "surfaces the error when a throttled part outlasts the retries" do
+      Portal.Config.put_env_override(:portal, APIClient,
+        req_opts: [retry_delay: 0, plug: {Req.Test, APIClient}]
+      )
+
+      attempts = :counters.new(1, [:atomics])
+
+      Req.Test.stub(APIClient, fn conn ->
+        :counters.add(attempts, 1, 1)
+        boundary = "always_throttled_boundary"
+
+        body =
+          build_batch_body(boundary, [
+            {"HTTP/1.1 403 Forbidden", JSON.encode!(throttled_error())}
           ])
 
         conn
@@ -949,6 +1357,68 @@ defmodule Portal.Google.APIClientTest do
 
       assert {:error, %Req.Response{status: 403}} =
                APIClient.batch_get_users(@test_access_token, ["user1"])
+
+      assert :counters.get(attempts, 1) == 6
+    end
+
+    test "retries the whole chunk when a part fails with a 5xx" do
+      Portal.Config.put_env_override(:portal, APIClient,
+        req_opts: [retry_delay: 0, plug: {Req.Test, APIClient}]
+      )
+
+      attempts = :counters.new(1, [:atomics])
+
+      Req.Test.expect(APIClient, 2, fn conn ->
+        :counters.add(attempts, 1, 1)
+        boundary = "server_error_part_boundary"
+
+        second_part =
+          case :counters.get(attempts, 1) do
+            1 -> {"HTTP/1.1 500 Internal Server Error", JSON.encode!(%{"error" => "boom"})}
+            2 -> {"HTTP/1.1 200 OK", JSON.encode!(google_api_user_fixture(%{"id" => "user2"}))}
+          end
+
+        body =
+          build_batch_body(boundary, [
+            {"HTTP/1.1 200 OK", JSON.encode!(google_api_user_fixture(%{"id" => "user1"}))},
+            second_part
+          ])
+
+        conn
+        |> Plug.Conn.put_resp_header("content-type", "multipart/mixed; boundary=#{boundary}")
+        |> Plug.Conn.send_resp(200, body)
+      end)
+
+      assert {:ok, users} = APIClient.batch_get_users(@test_access_token, ["user1", "user2"])
+      assert Enum.map(users, & &1["id"]) == ["user1", "user2"]
+      assert :counters.get(attempts, 1) == 2
+    end
+
+    test "surfaces the error when a 5xx part outlasts the retries" do
+      Portal.Config.put_env_override(:portal, APIClient,
+        req_opts: [retry_delay: 0, plug: {Req.Test, APIClient}]
+      )
+
+      attempts = :counters.new(1, [:atomics])
+
+      Req.Test.stub(APIClient, fn conn ->
+        :counters.add(attempts, 1, 1)
+        boundary = "always_failing_boundary"
+
+        body =
+          build_batch_body(boundary, [
+            {"HTTP/1.1 503 Service Unavailable", JSON.encode!(%{"error" => "boom"})}
+          ])
+
+        conn
+        |> Plug.Conn.put_resp_header("content-type", "multipart/mixed; boundary=#{boundary}")
+        |> Plug.Conn.send_resp(200, body)
+      end)
+
+      assert {:error, %Req.Response{status: 503}} =
+               APIClient.batch_get_users(@test_access_token, ["user1"])
+
+      assert :counters.get(attempts, 1) == 6
     end
 
     test "returns transport error for batch request failure" do
@@ -960,7 +1430,7 @@ defmodule Portal.Google.APIClientTest do
                APIClient.batch_get_users(@test_access_token, ["user1"])
     end
 
-    test "filters suspended and archived users from batch results" do
+    test "returns suspended and archived users from batch results with their flags" do
       Req.Test.expect(APIClient, fn conn ->
         boundary = "filtered_users_boundary"
 
@@ -968,19 +1438,21 @@ defmodule Portal.Google.APIClientTest do
           build_batch_body(boundary, [
             {"HTTP/1.1 200 OK",
              JSON.encode!(
-               active_google_user(%{"id" => "user1", "primaryEmail" => "user1@example.com"})
+               google_api_user_fixture(%{"id" => "user1", "primaryEmail" => "user1@example.com"})
              )},
             {"HTTP/1.1 200 OK",
              JSON.encode!(%{
                "id" => "user2",
                "primaryEmail" => "user2@example.com",
-               "suspended" => true
+               "suspended" => true,
+               "archived" => false
              })},
             {"HTTP/1.1 200 OK",
              JSON.encode!(%{
                "id" => "user3",
                "primaryEmail" => "user3@example.com",
-               "archived" => true
+               "archived" => true,
+               "suspended" => false
              })}
           ])
 
@@ -992,10 +1464,14 @@ defmodule Portal.Google.APIClientTest do
       assert {:ok, users} =
                APIClient.batch_get_users(@test_access_token, ["user1", "user2", "user3"])
 
-      assert Enum.map(users, & &1["id"]) == ["user1"]
+      assert Enum.map(users, &{&1["id"], &1["suspended"], &1["archived"]}) == [
+               {"user1", false, false},
+               {"user2", true, false},
+               {"user3", false, true}
+             ]
     end
 
-    test "logs and skips batch users missing suspended or archived flags" do
+    test "refetches batch users missing suspended or archived flags" do
       Req.Test.expect(APIClient, fn conn ->
         boundary = "missing_flags_boundary"
 
@@ -1005,7 +1481,7 @@ defmodule Portal.Google.APIClientTest do
              JSON.encode!(%{"id" => "user1", "primaryEmail" => "user1@example.com"})},
             {"HTTP/1.1 200 OK",
              JSON.encode!(
-               active_google_user(%{"id" => "user2", "primaryEmail" => "user2@example.com"})
+               google_api_user_fixture(%{"id" => "user2", "primaryEmail" => "user2@example.com"})
              )}
           ])
 
@@ -1014,14 +1490,13 @@ defmodule Portal.Google.APIClientTest do
         |> Plug.Conn.send_resp(200, body)
       end)
 
-      log =
-        capture_log(fn ->
-          assert {:ok, users} = APIClient.batch_get_users(@test_access_token, ["user1", "user2"])
-          assert Enum.map(users, & &1["id"]) == ["user2"]
-        end)
+      Req.Test.expect(APIClient, fn conn ->
+        assert conn.request_path == "/admin/directory/v1/users/user1"
+        Req.Test.json(conn, google_api_user_fixture(%{"id" => "user1"}))
+      end)
 
-      assert log =~ "Skipping Google user with missing suspended/archived flags"
-      assert log =~ "user1"
+      assert {:ok, users} = APIClient.batch_get_users(@test_access_token, ["user1", "user2"])
+      assert Enum.map(users, & &1["id"]) == ["user1", "user2"]
     end
 
     test "halts on chunk error after first successful chunk" do
@@ -1039,7 +1514,7 @@ defmodule Portal.Google.APIClientTest do
               build_batch_body(boundary, [
                 {"HTTP/1.1 200 OK",
                  JSON.encode!(
-                   active_google_user(%{"id" => "user1", "primaryEmail" => "user1@example.com"})
+                   google_api_user_fixture(%{"id" => "user1", "primaryEmail" => "user1@example.com"})
                  )}
               ])
 
@@ -1108,13 +1583,13 @@ defmodule Portal.Google.APIClientTest do
   end
 
   describe "pagination edge cases" do
-    test "handles empty result list correctly for users" do
+    test "handles empty result list correctly for org unit members" do
       Req.Test.expect(APIClient, fn conn ->
         Req.Test.json(conn, %{"users" => []})
       end)
 
       result =
-        APIClient.stream_users(@test_access_token, @test_domain)
+        APIClient.stream_organization_unit_members(@test_access_token, "/Engineering")
         |> Enum.to_list()
 
       assert [[]] = result
@@ -1131,7 +1606,7 @@ defmodule Portal.Google.APIClientTest do
         case current_page do
           0 ->
             Req.Test.json(conn, %{
-              "users" => [active_google_user(%{"id" => "user1"})],
+              "users" => [google_api_user_fixture(%{"id" => "user1"})],
               "nextPageToken" => "page2"
             })
 
@@ -1143,7 +1618,7 @@ defmodule Portal.Google.APIClientTest do
       end)
 
       result =
-        APIClient.stream_users(@test_access_token, @test_domain)
+        APIClient.stream_organization_unit_members(@test_access_token, "/Engineering")
         |> Enum.to_list()
 
       assert [[%{"id" => "user1"}], {:error, %Req.Response{status: 500}}] = result
@@ -1163,39 +1638,59 @@ defmodule Portal.Google.APIClientTest do
           case current_page do
             0 ->
               %{
-                "users" => [active_google_user(%{"id" => "user1"})],
+                "users" => [google_api_user_fixture(%{"id" => "user1"})],
                 "nextPageToken" => "token123"
               }
 
             1 ->
-              %{"users" => [active_google_user(%{"id" => "user2"})]}
+              %{"users" => [google_api_user_fixture(%{"id" => "user2"})]}
           end
 
         Req.Test.json(conn, response)
       end)
 
-      APIClient.stream_users(@test_access_token, @test_domain)
+      APIClient.stream_organization_unit_members(@test_access_token, "/Engineering")
       |> Enum.to_list()
 
       assert_receive {:page_params, 0, page1_params}
       assert page1_params["customer"] == "my_customer"
-      assert page1_params["domain"] == @test_domain
       assert page1_params["maxResults"] == "500"
       assert page1_params["projection"] == "full"
-      assert page1_params["query"] == "isSuspended=false isArchived=false"
+
+      assert page1_params["query"] ==
+               "orgUnitPath='/Engineering'"
+
       refute Map.has_key?(page1_params, "pageToken")
 
       assert_receive {:page_params, 1, page2_params}
       assert page2_params["customer"] == "my_customer"
-      assert page2_params["domain"] == @test_domain
       assert page2_params["maxResults"] == "500"
       assert page2_params["projection"] == "full"
-      assert page2_params["query"] == "isSuspended=false isArchived=false"
+
+      assert page2_params["query"] ==
+               "orgUnitPath='/Engineering'"
+
       assert page2_params["pageToken"] == "token123"
     end
   end
 
   # Helper functions
+
+  defp throttled_error do
+    %{
+      "error" => %{
+        "code" => 403,
+        "message" => "Rate Limit Exceeded",
+        "errors" => [
+          %{
+            "domain" => "usageLimits",
+            "message" => "Rate Limit Exceeded",
+            "reason" => "userRateLimitExceeded"
+          }
+        ]
+      }
+    }
+  end
 
   defp build_batch_body(boundary, parts) do
     encoded_parts =
@@ -1206,10 +1701,21 @@ defmodule Portal.Google.APIClientTest do
     Enum.join(encoded_parts, "") <> "--#{boundary}--"
   end
 
-  defp active_google_user(attrs) do
-    attrs
-    |> Map.put_new("suspended", false)
-    |> Map.put_new("archived", false)
+  defp configure_workload_identity do
+    Portal.Config.put_env_override(
+      :portal,
+      APIClient,
+      workload_identity_provider: @workload_identity_provider,
+      workload_identity_audience: @workload_identity_audience,
+      service_account_email: @service_account_email
+    )
+  end
+
+  defp start_token_cache do
+    name = :"google_token_cache_#{System.unique_integer([:positive])}"
+    server = start_supervised!({TokenCache, name: name})
+    Portal.Config.merge_env_override(:portal, APIClient, token_cache: server)
+    server
   end
 
   defp assert_authorization_header(conn, expected_token) do

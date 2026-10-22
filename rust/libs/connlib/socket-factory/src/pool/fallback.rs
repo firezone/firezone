@@ -11,9 +11,8 @@ use std::{
 };
 
 use anyhow::Result;
-use bufferpool::BufferPool;
 
-use crate::DatagramSegmentIter;
+use crate::DatagramBatch;
 
 use super::{OwnedSocket, Socket, poll_recv_ready};
 
@@ -32,7 +31,8 @@ impl SocketPool {
         &self,
         _src: Option<IpAddr>,
         _dst: SocketAddr,
-        _buffer_pool: &BufferPool<Vec<u8>>,
+        _datagrams: usize,
+        _recv_buffers: &crate::RecvBuffers,
     ) -> Arc<OwnedSocket> {
         self.wildcard.clone()
     }
@@ -41,9 +41,9 @@ impl SocketPool {
         &self,
         cx: &mut Context<'_>,
         mut try_recv: F,
-    ) -> Poll<Result<DatagramSegmentIter>>
+    ) -> Poll<Result<DatagramBatch>>
     where
-        F: FnMut(Socket<'_>) -> io::Result<DatagramSegmentIter>,
+        F: FnMut(Socket<'_>) -> io::Result<DatagramBatch>,
     {
         poll_recv_ready(cx, self.wildcard.as_socket(), &mut try_recv)
     }

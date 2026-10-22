@@ -20,11 +20,14 @@ defmodule PortalAPI.Gateway.SocketTest do
       token = gateway_token_fixture()
       encrypted_secret = encode_gateway_token(token)
 
-      # Attrs without token param, but with other required fields
+      # Attrs without token param, but with other required fields. The legacy
+      # firezone_id wire name must keep working.
       attrs =
         valid_gateway_attrs()
         |> Map.take([:firezone_id, :public_key])
-        |> Enum.into(%{}, fn {k, v} -> {to_string(k), v} end)
+        |> then(fn attrs ->
+          %{"firezone_id" => attrs.firezone_id, "public_key" => attrs.public_key}
+        end)
 
       connect_info = build_connect_info(token: encrypted_secret)
 
@@ -78,7 +81,15 @@ defmodule PortalAPI.Gateway.SocketTest do
       token = gateway_token_fixture()
       encrypted_secret = encode_gateway_token(token)
 
-      attrs = connect_attrs(token: encrypted_secret)
+      attrs =
+        connect_attrs(
+          token: encrypted_secret,
+          name: "reported-name",
+          device_serial: "reported-serial",
+          device_uuid: "reported-uuid",
+          identifier_for_vendor: "mobile-only-ifv",
+          firebase_installation_id: "mobile-only-firebase-id"
+        )
 
       connect_info =
         build_connect_info(user_agent: "iOS/12.7 (iPhone) connlib/#{@connlib_version}")
@@ -87,16 +98,28 @@ defmodule PortalAPI.Gateway.SocketTest do
       assert gateway = Map.fetch!(socket.assigns, :gateway)
 
       assert gateway.firezone_id == attrs["external_id"]
+      assert gateway.name == "reported-name"
+      assert gateway.device_serial == "reported-serial"
+      assert gateway.device_uuid == "reported-uuid"
+      assert is_nil(gateway.identifier_for_vendor)
+      assert is_nil(gateway.firebase_installation_id)
 
-      assert session = Map.fetch!(socket.assigns, :session)
-      assert session.public_key == attrs["public_key"]
-      assert session.user_agent == connect_info.user_agent
-      assert session.remote_ip_location_region == "Ukraine"
-      assert session.remote_ip_location_city == "Kyiv"
-      assert session.remote_ip_location_lat == 50.4333
-      assert session.remote_ip_location_lon == 30.5167
-      assert session.version == @connlib_version
-      assert session.device_id == gateway.id
+      persisted = Portal.Repo.get_by!(Portal.Device, account_id: gateway.account_id, id: gateway.id)
+      assert persisted.name == "reported-name"
+      assert persisted.device_serial == "reported-serial"
+      assert persisted.device_uuid == "reported-uuid"
+      assert is_nil(persisted.identifier_for_vendor)
+      assert is_nil(persisted.firebase_installation_id)
+
+      assert is_reference(Map.fetch!(socket.assigns, :session_ref))
+      assert gateway.public_key == attrs["public_key"]
+      assert gateway.last_seen_user_agent == connect_info.user_agent
+      assert gateway.last_seen_remote_ip_location_region == "Ukraine"
+      assert gateway.last_seen_remote_ip_location_city == "Kyiv"
+      assert gateway.last_seen_remote_ip_location_lat == 50.4333
+      assert gateway.last_seen_remote_ip_location_lon == 30.5167
+      assert gateway.last_seen_version == @connlib_version
+      assert gateway.last_seen_at
     end
 
     test "uses region code to put default coordinates" do
@@ -107,12 +130,11 @@ defmodule PortalAPI.Gateway.SocketTest do
       connect_info = build_connect_info(x_headers: [{"x-geo-location-region", "UA"}])
 
       assert {:ok, socket} = connect(Socket, attrs, connect_info: connect_info)
-      assert Map.fetch!(socket.assigns, :gateway)
-      assert session = Map.fetch!(socket.assigns, :session)
-      assert session.remote_ip_location_region == "UA"
-      assert session.remote_ip_location_city == nil
-      assert session.remote_ip_location_lat == 49.0
-      assert session.remote_ip_location_lon == 32.0
+      assert gateway = Map.fetch!(socket.assigns, :gateway)
+      assert gateway.last_seen_remote_ip_location_region == "UA"
+      assert gateway.last_seen_remote_ip_location_city == nil
+      assert gateway.last_seen_remote_ip_location_lat == 49.0
+      assert gateway.last_seen_remote_ip_location_lon == 32.0
     end
 
     test "propagates trace context" do
@@ -147,13 +169,49 @@ defmodule PortalAPI.Gateway.SocketTest do
       assert {:ok, socket} = connect(Socket, attrs, connect_info: connect_info)
       assert socket.assigns.gateway.id == gateway.id
 
-      session = socket.assigns.session
-      assert session.device_id == gateway.id
-      assert session.gateway_token_id == token.id
-      assert session.remote_ip_location_region == "Ukraine"
-      assert session.remote_ip_location_city == "Kyiv"
-      assert session.remote_ip_location_lat == 50.4333
-      assert session.remote_ip_location_lon == 30.5167
+      connected_gateway = socket.assigns.gateway
+      assert is_reference(socket.assigns.session_ref)
+      assert connected_gateway.gateway_token_id == token.id
+      assert connected_gateway.last_seen_remote_ip_location_region == "Ukraine"
+      assert connected_gateway.last_seen_remote_ip_location_city == "Kyiv"
+      assert connected_gateway.last_seen_remote_ip_location_lat == 50.4333
+      assert connected_gateway.last_seen_remote_ip_location_lon == 30.5167
+    end
+
+    test "updates an existing multi-owner gateway's hardware metadata without changing its name" do
+      account = account_fixture()
+      site = site_fixture(account: account)
+
+      gateway =
+        gateway_fixture(
+          account: account,
+          site: site,
+          name: "old-name",
+          device_serial: "old-serial",
+          device_uuid: "old-uuid"
+        )
+
+      token = gateway_token_fixture(account: account, site: site)
+
+      attrs =
+        connect_attrs(
+          token: encode_gateway_token(token),
+          external_id: gateway.firezone_id,
+          name: "new-name",
+          device_serial: "new-serial",
+          device_uuid: "new-uuid"
+        )
+
+      assert {:ok, socket} = connect(Socket, attrs, connect_info: build_connect_info())
+      assert socket.assigns.gateway.id == gateway.id
+      assert socket.assigns.gateway.name == "old-name"
+      assert socket.assigns.gateway.device_serial == "new-serial"
+      assert socket.assigns.gateway.device_uuid == "new-uuid"
+
+      persisted = Portal.Repo.get_by!(Portal.Device, account_id: account.id, id: gateway.id)
+      assert persisted.name == "old-name"
+      assert persisted.device_serial == "new-serial"
+      assert persisted.device_uuid == "new-uuid"
     end
 
     test "preserves ipv4 and ipv6 addresses on reconnection" do
@@ -192,6 +250,196 @@ defmodule PortalAPI.Gateway.SocketTest do
       attrs = connect_attrs(token: "foo")
       connect_info = build_connect_info()
       assert connect(Socket, attrs, connect_info: connect_info) == {:error, :invalid_token}
+    end
+
+    test "connects a gateway with a single-owner token" do
+      account = account_fixture()
+      site = site_fixture(account: account)
+      gateway = gateway_fixture(account: account, site: site)
+      token = gateway_token_fixture(gateway: gateway)
+      encrypted_secret = encode_gateway_token(token)
+
+      attrs = connect_attrs(token: encrypted_secret)
+      connect_info = build_connect_info()
+
+      assert {:ok, socket} = connect(Socket, attrs, connect_info: connect_info)
+
+      # The token identifies the gateway directly; the reported external_id
+      # is ignored for identification
+      assert socket.assigns.gateway.id == gateway.id
+      assert socket.assigns.site.id == site.id
+      assert socket.assigns.gateway.gateway_token_id == token.id
+    end
+
+    test "single-owner connect persists the reported firezone_id when blank" do
+      account = account_fixture()
+      site = site_fixture(account: account)
+      gateway = gateway_fixture(account: account, site: site)
+
+      gateway =
+        gateway
+        |> Ecto.Changeset.change(firezone_id: nil)
+        |> Portal.Repo.update!()
+
+      token = gateway_token_fixture(gateway: gateway)
+
+      attrs = connect_attrs(token: encode_gateway_token(token), external_id: "reported-id")
+
+      assert {:ok, socket} = connect(Socket, attrs, connect_info: build_connect_info())
+      assert socket.assigns.gateway.firezone_id == "reported-id"
+    end
+
+    test "single-owner connect updates the reported firezone_id and hardware metadata without changing its name" do
+      account = account_fixture()
+      site = site_fixture(account: account)
+
+      gateway =
+        gateway_fixture(
+          account: account,
+          site: site,
+          name: "old-name",
+          device_serial: "old-serial",
+          device_uuid: "old-uuid"
+        )
+
+      token = gateway_token_fixture(gateway: gateway)
+
+      attrs =
+        connect_attrs(
+          token: encode_gateway_token(token),
+          external_id: "different-id",
+          name: "new-name",
+          device_serial: "new-serial",
+          device_uuid: "new-uuid"
+        )
+
+      assert {:ok, socket} = connect(Socket, attrs, connect_info: build_connect_info())
+      assert socket.assigns.gateway.firezone_id == "different-id"
+      assert socket.assigns.gateway.name == "old-name"
+      assert socket.assigns.gateway.device_serial == "new-serial"
+      assert socket.assigns.gateway.device_uuid == "new-uuid"
+
+      persisted = Portal.Repo.get_by!(Portal.Device, account_id: account.id, id: gateway.id)
+      assert persisted.firezone_id == "different-id"
+      assert persisted.name == "old-name"
+      assert persisted.device_serial == "new-serial"
+      assert persisted.device_uuid == "new-uuid"
+    end
+
+    test "single-owner connect preserves metadata the gateway omits" do
+      account = account_fixture()
+      site = site_fixture(account: account)
+
+      gateway =
+        gateway_fixture(
+          account: account,
+          site: site,
+          name: "stored-name",
+          device_serial: "stored-serial",
+          device_uuid: "stored-uuid"
+        )
+
+      token = gateway_token_fixture(gateway: gateway)
+      attrs = connect_attrs(token: encode_gateway_token(token), external_id: gateway.firezone_id)
+
+      assert {:ok, socket} = connect(Socket, attrs, connect_info: build_connect_info())
+      assert socket.assigns.gateway.name == "stored-name"
+      assert socket.assigns.gateway.device_serial == "stored-serial"
+      assert socket.assigns.gateway.device_uuid == "stored-uuid"
+    end
+
+    test "single-owner connect keeps the firezone_id when none is reported" do
+      account = account_fixture()
+      site = site_fixture(account: account)
+      gateway = gateway_fixture(account: account, site: site)
+      token = gateway_token_fixture(gateway: gateway)
+
+      attrs =
+        connect_attrs(token: encode_gateway_token(token))
+        |> Map.drop(["external_id", "firezone_id"])
+
+      assert {:ok, socket} = connect(Socket, attrs, connect_info: build_connect_info())
+      assert socket.assigns.gateway.firezone_id == gateway.firezone_id
+    end
+
+    test "rejects a single-owner token rotated past the grace period" do
+      gateway = gateway_fixture()
+
+      token =
+        gateway_token_fixture(
+          gateway: gateway,
+          rotated_at: DateTime.add(DateTime.utc_now(), -5, :hour)
+        )
+
+      attrs = connect_attrs(token: encode_gateway_token(token))
+
+      assert {:error, :invalid_token} =
+               connect(Socket, attrs, connect_info: build_connect_info())
+    end
+
+    test "accepts a single-owner token rotated within the grace period" do
+      gateway = gateway_fixture()
+      token = gateway_token_fixture(gateway: gateway, rotated_at: DateTime.utc_now())
+
+      attrs = connect_attrs(token: encode_gateway_token(token))
+
+      assert {:ok, socket} = connect(Socket, attrs, connect_info: build_connect_info())
+      assert socket.assigns.gateway.id == gateway.id
+    end
+
+    test "rejects a single-owner token whose gateway was deleted" do
+      gateway = gateway_fixture()
+      token = gateway_token_fixture(gateway: gateway)
+      encrypted_secret = encode_gateway_token(token)
+
+      Portal.Repo.delete!(gateway)
+
+      attrs = connect_attrs(token: encrypted_secret)
+
+      assert {:error, :invalid_token} =
+               connect(Socket, attrs, connect_info: build_connect_info())
+    end
+
+    test "rejects connection when the gateway is already connected" do
+      account = account_fixture()
+      site = site_fixture(account: account)
+      gateway = gateway_fixture(account: account, site: site)
+      token = gateway_token_fixture(gateway: gateway)
+
+      # Simulate a live channel holding the gateway id
+      :ok = Portal.PG.join(gateway.id)
+
+      attrs = connect_attrs(token: encode_gateway_token(token))
+
+      assert {:error, :conflict} = connect(Socket, attrs, connect_info: build_connect_info())
+    end
+
+    test "rejects reconnect for an already-connected multi-owner gateway" do
+      account = account_fixture()
+      site = site_fixture(account: account)
+      gateway = gateway_fixture(account: account, site: site)
+      token = gateway_token_fixture(account: account, site: site)
+
+      :ok = Portal.PG.join(gateway.id)
+
+      attrs = connect_attrs(token: encode_gateway_token(token), external_id: gateway.firezone_id)
+
+      assert {:error, :conflict} = connect(Socket, attrs, connect_info: build_connect_info())
+    end
+
+    test "connecting with the replacement token deletes the rotated one" do
+      gateway = gateway_fixture()
+      rotated = gateway_token_fixture(gateway: gateway, rotated_at: DateTime.utc_now())
+      active = gateway_token_fixture(gateway: gateway)
+
+      attrs = connect_attrs(token: encode_gateway_token(active))
+
+      assert {:ok, _socket} = connect(Socket, attrs, connect_info: build_connect_info())
+
+      refute Portal.Repo.get_by(Portal.GatewayToken,
+               account_id: rotated.account_id,
+               id: rotated.id
+             )
     end
 
     test "rate limits repeated connection attempts from same IP and token" do

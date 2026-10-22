@@ -3,7 +3,11 @@ import Config
 # Local vars
 web_port = System.get_env("PHOENIX_WEB_PORT", "13443") |> String.to_integer()
 api_port = System.get_env("PHOENIX_API_PORT", "13001") |> String.to_integer()
+api_http_port = System.get_env("PHOENIX_API_HTTP_PORT", "13081") |> String.to_integer()
+mtls_port = System.get_env("PHOENIX_MTLS_PORT", "13003") |> String.to_integer()
 ops_port = System.get_env("PHOENIX_OPS_PORT", "13002") |> String.to_integer()
+certfile_path = System.get_env("CERTFILE_PATH", "priv/cert/selfsigned.pem")
+keyfile_path = System.get_env("KEYFILE_PATH", "priv/cert/selfsigned_key.pem")
 
 # DATABASE_SSL can be "true", "false", or a JSON object with SSL options
 db_ssl =
@@ -12,7 +16,7 @@ db_ssl =
     "false" -> false
   end
 
-db_opts = [
+direct_db_opts = [
   database: System.get_env("DATABASE_NAME", "firezone_dev"),
   username: System.get_env("DATABASE_USER", "postgres"),
   hostname: System.get_env("DATABASE_HOST", "localhost"),
@@ -21,33 +25,51 @@ db_opts = [
   ssl: db_ssl
 ]
 
+pgbouncer_db_opts =
+  case System.get_env("DATABASE_PGBOUNCER_PORT") do
+    nil ->
+      direct_db_opts
+
+    port ->
+      direct_db_opts
+      |> Keyword.put(:port, String.to_integer(port))
+      |> Keyword.put(:prepare, :unnamed)
+  end
+
 ###############################
 ##### Portal ##################
 ###############################
 
-config :portal, Portal.Repo, db_opts
-config :portal, Portal.Repo.Replica, db_opts
-config :portal, Portal.Repo.Web, db_opts
-config :portal, Portal.Repo.Api, db_opts
-config :portal, Portal.Repo.Replica.Web, db_opts
-config :portal, Portal.Repo.Replica.Api, db_opts
+config :portal, Portal.Repo, direct_db_opts
+config :portal, Portal.Repo.Web, pgbouncer_db_opts
+config :portal, Portal.Repo.Api, pgbouncer_db_opts
+config :portal, Portal.Repo.Job, pgbouncer_db_opts
+config :portal, Portal.Repo.Poller, direct_db_opts
 
-config :portal, Portal.ChangeLogs.ReplicationConnection,
-  replication_slot_name: db_opts[:database] <> "_clog_slot",
-  publication_name: db_opts[:database] <> "_clog_pub",
-  connection_opts: db_opts
+# Poll fast locally so live updates and change logs appear without a wait
+config :portal, Portal.ChangeLogs.Consumer,
+  replication_slot_name: direct_db_opts[:database] <> "_clog_slot",
+  publication_name: direct_db_opts[:database] <> "_clog_pub",
+  poll_interval: :timer.seconds(1)
 
-config :portal, Portal.Changes.ReplicationConnection,
-  replication_slot_name: db_opts[:database] <> "_changes_slot",
-  publication_name: db_opts[:database] <> "_changes_pub",
-  connection_opts: db_opts
+config :portal, Portal.Changes.Consumer,
+  replication_slot_name: direct_db_opts[:database] <> "_changes_slot",
+  publication_name: direct_db_opts[:database] <> "_changes_pub",
+  poll_interval: 250
 
 config :portal, outbound_email_adapter_configured?: true
 
 config :portal, run_manual_migrations: true
 
 config :portal, Portal.ComponentVersions,
-  firezone_releases_url: "http://localhost:3000/api/releases"
+  firezone_releases_url: "http://localhost:3000/api/releases",
+  req_opts: [allow_private_ips: true]
+
+# A test CA run locally publishes to localhost, which SSRF protection rejects
+# everywhere else for good reason: these addresses come out of a certificate.
+config :portal, Portal.Crl.Sync, req_opts: [allow_private_ips: true]
+
+config :portal, Portal.Ocsp.Sync, req_opts: [allow_private_ips: true]
 
 config :portal, Portal.Billing,
   enabled: System.get_env("BILLING_ENABLED", "false") == "true",
@@ -58,9 +80,45 @@ config :portal, Portal.Billing,
 # For dev, we want to run things very frequently to aid development and testing.
 worker_dev_schedule = System.get_env("WORKER_DEV_SCHEDULE", "* * * * *")
 
+# Seeded posture providers carry made-up credentials, so their syncs only run
+# when asked for, e.g. POSTURE_SYNC_DEV_SCHEDULE="* * * * *".
+posture_sync_dev_crontab =
+  case System.get_env("POSTURE_SYNC_DEV_SCHEDULE") do
+    nil ->
+      []
+
+    schedule ->
+      [
+        {schedule, Portal.Intune.Scheduler},
+        {schedule, Portal.Iru.Scheduler},
+        {schedule, Portal.Defender.Scheduler},
+        {schedule, Portal.Santa.Scheduler},
+        {schedule, Portal.SentinelOne.Scheduler},
+        {schedule, Portal.Sophos.Scheduler}
+      ]
+  end
+
+# Log PostHog events instead of sending them, e.g. POSTHOG_DEV_SINK=true.
+posthog_dev_sink? = System.get_env("POSTHOG_DEV_SINK") in ~w[1 true]
+
+if posthog_dev_sink? do
+  config :portal, Portal.Analytics.PostHog,
+    enabled: true,
+    host: "https://posthog.invalid",
+    project_api_key: "phc_dev",
+    web_external_url: "https://localhost:#{web_port}",
+    req_opts: [plug: Portal.Dev.PostHogSink, retry: false]
+end
+
+product_analytics_dev_crontab =
+  if posthog_dev_sink?,
+    do: [{worker_dev_schedule, Portal.Workers.ProductAnalyticsSnapshot}],
+    else: []
+
 # Oban has its own config validation that prevents overriding config in runtime.exs,
 # so we explicitly set the config in dev.exs, test.exs, and runtime.exs (for prod) only.
 config :portal, Oban,
+  notifier: Oban.Notifiers.PG,
   plugins: [
     # Keep the last 7 days of completed, cancelled, and discarded jobs
     {Oban.Plugins.Pruner, max_age: 60 * 60 * 24 * 7},
@@ -73,9 +131,19 @@ config :portal, Oban,
     # Periodic jobs
     {Oban.Plugins.Cron,
      crontab: [
+       {worker_dev_schedule, Portal.Crl.Scheduler},
+       {worker_dev_schedule, Portal.Ocsp.Scheduler},
        {worker_dev_schedule, Portal.Entra.Scheduler},
        {worker_dev_schedule, Portal.Google.Scheduler},
        {worker_dev_schedule, Portal.Okta.Scheduler},
+       {worker_dev_schedule, Portal.Splunk.Scheduler},
+       {worker_dev_schedule, Portal.Datadog.Scheduler},
+       {worker_dev_schedule, Portal.NewRelic.Scheduler},
+       {worker_dev_schedule, Portal.Elastic.Scheduler},
+       {worker_dev_schedule, Portal.Sentinel.Scheduler},
+       {worker_dev_schedule, Portal.S3.Scheduler},
+       {worker_dev_schedule, Portal.QRadar.Scheduler},
+       {worker_dev_schedule, Portal.HTTP.Scheduler},
        {worker_dev_schedule, Portal.Workers.SyncErrorNotification,
         args: %{provider: "entra", frequency: "daily"}},
        {worker_dev_schedule, Portal.Workers.SyncErrorNotification,
@@ -88,33 +156,92 @@ config :portal, Oban,
         args: %{provider: "entra", frequency: "weekly"}},
        {worker_dev_schedule, Portal.Workers.SyncErrorNotification,
         args: %{provider: "google", frequency: "weekly"}},
+       {worker_dev_schedule, Portal.Workers.LogSinkErrorNotification},
        {worker_dev_schedule, Portal.Workers.DeleteExpiredPolicyAuthorizations},
+       {worker_dev_schedule, Portal.Workers.DeleteStalePostureAuthorizations},
        {worker_dev_schedule, Portal.Workers.CheckAccountLimits},
        {worker_dev_schedule, Portal.Workers.OutdatedGateways},
+       {worker_dev_schedule, Portal.OSReleases.Sync},
        {worker_dev_schedule, Portal.Workers.DeleteExpiredClientTokens},
        {worker_dev_schedule, Portal.Workers.DeleteExpiredAPITokens},
+       {worker_dev_schedule, Portal.Workers.DeleteExpiredOAuthAuthorizationCodes},
+       {worker_dev_schedule, Portal.Workers.DeleteExpiredOAuthTokens},
+       {worker_dev_schedule, Portal.Workers.DeleteExpiredOAuthClients},
+       {worker_dev_schedule, Portal.Workers.DeleteRotatedGatewayTokens},
        {worker_dev_schedule, Portal.Workers.DeleteExpiredOneTimePasscodes},
        {worker_dev_schedule, Portal.Workers.DeleteExpiredPortalSessions},
-       {worker_dev_schedule, Portal.Workers.PartitionFlowLogs},
+       {worker_dev_schedule, Portal.Workers.PartitionLogTables},
        {worker_dev_schedule, Portal.Workers.SweepAccountDeletions}
-     ]}
+     ] ++ posture_sync_dev_crontab ++ product_analytics_dev_crontab}
   ],
   queues: [
     default: 10,
+    crl_scheduler: 1,
+    crl_sync: 5,
+    ocsp_scheduler: 1,
+    ocsp_sync: 5,
     entra_scheduler: 1,
     entra_sync: 5,
+    entra_subscriptions: 1,
+    entra_webhook: 5,
+    intune_scheduler: 1,
+    intune_sync: 5,
+    iru_scheduler: 1,
+    iru_sync: 5,
+    defender_scheduler: 1,
+    defender_sync: 5,
+    santa_scheduler: 1,
+    santa_sync: 5,
+    sentinelone_scheduler: 1,
+    sentinelone_sync: 5,
+    sophos_scheduler: 1,
+    sophos_sync: 5,
     google_scheduler: 1,
     google_sync: 5,
+    google_subscriptions: 1,
+    google_webhook: 5,
     okta_scheduler: 1,
     okta_sync: 5,
+    okta_webhook: 5,
+    splunk_scheduler: 1,
+    splunk_sync: 5,
+    datadog_scheduler: 1,
+    datadog_sync: 5,
+    newrelic_scheduler: 1,
+    newrelic_sync: 5,
+    elastic_scheduler: 1,
+    elastic_sync: 5,
+    sentinel_scheduler: 1,
+    sentinel_sync: 5,
+    s3_scheduler: 1,
+    s3_sync: 5,
+    qradar_scheduler: 1,
+    qradar_sync: 5,
+    http_scheduler: 1,
+    http_sync: 5,
     sync_error_notifications: 1,
     outbound_emails: 1
   ],
   engine: Oban.Engines.Basic,
-  repo: Portal.Repo
+  repo: Portal.Repo.Job
 
 config :portal, Portal.Okta.AuthProvider,
   redirect_uri: "https://localhost:#{web_port}/auth/oidc/callback"
+
+# Splunk Cloud trial stacks serve HEC (port 8088) with a certificate from
+# Splunk's own CA, which no public trust store contains. Skip verification in
+# dev only so trial stacks are testable; prod verifies.
+config :portal, Portal.Splunk.APIClient,
+  req_opts: [
+    connect_options: [
+      transport_opts: [verify: :verify_none]
+    ]
+  ]
+
+config :portal, Portal.S3.APIClient,
+  access_key_id: System.get_env("LOG_SINKS_AWS_ACCESS_KEY_ID"),
+  secret_access_key: System.get_env("LOG_SINKS_AWS_SECRET_ACCESS_KEY"),
+  session_token: System.get_env("LOG_SINKS_AWS_SESSION_TOKEN")
 
 ###############################
 ##### PortalWeb Endpoint ######
@@ -126,8 +253,8 @@ config :portal, PortalWeb.Endpoint,
   url: [scheme: "https", host: "localhost", port: web_port],
   https: [
     port: web_port,
-    certfile: System.get_env("CERTFILE_PATH", "priv/cert/selfsigned.pem"),
-    keyfile: System.get_env("KEYFILE_PATH", "priv/cert/selfsigned_key.pem")
+    certfile: certfile_path,
+    keyfile: keyfile_path
   ],
   code_reloader: true,
   debug_errors: true,
@@ -157,7 +284,8 @@ config :portal, PortalWeb.Endpoint,
   server: true
 
 config :portal,
-  api_external_url: "http://localhost:#{api_port}"
+  api_external_url: "https://localhost:#{api_port}",
+  mtls_external_url: "https://localhost:#{mtls_port}"
 
 config :phoenix_live_reload, :dirs, [File.cwd!()]
 
@@ -166,7 +294,10 @@ config :portal, PortalWeb.Plugs.PutSecurityHeaders,
     "default-src 'self' https://firezone.statuspage.io",
     "img-src 'self' data: https://www.gravatar.com https://www.firezone.dev https://firezone.statuspage.io",
     "style-src 'self'",
-    "script-src 'self' 'nonce-${nonce}' https://cdn.tailwindcss.com/"
+    "script-src 'self' 'nonce-${nonce}' https://cdn.tailwindcss.com/",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "frame-ancestors 'none'"
   ],
   live_reload_frame_csp_policy: [
     "default-src 'self' https://firezone.statuspage.io",
@@ -174,19 +305,52 @@ config :portal, PortalWeb.Plugs.PutSecurityHeaders,
     "style-src 'self' 'unsafe-inline'",
     "script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com/",
     "connect-src 'self' ws: wss:",
-    "frame-src 'self'"
+    "frame-src 'self'",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "frame-ancestors 'self'"
   ]
 
 # Note: on Linux you may need to add `--add-host=host.docker.internal:host-gateway`
 # to the `docker run` command. Works on Docker v20.10 and above.
-config :portal, api_url_override: "ws://host.docker.internal:#{api_port}/"
+config :portal, api_url_override: "wss://host.docker.internal:#{api_port}/"
+
+###############################
+##### Public Endpoint #########
+###############################
+
+# Keep mutual TLS on a dedicated listener so the ordinary API endpoint cannot
+# accidentally be treated as the mTLS endpoint during local development.
+config :portal, Portal.Endpoint,
+  url: [scheme: "https", host: "localhost", port: mtls_port],
+  https: [
+    port: mtls_port,
+    certfile: certfile_path,
+    keyfile: keyfile_path,
+    thousand_island_options: [
+      transport_options: [
+        verify: :verify_peer,
+        fail_if_no_peer_cert: true,
+        certificate_authorities: false,
+        cacerts: [],
+        verify_fun: {&Portal.TLS.verify_client_certificate/3, nil}
+      ]
+    ]
+  ],
+  server: true
 
 ###############################
 ##### PortalAPI Endpoint ######
 ###############################
 
 config :portal, PortalAPI.Endpoint,
-  http: [port: api_port],
+  url: [scheme: "https", host: "localhost", port: api_port],
+  http: [port: api_http_port],
+  https: [
+    port: api_port,
+    certfile: certfile_path,
+    keyfile: keyfile_path
+  ],
   debug_errors: true,
   code_reloader: true,
   check_origin: ["//10.0.0.107", "//10.0.2.2", "//127.0.0.1", "//localhost"],

@@ -2,18 +2,19 @@ defmodule PortalAPI.ExternalIdentityController do
   use PortalAPI, :controller
   use OpenApiSpex.ControllerSpecs
   alias PortalAPI.Pagination
+  alias PortalAPI.JSON
   alias PortalAPI.Error
   alias PortalAPI.Schemas.ProblemDetails
   alias __MODULE__.Database
 
-  tags ["ExternalIdentities"]
+  tags ["External Identities"]
 
   # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :index,
     summary: "List External Identities for an Actor",
     parameters: [
       actor_id: [in: :path, description: "Actor ID", type: :string],
-      limit: [in: :query, description: "Limit External Identities returned", type: :integer],
+      limit: [in: :query, description: "Limit External Identities returned", schema: PortalAPI.Pagination.limit_schema()],
       page_cursor: [in: :query, description: "Next/Prev page cursor", type: :string]
     ],
     responses:
@@ -33,11 +34,10 @@ defmodule PortalAPI.ExternalIdentityController do
 
   @spec index(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def index(conn, %{"actor_id" => actor_id} = params) do
-    list_opts = Pagination.params_to_list_opts(params)
-
-    with {:ok, external_identities, metadata} <-
+    with {:ok, list_opts} <- Pagination.params_to_list_opts(params),
+         {:ok, external_identities, metadata} <-
            Database.list_external_identities(actor_id, conn.assigns.subject, list_opts) do
-      render(conn, :index, external_identities: external_identities, metadata: metadata)
+      json(conn, JSON.encode(external_identities, metadata))
     else
       error -> Error.handle(conn, error)
     end
@@ -76,9 +76,10 @@ defmodule PortalAPI.ExternalIdentityController do
   # coveralls-ignore-stop
 
   @spec show(Plug.Conn.t(), map()) :: Plug.Conn.t()
-  def show(conn, %{"id" => id}) do
-    with {:ok, external_identity} <- Database.fetch_external_identity(id, conn.assigns.subject) do
-      render(conn, :show, external_identity: external_identity)
+  def show(conn, %{"actor_id" => actor_id, "id" => id}) do
+    with {:ok, external_identity} <-
+           Database.fetch_external_identity(actor_id, id, conn.assigns.subject) do
+      json(conn, JSON.encode(external_identity))
     else
       error -> Error.handle(conn, error)
     end
@@ -117,11 +118,12 @@ defmodule PortalAPI.ExternalIdentityController do
   # coveralls-ignore-stop
 
   @spec delete(Plug.Conn.t(), map()) :: Plug.Conn.t()
-  def delete(conn, %{"id" => id}) do
-    with {:ok, external_identity} <- Database.fetch_external_identity(id, conn.assigns.subject),
+  def delete(conn, %{"actor_id" => actor_id, "id" => id}) do
+    with {:ok, external_identity} <-
+           Database.fetch_external_identity(actor_id, id, conn.assigns.subject),
          {:ok, deleted_external_identity} <-
            Database.delete_external_identity(external_identity, conn.assigns.subject) do
-      render(conn, :show, external_identity: deleted_external_identity)
+      json(conn, JSON.encode(deleted_external_identity))
     else
       error -> Error.handle(conn, error)
     end
@@ -143,7 +145,7 @@ defmodule PortalAPI.ExternalIdentityController do
         as: :sync_state
       )
       |> preload([sync_state: iss], sync_state: iss)
-      |> Safe.scoped(subject, :replica)
+      |> Safe.scoped(subject)
       |> Safe.list(__MODULE__, opts)
     end
 
@@ -154,15 +156,18 @@ defmodule PortalAPI.ExternalIdentityController do
       ]
     end
 
-    def fetch_external_identity(id, subject) do
+    def fetch_external_identity(actor_id, id, subject) do
       result =
-        from(ei in ExternalIdentity, as: :external_identities, where: ei.id == ^id)
+        from(ei in ExternalIdentity,
+          as: :external_identities,
+          where: ei.id == ^id and ei.actor_id == ^actor_id and ei.account_id == ^subject.account.id
+        )
         |> join(:left, [external_identities: ei], iss in Portal.ExternalIdentitySyncState,
           on: iss.external_identity_id == ei.id and iss.account_id == ei.account_id,
           as: :sync_state
         )
         |> preload([sync_state: iss], sync_state: iss)
-        |> Safe.scoped(subject, :replica)
+        |> Safe.scoped(subject)
         |> Safe.one()
 
       case result do

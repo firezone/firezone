@@ -1,13 +1,19 @@
 defmodule Portal.AuthenticationTest do
   use Portal.DataCase, async: true
+  import ExUnit.CaptureLog
   import Portal.Authentication
   import Portal.TokenFixtures
   import Portal.SubjectFixtures
   import Portal.AccountFixtures
   import Portal.ActorFixtures
   import Portal.AuthProviderFixtures
+  import Portal.DeviceFixtures
+  import Portal.GatewaySessionFixtures
   import Portal.SiteFixtures
+  alias Portal.Authentication
+  alias Portal.Authentication.Credential
   alias Portal.ClientToken
+  alias Portal.Fixture
 
   describe "create_non_interactive_client_token/3" do
     test "returns valid client token for a given service account" do
@@ -131,7 +137,7 @@ defmodule Portal.AuthenticationTest do
       assert {:ok, encoded_token} =
                create_api_token(
                  api_client,
-                 %{"name" => "test-token", "expires_at" => one_day},
+                 %{"name" => "test-token", "expires_at" => one_day, "scopes" => Portal.Scope.all()},
                  admin_subject
                )
 
@@ -155,7 +161,7 @@ defmodule Portal.AuthenticationTest do
       expires_at = DateTime.utc_now() |> DateTime.add(30, :day)
 
       assert {:ok, encoded_token} =
-               create_api_token(api_client, %{expires_at: expires_at}, admin_subject)
+               create_api_token(api_client, %{expires_at: expires_at, scopes: Portal.Scope.all()}, admin_subject)
 
       context = build_context(type: :api_client)
 
@@ -206,6 +212,19 @@ defmodule Portal.AuthenticationTest do
   end
 
   describe "authenticate/2" do
+    test "does not log malformed tokens" do
+      context = build_context(type: :client)
+
+      token = "invalid.#{Fixture.unique_integer()}"
+
+      log =
+        capture_log(fn ->
+          assert authenticate(token, context) == {:error, :invalid_token}
+        end)
+
+      refute log =~ token
+    end
+
     test "returns error when token is invalid" do
       context = build_context(type: :client)
 
@@ -324,7 +343,7 @@ defmodule Portal.AuthenticationTest do
       assert subject.account.id == account.id
     end
 
-    test "does not update last_seen fields on client token (moved to client_sessions)" do
+    test "does not update last_seen fields on client token (recorded on devices)" do
       encoded = encode_token(client_token_fixture())
 
       context =
@@ -340,9 +359,9 @@ defmodule Portal.AuthenticationTest do
 
       assert {:ok, subject} = authenticate(encoded, context)
 
-      # Client tokens no longer track last_seen_* — session data is stored in ClientSession
+      # Client tokens no longer track last_seen_* — session data is stored on the device
       updated_token = Repo.get_by(ClientToken, id: subject.credential.id)
-      assert is_nil(updated_token.latest_session)
+      assert is_nil(updated_token.last_used_device)
     end
 
     test "returns error when actor is deleted" do
@@ -362,7 +381,7 @@ defmodule Portal.AuthenticationTest do
       encoded = encode_token(client_token_fixture(account: account, actor: actor))
 
       actor
-      |> Ecto.Changeset.change(disabled_at: DateTime.utc_now())
+      |> Ecto.Changeset.change(is_disabled: true)
       |> Portal.Repo.update!()
 
       context = build_context(type: :client)
@@ -375,7 +394,7 @@ defmodule Portal.AuthenticationTest do
       encoded = encode_token(client_token_fixture(account: account, actor: actor))
 
       account
-      |> Ecto.Changeset.change(disabled_at: DateTime.utc_now())
+      |> Ecto.Changeset.change(is_disabled: true)
       |> Portal.Repo.update!()
 
       context = build_context(type: :client)
@@ -579,7 +598,7 @@ defmodule Portal.AuthenticationTest do
       expires_at = DateTime.utc_now() |> DateTime.add(30, :day)
 
       assert {:ok, encoded_token} =
-               create_api_token(api_client, %{expires_at: expires_at}, admin_subject)
+               create_api_token(api_client, %{expires_at: expires_at, scopes: Portal.Scope.all()}, admin_subject)
 
       assert is_binary(encoded_token)
     end
@@ -623,6 +642,219 @@ defmodule Portal.AuthenticationTest do
       assert {:error, :unauthorized} = create_gateway_token(site, subject)
     end
 
+    test "creates a single-owner gateway token for a gateway" do
+      account = account_fixture()
+      gateway = gateway_fixture(account: account)
+      subject = admin_subject_fixture(account: account)
+
+      assert {:ok, token} = create_gateway_token(gateway, subject)
+      assert token.account_id == account.id
+      assert token.device_id == gateway.id
+      assert is_nil(token.site_id)
+      assert is_nil(token.rotated_at)
+      assert token.secret_fragment != nil
+      assert Portal.GatewayToken.single_owner?(token)
+    end
+
+    test "returns error when the gateway already has an active token" do
+      account = account_fixture()
+      gateway = gateway_fixture(account: account)
+      subject = admin_subject_fixture(account: account)
+
+      assert {:ok, _token} = create_gateway_token(gateway, subject)
+      assert {:error, changeset} = create_gateway_token(gateway, subject)
+      assert {:device_id, {"has already been taken", _}} = hd(changeset.errors)
+    end
+
+    test "non-admin user cannot create single-owner gateway token" do
+      account = account_fixture()
+      gateway = gateway_fixture(account: account)
+      subject = subject_fixture(account: account, actor: %{type: :account_user})
+
+      assert {:error, :unauthorized} = create_gateway_token(gateway, subject)
+    end
+  end
+
+  describe "rotate_gateway_token/2" do
+    test "with no existing token acts as create" do
+      account = account_fixture()
+      gateway = gateway_fixture(account: account)
+      subject = admin_subject_fixture(account: account)
+
+      assert {:ok, token} = rotate_gateway_token(gateway, subject)
+      assert token.device_id == gateway.id
+      assert is_nil(token.rotated_at)
+      assert token.secret_fragment != nil
+    end
+
+    test "stamps an in-use active token and mints a new one" do
+      account = account_fixture()
+      gateway = gateway_fixture(account: account)
+      subject = admin_subject_fixture(account: account)
+
+      {:ok, old_token} = create_gateway_token(gateway, subject)
+      gateway_session_fixture(account: account, gateway: gateway, token: old_token)
+
+      assert {:ok, new_token} = rotate_gateway_token(gateway, subject)
+
+      assert new_token.id != old_token.id
+      assert is_nil(new_token.rotated_at)
+
+      old_token = Repo.get_by!(Portal.GatewayToken, account_id: account.id, id: old_token.id)
+      assert old_token.rotated_at != nil
+    end
+
+    test "replaces a never-used active token instead of stamping it" do
+      account = account_fixture()
+      gateway = gateway_fixture(account: account)
+      subject = admin_subject_fixture(account: account)
+
+      {:ok, old_token} = create_gateway_token(gateway, subject)
+      assert {:ok, new_token} = rotate_gateway_token(gateway, subject)
+
+      assert new_token.id != old_token.id
+      assert is_nil(new_token.rotated_at)
+
+      # No session ever referenced the old token, so it is gone outright
+      refute Repo.get_by(Portal.GatewayToken, account_id: account.id, id: old_token.id)
+    end
+
+    test "re-rotating replaces the pending token and keeps the rotated deadline" do
+      account = account_fixture()
+      gateway = gateway_fixture(account: account)
+      subject = admin_subject_fixture(account: account)
+
+      {:ok, in_use_token} = create_gateway_token(gateway, subject)
+      gateway_session_fixture(account: account, gateway: gateway, token: in_use_token)
+      {:ok, pending_token} = rotate_gateway_token(gateway, subject)
+
+      in_use_token =
+        Repo.get_by!(Portal.GatewayToken, account_id: account.id, id: in_use_token.id)
+
+      original_rotated_at = in_use_token.rotated_at
+
+      assert {:ok, replacement_token} = rotate_gateway_token(gateway, subject)
+
+      # The unconfirmed pending token is gone, replaced by the new one
+      refute Repo.get_by(Portal.GatewayToken, account_id: account.id, id: pending_token.id)
+      assert is_nil(replacement_token.rotated_at)
+
+      # The in-use rotated token keeps its original deadline
+      in_use_token =
+        Repo.get_by!(Portal.GatewayToken, account_id: account.id, id: in_use_token.id)
+
+      assert in_use_token.rotated_at == original_rotated_at
+    end
+
+    test "with only a rotated token mints a new active token" do
+      account = account_fixture()
+      gateway = gateway_fixture(account: account)
+      subject = admin_subject_fixture(account: account)
+
+      {:ok, old_token} = create_gateway_token(gateway, subject)
+      gateway_session_fixture(account: account, gateway: gateway, token: old_token)
+      {:ok, pending_token} = rotate_gateway_token(gateway, subject)
+
+      # Simulate confirmation racing ahead: only the rotated token remains
+      Portal.GatewayToken
+      |> Repo.get_by!(account_id: account.id, id: pending_token.id)
+      |> Repo.delete!()
+
+      assert {:ok, new_token} = rotate_gateway_token(gateway, subject)
+      assert is_nil(new_token.rotated_at)
+
+      old_token = Repo.get_by!(Portal.GatewayToken, account_id: account.id, id: old_token.id)
+      assert old_token.rotated_at != nil
+    end
+
+    test "non-admin user cannot rotate gateway token" do
+      account = account_fixture()
+      gateway = gateway_fixture(account: account)
+      subject = subject_fixture(account: account, actor: %{type: :account_user})
+
+      assert {:error, :unauthorized} = rotate_gateway_token(gateway, subject)
+    end
+  end
+
+  describe "verify_gateway_token/1 with single-owner tokens" do
+    test "rejects a signed token with a nil secret fragment" do
+      gateway = gateway_fixture()
+      token = gateway_token_fixture(gateway: gateway)
+      config = Portal.Config.fetch_env!(:portal, Portal.Tokens)
+      key_base = Keyword.fetch!(config, :key_base)
+      salt = Keyword.fetch!(config, :salt) <> "gateway"
+      malformed = "." <> Plug.Crypto.sign(key_base, salt, {token.account_id, token.id, nil})
+
+      assert {:error, :invalid_token} = verify_gateway_token(malformed)
+    end
+
+    test "verifies an active single-owner token" do
+      gateway = gateway_fixture()
+      token = gateway_token_fixture(gateway: gateway)
+
+      assert {:ok, verified} = verify_gateway_token(encode_fragment!(token))
+      assert verified.id == token.id
+      assert verified.device_id == gateway.id
+    end
+
+    test "verifies a rotated token within the grace period" do
+      gateway = gateway_fixture()
+      token = gateway_token_fixture(gateway: gateway, rotated_at: DateTime.utc_now())
+
+      assert {:ok, _verified} = verify_gateway_token(encode_fragment!(token))
+    end
+
+    test "rejects a rotated token past the grace period" do
+      gateway = gateway_fixture()
+      rotated_at = DateTime.add(DateTime.utc_now(), -5, :hour)
+      token = gateway_token_fixture(gateway: gateway, rotated_at: rotated_at)
+
+      assert {:error, :invalid_token} = verify_gateway_token(encode_fragment!(token))
+    end
+
+    test "first use of the replacement token deletes the rotated sibling" do
+      gateway = gateway_fixture()
+      rotated = gateway_token_fixture(gateway: gateway, rotated_at: DateTime.utc_now())
+      active = gateway_token_fixture(gateway: gateway)
+
+      assert {:ok, _verified} = verify_gateway_token(encode_fragment!(active))
+
+      refute Repo.get_by(Portal.GatewayToken, account_id: rotated.account_id, id: rotated.id)
+    end
+
+    test "using the rotated token does not delete the active sibling" do
+      gateway = gateway_fixture()
+      rotated = gateway_token_fixture(gateway: gateway, rotated_at: DateTime.utc_now())
+      active = gateway_token_fixture(gateway: gateway)
+
+      assert {:ok, _verified} = verify_gateway_token(encode_fragment!(rotated))
+
+      assert Repo.get_by(Portal.GatewayToken, account_id: active.account_id, id: active.id)
+      assert Repo.get_by(Portal.GatewayToken, account_id: rotated.account_id, id: rotated.id)
+    end
+
+    test "verifying an active token with no sibling reports none" do
+      gateway = gateway_fixture()
+      token = gateway_token_fixture(gateway: gateway)
+
+      assert {:ok, verified} = verify_gateway_token(encode_fragment!(token))
+      assert is_nil(verified.rotated_sibling_id)
+    end
+
+    test "multi-owner site tokens never see each other as siblings" do
+      account = account_fixture()
+      site = site_fixture(account: account)
+      token_1 = gateway_token_fixture(account: account, site: site)
+      token_2 = gateway_token_fixture(account: account, site: site)
+
+      assert {:ok, verified} = verify_gateway_token(encode_fragment!(token_1))
+      assert is_nil(verified.rotated_sibling_id)
+
+      assert Repo.get_by(Portal.GatewayToken, account_id: account.id, id: token_2.id)
+    end
+  end
+
+  describe "one-time passcodes and portal sessions" do
     test "creates a one-time passcode" do
       account = account_fixture()
       actor = actor_fixture(account: account)
@@ -642,7 +874,7 @@ defmodule Portal.AuthenticationTest do
       actor = actor_fixture(account: account)
 
       account
-      |> Ecto.Changeset.change(disabled_at: DateTime.utc_now())
+      |> Ecto.Changeset.change(is_disabled: true)
       |> Portal.Repo.update!()
 
       assert {:ok, passcode} = create_one_time_passcode(account, actor)
@@ -830,6 +1062,50 @@ defmodule Portal.AuthenticationTest do
       assert session.account_id == account.id
       assert session.actor_id == actor.id
       assert session.auth_provider_id == auth_provider.id
+
+      assert [session_log] = Portal.Repo.all(Portal.SessionLog)
+      assert session_log.context == :portal
+      assert session_log.account_id == account.id
+      assert DateTime.diff(DateTime.utc_now(), session_log.timestamp, :second) < 5
+      assert session_log.subject["actor_id"] == actor.id
+      assert session_log.subject["actor_email"] == actor.email
+      assert session_log.subject["auth_provider_id"] == auth_provider.id
+    end
+
+    test "rolls back the portal session when the session log write fails" do
+      account = account_fixture()
+      actor = admin_actor_fixture(account: account)
+      auth_provider = auth_provider_fixture(account: account)
+      log_id = Portal.Types.LogId.build_session_log()
+
+      log_attrs = %{
+        account_id: account.id,
+        log_id: log_id,
+        timestamp: DateTime.utc_now(),
+        context: :portal,
+        subject: %{}
+      }
+
+      # Pre-seed the log row so the transaction's log insert collides on the
+      # (account_id, log_id) primary key and fails.
+      Portal.Repo.insert_all(Portal.SessionLog, [log_attrs])
+
+      session = %Portal.PortalSession{
+        account_id: account.id,
+        actor_id: actor.id,
+        auth_provider_id: auth_provider.id,
+        user_agent: "test-browser/1.0",
+        remote_ip: %Postgrex.INET{address: {100, 64, 0, 1}},
+        expires_at: DateTime.add(DateTime.utc_now(), 1, :day)
+      }
+
+      assert_raise Postgrex.Error, fn ->
+        Authentication.Database.insert_portal_session_with_log(session, log_attrs)
+      end
+
+      # Fail closed: the session must not persist without its audit record.
+      assert Portal.Repo.all(Portal.PortalSession) == []
+      assert [%Portal.SessionLog{log_id: ^log_id}] = Portal.Repo.all(Portal.SessionLog)
     end
 
     test "creates a portal session for disabled account" do
@@ -840,7 +1116,7 @@ defmodule Portal.AuthenticationTest do
       expires_at = DateTime.add(DateTime.utc_now(), 1, :day)
 
       account
-      |> Ecto.Changeset.change(disabled_at: DateTime.utc_now())
+      |> Ecto.Changeset.change(is_disabled: true)
       |> Portal.Repo.update!()
 
       assert {:ok, session} =
@@ -915,7 +1191,7 @@ defmodule Portal.AuthenticationTest do
       assert {:error, :invalid_token} = use_token(encoded, context)
     end
 
-    test "does not update last_seen fields on client token (moved to client_sessions)" do
+    test "does not update last_seen fields on client token (recorded on devices)" do
       token = client_token_fixture()
       encoded = encode_token(token)
 
@@ -928,9 +1204,9 @@ defmodule Portal.AuthenticationTest do
 
       assert {:ok, _used_token} = use_token(encoded, context)
 
-      # Client tokens no longer track last_seen_* — session data is stored in ClientSession
+      # Client tokens no longer track last_seen_* — session data is stored on the device
       updated_token = Repo.get_by(ClientToken, id: token.id)
-      assert is_nil(updated_token.latest_session)
+      assert is_nil(updated_token.last_used_device)
     end
 
     test "can use token multiple times" do
@@ -991,7 +1267,7 @@ defmodule Portal.AuthenticationTest do
       encoded = encode_gateway_token(token)
 
       account
-      |> Ecto.Changeset.change(disabled_at: DateTime.utc_now())
+      |> Ecto.Changeset.change(is_disabled: true)
       |> Portal.Repo.update!()
 
       assert {:ok, verified_token} = verify_gateway_token(encoded)
@@ -1112,7 +1388,7 @@ defmodule Portal.AuthenticationTest do
       context = build_context(type: :client)
 
       assert {:ok, subject} = build_subject(token, context)
-      assert subject.credential.type == :client_token
+      assert %Credential.ClientToken{} = subject.credential
       assert subject.credential.id == token.id
       assert subject.context == context
     end
@@ -1126,7 +1402,7 @@ defmodule Portal.AuthenticationTest do
       context = build_context(type: :api_client)
 
       assert {:ok, subject} = build_subject(token, context)
-      assert subject.credential.type == :api_token
+      assert %Credential.APIToken{} = subject.credential
       assert subject.credential.id == token.id
       assert subject.actor.id == actor.id
     end
@@ -1137,7 +1413,7 @@ defmodule Portal.AuthenticationTest do
       token = client_token_fixture(account: account, actor: actor)
 
       actor
-      |> Ecto.Changeset.change(disabled_at: DateTime.utc_now())
+      |> Ecto.Changeset.change(is_disabled: true)
       |> Portal.Repo.update!()
 
       context = build_context(type: :client)

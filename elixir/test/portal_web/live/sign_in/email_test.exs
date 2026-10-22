@@ -19,7 +19,8 @@ defmodule PortalWeb.SignIn.EmailTest do
     cookie = %EmailOTP{
       actor_id: actor_id,
       passcode_id: Ecto.UUID.generate(),
-      email: email
+      email: email,
+      context_type: :portal
     }
 
     conn

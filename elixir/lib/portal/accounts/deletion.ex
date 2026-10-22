@@ -7,6 +7,8 @@ defmodule Portal.Accounts.Deletion do
   alias __MODULE__.Database
   require Logger
 
+  @feedback_max_length 2000
+
   def schedule_account_deletion(%Account{} = account, attrs, subject) do
     case Database.schedule_account_deletion(account, attrs, subject) do
       {:ok, {:transitioned, account}} -> enqueue_deletion_notification(account, subject)
@@ -22,6 +24,39 @@ defmodule Portal.Accounts.Deletion do
       {:error, reason} -> {:error, reason}
     end
   end
+
+  def feedback_max_length, do: @feedback_max_length
+
+  def send_deletion_feedback(
+        %Account{id: account_id} = account,
+        feedback,
+        %{account: %{id: account_id}} = subject
+      ) do
+    if Mailer.InternalEmail.enabled?() do
+      account
+      |> Mailer.InternalEmail.deletion_feedback_email(
+        subject,
+        String.slice(feedback, 0, @feedback_max_length)
+      )
+      |> Mailer.enqueue()
+      |> case do
+        {:ok, _result} ->
+          :ok
+
+        {:error, reason} ->
+          Logger.error("Failed to enqueue account deletion feedback",
+            account_id: account.id,
+            reason: inspect(reason)
+          )
+
+          {:error, reason}
+      end
+    else
+      :ok
+    end
+  end
+
+  def send_deletion_feedback(_account, _feedback, _subject), do: {:error, :unauthorized}
 
   defp enqueue_deletion_notification(%Account{} = account, subject) do
     notify_admins(
@@ -103,7 +138,7 @@ defmodule Portal.Accounts.Deletion do
         with {:ok, transition} <-
                transition_account_deletion(
                  account,
-                 %{disabled_at: nil, scheduled_deletion_at: nil},
+                 %{is_disabled: false, scheduled_deletion_at: nil},
                  :cancel,
                  subject
                ),
@@ -116,7 +151,7 @@ defmodule Portal.Accounts.Deletion do
 
     defp fetch_account(account_id, subject) do
       from(a in Account, where: a.id == ^account_id)
-      |> Safe.scoped(subject, :replica)
+      |> Safe.scoped(subject)
       |> Safe.one()
       |> case do
         %Account{} = account -> {:ok, account}
@@ -142,7 +177,7 @@ defmodule Portal.Accounts.Deletion do
 
       updates =
         attrs
-        |> Map.take([:disabled_at, :scheduled_deletion_at])
+        |> Map.take([:is_disabled, :scheduled_deletion_at])
         |> Map.put(:updated_at, now)
 
       case query |> Safe.scoped(subject) |> Safe.update_all(set: Map.to_list(updates)) do
@@ -205,7 +240,7 @@ defmodule Portal.Accounts.Deletion do
       from(a in Actor,
         where: a.account_id == ^account_id,
         where: a.type == :account_admin_user,
-        where: is_nil(a.disabled_at),
+        where: a.is_disabled == false,
         select: a.email
       )
       |> Safe.scoped(subject)

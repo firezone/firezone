@@ -29,6 +29,10 @@ pub(crate) fn reset_client() {
     CLIENT.reset();
 }
 
+pub(crate) fn warmup_connection() {
+    ingest::RUNTIME.spawn(CLIENT.connect());
+}
+
 /// Sends a JSON `POST` to `path` on the PostHog ingest host and returns the response.
 pub(crate) async fn post_json<B>(path: &str, body: &B) -> Result<Response<Bytes>>
 where

@@ -50,6 +50,7 @@ private final class MockTunnelProviderManager: TunnelProviderManager {
   var protocolConfiguration: NEVPNProtocol?
   let connection: NEVPNConnection = NETunnelProviderManager().connection
   var tunnelSession: (any TunnelSessionProtocol)? { nil }
+  let extensionBundleIdentifier = "dev.firezone.firezone.network-extension"
   var saveCount = 0
   var loadCount = 0
 
@@ -77,7 +78,6 @@ struct ConfigurationTests {
     #expect(config.apiURL == ConfigurationDefaults.apiURL)
     #expect(config.logFilter == ConfigurationDefaults.logFilter)
     #expect(config.accountSlug == ConfigurationDefaults.accountSlug)
-    #expect(config.actorName == ConfigurationDefaults.actorName)
     #expect(config.supportURL == ConfigurationDefaults.supportURL)
     #expect(config.connectOnStart == ConfigurationDefaults.connectOnStart)
     #expect(config.startOnLogin == ConfigurationDefaults.startOnLogin)
@@ -118,13 +118,11 @@ struct ConfigurationTests {
     config.apiURL = "wss://custom.api.url"
     config.logFilter = "trace"
     config.accountSlug = "test-slug"
-    config.actorName = "Test User"
 
     #expect(config.authURL == "https://custom.auth.url")
     #expect(config.apiURL == "wss://custom.api.url")
     #expect(config.logFilter == "trace")
     #expect(config.accountSlug == "test-slug")
-    #expect(config.actorName == "Test User")
     #expect(config.supportURL == ConfigurationDefaults.supportURL)
 
     let providerConfiguration = config.toProviderConfiguration()
@@ -134,12 +132,10 @@ struct ConfigurationTests {
     #expect(defaults.string(forKey: "apiURL") == nil)
     #expect(defaults.string(forKey: "logFilter") == nil)
     #expect(defaults.string(forKey: "accountSlug") == nil)
-    #expect(defaults.string(forKey: "actorName") == nil)
     #expect(providerConfiguration["authURL"] == "https://custom.auth.url")
     #expect(providerConfiguration["apiURL"] == "wss://custom.api.url")
     #expect(providerConfiguration["logFilter"] == "trace")
     #expect(providerConfiguration["accountSlug"] == "test-slug")
-    #expect(providerConfiguration["actorName"] == "Test User")
 
     #expect(defaults.string(forKey: "supportURL") == nil)
   }
@@ -386,7 +382,6 @@ struct ConfigurationTests {
     // Set values before creating Configuration
     defaults.set("https://preset.auth", forKey: Configuration.Keys.authURL)
     defaults.set("wss://preset.api", forKey: Configuration.Keys.apiURL)
-    defaults.set("Preset User", forKey: Configuration.Keys.actorName)
     defaults.set(true, forKey: Configuration.Keys.connectOnStart)
     defaults.set(true, forKey: Configuration.Keys.internetResourceEnabled)
 
@@ -408,7 +403,6 @@ struct ConfigurationTests {
     #expect(providerConfiguration?[Configuration.Keys.logFilter] == ConfigurationDefaults.logFilter)
     #expect(
       providerConfiguration?[Configuration.Keys.accountSlug] == ConfigurationDefaults.accountSlug)
-    #expect(providerConfiguration?[Configuration.Keys.actorName] == "Preset User")
     #expect(providerConfiguration?[Configuration.Keys.connectOnStart] == "true")
     #expect(providerConfiguration?[Configuration.Keys.startOnLogin] == "false")
     #expect(providerConfiguration?[Configuration.Keys.internetResourceEnabled] == "true")
@@ -417,7 +411,6 @@ struct ConfigurationTests {
     #expect(defaults.object(forKey: Configuration.Keys.apiURL) == nil)
     #expect(defaults.object(forKey: Configuration.Keys.logFilter) == nil)
     #expect(defaults.object(forKey: Configuration.Keys.accountSlug) == nil)
-    #expect(defaults.object(forKey: Configuration.Keys.actorName) == nil)
     #expect(defaults.object(forKey: Configuration.Keys.connectOnStart) == nil)
     #expect(defaults.object(forKey: Configuration.Keys.startOnLogin) == nil)
     #expect(defaults.object(forKey: Configuration.Keys.internetResourceEnabled) == nil)
@@ -454,7 +447,6 @@ struct ConfigurationTests {
     defaults.set("wss://user.api", forKey: Configuration.Keys.apiURL)
     defaults.set("trace", forKey: Configuration.Keys.logFilter)
     defaults.set("user-account", forKey: Configuration.Keys.accountSlug)
-    defaults.set("Legacy User", forKey: Configuration.Keys.actorName)
     defaults.set(false, forKey: Configuration.Keys.connectOnStart)
     defaults.set(true, forKey: Configuration.Keys.startOnLogin)
     defaults.set(true, forKey: Configuration.Keys.internetResourceEnabled)
@@ -482,7 +474,6 @@ struct ConfigurationTests {
     #expect(providerConfiguration[Configuration.Keys.apiURL] == "wss://user.api")
     #expect(providerConfiguration[Configuration.Keys.logFilter] == "trace")
     #expect(providerConfiguration[Configuration.Keys.accountSlug] == "user-account")
-    #expect(providerConfiguration[Configuration.Keys.actorName] == "Legacy User")
     #expect(providerConfiguration[Configuration.Keys.connectOnStart] == "false")
     #expect(providerConfiguration[Configuration.Keys.startOnLogin] == "true")
     #expect(providerConfiguration[Configuration.Keys.internetResourceEnabled] == "true")
@@ -495,7 +486,6 @@ struct ConfigurationTests {
     #expect(userDomain[Configuration.Keys.apiURL] == nil)
     #expect(userDomain[Configuration.Keys.logFilter] == nil)
     #expect(userDomain[Configuration.Keys.accountSlug] == nil)
-    #expect(userDomain[Configuration.Keys.actorName] == nil)
     #expect(userDomain[Configuration.Keys.connectOnStart] == nil)
     #expect(userDomain[Configuration.Keys.startOnLogin] == nil)
     #expect(userDomain[Configuration.Keys.internetResourceEnabled] == nil)
@@ -565,7 +555,6 @@ struct ConfigurationTests {
       Configuration.Keys.apiURL: "wss://provider.api",
       Configuration.Keys.logFilter: "info",
       Configuration.Keys.accountSlug: "provider-account",
-      Configuration.Keys.actorName: "Provider User",
       Configuration.Keys.connectOnStart: "false",
       Configuration.Keys.startOnLogin: "false",
       Configuration.Keys.internetResourceEnabled: "false",
@@ -627,7 +616,6 @@ struct ConfigurationTests {
 
     config1.authURL = "https://shared.url"
     config1.apiURL = "wss://shared.api"
-    config1.actorName = "Shared User"
     config1.internetResourceEnabled = true
     let providerConfiguration = config1.toProviderConfiguration()
 
@@ -635,7 +623,6 @@ struct ConfigurationTests {
 
     #expect(config2.authURL == "https://shared.url")
     #expect(config2.apiURL == "wss://shared.api")
-    #expect(config2.actorName == "Shared User")
     #expect(config2.internetResourceEnabled == true)
   }
 }
@@ -667,6 +654,7 @@ struct ProviderMessageCodableTests {
   func valuelessCasesRoundTrip() throws {
     let cases: [ProviderMessage] = [
       .signOut, .clearLogs, .getLogFolderSize, .exportLogs, .getEncodedFirezoneId,
+      .drainFlowLogs, .getStatus,
     ]
 
     for message in cases {
@@ -677,15 +665,15 @@ struct ProviderMessageCodableTests {
     }
   }
 
-  @Test("getState round-trips through JSON")
-  func getStateRoundTrip() throws {
+  @Test("pollUpdates round-trips through JSON")
+  func pollUpdatesRoundTrip() throws {
     let hash = Data([0x01, 0x02, 0x03])
-    let decoded = try roundTrip(.getState(hash))
+    let decoded = try roundTrip(.pollUpdates(StatePollRequest(stateHash: hash)))
 
-    if case .getState(let decodedHash) = decoded {
-      #expect(decodedHash == hash)
+    if case .pollUpdates(let request) = decoded {
+      #expect(request.stateHash == hash)
     } else {
-      Issue.record("Expected .getState, got \(decoded)")
+      Issue.record("Expected .pollUpdates, got \(decoded)")
     }
   }
 
@@ -697,6 +685,15 @@ struct ProviderMessageCodableTests {
       #expect(enabled == true)
     } else {
       Issue.record("Expected .setInternetResourceEnabled, got \(decoded)")
+    }
+  }
+
+  @Test("Unknown message type fails to decode")
+  func unknownTypeFailsToDecode() throws {
+    let data = try encoder.encode(["type": "getResourceList"])
+
+    #expect(throws: DecodingError.self) {
+      try decoder.decode(ProviderMessage.self, from: data)
     }
   }
 }

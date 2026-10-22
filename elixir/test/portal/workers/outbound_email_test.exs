@@ -29,6 +29,78 @@ defmodule Portal.Workers.OutboundEmailTest do
       assert db_entry.recipients == ["to@test.com"]
     end
 
+    test "sends the reply-to address from the queued request" do
+      account = account_fixture()
+      configure_acs_secondary()
+      test_pid = self()
+
+      Req.Test.stub(Portal.AzureCommunicationServices, fn conn ->
+        {:ok, body, conn} = Plug.Conn.read_body(conn)
+        send(test_pid, {:acs_body, JSON.decode!(body)})
+
+        conn
+        |> Plug.Conn.put_status(202)
+        |> Req.Test.json(%{"id" => "acs-message-reply", "status" => "Running"})
+      end)
+
+      args =
+        put_in(queued_args(account.id), ["request", "reply_to"], [
+          %{"name" => "", "address" => "support@firezone.dev"}
+        ])
+
+      assert :ok = perform_job(Worker, args)
+
+      assert_received {:acs_body, %{"replyTo" => [%{"address" => "support@firezone.dev"}]}}
+    end
+
+    test "skips delivery when the recipient was suppressed after enqueue" do
+      account = account_fixture()
+      configure_acs_secondary()
+      test_pid = self()
+
+      Repo.insert!(%Portal.EmailSuppression{
+        email: Portal.EmailSuppression.normalize_email("to@test.com")
+      })
+
+      Req.Test.stub(Portal.AzureCommunicationServices, fn conn ->
+        send(test_pid, :acs_request_sent)
+
+        conn
+        |> Plug.Conn.put_status(202)
+        |> Req.Test.json(%{"id" => "acs-should-not-send", "status" => "Running"})
+      end)
+
+      assert :ok = perform_job(Worker, queued_args(account.id))
+
+      refute_received :acs_request_sent
+      assert Repo.aggregate(Portal.OutboundEmail, :count, :message_id) == 0
+    end
+
+    test "tracks only recipients delivered after suppressions change" do
+      account = account_fixture()
+      configure_acs_secondary()
+
+      Repo.insert!(%Portal.EmailSuppression{
+        email: Portal.EmailSuppression.normalize_email("suppressed@test.com")
+      })
+
+      Req.Test.stub(Portal.AzureCommunicationServices, fn conn ->
+        conn
+        |> Plug.Conn.put_status(202)
+        |> Req.Test.json(%{"id" => "acs-partial-send", "status" => "Running"})
+      end)
+
+      args = put_in(queued_args(account.id), ["request", "to"], [
+        %{"name" => "", "address" => "to@test.com"},
+        %{"name" => "", "address" => "suppressed@test.com"}
+      ])
+
+      assert :ok = perform_job(Worker, args)
+
+      db_entry = Repo.get!(Portal.OutboundEmail, "acs-partial-send")
+      assert db_entry.recipients == ["to@test.com"]
+    end
+
     test "returns error on HTTP delivery failures without tracking a row" do
       account = account_fixture()
       configure_acs_secondary()

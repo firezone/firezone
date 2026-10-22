@@ -1,5 +1,8 @@
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
+#[global_allocator]
+static ALLOC: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 use anyhow::{Context, Result, bail};
 use backoff::ExponentialBackoffBuilder;
 use bin_shared::{http_health_check, signals};
@@ -8,7 +11,7 @@ use eventloop_budget::Budget;
 use firezone_relay::sockets::Sockets;
 use firezone_relay::{
     AddressFamily, AllocationPort, ChannelData, ClientSocket, Command, IpStack, PeerSocket, Server,
-    Sleep, VERSION, control_endpoint, ebpf, sockets,
+    Sleep, VERSION, auth::AccountId, control_endpoint, ebpf, sockets,
 };
 use futures::{FutureExt, future};
 use logging::{FilterReloadHandle, err_with_src, sentry_layer};
@@ -23,7 +26,7 @@ use std::process::ExitCode;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::task::{Poll, ready};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime};
 use stun_codec::rfc5766::attributes::ChannelNumber;
 use telemetry::RELAY_DSN;
 use tokio::sync::mpsc;
@@ -141,15 +144,10 @@ fn main() -> ExitCode {
         .expect("Failed to build tokio runtime");
 
     if args.telemetry {
-        telemetry::configure(
-            std::sync::Arc::new(socket_factory::tcp),
-            std::sync::Arc::new(socket_factory::udp),
-        );
-        telemetry::start(
-            args.api_url.as_str(),
-            VERSION.unwrap_or("unknown"),
-            RELAY_DSN,
-        );
+        let release = VERSION
+            .expect("relay binary was not patched with a release SHA before enabling telemetry");
+        telemetry::configure(std::sync::Arc::new(socket_factory::tcp));
+        telemetry::start(args.api_url.as_str(), release, RELAY_DSN);
     }
 
     let code = match runtime.block_on(try_main(args)) {
@@ -160,7 +158,7 @@ fn main() -> ExitCode {
         }
     };
 
-    runtime.block_on(telemetry::stop());
+    telemetry::stop();
 
     code
 }
@@ -228,7 +226,7 @@ async fn try_main(args: Args) -> Result<()> {
         let is_connected = is_connected.clone();
         http_health_check::serve_with_version(
             args.health_check.health_check_addr,
-            firezone_relay::VERSION,
+            *firezone_relay::VERSION,
             move || is_connected.load(Ordering::Relaxed),
         )
     });
@@ -253,6 +251,7 @@ async fn try_main(args: Args) -> Result<()> {
         "relay",
         JoinMessage {
             stamp_secret: server.auth_secret().expose_secret().to_string(),
+            turn_account_validation: true,
         },
         || {
             ExponentialBackoffBuilder::default()
@@ -403,14 +402,25 @@ where
 #[serde(rename_all = "snake_case", tag = "event", content = "payload")]
 enum IngressMessages {
     Init(Init),
+    AccountAdded(Account),
+    AccountRemoved(Account),
 }
 
 #[derive(serde::Deserialize, Debug)]
-struct Init {}
+struct Init {
+    #[serde(default)]
+    account_ids: Vec<AccountId>,
+}
+
+#[derive(serde::Deserialize, Debug)]
+struct Account {
+    account_id: AccountId,
+}
 
 #[derive(serde::Serialize, PartialEq, Debug, Clone)]
 struct JoinMessage {
     stamp_secret: String,
+    turn_account_validation: bool,
 }
 
 fn make_rng(seed: Option<u64>) -> StdRng {
@@ -462,7 +472,7 @@ where
         bind_ip6: Ipv6Addr,
         is_connected: Arc<AtomicBool>,
     ) -> Result<Self> {
-        let mut sockets = Sockets::new();
+        let mut sockets = Sockets::new().context("Failed to initialize sockets")?;
 
         if public_address.as_v4().is_some() {
             sockets
@@ -526,16 +536,23 @@ where
                             AddressFamily::V4 => self.bind_ip4.into(),
                             AddressFamily::V6 => self.bind_ip6.into(),
                         };
-                        self.sockets
-                            .bind(port.value(), bind_addr)
-                            .with_context(|| {
-                                format!(
-                                    "Failed to bind to port {} on {family} interfaces",
-                                    port.value()
-                                )
-                            })?;
 
-                        tracing::info!(target: "relay", %port, %family, "Created allocation");
+                        // Failing to bind a single port must not take down the entire Relay.
+                        let bind = self
+                            .sockets
+                            .bind(port.value(), bind_addr)
+                            .context("Failed to bind port for allocation");
+
+                        match bind {
+                            Ok(()) => {
+                                tracing::info!(target: "relay", %port, %family, "Created allocation");
+                            }
+                            Err(e) => {
+                                tracing::warn!(target: "relay", %port, %family, "{e:#}");
+
+                                self.server.handle_allocation_failed(port);
+                            }
+                        }
                     }
                     Command::FreeAllocation { port, family } => {
                         self.sockets.unbind(port.value(), family).with_context(|| {
@@ -614,6 +631,7 @@ where
                         packet,
                         ClientSocket::new(from),
                         Instant::now(),
+                        SystemTime::now(),
                     ) {
                         // Re-parse as `ChannelData` if we should relay it.
                         let payload = ChannelData::parse(packet)
@@ -682,7 +700,22 @@ where
 
             // Priority 5: Handle portal messages
             match self.event_rx.poll_recv(cx) {
-                Poll::Ready(Some(Ok(IngressMessages::Init(Init {})))) => {
+                Poll::Ready(Some(Ok(IngressMessages::Init(init)))) => {
+                    tracing::info!(
+                        num_accounts = init.account_ids.len(),
+                        "Received TURN account list"
+                    );
+                    self.server.set_accounts(init.account_ids);
+                    tick.want_continue();
+                }
+                Poll::Ready(Some(Ok(IngressMessages::AccountAdded(account)))) => {
+                    tracing::info!(account_id = %account.account_id, "Added account to TURN allow list");
+                    self.server.add_account(account.account_id);
+                    tick.want_continue();
+                }
+                Poll::Ready(Some(Ok(IngressMessages::AccountRemoved(account)))) => {
+                    tracing::info!(account_id = %account.account_id, "Removed account from TURN allow list");
+                    self.server.remove_account(&account.account_id);
                     tick.want_continue();
                 }
                 Poll::Ready(Some(Err(e))) => {

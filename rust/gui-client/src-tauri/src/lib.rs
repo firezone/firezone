@@ -6,9 +6,11 @@
 // TODO: remove once all clients have migrated.
 #[cfg(target_os = "windows")]
 mod mdm_migration;
-mod updates;
+pub mod updates;
 mod uptime;
 mod view;
+
+pub use view::export_bindings;
 
 // TODO: See how many of these we can make private.
 pub mod auth;
@@ -17,7 +19,6 @@ pub mod deep_link;
 pub mod dialog;
 pub mod elevation;
 pub mod gui;
-pub mod ipc;
 pub mod launch_lock;
 pub mod logging;
 #[cfg(debug_assertions)]
@@ -34,7 +35,7 @@ pub mod settings;
 ///
 /// Note: under the sparse MSIX identity this is *not* the
 /// AppUserModelId Windows uses to label notifications; that is derived
-/// from [`PACKAGE_FAMILY_NAME`] in `gui::os::show_notification`. It is
+/// from [`PACKAGE_FAMILY_NAME`] in `gui::os::notification_app_id`. It is
 /// still used as the toast AUMID for un-packaged dev builds, which have
 /// no package identity.
 pub const BUNDLE_ID: &str = "dev.firezone.client";
@@ -45,15 +46,16 @@ pub const BUNDLE_ID: &str = "dev.firezone.client";
 /// Hence, we have a single constant for Tunnel service and GUI client.
 pub const RELEASE: &str = concat!("gui-client@", env!("CARGO_PKG_VERSION"));
 
+/// Whether `FIREZONE_NO_TELEMETRY` was set when this binary was built.
+///
+/// CI stamps it into every build that is not a release, so the smoke test, the
+/// install test and any artifact from a pull request stay silent even where nothing
+/// sets the variable at run time.
+pub const NO_TELEMETRY: bool = cfg!(no_telemetry);
+
 pub const FIREZONE_CLIENT_GROUP: &str = "firezone-client";
 
-/// `Name_publisherId` for the sparse MSIX. Derived at build time
-/// from the manifest's `Name` + Publisher DN in `build.rs`. Used by
-/// `register-sparse.exe` to stage / provision / deprovision the
-/// package against the AppX deployment service, and to derive the
-/// package AUMID (`<PACKAGE_FAMILY_NAME>!Firezone`) that Windows uses to
-/// label toast notifications (see `gui::os::show_notification`).
-pub const PACKAGE_FAMILY_NAME: &str = env!("FIREZONE_PACKAGE_FAMILY_NAME");
+pub use windows_package_identity::PACKAGE_FAMILY_NAME;
 
 #[cfg(target_os = "linux")]
 pub fn firezone_client_group() -> anyhow::Result<nix::unistd::Group> {

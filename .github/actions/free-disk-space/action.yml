@@ -1,6 +1,11 @@
 ---
 name: "Free disk space"
 description: "Reclaim disk space by removing pre-installed toolchains we don't use"
+inputs:
+  required-gb:
+    description: "Skip the reclaim when the root filesystem already has at least this much free space"
+    required: false
+    default: "60"
 runs:
   using: "composite"
   steps:
@@ -8,10 +13,17 @@ runs:
       if: runner.os == 'Linux'
       shell: bash
       run: |
-        # Reclaim ~25 GB from pre-installed toolchains we don't use, so the
+        # Reclaim space from pre-installed toolchains we don't use, so the
         # instrumented coverage builds have headroom on leaner hosted runners.
+        # The hosted images currently leave 87-109 GB free, which is already
+        # ample, so the reclaim only has to run if that ever shrinks again.
+        available_gb=$(df --output=avail --block-size=1G / | tail -1)
+        if (( available_gb >= ${{ inputs.required-gb }} )); then
+          echo "${available_gb} GB available, skipping reclaim"
+          exit 0
+        fi
+
         sudo rm -rf \
-          /usr/local/lib/android \
           /usr/share/dotnet \
           /opt/ghc \
           /usr/local/.ghcup \

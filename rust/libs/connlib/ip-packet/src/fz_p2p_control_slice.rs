@@ -1,5 +1,3 @@
-use etherparse::LenSource;
-
 use crate::FzP2pEventType;
 
 pub struct FzP2pControlSlice<'a> {
@@ -8,15 +6,9 @@ pub struct FzP2pControlSlice<'a> {
 
 impl<'a> FzP2pControlSlice<'a> {
     /// Creates a new [`FzP2pControlSlice`].
-    pub fn from_slice(slice: &'a [u8]) -> Result<Self, etherparse::err::LenError> {
+    pub fn from_slice(slice: &'a [u8]) -> Result<Self, TooShort> {
         if slice.len() < 8 {
-            return Err(etherparse::err::LenError {
-                required_len: 8,
-                len: slice.len(),
-                len_source: LenSource::Slice,
-                layer: etherparse::err::Layer::Ipv6Header,
-                layer_start_offset: 0,
-            });
+            return Err(TooShort { len: slice.len() });
         }
 
         Ok(Self { slice })
@@ -31,4 +23,10 @@ impl<'a> FzP2pControlSlice<'a> {
 
         payload
     }
+}
+
+#[derive(Debug, thiserror::Error)]
+#[error("FZ p2p control packets require an 8-byte header (len: {len})")]
+pub struct TooShort {
+    len: usize,
 }

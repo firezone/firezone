@@ -3,14 +3,15 @@
 use std::{
     net::{IpAddr, SocketAddr},
     pin::Pin,
-    sync::Arc,
+    sync::{Arc, LazyLock},
     time::Duration,
 };
 
 use anyhow::{Context, Result};
 use bytes::Bytes;
+use futures::{StreamExt as _, stream::FuturesUnordered};
 use http_body_util::{BodyExt, Full};
-use rustls::ClientConfig;
+use rustls::{ClientConfig, RootCertStore};
 use socket_factory::{SocketFactory, TcpSocket};
 use tokio_rustls::TlsConnector;
 use tokio_util::task::AbortOnDropHandle;
@@ -31,15 +32,50 @@ enum Sender {
 /// connection types share one return shape.
 type ConnectionDriver = Pin<Box<dyn Future<Output = ()> + Send>>;
 
+/// The TLS configuration of an [`HttpClient`] connection.
+#[derive(Clone)]
+pub struct TlsConfig(Arc<ClientConfig>);
+
+impl TlsConfig {
+    /// Returns the configuration that trusts the roots bundled via `webpki-roots`.
+    ///
+    /// It is built on first use and shared by all callers.
+    pub fn webpki_roots() -> Self {
+        // TODO: Use `rustls-platform-verifier` instead.
+        static CONFIG: LazyLock<TlsConfig> = LazyLock::new(|| {
+            TlsConfig::new(RootCertStore {
+                roots: webpki_roots::TLS_SERVER_ROOTS.to_vec(),
+            })
+        });
+
+        CONFIG.clone()
+    }
+
+    /// Builds a configuration that trusts `roots`.
+    pub fn new(roots: RootCertStore) -> Self {
+        // An explicit provider cannot panic for lack of a process-default one.
+        let mut config =
+            ClientConfig::builder_with_provider(Arc::new(rustls::crypto::ring::default_provider()))
+                .with_safe_default_protocol_versions()
+                .expect("ring supports the default protocol versions")
+                .with_root_certificates(roots)
+                .with_no_client_auth();
+        config.alpn_protocols = vec![b"h2".to_vec(), b"http/1.1".to_vec()];
+
+        Self(Arc::new(config))
+    }
+}
+
 /// An HTTP client that plugs into our [`SocketFactory`] abstraction.
 ///
-/// One instance is tied to a given host. It negotiates HTTP/2 if the server
+/// One instance is tied to a given host and port. It negotiates HTTP/2 if the server
 /// supports it (ALPN `h2`) and falls back to HTTP/1.1 otherwise. The connection is
-/// maintained for the client's lifetime; if it fails, [`Closed`] is returned and
-/// the client becomes permanently unusable and should be discarded.
+/// maintained for the client's lifetime; once it fails, every request errors with
+/// [`Closed`] and the client should be discarded.
 #[derive(Clone)]
 pub struct HttpClient {
     host: String,
+    port: u16,
     sender: Sender,
 
     #[expect(dead_code, reason = "We only need to keep it around.")]
@@ -47,28 +83,18 @@ pub struct HttpClient {
 }
 
 impl HttpClient {
+    /// Connects to `host` on `port` via the first of `addresses` that succeeds.
+    ///
+    /// `host` is spelled as in a URI, i.e. an IPv6 address is enclosed in brackets.
     pub async fn new(
         host: String,
+        port: u16,
         addresses: Vec<IpAddr>,
+        tls_config: TlsConfig,
         socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
     ) -> Result<Self> {
-        // TODO: Use `rustls-platform-verifier` instead.
-        let mut root_cert_store = rustls::RootCertStore::empty();
-        root_cert_store.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
-
-        let mut config = rustls::ClientConfig::builder()
-            .with_root_certificates(root_cert_store)
-            .with_no_client_auth();
-        config.alpn_protocols = vec![b"h2".to_vec(), b"http/1.1".to_vec()];
-
-        let (sender, driver) = connect(
-            addresses,
-            443,
-            host.clone(),
-            Arc::new(config),
-            socket_factory,
-        )
-        .await?;
+        let (sender, driver) =
+            connect(addresses, port, host.clone(), tls_config.0, socket_factory).await?;
 
         let connection = tokio::spawn({
             let host = host.clone();
@@ -81,6 +107,7 @@ impl HttpClient {
 
         Ok(Self {
             host,
+            port,
             sender,
             connection: Arc::new(AbortOnDropHandle::new(connection)),
         })
@@ -103,9 +130,12 @@ impl HttpClient {
         request: http::Request<Bytes>,
     ) -> Result<impl Future<Output = Result<http::Response<Bytes>>> + use<>> {
         anyhow::ensure!(!self.is_closed(), Closed);
+
+        let port = request.uri().port_u16().unwrap_or(443);
         anyhow::ensure!(
-            request.uri().port_u16().is_none_or(|p| p == 443),
-            "Only supports requests to port 443"
+            port == self.port,
+            "Can only send HTTP requests to port {}",
+            self.port
         );
 
         let host = request
@@ -118,6 +148,11 @@ impl HttpClient {
             "Can only send HTTP requests to host {}",
             self.host
         );
+
+        let authority = match port {
+            443 => host,
+            port => format!("{host}:{port}"),
+        };
 
         let sender = self.sender.clone();
 
@@ -135,15 +170,16 @@ impl HttpClient {
                     client
                         .send_request(request)
                         .await
-                        .context("Failed to send HTTP/2 request")?
+                        .context("Failed to send HTTP/2 request")
+                        .context(Closed)?
                 }
                 Sender::H1(mutex) => {
                     // HTTP/1.1 carries the host in a `Host` header (HTTP/2 uses the
                     // `:authority` pseudo-header derived from the URI), so add it if
                     // the caller didn't.
                     if !request.headers().contains_key(http::header::HOST) {
-                        let value =
-                            http::HeaderValue::from_str(&host).context("Invalid host header")?;
+                        let value = http::HeaderValue::from_str(&authority)
+                            .context("Invalid host header")?;
                         request.headers_mut().insert(http::header::HOST, value);
                     }
 
@@ -156,7 +192,8 @@ impl HttpClient {
                     client
                         .send_request(request)
                         .await
-                        .context("Failed to send HTTP/1.1 request")?
+                        .context("Failed to send HTTP/1.1 request")
+                        .context(Closed)?
                 }
             };
 
@@ -165,13 +202,19 @@ impl HttpClient {
             let body = incoming
                 .collect()
                 .await
-                .context("Failed to receive HTTP response body")?;
+                .context("Failed to receive HTTP response body")
+                .context(Closed)?;
 
             Ok(http::Response::from_parts(parts, body.to_bytes()))
         })
     }
 }
 
+/// The connection behind an [`HttpClient`] is closed or has failed.
+///
+/// A transport error on a persistent connection leaves it dead or dying, so
+/// every request that hits one carries this error, not only those sent after
+/// [`HttpClient::is_closed`] starts reporting `true`.
 #[derive(thiserror::Error, Debug)]
 #[error("The connection is closed")]
 pub struct Closed;
@@ -185,19 +228,31 @@ async fn connect(
 ) -> Result<(Sender, ConnectionDriver)> {
     tracing::debug!(?addresses, %domain, "Creating new HTTP connection");
 
-    for address in addresses {
-        let socket = SocketAddr::new(address, port);
+    // Race the addresses instead of walking them in order. A blackholed address
+    // fails only once the OS gives up on the TCP connect, over a minute later,
+    // so in order a working address behind one is not reached until then.
+    let mut attempts = addresses
+        .into_iter()
+        .map(|address| {
+            let socket = SocketAddr::new(address, port);
+            let domain = domain.clone();
+            let tls_config = tls_config.clone();
+            let sf = sf.clone();
 
-        match connect_one(socket, domain.clone(), tls_config.clone(), sf.clone()).await {
-            Ok((sender, driver)) => {
+            async move { (socket, connect_one(socket, domain, tls_config, sf).await) }
+        })
+        .collect::<FuturesUnordered<_>>();
+
+    // Ends once every attempt has resolved. Returning early drops the losing
+    // attempts, which cancels them.
+    while let Some((socket, attempt)) = attempts.next().await {
+        match attempt {
+            Ok(connection) => {
                 tracing::debug!(%socket, %domain, "Created new HTTP connection");
 
-                return Ok((sender, driver));
+                return Ok(connection);
             }
-            Err(e) => {
-                tracing::debug!(%socket, %domain, "Failed to create HTTP client: {e:#}");
-                continue;
-            }
+            Err(e) => tracing::debug!(%socket, %domain, "Failed to create HTTP client: {e:#}"),
         }
     }
 
@@ -218,7 +273,11 @@ async fn connect_one(
         .context("Failed to connect TCP stream")?;
 
     let connector = TlsConnector::from(tls_client_config);
-    let tls_domain = rustls_pki_types::ServerName::try_from(domain)?;
+    // A URI encloses an IPv6 address in brackets, a `ServerName` does not.
+    let tls_domain = rustls_pki_types::ServerName::try_from(
+        domain.trim_start_matches('[').trim_end_matches(']'),
+    )?
+    .to_owned();
 
     let stream = connector.connect(tls_domain, stream).await?;
 
@@ -267,30 +326,27 @@ async fn connect_one(
 
 #[cfg(test)]
 mod tests {
-    use std::net::IpAddr;
+    use std::net::{IpAddr, Ipv4Addr};
 
     use super::*;
 
     #[tokio::test]
-    #[ignore = "Requires Internet"]
     async fn parallel_doh_queries() {
-        rustls::crypto::ring::default_provider()
-            .install_default()
+        let server = doh_test_server::DohTestServer::spawn(Ipv4Addr::LOCALHOST)
+            .await
             .unwrap();
-
         let http_client = HttpClient::new(
-            "one.one.one.one".to_owned(),
-            vec![IpAddr::from([1, 1, 1, 1])],
+            "127.0.0.1".to_owned(),
+            server.url().port(),
+            vec![IpAddr::V4(Ipv4Addr::LOCALHOST)],
+            TlsConfig::new(server.root_cert_store()),
             Arc::new(socket_factory::tcp),
         )
         .await
         .unwrap();
 
-        let query = http::Request::builder()
-            .uri("https://one.one.one.one/dns-query?name=example.com")
-            .method("GET")
-            .header("Accept", "application/dns-json")
-            .body(Bytes::new())
+        let query = dns_types::Query::new("example.com".parse().unwrap(), dns_types::RecordType::A)
+            .try_into_http_request(&server.url())
             .unwrap();
 
         let response1 = http_client.send_request(query.clone()).unwrap();

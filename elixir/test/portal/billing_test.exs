@@ -1,6 +1,7 @@
 defmodule Portal.BillingTest do
   use Portal.DataCase, async: true
 
+  import Ecto.Query
   import ExUnit.CaptureLog
   import Portal.Billing
   import Portal.AccountFixtures
@@ -338,11 +339,58 @@ defmodule Portal.BillingTest do
 
       # Disable the enabled one
       api_client
-      |> Ecto.Changeset.change(disabled_at: DateTime.utc_now())
+      |> Ecto.Changeset.change(is_disabled: true)
       |> Portal.Repo.update!()
 
       # Now we can create more
       assert can_create_api_clients?(account)
+    end
+  end
+
+  describe "check_actor_enable_limits/2" do
+    test "rejects a user when the user limit is reached", %{account: account} do
+      account = update_account(account, %{limits: %{users_count: 0}})
+      actor = disabled_actor_fixture(account: account, type: :account_user)
+
+      assert check_actor_enable_limits(account, actor) == {:error, :users_limit_reached}
+    end
+
+    test "rejects an admin when the user limit is reached", %{account: account} do
+      account = update_account(account, %{limits: %{users_count: 0}})
+      actor = disabled_actor_fixture(account: account, type: :account_admin_user)
+
+      assert check_actor_enable_limits(account, actor) == {:error, :users_limit_reached}
+    end
+
+    test "rejects an admin when the admin limit is reached", %{account: account} do
+      account = update_account(account, %{limits: %{account_admin_users_count: 0}})
+      actor = disabled_actor_fixture(account: account, type: :account_admin_user)
+
+      assert check_actor_enable_limits(account, actor) == {:error, :admin_users_limit_reached}
+    end
+
+    test "rejects a service account when the service account limit is reached", %{
+      account: account
+    } do
+      account = update_account(account, %{limits: %{service_accounts_count: 0}})
+      actor = disabled_actor_fixture(account: account, type: :service_account)
+
+      assert check_actor_enable_limits(account, actor) ==
+               {:error, :service_accounts_limit_reached}
+    end
+
+    test "rejects an API client when the API client limit is reached", %{account: account} do
+      account = update_account(account, %{limits: %{api_clients_count: 0}})
+      actor = disabled_actor_fixture(account: account, type: :api_client)
+
+      assert check_actor_enable_limits(account, actor) == {:error, :api_clients_limit_reached}
+    end
+
+    test "allows all actor types when limits are not reached", %{account: account} do
+      for type <- [:account_user, :account_admin_user, :service_account, :api_client] do
+        actor = disabled_actor_fixture(account: account, type: type)
+        assert check_actor_enable_limits(account, actor) == :ok
+      end
     end
   end
 
@@ -423,6 +471,200 @@ defmodule Portal.BillingTest do
 
       # Client2 can still create tokens
       assert can_create_api_tokens?(account, api_client2) == true
+    end
+  end
+
+  describe "plan_type/1" do
+    test "recognizes the Business plan" do
+      assert plan_type("Business") == :business
+      assert plan_type(business_account_fixture()) == :business
+    end
+
+    test "treats Business as a paid plan" do
+      assert paid_plan?(business_account_fixture())
+    end
+  end
+
+  describe "seats_warning_level/2" do
+    defp business_with_seats(limit) do
+      update_account(business_account_fixture(), %{limits: %{monthly_active_users_count: limit}})
+    end
+
+    test "is :clear with more than 10% of seats remaining" do
+      assert seats_warning_level(business_with_seats(100), 89) == :clear
+    end
+
+    test "is :clear at exactly 10% remaining" do
+      assert seats_warning_level(business_with_seats(100), 90) == :clear
+    end
+
+    test "is :approaching with fewer than 10% of seats remaining" do
+      assert seats_warning_level(business_with_seats(100), 91) == :approaching
+      assert seats_warning_level(business_with_seats(100), 99) == :approaching
+    end
+
+    test "is :at_limit when every seat is used" do
+      assert seats_warning_level(business_with_seats(100), 100) == :at_limit
+    end
+
+    test "is :over when the limit is exceeded" do
+      assert seats_warning_level(business_with_seats(100), 101) == :over
+    end
+
+    test "is nil when there is no seat limit" do
+      assert seats_warning_level(business_with_seats(nil), 5) == nil
+    end
+
+    test "is nil for plans other than Business and Enterprise" do
+      account =
+        update_account(team_account_fixture(), %{limits: %{monthly_active_users_count: 10}})
+
+      assert seats_warning_level(account, 10) == nil
+    end
+
+    test "warns Enterprise accounts too" do
+      account =
+        update_account(account_fixture(), %{
+          metadata: %{stripe: %{product_name: "Enterprise"}},
+          limits: %{monthly_active_users_count: 10}
+        })
+
+      assert seats_warning_level(account, 10) == :at_limit
+    end
+  end
+
+  describe "connected_devices_limit_reached?/3" do
+    setup do
+      account = update_account(account_fixture(), %{limits: %{connected_devices_per_actor: 2}})
+      actor = actor_fixture(account: account, type: :account_user)
+      %{account: account, actor: actor}
+    end
+
+    defp connect_device(account, actor) do
+      device = client_fixture(account: account, actor: actor)
+      :ok = Portal.Presence.Devices.connect(device, Ecto.UUID.generate())
+      device
+    end
+
+    test "is false below the limit", %{account: account, actor: actor} do
+      connect_device(account, actor)
+
+      refute connected_devices_limit_reached?(account, actor.id, Ecto.UUID.generate())
+    end
+
+    test "is true at the limit", %{account: account, actor: actor} do
+      connect_device(account, actor)
+      connect_device(account, actor)
+
+      assert connected_devices_limit_reached?(account, actor.id, Ecto.UUID.generate())
+    end
+
+    test "never counts the device itself", %{account: account, actor: actor} do
+      connect_device(account, actor)
+      device = connect_device(account, actor)
+
+      refute connected_devices_limit_reached?(account, actor.id, device.id)
+    end
+
+    test "is always false when the limit is nil (unlimited)", %{account: account, actor: actor} do
+      account = update_account(account, %{limits: %{connected_devices_per_actor: nil}})
+      for _ <- 1..5, do: connect_device(account, actor)
+
+      refute connected_devices_limit_reached?(account, actor.id, Ecto.UUID.generate())
+    end
+  end
+
+  describe "client_seat_restricted?/2" do
+    defp business_account_with_seats(limit) do
+      update_account(business_account_fixture(), %{limits: %{monthly_active_users_count: limit}})
+    end
+
+    defp make_active(account, actor) do
+      client = client_fixture(account: account, actor: actor)
+      client_session_fixture(account: account, actor: actor, client: client)
+    end
+
+    test "does not restrict a new user while seats remain" do
+      account = business_account_with_seats(2)
+      make_active(account, actor_fixture(account: account))
+      new_actor = actor_fixture(account: account)
+
+      refute client_seat_restricted?(account, new_actor.id)
+    end
+
+    test "restricts a new user who would push past the limit" do
+      account = business_account_with_seats(2)
+      make_active(account, actor_fixture(account: account))
+      make_active(account, actor_fixture(account: account))
+      new_actor = actor_fixture(account: account)
+
+      assert client_seat_restricted?(account, new_actor.id)
+    end
+
+    test "does not restrict a new service account while adhoc service accounts remain" do
+      account =
+        update_account(business_account_fixture(), %{
+          limits: %{monthly_active_users_count: 1, adhoc_service_accounts_count: 1}
+        })
+
+      make_active(account, actor_fixture(account: account))
+      new_service_account = actor_fixture(account: account, type: :service_account)
+
+      refute client_seat_restricted?(account, new_service_account.id)
+    end
+
+    test "restricts a new service account when adhoc service accounts and seats are full" do
+      account =
+        update_account(business_account_fixture(), %{
+          limits: %{monthly_active_users_count: 1, adhoc_service_accounts_count: 1}
+        })
+
+      make_active(account, actor_fixture(account: account))
+      make_active(account, actor_fixture(account: account, type: :service_account))
+      new_service_account = actor_fixture(account: account, type: :service_account)
+
+      assert client_seat_restricted?(account, new_service_account.id)
+    end
+
+    test "never restricts an already active user, even when over the limit" do
+      account = business_account_with_seats(1)
+      active = actor_fixture(account: account)
+      make_active(account, active)
+      make_active(account, actor_fixture(account: account))
+
+      refute client_seat_restricted?(account, active.id)
+    end
+
+    test "service accounts take a seat" do
+      account = business_account_with_seats(1)
+      service_account = actor_fixture(account: account, type: :service_account)
+      make_active(account, service_account)
+
+      assert client_seat_restricted?(account, actor_fixture(account: account).id)
+      refute client_seat_restricted?(account, service_account.id)
+
+      assert seats_warning_level(account, 1) == :at_limit
+    end
+
+    test "does not restrict when there is no seat limit" do
+      account = business_account_with_seats(nil)
+      make_active(account, actor_fixture(account: account))
+
+      refute client_seat_restricted?(account, actor_fixture(account: account).id)
+    end
+
+    test "does not restrict other plans" do
+      account =
+        update_account(team_account_fixture(), %{limits: %{monthly_active_users_count: 0}})
+
+      refute client_seat_restricted?(account, actor_fixture(account: account).id)
+    end
+
+    test "seats_limit_exceeded alone does not block sign-in or connect" do
+      account = update_account(business_account_fixture(), %{seats_limit_exceeded: true})
+
+      refute client_sign_in_restricted?(account)
+      refute client_connect_restricted?(account)
     end
   end
 
@@ -705,6 +947,97 @@ defmodule Portal.BillingTest do
       assert {:ok, _resource} = Portal.Billing.Database.fetch_internet_resource(account)
     end
 
+    test "creates the My devices pool, the Account owner group and the policy", %{
+      account: account
+    } do
+      Portal.Config.put_env_override(Portal.Billing, enabled: false)
+      admin = actor_fixture(account: account, type: :account_admin_user)
+
+      assert {:ok, ^account} = Portal.Billing.provision_account(account)
+
+      pool = Portal.Repo.get_by!(Portal.Resource, account_id: account.id, type: :device_pool)
+      assert pool.name == "My devices"
+
+      assert pool.device_membership_criteria ==
+               Portal.Resource.DeviceMembershipCriteria.own_devices()
+
+      owner_group =
+        Portal.Repo.get_by!(Portal.Group, account_id: account.id, name: "Account owner")
+
+      assert owner_group.type == :static
+
+      policy = Portal.Repo.get_by!(Portal.Policy, account_id: account.id, resource_id: pool.id)
+      assert policy.group_id == owner_group.id
+
+      assert Portal.Repo.get_by!(Portal.Membership,
+               account_id: account.id,
+               group_id: owner_group.id,
+               actor_id: admin.id
+             )
+    end
+
+    test "puts the oldest admin in the Account owner group", %{account: account} do
+      Portal.Config.put_env_override(Portal.Billing, enabled: false)
+      first = actor_fixture(account: account, type: :account_admin_user)
+      _second = actor_fixture(account: account, type: :account_admin_user)
+
+      assert {:ok, ^account} = Portal.Billing.provision_account(account)
+
+      owner_group =
+        Portal.Repo.get_by!(Portal.Group, account_id: account.id, name: "Account owner")
+
+      assert [membership] =
+               Portal.Repo.all(
+                 from(m in Portal.Membership,
+                   where: m.account_id == ^account.id and m.group_id == ^owner_group.id
+                 )
+               )
+
+      assert membership.actor_id == first.id
+    end
+
+    test "leaves the defaults alone when they are already there", %{account: account} do
+      Portal.Config.put_env_override(Portal.Billing, enabled: false)
+      actor_fixture(account: account, type: :account_admin_user)
+
+      assert {:ok, ^account} = Portal.Billing.provision_account(account)
+      pool = Portal.Repo.get_by!(Portal.Resource, account_id: account.id, type: :device_pool)
+
+      assert {:ok, ^account} = Portal.Billing.provision_account(account)
+
+      assert [^pool] =
+               Portal.Repo.all(
+                 from(r in Portal.Resource,
+                   where: r.account_id == ^account.id and r.type == :device_pool
+                 )
+               )
+
+      assert Portal.Repo.aggregate(
+               from(g in Portal.Group,
+                 where: g.account_id == ^account.id and g.name == "Account owner"
+               ),
+               :count
+             ) == 1
+    end
+
+    test "creates the group without a membership when the account has no admin", %{
+      account: account
+    } do
+      Portal.Config.put_env_override(Portal.Billing, enabled: false)
+
+      assert {:ok, ^account} = Portal.Billing.provision_account(account)
+
+      owner_group =
+        Portal.Repo.get_by!(Portal.Group, account_id: account.id, name: "Account owner")
+
+      assert Portal.Repo.aggregate(
+               from(m in Portal.Membership,
+                 where: m.account_id == ^account.id and m.group_id == ^owner_group.id
+               ),
+               :count
+             ) == 0
+    end
+
     test "returns error when provisioning fails", %{account: account} do
       Stripe.stub([{"POST", "/v1/customers", 500, %{"error" => "Server error"}}])
 
@@ -803,7 +1136,7 @@ defmodule Portal.BillingTest do
       assert Portal.Billing.Database.count_users_for_account(account) == 1
     end
 
-    test "excludes service accounts", %{account: account} do
+    test "includes service accounts", %{account: account} do
       actor_fixture(type: :account_user, account: account)
       actor_fixture(type: :service_account, account: account)
 
@@ -877,7 +1210,29 @@ defmodule Portal.BillingTest do
     end
   end
 
-  describe "Database.count_1m_active_users_for_account/1" do
+  describe "monthly_active_usage/1" do
+    test "splits active service accounts between ad hoc ones and seats", %{account: account} do
+      account = update_account(account, %{limits: %{adhoc_service_accounts_count: 2}})
+
+      for type <- [:account_user, :service_account, :service_account, :service_account] do
+        actor = actor_fixture(type: type, account: account)
+        client = client_fixture(account: account, actor: actor)
+        client_session_fixture(account: account, actor: actor, client: client)
+      end
+
+      assert Portal.Billing.monthly_active_usage(account) == %{seats: 2, adhoc_service_accounts: 2}
+    end
+
+    test "counts no ad hoc service accounts without the add-on", %{account: account} do
+      actor = actor_fixture(type: :service_account, account: account)
+      client = client_fixture(account: account, actor: actor)
+      client_session_fixture(account: account, actor: actor, client: client)
+
+      assert Portal.Billing.monthly_active_usage(account) == %{seats: 1, adhoc_service_accounts: 0}
+    end
+  end
+
+  describe "count_monthly_active_users/1" do
     test "counts distinct active users within last month", %{account: account} do
       actor1 = actor_fixture(type: :account_user, account: account)
       actor2 = actor_fixture(type: :account_admin_user, account: account)
@@ -888,7 +1243,7 @@ defmodule Portal.BillingTest do
       client_session_fixture(account: account, actor: actor1, client: client1)
       client_session_fixture(account: account, actor: actor2, client: client2)
 
-      assert Portal.Billing.Database.count_1m_active_users_for_account(account) == 2
+      assert Portal.Billing.count_monthly_active_users(account) == 2
     end
 
     test "counts user only once even with multiple clients", %{account: account} do
@@ -900,7 +1255,7 @@ defmodule Portal.BillingTest do
       client_session_fixture(account: account, actor: actor, client: client1)
       client_session_fixture(account: account, actor: actor, client: client2)
 
-      assert Portal.Billing.Database.count_1m_active_users_for_account(account) == 1
+      assert Portal.Billing.count_monthly_active_users(account) == 1
     end
 
     test "excludes users not seen in last month", %{account: account} do
@@ -922,12 +1277,11 @@ defmodule Portal.BillingTest do
         )
 
       # Backdate the session to more than a month ago
-      Repo.query!("UPDATE client_sessions SET inserted_at = $1 WHERE id = $2", [
-        DateTime.add(DateTime.utc_now(), -35, :day),
-        Ecto.UUID.dump!(session.id)
-      ])
+      session
+      |> Ecto.Changeset.change(last_seen_at: DateTime.add(DateTime.utc_now(), -35, :day))
+      |> Repo.update!()
 
-      assert Portal.Billing.Database.count_1m_active_users_for_account(account) == 1
+      assert Portal.Billing.count_monthly_active_users(account) == 1
     end
 
     test "excludes disabled users", %{account: account} do
@@ -939,10 +1293,10 @@ defmodule Portal.BillingTest do
       client_session_fixture(account: account, actor: actor, client: client1)
       client_session_fixture(account: account, actor: disabled_actor, client: client2)
 
-      assert Portal.Billing.Database.count_1m_active_users_for_account(account) == 1
+      assert Portal.Billing.count_monthly_active_users(account) == 1
     end
 
-    test "excludes service accounts", %{account: account} do
+    test "includes service accounts", %{account: account} do
       user = actor_fixture(type: :account_user, account: account)
       service_account = actor_fixture(type: :service_account, account: account)
 
@@ -951,12 +1305,38 @@ defmodule Portal.BillingTest do
       client_session_fixture(account: account, actor: user, client: client1)
       client_session_fixture(account: account, actor: service_account, client: client2)
 
-      # Only the user should be counted, not the service account
-      assert Portal.Billing.Database.count_1m_active_users_for_account(account) == 1
+      # Service accounts take a seat too
+      assert Portal.Billing.count_monthly_active_users(account) == 2
     end
 
     test "returns 0 for account with no active users", %{account: account} do
-      assert Portal.Billing.Database.count_1m_active_users_for_account(account) == 0
+      assert Portal.Billing.count_monthly_active_users(account) == 0
+    end
+
+    test "service accounts take a seat only beyond adhoc_service_accounts_count", %{account: account} do
+      account = update_account(account, %{limits: %{adhoc_service_accounts_count: 1}})
+
+      for type <- [:account_user, :service_account, :service_account] do
+        actor = actor_fixture(type: type, account: account)
+        client = client_fixture(account: account, actor: actor)
+        client_session_fixture(account: account, actor: actor, client: client)
+      end
+
+      assert Portal.Billing.count_monthly_active_users(account) == 2
+    end
+
+    test "service accounts never take a seat with unlimited adhoc_service_accounts_count", %{
+      account: account
+    } do
+      account = update_account(account, %{limits: %{adhoc_service_accounts_count: nil}})
+
+      for type <- [:account_user, :service_account] do
+        actor = actor_fixture(type: type, account: account)
+        client = client_fixture(account: account, actor: actor)
+        client_session_fixture(account: account, actor: actor, client: client)
+      end
+
+      assert Portal.Billing.count_monthly_active_users(account) == 1
     end
   end
 

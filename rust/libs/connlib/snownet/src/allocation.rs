@@ -3,8 +3,8 @@ use crate::{
     channel_data,
     node::Transmit,
 };
-use bufferpool::BufferPool;
 use bytecodec::{DecodeExt as _, EncodeExt as _};
+use fast_random_state::FastRandomState;
 use hex_display::HexDisplayExt as _;
 use ip_packet::Ecn;
 use is::Candidate;
@@ -13,7 +13,7 @@ use rand::{SeedableRng as _, rngs::StdRng};
 use ringbuffer::{AllocRingBuffer, RingBuffer as _};
 use smallvec::SmallVec;
 use std::{
-    collections::{BTreeMap, VecDeque},
+    collections::{HashMap, VecDeque},
     iter,
     net::{SocketAddr, SocketAddrV4, SocketAddrV6},
     time::{Duration, Instant},
@@ -90,7 +90,11 @@ pub struct Allocation {
     buffered_transmits: VecDeque<Transmit>,
     events: VecDeque<Event>,
 
-    sent_requests: BTreeMap<TransactionId, (SocketAddr, Message<Attribute>, ExponentialBackoff)>,
+    sent_requests: HashMap<
+        TransactionId,
+        (SocketAddr, Message<Attribute>, ExponentialBackoff),
+        FastRandomState,
+    >,
 
     channel_bindings: ChannelBindings,
     buffered_channel_bindings: AllocRingBuffer<SocketAddr>,
@@ -102,8 +106,6 @@ pub struct Allocation {
     /// Smoothed round-trip time to the relay, computed via an exponential moving
     /// average over response times. `None` until we receive the first response.
     rtt: Option<Duration>,
-
-    buffer_pool: BufferPool<Vec<u8>>,
 
     rng: StdRng,
 }
@@ -220,6 +222,8 @@ pub enum FreeReason {
     NoResponseReceived,
     #[error("TURN protocol failure")]
     ProtocolFailure,
+    #[error("unhandled response")]
+    UnhandledResponse,
 }
 
 impl Allocation {
@@ -229,7 +233,6 @@ impl Allocation {
         password: String,
         realm: Realm,
         now: Instant,
-        buffer_pool: BufferPool<Vec<u8>>,
         seed: [u8; 32],
     ) -> Self {
         let mut allocation = Self {
@@ -257,13 +260,34 @@ impl Allocation {
                 .expect("description has less then 128 chars"),
             explicit_failure: Default::default(),
             rtt: None,
-            buffer_pool,
             rng: StdRng::from_seed(seed),
         };
 
         allocation.send_binding_requests(now);
 
         allocation
+    }
+
+    /// Restarts this allocation from scratch, keeping the portal-issued credentials.
+    ///
+    /// A network reset rebinds our sockets to a new local address. That invalidates the
+    /// relay-side allocation - which is keyed by our 3-tuple - along with its nonce and
+    /// every gathered candidate, so we re-run the STUN/TURN handshake from the new socket.
+    /// The username/password/realm, however, are minted by the portal per session and stay
+    /// valid, so we keep them and re-allocate immediately instead of waiting for the portal
+    /// to re-issue them.
+    pub(crate) fn restart(&mut self, now: Instant, seed: [u8; 32]) {
+        let Some(Credentials {
+            username,
+            password,
+            realm,
+            ..
+        }) = self.credentials.clone()
+        else {
+            return;
+        };
+
+        *self = Self::new(self.server, username, password, realm, now, seed);
     }
 
     pub fn host_and_server_reflexive_candidates(&self) -> impl Iterator<Item = Candidate> + use<> {
@@ -419,6 +443,8 @@ impl Allocation {
                     && offered_realm != realm
                 {
                     tracing::warn!(allowed_realm = %realm.text(), server_realm = %offered_realm.text(), "Refusing to authenticate with server");
+                    self.explicit_failure = Some(FreeReason::AuthenticationError);
+
                     return true; // We still handled our message correctly.
                 };
 
@@ -502,6 +528,10 @@ impl Allocation {
             match message.method() {
                 ALLOCATE => {
                     self.buffered_channel_bindings.clear();
+                    self.explicit_failure = Some(FreeReason::UnhandledResponse);
+                }
+                REFRESH => {
+                    self.explicit_failure = Some(FreeReason::UnhandledResponse);
                 }
                 CHANNEL_BIND => {
                     let Some(channel) = original_request
@@ -606,6 +636,8 @@ impl Allocation {
                 let Some(lifetime) = message.get_attribute::<Lifetime>().map(|l| l.lifetime())
                 else {
                     tracing::warn!("Message does not contain `LIFETIME`");
+                    self.explicit_failure = Some(FreeReason::UnhandledResponse);
+
                     return true;
                 };
 
@@ -618,6 +650,8 @@ impl Allocation {
 
                 if maybe_ip4_relay_candidate.is_none() && maybe_ip6_relay_candidate.is_none() {
                     tracing::warn!("Relay sent a successful allocate response without addresses");
+                    self.explicit_failure = Some(FreeReason::UnhandledResponse);
+
                     return true;
                 }
 
@@ -685,7 +719,7 @@ impl Allocation {
 
     /// Attempts to decapsulate and incoming packet as a channel-data message.
     ///
-    /// Returns the original sender, the packet and _our_ relay socket that this packet was sent to.
+    /// Returns the original sender and _our_ relay socket that this packet was sent to.
     /// Our relay socket is the destination that the remote peer sees for us.
     /// TURN is designed such that the remote has no knowledge of the existence of a relay.
     /// It simply sends data to a socket.
@@ -694,14 +728,14 @@ impl Allocation {
         from: SocketAddr,
         packet: channel_data::Packet<'p>,
         now: Instant,
-    ) -> Option<(SocketAddr, &'p [u8], Socket)> {
+    ) -> Option<(SocketAddr, Socket)> {
         if !self.server.matches(from) {
             tracing::trace!(?self.server, "Packet is not for this allocation");
 
             return None;
         }
 
-        let (peer, payload) = self.channel_bindings.try_handle_packet(packet, now)?;
+        let (peer, _) = self.channel_bindings.try_handle_packet(packet, now)?;
 
         // Our socket on the relay.
         // If the remote sent from an IP4 address, it must have been received on our IP4 allocation.
@@ -713,7 +747,7 @@ impl Allocation {
 
         tracing::trace!(%peer, ?socket, "Decapsulated channel-data message");
 
-        Some((peer, payload, socket))
+        Some((peer, socket))
     }
 
     #[tracing::instrument(level = "debug", skip_all, fields(active_socket = ?self.active_socket))]
@@ -904,8 +938,23 @@ impl Allocation {
         buffer: &mut [u8],
         now: Instant,
     ) -> Option<EncodeOk> {
-        let active_socket = self.active_socket.as_mut()?;
         let payload_length = buffer.len() - 4;
+        let (channel_number, socket) = self.channel_to_peer(peer, now)?;
+
+        crate::channel_data::encode_header_to_slice(
+            &mut buffer[..4],
+            channel_number,
+            payload_length,
+        );
+
+        Some(EncodeOk { socket })
+    }
+
+    /// Returns the channel number for sending data to `peer` and the relay socket to send it to.
+    ///
+    /// Binds a new channel if there is none yet.
+    pub fn channel_to_peer(&mut self, peer: SocketAddr, now: Instant) -> Option<(u16, SocketAddr)> {
+        let active_socket = self.active_socket.as_mut()?;
 
         let connected_channel_to_peer = self.channel_bindings.connected_channel_to_peer(peer, now);
         let inflight_channel_to_peer = self.channel_bindings.inflight_channel_to_peer(peer, now);
@@ -923,17 +972,10 @@ impl Allocation {
                 return None;
             }
         };
-        crate::channel_data::encode_header_to_slice(
-            &mut buffer[..4],
-            channel_number,
-            payload_length,
-        );
 
         active_socket.reset(now);
 
-        Some(EncodeOk {
-            socket: active_socket.addr,
-        })
+        Some((channel_number, active_socket.addr))
     }
 
     /// Whether this [`Allocation`] can be freed.
@@ -1198,7 +1240,7 @@ impl Allocation {
         self.buffered_transmits.push_back(Transmit {
             src: None,
             dst,
-            payload: self.buffer_pool.pull_initialised(&encode(message)),
+            payload: crate::DATAGRAMS.pull_initialised(&encode(message)),
             ecn: Ecn::NonEct,
         });
 
@@ -1518,7 +1560,7 @@ stun_codec::define_attribute_enums!(
 
 #[derive(Debug)]
 struct ChannelBindings {
-    inner: BTreeMap<u16, Channel>,
+    inner: HashMap<u16, Channel, FastRandomState>,
     next_channel: u16,
 }
 
@@ -2728,6 +2770,76 @@ mod tests {
         );
     }
 
+    #[test_case::test_case(server_error, FreeReason::UnhandledResponse; "unhandled error")]
+    #[test_case::test_case(allocate_success_without_lifetime, FreeReason::UnhandledResponse; "success without lifetime")]
+    #[test_case::test_case(allocate_success_without_relay_addresses, FreeReason::UnhandledResponse; "success without relay addresses")]
+    #[test_case::test_case(realm_mismatch, FreeReason::AuthenticationError; "realm mismatch")]
+    fn allocate_response_frees_allocation(
+        response: fn(&Message<Attribute>) -> Message<Attribute>,
+        reason: FreeReason,
+    ) {
+        let now = Instant::now();
+        let mut allocation = Allocation::for_test_ip4(now).with_binding_response(PEER1, now);
+
+        let allocate = allocation.next_message().unwrap();
+        allocation.handle_test_input_ip4(response(&allocate), now);
+
+        assert_eq!(allocation.can_be_freed(), Some(reason));
+    }
+
+    #[test]
+    fn unhandled_refresh_error_frees_allocation() {
+        let now = Instant::now();
+        let mut allocation = Allocation::for_test_ip4(now)
+            .with_binding_response(PEER1, now)
+            .with_allocate_response(&[RELAY_ADDR_IP4], now);
+
+        allocation.refresh(now);
+        let refresh = allocation.next_message().unwrap();
+        allocation.handle_test_input_ip4(server_error(&refresh), now);
+
+        assert_eq!(
+            allocation.can_be_freed(),
+            Some(FreeReason::UnhandledResponse)
+        );
+    }
+
+    fn allocate_success_without_lifetime(allocate: &Message<Attribute>) -> Message<Attribute> {
+        let mut response = allocate_success(allocate);
+        response.add_attribute(XorRelayAddress::new(RELAY_ADDR_IP4));
+        response
+    }
+
+    fn allocate_success_without_relay_addresses(
+        allocate: &Message<Attribute>,
+    ) -> Message<Attribute> {
+        let mut response = allocate_success(allocate);
+        response.add_attribute(Lifetime::new(ALLOCATION_LIFETIME).unwrap());
+        response
+    }
+
+    fn allocate_success(allocate: &Message<Attribute>) -> Message<Attribute> {
+        let mut response = Message::new(
+            MessageClass::SuccessResponse,
+            ALLOCATE,
+            allocate.transaction_id(),
+        );
+        response.add_attribute(XorMappedAddress::new(PEER1));
+        response
+    }
+
+    fn realm_mismatch(request: &Message<Attribute>) -> Message<Attribute> {
+        let mut response = Message::new(
+            MessageClass::ErrorResponse,
+            request.method(),
+            request.transaction_id(),
+        );
+        response.add_attribute(ErrorCode::from(Unauthorized));
+        response.add_attribute(Realm::new("other".to_owned()).unwrap());
+        response.add_attribute(Nonce::new("nonce".to_owned()).unwrap());
+        response
+    }
+
     #[test]
     fn allocation_is_not_freed_on_startup() {
         let mut allocation = Allocation::for_test_ip4(Instant::now());
@@ -3065,7 +3177,6 @@ mod tests {
                 "baz".to_owned(),
                 Realm::new("firezone".to_owned()).unwrap(),
                 start,
-                BufferPool::new(500, "test"),
                 [0; 32],
             )
         }
@@ -3080,7 +3191,6 @@ mod tests {
                 "baz".to_owned(),
                 Realm::new("firezone".to_owned()).unwrap(),
                 start,
-                BufferPool::new(500, "test"),
                 [1; 32],
             )
         }

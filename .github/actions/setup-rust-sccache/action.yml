@@ -1,26 +1,45 @@
 ---
 name: "Setup Rust sccache"
 description: "Sets up caching for Rust via sccache"
+inputs:
+  azure-connection-string:
+    description: "Connection string for the Azure storage account backing the cache. When empty (forks, Dependabot), builds run uncached."
+    required: false
+    default: ""
 runs:
   using: "composite"
   steps:
-    - uses: mozilla-actions/sccache-action@9e7fa8a12102821edf02ca5dbea1acd0f89a2696 # v0.0.10
+    - uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
 
     - name: Cache registry
-      uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+      uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
       with:
         workspaces: rust
         cache-targets: false
         save-if: ${{ github.ref == 'refs/heads/main' }} # Only save on main
 
     - name: Configure sccache environment
+      if: inputs.azure-connection-string != ''
       shell: bash
+      env:
+        AZURE_CONNECTION_STRING: ${{ inputs.azure-connection-string }}
       run: |
-        echo "SCCACHE_GHA_ENABLED=true" >> "$GITHUB_ENV"
-        echo "RUSTC_WRAPPER=$SCCACHE_PATH" >> "$GITHUB_ENV"
+        # Without the timeout, the server exits ten idle minutes after the last
+        # compile. The screenshot jobs spend longer than that photographing
+        # screens afterwards, so the stats read at the end of the job come from
+        # a server started to answer them and report zero of everything.
+        {
+          echo "SCCACHE_AZURE_CONNECTION_STRING=$AZURE_CONNECTION_STRING"
+          echo "SCCACHE_AZURE_BLOB_CONTAINER=cache"
+          echo "SCCACHE_AZURE_KEY_PREFIX=firezone"
+          echo "SCCACHE_IDLE_TIMEOUT=0"
+          echo "RUSTC_WRAPPER=$SCCACHE_PATH"
+        } >> "$GITHUB_ENV"
 
     - name: Start sccache
-      run: ./scripts/retry.sh $SCCACHE_PATH --start-server
+      if: inputs.azure-connection-string != ''
+      run: |
+        "$GITHUB_ACTION_PATH/../setup-scripts/retry.sh" "$SCCACHE_PATH" --start-server
       continue-on-error: true
       shell: bash
       env:

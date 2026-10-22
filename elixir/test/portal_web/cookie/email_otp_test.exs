@@ -18,11 +18,13 @@ defmodule PortalWeb.Cookie.EmailOTPTest do
       actor_id = Ecto.UUID.generate()
       passcode_id = Ecto.UUID.generate()
       email = "test@example.com"
+      context_type = :gui_client
 
       cookie = %EmailOTP{
         actor_id: actor_id,
         passcode_id: passcode_id,
-        email: email
+        email: email,
+        context_type: context_type
       }
 
       conn =
@@ -36,10 +38,36 @@ defmodule PortalWeb.Cookie.EmailOTPTest do
       assert result.actor_id == actor_id
       assert result.passcode_id == passcode_id
       assert result.email == email
+      assert result.context_type == context_type
     end
 
     test "returns nil when cookie is not present", %{conn: conn} do
       assert EmailOTP.fetch(conn) == nil
+    end
+
+    test "treats legacy cookies without a context as portal-only", %{conn: conn} do
+      actor_id = Ecto.UUID.generate()
+      passcode_id = Ecto.UUID.generate()
+      email = "test@example.com"
+
+      legacy_cookie =
+        {Ecto.UUID.dump!(actor_id), Ecto.UUID.dump!(passcode_id), email}
+        |> :erlang.term_to_binary()
+
+      conn =
+        conn
+        |> Plug.Conn.put_resp_cookie(@cookie_key, legacy_cookie,
+          sign: true,
+          signing_salt: Portal.Config.fetch_env!(:portal, :cookie_signing_salt)
+        )
+        |> recycle_conn()
+
+      assert %EmailOTP{
+               actor_id: ^actor_id,
+               passcode_id: ^passcode_id,
+               email: ^email,
+               context_type: :portal
+             } = EmailOTP.fetch(conn)
     end
   end
 
@@ -52,7 +80,8 @@ defmodule PortalWeb.Cookie.EmailOTPTest do
       cookie = %EmailOTP{
         actor_id: actor_id,
         passcode_id: passcode_id,
-        email: email
+        email: email,
+        context_type: :portal
       }
 
       conn =
@@ -79,7 +108,8 @@ defmodule PortalWeb.Cookie.EmailOTPTest do
       cookie = %EmailOTP{
         actor_id: Ecto.UUID.generate(),
         passcode_id: Ecto.UUID.generate(),
-        email: "test@example.com"
+        email: "test@example.com",
+        context_type: :portal
       }
 
       # First put the cookie and recycle

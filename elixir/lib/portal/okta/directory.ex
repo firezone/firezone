@@ -1,6 +1,7 @@
 defmodule Portal.Okta.Directory do
   use Ecto.Schema
   import Ecto.Changeset
+  import Portal.Changeset
 
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
@@ -13,6 +14,9 @@ defmodule Portal.Okta.Directory do
           private_key_jwk: map(),
           kid: String.t(),
           okta_domain: String.t(),
+          webhook_secret: String.t(),
+          webhook_verified_at: DateTime.t() | nil,
+          webhook_received_at: DateTime.t() | nil,
           name: String.t(),
           errored_at: DateTime.t() | nil,
           is_disabled: boolean(),
@@ -36,6 +40,9 @@ defmodule Portal.Okta.Directory do
     field :private_key_jwk, :map, redact: true
     field :kid, :string
     field :okta_domain, :string
+    field :webhook_secret, :string, redact: true, read_after_writes: true
+    field :webhook_verified_at, :utc_datetime_usec
+    field :webhook_received_at, :utc_datetime_usec
 
     field :name, :string, default: "Okta"
     field :errored_at, :utc_datetime_usec
@@ -60,6 +67,8 @@ defmodule Portal.Okta.Directory do
       :is_verified
     ])
     |> validate_length(:okta_domain, min: 1, max: 255)
+    |> validate_fqdn(:okta_domain)
+    |> validate_public_host(:okta_domain)
     |> validate_length(:name, min: 1, max: 255)
     |> validate_number(:error_email_count, greater_than_or_equal_to: 0)
     |> assoc_constraint(:account)

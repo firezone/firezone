@@ -23,6 +23,30 @@ defmodule PortalWeb.Format do
   end
 
   @doc """
+  Formats a `%DateTime{}` in the given IANA timezone (e.g. "America/New_York"
+  or "Etc/UTC"). Falls back to formatting in UTC if the zone cannot be shifted.
+  Uses `Tz.TimeZoneDatabase` since Elixir's default DB only knows UTC.
+  """
+  def short_datetime(%DateTime{} = datetime, tz) when is_binary(tz) do
+    case DateTime.shift_zone(datetime, tz, Tz.TimeZoneDatabase) do
+      {:ok, shifted} -> short_datetime(shifted)
+      _ -> short_datetime(datetime)
+    end
+  end
+
+  @doc """
+  Formats a `%DateTime{}` as a full ISO 8601 string in the given IANA timezone,
+  for places where the abbreviated form is not precise enough. Falls back to
+  UTC if the zone cannot be shifted.
+  """
+  def iso_datetime(%DateTime{} = datetime, tz) when is_binary(tz) do
+    case DateTime.shift_zone(datetime, tz, Tz.TimeZoneDatabase) do
+      {:ok, shifted} -> DateTime.to_iso8601(shifted)
+      _ -> DateTime.to_iso8601(datetime)
+    end
+  end
+
+  @doc """
   Returns a relative time string like "2 hours ago" or "in 3 days".
   """
   def relative_datetime(datetime, relative_to \\ nil) do
@@ -50,6 +74,20 @@ defmodule PortalWeb.Format do
     else
       opts[:other]
     end
+  end
+
+  @doc """
+  Formats an integer with comma thousands separators, e.g. `101142` becomes `"101,142"`.
+  """
+  @spec number(integer()) :: String.t()
+  def number(number) when is_integer(number) and number < 0, do: "-" <> number(-number)
+
+  def number(number) when is_integer(number) do
+    number
+    |> Integer.to_string()
+    |> String.reverse()
+    |> String.replace(~r/(\d{3})(?=\d)/, "\\1,")
+    |> String.reverse()
   end
 
   defp pick_unit(seconds) when seconds < 60, do: {seconds, "second"}

@@ -39,6 +39,8 @@ public struct Resource: Codable, Identifiable, Hashable, Sendable {
   public var status: ResourceStatus
   public var sites: [Site]
   public var type: ResourceType
+  /// The connected devices of a device pool, empty for other resource types.
+  public var devices: [ConnectedDevice]
 
   public init(
     id: String,
@@ -47,7 +49,8 @@ public struct Resource: Codable, Identifiable, Hashable, Sendable {
     addressDescription: String?,
     status: ResourceStatus,
     sites: [Site],
-    type: ResourceType
+    type: ResourceType,
+    devices: [ConnectedDevice] = []
   ) {
     self.id = id
     self.name = name
@@ -56,10 +59,15 @@ public struct Resource: Codable, Identifiable, Hashable, Sendable {
     self.status = status
     self.sites = sites
     self.type = type
+    self.devices = devices
   }
 
   public func isInternetResource() -> Bool {
     self.type == ResourceType.internet
+  }
+
+  public func isDevicePool() -> Bool {
+    self.type == ResourceType.devicePool
   }
 }
 
@@ -114,4 +122,5 @@ public enum ResourceType: String, Codable, Sendable {
   case cidr
   case ip
   case internet
+  case devicePool = "device_pool"
 }

@@ -13,15 +13,17 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import dev.firezone.android.core.data.ResourceState
-import dev.firezone.android.features.session.ui.ResourceViewModel
+import dev.firezone.android.features.session.ui.ResourceUiModel
+import dev.firezone.android.features.session.ui.isDevicePool
 import dev.firezone.android.features.session.ui.isInternetResource
 import dev.firezone.android.tunnel.model.Resource
 import dev.firezone.android.tunnel.model.ResourceType
 import dev.firezone.android.tunnel.model.StatusEnum
+import dev.firezone.android.ui.theme.FirezoneTheme
 
 @Composable
 fun ResourceRow(
-    resource: ResourceViewModel,
+    resource: ResourceUiModel,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -32,17 +34,23 @@ fun ResourceRow(
             .padding(16.dp),
     ) {
         Text(text = resource.displayName, style = MaterialTheme.typography.bodyLarge)
-        if (!resource.isInternetResource()) {
-            resource.address?.let { address ->
-                Text(
-                    text = address,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+        val subtitle =
+            when {
+                resource.isInternetResource() -> null
+                resource.isDevicePool() -> connectedDevicesSummary(resource.devices.size)
+                else -> resource.address
             }
+        subtitle?.let {
+            Text(
+                text = it,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }
+
+private fun connectedDevicesSummary(count: Int): String = if (count == 1) "1 connected device" else "$count connected devices"
 
 @Preview(showBackground = true)
 @Composable
@@ -51,7 +59,7 @@ private fun ResourceRowPreview() {
         Column {
             ResourceRow(
                 resource =
-                    ResourceViewModel(
+                    ResourceUiModel(
                         Resource(
                             type = ResourceType.DNS,
                             id = "1",
@@ -68,7 +76,7 @@ private fun ResourceRowPreview() {
             HorizontalDivider()
             ResourceRow(
                 resource =
-                    ResourceViewModel(
+                    ResourceUiModel(
                         Resource(
                             type = ResourceType.Internet,
                             id = "2",

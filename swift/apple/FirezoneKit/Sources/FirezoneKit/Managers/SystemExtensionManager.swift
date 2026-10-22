@@ -5,17 +5,30 @@
 //
 
 #if os(macOS)
+  import NetworkExtension
   import SystemExtensions
 
-  enum SystemExtensionError: Error {
+  public enum SystemExtensionError: Error, CustomStringConvertible, LocalizedError {
     case unknownResult(OSSystemExtensionRequest.Result)
 
-    var description: String {
+    /// macOS wants a human to approve the request in System Settings, and the caller
+    /// said nobody is there to do it.
+    case needsUserApproval
+
+    case timedOut(seconds: Int)
+
+    public var description: String {
       switch self {
       case .unknownResult(let result):
         return "Unknown result: \(result)"
+      case .needsUserApproval:
+        return "System extension needs approval in System Settings"
+      case .timedOut(let seconds):
+        return "System extension request did not finish within \(seconds) seconds"
       }
     }
+
+    public var errorDescription: String? { description }
   }
 
   public enum SystemExtensionStatus: Equatable, Sendable {
@@ -28,6 +41,19 @@
 
     // Installed and version is current with our app bundle
     case installed
+
+    // The replacement is staged, but macOS could not swap the extension it is
+    // replacing, so the previous version keeps running until the Mac restarts.
+    // Only an install request reports this; a properties request cannot see it.
+    case needsReboot
+
+    /// Whether the extension the system has can serve the app right now.
+    ///
+    /// A staged replacement leaves the previous version installed and running, so the app
+    /// works. It just isn't the version we shipped with, and only a restart changes that.
+    var isUsable: Bool {
+      self == .installed || self == .needsReboot
+    }
 
     /// Determines extension status by comparing installed extensions against the app version.
     static func fromInstalledExtensions(
@@ -63,31 +89,57 @@
   }
 
   @MainActor
-  class SystemExtensionManager: NSObject, OSSystemExtensionRequestDelegate, ObservableObject,
+  public class SystemExtensionManager: NSObject, OSSystemExtensionRequestDelegate, ObservableObject,
     SystemExtensionManagerProtocol
   {
+    /// How long a request may take before we give up on it.
+    ///
+    /// Generous, because activating an extension makes macOS copy and validate it. It
+    /// is here to turn a request that never reports anything into an error, not to
+    /// police a slow one. The clock stops once macOS says it is waiting on the user,
+    /// since from then on a human at System Settings sets the pace.
+    static let timeoutSeconds = 60
+
     // Delegate methods complete with either a true or false outcome or an Error
     private var continuation: CheckedContinuation<SystemExtensionStatus, Error>?
+    private var timeoutTask: Task<Void, Never>?
+
+    /// Whether nobody is around to answer a System Settings prompt.
+    ///
+    /// The app leaves this alone, since the user is looking at the prompt macOS
+    /// raised. A terminal sets it, so a request that needs approval fails instead of
+    /// waiting on a prompt nobody is going to see.
+    private let unattended: Bool
+
+    public init(unattended: Bool = false) {
+      self.unattended = unattended
+
+      super.init()
+    }
 
     // MARK: - OSSystemExtensionRequestDelegate
 
     // Delegate callbacks are non-async and nonisolated.
     // Use Task { @MainActor in } to safely hop to our actor.
 
-    nonisolated func request(
+    nonisolated public func request(
       _ request: OSSystemExtensionRequest,
       didFinishWithResult result: OSSystemExtensionRequest.Result
     ) {
       Task { @MainActor in
-        guard result == .completed else {
+        switch result {
+        case .completed:
+          self.resumeOk(returning: .installed)
+        case .willCompleteAfterReboot:
+          Log.info("System extension replacement is staged until the next restart")
+          self.resumeOk(returning: .needsReboot)
+        @unknown default:
           self.resumeErr(throwing: SystemExtensionError.unknownResult(result))
-          return
         }
-        self.resumeOk(returning: .installed)
       }
     }
 
-    nonisolated func request(
+    nonisolated public func request(
       _ request: OSSystemExtensionRequest,
       foundProperties properties: [OSSystemExtensionProperties]
     ) {
@@ -124,8 +176,8 @@
         )
 
         if case .needsReplacement = status, let ext = enabledExtensions.first {
-          Log.warning(
-            "Extension version mismatch - Installed: \(ext.bundleShortVersion) (\(ext.bundleVersion)), Expected: \(ourBundleShortVersion) (\(ourBundleVersion))"
+          Log.info(
+            "Installed system extension is \(ext.bundleShortVersion) (\(ext.bundleVersion)), this build is \(ourBundleShortVersion) (\(ourBundleVersion))"
           )
         } else if case .needsInstall = status {
           Log.info("No system extension found - needs install")
@@ -135,7 +187,7 @@
       }
     }
 
-    nonisolated func request(
+    nonisolated public func request(
       _ request: OSSystemExtensionRequest,
       didFailWithError error: Error
     ) {
@@ -144,11 +196,20 @@
       }
     }
 
-    nonisolated func requestNeedsUserApproval(_ request: OSSystemExtensionRequest) {
-      // We assume this state until we receive a success response.
+    nonisolated public func requestNeedsUserApproval(_ request: OSSystemExtensionRequest) {
+      Task { @MainActor in
+        guard self.unattended else {
+          Log.info("Waiting for the system extension to be approved in System Settings")
+          self.cancelTimeout()
+
+          return
+        }
+
+        self.resumeErr(throwing: SystemExtensionError.needsUserApproval)
+      }
     }
 
-    nonisolated func request(
+    nonisolated public func request(
       _ request: OSSystemExtensionRequest,
       actionForReplacingExtension existing: OSSystemExtensionProperties,
       withExtension ext: OSSystemExtensionProperties
@@ -158,21 +219,21 @@
 
     // MARK: - SystemExtensionManagerProtocol
 
-    func check() async throws -> SystemExtensionStatus {
+    public func check() async throws -> SystemExtensionStatus {
       try await withCheckedThrowingContinuation { continuation in
         sendRequest(
           requestType: .check,
-          identifier: VPNConfigurationManager.bundleIdentifier,
+          identifier: NETunnelProviderManager.extensionBundleIdentifier,
           continuation: continuation
         )
       }
     }
 
-    func tryInstall() async throws -> SystemExtensionStatus {
+    public func tryInstall() async throws -> SystemExtensionStatus {
       try await withCheckedThrowingContinuation { continuation in
         sendRequest(
           requestType: .install,
-          identifier: VPNConfigurationManager.bundleIdentifier,
+          identifier: NETunnelProviderManager.extensionBundleIdentifier,
           continuation: continuation
         )
       }
@@ -200,14 +261,40 @@
       request.delegate = self
 
       OSSystemExtensionManager.shared.submitRequest(request)
+
+      startTimeout()
+    }
+
+    private func startTimeout() {
+      cancelTimeout()
+      timeoutTask = Task { @MainActor in
+        do {
+          try await Task.sleep(for: .seconds(Self.timeoutSeconds))
+        } catch {
+          // Cancelled: the request either finished or is now waiting on the user.
+          return
+        }
+
+        // Resuming a continuation twice crashes. Going through the same helper on the
+        // same actor as the delegate callbacks is what makes a timeout racing a
+        // callback a no-op rather than a second resume.
+        self.resumeErr(throwing: SystemExtensionError.timedOut(seconds: Self.timeoutSeconds))
+      }
+    }
+
+    private func cancelTimeout() {
+      timeoutTask?.cancel()
+      timeoutTask = nil
     }
 
     private func resumeErr(throwing error: Error) {
+      self.cancelTimeout()
       self.continuation?.resume(throwing: error)
       self.continuation = nil
     }
 
     private func resumeOk(returning val: SystemExtensionStatus) {
+      self.cancelTimeout()
       self.continuation?.resume(returning: val)
       self.continuation = nil
     }

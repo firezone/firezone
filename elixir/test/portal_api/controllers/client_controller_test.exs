@@ -79,6 +79,274 @@ defmodule PortalAPI.ClientControllerTest do
       assert equal_ids?(data_ids, client_ids)
     end
 
+    test "filters by name", %{conn: conn, actor: actor, account: account} do
+      match = client_fixture(account: account, name: "jane-laptop")
+      _other = client_fixture(account: account, name: "field-tablet")
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get(~p"/clients", name: "jane-laptop")
+
+      assert %{"data" => [data], "metadata" => %{"count" => 1}} = json_response(conn, 200)
+      assert data["id"] == match.id
+    end
+
+    test "filters by firezone_id", %{conn: conn, actor: actor, account: account} do
+      match = client_fixture(account: account, firezone_id: "client_filter_target")
+      _other = client_fixture(account: account)
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get(~p"/clients", firezone_id: "client_filter_target")
+
+      assert %{"data" => [data], "metadata" => %{"count" => 1}} = json_response(conn, 200)
+      assert data["id"] == match.id
+      assert data["firezone_id"] == "client_filter_target"
+    end
+
+    test "combines name and firezone_id filters", %{conn: conn, actor: actor, account: account} do
+      match = client_fixture(account: account, name: "shared-name", firezone_id: "client_a")
+      _same_name = client_fixture(account: account, name: "shared-name", firezone_id: "client_b")
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get(~p"/clients", name: "shared-name", firezone_id: "client_a")
+
+      assert %{"data" => [data], "metadata" => %{"count" => 1}} = json_response(conn, 200)
+      assert data["id"] == match.id
+    end
+
+    test "returns an empty list when nothing matches", %{
+      conn: conn,
+      actor: actor,
+      account: account
+    } do
+      _client = client_fixture(account: account, name: "jane-laptop")
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get(~p"/clients", name: "nonexistent")
+
+      assert %{"data" => [], "metadata" => %{"count" => 0}} = json_response(conn, 200)
+    end
+
+    test "does not match a Client in another account", %{
+      conn: conn,
+      actor: actor,
+      account: account
+    } do
+      _local = client_fixture(account: account, name: "unique-here")
+      other = client_fixture(account: account_fixture(), name: "unique-here")
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get(~p"/clients", name: "unique-here")
+
+      assert %{"data" => [data]} = json_response(conn, 200)
+      refute data["id"] == other.id
+    end
+
+    test "does not match a Gateway sharing a firezone_id", %{
+      conn: conn,
+      actor: actor,
+      account: account
+    } do
+      site = Portal.SiteFixtures.site_fixture(account: account)
+      gateway = gateway_fixture(account: account, site: site, firezone_id: "shared_fz_id")
+      client = client_fixture(account: account, firezone_id: "shared_fz_id")
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get(~p"/clients", firezone_id: "shared_fz_id")
+
+      assert %{"data" => [data], "metadata" => %{"count" => 1}} = json_response(conn, 200)
+      assert data["id"] == client.id
+      refute data["id"] == gateway.id
+    end
+
+    test "filters by actor_id", %{conn: conn, actor: actor, account: account} do
+      owner = actor_fixture(account: account)
+      match = client_fixture(account: account, actor: owner)
+      _other = client_fixture(account: account)
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get(~p"/clients", actor_id: owner.id)
+
+      assert %{"data" => [data], "metadata" => %{"count" => 1}} = json_response(conn, 200)
+      assert data["id"] == match.id
+      assert data["actor_id"] == owner.id
+    end
+
+    test "rejects an actor_id that is not a UUID", %{conn: conn, actor: actor} do
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get(~p"/clients", actor_id: "not-a-uuid")
+
+      assert %{"status" => 400, "detail" => detail} = json_response(conn, 400)
+      assert detail =~ "actor_id"
+    end
+
+    test "filters by online", %{conn: conn, actor: actor, account: account, client: offline} do
+      online = client_fixture(account: account)
+      :ok = Portal.Presence.Devices.connect(online, Ecto.UUID.generate())
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+
+      assert %{"data" => [data]} = conn |> get(~p"/clients", online: "true") |> json_response(200)
+      assert data["id"] == online.id
+      assert data["online"] == true
+
+      assert %{"data" => [data]} = conn |> get(~p"/clients", online: "false") |> json_response(200)
+      assert data["id"] == offline.id
+      assert data["online"] == false
+    end
+
+    test "rejects an online value that is not a boolean", %{conn: conn, actor: actor} do
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get(~p"/clients", online: "yes")
+
+      assert %{"status" => 400, "detail" => detail} = json_response(conn, 400)
+      assert detail =~ "online"
+    end
+
+    test "filters by last_seen_before and last_seen_after", %{
+      conn: conn,
+      actor: actor,
+      account: account,
+      client: never_recorded
+    } do
+      now = DateTime.utc_now()
+      stale = [account: account] |> client_fixture() |> record_last_seen(DateTime.add(now, -100, :day))
+      recent = [account: account] |> client_fixture() |> record_last_seen(DateTime.add(now, -1, :day))
+      cutoff = now |> DateTime.add(-90, :day) |> DateTime.to_iso8601()
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+
+      assert %{"data" => [data]} =
+               conn |> get(~p"/clients", last_seen_before: cutoff) |> json_response(200)
+
+      assert data["id"] == stale.id
+
+      assert %{"data" => data} =
+               conn |> get(~p"/clients", last_seen_after: cutoff) |> json_response(200)
+
+      assert equal_ids?(Enum.map(data, & &1["id"]), [recent.id, never_recorded.id])
+
+      before = now |> DateTime.add(-2, :day) |> DateTime.to_iso8601()
+
+      assert %{"data" => []} =
+               conn
+               |> get(~p"/clients", last_seen_after: cutoff, last_seen_before: before)
+               |> json_response(200)
+    end
+
+    test "counts a client with no recorded last_seen_at as seen when it was created", %{
+      conn: conn,
+      actor: actor,
+      client: client
+    } do
+      after_creation = client.inserted_at |> DateTime.add(1, :second) |> DateTime.to_iso8601()
+
+      assert %{"data" => [data]} =
+               conn
+               |> authorize_conn(actor)
+               |> put_req_header("content-type", "application/json")
+               |> get(~p"/clients", last_seen_before: after_creation)
+               |> json_response(200)
+
+      assert data["id"] == client.id
+      assert data["last_seen_at"] == nil
+    end
+
+    test "rejects a last_seen_before that is not a timestamp", %{conn: conn, actor: actor} do
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get(~p"/clients", last_seen_before: "yesterday")
+
+      assert %{"status" => 400, "detail" => detail} = json_response(conn, 400)
+      assert detail =~ "last_seen_before"
+    end
+
+    test "filters by client_type", %{conn: conn, actor: actor, account: account} do
+      headless = client_with_user_agent(account, "Ubuntu/22.4.0 headless-client/1.5.6 connlib/1.5.6")
+      gui = client_with_user_agent(account, "Windows/10.0.22631 gui-client/1.5.10 connlib/1.5.10")
+      mac = client_with_user_agent(account, "macOS/14.0 apple-client/1.5.11 connlib/1.5.11")
+      ios = client_with_user_agent(account, "iOS/17.0 connlib/1.3.0")
+      android = client_with_user_agent(account, "Android/14 android-client/1.5.8 connlib/1.5.8")
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+
+      for {type, expected} <- [
+            {"headless", [headless]},
+            {"gui", [gui]},
+            {"apple", [mac, ios]},
+            {"android", [android]}
+          ] do
+        assert %{"data" => data} =
+                 conn |> get(~p"/clients", client_type: type) |> json_response(200)
+
+        assert equal_ids?(Enum.map(data, & &1["id"]), Enum.map(expected, & &1.id))
+      end
+    end
+
+    test "rejects an unknown client_type", %{conn: conn, actor: actor} do
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get(~p"/clients", client_type: "toaster")
+
+      assert %{"status" => 400, "detail" => detail} = json_response(conn, 400)
+      assert detail =~ "client_type"
+    end
+
+    # coerce_filters/1 only reads the parameters it knows about, so an
+    # unrecognized one is ignored rather than erroring - matching every
+    # other filtered index in this API.
+    test "rejects an unrecognized query parameter", %{conn: conn, actor: actor, account: account} do
+      client_fixture(account: account, name: "jane-laptop")
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get(~p"/clients", name: "jane-laptop", nope: "value")
+
+      assert %{"status" => 400, "detail" => detail} = json_response(conn, 400)
+      assert detail =~ "`nope` is not a known parameter"
+    end
+
     test "lists clients with limit", %{
       conn: conn,
       actor: actor,
@@ -153,6 +421,63 @@ defmodule PortalAPI.ClientControllerTest do
       assert Map.has_key?(data, "hostname")
     end
 
+    test "renders a null firezone_id for an attested client", %{
+      conn: conn,
+      actor: actor,
+      account: account
+    } do
+      # An attested client has no self-reported id to render, so the published
+      # schema has to allow null here or every such response breaks the contract.
+      client = client_fixture(account: account, actor: actor_fixture(account: account))
+      Portal.Repo.update_all(Portal.Device, set: [firezone_id: nil])
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get(~p"/clients/#{client.id}")
+
+      assert %{"data" => data} = json_response(conn, 200)
+      assert Map.has_key?(data, "firezone_id")
+      assert is_nil(data["firezone_id"])
+
+      assert %OpenApiSpex.Schema{nullable: true} =
+               PortalAPI.Schemas.Client.GetSchema.schema().properties.firezone_id
+    end
+
+    test "renders device trust fields", %{conn: conn, actor: actor, account: account} do
+      client_actor = actor_fixture(account: account)
+      attested_at = DateTime.utc_now() |> DateTime.truncate(:microsecond)
+
+      client =
+        client_fixture(
+          account: account,
+          actor: client_actor,
+          last_attested_device_serial: "SN-ATT-1",
+          last_attested_device_uuid: "7A461FF9-0BE2-64A9-A418-539D9A21827B",
+          last_attested_mdm_device_id: "5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3",
+          last_attested_cert_serial: "4A:2F:00:8C",
+          last_attested_cert_fingerprint: "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+          last_attested_at: attested_at
+        )
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get(~p"/clients/#{client.id}")
+
+      assert %{"data" => data} = json_response(conn, 200)
+      assert data["last_attested_device_serial"] == "SN-ATT-1"
+      assert data["last_attested_device_uuid"] == "7A461FF9-0BE2-64A9-A418-539D9A21827B"
+      assert data["last_attested_mdm_device_id"] == "5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3"
+      assert data["last_attested_cert_serial"] == "4A:2F:00:8C"
+      assert data["last_attested_cert_fingerprint"] ==
+               "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+
+      assert data["last_attested_at"] == DateTime.to_iso8601(attested_at)
+    end
+
     test "renders hostname when set", %{conn: conn, actor: actor, account: account} do
       client = client_fixture(account: account, actor: actor, hostname: "host.example.com")
 
@@ -209,6 +534,72 @@ defmodule PortalAPI.ClientControllerTest do
 
       assert resp["data"]["id"] == client.id
       assert resp["data"]["name"] == attrs["name"]
+    end
+
+    test "changes the slug", %{conn: conn, actor: actor, client: client} do
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> put(~p"/clients/#{client}", client: %{"name" => client.name, "slug" => "renamed-laptop"})
+
+      assert resp = json_response(conn, 200)
+      assert resp["data"]["slug"] == "renamed-laptop"
+      assert Portal.Repo.get_by!(Device, id: client.id).slug == "renamed-laptop"
+    end
+
+    test "keeps the slug when the body omits it", %{conn: conn, actor: actor, client: client} do
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> put(~p"/clients/#{client}", client: %{"name" => "Updated Client"})
+
+      assert resp = json_response(conn, 200)
+      assert resp["data"]["slug"] == client.slug
+    end
+
+    test "refuses a blank slug", %{conn: conn, actor: actor, client: client} do
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> put(~p"/clients/#{client}", client: %{"name" => client.name, "slug" => ""})
+
+      assert %{"status" => 422, "validation_errors" => errors} = json_response(conn, 422)
+      assert errors["slug"] == ["can't be blank"]
+      assert Portal.Repo.get_by!(Device, id: client.id).slug == client.slug
+    end
+
+    test "refuses a slug that is not a DNS label", %{conn: conn, actor: actor, client: client} do
+      for bad <- ["Bad Slug", "-laptop", "laptop-", "my.laptop", String.duplicate("a", 64)] do
+        conn =
+          conn
+          |> authorize_conn(actor)
+          |> put_req_header("content-type", "application/json")
+          |> put(~p"/clients/#{client}", client: %{"name" => client.name, "slug" => bad})
+
+        assert %{"status" => 422, "validation_errors" => errors} = json_response(conn, 422)
+        assert errors["slug"] == ["must be 1 to 63 lowercase letters, digits or hyphens"]
+      end
+    end
+
+    test "refuses a slug another client in the account holds", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      client: client
+    } do
+      taken = client_fixture(account: account)
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> put(~p"/clients/#{client}", client: %{"name" => client.name, "slug" => taken.slug})
+
+      assert %{"status" => 422, "validation_errors" => errors} = json_response(conn, 422)
+      assert errors["slug"] == ["is already used by another device in this account"]
     end
 
     test "returns validation error for an invalid update", %{
@@ -364,5 +755,12 @@ defmodule PortalAPI.ClientControllerTest do
       assert %{"type" => "about:blank", "status" => 404, "title" => "Not Found"} =
                json_response(conn, 404)
     end
+  end
+
+  defp client_with_user_agent(account, user_agent) do
+    [account: account]
+    |> client_fixture()
+    |> Ecto.Changeset.change(last_seen_user_agent: user_agent)
+    |> Portal.Repo.update!()
   end
 end

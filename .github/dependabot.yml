@@ -7,11 +7,19 @@ version: 2
 
 multi-ecosystem-groups:
   tauri:
+    target-branch: main
     schedule:
       interval: weekly
+    # Multi-ecosystem groups don't inherit Dependabot's conventional-commit
+    # auto-detection, so set the prefix explicitly to match our other updates.
+    commit-message:
+      prefix: build
+      include: scope
 
 updates:
+  # Keep version update jobs on the active codebase while the legacy branch exists.
   - package-ecosystem: mix
+    target-branch: main
     directory: elixir/
     schedule:
       interval: weekly
@@ -27,6 +35,7 @@ updates:
         patterns:
           - "*"
   - package-ecosystem: pip
+    target-branch: main
     directory: /.github
     schedule:
       interval: weekly
@@ -42,26 +51,29 @@ updates:
         patterns:
           - "*"
   - package-ecosystem: github-actions
+    target-branch: main
     directories:
       - "/.github/workflows"
       # Dependabot doesn't look in these by default
+      - "/.github/actions/apt-install"
       - "/.github/actions/create-sentry-release"
       - "/.github/actions/restore-mtime"
+      - "/.github/actions/free-disk-space"
       - "/.github/actions/ghcr-docker-login"
       - "/.github/actions/setup-android"
       - "/.github/actions/setup-azure-cli"
       - "/.github/actions/setup-azure-sign-tool"
+      - "/.github/actions/setup-buildx"
       - "/.github/actions/setup-docker"
       - "/.github/actions/setup-elixir"
       - "/.github/actions/setup-gpg"
+      - "/.github/actions/setup-mise"
       - "/.github/actions/setup-musl"
       - "/.github/actions/setup-node"
       - "/.github/actions/setup-postgres"
-      - "/.github/actions/setup-rust-nightly"
+      - "/.github/actions/setup-rust-binary-cache"
       - "/.github/actions/setup-rust-sccache"
       - "/.github/actions/setup-rust-stable"
-      - "/.github/actions/setup-rust-target-dependency-cache"
-      - "/.github/actions/setup-rust-target-workspace-cache"
       - "/.github/actions/setup-tauri-v2"
       - "/.github/actions/setup-scripts"
       - "/.github/actions/winget-releaser"
@@ -77,7 +89,11 @@ updates:
         applies-to: security-updates
         patterns:
           - "*"
+      codeql:
+        patterns:
+          - github/codeql-action/*
   - package-ecosystem: cargo
+    target-branch: main
     directory: rust/
     open-pull-requests-limit: 100
     schedule:
@@ -119,6 +135,10 @@ updates:
         patterns:
           - sentry
           - sentry-*
+      str0m:
+        patterns:
+          - is
+          - str0m-proto
       rust-crypto:
         patterns:
           - aead
@@ -143,6 +163,7 @@ updates:
           - zeroize
           - zeroize_derive
   - package-ecosystem: gradle
+    target-branch: main
     directory: kotlin/android/
     schedule:
       interval: weekly
@@ -215,6 +236,7 @@ updates:
           - com.google.firebase:firebase-analytics-ktx
 
   - package-ecosystem: swift
+    target-branch: main
     directory: swift/apple/FirezoneKit
     schedule:
       interval: weekly
@@ -230,6 +252,7 @@ updates:
         patterns:
           - "*"
   - package-ecosystem: npm
+    target-branch: main
     directory: rust/gui-client/
     schedule:
       interval: weekly
@@ -263,6 +286,7 @@ updates:
           - "@types/react"
           - "@types/react-dom"
   - package-ecosystem: npm
+    target-branch: main
     directory: elixir/assets/
     schedule:
       interval: weekly
@@ -279,6 +303,7 @@ updates:
           - "*"
 
   - package-ecosystem: docker
+    target-branch: main
     directories:
       - /rust
       - /elixir

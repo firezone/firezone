@@ -1,6 +1,12 @@
 name: Elixir
 on:
   workflow_call:
+    inputs:
+      check_openapi_breaking_changes:
+        description: Whether the pull request changes files under elixir/.
+        required: false
+        default: false
+        type: boolean
 
 jobs:
   unit-test:
@@ -10,12 +16,13 @@ jobs:
         working-directory: ./elixir
     permissions:
       checks: write # dorny/test-reporter
+      pull-requests: write # breaking OpenAPI changes comment
     env:
       MIX_ENV: test
       POSTGRES_HOST: localhost
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
       - uses: chetan/git-restore-mtime-action@d186aca54f8760da4dec55313195e51ed3ebb0b3 # v2.3
@@ -40,13 +47,13 @@ jobs:
 
       - name: Test Report
         if: github.event.pull_request.head.repo.full_name == github.repository && (success() || failure())
-        uses: dorny/test-reporter@a43b3a5f7366b97d083190328d2c652e1a8b6aa2 # v3.0.0
+        uses: dorny/test-reporter@d1b5dff021aa968b288b02285a8bf47471c5928a # v3.2.0
         with:
           name: Elixir Unit Test Report
           path: elixir/_build/test/lib/*/test-junit-report.xml
           reporter: java-junit
 
-      - uses: coverallsapp/github-action@648a8eb78e6d50909eff900e4ec85cab4524a45b # v2.3.6
+      - uses: coverallsapp/github-action@8d6379e14d29928660c4ba802d8e85393440b329 # v2.3.8
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           file: elixir/cover/lcov.info
@@ -65,7 +72,7 @@ jobs:
       MIX_ENV: dev
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
       - uses: chetan/git-restore-mtime-action@d186aca54f8760da4dec55313195e51ed3ebb0b3 # v2.3
@@ -97,7 +104,7 @@ jobs:
         ports:
           - 8080:8080
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
       - uses: chetan/git-restore-mtime-action@d186aca54f8760da4dec55313195e51ed3ebb0b3 # v2.3
@@ -110,6 +117,9 @@ jobs:
 
       - name: Check Formatting
         run: mix format --check-formatted
+
+      - name: Check Elixir dead-code exceptions
+        run: bash ../mise-tasks/elixir/dead-code.sh --check
 
       - name: Check For Retired Packages
         run: mix hex.audit
@@ -131,6 +141,8 @@ jobs:
         env:
           OBAN_ENABLED: "false"
         run: |
+          mix openapi.spec.json --spec PortalAPI.ApiSpec --pretty=true --vendor-extensions=false \
+            --filename priv/static/openapi.json --check=true
           mix openapi.spec.yaml --spec PortalAPI.ApiSpec
           result=$(curl --fail --show-error --silent \
             --max-time 10 \
@@ -143,3 +155,72 @@ jobs:
             http://localhost:8080/validator/debug)
           echo "$result"
           echo "$result" | jq -e '.schemaValidationMessages | length == 0'
+
+      # Reports breaking changes to the published API in the job summary. It
+      # does not fail the job: there is no API versioning strategy yet, so a
+      # breaking change is a review decision rather than a build error.
+      - name: Fetch base OpenAPI spec
+        if: github.base_ref != '' && inputs.check_openapi_breaking_changes
+        run: git show "origin/${{ github.base_ref }}:elixir/priv/static/openapi.json" > ../base-openapi.json
+      - name: Check for breaking OpenAPI changes
+        id: oasdiff
+        if: github.base_ref != '' && inputs.check_openapi_breaking_changes
+        uses: oasdiff/oasdiff-action/breaking@45c956ed8138f7f18f0425d34e3d66730b805cb2 # v0.1.9
+        with:
+          base: base-openapi.json
+          revision: elixir/priv/static/openapi.json
+          # The action's output carries only the first line; the file has it all.
+          output-to-file: openapi-breaking.txt
+          # Keep the spec in CI: no upload to oasdiff.com and no PR comment.
+          review: "false"
+          github-token: ""
+      - name: Build the OpenAPI changelog
+        id: changelog
+        if: github.base_ref != '' && inputs.check_openapi_breaking_changes
+        uses: oasdiff/oasdiff-action/changelog@45c956ed8138f7f18f0425d34e3d66730b805cb2 # v0.1.9
+        with:
+          base: base-openapi.json
+          revision: elixir/priv/static/openapi.json
+          format: markdown
+          output-to-file: openapi-changelog.md
+          review: "false"
+          github-token: ""
+      # One comment per PR, updated on every run, so a breaking change is seen
+      # in the review rather than buried in a job summary. The full changelog
+      # rides along collapsed, so the detail is one click away.
+      - name: Comment on breaking OpenAPI changes
+        if: github.base_ref != '' && inputs.check_openapi_breaking_changes && github.event.pull_request.number
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        # The action steps write to the workspace root, one level up from here.
+        run: |
+          marker="<!-- openapi-breaking-changes -->"
+          BREAKING=$(head -c 12000 ../openapi-breaking.txt 2>/dev/null || true)
+          # Comment bodies are capped at 64 KiB; keep room for the rest.
+          changelog=$(head -c 48000 ../openapi-changelog.md 2>/dev/null || true)
+          # oasdiff writes these placeholders instead of leaving the files empty.
+          [[ "$BREAKING" == "No breaking changes" ]] && BREAKING=""
+          [[ "$changelog" == "No changelog changes" ]] && changelog=""
+          if [[ -z "$changelog" ]]; then
+            changelog="No API changes."
+          elif [[ $(wc -c < ../openapi-changelog.md) -gt 48000 ]]; then
+            changelog="$changelog"$'\n\n'"_Truncated; the full changelog is in the job log._"
+          fi
+          if [[ -n "$BREAKING" ]]; then
+            heading="## :warning: Breaking OpenAPI changes"
+            intro="This PR changes the REST API in a way that can break generated clients:"
+            fence='```'
+            summary="$intro"$'\n\n'"$fence"$'\n'"$BREAKING"$'\n'"$fence"
+          else
+            heading="## Breaking OpenAPI changes"
+            summary="None on the latest run."
+          fi
+          body="$marker"$'\n'"$heading"$'\n\n'"$summary"$'\n\n'"<details><summary>All API changes</summary>"$'\n\n'"$changelog"$'\n\n'"</details>"
+          existing=$(gh api "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" --paginate \
+            --jq ".[] | select(.body | startswith(\"$marker\")) | .id" | head -n1)
+          if [[ -n "$existing" ]]; then
+            gh api --method PATCH "repos/${GITHUB_REPOSITORY}/issues/comments/${existing}" -f body="$body" >/dev/null
+          elif [[ -n "$BREAKING" ]]; then
+            gh api --method POST "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" -f body="$body" >/dev/null
+          fi

@@ -193,6 +193,53 @@ url = "https://github.com/cargo-bins/cargo-binstall/releases/download/v1.18.1/ca
 url_api = "https://api.github.com/repos/cargo-bins/cargo-binstall/releases/assets/395392416"
 provenance = "github-attestations"
 
+[[tools."github:getsentry/sentry-cli"]]
+version = "3.6.2"
+backend = "github:getsentry/sentry-cli"
+
+[tools."github:getsentry/sentry-cli".options]
+matching_regex = "^sentry-cli-(Darwin|Linux|Windows)-"
+
+[tools."github:getsentry/sentry-cli"."platforms.linux-arm64"]
+checksum = "sha256:ff112ecf694b7d6b3629a6228ed4e3f7a0d51401bdf48a5051a79d8749dccd06"
+url = "https://github.com/getsentry/sentry-cli/releases/download/3.6.2/sentry-cli-Linux-aarch64"
+url_api = "https://api.github.com/repos/getsentry/sentry-cli/releases/assets/486164039"
+
+[tools."github:getsentry/sentry-cli"."platforms.linux-arm64-musl"]
+checksum = "sha256:ff112ecf694b7d6b3629a6228ed4e3f7a0d51401bdf48a5051a79d8749dccd06"
+url = "https://github.com/getsentry/sentry-cli/releases/download/3.6.2/sentry-cli-Linux-aarch64"
+url_api = "https://api.github.com/repos/getsentry/sentry-cli/releases/assets/486164039"
+
+[tools."github:getsentry/sentry-cli"."platforms.linux-x64"]
+checksum = "sha256:3a4bbf2c0d06378d4e59b337647483751a0a2b1603db5fd4991847d0cfd6478c"
+url = "https://github.com/getsentry/sentry-cli/releases/download/3.6.2/sentry-cli-Linux-x86_64"
+url_api = "https://api.github.com/repos/getsentry/sentry-cli/releases/assets/486164037"
+
+[tools."github:getsentry/sentry-cli"."platforms.linux-x64-musl"]
+checksum = "sha256:3a4bbf2c0d06378d4e59b337647483751a0a2b1603db5fd4991847d0cfd6478c"
+url = "https://github.com/getsentry/sentry-cli/releases/download/3.6.2/sentry-cli-Linux-x86_64"
+url_api = "https://api.github.com/repos/getsentry/sentry-cli/releases/assets/486164037"
+
+[tools."github:getsentry/sentry-cli"."platforms.macos-arm64"]
+checksum = "sha256:5a497deb1e388cc6445c09ddd6d2da4fc2aae8295405d6393c2e0ee635ca3687"
+url = "https://github.com/getsentry/sentry-cli/releases/download/3.6.2/sentry-cli-Darwin-arm64"
+url_api = "https://api.github.com/repos/getsentry/sentry-cli/releases/assets/486164028"
+
+[tools."github:getsentry/sentry-cli"."platforms.macos-x64"]
+checksum = "sha256:efe0a5289cdd0ea8ff727b1228a1bea6c840f2da38152e8f9f5ced05bd6659cd"
+url = "https://github.com/getsentry/sentry-cli/releases/download/3.6.2/sentry-cli-Darwin-x86_64"
+url_api = "https://api.github.com/repos/getsentry/sentry-cli/releases/assets/486164033"
+
+[tools."github:getsentry/sentry-cli"."platforms.windows-arm64"]
+checksum = "sha256:93ee7916c05c113a35daccf107c034af96f279561c103aa832668e4eecca3fb4"
+url = "https://github.com/getsentry/sentry-cli/releases/download/3.6.2/sentry-cli-Windows-aarch64.exe"
+url_api = "https://api.github.com/repos/getsentry/sentry-cli/releases/assets/486164036"
+
+[tools."github:getsentry/sentry-cli"."platforms.windows-x64"]
+checksum = "sha256:5c90cb0045cef3d3c36113c2aa21a7dcae11627d2d6e3098b679dea5b6681be3"
+url = "https://github.com/getsentry/sentry-cli/releases/download/3.6.2/sentry-cli-Windows-x86_64.exe"
+url_api = "https://api.github.com/repos/getsentry/sentry-cli/releases/assets/486164038"
+
 [[tools."github:taiki-e/cargo-llvm-cov"]]
 version = "0.6.21"
 backend = "github:taiki-e/cargo-llvm-cov"
@@ -275,6 +322,11 @@ url_api = "https://api.github.com/repos/tauri-apps/tauri/releases/assets/4219376
 checksum = "sha256:d19d373866765ecf17112501daa645b8be3f23d231989a7824d4ec73b1efddb2"
 url = "https://github.com/tauri-apps/tauri/releases/download/tauri-cli-v2.11.2/cargo-tauri-x86_64-apple-darwin.zip"
 url_api = "https://api.github.com/repos/tauri-apps/tauri/releases/assets/421937689"
+
+[tools."github:tauri-apps/tauri"."platforms.windows-arm64"]
+checksum = "sha256:9cfecb8e103944cf9ece6299fa625d6cc0f11b03fb94d487ae43ffdca556af9a"
+url = "https://github.com/tauri-apps/tauri/releases/download/tauri-cli-v2.11.2/cargo-tauri-aarch64-pc-windows-msvc.zip"
+url_api = "https://api.github.com/repos/tauri-apps/tauri/releases/assets/421937684"
 
 [tools."github:tauri-apps/tauri"."platforms.windows-x64"]
 checksum = "sha256:b6844470bcbf1da6e5dbf01990ae317d4d7969171628bb8badbdbff2e3d06d23"

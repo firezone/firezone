@@ -1,8 +1,10 @@
 defmodule PortalAPI.SiteController do
   use PortalAPI, :controller
   use OpenApiSpex.ControllerSpecs
+  alias PortalAPI.JSON
   alias PortalAPI.Pagination
   alias PortalAPI.Error
+  alias PortalAPI.Filters
   alias PortalAPI.Schemas.ProblemDetails
   alias __MODULE__.Database
 
@@ -15,10 +17,11 @@ defmodule PortalAPI.SiteController do
       limit: [
         in: :query,
         description: "Limit Sites returned",
-        type: :integer,
+        schema: PortalAPI.Pagination.limit_schema(),
         example: 10
       ],
-      page_cursor: [in: :query, description: "Next/Prev page cursor", type: :string]
+      page_cursor: [in: :query, description: "Next/Prev page cursor", type: :string],
+      name: [in: :query, description: "Filter to the Site with this exact name", type: :string]
     ],
     responses:
       [ok: {"Site Response", "application/json", PortalAPI.Schemas.Site.ListResponse}] ++
@@ -28,13 +31,18 @@ defmodule PortalAPI.SiteController do
 
   @spec index(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def index(conn, params) do
-    list_opts = Pagination.params_to_list_opts(params)
-
-    with {:ok, sites, metadata} <- Database.list_sites(conn.assigns.subject, list_opts) do
-      render(conn, :index, sites: sites, metadata: metadata)
+    with {:ok, list_opts} <- Pagination.params_to_list_opts(params),
+         list_opts = Keyword.put(list_opts, :filter, coerce_filters(params)),
+         {:ok, sites, metadata} <- Database.list_sites(conn.assigns.subject, list_opts) do
+      json(conn, JSON.encode(sites, metadata))
     else
       error -> Error.handle(conn, error)
     end
+  end
+
+  defp coerce_filters(params) do
+    []
+    |> Filters.maybe_append(:name, params["name"])
   end
 
   # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
@@ -57,7 +65,7 @@ defmodule PortalAPI.SiteController do
   @spec show(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def show(conn, %{"id" => id}) do
     with {:ok, site} <- Database.fetch_site(id, conn.assigns.subject) do
-      render(conn, :show, site: site)
+      json(conn, JSON.encode(site))
     else
       error -> Error.handle(conn, error)
     end
@@ -89,7 +97,7 @@ defmodule PortalAPI.SiteController do
       conn
       |> put_status(:created)
       |> put_resp_header("location", ~p"/sites/#{site}")
-      |> render(:show, site: site)
+      |> json(JSON.encode(site))
     else
       error -> Error.handle(conn, error)
     end
@@ -142,7 +150,7 @@ defmodule PortalAPI.SiteController do
     with {:ok, site} <- Database.fetch_site(id, subject),
          :ok <- validate_not_system_managed(site),
          {:ok, site} <- Database.update_site(site, params, subject) do
-      render(conn, :show, site: site)
+      json(conn, JSON.encode(site))
     else
       error -> Error.handle(conn, error)
     end
@@ -155,6 +163,14 @@ defmodule PortalAPI.SiteController do
   # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :delete,
     summary: "Delete a Site",
+    description: """
+    Deletes a Site. Deleting is not blocked when the Site still has Gateways \
+    or Resources.
+
+    The Site's Gateways, Gateway tokens, and Resources are deleted with it. \
+    Every Policy for those Resources is deleted too, and Clients lose access \
+    to them right away. The system-managed Internet Site cannot be deleted.
+    """,
     parameters: [
       id: [
         in: :path,
@@ -182,7 +198,7 @@ defmodule PortalAPI.SiteController do
     with {:ok, site} <- Database.fetch_site(id, subject),
          :ok <- validate_not_system_managed(site),
          {:ok, site} <- Database.delete_site(site, subject) do
-      render(conn, :show, site: site)
+      json(conn, JSON.encode(site))
     else
       error -> Error.handle(conn, error)
     end
@@ -200,7 +216,7 @@ defmodule PortalAPI.SiteController do
 
     def list_sites(subject, opts \\ []) do
       from(g in Site, as: :sites)
-      |> Safe.scoped(subject, :replica)
+      |> Safe.scoped(subject)
       |> Safe.list(__MODULE__, opts)
     end
 
@@ -208,7 +224,7 @@ defmodule PortalAPI.SiteController do
       result =
         from(s in Site, as: :sites)
         |> where([sites: s], s.id == ^id)
-        |> Safe.scoped(subject, :replica)
+        |> Safe.scoped(subject)
         |> Safe.one()
 
       case result do
@@ -253,6 +269,22 @@ defmodule PortalAPI.SiteController do
         {:sites, :asc, :inserted_at},
         {:sites, :asc, :id}
       ]
+    end
+
+    def filters do
+      [
+        %Portal.Repo.Filter{
+          name: :name,
+          title: "Name",
+          type: :string,
+          fun: &filter_by_name/2
+        }
+      ]
+    end
+
+    defp filter_by_name(queryable, name) do
+      dynamic = dynamic([sites: s], s.name == ^name)
+      {queryable, dynamic}
     end
   end
 end

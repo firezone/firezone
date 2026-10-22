@@ -12,6 +12,7 @@ path = "src/main.rs"
 aya-ebpf = { workspace = true }
 aya-log-ebpf = { workspace = true }
 ebpf-shared = { workspace = true }
+incremental-inet-checksum = { workspace = true }
 network-types = { workspace = true }
 
 [target.'cfg(target_os = "linux")'.build-dependencies]

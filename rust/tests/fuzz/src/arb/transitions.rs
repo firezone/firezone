@@ -1,0 +1,579 @@
+use std::{collections::BTreeMap, iter, time::Duration};
+
+use connlib_model::Site;
+use dns_types::DomainName;
+use smallvec::SmallVec;
+
+use super::context::Generator;
+use super::topology::{
+    arb_dns_record_set, arb_relays, arb_socket_ip_stack, pick_site, with_interface,
+};
+use super::values::{
+    arb_address_description, arb_cidr_resource_address, arb_compatible_upstream_do53_servers,
+    arb_different_address_description, arb_different_cidr_resource_address,
+    arb_different_dns_resource_address, arb_different_filters, arb_different_ip_stack_kind,
+    arb_dns_resource_address, arb_ip_stack_kind, arb_system_dns_servers, arb_upstream_doh_servers,
+};
+use super::{dns_queries, packets};
+use crate::dns_records::record_ip;
+use crate::probe::{FlowId, Remote};
+use crate::reference::ReferenceState;
+use crate::resource::{CidrResource, DevicePoolResource, DnsResource, Resource, ResourceEdit};
+use crate::sim_net::{EdgeConfig, Host};
+use crate::stub_portal::StubPortal;
+use crate::transition::{Destination, Seq, Transition};
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum TransitionKind {
+    // Always-legal.
+    UpdateSystemDnsServers,
+    UpdateUpstreamDo53Servers,
+    UpdateUpstreamDoHServers,
+    UpdateUpstreamSearchDomain,
+    RoamClient,
+    DeployNewRelays,
+    PartitionRelaysFromPortal,
+    RebootRelaysWhilePartitioned,
+    Idle,
+    // State-gated.
+    AddResource,
+    EditResource,
+    RemoveResource,
+    ReconnectPortal,
+    RestartClient,
+    SetInternetResourceState,
+    DeauthorizeWhileGatewayIsPartitioned,
+    RevokeGatewayAuthorization,
+    ExpirePeerAuthorizations,
+    RevokePeerAuthorization,
+    UpdateDnsRecords,
+    SendPacket,
+    SendPacketOnExistingFlow,
+    SendTcpData,
+    SendDnsQueries,
+    UpdateDevicePoolMembers,
+    ExhaustRelayPorts,
+    FreeRelayPorts,
+}
+
+/// The transitions that open no connection.
+///
+/// A node whose allocations all failed cannot open any connection until it gets a relay back,
+/// which the reference model does not predict. While every relay is exhausted or recovering, or a
+/// node may have no relay left, only these are legal.
+const LEGAL_WITHOUT_HEALTHY_RELAY: [TransitionKind; 7] = [
+    TransitionKind::RoamClient,
+    TransitionKind::DeployNewRelays,
+    TransitionKind::PartitionRelaysFromPortal,
+    TransitionKind::RebootRelaysWhilePartitioned,
+    TransitionKind::RestartClient,
+    TransitionKind::FreeRelayPorts,
+    TransitionKind::Idle,
+];
+
+#[derive(Clone, Copy)]
+enum ExistingFlow {
+    Udp(FlowId),
+    Icmp(FlowId, Seq),
+}
+
+pub(super) fn generate(
+    g: &mut Generator,
+    state: &ReferenceState,
+    portal: &StubPortal,
+) -> Transition {
+    let addable_resources = state.resources_unknown_to_all_clients(portal);
+    let editable_resources = state.editable_resources_on_any_client(portal);
+    let removable_resources = state.all_resource_ids();
+    let deauthorizable_resources = state.deauthorizable_resource_ids(portal);
+    let revocable_resources = state.revocable_resource_ids(portal);
+    let expirable_peers = state.expirable_peer_authorizations();
+    let revocable_peers = expirable_peers
+        .iter()
+        .filter(|(_, _, pools)| pools.len() > 1)
+        .cloned()
+        .collect::<Vec<_>>();
+    let client_ids = state.all_client_ids();
+    let dns_record_domains = state.dns_resource_domains();
+    let packet_targets = packets::targets(state, portal);
+    let revoked_peer_targets = packets::revoked_peer_targets(state);
+    if !revoked_peer_targets.is_empty() {
+        let target = revoked_peer_targets[g.choose_index(revoked_peer_targets.len())].clone();
+        return packets::generate(g, target);
+    }
+    let existing_flows = iter::empty()
+        .chain(state.udp_flows().into_iter().map(ExistingFlow::Udp))
+        .chain(
+            state
+                .icmp_flows()
+                .into_iter()
+                .map(|(flow_id, seq)| ExistingFlow::Icmp(flow_id, seq)),
+        )
+        .collect::<Vec<_>>();
+    // A connect through a Gateway that does not deliver to its name's network leaves no
+    // connection to write to.
+    let tcp_flows = state
+        .tcp_flows
+        .iter()
+        .filter(|(_, flow)| {
+            let (Remote::Gateway(gateway), Destination::DomainName { name, .. }) =
+                (flow.route.remote(), &flow.dst)
+            else {
+                return true;
+            };
+            let routes = &state.gateways[&gateway].inner().routes;
+
+            state
+                .global_dns_records
+                .domain_ips_iter(name)
+                .any(|ip| routes.delivers(ip))
+        })
+        .map(|(id, _)| *id)
+        .collect::<Vec<_>>();
+    let dns_query_targets = dns_queries::targets(state, portal);
+    let listed_device_pools = state.listed_device_pool_ids_on_any_client(portal);
+    let accepting_relays = state
+        .relays
+        .keys()
+        .filter(|relay| !state.exhausted_relays.contains(relay))
+        .copied()
+        .collect::<Vec<_>>();
+    let exhausted_relays = state.exhausted_relays.iter().copied().collect::<Vec<_>>();
+    let healthy_relays = accepting_relays
+        .iter()
+        .filter(|relay| !state.recovering_relays.contains_key(relay))
+        .count();
+    // An ICE-less connection without a relay for longer than a WireGuard handshake attempt
+    // expires, which the reference does not predict. ICE-less flows therefore keep a healthy relay.
+    let can_exhaust_relay = if portal.iceless() {
+        healthy_relays > 1
+    } else {
+        !accepting_relays.is_empty()
+    };
+
+    // Build the legal action list. Data-plane actions stay more frequent because
+    // they drive most of the tunnel state machine; the fuzzer chooses the concrete
+    // destination, protocol and fields from subsequent bytes.
+    use TransitionKind as K;
+
+    let legal = [
+        Some((K::UpdateSystemDnsServers, 1)),
+        Some((K::UpdateUpstreamDo53Servers, 1)),
+        Some((K::UpdateUpstreamDoHServers, 1)),
+        Some((K::UpdateUpstreamSearchDomain, 1)),
+        Some((K::RoamClient, 1)),
+        Some((K::DeployNewRelays, 1)),
+        Some((K::PartitionRelaysFromPortal, 1)),
+        Some((K::RebootRelaysWhilePartitioned, 1)),
+        Some((K::Idle, 1)),
+        (!addable_resources.is_empty()).then_some((K::AddResource, 5)),
+        (!editable_resources.is_empty()).then_some((K::EditResource, 7)),
+        (!removable_resources.is_empty()).then_some((K::RemoveResource, 1)),
+        (!deauthorizable_resources.is_empty())
+            .then_some((K::DeauthorizeWhileGatewayIsPartitioned, 1)),
+        (!revocable_resources.is_empty()).then_some((K::RevokeGatewayAuthorization, 2)),
+        (!expirable_peers.is_empty()).then_some((K::ExpirePeerAuthorizations, 2)),
+        (!revocable_peers.is_empty()).then_some((K::RevokePeerAuthorization, 2)),
+        (!client_ids.is_empty()).then_some((K::ReconnectPortal, 1)),
+        (!client_ids.is_empty()).then_some((K::RestartClient, 1)),
+        (!client_ids.is_empty()).then_some((K::SetInternetResourceState, 1)),
+        (!dns_record_domains.is_empty()).then_some((K::UpdateDnsRecords, 5)),
+        (!packet_targets.is_empty()).then_some((K::SendPacket, 50)),
+        (!existing_flows.is_empty()).then_some((K::SendPacketOnExistingFlow, 25)),
+        (!tcp_flows.is_empty()).then_some((K::SendTcpData, 10)),
+        (!dns_query_targets.is_empty()).then_some((K::SendDnsQueries, 10)),
+        (!listed_device_pools.is_empty()).then_some((K::UpdateDevicePoolMembers, 2)),
+        can_exhaust_relay.then_some((K::ExhaustRelayPorts, 1)),
+        (!exhausted_relays.is_empty()).then_some((K::FreeRelayPorts, 1)),
+    ]
+    .into_iter()
+    .flatten()
+    .filter(|(kind, _)| {
+        (healthy_relays > 0 && !state.node_may_lack_relays)
+            || LEGAL_WITHOUT_HEALTHY_RELAY.contains(kind)
+    })
+    .collect::<SmallVec<[_; 22]>>();
+
+    // Weighted pick over the legal list.
+    let kind = weighted_choose(g, &legal);
+
+    // Generate only the chosen arm's payload from the following bytes.
+    match kind {
+        K::UpdateSystemDnsServers => Transition::UpdateSystemDnsServers {
+            servers: arb_system_dns_servers(g),
+        },
+        K::UpdateUpstreamDo53Servers => {
+            Transition::UpdateUpstreamDo53Servers(arb_compatible_upstream_do53_servers(g, state))
+        }
+        K::UpdateUpstreamDoHServers => {
+            Transition::UpdateUpstreamDoHServers(arb_upstream_doh_servers(g))
+        }
+        K::UpdateUpstreamSearchDomain => {
+            let domains = portal.dns_resources();
+            let candidates = domains
+                .filter_map(|r| {
+                    let (_, s) = r.address.split_once('.')?;
+                    DomainName::vec_from_str(s).ok()
+                })
+                .collect::<Vec<_>>();
+            let chosen = if candidates.is_empty() || !g.flip(50) {
+                None
+            } else {
+                let idx = g.choose_index(candidates.len());
+                Some(candidates[idx].clone())
+            };
+            Transition::UpdateUpstreamSearchDomain(chosen)
+        }
+        K::RoamClient => {
+            let client_id = client_ids[g.choose_index(client_ids.len())];
+            let (ip4, ip6) = arb_socket_ip_stack(g);
+            // Mirror `transition::roam_client`: both windows in 0..3000ms.
+            let dead_window = Duration::from_millis(g.count(0, 2999) as u64);
+            let portal_window = Duration::from_millis(g.count(0, 2999) as u64);
+            Transition::RoamClient {
+                client_id,
+                ip4,
+                ip6,
+                nat_ip4: g.nat_ip4(),
+                dead_window,
+                portal_window,
+            }
+        }
+        K::DeployNewRelays => {
+            // An ICEless connection survives relay deployment changes. Keeping one deployed
+            // relay out of `connected` exercises refreshing an unmentioned live allocation.
+            let retained = if portal.iceless() && state.relays.len() >= 2 {
+                let index = g.choose_index(state.relays.len());
+                let (relay_id, relay) = state.relays.iter().nth(index).unwrap();
+
+                Some((*relay_id, relay.clone()))
+            } else {
+                None
+            };
+
+            let relays = iter::empty().chain(retained).chain(arb_relays(g)).collect();
+
+            Transition::DeployNewRelays(relays)
+        }
+        K::PartitionRelaysFromPortal => Transition::PartitionRelaysFromPortal,
+        K::RebootRelaysWhilePartitioned => {
+            // Reboot the *existing* relays with fresh credentials (same ids).
+            let relays = state
+                .relays
+                .keys()
+                .copied()
+                .map(|id| {
+                    let seed = g.u64();
+                    let latency = g.latency(50);
+                    let host = Host::new(seed, latency, 3478, EdgeConfig::Open, g.nat_ip4());
+                    let host = with_interface(host, Some(g.socket_ip4()), Some(g.socket_ip6()));
+                    (id, host)
+                })
+                .collect::<BTreeMap<_, _>>();
+            Transition::RebootRelaysWhilePartitioned(relays)
+        }
+        K::Idle => Transition::Idle {
+            duration: Duration::from_secs(5 * g.count(1, 72) as u64),
+        },
+        K::AddResource => {
+            let resource = addable_resources[g.choose_index(addable_resources.len())].clone();
+            Transition::AddResource(resource)
+        }
+        K::EditResource => {
+            let resource = editable_resources[g.choose_index(editable_resources.len())].clone();
+            Transition::EditResource(arb_resource_edit(g, state, portal, resource))
+        }
+        K::RemoveResource => {
+            let id = removable_resources[g.choose_index(removable_resources.len())];
+            Transition::RemoveResource(id)
+        }
+        K::DeauthorizeWhileGatewayIsPartitioned => {
+            let id = deauthorizable_resources[g.choose_index(deauthorizable_resources.len())];
+            Transition::DeauthorizeWhileGatewayIsPartitioned(id)
+        }
+        K::ExpirePeerAuthorizations => {
+            let (client, peer, pools) =
+                expirable_peers[g.choose_index(expirable_peers.len())].clone();
+            Transition::ExpirePeerAuthorizations {
+                client,
+                peer,
+                pools,
+            }
+        }
+        K::RevokePeerAuthorization => {
+            let (client, peer, pools) = &revocable_peers[g.choose_index(revocable_peers.len())];
+            let pool = *pools.iter().nth(g.choose_index(pools.len())).unwrap();
+            Transition::RevokePeerAuthorization {
+                client: *client,
+                peer: *peer,
+                pool,
+            }
+        }
+        K::RevokeGatewayAuthorization => {
+            let id = revocable_resources[g.choose_index(revocable_resources.len())];
+            Transition::RevokeGatewayAuthorization(id)
+        }
+        K::ReconnectPortal => {
+            let client_id = client_ids[g.choose_index(client_ids.len())];
+            Transition::ReconnectPortal { client_id }
+        }
+        K::RestartClient => {
+            let client_id = client_ids[g.choose_index(client_ids.len())];
+            let key = g.fresh_private_key();
+            Transition::RestartClient { client_id, key }
+        }
+        K::SetInternetResourceState => {
+            let client_id = client_ids[g.choose_index(client_ids.len())];
+            let active = g.bool();
+            Transition::SetInternetResourceState { client_id, active }
+        }
+        K::UpdateDnsRecords => {
+            let domain = dns_record_domains[g.choose_index(dns_record_domains.len())].clone();
+            let subnet = g.local_subnet(&domain);
+            let mut records = arb_dns_record_set(g, subnet);
+            // Like at the start, a TCP-serving domain never resolves to an address that no
+            // Gateway delivers to.
+            if state.tcp_services.contains_key(&domain) {
+                for _ in records.extract_if(.., |record| {
+                    record_ip(record).is_some_and(|ip| {
+                        !state
+                            .gateways
+                            .values()
+                            .any(|gateway| gateway.inner().routes.delivers(ip))
+                    })
+                }) {}
+            }
+            Transition::UpdateDnsRecords { domain, records }
+        }
+        K::SendPacket => {
+            let target = packet_targets[g.choose_index(packet_targets.len())].clone();
+            packets::generate(g, target)
+        }
+        K::SendPacketOnExistingFlow => {
+            let flow = existing_flows[g.choose_index(existing_flows.len())];
+            let probe_id = g.fresh_probe_id();
+
+            match flow {
+                ExistingFlow::Udp(flow_id) => {
+                    Transition::SendUdpPacketOnExistingFlow { flow_id, probe_id }
+                }
+                ExistingFlow::Icmp(flow_id, seq) => Transition::SendIcmpPacketOnExistingFlow {
+                    flow_id,
+                    seq,
+                    probe_id,
+                },
+            }
+        }
+        K::SendTcpData => Transition::SendTcpData {
+            flow_id: tcp_flows[g.choose_index(tcp_flows.len())],
+            len: g.u16_in(1..=16 * 1024),
+            seed: g.u64(),
+            probe_id: g.fresh_probe_id(),
+        },
+        K::SendDnsQueries => dns_queries::generate(g, &dns_query_targets, state),
+        K::UpdateDevicePoolMembers => {
+            let pool_id = listed_device_pools[g.choose_index(listed_device_pools.len())];
+            let members = packets::arb_pool_members(g, state);
+            let revoked = portal.peer_authorizations_revoked_by(pool_id, &members);
+
+            Transition::UpdateDevicePoolMembers {
+                pool_id,
+                members,
+                revoked,
+            }
+        }
+        K::ExhaustRelayPorts => {
+            Transition::ExhaustRelayPorts(accepting_relays[g.choose_index(accepting_relays.len())])
+        }
+        K::FreeRelayPorts => {
+            Transition::FreeRelayPorts(exhausted_relays[g.choose_index(exhausted_relays.len())])
+        }
+    }
+}
+
+fn arb_resource_edit(
+    g: &mut Generator,
+    state: &ReferenceState,
+    portal: &StubPortal,
+    old: Resource,
+) -> ResourceEdit {
+    if g.flip(25) {
+        let new = arb_resource_with_different_type(g, portal, &state.domain_tree, &old);
+
+        return ResourceEdit { old, new };
+    }
+
+    let mut new = old.clone();
+
+    // Each arm names every field of its resource and edits it through that binding, so a
+    // new field fails to compile until it has an edit here or is ignored explicitly.
+    match &mut new {
+        Resource::Dns(DnsResource {
+            id: _,
+            address,
+            name,
+            address_description,
+            sites,
+            ip_stack,
+            filters,
+        }) => {
+            let edits: [Option<Box<dyn FnOnce(&mut Generator) + '_>>; 6] = [
+                Some(Box::new(|g| {
+                    *address = arb_different_dns_resource_address(g, address, state)
+                })),
+                Some(Box::new(|g| *name = arb_different_name(g, name))),
+                Some(Box::new(|g| {
+                    *address_description = arb_different_address_description(g, address_description)
+                })),
+                has_alternative_site(sites, portal)
+                    .then_some(Box::new(|g| *sites = arb_different_site(g, sites, portal))),
+                Some(Box::new(|g| {
+                    *ip_stack = arb_different_ip_stack_kind(g, *ip_stack)
+                })),
+                Some(Box::new(|g| *filters = arb_different_filters(g, filters))),
+            ];
+            let mut edits = edits.into_iter().flatten().collect::<SmallVec<[_; 6]>>();
+
+            edits.swap_remove(g.choose_index(edits.len()))(g);
+        }
+        Resource::Cidr(CidrResource {
+            id: _,
+            address,
+            name,
+            address_description,
+            sites,
+            filters,
+        }) => {
+            let edits: [Option<Box<dyn FnOnce(&mut Generator) + '_>>; 5] = [
+                Some(Box::new(|g| {
+                    *address = arb_different_cidr_resource_address(g, *address)
+                })),
+                Some(Box::new(|g| *name = arb_different_name(g, name))),
+                Some(Box::new(|g| {
+                    *address_description = arb_different_address_description(g, address_description)
+                })),
+                has_alternative_site(sites, portal)
+                    .then_some(Box::new(|g| *sites = arb_different_site(g, sites, portal))),
+                Some(Box::new(|g| *filters = arb_different_filters(g, filters))),
+            ];
+            let mut edits = edits.into_iter().flatten().collect::<SmallVec<[_; 5]>>();
+
+            edits.swap_remove(g.choose_index(edits.len()))(g);
+        }
+        Resource::DevicePool(DevicePoolResource {
+            id: _,
+            name,
+            filters,
+        }) => {
+            let mut edits = SmallVec::<[Box<dyn FnOnce(&mut Generator) + '_>; 2]>::from_buf([
+                Box::new(|g| *name = arb_different_name(g, name)),
+                Box::new(|g| *filters = arb_different_filters(g, filters)),
+            ]);
+
+            edits.swap_remove(g.choose_index(edits.len()))(g);
+        }
+        Resource::Internet(_) => {
+            unreachable!("the Portal API does not allow editing the Internet Resource")
+        }
+    }
+
+    ResourceEdit { old, new }
+}
+
+fn has_alternative_site(current: &[Site], portal: &StubPortal) -> bool {
+    portal
+        .regular_sites()
+        .iter()
+        .any(|site| current.len() != 1 || current.first() != Some(site))
+}
+
+fn arb_different_site(g: &mut Generator, current: &[Site], portal: &StubPortal) -> Vec<Site> {
+    let sites = portal
+        .regular_sites()
+        .iter()
+        .filter(|site| current.len() != 1 || current.first() != Some(*site))
+        .collect::<SmallVec<[_; 3]>>();
+    let site = sites[g.choose_index(sites.len())];
+
+    vec![site.clone()]
+}
+
+fn arb_different_name(g: &mut Generator, current: &str) -> String {
+    let name = g.lower_ascii(4, 10);
+
+    if name != current {
+        return name;
+    }
+
+    format!("{name}-changed")
+}
+
+fn arb_resource_with_different_type(
+    g: &mut Generator,
+    portal: &StubPortal,
+    domain_tree: &[DomainName],
+    resource: &Resource,
+) -> Resource {
+    #[derive(Clone, Copy)]
+    enum ResourceType {
+        Cidr,
+        Dns,
+        DevicePool,
+    }
+
+    let resource_type = match resource {
+        Resource::Cidr(_) => [ResourceType::Dns, ResourceType::DevicePool][g.choose_index(2)],
+        Resource::Dns(_) => [ResourceType::Cidr, ResourceType::DevicePool][g.choose_index(2)],
+        Resource::DevicePool(_) => [ResourceType::Cidr, ResourceType::Dns][g.choose_index(2)],
+        Resource::Internet(_) => {
+            unreachable!("only user-editable resource types can replace one another")
+        }
+    };
+
+    let site = resource
+        .sites()
+        .first()
+        .cloned()
+        .unwrap_or_else(|| pick_site(g, portal.regular_sites()).clone());
+    let id = resource.id();
+    let name = resource.name().to_owned();
+    let filters = resource.filters().to_vec();
+
+    match resource_type {
+        ResourceType::Cidr => Resource::Cidr(CidrResource {
+            id,
+            address: arb_cidr_resource_address(g),
+            name,
+            address_description: arb_address_description(g),
+            sites: vec![site],
+            filters,
+        }),
+        ResourceType::Dns => Resource::Dns(DnsResource {
+            id,
+            address: arb_dns_resource_address(g, domain_tree),
+            name,
+            address_description: arb_address_description(g),
+            sites: vec![site],
+            ip_stack: arb_ip_stack_kind(g),
+            filters,
+        }),
+        ResourceType::DevicePool => Resource::DevicePool(DevicePoolResource { id, name, filters }),
+    }
+}
+
+/// Reproduces `Union::new_weighted`: partition `int_in_range` over the summed
+/// weight. Identical bytes always pick the same arm.
+fn weighted_choose(g: &mut Generator, opts: &[(TransitionKind, u32)]) -> TransitionKind {
+    let total = opts.iter().map(|(_, weight)| *weight).sum::<u32>();
+    assert!(total > 0, "there is always at least one legal transition");
+
+    let pick = g.u32_in(0..=total - 1);
+
+    opts.iter()
+        .scan(0, |end, (kind, weight)| {
+            *end += *weight;
+            Some((*kind, *end))
+        })
+        .find_map(|(kind, end)| (pick < end).then_some(kind))
+        .expect("the selected transition must be within the total weight")
+}

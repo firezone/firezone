@@ -11,7 +11,7 @@ runs:
   steps:
     - name: Cache apt packages
       if: ${{ runner.os == 'Linux' }}
-      uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       id: apt-cache
       with:
         path: ~/apt-cache
@@ -20,33 +20,27 @@ runs:
           ${{ runner.os }}-apt-tauri-
 
     - name: Restore cached apt packages
-      if: ${{ runner.os == 'Linux' && steps.apt-cache.outputs.cache-hit == 'true' }}
+      # `cache-hit` is only true on an exact key match, so this also runs for the
+      # `restore-keys` fallback, where the `.deb`s are restored but the key differs.
+      if: ${{ runner.os == 'Linux' }}
       run: |
         sudo cp ~/apt-cache/*.deb /var/cache/apt/archives/ 2>/dev/null || true
       shell: bash
 
-    - name: Apt-get update
-      if: ${{ runner.os == 'Linux' }}
-      run: sudo apt-get update
-      shell: bash
-
     - name: Install Tauri build deps
       if: ${{ runner.os == 'Linux' }}
-      run: sudo apt-get --yes install build-essential curl file libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libssl-dev libxdo-dev wget
-      shell: bash
-
-    - name: Install gnome-keyring
-      if: ${{ runner.os == 'Linux' }}
-      run: sudo apt-get --yes install gnome-keyring
-      shell: bash
-      # This is only needed if we'll launch the Tauri GUI, so it's redundant for clippy / test
-      # This is what the Tauri CI tests use
-      # <https://github.com/tauri-apps/tauri/blob/3fb414b61ad7cfce67751230826fddfb39effec5/.github/workflows/bench.yml#L74>
+      # `gnome-keyring` is only needed to launch the Tauri GUI, but installing it
+      # here keeps the non-GUI jobs on a single apt transaction.
+      uses: ./.github/actions/apt-install
+      with:
+        packages: build-essential curl file libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libssl-dev libxdo-dev wget gnome-keyring
 
     - name: Install Tauri runtime deps
       if: ${{ runner.os == 'Linux' && inputs.runtime == 'true' }}
-      run: sudo apt-get --yes install at-spi2-core xvfb
-      shell: bash
+      uses: ./.github/actions/apt-install
+      with:
+        packages: at-spi2-core xvfb
+        update: "false"
 
     - name: Save apt packages to cache
       if: ${{ runner.os == 'Linux' && steps.apt-cache.outputs.cache-hit != 'true' }}
@@ -54,24 +48,40 @@ runs:
         mkdir -p ~/apt-cache
         sudo cp /var/cache/apt/archives/*.deb ~/apt-cache/ 2>/dev/null || true
       shell: bash
-    - uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+    - name: Detect the WebView2 runtime
       if: ${{ runner.os == 'Windows' && inputs.runtime == 'true' }}
+      id: webview2
+      # The `pv` regkeys are Microsoft's documented detection method:
+      # <https://learn.microsoft.com/en-us/microsoft-edge/webview2/concepts/distribution>
+      # The runner images ship the runtime, so the install below is a fallback.
+      run: |
+        $versions = @(
+          'HKLM:\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}',
+          'HKCU:\Software\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}'
+        ) | ForEach-Object { (Get-ItemProperty -Path $_ -Name pv -ErrorAction SilentlyContinue).pv }
+        $installed = @($versions | Where-Object { $_ -and $_ -ne '0.0.0.0' })
+        Write-Host "WebView2 runtime versions found: $($installed -join ', ')"
+        "installed=$(if ($installed) { 'true' } else { 'false' })" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+      shell: pwsh
+    - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      if: ${{ runner.os == 'Windows' && inputs.runtime == 'true' && steps.webview2.outputs.installed != 'true' }}
       id: cache-webview2-installer
       with:
         path: WebView2Installer.exe
-        key: webview2-offline-installer
-    - name: Download WebView2 bootstrapper
-      if: ${{ runner.os == 'Windows' && steps.cache-webview2-installer.outputs.cache-hit != 'true' && inputs.runtime == 'true' }}
-      # This is the "Evergreen" bootstrapper from Microsoft
+        key: webview2-offline-installer-${{ runner.arch }}
+    - name: Download the WebView2 standalone installer
+      if: ${{ runner.os == 'Windows' && inputs.runtime == 'true' && steps.webview2.outputs.installed != 'true' && steps.cache-webview2-installer.outputs.cache-hit != 'true' }}
+      # The "Evergreen" standalone installer from Microsoft
       # <https://developer.microsoft.com/en-us/microsoft-edge/webview2/?form=MA13LH#download>
-      # Unfortunately, this makes the test non-deterministic.
-      # Controlling the version would be difficult.
-      run: Invoke-WebRequest -Uri https://go.microsoft.com/fwlink/?linkid=2124701 -OutFile WebView2Installer.exe
+      # It always serves the current version, so the installed version is not pinned.
+      # The installer is per-architecture: `2135522` is ARM64, `2124701` is x64.
+      run: Invoke-WebRequest -Uri https://go.microsoft.com/fwlink/?linkid=${{ runner.arch == 'ARM64' && '2135522' || '2124701' }} -OutFile WebView2Installer.exe
       shell: pwsh
     - name: Install WebView2
-      if: ${{ runner.os == 'Windows' && inputs.runtime == 'true' }}
-      # This downloads about 200 MB and takes about 5 minutes on my VM
-      # So we could fault in WebView2 from the client exe without the MSI if we needed.
-      # Currently the MSI does this and it's a little janky.
-      run: Start-Process WebView2Installer.exe -ArgumentList "/install" -Wait
+      if: ${{ runner.os == 'Windows' && inputs.runtime == 'true' && steps.webview2.outputs.installed != 'true' }}
+      run: |
+        $installer = Start-Process .\WebView2Installer.exe -ArgumentList "/silent","/install" -Wait -PassThru
+        if ($installer.ExitCode -ne 0) {
+          throw "WebView2 installer failed with exit code $($installer.ExitCode)"
+        }
       shell: pwsh

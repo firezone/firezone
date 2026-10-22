@@ -1,9 +1,10 @@
 defmodule Portal.Cache.Client do
   alias __MODULE__.Database
+  alias Portal.Authentication.Credential
 
   @moduledoc """
     This cache is used in the client channel to maintain a materialized view of the client access state.
-    The cache is updated via WAL messages streamed from the Portal.Changes.ReplicationConnection module.
+    The cache is updated via WAL messages streamed from the Portal.Changes.Consumer module.
 
     We use basic data structures and binary representations instead of full Ecto schema structs
     to minimize memory usage. The rough structure of the cache data structure and some napkin math
@@ -42,29 +43,27 @@ defmodule Portal.Cache.Client do
 
           connectable_resources: [Cache.Cacheable.Resource.t()],
 
-          # For each connectable static_device_pool resource, the set of member device IDs.
+          # For each connectable device pool that lists its devices, the set of member device IDs.
           pool_members: %{resource_id:uuidv4:16 => MapSet<device_id:uuidv4:16>},
 
           # Cached IPs for each device that appears in any connectable pool. Used both
           # to render `addresses` on the pool resource and to authorize client_device_access
           # requests by ipv4 or ipv6.
-          device_addresses: %{device_id:uuidv4:16 => {ipv4_tuple_or_nil, ipv6_tuple_or_nil}},
-
-          # IPv4 addresses of clients previously authorized to connect to this client.
-          authorized_device_ipv4s: MapSet<ipv4_tuple>
+          device_addresses: %{device_id:uuidv4:16 => {ipv4_tuple_or_nil, ipv6_tuple_or_nil}}
         }
 
 
-      For 1,000 policies, 500 resources, 100 memberships, 100 policy_authorizations (per connected client):
+      For 1,000 policies, 500 resources, 100 memberships (per connected client):
 
-        513,400 bytes, 280,700 bytes, 24,640 bytes, 24,640 bytes
+        513,400 bytes, 280,700 bytes, 24,640 bytes
 
-      = 843,380 bytes
+      = 818,740 bytes
       = ~ 1 MB (per client)
 
   """
 
-  alias Portal.{Authentication, ClientSession, Cache, Resource, Policy, Version}
+  alias Portal.{Authentication, Cache, Resource, Policy, Version}
+  alias Portal.Resource.DeviceMembershipCriteria
   require Logger
   require OpenTelemetry.Tracer
   import Ecto.UUID, only: [dump!: 1, load!: 1]
@@ -85,16 +84,17 @@ defmodule Portal.Cache.Client do
     # 3. The resource has at least one site associated with it (or, for pools, no site is required)
     :connectable_resources,
 
-    # Map of static_device_pool resource_id => MapSet of member device_ids for every
-    # currently connectable pool.
+    # Map of device pool resource_id => MapSet of member device_ids for every currently
+    # connectable pool that lists its devices. Only loaded for the v2 protocol, which
+    # sends pool members to the client.
     :pool_members,
 
     # Map of device_id => {ipv4_tuple_or_nil, ipv6_tuple_or_nil} for every device appearing
     # in any connectable pool.
     :device_addresses,
 
-    # IPv4 addresses of clients previously authorized to connect to this client.
-    :authorized_device_ipv4s
+    # The client control protocol version of the channel this cache serves.
+    protocol_version: 1
   ]
 
   @type ipv4_tuple :: {byte(), byte(), byte(), byte()}
@@ -108,6 +108,7 @@ defmodule Portal.Cache.Client do
         }
 
   @type t :: %__MODULE__{
+          protocol_version: pos_integer(),
           policies: %{Cache.Cacheable.uuid_binary() => Portal.Cache.Cacheable.Policy.t()},
           resources: %{Cache.Cacheable.uuid_binary() => Portal.Cache.Cacheable.Resource.t()},
           memberships: %{Cache.Cacheable.uuid_binary() => Cache.Cacheable.uuid_binary()},
@@ -117,8 +118,7 @@ defmodule Portal.Cache.Client do
           },
           device_addresses: %{
             Cache.Cacheable.uuid_binary() => {ipv4_tuple(), ipv6_tuple()}
-          },
-          authorized_device_ipv4s: MapSet.t(ipv4_tuple())
+          }
         }
 
   @doc """
@@ -129,7 +129,6 @@ defmodule Portal.Cache.Client do
   @spec authorize_resource(
           t(),
           Portal.Device.t(),
-          Portal.ClientSession.t(),
           Ecto.UUID.t(),
           Authentication.Subject.t()
         ) ::
@@ -138,7 +137,7 @@ defmodule Portal.Cache.Client do
           | {:error, :not_found}
           | {:error, {:forbidden, violated_properties: [atom()]}}
 
-  def authorize_resource(cache, client, session, resource_id, subject) do
+  def authorize_resource(cache, client, resource_id, subject) do
     rid_bytes = dump!(resource_id)
 
     resource = Enum.find(cache.connectable_resources, :not_found, fn r -> r.id == rid_bytes end)
@@ -147,8 +146,7 @@ defmodule Portal.Cache.Client do
       for({_id, %{resource_id: ^rid_bytes} = p} <- cache.policies, do: p)
       |> longest_conforming_policy_for_client(
         client,
-        session,
-        subject.credential.auth_provider_id,
+        Credential.auth_provider_id(subject.credential),
         subject.expires_at
       )
 
@@ -218,9 +216,15 @@ defmodule Portal.Cache.Client do
     end
   end
 
-  @spec track_authorized_device_ipv4(t(), Postgrex.INET.t()) :: t()
-  def track_authorized_device_ipv4(cache, %Postgrex.INET{address: ipv4_tuple}) do
-    %{cache | authorized_device_ipv4s: MapSet.put(cache.authorized_device_ipv4s, ipv4_tuple)}
+  @doc """
+    The addresses of the devices that were in a connectable pool of `old_cache` and are in
+    no connectable pool of `cache`, so the channel can deny access to them.
+  """
+  @spec removed_member_addresses(t(), t()) :: [{ipv4_tuple(), ipv6_tuple()}]
+  def removed_member_addresses(old_cache, cache) do
+    for {did_bytes, addresses} <- old_cache.device_addresses,
+        not device_in_any_pool?(cache, did_bytes),
+        do: addresses
   end
 
   @doc """
@@ -234,31 +238,36 @@ defmodule Portal.Cache.Client do
   @spec recompute_connectable_resources(
           t() | nil,
           Portal.Device.t(),
-          Portal.ClientSession.t(),
           Authentication.Subject.t(),
           Keyword.t()
         ) ::
           {:ok, [Portal.Cache.Cacheable.Resource.t()], [Ecto.UUID.t()], t()}
 
-  def recompute_connectable_resources(nil, client, session, subject) do
-    hydrate(client, subject)
-    |> recompute_connectable_resources(client, session, subject)
+  def recompute_connectable_resources(cache, client, subject, opts \\ [])
+
+  def recompute_connectable_resources(nil, client, subject, opts) do
+    {protocol_version, opts} = Keyword.pop(opts, :protocol_version, 1)
+
+    hydrate(client, subject, protocol_version)
+    |> recompute_connectable_resources(client, subject, opts)
   end
 
-  def recompute_connectable_resources(cache, client, session, subject, opts \\ []) do
+  def recompute_connectable_resources(cache, client, subject, opts) do
     {toggle, _opts} = Keyword.pop(opts, :toggle, false)
 
     raw_connectable =
       cache.policies
-      |> conforming_resource_ids(client, session, subject.credential.auth_provider_id)
-      |> adapted_resources(cache.resources, session)
+      |> conforming_resource_ids(client, Credential.auth_provider_id(subject.credential))
+      |> adapted_resources(cache.resources, client)
+      |> reject_unsupported_pools(cache.protocol_version)
 
-    {pool_members, device_addresses} = load_pool_state(raw_connectable, subject)
+    {pool_members, device_addresses} =
+      load_pool_state(raw_connectable, subject, cache.protocol_version)
 
     connectable_resources =
       Enum.map(raw_connectable, fn resource ->
         case resource.type do
-          :static_device_pool ->
+          :device_pool ->
             %{resource | devices: render_pool_devices(resource.id, pool_members, device_addresses)}
 
           _ ->
@@ -299,12 +308,11 @@ defmodule Portal.Cache.Client do
   @spec add_membership(
           t(),
           Portal.Device.t(),
-          Portal.ClientSession.t(),
           Authentication.Subject.t()
         ) ::
           {:ok, [Portal.Cache.Cacheable.Resource.t()], [Ecto.UUID.t()], t()}
 
-  def add_membership(cache, client, session, subject) do
+  def add_membership(cache, client, subject) do
     # TODO: Optimization
     # For simplicity, we rehydrate the cache here. This could be made more efficient by calculating which
     # policies and resources we are missing, and selectively fetching, filtering, and updating the cache.
@@ -313,9 +321,12 @@ defmodule Portal.Cache.Client do
     previously_connectable = cache.connectable_resources
 
     # Use the previous connectable IDs so that the recomputation yields the difference
-    cache = %{hydrate(client, subject) | connectable_resources: previously_connectable}
+    cache = %{
+      hydrate(client, subject, cache.protocol_version)
+      | connectable_resources: previously_connectable
+    }
 
-    recompute_connectable_resources(cache, client, session, subject)
+    recompute_connectable_resources(cache, client, subject)
   end
 
   @doc """
@@ -326,12 +337,11 @@ defmodule Portal.Cache.Client do
           t(),
           Portal.Membership.t(),
           Portal.Device.t(),
-          Portal.ClientSession.t(),
           Authentication.Subject.t()
         ) ::
           {:ok, [Cache.Cacheable.Resource.t()], [Ecto.UUID.t()], t()}
 
-  def delete_membership(cache, membership, client, session, subject) do
+  def delete_membership(cache, membership, client, subject) do
     gid_bytes = dump!(membership.group_id)
 
     updated_policies =
@@ -358,7 +368,7 @@ defmodule Portal.Cache.Client do
         memberships: updated_memberships
     }
 
-    recompute_connectable_resources(cache, client, session, subject)
+    recompute_connectable_resources(cache, client, subject)
   end
 
   @doc """
@@ -369,12 +379,11 @@ defmodule Portal.Cache.Client do
           t(),
           Portal.Site.t(),
           Portal.Device.t(),
-          Portal.ClientSession.t(),
           Authentication.Subject.t()
         ) ::
           {:ok, [Portal.Cache.Cacheable.Resource.t()], [Ecto.UUID.t()], t()}
 
-  def update_resources_with_site_name(cache, site, client, session, subject) do
+  def update_resources_with_site_name(cache, site, client, subject) do
     site = Portal.Cache.Cacheable.to_cache(site)
 
     # Get updated resources
@@ -392,11 +401,11 @@ defmodule Portal.Cache.Client do
 
     cache = %{cache | resources: resources}
 
-    toggle = Version.resource_cannot_change_sites_on_client?(session)
+    toggle = Version.resource_cannot_change_sites_on_client?(client)
 
     # For these updates we need to make sure the resource is toggled deleted then created.
     # See https://github.com/firezone/firezone/issues/9881
-    recompute_connectable_resources(cache, client, session, subject, toggle: toggle)
+    recompute_connectable_resources(cache, client, subject, toggle: toggle)
   end
 
   @doc """
@@ -411,12 +420,11 @@ defmodule Portal.Cache.Client do
           t(),
           Policy.t(),
           Portal.Device.t(),
-          Portal.ClientSession.t(),
           Authentication.Subject.t()
         ) ::
           {:ok, [Portal.Cache.Cacheable.Resource.t()], [Ecto.UUID.t()], t()}
 
-  def add_policy(cache, %{resource_id: resource_id} = policy, client, session, subject) do
+  def add_policy(cache, %{resource_id: resource_id} = policy, client, subject) do
     policy = Portal.Cache.Cacheable.to_cache(policy)
 
     if Map.has_key?(cache.memberships, policy.group_id) do
@@ -437,7 +445,7 @@ defmodule Portal.Cache.Client do
           %{cache | resources: Map.put(cache.resources, resource.id, resource)}
         end
 
-      recompute_connectable_resources(cache, client, session, subject)
+      recompute_connectable_resources(cache, client, subject)
     else
       {:ok, [], [], cache}
     end
@@ -464,11 +472,10 @@ defmodule Portal.Cache.Client do
           t(),
           Policy.t(),
           Portal.Device.t(),
-          Portal.ClientSession.t(),
           Authentication.Subject.t()
         ) ::
           {:ok, [Portal.Cache.Cacheable.Resource.t()], [Ecto.UUID.t()], t()}
-  def delete_policy(cache, policy, client, session, subject) do
+  def delete_policy(cache, policy, client, subject) do
     policy = Portal.Cache.Cacheable.to_cache(policy)
 
     if Map.has_key?(cache.policies, policy.id) do
@@ -489,7 +496,7 @@ defmodule Portal.Cache.Client do
 
       cache = %{cache | resources: resources}
 
-      recompute_connectable_resources(cache, client, session, subject)
+      recompute_connectable_resources(cache, client, subject)
     else
       {:ok, [], [], cache}
     end
@@ -512,32 +519,16 @@ defmodule Portal.Cache.Client do
           t(),
           Portal.Resource.t(),
           Portal.Device.t(),
-          Portal.ClientSession.t(),
           Authentication.Subject.t()
         ) ::
           {:ok, [Portal.Cache.Cacheable.Resource.t()], [Ecto.UUID.t()], t()}
 
-  def update_resource(cache, %Portal.Resource{} = changed_resource, client, session, subject) do
+  def update_resource(cache, %Portal.Resource{} = changed_resource, client, subject) do
     resource = Portal.Cache.Cacheable.to_cache(changed_resource)
 
     if Map.has_key?(cache.resources, resource.id) do
       cached_resource = Map.get(cache.resources, resource.id)
-      site_id_bytes = if changed_resource.site_id, do: Ecto.UUID.dump!(changed_resource.site_id)
-
-      # Check if we can reuse the cached site or need to fetch from DB.
-      # site_id can be nil when site is deleted (ON DELETE SET NULL).
-      # cached site can be nil if hydration failed to load it.
-      {site, site_changed?} =
-        cond do
-          is_nil(site_id_bytes) ->
-            {nil, not is_nil(cached_resource.site)}
-
-          cached_resource.site && cached_resource.site.id == site_id_bytes ->
-            {cached_resource.site, false}
-
-          true ->
-            {fetch_site_for_resource(site_id_bytes, subject), not is_nil(cached_resource.site)}
-        end
+      {site, site_changed?} = resolve_site(cached_resource, changed_resource, subject)
 
       resource = %{resource | site: site}
 
@@ -546,11 +537,41 @@ defmodule Portal.Cache.Client do
       cache = %{cache | resources: resources}
 
       # Determine if we need to toggle the resource (delete then add) based on site change and client version
-      toggle = Version.resource_cannot_change_sites_on_client?(session) and site_changed?
+      toggle = Version.resource_cannot_change_sites_on_client?(client) and site_changed?
 
-      recompute_connectable_resources(cache, client, session, subject, toggle: toggle)
+      recompute_connectable_resources(cache, client, subject, toggle: toggle)
     else
       {:ok, [], [], cache}
+    end
+  end
+
+  # Cached gateway-backed resources must carry a resolved site: the client view
+  # renders it and has no clause for nil. `to_cache/1` only carries one over
+  # when the source resource has its site association loaded, which a struct
+  # rebuilt from the WAL never does, so every cache writer fed by a change
+  # broadcast has to resolve it here rather than take what `to_cache/1` produced.
+  #
+  # Nil is the steady state for device pools, which connect without a gateway
+  # and have their site_id forced to nil by `Portal.Resource.changeset/1`;
+  # `adapted_resources/3` keeps those and their render clauses never ask for a
+  # site. For every other type nil means the site was deleted (`ON DELETE SET
+  # NULL`) or hydration missed it, and `adapted_resources/3` drops the resource
+  # before anything renders it.
+  #
+  # Returns whether the site changed as well, because older clients cannot
+  # handle a resource moving between sites and need a delete/create instead.
+  defp resolve_site(cached_resource, %Portal.Resource{} = changed_resource, subject) do
+    site_id_bytes = if changed_resource.site_id, do: Ecto.UUID.dump!(changed_resource.site_id)
+
+    cond do
+      is_nil(site_id_bytes) ->
+        {nil, not is_nil(cached_resource.site)}
+
+      cached_resource.site && cached_resource.site.id == site_id_bytes ->
+        {cached_resource.site, false}
+
+      true ->
+        {fetch_site_for_resource(site_id_bytes, subject), not is_nil(cached_resource.site)}
     end
   end
 
@@ -559,86 +580,6 @@ defmodule Portal.Cache.Client do
       %Portal.Site{} = site -> Portal.Cache.Cacheable.to_cache(site)
       nil -> nil
     end
-  end
-
-  @spec add_static_device_pool_member(
-          t(),
-          Portal.StaticDevicePoolMember.t(),
-          Authentication.Subject.t()
-        ) :: {:ok, [Cache.Cacheable.Resource.t()], [Ecto.UUID.t()], t()}
-  def add_static_device_pool_member(cache, %Portal.StaticDevicePoolMember{} = member, subject) do
-    rid_bytes = dump!(member.resource_id)
-    did_bytes = dump!(member.device_id)
-
-    with true <- connectable_resource?(cache, member.resource_id),
-         {:ok, device_addresses} <- ensure_device_addresses(cache, did_bytes, member.device_id, subject) do
-      pool_members =
-        Map.update(
-          cache.pool_members,
-          rid_bytes,
-          MapSet.new([did_bytes]),
-          &MapSet.put(&1, did_bytes)
-        )
-
-      cache = %{cache | pool_members: pool_members, device_addresses: device_addresses}
-
-      {updated_pool, cache} = refresh_pool_devices(cache, rid_bytes)
-
-      added = if updated_pool, do: [updated_pool], else: []
-
-      {:ok, added, [], cache}
-    else
-      _ -> {:ok, [], [], cache}
-    end
-  end
-
-  defp ensure_device_addresses(cache, did_bytes, device_id, subject) do
-    case Map.fetch(cache.device_addresses, did_bytes) do
-      {:ok, _existing} ->
-        {:ok, cache.device_addresses}
-
-      :error ->
-        case Database.get_client_addresses(device_id, subject) do
-          nil -> :error
-          {_v4, _v6} = addresses -> {:ok, Map.put(cache.device_addresses, did_bytes, addresses)}
-        end
-    end
-  end
-
-  @spec delete_static_device_pool_member(t(), Portal.StaticDevicePoolMember.t()) ::
-          {:ok, denied_addresses(), [Cache.Cacheable.Resource.t()], [Ecto.UUID.t()], t()}
-  def delete_static_device_pool_member(cache, %Portal.StaticDevicePoolMember{} = member) do
-    rid_bytes = dump!(member.resource_id)
-    did_bytes = dump!(member.device_id)
-
-    addresses = Map.get(cache.device_addresses, did_bytes)
-
-    pool_members =
-      case Map.fetch(cache.pool_members, rid_bytes) do
-        {:ok, set} ->
-          updated = MapSet.delete(set, did_bytes)
-
-          if MapSet.size(updated) == 0,
-            do: Map.delete(cache.pool_members, rid_bytes),
-            else: Map.put(cache.pool_members, rid_bytes, updated)
-
-        :error ->
-          cache.pool_members
-      end
-
-    cache = %{cache | pool_members: pool_members}
-
-    # Only deny access to the device's IPs when it is no longer reachable
-    # through any other pool we have access to.
-    denied = if device_in_any_pool?(cache, did_bytes), do: nil, else: addresses
-
-    cache = garbage_collect_device_addresses(cache, did_bytes)
-
-    {updated_pool, cache} = refresh_pool_devices(cache, rid_bytes)
-
-    added = if updated_pool, do: [updated_pool], else: []
-
-    {:ok, denied, added, [], cache}
   end
 
   @doc """
@@ -689,10 +630,8 @@ defmodule Portal.Cache.Client do
     it was a member of, recomputes affected pools' addresses, and returns the device's
     last-known addresses so the channel can push `client_device_access_denied`.
 
-    Cascade `static_device_pool_members` delete events that arrive after this become
-    no-ops because the device is no longer in `pool_members`. If the cascade arrives
-    *before* this Device delete, that path already pushed the denial and this becomes
-    the no-op.
+    The resource update that drops the device from the pool's criteria arrives after
+    this and finds the device already gone from `pool_members`.
   """
   @spec handle_member_device_delete(t(), Portal.Device.t()) ::
           {:ok, denied_addresses(), [Cache.Cacheable.Resource.t()], [Ecto.UUID.t()], t()}
@@ -721,7 +660,8 @@ defmodule Portal.Cache.Client do
     {:ok, addresses, updated, [], cache}
   end
 
-  defp hydrate(client, subject) do
+  # `protocol_version` is the client control protocol of the channel this cache serves.
+  defp hydrate(client, subject, protocol_version) do
     attributes = %{
       actor_id: client.actor_id
     }
@@ -746,17 +686,18 @@ defmodule Portal.Cache.Client do
         end
 
       cache
+      |> Map.put(:protocol_version, protocol_version)
       |> Map.put(:memberships, memberships)
       |> Map.put(:connectable_resources, [])
       |> Map.put(:pool_members, %{})
       |> Map.put(:device_addresses, %{})
-      |> Map.put(:authorized_device_ipv4s, Database.authorized_ipv4s(client.id, subject))
     end
   end
 
-  defp adapted_resources(conforming_resource_ids, resources, session) do
+  defp adapted_resources(conforming_resource_ids, resources, client) do
     for id <- conforming_resource_ids,
-        adapted_resource = Map.get(resources, id) |> adapt(session),
+        resource = Map.get(resources, id),
+        adapted_resource = adapt(resource, client),
         not is_nil(adapted_resource),
         resource_connectable_without_gateway?(adapted_resource) or
           not is_nil(adapted_resource.site) do
@@ -764,46 +705,57 @@ defmodule Portal.Cache.Client do
     end
   end
 
-  defp resource_connectable_without_gateway?(%Cache.Cacheable.Resource{type: type})
-       when type in [:static_device_pool, :dynamic_device_pool],
-       do: true
+  # The v2 wire format names a pool's members inline, so a pool that picks its devices by
+  # a rule has no shape there. Those pools reach v3 clients only.
+  defp reject_unsupported_pools(resources, protocol_version) when protocol_version >= 3,
+    do: resources
+
+  defp reject_unsupported_pools(resources, _protocol_version) do
+    Enum.reject(resources, fn resource ->
+      resource.type == :device_pool and
+        DeviceMembershipCriteria.device_ids(resource.device_membership_criteria) == :error
+    end)
+  end
+
+  defp resource_connectable_without_gateway?(%Cache.Cacheable.Resource{type: :device_pool}),
+    do: true
 
   defp resource_connectable_without_gateway?(%Cache.Cacheable.Resource{}), do: false
 
-  defp connectable_resource?(cache, resource_id) do
-    resource_id_bytes = dump!(resource_id)
-    Enum.any?(cache.connectable_resources, &(&1.id == resource_id_bytes))
+  defp adapt(resource, client) do
+    Resource.adapt_resource_for_version(resource, client)
   end
 
-  defp adapt(resource, session) do
-    Resource.adapt_resource_for_version(resource, session)
-  end
+  defp load_pool_state(_connectable_resources, _subject, protocol_version)
+       when protocol_version >= 3,
+       do: {%{}, %{}}
 
-  defp load_pool_state(connectable_resources, subject) do
-    pool_resource_ids =
-      for r <- connectable_resources, r.type == :static_device_pool, do: load!(r.id)
+  defp load_pool_state(connectable_resources, subject, _protocol_version) do
+    pool_device_ids =
+      for r <- connectable_resources,
+          r.type == :device_pool,
+          {:ok, device_ids} <- [DeviceMembershipCriteria.device_ids(r.device_membership_criteria)],
+          do: {r.id, device_ids}
 
-    case pool_resource_ids do
-      [] ->
-        {%{}, %{}}
+    device_addresses =
+      pool_device_ids
+      |> Enum.flat_map(fn {_rid_bytes, device_ids} -> device_ids end)
+      |> Enum.uniq()
+      |> Database.all_client_addresses(subject)
 
-      ids ->
-        rows = Database.all_member_ips(ids, subject)
+    pool_members =
+      Enum.reduce(pool_device_ids, %{}, fn {rid_bytes, device_ids}, acc ->
+        members =
+          for id <- device_ids,
+              did_bytes = dump!(id),
+              Map.has_key?(device_addresses, did_bytes),
+              into: MapSet.new(),
+              do: did_bytes
 
-        Enum.reduce(rows, {%{}, %{}}, fn {rid_bytes, did_bytes, ipv4, ipv6},
-                                         {pool_members_acc, device_addresses_acc} ->
-          pool_members_acc =
-            Map.update(
-              pool_members_acc,
-              rid_bytes,
-              MapSet.new([did_bytes]),
-              &MapSet.put(&1, did_bytes)
-            )
+        if MapSet.size(members) == 0, do: acc, else: Map.put(acc, rid_bytes, members)
+      end)
 
-          device_addresses_acc = Map.put(device_addresses_acc, did_bytes, {ipv4, ipv6})
-          {pool_members_acc, device_addresses_acc}
-        end)
-    end
+    {pool_members, device_addresses}
   end
 
   defp render_pool_devices(rid_bytes, pool_members, device_addresses) do
@@ -831,7 +783,7 @@ defmodule Portal.Cache.Client do
 
     {updated, connectable} =
       Enum.map_reduce(cache.connectable_resources, nil, fn r, found ->
-        if r.id == rid_bytes and r.type == :static_device_pool do
+        if r.id == rid_bytes and r.type == :device_pool do
           new_r = %{r | devices: devices}
           {new_r, new_r}
         else
@@ -842,28 +794,20 @@ defmodule Portal.Cache.Client do
     {connectable, %{cache | connectable_resources: updated}}
   end
 
-  defp garbage_collect_device_addresses(cache, did_bytes) do
-    if device_in_any_pool?(cache, did_bytes) do
-      cache
-    else
-      %{cache | device_addresses: Map.delete(cache.device_addresses, did_bytes)}
-    end
-  end
-
   defp device_in_any_pool?(cache, did_bytes) do
     Enum.any?(cache.pool_members, fn {_rid, set} -> MapSet.member?(set, did_bytes) end)
   end
 
-  defp conforming_resource_ids(policies, client, session, auth_provider_id)
+  defp conforming_resource_ids(policies, client, auth_provider_id)
        when is_map(policies) do
     policies
     |> Map.values()
-    |> conforming_resource_ids(client, session, auth_provider_id)
+    |> conforming_resource_ids(client, auth_provider_id)
   end
 
-  defp conforming_resource_ids(policies, client, session, auth_provider_id) do
+  defp conforming_resource_ids(policies, client, auth_provider_id) do
     policies
-    |> filter_by_conforming_policies_for_client(client, session, auth_provider_id)
+    |> filter_by_conforming_policies_for_client(client, auth_provider_id)
     |> Enum.map(& &1.resource_id)
     |> Enum.uniq()
   end
@@ -873,12 +817,11 @@ defmodule Portal.Cache.Client do
   defp filter_by_conforming_policies_for_client(
          policies,
          client,
-         %ClientSession{} = session,
          auth_provider_id
        ) do
     Enum.filter(policies, fn policy ->
-      policy.conditions
-      |> Portal.Policies.Evaluator.ensure_conforms(client, session, auth_provider_id)
+      policy
+      |> Portal.Policies.Evaluator.ensure_policy_conforms(client, auth_provider_id)
       |> case do
         {:ok, _expires_at} -> true
         {:error, _violated_properties} -> false
@@ -891,13 +834,12 @@ defmodule Portal.Cache.Client do
   defp longest_conforming_policy_for_client(
          policies,
          client,
-         session,
          auth_provider_id,
          expires_at
        ) do
     policies
     |> Enum.reduce(%{failed: [], succeeded: []}, fn policy, acc ->
-      case ensure_client_conforms_policy_conditions(policy, client, session, auth_provider_id) do
+      case ensure_client_conforms_policy_conditions(policy, client, auth_provider_id) do
         {:ok, expires_at} ->
           %{acc | succeeded: [{expires_at, policy} | acc.succeeded]}
 
@@ -920,13 +862,11 @@ defmodule Portal.Cache.Client do
   defp ensure_client_conforms_policy_conditions(
          %Portal.Policy{} = policy,
          client,
-         %ClientSession{} = session,
          auth_provider_id
        ) do
     ensure_client_conforms_policy_conditions(
       Cache.Cacheable.to_cache(policy),
       client,
-      session,
       auth_provider_id
     )
   end
@@ -934,15 +874,9 @@ defmodule Portal.Cache.Client do
   defp ensure_client_conforms_policy_conditions(
          %Cache.Cacheable.Policy{} = policy,
          client,
-         %ClientSession{} = session,
          auth_provider_id
        ) do
-    case Portal.Policies.Evaluator.ensure_conforms(
-           policy.conditions,
-           client,
-           session,
-           auth_provider_id
-         ) do
+    case Portal.Policies.Evaluator.ensure_policy_conforms(policy, client, auth_provider_id) do
       {:ok, expires_at} ->
         {:ok, expires_at}
 
@@ -975,7 +909,7 @@ defmodule Portal.Cache.Client do
       include_everyone_group = subject.actor.type in [:account_user, :account_admin_user]
 
       from(p in Portal.Policy, as: :policies)
-      |> where([policies: p], is_nil(p.disabled_at))
+      |> where([policies: p], p.is_disabled == false)
       |> join(:inner, [policies: p], ag in Portal.Group,
         on: ag.id == p.group_id and ag.account_id == p.account_id,
         as: :group
@@ -996,7 +930,7 @@ defmodule Portal.Cache.Client do
              ag.name == "Everyone")
       )
       |> preload(resource: :site)
-      |> Safe.scoped(subject, :replica)
+      |> Safe.scoped(subject)
       |> Safe.all()
     end
 
@@ -1004,7 +938,7 @@ defmodule Portal.Cache.Client do
       # Get real memberships
       memberships =
         from(m in Portal.Membership, where: m.actor_id == ^actor_id)
-        |> Safe.scoped(subject, :replica)
+        |> Safe.scoped(subject)
         |> Safe.all()
         |> case do
           {:error, :unauthorized} -> []
@@ -1021,7 +955,7 @@ defmodule Portal.Cache.Client do
                 g.name == "Everyone" and
                 g.account_id == ^subject.account.id
           )
-          |> Safe.scoped(subject, :replica)
+          |> Safe.scoped(subject)
           |> Safe.one()
 
         # Append a synthetic membership for the Everyone group
@@ -1044,7 +978,7 @@ defmodule Portal.Cache.Client do
       result =
         from(r in Portal.Resource, where: r.id == ^id)
         |> preload([:site])
-        |> Safe.scoped(subject, :replica)
+        |> Safe.scoped(subject)
         |> Safe.one()
 
       case result do
@@ -1055,96 +989,39 @@ defmodule Portal.Cache.Client do
     end
 
     def preload_site(resource) do
-      Safe.preload(resource, :site, :replica)
+      Safe.preload(resource, :site)
     end
 
     def get_site_by_id(site_id, subject) when is_binary(site_id) do
       id = Ecto.UUID.load!(site_id)
 
       from(s in Portal.Site, where: s.id == ^id)
-      |> Safe.scoped(subject, :replica)
+      |> Safe.scoped(subject)
       |> Safe.one()
     end
 
     @doc """
-      Returns a list of `{resource_id_bytes, device_id_bytes, ipv4_tuple, ipv6_tuple}`
-      for every member of the given pool resources. Member device ipv4/ipv6 are NOT NULL.
+      The `{ipv4_tuple, ipv6_tuple}` of every listed device that is a client of the account,
+      keyed by device id bytes.
     """
-    def all_member_ips([], _subject), do: []
+    def all_client_addresses([], _subject), do: %{}
 
-    def all_member_ips(resource_ids, subject) do
-      from(r in Portal.Resource, as: :resources)
-      |> where([resources: r], r.id in ^resource_ids)
-      |> join(:inner, [resources: r], m in assoc(r, :static_pool_members), as: :members)
-      |> join(:inner, [members: m], c in assoc(m, :client), as: :clients)
-      |> where([clients: c], c.type == :client)
-      |> select(
-        [resources: r, members: m, clients: c],
-        {r.id, m.device_id, c.ipv4, c.ipv6}
-      )
-      |> Safe.scoped(subject, :replica)
+    def all_client_addresses(device_ids, subject) do
+      from(d in Portal.Device, as: :devices)
+      |> where([devices: d], d.type == :client and d.id in ^device_ids)
+      |> select([devices: d], {d.id, d.ipv4, d.ipv6})
+      |> Safe.scoped(subject)
       |> Safe.all()
       |> case do
         {:error, :unauthorized} ->
-          []
+          %{}
 
         rows ->
-          Enum.map(rows, fn {rid, did, %Postgrex.INET{address: v4}, %Postgrex.INET{address: v6}} ->
-            {Ecto.UUID.dump!(rid), Ecto.UUID.dump!(did), v4, v6}
+          Map.new(rows, fn {id, %Postgrex.INET{address: v4}, %Postgrex.INET{address: v6}} ->
+            {Ecto.UUID.dump!(id), {v4, v6}}
           end)
       end
     end
 
-    @doc """
-      Fetches `{ipv4_tuple, ipv6_tuple}` for a single client device, or `nil` if the
-      device cannot be found or the read is unauthorized (e.g. a race with deletion).
-      Both addresses are NOT NULL when the device row exists.
-    """
-    def get_client_addresses(client_id, subject) do
-      from(c in Portal.Device,
-        where: c.type == :client,
-        where: c.id == ^client_id
-      )
-      |> Safe.scoped(subject, :replica)
-      |> Safe.one()
-      |> case do
-        %Portal.Device{
-          ipv4: %Postgrex.INET{address: v4},
-          ipv6: %Postgrex.INET{address: v6}
-        } ->
-          {v4, v6}
-
-        nil ->
-          Logger.error("Addresses not found for client", client_id: client_id)
-          nil
-
-        {:error, reason} ->
-          Logger.error("Failed to fetch addresses for client",
-            client_id: client_id,
-            reason: inspect(reason)
-          )
-
-          nil
-      end
-    end
-
-    def authorized_ipv4s(client_id, subject) do
-      now = DateTime.utc_now()
-
-      from(pa in Portal.PolicyAuthorization, as: :policy_authorizations)
-      |> where([policy_authorizations: pa], pa.receiving_device_id == ^client_id)
-      |> where([policy_authorizations: pa], pa.expires_at > ^now)
-      |> join(:inner, [policy_authorizations: pa], c in Portal.Device,
-        on: c.id == pa.initiating_device_id and c.type == :client,
-        as: :clients
-      )
-      |> select([clients: c], c.ipv4)
-      |> Safe.scoped(subject, :replica)
-      |> Safe.all()
-      |> case do
-        {:error, :unauthorized} -> MapSet.new()
-        rows -> MapSet.new(rows, & &1.address)
-      end
-    end
   end
 end

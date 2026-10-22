@@ -40,7 +40,7 @@ permissions:
 
 jobs:
   build:
-    name: build-${{ matrix.system }}
+    name: build-${{ matrix.package }}-${{ matrix.system }}
     # The nix-cache-publish environment holds NIX_CACHE_SIGNING_KEY and is
     # restricted to main and release tags; PR builds never push or sign.
     environment: ${{ inputs.push_to_cache && 'nix-cache-publish' || '' }}
@@ -51,102 +51,44 @@ jobs:
         # (non-matching include entries become new combinations), so the
         # runner is derived from the system instead.
         system: ${{ fromJSON(inputs.systems) }}
+        # One runner per package: each derivation compiles the whole Rust
+        # dependency graph, so a shared runner leaves the three contending
+        # for its cores. Runner minutes are free on public repos, wall-clock
+        # time is not.
+        package:
+          - firezone-gateway
+          - firezone-headless-client
+          - firezone-gui-client
     runs-on: ${{ matrix.system == 'aarch64-linux' && 'ubuntu-24.04-arm' || 'ubuntu-24.04' }}
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.sha }}
       - uses: ./.github/actions/free-disk-space
       - name: Install Nix
-        uses: DeterminateSystems/nix-installer-action@ef8a148080ab6020fd15196c2084a2eea5ff2d25 # v22
+        uses: DeterminateSystems/nix-installer-action@3138316df39ed29be04236d7ffc686fa525866aa # v23
         with:
           determinate: false
           diagnostic-endpoint: ""
-          # Substitute from the first-party cache (kept warm by main and
-          # release builds) instead of rebuilding.
+          # Substitute from the first-party caches (kept warm by main and
+          # release builds) instead of rebuilding. `nix-ci` holds the compiled
+          # Cargo dependency snapshots and is only ever read here, never by
+          # anyone installing Firezone from the flake.
           extra-conf: |
-            extra-substituters = https://artifacts.firezone.dev/nix
+            extra-substituters = https://artifacts.firezone.dev/nix https://artifacts.firezone.dev/nix-ci
             extra-trusted-public-keys = artifacts.firezone.dev/nix-1:T4LHdL1HeA6LE9qgu0Po0j3RIlelKZz8pzqnzEAIRfI=
       - name: Check flake
         run: nix flake check --no-build
-      - name: Build packages
-        id: build
-        shell: bash
+      - name: Build package
         run: |
-          set -o pipefail
-
-          build() {
-            nix build \
-              .#firezone-gateway \
-              .#firezone-headless-client \
-              .#firezone-gui-client \
-              --print-build-logs 2>&1 | tee build.log
-          }
-
-          if build; then
-            exit 0
-          fi
-
-          # The frontend's fetchPnpmDeps hash drifts whenever
-          # rust/gui-client/pnpm-lock.yaml changes (dependabot bumps, or merge
-          # skew between a lockfile PR and an unrelated one). Recompute it and
-          # rebuild so the build stays green and the cache stays warm. The
-          # cache-publish run then opens a PR to commit the corrected value.
-          if grep -q 'hash mismatch in fixed-output derivation' build.log \
-            && grep -q 'pnpm-deps' build.log; then
-            echo "pnpm-deps hash drifted; recomputing and rebuilding."
-            ./scripts/nix/update-pnpm-hash.sh
-            echo "hash_changed=true" >> "$GITHUB_OUTPUT"
-            build
-          else
-            echo "Nix build failed for a non-hash reason." >&2
-            exit 1
-          fi
-      - name: Set up GnuPG for the bump commit
-        # Only the cache-publish context (main / release tags) is trusted with
-        # the bot credentials, and one matrix leg is enough to open the PR.
-        if: ${{ inputs.push_to_cache && steps.build.outputs.hash_changed == 'true' && matrix.system == 'x86_64-linux' }}
-        uses: ./.github/actions/setup-gpg
-        id: setup-gpg
-        with:
-          key: ${{ secrets.RELEASE_PR_BOT_GPG_KEY }}
-          email: github-bot@firezone.dev
-      - name: Open pnpm-deps hash bump PR
-        if: ${{ inputs.push_to_cache && steps.build.outputs.hash_changed == 'true' && matrix.system == 'x86_64-linux' }}
-        env:
-          GH_TOKEN: ${{ secrets.RELEASE_PR_BOT_GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-
-          git config --local user.email "github-bot@firezone.dev"
-          git config --local user.name "Firezone Bot"
-          git config --local user.signingkey "${{ steps.setup-gpg.outputs.key_id }}"
-          git config --local commit.gpgsign true
-
-          branch="chore/nix-pnpm-hash"
-          git checkout -b "$branch"
-          git commit -am "fix(nix): bump gui-client pnpm-deps hash"
-
-          # The checkout persists the default (read-only) GITHUB_TOKEN as an
-          # http.extraheader, which git sends regardless of the remote URL's
-          # embedded credentials. Clear it so the bot token below is actually
-          # used, letting the PR's checks run (a GITHUB_TOKEN push would not
-          # trigger them). An empty value resets the extra headers to the
-          # empty list (see `git help config`), unlike `--unset-all`, which
-          # would fail if checkout didn't happen to set one.
-          git config --local http.https://github.com/.extraheader ""
-          git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
-          git push -u origin HEAD --force
-
-          if [ -z "$(gh pr list --head "$branch" --state open --json number --jq '.[].number')" ]; then
-            gh pr create \
-              --title "fix(nix): bump gui-client pnpm-deps hash" \
-              --body "rust/gui-client/pnpm-lock.yaml changed; refreshing the fetchPnpmDeps pin so local Nix builds match CI." \
-              --reviewer firezone/engineering
-          fi
+          nix build \
+            --out-link result-cargo-artifacts \
+            .#${{ matrix.package }}.cargoArtifacts \
+            --print-build-logs
+          nix build .#${{ matrix.package }} --print-build-logs
       - name: Azure login (OIDC)
         if: ${{ inputs.push_to_cache }}
-        uses: azure/login@532459ea530d8321f2fb9bb10d1e0bcf23869a43 # v3.0.0
+        uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
         with:
           client-id: ${{ secrets.AZURE_ARTIFACTS_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_ARTIFACTS_TENANT_ID }}

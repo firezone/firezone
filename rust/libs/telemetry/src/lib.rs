@@ -2,16 +2,15 @@
 
 use std::{collections::BTreeMap, fmt, mem, str::FromStr, sync::Arc, time::Duration};
 
-use anyhow::{Context, Result, anyhow, bail};
+use anyhow::{Context as _, Result, bail};
 use api_url::ApiUrl;
-use parking_lot::Mutex;
 use sentry::{
     BeforeCallback, User,
     protocol::{Event, Log, LogAttribute, Metric},
 };
 use sha2::Digest as _;
 use smallvec::SmallVec;
-use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
+use socket_factory::{SocketFactory, TcpSocket};
 
 pub mod analytics;
 pub mod feature_flags;
@@ -23,8 +22,10 @@ mod noop_push_metrics_exporter;
 mod posthog;
 mod sentry;
 mod sentry_instrument_provider;
+mod state;
 
-pub use ingest::SystemResolvers;
+use state::SharedState;
+
 pub use noop_push_metrics_exporter::NoopPushMetricsExporter;
 pub use sentry_instrument_provider::SentryMeterProvider;
 
@@ -47,7 +48,7 @@ pub fn maybe_hash_device_id(id: String) -> String {
 /// Call this on network changes, alongside resetting connlib. Triggers a
 /// feature-flag re-evaluation so flags are refreshed over the new connection.
 pub fn reset_ingest() {
-    ingest::reset_sockets();
+    ingest::reset_socket_factory();
     posthog::reset_client();
     sentry::reset_client();
     feature_flags::reevaluate_current();
@@ -171,53 +172,79 @@ impl fmt::Display for Env {
     }
 }
 
-/// The process-global Sentry guard.
-///
-/// Sentry is one client per process, and the rest of this crate (the Hub,
-/// `SOCKETS`, `RESOLVER`, `RUNTIME`) is already global, so the guard is too. Every
-/// binary drives telemetry through the free functions below rather than holding an
-/// instance.
-static GUARD: Mutex<Option<sentry::ClientInitGuard>> = Mutex::new(None);
+/// The process-global telemetry state.
+static STATE: SharedState = SharedState::new();
 
-/// Configures the shared, tunnel-bypassing ingest socket factories so telemetry
-/// never loops through connlib. Call once at process start before [`start`].
-pub fn configure(tcp: Arc<dyn SocketFactory<TcpSocket>>, udp: Arc<dyn SocketFactory<UdpSocket>>) {
-    ingest::configure(tcp, udp);
+/// Configures the tunnel-bypassing socket factory for telemetry's ingest
+/// connections so they never loop through connlib. Call once at process start
+/// before [`start`].
+pub fn configure(tcp: Arc<dyn SocketFactory<TcpSocket>>) {
+    ingest::configure(tcp);
 }
 
 /// Starts (or re-points) the Sentry session for `env_or_api_url`.
 pub fn start(env_or_api_url: &str, release: &str, dsn: Dsn) {
+    if let Err(e) = try_start(env_or_api_url, release, dsn) {
+        tracing::error!("Failed to start telemetry: {e:#}");
+    }
+}
+
+fn try_start(env_or_api_url: &str, release: &str, dsn: Dsn) -> Result<()> {
     let environment = Env::parse(env_or_api_url);
-    let mut guard = GUARD.lock();
 
-    if guard
-        .as_ref()
-        .and_then(|i| i.options().environment.as_ref())
-        .is_some_and(|env| env == environment.as_str())
-    {
-        tracing::debug!(%environment, "Telemetry already initialised");
-
-        return;
+    /// What [`start`] should do, decided while briefly holding the lock.
+    enum Plan {
+        NoOp,
+        Unofficial,
+        Start,
     }
 
-    // Stop any previous telemetry session.
-    if let Some(inner) = guard.take() {
+    // Phase 1 — under the lock: decide the transition and hand back the previous
+    // guard. Only plain state is touched here; no logging, no SDK calls.
+    let (plan, previous) = STATE
+        .try_write(|state| {
+            if state.is_active() && state.env() == Some(environment) {
+                return (Plan::NoOp, None);
+            }
+
+            let previous = state.take_guard();
+            if previous.is_some() {
+                state.clear_identity();
+            }
+
+            if matches!(
+                environment,
+                Env::OnPrem | Env::Localhost | Env::DockerCompose
+            ) {
+                state.set_env(None);
+
+                return (Plan::Unofficial, previous);
+            }
+
+            (Plan::Start, previous)
+        })
+        .context("Failed to plan telemetry start")?;
+
+    // Phase 2 — the lock is released, so logging (which re-enters the lock via
+    // the Sentry hooks) and dropping the previous guard (which flushes) is safe.
+    if previous.is_some() {
         tracing::debug!("Stopping previous telemetry session");
 
-        drop(inner);
-
+        drop(previous);
         set_current_user(None);
     }
 
-    if matches!(
-        environment,
-        Env::OnPrem | Env::Localhost | Env::DockerCompose
-    ) {
-        tracing::debug!(%env_or_api_url, "Telemetry won't start in unofficial environment");
-        return;
+    match plan {
+        Plan::NoOp => {
+            tracing::debug!(%environment, "Telemetry already initialised");
+            return Ok(());
+        }
+        Plan::Unofficial => {
+            tracing::debug!(%env_or_api_url, "Telemetry won't start in unofficial environment");
+            return Ok(());
+        }
+        Plan::Start => {}
     }
-
-    tracing::info!(%environment, "Starting telemetry");
 
     let inner = sentry::init_sdk_client(dsn.to_string(), environment.as_str(), release);
     // Configure scope on the main hub so that all threads will get the tags.
@@ -236,88 +263,148 @@ pub fn start(env_or_api_url: &str, release: &str, dsn: Dsn) {
         }
     });
 
-    guard.replace(inner);
-}
+    // Phase 3 — publish the live client. Plain state mutation only, no logging.
+    STATE
+        .try_write(move |state| {
+            state.set_env(Some(environment));
+            state.set_guard(inner);
+        })
+        .context("Failed to activate telemetry")?;
 
-/// Flushes events to sentry.io and drops the guard. A no-op if not started.
-pub async fn stop() {
-    if let Err(e) = end_session().await {
-        tracing::error!("Failed to stop Sentry session on graceful exit: {e:#}")
-    }
-}
+    sentry::warmup_connection();
+    posthog::warmup_connection();
 
-/// Blocking [`stop`] for teardown paths with no runtime of their own, run on
-/// telemetry's shared ingest runtime.
-pub fn stop_blocking() {
-    ingest::RUNTIME.block_on(stop());
-}
-
-pub fn is_active() -> bool {
-    GUARD.lock().is_some()
-}
-
-async fn end_session() -> Result<()> {
-    let Some(inner) = GUARD.lock().take() else {
-        return Ok(());
-    };
-    tracing::info!("Stopping telemetry");
-
-    // Sentry uses blocking IO for flushing ..
-    let task = tokio::task::spawn_blocking(move || {
-        if !inner.flush(Some(Duration::from_secs(1))) {
-            return Err(anyhow!("Failed to flush telemetry events to sentry.io"));
-        };
-
-        tracing::debug!("Flushed telemetry");
-
-        Ok(())
-    });
-
-    tokio::time::timeout(Duration::from_secs(1), task)
-        .await
-        .context("Failed to end session within 1s")???;
+    tracing::info!(%environment, "Started telemetry");
 
     Ok(())
 }
 
-pub fn set_account_slug(slug: String) {
-    update_user(|user| {
-        user.other.insert("account_slug".to_owned(), slug.into());
+/// Flushes events to sentry.io and drops the guard. A no-op if not started.
+pub fn stop() {
+    let Ok(Some(inner)) = STATE.try_write(|state| state.take_guard()) else {
+        return;
+    };
+
+    // This blocks the current thread but the transport uses its own runtime so this is safe.
+    let flushed = inner.flush(Some(Duration::from_secs(1)));
+
+    tracing::info!(%flushed, "Stopped telemetry");
+}
+
+pub fn is_active() -> bool {
+    STATE.try_read(|state| state.is_active()).unwrap_or(false)
+}
+
+/// Stores an identity attribute in the crate state and mirrors it into the
+/// Sentry user's attribute map; `None` clears both.
+fn set_identity_attribute(
+    key: &'static str,
+    value: Option<String>,
+    store: fn(&mut state::State, Option<String>),
+) {
+    match &value {
+        Some(_) => tracing::debug!(%key, "Setting identity attribute"),
+        None => tracing::debug!(%key, "Clearing identity attribute"),
+    }
+
+    let _ = STATE.try_write(|state| store(state, value.clone()));
+
+    update_user(|user| match value {
+        Some(value) => {
+            user.other.insert(key.to_owned(), value.into());
+        }
+        None => {
+            user.other.remove(key);
+        }
     });
 }
 
+pub fn set_account_slug(slug: impl Into<Option<String>>) {
+    set_identity_attribute("account_slug", slug.into(), state::State::set_account_slug);
+}
+
+/// Attaches the account UUID read from a managed certificate.
+pub fn set_account_id(account_id: impl Into<Option<String>>) {
+    set_identity_attribute(
+        "account_id",
+        account_id.into(),
+        state::State::set_account_id,
+    );
+}
+
+/// Attaches the actor email read from a managed certificate.
+pub fn set_actor_email(actor_email: impl Into<Option<String>>) {
+    let actor_email = actor_email.into();
+    update_user(|user| user.email.clone_from(&actor_email));
+    set_identity_attribute("actor_email", actor_email, state::State::set_actor_email);
+}
+
 /// Attaches the Firezone ID to the active Sentry session.
-pub async fn set_firezone_id(firezone_id: String) {
+pub fn set_firezone_id(firezone_id: String) {
     let new_user = compute_user(firezone_id);
+
+    tracing::debug!(user = %new_user.id.as_deref().unwrap_or("<none>"), "Setting user");
+
+    let _ = STATE.try_write(|state| state.set_firezone_id(new_user.id.clone()));
+
     update_user(|user| {
         user.id = new_user.id;
         user.other.extend(new_user.other);
     });
 
-    // In case user and env are now available, re-eval feature-flags.
-    if let (Some(id), Some(env)) = (current_user(), current_env()) {
-        feature_flags::evaluate_now(id, env).await;
-    }
+    // The user (and maybe env) may now be available, so re-eval feature flags on
+    // telemetry's internal ingest runtime.
+    feature_flags::reevaluate_current();
+}
+
+/// Attaches the MDM's device identifier to the active Sentry session.
+///
+/// This identifier comes from the client certificate and allows an event to be
+/// correlated with the device attested by the Portal even when multiple
+/// installations share a Firezone ID.
+pub fn set_mdm_device_id(mdm_device_id: impl Into<Option<String>>) {
+    set_identity_attribute(
+        "mdm_device_id",
+        mdm_device_id.into(),
+        state::State::set_mdm_device_id,
+    );
 }
 
 #[doc(hidden)] // Only public for testing.
 pub fn current_env() -> Option<Env> {
-    let client = sentry::Hub::main().client()?;
-    let env = client.options().environment.as_deref()?;
-    let env = Env::from_str(env).ok()?;
-
-    Some(env)
+    STATE.try_read(|state| state.env()).ok().flatten()
 }
 
 #[doc(hidden)] // Only public for testing.
 pub fn current_user() -> Option<String> {
-    sentry::Hub::main().configure_scope(|s| s.user()?.id.clone())
+    STATE.try_read(|state| state.firezone_id()).ok().flatten()
 }
 
 #[doc(hidden)] // Only public for testing.
 pub fn current_account_slug() -> Option<String> {
-    sentry::Hub::main()
-        .configure_scope(|s| Some(s.user()?.other.get("account_slug")?.as_str()?.to_owned()))
+    STATE.try_read(|state| state.account_slug()).ok().flatten()
+}
+
+#[doc(hidden)] // Only public for testing.
+pub fn current_account_id() -> Option<String> {
+    STATE.try_read(|state| state.account_id()).ok().flatten()
+}
+
+#[doc(hidden)] // Only public for testing.
+pub fn current_actor_email() -> Option<String> {
+    STATE.try_read(|state| state.actor_email()).ok().flatten()
+}
+
+#[doc(hidden)] // Only public for testing.
+pub fn current_mdm_device_id() -> Option<String> {
+    STATE.try_read(|state| state.mdm_device_id()).ok().flatten()
+}
+
+/// The identity feature flags are evaluated for: the current user and environment.
+///
+/// `None` unless telemetry is active and both are known.
+pub(crate) fn current_identity() -> Option<(String, Env)> {
+    STATE.try_read(|state| state.identity()).ok().flatten()
 }
 
 /// Computes the [`User`] scope based on the contents of `firezone_id`.
@@ -385,8 +472,13 @@ fn append_tracing_fields_to_message(mut log: Log) -> Log {
     ];
 
     for (key, attribute) in mem::take(&mut log.attributes) {
-        let LogAttribute(serde_json::Value::String(attr_string)) = &attribute else {
-            continue;
+        let value = match &attribute.0 {
+            serde_json::Value::String(value) => value.clone(),
+            serde_json::Value::Number(value) => value.to_string(),
+            serde_json::Value::Bool(value) => value.to_string(),
+            serde_json::Value::Null => continue,
+            serde_json::Value::Array(_) => continue,
+            serde_json::Value::Object(_) => continue,
         };
 
         if IGNORED_ATTRS.iter().any(|attr| key.starts_with(attr)) {
@@ -404,34 +496,62 @@ fn append_tracing_fields_to_message(mut log: Log) -> Log {
             continue;
         }
 
-        log.body.push_str(&format!(" {key}={attr_string}"));
+        log.body.push_str(&format!(" {key}={value}"));
         log.attributes.insert(key.to_owned(), attribute);
     }
 
     log
 }
 
-fn insert_user_account_slug_into_log(mut log: Log) -> Log {
-    let Some(account_slug) = current_account_slug() else {
-        return log;
-    };
-
-    log.attributes.insert(
-        "user.account_slug".to_owned(),
-        LogAttribute::from(account_slug),
-    );
+fn insert_user_attributes_into_log(mut log: Log) -> Log {
+    if let Some(account_slug) = current_account_slug() {
+        log.attributes.insert(
+            "user.account_slug".to_owned(),
+            LogAttribute::from(account_slug),
+        );
+    }
+    if let Some(account_id) = current_account_id() {
+        log.attributes
+            .insert("user.account_id".to_owned(), LogAttribute::from(account_id));
+    }
+    if let Some(actor_email) = current_actor_email() {
+        log.attributes.insert(
+            "user.actor_email".to_owned(),
+            LogAttribute::from(actor_email),
+        );
+    }
+    if let Some(mdm_device_id) = current_mdm_device_id() {
+        log.attributes.insert(
+            "user.mdm_device_id".to_owned(),
+            LogAttribute::from(mdm_device_id),
+        );
+    }
 
     log
 }
 
-fn insert_user_account_slug_into_metric(mut metric: Metric) -> Metric {
-    let Some(account_slug) = current_account_slug() else {
-        return metric;
-    };
-
-    metric
-        .attributes
-        .insert("user.account_slug".into(), LogAttribute::from(account_slug));
+fn insert_user_attributes_into_metric(mut metric: Metric) -> Metric {
+    if let Some(account_slug) = current_account_slug() {
+        metric
+            .attributes
+            .insert("user.account_slug".into(), LogAttribute::from(account_slug));
+    }
+    if let Some(account_id) = current_account_id() {
+        metric
+            .attributes
+            .insert("user.account_id".into(), LogAttribute::from(account_id));
+    }
+    if let Some(actor_email) = current_actor_email() {
+        metric
+            .attributes
+            .insert("user.actor_email".into(), LogAttribute::from(actor_email));
+    }
+    if let Some(mdm_device_id) = current_mdm_device_id() {
+        metric.attributes.insert(
+            "user.mdm_device_id".into(),
+            LogAttribute::from(mdm_device_id),
+        );
+    }
 
     metric
 }
@@ -565,6 +685,73 @@ mod tests {
                 )
             ])
         )
+    }
+
+    #[test]
+    fn preserves_and_appends_non_string_attributes() {
+        let attributes = BTreeMap::from([
+            ("enabled".to_owned(), LogAttribute(serde_json::json!(true))),
+            ("flows".to_owned(), LogAttribute(serde_json::json!(3))),
+            (
+                "inner_src_port".to_owned(),
+                LogAttribute(serde_json::json!(52625)),
+            ),
+            ("ratio".to_owned(), LogAttribute(serde_json::json!(0.5))),
+            (
+                "sentry.sample_rate".to_owned(),
+                LogAttribute(serde_json::json!(1.0)),
+            ),
+            (
+                "user.verified".to_owned(),
+                LogAttribute(serde_json::json!(false)),
+            ),
+        ]);
+        let mut log = log("Foobar", &[]);
+        log.attributes = attributes.clone();
+        let flows = log
+            .attributes
+            .remove("flows")
+            .expect("test attribute exists");
+        log.attributes
+            .insert("handle_input:flows".to_owned(), flows);
+
+        let log = append_tracing_fields_to_message(log);
+
+        assert_eq!(log.attributes, attributes);
+        assert_eq!(
+            log.body,
+            "Foobar enabled=true flows=3 inner_src_port=52625 ratio=0.5"
+        );
+    }
+
+    #[test]
+    fn ignores_null_and_compound_attributes() {
+        let mut log = log("Foobar", &[]);
+        log.attributes = BTreeMap::from([
+            ("empty".to_owned(), LogAttribute(serde_json::json!(null))),
+            ("list".to_owned(), LogAttribute(serde_json::json!([1, 2]))),
+            (
+                "object".to_owned(),
+                LogAttribute(serde_json::json!({"enabled": true})),
+            ),
+        ]);
+
+        let log = append_tracing_fields_to_message(log);
+
+        assert_eq!(log.body, "Foobar");
+        assert!(log.attributes.is_empty());
+    }
+
+    #[test]
+    fn user_attributes_carry_the_mdm_device_id() {
+        set_mdm_device_id("device-1234".to_owned());
+
+        let log = insert_user_attributes_into_log(log("Foobar", &[]));
+
+        assert_eq!(
+            log.attributes.get("user.mdm_device_id"),
+            Some(&LogAttribute::from("device-1234".to_owned()))
+        );
     }
 
     fn event(msg: &str) -> Event<'static> {

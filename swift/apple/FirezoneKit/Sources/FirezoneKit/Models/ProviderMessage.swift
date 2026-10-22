@@ -8,13 +8,15 @@
 import Foundation
 
 public enum ProviderMessage: Codable {
-  case getState(Data)
+  case pollUpdates(StatePollRequest)
   case setInternetResourceEnabled(Bool)
   case signOut
   case clearLogs
   case getLogFolderSize
   case exportLogs
   case getEncodedFirezoneId
+  case drainFlowLogs
+  case getStatus
 
   enum CodingKeys: String, CodingKey {
     case type
@@ -22,22 +24,24 @@ public enum ProviderMessage: Codable {
   }
 
   enum MessageType: String, Codable {
-    case getState
+    case pollUpdates
     case setInternetResourceEnabled
     case signOut
     case clearLogs
     case getLogFolderSize
     case exportLogs
     case getEncodedFirezoneId
+    case drainFlowLogs
+    case getStatus
   }
 
   public init(from decoder: Decoder) throws {
     let container = try decoder.container(keyedBy: CodingKeys.self)
     let type = try container.decode(MessageType.self, forKey: .type)
     switch type {
-    case .getState:
-      let value = try container.decode(Data.self, forKey: .value)
-      self = .getState(value)
+    case .pollUpdates:
+      let value = try container.decode(StatePollRequest.self, forKey: .value)
+      self = .pollUpdates(value)
     case .setInternetResourceEnabled:
       let value = try container.decode(Bool.self, forKey: .value)
       self = .setInternetResourceEnabled(value)
@@ -51,14 +55,18 @@ public enum ProviderMessage: Codable {
       self = .exportLogs
     case .getEncodedFirezoneId:
       self = .getEncodedFirezoneId
+    case .drainFlowLogs:
+      self = .drainFlowLogs
+    case .getStatus:
+      self = .getStatus
     }
   }
 
   public func encode(to encoder: Encoder) throws {
     var container = encoder.container(keyedBy: CodingKeys.self)
     switch self {
-    case .getState(let value):
-      try container.encode(MessageType.getState, forKey: .type)
+    case .pollUpdates(let value):
+      try container.encode(MessageType.pollUpdates, forKey: .type)
       try container.encode(value, forKey: .value)
     case .setInternetResourceEnabled(let value):
       try container.encode(MessageType.setInternetResourceEnabled, forKey: .type)
@@ -73,6 +81,10 @@ public enum ProviderMessage: Codable {
       try container.encode(MessageType.exportLogs, forKey: .type)
     case .getEncodedFirezoneId:
       try container.encode(MessageType.getEncodedFirezoneId, forKey: .type)
+    case .drainFlowLogs:
+      try container.encode(MessageType.drainFlowLogs, forKey: .type)
+    case .getStatus:
+      try container.encode(MessageType.getStatus, forKey: .type)
     }
   }
 }

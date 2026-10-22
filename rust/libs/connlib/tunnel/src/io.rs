@@ -1,63 +1,57 @@
+mod crypto;
 mod device;
 mod doh;
-mod gso_queue;
 mod nameserver_set;
 mod tcp_dns;
-mod timeout;
 mod udp_dns;
+mod udp_gso_train;
 
+pub(crate) use crypto::MAX_DECRYPT_BACKLOG_MEMORY;
+pub use crypto::{CryptoWorkersStopped, DecryptBatch, DecryptedIpPackets, EncryptBatch};
 pub use device::{Device, TunChannelClosed};
-pub(crate) use gso_queue::GsoQueue;
+pub(crate) use udp_gso_train::UdpGsoTrain;
 
-use crate::{TunnelError, dns, io::timeout::Timeout, otel, sockets::Sockets};
+use crate::{
+    TunnelError, dns,
+    sockets::{ReceivedDatagrams, Sockets},
+};
 use anyhow::{ErrorExt, Result};
 use bootstrap_dns_client::BootstrapDnsClient;
+use crypto::{CryptoWorkers, Decrypting};
 use dns_types::DoHUrl;
-use futures_bounded::{FuturesMap, FuturesTupleSet};
-use gat_lending_iterator::LendingIterator;
-use http_client::HttpClient;
-use ip_packet::{Ecn, IpPacket, MAX_FZ_PAYLOAD};
+use fast_random_state::FastRandomState;
+use futures::{
+    FutureExt as _, TryFutureExt as _,
+    channel::oneshot,
+    future::{BoxFuture, Shared},
+};
+use futures_bounded::{FuturesMap, FuturesTupleSet, PushError};
+use http_client::{HttpClient, TlsConfig};
+use ip_packet::IpPacket;
 use nameserver_set::NameserverSet;
-use socket_factory::{DatagramIn, SocketFactory, TcpSocket, UdpSocket};
+use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 use std::{
-    collections::{BTreeMap, BTreeSet},
+    collections::{BTreeSet, HashMap},
     io,
     net::{IpAddr, SocketAddr},
     sync::Arc,
-    task::{Context, Poll, ready},
+    task::{Context, Poll},
     time::{Duration, Instant},
 };
-use tracing::Level;
 use tun::Tun;
-
-/// How many IP packets we will at most read from the MPSC-channel connected to our TUN device thread.
-///
-/// Reading IP packets from the channel in batches allows us to process (i.e. encrypt) them as a batch.
-/// UDP datagrams of the same size and destination can then be sent in a single syscall using GSO.
-///
-/// On mobile platforms, we are memory-constrained and thus cannot afford to process big batches of packets.
-/// Thus, we limit the batch-size there to 25.
-const MAX_INBOUND_PACKET_BATCH: usize = {
-    if cfg!(any(target_os = "ios", target_os = "android")) {
-        25
-    } else {
-        100
-    }
-};
-
-const DEFAULT_TIME_ADVANCE: Duration = Duration::from_secs(10);
 
 /// Bundles together all side-effects that connlib needs to have access to.
 pub struct Io {
     /// The UDP sockets used to send & receive packets from the network.
     sockets: Sockets,
-    gso_queue: GsoQueue,
+    crypto: CryptoWorkers,
+    decrypting: Decrypting,
 
     nameservers: NameserverSet,
     reval_nameserver_interval: tokio::time::Interval,
 
-    udp_dns_server: BTreeMap<SocketAddr, l4_udp_dns_server::Server>,
-    tcp_dns_server: BTreeMap<SocketAddr, l4_tcp_dns_server::Server>,
+    udp_dns_server: HashMap<SocketAddr, l4_udp_dns_server::Server, FastRandomState>,
+    tcp_dns_server: HashMap<SocketAddr, l4_tcp_dns_server::Server, FastRandomState>,
 
     tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
     udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
@@ -65,14 +59,11 @@ pub struct Io {
     dns_queries: FuturesTupleSet<Result<dns_types::Response>, DnsQueryMetaData>,
 
     bootstrap_dns_client: BootstrapDnsClient,
-    doh_clients: BTreeMap<DoHUrl, HttpClient>,
+    doh_clients: HashMap<DoHUrl, DohClient, FastRandomState>,
     doh_clients_bootstrap: FuturesMap<DoHUrl, Result<HttpClient>>,
-
-    timeout: Timeout,
+    doh_tls_config: TlsConfig,
 
     tun: Device,
-    packet_counter: opentelemetry::metrics::Counter<u64>,
-    dropped_packets: opentelemetry::metrics::Counter<u64>,
 }
 
 #[derive(Debug, Clone)]
@@ -83,48 +74,27 @@ struct DnsQueryMetaData {
     remote: SocketAddr,
     transport: dns::Transport,
     started_at: Instant,
+    retried: bool,
 }
 
-pub(crate) struct Buffers {
-    ip: Vec<IpPacket>,
-}
-
-impl Default for Buffers {
-    fn default() -> Self {
-        Self {
-            ip: Vec::with_capacity(MAX_INBOUND_PACKET_BATCH),
-        }
-    }
+enum DohClient {
+    /// Resolves once the bootstrap driven by [`Io`] has connected, or fails once it gave up.
+    Connecting(Shared<oneshot::Receiver<HttpClient>>),
+    Connected(HttpClient),
 }
 
 /// Represents all IO sources that may be ready during a single event-loop tick.
 ///
 /// This structure allows us to batch-process multiple ready sources rather than
 /// handling them one at a time, improving fairness and preventing starvation.
-pub struct Input<D, I> {
-    pub now: Instant,
-    pub timeout: bool,
-    pub device: Option<D>,
-    pub network: Option<I>,
+pub struct Input {
+    pub device: Option<tun::PacketBatch>,
+    pub network: Option<ReceivedDatagrams>,
+    pub decrypted: Option<DecryptedIpPackets>,
     pub tcp_dns_queries: Vec<l4_tcp_dns_server::Query>,
     pub udp_dns_queries: Vec<l4_udp_dns_server::Query>,
-    pub dns_response: Option<dns::RecursiveResponse>,
+    pub dns_responses: Vec<dns::RecursiveResponse>,
     pub error: TunnelError,
-}
-
-impl<D, I> Input<D, I> {
-    fn error(e: impl Into<anyhow::Error>) -> Self {
-        Self {
-            now: Instant::now(),
-            timeout: false,
-            device: None,
-            network: None,
-            tcp_dns_queries: Vec::new(),
-            udp_dns_queries: Vec::new(),
-            dns_response: None,
-            error: TunnelError::single(e),
-        }
-    }
 }
 
 fn poll_to_option<T>(poll: Poll<T>) -> Option<T> {
@@ -149,6 +119,188 @@ where
     }
 }
 
+/// The state of a single [`Io::poll`] call.
+struct PollState<'a, 'cx> {
+    io: &'a mut Io,
+    cx: &'a mut Context<'cx>,
+    udp_has_room: bool,
+    tun_has_room: bool,
+    input: Input,
+}
+
+impl<'a, 'cx> PollState<'a, 'cx> {
+    fn new(io: &'a mut Io, cx: &'a mut Context<'cx>) -> Self {
+        Self {
+            io,
+            cx,
+            udp_has_room: false,
+            tun_has_room: false,
+            input: Input {
+                device: None,
+                network: None,
+                decrypted: None,
+                tcp_dns_queries: Vec::new(),
+                udp_dns_queries: Vec::new(),
+                dns_responses: Vec::new(),
+                error: TunnelError::default(),
+            },
+        }
+    }
+
+    fn flush_udp(&mut self) {
+        let poll = self.io.sockets.poll_flush(self.cx);
+
+        self.udp_has_room = poll_result_to_option(poll, &mut self.input.error).is_some();
+    }
+
+    fn flush_tun(&mut self) {
+        let poll = self.io.tun.poll_flush(self.cx);
+
+        self.tun_has_room = poll_result_to_option(poll, &mut self.input.error).is_some();
+    }
+
+    fn poll_nameservers(&mut self) {
+        if self
+            .io
+            .reval_nameserver_interval
+            .poll_tick(self.cx)
+            .is_ready()
+        {
+            self.io.nameservers.evaluate();
+        }
+
+        // We purposely don't want to block the event loop here because we can do plenty of other work while this is running.
+        let _ = self.io.nameservers.poll(self.cx);
+    }
+
+    fn poll_doh_bootstrap(&mut self) {
+        while let Poll::Ready((url, result)) = self.io.doh_clients_bootstrap.poll_unpin(self.cx) {
+            match result.map_err(anyhow::Error::new).flatten() {
+                Ok(client) => {
+                    self.io
+                        .doh_clients
+                        .insert(url, DohClient::Connected(client));
+                }
+                Err(e) => {
+                    tracing::debug!(%url, "Failed to bootstrap DoH client: {e:#}");
+
+                    self.io.doh_clients.remove(&url);
+                }
+            }
+        }
+    }
+
+    fn poll_decrypted(&mut self) {
+        if !self.tun_has_room {
+            return;
+        }
+
+        self.input.decrypted = poll_to_option(self.io.decrypting.poll_next(self.cx));
+    }
+
+    fn poll_network(&mut self) {
+        if !self.io.decrypting.has_room() {
+            return;
+        }
+
+        self.input.network = poll_to_option(self.io.sockets.poll_recv_from(self.cx));
+    }
+
+    fn poll_socket_errors(&mut self) {
+        while let Poll::Ready(e) = self.io.sockets.poll_error(self.cx) {
+            self.input.error.push(e);
+        }
+    }
+
+    fn poll_crypto_workers(&mut self) {
+        if self.io.crypto.is_stopped() {
+            self.input.error.push(CryptoWorkersStopped);
+        }
+    }
+
+    fn poll_device(&mut self) {
+        if !self.udp_has_room {
+            return;
+        }
+
+        let poll = self.io.tun.poll_read(self.cx);
+
+        self.input.device = poll_result_to_option(poll, &mut self.input.error);
+    }
+
+    fn poll_dns_queries(&mut self) {
+        for server in self.io.udp_dns_server.values_mut() {
+            if let Some(query) = poll_result_to_option(server.poll(self.cx), &mut self.input.error)
+            {
+                self.input.udp_dns_queries.push(query);
+            }
+        }
+
+        for server in self.io.tcp_dns_server.values_mut() {
+            if let Some(query) = poll_result_to_option(server.poll(self.cx), &mut self.input.error)
+            {
+                self.input.tcp_dns_queries.push(query);
+            }
+        }
+    }
+
+    fn poll_dns_responses(&mut self) {
+        while let Poll::Ready((result, mut meta)) = self.io.dns_queries.poll_unpin(self.cx) {
+            let message = match result {
+                Ok(message) => message,
+                Err(e @ futures_bounded::Timeout { .. }) => Err(anyhow::Error::new(
+                    io::Error::new(io::ErrorKind::TimedOut, e),
+                )),
+            };
+
+            if let dns::Upstream::DoH { server } = &meta.server
+                && let Err(e) = &message
+                && e.any_is::<http_client::Closed>()
+                && !meta.retried
+            {
+                tracing::debug!(%server, "DoH connection closed, retrying query on a new connection");
+
+                let server = server.clone();
+                let client = self.io.doh_client(server.clone());
+
+                meta.retried = true;
+                self.io
+                    .queue_dns_query(doh::send(client, server, meta.query.clone()), meta);
+
+                continue;
+            }
+
+            self.input.dns_responses.push(dns::RecursiveResponse {
+                server: meta.server,
+                query: meta.query,
+                message,
+                transport: meta.transport,
+                local: meta.local,
+                remote: meta.remote,
+                started_at: meta.started_at,
+                recursion: dns::Recursion::Local,
+            });
+        }
+    }
+
+    fn into_input(self) -> Poll<Input> {
+        let input = self.input;
+
+        if input.device.is_none()
+            && input.network.is_none()
+            && input.decrypted.is_none()
+            && input.tcp_dns_queries.is_empty()
+            && input.udp_dns_queries.is_empty()
+            && input.dns_responses.is_empty()
+            && input.error.is_empty()
+        {
+            return Poll::Pending;
+        }
+
+        Poll::Ready(input)
+    }
+}
+
 const DNS_QUERY_TIMEOUT: Duration = Duration::from_secs(5);
 const RE_EVALUATE_NAMESERVER_INTERVAL: Duration = Duration::from_secs(60);
 
@@ -165,7 +317,6 @@ impl Io {
         sockets.rebind(udp_socket_factory.clone()); // Bind sockets on startup.
 
         Self {
-            timeout: Timeout::new(DEFAULT_TIME_ADVANCE),
             sockets,
             nameservers: NameserverSet::new(
                 nameservers,
@@ -189,12 +340,12 @@ impl Io {
                 || futures_bounded::Delay::tokio(DNS_QUERY_TIMEOUT),
                 10,
             ),
-            gso_queue: GsoQueue::new(),
+            doh_tls_config: TlsConfig::webpki_roots(),
+            crypto: CryptoWorkers::new(),
+            decrypting: Decrypting::default(),
             tun: Device::new(),
             udp_dns_server: Default::default(),
             tcp_dns_server: Default::default(),
-            packet_counter: otel_instruments::network_packets(),
-            dropped_packets: otel_instruments::network_packet_dropped(),
         }
     }
 
@@ -248,176 +399,36 @@ impl Io {
         )
     }
 
-    pub fn poll_has_sockets(&mut self, cx: &mut Context<'_>) -> Poll<()> {
-        self.sockets.poll_has_sockets(cx)
-    }
-
     pub fn fastest_nameserver(&self) -> Option<IpAddr> {
         self.nameservers.fastest()
     }
 
-    pub fn poll<'b>(
-        &mut self,
-        cx: &mut Context<'_>,
-        buffers: &'b mut Buffers,
-    ) -> Poll<
-        Input<
-            impl Iterator<Item = IpPacket> + use<'b>,
-            impl for<'a> LendingIterator<Item<'a> = DatagramIn<'a>> + use<>,
-        >,
-    > {
-        if let Err(e) = ready!(self.flush(cx)) {
-            return Poll::Ready(Input::error(e));
-        }
+    /// Polls all IO sources that are ready.
+    ///
+    /// The TUN device is only read while nothing waits for room in the UDP sockets, and decrypted
+    /// packets are only accepted while the TUN device has room.
+    pub fn poll(&mut self, cx: &mut Context<'_>) -> Poll<Input> {
+        let mut state = PollState::new(self, cx);
 
-        let mut error = TunnelError::default();
+        state.flush_udp();
+        state.flush_tun();
+        state.poll_nameservers();
+        state.poll_doh_bootstrap();
+        state.poll_decrypted();
+        state.poll_network();
+        state.poll_socket_errors();
+        state.poll_crypto_workers();
+        state.poll_device();
+        state.poll_dns_queries();
+        state.poll_dns_responses();
 
-        if self.reval_nameserver_interval.poll_tick(cx).is_ready() {
-            self.nameservers.evaluate();
-        }
-
-        // We purposely don't want to block the event loop here because we can do plenty of other work while this is running.
-        let _ = self.nameservers.poll(cx);
-
-        while let Poll::Ready((url, result)) = self.doh_clients_bootstrap.poll_unpin(cx) {
-            match result {
-                Ok(Ok(client)) => {
-                    self.doh_clients.insert(url.clone(), client);
-                }
-                Ok(Err(e)) => tracing::debug!(%url, "Failed to bootstrap DoH client: {e:#}"),
-                Err(e) => tracing::debug!(%url, "Failed to bootstrap DoH client: {e:#}"),
-            }
-        }
-
-        let network = self
-            .sockets
-            .poll_recv_from(cx)
-            .map(|network| network.filter(is_max_wg_packet_size));
-
-        while let Poll::Ready(e) = self.sockets.poll_error(cx) {
-            error.push(e);
-        }
-
-        let device = self
-            .tun
-            .poll_read_many(cx, &mut buffers.ip, MAX_INBOUND_PACKET_BATCH)
-            .map_ok(|num_packets| {
-                let num_ipv4 = buffers.ip[..num_packets]
-                    .iter()
-                    .filter(|p| p.ipv4_header().is_some())
-                    .count();
-                let num_ipv6 = num_packets - num_ipv4;
-
-                self.packet_counter.add(
-                    num_ipv4 as u64,
-                    &[
-                        otel::attr::network_type_ipv4(),
-                        otel::attr::network_io_direction_receive(),
-                    ],
-                );
-                self.packet_counter.add(
-                    num_ipv6 as u64,
-                    &[
-                        otel::attr::network_type_ipv6(),
-                        otel::attr::network_io_direction_receive(),
-                    ],
-                );
-
-                buffers.ip.drain(..num_packets)
-            });
-
-        let udp_dns_queries = self
-            .udp_dns_server
-            .values_mut()
-            .flat_map(|s| match s.poll(cx) {
-                Poll::Ready(Ok(q)) => Some(q),
-                Poll::Ready(Err(e)) => {
-                    error.push(e);
-
-                    None
-                }
-                Poll::Pending => None,
-            })
-            .collect::<Vec<_>>();
-
-        let tcp_dns_queries = self
-            .tcp_dns_server
-            .values_mut()
-            .flat_map(|s| match s.poll(cx) {
-                Poll::Ready(Ok(q)) => Some(q),
-                Poll::Ready(Err(e)) => {
-                    error.push(e);
-
-                    None
-                }
-                Poll::Pending => None,
-            })
-            .collect::<Vec<_>>();
-
-        let dns_response = match self.dns_queries.poll_unpin(cx) {
-            Poll::Ready((result, meta)) => {
-                let message = match result {
-                    Ok(message) => message,
-                    Err(e @ futures_bounded::Timeout { .. }) => Err(anyhow::Error::new(
-                        io::Error::new(io::ErrorKind::TimedOut, e),
-                    )),
-                };
-
-                Poll::Ready(dns::RecursiveResponse {
-                    server: meta.server,
-                    query: meta.query,
-                    message,
-                    transport: meta.transport,
-                    local: meta.local,
-                    remote: meta.remote,
-                    started_at: meta.started_at,
-                    recursion: dns::Recursion::Local,
-                })
-            }
-            Poll::Pending => Poll::Pending,
-        };
-
-        // We need to discard DoH clients if their queries fail because the connection got closed.
-        // They will get re-bootstrapped on the next requested DoH query.
-        if let Poll::Ready(response) = &dns_response
-            && let dns::Upstream::DoH { server } = &response.server
-            && let Err(e) = &response.message
-            && e.any_is::<http_client::Closed>()
-        {
-            tracing::debug!(%server, "Connection of DoH client failed");
-
-            self.doh_clients.remove(server);
-        }
-
-        let timeout = self.timeout.poll_tick(cx).is_ready();
-
-        if !timeout
-            && device.is_pending()
-            && network.is_pending()
-            && tcp_dns_queries.is_empty()
-            && udp_dns_queries.is_empty()
-            && dns_response.is_pending()
-            && error.is_empty()
-        {
-            return Poll::Pending;
-        }
-
-        Poll::Ready(Input {
-            now: Instant::now(),
-            timeout,
-            device: poll_result_to_option(device, &mut error),
-            network: poll_to_option(network),
-            tcp_dns_queries,
-            udp_dns_queries,
-            dns_response: poll_to_option(dns_response),
-            error,
-        })
+        state.into_input()
     }
 
     pub fn flush(&mut self, cx: &mut Context<'_>) -> Poll<Result<()>> {
         let mut any_pending = false;
 
-        if self.flush_gso_queue(cx)?.is_pending() {
+        if self.sockets.poll_flush(cx)?.is_pending() {
             any_pending = true
         }
 
@@ -432,56 +443,27 @@ impl Io {
         Poll::Ready(Ok(()))
     }
 
-    pub fn flush_gso_queue(&mut self, cx: &mut Context<'_>) -> Poll<Result<()>> {
-        let mut datagrams = self.gso_queue.datagrams();
-
-        loop {
-            ready!(self.sockets.poll_send_ready(cx)?);
-
-            let Some(datagram) = datagrams.next() else {
-                break;
-            };
-
-            for segment in datagram.packet.chunks(datagram.segment_size) {
-                self.packet_counter.add(
-                    1,
-                    &[
-                        otel::attr::network_protocol_name(segment),
-                        otel::attr::network_transport_udp(),
-                        otel::attr::network_io_direction_transmit(),
-                    ],
-                );
-            }
-
-            self.sockets.send(datagram)?;
-        }
-
-        Poll::Ready(Ok(()))
-    }
-
     pub fn set_tun(&mut self, tun: Box<dyn Tun>) {
         self.tun.set_tun(tun);
     }
 
-    pub fn send_tun(&mut self, packet: IpPacket) {
-        self.packet_counter.add(
-            1,
-            &[
-                otel::attr::network_type_for_packet(&packet),
-                otel::attr::network_io_direction_transmit(),
-            ],
-        );
+    pub fn queue_tun(&mut self, packet: IpPacket) {
+        self.tun.queue(packet);
+    }
 
-        self.tun.send(packet);
+    /// Marks the end of the current batch of packets queued via [`Io::queue_tun`].
+    pub fn flush_tun_batch(&mut self) {
+        self.tun.flush_batch();
     }
 
     pub fn reset(&mut self) {
         self.tcp_socket_factory.reset();
         self.udp_socket_factory.reset();
         self.sockets.rebind(self.udp_socket_factory.clone());
-        self.gso_queue.clear();
         self.dns_queries =
             FuturesTupleSet::new(|| futures_bounded::Delay::tokio(DNS_QUERY_TIMEOUT), 1000);
+        self.doh_clients_bootstrap =
+            FuturesMap::new(|| futures_bounded::Delay::tokio(DNS_QUERY_TIMEOUT), 10);
         self.nameservers.evaluate();
 
         for (server, _) in std::mem::take(&mut self.doh_clients) {
@@ -489,46 +471,36 @@ impl Io {
         }
     }
 
-    pub fn reset_timeout(&mut self, timeout: Instant, reason: &'static str) {
-        let wakeup_in = tracing::event_enabled!(Level::TRACE)
-            .then(|| timeout.saturating_duration_since(Instant::now()))
-            .map(tracing::field::debug);
-
-        if self.timeout.deadline() != timeout {
-            tracing::trace!(wakeup_in, %reason);
-
-            self.timeout.reset(timeout);
-        }
+    /// Starts a batch of encapsulated packets to encrypt off the main thread.
+    ///
+    /// Its datagrams go to the UDP sockets when it is dropped. Start one only for the packets
+    /// [`Io::poll`] read from the TUN device, which it does only while nothing waits for room in the
+    /// UDP sockets.
+    pub fn start_encrypt_batch(&mut self, num_packets: usize) -> EncryptBatch<'_> {
+        self.crypto
+            .start_encrypt_batch(&mut self.sockets, num_packets)
     }
 
-    /// Schedules a wakeup in case one isn't registered yet.
-    pub fn schedule_timeout(&mut self, now: Instant) {
-        self.timeout.schedule(now + Duration::from_secs(1));
+    /// Starts a batch of received data messages to decrypt off the main thread, yielding them via
+    /// [`Input::decrypted`].
+    pub fn start_decrypt_batch(&mut self, num_packets: usize) -> DecryptBatch<'_> {
+        self.crypto
+            .start_decrypt_batch(&mut self.decrypting, num_packets)
     }
 
-    /// The GSO queue used as the destination buffer when encapsulating packets in place.
-    pub fn gso_queue_mut(&mut self) -> &mut GsoQueue {
-        &mut self.gso_queue
+    pub fn send_network(&mut self, transmit: snownet::Transmit) {
+        self.sockets.send_ready(transmit);
     }
 
-    pub fn send_network(
-        &mut self,
-        src: Option<SocketAddr>,
-        dst: SocketAddr,
-        payload: &[u8],
-        ecn: Ecn,
-    ) {
-        self.gso_queue.enqueue(src, dst, payload, ecn);
-    }
-
-    pub fn send_dns_query(&mut self, query: dns::RecursiveQuery) {
+    pub fn send_dns_query(&mut self, query: dns::RecursiveQuery, now: Instant) {
         let meta = DnsQueryMetaData {
             query: query.message.clone(),
             server: query.server.clone(),
             transport: query.transport,
             local: query.local,
             remote: query.remote,
-            started_at: Instant::now(),
+            started_at: now,
+            retried: false,
         };
 
         match (query.transport, query.server) {
@@ -545,47 +517,90 @@ impl Io {
                 );
             }
             (_, dns::Upstream::DoH { server }) => {
-                let Some(http_client) = self.doh_clients.get(&server).cloned() else {
-                    self.bootstrap_doh_client(server);
+                let client = self.doh_client(server.clone());
 
-                    // Queue a dummy "query" that instantly fails to ensure we don't let the application run into a timeout.
-                    // This will trigger a SERVFAIL response.
-                    self.queue_dns_query(async { anyhow::bail!("Bootstrapping DoH client") }, meta);
-
-                    return;
-                };
-
-                self.queue_dns_query(doh::send(http_client, server, query.message), meta);
+                self.queue_dns_query(doh::send(client, server, query.message), meta);
             }
         }
     }
 
+    /// Ensures a DoH client for `server` exists or is being bootstrapped.
     pub(crate) fn bootstrap_doh_client(&mut self, server: DoHUrl) {
-        if self.doh_clients.contains_key(&server) {
-            return;
+        self.doh_client_entry(server);
+    }
+
+    /// Resolves to the DoH client for `server` once it is connected.
+    fn doh_client(&mut self, server: DoHUrl) -> BoxFuture<'static, Result<HttpClient>> {
+        match self.doh_client_entry(server) {
+            Some(DohClient::Connected(client)) => {
+                futures::future::ready(Ok(client.clone())).boxed()
+            }
+            Some(DohClient::Connecting(client)) => client
+                .clone()
+                .map_err(|oneshot::Canceled| anyhow::anyhow!("Failed to bootstrap DoH client"))
+                .boxed(),
+            None => futures::future::ready(Err(anyhow::anyhow!(
+                "Too many DoH clients are bootstrapping"
+            )))
+            .boxed(),
+        }
+    }
+
+    /// Returns the entry for `server`, replacing a closed client with a fresh bootstrap.
+    ///
+    /// `None` if the bootstrap could not be started.
+    fn doh_client_entry(&mut self, server: DoHUrl) -> Option<&DohClient> {
+        if let Some(DohClient::Connected(client)) = self.doh_clients.get(&server)
+            && client.is_closed()
+        {
+            tracing::debug!(%server, "DoH connection is closed");
+
+            self.doh_clients.remove(&server);
         }
 
-        if self.doh_clients_bootstrap.contains(server.clone()) {
-            return; // Already bootstrapping.
+        if !self.doh_clients.contains_key(&server) {
+            let (ready, client) = oneshot::channel();
+            let addresses = self.bootstrap_dns_client.resolve(server.host());
+            let socket_factory = self.tcp_socket_factory.clone();
+            let tls_config = self.doh_tls_config.clone();
+
+            let bootstrap = {
+                let server = server.clone();
+
+                async move {
+                    tracing::debug!(%server, "Bootstrapping DoH client");
+
+                    let addresses = addresses.await?;
+                    let http_client = HttpClient::new(
+                        server.host().into_owned(),
+                        server.port(),
+                        addresses,
+                        tls_config,
+                        socket_factory,
+                    )
+                    .await?;
+
+                    tracing::debug!(%server, "Bootstrapped DoH client");
+
+                    let _ = ready.send(http_client.clone());
+
+                    Ok(http_client)
+                }
+            };
+
+            match self
+                .doh_clients_bootstrap
+                .try_push(server.clone(), bootstrap)
+            {
+                Ok(()) | Err(PushError::Replaced(_)) => {}
+                Err(PushError::BeyondCapacity(_)) => return None,
+            }
+
+            self.doh_clients
+                .insert(server.clone(), DohClient::Connecting(client.shared()));
         }
 
-        let socket_factory = self.tcp_socket_factory.clone();
-        let addresses = self.bootstrap_dns_client.resolve(server.host());
-
-        let _ = self
-            .doh_clients_bootstrap
-            .try_push(server.clone(), async move {
-                tracing::debug!(%server, "Bootstrapping DoH client");
-
-                let addresses = addresses.await?;
-                let http_client =
-                    HttpClient::new(server.host().to_string(), addresses.clone(), socket_factory)
-                        .await?;
-
-                tracing::debug!(%server, "Bootstrapped DoH client");
-
-                Ok(http_client)
-            });
+        self.doh_clients.get(&server)
     }
 
     pub(crate) fn send_udp_dns_response(
@@ -612,10 +627,6 @@ impl Io {
             .send_response(to, message)
     }
 
-    pub(crate) fn inc_dropped_packet(&self, attrs: &[opentelemetry::KeyValue]) {
-        self.dropped_packets.add(1, attrs);
-    }
-
     fn queue_dns_query(
         &mut self,
         future: impl Future<Output = Result<dns_types::Response>> + Send + 'static,
@@ -627,131 +638,61 @@ impl Io {
     }
 }
 
-fn is_max_wg_packet_size(d: &DatagramIn) -> bool {
-    let len = d.packet.len();
-    if len > MAX_FZ_PAYLOAD {
-        return false;
-    }
-
-    true
-}
-
 #[cfg(test)]
 mod tests {
-    use futures::task::noop_waker_ref;
-    use std::{future::poll_fn, net::Ipv4Addr, ptr::addr_of_mut};
+    use std::{future::poll_fn, net::Ipv4Addr};
+
+    use doh_test_server::DohTestServer;
 
     use super::*;
 
     #[tokio::test]
-    async fn timer_is_reset_after_it_fires() {
-        let mut io = Io::for_test();
-
-        let deadline = Instant::now() + Duration::from_secs(1);
-        io.reset_timeout(deadline, "");
-        let scheduled_deadline = io.timeout.deadline();
-
-        let input = io.next().await;
-
-        assert!(input.timeout);
-        assert!(input.now >= deadline, "timer expire after deadline");
-        assert_eq!(deadline, scheduled_deadline);
-
-        drop(input);
-
-        let poll = io.poll_test();
-
-        assert!(poll.is_pending());
-        assert_eq!(
-            io.timeout.deadline().duration_since(scheduled_deadline),
-            DEFAULT_TIME_ADVANCE
-        );
-    }
-
-    #[tokio::test]
-    async fn emits_now_in_case_timeout_is_in_the_past() {
-        let now = Instant::now();
-        let mut io = Io::for_test();
-
-        io.reset_timeout(now - Duration::from_secs(10), "");
-
-        let input = io.next().await;
-        let timeout = input.now;
-
-        assert!(timeout >= now, "timeout = {timeout:?}, now = {now:?}");
-    }
-
-    #[tokio::test]
     async fn bootstrap_doh() {
         let _guard = logging::test("debug");
-        rustls::crypto::ring::default_provider()
-            .install_default()
-            .unwrap();
 
+        let answer = Ipv4Addr::new(192, 0, 2, 1);
+        let server = DohTestServer::spawn(answer).await.unwrap();
         let mut io = Io::for_test();
-        io.update_system_resolvers(vec![IpAddr::from([1, 1, 1, 1])]);
+        io.doh_tls_config = TlsConfig::new(server.root_cert_store());
 
-        {
-            io.send_dns_query(example_com_recursive_query());
+        io.send_dns_query(example_com_recursive_query(server.url()), Instant::now());
 
-            let input = io.next().await;
+        let response = io.next_dns_response().await.message.unwrap();
 
-            assert_eq!(
-                input.dns_response.unwrap().message.unwrap_err().to_string(),
-                "Bootstrapping DoH client"
-            );
-        }
-
-        // Hack: Advance for a bit but timeout after 2s. We don't emit an event when the client is bootstrapped so this will always be `Pending`.
-        let _ = tokio::time::timeout(Duration::from_secs(2), io.next()).await;
-
-        {
-            io.send_dns_query(example_com_recursive_query());
-
-            let input = io.next().await;
-
-            assert_eq!(
-                input.dns_response.unwrap().message.unwrap().response_code(),
-                dns_types::ResponseCode::NOERROR
-            );
-        }
-    }
-
-    #[tokio::test]
-    async fn schedule_timeout_shortens_deadline_when_current_is_too_far_away() {
-        let mut io = Io::for_test();
-
-        // The default deadline is DEFAULT_TIME_ADVANCE (10s) from now.
-        // schedule_timeout should pull it in to ~1s from now.
-        let now = Instant::now();
-        io.schedule_timeout(now);
-
-        let deadline = io.timeout.deadline();
-        let wakeup_in = deadline.duration_since(now);
-
-        assert!(
-            wakeup_in <= Duration::from_secs(1),
-            "expected deadline within 1s, got {wakeup_in:?}"
-        );
-    }
-
-    #[tokio::test]
-    async fn schedule_timeout_does_not_postpone_an_already_close_deadline() {
-        let mut io = Io::for_test();
-
-        // Set a deadline that is already sooner than 1s.
-        let now = Instant::now();
-        let close_deadline = now + Duration::from_millis(100);
-        io.reset_timeout(close_deadline, "close deadline");
-
-        io.schedule_timeout(now);
-
-        let deadline = io.timeout.deadline();
-
+        assert_eq!(response.response_code(), dns_types::ResponseCode::NOERROR);
         assert_eq!(
-            deadline, close_deadline,
-            "schedule_timeout must not push out a deadline that is already close"
+            response
+                .records()
+                .filter_map(dns_types::records::extract_ip)
+                .collect::<Vec<_>>(),
+            vec![IpAddr::V4(answer)]
         );
+    }
+
+    #[tokio::test]
+    async fn failed_bootstrap_is_evicted() {
+        let _guard = logging::test("debug");
+
+        let mut io = Io::for_test();
+
+        io.send_dns_query(
+            example_com_recursive_query(DoHUrl::cloudflare()),
+            Instant::now(),
+        );
+        let response = io.next_dns_response().await;
+
+        assert!(response.message.is_err());
+        assert!(io.doh_clients.is_empty());
+
+        io.send_dns_query(
+            example_com_recursive_query(DoHUrl::cloudflare()),
+            Instant::now(),
+        );
+
+        assert!(matches!(
+            io.doh_clients.get(&DoHUrl::cloudflare()),
+            Some(DohClient::Connecting(_))
+        ));
     }
 
     #[tokio::test]
@@ -780,11 +721,9 @@ mod tests {
         assert!(io.tcp_dns_server.is_empty());
     }
 
-    fn example_com_recursive_query() -> dns::RecursiveQuery {
+    fn example_com_recursive_query(server: DoHUrl) -> dns::RecursiveQuery {
         dns::RecursiveQuery {
-            server: dns::Upstream::DoH {
-                server: DoHUrl::cloudflare(),
-            },
+            server: dns::Upstream::DoH { server },
             local: SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 11111),
             remote: SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 22222),
             message: dns_types::Query::new(
@@ -794,8 +733,6 @@ mod tests {
             transport: dns::Transport::Udp,
         }
     }
-
-    static mut DUMMY_BUF: Buffers = Buffers { ip: Vec::new() };
 
     /// Helper functions to make the test more concise.
     impl Io {
@@ -810,56 +747,46 @@ mod tests {
             io
         }
 
-        async fn next(
-            &mut self,
-        ) -> Input<
-            impl Iterator<Item = IpPacket> + use<>,
-            impl for<'a> LendingIterator<Item<'a> = DatagramIn<'a>>,
-        > {
-            poll_fn(|cx| {
-                self.poll(
-                    cx,
-                    // SAFETY: This is a test and we never receive packets here.
-                    unsafe { &mut *addr_of_mut!(DUMMY_BUF) },
-                )
-            })
-            .await
-        }
+        async fn next_dns_response(&mut self) -> dns::RecursiveResponse {
+            loop {
+                let mut input = poll_fn(|cx| self.poll(cx)).await;
 
-        fn poll_test(
-            &mut self,
-        ) -> Poll<
-            Input<
-                impl Iterator<Item = IpPacket> + use<>,
-                impl for<'a> LendingIterator<Item<'a> = DatagramIn<'a>> + use<>,
-            >,
-        > {
-            self.poll(
-                &mut Context::from_waker(noop_waker_ref()),
-                // SAFETY: This is a test and we never receive packets here.
-                unsafe { &mut *addr_of_mut!(DUMMY_BUF) },
-            )
+                for e in input.error.drain() {
+                    tracing::debug!("Ignoring error unrelated to DNS: {e:#}");
+                }
+
+                if let Some(response) = input.dns_responses.pop() {
+                    return response;
+                }
+            }
         }
     }
 
     struct DummyTun {
-        tx: tokio::sync::mpsc::Sender<IpPacket>,
-        rx: tokio::sync::mpsc::Receiver<IpPacket>,
+        tx: tun::OutboundTx,
+        rx: tun::InboundRx,
+        _keep_alive: (tun::OutboundRx, tun::InboundTx),
     }
 
     impl DummyTun {
         fn new() -> Self {
-            let (tx, rx) = tokio::sync::mpsc::channel(1);
-            Self { tx, rx }
+            let (tx, outbound_rx) = tun::outbound_channel();
+            let (inbound_tx, rx) = tun::inbound_channel();
+
+            Self {
+                tx,
+                rx,
+                _keep_alive: (outbound_rx, inbound_tx),
+            }
         }
     }
 
     impl Tun for DummyTun {
-        fn sender(&self) -> &tokio::sync::mpsc::Sender<IpPacket> {
-            &self.tx
+        fn sender(&mut self) -> &mut tun::OutboundTx {
+            &mut self.tx
         }
 
-        fn receiver(&mut self) -> &mut tokio::sync::mpsc::Receiver<IpPacket> {
+        fn receiver(&mut self) -> &mut tun::InboundRx {
             &mut self.rx
         }
 

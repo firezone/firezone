@@ -1,0 +1,12 @@
+name: "Enable KVM"
+description: "Grants non-root access to /dev/kvm, which the hosted Linux runners leave readable only by root, so the Android emulator can use hardware acceleration."
+runs:
+  using: "composite"
+  steps:
+    - name: Grant access to KVM
+      shell: bash
+      run: |
+        echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+          | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+        sudo udevadm control --reload-rules
+        sudo udevadm trigger --name-match=kvm

@@ -1,10 +1,19 @@
 defmodule PortalWeb.ActorsTest do
   use PortalWeb.ConnCase, async: true
 
+  import Phoenix.LiveViewTest, except: [live: 2]
+
+  # The table loads in an async task, so wait for it before returning.
+  defp live(conn, path) do
+    case Phoenix.LiveViewTest.live(conn, path) do
+      {:ok, lv, _html} -> {:ok, lv, render_async(lv)}
+      other -> other
+    end
+  end
+
   alias Portal.Actor
   alias Portal.Changes.Change
 
-  import ExUnit.CaptureLog
   import Portal.AccountFixtures
   import Portal.ActorFixtures
   import Portal.AuthProviderFixtures
@@ -37,6 +46,18 @@ defmodule PortalWeb.ActorsTest do
   end
 
   describe "index (default action)" do
+    test "loads the table only after the socket connects", %{conn: conn, account: account, actor: actor} do
+      conn = authorize_conn(conn, actor)
+
+      static = conn |> get(~p"/#{account}/actors") |> html_response(200) |> Floki.parse_document!()
+      assert [_] = Floki.find(static, "#actors-skeleton")
+      assert Floki.find(static, "#actors-rows tr") == []
+
+      {:ok, lv, _html} = live(conn, ~p"/#{account}/actors")
+      assert has_element?(lv, "#actors-rows tr")
+      refute has_element?(lv, "#actors-skeleton")
+    end
+
     test "renders actor list page", %{conn: conn, account: account, actor: actor} do
       {:ok, _lv, html} =
         conn
@@ -45,6 +66,22 @@ defmodule PortalWeb.ActorsTest do
 
       assert html =~ "Actors"
       assert html =~ actor.name
+    end
+
+    test "loads the directory filter options only after the socket connects", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      directory = Portal.EntraDirectoryFixtures.entra_directory_fixture(account: account, name: "Acme Entra")
+      conn = authorize_conn(conn, actor)
+
+      static = conn |> get(~p"/#{account}/actors") |> html_response(200) |> Floki.parse_document!()
+      assert [_] = Floki.find(static, "select#actors-directory_id")
+      assert Floki.find(static, "select#actors-directory_id option[value='#{directory.id}']") == []
+
+      {:ok, lv, _html} = live(conn, ~p"/#{account}/actors")
+      assert has_element?(lv, "select#actors-directory_id option[value='#{directory.id}']", "Acme Entra")
     end
 
     test "opens and closes new actor side panel", %{conn: conn, account: account, actor: actor} do
@@ -344,6 +381,26 @@ defmodule PortalWeb.ActorsTest do
       assert html =~ other_actor.name
     end
 
+    test "ignores a tab change queued while the actor panel is closing", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      other_actor = actor_fixture(account: account)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/actors/#{other_actor}")
+
+      render_click(lv, "close_panel")
+      assert_patch(lv, ~p"/#{account}/actors")
+
+      render_click(lv, "change_tab", %{"tab" => "groups"})
+
+      refute has_element?(lv, "#actor-panel > div")
+    end
+
     test "shows identities tab content", %{conn: conn, account: account, actor: actor} do
       other_actor = actor_fixture(account: account)
 
@@ -446,6 +503,37 @@ defmodule PortalWeb.ActorsTest do
       assert html =~ token.id
     end
 
+    test "marks a client token online when its device joins the account presence", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      other_actor = actor_fixture(account: account)
+      token = client_token_fixture(account: account, actor: other_actor)
+      client = client_fixture(account: account, actor: other_actor)
+
+      {:ok, lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/actors/#{other_actor}?tab=client_sessions")
+
+      assert html =~ "Offline"
+      refute html =~ "Online"
+
+      :ok = Portal.Presence.Devices.connect(client, token.id)
+
+      send(lv.pid, %Phoenix.Socket.Broadcast{
+        topic: "presences:account_devices:#{account.id}",
+        event: "presence_diff",
+        payload: %{
+          joins: %{client.id => %{metas: [%{actor_id: other_actor.id, token_id: token.id}]}},
+          leaves: %{}
+        }
+      })
+
+      assert render(lv) =~ "Online"
+    end
+
     test "shows portal session details in the portal sessions tab", %{
       conn: conn,
       account: account,
@@ -515,9 +603,94 @@ defmodule PortalWeb.ActorsTest do
       assert html =~ "Enable"
       refute html =~ "Disable this actor?"
 
+      # The next reload would kill this one mid-query, which breaks the test's sandbox connection
+      render_async(lv)
+
       html = render_click(lv, "enable", %{"id" => other_actor.id})
       refute html =~ "Enable"
       assert html =~ "Disable"
+    end
+
+    test "explains that a directory disabled the actor and hands the decision to the admin on enable",
+         %{conn: conn, account: account, actor: actor} do
+      directory = Portal.EntraDirectoryFixtures.entra_directory_fixture(account: account, name: "Acme Entra")
+      identity = directory_identity_fixture(directory: directory, idp_id: "user-1")
+      other_actor = mark_created_by_directory(identity.actor_id, directory)
+
+      other_actor
+      |> Ecto.Changeset.change(is_disabled: true, disabled_by_directory_id: directory.id)
+      |> Portal.Repo.update!()
+
+      {:ok, lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/actors/#{other_actor}")
+
+      assert html =~ "Disabled by directory sync"
+      assert lv |> element("[data-testid=disabled-by-directory]") |> render() =~ "Acme Entra"
+
+      assert lv |> element("[data-testid=directory-disabled-notice]") |> render() =~
+               "Acme Entra disabled this actor"
+
+      render_click(lv, "enable", %{"id" => other_actor.id})
+      html = render_async(lv)
+
+      refute html =~ "directory-disabled-notice"
+      refute html =~ "Disabled by directory sync"
+      assert Portal.Repo.get_by!(Actor, id: other_actor.id).disabled_by_directory_id == nil
+    end
+
+    test "shows no directory notice on an actor an admin disabled",
+         %{conn: conn, account: account, actor: actor} do
+      other_actor = disabled_actor_fixture(account: account)
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/actors/#{other_actor}")
+
+      assert html =~ "Enable"
+      refute html =~ "directory-disabled-notice"
+      refute html =~ "disabled-by-directory"
+      refute html =~ "Disabled by directory sync"
+    end
+
+    test "does not re-enable actor when users limit is reached", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      account = update_account(account, %{limits: %{users_count: 1}})
+      other_actor = disabled_actor_fixture(account: account, type: :account_user)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/actors/#{other_actor}")
+
+      html = render_click(lv, "enable", %{"id" => other_actor.id})
+
+      assert html =~ "User limit reached for your account"
+      assert Portal.Repo.get_by!(Portal.Actor, id: other_actor.id).is_disabled
+    end
+
+    test "does not re-enable admin when admins limit is reached", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      account = update_account(account, %{limits: %{account_admin_users_count: 1}})
+      other_actor = disabled_actor_fixture(account: account, type: :account_admin_user)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/actors/#{other_actor}")
+
+      html = render_click(lv, "enable", %{"id" => other_actor.id})
+
+      assert html =~ "Admin user limit reached for your account"
+      assert Portal.Repo.get_by!(Portal.Actor, id: other_actor.id).is_disabled
     end
 
     test "cancel delete actor returns to detail view", %{
@@ -1400,7 +1573,7 @@ defmodule PortalWeb.ActorsTest do
 
       render_click(lv, "delete", %{"id" => other_actor.id})
 
-      html = render(lv)
+      html = render_async(lv)
       refute html =~ other_actor.name
     end
 
@@ -1429,7 +1602,7 @@ defmodule PortalWeb.ActorsTest do
       {:ok, lv, html} =
         conn
         |> authorize_conn(actor)
-        |> live(~p"/#{account}/actors")
+        |> Phoenix.LiveViewTest.live(~p"/#{account}/actors")
 
       assert html =~ "Loading..."
 
@@ -1490,20 +1663,15 @@ defmodule PortalWeb.ActorsTest do
 
       render_async(lv)
 
-      log =
-        capture_log(fn ->
-          send(lv.pid, %Change{op: :update, struct: %Actor{type: :account_user}})
-          render(lv)
-        end)
-
-      refute log =~ "Unhandled handle_info message in LiveView"
+      send(lv.pid, %Change{op: :update, struct: %Actor{type: :account_user}})
+      render(lv)
 
       html = render(lv)
       assert html =~ "1"
       assert html =~ "Total"
     end
 
-    test "logs and ignores service account changes", %{
+    test "quietly ignores other actor types on the shared topic", %{
       conn: conn,
       account: account,
       actor: actor
@@ -1515,14 +1683,10 @@ defmodule PortalWeb.ActorsTest do
 
       render_async(lv)
 
-      log =
-        capture_log(fn ->
-          send(lv.pid, %Change{op: :insert, struct: %Actor{type: :service_account}})
-          render(lv)
-        end)
-
-      assert log =~ "[error]"
-      assert log =~ "Unhandled handle_info message in LiveView"
+      send(lv.pid, %Change{op: :insert, struct: %Actor{type: :service_account}})
+      send(lv.pid, %Change{op: :update, struct: %Actor{type: :api_client}})
+      send(lv.pid, %Change{op: :delete, old_struct: %Actor{type: :service_account}})
+      render(lv)
 
       html = render(lv)
       assert html =~ "1"
@@ -1545,6 +1709,95 @@ defmodule PortalWeb.ActorsTest do
       render(lv)
 
       refute_receive {:DOWN, ^ref, :process, ^pid, _reason}, 500
+    end
+  end
+  describe "live table filters across panel operations" do
+    setup %{account: account} do
+      matching = actor_fixture(account: account, name: "Johnny Appleseed")
+      other = actor_fixture(account: account, name: "Zelda Fitzgerald")
+      filter = %{"actors_filter[name_or_email]" => "johnny"}
+      %{matching: matching, other: other, filter: filter}
+    end
+
+    test "are kept when creating a user", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      other: other,
+      filter: filter
+    } do
+      {:ok, lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/actors?#{filter}")
+
+      refute html =~ other.name
+
+      render_click(lv, "open_new_actor_panel")
+      assert_patch(lv, ~p"/#{account}/actors/new?#{filter}")
+
+      render_click(lv, "close_panel")
+      assert_patch(lv, ~p"/#{account}/actors?#{filter}")
+
+      render_click(lv, "open_new_actor_panel")
+      render_click(lv, "select_new_actor_type", %{"type" => "user"})
+
+      lv
+      |> form("form[phx-submit='create_user']",
+        actor: %{
+          name: "Johnny Cash",
+          email: "johnny.cash@example.com",
+          type: "account_user",
+          allow_email_otp_sign_in: "true"
+        }
+      )
+      |> render_submit()
+
+      created = Portal.Repo.get_by!(Actor, account_id: account.id, name: "Johnny Cash")
+      assert_patch(lv, ~p"/#{account}/actors/#{created.id}?#{filter}")
+
+      html = render(lv)
+      assert html =~ "Johnny Cash"
+      refute html =~ other.name
+    end
+
+    test "are kept when editing a user", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      matching: matching,
+      other: other,
+      filter: filter
+    } do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/actors/#{matching}?#{filter}")
+
+      render_click(lv, "open_actor_edit_form")
+      assert_patch(lv, ~p"/#{account}/actors/#{matching}/edit?#{filter}")
+
+      render_click(lv, "cancel_actor_edit_form")
+      assert_patch(lv, ~p"/#{account}/actors/#{matching}?#{filter}")
+
+      render_click(lv, "open_actor_edit_form")
+
+      lv
+      |> form("form[phx-submit='save']",
+        actor: %{
+          name: "Johnny Renamed",
+          email: matching.email,
+          type: "account_user",
+          allow_email_otp_sign_in: "true"
+        }
+      )
+      |> render_submit()
+
+      assert_patch(lv, ~p"/#{account}/actors/#{matching}?#{filter}")
+
+      html = render(lv)
+      assert html =~ "Johnny Renamed"
+      refute html =~ other.name
     end
   end
 end

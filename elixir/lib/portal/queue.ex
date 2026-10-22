@@ -33,6 +33,11 @@ defmodule Portal.Queue do
     * `:flush_on_terminate` — when `true` (default), `terminate/2` attempts a
       best-effort flush of buffered entries and logs an info message. Tests can set
       this to `false` to drop the buffer silently on supervisor shutdown.
+    * `:dedup_key` — `fn attrs -> term() end`. When given, an entry whose key
+      matches one already buffered is dropped rather than appended, so
+      `:flush_threshold` counts distinct work instead of arriving messages.
+      Only for queues whose entries are idempotent by that key: a session or
+      authorization queue must keep every entry and should leave this unset.
   """
 
   use GenServer
@@ -49,7 +54,8 @@ defmodule Portal.Queue do
       :flush_threshold,
       :label,
       :on_flush,
-      :flush_on_terminate
+      :flush_on_terminate,
+      :dedup_key
     ]
     defstruct @enforce_keys
   end
@@ -115,11 +121,12 @@ defmodule Portal.Queue do
       flush_threshold: Keyword.fetch!(opts, :flush_threshold),
       label: Keyword.get(opts, :label, inspect(name)),
       on_flush: Keyword.fetch!(opts, :on_flush),
-      flush_on_terminate: Keyword.get(opts, :flush_on_terminate, true)
+      flush_on_terminate: Keyword.get(opts, :flush_on_terminate, true),
+      dedup_key: Keyword.get(opts, :dedup_key)
     }
 
     schedule_flush(config.flush_interval)
-    {:ok, %{config: config, buffer: [], count: 0}}
+    {:ok, %{config: config, buffer: [], count: 0, keys: MapSet.new()}}
   end
 
   @impl true
@@ -130,12 +137,7 @@ defmodule Portal.Queue do
 
       reply ->
         metadata = Keyword.get(opts, :metadata)
-
-        state = %{
-          state
-          | buffer: [{attrs, metadata} | state.buffer],
-            count: state.count + 1
-        }
+        state = buffer_entry(state, attrs, metadata)
 
         if state.count >= state.config.flush_threshold do
           {:reply, reply, state, {:continue, :flush}}
@@ -175,6 +177,28 @@ defmodule Portal.Queue do
     :ok
   end
 
+  defp buffer_entry(%{config: %{dedup_key: nil}} = state, attrs, metadata) do
+    %{state | buffer: [{attrs, metadata} | state.buffer], count: state.count + 1}
+  end
+
+  # A duplicate is dropped rather than replacing what is buffered: the entries
+  # describe the same row, so the one already holding a place is as good, and
+  # keeping it means a fleet arriving on one CA never grows the buffer at all.
+  defp buffer_entry(%{config: %{dedup_key: dedup_key}} = state, attrs, metadata) do
+    key = dedup_key.(attrs)
+
+    if MapSet.member?(state.keys, key) do
+      state
+    else
+      %{
+        state
+        | buffer: [{attrs, metadata} | state.buffer],
+          count: state.count + 1,
+          keys: MapSet.put(state.keys, key)
+      }
+    end
+  end
+
   defp run_dispatch(nil), do: :ok
 
   defp run_dispatch(fun) when is_function(fun, 0) do
@@ -202,7 +226,7 @@ defmodule Portal.Queue do
     inserted = run_on_flush(entries, config)
     Logger.info("Flushed #{inserted} #{config.label} entries")
 
-    %{state | buffer: [], count: 0}
+    %{state | buffer: [], count: 0, keys: MapSet.new()}
   end
 
   defp run_on_flush(entries, config) do

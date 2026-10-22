@@ -13,7 +13,7 @@ permissions:
   security-events: "write" # trivy SARIF upload from setup-mise
 
 env:
-  RUSTFLAGS: "--cfg tokio_unstable --deny warnings"
+  RUSTFLAGS: "--deny warnings"
   RUSTDOCFLAGS: "--deny warnings"
 
 jobs:
@@ -26,15 +26,12 @@ jobs:
         runs-on: [ubuntu-24.04, macos-26, windows-2022]
     runs-on: ${{ matrix.runs-on }}
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-rust-stable
         id: setup-rust-stable
-      - uses: ./.github/actions/setup-rust-nightly
-        id: setup-rust-nightly
-      - uses: ./.github/actions/setup-rust-target-dependency-cache
+      - uses: ./.github/actions/setup-rust-sccache
         with:
-          save-if: ${{ github.ref == 'refs/heads/main' }}
-          key: ${{ steps.setup-rust-nightly.outputs.nightly_version }}
+          azure-connection-string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
       - uses: ./.github/actions/setup-tauri-v2
         timeout-minutes: 15
       - uses: ./.github/actions/setup-mise
@@ -42,6 +39,9 @@ jobs:
           install_args: --cd rust
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # Only Linux compiles the eBPF program (`--all-features` enables it).
+      - run: mise run //rust:install-ebpf-toolchain
+        if: runner.os == 'Linux'
       - run: cargo clippy --all-targets --all-features ${{ steps.setup-rust-stable.outputs.compile-packages }}
         name: cargo clippy
         shell: bash
@@ -57,15 +57,6 @@ jobs:
         name: cargo shear
         shell: bash
 
-  monitor-static-analysis:
-    needs: [static-analysis]
-    if: "!cancelled() && needs.static-analysis.result == 'failure' && github.event_name == 'merge_group'"
-    runs-on: ubuntu-latest
-    steps:
-      - run: gh run cancel ${{ github.run_id }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
   test:
     name: test-${{ matrix.runs-on }}
     strategy:
@@ -75,36 +66,40 @@ jobs:
         runs-on: [ubuntu-24.04, macos-26, windows-2025]
     runs-on: ${{ matrix.runs-on }}
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-rust-stable
         id: setup-rust
-      - uses: ./.github/actions/setup-rust-nightly
       - uses: ./.github/actions/setup-rust-sccache
+        with:
+          azure-connection-string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
       - uses: ./.github/actions/setup-tauri-v2
       - uses: ./.github/actions/setup-mise
         with:
           install_args: --cd rust
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # Only Linux compiles the eBPF program (`--all-features` enables it).
+      - run: mise run //rust:install-ebpf-toolchain
+        if: runner.os == 'Linux'
       - uses: ./.github/actions/free-disk-space
+      # `x509-keystore`'s PKCS#11 tests sign with a SoftHSM token served through
+      # `p11-kit remote`. They fail rather than skip when either piece is missing, so that
+      # a run cannot report coverage it did not have.
+      - uses: ./.github/actions/apt-install
+        if: runner.os == 'Linux'
+        with:
+          packages: softhsm2 p11-kit
       - name: "cargo test"
         shell: bash
-        run: cargo llvm-cov --all-features ${{ steps.setup-rust.outputs.test-packages }} --lcov --output-path lcov.info -- --include-ignored --nocapture --skip tunnel_test --skip transitions_and_state_are_deterministic
+        run: cargo llvm-cov --all-features ${{ steps.setup-rust.outputs.test-packages }} --lcov --output-path lcov.info -- --include-ignored --nocapture
         env:
           # <https://github.com/rust-lang/cargo/issues/5999>
           # Needed to create tunnel interfaces in unit tests
           CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER: "sudo --preserve-env"
           # Needed to create utun devices in the Apple TUN integration tests
           CARGO_TARGET_AARCH64_APPLE_DARWIN_RUNNER: "sudo --preserve-env"
-          # Minimise DWARF debuginfo for the coverage build: source-based
-          # coverage data lives in __llvm_covmap, independent of debug info, so
-          # lcov.info / Coveralls are unaffected while target/ shrinks ~60%.
-          # `line-tables-only` keeps file:line in panic backtraces. eBPF BTF is
-          # unaffected (built separately under the release profile via aya_build).
-          CARGO_PROFILE_DEV_DEBUG: "line-tables-only"
-          CARGO_PROFILE_TEST_DEBUG: "line-tables-only"
 
-      - uses: coverallsapp/github-action@648a8eb78e6d50909eff900e4ec85cab4524a45b # v2.3.6
+      - uses: coverallsapp/github-action@8d6379e14d29928660c4ba802d8e85393440b329 # v2.3.8
         env:
           # The macOS runner installs the reporter from the coverallsapp/coveralls
           # Homebrew tap, which Homebrew 6.0.0 refuses to load unless trusted.
@@ -117,94 +112,112 @@ jobs:
           parallel: true
           fail-on-error: false
 
-  tunnel_test:
-    name: tunnel-test
+  test-android:
+    name: test-android (${{ matrix.arch }})
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            triple: x86_64-linux-android
+            api-level: 34
+            emulator-arch: x86_64
+            target: default
+          # The API 34 x86_64 image only runs 64-bit binaries, and the newest x86 image is API 30's Google APIs one.
+          - arch: i686
+            triple: i686-linux-android
+            api-level: 30
+            emulator-arch: x86
+            target: google_apis
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-rust-stable
-        id: setup-rust
-      - uses: ./.github/actions/setup-rust-nightly
+        with:
+          targets: ${{ matrix.triple }}
       - uses: ./.github/actions/setup-rust-sccache
+        with:
+          azure-connection-string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
       - uses: ./.github/actions/setup-mise
         with:
           install_args: --cd rust
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - uses: ./.github/actions/free-disk-space
-      - name: Tunnel proptest
-        id: proptest
-        shell: bash
-        run: cargo llvm-cov --features proptest --package tunnel --lcov --output-path lcov.info -- --nocapture tunnel_test transitions_and_state_are_deterministic 2>&1 | tee proptest.log
-        env:
-          PROPTEST_VERBOSE: 0 # Otherwise the output is very long.
-          PROPTEST_CASES: 256
-          RUST_BACKTRACE: 0
-          CARGO_PROFILE_TEST_OPT_LEVEL: 1 # Otherwise the tests take forever.
-          TUNNEL_TEST_ENFORCE_COVERAGE: 1 # Fail the test if we don't hit all intended codepaths.
-
-      - name: Extract missing coverage patterns
-        id: missing
-        if: failure()
-        shell: bash
-        run: |
-          missing=$(sed -n '/^TUNNEL_TEST_MISSING_PATTERNS_BEGIN$/,/^TUNNEL_TEST_MISSING_PATTERNS_END$/p' proptest.log | sed '1d;$d')
-          if [ -n "$missing" ]; then
-            {
-              echo "patterns<<EOF"
-              echo "$missing"
-              echo "EOF"
-            } >> "$GITHUB_OUTPUT"
-            echo "Missing coverage patterns:" >&2
-            echo "$missing" >&2
-          fi
-
-      - name: Harvest regression seeds for missing coverage
-        if: failure() && steps.missing.outputs.patterns != ''
-        timeout-minutes: 25
-        shell: bash
-        env:
-          PROPTEST_VERBOSE: 0
-        run: |
-          mapfile -t patterns <<< "${{ steps.missing.outputs.patterns }}"
-          cargo run -p tunnel-proptest-harvester -- "${patterns[@]}"
-      - name: Upload harvested seeds
-        if: failure() && steps.missing.outputs.patterns != ''
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - name: Build tests
+        run: mise run //rust:mobile-test-build ${{ matrix.triple }}
+      - uses: ./.github/actions/enable-kvm
+      - name: Run tests
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
         with:
-          name: proptest-harvest-seeds
-          path: rust/libs/connlib/tunnel/harvest-output/
-          if-no-files-found: warn
+          api-level: ${{ matrix.api-level }}
+          arch: ${{ matrix.emulator-arch }}
+          target: ${{ matrix.target }}
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          working-directory: ./rust
+          script: adb shell getprop ro.product.cpu.abilist && mise run //rust:mobile-test-run ${{ matrix.triple }}
 
-      - uses: coverallsapp/github-action@648a8eb78e6d50909eff900e4ec85cab4524a45b # v2.3.6
+  test-ios:
+    name: test-ios
+    runs-on: macos-26
+    timeout-minutes: 30
+    env:
+      XCODE_VERSION: "26.2"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: sudo xcode-select --switch "$(find /Applications -maxdepth 1 -name "Xcode*${XCODE_VERSION}*.app" | sort -V | tail -n 1)"
+      - uses: ./.github/actions/setup-mise
         with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          file: rust/lcov.info
-          format: lcov
-          flag-name: rust-tunnel-test
-          parallel: true
-          fail-on-error: false
+          install_args: --cd rust
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Boot simulator
+        run: mise run //swift/apple:boot-simulator
+      - uses: ./.github/actions/setup-rust-stable
+        with:
+          targets: aarch64-apple-ios-sim
+      - uses: ./.github/actions/setup-rust-sccache
+        with:
+          azure-connection-string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
+      - name: Build tests
+        run: mise run //rust:mobile-test-build aarch64-apple-ios-sim
+      - name: Run tests
+        run: mise run //rust:mobile-test-run aarch64-apple-ios-sim
+
+  fuzz-targets:
+    name: fuzz-targets
+    runs-on: ubuntu-24.04
+    outputs:
+      targets: ${{ steps.targets.outputs.targets }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - id: targets
+        run: echo "targets=$(jq -c . tests/fuzz/targets.json)" >> "$GITHUB_OUTPUT"
 
   fuzz:
-    name: fuzz
+    name: fuzz-${{ matrix.fuzz-target }}
+    needs: [fuzz-targets]
     strategy:
       fail-fast: ${{ github.event_name == 'merge_group' }}
       matrix:
-        fuzz-target: [ip_packet]
+        fuzz-target: ${{ fromJSON(needs.fuzz-targets.outputs.targets) }}
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-      - uses: ./.github/actions/setup-rust-nightly
-        id: setup-rust
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-rust-sccache
-      - uses: taiki-e/install-action@e49978b799e49ff429d162b7a30601a569ab6538 # v2.81.1
+        with:
+          azure-connection-string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
+      - uses: ./.github/actions/setup-mise
+        with:
+          install_args: --cd rust/tests/fuzz
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tool: cargo-fuzz
-      - run: rustup run ${{ steps.setup-rust.outputs.nightly_version }} cargo fuzz run --target x86_64-unknown-linux-gnu --fuzz-dir tests/fuzz ${{ matrix.fuzz-target }} -- -max_total_time=120
-        env:
-          CARGO_PROFILE_RELEASE_LTO: false
+      - uses: ./.github/actions/setup-afl
+      - uses: ./.github/actions/free-disk-space
+      - name: Replay committed corpus
+        run: mise run //rust/tests/fuzz:replay ${{ matrix.fuzz-target }}
+      - name: Check discovery determinism
+        run: mise run //rust/tests/fuzz:determinism ${{ matrix.fuzz-target }}
 
   headless-client:
     name: headless-client-${{ matrix.test }}-${{ matrix.runs-on }}
@@ -220,10 +233,16 @@ jobs:
           - { runs-on: ubuntu-24.04, test: token-path-linux.sh }
     runs-on: ${{ matrix.runs-on }}
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-rust-stable
       - uses: ./.github/actions/setup-rust-sccache
+        with:
+          azure-connection-string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
       - uses: ./.github/actions/setup-tauri-v2
+        # `linux-group.sh` builds `firezone-client-tunnel`, which is a bin of the
+        # `firezone-gui-client` package and therefore compiles `tauri`. The other
+        # tests build `firezone-headless-client`, which has no such dependency.
+        if: matrix.test == 'linux-group.sh'
         timeout-minutes: 15
       - run: scripts/tests/${{ matrix.test }}
         name: "test script"

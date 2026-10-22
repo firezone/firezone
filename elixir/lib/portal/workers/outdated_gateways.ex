@@ -12,7 +12,7 @@ defmodule Portal.Workers.OutdatedGateways do
   require Logger
 
   alias __MODULE__.Database
-  alias Portal.{Device, Mailer}
+  alias Portal.{Billing, Device, Mailer}
 
   @impl Oban.Worker
   def perform(_job) do
@@ -24,6 +24,7 @@ defmodule Portal.Workers.OutdatedGateways do
     latest_version = Portal.ComponentVersions.gateway_version()
 
     Database.all_accounts_pending_notification!()
+    |> Enum.reject(&dormant?/1)
     |> Enum.each(fn account ->
       incompatible_client_count = Database.count_incompatible_for(account, latest_version)
 
@@ -33,14 +34,17 @@ defmodule Portal.Workers.OutdatedGateways do
     end)
   end
 
-  defp all_online_gateways_for_account(account) do
-    gateways_by_id =
-      Database.all_gateways_for_account!(account)
-      |> Enum.group_by(& &1.id)
+  # Dropped before anything is sent so the last sent time stays unset and the
+  # account is notified the first time it comes back.
+  defp dormant?(account) do
+    not Billing.paid_plan?(account) and not Database.account_active?(account.id)
+  end
 
-    Database.all_sites_for_account!(account)
-    |> Enum.flat_map(&Database.all_online_gateway_ids_by_site_id!(&1.id))
-    |> Enum.flat_map(&Map.get(gateways_by_id, &1))
+  defp all_online_gateways_for_account(account) do
+    online_ids = Portal.Presence.Devices.online_ids(account.id, :gateway)
+
+    Database.all_gateways_for_account!(account)
+    |> Enum.filter(&(&1.id in online_ids))
   end
 
   defp send_notifications([], _account, _incompatible_client_count) do
@@ -48,35 +52,17 @@ defmodule Portal.Workers.OutdatedGateways do
   end
 
   defp send_notifications(gateways, account, incompatible_client_count) do
-    admin_emails =
-      Database.all_admins_for_account!(account)
-      |> Enum.map(& &1.email)
+    account
+    |> Database.all_admins_for_account!()
+    |> Enum.each(&send_email(account, gateways, incompatible_client_count, &1))
 
-    if admin_emails != [] do
-      send_email(account, gateways, incompatible_client_count, admin_emails)
-    end
-
-    changeset =
-      account_changeset(account, %{
-        config: %{
-          notifications: %{
-            outdated_gateway: %{
-              last_notified: DateTime.utc_now()
-            }
-          }
-        }
-      })
-
-    Database.update_account(changeset)
+    account
+    |> Ecto.Changeset.change(outdated_gateway_last_sent_at: DateTime.utc_now())
+    |> Database.update_account()
   end
 
-  defp send_email(account, gateways, incompatible_client_count, emails) do
-    Mailer.Notifications.outdated_gateway_email(
-      account,
-      gateways,
-      incompatible_client_count,
-      emails
-    )
+  defp send_email(account, gateways, incompatible_client_count, admin) do
+    Mailer.Notifications.outdated_gateway_email(account, gateways, incompatible_client_count, admin)
     |> Mailer.enqueue()
     |> case do
       {:ok, _result} ->
@@ -85,66 +71,46 @@ defmodule Portal.Workers.OutdatedGateways do
       {:error, reason} ->
         Logger.error("Failed to enqueue outdated gateway email",
           account_id: account.id,
-          recipient_count: length(emails),
+          actor_id: admin.id,
           reason: inspect(reason)
         )
     end
   end
 
-  defp account_changeset(account, attrs) do
-    import Ecto.Changeset
-
-    account
-    |> cast(attrs, [])
-    |> cast_embed(:config,
-      with: fn config, config_attrs ->
-        config
-        |> cast(config_attrs, [])
-        |> cast_embed(:notifications,
-          with: fn notifications, notif_attrs ->
-            notifications
-            |> cast(notif_attrs, [])
-            |> cast_embed(:outdated_gateway,
-              with: fn gateway, gateway_attrs ->
-                gateway
-                |> cast(gateway_attrs, [:last_notified])
-              end
-            )
-          end
-        )
-      end
-    )
-  end
-
   defmodule Database do
     import Ecto.Query
     alias Portal.Safe
-    alias Portal.ClientSession
     alias Portal.Device
 
     def all_accounts_pending_notification! do
       from(a in Portal.Account,
-        where: fragment("?->'notifications'->'outdated_gateway'->>'enabled' = 'true'", a.config),
         where:
-          fragment(
-            "?->'notifications'->'outdated_gateway'->>'last_notified' IS NULL",
-            a.config
-          ) or
-            fragment(
-              "(?->'notifications'->'outdated_gateway'->>'last_notified')::timestamp < timezone('UTC', NOW()) - interval '24 hours'",
-              a.config
-            )
+          is_nil(a.outdated_gateway_last_sent_at) or
+            a.outdated_gateway_last_sent_at < ago(24, "hour")
       )
-      |> Safe.unscoped(:replica)
+      |> Safe.unscoped()
       |> Safe.all()
+    end
+
+    def account_active?(account_id) do
+      from(sl in Portal.SessionLog, where: sl.account_id == ^account_id)
+      |> Safe.unscoped()
+      |> Safe.exists?()
     end
 
     def all_admins_for_account!(account) do
       from(a in Portal.Actor, as: :actors)
-      |> where([actors: a], is_nil(a.disabled_at))
+      |> where([actors: a], a.is_disabled == false)
       |> where([actors: a], a.account_id == ^account.id)
       |> where([actors: a], a.type == :account_admin_user)
-      |> Safe.unscoped(:replica)
+      |> where(
+        [actors: a],
+        fragment(
+          "COALESCE(NULLIF(?->'notifications'->'outdated_gateways', 'null') @> '[\"email\"]', true)",
+          a.preferences
+        )
+      )
+      |> Safe.unscoped()
       |> Safe.all()
     end
 
@@ -157,82 +123,32 @@ defmodule Portal.Workers.OutdatedGateways do
     def count_incompatible_for(account, gateway_version) do
       %{major: g_major, minor: g_minor} = Version.parse!(gateway_version)
 
-      from(c in Device, as: :clients)
-      |> where([clients: c], c.type == :client)
-      |> where([clients: c], c.account_id == ^account.id)
-      |> join(
-        :inner_lateral,
-        [clients: c],
-        s in subquery(
-          from(s in ClientSession,
-            where: s.device_id == parent_as(:clients).id,
-            where: s.account_id == parent_as(:clients).account_id,
-            order_by: [desc: s.inserted_at],
-            limit: 1
-          )
-        ),
-        on: true,
-        as: :latest_session
-      )
-      |> where([latest_session: s], s.inserted_at > ago(1, "week"))
+      from(d in Device, as: :devices)
+      |> where([devices: d], d.type == :client)
+      |> where([devices: d], d.account_id == ^account.id)
+      |> where([devices: d], d.last_seen_at > ago(1, "week"))
       |> where(
-        [latest_session: s],
-        fragment("split_part(?, '.', 1)::int", s.version) < ^g_major or
-          (fragment("split_part(?, '.', 1)::int", s.version) == ^g_major and
-             fragment("split_part(?, '.', 2)::int", s.version) <= ^(g_minor - 2))
+        [devices: d],
+        fragment("split_part(?, '.', 1)::int", d.last_seen_version) < ^g_major or
+          (fragment("split_part(?, '.', 1)::int", d.last_seen_version) == ^g_major and
+             fragment("split_part(?, '.', 2)::int", d.last_seen_version) <= ^(g_minor - 2))
       )
-      |> join(:inner, [clients: c], a in Portal.Actor,
-        on: c.actor_id == a.id and c.account_id == a.account_id,
+      |> join(:inner, [devices: d], a in Portal.Actor,
+        on: d.actor_id == a.id and d.account_id == a.account_id,
         as: :actor
       )
-      |> where([actor: a], is_nil(a.disabled_at))
-      |> Safe.unscoped(:replica)
+      |> where([actor: a], a.is_disabled == false)
+      |> Safe.unscoped()
       |> Safe.aggregate(:count)
     end
 
     def all_gateways_for_account!(account) do
-      gateways =
-        from(g in Device,
-          where: g.type == :gateway,
-          where: g.account_id == ^account.id
-        )
-        |> Safe.unscoped(:replica)
-        |> Safe.all()
-
-      preload_latest_sessions(gateways)
-    end
-
-    defp preload_latest_sessions(gateways) do
-      account_ids = gateways |> Enum.map(& &1.account_id) |> Enum.uniq()
-      gateway_ids = Enum.map(gateways, & &1.id)
-
-      sessions_by_gateway_id =
-        from(s in Portal.GatewaySession,
-          where: s.account_id in ^account_ids,
-          where: s.device_id in ^gateway_ids,
-          distinct: s.device_id,
-          order_by: [asc: s.device_id, desc: s.inserted_at]
-        )
-        |> Safe.unscoped(:replica)
-        |> Safe.all()
-        |> Map.new(&{&1.device_id, &1})
-
-      Enum.map(gateways, fn gateway ->
-        %{gateway | latest_session: Map.get(sessions_by_gateway_id, gateway.id)}
-      end)
-    end
-
-    def all_sites_for_account!(account) do
-      from(g in Portal.Site,
+      from(g in Device,
+        where: g.type == :gateway,
         where: g.account_id == ^account.id
       )
-      |> Safe.unscoped(:replica)
+      |> Safe.unscoped()
       |> Safe.all()
-    end
-
-    def all_online_gateway_ids_by_site_id!(site_id) do
-      Portal.Presence.Gateways.Site.list(site_id)
-      |> Map.keys()
     end
   end
 end

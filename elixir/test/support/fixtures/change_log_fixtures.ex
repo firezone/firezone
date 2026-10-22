@@ -7,7 +7,7 @@ defmodule Portal.ChangeLogFixtures do
 
   alias Portal.ChangeLog
   alias Portal.Repo
-  alias Portal.Types.EventId
+  alias Portal.Types.LogId
 
   def change_log_fixture(attrs \\ %{}) do
     attrs = Enum.into(attrs, %{})
@@ -18,7 +18,7 @@ defmodule Portal.ChangeLogFixtures do
     row =
       attrs
       |> Map.drop([:account])
-      |> Map.put_new(:event_id, EventId.build_change_log(System.os_time(:microsecond), lsn))
+      |> Map.put_new(:log_id, LogId.build_change_log(System.os_time(:microsecond), lsn))
       |> Map.put_new(:account_id, account.id)
       |> Map.put_new(:lsn, lsn)
       |> Map.put_new(:timestamp, DateTime.utc_now())

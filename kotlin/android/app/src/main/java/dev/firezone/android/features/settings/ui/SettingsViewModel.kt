@@ -4,6 +4,9 @@ package dev.firezone.android.features.settings.ui
 import android.content.Context
 import android.content.Intent
 import android.webkit.URLUtil
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.core.content.FileProvider
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -39,8 +42,8 @@ internal class SettingsViewModel
         private val actionMutableStateFlow = MutableStateFlow<ViewAction?>(null)
         val actionStateFlow: StateFlow<ViewAction?> = actionMutableStateFlow
 
-        // Working config that gets modified during editing using immutable copy
-        private var config =
+        // Compose state rather than a flow: a dispatcher hop between keystroke and text field drops input.
+        var config by mutableStateOf(
             Config(
                 authUrl = "",
                 apiUrl = "",
@@ -48,25 +51,24 @@ internal class SettingsViewModel
                 accountSlug = "",
                 startOnLogin = false,
                 connectOnStart = false,
-            )
+            ),
+        )
+            private set
 
         // Snapshot of the persisted config as it was loaded, used to detect which
         // fields the user actually changed when saving.
         private var savedConfig = config
 
-        // StateFlow that emits config only on load/reset, not during editing
-        private val _configStateFlow = MutableStateFlow(config)
-        val configStateFlow: StateFlow<Config> = _configStateFlow
-
         private val _managedStatusStateFlow = MutableStateFlow<ManagedConfigStatus?>(null)
         val managedStatusStateFlow: StateFlow<ManagedConfigStatus?> = _managedStatusStateFlow
+
+        private var shouldResetFavoritesOnSave = false
 
         fun populateFieldsFromConfig() {
             viewModelScope.launch {
                 repo.getConfig().collect {
                     config = it
                     savedConfig = it
-                    _configStateFlow.value = it
                     _managedStatusStateFlow.value = repo.getManagedStatus()
                     onFieldUpdated()
                 }
@@ -101,6 +103,10 @@ internal class SettingsViewModel
         fun onSaveSettingsCompleted() {
             viewModelScope.launch {
                 repo.saveSettings(config).collect {
+                    if (shouldResetFavoritesOnSave) {
+                        repo.resetFavorites()
+                        shouldResetFavoritesOnSave = false
+                    }
                     actionMutableStateFlow.value = ViewAction.NavigateBack
                 }
             }
@@ -193,8 +199,7 @@ internal class SettingsViewModel
 
         fun resetSettingsToDefaults() {
             config = repo.getDefaultConfigSync()
-            repo.resetFavorites()
-            _configStateFlow.value = config
+            shouldResetFavoritesOnSave = true
             _managedStatusStateFlow.value = repo.getManagedStatus()
             onFieldUpdated()
         }
@@ -215,7 +220,7 @@ internal class SettingsViewModel
             zipFile: File,
         ) = flow {
             ZipOutputStream(FileOutputStream(zipFile)).use { zipStream ->
-                sourceFolder.walkTopDown().forEach { file ->
+                sourceFolder.walkTopDown().filter { it != sourceFolder }.forEach { file ->
                     val entryName = sourceFolder.toPath().relativize(file.toPath()).toString()
                     if (file.isDirectory) {
                         zipStream.putNextEntry(ZipEntry("$entryName/"))

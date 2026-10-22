@@ -1,5 +1,4 @@
 defmodule Portal.Repo.Query do
-  alias Portal.Repo.Filter
   import Ecto.Query
 
   @type cursor_fields :: [
@@ -35,27 +34,6 @@ defmodule Portal.Repo.Query do
   # Filtering helpers
 
   @doc """
-  Allows to easily define range filter callback for the given `field`.
-
-  ## Example
-
-      fn queryable, range ->
-        {queryable, by_range(range, accounts.inserted_at)}
-      end
-  """
-  def by_range(%Filter.Range{from: from, to: nil}, fragment),
-    do: dynamic(^fragment >= ^from)
-
-  def by_range(%Filter.Range{from: nil, to: to}, fragment),
-    do: dynamic(^fragment <= ^to)
-
-  def by_range(%Filter.Range{from: value, to: value}, fragment),
-    do: dynamic(^fragment == ^value)
-
-  def by_range(%Filter.Range{from: from, to: to}, fragment),
-    do: dynamic(^from <= ^fragment and ^fragment <= ^to)
-
-  @doc """
   This function is to allow reuse of the filter function in the regular query helpers,
   it takes a return of a filter function (`{queryable, dynamic}`) and applies it to the queryable.
 
@@ -72,22 +50,6 @@ defmodule Portal.Repo.Query do
   """
   def apply_filter({%Ecto.Query{} = queryable, %Ecto.Query.DynamicExpr{} = dynamic}) do
     where(queryable, ^dynamic)
-  end
-
-  @doc """
-  This function is to allow to chain the filter functions, it takes a return of
-  a filter function (`{queryable, dynamic}`) and appends a return of a new filter to it.
-
-  ## Example
-
-        queryable
-        |> append_filter(&by_account_id_filter(&1, account_id))
-        |> append_filter(&by_name_filter(&1, name))
-
-  """
-  def append_filter(queryable, fun) when is_function(fun, 1) do
-    {queryable, dynamic} = fun.(queryable)
-    apply_filter({queryable, dynamic})
   end
 
   # Custom Query fragments

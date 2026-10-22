@@ -1,6 +1,7 @@
 defmodule Portal.Policy do
   use Ecto.Schema
   import Ecto.Changeset
+  alias Portal.Authentication
   alias __MODULE__.Database
 
   @primary_key false
@@ -11,11 +12,13 @@ defmodule Portal.Policy do
           id: Ecto.UUID.t(),
           description: String.t() | nil,
           conditions: [Portal.Policies.Condition.t()],
+          postures: Portal.Policies.Postures.t() | nil,
           group_id: Ecto.UUID.t() | nil,
           group_idp_id: String.t() | nil,
           resource_id: Ecto.UUID.t(),
           account_id: Ecto.UUID.t(),
-          disabled_at: DateTime.t() | nil,
+          flow_log_uploads_enabled: boolean(),
+          is_disabled: boolean(),
           inserted_at: DateTime.t(),
           updated_at: DateTime.t()
         }
@@ -27,12 +30,15 @@ defmodule Portal.Policy do
     field :description, :string
 
     embeds_many :conditions, Portal.Policies.Condition, on_replace: :delete
+    field :postures, Portal.Policies.Postures
 
     belongs_to :group, Portal.Group, foreign_key: :group_id
     field :group_idp_id, :string
     belongs_to :resource, Portal.Resource
 
-    field :disabled_at, :utc_datetime_usec
+    field :flow_log_uploads_enabled, :boolean, default: true
+
+    field :is_disabled, :boolean, default: false, read_after_writes: true
 
     timestamps()
   end
@@ -61,6 +67,35 @@ defmodule Portal.Policy do
     )
   end
 
+  @doc """
+  Defaults `flow_log_uploads_enabled` to false for Internet Resource policies.
+
+  The raw attributes are needed to distinguish an omitted value from an
+  explicit value equal to the schema default, which `cast/4` intentionally
+  excludes from the changes. `fetch_change/2` limits the resource lookup and
+  defaulting to policy creation or an actual resource change.
+  """
+  def default_flow_log_uploads_for_internet_resource(
+        %Ecto.Changeset{} = changeset,
+        %{"flow_log_uploads_enabled" => _value},
+        %Authentication.Subject{}
+      ) do
+    changeset
+  end
+
+  def default_flow_log_uploads_for_internet_resource(
+        %Ecto.Changeset{} = changeset,
+        _attrs,
+        %Authentication.Subject{} = subject
+      ) do
+    with {:ok, resource_id} <- fetch_change(changeset, :resource_id),
+         %Portal.Resource{type: :internet} <- Database.fetch_resource(resource_id, subject) do
+      put_change(changeset, :flow_log_uploads_enabled, false)
+    else
+      _ -> changeset
+    end
+  end
+
   # A policy may carry at most one condition per property. Each operator accepts
   # a list of values, so multiple conditions on the same property are always
   # either reducible to one or contradictory (e.g. is_in and is_not_in the same
@@ -85,6 +120,14 @@ defmodule Portal.Policy do
     alias Portal.Group
     alias Portal.Policy
     alias Portal.Safe
+
+    @spec fetch_resource(Ecto.UUID.t(), Portal.Authentication.Subject.t()) ::
+            Portal.Resource.t() | nil
+    def fetch_resource(resource_id, subject) do
+      from(r in Portal.Resource, where: r.id == ^resource_id)
+      |> Safe.scoped(subject)
+      |> Safe.one()
+    end
 
     @spec reconnect_orphaned_policies(Ecto.UUID.t()) :: non_neg_integer()
     def reconnect_orphaned_policies(account_id) do

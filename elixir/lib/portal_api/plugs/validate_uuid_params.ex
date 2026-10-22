@@ -1,5 +1,5 @@
 defmodule PortalAPI.Plugs.ValidateUUIDParams do
-  alias Portal.Types.EventId
+  alias Portal.Types.LogId
 
   def init(opts), do: opts
 
@@ -20,10 +20,12 @@ defmodule PortalAPI.Plugs.ValidateUUIDParams do
     end
   end
 
+  # Ecto.UUID.cast/1 also accepts a raw 16-byte binary, which a path segment
+  # of unrelated bytes can decode to, so the textual form is required.
   defp valid_id?(value) when is_binary(value) do
     case Ecto.UUID.cast(value) do
-      {:ok, _} -> true
-      :error -> EventId.valid?(value)
+      {:ok, _} -> byte_size(value) == 36
+      :error -> LogId.valid?(value)
     end
   end
 

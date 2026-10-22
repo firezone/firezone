@@ -86,14 +86,13 @@ Note that `nix.settings` changes take effect only after a rebuild, so the very f
 
 Design goal: **zero Nix edits per release.**
 
-- Package versions are read from the crates' `Cargo.toml` files at evaluation time, so `scripts/bump-versions.sh` needs no Nix awareness.
-- Rust dependencies (including git dependencies) come straight from `rust/Cargo.lock` via `importCargoLock` with builtin git fetching: no vendor hash exists, so `cargo update --workspace` on release never requires a Nix change.
+- Package versions come from their crates’ `Cargo.toml` files, matching the versions being built, including release drafts.
+- Rust dependencies (including git dependencies) come straight from `rust/Cargo.lock` via crane with builtin git fetching: no vendor hash exists, so `cargo update --workspace` on release never requires a Nix change.
   The cost: the first evaluation on a fresh machine fetches the git dependencies at eval time.
 - The Rust toolchain follows `rust/rust-toolchain.toml`.
   If CI fails with an unknown-toolchain error right after a toolchain bump, run `nix flake update rust-overlay`.
-- The **single maintained hash** is `pnpmDeps.hash` in `scripts/nix/packages/firezone-gui-client/frontend.nix`.
-  It must be bumped whenever `gui-client/pnpm-lock.yaml` changes; the CI failure message prints the expected value, paste it and re-run.
-- Frontend build steps in `frontend.nix` mirror `gui-client/build.sh` and the `postinstall` script in `gui-client/package.json`; keep them in sync when those change.
+- Frontend dependencies come straight from `rust/gui-client/pnpm-lock.yaml`: each package is fetched by the lockfile's integrity hash, so dependency bumps never require a Nix change.
+- Frontend build steps in `frontend.nix` mirror `gui-client/mise-tasks/build.sh`; keep them in sync when those change.
 - Hardcoded FHS paths in Rust code (like the IPC peer-check path, see `FIREZONE_GUI_PEER_EXE` in `gui-client/src-tauri/src/ipc/unix/peer_check/linux.rs`) break NixOS builds silently.
   The Nix CI job on `rust/` PRs is what catches these at review time.
 

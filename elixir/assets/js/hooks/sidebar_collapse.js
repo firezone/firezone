@@ -4,6 +4,7 @@ export const SidebarCollapse = {
     if (!sidebar) return;
 
     const labels = sidebar.querySelectorAll("[data-sidebar-label]");
+    const badges = sidebar.querySelectorAll("[data-sidebar-badge]");
     const groupLabels = sidebar.querySelectorAll("[data-sidebar-group-label]");
     const navItems = sidebar.querySelectorAll("[data-sidebar-nav-item]");
     const wordmark = sidebar.querySelector("[data-sidebar-wordmark]");
@@ -15,6 +16,7 @@ export const SidebarCollapse = {
         el.classList.add("max-w-0", "opacity-0", "overflow-hidden");
         el.classList.remove("max-w-xs", "opacity-100");
       });
+      badges.forEach((el) => (el.style.display = "none"));
       groupLabels.forEach((el) => el.classList.add("hidden"));
       navItems.forEach((el) => {
         el.style.justifyContent = "center";
@@ -36,6 +38,7 @@ export const SidebarCollapse = {
         el.classList.remove("max-w-0", "opacity-0", "overflow-hidden");
         el.classList.add("max-w-xs", "opacity-100");
       });
+      badges.forEach((el) => (el.style.display = ""));
       groupLabels.forEach((el) => el.classList.remove("hidden"));
       navItems.forEach((el) => {
         el.style.justifyContent = "";

@@ -30,14 +30,14 @@ import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
 import dev.firezone.android.core.data.isEnabled
 import dev.firezone.android.core.utils.ClipboardUtils
-import dev.firezone.android.features.session.ui.ResourceViewModel
+import dev.firezone.android.features.session.ui.ResourceUiModel
 import dev.firezone.android.features.session.ui.isInternetResource
 import dev.firezone.android.tunnel.model.StatusEnum
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ResourceDetailsSheet(
-    resource: ResourceViewModel,
+    resource: ResourceUiModel,
     isFavorite: Boolean,
     onAddFavorite: () -> Unit,
     onRemoveFavorite: () -> Unit,
@@ -45,9 +45,15 @@ fun ResourceDetailsSheet(
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val sheetState = rememberModalBottomSheetState()
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val context = LocalContext.current
+
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState, modifier = modifier) {
         Column(Modifier.fillMaxWidth().padding(16.dp)) {
+            SheetTitle(
+                text = resource.name,
+                modifier = Modifier.clickable { ClipboardUtils.copyToClipboard(context, "Name", resource.name) },
+            )
             if (resource.isInternetResource()) {
                 InternetResourceDetails(resource, onToggleInternet)
             } else {
@@ -62,17 +68,15 @@ fun ResourceDetailsSheet(
 
 @Composable
 private fun InternetResourceDetails(
-    resource: ResourceViewModel,
+    resource: ResourceUiModel,
     onToggleInternet: () -> Unit,
 ) {
     Column {
-        SectionLabel("Resource")
-        DetailRow(label = "Name:") { Text(resource.name) }
-        DetailRow(label = "Description:") { Text("All network traffic") }
+        DetailSection(label = "Description") { Text("All network traffic") }
 
         OutlinedButton(
             onClick = onToggleInternet,
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
         ) {
             Text(if (resource.state.isEnabled()) "Disable this resource" else "Enable this resource")
         }
@@ -81,7 +85,7 @@ private fun InternetResourceDetails(
 
 @Composable
 private fun NonInternetResourceDetails(
-    resource: ResourceViewModel,
+    resource: ResourceUiModel,
     isFavorite: Boolean,
     onAddFavorite: () -> Unit,
     onRemoveFavorite: () -> Unit,
@@ -89,20 +93,11 @@ private fun NonInternetResourceDetails(
     Column {
         val context = LocalContext.current
 
-        SectionLabel("Resource")
-
-        DetailRow(label = "Name:") {
-            Text(
-                text = resource.name,
-                modifier = Modifier.clickable { ClipboardUtils.copyToClipboard(context, "Name", resource.name) },
-            )
-        }
-
         val displayAddress = resource.addressDescription ?: resource.address
         val addressUri = remember(resource.addressDescription) { resource.addressDescription?.toUri() }
         val isUrl = addressUri?.scheme != null
 
-        DetailRow(label = "Address:") {
+        DetailSection(label = "Address") {
             Text(
                 text = displayAddress.orEmpty(),
                 color = if (isUrl) Color.Blue else MaterialTheme.colorScheme.onSurface,
@@ -120,7 +115,7 @@ private fun NonInternetResourceDetails(
 
         OutlinedButton(
             onClick = if (isFavorite) onRemoveFavorite else onAddFavorite,
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
         ) {
             Text(if (isFavorite) "Remove from Favorites" else "Add to Favorites")
         }
@@ -135,8 +130,7 @@ private fun SiteSection(
     Column {
         val context = LocalContext.current
 
-        SectionLabel("Site")
-        DetailRow(label = "Name:") {
+        DetailSection(label = "Site") {
             Text(
                 text = siteName,
                 modifier = Modifier.clickable { ClipboardUtils.copyToClipboard(context, "Site name", siteName) },
@@ -156,7 +150,7 @@ private fun SiteSection(
                 StatusEnum.UNKNOWN -> Color.Gray
             }
 
-        DetailRow(label = "Status:") {
+        DetailSection(label = "Status") {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(Modifier.size(10.dp).background(dotColor, CircleShape))
                 Spacer(Modifier.width(8.dp))

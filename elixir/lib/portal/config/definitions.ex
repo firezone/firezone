@@ -32,6 +32,10 @@ defmodule Portal.Config.Definitions do
   alias Portal.Types
 
   @entra_sync_client_id ""
+  @intune_sync_client_id ""
+  @windows_updates_client_id ""
+  @defender_sync_client_id ""
+  @sentinel_sync_client_id ""
   @google_oidc_client_id "689429116054-72vkp65pqrntsq3bksj9bt4pft15if4v.apps.googleusercontent.com"
   @entra_oidc_client_id "d0b74799-63b8-4c10-8255-1c03c48a3029"
 
@@ -95,7 +99,8 @@ defmodule Portal.Config.Definitions do
   @doc """
   The external URL the UI will be accessible at.
 
-  If this field is not set or set to `nil`, the server for `api` and `web` apps will not start.
+  Plain HTTP URLs are served directly by the Web endpoint for local development.
+  HTTPS URLs are served by the public endpoint and dispatched by hostname.
   """
   defconfig(:web_external_url, :string,
     default: nil,
@@ -109,7 +114,8 @@ defmodule Portal.Config.Definitions do
   @doc """
   The external URL the API will be accessible at.
 
-  If this field is not set or set to `nil`, the server for `api` and `web` apps will not start.
+  Plain HTTP URLs are served directly by the API endpoint for local development.
+  HTTPS URLs are served by the public endpoint and dispatched by hostname.
   """
 
   defconfig(:api_external_url, :string,
@@ -139,6 +145,27 @@ defmodule Portal.Config.Definitions do
   )
 
   @doc """
+  The external URL clients use to connect with a device certificate, for
+  example `https://mtls.firezone.dev/`.
+
+  The public Phoenix endpoint requests a client certificate during the TLS
+  handshake on this host. The application validates the presented certificate
+  against the account's configured trust anchors.
+
+  When this is not set, certificate-based device trust is disabled and the
+  peer certificate is ignored.
+  """
+
+  defconfig(:mtls_external_url, :string,
+    default: nil,
+    changeset: fn changeset, key ->
+      changeset
+      |> Portal.Changeset.validate_uri(key, require_trailing_slash: true)
+      |> Portal.Changeset.normalize_url(key)
+    end
+  )
+
+  @doc """
   The API rate limiter uses a token bucket algorithm. This field sets the rate the bucket is refilled.
   """
   defconfig(:api_refill_rate, :integer, default: 10)
@@ -147,6 +174,16 @@ defmodule Portal.Config.Definitions do
   The API rate limiter uses a token bucket algorithm. This field sets the capacity of the bucket.
   """
   defconfig(:api_capacity, :integer, default: 200)
+
+  @doc """
+  The API rate limiter keeps a separate token bucket for REST API read (GET) requests. This field sets the rate the read bucket is refilled.
+  """
+  defconfig(:api_read_refill_rate, :integer, default: 10)
+
+  @doc """
+  The API rate limiter keeps a separate token bucket for REST API read (GET) requests. This field sets the capacity of the read bucket.
+  """
+  defconfig(:api_read_capacity, :integer, default: 200)
 
   @doc """
   The API socket rate limiter uses a token bucket algorithm. This field sets the rate the bucket is refilled.
@@ -177,6 +214,13 @@ defmodule Portal.Config.Definitions do
   defconfig(:flow_logs_upload_interval_secs, :integer, default: 60)
 
   @doc """
+  Maximum number of flow log records clients and gateways send per upload request.
+
+  Capped at 10,000 (the ingest API's per-request limit) by the data plane.
+  """
+  defconfig(:flow_logs_upload_batch_size, :integer, default: 1_000)
+
+  @doc """
   The base URL clients and gateways POST flow logs to.
   """
   defconfig(:flow_logs_api_url, :string,
@@ -187,6 +231,24 @@ defmodule Portal.Config.Definitions do
       |> Portal.Changeset.normalize_url(key)
     end
   )
+
+  @doc """
+  Access key ID for Firezone's AWS account, used to assume customer IAM roles
+  for Amazon S3 log sinks.
+  """
+  defconfig(:log_sinks_aws_access_key_id, :string, default: nil, sensitive: true)
+
+  @doc """
+  Secret access key for Firezone's AWS account, used to assume customer IAM
+  roles for Amazon S3 log sinks.
+  """
+  defconfig(:log_sinks_aws_secret_access_key, :string, default: nil, sensitive: true)
+
+  @doc """
+  Firezone's AWS account ID, shown to customers in the IAM trust policy their
+  S3 log sink role must attach.
+  """
+  defconfig(:log_sinks_aws_account_id, :string, default: "000000000000")
 
   @doc """
   The Web rate limiter uses a token bucket algorithm. This field sets the rate the bucket is refilled.
@@ -206,10 +268,14 @@ defmodule Portal.Config.Definitions do
   defconfig(:phoenix_listen_address, Types.IP, default: "0.0.0.0")
 
   @doc """
-  Internal port to listen on for the Phoenix server for the `web` application.
+  Internal HTTP port for the public endpoint. Leave unset to disable the listener.
+
+  Requests other than readiness checks are redirected to HTTPS while
+  `PHOENIX_HTTPS_PUBLIC_PORT` is set. Without it this listener serves the
+  requests, which is what a reverse proxy that terminates TLS connects to.
   """
-  defconfig(:phoenix_http_web_port, :integer,
-    default: 13_000,
+  defconfig(:phoenix_http_public_port, :integer,
+    default: nil,
     changeset: fn changeset, key ->
       Ecto.Changeset.validate_number(changeset, key,
         greater_than: 0,
@@ -219,10 +285,11 @@ defmodule Portal.Config.Definitions do
   )
 
   @doc """
-  Internal port to listen on for the Phoenix server for the `api` application.
+  Internal HTTPS port for the public endpoint. Leave unset to disable the
+  listener and let a reverse proxy in front of Firezone terminate TLS.
   """
-  defconfig(:phoenix_http_api_port, :integer,
-    default: 13_001,
+  defconfig(:phoenix_https_public_port, :integer,
+    default: nil,
     changeset: fn changeset, key ->
       Ecto.Changeset.validate_number(changeset, key,
         greater_than: 0,
@@ -230,6 +297,15 @@ defmodule Portal.Config.Definitions do
       )
     end
   )
+
+  @doc """
+  JSON object mapping public hostnames to their TLS certificate and key files.
+
+  Each value must contain `certfile` and `keyfile` paths. The hostname from
+  `MTLS_EXTERNAL_URL` additionally requires a client certificate during the
+  TLS handshake.
+  """
+  defconfig(:phoenix_https_sni_hosts, :map, default: %{})
 
   @doc """
   Internal port to listen on for the Phoenix server for the `ops` application.
@@ -293,6 +369,15 @@ defmodule Portal.Config.Definitions do
   This is used to determine the correct IP address of the client when the
   application is behind a reverse proxy by skipping a trusted proxy IP
   from a list of possible source IPs.
+
+  The public endpoint keeps the `X-Forwarded-*` headers only on requests that
+  arrive from one of these addresses. Every other request has them removed and
+  its client IP address read from the connection itself.
+
+  Your proxy must append the client address to `X-Forwarded-For` rather than
+  pass on what the client sent. Also list your own private ranges in
+  `PHOENIX_PRIVATE_CLIENTS` when your clients have private addresses, because
+  private addresses in the header are read as further proxy hops.
   """
   defconfig(:phoenix_external_trusted_proxies, {:json_array, {:one_of, [Types.IP, Types.CIDR]}},
     default: []
@@ -325,22 +410,22 @@ defmodule Portal.Config.Definitions do
   defconfig(:database_host, :string, default: "postgres")
 
   @doc """
-  PostgreSQL replica host for read-only queries.
-  Falls back to DATABASE_HOST if not set.
-  """
-  defconfig(:database_host_replica, :string,
-    default: fn -> System.get_env("DATABASE_HOST", "postgres") end
-  )
-
-  @doc """
   PostgreSQL socket directory (takes precedence over hostname).
   """
   defconfig(:database_socket_dir, :string, default: nil)
 
   @doc """
-  PostgreSQL port.
+  Direct PostgreSQL port used by migrations, cluster discovery, and replication polling.
   """
   defconfig(:database_port, :integer, default: 5432)
+
+  @doc """
+  PgBouncer port used by the Web, API, and background job connection pools.
+
+  When unset, these pools use `DATABASE_PORT` to preserve compatibility with
+  deployments that don't run PgBouncer.
+  """
+  defconfig(:database_pgbouncer_port, :integer, default: nil)
 
   @doc """
   Name of the PostgreSQL database.
@@ -358,6 +443,21 @@ defmodule Portal.Config.Definitions do
   defconfig(:database_password, :string, default: nil, sensitive: true)
 
   @doc """
+  Authenticate database connections using Microsoft Entra instead of a password.
+
+  When enabled, DATABASE_PASSWORD is ignored and every connection attempt uses
+  a Microsoft Entra access token fetched from the Azure Instance Metadata
+  Service for the managed identity selected by AZURE_CLIENT_ID.
+  """
+  defconfig(:database_entra_auth, :boolean, default: false)
+
+  @doc """
+  Client ID of the Azure user-assigned managed identity used to fetch Microsoft
+  Entra access tokens when DATABASE_ENTRA_AUTH is enabled.
+  """
+  defconfig(:azure_client_id, :string, default: nil)
+
+  @doc """
   Size of the connection pool to the PostgreSQL database.
   """
   defconfig(:database_pool_size, :integer,
@@ -365,24 +465,19 @@ defmodule Portal.Config.Definitions do
   )
 
   @doc """
-  Size of the primary connection pool for PortalWeb (HTTP + LiveView) queries.
+  Size of the connection pool for PortalWeb (HTTP + LiveView) queries.
   """
-  defconfig(:database_pool_size_web, :integer, default: 2)
+  defconfig(:database_pool_size_web, :integer, default: 4)
 
   @doc """
-  Size of the primary connection pool for PortalAPI (REST + Sockets) queries.
+  Size of the connection pool for PortalAPI (REST + Sockets) queries.
   """
-  defconfig(:database_pool_size_api, :integer, default: 5)
+  defconfig(:database_pool_size_api, :integer, default: 10)
 
   @doc """
-  Size of the replica connection pool for PortalWeb (HTTP + LiveView) queries.
+  Size of the connection pool for Oban and background job queries.
   """
-  defconfig(:database_pool_size_web_replica, :integer, default: 2)
-
-  @doc """
-  Size of the replica connection pool for PortalAPI (REST + Sockets) queries.
-  """
-  defconfig(:database_pool_size_api_replica, :integer, default: 5)
+  defconfig(:database_pool_size_job, :integer, default: 4)
 
   @doc """
   The target threshold for the length of time in milliseconds that a query should wait in the queue
@@ -675,21 +770,37 @@ defmodule Portal.Config.Definitions do
   ##############################################
 
   defconfig(:google_service_account_key, :string, default: nil, sensitive: true)
+  defconfig(:google_workload_identity_provider, :string, default: nil)
+  defconfig(:google_workload_identity_audience, :string, default: nil)
+  defconfig(:google_service_account_email, :string, default: nil)
+  defconfig(:google_sync_authz_client_id, :string, default: nil)
+  defconfig(:google_sync_authz_client_secret, :string, default: nil, sensitive: true)
 
   ##############################################
-  ## Google / Entra / Okta authentication
+  ## Google / GitHub / Entra / Okta authentication
   ##############################################
 
   defconfig(:google_oidc_client_id, :string, default: @google_oidc_client_id)
   defconfig(:google_oidc_client_secret, :string, default: nil, sensitive: true)
 
+  defconfig(:github_oauth_client_id, :string, default: nil)
+  defconfig(:github_oauth_client_secret, :string, default: nil, sensitive: true)
+
   defconfig(:entra_sync_client_id, :string, default: @entra_sync_client_id)
-  defconfig(:entra_sync_client_secret, :string, default: nil, sensitive: true)
+  defconfig(:intune_sync_client_id, :string, default: @intune_sync_client_id)
+  defconfig(:windows_updates_client_id, :string, default: @windows_updates_client_id)
+  defconfig(:defender_sync_client_id, :string, default: @defender_sync_client_id)
 
   defconfig(:entra_oidc_client_id, :string, default: @entra_oidc_client_id)
   defconfig(:entra_oidc_client_secret, :string, default: nil, sensitive: true)
 
   # Okta uses a per-tenant client_id/secret
+
+  ##############################################
+  ## Microsoft Sentinel log sinks
+  ##############################################
+
+  defconfig(:sentinel_sync_client_id, :string, default: @sentinel_sync_client_id)
 
   ##############################################
   ## Health
@@ -705,6 +816,125 @@ defmodule Portal.Config.Definitions do
   ##############################################
   ## Telemetry
   ##############################################
+
+  @doc """
+  DSN used to report errors to Sentry.
+
+  Sentry reporting is disabled when this is unset or blank.
+  """
+  defconfig(:sentry_dsn, :string,
+    default: nil,
+    dump: fn
+      dsn when is_binary(dsn) ->
+        case String.trim(dsn) do
+          "" -> nil
+          dsn -> dsn
+        end
+
+      dsn ->
+        dsn
+    end
+  )
+
+  @doc "Google Ads customer ID receiving account conversions, without hyphens."
+  defconfig(:google_ads_customer_id, :string, default: nil)
+
+  @doc "Optional Google Ads manager customer ID used to access the receiving account."
+  defconfig(:google_ads_login_customer_id, :string, default: nil)
+
+  @doc "Google Ads import conversion action ID for completed registrations."
+  defconfig(:google_ads_registration_conversion_action_id, :string, default: nil)
+
+  @doc "Google Ads import conversion action ID for active Team and Business enrollments."
+  defconfig(:google_ads_subscription_conversion_action_id, :string, default: nil)
+
+  @doc "Dedicated Google service account used for Ads conversions."
+  defconfig(:google_ads_service_account_email, :string, default: nil)
+
+  @doc "Canonical workload identity provider used for Ads conversions."
+  defconfig(:google_ads_workload_identity_provider, :string, default: nil)
+
+  @doc "Azure managed identity audience used for Ads federation."
+  defconfig(:google_ads_workload_identity_audience, :string, default: nil)
+
+  @doc "OpenAI Ads pixel receiving portal conversions."
+  defconfig(:openai_conversions_pixel_id, :string, default: nil)
+
+  @doc """
+  OpenAI Ads Conversions API key. Conversion delivery is disabled when unset or blank.
+  """
+  defconfig(:openai_conversions_api_key, :string,
+    default: nil,
+    sensitive: true,
+    dump: fn
+      value when is_binary(value) -> if String.trim(value) == "", do: nil, else: String.trim(value)
+      value -> value
+    end
+  )
+
+  @doc """
+  PostHog project API key used to attribute consented website visitors after authentication.
+
+  PostHog analytics are disabled unless both this and `POSTHOG_HOST` are set.
+  """
+  defconfig(:posthog_project_api_key, :string,
+    default: nil,
+    dump: fn
+      project_api_key when is_binary(project_api_key) ->
+        case String.trim(project_api_key) do
+          "" -> nil
+          project_api_key -> project_api_key
+        end
+
+      project_api_key ->
+        project_api_key
+    end
+  )
+
+  @doc """
+  Base URL of the PostHog instance (or a reverse proxy in front of it) that receives
+  analytics events, e.g. `https://us.i.posthog.com`.
+
+  PostHog analytics are disabled unless both this and `POSTHOG_PROJECT_API_KEY` are set.
+  """
+  defconfig(:posthog_host, :string,
+    default: nil,
+    changeset: fn changeset, key ->
+      changeset
+      |> Ecto.Changeset.update_change(key, fn host ->
+        case String.trim(host) do
+          "" -> nil
+          host -> host
+        end
+      end)
+      |> Portal.Changeset.validate_uri(key, schemes: ["https"])
+    end
+  )
+
+  @doc """
+  Sender address of the founder follow-up email sent 15 minutes after a web sign-up.
+
+  The follow-up email is disabled when this is unset or blank. The address must be
+  allowed as a sender on the outbound email adapter.
+  """
+  defconfig(:sign_up_follow_up_from_email, :string,
+    default: nil,
+    dump: fn
+      value when is_binary(value) -> if String.trim(value) == "", do: nil, else: String.trim(value)
+      value -> value
+    end
+  )
+
+  @doc """
+  BCC address for the founder follow-up email, such as the HubSpot BCC logging address.
+  """
+  defconfig(:sign_up_follow_up_bcc_email, :string,
+    default: nil,
+    dump: fn
+      value when is_binary(value) -> if String.trim(value) == "", do: nil, else: String.trim(value)
+      value -> value
+    end
+  )
 
   @doc """
   Enable or disable the Firezone telemetry collection.
@@ -746,6 +976,15 @@ defmodule Portal.Config.Definitions do
     dump: &Dumper.dump_ssl_opts/1
   )
 
+  @doc """
+  Enable or disable blocking outbound HTTP requests to private or reserved IP addresses.
+
+  Enabled by default to protect against SSRF attacks when the portal sends requests to
+  user-configured HTTP endpoints. Disable this only if the portal must be able to reach
+  services on a private network, for example in self-hosted deployments.
+  """
+  defconfig(:http_client_ssrf_protection_enabled, :boolean, default: true)
+
   ##############################################
   ## Geolocation
   ##############################################
@@ -768,6 +1007,35 @@ defmodule Portal.Config.Definitions do
   ##############################################
   ## Outbound Email Settings
   ##############################################
+
+  @doc """
+  Recipient address for emails to the Firezone team: portal feedback, sign-up
+  questionnaires, account deletion feedback and Enterprise seat overage reports.
+  They are not sent when unset or blank.
+  """
+  defconfig(:feedback_email_recipient, :string,
+    default: nil,
+    changeset: fn changeset, key ->
+      changeset
+      |> Portal.Changeset.trim_change(key)
+      |> Ecto.Changeset.update_change(key, fn value -> if value == "", do: nil, else: value end)
+      |> Portal.Changeset.validate_email(key)
+    end
+  )
+
+  @doc """
+  Recipient address for posture provider interest and feedback emails.
+  Interest registration and feedback are disabled when unset or blank.
+  """
+  defconfig(:posture_provider_interest_email_recipient, :string,
+    default: nil,
+    changeset: fn changeset, key ->
+      changeset
+      |> Portal.Changeset.trim_change(key)
+      |> Ecto.Changeset.update_change(key, fn value -> if value == "", do: nil, else: value end)
+      |> Portal.Changeset.validate_email(key)
+    end
+  )
 
   @doc """
   From address to use for sending outbound emails. If not set, sending email will be disabled (default).
@@ -895,7 +1163,6 @@ defmodule Portal.Config.Definitions do
   defconfig(:stripe_webhook_signing_secret, :string, sensitive: true, default: nil)
   defconfig(:stripe_default_price_id, :string, default: nil)
   defconfig(:stripe_plan_product_ids, {:json_array, :string}, default: [])
-  defconfig(:stripe_adhoc_device_product_id, :string, default: nil)
 
   ##############################################
   ## Local development and Staging Helpers
@@ -903,19 +1170,6 @@ defmodule Portal.Config.Definitions do
 
   defconfig(:docker_registry, :string, default: "ghcr.io/firezone")
   defconfig(:api_url_override, :string, default: nil)
-
-  ##############################################
-  ## Feature Flags
-  ##
-  ## If feature is disabled globally it won't be available for any account,
-  ## even if account-specific override enables them.
-  ##
-  ##############################################
-
-  @doc """
-  Boolean flag to turn Sign-ups on/off for all accounts.
-  """
-  defconfig(:feature_sign_up_enabled, :boolean, default: true)
 
   @doc """
   List of email domains allowed to signup from. Leave empty to allow signing up from any domain.
@@ -929,23 +1183,4 @@ defmodule Portal.Config.Definitions do
     end
   )
 
-  @doc """
-  Boolean flag to turn IdP sync on/off for all accounts.
-  """
-  defconfig(:feature_idp_sync_enabled, :boolean, default: true)
-
-  @doc """
-  Boolean flag to turn Policy Conditions functionality on/off for all accounts.
-  """
-  defconfig(:feature_policy_conditions_enabled, :boolean, default: false)
-
-  @doc """
-  Boolean flag to turn API Client UI functionality on/off for all accounts.
-  """
-  defconfig(:feature_rest_api_enabled, :boolean, default: false)
-
-  @doc """
-  Boolean flag to turn Internet Resources functionality on/off for all accounts.
-  """
-  defconfig(:feature_internet_resource_enabled, :boolean, default: false)
 end

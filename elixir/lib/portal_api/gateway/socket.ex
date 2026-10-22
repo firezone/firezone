@@ -1,13 +1,20 @@
 defmodule PortalAPI.Gateway.Socket do
   use Phoenix.Socket
   alias Portal.Authentication
-  alias Portal.{Device, GatewaySession, PG, Version}
+  alias Portal.{Device, PG, SessionLog, Version}
   alias Portal.Repo.Batch
+  alias PortalAPI.Sockets
+  alias Portal.Types.LogId
   alias __MODULE__.Database
   require Logger
   require OpenTelemetry.Tracer
   import Ecto.Changeset
   import Portal.Changeset
+
+  @reported_metadata_fields ~w[
+    device_serial
+    device_uuid
+  ]a
 
   ## Channels
 
@@ -30,7 +37,6 @@ defmodule PortalAPI.Gateway.Socket do
   def connect(attrs, socket, connect_info) do
     unless Application.get_env(:portal, :sql_sandbox) do
       Portal.Repo.put_dynamic_repo(Portal.Repo.Api)
-      Portal.Repo.Replica.put_dynamic_repo(Portal.Repo.Replica.Api)
     end
 
     :otel_propagator_text_map.extract(connect_info.trace_context_headers)
@@ -52,13 +58,13 @@ defmodule PortalAPI.Gateway.Socket do
 
     with {:ok, gateway_token} <- Authentication.verify_gateway_token(encoded_token),
          {:ok, public_key} <- validate_public_key(attrs),
-         {:ok, site} <- Database.fetch_site(gateway_token.account_id, gateway_token.site_id),
-         changeset = insert_changeset(site, attrs),
-         {:ok, _} <- apply_action(changeset, :validate),
-         {:ok, gateway} <- Database.find_or_create_gateway(changeset) do
+         {:ok, site, gateway} <- resolve_gateway(gateway_token, attrs),
+         :ok <- ensure_gateway_not_connected(gateway),
+         {:ok, gateway} <- put_reported_metadata(gateway, attrs),
+         {:ok, gateway} <- maybe_put_firezone_id(gateway, attrs) do
       version = derive_version(context.user_agent)
       {context, version} = PortalAPI.Sockets.truncate_session_fields(context, version)
-      session = build_session(gateway, gateway_token.id, public_key, context, version)
+      gateway = apply_session(gateway, gateway_token.id, public_key, context, version)
 
       OpenTelemetry.Tracer.set_attributes(%{
         token_id: gateway_token.id,
@@ -72,7 +78,7 @@ defmodule PortalAPI.Gateway.Socket do
         |> assign(:token_id, gateway_token.id)
         |> assign(:site, site)
         |> assign(:gateway, gateway)
-        |> assign(:session, session)
+        |> assign(:session_ref, make_ref())
         |> assign(:opentelemetry_span_ctx, OpenTelemetry.Tracer.current_span_ctx())
         |> assign(:opentelemetry_ctx, OpenTelemetry.Ctx.get_current())
 
@@ -97,8 +103,87 @@ defmodule PortalAPI.Gateway.Socket do
     end
   end
 
+  # First-wins: a gateway that appears connected must disconnect before a
+  # replacement is allowed. Cross-node registration races are resolved by the
+  # channel's connection-claim protocol after join.
+  defp ensure_gateway_not_connected(gateway) do
+    case PG.members(gateway.id) do
+      [] -> :ok
+      _pids -> {:error, :conflict}
+    end
+  end
+
+  # Multi-owner (site) token: gateways are identified by their reported
+  # firezone_id and created on the fly
+  defp resolve_gateway(%Portal.GatewayToken{device_id: nil} = gateway_token, attrs) do
+    with {:ok, site} <- Database.fetch_site(gateway_token.account_id, gateway_token.site_id),
+         changeset = insert_changeset(site, attrs),
+         {:ok, _} <- apply_action(changeset, :validate),
+         {:ok, gateway} <- Database.find_or_create_gateway(changeset) do
+      {:ok, site, gateway}
+    end
+  end
+
+  # Single-owner token: the token identifies the gateway directly; the
+  # reported firezone_id is kept in sync as a telemetry hint
+  defp resolve_gateway(%Portal.GatewayToken{} = gateway_token, _attrs) do
+    with {:ok, gateway} <-
+           Database.fetch_gateway(gateway_token.account_id, gateway_token.device_id) do
+      {:ok, gateway.site, gateway}
+    end
+  end
+
+  # Hardware metadata is self-reported on every connection. Only fields present
+  # in the socket params are cast, so an older gateway that omits a field keeps
+  # the value already stored on its device row.
+  defp put_reported_metadata(%Device{} = gateway, attrs) do
+    changeset =
+      gateway
+      |> cast(attrs, @reported_metadata_fields)
+      |> Device.changeset()
+
+    if changeset.changes == %{} do
+      {:ok, gateway}
+    else
+      Database.update_gateway(changeset)
+    end
+  end
+
+  # Identity comes from the token, so the stored firezone_id is only a
+  # telemetry hint: keep it in sync with whatever the gateway currently
+  # reports (a rebuilt host generates a fresh one)
+  defp maybe_put_firezone_id(%Device{firezone_id: reported} = gateway, %{
+         "firezone_id" => reported
+       }) do
+    {:ok, gateway}
+  end
+
+  defp maybe_put_firezone_id(%Device{} = gateway, %{"firezone_id" => reported})
+       when is_binary(reported) and reported != "" do
+    changeset =
+      gateway
+      |> cast(%{firezone_id: reported}, [:firezone_id])
+      |> Device.changeset()
+      |> unique_constraint(:firezone_id, name: :devices_account_id_site_id_firezone_id_index)
+
+    case Database.update_gateway(changeset) do
+      {:ok, gateway} ->
+        {:ok, gateway}
+
+      {:error, changeset} ->
+        # The telemetry hint is best-effort; never block the connection on it
+        Logger.info("Failed to persist reported gateway firezone_id",
+          error: {:error, changeset}
+        )
+
+        {:ok, gateway}
+    end
+  end
+
+  defp maybe_put_firezone_id(%Device{} = gateway, _attrs), do: {:ok, gateway}
+
   defp insert_changeset(site, attrs) do
-    insert_fields = ~w[firezone_id name]a
+    insert_fields = [:firezone_id, :name | @reported_metadata_fields]
     required_fields = ~w[firezone_id name]a
 
     %Device{}
@@ -109,66 +194,124 @@ defmodule PortalAPI.Gateway.Socket do
     |> put_change(:type, :gateway)
     |> put_change(:account_id, site.account_id)
     |> put_change(:site_id, site.id)
+    |> Portal.Devices.put_free_slug(site.account_id, nil)
     |> validate_required(required_fields)
     |> Device.changeset()
     |> public_socket_changeset()
   end
 
-  defp build_session(gateway, token_id, public_key, context, version) do
-    %GatewaySession{
-      id: Ecto.UUID.generate(),
-      device_id: gateway.id,
-      account_id: gateway.account_id,
-      gateway_token_id: token_id,
-      public_key: public_key,
-      user_agent: context.user_agent,
-      remote_ip: context.remote_ip,
-      remote_ip_location_region: context.remote_ip_location_region,
-      remote_ip_location_city: context.remote_ip_location_city,
-      remote_ip_location_lat: context.remote_ip_location_lat,
-      remote_ip_location_lon: context.remote_ip_location_lon,
-      version: version
+  # The connection snapshot lives directly on the device struct: these are the
+  # same fields the flush later persists as the device's latest session.
+  defp apply_session(gateway, token_id, public_key, context, version) do
+    %{
+      gateway
+      | gateway_token_id: token_id,
+        public_key: public_key,
+        last_seen_user_agent: context.user_agent,
+        last_seen_remote_ip: context.remote_ip,
+        last_seen_remote_ip_location_region: context.remote_ip_location_region,
+        last_seen_remote_ip_location_city: context.remote_ip_location_city,
+        last_seen_remote_ip_location_lat: context.remote_ip_location_lat,
+        last_seen_remote_ip_location_lon: context.remote_ip_location_lon,
+        last_seen_version: version,
+        last_seen_at: DateTime.utc_now()
     }
   end
 
   defp flush_gateway_sessions(entries) do
-    {inserted, failed} =
-      Batch.insert_all(GatewaySession, entries,
-        label: "gateway session",
-        fk_partitions: %{
-          "gateway_sessions_account_id_fkey" => {:simple, :account_id, Portal.Account},
-          "gateway_sessions_device_id_fkey" => {:composite, :device_id, Portal.Device},
-          "gateway_sessions_gateway_token_id_fkey" =>
-            {:composite, :gateway_token_id, Portal.GatewayToken}
-        }
-      )
+    {persisted, revoked, missing} = Sockets.LatestSession.upsert_all(entries, :gateway_token_id)
 
-    for {attrs, _metadata} <- failed do
+    failed = revoked ++ missing
+    failed_session_refs = MapSet.new(failed, fn {attrs, _metadata} -> attrs.session_ref end)
+
+    # A deleted token fails only its own session: a successor connection on
+    # the same device may hold a valid token, so the disconnect carries the
+    # session_ref for the channel to match on. A deleted device takes every
+    # connection down with it.
+    for {attrs, _metadata} <- revoked do
+      dispatch_queue_callback("gateway session", :on_failed, attrs, fn ->
+        PG.deliver(attrs.device_id, {:disconnect, attrs.session_ref})
+      end)
+    end
+
+    for {attrs, _metadata} <- missing do
       dispatch_queue_callback("gateway session", :on_failed, attrs, fn ->
         PG.deliver(attrs.device_id, :disconnect)
       end)
     end
 
-    dispatch_gateway_session_confirmed(entries, failed)
+    # Durability is confirmed only once both the device upsert and the log have
+    # landed: a session whose log write fails is left unconfirmed so its
+    # durability timer fires and the gateway reconnects to retry both. This
+    # keeps the session log fail-closed without a transaction spanning the
+    # upsert and the log insert.
+    log_failed_session_refs = insert_session_logs(entries, failed_session_refs)
+    dispatch_gateway_session_confirmed(entries, MapSet.union(failed_session_refs, log_failed_session_refs))
 
     if failed != [] do
       Logger.info(
-        "Skipped #{length(failed)} gateway session entries during flush due to missing references"
+        "Skipped #{length(failed)} gateway session entries during flush due to deleted devices or tokens"
       )
     end
 
-    inserted
+    persisted
   end
 
-  defp dispatch_gateway_session_confirmed(entries, failed) do
-    failed_ids = MapSet.new(failed, fn {attrs, _metadata} -> attrs[:id] end)
-
-    for {attrs, _metadata} <- entries, not MapSet.member?(failed_ids, attrs[:id]) do
+  defp dispatch_gateway_session_confirmed(entries, failed_session_refs) do
+    for {attrs, _metadata} <- entries, not MapSet.member?(failed_session_refs, attrs.session_ref) do
       dispatch_queue_callback("gateway session", :on_confirmed, attrs, fn ->
-        PG.deliver(attrs.device_id, {:confirm_session_durability, attrs.id})
+        PG.deliver(attrs.device_id, {:confirm_session_durability, attrs.session_ref})
       end)
     end
   end
+
+  # Session logs ride the same flushed batch that persists the sessions, so a
+  # reconnect storm collapses into one bulk insert here rather than a write per
+  # connect. Only durable sessions are logged. Gateways authenticate with a
+  # token and have no actor, so the subject snapshot is the gateway identity
+  # and its connection context. The connect-time timestamp rides the queue
+  # entry's metadata rather than the session row's flush-time inserted_at. Each
+  # log entry carries its session_ref so the caller can learn which sessions'
+  # logs failed and withhold their durability confirmation.
+  defp insert_session_logs(entries, failed_session_refs) do
+    log_entries =
+      for {attrs, metadata} <- entries, not MapSet.member?(failed_session_refs, attrs.session_ref) do
+        {session_log_attrs(attrs, metadata), attrs.session_ref}
+      end
+
+    {_inserted, failed} =
+      Batch.insert_all(SessionLog, log_entries,
+        label: "gateway session log",
+        fk_partitions: %{
+          "session_logs_partitioned_account_id_fkey" => {:simple, :account_id, Portal.Account}
+        }
+      )
+
+    MapSet.new(failed, fn {_log_attrs, session_ref} -> session_ref end)
+  end
+
+  defp session_log_attrs(attrs, %{timestamp: timestamp}) do
+    %{
+      account_id: attrs.account_id,
+      log_id: LogId.build_session_log(),
+      timestamp: timestamp,
+      context: :gateway,
+      subject: %{
+        gateway_id: attrs[:device_id],
+        token_id: attrs[:gateway_token_id],
+        ip: format_ip(attrs[:remote_ip]),
+        ip_region: attrs[:remote_ip_location_region],
+        ip_city: attrs[:remote_ip_location_city],
+        ip_lat: attrs[:remote_ip_location_lat],
+        ip_lon: attrs[:remote_ip_location_lon],
+        user_agent: attrs[:user_agent]
+      }
+    }
+  end
+
+  defp format_ip(nil), do: nil
+  defp format_ip(%Postgrex.INET{address: address}), do: to_string(:inet.ntoa(address))
+  defp format_ip(address) when is_tuple(address), do: to_string(:inet.ntoa(address))
 
   defp dispatch_queue_callback(label, callback, attrs, fun) do
     fun.()
@@ -176,13 +319,13 @@ defmodule PortalAPI.Gateway.Socket do
   rescue
     error ->
       Logger.error(
-        "Queue #{label} #{callback} crashed for entry #{inspect(attrs[:id])}: " <>
+        "Queue #{label} #{callback} crashed for entry #{inspect(attrs[:session_ref])}: " <>
           Exception.message(error)
       )
   catch
     kind, reason ->
       Logger.error(
-        "Queue #{label} #{callback} threw #{kind} for entry #{inspect(attrs[:id])}: " <>
+        "Queue #{label} #{callback} threw #{kind} for entry #{inspect(attrs[:session_ref])}: " <>
           inspect(reason)
       )
   end
@@ -237,13 +380,41 @@ defmodule PortalAPI.Gateway.Socket do
     alias Portal.Safe
     alias Portal.Site
 
+    # Connect hot path: the site rides along in the same query. Gateways
+    # always have a site (device_type_gateway_fields check constraint), so
+    # the inner join cannot drop rows.
+    def fetch_gateway(account_id, id) do
+      result =
+        from(d in Device,
+          where: d.account_id == ^account_id,
+          where: d.id == ^id,
+          where: d.type == :gateway,
+          join: s in assoc(d, :site),
+          on: s.account_id == d.account_id,
+          preload: [site: s]
+        )
+        |> Safe.unscoped()
+        |> Safe.one()
+
+      case result do
+        nil -> {:error, :not_found}
+        gateway -> {:ok, gateway}
+      end
+    end
+
+    def update_gateway(changeset) do
+      changeset
+      |> Safe.unscoped()
+      |> Safe.update()
+    end
+
     def fetch_site(account_id, id) do
       result =
         from(s in Site,
           where: s.account_id == ^account_id,
           where: s.id == ^id
         )
-        |> Safe.unscoped(:replica)
+        |> Safe.unscoped()
         |> Safe.one()
 
       case result do
@@ -266,8 +437,8 @@ defmodule PortalAPI.Gateway.Socket do
             where: d.firezone_id == ^firezone_id,
             where: d.type == :gateway
           )
-          |> Safe.unscoped(:replica)
-          |> Safe.one(fallback_to_primary: true)
+          |> Safe.unscoped()
+          |> Safe.one()
         end
 
       if existing do

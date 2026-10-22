@@ -1,6 +1,6 @@
 //! This crates contains shared types and behavior between all the other libraries.
 //!
-//! This includes types provided by external crates, i.e. [boringtun] to make sure that
+//! This includes types provided by external crates, i.e. [sanstun] to make sure that
 //! we are using the same version across our own crates.
 
 #![cfg_attr(test, allow(clippy::unwrap_used))]
@@ -9,15 +9,15 @@
 mod make_id;
 mod view;
 
-pub use boringtun::x25519::PublicKey;
-pub use boringtun::x25519::StaticSecret;
+pub use sanstun::PublicKey;
+pub use sanstun::StaticSecret;
 pub use view::{
-    CidrResourceView, ConnectedDeviceView, DnsResourceView, InternetResourceView, ResourceList,
-    ResourceStatus, ResourceView,
+    CidrResourceView, ConnectedDeviceView, DevicePoolResourceView, DnsResourceView,
+    InternetResourceView, ResourceStatus, ResourceView,
 };
 
 use serde::{Deserialize, Serialize};
-use std::fmt;
+use std::{fmt, net::IpAddr};
 
 make_id!(GatewayId);
 make_id!(ResourceId);
@@ -76,6 +76,13 @@ pub enum IpStack {
 }
 
 impl IpStack {
+    pub fn supports_ip(&self, ip: IpAddr) -> bool {
+        match ip {
+            IpAddr::V4(_) => self.supports_ipv4(),
+            IpAddr::V6(_) => self.supports_ipv6(),
+        }
+    }
+
     pub fn supports_ipv4(&self) -> bool {
         match self {
             IpStack::Ipv4Only | IpStack::Dual => true,

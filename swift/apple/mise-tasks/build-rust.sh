@@ -34,22 +34,13 @@ for var in $(env | awk -F= '{print $1}'); do
         [[ "$var" != "TARGETED_DEVICE_FAMILY" ]] &&
         [[ "$var" != "RUSTC_WRAPPER" ]] &&
         [[ "$var" != "RUST_TOOLCHAIN" ]] &&
-        [[ "$var" != "SCCACHE_GCS_BUCKET" ]] &&
-        [[ "$var" != "SCCACHE_GCS_RW_MODE" ]] &&
-        [[ "$var" != "GOOGLE_CLOUD_PROJECT" ]] &&
-        [[ "$var" != "GCP_PROJECT" ]] &&
-        [[ "$var" != "GCLOUD_PROJECT" ]] &&
-        [[ "$var" != "CLOUDSDK_PROJECT" ]] &&
-        [[ "$var" != "CLOUDSDK_CORE_PROJECT" ]] &&
-        [[ "$var" != "GOOGLE_GHA_CREDS_PATH" ]] &&
-        [[ "$var" != "GOOGLE_APPLICATION_CREDENTIALS" ]] &&
-        [[ "$var" != "CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE" ]] &&
-        [[ "$var" != "ACTIONS_CACHE_URL" ]] &&
-        [[ "$var" != "ACTIONS_RUNTIME_TOKEN" ]] &&
+        [[ "$var" != "SCCACHE_AZURE_CONNECTION_STRING" ]] &&
+        [[ "$var" != "SCCACHE_AZURE_BLOB_CONTAINER" ]] &&
+        [[ "$var" != "SCCACHE_AZURE_KEY_PREFIX" ]] &&
         [[ "$var" != "CARGO_INCREMENTAL" ]] &&
         [[ "$var" != "CARGO_TERM_COLOR" ]] &&
         [[ "$var" != "FIREZONE_PACKAGE_VERSION" ]] &&
-        [[ "$var" != "CONNLIB_TARGET_DIR" ]]; then
+        [[ "$var" != "RUST_TARGET_DIR" ]]; then
         unset "$var"
     fi
 done
@@ -63,8 +54,8 @@ PLATFORM_NAME="${PLATFORM_NAME:-macosx}"
 CONFIGURATION="${CONFIGURATION:-Debug}"
 NATIVE_ARCH="${ARCHS:-${NATIVE_ARCH:-$(uname -m)}}"
 
-# Set target directory - use CONNLIB_TARGET_DIR if set, otherwise default
-export CARGO_TARGET_DIR="${CONNLIB_TARGET_DIR:-$RUST_DIR/target}"
+# Set target directory - use RUST_TARGET_DIR if set, otherwise default
+export CARGO_TARGET_DIR="${RUST_TARGET_DIR:-$RUST_DIR/target}"
 
 echo "========================================="
 echo "Building Connlib for Xcode"

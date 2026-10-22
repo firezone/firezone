@@ -9,9 +9,9 @@ runs:
   steps:
     - name: Setup musl for x86_64
       if: ${{ inputs.target == 'x86_64-unknown-linux-musl' }}
-      shell: bash
-      run: |
-        sudo apt-get install musl-tools
+      uses: ./.github/actions/apt-install
+      with:
+        packages: musl-tools
 
     - name: Setup musl for aarch64
       if: ${{ inputs.target == 'aarch64-unknown-linux-musl' }}

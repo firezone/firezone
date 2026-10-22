@@ -4,6 +4,7 @@ defmodule PortalAPI.ClientTokenController do
   alias Portal.Authentication
   alias PortalAPI.Error
   alias PortalAPI.Pagination
+  alias PortalAPI.JSON
   alias PortalAPI.Schemas.ProblemDetails
   alias __MODULE__.Database
 
@@ -19,7 +20,7 @@ defmodule PortalAPI.ClientTokenController do
         type: :string,
         example: "00000000-0000-0000-0000-000000000000"
       ],
-      limit: [in: :query, description: "Limit Client Tokens returned", type: :integer],
+      limit: [in: :query, description: "Limit Client Tokens returned", schema: PortalAPI.Pagination.limit_schema()],
       page_cursor: [in: :query, description: "Next/Prev page cursor", type: :string]
     ],
     responses:
@@ -40,10 +41,10 @@ defmodule PortalAPI.ClientTokenController do
   @spec index(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def index(conn, %{"actor_id" => actor_id} = params) do
     subject = conn.assigns.subject
-    list_opts = Pagination.params_to_list_opts(params)
 
-    with {:ok, tokens, metadata} <- Database.list_tokens(actor_id, subject, list_opts) do
-      render(conn, :index, tokens: tokens, metadata: metadata)
+    with {:ok, list_opts} <- Pagination.params_to_list_opts(params),
+         {:ok, tokens, metadata} <- Database.list_tokens(actor_id, subject, list_opts) do
+      json(conn, JSON.encode(tokens, metadata))
     else
       error -> Error.handle(conn, error)
     end
@@ -84,7 +85,7 @@ defmodule PortalAPI.ClientTokenController do
   @spec show(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def show(conn, %{"actor_id" => actor_id, "id" => token_id}) do
     with {:ok, token} <- Database.fetch_token_by_id(actor_id, token_id, conn.assigns.subject) do
-      render(conn, :show_metadata, token: token)
+      json(conn, JSON.encode(token))
     else
       error -> Error.handle(conn, error)
     end
@@ -127,7 +128,9 @@ defmodule PortalAPI.ClientTokenController do
          {:ok, token} <- Authentication.create_non_interactive_client_token(actor, attrs, subject) do
       conn
       |> put_status(:created)
-      |> render(:show_secret, token: token, encoded_token: Authentication.encode_fragment!(token))
+      |> json(
+        JSON.encode(token, schema: PortalAPI.Schemas.ClientToken.ResponseSchema)
+      )
     else
       error -> Error.handle(conn, error)
     end
@@ -174,7 +177,7 @@ defmodule PortalAPI.ClientTokenController do
     subject = conn.assigns.subject
 
     with {:ok, token} <- Database.delete_token_by_id(token_id, actor_id, subject) do
-      render(conn, :deleted, token: token)
+      json(conn, %{data: %{id: token.id}})
     else
       error -> Error.handle(conn, error)
     end
@@ -218,7 +221,7 @@ defmodule PortalAPI.ClientTokenController do
         Error.handle(conn, {:error, reason})
 
       {deleted_count, _} ->
-        render(conn, :deleted_all, count: deleted_count)
+        json(conn, %{data: %{deleted_count: deleted_count}})
     end
   end
 
@@ -239,7 +242,7 @@ defmodule PortalAPI.ClientTokenController do
           where: a.id == ^id,
           select: %{actor: a, allowed_type?: a.type in ^allowed_types}
         )
-        |> Safe.scoped(subject, :replica)
+        |> Safe.scoped(subject)
         |> Safe.one()
 
       case result do
@@ -258,7 +261,7 @@ defmodule PortalAPI.ClientTokenController do
         where: t.actor_id == ^actor_id and a.type in ^@revocable_actor_types,
         order_by: [desc: t.inserted_at]
       )
-      |> Safe.scoped(subject, :replica)
+      |> Safe.scoped(subject)
       |> Safe.list(__MODULE__, opts)
     end
 
@@ -309,7 +312,7 @@ defmodule PortalAPI.ClientTokenController do
             t.id == ^token_id and t.actor_id == ^actor_id and
               a.type in ^@revocable_actor_types
         )
-        |> Safe.scoped(subject, :replica)
+        |> Safe.scoped(subject)
         |> Safe.one()
 
       case result do

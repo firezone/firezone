@@ -2,57 +2,42 @@ defmodule Portal.SafeTest do
   use Portal.DataCase, async: true
   import Ecto.Query
   import Portal.AccountFixtures
+  import Portal.SubjectFixtures
   alias Portal.Safe
   alias Portal.Account
 
-  defmodule FlakyReplica do
+  defmodule FlakyRepo do
     @moduledoc false
-    # Stands in for a read replica that drops its connection during a transient
+    # Stands in for a pool that drops its connection during a transient
     # outage, raising the same error Postgrex surfaces in production.
     def one(_query),
       do: raise(DBConnection.ConnectionError, "ssl recv (idle): closed")
-
-    def exists?(_query),
-      do: raise(DBConnection.ConnectionError, "ssl recv (idle): closed")
   end
 
-  describe "fallback_to_primary on replica connection errors" do
+  describe "connection errors" do
     setup do
       account = account_fixture()
       query = from(a in Account, where: a.id == ^account.id)
       %{account: account, query: query}
     end
 
-    test "one/2 falls back to the primary", %{account: account, query: query} do
-      assert result =
-               query
-               |> Safe.unscoped(FlakyReplica)
-               |> Safe.one(fallback_to_primary: true)
-
-      assert result.id == account.id
-    end
-
-    test "one!/2 falls back to the primary", %{account: account, query: query} do
-      assert result =
-               query
-               |> Safe.unscoped(FlakyReplica)
-               |> Safe.one!(fallback_to_primary: true)
-
-      assert result.id == account.id
-    end
-
-    test "exists?/2 falls back to the primary", %{query: query} do
-      assert query
-             |> Safe.unscoped(FlakyReplica)
-             |> Safe.exists?(fallback_to_primary: true)
-    end
-
-    test "re-raises when fallback is disabled", %{query: query} do
+    test "propagate to the caller", %{query: query} do
       assert_raise DBConnection.ConnectionError, fn ->
         query
-        |> Safe.unscoped(FlakyReplica)
+        |> Safe.unscoped(FlakyRepo)
         |> Safe.one()
       end
+    end
+  end
+
+  describe "delete/1" do
+    test "returns not_found when the row was already deleted" do
+      account = account_fixture()
+      subject = admin_subject_fixture(account: account)
+      site = Portal.SiteFixtures.site_fixture(account: account)
+
+      assert {:ok, _site} = site |> Safe.scoped(subject) |> Safe.delete()
+      assert {:error, :not_found} = site |> Safe.scoped(subject) |> Safe.delete()
     end
   end
 
@@ -114,7 +99,8 @@ defmodule Portal.SafeTest do
             Portal.Okta.AuthProvider,
             Portal.OIDC.AuthProvider,
             Portal.EmailOTP.AuthProvider,
-            Portal.Userpass.AuthProvider
+            Portal.Userpass.AuthProvider,
+            Portal.X509.AuthProvider
           ] do
         assert Safe.permit(:delete, schema, :account_admin_user) == :ok
         assert Safe.permit(:read, schema, :api_client) == :ok
@@ -145,20 +131,6 @@ defmodule Portal.SafeTest do
       assert Safe.permit(:update, Portal.Device, :service_account) == :ok
     end
 
-    test "ClientSession: admin and api_client all actions, account_user/service_account read" do
-      assert Safe.permit(:delete, Portal.ClientSession, :account_admin_user) == :ok
-      assert Safe.permit(:delete, Portal.ClientSession, :api_client) == :ok
-      assert Safe.permit(:read, Portal.ClientSession, :account_user) == :ok
-      assert Safe.permit(:read, Portal.ClientSession, :service_account) == :ok
-    end
-
-    test "GatewaySession: admin and api_client all actions, account_user/service_account read" do
-      assert Safe.permit(:delete, Portal.GatewaySession, :account_admin_user) == :ok
-      assert Safe.permit(:delete, Portal.GatewaySession, :api_client) == :ok
-      assert Safe.permit(:read, Portal.GatewaySession, :account_user) == :ok
-      assert Safe.permit(:read, Portal.GatewaySession, :service_account) == :ok
-    end
-
     test "PolicyAuthorization: any type may read and insert, only admin may delete" do
       for type <- @all_types do
         assert Safe.permit(:read, Portal.PolicyAuthorization, type) == :ok
@@ -186,12 +158,6 @@ defmodule Portal.SafeTest do
       assert Safe.permit(:read, Portal.Resource, :account_user) == :ok
     end
 
-    test "StaticDevicePoolMember: admin and api_client all actions, every type may read" do
-      assert Safe.permit(:delete, Portal.StaticDevicePoolMember, :account_admin_user) == :ok
-      assert Safe.permit(:delete, Portal.StaticDevicePoolMember, :api_client) == :ok
-      assert Safe.permit(:read, Portal.StaticDevicePoolMember, :account_user) == :ok
-    end
-
     test "Policy: admin and api_client all actions, every type may read" do
       assert Safe.permit(:delete, Portal.Policy, :account_admin_user) == :ok
       assert Safe.permit(:delete, Portal.Policy, :api_client) == :ok
@@ -207,6 +173,21 @@ defmodule Portal.SafeTest do
     test "ChangeLog: admin and api_client may read" do
       assert Safe.permit(:read, Portal.ChangeLog, :account_admin_user) == :ok
       assert Safe.permit(:read, Portal.ChangeLog, :api_client) == :ok
+    end
+
+    test "SessionLog: admin and api_client may read" do
+      assert Safe.permit(:read, Portal.SessionLog, :account_admin_user) == :ok
+      assert Safe.permit(:read, Portal.SessionLog, :api_client) == :ok
+    end
+
+    test "FlowLog: admin and api_client may read" do
+      assert Safe.permit(:read, Portal.FlowLog, :account_admin_user) == :ok
+      assert Safe.permit(:read, Portal.FlowLog, :api_client) == :ok
+    end
+
+    test "APIRequestLog: admin and api_client may read" do
+      assert Safe.permit(:read, Portal.APIRequestLog, :account_admin_user) == :ok
+      assert Safe.permit(:read, Portal.APIRequestLog, :api_client) == :ok
     end
   end
 
@@ -235,5 +216,85 @@ defmodule Portal.SafeTest do
       assert Safe.permit(:read, __MODULE__, :account_admin_user) == {:error, :unauthorized}
       assert Safe.permit(:delete, Portal.ChangeLog, :service_account) == {:error, :unauthorized}
     end
+  end
+
+  describe "scoped bulk writes" do
+    setup do
+      account = account_fixture()
+      other_account = account_fixture()
+
+      %{
+        account: account,
+        other_account: other_account,
+        subject: admin_subject_fixture(account: account)
+      }
+    end
+
+    test "insert_all stamps the subject's account on entries that omit it", %{
+      account: account,
+      subject: subject
+    } do
+      assert {1, nil} =
+               Safe.scoped(subject)
+               |> Safe.insert_all(Portal.Group, [group_entry("Stamped")])
+
+      assert [group] = Repo.all(Portal.Group)
+      assert group.account_id == account.id
+      assert group.name == "Stamped"
+    end
+
+    test "insert_all refuses entries naming another account", %{
+      other_account: other_account,
+      subject: subject
+    } do
+      entries = [group_entry("Mine"), group_entry("Theirs", other_account.id)]
+
+      assert {:error, :unauthorized} =
+               Safe.scoped(subject) |> Safe.insert_all(Portal.Group, entries)
+
+      assert Repo.all(Portal.Group) == []
+    end
+
+    test "insert_all refuses the query form", %{subject: subject} do
+      query = from(g in Portal.Group, select: %{})
+
+      assert {:error, :unauthorized} =
+               Safe.scoped(subject) |> Safe.insert_all(Portal.Group, query)
+    end
+
+    test "update_all only touches rows in the subject's account", %{
+      account: account,
+      other_account: other_account,
+      subject: subject
+    } do
+      Safe.unscoped()
+      |> Safe.insert_all(Portal.Group, [
+        group_entry("Mine", account.id),
+        group_entry("Theirs", other_account.id)
+      ])
+
+      assert {1, nil} =
+               from(g in Portal.Group)
+               |> Safe.scoped(subject)
+               |> Safe.update_all(set: [name: "Renamed"])
+
+      assert Repo.get_by!(Portal.Group, account_id: account.id).name == "Renamed"
+      assert Repo.get_by!(Portal.Group, account_id: other_account.id).name == "Theirs"
+    end
+  end
+
+  defp group_entry(name, account_id \\ nil) do
+    now = DateTime.utc_now()
+
+    entry = %{
+      id: Ecto.UUID.generate(),
+      name: name,
+      type: :static,
+      entity_type: :group,
+      inserted_at: now,
+      updated_at: now
+    }
+
+    if account_id, do: Map.put(entry, :account_id, account_id), else: entry
   end
 end

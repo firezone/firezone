@@ -30,8 +30,16 @@ end
 config :portal, ecto_repos: [Portal.Repo]
 config :portal, generators: [binary_id: true]
 
+config :req,
+  default_options: [plugins: [Portal.Req.SSRFProtection]]
+
+config :portal, Portal.OAuth.ClientMetadata,
+  req_opts: [],
+  ssrf_protection_opts: []
+
 config :portal, sql_sandbox: false
-config :portal, replica_repo: Portal.Repo.Replica
+
+config :portal, flow_logs_upload_batch_size: 1000
 
 # Don't run manual migrations by default
 config :portal, run_manual_migrations: false
@@ -47,24 +55,15 @@ config :portal, Portal.Repo,
   queue_interval: 1000,
   migration_timestamps: [type: :timestamptz],
   migration_lock: :pg_advisory_lock,
-  start_apps_before_migration: [:ssl, :logger_json],
+  start_apps_before_migration: [:ssl, :logger_json, :req],
   parameters: [application_name: "portal"]
 
-config :portal, Portal.Repo.Replica,
-  hostname: "localhost",
-  username: "postgres",
-  password: "postgres",
-  database: "firezone_dev",
-  show_sensitive_data_on_connection_error: true,
-  pool_size: :erlang.system_info(:logical_processors_available) * 2,
-  queue_target: 500,
-  queue_interval: 1000,
-  parameters: [application_name: "replica"]
-
-# Isolated primary connection pools (web/api)
+# Isolated connection pools (web/api/job/poller)
 for {repo, app_name} <- [
       {Portal.Repo.Web, "web"},
-      {Portal.Repo.Api, "api"}
+      {Portal.Repo.Api, "api"},
+      {Portal.Repo.Job, "job"},
+      {Portal.Repo.Poller, "poller"}
     ] do
   config :portal, repo,
     hostname: "localhost",
@@ -78,39 +77,14 @@ for {repo, app_name} <- [
     parameters: [application_name: app_name]
 end
 
-# Isolated replica connection pools (web/api)
-for {repo, app_name} <- [
-      {Portal.Repo.Replica.Web, "replica-web"},
-      {Portal.Repo.Replica.Api, "replica-api"}
-    ] do
-  config :portal, repo,
-    hostname: "localhost",
-    username: "postgres",
-    password: "postgres",
-    database: "firezone_dev",
-    show_sensitive_data_on_connection_error: true,
-    pool_size: :erlang.system_info(:logical_processors_available) * 2,
-    queue_target: 500,
-    queue_interval: 1000,
-    parameters: [application_name: app_name]
-end
-
-config :portal, Portal.ChangeLogs.ReplicationConnection,
+config :portal, Portal.ChangeLogs.Consumer,
+  repo: Portal.Repo.Poller,
   replication_slot_name: "change_logs_slot",
   publication_name: "change_logs_publication",
   region: "",
   enabled: true,
-  connection_opts: [
-    hostname: "localhost",
-    port: 5432,
-    ssl: false,
-    parameters: [application_name: "change_logs"],
-    username: "postgres",
-    database: "firezone_dev",
-    password: "postgres"
-  ],
   # When changing these, make sure to also:
-  #   1. Make appropriate changes to `Portal.ChangeLogs.ReplicationConnection`
+  #   1. Make appropriate changes to `Portal.ChangeLogs.Consumer`
   #   2. Add tests and test WAL locally
   table_subscriptions: ~w[
     accounts
@@ -119,26 +93,40 @@ config :portal, Portal.ChangeLogs.ReplicationConnection,
     actors
     external_identities
     google_auth_providers
+    github_auth_providers
     entra_auth_providers
     okta_auth_providers
     oidc_auth_providers
     email_otp_auth_providers
     userpass_auth_providers
+    x509_auth_providers
     entra_directories
     okta_directories
     google_directories
     devices
     sites
-    client_sessions
-    gateway_sessions
     gateway_tokens
     policies
     resources
-    static_device_pool_members
     client_tokens
     one_time_passcodes
-    portal_sessions
     api_tokens
+    trust_anchors
+    trust_anchor_certificates
+    intune_posture_providers
+    iru_posture_providers
+    defender_posture_providers
+    santa_posture_providers
+    sentinelone_posture_providers
+    sophos_posture_providers
+    splunk_log_sinks
+    datadog_log_sinks
+    newrelic_log_sinks
+    elastic_log_sinks
+    sentinel_log_sinks
+    s3_log_sinks
+    qradar_log_sinks
+    http_log_sinks
   ],
   # Allow up to 5 minutes of processing lag before alerting. This needs to be able to survive
   # deploys without alerting.
@@ -147,28 +135,18 @@ config :portal, Portal.ChangeLogs.ReplicationConnection,
   # We almost never want to bypass changelog inserts
   error_threshold: :timer.hours(30 * 24),
 
-  # Flush change logs data at least every 30 seconds
-  flush_interval: :timer.seconds(30),
+  # The audit trail tolerates more latency in exchange for fewer poll queries
+  poll_interval: :timer.seconds(30),
+  batch_size: 500
 
-  # We want to flush at most 500 change logs at a time
-  flush_buffer_size: 500
-
-config :portal, Portal.Changes.ReplicationConnection,
+config :portal, Portal.Changes.Consumer,
+  repo: Portal.Repo.Poller,
   replication_slot_name: "changes_slot",
   publication_name: "changes_publication",
   region: "",
   enabled: true,
-  connection_opts: [
-    hostname: "localhost",
-    port: 5432,
-    ssl: false,
-    parameters: [application_name: "changes"],
-    username: "postgres",
-    database: "firezone_dev",
-    password: "postgres"
-  ],
   # When changing these, make sure to also:
-  #   1. Make appropriate changes to `Portal.Changes.ReplicationConnection`
+  #   1. Make appropriate changes to `Portal.Changes.Consumer`
   #   2. Add an appropriate `Portal.Changes.Hooks` module
   #   3. Add tests and test WAL locally
   table_subscriptions: ~w[
@@ -183,17 +161,30 @@ config :portal, Portal.Changes.ReplicationConnection,
     sites
     policies
     resources
-    static_device_pool_members
     client_tokens
     google_auth_providers
+    github_auth_providers
     entra_auth_providers
     okta_auth_providers
     oidc_auth_providers
     email_otp_auth_providers
     userpass_auth_providers
+    x509_auth_providers
     entra_directories
     okta_directories
     google_directories
+    intune_posture_providers
+    iru_posture_providers
+    defender_posture_providers
+    santa_posture_providers
+    sentinelone_posture_providers
+    sophos_posture_providers
+    intune_devices
+    iru_devices
+    defender_devices
+    santa_devices
+    sentinelone_devices
+    sophos_devices
     relay_tokens
     portal_sessions
   ],
@@ -203,9 +194,9 @@ config :portal, Portal.Changes.ReplicationConnection,
   # Allow up to 30 minutes of lag before bypassing hooks
   error_threshold: :timer.minutes(30),
 
-  # Disable flush
-  flush_interval: 0,
-  flush_buffer_size: 0
+  # Changes power cache invalidation; balance broadcast latency against poll query volume
+  poll_interval: :timer.seconds(5),
+  batch_size: 500
 
 config :portal, Portal.Tokens,
   key_base: "5OVYJ83AcoQcPmdKNksuBhJFBhjHD1uUa9mDOHV/6EIdBQ6pXksIhkVeWIzFk5S2",
@@ -222,11 +213,32 @@ config :portal, Portal.Health,
   # TODO: Remove draining_file_path after Azure migration is complete
   draining_file_path: "/var/run/firezone/draining"
 
-config :portal, Portal.Entra.APIClient,
-  client_id: System.get_env("ENTRA_SYNC_CLIENT_ID"),
-  client_secret: System.get_env("ENTRA_SYNC_CLIENT_SECRET"),
+config :portal, Portal.Azure.ManagedIdentity,
+  endpoint: "http://169.254.169.254",
+  client_id: nil,
+  req_opts: [
+    connect_options: [timeout: 1_000],
+    receive_timeout: 5_000,
+    retry: :transient
+  ]
+
+config :portal, Portal.Microsoft.Graph.APIClient,
   endpoint: "https://graph.microsoft.com",
   token_base_url: "https://login.microsoftonline.com",
+  applications: [
+    entra: [
+      client_id: System.get_env("ENTRA_SYNC_CLIENT_ID"),
+      client_secret: System.get_env("ENTRA_SYNC_CLIENT_SECRET")
+    ],
+    intune: [
+      client_id: System.get_env("INTUNE_SYNC_CLIENT_ID"),
+      client_secret: System.get_env("INTUNE_SYNC_CLIENT_SECRET")
+    ],
+    windows_updates: [
+      client_id: System.get_env("WINDOWS_UPDATES_CLIENT_ID"),
+      client_secret: System.get_env("WINDOWS_UPDATES_CLIENT_SECRET")
+    ]
+  ],
   req_opts: [
     # 15 minutes
     receive_timeout: 900_000,
@@ -235,17 +247,71 @@ config :portal, Portal.Entra.APIClient,
     retry: :transient
   ]
 
+# Defender for Endpoint is reached at api.security.microsoft.com, but tokens
+# still have to be minted for the legacy api.securitycenter.microsoft.com
+# audience or the API answers 403.
+config :portal, Portal.Defender.APIClient,
+  endpoint: "https://api.security.microsoft.com",
+  token_base_url: "https://login.microsoftonline.com",
+  token_scope: "https://api.securitycenter.microsoft.com/.default",
+  client_id: System.get_env("DEFENDER_SYNC_CLIENT_ID"),
+  client_secret: System.get_env("DEFENDER_SYNC_CLIENT_SECRET"),
+  req_opts: [
+    # 15 minutes
+    receive_timeout: 900_000,
+    # Fixes `pool_not_available` errors on a cold Finch pool right after a deploy,
+    # since the token request is a POST and the default `:safe_transient` retry
+    # strategy only retries HEADS and GETs.
+    retry: :transient
+  ]
+
+# Iru still serves its API from the Kandji hosts it used before the rename, so
+# the domains are configuration rather than a constant.
+config :portal, Portal.Iru.APIClient,
+  api_domains: [us: "api.kandji.io", eu: "api.eu.kandji.io"],
+  req_opts: [
+    # 15 minutes
+    receive_timeout: 900_000,
+    retry: :safe_transient
+  ]
+
+config :portal, Portal.Santa.APIClient,
+  req_opts: [
+    # 15 minutes
+    receive_timeout: 900_000,
+    retry: :safe_transient
+  ]
+
+config :portal, Portal.SentinelOne.APIClient,
+  req_opts: [
+    # 15 minutes
+    receive_timeout: 900_000,
+    retry: :safe_transient
+  ]
+
+config :portal, Portal.Sophos.APIClient,
+  req_opts: [
+    # 15 minutes
+    receive_timeout: 900_000,
+    retry: :safe_transient
+  ]
+
 config :portal, Portal.Google.APIClient,
   endpoint: "https://admin.googleapis.com",
   service_account_key: System.get_env("GOOGLE_SERVICE_ACCOUNT_KEY"),
+  service_account_email: System.get_env("GOOGLE_SERVICE_ACCOUNT_EMAIL"),
+  workload_identity_provider: System.get_env("GOOGLE_WORKLOAD_IDENTITY_PROVIDER"),
+  workload_identity_audience: System.get_env("GOOGLE_WORKLOAD_IDENTITY_AUDIENCE"),
+  sts_endpoint: "https://sts.googleapis.com/v1/token",
+  iam_credentials_endpoint: "https://iamcredentials.googleapis.com",
   token_endpoint: "https://oauth2.googleapis.com/token",
   req_opts: [
     # 1 minute
-    receive_timeout: 60_000,
-    # Fixes `pool_not_available` errors on a cold Finch pool right after a deploy,
-    # since some requests are POSTs and the default `:safe_transient` retry strategy only retries HEADS and GETs.
-    retry: :transient
+    receive_timeout: 60_000
+    # Don't set :retry here; Portal.Google.APIClient owns the strategy.
   ]
+
+config :portal, Portal.TokenCache, enabled: true
 
 config :portal, Portal.Google.AuthProvider,
   # Should match an external OAuth2 client in Google Cloud Console
@@ -255,6 +321,23 @@ config :portal, Portal.Google.AuthProvider,
   scope: "openid email profile",
   discovery_document_uri: "https://accounts.google.com/.well-known/openid-configuration"
 
+config :portal, Portal.GitHub.AuthProvider,
+  # Should match an OAuth App registered under the Firezone GitHub organization
+  client_id: System.get_env("GITHUB_OAUTH_CLIENT_ID"),
+  client_secret: System.get_env("GITHUB_OAUTH_CLIENT_SECRET"),
+  authorize_endpoint: "https://github.com/login/oauth/authorize",
+  token_endpoint: "https://github.com/login/oauth/access_token",
+  api_endpoint: "https://api.github.com",
+  req_opts: []
+
+config :portal, Portal.Google.SyncAuthorization,
+  # Dedicated OAuth client used only to authorize Google Workspace directory setup
+  client_id: System.get_env("GOOGLE_SYNC_AUTHZ_CLIENT_ID"),
+  client_secret: System.get_env("GOOGLE_SYNC_AUTHZ_CLIENT_SECRET"),
+  response_type: "code",
+  scope: "openid email",
+  discovery_document_uri: "https://accounts.google.com/.well-known/openid-configuration"
+
 config :portal, Portal.Okta.AuthProvider,
   # Should match an external OAuth2 client in Okta
   response_type: "code",
@@ -262,6 +345,43 @@ config :portal, Portal.Okta.AuthProvider,
 
 # 15 minutes in milliseconds
 config :portal, Portal.Okta.APIClient, req_opts: [receive_timeout: 900_000]
+
+config :portal, Portal.Analytics.PostHog,
+  enabled: false,
+  host: nil,
+  project_api_key: nil,
+  web_external_url: nil,
+  req_opts: [receive_timeout: 5_000, retry: :transient]
+
+config :portal, Portal.Mailer.PostureProviderInterestEmail, recipient: nil
+
+config :portal, Portal.Workers.SignUpFollowUp, from_email: nil, bcc_email: nil
+
+config :portal, Portal.Splunk.APIClient, req_opts: []
+
+config :portal, Portal.Datadog.APIClient, req_opts: []
+
+config :portal, Portal.NewRelic.APIClient, req_opts: []
+
+config :portal, Portal.Elastic.APIClient, req_opts: []
+
+config :portal, Portal.Sentinel.APIClient,
+  client_id: System.get_env("SENTINEL_SYNC_CLIENT_ID"),
+  client_secret: System.get_env("SENTINEL_SYNC_CLIENT_SECRET"),
+  token_base_url: "https://login.microsoftonline.com",
+  discovery_document_uri:
+    "https://login.microsoftonline.com/organizations/v2.0/.well-known/openid-configuration",
+  req_opts: []
+
+config :portal, Portal.S3.APIClient,
+  req_opts: [],
+  access_key_id: nil,
+  secret_access_key: nil,
+  session_token: nil,
+  aws_account_id: System.get_env("LOG_SINKS_AWS_ACCOUNT_ID", "000000000000")
+
+config :portal, Portal.QRadar.APIClient, req_opts: []
+config :portal, Portal.HTTP.APIClient, req_opts: []
 
 config :portal, Portal.Entra.AuthProvider,
   # Should match an external OAuth2 client in Azure
@@ -290,11 +410,18 @@ config :portal, Portal.Billing,
     "prod_PZdZiSBX1HdXO2",
     # Team
     "prod_PZdbLazRNU3Bdi",
+    # Business
+    "prod_VMyDXDNwtDbpYa",
     # Enterprise
     "prod_PZdb7NJhcdyjRV"
-  ],
-  # Adhoc Device
-  adhoc_device_product_id: "prod_TrPXF2LVHSJpMk"
+  ]
+
+config :portal, Portal.Crl.Sync, req_opts: []
+
+config :portal, Portal.Ocsp.Sync, req_opts: []
+
+config :portal, Portal.OSReleases, reload_every: :timer.minutes(10)
+config :portal, Portal.OSReleases.Sync, req_opts: []
 
 config :portal, Portal.ComponentVersions,
   firezone_releases_url: "https://www.firezone.dev/api/releases",
@@ -307,17 +434,11 @@ config :portal, Portal.ComponentVersions,
     headless: "1.5.7"
   ]
 
+config :portal, Portal.ClockDriftAlarm, enabled: true
+
 config :portal, Portal.Cluster,
   adapter: nil,
   adapter_config: []
-
-config :portal, :enabled_features,
-  idp_sync: true,
-  traffic_filters: true,
-  sign_up: true,
-  policy_conditions: true,
-  rest_api: true,
-  internet_resource: true
 
 config :portal, sign_up_whitelisted_domains: []
 
@@ -325,7 +446,7 @@ config :portal, docker_registry: "ghcr.io/firezone"
 
 config :portal, outbound_email_adapter_configured?: false
 
-config :portal, relay_presence_topic: "presences:global_relays"
+config :portal, relay_presence_topic: "presences:relays"
 
 config :portal, region: ""
 
@@ -359,6 +480,25 @@ config :portal, PortalWeb.Endpoint,
     signing_salt: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDejX"
   ]
 
+###############################
+##### Public Endpoint #########
+###############################
+
+config :portal, Portal.Endpoint,
+  adapter: Bandit.PhoenixAdapter,
+  url: [
+    scheme: "https",
+    host: "localhost",
+    port: 443,
+    path: nil
+  ],
+  render_errors: [
+    formats: [json: PortalAPI.ErrorView],
+    layout: false
+  ],
+  pubsub_server: Portal.PubSub,
+  secret_key_base: "5OVYJ83AcoQcPmdKNksuBhJFBhjHD1uUa9mDOHV/6EIdBQ6pXksIhkVeWIzFk5SD"
+
 config :portal,
   api_external_url: "http://localhost:13001"
 
@@ -383,7 +523,10 @@ config :portal, PortalWeb.Plugs.PutSecurityHeaders,
     "default-src 'self' https://firezone.statuspage.io",
     "img-src 'self' data: https://www.gravatar.com https://firezone.statuspage.io",
     "style-src 'self'",
-    "script-src 'self' 'nonce-${nonce}'"
+    "script-src 'self' 'nonce-${nonce}'",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "frame-ancestors 'none'"
   ]
 
 config :portal, api_url_override: "ws://localhost:13001/"
@@ -439,6 +582,15 @@ config :portal, relays_presence_debounce_timeout_ms: 1_000
 
 config :portal, PortalAPI.RateLimit,
   refill_rate: 10,
+  capacity: 200,
+  read_refill_rate: 10,
+  read_capacity: 200
+
+# MCP has an additional pre-authentication IP bucket. Its cost is one token,
+# versus ten for the authenticated per-account API bucket, allowing a modest
+# connection burst without permitting unbounded token verification or parsing.
+config :portal, PortalAPI.Plugs.MCPRateLimit,
+  refill_rate: 10,
   capacity: 200
 
 config :portal, PortalAPI.Sockets.RateLimit,
@@ -462,11 +614,10 @@ config :portal, PortalWeb.RateLimit,
 config :portal,
   http_client_ssl_opts: []
 
-config :openid_connect,
-  finch_transport_opts: []
-
 config :mime, :types, %{
-  "application/xml" => ["xml"]
+  "application/xml" => ["xml"],
+  "application/x-pem-file" => ["pem"],
+  "application/x-x509-ca-cert" => ["crt", "cer", "der"]
 }
 
 config :opentelemetry,
@@ -483,6 +634,8 @@ config :logger, :default_formatter,
 config :phoenix, :json_library, JSON
 
 config :swoosh, :api_client, Swoosh.ApiClient.Req
+
+config :portal, Portal.Mailer.InternalEmail, recipient: nil
 
 config :portal, Portal.Mailer,
   adapter: Portal.Mailer.NoopAdapter,
@@ -515,7 +668,7 @@ config :esbuild,
 
 # Configure tailwind (the version is required)
 config :tailwind,
-  version: "4.1.12",
+  version: "4.3.3",
   portal: [
     args: [
       "--input=css/main.css",

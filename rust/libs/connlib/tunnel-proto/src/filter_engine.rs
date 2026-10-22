@@ -1,0 +1,190 @@
+use ip_packet::{Protocol, UnsupportedProtocol};
+use rangemap::RangeInclusiveSet;
+
+use crate::messages::Filter;
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Hash, Ord)]
+pub enum FilterEngine {
+    PermitAll,
+    PermitSome(AllowRules),
+    DenyAll,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Hash, Ord)]
+pub struct AllowRules {
+    udp: RangeInclusiveSet<u16>,
+    tcp: RangeInclusiveSet<u16>,
+    icmp: bool,
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum Filtered {
+    #[error("TCP port is not in allowed range")]
+    Tcp,
+    #[error("UDP port is not in allowed range")]
+    Udp,
+    #[error("ICMP not allowed")]
+    Icmp,
+    #[error("Failed to evaluate filter")]
+    UnsupportedProtocol(#[from] UnsupportedProtocol),
+}
+
+impl FilterEngine {
+    pub fn new(filters: &[Filter]) -> FilterEngine {
+        if filters.is_empty() {
+            return Self::PermitAll;
+        }
+
+        let mut allow_rules = AllowRules::new();
+
+        for filter in filters {
+            allow_rules.add_filter(filter);
+        }
+
+        Self::PermitSome(allow_rules)
+    }
+
+    pub fn apply(&self, protocol: Result<Protocol, UnsupportedProtocol>) -> Result<(), Filtered> {
+        match self {
+            FilterEngine::PermitAll => Ok(()),
+            FilterEngine::PermitSome(filter_engine) => filter_engine.apply(protocol),
+            FilterEngine::DenyAll => match protocol {
+                Ok(Protocol::Tcp(_)) => Err(Filtered::Tcp),
+                Ok(Protocol::Udp(_)) => Err(Filtered::Udp),
+                Ok(Protocol::IcmpEcho(_)) => Err(Filtered::Icmp),
+                Err(e) => Err(Filtered::UnsupportedProtocol(e)),
+            },
+        }
+    }
+
+    /// Returns the number of supported protocol and port combinations permitted by this filter.
+    pub(crate) fn breadth(&self) -> u32 {
+        match self {
+            Self::PermitAll => u32::MAX,
+            Self::PermitSome(rules) => {
+                let port_count = |set: &RangeInclusiveSet<u16>| {
+                    set.iter()
+                        .map(|range| u32::from(*range.end()) - u32::from(*range.start()) + 1)
+                        .sum::<u32>()
+                };
+                port_count(&rules.tcp) + port_count(&rules.udp) + u32::from(rules.icmp)
+            }
+            Self::DenyAll => 0,
+        }
+    }
+}
+
+impl AllowRules {
+    fn new() -> AllowRules {
+        AllowRules {
+            udp: RangeInclusiveSet::new(),
+            tcp: RangeInclusiveSet::new(),
+            icmp: false,
+        }
+    }
+
+    fn apply(&self, protocol: Result<Protocol, UnsupportedProtocol>) -> Result<(), Filtered> {
+        match protocol {
+            Ok(Protocol::Tcp(port)) if self.tcp.contains(&port) => Ok(()),
+            Ok(Protocol::Udp(port)) if self.udp.contains(&port) => Ok(()),
+            Ok(Protocol::IcmpEcho(_)) if self.icmp => Ok(()),
+
+            // If ICMP is allowed, we don't care about the specific ICMP type.
+            // i.e. it doesn't have to be an echo request / reply.
+            Err(
+                UnsupportedProtocol::UnsupportedIcmpv4Type(_)
+                | UnsupportedProtocol::UnsupportedIcmpv6Type(_),
+            ) if self.icmp => Ok(()),
+
+            Ok(Protocol::Tcp(_)) => Err(Filtered::Tcp),
+            Ok(Protocol::Udp(_)) => Err(Filtered::Udp),
+            Ok(Protocol::IcmpEcho(_)) => Err(Filtered::Icmp),
+
+            Err(e) => Err(Filtered::UnsupportedProtocol(e)),
+        }
+    }
+
+    fn add_filter(&mut self, filter: &Filter) {
+        match filter {
+            Filter::Udp(range) => {
+                self.udp.insert(range.to_range());
+            }
+            Filter::Tcp(range) => {
+                self.tcp.insert(range.to_range());
+            }
+            Filter::Icmp => {
+                self.icmp = true;
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use ip_packet::{Icmpv4Type, Icmpv6Type, icmpv4, icmpv6};
+
+    use super::*;
+    use crate::messages::PortRange;
+
+    #[test]
+    fn breadth_counts_overlapping_port_ranges_once() {
+        let filter = FilterEngine::new(&[
+            Filter::Tcp(PortRange::new(80, 90).unwrap()),
+            Filter::Tcp(PortRange::new(85, 95).unwrap()),
+            Filter::Icmp,
+        ]);
+
+        assert_eq!(filter.breadth(), 17);
+        assert_eq!(FilterEngine::DenyAll.breadth(), 0);
+        assert_eq!(FilterEngine::PermitAll.breadth(), u32::MAX);
+    }
+
+    #[test]
+    fn allows_icmpv4_destination_unreachable() {
+        let filter = FilterEngine::PermitSome(AllowRules {
+            udp: RangeInclusiveSet::default(),
+            tcp: RangeInclusiveSet::default(),
+            icmp: true,
+        });
+
+        let result = filter.apply(Err(UnsupportedProtocol::UnsupportedIcmpv4Type(
+            Icmpv4Type::DestinationUnreachable(icmpv4::DestUnreachableHeader::Host),
+        )));
+
+        assert!(result.is_ok())
+    }
+
+    #[test]
+    fn allows_icmpv6_destination_unreachable() {
+        let filter = FilterEngine::PermitSome(AllowRules {
+            udp: RangeInclusiveSet::default(),
+            tcp: RangeInclusiveSet::default(),
+            icmp: true,
+        });
+
+        let result = filter.apply(Err(UnsupportedProtocol::UnsupportedIcmpv6Type(
+            Icmpv6Type::DestinationUnreachable(icmpv6::DestUnreachableCode::Address),
+        )));
+
+        assert!(result.is_ok())
+    }
+
+    #[test]
+    fn icmp_false_blocks_other_icmp_messages() {
+        let filter = FilterEngine::PermitSome(AllowRules {
+            udp: RangeInclusiveSet::default(),
+            tcp: RangeInclusiveSet::default(),
+            icmp: false,
+        });
+
+        let result = filter.apply(Err(UnsupportedProtocol::UnsupportedIcmpv4Type(
+            Icmpv4Type::Unknown {
+                ty: 13, // Timestamp request
+                code: 0,
+                rest_of_header: [0u8; 4],
+            },
+        )));
+
+        assert!(result.is_err())
+    }
+}

@@ -1,11 +1,9 @@
 //! Generate a persistent device ID, stores it to disk, and reads it back.
 
 use anyhow::{Context as _, Result};
-use atomicwrites::{AtomicFile, OverwriteBehavior};
 use sha2::Digest;
 use std::{
     fs,
-    io::Write,
     path::{Path, PathBuf},
 };
 
@@ -111,9 +109,7 @@ fn get_or_create_at(path: &Path, app_id: &str) -> Result<DeviceId> {
     let content =
         serde_json::to_string(&j).context("Impossible: Failed to serialize firezone-id")?;
 
-    let file = AtomicFile::new(path, OverwriteBehavior::DisallowOverwrite);
-    file.write(|f| f.write_all(content.as_bytes()))
-        .context("Failed to write firezone-id file")?;
+    atomicfs::write(path, content).context("Failed to write firezone-id file")?;
 
     tracing::debug!(%id, "Saved device ID to disk");
     set_id_permissions(path).context("Couldn't set permissions on Firezone ID file")?;
@@ -219,7 +215,7 @@ fn set_id_permissions(_: &Path) -> Result<()> {
 
 #[cfg(target_os = "linux")]
 fn compute_from_hardware_id(app_id: &str) -> Result<DeviceId> {
-    use hmac::Mac;
+    use hmac::{KeyInit as _, Mac};
 
     let machine_id =
         fs::read_to_string("/etc/machine-id").context("Failed to read `/etc/machine-id`")?;

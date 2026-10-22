@@ -10,3 +10,27 @@ clap = { workspace = true, features = ["derive"] }
 subprocess = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+serde_json = { workspace = true }
+tempfile = { workspace = true }
+zbus = { workspace = true }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+png = { workspace = true }
+# `AppsUseLightTheme` / `SystemUsesLightTheme` to pin the light theme
+winreg = { workspace = true }
+
+[target.'cfg(target_os = "windows")'.dependencies.windows]
+workspace = true
+features = [
+    # `HWND`, `RECT` and `LPARAM` for the window enumeration
+    "Win32_Foundation",
+    # `BitBlt` and `GetDIBits` to read the menus off the screen
+    "Win32_Graphics_Gdi",
+    # `mouse_event` to click the resource row
+    "Win32_UI_Input_KeyboardAndMouse",
+    # `EnumWindows` and the `GetMenu*` family to find the row, plus
+    # `SystemParametersInfoW` to turn the desktop's animations off
+    "Win32_UI_WindowsAndMessaging",
+]

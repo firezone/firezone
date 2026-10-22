@@ -1,0 +1,102 @@
+use super::{
+    dns_records::DnsRecords,
+    reference::PrivateKey,
+    sim_gateway::SimGateway,
+    sim_net::ExecMutScope,
+    site_network::{Routes, SiteNetwork},
+};
+use chrono::{DateTime, Utc};
+use connlib_model::GatewayId;
+use dns_types::{DomainName, OwnedRecordData};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    net::{Ipv4Addr, Ipv6Addr},
+    time::Instant,
+};
+use tunnel_proto::{GatewayState, IpConfig};
+
+/// Reference state for a particular gateway.
+#[derive(Debug, Clone)]
+pub struct RefGateway {
+    pub(crate) key: PrivateKey,
+    pub(crate) tunnel_ip4: Ipv4Addr,
+    pub(crate) tunnel_ip6: Ipv6Addr,
+    /// The routes of the network behind the Gateway.
+    pub(crate) routes: Routes,
+
+    site_specific_dns_records: DnsRecords,
+    /// Names the Gateway's upstream resolver does not resolve.
+    unresolvable_names: BTreeSet<DomainName>,
+}
+
+impl RefGateway {
+    /// Construct a [`RefGateway`] from generated parts.
+    pub(crate) fn from_parts(
+        key: PrivateKey,
+        tunnel_ip4: Ipv4Addr,
+        tunnel_ip6: Ipv6Addr,
+        routes: Routes,
+        site_specific_dns_records: DnsRecords,
+        unresolvable_names: BTreeSet<DomainName>,
+    ) -> Self {
+        Self {
+            key,
+            tunnel_ip4,
+            tunnel_ip6,
+            routes,
+            site_specific_dns_records,
+            unresolvable_names,
+        }
+    }
+
+    /// Initialize the [`GatewayState`].
+    ///
+    /// This simulates receiving the `init` message from the portal.
+    pub(crate) fn init(
+        self,
+        id: GatewayId,
+        tcp_services: BTreeMap<DomainName, BTreeSet<u16>>,
+        now: Instant,
+        utc_now: DateTime<Utc>,
+    ) -> SimGateway {
+        let mut sut = GatewayState::new(
+            self.key.0,
+            now,
+            utc_now
+                .signed_duration_since(DateTime::UNIX_EPOCH)
+                .to_std()
+                .unwrap(),
+        ); // Cheating a bit here by reusing the key as seed.
+        sut.update_tun_device(IpConfig {
+            v4: self.tunnel_ip4,
+            v6: self.tunnel_ip6,
+        });
+
+        let network = SiteNetwork::new(self.routes, tcp_services, now);
+
+        SimGateway::new(id, sut, network, self.site_specific_dns_records)
+    }
+
+    pub fn dns_records(&self) -> &DnsRecords {
+        &self.site_specific_dns_records
+    }
+
+    /// The records the Gateway's upstream resolver returns for `domain`.
+    pub(crate) fn resolve<'a>(
+        &self,
+        domain: &DomainName,
+        global_dns_records: &'a DnsRecords,
+    ) -> impl Iterator<Item = OwnedRecordData> + 'a {
+        let resolves = !self.unresolvable_names.contains(domain);
+
+        global_dns_records
+            .domain_records_iter(domain)
+            .filter(move |_| resolves)
+    }
+}
+
+impl ExecMutScope for RefGateway {
+    type Guard = ();
+
+    fn enter(&self) -> Self::Guard {}
+}

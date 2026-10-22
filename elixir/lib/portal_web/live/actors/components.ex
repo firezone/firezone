@@ -1,7 +1,7 @@
 defmodule PortalWeb.Actors.Components do
   use PortalWeb, :component_library
 
-  import PortalWeb.Clients.Components, only: [client_os_icon_name: 1]
+  alias PortalWeb.Devices.Components, as: DeviceComponents
 
   attr :account, :any, required: true
   attr :actor, :any, default: nil
@@ -81,6 +81,9 @@ defmodule PortalWeb.Actors.Components do
       |> assign(assigns.related_state)
       |> assign(assigns.token_state)
 
+    assigns =
+      assign(assigns, :disabling_directory_name, disabling_directory_name(assigns.actor, assigns.identities))
+
     ~H"""
     <div class="flex flex-col h-full overflow-hidden">
       <.actor_detail_header actor={@actor} groups={@groups} tokens={@tokens} />
@@ -98,7 +101,12 @@ defmodule PortalWeb.Actors.Components do
           />
         </div>
 
-        <.actor_detail_sidebar actor={@actor} subject={@subject} panel={@panel} />
+        <.actor_detail_sidebar
+          actor={@actor}
+          subject={@subject}
+          panel={@panel}
+          disabling_directory_name={@disabling_directory_name}
+        />
       </div>
     </div>
     """
@@ -118,7 +126,10 @@ defmodule PortalWeb.Actors.Components do
           <div class="min-w-0">
             <div class="flex items-center gap-2">
               <h2 class="text-sm font-semibold text-heading truncate">{@actor.name}</h2>
-              <.actor_status_badge disabled_at={@actor.disabled_at} />
+              <.actor_status_badge
+                is_disabled={@actor.is_disabled}
+                disabled_by_directory={not is_nil(@actor.disabled_by_directory_id)}
+              />
             </div>
             <p :if={@actor.email} class="text-xs text-subtle truncate mt-0.5">
               {@actor.email}
@@ -127,10 +138,10 @@ defmodule PortalWeb.Actors.Components do
         </div>
         <%!-- Right: actions --%>
         <div class="flex items-center gap-1.5 shrink-0">
-          <.button type="button" phx-click="open_actor_edit_form" size="xs">
-            <.icon name="ri-pencil-line" class="w-3.5 h-3.5" /> Edit
-          </.button>
-          <.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_panel" />
+          <Form.button type="button" phx-click="open_actor_edit_form" size="xs">
+            <Core.icon name="ri-pencil-line" class="w-3.5 h-3.5" /> Edit
+          </Form.button>
+          <Form.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_panel" />
         </div>
       </div>
     </div>
@@ -159,7 +170,7 @@ defmodule PortalWeb.Actors.Components do
           ]}
         >
           <span class="flex items-center gap-1.5">
-            <.icon name="ri-id-card-line" class="w-3.5 h-3.5" /> External Identities
+            <Core.icon name="ri-id-card-line" class="w-3.5 h-3.5" /> External Identities
           </span>
         </button>
         <button
@@ -176,7 +187,7 @@ defmodule PortalWeb.Actors.Components do
           ]}
         >
           <span class="flex items-center gap-1.5">
-            <.icon name="ri-smartphone-line" class="w-3.5 h-3.5" /> Client Sessions
+            <Core.icon name="ri-smartphone-line" class="w-3.5 h-3.5" /> Client Sessions
           </span>
         </button>
         <button
@@ -193,7 +204,7 @@ defmodule PortalWeb.Actors.Components do
           ]}
         >
           <span class="flex items-center gap-1.5">
-            <.icon name="ri-computer-line" class="w-3.5 h-3.5" /> Portal Sessions
+            <Core.icon name="ri-computer-line" class="w-3.5 h-3.5" /> Portal Sessions
           </span>
         </button>
         <button
@@ -210,7 +221,7 @@ defmodule PortalWeb.Actors.Components do
           ]}
         >
           <span class="flex items-center gap-1.5">
-            <.icon name="ri-key-line" class="w-3.5 h-3.5" /> Tokens
+            <Core.icon name="ri-key-line" class="w-3.5 h-3.5" /> Tokens
           </span>
         </button>
         <button
@@ -226,19 +237,19 @@ defmodule PortalWeb.Actors.Components do
           ]}
         >
           <span class="flex items-center gap-1.5">
-            <.icon name="ri-team-line" class="w-3.5 h-3.5" /> Groups
+            <Core.icon name="ri-team-line" class="w-3.5 h-3.5" /> Groups
           </span>
         </button>
       </div>
       <div class="shrink-0 px-2">
-        <.button
+        <Form.button
           :if={@actor.type == :service_account and @active_tab == "tokens" and not @adding_token}
           type="button"
           phx-click="open_add_token_form"
           size="xs"
         >
-          <.icon name="ri-add-line" class="w-3 h-3" /> Add Token
-        </.button>
+          <Core.icon name="ri-add-line" class="w-3 h-3" /> Add Token
+        </Form.button>
       </div>
     </div>
     """
@@ -278,10 +289,10 @@ defmodule PortalWeb.Actors.Components do
                 <span class="block text-subtle">This cannot be undone.</span>
               </span>
               <div class="flex items-center gap-1.5 shrink-0">
-                <.button type="button" phx-click="cancel_delete_identity" size="xs">
+                <Form.button type="button" phx-click="cancel_delete_identity" size="xs">
                   Cancel
-                </.button>
-                <.button
+                </Form.button>
+                <Form.button
                   type="button"
                   phx-click="delete_identity"
                   phx-value-id={identity.id}
@@ -289,12 +300,12 @@ defmodule PortalWeb.Actors.Components do
                   size="xs"
                 >
                   Delete
-                </.button>
+                </Form.button>
               </div>
             </div>
             <details :if={@confirm_delete_identity_id != identity.id} class="group/details">
               <summary class="flex items-center gap-4 px-5 py-3 pr-4 hover:bg-raised transition-colors cursor-pointer list-none">
-                <.provider_icon provider={provider_type_from_issuer(identity.issuer)} size="sm" variant="circle" />
+                <Core.provider_icon provider={Core.provider_type_from_issuer(identity.issuer)} size="sm" variant="circle" />
                 <div class="flex-1 min-w-0">
                   <p
                     class="text-sm font-medium text-heading truncate"
@@ -316,18 +327,18 @@ defmodule PortalWeb.Actors.Components do
                     type="button"
                     phx-click="confirm_delete_identity"
                     phx-value-id={identity.id}
-                    class="flex items-center justify-center w-6 h-6 rounded text-subtle hover:text-error hover:bg-surface transition-colors opacity-0 group-hover/item:opacity-100"
+                    class="flex items-center justify-center w-6 h-6 rounded text-subtle hover:text-error hover:bg-surface transition-colors"
                     title="Delete identity"
                   >
-                    <.icon name="ri-delete-bin-line" class="w-3.5 h-3.5" />
+                    <Core.icon name="ri-delete-bin-line" class="w-3.5 h-3.5" />
                   </button>
-                  <.icon
+                  <Core.icon
                     name="ri-arrow-down-s-line"
-                    class="w-4 h-4 text-muted shrink-0 group-open/details:hidden"
+                    class="w-4 h-4 text-subtle shrink-0 group-open/details:hidden"
                   />
-                  <.icon
+                  <Core.icon
                     name="ri-arrow-up-s-line"
-                    class="w-4 h-4 text-muted shrink-0 hidden group-open/details:block"
+                    class="w-4 h-4 text-subtle shrink-0 hidden group-open/details:block"
                   />
                 </div>
               </summary>
@@ -338,7 +349,7 @@ defmodule PortalWeb.Actors.Components do
                       Directory
                     </dt>
                     <dd
-                      class="text-xs text-heading truncate mt-0.5"
+                      class="text-xs text-body font-medium truncate mt-0.5"
                       title={identity.directory_name}
                     >
                       {identity.directory_name}
@@ -349,7 +360,7 @@ defmodule PortalWeb.Actors.Components do
                       IDP ID
                     </dt>
                     <dd
-                      class="font-mono text-xs text-heading truncate mt-0.5"
+                      class="font-mono text-xs text-body font-medium truncate mt-0.5"
                       title={identity.idp_id}
                     >
                       {extract_idp_id(identity.idp_id)}
@@ -359,7 +370,7 @@ defmodule PortalWeb.Actors.Components do
                     <dt class="text-[10px] font-semibold tracking-widest uppercase text-subtle">
                       Email
                     </dt>
-                    <dd class="text-xs text-heading truncate mt-0.5">
+                    <dd class="text-xs text-body truncate mt-0.5 font-medium">
                       {identity.email}
                     </dd>
                   </div>
@@ -367,7 +378,7 @@ defmodule PortalWeb.Actors.Components do
                     <dt class="text-[10px] font-semibold tracking-widest uppercase text-subtle">
                       Name
                     </dt>
-                    <dd class="text-xs text-heading truncate mt-0.5">
+                    <dd class="text-xs text-body truncate mt-0.5 font-medium">
                       {identity.name}
                     </dd>
                   </div>
@@ -375,7 +386,7 @@ defmodule PortalWeb.Actors.Components do
                     <dt class="text-[10px] font-semibold tracking-widest uppercase text-subtle">
                       Given Name
                     </dt>
-                    <dd class="text-xs text-heading truncate mt-0.5">
+                    <dd class="text-xs text-body truncate mt-0.5 font-medium">
                       {identity.given_name}
                     </dd>
                   </div>
@@ -383,7 +394,7 @@ defmodule PortalWeb.Actors.Components do
                     <dt class="text-[10px] font-semibold tracking-widest uppercase text-subtle">
                       Family Name
                     </dt>
-                    <dd class="text-xs text-heading truncate mt-0.5">
+                    <dd class="text-xs text-body truncate mt-0.5 font-medium">
                       {identity.family_name}
                     </dd>
                   </div>
@@ -391,7 +402,7 @@ defmodule PortalWeb.Actors.Components do
                     <dt class="text-[10px] font-semibold tracking-widest uppercase text-subtle">
                       Middle Name
                     </dt>
-                    <dd class="text-xs text-heading truncate mt-0.5">
+                    <dd class="text-xs text-body truncate mt-0.5 font-medium">
                       {identity.middle_name}
                     </dd>
                   </div>
@@ -399,7 +410,7 @@ defmodule PortalWeb.Actors.Components do
                     <dt class="text-[10px] font-semibold tracking-widest uppercase text-subtle">
                       Nickname
                     </dt>
-                    <dd class="text-xs text-heading truncate mt-0.5">
+                    <dd class="text-xs text-body truncate mt-0.5 font-medium">
                       {identity.nickname}
                     </dd>
                   </div>
@@ -407,7 +418,7 @@ defmodule PortalWeb.Actors.Components do
                     <dt class="text-[10px] font-semibold tracking-widest uppercase text-subtle">
                       Preferred Username
                     </dt>
-                    <dd class="text-xs text-heading truncate mt-0.5">
+                    <dd class="text-xs text-body truncate mt-0.5 font-medium">
                       {identity.preferred_username}
                     </dd>
                   </div>
@@ -415,8 +426,8 @@ defmodule PortalWeb.Actors.Components do
                     <dt class="text-[10px] font-semibold tracking-widest uppercase text-subtle">
                       Last Synced
                     </dt>
-                    <dd class="text-xs text-body mt-0.5">
-                      <.relative_datetime datetime={identity.sync_state.synced_at} />
+                    <dd class="text-xs text-body mt-0.5 font-medium">
+                      <Core.relative_datetime datetime={identity.sync_state.synced_at} />
                     </dd>
                   </div>
                 </dl>
@@ -444,10 +455,10 @@ defmodule PortalWeb.Actors.Components do
                 <span class="block text-subtle">This cannot be undone.</span>
               </span>
               <div class="flex items-center gap-1.5 shrink-0">
-                <.button type="button" phx-click="cancel_delete_token" size="xs">
+                <Form.button type="button" phx-click="cancel_delete_token" size="xs">
                   Cancel
-                </.button>
-                <.button
+                </Form.button>
+                <Form.button
                   type="button"
                   phx-click="delete_token"
                   phx-value-id={token.id}
@@ -455,20 +466,22 @@ defmodule PortalWeb.Actors.Components do
                   size="xs"
                 >
                   Revoke
-                </.button>
+                </Form.button>
               </div>
             </div>
             <details :if={@confirm_delete_token_id != token.id} class="group/details">
               <summary class="flex items-center gap-3 pr-4 hover:bg-raised transition-colors cursor-pointer list-none">
                 <div class="flex items-center gap-3 px-5 py-3 flex-1 min-w-0">
-                  <.ping_icon
+                  <Core.ping_icon
                     color={if token.online?, do: "success", else: "danger"}
                     title={if token.online?, do: "Online", else: "Offline"}
                   />
                   <div class="flex items-center justify-center w-7 h-7 rounded-full bg-raised border border-border shrink-0">
-                    <.icon
+                    <Core.icon
                       name={
-                        client_os_icon_name(token.latest_session && token.latest_session.user_agent)
+                        DeviceComponents.os_icon_name(
+                          token.last_used_device && token.last_used_device.last_seen_user_agent
+                        )
                       }
                       class="w-4 h-4 text-body"
                     />
@@ -480,16 +493,16 @@ defmodule PortalWeb.Actors.Components do
                     <div class="flex items-center gap-3 mt-0.5 text-xs text-subtle">
                       <span>
                         Connected
-                        <.relative_datetime datetime={
-                          token.latest_session && token.latest_session.inserted_at
+                        <Core.relative_datetime datetime={
+                          token.last_used_device && token.last_used_device.last_seen_at
                         } />
                       </span>
                       <span :if={
                         token_location(token) ||
-                          (token.latest_session && token.latest_session.remote_ip)
+                          (token.last_used_device && token.last_used_device.last_seen_remote_ip)
                       }>
                         Location: {token_location(token) ||
-                          (token.latest_session && token.latest_session.remote_ip)}
+                          (token.last_used_device && token.last_used_device.last_seen_remote_ip)}
                       </span>
                     </div>
                   </div>
@@ -499,25 +512,25 @@ defmodule PortalWeb.Actors.Components do
                     type="button"
                     phx-click="confirm_delete_token"
                     phx-value-id={token.id}
-                    class="flex items-center justify-center w-6 h-6 rounded text-subtle hover:text-error hover:bg-surface transition-colors opacity-0 group-hover/item:opacity-100"
+                    class="flex items-center justify-center w-6 h-6 rounded text-subtle hover:text-error hover:bg-surface transition-colors"
                     title="Revoke session"
                   >
-                    <.icon name="ri-delete-bin-line" class="w-3.5 h-3.5" />
+                    <Core.icon name="ri-delete-bin-line" class="w-3.5 h-3.5" />
                   </button>
-                  <.icon
+                  <Core.icon
                     name="ri-arrow-down-s-line"
-                    class="w-4 h-4 text-muted shrink-0 group-open/details:hidden"
+                    class="w-4 h-4 text-subtle shrink-0 group-open/details:hidden"
                   />
-                  <.icon
+                  <Core.icon
                     name="ri-arrow-up-s-line"
-                    class="w-4 h-4 text-muted shrink-0 hidden group-open/details:block"
+                    class="w-4 h-4 text-subtle shrink-0 hidden group-open/details:block"
                   />
                 </div>
               </summary>
-              <.session_details session={token.latest_session} location={token_location(token)}>
+              <.session_details device={token.last_used_device} location={token_location(token)}>
                 <.detail_field label="Token ID" mono>{token.id}</.detail_field>
                 <.detail_field :if={token.expires_at} label="Token Expires">
-                  <.relative_datetime datetime={token.expires_at} />
+                  <Core.relative_datetime datetime={token.expires_at} />
                 </.detail_field>
               </.session_details>
             </details>
@@ -543,10 +556,10 @@ defmodule PortalWeb.Actors.Components do
                 <span class="block text-subtle">This cannot be undone.</span>
               </span>
               <div class="flex items-center gap-1.5 shrink-0">
-                <.button type="button" phx-click="cancel_delete_session" size="xs">
+                <Form.button type="button" phx-click="cancel_delete_session" size="xs">
                   Cancel
-                </.button>
-                <.button
+                </Form.button>
+                <Form.button
                   type="button"
                   phx-click="delete_session"
                   phx-value-id={session.id}
@@ -554,18 +567,18 @@ defmodule PortalWeb.Actors.Components do
                   size="xs"
                 >
                   Revoke
-                </.button>
+                </Form.button>
               </div>
             </div>
             <details :if={@confirm_delete_session_id != session.id} class="group/details">
               <summary class="flex items-center gap-3 pr-4 hover:bg-raised transition-colors cursor-pointer list-none">
                 <div class="flex items-center gap-3 px-5 py-3 flex-1 min-w-0">
-                  <.ping_icon
+                  <Core.ping_icon
                     color={if session.online?, do: "success", else: "danger"}
                     title={if session.online?, do: "Online", else: "Offline"}
                   />
                   <div class="flex items-center justify-center w-7 h-7 rounded-full bg-raised border border-border shrink-0">
-                    <.icon
+                    <Core.icon
                       name={session_user_agent_icon(session.user_agent)}
                       class="w-4 h-4 text-body"
                     />
@@ -575,7 +588,7 @@ defmodule PortalWeb.Actors.Components do
                       {if session.online?, do: "Online", else: "Offline"}
                     </p>
                     <div class="flex items-center gap-3 mt-0.5 text-xs text-subtle">
-                      <span>Signed in <.relative_datetime datetime={session.inserted_at} /></span>
+                      <span>Signed in <Core.relative_datetime datetime={session.inserted_at} /></span>
                       <span :if={session_location(session) || session.remote_ip}>
                         Location: {session_location(session) || session.remote_ip}
                       </span>
@@ -587,18 +600,18 @@ defmodule PortalWeb.Actors.Components do
                     type="button"
                     phx-click="confirm_delete_session"
                     phx-value-id={session.id}
-                    class="flex items-center justify-center w-6 h-6 rounded text-subtle hover:text-error hover:bg-surface transition-colors opacity-0 group-hover/item:opacity-100"
+                    class="flex items-center justify-center w-6 h-6 rounded text-subtle hover:text-error hover:bg-surface transition-colors"
                     title="Revoke session"
                   >
-                    <.icon name="ri-delete-bin-line" class="w-3.5 h-3.5" />
+                    <Core.icon name="ri-delete-bin-line" class="w-3.5 h-3.5" />
                   </button>
-                  <.icon
+                  <Core.icon
                     name="ri-arrow-down-s-line"
-                    class="w-4 h-4 text-muted shrink-0 group-open/details:hidden"
+                    class="w-4 h-4 text-subtle shrink-0 group-open/details:hidden"
                   />
-                  <.icon
+                  <Core.icon
                     name="ri-arrow-up-s-line"
-                    class="w-4 h-4 text-muted shrink-0 hidden group-open/details:block"
+                    class="w-4 h-4 text-subtle shrink-0 hidden group-open/details:block"
                   />
                 </div>
               </summary>
@@ -621,10 +634,10 @@ defmodule PortalWeb.Actors.Components do
                     {session.auth_provider_name}
                   </.detail_field>
                   <.detail_field label="Signed In">
-                    <.relative_datetime datetime={session.inserted_at} />
+                    <Core.relative_datetime datetime={session.inserted_at} />
                   </.detail_field>
                   <.detail_field :if={session.expires_at} label="Expires">
-                    <.relative_datetime datetime={session.expires_at} />
+                    <Core.relative_datetime datetime={session.expires_at} />
                   </.detail_field>
                   <.detail_field label="Session ID" mono>{session.id}</.detail_field>
                 </dl>
@@ -649,7 +662,7 @@ defmodule PortalWeb.Actors.Components do
               class="flex items-center justify-center w-6 h-6 rounded text-subtle hover:text-heading hover:bg-raised transition-colors shrink-0"
               title="Dismiss"
             >
-              <.icon name="ri-close-line" class="w-4 h-4" />
+              <Core.icon name="ri-close-line" class="w-4 h-4" />
             </button>
           </div>
           <div id="tab-token-copy" class="relative" phx-hook="CopyClipboard">
@@ -667,14 +680,14 @@ defmodule PortalWeb.Actors.Components do
               class="absolute top-2 right-2 text-subtle hover:text-heading transition-colors"
               title="Copy token"
             >
-              <.icon name="ri-clipboard-line" class="w-4 h-4" />
+              <Core.icon name="ri-clipboard-line" class="w-4 h-4" />
             </button>
           </div>
         </div>
 
         <div :if={is_nil(@created_token) and @adding_token} class="px-5 py-4 space-y-4">
           <p class="text-sm font-medium text-heading">New Token</p>
-          <form phx-change="validate_token" phx-submit="create_token" class="space-y-4">
+          <form id="create-token-form" phx-change="validate_token" phx-submit="create_token" class="space-y-4">
             <div>
               <label class="block text-xs font-medium text-body mb-1.5">
                 Token expiration
@@ -683,17 +696,17 @@ defmodule PortalWeb.Actors.Components do
                 type="date"
                 name="token_expiration"
                 value={@token_expiration}
-                class="block w-full rounded-md border-neutral-300 focus:border-accent-400 focus:ring-3 focus:ring-accent-200/50 text-sm"
+                class="block w-full rounded-md border-border-strong focus:border-border-focus focus:ring-3 focus:ring-accent-200/50 text-sm"
                 required
               />
             </div>
             <div class="flex items-center gap-2">
-              <.button type="button" phx-click="cancel_add_token_form" size="xs">
+              <Form.button type="button" phx-click="cancel_add_token_form" size="xs">
                 Cancel
-              </.button>
-              <.button type="submit" style="primary" size="xs">
+              </Form.button>
+              <Form.button type="submit" style="primary" size="xs">
                 Create Token
-              </.button>
+              </Form.button>
             </div>
           </form>
         </div>
@@ -716,10 +729,10 @@ defmodule PortalWeb.Actors.Components do
                   <span class="block text-subtle">This cannot be undone.</span>
                 </span>
                 <div class="flex items-center gap-1.5 shrink-0">
-                  <.button type="button" phx-click="cancel_delete_token" size="xs">
+                  <Form.button type="button" phx-click="cancel_delete_token" size="xs">
                     Cancel
-                  </.button>
-                  <.button
+                  </Form.button>
+                  <Form.button
                     type="button"
                     phx-click="delete_token"
                     phx-value-id={token.id}
@@ -727,18 +740,18 @@ defmodule PortalWeb.Actors.Components do
                     size="xs"
                   >
                     Delete
-                  </.button>
+                  </Form.button>
                 </div>
               </div>
               <details :if={@confirm_delete_token_id != token.id} class="group/details">
                 <summary class="flex items-center gap-3 pr-4 hover:bg-raised transition-colors cursor-pointer list-none">
                   <div class="flex items-center gap-3 px-5 py-3 flex-1 min-w-0">
-                    <.ping_icon
+                    <Core.ping_icon
                       color={if token.online?, do: "success", else: "danger"}
                       title={if token.online?, do: "Active", else: "Inactive"}
                     />
                     <div class="flex items-center justify-center w-7 h-7 rounded-full bg-raised border border-border shrink-0">
-                      <.icon name="ri-key-line" class="w-4 h-4 text-body" />
+                      <Core.icon name="ri-key-line" class="w-4 h-4 text-body" />
                     </div>
                     <div class="flex-1 min-w-0">
                       <p class="text-sm font-medium text-heading">
@@ -747,19 +760,19 @@ defmodule PortalWeb.Actors.Components do
                       <div class="flex items-center gap-3 mt-0.5 text-xs text-subtle">
                         <span>
                           Last used:
-                          <.relative_datetime datetime={
-                            token.latest_session && token.latest_session.inserted_at
+                          <Core.relative_datetime datetime={
+                            token.last_used_device && token.last_used_device.last_seen_at
                           } />
                         </span>
                         <span :if={token.expires_at}>
-                          Expires: <.relative_datetime datetime={token.expires_at} />
+                          Expires: <Core.relative_datetime datetime={token.expires_at} />
                         </span>
                         <span :if={
                           token_location(token) ||
-                            (token.latest_session && token.latest_session.remote_ip)
+                            (token.last_used_device && token.last_used_device.last_seen_remote_ip)
                         }>
                           Location: {token_location(token) ||
-                            (token.latest_session && token.latest_session.remote_ip)}
+                            (token.last_used_device && token.last_used_device.last_seen_remote_ip)}
                         </span>
                       </div>
                     </div>
@@ -769,28 +782,28 @@ defmodule PortalWeb.Actors.Components do
                       type="button"
                       phx-click="confirm_delete_token"
                       phx-value-id={token.id}
-                      class="flex items-center justify-center w-6 h-6 rounded text-subtle hover:text-error hover:bg-surface transition-colors opacity-0 group-hover/item:opacity-100"
+                      class="flex items-center justify-center w-6 h-6 rounded text-subtle hover:text-error hover:bg-surface transition-colors"
                       title="Delete token"
                     >
-                      <.icon name="ri-delete-bin-line" class="w-3.5 h-3.5" />
+                      <Core.icon name="ri-delete-bin-line" class="w-3.5 h-3.5" />
                     </button>
-                    <.icon
+                    <Core.icon
                       name="ri-arrow-down-s-line"
-                      class="w-4 h-4 text-muted shrink-0 group-open/details:hidden"
+                      class="w-4 h-4 text-subtle shrink-0 group-open/details:hidden"
                     />
-                    <.icon
+                    <Core.icon
                       name="ri-arrow-up-s-line"
-                      class="w-4 h-4 text-muted shrink-0 hidden group-open/details:block"
+                      class="w-4 h-4 text-subtle shrink-0 hidden group-open/details:block"
                     />
                   </div>
                 </summary>
-                <.session_details session={token.latest_session} location={token_location(token)}>
+                <.session_details device={token.last_used_device} location={token_location(token)}>
                   <.detail_field label="Token ID" mono>{token.id}</.detail_field>
                   <.detail_field :if={token.expires_at} label="Token Expires">
-                    <.relative_datetime datetime={token.expires_at} />
+                    <Core.relative_datetime datetime={token.expires_at} />
                   </.detail_field>
                   <.detail_field label="Created">
-                    <.relative_datetime datetime={token.inserted_at} />
+                    <Core.relative_datetime datetime={token.inserted_at} />
                   </.detail_field>
                 </.session_details>
               </details>
@@ -808,19 +821,19 @@ defmodule PortalWeb.Actors.Components do
         </div>
         <ul :if={@groups != []}>
           <li :for={row <- @groups} class="border-b border-border transition-colors">
-            <.link
+            <Navigation.link
               navigate={~p"/#{@account}/groups/#{row.group.id}"}
               class="flex items-center gap-3 px-5 py-3 flex-1 min-w-0 hover:bg-raised group/item"
             >
-              <.provider_icon provider={provider_type_from_group(row)} size="sm" variant="circle" />
+              <Core.provider_icon provider={Core.provider_type_from_group(row)} size="sm" variant="circle" />
               <span class="flex-1 text-sm font-medium text-heading group-hover/item:text-brand transition-colors truncate">
                 {row.group.name}
               </span>
-              <.icon
+              <Core.icon
                 name="ri-arrow-right-s-line"
-                class="w-4 h-4 text-muted shrink-0"
+                class="w-4 h-4 text-subtle shrink-0"
               />
-            </.link>
+            </Navigation.link>
           </li>
         </ul>
       </div>
@@ -831,6 +844,7 @@ defmodule PortalWeb.Actors.Components do
   attr :actor, :any, required: true
   attr :subject, :any, required: true
   attr :panel, :map, required: true
+  attr :disabling_directory_name, :string, default: nil
 
   def actor_detail_sidebar(assigns) do
     assigns = assign(assigns, assigns.panel)
@@ -844,22 +858,22 @@ defmodule PortalWeb.Actors.Components do
         <dl class="space-y-3">
           <div>
             <dt class="text-[10px] text-subtle mb-0.5">Actor ID</dt>
-            <dd class="font-mono text-[11px] text-body break-all">{@actor.id}</dd>
+            <dd class="font-mono text-[11px] text-body break-all font-medium">{@actor.id}</dd>
           </div>
           <div :if={@actor.email}>
             <dt class="text-[10px] text-subtle mb-0.5">Email</dt>
-            <dd class="text-xs text-heading break-all">{@actor.email}</dd>
+            <dd class="text-xs text-body break-all font-medium">{@actor.email}</dd>
           </div>
           <div>
             <dt class="text-[10px] text-subtle mb-0.5">Created</dt>
-            <dd class="text-xs text-body">
-              <.relative_datetime datetime={@actor.inserted_at} />
+            <dd class="text-xs text-body font-medium">
+              <Core.relative_datetime datetime={@actor.inserted_at} />
             </dd>
           </div>
           <div>
             <dt class="text-[10px] text-subtle mb-0.5">Updated</dt>
-            <dd class="text-xs text-body">
-              <.relative_datetime datetime={@actor.updated_at} />
+            <dd class="text-xs text-body font-medium">
+              <Core.relative_datetime datetime={@actor.updated_at} />
             </dd>
           </div>
           <div :if={@actor.type != :service_account}>
@@ -868,11 +882,11 @@ defmodule PortalWeb.Actors.Components do
               <span class={[
                 "inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-medium",
                 if(@actor.allow_email_otp_sign_in,
-                  do: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400",
-                  else: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
+                  do: "bg-success-light text-success",
+                  else: "bg-danger-light text-danger"
                 )
               ]}>
-                <.icon
+                <Core.icon
                   name={
                     if @actor.allow_email_otp_sign_in,
                       do: "ri-checkbox-circle-line",
@@ -888,6 +902,12 @@ defmodule PortalWeb.Actors.Components do
             <dt class="text-[10px] text-subtle mb-0.5">Role</dt>
             <dd><.actor_type_badge actor={@actor} /></dd>
           </div>
+          <div :if={@actor.disabled_by_directory_id}>
+            <dt class="text-[10px] text-subtle mb-0.5">Disabled By</dt>
+            <dd class="text-xs text-body font-medium" data-testid="disabled-by-directory">
+              {@disabling_directory_name}
+            </dd>
+          </div>
         </dl>
       </section>
 
@@ -897,7 +917,7 @@ defmodule PortalWeb.Actors.Components do
           Actions
         </h3>
         <div class="space-y-1.5">
-          <.action_button
+          <Form.action_button
             :if={
               @actor.type in [:account_user, :account_admin_user] and not is_nil(@actor.email) and
                 not @welcome_email_sent
@@ -907,20 +927,20 @@ defmodule PortalWeb.Actors.Components do
             phx-value-id={@actor.id}
           >
             Send Welcome Email
-          </.action_button>
+          </Form.action_button>
           <div
             :if={
               @actor.type in [:account_user, :account_admin_user] and not is_nil(@actor.email) and
                 @welcome_email_sent
             }
-            class="flex items-center gap-2 w-full px-3 py-2 rounded text-xs text-green-600 bg-green-50 dark:text-green-400 dark:bg-green-900/20"
+            class="flex items-center gap-2 w-full px-3 py-2 rounded text-xs text-success bg-success-light"
           >
-            <.icon name="ri-checkbox-circle-line" class="w-3.5 h-3.5" />
+            <Core.icon name="ri-checkbox-circle-line" class="w-3.5 h-3.5" />
             Email sent to {@actor.email}
           </div>
-          <.action_button
+          <Form.action_button
             :if={
-              is_nil(@actor.disabled_at) and @actor.id != @subject.actor.id and
+              !@actor.is_disabled and @actor.id != @subject.actor.id and
                 not @confirm_disable_actor
             }
             style="warning"
@@ -928,10 +948,10 @@ defmodule PortalWeb.Actors.Components do
             phx-click="confirm_disable_actor"
           >
             Disable
-          </.action_button>
+          </Form.action_button>
           <div
             :if={
-              is_nil(@actor.disabled_at) and @actor.id != @subject.actor.id and @confirm_disable_actor
+              !@actor.is_disabled and @actor.id != @subject.actor.id and @confirm_disable_actor
             }
             class="px-3 py-2.5 rounded border border-border bg-raised"
           >
@@ -940,39 +960,51 @@ defmodule PortalWeb.Actors.Components do
               All active sessions will be immediately revoked.
             </p>
             <div class="flex items-center gap-1.5">
-              <.button type="button" phx-click="cancel_disable_actor" size="xs">
+              <Form.button type="button" phx-click="cancel_disable_actor" size="xs">
                 Cancel
-              </.button>
-              <.button type="button" phx-click="disable" phx-value-id={@actor.id} size="xs">
+              </Form.button>
+              <Form.button type="button" phx-click="disable" phx-value-id={@actor.id} size="xs">
                 Disable
-              </.button>
+              </Form.button>
             </div>
           </div>
-          <.action_button
-            :if={not is_nil(@actor.disabled_at)}
+          <div
+            :if={@actor.is_disabled and @actor.disabled_by_directory_id}
+            class="flex gap-2 px-3 py-2 rounded text-xs text-warning bg-warning-light"
+            data-testid="directory-disabled-notice"
+          >
+            <Core.icon name="ri-information-line" class="w-3.5 h-3.5 shrink-0 mt-px" />
+            <span>
+              {@disabling_directory_name} disabled this actor because its user is suspended or
+              deactivated there. If you enable it while the user is still inactive, the next
+              sync disables it again.
+            </span>
+          </div>
+          <Form.action_button
+            :if={@actor.is_disabled}
             style="success"
             icon="ri-play-line"
             phx-click="enable"
             phx-value-id={@actor.id}
           >
             Enable
-          </.action_button>
+          </Form.action_button>
         </div>
       </section>
 
       <div :if={@actor.id != @subject.actor.id} class="border-t border-border"></div>
       <section :if={@actor.id != @subject.actor.id}>
-        <h3 class="text-[10px] font-semibold tracking-widest uppercase text-error/60 mb-3">
+        <h3 class="text-[10px] font-semibold tracking-widest uppercase text-error mb-3">
           Danger Zone
         </h3>
-        <.action_button
+        <Form.action_button
           :if={not @confirm_delete_actor}
           style="danger"
           icon="ri-delete-bin-line"
           phx-click="confirm_delete_actor"
         >
           Delete actor
-        </.action_button>
+        </Form.action_button>
         <div
           :if={@confirm_delete_actor}
           class="px-3 py-2.5 rounded border border-error/20 bg-error-light"
@@ -982,10 +1014,10 @@ defmodule PortalWeb.Actors.Components do
             All active sessions will be immediately revoked and this cannot be undone.
           </p>
           <div class="flex items-center gap-1.5">
-            <.button type="button" phx-click="cancel_delete_actor" size="xs">
+            <Form.button type="button" phx-click="cancel_delete_actor" size="xs">
               Cancel
-            </.button>
-            <.button
+            </Form.button>
+            <Form.button
               type="button"
               phx-click="delete"
               phx-value-id={@actor.id}
@@ -993,7 +1025,7 @@ defmodule PortalWeb.Actors.Components do
               size="xs"
             >
               Delete
-            </.button>
+            </Form.button>
           </div>
         </div>
       </section>
@@ -1017,14 +1049,16 @@ defmodule PortalWeb.Actors.Components do
       |> assign(assigns.group_membership_state)
 
     ~H"""
+    <Form.panel_header title={"Edit #{@actor.name}"} close_event="cancel_actor_edit_form" />
     <.form
+      id="actor-edit-form"
       for={@form}
       phx-change="validate"
       phx-submit="save"
       class="flex flex-col flex-1 min-h-0 overflow-hidden"
     >
       <div class="flex-1 overflow-y-auto px-5 py-4 space-y-4">
-        <.input
+        <Form.input
           field={@form[:name]}
           label="Name"
           placeholder="Enter actor name"
@@ -1033,7 +1067,7 @@ defmodule PortalWeb.Actors.Components do
           data-1p-ignore
           required
         />
-        <.input
+        <Form.input
           :if={@actor.type != :service_account}
           field={@form[:email]}
           label="Email"
@@ -1048,7 +1082,7 @@ defmodule PortalWeb.Actors.Components do
           <label class="block text-sm font-medium text-body mb-2">Role</label>
           <div class="grid grid-cols-2 gap-2">
             <div>
-              <.input
+              <Form.input
                 id={"#{@form[:type].id}--user"}
                 type="radio_button_group"
                 field={@form[:type]}
@@ -1067,7 +1101,7 @@ defmodule PortalWeb.Actors.Components do
                 ]}
               >
                 <span class="flex items-center gap-1.5 text-xs font-semibold text-heading">
-                  <.icon name="ri-user-line" class="w-3.5 h-3.5" /> User
+                  <Core.icon name="ri-user-line" class="w-3.5 h-3.5" /> User
                 </span>
                 <span class="text-[11px] text-subtle">
                   Sign in to Firezone Client apps
@@ -1075,7 +1109,7 @@ defmodule PortalWeb.Actors.Components do
               </label>
             </div>
             <div>
-              <.input
+              <Form.input
                 id={"#{@form[:type].id}--admin"}
                 type="radio_button_group"
                 field={@form[:type]}
@@ -1088,7 +1122,7 @@ defmodule PortalWeb.Actors.Components do
                 class="flex flex-col gap-1 p-3 rounded-lg border border-border cursor-pointer peer-checked:border-brand peer-checked:bg-raised hover:bg-raised transition-colors"
               >
                 <span class="flex items-center gap-1.5 text-xs font-semibold text-heading">
-                  <.icon name="ri-shield-check-line" class="w-3.5 h-3.5" /> Admin
+                  <Core.icon name="ri-shield-check-line" class="w-3.5 h-3.5" /> Admin
                 </span>
                 <span class="text-[11px] text-subtle">
                   Full access to manage this account
@@ -1096,7 +1130,7 @@ defmodule PortalWeb.Actors.Components do
               </label>
             </div>
           </div>
-          <p :if={@is_last_admin} class="mt-1 text-xs text-orange-600">
+          <p :if={@is_last_admin} class="mt-1 text-xs text-warning">
             Cannot change role. At least one admin must remain in the account.
           </p>
         </div>
@@ -1113,7 +1147,7 @@ defmodule PortalWeb.Actors.Components do
                 </p>
               </div>
               <input type="hidden" name={@form[:allow_email_otp_sign_in].name} value="false" />
-              <.toggle
+              <Core.toggle
                 id={@form[:allow_email_otp_sign_in].id}
                 name={@form[:allow_email_otp_sign_in].name}
                 value="true"
@@ -1123,7 +1157,7 @@ defmodule PortalWeb.Actors.Components do
               />
             </div>
           </div>
-          <p :if={@identities == []} class="mt-1 text-xs text-orange-600">
+          <p :if={@identities == []} class="mt-1 text-xs text-warning">
             This actor has no SSO identity. Disabling Email OTP will lock them out.
           </p>
         </div>
@@ -1135,23 +1169,22 @@ defmodule PortalWeb.Actors.Components do
           account={@account}
         />
       </div>
-      <div
+      <Form.panel_footer
         :if={is_nil(@pending_email_change)}
-        class="shrink-0 flex items-center justify-end gap-2 px-5 py-3 border-t border-border bg-elevated"
       >
-        <.button type="button" phx-click="cancel_actor_edit_form" size="xs">
+        <Form.panel_footer_button type="button" phx-click="cancel_actor_edit_form">
           Cancel
-        </.button>
-        <.button type="submit" style="primary" size="xs">
+        </Form.panel_footer_button>
+        <Form.panel_footer_button type="submit" style="primary">
           Save Changes
-        </.button>
-      </div>
+        </Form.panel_footer_button>
+      </Form.panel_footer>
       <div
         :if={not is_nil(@pending_email_change)}
         class="shrink-0 px-5 py-3 border-t border-error/20 bg-error-light"
       >
         <div class="flex items-start gap-2 mb-3">
-          <.icon name="ri-alert-line" class="w-4 h-4 text-error mt-0.5 shrink-0" />
+          <Core.icon name="ri-alert-line" class="w-4 h-4 text-error mt-0.5 shrink-0" />
           <div>
             <p class="text-xs font-medium text-error mb-0.5">
               Changing this actor's email will remove ALL external identities for this actor.
@@ -1162,12 +1195,12 @@ defmodule PortalWeb.Actors.Components do
           </div>
         </div>
         <div class="flex items-center justify-end gap-1.5">
-          <.button type="button" phx-click="cancel_email_change" size="xs">
+          <Form.panel_footer_button type="button" phx-click="cancel_email_change">
             Cancel
-          </.button>
-          <.button type="button" phx-click="confirm_email_change" style="danger" size="xs">
+          </Form.panel_footer_button>
+          <Form.panel_footer_button type="button" phx-click="confirm_email_change" style="danger">
             Yes, change email and clear identities
-          </.button>
+          </Form.panel_footer_button>
         </div>
       </div>
     </.form>
@@ -1193,8 +1226,8 @@ defmodule PortalWeb.Actors.Components do
       <div class="shrink-0 px-5 pt-4 pb-3 border-b border-border bg-elevated">
         <div class="flex items-center justify-between gap-3">
           <div class="flex items-center gap-3">
-            <div class="inline-flex items-center justify-center w-8 h-8 rounded-full bg-neutral-100 dark:bg-neutral-800">
-              <.icon name="ri-add-line" class="w-4 h-4 text-neutral-600 dark:text-neutral-300" />
+            <div class="inline-flex items-center justify-center w-8 h-8 rounded-full bg-raised">
+              <Core.icon name="ri-add-line" class="w-4 h-4 text-subtle" />
             </div>
             <div>
               <h2 class="text-sm font-semibold text-heading">New Actor</h2>
@@ -1205,7 +1238,7 @@ defmodule PortalWeb.Actors.Components do
               </p>
             </div>
           </div>
-          <.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_panel" />
+          <Form.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_panel" />
         </div>
       </div>
 
@@ -1217,7 +1250,7 @@ defmodule PortalWeb.Actors.Components do
             phx-value-type="user"
             class="flex flex-col items-center justify-center gap-2 p-5 rounded-lg border-2 border-border hover:border-brand hover:bg-raised transition-all text-center"
           >
-            <.icon name="ri-user-line" class="w-8 h-8 text-body" />
+            <Core.icon name="ri-user-line" class="w-8 h-8 text-body" />
             <span class="text-sm font-semibold text-heading">User</span>
             <span class="text-xs text-subtle">
               Can sign in to Firezone Client apps or the admin portal
@@ -1229,7 +1262,7 @@ defmodule PortalWeb.Actors.Components do
             phx-value-type="service_account"
             class="flex flex-col items-center justify-center gap-2 p-5 rounded-lg border-2 border-border hover:border-brand hover:bg-raised transition-all text-center"
           >
-            <.icon name="ri-server-line" class="w-8 h-8 text-body" />
+            <Core.icon name="ri-server-line" class="w-8 h-8 text-body" />
             <span class="text-sm font-semibold text-heading">Service Account</span>
             <span class="text-xs text-subtle">
               Used to authenticate headless Clients
@@ -1240,13 +1273,14 @@ defmodule PortalWeb.Actors.Components do
 
       <.form
         :if={@new_actor_type == :user and @form}
+        id="create-user-form"
         for={@form}
         phx-change="validate"
         phx-submit="create_user"
         class="flex flex-col flex-1 min-h-0 overflow-hidden"
       >
         <div class="flex-1 overflow-y-auto px-5 py-4 space-y-4">
-          <.input
+          <Form.input
             field={@form[:name]}
             label="Name"
             placeholder="Enter user name"
@@ -1255,7 +1289,7 @@ defmodule PortalWeb.Actors.Components do
             data-1p-ignore
             required
           />
-          <.input
+          <Form.input
             field={@form[:email]}
             label="Email"
             type="email"
@@ -1269,7 +1303,7 @@ defmodule PortalWeb.Actors.Components do
             <label class="block text-sm font-medium text-body mb-2">Role</label>
             <div class="grid grid-cols-2 gap-2">
               <div>
-                <.input
+                <Form.input
                   id={"#{@form[:type].id}--user"}
                   type="radio_button_group"
                   field={@form[:type]}
@@ -1282,7 +1316,7 @@ defmodule PortalWeb.Actors.Components do
                   class="flex flex-col gap-1 p-3 rounded-lg border border-border cursor-pointer peer-checked:border-brand peer-checked:bg-raised hover:bg-raised transition-colors"
                 >
                   <span class="flex items-center gap-1.5 text-xs font-semibold text-heading">
-                    <.icon name="ri-user-line" class="w-3.5 h-3.5" /> User
+                    <Core.icon name="ri-user-line" class="w-3.5 h-3.5" /> User
                   </span>
                   <span class="text-[11px] text-subtle">
                     Sign in to Client apps and portal
@@ -1290,7 +1324,7 @@ defmodule PortalWeb.Actors.Components do
                 </label>
               </div>
               <div>
-                <.input
+                <Form.input
                   id={"#{@form[:type].id}--admin"}
                   type="radio_button_group"
                   field={@form[:type]}
@@ -1303,7 +1337,7 @@ defmodule PortalWeb.Actors.Components do
                   class="flex flex-col gap-1 p-3 rounded-lg border border-border cursor-pointer peer-checked:border-brand peer-checked:bg-raised hover:bg-raised transition-colors"
                 >
                   <span class="flex items-center gap-1.5 text-xs font-semibold text-heading">
-                    <.icon name="ri-shield-check-line" class="w-3.5 h-3.5" /> Admin
+                    <Core.icon name="ri-shield-check-line" class="w-3.5 h-3.5" /> Admin
                   </span>
                   <span class="text-[11px] text-subtle">
                     Full access to manage this account
@@ -1321,7 +1355,7 @@ defmodule PortalWeb.Actors.Components do
                 </p>
               </div>
               <input type="hidden" name={@form[:allow_email_otp_sign_in].name} value="false" />
-              <.toggle
+              <Core.toggle
                 id={@form[:allow_email_otp_sign_in].id}
                 name={@form[:allow_email_otp_sign_in].name}
                 value="true"
@@ -1339,25 +1373,26 @@ defmodule PortalWeb.Actors.Components do
             account={@account}
           />
         </div>
-        <div class="shrink-0 flex items-center justify-end gap-2 px-5 py-3 border-t border-border bg-elevated">
-          <.button type="button" phx-click="close_panel" size="xs">
+        <Form.panel_footer>
+          <Form.panel_footer_button type="button" phx-click="close_panel">
             Cancel
-          </.button>
-          <.button type="submit" style="primary" size="xs">
+          </Form.panel_footer_button>
+          <Form.panel_footer_button type="submit" style="primary">
             Create User
-          </.button>
-        </div>
+          </Form.panel_footer_button>
+        </Form.panel_footer>
       </.form>
 
       <.form
         :if={@new_actor_type == :service_account and @form}
+        id="create-service-account-form"
         for={@form}
         phx-change="validate"
         phx-submit="create_service_account"
         class="flex flex-col flex-1 min-h-0 overflow-hidden"
       >
         <div class="flex-1 overflow-y-auto px-5 py-4 space-y-4">
-          <.input
+          <Form.input
             field={@form[:name]}
             label="Name"
             placeholder="E.g. GitHub CI"
@@ -1367,14 +1402,14 @@ defmodule PortalWeb.Actors.Components do
             required
           />
           <div>
-            <label class="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">
+            <label class="block text-sm font-medium text-body mb-2">
               Token expiration
             </label>
             <input
               type="date"
               name="token_expiration"
               value={@token_expiration}
-              class="block w-full rounded-md border-neutral-300 focus:border-accent-400 focus:ring-3 focus:ring-accent-200/50 text-sm"
+              class="block w-full rounded-md border-border-strong focus:border-border-focus focus:ring-3 focus:ring-accent-200/50 text-sm"
             />
           </div>
           <.actor_group_picker
@@ -1385,14 +1420,14 @@ defmodule PortalWeb.Actors.Components do
             account={@account}
           />
         </div>
-        <div class="shrink-0 flex items-center justify-end gap-2 px-5 py-3 border-t border-border bg-elevated">
-          <.button type="button" phx-click="close_panel" size="xs">
+        <Form.panel_footer>
+          <Form.panel_footer_button type="button" phx-click="close_panel">
             Cancel
-          </.button>
-          <.button type="submit" style="primary" size="xs">
+          </Form.panel_footer_button>
+          <Form.panel_footer_button type="submit" style="primary">
             Create Service Account
-          </.button>
-        </div>
+          </Form.panel_footer_button>
+        </Form.panel_footer>
       </.form>
     </div>
     """
@@ -1438,7 +1473,7 @@ defmodule PortalWeb.Actors.Components do
         phx-click-away="blur_group_search"
       >
         <div class="relative">
-          <.icon
+          <Core.icon
             name="ri-search-line"
             class="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-subtle pointer-events-none"
           />
@@ -1451,7 +1486,7 @@ defmodule PortalWeb.Actors.Components do
             phx-debounce="300"
             autocomplete="off"
             data-1p-ignore
-            class="w-full pl-7 pr-3 py-1.5 text-xs rounded border border-border bg-surface text-heading placeholder:text-muted outline-none focus:border-border-focus focus:ring-1 focus:ring-border-focus/30 transition-colors"
+            class="w-full pl-7 pr-3 py-1.5 text-xs rounded border border-border bg-surface text-heading placeholder:text-subtle outline-none focus:border-border-focus focus:ring-1 focus:ring-border-focus/30 transition-colors"
           />
         </div>
         <div
@@ -1490,14 +1525,14 @@ defmodule PortalWeb.Actors.Components do
               class="shrink-0 text-subtle hover:text-error transition-colors"
               title="Remove from current groups"
             >
-              <.icon name="ri-close-line" class="w-4 h-4" />
+              <Core.icon name="ri-close-line" class="w-4 h-4" />
             </button>
           </:actions>
         </.group_bucket>
 
         <.group_bucket
           title="To Add"
-          title_class="text-green-700"
+          title_class="text-success"
           count={length(@pending_additions)}
           groups={@pending_additions}
           empty_message="No pending additions."
@@ -1510,14 +1545,14 @@ defmodule PortalWeb.Actors.Components do
               class="shrink-0 text-subtle hover:text-error transition-colors"
               title="Remove from pending additions"
             >
-              <.icon name="ri-close-line" class="w-4 h-4" />
+              <Core.icon name="ri-close-line" class="w-4 h-4" />
             </button>
           </:actions>
         </.group_bucket>
 
         <.group_bucket
           title="To Remove"
-          title_class="text-red-700"
+          title_class="text-danger"
           count={length(@removed_groups)}
           groups={Enum.map(@removed_groups, & &1.group)}
           empty_message="No pending removals."
@@ -1530,7 +1565,7 @@ defmodule PortalWeb.Actors.Components do
               class="shrink-0 text-subtle hover:text-heading transition-colors"
               title="Remove from pending removals"
             >
-              <.icon name="ri-close-line" class="w-4 h-4" />
+              <Core.icon name="ri-close-line" class="w-4 h-4" />
             </button>
           </:actions>
         </.group_bucket>
@@ -1553,7 +1588,7 @@ defmodule PortalWeb.Actors.Components do
         <h4 class={["text-[10px] font-semibold uppercase tracking-wider", @title_class || "text-subtle"]}>
           {@title}
         </h4>
-        <span class="text-[10px] text-muted">{@count}</span>
+        <span class="text-[10px] text-subtle">{@count}</span>
       </div>
       <ul :if={@groups != []} class="h-48 overflow-y-auto px-2 py-1.5 space-y-0.5">
         <li :for={group <- @groups}>
@@ -1579,11 +1614,11 @@ defmodule PortalWeb.Actors.Components do
     ~H"""
     <%= case @actor.type do %>
       <% :service_account -> %>
-        <.icon name="ri-server-line" class={@class} />
+        <Core.icon name="ri-server-line" class={@class} />
       <% :account_admin_user -> %>
-        <.icon name="ri-shield-check-line" class={@class} />
+        <Core.icon name="ri-shield-check-line" class={@class} />
       <% _ -> %>
-        <.icon name="ri-user-line" class={@class} />
+        <Core.icon name="ri-user-line" class={@class} />
     <% end %>
     """
   end
@@ -1653,7 +1688,7 @@ defmodule PortalWeb.Actors.Components do
   defp actor_display_type(%{type: :account_user}), do: "User"
   defp actor_display_type(_), do: "User"
 
-  attr :session, :any, required: true
+  attr :device, :any, required: true
   attr :location, :string, default: nil
   slot :inner_block
 
@@ -1661,24 +1696,24 @@ defmodule PortalWeb.Actors.Components do
     ~H"""
     <div class="pl-[3.75rem] pr-5 pb-4 pt-1 bg-raised/50">
       <dl class="grid grid-cols-2 gap-x-6 gap-y-3">
-        <.detail_field :if={@session && @session.remote_ip} label="IP Address" mono>
-          {@session.remote_ip}
+        <.detail_field :if={@device && @device.last_seen_remote_ip} label="IP Address" mono>
+          {@device.last_seen_remote_ip}
         </.detail_field>
         <.detail_field :if={@location} label="Location">
           {@location}
         </.detail_field>
-        <.detail_field :if={@session && @session.version} label="Client Version">
-          {@session.version}
+        <.detail_field :if={@device && @device.last_seen_version} label="Client Version">
+          {@device.last_seen_version}
         </.detail_field>
         <.detail_field
-          :if={@session && @session.user_agent}
+          :if={@device && @device.last_seen_user_agent}
           label="User Agent"
-          title={@session.user_agent}
+          title={@device.last_seen_user_agent}
         >
-          {@session.user_agent}
+          {@device.last_seen_user_agent}
         </.detail_field>
-        <.detail_field :if={@session} label="Last Seen">
-          <.relative_datetime datetime={@session.inserted_at} />
+        <.detail_field :if={@device} label="Last Seen">
+          <Core.relative_datetime datetime={@device.last_seen_at} />
         </.detail_field>
         {render_slot(@inner_block)}
       </dl>
@@ -1698,7 +1733,7 @@ defmodule PortalWeb.Actors.Components do
         {@label}
       </dt>
       <dd
-        class={["text-xs text-heading truncate mt-0.5", if(@mono, do: "font-mono")]}
+        class={["text-xs text-body font-medium truncate mt-0.5", if(@mono, do: "font-mono")]}
         title={@title}
       >
         {render_slot(@inner_block)}
@@ -1711,15 +1746,15 @@ defmodule PortalWeb.Actors.Components do
     String.split(idp_id, ":", parts: 2) |> List.last()
   end
 
-  defp token_location(%{latest_session: nil}), do: nil
+  defp token_location(%{last_used_device: nil}), do: nil
 
-  defp token_location(%{latest_session: session}) do
+  defp token_location(%{last_used_device: device}) do
     cond do
-      session.remote_ip_location_city && session.remote_ip_location_region ->
-        "#{session.remote_ip_location_city}, #{session.remote_ip_location_region}"
+      device.last_seen_remote_ip_location_city && device.last_seen_remote_ip_location_region ->
+        "#{device.last_seen_remote_ip_location_city}, #{device.last_seen_remote_ip_location_region}"
 
-      session.remote_ip_location_region ->
-        session.remote_ip_location_region
+      device.last_seen_remote_ip_location_region ->
+        device.last_seen_remote_ip_location_region
 
       true ->
         nil
@@ -1785,13 +1820,28 @@ defmodule PortalWeb.Actors.Components do
     end
   end
 
-  attr :disabled_at, :any, required: true
+  attr :is_disabled, :boolean, required: true
+  attr :disabled_by_directory, :boolean, default: false
 
   def actor_status_badge(assigns) do
     ~H"""
-    <.status_badge style={if is_nil(@disabled_at), do: :success, else: :danger}>
-      {if is_nil(@disabled_at), do: "Active", else: "Disabled"}
-    </.status_badge>
+    <Core.status_badge
+      style={if @is_disabled, do: :danger, else: :success}
+      icon={if @is_disabled and @disabled_by_directory, do: "ri-loop-left-line"}
+      icon_title={if @is_disabled and @disabled_by_directory, do: "Disabled by directory sync"}
+    >
+      {if @is_disabled, do: "Disabled", else: "Active"}
+    </Core.status_badge>
     """
+  end
+
+  # The directory's identity of the actor is kept while the directory has it
+  # disabled, so its name is already loaded with the identities.
+  defp disabling_directory_name(%{disabled_by_directory_id: nil}, _identities), do: nil
+
+  defp disabling_directory_name(%{disabled_by_directory_id: directory_id}, identities) do
+    Enum.find_value(identities, "Directory sync", fn identity ->
+      if identity.directory_id == directory_id, do: identity.directory_name
+    end)
   end
 end

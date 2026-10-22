@@ -20,6 +20,33 @@ defmodule Portal.GroupFixtures do
   end
 
   @doc """
+  Inserts `count` plain groups into the directory in one statement, for tests
+  that need a directory the size of a real tenant.
+  """
+  def bulk_groups_fixture(%Portal.Directory{} = directory, count) do
+    now = DateTime.utc_now()
+
+    rows =
+      for i <- 1..count do
+        %{
+          id: Ecto.UUID.generate(),
+          account_id: directory.account_id,
+          directory_id: directory.id,
+          name: "Bulk group #{i}",
+          idp_id: "bulk-group-#{i}",
+          type: :static,
+          entity_type: :group,
+          nested_group_idp_ids: [],
+          inserted_at: now,
+          updated_at: now
+        }
+      end
+
+    {^count, _} = Portal.Repo.insert_all(Portal.Group, rows)
+    :ok
+  end
+
+  @doc """
   Generate a group with valid default attributes.
 
   The group will be created with an associated account unless one is provided.
@@ -46,7 +73,7 @@ defmodule Portal.GroupFixtures do
 
     changeset =
       %Portal.Group{}
-      |> Ecto.Changeset.cast(group_attrs, [:name, :type, :entity_type, :idp_id])
+      |> Ecto.Changeset.cast(group_attrs, [:name, :type, :entity_type, :idp_id, :nested_group_idp_ids])
       |> Ecto.Changeset.put_assoc(:account, account)
       |> Portal.Group.changeset()
 
@@ -85,14 +112,6 @@ defmodule Portal.GroupFixtures do
   end
 
   @doc """
-  Generate a static group (manually created).
-  """
-  def static_group_fixture(attrs \\ %{}) do
-    Enum.into(attrs, %{})
-    group_fixture(Map.put(attrs, :type, :static))
-  end
-
-  @doc """
   Generate an organizational unit group.
   """
   def org_unit_group_fixture(attrs \\ %{}) do
@@ -103,17 +122,6 @@ defmodule Portal.GroupFixtures do
       |> Map.put(:type, :managed)
 
     group_fixture(attrs)
-  end
-
-  @doc """
-  Generate a group with a specific IdP identifier.
-  """
-  def group_with_idp_id_fixture(attrs \\ %{}) do
-    attrs = Enum.into(attrs, %{})
-    unique_num = System.unique_integer([:positive, :monotonic])
-    idp_id = "idp_#{unique_num}"
-
-    group_fixture(Map.put(attrs, :idp_id, idp_id))
   end
 
   @doc """

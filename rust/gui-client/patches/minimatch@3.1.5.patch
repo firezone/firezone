@@ -1,0 +1,12 @@
+diff --git a/minimatch.js b/minimatch.js
+index 2e4a058a130dceebf83a7bd435f5d22b765ac836..3294694b9e6cb2aadf66573f36fe6bfbf4e8d45e 100644
+--- a/minimatch.js
++++ b/minimatch.js
+@@ -8,6 +8,7 @@ minimatch.sep = path.sep
+
+ var GLOBSTAR = minimatch.GLOBSTAR = Minimatch.GLOBSTAR = {}
+ var expand = require('brace-expansion')
++expand = typeof expand === 'function' ? expand : expand.expand
+
+ var plTypes = {
+   '!': { open: '(?:(?!(?:', close: '))[^/]*?)'},

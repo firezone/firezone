@@ -1,0 +1,19 @@
+[task_config]
+includes = ["mise-tasks"]
+
+[settings.cargo]
+# cargo-afl builds and installs the bundled AFL++ tools alongside its binary.
+binstall = false
+
+[tools]
+rust = { version = "nightly-2026-06-10", profile = "minimal" }
+"cargo:cargo-afl" = { version = "0.18.2", os = ["linux"] }
+
+[env]
+# Cargo tool installation must override the workspace rust-toolchain.toml too.
+RUSTUP_TOOLCHAIN = "nightly-2026-06-10"
+CARGO_PROFILE_RELEASE_LTO = "false"
+# Match the assertions enabled by cargo-afl in the fast replay builds too.
+CARGO_PROFILE_RELEASE_DEBUG_ASSERTIONS = "true"
+CARGO_PROFILE_RELEASE_OVERFLOW_CHECKS = "true"
+CARGO_PROFILE_RELEASE_CODEGEN_UNITS = "1"

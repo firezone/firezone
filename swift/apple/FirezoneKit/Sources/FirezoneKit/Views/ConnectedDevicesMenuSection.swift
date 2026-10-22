@@ -11,71 +11,73 @@
   /// into an "And N more…" row. Mirrors the desktop client's tray (`MAX_DEVICES_INLINE`).
   private let maxDevicesInline = 20
 
-  /// "Connected Devices (N)" submenu listing the peer devices this client is connected to.
-  /// Renders nothing when there are no connected peers.
-  struct ConnectedDevicesSection: View {
-    @EnvironmentObject var store: Store
+  /// Submenu content of a device pool, listing its connected devices.
+  struct DevicePoolSubmenu: View {
+    let devices: [ConnectedDevice]
 
     var body: some View {
-      if !store.connectedDevices.isEmpty {
-        Menu("Connected Devices (\(store.connectedDevices.count))") {
-          let visible = store.connectedDevices.prefix(maxDevicesInline)
-          ForEach(visible) { device in
-            ConnectedDeviceMenuItem(device: device)
-          }
+      if devices.isEmpty {
+        Text("No connected devices")
+          .foregroundStyle(.secondary)
+      } else {
+        let visible = devices.prefix(maxDevicesInline)
+        ForEach(visible) { device in
+          ConnectedDeviceMenuItem(device: device)
+        }
 
-          let hidden = store.connectedDevices.count - visible.count
-          if hidden > 0 {
-            Divider()
-            Text(hidden == 1 ? "And 1 more device…" : "And \(hidden) more devices…")
-              .foregroundStyle(.secondary)
-          }
+        let hidden = devices.count - visible.count
+        if hidden > 0 {
+          Divider()
+          Text(hidden == 1 ? "And 1 more device…" : "And \(hidden) more devices…")
+            .foregroundStyle(.secondary)
         }
       }
     }
   }
 
-  /// A single connected device, labelled by its tunnel IPv4, with details in a submenu.
+  /// A single connected device, labelled by slug, with details in a submenu.
   struct ConnectedDeviceMenuItem: View {
     let device: ConnectedDevice
 
     var body: some View {
-      Menu(device.tunIPv4) {
+      Menu(device.slug) {
         ConnectedDeviceDetailsSubmenu(device: device)
       }
     }
   }
 
-  /// Copyable details for a connected device: tunnel IPv4, client ID, and pools.
+  /// Copyable details for a connected device: domain, tunnel IPs and client details.
   struct ConnectedDeviceDetailsSubmenu: View {
     let device: ConnectedDevice
 
     var body: some View {
       Group {
-        Text("Tunnel IPv4")
+        Text("Device")
           .foregroundStyle(.secondary)
-        Button(device.tunIPv4) {
-          Clipboard.copy(device.tunIPv4)
+        Button(device.domain) {
+          Clipboard.copy(device.domain)
         }
 
         Divider()
 
-        Text("Client ID")
+        Text("Tunnel IPs")
+          .foregroundStyle(.secondary)
+        Button(device.tunIPv4) {
+          Clipboard.copy(device.tunIPv4)
+        }
+        Button(device.tunIPv6) {
+          Clipboard.copy(device.tunIPv6)
+        }
+
+        Divider()
+
+        Text("Client Details")
           .foregroundStyle(.secondary)
         Button(device.id) {
           Clipboard.copy(device.id)
         }
-
-        if !device.pools.isEmpty {
-          Divider()
-
-          Text(device.pools.count == 1 ? "Pool" : "Pools")
-            .foregroundStyle(.secondary)
-          ForEach(device.pools, id: \.self) { pool in
-            Button(pool) {
-              Clipboard.copy(pool)
-            }
-          }
+        Button(device.name) {
+          Clipboard.copy(device.name)
         }
       }
     }

@@ -25,29 +25,26 @@ defmodule PortalWeb.Mocks.OIDC do
   @mock_endpoint_base "https://mock.oidc.test"
 
   @doc """
-  Returns the static mock endpoint base URL.
-  Use this for tests that create their own Req.Test stubs with exact path matching.
-  """
-  def mock_endpoint_static, do: @mock_endpoint_base
-
-  @doc """
-  Returns a static discovery document URI.
-  Use this for tests that create their own Req.Test stubs with exact path matching.
-  """
-  def discovery_document_uri_static, do: "#{@mock_endpoint_base}/.well-known/openid-configuration"
-
-  @doc """
   Returns a unique mock endpoint for the current test process.
-  This ensures cache key isolation when tests run in parallel.
-  Use this with the stub_* functions which use suffix-based path matching.
+  This ensures cache key isolation in OpenIDConnect.Document.Cache when tests
+  run in parallel. Use this with the stub_* functions which use suffix-based
+  path matching.
   """
   def mock_endpoint do
-    # Use the test process PID to create a unique endpoint per test
-    # This prevents cache key collisions in OpenIDConnect.Document.Cache
-    pid_string =
-      self() |> :erlang.pid_to_list() |> List.to_string() |> String.replace(~r/[<>.]/, "")
+    # Unlike PIDs, unique integers are never recycled, so entries cached by
+    # dead tests can never collide with a running test's endpoint.
+    suffix =
+      case Process.get({__MODULE__, :mock_endpoint_suffix}) do
+        nil ->
+          suffix = System.unique_integer([:positive, :monotonic])
+          Process.put({__MODULE__, :mock_endpoint_suffix}, suffix)
+          suffix
 
-    "#{@mock_endpoint_base}/#{pid_string}"
+        suffix ->
+          suffix
+      end
+
+    "#{@mock_endpoint_base}/#{suffix}"
   end
 
   @doc """
@@ -128,6 +125,20 @@ defmodule PortalWeb.Mocks.OIDC do
   end
 
   @doc """
+  Points the shared Google auth provider config at this test's mock OIDC server.
+  """
+  def override_google_auth_provider_config do
+    Portal.Config.put_env_override(:portal, Portal.Google.AuthProvider,
+      client_id: "test-client",
+      client_secret: "test-secret",
+      response_type: "code",
+      scope: "openid email profile",
+      discovery_document_uri: discovery_document_uri(),
+      req_opts: [retry: false, plug: {Req.Test, PortalWeb.OIDC}]
+    )
+  end
+
+  @doc """
   Sets a custom token exchange response. Call this before making the token exchange request.
   The response should be a map that will be JSON encoded.
   """
@@ -158,11 +169,17 @@ defmodule PortalWeb.Mocks.OIDC do
   end
 
   @doc """
-  Clears any custom token or userinfo responses.
+  Overrides the JWKS returned by the mock provider for the current test.
   """
-  def clear_custom_responses do
-    Process.delete(:oidc_mock_token_response)
-    Process.delete(:oidc_mock_userinfo_response)
+  def set_jwks_response(jwks) do
+    Process.put(:oidc_mock_jwks_response, jwks)
+  end
+
+  @doc """
+  Overrides fields in the discovery document returned by the mock provider.
+  """
+  def set_discovery_document_overrides(overrides) do
+    Process.put(:oidc_mock_discovery_document_overrides, overrides)
   end
 
   defp handle_request(conn, test_pid, endpoint) do
@@ -172,10 +189,16 @@ defmodule PortalWeb.Mocks.OIDC do
     # Match paths by suffix to support per-test unique endpoints (e.g., /024530/.well-known/openid-configuration)
     cond do
       String.ends_with?(conn.request_path, "/.well-known/openid-configuration") ->
-        Req.Test.json(conn, discovery_document(endpoint))
+        overrides = get_from_test_process(test_pid, :oidc_mock_discovery_document_overrides) || %{}
+
+        endpoint
+        |> discovery_document()
+        |> Map.merge(overrides)
+        |> then(&Req.Test.json(conn, &1))
 
       String.ends_with?(conn.request_path, "/.well-known/jwks.json") ->
-        Req.Test.json(conn, %{"keys" => [jwks()]})
+        jwks = get_from_test_process(test_pid, :oidc_mock_jwks_response) || jwks()
+        Req.Test.json(conn, %{"keys" => [jwks]})
 
       String.ends_with?(conn.request_path, "/oauth/token") ->
         handle_token_request(conn, test_pid, endpoint)
@@ -217,11 +240,18 @@ defmodule PortalWeb.Mocks.OIDC do
 
           nil ->
             # Default response
+            verifier = conn.body_params["code_verifier"]
+
+            claims =
+              endpoint
+              |> default_claims()
+              |> Map.put("nonce", PortalWeb.OIDC.nonce(verifier))
+
             Req.Test.json(conn, %{
               "access_token" => "test_access_token",
               "token_type" => "Bearer",
               "expires_in" => 3600,
-              "id_token" => sign_openid_connect_token(default_claims(endpoint))
+              "id_token" => sign_openid_connect_token(claims)
             })
         end
     end
@@ -355,8 +385,11 @@ defmodule PortalWeb.Mocks.OIDC do
     }
   end
 
-  # Use static base endpoint for tests that create their own stubs
-  def default_claims, do: default_claims(@mock_endpoint_base)
+  def default_claims do
+    mock_endpoint()
+    |> default_claims()
+    |> Map.put("nonce", PortalWeb.OIDC.nonce("test-verifier"))
+  end
 
   def default_claims(port) when is_integer(port), do: default_claims("http://localhost:#{port}")
 
@@ -391,7 +424,10 @@ defmodule PortalWeb.Mocks.OIDC do
     {_alg, token} =
       jwks()
       |> JOSE.JWK.from()
-      |> JOSE.JWS.sign(JSON.encode!(claims), %{"alg" => "RS256"})
+      |> JOSE.JWS.sign(JSON.encode!(claims), %{
+        "alg" => "RS256",
+        "kid" => jwks()["kid"]
+      })
       |> JOSE.JWS.compact()
 
     token
@@ -409,6 +445,7 @@ defmodule PortalWeb.Mocks.OIDC do
       "e" => "AQAB",
       "kid" => "example@firezone.dev",
       "kty" => "RSA",
+      "issuer" => "https://login.microsoftonline.com/{tenantid}/v2.0",
       "n" =>
         "qlKll8no4lPYXNSuTTnacpFHiXwPOv_htCYvIXmiR7CWhiiOHQqj7KWXIW7TGxyoLVIyeRM4mwv" <>
           "kLI-UgsSMYdEKTT0j7Ydjrr0zCunPu5Gxr2yOmcRaszAzGxJL5DwpA0V40RqMlm5OuwdqS4To" <>

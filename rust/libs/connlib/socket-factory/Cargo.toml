@@ -7,15 +7,15 @@ license = { workspace = true }
 [dependencies]
 anyhow = { workspace = true }
 bufferpool = { workspace = true }
-bytes = { workspace = true }
 derive_more = { workspace = true, features = ["debug"] }
-gat-lending-iterator = { workspace = true }
 ip-packet = { workspace = true }
+memchr = { workspace = true }
 opentelemetry = { workspace = true, features = ["metrics"] }
 otel-instruments = { workspace = true }
 quinn-udp = { workspace = true }
 smallvec = { workspace = true, features = ["const_generics"] }
 socket2 = { workspace = true, features = ["all"] }
+thiserror = { workspace = true }
 tokio = { workspace = true, features = ["net", "rt", "time"] }
 tracing = { workspace = true }
 
@@ -31,8 +31,6 @@ parking_lot = { workspace = true }
 
 [dev-dependencies]
 bufferpool = { workspace = true }
-bytes = { workspace = true }
 derive_more = { workspace = true, features = ["deref"] }
-gat-lending-iterator = { workspace = true }
 ip-packet = { workspace = true }
 tokio = { workspace = true, features = ["macros", "net", "rt", "time"] }

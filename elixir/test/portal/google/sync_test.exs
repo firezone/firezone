@@ -4,7 +4,9 @@ defmodule Portal.Google.SyncTest do
 
   import Ecto.Query
   import Portal.AccountFixtures
+  import Portal.ObanFixtures
   import Portal.GoogleDirectoryFixtures
+  import Portal.IdentityFixtures
   import Portal.ResourceFixtures
   import ExUnit.CaptureLog
 
@@ -44,16 +46,26 @@ defmodule Portal.Google.SyncTest do
   # Builds a valid multipart/mixed batch response and sends it via the conn.
   # `users` is a list of user maps to include as 200 OK parts.
   defp respond_with_batch_users(conn, users) do
+    respond_with_batch_parts(conn, Enum.map(users, &{:ok, &1}))
+  end
+
+  defp respond_with_batch_parts(conn, parts) do
     boundary = "test_batch_response_boundary"
 
-    parts =
-      Enum.map(users, fn user ->
-        json = user |> active_google_user() |> JSON.encode!()
+    body =
+      parts
+      |> Enum.map_join("", fn
+        {:ok, user} ->
+          json = user |> active_google_user() |> JSON.encode!()
 
-        "--#{boundary}\r\nContent-Type: application/http\r\n\r\nHTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n#{json}\r\n"
+          "--#{boundary}\r\nContent-Type: application/http\r\n\r\nHTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n#{json}\r\n"
+
+        {:error, status} ->
+          json = JSON.encode!(%{"error" => %{"code" => status}})
+
+          "--#{boundary}\r\nContent-Type: application/http\r\n\r\nHTTP/1.1 #{status} Error\r\nContent-Type: application/json\r\n\r\n#{json}\r\n"
       end)
-
-    body = Enum.join(parts, "") <> "--#{boundary}--"
+      |> Kernel.<>("--#{boundary}--")
 
     conn
     |> Plug.Conn.put_resp_header("content-type", "multipart/mixed; boundary=#{boundary}")
@@ -107,11 +119,29 @@ defmodule Portal.Google.SyncTest do
 
       log =
         capture_log(fn ->
-          assert :ok = perform_job(Sync, %{"directory_id" => fake_directory_id})
+          assert :ok = perform_job(Sync, %{"account_id" => Ecto.UUID.generate(), "directory_id" => fake_directory_id})
         end)
 
       assert log =~ "Google directory not found, disabled, or account disabled, skipping"
       assert log =~ fake_directory_id
+    end
+
+    test "logs and returns :ok when directory belongs to another account" do
+      account = account_fixture()
+      directory = google_directory_fixture(account: account)
+      other_account = account_fixture()
+
+      log =
+        capture_log(fn ->
+          assert :ok =
+                   perform_job(Sync, %{
+                     "account_id" => other_account.id,
+                     "directory_id" => directory.id
+                   })
+        end)
+
+      assert log =~ "Google directory not found, disabled, or account disabled, skipping"
+      assert log =~ directory.id
     end
 
     test "logs and returns :ok when directory is disabled" do
@@ -120,7 +150,7 @@ defmodule Portal.Google.SyncTest do
 
       log =
         capture_log(fn ->
-          assert :ok = perform_job(Sync, %{"directory_id" => directory.id})
+          assert :ok = perform_job(Sync, %{"account_id" => directory.account_id, "directory_id" => directory.id})
         end)
 
       assert log =~ "Google directory not found, disabled, or account disabled, skipping"
@@ -132,25 +162,110 @@ defmodule Portal.Google.SyncTest do
 
       # Disable the account
       account
-      |> Ecto.Changeset.change(disabled_at: DateTime.utc_now())
+      |> Ecto.Changeset.change(is_disabled: true)
       |> Repo.update!()
 
       directory = google_directory_fixture(account: account)
 
       log =
         capture_log(fn ->
-          assert :ok = perform_job(Sync, %{"directory_id" => directory.id})
+          assert :ok = perform_job(Sync, %{"account_id" => directory.account_id, "directory_id" => directory.id})
         end)
 
       assert log =~ "Google directory not found, disabled, or account disabled, skipping"
       assert log =~ directory.id
     end
 
+    test "snoozes while a webhook job for the directory is executing" do
+      account = account_fixture(features: %{idp_sync: true})
+      directory = google_directory_fixture(account: account)
+      args = %{"account_id" => directory.account_id, "directory_id" => directory.id}
+
+      executing_job(
+        Portal.Google.WebhookSync.new(%{
+          account_id: directory.account_id,
+          directory_id: directory.id,
+          user_id: "user-1"
+        })
+      )
+
+      assert {:snooze, seconds} = perform_job(Sync, args)
+      assert seconds in 16..45
+    end
+
+    test "updates the name and email of an actor it created when the user changes" do
+      account = account_fixture()
+      directory = google_directory_fixture(account: account, domain: "example.com")
+      base_directory = Repo.get_by!(Portal.Directory, id: directory.id, account_id: account.id)
+
+      actor =
+        Portal.ActorFixtures.actor_fixture(account: account, name: "Old Name", email: "old@example.com")
+        |> Ecto.Changeset.change(created_by_directory_id: directory.id)
+        |> Repo.update!()
+
+      Portal.IdentityFixtures.identity_fixture(
+        account: account,
+        actor: actor,
+        directory: base_directory,
+        issuer: Sync.issuer(),
+        idp_id: "user1",
+        email: "old@example.com",
+        synced_at: DateTime.add(DateTime.utc_now(), -3600, :second)
+      )
+
+      Req.Test.expect(APIClient, fn conn ->
+        assert conn.request_path == "/token"
+        Req.Test.json(conn, %{"access_token" => "test_token", "expires_in" => 3600})
+      end)
+
+      Req.Test.expect(APIClient, fn conn ->
+        assert String.contains?(conn.request_path, "/groups")
+
+        Req.Test.json(conn, %{
+          "groups" => [%{"id" => "group1", "name" => "DevOps", "email" => "devops@example.com"}]
+        })
+      end)
+
+      Req.Test.expect(APIClient, fn conn ->
+        assert String.contains?(conn.request_path, "/orgunits")
+
+        Req.Test.json(conn, %{
+          "organizationUnits" => [
+            %{"orgUnitId" => "ou1", "name" => "Engineering", "orgUnitPath" => "/Engineering"}
+          ]
+        })
+      end)
+
+      Req.Test.expect(APIClient, fn conn ->
+        assert String.contains?(conn.request_path, "/users")
+
+        Req.Test.json(conn, %{
+          "users" => [
+            active_google_user(%{
+              "id" => "user1",
+              "primaryEmail" => "new@example.com",
+              "name" => %{"fullName" => "New Name", "givenName" => "New", "familyName" => "Name"}
+            })
+          ]
+        })
+      end)
+
+      Req.Test.expect(APIClient, fn conn ->
+        assert String.contains?(conn.request_path, "/groups/group1/members")
+        Req.Test.json(conn, %{"members" => [%{"id" => "user1", "type" => "USER", "email" => "new@example.com"}]})
+      end)
+
+      assert :ok = perform_job(Sync, %{"account_id" => directory.account_id, "directory_id" => directory.id})
+
+      actor = Repo.get_by!(Portal.Actor, id: actor.id)
+      assert actor.name == "New Name"
+      assert actor.email == "new@example.com"
+    end
+
     test "performs successful sync with groups, org units, and user identity sync" do
       account = account_fixture()
       directory = google_directory_fixture(account: account, domain: "example.com")
 
-      # 1. Token
       Req.Test.expect(APIClient, fn conn ->
         assert conn.request_path == "/token"
         Req.Test.json(conn, %{"access_token" => "test_token", "expires_in" => 3600})
@@ -206,7 +321,7 @@ defmodule Portal.Google.SyncTest do
         })
       end)
 
-      assert :ok = perform_job(Sync, %{"directory_id" => directory.id})
+      assert :ok = perform_job(Sync, %{"account_id" => directory.account_id, "directory_id" => directory.id})
 
       # Verify directory was updated with synced_at
       updated_directory = Repo.get!(Portal.Google.Directory, directory.id)
@@ -221,6 +336,11 @@ defmodule Portal.Google.SyncTest do
       identity = hd(identities)
       assert identity.idp_id == "user1"
       assert identity.email == "user1@example.com"
+
+      assert_enqueued(
+        worker: Portal.Google.Subscriptions,
+        args: %{account_id: directory.account_id, directory_id: directory.id, action: "ensure"}
+      )
 
       # Verify Firezone groups were created (one group, one org unit)
       groups = Repo.all(Portal.Group)
@@ -269,7 +389,7 @@ defmodule Portal.Google.SyncTest do
         respond_with_batch_users(conn, [%{"id" => "user1", "primaryEmail" => "user1@example.com"}])
       end)
 
-      assert :ok = perform_job(Sync, %{"directory_id" => directory.id})
+      assert :ok = perform_job(Sync, %{"account_id" => directory.account_id, "directory_id" => directory.id})
 
       identities = Repo.all(Portal.ExternalIdentity)
       assert Enum.map(identities, & &1.idp_id) == ["user1"]
@@ -287,7 +407,7 @@ defmodule Portal.Google.SyncTest do
       end)
 
       assert_raise SyncError, ~r/get_access_token/, fn ->
-        perform_job(Sync, %{"directory_id" => directory.id})
+        perform_job(Sync, %{"account_id" => directory.account_id, "directory_id" => directory.id})
       end
     end
 
@@ -308,7 +428,7 @@ defmodule Portal.Google.SyncTest do
       end)
 
       assert_raise SyncError, ~r/at stream_groups: HTTP 500/, fn ->
-        perform_job(Sync, %{"directory_id" => directory.id})
+        perform_job(Sync, %{"account_id" => directory.account_id, "directory_id" => directory.id})
       end
     end
 
@@ -334,7 +454,7 @@ defmodule Portal.Google.SyncTest do
       end)
 
       assert_raise SyncError, ~r/at stream_org_units: HTTP 403/, fn ->
-        perform_job(Sync, %{"directory_id" => directory.id})
+        perform_job(Sync, %{"account_id" => directory.account_id, "directory_id" => directory.id})
       end
     end
 
@@ -371,7 +491,7 @@ defmodule Portal.Google.SyncTest do
       end)
 
       assert_raise SyncError, ~r/member missing 'id' field/, fn ->
-        perform_job(Sync, %{"directory_id" => directory.id})
+        perform_job(Sync, %{"account_id" => directory.account_id, "directory_id" => directory.id})
       end
     end
 
@@ -414,7 +534,7 @@ defmodule Portal.Google.SyncTest do
       end)
 
       assert_raise SyncError, ~r/user .* missing 'primaryEmail' field/, fn ->
-        perform_job(Sync, %{"directory_id" => directory.id})
+        perform_job(Sync, %{"account_id" => directory.account_id, "directory_id" => directory.id})
       end
     end
 
@@ -437,7 +557,7 @@ defmodule Portal.Google.SyncTest do
       end)
 
       assert_raise SyncError, ~r/group missing 'id' field/, fn ->
-        perform_job(Sync, %{"directory_id" => directory.id})
+        perform_job(Sync, %{"account_id" => directory.account_id, "directory_id" => directory.id})
       end
     end
 
@@ -460,7 +580,7 @@ defmodule Portal.Google.SyncTest do
       end)
 
       assert_raise SyncError, ~r/group .* missing 'name' field/, fn ->
-        perform_job(Sync, %{"directory_id" => directory.id})
+        perform_job(Sync, %{"account_id" => directory.account_id, "directory_id" => directory.id})
       end
     end
 
@@ -488,7 +608,7 @@ defmodule Portal.Google.SyncTest do
       end)
 
       assert_raise SyncError, ~r/org_unit missing 'orgUnitId' field/, fn ->
-        perform_job(Sync, %{"directory_id" => directory.id})
+        perform_job(Sync, %{"account_id" => directory.account_id, "directory_id" => directory.id})
       end
     end
 
@@ -516,7 +636,7 @@ defmodule Portal.Google.SyncTest do
       end)
 
       assert_raise SyncError, ~r/org_unit .* missing 'name' field/, fn ->
-        perform_job(Sync, %{"directory_id" => directory.id})
+        perform_job(Sync, %{"account_id" => directory.account_id, "directory_id" => directory.id})
       end
     end
 
@@ -544,7 +664,7 @@ defmodule Portal.Google.SyncTest do
       end)
 
       assert_raise SyncError, ~r/org_unit .* missing 'orgUnitPath' field/, fn ->
-        perform_job(Sync, %{"directory_id" => directory.id})
+        perform_job(Sync, %{"account_id" => directory.account_id, "directory_id" => directory.id})
       end
     end
 
@@ -563,7 +683,6 @@ defmodule Portal.Google.SyncTest do
         Req.Test.json(conn, %{"groups" => []})
       end)
 
-      # 3. Org units → empty
       Req.Test.expect(APIClient, fn conn ->
         assert String.contains?(conn.request_path, "/orgunits")
         Req.Test.json(conn, %{"organizationUnits" => []})
@@ -571,11 +690,54 @@ defmodule Portal.Google.SyncTest do
 
       # No group members, no org unit members, no get_user calls
 
-      assert :ok = perform_job(Sync, %{"directory_id" => directory.id})
+      assert :ok = perform_job(Sync, %{"account_id" => directory.account_id, "directory_id" => directory.id})
 
       updated_directory = Repo.get!(Portal.Google.Directory, directory.id)
       assert updated_directory.synced_at != nil
       assert updated_directory.error_message == nil
+    end
+
+    test "does not prune existing identities when user flags remain missing" do
+      account = account_fixture()
+      directory = google_directory_fixture(account: account, domain: "example.com")
+      base_directory = Repo.get_by!(Portal.Directory, id: directory.id)
+      identity = identity_fixture(account: account, directory: base_directory, idp_id: "user1")
+      Portal.Config.merge_env_override(:portal, APIClient, user_flags_retry_timeout: 0)
+
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{"access_token" => "test_token", "expires_in" => 3600})
+      end)
+
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{
+          "groups" => [%{"id" => "group1", "name" => "Engineering", "email" => "eng@example.com"}]
+        })
+      end)
+
+      Req.Test.expect(APIClient, fn conn -> Req.Test.json(conn, %{"organizationUnits" => []}) end)
+
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{"members" => [%{"id" => "user1", "type" => "USER", "email" => "user1@example.com"}]})
+      end)
+
+      Req.Test.expect(APIClient, fn conn ->
+        boundary = "missing_flags"
+        body = "--#{boundary}\r\nContent-Type: application/http\r\n\r\nHTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n" <>
+          JSON.encode!(%{"id" => "user1"}) <> "\r\n--#{boundary}--"
+
+        conn
+        |> Plug.Conn.put_resp_header("content-type", "multipart/mixed; boundary=#{boundary}")
+        |> Plug.Conn.send_resp(200, body)
+      end)
+
+      Req.Test.expect(APIClient, fn conn -> Req.Test.json(conn, %{"id" => "user1"}) end)
+
+      assert_raise SyncError, ~r/missing_user_flags/, fn ->
+        perform_job(Sync, %{"account_id" => account.id, "directory_id" => directory.id})
+      end
+
+      assert Repo.get_by!(Portal.ExternalIdentity, id: identity.id)
+      assert Repo.get_by!(Portal.Actor, id: identity.actor_id)
     end
 
     test "deletes unsynced identities and groups" do
@@ -642,7 +804,7 @@ defmodule Portal.Google.SyncTest do
         ])
       end)
 
-      assert :ok = perform_job(Sync, %{"directory_id" => directory.id})
+      assert :ok = perform_job(Sync, %{"account_id" => directory.account_id, "directory_id" => directory.id})
 
       # Verify old identity was deleted
       refute Repo.get_by(Portal.ExternalIdentity, id: old_identity.id)
@@ -656,13 +818,14 @@ defmodule Portal.Google.SyncTest do
       assert hd(new_identities).idp_id == "new_user"
     end
 
-    test "skips suspended and archived users and removes their stale identities" do
+    test "disables inactive users the directory created and removes the others" do
       account = account_fixture()
       directory = google_directory_fixture(account: account, domain: "example.com")
 
-      for {email, idp_id} <- [
-            {"suspended@example.com", "suspended_user"},
-            {"archived@example.com", "archived_user"}
+      # The directory created the suspended user's actor but not the archived one's.
+      for {email, idp_id, created_by} <- [
+            {"suspended@example.com", "suspended_user", directory.id},
+            {"archived@example.com", "archived_user", nil}
           ] do
         {:ok, actor} =
           %Portal.Actor{
@@ -670,7 +833,7 @@ defmodule Portal.Google.SyncTest do
             account_id: account.id,
             email: email,
             name: email,
-            created_by_directory_id: directory.id
+            created_by_directory_id: created_by
           }
           |> Repo.insert()
 
@@ -732,19 +895,22 @@ defmodule Portal.Google.SyncTest do
         ])
       end)
 
-      assert :ok = perform_job(Sync, %{"directory_id" => directory.id})
+      assert :ok = perform_job(Sync, %{"account_id" => directory.account_id, "directory_id" => directory.id})
 
       identities = Repo.all(Portal.ExternalIdentity)
-      assert Enum.map(identities, & &1.email) == ["active@example.com"]
+      assert Enum.sort(Enum.map(identities, & &1.email)) == ["active@example.com", "suspended@example.com"]
 
-      memberships = Repo.all(Portal.Membership)
-      assert length(memberships) == 1
+      suspended = Repo.get_by!(Portal.Actor, email: "suspended@example.com")
+      assert suspended.is_disabled
+      assert suspended.disabled_by_directory_id == directory.id
+      assert Repo.get_by(Portal.Membership, actor_id: suspended.id)
 
-      refute Repo.get_by(Portal.Actor, email: "suspended@example.com")
-      refute Repo.get_by(Portal.Actor, email: "archived@example.com")
+      archived = Repo.get_by!(Portal.Actor, email: "archived@example.com")
+      refute archived.is_disabled
+      refute Repo.get_by(Portal.Membership, actor_id: archived.id)
     end
 
-    test "deletes previously synced suspended users on a later sync" do
+    test "disables, then re-enables, the actor of a previously synced user" do
       account = account_fixture()
 
       directory =
@@ -755,63 +921,44 @@ defmodule Portal.Google.SyncTest do
           orgunit_sync_enabled: false
         )
 
-      expect_google_group_sync_round(
-        [
-          %{"id" => "active_user", "type" => "USER", "email" => "active@example.com"},
-          %{"id" => "user_to_suspend", "type" => "USER", "email" => "suspend-me@example.com"}
-        ],
-        [
-          %{
-            "id" => "active_user",
-            "primaryEmail" => "active@example.com",
-            "name" => %{"fullName" => "Active User"}
-          },
-          %{
-            "id" => "user_to_suspend",
-            "primaryEmail" => "suspend-me@example.com",
-            "name" => %{"fullName" => "Suspend Me"}
-          }
-        ]
-      )
+      args = %{"account_id" => directory.account_id, "directory_id" => directory.id}
 
-      assert :ok = perform_job(Sync, %{"directory_id" => directory.id})
+      members = [
+        %{"id" => "active_user", "type" => "USER", "email" => "active@example.com"},
+        %{"id" => "user_to_suspend", "type" => "USER", "email" => "suspend-me@example.com"}
+      ]
 
-      suspended_identity =
-        Repo.get_by!(Portal.ExternalIdentity,
-          directory_id: directory.id,
-          idp_id: "user_to_suspend"
-        )
+      active = %{
+        "id" => "active_user",
+        "primaryEmail" => "active@example.com",
+        "name" => %{"fullName" => "Active User"}
+      }
 
-      suspended_actor = Repo.get_by!(Portal.Actor, id: suspended_identity.actor_id)
+      to_suspend = %{
+        "id" => "user_to_suspend",
+        "primaryEmail" => "suspend-me@example.com",
+        "name" => %{"fullName" => "Suspend Me"}
+      }
 
-      expect_google_group_sync_round(
-        [
-          %{"id" => "active_user", "type" => "USER", "email" => "active@example.com"},
-          %{"id" => "user_to_suspend", "type" => "USER", "email" => "suspend-me@example.com"}
-        ],
-        [
-          %{
-            "id" => "active_user",
-            "primaryEmail" => "active@example.com",
-            "name" => %{"fullName" => "Active User"}
-          },
-          %{
-            "id" => "user_to_suspend",
-            "primaryEmail" => "suspend-me@example.com",
-            "name" => %{"fullName" => "Suspend Me"},
-            "suspended" => true
-          }
-        ]
-      )
+      expect_google_group_sync_round(members, [active, to_suspend])
+      assert :ok = perform_job(Sync, args)
+      identity = Repo.get_by!(Portal.ExternalIdentity, directory_id: directory.id, idp_id: "user_to_suspend")
 
-      assert :ok = perform_job(Sync, %{"directory_id" => directory.id})
+      expect_google_group_sync_round(members, [active, Map.put(to_suspend, "suspended", true)])
+      assert :ok = perform_job(Sync, args)
 
-      identities = Repo.all(Portal.ExternalIdentity)
-      assert Enum.map(identities, & &1.email) == ["active@example.com"]
-      assert length(Repo.all(Portal.Membership)) == 1
+      assert Repo.get_by!(Portal.ExternalIdentity, id: identity.id)
+      assert length(Repo.all(Portal.Membership)) == 2
+      actor = Repo.get_by!(Portal.Actor, id: identity.actor_id)
+      assert actor.is_disabled
+      assert actor.disabled_by_directory_id == directory.id
 
-      refute Repo.get_by(Portal.ExternalIdentity, id: suspended_identity.id)
-      refute Repo.get_by(Portal.Actor, id: suspended_actor.id)
+      expect_google_group_sync_round(members, [active, to_suspend])
+      assert :ok = perform_job(Sync, args)
+
+      actor = Repo.get_by!(Portal.Actor, id: identity.actor_id)
+      refute actor.is_disabled
+      assert actor.disabled_by_directory_id == nil
     end
 
     test "does not refetch suspended users that appear in multiple groups" do
@@ -870,14 +1017,23 @@ defmodule Portal.Google.SyncTest do
         })
       end)
 
-      assert :ok = perform_job(Sync, %{"directory_id" => directory.id})
+      assert :ok = perform_job(Sync, %{"account_id" => directory.account_id, "directory_id" => directory.id})
 
       assert Repo.all(Portal.ExternalIdentity) == []
       assert Repo.all(Portal.Membership) == []
     end
 
-    test "uses legacy service account key when present" do
+    test "uses legacy service account key when present even with workload identity configured" do
       account = account_fixture()
+
+      Portal.Config.put_env_override(
+        :portal,
+        APIClient,
+        workload_identity_provider:
+          "//iam.googleapis.com/projects/123/locations/global/workloadIdentityPools/pool/providers/provider",
+        workload_identity_audience: "api://tenant/google-workspace-sync-staging",
+        service_account_email: "directory-sync@project.iam.gserviceaccount.com"
+      )
 
       legacy_key = %{
         "type" => "service_account",
@@ -915,7 +1071,7 @@ defmodule Portal.Google.SyncTest do
         Req.Test.json(conn, %{"organizationUnits" => []})
       end)
 
-      assert :ok = perform_job(Sync, %{"directory_id" => directory.id})
+      assert :ok = perform_job(Sync, %{"account_id" => directory.account_id, "directory_id" => directory.id})
 
       # Verify the legacy key was used by checking the JWT assertion
       assert_receive {:token_request, body}
@@ -984,7 +1140,7 @@ defmodule Portal.Google.SyncTest do
         ])
       end)
 
-      assert :ok = perform_job(Sync, %{"directory_id" => directory.id})
+      assert :ok = perform_job(Sync, %{"account_id" => directory.account_id, "directory_id" => directory.id})
 
       # Verify both users were synced
       identities = Repo.all(Portal.ExternalIdentity)
@@ -1061,7 +1217,7 @@ defmodule Portal.Google.SyncTest do
         Req.Test.json(conn, %{"members" => []})
       end)
 
-      assert :ok = perform_job(Sync, %{"directory_id" => directory.id})
+      assert :ok = perform_job(Sync, %{"account_id" => directory.account_id, "directory_id" => directory.id})
 
       # Verify group1 (seed) and group2 (discovered via BFS) both exist as portal groups
       groups = Repo.all(Portal.Group) |> Enum.sort_by(& &1.idp_id)
@@ -1080,15 +1236,68 @@ defmodule Portal.Google.SyncTest do
       assert length(memberships) == 1
     end
 
-    test "skips type=USER members whose email belongs to a different domain" do
-      # Regression: Google groups can contain external users (from other Google Workspace
-      # domains or personal Gmail accounts) that the Admin SDK returns with type="USER"
-      # (the documented EXTERNAL type is marked "not currently used"). Calling users.get
-      # for these IDs returns 403 Forbidden because the service account's domain-wide
-      # delegation only covers the customer's own domain. We must filter them out
-      # before passing IDs to batch_get_users.
+    test "keeps identities when a batch part fails" do
+      Portal.Config.put_env_override(:portal, APIClient,
+        req_opts: [retry_delay: 0, plug: {Req.Test, APIClient}]
+      )
+
       account = account_fixture()
       directory = google_directory_fixture(account: account, domain: "example.com")
+
+      identity =
+        synced_identity_fixture(
+          account: account,
+          directory: Repo.get_by!(Portal.Directory, id: directory.id, account_id: account.id)
+        )
+
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{"access_token" => "test_token", "expires_in" => 3600})
+      end)
+
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{
+          "groups" => [%{"id" => "group1", "name" => "Engineering", "email" => "eng@example.com"}]
+        })
+      end)
+
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{"organizationUnits" => []})
+      end)
+
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{
+          "members" => [%{"id" => "user1", "type" => "USER", "email" => "user1@example.com"}]
+        })
+      end)
+
+      Req.Test.stub(APIClient, fn conn ->
+        boundary = "server_error_part"
+
+        body =
+          "--#{boundary}\r\nContent-Type: application/http\r\n\r\nHTTP/1.1 500 Internal Server Error\r\nContent-Type: application/json\r\n\r\n" <>
+            JSON.encode!(%{"error" => %{"code" => 500}}) <> "\r\n--#{boundary}--"
+
+        conn
+        |> Plug.Conn.put_resp_header("content-type", "multipart/mixed; boundary=#{boundary}")
+        |> Plug.Conn.send_resp(200, body)
+      end)
+
+      assert_raise SyncError, fn -> perform_job(Sync, %{"account_id" => directory.account_id, "directory_id" => directory.id}) end
+
+      assert Repo.get_by(Portal.ExternalIdentity, id: identity.id, account_id: account.id)
+    end
+
+    test "syncs members from every customer domain and skips external members" do
+      # Google returns type="USER" for external members too; the documented
+      # EXTERNAL type is marked "not currently used".
+      account = account_fixture()
+
+      directory =
+        google_directory_fixture(
+          account: account,
+          domain: "example.com",
+          sync_all_domains: true
+        )
 
       # 1. Token
       Req.Test.expect(APIClient, fn conn ->
@@ -1097,6 +1306,9 @@ defmodule Portal.Google.SyncTest do
 
       # 2. Groups → group1
       Req.Test.expect(APIClient, fn conn ->
+        conn = Plug.Conn.fetch_query_params(conn)
+        refute Map.has_key?(conn.query_params, "domain")
+
         Req.Test.json(conn, %{
           "groups" => [
             %{"id" => "group1", "name" => "Engineering", "email" => "eng@example.com"}
@@ -1109,30 +1321,159 @@ defmodule Portal.Google.SyncTest do
         Req.Test.json(conn, %{"organizationUnits" => []})
       end)
 
-      # 4. Group members: internal user1, external user appearing as type=USER with
-      #    a foreign domain email (this is what Google actually returns in production),
-      #    and an external user with the documented-but-unused EXTERNAL type.
+      Req.Test.expect(APIClient, fn conn ->
+        conn = Plug.Conn.fetch_query_params(conn)
+        assert conn.query_params["customer"] == "my_customer"
+        refute Map.has_key?(conn.query_params, "domain")
+
+        Req.Test.json(conn, %{
+          "users" => [
+            active_google_user(%{"id" => "user1", "primaryEmail" => "user1@example.com"}),
+            active_google_user(%{"id" => "user2", "primaryEmail" => "user2@example.co.nz"})
+          ]
+        })
+      end)
+
       Req.Test.expect(APIClient, fn conn ->
         assert String.contains?(conn.request_path, "/groups/group1/members")
 
         Req.Test.json(conn, %{
           "members" => [
             %{"id" => "user1", "type" => "USER", "email" => "user1@example.com"},
+            %{"id" => "user2", "type" => "USER", "email" => "user2@example.co.nz"},
             %{"id" => "extuser", "type" => "USER", "email" => "extuser@otherdomain.com"},
             %{"id" => "extuser2", "type" => "EXTERNAL", "email" => "extuser2@otherdomain.com"}
           ]
         })
       end)
 
-      # 5. batch_get_users — must only contain user1; extuser must NOT be included
-      #    (if it were, Google would return 403, failing the entire sync)
+      # No batch lookup: identities come from the user list above.
       Req.Test.expect(APIClient, fn conn ->
-        assert conn.method == "POST"
-        assert String.contains?(conn.request_path, "/batch")
+        flunk("unexpected extra request to #{conn.request_path}")
+      end)
 
+      assert :ok = perform_job(Sync, %{"account_id" => directory.account_id, "directory_id" => directory.id})
+
+      identities = Repo.all(Portal.ExternalIdentity)
+      assert Enum.map(identities, & &1.idp_id) |> Enum.sort() == ["user1", "user2"]
+      assert Enum.map(identities, & &1.email) |> Enum.sort() == ["user1@example.com", "user2@example.co.nz"]
+
+      memberships = Repo.all(Portal.Membership)
+      assert length(memberships) == 2
+    end
+
+    test "disables an archived user of another customer domain whose actor the directory created" do
+      account = account_fixture()
+
+      directory =
+        google_directory_fixture(account: account, domain: "example.com", sync_all_domains: true)
+
+      args = %{"account_id" => directory.account_id, "directory_id" => directory.id}
+      user = active_google_user(%{"id" => "user2", "primaryEmail" => "user2@example.co.nz"})
+
+      expect_google_all_domains_sync_round([user])
+      assert :ok = perform_job(Sync, args)
+      identity = Repo.get_by!(Portal.ExternalIdentity, idp_id: "user2")
+
+      expect_google_all_domains_sync_round([Map.put(user, "archived", true)])
+      assert :ok = perform_job(Sync, args)
+
+      actor = Repo.get_by!(Portal.Actor, id: identity.actor_id)
+      assert actor.is_disabled
+      assert actor.disabled_by_directory_id == directory.id
+      assert Repo.get_by(Portal.Membership, actor_id: actor.id)
+    end
+
+    test "keeps identities when the customer user list is throttled" do
+      account = account_fixture()
+
+      directory =
+        google_directory_fixture(
+          account: account,
+          domain: "example.com",
+          sync_all_domains: true
+        )
+
+      identity =
+        synced_identity_fixture(
+          account: account,
+          directory:
+            Repo.get_by!(Portal.Directory, id: directory.id, account_id: directory.account_id)
+        )
+
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{"access_token" => "test_token", "expires_in" => 3600})
+      end)
+
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{
+          "groups" => [
+            %{"id" => "group1", "name" => "Engineering", "email" => "eng@example.com"}
+          ]
+        })
+      end)
+
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{"organizationUnits" => []})
+      end)
+
+      Req.Test.expect(APIClient, fn conn ->
+        conn
+        |> Plug.Conn.put_status(403)
+        |> Req.Test.json(%{
+          "error" => %{"code" => 403, "errors" => [%{"reason" => "userRateLimitExceeded"}]}
+        })
+      end)
+
+      assert_raise Portal.Google.SyncError, fn ->
+        perform_job(Sync, %{"account_id" => directory.account_id, "directory_id" => directory.id})
+      end
+
+      assert Repo.get_by(Portal.ExternalIdentity, id: identity.id, account_id: account.id)
+    end
+
+    test "skips members outside the primary domain when sync_all_domains is off" do
+      account = account_fixture()
+      directory = google_directory_fixture(account: account, domain: "example.com")
+
+      refute directory.sync_all_domains
+
+      # 1. Token
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{"access_token" => "test_token", "expires_in" => 3600})
+      end)
+
+      Req.Test.expect(APIClient, fn conn ->
+        conn = Plug.Conn.fetch_query_params(conn)
+        assert conn.query_params["domain"] == "example.com"
+
+        Req.Test.json(conn, %{
+          "groups" => [
+            %{"id" => "group1", "name" => "Engineering", "email" => "eng@example.com"}
+          ]
+        })
+      end)
+
+      # 3. Org units → empty
+      Req.Test.expect(APIClient, fn conn ->
+        Req.Test.json(conn, %{"organizationUnits" => []})
+      end)
+
+      Req.Test.expect(APIClient, fn conn ->
+        assert String.contains?(conn.request_path, "/groups/group1/members")
+
+        Req.Test.json(conn, %{
+          "members" => [
+            %{"id" => "user1", "type" => "USER", "email" => "user1@example.com"},
+            %{"id" => "user2", "type" => "USER", "email" => "user2@example.co.nz"}
+          ]
+        })
+      end)
+
+      Req.Test.expect(APIClient, fn conn ->
         {:ok, body, _conn} = Plug.Conn.read_body(conn)
         assert String.contains?(body, "user1")
-        refute String.contains?(body, "extuser")
+        refute String.contains?(body, "user2")
 
         respond_with_batch_users(conn, [
           %{
@@ -1143,16 +1484,10 @@ defmodule Portal.Google.SyncTest do
         ])
       end)
 
-      assert :ok = perform_job(Sync, %{"directory_id" => directory.id})
+      assert :ok = perform_job(Sync, %{"account_id" => directory.account_id, "directory_id" => directory.id})
 
-      # Only the internal domain user has an identity
       identities = Repo.all(Portal.ExternalIdentity)
-      assert length(identities) == 1
-      assert hd(identities).idp_id == "user1"
-
-      # Only user1 has a membership
-      memberships = Repo.all(Portal.Membership)
-      assert length(memberships) == 1
+      assert Enum.map(identities, & &1.idp_id) == ["user1"]
     end
 
     test "syncs transitive sub-groups recursively and creates memberships at each level" do
@@ -1260,7 +1595,7 @@ defmodule Portal.Google.SyncTest do
         ])
       end)
 
-      assert :ok = perform_job(Sync, %{"directory_id" => directory.id})
+      assert :ok = perform_job(Sync, %{"account_id" => directory.account_id, "directory_id" => directory.id})
 
       # All three portal groups were created
       groups = Repo.all(Portal.Group) |> Enum.sort_by(& &1.idp_id)
@@ -1360,7 +1695,7 @@ defmodule Portal.Google.SyncTest do
 
       # No get_group("group1") call — it's already in visited, BFS skips it
 
-      assert :ok = perform_job(Sync, %{"directory_id" => directory.id})
+      assert :ok = perform_job(Sync, %{"account_id" => directory.account_id, "directory_id" => directory.id})
 
       groups = Repo.all(Portal.Group) |> Enum.sort_by(& &1.idp_id)
       assert Enum.map(groups, & &1.idp_id) == ["group1", "group2"]
@@ -1420,7 +1755,7 @@ defmodule Portal.Google.SyncTest do
 
       # No group2 members call — it was skipped
 
-      assert :ok = perform_job(Sync, %{"directory_id" => directory.id})
+      assert :ok = perform_job(Sync, %{"account_id" => directory.account_id, "directory_id" => directory.id})
 
       # Only group1 exists; deleted_group was silently skipped
       groups = Repo.all(Portal.Group)
@@ -1473,7 +1808,7 @@ defmodule Portal.Google.SyncTest do
 
       # No members call for external_group — it was skipped
 
-      assert :ok = perform_job(Sync, %{"directory_id" => directory.id})
+      assert :ok = perform_job(Sync, %{"account_id" => directory.account_id, "directory_id" => directory.id})
 
       # Only group1 exists; external_group was silently skipped
       groups = Repo.all(Portal.Group)
@@ -1560,7 +1895,7 @@ defmodule Portal.Google.SyncTest do
         Req.Test.json(conn, %{"members" => []})
       end)
 
-      assert :ok = perform_job(Sync, %{"directory_id" => directory.id})
+      assert :ok = perform_job(Sync, %{"account_id" => directory.account_id, "directory_id" => directory.id})
 
       groups = Repo.all(Portal.Group) |> Enum.sort_by(& &1.idp_id)
       assert length(groups) == 2
@@ -1606,7 +1941,7 @@ defmodule Portal.Google.SyncTest do
         Req.Test.json(conn, %{"organizationUnits" => []})
       end)
 
-      assert :ok = perform_job(Sync, %{"directory_id" => directory.id})
+      assert :ok = perform_job(Sync, %{"account_id" => directory.account_id, "directory_id" => directory.id})
 
       # Stale group was not synced this run — delete_unsynced removes it
       refute Repo.get_by(Portal.Group, id: existing_group.id)
@@ -1646,7 +1981,7 @@ defmodule Portal.Google.SyncTest do
 
       # No org units API call expected (orgunit_sync_enabled: false)
 
-      assert :ok = perform_job(Sync, %{"directory_id" => directory.id})
+      assert :ok = perform_job(Sync, %{"account_id" => directory.account_id, "directory_id" => directory.id})
 
       # Stale org unit was not synced this run — delete_unsynced removes it
       refute Repo.get_by(Portal.Group, id: existing_ou.id)
@@ -1692,7 +2027,7 @@ defmodule Portal.Google.SyncTest do
         Req.Test.json(conn, %{"access_token" => "test_token", "expires_in" => 3600})
       end)
 
-      assert :ok = perform_job(Sync, %{"directory_id" => directory.id})
+      assert :ok = perform_job(Sync, %{"account_id" => directory.account_id, "directory_id" => directory.id})
 
       # Both are stale — delete_unsynced removes them
       refute Repo.get_by(Portal.Group, id: existing_group.id)
@@ -1737,7 +2072,7 @@ defmodule Portal.Google.SyncTest do
         Req.Test.json(conn, %{"organizationUnits" => []})
       end)
 
-      assert :ok = perform_job(Sync, %{"directory_id" => directory.id})
+      assert :ok = perform_job(Sync, %{"account_id" => directory.account_id, "directory_id" => directory.id})
 
       # Non-matching group is stale — delete_unsynced removes it
       refute Repo.get_by(Portal.Group, id: non_matching_group.id)
@@ -1774,7 +2109,7 @@ defmodule Portal.Google.SyncTest do
 
       # No get_user calls — no members
 
-      assert :ok = perform_job(Sync, %{"directory_id" => directory.id})
+      assert :ok = perform_job(Sync, %{"account_id" => directory.account_id, "directory_id" => directory.id})
 
       # Verify org unit was created
       groups = Repo.all(Portal.Group)
@@ -1797,7 +2132,7 @@ defmodule Portal.Google.SyncTest do
       end)
 
       assert_raise SyncError, ~r/get_access_token/, fn ->
-        perform_job(Sync, %{"directory_id" => directory.id})
+        perform_job(Sync, %{"account_id" => directory.account_id, "directory_id" => directory.id})
       end
     end
 
@@ -1810,7 +2145,7 @@ defmodule Portal.Google.SyncTest do
       end)
 
       assert_raise SyncError, ~r/get_access_token/, fn ->
-        perform_job(Sync, %{"directory_id" => directory.id})
+        perform_job(Sync, %{"account_id" => directory.account_id, "directory_id" => directory.id})
       end
     end
 
@@ -1827,7 +2162,7 @@ defmodule Portal.Google.SyncTest do
       )
 
       assert_raise SyncError, ~r/service account key is not configured/, fn ->
-        perform_job(Sync, %{"directory_id" => directory.id})
+        perform_job(Sync, %{"account_id" => directory.account_id, "directory_id" => directory.id})
       end
     end
 
@@ -1866,7 +2201,7 @@ defmodule Portal.Google.SyncTest do
 
       log =
         capture_log(fn ->
-          assert :ok = perform_job(Sync, %{"directory_id" => directory.id})
+          assert :ok = perform_job(Sync, %{"account_id" => directory.account_id, "directory_id" => directory.id})
         end)
 
       assert log =~ "Reconnected 1 orphaned policies after sync"
@@ -1902,7 +2237,7 @@ defmodule Portal.Google.SyncTest do
       end)
 
       assert_raise SyncError, ~r/discovered group 'group2' missing 'name' field/, fn ->
-        perform_job(Sync, %{"directory_id" => directory.id})
+        perform_job(Sync, %{"account_id" => directory.account_id, "directory_id" => directory.id})
       end
     end
 
@@ -1935,7 +2270,7 @@ defmodule Portal.Google.SyncTest do
       end)
 
       assert_raise SyncError, ~r/discovered group missing 'id' field/, fn ->
-        perform_job(Sync, %{"directory_id" => directory.id})
+        perform_job(Sync, %{"account_id" => directory.account_id, "directory_id" => directory.id})
       end
     end
 
@@ -1970,7 +2305,7 @@ defmodule Portal.Google.SyncTest do
       end)
 
       assert_raise SyncError, ~r/get_group/, fn ->
-        perform_job(Sync, %{"directory_id" => directory.id})
+        perform_job(Sync, %{"account_id" => directory.account_id, "directory_id" => directory.id})
       end
     end
 
@@ -1999,7 +2334,7 @@ defmodule Portal.Google.SyncTest do
       end)
 
       assert_raise SyncError, ~r/at stream_group_members: HTTP 403/, fn ->
-        perform_job(Sync, %{"directory_id" => directory.id})
+        perform_job(Sync, %{"account_id" => directory.account_id, "directory_id" => directory.id})
       end
     end
 
@@ -2034,7 +2369,7 @@ defmodule Portal.Google.SyncTest do
       end)
 
       assert_raise SyncError, ~r/at batch_get_users: HTTP 500/, fn ->
-        perform_job(Sync, %{"directory_id" => directory.id})
+        perform_job(Sync, %{"account_id" => directory.account_id, "directory_id" => directory.id})
       end
     end
 
@@ -2075,7 +2410,7 @@ defmodule Portal.Google.SyncTest do
         ])
       end)
 
-      assert :ok = perform_job(Sync, %{"directory_id" => directory.id})
+      assert :ok = perform_job(Sync, %{"account_id" => directory.account_id, "directory_id" => directory.id})
       assert Repo.aggregate(Portal.Group, :count, :id) == 1
       assert Repo.aggregate(Portal.Membership, :count, :id) == 1
     end
@@ -2107,7 +2442,7 @@ defmodule Portal.Google.SyncTest do
       end)
 
       assert_raise SyncError, ~r/at stream_org_unit_members: HTTP 403/, fn ->
-        perform_job(Sync, %{"directory_id" => directory.id})
+        perform_job(Sync, %{"account_id" => directory.account_id, "directory_id" => directory.id})
       end
     end
 
@@ -2138,7 +2473,7 @@ defmodule Portal.Google.SyncTest do
       end)
 
       assert_raise SyncError, ~r/user missing 'id' field in org unit ou1/, fn ->
-        perform_job(Sync, %{"directory_id" => directory.id})
+        perform_job(Sync, %{"account_id" => directory.account_id, "directory_id" => directory.id})
       end
     end
 
@@ -2174,9 +2509,26 @@ defmodule Portal.Google.SyncTest do
         })
       end)
 
-      assert :ok = perform_job(Sync, %{"directory_id" => directory.id})
+      assert :ok = perform_job(Sync, %{"account_id" => directory.account_id, "directory_id" => directory.id})
       assert Repo.aggregate(Portal.ExternalIdentity, :count, :id) == 1
       assert Repo.aggregate(Portal.Membership, :count, :id) == 1
+    end
+
+    test "keeps the org unit membership of a suspended user whose actor the directory created" do
+      account = account_fixture()
+      directory = google_directory_fixture(account: account, domain: "example.com")
+      args = %{"account_id" => directory.account_id, "directory_id" => directory.id}
+      user = active_google_user(%{"id" => "ou_user_1", "primaryEmail" => "ou1@example.com"})
+
+      expect_google_org_unit_sync_round([user])
+      assert :ok = perform_job(Sync, args)
+      identity = Repo.get_by!(Portal.ExternalIdentity, idp_id: "ou_user_1")
+
+      expect_google_org_unit_sync_round([Map.put(user, "suspended", true)])
+      assert :ok = perform_job(Sync, args)
+
+      assert Repo.get_by!(Portal.Actor, id: identity.actor_id).is_disabled
+      assert Repo.get_by(Portal.Membership, actor_id: identity.actor_id)
     end
 
     test "Database upsert helpers cover empty and error branches" do
@@ -2579,6 +2931,49 @@ defmodule Portal.Google.SyncTest do
       assert String.contains?(conn.request_path, "/batch")
 
       respond_with_batch_users(conn, batch_users)
+    end)
+  end
+
+  # No groups and one org unit, "/Engineering", holding `users`.
+  defp expect_google_org_unit_sync_round(users) do
+    Req.Test.expect(APIClient, fn conn ->
+      Req.Test.json(conn, %{"access_token" => "test_token", "expires_in" => 3600})
+    end)
+
+    Req.Test.expect(APIClient, fn conn -> Req.Test.json(conn, %{"groups" => []}) end)
+
+    Req.Test.expect(APIClient, fn conn ->
+      Req.Test.json(conn, %{
+        "organizationUnits" => [
+          %{"orgUnitId" => "ou1", "name" => "Engineering", "orgUnitPath" => "/Engineering"}
+        ]
+      })
+    end)
+
+    Req.Test.expect(APIClient, fn conn -> Req.Test.json(conn, %{"users" => users}) end)
+  end
+
+  # One group, "group1", whose members are `users`, all listed by the customer.
+  defp expect_google_all_domains_sync_round(users) do
+    Req.Test.expect(APIClient, fn conn ->
+      Req.Test.json(conn, %{"access_token" => "test_token", "expires_in" => 3600})
+    end)
+
+    Req.Test.expect(APIClient, fn conn ->
+      Req.Test.json(conn, %{
+        "groups" => [%{"id" => "group1", "name" => "Engineering", "email" => "eng@example.com"}]
+      })
+    end)
+
+    Req.Test.expect(APIClient, fn conn -> Req.Test.json(conn, %{"organizationUnits" => []}) end)
+    Req.Test.expect(APIClient, fn conn -> Req.Test.json(conn, %{"users" => users}) end)
+
+    Req.Test.expect(APIClient, fn conn ->
+      assert String.contains?(conn.request_path, "/groups/group1/members")
+
+      Req.Test.json(conn, %{
+        "members" => Enum.map(users, &%{"id" => &1["id"], "type" => "USER", "email" => &1["primaryEmail"]})
+      })
     end)
   end
 

@@ -1,3 +1,10 @@
+defmodule Portal.MailerTest.ReqAdapter do
+  def run(request) do
+    send(self(), :replace_req_adapter_plugin_called)
+    Req.Plug.run(request)
+  end
+end
+
 defmodule Portal.MailerTest do
   use Portal.DataCase, async: true
 
@@ -25,7 +32,7 @@ defmodule Portal.MailerTest do
     test "refreshes ACS HMAC auth headers on Req retries" do
       test_pid = self()
       access_key = Base.encode64("acs-secret")
-      adapter_plugin = replace_req_adapter_plugin(test_pid)
+      adapter_plugin = replace_req_adapter_plugin()
       {:ok, attempts} = Agent.start_link(fn -> 0 end)
 
       Req.Test.stub(Portal.AzureCommunicationServices, fn conn ->
@@ -77,14 +84,11 @@ defmodule Portal.MailerTest do
     end
   end
 
-  defp replace_req_adapter_plugin(test_pid) do
+  defp replace_req_adapter_plugin do
     fn req ->
       Req.Request.append_request_steps(req,
         replace_test_adapter: fn req ->
-          Map.put(req, :adapter, fn req ->
-            send(test_pid, :replace_req_adapter_plugin_called)
-            Req.Steps.run_plug(req)
-          end)
+          Map.put(req, :adapter, Portal.MailerTest.ReqAdapter)
         end
       )
     end
@@ -303,7 +307,7 @@ defmodule Portal.MailerTest do
       assert Repo.aggregate(Portal.OutboundEmail, :count, :message_id) == 0
     end
 
-    test "bypasses the suppression table" do
+    test "skips sending when all recipients are suppressed" do
       account = account_fixture()
 
       Repo.insert!(%Portal.EmailSuppression{
@@ -314,12 +318,31 @@ defmodule Portal.MailerTest do
         Swoosh.Email.new()
         |> Swoosh.Email.to({"", "recipient@example.com"})
         |> Swoosh.Email.from({"", "sender@example.com"})
-        |> Swoosh.Email.subject("Bypass")
+        |> Swoosh.Email.subject("Suppressed Send")
         |> Swoosh.Email.text_body("body")
         |> with_account_id(account.id)
 
       assert {:ok, %{}} = deliver(email)
-      assert_email_sent(subject: "Bypass")
+      refute_email_sent(subject: "Suppressed Send")
+    end
+
+    test "drops suppressed recipients before sending" do
+      account = account_fixture()
+
+      Repo.insert!(%Portal.EmailSuppression{
+        email: Portal.EmailSuppression.normalize_email("suppressed@example.com")
+      })
+
+      email =
+        Swoosh.Email.new()
+        |> Swoosh.Email.to([{"", "recipient@example.com"}, {"", " Suppressed@Example.com "}])
+        |> Swoosh.Email.from({"", "sender@example.com"})
+        |> Swoosh.Email.subject("Partial Suppression")
+        |> Swoosh.Email.text_body("body")
+        |> with_account_id(account.id)
+
+      assert {:ok, %{}} = deliver(email)
+      assert_email_sent(subject: "Partial Suppression", to: [{"", "recipient@example.com"}])
     end
 
     test "drops undeliverable firezone.invalid recipients before sending" do
@@ -355,7 +378,7 @@ defmodule Portal.MailerTest do
 
   describe "deliver_and_track/2" do
     test "inserts a tracked row when ACS returns a message id, with nil account_id" do
-      adapter_plugin = replace_req_adapter_plugin(self())
+      adapter_plugin = replace_req_adapter_plugin()
 
       Req.Test.stub(Portal.AzureCommunicationServices, fn conn ->
         conn
@@ -398,7 +421,7 @@ defmodule Portal.MailerTest do
 
     test "associates account_id when set via with_account_id/2" do
       account = account_fixture()
-      adapter_plugin = replace_req_adapter_plugin(self())
+      adapter_plugin = replace_req_adapter_plugin()
 
       Req.Test.stub(Portal.AzureCommunicationServices, fn conn ->
         conn
@@ -442,6 +465,43 @@ defmodule Portal.MailerTest do
 
       assert {:ok, %{}} = deliver_and_track(email)
       assert Repo.aggregate(Portal.OutboundEmail, :count, :message_id) == 0
+    end
+
+    test "does not send to or track suppressed recipients" do
+      adapter_plugin = replace_req_adapter_plugin()
+
+      Repo.insert!(%Portal.EmailSuppression{
+        email: Portal.EmailSuppression.normalize_email("suppressed@example.com")
+      })
+
+      Req.Test.stub(Portal.AzureCommunicationServices, fn conn ->
+        conn
+        |> Plug.Conn.put_status(202)
+        |> Req.Test.json(%{"id" => "acs-suppressed-msg", "status" => "Running"})
+      end)
+
+      email =
+        Swoosh.Email.new()
+        |> Swoosh.Email.to([{"", "tracked@example.com"}, {"", "suppressed@example.com"}])
+        |> Swoosh.Email.from({"", "sender@example.com"})
+        |> Swoosh.Email.subject("Tracked Suppression")
+        |> Swoosh.Email.text_body("body")
+
+      assert {:ok, %{id: "acs-suppressed-msg"}} =
+               deliver_and_track(email,
+                 adapter: Swoosh.Adapters.AzureCommunicationServices,
+                 endpoint: "https://acs.example.com",
+                 access_key: Base.encode64("acs-secret"),
+                 req_opts: [
+                   plug: {Req.Test, Portal.AzureCommunicationServices},
+                   plugins: [adapter_plugin]
+                 ]
+               )
+
+      entry = Repo.get!(Portal.OutboundEmail, "acs-suppressed-msg")
+      assert entry.recipients == ["tracked@example.com"]
+
+      assert Repo.aggregate(Portal.OutboundEmailDelivery, :count, :message_id) == 1
     end
   end
 

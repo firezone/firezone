@@ -61,10 +61,10 @@ import SwiftUI
     private var authMenu: some View {
       Menu {
         if store.vpnStatus == .connected {
-          Text("Signed in as \(store.actorName)")
+          Text(store.sessionHeading)
           Button(
             action: {
-              signOutButtonTapped()
+              signOut()
             },
             label: {
               Label("Sign out", systemImage: "rectangle.portrait.and.arrow.right")
@@ -74,7 +74,6 @@ import SwiftUI
           Button(
             action: {
               signInButtonTapped()
-
             },
             label: {
               Label("Sign in", systemImage: "person.crop.circle.fill.badge.plus")
@@ -122,7 +121,7 @@ import SwiftUI
       }
     }
 
-    func signOutButtonTapped() {
+    func signOut() {
       Task {
         do {
           try await store.signOut()

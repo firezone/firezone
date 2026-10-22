@@ -12,21 +12,20 @@ mod unwrap_or;
 mod ansi;
 mod capturing_writer;
 mod display_btree_set;
+mod drop_events_whose_message_contains;
 mod err_with_sources;
-mod event_message_contains_filter;
 pub mod windows_event_log;
 
 use std::sync::Arc;
 
 use anyhow::{Context, Result};
-use event_message_contains_filter::EventMessageContains;
+use drop_events_whose_message_contains::DropEventsWhoseMessageContains;
 use sentry_tracing::EventFilter;
-use telemetry::feature_flags;
 use tracing::{Subscriber, subscriber::DefaultGuard};
 use tracing_log::LogTracer;
 use tracing_subscriber::{
     EnvFilter, Layer, Registry,
-    filter::{FilterExt, ParseError, Targets},
+    filter::{ParseError, Targets},
     fmt,
     layer::SubscriberExt as _,
     registry::LookupSpan,
@@ -41,14 +40,19 @@ pub use err_with_sources::{ErrorWithSources, err_with_src};
 pub use format::Format;
 pub use tracing_macros::trace_dbg as dbg;
 
-/// Registers a global subscriber with stdout logging and `additional_layer`
-pub fn setup_global_subscriber<L>(
+/// Registers a global subscriber with stdout logging and `additional_layer`.
+///
+/// `unfiltered_layer` bypasses the `directives`-based filter and is expected to
+/// bring its own (e.g. flow-log spooling).
+pub fn setup_global_subscriber<L, U>(
     directives: String,
     additional_layer: L,
+    unfiltered_layer: U,
     stdout_json: bool,
 ) -> Result<FilterReloadHandle>
 where
-    L: Layer<Registry> + Send + Sync,
+    L: Layer<Registry> + Send + Sync + 'static,
+    U: Layer<Registry> + Send + Sync + 'static,
 {
     if let Err(error) = output_vt100::try_init() {
         tracing::debug!("Failed to init terminal colors: {error}");
@@ -60,7 +64,10 @@ where
         try_filter(&directives).context("Failed to parse directives")?;
 
     let subscriber = Registry::default()
-        .with(additional_layer.with_filter(filter1))
+        .with(vec![
+            additional_layer.with_filter(filter1).boxed(),
+            unfiltered_layer.boxed(),
+        ])
         .with(sentry_layer())
         .with(match stdout_json {
             true => fmt::layer()
@@ -237,7 +244,8 @@ where
                 event_filter |= EventFilter::Breadcrumb;
             }
 
-            if feature_flags::stream_logs(md) {
+            #[cfg(feature = "telemetry")]
+            if telemetry::feature_flags::stream_logs(md) {
                 event_filter |= EventFilter::Log
             }
 
@@ -251,33 +259,37 @@ where
         })
         .enable_span_attributes()
         .with_filter(parse_filter("trace").expect("static filter always parses"))
-        .with_filter(EventMessageContains::all(
+        .with_filter(DropEventsWhoseMessageContains::all(
             Level::ERROR,
             &[
                 "WinTun: Failed to create process: rundll32",
                 r#"RemoveInstance "SWD\WINTUN\{E9245BC1-B8C1-44CA-AB1D-C6AAD4F13B9C}""#,
                 "(Code 0x00000003)",
             ],
-        ).not())
-        .with_filter(EventMessageContains::all(
+        ))
+        .with_filter(DropEventsWhoseMessageContains::all(
             Level::ERROR,
             &[
                 r#"WinTun: Error executing worker process: "SWD\WINTUN\{E9245BC1-B8C1-44CA-AB1D-C6AAD4F13B9C}""#,
                 "(Code 0x00000003)",
             ],
-        ).not())
-        .with_filter(EventMessageContains::all(
+        ))
+        .with_filter(DropEventsWhoseMessageContains::all(
             Level::ERROR,
             &[
                 "WinTun: Failed to remove adapter when closing",
                 "(Code 0x00000003)",
             ],
-        ).not())
-        .with_filter(EventMessageContains::all(
+        ))
+        .with_filter(DropEventsWhoseMessageContains::all(
             Level::ERROR,
             &[
                 r#"WinTun: Failed to remove orphaned adapter "Firezone""#,
                 "(Code 0x00000003)",
             ],
-        ).not())
+        ))
+        .with_filter(DropEventsWhoseMessageContains::all(
+            Level::WARN,
+            &["ignoring response from", "because it does not match name_server"],
+        ))
 }

@@ -1,0 +1,942 @@
+use connlib_model::{ClientId, ClientOrGatewayId, GatewayId, RelayId, ResourceId, Site, SiteId};
+use dns_types::DomainName;
+use ip_packet::Protocol;
+use itertools::Itertools;
+use smallvec::SmallVec;
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    iter,
+    net::{IpAddr, Ipv4Addr, Ipv6Addr},
+    time::Instant,
+};
+use tunnel_proto::dns;
+use tunnel_proto::messages::client::FailReason;
+use tunnel_proto::messages::{UpstreamDo53, UpstreamDoH, gateway};
+
+use crate::ref_client::protocol_filter_allows;
+use crate::reference::ReferenceState;
+use crate::resource::{self as client, DevicePoolResource};
+use crate::sim_net::Host;
+use crate::sim_relay::SimRelay;
+use crate::transition::Transition;
+
+/// The TTL the portal gives the names a PTR query in the device domain lists.
+///
+/// It is below the 5 s connlib caches answers from, so answers never outlive the
+/// transition that asked for them.
+const DEVICE_LISTING_TTL: u32 = 4;
+
+/// Stub implementation of the portal.
+#[derive(Clone, derive_more::Debug)]
+pub struct StubPortal {
+    clients: BTreeMap<ClientId, StubClient>,
+    gateways_by_site: BTreeMap<SiteId, SmallVec<[(GatewayId, Ipv4Addr, Ipv6Addr); 3]>>,
+    regular_sites: SmallVec<[Site; 3]>,
+
+    #[debug(skip)]
+    sites_by_resource: BTreeMap<ResourceId, SiteId>,
+
+    // TODO: Maybe these should use the `messages` types to cover the conversions and to model that that is what we receive from the portal?
+    cidr_resources: BTreeMap<ResourceId, client::CidrResource>,
+    dns_resources: BTreeMap<ResourceId, client::DnsResource>,
+    device_pool_resources: BTreeMap<ResourceId, DevicePoolResource>,
+    /// The portal's membership criteria per pool, evaluated when a client asks for access.
+    pool_members: BTreeMap<ResourceId, PoolMembers>,
+    /// The peer subset of the portal's persisted policy authorizations.
+    peer_policy_authorizations: BTreeSet<PeerAuthorization>,
+    /// The Gateway subset of the portal's persisted policy authorizations.
+    ///
+    /// A revoked one is kept, because the Gateway that held it is what decides whether
+    /// it has anything left for the Client.
+    gateway_policy_authorizations: BTreeMap<(ClientId, ResourceId), GatewayAuthorization>,
+    internet_resource: client::InternetResource,
+
+    search_domain: Option<DomainName>,
+    upstream_do53: Vec<UpstreamDo53>,
+    upstream_doh: Vec<UpstreamDoH>,
+
+    /// Stable index used to pick a gateway within a site (`index % len`).
+    #[debug(skip)]
+    gateway_selector: u32,
+    /// How often each Client was handed a Gateway it did not prefer since it started, per site.
+    #[debug(skip)]
+    load_balanced_requests: BTreeMap<(ClientId, SiteId), u32>,
+    /// When the portal handed each node relays.
+    #[debug(skip)]
+    relay_handouts: BTreeMap<ClientOrGatewayId, Vec<Instant>>,
+
+    /// Stable index used to pick a resource candidate (`index % len`).
+    resource_selector: u32,
+
+    /// Whether the portal hands out ICE-less flows. Sampled once per test case
+    /// and applied to every connection, modelling a portal-wide rollout toggle
+    /// rather than a per-peer capability.
+    iceless: bool,
+}
+
+/// Which clients a device pool admits.
+#[derive(Clone, Debug)]
+pub(crate) enum PoolMembers {
+    AllClients,
+    Listed(BTreeSet<ClientId>),
+}
+
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+pub struct PeerAuthorization {
+    pub(crate) initiator: ClientId,
+    pub(crate) target: ClientId,
+    pub(crate) pool: ResourceId,
+}
+
+/// A Gateway connection the portal left with nothing, and what the Client reached
+/// through it.
+pub(crate) struct ClosedGatewayConnection {
+    pub(crate) client: ClientId,
+    pub(crate) gateway: GatewayId,
+    pub(crate) resources: BTreeSet<ResourceId>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+struct GatewayAuthorization {
+    gateway: GatewayId,
+    revoked: bool,
+}
+
+#[derive(Clone, Debug)]
+struct StubClient {
+    ipv4: Ipv4Addr,
+    ipv6: Ipv6Addr,
+    /// The slug this client is reached at under the device domain.
+    ///
+    /// In production the portal derives it from the device name; in the test harness
+    /// we assign one stable label per client (e.g. `device0`).
+    device_label: String,
+}
+
+impl StubPortal {
+    pub(crate) fn new(
+        clients: impl IntoIterator<Item = (ClientId, Ipv4Addr, Ipv6Addr)>,
+        gateways_by_site: BTreeMap<SiteId, SmallVec<[(GatewayId, Ipv4Addr, Ipv6Addr); 3]>>,
+        regular_sites: SmallVec<[Site; 3]>,
+        gateway_selector: u32,
+        resource_selector: u32,
+        cidr_resources: impl IntoIterator<Item = client::CidrResource>,
+        dns_resources: impl IntoIterator<Item = client::DnsResource>,
+        device_pool_resources: impl IntoIterator<Item = (DevicePoolResource, PoolMembers)>,
+        internet_resource: client::InternetResource,
+        search_domain: Option<DomainName>,
+        upstream_do53: Vec<UpstreamDo53>,
+        upstream_doh: Vec<UpstreamDoH>,
+    ) -> Self {
+        let cidr_resources = cidr_resources
+            .into_iter()
+            .map(|r| (r.id, r))
+            .collect::<BTreeMap<_, _>>();
+        let dns_resources = dns_resources
+            .into_iter()
+            .map(|r| (r.id, r))
+            .collect::<BTreeMap<_, _>>();
+        let (device_pool_resources, pool_members) = device_pool_resources
+            .into_iter()
+            .map(|(r, members)| ((r.id, r.clone()), (r.id, members)))
+            .unzip::<_, _, BTreeMap<_, _>, BTreeMap<_, _>>();
+
+        let cidr_sites = cidr_resources.iter().map(|(id, r)| {
+            (
+                *id,
+                r.sites
+                    .iter()
+                    .exactly_one()
+                    .expect("only single-site resources")
+                    .id,
+            )
+        });
+        let dns_sites = dns_resources.iter().map(|(id, r)| {
+            (
+                *id,
+                r.sites
+                    .iter()
+                    .exactly_one()
+                    .expect("only single-site resources")
+                    .id,
+            )
+        });
+        let internet_site = iter::once((
+            internet_resource.id,
+            internet_resource
+                .sites
+                .iter()
+                .exactly_one()
+                .expect("only single-site resources")
+                .id,
+        ));
+
+        let clients = clients
+            .into_iter()
+            .enumerate()
+            .map(|(idx, (id, ipv4, ipv6))| {
+                let client = StubClient {
+                    ipv4,
+                    ipv6,
+                    device_label: format!("device{idx}"),
+                };
+
+                (id, client)
+            })
+            .collect();
+
+        Self {
+            clients,
+            gateways_by_site,
+            regular_sites,
+            gateway_selector,
+            load_balanced_requests: Default::default(),
+            relay_handouts: Default::default(),
+            resource_selector,
+            sites_by_resource: BTreeMap::from_iter(
+                cidr_sites.chain(dns_sites).chain(internet_site),
+            ),
+            cidr_resources,
+            dns_resources,
+            device_pool_resources,
+            pool_members,
+            peer_policy_authorizations: Default::default(),
+            gateway_policy_authorizations: Default::default(),
+            internet_resource,
+            search_domain,
+            upstream_do53,
+            upstream_doh,
+            iceless: false,
+        }
+    }
+
+    /// Applies the portal-side effect of `transition`.
+    pub fn apply(&mut self, transition: &Transition, reference: &ReferenceState) {
+        match transition {
+            Transition::RemoveResource(id) => {
+                self.revoke_policy_authorizations(*id);
+            }
+            Transition::EditResource(edit) => {
+                if matches!(
+                    client::classify(&edit.old, &edit.new),
+                    client::EditEffect::Filters { .. }
+                        | client::EditEffect::Access { .. }
+                        | client::EditEffect::Type { .. }
+                ) {
+                    self.revoke_disconnected_gateway_authorizations(edit.old.id(), reference);
+                }
+
+                // An edit that changes who may reach what invalidates the authorizations
+                // the resource authorized; the Clients ask for new ones.
+                if matches!(
+                    client::classify(&edit.old, &edit.new),
+                    client::EditEffect::Access { .. } | client::EditEffect::Type { .. }
+                ) {
+                    self.revoke_policy_authorizations(edit.old.id());
+                }
+
+                self.replace_resource(edit.new.clone());
+            }
+            Transition::UpdateDevicePoolMembers {
+                pool_id,
+                members,
+                revoked: _,
+            } => {
+                self.set_pool_members(*pool_id, members.clone());
+            }
+            Transition::UpdateUpstreamDo53Servers(servers) => {
+                self.upstream_do53 = servers.clone();
+            }
+            Transition::UpdateUpstreamDoHServers(servers) => {
+                self.upstream_doh = servers.clone();
+            }
+            Transition::UpdateUpstreamSearchDomain(domain) => {
+                self.search_domain = domain.clone();
+            }
+            Transition::AddResource(_) => {}
+            Transition::SetInternetResourceState { .. } => {}
+            Transition::SendIcmpPacketOnNewFlow { .. } => {}
+            Transition::SendIcmpPacketOnExistingFlow { .. } => {}
+            Transition::SendUdpPacketOnNewFlow { .. } => {}
+            Transition::SendUdpPacketOnExistingFlow { .. } => {}
+            Transition::ConnectTcp { .. } => {}
+            Transition::SendTcpData { .. } => {}
+            Transition::SendDnsQueries(_) => {}
+            Transition::SendDnsResourcePtrQuery { .. } => {}
+            Transition::UpdateSystemDnsServers { .. } => {}
+            Transition::RoamClient { .. } => {}
+            Transition::ReconnectPortal { .. } => {}
+            Transition::RestartClient { client_id, .. } => {
+                for _ in self
+                    .load_balanced_requests
+                    .extract_if(.., |(client, _), _| client == client_id)
+                {}
+
+                // The Gateways drop everything they held for the Client on its `goodbye`.
+                for _ in self
+                    .gateway_policy_authorizations
+                    .extract_if(.., |(client, _), _| client == client_id)
+                {}
+            }
+            Transition::DeployNewRelays(_) => {}
+            Transition::PartitionRelaysFromPortal => {}
+            Transition::Idle { .. } => {}
+            Transition::RebootRelaysWhilePartitioned(_) => {}
+            Transition::ExhaustRelayPorts(_) => {}
+            Transition::FreeRelayPorts(_) => {}
+            Transition::DeauthorizeWhileGatewayIsPartitioned(resource) => {
+                self.revoke_policy_authorizations(*resource);
+            }
+            Transition::RevokeGatewayAuthorization(resource) => {
+                self.revoke_policy_authorizations(*resource);
+            }
+            Transition::ExpirePeerAuthorizations { .. } => {}
+            Transition::RevokePeerAuthorization { client, peer, pool } => {
+                self.peer_policy_authorizations.remove(&PeerAuthorization {
+                    initiator: *client,
+                    target: *peer,
+                    pool: *pool,
+                });
+            }
+            Transition::UpdateDnsRecords { .. } => {}
+        }
+    }
+
+    /// The tunnel IPs assigned to each client, in client order.
+    ///
+    /// Used by the structured generator to materialize client hosts.
+    pub(crate) fn client_tunnel_ips(
+        &self,
+    ) -> impl Iterator<Item = (ClientId, Ipv4Addr, Ipv6Addr)> + '_ {
+        self.clients.iter().map(|(id, c)| (*id, c.ipv4, c.ipv6))
+    }
+
+    /// The tunnel IPs and owning site of each gateway.
+    pub(crate) fn gateway_tunnel_ips(
+        &self,
+    ) -> impl Iterator<Item = (GatewayId, Ipv4Addr, Ipv6Addr, SiteId)> + '_ {
+        self.gateways_by_site
+            .iter()
+            .flat_map(|(site_id, gateways)| {
+                gateways
+                    .iter()
+                    .map(move |(gid, ipv4, ipv6)| (*gid, *ipv4, *ipv6, *site_id))
+            })
+    }
+
+    /// Toggles whether the portal hands out ICE-less flows.
+    pub(crate) fn with_iceless(mut self, iceless: bool) -> Self {
+        self.iceless = iceless;
+        self
+    }
+
+    /// Whether the portal hands out ICE-less flows for every connection.
+    pub(crate) fn iceless(&self) -> bool {
+        self.iceless
+    }
+
+    /// All device labels the portal knows about, in client order.
+    pub(crate) fn device_labels(&self) -> Vec<String> {
+        self.clients
+            .values()
+            .map(|c| c.device_label.clone())
+            .collect()
+    }
+
+    pub(crate) fn device_label(&self, id: ClientId) -> String {
+        self.clients[&id].device_label.clone()
+    }
+
+    /// The labels of all device pools.
+    pub(crate) fn device_pool_labels(&self) -> impl Iterator<Item = String> + '_ {
+        self.device_pool_resources
+            .values()
+            .map(|pool| pool_label(pool).to_owned())
+    }
+
+    /// Resolves a device name (e.g. `device0.firezone.network`) to the matching client's
+    /// tunnel IPv4 + IPv6, if the slug corresponds to a known device.
+    ///
+    /// A name that labels one of the `held` pools instead is not a device.
+    pub(crate) fn resolve_device_domain(
+        &self,
+        domain: &DomainName,
+        held: &[ResourceId],
+    ) -> Result<(Ipv4Addr, Ipv6Addr), FailReason> {
+        let slug = dns::device_slug(domain).ok_or(FailReason::NotFound)?;
+
+        if let Some(client) = self.clients.values().find(|c| c.device_label == slug) {
+            return Ok((client.ipv4, client.ipv6));
+        }
+
+        if self.held_pools(held).any(|pool| pool_label(pool) == slug) {
+            return Err(FailReason::NotADevice);
+        }
+
+        Err(FailReason::NotFound)
+    }
+
+    /// Lists the names a PTR query for `domain` returns to a client holding `held`, for
+    /// how many seconds they may be cached and how many names there are in all.
+    ///
+    /// The device domain itself lists the labels of those pools, a label the members of
+    /// the pools it names. A label that names none of them but a device lists nothing.
+    /// A listing holds one name fewer than there are clients at most, so the members of a
+    /// pool that holds them all are cut short.
+    pub(crate) fn browse_device_domain(
+        &self,
+        domain: &DomainName,
+        held: &[ResourceId],
+    ) -> Result<(Vec<DomainName>, u32, usize), FailReason> {
+        let mut names = self
+            .device_domain_names(domain, held)
+            .ok_or(FailReason::NotFound)?;
+        let total = names.len();
+        names.truncate(self.clients.len() - 1);
+
+        Ok((names, DEVICE_LISTING_TTL, total))
+    }
+
+    fn device_domain_names(
+        &self,
+        domain: &DomainName,
+        held: &[ResourceId],
+    ) -> Option<Vec<DomainName>> {
+        if domain.to_string() == dns::DEVICE_DOMAIN {
+            let labels = self
+                .held_pools(held)
+                .map(|pool| device_name(pool_label(pool)))
+                .sorted()
+                .dedup()
+                .collect();
+
+            return Some(labels);
+        }
+
+        let label = dns::device_slug(domain)?;
+        let pools = self
+            .held_pools(held)
+            .filter(|pool| pool_label(pool) == label)
+            .map(|pool| pool.id)
+            .collect::<Vec<_>>();
+
+        if pools.is_empty() {
+            return self
+                .clients
+                .values()
+                .any(|c| c.device_label == label)
+                .then(Vec::new);
+        }
+
+        let members = self
+            .clients
+            .iter()
+            .filter(|(id, _)| pools.iter().any(|pool| self.is_pool_member(*pool, **id)))
+            .map(|(_, c)| device_name(&c.device_label))
+            .collect();
+
+        Some(members)
+    }
+
+    pub(crate) fn client_by_ip(&self, ip: IpAddr) -> Option<ClientId> {
+        self.clients
+            .iter()
+            .find(|(_, c)| IpAddr::V4(c.ipv4) == ip || IpAddr::V6(c.ipv6) == ip)
+            .map(|(id, _)| *id)
+    }
+
+    /// The pool the portal picks for a flow from a client holding `held` to `target`:
+    /// the first by id that admits the target and permits the protocol.
+    /// The first of the pools the client named, in its order, that holds the target.
+    pub(crate) fn pick_device_pool(
+        &self,
+        candidates: &[ResourceId],
+        target: ClientId,
+    ) -> Option<ResourceId> {
+        candidates.iter().copied().find(|pool| {
+            self.device_pool_resources.contains_key(pool) && self.is_pool_member(*pool, target)
+        })
+    }
+
+    /// Authorizes `initiator` to reach `target`, naming the pool that admits it.
+    pub(crate) fn request_peer_access(
+        &mut self,
+        initiator: ClientId,
+        target: ClientId,
+        candidates: &[ResourceId],
+    ) -> Option<ResourceId> {
+        let pool = self.pick_device_pool(candidates, target)?;
+
+        self.peer_policy_authorizations.insert(PeerAuthorization {
+            initiator,
+            target,
+            pool,
+        });
+
+        Some(pool)
+    }
+
+    /// Whether a Gateway still holds an authorization for `client` to reach `resource`.
+    pub(crate) fn holds_gateway_authorization(
+        &self,
+        client: ClientId,
+        resource: ResourceId,
+    ) -> bool {
+        self.gateway_policy_authorizations
+            .get(&(client, resource))
+            .is_some_and(|authorization| !authorization.revoked)
+    }
+
+    /// Whether `gateway` holds an authorization for `client` to a CIDR resource that permits
+    /// `protocol` to `ip`.
+    pub(crate) fn gateway_cidr_authorization_allows(
+        &self,
+        client: ClientId,
+        gateway: GatewayId,
+        ip: IpAddr,
+        protocol: Protocol,
+    ) -> bool {
+        self.cidr_resources.values().any(|cidr| {
+            cidr.address.contains(ip)
+                && protocol_filter_allows(&cidr.filters, protocol)
+                && self
+                    .gateway_policy_authorizations
+                    .get(&(client, cidr.id))
+                    .is_some_and(|authorization| {
+                        authorization.gateway == gateway && !authorization.revoked
+                    })
+        })
+    }
+
+    /// Resources some Gateway currently holds an authorization for.
+    pub(crate) fn authorized_resources(&self) -> BTreeSet<ResourceId> {
+        self.gateway_policy_authorizations
+            .iter()
+            .filter(|(_, authorization)| !authorization.revoked)
+            .map(|((_, resource), _)| *resource)
+            .collect()
+    }
+
+    /// The connections that revoking `resource` left a Gateway with nothing on. It closes
+    /// them with a `goodbye`.
+    pub(crate) fn gateway_connections_closed_by(
+        &self,
+        resource: ResourceId,
+    ) -> Vec<ClosedGatewayConnection> {
+        self.gateway_policy_authorizations
+            .iter()
+            .filter(|((_, candidate), authorization)| {
+                *candidate == resource && authorization.revoked
+            })
+            .map(|((client, _), authorization)| (*client, authorization.gateway))
+            .filter(|(client, gateway)| !self.holds_any_gateway_authorization(*client, *gateway))
+            .map(|(client, gateway)| ClosedGatewayConnection {
+                client,
+                resources: self.resources_on_gateway(client, gateway),
+                gateway,
+            })
+            .collect()
+    }
+
+    /// Everything `client` was authorized to reach through `gateway`, revoked or not.
+    fn resources_on_gateway(&self, client: ClientId, gateway: GatewayId) -> BTreeSet<ResourceId> {
+        self.gateway_policy_authorizations
+            .iter()
+            .filter(|((candidate, _), authorization)| {
+                *candidate == client && authorization.gateway == gateway
+            })
+            .map(|((_, resource), _)| *resource)
+            .collect()
+    }
+
+    fn holds_any_gateway_authorization(&self, client: ClientId, gateway: GatewayId) -> bool {
+        self.gateway_policy_authorizations
+            .iter()
+            .any(|((candidate, _), authorization)| {
+                *candidate == client && authorization.gateway == gateway && !authorization.revoked
+            })
+    }
+
+    /// Revokes authorizations lost when an edit disconnects the last resource on a Gateway.
+    fn revoke_disconnected_gateway_authorizations(
+        &mut self,
+        resource: ResourceId,
+        reference: &ReferenceState,
+    ) {
+        for (client_id, client) in &reference.clients {
+            let Some(gateway) = self.authorized_gateway(*client_id, resource) else {
+                continue;
+            };
+            let connected = client
+                .inner()
+                .connected_resources()
+                .collect::<BTreeSet<_>>();
+            if !connected.contains(&resource)
+                || connected.iter().any(|candidate| {
+                    *candidate != resource
+                        && self.authorized_gateway(*client_id, *candidate) == Some(gateway)
+                })
+            {
+                continue;
+            }
+
+            for (_, authorization) in self.gateway_policy_authorizations.iter_mut().filter(
+                |((candidate, _), authorization)| {
+                    candidate == client_id && authorization.gateway == gateway
+                },
+            ) {
+                authorization.revoked = true;
+            }
+        }
+    }
+
+    /// Revokes every authorization `resource` provided, to a peer or through a Gateway.
+    fn revoke_policy_authorizations(&mut self, resource: ResourceId) {
+        for _ in self
+            .peer_policy_authorizations
+            .extract_if(.., |authorization| authorization.pool == resource)
+        {}
+
+        for (_, authorization) in self
+            .gateway_policy_authorizations
+            .iter_mut()
+            .filter(|((_, candidate), _)| *candidate == resource)
+        {
+            authorization.revoked = true;
+        }
+    }
+
+    fn held_pools<'a>(
+        &'a self,
+        held: &'a [ResourceId],
+    ) -> impl Iterator<Item = &'a DevicePoolResource> + 'a {
+        self.device_pool_resources
+            .values()
+            .filter(|pool| held.contains(&pool.id))
+    }
+
+    fn is_pool_member(&self, pool: ResourceId, client: ClientId) -> bool {
+        match self.pool_members.get(&pool) {
+            Some(PoolMembers::AllClients) => self.clients.contains_key(&client),
+            Some(PoolMembers::Listed(members)) => members.contains(&client),
+            None => false,
+        }
+    }
+
+    /// The clients a pool admits.
+    pub(crate) fn pool_members(&self, pool: ResourceId) -> Vec<ClientId> {
+        self.clients
+            .keys()
+            .copied()
+            .filter(|client| self.is_pool_member(pool, *client))
+            .collect()
+    }
+
+    /// Returns every pool that lists its members.
+    pub(crate) fn listed_pool_ids(&self) -> Vec<ResourceId> {
+        self.pool_members
+            .iter()
+            .filter_map(|(pool, members)| match members {
+                PoolMembers::Listed(_) => Some(*pool),
+                PoolMembers::AllClients => None,
+            })
+            .collect()
+    }
+
+    /// The peer authorizations through `pool` that setting its members to `members` revokes.
+    pub(crate) fn peer_authorizations_revoked_by(
+        &self,
+        pool: ResourceId,
+        members: &BTreeSet<ClientId>,
+    ) -> Vec<PeerAuthorization> {
+        self.peer_policy_authorizations
+            .iter()
+            .filter(|authorization| {
+                authorization.pool == pool && !members.contains(&authorization.target)
+            })
+            .copied()
+            .collect()
+    }
+
+    fn set_pool_members(&mut self, pool: ResourceId, members: BTreeSet<ClientId>) {
+        if !self.device_pool_resources.contains_key(&pool) {
+            tracing::error!(%pool, "Unknown device pool");
+            return;
+        }
+
+        for authorization in self.peer_authorizations_revoked_by(pool, &members) {
+            self.peer_policy_authorizations.remove(&authorization);
+        }
+        self.pool_members.insert(pool, PoolMembers::Listed(members));
+    }
+
+    pub(crate) fn all_resources(&self) -> Vec<client::Resource> {
+        self.cidr_resources
+            .values()
+            .cloned()
+            .map(client::Resource::Cidr)
+            .chain(
+                self.dns_resources
+                    .values()
+                    .cloned()
+                    .map(client::Resource::Dns),
+            )
+            .chain(
+                self.device_pool_resources
+                    .values()
+                    .cloned()
+                    .map(client::Resource::DevicePool),
+            )
+            .chain(iter::once(client::Resource::Internet(
+                self.internet_resource.clone(),
+            )))
+            .collect()
+    }
+
+    pub(crate) fn regular_sites(&self) -> &[Site] {
+        &self.regular_sites
+    }
+
+    pub(crate) fn dns_resources(&self) -> impl Iterator<Item = &client::DnsResource> {
+        self.dns_resources.values()
+    }
+
+    pub(crate) fn search_domain(&self) -> Option<DomainName> {
+        self.search_domain.clone()
+    }
+
+    pub(crate) fn upstream_do53(&self) -> &[UpstreamDo53] {
+        &self.upstream_do53
+    }
+
+    pub(crate) fn upstream_doh(&self) -> &[UpstreamDoH] {
+        &self.upstream_doh
+    }
+
+    pub(crate) fn pick_resource(&self, candidates: &[ResourceId]) -> Option<ResourceId> {
+        select_by_index(candidates, self.resource_selector).copied()
+    }
+
+    /// Authorizes `client` to reach `resource`, naming the Gateway that serves it.
+    ///
+    /// Like the portal, restricts the choice to the Client's preferred Gateways if any of them
+    /// serve the resource's site and load-balances across the site otherwise.
+    pub(crate) fn request_resource_access(
+        &mut self,
+        client: ClientId,
+        resource: ResourceId,
+        connected_gateway_ids: Vec<GatewayId>,
+    ) -> (GatewayId, SiteId) {
+        let site_id = *self
+            .sites_by_resource
+            .get(&resource)
+            .expect("resource to be known");
+
+        let preferred = self.gateways_by_site[&site_id]
+            .iter()
+            .map(|(gateway, _, _)| *gateway)
+            .filter(|gateway| connected_gateway_ids.contains(gateway))
+            .collect::<SmallVec<[_; 3]>>();
+        let gateway = match select_by_index(&preferred, self.gateway_selector) {
+            Some(gateway) => *gateway,
+            None => {
+                let gateway = self.load_balanced_gateway(client, site_id);
+                *self
+                    .load_balanced_requests
+                    .entry((client, site_id))
+                    .or_default() += 1;
+
+                gateway
+            }
+        };
+
+        self.gateway_policy_authorizations.insert(
+            (client, resource),
+            GatewayAuthorization {
+                gateway,
+                revoked: false,
+            },
+        );
+
+        (gateway, site_id)
+    }
+
+    /// Answers `node`'s request for relays with every relay it did not exclude.
+    pub(crate) fn request_relays<'a>(
+        &mut self,
+        node: ClientOrGatewayId,
+        excluded_relay_ids: &[RelayId],
+        relays: &'a BTreeMap<RelayId, Host<SimRelay>>,
+        now: Instant,
+    ) -> Vec<(&'a RelayId, &'a Host<SimRelay>)> {
+        let relays = relays
+            .iter()
+            .filter(|(id, _)| !excluded_relay_ids.contains(id))
+            .collect::<Vec<_>>();
+
+        if !relays.is_empty() {
+            self.relay_handouts.entry(node).or_default().push(now);
+        }
+
+        relays
+    }
+
+    pub(crate) fn relay_handouts(&self) -> &BTreeMap<ClientOrGatewayId, Vec<Instant>> {
+        &self.relay_handouts
+    }
+
+    pub(crate) fn map_client_resource_to_gateway_resource(
+        &self,
+        resource_id: ResourceId,
+    ) -> gateway::ResourceDescription {
+        let cidr_resource = self.cidr_resources.iter().find_map(|(_, r)| {
+            (r.id == resource_id).then_some(gateway::ResourceDescription::Cidr(
+                gateway::ResourceDescriptionCidr {
+                    id: r.id,
+                    address: r.address,
+                    name: r.name.clone(),
+                    filters: r.filters.clone(),
+                },
+            ))
+        });
+        let dns_resource = self.dns_resources.get(&resource_id).map(|r| {
+            gateway::ResourceDescription::Dns(gateway::ResourceDescriptionDns {
+                id: r.id,
+                name: r.name.clone(),
+                filters: r.filters.clone(),
+                address: r.address.clone(),
+            })
+        });
+        let internet_resource = Some(gateway::ResourceDescription::Internet(
+            gateway::ResourceDescriptionInternet {
+                id: self.internet_resource.id,
+            },
+        ));
+
+        cidr_resource
+            .or(dns_resource)
+            .or(internet_resource)
+            .expect("resource to be a known CIDR, DNS or Internet resource")
+    }
+
+    /// The Gateway the portal hands `client` for `site` when the Client prefers none of its Gateways.
+    ///
+    /// Each such request moves on to the site's next Gateway, standing in for the portal's
+    /// random choice.
+    pub(crate) fn load_balanced_gateway(&self, client: ClientId, site: SiteId) -> GatewayId {
+        let requests = self
+            .load_balanced_requests
+            .get(&(client, site))
+            .copied()
+            .unwrap_or_default();
+        let (gateway, _, _) = select_by_index(
+            &self.gateways_by_site[&site],
+            self.gateway_selector.wrapping_add(requests),
+        )
+        .expect("site to have a gateway");
+
+        *gateway
+    }
+
+    pub(crate) fn site_for_resource(&self, rid: ResourceId) -> Option<SiteId> {
+        self.sites_by_resource.get(&rid).copied()
+    }
+
+    /// The Gateway that `client` was last authorized to reach `resource` through.
+    pub(crate) fn authorized_gateway(
+        &self,
+        client: ClientId,
+        resource: ResourceId,
+    ) -> Option<GatewayId> {
+        self.gateway_policy_authorizations
+            .get(&(client, resource))
+            .map(|authorization| authorization.gateway)
+    }
+
+    /// The Gateways that any Client was authorized to reach `resource` through.
+    pub(crate) fn gateways_authorized_for(&self, resource: ResourceId) -> BTreeSet<GatewayId> {
+        self.gateway_policy_authorizations
+            .iter()
+            .filter(|((_, candidate), _)| *candidate == resource)
+            .map(|(_, authorization)| authorization.gateway)
+            .collect()
+    }
+
+    pub(crate) fn gateway_by_ip(&self, ip: IpAddr) -> Option<GatewayId> {
+        self.gateways_by_site
+            .values()
+            .flatten()
+            .find(|(_, ipv4_addr, ipv6_addr)| *ipv4_addr == ip || *ipv6_addr == ip)
+            .map(|(gid, _, _)| *gid)
+    }
+
+    fn replace_resource(&mut self, new_resource: client::Resource) {
+        let id = new_resource.id();
+
+        self.cidr_resources.remove(&id);
+        self.dns_resources.remove(&id);
+        self.device_pool_resources.remove(&id);
+        self.sites_by_resource.remove(&id);
+
+        match new_resource {
+            client::Resource::Cidr(resource) => {
+                let site = resource
+                    .sites
+                    .iter()
+                    .exactly_one()
+                    .expect("only single-site resources");
+                self.sites_by_resource.insert(id, site.id);
+                self.cidr_resources.insert(id, resource);
+            }
+            client::Resource::Dns(resource) => {
+                let site = resource
+                    .sites
+                    .iter()
+                    .exactly_one()
+                    .expect("only single-site resources");
+                self.sites_by_resource.insert(id, site.id);
+                self.dns_resources.insert(id, resource);
+            }
+            client::Resource::DevicePool(resource) => {
+                // A resource turned into a pool admits everyone until its members change.
+                self.pool_members
+                    .entry(id)
+                    .or_insert(PoolMembers::AllClients);
+                self.device_pool_resources.insert(id, resource);
+            }
+            client::Resource::Internet(_) => {
+                unreachable!("the Portal API does not allow editing the Internet Resource")
+            }
+        }
+
+        if !self.device_pool_resources.contains_key(&id) {
+            self.pool_members.remove(&id);
+        }
+    }
+
+    /// The filters of a device pool.
+    pub(crate) fn device_pool_filters(
+        &self,
+        pool_id: ResourceId,
+    ) -> Option<Vec<tunnel_proto::messages::Filter>> {
+        Some(self.device_pool_resources.get(&pool_id)?.filters.clone())
+    }
+}
+
+/// The label a pool is browsed at under the device domain.
+///
+/// The portal derives it from the pool's name; generated names already are labels.
+fn pool_label(pool: &DevicePoolResource) -> &str {
+    &pool.name
+}
+
+fn device_name(label: &str) -> DomainName {
+    format!("{label}.{}", dns::DEVICE_DOMAIN).parse().unwrap()
+}
+
+/// Picks an element from a slice by index (`index % len`), or `None` if empty.
+///
+fn select_by_index<T>(values: &[T], index: u32) -> Option<&T> {
+    let len = values.len();
+    (len > 0).then(|| &values[index as usize % len])
+}

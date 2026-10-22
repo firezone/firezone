@@ -10,6 +10,7 @@
   --color-brand-light: var(--brand-secondary);
   --color-brand-subtle: var(--brand-tertiary);
   --color-brand-muted: var(--brand-muted);
+  --color-brand-strong: var(--brand-strong);
 
   /* ACCENT */
   --color-accent: var(--accent);
@@ -17,13 +18,16 @@
   --color-accent-light: var(--accent-secondary);
   --color-accent-subtle: var(--accent-tertiary);
   --color-accent-muted: var(--accent-muted);
+  --color-accent-strong: var(--accent-strong);
+  --color-accent-wash: var(--accent-wash);
 
   /* TEXT */
   --color-heading: var(--text-primary);
   --color-body: var(--text-secondary);
   --color-subtle: var(--text-tertiary);
-  --color-muted: var(--text-muted);
+  --color-disabled: var(--text-disabled);
   --color-inverse: var(--text-inverse);
+  --color-link: var(--link);
 
   /* BACKGROUND */
   --color-page: var(--canvas);
@@ -51,6 +55,12 @@
   --color-neutral-status: var(--neutral-status);
   --color-neutral-status-light: var(--neutral-status-light);
 
+  /* TOASTS */
+  --color-toast-success: var(--toast-bg-success);
+  --color-toast-info: var(--toast-bg-info);
+  --color-toast-warn: var(--toast-bg-warn);
+  --color-toast-error: var(--toast-bg-error);
+
   /* CONTROLS */
   --color-input: var(--control-bg);
   --color-input-border: var(--control-border);
@@ -64,9 +74,28 @@
   --color-badge-cidr-text: var(--badge-cidr-text);
   --color-badge-device-pool: var(--badge-device-pool-bg);
   --color-badge-device-pool-text: var(--badge-device-pool-text);
+  --color-badge-accent: var(--badge-accent-bg);
+  --color-badge-admin: var(--badge-admin-bg);
+  --color-badge-accent-text: var(--badge-accent-text);
 
   /* ICONS */
   --color-icon: var(--icon-bg);
+
+  /* SIDE NAVBAR */
+  --color-brand-wash: var(--brand-wash);
+
+  /* FILTERS */
+  --color-filter-active: var(--filter-active-bg);
+  --color-filter-text: var(--filter-active-text);
+
+  /* SHOWCASE */
+  --color-showcase: var(--showcase-bg);
+  --color-showcase-text: var(--showcase-text);
+  --color-showcase-icon: var(--showcase-icon);
+  --color-showcase-highlight: var(--showcase-highlight);
+  --color-showcase-glow: var(--showcase-glow);
+  --color-showcase-glow-warm: var(--showcase-glow-warm);
+  --color-showcase-card-border: var(--showcase-card-border);
 }
 
 /* Start: This may not be needed after UI refactor */
@@ -103,10 +132,41 @@ html {
 .dot-grid {
   background-image: radial-gradient(
     circle,
-    rgba(255, 255, 255, 0.18) 1px,
+    color-mix(in oklch, var(--showcase-text) 18%, transparent) 1px,
     transparent 1px
   );
   background-size: 24px 24px;
+}
+
+.auth-showcase {
+  background:
+    radial-gradient(
+      520px 420px at 110% -10%,
+      color-mix(in oklch, var(--showcase-glow) 55%, transparent),
+      transparent 70%
+    ),
+    radial-gradient(
+      420px 320px at -20% 115%,
+      color-mix(in oklch, var(--showcase-glow-warm) 22%, transparent),
+      transparent 70%
+    ),
+    linear-gradient(165deg, var(--showcase-bg) 0%, var(--showcase-bg-deep) 70%);
+}
+
+.auth-showcase-dots {
+  background-image: radial-gradient(
+    circle,
+    color-mix(in oklch, var(--showcase-icon) 14%, transparent) 1px,
+    transparent 1px
+  );
+  background-size: 24px 24px;
+  mask-image: linear-gradient(
+    180deg,
+    transparent,
+    #000 40%,
+    #000 70%,
+    transparent
+  );
 }
 
 .error-radial-fade {
@@ -177,23 +237,26 @@ html {
 
   /* Text */
   --text-primary: oklch(20.77% 0.0398 265.75);
-  --text-secondary: oklch(44.55% 0.0374 257.28);
-  --text-tertiary: oklch(59.6% 0.0404 252.26);
-  --text-muted: oklch(75.17% 0.019 245.46);
+  --text-secondary: oklch(37.23% 0.0374 257.28);
+  --text-tertiary: oklch(53.7% 0.0404 252.26);
+  --text-disabled: oklch(75.17% 0.019 245.46);
   --text-inverse: oklch(98.42% 0.0034 247.86);
 
+  /* Links — brand violet, lightened for dark surfaces */
+  --link: oklch(48.06% 0.2976 276);
+
   /* Status */
-  --success: oklch(62.71% 0.1699 149.21);
+  --success: oklch(48.1% 0.1699 149.21);
   --success-light: oklch(62.71% 0.1699 149.21 / 10%);
-  --info: oklch(54.61% 0.2152 262.88);
+  --info: oklch(52.5% 0.2152 262.88);
   --info-light: oklch(54.61% 0.2152 262.88 / 8%);
-  --warning: oklch(66.58% 0.1574 58.32);
+  --warning: oklch(52.3% 0.1574 58.32);
   --warning-light: oklch(66.58% 0.1574 58.32 / 10%);
-  --neutral-status: oklch(55.44% 0.0407 257.42);
+  --neutral-status: oklch(50.5% 0.0407 257.42);
   --neutral-status-light: oklch(55.44% 0.0407 257.42 / 12%);
-  --danger: oklch(57.71% 0.2152 27.33);
+  --danger: oklch(52.9% 0.2152 27.33);
   --danger-light: oklch(57.71% 0.2152 27.33 / 10%);
-  --error: oklch(57.71% 0.2152 27.33);
+  --error: oklch(52.9% 0.2152 27.33);
   --error-light: oklch(93.56% 0.0309 17.72);
 
   /* Toast backgrounds (opaque — used when flash floats over page content) */
@@ -213,12 +276,38 @@ html {
   --badge-ip-bg: oklch(98.19% 0.0181 155.83);
   --badge-ip-text: oklch(52.73% 0.1371 150.07);
   --badge-cidr-bg: oklch(97.96% 0.0158 73.68);
-  --badge-cidr-text: oklch(58.23% 0.1574 48.48);
+  --badge-cidr-text: oklch(56.8% 0.1574 48.48);
   --badge-device-pool-bg: oklch(98.36% 0.0142 180.72);
   --badge-device-pool-text: oklch(51.09% 0.0861 186.39);
+  --badge-accent-bg: oklch(56.76% 0.2532 287.59);
+  --badge-accent-text: oklch(100% 0 0);
+  --badge-admin-bg: oklch(77.69% 0.154 56.87);
 
   /* Icons */
   --icon-bg: oklch(98.42% 0.0034 247.86);
+
+  /* Side Navbar */
+  --brand-wash: oklch(71.74% 0.192 48.75 / 20%);
+
+  /* Tinted icon chips: a wash background with a strong foreground that reads in both themes */
+  --brand-strong: oklch(58.23% 0.1574 48.48);
+  --accent-strong: oklch(48.06% 0.2976 276);
+  --accent-wash: oklch(97.9% 0.193 276);
+
+  /* Filters */
+  --filter-active-bg: oklch(54.02% 0.02 260);
+  --filter-active-text: oklch(98.42% 0.0034 247.86);
+
+  /* Showcase — stays dark in both themes, so its content stays light.
+     electric-violet-800 → 900 with an electric-violet-500 and heat-wave-500 glow */
+  --showcase-bg: oklch(24.93% 0.1391 292.32);
+  --showcase-bg-deep: oklch(17.29% 0.0943 296.22);
+  --showcase-text: oklch(100% 0 0);
+  --showcase-icon: oklch(84.78% 0.0855 296.56);
+  --showcase-highlight: oklch(77.69% 0.154 56.87);
+  --showcase-glow: oklch(48.06% 0.2976 276);
+  --showcase-glow-warm: oklch(71.74% 0.192 48.75);
+  --showcase-card-border: transparent;
 }
 
 /* Theme toggle: show only the icon/checkmark matching the active theme */
@@ -268,10 +357,13 @@ html[data-theme="system"] .theme-check-system {
 
   /* Text */
   --text-primary: oklch(96.83% 0.0069 247.9);
-  --text-secondary: oklch(71.07% 0.0351 256.79);
-  --text-tertiary: oklch(49.17% 0.045 251.05);
-  --text-muted: oklch(36.07% 0.0404 250.33);
+  --text-secondary: oklch(81.02% 0.0351 256.79);
+  --text-tertiary: oklch(66.2% 0.045 251.05);
+  --text-disabled: oklch(58% 0.0404 250.33);
   --text-inverse: oklch(20.77% 0.0398 265.75);
+
+  /* Links */
+  --link: oklch(66.2% 0.16 276);
 
   /* Brand */
   --brand: oklch(77.69% 0.154 56.87);
@@ -281,11 +373,15 @@ html[data-theme="system"] .theme-check-system {
   --brand-hover: oklch(82.64% 0.1259 64.15);
 
   /* Status */
+  --success: oklch(69.1% 0.1699 149.21);
   --success-light: oklch(80.03% 0.1821 151.71 / 10%);
   --info: oklch(71.37% 0.1434 254.62);
   --info-light: oklch(71.37% 0.1434 254.62 / 10%);
+  --warning: oklch(72% 0.1574 58.32);
   --warning-light: oklch(83.69% 0.1644 84.43 / 10%);
+  --neutral-status: oklch(69.6% 0.0407 257.42);
   --neutral-status-light: oklch(55.44% 0.0407 257.42 / 16%);
+  --danger: oklch(71.5% 0.2152 27.33);
   --danger-light: oklch(57.71% 0.2152 27.33 / 12%);
   --error: oklch(71.06% 0.1661 22.22);
   --error-light: oklch(71.06% 0.1661 22.22 / 10%);
@@ -301,6 +397,231 @@ html[data-theme="system"] .theme-check-system {
   --control-border: oklch(96.83% 0.0069 247.9 / 12%);
   --control-focus: oklch(77.69% 0.154 56.87);
 
+  /* Badge variants — translucent tints, not the light theme's near-white fills */
+  --badge-dns-bg: oklch(70% 0.2172 264.38 / 15%);
+  --badge-dns-text: oklch(74.8% 0.2172 264.38);
+  --badge-ip-bg: oklch(70% 0.1371 150.07 / 15%);
+  --badge-ip-text: oklch(70.6% 0.1371 150.07);
+  --badge-cidr-bg: oklch(70% 0.1574 48.48 / 15%);
+  --badge-cidr-text: oklch(72.3% 0.1574 48.48);
+  --badge-device-pool-bg: oklch(70% 0.0861 186.39 / 15%);
+  --badge-device-pool-text: oklch(71.1% 0.0861 186.39);
+  --badge-accent-bg: oklch(93.52% 0.0356 298.01);
+  --badge-accent-text: oklch(20.77% 0.0398 265.75);
+  --badge-admin-bg: oklch(77.69% 0.1549 56.87);
+
   /* Icons */
   --icon-bg: oklch(92.88% 0.0126 255.51);
+
+  /* Side Navbar */
+  --brand-wash: oklch(77.69% 0.154 56.87 / 25%);
+
+  /* Tinted icon chips */
+  --brand-strong: oklch(77.69% 0.154 56.87);
+  --accent-strong: oklch(66.2% 0.16 276);
+  --accent-wash: oklch(48.06% 0.2976 276 / 20%);
+
+  /* Filters */
+  --filter-active-bg: oklch(55.44% 0.0407 257.42 / 40%);
+  --filter-active-text: oklch(98.42% 0.0034 247.86);
+
+  /* Showcase — the surface card needs an edge against the violet in dark mode */
+  --showcase-card-border: oklch(69.97% 0.1744 293.46 / 22%);
+}
+
+/* ----------------------------------------------------------------------------
+   JSON diff renderer (PortalWeb.Logs.JSONDiff)
+   ----------------------------------------------------------------------------
+   Styles the HTML emitted by `lib/portal_web/live/logs/json_diff.ex`. The
+   structural punctuation (brackets, commas, "key: ") is generated by CSS
+   `:before` / `:after` content so the Elixir template only emits the data.
+   -------------------------------------------------------------------------- */
+
+.json-diff {
+  font-family:
+    "Roboto Mono Variable", "Roboto Mono", ui-monospace, Menlo, Monaco,
+    Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.65;
+  color: var(--text-primary);
+  padding: 16px 20px;
+}
+
+.json-diff .json-diff-empty {
+  font-family: "Roboto Variable", "Roboto", system-ui, sans-serif;
+  font-size: 13px;
+  color: var(--text-tertiary);
+  font-style: italic;
+  padding: 8px 0;
+}
+
+.json-diff .json-diff-delta {
+  font-family: inherit;
+  font-size: inherit;
+  margin: 0;
+  padding: 0 0 0 12px;
+  display: inline-block;
+}
+
+.json-diff .json-diff-delta pre {
+  font-family: inherit;
+  font-size: inherit;
+  margin: 0;
+  padding: 0;
+  display: inline-block;
+  white-space: pre;
+}
+
+.json-diff ul.json-diff-delta {
+  list-style-type: none;
+  padding: 0 0 0 20px;
+  margin: 0;
+}
+
+.json-diff .json-diff-delta ul {
+  list-style-type: none;
+  padding: 0 0 0 20px;
+  margin: 0;
+}
+
+/* structural punctuation (brackets, commas, "key: ") */
+.json-diff .json-diff-value {
+  display: inline-block;
+}
+
+.json-diff .json-diff-property-name {
+  display: inline-block;
+  padding-right: 5px;
+  vertical-align: top;
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.json-diff .json-diff-property-name:after {
+  content: ": ";
+  color: var(--text-tertiary);
+  font-weight: 400;
+}
+
+.json-diff .json-diff-child-node-type-array > .json-diff-property-name:after {
+  content: ": [";
+}
+.json-diff .json-diff-child-node-type-array:after {
+  content: "],";
+  color: var(--text-tertiary);
+}
+.json-diff div.json-diff-child-node-type-array:before {
+  content: "[";
+  color: var(--text-tertiary);
+}
+.json-diff div.json-diff-child-node-type-array:after {
+  content: "]";
+  color: var(--text-tertiary);
+}
+
+.json-diff .json-diff-child-node-type-object > .json-diff-property-name:after {
+  content: ": {";
+}
+.json-diff .json-diff-child-node-type-object:after {
+  content: "},";
+  color: var(--text-tertiary);
+}
+.json-diff div.json-diff-child-node-type-object:before {
+  content: "{";
+  color: var(--text-tertiary);
+}
+.json-diff div.json-diff-child-node-type-object:after {
+  content: "}";
+  color: var(--text-tertiary);
+}
+
+.json-diff .json-diff-value pre:after {
+  content: ",";
+  color: var(--text-tertiary);
+}
+.json-diff li:last-child > .json-diff-value pre:after,
+.json-diff .json-diff-modified > .json-diff-left-value pre:after {
+  content: "";
+}
+
+/* word-level text diff — multi-line values drop below the key on their
+   own block so they don't fight the inline-block layout used elsewhere. */
+.json-diff li.json-diff-textdiff > .json-diff-value {
+  display: block;
+  margin: 2px 0 0 1em;
+}
+
+.json-diff .json-diff-textdiff-body {
+  display: block;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--text-primary);
+}
+
+.json-diff .json-diff-textdiff-context {
+  color: var(--text-primary);
+}
+
+/* added */
+.json-diff .json-diff-added .json-diff-property-name,
+.json-diff .json-diff-added .json-diff-value pre,
+.json-diff .json-diff-modified .json-diff-right-value pre,
+.json-diff .json-diff-textdiff-added {
+  background: rgba(34, 197, 94, 0.18);
+  color: #15803d;
+  border-radius: 3px;
+}
+
+.dark .json-diff .json-diff-added .json-diff-property-name,
+.dark .json-diff .json-diff-added .json-diff-value pre,
+.dark .json-diff .json-diff-modified .json-diff-right-value pre,
+.dark .json-diff .json-diff-textdiff-added {
+  background: rgba(34, 197, 94, 0.22);
+  color: #4ade80;
+}
+
+/* deleted */
+.json-diff .json-diff-deleted .json-diff-property-name,
+.json-diff .json-diff-deleted pre,
+.json-diff .json-diff-modified .json-diff-left-value pre,
+.json-diff .json-diff-textdiff-deleted {
+  background: rgba(239, 68, 68, 0.16);
+  color: #b91c1c;
+  border-radius: 3px;
+  text-decoration: line-through;
+  text-decoration-color: rgba(185, 28, 28, 0.5);
+}
+
+.dark .json-diff .json-diff-deleted .json-diff-property-name,
+.dark .json-diff .json-diff-deleted pre,
+.dark .json-diff .json-diff-modified .json-diff-left-value pre,
+.dark .json-diff .json-diff-textdiff-deleted {
+  background: rgba(239, 68, 68, 0.22);
+  color: #fca5a5;
+  text-decoration-color: rgba(252, 165, 165, 0.6);
+}
+
+/* modified: show before -> after */
+.json-diff .json-diff-modified .json-diff-value {
+  display: inline-block;
+}
+.json-diff
+  .json-diff-modified
+  .json-diff-left-value
+  + .json-diff-right-value:before {
+  content: "→";
+  color: var(--text-secondary);
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1;
+  vertical-align: -2px;
+  margin: 0 4px 0 2px;
+}
+
+/* unchanged */
+.json-diff .json-diff-unchanged {
+  color: var(--text-tertiary);
+}
+.json-diff .json-diff-unchanged .json-diff-value pre {
+  color: var(--text-tertiary);
 }

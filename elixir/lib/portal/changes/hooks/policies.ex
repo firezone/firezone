@@ -15,8 +15,7 @@ defmodule Portal.Changes.Hooks.Policies do
   @impl true
 
   # Disable - process as delete
-  def on_update(lsn, %{"disabled_at" => nil} = old_data, %{"disabled_at" => disabled_at})
-      when not is_nil(disabled_at) do
+  def on_update(lsn, %{"is_disabled" => false} = old_data, %{"is_disabled" => true}) do
     # TODO: Potentially revisit whether this should be handled here
     #       or handled closer to where the PubSub message is received.
     policy = struct_from_params(Policy, old_data)
@@ -26,8 +25,7 @@ defmodule Portal.Changes.Hooks.Policies do
   end
 
   # Enable - process as insert
-  def on_update(lsn, %{"disabled_at" => disabled_at}, %{"disabled_at" => nil} = data)
-      when not is_nil(disabled_at) do
+  def on_update(lsn, %{"is_disabled" => true}, %{"is_disabled" => false} = data) do
     on_insert(lsn, data)
   end
 
@@ -53,9 +51,17 @@ defmodule Portal.Changes.Hooks.Policies do
     # This is a special case - we need to delete related policy_authorizations because connectivity has changed
     # The Gateway PID will receive policy_authorization deletion messages and process them to potentially reject
     # access. The client PID (if connected) will toggle the resource deleted/created.
+    #
+    # A flow_log_uploads_enabled flip is breaking too, but for a different
+    # reason: ingest tokens snapshot the flag at authorization time and cannot
+    # be revoked, so the only way to apply the new value is to expire the
+    # policy's authorizations and let clients re-create their flows with
+    # freshly minted tokens.
     if old_policy.conditions != policy.conditions or
+         old_policy.postures != policy.postures or
          old_policy.group_id != policy.group_id or
-         old_policy.resource_id != policy.resource_id do
+         old_policy.resource_id != policy.resource_id or
+         old_policy.flow_log_uploads_enabled != policy.flow_log_uploads_enabled do
       Database.delete_policy_authorizations_for_policy(old_policy)
     end
 

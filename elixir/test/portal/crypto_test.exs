@@ -10,7 +10,7 @@ defmodule Portal.CryptoTest do
       client = client_fixture(account: account)
       client_public_key = Portal.DeviceFixtures.generate_public_key()
       gateway = gateway_fixture(account: account)
-      gateway_public_key = gateway.latest_session.public_key
+      gateway_public_key = gateway.public_key
 
       %{
         account: account,
@@ -62,7 +62,7 @@ defmodule Portal.CryptoTest do
       assert other_psk != psk1
 
       other_gateway = gateway_fixture(account: account)
-      other_gateway_public_key = other_gateway.latest_session.public_key
+      other_gateway_public_key = other_gateway.public_key
 
       other_psk =
         psk(
@@ -134,7 +134,7 @@ defmodule Portal.CryptoTest do
           client,
           client_public_key,
           gateway1,
-          gateway1.latest_session.public_key
+          gateway1.public_key
         )
 
       psk2 =
@@ -142,7 +142,7 @@ defmodule Portal.CryptoTest do
           client,
           client_public_key,
           gateway2,
-          gateway2.latest_session.public_key
+          gateway2.public_key
         )
 
       refute psk1 == psk2

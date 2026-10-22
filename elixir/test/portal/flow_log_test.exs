@@ -8,17 +8,18 @@ defmodule Portal.FlowLogTest do
     Map.merge(
       %{
         account_id: Ecto.UUID.generate(),
-        event_id: Portal.Types.EventId.build_flow_log(),
-        device_id: Ecto.UUID.generate(),
+        log_id: Portal.Types.LogId.build_flow_log(),
+        initiator_device_id: Ecto.UUID.generate(),
+        responder_device_id: Ecto.UUID.generate(),
         role: :initiator,
         policy_authorization_id: Ecto.UUID.generate(),
         policy_id: Ecto.UUID.generate(),
-        auth_provider_id: Ecto.UUID.generate(),
+        initiator_auth_provider_id: Ecto.UUID.generate(),
         resource_id: Ecto.UUID.generate(),
         resource_name: "prod-db",
         resource_address: "10.0.0.5",
-        actor_id: Ecto.UUID.generate(),
-        actor_name: "Some User",
+        initiator_actor_id: Ecto.UUID.generate(),
+        initiator_actor_name: "Some User",
         authorized_at: ~U[2026-03-20 09:59:00.000000Z],
         authorization_expires_at: ~U[2026-03-20 19:59:00.000000Z],
         protocol: :tcp,
@@ -29,10 +30,14 @@ defmodule Portal.FlowLogTest do
         flow_start: ~U[2026-03-20 10:00:00.000000Z],
         flow_end: ~U[2026-03-20 10:05:00.000000Z],
         last_packet: ~U[2026-03-20 10:04:59.000000Z],
-        outer_src_ip: %Postgrex.INET{address: {198, 51, 100, 1}},
-        outer_src_port: 51_820,
-        outer_dst_ip: %Postgrex.INET{address: {203, 0, 113, 7}},
-        outer_dst_port: 51_820,
+        outers: [
+          %{
+            src_ip: "198.51.100.1",
+            src_port: 51_820,
+            dst_ip: "203.0.113.7",
+            dst_port: 51_820
+          }
+        ],
         rx_packets: 10,
         tx_packets: 12,
         rx_bytes: 1024,
@@ -44,10 +49,14 @@ defmodule Portal.FlowLogTest do
   end
 
   defp changeset(overrides \\ %{}) do
-    attrs = valid_attrs(overrides)
+    overrides
+    |> valid_attrs()
+    |> changeset_from_attrs()
+  end
 
+  defp changeset_from_attrs(attrs) do
     %FlowLog{}
-    |> cast(attrs, Map.keys(attrs))
+    |> cast(attrs, Map.keys(attrs) -- [:outers])
     |> FlowLog.changeset()
   end
 
@@ -61,7 +70,13 @@ defmodule Portal.FlowLogTest do
     end
 
     test "valid without flow_end (an open flow)" do
-      assert changeset(%{flow_end: nil}).valid?
+      cs =
+        %{flow_end: nil}
+        |> valid_attrs()
+        |> Map.delete(:outers)
+        |> changeset_from_attrs()
+
+      assert cs.valid?
     end
 
     test "invalid without required fields" do
@@ -74,21 +89,20 @@ defmodule Portal.FlowLogTest do
 
       for field <- [
             :account_id,
-            :device_id,
+            :initiator_device_id,
+            :responder_device_id,
             :role,
             :policy_authorization_id,
             :policy_id,
             :resource_id,
             :resource_name,
-            :actor_id,
-            :actor_name,
+            :initiator_actor_id,
+            :initiator_actor_name,
             :authorized_at,
             :authorization_expires_at,
             :protocol,
             :inner_src_ip,
             :inner_dst_ip,
-            :outer_src_ip,
-            :outer_dst_ip,
             :flow_start
           ] do
         assert Map.has_key?(errors_on(cs), field)
@@ -113,10 +127,68 @@ defmodule Portal.FlowLogTest do
       assert Map.has_key?(errors_on(cs), :inner_dst_port)
     end
 
-    test "invalid with non-UUID device_id" do
-      cs = changeset(%{device_id: "not-a-uuid"})
+    test "preserves outer path order and allows absent source endpoints" do
+      outers = [
+        %{dst_ip: "203.0.113.7", dst_port: 51_820},
+        %{src_ip: nil, src_port: nil, dst_ip: "203.0.113.9", dst_port: 53},
+        %{src_ip: "198.51.100.2", src_port: 42_000, dst_ip: "203.0.113.8", dst_port: 443}
+      ]
+
+      cs = changeset(%{outers: outers})
+
+      assert cs.valid?
+      assert Enum.map(get_field(cs, :outers), & &1.dst_ip) == [
+               "203.0.113.7",
+               "203.0.113.9",
+               "203.0.113.8"
+             ]
+    end
+
+    test "invalid with an empty outer path array" do
+      cs = changeset(%{outers: []})
       refute cs.valid?
-      assert Map.has_key?(errors_on(cs), :device_id)
+      assert Map.has_key?(errors_on(cs), :outers)
+    end
+
+    test "invalid with a partially specified outer source endpoint" do
+      for outer <- [
+            %{src_ip: "198.51.100.2", src_port: nil, dst_ip: "203.0.113.8", dst_port: 443},
+            %{src_ip: nil, src_port: 42_000, dst_ip: "203.0.113.8", dst_port: 443},
+            %{src_port: 42_000, dst_ip: "203.0.113.8", dst_port: 443},
+            %{src_ip: "198.51.100.2", dst_ip: "203.0.113.8", dst_port: 443}
+          ] do
+        cs = changeset(%{outers: [outer]})
+
+        refute cs.valid?
+        assert [%{} = outer_errors] = errors_on(cs).outers
+        assert Map.has_key?(outer_errors, :src_ip) or Map.has_key?(outer_errors, :src_port)
+      end
+    end
+
+    test "valid with outer paths on an open flow" do
+      cs = changeset(%{flow_end: nil})
+
+      assert cs.valid?
+      assert [%FlowLog.Outer{dst_ip: "203.0.113.7"}] = get_field(cs, :outers)
+    end
+
+    test "invalid with malformed outer endpoints" do
+      cs =
+        changeset(%{
+          outers: [
+            %{src_ip: "not-an-ip", src_port: 70_000, dst_ip: nil, dst_port: nil}
+          ]
+        })
+
+      refute cs.valid?
+      assert %{outers: [%{src_ip: [_], src_port: [_], dst_ip: [_], dst_port: [_]}]} =
+               errors_on(cs)
+    end
+
+    test "invalid with non-UUID initiator_device_id" do
+      cs = changeset(%{initiator_device_id: "not-a-uuid"})
+      refute cs.valid?
+      assert Map.has_key?(errors_on(cs), :initiator_device_id)
     end
 
     test "valid with a skewed flow_start before authorized_at" do

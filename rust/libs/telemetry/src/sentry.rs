@@ -5,6 +5,7 @@ use std::{
 };
 
 use ::sentry::transports::{RateLimiter, TokioTransportThread};
+use anyhow::Result;
 use bytes::Bytes;
 use http::{Method, Request, Response, StatusCode, header};
 
@@ -22,13 +23,17 @@ pub(crate) fn reset_client() {
     CLIENT.reset();
 }
 
+pub(crate) fn warmup_connection() {
+    ingest::RUNTIME.spawn(CLIENT.connect());
+}
+
 /// Builds the Sentry [`ClientOptions`] with our [`Factory`] transport and starts the SDK.
 pub(crate) fn init_sdk_client(
     dsn: String,
     environment: &'static str,
     release: &str,
 ) -> ClientInitGuard {
-    init((
+    let guard = init((
         dsn,
         ClientOptions {
             environment: Some(Cow::Borrowed(environment)),
@@ -47,13 +52,13 @@ pub(crate) fn init_sdk_client(
             enable_logs: true,
             enable_metrics: true,
             before_send_log: Some(Arc::new(|log| {
-                let log = crate::insert_user_account_slug_into_log(log);
+                let log = crate::insert_user_attributes_into_log(log);
                 let log = crate::append_tracing_fields_to_message(log);
 
                 Some(log)
             })),
             before_send_metric: Some(Arc::new(|metric| {
-                let metric = crate::insert_user_account_slug_into_metric(metric);
+                let metric = crate::insert_user_attributes_into_metric(metric);
                 let metric = crate::insert_feature_flags_into_metric(metric);
 
                 Some(metric)
@@ -61,7 +66,16 @@ pub(crate) fn init_sdk_client(
             transport: Some(Arc::new(Factory)),
             ..Default::default()
         },
-    ))
+    ));
+
+    // `init` binds the client to the calling thread's hub, which coincides with
+    // `Hub::main()` only on the first thread that ever used Sentry. This crate
+    // reads and configures `Hub::main()` throughout, so bind the client there
+    // explicitly to keep this function thread-agnostic; mobile clients call it
+    // from arbitrary dispatcher threads.
+    Hub::main().bind_client(Hub::current().client());
+
+    guard
 }
 
 /// Creates [`SentryTransport`]s for the Sentry SDK.
@@ -129,7 +143,7 @@ impl Transport for SentryTransport {
     }
 }
 
-fn build_request(url: &str, auth: &str, envelope: &Envelope) -> anyhow::Result<Request<Bytes>> {
+fn build_request(url: &str, auth: &str, envelope: &Envelope) -> Result<Request<Bytes>> {
     let mut body = Vec::new();
     envelope.to_writer(&mut body)?;
 

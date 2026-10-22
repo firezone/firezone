@@ -5,10 +5,10 @@ mod make_writer;
 mod tun;
 
 // mark:next-apple-version
-pub const RELEASE: &str = "connlib-apple@1.5.19";
+pub const RELEASE: &str = "connlib-apple@1.5.24";
 
 // mark:next-apple-version
-pub const VERSION: &str = "1.5.19";
+pub const VERSION: &str = "1.5.24";
 
 pub const COMPONENT: &str = "apple-client";
 
@@ -25,4 +25,4 @@ pub const MAX_PARTITION_TIME: Duration = Duration::from_secs(60 * 60 * 24);
 pub const DSN: Dsn = telemetry::APPLE_DSN;
 
 pub(crate) use make_writer::MakeWriter;
-pub(crate) use tun::Tun;
+pub(crate) use tun::{Tun, search_fd};

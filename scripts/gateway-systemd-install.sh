@@ -2,21 +2,19 @@
 
 set -euo pipefail
 
-hostname=$(hostname)
-FIREZONE_NAME=${FIREZONE_NAME:-$hostname}
 FIREZONE_ID=${FIREZONE_ID:-}
 FIREZONE_TOKEN=${FIREZONE_TOKEN:-}
 FIREZONE_API_URL=${FIREZONE_API_URL:-wss://api.firezone.dev}
 RUST_LOG=${RUST_LOG:-info}
 
 # mark:current-gateway-version
-GATEWAY_VERSION="1.5.2"
+GATEWAY_VERSION="1.6.3"
 # mark:gateway-x86_64-sha256
-GATEWAY_X86_64_SHA256="1f1d7e575a01e592d64aa93ea9c6025ee33e7b77dc9c507c18695600c1c41cc0"
+GATEWAY_X86_64_SHA256="c8e774118539c784b07d3b79217bf3a70913a5a6923ae185f44c0cb19f857cc6"
 # mark:gateway-aarch64-sha256
-GATEWAY_AARCH64_SHA256="0772158376371a16d773ecfc1e5cffc6c7f0b92418df6623d6aed61945dda82b"
+GATEWAY_AARCH64_SHA256="8f8ea894db3f4e2bbd8b79957f1075382e0863c220c82263563d0eb6d436bd1f"
 # mark:gateway-armv7-sha256
-GATEWAY_ARMV7_SHA256="57db065b1ac89e55c2d3be436164f1674130136419e242736ad9ddbf0b2b1fb1"
+GATEWAY_ARMV7_SHA256="7dce114a1b6035412289958a1b1a14f224d03700dc541a249a580f37d96c3988"
 
 # Optional environment variables to configure logging and tracing
 FIREZONE_OTLP_GRPC_ENDPOINT=${OTLP_GRPC_ENDPOINT:-}
@@ -42,9 +40,11 @@ if [ -z "$FIREZONE_ID" ]; then
     FIREZONE_ID=$(legacy_unit_environment FIREZONE_ID)
 fi
 
-if [ -z "$FIREZONE_ID" ]; then
-    echo "FIREZONE_ID is required"
-    exit 1
+# FIREZONE_ID is optional. Without one the Gateway generates an ID and keeps it in
+# its state directory, so only pin it in the unit when one was given or migrated.
+firezone_id_environment=""
+if [ -n "$FIREZONE_ID" ]; then
+    firezone_id_environment="Environment=\"FIREZONE_ID=$FIREZONE_ID\""
 fi
 
 if [ -z "$FIREZONE_TOKEN" ] && ! sudo test -s "$TOKEN_FILE"; then
@@ -106,10 +106,15 @@ Group=firezone
 PermissionsStartOnly=true
 SyslogIdentifier=firezone-gateway
 
+# Creates /var/lib/firezone before the service starts, owned by the service
+# user, and fixes up ownership if it already exists. The Gateway stores its
+# device ID and the flow-log spool there.
+StateDirectory=firezone
+StateDirectoryMode=0700
+
 LoadCredential=FIREZONE_TOKEN:$TOKEN_FILE
 
-Environment="FIREZONE_NAME=$FIREZONE_NAME"
-Environment="FIREZONE_ID=$FIREZONE_ID"
+$firezone_id_environment
 Environment="FIREZONE_API_URL=$FIREZONE_API_URL"
 Environment="RUST_LOG=$RUST_LOG"
 Environment="RUST_LOG_STYLE=never"
@@ -128,6 +133,9 @@ TimeoutStartSec=15s
 TimeoutStopSec=15s
 Restart=always
 RestartSec=7
+# 78 is \`EX_CONFIG\` from \`sysexits.h\`: the portal refused the token, so restarting
+# cannot help until an operator installs a new one.
+RestartPreventExitStatus=78
 
 #####################
 # HARDENING OPTIONS #

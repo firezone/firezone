@@ -155,12 +155,99 @@ mise tasks              # List all available tasks
 mise run <task>         # Run a task (e.g. mise run build)
 ```
 
-From the repository root (requires `export MISE_EXPERIMENTAL=1` for monorepo
-syntax):
+From the repository root:
 
 ```sh
-mise //swift/apple:<task>   # e.g. mise //swift/apple:build
+mise run //swift/apple:<task>   # e.g. mise run //swift/apple:build
 ```
+
+### Headless client
+
+`firezone` is the macOS Client run from a terminal. It is not a separate
+program: it is the app's own binary, reached through a symlink beside it at
+`Firezone.app/Contents/MacOS/firezone-cli`, and it picks the command line path
+when started under that name or as `firezone`. Being the same bundle is what
+lets it use the VPN configuration and system extension the app set up, which a
+second bundle could not do. macOS derives an app's bundle from the path its
+binary was launched through, and only `Contents/MacOS` counts, so any other
+symlink to the binary, inside the bundle or out, leaves the client without the
+app's identity. That is what `Contents/Resources/bin/firezone` is for: a wrapper
+that `exec`s the binary at its real path. It has a directory of its own so that
+only the CLI goes on the PATH, and the standalone `.pkg` adds that directory by
+writing `/etc/paths.d/firezone`. The `.dmg` and App Store builds are sandboxed
+and cannot write there, so add the directory yourself, either with
+
+```sh
+echo /Applications/Firezone.app/Contents/Resources/bin | sudo tee /etc/paths.d/firezone
+```
+
+or in your shell's rc file. `firezone-cli` in the same directory is the previous
+name, kept as a deprecated alias that prints a warning.
+
+The `.pkg` also writes shell completions, to
+`/usr/local/share/zsh/site-functions/_firezone`,
+`/usr/local/etc/bash_completion.d/firezone` and
+`/usr/local/share/fish/vendor_completions.d/firezone.fish`. `ArgumentParser`
+generates them, so `firezone --generate-completion-script <bash|zsh|fish>`
+produces the same thing for an install that came from somewhere else.
+
+For a development build, `mise run cli` finds the binary for you:
+
+```sh
+mise run cli -- --help
+mise run cli -- extension status
+mise run cli -- connect
+```
+
+`connect` brings the tunnel up. It returns once the portal has named the
+session, so a `status` straight afterwards has something definite to say, and
+leaves the tunnel running in the system extension, since it lives there rather
+than in this process. `connect --foreground` instead supervises the tunnel and
+stops it on exit, which is what a launchd service wants. `disconnect` takes the
+tunnel down again, and `sign-out` also drops the stored token. `status`, which
+is what plain `firezone` runs, asks the extension where things stand, waking it
+briefly if the tunnel is down, and repeats what it said: not connected,
+connecting, or signed in to an account as a user. Nothing is inferred from the
+extension failing to answer, and nothing is claimed about a stored token, since
+whether one still works is only known once it is tried. `resources list`, which
+is what plain `resources` runs, prints what the running tunnel can reach.
+`internet-resource enable` and `internet-resource disable` switch the Internet
+Resource, writing the choice to the shared VPN profile the way the app's own
+toggle does.
+
+It talks to the same system extension as the GUI and will not start without it.
+`extension status` reports whether that extension is installed and matches the
+build, and exits non-zero when it does not, so a setup script can check before
+going further. `extension install` brings it up to the build, and `connect` does
+the same by itself when it finds a version mismatch: macOS replaces an extension
+the user has already approved without asking again, and the CLI runs with the
+app's bundle identity, so it can ask for that replacement. Neither can do the
+first install, which needs a user to approve the extension in System Settings.
+Launch the app once to do that.
+
+These environment variables are read when the matching flag is absent:
+
+| Variable                 | Flag                          |
+| ------------------------ | ----------------------------- |
+| `FIREZONE_TOKEN`         | none, taken from the Keychain |
+| `FIREZONE_AUTH_BASE_URL` | `--auth-base-url`             |
+| `FIREZONE_LOG_FILTER`    | none                          |
+
+It never asks for a token at a prompt. The app is sandboxed, so it cannot turn
+terminal echo off, and a token typed at a prompt would stay in the scrollback.
+Pipe one in instead, which is what it tells you to do when it hasn't got one:
+
+```sh
+pbpaste | firezone connect
+```
+
+Anything you don't set keeps whatever the app stored, since both share one VPN
+profile. A command that succeeds prints nothing but its answer, as the Linux and
+Windows clients do. Logs go to the log folder the app shares; `--debug` mirrors
+them to the terminal, along with what the command is doing.
+
+`connect --foreground` stops the menu bar app being kept alive, so quitting the
+headless client doesn't reopen it. Launching the app puts that back.
 
 ### Instruments
 
@@ -383,3 +470,14 @@ APPLE_STANDALONE_MAC_INSTALLER_CERTIFICATE_P12_PASSWORD
 APPLE_STANDALONE_MACOS_APP_PROVISIONING_PROFILE
 APPLE_STANDALONE_MACOS_NE_PROVISIONING_PROFILE
 ```
+
+## Code signing during development
+
+Development builds sign themselves. `mise run build` passes
+`-allowProvisioningUpdates`, so Xcode creates and downloads any profile it is
+missing. If it complains that your login was rejected, sign in again under Xcode
+-> Settings -> Accounts.
+
+Release builds never do this. They are given the profiles above by UUID through
+`APP_PROFILE_ID` and `NE_PROFILE_ID`, which the build scripts extract from the
+secrets.

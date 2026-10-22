@@ -92,7 +92,7 @@
                   <%= for gateway <- @gateways do %>
                     <tr style="border-bottom-width: 1px; background-color: #ffffff">
                       <th scope="row" style="white-space: nowrap; padding-left: 24px; padding-right: 24px; font-weight: 500; color: #3d3d3d"><%= gateway.name %></th>
-                      <td style="padding: 4px 24px"><%= gateway.latest_session && gateway.latest_session.version %></td>
+                      <td style="padding: 4px 24px"><%= gateway.last_seen_version %></td>
                     </tr>
                   <% end %>
                   </table>
@@ -136,6 +136,9 @@
                     <a href="https://github.com/firezone" class="hover-important-text-decoration-underline" style="color: #5e00d6; text-decoration: none;">GitHub</a>
                     &bull;
                     <a href="https://x.com/firezonehq" class="hover-important-text-decoration-underline" style="color: #5e00d6; text-decoration: none;">X</a>
+                  </p>
+                  <p style="margin: 0">
+                    <a href="<%= @unsubscribe_url %>" class="hover-important-text-decoration-underline" style="color: #575757; text-decoration: underline;">Turn off these notifications</a>
                   </p>
                 </td>
               </tr>

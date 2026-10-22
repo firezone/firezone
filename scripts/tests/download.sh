@@ -2,7 +2,10 @@
 
 source "./scripts/tests/lib.sh"
 
-client sh -c "curl --fail --max-time 5 --output download.file http://download.httpbin/bytes?num=10000000" &
+# Bound the connect phase, then abort only if the transfer stalls (speed stays
+# below 100 KiB/s for 10s) rather than on a fixed deadline: a slow-but-progressing
+# download on a busy runner is fine, a hung tunnel is not.
+client sh -c "curl --fail --connect-timeout 10 --speed-limit 102400 --speed-time 10 --output download.file http://download.httpbin/bytes?num=10000000" &
 
 DOWNLOAD_PID=$!
 
@@ -26,5 +29,5 @@ assert_eq "${#flows[@]}" 1
 
 flow="${flows[0]}"
 assert_eq "$(get_flow_field "$flow" "inner_dst_ip")" "172.21.0.101"
-assert_eq "$(get_flow_field "$flow" "inner_domain")" "download.httpbin"
+assert_eq "$(get_flow_field "$flow" "domain")" "download.httpbin"
 assert_gteq "$(get_flow_field "$flow" "rx_bytes")" 10000000

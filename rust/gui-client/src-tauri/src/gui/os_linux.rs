@@ -1,7 +1,5 @@
 use anyhow::{Context as _, Result};
 
-use crate::controller::NotificationHandle;
-
 pub async fn set_autostart(enabled: bool) -> Result<()> {
     let dir = dirs::config_local_dir()
         .context("Can't compute `config_local_dir`")?
@@ -32,31 +30,7 @@ pub async fn set_autostart(enabled: bool) -> Result<()> {
     Ok(())
 }
 
-#[expect(
-    clippy::unnecessary_wraps,
-    reason = "Signature must match other platforms."
-)]
-pub(crate) fn show_notification(title: String, body: String) -> Result<NotificationHandle> {
-    let (_, rx) = futures::channel::oneshot::channel();
-
-    tokio::spawn(async move {
-        let notification = match notify_rust::Notification::new()
-            .summary(&title)
-            .body(&body)
-            .show_async()
-            .await
-        {
-            Ok(n) => n,
-            Err(e) => {
-                tracing::debug!(%title, "Failed to show notification: {e}");
-                return;
-            }
-        };
-
-        tracing::debug!(%title, %body, "Showing notification");
-
-        notification.wait_for_action_async(|_| {}).await;
-    });
-
-    Ok(NotificationHandle { on_click: rx })
+/// The application name that desktops use to group our notifications.
+pub(crate) fn notification_app_id() -> String {
+    "Firezone".to_owned()
 }

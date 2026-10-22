@@ -1,7 +1,6 @@
 defmodule Portal.Account do
   use Ecto.Schema
   import Ecto.Changeset
-  alias Portal.Config
 
   @type t :: %__MODULE__{}
 
@@ -36,6 +35,8 @@ defmodule Portal.Account do
     has_many :auth_providers, Portal.AuthProvider
     has_many :external_identities, Portal.ExternalIdentity
     has_many :pending_identities, Portal.PendingIdentity
+    has_many :trust_anchors, Portal.TrustAnchor
+    has_many :trust_anchor_certificates, Portal.TrustAnchorCertificate
 
     has_many :policies, Portal.Policy
 
@@ -44,6 +45,19 @@ defmodule Portal.Account do
     has_many :resources, Portal.Resource
 
     has_many :devices, Portal.Device
+    has_many :posture_providers, Portal.PostureProvider
+    has_many :intune_posture_providers, Portal.Intune.PostureProvider
+    has_many :intune_devices, Portal.Intune.Device
+    has_many :iru_posture_providers, Portal.Iru.PostureProvider
+    has_many :iru_devices, Portal.Iru.Device
+    has_many :defender_posture_providers, Portal.Defender.PostureProvider
+    has_many :defender_devices, Portal.Defender.Device
+    has_many :santa_posture_providers, Portal.Santa.PostureProvider
+    has_many :santa_devices, Portal.Santa.Device
+    has_many :sentinelone_posture_providers, Portal.SentinelOne.PostureProvider
+    has_many :sentinelone_devices, Portal.SentinelOne.Device
+    has_many :sophos_posture_providers, Portal.Sophos.PostureProvider
+    has_many :sophos_devices, Portal.Sophos.Device
     has_many :clients, Portal.Device, where: [type: :client]
     has_many :gateways, Portal.Device, where: [type: :gateway]
     has_many :sites, Portal.Site
@@ -54,6 +68,7 @@ defmodule Portal.Account do
 
     has_many :google_directories, Portal.Google.Directory
     has_many :google_auth_providers, Portal.Google.AuthProvider
+    has_many :github_auth_providers, Portal.GitHub.AuthProvider
     has_many :okta_directories, Portal.Okta.Directory
     has_many :okta_auth_providers, Portal.Okta.AuthProvider
     has_many :entra_directories, Portal.Entra.Directory
@@ -62,6 +77,7 @@ defmodule Portal.Account do
     has_many :oidc_auth_providers, Portal.OIDC.AuthProvider
     has_one :email_otp_auth_provider, Portal.EmailOTP.AuthProvider
     has_one :userpass_auth_provider, Portal.Userpass.AuthProvider
+    has_one :x509_auth_provider, Portal.X509.AuthProvider
 
     # Billing limit exceeded flags - set by CheckAccountLimits worker and Stripe event processing
     field :users_limit_exceeded, :boolean, default: false
@@ -73,20 +89,30 @@ defmodule Portal.Account do
     # Tracks when the last limit exceeded email was sent (for throttling)
     field :warning_last_sent_at, :utc_datetime_usec
 
+    # Tracks the last seat warning email sent (Business plan): when, and which
+    # state it described, so a worse state is not held back by the weekly throttle
+    field :seats_warning_last_sent_at, :utc_datetime_usec
+    field :outdated_gateway_last_sent_at, :utc_datetime_usec
+    field :seats_warning_level, Ecto.Enum, values: [:approaching, :at_limit, :over]
+
     field :disabled_reason, :string
-    field :disabled_at, :utc_datetime_usec
+    field :is_disabled, :boolean, default: false, read_after_writes: true
 
     field :scheduled_deletion_at, :utc_datetime_usec
 
     # Set by Ops Admins only. Prevents account admins from modifying account settings.
     field :lock_enabled_at, :utc_datetime_usec
 
+    # Usage against `limits`, computed by the REST API when it renders the account.
+    field :limit_usage, :map, virtual: true
+
     timestamps()
   end
 
   def changeset(changeset) do
     changeset
-    |> validate_length(:name, min: 3, max: 64)
+    |> validate_length(:name, min: 3, message: "too short")
+    |> validate_length(:name, max: 64, message: "too long")
     |> validate_length(:slug, min: 3, max: 100)
     |> validate_length(:key, is: 6)
     |> validate_key_format()
@@ -119,7 +145,7 @@ defmodule Portal.Account do
   end
 
   @spec active?(t()) :: boolean()
-  def active?(%__MODULE__{disabled_at: nil}), do: true
+  def active?(%__MODULE__{is_disabled: false}), do: true
   def active?(%__MODULE__{}), do: false
 
   @spec pending_deletion?(t()) :: boolean()
@@ -131,32 +157,15 @@ defmodule Portal.Account do
   def locked?(%__MODULE__{}), do: true
 
   # sobelow_skip ["DOS.BinToAtom"]
-  for feature <- Portal.Accounts.Features.__schema__(:fields), feature != :iceless do
+  for feature <- Portal.Accounts.Features.__schema__(:fields) do
     def unquote(:"#{feature}_enabled?")(account) do
-      Config.global_feature_enabled?(unquote(feature)) and
-        account_feature_enabled?(account, unquote(feature))
+      account_feature_enabled?(account, unquote(feature))
     end
-  end
-
-  # Unlike the other features, ICE-less is gated per-account only and has no
-  # global `enabled_features` flag, so it can be rolled out to individual
-  # accounts without a release. Keeping the toggle in the portal (rather than a
-  # device-local flag) makes it the single source of truth, so client and
-  # gateway can never disagree on whether to use it.
-  def iceless_enabled?(account) do
-    account_feature_enabled?(account, :iceless)
   end
 
   defp account_feature_enabled?(account, feature) do
     Map.fetch!(account.features || %Portal.Accounts.Features{}, feature) || false
   end
-
-  @spec rest_api_access_requested?(t()) :: boolean()
-  def rest_api_access_requested?(%__MODULE__{metadata: %{rest_api_requested_at: at}})
-      when not is_nil(at),
-      do: true
-
-  def rest_api_access_requested?(%__MODULE__{}), do: false
 end
 
 defmodule Portal.Account.Metadata do
@@ -165,13 +174,13 @@ defmodule Portal.Account.Metadata do
 
   @primary_key false
   embedded_schema do
-    field :rest_api_requested_at, :utc_datetime_usec
+    field :marketing_attribution, :map
     embeds_one :stripe, Portal.Account.Metadata.Stripe, on_replace: :update
   end
 
   def changeset(metadata \\ %__MODULE__{}, attrs) do
     metadata
-    |> cast(attrs, [:rest_api_requested_at])
+    |> cast(attrs, [:marketing_attribution])
     |> cast_embed(:stripe, with: &Portal.Account.Metadata.Stripe.changeset/2)
   end
 end
@@ -184,10 +193,12 @@ defmodule Portal.Account.Metadata.Stripe do
   embedded_schema do
     field :customer_id, :string
     field :subscription_id, :string
+    field :subscription_status, :string
     field :product_name, :string
     field :billing_email, :string
     field :trial_ends_at, :utc_datetime_usec
     field :support_type, :string
+    embeds_many :add_ons, Portal.Account.Metadata.Stripe.AddOn, on_replace: :delete
   end
 
   def changeset(stripe \\ %__MODULE__{}, attrs) do
@@ -195,10 +206,28 @@ defmodule Portal.Account.Metadata.Stripe do
     |> cast(attrs, [
       :customer_id,
       :subscription_id,
+      :subscription_status,
       :product_name,
       :billing_email,
       :trial_ends_at,
       :support_type
     ])
+    |> cast_embed(:add_ons, with: &Portal.Account.Metadata.Stripe.AddOn.changeset/2)
+  end
+end
+
+defmodule Portal.Account.Metadata.Stripe.AddOn do
+  use Ecto.Schema
+  import Ecto.Changeset
+
+  @primary_key false
+  embedded_schema do
+    field :name, :string
+    field :quantity, :integer
+    field :limit, :string
+  end
+
+  def changeset(add_on \\ %__MODULE__{}, attrs) do
+    cast(add_on, attrs, [:name, :quantity, :limit])
   end
 end

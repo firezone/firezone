@@ -1,0 +1,1179 @@
+use super::{
+    probe::{
+        DnsNatSessions, ExpectedOutcome, ExpectedProbe, InvalidDnsNatObservation, KnownLoss,
+        ProbeId, ProbeProtocol, ProbeRequest, ProbeTrace, ReceivedRequest, ReceivedResponse,
+        RejectionRemote, RejectionResponse, Remote, RemoteResponse, SubmittedRequest,
+        TraceRequirement, remote_response,
+    },
+    ref_client::RefClient,
+    ref_gateway::RefGateway,
+    reference::ReferenceState,
+    resource::Resource,
+    sim_client::SimClient,
+    site_network::{IcmpError, icmp_error_reply},
+    stub_portal::StubPortal,
+    sut::TunnelTest,
+    transition::Destination,
+};
+use connlib_model::{ClientId, GatewayId, ResourceId, ResourceStatus, ResourceView};
+use ip_packet::{Icmpv4Type, Icmpv6Type, IpPacket, Layer4Protocol};
+use itertools::Itertools;
+use std::{
+    collections::BTreeMap,
+    fmt,
+    marker::PhantomData,
+    net::IpAddr,
+    sync::atomic::{AtomicBool, Ordering},
+    time::{Duration, Instant},
+};
+use tracing::{Level, Subscriber};
+use tracing_subscriber::Layer;
+use tunnel_proto::dns;
+
+/// Checks the simulated tunnel against the reference state.
+pub fn check_invariants(ref_state: &ReferenceState, state: &TunnelTest, portal: &StubPortal) {
+    let all_ref_clients = ref_state
+        .clients
+        .iter()
+        .map(|(id, host)| (*id, host.inner()))
+        .collect();
+    let all_ref_gateways = ref_state
+        .gateways
+        .iter()
+        .map(|(id, host)| (*id, host.inner()))
+        .collect();
+    assert_probes(
+        &ref_state.expected_probes,
+        &all_ref_clients,
+        &all_ref_gateways,
+        state,
+    );
+    assert_dns_nat(state);
+
+    for (node, handed_out_at) in portal.relay_handouts() {
+        assert_relays_are_not_handed_out_in_a_loop(node, handed_out_at);
+    }
+
+    for (client_id, ref_client_host) in &ref_state.clients {
+        let ref_client = ref_client_host.inner();
+        let sut_client = state.clients[client_id].inner();
+
+        assert_udp_dns_packets_properties(ref_client, sut_client);
+        assert_tcp_dns(ref_client, sut_client);
+        assert_device_listings(ref_client, sut_client);
+        assert_dns_servers_are_valid(ref_client, sut_client, portal);
+        assert_search_domain_is_valid(sut_client, portal);
+        assert_routes_are_valid(ref_client, sut_client);
+        assert_resource_list(ref_client, sut_client);
+        assert_dns_resource_record_cache(ref_client, sut_client);
+    }
+}
+
+/// Compares each expected application probe with all endpoint observations.
+fn assert_probes(
+    expected_probes: &BTreeMap<ProbeId, ExpectedProbe>,
+    ref_clients: &BTreeMap<ClientId, &RefClient>,
+    ref_gateways: &BTreeMap<GatewayId, &RefGateway>,
+    state: &TunnelTest,
+) {
+    let observations = state.probe_observations().collect_vec();
+
+    for id in observations
+        .iter()
+        .filter_map(|observation| observation.id())
+        .unique()
+        .filter(|id| !expected_probes.contains_key(id))
+    {
+        tracing::error!(target: "assertions", ?id, "Unexpected probe observations");
+    }
+
+    for expected in expected_probes.values() {
+        let trace = state.probe_trace(expected.id);
+
+        let [submitted_request] = trace.submitted_requests.as_slice() else {
+            tracing::error!(target: "assertions", id = ?expected.id, observations = ?trace.observations, "Probe does not have exactly one request submission");
+            continue;
+        };
+
+        assert_submitted_request(expected, submitted_request);
+
+        match (
+            expected.trace_requirement,
+            trace.received_requests.as_slice(),
+            trace.received_responses.as_slice(),
+            trace.completed_streams.as_slice(),
+        ) {
+            (TraceRequirement::ExactOrLoss(reason), [], [], []) => {
+                tracing::debug!(target: "assertions", id = ?expected.id, ?reason, "Probe has only its request submission where loss is allowed");
+                continue;
+            }
+            (TraceRequirement::Exact, _, _, _) => {}
+            (TraceRequirement::ExactOrLoss(_), _, _, _) => {}
+        }
+
+        match expected.outcome {
+            ExpectedOutcome::Dropped => {
+                let ([], [], []) = (
+                    trace.received_requests.as_slice(),
+                    trace.received_responses.as_slice(),
+                    trace.completed_streams.as_slice(),
+                ) else {
+                    tracing::error!(target: "assertions", id = ?expected.id, observations = ?trace.observations, "Dropped probe produced remote observations");
+                    continue;
+                };
+            }
+            ExpectedOutcome::RoundTripCompleted(_)
+                if matches!(
+                    expected.request,
+                    ProbeRequest::Tcp {
+                        write_len: Some(_),
+                        ..
+                    }
+                ) =>
+            {
+                let ([], [], [completed_stream]) = (
+                    trace.received_requests.as_slice(),
+                    trace.received_responses.as_slice(),
+                    trace.completed_streams.as_slice(),
+                ) else {
+                    tracing::error!(target: "assertions", id = ?expected.id, observations = ?trace.observations, "TCP write was not echoed exactly once");
+                    continue;
+                };
+
+                if completed_stream.client != expected.origin {
+                    tracing::error!(target: "assertions", id = ?expected.id, expected = ?expected.origin, actual = ?completed_stream.client, "TCP echo was received by the wrong client");
+                }
+            }
+            ExpectedOutcome::RoundTripCompleted(route) => assert_round_trip(
+                expected,
+                &trace,
+                submitted_request,
+                route.remote(),
+                RemoteResponse::Echo,
+                ref_clients,
+                ref_gateways,
+            ),
+            // A SYN to a closed port reaches the network behind the Gateway like any other.
+            ExpectedOutcome::Rejected {
+                by: RejectionRemote::Gateway(gateway),
+                response: RejectionResponse::Reset,
+            } if matches!(
+                expected.request,
+                ProbeRequest::Tcp {
+                    write_len: None,
+                    ..
+                }
+            ) =>
+            {
+                assert_round_trip(
+                    expected,
+                    &trace,
+                    submitted_request,
+                    Remote::Gateway(gateway),
+                    RemoteResponse::Reset,
+                    ref_clients,
+                    ref_gateways,
+                )
+            }
+            ExpectedOutcome::Rejected { response, .. } => {
+                let ([], [received_response], []) = (
+                    trace.received_requests.as_slice(),
+                    trace.received_responses.as_slice(),
+                    trace.completed_streams.as_slice(),
+                ) else {
+                    tracing::error!(target: "assertions", id = ?expected.id, observations = ?trace.observations, "Rejected probe does not have exactly one received response and no received requests");
+                    continue;
+                };
+
+                if received_response.client != expected.origin {
+                    tracing::error!(target: "assertions", id = ?expected.id, expected = ?expected.origin, actual = ?received_response.client, "Rejection response was received by the wrong client");
+                }
+
+                match response {
+                    RejectionResponse::Prohibited => assert_icmp_error_response(
+                        expected,
+                        submitted_request,
+                        received_response,
+                        Some(response),
+                    ),
+                    RejectionResponse::Unreachable => assert_icmp_error_response(
+                        expected,
+                        submitted_request,
+                        received_response,
+                        Some(response),
+                    ),
+                    RejectionResponse::Reset => {
+                        assert_reset_response(expected, submitted_request, received_response)
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Checks a probe that `expected_remote` received and answers with `answer` where its network
+/// delivers.
+fn assert_round_trip(
+    expected: &ExpectedProbe,
+    trace: &ProbeTrace,
+    submitted_request: &SubmittedRequest,
+    expected_remote: Remote,
+    answer: RemoteResponse,
+    ref_clients: &BTreeMap<ClientId, &RefClient>,
+    ref_gateways: &BTreeMap<GatewayId, &RefGateway>,
+) {
+    let [received_request] = trace.received_requests.as_slice() else {
+        tracing::error!(target: "assertions", id = ?expected.id, observations = ?trace.observations, "Completed round trip does not have exactly one received request");
+        return;
+    };
+
+    if received_request.remote != expected_remote {
+        tracing::error!(target: "assertions", id = ?expected.id, ?expected_remote, actual = ?received_request.remote, "Probe request was received by the wrong remote");
+    }
+    assert_received_request(expected, submitted_request, received_request, ref_clients);
+
+    let response = remote_response(
+        expected,
+        received_request,
+        answer,
+        ref_clients,
+        ref_gateways,
+    );
+    let [received_response] = trace.received_responses.as_slice() else {
+        if trace.received_responses.is_empty() && response == RemoteResponse::Nothing {
+            return;
+        }
+        if trace.received_responses.is_empty()
+            && expected.trace_requirement
+                == TraceRequirement::ExactOrLoss(KnownLoss::WireGuardRekey)
+        {
+            tracing::debug!(target: "assertions", id = ?expected.id, "Probe response was lost during rekeying");
+            return;
+        }
+
+        tracing::error!(target: "assertions", id = ?expected.id, observations = ?trace.observations, "Completed round trip does not have exactly one received response");
+        return;
+    };
+
+    if received_response.client != expected.origin {
+        tracing::error!(target: "assertions", id = ?expected.id, expected = ?expected.origin, actual = ?received_response.client, "Probe response was received by the wrong client");
+    }
+
+    assert_received_response(
+        expected,
+        submitted_request,
+        received_request,
+        received_response,
+        response,
+    );
+}
+
+/// Checks the gateway's stable DNS NAT mapping for each transport session.
+fn assert_dns_nat(state: &TunnelTest) {
+    let observations = state.dns_nat_observations();
+    let observations_by_flow = observations
+        .iter()
+        .map(|observation| (observation.flow_id, observation))
+        .into_group_map();
+
+    for (flow_id, flow_observations) in observations_by_flow {
+        let [first, remaining @ ..] = flow_observations.as_slice() else {
+            continue;
+        };
+        let expected_proxy = first.submitted.packet.destination();
+        let expected_generation = first.received.dns_nat_generation;
+
+        for current in remaining {
+            let actual_proxy = current.submitted.packet.destination();
+            if actual_proxy != expected_proxy {
+                tracing::error!(target: "assertions", ?flow_id, %expected_proxy, %actual_proxy, "Flow changed its DNS proxy destination");
+            }
+
+            let actual_generation = current.received.dns_nat_generation;
+            if actual_generation != expected_generation {
+                tracing::error!(target: "assertions", ?flow_id, ?expected_generation, ?actual_generation, "Flow crossed a DNS NAT reset");
+            }
+        }
+    }
+
+    let DnsNatSessions { invalid, sessions } = DnsNatSessions::new(observations);
+    for (observation, error) in invalid {
+        match error {
+            InvalidDnsNatObservation::RemoteIsClient(client) => {
+                tracing::error!(target: "assertions", %client, "DNS NAT observation was recorded for a client request");
+            }
+            InvalidDnsNatObservation::Tcp(port) => {
+                tracing::error!(target: "assertions", %port, "DNS NAT observation was recorded for a TCP request");
+            }
+            InvalidDnsNatObservation::UnsupportedProtocol(error) => {
+                tracing::error!(target: "assertions", %error, "DNS NAT request has no source protocol");
+            }
+            InvalidDnsNatObservation::MissingGeneration(gateway) => {
+                tracing::error!(target: "assertions", client = %observation.submitted.client, %gateway, "DNS NAT observation has no gateway NAT generation");
+            }
+        }
+    }
+
+    let initial_dns_mappings = sessions
+        .into_iter()
+        .filter_map(|session| {
+            let key = session.key;
+            let [first, remaining @ ..] = session.observations.as_slice() else {
+                return None;
+            };
+            let expected_source = match first.received.packet.source_protocol() {
+                Ok(protocol) => protocol,
+                Err(error) => {
+                    tracing::error!(target: "assertions", %error, "Gateway-received DNS NAT request has no source protocol");
+                    return None;
+                }
+            };
+            let expected_real_ip = first.received.packet.destination();
+
+            for current in remaining {
+                if current.domain != first.domain {
+                    tracing::error!(target: "assertions", client = %key.client, gateway = %key.gateway, dns_nat_generation = key.dns_nat_generation, proxy = %key.proxy, protocol = ?key.protocol, expected = %first.domain, actual = %current.domain, "DNS NAT generation reused a proxy for another domain");
+                }
+
+                let actual_source = match current.received.packet.source_protocol() {
+                    Ok(protocol) => protocol,
+                    Err(error) => {
+                        tracing::error!(target: "assertions", %error, "Gateway-received DNS NAT request has no source protocol");
+                        continue;
+                    }
+                };
+                let actual_real_ip = current.received.packet.destination();
+
+                if (actual_source, actual_real_ip) != (expected_source, expected_real_ip) {
+                    tracing::error!(target: "assertions", client = %key.client, gateway = %key.gateway, proxy = %key.proxy, protocol = ?key.protocol, ?expected_source, %expected_real_ip, ?actual_source, %actual_real_ip, "DNS NAT session changed its outside tuple");
+                }
+            }
+
+            let order = match first.received.gateway_order {
+                Some(order) => order,
+                None => {
+                    tracing::error!(target: "assertions", client = %key.client, gateway = %key.gateway, "DNS NAT request has no gateway observation order");
+                    return None;
+                }
+            };
+            let Some(gateway_state) = state.gateway(key.gateway) else {
+                tracing::error!(target: "assertions", gateway = %key.gateway, "DNS NAT observation references an unknown gateway");
+                return None;
+            };
+            let Some(resolution) = gateway_state.dns_resolution_before(
+                key.client,
+                &first.domain,
+                first.received.at,
+                order,
+                key.dns_nat_generation,
+                key.proxy,
+            ) else {
+                tracing::error!(target: "assertions", client = %key.client, gateway = %key.gateway, domain = %first.domain, "DNS NAT session has no preceding gateway resolution");
+                return None;
+            };
+
+            Some((
+                (
+                    key.client,
+                    key.gateway,
+                    key.dns_nat_generation,
+                    first.domain.clone(),
+                    resolution.order,
+                    key.proxy,
+                ),
+                (expected_real_ip, resolution.addresses.as_slice()),
+            ))
+        })
+        .into_group_map();
+
+    for ((client, gateway, dns_nat_generation, domain, resolution_order, proxy), mappings) in
+        initial_dns_mappings
+    {
+        let [(expected, possible_resource_ips), remaining @ ..] = mappings.as_slice() else {
+            continue;
+        };
+
+        assert_destination_is_dns_resource(*expected, &domain, possible_resource_ips);
+
+        for (actual, _) in remaining {
+            if actual != expected {
+                tracing::error!(target: "assertions", %client, %gateway, dns_nat_generation, %domain, resolution_order, %proxy, %expected, %actual, "DNS proxy mapped to different destinations within one resolution");
+            }
+        }
+    }
+}
+
+/// Asserts that the portal does not hand a node relays in a loop.
+fn assert_relays_are_not_handed_out_in_a_loop(node: impl fmt::Display, handed_out_at: &[Instant]) {
+    const MAX_HANDOUTS_PER_MINUTE: usize = 10;
+
+    if handed_out_at
+        .windows(MAX_HANDOUTS_PER_MINUTE + 1)
+        .any(|w| w[MAX_HANDOUTS_PER_MINUTE] - w[0] < Duration::from_secs(60))
+    {
+        tracing::error!(target: "assertions", %node, "Portal handed the node relays more than {MAX_HANDOUTS_PER_MINUTE} times within a minute");
+    }
+}
+
+fn assert_submitted_request(expected: &ExpectedProbe, submitted_request: &SubmittedRequest) {
+    if submitted_request.client != expected.origin {
+        tracing::error!(target: "assertions", id = ?expected.id, expected = ?expected.origin, actual = ?submitted_request.client, "Probe request was submitted by the wrong client");
+    }
+
+    if submitted_request.at != expected.sent_at {
+        tracing::error!(target: "assertions", id = ?expected.id, "Probe request was submitted at the wrong time");
+    }
+
+    if submitted_request.packet.source() != expected.request.source() {
+        tracing::error!(target: "assertions", id = ?expected.id, "Submitted request has the wrong source");
+    }
+
+    if let Destination::IpAddr(expected_destination) = expected.request.destination()
+        && submitted_request.packet.destination() != *expected_destination
+    {
+        tracing::error!(target: "assertions", id = ?expected.id, "Submitted request has the wrong destination");
+    }
+
+    if submitted_request.packet.as_tcp().is_none() {
+        assert_probe_payload(expected.id, &submitted_request.packet);
+    }
+
+    match &expected.request {
+        ProbeRequest::Icmp {
+            seq, identifier, ..
+        } => match icmp_echo_request(&submitted_request.packet) {
+            Some((actual_seq, actual_identifier, _)) => {
+                if (actual_seq, actual_identifier) != (seq.0, identifier.0) {
+                    tracing::error!(target: "assertions", id = ?expected.id, "ICMP probe identifiers do not match");
+                }
+            }
+            None => {
+                tracing::error!(target: "assertions", id = ?expected.id, "Submitted probe request is not an ICMP echo request");
+            }
+        },
+        ProbeRequest::Udp { sport, dport, .. } => match submitted_request.packet.as_udp() {
+            Some(udp) => {
+                if (udp.source_port(), udp.destination_port()) != (sport.0, dport.0) {
+                    tracing::error!(target: "assertions", id = ?expected.id, "UDP probe ports do not match");
+                }
+            }
+            None => {
+                tracing::error!(target: "assertions", id = ?expected.id, "Submitted probe request is not UDP");
+            }
+        },
+        ProbeRequest::Tcp { sport, dport, .. } => match submitted_request.packet.as_tcp() {
+            Some(tcp) => {
+                if (tcp.source_port(), tcp.destination_port()) != (sport.0, dport.0) {
+                    tracing::error!(target: "assertions", id = ?expected.id, "TCP probe ports do not match");
+                }
+            }
+            None => {
+                tracing::error!(target: "assertions", id = ?expected.id, "Submitted probe request is not TCP");
+            }
+        },
+    }
+}
+
+fn assert_received_request(
+    expected: &ExpectedProbe,
+    submitted_request: &SubmittedRequest,
+    received_request: &ReceivedRequest,
+    ref_clients: &BTreeMap<ClientId, &RefClient>,
+) {
+    if submitted_request.packet.as_tcp().is_none() {
+        assert_probe_payload(expected.id, &received_request.packet);
+
+        if probe_payload(&submitted_request.packet) != probe_payload(&received_request.packet) {
+            tracing::error!(target: "assertions", id = ?expected.id, "Probe payload changed in transit");
+        }
+    }
+
+    let ref_client = &ref_clients[&expected.origin];
+    let expected_source = ref_client.tunnel_ip_for(received_request.packet.source());
+    if received_request.packet.source() != expected_source {
+        tracing::error!(target: "assertions", id = ?expected.id, "Received request has the wrong source");
+    }
+
+    match expected.request.destination() {
+        Destination::IpAddr(destination) => {
+            assert_destination_is_ip(&received_request.packet, destination);
+        }
+        Destination::DomainName { .. } => match received_request.remote {
+            Remote::Gateway(_) => {}
+            Remote::Client(_) => {
+                tracing::error!(target: "assertions", id = ?expected.id, "DNS probe request was not received through a gateway");
+            }
+        },
+    }
+}
+
+fn assert_received_response(
+    expected: &ExpectedProbe,
+    submitted_request: &SubmittedRequest,
+    received_request: &ReceivedRequest,
+    received_response: &ReceivedResponse,
+    response: RemoteResponse,
+) {
+    match response {
+        RemoteResponse::Echo => {
+            assert_echo_response(expected, submitted_request, received_response)
+        }
+        RemoteResponse::Reset => {
+            assert_reset_response(expected, submitted_request, received_response)
+        }
+        RemoteResponse::IcmpError(error) => {
+            assert_icmp_error_response(expected, submitted_request, received_response, None);
+
+            if let Some(error) = error {
+                assert_icmp_error_kind(expected, received_request, received_response, error);
+            }
+        }
+        RemoteResponse::Nothing => {
+            tracing::error!(target: "assertions", id = ?expected.id, "Received a response to a probe the network dropped");
+        }
+    }
+}
+
+/// Checks that the ICMP error the network answered `received_request` with reached the Client.
+fn assert_icmp_error_kind(
+    expected: &ExpectedProbe,
+    received_request: &ReceivedRequest,
+    received_response: &ReceivedResponse,
+    error: IcmpError,
+) {
+    let kind = |packet: &IpPacket| packet.icmp_error().ok().flatten().map(|(_, kind)| kind);
+    let expected_kind = icmp_error_reply(&received_request.packet, error)
+        .ok()
+        .and_then(|reply| kind(&reply));
+    let actual_kind = kind(&received_response.packet);
+
+    if actual_kind != expected_kind {
+        tracing::error!(target: "assertions", id = ?expected.id, ?expected_kind, ?actual_kind, "Received probe response contains the wrong ICMP error");
+    }
+}
+
+fn assert_echo_response(
+    expected: &ExpectedProbe,
+    submitted_request: &SubmittedRequest,
+    received_response: &ReceivedResponse,
+) {
+    assert_correct_src_and_dst_ips(&submitted_request.packet, &received_response.packet);
+
+    match &expected.request {
+        ProbeRequest::Icmp { .. } => match (
+            icmp_echo_request(&submitted_request.packet),
+            icmp_echo_reply(&received_response.packet),
+        ) {
+            (
+                Some((request_seq, request_identifier, request_payload)),
+                Some((reply_seq, reply_identifier, reply_payload)),
+            ) => {
+                if (request_seq, request_identifier) != (reply_seq, reply_identifier) {
+                    tracing::error!(target: "assertions", id = ?expected.id, "ICMP reply identifiers do not match");
+                }
+                if request_payload != reply_payload {
+                    tracing::error!(target: "assertions", id = ?expected.id, "ICMP reply payload does not match");
+                }
+            }
+            (None, Some(_)) => {
+                tracing::error!(target: "assertions", id = ?expected.id, "Submitted probe request is not an ICMP echo request");
+            }
+            (Some(_), None) => {
+                tracing::error!(target: "assertions", id = ?expected.id, "Received probe response is not an ICMP echo reply");
+            }
+            (None, None) => {
+                tracing::error!(target: "assertions", id = ?expected.id, "Submitted probe request is not an ICMP echo request");
+                tracing::error!(target: "assertions", id = ?expected.id, "Received probe response is not an ICMP echo reply");
+            }
+        },
+        ProbeRequest::Udp { .. } => {
+            match (
+                submitted_request.packet.as_udp(),
+                received_response.packet.as_udp(),
+            ) {
+                (Some(request), Some(reply)) => {
+                    assert_correct_src_and_dst_udp_ports(
+                        &submitted_request.packet,
+                        &received_response.packet,
+                    );
+
+                    if request.payload() != reply.payload() {
+                        tracing::error!(target: "assertions", id = ?expected.id, "UDP reply payload does not match");
+                    }
+                }
+                (None, Some(_)) => {
+                    tracing::error!(target: "assertions", id = ?expected.id, "Submitted probe request is not UDP");
+                }
+                (Some(_), None) => {
+                    tracing::error!(target: "assertions", id = ?expected.id, "Received probe response is not UDP");
+                }
+                (None, None) => {
+                    tracing::error!(target: "assertions", id = ?expected.id, "Submitted probe request is not UDP");
+                    tracing::error!(target: "assertions", id = ?expected.id, "Received probe response is not UDP");
+                }
+            }
+        }
+        ProbeRequest::Tcp { .. } => {
+            if !received_response
+                .packet
+                .as_tcp()
+                .is_some_and(|reply| reply.syn() && reply.ack())
+            {
+                tracing::error!(target: "assertions", id = ?expected.id, "TCP connect was not answered with a SYN-ACK");
+            }
+        }
+    }
+}
+
+fn assert_icmp_error_response(
+    expected: &ExpectedProbe,
+    submitted_request: &SubmittedRequest,
+    received_response: &ReceivedResponse,
+    expected_response: Option<RejectionResponse>,
+) {
+    assert_correct_src_and_dst_ips(&submitted_request.packet, &received_response.packet);
+
+    let Ok(Some((failed_packet, error))) = received_response.packet.icmp_error() else {
+        tracing::error!(target: "assertions", id = ?expected.id, "Received probe response is not an ICMP error");
+        return;
+    };
+
+    if let Some(expected_response) = expected_response
+        && rejection_response(&received_response.packet) != Some(expected_response)
+    {
+        tracing::error!(target: "assertions", id = ?expected.id, ?expected_response, ?error, "Received probe response contains the wrong ICMP error");
+    }
+
+    if failed_packet.src() != submitted_request.packet.source()
+        || failed_packet.dst() != submitted_request.packet.destination()
+    {
+        tracing::error!(target: "assertions", id = ?expected.id, "ICMP error quotes the wrong packet addresses");
+    }
+
+    let actual_protocol = failed_packet.layer4_protocol();
+    let protocol_matches = match expected.request.probe_protocol() {
+        ProbeProtocol::Icmp { seq, identifier } => matches!(
+            actual_protocol,
+            Layer4Protocol::Icmp {
+                seq: actual_seq,
+                id: actual_identifier,
+            } if (actual_seq, actual_identifier) == (seq.0, identifier.0)
+        ),
+        ProbeProtocol::Udp { sport, dport } => matches!(
+            actual_protocol,
+            Layer4Protocol::Udp {
+                src: actual_sport,
+                dst: actual_dport,
+            } if (actual_sport, actual_dport) == (sport.0, dport.0)
+        ),
+        ProbeProtocol::Tcp { sport, dport } => matches!(
+            actual_protocol,
+            Layer4Protocol::Tcp {
+                src: actual_sport,
+                dst: actual_dport,
+            } if (actual_sport, actual_dport) == (sport.0, dport.0)
+        ),
+    };
+
+    if !protocol_matches {
+        tracing::error!(target: "assertions", id = ?expected.id, "ICMP error quotes the wrong transport tuple");
+    }
+}
+
+fn assert_reset_response(
+    expected: &ExpectedProbe,
+    submitted_request: &SubmittedRequest,
+    received_response: &ReceivedResponse,
+) {
+    assert_correct_src_and_dst_ips(&submitted_request.packet, &received_response.packet);
+
+    let (Some(request), Some(reply)) = (
+        submitted_request.packet.as_tcp(),
+        received_response.packet.as_tcp(),
+    ) else {
+        tracing::error!(target: "assertions", id = ?expected.id, "TCP probe or its reset is not TCP");
+        return;
+    };
+
+    if !reply.rst() {
+        tracing::error!(target: "assertions", id = ?expected.id, "Received probe response is not a TCP reset");
+    }
+    if (request.source_port(), request.destination_port())
+        != (reply.destination_port(), reply.source_port())
+    {
+        tracing::error!(target: "assertions", id = ?expected.id, "TCP reset ports do not match");
+    }
+}
+
+fn assert_probe_payload(expected: ProbeId, packet: &IpPacket) {
+    let Some(payload) = probe_payload(packet) else {
+        tracing::error!(target: "assertions", ?expected, "Probe packet has no application payload");
+        return;
+    };
+
+    if ProbeId::from_payload(payload) != Some(expected) {
+        tracing::error!(target: "assertions", ?expected, "Probe packet carries the wrong ID");
+    }
+}
+
+fn probe_payload(packet: &IpPacket) -> Option<&[u8]> {
+    if let Some(udp) = packet.as_udp() {
+        return Some(udp.payload());
+    }
+    if let Some(icmp) = packet.as_icmpv4() {
+        return Some(icmp.payload());
+    }
+    if let Some(icmp) = packet.as_icmpv6() {
+        return Some(icmp.payload());
+    }
+
+    None
+}
+
+fn icmp_echo_request(packet: &IpPacket) -> Option<(u16, u16, &[u8])> {
+    if let Some(icmp) = packet.as_icmpv4()
+        && let Icmpv4Type::EchoRequest(header) = icmp.icmp_type()
+    {
+        return Some((header.seq, header.id, icmp.payload()));
+    }
+    if let Some(icmp) = packet.as_icmpv6()
+        && let Icmpv6Type::EchoRequest(header) = icmp.icmp_type()
+    {
+        return Some((header.seq, header.id, icmp.payload()));
+    }
+
+    None
+}
+
+fn icmp_echo_reply(packet: &IpPacket) -> Option<(u16, u16, &[u8])> {
+    if let Some(icmp) = packet.as_icmpv4()
+        && let Icmpv4Type::EchoReply(header) = icmp.icmp_type()
+    {
+        return Some((header.seq, header.id, icmp.payload()));
+    }
+    if let Some(icmp) = packet.as_icmpv6()
+        && let Icmpv6Type::EchoReply(header) = icmp.icmp_type()
+    {
+        return Some((header.seq, header.id, icmp.payload()));
+    }
+
+    None
+}
+
+fn rejection_response(packet: &IpPacket) -> Option<RejectionResponse> {
+    let (_, error) = packet.icmp_error().ok()??;
+
+    if error.is_unreachable_prohibited() {
+        return Some(RejectionResponse::Prohibited);
+    }
+    if error.is_unreachable_network() {
+        return Some(RejectionResponse::Unreachable);
+    }
+
+    None
+}
+
+fn assert_resource_list(ref_client: &RefClient, sim_client: &SimClient) {
+    let expected_resources = ref_client.expected_resources();
+    let actual_resources = &sim_client.observed_resource_list;
+    let expected_ids = expected_resources
+        .iter()
+        .map(ResourceView::id)
+        .collect_vec();
+    let actual_ids = actual_resources.iter().map(ResourceView::id).collect_vec();
+
+    if expected_ids != actual_ids {
+        tracing::error!(target: "assertions", ?expected_ids, ?actual_ids, "Resource list order or membership doesn't match");
+    }
+
+    let actual_by_id = actual_resources
+        .iter()
+        .map(|resource| (resource.id(), resource))
+        .collect::<BTreeMap<_, _>>();
+
+    for expected in &expected_resources {
+        let resource = expected.id();
+        let Some(actual) = actual_by_id.get(&resource) else {
+            tracing::error!(target: "assertions", %resource, "Missing resource");
+            continue;
+        };
+
+        assert_resource_definition(expected, actual);
+        assert_resource_status(resource, expected.status(), actual.status());
+    }
+
+    for actual in actual_resources {
+        if !expected_ids.contains(&actual.id()) {
+            tracing::error!(target: "assertions", resource = %actual.id(), "Unexpected resource");
+        }
+    }
+}
+
+fn assert_dns_resource_record_cache(ref_client: &RefClient, sim_client: &SimClient) {
+    let addresses = ref_client
+        .all_resources()
+        .into_iter()
+        .filter_map(|resource| match resource {
+            Resource::Dns(resource) => Some((resource.id, resource.address)),
+            Resource::Cidr(_) => None,
+            Resource::DevicePool(_) => None,
+            Resource::Internet(_) => None,
+        })
+        .collect::<BTreeMap<_, _>>();
+
+    for record in &sim_client.dns_resource_record_cache {
+        for (pattern, resource_id) in &record.resources {
+            let Some(address) = addresses.get(resource_id) else {
+                continue;
+            };
+
+            if pattern.to_string() != *address {
+                tracing::error!(target: "assertions", %resource_id, domain = %record.domain, cached_pattern = %pattern, current_address = %address, "DNS record cache has an obsolete resource pattern");
+            }
+            if !dns::is_subdomain(&record.domain, address) {
+                tracing::error!(target: "assertions", %resource_id, domain = %record.domain, current_address = %address, "DNS record cache associates a domain with a non-matching resource");
+            }
+        }
+    }
+}
+
+fn assert_resource_definition(expected: &ResourceView, actual: &ResourceView) {
+    use ResourceView::*;
+
+    let resource = expected.id();
+
+    match (expected, actual) {
+        (Dns(expected), Dns(actual)) => {
+            assert_resource_field(resource, "address", &expected.address, &actual.address);
+            assert_resource_field(resource, "name", &expected.name, &actual.name);
+            assert_resource_field(
+                resource,
+                "address description",
+                &expected.address_description,
+                &actual.address_description,
+            );
+            assert_resource_field(resource, "sites", &expected.sites, &actual.sites);
+        }
+        (Cidr(expected), Cidr(actual)) => {
+            assert_resource_field(resource, "address", &expected.address, &actual.address);
+            assert_resource_field(resource, "name", &expected.name, &actual.name);
+            assert_resource_field(
+                resource,
+                "address description",
+                &expected.address_description,
+                &actual.address_description,
+            );
+            assert_resource_field(resource, "sites", &expected.sites, &actual.sites);
+        }
+        (Internet(expected), Internet(actual)) => {
+            assert_resource_field(resource, "name", &expected.name, &actual.name);
+            assert_resource_field(resource, "sites", &expected.sites, &actual.sites);
+        }
+        (DevicePool(expected), DevicePool(actual)) => {
+            assert_resource_field(resource, "name", &expected.name, &actual.name);
+        }
+        (Dns(_), Cidr(_)) => {
+            tracing::error!(target: "assertions", %resource, "DNS resource was emitted as a CIDR resource");
+        }
+        (Dns(_), Internet(_)) => {
+            tracing::error!(target: "assertions", %resource, "DNS resource was emitted as an Internet resource");
+        }
+        (Cidr(_), Dns(_)) => {
+            tracing::error!(target: "assertions", %resource, "CIDR resource was emitted as a DNS resource");
+        }
+        (Cidr(_), Internet(_)) => {
+            tracing::error!(target: "assertions", %resource, "CIDR resource was emitted as an Internet resource");
+        }
+        (Internet(_), Dns(_)) => {
+            tracing::error!(target: "assertions", %resource, "Internet resource was emitted as a DNS resource");
+        }
+        (Internet(_), Cidr(_)) => {
+            tracing::error!(target: "assertions", %resource, "Internet resource was emitted as a CIDR resource");
+        }
+        (Dns(_), DevicePool(_)) => {
+            tracing::error!(target: "assertions", %resource, "DNS resource was emitted as a device pool resource");
+        }
+        (Cidr(_), DevicePool(_)) => {
+            tracing::error!(target: "assertions", %resource, "CIDR resource was emitted as a device pool resource");
+        }
+        (Internet(_), DevicePool(_)) => {
+            tracing::error!(target: "assertions", %resource, "Internet resource was emitted as a device pool resource");
+        }
+        (DevicePool(_), Dns(_)) => {
+            tracing::error!(target: "assertions", %resource, "Device pool resource was emitted as a DNS resource");
+        }
+        (DevicePool(_), Cidr(_)) => {
+            tracing::error!(target: "assertions", %resource, "Device pool resource was emitted as a CIDR resource");
+        }
+        (DevicePool(_), Internet(_)) => {
+            tracing::error!(target: "assertions", %resource, "Device pool resource was emitted as an Internet resource");
+        }
+    }
+}
+
+fn assert_resource_field<T>(resource: ResourceId, field: &str, expected: &T, actual: &T)
+where
+    T: std::fmt::Debug + PartialEq,
+{
+    if expected != actual {
+        tracing::error!(target: "assertions", %resource, field, ?expected, ?actual, "Resource field doesn't match");
+    }
+}
+
+fn assert_resource_status(resource: ResourceId, expected: ResourceStatus, actual: ResourceStatus) {
+    use ResourceStatus::*;
+
+    match (expected, actual) {
+        (Unknown, Unknown) => {}
+        (Unknown, Online) => {
+            tracing::error!(target: "assertions", %expected, %actual, %resource, "Resource status doesn't match");
+        }
+        (Unknown, Offline) => {
+            tracing::error!(target: "assertions", %expected, %actual, %resource, "Resource status doesn't match");
+        }
+        (Online, Unknown) => {
+            tracing::error!(target: "assertions", %expected, %actual, %resource, "Resource status doesn't match");
+        }
+        (Online, Online) => {}
+        (Online, Offline) => {
+            tracing::error!(target: "assertions", %expected, %actual, %resource, "Resource status doesn't match");
+        }
+        (Offline, Unknown) => {
+            tracing::error!(target: "assertions", %expected, %actual, %resource, "Resource status doesn't match");
+        }
+        (Offline, Online) => {
+            tracing::error!(target: "assertions", %expected, %actual, %resource, "Resource status doesn't match");
+        }
+        (Offline, Offline) => {}
+    }
+}
+
+fn assert_dns_servers_are_valid(
+    ref_client: &RefClient,
+    sim_client: &SimClient,
+    portal: &StubPortal,
+) {
+    let expected = ref_client.expected_dns_servers(portal.upstream_do53(), portal.upstream_doh());
+    let actual = sim_client.effective_dns_servers();
+
+    if actual != expected {
+        tracing::error!(target: "assertions", ?actual, ?expected, "❌ Effective DNS servers are incorrect");
+    }
+}
+
+fn assert_search_domain_is_valid(sim_client: &SimClient, portal: &StubPortal) {
+    let expected = portal.search_domain();
+    let actual = sim_client.effective_search_domain();
+
+    if actual != expected {
+        tracing::error!(target: "assertions", ?actual, ?expected, "❌ Search domain is incorrect");
+    }
+}
+
+fn assert_routes_are_valid(ref_client: &RefClient, sim_client: &SimClient) {
+    let expected = ref_client.expected_routes();
+    let actual = sim_client.routes.clone();
+
+    if actual != expected {
+        let expected = expected.iter().join(", ");
+        let actual = actual.iter().join(", ");
+
+        tracing::error!(target: "assertions", ?actual, ?expected, "❌ Routes don't match");
+    }
+}
+
+fn assert_udp_dns_packets_properties(ref_client: &RefClient, sim_client: &SimClient) {
+    let unexpected_dns_replies = sim_client
+        .received_udp_dns_responses
+        .keys()
+        .filter(|response| !ref_client.expected_udp_dns_handshakes.contains(response))
+        .collect_vec();
+
+    if !unexpected_dns_replies.is_empty() {
+        tracing::error!(target: "assertions", ?unexpected_dns_replies, "❌ Unexpected UDP DNS replies on client");
+    }
+
+    for (dns_server, query_id, local_port) in ref_client.expected_udp_dns_handshakes.iter() {
+        let _guard =
+            tracing::info_span!(target: "assertions", "udp_dns", %query_id, %dns_server).entered();
+        let key = &(dns_server.clone(), *query_id, *local_port);
+
+        let queries = &sim_client.sent_udp_dns_queries;
+        let responses = &sim_client.received_udp_dns_responses;
+
+        match (queries.get(key), responses.get(key)) {
+            (Some(client_sent_query), Some(client_received_response)) => {
+                assert_correct_src_and_dst_ips(client_sent_query, client_received_response);
+                assert_correct_src_and_dst_udp_ports(client_sent_query, client_received_response);
+            }
+            (Some(_), None) => {
+                tracing::error!(target: "assertions", ?responses, "❌ Missing UDP DNS response on client");
+            }
+            (None, Some(_)) => {
+                tracing::error!(target: "assertions", ?queries, "❌ Missing UDP DNS query on client");
+            }
+            (None, None) => {
+                tracing::error!(target: "assertions", ?queries, "❌ Missing UDP DNS query on client");
+                tracing::error!(target: "assertions", ?responses, "❌ Missing UDP DNS response on client");
+            }
+        }
+    }
+}
+
+fn assert_tcp_dns(ref_client: &RefClient, sim_client: &SimClient) {
+    let unexpected_dns_responses = sim_client
+        .received_tcp_dns_responses
+        .iter()
+        .filter(|response| !ref_client.expected_tcp_dns_handshakes.contains(response))
+        .collect_vec();
+
+    if !unexpected_dns_responses.is_empty() {
+        tracing::error!(target: "assertions", ?unexpected_dns_responses, "❌ Unexpected TCP DNS responses on client");
+    }
+
+    for (dns_server, query_id) in ref_client.expected_tcp_dns_handshakes.iter() {
+        let _guard =
+            tracing::info_span!(target: "assertions", "tcp_dns", %query_id, %dns_server).entered();
+        let key = &(dns_server.clone(), *query_id);
+
+        let queries = &sim_client.sent_tcp_dns_queries;
+        let responses = &sim_client.received_tcp_dns_responses;
+
+        match (queries.contains(key), responses.contains(key)) {
+            (true, true) => {}
+            (true, false) => {
+                tracing::error!(target: "assertions", ?responses, "❌ Missing TCP DNS response on client");
+            }
+            (false, true) => {
+                tracing::error!(target: "assertions", ?queries, "❌ Missing TCP DNS query on client");
+            }
+            (false, false) => {
+                tracing::error!(target: "assertions", ?queries, "❌ Missing TCP DNS query on client");
+                tracing::error!(target: "assertions", ?responses, "❌ Missing TCP DNS response on client");
+            }
+        }
+    }
+}
+
+fn assert_device_listings(ref_client: &RefClient, sim_client: &SimClient) {
+    for (query, expected) in &ref_client.expected_device_listings {
+        let actual = sim_client.device_listings.get(query);
+
+        if actual != Some(expected) {
+            tracing::error!(target: "assertions", ?query, ?expected, ?actual, "❌ Unexpected answer to PTR query in the device domain");
+        }
+    }
+}
+
+fn assert_correct_src_and_dst_ips(
+    client_sent_request: &IpPacket,
+    client_received_reply: &IpPacket,
+) {
+    let req_dst = client_sent_request.destination();
+    let res_src = client_received_reply.source();
+
+    if req_dst != res_src {
+        tracing::error!(target: "assertions", %req_dst, %res_src, "❌ req dst IP != res src IP");
+    } else {
+        tracing::info!(target: "assertions", ip = %req_dst, "✅ req dst IP == res src IP");
+    }
+
+    let req_src = client_sent_request.source();
+    let res_dst = client_received_reply.destination();
+
+    if req_src != res_dst {
+        tracing::error!(target: "assertions", %req_src, %res_dst, "❌ req src IP != res dst IP");
+    } else {
+        tracing::info!(target: "assertions", ip = %req_src, "✅ req src IP == res dst IP");
+    }
+}
+
+fn assert_correct_src_and_dst_udp_ports(
+    client_sent_request: &IpPacket,
+    client_received_reply: &IpPacket,
+) {
+    let client_sent_request = client_sent_request.as_udp().unwrap();
+    let client_received_reply = client_received_reply.as_udp().unwrap();
+
+    let req_dst = client_sent_request.destination_port();
+    let res_src = client_received_reply.source_port();
+
+    if req_dst != res_src {
+        tracing::error!(target: "assertions", %req_dst, %res_src, "❌ req dst port != res src port");
+    } else {
+        tracing::info!(target: "assertions", port = %req_dst, "✅ req dst port == res src port");
+    }
+
+    let req_src = client_sent_request.source_port();
+    let res_dst = client_received_reply.destination_port();
+
+    if req_src != res_dst {
+        tracing::error!(target: "assertions", %req_src, %res_dst, "❌ req src port != res dst port");
+    } else {
+        tracing::info!(target: "assertions", port = %req_src, "✅ req src port == res dst port");
+    }
+}
+
+fn assert_destination_is_ip(gateway_received_request: &IpPacket, expected: &IpAddr) {
+    let actual = gateway_received_request.destination();
+
+    if actual != *expected {
+        tracing::error!(target: "assertions", %actual, %expected, "❌ Incorrect resource destination");
+    } else {
+        tracing::info!(target: "assertions", ip = %actual, "✅ Probe targets correct destination");
+    }
+}
+
+fn assert_destination_is_dns_resource(
+    actual: IpAddr,
+    domain: &dns_types::DomainName,
+    possible_resource_ips: &[IpAddr],
+) {
+    if !possible_resource_ips.contains(&actual) {
+        tracing::error!(target: "assertions", %domain, %actual, ?possible_resource_ips, "❌ Unknown resource IP");
+    } else {
+        tracing::info!(target: "assertions", %domain, ip = %actual, "✅ Resource IP is valid");
+    }
+}
+
+/// Tracks whether any [`Level::ERROR`] events are emitted and panics on `Drop` in case.
+pub(crate) struct PanicOnErrorEvents<S> {
+    subscriber: PhantomData<S>,
+    has_seen_error: AtomicBool,
+}
+
+impl<S> PanicOnErrorEvents<S> {
+    pub(crate) fn new() -> Self {
+        Self {
+            subscriber: PhantomData,
+            has_seen_error: Default::default(),
+        }
+    }
+}
+
+impl<S> Drop for PanicOnErrorEvents<S> {
+    fn drop(&mut self) {
+        if self.has_seen_error.load(Ordering::SeqCst) {
+            panic!("Testcase failed");
+        }
+    }
+}
+
+impl<S> Layer<S> for PanicOnErrorEvents<S>
+where
+    S: Subscriber,
+{
+    fn max_level_hint(&self) -> Option<tracing::level_filters::LevelFilter> {
+        Some(tracing::level_filters::LevelFilter::ERROR)
+    }
+
+    fn on_event(
+        &self,
+        _event: &tracing::Event<'_>,
+        _ctx: tracing_subscriber::layer::Context<'_, S>,
+    ) {
+        if _event.metadata().level() == &Level::ERROR {
+            self.has_seen_error.store(true, Ordering::SeqCst)
+        }
+    }
+}

@@ -9,8 +9,6 @@ defmodule Portal.Safe do
 
   alias Portal.{Authentication.Subject, Repo}
 
-  @replica Application.compile_env(:portal, :replica_repo)
-
   defmodule Scoped do
     @moduledoc """
     Scoped context that carries authorization information and optional queryable.
@@ -40,8 +38,6 @@ defmodule Portal.Safe do
   Returns a scoped context for operations with authorization and account filtering.
   Can optionally accept a queryable to enable chaining and a repo module.
 
-  The repo argument can be a module or the atoms `:primary` / `:replica`.
-
   ## Examples
 
       # Traditional style
@@ -50,18 +46,17 @@ defmodule Portal.Safe do
       # Chainable style
       query |> Safe.scoped(subject) |> Safe.one()
 
-      # With replica
-      Safe.scoped(subject, :replica) |> Safe.one(query)
-      query |> Safe.scoped(subject, :replica) |> Safe.one()
+      # With an isolated pool
+      Safe.scoped(subject, Repo.Poller) |> Safe.one(query)
   """
   @spec scoped(Subject.t()) :: Scoped.t()
   def scoped(%Subject{} = subject) do
     %Scoped{subject: subject, queryable: nil, repo: Repo}
   end
 
-  @spec scoped(Subject.t(), module() | :primary | :replica) :: Scoped.t()
+  @spec scoped(Subject.t(), module()) :: Scoped.t()
   def scoped(%Subject{} = subject, repo) when is_atom(repo) do
-    %Scoped{subject: subject, queryable: nil, repo: resolve_repo(repo)}
+    %Scoped{subject: subject, queryable: nil, repo: repo}
   end
 
   @spec scoped(Ecto.Queryable.t() | Ecto.Changeset.t() | Ecto.Schema.t(), Subject.t()) ::
@@ -73,116 +68,100 @@ defmodule Portal.Safe do
   @spec scoped(
           Ecto.Queryable.t() | Ecto.Changeset.t() | Ecto.Schema.t(),
           Subject.t(),
-          module() | :primary | :replica
+          module()
         ) ::
           Scoped.t()
   def scoped(queryable, %Subject{} = subject, repo) when is_atom(repo) do
-    %Scoped{subject: subject, queryable: queryable, repo: resolve_repo(repo)}
+    %Scoped{subject: subject, queryable: queryable, repo: repo}
   end
 
   @doc """
   Returns an unscoped context for operations without authorization or filtering.
   Can optionally accept a queryable to enable chaining and a repo module.
 
-  The repo argument can be a module or the atoms `:primary` / `:replica`.
-
   ## Examples
 
       # Traditional style
       Safe.unscoped() |> Safe.one(query)
 
-      # With replica
-      Safe.unscoped(:replica) |> Safe.one(query)
-
       # Chainable style
       query |> Safe.unscoped() |> Safe.one()
 
-      # Chainable with replica
-      query |> Safe.unscoped(:replica) |> Safe.one()
+      # With an isolated pool
+      Safe.unscoped(Repo.Poller) |> Safe.one(query)
   """
   @spec unscoped() :: Unscoped.t()
   def unscoped do
     %Unscoped{queryable: nil, repo: Repo}
   end
 
-  @spec unscoped(module() | :primary | :replica) :: Unscoped.t()
-  def unscoped(repo) when is_atom(repo) do
-    %Unscoped{queryable: nil, repo: resolve_repo(repo)}
+  @spec unscoped(module() | Ecto.Queryable.t() | Ecto.Changeset.t() | Ecto.Schema.t()) ::
+          Unscoped.t()
+  # A bare schema module is an atom too, so it would otherwise be taken for a repo
+  def unscoped(queryable_or_repo) when is_atom(queryable_or_repo) do
+    if ecto_schema?(queryable_or_repo) do
+      %Unscoped{queryable: queryable_or_repo, repo: Repo}
+    else
+      %Unscoped{queryable: nil, repo: queryable_or_repo}
+    end
   end
 
-  @spec unscoped(Ecto.Queryable.t() | Ecto.Changeset.t() | Ecto.Schema.t()) :: Unscoped.t()
   def unscoped(queryable) do
     %Unscoped{queryable: queryable, repo: Repo}
   end
 
-  @spec unscoped(
-          Ecto.Queryable.t() | Ecto.Changeset.t() | Ecto.Schema.t(),
-          module() | :primary | :replica
-        ) ::
+  @spec unscoped(Ecto.Queryable.t() | Ecto.Changeset.t() | Ecto.Schema.t(), module()) ::
           Unscoped.t()
   def unscoped(queryable, repo) when is_atom(repo) do
-    %Unscoped{queryable: queryable, repo: resolve_repo(repo)}
+    %Unscoped{queryable: queryable, repo: repo}
   end
 
   # Query operations
 
-  # one/1,2
-  def one(ctx, opts \\ [])
-
-  @spec one(Scoped.t(), Keyword.t()) :: Ecto.Schema.t() | nil | {:error, :unauthorized}
-  def one(
-        %Scoped{
-          subject: %Subject{account: %{id: account_id}} = subject,
-          queryable: queryable,
-          repo: repo
-        },
-        opts
-      ) do
+  @spec one(Scoped.t()) :: Ecto.Schema.t() | nil | {:error, :unauthorized}
+  def one(%Scoped{
+        subject: %Subject{account: %{id: account_id}} = subject,
+        queryable: queryable,
+        repo: repo
+      }) do
     schema = get_schema_module(queryable)
 
     with :ok <- permit(:read, schema, subject) do
       filtered_query = apply_account_filter(queryable, schema, account_id)
-      fetch_one_with_primary_retry(repo, filtered_query, opts[:fallback_to_primary])
+      safe_repo(fn -> repo.one(filtered_query) end)
     end
   end
 
-  @spec one(Unscoped.t(), Keyword.t()) :: Ecto.Schema.t() | nil
-  def one(%Unscoped{queryable: queryable, repo: repo}, opts),
-    do: fetch_one_with_primary_retry(repo, queryable, opts[:fallback_to_primary])
+  @spec one(Unscoped.t()) :: Ecto.Schema.t() | nil
+  def one(%Unscoped{queryable: queryable, repo: repo}),
+    do: safe_repo(fn -> repo.one(queryable) end)
 
   @spec one(Portal.Repo, Ecto.Queryable.t()) :: Ecto.Schema.t() | nil
   def one(repo, queryable) when repo == Repo, do: safe_repo(fn -> Repo.one(queryable) end)
 
-  # one!/1,2
-  def one!(ctx, opts \\ [])
-
-  @spec one!(Scoped.t(), Keyword.t()) ::
+  @spec one!(Scoped.t()) ::
           Ecto.Schema.t() | term() | no_return() | {:error, :unauthorized}
-  def one!(
-        %Scoped{
-          subject: %Subject{account: %{id: account_id}} = subject,
-          queryable: queryable,
-          repo: repo
-        },
-        opts
-      ) do
+  def one!(%Scoped{
+        subject: %Subject{account: %{id: account_id}} = subject,
+        queryable: queryable,
+        repo: repo
+      }) do
     schema = get_schema_module(queryable)
 
     with :ok <- permit(:read, schema, subject) do
       filtered_query = apply_account_filter(queryable, schema, account_id)
-      fetch_one_with_primary_retry!(repo, filtered_query, opts[:fallback_to_primary])
+      safe_repo!(fn -> repo.one!(filtered_query) end, filtered_query)
     end
   end
 
-  @spec one!(Unscoped.t(), Keyword.t()) :: Ecto.Schema.t() | term() | no_return()
-  def one!(%Unscoped{queryable: queryable, repo: repo}, opts),
-    do: fetch_one_with_primary_retry!(repo, queryable, opts[:fallback_to_primary])
+  @spec one!(Unscoped.t()) :: Ecto.Schema.t() | term() | no_return()
+  def one!(%Unscoped{queryable: queryable, repo: repo}),
+    do: safe_repo!(fn -> repo.one!(queryable) end, queryable)
 
   @spec one!(Portal.Repo, Ecto.Queryable.t()) :: Ecto.Schema.t() | term() | no_return()
   def one!(repo, queryable) when repo == Repo,
     do: safe_repo!(fn -> Repo.one!(queryable) end, queryable)
 
-  # all/1
   @spec all(Scoped.t()) :: [Ecto.Schema.t()] | {:error, :unauthorized}
   def all(%Scoped{
         subject: %Subject{account: %{id: account_id}} = subject,
@@ -192,11 +171,8 @@ defmodule Portal.Safe do
     schema = get_schema_module(queryable)
 
     with :ok <- permit(:read, schema, subject) do
-      safe_repo(fn ->
-        queryable
-        |> apply_account_filter(schema, account_id)
-        |> repo.all()
-      end) || []
+      filtered_query = apply_account_filter(queryable, schema, account_id)
+      safe_repo(fn -> repo.all(filtered_query) end) || []
     end
   end
 
@@ -207,29 +183,23 @@ defmodule Portal.Safe do
   @spec all(Portal.Repo, Ecto.Queryable.t()) :: [Ecto.Schema.t()]
   def all(repo, queryable) when repo == Repo, do: safe_repo(fn -> Repo.all(queryable) end) || []
 
-  # exists?/1,2
-  def exists?(ctx, opts \\ [])
-
-  @spec exists?(Scoped.t(), Keyword.t()) :: boolean() | {:error, :unauthorized}
-  def exists?(
-        %Scoped{
-          subject: %Subject{account: %{id: account_id}} = subject,
-          queryable: queryable,
-          repo: repo
-        },
-        opts
-      ) do
+  @spec exists?(Scoped.t()) :: boolean() | {:error, :unauthorized}
+  def exists?(%Scoped{
+        subject: %Subject{account: %{id: account_id}} = subject,
+        queryable: queryable,
+        repo: repo
+      }) do
     schema = get_schema_module(queryable)
 
     with :ok <- permit(:read, schema, subject) do
       filtered_query = apply_account_filter(queryable, schema, account_id)
-      exists_with_primary_retry?(repo, filtered_query, opts[:fallback_to_primary])
+      safe_repo(fn -> repo.exists?(filtered_query) end) || false
     end
   end
 
-  @spec exists?(Unscoped.t(), Keyword.t()) :: boolean()
-  def exists?(%Unscoped{queryable: queryable, repo: repo}, opts),
-    do: exists_with_primary_retry?(repo, queryable, opts[:fallback_to_primary])
+  @spec exists?(Unscoped.t()) :: boolean()
+  def exists?(%Unscoped{queryable: queryable, repo: repo}),
+    do: safe_repo(fn -> repo.exists?(queryable) end) || false
 
   @spec exists?(Portal.Repo, Ecto.Queryable.t()) :: boolean()
   def exists?(repo, queryable) when repo == Repo,
@@ -262,7 +232,7 @@ defmodule Portal.Safe do
         queryable
         |> apply_account_filter(schema, account_id)
         |> repo.list(query_module, opts)
-      end) || {:ok, [], %{}}
+      end) || {:ok, [], Portal.Repo.Paginator.empty_metadata()}
     end
   end
 
@@ -326,14 +296,9 @@ defmodule Portal.Safe do
   @spec load(module(), {list(), list()}) :: Ecto.Schema.t()
   def load(schema, data) when is_atom(schema), do: Repo.load(schema, data)
 
-  @spec preload(Ecto.Schema.t() | [Ecto.Schema.t()], term(), module() | :primary | :replica) ::
+  @spec preload(Ecto.Schema.t() | [Ecto.Schema.t()], term(), module()) ::
           Ecto.Schema.t() | [Ecto.Schema.t()]
-  def preload(struct_or_structs, preloads, repo \\ Repo)
-
-  def preload(struct_or_structs, preloads, repo) when repo in [:primary, :replica],
-    do: resolve_repo(repo).preload(struct_or_structs, preloads)
-
-  def preload(struct_or_structs, preloads, repo) when is_atom(repo),
+  def preload(struct_or_structs, preloads, repo \\ Repo) when is_atom(repo),
     do: repo.preload(struct_or_structs, preloads)
 
   @doc """
@@ -360,24 +325,59 @@ defmodule Portal.Safe do
 
   ## Examples
       Safe.unscoped() |> Safe.query("SELECT * FROM actors WHERE id = $1", [actor_id])
+      Safe.unscoped(Repo.Poller) |> Safe.query("SELECT pg_try_advisory_lock($1)", [key])
   """
   @spec query(Unscoped.t(), String.t(), list()) ::
-          {:ok, Postgrex.Result.t()} | {:error, Postgrex.Error.t()}
+          {:ok, Postgrex.Result.t()} | {:error, Exception.t()}
   # sobelow_skip ["SQL.Query"]
-  def query(%Unscoped{}, sql, params) when is_binary(sql) and is_list(params) do
-    Repo.query(sql, params)
+  def query(%Unscoped{repo: repo}, sql, params) when is_binary(sql) and is_list(params) do
+    repo.query(sql, params)
   end
 
   @spec query(Portal.Repo, String.t(), list()) ::
-          {:ok, Postgrex.Result.t()} | {:error, Postgrex.Error.t()}
+          {:ok, Postgrex.Result.t()} | {:error, Exception.t()}
   # sobelow_skip ["SQL.Query"]
   def query(repo, sql, params) when repo == Repo and is_binary(sql) and is_list(params) do
     Repo.query(sql, params)
   end
 
   @doc """
+  Runs a function inside a database transaction without subject scoping.
+
+  The function must return `{:ok, value}` or `{:error, reason}`; an error
+  return rolls the transaction back.
+
+  ## Examples
+      Safe.unscoped() |> Safe.transaction(fn -> {:ok, ...} end)
+  """
+  @spec transaction(Unscoped.t(), (-> {:ok, term()} | {:error, term()})) ::
+          {:ok, term()} | {:error, term()}
+  def transaction(%Unscoped{}, fun) when is_function(fun, 0) do
+    Repo.transact(fun)
+  end
+
+  @doc """
+  Runs a function with a single connection checked out from the context's
+  repo, without wrapping it in a transaction. All of that repo's queries
+  inside `fun` use that connection, which session-scoped state (such as
+  advisory locks) requires.
+
+  ## Examples
+      Safe.unscoped() |> Safe.checkout(fn -> ... end)
+      Safe.unscoped(Repo.Poller) |> Safe.checkout(fn -> ... end, timeout: :timer.hours(24))
+  """
+  @spec checkout(Unscoped.t(), (-> term()), keyword()) :: term()
+  def checkout(%Unscoped{repo: repo}, fun, opts \\ []) when is_function(fun, 0) do
+    repo.checkout(fun, opts)
+  end
+
+  @doc """
   Inserts multiple entries for the given schema.
   The queryable field in Scoped/Unscoped is ignored for this operation.
+
+  Scoped inserts stamp the subject's `account_id` on every entry and refuse an
+  entry that names another account. Entries that span accounts, and the query
+  form of `entries`, require `unscoped/0`.
 
   ## Examples
       Safe.unscoped() |> Safe.insert_all(Actor, entries, on_conflict: :nothing)
@@ -395,19 +395,16 @@ defmodule Portal.Safe do
   def insert_all(%Scoped{subject: subject}, schema_or_source, entries, opts) do
     schema = if is_atom(schema_or_source), do: schema_or_source, else: schema_or_source.__struct__
 
-    case permit(:insert_all, schema, subject) do
-      :ok ->
-        {:ok, result} =
-          Repo.transact(fn ->
-            emit_subject_message(subject)
+    with :ok <- permit(:insert_all, schema, subject),
+         {:ok, entries} <- scope_entries(entries, subject.account.id) do
+      {:ok, result} =
+        Repo.transact(fn ->
+          emit_subject_message(subject)
 
-            {:ok, Repo.insert_all(schema_or_source, entries, opts)}
-          end)
+          {:ok, Repo.insert_all(schema_or_source, entries, opts)}
+        end)
 
-        result
-
-      {:error, :unauthorized} ->
-        {:error, :unauthorized}
+      result
     end
   end
 
@@ -429,9 +426,14 @@ defmodule Portal.Safe do
   end
 
   # Mutation operations
-  @spec insert(Scoped.t()) ::
+  @spec insert(Scoped.t() | Unscoped.t()) ::
           {:ok, Ecto.Schema.t()} | {:error, Ecto.Changeset.t() | :unauthorized}
-  def insert(%Scoped{subject: subject, queryable: %Ecto.Changeset{} = changeset}) do
+  def insert(%Scoped{} = scoped), do: insert(scoped, [])
+  def insert(%Unscoped{} = unscoped), do: insert(unscoped, [])
+
+  @spec insert(Scoped.t() | Unscoped.t() | Portal.Repo, Keyword.t() | Ecto.Changeset.t()) ::
+          {:ok, Ecto.Schema.t()} | {:error, Ecto.Changeset.t() | :unauthorized}
+  def insert(%Scoped{subject: subject, queryable: %Ecto.Changeset{} = changeset}, opts) do
     changeset = %{changeset | action: :insert}
     schema = get_schema_module(changeset.data)
 
@@ -442,12 +444,12 @@ defmodule Portal.Safe do
         changeset
         |> put_change(:account_id, subject.account.id)
         |> apply_schema_changeset(schema)
-        |> Repo.insert()
+        |> Repo.insert(opts)
       end)
     end
   end
 
-  def insert(%Scoped{subject: subject, queryable: struct}) when is_struct(struct) do
+  def insert(%Scoped{subject: subject, queryable: struct}, opts) when is_struct(struct) do
     schema = get_schema_module(struct)
 
     with :ok <- permit(:insert, schema, subject) do
@@ -455,28 +457,29 @@ defmodule Portal.Safe do
         emit_subject_message(subject)
 
         %{struct | account_id: subject.account.id}
-        |> Repo.insert()
+        |> Repo.insert(opts)
       end)
     end
   end
 
-  @spec insert(Unscoped.t()) :: {:ok, Ecto.Schema.t()} | {:error, Ecto.Changeset.t()}
-  def insert(%Unscoped{queryable: %Ecto.Changeset{} = changeset}) do
+  def insert(%Unscoped{queryable: %Ecto.Changeset{} = changeset}, opts) do
     schema = get_schema_module(changeset.data)
 
     changeset
     |> apply_schema_changeset(schema)
-    |> Repo.insert()
+    |> Repo.insert(opts)
   end
 
-  def insert(%Unscoped{queryable: struct}) when is_struct(struct) do
+  def insert(%Unscoped{queryable: struct}, opts) when is_struct(struct) do
     struct
-    |> Repo.insert()
+    |> Repo.insert(opts)
   end
+
+  def insert(repo, changeset_or_struct) when repo == Repo, do: insert(repo, changeset_or_struct, [])
 
   @spec insert(Portal.Repo, Ecto.Schema.t() | Ecto.Changeset.t(), Keyword.t()) ::
           {:ok, Ecto.Schema.t()} | {:error, Ecto.Changeset.t()}
-  def insert(repo, changeset_or_struct, opts \\ []) when repo == Repo do
+  def insert(repo, changeset_or_struct, opts) when repo == Repo do
     case changeset_or_struct do
       %Ecto.Changeset{} = changeset ->
         schema = get_schema_module(changeset.data)
@@ -530,7 +533,13 @@ defmodule Portal.Safe do
 
   @spec update_all(Scoped.t(), Keyword.t()) ::
           {non_neg_integer(), nil | [term()]} | {:error, :unauthorized}
-  def update_all(%Scoped{subject: subject, queryable: queryable}, updates) do
+  def update_all(
+        %Scoped{
+          subject: %Subject{account: %{id: account_id}} = subject,
+          queryable: queryable
+        },
+        updates
+      ) do
     schema = get_schema_module(queryable)
 
     case permit(:update_all, schema, subject) do
@@ -539,7 +548,9 @@ defmodule Portal.Safe do
           Repo.transact(fn ->
             emit_subject_message(subject)
 
-            {:ok, Repo.update_all(queryable, updates)}
+            filtered_query = apply_account_filter(queryable, schema, account_id)
+
+            {:ok, Repo.update_all(filtered_query, updates)}
           end)
 
         result
@@ -554,14 +565,8 @@ defmodule Portal.Safe do
     Repo.update_all(queryable, updates)
   end
 
-  @spec update_all(Portal.Repo, Ecto.Queryable.t(), Keyword.t()) ::
-          {non_neg_integer(), nil | [term()]}
-  def update_all(repo, queryable, updates) when repo == Repo do
-    Repo.update_all(queryable, updates)
-  end
-
   @spec delete(Scoped.t()) ::
-          {:ok, Ecto.Schema.t()} | {:error, Ecto.Changeset.t() | :unauthorized}
+          {:ok, Ecto.Schema.t()} | {:error, Ecto.Changeset.t() | :unauthorized | :not_found}
   def delete(%Scoped{
         subject: %Subject{account: %{id: account_id}} = subject,
         queryable: %Ecto.Changeset{data: %{account_id: account_id}} = changeset
@@ -578,6 +583,8 @@ defmodule Portal.Safe do
         |> Repo.delete()
       end)
     end
+  rescue
+    Ecto.StaleEntryError -> {:error, :not_found}
   end
 
   def delete(%Scoped{
@@ -594,6 +601,9 @@ defmodule Portal.Safe do
         Repo.delete(struct)
       end)
     end
+  rescue
+    # The row went away between the caller's fetch and this delete.
+    Ecto.StaleEntryError -> {:error, :not_found}
   end
 
   @spec delete(Unscoped.t()) :: {:ok, Ecto.Schema.t()} | {:error, Ecto.Changeset.t()}
@@ -697,67 +707,9 @@ defmodule Portal.Safe do
       reraise Ecto.NoResultsError, [queryable: queryable], __STACKTRACE__
   end
 
-  defp fetch_one_with_primary_retry(repo, query, retry?) do
-    case read_replica(fn -> repo.one(query) end, retry?) do
-      :fallback ->
-        safe_repo(fn -> Repo.one(query) end)
-
-      nil when retry? ->
-        safe_repo(fn -> Repo.one(query) end)
-
-      result ->
-        result
-    end
+  defp ecto_schema?(module) do
+    Code.ensure_loaded?(module) and function_exported?(module, :__schema__, 1)
   end
-
-  defp fetch_one_with_primary_retry!(repo, query, retry?) do
-    case read_replica(fn -> repo.one(query) end, retry?) do
-      :fallback ->
-        safe_repo!(fn -> Repo.one!(query) end, query)
-
-      nil when retry? ->
-        safe_repo!(fn -> Repo.one!(query) end, query)
-
-      nil ->
-        raise(Ecto.NoResultsError, queryable: query)
-
-      result ->
-        result
-    end
-  end
-
-  defp exists_with_primary_retry?(repo, query, retry?) do
-    case read_replica(fn -> repo.exists?(query) end, retry?) do
-      :fallback -> safe_repo(fn -> Repo.exists?(query) end) || false
-      true -> true
-      _ when retry? -> safe_repo(fn -> Repo.exists?(query) end) || false
-      _ -> false
-    end
-  end
-
-  # Runs a read against the (possibly replica) repo. When a fallback to the
-  # primary is requested and the replica connection fails (e.g. a non-HA Azure
-  # read replica dropping connections during a transient outage), returns
-  # `:fallback` so the caller can retry against the primary. When fallback is
-  # disabled the connection error propagates so the real failure surfaces.
-  defp read_replica(fun, retry?) do
-    safe_repo(fun)
-  rescue
-    error in DBConnection.ConnectionError ->
-      if retry? do
-        Logger.warning("Replica read failed, falling back to primary",
-          error: Exception.message(error)
-        )
-
-        :fallback
-      else
-        reraise error, __STACKTRACE__
-      end
-  end
-
-  defp resolve_repo(:primary), do: Repo
-  defp resolve_repo(:replica), do: @replica
-  defp resolve_repo(repo) when is_atom(repo), do: repo
 
   defp apply_account_filter(queryable, Portal.Account, account_id) do
     # For Account schema, filter by id instead of account_id
@@ -767,6 +719,40 @@ defmodule Portal.Safe do
   defp apply_account_filter(queryable, _schema, account_id) do
     # For all other schemas, filter by account_id
     where(queryable, account_id: ^account_id)
+  end
+
+  # Bulk inserts get the same treatment `insert/1` gives a changeset: the
+  # subject's account is stamped on, and an entry naming another account is
+  # refused. Cross-account inserts must say so with `unscoped/0`.
+  defp scope_entries(entries, account_id) when is_list(entries) do
+    Enum.reduce_while(entries, {:ok, []}, fn entry, {:ok, scoped} ->
+      case scope_entry(entry, account_id) do
+        {:ok, entry} -> {:cont, {:ok, [entry | scoped]}}
+        {:error, :unauthorized} -> {:halt, {:error, :unauthorized}}
+      end
+    end)
+    |> case do
+      {:ok, scoped} -> {:ok, Enum.reverse(scoped)}
+      {:error, :unauthorized} -> {:error, :unauthorized}
+    end
+  end
+
+  defp scope_entries(_query, _account_id), do: {:error, :unauthorized}
+
+  defp scope_entry(entry, account_id) when is_map(entry) do
+    case Map.fetch(entry, :account_id) do
+      {:ok, ^account_id} -> {:ok, entry}
+      {:ok, _other} -> {:error, :unauthorized}
+      :error -> {:ok, Map.put(entry, :account_id, account_id)}
+    end
+  end
+
+  defp scope_entry(entry, account_id) when is_list(entry) do
+    case Keyword.fetch(entry, :account_id) do
+      {:ok, ^account_id} -> {:ok, entry}
+      {:ok, _other} -> {:error, :unauthorized}
+      :error -> {:ok, Keyword.put(entry, :account_id, account_id)}
+    end
   end
 
   defp apply_schema_changeset(changeset, schema) do
@@ -883,6 +869,12 @@ defmodule Portal.Safe do
   def permit(_action, Portal.ClientToken, :account_admin_user), do: :ok
   def permit(_action, Portal.ClientToken, :api_client), do: :ok
   def permit(_action, Portal.APIToken, :account_admin_user), do: :ok
+
+  # OAuth grants and codes are created by a person going through the browser
+  # consent screen, which runs on a portal session, and only an admin gets one.
+  def permit(_action, Portal.OAuthGrant, :account_admin_user), do: :ok
+  def permit(_action, Portal.OAuthAuthorizationCode, :account_admin_user), do: :ok
+  def permit(:read, Portal.OAuthToken, :account_admin_user), do: :ok
   def permit(_action, Portal.Directory, :account_admin_user), do: :ok
   def permit(:read, Portal.Directory, :api_client), do: :ok
   def permit(_action, Portal.AuthProvider, :account_admin_user), do: :ok
@@ -891,6 +883,8 @@ defmodule Portal.Safe do
   def permit(:read, Portal.Entra.AuthProvider, :api_client), do: :ok
   def permit(_action, Portal.Google.AuthProvider, :account_admin_user), do: :ok
   def permit(:read, Portal.Google.AuthProvider, :api_client), do: :ok
+  def permit(_action, Portal.GitHub.AuthProvider, :account_admin_user), do: :ok
+  def permit(:read, Portal.GitHub.AuthProvider, :api_client), do: :ok
   def permit(_action, Portal.Okta.AuthProvider, :account_admin_user), do: :ok
   def permit(:read, Portal.Okta.AuthProvider, :api_client), do: :ok
   def permit(_action, Portal.OIDC.AuthProvider, :account_admin_user), do: :ok
@@ -899,37 +893,67 @@ defmodule Portal.Safe do
   def permit(:read, Portal.EmailOTP.AuthProvider, :api_client), do: :ok
   def permit(_action, Portal.Userpass.AuthProvider, :account_admin_user), do: :ok
   def permit(:read, Portal.Userpass.AuthProvider, :api_client), do: :ok
+  def permit(_action, Portal.X509.AuthProvider, :account_admin_user), do: :ok
+  def permit(:read, Portal.X509.AuthProvider, :api_client), do: :ok
   def permit(_action, Portal.Entra.Directory, :account_admin_user), do: :ok
   def permit(:read, Portal.Entra.Directory, :api_client), do: :ok
+  def permit(_action, Portal.PostureProvider, :account_admin_user), do: :ok
+  def permit(action, Portal.PostureProvider, :api_client) when action in [:read, :update, :delete], do: :ok
+  def permit(_action, Portal.Intune.PostureProvider, :account_admin_user), do: :ok
+  def permit(action, Portal.Intune.PostureProvider, :api_client) when action in [:read, :update], do: :ok
+  def permit(:read, Portal.Intune.Device, :account_admin_user), do: :ok
+  def permit(:read, Portal.Intune.Device, :api_client), do: :ok
+  def permit(_action, Portal.Iru.PostureProvider, :account_admin_user), do: :ok
+  def permit(action, Portal.Iru.PostureProvider, :api_client) when action in [:read, :update], do: :ok
+  def permit(:read, Portal.Iru.Device, :account_admin_user), do: :ok
+  def permit(:read, Portal.Iru.Device, :api_client), do: :ok
+  def permit(_action, Portal.Defender.PostureProvider, :account_admin_user), do: :ok
+  def permit(action, Portal.Defender.PostureProvider, :api_client) when action in [:read, :update], do: :ok
+  def permit(:read, Portal.Defender.Device, :account_admin_user), do: :ok
+  def permit(:read, Portal.Defender.Device, :api_client), do: :ok
+  def permit(_action, Portal.Santa.PostureProvider, :account_admin_user), do: :ok
+  def permit(action, Portal.Santa.PostureProvider, :api_client) when action in [:read, :update], do: :ok
+  def permit(:read, Portal.Santa.Device, :account_admin_user), do: :ok
+  def permit(:read, Portal.Santa.Device, :api_client), do: :ok
+  def permit(_action, Portal.SentinelOne.PostureProvider, :account_admin_user), do: :ok
+  def permit(action, Portal.SentinelOne.PostureProvider, :api_client) when action in [:read, :update], do: :ok
+  def permit(:read, Portal.SentinelOne.Device, :account_admin_user), do: :ok
+  def permit(:read, Portal.SentinelOne.Device, :api_client), do: :ok
+  def permit(_action, Portal.Sophos.PostureProvider, :account_admin_user), do: :ok
+  def permit(action, Portal.Sophos.PostureProvider, :api_client) when action in [:read, :update], do: :ok
+  def permit(:read, Portal.Sophos.Device, :account_admin_user), do: :ok
+  def permit(:read, Portal.Sophos.Device, :api_client), do: :ok
   def permit(_action, Portal.Google.Directory, :account_admin_user), do: :ok
   def permit(:read, Portal.Google.Directory, :api_client), do: :ok
   def permit(_action, Portal.Okta.Directory, :account_admin_user), do: :ok
   def permit(:read, Portal.Okta.Directory, :api_client), do: :ok
+
+  def permit(_action, Portal.LogSink, :account_admin_user), do: :ok
+  def permit(_action, Portal.Splunk.LogSink, :account_admin_user), do: :ok
+  def permit(_action, Portal.Datadog.LogSink, :account_admin_user), do: :ok
+  def permit(_action, Portal.NewRelic.LogSink, :account_admin_user), do: :ok
+  def permit(_action, Portal.Elastic.LogSink, :account_admin_user), do: :ok
+  def permit(_action, Portal.Sentinel.LogSink, :account_admin_user), do: :ok
+  def permit(_action, Portal.S3.LogSink, :account_admin_user), do: :ok
+  def permit(_action, Portal.QRadar.LogSink, :account_admin_user), do: :ok
+  def permit(_action, Portal.HTTP.LogSink, :account_admin_user), do: :ok
+  def permit(:read, Portal.LogSinkCursor, :account_admin_user), do: :ok
 
   def permit(_action, Portal.PortalSession, :account_admin_user), do: :ok
 
   # Oban.Job permissions - admin only
   def permit(:read, Oban.Job, :account_admin_user), do: :ok
 
-  # Device permissions (union of Client + Gateway)
+  # Device permissions (union of Client + Gateway); non-admin actors can
+  # insert because clients create their own device row at first connect
   def permit(_action, Portal.Device, :account_admin_user), do: :ok
   def permit(_action, Portal.Device, :api_client), do: :ok
   def permit(:read, Portal.Device, :account_user), do: :ok
   def permit(:update, Portal.Device, :account_user), do: :ok
+  def permit(:insert, Portal.Device, :account_user), do: :ok
   def permit(:read, Portal.Device, :service_account), do: :ok
   def permit(:update, Portal.Device, :service_account), do: :ok
-
-  # ClientSession permissions
-  def permit(_action, Portal.ClientSession, :account_admin_user), do: :ok
-  def permit(_action, Portal.ClientSession, :api_client), do: :ok
-  def permit(:read, Portal.ClientSession, :account_user), do: :ok
-  def permit(:read, Portal.ClientSession, :service_account), do: :ok
-
-  # GatewaySession permissions
-  def permit(_action, Portal.GatewaySession, :account_admin_user), do: :ok
-  def permit(_action, Portal.GatewaySession, :api_client), do: :ok
-  def permit(:read, Portal.GatewaySession, :account_user), do: :ok
-  def permit(:read, Portal.GatewaySession, :service_account), do: :ok
+  def permit(:insert, Portal.Device, :service_account), do: :ok
 
   # PolicyAuthorization permissions - all actor types can read and create policy_authorizations
   def permit(:read, Portal.PolicyAuthorization, _), do: :ok
@@ -951,11 +975,6 @@ defmodule Portal.Safe do
   def permit(_action, Portal.Resource, :api_client), do: :ok
   def permit(:read, Portal.Resource, _), do: :ok
 
-  # StaticDevicePoolMember permissions
-  def permit(_action, Portal.StaticDevicePoolMember, :account_admin_user), do: :ok
-  def permit(_action, Portal.StaticDevicePoolMember, :api_client), do: :ok
-  def permit(:read, Portal.StaticDevicePoolMember, _), do: :ok
-
   # Policy permissions
   def permit(_action, Portal.Policy, :account_admin_user), do: :ok
   def permit(_action, Portal.Policy, :api_client), do: :ok
@@ -969,6 +988,41 @@ defmodule Portal.Safe do
   # ChangeLog permissions
   def permit(:read, Portal.ChangeLog, :account_admin_user), do: :ok
   def permit(:read, Portal.ChangeLog, :api_client), do: :ok
+
+  # TrustAnchor permissions
+  def permit(_action, Portal.TrustAnchor, :account_admin_user), do: :ok
+  def permit(:read, Portal.TrustAnchor, :api_client), do: :ok
+  def permit(:read, Portal.TrustAnchorCertificate, _), do: :ok
+
+  # Every attested connect checks the cached CRL for the anchor that issued its
+  # certificate, so any actor type that can attest must be able to read it.
+  def permit(:read, Portal.CrlRevocation, _), do: :ok
+
+  # Readable by any actor type that can attest, since the connect path consults
+  # it to tell an issuer that publishes a list from one that only answers a
+  # responder. The rows are otherwise written by the connect that discovers them
+  # and by the fetch jobs, both of which pin the account themselves.
+  def permit(:read, Portal.RevocationEndpoint, _), do: :ok
+
+  # An endpoint that keeps failing stops being fetched from, and saving the
+  # trust anchor its issuer belongs to is the only way to start again.
+  def permit(:update_all, Portal.RevocationEndpoint, :account_admin_user), do: :ok
+
+  # Every attested connect checks the cached status of its own certificate when
+  # its CA publishes no list, so any actor type that can attest must read it.
+  def permit(:read, Portal.OcspStatus, _), do: :ok
+
+  # SessionLog permissions
+  def permit(:read, Portal.SessionLog, :account_admin_user), do: :ok
+  def permit(:read, Portal.SessionLog, :api_client), do: :ok
+
+  # FlowLog permissions
+  def permit(:read, Portal.FlowLog, :account_admin_user), do: :ok
+  def permit(:read, Portal.FlowLog, :api_client), do: :ok
+
+  # APIRequestLog permissions
+  def permit(:read, Portal.APIRequestLog, :account_admin_user), do: :ok
+  def permit(:read, Portal.APIRequestLog, :api_client), do: :ok
 
   def permit(_action, _struct, _type), do: {:error, :unauthorized}
 

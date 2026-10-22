@@ -27,8 +27,6 @@ use tracing_subscriber::Layer;
 
 use crate::unwrap_or_debug;
 
-pub const TIME_FORMAT: &str = "[year]-[month]-[day]-[hour]-[minute]-[second]";
-
 /// How many lines we will at most buffer in the channel with the background thread that writes to disk.
 ///
 /// We don't need this number to be very high because:
@@ -136,7 +134,10 @@ impl Appender {
 
     // Inspired from `tracing-appender/src/rolling.rs`.
     fn create_new_writer(&self) -> io::Result<(fs::File, String)> {
-        let format = time::format_description::parse(TIME_FORMAT).map_err(io::Error::other)?;
+        let format = time::macros::format_description!(
+            version = 3,
+            "[year]-[month]-[day]-[hour]-[minute]-[second]"
+        );
         let date = OffsetDateTime::now_utc()
             .format(&format)
             .map_err(|_| io::Error::other("Failed to format timestamp"))?;

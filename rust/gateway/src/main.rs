@@ -1,42 +1,67 @@
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
+#[global_allocator]
+static ALLOC: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 use crate::eventloop::{Eventloop, PHOENIX_TOPIC};
 use anyhow::{Context, ErrorExt, Result, bail};
 use backoff::ExponentialBackoffBuilder;
 use bin_shared::{
-    TunDeviceManager, device_id, http_health_check,
+    TunDeviceManager, device_id, device_info, http_health_check,
     platform::{UdpSocketFactory, tcp_socket_factory},
 };
 use clap::Parser;
 
 use hickory_resolver::config::ResolveHosts;
-use ip_packet::IpPacket;
 use opentelemetry_otlp::WithExportConfig;
 use opentelemetry_sdk::metrics::SdkMeterProvider;
 use phoenix_channel::LoginUrl;
 use phoenix_channel::get_user_agent;
 use telemetry::SentryMeterProvider;
-use tokio_util::task::AbortOnDropHandle;
 use tunnel::GatewayTunnel;
 
+use clock::Clock;
 use phoenix_channel::PhoenixChannel;
 use secrecy::{ExposeSecret, SecretString};
 use std::{collections::BTreeSet, fmt};
 use std::{path::PathBuf, process::ExitCode};
 use std::{sync::Arc, time::Duration};
 use tracing_subscriber::layer;
-use tun::Tun;
 use url::Url;
 
+mod account_slug;
 mod eventloop;
+mod manage;
 mod otel;
 
 const RELEASE: &str = concat!("gateway@", env!("CARGO_PKG_VERSION"));
 
 const DEFAULT_MAX_PARTITION_TIME: Duration = Duration::from_secs(60 * 60 * 24); // 24 hours
 
+/// Spool directory for flow logs pending upload.
+///
+/// Holds Bearer tokens, so it lives outside the log directory and is written
+/// with 0700/0600 permissions.
+const FLOW_LOGS_DIR: &str = "/var/lib/firezone/flow_logs";
+
+/// Exit code that tells systemd this failure needs an operator, so restarting cannot fix it.
+///
+/// `EX_CONFIG` from `sysexits.h`; `firezone-gateway.service` lists it in `RestartPreventExitStatus`.
+const EX_CONFIG: u8 = 78;
+
 fn main() -> ExitCode {
     let cli = Cli::parse();
+
+    if let Some(command) = cli.command {
+        return match manage::run(command) {
+            Ok(()) => ExitCode::SUCCESS,
+            #[expect(clippy::print_stderr, reason = "No logger has been set up yet")]
+            Err(e) => {
+                eprintln!("Error: {e:#}");
+                ExitCode::FAILURE
+            }
+        };
+    }
 
     #[expect(clippy::print_stderr, reason = "No logger has been set up yet")]
     #[cfg(target_os = "linux")]
@@ -51,10 +76,7 @@ fn main() -> ExitCode {
         .install_default()
         .expect("Calling `install_default` only once per process should always succeed");
 
-    telemetry::configure(
-        Arc::new(tcp_socket_factory),
-        Arc::new(UdpSocketFactory::default()),
-    );
+    telemetry::configure(Arc::new(tcp_socket_factory));
 
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
@@ -64,19 +86,30 @@ fn main() -> ExitCode {
     match runtime.block_on(try_main(cli)) {
         Ok(()) => {
             tracing::info!("Goodbye!");
-            runtime.block_on(telemetry::stop());
+            telemetry::stop();
 
             ExitCode::SUCCESS
         }
         Err(e) if e.any_is::<EventloopFailed>() => {
             tracing::error!("{e:#}");
-            runtime.block_on(telemetry::stop());
 
-            ExitCode::FAILURE
+            let exit_code = if needs_new_token(&e) {
+                tracing::info!(
+                    "Replace the token in `/etc/firezone/gateway-token` and start the service again"
+                );
+
+                ExitCode::from(EX_CONFIG)
+            } else {
+                ExitCode::FAILURE
+            };
+
+            telemetry::stop();
+
+            exit_code
         }
         Err(e) => {
             tracing::info!("{e:#}");
-            runtime.block_on(telemetry::stop());
+            telemetry::stop();
 
             ExitCode::FAILURE
         }
@@ -98,9 +131,15 @@ fn has_necessary_permissions() -> bool {
 }
 
 async fn try_main(cli: Cli) -> Result<()> {
+    let flow_logs_dir = PathBuf::from(FLOW_LOGS_DIR);
+
+    // Hold the guard until exit so the writer thread drains on shutdown.
+    let (flow_log_layer, _flow_log_guard) = flow_log_writer::layer(flow_logs_dir.clone());
+
     logging::setup_global_subscriber(
         make_directives(std::env::var("RUST_LOG").ok(), cli.flow_logs),
         layer::Identity::default(),
+        flow_log_layer,
         match cli.log_format {
             LogFormat::Json => true,
             LogFormat::Human => false,
@@ -117,6 +156,12 @@ async fn try_main(cli: Cli) -> Result<()> {
     );
 
     tracing::debug!(?cli);
+
+    if cli.firezone_name.is_some() {
+        tracing::info!(
+            "`FIREZONE_NAME` is unused; configure the gateway name in the Admin Portal instead"
+        );
+    }
 
     if cfg!(target_os = "linux") && cli.is_inc_buf_allowed() {
         let recv_buf_size = socket_factory::RECV_BUFFER_SIZE;
@@ -142,16 +187,22 @@ async fn try_main(cli: Cli) -> Result<()> {
             .context("Failed to read `FIREZONE_TOKEN` systemd credential")?,
     };
 
+    let account_slug = account_slug::Cache::new(&token);
+
     if cli.is_telemetry_allowed() {
         telemetry::start(cli.api_url.as_str(), RELEASE, telemetry::GATEWAY_DSN);
-        telemetry::set_firezone_id(firezone_id.clone()).await;
+        telemetry::set_firezone_id(firezone_id.clone());
+
+        if let Some(slug) = account_slug.get() {
+            telemetry::set_account_slug(slug.to_owned());
+        }
     }
 
     if let Some(backend) = cli.metrics {
         let resource = telemetry::otel::default_resource_with([
-            telemetry::otel::attr::service_name!(),
-            telemetry::otel::attr::service_version!(),
-            telemetry::otel::attr::service_instance_id(firezone_id.clone()),
+            otel_attributes::service_name!(),
+            otel_attributes::service_version!(),
+            telemetry::otel::service_instance_id(firezone_id.clone()),
         ]);
 
         match (backend, cli.otlp_grpc_endpoint) {
@@ -180,8 +231,13 @@ async fn try_main(cli: Cli) -> Result<()> {
         }
     }
 
-    let login = LoginUrl::gateway(cli.api_url, firezone_id, cli.firezone_name)
-        .context("Failed to construct URL for logging into portal")?;
+    let login = LoginUrl::gateway(
+        cli.api_url,
+        firezone_id,
+        device_info::serial(),
+        device_info::uuid(),
+    )
+    .context("Failed to construct URL for logging into portal")?;
 
     let resolv_conf = resolv_conf::Config::parse(
         std::fs::read_to_string("/etc/resolv.conf").context("Failed to read /etc/resolv.conf")?,
@@ -193,12 +249,16 @@ async fn try_main(cli: Cli) -> Result<()> {
         .map(|ip| ip.into())
         .collect::<BTreeSet<_>>();
 
+    let mut clock = Clock::new();
     let mut tunnel = GatewayTunnel::new(
         Arc::new(tcp_socket_factory),
         Arc::new(UdpSocketFactory::default()),
         nameservers,
-        cli.flow_logs,
+        clock.now(),
     );
+
+    flow_log_upload::spawn(flow_logs_dir.clone(), Arc::new(tcp_socket_factory));
+
     let max_partition_time = cli
         .max_partition_time
         .map(|d| d.into())
@@ -225,11 +285,7 @@ async fn try_main(cli: Cli) -> Result<()> {
         .make_tun()
         .context("Failed to create TUN device")?;
 
-    if cli.validate_checksums {
-        tunnel.set_tun(ValidateChecksumAdapter::wrap(tun));
-    } else {
-        tunnel.set_tun(tun);
-    }
+    tunnel.set_tun(tun);
 
     tokio::spawn(http_health_check::serve(
         cli.health_check.health_check_addr,
@@ -244,10 +300,19 @@ async fn try_main(cli: Cli) -> Result<()> {
         .build()
         .context("Failed to build DNS resolver")?;
 
-    Eventloop::new(tunnel, portal, tun_device_manager, resolver)?
-        .run()
-        .await
-        .context(EventloopFailed)?;
+    Eventloop::new(
+        clock,
+        tunnel,
+        portal,
+        tun_device_manager,
+        resolver,
+        flow_logs_dir,
+        cli.flow_logs,
+        account_slug,
+    )?
+    .run()
+    .await
+    .context(EventloopFailed)?;
 
     Ok(())
 }
@@ -255,6 +320,12 @@ async fn try_main(cli: Cli) -> Result<()> {
 #[derive(thiserror::Error, Debug)]
 #[error("Eventloop failed")]
 struct EventloopFailed;
+
+/// Returns whether the portal refused our token and will keep refusing it.
+fn needs_new_token(e: &anyhow::Error) -> bool {
+    e.any_downcast_ref::<phoenix_channel::Error>()
+        .is_some_and(phoenix_channel::Error::requires_sign_in)
+}
 
 fn tonic_otlp_exporter(
     endpoint: String,
@@ -299,6 +370,9 @@ async fn read_systemd_credential(name: &str) -> Result<SecretString> {
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Cli {
+    #[command(subcommand)]
+    command: Option<manage::Command>,
+
     #[arg(
         short = 'u',
         long,
@@ -310,10 +384,9 @@ struct Cli {
     /// Token generated by the portal to authorize websocket connection.
     #[arg(env = "FIREZONE_TOKEN")]
     token: Option<SecretString>,
-    /// Friendly name to display in the UI
-    #[arg(short = 'n', long, env = "FIREZONE_NAME")]
+    /// Deprecated: gateway names are configured in the Admin Portal.
+    #[arg(short = 'n', long, env = "FIREZONE_NAME", hide = true)]
     firezone_name: Option<String>,
-
     /// Disable sentry.io crash-reporting agent.
     #[arg(long, env = "FIREZONE_NO_TELEMETRY", default_value_t = false)]
     no_telemetry: bool,
@@ -332,7 +405,11 @@ struct Cli {
     #[arg(long, env = "FIREZONE_LOG_FORMAT", default_value_t = LogFormat::Human)]
     log_format: LogFormat,
 
-    /// Enable logging of tunneled UDP and TCP flows.
+    /// Track flow logs even when the portal has them disabled, and emit them
+    /// to the log output by adding the `flow_logs=trace` log directive.
+    ///
+    /// Flows tracked only because of this flag stay on the log output;
+    /// spooling and uploading them is always controlled by the portal.
     #[arg(long, env = "FIREZONE_FLOW_LOGS", default_value_t = false)]
     flow_logs: bool,
 
@@ -351,15 +428,6 @@ struct Cli {
     /// It may be removed / changed anytime.
     #[arg(long, env, hide = true)]
     otlp_grpc_endpoint: Option<String>,
-
-    /// Validates the checksums of all packets leaving the TUN device.
-    #[arg(
-        long,
-        hide = true,
-        env = "FIREZONE_VALIDATE_CHECKSUMS",
-        default_value_t = false
-    )]
-    validate_checksums: bool,
 
     /// Do not try to increase the `core.rmem_max` and `core.wmem_max` kernel parameters.
     #[arg(long, env = "FIREZONE_NO_INC_BUF", default_value_t = false)]
@@ -403,84 +471,6 @@ impl Cli {
     }
 }
 
-/// An adapter struct around [`Tun`] that validates IPv4, UDP and TCP checksums.
-struct ValidateChecksumAdapter {
-    outbound_tx: tokio::sync::mpsc::Sender<IpPacket>,
-    inbound_rx: tokio::sync::mpsc::Receiver<IpPacket>,
-    name: String,
-    _task: AbortOnDropHandle<()>,
-}
-
-impl Tun for ValidateChecksumAdapter {
-    fn sender(&self) -> &tokio::sync::mpsc::Sender<IpPacket> {
-        &self.outbound_tx
-    }
-
-    fn receiver(&mut self) -> &mut tokio::sync::mpsc::Receiver<IpPacket> {
-        &mut self.inbound_rx
-    }
-
-    fn name(&self) -> &str {
-        &self.name
-    }
-}
-
-impl ValidateChecksumAdapter {
-    fn wrap(mut inner: Box<dyn Tun>) -> Box<dyn Tun> {
-        let name = inner.name().to_string();
-
-        // Channel for inbound packets (from TUN device to gateway)
-        let (inbound_tx, inbound_rx) = tokio::sync::mpsc::channel(1000);
-
-        // Get reference to inner TUN's sender for outbound packets
-        let outbound_tx = inner.sender().clone();
-
-        // Spawn task to validate and forward inbound packets from TUN device
-        let task = tokio::spawn(async move {
-            while let Some(packet) = inner.receiver().recv().await {
-                if let Some(ipv4) = packet.ipv4_header() {
-                    let expected = ipv4.calc_header_checksum();
-                    let actual = ipv4.header_checksum;
-
-                    if expected != actual {
-                        tracing::warn!(?packet, %expected, %actual, "IPv4 checksum invalid");
-                    }
-                }
-
-                if let Some(udp) = packet.as_udp() {
-                    let actual = udp.checksum();
-                    if let Ok(expected) = packet.calculate_udp_checksum()
-                        && expected != actual
-                    {
-                        tracing::warn!(?packet, %expected, %actual, "UDP checksum invalid");
-                    }
-                }
-
-                if let Some(tcp) = packet.as_tcp() {
-                    let actual = tcp.checksum();
-                    if let Ok(expected) = packet.calculate_tcp_checksum()
-                        && expected != actual
-                    {
-                        tracing::warn!(?packet, %expected, %actual, "TCP checksum invalid");
-                    }
-                }
-
-                // Forward the validated packet to our inbound channel
-                if inbound_tx.send(packet).await.is_err() {
-                    break;
-                }
-            }
-        });
-
-        Box::new(Self {
-            outbound_tx,
-            inbound_rx,
-            name,
-            _task: AbortOnDropHandle::new(task),
-        })
-    }
-}
-
 fn make_directives(rust_log: Option<String>, flow_logs: bool) -> String {
     let rust_log = rust_log.unwrap_or_else(|| "info".to_string());
 
@@ -495,6 +485,34 @@ fn make_directives(rust_log: Option<String>, flow_logs: bool) -> String {
 mod tests {
     use super::*;
     use tempfile::TempDir;
+
+    #[test]
+    fn parses_management_subcommand() {
+        let cli = Cli::try_parse_from(["firezone-gateway", "authenticate", "--replace"]).unwrap();
+
+        assert!(matches!(
+            cli.command,
+            Some(manage::Command::Authenticate { replace: true })
+        ));
+        assert!(cli.token.is_none());
+    }
+
+    #[test]
+    fn parses_positional_token() {
+        let cli = Cli::try_parse_from(["firezone-gateway", "some-token"]).unwrap();
+
+        assert!(cli.command.is_none());
+        assert_eq!(cli.token.unwrap().expose_secret(), "some-token");
+    }
+
+    #[test]
+    fn accepts_deprecated_name_arguments() {
+        for argument in ["--firezone-name", "-n"] {
+            let cli = Cli::try_parse_from(["firezone-gateway", argument, "gateway-name"]).unwrap();
+
+            assert_eq!(cli.firezone_name.as_deref(), Some("gateway-name"));
+        }
+    }
 
     #[tokio::test]
     async fn get_firezone_token_from_systemd_credential_with_credentials_directory() {
@@ -517,6 +535,28 @@ mod tests {
         unsafe {
             std::env::remove_var("CREDENTIALS_DIRECTORY");
         }
+    }
+
+    #[test]
+    fn only_an_invalid_token_needs_a_new_one() {
+        let invalid_token =
+            anyhow::Error::new(phoenix_channel::Error::InvalidToken).context(EventloopFailed);
+        let unrelated = anyhow::Error::msg("TUN device disappeared").context(EventloopFailed);
+
+        assert!(needs_new_token(&invalid_token));
+        assert!(!needs_new_token(&unrelated));
+    }
+
+    #[test]
+    fn packaged_unit_prevents_restart_on_ex_config() {
+        let unit = include_str!("../debian/firezone-gateway.service");
+
+        let directive = format!("RestartPreventExitStatus={EX_CONFIG}");
+
+        assert!(
+            unit.contains(&directive),
+            "`firezone-gateway.service` must carry `{directive}`"
+        );
     }
 
     #[test]

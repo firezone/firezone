@@ -5,19 +5,57 @@
 [settings]
 auto_install = false
 
-[env]
-# Match CI environment - enables tokio unstable features and denies warnings
-RUSTFLAGS = "--cfg tokio_unstable"
-
 [tools]
 "github:aya-rs/bpf-linker" = { version = "0.10.3", os = ["linux"] }
 "cargo:cargo-deb" = { version = "3.7.0", os = ["linux"] }
 "github:taiki-e/cargo-llvm-cov" = "0.6.21"
+# `matching_regex` skips the npm tarballs the release also carries, so every
+# platform gets the bare binary; `bin` gives it a name the shim can use.
+"github:getsentry/sentry-cli" = { version = "3.6.2", bin = "sentry-cli", matching_regex = "^sentry-cli-(Darwin|Linux|Windows)-" }
 "github:tauri-apps/tauri" = { version = "2.11.2", version_prefix = "tauri-cli-v" }
+
+# The eBPF program is compiled with this exact nightly toolchain: `aya_build`
+# invokes it via `rustup run` (see `relay/server/build.rs`; keep the two pins
+# in sync). Installing it is a task rather than a `rust` entry in `[tools]`
+# because the latter would activate the nightly via `RUSTUP_TOOLCHAIN`,
+# overriding `rust-toolchain.toml` for everything else in this directory.
+[tasks.install-ebpf-toolchain]
+description = "Install the nightly toolchain that the eBPF program is compiled with"
+run = "rustup toolchain install nightly-2025-05-30 --profile minimal --component rust-src"
 
 # =============================================================================
 # Individual checks (matching CI)
 # =============================================================================
+
+[tasks.workspace-crates]
+description = "List the name and directory of every crate in the workspace, as JSON"
+shell = "bash -c"
+hide = true
+run = '''
+set -euo pipefail
+
+cargo metadata --format-version=1 --no-deps |
+  jq -ce '[.packages[] | {name, dir: (.manifest_path | sub("/Cargo.toml$"; "") + "/")}]'
+'''
+
+[tasks.mobile-test-packages]
+description = "Print `-p` flags for `client-ffi` and every workspace crate it depends on for the given target"
+usage = 'arg "<triple>"'
+shell = "bash -c"
+hide = true
+run = '''
+set -euo pipefail
+
+cargo metadata --format-version=1 --filter-platform "$usage_triple" |
+  jq -r '
+    (.resolve.nodes | map({key: .id, value: [.deps[] | select(any(.dep_kinds[]; .kind == null)) | .pkg]}) | from_entries) as $deps
+    | (.packages | map({key: .id, value: .name}) | from_entries) as $names
+    | .workspace_members as $members
+    | [.packages[] | select(.name == "client-ffi") | .id]
+    | until(. as $s | ($s + [$s[] | $deps[.][]] | unique) == $s; . + [.[] | $deps[.][]] | unique)
+    | map(select(IN($members[])) | "-p \($names[.])")
+    | join(" ")'
+'''
 
 [tasks.fmt]
 description = "Format Rust code"
@@ -47,31 +85,6 @@ run = "cargo deny check --hide-inclusion-graph --deny unnecessary-skip"
 description = "Run tests (CI check)"
 run = "cargo test --all-features -- --include-ignored --nocapture"
 
-[tasks.tunnel-proptest]
-description = "Run the tunnel proptest suite with extended case/shrink budgets"
-dir = "libs/connlib/tunnel"
-env = { CARGO_PROFILE_TEST_OPT_LEVEL = "1", PROPTEST_CASES = "10000", PROPTEST_MAX_SHRINK_ITERS = "100" }
-raw = true
-run = "cargo test tunnel_test --features proptest -- --nocapture"
-
-[tasks.tauri-mock]
-description = "Run the GUI client for rapid UI iteration with an in-process mock Tunnel service (--mock-tunnel) and the portal decoupled (--skip-portal-auth). Self-contained: no root, no separate process."
-dir = "gui-client"
-raw = true
-run = "cargo tauri dev -- -- --skip-portal-auth --mock-tunnel"
-
-[tasks.tauri-dev]
-description = "Run the GUI client in dev against a dev tunnel service"
-dir = "gui-client"
-raw = true
-run = "cargo tauri dev -- -- --skip-tunnel-pipe-owner-check"
-
-[tasks.tunnel]
-description = "Run the Tunnel service interactively for local GUI dev. In debug builds `run-interactive` skips the LocalSystem pipe-owner check; must be run from an elevated (Administrator) shell."
-dir = "gui-client"
-raw = true
-run = "cargo run -p firezone-gui-client --bin firezone-client-tunnel -- run-interactive"
-
 # =============================================================================
 # Profiling
 # =============================================================================
@@ -83,7 +96,7 @@ run = """
 set -u
 
 # Capture every client/gateway process (comma-separated for `perf -p`). Idle ones (e.g. an
-# unused `client-2`) contribute ~no samples, so this avoids guessing which container ran the test.
+# unused `pool-member`) contribute ~no samples, so this avoids guessing which container ran the test.
 client=$(pgrep -x firezone-headle | paste -sd, -)
 gateway=$(pgrep -x firezone-gatewa | paste -sd, -)
 [ -n "$client" ] || { echo "firezone-headless-client is not running" >&2; exit 1; }
@@ -120,8 +133,8 @@ run = """
 set -u
 
 echo "Applying kernel sysctls ..."
-sudo sysctl -w net.core.wmem_max=16777216         # 16 MB
-sudo sysctl -w net.core.rmem_max=134217728        # 128 MB, caps connlib's UDP rcvbuf = the RcvbufErr we measure
+sudo sysctl -w net.core.wmem_max=2097152          # 2 MB, caps connlib's UDP sndbuf
+sudo sysctl -w net.core.rmem_max=16777216         # 16 MB, caps connlib's UDP rcvbuf = the RcvbufErr we measure
 sudo sysctl -w net.core.netdev_max_backlog=100000 # matches the netem limit
 sudo sysctl -w net.core.netdev_budget=5000        # drain more per softirq poll
 

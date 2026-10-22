@@ -172,7 +172,8 @@ defmodule Portal.ConfigTest do
 
       The external URL the UI will be accessible at.
 
-      If this field is not set or set to `nil`, the server for `api` and `web` apps will not start.
+      Plain HTTP URLs are served directly by the Web endpoint for local development.
+      HTTPS URLs are served by the public endpoint and dispatched by hostname.
 
       """
 
@@ -183,6 +184,63 @@ defmodule Portal.ConfigTest do
   end
 
   describe "env_var_to_config!/1" do
+    test "returns nil for a missing or blank Sentry DSN" do
+      assert env_var_to_config!(Portal.Config.Definitions, :sentry_dsn, %{}) == nil
+
+      assert env_var_to_config!(Portal.Config.Definitions, :sentry_dsn, %{"SENTRY_DSN" => ""}) ==
+               nil
+
+      assert env_var_to_config!(Portal.Config.Definitions, :sentry_dsn, %{
+               "SENTRY_DSN" => "  \n"
+             }) == nil
+    end
+
+    test "returns the configured Sentry DSN" do
+      dsn = "https://public-key@example.com/1"
+
+      assert env_var_to_config!(Portal.Config.Definitions, :sentry_dsn, %{
+               "SENTRY_DSN" => dsn
+             }) == dsn
+    end
+
+    test "returns nil for a missing or blank PostHog project API key" do
+      assert env_var_to_config!(Portal.Config.Definitions, :posthog_project_api_key, %{}) == nil
+
+      assert env_var_to_config!(Portal.Config.Definitions, :posthog_project_api_key, %{
+               "POSTHOG_PROJECT_API_KEY" => "  \n"
+             }) == nil
+    end
+
+    test "returns the configured PostHog project API key" do
+      project_api_key = "phc_test"
+
+      assert env_var_to_config!(Portal.Config.Definitions, :posthog_project_api_key, %{
+               "POSTHOG_PROJECT_API_KEY" => project_api_key
+             }) == project_api_key
+    end
+
+    test "returns nil for a missing or blank PostHog host" do
+      assert env_var_to_config!(Portal.Config.Definitions, :posthog_host, %{}) == nil
+
+      assert env_var_to_config!(Portal.Config.Definitions, :posthog_host, %{
+               "POSTHOG_HOST" => "  \n"
+             }) == nil
+    end
+
+    test "returns the configured PostHog host" do
+      assert env_var_to_config!(Portal.Config.Definitions, :posthog_host, %{
+               "POSTHOG_HOST" => "https://posthog.example.com"
+             }) == "https://posthog.example.com"
+    end
+
+    test "rejects a non-HTTPS PostHog host" do
+      assert_raise RuntimeError, ~r/only https schemes are supported/, fn ->
+        env_var_to_config!(Portal.Config.Definitions, :posthog_host, %{
+          "POSTHOG_HOST" => "http://posthog.example.com"
+        })
+      end
+    end
+
     test "returns config value" do
       assert env_var_to_config!(Test, :optional_generated) ==
                %Postgrex.INET{address: {1, 1, 1, 1}, netmask: nil}
@@ -306,6 +364,61 @@ defmodule Portal.ConfigTest do
 
       assert env_var_to_config!(Test, :enum, %{"ENUM" => "Elixir.Portal.ConfigTest.Test"}) ==
                Portal.ConfigTest.Test
+    end
+  end
+
+  describe "merge_env_override/3 and delete_env_override/3" do
+    @client Portal.Google.APIClient
+
+    test "merging keeps configured entries of a nested list" do
+      configured = Portal.Config.fetch_env!(:portal, @client)[:req_opts]
+      assert Keyword.has_key?(configured, :receive_timeout)
+
+      Portal.Config.merge_env_override(:portal, @client, req_opts: [retry_delay: 0])
+
+      req_opts = Portal.Config.fetch_env!(:portal, @client)[:req_opts]
+      assert req_opts[:retry_delay] == 0
+      assert req_opts[:receive_timeout] == configured[:receive_timeout]
+      assert req_opts[:plug] == configured[:plug]
+    end
+
+    test "merging leaves unrelated top-level keys alone" do
+      endpoint = Portal.Config.fetch_env!(:portal, @client)[:endpoint]
+      Portal.Config.merge_env_override(:portal, @client, req_opts: [retry_delay: 0])
+      assert Portal.Config.fetch_env!(:portal, @client)[:endpoint] == endpoint
+    end
+
+    test "merging accumulates across calls" do
+      Portal.Config.merge_env_override(:portal, @client, req_opts: [retry_delay: 0])
+      Portal.Config.merge_env_override(:portal, @client, req_opts: [max_retries: 1])
+
+      req_opts = Portal.Config.fetch_env!(:portal, @client)[:req_opts]
+      assert req_opts[:retry_delay] == 0
+      assert req_opts[:max_retries] == 1
+    end
+
+    test "deleting removes a nested key and keeps the rest" do
+      assert Portal.Config.fetch_env!(:portal, @client)[:req_opts]
+             |> Keyword.has_key?(:retry)
+
+      Portal.Config.delete_env_override(:portal, @client, [:req_opts, :retry])
+
+      req_opts = Portal.Config.fetch_env!(:portal, @client)[:req_opts]
+      refute Keyword.has_key?(req_opts, :retry)
+      assert Keyword.has_key?(req_opts, :receive_timeout)
+    end
+
+    test "deleting a missing key is a no-op" do
+      before = Portal.Config.fetch_env!(:portal, @client)[:req_opts]
+      Portal.Config.delete_env_override(:portal, @client, [:req_opts, :nope])
+      assert Portal.Config.fetch_env!(:portal, @client)[:req_opts] == before
+    end
+
+    test "deleting without a path restores the configured value" do
+      configured = Portal.Config.fetch_env!(:portal, @client)
+      Portal.Config.merge_env_override(:portal, @client, req_opts: [retry_delay: 0])
+      Portal.Config.delete_env_override(:portal, @client)
+      assert Portal.Config.fetch_env!(:portal, @client) == configured
     end
   end
 end

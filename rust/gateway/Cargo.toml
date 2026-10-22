@@ -1,7 +1,7 @@
 [package]
 name = "firezone-gateway"
 # mark:next-gateway-version
-version = "1.5.3"
+version = "1.6.4"
 edition = { workspace = true }
 license = { workspace = true }
 description = "Gateway for the Firezone zero-trust access product."
@@ -16,7 +16,7 @@ revision = ""
 section = "Network"
 assets = [
     ["target/release/firezone-gateway", "usr/bin/", "755"],
-    ["target/release/firezone-cli", "usr/bin/firezone", "755"],
+    ["debian/firezone", "usr/bin/firezone", "755"],
     ["debian/firezone-gateway-init.sh", "usr/bin/firezone-gateway-init", "755"],
     ["debian/firezone-gateway.sysusers", "usr/lib/sysusers.d/firezone-gateway.conf", "644"],
     ["debian/firezone-gateway.tmpfiles", "usr/lib/tmpfiles.d/firezone-gateway.conf", "644"],
@@ -25,39 +25,48 @@ depends = 'iptables,systemd'
 
 [dependencies]
 anyhow = { workspace = true }
+atomicfs = { workspace = true }
 backoff = { workspace = true }
 bin-shared = { workspace = true }
 clap = { workspace = true }
+clock = { workspace = true }
 dns-types = { workspace = true }
+flow-log-upload = { workspace = true }
+flow-log-writer = { workspace = true }
 futures = { workspace = true }
 futures-bounded = { workspace = true }
+hex = { workspace = true }
 hickory-resolver = { workspace = true }
 humantime = { workspace = true }
 ip-packet = { workspace = true }
 logging = { workspace = true }
+mimalloc = { workspace = true }
 opentelemetry = { workspace = true, features = ["metrics"] }
 opentelemetry-otlp = { workspace = true, features = ["metrics", "grpc-tonic"] }
 opentelemetry-stdout = { workspace = true, features = ["metrics"] }
 opentelemetry_sdk = { workspace = true, features = ["rt-tokio"] }
+otel-attributes = { workspace = true }
 otel-instruments = { workspace = true }
 phoenix-channel = { workspace = true }
 resolv-conf = { workspace = true }
+rpassword = { workspace = true }
 rustls = { workspace = true }
 secrecy = { workspace = true }
-snownet = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
 socket-factory = { workspace = true }
 telemetry = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["sync", "macros", "fs", "signal", "rt"] }
-tokio-util = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
-tun = { workspace = true }
 tunnel = { workspace = true }
 url = { workspace = true }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 caps = { workspace = true }
+mimalloc = { workspace = true, features = ["local_dynamic_tls"] } # `local_dynamic_tls` keeps the allocator's TLS model compatible with our static musl builds.
 nix = { workspace = true, features = ["user"] }
 
 [dev-dependencies]

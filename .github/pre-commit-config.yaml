@@ -1,3 +1,5 @@
+# Fuzz inputs are opaque bytes; no hook may touch them.
+exclude: ^rust/tests/fuzz/corpus/
 repos:
   - repo: local
     hooks:

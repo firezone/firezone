@@ -224,7 +224,7 @@ pub fn register_for_current_user() -> Result<()> {
     let result = pm
         .AddPackageByUriAsync(&msix_uri, &opts)
         .context("AddPackageByUriAsync failed")?
-        .get()
+        .join()
         .context("AddPackageByUriAsync await failed")?;
 
     let hr = result.ExtendedErrorCode().context("ExtendedErrorCode")?;

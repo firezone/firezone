@@ -1,21 +1,26 @@
 [workspace]
 members = [
-    "cli",
     "client-ffi",
     "gateway",
     "gui-client/src-admx-macro",
+    "gui-client/src-cli",
+    "gui-client/src-gui-ipc",
+    "gui-client/src-ipc",
+    "gui-client/src-package-identity",
     "gui-client/src-tauri",
     "headless-client",
     "libs/anyhow-ext",
+    "libs/atomicfs",
     "libs/backoff",
     "libs/bin-shared",
     "libs/client-shared",
+    "libs/clock",
     "libs/connlib/bootstrap-dns-client",
     "libs/connlib/bufferpool",
     "libs/connlib/dns-over-tcp",
     "libs/connlib/dns-types",
     "libs/connlib/etc-hosts-dns-client",
-    "libs/connlib/etherparse-ext",
+    "libs/connlib/flow-tracker",
     "libs/connlib/ip-packet",
     "libs/connlib/l3-tcp",
     "libs/connlib/l3-udp-dns-client",
@@ -28,22 +33,44 @@ members = [
     "libs/connlib/snownet",
     "libs/connlib/socket-factory",
     "libs/connlib/tun",
+    "libs/connlib/tun-android",
+    "libs/connlib/tun-apple",
+    "libs/connlib/tun-ioctl",
+    "libs/connlib/tun-linux",
+    "libs/connlib/tun-offload",
+    "libs/connlib/tun-windows",
     "libs/connlib/tunnel",
+    "libs/connlib/tunnel-proto",
+    "libs/desktop-notifications",
     "libs/eventloop-budget",
+    "libs/fast-random-state",
     "libs/flow-log-spool",
+    "libs/flow-log-upload",
+    "libs/flow-log-writer",
     "libs/http-client",
+    "libs/incremental-inet-checksum",
     "libs/known-dirs",
     "libs/logging",
+    "libs/otel-attributes",
+    "libs/prefetch",
     "libs/telemetry",
+    "libs/tunnel-bypass-resolver",
     "libs/windows-security",
+    "libs/x509-claims",
+    "libs/x509-claims-ffi",
+    "libs/x509-credential",
+    "libs/x509-keystore",
     "relay/ebpf-shared",
     "relay/ebpf-turn-router",
+    "relay/proto",
     "relay/server",
+    "tests/doh-test-server",
     "tests/fuzz",
     "tests/gui-smoke-test",
     "tests/http-test-server",
     "tests/loadtest",
-    "tests/tunnel-proptest-harvester",
+    "tests/tunnel-bench",
+    "tools/tidy-dependabot-pr",
     "tools/uniffi-bindgen",
 ]
 
@@ -55,10 +82,11 @@ edition = "2024"
 
 [workspace.dependencies]
 admx-macro = { path = "gui-client/src-admx-macro" }
+afl = "0.18.2"
 anyhow = { package = "anyhow-ext", path = "libs/anyhow-ext" }
 arbitrary = "1.4.2"
 arboard = { version = "3.6.1", default-features = false }
-atomicwrites = "0.4.4"
+atomicfs = { path = "libs/atomicfs" }
 axum = { version = "0.8.8", default-features = false }
 aya = { git = "https://github.com/aya-rs/aya" }
 aya-build = { git = "https://github.com/aya-rs/aya" }
@@ -67,60 +95,69 @@ aya-log = { git = "https://github.com/aya-rs/aya" }
 aya-log-ebpf = { git = "https://github.com/aya-rs/aya" }
 backoff = { path = "libs/backoff" }
 backon = { version = "1.6.0", default-features = false, features = ["std"] }
-base64 = { version = "0.22.1", default-features = false }
+base64 = { version = "0.23.0", default-features = false }
 bimap = "0.6.3"
 bin-shared = { path = "libs/bin-shared" }
 bnum = "0.14.4"
 bootstrap-dns-client = { path = "libs/connlib/bootstrap-dns-client" }
-boringtun = { version = "0.7.0", default-features = false }
 bufferpool = { path = "libs/connlib/bufferpool" }
 bytecodec = "0.5.0"
 bytes = { version = "1.11.1", default-features = false }
 caps = "0.5.6"
-chrono = { version = "0.4.44", default-features = false, features = ["std", "clock", "oldtime", "serde"] }
+chrono = { version = "0.4.45", default-features = false, features = ["std", "clock", "oldtime", "serde"] }
 clap = "4.6.1"
+clap_complete = "4.6.9"
+client-ipc = { path = "gui-client/src-ipc" }
 client-shared = { path = "libs/client-shared" }
+clock = { path = "libs/clock" }
 connlib-model = { path = "libs/connlib/model" }
 crc32fast = "1.5.0"
-crossbeam-queue = "0.3.12"
+criterion = { version = "0.8.2", default-features = false }
+cryptoki = "0.12.0"
 dashmap = "6.2.1"
 dbus-secret-service-keyring-store = { version = "1.0.0", features = ["crypto-rust"] }
 derive_more = { version = "2.1.1", default-features = false }
-difference = "2.0.0"
-dirs = "6.0.0"
+desktop-notifications = { path = "libs/desktop-notifications" }
+dirs = "7.0.0"
 divan = "0.1.21"
 dns-over-tcp = { path = "libs/connlib/dns-over-tcp" }
 dns-types = { path = "libs/connlib/dns-types" }
+doh-test-server = { path = "tests/doh-test-server" }
 ebpf-shared = { path = "relay/ebpf-shared" }
 embed-resource = "3.0"
 etc-hosts-dns-client = { path = "libs/connlib/etc-hosts-dns-client" }
-etherparse = { version = "0.20.1", default-features = false }
-etherparse-ext = { path = "libs/connlib/etherparse-ext" }
 eventloop-budget = { path = "libs/eventloop-budget" }
-fd-lock = "4.0.4"
+fast-random-state = { path = "libs/fast-random-state" }
+fastrand = "2.3.0"
 filetime = "0.2.29"
-firezone-relay = { path = "relay/server", default-features = false }
+flow-log-spool = { path = "libs/flow-log-spool" }
+flow-log-upload = { path = "libs/flow-log-upload" }
+flow-log-writer = { path = "libs/flow-log-writer" }
+flow-tracker = { path = "libs/connlib/flow-tracker" }
+foldhash = "0.2.0"
 futures = { version = "0.3.32" }
 futures-bounded = "0.3.0"
-gat-lending-iterator = "0.1.8"
 glob = "0.3.3"
+gui-ipc = { path = "gui-client/src-gui-ipc" }
 hex = "0.4.3"
 hex-display = "0.4.0"
 hex-literal = "1.1.0"
 hickory-resolver = "0.26.1"
-hmac = "0.12.1"
+hmac = "0.13.0"
 http = "1.4.1"
 http-body-util = "0.1.3"
 http-client = { path = "libs/http-client" }
 humantime = "2.3.0"
-hyper = "1.9.0"
+hyper = "1.10.1"
 hyper-util = "0.1.20"
+incremental-inet-checksum = { path = "libs/incremental-inet-checksum" }
+ingot = { version = "0.2.1", default-features = false, features = ["alloc"] }
 ip-packet = { path = "libs/connlib/ip-packet" }
 ip_network = { version = "0.4.1", default-features = false }
 ip_network_table = { version = "0.2.0", default-features = false }
-is = "0.9.0"
-itertools = "0.14.0"
-jni = "0.22.4"
+is = "0.11.0"
+itertools = "0.15.0"
+jsonschema = { version = "0.58.6", default-features = false }
 keyring-core = "1.0.0"
 known-dirs = { path = "libs/known-dirs" }
 known-folders = "1.4.2"
@@ -130,48 +167,52 @@ l3-udp-dns-client = { path = "libs/connlib/l3-udp-dns-client" }
 l4-tcp-dns-server = { path = "libs/connlib/l4-tcp-dns-server" }
 l4-udp-dns-server = { path = "libs/connlib/l4-udp-dns-server" }
 libc = "0.2.186"
-libfuzzer-sys = "0.4.12"
 logging = { path = "libs/logging" }
 lru = "0.18.0"
+memchr = "2.7.4"
+mimalloc = { version = "0.1.52" }
 mio = "1.2.1"
 moka = "0.12.15"
 native-dialog = "0.9.0"
-netlink-packet-core = "0.8.1"
-netlink-packet-route = "0.29.0"
+netlink-packet-core = "0.9.0"
+netlink-packet-route = "0.33.0"
 network-types = { version = "0.2.0", default-features = false }
 nix = "0.31.3"
-notify-rust = "4.17.0"
 nu-ansi-term = "0.50.3"
-num_cpus = "1.17.0"
 once_cell = "1.21.4"
 opentelemetry = "0.32.0"
 opentelemetry-otlp = "0.32.0"
 opentelemetry-stdout = "0.32.0"
 opentelemetry_sdk = "0.32.0"
 os_info = { version = "3.15.0", default-features = false }
+otel-attributes = { path = "libs/otel-attributes" }
 otel-instruments = { path = "libs/connlib/otel-instruments" }
 output_vt100 = "0.1.3"
 parking_lot = "0.12.5"
 path-agent = { path = "libs/connlib/path-agent" }
 phoenix-channel = { path = "libs/connlib/phoenix-channel" }
 png = "0.18.1"
+prefetch = { path = "libs/prefetch" }
 proc-macro2 = "1.0.106"
 proptest = "1.9.0"
-proptest-state-machine = "0.6.0"
 quinn-udp = { version = "0.6.0", features = ["fast-apple-datapath"] }
 quote = "1.0.45"
 rand = "0.10.1"
 rangemap = "1.7.1"
+rcgen = { version = "0.14.9", default-features = false, features = ["ring"] }
+relay-proto = { path = "relay/proto" }
 reqwest = { version = "0.13.4", default-features = false }
 resolv-conf = "0.7.6"
+ring = "0.17.14"
 ringbuffer = "0.16.0"
 roxmltree = "0.21.1"
 rpassword = "7.5.3"
-rtnetlink = { version = "0.20.0", default-features = false, features = ["tokio_socket"] }
+rtnetlink = { version = "0.23.0", default-features = false, features = ["tokio_socket"] }
 rustls = { version = "0.23.40", default-features = false, features = ["ring"] }
+rustls-native-certs = "0.8.1"
 rustls-pki-types = "1.14.1"
-rustls-platform-verifier = "0.7.0"
 sadness-generator = "0.7.0"
+sanstun = { git = "https://github.com/firezone/sanstun", branch = "main" }
 sd-notify = "0.5.0" # This is a pure Rust re-implementation, so it isn't vulnerable to CVE-2024-3094
 secrecy = "0.10.3"
 semver = "1.0.28"
@@ -180,30 +221,30 @@ sentry-tracing = "0.48.0"
 serde = "1.0.228"
 serde_json = "1.0.150"
 serde_variant = "0.1.3"
-serde_with = "3.20.0"
-sha2 = "0.10.9"
+serde_with = "3.21.0"
+sha2 = "0.11.0"
 smallvec = "1.15.1"
 smbios-lib = "0.9.2"
-smoltcp = { version = "0.13.1", default-features = false }
+smoltcp = { version = "0.14.0", default-features = false }
 snownet = { path = "libs/connlib/snownet" }
 socket-factory = { path = "libs/connlib/socket-factory" }
 socket2 = { version = "0.6.4" }
 specta = "=2.0.0-rc.22"
 specta-typescript = "0.0.9"
-str0m-proto = "0.5"
+str0m-proto = "0.7"
 strum = { version = "0.28.0", features = ["derive"] }
 stun_codec = "0.4.0"
 subprocess = "1.1.0"
 subtle = "2.5.0"
 supports-color = "3.0.2"
-syn = "2.0.117"
-tauri = "2.11.2"
-tauri-build = { version = "2.6.0", default-features = false }
-tauri-plugin-dialog = "2.7.1"
-tauri-plugin-opener = "2.5.4"
-tauri-runtime = "2.11.0"
+syn = "3.0.0"
+tauri = "2.12.0"
+tauri-build = { version = "2.7.0", default-features = false }
+tauri-plugin-dialog = "2.8.0"
+tauri-plugin-opener = "2.7.0"
+tauri-runtime = "2.12.0"
 tauri-specta = { version = "=2.0.0-rc.21", features = ["derive", "typescript"] }
-tauri-utils = { version = "2.9.0", default-features = false }
+tauri-utils = { version = "2.10.0", default-features = false }
 telemetry = { path = "libs/telemetry" }
 tempfile = "3.26.0"
 test-case = "3.3.1"
@@ -226,20 +267,35 @@ tracing-macros = { git = "https://github.com/tokio-rs/tracing", branch = "main" 
 tracing-opentelemetry = "0.33.0"
 tracing-subscriber = { version = "0.3.23", features = ["parking_lot"] }
 tun = { path = "libs/connlib/tun" }
+tun-android = { path = "libs/connlib/tun-android" }
+tun-apple = { path = "libs/connlib/tun-apple" }
+tun-ioctl = { path = "libs/connlib/tun-ioctl" }
+tun-linux = { path = "libs/connlib/tun-linux" }
+tun-offload = { path = "libs/connlib/tun-offload" }
+tun-windows = { path = "libs/connlib/tun-windows" }
 tunnel = { path = "libs/connlib/tunnel" }
+tunnel-bypass-resolver = { path = "libs/tunnel-bypass-resolver" }
+tunnel-proto = { path = "libs/connlib/tunnel-proto" }
 uniffi = "0.31.1"
 url = "2.5.2"
 uuid = "1.23.2"
 webpki-roots = "1.0.7"
-which = "7.0.3"
-windows = "0.61.3"
-windows-core = "0.61.1"
-windows-implement = "0.60.0"
+which = "8.0.5"
+windows = "0.62.2"
+windows-core = "0.62.2"
+windows-implement = "0.60.2"
 windows-native-keyring-store = "1.1.0"
+windows-package-identity = { path = "gui-client/src-package-identity" }
 windows-security = { path = "libs/windows-security" }
 windows-service = "0.8.1"
 winreg = "0.56.0"
+x509-claims = { path = "libs/x509-claims" }
+x509-claims-ffi = { path = "libs/x509-claims-ffi" }
+x509-credential = { path = "libs/x509-credential" }
+x509-keystore = { path = "libs/x509-keystore" }
+x509-parser = "0.18.0"
 zbus = "5.15.0"
+zeroize = "1.8.1"
 zip = { version = "8.6.0", default-features = false }
 
 [workspace.lints.clippy]
@@ -263,14 +319,10 @@ private-intra-doc-links = "allow" # We don't publish any of our docs but want to
 [patch.crates-io]
 sentry = { git = "https://github.com/getsentry/sentry-rust", branch = "master" }
 sentry-tracing = { git = "https://github.com/getsentry/sentry-rust", branch = "master" }
-boringtun = { git = "https://github.com/firezone/boringtun", branch = "master" }
 ip_network = { git = "https://github.com/JakubOnderka/ip_network", branch = "master" } # Waiting for release.
 ip_network_table = { git = "https://github.com/edmonds/ip_network_table", branch = "some-useful-traits" } # For `Debug` and `Clone`
-softbuffer = { git = "https://github.com/rust-windowing/softbuffer" } # Waiting for release.
-quinn-udp = { git = "https://github.com/quinn-rs/quinn", version = "0.6.0", branch = "main" } # Waiting for release.
+quinn-udp = { git = "https://github.com/firezone/quinn", version = "0.6.0", branch = "main" } # Waiting for https://github.com/quinn-rs/quinn/pull/2748.
 proptest = { git = "https://github.com/proptest-rs/proptest", branch = "main" } # Waiting for release.
-proptest-state-machine = { git = "https://github.com/proptest-rs/proptest", branch = "main" } # Waiting for release.
-rtnetlink = { git = "https://github.com/rust-netlink/rtnetlink", branch = "main" } # Waiting for release.
 
 # Enforce `tracing-macros` to have released `tracing` version.
 [patch.'https://github.com/tokio-rs/tracing']
@@ -280,19 +332,15 @@ tracing = "0.1.41"
 # Full link-time optimization. Reduces binaries by up to 3x on some platforms.
 lto = "fat"
 
-# Increases the compiler's ability to produce smaller, optimized code
-# at the expense of compilation time
+# Combined with `lto = "fat"`, this is not the usual smaller-code-for-compile-time
+# trade-off: every extra codegen unit is another bitcode module the LTO step has to
+# merge. Measured on `firezone-gateway` and `firezone-headless-client`, raising this
+# from 1 to 16 grew peak `rustc` memory by 27-34% and the stripped binaries by ~10%,
+# with no build time saved.
+#
+# `ebpf-turn-router` does not link at all above 1, because `handle_turn` then exceeds
+# the 512-byte BPF stack limit.
 codegen-units = 1
-
-[profile.release.package.firezone-gui-client]
-debug = "full"
-split-debuginfo = "packed"
 
 [profile.release.package.ebpf-turn-router]
 debug = 2
-
-# Override build settings just for the GUI client, so we get a pdb/dwp
-# Cargo ignores profile settings if they're not in the workspace's Cargo.toml
-[profile.dev.package.firezone-gui-client]
-debug = "full"
-split-debuginfo = "packed"

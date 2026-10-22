@@ -2,8 +2,8 @@
 
 use std::{
     collections::{
-        HashMap, VecDeque,
-        hash_map::{Entry, OccupiedEntry},
+        BTreeMap, VecDeque,
+        btree_map::{Entry, OccupiedEntry},
     },
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
     time::{Duration, Instant},
@@ -15,14 +15,19 @@ use rand::{RngExt, SeedableRng, rngs::StdRng};
 
 const TIMEOUT: Duration = Duration::from_secs(10);
 
+/// How many DNS queries we track at once, in-flight and timed-out ones combined.
+const MAX_PENDING_QUERIES: usize = 1024;
+
 /// A sans-io DNS-over-UDP client.
 pub struct Client<const MIN_PORT: u16 = 49152, const MAX_PORT: u16 = 65535> {
     source_ips: Option<(Ipv4Addr, Ipv6Addr)>,
 
-    pending_queries_by_local_port: HashMap<u16, PendingQuery>,
+    pending_queries_by_local_port: BTreeMap<u16, PendingQuery>,
 
     scheduled_queries: VecDeque<IpPacket>,
     query_results: VecDeque<QueryResult>,
+
+    next_token: u64,
 
     rng: StdRng,
 }
@@ -32,12 +37,27 @@ struct PendingQuery {
     expires_at: Instant,
     server: SocketAddr,
     local: SocketAddr,
+    token: QueryToken,
+    timed_out: bool,
 }
+
+// Excludes the heap-allocated query bytes, which are small and bounded by the DNS message size.
+const _: () = assert!(
+    size_of::<PendingQuery>() * MAX_PENDING_QUERIES <= 256 * 1024,
+    "tracked DNS queries must not exceed 256 KiB"
+);
+
+/// Identifies a query issued through a [`Client`].
+///
+/// Unlike the ID of a DNS message, this is unique among all queries the client ever issues.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct QueryToken(u64);
 
 #[derive(Debug)]
 pub struct QueryResult {
+    /// The token returned by [`Client::send_query`] for this query.
+    pub token: QueryToken,
     pub query: dns_types::Query,
-    pub local: SocketAddr,
     pub server: SocketAddr,
     pub result: Result<dns_types::Response>,
 }
@@ -54,6 +74,7 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
             pending_queries_by_local_port: Default::default(),
             scheduled_queries: Default::default(),
             query_results: Default::default(),
+            next_token: 0,
         }
     }
 
@@ -66,12 +87,16 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
     ///
     /// This only queues the message. You need to call [`Client::poll_outbound`] to retrieve
     /// the resulting IP packet and send it to the server.
+    ///
+    /// Returns a [`QueryToken`] which is echoed back in the corresponding [`QueryResult`].
     pub fn send_query(
         &mut self,
         server: SocketAddr,
         message: dns_types::Query,
         now: Instant,
-    ) -> Result<SocketAddr> {
+    ) -> Result<QueryToken> {
+        self.make_room_for_new_query()?;
+
         let local_port = self.sample_new_unique_port()?;
 
         let (ipv4_source, ipv6_source) = self
@@ -83,6 +108,8 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
             SocketAddr::V6(_) => IpAddr::V6(ipv6_source),
         };
         let local_socket = SocketAddr::new(local_ip, local_port);
+        let token = QueryToken(self.next_token);
+        self.next_token += 1;
 
         self.pending_queries_by_local_port.insert(
             local_port,
@@ -91,6 +118,8 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
                 expires_at: now + TIMEOUT,
                 server,
                 local: local_socket,
+                token,
+                timed_out: false,
             },
         );
 
@@ -102,7 +131,7 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
 
         self.scheduled_queries.push_back(ip_packet);
 
-        Ok(local_socket)
+        Ok(token)
     }
 
     /// Checks whether this client can handle the given packet.
@@ -140,6 +169,23 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
             .contains_key(&udp.destination_port())
     }
 
+    /// Checks whether the given outbound packet is one of our in-flight queries.
+    ///
+    /// Matches a pending query's local socket as the source and its server as
+    /// the destination, i.e. the reverse direction of [`Client::accepts`].
+    pub fn owns_outbound(&self, packet: &IpPacket) -> bool {
+        let Some(udp) = packet.as_udp() else {
+            return false;
+        };
+
+        let Some(pending) = self.pending_queries_by_local_port.get(&udp.source_port()) else {
+            return false;
+        };
+
+        pending.local == SocketAddr::new(packet.source(), udp.source_port())
+            && pending.server == SocketAddr::new(packet.destination(), udp.destination_port())
+    }
+
     pub fn handle_inbound(&mut self, packet: IpPacket) {
         debug_assert!(self.accepts(&packet));
 
@@ -148,9 +194,13 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
         {
             let pending_query = entry.remove();
 
+            if pending_query.timed_out {
+                return;
+            }
+
             self.query_results.push_back(QueryResult {
+                token: pending_query.token,
                 query: pending_query.message,
-                local: pending_query.local,
                 server: pending_query.server,
                 result: Err(anyhow!("Received ICMP error for DNS query: {icmp_error}")),
             });
@@ -180,7 +230,8 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
         let Some(PendingQuery {
             message,
             server,
-            local,
+            token,
+            timed_out,
             ..
         }) = self
             .pending_queries_by_local_port
@@ -189,9 +240,14 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
             return;
         };
 
+        if timed_out {
+            tracing::debug!(%server, %source, query_id = %message.id(), "Dropping late response to timed-out DNS query");
+            return;
+        }
+
         self.query_results.push_back(QueryResult {
+            token,
             query: message,
-            local,
             server,
             result,
         });
@@ -208,34 +264,25 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
     }
 
     pub fn handle_timeout(&mut self, now: Instant) {
-        for (
-            _,
-            PendingQuery {
-                message,
-                server,
-                local,
-                ..
-            },
-        ) in self
-            .pending_queries_by_local_port
-            .extract_if(|_, pending_query| now >= pending_query.expires_at)
-        {
+        for pending in self.pending_queries_by_local_port.values_mut() {
+            if pending.timed_out || now < pending.expires_at {
+                continue;
+            }
+
+            pending.timed_out = true;
             self.query_results.push_back(QueryResult {
-                query: message,
-                local,
-                server,
+                token: pending.token,
+                query: pending.message.clone(),
+                server: pending.server,
                 result: Err(anyhow!("Timeout")),
             });
         }
     }
 
-    #[expect(
-        clippy::disallowed_methods,
-        reason = "We don't care about the ordering of the Iterator here."
-    )]
     pub fn poll_timeout(&mut self) -> Option<Instant> {
         self.pending_queries_by_local_port
             .values()
+            .filter(|p| !p.timed_out)
             .map(|p| p.expires_at)
             .min()
     }
@@ -243,17 +290,40 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
     pub fn reset(&mut self) {
         tracing::debug!("Resetting state");
 
-        let aborted_pending_queries =
-            self.pending_queries_by_local_port
-                .drain()
-                .map(|(_, pending_query)| QueryResult {
-                    query: pending_query.message,
-                    local: pending_query.local,
-                    server: pending_query.server,
-                    result: Err(anyhow!("Timeout")),
-                });
+        for pending in self.pending_queries_by_local_port.values_mut() {
+            if pending.timed_out {
+                continue;
+            }
 
-        self.query_results.extend(aborted_pending_queries);
+            pending.timed_out = true;
+            self.query_results.push_back(QueryResult {
+                token: pending.token,
+                query: pending.message.clone(),
+                server: pending.server,
+                result: Err(anyhow!("Timeout")),
+            });
+        }
+    }
+
+    fn make_room_for_new_query(&mut self) -> Result<()> {
+        if self.pending_queries_by_local_port.len() < MAX_PENDING_QUERIES {
+            return Ok(());
+        }
+
+        let oldest_timed_out = self
+            .pending_queries_by_local_port
+            .iter()
+            .filter(|(_, query)| query.timed_out)
+            .min_by_key(|(_, query)| query.expires_at)
+            .map(|(port, _)| *port);
+
+        let Some(port) = oldest_timed_out else {
+            bail!("Too many concurrent DNS queries")
+        };
+
+        self.pending_queries_by_local_port.remove(&port);
+
+        Ok(())
     }
 
     fn sample_new_unique_port(&mut self) -> Result<u16> {
@@ -376,7 +446,7 @@ mod tests {
         let server = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(8, 8, 8, 8)), 53);
         let query = create_test_query();
 
-        let local = client.send_query(server, query.clone(), now).unwrap();
+        let token = client.send_query(server, query.clone(), now).unwrap();
 
         let packet = client.poll_outbound().unwrap();
         let icmp_error_response = ip_packet::make::icmp_dest_unreachable_network(&packet).unwrap();
@@ -387,12 +457,53 @@ mod tests {
 
         assert_eq!(query_result.query.id(), query.id());
         assert_eq!(query_result.query.domain(), query.domain());
-        assert_eq!(query_result.local, local);
+        assert_eq!(query_result.token, token);
         assert_eq!(query_result.server, server);
         assert_eq!(
             query_result.result.unwrap_err().to_string(),
             "Received ICMP error for DNS query: Destination is unreachable (code: 0)"
         );
+    }
+
+    #[test]
+    fn late_response_to_timed_out_query_is_dropped() {
+        let mut client = create_test_client();
+        let now = Instant::now();
+        let server = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(8, 8, 8, 8)), 53);
+        let query = create_test_query();
+
+        client.send_query(server, query.clone(), now).unwrap();
+        let local = local_socket(&client.poll_outbound().unwrap());
+        client.handle_timeout(now + TIMEOUT + Duration::from_secs(1));
+        assert!(client.poll_query_result().unwrap().result.is_err());
+
+        // A late response to a query we already timed out is still recognised, but dropped.
+        let late_response = dns_response_packet(server, local, &query);
+        assert!(client.accepts(&late_response));
+        client.handle_inbound(late_response);
+        assert!(client.poll_query_result().is_none());
+    }
+
+    #[test]
+    fn owns_outbound_matches_only_pending_queries() {
+        let mut client = create_test_client();
+        let now = Instant::now();
+        let server = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(8, 8, 8, 8)), 53);
+
+        client.send_query(server, create_test_query(), now).unwrap();
+        let query_packet = client.poll_outbound().unwrap();
+
+        let unrelated_packet = ip_packet::make::udp_packet(
+            IpAddr::V4(Ipv4Addr::new(10, 0, 0, 2)),
+            IpAddr::V4(Ipv4Addr::new(8, 8, 8, 8)),
+            50000,
+            53,
+            &[],
+        )
+        .unwrap();
+
+        assert!(client.owns_outbound(&query_packet));
+        assert!(!client.owns_outbound(&unrelated_packet));
     }
 
     fn create_test_client() -> Client {
@@ -406,5 +517,28 @@ mod tests {
         use std::str::FromStr;
         let domain = dns_types::DomainName::from_str("example.com").unwrap();
         dns_types::Query::new(domain, dns_types::RecordType::A)
+    }
+
+    fn local_socket(packet: &IpPacket) -> SocketAddr {
+        let udp = packet.as_udp().unwrap();
+
+        SocketAddr::new(packet.source(), udp.source_port())
+    }
+
+    fn dns_response_packet(
+        server: SocketAddr,
+        local: SocketAddr,
+        query: &dns_types::Query,
+    ) -> IpPacket {
+        let response = dns_types::Response::no_error(query).into_bytes(512);
+
+        ip_packet::make::udp_packet(
+            server.ip(),
+            local.ip(),
+            server.port(),
+            local.port(),
+            &response,
+        )
+        .unwrap()
     }
 }

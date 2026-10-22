@@ -2,11 +2,13 @@ defmodule PortalAPI.GroupControllerTest do
   use PortalAPI.ConnCase, async: true
   alias Portal.Group
   alias Portal.GroupSyncState
+  alias Portal.Policy
   alias Portal.Repo
 
   import Portal.AccountFixtures
   import Portal.ActorFixtures
   import Portal.GroupFixtures
+  import Portal.PolicyFixtures
 
   setup do
     account = account_fixture()
@@ -55,6 +57,22 @@ defmodule PortalAPI.GroupControllerTest do
       assert equal_ids?(data_ids, group_ids)
     end
 
+    test "lists the built-in Everyone group", %{conn: conn, account: account, actor: actor} do
+      everyone = managed_group_fixture(account: account, name: "Everyone")
+      group = group_fixture(account: account)
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/groups")
+
+      assert %{"data" => data} = json_response(conn, 200)
+
+      assert data |> Enum.map(&{&1["id"], &1["type"]}) |> Enum.sort() ==
+               Enum.sort([{everyone.id, "managed"}, {group.id, "static"}])
+    end
+
     test "lists groups with limit", %{conn: conn, account: account, actor: actor} do
       groups = for _ <- 1..3, do: group_fixture(account: account)
 
@@ -83,6 +101,78 @@ defmodule PortalAPI.GroupControllerTest do
       group_ids = Enum.map(groups, & &1.id) |> MapSet.new()
 
       assert MapSet.subset?(data_ids, group_ids)
+    end
+
+    test "filters by exact name match", %{conn: conn, account: account, actor: actor} do
+      group = group_fixture(account: account, name: "Engineering")
+      _other = group_fixture(account: account, name: "Sales")
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/groups", name: "Engineering")
+
+      assert %{"data" => [data]} = json_response(conn, 200)
+      assert data["id"] == group.id
+    end
+
+    test "filters by directory_id, disambiguating a native Group from a synced Group with the same name",
+         %{conn: conn, account: account, actor: actor} do
+      native = group_fixture(account: account, name: "Engineering")
+      synced = synced_group_fixture(account: account, name: "Engineering")
+
+      native_conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/groups", name: "Engineering", directory_id: "")
+
+      assert %{"data" => [data]} = json_response(native_conn, 200)
+      assert data["id"] == native.id
+
+      synced_conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/groups", name: "Engineering", directory_id: synced.directory_id)
+
+      assert %{"data" => [data]} = json_response(synced_conn, 200)
+      assert data["id"] == synced.id
+    end
+
+    test "filters by entity_type", %{conn: conn, account: account, actor: actor} do
+      group = group_fixture(account: account, entity_type: :group)
+      _org_unit = group_fixture(account: account, entity_type: :org_unit)
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/groups", entity_type: "group")
+
+      assert %{"data" => [data]} = json_response(conn, 200)
+      assert data["id"] == group.id
+    end
+
+    test "rejects an invalid entity_type filter value", %{conn: conn, actor: actor} do
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/groups", entity_type: "bogus")
+
+      assert %{"status" => 400} = json_response(conn, 400)
+    end
+
+    test "rejects a malformed directory_id filter value", %{conn: conn, actor: actor} do
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/groups", directory_id: "not-a-uuid")
+
+      assert %{"status" => 400} = json_response(conn, 400)
     end
 
     test "returns unauthorized when actor cannot read groups", %{conn: conn, account: account} do
@@ -125,6 +215,7 @@ defmodule PortalAPI.GroupControllerTest do
                  "directory_id" => nil,
                  "idp_id" => nil,
                  "synced_at" => nil,
+                 "type" => "static",
                  "inserted_at" => DateTime.to_iso8601(group.inserted_at),
                  "updated_at" => DateTime.to_iso8601(group.updated_at)
                }
@@ -155,10 +246,31 @@ defmodule PortalAPI.GroupControllerTest do
                  "directory_id" => group.directory_id,
                  "idp_id" => group.idp_id,
                  "synced_at" => DateTime.to_iso8601(sync_state.synced_at),
+                 "type" => "static",
                  "inserted_at" => DateTime.to_iso8601(group.inserted_at),
                  "updated_at" => DateTime.to_iso8601(group.updated_at)
                }
              }
+    end
+
+    test "returns the built-in Everyone group", %{conn: conn, account: account, actor: actor} do
+      group = managed_group_fixture(account: account, name: "Everyone")
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/groups/#{group.id}")
+
+      assert %{
+               "data" => %{
+                 "id" => id,
+                 "name" => "Everyone",
+                 "type" => "managed"
+               }
+             } = json_response(conn, 200)
+
+      assert id == group.id
     end
 
     test "returns not found when group does not exist", %{conn: conn, actor: actor} do
@@ -300,6 +412,27 @@ defmodule PortalAPI.GroupControllerTest do
                json_response(conn, 403)
     end
 
+    test "returns error when attempting to edit the built-in Everyone group", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      group = managed_group_fixture(account: account, name: "Everyone")
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> put("/groups/#{group.id}", group: %{"name" => "New Name"})
+
+      assert %{
+               "status" => 403,
+               "detail" => "Cannot update the built-in Everyone Group"
+             } = json_response(conn, 403)
+
+      assert Repo.get_by(Group, id: group.id, account_id: account.id).name == "Everyone"
+    end
+
     test "updates an actor group", %{conn: conn, account: account, actor: actor} do
       group = group_fixture(account: account)
 
@@ -341,7 +474,7 @@ defmodule PortalAPI.GroupControllerTest do
                json_response(conn, 404)
     end
 
-    test "returns not found for a body without group params when group does not exist", %{
+    test "returns bad request for a body without group params", %{
       conn: conn,
       actor: actor
     } do
@@ -351,8 +484,8 @@ defmodule PortalAPI.GroupControllerTest do
         |> put_req_header("content-type", "application/json")
         |> put("/groups/#{Ecto.UUID.generate()}")
 
-      assert %{"type" => "about:blank", "status" => 404, "title" => "Not Found"} =
-               json_response(conn, 404)
+      assert %{"type" => "about:blank", "status" => 400, "title" => "Bad Request"} =
+               json_response(conn, 400)
     end
 
     test "returns unauthorized when actor cannot read the group", %{
@@ -399,12 +532,52 @@ defmodule PortalAPI.GroupControllerTest do
                  "directory_id" => nil,
                  "idp_id" => nil,
                  "synced_at" => nil,
+                 "type" => "static",
                  "inserted_at" => DateTime.to_iso8601(group.inserted_at),
                  "updated_at" => DateTime.to_iso8601(group.updated_at)
                }
              }
 
       refute Repo.get_by(Group, id: group.id, account_id: group.account_id)
+    end
+
+    test "keeps policies for the deleted group without a group", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      group = group_fixture(account: account)
+      policy = policy_fixture(account: account, group: group)
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> delete("/groups/#{group.id}")
+
+      assert json_response(conn, 200)
+      assert Repo.get_by(Policy, id: policy.id, account_id: account.id).group_id == nil
+    end
+
+    test "returns error when attempting to delete the built-in Everyone group", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      group = managed_group_fixture(account: account, name: "Everyone")
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> delete("/groups/#{group.id}")
+
+      assert %{
+               "status" => 403,
+               "detail" => "Cannot delete the built-in Everyone Group"
+             } = json_response(conn, 403)
+
+      assert Repo.get_by(Group, id: group.id, account_id: account.id)
     end
 
     test "returns not found when group does not exist", %{conn: conn, actor: actor} do

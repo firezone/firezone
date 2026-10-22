@@ -306,34 +306,18 @@
       show(alert)
     }
 
-    /// Shows a signed-out session alert and returns whether the user clicked "Sign In".
+    /// Tells the user that only a restart can finish the update.
     ///
-    /// - Returns: `true` if the user clicked "Sign In", `false` otherwise.
-    public static func showSignedOutAlert(_ message: String?) async -> Bool {
+    /// Returns without waiting for the user, so callers don't stall behind the alert.
+    public static func showRestartRequiredAlert() {
       let alert = NSAlert()
-      alert.messageText = "Your Firezone session has ended"
-      alert.informativeText = """
-        Please sign in again to reconnect.
-
-        \(message ?? "")
-        """
-      alert.addButton(withTitle: "Sign In")
-      alert.addButton(withTitle: "Cancel")
-      NSApp.activate(ignoringOtherApps: true)
-
-      let response = await show(alert)
-      return response == .alertFirstButtonReturn
-    }
-
-    /// Shows a disconnected alert explaining why Firezone disconnected.
-    public static func showDisconnectedAlert(_ message: String?) async {
-      let alert = NSAlert()
-      alert.messageText = "Firezone disconnected"
-      alert.informativeText = message ?? "Firezone has been disconnected."
+      alert.messageText = "Your Mac needs to be restarted to complete the Firezone update"
+      alert.informativeText =
+        "macOS finishes updating the Firezone system extension the next time your Mac starts up."
       alert.addButton(withTitle: "OK")
       NSApp.activate(ignoringOtherApps: true)
 
-      _ = await show(alert)
+      show(alert)
     }
   }
 

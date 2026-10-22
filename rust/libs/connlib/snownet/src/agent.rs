@@ -5,7 +5,6 @@
 use std::ops::ControlFlow;
 use std::time::Instant;
 
-use boringtun::noise::Tunn;
 use is::stun::StunPacket;
 use is::{Candidate, IceAgent, IceAgentEvent, IceConnectionState, IceCreds};
 
@@ -108,11 +107,11 @@ impl Agent {
         }
     }
 
-    pub(crate) fn add_local_candidate(&mut self, c: Candidate) -> Option<Candidate> {
+    pub(crate) fn add_local_candidate(&mut self, c: Candidate, now: Instant) -> Option<Candidate> {
         match self {
             Self::Ice(a) => a.add_local_candidate(c).cloned(),
             Self::Path(path) => path
-                .add_local_candidate(crate::candidate::to_path_agent(&c))
+                .add_local_candidate(crate::candidate::to_path_agent(&c), now)
                 .then_some(c),
         }
     }
@@ -180,19 +179,6 @@ impl Agent {
         }
     }
 
-    pub(crate) fn handle_inbound_network<'b>(
-        &mut self,
-        tunnel: &mut Tunn,
-        bytes: &'b [u8],
-        path: (std::net::SocketAddr, std::net::SocketAddr),
-        now: Instant,
-    ) -> ControlFlow<(), &'b [u8]> {
-        match self {
-            Self::Ice(_) => ControlFlow::Continue(bytes),
-            Self::Path(agent) => agent.handle_inbound_network(tunnel, bytes, path, now),
-        }
-    }
-
     pub(crate) fn handle_inbound_tun(
         &mut self,
         packet: ip_packet::IpPacket,
@@ -240,20 +226,9 @@ impl Agent {
         }
     }
 
-    pub(crate) fn handle_outbound(&mut self, bytes: Vec<u8>, now: Instant) {
+    pub(crate) fn confirm_session(&mut self, now: Instant) {
         if let Self::Path(path) = self {
-            path.handle_outbound(bytes, now);
-        }
-    }
-
-    pub(crate) fn initiate_handshake(
-        &mut self,
-        tunnel: &mut Tunn,
-        force_resend: bool,
-        now: Instant,
-    ) {
-        if let Self::Path(path) = self {
-            path.initiate_handshake(tunnel, force_resend, now);
+            path.confirm_session(now);
         }
     }
 

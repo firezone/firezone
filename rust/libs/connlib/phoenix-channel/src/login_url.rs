@@ -6,9 +6,11 @@ use std::{
     marker::PhantomData,
     net::{Ipv4Addr, Ipv6Addr},
     str::FromStr as _,
+    sync::Arc,
 };
 use url::Url;
 use uuid::Uuid;
+use x509_credential::ClientCertificate;
 
 // From https://man7.org/linux/man-pages/man2/gethostname.2.html
 // SUSv2 guarantees that "Host names are limited to 255 bytes".
@@ -39,6 +41,9 @@ pub struct LoginUrl<TFinish> {
     // If we don't duplicate it, we'd have to do extra error handling in several places instead of just one place.
     host: String,
     port: u16,
+
+    /// The configuration to dial with, built once because it may load the platform's root certificates.
+    tls_config: Option<Arc<rustls::ClientConfig>>,
 
     phantom: PhantomData<TFinish>,
 }
@@ -73,7 +78,23 @@ impl LoginUrl<PublicKeyParam> {
         device_id: String,
         device_name: Option<String>,
         device_info: DeviceInfo,
+        certificate: Option<ClientCertificate>,
     ) -> Result<Self, LoginUrlError<E>> {
+        let mut url = url.try_into().map_err(LoginUrlError::InvalidUrl)?;
+
+        let tls_config = match &certificate {
+            Some(certificate) => {
+                require_tls(&url)?;
+
+                if let Some(mtls_host) = mtls_host(&url)? {
+                    set_host(&mut url, mtls_host)?;
+                }
+
+                Some(crate::tls::client_config(certificate).map_err(LoginUrlError::Tls)?)
+            }
+            None => None,
+        };
+
         let external_id = if uuid::Uuid::from_str(&device_id).is_ok() {
             hex::encode(sha2::Sha256::digest(device_id))
         } else {
@@ -85,8 +106,9 @@ impl LoginUrl<PublicKeyParam> {
             .unwrap_or_else(|| Uuid::new_v4().to_string());
 
         let url = get_websocket_path(
-            url.try_into().map_err(LoginUrlError::InvalidUrl)?,
+            url,
             "client",
+            Some("v3"),
             Some(external_id),
             Some(device_name),
             None,
@@ -101,6 +123,7 @@ impl LoginUrl<PublicKeyParam> {
             host,
             port,
             url,
+            tls_config,
             phantom: PhantomData,
         })
     }
@@ -108,26 +131,29 @@ impl LoginUrl<PublicKeyParam> {
     pub fn gateway<E>(
         url: impl TryInto<Url, Error = E>,
         device_id: String,
-        device_name: Option<String>,
+        device_serial: Option<String>,
+        device_uuid: Option<String>,
     ) -> Result<Self, LoginUrlError<E>> {
         let external_id = if uuid::Uuid::from_str(&device_id).is_ok() {
             hex::encode(sha2::Sha256::digest(device_id))
         } else {
             device_id
         };
-        let device_name = device_name
-            .or(get_host_name())
-            .unwrap_or_else(|| Uuid::new_v4().to_string());
 
         let url = get_websocket_path(
             url.try_into().map_err(LoginUrlError::InvalidUrl)?,
             "gateway",
+            Some("v2"),
             Some(external_id),
-            Some(device_name),
             None,
             None,
             None,
-            Default::default(),
+            None,
+            DeviceInfo {
+                device_serial,
+                device_uuid,
+                ..Default::default()
+            },
         )?;
 
         let (host, port) = parse_host(&url)?;
@@ -136,6 +162,7 @@ impl LoginUrl<PublicKeyParam> {
             host,
             port,
             url,
+            tls_config: None,
             phantom: PhantomData,
         })
     }
@@ -153,6 +180,7 @@ impl LoginUrl<NoParams> {
             url.try_into().map_err(LoginUrlError::InvalidUrl)?,
             "relay",
             None,
+            None,
             device_name,
             Some(listen_port),
             ipv4_address,
@@ -166,6 +194,7 @@ impl LoginUrl<NoParams> {
             host,
             port,
             url,
+            tls_config: None,
             phantom: PhantomData,
         })
     }
@@ -197,6 +226,30 @@ impl<TFinish> LoginUrl<TFinish> {
 
         url.to_string()
     }
+
+    pub(crate) fn tls_client_config(&self) -> Option<Arc<rustls::ClientConfig>> {
+        self.tls_config.clone()
+    }
+}
+
+/// Returns the mTLS counterpart of a managed API host, if there is one.
+///
+/// The portal requests a client certificate based on the host we dial, so presenting a certificate implies dialing the mTLS host.
+/// Only the managed API hosts have a separate counterpart; any other URL is authoritative and a self-hosted portal points it at its own mTLS endpoint.
+fn mtls_host<E>(url: &Url) -> Result<Option<&'static str>, LoginUrlError<E>> {
+    let host = url.host_str().ok_or(LoginUrlError::MissingHost)?;
+
+    match host {
+        "api.firez.one" => Ok(Some("mtls.firez.one")),
+        "api.firezone.dev" => Ok(Some("mtls.firezone.dev")),
+        _ => Ok(None),
+    }
+}
+
+/// Points the URL at the given host.
+fn set_host<E>(url: &mut Url, host: &str) -> Result<(), LoginUrlError<E>> {
+    url.set_host(Some(host))
+        .map_err(|_| LoginUrlError::InvalidMtlsHost(host.to_owned()))
 }
 
 /// Parse the host from a URL, including port if present. e.g. `example.com:8080`.
@@ -213,10 +266,16 @@ fn parse_host<E>(url: &Url) -> Result<(String, u16), LoginUrlError<E>> {
 pub enum LoginUrlError<E> {
     #[error("invalid scheme `{0}`; only http(s) and ws(s) are allowed")]
     InvalidUrlScheme(String),
+    #[error("scheme `{0}` cannot present a client certificate; use https or wss")]
+    InsecureUrlWithCertificate(String),
+    #[error("`{0}` is not a valid hostname")]
+    InvalidMtlsHost(String),
     #[error("failed to parse URL: {0}")]
     InvalidUrl(E),
     #[error("the url is missing a host")]
     MissingHost,
+    #[error("failed to build the TLS configuration: {0}")]
+    Tls(rustls::Error),
 }
 
 #[cfg(not(target_os = "windows"))]
@@ -239,6 +298,7 @@ fn get_host_name() -> Option<String> {
 fn get_websocket_path<E>(
     mut api_url: Url,
     mode: &str,
+    api_version: Option<&str>,
     external_id: Option<String>,
     name: Option<String>,
     port: Option<u16>,
@@ -255,6 +315,9 @@ fn get_websocket_path<E>(
 
         paths.pop_if_empty();
         paths.push(mode);
+        if let Some(api_version) = api_version {
+            paths.push(api_version);
+        }
         paths.push("websocket");
     }
 
@@ -294,6 +357,14 @@ fn get_websocket_path<E>(
     Ok(api_url)
 }
 
+/// Rejects a plaintext URL, which would drop the client certificate from the handshake.
+fn require_tls<E>(url: &Url) -> Result<(), LoginUrlError<E>> {
+    match url.scheme() {
+        "https" | "wss" => Ok(()),
+        other => Err(LoginUrlError::InsecureUrlWithCertificate(other.to_owned())),
+    }
+}
+
 fn set_ws_scheme<E>(url: &mut Url) -> Result<(), LoginUrlError<E>> {
     let scheme = match url.scheme() {
         "http" | "ws" => "ws",
@@ -310,6 +381,7 @@ fn set_ws_scheme<E>(url: &mut Url) -> Result<(), LoginUrlError<E>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::borrow::Cow;
 
     #[test]
     fn base_url_removes_params_and_path() {
@@ -318,11 +390,205 @@ mod tests {
             "some-id".to_owned(),
             None,
             DeviceInfo::default(),
+            None,
         )
         .unwrap();
 
         let base_url = login_url.base_url();
 
         assert_eq!(base_url, "wss://api.firez.one/")
+    }
+
+    #[test]
+    fn client_uses_v2_endpoint() {
+        let login_url = LoginUrl::client(
+            "wss://api.firez.one",
+            "some-id".to_owned(),
+            Some("some-name".to_owned()),
+            DeviceInfo::default(),
+            None,
+        )
+        .unwrap();
+
+        assert_eq!(
+            login_url.to_url(PublicKeyParam([0; 32])).path(),
+            "/client/v3/websocket"
+        )
+    }
+
+    #[test]
+    fn client_with_certificate_rejects_plaintext_url() {
+        for url in ["http://api.firez.one", "ws://api.firez.one"] {
+            let result = LoginUrl::client(
+                url,
+                "some-id".to_owned(),
+                Some("some-name".to_owned()),
+                DeviceInfo::default(),
+                Some(certificate()),
+            );
+
+            assert!(matches!(
+                result,
+                Err(LoginUrlError::InsecureUrlWithCertificate(_))
+            ));
+        }
+    }
+
+    #[test]
+    fn client_without_certificate_allows_plaintext_url() {
+        let login_url = LoginUrl::client(
+            "http://localhost:8081",
+            "some-id".to_owned(),
+            Some("some-name".to_owned()),
+            DeviceInfo::default(),
+            None,
+        )
+        .unwrap();
+
+        assert_eq!(login_url.host_and_port(), ("localhost", 8081));
+    }
+
+    #[test]
+    fn client_with_certificate_uses_mtls_api_host() {
+        let login_url = LoginUrl::client(
+            "wss://api.firez.one:444",
+            "some-id".to_owned(),
+            Some("some-name".to_owned()),
+            DeviceInfo::default(),
+            Some(certificate()),
+        )
+        .unwrap();
+
+        assert_eq!(login_url.host_and_port(), ("mtls.firez.one", 444));
+        assert!(login_url.tls_client_config().is_some());
+    }
+
+    #[test]
+    fn client_with_certificate_uses_mtls_staging_api_host() {
+        let login_url = LoginUrl::client(
+            "wss://api.firezone.dev",
+            "some-id".to_owned(),
+            Some("some-name".to_owned()),
+            DeviceInfo::default(),
+            Some(certificate()),
+        )
+        .unwrap();
+
+        assert_eq!(login_url.host_and_port(), ("mtls.firezone.dev", 443));
+    }
+
+    #[test]
+    fn client_with_certificate_keeps_self_hosted_portal() {
+        let login_url = LoginUrl::client(
+            "wss://portal.example.com",
+            "some-id".to_owned(),
+            Some("some-name".to_owned()),
+            DeviceInfo::default(),
+            Some(certificate()),
+        )
+        .unwrap();
+
+        assert_eq!(login_url.host_and_port(), ("portal.example.com", 443));
+        assert!(login_url.tls_client_config().is_some());
+    }
+
+    #[test]
+    fn client_without_certificate_keeps_self_hosted_portal() {
+        let login_url = LoginUrl::client(
+            "wss://portal.example.com",
+            "some-id".to_owned(),
+            Some("some-name".to_owned()),
+            DeviceInfo::default(),
+            None,
+        )
+        .unwrap();
+
+        assert_eq!(login_url.host_and_port(), ("portal.example.com", 443));
+        assert!(login_url.tls_client_config().is_none());
+    }
+
+    #[test]
+    fn client_without_certificate_keeps_api_host() {
+        let login_url = LoginUrl::client(
+            "wss://api.firezone.dev",
+            "some-id".to_owned(),
+            Some("some-name".to_owned()),
+            DeviceInfo::default(),
+            None,
+        )
+        .unwrap();
+
+        assert_eq!(login_url.host_and_port(), ("api.firezone.dev", 443));
+        assert!(login_url.tls_client_config().is_none());
+    }
+
+    #[test]
+    fn gateway_uses_v2_endpoint_without_reporting_a_name() {
+        let login_url = LoginUrl::gateway(
+            "wss://api.firez.one",
+            "some-id".to_owned(),
+            Some("serial".to_owned()),
+            Some("uuid".to_owned()),
+        )
+        .unwrap();
+        let url = login_url.to_url(PublicKeyParam([0; 32]));
+
+        assert_eq!(url.path(), "/gateway/v2/websocket");
+        assert_eq!(
+            url.query_pairs()
+                .collect::<std::collections::HashMap<_, _>>(),
+            std::collections::HashMap::from([
+                (Cow::Borrowed("external_id"), Cow::Borrowed("some-id")),
+                (Cow::Borrowed("device_serial"), Cow::Borrowed("serial")),
+                (Cow::Borrowed("device_uuid"), Cow::Borrowed("uuid")),
+                (
+                    Cow::Borrowed("public_key"),
+                    Cow::Borrowed("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=")
+                ),
+            ])
+        );
+    }
+
+    #[test]
+    fn relay_keeps_unversioned_endpoint() {
+        let login_url = LoginUrl::relay(
+            "wss://api.firez.one",
+            Some("some-name".to_owned()),
+            3478,
+            None,
+            None,
+        )
+        .unwrap();
+
+        assert_eq!(login_url.to_url(NoParams).path(), "/relay/websocket")
+    }
+
+    fn certificate() -> ClientCertificate {
+        ClientCertificate::new(
+            vec![rustls::pki_types::CertificateDer::from(vec![1, 2, 3])],
+            Arc::new(StubKey),
+        )
+        .expect("a single-element chain should be accepted")
+    }
+
+    #[derive(Debug)]
+    struct StubKey;
+
+    impl x509_credential::PrivateKey for StubKey {
+        fn supported_schemes(&self) -> Vec<rustls::SignatureScheme> {
+            vec![rustls::SignatureScheme::ECDSA_NISTP256_SHA256]
+        }
+
+        fn algorithm(&self) -> rustls::SignatureAlgorithm {
+            rustls::SignatureAlgorithm::ECDSA
+        }
+
+        fn sign(
+            &self,
+            _: rustls::SignatureScheme,
+            _: &[u8],
+        ) -> Result<Vec<u8>, x509_credential::SigningError> {
+            unimplemented!("these tests never complete a handshake")
+        }
     }
 }

@@ -30,8 +30,9 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       jobs_to_run: ${{ steps.plan.outputs.jobs_to_run }}
+      elixir_changed: ${{ steps.plan.outputs.elixir_changed }}
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Plan jobs to run
         id: plan
         run: |
@@ -42,6 +43,7 @@ jobs:
           # For workflow_dispatch or workflow_call, run all jobs
           if [ "${{ github.event_name }}" = "workflow_dispatch" ] || [ "${{ github.event_name }}" = "workflow_call" ]; then
             echo "jobs_to_run=$jobs" >> "$GITHUB_OUTPUT"
+            echo "elixir_changed=true" >> "$GITHUB_OUTPUT"
 
             exit 0;
           fi
@@ -49,6 +51,7 @@ jobs:
           # For main branch runs, run all jobs
           if [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref_name }}" = "main" ]; then
             echo "jobs_to_run=$jobs" >> "$GITHUB_OUTPUT"
+            echo "elixir_changed=true" >> "$GITHUB_OUTPUT"
 
             exit 0;
           fi
@@ -72,6 +75,12 @@ jobs:
 
             echo "Changed files:"
             cat changed_files.txt
+          fi
+
+          if grep -q '^elixir/' changed_files.txt; then
+            echo "elixir_changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "elixir_changed=false" >> "$GITHUB_OUTPUT"
           fi
 
           # Run all jobs if CI configuration changes
@@ -163,6 +172,7 @@ jobs:
 
   required-check:
     name: required-check
+    # `commit-screenshots` starts off the same jobs, so without the edge the two race.
     needs:
       [
         kotlin,
@@ -176,30 +186,169 @@ jobs:
         integration-tests,
         compatibility-tests,
         nix,
+        commit-screenshots,
       ]
     if: always()
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Check if all jobs are successful
         run: |
           set -e
 
-          jobs_json=$(gh run view ${{ github.run_id }} --json jobs --jq '.jobs | map(select((.name | contains("required-check") | not) and (.name | contains("upload-bencher") | not)))')
-          failed_jobs=$(echo "$jobs_json" | jq -r '[.[] | select(.conclusion == "failure")] | length')
+          # Smaller pages avoid API timeouts on workflows with many jobs.
+          jobs_json=$(gh api --paginate "repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/jobs?per_page=30" --jq '.jobs[] | select((.name | contains("required-check") | not) and (.name | contains("upload-bencher") | not))')
+          failed_jobs=$(echo "$jobs_json" | jq -s '[.[] | select(.conclusion == "failure")] | length')
 
           if [ "$failed_jobs" -gt 0 ]; then
             echo "At least one job has failed."
             exit 1
           fi
 
+  # Puts a UI change in the diff of the pull request that causes it. A changed image
+  # is never an error.
+  commit-screenshots:
+    name: commit-screenshots
+    needs: [kotlin, swift, tauri]
+    # Release PRs publish a QA'd snapshot; keep its screenshots unchanged.
+    if: "!cancelled() && github.event_name == 'pull_request' && !startsWith(github.head_ref, 'chore/publish-') && github.event.pull_request.head.repo.full_name == github.repository"
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      pull-requests: write # the storage report comment
+      security-events: write # trivy SARIF upload from setup-mise
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.head_ref }}
+      - uses: ./.github/actions/setup-mise
+      # A platform the planner skipped uploads nothing, which leaves its images as committed.
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        continue-on-error: true
+        with:
+          name: gui-client-screenshots
+          path: rust/gui-client/screenshots
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        continue-on-error: true
+        with:
+          pattern: gui-client-tray-screenshots-*
+          merge-multiple: true
+          path: rust/gui-client/screenshots
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        continue-on-error: true
+        with:
+          name: android-screenshots
+          path: kotlin/android/screenshots
+      # System screens the emulator suites photographed, kept next to the rendered ones.
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        continue-on-error: true
+        with:
+          pattern: android-emulator-screenshots-*
+          merge-multiple: true
+          path: kotlin/android/screenshots
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        continue-on-error: true
+        with:
+          name: macos-26-screenshots
+          path: swift/apple/screenshots/macos/26
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        continue-on-error: true
+        with:
+          name: macos-15-screenshots
+          path: swift/apple/screenshots/macos/15
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        continue-on-error: true
+        with:
+          name: ios-iphone-screenshots
+          path: swift/apple/screenshots/ios/iphone
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        continue-on-error: true
+        with:
+          name: ios-ipad-screenshots
+          path: swift/apple/screenshots/ios/ipad
+      - name: Prepare the store images and keep invisible differences
+        run: |
+          set -euo pipefail
+
+          # The clients built the merge commit, not the branch checked out here.
+          # Two deep, so that its first parent, the branch's merge target, comes along.
+          git fetch --depth=2 origin "$GITHUB_SHA"
+
+          # `mise exec` puts `uv` on PATH: the shims the mise action sets up are
+          # regenerated before it installs, not after.
+          mise exec -- uv run scripts/prepare-store-screenshots.py
+          mise exec -- uv run scripts/settle-screenshots.py \
+            --baseline "$GITHUB_SHA" --merge-target "$GITHUB_SHA^1" \
+            rust/gui-client/screenshots kotlin/android/screenshots swift/apple/screenshots
+      - name: Set up GnuPG for the screenshot commit
+        uses: ./.github/actions/setup-gpg
+        id: setup-gpg
+        with:
+          key: ${{ secrets.RELEASE_PR_BOT_GPG_KEY }}
+          email: github-bot@firezone.dev
+      - name: Push the re-rendered screenshots
+        id: push
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          set -euo pipefail
+
+          git config --local user.email "github-bot@firezone.dev"
+          git config --local user.name "Firezone Bot"
+          git config --local user.signingkey "${{ steps.setup-gpg.outputs.key_id }}"
+          git config --local commit.gpgsign true
+
+          # The images only: an artifact holds everything that sits in the directory
+          # it was uploaded from, as the merge commit has it, and the Play Store
+          # listing beside the Android screens is kept by hand on the branch.
+          git add -A -- 'rust/gui-client/screenshots/*.png' \
+            'kotlin/android/screenshots/*.png' 'swift/apple/screenshots/*.png'
+          if git diff --cached --quiet; then
+            echo "The screenshots are unchanged; nothing to push."
+            exit 0
+          fi
+          git commit -m "chore(ci): re-render the screenshots"
+
+          # Pushed with GITHUB_TOKEN deliberately: GitHub starts no workflows for its
+          # own pushes, so a re-render does not chain into the next one. The branch may
+          # have moved while the clients were building.
+          for _ in 1 2 3; do
+            git fetch origin "$HEAD_REF"
+            git rebase "origin/$HEAD_REF"
+            if git push origin "HEAD:$HEAD_REF"; then
+              echo "pushed=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          done
+
+          echo "Could not push the screenshots after three attempts." >&2
+          exit 1
+      - name: Report what the re-render adds to the repository
+        if: steps.push.outputs.pushed == 'true'
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+
+          count=$(git diff --name-only HEAD~1 HEAD | wc -l)
+          on_disk=$(git diff --name-only HEAD~1 HEAD | xargs git ls-tree -r -l HEAD -- | awk '{ sum += $4 } END { print sum }')
+          # What the push carried: the new objects, delta-compressed against the parent.
+          stored=$( (echo HEAD; echo ^HEAD~1) | git pack-objects --thin --revs --stdout | wc -c )
+
+          gh pr comment "$PR_NUMBER" --body "Re-rendered $count screenshots: $(numfmt --to=iec-i --suffix=B "$on_disk") of PNGs, stored in git as $(numfmt --to=iec-i --suffix=B "$stored")."
+
   shell:
     name: shell-tests
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: bats-core/bats-action@77d6fb60505b4d0d1d73e48bd035b55074bbfb43 # v4.0.0
         id: setup-bats
+        with:
+          # The action downloads each library from GitHub and only authenticates
+          # when given this input, so without it the runner shares an anonymous
+          # rate limit and `tar` chokes on the error page it gets instead.
+          github-token: ${{ secrets.GITHUB_TOKEN }}
       - run: bats scripts/tests/bats
         env:
           BATS_LIB_PATH: ${{ steps.setup-bats.outputs.lib-path }}
@@ -210,19 +359,10 @@ jobs:
     uses: ./.github/workflows/_kotlin.yml
     secrets: inherit
     permissions:
+      actions: read # inspect store submission artifacts
       contents: write # release draft and build artifact uploads
       id-token: write # OIDC auth
       security-events: write # trivy SARIF upload from setup-mise
-
-  monitor-kotlin:
-    needs: [kotlin]
-    if: "!cancelled() && needs.kotlin.result == 'failure' && github.event_name == 'merge_group'"
-    runs-on: ubuntu-latest
-    permissions:
-      actions: write # gh run cancel
-    steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-      - run: gh run cancel ${{ github.run_id }}
 
   swift:
     needs: planner
@@ -230,37 +370,21 @@ jobs:
     uses: ./.github/workflows/_swift.yml
     secrets: inherit
     permissions:
+      actions: read # inspect store submission artifacts
       contents: write # release draft and build artifact uploads
       id-token: write # OIDC auth
       security-events: write # trivy SARIF upload from setup-mise
-
-  monitor-swift:
-    needs: [swift]
-    if: "!cancelled() && needs.swift.result == 'failure' && github.event_name == 'merge_group'"
-    runs-on: ubuntu-latest
-    permissions:
-      actions: write # gh run cancel
-    steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-      - run: gh run cancel ${{ github.run_id }}
 
   elixir:
     needs: planner
     if: contains(needs.planner.outputs.jobs_to_run, 'elixir')
     uses: ./.github/workflows/_elixir.yml
+    with:
+      check_openapi_breaking_changes: ${{ needs.planner.outputs.elixir_changed == 'true' }}
     secrets: inherit
     permissions:
       checks: write # dorny/test-reporter
-
-  monitor-elixir:
-    needs: [elixir]
-    if: "!cancelled() && needs.elixir.result == 'failure' && github.event_name == 'merge_group'"
-    runs-on: ubuntu-latest
-    permissions:
-      actions: write # gh run cancel
-    steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-      - run: gh run cancel ${{ github.run_id }}
+      pull-requests: write # breaking OpenAPI changes comment
 
   rust:
     needs: planner
@@ -272,16 +396,6 @@ jobs:
       id-token: write # OIDC auth
       security-events: write # trivy SARIF upload from setup-mise
 
-  monitor-rust:
-    needs: [rust]
-    if: "!cancelled() && needs.rust.result == 'failure' && github.event_name == 'merge_group'"
-    runs-on: ubuntu-latest
-    permissions:
-      actions: write # gh run cancel
-    steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-      - run: gh run cancel ${{ github.run_id }}
-
   tauri:
     needs: planner
     if: contains(needs.planner.outputs.jobs_to_run, 'tauri')
@@ -290,16 +404,7 @@ jobs:
     permissions:
       contents: write # release draft and build artifact uploads
       id-token: write # OIDC auth
-
-  monitor-tauri:
-    needs: [tauri]
-    if: "!cancelled() && needs.tauri.result == 'failure' && github.event_name == 'merge_group'"
-    runs-on: ubuntu-latest
-    permissions:
-      actions: write # gh run cancel
-    steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-      - run: gh run cancel ${{ github.run_id }}
+      security-events: write # trivy SARIF upload from setup-mise
 
   nix:
     needs: planner
@@ -313,16 +418,6 @@ jobs:
       # Build only x86_64 on PRs to control cost; both systems elsewhere.
       systems: ${{ github.event_name == 'pull_request' && '["x86_64-linux"]' || '["x86_64-linux", "aarch64-linux"]' }}
 
-  monitor-nix:
-    needs: [nix]
-    if: "!cancelled() && needs.nix.result == 'failure' && github.event_name == 'merge_group'"
-    runs-on: ubuntu-latest
-    permissions:
-      actions: write # gh run cancel
-    steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-      - run: gh run cancel ${{ github.run_id }}
-
   codeql:
     needs: planner
     if: contains(needs.planner.outputs.jobs_to_run, 'codeql')
@@ -333,16 +428,6 @@ jobs:
       contents: read
       security-events: write # upload CodeQL results
 
-  monitor-codeql:
-    needs: [codeql]
-    if: "!cancelled() && needs.codeql.result == 'failure' && github.event_name == 'merge_group'"
-    runs-on: ubuntu-latest
-    permissions:
-      actions: write # gh run cancel
-    steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-      - run: gh run cancel ${{ github.run_id }}
-
   control-plane:
     needs: planner
     if: contains(needs.planner.outputs.jobs_to_run, 'control-plane')
@@ -352,16 +437,6 @@ jobs:
       id-token: write # OIDC auth
       packages: write # push Docker images to GHCR
       security-events: write # upload Trivy SARIF results
-
-  monitor-control-plane:
-    needs: [control-plane]
-    if: "!cancelled() && needs.control-plane.result == 'failure' && github.event_name == 'merge_group'"
-    runs-on: ubuntu-latest
-    permissions:
-      actions: write # gh run cancel
-    steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-      - run: gh run cancel ${{ github.run_id }}
 
   data-plane:
     needs: planner
@@ -379,16 +454,6 @@ jobs:
       profile: ${{ inputs.profile || 'debug' }}
       stage: ${{ inputs.stage || 'debug' }}
 
-  monitor-data-plane:
-    needs: [data-plane]
-    if: "!cancelled() && needs.data-plane.result == 'failure' && github.event_name == 'merge_group'"
-    runs-on: ubuntu-latest
-    permissions:
-      actions: write # gh run cancel
-    steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-      - run: gh run cancel ${{ github.run_id }}
-
   loadtest:
     needs: planner
     if: contains(needs.planner.outputs.jobs_to_run, 'loadtest')
@@ -397,16 +462,6 @@ jobs:
     permissions:
       contents: read
       id-token: write # OIDC auth for Azure Storage uploads
-
-  monitor-loadtest:
-    needs: [loadtest]
-    if: "!cancelled() && needs.loadtest.result == 'failure' && github.event_name == 'merge_group'"
-    runs-on: ubuntu-latest
-    permissions:
-      actions: write # gh run cancel
-    steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-      - run: gh run cancel ${{ github.run_id }}
 
   integration-tests:
     uses: ./.github/workflows/_integration_tests.yml
@@ -418,6 +473,7 @@ jobs:
       pull-requests: write # post test result comments
     with:
       id: integration
+      api_fuzz: true
       gateway_image: ${{ needs.data-plane.outputs.gateway_image }}
       client_image: ${{ needs.data-plane.outputs.client_image }}
       relay_image: ${{ needs.data-plane.outputs.relay_image }}
@@ -462,14 +518,17 @@ jobs:
 
   coverage-finish:
     name: coverage-finish
-    needs: [elixir, rust, swift]
-    if: needs.elixir.result != 'skipped' || needs.rust.result != 'skipped' || needs.swift.result != 'skipped'
+    needs: [elixir, rust, swift, kotlin]
+    # `!cancelled()` so the Coveralls parallel upload is still finalized when one
+    # of the coverage jobs fails; otherwise the default `success()` gate skips
+    # this step and coverage is never reported.
+    if: ${{ !cancelled() && (needs.elixir.result != 'skipped' || needs.rust.result != 'skipped' || needs.swift.result != 'skipped' || needs.kotlin.result != 'skipped') }}
     runs-on: ubuntu-24.04
     steps:
       - name: Finalize coverage upload
-        uses: coverallsapp/github-action@648a8eb78e6d50909eff900e4ec85cab4524a45b # v2.3.6
+        uses: coverallsapp/github-action@8d6379e14d29928660c4ba802d8e85393440b329 # v2.3.8
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           parallel-finished: true
-          carryforward: portal,rust-tunnel-test,rust-test-Linux,rust-test-macOS,rust-test-Windows,swift-test
+          carryforward: portal,rust-test-Linux,rust-test-macOS,rust-test-Windows,swift-test,kotlin-test,kotlin-emulator
           fail-on-error: false # Make CI less flaky

@@ -8,20 +8,19 @@ defmodule PortalAPI.Endpoint do
     plug Phoenix.Ecto.SQL.Sandbox
   end
 
-  plug Plug.RewriteOn, [:x_forwarded_host, :x_forwarded_port, :x_forwarded_proto]
   plug Plug.MethodOverride
   plug :put_hsts_header
   plug Plug.Head
 
+  plug Plug.Static,
+    at: "/.well-known",
+    from: {:portal, "priv/static/.well-known"},
+    only: ["openai-apps-challenge"],
+    content_types: %{"openai-apps-challenge" => "text/plain"}
+
   if code_reloading? do
     plug Phoenix.CodeReloader
   end
-
-  plug RemoteIp,
-    headers: ["x-forwarded-for"],
-    parsers: %{"x-forwarded-for" => Portal.RemoteIp.XForwardedForParser},
-    proxies: {__MODULE__, :external_trusted_proxies, []},
-    clients: {__MODULE__, :clients, []}
 
   plug Portal.Plugs.CountryCodeBlocklist
 
@@ -41,10 +40,42 @@ defmodule PortalAPI.Endpoint do
     longpoll: false,
     drainer: []
 
-  socket "/client", PortalAPI.Client.Socket,
+  socket "/gateway/v2", PortalAPI.Gateway.V2.Socket,
     websocket: [
       check_origin: :conn,
       connect_info: [:trace_context_headers, :user_agent, :peer_data, :x_headers],
+      error_handler: {PortalAPI.Sockets, :handle_error, []},
+      timeout: :timer.seconds(37)
+    ],
+    longpoll: false,
+    drainer: []
+
+  # Client sockets take `:uri` so device trust can tell a connect on the
+  # mutual-TLS origin from one on the plain API origin.
+  socket "/client", PortalAPI.Client.Socket,
+    websocket: [
+      check_origin: :conn,
+      connect_info: [:trace_context_headers, :user_agent, :peer_data, :x_headers, :uri],
+      error_handler: {PortalAPI.Sockets, :handle_error, []},
+      timeout: :timer.seconds(37)
+    ],
+    longpoll: false,
+    drainer: []
+
+  socket "/client/v2", PortalAPI.Client.V2.Socket,
+    websocket: [
+      check_origin: :conn,
+      connect_info: [:trace_context_headers, :user_agent, :peer_data, :x_headers, :uri],
+      error_handler: {PortalAPI.Sockets, :handle_error, []},
+      timeout: :timer.seconds(37)
+    ],
+    longpoll: false,
+    drainer: []
+
+  socket "/client/v3", PortalAPI.Client.V3.Socket,
+    websocket: [
+      check_origin: :conn,
+      connect_info: [:trace_context_headers, :user_agent, :peer_data, :x_headers, :uri],
       error_handler: {PortalAPI.Sockets, :handle_error, []},
       timeout: :timer.seconds(37)
     ],
@@ -62,17 +93,10 @@ defmodule PortalAPI.Endpoint do
     drainer: []
 
   plug :fetch_user_agent
-  plug :redirect_to_rest_api_url
-  plug PortalAPI.Router
+
+  plug PortalAPI.Plugs.RescueRouterErrors
 
   plug Sentry.PlugContext
-
-  def redirect_to_rest_api_url(%Plug.Conn{} = conn, _opts) do
-    case Portal.Config.get_env(:portal, :rest_api_url) do
-      nil -> conn
-      rest_api_url -> redirect_to_canonical_host(conn, URI.parse(rest_api_url))
-    end
-  end
 
   def fetch_user_agent(%Plug.Conn{} = conn, _opts) do
     case Plug.Conn.get_req_header(conn, "user-agent") do
@@ -95,49 +119,5 @@ defmodule PortalAPI.Endpoint do
     else
       conn
     end
-  end
-
-  def real_ip_opts do
-    [
-      headers: ["x-forwarded-for"],
-      parsers: %{"x-forwarded-for" => Portal.RemoteIp.XForwardedForParser},
-      proxies: {__MODULE__, :external_trusted_proxies, []},
-      clients: {__MODULE__, :clients, []}
-    ]
-  end
-
-  def external_trusted_proxies do
-    Portal.Config.fetch_env!(:portal, :external_trusted_proxies)
-    |> Enum.map(&to_string/1)
-  end
-
-  def clients do
-    Portal.Config.fetch_env!(:portal, :private_clients)
-    |> Enum.map(&to_string/1)
-  end
-
-  defp redirect_to_canonical_host(%Plug.Conn{host: host} = conn, %URI{host: host}), do: conn
-
-  defp redirect_to_canonical_host(conn, %URI{scheme: scheme, host: host, port: port}) do
-    query =
-      if conn.query_string == "" do
-        nil
-      else
-        conn.query_string
-      end
-
-    location =
-      URI.to_string(%URI{
-        scheme: scheme,
-        host: host,
-        port: port,
-        path: conn.request_path,
-        query: query
-      })
-
-    conn
-    |> put_resp_header("location", location)
-    |> send_resp(308, "")
-    |> halt()
   end
 end

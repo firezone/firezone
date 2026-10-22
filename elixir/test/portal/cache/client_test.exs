@@ -29,30 +29,20 @@ defmodule Portal.Cache.ClientTest do
       assert cached_policy.id == Ecto.UUID.dump!(policy.id)
       assert cached_policy.resource_id == Ecto.UUID.dump!(policy.resource_id)
     end
+
+    test "carries the postures tree" do
+      {:ok, postures} = Portal.Policies.Postures.cast(%{"field" => "intune.enrolled", "op" => "is", "value" => true})
+      policy = %Portal.Policy{id: Ecto.UUID.generate(), resource_id: Ecto.UUID.generate(), conditions: [], postures: postures}
+      assert Cacheable.to_cache(policy).postures == postures
+    end
   end
 
-  describe "update_resource/5" do
+  describe "update_resource/4" do
     setup do
       account = account_fixture()
       actor = actor_fixture(type: :account_admin_user, account: account)
       subject = subject_fixture(account: account, actor: actor, type: :client)
       client = client_fixture(account: account, actor: actor)
-
-      # Build session struct (mimics Socket.connect)
-      version =
-        case Portal.Version.fetch_version(subject.context.user_agent) do
-          {:ok, version} -> version
-          _ -> nil
-        end
-
-      session = %Portal.ClientSession{
-        device_id: client.id,
-        account_id: client.account_id,
-        user_agent: subject.context.user_agent,
-        remote_ip: subject.context.remote_ip,
-        remote_ip_location_region: subject.context.remote_ip_location_region,
-        version: version
-      }
 
       group = group_fixture(account: account)
       membership_fixture(account: account, actor: actor, group: group)
@@ -71,7 +61,6 @@ defmodule Portal.Cache.ClientTest do
         account: account,
         subject: subject,
         client: client,
-        session: session,
         site: site,
         resource: resource
       }
@@ -80,7 +69,6 @@ defmodule Portal.Cache.ClientTest do
     test "handles cached resource with nil site by fetching from database", %{
       subject: subject,
       client: client,
-      session: session,
       site: site,
       resource: resource
     } do
@@ -123,7 +111,7 @@ defmodule Portal.Cache.ClientTest do
 
       # This should not crash - it should fetch the site from the database
       {:ok, _added, _removed, updated_cache} =
-        Cache.update_resource(cache, updated_resource, client, session, subject)
+        Cache.update_resource(cache, updated_resource, client, subject)
 
       # Verify the site was hydrated from the database
       cached = Map.get(updated_cache.resources, resource_id)
@@ -136,7 +124,6 @@ defmodule Portal.Cache.ClientTest do
     test "handles resource with nil site_id (site deleted)", %{
       subject: subject,
       client: client,
-      session: session,
       resource: resource
     } do
       resource_id = Ecto.UUID.dump!(resource.id)
@@ -182,7 +169,7 @@ defmodule Portal.Cache.ClientTest do
 
       # This should not crash - it should handle nil site_id gracefully
       {:ok, added, removed_ids, updated_cache} =
-        Cache.update_resource(cache, updated_resource, client, session, subject)
+        Cache.update_resource(cache, updated_resource, client, subject)
 
       # Verify the resource now has nil site
       cached = Map.get(updated_cache.resources, resource_id)
@@ -196,7 +183,6 @@ defmodule Portal.Cache.ClientTest do
     test "reuses cached site when site_id has not changed", %{
       subject: subject,
       client: client,
-      session: session,
       site: site,
       resource: resource
     } do
@@ -242,7 +228,7 @@ defmodule Portal.Cache.ClientTest do
       updated_resource = %{resource | name: "Updated Name"}
 
       {:ok, _added, _removed, updated_cache} =
-        Cache.update_resource(cache, updated_resource, client, session, subject)
+        Cache.update_resource(cache, updated_resource, client, subject)
 
       # Verify the cached site was reused (same struct reference)
       cached = Map.get(updated_cache.resources, resource_id)
@@ -270,18 +256,16 @@ defmodule Portal.Cache.ClientTest do
       group = group_fixture(account: account)
       membership_fixture(account: account, actor: actor, group: group)
 
-      resource = static_device_pool_resource_fixture(account: account, clients: [target_client])
+      resource = device_pool_resource_fixture(account: account, devices: [target_client])
       policy_fixture(account: account, group: group, resource: resource)
 
-      session = %Portal.ClientSession{
-        device_id: client.id,
-        account_id: client.account_id,
-        user_agent: subject.context.user_agent,
-        remote_ip: subject.context.remote_ip,
-        version: "1.5.16"
+      client = %{
+        client
+        | last_seen_user_agent: "Mac OS/14 apple-client/1.5.16",
+          last_seen_version: "1.5.16"
       }
 
-      cache = Cache.recompute_connectable_resources(nil, client, session, subject) |> elem(3)
+      cache = Cache.recompute_connectable_resources(nil, client, subject) |> elem(3)
 
       target_ipv4 = target_client.ipv4.address
       target_id = target_client.id
@@ -308,18 +292,16 @@ defmodule Portal.Cache.ClientTest do
       group = group_fixture(account: account)
       membership_fixture(account: account, actor: actor, group: group)
 
-      resource = static_device_pool_resource_fixture(account: account, clients: [target_client])
+      resource = device_pool_resource_fixture(account: account, devices: [target_client])
       policy_fixture(account: account, group: group, resource: resource)
 
-      session = %Portal.ClientSession{
-        device_id: client.id,
-        account_id: client.account_id,
-        user_agent: subject.context.user_agent,
-        remote_ip: subject.context.remote_ip,
-        version: "1.5.16"
+      client = %{
+        client
+        | last_seen_user_agent: "Mac OS/14 apple-client/1.5.16",
+          last_seen_version: "1.5.16"
       }
 
-      cache = Cache.recompute_connectable_resources(nil, client, session, subject) |> elem(3)
+      cache = Cache.recompute_connectable_resources(nil, client, subject) |> elem(3)
 
       target_ipv6 = target_client.ipv6.address
       target_id = target_client.id
@@ -344,15 +326,7 @@ defmodule Portal.Cache.ClientTest do
       target_actor = actor_fixture(account: account)
       target_client = client_fixture(account: account, actor: target_actor)
 
-      session = %Portal.ClientSession{
-        device_id: client.id,
-        account_id: client.account_id,
-        user_agent: subject.context.user_agent,
-        remote_ip: subject.context.remote_ip,
-        version: "1.5.16"
-      }
-
-      cache = Cache.recompute_connectable_resources(nil, client, session, subject) |> elem(3)
+      cache = Cache.recompute_connectable_resources(nil, client, subject) |> elem(3)
 
       target_ipv4 = target_client.ipv4.address
 
@@ -361,7 +335,7 @@ defmodule Portal.Cache.ClientTest do
     end
   end
 
-  describe "static_device_pool resource rendering" do
+  describe "device_pool resource rendering" do
     test "populates addresses on connectable pool resources" do
       account = account_fixture()
       actor = actor_fixture(type: :account_admin_user, account: account)
@@ -380,22 +354,20 @@ defmodule Portal.Cache.ClientTest do
       group = group_fixture(account: account)
       membership_fixture(account: account, actor: actor, group: group)
 
-      resource = static_device_pool_resource_fixture(account: account, clients: [target_client])
+      resource = device_pool_resource_fixture(account: account, devices: [target_client])
       policy_fixture(account: account, group: group, resource: resource)
 
-      session = %Portal.ClientSession{
-        device_id: client.id,
-        account_id: client.account_id,
-        user_agent: subject.context.user_agent,
-        remote_ip: subject.context.remote_ip,
-        version: "1.5.16"
+      client = %{
+        client
+        | last_seen_user_agent: "Mac OS/14 apple-client/1.5.16",
+          last_seen_version: "1.5.16"
       }
 
       {:ok, _added, _removed, cache} =
-        Cache.recompute_connectable_resources(nil, client, session, subject)
+        Cache.recompute_connectable_resources(nil, client, subject)
 
       pool =
-        Enum.find(cache.connectable_resources, &(&1.type == :static_device_pool))
+        Enum.find(cache.connectable_resources, &(&1.type == :device_pool))
 
       assert pool != nil
 
@@ -413,7 +385,7 @@ defmodule Portal.Cache.ClientTest do
       assert ipv6_address == target_client.ipv6.address
     end
 
-    test "older clients do not see static_device_pool resources" do
+    test "older clients do not see device_pool resources" do
       account = account_fixture()
       actor = actor_fixture(type: :account_admin_user, account: account)
 
@@ -431,63 +403,215 @@ defmodule Portal.Cache.ClientTest do
       group = group_fixture(account: account)
       membership_fixture(account: account, actor: actor, group: group)
 
-      resource = static_device_pool_resource_fixture(account: account, clients: [target_client])
+      resource = device_pool_resource_fixture(account: account, devices: [target_client])
       policy_fixture(account: account, group: group, resource: resource)
 
-      session = %Portal.ClientSession{
-        device_id: client.id,
-        account_id: client.account_id,
-        user_agent: subject.context.user_agent,
-        remote_ip: subject.context.remote_ip,
-        version: "1.5.0"
+      client = %{
+        client
+        | last_seen_user_agent: "Mac OS/14 apple-client/1.5.0",
+          last_seen_version: "1.5.0"
       }
 
       {:ok, _added, _removed, cache} =
-        Cache.recompute_connectable_resources(nil, client, session, subject)
+        Cache.recompute_connectable_resources(nil, client, subject)
 
-      assert Enum.all?(cache.connectable_resources, &(&1.type != :static_device_pool))
+      assert Enum.all?(cache.connectable_resources, &(&1.type != :device_pool))
       refute Map.has_key?(cache.pool_members, Ecto.UUID.dump!(resource.id))
     end
   end
 
-  describe "track_authorized_device_ipv4/2" do
-    test "appends the IPv4 to the cache's authorized set" do
-      cache = %Cache{authorized_device_ipv4s: MapSet.new()}
-      ipv4 = %Postgrex.INET{address: {10, 0, 0, 5}}
+  describe "device_pool visibility by protocol version" do
+    setup do
+      account = account_fixture()
+      actor = actor_fixture(type: :account_admin_user, account: account)
 
-      cache = Cache.track_authorized_device_ipv4(cache, ipv4)
+      subject =
+        subject_fixture(
+          account: account,
+          actor: actor,
+          type: :client,
+          user_agent: "Mac OS/14 apple-client/1.5.16"
+        )
 
-      assert MapSet.member?(cache.authorized_device_ipv4s, {10, 0, 0, 5})
+      client = client_fixture(account: account, actor: actor)
+      target_client = client_fixture(account: account, actor: actor)
+      group = group_fixture(account: account)
+      membership_fixture(account: account, actor: actor, group: group)
+
+      own_pool = own_devices_pool_resource_fixture(account: account)
+      policy_fixture(account: account, group: group, resource: own_pool)
+
+      listed_pool = device_pool_resource_fixture(account: account, devices: [target_client])
+      policy_fixture(account: account, group: group, resource: listed_pool)
+
+      client = %{
+        client
+        | last_seen_user_agent: "Mac OS/14 apple-client/1.5.16",
+          last_seen_version: "1.5.16"
+      }
+
+      %{
+        subject: subject,
+        client: client,
+        target_client: target_client,
+        own_pool: own_pool,
+        listed_pool: listed_pool
+      }
+    end
+
+    test "the v2 protocol sees only the pools that list their devices", %{
+      subject: subject,
+      client: client,
+      target_client: target_client,
+      own_pool: own_pool,
+      listed_pool: listed_pool
+    } do
+      {:ok, _added, _removed, cache} =
+        Cache.recompute_connectable_resources(nil, client, subject, protocol_version: 2)
+
+      own_id = Ecto.UUID.dump!(own_pool.id)
+      listed_id = Ecto.UUID.dump!(listed_pool.id)
+      target_id = target_client.id
+
+      refute Enum.find(cache.connectable_resources, &(&1.id == own_id))
+      assert %{devices: [%{id: ^target_id}]} = Enum.find(cache.connectable_resources, &(&1.id == listed_id))
+      assert Map.keys(cache.pool_members) == [listed_id]
+    end
+
+    test "the v3 protocol sees every pool without devices", %{
+      subject: subject,
+      client: client,
+      own_pool: own_pool,
+      listed_pool: listed_pool
+    } do
+      {:ok, _added, _removed, cache} =
+        Cache.recompute_connectable_resources(nil, client, subject, protocol_version: 3)
+
+      own_id = Ecto.UUID.dump!(own_pool.id)
+      listed_id = Ecto.UUID.dump!(listed_pool.id)
+
+      assert %{devices: []} = Enum.find(cache.connectable_resources, &(&1.id == own_id))
+      assert %{devices: []} = Enum.find(cache.connectable_resources, &(&1.id == listed_id))
+      assert cache.pool_members == %{}
+      assert cache.device_addresses == %{}
     end
   end
 
-  describe "add_policy/5 no-op paths" do
+  describe "removed_member_addresses/2" do
+    setup do
+      account = account_fixture()
+      actor = actor_fixture(type: :account_admin_user, account: account)
+
+      subject =
+        subject_fixture(
+          account: account,
+          actor: actor,
+          type: :client,
+          user_agent: "Mac OS/14 apple-client/1.5.16"
+        )
+
+      client = client_fixture(account: account, actor: actor)
+      group = group_fixture(account: account)
+      membership_fixture(account: account, actor: actor, group: group)
+
+      target_a = client_fixture(account: account)
+      target_b = client_fixture(account: account)
+
+      pool = device_pool_resource_fixture(account: account, devices: [target_a, target_b])
+      policy_fixture(account: account, group: group, resource: pool)
+
+      client = %{
+        client
+        | last_seen_user_agent: "Mac OS/14 apple-client/1.5.16",
+          last_seen_version: "1.5.16"
+      }
+
+      {:ok, _added, _removed, cache} =
+        Cache.recompute_connectable_resources(nil, client, subject, protocol_version: 2)
+
+      %{
+        account: account,
+        subject: subject,
+        client: client,
+        group: group,
+        target_a: target_a,
+        target_b: target_b,
+        pool: pool,
+        cache: cache
+      }
+    end
+
+    test "lists the addresses of devices that left every connectable pool", %{
+      subject: subject,
+      client: client,
+      target_a: target_a,
+      target_b: target_b,
+      pool: pool,
+      cache: cache
+    } do
+      changed = %{
+        pool
+        | device_membership_criteria: Portal.Resource.DeviceMembershipCriteria.devices([target_b.id])
+      }
+
+      rid_bytes = Ecto.UUID.dump!(pool.id)
+      did_a = Ecto.UUID.dump!(target_a.id)
+      did_b = Ecto.UUID.dump!(target_b.id)
+      target_b_id = target_b.id
+
+      assert {:ok, [%{id: ^rid_bytes, devices: [%{id: ^target_b_id}]}], [], updated} =
+               Cache.update_resource(cache, changed, client, subject)
+
+      assert updated.pool_members[rid_bytes] == MapSet.new([did_b])
+      refute Map.has_key?(updated.device_addresses, did_a)
+
+      assert Cache.removed_member_addresses(cache, updated) ==
+               [{target_a.ipv4.address, target_a.ipv6.address}]
+    end
+
+    test "keeps devices that another connectable pool still lists", %{
+      account: account,
+      subject: subject,
+      client: client,
+      group: group,
+      target_a: target_a,
+      target_b: target_b,
+      pool: pool
+    } do
+      other_pool = device_pool_resource_fixture(account: account, devices: [target_a])
+      policy_fixture(account: account, group: group, resource: other_pool)
+
+      {:ok, _added, _removed, cache} =
+        Cache.recompute_connectable_resources(nil, client, subject, protocol_version: 2)
+
+      changed = %{
+        pool
+        | device_membership_criteria: Portal.Resource.DeviceMembershipCriteria.devices([target_b.id])
+      }
+
+      {:ok, _added, [], updated} = Cache.update_resource(cache, changed, client, subject)
+
+      assert Cache.removed_member_addresses(cache, updated) == []
+    end
+  end
+
+  describe "add_policy/4 no-op paths" do
     setup do
       account = account_fixture()
       actor = actor_fixture(type: :account_admin_user, account: account)
       subject = subject_fixture(account: account, actor: actor, type: :client)
       client = client_fixture(account: account, actor: actor)
 
-      session = %Portal.ClientSession{
-        device_id: client.id,
-        account_id: client.account_id,
-        user_agent: subject.context.user_agent,
-        remote_ip: subject.context.remote_ip,
-        remote_ip_location_region: subject.context.remote_ip_location_region,
-        version: "1.5.0"
-      }
-
-      %{account: account, actor: actor, subject: subject, client: client, session: session}
+      %{account: account, actor: actor, subject: subject, client: client}
     end
 
     test "returns the cache unchanged when the policy's group isn't in memberships", %{
       account: account,
       subject: subject,
-      client: client,
-      session: session
+      client: client
     } do
       {:ok, _, _, cache} =
-        Cache.recompute_connectable_resources(nil, client, session, subject)
+        Cache.recompute_connectable_resources(nil, client, subject)
 
       other_group = group_fixture(account: account)
       site = site_fixture(account: account)
@@ -495,7 +619,7 @@ defmodule Portal.Cache.ClientTest do
       policy = policy_fixture(account: account, group: other_group, resource: resource)
 
       assert {:ok, [], [], ^cache} =
-               Cache.add_policy(cache, policy, client, session, subject)
+               Cache.add_policy(cache, policy, client, subject)
     end
   end
 
@@ -507,8 +631,7 @@ defmodule Portal.Cache.ClientTest do
         memberships: %{},
         connectable_resources: [],
         pool_members: %{},
-        device_addresses: %{},
-        authorized_device_ipv4s: MapSet.new()
+        device_addresses: %{}
       }
 
       policy = %Portal.Policy{
@@ -522,33 +645,23 @@ defmodule Portal.Cache.ClientTest do
     end
   end
 
-  describe "delete_policy/5 no-op when not in cache" do
+  describe "delete_policy/4 no-op when not in cache" do
     setup do
       account = account_fixture()
       actor = actor_fixture(type: :account_admin_user, account: account)
       subject = subject_fixture(account: account, actor: actor, type: :client)
       client = client_fixture(account: account, actor: actor)
 
-      session = %Portal.ClientSession{
-        device_id: client.id,
-        account_id: client.account_id,
-        user_agent: subject.context.user_agent,
-        remote_ip: subject.context.remote_ip,
-        remote_ip_location_region: subject.context.remote_ip_location_region,
-        version: "1.5.0"
-      }
-
-      %{account: account, subject: subject, client: client, session: session}
+      %{account: account, subject: subject, client: client}
     end
 
     test "returns cache unchanged for an unknown policy id", %{
       account: account,
       subject: subject,
-      client: client,
-      session: session
+      client: client
     } do
       {:ok, _, _, cache} =
-        Cache.recompute_connectable_resources(nil, client, session, subject)
+        Cache.recompute_connectable_resources(nil, client, subject)
 
       group = group_fixture(account: account)
       site = site_fixture(account: account)
@@ -556,79 +669,33 @@ defmodule Portal.Cache.ClientTest do
       stranger_policy = policy_fixture(account: account, group: group, resource: resource)
 
       assert {:ok, [], [], ^cache} =
-               Cache.delete_policy(cache, stranger_policy, client, session, subject)
+               Cache.delete_policy(cache, stranger_policy, client, subject)
     end
   end
 
-  describe "update_resource/5 no-op when not in cache" do
+  describe "update_resource/4 no-op when not in cache" do
     setup do
       account = account_fixture()
       actor = actor_fixture(type: :account_admin_user, account: account)
       subject = subject_fixture(account: account, actor: actor, type: :client)
       client = client_fixture(account: account, actor: actor)
 
-      session = %Portal.ClientSession{
-        device_id: client.id,
-        account_id: client.account_id,
-        user_agent: subject.context.user_agent,
-        remote_ip: subject.context.remote_ip,
-        remote_ip_location_region: subject.context.remote_ip_location_region,
-        version: "1.5.0"
-      }
-
-      %{account: account, subject: subject, client: client, session: session}
+      %{account: account, subject: subject, client: client}
     end
 
     test "returns cache unchanged when resource isn't in the cache", %{
       account: account,
       subject: subject,
-      client: client,
-      session: session
+      client: client
     } do
       {:ok, _, _, cache} =
-        Cache.recompute_connectable_resources(nil, client, session, subject)
+        Cache.recompute_connectable_resources(nil, client, subject)
 
       site = site_fixture(account: account)
       stranger = dns_resource_fixture(account: account, site: site)
 
       assert {:ok, [], [], ^cache} =
-               Cache.update_resource(cache, stranger, client, session, subject)
-    end
-  end
-
-  describe "add_static_device_pool_member/3 no-op when not connectable" do
-    setup do
-      account = account_fixture()
-      actor = actor_fixture(type: :account_admin_user, account: account)
-      subject = subject_fixture(account: account, actor: actor, type: :client)
-
-      %{account: account, subject: subject}
-    end
-
-    test "ignores members for resources outside connectable_resources", %{
-      account: account,
-      subject: subject
-    } do
-      cache = %Cache{
-        policies: %{},
-        resources: %{},
-        memberships: %{},
-        connectable_resources: [],
-        pool_members: %{},
-        device_addresses: %{},
-        authorized_device_ipv4s: MapSet.new()
-      }
-
-      target = client_fixture(account: account)
-
-      member = %Portal.StaticDevicePoolMember{
-        account_id: account.id,
-        resource_id: Ecto.UUID.generate(),
-        device_id: target.id
-      }
-
-      assert {:ok, [], [], ^cache} =
-               Cache.add_static_device_pool_member(cache, member, subject)
+               Cache.update_resource(cache, stranger, client, subject)
     end
   end
 
@@ -640,8 +707,7 @@ defmodule Portal.Cache.ClientTest do
         memberships: %{},
         connectable_resources: [],
         pool_members: %{},
-        device_addresses: %{},
-        authorized_device_ipv4s: MapSet.new()
+        device_addresses: %{}
       }
 
       device = %Portal.Device{
@@ -667,8 +733,7 @@ defmodule Portal.Cache.ClientTest do
         memberships: %{},
         connectable_resources: [],
         pool_members: %{},
-        device_addresses: %{did_bytes => {ipv4_tuple, ipv6_tuple}},
-        authorized_device_ipv4s: MapSet.new()
+        device_addresses: %{did_bytes => {ipv4_tuple, ipv6_tuple}}
       }
 
       device = %Portal.Device{
@@ -683,7 +748,7 @@ defmodule Portal.Cache.ClientTest do
     end
   end
 
-  describe "delete_policy/5 keeps resource when another policy still references it" do
+  describe "delete_policy/4 keeps resource when another policy still references it" do
     test "keeps the resource and only removes the deleted policy" do
       account = account_fixture()
       actor = actor_fixture(type: :account_admin_user, account: account)
@@ -701,114 +766,23 @@ defmodule Portal.Cache.ClientTest do
       policy_a = policy_fixture(account: account, group: group_a, resource: resource)
       policy_fixture(account: account, group: group_b, resource: resource)
 
-      session = %Portal.ClientSession{
-        device_id: client.id,
-        account_id: client.account_id,
-        user_agent: subject.context.user_agent,
-        remote_ip: subject.context.remote_ip,
-        remote_ip_location_region: subject.context.remote_ip_location_region,
-        version: "1.5.0"
-      }
-
       {:ok, _, _, cache} =
-        Cache.recompute_connectable_resources(nil, client, session, subject)
+        Cache.recompute_connectable_resources(nil, client, subject)
 
       assert {:ok, [], [], cache} =
-               Cache.delete_policy(cache, policy_a, client, session, subject)
+               Cache.delete_policy(cache, policy_a, client, subject)
 
       assert Map.has_key?(cache.resources, Ecto.UUID.dump!(resource.id))
     end
   end
 
-  describe "all_member_ips/2 empty input" do
-    test "returns an empty list without hitting the DB" do
-      assert Cache.Database.all_member_ips([], nil) == []
+  describe "all_client_addresses/2 empty input" do
+    test "returns an empty map without hitting the DB" do
+      assert Cache.Database.all_client_addresses([], nil) == %{}
     end
   end
 
-  describe "ensure_device_addresses fast path" do
-    test "add_static_device_pool_member reuses existing device addresses without re-querying" do
-      account = account_fixture()
-      actor = actor_fixture(type: :account_admin_user, account: account)
-      subject = subject_fixture(account: account, actor: actor, type: :client)
-
-      target = client_fixture(account: account)
-      did_bytes = Ecto.UUID.dump!(target.id)
-      ipv4_tuple = target.ipv4.address
-      ipv6_tuple = target.ipv6.address
-
-      pool =
-        static_device_pool_resource_fixture(account: account, clients: [])
-
-      rid_bytes = Ecto.UUID.dump!(pool.id)
-
-      cacheable_pool = Cacheable.to_cache(pool)
-
-      cache = %Cache{
-        policies: %{},
-        resources: %{rid_bytes => cacheable_pool},
-        memberships: %{},
-        connectable_resources: [%{cacheable_pool | devices: []}],
-        pool_members: %{},
-        device_addresses: %{did_bytes => {ipv4_tuple, ipv6_tuple}},
-        authorized_device_ipv4s: MapSet.new()
-      }
-
-      member = %Portal.StaticDevicePoolMember{
-        account_id: account.id,
-        resource_id: pool.id,
-        device_id: target.id
-      }
-
-      assert {:ok, [_pool], [], updated} =
-               Cache.add_static_device_pool_member(cache, member, subject)
-
-      assert MapSet.member?(updated.pool_members[rid_bytes], did_bytes)
-    end
-  end
-
-  describe "delete_static_device_pool_member/2" do
-    test "keeps remaining members for a pool when only one is removed" do
-      account = account_fixture()
-
-      target_a = client_fixture(account: account)
-      target_b = client_fixture(account: account)
-      did_a = Ecto.UUID.dump!(target_a.id)
-      did_b = Ecto.UUID.dump!(target_b.id)
-
-      pool = static_device_pool_resource_fixture(account: account, clients: [])
-      rid_bytes = Ecto.UUID.dump!(pool.id)
-
-      cacheable_pool = Cacheable.to_cache(pool)
-
-      cache = %Cache{
-        policies: %{},
-        resources: %{rid_bytes => cacheable_pool},
-        memberships: %{},
-        connectable_resources: [%{cacheable_pool | devices: []}],
-        pool_members: %{rid_bytes => MapSet.new([did_a, did_b])},
-        device_addresses: %{
-          did_a => {target_a.ipv4.address, target_a.ipv6.address},
-          did_b => {target_b.ipv4.address, target_b.ipv6.address}
-        },
-        authorized_device_ipv4s: MapSet.new()
-      }
-
-      member = %Portal.StaticDevicePoolMember{
-        account_id: account.id,
-        resource_id: pool.id,
-        device_id: target_a.id
-      }
-
-      assert {:ok, _denied, [_pool], [], updated} =
-               Cache.delete_static_device_pool_member(cache, member)
-
-      assert MapSet.member?(updated.pool_members[rid_bytes], did_b)
-      refute MapSet.member?(updated.pool_members[rid_bytes], did_a)
-    end
-  end
-
-  describe "authorize_resource/5 logs when membership is missing from cache" do
+  describe "authorize_resource/4 logs when membership is missing from cache" do
     test "warns and returns :not_found when policy.group_id has no membership entry" do
       import ExUnit.CaptureLog
 
@@ -816,15 +790,6 @@ defmodule Portal.Cache.ClientTest do
       actor = actor_fixture(type: :account_admin_user, account: account)
       subject = subject_fixture(account: account, actor: actor, type: :client)
       client = client_fixture(account: account, actor: actor)
-
-      session = %Portal.ClientSession{
-        device_id: client.id,
-        account_id: client.account_id,
-        user_agent: subject.context.user_agent,
-        remote_ip: subject.context.remote_ip,
-        remote_ip_location_region: subject.context.remote_ip_location_region,
-        version: "1.5.0"
-      }
 
       site = site_fixture(account: account)
       resource = dns_resource_fixture(account: account, site: site)
@@ -847,61 +812,16 @@ defmodule Portal.Cache.ClientTest do
         memberships: %{},
         connectable_resources: [cacheable_resource],
         pool_members: %{},
-        device_addresses: %{},
-        authorized_device_ipv4s: MapSet.new()
+        device_addresses: %{}
       }
 
       log =
         capture_log(fn ->
-          assert Cache.authorize_resource(cache, client, session, resource_id, subject) ==
+          assert Cache.authorize_resource(cache, client, resource_id, subject) ==
                    {:error, :not_found}
         end)
 
       assert log =~ "membership not found in cache"
-    end
-  end
-
-  describe "add_static_device_pool_member/3 add a second member" do
-    test "extends existing pool_members entry instead of creating a new one" do
-      account = account_fixture()
-      actor = actor_fixture(type: :account_admin_user, account: account)
-      subject = subject_fixture(account: account, actor: actor, type: :client)
-
-      target_a = client_fixture(account: account)
-      target_b = client_fixture(account: account)
-      did_a = Ecto.UUID.dump!(target_a.id)
-      did_b = Ecto.UUID.dump!(target_b.id)
-
-      pool = static_device_pool_resource_fixture(account: account, clients: [])
-      rid_bytes = Ecto.UUID.dump!(pool.id)
-
-      cacheable_pool = Cacheable.to_cache(pool)
-
-      cache = %Cache{
-        policies: %{},
-        resources: %{rid_bytes => cacheable_pool},
-        memberships: %{},
-        connectable_resources: [%{cacheable_pool | devices: []}],
-        pool_members: %{rid_bytes => MapSet.new([did_a])},
-        device_addresses: %{
-          did_a => {target_a.ipv4.address, target_a.ipv6.address},
-          did_b => {target_b.ipv4.address, target_b.ipv6.address}
-        },
-        authorized_device_ipv4s: MapSet.new()
-      }
-
-      member = %Portal.StaticDevicePoolMember{
-        account_id: account.id,
-        resource_id: pool.id,
-        device_id: target_b.id
-      }
-
-      assert {:ok, [_pool], [], updated} =
-               Cache.add_static_device_pool_member(cache, member, subject)
-
-      members = updated.pool_members[rid_bytes]
-      assert MapSet.member?(members, did_a)
-      assert MapSet.member?(members, did_b)
     end
   end
 
@@ -938,48 +858,6 @@ defmodule Portal.Cache.ClientTest do
     end
   end
 
-  describe "render_pool_devices ignores orphan members without addresses" do
-    test "skips members whose addresses aren't in device_addresses on refresh" do
-      account = account_fixture()
-      target_a = client_fixture(account: account)
-      target_b = client_fixture(account: account)
-      did_a = Ecto.UUID.dump!(target_a.id)
-      did_b = Ecto.UUID.dump!(target_b.id)
-
-      pool = static_device_pool_resource_fixture(account: account, clients: [])
-      rid_bytes = Ecto.UUID.dump!(pool.id)
-
-      cacheable_pool = Cacheable.to_cache(pool)
-
-      cache = %Cache{
-        policies: %{},
-        resources: %{rid_bytes => cacheable_pool},
-        memberships: %{},
-        connectable_resources: [%{cacheable_pool | devices: []}],
-        # Both did_a and did_b are members of the pool but only did_a has
-        # device_addresses. When we remove did_a and refresh, render_pool_devices has
-        # to skip did_b via the :error branch.
-        pool_members: %{rid_bytes => MapSet.new([did_a, did_b])},
-        device_addresses: %{did_a => {target_a.ipv4.address, target_a.ipv6.address}},
-        authorized_device_ipv4s: MapSet.new()
-      }
-
-      member = %Portal.StaticDevicePoolMember{
-        account_id: account.id,
-        resource_id: pool.id,
-        device_id: target_a.id
-      }
-
-      assert {:ok, _denied, [pool_view], [], updated} =
-               Cache.delete_static_device_pool_member(cache, member)
-
-      # did_b is still in pool_members but had no device_addresses, so the rendered
-      # pool has no devices.
-      assert pool_view.devices == []
-      assert MapSet.member?(updated.pool_members[rid_bytes], did_b)
-    end
-  end
-
   describe "load_pool_state with multi-member pool" do
     test "tracks multiple device members in the same pool" do
       account = account_fixture()
@@ -1001,23 +879,21 @@ defmodule Portal.Cache.ClientTest do
       target_b = client_fixture(account: account)
 
       pool =
-        static_device_pool_resource_fixture(
+        device_pool_resource_fixture(
           account: account,
-          clients: [target_a, target_b]
+          devices: [target_a, target_b]
         )
 
       policy_fixture(account: account, group: group, resource: pool)
 
-      session = %Portal.ClientSession{
-        device_id: client.id,
-        account_id: client.account_id,
-        user_agent: "Mac OS/14 apple-client/1.5.16",
-        remote_ip: subject.context.remote_ip,
-        version: "1.5.16"
+      client = %{
+        client
+        | last_seen_user_agent: "Mac OS/14 apple-client/1.5.16",
+          last_seen_version: "1.5.16"
       }
 
       {:ok, _, _, cache} =
-        Cache.recompute_connectable_resources(nil, client, session, subject)
+        Cache.recompute_connectable_resources(nil, client, subject)
 
       rid_bytes = Ecto.UUID.dump!(pool.id)
       did_a = Ecto.UUID.dump!(target_a.id)
@@ -1025,45 +901,6 @@ defmodule Portal.Cache.ClientTest do
 
       assert MapSet.member?(cache.pool_members[rid_bytes], did_a)
       assert MapSet.member?(cache.pool_members[rid_bytes], did_b)
-    end
-  end
-
-  describe "ensure_device_addresses :error branch" do
-    test "add_static_device_pool_member returns no-op when get_client_addresses can't find device" do
-      import ExUnit.CaptureLog
-
-      account = account_fixture()
-      actor = actor_fixture(type: :account_admin_user, account: account)
-      subject = subject_fixture(account: account, actor: actor, type: :client)
-
-      pool = static_device_pool_resource_fixture(account: account, clients: [])
-      rid_bytes = Ecto.UUID.dump!(pool.id)
-
-      cacheable_pool = Cacheable.to_cache(pool)
-
-      cache = %Cache{
-        policies: %{},
-        resources: %{rid_bytes => cacheable_pool},
-        memberships: %{},
-        connectable_resources: [%{cacheable_pool | devices: []}],
-        pool_members: %{},
-        device_addresses: %{},
-        authorized_device_ipv4s: MapSet.new()
-      }
-
-      member = %Portal.StaticDevicePoolMember{
-        account_id: account.id,
-        resource_id: pool.id,
-        device_id: Ecto.UUID.generate()
-      }
-
-      log =
-        capture_log(fn ->
-          assert {:ok, [], [], ^cache} =
-                   Cache.add_static_device_pool_member(cache, member, subject)
-        end)
-
-      assert log =~ "Addresses not found for client"
     end
   end
 
@@ -1081,17 +918,8 @@ defmodule Portal.Cache.ClientTest do
       resource = dns_resource_fixture(account: account, site: site)
       policy_fixture(account: account, group: group, resource: resource)
 
-      session = %Portal.ClientSession{
-        device_id: client.id,
-        account_id: client.account_id,
-        user_agent: subject.context.user_agent,
-        remote_ip: subject.context.remote_ip,
-        remote_ip_location_region: subject.context.remote_ip_location_region,
-        version: "1.5.0"
-      }
-
       {:ok, _, _, cache} =
-        Cache.recompute_connectable_resources(nil, client, session, subject)
+        Cache.recompute_connectable_resources(nil, client, subject)
 
       # Force the resource to point at a non-existent site, then run update_resource —
       # site will look "changed" relative to cache, but get_site_by_id returns nil.
@@ -1099,10 +927,65 @@ defmodule Portal.Cache.ClientTest do
       changed_resource = %{resource | site: nil, site_id: orphan_site_id}
 
       assert {:ok, _, _, updated} =
-               Cache.update_resource(cache, changed_resource, client, session, subject)
+               Cache.update_resource(cache, changed_resource, client, subject)
 
       cached_resource = Map.fetch!(updated.resources, Ecto.UUID.dump!(resource.id))
       assert is_nil(cached_resource.site)
+    end
+  end
+  describe "postures" do
+    setup do
+      account = account_fixture()
+      actor = actor_fixture(type: :account_admin_user, account: account)
+      subject = subject_fixture(account: account, actor: actor, type: :client)
+      client = client_fixture(account: account, actor: actor)
+      group = group_fixture(account: account)
+      membership_fixture(account: account, actor: actor, group: group)
+      resource = dns_resource_fixture(account: account, site: site_fixture(account: account))
+
+      policy =
+        policy_fixture(
+          account: account,
+          group: group,
+          resource: resource,
+          postures: %{"field" => "intune.compliance_state", "op" => "is", "value" => "compliant"}
+        )
+
+      compliant = %Portal.Intune.Device{compliance_state: "compliant"}
+      noncompliant = %Portal.Intune.Device{compliance_state: "noncompliant"}
+      %{
+        subject: subject,
+        client: client,
+        resource: resource,
+        policy: policy,
+        compliant: compliant,
+        noncompliant: noncompliant
+      }
+    end
+
+    test "a passing posture makes the resource connectable and authorizes it", ctx do
+      client = %{ctx.client | posture: %{intune: [ctx.compliant]}}
+      {:ok, added, [], cache} = Cache.recompute_connectable_resources(nil, client, ctx.subject)
+      assert Enum.map(added, &Ecto.UUID.load!(&1.id)) == [ctx.resource.id]
+      assert {:ok, _resource, _membership_id, _policy_id, _expires_at} = Cache.authorize_resource(cache, client, ctx.resource.id, ctx.subject)
+    end
+
+    test "a failing posture keeps the resource out of the connectable list", ctx do
+      client = %{ctx.client | posture: %{intune: [ctx.noncompliant]}}
+      {:ok, [], [], _cache} = Cache.recompute_connectable_resources(nil, client, ctx.subject)
+
+      client = %{ctx.client | posture: %{}}
+      {:ok, [], [], _cache} = Cache.recompute_connectable_resources(nil, client, ctx.subject)
+    end
+
+    test "a posture that stops passing forbids a connectable resource", ctx do
+      passing = %{ctx.client | posture: %{intune: [ctx.compliant]}}
+      {:ok, _added, [], cache} = Cache.recompute_connectable_resources(nil, passing, ctx.subject)
+
+      failing = %{ctx.client | posture: %{intune: [ctx.noncompliant]}}
+
+      assert Cache.authorize_resource(cache, failing, ctx.resource.id, ctx.subject) ==
+               {:error, {:forbidden, violated_properties: [:postures]}}
     end
   end
 end

@@ -9,12 +9,6 @@ import NetworkExtension
 import System
 import os
 
-enum PacketTunnelProviderError: Error {
-  case providerConfigurationIsInvalid
-  case firezoneIdIsInvalid
-  case tokenNotFoundInKeychain
-}
-
 class PacketTunnelProvider: NEPacketTunnelProvider {
   private var adapter: Adapter?
   /// Task for consuming commands from Adapter. Uses CancellableTask for RAII cleanup.
@@ -39,6 +33,18 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     Telemetry.start(enableAppHangTracking: false)
 
     startTelemetry()
+
+    // A cycle start wakes this process only to drain flow logs, so it never
+    // reaches `connect`. Configure the logger here so that work is not silent.
+    do {
+      try configureLogger(
+        logDir: SharedAccess.connlibLogFolderURL?.path ?? "/tmp/firezone",
+        logFilter: ConfigurationDefaults.logFilter,
+        flowLogsDir: SharedAccess.flowLogsFolderURL?.path
+      )
+    } catch {
+      Log.error(error)
+    }
 
     super.init()
 
@@ -78,15 +84,28 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     // Extract token from options before any async work
     let passedToken = options?["token"] as? String
 
-    // Load token synchronously - Keychain access is thread-safe
-    guard let token = loadToken(passedToken: passedToken)
-    else {
-      completionHandler(PacketTunnelProviderError.tokenNotFoundInKeychain)
+    // The profile's own identity reference, the fallback when the app pinned none.
+    let profileIdentityReference =
+      (protocolConfiguration as? NETunnelProviderProtocol)?.identityReference
+
+    // Keychain access is thread-safe, so the token loads synchronously. Every
+    // session requires one, including starts initiated by the system or an older app.
+    guard let token = loadToken(passedToken: passedToken) else {
+      completionHandler(PacketTunnelProviderError.credentialNotConfigured)
       return
     }
 
-    // Try to save the token back to the Keychain but continue if we can't
-    handleTokenSave(token)
+    let identityReference =
+      options?["identityReference"] as? Data ?? profileIdentityReference
+
+    Log.info(
+      "VPN client certificate "
+        + (identityReference.map { "will be presented (\($0.count) bytes)" }
+          ?? "will not be presented"))
+
+    // Only a passed token needs saving, and only once the portal has accepted it: saving
+    // it now would replace a working Keychain token with one that may turn out to be bad.
+    let unsavedToken = passedToken == nil ? nil : token
 
     // The firezone id should be initialized by now
     guard let rawId = defaults.string(forKey: "firezoneId")
@@ -110,16 +129,12 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     let logFilter =
       providerConfiguration.withMDMOverride(forKey: Configuration.Keys.logFilter)
       ?? ConfigurationDefaults.logFilter
-    let accountSlug =
-      providerConfiguration.withMDMOverride(forKey: Configuration.Keys.accountSlug)
-      ?? ConfigurationDefaults.accountSlug
     let internetResourceEnabled = Configuration.parseBool(
       providerConfiguration[Configuration.Keys.internetResourceEnabled],
       default: ConfigurationDefaults.internetResourceEnabled
     )
 
     Telemetry.setEnvironmentOrClose(apiURL)
-    Telemetry.setUser(firezoneId: firezoneId.encoded, accountSlug: accountSlug)
 
     // Create command channel for Adapter -> Provider communication
     let (commandSender, commandReceiver): (Sender<ProviderCommand>, Receiver<ProviderCommand>) =
@@ -130,8 +145,8 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
       token: token,
       deviceId: firezoneId.uuid,
       logFilter: logFilter,
-      accountSlug: accountSlug,
       internetResourceEnabled: internetResourceEnabled,
+      identityReference: identityReference,
       providerCommandSender: commandSender
     )
 
@@ -150,9 +165,11 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     // Start the adapter asynchronously. The Task only captures Sendable values:
     // - adapter: actor (Sendable)
     // - completionHandler: @Sendable
+    // - unsavedToken: Token (Sendable)
     Task { @Sendable in
       do {
         try await adapter.start()
+        if let unsavedToken { PacketTunnelProvider.handleTokenSave(unsavedToken) }
         completionHandler(nil)
       } catch {
         Log.error(error)
@@ -183,10 +200,23 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     return typed
   }
 
+  // Overridden only to log: the system's sleep and wake callbacks are otherwise silent.
+  override func sleep(completionHandler: @escaping @Sendable () -> Void) {
+    Log.log("sleep")
+
+    completionHandler()
+  }
+
   override func wake() {
-    let adapter = self.adapter
+    Log.log("wake")
+
+    guard let adapter else {
+      Log.warning("Adapter is nil")
+      return
+    }
+
     Task { @Sendable in
-      await adapter?.reset(reason: "awoke from sleep")
+      await adapter.reset(reason: "awoke from sleep")
     }
   }
 
@@ -196,7 +226,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
   override func stopTunnel(
     with reason: NEProviderStopReason, completionHandler: @escaping @Sendable () -> Void
   ) {
-    Log.log("stopTunnel: Reason: \(reason)")
+    Log.log("stopTunnel: Reason: \(Self.describe(reason))")
 
     logCleanupTask = nil
 
@@ -211,15 +241,54 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     }
   }
 
+  /// Names a stop reason, which otherwise logs as `NEProviderStopReason(rawValue: 1)`.
+  ///
+  /// `userInitiated` is the one worth recognising on sight: it means something asked the
+  /// session to stop rather than the tunnel failing, so the cause is in the app, not here.
+  private static func describe(_ reason: NEProviderStopReason) -> String {
+    let name =
+      switch reason {
+      case .none: "none"
+      case .userInitiated: "userInitiated"
+      case .providerFailed: "providerFailed"
+      case .noNetworkAvailable: "noNetworkAvailable"
+      case .unrecoverableNetworkChange: "unrecoverableNetworkChange"
+      case .providerDisabled: "providerDisabled"
+      case .authenticationCanceled: "authenticationCanceled"
+      case .configurationFailed: "configurationFailed"
+      case .idleTimeout: "idleTimeout"
+      case .configurationDisabled: "configurationDisabled"
+      case .configurationRemoved: "configurationRemoved"
+      case .superceded: "superceded"
+      case .userLogout: "userLogout"
+      case .userSwitch: "userSwitch"
+      case .connectionFailed: "connectionFailed"
+      case .sleep: "sleep"
+      case .appUpdate: "appUpdate"
+      case .internalError: "internalError"
+      @unknown default: "unknown"
+      }
+
+    return "\(name) (\(reason.rawValue))"
+  }
+
   // It would be helpful to be able to encapsulate Errors here. To do that
   // we need to update ProviderMessage to encode/decode Result to and from Data.
   // TODO: Move to a more abstract IPC protocol
   override func handleAppMessage(
     _ message: Data, completionHandler: (@Sendable (Data?) -> Void)? = nil
   ) {
+    let providerMessage: ProviderMessage
     do {
-      let providerMessage = try PropertyListDecoder().decode(ProviderMessage.self, from: message)
+      providerMessage = try PropertyListDecoder().decode(ProviderMessage.self, from: message)
+    } catch {
+      // An app from another version can send messages this build does not know.
+      Log.debug("Ignoring app message we cannot decode: \(error)")
+      completionHandler?(nil)
+      return
+    }
 
+    do {
       switch providerMessage {
 
       case .setInternetResourceEnabled(let enabled):
@@ -232,18 +301,34 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
       case .signOut:
         do { try Token.delete() } catch { Log.error(error) }
         completionHandler?(nil)
-      case .getState(let hash):
+      case .pollUpdates(let request):
         guard let adapter else {
+          // The system reports us as connected from the moment `startTunnel` returns, so
+          // the app can poll before there is anything to poll. Answer "nothing changed"
+          // rather than nothing at all, which the app can only read as a broken tunnel.
           Log.warning("Adapter is nil")
-          completionHandler?(nil)
+          let empty = StatePollResponse(stateChange: nil, notifications: [])
+          completionHandler?(try PropertyListEncoder().encode(empty))
           return
         }
 
-        // Use hash comparison to only return resources if they've changed
         Task { @Sendable in
-          // Use hash comparison to only return state if it changed
-          let connlibState = await adapter.getStateIfVersionDifferentFrom(hash: hash)
-          completionHandler?(connlibState)
+          let updates = await adapter.pollUpdates(request)
+          completionHandler?(updates)
+        }
+      case .getStatus:
+        let adapter = self.adapter
+        Task { @Sendable in
+          // A cycle start never sets `adapter`, and a real start sets it before it
+          // reports anything, so its absence means no tunnel rather than a young one.
+          let status = await adapter?.tunnelStatus() ?? .disconnected
+          do {
+            completionHandler?(try PropertyListEncoder().encode(status))
+          } catch {
+            // No answer beats a guessed one: the client reports the failure as such.
+            Log.error(error)
+            completionHandler?(nil)
+          }
         }
       case .getEncodedFirezoneId:
         guard let rawId = defaults.string(forKey: "firezoneId") else {
@@ -263,6 +348,15 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
           return
         }
         exportLogs(handler)
+      case .drainFlowLogs:
+        // Ack after the drain: the app stops the tunnel on the response, reaping us.
+        Task.detached(priority: .utility) { @Sendable in
+          if let spoolDir = SharedAccess.flowLogsFolderURL?.path {
+            drainFlowLogs(spoolDir: spoolDir)
+          }
+
+          completionHandler?(nil)
+        }
       }
     } catch {
       Log.error(error)
@@ -400,7 +494,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
   }
 
   #if os(macOS)
-    private func handleTokenSave(_ token: Token) {
+    private static func handleTokenSave(_ token: Token) {
       do {
         try token.save()
       } catch let error as KeychainError {
@@ -418,7 +512,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
   #endif
 
   #if os(iOS)
-    private func handleTokenSave(_ token: Token) {
+    private static func handleTokenSave(_ token: Token) {
       do { try token.save() } catch { Log.error(error) }
     }
   #endif
@@ -437,7 +531,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     switch command {
     case .cancelWithError(let sendableError):
       let error: Error =
-        sendableError.isAuthenticationError
+        sendableError.requiresSignIn
         ? FirezoneKit.ConnlibError.sessionExpired(sendableError.message)
         : FirezoneKit.ConnlibError.disconnected(sendableError.message)
       cancelTunnelWithError(error)

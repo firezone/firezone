@@ -1,7 +1,7 @@
 use bytes::BufMut;
 use std::io;
 
-const HEADER_LEN: usize = 4;
+pub(crate) const HEADER_LEN: usize = 4;
 
 pub struct Packet<'a> {
     channel: u16,

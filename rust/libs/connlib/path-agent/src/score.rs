@@ -5,6 +5,7 @@
 use std::net::SocketAddr;
 use std::time::Duration;
 
+use crate::CandidateKind;
 use crate::agent::PairState;
 
 #[derive(PartialEq, Eq, PartialOrd, Ord)]
@@ -27,8 +28,10 @@ pub(crate) enum LocalFamily {
 
 #[derive(PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) struct Bucket {
-    /// `Host < ServerReflexive < Relayed`; `max` of the two ends.
-    pub(crate) tier: crate::CandidateKind,
+    /// `Host < ServerReflexive < Relayed`; the worse end, then the better
+    /// end. Comparing both ends keeps e.g. relay->srflx (one relay hop)
+    /// ahead of relay->relay (two) instead of tying them on RTT.
+    pub(crate) tier: (crate::CandidateKind, crate::CandidateKind),
     pub(crate) relay_end: RelayEnd,
     pub(crate) family_match: FamilyMatch,
     pub(crate) local_family: LocalFamily,
@@ -37,13 +40,20 @@ pub(crate) struct Bucket {
 #[derive(PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) struct PairScore {
     pub(crate) bucket: Bucket,
-    pub(crate) rtt: Option<Duration>,
+    /// An unmeasured pair sorts *last* within its bucket (`Duration::MAX`), not
+    /// first: a tier-based preliminary primary must be refinable by the first
+    /// real measurement, never treated as the best just because it has no RTT.
+    pub(crate) rtt: Duration,
 }
 
 pub(crate) fn pair_score(pair: (SocketAddr, SocketAddr), state: &PairState) -> PairScore {
     PairScore {
         bucket: Bucket {
-            tier: state.kinds.0.max(state.kinds.1),
+            tier: {
+                let (local, remote) = (tier(state.kinds.0), tier(state.kinds.1));
+
+                (local.max(remote), local.min(remote))
+            },
             relay_end: if matches!(state.kinds.0, crate::CandidateKind::Relayed) {
                 RelayEnd::Local
             } else {
@@ -60,6 +70,16 @@ pub(crate) fn pair_score(pair: (SocketAddr, SocketAddr), state: &PairState) -> P
                 LocalFamily::V4
             },
         },
-        rtt: state.smoothed_rtt,
+        rtt: state.rtt.map(|rtt| rtt.smoothed).unwrap_or(Duration::MAX),
+    }
+}
+
+/// Ranks a peer-reflexive candidate like a server-reflexive one: both are NAT mappings.
+fn tier(kind: CandidateKind) -> CandidateKind {
+    match kind {
+        CandidateKind::Host => CandidateKind::Host,
+        CandidateKind::ServerReflexive => CandidateKind::ServerReflexive,
+        CandidateKind::PeerReflexive => CandidateKind::ServerReflexive,
+        CandidateKind::Relayed => CandidateKind::Relayed,
     }
 }

@@ -175,6 +175,8 @@ defmodule Portal.Cluster.PostgresStrategy do
   end
 
   defp build_postgrex_config(repo_config) do
+    # :configure re-resolves the password before each connect attempt, e.g. a
+    # fresh Entra token when DATABASE_ENTRA_AUTH is enabled
     repo_config
     |> Keyword.take([
       :hostname,
@@ -184,7 +186,8 @@ defmodule Portal.Cluster.PostgresStrategy do
       :password,
       :ssl,
       :socket_options,
-      :parameters
+      :parameters,
+      :configure
     ])
     |> Keyword.put_new(:hostname, "localhost")
     |> Keyword.put_new(:port, 5432)

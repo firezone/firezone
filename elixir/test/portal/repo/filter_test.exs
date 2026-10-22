@@ -31,7 +31,7 @@ defmodule Portal.Repo.FilterTest do
           type: :boolean,
           name: :bool,
           fun: fn queryable ->
-            {queryable, dynamic([accounts: accounts], is_nil(accounts.disabled_at))}
+            {queryable, dynamic([accounts: accounts], accounts.is_disabled == false)}
           end
         }
       }
@@ -43,7 +43,7 @@ defmodule Portal.Repo.FilterTest do
              |> inspect() == """
              #Ecto.Query<from a0 in Portal.Account,\
               as: :accounts,\
-              where: is_nil(a0.disabled_at)>\
+              where: a0.is_disabled == false>\
              """
 
       assert {queryable, dynamic} = build_dynamic(queryable, [bool: false], filters, nil)
@@ -53,7 +53,7 @@ defmodule Portal.Repo.FilterTest do
              |> inspect() == """
              #Ecto.Query<from a0 in Portal.Account,\
               as: :accounts,\
-              where: not is_nil(a0.disabled_at)>\
+              where: not (a0.is_disabled == false)>\
              """
     end
 
@@ -110,6 +110,7 @@ defmodule Portal.Repo.FilterTest do
             {{:string, :email}, "foo@example.com"},
             {{:string, :phone_number}, "+15671112233"},
             {{:string, :uuid}, Ecto.UUID.generate()},
+            {{:string, :protocol_port}, "tcp/443"},
             {:list, ["a", "b"], "a"},
             {:list, ["a", "b"], "b"},
             {{:range, :datetime}, %Filter.Range{from: DateTime.utc_now()}},
@@ -136,6 +137,23 @@ defmodule Portal.Repo.FilterTest do
       }
 
       assert validate_value(filter, Ecto.UUID.generate()) == :ok
+    end
+
+    test "UUID filters require a textual UUID" do
+      for type <- [{:string, :uuid}, {:string, :uuid_or_blank}] do
+        filter = %Filter{type: type}
+        uuid = Ecto.UUID.generate()
+
+        assert validate_value(filter, uuid) == :ok
+        assert validate_value(filter, String.upcase(uuid)) == :ok
+
+        for value <- ["warehouse worker", Ecto.UUID.dump!(uuid)] do
+          assert validate_value(filter, value) ==
+                   {:error, {:invalid_type, type: type, value: value}}
+        end
+      end
+
+      assert validate_value(%Filter{type: {:string, :uuid_or_blank}}, "") == :ok
     end
 
     test "validates that value is whitelisted" do

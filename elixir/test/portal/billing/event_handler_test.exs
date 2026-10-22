@@ -2,9 +2,32 @@ defmodule Portal.Billing.EventHandlerTest do
   use Portal.DataCase, async: true
 
   alias Portal.Billing.EventHandler
+  alias Portal.Billing.EventHandler.Database
   alias Portal.Mocks.Stripe
 
+  import ExUnit.CaptureLog
   import Portal.AccountFixtures
+
+  describe "Database.create_x509_provider/1" do
+    test "rolls back the parent when the child insert fails" do
+      account = account_fixture()
+      id = Ecto.UUID.generate()
+
+      Repo.insert!(%Portal.AuthProvider{id: id, account_id: account.id, type: :email_otp})
+
+      Repo.insert!(%Portal.X509.AuthProvider{
+        id: id,
+        account_id: account.id,
+        name: "Existing child",
+        context: :clients_only,
+        is_disabled: true
+      })
+
+      assert {:error, %Ecto.Changeset{}} = Database.create_x509_provider(account)
+
+      refute Repo.get_by(Portal.AuthProvider, account_id: account.id, type: :x509)
+    end
+  end
 
   describe "handle_event/1 with customer.updated" do
     setup do
@@ -125,7 +148,7 @@ defmodule Portal.Billing.EventHandlerTest do
       assert {:ok, _event} = EventHandler.handle_event(event)
 
       updated_account = Portal.Repo.get!(Portal.Account, account.id)
-      assert updated_account.disabled_at != nil
+      assert updated_account.is_disabled == true
       assert updated_account.disabled_reason == "Stripe subscription deleted"
     end
   end
@@ -211,11 +234,43 @@ defmodule Portal.Billing.EventHandlerTest do
       assert email_provider != nil
       assert email_provider.name == "Email (OTP)"
 
+      # X.509 provider should be created disabled by default
+      x509_provider = Portal.Repo.get_by(Portal.X509.AuthProvider, account_id: account.id)
+      assert x509_provider.name == "X.509"
+      assert x509_provider.context == :clients_only
+      assert x509_provider.is_disabled
+
       # Admin actor should be created
       admin = Portal.Repo.get_by(Portal.Actor, account_id: account.id, type: :account_admin_user)
       assert admin != nil
       assert admin.email == "billing@newcorp.com"
       assert admin.name == "Jane Doe"
+
+      pool =
+        Portal.Repo.get_by!(Portal.Resource, account_id: account.id, type: :device_pool)
+
+      assert pool.name == "My devices"
+      assert pool.device_membership_criteria == Portal.Resource.DeviceMembershipCriteria.own_devices()
+      assert is_nil(pool.address)
+
+      assert Portal.Repo.get_by!(Portal.Group, account_id: account.id, name: "Everyone")
+
+      owner_group =
+        Portal.Repo.get_by!(Portal.Group, account_id: account.id, name: "Account owner")
+
+      assert owner_group.type == :static
+
+      policy = Portal.Repo.get_by!(Portal.Policy, account_id: account.id, resource_id: pool.id)
+      assert policy.group_id == owner_group.id
+
+      admin =
+        Portal.Repo.get_by!(Portal.Actor, account_id: account.id, type: :account_admin_user)
+
+      assert Portal.Repo.get_by!(Portal.Membership,
+               account_id: account.id,
+               group_id: owner_group.id,
+               actor_id: admin.id
+             )
     end
   end
 
@@ -256,21 +311,100 @@ defmodule Portal.Billing.EventHandlerTest do
       assert {:ok, _event} = EventHandler.handle_event(event)
 
       updated = Portal.Repo.get!(Portal.Account, account.id)
-      assert updated.disabled_at == nil
+      assert updated.is_disabled == false
     end
 
-    test "processes plan product and ignores adhoc device product", %{
+    test "adds an add-on quantity to the limit it names", %{
+      account: account,
+      customer: customer
+    } do
+      {product, _price, subscription} =
+        Stripe.build_all(:enterprise, account.metadata.stripe.customer_id, 100)
+
+      add_on = add_on_product("adhoc_service_accounts_count")
+      subscription = add_items(subscription, [{add_on, 10_000}])
+
+      event = Stripe.build_event("customer.subscription.created", subscription)
+
+      Stripe.stub(
+        Stripe.fetch_customer_endpoint(customer) ++
+          Stripe.fetch_product_endpoint(product) ++
+          Stripe.fetch_product_endpoint(add_on)
+      )
+
+      assert {:ok, _event} = EventHandler.handle_event(event)
+
+      updated = Portal.Repo.get!(Portal.Account, account.id)
+      assert updated.limits.adhoc_service_accounts_count == 10_000
+
+      assert [
+               %Portal.Account.Metadata.Stripe.AddOn{
+                 name: "Add-on",
+                 quantity: 10_000,
+                 limit: "adhoc_service_accounts_count"
+               }
+             ] = updated.metadata.stripe.add_ons
+      assert updated.limits.monthly_active_users_count == 100
+    end
+
+    test "adds add-ons on top of the plan limit and sums them", %{
+      account: account,
+      customer: customer
+    } do
+      {product, _price, subscription} =
+        Stripe.build_all(:team, account.metadata.stripe.customer_id, 5)
+
+      first = add_on_product("sites_count")
+      second = add_on_product("sites_count")
+      subscription = add_items(subscription, [{first, 3}, {second, 4}])
+
+      event = Stripe.build_event("customer.subscription.updated", subscription)
+
+      Stripe.stub(
+        Stripe.fetch_customer_endpoint(customer) ++
+          Stripe.fetch_product_endpoint(product) ++
+          Stripe.fetch_product_endpoint(first) ++
+          Stripe.fetch_product_endpoint(second)
+      )
+
+      assert {:ok, _event} = EventHandler.handle_event(event)
+
+      assert Portal.Repo.get!(Portal.Account, account.id).limits.sites_count == 107
+    end
+
+    test "keeps an unlimited limit unlimited", %{
       account: account,
       customer: customer
     } do
       {product, _price, subscription} =
         Stripe.build_all(:enterprise, account.metadata.stripe.customer_id, 10)
 
-      adhoc_price = Stripe.build_price(product: "prod_test_adhoc_device")
-      adhoc_item = Stripe.build_subscription_item(price: adhoc_price, quantity: 1)
-      subscription = update_in(subscription, ["items", "data"], &[adhoc_item | &1])
+      add_on = add_on_product("sites_count")
+      subscription = add_items(subscription, [{add_on, 5}])
 
-      event = Stripe.build_event("customer.subscription.created", subscription)
+      event = Stripe.build_event("customer.subscription.updated", subscription)
+
+      Stripe.stub(
+        Stripe.fetch_customer_endpoint(customer) ++
+          Stripe.fetch_product_endpoint(product) ++
+          Stripe.fetch_product_endpoint(add_on)
+      )
+
+      assert {:ok, _event} = EventHandler.handle_event(event)
+
+      assert Portal.Repo.get!(Portal.Account, account.id).limits.sites_count == nil
+    end
+
+    test "resets an add-on limit when the add-on is removed", %{
+      account: account,
+      customer: customer
+    } do
+      update_account(account, %{limits: %{adhoc_service_accounts_count: 50}})
+
+      {product, _price, subscription} =
+        Stripe.build_all(:enterprise, account.metadata.stripe.customer_id, 10)
+
+      event = Stripe.build_event("customer.subscription.updated", subscription)
 
       Stripe.stub(
         Stripe.fetch_customer_endpoint(customer) ++
@@ -280,7 +414,35 @@ defmodule Portal.Billing.EventHandlerTest do
       assert {:ok, _event} = EventHandler.handle_event(event)
 
       updated = Portal.Repo.get!(Portal.Account, account.id)
-      assert updated.disabled_at == nil
+      assert updated.limits.adhoc_service_accounts_count == 0
+      assert updated.metadata.stripe.add_ons == []
+    end
+
+    test "ignores an add-on for an unknown limit", %{
+      account: account,
+      customer: customer
+    } do
+      {product, _price, subscription} =
+        Stripe.build_all(:enterprise, account.metadata.stripe.customer_id, 10)
+
+      add_on = add_on_product("not_a_limit")
+      subscription = add_items(subscription, [{add_on, 5}])
+
+      event = Stripe.build_event("customer.subscription.updated", subscription)
+
+      Stripe.stub(
+        Stripe.fetch_customer_endpoint(customer) ++
+          Stripe.fetch_product_endpoint(product) ++
+          Stripe.fetch_product_endpoint(add_on)
+      )
+
+      log =
+        capture_log(fn ->
+          assert {:ok, _event} = EventHandler.handle_event(event)
+        end)
+
+      assert log =~ "Ignoring add-on for unknown limit"
+      assert Portal.Repo.get!(Portal.Account, account.id).is_disabled == false
     end
 
     test "processes plan product and warns on unrecognized product", %{
@@ -290,21 +452,24 @@ defmodule Portal.Billing.EventHandlerTest do
       {product, _price, subscription} =
         Stripe.build_all(:enterprise, account.metadata.stripe.customer_id, 10)
 
-      unknown_price = Stripe.build_price(product: "prod_unknown_xyz")
-      unknown_item = Stripe.build_subscription_item(price: unknown_price, quantity: 1)
-      subscription = update_in(subscription, ["items", "data"], &[unknown_item | &1])
+      unknown = Stripe.build_product(id: "prod_unknown_xyz", name: "Unknown", metadata: %{})
+      subscription = add_items(subscription, [{unknown, 1}])
 
       event = Stripe.build_event("customer.subscription.created", subscription)
 
       Stripe.stub(
         Stripe.fetch_customer_endpoint(customer) ++
-          Stripe.fetch_product_endpoint(product)
+          Stripe.fetch_product_endpoint(product) ++
+          Stripe.fetch_product_endpoint(unknown)
       )
 
-      assert {:ok, _event} = EventHandler.handle_event(event)
+      log =
+        capture_log(fn ->
+          assert {:ok, _event} = EventHandler.handle_event(event)
+        end)
 
-      updated = Portal.Repo.get!(Portal.Account, account.id)
-      assert updated.disabled_at == nil
+      assert log =~ "Ignoring unrecognized product in subscription"
+      assert Portal.Repo.get!(Portal.Account, account.id).is_disabled == false
     end
 
     test "returns error when subscription has multiple plan products", %{
@@ -340,6 +505,122 @@ defmodule Portal.Billing.EventHandlerTest do
       Stripe.stub(Stripe.fetch_customer_endpoint(customer))
 
       assert {:error, :no_plan_product} = EventHandler.handle_event(event)
+    end
+
+    test "sets the monthly active users limit from Enterprise seats", %{
+      account: account,
+      customer: customer
+    } do
+      {product, _price, subscription} =
+        Stripe.build_all(:enterprise, account.metadata.stripe.customer_id, 42, %{
+          "monthly_active_users_count" => "7"
+        })
+
+      event = Stripe.build_event("customer.subscription.updated", subscription)
+
+      Stripe.stub(
+        Stripe.fetch_customer_endpoint(customer) ++
+          Stripe.fetch_product_endpoint(product)
+      )
+
+      assert {:ok, _event} = EventHandler.handle_event(event)
+
+      updated = Portal.Repo.get!(Portal.Account, account.id)
+      assert updated.limits.monthly_active_users_count == 42
+    end
+
+    test "sets the monthly active users limit from Business seats", %{
+      account: account,
+      customer: customer
+    } do
+      {product, _price, subscription} =
+        Stripe.build_all(:business, account.metadata.stripe.customer_id, 25, %{
+          "monthly_active_users_count" => "7"
+        })
+
+      event = Stripe.build_event("customer.subscription.updated", subscription)
+
+      Stripe.stub(
+        Stripe.fetch_customer_endpoint(customer) ++
+          Stripe.fetch_product_endpoint(product)
+      )
+
+      assert {:ok, _event} = EventHandler.handle_event(event)
+
+      updated = Portal.Repo.get!(Portal.Account, account.id)
+      assert updated.limits.monthly_active_users_count == 25
+      assert updated.limits.users_count == nil
+      assert updated.metadata.stripe.product_name == "Business"
+    end
+
+    test "sets connected_devices_per_actor from product metadata", %{
+      account: account,
+      customer: customer
+    } do
+      {product, _price, subscription} =
+        Stripe.build_all(:team, account.metadata.stripe.customer_id, 5, %{
+          "connected_devices_per_actor" => "3"
+        })
+
+      event = Stripe.build_event("customer.subscription.updated", subscription)
+
+      Stripe.stub(
+        Stripe.fetch_customer_endpoint(customer) ++
+          Stripe.fetch_product_endpoint(product)
+      )
+
+      assert {:ok, _event} = EventHandler.handle_event(event)
+
+      assert Portal.Repo.get!(Portal.Account, account.id).limits.connected_devices_per_actor == 3
+    end
+
+    test "treats \"unlimited\" connected_devices_per_actor as no limit", %{
+      account: account,
+      customer: customer
+    } do
+      update_account(account, %{limits: %{connected_devices_per_actor: 3}})
+
+      {product, _price, subscription} =
+        Stripe.build_all(:enterprise, account.metadata.stripe.customer_id, 5, %{
+          "connected_devices_per_actor" => "unlimited"
+        })
+
+      event = Stripe.build_event("customer.subscription.updated", subscription)
+
+      Stripe.stub(
+        Stripe.fetch_customer_endpoint(customer) ++
+          Stripe.fetch_product_endpoint(product)
+      )
+
+      assert {:ok, _event} = EventHandler.handle_event(event)
+
+      assert Portal.Repo.get!(Portal.Account, account.id).limits.connected_devices_per_actor ==
+               nil
+    end
+
+    test "clears the monthly active users limit for Team seats", %{
+      account: account,
+      customer: customer
+    } do
+      update_account(account, %{limits: %{monthly_active_users_count: 99}})
+
+      {product, _price, subscription} =
+        Stripe.build_all(:team, account.metadata.stripe.customer_id, 42, %{
+          "monthly_active_users_count" => "7"
+        })
+
+      event = Stripe.build_event("customer.subscription.updated", subscription)
+
+      Stripe.stub(
+        Stripe.fetch_customer_endpoint(customer) ++
+          Stripe.fetch_product_endpoint(product)
+      )
+
+      assert {:ok, _event} = EventHandler.handle_event(event)
+
+      updated = Portal.Repo.get!(Portal.Account, account.id)
+      assert updated.limits.monthly_active_users_count == nil
+      assert updated.limits.users_count == 42
     end
 
     test "clears account limit flags when subscription update increases limits", %{
@@ -436,7 +717,7 @@ defmodule Portal.Billing.EventHandlerTest do
       assert {:ok, _event} = EventHandler.handle_event(event)
 
       updated_account = Portal.Repo.get!(Portal.Account, account.id)
-      assert updated_account.disabled_at != nil
+      assert updated_account.is_disabled == true
       assert updated_account.disabled_reason == "Stripe subscription paused"
     end
   end
@@ -475,7 +756,7 @@ defmodule Portal.Billing.EventHandlerTest do
       assert {:ok, _event} = EventHandler.handle_event(event)
 
       updated_account = Portal.Repo.get!(Portal.Account, account.id)
-      assert updated_account.disabled_at != nil
+      assert updated_account.is_disabled == true
       assert updated_account.disabled_reason == "Stripe subscription paused"
     end
   end
@@ -663,7 +944,7 @@ defmodule Portal.Billing.EventHandlerTest do
           name: "Team",
           metadata: %{
             "policy_conditions" => "true",
-            "traffic_filters" => "false",
+            "idp_sync" => "false",
             "sites_count" => 100
           }
         )
@@ -684,7 +965,7 @@ defmodule Portal.Billing.EventHandlerTest do
 
       updated = Portal.Repo.get!(Portal.Account, account.id)
       assert updated.features.policy_conditions == true
-      assert updated.features.traffic_filters == false
+      assert updated.features.idp_sync == false
     end
 
     test "parses numeric string limits in metadata", %{account: account, customer: customer} do
@@ -841,7 +1122,7 @@ defmodule Portal.Billing.EventHandlerTest do
               customer_id: "cus_existing123"
             }
           },
-          disabled_at: DateTime.utc_now(),
+          is_disabled: true,
           disabled_reason: "Stripe subscription paused"
         })
 
@@ -874,7 +1155,7 @@ defmodule Portal.Billing.EventHandlerTest do
       assert {:ok, _event} = EventHandler.handle_event(event)
 
       updated_account = Portal.Repo.get!(Portal.Account, account.id)
-      assert updated_account.disabled_at == nil
+      assert updated_account.is_disabled == false
       assert updated_account.disabled_reason == nil
     end
   end
@@ -973,7 +1254,7 @@ defmodule Portal.Billing.EventHandlerTest do
       assert :ok = EventHandler.handle_customer_deleted(customer)
 
       updated_account = Portal.Repo.get!(Portal.Account, account.id)
-      assert updated_account.disabled_at != nil
+      assert updated_account.is_disabled == true
       assert updated_account.disabled_reason == "Stripe customer deleted"
     end
   end
@@ -1182,5 +1463,21 @@ defmodule Portal.Billing.EventHandlerTest do
     test "returns false when slug does not exist" do
       assert EventHandler.Database.slug_exists?("nonexistent_slug") == false
     end
+  end
+
+  defp add_on_product(limit) do
+    Stripe.build_product(name: "Add-on", metadata: %{"adds_to_limit" => limit})
+  end
+
+  defp add_items(subscription, products_and_quantities) do
+    items =
+      for {product, quantity} <- products_and_quantities do
+        Stripe.build_subscription_item(
+          price: Stripe.build_price(product: product["id"]),
+          quantity: quantity
+        )
+      end
+
+    update_in(subscription, ["items", "data"], &(items ++ &1))
   end
 end

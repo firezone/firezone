@@ -1,11 +1,12 @@
 use std::{
-    collections::{BTreeMap, btree_map::Entry},
+    collections::{HashMap, hash_map::Entry},
     fmt,
+    hash::Hash,
     net::{IpAddr, SocketAddr},
     time::{Duration, Instant},
 };
 
-use bufferpool::BufferPool;
+use fast_random_state::FastRandomState;
 use is::Candidate;
 use itertools::Itertools as _;
 use rand::{Rng, SeedableRng as _, rngs::StdRng, seq::IteratorRandom as _};
@@ -15,30 +16,33 @@ use stun_codec::rfc5389::attributes::{Realm, Username};
 
 use crate::{
     RelaySocket, Transmit,
-    allocation::{self, Allocation},
+    allocation::{self, Allocation, FreeReason},
 };
 
-pub(crate) struct Allocations<RId> {
-    inner: BTreeMap<RId, Allocation>,
-    previous_relays_by_ip: AllocRingBuffer<IpAddr>,
+/// How long we ignore a relay after freeing its allocation because of a failure.
+const BLOCK_DURATION: Duration = Duration::from_secs(60);
 
-    buffer_pool: BufferPool<Vec<u8>>,
+pub(crate) struct Allocations<RId> {
+    inner: HashMap<RId, Allocation, FastRandomState>,
+    previous_relays_by_ip: AllocRingBuffer<IpAddr>,
+    /// Relays we freed an allocation of because of a failure, and until when we ignore them.
+    blocked: HashMap<RId, Instant, FastRandomState>,
 
     rng: StdRng,
 }
 
 impl<RId> Allocations<RId>
 where
-    RId: Ord + fmt::Display + Copy,
+    RId: Eq + Hash + fmt::Display + Copy,
 {
     pub(crate) fn new(rng: &mut impl Rng) -> Self {
         let mut seed = [0u8; 32];
         rng.fill_bytes(&mut seed);
 
         Self {
-            inner: BTreeMap::default(),
+            inner: HashMap::default(),
             previous_relays_by_ip: AllocRingBuffer::with_capacity_power_of_2(6), // 64 entries
-            buffer_pool: BufferPool::new(ip_packet::MAX_FZ_PAYLOAD, "turn-clients"),
+            blocked: HashMap::default(),
             rng: StdRng::from_seed(seed),
         }
     }
@@ -48,10 +52,24 @@ where
         Self::new(&mut StdRng::seed_from_u64(0))
     }
 
-    pub(crate) fn clear(&mut self) {
-        for (_, allocation) in std::mem::take(&mut self.inner) {
-            self.previous_relays_by_ip
-                .extend(server_addresses(&allocation));
+    /// Restarts every allocation in place, keeping the portal-issued credentials but
+    /// re-running the TURN handshake from our new socket (see [`Allocation::restart`]).
+    ///
+    /// Used on a network reset: the credentials outlive the reset, so we re-allocate
+    /// immediately instead of waiting for the portal to re-deliver the relay list. We also stop
+    /// ignoring relays that failed us, as their failures may have been specific to the old network.
+    pub(crate) fn restart(&mut self, now: Instant) {
+        self.blocked.clear();
+
+        let ids = self.inner.keys().copied().collect::<SmallVec<[RId; 2]>>();
+
+        for id in ids {
+            let mut seed = [0u8; 32];
+            self.rng.fill_bytes(&mut seed);
+
+            if let Some(allocation) = self.inner.get_mut(&id) {
+                allocation.restart(now, seed);
+            }
         }
     }
 
@@ -128,19 +146,18 @@ where
         realm: Realm,
         now: Instant,
     ) -> UpsertResult {
+        if self.blocked.get(&rid).is_some_and(|until| now < *until) {
+            return UpsertResult::Blocked;
+        }
+        self.blocked.remove(&rid);
+
         match self.inner.entry(rid) {
             Entry::Vacant(v) => {
                 let mut seed = [0u8; 32];
                 self.rng.fill_bytes(&mut seed);
 
                 v.insert(Allocation::new(
-                    server,
-                    username,
-                    password,
-                    realm,
-                    now,
-                    self.buffer_pool.clone(),
-                    seed,
+                    server, username, password, realm, now, seed,
                 ));
 
                 UpsertResult::Added
@@ -158,13 +175,7 @@ where
                 self.rng.fill_bytes(&mut seed);
 
                 let previous = o.insert(Allocation::new(
-                    server,
-                    username,
-                    password,
-                    realm,
-                    now,
-                    self.buffer_pool.clone(),
-                    seed,
+                    server, username, password, realm, now, seed,
                 ));
 
                 self.previous_relays_by_ip
@@ -175,30 +186,30 @@ where
         }
     }
 
-    /// Sample an allocation for a new connection, biased towards low RTT.
+    /// Sample a relay for a new connection, biased towards low RTT.
     ///
     /// We compute an inclusion threshold from the observed RTT distribution
     /// (see [`inclusion_threshold`]) and uniformly sample among the relays at
     /// or below it. Allocations without an RTT measurement are skipped: we
     /// don't know whether they are healthy yet.
-    pub(crate) fn sample(&mut self) -> Option<(RId, &Allocation)> {
+    pub(crate) fn sample(&mut self) -> Option<RId> {
         let candidates = self
             .inner
             .iter()
-            .filter_map(|(id, a)| Some((*id, a, a.rtt()?)))
+            .filter_map(|(id, a)| Some((*id, a.rtt()?)))
             .collect::<SmallVec<[_; 8]>>();
 
         let rtts = candidates
             .iter()
-            .map(|(_, _, rtt)| *rtt)
+            .map(|(_, rtt)| *rtt)
             .collect::<SmallVec<[_; 8]>>();
         let threshold = inclusion_threshold(&rtts)?;
 
         candidates
             .iter()
-            .filter(|(_, _, rtt)| *rtt <= threshold)
+            .filter(|(_, rtt)| *rtt <= threshold)
             .choose(&mut self.rng)
-            .map(|(id, a, _)| (*id, *a))
+            .map(|(id, _)| *id)
     }
 
     pub(crate) fn poll_timeout(&mut self) -> Option<(Instant, &'static str)> {
@@ -206,6 +217,14 @@ where
             .values_mut()
             .filter_map(|a| a.poll_timeout())
             .min_by_key(|(t, _)| *t)
+    }
+
+    /// The relays we currently ignore.
+    pub(crate) fn blocked(&self, now: Instant) -> impl Iterator<Item = RId> + '_ {
+        self.blocked
+            .iter()
+            .filter(move |(_, until)| now < **until)
+            .map(|(rid, _)| *rid)
     }
 
     pub(crate) fn poll_event(&mut self) -> Option<(RId, allocation::Event)> {
@@ -229,25 +248,36 @@ where
     }
 
     /// Performs garbage-collection across all our allocations.
-    ///
-    /// Handling the resulting iterator is zero-cost if we end up not making any changes
-    /// because we will simply end up returning an empty iterator.
-    pub(crate) fn gc(&mut self) -> impl Iterator<Item = RId> + use<RId> {
-        self.inner
-            .extract_if(.., |rid, allocation| match allocation.can_be_freed() {
+    pub(crate) fn gc(&mut self, now: Instant) -> Gc<RId> {
+        let removed = self
+            .inner
+            .extract_if(|rid, allocation| match allocation.can_be_freed() {
                 Some(e) => {
                     tracing::info!(%rid, "Disconnecting from relay; {e}");
 
                     self.previous_relays_by_ip
                         .extend(server_addresses(allocation));
 
+                    match e {
+                        FreeReason::AuthenticationError
+                        | FreeReason::ProtocolFailure
+                        | FreeReason::UnhandledResponse => {
+                            self.blocked.insert(*rid, now + BLOCK_DURATION);
+                        }
+                        FreeReason::NoResponseReceived => {}
+                    }
+
                     true
                 }
                 None => false,
             })
             .map(|(rid, _)| rid)
-            .collect::<SmallVec<[_; 2]>>() // Typically, we are only connected to 2 relays. Using a `SmallVec` here avoids allocations.
-            .into_iter()
+            .collect::<SmallVec<[_; 2]>>(); // Typically, we are only connected to 2 relays. Using a `SmallVec` here avoids allocations.
+
+        Gc {
+            removed_last: !removed.is_empty() && self.inner.is_empty(),
+            removed,
+        }
     }
 
     fn shared_candidates(&self) -> impl Iterator<Item = Candidate> {
@@ -335,12 +365,31 @@ fn server_addresses(allocation: &Allocation) -> impl Iterator<Item = IpAddr> {
 pub(crate) enum UpsertResult {
     Added,
     Skipped,
+    Blocked,
     Replaced(Allocation),
+}
+
+/// The outcome of [`Allocations::gc`].
+pub(crate) struct Gc<RId> {
+    /// The removed allocations.
+    pub(crate) removed: SmallVec<[RId; 2]>,
+    /// Whether we removed the last remaining allocation.
+    pub(crate) removed_last: bool,
 }
 
 #[cfg(test)]
 mod tests {
     use std::net::{Ipv4Addr, SocketAddrV4};
+
+    use stun_codec::{
+        Message, MessageClass,
+        rfc5389::{
+            attributes::{ErrorCode, XorMappedAddress},
+            errors::ServerError,
+            methods::BINDING,
+        },
+        rfc5766::methods::ALLOCATE,
+    };
 
     use super::*;
 
@@ -365,7 +414,7 @@ mod tests {
     }
 
     #[test]
-    fn clear_remembers_address() {
+    fn restart_keeps_allocation_and_re_handshakes() {
         let mut allocations = Allocations::for_test();
         allocations.upsert(
             1,
@@ -375,13 +424,18 @@ mod tests {
             Realm::new("firezone".to_owned()).unwrap(),
             Instant::now(),
         );
+        // Drain the initial handshake so a fresh one is observable after the restart.
+        while allocations.poll_transmit().is_some() {}
 
-        allocations.clear();
+        allocations.restart(Instant::now());
 
+        // The allocation is kept (still Connected on the same server), not dropped, ...
         assert!(matches!(
             allocations.get_mut_by_server(SERVER_V4),
-            MutAllocationRef::Disconnected
+            MutAllocationRef::Connected(..)
         ));
+        // ... and it re-runs the TURN handshake from scratch.
+        assert!(allocations.poll_transmit().is_some());
     }
 
     #[test]
@@ -409,6 +463,167 @@ mod tests {
             allocations.get_mut_by_server(SERVER_V4),
             MutAllocationRef::Disconnected
         ));
+    }
+
+    #[test]
+    fn gc_reports_removal_of_last_allocation() {
+        let mut allocations = Allocations::for_test();
+        let now = Instant::now();
+        allocations.upsert(
+            1,
+            RelaySocket::from(SERVER_V4),
+            Username::new("test".to_owned()).unwrap(),
+            "password".to_owned(),
+            Realm::new("firezone".to_owned()).unwrap(),
+            now,
+        );
+
+        let now = fail_allocations(&mut allocations, now);
+        let gc = allocations.gc(now);
+
+        assert_eq!(gc.removed.as_slice(), &[1]);
+        assert!(gc.removed_last);
+    }
+
+    #[test]
+    fn gc_does_not_report_last_removal_if_allocations_remain() {
+        let mut allocations = Allocations::for_test();
+        let now = Instant::now();
+        allocations.upsert(
+            1,
+            RelaySocket::from(SERVER_V4),
+            Username::new("test".to_owned()).unwrap(),
+            "password".to_owned(),
+            Realm::new("firezone".to_owned()).unwrap(),
+            now,
+        );
+
+        let now = fail_allocations(&mut allocations, now);
+        allocations.upsert(
+            2,
+            RelaySocket::from(SERVER2_V4),
+            Username::new("test".to_owned()).unwrap(),
+            "password".to_owned(),
+            Realm::new("firezone".to_owned()).unwrap(),
+            now,
+        );
+        let gc = allocations.gc(now);
+
+        assert_eq!(gc.removed.as_slice(), &[1]);
+        assert!(!gc.removed_last);
+    }
+
+    #[test]
+    fn ignores_failed_relay_until_block_expires() {
+        let mut allocations = Allocations::for_test();
+        let now = Instant::now();
+        upsert(&mut allocations, 1, SERVER_V4, now);
+
+        reject_allocation(&mut allocations, 1, now);
+        allocations.gc(now);
+
+        assert_eq!(allocations.blocked(now).collect::<Vec<_>>(), [1]);
+        assert!(matches!(
+            upsert(
+                &mut allocations,
+                1,
+                SERVER_V4,
+                now + Duration::from_secs(59)
+            ),
+            UpsertResult::Blocked
+        ));
+        assert!(matches!(
+            upsert(&mut allocations, 1, SERVER_V4, now + BLOCK_DURATION),
+            UpsertResult::Added
+        ));
+    }
+
+    #[test]
+    fn does_not_block_unresponsive_relay() {
+        let mut allocations = Allocations::for_test();
+        let now = Instant::now();
+        upsert(&mut allocations, 1, SERVER_V4, now);
+
+        let now = fail_allocations(&mut allocations, now);
+        allocations.gc(now);
+
+        assert!(matches!(
+            upsert(&mut allocations, 1, SERVER_V4, now),
+            UpsertResult::Added
+        ));
+    }
+
+    #[test]
+    fn restart_unblocks_relays() {
+        let mut allocations = Allocations::for_test();
+        let now = Instant::now();
+        upsert(&mut allocations, 1, SERVER_V4, now);
+
+        reject_allocation(&mut allocations, 1, now);
+        allocations.gc(now);
+        allocations.restart(now);
+
+        assert!(matches!(
+            upsert(&mut allocations, 1, SERVER_V4, now),
+            UpsertResult::Added
+        ));
+    }
+
+    fn upsert(
+        allocations: &mut Allocations<u64>,
+        rid: u64,
+        server: SocketAddr,
+        now: Instant,
+    ) -> UpsertResult {
+        allocations.upsert(
+            rid,
+            RelaySocket::from(server),
+            Username::new("test".to_owned()).unwrap(),
+            "password".to_owned(),
+            Realm::new("firezone".to_owned()).unwrap(),
+            now,
+        )
+    }
+
+    /// Rejects the allocation's ALLOCATE request with an unhandled error.
+    fn reject_allocation(allocations: &mut Allocations<u64>, rid: u64, now: Instant) {
+        let allocation = allocations.get_mut_by_id(&rid).unwrap();
+        let local = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 33333));
+
+        let binding = crate::allocation::decode(&allocation.poll_transmit().unwrap().payload)
+            .unwrap()
+            .unwrap();
+        let mut response = Message::new(
+            MessageClass::SuccessResponse,
+            BINDING,
+            binding.transaction_id(),
+        );
+        response.add_attribute(XorMappedAddress::new(local));
+        allocation.handle_input(SERVER_V4, local, response, now);
+
+        let allocate = crate::allocation::decode(&allocation.poll_transmit().unwrap().payload)
+            .unwrap()
+            .unwrap();
+        let mut response = Message::new(
+            MessageClass::ErrorResponse,
+            ALLOCATE,
+            allocate.transaction_id(),
+        );
+        response.add_attribute(ErrorCode::from(ServerError));
+        allocation.handle_input(SERVER_V4, local, response, now);
+    }
+
+    /// Advances time without ever answering the relays, failing all current allocations.
+    fn fail_allocations(allocations: &mut Allocations<u64>, mut now: Instant) -> Instant {
+        for _ in 0..60 {
+            now += Duration::from_secs(1);
+            allocations.handle_timeout(now);
+
+            while allocations.poll_transmit().is_some() {}
+            while allocations.poll_event().is_some() {}
+        }
+
+        now
     }
 
     #[test]
@@ -487,7 +702,7 @@ mod tests {
                 .set_rtt(Duration::from_millis(rtt_ms));
         }
         for _ in 0..1000 {
-            let (rid, _) = allocations.sample().unwrap();
+            let rid = allocations.sample().unwrap();
             assert_ne!(rid, 5, "outlier relay must not be selected");
         }
     }
@@ -515,7 +730,7 @@ mod tests {
         let mut counts = [0u32; 2];
 
         for _ in 0..10_000 {
-            let (rid, _) = allocations.sample().unwrap();
+            let rid = allocations.sample().unwrap();
             counts[(rid - 1) as usize] += 1;
         }
 
@@ -547,7 +762,7 @@ mod tests {
                 .set_rtt(Duration::from_millis(rtt_ms));
         }
         for _ in 0..100 {
-            let (rid, _) = allocations.sample().unwrap();
+            let rid = allocations.sample().unwrap();
             assert_eq!(rid, 1);
         }
     }
@@ -569,7 +784,7 @@ mod tests {
             .get_mut_by_id(&1)
             .unwrap()
             .set_rtt(Duration::from_millis(500));
-        let (rid, _) = allocations.sample().unwrap();
+        let rid = allocations.sample().unwrap();
         assert_eq!(rid, 1);
     }
 

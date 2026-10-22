@@ -1,12 +1,18 @@
 defmodule PortalAPI.Client.SocketTest do
   use PortalAPI.ChannelCase, async: true
 
+  import ExUnit.CaptureLog
   import PortalAPI.Client.Socket, only: [id: 1]
   import Portal.AccountFixtures
   import Portal.ActorFixtures
+  import Portal.AuthProviderFixtures
   import Portal.TokenFixtures
   import Portal.DeviceFixtures
+  import Portal.DeviceTrustFixtures
+  import Portal.FeaturesFixtures
   import Portal.SubjectFixtures
+  import Portal.TrustAnchorFixtures
+  alias Portal.Fixture
   alias PortalAPI.Client.Socket
 
   # The actual client IP used for tests that verify remote_ip tracking
@@ -22,12 +28,13 @@ defmodule PortalAPI.Client.SocketTest do
       token = client_token_fixture()
       encoded_token = encode_token(token)
 
-      # Attrs without token param, but with other required fields
+      # Attrs without token param, but with other required fields. The legacy
+      # firezone_id wire name must keep working.
       attrs =
         valid_client_attrs()
         |> Map.take([:firezone_id])
-        |> Map.put(:public_key, Portal.DeviceFixtures.generate_public_key())
-        |> Enum.into(%{}, fn {k, v} -> {to_string(k), v} end)
+        |> then(fn attrs -> %{"firezone_id" => attrs.firezone_id} end)
+        |> Map.put("public_key", Portal.DeviceFixtures.generate_public_key())
 
       connect_info = build_connect_info(token: encoded_token)
 
@@ -121,6 +128,22 @@ defmodule PortalAPI.Client.SocketTest do
       assert connect(Socket, attrs, connect_info: connect_info) == {:error, :invalid_token}
     end
 
+    test "stores an IPv4-mapped IPv6 peer address as IPv4" do
+      token = client_token_fixture()
+      encoded_token = encode_token(token)
+      {a, b, c, d} = @client_remote_ip
+      mapped_ip = {0, 0, 0, 0, 0, 0xFFFF, a * 256 + b, c * 256 + d}
+
+      attrs = connect_attrs(token: encoded_token)
+      connect_info = build_connect_info(ip: mapped_ip, token: encoded_token)
+
+      assert {:ok, socket} = connect(Socket, attrs, connect_info: connect_info)
+      assert client = Map.fetch!(socket.assigns, :client)
+
+      assert client.last_seen_remote_ip == @client_remote_ip
+      assert client.last_seen_remote_ip_location_city == "Kyiv"
+    end
+
     test "creates a new client for user identity" do
       token = client_token_fixture()
       encoded_token = encode_token(token)
@@ -134,16 +157,15 @@ defmodule PortalAPI.Client.SocketTest do
       assert client.firezone_id == attrs["external_id"]
       assert socket.assigns.client_version == "1.3.0"
 
-      session = socket.assigns.session
-      assert session.public_key == attrs["public_key"]
-      assert session.device_id == client.id
-      assert session.user_agent == connect_info.user_agent
-      assert session.remote_ip == @client_remote_ip
-      assert session.remote_ip_location_region == "Ukraine"
-      assert session.remote_ip_location_city == "Kyiv"
-      assert session.remote_ip_location_lat == 50.4333
-      assert session.remote_ip_location_lon == 30.5167
-      assert session.version == "1.3.0"
+      assert is_reference(socket.assigns.session_ref)
+      assert client.public_key == attrs["public_key"]
+      assert client.last_seen_user_agent == connect_info.user_agent
+      assert client.last_seen_remote_ip == @client_remote_ip
+      assert client.last_seen_remote_ip_location_region == "Ukraine"
+      assert client.last_seen_remote_ip_location_city == "Kyiv"
+      assert client.last_seen_remote_ip_location_lat == 50.4333
+      assert client.last_seen_remote_ip_location_lon == 30.5167
+      assert client.last_seen_version == "1.3.0"
     end
 
     test "creates a new client for service account identity" do
@@ -171,16 +193,15 @@ defmodule PortalAPI.Client.SocketTest do
       assert client.firezone_id == attrs["external_id"]
       assert socket.assigns.client_version == "1.3.0"
 
-      session = socket.assigns.session
-      assert session.public_key == attrs["public_key"]
-      assert session.device_id == client.id
-      assert session.user_agent == connect_info.user_agent
-      assert session.remote_ip == @client_remote_ip
-      assert session.remote_ip_location_region == "Ukraine"
-      assert session.remote_ip_location_city == "Kyiv"
-      assert session.remote_ip_location_lat == 50.4333
-      assert session.remote_ip_location_lon == 30.5167
-      assert session.version == "1.3.0"
+      assert is_reference(socket.assigns.session_ref)
+      assert client.public_key == attrs["public_key"]
+      assert client.last_seen_user_agent == connect_info.user_agent
+      assert client.last_seen_remote_ip == @client_remote_ip
+      assert client.last_seen_remote_ip_location_region == "Ukraine"
+      assert client.last_seen_remote_ip_location_city == "Kyiv"
+      assert client.last_seen_remote_ip_location_lat == 50.4333
+      assert client.last_seen_remote_ip_location_lon == 30.5167
+      assert client.last_seen_version == "1.3.0"
     end
 
     test "propagates trace context" do
@@ -220,12 +241,11 @@ defmodule PortalAPI.Client.SocketTest do
       assert {:ok, socket} = connect(Socket, attrs, connect_info: connect_info)
       assert socket.assigns.client.id == existing_client.id
 
-      session = socket.assigns.session
-      assert session.device_id == existing_client.id
-      assert session.remote_ip_location_region == "Ukraine"
-      assert session.remote_ip_location_city == "Kyiv"
-      assert session.remote_ip_location_lat == 50.4333
-      assert session.remote_ip_location_lon == 30.5167
+      client = socket.assigns.client
+      assert client.last_seen_remote_ip_location_region == "Ukraine"
+      assert client.last_seen_remote_ip_location_city == "Kyiv"
+      assert client.last_seen_remote_ip_location_lat == 50.4333
+      assert client.last_seen_remote_ip_location_lon == 30.5167
     end
 
     test "preserves ipv4 and ipv6 addresses on reconnection" do
@@ -278,11 +298,11 @@ defmodule PortalAPI.Client.SocketTest do
       assert {:ok, socket} = connect(Socket, attrs, connect_info: connect_info)
       assert socket.assigns.client.id == existing_client.id
 
-      session = socket.assigns.session
-      assert session.remote_ip_location_region == "UA"
-      assert session.remote_ip_location_city == nil
-      assert session.remote_ip_location_lat == 49.0
-      assert session.remote_ip_location_lon == 32.0
+      client = socket.assigns.client
+      assert client.last_seen_remote_ip_location_region == "UA"
+      assert client.last_seen_remote_ip_location_city == nil
+      assert client.last_seen_remote_ip_location_lat == 49.0
+      assert client.last_seen_remote_ip_location_lon == 32.0
     end
 
     test "rate limits repeated connection attempts from same IP and token" do
@@ -402,6 +422,83 @@ defmodule PortalAPI.Client.SocketTest do
       assert {:ok, _socket} = connect(Socket, attrs, connect_info: connect_info)
     end
 
+    test "on a full Business account blocks a new user but not an active one" do
+      account = business_account_fixture()
+      update_account(account, %{limits: %{monthly_active_users_count: 1}})
+
+      active = actor_fixture(account: account, type: :account_user)
+      client = Portal.DeviceFixtures.client_fixture(account: account, actor: active)
+
+      Portal.ClientSessionFixtures.client_session_fixture(
+        account: account,
+        actor: active,
+        client: client
+      )
+
+      new_user = actor_fixture(account: account, type: :account_user)
+
+      new_token = encode_token(client_token_fixture(account: account, actor: new_user))
+
+      assert connect(Socket, connect_attrs(token: new_token),
+               connect_info: build_connect_info(token: new_token)
+             ) == {:error, :limits_exceeded}
+
+      active_token = encode_token(client_token_fixture(account: account, actor: active))
+
+      assert {:ok, _socket} =
+               connect(Socket, connect_attrs(token: active_token),
+                 connect_info: build_connect_info(token: active_token)
+               )
+    end
+
+    test "refuses a new device when the actor is at connected_devices_per_actor" do
+      account = account_fixture()
+      update_account(account, %{limits: %{connected_devices_per_actor: 1}})
+      actor = actor_fixture(account: account, type: :account_user)
+
+      online = Portal.DeviceFixtures.client_fixture(account: account, actor: actor)
+      :ok = Portal.Presence.Devices.connect(online, Ecto.UUID.generate())
+
+      token = encode_token(client_token_fixture(account: account, actor: actor))
+
+      assert connect(Socket, connect_attrs(token: token),
+               connect_info: build_connect_info(token: token)
+             ) == {:error, :connected_devices_limit_reached}
+    end
+
+    test "allows a new device while below connected_devices_per_actor" do
+      account = account_fixture()
+      update_account(account, %{limits: %{connected_devices_per_actor: 2}})
+      actor = actor_fixture(account: account, type: :account_user)
+
+      online = Portal.DeviceFixtures.client_fixture(account: account, actor: actor)
+      :ok = Portal.Presence.Devices.connect(online, Ecto.UUID.generate())
+
+      token = encode_token(client_token_fixture(account: account, actor: actor))
+
+      assert {:ok, _socket} =
+               connect(Socket, connect_attrs(token: token),
+                 connect_info: build_connect_info(token: token)
+               )
+    end
+
+    test "does not count other actors' devices toward connected_devices_per_actor" do
+      account = account_fixture()
+      update_account(account, %{limits: %{connected_devices_per_actor: 1}})
+      actor = actor_fixture(account: account, type: :account_user)
+      other = actor_fixture(account: account, type: :account_user)
+
+      online = Portal.DeviceFixtures.client_fixture(account: account, actor: other)
+      :ok = Portal.Presence.Devices.connect(online, Ecto.UUID.generate())
+
+      token = encode_token(client_token_fixture(account: account, actor: actor))
+
+      assert {:ok, _socket} =
+               connect(Socket, connect_attrs(token: token),
+                 connect_info: build_connect_info(token: token)
+               )
+    end
+
     test "returns error when service_accounts_limit_exceeded is true" do
       account = account_fixture()
       update_account(account, %{service_accounts_limit_exceeded: true})
@@ -444,7 +541,7 @@ defmodule PortalAPI.Client.SocketTest do
       assert {:ok, _socket} = connect(Socket, attrs, connect_info: connect_info)
     end
 
-    test "builds a client_session on successful connect" do
+    test "applies the session onto the client on successful connect" do
       token = client_token_fixture()
       encoded_token = encode_token(token)
 
@@ -454,19 +551,16 @@ defmodule PortalAPI.Client.SocketTest do
       assert {:ok, socket} = connect(Socket, attrs, connect_info: connect_info)
       client = socket.assigns.client
 
-      session = socket.assigns.session
-      assert session.device_id == client.id
-      assert session.client_token_id == token.id
-      assert session.account_id == client.account_id
-      assert session.user_agent == connect_info.user_agent
-      assert session.remote_ip == @client_remote_ip
-      assert session.remote_ip_location_region == "Ukraine"
-      assert session.remote_ip_location_city == "Kyiv"
+      assert is_reference(socket.assigns.session_ref)
+      assert client.client_token_id == token.id
+      assert client.last_seen_user_agent == connect_info.user_agent
+      assert client.last_seen_remote_ip == @client_remote_ip
+      assert client.last_seen_remote_ip_location_region == "Ukraine"
+      assert client.last_seen_remote_ip_location_city == "Kyiv"
+      assert client.last_seen_at
     end
 
-    test "logs warning when hardware identifiers mismatch" do
-      import ExUnit.CaptureLog
-
+    test "takes the client's reported hardware identifiers on connect" do
       account = account_fixture()
       actor = actor_fixture(account: account)
 
@@ -489,16 +583,670 @@ defmodule PortalAPI.Client.SocketTest do
           device_uuid: "NEW_UUID"
         )
 
-      connect_info = build_connect_info()
+      assert {:ok, socket} = connect(Socket, attrs, connect_info: build_connect_info())
+      assert socket.assigns.client.id == existing_client.id
+      assert socket.assigns.client.device_serial == "NEW_SERIAL"
+      assert socket.assigns.client.device_uuid == "NEW_UUID"
+    end
+  end
+
+  describe "connect/3 device attestation" do
+    setup :setup_device_trust
+
+    test "attests the device from the presented certificate", %{pki: pki, token: token} do
+      connect_info = attested_connect_info(pki, token)
+
+      assert {:ok, socket} = connect(Socket, connect_attrs([]), connect_info: connect_info)
+      assert socket.assigns.client.attested?
+      assert socket.assigns.client.last_attested_device_serial == "C02XK1ZGJGH5"
+      assert socket.assigns.client.last_attested_cert_fingerprint
+
+      subject = Portal.Authentication.Subject.to_map(socket.assigns.subject)
+      assert subject.attested_device_serial == "C02XK1ZGJGH5"
+      assert subject.attested_cert_fingerprint == socket.assigns.client.last_attested_cert_fingerprint
+      assert subject.attested_cert_issuer == Base.encode64(socket.assigns.client.last_attested_cert_issuer)
+      assert subject.attested_at == DateTime.to_iso8601(socket.assigns.client.last_attested_at)
+    end
+  end
+
+  describe "connect/3 X.509 authentication" do
+    setup :setup_device_trust
+
+    test "authenticates from X.509 identity claims without a client token", %{
+      account: account,
+      actor: actor,
+      pki: pki
+    } do
+      provider = x509_provider_fixture(account: account, is_disabled: false)
+
+      connect_info =
+        build_connect_info(
+          host: "mtls.firezone.test",
+          client_cert: x509_identity_cert(pki, account, actor)
+        )
+
+      assert {:ok, socket} = connect(Socket, connect_attrs([]), connect_info: connect_info)
+      assert socket.assigns.subject.actor.id == actor.id
+      assert %Portal.Authentication.Credential.X509{} = socket.assigns.subject.credential
+      assert socket.assigns.subject.credential.auth_provider_id == provider.id
+      assert socket.assigns.subject.expires_at.microsecond == {0, 6}
+      assert socket.assigns.client.attested?
+      assert is_nil(socket.assigns.client.client_token_id)
+    end
+
+    test "authenticates a service account from an X.509 actor ID claim", %{
+      account: account,
+      pki: pki
+    } do
+      actor = actor_fixture(account: account, type: :service_account)
+      provider = x509_provider_fixture(account: account, is_disabled: false)
+
+      connect_info =
+        build_connect_info(
+          host: "mtls.firezone.test",
+          client_cert: x509_actor_id_cert(pki, account, actor)
+        )
+
+      assert {:ok, socket} = connect(Socket, connect_attrs([]), connect_info: connect_info)
+      assert socket.assigns.subject.actor.id == actor.id
+      assert socket.assigns.subject.actor.type == :service_account
+      assert %Portal.Authentication.Credential.X509{} = socket.assigns.subject.credential
+      assert socket.assigns.subject.credential.auth_provider_id == provider.id
+      assert socket.assigns.client.attested?
+      assert is_nil(socket.assigns.client.client_token_id)
+    end
+
+    test "prefers an X.509 actor ID claim over an email claim", %{
+      account: account,
+      actor: email_actor,
+      pki: pki
+    } do
+      actor = actor_fixture(account: account, type: :service_account)
+      _provider = x509_provider_fixture(account: account, is_disabled: false)
+
+      connect_info =
+        build_connect_info(
+          host: "mtls.firezone.test",
+          client_cert: x509_actor_id_cert(pki, account, actor, email_actor.email)
+        )
+
+      assert {:ok, socket} = connect(Socket, connect_attrs([]), connect_info: connect_info)
+      assert socket.assigns.subject.actor.id == actor.id
+    end
+
+    test "does not fall back to email when an X.509 actor ID claim is invalid", %{
+      account: account,
+      actor: actor,
+      pki: pki
+    } do
+      _provider = x509_provider_fixture(account: account, is_disabled: false)
+
+      connect_info =
+        build_connect_info(
+          host: "mtls.firezone.test",
+          client_cert: x509_actor_id_cert(pki, account, %{id: "%ZZ"}, actor.email)
+        )
+
+      assert capture_log(fn ->
+               assert connect(Socket, connect_attrs([]), connect_info: connect_info) ==
+                        {:error, :invalid_x509_identity}
+             end) =~ "invalid_x509_identity"
+    end
+
+    test "does not fall back to a token when only one X.509 identity claim is present", %{
+      account: account,
+      actor: actor,
+      pki: pki,
+      token: token
+    } do
+      for identity_uris <- [
+            ["firezone://account-id/#{account.id}"],
+            ["firezone://email/#{actor.email}"]
+          ] do
+        certificate = x509_authentication_cert(pki, identity_uris)
+        assert_invalid_x509_identity(certificate, token)
+      end
+    end
+
+    test "does not fall back to a token when an X.509 identity claim is malformed", %{
+      account: account,
+      actor: actor,
+      pki: pki,
+      token: token
+    } do
+      for identity_uris <- [
+            ["firezone://account-id/not-a-uuid", "firezone://email/#{actor.email}"],
+            ["firezone://account-id", "firezone://email/#{actor.email}"],
+            ["firezone://account-id/#{account.id}", "firezone://email/"]
+          ] do
+        certificate = x509_authentication_cert(pki, identity_uris)
+        assert_invalid_x509_identity(certificate, token)
+      end
+    end
+
+    test "rejects two distinct X.509 account ID claims", %{
+      account: account,
+      actor: actor,
+      pki: pki
+    } do
+      other_account = account_fixture()
+      _provider = x509_provider_fixture(account: account, is_disabled: false)
+
+      certificate =
+        x509_authentication_cert(pki, [
+          "firezone://account-id/#{account.id}",
+          "firezone://account-id/#{other_account.id}",
+          "firezone://email/#{actor.email}"
+        ])
+
+      assert_invalid_x509_identity(certificate)
+    end
+
+    test "rejects two distinct X.509 email claims when authenticating by email", %{
+      account: account,
+      actor: actor,
+      pki: pki
+    } do
+      other_actor = actor_fixture(account: account)
+      _provider = x509_provider_fixture(account: account, is_disabled: false)
+
+      certificate =
+        x509_authentication_cert(pki, [
+          "firezone://account-id/#{account.id}",
+          "firezone://email/#{actor.email}",
+          "firezone://email/#{other_actor.email}"
+        ])
+
+      assert_invalid_x509_identity(certificate)
+    end
+
+    test "rejects two distinct X.509 actor ID claims", %{
+      account: account,
+      actor: actor,
+      pki: pki
+    } do
+      other_actor = actor_fixture(account: account, type: :service_account)
+      _provider = x509_provider_fixture(account: account, is_disabled: false)
+
+      certificate =
+        x509_authentication_cert(pki, [
+          "firezone://account-id/#{account.id}",
+          "firezone://actor-id/#{actor.id}",
+          "firezone://actor-id/#{other_actor.id}"
+        ])
+
+      assert_invalid_x509_identity(certificate)
+    end
+
+    test "scopes an X.509 actor ID claim to the claimed account", %{
+      account: account,
+      pki: pki
+    } do
+      other_account = account_fixture()
+      actor = actor_fixture(account: other_account, type: :service_account)
+      _provider = x509_provider_fixture(account: account, is_disabled: false)
+
+      connect_info =
+        build_connect_info(
+          host: "mtls.firezone.test",
+          client_cert: x509_actor_id_cert(pki, account, actor)
+        )
 
       log =
         capture_log(fn ->
-          assert {:ok, _socket} = connect(Socket, attrs, connect_info: connect_info)
+          assert connect(Socket, connect_attrs([]), connect_info: connect_info) ==
+                   {:error, :x509_user_not_found}
         end)
 
-      assert log =~ "Hardware ID mismatch"
-      assert log =~ "device_serial"
-      assert log =~ "device_uuid"
+      assert log =~ "x509_user_not_found"
+      assert log =~ "account_id=#{account.id}"
+      assert log =~ "actor_id=#{actor.id}"
+    end
+
+    test "normalizes the certificate email before matching the actor", %{
+      account: account,
+      pki: pki
+    } do
+      actor = actor_fixture(account: account, email: "User@bücher.example")
+      _provider = x509_provider_fixture(account: account, is_disabled: false)
+
+      # URI SANs are IA5 strings, so the Unicode domain arrives percent-encoded.
+      certificate_actor = %{actor | email: "USER@b%C3%BCcher.example"}
+
+      connect_info =
+        build_connect_info(
+          host: "mtls.firezone.test",
+          client_cert: x509_identity_cert(pki, account, certificate_actor)
+        )
+
+      assert {:ok, socket} = connect(Socket, connect_attrs([]), connect_info: connect_info)
+      assert socket.assigns.subject.actor.id == actor.id
+    end
+
+    test "a certificate X.509 identity takes precedence over an invalid bearer token", %{
+      account: account,
+      actor: actor,
+      pki: pki
+    } do
+      provider = x509_provider_fixture(account: account, is_disabled: false)
+
+      connect_info =
+        build_connect_info(
+          token: "invalid",
+          host: "mtls.firezone.test",
+          client_cert: x509_identity_cert(pki, account, actor)
+        )
+
+      assert {:ok, socket} = connect(Socket, connect_attrs([]), connect_info: connect_info)
+      assert socket.assigns.subject.credential.auth_provider_id == provider.id
+      assert %Portal.Authentication.Credential.X509{} = socket.assigns.subject.credential
+    end
+
+    test "requires a client token when the certificate lacks X.509 identity claims", %{pki: pki} do
+      connect_info =
+        build_connect_info(
+          host: "mtls.firezone.test",
+          client_cert: client_cert(pki, :rsa)
+        )
+
+      assert connect(Socket, connect_attrs([]), connect_info: connect_info) ==
+               {:error, :missing_token}
+    end
+
+    test "returns a specific error when the X.509 provider is disabled", %{
+      account: account,
+      actor: actor,
+      pki: pki
+    } do
+      _provider = x509_provider_fixture(account: account, is_disabled: true)
+
+      connect_info =
+        build_connect_info(
+          host: "mtls.firezone.test",
+          client_cert: x509_identity_cert(pki, account, actor)
+        )
+
+      assert connect(Socket, connect_attrs([]), connect_info: connect_info) ==
+               {:error, :x509_authentication_disabled}
+    end
+
+    test "does not fall back to a token when the X.509 provider is disabled",
+         %{
+           account: account,
+           actor: actor,
+           pki: pki
+         } do
+      _provider = x509_provider_fixture(account: account, is_disabled: true)
+      client_token = client_token_fixture(account: account, actor: actor)
+
+      connect_info =
+        build_connect_info(
+          token: encode_token(client_token),
+          host: "mtls.firezone.test",
+          client_cert: x509_identity_cert(pki, account, actor)
+        )
+
+      assert connect(Socket, connect_attrs([]), connect_info: connect_info) ==
+               {:error, :x509_authentication_disabled}
+    end
+
+    test "does not fall back to a token when the X.509 provider is missing", %{
+      account: account,
+      actor: actor,
+      pki: pki,
+      token: token
+    } do
+      connect_info =
+        build_connect_info(
+          token: token,
+          host: "mtls.firezone.test",
+          client_cert: x509_identity_cert(pki, account, actor)
+        )
+
+      assert connect(Socket, connect_attrs([]), connect_info: connect_info) ==
+               {:error, :x509_authentication_not_found}
+    end
+
+    test "returns a specific error when the certificate account does not exist", %{
+      actor: actor,
+      pki: pki,
+      token: token
+    } do
+      unknown_account = %{id: Ecto.UUID.generate()}
+
+      connect_info =
+        build_connect_info(
+          token: token,
+          host: "mtls.firezone.test",
+          client_cert: x509_identity_cert(pki, unknown_account, actor)
+        )
+
+      assert connect(Socket, connect_attrs([]), connect_info: connect_info) ==
+               {:error, :x509_account_not_found}
+    end
+
+    test "returns a specific error when the certificate account is disabled", %{
+      account: account,
+      actor: actor,
+      pki: pki
+    } do
+      _provider = x509_provider_fixture(account: account, is_disabled: false)
+      account |> Ecto.Changeset.change(is_disabled: true) |> Repo.update!()
+
+      connect_info =
+        build_connect_info(
+          host: "mtls.firezone.test",
+          client_cert: x509_identity_cert(pki, account, actor)
+        )
+
+      assert connect(Socket, connect_attrs([]), connect_info: connect_info) ==
+               {:error, :x509_account_disabled}
+    end
+
+    test "returns a specific error when no active user matches the certificate", %{
+      account: account,
+      actor: actor,
+      pki: pki,
+      token: token
+    } do
+      _provider = x509_provider_fixture(account: account, is_disabled: false)
+      unknown_actor = %{actor | email: "unknown@example.com"}
+
+      connect_info =
+        build_connect_info(
+          token: token,
+          host: "mtls.firezone.test",
+          client_cert: x509_identity_cert(pki, account, unknown_actor)
+        )
+
+      log =
+        capture_log(fn ->
+          assert connect(Socket, connect_attrs([]), connect_info: connect_info) ==
+                   {:error, :x509_user_not_found}
+        end)
+
+      assert log =~ "x509_user_not_found"
+      assert log =~ "account_id=#{account.id}"
+      assert log =~ "email=#{unknown_actor.email}"
+    end
+
+    test "returns a specific error when the certificate user is disabled", %{
+      account: account,
+      actor: actor,
+      pki: pki
+    } do
+      _provider = x509_provider_fixture(account: account, is_disabled: false)
+      actor |> Ecto.Changeset.change(is_disabled: true) |> Repo.update!()
+
+      connect_info =
+        build_connect_info(
+          host: "mtls.firezone.test",
+          client_cert: x509_identity_cert(pki, account, actor)
+        )
+
+      log =
+        capture_log(fn ->
+          assert connect(Socket, connect_attrs([]), connect_info: connect_info) ==
+                   {:error, :x509_user_disabled}
+        end)
+
+      assert log =~ "x509_user_disabled"
+      assert log =~ "account_id=#{account.id}"
+      assert log =~ "email=#{actor.email}"
+    end
+
+    test "returns a specific error when the certificate actor type is not allowed", %{
+      account: account,
+      pki: pki
+    } do
+      actor = actor_fixture(account: account, type: :api_client)
+      _provider = x509_provider_fixture(account: account, is_disabled: false)
+
+      connect_info =
+        build_connect_info(
+          host: "mtls.firezone.test",
+          client_cert: x509_actor_id_cert(pki, account, actor)
+        )
+
+      assert connect(Socket, connect_attrs([]), connect_info: connect_info) ==
+               {:error, :x509_user_type_not_allowed}
+    end
+
+    test "refuses X.509 authentication when the feature is globally disabled", %{
+      account: account,
+      actor: actor,
+      pki: pki
+    } do
+      _provider = x509_provider_fixture(account: account, is_disabled: false)
+      disable_feature(:x509_auth)
+
+      connect_info =
+        build_connect_info(
+          host: "mtls.firezone.test",
+          client_cert: x509_identity_cert(pki, account, actor)
+        )
+
+      assert connect(Socket, connect_attrs([]), connect_info: connect_info) ==
+               {:error, :x509_authentication_not_found}
+    end
+
+    test "refuses a connect through the mutual-TLS host without a certificate", %{token: token} do
+      connect_info = build_connect_info(token: token, host: "mtls.firezone.test")
+
+      assert capture_log(fn ->
+               assert connect(Socket, connect_attrs([]), connect_info: connect_info) ==
+                        {:error, :device_untrusted}
+             end) =~ "no_certificate_presented"
+    end
+
+    test "refuses a certificate that does not chain to an anchor", %{pki: pki, token: token} do
+      connect_info =
+        build_connect_info(
+          token: token,
+          host: "mtls.firezone.test",
+          client_cert: client_cert(pki, :untrusted)
+        )
+
+      assert capture_log(fn ->
+               assert connect(Socket, connect_attrs([]), connect_info: connect_info) ==
+                        {:error, :device_untrusted}
+             end) =~ "untrusted_chain"
+    end
+
+    test "refuses a connect through the mutual-TLS host when the account has no anchors", %{
+      pki: pki
+    } do
+      account = account_fixture()
+      actor = actor_fixture(account: account)
+      token = client_token_fixture(account: account, actor: actor)
+      connect_info = attested_connect_info(pki, encode_token(token))
+
+      assert capture_log(fn ->
+               assert connect(Socket, connect_attrs([]), connect_info: connect_info) ==
+                        {:error, :device_untrusted}
+             end) =~ "no_trust_anchors"
+    end
+
+    test "does not fall back to a valid token when an X.509 identity has no trust anchors", %{
+      pki: pki
+    } do
+      account = account_fixture()
+      actor = actor_fixture(account: account)
+      _provider = x509_provider_fixture(account: account, is_disabled: false)
+      token = client_token_fixture(account: account, actor: actor)
+
+      connect_info =
+        build_connect_info(
+          token: encode_token(token),
+          host: "mtls.firezone.test",
+          client_cert: x509_identity_cert(pki, account, actor)
+        )
+
+      assert capture_log(fn ->
+               assert connect(Socket, connect_attrs([]), connect_info: connect_info) ==
+                        {:error, :no_trust_anchors}
+             end) =~ "no_trust_anchors"
+    end
+
+    test "validates an X.509 certificate before looking up its claimed user", %{
+      account: account,
+      actor: actor,
+      token: token
+    } do
+      _provider = x509_provider_fixture(account: account, is_disabled: false)
+      unknown_email = Fixture.unique_email("unknown")
+      unknown_actor = %{actor | email: unknown_email}
+      untrusted_pki = pki()
+
+      connect_info =
+        build_connect_info(
+          token: token,
+          host: "mtls.firezone.test",
+          client_cert: x509_identity_cert(untrusted_pki, account, unknown_actor)
+        )
+
+      log =
+        capture_log(fn ->
+          assert connect(Socket, connect_attrs([]), connect_info: connect_info) ==
+                   {:error, :untrusted_chain}
+        end)
+
+      assert log =~ "untrusted_chain"
+      refute Fixture.logged_lines(log, unknown_email) =~ "x509_user_not_found"
+    end
+
+    test "rate limits failed X.509 authentication before repeating validation", %{
+      account: account,
+      actor: actor
+    } do
+      _provider = x509_provider_fixture(account: account, is_disabled: false)
+      untrusted_pki = pki()
+      ip = unique_ip()
+
+      connect_info =
+        build_connect_info(
+          ip: ip,
+          host: "mtls.firezone.test",
+          client_cert: x509_identity_cert(untrusted_pki, account, actor)
+        )
+
+      assert capture_log(fn ->
+               assert connect(Socket, connect_attrs([]), connect_info: connect_info) ==
+                        {:error, :untrusted_chain}
+             end) =~ "untrusted_chain"
+
+      connect_info_with_bogus_token =
+        build_connect_info(
+          ip: ip,
+          token: "attacker-controlled-token",
+          host: "mtls.firezone.test",
+          client_cert: x509_identity_cert(untrusted_pki, account, actor)
+        )
+
+      # Use Enum.any? to avoid flakiness from crossing second boundaries with the
+      # slow (1/s) refill rate.
+      rate_limited =
+        Enum.any?(1..3, fn _ ->
+          connect(Socket, connect_attrs([]), connect_info: connect_info_with_bogus_token) ==
+            {:error, :rate_limit}
+        end)
+
+      assert rate_limited, "Expected the repeated X.509 failure to be rate limited"
+    end
+  end
+
+  describe "connect/3 device trust" do
+    setup :setup_device_trust
+
+    test "connects unattested on the plain API host", %{pki: pki, token: token} do
+      connect_info =
+        build_connect_info(
+          token: token,
+          host: "api.firezone.test",
+          client_cert: client_cert(pki, :rsa)
+        )
+
+      assert {:ok, socket} = connect(Socket, connect_attrs([]), connect_info: connect_info)
+      refute socket.assigns.client.attested?
+      assert is_nil(socket.assigns.client.last_attested_device_serial)
+    end
+
+    test "every client socket enforces the mutual-TLS host", %{
+      account: account,
+      actor: actor,
+      pki: pki
+    } do
+      for socket_module <- [Socket, PortalAPI.Client.V2.Socket, PortalAPI.Client.V3.Socket] do
+        token = client_token_fixture(account: account, actor: actor)
+        attrs = connect_attrs([])
+
+        assert {:ok, socket} =
+                 connect(socket_module, attrs,
+                   connect_info: attested_connect_info(pki, encode_token(token))
+                 )
+
+        assert socket.assigns.client.attested?
+
+        bare_token = client_token_fixture(account: account, actor: actor)
+
+        connect_info =
+          build_connect_info(token: encode_token(bare_token), host: "mtls.firezone.test")
+
+        assert capture_log(fn ->
+                 assert connect(socket_module, attrs, connect_info: connect_info) ==
+                          {:error, :device_untrusted}
+               end) =~ "no_certificate_presented"
+      end
+    end
+
+    test "merges a reinstalled client back onto its attested device row", %{
+      account: account,
+      actor: actor,
+      pki: pki,
+      token: token
+    } do
+      existing =
+        client_fixture(
+          account: account,
+          actor: actor,
+          firezone_id: "fz-old",
+          last_attested_device_serial: "C02XK1ZGJGH5",
+          last_attested_mdm_device_id: "5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3"
+        )
+
+      connect_info = attested_connect_info(pki, token)
+      attrs = connect_attrs(external_id: "fz-new")
+
+      assert {:ok, socket} = connect(Socket, attrs, connect_info: connect_info)
+      assert socket.assigns.client.id == existing.id
+      assert is_nil(socket.assigns.client.firezone_id)
+    end
+  end
+
+  describe "connect/3 posture rows" do
+    setup do
+      account = Portal.DevicePostureFixtures.device_posture_account_fixture()
+      actor = actor_fixture(account: account)
+      token = client_token_fixture(account: account, actor: actor)
+      provider = Portal.IntuneFixtures.intune_posture_provider_fixture(account: account)
+      row = Portal.IntuneFixtures.intune_device_fixture(provider: provider, serial_number: "POSTURE-SER")
+      %{account: account, actor: actor, token: encode_token(token), row: row}
+    end
+
+    test "loads the matched provider rows onto the client", %{token: token, row: row} do
+      attrs = connect_attrs(token: token, device_serial: "POSTURE-SER")
+
+      assert {:ok, socket} = connect(Socket, attrs, connect_info: build_connect_info())
+      assert %{intune: [%Portal.Intune.Device{intune_id: intune_id}]} = socket.assigns.client.posture
+      assert intune_id == row.intune_id
+    end
+
+    test "loads nothing while the account feature is off", %{token: token, account: account} do
+      Portal.DevicePostureFixtures.disable_device_posture(account)
+      attrs = connect_attrs(token: token, device_serial: "POSTURE-SER")
+
+      assert {:ok, socket} = connect(Socket, attrs, connect_info: build_connect_info())
+      assert socket.assigns.client.posture == %{}
     end
   end
 
@@ -511,11 +1259,730 @@ defmodule PortalAPI.Client.SocketTest do
     end
   end
 
+  describe "resolve_client/4" do
+    setup do
+      account = account_fixture()
+      actor = actor_fixture(account: account)
+      subject = subject_fixture(account: account, actor: actor)
+      %{account: account, actor: actor, subject: subject}
+    end
+
+    test "an unattested connect resolves by firezone_id", %{
+      account: account,
+      actor: actor,
+      subject: subject
+    } do
+      existing = client_fixture(account: account, actor: actor, firezone_id: "fz-same")
+
+      changeset =
+        device_trust_changeset(account, actor, %{
+          "name" => "Same Client",
+          "firezone_id" => "fz-same"
+        })
+
+      assert {:ok, client, false} = Socket.Database.resolve_client(changeset, nil, subject)
+      assert client.id == existing.id
+    end
+
+    test "an unattested connect with no match inserts a new device", %{
+      account: account,
+      actor: actor,
+      subject: subject
+    } do
+      changeset =
+        device_trust_changeset(account, actor, %{"name" => "New", "firezone_id" => "fz-1"})
+
+      assert {:ok, client, false} = Socket.Database.resolve_client(changeset, nil, subject)
+      assert client.firezone_id == "fz-1"
+      assert is_nil(client.last_attested_at)
+    end
+
+    test "a new device gets a slug from its name and owner", %{account: account, subject: subject} do
+      subject = %{subject | actor: %{subject.actor | name: "Jamil Bou Kheir"}}
+      actor = subject.actor
+
+      changeset =
+        device_trust_changeset(account, actor, %{
+          "name" => "iPhone",
+          "firezone_id" => "fz-slug"
+        })
+
+      assert {:ok, client, false} = Socket.Database.resolve_client(changeset, nil, subject)
+      assert client.slug == "jamils-iphone"
+
+      changeset =
+        device_trust_changeset(account, actor, %{
+          "name" => "Jamil's MacBook Pro.local",
+          "firezone_id" => "fz-slug-2"
+        })
+
+      assert {:ok, client, false} = Socket.Database.resolve_client(changeset, nil, subject)
+      assert client.slug == "jamils-macbook-pro"
+    end
+
+    test "a same-named device in the account gets a numbered slug", %{account: account, subject: subject} do
+      subject = %{subject | actor: %{subject.actor | name: "Jamil Bou Kheir"}}
+      actor = subject.actor
+      client_fixture(account: account, actor: actor, name: "Pixel 8")
+      client_fixture(account: account, actor: actor, name: "Pixel 8", slug: "jamils-pixel-8-2")
+
+      changeset =
+        device_trust_changeset(account, actor, %{"name" => "Pixel 8", "firezone_id" => "fz-px"})
+
+      assert {:ok, client, false} = Socket.Database.resolve_client(changeset, nil, subject)
+      assert client.slug == "jamils-pixel-8-3"
+    end
+
+    test "the same name under a namesake in the account gets a numbered slug", %{account: account, subject: subject} do
+      subject = %{subject | actor: %{subject.actor | name: "Jamil Bou Kheir"}}
+      actor = subject.actor
+      namesake = actor_fixture(account: account, name: "Jamil Other")
+      client_fixture(account: account, actor: namesake, name: "Pixel 8")
+
+      changeset =
+        device_trust_changeset(account, actor, %{"name" => "Pixel 8", "firezone_id" => "fz-px"})
+
+      assert {:ok, client, false} = Socket.Database.resolve_client(changeset, nil, subject)
+      assert client.slug == "jamils-pixel-8-2"
+    end
+
+    test "the same name in another account keeps the plain slug", %{account: account, subject: subject} do
+      subject = %{subject | actor: %{subject.actor | name: "Jamil Bou Kheir"}}
+      actor = subject.actor
+
+      other_account = account_fixture()
+      other_actor = actor_fixture(account: other_account, name: "Jamil Bou Kheir")
+      client_fixture(account: other_account, actor: other_actor, name: "Pixel 8")
+
+      changeset =
+        device_trust_changeset(account, actor, %{"name" => "Pixel 8", "firezone_id" => "fz-px"})
+
+      assert {:ok, client, false} = Socket.Database.resolve_client(changeset, nil, subject)
+      assert client.slug == "jamils-pixel-8"
+    end
+
+    test "a service account's device keeps its plain name", %{account: account, subject: subject} do
+      subject = %{subject | actor: %{subject.actor | type: :service_account, name: "CI runner"}}
+      actor = subject.actor
+
+      changeset =
+        device_trust_changeset(account, actor, %{"name" => "build-01", "firezone_id" => "fz-ci"})
+
+      assert {:ok, client, false} = Socket.Database.resolve_client(changeset, nil, subject)
+      assert client.slug == "build-01"
+    end
+
+    test "an unattested connect never reaches an attested row", %{
+      account: account,
+      actor: actor,
+      subject: subject
+    } do
+      attested =
+        client_fixture(
+          account: account,
+          actor: actor,
+          last_attested_cert_fingerprint: "fp-3",
+          firezone_id: nil,
+          last_attested_mdm_device_id: "mdm-1",
+          last_attested_at: DateTime.utc_now()
+        )
+
+      changeset =
+        device_trust_changeset(account, actor, %{"name" => "Impostor", "firezone_id" => "fz-x"})
+
+      assert {:ok, client, false} = Socket.Database.resolve_client(changeset, nil, subject)
+      refute client.id == attested.id
+    end
+
+    test "the MDM device id is unique per actor", %{account: account, actor: actor} do
+      client_fixture(
+        account: account,
+        actor: actor,
+        last_attested_mdm_device_id: "mdm-dup",
+        firezone_id: "fz-a"
+      )
+
+      assert {:error, changeset} =
+               device_trust_changeset(account, actor, %{
+                 "name" => "Duplicate",
+                 "firezone_id" => "fz-b",
+                 "last_attested_mdm_device_id" => "mdm-dup"
+               })
+               |> Portal.Devices.put_free_slug(account.id, Portal.Devices.owner_name(actor))
+               |> Portal.Safe.unscoped()
+               |> Portal.Safe.insert()
+
+      assert {"has already been taken", _} = changeset.errors[:last_attested_mdm_device_id]
+    end
+
+    test "a hardware serial may repeat across rows", %{account: account, actor: actor} do
+      client_fixture(
+        account: account,
+        actor: actor,
+        last_attested_device_serial: "SN-SHARED",
+        last_attested_mdm_device_id: "mdm-first",
+        last_attested_cert_fingerprint: "fp-5",
+          firezone_id: nil
+      )
+
+      assert {:ok, _client} =
+               device_trust_changeset(account, actor, %{
+                 "name" => "Re-enrolled",
+                 "last_attested_device_serial" => "SN-SHARED",
+                 "last_attested_mdm_device_id" => "mdm-second",
+                 "last_attested_cert_fingerprint" => "fp-second"
+               })
+               |> Portal.Devices.put_free_slug(account.id, Portal.Devices.owner_name(actor))
+               |> Portal.Safe.unscoped()
+               |> Portal.Safe.insert()
+    end
+  end
+
+  describe "resolve_client/4 device-trust proof" do
+    setup do
+      account = account_fixture()
+      actor = actor_fixture(account: account)
+      subject = subject_fixture(account: account, actor: actor)
+      %{account: account, actor: actor, subject: subject}
+    end
+
+    test "persists proven identifiers and pinned cert onto the row", %{
+      account: account,
+      actor: actor,
+      subject: subject
+    } do
+      changeset =
+        device_trust_changeset(account, actor, %{"name" => "New", "firezone_id" => "fz-1"})
+
+      proof = %{
+        identifiers: %{
+          last_attested_device_serial: "C02XK1ZGJGH5",
+          last_attested_mdm_device_id: "5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3"
+        },
+        last_attested_cert_serial: "4A2F008C",
+        last_attested_cert_fingerprint: "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+        last_attested_cert_issuer: <<"issuer-der">>
+      }
+
+      assert {:ok, client, true} = resolve_with_proof(changeset, proof, subject)
+      assert client.last_attested_device_serial == "C02XK1ZGJGH5"
+      assert client.last_attested_mdm_device_id == "5f2e7b7a-9d54-4bd2-9d4f-8f6c2a01f9d3"
+      assert client.last_attested_cert_fingerprint == proof.last_attested_cert_fingerprint
+      # Recorded so a revocation learned after this connect can still find the
+      # row: a certificate serial only identifies a certificate with its issuer.
+      assert client.last_attested_cert_issuer == proof.last_attested_cert_issuer
+    end
+
+    test "a new MDM device id enrolls as a new row", %{
+      account: account,
+      actor: actor,
+      subject: subject
+    } do
+      # Re-enrolment mints a new MDM device id. The hardware identifiers are
+      # self-reported at enrollment, so they are attributes rather than a way
+      # to relocate the device onto its old row.
+      existing =
+        client_fixture(
+          account: account,
+          actor: actor,
+          last_attested_device_serial: "SN-REENROLL",
+          last_attested_mdm_device_id: "mdm-old",
+          last_attested_cert_fingerprint: "fp-6",
+          firezone_id: nil
+        )
+
+      changeset =
+        device_trust_changeset(account, actor, %{"name" => "New", "firezone_id" => "fz-1"})
+
+      proof = %{
+        identifiers: %{
+          last_attested_device_serial: "SN-REENROLL",
+          last_attested_mdm_device_id: "mdm-new"
+        },
+        last_attested_cert_serial: "AA",
+        last_attested_cert_fingerprint: "bb",
+        last_attested_cert_issuer: <<"issuer-der">>
+      }
+
+      assert {:ok, client, true} = resolve_with_proof(changeset, proof, subject)
+      refute client.id == existing.id
+      assert client.last_attested_mdm_device_id == "mdm-new"
+      assert client.last_attested_device_serial == "SN-REENROLL"
+      assert is_nil(client.firezone_id)
+    end
+
+    test "the same MDM device id keeps its row", %{
+      account: account,
+      actor: actor,
+      subject: subject
+    } do
+      existing =
+        client_fixture(
+          account: account,
+          actor: actor,
+          last_attested_device_serial: "SN-KEEP",
+          last_attested_mdm_device_id: "mdm-keep",
+          firezone_id: "fz-old"
+        )
+
+      changeset =
+        device_trust_changeset(account, actor, %{"name" => "New", "firezone_id" => "fz-new"})
+
+      proof = %{
+        identifiers: %{
+          last_attested_device_serial: "SN-KEEP",
+          last_attested_device_uuid: "uuid-learned",
+          last_attested_mdm_device_id: "mdm-keep"
+        },
+        last_attested_cert_serial: "AA",
+        last_attested_cert_fingerprint: "bb",
+        last_attested_cert_issuer: <<"issuer-der">>
+      }
+
+      assert {:ok, client, true} = resolve_with_proof(changeset, proof, subject)
+      assert client.id == existing.id
+      assert client.last_attested_device_uuid == "uuid-learned"
+      assert is_nil(client.firezone_id)
+    end
+
+    test "a certificate with no MDM device id resolves by its pinned certificate", %{
+      account: account,
+      actor: actor,
+      subject: subject
+    } do
+      # Mosyle exposes only a serial number variable, so its certificates carry
+      # no MDM device id and the pinned certificate is the only identity left.
+      existing =
+        client_fixture(
+          account: account,
+          actor: actor,
+          last_attested_device_serial: "SN-MOSYLE",
+          last_attested_cert_fingerprint: "fp-mosyle",
+          last_attested_cert_serial: "4A2F008C",
+          last_attested_cert_issuer: <<"issuer-der">>,
+          firezone_id: nil
+        )
+
+      changeset =
+        device_trust_changeset(account, actor, %{"name" => "New", "firezone_id" => "fz-new"})
+
+      proof = %{
+        identifiers: %{last_attested_device_serial: "SN-MOSYLE"},
+        last_attested_cert_serial: "4A2F008C",
+        last_attested_cert_fingerprint: "fp-mosyle",
+        last_attested_cert_issuer: <<"issuer-der">>
+      }
+
+      assert {:ok, client, true} = resolve_with_proof(changeset, proof, subject)
+      assert client.id == existing.id
+      assert is_nil(client.last_attested_mdm_device_id)
+    end
+
+    test "a renewed certificate with no MDM device id enrolls as a new row", %{
+      account: account,
+      actor: actor,
+      subject: subject
+    } do
+      existing =
+        client_fixture(
+          account: account,
+          actor: actor,
+          last_attested_device_serial: "SN-RENEW",
+          last_attested_cert_fingerprint: "fp-old",
+          last_attested_cert_serial: "OLDSERIAL",
+          last_attested_cert_issuer: <<"issuer-der">>,
+          firezone_id: nil
+        )
+
+      changeset =
+        device_trust_changeset(account, actor, %{"name" => "New", "firezone_id" => "fz-new"})
+
+      proof = %{
+        identifiers: %{last_attested_device_serial: "SN-RENEW"},
+        last_attested_cert_serial: "NEWSERIAL",
+        last_attested_cert_fingerprint: "fp-new",
+        last_attested_cert_issuer: <<"issuer-der">>
+      }
+
+      assert {:ok, client, true} = resolve_with_proof(changeset, proof, subject)
+      refute client.id == existing.id
+    end
+
+    test "the MDM device id wins over the pinned certificate", %{
+      account: account,
+      actor: actor,
+      subject: subject
+    } do
+      by_mdm =
+        client_fixture(
+          account: account,
+          actor: actor,
+          last_attested_mdm_device_id: "mdm-wins",
+          last_attested_cert_fingerprint: "fp-8",
+          firezone_id: nil
+        )
+
+      by_cert =
+        client_fixture(
+          account: account,
+          actor: actor,
+          last_attested_cert_fingerprint: "fp-shared",
+          last_attested_cert_serial: "AA",
+          last_attested_cert_issuer: <<"issuer-der">>,
+          firezone_id: nil
+        )
+
+      changeset =
+        device_trust_changeset(account, actor, %{"name" => "New", "firezone_id" => "fz-new"})
+
+      proof = %{
+        identifiers: %{last_attested_mdm_device_id: "mdm-wins"},
+        last_attested_cert_serial: "AA",
+        last_attested_cert_fingerprint: "fp-shared",
+        last_attested_cert_issuer: <<"issuer-der">>
+      }
+
+      assert {:ok, client, true} = resolve_with_proof(changeset, proof, subject)
+      assert client.id == by_mdm.id
+      refute client.id == by_cert.id
+    end
+
+    test "a device with only an MDM id enrolls as a new row on re-enrollment", %{
+      account: account,
+      actor: actor,
+      subject: subject
+    } do
+      existing =
+        client_fixture(
+          account: account,
+          actor: actor,
+          last_attested_mdm_device_id: "mdm-only-old",
+          firezone_id: "fz-android"
+        )
+
+      changeset =
+        device_trust_changeset(account, actor, %{"name" => "New", "firezone_id" => "fz-android"})
+
+      proof = %{
+        identifiers: %{last_attested_mdm_device_id: "mdm-only-new"},
+        last_attested_cert_serial: "AA",
+        last_attested_cert_fingerprint: "bb",
+        last_attested_cert_issuer: <<"issuer-der">>
+      }
+
+      assert {:ok, client, true} = resolve_with_proof(changeset, proof, subject)
+      refute client.id == existing.id
+      assert client.last_attested_mdm_device_id == "mdm-only-new"
+      assert is_nil(client.firezone_id)
+    end
+
+    test "an attested connect never adopts a row matched only by firezone_id", %{
+      account: account,
+      actor: actor,
+      subject: subject
+    } do
+      existing =
+        client_fixture(
+          account: account,
+          actor: actor,
+          firezone_id: "fz-shared",
+          last_attested_device_serial: "SN-VICTIM",
+          last_attested_mdm_device_id: "mdm-victim"
+        )
+
+      changeset =
+        device_trust_changeset(account, actor, %{"name" => "New", "firezone_id" => "fz-shared"})
+
+      proof = %{
+        identifiers: %{last_attested_mdm_device_id: "mdm-attacker"},
+        last_attested_cert_serial: "AA",
+        last_attested_cert_fingerprint: "bb",
+        last_attested_cert_issuer: <<"issuer-der">>
+      }
+
+      assert {:ok, client, true} = resolve_with_proof(changeset, proof, subject)
+      refute client.id == existing.id
+      assert is_nil(client.last_attested_device_serial)
+      assert is_nil(client.firezone_id)
+    end
+
+    test "refuses a pinned certificate whose row claims a different MDM device id", %{
+      account: account,
+      actor: actor,
+      subject: subject
+    } do
+      # The same certificate always asserts the same identifiers, so a row
+      # holding this certificate while naming a different device was rewritten
+      # by something other than a connect. Adopting it would move that row's
+      # identity on the strength of whatever did the rewriting.
+      client_fixture(
+        account: account,
+        actor: actor,
+        last_attested_mdm_device_id: "mdm-was",
+        last_attested_cert_fingerprint: "fp-shared",
+        last_attested_cert_serial: "AA",
+        last_attested_cert_issuer: <<"issuer-der">>,
+        firezone_id: nil
+      )
+
+      changeset =
+        device_trust_changeset(account, actor, %{"name" => "New", "firezone_id" => "fz-1"})
+
+      proof = %{
+        identifiers: %{last_attested_mdm_device_id: "mdm-now"},
+        last_attested_cert_serial: "AA",
+        last_attested_cert_fingerprint: "fp-shared",
+        last_attested_cert_issuer: <<"issuer-der">>
+      }
+
+      assert ExUnit.CaptureLog.capture_log(fn ->
+               assert resolve_with_proof(changeset, proof, subject) ==
+                        {:error, :device_identity_conflict}
+             end) =~ "contradicts the device row"
+    end
+
+    test "refuses a pinned certificate that no longer asserts an identifier the row holds", %{
+      account: account,
+      actor: actor,
+      subject: subject
+    } do
+      # Same certificate, so its identifiers cannot have changed. Reading one
+      # fewer than last time means we read the same bytes worse, and clearing a
+      # proven identifier on the strength of that is not done quietly.
+      client_fixture(
+        account: account,
+        actor: actor,
+        last_attested_mdm_device_id: "mdm-known",
+        last_attested_cert_fingerprint: "fp-lossy",
+        last_attested_cert_serial: "CC",
+        last_attested_cert_issuer: <<"issuer-der">>,
+        firezone_id: nil
+      )
+
+      changeset =
+        device_trust_changeset(account, actor, %{"name" => "New", "firezone_id" => "fz-3"})
+
+      proof = %{
+        identifiers: %{last_attested_device_serial: "SN-1"},
+        last_attested_cert_serial: "CC",
+        last_attested_cert_fingerprint: "fp-lossy",
+        last_attested_cert_issuer: <<"issuer-der">>
+      }
+
+      assert ExUnit.CaptureLog.capture_log(fn ->
+               assert resolve_with_proof(changeset, proof, subject) ==
+                        {:error, :device_identity_conflict}
+             end) =~ "contradicts the device row"
+    end
+
+    test "refuses a pinned certificate asserting an identifier the row never recorded", %{
+      account: account,
+      actor: actor,
+      subject: subject
+    } do
+      # Same certificate, so reading an identifier out of it now that we did not
+      # read before is our parsing changing under a row, not the device changing.
+      # Fixing the parsing is what repairs the row; adopting on a changed read is
+      # how a row quietly takes on an identity nothing re-proved.
+      client_fixture(
+        account: account,
+        actor: actor,
+        last_attested_cert_fingerprint: "fp-repair",
+        last_attested_cert_serial: "BB",
+        last_attested_cert_issuer: <<"issuer-der">>,
+        firezone_id: nil
+      )
+
+      changeset =
+        device_trust_changeset(account, actor, %{"name" => "New", "firezone_id" => "fz-2"})
+
+      proof = %{
+        identifiers: %{last_attested_mdm_device_id: "mdm-learned"},
+        last_attested_cert_serial: "BB",
+        last_attested_cert_fingerprint: "fp-repair",
+        last_attested_cert_issuer: <<"issuer-der">>
+      }
+
+      assert ExUnit.CaptureLog.capture_log(fn ->
+               assert resolve_with_proof(changeset, proof, subject) ==
+                        {:error, :device_identity_conflict}
+             end) =~ "contradicts the device row"
+    end
+
+    test "refuses the connect when the certificate contradicts a hardware id", %{
+      account: account,
+      actor: actor,
+      subject: subject
+    } do
+      client_fixture(
+        account: account,
+        actor: actor,
+        last_attested_device_serial: "SN-1",
+        last_attested_device_uuid: "uuid-1",
+        last_attested_mdm_device_id: "mdm-1",
+        last_attested_cert_fingerprint: "fp-11",
+          firezone_id: nil
+      )
+
+      changeset =
+        device_trust_changeset(account, actor, %{"name" => "New", "firezone_id" => "fz-new"})
+
+      proof = %{
+        identifiers: %{
+          last_attested_device_serial: "SN-1",
+          last_attested_device_uuid: "uuid-2",
+          last_attested_mdm_device_id: "mdm-1"
+        },
+        last_attested_cert_serial: "AA",
+        last_attested_cert_fingerprint: "bb",
+        last_attested_cert_issuer: <<"issuer-der">>
+      }
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          assert resolve_with_proof(changeset, proof, subject) ==
+                   {:error, :device_identity_conflict}
+        end)
+
+      assert log =~ "contradicts the device row"
+    end
+
+    test "a certificate that drops a hardware id clears it rather than refusing", %{
+      account: account,
+      actor: actor,
+      subject: subject
+    } do
+      # Which identifiers an MDM emits is a profile setting, so a certificate
+      # that stops asserting one must not strand the device.
+      existing =
+        client_fixture(
+          account: account,
+          actor: actor,
+          last_attested_device_serial: "SN-2",
+          last_attested_device_uuid: "uuid-gone",
+          last_attested_mdm_device_id: "mdm-2",
+          last_attested_cert_fingerprint: "fp-12",
+          firezone_id: nil
+        )
+
+      changeset =
+        device_trust_changeset(account, actor, %{"name" => "New", "firezone_id" => "fz-new"})
+
+      proof = %{
+        identifiers: %{
+          last_attested_device_serial: "SN-2",
+          last_attested_mdm_device_id: "mdm-2"
+        },
+        last_attested_cert_serial: "AA",
+        last_attested_cert_fingerprint: "bb",
+        last_attested_cert_issuer: <<"issuer-der">>
+      }
+
+      assert {:ok, client, true} = resolve_with_proof(changeset, proof, subject)
+      assert client.id == existing.id
+      assert is_nil(client.last_attested_device_uuid)
+      assert client.last_attested_device_serial == "SN-2"
+    end
+  end
+
+  # The device row and how it was matched are resolved by the attestation read,
+  # so these tests run that read rather than feeding the answer in by hand.
+  defp resolve_with_proof(changeset, proof, subject) do
+    state =
+      PortalAPI.Client.DeviceTrust.Database.attestation_state(
+        proof.last_attested_cert_issuer,
+        proof.last_attested_cert_serial,
+        Map.get(proof.identifiers, :last_attested_mdm_device_id),
+        subject
+      )
+
+    proof = Map.merge(proof, %{device: state.device, matched_on: state.matched_on})
+
+    Socket.Database.resolve_client(changeset, proof, subject)
+  end
+
+  defp device_trust_changeset(account, actor, attrs) do
+    %Portal.Device{}
+    |> Ecto.Changeset.cast(attrs, [
+      :name,
+      :firezone_id,
+      :last_attested_device_serial,
+      :last_attested_device_uuid,
+      :last_attested_mdm_device_id,
+      :last_attested_cert_fingerprint
+    ])
+    |> Ecto.Changeset.put_change(:type, :client)
+    |> Ecto.Changeset.put_change(:account_id, account.id)
+    |> Ecto.Changeset.put_change(:actor_id, actor.id)
+    |> Portal.Device.changeset()
+  end
+
   defp connect_attrs(attrs) do
     valid_client_attrs()
     |> then(fn attrs -> %{external_id: attrs.firezone_id} end)
     |> Map.put(:public_key, Portal.DeviceFixtures.generate_public_key())
     |> Map.merge(Enum.into(attrs, %{}))
     |> Enum.into(%{}, fn {k, v} -> {to_string(k), v} end)
+  end
+
+  defp setup_device_trust(_context) do
+    Portal.Config.put_env_override(:portal, :mtls_external_url, "https://mtls.firezone.test/")
+
+    account = account_fixture()
+    enable_feature(:x509_auth)
+    pki = pki()
+    trust_anchor_fixture(account: account, certs: [pki.ca_der])
+
+    actor = actor_fixture(account: account)
+    token = client_token_fixture(account: account, actor: actor)
+
+    %{account: account, actor: actor, pki: pki, token: encode_token(token)}
+  end
+
+  defp assert_invalid_x509_identity(certificate, token \\ nil) do
+    connect_info =
+      build_connect_info(token: token, host: "mtls.firezone.test", client_cert: certificate)
+
+    assert capture_log(fn ->
+             assert connect(Socket, connect_attrs([]), connect_info: connect_info) ==
+                      {:error, :invalid_x509_identity}
+           end) =~ "invalid_x509_identity"
+  end
+
+  defp attested_connect_info(pki, token) do
+    build_connect_info(
+      token: token,
+      host: "mtls.firezone.test",
+      client_cert: client_cert(pki, :rsa)
+    )
+  end
+
+  defp x509_identity_cert(pki, account, actor) do
+    x509_authentication_cert(pki, [
+      "firezone://account-id/#{account.id}",
+      "firezone://email/#{actor.email}"
+    ])
+  end
+
+  defp x509_actor_id_cert(pki, account, actor, email \\ nil) do
+    identity_uris = [
+      "firezone://account-id/#{account.id}",
+      "firezone://actor-id/#{actor.id}"
+    ]
+
+    identity_uris = if email, do: identity_uris ++ ["firezone://email/#{email}"], else: identity_uris
+
+    x509_authentication_cert(pki, identity_uris)
+  end
+
+  defp x509_authentication_cert(pki, identity_uris) do
+    identity_sans =
+      Enum.map(identity_uris, fn uri ->
+        {:uniformResourceIdentifier, String.to_charlist(uri)}
+      end)
+
+    leaf(pki,
+      sans: identity_sans ++ [{:uniformResourceIdentifier, ~c"firezone://serial/C02XK1ZGJGH5"}]
+    )
   end
 end

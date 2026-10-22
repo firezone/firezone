@@ -144,7 +144,8 @@ defmodule Portal.Okta.APIClient do
       [base_url: client.base_url]
       |> Keyword.merge(req_opts())
 
-    Req.new(req_opts)
+    req_opts
+    |> Req.new()
     |> Req.merge(url: "/oauth2/v1/introspect")
     |> Req.Request.put_header("content-type", "application/x-www-form-urlencoded")
     |> Req.post(form: form_data)
@@ -269,12 +270,72 @@ defmodule Portal.Okta.APIClient do
     |> stream_all()
   end
 
+  @doc """
+  Reads one user.
+  """
+  @spec get_user(t(), String.t(), String.t()) :: {:ok, Req.Response.t()} | {:error, Exception.t()}
+  def get_user(client, access_token, user_id) do
+    new_request(client, access_token)
+    |> Req.merge(
+      url: "#{@users_path}/#{user_id}",
+      headers: [
+        {"Content-Type", "application/json; okta-response=omitCredentials,omitCredentialsLinks"}
+      ]
+    )
+    |> Req.get()
+  end
+
+  @doc """
+  Reads one group.
+  """
+  @spec get_group(t(), String.t(), String.t()) :: {:ok, Req.Response.t()} | {:error, Exception.t()}
+  def get_group(client, access_token, group_id) do
+    new_request(client, access_token)
+    |> Req.merge(url: "#{@groups_path}/#{group_id}")
+    |> Req.get()
+  end
+
+  @doc """
+  Lists at most one application the user is assigned to, enough to know
+  whether there is any.
+  """
+  @spec list_user_apps(t(), String.t(), String.t()) ::
+          {:ok, Req.Response.t()} | {:error, Exception.t()}
+  def list_user_apps(client, access_token, user_id) do
+    new_request(client, access_token)
+    |> Req.merge(url: @apps_path, params: [filter: ~s(user.id eq "#{user_id}"), limit: 1])
+    |> Req.get()
+  end
+
+  @doc """
+  Lists at most one application assigned to the group, enough to know whether
+  there is any.
+  """
+  @spec list_group_apps(t(), String.t(), String.t()) ::
+          {:ok, Req.Response.t()} | {:error, Exception.t()}
+  def list_group_apps(client, access_token, group_id) do
+    new_request(client, access_token)
+    |> Req.merge(url: "#{@groups_path}/#{group_id}/apps", params: [limit: 1])
+    |> Req.get()
+  end
+
+  @doc """
+  Streams the groups a user belongs to.
+  """
+  @spec stream_user_groups(t(), String.t(), String.t()) :: Enumerable.t()
+  def stream_user_groups(client, access_token, user_id) do
+    new_request(client, access_token)
+    |> Req.merge(url: "#{@users_path}/#{user_id}/groups", params: [limit: 200])
+    |> stream_all()
+  end
+
   defp new_request(%APIClient{} = client, access_token, nonce \\ nil) do
     req_opts =
       [base_url: client.base_url]
       |> Keyword.merge(req_opts())
 
-    Req.new(req_opts)
+    req_opts
+    |> Req.new()
     |> ReqDPoP.attach(
       sign_fun: &dpop_sign(&1, client.private_key, client.kid),
       access_token: access_token,
@@ -469,6 +530,38 @@ defmodule Portal.Okta.ReqDPoP do
     end
   end
 
+  @doc false
+  @spec run(Req.Request.t()) :: {Req.Request.t(), Req.Response.t() | Exception.t()}
+  def run(%Req.Request{} = req) do
+    now = System.system_time(:second)
+    exp = now + 300
+    jti = "#{now}_" <> Base.url_encode64(:crypto.strong_rand_bytes(8), padding: false)
+
+    claims =
+      %{
+        "htm" => req.method |> to_string() |> String.upcase(),
+        "htu" => htu_string(req.url),
+        "iat" => now,
+        "exp" => exp,
+        "jti" => jti
+      }
+      |> maybe_put_ath(req.options[:access_token])
+      |> maybe_put_nonce(req.options[:nonce])
+
+    dpop = req.options[:sign_fun].(claims)
+
+    req =
+      req
+      |> Req.Request.put_header("dpop", dpop)
+      |> maybe_put_auth(req.options[:access_token])
+
+    orig = Req.Request.get_private(req, :dpop_orig_adapter, Req.Finch)
+    call_adapter(orig, req)
+  end
+
+  defp call_adapter(adapter, req) when is_atom(adapter), do: adapter.run(req)
+  defp call_adapter(adapter, req) when is_function(adapter, 1), do: adapter.(req)
+
   defp retry(%Req.Request{} = req, %Req.Response{} = resp) do
     method_safe? = req.method in [:get, :head]
 
@@ -476,7 +569,7 @@ defmodule Portal.Okta.ReqDPoP do
       429 ->
         {:delay, delay_from_rate_limit_headers(resp.headers)}
 
-      408 when method_safe? ->
+      status when status in [403, 408] and method_safe? ->
         true
 
       status when status in [500, 502, 503, 504] and method_safe? ->
@@ -543,34 +636,7 @@ defmodule Portal.Okta.ReqDPoP do
 
   defp wrap_adapter(%Req.Request{adapter: orig} = req) do
     Req.Request.put_private(req, :dpop_orig_adapter, orig)
-    |> Map.put(:adapter, &adapter_with_dpop/1)
-  end
-
-  defp adapter_with_dpop(%Req.Request{} = req) do
-    now = System.system_time(:second)
-    exp = now + 300
-    jti = "#{now}_" <> Base.url_encode64(:crypto.strong_rand_bytes(8), padding: false)
-
-    claims =
-      %{
-        "htm" => req.method |> to_string() |> String.upcase(),
-        "htu" => htu_string(req.url),
-        "iat" => now,
-        "exp" => exp,
-        "jti" => jti
-      }
-      |> maybe_put_ath(req.options[:access_token])
-      |> maybe_put_nonce(req.options[:nonce])
-
-    dpop = req.options[:sign_fun].(claims)
-
-    req =
-      req
-      |> Req.Request.put_header("dpop", dpop)
-      |> maybe_put_auth(req.options[:access_token])
-
-    orig = Req.Request.get_private(req, :dpop_orig_adapter, &Req.Steps.run_finch/1)
-    orig.(req)
+    |> Map.put(:adapter, __MODULE__)
   end
 
   defp maybe_put_auth(req, nil), do: req

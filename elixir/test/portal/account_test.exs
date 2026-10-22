@@ -22,7 +22,7 @@ defmodule Portal.AccountTest do
 
     test "rejects name exceeding maximum length" do
       changeset = build_changeset(%{name: String.duplicate("a", 65)})
-      assert %{name: ["should be at most 64 character(s)"]} = errors_on(changeset)
+      assert %{name: ["too long"]} = errors_on(changeset)
     end
 
     test "inserts slug at maximum length" do
@@ -78,6 +78,25 @@ defmodule Portal.AccountTest do
     test "returns false when the account has no features" do
       account = %Account{features: nil}
       refute Account.iceless_enabled?(account)
+    end
+  end
+
+  describe "account-local features" do
+    test "log sinks does not require a global rollout flag" do
+      account = %Account{features: %Portal.Accounts.Features{log_sinks: true}}
+      assert Account.log_sinks_enabled?(account)
+    end
+
+    test "device posture requires only the account entitlement" do
+      account = %Account{features: %Portal.Accounts.Features{device_posture: true}}
+      assert Account.device_posture_enabled?(account)
+    end
+
+    test "device posture defaults to an unset account entitlement" do
+      account = %Account{features: %Portal.Accounts.Features{}}
+
+      assert account.features.device_posture == nil
+      refute Account.device_posture_enabled?(account)
     end
   end
 
