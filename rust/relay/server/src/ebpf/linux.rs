@@ -83,10 +83,10 @@ impl Program {
                 .context("`STATS` perf array not found")?,
         )?;
 
-        let packet_size = crate::metrics::packet_size();
+        let packet_size = otel_instruments::relay_packet_size();
 
-        let processing_duration = crate::metrics::xdp_processing_duration();
-        let packets = crate::metrics::packets();
+        let processing_duration = otel_instruments::relay_xdp_processing_duration();
+        let packets = otel_instruments::relay_packets();
 
         for cpu_id in aya::util::online_cpus()
             .map_err(|(_, error)| error)
@@ -129,16 +129,16 @@ impl Program {
 
                                             packet_size.record(
                                                 stats.relayed_data(),
-                                                &[crate::metrics::datapath_xdp()],
+                                                &[otel_attributes::relay_datapath_xdp()],
                                             );
                                             packets.add(
                                                 1,
                                                 &[
-                                                    crate::metrics::datapath_xdp(),
-                                                    crate::metrics::network_type(
+                                                    otel_attributes::relay_datapath_xdp(),
+                                                    otel_attributes::network_type_for_ip_version(
                                                         stats.ip_version(),
                                                     ),
-                                                    crate::metrics::network_ecn(stats.ecn()),
+                                                    otel_attributes::network_ecn(stats.ecn()),
                                                 ],
                                             );
                                             processing_duration.record(
