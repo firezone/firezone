@@ -79,7 +79,7 @@ jobs:
           describe udp "UDP thread CPU" "ns/packet"
           describe crypto "Crypto workers CPU" "ns/packet"
           describe tun "TUN threads CPU" "ns/packet"
-          describe event-loop-idle "Idle event loop CPU" "ns/connection-second"
+          describe event-loop-idle "Gateway time per idle connection" "ns/connection-second"
       - name: Run on Bencher Bare Metal
         if: env.BENCHER == 'true'
         env:
