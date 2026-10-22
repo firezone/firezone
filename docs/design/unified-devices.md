@@ -4,7 +4,7 @@ Status: draft plan, no code yet. Revised 2026-10-22 against `main` at 698b4b457.
 
 How to read this: section 1 is the current split, section 2 the target model
 (2.1 data, 2.2 control plane, 2.3 data plane, 2.4 Linux binaries, 2.5 admin
-UI, 2.6 site-to-site), section 3 the PR-sized steps, 3a the deploy and release
+UI, 2.6 site-to-site, 2.7 wire compatibility rules), section 3 the PR-sized steps, 3a the deploy and release
 order, 4 the decisions already
 taken, 5 risks. If you only have ten minutes, read "Settled so far", 2.1, 3a
 and 4.
@@ -131,7 +131,31 @@ where I am the receiver). `create_authorization` gains `ice_role` and a
 `target` of `self {pool_id, filters}` or a resource. The gateway-style ack
 (device echoes the signed `ref` after installing the authorization) is the only
 receiver protocol; the c2c auto-ack survives only in the `/client/v3` adapter.
-Duplicate connects are last-wins everywhere.
+Duplicate connects are last-wins on `/device/v1`; legacy gateway adapters
+keep first-wins (see 2.7).
+
+### 2.7 Wire compatibility rules
+
+The message shapes on the legacy sockets never change. What can change is
+the situation the portal puts a legacy binary in, and old code has no way to
+refuse. These gates hold for every step that touches selection, assignment
+or registration, and the legacy adapters enforce them:
+
+- A gateway below the classification fix (0.4, gateway 1.6.5) never holds an
+  Internet authorization and a CIDR or DNS authorization at the same time.
+  Assignment refuses to put such a gateway in both the Internet Site and
+  another site, and `select_receiver` skips it for the second kind if the
+  versions change later.
+- A legacy gateway never receives a device pool target. Its resource parser
+  has no such variant.
+- A legacy gateway is never sent `disconnect` for being superseded. Deployed
+  gateways treat every `disconnect` as an expired token, exit with code 78,
+  and systemd does not restart them. The `/gateway` v1 and v2 adapters keep
+  first-wins; only `/device/v1` is last-wins, with a distinct reason.
+- A legacy client still gets a resource that changes sites as delete plus
+  create, as today.
+- Any new field in a legacy payload is additive and optional. Nothing is
+  removed or renamed on a legacy socket.
 
 ### 2.3 Data plane
 
@@ -310,9 +334,10 @@ binaries keep working through every step; the portal still serves `/gateway`
 v1, so legacy endpoints are a long-lived cost.
 
 Ordering constraint to keep in mind: the portal must serve `/device/v1`
-(phase 4) before any binary that speaks it ships (phase 5), and the gateway
-classification fix (0.4) should be in the fleet before multi-site assignment
-reaches customers (2.12).
+(phase 4) before any binary that speaks it ships (phase 5). The gateway
+classification fix (0.4) is not an ordering constraint: the gates in 2.7 keep
+pre-fix gateways out of the combination they cannot handle, however long they
+stay in the fleet.
 
 ### Phase 0: prep, no behaviour change
 
@@ -439,10 +464,14 @@ inserted_at)`, unique on the three ids, cascading FKs. Ecto schema, `Site`
   online devices whose `site_ids` include the resource's site, never the
   initiator itself, still limited to `type == :gateway` until 4.6. The
   client's connectable resources exclude any resource served by a site the
-  device is assigned to. Depends 0.6, 2.10.
+  device is assigned to. Gateways below 1.6.5 are skipped for CIDR and DNS
+  resources when they also serve the Internet Site (2.7). Depends 0.6,
+  2.10.
 - **2.12 UI: Sites devices tab.** Reads `site_devices`; add existing device
-  (picker limited to gateways until 4.6, others shown disabled with reason);
-  remove device. Depends 2.8.
+  (picker limited to gateways until 4.6, others shown disabled with reason;
+  a gateway below 1.6.5 cannot be added to both the Internet Site and
+  another site, with the reason shown); remove device. Same validation on
+  the REST endpoint in 2.14. Depends 2.8.
 - **2.13 Code and migration: site delete keeps devices.** `site_id` FK
   becomes SET NULL; UI and REST copy; blocked while resources remain.
   Depends 2.8.
@@ -492,8 +521,9 @@ serial)`; drop the actor-scoped indexes, `device_type_client_fields` and
   clients are mapped to `[m, m]` and legacy gateways to `[m-1, m+1]`, which
   reproduces today's rules exactly. Compatible means the ranges overlap.
   Presence meta carries the range; `Routing.select_receiver` and the c2c
-  peer check read it; `Portal.Version` keeps only feature gates. Must be
-  live before any unified binary ships.
+  peer check read it; `Portal.Version` keeps only feature gates. Policy:
+  `firezone` supports two minor versions back on both sides (see 3a). Must
+  be live before any unified binary ships.
 - **3.1 Rust: `firezone` crate.** New bin `firezone` with `run`, `sign-in`,
   `sign-out`, `identity` wrapping today's headless main; `firezone-headless-
 client` becomes an alias bin of the same crate. CI builds both.
@@ -558,8 +588,10 @@ firezone` and `firezone authenticate`. Depends 3.7.
   pools see very little production traffic. Depends 4.5.
 - **4.7 Elixir: change handling into Core.** Account, device, resource,
   policy, site-device and authorization changes in one place. Depends 4.5.
-- **4.8 Elixir: registration last-wins for every device.** Gateway channel
-  drops first-wins. Depends 4.7.
+- **4.8 Elixir: registration policy per adapter.** Last-wins on
+  `/device/v1` with a `superseded` reason; the `/gateway` v1 and v2 adapters
+  keep first-wins, since deployed gateways exit permanently on any
+  `disconnect` (2.7). Depends 4.7.
 - **4.9 Elixir: `/gateway` v1 and `/gateway/v2` as adapters** over Core:
   views and message names only. A meaningful share of active gateways are below 1.5.3 and
   still on v1. Existing gateway channel tests unchanged. Depends 4.8.
@@ -639,6 +671,22 @@ The portal deploys on every merge. These are the points where order matters.
 | D7    | 5.11 after R3 is in the fleet              | none                                                                          |
 | D8    | 6.1 to 6.7 after 2.9 and 2.17 settled      | R4: `firezone` minor dropping alias bins (3.10)                               |
 | D9    | 6.8 once 0.9 has cleared the old protocols | none                                                                          |
+
+**Customer-facing compatibility.** Today's rule: a Gateway must be within one
+minor version of the Client in either direction, and Clients connecting to
+each other must share a minor. That stays for the existing components. For
+`firezone`, which plays both roles, each release states absolute versions:
+it supports Clients from the two previous minor versions and Gateways from
+the two previous minor versions, and connects device to device with Clients
+on those same versions. Internally the ranges are legacy clients `[m, m]`,
+legacy gateways `[m-1, m+1]`, `firezone` 1.7 `[5, 7]`, `firezone` 1.8
+`[6, 8]`; the width is one table in `Portal.Version`.
+
+| Release             | Serves Clients | Reaches Gateways         | Device to device                 |
+| ------------------- | -------------- | ------------------------ | -------------------------------- |
+| Gateway 1.6.5 (R1)  | 1.5, 1.6, 1.7  | n/a                      | n/a                              |
+| `firezone` 1.7 (R2) | 1.5, 1.6, 1.7  | 1.5, 1.6, `firezone` 1.7 | Clients 1.5, 1.6, `firezone` 1.7 |
+| `firezone` 1.8 (R3) | 1.6, 1.7, 1.8  | 1.6, `firezone` 1.7, 1.8 | Clients 1.6, `firezone` 1.7, 1.8 |
 
 Apple, Android and the Windows GUI need no release. PR count is about 87
 code PRs plus 3 docs PRs before merging small neighbours: phase 0 has 4,
