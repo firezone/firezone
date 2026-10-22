@@ -127,6 +127,11 @@ impl Bytes {
         buffer
     }
 
+    /// Empties the buffer, keeping its class.
+    pub fn clear(&mut self) {
+        self.0.clear();
+    }
+
     /// Shortens the buffer to `len` bytes.
     pub fn truncate(&mut self, len: usize) {
         self.0.truncate(len);
@@ -629,6 +634,16 @@ mod tests {
         .unwrap();
 
         assert_eq!(depot_len(CLASS), 1);
+    }
+
+    #[test]
+    fn cleared_buffer_keeps_its_class() {
+        let mut buffer = Bytes::copied_from(b"hello world");
+
+        buffer.clear();
+        buffer.extend_from_slice(&[0; Class::Packet.size()]);
+
+        assert_eq!(buffer.len(), Class::Packet.size());
     }
 
     #[test]

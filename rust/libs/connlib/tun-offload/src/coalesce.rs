@@ -211,7 +211,7 @@ impl CoalescedPacket {
     fn coalesced(&mut self, max_packet_len: usize) -> &mut Bytes {
         if let Inner::Packet(first) = &self.0 {
             let mut buf = Bytes::fitting(max_packet_len);
-            buf.truncate(0);
+            buf.clear();
             buf.extend_from_slice(first.packet());
 
             self.0 = Inner::Batch {

@@ -133,7 +133,7 @@ impl SimRelay {
         if self.out_of_capacity
             && let Some(response) = self.reject_allocation(&payload)
         {
-            payload.truncate(0);
+            payload.clear();
             payload.extend_from_slice(&response);
 
             return Some(Transmit {
