@@ -16,11 +16,6 @@ import java.util.concurrent.atomic.AtomicBoolean
 object Log {
     private val streamingActive = AtomicBoolean(false)
 
-    @Volatile
-    private var attributes: Map<String, String> = mapOf("process" to "app")
-
-    private val attributesLock = Any()
-
     val isStreamingActive: Boolean
         get() = streamingActive.get()
 
@@ -28,31 +23,6 @@ object Log {
         val changed = streamingActive.getAndSet(active) != active
         if (changed) {
             d("Log", "Log streaming ${if (active) "enabled" else "disabled"}")
-        }
-    }
-
-    fun setUser(
-        firezoneId: String,
-        accountSlug: String,
-    ) {
-        synchronized(attributesLock) {
-            attributes = attributes +
-                mapOf(
-                    "user.id" to firezoneId,
-                    "user.account_slug" to accountSlug,
-                )
-        }
-    }
-
-    fun clearUser() {
-        synchronized(attributesLock) {
-            attributes = attributes - "user.id" - "user.account_slug"
-        }
-    }
-
-    fun setEnvironment(environment: String) {
-        synchronized(attributesLock) {
-            attributes = attributes + ("environment" to environment)
         }
     }
 
@@ -135,17 +105,9 @@ object Log {
         if (!streamingActive.get()) return
         if (level == SentryLogLevel.TRACE) return
 
-        val attrs = synchronized(attributesLock) { attributes }
-        val sentryAttrs =
-            (
-                attrs.map { (k, v) ->
-                    SentryAttribute.stringAttribute(k, v)
-                } + SentryAttribute.stringAttribute("tag", tag)
-            ).toTypedArray()
-
         Sentry.logger().log(
             level,
-            SentryLogParameters.create(SentryAttributes.of(*sentryAttrs)),
+            SentryLogParameters.create(SentryAttributes.of(SentryAttribute.stringAttribute("tag", tag))),
             msg,
         )
     }

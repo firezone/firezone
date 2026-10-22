@@ -21,7 +21,9 @@ mod pool;
 #[cfg(any(windows, test))]
 mod uro;
 
-pub use buffer_sizes::{MAX_RECV_BATCH_MEMORY, RECV_BUFFER_SIZE, SEND_BUFFER_SIZE};
+pub use buffer_sizes::{
+    MAX_RECV_BATCH_MEMORY, MAX_RECV_BUFFER_MEMORY, RECV_BUFFER_SIZE, SEND_BUFFER_SIZE,
+};
 
 use pool::{OwnedSocket, Socket, SocketPool};
 
@@ -385,7 +387,7 @@ pub struct DatagramOut {
 }
 
 /// The most segments one GSO send may carry (`UDP_MAX_SEGMENTS` in `linux/udp.h`; `quinn-udp` reports the same on Linux).
-const MAX_GSO_SEGMENTS: usize = 64;
+pub const MAX_GSO_SEGMENTS: usize = 64;
 
 impl DatagramOut {
     /// The largest [`DatagramOut::packet`] that can be flushed to `dst` in a single GSO send.
@@ -1126,12 +1128,16 @@ where
     }
 
     /// Iterates over the segments of the datagram, i.e. the datagrams GRO / URO coalesced into it.
-    pub fn segments(&self) -> impl Iterator<Item = Segment> + '_ {
-        (0..self.len).step_by(self.stride).map(|start| {
-            let end = std::cmp::min(start + self.stride, self.len);
+    pub fn segments(&self) -> impl Iterator<Item = Segment> + use<B> {
+        let Self { len, stride, .. } = *self;
+        #[cfg(debug_assertions)]
+        let (from, local, ecn) = (self.from, self.local, self.ecn);
+
+        (0..len).step_by(stride).map(move |start| {
+            let end = std::cmp::min(start + stride, len);
 
             #[cfg(debug_assertions)]
-            tracing::trace!(target: "wire::net::recv", src = %self.from, dst = %self.local, ecn = ?self.ecn, len = %(end - start));
+            tracing::trace!(target: "wire::net::recv", src = %from, dst = %local, ecn = ?ecn, len = %(end - start));
 
             Segment { start, end }
         })

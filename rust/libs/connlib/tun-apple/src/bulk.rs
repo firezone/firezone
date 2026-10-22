@@ -11,6 +11,7 @@ use ip_packet::{IpPacket, IpPacketBuf, IpVersion};
 use libc::{AF_INET, AF_INET6, iovec};
 use opentelemetry::KeyValue;
 use std::ffi::c_void;
+use std::future::Future;
 use std::io;
 use std::os::fd::{AsRawFd as _, RawFd};
 use std::pin::pin;
@@ -25,16 +26,73 @@ const EMPTY_IOVEC: iovec = iovec {
     iov_len: 0,
 };
 
+/// What the worker threads exchange batches of packets with.
+pub trait Device {
+    /// Receives up to `bufs.len()` packets, writing each one's length into `lens`.
+    ///
+    /// Returns how many packets were received; zero means the device is closed.
+    fn recv(
+        &self,
+        bufs: &mut [IpPacketBuf],
+        lens: &mut [usize],
+    ) -> impl Future<Output = io::Result<usize>>;
+
+    /// Sends a prefix of `packets`, returning how many were sent.
+    fn send(&self, packets: &[CoalescedPacket]) -> impl Future<Output = io::Result<usize>>;
+}
+
+/// The `utun` file descriptor behind the batched syscalls.
+pub struct Fd {
+    fd: AsyncFd<RawFd>,
+    syscalls: &'static sys::BatchSyscalls,
+}
+
+impl Fd {
+    /// Registers `fd` with the current runtime, so it must be called on the worker's own.
+    pub fn open(
+        fd: RawFd,
+        interest: Interest,
+        syscalls: &'static sys::BatchSyscalls,
+    ) -> io::Result<Self> {
+        // Safety: The caller of `Io::from_fd` keeps the descriptor open until the workers stop.
+        let fd = unsafe { AsyncFd::register_with_interest(fd, interest)? };
+
+        Ok(Self { fd, syscalls })
+    }
+}
+
+impl Device for Fd {
+    async fn recv(&self, bufs: &mut [IpPacketBuf], lens: &mut [usize]) -> io::Result<usize> {
+        self.fd
+            .async_io(Interest::READABLE, |fd| {
+                // Safety: The file descriptor is valid within this module.
+                unsafe { recv_batch(self.syscalls, fd.as_raw_fd(), bufs, lens) }
+            })
+            .await
+    }
+
+    async fn send(&self, packets: &[CoalescedPacket]) -> io::Result<usize> {
+        self.fd
+            .async_io(Interest::WRITABLE, |fd| {
+                // Safety: The file descriptor is valid within this module.
+                unsafe { send_batch(self.syscalls, fd.as_raw_fd(), packets) }
+            })
+            .await
+    }
+}
+
 /// Sends batches of packets from `outbound_rx` to the TUN device.
 ///
 /// With `max_coalesced_len`, consecutive TCP segments of a flow are coalesced into packets of up to
 /// that many bytes first, so the kernel injects fewer, larger packets.
-pub fn send(
-    fd: RawFd,
-    syscalls: &'static sys::BatchSyscalls,
+pub fn send<D>(
+    open: impl FnOnce() -> io::Result<D>,
     mut outbound_rx: tun::OutboundRx,
     max_coalesced_len: Option<usize>,
-) -> Result<()> {
+) -> Result<()>
+where
+    D: Device,
+{
     let batch_count = otel_instruments::network_packets_batch_count();
     let dropped_packets = otel_instruments::network_packet_dropped();
 
@@ -50,8 +108,7 @@ pub fn send(
         .build()
         .context("Failed to create runtime")?
         .block_on(async move {
-            // SAFETY: The caller of `Io::from_fd` keeps the descriptor open until the workers stop.
-            let fd = unsafe { AsyncFd::register_with_interest(fd, Interest::WRITABLE)? };
+            let device = open()?;
 
             while let Some(mut batch) = outbound_rx.recv().await {
                 for packet in batch.drain() {
@@ -65,14 +122,7 @@ pub fn send(
 
                 let mut offset = 0;
                 while offset < packets.len() {
-                    let result = fd
-                        .async_io(Interest::WRITABLE, |fd| {
-                            // Safety: The file descriptor is valid within this module.
-                            unsafe { send_batch(syscalls, fd.as_raw_fd(), &packets[offset..]) }
-                        })
-                        .await;
-
-                    match result {
+                    match device.send(&packets[offset..]).await {
                         // A genuine "can't send now" arrives as `Err(WouldBlock)` (the syscall
                         // returns -1/EWOULDBLOCK), which `async_io` parks on. `Ok(0)` means "sent
                         // nothing without erroring", which shouldn't happen; break rather than spin
@@ -118,11 +168,10 @@ pub fn send(
 }
 
 /// Receives batches of packets from the TUN device into `inbound_tx`.
-pub fn recv(
-    fd: RawFd,
-    syscalls: &'static sys::BatchSyscalls,
-    inbound_tx: tun::InboundTx,
-) -> Result<()> {
+pub fn recv<D>(open: impl FnOnce() -> io::Result<D>, inbound_tx: tun::InboundTx) -> Result<()>
+where
+    D: Device,
+{
     let batch_count = otel_instruments::network_packets_batch_count();
 
     tokio::runtime::Builder::new_current_thread()
@@ -130,8 +179,7 @@ pub fn recv(
         .build()
         .context("Failed to create runtime")?
         .block_on(async move {
-            // SAFETY: The caller of `Io::from_fd` keeps the descriptor open until the workers stop.
-            let fd = unsafe { AsyncFd::register_with_interest(fd, Interest::READABLE)? };
+            let device = open()?;
 
             let mut bufs: Vec<IpPacketBuf> =
                 (0..MAX_BATCH_SIZE).map(|_| IpPacketBuf::new()).collect();
@@ -139,10 +187,7 @@ pub fn recv(
 
             'recv: loop {
                 let n = {
-                    let recv = pin!(fd.async_io(Interest::READABLE, |fd| {
-                        // Safety: The file descriptor is valid within this module.
-                        unsafe { recv_batch(syscalls, fd.as_raw_fd(), &mut bufs, &mut lens) }
-                    }));
+                    let recv = pin!(device.recv(&mut bufs, &mut lens));
                     let closed = pin!(inbound_tx.closed());
 
                     match future::select(recv, closed).await {

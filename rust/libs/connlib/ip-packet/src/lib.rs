@@ -201,6 +201,12 @@ pub enum IpVersion {
     V6,
 }
 
+impl prefetch::Prefetch for IpPacket {
+    fn prefetch(&self) {
+        prefetch::prefetch_line(self.buf.as_ptr());
+    }
+}
+
 impl std::fmt::Debug for IpPacket {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut dbg = f.debug_struct("Packet");
@@ -388,6 +394,7 @@ impl IpPacket {
         self.version
     }
 
+    #[inline]
     pub fn source(&self) -> IpAddr {
         match self.version {
             IpVersion::V4 => IpAddr::V4(self.ipv4_addr_at(12)),
@@ -395,15 +402,12 @@ impl IpPacket {
         }
     }
 
+    #[inline]
     pub fn destination(&self) -> IpAddr {
         match self.version {
             IpVersion::V4 => IpAddr::V4(self.ipv4_addr_at(16)),
             IpVersion::V6 => IpAddr::V6(self.ipv6_addr_at(24)),
         }
-    }
-
-    pub fn source_and_destination(&self) -> (IpAddr, IpAddr) {
-        (self.source(), self.destination())
     }
 
     /// Reads the address at `offset` of the IPv4 header, whose length was checked on construction.

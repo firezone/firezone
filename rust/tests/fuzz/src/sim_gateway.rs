@@ -5,6 +5,7 @@ use super::{
     sim_net::{ExecMutScope, Host},
     sim_relay::{SimRelay, map_explode},
     site_network::SiteNetwork,
+    sut::encrypt,
 };
 use anyhow::Result;
 use connlib_model::{ClientId, GatewayId, RelayId, ResourceId};
@@ -38,9 +39,6 @@ pub(crate) struct SimGateway {
     /// The DNS servers on the Gateway's tunnel IPs.
     dns_servers: DnsServers,
     network: SiteNetwork,
-
-    /// Collects datagrams encapsulated via [`GatewayState::handle_tun_input`].
-    transmit_buffer: snownet::TransmitBuffer,
 }
 
 #[derive(Debug, Clone)]
@@ -74,14 +72,26 @@ impl SimGateway {
             next_observation_order: 0,
             authorized_resources: Default::default(),
             clients_by_ip: Default::default(),
-            transmit_buffer: snownet::TransmitBuffer::new(),
         }
     }
 
     pub(crate) fn receive(&mut self, transmit: Transmit, now: Instant) -> Option<Transmit> {
+        let (local, from) = (transmit.dst, transmit.src.unwrap());
         let Some(packet) = self
             .sut
-            .handle_network_input(transmit.dst, transmit.src.unwrap(), &transmit.payload, now)
+            .handle_network_input(local, from, &transmit.payload, now)
+            .and_then(|decapsulation| {
+                let Some(decapsulation) = decapsulation else {
+                    return Ok(None);
+                };
+
+                self.sut.handle_peer_input(
+                    local,
+                    from,
+                    decapsulation.decrypt(&transmit.payload),
+                    now,
+                )
+            })
             .inspect_err(|e| tracing::warn!("{e:#}"))
             .ok()
             .flatten()
@@ -122,19 +132,17 @@ impl SimGateway {
             .collect()
     }
 
-    /// Drive the SUT's TUN -> network path, collecting the encapsulated datagram (if any).
-    ///
-    /// Routes encapsulation through the [`snownet::TransmitBuffer`] field so the rest of the
-    /// simulation can keep working with a single [`snownet::Transmit`] per packet.
+    /// Drive the SUT's TUN -> network path, returning the encrypted datagram (if any).
     fn handle_tun_input(
         &mut self,
-        packet: IpPacket,
+        mut packet: IpPacket,
         now: Instant,
     ) -> Result<Option<snownet::Transmit>> {
-        self.sut
-            .handle_tun_input(packet, now, &mut self.transmit_buffer)?;
+        let Some(encapsulation) = self.sut.handle_tun_input(&mut packet, now)? else {
+            return Ok(None);
+        };
 
-        Ok(self.transmit_buffer.poll_transmit())
+        Ok(encrypt(encapsulation, &packet))
     }
 
     pub(crate) fn deploy_new_dns_servers(

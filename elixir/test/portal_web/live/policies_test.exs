@@ -448,6 +448,8 @@ defmodule PortalWeb.PoliciesTest do
 
       render_click(lv, "confirm_disable_policy")
       render_click(lv, "disable_policy")
+      # The next reload would kill this one mid-query, which breaks the test's sandbox connection
+      render_async(lv)
 
       policy = Repo.get_by!(Policy, id: policy.id, account_id: account.id)
       assert policy.is_disabled

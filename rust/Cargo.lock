@@ -2513,7 +2513,7 @@ dependencies = [
 
 [[package]]
 name = "firezone-cli"
-version = "1.5.19"
+version = "1.5.20"
 dependencies = [
  "anyhow-ext",
  "clap",
@@ -2530,7 +2530,7 @@ dependencies = [
 
 [[package]]
 name = "firezone-gateway"
-version = "1.6.3"
+version = "1.6.4"
 dependencies = [
  "anyhow-ext",
  "atomicfs",
@@ -2578,7 +2578,7 @@ dependencies = [
 
 [[package]]
 name = "firezone-gui-client"
-version = "1.5.19"
+version = "1.5.20"
 dependencies = [
  "admx-macro",
  "anyhow-ext",
@@ -2662,7 +2662,7 @@ dependencies = [
 
 [[package]]
 name = "firezone-headless-client"
-version = "1.5.14"
+version = "1.5.15"
 dependencies = [
  "anyhow-ext",
  "backoff",
@@ -4154,6 +4154,7 @@ dependencies = [
  "divan",
  "incremental-inet-checksum",
  "ingot",
+ "prefetch",
  "proptest",
  "test-case",
  "test-strategy",
@@ -4463,9 +4464,9 @@ dependencies = [
 
 [[package]]
 name = "jsonschema"
-version = "0.56.0"
+version = "0.58.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b6a806f80c1f5560431009ce5ec29b59d38f950e0cd7db5f1b8925e6d8104e21"
+checksum = "f622c574a29fb3034a0a90645afee194dfedc75fc124228801b6e77041075bd1"
 dependencies = [
  "ahash",
  "bytecount",
@@ -4491,18 +4492,18 @@ dependencies = [
 
 [[package]]
 name = "jsonschema-regex"
-version = "0.56.0"
+version = "0.58.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cb862addfa7782108933abcf842fe25334523a9df5b89ea4d9620e3dd7b42181"
+checksum = "a968fffd387b2ab005bf00c1851f5d26e90df05b6f7ad609ed0d620033cca5e7"
 dependencies = [
  "regex-syntax",
 ]
 
 [[package]]
 name = "jsonschema-value"
-version = "0.56.0"
+version = "0.58.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a05cd404c5ff6e2731dbbf7e290a27417750acfb59e329560a1d0af384c93fb0"
+checksum = "39b7670345e5ce87371339d13705dbb9276b7e3e934bbe1efa2c6734a1f65a96"
 dependencies = [
  "ahash",
  "bytecount",
@@ -6022,6 +6023,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "925383efa346730478fb4838dbe9137d2a47675ad789c546d150a6e1dd4ab31c"
 
 [[package]]
+name = "prefetch"
+version = "0.1.0"
+
+[[package]]
 name = "prefix-trie"
 version = "0.8.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6192,8 +6197,8 @@ dependencies = [
 
 [[package]]
 name = "quinn-udp"
-version = "0.6.1"
-source = "git+https://github.com/firezone/quinn?branch=main#ab5793bd0d7c34f09da06bfe75295425e5f1195d"
+version = "0.6.3"
+source = "git+https://github.com/firezone/quinn?branch=main#ef279010009563889f7f91aa728e7f4dcee4d61b"
 dependencies = [
  "cfg_aliases",
  "libc",
@@ -6345,9 +6350,9 @@ dependencies = [
 
 [[package]]
 name = "referencing"
-version = "0.56.0"
+version = "0.58.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a3b4a92fac7e28c27de3ad26df2ecb9e652f227b258e845af034052e5b22c96c"
+checksum = "558f3855529c0a7e78a48e409fa653456e55f1b167eab4109c16a255b7727e3f"
 dependencies = [
  "ahash",
  "fluent-uri",
@@ -6722,7 +6727,7 @@ dependencies = [
 [[package]]
 name = "sanstun"
 version = "0.1.0"
-source = "git+https://github.com/firezone/sanstun?branch=main#11573c9a64e21a0322b39d2effd5a40672278b18"
+source = "git+https://github.com/firezone/sanstun?branch=main#a9550b80d063fc65ead9246766d8f3984b4a9143"
 dependencies = [
  "blake2",
  "chacha20",
@@ -7350,6 +7355,7 @@ dependencies = [
  "otel-attributes",
  "otel-instruments",
  "path-agent",
+ "prefetch",
  "rand 0.10.3",
  "ringbuffer",
  "sanstun",
@@ -8956,6 +8962,7 @@ dependencies = [
  "logging",
  "opentelemetry",
  "otel-instruments",
+ "prefetch",
  "rand 0.10.3",
  "snownet",
  "socket-factory",
@@ -8979,6 +8986,7 @@ dependencies = [
  "flow-tracker",
  "ip-packet",
  "libc",
+ "mimalloc",
  "serde_json",
  "snownet",
  "socket-factory",

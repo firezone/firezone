@@ -290,11 +290,16 @@ defmodule PortalAPI.ActorController do
   defmodule Database do
     import Ecto.Query
     alias Portal.Actor
+    alias Portal.APIToken
+    alias Portal.Device
     alias Portal.ExternalIdentity
+    alias Portal.OAuthToken
+    alias Portal.PortalSession
     alias Portal.Safe
 
     def list_actors(subject, opts \\ []) do
       from(a in Portal.Actor, as: :actors)
+      |> select_last_seen_at()
       |> Safe.scoped(subject)
       |> Safe.list(__MODULE__, opts)
     end
@@ -366,7 +371,8 @@ defmodule PortalAPI.ActorController do
     end
 
     def fetch_actor(id, subject) do
-      from(a in Portal.Actor, where: a.id == ^id)
+      from(a in Portal.Actor, as: :actors, where: a.id == ^id)
+      |> select_last_seen_at()
       |> Safe.scoped(subject)
       |> Safe.one()
       |> case do
@@ -419,6 +425,51 @@ defmodule PortalAPI.ActorController do
            {_count, _} <- clear_identities_for_actor(actor_id, subject) do
         {:ok, actor}
       end
+    end
+
+    defp select_last_seen_at(queryable) do
+      client_seen_at =
+        from(d in Device,
+          where: d.account_id == parent_as(:actors).account_id,
+          where: d.actor_id == parent_as(:actors).id,
+          where: d.type == :client,
+          select: max(d.last_seen_at)
+        )
+
+      portal_signed_in_at =
+        from(s in PortalSession,
+          where: s.account_id == parent_as(:actors).account_id,
+          where: s.actor_id == parent_as(:actors).id,
+          select: max(s.inserted_at)
+        )
+
+      api_token_seen_at =
+        from(t in APIToken,
+          where: t.account_id == parent_as(:actors).account_id,
+          where: t.actor_id == parent_as(:actors).id,
+          select: max(t.last_seen_at)
+        )
+
+      oauth_token_seen_at =
+        from(t in OAuthToken,
+          where: t.account_id == parent_as(:actors).account_id,
+          where: t.actor_id == parent_as(:actors).id,
+          select: max(t.last_seen_at)
+        )
+
+      select_merge(queryable, [actors: a], %{
+        last_seen_at:
+          type(
+            fragment(
+              "GREATEST(?, ?, ?, ?)",
+              subquery(client_seen_at),
+              subquery(portal_signed_in_at),
+              subquery(api_token_seen_at),
+              subquery(oauth_token_seen_at)
+            ),
+            :utc_datetime_usec
+          )
+      })
     end
 
     defp clear_identities_for_actor(actor_id, subject) do
