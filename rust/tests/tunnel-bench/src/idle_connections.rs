@@ -26,7 +26,11 @@ const CLIENTS: usize = 1000;
 /// Runs the benchmarks and returns their measures in Bencher Metric Format.
 pub fn bench(c: &mut Criterion<Wall>) -> BTreeMap<String, serde_json::Value> {
     let mut group = c.benchmark_group(GROUP);
-    group.sampling_mode(SamplingMode::Flat);
+    // Each sample simulates at least one keepalive period, which takes seconds.
+    group
+        .sampling_mode(SamplingMode::Flat)
+        .sample_size(10)
+        .measurement_time(Duration::from_secs(30));
     let mut report = BTreeMap::new();
 
     for connectivity in CONNECTIVITIES {

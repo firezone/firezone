@@ -46,6 +46,9 @@ const STEP: Duration = Duration::from_millis(100);
 /// How often an idle connection sends a keepalive.
 pub const KEEPALIVE: Duration = Duration::from_secs(25);
 
+/// How often a connection renews its WireGuard session.
+const REKEY: Duration = Duration::from_secs(120);
+
 /// One side of an established connection.
 pub struct Side {
     pub state: State,
@@ -265,11 +268,11 @@ impl Tunnel {
         // A Gateway only signals candidates for a connection once it has a relay allocation.
         tunnel.run_until(now + Duration::from_secs(1), connectivity, resource);
 
-        // Spread over a keepalive interval, so the connections' timers do not all fire at once.
+        // Spread over a session, so the connections' keepalives and rekeys do not fire at once.
         let start = tunnel.now;
         let count = u32::try_from(tunnel.clients.len()).unwrap();
         for index in 0..tunnel.clients.len() {
-            let at = start + KEEPALIVE * u32::try_from(index).unwrap() / count;
+            let at = start + REKEY * u32::try_from(index).unwrap() / count;
             tunnel.run_until(at, connectivity, resource);
 
             let client = &mut tunnel.clients[index];
