@@ -120,7 +120,10 @@ jobs:
             plot "$configuration CPU per packet" --benchmarks "$id" "${cpu[@]}"
             throughput+=(--benchmarks "$id")
           done
-          [ "${#throughput[@]}" = 0 ] || plot "Throughput" "${throughput[@]}" --measures "$(uuid measure throughput)"
+          # One line per configuration, so only once all of them exist.
+          if [ "${#throughput[@]}" = "$((2 * ${#configurations[@]}))" ]; then
+            plot "Throughput" "${throughput[@]}" --measures "$(uuid measure throughput)"
+          fi
       - name: Run on Bencher Bare Metal
         if: env.BENCHER == 'true'
         env:
