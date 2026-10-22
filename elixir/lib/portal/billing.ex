@@ -257,13 +257,26 @@ defmodule Portal.Billing do
   end
 
   @doc """
-  Returns `true` when connecting `device_id` would put the actor over its
-  `connected_devices_per_actor` limit. A `nil` limit means unlimited. The device
-  itself is not counted, so a client that reconnects is never refused.
+  Returns `true` when connecting `device_id` would put `actor` over its
+  account's `connected_devices_per_actor` limit. A `nil` limit means unlimited.
+  The device itself is not counted, so a client that reconnects is never
+  refused. System-managed actors are never limited: the devices they own are
+  the account's infrastructure, not a person's.
   """
-  @spec connected_devices_limit_reached?(Portal.Account.t(), Ecto.UUID.t(), Ecto.UUID.t()) ::
+  @spec connected_devices_limit_reached?(Portal.Account.t(), Portal.Actor.t(), Ecto.UUID.t()) ::
           boolean()
-  def connected_devices_limit_reached?(%Portal.Account{} = account, actor_id, device_id) do
+  def connected_devices_limit_reached?(
+        %Portal.Account{},
+        %Portal.Actor{managed_by: :system},
+        _device_id
+      ),
+      do: false
+
+  def connected_devices_limit_reached?(
+        %Portal.Account{} = account,
+        %Portal.Actor{id: actor_id},
+        device_id
+      ) do
     case account.limits && account.limits.connected_devices_per_actor do
       nil ->
         false
@@ -952,6 +965,7 @@ defmodule Portal.Billing do
       from(a in Actor,
         where: a.account_id == ^account.id,
         where: a.is_disabled == false,
+        where: a.managed_by == :account,
         where: a.type == :service_account
       )
       |> Safe.unscoped()
@@ -999,6 +1013,7 @@ defmodule Portal.Billing do
         as: :actor
       )
       |> where([actor: a], a.is_disabled == false)
+      |> where([actor: a], a.managed_by == :account)
       |> where([actor: a], a.type in [:account_user, :account_admin_user, :service_account])
       |> group_by([devices: d], d.account_id)
       |> select([devices: d, actor: a], {

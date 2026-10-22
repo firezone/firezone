@@ -96,6 +96,20 @@ defmodule Portal.Workers.CheckAccountLimitsTest do
       assert account.warning_last_sent_at
     end
 
+    test "does not count system-managed service accounts" do
+      account = provisioned_account_fixture()
+      admin_actor_fixture(account: account)
+      service_account_fixture(account: account, managed_by: :system)
+
+      update_account(account, %{limits: %{service_accounts_count: 0}})
+
+      assert :ok = perform_job(CheckAccountLimits, %{})
+
+      account = Repo.get!(Portal.Account, account.id)
+
+      refute account.service_accounts_limit_exceeded
+    end
+
     test "sends email to admins when limits are first exceeded" do
       account = provisioned_account_fixture()
       admin1 = admin_actor_fixture(account: account)

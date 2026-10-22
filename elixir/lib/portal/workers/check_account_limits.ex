@@ -389,6 +389,7 @@ defmodule Portal.Workers.CheckAccountLimits do
       from(a in Actor,
         where: a.account_id in ^account_ids,
         where: a.is_disabled == false,
+        where: a.managed_by == :account,
         where: a.type == :service_account,
         group_by: a.account_id,
         select: {a.account_id, count(a.id)}

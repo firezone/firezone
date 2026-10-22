@@ -103,6 +103,7 @@ defmodule PortalAPI.AccountController do
       from(a in Actor,
         where: a.account_id == ^account.id,
         where: a.is_disabled == false,
+        where: a.managed_by == :account,
         where: a.type == :service_account
       )
       |> Safe.unscoped()
