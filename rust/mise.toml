@@ -6,7 +6,7 @@
 auto_install = false
 
 [tools]
-"github:aya-rs/bpf-linker" = { version = "0.10.3", os = ["linux"] }
+"github:aya-rs/bpf-linker" = { version = "0.12.0", os = ["linux"] }
 "cargo:cargo-deb" = { version = "3.7.0", os = ["linux"] }
 "github:taiki-e/cargo-llvm-cov" = "0.6.21"
 # `matching_regex` skips the npm tarballs the release also carries, so every
@@ -21,7 +21,7 @@ auto_install = false
 # overriding `rust-toolchain.toml` for everything else in this directory.
 [tasks.install-ebpf-toolchain]
 description = "Install the nightly toolchain that the eBPF program is compiled with"
-run = "rustup toolchain install nightly-2025-05-30 --profile minimal --component rust-src"
+run = "rustup toolchain install nightly-2026-10-17 --profile minimal --component rust-src"
 
 # =============================================================================
 # Individual checks (matching CI)
