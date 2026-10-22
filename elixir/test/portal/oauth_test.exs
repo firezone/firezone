@@ -428,6 +428,52 @@ defmodule Portal.OAuthTest do
     end
   end
 
+  test "Claude-style public CIMD clients retain PKCE exchange, refresh, and revocation",
+       context do
+    client_id = "https://localhost/claude-public-client.json"
+
+    Req.Test.stub(ClientMetadata, fn conn ->
+      Req.Test.json(conn, %{
+        "client_id" => client_id,
+        "client_name" => "Claude",
+        "redirect_uris" => [redirect_uri()],
+        "token_endpoint_auth_method" => "none",
+        "grant_types" => [
+          "authorization_code",
+          "refresh_token",
+          "urn:ietf:params:oauth:grant-type:jwt-bearer"
+        ],
+        "response_types" => ["code"]
+      })
+    end)
+
+    assert {:ok, client, _} =
+             OAuth.validate_client(%{"client_id" => client_id, "redirect_uri" => redirect_uri()})
+
+    assert client.token_endpoint_auth_method == "none"
+    context = %{context | client: client}
+    pid = self()
+
+    Req.Test.stub(ClientMetadata, fn conn ->
+      send(pid, :unexpected_key_fetch)
+      Req.Test.json(conn, %{})
+    end)
+
+    code = consent(context)
+    assert {:ok, issued} = OAuth.exchange(exchange_params(context, code), @resource)
+
+    assert {:ok, rotated} =
+             OAuth.refresh(refresh_params(context, issued.refresh_token), @resource)
+
+    assert :ok = OAuth.revoke(rotated.access_token)
+
+    {:ok, {_nonce, account_id, id, _fragment}} =
+      Portal.Authentication.decode_fragment(rotated.access_token, "mcp")
+
+    refute Repo.get_by(Portal.OAuthToken, id: id, account_id: account_id)
+    refute_receive :unexpected_key_fetch
+  end
+
   describe "signed client token exchanges" do
     test "requires signed authentication for token revocation", context do
       keys = Portal.Crypto.JWK.generate_jwk_and_jwks()
