@@ -13,8 +13,13 @@ defmodule Portal.OAuth.ClientAuthentication do
 
   @assertion_type "urn:ietf:params:oauth:client-assertion-type:jwt-bearer"
   @max_lifetime 300
+  @replay_retention_seconds 60
 
-  def authenticate(params, client_id) do
+  def authenticate(params, client_id, endpoint \\ :token)
+
+  def authenticate(%{"client_secret" => _}, _client_id, _endpoint), do: invalid_client()
+
+  def authenticate(params, client_id, endpoint) when endpoint in [:token, :revoke] do
     case OAuth.cached_client(client_id) do
       %{token_endpoint_auth_method: "none"} ->
         if Map.has_key?(params, "client_assertion") or
@@ -25,14 +30,14 @@ defmodule Portal.OAuth.ClientAuthentication do
         end
 
       %{token_endpoint_auth_method: "private_key_jwt"} = client ->
-        authenticate_assertion(params, client)
+        authenticate_assertion(params, client, endpoint)
 
       _ ->
         invalid_client()
     end
   end
 
-  defp authenticate_assertion(params, client) do
+  defp authenticate_assertion(params, client, endpoint) do
     with %{"client_assertion_type" => @assertion_type, "client_assertion" => assertion}
          when is_binary(assertion) and byte_size(assertion) <= 8192 <- params,
          {:ok, kid} <- assertion_key_id(assertion),
@@ -40,8 +45,13 @@ defmodule Portal.OAuth.ClientAuthentication do
          [key] <- Enum.filter(keys, &(is_map(&1) and &1["kid"] == kid)),
          true <- signing_key?(key),
          {:ok, claims} <- verify(assertion, key),
-         :ok <- validate_claims(claims, client.client_id),
-         :ok <- Database.consume_assertion(client.client_id, claims["jti"], claims["exp"]) do
+         :ok <- validate_claims(claims, client.client_id, endpoint),
+         :ok <-
+           Database.consume_assertion(
+             client.client_id,
+             claims["jti"],
+             claims["exp"] + @replay_retention_seconds
+           ) do
       :ok
     else
       _ -> invalid_client()
@@ -88,10 +98,10 @@ defmodule Portal.OAuth.ClientAuthentication do
     _ -> :error
   end
 
-  defp validate_claims(claims, client_id) do
+  defp validate_claims(claims, client_id, endpoint) do
     now = System.system_time(:second)
     issuer = PortalWeb.Endpoint.url()
-    audiences = [issuer, issuer <> "/oauth/token"]
+    audiences = [issuer, issuer <> "/oauth/#{endpoint}"]
 
     with %{"iss" => ^client_id, "sub" => ^client_id, "exp" => exp, "iat" => iat, "jti" => jti}
          when is_integer(exp) and is_integer(iat) and is_binary(jti) <- claims,
@@ -131,6 +141,8 @@ defmodule Portal.OAuth.ClientAuthentication do
       |> Safe.delete_all()
 
       id = :crypto.hash(:sha256, :erlang.term_to_binary({client_id, jti}))
+      # Keep records past assertion expiry so clock skew cannot reopen replay
+      # on a slower node after a faster node has cleaned up.
       expires_at = DateTime.from_unix!(exp)
 
       Safe.unscoped()

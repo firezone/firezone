@@ -1001,6 +1001,13 @@ defmodule PortalWeb.OAuthControllerTest do
     end
   end
 
+  test "rejects unsupported Authorization headers on token and revocation requests" do
+    for path <- ["/oauth/token", "/oauth/revoke"] do
+      conn = build_conn() |> put_req_header("authorization", "Basic ignored") |> post(path, %{})
+      assert %{"error" => "invalid_request"} = json_response(conn, 400)
+    end
+  end
+
   describe "POST /oauth/revoke" do
     test "always answers 200, whatever it is handed", %{conn: conn, account: account, actor: actor} do
       {_token, access, _refresh} = oauth_token_fixture(account: account, actor: actor)

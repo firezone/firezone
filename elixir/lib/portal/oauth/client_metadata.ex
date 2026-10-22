@@ -128,13 +128,17 @@ defmodule Portal.OAuth.ClientMetadata do
   end
 
   defp get(client_id, max_bytes \\ @max_body_bytes) do
+    deadline = System.monotonic_time(:millisecond) + @receive_timeout
+
     protected_get(
       client_id,
       headers: [{"accept", "application/json"}],
       receive_timeout: @receive_timeout,
+      request_timeout: @receive_timeout,
       max_retries: 0,
+      raw: true,
       redirect: false,
-      into: &collect(&1, &2, max_bytes)
+      into: &collect(&1, &2, max_bytes, deadline)
     )
     |> case do
       {:ok, %Req.Response{status: 200} = response} -> {:ok, response}
@@ -145,6 +149,14 @@ defmodule Portal.OAuth.ClientMetadata do
 
   # Halting mid-body keeps an oversized or endless document from being read into
   # memory, which a plain byte check after the fact would not.
+  defp collect(event, {request, response} = state, max_bytes, deadline) do
+    if System.monotonic_time(:millisecond) < deadline do
+      collect(event, state, max_bytes)
+    else
+      {:halt, {request, %{response | body: :timed_out}}}
+    end
+  end
+
   defp collect({:data, data}, {request, response}, max_bytes) do
     body = (response.body || "") <> data
 
@@ -155,10 +167,12 @@ defmodule Portal.OAuth.ClientMetadata do
     end
   end
 
+  defp decode(:timed_out), do: {:error, :request_timeout}
+
   defp decode(:too_large), do: {:error, :document_too_large}
 
-  # Req decodes a JSON body itself, even when the response was streamed into a
-  # collector, so the document usually arrives already parsed.
+  # Configured test adapters can return decoded maps directly. Real responses
+  # are fetched raw and parsed only after the streaming byte limit is applied.
   defp decode(document) when is_map(document), do: {:ok, document}
 
   defp decode(body) when is_binary(body) do
@@ -202,7 +216,9 @@ defmodule Portal.OAuth.ClientMetadata do
 
       method = preferred_method(preference, supported)
 
-      if method == "none" or valid_jwks_uri?(document["jwks_uri"]) do
+      if method == "none" or
+           (valid_jwks_uri?(document["jwks_uri"]) and
+              document["token_endpoint_auth_signing_alg"] in [nil, "RS256"]) do
         {:ok, method}
       else
         {:error, :invalid_document}
@@ -221,8 +237,9 @@ defmodule Portal.OAuth.ClientMetadata do
   end
 
   defp valid_jwks_uri?(value) when is_binary(value) do
-    case URI.parse(value) do
-      %URI{scheme: "https", host: host, userinfo: nil, fragment: nil} when is_binary(host) -> true
+    case URI.new(value) do
+      {:ok, %URI{scheme: "https", host: host, port: port, userinfo: nil, fragment: nil}}
+      when is_binary(host) and host != "" and port in 1..65_535 -> true
       _ -> false
     end
   end

@@ -429,6 +429,34 @@ defmodule Portal.OAuthTest do
   end
 
   describe "signed client token exchanges" do
+    test "requires signed authentication for token revocation", context do
+      keys = Portal.Crypto.JWK.generate_jwk_and_jwks()
+      client = oauth_client_fixture(token_endpoint_auth_method: "private_key_jwt",
+        jwks_uri: "https://localhost/jwks.json")
+      context = %{context | client: client}
+      Req.Test.stub(ClientMetadata, &Req.Test.json(&1, keys.jwks))
+      {token, access, _} = oauth_token_fixture(account: context.account, actor: context.actor,
+        client: client, resource: @resource)
+      assert :ok = OAuth.revoke(access)
+      assert Repo.get_by(Portal.OAuthToken, id: token.id, account_id: context.account.id)
+      wrong_client = Map.put(signed_assertion(client, keys, "revoke"), "client_id", "another-client")
+      assert :ok = OAuth.revoke(access, wrong_client)
+      assert Repo.get_by(Portal.OAuthToken, id: token.id, account_id: context.account.id)
+      assert :ok = OAuth.revoke(access, signed_assertion(client, keys, "revoke"))
+      refute Repo.get_by(Portal.OAuthToken, id: token.id, account_id: context.account.id)
+    end
+
+    test "rejects forged codes before fetching remote keys", context do
+      client = oauth_client_fixture(token_endpoint_auth_method: "private_key_jwt",
+        jwks_uri: "https://localhost/jwks.json")
+      context = %{context | client: client}
+      pid = self()
+      Req.Test.stub(ClientMetadata, fn conn -> send(pid, :keys_fetched); Req.Test.json(conn, %{}) end)
+      assert {:error, "invalid_grant", _} = OAuth.exchange(exchange_params(context, "forged"), @resource)
+      assert {:error, "invalid_grant", _} = OAuth.refresh(refresh_params(context, "forged"), @resource)
+      refute_receive :keys_fetched
+    end
+
     test "requires a valid assertion for both code exchange and refresh", context do
       keys = Portal.Crypto.JWK.generate_jwk_and_jwks()
 
@@ -750,13 +778,13 @@ defmodule Portal.OAuthTest do
     end
   end
 
-  defp signed_assertion(client, keys) do
+  defp signed_assertion(client, keys, endpoint \\ "token") do
     now = System.system_time(:second)
 
     claims = %{
       "iss" => client.client_id,
       "sub" => client.client_id,
-      "aud" => PortalWeb.Endpoint.url() <> "/oauth/token",
+      "aud" => PortalWeb.Endpoint.url() <> "/oauth/#{endpoint}",
       "iat" => now,
       "exp" => now + 60,
       "jti" => Ecto.UUID.generate()

@@ -20,6 +20,8 @@ defmodule PortalWeb.OAuthMetadataController do
       authorization_endpoint: issuer <> "/oauth/authorize",
       token_endpoint: issuer <> "/oauth/token",
       revocation_endpoint: issuer <> "/oauth/revoke",
+      revocation_endpoint_auth_methods_supported: ["none", "private_key_jwt"],
+      revocation_endpoint_auth_signing_alg_values_supported: ["RS256"],
       scopes_supported: Scope.all(),
       response_types_supported: ["code"],
       grant_types_supported: ["authorization_code", "refresh_token"],

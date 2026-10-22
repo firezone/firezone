@@ -9,7 +9,7 @@ defmodule Portal.Repo.Migrations.AddOAuthClientAssertions do
 
     create table(:oauth_client_assertions, primary_key: false) do
       add(:id, :binary, primary_key: true)
-      add(:expires_at, :utc_datetime_usec, null: false)
+      add(:expires_at, :timestamptz, null: false)
     end
 
     create(index(:oauth_client_assertions, [:expires_at]))

@@ -162,9 +162,9 @@ defmodule Portal.OAuth do
          {:ok, encoded} <- fetch_param(params, "code"),
          {:ok, verifier} <- fetch_verifier(params),
          {:ok, client_id} <- fetch_param(params, "client_id"),
-         :ok <- Portal.OAuth.ClientAuthentication.authenticate(params, client_id),
          {:ok, {nonce, account_id, id, fragment}} <-
            decode(encoded, "mcp_code"),
+         :ok <- Portal.OAuth.ClientAuthentication.authenticate(params, client_id),
          {:ok, code} <- Database.take_authorization_code(account_id, id),
          :ok <- Authentication.verify_fragment(code.secret_hash, code.secret_salt, nonce, fragment),
          :ok <- validate_code_freshness(code),
@@ -190,8 +190,8 @@ defmodule Portal.OAuth do
     with :ok <- validate_resource(params, expected_resource),
          {:ok, encoded} <- fetch_param(params, "refresh_token"),
          {:ok, client_id} <- fetch_param(params, "client_id"),
-         :ok <- Portal.OAuth.ClientAuthentication.authenticate(params, client_id),
          {:ok, {nonce, account_id, id, fragment}} <- decode(encoded, "mcp_refresh"),
+         :ok <- Portal.OAuth.ClientAuthentication.authenticate(params, client_id),
          {:ok, token} <- Database.fetch_refreshable_token(account_id, id),
          :ok <- verify_refresh_secret(token, nonce, fragment),
          :ok <- validate_token_client(token, client_id),
@@ -208,11 +208,16 @@ defmodule Portal.OAuth do
   Revokes a token. Always succeeds, as RFC 7009 requires, so that a caller
   cannot use the endpoint to learn whether a token existed.
   """
-  def revoke(encoded) when is_binary(encoded) do
+  def revoke(encoded, params \\ %{})
+
+  def revoke(encoded, params) when is_binary(encoded) do
     Enum.each(["mcp", "mcp_refresh"], fn type ->
       with {:ok, {nonce, account_id, id, fragment}} <- decode(encoded, type),
            {:ok, token} <- Database.fetch_token(account_id, id),
-           :ok <- verify_revoked_secret(token, type, nonce, fragment) do
+           :ok <- verify_revoked_secret(token, type, nonce, fragment),
+           client_id = token.oauth_grant.oauth_client.client_id,
+           true <- params["client_id"] in [nil, client_id],
+           :ok <- Portal.OAuth.ClientAuthentication.authenticate(params, client_id, :revoke) do
         Database.delete_token(account_id, id)
       end
     end)
@@ -220,7 +225,7 @@ defmodule Portal.OAuth do
     :ok
   end
 
-  def revoke(_encoded), do: :ok
+  def revoke(_encoded, _params), do: :ok
 
   @doc "Every client this actor has connected, newest first."
   def list_grants(%Subject{} = subject), do: Database.list_grants(subject)
@@ -697,7 +702,8 @@ defmodule Portal.OAuth do
     def fetch_token(account_id, id) do
       from(tokens in OAuthToken,
         where: tokens.account_id == ^account_id,
-        where: tokens.id == ^id
+        where: tokens.id == ^id,
+        preload: [oauth_grant: :oauth_client]
       )
       |> Safe.unscoped()
       |> Safe.one()

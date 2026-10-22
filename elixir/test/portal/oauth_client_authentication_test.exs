@@ -43,6 +43,69 @@ defmodule Portal.OAuth.ClientAuthenticationTest do
     assert Enum.count(results, &match?({:error, "invalid_client", _}, &1)) == 1
   end
 
+  test "rejects conflicting client secrets", %{client: client, keys: keys} do
+    params = Map.put(assertion(client, keys), "client_secret", "ignored-secret")
+
+    assert {:error, "invalid_client", _} =
+             ClientAuthentication.authenticate(params, client.client_id)
+
+    public = oauth_client_fixture()
+
+    assert {:error, "invalid_client", _} =
+             ClientAuthentication.authenticate(%{"client_secret" => "secret"}, public.client_id)
+  end
+
+  test "retains replay records beyond expiry for clock differences", %{client: client, keys: keys} do
+    exp = System.system_time(:second) + 60
+    jti = Ecto.UUID.generate()
+    params = assertion(client, keys, %{"exp" => exp, "jti" => jti})
+    assert :ok = ClientAuthentication.authenticate(params, client.client_id)
+    id = :crypto.hash(:sha256, :erlang.term_to_binary({client.client_id, jti}))
+    import Ecto.Query
+
+    expiry =
+      Repo.one(from(a in "oauth_client_assertions", where: a.id == ^id, select: a.expires_at))
+
+    assert DateTime.to_unix(expiry) == exp + 60
+  end
+
+  test "key fetches have request and receive deadlines and disable implicit decoding" do
+    pid = self()
+
+    adapter = fn request ->
+      send(pid, {:fetch_options, request.options})
+      {request, Req.Response.new(status: 200, body: %{"keys" => [%{}]})}
+    end
+
+    config = Portal.Config.fetch_env!(:portal, ClientMetadata)
+
+    Portal.Config.put_env_override(
+      :portal,
+      ClientMetadata,
+      Keyword.put(config, :req_opts, adapter: adapter)
+    )
+
+    assert {:ok, [_]} = ClientMetadata.fetch_jwks("https://client.example.com/keys")
+    assert_receive {:fetch_options, options}
+    assert options[:request_timeout] == 5000
+    assert options[:receive_timeout] == 5000
+    assert options[:raw] == true
+    assert options[:redirect] == false
+  end
+
+  test "binds assertions to their endpoint audience", %{client: client, keys: keys} do
+    revoked = assertion(client, keys, %{"aud" => PortalWeb.Endpoint.url() <> "/oauth/revoke"})
+
+    assert {:error, "invalid_client", _} =
+             ClientAuthentication.authenticate(revoked, client.client_id)
+
+    assert :ok = ClientAuthentication.authenticate(revoked, client.client_id, :revoke)
+    token = assertion(client, keys)
+
+    assert {:error, "invalid_client", _} =
+             ClientAuthentication.authenticate(token, client.client_id, :revoke)
+  end
+
   test "signed clients cannot fall back to none", %{client: client} do
     assert {:error, "invalid_client", _} =
              ClientAuthentication.authenticate(%{}, client.client_id)
@@ -191,6 +254,26 @@ defmodule Portal.OAuth.ClientAuthenticationTest do
 
     assert {:error, "invalid_client", _} =
              ClientAuthentication.authenticate(assertion(client, keys), client.client_id)
+  end
+
+  test "rejects unsafe or malformed JWKS URLs before requesting them" do
+    for uri <- [
+          "http://client.example.com/keys",
+          "https://user:secret@client.example.com/keys",
+          "https://client.example.com/keys#fragment",
+          "https://client.example.com:bad/keys",
+          "https://client.example.com:65536/keys",
+          "https://client.example.com:0/keys",
+          "not-a-url"
+        ] do
+      assert {:error, :invalid_jwks} = ClientMetadata.fetch_jwks(uri)
+
+      assert {:error, :invalid_document} =
+               ClientMetadata.authentication_method(%{
+                 "token_endpoint_auth_method" => "private_key_jwt",
+                 "jwks_uri" => uri
+               })
+    end
   end
 
   test "JWKS requests keep mandatory SSRF protection" do
