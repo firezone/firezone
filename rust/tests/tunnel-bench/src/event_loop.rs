@@ -24,7 +24,6 @@ use connlib_model::{ClientId, GatewayId, RelayId, ResourceId, SiteId};
 use criterion::measurement::Measurement;
 use criterion::{BenchmarkGroup, Criterion, Throughput};
 use dns_types::{Query, RecordType, Response};
-use ip_packet::make::TcpFlags;
 use ip_packet::{Ecn, IpPacket};
 use snownet::{RelaySocket, Transmit};
 use socket_factory::{DatagramOut, PerfUdpSocket, SocketFactory, TcpSocket, UdpSocket};
@@ -55,14 +54,6 @@ enum Resource {
 }
 
 const RESOURCES: [Resource; 2] = [Resource::Cidr, Resource::Dns];
-
-#[derive(Debug, Clone, Copy)]
-enum Protocol {
-    Udp,
-    Tcp,
-}
-
-const PROTOCOLS: [Protocol; 2] = [Protocol::Udp, Protocol::Tcp];
 
 /// The most packets sent through the tunnel in one go, bounding the memory their inputs take.
 const BURST: usize = 10_000;
@@ -104,57 +95,48 @@ pub fn bench<M: Measurement + Copy>(c: &mut Criterion<M>, measurement: M, group_
     let mut report = BTreeMap::new();
 
     for resource in RESOURCES {
-        for protocol in PROTOCOLS {
-            for flow_logs in [false, true] {
-                let flow_logs_id = if flow_logs {
-                    "flow_logs"
-                } else {
-                    "no_flow_logs"
-                };
-                let id = |name| format!("{name}/{resource}/{protocol}/{flow_logs_id}");
-                let connect = || connect(resource, protocol, flow_logs);
+        let id = |name| format!("{name}/{resource}");
+        let connect = || connect(resource, true);
 
-                let (client, gateway, now) = connect();
-                report.extend(outbound(
-                    &mut group,
-                    measurement,
-                    id("client_outbound"),
-                    client,
-                    gateway,
-                    now,
-                ));
+        let (client, gateway, now) = connect();
+        report.extend(outbound(
+            &mut group,
+            measurement,
+            id("client_outbound"),
+            client,
+            gateway,
+            now,
+        ));
 
-                let (client, gateway, now) = connect();
-                report.extend(inbound(
-                    &mut group,
-                    measurement,
-                    id("gateway_inbound"),
-                    gateway,
-                    client,
-                    now,
-                ));
+        let (client, gateway, now) = connect();
+        report.extend(inbound(
+            &mut group,
+            measurement,
+            id("gateway_inbound"),
+            gateway,
+            client,
+            now,
+        ));
 
-                let (client, gateway, now) = connect();
-                report.extend(outbound(
-                    &mut group,
-                    measurement,
-                    id("gateway_outbound"),
-                    gateway,
-                    client,
-                    now,
-                ));
+        let (client, gateway, now) = connect();
+        report.extend(outbound(
+            &mut group,
+            measurement,
+            id("gateway_outbound"),
+            gateway,
+            client,
+            now,
+        ));
 
-                let (client, gateway, now) = connect();
-                report.extend(inbound(
-                    &mut group,
-                    measurement,
-                    id("client_inbound"),
-                    client,
-                    gateway,
-                    now,
-                ));
-            }
-        }
+        let (client, gateway, now) = connect();
+        report.extend(inbound(
+            &mut group,
+            measurement,
+            id("client_inbound"),
+            client,
+            gateway,
+            now,
+        ));
     }
 
     if let Some(path) = std::env::var_os(BENCHER_JSON_ENV) {
@@ -283,10 +265,10 @@ enum State {
     Gateway(GatewayState),
 }
 
-fn connect(resource: Resource, protocol: Protocol, flow_logs: bool) -> (Side, Side, Instant) {
+fn connect(resource: Resource, flow_logs: bool) -> (Side, Side, Instant) {
     let mut tunnel = Tunnel::established(resource, flow_logs);
-    let request = tunnel.request(protocol);
-    let reply = tunnel.reply(protocol);
+    let request = tunnel.request();
+    let reply = tunnel.reply();
 
     let client = Side {
         state: State::Client(tunnel.client),
@@ -737,15 +719,6 @@ impl std::fmt::Display for Resource {
     }
 }
 
-impl std::fmt::Display for Protocol {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Protocol::Udp => f.write_str("udp"),
-            Protocol::Tcp => f.write_str("tcp"),
-        }
-    }
-}
-
 impl Resource {
     fn id(self) -> ResourceId {
         match self {
@@ -834,7 +807,7 @@ impl Tunnel {
 
         tunnel
             .client
-            .handle_tun_input(&mut tunnel.request(Protocol::Udp), now)
+            .handle_tun_input(&mut tunnel.request(), now)
             .unwrap();
 
         for _ in 0..200 {
@@ -844,13 +817,13 @@ impl Tunnel {
         tunnel
     }
 
-    fn request(&self, protocol: Protocol) -> IpPacket {
-        packet(protocol, CLIENT_TUN_V4.into(), self.dst, 50000, 443)
+    fn request(&self) -> IpPacket {
+        packet(CLIENT_TUN_V4.into(), self.dst, 50000, 443)
     }
 
     /// Mirrors a request as the Gateway writes it to its TUN device.
-    fn reply(&mut self, protocol: Protocol) -> IpPacket {
-        let mut request = self.request(protocol);
+    fn reply(&mut self) -> IpPacket {
+        let mut request = self.request();
         let datagram = self
             .client
             .handle_tun_input(&mut request, self.now)
@@ -873,24 +846,10 @@ impl Tunnel {
             )
             .unwrap()
             .unwrap();
-        let (sport, dport) = match protocol {
-            Protocol::Udp => {
-                let udp = request.as_udp().unwrap();
-                (udp.source_port(), udp.destination_port())
-            }
-            Protocol::Tcp => {
-                let tcp = request.as_tcp().unwrap();
-                (tcp.source_port(), tcp.destination_port())
-            }
-        };
+        let udp = request.as_udp().unwrap();
+        let (sport, dport) = (udp.source_port(), udp.destination_port());
 
-        packet(
-            protocol,
-            request.destination(),
-            request.source(),
-            dport,
-            sport,
-        )
+        packet(request.destination(), request.source(), dport, sport)
     }
 
     fn step(&mut self, resource: Resource) {
@@ -1038,22 +997,9 @@ fn resolve(client: &mut ClientState, sentinel: IpAddr, now: Instant) -> IpAddr {
         .unwrap()
 }
 
-/// Returns a packet of [`SIZE`] bytes, a data segment of an established connection for TCP.
-fn packet(protocol: Protocol, src: IpAddr, dst: IpAddr, sport: u16, dport: u16) -> IpPacket {
-    match protocol {
-        Protocol::Udp => {
-            ip_packet::make::udp_packet(src, dst, sport, dport, &[0; SIZE - 28]).unwrap()
-        }
-        Protocol::Tcp => {
-            let ack = TcpFlags {
-                syn: false,
-                ack: true,
-                rst: false,
-            };
-
-            ip_packet::make::tcp_packet(src, dst, sport, dport, ack, &[0; SIZE - 40]).unwrap()
-        }
-    }
+/// Returns a UDP packet of [`SIZE`] bytes.
+fn packet(src: IpAddr, dst: IpAddr, sport: u16, dport: u16) -> IpPacket {
+    ip_packet::make::udp_packet(src, dst, sport, dport, &[0; SIZE - 28]).unwrap()
 }
 
 fn binding_response(request: &[u8], from: SocketAddr) -> Option<Vec<u8>> {
