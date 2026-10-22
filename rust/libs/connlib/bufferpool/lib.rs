@@ -218,7 +218,7 @@ impl AsMut<[u8]> for Bytes {
 
 impl Drop for Bytes {
     fn drop(&mut self) {
-        let buffer = std::mem::take(&mut self.0);
+        let mut buffer = std::mem::take(&mut self.0);
         let capacity = buffer.capacity();
 
         let Some(class) = Class::of_capacity(capacity) else {
@@ -226,6 +226,8 @@ impl Drop for Bytes {
 
             return;
         };
+
+        buffer.clear();
 
         let mut buffer = Some(buffer);
 
@@ -243,10 +245,14 @@ impl Drop for Bytes {
     }
 }
 
+/// Allocates an empty buffer that is initialised up to its `capacity`.
 fn allocate(capacity: usize) -> Vec<u8> {
     count(1, capacity);
 
-    vec![0; capacity]
+    let mut buffer = vec![0; capacity];
+    buffer.clear();
+
+    buffer
 }
 
 /// Records a change in the number of allocated buffers of `capacity` bytes.
