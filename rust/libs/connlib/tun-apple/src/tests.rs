@@ -30,7 +30,8 @@ fn recv_reads_packets_routed_through_the_interface() {
     std::thread::Builder::new()
         .name("test TUN recv".to_owned())
         .spawn(move || {
-            let _ = super::bulk::recv(fd, syscalls, tx);
+            let open = || super::bulk::Fd::open(fd, tokio::io::Interest::READABLE, syscalls);
+            let _ = super::bulk::recv(open, tx);
         })
         .expect("spawn recv thread");
 
