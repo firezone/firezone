@@ -303,7 +303,7 @@ defmodule PortalAPI.Sockets.LatestSession do
           last_seen_remote_ip_location_lon: dynamic([d, v], v.remote_ip_location_lon),
           last_seen_version: dynamic([d, v], v.version),
           last_seen_at: dynamic([d, v], v.last_seen_at)
-        ] ++ [{:token_id, dynamic([d, v], v.token_id)}, {token_field, dynamic([d, v], v.token_id)}]
+        ] ++ [{:token_id, mirrored_token_id()}, {token_field, dynamic([d, v], v.token_id)}]
 
       {_count, ids} =
         from(d in Device,
@@ -324,6 +324,21 @@ defmodule PortalAPI.Sockets.LatestSession do
         else
           reraise error, __STACKTRACE__
         end
+    end
+
+    # token_id references client_tokens, which holds every client token and,
+    # while the tables are merged, a mirror of each gateway token. A gateway
+    # token without a mirror leaves the column null rather than failing the
+    # whole batch on the foreign key.
+    defp mirrored_token_id do
+      dynamic(
+        [d, v],
+        fragment(
+          "(SELECT ct.id FROM client_tokens ct WHERE ct.account_id = ? AND ct.id = ?)",
+          v.account_id,
+          v.token_id
+        )
+      )
     end
 
     defp unique_violation?(%Postgrex.Error{postgres: %{code: :unique_violation}}), do: true
