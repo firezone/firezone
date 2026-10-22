@@ -529,6 +529,8 @@ defmodule Portal.Billing.EventHandler do
     # Create default groups and resources
     changeset = create_everyone_group_changeset(account)
     {:ok, _everyone_group} = Database.insert(changeset)
+    changeset = create_infrastructure_actor_changeset(account)
+    {:ok, _infrastructure_actor} = Database.insert(changeset)
     changeset = create_site_changeset(account, %{name: "Default Site"})
     {:ok, _site} = Database.insert_site(changeset)
     changeset = create_internet_site_changeset(account)
@@ -564,6 +566,14 @@ defmodule Portal.Billing.EventHandler do
     import Ecto.Changeset
     attrs = %{account_id: account.id, name: "Everyone", type: :managed}
     cast(%Portal.Group{}, attrs, ~w[account_id name type]a)
+  end
+
+  defp create_infrastructure_actor_changeset(account) do
+    import Ecto.Changeset
+
+    %Portal.Actor{account_id: account.id}
+    |> cast(Portal.Actor.infrastructure_attrs(), [:name, :type, :managed_by])
+    |> Portal.Actor.changeset()
   end
 
   defp create_account_owner_group_changeset(account) do

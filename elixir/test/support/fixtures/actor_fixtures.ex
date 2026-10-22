@@ -95,6 +95,15 @@ defmodule Portal.ActorFixtures do
   end
 
   @doc """
+  Generate the system-managed Infrastructure service account an account is
+  provisioned with.
+  """
+  def infrastructure_actor_fixture(attrs \\ %{}) do
+    attrs = Enum.into(attrs, %{})
+    actor_fixture(Map.merge(attrs, Portal.Actor.infrastructure_attrs()))
+  end
+
+  @doc """
   Generate an API client actor.
   """
   def api_client_fixture(attrs \\ %{}) do

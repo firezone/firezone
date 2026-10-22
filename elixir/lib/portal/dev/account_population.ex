@@ -377,6 +377,7 @@ defmodule Portal.Dev.AccountPopulation do
     }
 
     everyone_group = create_group(account, %{name: "Everyone", type: :managed})
+    _infrastructure_actor = create_infrastructure_actor(account)
     email_provider = create_email_provider(account)
     _x509_provider = create_x509_provider(account)
 
@@ -616,6 +617,13 @@ defmodule Portal.Dev.AccountPopulation do
     |> put_change(:account_id, account.id)
     |> validate_required([:name, :account_id, :type])
     |> Group.changeset()
+    |> Repo.insert!()
+  end
+
+  defp create_infrastructure_actor(account) do
+    %Actor{account_id: account.id}
+    |> cast(Actor.infrastructure_attrs(), [:name, :type, :managed_by])
+    |> Actor.changeset()
     |> Repo.insert!()
   end
 
