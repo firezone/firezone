@@ -283,27 +283,19 @@ async fn send_errors_do_not_hold_up_later_datagrams() {
     let oversized = std::iter::repeat_with(|| transmit(peer_addr, 70_000)).take(num_failing);
 
     let num_errors = tokio::time::timeout(Duration::from_secs(5), async {
-        let mut num_errors = 0;
-
         for transmit in oversized.chain([transmit(peer_addr, 4)]) {
             io.send_network(transmit);
-
-            while io.sockets.num_waiting(IpVersion::V4) > 0 {
-                num_errors += next_send_errors(&mut io).await;
-            }
-        }
-        while num_errors < num_failing {
-            num_errors += next_send_errors(&mut io).await;
+            poll_fn(|cx| io.flush(cx)).await.unwrap();
         }
 
         peer.recv_from(&mut [0; 16]).await.unwrap();
 
-        num_errors
+        next_send_errors(&mut io).await
     })
     .await
     .unwrap();
 
-    assert_eq!(num_errors, num_failing);
+    assert_eq!(num_errors, QUEUE_SIZE);
 }
 
 #[tokio::test]
