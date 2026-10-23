@@ -67,7 +67,7 @@ impl<R: Role> EventLoop<R> {
             .unwrap();
         let _guard = runtime.enter();
 
-        let (mut tunnel, socket) = state.inline();
+        let (mut tunnel, socket) = Tunnel::fake(state);
         let (tun, tun_reads, tun_writes) = tun::fake(TUN_CAPACITY);
         tunnel.set_tun(tun);
 
@@ -156,7 +156,6 @@ impl<R: Role> EventLoop<R> {
 /// The calls that differ between a [`ClientTunnel`](tunnel::ClientTunnel) and a
 /// [`GatewayTunnel`](tunnel::GatewayTunnel).
 pub trait Role: Sized {
-    fn inline(self) -> (Tunnel<Self>, SocketThreadEnds);
     fn poll(
         tunnel: &mut Tunnel<Self>,
         cx: &mut Context<'_>,
@@ -167,10 +166,6 @@ pub trait Role: Sized {
 }
 
 impl Role for ClientState {
-    fn inline(self) -> (Tunnel<Self>, SocketThreadEnds) {
-        Tunnel::<Self>::inline(self)
-    }
-
     fn poll(
         tunnel: &mut Tunnel<Self>,
         cx: &mut Context<'_>,
@@ -189,10 +184,6 @@ impl Role for ClientState {
 }
 
 impl Role for GatewayState {
-    fn inline(self) -> (Tunnel<Self>, SocketThreadEnds) {
-        Tunnel::<Self>::inline(self)
-    }
-
     fn poll(
         tunnel: &mut Tunnel<Self>,
         cx: &mut Context<'_>,

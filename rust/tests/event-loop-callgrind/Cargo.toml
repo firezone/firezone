@@ -14,7 +14,7 @@ rand = { workspace = true }
 socket-factory = { workspace = true }
 tokio = { workspace = true, features = ["rt", "test-util", "time"] }
 tun = { workspace = true }
-tunnel = { workspace = true, features = ["bench"] }
+tunnel = { workspace = true }
 tunnel-fixture = { workspace = true }
 
 [target.'cfg(target_os = "linux")'.dev-dependencies]
