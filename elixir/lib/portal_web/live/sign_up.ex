@@ -1249,6 +1249,7 @@ defmodule PortalWeb.SignUp do
         changeset_fns = %{
           account: &create_account_changeset/1,
           everyone_group: &create_everyone_group_changeset/1,
+          infrastructure_actor: &create_infrastructure_actor_changeset/1,
           site: &create_site_changeset/2,
           internet_site: &create_internet_site_changeset/1,
           internet_resource: &create_internet_resource_changeset/2,
@@ -1429,6 +1430,14 @@ defmodule PortalWeb.SignUp do
     |> validate_required([:name, :type])
   end
 
+  defp create_infrastructure_actor_changeset(account) do
+    import Ecto.Changeset
+
+    %Portal.Actor{account_id: account.id}
+    |> cast(Portal.Actor.infrastructure_attrs(), [:name, :type, :managed_by])
+    |> Portal.Actor.changeset()
+  end
+
   defp create_account_owner_group_changeset(account) do
     import Ecto.Changeset
 
@@ -1552,6 +1561,10 @@ defmodule PortalWeb.SignUp do
       end)
       |> Ecto.Multi.run(:everyone_group, fn _repo, %{account: account} ->
         changeset_fns.everyone_group.(account)
+        |> insert()
+      end)
+      |> Ecto.Multi.run(:infrastructure_actor, fn _repo, %{account: account} ->
+        changeset_fns.infrastructure_actor.(account)
         |> insert()
       end)
       |> Ecto.Multi.run(:provider, fn _repo, %{account: account} ->

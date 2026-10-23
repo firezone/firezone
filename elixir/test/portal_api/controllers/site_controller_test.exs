@@ -4,6 +4,7 @@ defmodule PortalAPI.SiteControllerTest do
 
   import Portal.AccountFixtures
   import Portal.ActorFixtures
+  import Portal.DeviceFixtures
   import Portal.PolicyFixtures
   import Portal.ResourceFixtures
   import Portal.SiteFixtures
@@ -391,7 +392,7 @@ defmodule PortalAPI.SiteControllerTest do
       refute Repo.get_by(Site, id: site.id, account_id: site.account_id)
     end
 
-    test "deletes the site's resources and their policies", %{
+    test "refuses to delete a site that still has resources", %{
       conn: conn,
       account: account,
       actor: actor
@@ -406,9 +407,30 @@ defmodule PortalAPI.SiteControllerTest do
         |> put_req_header("content-type", "application/json")
         |> delete("/sites/#{site.id}")
 
+      assert %{"status" => 409, "detail" => detail} = json_response(conn, 409)
+      assert detail =~ "Resources"
+      assert Repo.get_by(Site, id: site.id, account_id: account.id)
+      assert Repo.get_by(Portal.Resource, id: resource.id, account_id: account.id)
+      assert Repo.get_by(Portal.Policy, id: policy.id, account_id: account.id)
+    end
+
+    test "keeps the site's gateways and unassigns them", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      site = site_fixture(%{account: account})
+      gateway = gateway_fixture(account: account, site: site)
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> delete("/sites/#{site.id}")
+
       assert json_response(conn, 200)
-      refute Repo.get_by(Portal.Resource, id: resource.id, account_id: account.id)
-      refute Repo.get_by(Portal.Policy, id: policy.id, account_id: account.id)
+      refute Repo.get_by(Site, id: site.id, account_id: account.id)
+      assert %{site_id: nil} = Repo.get_by!(Portal.Device, id: gateway.id, account_id: account.id)
     end
 
     test "returns error when deleting system managed site", %{

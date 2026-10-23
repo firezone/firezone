@@ -3,6 +3,7 @@ defmodule Portal.Actor do
   import Ecto.Changeset
   import Portal.Changeset
   alias Portal.Email
+  alias __MODULE__.Database
 
   @primary_key false
   @foreign_key_type :binary_id
@@ -16,6 +17,11 @@ defmodule Portal.Actor do
 
     field :type, Ecto.Enum,
       values: [:account_user, :account_admin_user, :service_account, :api_client]
+
+    # Who owns the actor. The system provisions a few per account, such as the
+    # service account behind infrastructure devices; those cannot be changed or
+    # deleted by admins.
+    field :managed_by, Ecto.Enum, values: ~w[account system]a, default: :account
 
     field :email, :string
     field :password_hash, :string, redact: true
@@ -31,6 +37,7 @@ defmodule Portal.Actor do
       preload_order: [desc: :inserted_at],
       references: :id
 
+    has_many :device_actors, Portal.DeviceActor, references: :id
     has_many :client_tokens, Portal.ClientToken, references: :id
     has_many :one_time_passcodes, Portal.OneTimePasscode, references: :id
     has_many :memberships, Portal.Membership, on_replace: :delete, references: :id
@@ -57,6 +64,7 @@ defmodule Portal.Actor do
     |> trim_change(~w[name email]a)
     |> validate_length(:name, max: 255)
     |> validate_type_transition()
+    |> validate_system_actor_unchanged()
     |> track_disabling_directory()
     |> normalize_email(:email)
     |> validate_email(:email)
@@ -66,7 +74,53 @@ defmodule Portal.Actor do
     |> check_constraint(:disabled_by_directory_id, name: :disabled_by_directory_requires_disabled)
     |> unique_constraint(:email, name: :actors_account_id_email_index)
     |> check_constraint(:type, name: :type_is_valid)
+    |> check_constraint(:managed_by, name: :actors_managed_by_is_valid)
   end
+
+  @infrastructure_name "Infrastructure"
+
+  @doc """
+  Attributes of the service account every account gets at creation: the actor
+  infrastructure devices connect with when nobody else is named, owned by the
+  system so it cannot be renamed, disabled or deleted. Compare
+  `Portal.Group.account_owner_attrs/0`.
+  """
+  @spec infrastructure_attrs() :: map()
+  def infrastructure_attrs do
+    %{name: @infrastructure_name, type: :service_account, managed_by: :system}
+  end
+
+  @doc "The account's Infrastructure service account, or nil if it was never provisioned."
+  @spec fetch_infrastructure_actor(Ecto.UUID.t()) :: t() | nil
+  def fetch_infrastructure_actor(account_id), do: Database.fetch_infrastructure_actor(account_id)
+
+  @doc """
+  The account's Infrastructure service account, provisioned on the spot if the
+  account somehow has none. Every account is meant to be created with one; a
+  concurrent creation loses on the unique index and reads the winner.
+  """
+  @spec fetch_or_create_infrastructure_actor(Ecto.UUID.t()) :: t()
+  def fetch_or_create_infrastructure_actor(account_id) do
+    case fetch_infrastructure_actor(account_id) do
+      %__MODULE__{} = actor ->
+        actor
+
+      nil ->
+        case Database.insert_infrastructure_actor(account_id) do
+          {:ok, actor} -> actor
+          {:error, _changeset} -> Database.fetch_infrastructure_actor(account_id)
+        end
+    end
+  end
+
+  @doc "The service account `id` in the subject's account, or nil."
+  @spec fetch_service_account(Ecto.UUID.t(), Portal.Authentication.Subject.t()) ::
+          t() | nil | {:error, :unauthorized}
+  def fetch_service_account(id, subject), do: Database.fetch_service_account(id, subject)
+
+  @doc "Whether the system owns `actor`, so admins cannot change or delete it."
+  @spec system_managed?(t()) :: boolean()
+  def system_managed?(%__MODULE__{managed_by: managed_by}), do: managed_by == :system
 
   def email_meaningfully_changed?(%Ecto.Changeset{} = changeset) do
     case fetch_change(changeset, :email) do
@@ -74,6 +128,15 @@ defmodule Portal.Actor do
       :error -> false
     end
   end
+
+  # A system-managed actor is exactly what the system made it: no rename, no
+  # email, no type change, no disabling. Creating one is the only write.
+  defp validate_system_actor_unchanged(%Ecto.Changeset{data: %__MODULE__{managed_by: :system}} = changeset)
+       when changeset.changes != %{} do
+    add_error(changeset, :base, "system-managed actors cannot be changed")
+  end
+
+  defp validate_system_actor_unchanged(changeset), do: changeset
 
   defp validate_type_transition(changeset) do
     old_type = changeset.data.type
@@ -138,5 +201,39 @@ defmodule Portal.Actor do
       other ->
         other
     end)
+  end
+
+  defmodule Database do
+    @moduledoc false
+    import Ecto.Query
+    alias Portal.Safe
+
+    def insert_infrastructure_actor(account_id) do
+      %Portal.Actor{account_id: account_id}
+      |> Ecto.Changeset.cast(Portal.Actor.infrastructure_attrs(), [:name, :type, :managed_by])
+      |> Portal.Actor.changeset()
+      |> Ecto.Changeset.unique_constraint(:managed_by,
+        name: :actors_one_infrastructure_per_account_index
+      )
+      |> Safe.unscoped()
+      |> Safe.insert()
+    end
+
+    def fetch_service_account(id, subject) do
+      from(a in Portal.Actor, where: a.id == ^id, where: a.type == :service_account)
+      |> Safe.scoped(subject)
+      |> Safe.one()
+    end
+
+    def fetch_infrastructure_actor(account_id) do
+      from(a in Portal.Actor,
+        where: a.account_id == ^account_id,
+        where: a.managed_by == :system,
+        where: a.type == :service_account,
+        limit: 1
+      )
+      |> Safe.unscoped()
+      |> Safe.one()
+    end
   end
 end

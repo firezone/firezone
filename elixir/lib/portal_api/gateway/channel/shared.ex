@@ -135,7 +135,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
     {:ok, relays} = select_relays(socket)
     :ok = Presence.Relays.subscribe()
 
-    account = Database.get_account_by_id!(socket.assigns.gateway.account_id)
+    account = Database.fetch_account!(socket.assigns.subject)
 
     socket = assign(socket, :account, account)
 
@@ -834,7 +834,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
   defp reinitialize_gateway(socket) do
     {:ok, relays} = select_relays(socket)
     socket = cache_relays(socket, relays)
-    account = Database.get_account_by_id!(socket.assigns.gateway.account_id)
+    account = Database.fetch_account!(socket.assigns.subject)
 
     init(socket, account, relays)
     socket
@@ -1139,7 +1139,10 @@ defmodule PortalAPI.Gateway.Channel.Shared do
           Portal.Queue.enqueue(
             :gateway_session_queue,
             session_attrs(socket.assigns.gateway, socket.assigns.session_ref),
-            metadata: %{timestamp: DateTime.utc_now()}
+            metadata: %{
+              subject: Portal.Authentication.Subject.to_map(socket.assigns.subject),
+              timestamp: DateTime.utc_now()
+            }
           )
 
           {:noreply, arm_session_durability_timer(socket)}
@@ -1159,7 +1162,9 @@ defmodule PortalAPI.Gateway.Channel.Shared do
         socket
 
       sup_pid ->
-        gateway = socket.assigns.gateway
+        # The sites the gateway serves travel in its presence meta, so the
+        # assignments are read here, at connect.
+        gateway = Database.preload_site_devices(socket.assigns.gateway)
 
         :ok = Presence.Devices.connect(gateway, socket.assigns.token_id)
 
@@ -1181,7 +1186,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
       session_ref: session_ref,
       account_id: gateway.account_id,
       device_id: gateway.id,
-      gateway_token_id: gateway.gateway_token_id,
+      token_id: gateway.token_id,
       public_key: gateway.public_key,
       user_agent: gateway.last_seen_user_agent,
       remote_ip: gateway.last_seen_remote_ip,
@@ -1203,10 +1208,16 @@ defmodule PortalAPI.Gateway.Channel.Shared do
     alias Portal.Safe
     alias Portal.Account
 
-    def get_account_by_id!(id) do
-      from(a in Account, where: a.id == ^id)
-      |> Safe.unscoped()
+    # Re-read rather than taken from the subject: the account's slug and
+    # config can change while the gateway stays connected.
+    def fetch_account!(subject) do
+      from(a in Account, where: a.id == ^subject.account.id)
+      |> Safe.scoped(subject)
       |> Safe.one!()
+    end
+
+    def preload_site_devices(%Portal.Device{} = gateway) do
+      Safe.preload(gateway, :site_devices)
     end
   end
 end

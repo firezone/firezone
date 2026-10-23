@@ -1,6 +1,77 @@
 defmodule Portal.VersionTest do
   use ExUnit.Case, async: true
 
+  describe "proto_range/3" do
+    test "a legacy client speaks exactly its own minor" do
+      assert Portal.Version.proto_range(%{}, :client, "1.5.3") == %{min: 5, max: 5}
+    end
+
+    test "a legacy gateway speaks one minor either side" do
+      assert Portal.Version.proto_range(%{}, :gateway, "1.6.5") == %{min: 5, max: 7}
+      assert Portal.Version.proto_range(%{}, :gateway, "1.0.1") == %{min: 0, max: 1}
+    end
+
+    test "a binary that states its range is believed" do
+      params = %{"proto_min" => "5", "proto_max" => "7"}
+      assert Portal.Version.proto_range(params, :client, "1.7.0") == %{min: 5, max: 7}
+      assert Portal.Version.proto_range(%{"proto_min" => 5, "proto_max" => 7}, :gateway, "1.7.0") == %{min: 5, max: 7}
+    end
+
+    test "a nonsense range is ignored" do
+      assert Portal.Version.proto_range(%{"proto_min" => "7", "proto_max" => "5"}, :client, "1.7.0") == nil
+      assert Portal.Version.proto_range(%{"proto_min" => "x", "proto_max" => "7"}, :client, "1.7.0") == nil
+    end
+
+    test "an unknown or foreign version has no range" do
+      assert Portal.Version.proto_range(%{}, :client, nil) == nil
+      assert Portal.Version.proto_range(%{}, :client, "garbage") == nil
+      assert Portal.Version.proto_range(%{}, :client, "2.0.0") == nil
+    end
+  end
+
+  describe "compatible?/2" do
+    test "reproduces the client to gateway rule for legacy binaries" do
+      client = Portal.Version.proto_range(%{}, :client, "1.6.0")
+
+      assert Portal.Version.compatible?(client, Portal.Version.proto_range(%{}, :gateway, "1.5.9"))
+      assert Portal.Version.compatible?(client, Portal.Version.proto_range(%{}, :gateway, "1.6.1"))
+      assert Portal.Version.compatible?(client, Portal.Version.proto_range(%{}, :gateway, "1.7.0"))
+      refute Portal.Version.compatible?(client, Portal.Version.proto_range(%{}, :gateway, "1.4.0"))
+      refute Portal.Version.compatible?(client, Portal.Version.proto_range(%{}, :gateway, "1.8.0"))
+    end
+
+    test "reproduces the same-minor rule between legacy clients" do
+      a = Portal.Version.proto_range(%{}, :client, "1.6.0")
+      assert Portal.Version.compatible?(a, Portal.Version.proto_range(%{}, :client, "1.6.9"))
+      refute Portal.Version.compatible?(a, Portal.Version.proto_range(%{}, :client, "1.7.0"))
+    end
+
+    test "a stated range reaches everything it overlaps" do
+      unified = %{min: 5, max: 7}
+      assert Portal.Version.compatible?(unified, Portal.Version.proto_range(%{}, :client, "1.5.0"))
+      assert Portal.Version.compatible?(unified, Portal.Version.proto_range(%{}, :gateway, "1.4.0"))
+      refute Portal.Version.compatible?(unified, Portal.Version.proto_range(%{}, :client, "1.8.0"))
+    end
+
+    test "an unknown range is compatible with nothing" do
+      refute Portal.Version.compatible?(nil, %{min: 5, max: 5})
+      refute Portal.Version.compatible?(%{min: 5, max: 5}, nil)
+    end
+  end
+
+  describe "proto_range_from_meta/2" do
+    test "takes the stated range over the version" do
+      assert Portal.Version.proto_range_from_meta(%{proto_min: 5, proto_max: 7, version: "1.7.0"}, :client) ==
+               %{min: 5, max: 7}
+    end
+
+    test "falls back to the version for metas without one" do
+      assert Portal.Version.proto_range_from_meta(%{version: "1.6.0"}, :gateway) == %{min: 5, max: 7}
+      assert Portal.Version.proto_range_from_meta(%{proto_min: nil, proto_max: nil, version: "1.6.0"}, :client) ==
+               %{min: 6, max: 6}
+    end
+  end
+
   describe "fetch_version/1" do
     test "can decode linux headless-client version" do
       assert Portal.Version.fetch_version("Fedora/42.0.0 headless-client/1.4.5 (arm64; 24.1.0)") ==

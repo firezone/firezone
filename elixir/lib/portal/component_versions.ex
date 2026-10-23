@@ -33,6 +33,10 @@ defmodule Portal.ComponentVersions do
     |> component_version()
   end
 
+  @doc "The latest version available for whatever the device runs."
+  def latest_version(%Device{type: :gateway}), do: gateway_version()
+  def latest_version(%Device{} = client), do: client_version(client)
+
   def component_version(component) do
     Portal.Config.get_env(:portal, ComponentVersions, [])
     |> Keyword.get(:versions, [])

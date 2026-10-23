@@ -133,9 +133,12 @@ defmodule PortalAPI.GatewayController do
   def create(conn, %{"site_id" => site_id} = params) do
     subject = conn.assigns.subject
     name = get_in(params, ["gateway", "name"])
+    actor_id = get_in(params, ["gateway", "actor_id"])
 
     with {:ok, site} <- Database.fetch_site(site_id, subject),
-         {:ok, gateway, _token, encoded_token} <- Database.provision_gateway(site, name, subject) do
+         {:ok, owner} <- PortalAPI.DeviceTokenOwner.fetch(actor_id, subject),
+         {:ok, gateway, _token, encoded_token} <-
+           Database.provision_device(site, owner, name, subject) do
       gateway = Presence.Devices.preload_presence([gateway]) |> List.first()
 
       conn
@@ -260,8 +263,8 @@ defmodule PortalAPI.GatewayController do
       end
     end
 
-    def provision_gateway(site, name, subject) do
-      Devices.provision_gateway(site, name, subject)
+    def provision_device(site, owner, name, subject) do
+      Devices.provision_device(site, owner, name, subject)
     end
 
     def list_gateways(subject, opts \\ []) do
@@ -274,13 +277,13 @@ defmodule PortalAPI.GatewayController do
 
     # Surfaces the rotation state of the token the gateway last connected
     # with, so a caller can tell a pending rotation from a completed one.
-    # Left join because gateway_token_id is null until the gateway's first
+    # Left join because token_id is null until the gateway's first
     # connect, and select_merge because rotated_at lives on the token
     # rather than the device.
     defp with_token_rotation(queryable) do
       queryable
-      |> join(:left, [gateways: d], t in Portal.GatewayToken,
-        on: t.id == d.gateway_token_id and t.account_id == d.account_id,
+      |> join(:left, [gateways: d], t in Portal.ClientToken,
+        on: t.id == d.token_id and t.account_id == d.account_id,
         as: :gateway_token
       )
       |> select_merge([gateway_token: t], %{gateway_token_rotated_at: t.rotated_at})
@@ -328,9 +331,23 @@ defmodule PortalAPI.GatewayController do
       ]
     end
 
+    # A gateway serves every site it is assigned to, so the site's gateways
+    # are read from the assignments rather than the gateway's site column.
     defp filter_by_site_id(queryable, site_id) do
-      dynamic = dynamic([gateways: d], d.site_id == ^site_id)
-      {queryable, dynamic}
+      {queryable, serves_site(site_id)}
+    end
+
+    defp serves_site(site_id) do
+      dynamic(
+        [gateways: d],
+        exists(
+          from(sd in Portal.SiteDevice,
+            where:
+              sd.account_id == parent_as(:gateways).account_id and
+                sd.device_id == parent_as(:gateways).id and sd.site_id == ^site_id
+          )
+        )
+      )
     end
 
     defp filter_by_name(queryable, name) do
@@ -351,7 +368,8 @@ defmodule PortalAPI.GatewayController do
     def fetch_gateway(site_id, id, subject) do
       result =
         from(d in Device, as: :gateways)
-        |> where([gateways: d], d.id == ^id and d.type == :gateway and d.site_id == ^site_id)
+        |> where([gateways: d], d.id == ^id and d.type == :gateway)
+        |> where(^serves_site(site_id))
         |> with_token_rotation()
         |> Safe.scoped(subject)
         |> Safe.one()

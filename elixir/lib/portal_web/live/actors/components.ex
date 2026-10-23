@@ -138,7 +138,12 @@ defmodule PortalWeb.Actors.Components do
         </div>
         <%!-- Right: actions --%>
         <div class="flex items-center gap-1.5 shrink-0">
-          <Form.button type="button" phx-click="open_actor_edit_form" size="xs">
+          <Form.button
+            :if={@actor.managed_by != :system}
+            type="button"
+            phx-click="open_actor_edit_form"
+            size="xs"
+          >
             <Core.icon name="ri-pencil-line" class="w-3.5 h-3.5" /> Edit
           </Form.button>
           <Form.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_panel" />
@@ -240,10 +245,29 @@ defmodule PortalWeb.Actors.Components do
             <Core.icon name="ri-team-line" class="w-3.5 h-3.5" /> Groups
           </span>
         </button>
+        <button
+          type="button"
+          phx-click="change_tab"
+          phx-value-tab="devices"
+          class={[
+            "px-3 py-2.5 text-xs font-medium whitespace-nowrap border-b-2 transition-colors",
+            if(@active_tab == "devices",
+              do: "border-brand text-brand",
+              else: "border-transparent text-body hover:text-heading"
+            )
+          ]}
+        >
+          <span class="flex items-center gap-1.5">
+            <Core.icon name="ri-computer-line" class="w-3.5 h-3.5" /> Devices
+          </span>
+        </button>
       </div>
       <div class="shrink-0 px-2">
         <Form.button
-          :if={@actor.type == :service_account and @active_tab == "tokens" and not @adding_token}
+          :if={
+            @actor.type == :service_account and @actor.managed_by != :system and
+              @active_tab == "tokens" and not @adding_token
+          }
           type="button"
           phx-click="open_add_token_form"
           size="xs"
@@ -767,6 +791,9 @@ defmodule PortalWeb.Actors.Components do
                         <span :if={token.expires_at}>
                           Expires: <Core.relative_datetime datetime={token.expires_at} />
                         </span>
+                        <span :if={token.device}>Bound to {token.device.name}</span>
+                        <span :if={token.site}>Joins site {token.site.name}</span>
+                        <span :if={token.rotated_at}>Rotated out</span>
                         <span :if={
                           token_location(token) ||
                             (token.last_used_device && token.last_used_device.last_seen_remote_ip)
@@ -778,6 +805,16 @@ defmodule PortalWeb.Actors.Components do
                     </div>
                   </div>
                   <div class="flex items-center gap-1 shrink-0">
+                    <button
+                      :if={token.device_id && is_nil(token.rotated_at)}
+                      type="button"
+                      phx-click="rotate_token"
+                      phx-value-id={token.id}
+                      class="flex items-center justify-center w-6 h-6 rounded text-subtle hover:text-heading hover:bg-surface transition-colors"
+                      title="Rotate token"
+                    >
+                      <Core.icon name="ri-refresh-line" class="w-3.5 h-3.5" />
+                    </button>
                     <button
                       type="button"
                       phx-click="confirm_delete_token"
@@ -802,6 +839,13 @@ defmodule PortalWeb.Actors.Components do
                   <.detail_field :if={token.expires_at} label="Token Expires">
                     <Core.relative_datetime datetime={token.expires_at} />
                   </.detail_field>
+                  <.detail_field :if={token.device} label="Bound to device">
+                    {token.device.name}
+                  </.detail_field>
+                  <.detail_field :if={token.site} label="Joins site">{token.site.name}</.detail_field>
+                  <.detail_field :if={token.rotated_at} label="Rotated out">
+                    <Core.relative_datetime datetime={token.rotated_at} />
+                  </.detail_field>
                   <.detail_field label="Created">
                     <Core.relative_datetime datetime={token.inserted_at} />
                   </.detail_field>
@@ -810,6 +854,45 @@ defmodule PortalWeb.Actors.Components do
             </li>
           </ul>
         </div>
+      </div>
+
+      <div :if={@active_tab == "devices"}>
+        <div
+          :if={@devices == []}
+          class="flex items-center justify-center h-32 text-sm text-subtle"
+        >
+          No devices have connected as this actor.
+        </div>
+        <ul :if={@devices != []}>
+          <li :for={device_actor <- @devices} class="border-b border-border">
+            <Navigation.link
+              navigate={~p"/#{@account}/devices/#{device_actor.device.id}"}
+              class="flex items-center gap-3 px-5 py-3 hover:bg-raised transition-colors"
+            >
+              <Core.ping_icon
+                color={if device_actor.device.online?, do: "success", else: "danger"}
+                title={if device_actor.device.online?, do: "Online", else: "Offline"}
+              />
+              <div class="flex items-center justify-center w-7 h-7 rounded-full bg-raised border border-border shrink-0">
+                <Core.icon
+                  name={DeviceComponents.os_icon_name(device_actor.device.last_seen_user_agent)}
+                  class="w-4 h-4 text-body"
+                />
+              </div>
+              <div class="flex-1 min-w-0">
+                <p class="text-sm font-medium text-heading truncate">
+                  {device_actor.device.name}
+                </p>
+                <div class="flex items-center gap-3 mt-0.5 text-xs text-subtle">
+                  <span class="font-mono">{device_actor.device.slug}</span>
+                  <span>
+                    Last seen <Core.relative_datetime datetime={device_actor.last_seen_at} />
+                  </span>
+                </div>
+              </div>
+            </Navigation.link>
+          </li>
+        </ul>
       </div>
 
       <div :if={@active_tab == "groups"}>
@@ -940,7 +1023,7 @@ defmodule PortalWeb.Actors.Components do
           </div>
           <Form.action_button
             :if={
-              !@actor.is_disabled and @actor.id != @subject.actor.id and
+              @actor.managed_by != :system and !@actor.is_disabled and @actor.id != @subject.actor.id and
                 not @confirm_disable_actor
             }
             style="warning"
@@ -951,7 +1034,7 @@ defmodule PortalWeb.Actors.Components do
           </Form.action_button>
           <div
             :if={
-              !@actor.is_disabled and @actor.id != @subject.actor.id and @confirm_disable_actor
+              @actor.managed_by != :system and !@actor.is_disabled and @actor.id != @subject.actor.id and @confirm_disable_actor
             }
             class="px-3 py-2.5 rounded border border-border bg-raised"
           >
@@ -981,7 +1064,7 @@ defmodule PortalWeb.Actors.Components do
             </span>
           </div>
           <Form.action_button
-            :if={@actor.is_disabled}
+            :if={@actor.is_disabled and @actor.managed_by != :system}
             style="success"
             icon="ri-play-line"
             phx-click="enable"
@@ -997,8 +1080,12 @@ defmodule PortalWeb.Actors.Components do
         <h3 class="text-[10px] font-semibold tracking-widest uppercase text-error mb-3">
           Danger Zone
         </h3>
+        <p :if={@actor.managed_by == :system} class="text-xs text-subtle">
+          Managed by Firezone: infrastructure devices connect with this service account.
+          It cannot be edited, disabled or deleted.
+        </p>
         <Form.action_button
-          :if={not @confirm_delete_actor}
+          :if={not @confirm_delete_actor and @actor.managed_by != :system}
           style="danger"
           icon="ri-delete-bin-line"
           phx-click="confirm_delete_actor"

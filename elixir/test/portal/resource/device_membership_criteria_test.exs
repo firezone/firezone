@@ -1,6 +1,7 @@
 defmodule Portal.Resource.DeviceMembershipCriteriaTest do
   use Portal.DataCase, async: true
 
+  import Ecto.Query
   import Portal.AccountFixtures
   import Portal.ActorFixtures
   import Portal.DeviceFixtures
@@ -207,6 +208,58 @@ defmodule Portal.Resource.DeviceMembershipCriteriaTest do
       assert DeviceMembershipCriteria.member?(criteria, listed, subject)
       refute DeviceMembershipCriteria.member?(criteria, other, subject)
       refute DeviceMembershipCriteria.member?(DeviceMembershipCriteria.devices([]), listed, subject)
+    end
+  end
+
+  describe "where_members/3" do
+    setup do
+      account = account_fixture()
+      actor = actor_fixture(account: account)
+      subject = subject_fixture(account: account, actor: actor, type: :client)
+
+      %{account: account, actor: actor, subject: subject}
+    end
+
+    defp member_ids(criteria, scope) do
+      from(d in Portal.Device, as: :devices, select: d.id)
+      |> DeviceMembershipCriteria.where_members(criteria, scope)
+      |> Repo.all()
+      |> Enum.sort()
+    end
+
+    test "own devices are every device the actor signed in on", %{account: account, actor: actor} do
+      own = client_fixture(account: account, actor: actor)
+      shared = client_fixture(account: account, actor: actor_fixture(account: account))
+      record_device_actor(shared, actor.id)
+      _other = client_fixture(account: account, actor: actor_fixture(account: account))
+
+      assert member_ids(DeviceMembershipCriteria.own_devices(), {:actor, actor.id}) ==
+               Enum.sort([own.id, shared.id])
+    end
+
+    test "a group's devices are those any member signed in on", %{account: account} do
+      group = group_fixture(account: account)
+      member = actor_fixture(account: account)
+      membership_fixture(account: account, actor: member, group: group)
+      owned = client_fixture(account: account, actor: member)
+      shared = client_fixture(account: account, actor: actor_fixture(account: account))
+      record_device_actor(shared, member.id)
+      _outside = client_fixture(account: account, actor: actor_fixture(account: account))
+
+      assert member_ids(DeviceMembershipCriteria.actor_group(group.id), :all) ==
+               Enum.sort([owned.id, shared.id])
+    end
+
+    test "the Everyone group holds devices any user signed in on", %{account: account} do
+      everyone = group_fixture(account: account, name: "Everyone", type: :managed)
+      service_account = actor_fixture(account: account, type: :service_account)
+      user = actor_fixture(account: account)
+      headless = client_fixture(account: account, actor: service_account)
+      shared = client_fixture(account: account, actor: service_account)
+      record_device_actor(shared, user.id)
+
+      assert member_ids(DeviceMembershipCriteria.actor_group(everyone.id), :all) == [shared.id]
+      refute headless.id in member_ids(DeviceMembershipCriteria.actor_group(everyone.id), :all)
     end
   end
 

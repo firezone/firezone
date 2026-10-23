@@ -118,19 +118,73 @@ defmodule Portal.Version do
     end
   end
 
-  # Two clients can only establish a peer-to-peer connection if they share the
-  # same major.minor — this lets us evolve snownet's wire format on a minor cadence
-  # without breaking running deployments mid-rollout.
-  def same_minor_version?(nil, _), do: false
-  def same_minor_version?(_, nil), do: false
+  @typedoc """
+  The protocol minors (within major 1) a device can talk to. Two devices can
+  connect when their ranges overlap.
+  """
+  @type proto_range :: %{min: non_neg_integer(), max: non_neg_integer()}
 
-  def same_minor_version?(version_a, version_b)
-      when is_binary(version_a) and is_binary(version_b) do
-    with {:ok, a} <- Version.parse(version_a),
-         {:ok, b} <- Version.parse(version_b) do
-      a.major == b.major and a.minor == b.minor
+  @doc """
+  The protocol range a device speaks, from its connect parameters when it
+  states one, otherwise from its version and what it was deployed as: a
+  legacy client speaks exactly its own minor, a legacy gateway one minor
+  either side. Those two defaults are today's rules, so nothing changes for
+  the binaries in the fleet; a binary playing both roles states a range
+  instead, since one version cannot satisfy both rules at once.
+  """
+  @spec proto_range(map() | nil, :client | :gateway, String.t() | nil) :: proto_range() | nil
+  def proto_range(params, role, version)
+
+  def proto_range(%{"proto_min" => min, "proto_max" => max}, _role, _version) do
+    with {:ok, min} <- parse_minor(min),
+         {:ok, max} <- parse_minor(max),
+         true <- min <= max do
+      %{min: min, max: max}
     else
-      _ -> false
+      _ -> nil
+    end
+  end
+
+  def proto_range(_params, _role, nil), do: nil
+
+  def proto_range(_params, role, version) when is_binary(version) do
+    case Version.parse(version) do
+      {:ok, %Version{major: 1, minor: minor}} -> default_range(role, minor)
+      _ -> nil
+    end
+  end
+
+  defp default_range(:client, minor), do: %{min: minor, max: minor}
+  defp default_range(:gateway, minor), do: %{min: max(minor - 1, 0), max: minor + 1}
+
+  defp parse_minor(value) when is_integer(value) and value >= 0, do: {:ok, value}
+
+  defp parse_minor(value) when is_binary(value) do
+    case Integer.parse(value) do
+      {minor, ""} when minor >= 0 -> {:ok, minor}
+      _ -> :error
+    end
+  end
+
+  defp parse_minor(_value), do: :error
+
+  @doc "Whether two devices speak a common protocol minor."
+  @spec compatible?(proto_range() | nil, proto_range() | nil) :: boolean()
+  def compatible?(%{min: a_min, max: a_max}, %{min: b_min, max: b_max}) do
+    a_min <= b_max and b_min <= a_max
+  end
+
+  def compatible?(_range, _other), do: false
+
+  @doc "The range a presence meta carries, or the one its version implies."
+  @spec proto_range_from_meta(map(), :client | :gateway) :: proto_range() | nil
+  def proto_range_from_meta(meta, role) do
+    case meta do
+      %{proto_min: min, proto_max: max} when is_integer(min) and is_integer(max) ->
+        %{min: min, max: max}
+
+      _ ->
+        proto_range(nil, role, Map.get(meta, :version))
     end
   end
 end

@@ -20,6 +20,7 @@ defmodule PortalAPI.Client.ChannelTest do
   import Portal.RelayFixtures
   import Portal.ResourceFixtures
   import Portal.SiteFixtures
+  import Portal.SiteDeviceFixtures
   import Portal.SubjectFixtures
   import Portal.TokenFixtures
 
@@ -47,7 +48,7 @@ defmodule PortalAPI.Client.ChannelTest do
     # Socket.connect does
     device = %{
       fetch_device!(client)
-      | client_token_id: subject.credential.id,
+      | token_id: subject.credential.id,
         public_key: Portal.DeviceFixtures.generate_public_key(),
         last_seen_user_agent: subject.context.user_agent,
         last_seen_remote_ip: subject.context.remote_ip,
@@ -81,7 +82,7 @@ defmodule PortalAPI.Client.ChannelTest do
   defp broadcast_struct(client) do
     Portal.SchemaHelpers.struct_from_params(
       Portal.Device,
-      Map.from_struct(%{client | public_key: nil, client_token_id: nil, last_seen_version: nil})
+      Map.from_struct(%{client | public_key: nil, token_id: nil, last_seen_version: nil})
     )
   end
 
@@ -90,7 +91,7 @@ defmodule PortalAPI.Client.ChannelTest do
   defp with_session(client, subject, version) do
     %{
       client
-      | client_token_id: subject.credential.id,
+      | token_id: subject.credential.id,
         public_key: Portal.DeviceFixtures.generate_public_key(),
         last_seen_user_agent: subject.context.user_agent,
         last_seen_remote_ip: subject.context.remote_ip,
@@ -106,6 +107,9 @@ defmodule PortalAPI.Client.ChannelTest do
   defp connect_gateway_presence(gateway, token_id) do
     session_meta = %{
       site_id: gateway.site_id,
+      site_ids: gateway |> Repo.preload(:site_devices) |> Portal.Device.served_site_ids(),
+      proto_min: gateway.proto_range && gateway.proto_range.min,
+      proto_max: gateway.proto_range && gateway.proto_range.max,
       public_key: gateway.public_key,
       psk_base: gateway.psk_base,
       version: gateway.last_seen_version,
@@ -390,7 +394,7 @@ defmodule PortalAPI.Client.ChannelTest do
       persisted =
         Portal.Repo.get_by!(Portal.Device, id: client.id, account_id: client.account_id)
 
-      assert persisted.client_token_id == subject.credential.id
+      assert persisted.token_id == subject.credential.id
       assert persisted.public_key == socket.assigns.client.public_key
       assert persisted.last_seen_user_agent == socket.assigns.client.last_seen_user_agent
       assert persisted.last_seen_version == socket.assigns.client.last_seen_version
@@ -1120,6 +1124,22 @@ defmodule PortalAPI.Client.ChannelTest do
       assert_push "init", _init_payload
 
       PG.deliver(client.id, :disconnect)
+
+      assert_push "disconnect", %{reason: "token_expired"}
+      assert_receive {:EXIT, _pid, :shutdown}
+    end
+
+    test "is reachable by the actor's id so a deleted actor takes its sessions down", %{
+      actor: actor,
+      client: client,
+      subject: subject
+    } do
+      Process.flag(:trap_exit, true)
+      join_channel(client, subject)
+
+      assert_push "init", _init_payload
+
+      assert :ok = PG.deliver(actor.id, :disconnect)
 
       assert_push "disconnect", %{reason: "token_expired"}
       assert_receive {:EXIT, _pid, :shutdown}
@@ -2423,7 +2443,7 @@ defmodule PortalAPI.Client.ChannelTest do
 
       assert updated.name == "Updated Name"
       assert updated.public_key == connected.public_key
-      assert updated.client_token_id == connected.client_token_id
+      assert updated.token_id == connected.token_id
       assert updated.last_seen_version == connected.last_seen_version
       assert updated.last_seen_user_agent == connected.last_seen_user_agent
       assert updated.last_seen_remote_ip == connected.last_seen_remote_ip
@@ -3651,6 +3671,52 @@ defmodule PortalAPI.Client.ChannelTest do
       assert String.length(preshared_key) == 44
     end
 
+    test "tells the client the resource's site when the gateway serves several", %{
+      account: account,
+      dns_resource: resource,
+      dns_resource_policy: policy,
+      membership: membership,
+      client: client,
+      subject: subject,
+      global_relay: global_relay
+    } do
+      other_site = site_fixture(account: account)
+      gateway = gateway_fixture(account: account, site: other_site)
+      resource_site = Repo.get_by!(Portal.Site, account_id: account.id, id: resource.site_id)
+      site_device_fixture(site: resource_site, device: gateway)
+      gateway_token = gateway_token_fixture(account: account, site: other_site)
+
+      socket = join_channel(client, subject)
+      assert_push "init", _init_payload
+      :ok = Portal.Presence.Relays.connect(global_relay)
+      :ok = PG.register(gateway.id)
+
+      for struct <- [resource, policy, membership] do
+        send(socket.channel_pid, %Changes.Change{
+          lsn: System.unique_integer([:positive, :monotonic]),
+          op: :insert,
+          struct: struct
+        })
+      end
+
+      :ok = connect_gateway_presence(gateway, gateway_token.id)
+
+      push(socket, "create_flow", %{"resource_id" => resource.id, "connected_gateway_ids" => []})
+
+      assert_receive {:create_authorization, {channel_pid, socket_ref}, payload}
+      %{ice_credentials: ice_credentials, preshared_key: preshared_key} = payload
+
+      send(
+        channel_pid,
+        {:connect, socket_ref, Ecto.UUID.dump!(resource.id), gateway.site_id, gateway.id,
+         gateway.public_key, gateway.ipv4, gateway.ipv6, preshared_key, ice_credentials}
+      )
+
+      resource_site_id = resource.site_id
+      gateway_id = gateway.id
+      assert_push "flow_created", %{gateway_group_id: ^resource_site_id, gateway_id: ^gateway_id}
+    end
+
     test "broadcasts authorize_flow to the gateway and flow_created to the client", %{
       dns_resource: resource,
       dns_resource_policy: policy,
@@ -4439,6 +4505,35 @@ defmodule PortalAPI.Client.ChannelTest do
       assert resource_id == resource.id
     end
 
+    test "reaches a gateway two minors ahead when it states a range covering the client", %{
+      account: account,
+      client: client,
+      subject: subject,
+      dns_resource: resource,
+      global_relay: global_relay
+    } do
+      # A 1.5 client cannot normally reach a 1.7 gateway; a unified 1.7
+      # binary says it speaks 1.5 through 1.7, which the legacy rule cannot.
+      socket = join_channel(client, subject, client_version: "1.5.16")
+      assert_push "init", %{resources: _, relays: _, interface: _}
+      :ok = Portal.Presence.Relays.connect(global_relay)
+
+      gateway =
+        gateway_fixture(
+          account: account,
+          site: Repo.get_by!(Portal.Site, account_id: account.id, id: resource.site_id),
+          last_seen_user_agent: "Linux/24.04 connlib/1.7.0",
+          last_seen_version: "1.7.0"
+        )
+
+      gateway_token = gateway_token_fixture(gateway: gateway)
+      :ok = connect_gateway_presence(%{gateway | proto_range: %{min: 5, max: 7}}, gateway_token.id)
+
+      ref = push(socket, "prepare_connection", %{"resource_id" => resource.id})
+      gateway_id = gateway.id
+      assert_reply ref, :ok, %{gateway_id: ^gateway_id}
+    end
+
     test "returns :version_mismatch when gateway has no version", %{
       account: account,
       client: client,
@@ -4565,6 +4660,51 @@ defmodule PortalAPI.Client.ChannelTest do
       assert gateway_id == gateway.id
       assert %Postgrex.INET{address: address} = gateway_last_seen_remote_ip
       assert address == {100, 64, 0, 1}
+    end
+
+    test "returns a gateway serving the resource's site from another site, naming the resource's site", %{
+      account: account,
+      client: client,
+      subject: subject,
+      dns_resource: resource,
+      global_relay: global_relay
+    } do
+      socket = join_channel(client, subject)
+      assert_push "init", %{resources: _, relays: _, interface: _}
+      :ok = Portal.Presence.Relays.connect(global_relay)
+
+      other_site = site_fixture(account: account)
+      gateway = gateway_fixture(account: account, site: other_site)
+      resource_site = Repo.get_by!(Portal.Site, account_id: account.id, id: resource.site_id)
+      site_device_fixture(site: resource_site, device: gateway)
+      gateway_token = gateway_token_fixture(account: account, site: other_site)
+      :ok = connect_gateway_presence(gateway, gateway_token.id)
+
+      ref = push(socket, "prepare_connection", %{"resource_id" => resource.id})
+      gateway_id = gateway.id
+      site_id = resource.site_id
+
+      assert_reply ref, :ok, %{gateway_id: ^gateway_id, site_id: ^site_id}
+    end
+
+    test "ignores a gateway whose only site is another one", %{
+      account: account,
+      client: client,
+      subject: subject,
+      dns_resource: resource,
+      global_relay: global_relay
+    } do
+      socket = join_channel(client, subject)
+      assert_push "init", %{resources: _, relays: _, interface: _}
+      :ok = Portal.Presence.Relays.connect(global_relay)
+
+      other_site = site_fixture(account: account)
+      gateway = gateway_fixture(account: account, site: other_site)
+      gateway_token = gateway_token_fixture(account: account, site: other_site)
+      :ok = connect_gateway_presence(gateway, gateway_token.id)
+
+      ref = push(socket, "prepare_connection", %{"resource_id" => resource.id})
+      assert_reply ref, :error, %{reason: :offline}
     end
 
     test "does not return gateways that do not support the resource", %{

@@ -44,7 +44,7 @@ defmodule PortalAPI.AccountController do
       monthly_active_usage.seats
     )
     |> put_adhoc_service_accounts_limit(
-      account.limits.adhoc_service_accounts_count,
+      Portal.Accounts.Limits.adhoc_service_accounts_allowance(account.limits),
       monthly_active_usage.adhoc_service_accounts
     )
     |> put_limit(:service_accounts, account.limits.service_accounts_count, service_accounts_count)
@@ -103,6 +103,7 @@ defmodule PortalAPI.AccountController do
       from(a in Actor,
         where: a.account_id == ^account.id,
         where: a.is_disabled == false,
+        where: a.managed_by == :account,
         where: a.type == :service_account
       )
       |> Safe.unscoped()

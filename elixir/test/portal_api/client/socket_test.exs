@@ -552,7 +552,8 @@ defmodule PortalAPI.Client.SocketTest do
       client = socket.assigns.client
 
       assert is_reference(socket.assigns.session_ref)
-      assert client.client_token_id == token.id
+      assert client.token_id == token.id
+      assert client.token_id == token.id
       assert client.last_seen_user_agent == connect_info.user_agent
       assert client.last_seen_remote_ip == @client_remote_ip
       assert client.last_seen_remote_ip_location_region == "Ukraine"
@@ -587,6 +588,34 @@ defmodule PortalAPI.Client.SocketTest do
       assert socket.assigns.client.id == existing_client.id
       assert socket.assigns.client.device_serial == "NEW_SERIAL"
       assert socket.assigns.client.device_uuid == "NEW_UUID"
+    end
+  end
+
+  describe "connect/3 protocol range" do
+    test "a client that states its range keeps it for the session" do
+      account = account_fixture()
+      actor = actor_fixture(account: account)
+      token = client_token_fixture(account: account, actor: actor)
+      encoded_token = encode_token(token)
+
+      attrs =
+        Map.merge(connect_attrs(token: encoded_token), %{"proto_min" => "5", "proto_max" => "7"})
+
+      assert {:ok, socket} = connect(Socket, attrs, connect_info: build_connect_info())
+      assert socket.assigns.client.proto_range == %{min: 5, max: 7}
+    end
+
+    test "a client that says nothing speaks its own minor" do
+      account = account_fixture()
+      actor = actor_fixture(account: account)
+      token = client_token_fixture(account: account, actor: actor)
+      encoded_token = encode_token(token)
+
+      assert {:ok, socket} =
+               connect(Socket, connect_attrs(token: encoded_token), connect_info: build_connect_info())
+
+      assert %{min: minor, max: minor} = socket.assigns.client.proto_range
+      assert is_integer(minor)
     end
   end
 
@@ -631,7 +660,7 @@ defmodule PortalAPI.Client.SocketTest do
       assert socket.assigns.subject.credential.auth_provider_id == provider.id
       assert socket.assigns.subject.expires_at.microsecond == {0, 6}
       assert socket.assigns.client.attested?
-      assert is_nil(socket.assigns.client.client_token_id)
+      assert is_nil(socket.assigns.client.token_id)
     end
 
     test "authenticates a service account from an X.509 actor ID claim", %{
@@ -653,7 +682,7 @@ defmodule PortalAPI.Client.SocketTest do
       assert %Portal.Authentication.Credential.X509{} = socket.assigns.subject.credential
       assert socket.assigns.subject.credential.auth_provider_id == provider.id
       assert socket.assigns.client.attested?
-      assert is_nil(socket.assigns.client.client_token_id)
+      assert is_nil(socket.assigns.client.token_id)
     end
 
     test "prefers an X.509 actor ID claim over an email claim", %{
@@ -1284,6 +1313,24 @@ defmodule PortalAPI.Client.SocketTest do
       assert client.id == existing.id
     end
 
+    test "another actor on the same machine resolves to the same device", %{
+      account: account,
+      actor: actor,
+      subject: subject
+    } do
+      other = actor_fixture(account: account)
+      existing = client_fixture(account: account, actor: other, firezone_id: "fz-shared")
+
+      changeset =
+        device_trust_changeset(account, actor, %{
+          "name" => "Shared Workstation",
+          "firezone_id" => "fz-shared"
+        })
+
+      assert {:ok, client, false} = Socket.Database.resolve_client(changeset, nil, subject)
+      assert client.id == existing.id
+    end
+
     test "an unattested connect with no match inserts a new device", %{
       account: account,
       actor: actor,
@@ -1394,10 +1441,10 @@ defmodule PortalAPI.Client.SocketTest do
       refute client.id == attested.id
     end
 
-    test "the MDM device id is unique per actor", %{account: account, actor: actor} do
+    test "the MDM device id is unique across the account", %{account: account, actor: actor} do
       client_fixture(
         account: account,
-        actor: actor,
+        actor: actor_fixture(account: account),
         last_attested_mdm_device_id: "mdm-dup",
         firezone_id: "fz-a"
       )

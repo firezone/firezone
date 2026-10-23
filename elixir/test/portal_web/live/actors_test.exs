@@ -503,6 +503,27 @@ defmodule PortalWeb.ActorsTest do
       assert html =~ token.id
     end
 
+    test "lists the devices the actor has signed in on", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      other_actor = actor_fixture(account: account)
+      owned = client_fixture(account: account, actor: other_actor, name: "Own Laptop")
+      shared = client_fixture(account: account, actor: actor_fixture(account: account), name: "Shared Desk")
+      record_device_actor(shared, other_actor.id)
+      _unrelated = client_fixture(account: account, actor: actor, name: "Admin Phone")
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/actors/#{other_actor}?tab=devices")
+
+      assert html =~ owned.name
+      assert html =~ shared.name
+      refute html =~ "Admin Phone"
+    end
+
     test "marks a client token online when its device joins the account presence", %{
       conn: conn,
       account: account,

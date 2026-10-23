@@ -129,8 +129,20 @@ defmodule Portal.Resource.DeviceMembershipCriteria do
     dynamic([devices: d], d.id in ^ids)
   end
 
+  # A device belongs to every actor who has signed in on it, which is what
+  # `device_actors` records, so a shared machine is in each of their pools.
   def members(%__MODULE__{provider: :device, field: :actor_id, value: {:subject, :actor_id}}, {:actor, actor_id}) do
-    dynamic([devices: d], d.actor_id == ^actor_id)
+    dynamic(
+      [devices: d],
+      exists(
+        from(da in Portal.DeviceActor,
+          where:
+            da.account_id == parent_as(:devices).account_id and
+              da.device_id == parent_as(:devices).id and
+              da.actor_id == ^actor_id
+        )
+      )
+    )
   end
 
   def members(%__MODULE__{provider: :device, field: :account_id, value: {:subject, :account_id}}, :all) do
@@ -144,19 +156,24 @@ defmodule Portal.Resource.DeviceMembershipCriteria do
     dynamic(
       [devices: d],
       exists(
-        from(m in Portal.Membership,
+        from(da in Portal.DeviceActor,
+          join: m in Portal.Membership,
+          on: m.account_id == da.account_id and m.actor_id == da.actor_id,
           where:
-            m.account_id == parent_as(:devices).account_id and
-              m.actor_id == parent_as(:devices).actor_id and
+            da.account_id == parent_as(:devices).account_id and
+              da.device_id == parent_as(:devices).id and
               m.group_id == ^group_id
         )
       ) or
         exists(
-          from(g in Portal.Group,
+          from(da in Portal.DeviceActor,
             join: a in Portal.Actor,
-            on: a.account_id == g.account_id and a.id == parent_as(:devices).actor_id,
+            on: a.account_id == da.account_id and a.id == da.actor_id,
+            join: g in Portal.Group,
+            on: g.account_id == da.account_id,
             where:
-              g.account_id == parent_as(:devices).account_id and
+              da.account_id == parent_as(:devices).account_id and
+                da.device_id == parent_as(:devices).id and
                 g.id == ^group_id and
                 g.type == :managed and
                 g.name == "Everyone" and

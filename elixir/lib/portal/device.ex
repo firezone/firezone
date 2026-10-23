@@ -24,8 +24,7 @@ defmodule Portal.Device do
     last_seen_version
     last_seen_at
     last_attested_at
-    client_token_id
-    gateway_token_id
+    token_id
   ]a
 
   @latest_session_columns Enum.map(@latest_session_fields, &Atom.to_string/1)
@@ -41,6 +40,7 @@ defmodule Portal.Device do
           ipv4: Postgrex.INET.t(),
           ipv6: Postgrex.INET.t(),
           online?: boolean(),
+          proto_range: Portal.Version.proto_range() | nil,
           attested?: boolean(),
           firezone_id_merged?: boolean(),
           public_key: String.t() | nil,
@@ -52,8 +52,7 @@ defmodule Portal.Device do
           last_seen_remote_ip_location_lon: float() | nil,
           last_seen_version: String.t() | nil,
           last_seen_at: DateTime.t() | nil,
-          client_token_id: Ecto.UUID.t() | nil,
-          gateway_token_id: Ecto.UUID.t() | nil,
+          token_id: Ecto.UUID.t() | nil,
           account_id: Ecto.UUID.t(),
           actor_id: Ecto.UUID.t() | nil,
           site_id: Ecto.UUID.t() | nil,
@@ -98,6 +97,9 @@ defmodule Portal.Device do
 
     # Client-only
     belongs_to :actor, Portal.Actor
+    has_many :device_actors, Portal.DeviceActor, references: :id, preload_order: [desc: :last_seen_at]
+    has_many :site_devices, Portal.SiteDevice, references: :id
+    has_many :sites, through: [:site_devices, :site]
     field :hostname, :string
 
     # Device trust. Enforced client-only today, but gateways may adopt
@@ -122,7 +124,7 @@ defmodule Portal.Device do
     # Gateway-only
     belongs_to :site, Portal.Site
 
-    has_many :gateway_tokens, Portal.GatewayToken,
+    has_many :gateway_tokens, Portal.ClientToken,
       foreign_key: :device_id,
       references: :id
 
@@ -138,13 +140,15 @@ defmodule Portal.Device do
     field :last_seen_remote_ip_location_lon, :float
     field :last_seen_version, :string
     field :last_seen_at, :utc_datetime_usec
-    field :client_token_id, :binary_id
-    field :gateway_token_id, :binary_id
+    # The token of the latest session.
+    field :token_id, :binary_id
 
     # Virtual fields
     # The token minted with a Gateway, carried only on the provisioning response.
     field :provisioned_token, :any, virtual: true
     field :online?, :boolean, virtual: true, default: false
+    # The protocol minors this session speaks; see Portal.Version.proto_range/3.
+    field :proto_range, :map, virtual: true
 
     # Whether THIS connection proved possession of an MDM-issued certificate.
     # Live connection state, unlike last_attested_at, which is the row's
@@ -188,9 +192,9 @@ defmodule Portal.Device do
     |> assoc_constraint(:site)
     |> validate_type_fields()
     |> check_constraint(:type, name: :devices_type_check)
-    |> check_constraint(:actor_id, name: :device_type_client_fields)
-    |> check_constraint(:site_id, name: :device_type_gateway_fields)
-    |> unique_firezone_id_constraint()
+    # The machine is identified by its firezone_id alone, whoever signs in on
+    # it and whichever sites it serves.
+    |> unique_constraint(:firezone_id, name: :devices_account_id_firezone_id_index)
     |> unique_constraint(:ipv4, name: :devices_account_id_ipv4_index)
     |> unique_constraint(:ipv6, name: :devices_account_id_ipv6_index)
     |> unique_constraint(:hostname, name: :devices_account_id_hostname_index)
@@ -252,15 +256,16 @@ defmodule Portal.Device do
         # shares with the certificate serial past what a btree entry holds.
         |> validate_length(:last_attested_cert_issuer, max: 1024, count: :bytes)
         |> unique_constraint(:last_attested_mdm_device_id,
-          name: :devices_account_id_actor_id_last_attested_mdm_device_id_index
+          name: :devices_account_id_last_attested_mdm_device_id_index
         )
         |> unique_constraint(:last_attested_cert_serial,
-          name: :devices_account_id_cert_issuer_serial_actor_id_index
+          name: :devices_account_id_cert_issuer_serial_index
         )
 
+      # A gateway's site column names its home site when it has one; the
+      # sites it serves are its site_devices rows.
       :gateway ->
         changeset
-        |> validate_required([:site_id])
         |> validate_length(:device_serial, max: 255)
         |> validate_length(:device_uuid, max: 255)
         |> validate_gateway_verification()
@@ -303,24 +308,20 @@ defmodule Portal.Device do
     end)
   end
 
-  defp unique_firezone_id_constraint(changeset) do
-    case get_field(changeset, :type) do
-      :client ->
-        unique_constraint(changeset, :firezone_id,
-          name: :devices_account_id_actor_id_firezone_id_index
-        )
+  # Gateway device helpers
 
-      :gateway ->
-        unique_constraint(changeset, :firezone_id,
-          name: :devices_account_id_site_id_firezone_id_index
-        )
-
-      _ ->
-        changeset
-    end
+  @doc """
+  The sites the device serves: its loaded assignments, or the site column
+  when they are not loaded. Clients serve none until they can be assigned.
+  """
+  def served_site_ids(%__MODULE__{site_devices: site_devices}) when is_list(site_devices) do
+    Enum.map(site_devices, & &1.site_id)
   end
 
-  # Gateway device helpers
+  def served_site_ids(%__MODULE__{site_id: nil}), do: []
+  def served_site_ids(%__MODULE__{site_id: site_id}), do: [site_id]
+
+  def serves_site?(%__MODULE__{} = device, site_id), do: site_id in served_site_ids(device)
 
   def load_balance_gateways({_lat, _lon}, []) do
     nil

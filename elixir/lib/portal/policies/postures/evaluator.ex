@@ -20,7 +20,7 @@ defmodule Portal.Policies.Postures.Evaluator do
           {:ok, DateTime.t() | nil} | {:error, [:postures]}
   def evaluate(nil, %Device{}, %DateTime{}), do: {:ok, nil}
 
-  def evaluate(%Postures{expr: expr}, %Device{type: :client} = device, %DateTime{} = now) do
+  def evaluate(%Postures{expr: expr}, %Device{} = device, %DateTime{} = now) do
     case prune(expr, platform(device)) do
       nil ->
         {:ok, nil}

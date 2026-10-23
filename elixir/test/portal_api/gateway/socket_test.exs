@@ -77,6 +77,28 @@ defmodule PortalAPI.Gateway.SocketTest do
       assert socket.assigns.token_id == token1.id
     end
 
+    test "assigns a Subject for the account's Infrastructure actor" do
+      token = gateway_token_fixture()
+      encrypted_secret = encode_gateway_token(token)
+
+      attrs = connect_attrs(token: encrypted_secret)
+      connect_info = build_connect_info(token: encrypted_secret)
+
+      assert {:ok, socket} = connect(Socket, attrs, connect_info: connect_info)
+
+      assert %Portal.Authentication.Subject{} = subject = socket.assigns.subject
+      assert subject.account.id == token.account_id
+      assert subject.actor.id == token.actor_id
+      assert subject.actor.managed_by == :system
+      assert subject.actor.type == :service_account
+      assert subject.credential == %Portal.Authentication.Credential.ClientToken{
+               id: token.id,
+               auth_provider_id: nil
+             }
+      assert subject.context.type == :gateway
+      assert is_nil(subject.expires_at)
+    end
+
     test "creates a new gateway" do
       token = gateway_token_fixture()
       encrypted_secret = encode_gateway_token(token)
@@ -171,7 +193,8 @@ defmodule PortalAPI.Gateway.SocketTest do
 
       connected_gateway = socket.assigns.gateway
       assert is_reference(socket.assigns.session_ref)
-      assert connected_gateway.gateway_token_id == token.id
+      assert connected_gateway.token_id == token.id
+      assert connected_gateway.token_id == token.id
       assert connected_gateway.last_seen_remote_ip_location_region == "Ukraine"
       assert connected_gateway.last_seen_remote_ip_location_city == "Kyiv"
       assert connected_gateway.last_seen_remote_ip_location_lat == 50.4333
@@ -268,7 +291,26 @@ defmodule PortalAPI.Gateway.SocketTest do
       # is ignored for identification
       assert socket.assigns.gateway.id == gateway.id
       assert socket.assigns.site.id == site.id
-      assert socket.assigns.gateway.gateway_token_id == token.id
+      assert socket.assigns.gateway.token_id == token.id
+      assert socket.assigns.gateway.token_id == token.id
+    end
+
+    test "connects a gateway whose site was deleted" do
+      account = account_fixture()
+      site = site_fixture(account: account)
+      gateway = gateway_fixture(account: account, site: site)
+      token = gateway_token_fixture(gateway: gateway)
+      encrypted_secret = encode_gateway_token(token)
+      # What deleting the site leaves behind: the column cleared by its key.
+      gateway |> Ecto.Changeset.change(site_id: nil) |> Portal.Repo.update!()
+
+      attrs = connect_attrs(token: encrypted_secret)
+      connect_info = build_connect_info()
+
+      assert {:ok, socket} = connect(Socket, attrs, connect_info: connect_info)
+      assert socket.assigns.gateway.id == gateway.id
+      assert is_nil(socket.assigns.gateway.site_id)
+      assert is_nil(socket.assigns.site)
     end
 
     test "single-owner connect persists the reported firezone_id when blank" do
@@ -436,7 +478,7 @@ defmodule PortalAPI.Gateway.SocketTest do
 
       assert {:ok, _socket} = connect(Socket, attrs, connect_info: build_connect_info())
 
-      refute Portal.Repo.get_by(Portal.GatewayToken,
+      refute Portal.Repo.get_by(Portal.ClientToken,
                account_id: rotated.account_id,
                id: rotated.id
              )

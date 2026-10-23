@@ -42,7 +42,7 @@ defmodule PortalAPI.MCPSecurityTest do
     tokens = for _ <- 1..2, do: gateway_token_fixture(account: account, site: site)
     result = conn |> authorize_mcp_conn(actor, ["gateway_tokens:write"]) |> call_tool("delete_site_gateway_token", %{"site_id" => site.id, "id" => ""})
     assert %{"result" => %{"isError" => true}} = json_response(result, 200)
-    for token <- tokens, do: assert(Repo.get_by(Portal.GatewayToken, account_id: account.id, id: token.id))
+    for token <- tokens, do: assert(Repo.get_by(Portal.ClientToken, account_id: account.id, id: token.id))
   end
 
   test "dispatch refuses a tool bound to a different REST action", %{conn: conn, actor: actor} do

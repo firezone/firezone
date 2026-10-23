@@ -8,33 +8,37 @@ defmodule PortalAPI.Sockets.LatestSession do
   an older session. Entries whose non-nil token or device row no longer exists are
   returned as failed, separately per cause, so the caller can disconnect a
   deleted token's session without touching the device's other sessions.
+
+  Entries that connected as an actor also record that actor on the device in
+  `device_actors`, one row per device and actor, widening its seen window.
   """
   alias __MODULE__.Database
   require Logger
 
-  @spec upsert_all([{map(), map()}], :client_token_id | :gateway_token_id) ::
+  @spec upsert_all([{map(), map()}]) ::
           {non_neg_integer(), [{map(), map()}], [{map(), map()}]}
-  def upsert_all([], _token_field), do: {0, [], []}
+  def upsert_all([]), do: {0, [], []}
 
-  def upsert_all(entries, token_field)
-      when token_field in [:client_token_id, :gateway_token_id] do
+  def upsert_all(entries) do
     # A token hard-deleted before its channel joined the token PG group missed
     # the deletion broadcast; failing the entry here is the backstop that
     # disconnects it. Channels enqueue only after joining the group, so a
     # deletion after this probe is always broadcast to the channel.
-    dead_tokens = Database.missing_token_ids(entries, token_field)
+    dead_tokens = Database.missing_token_ids(entries)
 
     {live, revoked} =
       Enum.split_with(entries, fn {attrs, _metadata} ->
-        not MapSet.member?(dead_tokens, Map.fetch!(attrs, token_field))
+        not MapSet.member?(dead_tokens, attrs.token_id)
       end)
 
-    rows = rows(live, token_field)
-    updated_ids = Database.update_devices(rows, token_field)
+    rows = rows(live)
+    updated_ids = Database.update_devices(rows)
     missing = missing_device_ids(rows, updated_ids)
 
     device_failed =
       Enum.filter(live, fn {attrs, _metadata} -> MapSet.member?(missing, attrs.device_id) end)
+
+    record_device_actors(live)
 
     {length(entries) - length(revoked) - length(device_failed), revoked, device_failed}
   rescue
@@ -46,9 +50,41 @@ defmodule PortalAPI.Sockets.LatestSession do
       {0, entries, []}
   end
 
+  # The sessions are already durable on the device rows above, so a failure
+  # here is logged rather than failing the batch: the next connect of the same
+  # actor writes the row again.
+  defp record_device_actors(entries) do
+    entries
+    |> device_actor_rows()
+    |> Database.upsert_device_actors()
+  rescue
+    error ->
+      Logger.error("Failed to record device actors: " <> Exception.message(error))
+  end
+
+  # One row per device and actor, spanning every connect of that pair in the
+  # batch. Entries without an actor (gateways) record nothing.
+  defp device_actor_rows(entries) do
+    entries
+    |> Enum.filter(fn {attrs, _metadata} -> attrs[:actor_id] end)
+    |> Enum.group_by(fn {attrs, _metadata} -> {attrs.account_id, attrs.device_id, attrs.actor_id} end)
+    |> Enum.map(fn {{account_id, device_id, actor_id}, pair_entries} ->
+      seen_at = Enum.map(pair_entries, &connected_at/1)
+
+      %{
+        account_id: account_id,
+        device_id: device_id,
+        actor_id: actor_id,
+        first_seen_at: Enum.min(seen_at, DateTime),
+        last_seen_at: Enum.max(seen_at, DateTime)
+      }
+    end)
+    |> Enum.sort_by(&{&1.account_id, &1.device_id, &1.actor_id})
+  end
+
   # Newest entry per device wins within a batch; rows are sorted so
   # concurrent flushes lock device rows in a consistent order.
-  defp rows(entries, token_field) do
+  defp rows(entries) do
     entries
     |> Enum.group_by(fn {attrs, _metadata} -> {attrs.account_id, attrs.device_id} end)
     |> Enum.map(fn {_key, device_entries} ->
@@ -71,7 +107,7 @@ defmodule PortalAPI.Sockets.LatestSession do
         last_attested_cert_fingerprint: attested[:last_attested_cert_fingerprint],
         last_attested_cert_issuer: attested[:last_attested_cert_issuer],
         last_attested_at: attested[:last_attested_at],
-        token_id: Map.fetch!(attrs, token_field),
+        token_id: attrs.token_id,
         public_key: attrs[:public_key],
         user_agent: attrs[:user_agent],
         remote_ip: attrs[:remote_ip],
@@ -160,10 +196,16 @@ defmodule PortalAPI.Sockets.LatestSession do
     }
 
     @probe_types %{account_id: Ecto.UUID, device_id: Ecto.UUID}
+    @device_actor_types %{
+      account_id: Ecto.UUID,
+      device_id: Ecto.UUID,
+      actor_id: Ecto.UUID,
+      first_seen_at: :utc_datetime_usec,
+      last_seen_at: :utc_datetime_usec
+    }
     @token_probe_types %{account_id: Ecto.UUID, token_id: Ecto.UUID}
     @identity_probe_types %{
       account_id: Ecto.UUID,
-      actor_id: Ecto.UUID,
       device_id: Ecto.UUID,
       firezone_id: :string
     }
@@ -186,29 +228,22 @@ defmodule PortalAPI.Sockets.LatestSession do
                           last_attested_cert_issuer last_attested_at]a
     @attested_probe_types %{
       account_id: Ecto.UUID,
-      actor_id: Ecto.UUID,
       device_id: Ecto.UUID,
       last_attested_mdm_device_id: :string,
       last_attested_cert_issuer: :binary,
       last_attested_cert_serial: :string
     }
 
-    @token_schemas %{
-      client_token_id: Portal.ClientToken,
-      gateway_token_id: Portal.GatewayToken
-    }
-
-    def missing_token_ids(entries, token_field) do
+    def missing_token_ids(entries) do
       probe_rows =
         entries
         |> Enum.map(fn {attrs, _metadata} ->
-          %{account_id: attrs.account_id, token_id: Map.fetch!(attrs, token_field)}
+          %{account_id: attrs.account_id, token_id: attrs.token_id}
         end)
         |> Enum.reject(&is_nil(&1.token_id))
         |> Enum.uniq()
 
-      schema = Map.fetch!(@token_schemas, token_field)
-      existing = existing_token_ids(schema, probe_rows)
+      existing = existing_token_ids(Portal.ClientToken, probe_rows)
 
       probe_rows
       |> Enum.map(& &1.token_id)
@@ -231,10 +266,10 @@ defmodule PortalAPI.Sockets.LatestSession do
       queryable |> Safe.unscoped() |> Safe.all() |> MapSet.new()
     end
 
-    def update_devices([], _token_field), do: MapSet.new()
+    def update_devices([]), do: MapSet.new()
 
-    def update_devices(rows, token_field) do
-      do_update_devices(rows, token_field, _retries_left = 1)
+    def update_devices(rows) do
+      do_update_devices(rows, _retries_left = 1)
     end
 
     # The probe-then-update window is not atomic: a flush on another node can
@@ -243,7 +278,7 @@ defmodule PortalAPI.Sockets.LatestSession do
     # loser) and retrying once resolves the collision at the entry level
     # instead of failing every session in the batch; anything beyond that is
     # left to the caller's batch-level rescue.
-    defp do_update_devices(rows, token_field, retries_left) do
+    defp do_update_devices(rows, retries_left) do
       rows =
         rows
         |> dedupe_proposed_firezone_ids()
@@ -303,7 +338,7 @@ defmodule PortalAPI.Sockets.LatestSession do
           last_seen_remote_ip_location_lon: dynamic([d, v], v.remote_ip_location_lon),
           last_seen_version: dynamic([d, v], v.version),
           last_seen_at: dynamic([d, v], v.last_seen_at)
-        ] ++ [{token_field, dynamic([d, v], v.token_id)}]
+        ] ++ [token_id: existing_token_id()]
 
       {_count, ids} =
         from(d in Device,
@@ -320,10 +355,24 @@ defmodule PortalAPI.Sockets.LatestSession do
     rescue
       error in Postgrex.Error ->
         if retries_left > 0 and unique_violation?(error) do
-          do_update_devices(rows, token_field, retries_left - 1)
+          do_update_devices(rows, retries_left - 1)
         else
           reraise error, __STACKTRACE__
         end
+    end
+
+    # token_id references client_tokens. A token deleted between the probe
+    # above and this update leaves the column null rather than failing the
+    # whole batch on the foreign key.
+    defp existing_token_id do
+      dynamic(
+        [d, v],
+        fragment(
+          "(SELECT ct.id FROM client_tokens ct WHERE ct.account_id = ? AND ct.id = ?)",
+          v.account_id,
+          v.token_id
+        )
+      )
     end
 
     defp unique_violation?(%Postgrex.Error{postgres: %{code: :unique_violation}}), do: true
@@ -349,7 +398,7 @@ defmodule PortalAPI.Sockets.LatestSession do
     end
 
     # Two rows in the same batch can propose the same previously unused
-    # {account_id, actor_id, firezone_id}: both would pass the persisted-row
+    # {account_id, firezone_id}: both would pass the persisted-row
     # probe and the bulk UPDATE would violate the unique index, failing every
     # session in the batch. The newest session wins the identifier (device_id
     # tie-break keeps it deterministic); losers keep their session but skip
@@ -357,8 +406,8 @@ defmodule PortalAPI.Sockets.LatestSession do
     defp dedupe_proposed_firezone_ids(rows) do
       losers =
         rows
-        |> Enum.filter(&(not is_nil(&1.firezone_id) and not is_nil(&1.actor_id)))
-        |> Enum.group_by(&{&1.account_id, &1.actor_id, &1.firezone_id})
+        |> Enum.filter(&(not is_nil(&1.firezone_id)))
+        |> Enum.group_by(&{&1.account_id, &1.firezone_id})
         |> Enum.flat_map(fn {_key, contenders} ->
           contenders |> sort_newest_first() |> tl()
         end)
@@ -394,8 +443,8 @@ defmodule PortalAPI.Sockets.LatestSession do
       end)
     end
 
-    # A merged firezone_id can collide with another device row of the same
-    # actor. The colliding entry keeps its session but skips the identity
+    # A merged firezone_id can collide with another device row of the
+    # account. The colliding entry keeps its session but skips the identity
     # change, so one poisoned entry cannot fail the whole batch; the merge
     # retries on the device's next connect. Entries carry a firezone_id only
     # when their connect actually adopted a new one, so in the steady state
@@ -408,8 +457,8 @@ defmodule PortalAPI.Sockets.LatestSession do
     # column is cleared for them, so only unattested merges reach this probe.
     defp strip_conflicting_firezone_ids(rows) do
       probe_rows =
-        for row <- rows, not is_nil(row.firezone_id), not is_nil(row.actor_id) do
-          Map.take(row, [:account_id, :actor_id, :device_id, :firezone_id])
+        for row <- rows, not is_nil(row.firezone_id) do
+          Map.take(row, [:account_id, :device_id, :firezone_id])
         end
 
       conflicts =
@@ -419,9 +468,8 @@ defmodule PortalAPI.Sockets.LatestSession do
           from(d in Device,
             join: v in values(probe_rows, @identity_probe_types),
             on:
-              d.account_id == v.account_id and d.actor_id == v.actor_id and
-                d.firezone_id == v.firezone_id and d.id != v.device_id,
-            where: d.type == :client,
+              d.account_id == v.account_id and d.firezone_id == v.firezone_id and
+                d.id != v.device_id,
             select: %{device_id: v.device_id, conflicting_id: d.id, firezone_id: v.firezone_id}
           )
           |> probe()
@@ -448,7 +496,7 @@ defmodule PortalAPI.Sockets.LatestSession do
     end
 
     # Two rows in the same batch can propose the same attested identifier for
-    # different devices of one actor (a cloned certificate, or two machines
+    # different devices of one account (a cloned certificate, or two machines
     # whose MDM stamped the same identity), which would violate the partial
     # unique indexes and fail every session in the batch. The snapshot with
     # the freshest proof wins; losers keep their session but skip the
@@ -460,7 +508,7 @@ defmodule PortalAPI.Sockets.LatestSession do
               rows
               |> Enum.filter(&claims_attested_identity?(&1, fields))
               |> Enum.group_by(fn row ->
-                {row.account_id, row.actor_id, Enum.map(fields, &Map.fetch!(row, &1))}
+                {row.account_id, Enum.map(fields, &Map.fetch!(row, &1))}
               end),
             loser <- contenders |> sort_freshest_proof_first() |> tl(),
             uniq: true do
@@ -491,7 +539,7 @@ defmodule PortalAPI.Sockets.LatestSession do
     end
 
     # A proposed attested identifier can already sit on another device row of
-    # the same actor: the connect-time adoption check refuses that, but a
+    # the account: the connect-time adoption check refuses that, but a
     # concurrent adoption on another node can land in between. As with
     # firezone_id, the conflicting entry keeps its session and skips the
     # attested update; a conflict that appears between this probe and the
@@ -501,7 +549,7 @@ defmodule PortalAPI.Sockets.LatestSession do
       probe_rows =
         for row <- rows,
             Enum.any?(@attested_unique_keys, &claims_attested_identity?(row, &1)) do
-          Map.take(row, [:account_id, :actor_id, :device_id | @attested_unique_fields])
+          Map.take(row, [:account_id, :device_id | @attested_unique_fields])
         end
 
       conflicts =
@@ -510,12 +558,11 @@ defmodule PortalAPI.Sockets.LatestSession do
         else
           from(d in Device,
             join: v in values(probe_rows, @attested_probe_types),
-            on: d.account_id == v.account_id and d.actor_id == v.actor_id and d.id != v.device_id,
+            on: d.account_id == v.account_id and d.id != v.device_id,
             where:
-              d.type == :client and
-                (d.last_attested_mdm_device_id == v.last_attested_mdm_device_id or
-                   (d.last_attested_cert_issuer == v.last_attested_cert_issuer and
-                      d.last_attested_cert_serial == v.last_attested_cert_serial)),
+              d.last_attested_mdm_device_id == v.last_attested_mdm_device_id or
+                (d.last_attested_cert_issuer == v.last_attested_cert_issuer and
+                   d.last_attested_cert_serial == v.last_attested_cert_serial),
             select: %{device_id: v.device_id, conflicting_id: d.id}
           )
           |> probe()
@@ -535,7 +582,7 @@ defmodule PortalAPI.Sockets.LatestSession do
     # A key with any column missing claims nothing: the partial unique index
     # skips those rows, so they cannot collide.
     defp claims_attested_identity?(row, fields) do
-      not is_nil(row.actor_id) and Enum.all?(fields, &(not is_nil(Map.fetch!(row, &1))))
+      Enum.all?(fields, &(not is_nil(Map.fetch!(row, &1))))
     end
 
     defp strip_attested_fields(rows, device_ids) do
@@ -548,6 +595,47 @@ defmodule PortalAPI.Sockets.LatestSession do
           row
         end
       end)
+    end
+
+    # Inserted through a join on the device and actor rows: a pair whose device
+    # or actor was deleted between connect and flush is skipped rather than
+    # failing the statement on a foreign key. An existing row keeps the earlier
+    # first-seen and takes the later last-seen time, whichever flush wins.
+    def upsert_device_actors([]), do: :ok
+
+    def upsert_device_actors(rows) do
+      source =
+        from(v in values(rows, @device_actor_types),
+          join: d in Device,
+          on: d.account_id == v.account_id and d.id == v.device_id,
+          join: a in Portal.Actor,
+          on: a.account_id == v.account_id and a.id == v.actor_id,
+          select: %{
+            account_id: v.account_id,
+            device_id: v.device_id,
+            actor_id: v.actor_id,
+            first_seen_at: v.first_seen_at,
+            last_seen_at: v.last_seen_at
+          }
+        )
+
+      widen =
+        from(da in Portal.DeviceActor,
+          update: [
+            set: [
+              first_seen_at: fragment("LEAST(?, EXCLUDED.first_seen_at)", da.first_seen_at),
+              last_seen_at: fragment("GREATEST(?, EXCLUDED.last_seen_at)", da.last_seen_at)
+            ]
+          ]
+        )
+
+      Safe.unscoped()
+      |> Safe.insert_all(Portal.DeviceActor, source,
+        on_conflict: widen,
+        conflict_target: [:account_id, :device_id, :actor_id]
+      )
+
+      :ok
     end
 
     def existing_device_ids(rows) do

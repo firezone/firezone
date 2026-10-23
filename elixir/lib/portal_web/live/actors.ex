@@ -790,7 +790,8 @@ defmodule PortalWeb.Actors do
       topic == "presences:account_devices:" <> socket.assigns.account.id and
           Presence.Devices.diff_includes_actor?(payload, actor.id) ->
         tokens = Database.get_client_tokens_for_actor(actor.id, socket.assigns.subject)
-        {:noreply, merge_state(socket, :actor_related, tokens: tokens)}
+        devices = Database.get_device_actors_for_actor(actor.id, socket.assigns.subject)
+        {:noreply, merge_state(socket, :actor_related, tokens: tokens, devices: devices)}
 
       true ->
         {:noreply, socket}
@@ -976,6 +977,7 @@ defmodule PortalWeb.Actors do
         identities = Database.get_identities_for_actor(actor.id, subject)
         groups = Database.get_groups_for_actor(actor.id, subject)
         {tokens, sessions} = actor_related_records(actor, subject)
+        devices = Database.get_device_actors_for_actor(actor.id, subject)
         active_tab = requested_tab || default_actor_tab(actor)
 
         {:ok, actor, actor_panel_state(view: :detail, active_tab: active_tab),
@@ -984,6 +986,7 @@ defmodule PortalWeb.Actors do
            groups: groups,
            tokens: tokens,
            sessions: sessions,
+           devices: devices,
            created_token: created_token
          )}
 
@@ -1133,6 +1136,7 @@ defmodule PortalWeb.Actors do
       groups: [],
       tokens: [],
       sessions: [],
+      devices: [],
       created_token: nil
     }
     |> Map.merge(Map.new(overrides))
@@ -1558,6 +1562,7 @@ defmodule PortalWeb.Actors do
         from(c in ClientToken, as: :client_tokens)
         |> where([client_tokens: c], c.actor_id == ^actor_id)
         |> order_by([client_tokens: c], desc: c.inserted_at)
+        |> preload([:device, :site])
         |> Safe.scoped(subject)
         |> Safe.all()
 
@@ -1566,18 +1571,34 @@ defmodule PortalWeb.Actors do
       |> Presence.Devices.preload_client_tokens_presence()
     end
 
+    # The devices the actor has signed in on, most recently seen first, with
+    # the device's presence so the list can show who is online.
+    def get_device_actors_for_actor(actor_id, subject) do
+      device_actors =
+        from(da in Portal.DeviceActor, as: :device_actors)
+        |> where([device_actors: da], da.actor_id == ^actor_id)
+        |> order_by([device_actors: da], desc: da.last_seen_at)
+        |> preload(:device)
+        |> Safe.scoped(subject)
+        |> Safe.all()
+
+      devices = Presence.Devices.preload_presence(Enum.map(device_actors, & &1.device))
+
+      Enum.zip_with(device_actors, devices, &%{&1 | device: &2})
+    end
+
     defp preload_last_used_devices_for_tokens(tokens, subject) do
       token_ids = Enum.map(tokens, & &1.id)
 
       devices_by_token_id =
         from(d in Device,
-          where: d.client_token_id in ^token_ids,
-          distinct: d.client_token_id,
-          order_by: [asc: d.client_token_id, desc: d.last_seen_at]
+          where: d.token_id in ^token_ids,
+          distinct: d.token_id,
+          order_by: [asc: d.token_id, desc: d.last_seen_at]
         )
         |> Safe.scoped(subject)
         |> Safe.all()
-        |> Map.new(&{&1.client_token_id, &1})
+        |> Map.new(&{&1.token_id, &1})
 
       Enum.map(tokens, fn token ->
         %{token | last_used_device: Map.get(devices_by_token_id, token.id)}

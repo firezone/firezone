@@ -284,11 +284,11 @@ defmodule PortalWeb.Settings.Account do
               limit={effective_limit(@account, :monthly_active_users_count)}
             />
             <.usage_bar
-              :if={(effective_limit(@account, :adhoc_service_accounts_count) || 0) > 0}
+              :if={(adhoc_service_accounts_allowance(@account) || 0) > 0}
               label="Ad hoc Service Accounts"
               description="Active service accounts that do not take a seat"
               used={@usage.adhoc_service_accounts_count}
-              limit={effective_limit(@account, :adhoc_service_accounts_count)}
+              limit={adhoc_service_accounts_allowance(@account)}
             />
             <.usage_unlimited
               :if={is_nil(effective_limit(@account, :users_count))}
@@ -495,6 +495,10 @@ defmodule PortalWeb.Settings.Account do
     sites_count: 10,
     account_admin_users_count: 1
   }
+
+  defp adhoc_service_accounts_allowance(account) do
+    Portal.Accounts.Limits.adhoc_service_accounts_allowance(account.limits)
+  end
 
   @spec effective_limit(Portal.Account.t(), atom()) :: integer() | nil
   defp effective_limit(account, field) do

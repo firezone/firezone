@@ -181,7 +181,9 @@ defmodule PortalWeb.Settings.AccountTest do
         |> live(~p"/#{account}/settings/account")
 
       assert html =~ "Usage"
-      refute html =~ "Ad hoc Service Accounts"
+      # Every plan includes one ad hoc service account.
+      assert html =~ "Ad hoc Service Accounts"
+      assert html =~ "0 / 1"
     end
 
     test "hides seats when the plan has no active seat limit", %{
@@ -252,7 +254,7 @@ defmodule PortalWeb.Settings.AccountTest do
       assert html =~ "Ad hoc service account + device"
       assert html =~ "× 10000"
       assert html =~ "Ad hoc Service Accounts"
-      assert html =~ "1 / 10000"
+      assert html =~ "1 / 10001"
       assert html =~ "Seats"
       assert html =~ "0 / 100"
     end
