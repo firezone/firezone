@@ -73,15 +73,21 @@ defmodule Portal.ComponentVersions do
     end
   end
 
+  # The unified binary follows its own release line whoever owns the device.
+  def get_component_type(%Device{type: :client, last_seen_user_agent: ua} = client)
+      when is_binary(ua) do
+    cond do
+      String.contains?(ua, "firezone/") -> :firezone
+      match?(%Portal.Actor{type: :service_account}, client.actor) -> :headless
+      true -> get_component_type_from_user_agent(ua)
+    end
+  end
+
   def get_component_type(%Device{
         type: :client,
         actor: %Portal.Actor{type: :service_account}
       }),
       do: :headless
-
-  def get_component_type(%Device{type: :client, last_seen_user_agent: ua})
-      when is_binary(ua),
-      do: get_component_type_from_user_agent(ua)
 
   def get_component_type(%Device{type: :client}), do: :gui
 

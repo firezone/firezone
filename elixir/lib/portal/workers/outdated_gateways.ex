@@ -28,7 +28,7 @@ defmodule Portal.Workers.OutdatedGateways do
     |> Enum.each(fn account ->
       incompatible_client_count = Database.count_incompatible_for(account, latest_version)
 
-      all_online_gateways_for_account(account)
+      all_online_routers_for_account(account)
       |> Enum.filter(&Device.gateway_outdated?/1)
       |> send_notifications(account, incompatible_client_count)
     end)
@@ -40,11 +40,15 @@ defmodule Portal.Workers.OutdatedGateways do
     not Billing.paid_plan?(account) and not Database.account_active?(account.id)
   end
 
-  defp all_online_gateways_for_account(account) do
-    online_ids = Portal.Presence.Devices.online_ids(account.id, :gateway)
+  # The devices in front of a site: every device with a site assignment that
+  # runs the Linux daemon, which is what the email's upgrade steps are for.
+  # Desktops and phones in a site are a matter for the fleet report instead.
+  defp all_online_routers_for_account(account) do
+    online_ids = Portal.Presence.Devices.online_ids(account.id)
 
-    Database.all_gateways_for_account!(account)
+    Database.all_site_devices_for_account!(account)
     |> Enum.filter(&(&1.id in online_ids))
+    |> Enum.filter(&Device.linux_daemon?/1)
   end
 
   defp send_notifications([], _account, _incompatible_client_count) do
@@ -142,11 +146,14 @@ defmodule Portal.Workers.OutdatedGateways do
       |> Safe.aggregate(:count)
     end
 
-    def all_gateways_for_account!(account) do
-      from(g in Device,
-        where: g.type == :gateway,
-        where: g.account_id == ^account.id
+    def all_site_devices_for_account!(account) do
+      from(d in Device, as: :devices)
+      |> join(:inner, [devices: d], sd in Portal.SiteDevice,
+        on: sd.device_id == d.id and sd.account_id == d.account_id,
+        as: :site_devices
       )
+      |> where([devices: d], d.account_id == ^account.id)
+      |> distinct(true)
       |> Safe.unscoped()
       |> Safe.all()
     end

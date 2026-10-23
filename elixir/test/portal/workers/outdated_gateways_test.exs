@@ -8,6 +8,7 @@ defmodule Portal.Workers.OutdatedGatewaysTest do
   import Portal.ClientSessionFixtures
   import Portal.OutboundEmailTestHelpers
   import Portal.SessionLogFixtures
+  import Portal.SiteDeviceFixtures
   import Portal.SiteFixtures
 
   alias Portal.Workers.OutdatedGateways
@@ -164,6 +165,71 @@ defmodule Portal.Workers.OutdatedGatewaysTest do
       end)
 
       refute_email_sent()
+    end
+
+    test "notifies for a Linux device on the unified binary that serves a site" do
+      account = account_fixture()
+      admin = admin_actor_fixture(account: account)
+      session_log_fixture(account: account)
+      site = site_fixture(account: account)
+
+      actor = actor_fixture(account: account)
+      device = client_fixture(account: account, actor: actor)
+
+      client_session_fixture(
+        account: account,
+        actor: actor,
+        client: device,
+        version: "0.9.0",
+        user_agent: "Ubuntu/24.04 firezone/0.9.0"
+      )
+
+      site_device_fixture(account: account, site: site, device: device)
+      assert :ok = Portal.Presence.Devices.connect(device, device.token_id)
+
+      assert :ok = perform_job(OutdatedGateways, %{})
+
+      assert_email_queued(account.id, fn email ->
+        assert email.to == [{"", admin.email}]
+      end)
+    end
+
+    test "leaves out a Windows device that serves a site and a Linux device that serves none" do
+      account = account_fixture()
+      admin_actor_fixture(account: account)
+      session_log_fixture(account: account)
+      site = site_fixture(account: account)
+
+      actor = actor_fixture(account: account)
+
+      windows = client_fixture(account: account, actor: actor)
+
+      client_session_fixture(
+        account: account,
+        actor: actor,
+        client: windows,
+        version: "0.9.0",
+        user_agent: "Windows/10 firezone/0.9.0"
+      )
+
+      site_device_fixture(account: account, site: site, device: windows)
+      assert :ok = Portal.Presence.Devices.connect(windows, windows.token_id)
+
+      laptop = client_fixture(account: account, actor: actor)
+
+      client_session_fixture(
+        account: account,
+        actor: actor,
+        client: laptop,
+        version: "0.9.0",
+        user_agent: "Ubuntu/24.04 firezone/0.9.0"
+      )
+
+      assert :ok = Portal.Presence.Devices.connect(laptop, laptop.token_id)
+
+      assert :ok = perform_job(OutdatedGateways, %{})
+
+      refute_email_queued(account.id)
     end
 
     test "skips admins who turned gateway upgrade emails off" do

@@ -363,6 +363,19 @@ defmodule Portal.Device do
     end
   end
 
+  @doc """
+  Whether the device runs the Linux daemon: a Gateway, or a client on the
+  headless or unified binary somewhere other than Windows or macOS.
+  """
+  def linux_daemon?(%__MODULE__{type: :gateway}), do: true
+
+  def linux_daemon?(%__MODULE__{last_seen_user_agent: ua}) when is_binary(ua) do
+    Portal.ComponentVersions.get_component_type_from_user_agent(ua) in [:headless, :firezone] and
+      not Enum.any?(["Windows", "Mac OS", "macOS", "iOS", "Android"], &String.starts_with?(ua, &1))
+  end
+
+  def linux_daemon?(%__MODULE__{}), do: false
+
   def gateway_outdated?(gateway) do
     latest_release = Portal.ComponentVersions.latest_version(gateway)
     version = gateway.last_seen_version
