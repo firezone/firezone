@@ -14,7 +14,7 @@ defmodule PortalWeb.Devices.AddDevice do
   @user_sign_in "user"
 
   @type state :: %{
-          step: :form | :instructions | :user,
+          step: :form | :instructions | :user | nil,
           form: Phoenix.HTML.Form.t() | nil,
           service_accounts: [Portal.Actor.t()],
           sites: [Portal.Site.t()],
