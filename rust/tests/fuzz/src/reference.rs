@@ -1,6 +1,6 @@
 use super::dns_records::DnsRecords;
 use super::probe::{
-    ExpectedOutcome, ExpectedProbe, FlowId, IcmpFlow, KnownLoss, ProbeId, ProbeRequest,
+    Answer, ExpectedOutcome, ExpectedProbe, FlowId, IcmpFlow, KnownLoss, ProbeId, ProbeRequest,
     RejectionRemote, RejectionResponse, Remote, Route, TcpFlow, TraceRequirement, UdpFlow,
 };
 use super::{ref_client::*, ref_gateway::*, sim_net::*, stub_portal::StubPortal, transition::*};
@@ -268,7 +268,7 @@ impl ReferenceState {
                 );
 
                 match outcome {
-                    ExpectedOutcome::RoundTripCompleted(route) => {
+                    ExpectedOutcome::RoundTripCompleted(route, _) => {
                         let flow = IcmpFlow {
                             client_id: *client_id,
                             src: *src,
@@ -355,7 +355,7 @@ impl ReferenceState {
                 );
 
                 match outcome {
-                    ExpectedOutcome::RoundTripCompleted(route) => {
+                    ExpectedOutcome::RoundTripCompleted(route, _) => {
                         let flow = UdpFlow {
                             client_id: *client_id,
                             src: *src,
@@ -424,7 +424,9 @@ impl ReferenceState {
                 };
                 let (outcome, authorization) = self.verdict(portal, *client_id, &request);
                 let outcome = match outcome {
-                    ExpectedOutcome::RoundTripCompleted(route) if self.serves_tcp(dst, *dport) => {
+                    ExpectedOutcome::RoundTripCompleted(route, _)
+                        if self.serves_tcp(dst, *dport) =>
+                    {
                         let flow = TcpFlow {
                             client_id: *client_id,
                             src: *src,
@@ -438,7 +440,9 @@ impl ReferenceState {
 
                         outcome
                     }
-                    ExpectedOutcome::RoundTripCompleted(route) => reset_by(route),
+                    ExpectedOutcome::RoundTripCompleted(route, _) => {
+                        ExpectedOutcome::RoundTripCompleted(route, Answer::Reset)
+                    }
                     ExpectedOutcome::Dropped => outcome,
                     ExpectedOutcome::Rejected { .. } => outcome,
                 };
@@ -471,7 +475,7 @@ impl ReferenceState {
                 };
                 let (outcome, authorization) = self.verdict(portal, flow.client_id, &request);
                 let outcome = match outcome {
-                    ExpectedOutcome::RoundTripCompleted(route)
+                    ExpectedOutcome::RoundTripCompleted(route, _)
                         if route.remote() == flow.route.remote() =>
                     {
                         self.tcp_flows.insert(
@@ -482,9 +486,11 @@ impl ReferenceState {
                             },
                         );
 
-                        outcome
+                        ExpectedOutcome::RoundTripCompleted(route, Answer::WriteEchoed)
                     }
-                    ExpectedOutcome::RoundTripCompleted(route) => reset_by(route),
+                    ExpectedOutcome::RoundTripCompleted(route, _) => {
+                        ExpectedOutcome::RoundTripCompleted(route, Answer::WriteReset)
+                    }
                     ExpectedOutcome::Dropped => outcome,
                     ExpectedOutcome::Rejected { .. } => outcome,
                 };
@@ -768,7 +774,10 @@ impl ReferenceState {
                 request.destination(),
                 request.protocol(),
             ),
-            Route::Gateway(_) => (ExpectedOutcome::RoundTripCompleted(route), None),
+            Route::Gateway(_) => (
+                ExpectedOutcome::RoundTripCompleted(route, Answer::Echo),
+                None,
+            ),
             // A retained flow completes its round trip; asking the portal again only refreshes
             // the authorization a peer that reconnected since took from us.
             Route::Peer(peer) => {
@@ -781,7 +790,10 @@ impl ReferenceState {
                         Err(_) => None,
                     };
 
-                (ExpectedOutcome::RoundTripCompleted(route), authorization)
+                (
+                    ExpectedOutcome::RoundTripCompleted(route, Answer::Echo),
+                    authorization,
+                )
             }
         };
         self.record_probe(portal, id, origin, request, sent_at, outcome, authorization);
@@ -861,7 +873,7 @@ impl ReferenceState {
             });
             if let Some(gateway) = connected_gateway {
                 return (
-                    ExpectedOutcome::RoundTripCompleted(Route::Gateway(gateway)),
+                    ExpectedOutcome::RoundTripCompleted(Route::Gateway(gateway), Answer::Echo),
                     None,
                 );
             }
@@ -932,7 +944,7 @@ impl ReferenceState {
             || (granted && receiver.strict_resource_filter_allows(pool, protocol));
         if inbound_allows {
             return (
-                ExpectedOutcome::RoundTripCompleted(Route::Peer(peer)),
+                ExpectedOutcome::RoundTripCompleted(Route::Peer(peer), Answer::Echo),
                 granted.then_some(authorization),
             );
         }
@@ -994,7 +1006,10 @@ impl ReferenceState {
                 by: RejectionRemote::Gateway(gateway),
                 response,
             },
-            None => ExpectedOutcome::RoundTripCompleted(Route::Resource { resource, gateway }),
+            None => ExpectedOutcome::RoundTripCompleted(
+                Route::Resource { resource, gateway },
+                Answer::Echo,
+            ),
         };
 
         let authorization = Authorization::Resource {
@@ -1147,42 +1162,22 @@ impl ReferenceState {
             return TraceRequirement::Exact;
         }
 
-        let known_loss = match outcome {
-            ExpectedOutcome::Dropped => None,
-            ExpectedOutcome::RoundTripCompleted(Route::Peer(client))
+        let Some(remote) = outcome.remote() else {
+            return TraceRequirement::Exact;
+        };
+        let known_loss = match remote {
+            Remote::Client(client)
                 if self.clients[&client]
                     .inner()
                     .has_reset_connections_within_ice_timeout(sent_at) =>
             {
                 Some(KnownLoss::ConnectionReset)
             }
-            ExpectedOutcome::RoundTripCompleted(route) => self
-                .can_drop_during_rekey(origin, route.remote(), sent_at)
+            Remote::Client(_) => self
+                .can_drop_during_rekey(origin, remote, sent_at)
                 .then_some(KnownLoss::WireGuardRekey),
-            ExpectedOutcome::Rejected {
-                by: RejectionRemote::Local,
-                ..
-            } => None,
-            ExpectedOutcome::Rejected {
-                by: RejectionRemote::Gateway(gateway),
-                ..
-            } => self
-                .can_drop_during_rekey(origin, Remote::Gateway(gateway), sent_at)
-                .then_some(KnownLoss::WireGuardRekey),
-            ExpectedOutcome::Rejected {
-                by: RejectionRemote::Client(client),
-                ..
-            } if self.clients[&client]
-                .inner()
-                .has_reset_connections_within_ice_timeout(sent_at) =>
-            {
-                Some(KnownLoss::ConnectionReset)
-            }
-            ExpectedOutcome::Rejected {
-                by: RejectionRemote::Client(client),
-                ..
-            } => self
-                .can_drop_during_rekey(origin, Remote::Client(client), sent_at)
+            Remote::Gateway(_) => self
+                .can_drop_during_rekey(origin, remote, sent_at)
                 .then_some(KnownLoss::WireGuardRekey),
         };
 
@@ -1752,18 +1747,5 @@ fn address_record_type(src: IpAddr) -> RecordType {
         RecordType::A
     } else {
         RecordType::AAAA
-    }
-}
-
-fn reset_by(route: Route) -> ExpectedOutcome {
-    let by = match route {
-        Route::Resource { gateway, .. } => RejectionRemote::Gateway(gateway),
-        Route::Gateway(gateway) => RejectionRemote::Gateway(gateway),
-        Route::Peer(client) => RejectionRemote::Client(client),
-    };
-
-    ExpectedOutcome::Rejected {
-        by,
-        response: RejectionResponse::Reset,
     }
 }
