@@ -773,14 +773,14 @@ defmodule PortalWeb.Sites.Components do
         <li
           :for={device <- @picker.results}
           id={"assignable-device-#{device.id}"}
-          class="flex items-center gap-3 px-3 py-2"
+          class="flex items-center gap-3 px-3 py-2 flex-wrap"
         >
           <div class="flex-1 min-w-0">
             <p class="font-mono text-xs font-medium text-heading truncate">{device.name}</p>
             <p class="text-[11px] text-subtle truncate">{device.slug}</p>
           </div>
           <Form.button
-            :if={device.type == :gateway}
+            :if={device.type == :gateway and @picker.confirm_id != device.id}
             type="button"
             size="xs"
             phx-click="assign_device"
@@ -788,6 +788,31 @@ defmodule PortalWeb.Sites.Components do
           >
             Add
           </Form.button>
+          <div
+            :if={@picker.confirm_id == device.id}
+            class="basis-full rounded border border-warning/40 bg-warning-light p-3 space-y-2"
+          >
+            <p class="text-xs text-body">
+              <span class="font-medium">This device would serve the Internet resource next to other resources.</span>
+              Users with access to the Internet resource can reach any non-private address this
+              device can reach, and gateways below 1.6.5 do not route a site's other resources
+              while serving the Internet resource.
+            </p>
+            <div class="flex items-center gap-2">
+              <Form.button type="button" size="xs" phx-click="cancel_assign_device">
+                Cancel
+              </Form.button>
+              <Form.button
+                type="button"
+                size="xs"
+                phx-click="assign_device"
+                phx-value-id={device.id}
+                phx-value-confirmed="true"
+              >
+                Add anyway
+              </Form.button>
+            </div>
+          </div>
           <span
             :if={device.type != :gateway}
             class="text-[11px] text-subtle"

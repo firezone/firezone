@@ -1164,7 +1164,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
       sup_pid ->
         # The sites the gateway serves travel in its presence meta, so the
         # assignments are read here, at connect.
-        gateway = Portal.Safe.preload(socket.assigns.gateway, :site_devices)
+        gateway = Database.preload_site_devices(socket.assigns.gateway)
 
         :ok = Presence.Devices.connect(gateway, socket.assigns.token_id)
 
@@ -1214,6 +1214,10 @@ defmodule PortalAPI.Gateway.Channel.Shared do
       from(a in Account, where: a.id == ^subject.account.id)
       |> Safe.scoped(subject)
       |> Safe.one!()
+    end
+
+    def preload_site_devices(%Portal.Device{} = gateway) do
+      Safe.preload(gateway, :site_devices)
     end
   end
 end
