@@ -24,7 +24,7 @@ async exportLogs() : Promise<Result<null, Error>> {
     else return { status: "error", error: e  as any };
 }
 },
-async applyAdvancedSettings(settings: AdvancedSettings) : Promise<Result<null, Error>> {
+async applyAdvancedSettings(settings: AdvancedSettingsForm) : Promise<Result<null, Error>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("apply_advanced_settings", { settings }) };
 } catch (e) {
@@ -105,9 +105,21 @@ x509CertificateChanged: "x509-certificate-changed"
 
 /** user-defined types **/
 
-export type AdvancedSettings = { auth_url: string; api_url: string; log_filter: string }
 export type AdvancedSettingsChanged = AdvancedSettingsViewModel
-export type AdvancedSettingsViewModel = { auth_url: string; auth_url_is_managed: boolean; api_url: string; api_url_is_managed: boolean; log_filter: string; log_filter_is_managed: boolean }
+export type AdvancedSettingsForm = { cloud_region: CloudRegion;
+/**
+ * Only used for [`CloudRegion::Custom`].
+ */
+auth_url: string;
+/**
+ * Only used for [`CloudRegion::Custom`].
+ */
+api_url: string; log_filter: string }
+export type AdvancedSettingsViewModel = { cloud_region: CloudRegion; auth_url: string; auth_url_is_managed: boolean; api_url: string; api_url_is_managed: boolean; log_filter: string; log_filter_is_managed: boolean }
+/**
+ * The Firezone Cloud deployment a client signs in to, or [`CloudRegion::Custom`] for any other URLs.
+ */
+export type CloudRegion = "Us" | "Eu" | "Custom"
 export type Error = string
 export type FileCount = { bytes: number; files: number }
 export type GeneralSettingsChanged = GeneralSettingsViewModel

@@ -1,7 +1,7 @@
 import React, { useEffect, useId, useState } from "react";
-import { AdvancedSettingsViewModel } from "../generated/bindings";
+import { AdvancedSettingsViewModel, CloudRegion } from "../generated/bindings";
 import Button from "./Button";
-import { ManagedTextInput } from "./ManagedInput";
+import { ManagedSelect, ManagedTextInput } from "./ManagedInput";
 import RemixIcon from "./RemixIcon";
 
 interface Props {
@@ -11,6 +11,7 @@ interface Props {
 }
 
 const defaultSettings: AdvancedSettingsViewModel = {
+  cloud_region: "Custom",
   api_url: "",
   api_url_is_managed: false,
   auth_url: "",
@@ -32,6 +33,7 @@ export default function AdvancedSettingsPage({
     setLocalSettings(settings ?? defaultSettings);
   }, [settings]);
 
+  const cloudRegionId = useId();
   const authBaseUrlId = useId();
   const apiUrlId = useId();
   const logFilterInputId = useId();
@@ -55,42 +57,71 @@ export default function AdvancedSettingsPage({
         }}
       >
         <div>
-          <label className="form-label" htmlFor={authBaseUrlId}>
-            Auth Base URL
+          <label className="form-label" htmlFor={cloudRegionId}>
+            Server
           </label>
-          <ManagedTextInput
-            id={authBaseUrlId}
-            managed={localSettings.auth_url_is_managed}
-            name="auth_base_url"
+          <ManagedSelect
+            id={cloudRegionId}
+            managed={
+              localSettings.auth_url_is_managed ||
+              localSettings.api_url_is_managed
+            }
+            name="cloud_region"
             onChange={(event) =>
               setLocalSettings({
                 ...localSettings,
-                auth_url: event.target.value,
+                cloud_region: event.target.value as CloudRegion,
               })
             }
-            required
-            value={localSettings.auth_url}
-          />
+            value={localSettings.cloud_region}
+          >
+            <option value="Us">Firezone Cloud (US)</option>
+            <option value="Eu">Firezone Cloud (EU)</option>
+            <option value="Custom">Custom</option>
+          </ManagedSelect>
         </div>
 
-        <div>
-          <label className="form-label" htmlFor={apiUrlId}>
-            API URL
-          </label>
-          <ManagedTextInput
-            id={apiUrlId}
-            managed={localSettings.api_url_is_managed}
-            name="api_url"
-            onChange={(event) =>
-              setLocalSettings({
-                ...localSettings,
-                api_url: event.target.value,
-              })
-            }
-            required
-            value={localSettings.api_url}
-          />
-        </div>
+        {localSettings.cloud_region === "Custom" && (
+          <>
+            <div>
+              <label className="form-label" htmlFor={authBaseUrlId}>
+                Auth Base URL
+              </label>
+              <ManagedTextInput
+                id={authBaseUrlId}
+                managed={localSettings.auth_url_is_managed}
+                name="auth_base_url"
+                onChange={(event) =>
+                  setLocalSettings({
+                    ...localSettings,
+                    auth_url: event.target.value,
+                  })
+                }
+                required
+                value={localSettings.auth_url}
+              />
+            </div>
+
+            <div>
+              <label className="form-label" htmlFor={apiUrlId}>
+                API URL
+              </label>
+              <ManagedTextInput
+                id={apiUrlId}
+                managed={localSettings.api_url_is_managed}
+                name="api_url"
+                onChange={(event) =>
+                  setLocalSettings({
+                    ...localSettings,
+                    api_url: event.target.value,
+                  })
+                }
+                required
+                value={localSettings.api_url}
+              />
+            </div>
+          </>
+        )}
 
         <div>
           <label className="form-label" htmlFor={logFilterInputId}>

@@ -1,4 +1,4 @@
-import React, { InputHTMLAttributes } from "react";
+import React, { InputHTMLAttributes, SelectHTMLAttributes } from "react";
 
 type ManagedTextInputProps = InputHTMLAttributes<HTMLInputElement> & {
   managed: boolean;
@@ -24,6 +24,32 @@ export function ManagedTextInput({
   }
 
   return <ManagedTooltip fullWidth>{input}</ManagedTooltip>;
+}
+
+type ManagedSelectProps = SelectHTMLAttributes<HTMLSelectElement> & {
+  managed: boolean;
+};
+
+export function ManagedSelect({
+  disabled,
+  managed,
+  className = "",
+  ...selectProps
+}: ManagedSelectProps) {
+  const select = (
+    <select
+      aria-disabled={managed || undefined}
+      className={`form-input ${className}`}
+      disabled={managed || disabled}
+      {...selectProps}
+    />
+  );
+
+  if (!managed) {
+    return select;
+  }
+
+  return <ManagedTooltip fullWidth>{select}</ManagedTooltip>;
 }
 
 interface ManagedToggleSwitchProps {

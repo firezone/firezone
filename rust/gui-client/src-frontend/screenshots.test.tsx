@@ -49,6 +49,7 @@ const generalSettings: GeneralSettingsViewModel = {
 };
 
 const advancedSettings: AdvancedSettingsViewModel = {
+  cloud_region: "Us",
   auth_url: "https://app.firezone.dev",
   auth_url_is_managed: false,
   api_url: "wss://api.firezone.dev",
@@ -151,6 +152,15 @@ const screens: Record<string, Screen> = {
     },
   },
   "advanced-settings": { route: "/advanced-settings", advancedSettings },
+  "advanced-settings-custom": {
+    route: "/advanced-settings",
+    advancedSettings: {
+      ...advancedSettings,
+      cloud_region: "Custom",
+      auth_url: "https://firezone.example.com",
+      api_url: "wss://api.firezone.example.com",
+    },
+  },
   "advanced-settings-managed": {
     route: "/advanced-settings",
     advancedSettings: {
@@ -159,7 +169,7 @@ const screens: Record<string, Screen> = {
       auth_url_is_managed: true,
       log_filter_is_managed: true,
     },
-    hover: "Auth Base URL",
+    hover: "Server",
   },
   "device-trust-happy": {
     route: "/device-trust",
