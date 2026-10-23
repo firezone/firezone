@@ -132,6 +132,7 @@ eventloop-budget = { path = "libs/eventloop-budget" }
 fast-random-state = { path = "libs/fast-random-state" }
 fastrand = "2.3.0"
 filetime = "0.2.29"
+firezone-cli = { path = "gui-client/src-cli" }
 flow-log-spool = { path = "libs/flow-log-spool" }
 flow-log-upload = { path = "libs/flow-log-upload" }
 flow-log-writer = { path = "libs/flow-log-writer" }

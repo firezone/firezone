@@ -11,7 +11,7 @@
 #[global_allocator]
 static ALLOC: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
-use anyhow::{Context as _, Result, anyhow};
+use anyhow::{Context as _, ErrorExt as _, Result, anyhow};
 use backoff::ExponentialBackoffBuilder;
 use bin_shared::{
     DnsControlMethod, DnsController, TOKEN_ENV_KEY, TunDeviceManager, device_id, device_info,
@@ -211,7 +211,7 @@ enum Cmd {
         account_slug: Option<String>,
     },
 
-    /// Sign out by removing the stored token
+    /// Sign out: from the running GUI when there is one, else by removing the stored token
     SignOut {
         /// Skip confirmation prompt
         #[arg(long, short)]
@@ -221,6 +221,30 @@ enum Cmd {
     /// Show the X.509 client certificate the platform keystore holds
     #[command(alias = "x509")]
     Identity,
+
+    /// Report the current status of the running GUI
+    Status,
+
+    /// Bring the tunnel up in the running GUI
+    ///
+    /// A token piped on stdin or set in FIREZONE_TOKEN is used and saved
+    /// once the portal accepts it; otherwise the stored one is used.
+    Connect,
+
+    /// Disconnect the running GUI, keeping the stored token
+    Disconnect,
+
+    /// Inspect the Resources the running GUI can reach
+    Resources {
+        #[command(subcommand)]
+        command: Option<firezone_cli::ResourcesCmd>,
+    },
+
+    /// Turn the Internet Resource on or off in the running GUI
+    InternetResource {
+        #[command(subcommand)]
+        command: firezone_cli::InternetResourceCmd,
+    },
 }
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -241,6 +265,12 @@ pub fn main() {
             std::process::exit(1);
         }
     }
+}
+
+/// Runs one of the GUI remote-control commands, reporting a failure the way
+/// the `firezone-cli` binary does.
+fn gui_command(command: firezone_cli::Cmd) -> Result<()> {
+    firezone_cli::execute(command).map_err(|e| anyhow!(firezone_cli::user_message(&e, false)))
 }
 
 /// Whether this process was started under the standalone client's old name,
@@ -270,9 +300,34 @@ fn try_main() -> Result<()> {
             return Ok(());
         }
         Some(Cmd::SignOut { force }) => {
-            handle_sign_out(&cli.token_path, *force)?;
+            // A running GUI owns the session; without one, the stored token
+            // of the standalone client is what signing out removes.
+            if invoked_as_headless_client() {
+                handle_sign_out(&cli.token_path, *force)?;
+            } else {
+                match firezone_cli::execute(firezone_cli::Cmd::SignOut) {
+                    Ok(()) => {}
+                    Err(e) if e.any_is::<gui_ipc::NotRunning>() => {
+                        handle_sign_out(&cli.token_path, *force)?;
+                    }
+                    Err(e) => return Err(anyhow!(firezone_cli::user_message(&e, false))),
+                }
+            }
 
             return Ok(());
+        }
+        Some(Cmd::Status) => return gui_command(firezone_cli::Cmd::Status),
+        Some(Cmd::Connect) => return gui_command(firezone_cli::Cmd::Connect),
+        Some(Cmd::Disconnect) => return gui_command(firezone_cli::Cmd::Disconnect),
+        Some(Cmd::Resources { command }) => {
+            return gui_command(firezone_cli::Cmd::Resources {
+                command: command.clone(),
+            });
+        }
+        Some(Cmd::InternetResource { command }) => {
+            return gui_command(firezone_cli::Cmd::InternetResource {
+                command: command.clone(),
+            });
         }
         Some(Cmd::Identity) => {
             handle_x509()?;
@@ -873,6 +928,28 @@ mod tests {
         // The old name of the command keeps working.
         let actual = Cli::try_parse_from(["firezone-headless-client", "x509"]).unwrap();
         assert!(matches!(actual._command, Some(Cmd::Identity)));
+    }
+
+    #[test]
+    fn gui_subcommands() {
+        let actual = Cli::try_parse_from(["firezone", "status"]).unwrap();
+        assert!(matches!(actual._command, Some(Cmd::Status)));
+
+        let actual = Cli::try_parse_from(["firezone", "resources", "list"]).unwrap();
+        assert!(matches!(
+            actual._command,
+            Some(Cmd::Resources {
+                command: Some(firezone_cli::ResourcesCmd::List)
+            })
+        ));
+
+        let actual = Cli::try_parse_from(["firezone", "internet-resource", "enable"]).unwrap();
+        assert!(matches!(
+            actual._command,
+            Some(Cmd::InternetResource {
+                command: firezone_cli::InternetResourceCmd::Enable
+            })
+        ));
     }
 
     #[test]

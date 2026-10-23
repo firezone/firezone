@@ -7,6 +7,10 @@ edition = { workspace = true }
 authors = ["Firezone, Inc."]
 license = { workspace = true }
 
+[[bin]]
+name = "firezone-cli"
+path = "src/bin/firezone-cli.rs"
+
 [dependencies]
 anyhow = { workspace = true }
 clap = { workspace = true, features = ["derive"] }
