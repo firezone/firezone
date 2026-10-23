@@ -104,14 +104,17 @@ pub struct RefClient {
     #[debug(skip)]
     pub(crate) expected_device_listings: BTreeMap<DeviceListingQuery, DeviceListing>,
 
+    // TODO: Remove with classic ICE.
     #[debug(skip)]
     connection_resets: Vec<Instant>,
 
+    // TODO: Remove with classic ICE.
     /// Per Gateway, the instants at which this client sent a packet on that
     /// connection.
     #[debug(skip)]
     gateway_send_times: BTreeMap<GatewayId, BTreeSet<Instant>>,
 
+    // TODO: Remove with classic ICE.
     /// Per peer Client, the instants at which this client sent a packet on that
     /// connection.
     #[debug(skip)]
@@ -482,6 +485,7 @@ impl RefClient {
         gateways: &BTreeSet<GatewayId>,
         now: Instant,
     ) {
+        // TODO: Remove with classic ICE.
         for gateway in gateways {
             self.gateway_send_times.remove(gateway);
         }
@@ -507,6 +511,7 @@ impl RefClient {
             .extract_if(.., |_, gateway| failed.contains(gateway))
         {}
 
+        // TODO: Remove with classic ICE.
         self.connection_resets.push(now);
         self.discard_connections(affected);
     }
@@ -531,6 +536,7 @@ impl RefClient {
         gateway: GatewayId,
         resources: &BTreeSet<ResourceId>,
     ) {
+        // TODO: Remove with classic ICE.
         self.gateway_send_times.remove(&gateway);
 
         let connected = self.connected_resources().collect::<BTreeSet<_>>();
@@ -558,6 +564,7 @@ impl RefClient {
     }
 
     pub(crate) fn reset_connections(&mut self, now: Instant) {
+        // TODO: Remove with classic ICE: the reset instant and the send times only serve the loss windows.
         self.connection_resets.push(now);
 
         // A reset tears the connection down; a subsequent packet re-establishes it
@@ -692,6 +699,7 @@ impl RefClient {
         }
     }
 
+    // TODO: Remove with classic ICE, together with its callers.
     pub(crate) fn note_sent(&mut self, remote: Option<Remote>, now: Instant) {
         match remote {
             Some(Remote::Gateway(gateway)) => {
@@ -1519,6 +1527,7 @@ impl RefClient {
         self.system_dns_resolvers = servers.to_vec();
     }
 
+    // TODO: Remove with classic ICE.
     pub(crate) fn last_packet_sent_to_gateway_before(
         &self,
         gateway: GatewayId,
@@ -1531,6 +1540,7 @@ impl RefClient {
             .copied()
     }
 
+    // TODO: Remove with classic ICE.
     pub(crate) fn last_packet_sent_to_client_before(
         &self,
         client: ClientId,
@@ -1543,6 +1553,7 @@ impl RefClient {
             .copied()
     }
 
+    // TODO: Remove with classic ICE.
     /// Checks whether the given instant falls within a time period T .. T + ICE_TIMEOUT where T marks every point in time where we reset all our connections.
     pub(crate) fn has_reset_connections_within_ice_timeout(&self, at: Instant) -> bool {
         let ice_timeout = Duration::from_millis(22_000); // TODO: Figure out why this isn't exactly ICE timeout but longer?

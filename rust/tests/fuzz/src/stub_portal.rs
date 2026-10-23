@@ -68,6 +68,7 @@ pub struct StubPortal {
     /// Stable index used to pick a resource candidate (`index % len`).
     resource_selector: u32,
 
+    // TODO: Remove with classic ICE.
     /// Whether the portal hands out ICE-less flows. Sampled once per test case
     /// and applied to every connection, modelling a portal-wide rollout toggle
     /// rather than a per-peer capability.
@@ -324,12 +325,14 @@ impl StubPortal {
             })
     }
 
+    // TODO: Remove with classic ICE.
     /// Toggles whether the portal hands out ICE-less flows.
     pub(crate) fn with_iceless(mut self, iceless: bool) -> Self {
         self.iceless = iceless;
         self
     }
 
+    // TODO: Remove with classic ICE.
     /// Whether the portal hands out ICE-less flows for every connection.
     pub(crate) fn iceless(&self) -> bool {
         self.iceless
