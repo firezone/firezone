@@ -15,6 +15,9 @@ defmodule Portal.Repo.Migrations.BackfillDeviceActorsTest do
   end
 
   defp backfill do
+    # The client fixture records its actor as a connect would; the rows are
+    # cleared so the statement is what puts them back.
+    Repo.delete_all(DeviceActor)
     Repo.query!(BackfillDeviceActors.backfill_statement())
   end
 
@@ -66,9 +69,10 @@ defmodule Portal.Repo.Migrations.BackfillDeviceActorsTest do
     earlier = DateTime.add(client.inserted_at, -1, :day)
     later = DateTime.add(now, 1, :day)
 
+    Repo.delete_all(DeviceActor)
     device_actor_fixture(device: client, actor: actor, first_seen_at: earlier, last_seen_at: later)
 
-    backfill()
+    Repo.query!(BackfillDeviceActors.backfill_statement())
 
     row = device_actor(client, actor)
     assert DateTime.compare(row.first_seen_at, earlier) == :eq
@@ -80,7 +84,7 @@ defmodule Portal.Repo.Migrations.BackfillDeviceActorsTest do
     client_fixture(account: account, actor: actor)
 
     backfill()
-    backfill()
+    Repo.query!(BackfillDeviceActors.backfill_statement())
 
     assert Repo.aggregate(DeviceActor, :count) == 1
   end

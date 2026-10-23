@@ -69,6 +69,13 @@ defmodule PortalAPI.Sockets.LatestSessionTest do
   end
 
   describe "device actors" do
+    # The client fixture stands in for a first connect and records its actor;
+    # these tests exercise the flush doing that, so start from none.
+    setup do
+      Repo.delete_all(Portal.DeviceActor)
+      :ok
+    end
+
     test "records the actor that connected on the device", %{client: client, token: token} do
       connected_at = DateTime.utc_now()
 
