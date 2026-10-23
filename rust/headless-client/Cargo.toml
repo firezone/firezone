@@ -17,11 +17,17 @@ path = "src/bin/firezone.rs"
 name = "firezone-headless-client"
 path = "src/bin/firezone-headless-client.rs"
 
+# The tunnel service under its old name, for the installs that still run it.
+[[bin]]
+name = "firezone-client-tunnel"
+path = "src/bin/firezone-client-tunnel.rs"
+
 [dependencies]
 anyhow = { workspace = true }
 backoff = { workspace = true }
 bin-shared = { workspace = true }
 clap = { workspace = true, features = ["derive", "env", "string"] }
+client-service = { workspace = true }
 client-shared = { workspace = true }
 flow-log-upload = { workspace = true }
 flow-log-writer = { workspace = true }

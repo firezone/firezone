@@ -1383,6 +1383,53 @@ dependencies = [
 ]
 
 [[package]]
+name = "client-service"
+version = "0.1.0"
+dependencies = [
+ "anyhow-ext",
+ "backoff",
+ "bin-shared",
+ "client-ipc",
+ "client-shared",
+ "connlib-model",
+ "flow-log-upload",
+ "flow-log-writer",
+ "futures",
+ "ip-packet",
+ "ip_network",
+ "known-dirs",
+ "logging",
+ "nix 0.31.3",
+ "opentelemetry",
+ "output_vt100",
+ "phoenix-channel",
+ "rand 0.10.3",
+ "secrecy",
+ "serde",
+ "serde_json",
+ "serde_variant",
+ "socket-factory",
+ "specta",
+ "strum",
+ "telemetry",
+ "tempfile",
+ "thiserror 2.0.21",
+ "tokio",
+ "tracing",
+ "tracing-journald",
+ "tracing-log",
+ "tracing-subscriber",
+ "tunnel-bypass-resolver",
+ "url",
+ "windows",
+ "windows-security",
+ "windows-service",
+ "winreg",
+ "x509-keystore",
+ "zip",
+]
+
+[[package]]
 name = "client-shared"
 version = "0.1.0"
 dependencies = [
@@ -2622,6 +2669,7 @@ dependencies = [
  "chrono",
  "clap",
  "client-ipc",
+ "client-service",
  "client-shared",
  "connlib-model",
  "dbus-secret-service-keyring-store",
@@ -2702,6 +2750,7 @@ dependencies = [
  "backoff",
  "bin-shared",
  "clap",
+ "client-service",
  "client-shared",
  "flow-log-upload",
  "flow-log-writer",

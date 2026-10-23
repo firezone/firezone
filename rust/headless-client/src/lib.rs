@@ -1,8 +1,10 @@
-//! The headless Client, AKA standalone Client.
+//! The headless Client, AKA standalone Client, and the `firezone` daemon.
 //!
-//! Built as two binaries from this one crate: `firezone`, the name every
-//! Linux install will use, and `firezone-headless-client`, kept as an alias
-//! so existing installs and scripts keep working.
+//! Built as three binaries from this one crate: `firezone`, the name every
+//! Linux install will use, whose `run` serves the IPC socket for the GUI and
+//! the CLI; `firezone-headless-client`, the standalone client kept as an
+//! alias so existing installs and scripts keep working; and
+//! `firezone-client-tunnel`, the daemon under its old name.
 
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
@@ -182,10 +184,17 @@ enum Cmd {
     #[clap(hide = true)]
     Standalone,
 
-    /// Connect to Firezone and stay connected until stopped
+    /// Run the daemon: serve the IPC socket for the GUI and the CLI
     ///
-    /// This is what happens with no subcommand too.
-    Run,
+    /// Invoked as `firezone-headless-client`, or with `--foreground`, this
+    /// is instead the standalone client: connect with the token from the
+    /// environment or the token file and stay connected until stopped,
+    /// which is also what happens with no subcommand.
+    Run {
+        /// Connect with a token in the foreground instead of serving the IPC socket
+        #[arg(long)]
+        foreground: bool,
+    },
 
     /// Sign in via browser-based authentication
     SignIn {
@@ -234,6 +243,16 @@ pub fn main() {
     }
 }
 
+/// Whether this process was started under the standalone client's old name,
+/// whose `run` has always meant "connect in the foreground".
+fn invoked_as_headless_client() -> bool {
+    std::env::args_os()
+        .next()
+        .map(std::path::PathBuf::from)
+        .and_then(|exe| exe.file_stem().map(|stem| stem.to_os_string()))
+        .is_some_and(|stem| stem == "firezone-headless-client")
+}
+
 fn try_main() -> Result<()> {
     rustls::crypto::ring::default_provider()
         .install_default()
@@ -260,8 +279,11 @@ fn try_main() -> Result<()> {
 
             return Ok(());
         }
-        Some(Cmd::Run) | Some(Cmd::Standalone) | None => {
-            // Continue with normal operation
+        Some(Cmd::Run { foreground: false }) if !invoked_as_headless_client() => {
+            return client_service::service::run(cli.log_dir, cli.dns_control);
+        }
+        Some(Cmd::Run { .. }) | Some(Cmd::Standalone) | None => {
+            // Continue as the standalone client
         }
     }
 
@@ -832,7 +854,16 @@ mod tests {
     #[test]
     fn run_and_identity() {
         let actual = Cli::try_parse_from(["firezone", "run"]).unwrap();
-        assert!(matches!(actual._command, Some(Cmd::Run)));
+        assert!(matches!(
+            actual._command,
+            Some(Cmd::Run { foreground: false })
+        ));
+
+        let actual = Cli::try_parse_from(["firezone", "run", "--foreground"]).unwrap();
+        assert!(matches!(
+            actual._command,
+            Some(Cmd::Run { foreground: true })
+        ));
 
         let actual = Cli::try_parse_from(["firezone", "identity"]).unwrap();
         assert!(matches!(actual._command, Some(Cmd::Identity)));

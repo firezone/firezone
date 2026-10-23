@@ -48,7 +48,7 @@ mod platform;
 pub use platform::{elevation_check, install, run};
 
 #[cfg(target_os = "windows")]
-pub(crate) use platform::ProcessToken;
+pub use platform::ProcessToken;
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
 pub enum ClientMsg {

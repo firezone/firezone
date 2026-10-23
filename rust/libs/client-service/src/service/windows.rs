@@ -48,7 +48,7 @@ pub fn elevation_check() -> Result<bool> {
 }
 
 // https://stackoverflow.com/questions/8046097/how-to-check-if-a-process-has-the-administrative-rights/8196291#8196291
-pub(crate) struct ProcessToken {
+pub struct ProcessToken {
     inner: Owned<HANDLE>,
 }
 
@@ -142,7 +142,7 @@ impl ProcessToken {
     }
 
     /// Opens the access token of another process by PID.
-    pub(crate) fn from_pid(pid: u32) -> Result<Self> {
+    pub fn from_pid(pid: u32) -> Result<Self> {
         // SAFETY: `OpenProcess` returns a real handle that must be closed; we
         // hand it to `Owned<HANDLE>` so it gets released at scope exit even if
         // `OpenProcessToken` below fails.
@@ -164,7 +164,7 @@ impl ProcessToken {
     }
 
     /// Returns the token user's SID in string form (e.g. `S-1-5-21-...`).
-    pub(crate) fn user_sid_string(&self) -> Result<String> {
+    pub fn user_sid_string(&self) -> Result<String> {
         // As in `username`, over-allocate rather than sizing with a first call.
         let token_user_sz = 1024u32;
         let mut token_user = vec![0u8; token_user_sz as usize];

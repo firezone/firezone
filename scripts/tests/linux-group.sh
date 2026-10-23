@@ -12,7 +12,7 @@ SOCKET=/run/dev.firezone.client/tunnel.sock
 export RUST_LOG=info
 
 cd rust || exit 1
-cargo build --bin "$BINARY_NAME"
+cargo build -p firezone-headless-client --bin "$BINARY_NAME"
 cd ..
 
 function debug_exit() {

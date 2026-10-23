@@ -19,6 +19,7 @@ bin-shared = { workspace = true }
 chrono = { workspace = true }
 clap = { workspace = true, features = ["derive", "env"] }
 client-ipc = { workspace = true }
+client-service = { workspace = true }
 client-shared = { workspace = true }
 connlib-model = { workspace = true }
 derive_more = { workspace = true, features = ["debug"] }
