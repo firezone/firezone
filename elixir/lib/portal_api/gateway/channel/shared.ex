@@ -1,6 +1,7 @@
 defmodule PortalAPI.Gateway.Channel.Shared do
   use PortalAPI, :channel
   alias PortalAPI.Gateway.Views
+  alias PortalAPI.Device.Channel.Ice
   alias PortalAPI.Device.Channel.Relays
   alias __MODULE__.Database
 
@@ -200,21 +201,11 @@ defmodule PortalAPI.Gateway.Channel.Shared do
   ###########################
 
   def handle_info({:ice_candidates, client_id, candidates}, socket) do
-    push(socket, "ice_candidates", %{
-      client_id: client_id,
-      candidates: candidates
-    })
-
-    {:noreply, socket}
+    Ice.push_candidates(socket, "ice_candidates", :client_id, client_id, candidates)
   end
 
   def handle_info({:invalidate_ice_candidates, client_id, candidates}, socket) do
-    push(socket, "invalidate_ice_candidates", %{
-      client_id: client_id,
-      candidates: candidates
-    })
-
-    {:noreply, socket}
+    Ice.push_candidates(socket, "invalidate_ice_candidates", :client_id, client_id, candidates)
   end
 
   def handle_info({:create_authorization, {channel_pid, socket_ref}, payload}, socket) do
@@ -598,12 +589,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
         %{"candidates" => candidates, "client_ids" => client_ids},
         socket
       ) do
-    Enum.each(client_ids, fn client_id ->
-      PG.deliver(
-        client_id,
-        {:ice_candidates, socket.assigns.gateway.id, candidates}
-      )
-    end)
+    :ok = Ice.broadcast(client_ids, :ice_candidates, socket.assigns.gateway.id, candidates)
 
     {:noreply, socket}
   end
@@ -613,12 +599,13 @@ defmodule PortalAPI.Gateway.Channel.Shared do
         %{"candidates" => candidates, "client_ids" => client_ids},
         socket
       ) do
-    Enum.each(client_ids, fn client_id ->
-      PG.deliver(
-        client_id,
-        {:invalidate_ice_candidates, socket.assigns.gateway.id, candidates}
+    :ok =
+      Ice.broadcast(
+        client_ids,
+        :invalidate_ice_candidates,
+        socket.assigns.gateway.id,
+        candidates
       )
-    end)
 
     {:noreply, socket}
   end

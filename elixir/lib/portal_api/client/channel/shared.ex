@@ -3,6 +3,7 @@ defmodule PortalAPI.Client.Channel.Shared do
   alias Portal.Authentication.Credential
   alias PortalAPI.Client.Views
   alias PortalAPI.Device.Channel.Credentials
+  alias PortalAPI.Device.Channel.Ice
   alias PortalAPI.Device.Channel.Relays
 
   alias Portal.{
@@ -249,21 +250,11 @@ defmodule PortalAPI.Client.Channel.Shared do
 
   # This the list of ICE candidates gathered by the gateway and relayed to the client
   def handle_info({:ice_candidates, gateway_id, candidates}, socket) do
-    push(socket, "ice_candidates", %{
-      gateway_id: gateway_id,
-      candidates: candidates
-    })
-
-    {:noreply, socket}
+    Ice.push_candidates(socket, "ice_candidates", :gateway_id, gateway_id, candidates)
   end
 
   def handle_info({:invalidate_ice_candidates, gateway_id, candidates}, socket) do
-    push(socket, "invalidate_ice_candidates", %{
-      gateway_id: gateway_id,
-      candidates: candidates
-    })
-
-    {:noreply, socket}
+    Ice.push_candidates(socket, "invalidate_ice_candidates", :gateway_id, gateway_id, candidates)
   end
 
   # DEPRECATED IN 1.4
@@ -454,17 +445,17 @@ defmodule PortalAPI.Client.Channel.Shared do
   end
 
   def handle_info({:client_ice_candidates, client_id, candidates}, socket) do
-    push(socket, "client_ice_candidates", %{client_id: client_id, candidates: candidates})
-    {:noreply, socket}
+    Ice.push_candidates(socket, "client_ice_candidates", :client_id, client_id, candidates)
   end
 
   def handle_info({:invalidate_client_ice_candidates, client_id, candidates}, socket) do
-    push(socket, "invalidate_client_ice_candidates", %{
-      client_id: client_id,
-      candidates: candidates
-    })
-
-    {:noreply, socket}
+    Ice.push_candidates(
+      socket,
+      "invalidate_client_ice_candidates",
+      :client_id,
+      client_id,
+      candidates
+    )
   end
 
   # Delivered to the receiver (peer client, in the client-to-client case) via
@@ -1086,13 +1077,9 @@ defmodule PortalAPI.Client.Channel.Shared do
         %{"candidates" => candidates, "client_id" => target_client_id},
         socket
       ) do
-    case PG.deliver(
-           target_client_id,
-           {:client_ice_candidates, socket.assigns.client.id, candidates}
-         ) do
-      :ok -> {:noreply, socket}
-      {:error, :not_found} -> {:noreply, socket}
-    end
+    _ = Ice.deliver(target_client_id, :client_ice_candidates, socket.assigns.client.id, candidates)
+
+    {:noreply, socket}
   end
 
   def handle_in(
@@ -1100,9 +1087,11 @@ defmodule PortalAPI.Client.Channel.Shared do
         %{"candidates" => candidates, "client_id" => target_client_id},
         socket
       ) do
-    case PG.deliver(
+    case Ice.deliver(
            target_client_id,
-           {:invalidate_client_ice_candidates, socket.assigns.client.id, candidates}
+           :invalidate_client_ice_candidates,
+           socket.assigns.client.id,
+           candidates
          ) do
       :ok ->
         {:noreply, socket}
@@ -1123,12 +1112,7 @@ defmodule PortalAPI.Client.Channel.Shared do
         %{"candidates" => candidates, "gateway_ids" => gateway_ids},
         socket
       ) do
-    Enum.each(gateway_ids, fn gateway_id ->
-      PG.deliver(
-        gateway_id,
-        {:ice_candidates, socket.assigns.client.id, candidates}
-      )
-    end)
+    :ok = Ice.broadcast(gateway_ids, :ice_candidates, socket.assigns.client.id, candidates)
 
     {:noreply, socket}
   end
@@ -1138,12 +1122,13 @@ defmodule PortalAPI.Client.Channel.Shared do
         %{"candidates" => candidates, "gateway_ids" => gateway_ids},
         socket
       ) do
-    Enum.each(gateway_ids, fn gateway_id ->
-      PG.deliver(
-        gateway_id,
-        {:invalidate_ice_candidates, socket.assigns.client.id, candidates}
+    :ok =
+      Ice.broadcast(
+        gateway_ids,
+        :invalidate_ice_candidates,
+        socket.assigns.client.id,
+        candidates
       )
-    end)
 
     {:noreply, socket}
   end
