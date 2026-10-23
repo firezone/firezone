@@ -275,7 +275,7 @@ defmodule Portal.Repo.Seeds do
     # Find the latest gateway token for the site
     gateway_token =
       Repo.one!(
-        from(t in Portal.GatewayToken,
+        from(t in Portal.ClientToken,
           where: t.site_id == ^site_id and t.account_id == ^site.account_id,
           order_by: [desc: t.inserted_at],
           limit: 1
@@ -3574,11 +3574,15 @@ defmodule Portal.Repo.Seeds do
       |> Ecto.Changeset.put_change(:account_id, account.id)
       |> Repo.insert!()
 
-    # Create gateway token with static values
+    # Create gateway token with static values, under the account's
+    # Infrastructure service account like every gateway token.
+    infrastructure_actor = Portal.Actor.fetch_or_create_infrastructure_actor(account.id)
+
     gateway_token =
-      %Portal.GatewayToken{
+      %Portal.ClientToken{
         id: "2274560b-e97b-45e4-8b34-679c7617e98d",
         account_id: site.account_id,
+        actor_id: infrastructure_actor.id,
         site_id: site.id,
         secret_salt: "uQyisyqrvYIIitMXnSJFKQ",
         secret_hash: "876f20e8d4de25d5ffac40733f280782a7d8097347d77415ab6e4e548f13d2ee"
