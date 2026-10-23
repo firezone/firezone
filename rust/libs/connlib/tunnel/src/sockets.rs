@@ -761,10 +761,6 @@ impl Sockets {
 
         (sockets, ends_v4, ends_v6)
     }
-
-    pub(crate) fn remove_v6(&mut self) {
-        self.socket_v6 = None;
-    }
 }
 
 #[cfg(test)]
@@ -772,6 +768,10 @@ impl Sockets {
 impl Sockets {
     pub(crate) fn remove_v4(&mut self) {
         self.socket_v4 = None;
+    }
+
+    pub(crate) fn remove_v6(&mut self) {
+        self.socket_v6 = None;
     }
 
     /// How many items wait for room in the channel of the socket for `version`.

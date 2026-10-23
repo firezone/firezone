@@ -120,13 +120,12 @@ pub struct Tunnel<TRoleState> {
 
 impl<TRoleState> Tunnel<TRoleState> {
     /// Creates a tunnel around `role_state` that does all its work on the calling thread: the
-    /// crypto jobs as they are submitted, the IPv4 socket's through the returned
+    /// crypto jobs as they are submitted, the IPv4 and IPv6 sockets' through the returned
     /// [`SocketThreadEnds`].
     ///
     /// Nothing else can bind a socket.
-    pub fn fake(role_state: TRoleState) -> (Self, SocketThreadEnds) {
-        let (mut sockets, socket_v4, _) = Sockets::fake();
-        sockets.remove_v6();
+    pub fn fake(role_state: TRoleState) -> (Self, SocketThreadEnds, SocketThreadEnds) {
+        let (sockets, socket_v4, socket_v6) = Sockets::fake();
         let tcp: Arc<dyn SocketFactory<TcpSocket>> =
             Arc::new(|_| Err(std::io::ErrorKind::Unsupported.into()));
         let udp: Arc<dyn SocketFactory<UdpSocket>> =
@@ -145,7 +144,7 @@ impl<TRoleState> Tunnel<TRoleState> {
             needs_timeout: false,
         };
 
-        (tunnel, socket_v4)
+        (tunnel, socket_v4, socket_v6)
     }
 
     pub fn state_mut(&mut self) -> &mut TRoleState {
