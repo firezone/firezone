@@ -70,7 +70,7 @@ url = "https://github.com/DevinR528/cargo-sort/releases/download/v2.1.4/cargo-so
 url_api = "https://api.github.com/repos/DevinR528/cargo-sort/releases/assets/405268421"
 
 [tools."github:DevinR528/cargo-sort"."platforms.windows-x64"]
-checksum = "sha256:0c59ef2433e523e060909cdfa678969eaa81a44fdc4313cb5a1a9592e8ded2b3"
+checksum = "sha256:0c9fcce93c8436b01a486bb699d483b597f345cf6609df7d6a7309a94ba28111"
 url = "https://github.com/DevinR528/cargo-sort/releases/download/v2.1.4/cargo-sort-x86_64-pc-windows-msvc.zip"
 url_api = "https://api.github.com/repos/DevinR528/cargo-sort/releases/assets/405268766"
 
