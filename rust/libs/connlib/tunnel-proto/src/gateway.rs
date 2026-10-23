@@ -471,12 +471,16 @@ impl GatewayState {
         self.flow_tracker.handle_timeout(now);
         self.authorization_rejections.handle_timeout(now);
 
-        self.peers.iter_mut().for_each(|p| {
-            p.handle_timeout(now);
-        });
-        let removed_peers = self.peers.extract_if(|_, p| p.is_empty());
+        for id in self.peers.handle_timeout(now, |p| p.handle_timeout(now)) {
+            if !self
+                .peers
+                .peer_by_id(&id)
+                .is_some_and(ClientOnGateway::is_empty)
+            {
+                continue;
+            }
 
-        for (id, _) in removed_peers {
+            self.peers.remove(&id);
             tracing::debug!(cid = %id, "Access to last resource for Client removed");
 
             self.node.close_connection(id, p2p_control::goodbye(), now);
