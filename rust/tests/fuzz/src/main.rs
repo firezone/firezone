@@ -8,7 +8,6 @@ use arbitrary::{Arbitrary, Unstructured};
 use clap::{Parser, ValueEnum};
 
 mod clock;
-mod seeded_rng;
 mod targets;
 
 static START_TIME: LazyLock<Instant> = LazyLock::new(clock::start_time);
