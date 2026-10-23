@@ -144,6 +144,7 @@ defmodule PortalWeb.Settings.Authentication do
     changeset =
       original_struct
       |> changeset(attrs, socket)
+      |> preserve_google_workspace_domains(previous_changeset)
 
     clear_verification? = verification_trigger_fields_changed?(previous_changeset, changeset)
 
@@ -429,15 +430,33 @@ defmodule PortalWeb.Settings.Authentication do
     end
   end
 
+  def handle_info({:google_verify_complete, issuer, domains, name, verification_ref, ack_to}, socket) do
+    if socket.assigns.type == "google" and active_verification?(socket, verification_ref) do
+      changeset =
+        socket.assigns.form.source
+        |> apply_changes()
+        |> changeset(%{"is_verified" => true, "issuer" => issuer}, socket)
+        |> put_change(:workspace_domains, domains)
+        |> maybe_set_google_name(name, socket.assigns.live_action)
+
+      maybe_send_verification_ack(ack_to)
+      {:noreply, assign(socket, active_verification: nil, form: to_form(changeset))}
+    else
+      maybe_send_verification_ack(ack_to)
+      {:noreply, socket}
+    end
+  end
+
   # Sent directly by the OIDC verification controller after code exchange succeeds
   def handle_info({:oidc_verify_complete, issuer, verification_ref, ack_to}, socket) do
-    if active_verification?(socket, verification_ref) do
+    if socket.assigns.type != "google" and active_verification?(socket, verification_ref) do
       attrs = %{"is_verified" => true, "is_legacy" => false, "issuer" => issuer}
 
       changeset =
         socket.assigns.form.source
         |> apply_changes()
         |> changeset(attrs, socket)
+        |> maybe_set_okta_name(issuer, socket.assigns.live_action)
 
       maybe_send_verification_ack(ack_to)
       {:noreply, assign(socket, active_verification: nil, form: to_form(changeset))}
@@ -454,7 +473,10 @@ defmodule PortalWeb.Settings.Authentication do
   end
 
   # Sent directly by the Entra auth_provider verification controller
-  def handle_info({:entra_verify_complete, issuer, _tenant_id, verification_ref, ack_to}, socket) do
+  def handle_info(
+        {:entra_verify_complete, issuer, _tenant_id, tenant_name, verification_ref, ack_to},
+        socket
+      ) do
     if active_verification?(socket, verification_ref) do
       attrs = %{"is_verified" => true, "issuer" => issuer}
 
@@ -462,6 +484,7 @@ defmodule PortalWeb.Settings.Authentication do
         socket.assigns.form.source
         |> apply_changes()
         |> changeset(attrs, socket)
+        |> maybe_set_entra_name(tenant_name, socket.assigns.live_action)
 
       maybe_send_verification_ack(ack_to)
       {:noreply, assign(socket, active_verification: nil, form: to_form(changeset))}
@@ -469,6 +492,10 @@ defmodule PortalWeb.Settings.Authentication do
       maybe_send_verification_ack(ack_to)
       {:noreply, socket}
     end
+  end
+
+  def handle_info({:entra_verify_complete, issuer, tenant_id, verification_ref, ack_to}, socket) do
+    handle_info({:entra_verify_complete, issuer, tenant_id, nil, verification_ref, ack_to}, socket)
   end
 
   def handle_info({:entra_verify_complete, issuer, tenant_id, ack_to}, socket) do
@@ -497,6 +524,38 @@ defmodule PortalWeb.Settings.Authentication do
   def handle_info(_message, socket) do
     {:noreply, socket}
   end
+
+  defp preserve_google_workspace_domains(%{data: %Google.AuthProvider{}} = changeset, previous) do
+    put_change(changeset, :workspace_domains, get_field(previous, :workspace_domains))
+  end
+
+  defp preserve_google_workspace_domains(changeset, _previous), do: changeset
+
+  defp maybe_set_google_name(changeset, name, :new) when is_binary(name) and name != "" do
+    if get_field(changeset, :name) == "Google", do: put_change(changeset, :name, name), else: changeset
+  end
+
+  defp maybe_set_google_name(changeset, _name, _action), do: changeset
+
+  defp maybe_set_okta_name(%{data: %Okta.AuthProvider{}} = changeset, issuer, :new) do
+    if get_field(changeset, :name) == "Okta" do
+      put_change(changeset, :name, URI.parse(issuer).host)
+    else
+      changeset
+    end
+  end
+
+  defp maybe_set_okta_name(changeset, _issuer, _action), do: changeset
+
+  defp maybe_set_entra_name(changeset, tenant_name, :new) when is_binary(tenant_name) do
+    if get_field(changeset, :name) == "Entra" and String.trim(tenant_name) != "" do
+      put_change(changeset, :name, tenant_name)
+    else
+      changeset
+    end
+  end
+
+  defp maybe_set_entra_name(changeset, _tenant_name, _action), do: changeset
 
   defp maybe_send_verification_ack({pid, ref}) when is_pid(pid) do
     send(pid, {:verification_ack, ref})
@@ -1366,10 +1425,25 @@ defmodule PortalWeb.Settings.Authentication do
           </div>
         </div>
 
+        <div :if={@type == "google"} class="pt-4 border-t border-border space-y-2">
+          <p class="text-xs text-subtle">
+            Verify with a Google Workspace administrator to allow only users from your
+            organization's verified domains. Personal Google accounts cannot use a verified
+            Workspace provider.
+          </p>
+          <p :if={get_field(@form.source, :workspace_domains)} class="text-xs text-subtle">
+            Allowed domains: {Enum.join(get_field(@form.source, :workspace_domains), ", ")}
+          </p>
+        </div>
+
         <%!-- Entra-specific config --%>
         <div :if={@type == "entra"} class="pt-4 border-t border-border space-y-4">
           <p class="text-[10px] font-semibold tracking-widest uppercase text-subtle">
             Provider Configuration
+          </p>
+          <p class="text-xs text-subtle">
+            Only users from the verified tenant can use this authentication provider.
+            To authenticate users from other tenants, add a provider for each tenant.
           </p>
           <div>
             <label

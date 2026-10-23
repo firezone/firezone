@@ -125,6 +125,13 @@ defmodule Portal.Microsoft.Graph.APIClient do
   end
 
   @doc """
+  Reads the tenant name using the setup administrator's delegated User.Read token.
+  """
+  def get_organization(access_token, tenant_id) do
+    get("/v1.0/organization/#{tenant_id}", "$select=id,displayName", access_token)
+  end
+
+  @doc """
   Gets the service principal for this application.
   This is needed to query appRoleAssignedTo for group assignment.
   """

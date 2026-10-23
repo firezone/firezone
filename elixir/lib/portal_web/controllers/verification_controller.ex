@@ -34,6 +34,23 @@ defmodule PortalWeb.VerificationController do
     render(conn, :failure, error: "Invalid verification request. Please try again.")
   end
 
+  defp render_oidc_result(conn, %{ok: true, type: "google-auth-provider", issuer: issuer,
+                                domains: domains, name: name, lv_pid: lv_pid,
+                                verification_ref: verification_ref})
+       when is_list(domains) and domains != [] and is_binary(verification_ref) do
+    case notify_and_await_ack(PortalWeb.OIDC.deserialize_pid(lv_pid),
+           {:google_verify_complete, issuer, domains, name, verification_ref}) do
+      :ok -> render(conn, :success)
+      {:error, _reason} -> render(conn, :failure, error: @verification_ack_error)
+    end
+  end
+
+  defp render_oidc_result(conn, %{ok: false, type: "google-auth-provider", error: error,
+                                lv_pid: lv_pid, verification_ref: verification_ref}) do
+    maybe_notify_verification_failure(PortalWeb.OIDC.deserialize_pid(lv_pid), verification_ref, error, true)
+    render(conn, :failure, error: error)
+  end
+
   defp render_oidc_result(
          conn,
          %{
@@ -71,6 +88,8 @@ defmodule PortalWeb.VerificationController do
     maybe_notify_verification_failure(lv_pid, verification_ref, error, true)
     render(conn, :failure, error: error)
   end
+
+  defp render_oidc_result(conn, %{type: "google-auth-provider"}), do: render_invalid_oidc_result(conn)
 
   defp render_oidc_result(
          conn,
@@ -131,7 +150,7 @@ defmodule PortalWeb.VerificationController do
            role_ids: role_ids,
            lv_pid: lv_pid_string,
            verification_ref: verification_ref
-         }
+         } = result
        )
        when is_binary(issuer) and is_binary(tenant_id) and is_list(role_ids) and
               is_binary(verification_ref) do
@@ -140,7 +159,7 @@ defmodule PortalWeb.VerificationController do
     if PortalWeb.OIDC.entra_setup_admin?(role_ids) do
       case notify_and_await_ack(
              lv_pid,
-             {:entra_verify_complete, issuer, tenant_id, verification_ref}
+             {:entra_verify_complete, issuer, tenant_id, result[:tenant_name], verification_ref}
            ) do
         :ok -> render(conn, :success)
         {:error, _reason} -> render(conn, :failure, error: @verification_ack_error)

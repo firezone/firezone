@@ -12242,6 +12242,15 @@
             "example": "2025-01-15T10:30:00Z",
             "format": "date-time",
             "type": "string"
+          },
+          "workspace_domains": {
+            "description": "Verified Google Workspace domains allowed to sign in. Null for providers without a Workspace restriction.",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true,
+            "readOnly": true,
+            "type": "array"
           }
         },
         "required": [
@@ -12255,7 +12264,8 @@
           "issuer",
           "name",
           "portal_session_lifetime_secs",
-          "updated_at"
+          "updated_at",
+          "workspace_domains"
         ],
         "title": "GoogleAuthProvider",
         "type": "object"

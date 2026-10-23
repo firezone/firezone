@@ -102,6 +102,25 @@ defmodule PortalWeb.VerificationControllerTest do
                        ^verification_ref}
     end
 
+    test "passes verified Google domains and name to the active settings flow", %{conn: conn} do
+      parent = self()
+      lv_pid = spawn(fn ->
+        receive do
+          {:google_verify_complete, issuer, domains, name, verification_ref, {from, ref}} ->
+            send(parent, {:google_verified, issuer, domains, name, verification_ref})
+            send(from, {:verification_ack, ref})
+        end
+      end)
+      verification_ref = Ecto.UUID.generate()
+      token = sign_oidc_result(%{ok: true, type: "google-auth-provider",
+        issuer: "https://accounts.google.com", domains: ["example.com"], name: "example.com",
+        lv_pid: serialize_pid(lv_pid), verification_ref: verification_ref})
+      conn = get(conn, ~p"/verification/oidc", %{"result" => token})
+      assert conn.resp_body =~ "Verification Successful"
+      assert_received {:google_verified, "https://accounts.google.com", ["example.com"],
+        "example.com", ^verification_ref}
+    end
+
     test "with failure result token, sends failure message to LV and renders failure", %{
       conn: conn
     } do
@@ -165,7 +184,7 @@ defmodule PortalWeb.VerificationControllerTest do
       lv_pid =
         spawn(fn ->
           receive do
-            {:entra_verify_complete, issuer, tenant_id, verification_ref, {from, ref}} ->
+            {:entra_verify_complete, issuer, tenant_id, "Example Tenant", verification_ref, {from, ref}} ->
               send(parent, {:entra_verify_complete_received, issuer, tenant_id, verification_ref})
               send(from, {:verification_ack, ref})
           end
@@ -177,6 +196,7 @@ defmodule PortalWeb.VerificationControllerTest do
         sign_entra_result(%{
           ok: true,
           type: "entra-auth-provider",
+          tenant_name: "Example Tenant",
           issuer: @issuer,
           tenant_id: @tenant_id,
           role_ids: [@global_administrator_role_id],

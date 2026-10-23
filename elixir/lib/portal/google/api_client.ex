@@ -406,6 +406,15 @@ defmodule Portal.Google.APIClient do
      impersonation_email, scope}
   end
 
+  @doc """
+  Lists the Workspace customer's domains using an administrator's interactive
+  access token with the admin.directory.domain.readonly scope.
+  """
+  def get_domains(access_token) do
+    "/admin/directory/v1/customer/my_customer/domains"
+    |> get(access_token)
+  end
+
   def get_customer(access_token) do
     "/admin/directory/v1/customers/my_customer"
     |> get(access_token)

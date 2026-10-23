@@ -16,6 +16,18 @@ defmodule Portal.Microsoft.Graph.APIClientTest do
     :ok
   end
 
+  test "reads the verified tenant's display name" do
+    Req.Test.expect(APIClient, fn conn ->
+      assert conn.request_path == "/v1.0/organization/#{@test_tenant_id}"
+      assert URI.decode_query(conn.query_string) == %{"$select" => "id,displayName"}
+      assert Plug.Conn.get_req_header(conn, "authorization") == ["Bearer #{@test_access_token}"]
+      Req.Test.json(conn, %{"id" => @test_tenant_id, "displayName" => "Example Tenant"})
+    end)
+
+    assert {:ok, %Req.Response{body: %{"displayName" => "Example Tenant"}}} =
+             APIClient.get_organization(@test_access_token, @test_tenant_id)
+  end
+
   describe "get_access_token/2" do
     test "requests access token using client credentials flow" do
       test_pid = self()

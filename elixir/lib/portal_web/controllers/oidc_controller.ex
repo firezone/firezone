@@ -81,6 +81,9 @@ defmodule PortalWeb.OIDCController do
           expected_tenant_id
         )
 
+      {:google_auth_provider, lv_pid_string, verification_ref} ->
+        handle_google_auth_provider_verification(conn, code, lv_pid_string, verification_ref)
+
       {:google_directory_sync, lv_pid_string, verification_ref} ->
         handle_google_directory_sync_verification(
           conn,
@@ -150,6 +153,10 @@ defmodule PortalWeb.OIDCController do
           expected_tenant_id,
           silent?
         )
+
+      {:google_auth_provider, lv_pid_string, verification_ref} ->
+        google_auth_provider_result(conn, lv_pid_string, verification_ref,
+          {:error, :google_workspace_verification_failed})
 
       {:google_directory_sync, lv_pid_string, verification_ref} ->
         handle_google_directory_sync_authorization_error(
@@ -1219,6 +1226,31 @@ defmodule PortalWeb.OIDCController do
     redirect(conn, to: ~p"/verification/oidc?result=#{token}")
   end
 
+  defp handle_google_auth_provider_verification(conn, code, lv_pid_string, verification_ref) do
+    result =
+      with {:ok, %{config: config, verifier: verifier}} <-
+             lv_pid_string
+             |> PortalWeb.OIDC.deserialize_pid()
+             |> request_pending_verification(verification_ref) do
+        PortalWeb.OIDC.verify_google_callback(config, code, verifier)
+      end
+
+    google_auth_provider_result(conn, lv_pid_string, verification_ref, result)
+  end
+
+  defp google_auth_provider_result(conn, lv_pid_string, verification_ref, result) do
+    result = case result do
+      {:ok, identity} ->
+        Map.merge(identity, %{ok: true})
+      {:error, _reason} ->
+        %{ok: false, error: "Sign in with a Google Workspace administrator and grant read-only access to your organization's domains to verify this provider."}
+    end
+    result = Map.merge(result, %{type: "google-auth-provider", lv_pid: lv_pid_string,
+                                verification_ref: verification_ref})
+    token = Phoenix.Token.sign(PortalWeb.Endpoint, "oidc-verification-result", result)
+    redirect(conn, to: ~p"/verification/oidc?result=#{token}")
+  end
+
   defp handle_google_directory_sync_verification(
          conn,
          code,
@@ -1457,6 +1489,7 @@ defmodule PortalWeb.OIDCController do
           issuer: identity.issuer,
           principal_id: identity.principal_id,
           role_ids: identity.role_ids,
+          tenant_name: identity.tenant_name,
           lv_pid: lv_pid_string,
           verification_ref: verification_ref
         }
@@ -1912,6 +1945,11 @@ defmodule PortalWeb.OIDCController do
 
   defp parse_verified_callback_state(%{type: "oidc-auth-provider", lv_pid: lv_pid}),
     do: {:oidc_verification, lv_pid}
+
+  defp parse_verified_callback_state(%{type: "google-auth-provider", lv_pid: lv_pid,
+                                      verification_ref: verification_ref})
+       when is_binary(verification_ref),
+       do: {:google_auth_provider, lv_pid, verification_ref}
 
   defp parse_verified_callback_state(%{type: "google-sign-up"}), do: {:sign_up, "google"}
   defp parse_verified_callback_state(%{type: "github-sign-up"}), do: {:sign_up, "github"}

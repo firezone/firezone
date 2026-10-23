@@ -25,6 +25,9 @@ defmodule Portal.Google.AuthProvider do
       define_field: false
 
     field :issuer, :string
+    # nil preserves providers created before Workspace verification, including
+    # providers created by personal Google account signups.
+    field :workspace_domains, {:array, :string}
 
     field :context, Ecto.Enum,
       values: ~w[clients_and_portal clients_only portal_only]a,
@@ -47,6 +50,7 @@ defmodule Portal.Google.AuthProvider do
     changeset
     |> validate_required([:name, :context, :issuer, :is_verified])
     |> validate_acceptance(:is_verified)
+    |> validate_length(:workspace_domains, min: 1)
     |> validate_length(:issuer, min: 1, max: 2_000)
     |> validate_number(:portal_session_lifetime_secs,
       greater_than_or_equal_to: @portal_session_lifetime_min,

@@ -226,6 +226,27 @@ defmodule PortalWeb.OIDCControllerTest do
     end
   end
 
+  describe "Google Workspace provider setup" do
+    test "returns verified domains in a signed result without exposing access tokens", %{conn: conn} do
+      config = oidc_config() |> Map.new()
+      verification_ref = Ecto.UUID.generate()
+      lv_pid = pending_verification_process(config, verification_ref)
+      state = PortalWeb.OIDC.sign_verification_state(PortalWeb.OIDC.serialize_pid(lv_pid),
+        "google-auth-provider", %{verification_ref: verification_ref})
+      token = Mocks.OIDC.default_claims() |> Map.put("hd", "example.com") |> Mocks.OIDC.sign_openid_connect_token()
+      Mocks.OIDC.set_token_response(%{"id_token" => token, "access_token" => "setup-secret"})
+      Req.Test.expect(Portal.Google.APIClient, fn conn ->
+        Req.Test.json(conn, %{"domains" => [%{"domainName" => "example.com", "verified" => true, "isPrimary" => true}]})
+      end)
+      conn = get(conn, ~p"/auth/oidc/callback", %{"state" => state, "code" => "code"})
+      assert {:ok, %{ok: true, type: "google-auth-provider", domains: ["example.com"],
+                    name: "example.com", verification_ref: ^verification_ref} = result} =
+        oidc_verification_result_from_redirect(redirected_to(conn))
+      refute Map.has_key?(result, :access_token)
+      refute Map.has_key?(result, :id_token)
+    end
+  end
+
   describe "callback/2 with Entra verification state" do
     @tenant_id "12345678-1234-1234-1234-123456789012"
     @tenant_issuer "https://login.microsoftonline.com/#{@tenant_id}/v2.0"
@@ -251,6 +272,29 @@ defmodule PortalWeb.OIDCControllerTest do
                 issuer: @tenant_issuer,
                 verification_ref: ^verification_ref
               }} = entra_verification_result_from_redirect(redirected_to(conn))
+    end
+
+    for {response, expected_name} <- [
+          {%{"id" => @tenant_id, "displayName" => "Example Tenant"}, "Example Tenant"},
+          {%{"id" => "another-tenant", "displayName" => "Wrong Tenant"}, nil},
+          {%{"error" => "access denied"}, nil}
+        ] do
+      @organization_response response
+      @tenant_name expected_name
+      test "returns optional tenant name #{inspect(expected_name)} for #{inspect(response)}", %{conn: conn} do
+        Req.Test.stub(Portal.Microsoft.Graph.APIClient, fn conn ->
+          Req.Test.json(conn, @organization_response)
+        end)
+        config = Map.put(entra_verification_config("entra-client-id"), :scope, "openid email profile User.Read")
+        verification_ref = Ecto.UUID.generate()
+        lv_pid = pending_verification_process(config, verification_ref)
+        state = entra_verification_state(lv_pid, "entra-auth-provider", verification_ref)
+        conn = complete_entra_admin_consent(conn, state)
+        set_entra_token_response("entra-client-id")
+        conn = complete_entra_tenant_proof(conn)
+        assert {:ok, %{ok: true, tenant_name: @tenant_name}} =
+          entra_verification_result_from_redirect(redirected_to(conn))
+      end
     end
 
     test "binds directory sync to a user identity from a verified ID token", %{conn: conn} do

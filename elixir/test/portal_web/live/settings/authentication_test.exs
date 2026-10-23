@@ -3084,6 +3084,98 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       assert_receive {:pending_verification, %{verification_ref: ^verification_ref}}
     end
 
+    for {name, expected_name} <- [{"Entra", "Example Tenant"}, {"Custom name", "Custom name"}] do
+      @provider_name name
+      @expected_provider_name expected_name
+      test "uses the tenant name after verifying #{name}", %{account: account, actor: actor, conn: conn} do
+        {:ok, lv, html} =
+          conn
+          |> authorize_conn(actor)
+          |> live(~p"/#{account}/settings/authentication/entra/new")
+
+        assert html =~ "Only users from the verified tenant"
+
+        lv
+        |> form("#auth-provider-form", %{auth_provider: %{name: @provider_name}})
+        |> render_change()
+
+        lv |> element("#verify-button") |> render_click()
+        verification_ref = verification_ref_from_open_url(lv)
+        ack_ref = make_ref()
+        send(lv.pid, {:entra_verify_complete,
+          "https://login.microsoftonline.com/12345678-1234-1234-1234-123456789012/v2.0",
+          "12345678-1234-1234-1234-123456789012", "Example Tenant", verification_ref,
+          {self(), ack_ref}})
+        assert_receive {:verification_ack, ^ack_ref}
+        assert has_element?(lv, "input[name='auth_provider[name]'][value='#{@expected_provider_name}']")
+
+        lv |> form("#auth-provider-form") |> render_submit()
+        assert Repo.get_by!(Portal.Entra.AuthProvider, account_id: account.id).name == @expected_provider_name
+      end
+    end
+
+    for {name, expected_name} <- [{"Google", "example.com"}, {"Custom Google", "Custom Google"}] do
+      @google_provider_name name
+      @expected_google_name expected_name
+      test "saves verified Workspace domains and pre-fills #{name}", %{account: account, actor: actor, conn: conn} do
+        Mocks.OIDC.stub_discovery_document()
+        {:ok, lv, _} = conn |> authorize_conn(actor)
+          |> live(~p"/#{account}/settings/authentication/google/new")
+        lv |> form("#auth-provider-form", %{auth_provider: %{name: @google_provider_name}}) |> render_change()
+        lv |> element("#verify-button") |> render_click()
+        verification_ref = verification_ref_from_open_url(lv)
+        domains = ["example.com", "secondary.example"]
+        ack_ref = make_ref()
+        send(lv.pid, {:google_verify_complete, "https://accounts.google.com", domains,
+          "example.com", verification_ref, {self(), ack_ref}})
+        assert_receive {:verification_ack, ^ack_ref}
+        assert has_element?(lv, "input[name='auth_provider[name]'][value='#{@expected_google_name}']")
+
+        # Browser-submitted domain values cannot replace verified server-side values.
+        render_change(lv, "validate", %{"auth_provider" => %{"name" => @expected_google_name,
+          "workspace_domains" => ["attacker.example"]}})
+        lv |> form("#auth-provider-form") |> render_submit()
+        provider = Repo.get_by!(Portal.Google.AuthProvider, account_id: account.id)
+        assert provider.name == @expected_google_name
+        assert provider.workspace_domains == domains
+      end
+    end
+
+    test "rejects generic and stale Google verification results", %{account: account, actor: actor, conn: conn} do
+      Mocks.OIDC.stub_discovery_document()
+      {:ok, lv, _} = conn |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/authentication/google/new")
+      lv |> element("#verify-button") |> render_click()
+      verification_ref = verification_ref_from_open_url(lv)
+      ack = make_ref()
+      send(lv.pid, {:oidc_verify_complete, "https://accounts.google.com", verification_ref, {self(), ack}})
+      assert_receive {:verification_ack, ^ack}
+      refute render(lv) =~ "> Verified"
+      send(lv.pid, {:google_verify_complete, "https://accounts.google.com", ["example.com"],
+        "example.com", Ecto.UUID.generate(), {self(), ack}})
+      assert_receive {:verification_ack, ^ack}
+      assert has_element?(lv, "#verify-button")
+    end
+
+    for {name, expected_name} <- [{"Okta", "example.okta.com"}, {"Custom Okta", "Custom Okta"}] do
+      @okta_provider_name name
+      @expected_okta_name expected_name
+      test "pre-fills #{name} from the verified Okta hostname", %{account: account, actor: actor, conn: conn} do
+        Mocks.OIDC.stub_discovery_document()
+        {:ok, lv, _} = conn |> authorize_conn(actor)
+          |> live(~p"/#{account}/settings/authentication/okta/new")
+        lv |> form("#auth-provider-form", %{auth_provider: %{name: @okta_provider_name,
+          okta_domain: "example.okta.com", client_id: "test-client", client_secret: "test-secret"}})
+          |> render_change()
+        lv |> element("#verify-button") |> render_click()
+        verification_ref = verification_ref_from_open_url(lv)
+        ack = make_ref()
+        send(lv.pid, {:oidc_verify_complete, "https://example.okta.com", verification_ref, {self(), ack}})
+        assert_receive {:verification_ack, ^ack}
+        assert has_element?(lv, "input[name='auth_provider[name]'][value='#{@expected_okta_name}']")
+      end
+    end
+
     test "accepts only the active entra verification completion", %{
       account: account,
       actor: actor,

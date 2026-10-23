@@ -29,6 +29,13 @@ defmodule PortalAPI.Schemas.GoogleAuthProvider do
           type: :string,
           description: "Issuer"
         },
+        workspace_domains: %Schema{
+          type: :array,
+          items: %Schema{type: :string},
+          nullable: true,
+          readOnly: true,
+          description: "Verified Google Workspace domains allowed to sign in. Null for providers without a Workspace restriction."
+        },
         context: %Schema{
           example: "clients_and_portal",
           type: :string,
@@ -83,7 +90,8 @@ defmodule PortalAPI.Schemas.GoogleAuthProvider do
         :issuer,
         :name,
         :portal_session_lifetime_secs,
-        :updated_at
+        :updated_at,
+        :workspace_domains
       ]
     })
   end
