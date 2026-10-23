@@ -29,6 +29,45 @@ defmodule PortalAPI.GatewayControllerTest do
                json_response(conn, 401)
     end
 
+    test "provisions a gateway owned by a service account of the account", %{
+      conn: conn,
+      actor: actor,
+      site: site,
+      account: account
+    } do
+      owner = service_account_fixture(account: account)
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> post("/sites/#{site.id}/gateways", gateway: %{name: "owned", actor_id: owner.id})
+
+      assert %{"data" => %{"token" => token}} = json_response(conn, 201)
+      assert {:ok, gateway_token} = Portal.Authentication.verify_gateway_token(token)
+      assert gateway_token.actor_id == owner.id
+    end
+
+    test "rejects an owner that is not a service account of the account", %{
+      conn: conn,
+      actor: actor,
+      site: site,
+      account: account
+    } do
+      user = actor_fixture(account: account, type: :account_user)
+      other = service_account_fixture()
+
+      for actor_id <- [user.id, other.id, "not-a-uuid"] do
+        conn =
+          conn
+          |> authorize_conn(actor)
+          |> put_req_header("content-type", "application/json")
+          |> post("/sites/#{site.id}/gateways", gateway: %{actor_id: actor_id})
+
+        assert %{"validation_errors" => %{"actor_id" => [_]}} = json_response(conn, 422)
+      end
+    end
+
     test "provisions a gateway with an explicit name", %{
       conn: conn,
       actor: actor,
@@ -338,6 +377,47 @@ defmodule PortalAPI.GatewayControllerTest do
     end
   end
 
+  describe "gateways assigned from another site" do
+    test "are listed, shown, and updated under the site", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      site: site
+    } do
+      other_site = site_fixture(account: account)
+      gateway = gateway_fixture(account: account, site: other_site)
+      Portal.SiteDeviceFixtures.site_device_fixture(site: site, device: gateway)
+
+      conn = conn |> authorize_conn(actor) |> put_req_header("content-type", "application/json")
+
+      assert %{"data" => [%{"id" => id}]} = json_response(get(conn, "/sites/#{site.id}/gateways"), 200)
+      assert id == gateway.id
+
+      assert %{"data" => %{"id" => ^id}} =
+               json_response(get(conn, "/sites/#{site.id}/gateways/#{gateway.id}"), 200)
+
+      assert %{"data" => %{"name" => "renamed"}} =
+               json_response(
+                 put(conn, "/sites/#{site.id}/gateways/#{gateway.id}", gateway: %{name: "renamed"}),
+                 200
+               )
+    end
+
+    test "are not found under a site they do not serve", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      site: site
+    } do
+      gateway = gateway_fixture(account: account, site: site_fixture(account: account))
+
+      conn = conn |> authorize_conn(actor) |> put_req_header("content-type", "application/json")
+
+      assert %{"status" => 404} =
+               json_response(get(conn, "/sites/#{site.id}/gateways/#{gateway.id}"), 404)
+    end
+  end
+
   describe "show/2" do
     test "returns error when not authorized", %{
       conn: conn,
@@ -371,7 +451,7 @@ defmodule PortalAPI.GatewayControllerTest do
                  "ipv4" => Portal.Types.IP.to_string(gateway.ipv4),
                  "ipv6" => Portal.Types.IP.to_string(gateway.ipv6),
                  "online" => false,
-                 "gateway_token_id" => gateway.gateway_token_id,
+                 "gateway_token_id" => gateway.token_id,
                  "rotated_at" => nil,
                  "public_key" => gateway.public_key,
                  "last_seen_at" => DateTime.to_iso8601(gateway.last_seen_at),
@@ -427,7 +507,7 @@ defmodule PortalAPI.GatewayControllerTest do
       # A gateway only reports a token once it has connected with one.
       gateway =
         gateway
-        |> Ecto.Changeset.change(gateway_token_id: token.id)
+        |> Ecto.Changeset.change(token_id: token.id)
         |> Repo.update!()
 
       %{gateway: gateway, token: token}
@@ -511,7 +591,7 @@ defmodule PortalAPI.GatewayControllerTest do
       # never-connected state a freshly provisioned Gateway has.
       fresh =
         gateway_fixture(account: account, site: site)
-        |> Ecto.Changeset.change(gateway_token_id: nil)
+        |> Ecto.Changeset.change(token_id: nil)
         |> Repo.update!()
 
       conn =

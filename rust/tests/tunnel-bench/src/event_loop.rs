@@ -30,9 +30,9 @@ use relay_proto::auth::AccountId;
 use relay_proto::{AllocationPort, ChannelData, ClientSocket, Command, PeerSocket};
 use snownet::RelaySocket;
 use socket_factory::{DatagramOut, PerfUdpSocket, SocketFactory, TcpSocket, UdpSocket};
-use tunnel::{ClientState, ClientTunnel, GatewayState, GatewayTunnel, TunChannelClosed};
+use tunnel::{ClientState, ClientTunnel, DeviceState, GatewayTunnel, TunChannelClosed};
 use tunnel_proto::messages::{IceCredentials, IngestToken, Interface, Key, SecretKey, gateway};
-use tunnel_proto::{ClientEvent, GatewayEvent, IpConfig};
+use tunnel_proto::{ClientEvent, IpConfig};
 use uuid::Uuid;
 
 use crate::measure::Stage;
@@ -262,7 +262,7 @@ struct Side {
 
 enum State {
     Client(ClientState),
-    Gateway(GatewayState),
+    Gateway(DeviceState),
 }
 
 fn connect(resource: Resource, flow_logs: bool) -> (Side, Side, Instant) {
@@ -367,14 +367,16 @@ impl EventLoop {
 
             match state {
                 State::Client(client) => {
-                    let mut tunnel = ClientTunnel::new(tcp, udp, BTreeSet::new(), false, now);
+                    let mut tunnel =
+                        ClientTunnel::new(tcp, udp, BTreeSet::new(), BTreeSet::new(), false, now);
                     *tunnel.state_mut() = client;
                     tunnel.set_tun(tun);
 
                     Box::new(move |cx| tunnel.poll_next_event(cx, now).map_ok(drop))
                 }
                 State::Gateway(gateway) => {
-                    let mut tunnel = GatewayTunnel::new(tcp, udp, BTreeSet::new(), now);
+                    let mut tunnel =
+                        GatewayTunnel::new(tcp, udp, BTreeSet::new(), BTreeSet::new(), false, now);
                     *tunnel.state_mut() = gateway;
                     tunnel.set_tun(tun);
 
@@ -725,7 +727,7 @@ impl Resource {
 /// given resource.
 struct Tunnel {
     client: ClientState,
-    gateway: GatewayState,
+    gateway: DeviceState,
     relay: Relay,
     now: Instant,
     /// Where the Client sends packets for the resource: its address or the DNS proxy IP.
@@ -766,7 +768,7 @@ impl Tunnel {
         );
         client.update_relays(BTreeSet::new(), relay.description("client"), now);
 
-        let mut gateway = GatewayState::new([2; 32], now, unix_ts);
+        let mut gateway = DeviceState::new([2; 32], BTreeSet::new(), false, now, unix_ts);
         gateway.set_flow_logs_enabled(flow_logs);
         gateway.update_tun_device(GATEWAY_TUN);
         gateway.update_relays(BTreeSet::new(), relay.description("gateway"), now);
@@ -856,12 +858,12 @@ impl Tunnel {
         }
         while let Some(event) = self.gateway.poll_event() {
             match event {
-                GatewayEvent::AddedIceCandidates { candidates, .. } => {
+                ClientEvent::AddedIceCandidates { candidates, .. } => {
                     for candidate in candidates {
                         self.client.add_ice_candidate(GID, candidate, now);
                     }
                 }
-                GatewayEvent::ResolveDns(request) => {
+                ClientEvent::ResolveDns(request) => {
                     self.gateway
                         .handle_domain_resolved(request, Ok(vec![DNS_RESOURCE_IP.into()]), now)
                         .unwrap();
@@ -903,6 +905,7 @@ impl Tunnel {
             None,
             serde_json::from_value(resource.description()).unwrap(),
             false,
+            tunnel_proto::messages::IceRole::Controlled,
             self.now,
             ingest_token(),
         );

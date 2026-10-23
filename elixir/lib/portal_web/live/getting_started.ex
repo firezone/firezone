@@ -588,7 +588,7 @@ defmodule PortalWeb.GettingStarted do
         <Core.code_block
           id="getting-started-gateway-debian-connect"
           class="text-xs rounded"
-        >sudo firezone-gateway authenticate && sudo firezone-gateway enable-service</Core.code_block>
+        >sudo firezone authenticate && sudo firezone enable-service</Core.code_block>
         <Core.code_block
           id="getting-started-gateway-debian-token"
           class="text-xs rounded"

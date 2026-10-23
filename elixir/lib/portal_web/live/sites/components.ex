@@ -62,10 +62,6 @@ defmodule PortalWeb.Sites.Components do
       assigns
       |> assign(assigns.panel)
       |> assign(
-        deploy_env: assigns.deploy_state.env,
-        deploy_tab: assigns.deploy_state.tab,
-        deploy_connected?: assigns.deploy_state.connected?,
-        deploy_token: assigns.deploy_state.token,
         resource_form: assigns.resource_form_state.form,
         filters_dropdown_open: assigns.resource_form_state.filters_dropdown_open,
         active_protocols: assigns.resource_form_state.active_protocols,
@@ -126,9 +122,7 @@ defmodule PortalWeb.Sites.Components do
           :if={@view == :deploy}
           account={@account}
           site={@site}
-          deploy_env={@deploy_env}
-          deploy_tab={@deploy_tab}
-          deploy_connected?={@deploy_connected?}
+          deploy_state={@deploy_state}
         />
 
         <.site_add_resource_view
@@ -214,6 +208,7 @@ defmodule PortalWeb.Sites.Components do
           gateway_actions_open_id={@gateway_actions_open_id}
           rotated_gateway_token={@rotated_gateway_token}
           device_tokens={@device_tokens}
+          device_picker={@device_picker}
         />
 
         <.site_resources_tab
@@ -317,7 +312,10 @@ defmodule PortalWeb.Sites.Components do
       </button>
       <div class="ml-auto pb-2 flex items-center gap-2">
         <Form.button :if={@tab == :gateways} phx-click="deploy_gateway" size="xs">
-          <Core.icon name="ri-add-line" class="w-3 h-3" /> Deploy gateway
+          <Core.icon name="ri-add-line" class="w-3 h-3" /> Add device
+        </Form.button>
+        <Form.button :if={@tab == :gateways} phx-click="open_device_picker" size="xs">
+          <Core.icon name="ri-link" class="w-3 h-3" /> Add existing device
         </Form.button>
         <Form.button
           :if={@tab == :resources and @site.managed_by == :account}
@@ -377,12 +375,14 @@ defmodule PortalWeb.Sites.Components do
   attr :gateway_actions_open_id, :string, default: nil
   attr :rotated_gateway_token, :map, default: nil
   attr :device_tokens, :map, default: %{}
+  attr :device_picker, :map, default: nil
 
   def site_gateways_tab(assigns) do
     assigns =
       assign(assigns, :legacy_token_ids, MapSet.new(assigns.gateway_tokens, & &1.id))
     ~H"""
     <div class="flex-1 overflow-y-auto">
+      <.site_device_picker :if={@device_picker} picker={@device_picker} />
       <ul>
         <li
           :for={gateway <- @gateways}
@@ -463,6 +463,14 @@ defmodule PortalWeb.Sites.Components do
               >
                 <Core.icon name={token_action_icon(action)} class="w-3.5 h-3.5 shrink-0" />
                 {token_action_label(action)}
+              </button>
+              <button
+                type="button"
+                phx-click="remove_gateway_from_site"
+                phx-value-id={gateway.id}
+                class="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-body hover:text-heading hover:bg-raised transition-colors"
+              >
+                <Core.icon name="ri-link-unlink" class="w-3.5 h-3.5 shrink-0" /> Remove from site
               </button>
               <button
                 type="button"
@@ -710,7 +718,7 @@ defmodule PortalWeb.Sites.Components do
           phx-click="deploy_gateway"
           class="flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
         >
-          <Core.icon name="ri-add-line" class="w-3.5 h-3.5" /> Deploy a gateway
+          <Core.icon name="ri-add-line" class="w-3.5 h-3.5" /> Add a device
         </button>
       </div>
       <div
@@ -721,6 +729,90 @@ defmodule PortalWeb.Sites.Components do
           No gateways are currently online.
         </p>
       </div>
+    </div>
+    """
+  end
+
+  attr :picker, :map, required: true
+
+  # Devices in the account not yet assigned to the site. Any device can be
+  # added; whether it is picked to serve depends on what it reports it can
+  # do when it connects, which the device's own panel shows.
+  def site_device_picker(assigns) do
+    ~H"""
+    <div class="px-5 py-3 border-b border-border bg-raised space-y-2">
+      <form
+        id="site-device-picker"
+        phx-change="search_devices_to_assign"
+        phx-submit="search_devices_to_assign"
+      >
+        <div class="flex items-center gap-2">
+          <input
+            type="text"
+            name="search"
+            value={@picker.search}
+            placeholder="Search devices by name or slug"
+            phx-debounce="200"
+            autocomplete="off"
+            class="block w-full rounded border border-border-strong bg-transparent px-2 py-1.5 text-xs text-heading"
+          />
+          <Form.button type="button" size="xs" phx-click="close_device_picker">
+            Cancel
+          </Form.button>
+        </div>
+      </form>
+      <p :if={@picker.results == []} class="text-xs text-subtle">
+        No devices left to add.
+      </p>
+      <ul :if={@picker.results != []} class="divide-y divide-border rounded border border-border">
+        <li
+          :for={device <- @picker.results}
+          id={"assignable-device-#{device.id}"}
+          class="flex items-center gap-3 px-3 py-2 flex-wrap"
+        >
+          <div class="flex-1 min-w-0">
+            <p class="font-mono text-xs font-medium text-heading truncate">{device.name}</p>
+            <p class="text-[11px] text-subtle truncate">{device.slug}</p>
+          </div>
+          <Form.button
+            :if={@picker.confirm_id != device.id}
+            type="button"
+            size="xs"
+            phx-click="assign_device"
+            phx-value-id={device.id}
+          >
+            Add
+          </Form.button>
+          <div
+            :if={@picker.confirm_id == device.id}
+            class="basis-full rounded border border-warning/40 bg-warning-light p-3 space-y-2"
+          >
+            <p class="text-xs text-body">
+              <span class="font-medium">This device would serve the Internet resource next to other resources.</span>
+              Users with access to the Internet resource can reach any non-private address this
+              device can reach, and gateways below 1.6.5 do not route a site's other resources
+              while serving the Internet resource.
+            </p>
+            <div class="flex items-center gap-2">
+              <Form.button type="button" size="xs" phx-click="cancel_assign_device">
+                Cancel
+              </Form.button>
+              <Form.button
+                type="button"
+                size="xs"
+                phx-click="assign_device"
+                phx-value-id={device.id}
+                phx-value-confirmed="true"
+              >
+                Add anyway
+              </Form.button>
+            </div>
+          </div>
+          <span :if={device.type != :gateway} class="text-[11px] text-subtle">
+            Client
+          </span>
+        </li>
+      </ul>
     </div>
     """
   end
@@ -855,9 +947,9 @@ defmodule PortalWeb.Sites.Components do
   end
 
   # Whether the gateway's active single-owner token is actually in use.
-  # gateway_token_id is a proxy for the server-side "referenced by a device"
-  # check that decides between grace-period rotation and outright
-  # replacement - it matches exactly for never-connected gateways.
+  # token_id is a proxy for the server-side "referenced by a device" check
+  # that decides between grace-period rotation and outright replacement - it
+  # matches exactly for never-connected gateways.
   defp active_token_state(device_tokens, gateway) do
     active =
       device_tokens
@@ -866,14 +958,13 @@ defmodule PortalWeb.Sites.Components do
 
     cond do
       is_nil(active) -> :none
-      gateway.gateway_token_id == active.id -> :in_use
+      gateway.token_id == active.id -> :in_use
       true -> :never_used
     end
   end
 
   defp legacy_connected?(gateway, legacy_token_ids) do
-    gateway.gateway_token_id != nil and
-      MapSet.member?(legacy_token_ids, gateway.gateway_token_id)
+    gateway.token_id != nil and MapSet.member?(legacy_token_ids, gateway.token_id)
   end
 
   # A gateway still connected with a legacy token is mid-upgrade even if a
@@ -938,13 +1029,13 @@ defmodule PortalWeb.Sites.Components do
       is_nil(gateway.last_seen_at) ->
         "Never connected - No token provisioned"
 
-      active && gateway.gateway_token_id == active.id ->
+      active && gateway.token_id == active.id ->
         "#{verb} gateway token"
 
-      rotated && gateway.gateway_token_id == rotated.id ->
+      rotated && gateway.token_id == rotated.id ->
         expiring_status(verb, active)
 
-      MapSet.member?(legacy_token_ids, gateway.gateway_token_id) ->
+      MapSet.member?(legacy_token_ids, gateway.token_id) ->
         with_unused_token_note("#{verb} legacy site token", active)
 
       true ->
@@ -1034,7 +1125,8 @@ defmodule PortalWeb.Sites.Components do
         <p class="text-xs text-error">
           <span class="font-medium">Delete this Site?</span>
           <br />
-          All associated gateways and resources will also be permanently deleted.
+          Its gateways are kept and no longer serve it. A site that still has
+          resources cannot be deleted.
         </p>
         <div class="flex items-center gap-2">
           <Form.button type="button" phx-click="cancel_delete_site" size="xs">
@@ -1051,32 +1143,24 @@ defmodule PortalWeb.Sites.Components do
 
   attr :account, :any, required: true
   attr :site, :any, required: true
-  attr :deploy_env, :any, default: nil
-  attr :deploy_tab, :string, required: true
-  attr :deploy_connected?, :boolean, required: true
+  attr :deploy_state, :map, required: true
 
   def site_deploy_view(assigns) do
     ~H"""
     <div class="flex flex-1 min-h-0 flex-col overflow-hidden">
       <.site_deploy_header />
-      <div class="flex-1 overflow-y-auto">
-        <.site_deploy_tabs deploy_tab={@deploy_tab} />
-        <.site_deploy_instructions deploy_tab={@deploy_tab} deploy_env={@deploy_env} />
-      </div>
-      <div class="shrink-0 px-5 py-3 border-t border-border bg-raised flex items-center justify-between gap-4">
-        <p class="text-xs text-subtle">
-          Gateway not connecting? See our
-          <Navigation.website_link path="/kb/administer/troubleshooting" fragment="gateway-not-connecting">
-            troubleshooting guide.
-          </Navigation.website_link>
-        </p>
-        <Core.initial_connection_status
-          :if={@deploy_env}
-          type="gateway"
-          navigate={~p"/#{@account}/sites/#{@site}"}
-          connected?={@deploy_connected?}
-        />
-      </div>
+      <PortalWeb.Devices.AddDevice.add_device_form
+        :if={@deploy_state.step == :form}
+        state={@deploy_state}
+        site={@site}
+      />
+      <PortalWeb.Devices.AddDevice.add_device_user_note :if={@deploy_state.step == :user} />
+      <PortalWeb.Devices.AddDevice.add_device_instructions
+        :if={@deploy_state.step == :instructions}
+        account={@account}
+        state={@deploy_state}
+        navigate={~p"/#{@account}/sites/#{@site}"}
+      />
     </div>
     """
   end
@@ -1085,7 +1169,7 @@ defmodule PortalWeb.Sites.Components do
     ~H"""
     <div class="shrink-0 px-5 pt-4 pb-3 border-b border-border bg-elevated">
       <div class="flex items-center justify-between gap-3">
-        <h2 class="text-sm font-semibold text-heading">Deploy a Gateway</h2>
+        <h2 class="text-sm font-semibold text-heading">Add a Device</h2>
         <Form.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_deploy" />
       </div>
     </div>
@@ -1906,7 +1990,7 @@ defmodule PortalWeb.Sites.Components do
   defp gateway_debian_install do
     """
     sudo apt update
-    sudo apt install firezone-gateway
+    sudo apt install firezone
     """
   end
 
@@ -1921,7 +2005,7 @@ defmodule PortalWeb.Sites.Components do
 
   defp gateway_debian_authenticate do
     """
-    sudo firezone-gateway authenticate
+    sudo firezone authenticate
     """
   end
 

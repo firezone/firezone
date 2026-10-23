@@ -21,7 +21,7 @@ use std::{
     time::Duration,
 };
 
-use connlib_model::{ClientId, ClientOrGatewayId, GatewayId, ResourceId};
+use connlib_model::{ClientId, GatewayId, ResourceId};
 use itertools::Itertools as _;
 use snownet::ConnectionPath;
 use tunnel_proto::dns;
@@ -560,12 +560,10 @@ impl Scope {
     fn covers(self, route: RouteKey, reference: &ReferenceState) -> bool {
         match (self, route) {
             (Scope::Client(client), RouteKey::Resource(origin, _)) => client == origin,
-            (Scope::Client(client), RouteKey::Gateway(origin, _)) => client == origin,
             (Scope::Client(client), RouteKey::Peer(origin, peer)) => {
                 client == origin || client == peer
             }
             (Scope::Resource(resource), RouteKey::Resource(_, target)) => resource == target,
-            (Scope::Resource(_), RouteKey::Gateway(..)) => false,
             (Scope::Resource(pool), RouteKey::Peer(origin, peer)) => {
                 reference.clients.get(&origin).is_some_and(|client| {
                     client
@@ -575,7 +573,6 @@ impl Scope {
                 })
             }
             (Scope::Peers(..), RouteKey::Resource(..)) => false,
-            (Scope::Peers(..), RouteKey::Gateway(..)) => false,
             (Scope::Peers(client, peer), RouteKey::Peer(origin, target)) => {
                 client == origin && peer == target
             }
@@ -588,7 +585,6 @@ impl Scope {
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum RouteKey {
     Resource(ClientId, ResourceId),
-    Gateway(ClientId, GatewayId),
     Peer(ClientId, ClientId),
 }
 
@@ -596,7 +592,6 @@ impl RouteKey {
     fn new(origin: ClientId, route: Route) -> Self {
         match route {
             Route::Resource { resource, .. } => RouteKey::Resource(origin, resource),
-            Route::Gateway(gateway) => RouteKey::Gateway(origin, gateway),
             Route::Peer(peer) => RouteKey::Peer(origin, peer),
         }
     }
@@ -699,7 +694,7 @@ fn remote_path_feedback(
         .get(&origin)?
         .inner()
         .sut
-        .connection_path(ClientOrGatewayId::Client(peer))?;
+        .connection_path(peer)?;
 
     Some(PathFeedback::new(origin_edge, remote_edge, selected))
 }
@@ -739,7 +734,7 @@ fn gateway_path_feedback(
         .get(&origin)?
         .inner()
         .sut
-        .connection_path(ClientOrGatewayId::Gateway(gateway))?;
+        .connection_path(gateway)?;
     Some(PathFeedback::new(origin_edge, gateway_edge, selected))
 }
 

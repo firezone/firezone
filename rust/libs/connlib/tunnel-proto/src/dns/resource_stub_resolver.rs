@@ -17,7 +17,7 @@ use logging::err_with_src;
 use smallvec::SmallVec;
 
 use crate::{
-    client::IpProvider,
+    device::IpProvider,
     dns::pattern::{Candidate, Pattern},
 };
 

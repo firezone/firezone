@@ -8,6 +8,7 @@ setup() {
     mock_sudo
     mock_systemctl
     mock_systemd_sysusers
+    mock_systemd_tmpfiles
     mock_usermod
     mock_id
     mock_who

@@ -203,6 +203,16 @@ enum GuiIpcReply {
 #[error("Failed to receive hello: {0:#}")]
 pub struct FailedToReceiveHello(anyhow::Error);
 
+/// The tunnel service speaks another version of the IPC messages than this
+/// GUI, which only happens in the middle of an upgrade, since the two ship in
+/// one package.
+#[derive(Debug, thiserror::Error)]
+#[error("The tunnel service is version {daemon_version} but the GUI is version {gui_version}")]
+pub struct TunnelServiceVersionMismatch {
+    pub daemon_version: String,
+    pub gui_version: String,
+}
+
 impl<I: GuiIntegration> Controller<I> {
     pub(crate) async fn start(
         socket: SocketId,
@@ -328,7 +338,19 @@ impl<I: GuiIntegration> Controller<I> {
                     tracing::debug!("Failed to accept IPC connection from new GUI instance: {e:#}");
                 }
                 EventloopTick::NewInstanceLaunched(Some(Ok((mut read, mut write)))) => {
-                    let client_msg = read.next().await;
+                    let mut client_msg = read.next().await;
+
+                    // A CLI request opens with `Hello`, which is answered and
+                    // followed by the request itself on the same connection.
+                    if let Some(Ok(gui_ipc::ClientMsg::Hello { ipc_version })) = client_msg {
+                        if let Err(e) = write.send(&Self::hello_reply(ipc_version)).await {
+                            tracing::debug!("Failed to reply to GUI IPC hello: {e:#}");
+
+                            continue;
+                        }
+
+                        client_msg = read.next().await;
+                    }
 
                     let reply = match self.handle_gui_ipc_msg(client_msg).await {
                         Ok(GuiIpcReply::Now(reply)) => reply,
@@ -813,6 +835,22 @@ impl<I: GuiIntegration> Controller<I> {
         Ok(ControlFlow::Continue(()))
     }
 
+    /// The answer to a CLI's `Hello`: which version of the messages this GUI speaks.
+    fn hello_reply(ipc_version: u32) -> gui_ipc::ServerMsg {
+        if ipc_version != gui_ipc::IPC_VERSION {
+            tracing::warn!(
+                theirs = ipc_version,
+                ours = gui_ipc::IPC_VERSION,
+                "A process speaking another IPC version connected"
+            );
+        }
+
+        gui_ipc::ServerMsg::Hello {
+            ipc_version: gui_ipc::IPC_VERSION,
+            version: env!("CARGO_PKG_VERSION").to_owned(),
+        }
+    }
+
     async fn handle_gui_ipc_msg(
         &mut self,
         maybe_msg: Option<Result<gui_ipc::ClientMsg>>,
@@ -822,6 +860,7 @@ impl<I: GuiIntegration> Controller<I> {
             .context("Failed to read message")?;
 
         let reply = match client_msg {
+            gui_ipc::ClientMsg::Hello { ipc_version } => Self::hello_reply(ipc_version),
             gui_ipc::ClientMsg::Deeplink(url) => {
                 match self.handle_deep_link(&url).await {
                     Ok(()) => {}
@@ -1280,10 +1319,20 @@ async fn receive_hello(
         advanced_settings,
         mdm_settings,
         x509_certificate,
+        ipc_version,
+        daemon_version,
     } = server_msg
     else {
         bail!("Expected `Hello` from tunnel service but got `{server_msg}`")
     };
+
+    if ipc_version != service::IPC_VERSION {
+        return Err(TunnelServiceVersionMismatch {
+            daemon_version,
+            gui_version: env!("CARGO_PKG_VERSION").to_owned(),
+        }
+        .into());
+    }
 
     Ok((
         firezone_id,
@@ -2376,6 +2425,8 @@ mod tests {
                     advanced_settings: AdvancedSettings::default(),
                     mdm_settings: MdmSettings::default(),
                     x509_certificate,
+                    ipc_version: service::IPC_VERSION,
+                    daemon_version: "test".to_owned(),
                 })
                 .await
                 .unwrap();

@@ -39,6 +39,15 @@ EOF
     chmod +x "$MOCK_DIR/systemd-sysusers"
 }
 
+mock_systemd_tmpfiles() {
+    setup_mock_dir
+    cat >"$MOCK_DIR/systemd-tmpfiles" <<'EOF'
+#!/usr/bin/env bash
+exit 0
+EOF
+    chmod +x "$MOCK_DIR/systemd-tmpfiles"
+}
+
 mock_usermod() {
     setup_mock_dir
     export USERMOD_CALLS_LOG="$BATS_TEST_TMPDIR/usermod_calls.log"

@@ -45,6 +45,16 @@ fn main() -> Result<()> {
         for (path, data) in &inputs {
             if let Err(panic) = std::panic::catch_unwind(|| target(data)) {
                 eprintln!("Replay failed for {}", path.display());
+
+                // Once more with the trace on, so a replay that failed without
+                // a log filter still shows what led up to it.
+                if std::env::var_os("RUST_LOG").is_none() {
+                    eprintln!("Replaying it with logs on");
+                    fuzz::tunnel_proto::TRACE_NEXT_CASE
+                        .store(true, std::sync::atomic::Ordering::SeqCst);
+                    let _ = std::panic::catch_unwind(|| target(data));
+                }
+
                 std::panic::resume_unwind(panic);
             }
         }

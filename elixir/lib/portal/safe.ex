@@ -567,6 +567,13 @@ defmodule Portal.Safe do
 
   @spec delete(Scoped.t()) ::
           {:ok, Ecto.Schema.t()} | {:error, Ecto.Changeset.t() | :unauthorized | :not_found}
+  # System-managed actors are provisioned by the portal and are not an admin's
+  # to delete, whatever their own type permits.
+  def delete(%Scoped{queryable: %Portal.Actor{managed_by: :system}}), do: {:error, :unauthorized}
+
+  def delete(%Scoped{queryable: %Ecto.Changeset{data: %Portal.Actor{managed_by: :system}}}),
+    do: {:error, :unauthorized}
+
   def delete(%Scoped{
         subject: %Subject{account: %{id: account_id}} = subject,
         queryable: %Ecto.Changeset{data: %{account_id: account_id}} = changeset
@@ -966,10 +973,6 @@ defmodule Portal.Safe do
   def permit(_action, Portal.Site, :api_client), do: :ok
   def permit(:read, Portal.Site, _), do: :ok
 
-  # GatewayToken permissions
-  def permit(_action, Portal.GatewayToken, :account_admin_user), do: :ok
-  def permit(_action, Portal.GatewayToken, :api_client), do: :ok
-
   # Resource permissions
   def permit(_action, Portal.Resource, :account_admin_user), do: :ok
   def permit(_action, Portal.Resource, :api_client), do: :ok
@@ -979,6 +982,16 @@ defmodule Portal.Safe do
   def permit(_action, Portal.Policy, :account_admin_user), do: :ok
   def permit(_action, Portal.Policy, :api_client), do: :ok
   def permit(:read, Portal.Policy, _), do: :ok
+
+  # DeviceActor permissions
+  def permit(_action, Portal.DeviceActor, :account_admin_user), do: :ok
+  def permit(_action, Portal.DeviceActor, :api_client), do: :ok
+  def permit(:read, Portal.DeviceActor, _), do: :ok
+
+  # SiteDevice permissions
+  def permit(_action, Portal.SiteDevice, :account_admin_user), do: :ok
+  def permit(_action, Portal.SiteDevice, :api_client), do: :ok
+  def permit(:read, Portal.SiteDevice, _), do: :ok
 
   # Membership permissions
   def permit(_action, Portal.Membership, :account_admin_user), do: :ok

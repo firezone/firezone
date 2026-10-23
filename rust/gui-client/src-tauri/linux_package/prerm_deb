@@ -2,7 +2,11 @@
 
 set -euo pipefail
 
-SERVICE_NAME="firezone-client-tunnel"
+SERVICE_NAME="firezone"
 
 sudo systemctl disable "$SERVICE_NAME"
 sudo systemctl stop "$SERVICE_NAME"
+
+if [ "${1:-}" = "remove" ]; then
+    rm -f /usr/bin/firezone-client-tunnel
+fi

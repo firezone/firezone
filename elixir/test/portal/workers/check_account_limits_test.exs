@@ -27,12 +27,13 @@ defmodule Portal.Workers.CheckAccountLimitsTest do
              } == CheckAccountLimits.Database.fetch_counts_for_accounts([account])
     end
 
-    test "counts active service accounts as monthly active users" do
+    test "counts active service accounts beyond the included one as monthly active users" do
       account = provisioned_account_fixture()
       user = actor_fixture(account: account, type: :account_user)
-      service_account = actor_fixture(account: account, type: :service_account)
+      first = actor_fixture(account: account, type: :service_account)
+      second = actor_fixture(account: account, type: :service_account)
 
-      for actor <- [user, service_account] do
+      for actor <- [user, first, second] do
         client = Portal.DeviceFixtures.client_fixture(account: account, actor: actor)
         client_session_fixture(account: account, actor: actor, client: client)
       end
@@ -41,11 +42,12 @@ defmodule Portal.Workers.CheckAccountLimitsTest do
                CheckAccountLimits.Database.fetch_counts_for_accounts([account])[account.id]
     end
 
-    test "counts only service accounts beyond adhoc_service_accounts_count as monthly active users" do
+    test "counts only service accounts beyond the ad-hoc allowance as monthly active users" do
       account =
         update_account(provisioned_account_fixture(), %{limits: %{adhoc_service_accounts_count: 1}})
 
-      for type <- [:account_user, :service_account, :service_account] do
+      # One bought plus the one every plan includes: the third takes a seat.
+      for type <- [:account_user, :service_account, :service_account, :service_account] do
         actor = actor_fixture(account: account, type: type)
         client = Portal.DeviceFixtures.client_fixture(account: account, actor: actor)
         client_session_fixture(account: account, actor: actor, client: client)
@@ -94,6 +96,20 @@ defmodule Portal.Workers.CheckAccountLimitsTest do
       refute account.service_accounts_limit_exceeded
       refute account.sites_limit_exceeded
       assert account.warning_last_sent_at
+    end
+
+    test "does not count system-managed service accounts" do
+      account = provisioned_account_fixture()
+      admin_actor_fixture(account: account)
+      service_account_fixture(account: account, managed_by: :system)
+
+      update_account(account, %{limits: %{service_accounts_count: 0}})
+
+      assert :ok = perform_job(CheckAccountLimits, %{})
+
+      account = Repo.get!(Portal.Account, account.id)
+
+      refute account.service_accounts_limit_exceeded
     end
 
     test "sends email to admins when limits are first exceeded" do

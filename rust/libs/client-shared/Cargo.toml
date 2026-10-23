@@ -14,6 +14,7 @@ etc-hosts-dns-client = { workspace = true }
 flow-log-upload = { workspace = true }
 flow-log-writer = { workspace = true }
 futures = { workspace = true }
+futures-bounded = { workspace = true }
 logging = { workspace = true }
 opentelemetry = { workspace = true, features = ["metrics"] }
 otel-attributes = { workspace = true }
@@ -24,7 +25,7 @@ serde = { workspace = true, features = ["derive"] }
 socket-factory = { workspace = true }
 telemetry = { workspace = true }
 thiserror = { workspace = true }
-tokio = { workspace = true, features = ["rt", "sync"] }
+tokio = { workspace = true, features = ["rt", "sync", "time"] }
 tokio-stream = { workspace = true, features = ["sync"] }
 tracing = { workspace = true, features = ["std", "attributes"] }
 tun = { workspace = true }

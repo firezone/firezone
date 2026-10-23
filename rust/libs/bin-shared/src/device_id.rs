@@ -75,12 +75,17 @@ pub fn get_or_create_client() -> Result<DeviceId> {
     Ok(id)
 }
 
-pub fn get_or_create_gateway() -> Result<DeviceId> {
-    const ID_PATH: &str = "/var/lib/firezone/gateway_id";
+const GATEWAY_ID_PATH: &str = "/var/lib/firezone/gateway_id";
 
-    let id = get_or_create_at(Path::new(ID_PATH), GATEWAY_APP_ID)?;
+pub fn get_or_create_gateway() -> Result<DeviceId> {
+    let id = get_or_create_at(Path::new(GATEWAY_ID_PATH), GATEWAY_APP_ID)?;
 
     Ok(id)
+}
+
+/// Whether this host ran the Gateway and holds its device ID.
+pub fn gateway_id_exists() -> bool {
+    Path::new(GATEWAY_ID_PATH).exists()
 }
 
 fn get_or_create_at(path: &Path, app_id: &str) -> Result<DeviceId> {

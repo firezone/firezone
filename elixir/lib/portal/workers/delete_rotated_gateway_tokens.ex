@@ -29,14 +29,14 @@ defmodule Portal.Workers.DeleteRotatedGatewayTokens do
 
   defmodule Database do
     import Ecto.Query
-    alias Portal.GatewayToken
+    alias Portal.ClientToken
     alias Portal.Safe
 
     def delete_rotated_gateway_tokens do
-      grace_hours = GatewayToken.rotation_grace_hours()
+      grace_hours = ClientToken.rotation_grace_hours()
       cutoff = DateTime.add(DateTime.utc_now(), -grace_hours, :hour)
 
-      from(t in GatewayToken, as: :gateway_tokens)
+      from(t in ClientToken, as: :gateway_tokens)
       |> where([gateway_tokens: t], not is_nil(t.device_id))
       |> where([gateway_tokens: t], not is_nil(t.rotated_at))
       |> where([gateway_tokens: t], t.rotated_at <= ^cutoff)

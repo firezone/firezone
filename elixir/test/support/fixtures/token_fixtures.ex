@@ -45,6 +45,11 @@ defmodule Portal.TokenFixtures do
     account = Map.get(attrs, :account) || account_fixture()
     actor = Map.get(attrs, :actor) || actor_fixture(account: account)
 
+    attrs =
+      attrs
+      |> maybe_put_id(:device_id, Map.get(attrs, :device))
+      |> maybe_put_id(:site_id, Map.get(attrs, :site))
+
     changeset =
       %Portal.ClientToken{}
       |> Ecto.Changeset.cast(attrs, [
@@ -52,10 +57,14 @@ defmodule Portal.TokenFixtures do
         :secret_fragment,
         :secret_salt,
         :secret_hash,
-        :expires_at
+        :expires_at,
+        :device_id,
+        :site_id,
+        :rotated_at
       ])
       |> Ecto.Changeset.put_assoc(:account, account)
       |> Ecto.Changeset.put_assoc(:actor, actor)
+      |> Portal.ClientToken.changeset()
 
     # Optionally associate with auth_provider
     changeset =
@@ -67,6 +76,9 @@ defmodule Portal.TokenFixtures do
 
     Portal.Repo.insert!(changeset)
   end
+
+  defp maybe_put_id(attrs, _key, nil), do: attrs
+  defp maybe_put_id(attrs, key, %{id: id}), do: Map.put(attrs, key, id)
 
   @doc """
   Generate a relay token using Portal.RelayToken schema.
@@ -80,7 +92,8 @@ defmodule Portal.TokenFixtures do
   end
 
   @doc """
-  Generate a gateway token using Portal.GatewayToken schema.
+  Generate a gateway token: a client token owned by the account's Infrastructure
+  service account, created if the account has none yet.
 
   Pass `gateway: device` to build a single-owner token bound to that gateway
   instead of a multi-owner site token.
@@ -88,22 +101,33 @@ defmodule Portal.TokenFixtures do
   def gateway_token_fixture(attrs \\ %{}) do
     attrs = Enum.into(attrs, %{})
 
-    case Map.pop(attrs, :gateway) do
-      {nil, attrs} ->
-        account = Map.get(attrs, :account) || account_fixture()
-        site = Map.get(attrs, :site) || site_fixture(account: account)
+    attrs =
+      case Map.pop(attrs, :gateway) do
+        {nil, attrs} ->
+          account = Map.get(attrs, :account) || account_fixture()
+          site = Map.get(attrs, :site) || site_fixture(account: account)
 
-        attrs
-        |> Map.put(:account_id, account.id)
-        |> Map.put(:site_id, site.id)
+          attrs
+          |> Map.put(:account_id, account.id)
+          |> Map.put(:site_id, site.id)
 
-      {gateway, attrs} ->
-        attrs
-        |> Map.put(:account_id, gateway.account_id)
-        |> Map.put(:device_id, gateway.id)
-    end
+        {gateway, attrs} ->
+          attrs
+          |> Map.put(:account_id, gateway.account_id)
+          |> Map.put(:device_id, gateway.id)
+      end
+
+    actor =
+      Portal.Actor.fetch_infrastructure_actor(attrs.account_id) ||
+        Portal.ActorFixtures.infrastructure_actor_fixture(
+          account: Portal.Repo.get!(Portal.Account, attrs.account_id)
+        )
+
+    attrs
+    |> Map.drop([:account, :site])
+    |> Map.put(:actor_id, actor.id)
     |> infrastructure_token_secrets()
-    |> then(&struct!(Portal.GatewayToken, &1))
+    |> then(&struct!(Portal.ClientToken, &1))
     |> Portal.Repo.insert!()
   end
 

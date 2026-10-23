@@ -259,7 +259,6 @@ skip = [
     "cargo-platform",
     "cargo_metadata",
     "cipher", # See `block-buffer`: chacha20 0.10 uses 0.5; aes and cbc (via dbus-secret-service) are on 0.4.
-    "core-foundation", # hickory 0.26 ships system-configuration 0.7 (core-foundation 0.9); tauri/reqwest/etc. are on 0.10.
     "cpufeatures", # See `block-buffer`: chacha20 0.10, sha2 0.11 and curve25519-dalek 5 use 0.3; aes and sha1 are on 0.2.
     "crypto-common", # See `block-buffer`: pulled by sanstun's crypto crates (0.2 vs 0.1 elsewhere).
     "darling", # serde_with 3.23+ uses darling 0.24 (syn 3); ingot-macros 0.2 is on 0.23. Build-time only, as both are proc-macros.

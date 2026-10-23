@@ -121,7 +121,14 @@ pub(crate) fn system_resolvers(dns_control_method: DnsControlMethod) -> Result<V
         DnsControlMethod::Disabled | DnsControlMethod::EtcResolvConf => {
             get_system_default_resolvers_resolv_conf()
         }
-        DnsControlMethod::SystemdResolved => get_system_default_resolvers_systemd_resolved(),
+        // A host without systemd-resolved, like a container running the daemon
+        // as a gateway, still has its resolvers in `resolv.conf`.
+        DnsControlMethod::SystemdResolved => get_system_default_resolvers_systemd_resolved()
+            .or_else(|e| {
+                tracing::debug!("Falling back to `resolv.conf` for the system resolvers: {e:#}");
+
+                get_system_default_resolvers_resolv_conf()
+            }),
     }
 }
 

@@ -1,6 +1,7 @@
 mod crypto;
 mod device;
 mod doh;
+mod forwarder;
 mod nameserver_set;
 mod tcp_dns;
 mod udp_dns;
@@ -64,6 +65,9 @@ pub struct Io {
     doh_tls_config: TlsConfig,
 
     tun: Device,
+
+    /// Forwards served traffic through host sockets when the kernel cannot route it.
+    forwarder: Option<forwarder::Forwarder>,
 }
 
 #[derive(Debug, Clone)]
@@ -89,6 +93,8 @@ enum DohClient {
 /// handling them one at a time, improving fairness and preventing starvation.
 pub struct Input {
     pub device: Option<tun::PacketBatch>,
+    /// Replies from the userspace forwarder, handled like packets read from the TUN device.
+    pub forwarded: Vec<IpPacket>,
     pub network: Option<ReceivedDatagrams>,
     pub decrypted: Option<DecryptedIpPackets>,
     pub tcp_dns_queries: Vec<l4_tcp_dns_server::Query>,
@@ -137,6 +143,7 @@ impl<'a, 'cx> PollState<'a, 'cx> {
             tun_has_room: false,
             input: Input {
                 device: None,
+                forwarded: Vec::new(),
                 network: None,
                 decrypted: None,
                 tcp_dns_queries: Vec::new(),
@@ -212,6 +219,16 @@ impl<'a, 'cx> PollState<'a, 'cx> {
         }
     }
 
+    fn poll_forwarder(&mut self) {
+        if !self.udp_has_room {
+            return;
+        }
+
+        if let Some(forwarder) = self.io.forwarder.as_mut() {
+            self.input.forwarded = forwarder.poll(self.cx, std::time::Instant::now());
+        }
+    }
+
     fn poll_device(&mut self) {
         if !self.udp_has_room {
             return;
@@ -281,6 +298,7 @@ impl<'a, 'cx> PollState<'a, 'cx> {
         let input = self.input;
 
         if input.device.is_none()
+            && input.forwarded.is_empty()
             && input.network.is_none()
             && input.decrypted.is_none()
             && input.tcp_dns_queries.is_empty()
@@ -330,6 +348,7 @@ impl Io {
                 1000,
             ),
             doh_clients: Default::default(),
+            forwarder: None,
             doh_clients_bootstrap: FuturesMap::new(
                 || futures_bounded::Delay::tokio(DNS_QUERY_TIMEOUT),
                 10,
@@ -397,6 +416,20 @@ impl Io {
         self.nameservers.fastest()
     }
 
+    /// Replaces the nameservers the DNS servers on our tunnel addresses forward to.
+    pub fn set_nameservers(&mut self, nameservers: BTreeSet<IpAddr>) {
+        self.nameservers = NameserverSet::new(
+            nameservers,
+            self.tcp_socket_factory.clone(),
+            self.udp_socket_factory.clone(),
+        );
+    }
+
+    /// Whether `local` is one of the DNS servers bound on our tunnel addresses.
+    pub fn is_tun_dns_server(&self, local: SocketAddr) -> bool {
+        self.udp_dns_server.contains_key(&local) || self.tcp_dns_server.contains_key(&local)
+    }
+
     /// Polls all IO sources that are ready.
     ///
     /// The TUN device is only read while nothing waits for room in the UDP sockets, and decrypted
@@ -411,6 +444,7 @@ impl Io {
         state.poll_decrypted();
         state.poll_network();
         state.poll_socket_errors();
+        state.poll_forwarder();
         state.poll_device();
         state.poll_dns_queries();
         state.poll_dns_responses();
@@ -442,6 +476,36 @@ impl Io {
 
     pub fn queue_tun(&mut self, packet: IpPacket) {
         self.tun.queue(packet);
+    }
+
+    /// Whether served traffic goes through the userspace forwarder instead of the TUN device.
+    pub fn set_userspace_forwarding(&mut self, enabled: bool, now: Instant) {
+        match (enabled, self.forwarder.is_some()) {
+            (true, false) => {
+                self.forwarder = Some(forwarder::Forwarder::new(
+                    self.tcp_socket_factory.clone(),
+                    now,
+                ));
+            }
+            (false, true) => {
+                self.forwarder = None;
+            }
+            _ => {}
+        }
+    }
+
+    pub fn is_userspace_forwarding(&self) -> bool {
+        self.forwarder.is_some()
+    }
+
+    /// Hands a served packet to the userspace forwarder.
+    pub fn forward(&mut self, packet: IpPacket, now: Instant) {
+        let Some(forwarder) = self.forwarder.as_mut() else {
+            debug_assert!(false, "forwarding without a forwarder");
+            return;
+        };
+
+        forwarder.forward(packet, now);
     }
 
     /// Marks the end of the current batch of packets queued via [`Io::queue_tun`].

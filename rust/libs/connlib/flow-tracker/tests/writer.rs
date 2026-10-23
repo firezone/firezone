@@ -10,7 +10,7 @@ use std::{
 
 use base64::Engine as _;
 use chrono::TimeZone as _;
-use connlib_model::{ClientId, ClientOrGatewayId, ResourceId};
+use connlib_model::{ClientId, DeviceId, ResourceId};
 use flow_tracker::{FlowClose, FlowContext, FlowProtocol, IngestToken, Record, Role, Tracker};
 use ip_packet::IpPacket;
 use tracing_subscriber::layer::SubscriberExt as _;
@@ -164,7 +164,7 @@ fn tracked_packets_spool_open_and_completed_reports() {
 
     let spool = SpoolObserver::new(authz_id);
     let now = Instant::now();
-    let mut tracker = enabled_tracker::<(ClientId, ResourceId)>(now);
+    let mut tracker = enabled_tracker::<(DeviceId, Option<ResourceId>)>(now);
 
     let client = ClientId::from_u128(1);
     let resource = ResourceId::from_u128(2);
@@ -420,18 +420,13 @@ fn enabled_tracker<S>(now: Instant) -> Tracker<S> {
 
 /// Runs the initiator-to-responder packet through the tracker's public
 /// entry points, as the gateway does for a packet arriving over the network.
-fn drive_tx(
-    tracker: &mut Tracker<ClientOrGatewayId>,
-    packet: &IpPacket,
-    authz_id: &str,
-    now: Instant,
-) {
+fn drive_tx(tracker: &mut Tracker<DeviceId>, packet: &IpPacket, authz_id: &str, now: Instant) {
     drive_tx_from(tracker, "203.0.113.7:51820", packet, authz_id, now);
 }
 
 /// [`drive_tx`] with the Client sending from `remote`, e.g. after a roam.
 fn drive_tx_from(
-    tracker: &mut Tracker<ClientOrGatewayId>,
+    tracker: &mut Tracker<DeviceId>,
     remote: &str,
     packet: &IpPacket,
     authz_id: &str,
@@ -449,7 +444,7 @@ fn drive_tx_from(
 
 /// Runs the responder-to-initiator return packet through the tracker's
 /// public entry points, as the gateway does for a packet read from TUN.
-fn drive_rx(tracker: &mut Tracker<ClientOrGatewayId>, packet: &IpPacket, now: Instant) {
+fn drive_rx(tracker: &mut Tracker<DeviceId>, packet: &IpPacket, now: Instant) {
     let _flow = tracker.begin_tun_packet(packet, now);
     flow_tracker::record_peer(ClientId::from_u128(1), Role::Responder);
     flow_tracker::record_transmit(

@@ -18,12 +18,12 @@ use std::{
     net::{IpAddr, SocketAddr},
     time::Instant,
 };
-use tunnel_proto::GatewayState;
+use tunnel_proto::DeviceState;
 
 /// Simulation state for a particular client.
 pub(crate) struct SimGateway {
     id: GatewayId,
-    pub(crate) sut: GatewayState,
+    pub(crate) sut: DeviceState,
 
     pub(crate) probe_observations: Vec<ProbeObservation>,
 
@@ -53,7 +53,7 @@ pub(crate) struct DnsResolution {
 impl SimGateway {
     pub(crate) fn new(
         id: GatewayId,
-        mut sut: GatewayState,
+        mut sut: DeviceState,
         network: SiteNetwork,
         site_specific_dns_records: DnsRecords,
     ) -> Self {

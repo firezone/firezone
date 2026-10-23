@@ -1382,6 +1382,54 @@ dependencies = [
 ]
 
 [[package]]
+name = "client-service"
+version = "0.1.0"
+dependencies = [
+ "admx-macro",
+ "anyhow-ext",
+ "backoff",
+ "bin-shared",
+ "caps",
+ "client-ipc",
+ "client-shared",
+ "connlib-model",
+ "flow-log-upload",
+ "flow-log-writer",
+ "futures",
+ "ip-packet",
+ "ip_network",
+ "known-dirs",
+ "logging",
+ "nix 0.31.3",
+ "opentelemetry",
+ "output_vt100",
+ "phoenix-channel",
+ "rand 0.10.3",
+ "secrecy",
+ "serde",
+ "serde_json",
+ "serde_variant",
+ "specta",
+ "strum",
+ "telemetry",
+ "tempfile",
+ "thiserror 2.0.21",
+ "tokio",
+ "tracing",
+ "tracing-journald",
+ "tracing-log",
+ "tracing-subscriber",
+ "tunnel-bypass-resolver",
+ "url",
+ "windows",
+ "windows-security",
+ "windows-service",
+ "winreg",
+ "x509-keystore",
+ "zip",
+]
+
+[[package]]
 name = "client-shared"
 version = "0.1.0"
 dependencies = [
@@ -1394,6 +1442,7 @@ dependencies = [
  "flow-log-upload",
  "flow-log-writer",
  "futures",
+ "futures-bounded",
  "logging",
  "opentelemetry",
  "otel-attributes",
@@ -1489,7 +1538,6 @@ checksum = "baf0a07a401f374238ab8e2f11a104d2851bf9ce711ec69804834de8af45c7af"
 name = "connlib-model"
 version = "0.1.0"
 dependencies = [
- "derive_more",
  "ip_network",
  "itertools 0.15.0",
  "sanstun",
@@ -1524,16 +1572,6 @@ dependencies = [
 
 [[package]]
 name = "core-foundation"
-version = "0.9.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "91e195e091a93c46f7102ec7818a2aa394e1e1771c3ab4825963fa03e45afb8f"
-dependencies = [
- "core-foundation-sys",
- "libc",
-]
-
-[[package]]
-name = "core-foundation"
 version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b55271e5c8c478ad3f38ad24ef34923091e0548492a266d19b3c0b4d82574c63"
@@ -1555,7 +1593,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "064badf302c3194842cf2c5d61f56cc88e54a759313879cdf03abdd27d0c3b97"
 dependencies = [
  "bitflags 2.10.0",
- "core-foundation 0.10.0",
+ "core-foundation",
  "core-graphics-types",
  "foreign-types",
  "libc",
@@ -1568,7 +1606,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3d44a101f213f6c4cdc1853d4b78aef6db6bdfa3468798cc1d9912f4735013eb"
 dependencies = [
  "bitflags 2.10.0",
- "core-foundation 0.10.0",
+ "core-foundation",
  "libc",
 ]
 
@@ -1646,12 +1684,6 @@ dependencies = [
  "cast",
  "itertools 0.13.0",
 ]
-
-[[package]]
-name = "critical-section"
-version = "1.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "790eea4361631c5e7d22598ecd5723ff611904e3344ce8720784c93e3d83d40b"
 
 [[package]]
 name = "crossbeam-channel"
@@ -2565,62 +2597,19 @@ dependencies = [
 name = "firezone-gateway"
 version = "1.6.4"
 dependencies = [
- "anyhow-ext",
- "atomicfs",
- "backoff",
- "bin-shared",
- "caps",
- "clap",
- "clock",
- "dns-types",
- "flow-log-upload",
- "flow-log-writer",
- "futures",
- "futures-bounded",
- "hex",
- "hickory-resolver",
- "humantime",
- "ip-packet",
- "logging",
- "mimalloc",
- "nix 0.31.3",
- "opentelemetry",
- "opentelemetry-otlp",
- "opentelemetry-stdout",
- "opentelemetry_sdk",
- "otel-attributes",
- "otel-instruments",
- "phoenix-channel",
- "resolv-conf",
- "rpassword",
- "rustls",
- "secrecy",
- "serde",
- "serde_json",
- "sha2 0.11.1",
- "socket-factory",
- "telemetry",
- "tempfile",
- "thiserror 2.0.21",
- "tokio",
- "tracing",
- "tracing-subscriber",
- "tunnel",
- "url",
+ "firezone-headless-client",
 ]
 
 [[package]]
 name = "firezone-gui-client"
 version = "1.5.20"
 dependencies = [
- "admx-macro",
  "anyhow-ext",
  "arboard",
- "backoff",
- "bin-shared",
  "chrono",
  "clap",
  "client-ipc",
+ "client-service",
  "client-shared",
  "connlib-model",
  "dbus-secret-service-keyring-store",
@@ -2628,25 +2617,16 @@ dependencies = [
  "desktop-notifications",
  "dirs 7.0.0",
  "embed-resource",
- "flow-log-upload",
- "flow-log-writer",
  "futures",
  "gui-ipc",
  "hex",
- "humantime",
- "ip-packet",
- "ip_network",
  "keyring-core",
  "known-dirs",
  "ksni",
  "logging",
- "mimalloc",
  "native-dialog",
  "nix 0.31.3",
- "opentelemetry",
- "output_vt100",
  "parking_lot",
- "phoenix-channel",
  "png 0.18.1",
  "rand 0.10.3",
  "reqwest",
@@ -2656,7 +2636,6 @@ dependencies = [
  "semver",
  "serde",
  "serde_json",
- "serde_variant",
  "socket-factory",
  "specta",
  "specta-typescript",
@@ -2676,21 +2655,15 @@ dependencies = [
  "tokio-stream",
  "tokio-util",
  "tracing",
- "tracing-journald",
- "tracing-log",
  "tracing-subscriber",
- "tunnel-bypass-resolver",
  "tunnel-proto",
  "url",
  "uuid",
  "windows",
  "windows-native-keyring-store",
  "windows-package-identity",
- "windows-security",
- "windows-service",
  "winreg",
  "x509-keystore",
- "zip",
 ]
 
 [[package]]
@@ -2701,10 +2674,13 @@ dependencies = [
  "backoff",
  "bin-shared",
  "clap",
+ "client-service",
  "client-shared",
+ "firezone-cli",
  "flow-log-upload",
  "flow-log-writer",
  "futures",
+ "gui-ipc",
  "humantime",
  "ip-packet",
  "ip_network",
@@ -3615,76 +3591,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e712f64ec3850b98572bffac52e2c6f282b29fe6c5fa6d42334b30be438d95c1"
 
 [[package]]
-name = "hickory-net"
-version = "0.26.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c480823ed7c2c5d0f09c41020cb6b7c28029ce60ec42dc942158dcf22f8e0a4d"
-dependencies = [
- "async-trait",
- "cfg-if",
- "data-encoding",
- "futures-channel",
- "futures-io",
- "futures-util",
- "hickory-proto",
- "idna",
- "ipnet",
- "jni 0.22.4",
- "rand 0.10.3",
- "thiserror 2.0.21",
- "tinyvec",
- "tokio",
- "tracing",
- "url",
-]
-
-[[package]]
-name = "hickory-proto"
-version = "0.26.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "12b92608f679a6fa515dd1d15c1ff89443026e391200a2c840c7afcba482893d"
-dependencies = [
- "data-encoding",
- "idna",
- "ipnet",
- "jni 0.22.4",
- "once_cell",
- "prefix-trie",
- "rand 0.10.3",
- "ring",
- "thiserror 2.0.21",
- "tinyvec",
- "tracing",
- "url",
-]
-
-[[package]]
-name = "hickory-resolver"
-version = "0.26.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3f3da5255c95d5a716857d54b5b8f4e8d67c3484d3beaaaae2ce25063b3ba981"
-dependencies = [
- "cfg-if",
- "futures-util",
- "hickory-net",
- "hickory-proto",
- "ipconfig",
- "ipnet",
- "jni 0.22.4",
- "moka",
- "ndk-context",
- "once_cell",
- "parking_lot",
- "rand 0.10.3",
- "resolv-conf",
- "smallvec",
- "system-configuration",
- "thiserror 2.0.21",
- "tokio",
- "tracing",
-]
-
-[[package]]
 name = "hkdf"
 version = "0.12.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4239,9 +4145,6 @@ name = "ipnet"
 version = "2.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "469fb0b9cefa57e3ef31275ee7cacb78f2fdca44e4765491884a2b119d4eb130"
-dependencies = [
- "serde",
-]
 
 [[package]]
 name = "iri-string"
@@ -5534,10 +5437,6 @@ name = "once_cell"
 version = "1.21.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9f7c3e4beb33f85d45ae3e3a1792185706c8e16d043238c593331cc7cd313b50"
-dependencies = [
- "critical-section",
- "portable-atomic",
-]
 
 [[package]]
 name = "once_cell_polyfill"
@@ -6069,17 +5968,6 @@ checksum = "925383efa346730478fb4838dbe9137d2a47675ad789c546d150a6e1dd4ab31c"
 [[package]]
 name = "prefetch"
 version = "0.1.0"
-
-[[package]]
-name = "prefix-trie"
-version = "0.8.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4cf6e3177f0684016a5c209b00882e15f8bdd3f3bb48f0491df10cd102d0c6e7"
-dependencies = [
- "either",
- "ipnet",
- "num-traits",
-]
 
 [[package]]
 name = "prettyplease"
@@ -6695,7 +6583,7 @@ version = "0.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1167586491e2b18b8bfbb293e8180ec17c201c4f076d7cb3070ca964e7598f98"
 dependencies = [
- "core-foundation 0.10.0",
+ "core-foundation",
  "core-foundation-sys",
  "jni 0.22.4",
  "log",
@@ -6897,7 +6785,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b3297343eaf830f66ede390ea39da1d462b6b0c1b000f420d0a83f898bbbe6ef"
 dependencies = [
  "bitflags 2.10.0",
- "core-foundation 0.10.0",
+ "core-foundation",
  "core-foundation-sys",
  "libc",
  "security-framework-sys",
@@ -7362,7 +7250,7 @@ version = "0.9.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e739c9b449374b4e9435857e0084895a59ef79b46d1c2b0f976c1c564ae7e4bc"
 dependencies = [
- "core-foundation 0.10.0",
+ "core-foundation",
  "core-foundation-sys",
  "getopts",
  "io-kit-sys",
@@ -7756,27 +7644,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "system-configuration"
-version = "0.7.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a13f3d0daba03132c0aa9767f98351b3488edc2c100cda2d2ec2b04f3d8d3c8b"
-dependencies = [
- "bitflags 2.10.0",
- "core-foundation 0.9.4",
- "system-configuration-sys",
-]
-
-[[package]]
-name = "system-configuration-sys"
-version = "0.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8e1d1b10ced5ca923a1fcb8d03e96b8d3268065d724548c0211415ff6ac6bac4"
-dependencies = [
- "core-foundation-sys",
- "libc",
-]
-
-[[package]]
 name = "system-deps"
 version = "6.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7803,7 +7670,7 @@ checksum = "f37f381f4e048e6cdf038b5705f8cf14ad108279d46eb968140a7b291aba9400"
 dependencies = [
  "bitflags 2.10.0",
  "block2",
- "core-foundation 0.10.0",
+ "core-foundation",
  "core-graphics",
  "crossbeam-channel",
  "dbus",
@@ -9020,11 +8887,13 @@ dependencies = [
  "rand 0.10.3",
  "snownet",
  "socket-factory",
+ "socket2",
  "thiserror 2.0.21",
  "tokio",
  "tracing",
  "tun",
  "tunnel-proto",
+ "userspace-forwarder",
 ]
 
 [[package]]
@@ -9372,6 +9241,15 @@ dependencies = [
  "regex",
  "serde",
  "url",
+]
+
+[[package]]
+name = "userspace-forwarder"
+version = "0.1.0"
+dependencies = [
+ "ip-packet",
+ "l3-tcp",
+ "tracing",
 ]
 
 [[package]]

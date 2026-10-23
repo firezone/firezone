@@ -4,6 +4,7 @@ defmodule PortalWeb.Sites do
   alias PortalWeb.Resources.Components, as: ResourceComponents
   alias Portal.Presence
   alias __MODULE__.Database
+  alias PortalWeb.Devices.AddDevice
 
   def mount(_params, _session, socket) do
     if connected?(socket) do
@@ -468,7 +469,8 @@ defmodule PortalWeb.Sites do
       rename_gateway_id: nil,
       gateway_actions_open_id: nil,
       rotated_gateway_token: nil,
-      expanded_gateway_id: nil
+      expanded_gateway_id: nil,
+      device_picker: nil
     }
   end
 
@@ -503,14 +505,7 @@ defmodule PortalWeb.Sites do
     {gateways, length(all_gateways)}
   end
 
-  defp base_site_deploy_state do
-    %{
-      env: nil,
-      tab: "debian-instructions",
-      connected?: false,
-      token: nil
-    }
-  end
+  defp base_site_deploy_state, do: AddDevice.closed()
 
   defp base_site_resource_form_state do
     %{
@@ -561,6 +556,43 @@ defmodule PortalWeb.Sites do
   end
 
   # Gateways holding a single-owner token are the ones the site expects online
+  defp assign_device(socket, site, device_id) do
+    case Database.assign_device_to_site(site, device_id, socket.assigns.subject) do
+      {:ok, _site_device} ->
+        {:noreply,
+         socket
+         |> put_flash(:success, "Device added to site.")
+         |> reload_panel_gateways(site.id)
+         |> merge_state(:site_panel, %{device_picker: nil})}
+
+      {:error, _reason} ->
+        {:noreply, put_flash(socket, :error, "Failed to add device to site.")}
+    end
+  end
+
+  # Assignments changed: the panel list, the per-gateway token state and the
+  # index health all read them.
+  defp reload_panel_gateways(socket, site_id) do
+    device_tokens = load_device_tokens(site_id, socket.assigns.subject)
+
+    {gateways, total_gateway_count} =
+      load_panel_gateways(
+        site_id,
+        socket.assigns.site_panel.show_all_gateways,
+        device_tokens,
+        socket.assigns.subject
+      )
+
+    socket
+    |> put_provisioned_gateway_ids(site_id, device_tokens)
+    |> load_sites_index_data()
+    |> merge_state(:site_panel, %{
+      gateways: gateways,
+      total_gateway_count: total_gateway_count,
+      device_tokens: device_tokens
+    })
+  end
+
   defp put_provisioned_gateway_ids(socket, site_id, device_tokens) do
     update(socket, :provisioned_gateway_ids, fn ids ->
       Map.put(ids, site_id, device_tokens |> Map.keys() |> MapSet.new())
@@ -852,6 +884,82 @@ defmodule PortalWeb.Sites do
     end
   end
 
+  def handle_event("open_device_picker", _params, socket) do
+    site = socket.assigns.selected_site
+    results = Database.search_devices_to_assign(site.id, "", socket.assigns.subject)
+
+    {:noreply,
+     merge_state(socket, :site_panel, %{
+       device_picker: %{search: "", results: results, confirm_id: nil}
+     })}
+  end
+
+  def handle_event("close_device_picker", _params, socket) do
+    {:noreply, merge_state(socket, :site_panel, %{device_picker: nil})}
+  end
+
+  def handle_event("search_devices_to_assign", %{"search" => search}, socket) do
+    site = socket.assigns.selected_site
+    results = Database.search_devices_to_assign(site.id, search, socket.assigns.subject)
+
+    {:noreply,
+     merge_state(socket, :site_panel, %{
+       device_picker: %{search: search, results: results, confirm_id: nil}
+     })}
+  end
+
+  # Serving the Internet resource next to other resources is allowed but
+  # worth a pause: the admin confirms the combination before it is created.
+  def handle_event("assign_device", %{"id" => device_id} = params, socket) do
+    site = socket.assigns.selected_site
+    confirmed? = Map.get(params, "confirmed") == "true"
+
+    if not confirmed? and
+         Database.cohosts_internet?(site, device_id, socket.assigns.subject) do
+      {:noreply,
+       update(socket, :site_panel, fn panel ->
+         %{panel | device_picker: Map.put(panel.device_picker, :confirm_id, device_id)}
+       end)}
+    else
+      assign_device(socket, site, device_id)
+    end
+  end
+
+  def handle_event("cancel_assign_device", _params, socket) do
+    {:noreply,
+     update(socket, :site_panel, fn panel ->
+       %{panel | device_picker: Map.put(panel.device_picker, :confirm_id, nil)}
+     end)}
+  end
+
+  def handle_event("remove_gateway_from_site", %{"id" => gateway_id}, socket) do
+    site = socket.assigns.selected_site
+
+    case Database.remove_device_from_site(site, gateway_id, socket.assigns.subject) do
+      :ok ->
+        {:noreply,
+         socket
+         |> put_flash(:success, "Gateway removed from site.")
+         |> reload_panel_gateways(site.id)
+         |> merge_state(:site_panel, %{gateway_actions_open_id: nil, expanded_gateway_id: nil})}
+
+      {:error, :last_site} ->
+        {:noreply,
+         socket
+         |> put_flash(
+           :error,
+           "This is the only site the gateway serves. Add it to another site first, or delete the gateway."
+         )
+         |> merge_state(:site_panel, %{gateway_actions_open_id: nil})}
+
+      {:error, _reason} ->
+        {:noreply,
+         socket
+         |> put_flash(:error, "Failed to remove gateway from site.")
+         |> merge_state(:site_panel, %{gateway_actions_open_id: nil})}
+    end
+  end
+
   def handle_event("show_all_gateways", _params, socket) do
     {gateways, _total} =
       load_panel_gateways(
@@ -876,44 +984,34 @@ defmodule PortalWeb.Sites do
     {:noreply, merge_state(socket, :site_panel, %{gateways: gateways, show_all_gateways: false})}
   end
 
+  # Opens the add-device flow with this site preselected; the device is
+  # created when the form is submitted.
   def handle_event("deploy_gateway", _params, socket) do
+    site = socket.assigns.selected_site
+
+    {:noreply,
+     socket
+     |> merge_state(:site_panel, %{view: :deploy})
+     |> put_state(:site_deploy, AddDevice.open(socket.assigns.subject, [site.id]))}
+  end
+
+  def handle_event("add_device_change", %{"device" => params}, socket) do
+    {:noreply, merge_state(socket, :site_deploy, %{form: to_form(params, as: :device)})}
+  end
+
+  def handle_event("add_device_submit", %{"device" => params}, socket) do
     site = socket.assigns.selected_site
     subject = socket.assigns.subject
 
-    # Pre-create the gateway and bind a single-owner token to it; the gateway
-    # reports its FIREZONE_ID as a telemetry hint on first connect
-    case Database.deploy_gateway(site, subject) do
-      {:ok, _gateway, token, encoded_token} ->
-        device_tokens = load_device_tokens(site.id, subject)
-
-        {gateways, total_gateway_count} =
-          load_panel_gateways(
-            site.id,
-            socket.assigns.site_panel.show_all_gateways,
-            device_tokens,
-            subject
-          )
-
-        env = SiteComponents.gateway_env(encoded_token)
-
+    case AddDevice.submit(socket.assigns.site_deploy, params, subject) do
+      {:ok, state} ->
         {:noreply,
          socket
-         |> put_provisioned_gateway_ids(site.id, device_tokens)
-         |> merge_state(:site_panel, %{
-           view: :deploy,
-           gateways: gateways,
-           total_gateway_count: total_gateway_count,
-           device_tokens: device_tokens
-         })
-         |> put_state(:site_deploy, %{
-           env: env,
-           tab: "debian-instructions",
-           token: token,
-           connected?: false
-         })}
+         |> put_state(:site_deploy, state)
+         |> reload_panel_gateways(site.id)}
 
-      {:error, _} ->
-        {:noreply, put_flash(socket, :error, "Failed to create gateway.")}
+      {:error, _reason} ->
+        {:noreply, put_flash(socket, :error, "Failed to create the device.")}
     end
   end
 
@@ -921,7 +1019,7 @@ defmodule PortalWeb.Sites do
     {:noreply, merge_state(socket, :site_deploy, %{tab: tab})}
   end
 
-  def handle_event("close_deploy", _params, socket) do
+  def handle_event(event, _params, socket) when event in ["close_deploy", "close_add_device"] do
     {:noreply,
      socket
      |> merge_state(:site_panel, %{view: :gateways})
@@ -1037,6 +1135,12 @@ defmodule PortalWeb.Sites do
          |> put_flash(:success, "Site #{socket.assigns.selected_site.name} deleted successfully.")
          |> assign(sites: sites)
          |> push_patch(to: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/sites"))}
+
+      {:error, :resources_remain} ->
+        {:noreply,
+         socket
+         |> put_flash(:error, "Delete or move the site's resources before deleting the site.")
+         |> merge_state(:site_panel, %{confirm_delete_site: false})}
 
       {:error, _changeset} ->
         {:noreply,
@@ -1190,9 +1294,10 @@ defmodule PortalWeb.Sites do
         socket
       ) do
     socket =
-      case site_deploy_connection_status(socket.assigns.site_deploy, joins) do
-        :noop -> socket
-        connected? -> merge_state(socket, :site_deploy, %{connected?: connected?})
+      if AddDevice.connected?(socket.assigns.site_deploy, joins) do
+        merge_state(socket, :site_deploy, %{connected?: true})
+      else
+        socket
       end
 
     socket = load_sites_index_data(socket)
@@ -1252,20 +1357,6 @@ defmodule PortalWeb.Sites do
   defp sanitize_panel_tab(:tokens, []), do: :gateways
   defp sanitize_panel_tab(tab, _gateway_tokens), do: tab
 
-  defp site_deploy_connection_status(%{connected?: true}, _joins), do: :noop
-
-  defp site_deploy_connection_status(%{token: nil}, _joins), do: :noop
-
-  defp site_deploy_connection_status(%{token: %{id: token_id}}, joins) do
-    deploy_token_connected?(joins, token_id)
-  end
-
-  defp deploy_token_connected?(joins, token_id) do
-    Enum.any?(joins, fn {_gateway_id, %{metas: metas}} ->
-      Enum.any?(metas, fn meta -> Map.get(meta, :token_id) == token_id end)
-    end)
-  end
-
   defp load_sites_index_data(socket) do
     internet_resource =
       if Portal.Account.internet_resource_enabled?(socket.assigns.account) do
@@ -1304,7 +1395,8 @@ defmodule PortalWeb.Sites do
   defmodule Database do
     import Ecto.Query
     import Ecto.Changeset
-    alias Portal.{Safe, Site, Resource, Device, GatewayToken}
+    import Portal.Repo.Query
+    alias Portal.{Safe, Site, Resource, Device, ClientToken}
 
     @spec list_all_sites(Portal.Authentication.Subject.t()) :: [Site.t()]
     def list_all_sites(subject) do
@@ -1335,11 +1427,68 @@ defmodule PortalWeb.Sites do
           ]
     def list_gateways_for_site(site_id, subject) do
       from(d in Device, as: :devices)
-      |> where([devices: d], d.type == :gateway)
-      |> where([devices: d], d.site_id == ^site_id)
+      |> join_site_devices()
+      |> where([site_devices: sd], sd.site_id == ^site_id)
       |> order_by([devices: d], asc: d.name)
       |> Safe.scoped(subject)
       |> Safe.all()
+    end
+
+    # A device serves every site it is assigned to, so site-keyed device
+    # queries go through the assignments rather than the device's site column.
+    defp join_site_devices(queryable) do
+      join(queryable, :inner, [devices: d], sd in Portal.SiteDevice,
+        on: sd.account_id == d.account_id and sd.device_id == d.id,
+        as: :site_devices
+      )
+    end
+
+    @doc """
+    Devices that could be assigned to the site: every device in the account
+    not already assigned, matching `search_term` by name or slug, gateways
+    first. Clients are listed so the admin sees why they cannot be picked yet.
+    """
+    @spec search_devices_to_assign(Ecto.UUID.t(), String.t(), Portal.Authentication.Subject.t()) ::
+            [Device.t()]
+    def search_devices_to_assign(site_id, search_term, subject) do
+      from(d in Device, as: :devices)
+      |> where(
+        [devices: d],
+        not exists(
+          from(sd in Portal.SiteDevice,
+            where:
+              sd.account_id == parent_as(:devices).account_id and
+                sd.device_id == parent_as(:devices).id and sd.site_id == ^site_id
+          )
+        )
+      )
+      |> search_devices(search_term)
+      |> order_by([devices: d], asc: fragment("CASE WHEN ? = 'gateway' THEN 0 ELSE 1 END", d.type), asc: d.name)
+      |> limit(10)
+      |> Safe.scoped(subject)
+      |> Safe.all()
+    end
+
+    defp search_devices(queryable, ""), do: queryable
+
+    defp search_devices(queryable, search_term) do
+      where(
+        queryable,
+        [devices: d],
+        fulltext_search(d.name, ^search_term) or fulltext_search(d.slug, ^search_term)
+      )
+    end
+
+    def cohosts_internet?(site, device_id, subject) do
+      Portal.Devices.cohosts_internet?(site, device_id, subject)
+    end
+
+    def assign_device_to_site(site, device_id, subject) do
+      Portal.Devices.assign_to_site(site, device_id, subject)
+    end
+
+    def remove_device_from_site(site, device_id, subject) do
+      with {:ok, _device} <- Portal.Devices.unassign_from_site(site, device_id, subject), do: :ok
     end
 
     @spec list_resources_for_site(Ecto.UUID.t(), Portal.Authentication.Subject.t()) :: [
@@ -1379,10 +1528,10 @@ defmodule PortalWeb.Sites do
 
     def count_gateways_by_site(site_ids, subject) do
       from(d in Device, as: :devices)
-      |> where([devices: d], d.type == :gateway)
-      |> where([devices: d], d.site_id in ^site_ids)
-      |> group_by([devices: d], d.site_id)
-      |> select([devices: d], {d.site_id, count(d.id)})
+      |> join_site_devices()
+      |> where([site_devices: sd], sd.site_id in ^site_ids)
+      |> group_by([site_devices: sd], sd.site_id)
+      |> select([site_devices: sd, devices: d], {sd.site_id, count(d.id)})
       |> Safe.scoped(subject)
       |> Safe.all()
       |> Map.new()
@@ -1405,12 +1554,6 @@ defmodule PortalWeb.Sites do
       |> validate_required([:site_id])
       |> Safe.scoped(subject)
       |> Safe.insert()
-    end
-
-    @spec deploy_gateway(Site.t(), Portal.Authentication.Subject.t()) ::
-            {:ok, Device.t(), GatewayToken.t(), binary()} | {:error, term()}
-    def deploy_gateway(site, subject) do
-      Portal.Devices.provision_gateway(site, nil, subject)
     end
 
     @spec rename_gateway(Device.t(), String.t(), Portal.Authentication.Subject.t()) ::
@@ -1444,7 +1587,7 @@ defmodule PortalWeb.Sites do
     end
 
     @spec rotate_gateway_token(Device.t(), Portal.Authentication.Subject.t()) ::
-            {:ok, GatewayToken.t(), binary()} | {:error, term()}
+            {:ok, ClientToken.t(), binary()} | {:error, term()}
     def rotate_gateway_token(gateway, subject) do
       with {:ok, token} <- Portal.Authentication.rotate_gateway_token(gateway, subject) do
         {:ok, %{token | secret_fragment: nil}, Portal.Authentication.encode_fragment!(token)}
@@ -1454,14 +1597,15 @@ defmodule PortalWeb.Sites do
     @spec list_gateway_tokens_for_devices_in_site(
             Ecto.UUID.t(),
             Portal.Authentication.Subject.t()
-          ) :: [GatewayToken.t()]
+          ) :: [ClientToken.t()]
     def list_gateway_tokens_for_devices_in_site(site_id, subject) do
-      from(t in GatewayToken, as: :gateway_tokens)
+      from(t in ClientToken, as: :gateway_tokens)
       |> join(:inner, [gateway_tokens: t], d in Device,
         on: d.account_id == t.account_id and d.id == t.device_id,
         as: :devices
       )
-      |> where([devices: d], d.site_id == ^site_id)
+      |> join_site_devices()
+      |> where([site_devices: sd], sd.site_id == ^site_id)
       |> Safe.scoped(subject)
       |> Safe.all()
     end
@@ -1471,14 +1615,15 @@ defmodule PortalWeb.Sites do
             Portal.Authentication.Subject.t()
           ) :: %{Ecto.UUID.t() => MapSet.t(Ecto.UUID.t())}
     def list_provisioned_gateway_ids_by_site(site_ids, subject) do
-      from(t in GatewayToken, as: :gateway_tokens)
+      from(t in ClientToken, as: :gateway_tokens)
       |> join(:inner, [gateway_tokens: t], d in Device,
         on: d.account_id == t.account_id and d.id == t.device_id,
         as: :devices
       )
-      |> where([devices: d], d.site_id in ^site_ids)
+      |> join_site_devices()
+      |> where([site_devices: sd], sd.site_id in ^site_ids)
       |> distinct(true)
-      |> select([devices: d], {d.site_id, d.id})
+      |> select([site_devices: sd, devices: d], {sd.site_id, d.id})
       |> Safe.scoped(subject)
       |> Safe.all()
       |> Enum.group_by(&elem(&1, 0), &elem(&1, 1))
@@ -1502,10 +1647,10 @@ defmodule PortalWeb.Sites do
     end
 
     @spec list_gateway_tokens_for_site(Ecto.UUID.t(), Portal.Authentication.Subject.t()) :: [
-            GatewayToken.t()
+            ClientToken.t()
           ]
     def list_gateway_tokens_for_site(site_id, subject) do
-      from(t in GatewayToken, as: :gateway_tokens)
+      from(t in ClientToken, as: :gateway_tokens)
       |> where([gateway_tokens: t], t.site_id == ^site_id)
       |> order_by([gateway_tokens: t], desc: t.inserted_at)
       |> Safe.scoped(subject)
@@ -1515,7 +1660,7 @@ defmodule PortalWeb.Sites do
     @spec delete_gateway_token_by_id(Ecto.UUID.t(), Portal.Authentication.Subject.t()) ::
             {non_neg_integer(), nil} | {:error, :unauthorized}
     def delete_gateway_token_by_id(token_id, subject) do
-      from(t in GatewayToken, as: :gateway_tokens)
+      from(t in ClientToken, as: :gateway_tokens)
       |> where([gateway_tokens: t], t.id == ^token_id)
       |> Safe.scoped(subject)
       |> Safe.delete_all()
@@ -1524,7 +1669,7 @@ defmodule PortalWeb.Sites do
     @spec delete_all_gateway_tokens(Site.t(), Portal.Authentication.Subject.t()) ::
             {non_neg_integer(), nil} | {:error, :unauthorized}
     def delete_all_gateway_tokens(site, subject) do
-      from(t in GatewayToken, where: t.site_id == ^site.id)
+      from(t in ClientToken, where: t.site_id == ^site.id)
       |> Safe.scoped(subject)
       |> Safe.delete_all()
     end
@@ -1571,9 +1716,39 @@ defmodule PortalWeb.Sites do
 
     @spec delete_site(Site.t(), Portal.Authentication.Subject.t()) ::
             {:ok, Site.t()} | {:error, Ecto.Changeset.t()}
+    # Devices outlive the site: they are unassigned, not deleted. Resources
+    # would lose their site, so the site stays until they are gone.
+    @spec delete_site(Portal.Site.t(), Portal.Authentication.Subject.t()) ::
+            {:ok, Portal.Site.t()} | {:error, :resources_remain | :unauthorized | Ecto.Changeset.t()}
     def delete_site(site, subject) do
-      Safe.scoped(site, subject)
-      |> Safe.delete()
+      case resources_remain?(site, subject) do
+        true -> {:error, :resources_remain}
+        false -> delete_site_and_tokens(site, subject)
+        {:error, :unauthorized} -> {:error, :unauthorized}
+      end
+    end
+
+    # The site's tokens go with it either way; deleting them first clears
+    # the token column on the gateways that used them before the site's own
+    # key actions touch those rows, which the token key check otherwise
+    # trips on within one transaction.
+    defp delete_site_and_tokens(site, subject) do
+      Safe.transact(fn ->
+        from(t in ClientToken, as: :client_tokens)
+        |> where([client_tokens: t], t.site_id == ^site.id)
+        |> Safe.scoped(subject)
+        |> Safe.delete_all()
+
+        Safe.scoped(site, subject)
+        |> Safe.delete()
+      end)
+    end
+
+    defp resources_remain?(site, subject) do
+      from(r in Resource, as: :resources)
+      |> where([resources: r], r.site_id == ^site.id)
+      |> Safe.scoped(subject)
+      |> Safe.exists?()
     end
 
     def get_internet_resource(subject) do

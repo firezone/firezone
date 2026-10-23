@@ -15,14 +15,18 @@ fi
 pnpm install --frozen-lockfile
 pnpm exec vite build
 
-# The `firezone` CLI is its own workspace member, so `tauri build` never compiles it.
+# The `firezone` CLI and the daemon are their own workspace members, so
+# `tauri build` never compiles them. The CLI crate also writes the shell
+# completions. Linux packages ship the one `firezone` binary that is daemon
+# and CLI at once; Windows still ships the tunnel service and the CLI apart.
 cargo build --release -p firezone-cli
+cargo build --release -p firezone-headless-client --bin firezone --bin firezone-client-tunnel
 pnpm exec tauri build --no-bundle
 
 case "$OSTYPE" in
 linux*)
     # Moves the debug info into `.debug` files, which only go to Sentry.
-    for bin in firezone-client-gui firezone-client-tunnel firezone-cli register-sparse; do
+    for bin in firezone-client-gui firezone; do
         objcopy --only-keep-debug "$release/$bin" "$release/$bin.debug"
         objcopy --strip-debug --add-gnu-debuglink="$release/$bin.debug" "$release/$bin"
     done

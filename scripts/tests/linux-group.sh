@@ -5,14 +5,15 @@
 
 source "./scripts/tests/lib.sh"
 
-BINARY_NAME=firezone-client-tunnel
+BINARY_NAME=firezone
+FZ_USER="firezone"
 FZ_GROUP="firezone-client"
-SERVICE_NAME=firezone-client-tunnel
+SERVICE_NAME=firezone
 SOCKET=/run/dev.firezone.client/tunnel.sock
 export RUST_LOG=info
 
 cd rust || exit 1
-cargo build --bin "$BINARY_NAME"
+cargo build -p firezone-headless-client --bin "$BINARY_NAME"
 cd ..
 
 function debug_exit() {
@@ -23,16 +24,27 @@ function debug_exit() {
 # Copy the Linux Client out of the build dir
 sudo cp "rust/target/debug/$BINARY_NAME" "/usr/bin/$BINARY_NAME"
 
-# Set up the systemd service
-sudo cp "rust/gui-client/src-tauri/linux_package/$SERVICE_NAME.service" /usr/lib/systemd/system/
+# Set up the systemd service the way the packages do
+sudo cp "rust/headless-client/debian/$SERVICE_NAME.service" /usr/lib/systemd/system/
 sudo cp "scripts/tests/systemd/env" "/etc/default/firezone-client-tunnel"
 
-# The firezone group must exist before the daemon starts
-sudo groupadd "$FZ_GROUP"
+# The daemon's user and the group that may control it must exist before it
+# starts, and the unit loads the (empty) Gateway token file as a credential.
+# Both tools take a relative argument for a config name to look up, so the
+# files are named by absolute path.
+sudo systemd-sysusers "$PWD/rust/headless-client/debian/$SERVICE_NAME.sysusers"
+sudo systemd-tmpfiles --create "$PWD/rust/headless-client/debian/$SERVICE_NAME.tmpfiles"
 sudo systemctl start "$SERVICE_NAME" || debug_exit
 
+# The unit is `Type=simple`, so `start` returns before the daemon listens.
+for _ in $(seq 1 50); do
+    sudo test -S "$SOCKET" && break
+    sleep 0.2
+done
+sudo test -S "$SOCKET" || debug_exit
+
 # Make sure the socket has the right permissions
-if [ "root $FZ_GROUP" != "$(stat -c '%U %G' $SOCKET)" ]
+if [ "$FZ_USER $FZ_GROUP" != "$(sudo stat -c '%U %G' $SOCKET)" ]
 then
     exit 1
 fi

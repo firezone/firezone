@@ -74,6 +74,8 @@ async fn serve(server_io: DuplexStream) -> Result<()> {
             advanced_settings: AdvancedSettings::default(),
             mdm_settings: MdmSettings::default(),
             x509_certificate: Ok(None),
+            ipc_version: crate::service::IPC_VERSION,
+            daemon_version: env!("CARGO_PKG_VERSION").to_owned(),
         })
         .await?;
 

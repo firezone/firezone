@@ -14,6 +14,53 @@ defmodule Portal.Cache.ClientTest do
   import Portal.SiteFixtures
   import Portal.SubjectFixtures
 
+  describe "recompute_connectable_resources/4 for a device that serves sites" do
+    test "leaves out the resources of the sites the device serves" do
+      account = account_fixture()
+      actor = actor_fixture(type: :account_admin_user, account: account)
+      subject = subject_fixture(account: account, actor: actor, type: :client)
+      group = group_fixture(account: account)
+      membership_fixture(account: account, actor: actor, group: group)
+
+      served_site = site_fixture(account: account)
+      other_site = site_fixture(account: account)
+      local = resource_fixture(account: account, site: served_site)
+      remote = resource_fixture(account: account, site: other_site)
+      policy_fixture(account: account, group: group, resource: local)
+      policy_fixture(account: account, group: group, resource: remote)
+
+      client = client_fixture(account: account, actor: actor)
+
+      client = %{
+        client
+        | site_devices: [
+            %Portal.SiteDevice{account_id: account.id, site_id: served_site.id, device_id: client.id}
+          ]
+      }
+
+      {:ok, connectable, [], _cache} = Cache.recompute_connectable_resources(nil, client, subject)
+
+      ids = Enum.map(connectable, &Ecto.UUID.load!(&1.id))
+      assert remote.id in ids
+      refute local.id in ids
+    end
+
+    test "a device serving no site sees every resource it is allowed" do
+      account = account_fixture()
+      actor = actor_fixture(type: :account_admin_user, account: account)
+      subject = subject_fixture(account: account, actor: actor, type: :client)
+      group = group_fixture(account: account)
+      membership_fixture(account: account, actor: actor, group: group)
+      resource = resource_fixture(account: account, site: site_fixture(account: account))
+      policy_fixture(account: account, group: group, resource: resource)
+      client = client_fixture(account: account, actor: actor)
+
+      {:ok, connectable, [], _cache} = Cache.recompute_connectable_resources(nil, client, subject)
+
+      assert Enum.map(connectable, &Ecto.UUID.load!(&1.id)) == [resource.id]
+    end
+  end
+
   describe "Portal.Cache.Cacheable.to_cache/1 for policy" do
     test "allows nil group_id for orphaned policies" do
       policy = %Portal.Policy{

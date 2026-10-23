@@ -51,7 +51,7 @@ defmodule PortalAPI.GatewayTokenController do
          {:ok, token} <- Authentication.create_gateway_token(site, subject) do
       conn
       |> put_status(:created)
-      |> json(JSON.encode(token))
+      |> json(JSON.encode(token, schema: PortalAPI.Schemas.GatewayToken.Schema))
     else
       error -> Error.handle(conn, error)
     end
@@ -92,6 +92,9 @@ defmodule PortalAPI.GatewayTokenController do
         example: "00000000-0000-0000-0000-000000000000"
       ]
     ],
+    request_body:
+      {"Token attributes", "application/json", PortalAPI.Schemas.GatewayToken.CreateRequest,
+       required: false},
     responses:
       [
         created: {"New Token Response", "application/json", PortalAPI.Schemas.GatewayToken.Response}
@@ -101,20 +104,23 @@ defmodule PortalAPI.GatewayTokenController do
           :unauthorized,
           :not_found,
           :conflict,
+          :unprocessable_entity,
           :too_many_requests
         ])
 
   # coveralls-ignore-stop
 
   @spec create_for_gateway(Plug.Conn.t(), map()) :: Plug.Conn.t()
-  def create_for_gateway(conn, %{"site_id" => site_id, "gateway_id" => gateway_id}) do
+  def create_for_gateway(conn, %{"site_id" => site_id, "gateway_id" => gateway_id} = params) do
     subject = conn.assigns.subject
+    actor_id = get_in(params, ["gateway_token", "actor_id"])
 
     with {:ok, gateway} <- Database.fetch_gateway(site_id, gateway_id, subject),
-         {:ok, token} <- Authentication.create_gateway_token(gateway, subject) do
+         {:ok, owner} <- PortalAPI.DeviceTokenOwner.fetch(actor_id, subject),
+         {:ok, token} <- Authentication.create_device_token(gateway, owner, subject) do
       conn
       |> put_status(:created)
-      |> json(JSON.encode(token))
+      |> json(JSON.encode(token, schema: PortalAPI.Schemas.GatewayToken.Schema))
     else
       {:error, %Ecto.Changeset{errors: errors} = changeset} ->
         if unique_violation?(errors) do
@@ -135,7 +141,7 @@ defmodule PortalAPI.GatewayTokenController do
       "Mints a replacement token for the gateway. A current token the gateway " <>
         "has connected with keeps working until the gateway first connects " <>
         "with the replacement or " <>
-        "#{Portal.GatewayToken.rotation_grace_hours()} hours elapse, whichever " <>
+        "#{Portal.ClientToken.rotation_grace_hours()} hours elapse, whichever " <>
         "comes first; a token no gateway has ever connected with is replaced " <>
         "immediately. Rotating again before the gateway picks up the " <>
         "replacement replaces only the pending token and never invalidates the " <>
@@ -177,7 +183,7 @@ defmodule PortalAPI.GatewayTokenController do
          {:ok, token} <- Authentication.rotate_gateway_token(gateway, subject) do
       conn
       |> put_status(:created)
-      |> json(JSON.encode(token))
+      |> json(JSON.encode(token, schema: PortalAPI.Schemas.GatewayToken.Schema))
     else
       error -> Error.handle(conn, error)
     end
@@ -274,7 +280,7 @@ defmodule PortalAPI.GatewayTokenController do
     alias Portal.Device
     alias Portal.Safe
     alias Portal.Site
-    alias Portal.GatewayToken
+    alias Portal.ClientToken
 
     def fetch_gateway(site_id, id, subject) do
       result =
@@ -312,7 +318,7 @@ defmodule PortalAPI.GatewayTokenController do
       # tokens, which have site_id set) or via its owning device
       # (single-owner tokens, which have device_id set and site_id nil).
       result =
-        from(t in GatewayToken, as: :tokens, where: t.id == ^id)
+        from(t in ClientToken, as: :tokens, where: t.id == ^id)
         |> join(:left, [tokens: t], d in Device,
           on: d.id == t.device_id and d.account_id == t.account_id,
           as: :device
@@ -335,7 +341,7 @@ defmodule PortalAPI.GatewayTokenController do
     end
 
     def delete_all_tokens(site, subject) do
-      from(t in GatewayToken, where: t.site_id == ^site.id)
+      from(t in ClientToken, where: t.site_id == ^site.id)
       |> Safe.scoped(subject)
       |> Safe.delete_all()
     end

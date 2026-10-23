@@ -52,7 +52,13 @@ defmodule PortalAPI.Client.Socket do
   ## Authentication
 
   @impl true
-  def connect(attrs, socket, connect_info) do
+  def connect(attrs, socket, connect_info), do: connect(attrs, socket, connect_info, [])
+
+  @doc """
+  Connects a client with its token or certificate. `rate_limit: false` is
+  for a caller that already counted this connect against the limit.
+  """
+  def connect(attrs, socket, connect_info, opts) do
     unless Application.get_env(:portal, :sql_sandbox) do
       Portal.Repo.put_dynamic_repo(Portal.Repo.Api)
     end
@@ -62,13 +68,14 @@ defmodule PortalAPI.Client.Socket do
     OpenTelemetry.Tracer.with_span "client.connect" do
       context = PortalAPI.Sockets.auth_context(connect_info, :client)
       attrs = normalize_device_attrs(attrs)
+      rate_limit? = Keyword.get(opts, :rate_limit, true)
 
       case DeviceTrust.prepare_authentication(connect_info) do
         {:ok, authentication} ->
-          authenticate_with_certificate(authentication, context, attrs, socket, connect_info)
+          authenticate_with_certificate(authentication, context, attrs, socket, connect_info, rate_limit?)
 
         {:error, :not_x509_identity} ->
-          connect_with_token(context, attrs, socket, connect_info)
+          connect_with_token(context, attrs, socket, connect_info, rate_limit?)
 
         {:error, reason} ->
           handle_certificate_authentication_error(reason)
@@ -83,16 +90,16 @@ defmodule PortalAPI.Client.Socket do
 
   ## Private functions
 
-  defp authenticate_with_certificate(authentication, context, attrs, socket, connect_info) do
+  defp authenticate_with_certificate(authentication, context, attrs, socket, connect_info, rate_limit?) do
     # The fixed discriminator makes this an IP-only bucket. The bearer header
     # is irrelevant once X.509 identity claims are present, so allowing it to
     # vary the key would let a caller evade this pre-authentication limit.
-    with :ok <- PortalAPI.Sockets.RateLimit.check(connect_info, token: "x509"),
+    with :ok <- rate_limit(connect_info, "x509", rate_limit?),
          {:ok, subject, proof} <- DeviceTrust.authenticate(authentication, context) do
       do_connect(subject, nil, proof, attrs, socket)
     else
       {:error, :not_x509_identity} ->
-        connect_with_token(context, attrs, socket, connect_info)
+        connect_with_token(context, attrs, socket, connect_info, rate_limit?)
 
       {:error, :rate_limit} = error ->
         error
@@ -102,9 +109,9 @@ defmodule PortalAPI.Client.Socket do
     end
   end
 
-  defp connect_with_token(context, attrs, socket, connect_info) do
+  defp connect_with_token(context, attrs, socket, connect_info, rate_limit?) do
     with {:ok, token} <- PortalAPI.Sockets.extract_token(attrs, connect_info),
-         :ok <- PortalAPI.Sockets.RateLimit.check(connect_info, token: token),
+         :ok <- rate_limit(connect_info, token, rate_limit?),
          {:ok, %{credential: %Credential.ClientToken{id: token_id}} = subject} <-
            Authentication.authenticate(token, context) do
       do_connect(subject, token_id, nil, attrs, socket, connect_info)
@@ -117,6 +124,9 @@ defmodule PortalAPI.Client.Socket do
         error
     end
   end
+
+  defp rate_limit(_connect_info, _token, false), do: :ok
+  defp rate_limit(connect_info, token, true), do: PortalAPI.Sockets.RateLimit.check(connect_info, token: token)
 
   defp do_connect(subject, token_id, proof, attrs, socket, connect_info \\ nil) do
     with false <- Portal.Billing.client_connect_restricted?(subject.account),
@@ -131,7 +141,7 @@ defmodule PortalAPI.Client.Socket do
       {context, version} = PortalAPI.Sockets.truncate_session_fields(subject.context, version)
       subject = %{subject | context: context}
 
-      client = apply_session(client, token_id, public_key, subject, version)
+      client = apply_session(client, token_id, public_key, subject, version, attrs)
       set_connect_attributes(token_id, client, subject, version)
 
       {:ok, assign_connect(socket, subject, client, version, attested?, proof)}
@@ -167,7 +177,7 @@ defmodule PortalAPI.Client.Socket do
   defp check_connected_devices(subject, client) do
     if Portal.Billing.connected_devices_limit_reached?(
          subject.account,
-         subject.actor.id,
+         subject.actor,
          client.id
        ) do
       {:error, :connected_devices_limit_reached}
@@ -228,11 +238,12 @@ defmodule PortalAPI.Client.Socket do
 
   # The connection snapshot lives directly on the device struct: these are the
   # same fields the flush later persists as the device's latest session.
-  defp apply_session(client, token_id, public_key, subject, version) do
+  defp apply_session(client, token_id, public_key, subject, version, attrs) do
     %{
       client
-      | client_token_id: token_id,
+      | token_id: token_id,
         public_key: public_key,
+        proto_range: Version.proto_range(attrs, :client, version),
         last_seen_user_agent: subject.context.user_agent,
         last_seen_remote_ip: subject.context.remote_ip,
         last_seen_remote_ip_location_region: subject.context.remote_ip_location_region,
@@ -245,7 +256,7 @@ defmodule PortalAPI.Client.Socket do
   end
 
   defp flush_client_sessions(entries) do
-    {persisted, revoked, missing} = Sockets.LatestSession.upsert_all(entries, :client_token_id)
+    {persisted, revoked, missing} = Sockets.LatestSession.upsert_all(entries)
 
     failed = revoked ++ missing
     failed_session_refs = MapSet.new(failed, fn {attrs, _metadata} -> attrs.session_ref end)
@@ -326,7 +337,7 @@ defmodule PortalAPI.Client.Socket do
       subject:
         Map.merge(subject || %{}, %{
           device_id: attrs[:device_id],
-          token_id: attrs[:client_token_id]
+          token_id: attrs[:token_id]
         })
     }
   end
@@ -504,11 +515,9 @@ defmodule PortalAPI.Client.Socket do
     #
     # The third element says whether this connect proved a device identity.
     def resolve_client(changeset, proof, subject) do
-      actor_id = Ecto.Changeset.get_field(changeset, :actor_id)
-
       if is_nil(proof) do
         firezone_id = Ecto.Changeset.get_field(changeset, :firezone_id)
-        resolve_unattested(changeset, actor_id, firezone_id, subject)
+        resolve_unattested(changeset, firezone_id, subject)
       else
         changeset
         |> put_proof_changes(proof)
@@ -588,8 +597,8 @@ defmodule PortalAPI.Client.Socket do
     defp contradicts?(_row_value, nil, :mdm_device_id), do: false
     defp contradicts?(row_value, cert_value, :mdm_device_id), do: row_value != cert_value
 
-    defp resolve_unattested(changeset, actor_id, firezone_id, subject) do
-      if client = find_by_firezone_id(actor_id, firezone_id, subject) do
+    defp resolve_unattested(changeset, firezone_id, subject) do
+      if client = find_by_firezone_id(firezone_id, subject) do
         {:ok, merge_hardware_ids(client, changeset), false}
       else
         with {:ok, client} <- insert_with_slug(changeset, subject) do
@@ -661,11 +670,12 @@ defmodule PortalAPI.Client.Socket do
       |> Map.put(:last_attested_at, DateTime.utc_now())
     end
 
-    defp find_by_firezone_id(_actor_id, nil, _subject), do: nil
+    # The machine is found by its firezone_id alone: whoever signs in on it
+    # gets the same row, and device_actors records that they did.
+    defp find_by_firezone_id(nil, _subject), do: nil
 
-    defp find_by_firezone_id(actor_id, firezone_id, subject) do
+    defp find_by_firezone_id(firezone_id, subject) do
       from(d in Device,
-        where: d.actor_id == ^actor_id,
         where: d.firezone_id == ^firezone_id,
         where: d.type == :client
       )

@@ -3,9 +3,15 @@
 //! Main connlib library for clients.
 pub use connlib_model::StaticSecret;
 pub use eventloop::DisconnectError;
+pub use protocol::Capabilities;
 pub use tunnel::TunConfig;
+use tunnel::messages::SnownetCapabilities;
 use tunnel::messages::client::EgressMessages;
 pub use tunnel::messages::client::{IngressMessages, ResourceDescription};
+pub use tunnel::messages::device::Forwarding;
+pub use tunnel::messages::device::{
+    EgressMessages as DeviceEgressMessages, IngressMessages as DeviceIngressMessages,
+};
 
 use anyhow::Result;
 use connlib_model::{ResourceId, ResourceView};
@@ -30,8 +36,7 @@ use tun::Tun;
 use crate::eventloop::UserNotification;
 
 mod eventloop;
-
-const PHOENIX_TOPIC: &str = "client";
+mod protocol;
 
 /// A session is the entry-point for connlib, maintains the runtime and the tunnel.
 ///
@@ -70,6 +75,31 @@ pub enum Event {
     Disconnected(DisconnectError),
 }
 
+/// What this binary can do, for a device that may serve sites.
+///
+/// Every device forwards the traffic of the resources it serves: in the kernel
+/// where the host lets the daemon set that up, in userspace everywhere else.
+pub fn local_capabilities(kernel_forwarding: bool) -> Capabilities {
+    Capabilities {
+        route_resources: true,
+        dns_recursion: true,
+        iceless: SnownetCapabilities::LOCAL.iceless,
+        forwarding: Some(if kernel_forwarding {
+            Forwarding::Kernel
+        } else {
+            Forwarding::Userspace
+        }),
+    }
+}
+
+/// Sets the host up to forward and masquerade served traffic in the kernel.
+///
+/// Called when the first resource to serve arrives; the guard keeps the setup
+/// and dropping it undoes it. A failure falls back to the userspace forwarder.
+pub trait KernelForwarding: Send + 'static {
+    fn enable(&mut self) -> anyhow::Result<Box<dyn std::any::Any + Send>>;
+}
+
 /// Who the portal says this session belongs to.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ConnectedAs {
@@ -78,10 +108,71 @@ pub struct ConnectedAs {
 }
 
 impl Session {
+    /// Connects over the client protocol, as the platform apps do.
     pub fn connect(
         tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
         udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
         portal: PhoenixChannel<(), EgressMessages, IngressMessages, PublicKeyParam>,
+        is_internet_resource_active: bool,
+        dns_servers: Vec<IpAddr>,
+        flow_logs_dir: Option<PathBuf>,
+        local_flow_logs: bool,
+        handle: tokio::runtime::Handle,
+    ) -> (Self, EventStream) {
+        let capabilities = Capabilities {
+            route_resources: false,
+            dns_recursion: false,
+            iceless: SnownetCapabilities::LOCAL.iceless,
+            forwarding: None,
+        };
+
+        Self::connect_with::<protocol::ClientWire>(
+            tcp_socket_factory,
+            udp_socket_factory,
+            portal,
+            capabilities,
+            None,
+            is_internet_resource_active,
+            dns_servers,
+            flow_logs_dir,
+            local_flow_logs,
+            handle,
+        )
+    }
+
+    /// Connects over the unified protocol, `/device/v1`, with what the device can do.
+    pub fn connect_device(
+        tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
+        udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
+        portal: PhoenixChannel<(), DeviceEgressMessages, DeviceIngressMessages, PublicKeyParam>,
+        capabilities: Capabilities,
+        kernel_forwarding: Option<Box<dyn KernelForwarding>>,
+        is_internet_resource_active: bool,
+        dns_servers: Vec<IpAddr>,
+        flow_logs_dir: Option<PathBuf>,
+        local_flow_logs: bool,
+        handle: tokio::runtime::Handle,
+    ) -> (Self, EventStream) {
+        Self::connect_with::<protocol::DeviceWire>(
+            tcp_socket_factory,
+            udp_socket_factory,
+            portal,
+            capabilities,
+            kernel_forwarding,
+            is_internet_resource_active,
+            dns_servers,
+            flow_logs_dir,
+            local_flow_logs,
+            handle,
+        )
+    }
+
+    fn connect_with<W: protocol::Wire>(
+        tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
+        udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
+        portal: PhoenixChannel<(), W::Egress, W::Ingress, PublicKeyParam>,
+        capabilities: Capabilities,
+        kernel_forwarding: Option<Box<dyn KernelForwarding>>,
         is_internet_resource_active: bool,
         dns_servers: Vec<IpAddr>,
         flow_logs_dir: Option<PathBuf>,
@@ -94,7 +185,7 @@ impl Session {
              tun_config_sender,
              connected_as_sender,
              user_notification_sender| {
-                Eventloop::new(
+                Eventloop::new::<W>(
                     tcp_socket_factory,
                     udp_socket_factory,
                     is_internet_resource_active,
@@ -102,6 +193,8 @@ impl Session {
                     flow_logs_dir,
                     local_flow_logs,
                     portal,
+                    capabilities,
+                    kernel_forwarding,
                     cmd_rx,
                     resource_list_sender,
                     tun_config_sender,

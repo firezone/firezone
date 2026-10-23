@@ -13,7 +13,7 @@ use std::{
     net::{Ipv4Addr, Ipv6Addr},
     time::Instant,
 };
-use tunnel_proto::{GatewayState, IpConfig};
+use tunnel_proto::{DeviceState, IpConfig};
 
 /// Reference state for a particular gateway.
 #[derive(Debug, Clone)]
@@ -49,7 +49,7 @@ impl RefGateway {
         }
     }
 
-    /// Initialize the [`GatewayState`].
+    /// Initialize the gateway's [`DeviceState`].
     ///
     /// This simulates receiving the `init` message from the portal.
     pub(crate) fn init(
@@ -59,8 +59,10 @@ impl RefGateway {
         now: Instant,
         utc_now: DateTime<Utc>,
     ) -> SimGateway {
-        let mut sut = GatewayState::new(
+        let mut sut = DeviceState::new(
             self.key.0,
+            std::collections::BTreeSet::new(),
+            false,
             now,
             utc_now
                 .signed_duration_since(DateTime::UNIX_EPOCH)

@@ -1,0 +1,739 @@
+use crate::conn_track::{ConnTrack, Originator};
+use crate::expiring_map::{ExpiringMap, NEVER_EXPIRES_TTL};
+use crate::filter_engine::FilterEngine;
+use crate::messages::{Filter, IngestToken};
+use crate::peer_inbound::TranslateOutboundResult;
+use crate::routing_table::{RouteEntry, RoutingTable};
+use crate::{IpConfig, p2p_control};
+use anyhow::{Context, Result};
+use connlib_model::{DeviceId, ResourceId};
+use fast_random_state::FastRandomState;
+use ip_packet::IpPacket;
+use smallvec::SmallVec;
+use std::collections::{BTreeSet, HashMap};
+use std::time::Instant;
+
+/// The targets through which a peer may reach this device itself.
+///
+/// Each is a device pool the portal admitted the peer through, with its
+/// filters. Three things are tracked:
+///
+/// 1. Traffic filters of the pools that give the peer access to our TUN device.
+/// 2. Outbound layer-4 connections so we can allow return traffic back in.
+/// 3. Revoked authorizations so denied traffic they permitted can request fresh access.
+///
+/// Authorizations and flow tracking limit traffic from the peer to authorized
+/// packets and replies to flows we opened. Revoked authorizations let us
+/// request fresh access when a previously permitted packet is denied.
+pub(crate) struct SelfTargets {
+    id: DeviceId,
+    local_tun: IpConfig,
+    remote_tun: IpConfig,
+    /// Inbound resources authorising the remote peer to send packets to us.
+    ///
+    /// When this map is empty, no inbound traffic from this peer is admitted
+    /// unless it matches a recorded outbound flow (return traffic).
+    resources: ExpiringMap<ResourceId, ResourceOnClient>,
+    /// Filters of revoked authorizations, retained until this peer receives them again.
+    rejected_resources: HashMap<ResourceId, FilterEngine, FastRandomState>,
+    /// Cached OR of every resource's filters; recomputed whenever `resources` changes.
+    inbound_filter: FilterEngine,
+    /// Tracks outbound flows so legitimate return traffic is admitted.
+    conn_track: ConnTrack,
+
+    /// Finds the resource an inbound packet belongs to; rebuilt whenever
+    /// `resources` changes.
+    inbound_resources: InboundResources,
+}
+
+/// An inbound resource: filters applied to authorized traffic from the remote peer.
+#[derive(Debug)]
+struct ResourceOnClient {
+    filters: Vec<Filter>,
+    ingest_token: IngestToken,
+}
+
+impl SelfTargets {
+    pub(crate) fn new(id: DeviceId, local_tun: IpConfig, remote_tun: IpConfig) -> SelfTargets {
+        SelfTargets {
+            id,
+            local_tun,
+            remote_tun,
+            resources: ExpiringMap::default(),
+            rejected_resources: HashMap::default(),
+            // No resources -> no allowed inbound traffic by default.
+            inbound_filter: FilterEngine::DenyAll,
+            conn_track: ConnTrack::default(),
+            inbound_resources: InboundResources::default(),
+        }
+    }
+
+    /// The pools through which the remote peer may reach us.
+    pub(crate) fn target_ids(&self) -> impl Iterator<Item = ResourceId> + '_ {
+        self.resources.iter().map(|(id, _)| *id)
+    }
+
+    pub(crate) fn is_empty(&self) -> bool {
+        self.resources.is_empty()
+    }
+
+    /// Allow the remote peer to send us packets associated with `resource_id` limited by the given filter set.
+    ///
+    /// If a resource with the same id is already tracked, its filters are replaced.
+    /// The combined inbound filter is the OR across every active resource's filter set.
+    pub(crate) fn add_target(
+        &mut self,
+        resource_id: ResourceId,
+        filters: Vec<Filter>,
+        expires_at: Option<Instant>,
+        ingest_token: IngestToken,
+        now: Instant,
+    ) {
+        let expires_in = expires_at.map(|e| e.saturating_duration_since(now));
+
+        tracing::info!(
+            %resource_id,
+            expires_in = expires_in.map(tracing::field::debug),
+            "Allowing inbound access from peer",
+        );
+
+        let ttl = expires_in.unwrap_or(NEVER_EXPIRES_TTL);
+        self.resources.insert(
+            resource_id,
+            ResourceOnClient {
+                filters,
+                ingest_token,
+            },
+            now,
+            ttl,
+        );
+        self.rejected_resources.remove(&resource_id);
+        self.recompute_inbound_filter();
+    }
+
+    /// Drops every inbound authorization not present in `retain`.
+    pub(crate) fn retain_targets(&mut self, retain: &BTreeSet<ResourceId>) {
+        let mut any_removed = false;
+
+        for (resource_id, resource) in self.resources.extract_if(|rid, _| !retain.contains(rid)) {
+            tracing::info!(%resource_id, "Revoking peer authorization on resync");
+            self.rejected_resources
+                .insert(resource_id, FilterEngine::new(&resource.filters));
+            any_removed = true;
+        }
+
+        if any_removed {
+            self.recompute_inbound_filter();
+        }
+    }
+
+    /// Updates when an existing inbound authorization expires.
+    pub(crate) fn update_target_expiry(
+        &mut self,
+        resource_id: ResourceId,
+        new_expiry: Instant,
+        now: Instant,
+    ) {
+        if !self
+            .resources
+            .update_expiry_at(&resource_id, new_expiry, now)
+        {
+            tracing::debug!(%resource_id, "Unknown resource");
+        }
+    }
+
+    /// Replace the filters carried by an existing resource.
+    pub(crate) fn update_target_filters(&mut self, resource_id: ResourceId, filters: Vec<Filter>) {
+        let Some(resource) = self.resources.get_mut(&resource_id) else {
+            tracing::debug!(%resource_id, "Unknown resource");
+            return;
+        };
+
+        tracing::info!(%resource_id, ?filters, "Updated peer authorization filters");
+        resource.filters = filters;
+        self.recompute_inbound_filter();
+    }
+
+    /// Drop a previously-active resource.
+    pub(crate) fn remove_target(&mut self, resource_id: &ResourceId) {
+        let Some(entry) = self.resources.remove(resource_id) else {
+            return;
+        };
+
+        tracing::info!(%resource_id, "Revoking peer authorization");
+        self.rejected_resources
+            .insert(*resource_id, FilterEngine::new(&entry.value.filters));
+        self.recompute_inbound_filter();
+    }
+
+    fn recompute_inbound_filter(&mut self) {
+        self.inbound_resources = InboundResources::new(&self.resources);
+
+        if self.resources.is_empty() {
+            // No resources -> deny all (except return traffic).
+            self.inbound_filter = FilterEngine::DenyAll;
+            return;
+        }
+
+        // If a single resource has no filters, we automatically permit all traffic.
+        if self.resources.values().any(|r| r.filters.is_empty()) {
+            self.inbound_filter = FilterEngine::PermitAll;
+            return;
+        }
+
+        let combined = self
+            .resources
+            .values()
+            .flat_map(|r| r.filters.iter().cloned())
+            .collect::<SmallVec<[_; 16]>>();
+
+        self.inbound_filter = FilterEngine::new(&combined);
+    }
+
+    /// Records or refreshes a flow we opened so future replies can bypass the inbound filter.
+    pub(crate) fn record_outbound_as_originator(&mut self, packet: &IpPacket, now: Instant) {
+        self.conn_track.record_outbound_as_originator(packet, now);
+    }
+
+    /// Returns the next instant at which one of this peer's inbound authorizations expires.
+    pub(crate) fn poll_timeout(&self) -> Option<Instant> {
+        self.resources.poll_timeout()
+    }
+
+    pub(crate) fn handle_timeout(&mut self, now: Instant) {
+        self.conn_track.handle_timeout(now);
+        self.resources.handle_timeout(now);
+
+        let mut any_expired = false;
+
+        while let Some(event) = self.resources.poll_event() {
+            match event {
+                crate::expiring_map::Event::EntryExpired { key, value } => {
+                    tracing::info!(rid = %key, "Resource authorization expired, revoking");
+                    self.rejected_resources
+                        .insert(key, FilterEngine::new(&value.filters));
+                    any_expired = true;
+                }
+            }
+        }
+
+        if any_expired {
+            self.recompute_inbound_filter();
+        }
+    }
+
+    /// Who opened the flow this *outbound* packet belongs to, if it is
+    /// tracked. Lets outbound routing skip the per-(resource, peer) intent when
+    /// the connection is already established.
+    pub(crate) fn outbound_flow_originator(&self, packet: &IpPacket) -> Option<Originator> {
+        self.conn_track.outbound_flow_originator(packet)
+    }
+
+    /// Whether an ICMP error we are about to send refers to a flow with this peer.
+    pub(crate) fn is_known_outbound_error(&self, packet: &IpPacket) -> bool {
+        self.conn_track.is_known_outbound_error(packet)
+    }
+
+    /// Decide whether a packet the peer sent to this device itself is admitted.
+    pub(crate) fn translate_outbound(
+        &mut self,
+        packet: IpPacket,
+        now: Instant,
+    ) -> Result<TranslateOutboundResult> {
+        let src = packet.source();
+        let dst = packet.destination();
+        anyhow::ensure!(
+            self.remote_tun.is_ip(src),
+            "Dropping inbound packet with spoofed source (src {src})"
+        );
+        anyhow::ensure!(
+            self.local_tun.is_ip(dst),
+            "Dropping inbound packet not addressed to us (dst {dst})"
+        );
+
+        if packet.icmp_error()?.is_some() {
+            anyhow::ensure!(
+                self.conn_track.is_known_inbound_flow(&packet),
+                "Dropping ICMP error from peer referencing an unknown flow"
+            );
+
+            return Ok(TranslateOutboundResult::Send(packet));
+        }
+
+        if self.conn_track.is_return_traffic(&packet) {
+            // A reply to a flow we opened.
+            flow_tracker::record_peer(self.id, flow_tracker::Role::Initiator);
+
+            return Ok(TranslateOutboundResult::Send(packet));
+        }
+
+        if let Err(e) = self.inbound_filter.apply(packet.destination_protocol()) {
+            tracing::debug!(filtered_packet = ?packet, "{e:#}");
+            let reply = ip_packet::make::icmp_dest_unreachable_prohibited(&packet)
+                .context("Failed to build ICMP prohibited reply")?;
+            let previously_allowed = self
+                .rejected_resources
+                .values()
+                .any(|filter| filter.apply(packet.destination_protocol()).is_ok());
+            let no_authorization = (self.resources.is_empty() || previously_allowed)
+                .then(|| packet.destination_protocol().ok())
+                .flatten()
+                .map(|protocol| p2p_control::no_authorization::NoAuthorization {
+                    dst: packet.destination(),
+                    protocol: protocol.into(),
+                });
+
+            return Ok(TranslateOutboundResult::IcmpError {
+                reply,
+                no_authorization,
+            });
+        }
+
+        // The packet passed our filters, record as successful inbound packet.
+        self.conn_track.record_inbound(&packet, now);
+
+        // The peer opened this flow towards us.
+        flow_tracker::record_peer(self.id, flow_tracker::Role::Responder);
+        flow_tracker::record_ingest_token(self.ingest_token_for_inbound(&packet));
+
+        Ok(TranslateOutboundResult::Send(packet))
+    }
+
+    /// Finds the token of the resource an inbound packet belongs to.
+    fn ingest_token_for_inbound(&mut self, packet: &IpPacket) -> Option<&IngestToken> {
+        let resource = self.inbound_resources.resource_for(packet)?;
+
+        self.resources
+            .get(&resource)
+            .map(|resource| &resource.value.ingest_token)
+    }
+}
+
+/// Finds the inbound resource a packet belongs to.
+///
+/// Reuses the sender's routing-table selection rule, so both ends of a flow
+/// pick the same resource. Inbound packets all target our TUN address, so
+/// every resource matches every address and only its filter and id decide.
+#[derive(Default)]
+struct InboundResources {
+    table: RoutingTable<InboundEntry>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+struct InboundEntry {
+    resource_id: ResourceId,
+    filter: FilterEngine,
+}
+
+impl RouteEntry for InboundEntry {
+    fn filter(&self) -> &FilterEngine {
+        &self.filter
+    }
+
+    fn resource_id(&self) -> ResourceId {
+        self.resource_id
+    }
+}
+
+impl InboundResources {
+    fn new(resources: &ExpiringMap<ResourceId, ResourceOnClient>) -> Self {
+        let mut table = RoutingTable::new();
+
+        for (resource_id, resource) in resources.iter() {
+            table.upsert_for_all_addresses(InboundEntry {
+                resource_id: *resource_id,
+                filter: FilterEngine::new(&resource.filters),
+            });
+        }
+
+        Self { table }
+    }
+
+    fn resource_for(&mut self, packet: &IpPacket) -> Option<ResourceId> {
+        let entry = self
+            .table
+            .matches(
+                packet.destination(),
+                packet.destination_protocol(),
+                crate::routing_table::FilterMode::Apply,
+            )?
+            .first()?;
+
+        Some(entry.resource_id)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::device::OutboundAuthorizations;
+    use crate::messages::PortRange;
+    use connlib_model::{ClientId, ResourceId};
+    use flow_tracker::IngestTokenRole::{Initiator, Responder};
+
+    use ip_packet::make;
+    use std::collections::BTreeSet;
+    use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+    use std::time::Duration;
+
+    #[test_case::test_case(true; "inbound_authorization_first")]
+    #[test_case::test_case(false; "outbound_authorization_first")]
+    fn ingest_tokens_are_separate_for_each_direction(inbound_first: bool) {
+        let now = Instant::now();
+        let rid = ResourceId::from_u128(1);
+        let mut peer = peer();
+        let inbound = ingest_token(Responder);
+        let outbound = ingest_token(Initiator);
+        let mut authorizations = OutboundAuthorizations::default();
+
+        if inbound_first {
+            peer.add_target(rid, udp_port(80), None, inbound.clone(), now);
+            authorizations.authorize_client(rid, peer.id, outbound.clone());
+        } else {
+            authorizations.authorize_client(rid, peer.id, outbound.clone());
+            peer.add_target(rid, udp_port(80), None, inbound.clone(), now);
+        }
+
+        assert_eq!(peer.ingest_token_for_inbound(&udp_to(80)), Some(&inbound));
+        assert_eq!(authorizations.client_token(rid, peer.id), Some(&outbound));
+    }
+
+    #[test]
+    fn outbound_tokens_follow_each_device_authorization() {
+        let first = ClientId::from_u128(1);
+        let second = ClientId::from_u128(2);
+        let first_token = ingest_token_for_client(Initiator, first);
+        let second_token = ingest_token_for_client(Initiator, second);
+        let rid = ResourceId::from_u128(1);
+        let mut authorizations = OutboundAuthorizations::default();
+
+        authorizations.authorize_client(rid, first, first_token.clone());
+        authorizations.authorize_client(rid, second, second_token.clone());
+
+        assert_eq!(authorizations.client_token(rid, first), Some(&first_token));
+        assert_eq!(
+            authorizations.client_token(rid, second),
+            Some(&second_token)
+        );
+
+        authorizations.remove_client(rid, first);
+
+        assert_eq!(authorizations.client_token(rid, first), None);
+        assert_eq!(
+            authorizations.client_token(rid, second),
+            Some(&second_token)
+        );
+    }
+
+    #[test]
+    fn spoofed_source_is_rejected() {
+        let now = Instant::now();
+        let mut peer = peer();
+        peer.add_target(
+            ResourceId::from_u128(1),
+            vec![],
+            None,
+            ingest_token(Responder),
+            now,
+        );
+
+        let spoofed = make::udp_packet(
+            IpAddr::V4(Ipv4Addr::new(100, 64, 0, 99)),
+            our_v4(),
+            40000,
+            80,
+            &[],
+        )
+        .unwrap();
+
+        assert!(peer.translate_outbound(spoofed, now).is_err());
+    }
+
+    #[test]
+    fn spoofed_destination_is_rejected() {
+        let now = Instant::now();
+        let mut peer = peer();
+        peer.add_target(
+            ResourceId::from_u128(1),
+            vec![],
+            None,
+            ingest_token(Responder),
+            now,
+        );
+
+        let spoofed = make::udp_packet(
+            peer_v4(),
+            IpAddr::V4(Ipv4Addr::new(100, 64, 0, 99)),
+            40000,
+            80,
+            &[],
+        )
+        .unwrap();
+
+        assert!(peer.translate_outbound(spoofed, now).is_err());
+    }
+
+    #[test]
+    fn icmp_error_for_known_flow_is_forwarded() {
+        let now = Instant::now();
+        let mut peer = peer();
+
+        let outbound = make::udp_packet(our_v4(), peer_v4(), 8080, 80, &[]).unwrap();
+        peer.record_outbound_as_originator(&outbound, now);
+        let icmp = make::icmp_dest_unreachable_prohibited(&outbound).unwrap();
+
+        assert!(is_send(peer.translate_outbound(icmp, now).unwrap()));
+    }
+
+    #[test]
+    fn icmp_error_for_unknown_flow_is_rejected() {
+        let now = Instant::now();
+        let mut peer = peer();
+
+        let stray = make::udp_packet(our_v4(), peer_v4(), 8080, 80, &[]).unwrap();
+        let icmp = make::icmp_dest_unreachable_prohibited(&stray).unwrap();
+
+        assert!(peer.translate_outbound(icmp, now).is_err());
+    }
+
+    #[test]
+    fn peer_opened_flow_is_re_filtered_after_revocation() {
+        let now = Instant::now();
+        let rid = ResourceId::from_u128(1);
+        let mut peer = peer();
+        peer.add_target(rid, udp_port(80), None, ingest_token(Responder), now);
+
+        assert!(is_send(peer.translate_outbound(udp_to(80), now).unwrap()));
+
+        peer.remove_target(&rid);
+
+        assert!(is_filtered(
+            peer.translate_outbound(udp_to(80), now).unwrap()
+        ));
+    }
+
+    #[test]
+    fn our_reply_admitted_for_flow_we_opened_without_authorization() {
+        let now = Instant::now();
+        let mut peer = peer();
+
+        let outbound = make::udp_packet(our_v4(), peer_v4(), 8080, 80, &[]).unwrap();
+        peer.record_outbound_as_originator(&outbound, now);
+
+        let reply = make::udp_packet(peer_v4(), our_v4(), 80, 8080, &[]).unwrap();
+        assert!(is_send(peer.translate_outbound(reply, now).unwrap()));
+    }
+
+    #[test]
+    fn authorization_expires_and_is_enforced() {
+        let now = Instant::now();
+        let rid = ResourceId::from_u128(1);
+        let mut peer = peer();
+        peer.add_target(
+            rid,
+            udp_port(80),
+            Some(now + Duration::from_secs(60)),
+            ingest_token(Responder),
+            now,
+        );
+
+        assert!(is_send(peer.translate_outbound(udp_to(80), now).unwrap()));
+        assert_eq!(peer.poll_timeout(), Some(now + Duration::from_secs(60)));
+        let mut authorizations = OutboundAuthorizations::default();
+        authorizations.authorize_client(rid, peer.id, ingest_token(Initiator));
+
+        let later = now + Duration::from_secs(61);
+        peer.handle_timeout(later);
+
+        assert_eq!(peer.poll_timeout(), None);
+        assert_eq!(peer.ingest_token_for_inbound(&udp_to(80)), None);
+        assert_eq!(
+            authorizations.client_token(rid, peer.id),
+            Some(&ingest_token(Initiator))
+        );
+        assert!(is_filtered(
+            peer.translate_outbound(udp_to(80), later).unwrap()
+        ));
+    }
+
+    #[test]
+    fn retain_authorizations_drops_absent_resources() {
+        let now = Instant::now();
+        let keep = ResourceId::from_u128(1);
+        let drop = ResourceId::from_u128(2);
+        let mut peer = peer();
+        peer.add_target(keep, udp_port(80), None, ingest_token(Responder), now);
+        peer.add_target(drop, udp_port(90), None, ingest_token(Responder), now);
+
+        assert!(is_send(peer.translate_outbound(udp_to(80), now).unwrap()));
+        assert!(is_send(peer.translate_outbound(udp_to(90), now).unwrap()));
+
+        let mut authorizations = OutboundAuthorizations::default();
+        authorizations.authorize_client(keep, peer.id, ingest_token(Initiator));
+        peer.retain_targets(&BTreeSet::from([keep]));
+        assert_eq!(peer.ingest_token_for_inbound(&udp_to(90)), None);
+        assert_eq!(
+            authorizations.client_token(keep, peer.id),
+            Some(&ingest_token(Initiator))
+        );
+
+        assert!(is_send(peer.translate_outbound(udp_to(80), now).unwrap()));
+        assert!(is_filtered(
+            peer.translate_outbound(udp_to(90), now).unwrap()
+        ));
+    }
+
+    #[test]
+    fn update_resource_expiry_in_the_past_evicts_on_timeout() {
+        let now = Instant::now();
+        let rid = ResourceId::from_u128(1);
+        let mut peer = peer();
+        peer.add_target(
+            rid,
+            udp_port(80),
+            Some(now + Duration::from_secs(600)),
+            ingest_token(Responder),
+            now,
+        );
+
+        peer.update_target_expiry(rid, now, now);
+        peer.handle_timeout(now);
+
+        assert!(is_filtered(
+            peer.translate_outbound(udp_to(80), now).unwrap()
+        ));
+    }
+
+    #[test]
+    fn inbound_resource_matches_like_the_sender() {
+        let now = Instant::now();
+        let r1 = ResourceId::from_u128(1);
+        let r2 = ResourceId::from_u128(2);
+
+        let tcp_443 = vec![Filter::Tcp(PortRange::single(443))];
+
+        // R1 admits only TCP 443; R2 has no filters and admits everything.
+        let mut resources = ExpiringMap::default();
+        resources.insert(
+            r1,
+            ResourceOnClient {
+                filters: tcp_443.clone(),
+                ingest_token: ingest_token(Responder),
+            },
+            now,
+            NEVER_EXPIRES_TTL,
+        );
+        resources.insert(
+            r2,
+            ResourceOnClient {
+                filters: vec![],
+                ingest_token: ingest_token(Responder),
+            },
+            now,
+            NEVER_EXPIRES_TTL,
+        );
+
+        let mut inbound = InboundResources::new(&resources);
+
+        // Both admit TCP 443; the narrower filter wins, like on the sender.
+        assert_eq!(inbound.resource_for(&tcp_packet_to_us(443)), Some(r1));
+        // Only R2 admits TCP 80.
+        assert_eq!(inbound.resource_for(&tcp_packet_to_us(80)), Some(r2));
+
+        // Alone, R1 only answers for its own port.
+        let mut resources = ExpiringMap::default();
+        resources.insert(
+            r1,
+            ResourceOnClient {
+                filters: tcp_443,
+                ingest_token: ingest_token(Responder),
+            },
+            now,
+            NEVER_EXPIRES_TTL,
+        );
+
+        let mut inbound = InboundResources::new(&resources);
+
+        assert_eq!(inbound.resource_for(&tcp_packet_to_us(443)), Some(r1));
+        assert_eq!(inbound.resource_for(&tcp_packet_to_us(80)), None);
+    }
+
+    fn tcp_packet_to_us(dst_port: u16) -> IpPacket {
+        make::tcp_packet(
+            peer_v4(),
+            our_v4(),
+            50000,
+            dst_port,
+            Default::default(),
+            &[],
+        )
+        .unwrap()
+    }
+
+    fn ingest_token(role: flow_tracker::IngestTokenRole) -> IngestToken {
+        ingest_token_for_client(role, ClientId::from_u128(1))
+    }
+
+    fn ingest_token_for_client(
+        role: flow_tracker::IngestTokenRole,
+        client: ClientId,
+    ) -> IngestToken {
+        use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
+
+        let [header, payload, _] = flow_tracker::TEST_INGEST_TOKEN
+            .split('.')
+            .collect::<Vec<_>>()
+            .try_into()
+            .unwrap();
+        let mut claims =
+            serde_json::from_slice::<serde_json::Value>(&URL_SAFE_NO_PAD.decode(payload).unwrap())
+                .unwrap();
+        claims["role"] = serde_json::json!(role.as_str());
+        claims["client_id"] = serde_json::json!(client);
+        let payload = URL_SAFE_NO_PAD.encode(serde_json::to_vec(&claims).unwrap());
+
+        serde_json::from_value(serde_json::json!(format!("{header}.{payload}.AA"))).unwrap()
+    }
+
+    fn peer() -> SelfTargets {
+        SelfTargets::new(ClientId::from_u128(1), local_tun(), peer_tun())
+    }
+
+    fn peer_tun() -> IpConfig {
+        IpConfig {
+            v4: Ipv4Addr::new(100, 64, 0, 2),
+            v6: Ipv6Addr::new(0xfd, 0, 0, 0, 0, 0, 0, 2),
+        }
+    }
+
+    fn local_tun() -> IpConfig {
+        IpConfig {
+            v4: Ipv4Addr::new(100, 64, 0, 1),
+            v6: Ipv6Addr::new(0xfd, 0, 0, 0, 0, 0, 0, 1),
+        }
+    }
+
+    fn our_v4() -> IpAddr {
+        IpAddr::V4(Ipv4Addr::new(100, 64, 0, 1))
+    }
+
+    fn peer_v4() -> IpAddr {
+        IpAddr::V4(Ipv4Addr::new(100, 64, 0, 2))
+    }
+
+    fn udp_to(dport: u16) -> IpPacket {
+        make::udp_packet(peer_v4(), our_v4(), 40000, dport, &[]).unwrap()
+    }
+
+    fn udp_port(port: u16) -> Vec<Filter> {
+        vec![Filter::Udp(PortRange::single(port))]
+    }
+
+    fn is_send(result: TranslateOutboundResult) -> bool {
+        matches!(result, TranslateOutboundResult::Send(_))
+    }
+
+    fn is_filtered(result: TranslateOutboundResult) -> bool {
+        matches!(result, TranslateOutboundResult::IcmpError { .. })
+    }
+}

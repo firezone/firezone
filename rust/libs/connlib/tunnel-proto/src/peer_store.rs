@@ -5,8 +5,8 @@ use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
 use fast_random_state::FastRandomState;
 
-use crate::client::{ClientOnClient, GatewayOnClient};
-use crate::gateway::ClientOnGateway;
+use crate::device::GatewayOnClient;
+use crate::peer_inbound::PeerInbound;
 
 pub(crate) struct PeerStore<TId, P> {
     id_by_ip: HashMap<IpAddr, TId, FastRandomState>,
@@ -89,15 +89,6 @@ where
         Some((*id, peer))
     }
 
-    pub(crate) fn peer_by_ip_mut(&mut self, ip: impl Into<IpAddr>) -> Option<(TId, &mut P)> {
-        let ip = ip.into();
-
-        let id = self.id_by_ip.get(&ip)?;
-        let peer = self.peer_by_id.get_mut(id)?;
-
-        Some((*id, peer))
-    }
-
     pub(crate) fn iter_mut(&mut self) -> impl Iterator<Item = &mut P> {
         self.peer_by_id.values_mut()
     }
@@ -117,13 +108,13 @@ pub(crate) trait Peer {
     fn tun_ipv6(&self) -> Ipv6Addr;
 }
 
-impl Peer for ClientOnGateway {
+impl Peer for PeerInbound {
     fn tun_ipv4(&self) -> Ipv4Addr {
-        self.client_tun().v4
+        self.peer_tun().v4
     }
 
     fn tun_ipv6(&self) -> Ipv6Addr {
-        self.client_tun().v6
+        self.peer_tun().v6
     }
 }
 
@@ -134,16 +125,6 @@ impl Peer for GatewayOnClient {
 
     fn tun_ipv6(&self) -> Ipv6Addr {
         self.gateway_tun().v6
-    }
-}
-
-impl Peer for ClientOnClient {
-    fn tun_ipv4(&self) -> Ipv4Addr {
-        self.remote_tun().v4
-    }
-
-    fn tun_ipv6(&self) -> Ipv6Addr {
-        self.remote_tun().v6
     }
 }
 

@@ -377,6 +377,7 @@ defmodule Portal.Dev.AccountPopulation do
     }
 
     everyone_group = create_group(account, %{name: "Everyone", type: :managed})
+    _infrastructure_actor = create_infrastructure_actor(account)
     email_provider = create_email_provider(account)
     _x509_provider = create_x509_provider(account)
 
@@ -619,6 +620,13 @@ defmodule Portal.Dev.AccountPopulation do
     |> Repo.insert!()
   end
 
+  defp create_infrastructure_actor(account) do
+    %Actor{account_id: account.id}
+    |> cast(Actor.infrastructure_attrs(), [:name, :type, :managed_by])
+    |> Actor.changeset()
+    |> Repo.insert!()
+  end
+
   defp create_actor(account, type, name, email) do
     attrs =
       %{
@@ -798,7 +806,7 @@ defmodule Portal.Dev.AccountPopulation do
         last_seen_remote_ip_location_lon: -122.4194,
         last_seen_version: "1.4.0",
         last_seen_at: DateTime.utc_now(),
-        gateway_token_id: token.id
+        token_id: token.id
       )
       |> Repo.update!()
 
@@ -855,9 +863,17 @@ defmodule Portal.Dev.AccountPopulation do
         last_seen_remote_ip_location_lon: -74.0060,
         last_seen_version: "1.4.0",
         last_seen_at: DateTime.utc_now(),
-        client_token_id: token.id
+        token_id: token.id
       )
       |> Repo.update!()
+
+    Repo.insert!(%Portal.DeviceActor{
+      account_id: state.account.id,
+      device_id: client.id,
+      actor_id: actor.id,
+      first_seen_at: client.inserted_at,
+      last_seen_at: client.last_seen_at
+    })
 
     {client, state}
   end

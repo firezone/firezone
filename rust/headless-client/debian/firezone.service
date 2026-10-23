@@ -1,0 +1,83 @@
+[Unit]
+Description=Firezone
+Documentation=https://www.firezone.dev/kb
+After=network.target systemd-resolved.service
+Wants=systemd-resolved.service
+
+[Service]
+
+# DO NOT EDIT ANY OF THE BELOW BY HAND. USE "systemctl edit firezone" INSTEAD TO CUSTOMIZE.
+# Most configuration should go as environment variables into `/etc/firezone/gateway-env`.
+# A Gateway's access token should be in `/etc/firezone/gateway-token`; with one
+# installed the daemon runs as a Gateway, otherwise it serves the GUI and the CLI.
+
+Type=simple
+User=firezone
+# The IPC socket is reachable by members of `firezone-client`, as the GUI
+# package has always arranged; `firezone` is the daemon's own group.
+Group=firezone-client
+SupplementaryGroups=firezone
+SyslogIdentifier=firezone
+
+# /var/lib/firezone holds the Gateway's device ID and flow-log spool;
+# /var/lib/dev.firezone.client the client daemon's config and device ID.
+StateDirectory=firezone dev.firezone.client
+StateDirectoryMode=0750
+# The IPC socket.
+RuntimeDirectory=dev.firezone.client
+RuntimeDirectoryMode=0750
+LogsDirectory=dev.firezone.client
+LogsDirectoryMode=0755
+
+LoadCredential=FIREZONE_TOKEN:/etc/firezone/gateway-token
+EnvironmentFile=-/etc/firezone/gateway-preset-env
+EnvironmentFile=-/etc/firezone/gateway-env
+EnvironmentFile=-/etc/default/firezone-client-tunnel
+Environment="LOG_DIR=/var/log/dev.firezone.client"
+
+# Hosts upgraded from the Gateway package get `ExecStartPre=/usr/bin/firezone-gateway-init`
+# through a drop-in the upgrade writes, so their sysctl and masquerade rules stay.
+ExecStart=/usr/bin/firezone run
+
+# Restart on failure
+TimeoutStartSec=15s
+TimeoutStopSec=15s
+Restart=always
+RestartSec=7
+# 78 is `EX_CONFIG` from `sysexits.h`: the portal refused the token, so restarting
+# cannot help until an operator installs a new one.
+RestartPreventExitStatus=78
+
+#####################
+# HARDENING OPTIONS #
+#####################
+
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=read-only
+NoNewPrivileges=true
+RestrictNamespaces=yes
+MemoryDenyWriteExecute=true
+LockPersonality=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_NETLINK AF_UNIX
+DeviceAllow=/dev/net/tun
+
+# CAP_NET_ADMIN for the tunnel; CAP_NET_RAW for the ICMP sockets that answer
+# pings to served resources; CAP_CHOWN to hand the IPC socket and the device ID
+# to the `firezone-client` group; CAP_SYS_PTRACE to read a peer's
+# `/proc/<pid>/exe` for the IPC allowlist.
+AmbientCapabilities=CAP_NET_ADMIN CAP_NET_RAW CAP_CHOWN CAP_SYS_PTRACE
+CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_RAW CAP_CHOWN CAP_SYS_PTRACE
+
+InaccessiblePaths=/root /home
+
+LimitNOFILE=4096
+LimitNPROC=512
+LimitCORE=0
+
+SystemCallFilter=@system-service
+
+[Install]
+WantedBy=multi-user.target
+Alias=firezone-gateway.service
+Alias=firezone-client-tunnel.service

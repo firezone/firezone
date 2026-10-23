@@ -65,7 +65,7 @@ pub struct ReferenceState {
 
 /// Implementation of our reference state machine.
 ///
-/// The logic in here represents what we expect the [`ClientState`](tunnel_proto::ClientState) & [`GatewayState`](tunnel_proto::GatewayState) to do.
+/// The logic in here represents what we expect the [`DeviceState`](tunnel_proto::DeviceState) to do.
 /// Care has to be taken that we don't implement things in a buggy way here.
 /// After all, if your test has bugs, it won't catch any in the actual implementation.
 impl ReferenceState {
@@ -504,7 +504,7 @@ impl ReferenceState {
                 client.ip4.clone_from(ip4);
                 client.ip6.clone_from(ip6);
                 client.migrate_nat(*nat_ip4);
-                let added = self.network.add_host(*client_id, client);
+                let added = self.network.add_host(HostId::Client(*client_id), client);
                 debug_assert!(added);
 
                 // When roaming, we are not connected to any resource and wait for the next packet to re-establish a connection.
@@ -912,8 +912,13 @@ impl ReferenceState {
                     .connected_resources()
                     .any(|resource| client.gateway_for_resource(resource) == Some(*gateway))
             });
+            // A device's own tunnel address is only reachable through a pool; a
+            // gateway serves resources and is in none, so it refuses.
             if let Some(gateway) = connected_gateway {
-                return ExpectedOutcome::RoundTripCompleted(Route::Gateway(gateway));
+                return ExpectedOutcome::Rejected {
+                    by: RejectionRemote::Gateway(gateway),
+                    response: RejectionResponse::Prohibited,
+                };
             }
 
             // The portal answers a request for a tunnel IP that no client holds with "not
@@ -1069,7 +1074,11 @@ impl ReferenceState {
         if is_internet_resource && dst.ip_addr().is_some_and(is_resource_proxy) {
             return Some(RejectionResponse::Prohibited);
         }
-        if is_internet_resource && dst.ip_addr().is_some_and(internet_resource_rejects) {
+        // An authorized CIDR route takes precedence over the Internet resource's reject list.
+        if is_internet_resource
+            && !allowed_by_another_cidr
+            && dst.ip_addr().is_some_and(internet_resource_rejects)
+        {
             return Some(RejectionResponse::Unreachable);
         }
 
@@ -1730,7 +1739,6 @@ fn address_record_type(src: IpAddr) -> RecordType {
 fn reset_by(route: Route) -> ExpectedOutcome {
     let by = match route {
         Route::Resource { gateway, .. } => RejectionRemote::Gateway(gateway),
-        Route::Gateway(gateway) => RejectionRemote::Gateway(gateway),
         Route::Peer(client) => RejectionRemote::Client(client),
     };
 

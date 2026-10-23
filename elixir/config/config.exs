@@ -91,6 +91,7 @@ config :portal, Portal.ChangeLogs.Consumer,
     memberships
     groups
     actors
+    device_actors
     external_identities
     google_auth_providers
     github_auth_providers
@@ -105,7 +106,7 @@ config :portal, Portal.ChangeLogs.Consumer,
     google_directories
     devices
     sites
-    gateway_tokens
+    site_devices
     policies
     resources
     client_tokens
@@ -155,10 +156,11 @@ config :portal, Portal.Changes.Consumer,
     groups
     memberships
     devices
+    device_actors
     external_identities
     policy_authorizations
-    gateway_tokens
     sites
+    site_devices
     policies
     resources
     client_tokens

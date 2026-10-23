@@ -13,8 +13,16 @@ defmodule Portal.ClientSessionFixtures do
     attrs = Enum.into(attrs, %{})
 
     account = Map.get(attrs, :account) || account_fixture()
-    actor = Map.get(attrs, :actor) || actor_fixture(account: account)
-    client = Map.get(attrs, :client) || client_fixture(account: account, actor: actor)
+    client = Map.get(attrs, :client)
+
+    # A session on a given client is the client's own actor connecting unless
+    # the test says who signed in.
+    actor =
+      Map.get(attrs, :actor) ||
+        (client && Portal.Repo.preload(client, :actor).actor) ||
+        actor_fixture(account: account)
+
+    client = client || client_fixture(account: account, actor: actor)
     token = Map.get(attrs, :token) || client_token_fixture(account: account, actor: actor)
 
     session_attrs =
@@ -51,7 +59,8 @@ defmodule Portal.ClientSessionFixtures do
         :last_seen_at
       ]
     )
-    |> Ecto.Changeset.put_change(:client_token_id, token.id)
+    |> Ecto.Changeset.put_change(:token_id, token.id)
     |> Portal.Repo.update!()
+    |> tap(&record_device_actor(&1, actor.id, session_attrs[:inserted_at]))
   end
 end

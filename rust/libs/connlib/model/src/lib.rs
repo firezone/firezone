@@ -19,34 +19,18 @@ pub use view::{
 use serde::{Deserialize, Serialize};
 use std::{fmt, net::IpAddr};
 
-make_id!(GatewayId);
+make_id!(DeviceId);
 make_id!(ResourceId);
 make_id!(RelayId);
-make_id!(ClientId);
 make_id!(SiteId);
 
-#[derive(
-    Hash, Deserialize, Serialize, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, derive_more::From,
-)]
-pub enum ClientOrGatewayId {
-    Client(ClientId),
-    Gateway(GatewayId),
-}
+/// A device that consumes resources. The same id space as every other device;
+/// the name says which side of a flow it is on.
+pub type ClientId = DeviceId;
 
-impl fmt::Display for ClientOrGatewayId {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            ClientOrGatewayId::Client(inner) => write!(f, "Client({inner})"),
-            ClientOrGatewayId::Gateway(inner) => write!(f, "Gateway({inner})"),
-        }
-    }
-}
-
-impl fmt::Debug for ClientOrGatewayId {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt::Display::fmt(&self, f)
-    }
-}
+/// A device that serves resources. The same id space as every other device;
+/// the name says which side of a flow it is on.
+pub type GatewayId = DeviceId;
 
 #[derive(Debug, Deserialize, Serialize, Clone, Eq, PartialOrd, Ord)]
 pub struct Site {

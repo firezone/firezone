@@ -138,6 +138,8 @@ defmodule PortalAPI.Router do
     get "/posture_fields", PostureFieldController, :index
 
     resources "/sites", SiteController, except: [:new, :edit] do
+      post "/devices", SiteDeviceController, :create
+      delete "/devices/:id", SiteDeviceController, :delete
       post "/gateway_tokens", GatewayTokenController, :create
       delete "/gateway_tokens", GatewayTokenController, :delete_all
       delete "/gateway_tokens/:id", GatewayTokenController, :delete

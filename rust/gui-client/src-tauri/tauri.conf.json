@@ -15,32 +15,60 @@
         "postInstallScript": "./linux_package/postinst",
         "preRemoveScript": "./linux_package/prerm_deb",
         "files": {
-          "/usr/lib/systemd/system/firezone-client-tunnel.service": "./linux_package/firezone-client-tunnel.service",
-          "/usr/lib/sysusers.d/firezone-client-tunnel.conf": "./linux_package/sysusers.conf",
-          "/usr/bin/firezone-client-tunnel": "../../target/release/firezone-client-tunnel",
-          "/usr/bin/firezone": "../../target/release/firezone-cli",
+          "/usr/bin/firezone": "../../target/release/firezone",
+          "/usr/lib/systemd/system/firezone.service": "../../headless-client/debian/firezone.service",
+          "/usr/lib/sysusers.d/firezone.conf": "../../headless-client/debian/firezone.sysusers",
+          "/usr/lib/tmpfiles.d/firezone.conf": "../../headless-client/debian/firezone.tmpfiles",
+          "/usr/share/polkit-1/rules.d/10-firezone.rules": "../../headless-client/debian/10-firezone.rules",
           "/usr/share/bash-completion/completions/firezone": "../../target/release/completions/firezone.bash",
           "/usr/share/zsh/site-functions/_firezone": "../../target/release/completions/_firezone",
           "/usr/share/fish/vendor_completions.d/firezone.fish": "../../target/release/completions/firezone.fish",
           "/usr/share/metainfo/dev.firezone.client.metainfo.xml": "./linux_package/dev.firezone.client.metainfo.xml"
         },
-        "desktopTemplate": "./linux_package/firezone-client-gui.desktop"
+        "desktopTemplate": "./linux_package/firezone-client-gui.desktop",
+        "provides": [
+          "firezone",
+          "firezone-gateway",
+          "firezone-headless-client"
+        ],
+        "conflicts": [
+          "firezone",
+          "firezone-gateway",
+          "firezone-headless-client"
+        ],
+        "replaces": ["firezone", "firezone-gateway", "firezone-headless-client"]
       },
       "rpm": {
         "recommends": ["p11-kit"],
         "postInstallScript": "./linux_package/postinst",
         "preRemoveScript": "./linux_package/prerm_rpm",
         "files": {
-          "/usr/lib/systemd/system/firezone-client-tunnel.service": "./linux_package/firezone-client-tunnel.service",
-          "/usr/lib/sysusers.d/firezone-client-tunnel.conf": "./linux_package/sysusers.conf",
-          "/usr/bin/firezone-client-tunnel": "../../target/release/firezone-client-tunnel",
-          "/usr/bin/firezone": "../../target/release/firezone-cli",
+          "/usr/bin/firezone": "../../target/release/firezone",
+          "/usr/lib/systemd/system/firezone.service": "../../headless-client/debian/firezone.service",
+          "/usr/lib/sysusers.d/firezone.conf": "../../headless-client/debian/firezone.sysusers",
+          "/usr/lib/tmpfiles.d/firezone.conf": "../../headless-client/debian/firezone.tmpfiles",
+          "/usr/share/polkit-1/rules.d/10-firezone.rules": "../../headless-client/debian/10-firezone.rules",
           "/usr/share/bash-completion/completions/firezone": "../../target/release/completions/firezone.bash",
           "/usr/share/zsh/site-functions/_firezone": "../../target/release/completions/_firezone",
           "/usr/share/fish/vendor_completions.d/firezone.fish": "../../target/release/completions/firezone.fish",
           "/usr/share/metainfo/dev.firezone.client.metainfo.xml": "./linux_package/dev.firezone.client.metainfo.xml"
         },
-        "desktopTemplate": "./linux_package/firezone-client-gui.desktop"
+        "desktopTemplate": "./linux_package/firezone-client-gui.desktop",
+        "provides": [
+          "firezone",
+          "firezone-gateway",
+          "firezone-headless-client"
+        ],
+        "conflicts": [
+          "firezone",
+          "firezone-gateway",
+          "firezone-headless-client"
+        ],
+        "obsoletes": [
+          "firezone",
+          "firezone-gateway",
+          "firezone-headless-client"
+        ]
       }
     },
     "targets": ["deb", "msi", "rpm"],

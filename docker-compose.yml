@@ -224,6 +224,7 @@ services:
       FIREZONE_FLOW_LOGS: true
       FIREZONE_API_URL: ws://portal:8081
       FIREZONE_ID: c9cc2a8a01f9d3d6b2c26719965709196ae2c79214a837e28f0a751af1e2f2ca
+      FIREZONE_NO_KERNEL_FORWARDING: ${GATEWAY_NO_KERNEL_FORWARDING:-false}
     command:
       - sh
       - -c

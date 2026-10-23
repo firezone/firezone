@@ -138,6 +138,24 @@ defmodule PortalAPI.Sockets do
         "A gateway with this ID is already connected"
       )
 
+  def handle_error(conn, :unsupported_client),
+    do:
+      ProblemDetails.send_with_code(
+        conn,
+        426,
+        :unsupported_client,
+        "Only the firezone binary speaks this protocol"
+      )
+
+  def handle_error(conn, :protocol_range_required),
+    do:
+      ProblemDetails.send_with_code(
+        conn,
+        400,
+        :protocol_range_required,
+        "The connect must announce proto_min and proto_max"
+      )
+
   def handle_error(conn, %Ecto.Changeset{} = changeset) do
     Logger.error("Invalid connection request", changeset: inspect(changeset))
 

@@ -48,6 +48,7 @@ defmodule Portal.PubSub do
             | :actors
             | :client_tokens
             | :devices
+            | :device_actors
             | :directories
             | :groups
             | :memberships
@@ -63,6 +64,7 @@ defmodule Portal.PubSub do
             | :posture_providers
             | :resources
             | :sites
+            | :site_devices
             | :x509_auth_providers
 
     @spec subscribe(String.t()) :: :ok | {:error, term()}

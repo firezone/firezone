@@ -3,10 +3,15 @@ defmodule Portal.DeviceFixtures do
   Test helpers for creating client and gateway devices and related data.
   """
 
+  import Ecto.Query
   import Portal.AccountFixtures
   import Portal.ActorFixtures
   import Portal.SiteFixtures
   import Portal.TokenFixtures
+
+  defp put_latest_gateway_token(changeset, %Portal.ClientToken{} = token) do
+    Ecto.Changeset.put_change(changeset, :token_id, token.id)
+  end
 
   ##############################################################################
   # Address helpers shared by client and gateway fixtures
@@ -186,7 +191,39 @@ defmodule Portal.DeviceFixtures do
       |> maybe_sync_device_ipv4(ipv4)
       |> maybe_sync_device_ipv6(ipv6)
 
+    # A client row exists because its actor connected on it, which is what
+    # device_actors records; the fixture stands in for that connect.
+    record_device_actor(device, actor.id, device.inserted_at)
+
     Portal.Repo.preload(device, :actor)
+  end
+
+  @doc """
+  Records that `actor_id` was seen on the device at `seen_at`, as the session
+  flush does: a new pair is first and last seen then, an existing one widens.
+  """
+  def record_device_actor(device, actor_id, seen_at \\ DateTime.utc_now()) do
+    widen =
+      from(da in Portal.DeviceActor,
+        update: [
+          set: [
+            first_seen_at: fragment("LEAST(?, ?)", da.first_seen_at, ^seen_at),
+            last_seen_at: fragment("GREATEST(?, ?)", da.last_seen_at, ^seen_at)
+          ]
+        ]
+      )
+
+    Portal.Repo.insert!(
+      %Portal.DeviceActor{
+        account_id: device.account_id,
+        device_id: device.id,
+        actor_id: actor_id,
+        first_seen_at: seen_at,
+        last_seen_at: seen_at
+      },
+      on_conflict: widen,
+      conflict_target: [:account_id, :device_id, :actor_id]
+    )
   end
 
   @doc """
@@ -232,6 +269,19 @@ defmodule Portal.DeviceFixtures do
 
     {^count, devices} =
       Portal.Repo.insert_all(Portal.Device, rows, returning: [:account_id, :id, :slug])
+
+    device_actor_rows =
+      for device <- devices do
+        %{
+          account_id: account.id,
+          device_id: device.id,
+          actor_id: actor.id,
+          first_seen_at: now,
+          last_seen_at: now
+        }
+      end
+
+    {^count, _} = Portal.Repo.insert_all(Portal.DeviceActor, device_actor_rows)
 
     devices
   end
@@ -361,7 +411,7 @@ defmodule Portal.DeviceFixtures do
       case Map.get(attrs, :token) do
         nil -> gateway_token_fixture(account: account, site: site)
         :single_owner -> gateway_token_fixture(gateway: gateway)
-        %Portal.GatewayToken{} = token -> token
+        %Portal.ClientToken{} = token -> token
       end
 
     public_key = Map.get(device_attrs, :public_key, generate_public_key())
@@ -397,7 +447,7 @@ defmodule Portal.DeviceFixtures do
           :last_seen_at
         ]
       )
-      |> Ecto.Changeset.put_change(:gateway_token_id, token.id)
+      |> put_latest_gateway_token(token)
       |> Portal.Repo.update!()
 
     Portal.Repo.preload(gateway, :site)
@@ -423,7 +473,10 @@ defmodule Portal.DeviceFixtures do
 
     case Map.get(attrs, :token) do
       nil -> client
-      token -> client |> Ecto.Changeset.change(client_token_id: token.id) |> Portal.Repo.update!()
+      token ->
+        client
+        |> Ecto.Changeset.change(token_id: token.id)
+        |> Portal.Repo.update!()
     end
   end
 

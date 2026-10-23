@@ -63,7 +63,14 @@ defmodule Portal.ActorFixtures do
 
     {:ok, actor} =
       %Portal.Actor{}
-      |> Ecto.Changeset.cast(actor_attrs, [:name, :type, :email, :allow_email_otp_sign_in, :password_hash])
+      |> Ecto.Changeset.cast(actor_attrs, [
+        :name,
+        :type,
+        :email,
+        :allow_email_otp_sign_in,
+        :password_hash,
+        :managed_by
+      ])
       |> Ecto.Changeset.put_assoc(:account, account)
       |> Portal.Actor.changeset()
       |> Portal.Repo.insert()
@@ -85,6 +92,15 @@ defmodule Portal.ActorFixtures do
   def service_account_fixture(attrs \\ %{}) do
     attrs = Enum.into(attrs, %{})
     actor_fixture(Map.put(attrs, :type, :service_account))
+  end
+
+  @doc """
+  Generate the system-managed Infrastructure service account an account is
+  provisioned with.
+  """
+  def infrastructure_actor_fixture(attrs \\ %{}) do
+    attrs = Enum.into(attrs, %{})
+    actor_fixture(Map.merge(attrs, Portal.Actor.infrastructure_attrs()))
   end
 
   @doc """

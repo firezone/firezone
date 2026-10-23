@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-SERVICE_NAME="firezone-client-tunnel"
+SERVICE_NAME="firezone"
 
 # `rpm` calls `prerm` of the old package _after_ it has installed the new package.
 # The first parameter indicates, how many other instances of the package are still installed.
@@ -14,3 +14,4 @@ fi
 
 sudo systemctl disable "$SERVICE_NAME"
 sudo systemctl stop "$SERVICE_NAME"
+rm -f /usr/bin/firezone-client-tunnel

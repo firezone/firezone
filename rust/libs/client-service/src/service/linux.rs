@@ -1,0 +1,57 @@
+use std::{path::PathBuf, time::Duration};
+
+use anyhow::{Context as _, Result, bail};
+use bin_shared::{DnsControlMethod, signals};
+
+use client_ipc::SocketId;
+
+/// Cross-platform entry point for systemd / Windows services
+///
+/// Linux uses the CLI args from here, Windows does not
+pub fn run(log_dir: Option<PathBuf>, dns_control: DnsControlMethod) -> Result<()> {
+    let (_handle, log_filter_reloader, _flow_log_guard, _cleanup) =
+        crate::logging::setup_tunnel(log_dir)?;
+    if !elevation_check()? {
+        bail!("Tunnel service failed its elevation check, try running as admin / root");
+    }
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(1)
+        .thread_name("connlib")
+        .enable_all()
+        .build()
+        .context("Failed to create tokio runtime")?;
+    let _guard = rt.enter();
+    let mut signals = signals::Terminate::new()?;
+
+    rt.block_on(super::ipc_listen(
+        dns_control,
+        &log_filter_reloader,
+        SocketId::Tunnel,
+        &mut signals,
+    ))
+    .inspect_err(|e| tracing::error!("IPC service failed: {e:#}"))?;
+
+    rt.shutdown_timeout(Duration::from_secs(1)); // Ensure we don't block forever on a task in the blocking pool.
+
+    Ok(())
+}
+
+/// Returns true if the Tunnel service can run properly: as root, or as the
+/// `firezone` user the package runs it as, with `CAP_NET_ADMIN` for the tunnel.
+// Fallible on Windows
+#[expect(clippy::unnecessary_wraps)]
+pub fn elevation_check() -> Result<bool> {
+    let is_root = nix::unistd::getuid().is_root();
+    let has_net_admin = caps::has_cap(
+        None,
+        caps::CapSet::Effective,
+        caps::Capability::CAP_NET_ADMIN,
+    )
+    .is_ok_and(|b| b);
+
+    Ok(is_root || has_net_admin)
+}
+
+pub fn install() -> Result<()> {
+    bail!("`install_ipc_service` not implemented and not needed on Linux")
+}
