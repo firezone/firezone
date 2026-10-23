@@ -1390,6 +1390,7 @@ dependencies = [
  "anyhow-ext",
  "backoff",
  "bin-shared",
+ "caps",
  "client-ipc",
  "client-shared",
  "connlib-model",

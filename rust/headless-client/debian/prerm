@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+
+set -e
+
+#DEBHELPER#
+
+if [ "$1" = "remove" ]; then
+    rm -f /usr/bin/firezone-gateway /usr/bin/firezone-headless-client
+fi
