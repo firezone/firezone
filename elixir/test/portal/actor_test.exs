@@ -11,8 +11,36 @@ defmodule Portal.ActorTest do
 
   defp build_changeset(attrs) do
     %Actor{}
-    |> cast(attrs, [:name, :type, :email])
+    |> cast(attrs, [:name, :type, :email, :managed_by])
     |> Actor.changeset()
+  end
+
+  describe "managed_by" do
+    test "belongs to the account unless told otherwise" do
+      assert actor_fixture().managed_by == :account
+      assert Actor.system_managed?(actor_fixture()) == false
+    end
+
+    test "accepts only account and system" do
+      changeset = build_changeset(%{name: "Infra", type: :service_account, managed_by: :other})
+      assert %{managed_by: ["is invalid"]} = errors_on(changeset)
+    end
+
+    test "a system-managed actor cannot be changed" do
+      actor = service_account_fixture(managed_by: :system)
+      assert Actor.system_managed?(actor)
+
+      changeset = actor |> change(name: "Renamed") |> Actor.changeset()
+      assert %{base: ["system-managed actors cannot be changed"]} = errors_on(changeset)
+
+      changeset = actor |> change(is_disabled: true) |> Actor.changeset()
+      assert %{base: ["system-managed actors cannot be changed"]} = errors_on(changeset)
+    end
+
+    test "a system-managed actor with nothing changed is valid" do
+      actor = service_account_fixture(managed_by: :system)
+      assert actor |> change() |> Actor.changeset() |> Map.fetch!(:valid?)
+    end
   end
 
   describe "changeset/1 basic validations" do
