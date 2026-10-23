@@ -8,25 +8,19 @@ use std::{
 use ip_packet::{Ecn, IpPacket};
 use snownet::Transmit;
 use socket_factory::{DatagramBatch, DatagramOut};
-use tun::{InboundTx, OutboundRx, PacketBatch};
+use tun::PacketBatch;
 use tunnel::{
     ClientEvent, ClientState, FakeTunnelEnds, GatewayEvent, GatewayState, ResolverQuery, Tunnel,
     TunnelError, dns,
 };
 
-/// How many batches the TUN device's outbound channel holds.
-const TUN_CAPACITY: usize = 100;
-
 /// How many datagrams a socket receives at once.
 const RECV_BATCH_SIZE: usize = 32;
 
 /// A tunnel and the OS around it: its TUN device and its sockets.
-///
 pub(crate) struct SimTunnel<R> {
     tunnel: Tunnel<R>,
     ends: FakeTunnelEnds,
-    tun_reads: InboundTx,
-    tun_writes: OutboundRx,
     /// The deadline the tunnel asked to be woken at.
     alarm: Option<Instant>,
 
@@ -42,15 +36,11 @@ pub(crate) struct SimTunnel<R> {
 
 impl<R: Role> SimTunnel<R> {
     pub(crate) fn new(state: R) -> Self {
-        let (mut tunnel, ends) = Tunnel::fake(state);
-        let (tun, tun_reads, tun_writes) = tun::fake(TUN_CAPACITY);
-        tunnel.set_tun(tun);
+        let (tunnel, ends) = Tunnel::fake(state);
 
         Self {
             tunnel,
             ends,
-            tun_reads,
-            tun_writes,
             alarm: None,
             unread: VecDeque::new(),
             unreceived: VecDeque::new(),
@@ -162,7 +152,7 @@ impl<R: Role> SimTunnel<R> {
                 }
             }
 
-            if let Err(e) = self.tun_reads.try_send(batch) {
+            if let Err(e) = self.ends.tun_inbound.try_send(batch) {
                 let mut batch = e.into_inner();
                 for packet in batch.drain().collect::<Vec<_>>().into_iter().rev() {
                     self.unread.push_front(packet);
@@ -210,7 +200,7 @@ impl<R: Role> SimTunnel<R> {
         self.ends.socket_v6.take_sent(&mut datagrams);
         self.sent.extend(datagrams.into_iter().flat_map(segments));
 
-        while let Ok(mut batch) = self.tun_writes.try_recv() {
+        while let Ok(mut batch) = self.ends.tun_outbound.try_recv() {
             self.written.extend(batch.drain());
         }
 
