@@ -1868,7 +1868,7 @@ defmodule PortalWeb.Sites do
     # key actions touch those rows, which the token key check otherwise
     # trips on within one transaction.
     defp delete_site_and_tokens(site, subject) do
-      Portal.Repo.transact(fn ->
+      Safe.transact(fn ->
         from(t in ClientToken, as: :client_tokens)
         |> where([client_tokens: t], t.site_id == ^site.id)
         |> Safe.scoped(subject)

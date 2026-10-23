@@ -265,7 +265,7 @@ defmodule PortalAPI.SiteController do
     # key actions touch those rows, which the token key check otherwise
     # trips on within one transaction.
     def delete_site(site, subject) do
-      Portal.Repo.transact(fn ->
+      Safe.transact(fn ->
         from(t in Portal.ClientToken, as: :client_tokens)
         |> where([client_tokens: t], t.site_id == ^site.id)
         |> Safe.scoped(subject)
