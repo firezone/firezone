@@ -928,7 +928,6 @@ defmodule Portal.Billing do
     alias Portal.Safe
     alias Portal.Account
     alias Portal.Actor
-    alias Portal.Device
 
     def update(changeset) do
       changeset
@@ -983,11 +982,10 @@ defmodule Portal.Billing do
     end
 
     def actor_active_in_last_month?(%Account{} = account, actor_id) do
-      from(d in Device,
-        where: d.account_id == ^account.id,
-        where: d.actor_id == ^actor_id,
-        where: d.type == :client,
-        where: d.last_seen_at > ago(1, "month")
+      from(da in Portal.DeviceActor,
+        where: da.account_id == ^account.id,
+        where: da.actor_id == ^actor_id,
+        where: da.last_seen_at > ago(1, "month")
       )
       |> Safe.unscoped()
       |> Safe.exists?()
@@ -1003,24 +1001,26 @@ defmodule Portal.Billing do
       |> Safe.exists?()
     end
 
+    # An actor is active when it was seen on any device in the last month,
+    # which device_actors records per device and actor; a device shared by
+    # several actors counts each of them.
     def count_monthly_active_actors_by_account(account_ids) do
-      from(d in Device, as: :devices)
-      |> where([devices: d], d.type == :client)
-      |> where([devices: d], d.account_id in ^account_ids)
-      |> where([devices: d], d.last_seen_at > ago(1, "month"))
-      |> join(:inner, [devices: d], a in Actor,
-        on: d.actor_id == a.id and d.account_id == a.account_id,
+      from(da in Portal.DeviceActor, as: :device_actors)
+      |> where([device_actors: da], da.account_id in ^account_ids)
+      |> where([device_actors: da], da.last_seen_at > ago(1, "month"))
+      |> join(:inner, [device_actors: da], a in Actor,
+        on: da.actor_id == a.id and da.account_id == a.account_id,
         as: :actor
       )
       |> where([actor: a], a.is_disabled == false)
       |> where([actor: a], a.managed_by == :account)
       |> where([actor: a], a.type in [:account_user, :account_admin_user, :service_account])
-      |> group_by([devices: d], d.account_id)
-      |> select([devices: d, actor: a], {
-        d.account_id,
+      |> group_by([device_actors: da], da.account_id)
+      |> select([device_actors: da, actor: a], {
+        da.account_id,
         %{
-          users: filter(count(d.actor_id, :distinct), a.type != :service_account),
-          service_accounts: filter(count(d.actor_id, :distinct), a.type == :service_account)
+          users: filter(count(da.actor_id, :distinct), a.type != :service_account),
+          service_accounts: filter(count(da.actor_id, :distinct), a.type == :service_account)
         }
       })
       |> Safe.unscoped()
