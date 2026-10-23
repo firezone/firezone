@@ -1155,6 +1155,12 @@ defmodule PortalWeb.Sites do
          |> assign(sites: sites)
          |> push_patch(to: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/sites"))}
 
+      {:error, :resources_remain} ->
+        {:noreply,
+         socket
+         |> put_flash(:error, "Delete or move the site's resources before deleting the site.")
+         |> merge_state(:site_panel, %{confirm_delete_site: false})}
+
       {:error, _changeset} ->
         {:noreply,
          socket
@@ -1847,9 +1853,39 @@ defmodule PortalWeb.Sites do
 
     @spec delete_site(Site.t(), Portal.Authentication.Subject.t()) ::
             {:ok, Site.t()} | {:error, Ecto.Changeset.t()}
+    # Devices outlive the site: they are unassigned, not deleted. Resources
+    # would lose their site, so the site stays until they are gone.
+    @spec delete_site(Portal.Site.t(), Portal.Authentication.Subject.t()) ::
+            {:ok, Portal.Site.t()} | {:error, :resources_remain | :unauthorized | Ecto.Changeset.t()}
     def delete_site(site, subject) do
-      Safe.scoped(site, subject)
-      |> Safe.delete()
+      case resources_remain?(site, subject) do
+        true -> {:error, :resources_remain}
+        false -> delete_site_and_tokens(site, subject)
+        {:error, :unauthorized} -> {:error, :unauthorized}
+      end
+    end
+
+    # The site's tokens go with it either way; deleting them first clears
+    # the token column on the gateways that used them before the site's own
+    # key actions touch those rows, which the token key check otherwise
+    # trips on within one transaction.
+    defp delete_site_and_tokens(site, subject) do
+      Safe.transact(fn ->
+        from(t in ClientToken, as: :client_tokens)
+        |> where([client_tokens: t], t.site_id == ^site.id)
+        |> Safe.scoped(subject)
+        |> Safe.delete_all()
+
+        Safe.scoped(site, subject)
+        |> Safe.delete()
+      end)
+    end
+
+    defp resources_remain?(site, subject) do
+      from(r in Resource, as: :resources)
+      |> where([resources: r], r.site_id == ^site.id)
+      |> Safe.scoped(subject)
+      |> Safe.exists?()
     end
 
     def get_internet_resource(subject) do

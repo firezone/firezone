@@ -18368,7 +18368,7 @@
     "/sites/{id}": {
       "delete": {
         "callbacks": {},
-        "description": "Deletes a Site. Deleting is not blocked when the Site still has Gateways or Resources.\n\nThe Site's Gateways, Gateway tokens, and Resources are deleted with it. Every Policy for those Resources is deleted too, and Clients lose access to them right away. The system-managed Internet Site cannot be deleted.\n",
+        "description": "Deletes a Site. A Site that still has Resources cannot be deleted: delete or move them first, which returns 409 otherwise.\n\nThe Site's Gateways are kept and stop serving it; they keep serving any other Site they are assigned to. Gateway tokens bound to the Site are deleted with it. The system-managed Internet Site cannot be deleted.\n",
         "operationId": "PortalAPI.SiteController.delete",
         "parameters": [
           {
@@ -18456,6 +18456,22 @@
               }
             },
             "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The request conflicts with the current state of the resource.",
+                  "status": 409,
+                  "title": "Conflict",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Conflict"
           },
           "429": {
             "content": {

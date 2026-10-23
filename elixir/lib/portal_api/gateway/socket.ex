@@ -395,15 +395,15 @@ defmodule PortalAPI.Gateway.Socket do
     alias Portal.Safe
     alias Portal.Site
 
-    # Connect hot path: the site rides along in the same query. Gateways
-    # always have a site (device_type_gateway_fields check constraint), so
-    # the inner join cannot drop rows.
+    # Connect hot path: the site rides along in the same query. A gateway
+    # whose site was deleted has none, and still connects to serve whatever
+    # other sites it is assigned to.
     def fetch_gateway(id, subject) do
       result =
         from(d in Device,
           where: d.id == ^id,
           where: d.type == :gateway,
-          join: s in assoc(d, :site),
+          left_join: s in assoc(d, :site),
           on: s.account_id == d.account_id,
           preload: [site: s]
         )

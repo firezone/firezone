@@ -352,7 +352,7 @@ defmodule PortalWeb.SitesTest do
 
       html = render_click(lv, "confirm_delete_site")
       assert html =~ "Delete this Site?"
-      assert html =~ "All associated gateways and resources will also be permanently deleted."
+      assert html =~ "Its gateways are kept and no longer serve it."
 
       html = render_click(lv, "cancel_delete_site")
       refute html =~ "Delete this Site?"
@@ -364,13 +364,15 @@ defmodule PortalWeb.SitesTest do
       assert is_nil(Repo.get_by(Site, account_id: account.id, id: site.id))
     end
 
-    test "deletes a site with gateway devices without crashing", %{
+    test "deleting a site keeps its gateways and unassigns them", %{
       conn: conn,
       account: account,
       actor: actor
     } do
       site = site_fixture(account: account)
+      other_site = site_fixture(account: account)
       gateway = gateway_fixture(account: account, site: site)
+      site_device_fixture(site: other_site, device: gateway)
 
       {:ok, lv, _html} =
         conn
@@ -383,7 +385,36 @@ defmodule PortalWeb.SitesTest do
       assert html =~ "Site #{site.name} deleted successfully."
       assert_patch(lv, ~p"/#{account}/sites")
       assert is_nil(Repo.get_by(Site, account_id: account.id, id: site.id))
-      assert is_nil(Repo.get_by(Device, account_id: account.id, id: gateway.id))
+
+      gateway = Repo.get_by!(Device, account_id: account.id, id: gateway.id)
+      assert is_nil(gateway.site_id)
+
+      assert Repo.get_by(Portal.SiteDevice,
+               account_id: account.id,
+               site_id: other_site.id,
+               device_id: gateway.id
+             )
+    end
+
+    test "refuses to delete a site that still has resources", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      site = site_fixture(account: account)
+      resource = resource_fixture(account: account, site: site)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/sites/#{site.id}")
+
+      render_click(lv, "confirm_delete_site")
+      html = render_click(lv, "delete_site")
+
+      assert html =~ "Delete or move the site&#39;s resources before deleting the site."
+      assert Repo.get_by(Site, account_id: account.id, id: site.id)
+      assert Repo.get_by(Resource, account_id: account.id, id: resource.id)
     end
 
     test "hides account-only actions for system-managed sites", %{

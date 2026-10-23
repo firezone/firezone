@@ -1134,7 +1134,8 @@ defmodule PortalWeb.Sites.Components do
         <p class="text-xs text-error">
           <span class="font-medium">Delete this Site?</span>
           <br />
-          All associated gateways and resources will also be permanently deleted.
+          Its gateways are kept and no longer serve it. A site that still has
+          resources cannot be deleted.
         </p>
         <div class="flex items-center gap-2">
           <Form.button type="button" phx-click="cancel_delete_site" size="xs">
