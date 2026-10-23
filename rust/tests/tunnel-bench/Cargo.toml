@@ -21,7 +21,7 @@ relay-proto = { workspace = true }
 serde_json = { workspace = true }
 snownet = { workspace = true }
 socket-factory = { workspace = true }
-tokio = { workspace = true, features = ["rt", "rt-multi-thread", "test-util", "time"] }
+tokio = { workspace = true, features = ["rt", "rt-multi-thread"] }
 tun = { workspace = true }
 tun-offload = { workspace = true }
 tunnel = { workspace = true }

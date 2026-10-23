@@ -22,7 +22,7 @@ use std::time::Instant;
 use bufferpool::Bytes;
 use socket_factory::{DatagramBatch, DatagramOut};
 use tun::{InboundTx, OutboundRx, PacketBatch};
-use tunnel::{ClientState, GatewayState, SocketThreadEnds, Tunnel, TunnelError};
+use tunnel::{ClientState, FakeTunnelEnds, GatewayState, Tunnel, TunnelError};
 
 pub use idle::Idle;
 pub use packets::{Direction, Packets};
@@ -46,42 +46,28 @@ const TUN_CAPACITY: usize = 100;
 /// A tunnel's event loop, driven the way the Client and the Gateway drive theirs.
 pub struct EventLoop<R> {
     tunnel: Tunnel<R>,
-    socket: SocketThreadEnds,
-    /// Unused: every address is IPv4.
-    _socket_v6: SocketThreadEnds,
+    /// The fake tunnel's sockets and resolver; every address is IPv4.
+    ends: FakeTunnelEnds,
     /// What the TUN device reads.
     tun_reads: InboundTx,
     /// What the event loop writes to the TUN device.
     tun_writes: OutboundRx,
     /// The deadline the event loop asked to be woken at.
     alarm: Option<Instant>,
-    /// Provides the timers of the tunnel's I/O, on a clock that stands still.
-    runtime: tokio::runtime::Runtime,
 }
 
 impl<R: Role> EventLoop<R> {
     pub fn new(state: R) -> Self {
-        let runtime = tokio::runtime::Builder::new_current_thread()
-            .enable_time()
-            .start_paused(true)
-            .build()
-            .unwrap();
-        let _guard = runtime.enter();
-
-        let (mut tunnel, socket, _socket_v6) = Tunnel::fake(state);
+        let (mut tunnel, ends) = Tunnel::fake(state);
         let (tun, tun_reads, tun_writes) = tun::fake(TUN_CAPACITY);
         tunnel.set_tun(tun);
 
-        drop(_guard);
-
         Self {
             tunnel,
-            socket,
-            _socket_v6,
+            ends,
             tun_reads,
             tun_writes,
             alarm: None,
-            runtime,
         }
     }
 
@@ -90,7 +76,6 @@ impl<R: Role> EventLoop<R> {
     /// Like the Client's and the Gateway's event loops, it handles a deadline that has passed
     /// before anything else, and asks for the next deadline only once the tunnel is pending.
     pub fn run(&mut self, now: Instant) {
-        let _guard = self.runtime.enter();
         let mut cx = Context::from_waker(Waker::noop());
 
         requests::toggle_collect();
@@ -146,12 +131,12 @@ impl<R: Role> EventLoop<R> {
     /// Hands `batch` to the event loop as if its socket had received it, or returns it if the
     /// socket's channel is full.
     pub fn receive(&self, batch: DatagramBatch) -> Result<(), DatagramBatch> {
-        self.socket.receive(batch)
+        self.ends.socket_v4.receive(batch)
     }
 
     /// Appends the datagrams the event loop sent to `sent`.
     pub fn take_sent(&mut self, sent: &mut Vec<DatagramOut>) {
-        self.socket.take_sent(sent);
+        self.ends.socket_v4.take_sent(sent);
     }
 }
 
