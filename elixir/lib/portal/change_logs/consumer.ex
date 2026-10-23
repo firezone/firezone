@@ -23,6 +23,7 @@ defmodule Portal.ChangeLogs.Consumer do
     "actors" => Portal.Actor,
     "api_tokens" => Portal.APIToken,
     "devices" => Portal.Device,
+    "device_actors" => Portal.DeviceActor,
     "email_otp_auth_providers" => Portal.EmailOTP.AuthProvider,
     "entra_auth_providers" => Portal.Entra.AuthProvider,
     "entra_directories" => Portal.Entra.Directory,
