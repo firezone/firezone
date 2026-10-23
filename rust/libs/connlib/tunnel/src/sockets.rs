@@ -319,7 +319,7 @@ fn poll_flush_overflow(
 }
 
 /// What a UDP socket thread sends, in queue order.
-enum Outbound {
+pub(crate) enum Outbound {
     Ready(DatagramOut),
     Pending(PendingDatagrams),
 }
@@ -389,7 +389,7 @@ const _: () = {
 
 struct ThreadedUdpSocket {
     thread_name: String,
-    join_handle: std::thread::JoinHandle<()>,
+    join_handle: Option<std::thread::JoinHandle<()>>,
     main_thread_ends: Option<MainThreadEnds>,
 }
 
@@ -405,10 +405,10 @@ struct MainThreadEnds {
 }
 
 /// The ends of a socket's channels that its thread holds.
-struct SocketThreadEnds {
-    outbound_rx: mpsc::Receiver<Outbound>,
-    inbound_tx: mpsc::Sender<DatagramBatch>,
-    error_tx: mpsc::Sender<anyhow::Error>,
+pub(crate) struct SocketThreadEnds {
+    pub(crate) outbound_rx: mpsc::Receiver<Outbound>,
+    pub(crate) inbound_tx: mpsc::Sender<DatagramBatch>,
+    pub(crate) error_tx: mpsc::Sender<anyhow::Error>,
 }
 
 fn channels() -> (MainThreadEnds, SocketThreadEnds) {
@@ -628,7 +628,7 @@ impl ThreadedUdpSocket {
 
         Ok(Self {
             thread_name,
-            join_handle,
+            join_handle: Some(join_handle),
             main_thread_ends: Some(main_thread_ends),
         })
     }
@@ -708,9 +708,13 @@ impl Drop for ThreadedUdpSocket {
 
         let _ = self.main_thread_ends.take();
 
+        let Some(join_handle) = self.join_handle.as_ref() else {
+            return;
+        };
+
         const TIMEOUT: Duration = Duration::from_millis(500);
 
-        while !self.join_handle.is_finished() {
+        while !join_handle.is_finished() {
             let elapsed = start.elapsed();
 
             if elapsed > TIMEOUT {
@@ -720,6 +724,49 @@ impl Drop for ThreadedUdpSocket {
         }
 
         tracing::debug!(name = %self.thread_name, duration = ?start.elapsed(), "Background thread stopped");
+    }
+}
+
+#[cfg(test)]
+impl Sockets {
+    /// Creates sockets for both families without threads; the returned ends play their part.
+    pub(crate) fn fake() -> (Self, SocketThreadEnds, SocketThreadEnds) {
+        let fake_socket = || {
+            let (main_thread_ends, socket_thread_ends) = channels();
+            let socket = ThreadedUdpSocket {
+                thread_name: "fake".to_owned(),
+                join_handle: None,
+                main_thread_ends: Some(main_thread_ends),
+            };
+
+            (socket, socket_thread_ends)
+        };
+        let (socket_v4, ends_v4) = fake_socket();
+        let (socket_v6, ends_v6) = fake_socket();
+
+        let sockets = Self {
+            socket_v4: Some(socket_v4),
+            socket_v6: Some(socket_v6),
+            ..Self::default()
+        };
+
+        (sockets, ends_v4, ends_v6)
+    }
+
+    pub(crate) fn remove_v4(&mut self) {
+        self.socket_v4 = None;
+    }
+
+    pub(crate) fn remove_v6(&mut self) {
+        self.socket_v6 = None;
+    }
+
+    /// How many items wait for room in the channel of the socket for `version`.
+    pub(crate) fn num_waiting(&self, version: IpVersion) -> usize {
+        match version {
+            IpVersion::V4 => self.overflow_v4.len(),
+            IpVersion::V6 => self.overflow_v6.len(),
+        }
     }
 }
 
@@ -758,3 +805,68 @@ fn read_end_var_usize(name: &str) -> Result<Option<usize>> {
 #[derive(thiserror::Error, Debug)]
 #[error("UDP socket thread stopped")]
 pub struct UdpSocketThreadStopped;
+
+#[cfg(test)]
+mod tests {
+    use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+    use std::task::Waker;
+
+    use bufferpool::Bytes;
+    use ip_packet::Ecn;
+
+    use super::*;
+
+    const V4_PEER: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(192, 0, 2, 1)), 3478);
+    const V6_PEER: SocketAddr = SocketAddr::new(
+        IpAddr::V6(Ipv6Addr::new(0x2001, 0xdb8, 0, 0, 0, 0, 0, 1)),
+        3478,
+    );
+
+    #[test]
+    fn fake_socket_threads_receive_transmits() {
+        let (mut sockets, mut v4, mut v6) = Sockets::fake();
+
+        sockets.send_ready(transmit(V4_PEER));
+        sockets.send_ready(transmit(V6_PEER));
+
+        assert!(v4.outbound_rx.try_recv().is_ok());
+        assert!(v6.outbound_rx.try_recv().is_ok());
+    }
+
+    #[test]
+    fn transmits_wait_once_fake_socket_thread_is_full() {
+        let (mut sockets, _v4, _v6) = Sockets::fake();
+
+        for _ in 0..=QUEUE_SIZE {
+            sockets.send_ready(transmit(V4_PEER));
+        }
+
+        assert_eq!(sockets.num_waiting(IpVersion::V4), 1);
+        assert_eq!(sockets.num_waiting(IpVersion::V6), 0);
+    }
+
+    #[test]
+    fn transmits_to_removed_sockets_fail() {
+        for (dst, remove) in [
+            (V4_PEER, Sockets::remove_v4 as fn(&mut Sockets)),
+            (V6_PEER, Sockets::remove_v6),
+        ] {
+            let (mut sockets, _v4, _v6) = Sockets::fake();
+            remove(&mut sockets);
+
+            sockets.send_ready(transmit(dst));
+
+            let result = sockets.poll_flush(&mut Context::from_waker(Waker::noop()));
+            assert!(matches!(result, Poll::Ready(Err(_))));
+        }
+    }
+
+    fn transmit(dst: SocketAddr) -> snownet::Transmit {
+        snownet::Transmit {
+            src: None,
+            dst,
+            payload: Bytes::copied_from(&[0; 4]),
+            ecn: Ecn::NonEct,
+        }
+    }
+}
