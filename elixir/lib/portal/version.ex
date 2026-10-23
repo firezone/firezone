@@ -187,20 +187,4 @@ defmodule Portal.Version do
         proto_range(nil, role, Map.get(meta, :version))
     end
   end
-
-  # Two clients can only establish a peer-to-peer connection if they share the
-  # same major.minor — this lets us evolve snownet's wire format on a minor cadence
-  # without breaking running deployments mid-rollout.
-  def same_minor_version?(nil, _), do: false
-  def same_minor_version?(_, nil), do: false
-
-  def same_minor_version?(version_a, version_b)
-      when is_binary(version_a) and is_binary(version_b) do
-    with {:ok, a} <- Version.parse(version_a),
-         {:ok, b} <- Version.parse(version_b) do
-      a.major == b.major and a.minor == b.minor
-    else
-      _ -> false
-    end
-  end
 end
