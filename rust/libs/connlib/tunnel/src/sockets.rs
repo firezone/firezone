@@ -124,6 +124,8 @@ pub(crate) struct Sockets {
     recv_batches: Option<Vec<DatagramBatch>>,
     /// Where a dropped [`ReceivedDatagrams`] returns the vector.
     returned_recv_batches: Arc<Mutex<Vec<DatagramBatch>>>,
+
+    fake: bool,
 }
 
 impl Default for Sockets {
@@ -137,6 +139,7 @@ impl Default for Sockets {
             packet_counter: otel_instruments::network_packets(),
             recv_batches: Some(Vec::with_capacity(2 * UDP_RECV_BATCH_LIMIT)),
             returned_recv_batches: Arc::default(),
+            fake: false,
         }
     }
 }
@@ -152,11 +155,17 @@ impl Sockets {
         sockets
     }
 
+    /// Binds new sockets for both families; fake sockets stay as they are.
     pub fn rebind(&mut self, socket_factory: Arc<dyn SocketFactory<UdpSocket>>) {
-        self.socket_v4 = None;
-        self.socket_v6 = None;
         self.overflow_v4.clear();
         self.overflow_v6.clear();
+
+        if self.fake {
+            return;
+        }
+
+        self.socket_v4 = None;
+        self.socket_v6 = None;
 
         self.socket_v4 = self.bind(&socket_factory, SocketAddr::V4(UNSPECIFIED_V4_SOCKET));
         self.socket_v6 = self.bind(&socket_factory, SocketAddr::V6(UNSPECIFIED_V6_SOCKET));
@@ -756,6 +765,7 @@ impl Sockets {
         let sockets = Self {
             socket_v4: Some(socket_v4),
             socket_v6: Some(socket_v6),
+            fake: true,
             ..Self::default()
         };
 
