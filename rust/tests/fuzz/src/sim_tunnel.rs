@@ -10,8 +10,8 @@ use snownet::Transmit;
 use socket_factory::{DatagramBatch, DatagramOut};
 use tun::{InboundTx, OutboundRx, PacketBatch};
 use tunnel::{
-    ClientEvent, ClientState, FakeDnsQueries, FakeDnsQuery, GatewayEvent, GatewayState,
-    SocketThreadEnds, Tunnel, TunnelError,
+    ClientEvent, ClientState, FakeTunnelEnds, GatewayEvent, GatewayState, ResolverQuery, Tunnel,
+    TunnelError, dns,
 };
 
 /// How many batches the TUN device's outbound channel holds.
@@ -22,12 +22,9 @@ const RECV_BATCH_SIZE: usize = 32;
 
 /// A tunnel and the OS around it: its TUN device and its sockets.
 ///
-/// Must be created and polled within a Tokio runtime context whose clock is paused.
 pub(crate) struct SimTunnel<R> {
     tunnel: Tunnel<R>,
-    socket_v4: SocketThreadEnds,
-    socket_v6: SocketThreadEnds,
-    dns_queries: FakeDnsQueries,
+    ends: FakeTunnelEnds,
     tun_reads: InboundTx,
     tun_writes: OutboundRx,
     /// The deadline the tunnel asked to be woken at.
@@ -45,16 +42,13 @@ pub(crate) struct SimTunnel<R> {
 
 impl<R: Role> SimTunnel<R> {
     pub(crate) fn new(state: R) -> Self {
-        let (mut tunnel, socket_v4, socket_v6) = Tunnel::fake(state);
-        let dns_queries = tunnel.fake_resolver();
+        let (mut tunnel, ends) = Tunnel::fake(state);
         let (tun, tun_reads, tun_writes) = tun::fake(TUN_CAPACITY);
         tunnel.set_tun(tun);
 
         Self {
             tunnel,
-            socket_v4,
-            socket_v6,
-            dns_queries,
+            ends,
             tun_reads,
             tun_writes,
             alarm: None,
@@ -95,8 +89,17 @@ impl<R: Role> SimTunnel<R> {
         self.written.pop_front()
     }
 
-    pub(crate) fn poll_dns_query(&mut self) -> Option<FakeDnsQuery> {
-        self.dns_queries.try_next()
+    /// Takes the next recursive DNS query the tunnel sent, ignoring its resolver configuration.
+    pub(crate) fn poll_dns_query(&mut self) -> Option<ResolverQuery> {
+        while self.ends.dns.try_recv_control().is_some() {}
+
+        self.ends.dns.try_recv_query()
+    }
+
+    pub(crate) fn respond(&mut self, response: dns::RecursiveResponse) {
+        if self.ends.dns.respond(response).is_err() {
+            tracing::debug!("Resolver channel is full; dropping DNS response");
+        }
     }
 
     /// The deadline the tunnel asked to be woken at when it last went idle.
@@ -172,8 +175,8 @@ impl<R: Role> SimTunnel<R> {
 
         while let Some(first) = self.unreceived.front() {
             let socket = match first.dst {
-                SocketAddr::V4(_) => &self.socket_v4,
-                SocketAddr::V6(_) => &self.socket_v6,
+                SocketAddr::V4(_) => &self.ends.socket_v4,
+                SocketAddr::V6(_) => &self.ends.socket_v6,
             };
             let local = first.dst;
             let len = self
@@ -203,8 +206,8 @@ impl<R: Role> SimTunnel<R> {
         let num_written = self.written.len();
 
         let mut datagrams = Vec::new();
-        self.socket_v4.take_sent(&mut datagrams);
-        self.socket_v6.take_sent(&mut datagrams);
+        self.ends.socket_v4.take_sent(&mut datagrams);
+        self.ends.socket_v6.take_sent(&mut datagrams);
         self.sent.extend(datagrams.into_iter().flat_map(segments));
 
         while let Ok(mut batch) = self.tun_writes.try_recv() {
@@ -218,23 +221,9 @@ impl<R: Role> SimTunnel<R> {
 impl SimTunnel<ClientState> {
     /// Shuts the tunnel down, returning the datagrams it sent on the way out.
     pub(crate) fn shut_down(mut self, now: Instant) -> impl Iterator<Item = Transmit> {
-        let mut cx = Context::from_waker(Waker::noop());
+        self.tunnel.state_mut().shut_down(now);
+        while self.poll_event(now).is_some() {}
 
-        if self
-            .tunnel
-            .shut_down(now)
-            .as_mut()
-            .poll(&mut cx)
-            .is_pending()
-        {
-            tracing::debug!("Tunnel did not flush on shut down");
-        }
-
-        let mut datagrams = Vec::new();
-        self.socket_v4.take_sent(&mut datagrams);
-        self.socket_v6.take_sent(&mut datagrams);
-
-        self.sent.extend(datagrams.into_iter().flat_map(segments));
         self.sent.into_iter()
     }
 }

@@ -3146,7 +3146,6 @@ dependencies = [
  "snownet",
  "socket-factory",
  "stun_codec",
- "tokio",
  "tracing",
  "tracing-subscriber",
  "tun",

@@ -53,8 +53,6 @@ pub struct TunnelTest {
     tcp_flows: BTreeMap<FlowId, ResolvedTcpFlow>,
     pub(crate) dns_nat_observations: Vec<DnsNatObservation>,
 
-    /// Provides the timers of the tunnels' I/O, on a clock that stands still.
-    runtime: tokio::runtime::Runtime,
 }
 
 #[derive(Clone, Copy)]
@@ -88,14 +86,6 @@ impl TunnelTest {
         portal: &mut StubPortal,
         flux_capacitor: FluxCapacitor,
     ) -> Self {
-        let runtime = tokio::runtime::Builder::new_current_thread()
-            .enable_time()
-            .start_paused(true)
-            .build()
-            .unwrap();
-        let handle = runtime.handle().clone();
-        let _guard = handle.enter();
-
         // Construct client, gateway and relay from the initial state.
         let mut clients = ref_state
             .clients
@@ -183,7 +173,6 @@ impl TunnelTest {
             udp_flows: Default::default(),
             tcp_flows: Default::default(),
             dns_nat_observations: Default::default(),
-            runtime,
         };
 
         let mut buffered_transmits = BufferedTransmits::default();
@@ -282,8 +271,6 @@ impl TunnelTest {
         ref_state: &ReferenceState,
         portal: &mut StubPortal,
     ) -> Self {
-        let handle = self.runtime.handle().clone();
-        let _guard = handle.enter();
         let mut buffered_transmits = BufferedTransmits::default();
         let now = self.flux_capacitor.now();
         let utc_now = self.flux_capacitor.now();
@@ -1034,20 +1021,37 @@ impl TunnelTest {
                 continue;
             }
 
-            let dns_query = self
-                .clients
-                .values_mut()
-                .find_map(|client| client.exec_mut(|c| c.tunnel.poll_dns_query()));
+            let dns_query = self.clients.iter_mut().find_map(|(client_id, client)| {
+                client
+                    .exec_mut(|c| c.tunnel.poll_dns_query())
+                    .map(|query| (*client_id, query))
+            });
 
-            if let Some(query) = dns_query {
+            if let Some((client_id, query)) = dns_query {
+                let server = query
+                    .server
+                    .expect("Clients always name the upstream server");
+
                 // DoH queries are always sent with an ID of 0, simulate that in the tests.
-                let message = match query.server {
+                let message = match server {
                     dns::Upstream::DoH { .. } => query.message.clone().with_id(0),
                     dns::Upstream::Do53 { .. } => query.message.clone(),
                 };
 
                 let response = self.on_recursive_dns_query(&message, &ref_state.global_dns_records);
-                query.respond(Ok(response)); // TODO: Vary this?
+                let client = self.clients.get_mut(&client_id).unwrap();
+                client.exec_mut(|c| {
+                    c.tunnel.respond(dns::RecursiveResponse {
+                        server,
+                        query: query.message,
+                        message: Ok(response), // TODO: Vary this?
+                        transport: query.transport,
+                        local: query.local,
+                        remote: query.remote,
+                        started_at: query.started_at,
+                        recursion: dns::Recursion::Local,
+                    })
+                });
 
                 continue;
             }
