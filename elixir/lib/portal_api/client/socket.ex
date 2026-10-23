@@ -504,11 +504,9 @@ defmodule PortalAPI.Client.Socket do
     #
     # The third element says whether this connect proved a device identity.
     def resolve_client(changeset, proof, subject) do
-      actor_id = Ecto.Changeset.get_field(changeset, :actor_id)
-
       if is_nil(proof) do
         firezone_id = Ecto.Changeset.get_field(changeset, :firezone_id)
-        resolve_unattested(changeset, actor_id, firezone_id, subject)
+        resolve_unattested(changeset, firezone_id, subject)
       else
         changeset
         |> put_proof_changes(proof)
@@ -588,8 +586,8 @@ defmodule PortalAPI.Client.Socket do
     defp contradicts?(_row_value, nil, :mdm_device_id), do: false
     defp contradicts?(row_value, cert_value, :mdm_device_id), do: row_value != cert_value
 
-    defp resolve_unattested(changeset, actor_id, firezone_id, subject) do
-      if client = find_by_firezone_id(actor_id, firezone_id, subject) do
+    defp resolve_unattested(changeset, firezone_id, subject) do
+      if client = find_by_firezone_id(firezone_id, subject) do
         {:ok, merge_hardware_ids(client, changeset), false}
       else
         with {:ok, client} <- insert_with_slug(changeset, subject) do
@@ -661,11 +659,12 @@ defmodule PortalAPI.Client.Socket do
       |> Map.put(:last_attested_at, DateTime.utc_now())
     end
 
-    defp find_by_firezone_id(_actor_id, nil, _subject), do: nil
+    # The machine is found by its firezone_id alone: whoever signs in on it
+    # gets the same row, and device_actors records that they did.
+    defp find_by_firezone_id(nil, _subject), do: nil
 
-    defp find_by_firezone_id(actor_id, firezone_id, subject) do
+    defp find_by_firezone_id(firezone_id, subject) do
       from(d in Device,
-        where: d.actor_id == ^actor_id,
         where: d.firezone_id == ^firezone_id,
         where: d.type == :client
       )

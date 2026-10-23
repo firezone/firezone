@@ -156,24 +156,24 @@ defmodule PortalAPI.ClientControllerTest do
       refute data["id"] == other.id
     end
 
-    test "does not match a Gateway sharing a firezone_id", %{
+    test "does not match a Gateway by firezone_id", %{
       conn: conn,
       actor: actor,
       account: account
     } do
+      # A firezone_id names one machine in the account, so a gateway's can no
+      # longer be shared with a client; the clients index still ignores it.
       site = Portal.SiteFixtures.site_fixture(account: account)
-      gateway = gateway_fixture(account: account, site: site, firezone_id: "shared_fz_id")
-      client = client_fixture(account: account, firezone_id: "shared_fz_id")
+      _gateway = gateway_fixture(account: account, site: site, firezone_id: "gateway_fz_id")
+      _client = client_fixture(account: account, firezone_id: "client_fz_id")
 
       conn =
         conn
         |> authorize_conn(actor)
         |> put_req_header("content-type", "application/json")
-        |> get(~p"/clients", firezone_id: "shared_fz_id")
+        |> get(~p"/clients", firezone_id: "gateway_fz_id")
 
-      assert %{"data" => [data], "metadata" => %{"count" => 1}} = json_response(conn, 200)
-      assert data["id"] == client.id
-      refute data["id"] == gateway.id
+      assert %{"data" => [], "metadata" => %{"count" => 0}} = json_response(conn, 200)
     end
 
     test "filters by actor_id", %{conn: conn, actor: actor, account: account} do
