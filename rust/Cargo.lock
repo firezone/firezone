@@ -3096,6 +3096,7 @@ dependencies = [
  "rand 0.10.3",
  "relay-proto",
  "secrecy",
+ "seeded-rng",
  "serde_json",
  "sha2 0.11.1",
  "smallvec",
@@ -6798,6 +6799,14 @@ checksum = "cc1f0cbffaac4852523ce30d8bd3c5cdc873501d96ff467ca09b6767bb8cd5c0"
 dependencies = [
  "core-foundation-sys",
  "libc",
+]
+
+[[package]]
+name = "seeded-rng"
+version = "0.1.0"
+dependencies = [
+ "fastrand",
+ "rand 0.10.3",
 ]
 
 [[package]]
