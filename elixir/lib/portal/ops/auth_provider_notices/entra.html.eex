@@ -1,0 +1,19 @@
+<h1 class="sm-leading-8" style="margin: 0 0 24px; font-size: 24px; font-weight: 600; color: #000000">Action required: Entra sign-in</h1>
+<p style="margin: 0; line-height: 24px">Hi <%= @notice.name %> admins,</p>
+<p style="margin: 16px 0 0; line-height: 24px"><strong>Effective immediately</strong>, Firezone checks that Microsoft Entra sign-ins come from a tenant verified on the authentication provider being used. Users from an unlisted tenant cannot sign in until that tenant is verified.</p>
+<p style="margin: 16px 0 0; line-height: 24px">We found stored Entra identities in your Firezone account <strong><%= @notice.slug %></strong> from tenants that are not currently verified on an enabled Entra provider. To support continued authentication, review the tenant IDs below and verify each tenant whose users should keep access.</p>
+<h2 style="margin: 24px 0 16px; font-size: 18px; font-weight: 600; color: #000000">Additional tenants to verify</h2>
+<p style="margin: 0 0 16px; line-height: 24px">Verify these tenants on your existing provider. The domain labels come from email addresses on stored identities, not verified tenant names.</p>
+<ul style="margin: 0; padding-left: 20px">
+<%= for tenant <- @notice.tenants do %>
+  <li style="margin: 0 0 16px; line-height: 24px"><strong><%= Enum.join(tenant.domains, ", ") %></strong><br><code style="font-size: 12px; background-color: #f3f4f6; padding: 4px 6px; border-radius: 3px; overflow-wrap: anywhere; word-break: break-all"><%= tenant.id %></code></li>
+<% end %>
+</ul>
+<h2 style="margin: 24px 0 16px; font-size: 18px; font-weight: 600; color: #000000">What to do</h2>
+<ol style="margin: 0; padding-left: 20px; line-height: 24px">
+  <li style="margin-bottom: 12px">Open <a href="<%= @settings_url %>" style="color: #5e00d6; text-decoration: none">Settings &rarr; Authentication</a> in your Firezone account.</li>
+  <li style="margin-bottom: 12px">Edit your existing <strong>Entra</strong> provider. Under <strong>Verified tenants</strong>, click <strong>Verify another tenant</strong>.</li>
+  <li style="margin-bottom: 12px">Sign in with an account from the additional tenant that has the <strong>Global Administrator</strong> or <strong>Privileged Role Administrator</strong> role, and complete verification. Check that the new row shows the intended tenant ID above.</li>
+  <li>Repeat for each additional tenant that needs access, then click <strong>Save</strong>. Users from all verified tenants can continue using the same sign-in option.</li>
+</ol>
+<p style="margin: 16px 0 0; line-height: 24px">See the <a href="https://www.firezone.dev/kb/authenticate/entra" style="color: #5e00d6; text-decoration: none">Entra authentication guide</a> for details. If you need help, contact <a href="mailto:support@firezone.dev" style="color: #5e00d6; text-decoration: none">support@firezone.dev</a> or reach out in your support channel.</p>
