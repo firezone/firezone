@@ -326,7 +326,10 @@ fn read_systemd_credential(name: &str) -> Result<Option<SecretString>> {
     };
     let path = PathBuf::from(dir).join(name);
 
+    // The unit loads the token file whether or not one was installed; an empty
+    // file is the daemon without a token.
     match std::fs::read_to_string(&path) {
+        Ok(content) if content.trim().is_empty() => Ok(None),
         Ok(content) => Ok(Some(SecretString::from(content.trim().to_owned()))),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
         Err(e) => Err(e).with_context(|| format!("Failed to read credential `{}`", path.display())),
