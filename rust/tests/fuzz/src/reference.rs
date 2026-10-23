@@ -296,7 +296,21 @@ impl ReferenceState {
                     flow.clone()
                 };
 
-                match self.record_icmp_probe(portal, *probe_id, &flow, *seq, now) {
+                let request = ProbeRequest::Icmp {
+                    src: flow.src,
+                    dst: flow.dst,
+                    seq: *seq,
+                    identifier: flow.identifier,
+                };
+
+                match self.record_flow_probe(
+                    portal,
+                    *probe_id,
+                    flow.client_id,
+                    flow.route,
+                    request,
+                    now,
+                ) {
                     ExpectedOutcome::RoundTripCompleted { .. } => {}
                     ExpectedOutcome::Dropped => {
                         panic!("reused ICMP route must complete a round trip")
@@ -356,7 +370,21 @@ impl ReferenceState {
                     .expect("reused UDP flow must exist")
                     .clone();
 
-                match self.record_udp_probe(portal, *probe_id, &flow, now) {
+                let request = ProbeRequest::Udp {
+                    src: flow.src,
+                    dst: flow.dst,
+                    sport: flow.sport,
+                    dport: flow.dport,
+                };
+
+                match self.record_flow_probe(
+                    portal,
+                    *probe_id,
+                    flow.client_id,
+                    flow.route,
+                    request,
+                    now,
+                ) {
                     ExpectedOutcome::RoundTripCompleted { .. } => {}
                     ExpectedOutcome::Dropped => {
                         panic!("reused UDP route must complete a round trip")
@@ -724,41 +752,8 @@ impl ReferenceState {
         }
     }
 
-    fn record_icmp_probe(
-        &mut self,
-        portal: &StubPortal,
-        id: ProbeId,
-        flow: &IcmpFlow,
-        seq: Seq,
-        sent_at: Instant,
-    ) -> ExpectedOutcome {
-        let request = ProbeRequest::Icmp {
-            src: flow.src,
-            dst: flow.dst.clone(),
-            seq,
-            identifier: flow.identifier,
-        };
-
-        self.record_flow_probe(portal, id, flow.client_id, flow.route, request, sent_at)
-    }
-
-    fn record_udp_probe(
-        &mut self,
-        portal: &StubPortal,
-        id: ProbeId,
-        flow: &UdpFlow,
-        sent_at: Instant,
-    ) -> ExpectedOutcome {
-        let request = ProbeRequest::Udp {
-            src: flow.src,
-            dst: flow.dst.clone(),
-            sport: flow.sport,
-            dport: flow.dport,
-        };
-
-        self.record_flow_probe(portal, id, flow.client_id, flow.route, request, sent_at)
-    }
-
+    /// Follows a packet on a flow the client keeps sending on, bound to the route it took
+    /// when it was created.
     fn record_flow_probe(
         &mut self,
         portal: &StubPortal,
@@ -768,16 +763,33 @@ impl ReferenceState {
         request: ProbeRequest,
         sent_at: Instant,
     ) -> ExpectedOutcome {
-        let verdict = self.flow_verdict(
-            portal,
-            origin,
-            route,
-            request.source(),
-            request.destination(),
-            request.protocol(),
-        );
-        let outcome = verdict.outcome;
-        self.apply_verdict(origin, request.destination(), verdict);
+        let (outcome, authorization) = match route {
+            Route::Resource { resource, gateway } => self.resource_verdict(
+                portal,
+                origin,
+                resource,
+                gateway,
+                request.source(),
+                request.destination(),
+                request.protocol(),
+            ),
+            Route::Gateway(_) => (ExpectedOutcome::RoundTripCompleted(route), None),
+            // A retained flow completes its round trip; asking the portal again only refreshes
+            // the authorization a peer that reconnected since took from us.
+            Route::Peer(peer) => {
+                let authorization =
+                    match self.pool_towards_peer(portal, origin, peer, request.protocol()) {
+                        Ok(PoolTowardsPeer::Granted(pool)) => {
+                            Some(Authorization::Peer { peer, pool })
+                        }
+                        Ok(PoolTowardsPeer::Held(_)) => None,
+                        Err(_) => None,
+                    };
+
+                (ExpectedOutcome::RoundTripCompleted(route), authorization)
+            }
+        };
+        self.record_authorization(origin, request.destination(), authorization);
         self.clients
             .get_mut(&origin)
             .unwrap()
@@ -855,9 +867,8 @@ impl ReferenceState {
         dst: &Destination,
         protocol: Protocol,
     ) -> ExpectedOutcome {
-        let verdict = self.verdict(portal, origin, src, dst, protocol);
-        let outcome = verdict.outcome;
-        self.apply_verdict(origin, dst, verdict);
+        let (outcome, authorization) = self.verdict(portal, origin, src, dst, protocol);
+        self.record_authorization(origin, dst, authorization);
 
         outcome
     }
@@ -871,17 +882,17 @@ impl ReferenceState {
         src: IpAddr,
         dst: &Destination,
         protocol: Protocol,
-    ) -> Verdict {
+    ) -> (ExpectedOutcome, Option<Authorization>) {
         let client = self.clients[&origin].inner();
 
         if dst.ip_addr().is_some_and(|ip| ip.is_multicast()) {
-            return Verdict::of(ExpectedOutcome::Dropped);
+            return (ExpectedOutcome::Dropped, None);
         }
         if dst
             .ip_addr()
             .is_some_and(|ip| client.tunnel_ip_for(ip) == ip)
         {
-            return Verdict::of(ExpectedOutcome::Dropped);
+            return (ExpectedOutcome::Dropped, None);
         }
         if let Some(ip) = dst.ip_addr().filter(|ip| tunnel_proto::is_peer(*ip)) {
             let connected_gateway = portal.gateway_by_ip(ip).filter(|gateway| {
@@ -890,61 +901,34 @@ impl ReferenceState {
                     .any(|resource| client.gateway_for_resource(resource) == Some(*gateway))
             });
             if let Some(gateway) = connected_gateway {
-                return Verdict::of(ExpectedOutcome::RoundTripCompleted(Route::Gateway(gateway)));
+                return (
+                    ExpectedOutcome::RoundTripCompleted(Route::Gateway(gateway)),
+                    None,
+                );
             }
 
             return self.peer_verdict(portal, origin, ip, protocol);
         }
 
         let Some(resource) = client.resource_by_dst(src, dst, protocol) else {
-            return Verdict::of(ExpectedOutcome::Dropped);
+            return (ExpectedOutcome::Dropped, None);
         };
         if !client.strict_resource_filter_allows(resource, protocol)
             && !client.malicious_behaviour.ignore_resource_filters
         {
-            return Verdict::of(ExpectedOutcome::Rejected {
-                by: RejectionRemote::Local,
-                response: RejectionResponse::Prohibited,
-            });
+            return (
+                ExpectedOutcome::Rejected {
+                    by: RejectionRemote::Local,
+                    response: RejectionResponse::Prohibited,
+                },
+                None,
+            );
         }
         let Some(gateway) = self.select_gateway(portal, origin, resource) else {
-            return Verdict::of(ExpectedOutcome::Dropped);
+            return (ExpectedOutcome::Dropped, None);
         };
 
         self.resource_verdict(portal, origin, resource, gateway, src, dst, protocol)
-    }
-
-    /// Follows a packet on a flow the client keeps sending on, bound to the route it took
-    /// when it was created.
-    fn flow_verdict(
-        &self,
-        portal: &StubPortal,
-        origin: ClientId,
-        route: Route,
-        src: IpAddr,
-        dst: &Destination,
-        protocol: Protocol,
-    ) -> Verdict {
-        match route {
-            Route::Resource { resource, gateway } => {
-                self.resource_verdict(portal, origin, resource, gateway, src, dst, protocol)
-            }
-            Route::Gateway(_) => Verdict::of(ExpectedOutcome::RoundTripCompleted(route)),
-            // A retained flow completes its round trip; asking the portal again only refreshes
-            // the authorization a peer that reconnected since took from us.
-            Route::Peer(peer) => {
-                let authorization = match self.pool_towards_peer(portal, origin, peer, protocol) {
-                    Ok(PoolTowardsPeer::Granted(pool)) => Some(Authorization::Peer { peer, pool }),
-                    Ok(PoolTowardsPeer::Held(_)) => None,
-                    Err(_) => None,
-                };
-
-                Verdict {
-                    outcome: ExpectedOutcome::RoundTripCompleted(route),
-                    authorization,
-                }
-            }
-        }
     }
 
     /// Whether `origin` reaches the peer client at `ip`, which takes an authorization on both
@@ -955,7 +939,7 @@ impl ReferenceState {
         origin: ClientId,
         ip: IpAddr,
         protocol: Protocol,
-    ) -> Verdict {
+    ) -> (ExpectedOutcome, Option<Authorization>) {
         let client = self.clients[&origin].inner();
 
         // The portal answers a request for a tunnel IP that no client holds with "not
@@ -964,18 +948,21 @@ impl ReferenceState {
         // at all without a pool.
         let Some(peer) = self.client_ip_to_id().get(&ip).copied() else {
             if client.device_pool_ids().is_empty() {
-                return Verdict::of(ExpectedOutcome::Dropped);
+                return (ExpectedOutcome::Dropped, None);
             }
 
-            return Verdict::of(ExpectedOutcome::Rejected {
-                by: RejectionRemote::Local,
-                response: RejectionResponse::Prohibited,
-            });
+            return (
+                ExpectedOutcome::Rejected {
+                    by: RejectionRemote::Local,
+                    response: RejectionResponse::Prohibited,
+                },
+                None,
+            );
         };
         let (pool, granted) = match self.pool_towards_peer(portal, origin, peer, protocol) {
             Ok(PoolTowardsPeer::Held(pool)) => (pool, false),
             Ok(PoolTowardsPeer::Granted(pool)) => (pool, true),
-            Err(outcome) => return Verdict::of(outcome),
+            Err(outcome) => return (outcome, None),
         };
         let authorization = Authorization::Peer { peer, pool };
 
@@ -985,10 +972,10 @@ impl ReferenceState {
         let inbound_allows = receiver.inbound_peer_filter_allows(origin, protocol)
             || (granted && receiver.strict_resource_filter_allows(pool, protocol));
         if inbound_allows {
-            return Verdict {
-                outcome: ExpectedOutcome::RoundTripCompleted(Route::Peer(peer)),
-                authorization: granted.then_some(authorization),
-            };
+            return (
+                ExpectedOutcome::RoundTripCompleted(Route::Peer(peer)),
+                granted.then_some(authorization),
+            );
         }
 
         let no_authorization = !receiver.has_inbound_peer_authorization(origin)
@@ -996,13 +983,13 @@ impl ReferenceState {
         let requests_authorization = granted
             || (no_authorization && !client.malicious_behaviour.ignore_no_authorization_events);
 
-        Verdict {
-            outcome: ExpectedOutcome::Rejected {
+        (
+            ExpectedOutcome::Rejected {
                 by: RejectionRemote::Client(peer),
                 response: RejectionResponse::Prohibited,
             },
-            authorization: requests_authorization.then_some(authorization),
-        }
+            requests_authorization.then_some(authorization),
+        )
     }
 
     /// The Gateway's verdict for a packet to `resource` through `gateway`, which the client
@@ -1016,7 +1003,7 @@ impl ReferenceState {
         src: IpAddr,
         dst: &Destination,
         protocol: Protocol,
-    ) -> Verdict {
+    ) -> (ExpectedOutcome, Option<Authorization>) {
         let resolutions = match dst {
             Destination::DomainName { .. } => {
                 let resolver = self.gateways[&gateway].inner();
@@ -1051,19 +1038,23 @@ impl ReferenceState {
             None => ExpectedOutcome::RoundTripCompleted(Route::Resource { resource, gateway }),
         };
 
-        Verdict {
-            outcome,
-            authorization: Some(Authorization::Resource {
-                resource,
-                gateway,
-                resolutions,
-            }),
-        }
+        let authorization = Authorization::Resource {
+            resource,
+            gateway,
+            resolutions,
+        };
+
+        (outcome, Some(authorization))
     }
 
-    /// Records the authorization `verdict` leaves `origin` holding for its packet to `dst`.
-    fn apply_verdict(&mut self, origin: ClientId, dst: &Destination, verdict: Verdict) {
-        match verdict.authorization {
+    /// Records the authorization `origin` holds after its packet to `dst`.
+    fn record_authorization(
+        &mut self,
+        origin: ClientId,
+        dst: &Destination,
+        authorization: Option<Authorization>,
+    ) {
+        match authorization {
             Some(Authorization::Resource {
                 resource,
                 gateway,
@@ -1747,23 +1738,6 @@ impl ReferenceState {
             self.relays.insert(*rid, new_relay.clone());
             let added = self.network.add_host(*rid, new_relay);
             debug_assert!(added);
-        }
-    }
-}
-
-/// What a packet leads to, and the authorization its sender holds afterwards.
-#[derive(Debug)]
-struct Verdict {
-    outcome: ExpectedOutcome,
-    authorization: Option<Authorization>,
-}
-
-impl Verdict {
-    /// A verdict that leaves the state as it is.
-    fn of(outcome: ExpectedOutcome) -> Self {
-        Self {
-            outcome,
-            authorization: None,
         }
     }
 }
