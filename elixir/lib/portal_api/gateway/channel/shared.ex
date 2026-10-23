@@ -135,7 +135,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
     {:ok, relays} = select_relays(socket)
     :ok = Presence.Relays.subscribe()
 
-    account = Database.get_account_by_id!(socket.assigns.gateway.account_id)
+    account = Database.fetch_account!(socket.assigns.subject)
 
     socket = assign(socket, :account, account)
 
@@ -834,7 +834,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
   defp reinitialize_gateway(socket) do
     {:ok, relays} = select_relays(socket)
     socket = cache_relays(socket, relays)
-    account = Database.get_account_by_id!(socket.assigns.gateway.account_id)
+    account = Database.fetch_account!(socket.assigns.subject)
 
     init(socket, account, relays)
     socket
@@ -1206,9 +1206,11 @@ defmodule PortalAPI.Gateway.Channel.Shared do
     alias Portal.Safe
     alias Portal.Account
 
-    def get_account_by_id!(id) do
-      from(a in Account, where: a.id == ^id)
-      |> Safe.unscoped()
+    # Re-read rather than taken from the subject: the account's slug and
+    # config can change while the gateway stays connected.
+    def fetch_account!(subject) do
+      from(a in Account, where: a.id == ^subject.account.id)
+      |> Safe.scoped(subject)
       |> Safe.one!()
     end
   end

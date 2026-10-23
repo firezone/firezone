@@ -59,10 +59,10 @@ defmodule PortalAPI.Gateway.Socket do
     with {:ok, gateway_token} <- Authentication.verify_gateway_token(encoded_token),
          {:ok, subject} <- build_subject(gateway_token, context),
          {:ok, public_key} <- validate_public_key(attrs),
-         {:ok, site, gateway} <- resolve_gateway(gateway_token, attrs),
+         {:ok, site, gateway} <- resolve_gateway(gateway_token, attrs, subject),
          :ok <- ensure_gateway_not_connected(gateway),
-         {:ok, gateway} <- put_reported_metadata(gateway, attrs),
-         {:ok, gateway} <- maybe_put_firezone_id(gateway, attrs) do
+         {:ok, gateway} <- put_reported_metadata(gateway, attrs, subject),
+         {:ok, gateway} <- maybe_put_firezone_id(gateway, attrs, subject) do
       version = derive_version(context.user_agent)
       {context, version} = PortalAPI.Sockets.truncate_session_fields(context, version)
       gateway = apply_session(gateway, gateway_token.id, public_key, context, version)
@@ -128,20 +128,19 @@ defmodule PortalAPI.Gateway.Socket do
 
   # Multi-owner (site) token: gateways are identified by their reported
   # firezone_id and created on the fly
-  defp resolve_gateway(%Portal.ClientToken{device_id: nil} = gateway_token, attrs) do
-    with {:ok, site} <- Database.fetch_site(gateway_token.account_id, gateway_token.site_id),
+  defp resolve_gateway(%Portal.ClientToken{device_id: nil} = gateway_token, attrs, subject) do
+    with {:ok, site} <- Database.fetch_site(gateway_token.site_id, subject),
          changeset = insert_changeset(site, attrs),
          {:ok, _} <- apply_action(changeset, :validate),
-         {:ok, gateway} <- Database.find_or_create_gateway(changeset) do
+         {:ok, gateway} <- Database.find_or_create_gateway(changeset, subject) do
       {:ok, site, gateway}
     end
   end
 
   # Single-owner token: the token identifies the gateway directly; the
   # reported firezone_id is kept in sync as a telemetry hint
-  defp resolve_gateway(%Portal.ClientToken{} = gateway_token, _attrs) do
-    with {:ok, gateway} <-
-           Database.fetch_gateway(gateway_token.account_id, gateway_token.device_id) do
+  defp resolve_gateway(%Portal.ClientToken{} = gateway_token, _attrs, subject) do
+    with {:ok, gateway} <- Database.fetch_gateway(gateway_token.device_id, subject) do
       {:ok, gateway.site, gateway}
     end
   end
@@ -149,7 +148,7 @@ defmodule PortalAPI.Gateway.Socket do
   # Hardware metadata is self-reported on every connection. Only fields present
   # in the socket params are cast, so an older gateway that omits a field keeps
   # the value already stored on its device row.
-  defp put_reported_metadata(%Device{} = gateway, attrs) do
+  defp put_reported_metadata(%Device{} = gateway, attrs, subject) do
     changeset =
       gateway
       |> cast(attrs, @reported_metadata_fields)
@@ -158,20 +157,22 @@ defmodule PortalAPI.Gateway.Socket do
     if changeset.changes == %{} do
       {:ok, gateway}
     else
-      Database.update_gateway(changeset)
+      Database.update_gateway(changeset, subject)
     end
   end
 
   # Identity comes from the token, so the stored firezone_id is only a
   # telemetry hint: keep it in sync with whatever the gateway currently
   # reports (a rebuilt host generates a fresh one)
-  defp maybe_put_firezone_id(%Device{firezone_id: reported} = gateway, %{
-         "firezone_id" => reported
-       }) do
+  defp maybe_put_firezone_id(
+         %Device{firezone_id: reported} = gateway,
+         %{"firezone_id" => reported},
+         _subject
+       ) do
     {:ok, gateway}
   end
 
-  defp maybe_put_firezone_id(%Device{} = gateway, %{"firezone_id" => reported})
+  defp maybe_put_firezone_id(%Device{} = gateway, %{"firezone_id" => reported}, subject)
        when is_binary(reported) and reported != "" do
     changeset =
       gateway
@@ -179,7 +180,7 @@ defmodule PortalAPI.Gateway.Socket do
       |> Device.changeset()
       |> unique_constraint(:firezone_id, name: :devices_account_id_site_id_firezone_id_index)
 
-    case Database.update_gateway(changeset) do
+    case Database.update_gateway(changeset, subject) do
       {:ok, gateway} ->
         {:ok, gateway}
 
@@ -193,7 +194,7 @@ defmodule PortalAPI.Gateway.Socket do
     end
   end
 
-  defp maybe_put_firezone_id(%Device{} = gateway, _attrs), do: {:ok, gateway}
+  defp maybe_put_firezone_id(%Device{} = gateway, _attrs, _subject), do: {:ok, gateway}
 
   defp insert_changeset(site, attrs) do
     insert_fields = [:firezone_id, :name | @reported_metadata_fields]
@@ -398,70 +399,71 @@ defmodule PortalAPI.Gateway.Socket do
     # Connect hot path: the site rides along in the same query. Gateways
     # always have a site (device_type_gateway_fields check constraint), so
     # the inner join cannot drop rows.
-    def fetch_gateway(account_id, id) do
+    def fetch_gateway(id, subject) do
       result =
         from(d in Device,
-          where: d.account_id == ^account_id,
           where: d.id == ^id,
           where: d.type == :gateway,
           join: s in assoc(d, :site),
           on: s.account_id == d.account_id,
           preload: [site: s]
         )
-        |> Safe.unscoped()
+        |> Safe.scoped(subject)
         |> Safe.one()
 
       case result do
         nil -> {:error, :not_found}
+        {:error, :unauthorized} -> {:error, :unauthorized}
         gateway -> {:ok, gateway}
       end
     end
 
-    def update_gateway(changeset) do
+    def update_gateway(changeset, subject) do
       changeset
-      |> Safe.unscoped()
+      |> Safe.scoped(subject)
       |> Safe.update()
     end
 
-    def fetch_site(account_id, id) do
+    def fetch_site(id, subject) do
       result =
-        from(s in Site,
-          where: s.account_id == ^account_id,
-          where: s.id == ^id
-        )
-        |> Safe.unscoped()
+        from(s in Site, where: s.id == ^id)
+        |> Safe.scoped(subject)
         |> Safe.one()
 
       case result do
         nil -> {:error, :not_found}
+        {:error, :unauthorized} -> {:error, :unauthorized}
         site -> {:ok, site}
       end
     end
 
-    @dialyzer {:no_opaque, [find_or_create_gateway: 1]}
-    def find_or_create_gateway(changeset) do
-      account_id = Ecto.Changeset.get_field(changeset, :account_id)
+    @dialyzer {:no_opaque, [find_or_create_gateway: 2]}
+    def find_or_create_gateway(changeset, subject) do
       site_id = Ecto.Changeset.get_field(changeset, :site_id)
       firezone_id = Ecto.Changeset.get_field(changeset, :firezone_id)
 
       existing =
         if firezone_id do
           from(d in Device,
-            where: d.account_id == ^account_id,
             where: d.site_id == ^site_id,
             where: d.firezone_id == ^firezone_id,
             where: d.type == :gateway
           )
-          |> Safe.unscoped()
+          |> Safe.scoped(subject)
           |> Safe.one()
         end
 
-      if existing do
-        {:ok, existing}
-      else
-        changeset
-        |> Safe.unscoped()
-        |> Safe.insert()
+      case existing do
+        %Device{} = gateway ->
+          {:ok, gateway}
+
+        {:error, :unauthorized} ->
+          {:error, :unauthorized}
+
+        nil ->
+          changeset
+          |> Safe.scoped(subject)
+          |> Safe.insert()
       end
     end
   end
