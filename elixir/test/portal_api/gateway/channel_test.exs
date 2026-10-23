@@ -465,7 +465,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
 
       :sys.replace_state(socket.channel_pid, fn state ->
         cache =
-          Cache.Gateway.put(
+          Cache.Inbound.put(
             state.assigns.cache,
             pa_id,
             client.id,
@@ -640,7 +640,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
 
       :sys.replace_state(socket.channel_pid, fn state ->
         cache =
-          Cache.Gateway.put(
+          Cache.Inbound.put(
             state.assigns.cache,
             pa_id,
             client.id,
@@ -696,13 +696,13 @@ defmodule PortalAPI.Gateway.ChannelTest do
       :sys.replace_state(socket.channel_pid, fn state ->
         cache =
           state.assigns.cache
-          |> Cache.Gateway.put(
+          |> Cache.Inbound.put(
             old_pa_id,
             client.id,
             resource.id,
             expires_at
           )
-          |> Cache.Gateway.put(
+          |> Cache.Inbound.put(
             current_pa_id,
             client.id,
             resource.id,
@@ -748,7 +748,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
 
       :sys.replace_state(socket.channel_pid, fn state ->
         cache =
-          Cache.Gateway.put(
+          Cache.Inbound.put(
             state.assigns.cache,
             pa_id,
             client.id,
@@ -935,7 +935,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
 
       :sys.replace_state(socket.channel_pid, fn state ->
         cache =
-          Cache.Gateway.put(
+          Cache.Inbound.put(
             state.assigns.cache,
             pa.id,
             client.id,
@@ -982,7 +982,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
 
       :sys.replace_state(socket.channel_pid, fn state ->
         cache =
-          Cache.Gateway.put(
+          Cache.Inbound.put(
             state.assigns.cache,
             pa.id,
             client.id,
@@ -1046,7 +1046,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
 
       :sys.replace_state(socket.channel_pid, fn state ->
         cache =
-          Cache.Gateway.put(
+          Cache.Inbound.put(
             state.assigns.cache,
             pa.id,
             client.id,

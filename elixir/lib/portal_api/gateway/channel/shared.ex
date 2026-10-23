@@ -110,7 +110,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
     # Initialize the cache
     socket =
       assign(socket,
-        cache: Cache.Gateway.hydrate(socket.assigns.gateway),
+        cache: Cache.Inbound.hydrate(socket.assigns.gateway),
         iceless_capable: false
       )
 
@@ -147,7 +147,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
 
   def handle_info(:prune_cache, socket) do
     Process.send_after(self(), :prune_cache, @prune_cache_every)
-    {:noreply, assign(socket, cache: Cache.Gateway.prune(socket.assigns.cache))}
+    {:noreply, assign(socket, cache: Cache.Inbound.prune(socket.assigns.cache))}
   end
 
   ####################################
@@ -256,7 +256,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
 
     cache =
       socket.assigns.cache
-      |> Cache.Gateway.put(
+      |> Cache.Inbound.put(
         policy_authorization_id,
         client.id,
         resource.id,
@@ -308,7 +308,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
 
         cache =
           socket.assigns.cache
-          |> Cache.Gateway.put(
+          |> Cache.Inbound.put(
             policy_authorization_id,
             client_id,
             resource.id,
@@ -355,7 +355,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
 
         cache =
           socket.assigns.cache
-          |> Cache.Gateway.put(
+          |> Cache.Inbound.put(
             policy_authorization_id,
             client.id,
             resource.id,
@@ -683,7 +683,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
   defp init(socket, account, relays) do
     push(socket, "init", %{
       flow_logs: flow_logs_config(),
-      authorizations: Views.PolicyAuthorization.render_many(socket.assigns.cache),
+      authorizations: PortalAPI.Device.Views.Authorization.render_many(socket.assigns.cache),
       account_slug: account.slug,
       interface: Views.Interface.render(socket.assigns.gateway),
       relays: Relays.render(relays, relay_peer(socket)),
@@ -815,7 +815,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
        when old_address != address or
               old_ip_stack != ip_stack or
               old_type != type do
-    for {client_id, resource_id} <- Cache.Gateway.all_pairs_for_resource(socket.assigns.cache, id) do
+    for {client_id, resource_id} <- Cache.Inbound.all_pairs_for_resource(socket.assigns.cache, id) do
       # Send reject_access to the gateway to reset state. Clients will need to reauthorize the resource.
       push(socket, "reject_access", %{client_id: client_id, resource_id: resource_id})
     end
@@ -862,7 +862,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
          initiating_device_id: client_id,
          resource_id: resource_id
        }) do
-    case Cache.Gateway.delete(socket.assigns.cache, id, client_id, resource_id) do
+    case Cache.Inbound.delete(socket.assigns.cache, id, client_id, resource_id) do
       {:ok, expires_at_unix, cache} ->
         now_unix = DateTime.utc_now() |> DateTime.to_unix(:second)
 

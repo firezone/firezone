@@ -124,7 +124,7 @@ defmodule PortalAPI.Client.Channel.Shared do
     # Hydrate inbound policy_authorizations cache so the channel can react to filter
     # changes and policy_authorization deletions for resources another client has been
     # authorized to access via this one.
-    authorizations_cache = Cache.Client.Authorizations.hydrate(socket.assigns.client)
+    authorizations_cache = Cache.Inbound.hydrate(socket.assigns.client)
 
     # Initialize relays and subscribe to global relay presence
     {socket, relays} = Relays.subscribe_and_select(socket, relay_peer(socket))
@@ -216,7 +216,7 @@ defmodule PortalAPI.Client.Channel.Shared do
      assign(
        socket,
        authorizations_cache:
-         Cache.Client.Authorizations.prune(socket.assigns.authorizations_cache)
+         Cache.Inbound.prune(socket.assigns.authorizations_cache)
      )}
   end
 
@@ -1995,7 +1995,7 @@ defmodule PortalAPI.Client.Channel.Shared do
       account_slug: socket.assigns.subject.account.slug,
       actor_name: socket.assigns.subject.actor.name,
       resources: Views.Resource.render_many(resources, socket.assigns.client, protocol_version(socket)),
-      authorizations: Views.PolicyAuthorization.render_many(socket.assigns.authorizations_cache),
+      authorizations: PortalAPI.Device.Views.Authorization.render_many(socket.assigns.authorizations_cache),
       relays: Relays.render(relays, relay_peer(socket)),
       interface:
         Views.Interface.render(%{
@@ -2504,7 +2504,7 @@ defmodule PortalAPI.Client.Channel.Shared do
          initiating_device_id: initiating_client_id,
          resource_id: resource_id
        }) do
-    case Cache.Client.Authorizations.delete(
+    case Cache.Inbound.delete(
            socket.assigns.authorizations_cache,
            id,
            initiating_client_id,
@@ -2613,7 +2613,7 @@ defmodule PortalAPI.Client.Channel.Shared do
          %DateTime{} = expires_at
        )
        when not is_nil(client_id) and not is_nil(pa_id) do
-    Cache.Client.Authorizations.put(cache, pa_id, client_id, resource_id, expires_at)
+    Cache.Inbound.put(cache, pa_id, client_id, resource_id, expires_at)
   end
 
   defp maybe_put_authorization(cache, _client_id, _resource, _pa_id, _expires_at),
@@ -2622,7 +2622,7 @@ defmodule PortalAPI.Client.Channel.Shared do
   defp maybe_push_resource_filters_updated(_socket, _resource, filters, filters), do: :ok
 
   defp maybe_push_resource_filters_updated(socket, resource, _old_filters, _filters) do
-    if Cache.Client.Authorizations.has_resource?(socket.assigns.authorizations_cache, resource.id) do
+    if Cache.Inbound.has_resource?(socket.assigns.authorizations_cache, resource.id) do
       cacheable = Cache.Cacheable.to_cache(resource)
       push(socket, "resource_filters_updated", Views.Resource.render_authorization(cacheable))
     end
