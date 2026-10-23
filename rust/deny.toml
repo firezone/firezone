@@ -111,9 +111,6 @@ ignore = [
     # `basic-toml` only parses askama's config at build time, via `uniffi_bindgen`.
     "RUSTSEC-2026-0374",
 
-    # `webpki-roots` 0.26 is a shim over the patched 1.x; `tokio-tungstenite` (via `axum`) still depends on it.
-    "RUSTSEC-2026-0381",
-
     #"RUSTSEC-0000-0000",
     #{ id = "RUSTSEC-0000-0000", reason = "you can specify a reason the advisory is ignored" },
     #"a-crate-that-is-yanked@0.1.1", # you can also ignore yanked crate versions if you wish
@@ -145,7 +142,6 @@ allow = [
     "BSL-1.0",
     "Zlib",
     "CDLA-Permissive-2.0",
-    "NCSA",
 ]
 # The confidence threshold for detecting a license from license text.
 # The higher the value, the more closely the license text must be to the
@@ -174,6 +170,11 @@ license-files = [
     # Each entry is a crate relative path, and the (opaque) hash of its contents
     { path = "LICENSE", hash = 0xbd0eed23 },
 ]
+
+[[licenses.clarify]]
+crate = "dlopen2"
+expression = "MIT"
+license-files = [{ path = "LICENSE", hash = 0xea2c3d1e }]
 
 [licenses.private]
 # One or more files in the crate's source used as the "source of truth" for
