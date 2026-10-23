@@ -25,13 +25,18 @@ defmodule PortalAPI.Device.Socket do
 
   @impl true
   def connect(attrs, socket, connect_info) do
-    with :ok <- gate(attrs, connect_info),
-         :ok <- rate_limit(attrs, connect_info) do
-      case PortalAPI.Client.Socket.connect(attrs, socket, connect_info, rate_limit: false) do
-        {:ok, socket} -> {:ok, as_device(socket, :client)}
-        {:error, :invalid_token} -> connect_as_gateway(attrs, socket, connect_info)
-        error -> error
-      end
+    with :ok <- rate_limit(attrs, connect_info),
+         {:ok, socket} <- authenticate(attrs, socket, connect_info),
+         :ok <- gate(attrs, connect_info) do
+      {:ok, socket}
+    end
+  end
+
+  defp authenticate(attrs, socket, connect_info) do
+    case PortalAPI.Client.Socket.connect(attrs, socket, connect_info, rate_limit: false) do
+      {:ok, socket} -> {:ok, as_device(socket, :client)}
+      {:error, :invalid_token} -> connect_as_gateway(attrs, socket, connect_info)
+      error -> error
     end
   end
 
@@ -56,7 +61,8 @@ defmodule PortalAPI.Device.Socket do
   @impl true
   def id(socket), do: Portal.Sockets.socket_id(socket.assigns.subject.credential.id)
 
-  # The feature gate: the unified binary with an explicit protocol range.
+  # The feature gate, checked once the credential is good: the unified
+  # binary with an explicit protocol range.
   defp gate(attrs, connect_info) do
     user_agent = Map.get(connect_info, :user_agent) || ""
 

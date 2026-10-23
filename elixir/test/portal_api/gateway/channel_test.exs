@@ -1,5 +1,7 @@
 defmodule PortalAPI.Gateway.ChannelTest do
-  use PortalAPI.ChannelCase, async: true
+  # Registers the globally named gateway session queue, so it must not run
+  # concurrently with other modules that do the same.
+  use PortalAPI.ChannelCase, async: true, group: :session_queues
   alias Portal.Cache
   alias Portal.Changes
   alias Portal.PG

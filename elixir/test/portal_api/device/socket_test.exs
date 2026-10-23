@@ -19,7 +19,11 @@ defmodule PortalAPI.Device.SocketTest do
       connect_info =
         build_connect_info(token: encode_token(token), user_agent: "Linux/6.1 headless-client/1.5.9")
 
-      attrs = valid_client_attrs() |> Map.merge(@range) |> stringify()
+      attrs =
+        valid_client_attrs()
+        |> Map.put(:public_key, generate_public_key())
+        |> Map.merge(@range)
+        |> stringify()
 
       assert connect(Socket, attrs, connect_info: connect_info) == {:error, :unsupported_client}
     end

@@ -1,7 +1,7 @@
 defmodule PortalAPI.Device.ChannelTest do
   # Registers the globally named session and policy-authorization queues, so
   # it must not run concurrently with other modules that do the same.
-  use PortalAPI.ChannelCase, async: true, group: :client_queues
+  use PortalAPI.ChannelCase, async: true, group: :session_queues
 
   alias Portal.{Changes, PG, Presence}
 
