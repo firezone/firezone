@@ -28,6 +28,7 @@ jobs:
     runs-on: ubuntu-24.04
     permissions:
       contents: read
+      security-events: write # trivy SARIF upload from setup-mise
     env:
       BENCHER_PROJECT: firezone-1l75jv1z
       # PRs from forks and Dependabot have no access to Bencher's API key.
@@ -41,14 +42,12 @@ jobs:
       - uses: ./.github/actions/apt-install
         with:
           packages: valgrind
-      - name: Install gungraun-runner
-        run: |
-          set -euo pipefail
-
-          # The runner has to be the same version as the `gungraun` library.
-          version=$(cargo metadata --format-version 1 --locked |
-            jq -r '.packages[] | select(.name == "gungraun-runner") | .version')
-          cargo install gungraun-runner --version "$version" --locked
+          install-recommends: false
+      - uses: ./.github/actions/setup-mise
+        with:
+          install_args: --cd rust github:gungraun/gungraun
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Build
         run: cargo bench -p event-loop-callgrind --no-run
       - name: Run
