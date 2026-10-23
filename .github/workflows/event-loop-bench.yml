@@ -79,6 +79,7 @@ jobs:
           describe udp "UDP thread CPU" "ns/packet"
           describe crypto "Crypto workers CPU" "ns/packet"
           describe tun "TUN threads CPU" "ns/packet"
+          describe event-loop-idle "Gateway time per idle connection" "ns/connection-second"
       - name: Run on Bencher Bare Metal
         if: env.BENCHER == 'true'
         env:
@@ -97,8 +98,8 @@ jobs:
             )
           else
             branch=(--branch main --thresholds-reset)
-            # Lower throughput and higher CPU per packet are regressions.
-            for measure in throughput event-loop udp crypto tun; do
+            # Lower throughput and higher CPU are regressions.
+            for measure in throughput event-loop udp crypto tun event-loop-idle; do
               if [ "$measure" = throughput ]; then lower=0.99; upper=_; else lower=_; upper=0.99; fi
               branch+=(
                 --threshold-measure "$measure"
