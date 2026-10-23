@@ -8,6 +8,7 @@ defmodule PortalWeb.SitesTest do
   import Portal.DeviceFixtures
   import Portal.ResourceFixtures
   import Portal.SiteFixtures
+  import Portal.SiteDeviceFixtures
   import Portal.TokenFixtures
 
   setup do
@@ -514,6 +515,154 @@ defmodule PortalWeb.SitesTest do
       refute html =~ "Delete this gateway?"
       assert html =~ gateway.name
       assert Repo.get_by(Device, account_id: account.id, id: gateway.id)
+    end
+  end
+
+  describe "site devices" do
+    setup %{account: account, actor: actor, conn: conn} do
+      site = site_fixture(account: account)
+      other_site = site_fixture(account: account)
+      conn = authorize_conn(conn, actor)
+      %{site: site, other_site: other_site, conn: conn}
+    end
+
+    test "lists a gateway assigned to the site from another site", %{
+      conn: conn,
+      account: account,
+      site: site,
+      other_site: other_site
+    } do
+      gateway = gateway_fixture(account: account, site: other_site, name: "shared-gw")
+      site_device_fixture(site: site, device: gateway)
+
+      {:ok, lv, _html} = live(conn, ~p"/#{account}/sites/#{site.id}")
+
+      html = render_click(lv, "show_all_gateways")
+      assert html =~ gateway.name
+    end
+
+    test "adds an existing gateway to the site", %{
+      conn: conn,
+      account: account,
+      site: site,
+      other_site: other_site
+    } do
+      gateway = gateway_fixture(account: account, site: other_site, name: "edge-gw")
+      _already = gateway_fixture(account: account, site: site, name: "home-gw")
+
+      {:ok, lv, _html} = live(conn, ~p"/#{account}/sites/#{site.id}")
+
+      html = render_click(lv, "open_device_picker")
+      assert has_element?(lv, "#assignable-device-#{gateway.id}")
+      refute html =~ "home-gw"
+
+      html = render_change(lv, "search_devices_to_assign", %{"search" => "edge"})
+      assert html =~ "edge-gw"
+
+      html = render_click(lv, "assign_device", %{"id" => gateway.id})
+      assert html =~ "Device added to site."
+
+      assert Repo.get_by(Portal.SiteDevice,
+               account_id: account.id,
+               site_id: site.id,
+               device_id: gateway.id
+             )
+
+      html = render_click(lv, "show_all_gateways")
+      assert html =~ "edge-gw"
+    end
+
+    test "lists clients as not yet able to serve and refuses to add them", %{
+      conn: conn,
+      account: account,
+      site: site
+    } do
+      client = client_fixture(account: account, name: "laptop")
+
+      {:ok, lv, _html} = live(conn, ~p"/#{account}/sites/#{site.id}")
+
+      html = render_click(lv, "open_device_picker")
+      assert has_element?(lv, "#assignable-device-#{client.id}")
+      assert html =~ "cannot serve resources yet"
+
+      html = render_click(lv, "assign_device", %{"id" => client.id})
+      assert html =~ "Only gateways can serve"
+
+      refute Repo.get_by(Portal.SiteDevice,
+               account_id: account.id,
+               site_id: site.id,
+               device_id: client.id
+             )
+    end
+
+    test "removes a gateway from a site it was added to", %{
+      conn: conn,
+      account: account,
+      site: site,
+      other_site: other_site
+    } do
+      gateway = gateway_fixture(account: account, site: other_site)
+      site_device_fixture(site: site, device: gateway)
+
+      {:ok, lv, _html} = live(conn, ~p"/#{account}/sites/#{site.id}")
+
+      render_click(lv, "show_all_gateways")
+      html = render_click(lv, "remove_gateway_from_site", %{"id" => gateway.id})
+      assert html =~ "Gateway removed from site."
+      refute html =~ gateway.name
+
+      refute Repo.get_by(Portal.SiteDevice,
+               account_id: account.id,
+               site_id: site.id,
+               device_id: gateway.id
+             )
+
+      assert Repo.get_by(Portal.SiteDevice,
+               account_id: account.id,
+               site_id: other_site.id,
+               device_id: gateway.id
+             )
+    end
+
+    test "moves a gateway's home site when it is removed from it", %{
+      conn: conn,
+      account: account,
+      site: site,
+      other_site: other_site
+    } do
+      gateway = gateway_fixture(account: account, site: site)
+      site_device_fixture(site: other_site, device: gateway)
+
+      {:ok, lv, _html} = live(conn, ~p"/#{account}/sites/#{site.id}")
+
+      render_click(lv, "show_all_gateways")
+      html = render_click(lv, "remove_gateway_from_site", %{"id" => gateway.id})
+      assert html =~ "Gateway removed from site."
+
+      assert Repo.get_by!(Device, account_id: account.id, id: gateway.id).site_id == other_site.id
+
+      refute Repo.get_by(Portal.SiteDevice,
+               account_id: account.id,
+               site_id: site.id,
+               device_id: gateway.id
+             )
+    end
+
+    test "keeps a gateway on its only site", %{conn: conn, account: account, site: site} do
+      gateway = gateway_fixture(account: account, site: site)
+
+      {:ok, lv, _html} = live(conn, ~p"/#{account}/sites/#{site.id}")
+
+      render_click(lv, "show_all_gateways")
+      html = render_click(lv, "remove_gateway_from_site", %{"id" => gateway.id})
+      assert html =~ "only site the gateway serves"
+      assert html =~ gateway.name
+
+      assert Repo.get_by(Portal.SiteDevice,
+               account_id: account.id,
+               site_id: site.id,
+               device_id: gateway.id
+             )
     end
   end
 

@@ -185,7 +185,21 @@ defmodule Portal.Repo.Seeds do
       end
     end)
     |> Enum.chunk_every(5_000)
-    |> Enum.each(&Repo.insert_all(Device, &1))
+    |> Enum.flat_map(fn chunk ->
+      {_count, devices} = Repo.insert_all(Device, chunk, returning: [:account_id, :id, :actor_id])
+      devices
+    end)
+    |> Enum.map(fn device ->
+      %{
+        account_id: device.account_id,
+        device_id: device.id,
+        actor_id: device.actor_id,
+        first_seen_at: now,
+        last_seen_at: now
+      }
+    end)
+    |> Enum.chunk_every(5_000)
+    |> Enum.each(&Repo.insert_all(Portal.DeviceActor, &1))
 
     {:ok, all_devices} =
       create_resource(

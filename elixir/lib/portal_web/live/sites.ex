@@ -468,7 +468,8 @@ defmodule PortalWeb.Sites do
       rename_gateway_id: nil,
       gateway_actions_open_id: nil,
       rotated_gateway_token: nil,
-      expanded_gateway_id: nil
+      expanded_gateway_id: nil,
+      device_picker: nil
     }
   end
 
@@ -561,6 +562,29 @@ defmodule PortalWeb.Sites do
   end
 
   # Gateways holding a single-owner token are the ones the site expects online
+  # Assignments changed: the panel list, the per-gateway token state and the
+  # index health all read them.
+  defp reload_panel_gateways(socket, site_id) do
+    device_tokens = load_device_tokens(site_id, socket.assigns.subject)
+
+    {gateways, total_gateway_count} =
+      load_panel_gateways(
+        site_id,
+        socket.assigns.site_panel.show_all_gateways,
+        device_tokens,
+        socket.assigns.subject
+      )
+
+    socket
+    |> put_provisioned_gateway_ids(site_id, device_tokens)
+    |> load_sites_index_data()
+    |> merge_state(:site_panel, %{
+      gateways: gateways,
+      total_gateway_count: total_gateway_count,
+      device_tokens: device_tokens
+    })
+  end
+
   defp put_provisioned_gateway_ids(socket, site_id, device_tokens) do
     update(socket, :provisioned_gateway_ids, fn ids ->
       Map.put(ids, site_id, device_tokens |> Map.keys() |> MapSet.new())
@@ -849,6 +873,71 @@ defmodule PortalWeb.Sites do
          socket
          |> put_flash(:error, "Failed to delete gateway.")
          |> merge_state(:site_panel, %{confirm_delete_gateway_id: nil})}
+    end
+  end
+
+  def handle_event("open_device_picker", _params, socket) do
+    site = socket.assigns.selected_site
+    results = Database.search_devices_to_assign(site.id, "", socket.assigns.subject)
+
+    {:noreply, merge_state(socket, :site_panel, %{device_picker: %{search: "", results: results}})}
+  end
+
+  def handle_event("close_device_picker", _params, socket) do
+    {:noreply, merge_state(socket, :site_panel, %{device_picker: nil})}
+  end
+
+  def handle_event("search_devices_to_assign", %{"search" => search}, socket) do
+    site = socket.assigns.selected_site
+    results = Database.search_devices_to_assign(site.id, search, socket.assigns.subject)
+
+    {:noreply, merge_state(socket, :site_panel, %{device_picker: %{search: search, results: results}})}
+  end
+
+  def handle_event("assign_device", %{"id" => device_id}, socket) do
+    site = socket.assigns.selected_site
+
+    case Database.assign_device_to_site(site, device_id, socket.assigns.subject) do
+      {:ok, _site_device} ->
+        {:noreply,
+         socket
+         |> put_flash(:success, "Device added to site.")
+         |> reload_panel_gateways(site.id)
+         |> merge_state(:site_panel, %{device_picker: nil})}
+
+      {:error, :not_a_gateway} ->
+        {:noreply, put_flash(socket, :error, "Only gateways can serve a site's resources for now.")}
+
+      {:error, _reason} ->
+        {:noreply, put_flash(socket, :error, "Failed to add device to site.")}
+    end
+  end
+
+  def handle_event("remove_gateway_from_site", %{"id" => gateway_id}, socket) do
+    site = socket.assigns.selected_site
+
+    case Database.remove_device_from_site(site, gateway_id, socket.assigns.subject) do
+      :ok ->
+        {:noreply,
+         socket
+         |> put_flash(:success, "Gateway removed from site.")
+         |> reload_panel_gateways(site.id)
+         |> merge_state(:site_panel, %{gateway_actions_open_id: nil, expanded_gateway_id: nil})}
+
+      {:error, :last_site} ->
+        {:noreply,
+         socket
+         |> put_flash(
+           :error,
+           "This is the only site the gateway serves. Add it to another site first, or delete the gateway."
+         )
+         |> merge_state(:site_panel, %{gateway_actions_open_id: nil})}
+
+      {:error, _reason} ->
+        {:noreply,
+         socket
+         |> put_flash(:error, "Failed to remove gateway from site.")
+         |> merge_state(:site_panel, %{gateway_actions_open_id: nil})}
     end
   end
 
@@ -1304,6 +1393,7 @@ defmodule PortalWeb.Sites do
   defmodule Database do
     import Ecto.Query
     import Ecto.Changeset
+    import Portal.Repo.Query
     alias Portal.{Safe, Site, Resource, Device, ClientToken}
 
     @spec list_all_sites(Portal.Authentication.Subject.t()) :: [Site.t()]
@@ -1335,11 +1425,142 @@ defmodule PortalWeb.Sites do
           ]
     def list_gateways_for_site(site_id, subject) do
       from(d in Device, as: :devices)
+      |> join_site_devices()
       |> where([devices: d], d.type == :gateway)
-      |> where([devices: d], d.site_id == ^site_id)
+      |> where([site_devices: sd], sd.site_id == ^site_id)
       |> order_by([devices: d], asc: d.name)
       |> Safe.scoped(subject)
       |> Safe.all()
+    end
+
+    # A device serves every site it is assigned to, so site-keyed device
+    # queries go through the assignments rather than the device's site column.
+    defp join_site_devices(queryable) do
+      join(queryable, :inner, [devices: d], sd in Portal.SiteDevice,
+        on: sd.account_id == d.account_id and sd.device_id == d.id,
+        as: :site_devices
+      )
+    end
+
+    @doc """
+    Devices that could be assigned to the site: every device in the account
+    not already assigned, matching `search_term` by name or slug, gateways
+    first. Clients are listed so the admin sees why they cannot be picked yet.
+    """
+    @spec search_devices_to_assign(Ecto.UUID.t(), String.t(), Portal.Authentication.Subject.t()) ::
+            [Device.t()]
+    def search_devices_to_assign(site_id, search_term, subject) do
+      from(d in Device, as: :devices)
+      |> where(
+        [devices: d],
+        not exists(
+          from(sd in Portal.SiteDevice,
+            where:
+              sd.account_id == parent_as(:devices).account_id and
+                sd.device_id == parent_as(:devices).id and sd.site_id == ^site_id
+          )
+        )
+      )
+      |> search_devices(search_term)
+      |> order_by([devices: d], asc: fragment("CASE WHEN ? = 'gateway' THEN 0 ELSE 1 END", d.type), asc: d.name)
+      |> limit(10)
+      |> Safe.scoped(subject)
+      |> Safe.all()
+    end
+
+    defp search_devices(queryable, ""), do: queryable
+
+    defp search_devices(queryable, search_term) do
+      where(
+        queryable,
+        [devices: d],
+        fulltext_search(d.name, ^search_term) or fulltext_search(d.slug, ^search_term)
+      )
+    end
+
+    @doc """
+    Assigns a device to the site. Only gateways can serve resources until the
+    unified device ships, so other devices are refused.
+    """
+    @spec assign_device_to_site(Site.t(), Ecto.UUID.t(), Portal.Authentication.Subject.t()) ::
+            {:ok, Portal.SiteDevice.t()} | {:error, :not_found | :not_a_gateway | Ecto.Changeset.t()}
+    def assign_device_to_site(site, device_id, subject) do
+      with {:ok, device} <- fetch_device(device_id, subject),
+           :ok <- ensure_can_serve(device) do
+        %Portal.SiteDevice{}
+        |> cast(%{account_id: site.account_id, site_id: site.id, device_id: device.id}, [
+          :account_id,
+          :site_id,
+          :device_id
+        ])
+        |> Portal.SiteDevice.changeset()
+        |> Safe.scoped(subject)
+        |> Safe.insert()
+      end
+    end
+
+    defp ensure_can_serve(%Device{type: :gateway}), do: :ok
+    defp ensure_can_serve(%Device{}), do: {:error, :not_a_gateway}
+
+    @doc """
+    Takes a device off the site. A gateway's site column still has to name
+    one of its sites: when that is the site being removed, the column moves
+    to another assignment, and a gateway with no other site stays put.
+    """
+    @spec remove_device_from_site(Site.t(), Ecto.UUID.t(), Portal.Authentication.Subject.t()) ::
+            :ok | {:error, :not_found | :last_site | :unauthorized}
+    def remove_device_from_site(site, device_id, subject) do
+      with {:ok, device} <- fetch_device(device_id, subject) do
+        other_site_ids =
+          from(sd in Portal.SiteDevice, as: :site_devices)
+          |> where([site_devices: sd], sd.device_id == ^device.id and sd.site_id != ^site.id)
+          |> select([site_devices: sd], sd.site_id)
+          |> Safe.scoped(subject)
+          |> Safe.all()
+
+        cond do
+          device.site_id != site.id ->
+            delete_site_device(site, device, subject)
+
+          other_site_ids == [] ->
+            {:error, :last_site}
+
+          true ->
+            # The mirror trigger removes the old assignment with the move.
+            device
+            |> change(site_id: hd(other_site_ids))
+            |> Safe.scoped(subject)
+            |> Safe.update()
+            |> case do
+              {:ok, _device} -> :ok
+              {:error, _reason} = error -> error
+            end
+        end
+      end
+    end
+
+    defp delete_site_device(site, device, subject) do
+      from(sd in Portal.SiteDevice, as: :site_devices)
+      |> where([site_devices: sd], sd.site_id == ^site.id and sd.device_id == ^device.id)
+      |> Safe.scoped(subject)
+      |> Safe.delete_all()
+      |> case do
+        {count, _} when count > 0 -> :ok
+        {0, _} -> {:error, :not_found}
+        {:error, _reason} = error -> error
+      end
+    end
+
+    defp fetch_device(device_id, subject) do
+      from(d in Device, as: :devices)
+      |> where([devices: d], d.id == ^device_id)
+      |> Safe.scoped(subject)
+      |> Safe.one()
+      |> case do
+        nil -> {:error, :not_found}
+        {:error, :unauthorized} -> {:error, :unauthorized}
+        device -> {:ok, device}
+      end
     end
 
     @spec list_resources_for_site(Ecto.UUID.t(), Portal.Authentication.Subject.t()) :: [
@@ -1379,10 +1600,11 @@ defmodule PortalWeb.Sites do
 
     def count_gateways_by_site(site_ids, subject) do
       from(d in Device, as: :devices)
+      |> join_site_devices()
       |> where([devices: d], d.type == :gateway)
-      |> where([devices: d], d.site_id in ^site_ids)
-      |> group_by([devices: d], d.site_id)
-      |> select([devices: d], {d.site_id, count(d.id)})
+      |> where([site_devices: sd], sd.site_id in ^site_ids)
+      |> group_by([site_devices: sd], sd.site_id)
+      |> select([site_devices: sd, devices: d], {sd.site_id, count(d.id)})
       |> Safe.scoped(subject)
       |> Safe.all()
       |> Map.new()
@@ -1461,7 +1683,8 @@ defmodule PortalWeb.Sites do
         on: d.account_id == t.account_id and d.id == t.device_id,
         as: :devices
       )
-      |> where([devices: d], d.site_id == ^site_id)
+      |> join_site_devices()
+      |> where([site_devices: sd], sd.site_id == ^site_id)
       |> Safe.scoped(subject)
       |> Safe.all()
     end
@@ -1476,9 +1699,10 @@ defmodule PortalWeb.Sites do
         on: d.account_id == t.account_id and d.id == t.device_id,
         as: :devices
       )
-      |> where([devices: d], d.site_id in ^site_ids)
+      |> join_site_devices()
+      |> where([site_devices: sd], sd.site_id in ^site_ids)
       |> distinct(true)
-      |> select([devices: d], {d.site_id, d.id})
+      |> select([site_devices: sd, devices: d], {sd.site_id, d.id})
       |> Safe.scoped(subject)
       |> Safe.all()
       |> Enum.group_by(&elem(&1, 0), &elem(&1, 1))
