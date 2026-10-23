@@ -4,6 +4,7 @@ defmodule PortalWeb.Sites do
   alias PortalWeb.Resources.Components, as: ResourceComponents
   alias Portal.Presence
   alias __MODULE__.Database
+  alias PortalWeb.Devices.AddDevice
 
   def mount(_params, _session, socket) do
     if connected?(socket) do
@@ -504,14 +505,7 @@ defmodule PortalWeb.Sites do
     {gateways, length(all_gateways)}
   end
 
-  defp base_site_deploy_state do
-    %{
-      env: nil,
-      tab: "debian-instructions",
-      connected?: false,
-      token: nil
-    }
-  end
+  defp base_site_deploy_state, do: AddDevice.closed()
 
   defp base_site_resource_form_state do
     %{
@@ -993,44 +987,34 @@ defmodule PortalWeb.Sites do
     {:noreply, merge_state(socket, :site_panel, %{gateways: gateways, show_all_gateways: false})}
   end
 
+  # Opens the add-device flow with this site preselected; the device is
+  # created when the form is submitted.
   def handle_event("deploy_gateway", _params, socket) do
+    site = socket.assigns.selected_site
+
+    {:noreply,
+     socket
+     |> merge_state(:site_panel, %{view: :deploy})
+     |> put_state(:site_deploy, AddDevice.open(socket.assigns.subject, [site.id]))}
+  end
+
+  def handle_event("add_device_change", %{"device" => params}, socket) do
+    {:noreply, merge_state(socket, :site_deploy, %{form: to_form(params, as: :device)})}
+  end
+
+  def handle_event("add_device_submit", %{"device" => params}, socket) do
     site = socket.assigns.selected_site
     subject = socket.assigns.subject
 
-    # Pre-create the gateway and bind a single-owner token to it; the gateway
-    # reports its FIREZONE_ID as a telemetry hint on first connect
-    case Database.deploy_gateway(site, subject) do
-      {:ok, _gateway, token, encoded_token} ->
-        device_tokens = load_device_tokens(site.id, subject)
-
-        {gateways, total_gateway_count} =
-          load_panel_gateways(
-            site.id,
-            socket.assigns.site_panel.show_all_gateways,
-            device_tokens,
-            subject
-          )
-
-        env = SiteComponents.gateway_env(encoded_token)
-
+    case AddDevice.submit(socket.assigns.site_deploy, params, subject) do
+      {:ok, state} ->
         {:noreply,
          socket
-         |> put_provisioned_gateway_ids(site.id, device_tokens)
-         |> merge_state(:site_panel, %{
-           view: :deploy,
-           gateways: gateways,
-           total_gateway_count: total_gateway_count,
-           device_tokens: device_tokens
-         })
-         |> put_state(:site_deploy, %{
-           env: env,
-           tab: "debian-instructions",
-           token: token,
-           connected?: false
-         })}
+         |> put_state(:site_deploy, state)
+         |> reload_panel_gateways(site.id)}
 
-      {:error, _} ->
-        {:noreply, put_flash(socket, :error, "Failed to create gateway.")}
+      {:error, _reason} ->
+        {:noreply, put_flash(socket, :error, "Failed to create the device.")}
     end
   end
 
@@ -1038,7 +1022,7 @@ defmodule PortalWeb.Sites do
     {:noreply, merge_state(socket, :site_deploy, %{tab: tab})}
   end
 
-  def handle_event("close_deploy", _params, socket) do
+  def handle_event(event, _params, socket) when event in ["close_deploy", "close_add_device"] do
     {:noreply,
      socket
      |> merge_state(:site_panel, %{view: :gateways})
@@ -1313,9 +1297,10 @@ defmodule PortalWeb.Sites do
         socket
       ) do
     socket =
-      case site_deploy_connection_status(socket.assigns.site_deploy, joins) do
-        :noop -> socket
-        connected? -> merge_state(socket, :site_deploy, %{connected?: connected?})
+      if AddDevice.connected?(socket.assigns.site_deploy, joins) do
+        merge_state(socket, :site_deploy, %{connected?: true})
+      else
+        socket
       end
 
     socket = load_sites_index_data(socket)
@@ -1374,20 +1359,6 @@ defmodule PortalWeb.Sites do
   # The Legacy tokens tab is hidden when a site has no legacy tokens.
   defp sanitize_panel_tab(:tokens, []), do: :gateways
   defp sanitize_panel_tab(tab, _gateway_tokens), do: tab
-
-  defp site_deploy_connection_status(%{connected?: true}, _joins), do: :noop
-
-  defp site_deploy_connection_status(%{token: nil}, _joins), do: :noop
-
-  defp site_deploy_connection_status(%{token: %{id: token_id}}, joins) do
-    deploy_token_connected?(joins, token_id)
-  end
-
-  defp deploy_token_connected?(joins, token_id) do
-    Enum.any?(joins, fn {_gateway_id, %{metas: metas}} ->
-      Enum.any?(metas, fn meta -> Map.get(meta, :token_id) == token_id end)
-    end)
-  end
 
   defp load_sites_index_data(socket) do
     internet_resource =
@@ -1588,12 +1559,6 @@ defmodule PortalWeb.Sites do
       |> validate_required([:site_id])
       |> Safe.scoped(subject)
       |> Safe.insert()
-    end
-
-    @spec deploy_gateway(Site.t(), Portal.Authentication.Subject.t()) ::
-            {:ok, Device.t(), ClientToken.t(), binary()} | {:error, term()}
-    def deploy_gateway(site, subject) do
-      Portal.Devices.provision_gateway(site, nil, subject)
     end
 
     @spec rename_gateway(Device.t(), String.t(), Portal.Authentication.Subject.t()) ::

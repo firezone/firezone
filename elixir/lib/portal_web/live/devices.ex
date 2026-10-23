@@ -7,6 +7,7 @@ defmodule PortalWeb.Devices do
   alias Portal.PubSub
   alias Phoenix.LiveView.AsyncResult
   alias __MODULE__.Database
+  alias PortalWeb.Devices.AddDevice
 
   def mount(_params, _session, socket) do
     subject = socket.assigns.subject
@@ -20,6 +21,7 @@ defmodule PortalWeb.Devices do
       socket
       |> assign(page_title: "Devices")
       |> assign(selected_device: nil)
+      |> assign(add_device: AddDevice.closed())
       |> assign(stale: false)
       |> assign_async(:devices_count, fn -> {:ok, %{devices_count: Database.count_devices(subject)}} end)
       |> assign(
@@ -142,6 +144,11 @@ defmodule PortalWeb.Devices do
         <:action>
           <Navigation.docs_action path="/deploy/clients" />
         </:action>
+        <:action>
+          <Form.button style="primary" icon="ri-add-line" phx-click="open_add_device">
+            Add device
+          </Form.button>
+        </:action>
         <:stats>
           <.async_result :let={count} assign={@devices_count}>
             <:loading><Core.badge type="primary">Loading...</Core.badge></:loading>
@@ -244,6 +251,8 @@ defmodule PortalWeb.Devices do
           </:empty>
         </LiveTable.live_table>
       </div>
+
+      <DeviceComponents.add_device_panel account={@account} state={@add_device} />
 
       <DeviceComponents.device_panel
         account={@account}
@@ -358,6 +367,34 @@ defmodule PortalWeb.Devices do
   def handle_event(event, params, socket)
       when event in ["paginate", "order_by", "filter", "reload", "table_row_click", "change_limit"],
       do: LiveTable.handle_live_table_event(event, params, socket)
+
+  # ---- Add device ----
+
+  def handle_event("open_add_device", _params, socket) do
+    {:noreply, assign(socket, add_device: AddDevice.open(socket.assigns.subject))}
+  end
+
+  def handle_event("close_add_device", _params, socket) do
+    {:noreply, assign(socket, add_device: AddDevice.closed())}
+  end
+
+  def handle_event("add_device_change", %{"device" => params}, socket) do
+    {:noreply, merge_state(socket, :add_device, form: to_form(params, as: :device))}
+  end
+
+  def handle_event("add_device_submit", %{"device" => params}, socket) do
+    case AddDevice.submit(socket.assigns.add_device, params, socket.assigns.subject) do
+      {:ok, state} ->
+        {:noreply, assign(socket, add_device: state)}
+
+      {:error, _reason} ->
+        {:noreply, put_flash(socket, :error, "Failed to create the device.")}
+    end
+  end
+
+  def handle_event("deploy_tab_selected", %{"tab" => tab}, socket) do
+    {:noreply, merge_state(socket, :add_device, tab: tab)}
+  end
 
   def handle_event("close_panel", _params, socket) do
     {:noreply, push_patch(socket, to: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/devices"))}
@@ -663,6 +700,13 @@ defmodule PortalWeb.Devices do
         socket
       ) do
     rendered_client_ids = Enum.map(socket.assigns.devices, & &1.id)
+
+    socket =
+      if AddDevice.connected?(socket.assigns.add_device, Map.get(event.payload, :joins, %{})) do
+        merge_state(socket, :add_device, connected?: true)
+      else
+        socket
+      end
 
     if LiveTable.presence_updates_any_id?(event, rendered_client_ids) do
       socket = LiveTable.reload_live_table!(socket, "devices")
