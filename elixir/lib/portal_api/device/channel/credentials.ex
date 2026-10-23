@@ -26,8 +26,12 @@ defmodule PortalAPI.Device.Channel.Credentials do
   @typedoc "One side's ICE username and password."
   @type ice_side :: %{username: String.t(), password: String.t()}
 
-  @typedoc "A device and the public key it presented in this session."
-  @type peer :: %{device: Device.t(), public_key: String.t()}
+  @typedoc """
+  A device and the public key it presented in this session. The device may
+  be one rebuilt from presence metadata, which carries only what the peer
+  announced, so the struct is not required to be a complete row.
+  """
+  @type peer :: %{device: %Device{}, public_key: String.t()}
 
   @typedoc """
   What the ingest tokens attribute flow logs to: the authorization being
