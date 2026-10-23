@@ -1855,11 +1855,13 @@ defmodule PortalWeb.Sites do
             {:ok, Site.t()} | {:error, Ecto.Changeset.t()}
     # Devices outlive the site: they are unassigned, not deleted. Resources
     # would lose their site, so the site stays until they are gone.
+    @spec delete_site(Portal.Site.t(), Portal.Authentication.Subject.t()) ::
+            {:ok, Portal.Site.t()} | {:error, :resources_remain | :unauthorized | Ecto.Changeset.t()}
     def delete_site(site, subject) do
-      if resources_remain?(site, subject) do
-        {:error, :resources_remain}
-      else
-        delete_site_and_tokens(site, subject)
+      case resources_remain?(site, subject) do
+        true -> {:error, :resources_remain}
+        false -> delete_site_and_tokens(site, subject)
+        {:error, :unauthorized} -> {:error, :unauthorized}
       end
     end
 
