@@ -562,6 +562,23 @@ defmodule PortalWeb.Sites do
   end
 
   # Gateways holding a single-owner token are the ones the site expects online
+  defp assign_device(socket, site, device_id) do
+    case Database.assign_device_to_site(site, device_id, socket.assigns.subject) do
+      {:ok, _site_device} ->
+        {:noreply,
+         socket
+         |> put_flash(:success, "Device added to site.")
+         |> reload_panel_gateways(site.id)
+         |> merge_state(:site_panel, %{device_picker: nil})}
+
+      {:error, :not_a_gateway} ->
+        {:noreply, put_flash(socket, :error, "Only gateways can serve a site's resources for now.")}
+
+      {:error, _reason} ->
+        {:noreply, put_flash(socket, :error, "Failed to add device to site.")}
+    end
+  end
+
   # Assignments changed: the panel list, the per-gateway token state and the
   # index health all read them.
   defp reload_panel_gateways(socket, site_id) do
@@ -922,23 +939,6 @@ defmodule PortalWeb.Sites do
      update(socket, :site_panel, fn panel ->
        %{panel | device_picker: Map.put(panel.device_picker, :confirm_id, nil)}
      end)}
-  end
-
-  defp assign_device(socket, site, device_id) do
-    case Database.assign_device_to_site(site, device_id, socket.assigns.subject) do
-      {:ok, _site_device} ->
-        {:noreply,
-         socket
-         |> put_flash(:success, "Device added to site.")
-         |> reload_panel_gateways(site.id)
-         |> merge_state(:site_panel, %{device_picker: nil})}
-
-      {:error, :not_a_gateway} ->
-        {:noreply, put_flash(socket, :error, "Only gateways can serve a site's resources for now.")}
-
-      {:error, _reason} ->
-        {:noreply, put_flash(socket, :error, "Failed to add device to site.")}
-    end
   end
 
   def handle_event("remove_gateway_from_site", %{"id" => gateway_id}, socket) do
