@@ -76,7 +76,24 @@ mod linux {
     #[derive(Debug, Clone)]
     struct Rule {
         binary: &'static str,
+        /// The table, when not the filter table; it goes before the action on the command line.
+        table: Option<&'static str>,
+        chain: &'static str,
+        /// The match and target, after the chain.
         args: Vec<String>,
+    }
+
+    impl Rule {
+        /// The command line for `action` on this rule, with the table in front as `iptables` wants it.
+        fn command(&self, action: &[&str]) -> Vec<String> {
+            ["-w", "5"]
+                .into_iter()
+                .chain(self.table.iter().flat_map(|table| ["-t", table]))
+                .chain(action.iter().copied())
+                .map(str::to_owned)
+                .chain(self.args.iter().cloned())
+                .collect()
+        }
     }
 
     pub(super) fn is_available() -> bool {
@@ -135,13 +152,7 @@ mod linux {
     impl Drop for Guard {
         fn drop(&mut self) {
             for rule in self.rules.drain(..).rev() {
-                match run(
-                    rule.binary,
-                    ["-w", "5", "-D"]
-                        .iter()
-                        .copied()
-                        .chain(rule.args.iter().map(String::as_str)),
-                ) {
+                match run(rule.binary, rule.command(&["-D", rule.chain])) {
                     Ok(()) => {}
                     Err(e) => tracing::warn!(?rule, "Failed to remove forwarding rule: {e}"),
                 }
@@ -185,35 +196,23 @@ mod linux {
             ("iptables", IPV4_TUNNEL_PREFIX),
             ("ip6tables", IPV6_TUNNEL_PREFIX),
         ] {
-            rules.push(Rule {
-                binary,
-                args: ["FORWARD", "-i", tun, "-j", "ACCEPT"]
-                    .map(str::to_owned)
-                    .to_vec(),
-            });
-            rules.push(Rule {
-                binary,
-                args: ["FORWARD", "-o", tun, "-j", "ACCEPT"]
-                    .map(str::to_owned)
-                    .to_vec(),
-            });
+            for direction in ["-i", "-o"] {
+                rules.push(Rule {
+                    binary,
+                    table: None,
+                    chain: "FORWARD",
+                    args: [direction, tun, "-j", "ACCEPT"].map(str::to_owned).to_vec(),
+                });
+            }
 
             for pattern in LAN_INTERFACE_PATTERNS {
                 rules.push(Rule {
                     binary,
-                    args: [
-                        "-t",
-                        "nat",
-                        "POSTROUTING",
-                        "-s",
-                        prefix,
-                        "-o",
-                        pattern,
-                        "-j",
-                        "MASQUERADE",
-                    ]
-                    .map(str::to_owned)
-                    .to_vec(),
+                    table: Some("nat"),
+                    chain: "POSTROUTING",
+                    args: ["-s", prefix, "-o", pattern, "-j", "MASQUERADE"]
+                        .map(str::to_owned)
+                        .to_vec(),
                 });
             }
         }
@@ -239,12 +238,7 @@ mod linux {
     /// Adds `rule` unless it exists; forward rules go first in their chain, as the init
     /// script inserted them, so a firewall's drop policy does not catch tunnel traffic.
     fn add_rule(guard: &mut Guard, rule: Rule) -> Result<(), AddRuleError> {
-        let args = rule.args.iter().map(String::as_str).collect::<Vec<_>>();
-
-        match run(
-            rule.binary,
-            ["-w", "5", "-C"].into_iter().chain(args.iter().copied()),
-        ) {
+        match run(rule.binary, rule.command(&["-C", rule.chain])) {
             Ok(()) => {
                 tracing::debug!(?rule, "Forwarding rule exists, leaving it to its owner");
                 return Ok(());
@@ -254,25 +248,14 @@ mod linux {
             Err(e) => return Err(AddRuleError::CannotManage(e.into())),
         }
 
-        let action: &[&str] = if rule.args.first().map(String::as_str) == Some("FORWARD") {
-            &["-I", "FORWARD", "1"]
+        // Forward rules go first in their chain, as the init script inserted them.
+        let action: &[&str] = if rule.table.is_none() {
+            &["-I", rule.chain, "1"]
         } else {
-            &["-A"]
-        };
-        let tail = if action[0] == "-I" {
-            &args[1..]
-        } else {
-            &args[..]
+            &["-A", rule.chain]
         };
 
-        run(
-            rule.binary,
-            ["-w", "5"]
-                .into_iter()
-                .chain(action.iter().copied())
-                .chain(tail.iter().copied()),
-        )
-        .map_err(|e| AddRuleError::Other(e.into()))?;
+        run(rule.binary, rule.command(action)).map_err(|e| AddRuleError::Other(e.into()))?;
         guard.rules.push(rule);
 
         Ok(())
@@ -315,8 +298,7 @@ mod linux {
         }
     }
 
-    fn run<'a>(binary: &str, args: impl IntoIterator<Item = &'a str>) -> Result<(), RunError> {
-        let args = args.into_iter().collect::<Vec<_>>();
+    fn run(binary: &str, args: Vec<String>) -> Result<(), RunError> {
         let output = Command::new(binary)
             .args(&args)
             .output()
@@ -335,5 +317,53 @@ mod linux {
         }
 
         Ok(())
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[test]
+        fn forward_rule_goes_first_in_the_filter_table() {
+            let rule = &rules("tun-firezone")[0];
+
+            assert_eq!(
+                rule.command(&["-I", rule.chain, "1"]),
+                [
+                    "-w",
+                    "5",
+                    "-I",
+                    "FORWARD",
+                    "1",
+                    "-i",
+                    "tun-firezone",
+                    "-j",
+                    "ACCEPT"
+                ]
+            );
+        }
+
+        #[test]
+        fn nat_rule_names_the_table_before_the_action() {
+            let rule = &rules("tun-firezone")[2];
+
+            assert_eq!(
+                rule.command(&["-C", rule.chain]),
+                [
+                    "-w",
+                    "5",
+                    "-t",
+                    "nat",
+                    "-C",
+                    "POSTROUTING",
+                    "-s",
+                    "100.64.0.0/11",
+                    "-o",
+                    "e+",
+                    "-j",
+                    "MASQUERADE"
+                ]
+            );
+        }
     }
 }

@@ -142,6 +142,8 @@ jobs:
       HTTP_TEST_SERVER_IMAGE: ${{ inputs.http_test_server_image }}
       HTTP_TEST_SERVER_TAG: ${{ inputs.http_test_server_tag }}
       FIREZONE_INC_BUF: true
+      # Job-wide so the test scripts' `docker compose up` sees the same value and keeps the container.
+      GATEWAY_NO_KERNEL_FORWARDING: ${{ matrix.test.gateway_no_kernel_forwarding || 'false' }}
     strategy:
       fail-fast: ${{ github.event_name == 'merge_group' }}
       matrix:
@@ -274,10 +276,6 @@ jobs:
 
           if [[ -n "${{ matrix.test.gateway_disable_ipv6 }}" ]]; then
             export GATEWAY_DISABLE_IPV6="${{ matrix.test.gateway_disable_ipv6 }}"
-          fi
-
-          if [[ -n "${{ matrix.test.gateway_no_kernel_forwarding }}" ]]; then
-            export GATEWAY_NO_KERNEL_FORWARDING="${{ matrix.test.gateway_no_kernel_forwarding }}"
           fi
 
           # The `*-router` images are pre-built in the `collect-images` job and
