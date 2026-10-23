@@ -246,8 +246,28 @@ defmodule PortalAPI.Gateway.ChannelTest do
 
       presence = Portal.Presence.Devices.Account.list(account.id)
 
-      assert %{metas: [%{online_at: online_at, phx_ref: _ref}]} = Map.fetch!(presence, gateway.id)
+      assert %{metas: [%{online_at: online_at, phx_ref: _ref} = meta]} =
+               Map.fetch!(presence, gateway.id)
+
       assert is_number(online_at)
+      assert meta.site_ids == [site.id]
+    end
+
+    test "presence carries every site the gateway is assigned to", %{
+      account: account,
+      gateway: gateway,
+      site: site,
+      token: token
+    } do
+      other_site = Portal.SiteFixtures.site_fixture(account: account)
+      Portal.SiteDeviceFixtures.site_device_fixture(device: gateway, site: other_site)
+
+      join_channel(gateway, site, token)
+      assert_push "init", _init_payload
+
+      presence = Portal.Presence.Devices.Account.list(account.id)
+      assert %{metas: [meta]} = Map.fetch!(presence, gateway.id)
+      assert Enum.sort(meta.site_ids) == Enum.sort([site.id, other_site.id])
     end
 
     test "after_join enqueues the session and a flush persists it", %{
