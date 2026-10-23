@@ -20,6 +20,7 @@ mod sim_client;
 mod sim_gateway;
 mod sim_net;
 mod sim_relay;
+mod sim_tunnel;
 mod site_network;
 mod stub_portal;
 mod sut;

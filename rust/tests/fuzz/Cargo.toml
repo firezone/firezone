@@ -26,6 +26,7 @@ ip_network_table = { workspace = true }
 itertools = { workspace = true, features = ["use_std"] }
 l3-tcp = { workspace = true }
 libc = { workspace = true }
+quinn-udp = { workspace = true }
 rand = { workspace = true }
 relay-proto = { workspace = true }
 secrecy = { workspace = true, features = ["serde"] }
@@ -33,9 +34,13 @@ serde_json = { workspace = true }
 sha2 = { workspace = true }
 smallvec = { workspace = true }
 snownet = { workspace = true }
+socket-factory = { workspace = true }
 stun_codec = { workspace = true }
+tokio = { workspace = true, features = ["rt", "test-util", "time"] }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
+tun = { workspace = true }
+tunnel = { workspace = true }
 tunnel-proto = { workspace = true, features = ["malicious-behaviour"] }
 uuid = { workspace = true }
 x509-claims = { workspace = true }
