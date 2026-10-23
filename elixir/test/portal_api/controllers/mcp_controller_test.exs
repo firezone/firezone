@@ -8,6 +8,8 @@ defmodule PortalAPI.MCPControllerTest do
 
   alias PortalAPI.MCP
 
+  import Portal.AuthProviderFixtures
+
   setup do
     account = account_fixture()
     actor = actor_fixture(type: :account_admin_user, account: account)
@@ -1146,6 +1148,22 @@ defmodule PortalAPI.MCPControllerTest do
           MCP.client_capabilities_key() => %{}
         })
     }
+  end
+
+  test "auth provider tools return verified tenant and domain arrays", %{conn: conn, account: account, actor: actor} do
+    tenant_ids = ["12345678-1234-1234-1234-123456789012", "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"]
+    domains = ["primary.example", "secondary.example"]
+    entra = entra_provider_fixture(account: account, tenant_ids: tenant_ids)
+    google = google_provider_fixture(account: account, workspace_domains: domains)
+    for {tool, provider, field, expected} <- [
+      {"get_entra_auth_provider", entra, "tenant_ids", tenant_ids},
+      {"get_google_auth_provider", google, "workspace_domains", domains}
+    ] do
+      result = conn |> authorize_mcp_conn(actor) |> call_tool(tool, %{"id" => provider.id}) |> json_response(200)
+      assert %{"result" => %{"isError" => false, "structuredContent" => %{"data" => data}}} = result
+      assert data[field] == expected
+      if field == "tenant_ids", do: refute(Map.has_key?(data, "issuer"))
+    end
   end
 
   defp headers(conn, method) do

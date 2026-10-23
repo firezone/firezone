@@ -44,7 +44,7 @@ defmodule PortalWeb.Settings.Authentication do
     Userpass.AuthProvider => @common_fields,
     Google.AuthProvider => @common_fields ++ ~w[is_verified]a,
     GitHub.AuthProvider => @common_fields ++ ~w[is_verified email_verification_method]a,
-    Entra.AuthProvider => @common_fields ++ ~w[is_verified email_claim]a,
+    Entra.AuthProvider => (@common_fields -- [:issuer]) ++ ~w[is_verified email_claim]a,
     Okta.AuthProvider => @common_fields ++ ~w[okta_domain client_id client_secret is_verified]a,
     OIDC.AuthProvider =>
       @common_fields ++
@@ -143,8 +143,7 @@ defmodule PortalWeb.Settings.Authentication do
 
     changeset =
       original_struct
-      |> changeset(attrs, socket)
-      |> preserve_google_workspace_domains(previous_changeset)
+      |> changeset(attrs, socket, verification_fields(previous_changeset))
 
     clear_verification? = verification_trigger_fields_changed?(previous_changeset, changeset)
 
@@ -205,6 +204,27 @@ defmodule PortalWeb.Settings.Authentication do
         error = verification_start_error_message(reason)
         {:noreply, assign(socket, verification_error: error)}
     end
+  end
+
+  def handle_event("remove_verified_organization", %{"value" => value}, socket)
+      when socket.assigns.type in ["entra", "google"] do
+    previous = socket.assigns.form.source
+    values = verified_values(previous, socket.assigns.type)
+
+    if value in Enum.drop(values, 1) do
+      fields = Map.put(verification_fields(previous), organizations_field(socket.assigns.type),
+        Enum.reject(values, &(&1 == value)))
+      changeset = changeset(previous.data, provider_attrs(previous), socket, fields)
+
+      {:noreply, socket |> clear_verification_state() |> assign(form: to_form(changeset), verification_error: nil)}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  def handle_event("reset_verification", _params, socket)
+      when socket.assigns.type in ["entra", "google"] do
+    {:noreply, socket}
   end
 
   def handle_event("reset_verification", _params, socket) do
@@ -432,15 +452,16 @@ defmodule PortalWeb.Settings.Authentication do
 
   def handle_info({:google_verify_complete, issuer, domains, name, verification_ref, ack_to}, socket) do
     if socket.assigns.type == "google" and active_verification?(socket, verification_ref) do
+      previous = socket.assigns.form.source
+      domains = Enum.uniq(verified_values(previous, "google") ++ domains)
+      attrs = Map.merge(provider_attrs(previous), %{is_verified: true, issuer: issuer})
+
       changeset =
-        socket.assigns.form.source
-        |> apply_changes()
-        |> changeset(%{"is_verified" => true, "issuer" => issuer}, socket)
-        |> put_change(:workspace_domains, domains)
+        changeset(previous.data, attrs, socket, %{workspace_domains: domains})
         |> maybe_set_google_name(name, socket.assigns.live_action)
 
       maybe_send_verification_ack(ack_to)
-      {:noreply, assign(socket, active_verification: nil, form: to_form(changeset))}
+      {:noreply, assign(socket, active_verification: nil, verification_error: nil, form: to_form(changeset))}
     else
       maybe_send_verification_ack(ack_to)
       {:noreply, socket}
@@ -472,22 +493,22 @@ defmodule PortalWeb.Settings.Authentication do
     {:noreply, assign(socket, verification_error: error)}
   end
 
-  # Sent directly by the Entra auth_provider verification controller
+  # Every appended tenant has completed its own admin verification flow.
   def handle_info(
-        {:entra_verify_complete, issuer, _tenant_id, tenant_name, verification_ref, ack_to},
+        {:entra_verify_complete, _issuer, tenant_id, tenant_name, verification_ref, ack_to},
         socket
       ) do
-    if active_verification?(socket, verification_ref) do
-      attrs = %{"is_verified" => true, "issuer" => issuer}
+    if socket.assigns.type == "entra" and active_verification?(socket, verification_ref) do
+      previous = socket.assigns.form.source
+      tenant_ids = Enum.uniq(verified_values(previous, "entra") ++ [tenant_id])
+      attrs = Map.put(provider_attrs(previous), :is_verified, true)
 
       changeset =
-        socket.assigns.form.source
-        |> apply_changes()
-        |> changeset(attrs, socket)
+        changeset(previous.data, attrs, socket, %{tenant_ids: tenant_ids})
         |> maybe_set_entra_name(tenant_name, socket.assigns.live_action)
 
       maybe_send_verification_ack(ack_to)
-      {:noreply, assign(socket, active_verification: nil, form: to_form(changeset))}
+      {:noreply, assign(socket, active_verification: nil, verification_error: nil, form: to_form(changeset))}
     else
       maybe_send_verification_ack(ack_to)
       {:noreply, socket}
@@ -502,8 +523,8 @@ defmodule PortalWeb.Settings.Authentication do
     handle_info({:entra_verify_complete, issuer, tenant_id, nil, ack_to}, socket)
   end
 
-  def handle_info({:entra_verify_complete, issuer, _tenant_id}, socket) do
-    handle_info({:entra_verify_complete, issuer, nil, nil, nil}, socket)
+  def handle_info({:entra_verify_complete, issuer, tenant_id}, socket) do
+    handle_info({:entra_verify_complete, issuer, tenant_id, nil, nil}, socket)
   end
 
   # Sent directly by the verification controller on any failure
@@ -525,11 +546,22 @@ defmodule PortalWeb.Settings.Authentication do
     {:noreply, socket}
   end
 
-  defp preserve_google_workspace_domains(%{data: %Google.AuthProvider{}} = changeset, previous) do
-    put_change(changeset, :workspace_domains, get_field(previous, :workspace_domains))
+  defp verification_fields(%{data: %Entra.AuthProvider{}} = changeset),
+    do: %{tenant_ids: get_field(changeset, :tenant_ids)}
+
+  defp verification_fields(%{data: %Google.AuthProvider{}} = changeset),
+    do: %{workspace_domains: get_field(changeset, :workspace_domains)}
+
+  defp verification_fields(_changeset), do: %{}
+
+  defp provider_attrs(changeset) do
+    Map.new(Map.fetch!(@fields, changeset.data.__struct__), &{&1, get_field(changeset, &1)})
   end
 
-  defp preserve_google_workspace_domains(changeset, _previous), do: changeset
+  defp organizations_field("entra"), do: :tenant_ids
+  defp organizations_field("google"), do: :workspace_domains
+
+  defp verified_values(changeset, type), do: get_field(changeset, organizations_field(type)) || []
 
   defp maybe_set_google_name(changeset, name, :new) when is_binary(name) and name != "" do
     if get_field(changeset, :name) == "Google", do: put_change(changeset, :name, name), else: changeset
@@ -746,7 +778,7 @@ defmodule PortalWeb.Settings.Authentication do
                   Context
                 </th>
                 <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle">
-                  Issuer
+                  Organization
                 </th>
                 <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-28">
                   Portal TTL
@@ -1143,7 +1175,7 @@ defmodule PortalWeb.Settings.Authentication do
             </td>
             <td class="px-6 py-3">
               <span class="font-mono text-xs text-body">
-                {Map.get(@provider, :issuer) || "—"}
+                {provider_organizations(@provider)}
               </span>
             </td>
             <td class="px-6 py-3 text-sm tabular-nums text-body">
@@ -1425,25 +1457,14 @@ defmodule PortalWeb.Settings.Authentication do
           </div>
         </div>
 
-        <div :if={@type == "google"} class="pt-4 border-t border-border space-y-2">
-          <p class="text-xs text-subtle">
-            Verify with a Google Workspace administrator to allow only users from your
-            organization's verified domains. Personal Google accounts cannot use a verified
-            Workspace provider.
-          </p>
-          <p :if={get_field(@form.source, :workspace_domains)} class="text-xs text-subtle">
-            Allowed domains: {Enum.join(get_field(@form.source, :workspace_domains), ", ")}
-          </p>
-        </div>
-
         <%!-- Entra-specific config --%>
         <div :if={@type == "entra"} class="pt-4 border-t border-border space-y-4">
           <p class="text-[10px] font-semibold tracking-widest uppercase text-subtle">
             Provider Configuration
           </p>
           <p class="text-xs text-subtle">
-            Only users from the verified tenant can use this authentication provider.
-            To authenticate users from other tenants, add a provider for each tenant.
+            Only users from the verified tenants below can use this authentication provider.
+            Verify another tenant to allow users from another organization to use the same sign-in option.
           </p>
           <div>
             <label
@@ -1725,8 +1746,14 @@ defmodule PortalWeb.Settings.Authentication do
         </div>
 
         <%!-- Verification --%>
+        <.verified_organizations
+          :if={@type in ["entra", "google"]}
+          form={@form}
+          type={@type}
+          verification_error={@verification_error}
+        />
         <div
-          :if={@type in ["entra", "google", "github", "okta", "oidc"] and not @is_legacy}
+          :if={@type in ["github", "okta", "oidc"] and not @is_legacy}
           class="pt-4 border-t border-border"
         >
           <p class="text-[10px] font-semibold tracking-widest uppercase text-subtle mb-3">
@@ -1766,6 +1793,80 @@ defmodule PortalWeb.Settings.Authentication do
         </div>
       </div>
     </.form>
+    """
+  end
+
+  attr :form, :any, required: true
+  attr :type, :string, required: true
+  attr :verification_error, :any, default: nil
+
+  defp verified_organizations(assigns) do
+    assigns = assign(assigns,
+      values: verified_values(assigns.form.source, assigns.type),
+      label: if(assigns.type == "entra", do: "tenant", else: "domain")
+    )
+
+    ~H"""
+    <div class="pt-4 border-t border-border space-y-3">
+      <p class="text-[10px] font-semibold tracking-widest uppercase text-subtle">
+        Verified {if @type == "entra", do: "tenants", else: "domains"} <span class="text-error">*</span>
+      </p>
+      <p :if={@type == "google"} class="text-xs text-subtle">
+        Sign in as a Google Workspace administrator to verify your organization's domains.
+        Only users whose Google Workspace domain matches a verified domain can use this provider.
+      </p>
+      <p :if={@values == []} class="text-xs text-subtle">
+        Verify at least one {@label} to save this provider.
+      </p>
+      <Core.flash :if={@verification_error} kind={:error} class="mb-3">
+        {@verification_error}
+      </Core.flash>
+      <div :if={@values != []} class="rounded border border-border overflow-hidden">
+        <table id="verified-organizations" class="w-full text-sm border-collapse">
+          <thead class="bg-raised">
+            <tr class="border-b border-border">
+              <th scope="col" class="px-3 py-2 text-left text-xs font-medium text-subtle">
+                {if @type == "entra", do: "Tenant ID", else: "Domain"}
+              </th>
+              <th scope="col" class="px-3 py-2 text-left text-xs font-medium text-subtle">Status</th>
+              <th scope="col" class="w-10"><span class="sr-only">Actions</span></th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-border bg-surface">
+            <tr :for={{value, index} <- Enum.with_index(@values)} id={"verified-organization-#{index}"}>
+              <td class="px-3 py-2 font-mono text-xs text-body break-all">{value}</td>
+              <td class="px-3 py-2">
+                <span class="inline-flex items-center gap-1 text-xs text-success">
+                  <Core.icon name="ri-checkbox-circle-line" class="w-3.5 h-3.5" /> Verified
+                </span>
+              </td>
+              <td class="px-2 py-2 text-right">
+                <Form.icon_button
+                  :if={index > 0}
+                  icon="ri-delete-bin-line"
+                  title={"Remove #{@label} #{value}"}
+                  size="sm"
+                  phx-click="remove_verified_organization"
+                  phx-value-value={value}
+                />
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <Form.button
+        type="button"
+        id="verify-button"
+        style="primary"
+        size="xs"
+        icon="ri-external-link-line"
+        phx-click="start_verification"
+        phx-hook="OpenURL"
+        disabled={not ready_to_verify?(@form)}
+      >
+        {if @values == [], do: "Verify Now", else: "Verify another #{@label}"}
+      </Form.button>
+    </div>
     """
   end
 
@@ -1840,13 +1941,21 @@ defmodule PortalWeb.Settings.Authentication do
   defp ready_to_verify?(form) do
     Enum.all?(form.source.errors, fn
       # We'll set these fields during verification
-      {excluded, _errors} when excluded in [:is_verified, :issuer] ->
+      {excluded, _errors} when excluded in [:is_verified, :issuer, :tenant_ids, :workspace_domains] ->
         true
 
       {_field, _errors} ->
         false
     end)
   end
+
+  defp provider_organizations(%Entra.AuthProvider{tenant_ids: tenant_ids}),
+    do: Enum.join(tenant_ids, ", ")
+
+  defp provider_organizations(%Google.AuthProvider{workspace_domains: [_ | _] = domains}),
+    do: Enum.join(domains, ", ")
+
+  defp provider_organizations(provider), do: Map.get(provider, :issuer) || "—"
 
   defp context_badge(assigns) do
     {label, classes} =
@@ -1897,14 +2006,21 @@ defmodule PortalWeb.Settings.Authentication do
     end
   end
 
-  defp changeset(struct, attrs, socket) do
+  defp changeset(struct, attrs, socket, verified_fields \\ %{}) do
     schema = struct.__struct__
     changeset = cast(struct, attrs, Map.get(@fields, schema))
 
     changeset
+    |> cast(verified_fields, Map.keys(verified_fields))
     |> maybe_initialize_with_parent(socket.assigns.subject.account.id)
     |> schema.changeset()
+    |> require_verified_domains()
   end
+
+  defp require_verified_domains(%{data: %Google.AuthProvider{}} = changeset),
+    do: validate_required(changeset, :workspace_domains)
+
+  defp require_verified_domains(changeset), do: changeset
 
   defp extract_disable_error(changeset) do
     case Keyword.get(changeset.errors, :is_disabled) do
@@ -1943,13 +2059,11 @@ defmodule PortalWeb.Settings.Authentication do
   end
 
   defp verified?(form) do
-    schema = form.source.data.__struct__
-
-    # Email/OTP and Userpass providers don't require verification
-    if schema in [EmailOTP.AuthProvider, Userpass.AuthProvider] do
-      true
-    else
-      get_field(form.source, :is_verified) == true
+    case form.source.data.__struct__ do
+      Entra.AuthProvider -> get_field(form.source, :tenant_ids) not in [nil, []]
+      Google.AuthProvider -> get_field(form.source, :workspace_domains) not in [nil, []]
+      schema when schema in [EmailOTP.AuthProvider, Userpass.AuthProvider] -> true
+      _schema -> get_field(form.source, :is_verified) == true
     end
   end
 

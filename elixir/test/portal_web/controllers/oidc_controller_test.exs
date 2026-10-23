@@ -3171,7 +3171,7 @@ defmodule PortalWeb.OIDCControllerTest do
       provider =
         entra_provider_fixture(
           account: account,
-          issuer: "#{mock_endpoint}/"
+          tenant_ids: ["12345678-1234-1234-1234-123456789012"]
         )
 
       conn = get(conn, "/#{account.id}/sign_in/entra/#{provider.id}")
@@ -3203,7 +3203,7 @@ defmodule PortalWeb.OIDCControllerTest do
       provider =
         entra_provider_fixture(
           account: account,
-          issuer: "https://login.microsoftonline.com/#{@tenant_id}/v2.0"
+          tenant_ids: [@tenant_id]
         )
 
       actor = admin_actor_fixture(account: account, email: unique_email())
@@ -3219,6 +3219,16 @@ defmodule PortalWeb.OIDCControllerTest do
 
       assert redirected_to(conn) =~ "/#{ctx.account.slug}/sites"
       assert conn.resp_cookies["sess_#{ctx.account.id}"]
+    end
+
+    test "accepts a second allowed tenant and keeps its actual issuer on the identity", ctx do
+      ctx.provider |> Ecto.Changeset.change(tenant_ids: [@tenant_id, @other_tenant_id]) |> Repo.update!()
+      expect_entra_token_exchange(ctx.actor, @other_tenant_id)
+      Mocks.OIDC.set_userinfo_response(%{})
+      conn = perform_callback(ctx.conn, build_entra_auth_state(ctx.account, ctx.provider))
+      assert redirected_to(conn) =~ "/#{ctx.account.slug}/sites"
+      identity = Repo.get_by!(Portal.ExternalIdentity, account_id: ctx.account.id)
+      assert identity.issuer == "https://login.microsoftonline.com/#{@other_tenant_id}/v2.0"
     end
 
     test "rejects an ID token from another tenant", ctx do

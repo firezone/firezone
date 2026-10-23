@@ -1056,7 +1056,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       actor: actor,
       conn: conn
     } do
-      provider = google_provider_fixture(account: account, name: "Test Google")
+      provider = google_provider_fixture(workspace_domains: ["example.com"], account: account, name: "Test Google")
 
       {:ok, _lv, html} =
         conn
@@ -1064,38 +1064,32 @@ defmodule PortalWeb.Settings.AuthenticationTest do
         |> live(~p"/#{account}/settings/authentication/google/#{provider.id}/edit")
 
       assert html =~ "Edit Test Google"
-      assert html =~ "Verification"
+      assert html =~ "Verified domains"
       assert html =~ "Verified"
     end
 
-    test "shows reset verification button when verified", %{
+    test "offers verification of another domain when verified", %{
       account: account,
       actor: actor,
       conn: conn
     } do
-      provider = google_provider_fixture(account: account)
+      provider = google_provider_fixture(workspace_domains: ["example.com"], account: account)
 
       {:ok, _lv, html} =
         conn
         |> authorize_conn(actor)
         |> live(~p"/#{account}/settings/authentication/google/#{provider.id}/edit")
 
-      assert html =~ "Reset"
+      assert html =~ "Verify another domain"
+      refute html =~ ">Reset<"
     end
 
-    test "can reset verification", %{account: account, actor: actor, conn: conn} do
-      provider = google_provider_fixture(account: account)
-
-      {:ok, lv, _html} =
-        conn
-        |> authorize_conn(actor)
+    test "cannot clear the first verified domain with a forged reset event", %{account: account, actor: actor, conn: conn} do
+      provider = google_provider_fixture(account: account, workspace_domains: ["example.com"])
+      {:ok, lv, _html} = conn |> authorize_conn(actor)
         |> live(~p"/#{account}/settings/authentication/google/#{provider.id}/edit")
-
-      lv |> element("button[phx-click='reset_verification']") |> render_click()
-
-      html = render(lv)
-      assert html =~ "Verify Now"
-      assert html =~ "Verify Now"
+      render_click(lv, "reset_verification")
+      assert has_element?(lv, "#verified-organization-0", "example.com")
     end
 
     test "updates non-verification fields without re-verification", %{
@@ -1103,7 +1097,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       actor: actor,
       conn: conn
     } do
-      provider = google_provider_fixture(account: account, name: "Old Google")
+      provider = google_provider_fixture(workspace_domains: ["example.com"], account: account, name: "Old Google")
 
       {:ok, lv, _html} =
         conn
@@ -1198,7 +1192,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
         |> live(~p"/#{account}/settings/authentication/entra/#{provider.id}/edit")
 
       assert html =~ "Edit Test Entra"
-      assert html =~ "Verification"
+      assert html =~ "Verified tenants"
     end
 
     test "allows changing email_claim", %{account: account, actor: actor, conn: conn} do
@@ -3205,18 +3199,18 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       )
 
       assert_receive {:verification_ack, ^stale_ack_ref}
-      refute render(lv) =~ "Verified"
+      refute has_element?(lv, "#verified-organizations")
 
       current_ack_ref = make_ref()
 
       send(
         lv.pid,
-        {:entra_verify_complete, "https://login.microsoftonline.com/current/v2.0", "current",
+        {:entra_verify_complete, "https://login.microsoftonline.com/12345678-1234-1234-1234-123456789012/v2.0", "12345678-1234-1234-1234-123456789012",
          current_ref, {self(), current_ack_ref}}
       )
 
       assert_receive {:verification_ack, ^current_ack_ref}
-      assert render(lv) =~ "Verified"
+      assert has_element?(lv, "#verified-organizations")
     end
 
     test "ignores entra completion after navigating to another provider form", %{
@@ -3250,7 +3244,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
 
       html = render(lv)
       assert html =~ "Add Google Provider"
-      refute html =~ "Verified"
+      refute has_element?(lv, "#verified-organizations")
     end
 
     test "handles entra provider verification setup via bypass", %{
@@ -3306,48 +3300,131 @@ defmodule PortalWeb.Settings.AuthenticationTest do
   # Reset Verification Tests
   # =============================================================================
 
-  describe "reset verification" do
-    test "resets verified provider to awaiting verification", %{
-      account: account,
-      actor: actor,
-      conn: conn
-    } do
-      provider = google_provider_fixture(account: account, is_verified: true)
+  describe "verified organization allowlists" do
+    for {type, schema, field, values} <- [
+          {"entra", Portal.Entra.AuthProvider, :tenant_ids,
+           ["12345678-1234-1234-1234-123456789012", "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", "bbbbbbbb-cccc-dddd-eeee-ffffffffffff"]},
+          {"google", Portal.Google.AuthProvider, :workspace_domains,
+           ["primary.example", "secondary.example", "third.example"]}
+        ] do
+      @allowlist_type type
+      @allowlist_schema schema
+      @allowlist_field field
+      @allowlist_values values
 
-      {:ok, lv, html} =
-        conn
-        |> authorize_conn(actor)
-        |> live(~p"/#{account}/settings/authentication/google/#{provider.id}/edit")
+      test "requires a verified first #{@allowlist_type} entry and ignores forged form values", ctx do
+        {:ok, lv, _} = ctx.conn |> authorize_conn(ctx.actor)
+          |> live(~p"/#{ctx.account}/settings/authentication/#{@allowlist_type}/new")
+        render_change(lv, "validate", %{"auth_provider" => %{
+          Atom.to_string(@allowlist_field) => @allowlist_values,
+          "is_verified" => "true", "issuer" => "https://attacker.example"}})
+        lv |> form("#auth-provider-form") |> render_submit()
+        refute Repo.get_by(@allowlist_schema, account_id: ctx.account.id)
+        refute has_element?(lv, "#verified-organizations")
+      end
 
-      # Should show as verified initially
-      assert html =~ "Verified"
+      test "appends and deduplicates #{@allowlist_type} verifications in one new provider", ctx do
+        Mocks.OIDC.stub_discovery_document()
+        {:ok, lv, _} = ctx.conn |> authorize_conn(ctx.actor)
+          |> live(~p"/#{ctx.account}/settings/authentication/#{@allowlist_type}/new")
+        [first, second, _] = @allowlist_values
+        complete_allowlist_verification(lv, @allowlist_type, first)
+        assert has_element?(lv, "#verified-organization-0", first)
+        assert has_element?(lv, "#verify-button", "Verify another")
+        complete_allowlist_verification(lv, @allowlist_type, second)
+        complete_allowlist_verification(lv, @allowlist_type, second)
+        assert has_element?(lv, "#verified-organization-1", second)
+        refute has_element?(lv, "#verified-organization-2")
+        lv |> form("#auth-provider-form") |> render_submit()
+        provider = Repo.get_by!(@allowlist_schema, account_id: ctx.account.id)
+        assert Map.fetch!(provider, @allowlist_field) == [first, second]
+      end
 
-      # Click reset verification
-      lv |> element("button[phx-click='reset_verification']") |> render_click()
+      test "appends #{@allowlist_type} verification while preserving edits to a saved provider", ctx do
+        Mocks.OIDC.stub_discovery_document()
+        [first, second, _] = @allowlist_values
+        provider = allowlist_provider_fixture(@allowlist_type, ctx.account, [first])
+        {:ok, lv, _} = ctx.conn |> authorize_conn(ctx.actor)
+          |> live(~p"/#{ctx.account}/settings/authentication/#{@allowlist_type}/#{provider.id}/edit")
+        lv |> form("#auth-provider-form", %{auth_provider: %{name: "MSP SSO", portal_session_lifetime_secs: 3600}})
+          |> render_change()
+        complete_allowlist_verification(lv, @allowlist_type, second)
+        # An ordinary form validation must preserve server-owned verified values.
+        render_change(lv, "validate", %{"auth_provider" => %{"name" => "MSP SSO",
+          "portal_session_lifetime_secs" => "3600", Atom.to_string(@allowlist_field) => ["attacker.example"]}})
+        lv |> form("#auth-provider-form") |> render_submit()
+        saved = Repo.get!(@allowlist_schema, provider.id)
+        assert Map.fetch!(saved, @allowlist_field) == [first, second]
+        assert saved.name == "MSP SSO"
+        assert saved.portal_session_lifetime_secs == 3600
+      end
 
-      html = render(lv)
-      assert html =~ "Verify Now"
-      assert html =~ "Verify Now"
+      test "protects the first #{@allowlist_type} row and persists removal of subsequent rows", ctx do
+        [first, second, _] = @allowlist_values
+        provider = allowlist_provider_fixture(@allowlist_type, ctx.account, [first, second])
+        {:ok, lv, _} = ctx.conn |> authorize_conn(ctx.actor)
+          |> live(~p"/#{ctx.account}/settings/authentication/#{@allowlist_type}/#{provider.id}/edit")
+        refute has_element?(lv, "#verified-organization-0 button")
+        assert has_element?(lv, "#verified-organization-1 button[phx-click='remove_verified_organization']")
+        render_click(lv, "remove_verified_organization", %{"value" => first})
+        assert has_element?(lv, "#verified-organization-0", first)
+        lv |> element("#verified-organization-1 button") |> render_click()
+        refute has_element?(lv, "#verified-organization-1")
+        lv |> form("#auth-provider-form") |> render_submit()
+        assert Map.fetch!(Repo.get!(@allowlist_schema, provider.id), @allowlist_field) == [first]
+      end
+
+      test "ignores stale #{@allowlist_type} verification after removing an entry", ctx do
+        Mocks.OIDC.stub_discovery_document()
+        [first, second, third] = @allowlist_values
+        provider = allowlist_provider_fixture(@allowlist_type, ctx.account, [first, second])
+        {:ok, lv, _} = ctx.conn |> authorize_conn(ctx.actor)
+          |> live(~p"/#{ctx.account}/settings/authentication/#{@allowlist_type}/#{provider.id}/edit")
+        lv |> element("#verify-button") |> render_click()
+        verification_ref = verification_ref_from_open_url(lv)
+        lv |> element("#verified-organization-1 button") |> render_click()
+        send_allowlist_verification(lv, @allowlist_type, third, verification_ref)
+        assert has_element?(lv, "#verified-organization-0", first)
+        refute has_element?(lv, "#verified-organization-1")
+      end
     end
 
-    test "clears any verification error when resetting", %{
-      account: account,
-      actor: actor,
-      conn: conn
-    } do
-      provider = google_provider_fixture(account: account, is_verified: true)
-
-      {:ok, lv, _html} =
-        conn
-        |> authorize_conn(actor)
-        |> live(~p"/#{account}/settings/authentication/google/#{provider.id}/edit")
-
-      lv |> element("button[phx-click='reset_verification']") |> render_click()
-
-      html = render(lv)
-      # Should not show any error messages
-      refute html =~ "verification error" or html =~ "Failed to verify"
+    test "keeps legacy Google sign-in unrestricted until domains are saved", ctx do
+      provider = google_provider_fixture(account: ctx.account, workspace_domains: nil)
+      {:ok, lv, html} = ctx.conn |> authorize_conn(ctx.actor)
+        |> live(~p"/#{ctx.account}/settings/authentication/google/#{provider.id}/edit")
+      assert html =~ "Verify at least one"
+      assert Repo.get!(Portal.Google.AuthProvider, provider.id).workspace_domains == nil
+      Mocks.OIDC.stub_discovery_document()
+      complete_allowlist_verification(lv, "google", "primary.example")
+      lv |> form("#auth-provider-form") |> render_submit()
+      assert Repo.get!(Portal.Google.AuthProvider, provider.id).workspace_domains == ["primary.example"]
     end
+  end
+
+  defp allowlist_provider_fixture("entra", account, values),
+    do: entra_provider_fixture(account: account, tenant_ids: values)
+
+  defp allowlist_provider_fixture("google", account, values),
+    do: google_provider_fixture(account: account, workspace_domains: values)
+
+  defp complete_allowlist_verification(lv, type, value) do
+    lv |> element("#verify-button") |> render_click()
+    verification_ref = verification_ref_from_open_url(lv)
+    send_allowlist_verification(lv, type, value, verification_ref)
+  end
+
+  defp send_allowlist_verification(lv, type, value, verification_ref) do
+    ack_ref = make_ref()
+    message = case type do
+      "entra" -> {:entra_verify_complete, "https://login.microsoftonline.com/#{value}/v2.0",
+        value, "Customer tenant", verification_ref, {self(), ack_ref}}
+      "google" -> {:google_verify_complete, "https://accounts.google.com", [value], value,
+        verification_ref, {self(), ack_ref}}
+    end
+    send(lv.pid, message)
+    assert_receive {:verification_ack, ^ack_ref}
+    render(lv)
   end
 
   # =============================================================================

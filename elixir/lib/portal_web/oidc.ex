@@ -64,11 +64,11 @@ defmodule PortalWeb.OIDC do
     {:ok, config}
   end
 
-  def config_for_provider(%Entra.AuthProvider{} = provider) do
+  def config_for_provider(%Entra.AuthProvider{}) do
     config = Portal.Config.fetch_env!(:portal, Portal.Entra.AuthProvider)
 
     discovery_document_uri =
-      config[:discovery_document_uri] || "#{provider.issuer}/.well-known/openid-configuration"
+      config[:discovery_document_uri] || @entra_organizations_discovery_document_uri
 
     config =
       Enum.into(config, %{
@@ -702,8 +702,10 @@ defmodule PortalWeb.OIDC do
          verified_domains = google_verified_domains(domains),
          :ok <- verify_google_workspace_domain(claims, verified_domains) do
       primary_domain = Enum.find(domains, &(&1["isPrimary"] == true and &1["verified"] == true))
-      {:ok, %{issuer: claims["iss"], domains: verified_domains,
-              name: if(primary_domain, do: primary_domain["domainName"], else: hosted_domain)}}
+      name = if(primary_domain, do: primary_domain["domainName"], else: hosted_domain)
+      first_domain = String.downcase(name)
+      domains = [first_domain | Enum.reject(verified_domains, &(&1 == first_domain))]
+      {:ok, %{issuer: claims["iss"], domains: domains, name: name}}
     else
       {:error, _} = error -> error
       _ -> {:error, :google_workspace_verification_failed}
@@ -980,9 +982,12 @@ defmodule PortalWeb.OIDC do
     do: {:error, {:invalid_entra_id_token, :missing_tenant}}
 
   # The multi-tenant discovery document accepts a token from any tenant.
-  defp verify_entra_provider_tenant(claims, %Entra.AuthProvider{issuer: issuer}) do
+  defp verify_entra_provider_tenant(claims, %Entra.AuthProvider{tenant_ids: tenant_ids}) do
     case verify_entra_tenant_claims(claims) do
-      {:ok, _tenant_id, ^issuer} -> :ok
+      {:ok, tenant_id, _issuer} ->
+        if tenant_id in tenant_ids,
+          do: :ok,
+          else: {:error, {:invalid_jwt, "token was issued by another tenant"}}
       _ -> {:error, {:invalid_jwt, "token was issued by another tenant"}}
     end
   end

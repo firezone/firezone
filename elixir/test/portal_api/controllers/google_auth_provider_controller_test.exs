@@ -162,6 +162,19 @@ defmodule PortalAPI.GoogleAuthProviderControllerTest do
       assert data["issuer"] == provider.issuer
     end
 
+    test "returns a verified domain array", %{conn: conn, actor: actor, account: account} do
+      domains = ["primary.example", "secondary.example"]
+      provider = google_provider_fixture(account: account, workspace_domains: domains)
+      conn = conn |> authorize_conn(actor) |> get("/google_auth_providers/#{provider.id}")
+      assert json_response(conn, 200)["data"]["workspace_domains"] == domains
+    end
+
+    test "returns an empty array for an unrestricted legacy provider", %{conn: conn, actor: actor, account: account} do
+      provider = google_provider_fixture(account: account, workspace_domains: nil)
+      conn = conn |> authorize_conn(actor) |> get("/google_auth_providers/#{provider.id}")
+      assert json_response(conn, 200)["data"]["workspace_domains"] == []
+    end
+
     test "returns not found for unknown id", %{conn: conn, actor: actor} do
       conn =
         conn

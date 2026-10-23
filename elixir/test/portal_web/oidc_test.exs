@@ -8,7 +8,7 @@ defmodule PortalWeb.OIDCTest do
   @client_assertion_type "urn:ietf:params:oauth:client-assertion-type:jwt-bearer"
 
   setup do
-    endpoint = Mocks.OIDC.stub_discovery_document()
+    Mocks.OIDC.stub_discovery_document()
 
     config = [
       client_id: "test-entra-client-id",
@@ -18,7 +18,7 @@ defmodule PortalWeb.OIDCTest do
       req_opts: [retry: false, plug: {Req.Test, PortalWeb.OIDC}]
     ]
 
-    provider = %Entra.AuthProvider{issuer: "#{endpoint}/"}
+    provider = %Entra.AuthProvider{tenant_ids: ["12345678-1234-1234-1234-123456789012"]}
 
     %{config: config, provider: provider}
   end
@@ -53,7 +53,7 @@ defmodule PortalWeb.OIDCTest do
       end)
       assert {:ok, %{name: "PRIMARY.EXAMPLE", domains: domains}} =
                OIDC.verify_google_callback(config, "code", "test-verifier")
-      assert domains == ["alias.example", "primary.example", "secondary.example"]
+      assert domains == ["primary.example", "alias.example", "secondary.example"]
     end
 
     for overrides <- [%{}, %{"hd" => nil}, %{"hd" => ""}, %{"hd" => "example.com", "email_verified" => false}] do

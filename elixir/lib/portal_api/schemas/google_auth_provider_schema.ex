@@ -32,9 +32,9 @@ defmodule PortalAPI.Schemas.GoogleAuthProvider do
         workspace_domains: %Schema{
           type: :array,
           items: %Schema{type: :string},
-          nullable: true,
+          uniqueItems: true,
           readOnly: true,
-          description: "Verified Google Workspace domains allowed to sign in. Null for providers without a Workspace restriction."
+          description: "Verified Google Workspace domains allowed to sign in. Empty for legacy providers that have not been reverified and remain unrestricted."
         },
         context: %Schema{
           example: "clients_and_portal",
@@ -94,6 +94,9 @@ defmodule PortalAPI.Schemas.GoogleAuthProvider do
         :workspace_domains
       ]
     })
+
+    def map(provider, _map), do: %{workspace_domains: provider.workspace_domains || []}
+
   end
 
   defmodule Response do

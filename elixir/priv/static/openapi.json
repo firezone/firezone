@@ -1923,11 +1923,6 @@
             "example": false,
             "type": "boolean"
           },
-          "issuer": {
-            "description": "Issuer",
-            "example": "https://login.microsoftonline.com/tenant-id/v2.0",
-            "type": "string"
-          },
           "name": {
             "description": "Provider name",
             "example": "Entra",
@@ -1938,6 +1933,20 @@
             "example": 28800,
             "nullable": true,
             "type": "integer"
+          },
+          "tenant_ids": {
+            "description": "Verified Entra tenant IDs allowed to authenticate through this provider",
+            "example": [
+              "12345678-1234-1234-1234-123456789012"
+            ],
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "minItems": 1,
+            "readOnly": true,
+            "type": "array",
+            "uniqueItems": true
           },
           "updated_at": {
             "description": "Update timestamp",
@@ -1955,7 +1964,7 @@
           "inserted_at",
           "is_default",
           "is_disabled",
-          "issuer",
+          "tenant_ids",
           "name",
           "portal_session_lifetime_secs",
           "updated_at"
@@ -12244,13 +12253,13 @@
             "type": "string"
           },
           "workspace_domains": {
-            "description": "Verified Google Workspace domains allowed to sign in. Null for providers without a Workspace restriction.",
+            "description": "Verified Google Workspace domains allowed to sign in. Empty for legacy providers that have not been reverified and remain unrestricted.",
             "items": {
               "type": "string"
             },
-            "nullable": true,
             "readOnly": true,
-            "type": "array"
+            "type": "array",
+            "uniqueItems": true
           }
         },
         "required": [

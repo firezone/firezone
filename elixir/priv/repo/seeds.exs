@@ -2796,7 +2796,7 @@ defmodule Portal.Repo.Seeds do
           is_verified: true,
           name: "Google",
           issuer: "https://accounts.google.com",
-          domain: "firezone.dev"
+          workspace_domains: ["firezone.dev"]
         },
         system_subject
       )
@@ -2807,8 +2807,7 @@ defmodule Portal.Repo.Seeds do
         %{
           is_verified: true,
           name: "Entra",
-          issuer: "https://login.microsoftonline.com/#{entra_tenant_id()}/v2.0",
-          tenant_id: entra_tenant_id()
+          tenant_ids: [entra_tenant_id()]
         },
         system_subject
       )

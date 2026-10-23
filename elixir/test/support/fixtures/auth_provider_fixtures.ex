@@ -317,7 +317,7 @@ defmodule Portal.AuthProviderFixtures do
     %{
       name: "Entra",
       context: :clients_and_portal,
-      issuer: "https://login.microsoftonline.com/tenant-id/v2.0",
+      tenant_ids: ["12345678-1234-1234-1234-123456789012"],
       is_verified: true
     }
   end
