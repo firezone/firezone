@@ -674,6 +674,9 @@ defmodule PortalAPI.Device.Channel.Outbound do
                  preshared_key,
                  socket.assigns.subject.context.user_agent
                ),
+             # The unified protocol shows the peer by name in the device's resource list.
+             client_name: device.name,
+             client_slug: device.slug,
              # Kept for older gateways that do not report flow logs to the portal.
              # These do not parse the attribution fields from the ingest token.
              subject: PortalAPI.Gateway.Views.Subject.render(socket.assigns.subject),

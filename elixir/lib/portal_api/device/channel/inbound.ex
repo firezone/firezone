@@ -103,12 +103,14 @@ defmodule PortalAPI.Device.Channel.Inbound do
       flow_logs_ingest_token: flow_logs_ingest_token
     }
 
-    # The unified protocol names the device's ICE role and what it serves.
+    # The unified protocol names the device's ICE role, what it serves and
+    # who asks, so the device can show the peer by name.
     authorization =
       if Core.protocol(socket).kind() == :device do
         Map.merge(authorization, %{
           ice_role: Map.get(payload, :ice_role, :controlled),
-          target: %{type: :resource, resource_id: resource.id}
+          target: %{type: :resource, resource_id: resource.id},
+          client: Map.merge(client, %{name: payload[:client_name], slug: payload[:client_slug]})
         })
       else
         authorization
@@ -220,6 +222,8 @@ defmodule PortalAPI.Device.Channel.Inbound do
           target: %{type: :self, pool_id: payload[:resource][:id], filters: payload[:resource][:filters]},
           client: %{
             id: payload[:client_id],
+            name: payload[:client_name],
+            slug: payload[:client_slug],
             public_key: payload[:client_public_key],
             ipv4: payload[:client_ipv4],
             ipv6: payload[:client_ipv6],
