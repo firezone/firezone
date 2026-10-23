@@ -815,15 +815,18 @@ impl Tunnel {
             .gateway
             .handle_network_input(*GATEWAY_SOCKET, *CLIENT_SOCKET, &datagram.payload, self.now)
             .unwrap()
-            .unwrap();
+            .unwrap()
+            .finish();
         let request = self
             .gateway
-            .handle_peer_input(
+            .handle_peer_batch(
+                decapsulation.decrypt([&*datagram.payload]),
                 *GATEWAY_SOCKET,
                 *CLIENT_SOCKET,
-                decapsulation.decrypt(&datagram.payload),
                 self.now,
             )
+            .next()
+            .unwrap()
             .unwrap()
             .unwrap();
         let udp = request.as_udp().unwrap();
@@ -932,22 +935,30 @@ impl Tunnel {
             return;
         }
         if to == *CLIENT_SOCKET
-            && let Ok(Some(decapsulation)) = self
+            && let Ok(Some(batch)) = self
                 .client
                 .handle_network_input(to, from, payload, self.now)
         {
-            let _ =
+            let decapsulation = batch.finish();
+
+            for _ in
                 self.client
-                    .handle_peer_input(to, from, decapsulation.decrypt(payload), self.now);
+                    .handle_peer_batch(decapsulation.decrypt([payload]), to, from, self.now)
+            {
+            }
         }
         if to == *GATEWAY_SOCKET
-            && let Ok(Some(decapsulation)) = self
+            && let Ok(Some(batch)) = self
                 .gateway
                 .handle_network_input(to, from, payload, self.now)
         {
-            let _ =
+            let decapsulation = batch.finish();
+
+            for _ in
                 self.gateway
-                    .handle_peer_input(to, from, decapsulation.decrypt(payload), self.now);
+                    .handle_peer_batch(decapsulation.decrypt([payload]), to, from, self.now)
+            {
+            }
         }
     }
 }

@@ -26,6 +26,7 @@ mod conn_track;
 pub mod dns;
 mod expiring_map;
 mod filter_engine;
+mod flow;
 mod gateway;
 #[cfg(any(test, feature = "malicious-behaviour"))]
 mod malicious_behaviour;
@@ -53,9 +54,15 @@ pub const IPV6_TUNNEL: Ipv6Network =
     };
 
 pub use client::dns_config::DnsMapping;
-pub use client::{ClientState, DNS_SENTINELS_V4, DNS_SENTINELS_V6, IPV4_RESOURCES, IPV6_RESOURCES};
+pub use client::{
+    ClientState, DNS_SENTINELS_V4, DNS_SENTINELS_V6, IPV4_RESOURCES, IPV6_RESOURCES,
+    PeerBatch as ClientPeerBatch,
+};
 pub use dns::DnsResourceRecord;
-pub use gateway::{DnsResourceNatEntry, GatewayState, ResolveDnsRequest};
+pub use flow::TunBatch;
+pub use gateway::{
+    DnsResourceNatEntry, GatewayState, PeerBatch as GatewayPeerBatch, ResolveDnsRequest,
+};
 #[cfg(feature = "malicious-behaviour")]
 pub use malicious_behaviour::{Guard as MaliciousBehaviourGuard, MaliciousBehaviour};
 pub use unroutable_packet::UnroutablePacket;

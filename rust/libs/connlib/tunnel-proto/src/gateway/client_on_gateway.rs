@@ -41,9 +41,30 @@ pub struct ClientOnGateway {
     nat_table: NatTable,
 }
 
+/// How [`ClientOnGateway::translate_inbound`] rewrote a packet.
+#[derive(Debug, Clone, Copy)]
+pub enum InboundRewrite {
+    None,
+    /// The source was translated from the resource's IP to the client's proxy IP.
+    Source(Protocol, IpAddr),
+    /// The packet was replaced by an ICMP error for the client.
+    IcmpError,
+}
+
+/// How [`ClientOnGateway::translate_outbound`] rewrote a packet.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum OutboundRewrite {
+    None,
+    /// The destination was translated from the client's proxy IP to the resource's IP through
+    /// an existing NAT session.
+    Destination(Protocol, IpAddr),
+    /// The destination was translated through a NAT session created for this packet.
+    NewNatSession,
+}
+
 #[derive(Debug, PartialEq)]
 pub enum TranslateOutboundResult {
-    Send(IpPacket),
+    Send(IpPacket, OutboundRewrite),
     IcmpError {
         reply: IpPacket,
         /// Identifies traffic rejected by the access policy.
@@ -392,15 +413,19 @@ impl ClientOnGateway {
         Ok(result)
     }
 
-    pub fn translate_inbound(&mut self, packet: &mut IpPacket, now: Instant) -> Result<()> {
+    pub fn translate_inbound(
+        &mut self,
+        packet: &mut IpPacket,
+        now: Instant,
+    ) -> Result<InboundRewrite> {
         // Traffic from our own IP is allowed.
         match packet.source() {
-            IpAddr::V4(src) if src == self.gateway_tun.v4 => return Ok(()),
-            IpAddr::V6(src) if src == self.gateway_tun.v6 => return Ok(()),
+            IpAddr::V4(src) if src == self.gateway_tun.v4 => return Ok(InboundRewrite::None),
+            IpAddr::V6(src) if src == self.gateway_tun.v6 => return Ok(InboundRewrite::None),
             IpAddr::V4(_) | IpAddr::V6(_) => {}
         }
 
-        self.transform_tun_to_network(packet, now)?;
+        let rewrite = self.transform_tun_to_network(packet, now)?;
 
         self.ensure_client_ip(packet.destination())?;
         ensure_not_peer_ip(packet.source())
@@ -408,7 +433,7 @@ impl ClientOnGateway {
 
         // Always allow ICMP errors to pass through, even in the presence of filters that don't allow ICMP.
         if packet.icmp_error().is_ok_and(|e| e.is_some()) {
-            return Ok(());
+            return Ok(rewrite);
         }
 
         let rid = self
@@ -417,7 +442,7 @@ impl ClientOnGateway {
 
         flow_tracker::record_resource(rid);
 
-        Ok(())
+        Ok(rewrite)
     }
 
     fn transform_network_to_tun(
@@ -429,12 +454,12 @@ impl ClientOnGateway {
 
         // Packets to the TUN interface don't get transformed.
         if self.gateway_tun.is_ip(dst) {
-            return Ok(TranslateOutboundResult::Send(packet));
+            return Ok(TranslateOutboundResult::Send(packet, OutboundRewrite::None));
         }
 
         // Packets for CIDR resources / Internet resource are forwarded as is.
         if !is_dns_addr(dst) {
-            return Ok(TranslateOutboundResult::Send(packet));
+            return Ok(TranslateOutboundResult::Send(packet, OutboundRewrite::None));
         }
 
         let Some(state) = self.permanent_translations.get_mut(&packet.destination()) else {
@@ -451,8 +476,11 @@ impl ClientOnGateway {
         let existing = self
             .nat_table
             .try_translate_outgoing_existing(&packet, now)?;
-        let (source_protocol, real_ip) = match existing {
-            Some(existing) => existing,
+        let ((source_protocol, real_ip), rewrite) = match existing {
+            Some(existing) => (
+                existing,
+                OutboundRewrite::Destination(existing.0, existing.1),
+            ),
             None => {
                 let Some(resolved_ip) = state.resolved_ip else {
                     return Ok(TranslateOutboundResult::IcmpError {
@@ -474,8 +502,11 @@ impl ClientOnGateway {
                     });
                 }
 
-                self.nat_table
-                    .translate_outgoing(&packet, resolved_ip, now)?
+                let outside = self
+                    .nat_table
+                    .translate_outgoing(&packet, resolved_ip, now)?;
+
+                (outside, OutboundRewrite::NewNatSession)
             }
         };
 
@@ -485,10 +516,14 @@ impl ClientOnGateway {
 
         flow_tracker::record_translated_destination(source_protocol, real_ip);
 
-        Ok(TranslateOutboundResult::Send(packet))
+        Ok(TranslateOutboundResult::Send(packet, rewrite))
     }
 
-    fn transform_tun_to_network(&mut self, packet: &mut IpPacket, now: Instant) -> Result<()> {
+    fn transform_tun_to_network(
+        &mut self,
+        packet: &mut IpPacket,
+        now: Instant,
+    ) -> Result<InboundRewrite> {
         let (proto, ip) = match self.nat_table.translate_incoming(packet, now)? {
             TranslateIncomingResult::Ok { proto, src } => (proto, src),
             TranslateIncomingResult::IcmpError(prototype) => {
@@ -498,7 +533,7 @@ impl ClientOnGateway {
                     .into_packet(self.client_tun.v4, self.client_tun.v6)
                     .context("Failed to create ICMP error")?;
 
-                return Ok(());
+                return Ok(InboundRewrite::IcmpError);
             }
             TranslateIncomingResult::ExpiredNatSession => {
                 bail!(UnroutablePacket::expired_nat_session(packet))
@@ -506,7 +541,7 @@ impl ClientOnGateway {
             TranslateIncomingResult::NoNatSession => {
                 // No NAT session means packet is likely for Internet Resource or a CIDR resource.
 
-                return Ok(());
+                return Ok(InboundRewrite::None);
             }
         };
 
@@ -514,7 +549,7 @@ impl ClientOnGateway {
             .translate_source(proto, ip)
             .context("Failed to translate packet to new source")?;
 
-        Ok(())
+        Ok(InboundRewrite::Source(proto, ip))
     }
 
     pub(crate) fn is_allowed(&self, resource: ResourceId) -> bool {
@@ -924,7 +959,7 @@ mod tests {
 
         assert!(matches!(
             peer.translate_outbound(request, Instant::now()).unwrap(),
-            TranslateOutboundResult::Send(_)
+            TranslateOutboundResult::Send(_, _)
         ));
         peer.translate_inbound(&mut response, Instant::now())
             .unwrap();
@@ -1118,7 +1153,7 @@ mod tests {
 
         assert!(matches!(
             peer.translate_outbound(request, now),
-            Ok(TranslateOutboundResult::Send(_))
+            Ok(TranslateOutboundResult::Send(_, _))
         ));
 
         let mut response = ip_packet::make::udp_packet(
@@ -1185,7 +1220,7 @@ mod tests {
 
             let result = peer.translate_outbound(request.clone(), now).unwrap();
 
-            assert!(matches!(result, TranslateOutboundResult::Send(_)));
+            assert!(matches!(result, TranslateOutboundResult::Send(_, _)));
 
             peer.setup_nat(
                 foo_name().parse().unwrap(),
@@ -1197,7 +1232,7 @@ mod tests {
 
             let result = peer.translate_outbound(request, now).unwrap();
 
-            assert!(matches!(result, TranslateOutboundResult::Send(_)));
+            assert!(matches!(result, TranslateOutboundResult::Send(_, _)));
 
             let mut response = ip_packet::make::udp_packet(
                 foo_real_ip1(),
@@ -1223,7 +1258,7 @@ mod tests {
 
             let result = peer.translate_outbound(request, now).unwrap();
 
-            let TranslateOutboundResult::Send(outside_packet) = result else {
+            let TranslateOutboundResult::Send(outside_packet, _) = result else {
                 panic!("Wrong result");
             };
 
@@ -1272,7 +1307,7 @@ mod tests {
         )
         .unwrap();
 
-        let TranslateOutboundResult::Send(packet) =
+        let TranslateOutboundResult::Send(packet, _) =
             peer.translate_outbound(request.clone(), now).unwrap()
         else {
             panic!("Bad translation result")
@@ -1290,7 +1325,8 @@ mod tests {
         )
         .unwrap();
 
-        let TranslateOutboundResult::Send(packet) = peer.translate_outbound(request, now).unwrap()
+        let TranslateOutboundResult::Send(packet, _) =
+            peer.translate_outbound(request, now).unwrap()
         else {
             panic!("Bad translation result")
         };
@@ -1385,7 +1421,7 @@ mod tests {
         assert!(
             matches!(
                 peer.translate_outbound(udp_request, now).unwrap(),
-                TranslateOutboundResult::Send(_)
+                TranslateOutboundResult::Send(_, _)
             ),
             "UDP/{} packet to shared proxy IP should be forwarded",
             foo_allowed_port(),
@@ -1408,7 +1444,7 @@ mod tests {
         assert!(
             matches!(
                 peer.translate_outbound(tcp_request, now).unwrap(),
-                TranslateOutboundResult::Send(_)
+                TranslateOutboundResult::Send(_, _)
             ),
             "TCP/{} packet to shared proxy IP should be forwarded",
             foo_allowed_port2(),
