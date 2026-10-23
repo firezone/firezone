@@ -33,6 +33,7 @@ defmodule Portal.Presence do
         public_key: device.public_key,
         psk_base: device.psk_base,
         site_id: device.site_id,
+        site_ids: site_ids(device),
         version: device.last_seen_version,
         user_agent: device.last_seen_user_agent,
         remote_ip: device.last_seen_remote_ip,
@@ -41,6 +42,20 @@ defmodule Portal.Presence do
         attested?: device.attested?
       }
       |> Map.merge(extra)
+    end
+
+    # Every site the device serves, from its loaded assignments; the site
+    # column stands in when they are not loaded (clients have neither).
+    defp site_ids(%Device{site_devices: site_devices}) when is_list(site_devices) do
+      Enum.map(site_devices, & &1.site_id)
+    end
+
+    defp site_ids(%Device{site_id: nil}), do: []
+    defp site_ids(%Device{site_id: site_id}), do: [site_id]
+
+    # Metas tracked by a node from before `site_ids` carry only the column.
+    defp meta_site_ids(meta) do
+      Map.get(meta, :site_ids) || List.wrap(Map.get(meta, :site_id))
     end
 
     def connect(%Device{} = device, token_id, session_meta \\ %{}) do
@@ -103,24 +118,23 @@ defmodule Portal.Presence do
     @doc "How many gateways are connected to each site, keyed by site id."
     def online_gateway_counts(account_id) do
       account_id
-      |> __MODULE__.Account.list()
-      |> Enum.reduce(%{}, fn
-        {_id, %{metas: [%{type: :gateway, site_id: site_id} | _]}}, acc ->
-          Map.update(acc, site_id, 1, &(&1 + 1))
-
-        _client, acc ->
-          acc
-      end)
+      |> online_gateway_ids_by_site()
+      |> Map.new(fn {site_id, ids} -> {site_id, MapSet.size(ids)} end)
     end
 
-    @doc "The ids of the gateways connected to each site, keyed by site id."
+    @doc """
+    The ids of the gateways connected to each site, keyed by site id. A
+    gateway serving several sites is listed under each of them.
+    """
     @spec online_gateway_ids_by_site(Ecto.UUID.t()) :: %{Ecto.UUID.t() => MapSet.t(Ecto.UUID.t())}
     def online_gateway_ids_by_site(account_id) do
       account_id
       |> __MODULE__.Account.list()
       |> Enum.reduce(%{}, fn
-        {id, %{metas: [%{type: :gateway, site_id: site_id} | _]}}, acc ->
-          Map.update(acc, site_id, MapSet.new([id]), &MapSet.put(&1, id))
+        {id, %{metas: [%{type: :gateway} = meta | _]}}, acc ->
+          Enum.reduce(meta_site_ids(meta), acc, fn site_id, acc ->
+            Map.update(acc, site_id, MapSet.new([id]), &MapSet.put(&1, id))
+          end)
 
         _client, acc ->
           acc

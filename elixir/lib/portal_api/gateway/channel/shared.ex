@@ -1162,7 +1162,9 @@ defmodule PortalAPI.Gateway.Channel.Shared do
         socket
 
       sup_pid ->
-        gateway = socket.assigns.gateway
+        # The sites the gateway serves travel in its presence meta, so the
+        # assignments are read here, at connect.
+        gateway = Portal.Safe.preload(socket.assigns.gateway, :site_devices)
 
         :ok = Presence.Devices.connect(gateway, socket.assigns.token_id)
 
