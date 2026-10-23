@@ -2,10 +2,31 @@
 
 #[cfg(target_os = "linux")]
 mod benches {
+    use std::ffi::{c_uint, c_void};
     use std::hint::black_box;
 
-    use event_loop_callgrind::{Connectivity, Direction, Idle, Packets, Resource, measure};
     use gungraun::{Callgrind, LibraryBenchmarkConfig, library_benchmark, library_benchmark_group};
+    use tunnel_bench::callgrind::{Direction, Idle, Packets, measure, seeded_rng};
+    use tunnel_bench::fixture::{Connectivity, Resource};
+
+    /// Draws the tunnel's randomness from [`seeded_rng`] instead of the OS.
+    ///
+    /// # Safety
+    ///
+    /// `buf` must be valid for writes of `buflen` bytes.
+    #[unsafe(no_mangle)]
+    pub unsafe extern "C" fn getrandom(buf: *mut c_void, buflen: usize, _flags: c_uint) -> isize {
+        if buf.is_null() || buflen == 0 {
+            return 0;
+        }
+
+        // SAFETY: The caller guarantees `buf` is writable for `buflen` bytes.
+        let out = unsafe { std::slice::from_raw_parts_mut(buf.cast::<u8>(), buflen) };
+
+        seeded_rng::fill_bytes(out);
+
+        buflen as isize
+    }
 
     /// Leaves ring's ChaCha20-Poly1305 out of the counts: entering one of these toggles counting
     /// off until it returns. Its cost depends on the CPU features of the machine running it.

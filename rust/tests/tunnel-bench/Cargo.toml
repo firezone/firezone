@@ -8,16 +8,25 @@ publish = false
 [dependencies]
 anyhow = { workspace = true }
 bufferpool = { workspace = true }
+connlib-model = { workspace = true }
 criterion = { workspace = true }
+dns-types = { workspace = true }
+fastrand = { workspace = true }
+flow-tracker = { workspace = true }
 ip-packet = { workspace = true }
 mimalloc = { workspace = true }
+quinn-udp = { workspace = true }
+rand = { workspace = true }
+relay-proto = { workspace = true }
 serde_json = { workspace = true }
+snownet = { workspace = true }
 socket-factory = { workspace = true }
-tokio = { workspace = true, features = ["rt", "rt-multi-thread"] }
+tokio = { workspace = true, features = ["rt", "rt-multi-thread", "test-util", "time"] }
 tun = { workspace = true }
 tun-offload = { workspace = true }
 tunnel = { workspace = true }
-tunnel-fixture = { workspace = true }
+tunnel-proto = { workspace = true }
+uuid = { workspace = true }
 
 [target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
 tun-apple = { workspace = true }
@@ -31,6 +40,13 @@ libc = { workspace = true }
 [target.'cfg(windows)'.dependencies]
 tun-windows = { workspace = true }
 windows = { workspace = true, features = ["Win32_Foundation", "Win32_System_Diagnostics_ToolHelp", "Win32_System_Threading"] }
+
+[target.'cfg(target_os = "linux")'.dev-dependencies]
+gungraun = { workspace = true }
+
+[[bench]]
+name = "event_loop"
+harness = false
 
 [lints]
 workspace = true

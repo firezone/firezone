@@ -8,10 +8,10 @@
 
 #![allow(clippy::unwrap_used)]
 
-mod callgrind;
 mod idle;
 mod packets;
-mod seeded_rng;
+mod requests;
+pub mod seeded_rng;
 
 use std::future::Future as _;
 use std::net::SocketAddr;
@@ -26,17 +26,16 @@ use tunnel::{ClientState, GatewayState, SocketThreadEnds, Tunnel, TunnelError};
 
 pub use idle::Idle;
 pub use packets::{Direction, Packets};
-pub use tunnel_fixture::{Connectivity, Resource};
 
 /// Runs `f`, counting only what it runs in [`EventLoop::run`].
 ///
 /// Discards what was counted before, such as AEAD calls during set-up that
 /// `--toggle-collect` counted.
 pub fn measure<T>(f: impl FnOnce() -> T) -> T {
-    callgrind::zero_stats();
-    callgrind::toggle_collect();
+    requests::zero_stats();
+    requests::toggle_collect();
     let result = f();
-    callgrind::toggle_collect();
+    requests::toggle_collect();
 
     result
 }
@@ -91,7 +90,7 @@ impl<R: Role> EventLoop<R> {
         let _guard = self.runtime.enter();
         let mut cx = Context::from_waker(Waker::noop());
 
-        callgrind::toggle_collect();
+        requests::toggle_collect();
         loop {
             if self.alarm.is_some_and(|alarm| alarm <= now) {
                 self.alarm = None;
@@ -110,7 +109,7 @@ impl<R: Role> EventLoop<R> {
                 break;
             }
         }
-        callgrind::toggle_collect();
+        requests::toggle_collect();
     }
 
     /// The deadline the event loop asked to be woken at.

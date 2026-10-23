@@ -23,7 +23,7 @@ use criterion::measurement::Measurement;
 use criterion::{BenchmarkGroup, Criterion, Throughput};
 use socket_factory::{PerfUdpSocket, SocketFactory, TcpSocket, UdpSocket};
 use tunnel::{ClientTunnel, GatewayTunnel, TunChannelClosed};
-use tunnel_fixture::{RESOURCES, SIZE, Side, State, connect};
+use tunnel_bench::fixture::{RESOURCES, SIZE, Side, State, connect};
 
 use crate::measure::Stage;
 use crate::thread_cpu::thread_cpu_times;
