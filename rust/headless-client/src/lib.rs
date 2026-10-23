@@ -1,4 +1,8 @@
-//! The headless Client, AKA standalone Client
+//! The headless Client, AKA standalone Client.
+//!
+//! Built as two binaries from this one crate: `firezone`, the name every
+//! Linux install will use, and `firezone-headless-client`, kept as an alias
+//! so existing installs and scripts keep working.
 
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
@@ -178,6 +182,11 @@ enum Cmd {
     #[clap(hide = true)]
     Standalone,
 
+    /// Connect to Firezone and stay connected until stopped
+    ///
+    /// This is what happens with no subcommand too.
+    Run,
+
     /// Sign in via browser-based authentication
     SignIn {
         /// Auth base URL
@@ -201,17 +210,19 @@ enum Cmd {
     },
 
     /// Show the X.509 client certificate the platform keystore holds
-    X509,
+    #[command(alias = "x509")]
+    Identity,
 }
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 const RELEASE: &str = concat!("headless-client@", env!("CARGO_PKG_VERSION"));
 
+/// The entry point of both binaries.
 #[expect(
     clippy::print_stderr,
     reason = "No logger is active when we are printing this error."
 )]
-fn main() {
+pub fn main() {
     match try_main() {
         Ok(()) => {}
         Err(e) => {
@@ -244,12 +255,12 @@ fn try_main() -> Result<()> {
 
             return Ok(());
         }
-        Some(Cmd::X509) => {
+        Some(Cmd::Identity) => {
             handle_x509()?;
 
             return Ok(());
         }
-        Some(Cmd::Standalone) | None => {
+        Some(Cmd::Run) | Some(Cmd::Standalone) | None => {
             // Continue with normal operation
         }
     }
@@ -816,6 +827,19 @@ mod tests {
             Cli::try_parse_from([exe_name, "--check", "--log-dir", "bogus_log_dir"]).unwrap();
         assert!(actual.check);
         assert_eq!(actual.log_dir, Some(PathBuf::from("bogus_log_dir")));
+    }
+
+    #[test]
+    fn run_and_identity() {
+        let actual = Cli::try_parse_from(["firezone", "run"]).unwrap();
+        assert!(matches!(actual._command, Some(Cmd::Run)));
+
+        let actual = Cli::try_parse_from(["firezone", "identity"]).unwrap();
+        assert!(matches!(actual._command, Some(Cmd::Identity)));
+
+        // The old name of the command keeps working.
+        let actual = Cli::try_parse_from(["firezone-headless-client", "x509"]).unwrap();
+        assert!(matches!(actual._command, Some(Cmd::Identity)));
     }
 
     #[test]
