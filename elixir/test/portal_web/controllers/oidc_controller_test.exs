@@ -3139,6 +3139,57 @@ defmodule PortalWeb.OIDCControllerTest do
     end
   end
 
+  describe "callback/2 with Entra provider" do
+    @other_tenant_id "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+
+    setup do
+      Portal.Config.put_env_override(:portal, Portal.Entra.AuthProvider,
+        client_id: "test-entra-client-id",
+        client_secret: "test-entra-client-secret",
+        discovery_document_uri: Mocks.OIDC.discovery_document_uri(),
+        req_opts: [retry: false, plug: {Req.Test, PortalWeb.OIDC}]
+      )
+
+      Mocks.OIDC.set_discovery_document_overrides(%{
+        "issuer" => "https://login.microsoftonline.com/{tenantid}/v2.0"
+      })
+
+      account = account_fixture()
+
+      provider =
+        entra_provider_fixture(
+          account: account,
+          issuer: "https://login.microsoftonline.com/#{@tenant_id}/v2.0"
+        )
+
+      actor = admin_actor_fixture(account: account, email: unique_email())
+
+      {:ok, account: account, provider: provider, actor: actor}
+    end
+
+    test "signs in with an ID token from the provider's tenant", ctx do
+      expect_entra_token_exchange(ctx.actor, @tenant_id)
+      Mocks.OIDC.set_userinfo_response(%{})
+
+      conn = perform_callback(ctx.conn, build_entra_auth_state(ctx.account, ctx.provider))
+
+      assert redirected_to(conn) =~ "/#{ctx.account.slug}/sites"
+      assert conn.resp_cookies["sess_#{ctx.account.id}"]
+    end
+
+    test "rejects an ID token from another tenant", ctx do
+      expect_entra_token_exchange(ctx.actor, @other_tenant_id)
+      Mocks.OIDC.set_userinfo_response(%{})
+
+      conn = perform_callback(ctx.conn, build_entra_auth_state(ctx.account, ctx.provider))
+
+      assert redirected_to(conn) == "/#{ctx.account.slug}/sign_in"
+      assert flash(conn, :error) == "Unable to verify your identity token. Please try signing in again."
+      refute conn.resp_cookies["sess_#{ctx.account.id}"]
+      refute Repo.get_by(Portal.ExternalIdentity, account_id: ctx.account.id)
+    end
+  end
+
   describe "sign_in/2 with Okta provider" do
     test "redirects to IdP with prompt=select_account", %{conn: conn} do
       account = account_fixture()
@@ -4409,5 +4460,26 @@ defmodule PortalWeb.OIDCControllerTest do
       redirect_uri: PortalWeb.OIDC.callback_url()
     )
     |> Enum.into(%{})
+  end
+
+  defp expect_entra_token_exchange(actor, tenant_id) do
+    %{
+      "iss" => "https://login.microsoftonline.com/#{tenant_id}/v2.0",
+      "tid" => tenant_id,
+      "sub" => "entra-sub-#{System.unique_integer([:positive])}",
+      "aud" => "test-entra-client-id",
+      "exp" => token_exp(),
+      "nonce" => PortalWeb.OIDC.nonce("test-verifier"),
+      "upn" => actor.email,
+      "name" => actor.name
+    }
+    |> Mocks.OIDC.sign_openid_connect_token()
+    |> expect_token_exchange()
+  end
+
+  defp build_entra_auth_state(account, provider) do
+    account
+    |> build_oidc_auth_state(provider)
+    |> Map.put(:auth_provider_type, "entra")
   end
 end

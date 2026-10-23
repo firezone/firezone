@@ -210,6 +210,14 @@ defmodule PortalWeb.OIDC do
   Verifies ID token and returns claims.
   Returns {:ok, claims} or {:error, reason}.
   """
+  def verify_token(%Entra.AuthProvider{} = provider, id_token, verifier) do
+    with {:ok, config} <- config_for_provider(provider),
+         {:ok, claims} <- OpenIDConnect.verify(config, id_token, nonce: nonce(verifier)),
+         :ok <- verify_entra_provider_tenant(claims, provider) do
+      {:ok, claims}
+    end
+  end
+
   def verify_token(provider, id_token, verifier) do
     with {:ok, config} <- config_for_provider(provider) do
       OpenIDConnect.verify(config, id_token, nonce: nonce(verifier))
@@ -895,6 +903,14 @@ defmodule PortalWeb.OIDC do
 
   defp verify_entra_tenant_claims(_claims),
     do: {:error, {:invalid_entra_id_token, :missing_tenant}}
+
+  # The multi-tenant discovery document accepts a token from any tenant.
+  defp verify_entra_provider_tenant(claims, %Entra.AuthProvider{issuer: issuer}) do
+    case verify_entra_tenant_claims(claims) do
+      {:ok, _tenant_id, ^issuer} -> :ok
+      _ -> {:error, {:invalid_jwt, "token was issued by another tenant"}}
+    end
+  end
 
   defp verify_entra_principal_claims(%{"oid" => principal_id} = claims)
        when is_binary(principal_id) do
