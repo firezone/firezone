@@ -8220,14 +8220,14 @@ defmodule PortalAPI.Client.ChannelTest do
       :sys.replace_state(socket.channel_pid, fn state ->
         cache =
           Portal.Cache.Inbound.put(
-            state.assigns.authorizations_cache,
+            state.assigns.inbound,
             ghost_pa_id,
             initiating_client_id,
             resource_id,
             expires_at
           )
 
-        put_in(state.assigns.authorizations_cache, cache)
+        put_in(state.assigns.inbound, cache)
       end)
 
       policy_authorization = %Portal.PolicyAuthorization{
@@ -8245,7 +8245,7 @@ defmodule PortalAPI.Client.ChannelTest do
       assert_push "reject_access", %{client_id: ^initiating_client_id, resource_id: ^resource_id}
 
       refute Map.has_key?(
-               :sys.get_state(socket.channel_pid).assigns.authorizations_cache,
+               :sys.get_state(socket.channel_pid).assigns.inbound,
                Ecto.UUID.dump!(ghost_pa_id)
              )
     end
@@ -8318,7 +8318,7 @@ defmodule PortalAPI.Client.ChannelTest do
       :sys.replace_state(socket.channel_pid, fn state ->
         cache =
           Portal.Cache.Inbound.put(
-            state.assigns.authorizations_cache,
+            state.assigns.inbound,
             pa.id,
             initiating_client_id,
             resource_id,
@@ -8333,7 +8333,7 @@ defmodule PortalAPI.Client.ChannelTest do
           )
 
         state
-        |> put_in([Access.key!(:assigns), :authorizations_cache], cache)
+        |> put_in([Access.key!(:assigns), :inbound], cache)
         |> put_in([Access.key!(:assigns), :authz_durability], %{pa.id => {generation, ref}})
       end)
 
@@ -8343,7 +8343,7 @@ defmodule PortalAPI.Client.ChannelTest do
       assert_push "reject_access", %{client_id: ^initiating_client_id, resource_id: ^resource_id}
 
       refute Map.has_key?(
-               :sys.get_state(socket.channel_pid).assigns.authorizations_cache,
+               :sys.get_state(socket.channel_pid).assigns.inbound,
                Ecto.UUID.dump!(pa.id)
              )
     end
@@ -8433,7 +8433,7 @@ defmodule PortalAPI.Client.ChannelTest do
       state = :sys.get_state(socket.channel_pid)
 
       assert Portal.Cache.Inbound.has_resource?(
-               state.assigns.authorizations_cache,
+               state.assigns.inbound,
                pool_resource.id
              )
     end
@@ -8471,7 +8471,7 @@ defmodule PortalAPI.Client.ChannelTest do
       state = :sys.get_state(socket.channel_pid)
 
       refute Portal.Cache.Inbound.has_resource?(
-               state.assigns.authorizations_cache,
+               state.assigns.inbound,
                pool_resource.id
              )
     end
@@ -8499,7 +8499,7 @@ defmodule PortalAPI.Client.ChannelTest do
       assert_push "init", _
 
       state = :sys.get_state(socket.channel_pid)
-      cache = state.assigns.authorizations_cache
+      cache = state.assigns.inbound
 
       assert Portal.Cache.Inbound.has_resource?(cache, pool_resource.id)
 
@@ -8545,7 +8545,7 @@ defmodule PortalAPI.Client.ChannelTest do
              }
     end
 
-    test "prune_authorizations_cache drops expired entries", %{
+    test "prune_inbound drops expired entries", %{
       target_client: target_client,
       target_subject: target_subject,
       client: initiating_client,
@@ -8584,16 +8584,16 @@ defmodule PortalAPI.Client.ChannelTest do
       state = :sys.get_state(socket.channel_pid)
 
       assert Portal.Cache.Inbound.has_resource?(
-               state.assigns.authorizations_cache,
+               state.assigns.inbound,
                pool_resource.id
              )
 
-      send(socket.channel_pid, :prune_authorizations_cache)
+      send(socket.channel_pid, :prune_inbound)
 
       state = :sys.get_state(socket.channel_pid)
 
       refute Portal.Cache.Inbound.has_resource?(
-               state.assigns.authorizations_cache,
+               state.assigns.inbound,
                pool_resource.id
              )
     end
@@ -8651,7 +8651,7 @@ defmodule PortalAPI.Client.ChannelTest do
       state = :sys.get_state(socket.channel_pid)
 
       refute Portal.Cache.Inbound.has_resource?(
-               state.assigns.authorizations_cache,
+               state.assigns.inbound,
                pool_resource.id
              )
     end
@@ -8699,7 +8699,7 @@ defmodule PortalAPI.Client.ChannelTest do
       refute_push "reject_access", _
 
       assert Portal.Cache.Inbound.has_resource?(
-               :sys.get_state(socket.channel_pid).assigns.authorizations_cache,
+               :sys.get_state(socket.channel_pid).assigns.inbound,
                pool_resource.id
              )
 
@@ -8713,7 +8713,7 @@ defmodule PortalAPI.Client.ChannelTest do
       }
 
       refute Portal.Cache.Inbound.has_resource?(
-               :sys.get_state(socket.channel_pid).assigns.authorizations_cache,
+               :sys.get_state(socket.channel_pid).assigns.inbound,
                pool_resource.id
              )
     end
@@ -8744,7 +8744,7 @@ defmodule PortalAPI.Client.ChannelTest do
       refute_push "access_authorization_expiry_updated", _
 
       state = :sys.get_state(socket.channel_pid)
-      assert state.assigns.authorizations_cache == %{}
+      assert state.assigns.inbound == %{}
     end
 
     test "ignores DOWN messages from unrelated processes", %{
