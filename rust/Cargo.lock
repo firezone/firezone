@@ -1537,7 +1537,6 @@ checksum = "baf0a07a401f374238ab8e2f11a104d2851bf9ce711ec69804834de8af45c7af"
 name = "connlib-model"
 version = "0.1.0"
 dependencies = [
- "derive_more",
  "ip_network",
  "itertools 0.15.0",
  "sanstun",
