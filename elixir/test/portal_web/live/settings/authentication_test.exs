@@ -3366,9 +3366,10 @@ defmodule PortalWeb.Settings.AuthenticationTest do
           |> live(~p"/#{ctx.account}/settings/authentication/#{@allowlist_type}/#{provider.id}/edit")
         refute has_element?(lv, "#verified-organization-0 button")
         assert has_element?(lv, "#verified-organization-1 button[phx-click='remove_verified_organization']")
-        render_click(lv, "remove_verified_organization", %{"value" => first})
+        render_click(lv, "remove_verified_organization", %{"organization" => first, "value" => ""})
         assert has_element?(lv, "#verified-organization-0", first)
-        lv |> element("#verified-organization-1 button") |> render_click()
+        # Browsers include the button's native value (an empty string) in click payloads.
+        lv |> element("#verified-organization-1 button") |> render_click(%{"value" => ""})
         refute has_element?(lv, "#verified-organization-1")
         lv |> form("#auth-provider-form") |> render_submit()
         assert Map.fetch!(Repo.get!(@allowlist_schema, provider.id), @allowlist_field) == [first]
@@ -3478,6 +3479,51 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       saved = Repo.get!(Portal.Google.AuthProvider, provider.id)
       assert saved.workspace_domains == ["primary.example"]
       refute saved.is_legacy_unrestricted
+    end
+
+    test "does not show a blank verification alert for an Entra name collision", ctx do
+      Mocks.OIDC.stub_discovery_document()
+      first = "12345678-1234-1234-1234-123456789012"
+      second = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+      entra_provider_fixture(account: ctx.account, name: "Entra", tenant_ids: [first])
+      {:ok, lv, _} = ctx.conn |> authorize_conn(ctx.actor)
+        |> live(~p"/#{ctx.account}/settings/authentication/entra/new")
+      complete_allowlist_verification(lv, "entra", second)
+      lv |> form("#auth-provider-form") |> render_submit()
+      assert has_element?(lv, "#auth-provider-form", "An Entra authentication provider with this name already exists.")
+      refute has_element?(lv, "#auth-provider-form .flash-error")
+
+      lv |> form("#auth-provider-form", %{auth_provider: %{name: "Another organization"}}) |> render_change()
+      complete_allowlist_verification(lv, "entra", first)
+      lv |> form("#auth-provider-form") |> render_submit()
+      assert has_element?(lv, "#auth-provider-form .flash-error", "A tenant is already verified on another")
+      assert Repo.aggregate(Portal.Entra.AuthProvider, :count) == 1
+    end
+
+    for destination <- [:new, :edit, :same_type, :close] do
+      @error_destination destination
+      test "clears Entra errors when navigating to #{@error_destination}", ctx do
+        Mocks.OIDC.stub_discovery_document()
+        tenant_id = "12345678-1234-1234-1234-123456789012"
+        entra = entra_provider_fixture(account: ctx.account, name: "Existing Entra", tenant_ids: [tenant_id])
+        google = google_provider_fixture(account: ctx.account)
+        {:ok, lv, _} = ctx.conn |> authorize_conn(ctx.actor)
+          |> live(~p"/#{ctx.account}/settings/authentication/entra/new")
+        complete_allowlist_verification(lv, "entra", tenant_id)
+        lv |> form("#auth-provider-form") |> render_submit()
+        assert has_element?(lv, "#auth-provider-form .flash-error", "A tenant is already verified on another")
+
+        case @error_destination do
+          :new -> render_patch(lv, ~p"/#{ctx.account}/settings/authentication/google/new")
+          :edit -> render_patch(lv, ~p"/#{ctx.account}/settings/authentication/google/#{google.id}/edit")
+          :same_type -> render_patch(lv, ~p"/#{ctx.account}/settings/authentication/entra/#{entra.id}/edit")
+          :close ->
+            lv |> element("#add-provider-panel button[phx-click='close_panel'][title='Close (Esc)']") |> render_click()
+            render_patch(lv, ~p"/#{ctx.account}/settings/authentication/entra/#{entra.id}/edit")
+        end
+
+        refute has_element?(lv, "#auth-provider-form .flash-error")
+      end
     end
 
     test "shows a verification error when another Entra provider already accepts the tenant", ctx do

@@ -1,24 +1,7 @@
-<h1 class="sm-leading-8" style="margin: 0 0 24px; font-size: 24px; font-weight: 600; color: #000000">Google Workspace domain validation</h1>
-<p style="margin: 0; line-height: 24px">Hi <%= @notice.name %> admins,</p>
-<p style="margin: 16px 0 0; line-height: 24px">We've added Workspace domain validation for Google sign-in in Firezone. For new providers, verification with a Workspace administrator saves the verified domains and enables validation automatically. Verification with a personal Google account creates a provider that accepts personal accounts only.</p>
-<p style="margin: 16px 0 0; line-height: 24px"><strong>Your existing Google provider will stay as it is. No action is required to keep existing sign-ins working.</strong> If you'd like to restrict sign-ins to verified Workspace domains, you can enable validation by verifying those domains and saving the provider. Editing its name or session lifetimes does not enable domain validation.</p>
-<p style="margin: 16px 0 0; line-height: 24px">You can also add separate Google providers for different Workspace organizations, while keeping one personal or existing unrestricted provider. Workspace domain lists cannot overlap within your Firezone account.</p>
-<p style="margin: 16px 0 0; line-height: 24px">Your Firezone account <strong><%= @notice.slug %></strong> has stored Google identities using these email domains:</p>
-<ul style="margin: 16px 0 0; padding-left: 20px; line-height: 24px">
-<%= for domain <- @notice.domains do %>
-  <li><%= domain %></li>
-<% end %>
-</ul>
-<p style="margin: 16px 0 0; line-height: 24px">These are observed email domains, not a verified Workspace domain list. Review them when setting up validation; Firezone obtains the verified domain list from Google.</p>
-<%= if @notice.consumer_identity_count > 0 do %>
-<p style="margin: 16px 0 0; line-height: 24px"><strong>We also found <%= @notice.consumer_identity_count %> Google identities using consumer email addresses in this account.</strong> If you choose to restrict your existing provider, arrange a separate sign-in option for these personal accounts.</p>
-<% end %>
-<h2 style="margin: 24px 0 16px; font-size: 18px; font-weight: 600; color: #000000">How to enable domain restrictions</h2>
-<ol style="margin: 0; padding-left: 20px; line-height: 24px">
-  <li style="margin-bottom: 12px">Open <a href="<%= @settings_url %>" style="color: #5e00d6; text-decoration: none">Settings &rarr; Authentication</a> in your Firezone account. Add a new <strong>Google</strong> provider to keep the existing provider unchanged, or edit the existing provider to restrict it.</li>
-  <li style="margin-bottom: 12px">Click <strong>Verify Now</strong>. Sign in as a Google Workspace administrator and grant read-only access to your organization's domain list.</li>
-  <li style="margin-bottom: 12px">Review <strong>Verified domains</strong>. If users sign in from other Workspace organizations, click <strong>Verify another domain</strong> and complete verification as an administrator of each organization. They can all use the same provider and sign-in option.</li>
-  <li>Before clicking <strong>Save</strong>, check that the list covers the Workspace domains your users need. Saving enables the restrictions.</li>
-</ol>
-<p style="margin: 16px 0 0; line-height: 24px"><strong>Personal Google accounts cannot use a provider with verified-domain restrictions.</strong> This includes personal Google accounts that use a company email address. They need your account's personal Google provider, an existing unrestricted provider, or another authentication method.</p>
-<p style="margin: 16px 0 0; line-height: 24px">See the <a href="https://www.firezone.dev/kb/authenticate/google" style="color: #5e00d6; text-decoration: none">Google authentication guide</a> for details. If you need help, contact <a href="mailto:support@firezone.dev" style="color: #5e00d6; text-decoration: none">support@firezone.dev</a> or reach out in your support channel.</p>
+<h1 class="sm-leading-8" style="margin: 0 0 24px; font-size: 24px; font-weight: 600; color: #000000">Improve Google sign-in security</h1>
+<p style="margin: 0; line-height: 24px">Hi,</p>
+<p style="margin: 16px 0 0; line-height: 24px">You can now restrict Google sign-ins for <strong><%= @notice.name %></strong> to verified Workspace domains.</p>
+<p style="margin: 16px 0 0; line-height: 24px">To enable this security improvement, go to <a href="<%= @settings_url %>" style="color: #5e00d6; text-decoration: none">Settings &rarr; Authentication</a>, edit your Google provider, and click <strong>Verify Now</strong> using a Workspace administrator account. Review the domains and save.</p>
+<p style="margin: 16px 0 0; line-height: 24px">If your users belong to multiple Workspace organizations, use <strong>Verify another domain</strong> to include each organization before saving.</p>
+<p style="margin: 16px 0 0; line-height: 24px">This is optional. Your existing sign-in setup keeps working unchanged.</p>
+<p style="margin: 16px 0 0; line-height: 24px">Questions? Reply to this email.</p>

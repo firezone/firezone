@@ -34,6 +34,7 @@ defmodule Portal.Ops.AuthProviderNoticesTest do
     assert second_email.bcc == [{"", String.downcase(second.admin.email)}]
     assert first_email.html_body =~ "First &lt;script&gt;team&lt;/script&gt;"
     refute first_email.html_body =~ "<script>"
+    assert first_email.reply_to == [{"", "support@firezone.dev"}]
     assert first_email.html_body =~ "logo-dark"
     assert first_email.html_body =~ "prefers-color-scheme: dark"
     refute first_email.html_body =~ "Turn off these notifications"
@@ -106,20 +107,24 @@ defmodule Portal.Ops.AuthProviderNoticesTest do
     [first_email] = collect_queued_emails(first.account.id)
     [second_email] = collect_queued_emails(second.account.id)
     assert first_email.bcc == [{"", "admin@gmail.com"}]
+    assert first_email.reply_to == [{"", "support@firezone.dev"}]
 
     for body <- [first_email.html_body, first_email.text_body] do
-      assert body =~ "work.example"
-      refute body =~ "other.example"
-      assert body =~ "1 Google identities using consumer email addresses"
-      assert body =~ "No action is required"
-      assert body =~ "personal Google"
+      assert body =~ "First Workspace"
+      refute body =~ "Second Workspace"
+      assert body =~ "security improvement"
+      assert body =~ "This is optional."
+      assert body =~ "Verify Now"
+      refute body =~ "personal"
+      refute body =~ "consumer"
       assert body =~ "/#{first.account.slug}/settings/authentication"
     end
 
     for body <- [second_email.html_body, second_email.text_body] do
-      assert body =~ "other.example"
-      refute body =~ "work.example"
-      refute body =~ "We also found"
+      assert body =~ "Second Workspace"
+      refute body =~ "First Workspace"
+      assert body =~ "Verify another"
+      refute body =~ "personal"
     end
 
     assert Repo.reload!(first.provider).workspace_domains == nil

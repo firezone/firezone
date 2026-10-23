@@ -206,7 +206,7 @@ defmodule PortalWeb.Settings.Authentication do
     end
   end
 
-  def handle_event("remove_verified_organization", %{"value" => value}, socket)
+  def handle_event("remove_verified_organization", %{"organization" => value}, socket)
       when socket.assigns.type in ["entra", "google"] do
     previous = socket.assigns.form.source
     values = verified_values(previous, socket.assigns.type)
@@ -609,7 +609,7 @@ defmodule PortalWeb.Settings.Authentication do
   end
 
   defp clear_verification_state(socket) do
-    assign(socket, pending_verification: nil, active_verification: nil)
+    assign(socket, pending_verification: nil, active_verification: nil, verification_error: nil)
   end
 
   defp format_verification_error_reason(reason) when is_binary(reason), do: reason
@@ -1855,7 +1855,7 @@ defmodule PortalWeb.Settings.Authentication do
                   title={"Remove #{@label} #{value}"}
                   size="sm"
                   phx-click="remove_verified_organization"
-                  phx-value-value={value}
+                  phx-value-organization={value}
                 />
               </td>
             </tr>
@@ -1943,7 +1943,10 @@ defmodule PortalWeb.Settings.Authentication do
   defp verification_errors(changeset) do
     changeset.errors
     |> Enum.filter(fn {field, _error} -> field in [:issuer, :tenant_ids, :workspace_domains] end)
-    |> Enum.map_join(" ", fn {_field, {message, _opts}} -> message end)
+    |> case do
+      [] -> nil
+      errors -> Enum.map_join(errors, " ", fn {_field, {message, _opts}} -> message end)
+    end
   end
 
   defp ready_to_verify?(form) do
