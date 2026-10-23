@@ -1,0 +1,6 @@
+# Declarative configuration for sysusers.d: a locked down system user named
+# `firezone` the daemon runs as, with a group of the same name, and the
+# `firezone-client` group whose members may control it over its socket.
+
+u firezone
+g firezone-client -

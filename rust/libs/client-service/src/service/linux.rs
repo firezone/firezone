@@ -36,11 +36,20 @@ pub fn run(log_dir: Option<PathBuf>, dns_control: DnsControlMethod) -> Result<()
     Ok(())
 }
 
-/// Returns true if the Tunnel service can run properly
+/// Returns true if the Tunnel service can run properly: as root, or as the
+/// `firezone` user the package runs it as, with `CAP_NET_ADMIN` for the tunnel.
 // Fallible on Windows
 #[expect(clippy::unnecessary_wraps)]
 pub fn elevation_check() -> Result<bool> {
-    Ok(nix::unistd::getuid().is_root())
+    let is_root = nix::unistd::getuid().is_root();
+    let has_net_admin = caps::has_cap(
+        None,
+        caps::CapSet::Effective,
+        caps::Capability::CAP_NET_ADMIN,
+    )
+    .is_ok_and(|b| b);
+
+    Ok(is_root || has_net_admin)
 }
 
 pub fn install() -> Result<()> {

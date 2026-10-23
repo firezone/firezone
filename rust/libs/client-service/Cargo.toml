@@ -42,6 +42,7 @@ x509-keystore = { workspace = true }
 zip = { workspace = true, features = ["deflate", "time"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
+caps = { workspace = true }
 nix = { workspace = true, features = ["user"] }
 tracing-journald = { workspace = true }
 

@@ -361,8 +361,12 @@ fn invoked_as(program: &std::ffi::OsString, name: &str) -> bool {
 }
 
 /// Whether a Gateway token is installed where the Gateway package puts it.
+///
+/// The package creates the file empty so the unit can load it as a credential;
+/// only a token written into it makes this a Gateway.
 fn gateway_token_present() -> bool {
-    cfg!(target_os = "linux") && Path::new("/etc/firezone/gateway-token").exists()
+    cfg!(target_os = "linux")
+        && std::fs::metadata("/etc/firezone/gateway-token").is_ok_and(|meta| meta.len() > 0)
 }
 
 /// Runs one of the GUI remote-control commands, reporting a failure the way
