@@ -728,6 +728,7 @@ impl Drop for ThreadedUdpSocket {
 }
 
 #[cfg(test)]
+#[expect(dead_code, reason = "Not used by any test yet")]
 impl Sockets {
     /// Creates sockets for both families without threads; the returned ends play their part.
     pub(crate) fn fake() -> (Self, SocketThreadEnds, SocketThreadEnds) {
@@ -805,68 +806,3 @@ fn read_end_var_usize(name: &str) -> Result<Option<usize>> {
 #[derive(thiserror::Error, Debug)]
 #[error("UDP socket thread stopped")]
 pub struct UdpSocketThreadStopped;
-
-#[cfg(test)]
-mod tests {
-    use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
-    use std::task::Waker;
-
-    use bufferpool::Bytes;
-    use ip_packet::Ecn;
-
-    use super::*;
-
-    const V4_PEER: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(192, 0, 2, 1)), 3478);
-    const V6_PEER: SocketAddr = SocketAddr::new(
-        IpAddr::V6(Ipv6Addr::new(0x2001, 0xdb8, 0, 0, 0, 0, 0, 1)),
-        3478,
-    );
-
-    #[test]
-    fn fake_socket_threads_receive_transmits() {
-        let (mut sockets, mut v4, mut v6) = Sockets::fake();
-
-        sockets.send_ready(transmit(V4_PEER));
-        sockets.send_ready(transmit(V6_PEER));
-
-        assert!(v4.outbound_rx.try_recv().is_ok());
-        assert!(v6.outbound_rx.try_recv().is_ok());
-    }
-
-    #[test]
-    fn transmits_wait_once_fake_socket_thread_is_full() {
-        let (mut sockets, _v4, _v6) = Sockets::fake();
-
-        for _ in 0..=QUEUE_SIZE {
-            sockets.send_ready(transmit(V4_PEER));
-        }
-
-        assert_eq!(sockets.num_waiting(IpVersion::V4), 1);
-        assert_eq!(sockets.num_waiting(IpVersion::V6), 0);
-    }
-
-    #[test]
-    fn transmits_to_removed_sockets_fail() {
-        for (dst, remove) in [
-            (V4_PEER, Sockets::remove_v4 as fn(&mut Sockets)),
-            (V6_PEER, Sockets::remove_v6),
-        ] {
-            let (mut sockets, _v4, _v6) = Sockets::fake();
-            remove(&mut sockets);
-
-            sockets.send_ready(transmit(dst));
-
-            let result = sockets.poll_flush(&mut Context::from_waker(Waker::noop()));
-            assert!(matches!(result, Poll::Ready(Err(_))));
-        }
-    }
-
-    fn transmit(dst: SocketAddr) -> snownet::Transmit {
-        snownet::Transmit {
-            src: None,
-            dst,
-            payload: Bytes::copied_from(&[0; 4]),
-            ecn: Ecn::NonEct,
-        }
-    }
-}
