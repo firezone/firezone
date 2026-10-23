@@ -228,6 +228,17 @@ defmodule Portal.Policies.EvaluatorTest do
   #  end
   # end
 
+  describe "fetch_conformation_expiration/3 for any device" do
+    test "a gateway-typed device is evaluated like a client" do
+      gateway = %Portal.Device{type: :gateway, last_seen_remote_ip_location_region: "US"}
+
+      condition = %{property: :remote_ip_location_region, operator: :is_in, values: ["US"]}
+
+      assert fetch_conformation_expiration(condition, gateway, nil) == {:ok, nil}
+      assert ensure_conforms([condition], gateway, nil) == {:ok, nil}
+    end
+  end
+
   describe "fetch_conformation_expiration/3 with auth_provider_id" do
     test "is_in returns ok when auth_provider_id matches" do
       client = %Portal.Device{type: :client}
