@@ -194,7 +194,7 @@ pub fn setup_stdout() -> Result<FilterReloadHandle> {
 /// 1. `RUST_LOG` env var
 /// 2. `settings::load_advanced_settings()` (the protected on-disk settings file)
 /// 3. Hard-coded default `DEFAULT_LOG_FILTER`
-pub(crate) fn get_log_filter() -> String {
+pub fn get_log_filter() -> String {
     #[cfg(not(debug_assertions))]
     const DEFAULT_LOG_FILTER: &str = "info";
     #[cfg(debug_assertions)]

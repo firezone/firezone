@@ -115,7 +115,8 @@ jobs:
       - run: pnpm vite build
       - name: Build client and smoke tests
         # The GNOME capture runs without a Vite server, so embed the frontend.
-        run: cargo build -p firezone-gui-client -p gui-smoke-test --all-targets ${{ matrix.runs-on == 'ubuntu-24.04' && '--features tauri/custom-protocol' || '' }}
+        # The tunnel service is a bin of the headless client crate now.
+        run: cargo build -p firezone-gui-client -p gui-smoke-test -p firezone-headless-client --all-targets ${{ matrix.runs-on == 'ubuntu-24.04' && '--features tauri/custom-protocol' || '' }}
       - name: GUI starts, connects to the tunnel and quits
         working-directory: ./rust
         run: cargo run -p gui-smoke-test -- starts-and-quits

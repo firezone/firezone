@@ -15,8 +15,10 @@ fi
 pnpm install --frozen-lockfile
 pnpm exec vite build
 
-# The `firezone` CLI is its own workspace member, so `tauri build` never compiles it.
+# The `firezone` CLI and the tunnel service are their own workspace members,
+# so `tauri build` never compiles them.
 cargo build --release -p firezone-cli
+cargo build --release -p firezone-headless-client --bin firezone-client-tunnel
 pnpm exec tauri build --no-bundle
 
 case "$OSTYPE" in

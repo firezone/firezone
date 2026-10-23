@@ -12,15 +12,15 @@ use url::Url;
 
 #[cfg(target_os = "linux")]
 #[path = "settings/linux.rs"]
-pub(crate) mod mdm;
+pub mod mdm;
 
 #[cfg(target_os = "windows")]
 #[path = "settings/windows.rs"]
-pub(crate) mod mdm;
+pub mod mdm;
 
 #[cfg(target_os = "macos")]
 #[path = "settings/macos.rs"]
-pub(crate) mod mdm;
+pub mod mdm;
 
 pub use mdm::load_mdm_settings;
 
@@ -137,16 +137,16 @@ impl AdvancedSettingsViewModel {
 
 #[cfg(debug_assertions)]
 mod defaults {
-    pub(crate) const AUTH_URL: &str = "https://app.firez.one";
-    pub(crate) const API_URL: &str = "wss://api.firez.one/";
-    pub(crate) const LOG_FILTER: &str = "debug";
+    pub const AUTH_URL: &str = "https://app.firez.one";
+    pub const API_URL: &str = "wss://api.firez.one/";
+    pub const LOG_FILTER: &str = "debug";
 }
 
 #[cfg(not(debug_assertions))]
 mod defaults {
-    pub(crate) const AUTH_URL: &str = "https://app.firezone.dev";
-    pub(crate) const API_URL: &str = "wss://api.firezone.dev/";
-    pub(crate) const LOG_FILTER: &str = "info";
+    pub const AUTH_URL: &str = "https://app.firezone.dev";
+    pub const API_URL: &str = "wss://api.firezone.dev/";
+    pub const LOG_FILTER: &str = "info";
 }
 
 impl GeneralSettings {
