@@ -282,9 +282,9 @@ tun-windows = { path = "libs/connlib/tun-windows" }
 tunnel = { path = "libs/connlib/tunnel" }
 tunnel-bypass-resolver = { path = "libs/tunnel-bypass-resolver" }
 tunnel-proto = { path = "libs/connlib/tunnel-proto" }
-userspace-forwarder = { path = "libs/connlib/userspace-forwarder" }
 uniffi = "0.31.1"
 url = "2.5.2"
+userspace-forwarder = { path = "libs/connlib/userspace-forwarder" }
 uuid = "1.23.2"
 webpki-roots = "1.0.7"
 which = "8.0.5"
