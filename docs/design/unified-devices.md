@@ -193,7 +193,11 @@ forwarders behind one trait, chosen at run time; no flag selects a role.
   The rules go away when the device stops serving, not at the next
   restart. `--no-kernel-forwarding` (and `FIREZONE_NO_KERNEL_FORWARDING`)
   skips this forwarder; a container without `NET_ADMIN` falls through to
-  the next one instead of failing.
+  the next one instead of failing. The packaged daemon runs as the
+  `firezone` user and cannot write the sysctls or take the iptables lock;
+  there the kernel forwarder applies when the admin has turned forwarding
+  on (0.8), whose rules it then assumes, and the device serves in userspace
+  otherwise.
 - _Userspace forwarder_ (every platform; the Linux fallback). TCP is
   terminated by smoltcp through `l3-tcp`, as the TCP DNS server already
   does, and each connection is paired with a host socket to the real
