@@ -1,6 +1,8 @@
 defmodule PortalWeb.DevicesTest do
   use PortalWeb.ConnCase, async: true
 
+  import Ecto.Query
+
   import Phoenix.LiveViewTest, except: [live: 2]
 
   # The table loads in an async task, so wait for it before returning.
@@ -554,6 +556,111 @@ defmodule PortalWeb.DevicesTest do
 
       assert_patch(lv, ~p"/#{account}/devices")
       assert is_nil(Repo.get_by(Device, account_id: account.id, id: client.id))
+    end
+
+    test "edits the sites a gateway serves from the panel", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      home = site_fixture(account: account, name: "Home Lab")
+      office = site_fixture(account: account, name: "Office")
+      gateway = gateway_fixture(account: account, site: home)
+
+      {:ok, lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/devices/#{gateway.id}")
+
+      assert html =~ "Serves"
+      assert has_element?(lv, "#device-site-#{home.id}")
+
+      html = render_click(lv, "edit_device_sites")
+      assert html =~ "Office"
+
+      html = render_submit(lv, "assign_device_site", %{"site_id" => office.id})
+      assert html =~ "Device now serves Office."
+      assert has_element?(lv, "#device-site-#{office.id}")
+
+      assert Repo.get_by(Portal.SiteDevice,
+               account_id: account.id,
+               site_id: office.id,
+               device_id: gateway.id
+             )
+
+      html = render_click(lv, "remove_device_site", %{"site_id" => home.id})
+      assert html =~ "Device no longer serves Home Lab."
+      refute has_element?(lv, "#device-site-#{home.id}")
+      assert Repo.get_by!(Device, account_id: account.id, id: gateway.id).site_id == office.id
+
+      html = render_click(lv, "remove_device_site", %{"site_id" => office.id})
+      assert html =~ "only site the gateway serves"
+      assert has_element?(lv, "#device-site-#{office.id}")
+    end
+
+    test "asks before a gateway co-hosts the Internet resource", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      internet_site = internet_site_fixture(account: account)
+      gateway = gateway_fixture(account: account, site: site_fixture(account: account))
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/devices/#{gateway.id}")
+
+      render_click(lv, "edit_device_sites")
+      html = render_submit(lv, "assign_device_site", %{"site_id" => internet_site.id})
+      assert html =~ "would serve the Internet resource next to other resources"
+
+      html =
+        render_click(lv, "assign_device_site", %{"site_id" => internet_site.id, "confirmed" => "true"})
+
+      assert html =~ "Device now serves"
+      assert has_element?(lv, "#device-site-#{internet_site.id}")
+    end
+
+    test "rotates a gateway's bound token and reveals the new one", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      gateway = gateway_fixture(account: account, token: :single_owner)
+      old_token = Repo.get_by!(Portal.ClientToken, account_id: account.id, device_id: gateway.id)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/devices/#{gateway.id}")
+
+      assert has_element?(lv, "button[phx-click='rotate_device_token']", "Rotate token")
+
+      html = render_click(lv, "rotate_device_token")
+      assert html =~ "Rotate this device&#39;s token?"
+
+      html = render_click(lv, "confirm_rotate_device_token")
+      assert html =~ "Token rotated."
+      assert html =~ "New device token"
+      assert has_element?(lv, "#device-token-reveal-#{gateway.id}-code")
+
+      tokens = Repo.all(from(t in Portal.ClientToken, where: t.device_id == ^gateway.id))
+      assert Enum.any?(tokens, &(&1.id != old_token.id and is_nil(&1.rotated_at)))
+
+      html = render_click(lv, "dismiss_rotated_device_token")
+      refute html =~ "New device token"
+    end
+
+    test "offers no token rotation for a client", %{conn: conn, account: account, actor: actor} do
+      client = client_fixture(account: account, actor: actor)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/devices/#{client.id}")
+
+      refute has_element?(lv, "button[phx-click='rotate_device_token']")
     end
 
     test "verifies an unverified client", %{
