@@ -280,6 +280,8 @@ fn try_main() -> Result<()> {
             return Ok(());
         }
         Some(Cmd::Run { foreground: false }) if !invoked_as_headless_client() => {
+            client_service::set_daemon_version(VERSION);
+
             return client_service::service::run(cli.log_dir, cli.dns_control);
         }
         Some(Cmd::Run { .. }) | Some(Cmd::Standalone) | None => {

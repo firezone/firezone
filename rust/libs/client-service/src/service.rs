@@ -81,6 +81,14 @@ where
     serializer.serialize_str(token.expose_secret())
 }
 
+/// The version of the messages on the tunnel service's socket.
+///
+/// Bumped whenever [`ClientMsg`] or [`ServerMsg`] change shape. The GUI and
+/// the service ship in one package, so the two only differ in the middle of
+/// an upgrade; the GUI compares this to what `Hello` carries and says so
+/// instead of failing to read the next message.
+pub const IPC_VERSION: u32 = 1;
+
 /// Messages that end up in the GUI, either forwarded from connlib or from the Tunnel service.
 #[derive(Debug, serde::Deserialize, serde::Serialize, strum::Display)]
 pub enum ServerMsg {
@@ -89,6 +97,12 @@ pub enum ServerMsg {
         advanced_settings: AdvancedSettings,
         mdm_settings: MdmSettings,
         x509_certificate: Result<Option<x509_keystore::ParsedCertificate>, x509_keystore::Error>,
+        /// [`IPC_VERSION`] of the service; a service from before the field sends none.
+        #[serde(default)]
+        ipc_version: u32,
+        /// The version of the binary running the service, for the message a mismatch shows.
+        #[serde(default)]
+        daemon_version: String,
     },
     /// The Tunnel service finished clearing its log dir.
     ClearedLogs(Result<(), String>),
@@ -489,6 +503,8 @@ impl<'a> Handler<'a> {
                 advanced_settings: advanced_settings.clone(),
                 mdm_settings: mdm_settings.clone(),
                 x509_certificate: x509_of(&keystore),
+                ipc_version: IPC_VERSION,
+                daemon_version: crate::daemon_version().to_owned(),
             })
             .await
             .context("Failed to greet to new GUI process")?; // Greet the GUI process. If the GUI process doesn't receive this after connecting, it knows that the tunnel service isn't responding.

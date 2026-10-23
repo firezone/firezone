@@ -4,7 +4,7 @@ use crate::cli::{Cli, Cmd, InternetResourceCmd, ResourcesCmd};
 use anyhow::{Context as _, ErrorExt as _, Result, bail};
 use clap::Parser as _;
 use connlib_model::ResourceView;
-use gui_ipc::{ClientMsg, NotRunning, ServerError, ServerMsg, TunnelStatus};
+use gui_ipc::{ClientMsg, NotRunning, ServerError, ServerMsg, TunnelStatus, VersionMismatch};
 use secrecy::SecretString;
 use std::{
     io::{BufRead as _, IsTerminal as _},
@@ -54,6 +54,10 @@ fn main() -> ExitCode {
 fn expected(error: &anyhow::Error) -> Option<String> {
     if error.any_is::<NotRunning>() {
         return Some(NotRunning.to_string());
+    }
+
+    if let Some(mismatch) = error.any_downcast_ref::<VersionMismatch>() {
+        return Some(mismatch.to_string());
     }
 
     let server_error = error.any_downcast_ref::<ServerError>()?;

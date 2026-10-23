@@ -29,6 +29,8 @@ fn main() -> Result<()> {
 
     let cli = Cli::parse();
 
+    client_service::set_daemon_version(env!("CARGO_PKG_VERSION"));
+
     match cli.command {
         Cmd::Install => service::install(),
         Cmd::Run => service::run(cli.log_dir, cli.dns_control),

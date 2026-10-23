@@ -258,6 +258,16 @@ fn try_main(cli: Cli, rt: &Runtime, log_guard: &mut Option<LogGuard>) -> Result<
                 return Err(anyhow);
             }
 
+            if let Some(mismatch) =
+                anyhow.any_downcast_ref::<controller::TunnelServiceVersionMismatch>()
+            {
+                dialog::error(&format!(
+                    "The Firezone Tunnel service is version {} but this app is version {}. Restart your computer to finish the upgrade, or reinstall Firezone.",
+                    mismatch.daemon_version, mismatch.gui_version
+                ))?;
+                return Err(anyhow);
+            }
+
             if anyhow.any_is::<controller::FailedToReceiveHello>() {
                 dialog::error(
                     "The Firezone Tunnel service is not responding. If the issue persists, contact your administrator.",
