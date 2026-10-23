@@ -295,6 +295,23 @@ defmodule PortalAPI.Gateway.SocketTest do
       assert socket.assigns.gateway.token_id == token.id
     end
 
+    test "connects a gateway whose site was deleted" do
+      account = account_fixture()
+      site = site_fixture(account: account)
+      gateway = gateway_fixture(account: account, site: site)
+      token = gateway_token_fixture(gateway: gateway)
+      encrypted_secret = encode_gateway_token(token)
+      Portal.Repo.delete!(site)
+
+      attrs = connect_attrs(token: encrypted_secret)
+      connect_info = build_connect_info()
+
+      assert {:ok, socket} = connect(Socket, attrs, connect_info: connect_info)
+      assert socket.assigns.gateway.id == gateway.id
+      assert is_nil(socket.assigns.gateway.site_id)
+      assert is_nil(socket.assigns.site)
+    end
+
     test "single-owner connect persists the reported firezone_id when blank" do
       account = account_fixture()
       site = site_fixture(account: account)
