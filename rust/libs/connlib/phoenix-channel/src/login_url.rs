@@ -80,6 +80,54 @@ impl LoginUrl<PublicKeyParam> {
         device_info: DeviceInfo,
         certificate: Option<ClientCertificate>,
     ) -> Result<Self, LoginUrlError<E>> {
+        Self::client_like(
+            url,
+            ("client", "v3"),
+            device_id,
+            device_name,
+            device_info,
+            certificate,
+            &[],
+        )
+    }
+
+    /// The `/device/v1` socket, for a binary that speaks the unified protocol.
+    ///
+    /// The portal matches devices by the protocol minors they state, so the
+    /// range is a connect parameter.
+    pub fn device<E>(
+        url: impl TryInto<Url, Error = E>,
+        device_id: String,
+        device_name: Option<String>,
+        device_info: DeviceInfo,
+        certificate: Option<ClientCertificate>,
+        proto_range: (u64, u64),
+    ) -> Result<Self, LoginUrlError<E>> {
+        let (proto_min, proto_max) = proto_range;
+
+        Self::client_like(
+            url,
+            ("device", "v1"),
+            device_id,
+            device_name,
+            device_info,
+            certificate,
+            &[
+                ("proto_min", proto_min.to_string()),
+                ("proto_max", proto_max.to_string()),
+            ],
+        )
+    }
+
+    fn client_like<E>(
+        url: impl TryInto<Url, Error = E>,
+        (mode, version): (&str, &str),
+        device_id: String,
+        device_name: Option<String>,
+        device_info: DeviceInfo,
+        certificate: Option<ClientCertificate>,
+        extra_params: &[(&str, String)],
+    ) -> Result<Self, LoginUrlError<E>> {
         let mut url = url.try_into().map_err(LoginUrlError::InvalidUrl)?;
 
         let tls_config = match &certificate {
@@ -105,10 +153,10 @@ impl LoginUrl<PublicKeyParam> {
             .or(get_host_name())
             .unwrap_or_else(|| Uuid::new_v4().to_string());
 
-        let url = get_websocket_path(
+        let mut url = get_websocket_path(
             url,
-            "client",
-            Some("v3"),
+            mode,
+            Some(version),
             Some(external_id),
             Some(device_name),
             None,
@@ -116,6 +164,10 @@ impl LoginUrl<PublicKeyParam> {
             None,
             device_info,
         )?;
+
+        for (key, value) in extra_params {
+            url.query_pairs_mut().append_pair(key, value);
+        }
 
         let (host, port) = parse_host(&url)?;
 

@@ -247,6 +247,16 @@ impl DeviceState {
         Ok(())
     }
 
+    /// Drops the authorization between us and `peer` for `resource_id`, whichever way it went.
+    ///
+    /// On the unified protocol the portal revokes both kinds the same way:
+    /// what we were authorized to reach through `peer`, and what `peer` was
+    /// authorized to reach through us.
+    pub fn revoke_authorization(&mut self, peer: ClientId, resource_id: ResourceId, now: Instant) {
+        self.handle_reject_client_device_access(peer, resource_id);
+        self.close_idle_served_peers(now);
+    }
+
     /// Withdraws `rid` from `cid`, closing the connection once nothing is left on it.
     #[tracing::instrument(level = "debug", skip_all, fields(%rid, %cid))]
     pub fn remove_access(&mut self, cid: &ClientId, rid: &ResourceId, now: Instant) {

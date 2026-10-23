@@ -403,6 +403,15 @@ impl Io {
         self.nameservers.fastest()
     }
 
+    /// Replaces the nameservers the DNS servers on our tunnel addresses forward to.
+    pub fn set_nameservers(&mut self, nameservers: BTreeSet<IpAddr>) {
+        self.nameservers = NameserverSet::new(
+            nameservers,
+            self.tcp_socket_factory.clone(),
+            self.udp_socket_factory.clone(),
+        );
+    }
+
     /// Whether `local` is one of the DNS servers bound on our tunnel addresses.
     pub fn is_tun_dns_server(&self, local: SocketAddr) -> bool {
         self.udp_dns_server.contains_key(&local) || self.tcp_dns_server.contains_key(&local)
