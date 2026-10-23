@@ -1142,7 +1142,8 @@ pub fn run_smoke_test() -> Result<()> {
     anyhow::bail!("Smoke test is not built for release binaries.");
 }
 
-#[cfg(test)]
+// The IPC server is not implemented on macOS, where the service never runs.
+#[cfg(all(test, not(target_os = "macos")))]
 mod tests {
     use super::*;
 
