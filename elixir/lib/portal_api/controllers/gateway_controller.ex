@@ -331,9 +331,23 @@ defmodule PortalAPI.GatewayController do
       ]
     end
 
+    # A gateway serves every site it is assigned to, so the site's gateways
+    # are read from the assignments rather than the gateway's site column.
     defp filter_by_site_id(queryable, site_id) do
-      dynamic = dynamic([gateways: d], d.site_id == ^site_id)
-      {queryable, dynamic}
+      {queryable, serves_site(site_id)}
+    end
+
+    defp serves_site(site_id) do
+      dynamic(
+        [gateways: d],
+        exists(
+          from(sd in Portal.SiteDevice,
+            where:
+              sd.account_id == parent_as(:gateways).account_id and
+                sd.device_id == parent_as(:gateways).id and sd.site_id == ^site_id
+          )
+        )
+      )
     end
 
     defp filter_by_name(queryable, name) do
@@ -354,7 +368,8 @@ defmodule PortalAPI.GatewayController do
     def fetch_gateway(site_id, id, subject) do
       result =
         from(d in Device, as: :gateways)
-        |> where([gateways: d], d.id == ^id and d.type == :gateway and d.site_id == ^site_id)
+        |> where([gateways: d], d.id == ^id and d.type == :gateway)
+        |> where(^serves_site(site_id))
         |> with_token_rotation()
         |> Safe.scoped(subject)
         |> Safe.one()

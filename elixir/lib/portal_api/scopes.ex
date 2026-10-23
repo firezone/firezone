@@ -26,6 +26,7 @@ defmodule PortalAPI.Scopes do
     PortalAPI.ClientTokenController => :client_tokens,
     PortalAPI.SiteController => :sites,
     PortalAPI.GatewayController => :gateways,
+    PortalAPI.SiteDeviceController => :gateways,
     PortalAPI.GatewayTokenController => :gateway_tokens,
     PortalAPI.ResourceController => :resources,
     PortalAPI.PoolMemberController => :resources,

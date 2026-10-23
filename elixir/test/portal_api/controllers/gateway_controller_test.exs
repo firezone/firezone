@@ -377,6 +377,47 @@ defmodule PortalAPI.GatewayControllerTest do
     end
   end
 
+  describe "gateways assigned from another site" do
+    test "are listed, shown, and updated under the site", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      site: site
+    } do
+      other_site = site_fixture(account: account)
+      gateway = gateway_fixture(account: account, site: other_site)
+      Portal.SiteDeviceFixtures.site_device_fixture(site: site, device: gateway)
+
+      conn = conn |> authorize_conn(actor) |> put_req_header("content-type", "application/json")
+
+      assert %{"data" => [%{"id" => id}]} = json_response(get(conn, "/sites/#{site.id}/gateways"), 200)
+      assert id == gateway.id
+
+      assert %{"data" => %{"id" => ^id}} =
+               json_response(get(conn, "/sites/#{site.id}/gateways/#{gateway.id}"), 200)
+
+      assert %{"data" => %{"name" => "renamed"}} =
+               json_response(
+                 put(conn, "/sites/#{site.id}/gateways/#{gateway.id}", gateway: %{name: "renamed"}),
+                 200
+               )
+    end
+
+    test "are not found under a site they do not serve", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      site: site
+    } do
+      gateway = gateway_fixture(account: account, site: site_fixture(account: account))
+
+      conn = conn |> authorize_conn(actor) |> put_req_header("content-type", "application/json")
+
+      assert %{"status" => 404} =
+               json_response(get(conn, "/sites/#{site.id}/gateways/#{gateway.id}"), 404)
+    end
+  end
+
   describe "show/2" do
     test "returns error when not authorized", %{
       conn: conn,
