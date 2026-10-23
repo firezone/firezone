@@ -44,6 +44,41 @@ defmodule PortalAPI.Schemas.GatewayToken do
     end
   end
 
+  defmodule CreateSchema do
+    require OpenApiSpex
+    alias OpenApiSpex.Schema
+
+    OpenApiSpex.schema(%{
+      title: "GatewayTokenCreate",
+      description: "Attributes of a new single-owner Gateway Token",
+      type: :object,
+      properties: %{
+        actor_id: %Schema{
+          example: "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
+          type: :string,
+          format: :uuid,
+          description:
+            "Service account the Gateway connects as. Defaults to the account's " <>
+              "Infrastructure service account."
+        }
+      }
+    })
+  end
+
+  defmodule CreateRequest do
+    require OpenApiSpex
+    alias PortalAPI.Schemas.GatewayToken
+
+    OpenApiSpex.schema(%{
+      title: "GatewayTokenCreateRequest",
+      description: "Request body for creating a single-owner Gateway Token",
+      type: :object,
+      properties: %{
+        gateway_token: GatewayToken.CreateSchema
+      }
+    })
+  end
+
   defmodule Response do
     require OpenApiSpex
     alias PortalAPI.Schemas.GatewayToken

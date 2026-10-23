@@ -92,6 +92,9 @@ defmodule PortalAPI.GatewayTokenController do
         example: "00000000-0000-0000-0000-000000000000"
       ]
     ],
+    request_body:
+      {"Token attributes", "application/json", PortalAPI.Schemas.GatewayToken.CreateRequest,
+       required: false},
     responses:
       [
         created: {"New Token Response", "application/json", PortalAPI.Schemas.GatewayToken.Response}
@@ -101,17 +104,20 @@ defmodule PortalAPI.GatewayTokenController do
           :unauthorized,
           :not_found,
           :conflict,
+          :unprocessable_entity,
           :too_many_requests
         ])
 
   # coveralls-ignore-stop
 
   @spec create_for_gateway(Plug.Conn.t(), map()) :: Plug.Conn.t()
-  def create_for_gateway(conn, %{"site_id" => site_id, "gateway_id" => gateway_id}) do
+  def create_for_gateway(conn, %{"site_id" => site_id, "gateway_id" => gateway_id} = params) do
     subject = conn.assigns.subject
+    actor_id = get_in(params, ["gateway_token", "actor_id"])
 
     with {:ok, gateway} <- Database.fetch_gateway(site_id, gateway_id, subject),
-         {:ok, token} <- Authentication.create_gateway_token(gateway, subject) do
+         {:ok, owner} <- PortalAPI.DeviceTokenOwner.fetch(actor_id, subject),
+         {:ok, token} <- Authentication.create_device_token(gateway, owner, subject) do
       conn
       |> put_status(:created)
       |> json(JSON.encode(token, schema: PortalAPI.Schemas.GatewayToken.Schema))
