@@ -48,9 +48,9 @@ pub fn is_available() -> bool {
 
 #[cfg(target_os = "linux")]
 mod linux {
-    use std::process::Command;
+    use std::{fmt, process::Command};
 
-    use anyhow::{Context as _, Result, bail};
+    use anyhow::{Context as _, Result};
 
     const IPV4_FORWARD: &str = "/proc/sys/net/ipv4/ip_forward";
     const IPV6_FORWARD: &[&str] = &[
@@ -93,6 +93,8 @@ mod linux {
             rules: Vec::new(),
         };
 
+        let forwarding_was_on = read_sysctl(IPV4_FORWARD).as_deref() == Some("1");
+
         set_sysctl(&mut guard, IPV4_FORWARD).context("Failed to enable IPv4 forwarding")?;
         for path in IPV6_FORWARD {
             if let Err(e) = set_sysctl(&mut guard, path) {
@@ -103,9 +105,21 @@ mod linux {
         }
 
         for rule in rules(tun_interface) {
-            if let Err(e) = add_rule(&mut guard, rule) {
-                // The guard drops what we did so far.
-                return Err(e).context("Failed to add forwarding rule");
+            match add_rule(&mut guard, rule) {
+                Ok(()) => {}
+                // A packaged install runs the daemon without root, which cannot manage
+                // the rules; an admin who turned forwarding on has added them, as the
+                // docs say, so the host is taken at its word.
+                Err(AddRuleError::CannotManage(e)) if forwarding_was_on => {
+                    tracing::warn!(
+                        "Cannot manage the forwarding rules, assuming the host's own since it forwards already: {e:#}"
+                    );
+                    break;
+                }
+                Err(e) => {
+                    // The guard drops what we did so far.
+                    return Err(anyhow::Error::from(e)).context("Failed to add forwarding rule");
+                }
             }
         }
 
@@ -129,7 +143,7 @@ mod linux {
                         .chain(rule.args.iter().map(String::as_str)),
                 ) {
                     Ok(()) => {}
-                    Err(e) => tracing::warn!(?rule, "Failed to remove forwarding rule: {e:#}"),
+                    Err(e) => tracing::warn!(?rule, "Failed to remove forwarding rule: {e}"),
                 }
             }
 
@@ -207,25 +221,43 @@ mod linux {
         rules
     }
 
+    enum AddRuleError {
+        /// The rules cannot be checked or changed at all, as without root.
+        CannotManage(anyhow::Error),
+        Other(anyhow::Error),
+    }
+
+    impl From<AddRuleError> for anyhow::Error {
+        fn from(e: AddRuleError) -> Self {
+            match e {
+                AddRuleError::CannotManage(e) => e.context("Cannot manage the rules"),
+                AddRuleError::Other(e) => e,
+            }
+        }
+    }
+
     /// Adds `rule` unless it exists; forward rules go first in their chain, as the init
     /// script inserted them, so a firewall's drop policy does not catch tunnel traffic.
-    fn add_rule(guard: &mut Guard, rule: Rule) -> Result<()> {
+    fn add_rule(guard: &mut Guard, rule: Rule) -> Result<(), AddRuleError> {
         let args = rule.args.iter().map(String::as_str).collect::<Vec<_>>();
 
-        if run(
+        match run(
             rule.binary,
             ["-w", "5", "-C"].into_iter().chain(args.iter().copied()),
-        )
-        .is_ok()
-        {
-            tracing::debug!(?rule, "Forwarding rule exists, leaving it to its owner");
-            return Ok(());
+        ) {
+            Ok(()) => {
+                tracing::debug!(?rule, "Forwarding rule exists, leaving it to its owner");
+                return Ok(());
+            }
+            // `-C` exits 1 for a rule that is not there and otherwise for trouble.
+            Err(RunError::Status { code: Some(1), .. }) => {}
+            Err(e) => return Err(AddRuleError::CannotManage(e.into())),
         }
 
-        let action = if rule.args.first().map(String::as_str) == Some("FORWARD") {
-            ["-I", "FORWARD", "1"].to_vec()
+        let action: &[&str] = if rule.args.first().map(String::as_str) == Some("FORWARD") {
+            &["-I", "FORWARD", "1"]
         } else {
-            vec!["-A"]
+            &["-A"]
         };
         let tail = if action[0] == "-I" {
             &args[1..]
@@ -239,26 +271,67 @@ mod linux {
                 .into_iter()
                 .chain(action.iter().copied())
                 .chain(tail.iter().copied()),
-        )?;
+        )
+        .map_err(|e| AddRuleError::Other(e.into()))?;
         guard.rules.push(rule);
 
         Ok(())
     }
 
-    fn run<'a>(binary: &str, args: impl IntoIterator<Item = &'a str>) -> Result<()> {
+    #[derive(Debug)]
+    enum RunError {
+        Spawn {
+            binary: String,
+            source: std::io::Error,
+        },
+        Status {
+            command: String,
+            status: std::process::ExitStatus,
+            code: Option<i32>,
+            stderr: String,
+        },
+    }
+
+    impl fmt::Display for RunError {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            match self {
+                RunError::Spawn { binary, .. } => write!(f, "Failed to run `{binary}`"),
+                RunError::Status {
+                    command,
+                    status,
+                    stderr,
+                    ..
+                } => write!(f, "`{command}` failed with {status}: {stderr}"),
+            }
+        }
+    }
+
+    impl std::error::Error for RunError {
+        fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+            match self {
+                RunError::Spawn { source, .. } => Some(source),
+                RunError::Status { .. } => None,
+            }
+        }
+    }
+
+    fn run<'a>(binary: &str, args: impl IntoIterator<Item = &'a str>) -> Result<(), RunError> {
         let args = args.into_iter().collect::<Vec<_>>();
         let output = Command::new(binary)
             .args(&args)
             .output()
-            .with_context(|| format!("Failed to run `{binary}`"))?;
+            .map_err(|source| RunError::Spawn {
+                binary: binary.to_owned(),
+                source,
+            })?;
 
         if !output.status.success() {
-            bail!(
-                "`{binary} {}` failed with {}: {}",
-                args.join(" "),
-                output.status,
-                String::from_utf8_lossy(&output.stderr).trim()
-            );
+            return Err(RunError::Status {
+                command: format!("{binary} {}", args.join(" ")),
+                status: output.status,
+                code: output.status.code(),
+                stderr: String::from_utf8_lossy(&output.stderr).trim().to_owned(),
+            });
         }
 
         Ok(())
