@@ -7,7 +7,7 @@ mod udp_dns;
 mod udp_gso_train;
 
 pub(crate) use crypto::MAX_DECRYPT_BACKLOG_MEMORY;
-pub use crypto::{DecryptBatch, DecryptedIpPackets, EncryptBatch};
+pub use crypto::{CryptoWorkers, DecryptBatch, DecryptedIpPackets, EncryptBatch};
 pub use device::{Device, TunChannelClosed};
 pub(crate) use udp_gso_train::UdpGsoTrain;
 
@@ -17,7 +17,7 @@ use crate::{
 };
 use anyhow::{ErrorExt, Result};
 use bootstrap_dns_client::BootstrapDnsClient;
-use crypto::{CryptoWorkers, Decrypting};
+use crypto::Decrypting;
 use dns_types::DoHUrl;
 use fast_random_state::FastRandomState;
 use futures::{
@@ -301,15 +301,14 @@ const RE_EVALUATE_NAMESERVER_INTERVAL: Duration = Duration::from_secs(60);
 impl Io {
     /// Creates a new I/O abstraction
     ///
-    /// Must be called within a Tokio runtime context so we can bind the sockets.
+    /// Must be called within a Tokio runtime context.
     pub fn new(
+        sockets: Sockets,
+        crypto: CryptoWorkers,
         tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
         udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
         nameservers: BTreeSet<IpAddr>,
     ) -> Self {
-        let mut sockets = Sockets::default();
-        sockets.rebind(udp_socket_factory.clone()); // Bind sockets on startup.
-
         Self {
             sockets,
             nameservers: NameserverSet::new(
@@ -335,7 +334,7 @@ impl Io {
                 10,
             ),
             doh_tls_config: TlsConfig::webpki_roots(),
-            crypto: CryptoWorkers::default(),
+            crypto,
             decrypting: Decrypting::default(),
             tun: Device::new(),
             udp_dns_server: Default::default(),

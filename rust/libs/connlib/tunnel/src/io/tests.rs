@@ -92,9 +92,13 @@ fn example_com_recursive_query(server: DoHUrl) -> dns::RecursiveQuery {
 /// Helper functions to make the test more concise.
 impl Io {
     fn for_test() -> Io {
+        let udp: Arc<dyn SocketFactory<UdpSocket>> = Arc::new(socket_factory::udp);
+
         Io::new(
+            Sockets::new(udp.clone()),
+            CryptoWorkers::default(),
             Arc::new(socket_factory::tcp),
-            Arc::new(socket_factory::udp),
+            udp,
             BTreeSet::new(),
         )
     }

@@ -15,10 +15,11 @@ use anyhow::{Context as _, ErrorExt as _, Result};
 use connlib_model::PublicKey;
 use eventloop_budget::Budget;
 use futures::{FutureExt, future::BoxFuture};
-use io::Io;
+use io::{CryptoWorkers, Io};
 use packet_counts::{TunPacketCounts, UdpPacketCounts};
 use prefetch::IteratorExt as _;
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
+use sockets::Sockets;
 use std::{
     collections::BTreeSet,
     future, mem,
@@ -38,7 +39,7 @@ mod utils;
 pub use tunnel_proto::*;
 
 pub use io::TunChannelClosed;
-pub use sockets::UdpSocketThreadStopped;
+pub use sockets::{SocketThreadEnds, UdpSocketThreadStopped};
 pub use utils::turn;
 
 /// How many times we will at most loop before force-yielding from [`ClientTunnel::poll_next_event`] & [`GatewayTunnel::poll_next_event`].
@@ -118,6 +119,35 @@ pub struct Tunnel<TRoleState> {
 }
 
 impl<TRoleState> Tunnel<TRoleState> {
+    /// Creates a tunnel around `role_state` that does all its work on the calling thread: the
+    /// crypto jobs as they are submitted, the IPv4 socket's through the returned
+    /// [`SocketThreadEnds`].
+    ///
+    /// Nothing else can bind a socket.
+    pub fn fake(role_state: TRoleState) -> (Self, SocketThreadEnds) {
+        let (mut sockets, socket_v4, _) = Sockets::fake();
+        sockets.remove_v6();
+        let tcp: Arc<dyn SocketFactory<TcpSocket>> =
+            Arc::new(|_| Err(std::io::ErrorKind::Unsupported.into()));
+        let udp: Arc<dyn SocketFactory<UdpSocket>> =
+            Arc::new(|_| Err(std::io::ErrorKind::Unsupported.into()));
+        let tunnel = Self {
+            role_state,
+            io: Io::new(
+                sockets,
+                CryptoWorkers::with_num_workers(0),
+                tcp,
+                udp,
+                BTreeSet::new(),
+            ),
+            packet_counter: otel_instruments::network_packets(),
+            dropped_packets: otel_instruments::network_packet_dropped(),
+            needs_timeout: false,
+        };
+
+        (tunnel, socket_v4)
+    }
+
     pub fn state_mut(&mut self) -> &mut TRoleState {
         &mut self.role_state
     }
@@ -143,8 +173,10 @@ impl ClientTunnel {
     ) -> Self {
         Self {
             io: Io::new(
+                Sockets::new(udp_socket_factory.clone()),
+                CryptoWorkers::default(),
                 tcp_socket_factory,
-                udp_socket_factory.clone(),
+                udp_socket_factory,
                 BTreeSet::default(),
             ),
             role_state: ClientState::new(
@@ -393,7 +425,13 @@ impl GatewayTunnel {
         now: Instant,
     ) -> Self {
         Self {
-            io: Io::new(tcp_socket_factory, udp_socket_factory.clone(), nameservers),
+            io: Io::new(
+                Sockets::new(udp_socket_factory.clone()),
+                CryptoWorkers::default(),
+                tcp_socket_factory,
+                udp_socket_factory,
+                nameservers,
+            ),
             role_state: GatewayState::new(
                 rand::random(),
                 now,
