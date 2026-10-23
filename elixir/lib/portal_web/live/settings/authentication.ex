@@ -450,7 +450,7 @@ defmodule PortalWeb.Settings.Authentication do
     end
   end
 
-  def handle_info({:google_verify_complete, issuer, domains, name, verification_ref, ack_to}, socket) do
+  def handle_info({:google_verify_complete, issuer, domains, _name, verification_ref, ack_to}, socket) do
     if socket.assigns.type == "google" and active_verification?(socket, verification_ref) do
       previous = socket.assigns.form.source
       existing_domains = get_field(previous, :workspace_domains)
@@ -464,8 +464,8 @@ defmodule PortalWeb.Settings.Authentication do
         attrs = Map.merge(provider_attrs(previous), %{is_verified: true, issuer: issuer})
 
         changeset =
-          changeset(previous.data, attrs, socket, %{workspace_domains: domains})
-          |> maybe_set_google_name(name, socket.assigns.live_action)
+          changeset(previous.data, attrs, socket, %{workspace_domains: domains,
+            is_legacy_unrestricted: is_nil(domains) and get_field(previous, :is_legacy_unrestricted)})
 
         {:noreply, assign(socket, active_verification: nil, verification_error: nil, form: to_form(changeset))}
       end
@@ -502,7 +502,7 @@ defmodule PortalWeb.Settings.Authentication do
 
   # Every appended tenant has completed its own admin verification flow.
   def handle_info(
-        {:entra_verify_complete, _issuer, tenant_id, tenant_name, verification_ref, ack_to},
+        {:entra_verify_complete, _issuer, tenant_id, _tenant_name, verification_ref, ack_to},
         socket
       ) do
     if socket.assigns.type == "entra" and active_verification?(socket, verification_ref) do
@@ -512,7 +512,6 @@ defmodule PortalWeb.Settings.Authentication do
 
       changeset =
         changeset(previous.data, attrs, socket, %{tenant_ids: tenant_ids})
-        |> maybe_set_entra_name(tenant_name, socket.assigns.live_action)
 
       maybe_send_verification_ack(ack_to)
       {:noreply, assign(socket, active_verification: nil, verification_error: nil, form: to_form(changeset))}
@@ -560,7 +559,8 @@ defmodule PortalWeb.Settings.Authentication do
     do: %{tenant_ids: get_field(changeset, :tenant_ids)}
 
   defp verification_fields(%{data: %Google.AuthProvider{}} = changeset),
-    do: %{workspace_domains: get_field(changeset, :workspace_domains)}
+    do: %{workspace_domains: get_field(changeset, :workspace_domains),
+      is_legacy_unrestricted: get_field(changeset, :is_legacy_unrestricted)}
 
   defp verification_fields(_changeset), do: %{}
 
@@ -573,12 +573,6 @@ defmodule PortalWeb.Settings.Authentication do
 
   defp verified_values(changeset, type), do: get_field(changeset, organizations_field(type)) || []
 
-  defp maybe_set_google_name(changeset, name, :new) when is_binary(name) and name != "" do
-    if get_field(changeset, :name) == "Google", do: put_change(changeset, :name, name), else: changeset
-  end
-
-  defp maybe_set_google_name(changeset, _name, _action), do: changeset
-
   defp maybe_set_okta_name(%{data: %Okta.AuthProvider{}} = changeset, issuer, :new) do
     if get_field(changeset, :name) == "Okta" do
       put_change(changeset, :name, URI.parse(issuer).host)
@@ -588,16 +582,6 @@ defmodule PortalWeb.Settings.Authentication do
   end
 
   defp maybe_set_okta_name(changeset, _issuer, _action), do: changeset
-
-  defp maybe_set_entra_name(changeset, tenant_name, :new) when is_binary(tenant_name) do
-    if get_field(changeset, :name) == "Entra" and String.trim(tenant_name) != "" do
-      put_change(changeset, :name, tenant_name)
-    else
-      changeset
-    end
-  end
-
-  defp maybe_set_entra_name(changeset, _tenant_name, _action), do: changeset
 
   defp maybe_send_verification_ack({pid, ref}) when is_pid(pid) do
     send(pid, {:verification_ack, ref})
@@ -1829,11 +1813,15 @@ defmodule PortalWeb.Settings.Authentication do
       </p>
       <p :if={@type == "google" and @values == []} class="text-xs text-subtle">
         Verifying with a Google Workspace administrator saves the organization's domains and enables
-        domain validation. Personal Google accounts leave domain validation off.
+        domain validation. New providers verified with a personal account accept personal Google accounts only.
       </p>
       <p :if={@type == "google" and @values == [] and @verified?} class="text-xs text-success">
         <Core.icon name="ri-checkbox-circle-line" class="inline w-3.5 h-3.5" />
-        Verified provider. Workspace domain validation is off.
+        <%= if get_field(@form.source, :is_legacy_unrestricted) do %>
+          Existing provider. Personal and Workspace Google accounts can sign in.
+        <% else %>
+          Verified provider. Personal Google accounts only.
+        <% end %>
       </p>
       <p :if={@values == [] and @type == "entra"} class="text-xs text-subtle">
         Verify at least one {@label} to save this provider.
@@ -1974,6 +1962,12 @@ defmodule PortalWeb.Settings.Authentication do
 
   defp provider_organizations(%Google.AuthProvider{workspace_domains: [_ | _] = domains}),
     do: Enum.join(domains, ", ")
+
+  defp provider_organizations(%Google.AuthProvider{workspace_domains: nil, is_legacy_unrestricted: true}),
+    do: "Unrestricted Google accounts"
+
+  defp provider_organizations(%Google.AuthProvider{workspace_domains: nil}),
+    do: "Personal Google accounts"
 
   defp provider_organizations(provider), do: Map.get(provider, :issuer) || "—"
 

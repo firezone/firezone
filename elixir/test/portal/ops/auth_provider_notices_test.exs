@@ -126,19 +126,21 @@ defmodule Portal.Ops.AuthProviderNoticesTest do
     assert Repo.reload!(second.provider).workspace_domains == nil
   end
 
-  test "Google excludes consumer-only identities and providers already restricted" do
+  test "Google excludes consumer-only identities, personal-only providers, and providers already restricted" do
     consumers = for domain <- ~w[gmail.com googlemail.com hotmail.com outlook.com yahoo.com icloud.com qq.com] do
       google_account(email: "personal@#{domain}")
     end
     restricted = google_account(workspace_domains: ["work.example"])
     wrong_issuer = google_account(issuer: entra_issuer(@configured_tenant))
+    personal = google_account()
+    Repo.update!(Ecto.Changeset.change(personal.provider, is_legacy_unrestricted: false))
 
     output = capture_io(fn ->
       assert {:error, :no_recipients} = Ops.notify_google_auth_provider_admins()
     end)
 
     refute output =~ "Continue?"
-    for entry <- consumers ++ [restricted, wrong_issuer] do
+    for entry <- consumers ++ [restricted, wrong_issuer, personal] do
       assert collect_queued_emails(entry.account.id) == []
     end
   end
@@ -216,7 +218,8 @@ defmodule Portal.Ops.AuthProviderNoticesTest do
   defp google_account(opts \\ []) do
     account = Keyword.get_lazy(opts, :account, fn -> team_account_fixture(name: Keyword.get(opts, :name, "Google Company")) end)
     admin = admin_actor_fixture(account: account, email: Keyword.get(opts, :admin_email, "admin-#{account.id}@company.example"))
-    provider = google_provider_fixture(account: account, workspace_domains: Keyword.get(opts, :workspace_domains))
+    provider = google_provider_fixture(account: account, workspace_domains: Keyword.get(opts, :workspace_domains),
+      is_legacy_unrestricted: is_nil(Keyword.get(opts, :workspace_domains)))
     identity = identity_fixture(account: account, issuer: Keyword.get(opts, :issuer, "https://accounts.google.com"), email: Keyword.get(opts, :email, "user@work.example"))
     %{account: account, admin: admin, provider: provider, identity: identity}
   end

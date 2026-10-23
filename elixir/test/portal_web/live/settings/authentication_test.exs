@@ -339,7 +339,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/settings/authentication")
 
-      assert html =~ "https://accounts.google.com"
+      assert html =~ "Personal Google accounts"
     end
 
     test "renders provider ID", %{account: account, actor: actor, conn: conn} do
@@ -2225,7 +2225,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
   # =============================================================================
 
   describe "unique constraints" do
-    test "google provider has unique issuer constraint per account", %{
+    test "shows the personal Google provider mode", %{
       account: account,
       actor: actor,
       conn: conn
@@ -2239,7 +2239,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/settings/authentication")
 
-      assert html =~ "https://accounts.google.com"
+      assert html =~ "Personal Google accounts"
     end
 
     test "oidc provider has unique client_id constraint per account", %{
@@ -3078,10 +3078,10 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       assert_receive {:pending_verification, %{verification_ref: ^verification_ref}}
     end
 
-    for {name, expected_name} <- [{"Entra", "Example Tenant"}, {"Custom name", "Custom name"}] do
+    for {name, expected_name} <- [{"Entra", "Entra"}, {"Custom name", "Custom name"}] do
       @provider_name name
       @expected_provider_name expected_name
-      test "uses the tenant name after verifying #{name}", %{account: account, actor: actor, conn: conn} do
+      test "preserves the provider name after verifying #{name}", %{account: account, actor: actor, conn: conn} do
         {:ok, lv, html} =
           conn
           |> authorize_conn(actor)
@@ -3108,10 +3108,10 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       end
     end
 
-    for {name, expected_name} <- [{"Google", "example.com"}, {"Custom Google", "Custom Google"}] do
+    for {name, expected_name} <- [{"Google", "Google"}, {"Custom Google", "Custom Google"}] do
       @google_provider_name name
       @expected_google_name expected_name
-      test "saves verified Workspace domains and pre-fills #{name}", %{account: account, actor: actor, conn: conn} do
+      test "saves verified Workspace domains and preserves #{name}", %{account: account, actor: actor, conn: conn} do
         Mocks.OIDC.stub_discovery_document()
         {:ok, lv, _} = conn |> authorize_conn(actor)
           |> live(~p"/#{account}/settings/authentication/google/new")
@@ -3389,6 +3389,44 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       end
     end
 
+    test "saves a second Google Workspace provider with non-overlapping domains", ctx do
+      Mocks.OIDC.stub_discovery_document()
+      existing = google_provider_fixture(account: ctx.account, name: "First Workspace", workspace_domains: ["first.example"])
+      {:ok, lv, _} = ctx.conn |> authorize_conn(ctx.actor)
+        |> live(~p"/#{ctx.account}/settings/authentication/google/new")
+      lv |> form("#auth-provider-form", %{auth_provider: %{name: "Second Workspace"}}) |> render_change()
+      complete_allowlist_verification(lv, "google", "second.example")
+      lv |> form("#auth-provider-form") |> render_submit()
+      saved = Repo.get_by!(Portal.Google.AuthProvider, account_id: ctx.account.id, name: "Second Workspace")
+      assert saved.workspace_domains == ["second.example"]
+      refute saved.is_legacy_unrestricted
+      assert Repo.reload!(existing).workspace_domains == ["first.example"]
+    end
+
+    test "shows an error for overlapping Google Workspace domains", ctx do
+      Mocks.OIDC.stub_discovery_document()
+      google_provider_fixture(account: ctx.account, workspace_domains: ["work.example"])
+      {:ok, lv, _} = ctx.conn |> authorize_conn(ctx.actor)
+        |> live(~p"/#{ctx.account}/settings/authentication/google/new")
+      complete_allowlist_verification(lv, "google", "work.example")
+      lv |> form("#auth-provider-form") |> render_submit()
+      assert render(lv) =~ "A domain is already verified on another Google authentication provider in this account."
+    end
+
+    test "shows an error for a second personal Google provider", ctx do
+      Mocks.OIDC.stub_discovery_document()
+      google_provider_fixture(account: ctx.account, workspace_domains: nil)
+      {:ok, lv, _} = ctx.conn |> authorize_conn(ctx.actor)
+        |> live(~p"/#{ctx.account}/settings/authentication/google/new")
+      lv |> element("#verify-button") |> render_click()
+      ref = verification_ref_from_open_url(lv)
+      ack = make_ref()
+      send(lv.pid, {:google_verify_complete, "https://accounts.google.com", nil, nil, ref, {self(), ack}})
+      assert_receive {:verification_ack, ^ack}
+      lv |> form("#auth-provider-form") |> render_submit()
+      assert render(lv) =~ "Only one Google authentication provider without Workspace domains is allowed per account."
+    end
+
     test "saves a verified personal Google provider with restrictions unset", ctx do
       Mocks.OIDC.stub_discovery_document()
       {:ok, lv, _} = ctx.conn |> authorize_conn(ctx.actor)
@@ -3399,17 +3437,18 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       send(lv.pid, {:google_verify_complete, "https://accounts.google.com", nil, nil,
         verification_ref, {self(), ack_ref}})
       assert_receive {:verification_ack, ^ack_ref}
-      assert render(lv) =~ "Workspace domain validation is off"
+      assert render(lv) =~ "Personal Google accounts only"
       render_change(lv, "validate", %{"auth_provider" => %{"name" => "Personal Google",
-        "workspace_domains" => ["attacker.example"]}})
+        "workspace_domains" => ["attacker.example"], "is_legacy_unrestricted" => "true"}})
       lv |> form("#auth-provider-form") |> render_submit()
       provider = Repo.get_by!(Portal.Google.AuthProvider, account_id: ctx.account.id)
       assert provider.name == "Personal Google"
       assert provider.workspace_domains == nil
+      refute provider.is_legacy_unrestricted
     end
 
     test "editing an existing unrestricted Google provider keeps validation off", ctx do
-      provider = google_provider_fixture(account: ctx.account, workspace_domains: nil)
+      provider = google_provider_fixture(account: ctx.account, workspace_domains: nil, is_legacy_unrestricted: true)
       {:ok, lv, _} = ctx.conn |> authorize_conn(ctx.actor)
         |> live(~p"/#{ctx.account}/settings/authentication/google/#{provider.id}/edit")
       lv |> form("#auth-provider-form", %{auth_provider: %{name: "Existing Google", portal_session_lifetime_secs: 3600}})
@@ -3419,6 +3458,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       assert saved.name == "Existing Google"
       assert saved.portal_session_lifetime_secs == 3600
       assert saved.workspace_domains == nil
+      assert saved.is_legacy_unrestricted
     end
 
     test "personal verification cannot clear existing Google domain restrictions", ctx do
@@ -3435,7 +3475,9 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       assert render(lv) =~ "Existing domain restrictions have been kept"
       assert has_element?(lv, "#verified-organization-0", "primary.example")
       lv |> form("#auth-provider-form") |> render_submit()
-      assert Repo.get!(Portal.Google.AuthProvider, provider.id).workspace_domains == ["primary.example"]
+      saved = Repo.get!(Portal.Google.AuthProvider, provider.id)
+      assert saved.workspace_domains == ["primary.example"]
+      refute saved.is_legacy_unrestricted
     end
 
     test "shows a verification error when another Entra provider already accepts the tenant", ctx do
@@ -3451,10 +3493,10 @@ defmodule PortalWeb.Settings.AuthenticationTest do
     end
 
     test "keeps legacy Google sign-in unrestricted until domains are saved", ctx do
-      provider = google_provider_fixture(account: ctx.account, workspace_domains: nil)
+      provider = google_provider_fixture(account: ctx.account, workspace_domains: nil, is_legacy_unrestricted: true)
       {:ok, lv, html} = ctx.conn |> authorize_conn(ctx.actor)
         |> live(~p"/#{ctx.account}/settings/authentication/google/#{provider.id}/edit")
-      assert html =~ "Workspace domain validation is off"
+      assert html =~ "Personal and Workspace Google accounts can sign in"
       assert Repo.get!(Portal.Google.AuthProvider, provider.id).workspace_domains == nil
       Mocks.OIDC.stub_discovery_document()
       complete_allowlist_verification(lv, "google", "primary.example")

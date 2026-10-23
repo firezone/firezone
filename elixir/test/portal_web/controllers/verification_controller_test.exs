@@ -189,7 +189,7 @@ defmodule PortalWeb.VerificationControllerTest do
       lv_pid =
         spawn(fn ->
           receive do
-            {:entra_verify_complete, issuer, tenant_id, "Example Tenant", verification_ref, {from, ref}} ->
+            {:entra_verify_complete, issuer, tenant_id, verification_ref, {from, ref}} ->
               send(parent, {:entra_verify_complete_received, issuer, tenant_id, verification_ref})
               send(from, {:verification_ack, ref})
           end
@@ -201,7 +201,6 @@ defmodule PortalWeb.VerificationControllerTest do
         sign_entra_result(%{
           ok: true,
           type: "entra-auth-provider",
-          tenant_name: "Example Tenant",
           issuer: @issuer,
           tenant_id: @tenant_id,
           role_ids: [@global_administrator_role_id],

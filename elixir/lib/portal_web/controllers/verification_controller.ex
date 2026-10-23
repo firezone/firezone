@@ -150,7 +150,7 @@ defmodule PortalWeb.VerificationController do
            role_ids: role_ids,
            lv_pid: lv_pid_string,
            verification_ref: verification_ref
-         } = result
+         }
        )
        when is_binary(issuer) and is_binary(tenant_id) and is_list(role_ids) and
               is_binary(verification_ref) do
@@ -159,7 +159,7 @@ defmodule PortalWeb.VerificationController do
     if PortalWeb.OIDC.entra_setup_admin?(role_ids) do
       case notify_and_await_ack(
              lv_pid,
-             {:entra_verify_complete, issuer, tenant_id, result[:tenant_name], verification_ref}
+             {:entra_verify_complete, issuer, tenant_id, verification_ref}
            ) do
         :ok -> render(conn, :success)
         {:error, _reason} -> render(conn, :failure, error: @verification_ack_error)

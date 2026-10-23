@@ -213,7 +213,7 @@ defmodule PortalWeb.OIDC do
   def verify_token(%Google.AuthProvider{} = provider, id_token, verifier) do
     with {:ok, config} <- config_for_provider(provider),
          {:ok, claims} <- OpenIDConnect.verify(config, id_token, nonce: nonce(verifier)),
-         :ok <- verify_google_workspace_domain(claims, provider.workspace_domains) do
+         :ok <- verify_google_provider_domain(claims, provider) do
       {:ok, claims}
     end
   end
@@ -232,7 +232,17 @@ defmodule PortalWeb.OIDC do
     end
   end
 
-  defp verify_google_workspace_domain(_claims, nil), do: :ok
+  defp verify_google_provider_domain(_claims, %Google.AuthProvider{workspace_domains: nil, is_legacy_unrestricted: true}),
+    do: :ok
+
+  defp verify_google_provider_domain(claims, %Google.AuthProvider{workspace_domains: nil}) do
+    if Map.has_key?(claims, "hd"),
+      do: {:error, {:invalid_jwt, "this Google provider only accepts personal accounts"}},
+      else: :ok
+  end
+
+  defp verify_google_provider_domain(claims, %Google.AuthProvider{workspace_domains: domains}),
+    do: verify_google_workspace_domain(claims, domains)
 
   defp verify_google_workspace_domain(%{"hd" => domain}, domains) when is_binary(domain) do
     if String.downcase(domain) in domains,
@@ -351,7 +361,7 @@ defmodule PortalWeb.OIDC do
     config =
       Portal.Config.fetch_env!(:portal, Portal.Entra.AuthProvider)
       |> Keyword.merge(opts)
-      |> entra_verification_config("openid email profile User.Read", "openid email profile User.Read")
+      |> entra_verification_config("openid email profile", "openid email profile")
 
     {:ok, %{config: config}}
   end
@@ -762,8 +772,7 @@ defmodule PortalWeb.OIDC do
          tenant_id: tenant_id,
          issuer: issuer,
          principal_id: principal_id,
-         role_ids: role_ids,
-         tenant_name: entra_tenant_name(config, tokens, tenant_id)
+         role_ids: role_ids
        }}
     else
       nil -> {:error, {:invalid_entra_id_token, :missing_id_token}}
@@ -771,21 +780,6 @@ defmodule PortalWeb.OIDC do
         {:error, {:invalid_entra_id_token, {:invalid_jwt, reason}}}
 
       error -> error
-    end
-  end
-
-  # Tenant names are display-only. A failed lookup must not invalidate the
-  # verified tenant identity or prevent setup of other Entra integrations.
-  defp entra_tenant_name(config, tokens, tenant_id) do
-    if "User.Read" in String.split(config[:scope] || "") do
-      with access_token when is_binary(access_token) <- tokens["access_token"],
-           {:ok, %Req.Response{status: 200, body: %{"id" => ^tenant_id, "displayName" => name}}}
-             when is_binary(name) <-
-             Portal.Microsoft.Graph.APIClient.get_organization(access_token, tenant_id) do
-        name
-      else
-        _ -> nil
-      end
     end
   end
 

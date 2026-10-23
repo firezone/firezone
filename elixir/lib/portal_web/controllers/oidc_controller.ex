@@ -1124,12 +1124,13 @@ defmodule PortalWeb.OIDCController do
          {:ok, claims, userinfo_result} <-
            PortalWeb.OIDC.verify_callback(config, code, cookie.verifier, iss: iss),
          {:ok, profile} <- IdentityProfile.build(claims, userinfo(userinfo_result), nil),
-         :ok <- enforce_verified_email(profile) do
+         :ok <- enforce_verified_email(profile),
+         {:ok, workspace_domain} <- sign_up_workspace_domain(provider_type, claims) do
       conn
       |> Cookie.SignUpState.delete()
       |> put_session(
         PortalWeb.SignUp.session_key(),
-        PortalWeb.SignUp.session_identity(profile, provider_type)
+        PortalWeb.SignUp.session_identity(profile, provider_type, workspace_domain)
       )
       |> redirect(to: ~p"/sign_up/#{provider_type}")
     else
@@ -1141,6 +1142,17 @@ defmodule PortalWeb.OIDCController do
         |> redirect_to_sign_up_with_error(sign_up_error_message(provider_type, reason))
     end
   end
+
+  # Domain policy comes from the signed ID token, never from userinfo or the signup form.
+  defp sign_up_workspace_domain("google", claims) do
+    case Map.fetch(claims, "hd") do
+      :error -> {:ok, nil}
+      {:ok, domain} when is_binary(domain) and domain != "" -> {:ok, String.downcase(domain)}
+      _ -> {:error, {:invalid_jwt, "invalid Google Workspace domain"}}
+    end
+  end
+
+  defp sign_up_workspace_domain(_provider, _claims), do: {:ok, nil}
 
   defp sign_up_verification_type(provider_type), do: "#{provider_type}_sign_up"
 
@@ -1489,7 +1501,6 @@ defmodule PortalWeb.OIDCController do
           issuer: identity.issuer,
           principal_id: identity.principal_id,
           role_ids: identity.role_ids,
-          tenant_name: identity.tenant_name,
           lv_pid: lv_pid_string,
           verification_ref: verification_ref
         }

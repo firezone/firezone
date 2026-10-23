@@ -102,11 +102,26 @@ defmodule PortalWeb.OIDCTest do
       end
     end
 
-    test "keeps unrestricted providers compatible with personal Google accounts" do
-      token = Mocks.OIDC.default_claims() |> Mocks.OIDC.sign_openid_connect_token()
-      assert {:ok, _} = OIDC.verify_token(%Portal.Google.AuthProvider{}, token, "test-verifier")
-      assert {:error, _} = OIDC.verify_token(%Portal.Google.AuthProvider{workspace_domains: []}, token, "test-verifier")
+    for hd <- [nil, "work.example"] do
+      @legacy_hd hd
+      test "keeps existing unrestricted providers compatible with #{inspect(hd)}" do
+        claims = Mocks.OIDC.default_claims()
+        claims = if @legacy_hd, do: Map.put(claims, "hd", @legacy_hd), else: claims
+        token = Mocks.OIDC.sign_openid_connect_token(claims)
+        provider = %Portal.Google.AuthProvider{is_legacy_unrestricted: true}
+        assert {:ok, _} = OIDC.verify_token(provider, token, "test-verifier")
+      end
     end
+
+    test "new personal-only providers reject Workspace tokens and accept personal tokens" do
+      claims = Mocks.OIDC.default_claims()
+      personal = Mocks.OIDC.sign_openid_connect_token(claims)
+      workspace = claims |> Map.put("hd", "example.com") |> Mocks.OIDC.sign_openid_connect_token()
+      assert {:ok, _} = OIDC.verify_token(%Portal.Google.AuthProvider{}, personal, "test-verifier")
+      assert {:error, _} = OIDC.verify_token(%Portal.Google.AuthProvider{}, workspace, "test-verifier")
+      assert {:error, _} = OIDC.verify_token(%Portal.Google.AuthProvider{workspace_domains: []}, personal, "test-verifier")
+    end
+
   end
 
   defp google_setup_token(overrides) do
@@ -152,7 +167,7 @@ defmodule PortalWeb.OIDCTest do
       params = URI.decode_query(uri.query)
 
       assert uri.path == "/organizations/v2.0/adminconsent"
-      assert params["scope"] == "openid email profile User.Read"
+      assert params["scope"] == "openid email profile"
       assert params["state"] == state
       refute Map.has_key?(params, "prompt")
       refute Map.has_key?(params, "response_type")
@@ -294,7 +309,7 @@ defmodule PortalWeb.OIDCTest do
 
       assert uri.path == "/#{@tenant_id}/oauth2/v2.0/authorize"
       assert params["client_id"] == "test_auth_provider_client_id"
-      assert params["scope"] == "openid email profile User.Read"
+      assert params["scope"] == "openid email profile"
       assert params["state"] == "signed-state"
       assert params["response_type"] == "code"
       assert params["response_mode"] == "query"

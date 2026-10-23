@@ -34,7 +34,12 @@ defmodule PortalAPI.Schemas.GoogleAuthProvider do
           items: %Schema{type: :string},
           uniqueItems: true,
           readOnly: true,
-          description: "Verified Google Workspace domains allowed to sign in. Empty when Workspace domain validation is off, including personal Google accounts and existing unrestricted providers."
+          description: "Verified Google Workspace domains allowed to sign in. Empty for personal-only providers and existing unrestricted providers. See is_legacy_unrestricted to distinguish them."
+        },
+        is_legacy_unrestricted: %Schema{
+          type: :boolean,
+          readOnly: true,
+          description: "Whether an existing provider retains support for both personal and Workspace accounts without domain validation. New providers default to false."
         },
         context: %Schema{
           example: "clients_and_portal",
@@ -91,7 +96,8 @@ defmodule PortalAPI.Schemas.GoogleAuthProvider do
         :name,
         :portal_session_lifetime_secs,
         :updated_at,
-        :workspace_domains
+        :workspace_domains,
+        :is_legacy_unrestricted
       ]
     })
 

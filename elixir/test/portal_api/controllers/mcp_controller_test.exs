@@ -1166,6 +1166,18 @@ defmodule PortalAPI.MCPControllerTest do
     end
   end
 
+  test "Google MCP tools distinguish multiple providers in one account", %{conn: conn, account: account, actor: actor} do
+    personal = google_provider_fixture(account: account)
+    first = google_provider_fixture(account: account, workspace_domains: ["first.example"])
+    second = google_provider_fixture(account: account, workspace_domains: ["second.example"])
+    for {provider, domains} <- [{personal, []}, {first, ["first.example"]}, {second, ["second.example"]}] do
+      result = conn |> authorize_mcp_conn(actor) |> call_tool("get_google_auth_provider", %{"id" => provider.id}) |> json_response(200)
+      assert %{"result" => %{"isError" => false, "structuredContent" => %{"data" => data}}} = result
+      assert data["id"] == provider.id
+      assert data["workspace_domains"] == domains
+    end
+  end
+
   defp headers(conn, method) do
     conn
     |> put_req_header("content-type", "application/json")

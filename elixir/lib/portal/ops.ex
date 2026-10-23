@@ -604,7 +604,7 @@ defmodule Portal.Ops do
         join: i in ExternalIdentity, on: i.account_id == a.id,
         join: u in Actor, on: u.account_id == a.id and u.id == i.actor_id,
         where: a.is_disabled == false and is_nil(a.scheduled_deletion_at),
-        where: p.is_disabled == false and is_nil(p.workspace_domains),
+        where: p.is_disabled == false and is_nil(p.workspace_domains) and p.is_legacy_unrestricted == true,
         where: u.is_disabled == false and u.type in [:account_admin_user, :account_user],
         where: i.issuer in ^@google_issuers and not is_nil(i.email),
         where: fragment("position('@' in ?::text) > 1", i.email),

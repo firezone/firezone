@@ -287,27 +287,19 @@ defmodule PortalWeb.OIDCControllerTest do
               }} = entra_verification_result_from_redirect(redirected_to(conn))
     end
 
-    for {response, expected_name} <- [
-          {%{"id" => @tenant_id, "displayName" => "Example Tenant"}, "Example Tenant"},
-          {%{"id" => "another-tenant", "displayName" => "Wrong Tenant"}, nil},
-          {%{"error" => "access denied"}, nil}
-        ] do
-      @organization_response response
-      @tenant_name expected_name
-      test "returns optional tenant name #{inspect(expected_name)} for #{inspect(response)}", %{conn: conn} do
-        Req.Test.stub(Portal.Microsoft.Graph.APIClient, fn conn ->
-          Req.Test.json(conn, @organization_response)
-        end)
-        config = Map.put(entra_verification_config("entra-client-id"), :scope, "openid email profile User.Read")
-        verification_ref = Ecto.UUID.generate()
-        lv_pid = pending_verification_process(config, verification_ref)
-        state = entra_verification_state(lv_pid, "entra-auth-provider", verification_ref)
-        conn = complete_entra_admin_consent(conn, state)
-        set_entra_token_response("entra-client-id")
-        conn = complete_entra_tenant_proof(conn)
-        assert {:ok, %{ok: true, tenant_name: @tenant_name}} =
-          entra_verification_result_from_redirect(redirected_to(conn))
-      end
+    test "verifies Entra without requesting a tenant display name", %{conn: conn} do
+      Req.Test.stub(Portal.Microsoft.Graph.APIClient, fn _conn ->
+        flunk("auth-provider verification must not request Microsoft Graph profile data")
+      end)
+      verification_ref = Ecto.UUID.generate()
+      config = entra_verification_config("entra-client-id")
+      lv_pid = pending_verification_process(config, verification_ref)
+      state = entra_verification_state(lv_pid, "entra-auth-provider", verification_ref)
+      conn = complete_entra_admin_consent(conn, state)
+      set_entra_token_response("entra-client-id")
+      conn = complete_entra_tenant_proof(conn)
+      assert {:ok, %{ok: true} = result} = entra_verification_result_from_redirect(redirected_to(conn))
+      refute Map.has_key?(result, :tenant_name)
     end
 
     test "binds directory sync to a user identity from a verified ID token", %{conn: conn} do
@@ -3924,6 +3916,22 @@ defmodule PortalWeb.OIDCControllerTest do
       assert_in_delta identity["expires_at"], System.os_time(:second) + 900, 5
 
       assert conn.resp_cookies["sign_up_oidc"].max_age == 0
+    end
+
+    for hd <- [nil, "WORKSPACE.EXAMPLE"] do
+      @signup_hd hd
+      test "sign-up domain policy comes from the signed token: #{inspect(hd)}", %{conn: conn, state: state} do
+        claims = Mocks.OIDC.default_claims()
+        claims = if @signup_hd, do: Map.put(claims, "hd", @signup_hd), else: claims
+        token = Mocks.OIDC.sign_openid_connect_token(claims)
+        Mocks.OIDC.set_token_response(%{"id_token" => token, "access_token" => "signup-access-token"})
+        Mocks.OIDC.set_userinfo_response(Map.put(Mocks.OIDC.default_userinfo(), "hd", "untrusted-userinfo.example"))
+        conn = conn |> Cookie.SignUpState.put(%Cookie.SignUpState{state: state, verifier: "test-verifier"})
+          |> recycle() |> get(~p"/auth/oidc/callback", %{"state" => state, "code" => "test-code"})
+        assert redirected_to(conn) == "/sign_up/google"
+        expected = unquote(if hd, do: String.downcase(hd), else: nil)
+        assert get_session(conn, "idp_sign_up")["workspace_domain"] == expected
+      end
     end
 
     test "redirects to sign-up with an error when the cookie is missing", %{

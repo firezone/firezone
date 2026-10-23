@@ -171,8 +171,8 @@ defmodule PortalWeb.SignUp do
 
   # Only what registration needs; the picture URL alone can be 2 KB and the
   # first provider sign-in fills the rest in through the identity upsert.
-  @spec session_identity(PortalWeb.OIDC.IdentityProfile.t(), String.t()) :: map()
-  def session_identity(%PortalWeb.OIDC.IdentityProfile{} = profile, provider)
+  @spec session_identity(PortalWeb.OIDC.IdentityProfile.t(), String.t(), String.t() | nil) :: map()
+  def session_identity(%PortalWeb.OIDC.IdentityProfile{} = profile, provider, workspace_domain \\ nil)
       when provider in @idp_sign_up_providers do
     %{
       "provider" => provider,
@@ -182,6 +182,7 @@ defmodule PortalWeb.SignUp do
       "name" => profile.profile_attrs["name"],
       "given_name" => profile.profile_attrs["given_name"],
       "family_name" => profile.profile_attrs["family_name"],
+      "workspace_domain" => workspace_domain,
       "expires_at" => System.os_time(:second) + @idp_sign_up_max_age
     }
   end
@@ -197,16 +198,20 @@ defmodule PortalWeb.SignUp do
       } = identity
       when provider in @idp_sign_up_providers and is_binary(email) and is_binary(issuer) and
              is_binary(idp_id) and is_integer(expires_at) ->
+        domain = Map.get(identity, "workspace_domain")
+        valid_domain? = valid_session_domain?(provider, identity)
+
         identity = %{
           provider: provider,
           email: email,
           issuer: issuer,
           idp_id: idp_id,
           expires_at: expires_at,
+          workspace_domain: domain,
           profile_attrs: Map.take(identity, ~w[email name given_name family_name])
         }
 
-        if identity_expired?(identity) do
+        if identity_expired?(identity) or not valid_domain? do
           nil
         else
           identity
@@ -216,6 +221,12 @@ defmodule PortalWeb.SignUp do
         nil
     end
   end
+
+  defp valid_session_domain?("google", %{"workspace_domain" => domain}),
+    do: is_nil(domain) or (is_binary(domain) and domain != "")
+
+  defp valid_session_domain?("google", _identity), do: false
+  defp valid_session_domain?(_provider, _identity), do: true
 
   # ── Render ────────────────────────────────────────────────────────────────────
 
@@ -1642,6 +1653,7 @@ defmodule PortalWeb.SignUp do
     def create_idp_provider(account, %{provider: "google"} = identity) do
       create_provider(account, :google, Google.AuthProvider, %{
         issuer: identity.issuer,
+        workspace_domains: if(identity.workspace_domain, do: [String.downcase(identity.workspace_domain)]),
         is_verified: true,
         is_default: true
       })
