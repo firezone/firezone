@@ -40,6 +40,7 @@ defmodule Portal.ChangeLogs.Consumer do
     "policies" => Portal.Policy,
     "resources" => Portal.Resource,
     "sites" => Portal.Site,
+    "site_devices" => Portal.SiteDevice,
     "client_tokens" => Portal.ClientToken,
     "trust_anchor_certificates" => Portal.TrustAnchorCertificate,
     "trust_anchors" => Portal.TrustAnchor,
