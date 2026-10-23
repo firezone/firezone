@@ -571,6 +571,22 @@ serial)`; drop the actor-scoped indexes, `device_type_client_fields` and
   when provisioned with Infrastructure, client otherwise) for `/clients`,
   component versions and protocol selection until phase 6. No PR of its own;
   a rule each step above respects.
+- **2.23 Code: the outdated-gateway email selects by site assignment.** The
+  weekly email to admins keeps its meaning, "the device in front of your
+  site is behind and some clients cannot connect", so it covers every
+  device with a `site_devices` row that runs the Linux daemon: the gateways
+  as today, plus a Linux desktop or headless box an admin adds to a site.
+  Each device is compared against the release line of the component it
+  reports, so a `firezone` binary is not held to the Gateway's numbers.
+  Desktops and phones in a site are left to the fleet report below.
+  Depends 2.8.
+- **2.24 Later: a weekly fleet report.** One email per account to admins
+  with the preference on, only in weeks where something is behind: devices
+  grouped by component with a count per version, and a section for the
+  devices below the floor the compatibility window will drop at the next
+  release, with the date. Its own last-sent timestamp and preference key.
+  The upgrade asks of 0.9 and the targeted email of 5.12 become its first
+  issues rather than campaigns of their own. Not before phase 3.
 
 ### Phase 2b: site-to-site
 
@@ -801,7 +817,7 @@ legacy gateways `[m-1, m+1]`, `firezone` 1.7 `[5, 7]`, `firezone` 1.8
 
 Apple, Android and the Windows GUI need no release. PR count is about 98
 code PRs plus 3 docs PRs before merging small neighbours: phase 0 has 4,
-phase 1 has 19, phase 2 has 22, phase 3 has 12, phase 4 has 13,
+phase 1 has 19, phase 2 has 24, phase 3 has 12, phase 4 has 13,
 phase 5 has 12, phase 5b has 8, phase 6 has 8.
 
 ## 4. Decisions taken
@@ -848,7 +864,7 @@ phase 5 has 12, phase 5b has 8, phase 6 has 8.
 | ----- | ----- | --------- |
 | 0     | 9     | small     |
 | 1     | 19    | medium    |
-| 2     | 23    | medium    |
+| 2     | 25    | medium    |
 | 2b    | 1     | docs only |
 | 3     | 13    | medium    |
 | 4     | 13    | large     |
