@@ -260,6 +260,7 @@ defmodule Portal.Cache.Client do
       |> conforming_resource_ids(client, Credential.auth_provider_id(subject.credential))
       |> adapted_resources(cache.resources, client)
       |> reject_unsupported_pools(cache.protocol_version)
+      |> reject_served_by_client(client)
 
     {pool_members, device_addresses} =
       load_pool_state(raw_connectable, subject, cache.protocol_version)
@@ -542,6 +543,24 @@ defmodule Portal.Cache.Client do
       recompute_connectable_resources(cache, client, subject, toggle: toggle)
     else
       {:ok, [], [], cache}
+    end
+  end
+
+  # A device that serves a site never routes to that site's resources through
+  # itself or a peer: they are reachable locally, and offering them would
+  # loop traffic back through the tunnel.
+  defp reject_served_by_client(resources, client) do
+    case Portal.Device.served_site_ids(client) do
+      [] ->
+        resources
+
+      site_ids ->
+        served = MapSet.new(site_ids, &Ecto.UUID.dump!/1)
+
+        Enum.reject(resources, fn
+          %{site: %{id: site_id}} -> MapSet.member?(served, site_id)
+          _resource -> false
+        end)
     end
   end
 

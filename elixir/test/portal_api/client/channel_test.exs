@@ -20,6 +20,7 @@ defmodule PortalAPI.Client.ChannelTest do
   import Portal.RelayFixtures
   import Portal.ResourceFixtures
   import Portal.SiteFixtures
+  import Portal.SiteDeviceFixtures
   import Portal.SubjectFixtures
   import Portal.TokenFixtures
 
@@ -106,6 +107,7 @@ defmodule PortalAPI.Client.ChannelTest do
   defp connect_gateway_presence(gateway, token_id) do
     session_meta = %{
       site_id: gateway.site_id,
+      site_ids: gateway |> Repo.preload(:site_devices) |> Portal.Device.served_site_ids(),
       public_key: gateway.public_key,
       psk_base: gateway.psk_base,
       version: gateway.last_seen_version,
@@ -3667,6 +3669,52 @@ defmodule PortalAPI.Client.ChannelTest do
       assert String.length(preshared_key) == 44
     end
 
+    test "tells the client the resource's site when the gateway serves several", %{
+      account: account,
+      dns_resource: resource,
+      dns_resource_policy: policy,
+      membership: membership,
+      client: client,
+      subject: subject,
+      global_relay: global_relay
+    } do
+      other_site = site_fixture(account: account)
+      gateway = gateway_fixture(account: account, site: other_site)
+      resource_site = Repo.get_by!(Portal.Site, account_id: account.id, id: resource.site_id)
+      site_device_fixture(site: resource_site, device: gateway)
+      gateway_token = gateway_token_fixture(account: account, site: other_site)
+
+      socket = join_channel(client, subject)
+      assert_push "init", _init_payload
+      :ok = Portal.Presence.Relays.connect(global_relay)
+      :ok = PG.register(gateway.id)
+
+      for struct <- [resource, policy, membership] do
+        send(socket.channel_pid, %Changes.Change{
+          lsn: System.unique_integer([:positive, :monotonic]),
+          op: :insert,
+          struct: struct
+        })
+      end
+
+      :ok = connect_gateway_presence(gateway, gateway_token.id)
+
+      push(socket, "create_flow", %{"resource_id" => resource.id, "connected_gateway_ids" => []})
+
+      assert_receive {:create_authorization, {channel_pid, socket_ref}, payload}
+      %{ice_credentials: ice_credentials, preshared_key: preshared_key} = payload
+
+      send(
+        channel_pid,
+        {:connect, socket_ref, Ecto.UUID.dump!(resource.id), gateway.site_id, gateway.id,
+         gateway.public_key, gateway.ipv4, gateway.ipv6, preshared_key, ice_credentials}
+      )
+
+      resource_site_id = resource.site_id
+      gateway_id = gateway.id
+      assert_push "flow_created", %{gateway_group_id: ^resource_site_id, gateway_id: ^gateway_id}
+    end
+
     test "broadcasts authorize_flow to the gateway and flow_created to the client", %{
       dns_resource: resource,
       dns_resource_policy: policy,
@@ -4581,6 +4629,51 @@ defmodule PortalAPI.Client.ChannelTest do
       assert gateway_id == gateway.id
       assert %Postgrex.INET{address: address} = gateway_last_seen_remote_ip
       assert address == {100, 64, 0, 1}
+    end
+
+    test "returns a gateway serving the resource's site from another site, naming the resource's site", %{
+      account: account,
+      client: client,
+      subject: subject,
+      dns_resource: resource,
+      global_relay: global_relay
+    } do
+      socket = join_channel(client, subject)
+      assert_push "init", %{resources: _, relays: _, interface: _}
+      :ok = Portal.Presence.Relays.connect(global_relay)
+
+      other_site = site_fixture(account: account)
+      gateway = gateway_fixture(account: account, site: other_site)
+      resource_site = Repo.get_by!(Portal.Site, account_id: account.id, id: resource.site_id)
+      site_device_fixture(site: resource_site, device: gateway)
+      gateway_token = gateway_token_fixture(account: account, site: other_site)
+      :ok = connect_gateway_presence(gateway, gateway_token.id)
+
+      ref = push(socket, "prepare_connection", %{"resource_id" => resource.id})
+      gateway_id = gateway.id
+      site_id = resource.site_id
+
+      assert_reply ref, :ok, %{gateway_id: ^gateway_id, site_id: ^site_id}
+    end
+
+    test "ignores a gateway whose only site is another one", %{
+      account: account,
+      client: client,
+      subject: subject,
+      dns_resource: resource,
+      global_relay: global_relay
+    } do
+      socket = join_channel(client, subject)
+      assert_push "init", %{resources: _, relays: _, interface: _}
+      :ok = Portal.Presence.Relays.connect(global_relay)
+
+      other_site = site_fixture(account: account)
+      gateway = gateway_fixture(account: account, site: other_site)
+      gateway_token = gateway_token_fixture(account: account, site: other_site)
+      :ok = connect_gateway_presence(gateway, gateway_token.id)
+
+      ref = push(socket, "prepare_connection", %{"resource_id" => resource.id})
+      assert_reply ref, :error, %{reason: :offline}
     end
 
     test "does not return gateways that do not support the resource", %{

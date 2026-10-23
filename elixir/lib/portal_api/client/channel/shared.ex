@@ -106,6 +106,10 @@ defmodule PortalAPI.Client.Channel.Shared do
 
     schedule_session_expiry(socket.assigns.subject.expires_at)
 
+    # The sites this device serves are excluded from what it can connect to,
+    # so they are read once here.
+    socket = assign(socket, :client, Database.preload_site_devices(socket.assigns.client))
+
     # Get initial list of authorized resources, hydrating the cache
     {:ok, resources, [], cache} =
       Cache.Client.recompute_connectable_resources(
@@ -402,7 +406,7 @@ defmodule PortalAPI.Client.Channel.Shared do
             use_iceless: use_iceless,
             flow_logs_ingest_token: initiator_token
           }
-          |> put_site_id(site_id, socket.assigns.client)
+          |> put_site_id(connect_site_id(socket, rid_bytes, site_id), socket.assigns.client)
           |> Map.merge(address_fields(address))
 
         push(socket, authorization_created_event(socket), reply_payload)
@@ -762,6 +766,22 @@ defmodule PortalAPI.Client.Channel.Shared do
       )
   end
 
+  defp gateway_serves_resource_site?(_gateway, %{site: nil}), do: false
+
+  defp gateway_serves_resource_site?(gateway, %{site: site}) do
+    Device.serves_site?(gateway, Ecto.UUID.load!(site.id))
+  end
+
+  # The site the client is told about is the resource's, which a gateway
+  # serving several sites cannot know; the gateway's own site stands in for
+  # a resource that left the cache meanwhile.
+  defp connect_site_id(socket, rid_bytes, gateway_site_id) do
+    case Enum.find(socket.assigns.cache.connectable_resources, &(&1.id == rid_bytes)) do
+      %{site: %{id: site_id_bytes}} -> Ecto.UUID.load!(site_id_bytes)
+      _other -> gateway_site_id
+    end
+  end
+
   defp put_site_id(payload, site_id, client) do
     key =
       if Portal.Version.client_supports_sites_payload?(client) do
@@ -915,9 +935,9 @@ defmodule PortalAPI.Client.Channel.Shared do
            ),
          {:ok, gateways} when gateways != [] <-
            Database.all_compatible_gateways_for_client_and_resource(
+             socket.assigns.client,
              socket.assigns.client_version,
-             resource,
-             socket.assigns.subject.account.id
+             resource
            ) do
       location = {
         socket.assigns.subject.context.remote_ip_location_lat,
@@ -930,7 +950,7 @@ defmodule PortalAPI.Client.Channel.Shared do
         {:ok,
          %{
            resource_id: resource_id,
-           site_id: gateway.site_id,
+           site_id: Ecto.UUID.load!(resource.site.id),
            gateway_id: gateway.id,
            gateway_remote_ip: gateway.last_seen_remote_ip
          }}
@@ -973,7 +993,7 @@ defmodule PortalAPI.Client.Channel.Shared do
            ),
          {:ok, gateway} <-
            Presence.Devices.fetch_gateway(socket.assigns.subject.account.id, gateway_id),
-         true <- resource.site != nil and resource.site.id == Ecto.UUID.dump!(gateway.site_id) do
+         true <- gateway_serves_resource_site?(gateway, resource) do
       policy_authorization_id = Ecto.UUID.generate()
 
       attrs =
@@ -1055,7 +1075,7 @@ defmodule PortalAPI.Client.Channel.Shared do
            ),
          {:ok, gateway} <-
            Presence.Devices.fetch_gateway(socket.assigns.subject.account.id, gateway_id),
-         true <- resource.site != nil and resource.site.id == Ecto.UUID.dump!(gateway.site_id) do
+         true <- gateway_serves_resource_site?(gateway, resource) do
       policy_authorization_id = Ecto.UUID.generate()
 
       attrs =
@@ -1446,9 +1466,9 @@ defmodule PortalAPI.Client.Channel.Shared do
          address
        ) do
     case Database.all_compatible_gateways_for_client_and_resource(
+           socket.assigns.client,
            socket.assigns.client_version,
-           resource,
-           socket.assigns.subject.account.id
+           resource
          ) do
       {:ok, [_ | _] = gateways} ->
         location = {
@@ -3216,16 +3236,18 @@ defmodule PortalAPI.Client.Channel.Shared do
       |> Portal.Safe.delete_all()
     end
 
-    def all_compatible_gateways_for_client_and_resource(
-          client_version,
-          resource,
-          account_id
-        ) do
+    def preload_site_devices(%Portal.Device{} = client) do
+      Portal.Safe.preload(client, :site_devices)
+    end
+
+    # The candidates are the online gateways assigned to the resource's site,
+    # through any of their sites, and never the device asking.
+    def all_compatible_gateways_for_client_and_resource(client, client_version, resource) do
       resource_site_id = site_id_from_resource(resource)
 
       site_gateways =
-        Portal.Presence.Devices.all_connected_gateways(account_id)
-        |> Enum.filter(&(&1.site_id == resource_site_id))
+        Portal.Presence.Devices.all_connected_gateways(client.account_id)
+        |> Enum.filter(&(&1.id != client.id and Portal.Device.serves_site?(&1, resource_site_id)))
 
       compatible_gateways =
         filter_compatible_gateways(site_gateways, resource, client_version)

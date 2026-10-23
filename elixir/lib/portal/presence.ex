@@ -44,14 +44,7 @@ defmodule Portal.Presence do
       |> Map.merge(extra)
     end
 
-    # Every site the device serves, from its loaded assignments; the site
-    # column stands in when they are not loaded (clients have neither).
-    defp site_ids(%Device{site_devices: site_devices}) when is_list(site_devices) do
-      Enum.map(site_devices, & &1.site_id)
-    end
-
-    defp site_ids(%Device{site_id: nil}), do: []
-    defp site_ids(%Device{site_id: site_id}), do: [site_id]
+    defp site_ids(%Device{} = device), do: Device.served_site_ids(device)
 
     # Metas tracked by a node from before `site_ids` carry only the column.
     defp meta_site_ids(meta) do
@@ -187,6 +180,10 @@ defmodule Portal.Presence do
         account_id: account_id,
         type: meta.type,
         site_id: meta.site_id,
+        site_devices:
+          for site_id <- meta_site_ids(meta) do
+            %Portal.SiteDevice{account_id: account_id, site_id: site_id, device_id: id}
+          end,
         psk_base: meta.psk_base,
         online?: true,
         public_key: meta.public_key,
