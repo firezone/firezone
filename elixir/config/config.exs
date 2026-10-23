@@ -389,9 +389,8 @@ config :portal, Portal.Entra.AuthProvider,
   client_secret: System.get_env("ENTRA_OIDC_CLIENT_SECRET"),
   response_type: "code",
   scope: "openid email profile",
-  # Tenant-scoped endpoint for internal OAuth apps
   discovery_document_uri:
-    "https://login.microsoftonline.com/52e801b2-c10e-42e6-9c36-4cb95f3353d5/v2.0/.well-known/openid-configuration"
+    "https://login.microsoftonline.com/organizations/v2.0/.well-known/openid-configuration"
 
 config :portal, Portal.OIDC.AuthProvider,
   response_type: "code",

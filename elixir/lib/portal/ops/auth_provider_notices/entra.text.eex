@@ -1,0 +1,43 @@
+Hi <%= @notice.name %> admins,
+
+Effective immediately, Firezone checks that Microsoft Entra sign-ins come from
+a tenant verified on the authentication provider being used. Users from an
+unlisted tenant cannot sign in until that tenant is verified.
+
+We found stored Entra identities in your Firezone account <%= @notice.slug %>
+from tenants that are not currently verified on an enabled Entra provider.
+To support continued authentication, review the tenant IDs below and verify
+each tenant whose users should keep access.
+
+ADDITIONAL TENANTS TO VERIFY
+
+Verify these tenants on your existing provider. The domain labels come from
+email addresses on stored identities, not verified tenant names.
+<%= for tenant <- @notice.tenants do %>
+<%= Enum.join(tenant.domains, ", ") %>
+Tenant ID: <%= tenant.id %>
+<% end %>
+Each tenant can belong to only one Entra provider in your Firezone account.
+If a listed tenant is already verified on a disabled provider, re-enable that
+provider instead.
+
+WHAT TO DO
+
+1. Open Settings -> Authentication in your Firezone account:
+   <%= @settings_url %>
+
+2. Edit your existing Entra provider. Under Verified tenants, click
+   Verify another tenant.
+
+3. Sign in with an account from the additional tenant that has the Global
+   Administrator or Privileged Role Administrator role, and complete
+   verification. Check that the new row shows the intended tenant ID above.
+
+4. Repeat for each additional tenant that needs access, then click Save.
+   Users from all verified tenants can continue using the same sign-in option.
+
+See the Entra authentication guide for details:
+https://www.firezone.dev/kb/authenticate/entra
+
+If you need help, contact support@firezone.dev or reach out in your support
+channel.

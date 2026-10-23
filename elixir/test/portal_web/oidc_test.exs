@@ -8,7 +8,7 @@ defmodule PortalWeb.OIDCTest do
   @client_assertion_type "urn:ietf:params:oauth:client-assertion-type:jwt-bearer"
 
   setup do
-    endpoint = Mocks.OIDC.stub_discovery_document()
+    Mocks.OIDC.stub_discovery_document()
 
     config = [
       client_id: "test-entra-client-id",
@@ -18,9 +18,117 @@ defmodule PortalWeb.OIDCTest do
       req_opts: [retry: false, plug: {Req.Test, PortalWeb.OIDC}]
     ]
 
-    provider = %Entra.AuthProvider{issuer: "#{endpoint}/"}
+    provider = %Entra.AuthProvider{tenant_ids: ["12345678-1234-1234-1234-123456789012"]}
 
     %{config: config, provider: provider}
+  end
+
+  describe "Google Workspace verification" do
+    setup %{config: config} do
+      config = config |> Keyword.put(:client_id, "test-client") |> Map.new()
+      Portal.Config.put_env_override(:portal, Portal.Google.AuthProvider, Map.to_list(config))
+      %{config: config}
+    end
+
+    test "only setup requests domain access; signup and sign-in keep identity scopes" do
+      assert {:ok, %{config: config}} = OIDC.setup_verification("google", [])
+      assert config.scope =~ "admin.directory.domain.readonly"
+      assert {:ok, %{config: signup}} = OIDC.setup_verification("google_sign_up", [])
+      refute signup[:scope] =~ "admin.directory"
+      assert {:ok, signin} = OIDC.config_for_provider(%Portal.Google.AuthProvider{})
+      refute signin[:scope] =~ "admin.directory"
+    end
+
+    test "reads verified primary, secondary, and alias domains", %{config: config} do
+      google_setup_token(%{"hd" => "secondary.example"})
+      Req.Test.expect(Portal.Google.APIClient, fn conn ->
+        assert conn.request_path == "/admin/directory/v1/customer/my_customer/domains"
+        assert Plug.Conn.get_req_header(conn, "authorization") == ["Bearer setup-access-token"]
+        Req.Test.json(conn, %{"domains" => [
+          %{"domainName" => "PRIMARY.EXAMPLE", "verified" => true, "isPrimary" => true,
+            "domainAliases" => [%{"domainAliasName" => "alias.example", "verified" => true}]},
+          %{"domainName" => "secondary.example", "verified" => true},
+          %{"domainName" => "unverified.example", "verified" => false}
+        ]})
+      end)
+      assert {:ok, %{name: "PRIMARY.EXAMPLE", domains: domains}} =
+               OIDC.verify_google_callback(config, "code", "test-verifier")
+      assert domains == ["primary.example", "alias.example", "secondary.example"]
+    end
+
+    for overrides <- [%{"hd" => nil}, %{"hd" => ""}, %{"email_verified" => false}, %{"hd" => "example.com", "email_verified" => false}] do
+      @google_claim_overrides overrides
+      test "rejects setup without verified Workspace identity #{inspect(overrides)}", %{config: config} do
+        google_setup_token(@google_claim_overrides)
+        Req.Test.stub(Portal.Google.APIClient, fn _conn -> flunk("must verify identity before reading domains") end)
+        assert {:error, _} = OIDC.verify_google_callback(config, "code", "test-verifier")
+      end
+    end
+
+    for email <- ["person@gmail.com", "person@googlemail.com", "person@company.example"] do
+      @personal_google_email email
+      test "verifies a personal account without domain restrictions: #{email}", %{config: config} do
+        google_setup_token(%{"email" => @personal_google_email})
+        Req.Test.stub(Portal.Google.APIClient, fn _conn -> flunk("personal accounts must not read Workspace domains") end)
+        assert {:ok, %{issuer: _, domains: nil, name: nil}} =
+                 OIDC.verify_google_callback(config, "code", "test-verifier")
+      end
+    end
+
+    test "fails setup if the administrator cannot list domains", %{config: config} do
+      google_setup_token(%{"hd" => "example.com"})
+      Req.Test.expect(Portal.Google.APIClient, fn conn -> Plug.Conn.send_resp(conn, 403, "forbidden") end)
+      assert {:error, _} = OIDC.verify_google_callback(config, "code", "test-verifier")
+    end
+
+    test "fails setup when the signed hd is not a verified customer domain", %{config: config} do
+      google_setup_token(%{"hd" => "other.example"})
+      Req.Test.expect(Portal.Google.APIClient, fn conn ->
+        Req.Test.json(conn, %{"domains" => [%{"domainName" => "example.com", "verified" => true}]})
+      end)
+      assert {:error, _} = OIDC.verify_google_callback(config, "code", "test-verifier")
+    end
+
+    for {hd, result} <- [{"example.com", :ok}, {"secondary.example", :ok},
+                         {"other.example", :error}, {"sub.example.com", :error}, {nil, :error}] do
+      @google_hd hd
+      @google_expected_result result
+      test "checks the signed hd at sign-in: #{inspect(hd)}" do
+        token = Mocks.OIDC.default_claims()
+          |> Map.put("hd", @google_hd)
+          |> Mocks.OIDC.sign_openid_connect_token()
+        provider = %Portal.Google.AuthProvider{workspace_domains: ["example.com", "secondary.example"]}
+        assert {@google_expected_result, _} = OIDC.verify_token(provider, token, "test-verifier")
+      end
+    end
+
+    for hd <- [nil, "work.example"] do
+      @legacy_hd hd
+      test "keeps existing unrestricted providers compatible with #{inspect(hd)}" do
+        claims = Mocks.OIDC.default_claims()
+        claims = if @legacy_hd, do: Map.put(claims, "hd", @legacy_hd), else: claims
+        token = Mocks.OIDC.sign_openid_connect_token(claims)
+        provider = %Portal.Google.AuthProvider{is_legacy_unrestricted: true}
+        assert {:ok, _} = OIDC.verify_token(provider, token, "test-verifier")
+      end
+    end
+
+    test "new personal-only providers reject Workspace tokens and accept personal tokens" do
+      claims = Mocks.OIDC.default_claims()
+      personal = Mocks.OIDC.sign_openid_connect_token(claims)
+      workspace = claims |> Map.put("hd", "example.com") |> Mocks.OIDC.sign_openid_connect_token()
+      assert {:ok, _} = OIDC.verify_token(%Portal.Google.AuthProvider{}, personal, "test-verifier")
+      assert {:error, _} = OIDC.verify_token(%Portal.Google.AuthProvider{}, workspace, "test-verifier")
+      assert {:error, _} = OIDC.verify_token(%Portal.Google.AuthProvider{workspace_domains: []}, personal, "test-verifier")
+    end
+
+  end
+
+  defp google_setup_token(overrides) do
+    token = Mocks.OIDC.default_claims()
+      |> Map.merge(overrides)
+      |> Mocks.OIDC.sign_openid_connect_token()
+    Mocks.OIDC.set_token_response(%{"id_token" => token, "access_token" => "setup-access-token"})
   end
 
   describe "verification process serialization" do
@@ -99,6 +207,7 @@ defmodule PortalWeb.OIDCTest do
         params = url |> URI.parse() |> Map.fetch!(:query) |> URI.decode_query()
 
         assert params["nonce"] == OIDC.nonce("verification-verifier")
+        if type == "google", do: assert(params["prompt"] == "select_account consent")
       end
     end
   end

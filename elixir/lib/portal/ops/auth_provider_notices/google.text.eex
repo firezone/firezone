@@ -1,0 +1,59 @@
+Hi <%= @notice.name %> admins,
+
+We've added Workspace domain validation for Google sign-in in Firezone. For new
+providers, verification with a Workspace administrator saves the verified domains
+and enables validation automatically. Verification with a personal Google
+account creates a personal-only provider.
+
+Your existing Google provider will stay as it is. No action is required to keep
+existing sign-ins working. If you'd like to restrict sign-ins to verified
+Workspace domains, you can enable validation by verifying those domains and
+saving the provider. Editing its name or session lifetimes does not enable
+domain validation.
+
+You can also add separate Google providers for different Workspace organizations,
+while keeping one personal or existing unrestricted provider. Workspace domain
+lists cannot overlap within your Firezone account.
+
+Your Firezone account <%= @notice.slug %> has stored Google identities using these
+email domains:
+<%= for domain <- @notice.domains do %>
+- <%= domain %>
+<% end %>
+These are observed email domains, not a verified Workspace domain list. Review
+them when setting up validation; Firezone obtains the verified domain list
+from Google.
+<%= if @notice.consumer_identity_count > 0 do %>
+
+We also found <%= @notice.consumer_identity_count %> Google identities using consumer email addresses in
+this account. If you choose to restrict your existing provider, arrange a
+separate sign-in option for these personal accounts.
+<% end %>
+
+HOW TO ENABLE DOMAIN RESTRICTIONS
+
+1. Open Settings -> Authentication in your Firezone account:
+   <%= @settings_url %>
+   Add a new Google provider to keep the existing provider unchanged, or edit
+   the existing provider to restrict it.
+
+2. Click Verify Now. Sign in as a Google Workspace administrator and grant
+   read-only access to your organization's domain list.
+
+3. Review Verified domains. If users sign in from other Workspace organizations,
+   click Verify another domain and complete verification as an administrator of
+   each organization. They can all use the same provider and sign-in option.
+
+4. Before clicking Save, check that the list covers the Workspace domains your
+   users need. Saving enables the restrictions.
+
+Personal Google accounts cannot use a provider with verified-domain
+restrictions. This includes personal Google accounts that use a company email
+address. They need your account's personal Google provider, an existing
+unrestricted provider, or another authentication method.
+
+See the Google authentication guide for details:
+https://www.firezone.dev/kb/authenticate/google
+
+If you need help, contact support@firezone.dev or reach out in your support
+channel.
