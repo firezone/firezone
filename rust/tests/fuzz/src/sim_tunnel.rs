@@ -184,8 +184,7 @@ impl<R: Role> SimTunnel<R> {
                 .count();
             let datagrams = self.unreceived.drain(..len).collect::<Vec<_>>();
 
-            if let Err(batch) = socket.receive(received(local.port(), &datagrams)) {
-                drop(batch);
+            if socket.receive(received(local.port(), &datagrams)).is_err() {
                 for transmit in datagrams.into_iter().rev() {
                     self.unreceived.push_front(transmit);
                 }
