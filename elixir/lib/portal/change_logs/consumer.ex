@@ -27,7 +27,6 @@ defmodule Portal.ChangeLogs.Consumer do
     "entra_auth_providers" => Portal.Entra.AuthProvider,
     "entra_directories" => Portal.Entra.Directory,
     "external_identities" => Portal.ExternalIdentity,
-    "gateway_tokens" => Portal.GatewayToken,
     "google_auth_providers" => Portal.Google.AuthProvider,
     "github_auth_providers" => Portal.GitHub.AuthProvider,
     "google_directories" => Portal.Google.Directory,

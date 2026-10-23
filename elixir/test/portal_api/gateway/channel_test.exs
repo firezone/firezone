@@ -1730,11 +1730,11 @@ defmodule PortalAPI.Gateway.ChannelTest do
       data = %{
         "id" => token.id,
         "account_id" => account.id,
-        "type" => "site"
+        "actor_id" => token.actor_id
       }
 
       lsn = System.unique_integer([:positive, :monotonic])
-      Changes.Hooks.GatewayTokens.on_delete(lsn, data)
+      Changes.Hooks.ClientTokens.on_delete(lsn, data)
 
       assert_push "disconnect", %{reason: "token_expired"}
       assert_receive {:EXIT, _pid, :shutdown}
