@@ -75,7 +75,7 @@ pub fn bench<M: Measurement + Copy>(c: &mut Criterion<M>, measurement: M, group_
 
     for resource in RESOURCES {
         let id = |name| format!("{name}/{resource}");
-        let connect = || connect(resource, true);
+        let connect = || connect(resource);
 
         let (client, gateway, now) = connect();
         report.extend(outbound(
