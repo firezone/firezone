@@ -301,7 +301,8 @@ defmodule PortalAPI.Gateway.SocketTest do
       gateway = gateway_fixture(account: account, site: site)
       token = gateway_token_fixture(gateway: gateway)
       encrypted_secret = encode_gateway_token(token)
-      Portal.Repo.delete!(site)
+      # What deleting the site leaves behind: the column cleared by its key.
+      gateway |> Ecto.Changeset.change(site_id: nil) |> Portal.Repo.update!()
 
       attrs = connect_attrs(token: encrypted_secret)
       connect_info = build_connect_info()
