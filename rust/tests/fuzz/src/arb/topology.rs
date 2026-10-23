@@ -181,7 +181,6 @@ pub(super) fn arb_stub_portal(g: &mut Generator, domain_tree: &[DomainName]) -> 
         gateways_by_site,
         regular_sites,
         g.u32(),
-        g.u32(),
         cidr_resources,
         dns_resources,
         device_pool_resources,
