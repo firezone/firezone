@@ -1304,12 +1304,22 @@ defmodule Portal.BillingTest do
           client: client2
         )
 
-      # Backdate the session to more than a month ago
-      session
-      |> Ecto.Changeset.change(last_seen_at: DateTime.add(DateTime.utc_now(), -35, :day))
-      |> Repo.update!()
+      # Backdate when the actor was last seen on the device to more than a month ago
+      from(da in Portal.DeviceActor,
+        where: da.account_id == ^account.id and da.device_id == ^session.id and da.actor_id == ^actor2.id
+      )
+      |> Repo.update_all(set: [last_seen_at: DateTime.add(DateTime.utc_now(), -35, :day)])
 
       assert Portal.Billing.count_monthly_active_users(account) == 1
+    end
+
+    test "counts an actor active on a device someone else owns", %{account: account} do
+      owner = actor_fixture(type: :account_user, account: account)
+      guest = actor_fixture(type: :account_user, account: account)
+      shared = client_fixture(account: account, actor: owner)
+      record_device_actor(shared, guest.id)
+
+      assert Portal.Billing.count_monthly_active_users(account) == 2
     end
 
     test "excludes disabled users", %{account: account} do
