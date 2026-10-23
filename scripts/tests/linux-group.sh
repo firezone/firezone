@@ -36,6 +36,13 @@ sudo systemd-sysusers "$PWD/rust/headless-client/debian/$SERVICE_NAME.sysusers"
 sudo systemd-tmpfiles --create "$PWD/rust/headless-client/debian/$SERVICE_NAME.tmpfiles"
 sudo systemctl start "$SERVICE_NAME" || debug_exit
 
+# The unit is `Type=simple`, so `start` returns before the daemon listens.
+for _ in $(seq 1 50); do
+    sudo test -S "$SOCKET" && break
+    sleep 0.2
+done
+sudo test -S "$SOCKET" || debug_exit
+
 # Make sure the socket has the right permissions
 if [ "$FZ_USER $FZ_GROUP" != "$(sudo stat -c '%U %G' $SOCKET)" ]
 then
