@@ -1,0 +1,94 @@
+name: Event-loop Callgrind benchmark
+run-name: Triggered by ${{ github.actor }} on ${{ github.event_name }}
+"on":
+  pull_request:
+    paths:
+      - "rust/**"
+      - ".github/workflows/event-loop-callgrind.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "rust/**"
+      - ".github/workflows/event-loop-callgrind.yml"
+
+defaults:
+  run:
+    working-directory: ./rust
+
+permissions:
+  contents: read
+
+concurrency:
+  group: event-loop-callgrind-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  event-loop-callgrind:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    env:
+      BENCHER_PROJECT: firezone-1l75jv1z
+      # PRs from forks and Dependabot have no access to Bencher's API key.
+      BENCHER: ${{ github.event_name == 'push' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]') }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-rust-stable
+      - uses: ./.github/actions/setup-rust-sccache
+        with:
+          azure-connection-string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
+      - uses: ./.github/actions/apt-install
+        with:
+          packages: valgrind
+      - name: Install gungraun-runner
+        run: |
+          set -euo pipefail
+
+          # The runner has to be the same version as the `gungraun` library.
+          version=$(cargo metadata --format-version 1 --locked |
+            jq -r '.packages[] | select(.name == "gungraun-runner") | .version')
+          cargo install gungraun-runner --version "$version" --locked
+      - name: Build
+        run: cargo bench -p event-loop-callgrind --no-run
+      - name: Run
+        if: env.BENCHER != 'true'
+        run: cargo bench -p event-loop-callgrind
+      - uses: bencherdev/bencher@f80847436d7157936b40525db4c2a1064124f04a # v0.6.13
+        if: env.BENCHER == 'true'
+      - name: Run on Bencher
+        if: env.BENCHER == 'true'
+        env:
+          BENCHER_API_KEY: ${{ secrets.BENCHER_API_KEY }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+
+          if [ "$GITHUB_REF" = refs/heads/main ]; then
+            # Instruction counts are deterministic, so any increase beyond 1% is a regression.
+            branch=(
+              --branch main
+              --thresholds-reset
+              --threshold-measure instructions
+              --threshold-test percentage
+              --threshold-max-sample-size 64
+              --threshold-upper-boundary 0.01
+            )
+          else
+            branch=(
+              --branch "${GITHUB_HEAD_REF:-$GITHUB_REF_NAME}"
+              --start-point "${GITHUB_BASE_REF:-main}"
+              --start-point-clone-thresholds
+              --start-point-reset
+            )
+            if [ -n "$BASE_SHA" ]; then
+              branch+=(--start-point-hash "$BASE_SHA")
+            fi
+          fi
+
+          bencher run \
+            --project "$BENCHER_PROJECT" \
+            --testbed github-actions-callgrind \
+            "${branch[@]}" \
+            --adapter rust_gungraun \
+            "cargo bench -p event-loop-callgrind"
