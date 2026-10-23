@@ -2734,6 +2734,7 @@ dependencies = [
  "client-service",
  "client-shared",
  "firezone-cli",
+ "firezone-gateway",
  "flow-log-upload",
  "flow-log-writer",
  "futures",

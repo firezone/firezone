@@ -1,7 +1,7 @@
-#![cfg_attr(test, allow(clippy::unwrap_used))]
+//! The Gateway, built as the `firezone-gateway` binary and linked into the
+//! `firezone` binary, which runs it as its gateway role.
 
-#[global_allocator]
-static ALLOC: mimalloc::MiMalloc = mimalloc::MiMalloc;
+#![cfg_attr(test, allow(clippy::unwrap_used))]
 
 use crate::eventloop::{Eventloop, PHOENIX_TOPIC};
 use anyhow::{Context, ErrorExt, Result, bail};
@@ -49,8 +49,19 @@ const FLOW_LOGS_DIR: &str = "/var/lib/firezone/flow_logs";
 /// `EX_CONFIG` from `sysexits.h`; `firezone-gateway.service` lists it in `RestartPreventExitStatus`.
 const EX_CONFIG: u8 = 78;
 
-fn main() -> ExitCode {
-    let cli = Cli::parse();
+/// The entry point of the `firezone-gateway` binary.
+pub fn main() -> ExitCode {
+    main_with(std::env::args_os())
+}
+
+/// Runs the Gateway with `args` as its command line, `args[0]` being the
+/// program name, so another binary can run it under its own name.
+pub fn main_with<I>(args: I) -> ExitCode
+where
+    I: IntoIterator,
+    I::Item: Into<std::ffi::OsString> + Clone,
+{
+    let cli = Cli::parse_from(args);
 
     if let Some(command) = cli.command {
         return match manage::run(command) {

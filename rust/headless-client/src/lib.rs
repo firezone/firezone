@@ -2,9 +2,9 @@
 //!
 //! Built as three binaries from this one crate: `firezone`, the name every
 //! Linux install will use, whose `run` serves the IPC socket for the GUI and
-//! the CLI; `firezone-headless-client`, the standalone client kept as an
-//! alias so existing installs and scripts keep working; and
-//! `firezone-client-tunnel`, the daemon under its old name.
+//! the CLI, or runs the Gateway as its gateway role; `firezone-headless-client`,
+//! the standalone client kept as an alias so existing installs and scripts
+//! keep working; and `firezone-client-tunnel`, the daemon under its old name.
 
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
@@ -194,7 +194,24 @@ enum Cmd {
         /// Connect with a token in the foreground instead of serving the IPC socket
         #[arg(long)]
         foreground: bool,
+
+        /// What to run: the client daemon, or the Gateway
+        ///
+        /// Defaults to the Gateway when `/etc/firezone/gateway-token` exists,
+        /// or when started as `firezone-gateway`; the Gateway's own flags
+        /// follow. Until the two are one program, a device is one or the other.
+        #[arg(long, value_enum)]
+        role: Option<Role>,
     },
+
+    /// Store the Gateway's token on disk (the Gateway role)
+    Authenticate,
+
+    /// Enable the Gateway's systemd service (the Gateway role)
+    EnableService,
+
+    /// Disable the Gateway's systemd service (the Gateway role)
+    DisableService,
 
     /// Sign in via browser-based authentication
     SignIn {
@@ -247,24 +264,105 @@ enum Cmd {
     },
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+enum Role {
+    Client,
+    Gateway,
+}
+
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 const RELEASE: &str = concat!("headless-client@", env!("CARGO_PKG_VERSION"));
 
-/// The entry point of both binaries.
+/// The entry point of every binary of this crate.
 #[expect(
     clippy::print_stderr,
     reason = "No logger is active when we are printing this error."
 )]
-pub fn main() {
+pub fn main() -> std::process::ExitCode {
+    let args = std::env::args_os().collect::<Vec<_>>();
+
+    // The Gateway keeps its own command line until the two are one program,
+    // so its role is picked before anything is parsed.
+    if let Some(gateway_args) = gateway_args(&args, gateway_token_present) {
+        return firezone_gateway::main_with(gateway_args);
+    }
+
     match try_main() {
-        Ok(()) => {}
+        Ok(()) => std::process::ExitCode::SUCCESS,
         Err(e) => {
             // Print chain of errors manually to avoid it looking like a crash with stacktrace.
             eprintln!("{e:#}");
 
-            std::process::exit(1);
+            std::process::ExitCode::FAILURE
         }
     }
+}
+
+/// The Gateway's command line, when `args` ask for the Gateway role: started
+/// under the Gateway's old name, running one of its management commands, or
+/// `run` with `--role gateway` or with a Gateway token installed and no role
+/// given. `run` and the role flag are stripped; the Gateway's own flags stay.
+fn gateway_args(
+    args: &[std::ffi::OsString],
+    token_present: impl Fn() -> bool,
+) -> Option<Vec<std::ffi::OsString>> {
+    let (program, rest) = args.split_first()?;
+
+    if invoked_as(program, "firezone-gateway") {
+        return Some(args.to_vec());
+    }
+
+    let first = rest.first()?.to_str()?;
+
+    if matches!(first, "authenticate" | "enable-service" | "disable-service") {
+        return Some(
+            std::iter::once(program.clone())
+                .chain(rest.iter().cloned())
+                .collect(),
+        );
+    }
+
+    if first != "run" || invoked_as(program, "firezone-headless-client") {
+        return None;
+    }
+
+    let mut role = None;
+    let mut remaining = Vec::new();
+    let mut run_args = rest[1..].iter();
+
+    while let Some(arg) = run_args.next() {
+        match arg.to_str() {
+            Some("--role") => {
+                role = run_args
+                    .next()
+                    .and_then(|value| value.to_str())
+                    .map(str::to_owned);
+            }
+            Some(value) if value.starts_with("--role=") => {
+                role = Some(value["--role=".len()..].to_owned());
+            }
+            _ => remaining.push(arg.clone()),
+        }
+    }
+
+    let gateway = match role.as_deref() {
+        Some("gateway") => true,
+        Some(_) => false,
+        None => token_present(),
+    };
+
+    gateway.then(|| std::iter::once(program.clone()).chain(remaining).collect())
+}
+
+fn invoked_as(program: &std::ffi::OsString, name: &str) -> bool {
+    Path::new(program)
+        .file_stem()
+        .is_some_and(|stem| stem == name)
+}
+
+/// Whether a Gateway token is installed where the Gateway package puts it.
+fn gateway_token_present() -> bool {
+    cfg!(target_os = "linux") && Path::new("/etc/firezone/gateway-token").exists()
 }
 
 /// Runs one of the GUI remote-control commands, reporting a failure the way
@@ -278,9 +376,7 @@ fn gui_command(command: firezone_cli::Cmd) -> Result<()> {
 fn invoked_as_headless_client() -> bool {
     std::env::args_os()
         .next()
-        .map(std::path::PathBuf::from)
-        .and_then(|exe| exe.file_stem().map(|stem| stem.to_os_string()))
-        .is_some_and(|stem| stem == "firezone-headless-client")
+        .is_some_and(|program| invoked_as(&program, "firezone-headless-client"))
 }
 
 fn try_main() -> Result<()> {
@@ -334,13 +430,19 @@ fn try_main() -> Result<()> {
 
             return Ok(());
         }
-        Some(Cmd::Run { foreground: false }) if !invoked_as_headless_client() => {
+        Some(Cmd::Run {
+            foreground: false, ..
+        }) if !invoked_as_headless_client() => {
             client_service::set_daemon_version(VERSION);
 
             return client_service::service::run(cli.log_dir, cli.dns_control);
         }
         Some(Cmd::Run { .. }) | Some(Cmd::Standalone) | None => {
             // Continue as the standalone client
+        }
+        // Picked off before parsing; listed so `--help` shows them.
+        Some(Cmd::Authenticate) | Some(Cmd::EnableService) | Some(Cmd::DisableService) => {
+            unreachable!("gateway management commands run before the client parses its arguments")
         }
     }
 
@@ -884,7 +986,7 @@ fn tonic_otlp_exporter(
 
 #[cfg(test)]
 mod tests {
-    use super::{Cli, Cmd};
+    use super::{Cli, Cmd, Role};
     use clap::Parser;
     use std::path::PathBuf;
     use url::Url;
@@ -913,13 +1015,28 @@ mod tests {
         let actual = Cli::try_parse_from(["firezone", "run"]).unwrap();
         assert!(matches!(
             actual._command,
-            Some(Cmd::Run { foreground: false })
+            Some(Cmd::Run {
+                foreground: false,
+                role: None
+            })
         ));
 
         let actual = Cli::try_parse_from(["firezone", "run", "--foreground"]).unwrap();
         assert!(matches!(
             actual._command,
-            Some(Cmd::Run { foreground: true })
+            Some(Cmd::Run {
+                foreground: true,
+                ..
+            })
+        ));
+
+        let actual = Cli::try_parse_from(["firezone", "run", "--role", "client"]).unwrap();
+        assert!(matches!(
+            actual._command,
+            Some(Cmd::Run {
+                role: Some(Role::Client),
+                ..
+            })
         ));
 
         let actual = Cli::try_parse_from(["firezone", "identity"]).unwrap();
@@ -928,6 +1045,67 @@ mod tests {
         // The old name of the command keeps working.
         let actual = Cli::try_parse_from(["firezone-headless-client", "x509"]).unwrap();
         assert!(matches!(actual._command, Some(Cmd::Identity)));
+    }
+
+    fn os_args(args: &[&str]) -> Vec<std::ffi::OsString> {
+        args.iter().map(std::ffi::OsString::from).collect()
+    }
+
+    #[test]
+    fn gateway_role_from_name_flag_or_token() {
+        use super::gateway_args;
+
+        let never = || false;
+        let always = || true;
+
+        // The Gateway's old name runs the Gateway with its own arguments.
+        assert_eq!(
+            gateway_args(
+                &os_args(&["/usr/bin/firezone-gateway", "--no-check"]),
+                never
+            ),
+            Some(os_args(&["/usr/bin/firezone-gateway", "--no-check"]))
+        );
+
+        // Its management commands belong to it wherever they are typed.
+        assert_eq!(
+            gateway_args(&os_args(&["firezone", "authenticate", "--replace"]), never),
+            Some(os_args(&["firezone", "authenticate", "--replace"]))
+        );
+
+        // `run --role gateway` strips what the Gateway does not know.
+        assert_eq!(
+            gateway_args(
+                &os_args(&["firezone", "run", "--role", "gateway", "--no-check"]),
+                never
+            ),
+            Some(os_args(&["firezone", "--no-check"]))
+        );
+        assert_eq!(
+            gateway_args(&os_args(&["firezone", "run", "--role=gateway"]), never),
+            Some(os_args(&["firezone"]))
+        );
+
+        // An installed Gateway token picks the role when nothing says otherwise.
+        assert_eq!(
+            gateway_args(&os_args(&["firezone", "run"]), always),
+            Some(os_args(&["firezone"]))
+        );
+        assert_eq!(gateway_args(&os_args(&["firezone", "run"]), never), None);
+        assert_eq!(
+            gateway_args(&os_args(&["firezone", "run", "--role", "client"]), always),
+            None
+        );
+
+        // The standalone client's old name never runs the Gateway.
+        assert_eq!(
+            gateway_args(&os_args(&["firezone-headless-client", "run"]), always),
+            None
+        );
+        assert_eq!(
+            gateway_args(&os_args(&["firezone", "status"]), always),
+            None
+        );
     }
 
     #[test]

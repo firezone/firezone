@@ -23,6 +23,10 @@ assets = [
 ]
 depends = 'iptables,systemd'
 
+[[bin]]
+name = "firezone-gateway"
+path = "src/bin/firezone-gateway.rs"
+
 [dependencies]
 anyhow = { workspace = true }
 atomicfs = { workspace = true }
