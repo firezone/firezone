@@ -245,6 +245,22 @@ defmodule PortalWeb.Actors.Components do
             <Core.icon name="ri-team-line" class="w-3.5 h-3.5" /> Groups
           </span>
         </button>
+        <button
+          type="button"
+          phx-click="change_tab"
+          phx-value-tab="devices"
+          class={[
+            "px-3 py-2.5 text-xs font-medium whitespace-nowrap border-b-2 transition-colors",
+            if(@active_tab == "devices",
+              do: "border-brand text-brand",
+              else: "border-transparent text-body hover:text-heading"
+            )
+          ]}
+        >
+          <span class="flex items-center gap-1.5">
+            <Core.icon name="ri-computer-line" class="w-3.5 h-3.5" /> Devices
+          </span>
+        </button>
       </div>
       <div class="shrink-0 px-2">
         <Form.button
@@ -838,6 +854,45 @@ defmodule PortalWeb.Actors.Components do
             </li>
           </ul>
         </div>
+      </div>
+
+      <div :if={@active_tab == "devices"}>
+        <div
+          :if={@devices == []}
+          class="flex items-center justify-center h-32 text-sm text-subtle"
+        >
+          No devices have connected as this actor.
+        </div>
+        <ul :if={@devices != []}>
+          <li :for={device_actor <- @devices} class="border-b border-border">
+            <Navigation.link
+              navigate={~p"/#{@account}/devices/#{device_actor.device.id}"}
+              class="flex items-center gap-3 px-5 py-3 hover:bg-raised transition-colors"
+            >
+              <Core.ping_icon
+                color={if device_actor.device.online?, do: "success", else: "danger"}
+                title={if device_actor.device.online?, do: "Online", else: "Offline"}
+              />
+              <div class="flex items-center justify-center w-7 h-7 rounded-full bg-raised border border-border shrink-0">
+                <Core.icon
+                  name={DeviceComponents.os_icon_name(device_actor.device.last_seen_user_agent)}
+                  class="w-4 h-4 text-body"
+                />
+              </div>
+              <div class="flex-1 min-w-0">
+                <p class="text-sm font-medium text-heading truncate">
+                  {device_actor.device.name}
+                </p>
+                <div class="flex items-center gap-3 mt-0.5 text-xs text-subtle">
+                  <span class="font-mono">{device_actor.device.slug}</span>
+                  <span>
+                    Last seen <Core.relative_datetime datetime={device_actor.last_seen_at} />
+                  </span>
+                </div>
+              </div>
+            </Navigation.link>
+          </li>
+        </ul>
       </div>
 
       <div :if={@active_tab == "groups"}>

@@ -3048,6 +3048,7 @@ defmodule PortalAPI.Client.Channel.Shared do
         Process.monitor(new_pid)
         :ok = PG.register(socket.assigns.client.id)
         :ok = PG.join(socket.assigns.subject.credential.id)
+        :ok = PG.join(socket.assigns.subject.actor.id)
         socket = assign(socket, :pg_scope_pid, new_pid)
 
         # The account CDC subscription is already active. Checking current state

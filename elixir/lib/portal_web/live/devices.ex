@@ -115,7 +115,7 @@ defmodule PortalWeb.Devices do
   end
 
   defp load_devices(subject, list_opts) do
-    list_opts = Keyword.put(list_opts, :preload, [:actor, :online?])
+    list_opts = Keyword.put(list_opts, :preload, [:users, :online?])
 
     with {:ok, devices, metadata} <- Database.list_devices(subject, list_opts) do
       {:ok,
@@ -185,10 +185,10 @@ defmodule PortalWeb.Devices do
               </div>
             </div>
           </:col>
-          <:col :let={device} label="Owner">
-            <DeviceComponents.actor_name_and_role
+          <:col :let={device} label="Users">
+            <DeviceComponents.device_users
               account={@account}
-              actor={device.actor}
+              device={device}
               class="text-sm"
               return_to={@return_to}
             />
@@ -639,8 +639,8 @@ defmodule PortalWeb.Devices do
 
     defp maybe_preload_devices(devices, preload, _subject) do
       Enum.reduce(preload, devices, fn
-        :actor, devices ->
-          Safe.preload(devices, :actor)
+        :users, devices ->
+          Safe.preload(devices, device_actors: :actor)
 
         :online?, devices ->
           Devices.preload_presence(devices)
@@ -709,7 +709,7 @@ defmodule PortalWeb.Devices do
         from(c in Device, as: :devices)
         |> where([devices: d], d.type == :client)
         |> where([devices: d], d.id == ^id)
-        |> preload([:actor])
+        |> preload(device_actors: :actor)
         |> Safe.scoped(subject)
         |> Safe.one()
 
@@ -749,7 +749,7 @@ defmodule PortalWeb.Devices do
 
     def preloads do
       [
-        :actor,
+        device_actors: :actor,
         online?: &Devices.preload_presence/1
       ]
     end
@@ -786,24 +786,23 @@ defmodule PortalWeb.Devices do
       ]
     end
 
+    # Any actor who has signed in on the device matches, not only its owner.
     def filter_by_search_fts(queryable, search_term) do
-      queryable =
-        if has_named_binding?(queryable, :actors) do
-          queryable
-        else
-          join(queryable, :inner, [devices: d], a in assoc(d, :actor),
-            on: a.account_id == d.account_id,
-            as: :actors
-          )
-        end
-
       {queryable,
        dynamic(
-         [devices: devices, actors: actors],
-         fulltext_search(actors.name, ^search_term) or
-           fulltext_search(devices.name, ^search_term) or
+         [devices: devices],
+         fulltext_search(devices.name, ^search_term) or
            fulltext_search(devices.slug, ^search_term) or
-           fulltext_search(actors.email, ^search_term)
+           exists(
+             from(da in Portal.DeviceActor,
+               join: a in Portal.Actor,
+               on: a.account_id == da.account_id and a.id == da.actor_id,
+               where:
+                 da.account_id == parent_as(:devices).account_id and
+                   da.device_id == parent_as(:devices).id,
+               where: fulltext_search(a.name, ^search_term) or fulltext_search(a.email, ^search_term)
+             )
+           )
        )}
     end
 
