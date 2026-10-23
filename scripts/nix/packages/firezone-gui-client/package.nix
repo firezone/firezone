@@ -102,11 +102,13 @@ fzLib.buildRustPackage (
           '../../target/${stdenv.hostPlatform.rust.rustcTarget}/release/completions/firezone.fish'
     '';
 
-    # The `firezone` CLI is a workspace member of its own, so the Tauri hook's
-    # single `cargo tauri build` never compiles it, yet the deb bundle it
-    # installs from expects the binary to be there.
+    # The `firezone` CLI and the tunnel daemon are workspace members of their
+    # own, so the Tauri hook's single `cargo tauri build` never compiles them,
+    # yet the deb bundle it installs from expects both binaries to be there.
     preBuild = ''
       cargo build --release --offline -j $NIX_BUILD_CORES -p firezone-cli
+      cargo build --release --offline -j $NIX_BUILD_CORES \
+        -p firezone-headless-client --bin firezone-client-tunnel
     '';
 
     # wrapGAppsHook3 wraps every executable in $out/bin, which would stamp the
