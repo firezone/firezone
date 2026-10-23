@@ -142,6 +142,16 @@ impl Default for Sockets {
 }
 
 impl Sockets {
+    /// Creates sockets for both families, bound to the unspecified address.
+    ///
+    /// Must be called within a Tokio runtime context.
+    pub fn new(socket_factory: Arc<dyn SocketFactory<UdpSocket>>) -> Self {
+        let mut sockets = Self::default();
+        sockets.rebind(socket_factory);
+
+        sockets
+    }
+
     pub fn rebind(&mut self, socket_factory: Arc<dyn SocketFactory<UdpSocket>>) {
         self.socket_v4 = None;
         self.socket_v6 = None;
@@ -405,7 +415,7 @@ struct MainThreadEnds {
 }
 
 /// The ends of a socket's channels that its thread holds.
-pub(crate) struct SocketThreadEnds {
+pub struct SocketThreadEnds {
     pub(crate) outbound_rx: mpsc::Receiver<Outbound>,
     pub(crate) inbound_tx: mpsc::Sender<DatagramBatch>,
     pub(crate) error_tx: mpsc::Sender<anyhow::Error>,
@@ -727,8 +737,6 @@ impl Drop for ThreadedUdpSocket {
     }
 }
 
-#[cfg(test)]
-#[expect(dead_code, reason = "Not used by any test yet")]
 impl Sockets {
     /// Creates sockets for both families without threads; the returned ends play their part.
     pub(crate) fn fake() -> (Self, SocketThreadEnds, SocketThreadEnds) {
@@ -753,7 +761,11 @@ impl Sockets {
 
         (sockets, ends_v4, ends_v6)
     }
+}
 
+#[cfg(test)]
+#[expect(dead_code, reason = "Not used by any test yet")]
+impl Sockets {
     pub(crate) fn remove_v4(&mut self) {
         self.socket_v4 = None;
     }
@@ -767,6 +779,32 @@ impl Sockets {
         match version {
             IpVersion::V4 => self.overflow_v4.len(),
             IpVersion::V6 => self.overflow_v6.len(),
+        }
+    }
+}
+
+impl SocketThreadEnds {
+    /// Hands `batch` to the main thread as if the socket had received it, or returns it if the
+    /// channel is full.
+    pub fn receive(&self, batch: DatagramBatch) -> Result<(), DatagramBatch> {
+        self.inbound_tx
+            .try_send(batch)
+            .map_err(TrySendError::into_inner)
+    }
+
+    /// Appends the datagrams the main thread sent to `sent`, in order.
+    ///
+    /// Datagrams the crypto workers have yet to encrypt are skipped, so use inline crypto workers.
+    pub fn take_sent(&mut self, sent: &mut Vec<DatagramOut>) {
+        while let Ok(outbound) = self.outbound_rx.try_recv() {
+            match outbound {
+                Outbound::Ready(datagram) => sent.push(datagram),
+                Outbound::Pending(datagrams) => sent.extend(
+                    datagrams
+                        .into_iter()
+                        .filter_map(|mut datagram| datagram.try_recv().ok()),
+                ),
+            }
         }
     }
 }

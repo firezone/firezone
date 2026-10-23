@@ -15,10 +15,11 @@ use anyhow::{Context as _, ErrorExt as _, Result};
 use connlib_model::PublicKey;
 use eventloop_budget::Budget;
 use futures::{FutureExt, future::BoxFuture};
-use io::Io;
+use io::{CryptoWorkers, Io};
 use packet_counts::{TunPacketCounts, UdpPacketCounts};
 use prefetch::IteratorExt as _;
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
+use sockets::Sockets;
 use std::{
     collections::BTreeSet,
     future, mem,
@@ -32,13 +33,15 @@ use tunnel_proto::unroutable_packet::RoutingError;
 
 mod io;
 mod packet_counts;
+mod resolver;
 mod sockets;
 mod utils;
 
 pub use tunnel_proto::*;
 
 pub use io::TunChannelClosed;
-pub use sockets::UdpSocketThreadStopped;
+pub use resolver::{ResolverControl, ResolverQuery, ResolverTaskEnds};
+pub use sockets::{SocketThreadEnds, UdpSocketThreadStopped};
 pub use utils::turn;
 
 /// How many times we will at most loop before force-yielding from [`ClientTunnel::poll_next_event`] & [`GatewayTunnel::poll_next_event`].
@@ -97,7 +100,7 @@ impl Drop for TunnelError {
 /// [`Tunnel`] glues together connlib's [`Io`] component and the respective (pure) state of a client or gateway.
 ///
 /// Most of connlib's functionality is implemented as a pure state machine in [`ClientState`] and [`GatewayState`].
-/// The only job of [`Tunnel`] is to take input from the TUN [`Device`](crate::io::Device), [`Sockets`](crate::sockets::Sockets) or time and pass it to the respective state.
+/// The only job of [`Tunnel`] is to take input from the TUN [`Device`](crate::io::Device), [`Sockets`] or time and pass it to the respective state.
 pub struct Tunnel<TRoleState> {
     /// (pure) state that differs per role, either [`ClientState`] or [`GatewayState`].
     role_state: TRoleState,
@@ -118,6 +121,46 @@ pub struct Tunnel<TRoleState> {
 }
 
 impl<TRoleState> Tunnel<TRoleState> {
+    /// Creates a tunnel around `role_state` that does all its work on the calling thread: the
+    /// crypto jobs as they are submitted, the TUN device's, the IPv4 and IPv6 sockets' and the
+    /// recursive DNS resolver's through the returned [`FakeTunnelEnds`].
+    ///
+    /// Nothing else can bind a socket.
+    pub fn fake(role_state: TRoleState) -> (Self, FakeTunnelEnds) {
+        let (sockets, socket_v4, socket_v6) = Sockets::fake();
+        let (tun, tun_inbound, tun_outbound) = tun::fake(tun::CHANNEL_CAPACITY);
+        let (resolver, dns) = resolver::channels();
+        let tcp: Arc<dyn SocketFactory<TcpSocket>> =
+            Arc::new(|_| Err(std::io::ErrorKind::Unsupported.into()));
+        let udp: Arc<dyn SocketFactory<UdpSocket>> =
+            Arc::new(|_| Err(std::io::ErrorKind::Unsupported.into()));
+        let mut tunnel = Self {
+            role_state,
+            io: Io::new(
+                sockets,
+                CryptoWorkers::with_num_workers(0),
+                resolver,
+                tcp,
+                udp,
+            ),
+            packet_counter: otel_instruments::network_packets(),
+            dropped_packets: otel_instruments::network_packet_dropped(),
+            needs_timeout: false,
+        };
+
+        tunnel.set_tun(tun);
+
+        let ends = FakeTunnelEnds {
+            socket_v4,
+            socket_v6,
+            dns,
+            tun_inbound,
+            tun_outbound,
+        };
+
+        (tunnel, ends)
+    }
+
     pub fn state_mut(&mut self) -> &mut TRoleState {
         &mut self.role_state
     }
@@ -143,9 +186,15 @@ impl ClientTunnel {
     ) -> Self {
         Self {
             io: Io::new(
+                Sockets::new(udp_socket_factory.clone()),
+                CryptoWorkers::default(),
+                resolver::spawn(
+                    tcp_socket_factory.clone(),
+                    udp_socket_factory.clone(),
+                    BTreeSet::default(),
+                ),
                 tcp_socket_factory,
-                udp_socket_factory.clone(),
-                BTreeSet::default(),
+                udp_socket_factory,
             ),
             role_state: ClientState::new(
                 rand::random(),
@@ -192,7 +241,8 @@ impl ClientTunnel {
 
     pub fn update_system_resolvers(&mut self, resolvers: Vec<IpAddr>) -> Vec<IpAddr> {
         let resolvers = self.role_state.update_system_resolvers(resolvers);
-        self.io.update_system_resolvers(resolvers.clone()); // IO needs the system resolvers to bootstrap DoH upstream.
+        self.io
+            .send_resolver_control(ResolverControl::SystemResolvers(resolvers.clone()));
 
         resolvers
     }
@@ -236,13 +286,9 @@ impl ClientTunnel {
             // Pass up existing events.
             if let Some(event) = self.role_state.poll_event() {
                 if let ClientEvent::TunInterfaceUpdated(config) = &event {
-                    for url in &config.dns_by_sentinel.upstream_servers() {
-                        let dns::Upstream::DoH { server } = url else {
-                            continue;
-                        };
-
-                        self.io.bootstrap_doh_client(server.clone());
-                    }
+                    self.io.send_resolver_control(ResolverControl::Upstreams(
+                        config.dns_by_sentinel.upstream_servers(),
+                    ));
                 }
 
                 return Poll::Ready(Ok(event));
@@ -265,7 +311,7 @@ impl ClientTunnel {
 
             // Drain all scheduled DNS queries.
             while let Some(query) = self.role_state.poll_dns_queries() {
-                self.io.send_dns_query(query, now);
+                self.io.send_dns_query(ResolverQuery::new(query, now));
                 tick.want_continue();
             }
 
@@ -393,7 +439,17 @@ impl GatewayTunnel {
         now: Instant,
     ) -> Self {
         Self {
-            io: Io::new(tcp_socket_factory, udp_socket_factory.clone(), nameservers),
+            io: Io::new(
+                Sockets::new(udp_socket_factory.clone()),
+                CryptoWorkers::default(),
+                resolver::spawn(
+                    tcp_socket_factory.clone(),
+                    udp_socket_factory.clone(),
+                    nameservers,
+                ),
+                tcp_socket_factory,
+                udp_socket_factory,
+            ),
             role_state: GatewayState::new(
                 rand::random(),
                 now,
@@ -615,59 +671,27 @@ impl GatewayTunnel {
                 }
 
                 for query in udp_dns_queries {
-                    if let Some(nameserver) = self.io.fastest_nameserver() {
-                        self.io.send_dns_query(
-                            dns::RecursiveQuery {
-                                server: dns::Upstream::Do53 {
-                                    server: SocketAddr::new(nameserver, dns::DNS_PORT),
-                                },
-                                local: query.local,
-                                remote: query.remote,
-                                message: query.message,
-                                transport: dns::Transport::Udp,
-                            },
-                            now,
-                        );
-                    } else {
-                        tracing::warn!(query = ?query.message, "No nameserver available to handle UDP DNS query");
-
-                        if let Err(e) = self.io.send_udp_dns_response(
-                            query.remote,
-                            query.local,
-                            dns_types::Response::servfail(&query.message),
-                        ) {
-                            error.push(e);
-                        }
-                    }
+                    self.io.send_dns_query(ResolverQuery {
+                        server: None,
+                        local: query.local,
+                        remote: query.remote,
+                        message: query.message,
+                        transport: dns::Transport::Udp,
+                        started_at: now,
+                    });
 
                     tick.want_continue();
                 }
 
                 for query in tcp_dns_queries {
-                    if let Some(nameserver) = self.io.fastest_nameserver() {
-                        self.io.send_dns_query(
-                            dns::RecursiveQuery {
-                                server: dns::Upstream::Do53 {
-                                    server: SocketAddr::new(nameserver, dns::DNS_PORT),
-                                },
-                                local: query.local,
-                                remote: query.remote,
-                                message: query.message,
-                                transport: dns::Transport::Tcp,
-                            },
-                            now,
-                        );
-                    } else {
-                        tracing::warn!(query = ?query.message, "No nameserver available to handle TCP DNS query");
-
-                        if let Err(e) = self.io.send_tcp_dns_response(
-                            query.remote,
-                            query.local,
-                            dns_types::Response::servfail(&query.message),
-                        ) {
-                            error.push(e);
-                        }
-                    }
+                    self.io.send_dns_query(ResolverQuery {
+                        server: None,
+                        local: query.local,
+                        remote: query.remote,
+                        message: query.message,
+                        transport: dns::Transport::Tcp,
+                        started_at: now,
+                    });
 
                     tick.want_continue();
                 }
@@ -680,6 +704,17 @@ impl GatewayTunnel {
 
         Poll::Pending
     }
+}
+
+/// The far ends of a [`Tunnel::fake`]'s channels.
+pub struct FakeTunnelEnds {
+    pub socket_v4: SocketThreadEnds,
+    pub socket_v6: SocketThreadEnds,
+    pub dns: ResolverTaskEnds,
+    /// Packets sent here are read from the TUN device.
+    pub tun_inbound: tun::InboundTx,
+    /// Receives the packets written to the TUN device.
+    pub tun_outbound: tun::OutboundRx,
 }
 
 #[derive(Debug, thiserror::Error)]
