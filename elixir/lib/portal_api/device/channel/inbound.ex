@@ -91,7 +91,7 @@ defmodule PortalAPI.Device.Channel.Inbound do
         use_iceless
       })
 
-    push(socket, Core.protocol(socket).create_authorization_event(), %{
+    authorization = %{
       ref: ref,
       resource: resource,
       gateway_ice_credentials: ice_credentials.receiver,
@@ -101,7 +101,20 @@ defmodule PortalAPI.Device.Channel.Inbound do
       subject: subject,
       use_iceless: use_iceless,
       flow_logs_ingest_token: flow_logs_ingest_token
-    })
+    }
+
+    # The unified protocol names the device's ICE role and what it serves.
+    authorization =
+      if Core.protocol(socket).kind() == :device do
+        Map.merge(authorization, %{
+          ice_role: Map.get(payload, :ice_role, :controlled),
+          target: %{type: :resource, resource_id: resource.id}
+        })
+      else
+        authorization
+      end
+
+    push(socket, Core.protocol(socket).create_authorization_event(), authorization)
 
     socket =
       socket
@@ -192,12 +205,36 @@ defmodule PortalAPI.Device.Channel.Inbound do
 
     # The resolved `use_iceless` travels with the ack so the initiator applies
     # the same decision without reading the flag a second time.
-    case Core.protocol(socket).ack_mode() do
-      :auto ->
+    case {Core.protocol(socket).kind(), Core.protocol(socket).ack_mode()} do
+      {_kind, :auto} ->
         push(socket, "client_device_access_authorized", payload)
         send(ack_to, {:device_access_acked, ref, use_iceless, device.name, device.slug})
 
-      :device_echo ->
+      {:device, :device_echo} ->
+        # The unified protocol hears every authorization under one event,
+        # this one with the device itself as the target through the pool.
+        signed_ref = encode_ref(socket, {:device_access, ack_to, ref, use_iceless})
+
+        push(socket, Core.protocol(socket).create_authorization_event(), %{
+          ref: signed_ref,
+          target: %{type: :self, pool_id: payload[:resource][:id], filters: payload[:resource][:filters]},
+          client: %{
+            id: payload[:client_id],
+            public_key: payload[:client_public_key],
+            ipv4: payload[:client_ipv4],
+            ipv6: payload[:client_ipv6],
+            preshared_key: payload[:preshared_key]
+          },
+          gateway_ice_credentials: payload[:local_ice_credentials],
+          client_ice_credentials: payload[:remote_ice_credentials],
+          ice_role: payload[:ice_role] || :controlled,
+          subject: payload[:subject],
+          expires_at: payload[:expires_at],
+          use_iceless: use_iceless,
+          flow_logs_ingest_token: payload[:flow_logs_ingest_token]
+        })
+
+      {_kind, :device_echo} ->
         signed_ref = encode_ref(socket, {:device_access, ack_to, ref, use_iceless})
         push(socket, "client_device_access_authorized", Map.put(payload, :ref, signed_ref))
     end

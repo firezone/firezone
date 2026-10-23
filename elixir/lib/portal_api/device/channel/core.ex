@@ -213,7 +213,49 @@ defmodule PortalAPI.Device.Channel.Core do
         })
       end
 
+    # The unified protocol carries the inbound view too: every device gets
+    # it, whether or not it serves anything today.
+    payload =
+      if protocol(socket).kind() == :device do
+        Map.merge(payload, served_view(socket))
+      else
+        payload
+      end
+
     push(socket, "init", payload)
+  end
+
+  @doc "The sites the device serves and every resource behind them."
+  @spec served_view(Phoenix.Socket.t()) :: %{sites_served: [map()], local_resources: [map()]}
+  def served_view(socket) do
+    site_ids = Portal.Device.served_site_ids(device(socket))
+    subject = socket.assigns.subject
+
+    %{
+      sites_served: PortalAPI.Device.Views.Served.render_sites(Database.fetch_sites(site_ids, subject)),
+      local_resources:
+        site_ids
+        |> Database.local_resources(subject)
+        |> Enum.map(&PortalAPI.Device.Views.Served.render_resource/1)
+    }
+  end
+
+  @doc "Whether the device serves the site `site_id` belongs to, by its current assignments."
+  @spec serves_site?(Phoenix.Socket.t(), Ecto.UUID.t() | nil) :: boolean()
+  def serves_site?(_socket, nil), do: false
+  def serves_site?(socket, site_id), do: Portal.Device.serves_site?(device(socket), site_id)
+
+  @doc "Re-reads the device's site assignments, for a change to them."
+  @spec reload_site_devices(Phoenix.Socket.t()) :: Phoenix.Socket.t()
+  def reload_site_devices(socket) do
+    not_loaded = %Ecto.Association.NotLoaded{
+      __field__: :site_devices,
+      __owner__: Portal.Device,
+      __cardinality__: :many
+    }
+
+    device = %{device(socket) | site_devices: not_loaded}
+    put_device(socket, Database.preload_site_devices(device))
   end
 
   defp flow_logs_config do
@@ -910,6 +952,32 @@ defmodule PortalAPI.Device.Channel.Core do
 
     def preload_site_devices(%Portal.Device{} = device) do
       Portal.Safe.preload(device, :site_devices)
+    end
+
+    def fetch_sites([], _subject), do: []
+
+    def fetch_sites(site_ids, subject) do
+      from(s in Portal.Site, where: s.id in ^site_ids, order_by: s.name)
+      |> Portal.Safe.scoped(subject)
+      |> Portal.Safe.all()
+      |> case do
+        {:error, :unauthorized} -> []
+        sites -> sites
+      end
+    end
+
+    # Every resource the device serves through its sites, the list a gateway
+    # never had: it answers for whatever an initiator is authorized to reach.
+    def local_resources([], _subject), do: []
+
+    def local_resources(site_ids, subject) do
+      from(r in Portal.Resource, where: r.site_id in ^site_ids, order_by: r.name)
+      |> Portal.Safe.scoped(subject)
+      |> Portal.Safe.all()
+      |> case do
+        {:error, :unauthorized} -> []
+        resources -> resources
+      end
     end
 
     def x509_session_enabled?(auth_provider_id, actor_id) do

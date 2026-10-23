@@ -52,7 +52,13 @@ defmodule PortalAPI.Client.Socket do
   ## Authentication
 
   @impl true
-  def connect(attrs, socket, connect_info) do
+  def connect(attrs, socket, connect_info), do: connect(attrs, socket, connect_info, [])
+
+  @doc """
+  Connects a client with its token or certificate. `rate_limit: false` is
+  for a caller that already counted this connect against the limit.
+  """
+  def connect(attrs, socket, connect_info, opts) do
     unless Application.get_env(:portal, :sql_sandbox) do
       Portal.Repo.put_dynamic_repo(Portal.Repo.Api)
     end
@@ -62,13 +68,14 @@ defmodule PortalAPI.Client.Socket do
     OpenTelemetry.Tracer.with_span "client.connect" do
       context = PortalAPI.Sockets.auth_context(connect_info, :client)
       attrs = normalize_device_attrs(attrs)
+      rate_limit? = Keyword.get(opts, :rate_limit, true)
 
       case DeviceTrust.prepare_authentication(connect_info) do
         {:ok, authentication} ->
-          authenticate_with_certificate(authentication, context, attrs, socket, connect_info)
+          authenticate_with_certificate(authentication, context, attrs, socket, connect_info, rate_limit?)
 
         {:error, :not_x509_identity} ->
-          connect_with_token(context, attrs, socket, connect_info)
+          connect_with_token(context, attrs, socket, connect_info, rate_limit?)
 
         {:error, reason} ->
           handle_certificate_authentication_error(reason)
@@ -83,16 +90,16 @@ defmodule PortalAPI.Client.Socket do
 
   ## Private functions
 
-  defp authenticate_with_certificate(authentication, context, attrs, socket, connect_info) do
+  defp authenticate_with_certificate(authentication, context, attrs, socket, connect_info, rate_limit?) do
     # The fixed discriminator makes this an IP-only bucket. The bearer header
     # is irrelevant once X.509 identity claims are present, so allowing it to
     # vary the key would let a caller evade this pre-authentication limit.
-    with :ok <- PortalAPI.Sockets.RateLimit.check(connect_info, token: "x509"),
+    with :ok <- rate_limit(connect_info, "x509", rate_limit?),
          {:ok, subject, proof} <- DeviceTrust.authenticate(authentication, context) do
       do_connect(subject, nil, proof, attrs, socket)
     else
       {:error, :not_x509_identity} ->
-        connect_with_token(context, attrs, socket, connect_info)
+        connect_with_token(context, attrs, socket, connect_info, rate_limit?)
 
       {:error, :rate_limit} = error ->
         error
@@ -102,9 +109,9 @@ defmodule PortalAPI.Client.Socket do
     end
   end
 
-  defp connect_with_token(context, attrs, socket, connect_info) do
+  defp connect_with_token(context, attrs, socket, connect_info, rate_limit?) do
     with {:ok, token} <- PortalAPI.Sockets.extract_token(attrs, connect_info),
-         :ok <- PortalAPI.Sockets.RateLimit.check(connect_info, token: token),
+         :ok <- rate_limit(connect_info, token, rate_limit?),
          {:ok, %{credential: %Credential.ClientToken{id: token_id}} = subject} <-
            Authentication.authenticate(token, context) do
       do_connect(subject, token_id, nil, attrs, socket, connect_info)
@@ -117,6 +124,9 @@ defmodule PortalAPI.Client.Socket do
         error
     end
   end
+
+  defp rate_limit(_connect_info, _token, false), do: :ok
+  defp rate_limit(connect_info, token, true), do: PortalAPI.Sockets.RateLimit.check(connect_info, token: token)
 
   defp do_connect(subject, token_id, proof, attrs, socket, connect_info \\ nil) do
     with false <- Portal.Billing.client_connect_restricted?(subject.account),

@@ -344,7 +344,37 @@ defmodule PortalAPI.Device.Channel.Changes do
     {:noreply, socket}
   end
 
+  # SITE ASSIGNMENTS OF THIS DEVICE
+
+  defp handle_change(
+         %Change{op: op, struct: struct, old_struct: old_struct},
+         %{assigns: %{device: %{id: device_id}}} = socket
+       )
+       when op in [:insert, :delete] and
+              (is_map(struct) and :erlang.map_get(:__struct__, struct) == Portal.SiteDevice and
+                 :erlang.map_get(:device_id, struct) == device_id) or
+              (is_map(old_struct) and :erlang.map_get(:__struct__, old_struct) == Portal.SiteDevice and
+                 :erlang.map_get(:device_id, old_struct) == device_id) do
+    # What the device serves changed: its presence says so, and on the
+    # unified protocol its served view is sent again.
+    socket = socket |> Core.reload_site_devices() |> Core.track_presence()
+
+    if Core.protocol(socket).kind() == :device do
+      push(socket, "sites_served_changed", Core.served_view(socket))
+    end
+
+    {:noreply, socket}
+  end
+
   # RESOURCES
+
+  defp handle_change(
+         %Change{op: :insert, struct: %Portal.Resource{} = resource},
+         socket
+       ) do
+    push_local_resource(socket, resource)
+    {:noreply, socket}
+  end
 
   defp handle_change(
          %Change{
@@ -354,6 +384,8 @@ defmodule PortalAPI.Device.Channel.Changes do
          },
          socket
        ) do
+    push_local_resource(socket, resource, old_resource)
+
     # The serving side can follow a filter change; anything else about how the
     # resource is addressed resets every pair on it so the initiators ask again.
     cond do
@@ -389,6 +421,17 @@ defmodule PortalAPI.Device.Channel.Changes do
     else
       {:noreply, socket}
     end
+  end
+
+  defp handle_change(
+         %Change{op: :delete, old_struct: %Portal.Resource{} = resource},
+         socket
+       ) do
+    if Core.protocol(socket).kind() == :device and Core.serves_site?(socket, resource.site_id) do
+      push(socket, "local_resource_deleted", resource.id)
+    end
+
+    {:noreply, socket}
   end
 
   # OTHER DEVICES, members of a pool this one may use
@@ -433,6 +476,28 @@ defmodule PortalAPI.Device.Channel.Changes do
     else
       {:noreply, socket}
     end
+  end
+
+  # On the unified protocol a device serving the resource's site is told the
+  # resource's new shape, or that it now serves it, or that it stopped.
+  defp push_local_resource(socket, resource, old_resource \\ nil) do
+    if Core.protocol(socket).kind() == :device do
+      serves_now? = Core.serves_site?(socket, resource.site_id)
+      served_before? = old_resource && Core.serves_site?(socket, old_resource.site_id)
+
+      cond do
+        serves_now? ->
+          push(socket, "local_resource_created_or_updated", PortalAPI.Device.Views.Served.render_resource(resource))
+
+        served_before? ->
+          push(socket, "local_resource_deleted", resource.id)
+
+        true ->
+          :ok
+      end
+    end
+
+    :ok
   end
 
   # A disabled provider's rows count as absent, and the rows themselves do not change.

@@ -34,7 +34,15 @@ defmodule PortalAPI.Gateway.Socket do
   ## Authentication
 
   @impl true
-  def connect(attrs, socket, connect_info) do
+  def connect(attrs, socket, connect_info), do: connect(attrs, socket, connect_info, [])
+
+  @doc """
+  Connects a gateway with its token. `registration: :last_wins` skips the
+  connect-time refusal of a gateway that appears connected, for a protocol
+  on which the newer connection supersedes the older after join;
+  `rate_limit: false` is for a caller that already counted this connect.
+  """
+  def connect(attrs, socket, connect_info, opts) do
     unless Application.get_env(:portal, :sql_sandbox) do
       Portal.Repo.put_dynamic_repo(Portal.Repo.Api)
     end
@@ -43,16 +51,19 @@ defmodule PortalAPI.Gateway.Socket do
 
     OpenTelemetry.Tracer.with_span "gateway.connect" do
       with {:ok, encoded_token} <- PortalAPI.Sockets.extract_token(attrs, connect_info),
-           :ok <- PortalAPI.Sockets.RateLimit.check(connect_info, token: encoded_token) do
-        do_connect(encoded_token, attrs, socket, connect_info)
+           :ok <- rate_limit(connect_info, encoded_token, Keyword.get(opts, :rate_limit, true)) do
+        do_connect(encoded_token, attrs, socket, connect_info, opts)
       end
     end
   end
 
+  defp rate_limit(_connect_info, _token, false), do: :ok
+  defp rate_limit(connect_info, token, true), do: PortalAPI.Sockets.RateLimit.check(connect_info, token: token)
+
   @impl true
   def id(socket), do: Portal.Sockets.socket_id(socket.assigns.token_id)
 
-  defp do_connect(encoded_token, attrs, socket, connect_info) do
+  defp do_connect(encoded_token, attrs, socket, connect_info, opts) do
     context = PortalAPI.Sockets.auth_context(connect_info, :gateway)
     attrs = normalize_device_attrs(attrs)
 
@@ -60,7 +71,7 @@ defmodule PortalAPI.Gateway.Socket do
          {:ok, subject} <- build_subject(gateway_token, context),
          {:ok, public_key} <- validate_public_key(attrs),
          {:ok, site, gateway} <- resolve_gateway(gateway_token, attrs, subject),
-         :ok <- ensure_gateway_not_connected(gateway),
+         :ok <- ensure_gateway_not_connected(gateway, Keyword.get(opts, :registration, :first_wins)),
          {:ok, gateway} <- put_reported_metadata(gateway, attrs, subject),
          {:ok, gateway} <- maybe_put_firezone_id(gateway, attrs, subject) do
       version = derive_version(context.user_agent)
@@ -119,7 +130,9 @@ defmodule PortalAPI.Gateway.Socket do
   # First-wins: a gateway that appears connected must disconnect before a
   # replacement is allowed. Cross-node registration races are resolved by the
   # channel's connection-claim protocol after join.
-  defp ensure_gateway_not_connected(gateway) do
+  defp ensure_gateway_not_connected(_gateway, :last_wins), do: :ok
+
+  defp ensure_gateway_not_connected(gateway, :first_wins) do
     case PG.members(gateway.id) do
       [] -> :ok
       _pids -> {:error, :conflict}
