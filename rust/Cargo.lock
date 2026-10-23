@@ -2482,23 +2482,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "event-loop-callgrind"
-version = "0.1.0"
-dependencies = [
- "bufferpool",
- "fastrand",
- "gungraun",
- "ip-packet",
- "quinn-udp",
- "rand 0.10.3",
- "socket-factory",
- "tokio",
- "tun",
- "tunnel",
- "tunnel-fixture",
-]
-
-[[package]]
 name = "eventloop-budget"
 version = "0.1.0"
 dependencies = [
@@ -9148,11 +9131,20 @@ version = "0.1.0"
 dependencies = [
  "anyhow-ext",
  "bufferpool",
+ "connlib-model",
  "criterion",
+ "dns-types",
+ "fastrand",
+ "flow-tracker",
+ "gungraun",
  "ip-packet",
  "libc",
  "mimalloc",
+ "quinn-udp",
+ "rand 0.10.3",
+ "relay-proto",
  "serde_json",
+ "snownet",
  "socket-factory",
  "tokio",
  "tun",
@@ -9161,7 +9153,8 @@ dependencies = [
  "tun-offload",
  "tun-windows",
  "tunnel",
- "tunnel-fixture",
+ "tunnel-proto",
+ "uuid",
  "windows",
 ]
 
@@ -9174,25 +9167,6 @@ dependencies = [
  "parking_lot",
  "socket-factory",
  "tokio",
-]
-
-[[package]]
-name = "tunnel-fixture"
-version = "0.1.0"
-dependencies = [
- "bufferpool",
- "connlib-model",
- "dns-types",
- "flow-tracker",
- "ip-packet",
- "rand 0.10.3",
- "relay-proto",
- "serde_json",
- "snownet",
- "socket-factory",
- "tunnel",
- "tunnel-proto",
- "uuid",
 ]
 
 [[package]]

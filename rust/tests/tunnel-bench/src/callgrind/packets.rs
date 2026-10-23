@@ -1,13 +1,13 @@
 use std::collections::VecDeque;
 use std::time::Instant;
 
+use crate::fixture::{Resource, State, connect};
 use ip_packet::IpPacket;
 use socket_factory::{DatagramBatch, DatagramOut};
 use tun::PacketBatch;
 use tunnel::{ClientState, GatewayState};
-use tunnel_fixture::{Resource, State, connect};
 
-use crate::{EventLoop, seeded_rng};
+use super::{EventLoop, seeded_rng};
 
 /// How many packets a benchmark sends through the event loop.
 pub const PACKETS: usize = 1024;
@@ -94,7 +94,7 @@ impl Packets {
     }
 }
 
-fn send<R: crate::Role>(
+fn send<R: super::Role>(
     event_loop: &mut EventLoop<R>,
     inputs: &mut VecDeque<Input>,
     count: usize,
@@ -137,7 +137,7 @@ fn send<R: crate::Role>(
 
 /// Returns `count` copies of what `local` reads from its TUN device, in batches as full as the
 /// TUN device's.
-fn tun_batches(local: &tunnel_fixture::Side, count: usize) -> VecDeque<Input> {
+fn tun_batches(local: &crate::fixture::Side, count: usize) -> VecDeque<Input> {
     let packets = vec![local.reads.clone(); count];
 
     packets
@@ -156,8 +156,8 @@ fn tun_batches(local: &tunnel_fixture::Side, count: usize) -> VecDeque<Input> {
 /// Returns `count` copies of what `peer` reads from its TUN device, encrypted for `local` and
 /// coalesced like GRO does.
 fn received_batches(
-    local: &tunnel_fixture::Side,
-    peer: &mut tunnel_fixture::Side,
+    local: &crate::fixture::Side,
+    peer: &mut crate::fixture::Side,
     count: usize,
     now: Instant,
 ) -> VecDeque<Input> {
@@ -165,7 +165,7 @@ fn received_batches(
         .encapsulate(&peer.reads, count, now, local.socket)
         .into_iter()
         .map(|datagram| {
-            Input::Network(crate::received(
+            Input::Network(super::received(
                 local.socket,
                 [(peer.socket, datagram.packet, datagram.segment_size)],
             ))

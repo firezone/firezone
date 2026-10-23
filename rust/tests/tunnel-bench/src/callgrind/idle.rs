@@ -2,15 +2,15 @@ use std::collections::VecDeque;
 use std::net::SocketAddr;
 use std::time::{Duration, Instant};
 
-use bufferpool::Bytes;
-use socket_factory::DatagramOut;
-use tunnel::GatewayState;
-use tunnel_fixture::{
+use crate::fixture::{
     Client, Connectivity, GATEWAY_SOCKET, KEEPALIVE, Relay, Resource, Tunnel, client_index,
     client_socket, receive,
 };
+use bufferpool::Bytes;
+use socket_factory::DatagramOut;
+use tunnel::GatewayState;
 
-use crate::{EventLoop, seeded_rng};
+use super::{EventLoop, seeded_rng};
 
 /// How long a benchmark keeps the connections idle: whole keepalive periods, so that it covers
 /// every phase of the connections' timers.
@@ -119,7 +119,7 @@ impl Idle {
             let mut batches = to_gateway
                 .chunks(RECV_BATCH_SIZE)
                 .map(|datagrams| {
-                    crate::received(
+                    super::received(
                         *GATEWAY_SOCKET,
                         datagrams.iter().map(|(from, payload)| {
                             let mut buffer = Bytes::fitting(payload.len());

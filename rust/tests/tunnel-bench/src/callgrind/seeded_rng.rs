@@ -3,7 +3,6 @@
 //!
 //! See the fuzzer's module of the same name for which generators these are.
 
-use std::ffi::{c_uint, c_void};
 use std::sync::Mutex;
 
 use rand::{Rng as _, SeedableRng as _, rngs::StdRng};
@@ -15,21 +14,9 @@ pub fn reset() {
     fastrand::seed(0);
 }
 
-/// # Safety
-///
-/// `buf` must be valid for writes of `buflen` bytes.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn getrandom(buf: *mut c_void, buflen: usize, _flags: c_uint) -> isize {
-    if buf.is_null() || buflen == 0 {
-        return 0;
-    }
-
-    // SAFETY: The caller guarantees `buf` is writable for `buflen` bytes.
-    let out = unsafe { std::slice::from_raw_parts_mut(buf.cast::<u8>(), buflen) };
-
+/// Fills `out` from the seeded generator, for a binary's `getrandom` override to call.
+pub fn fill_bytes(out: &mut [u8]) {
     with_rng(|rng| rng.fill_bytes(out));
-
-    buflen as isize
 }
 
 fn with_rng<T>(op: impl FnOnce(&mut StdRng) -> T) -> T {
