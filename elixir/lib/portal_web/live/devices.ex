@@ -259,6 +259,8 @@ defmodule PortalWeb.Devices do
         policy_authorizations_page={@policy_authorizations_page}
         policy_authorizations_has_next={@policy_authorizations_has_next}
         policy_authorizations_expanded_id={@policy_authorizations_expanded_id}
+        sites_state={@device_sites}
+        rotated_token={@rotated_token}
       />
     </div>
     """
@@ -275,7 +277,8 @@ defmodule PortalWeb.Devices do
   defp device_confirm_state(assigns) do
     %{
       confirm_delete_device: assigns.device_confirm.delete?,
-      confirm_unverify_device: assigns.device_confirm.unverify?
+      confirm_unverify_device: assigns.device_confirm.unverify?,
+      confirm_rotate_token: assigns.device_confirm.rotate_token?
     }
   end
 
@@ -288,8 +291,11 @@ defmodule PortalWeb.Devices do
       },
       device_confirm: %{
         delete?: false,
-        unverify?: false
-      }
+        unverify?: false,
+        rotate_token?: false
+      },
+      device_sites: %{editing?: false, options: [], confirm_site_id: nil},
+      rotated_token: nil
     ]
   end
 
@@ -307,13 +313,46 @@ defmodule PortalWeb.Devices do
       },
       device_confirm: %{
         delete?: false,
-        unverify?: false
-      }
+        unverify?: false,
+        rotate_token?: false
+      },
+      device_sites: %{editing?: false, options: [], confirm_site_id: nil},
+      rotated_token: nil
     ]
   end
 
   defp merge_state(socket, key, attrs) do
     update(socket, key, &Map.merge(&1, Map.new(attrs)))
+  end
+
+  defp assign_device_site(socket, site, device) do
+    case Portal.Devices.assign_to_site(site, device.id, socket.assigns.subject) do
+      {:ok, _site_device} ->
+        socket = reload_selected_device(socket)
+        options = Database.list_assignable_sites(socket.assigns.selected_device, socket.assigns.subject)
+
+        {:noreply,
+         socket
+         |> put_flash(:success, "Device now serves #{site.name}.")
+         |> merge_state(:device_sites, options: options, confirm_site_id: nil)}
+
+      {:error, :not_a_gateway} ->
+        {:noreply, put_flash(socket, :error, "Only gateways can serve a site's resources for now.")}
+
+      {:error, :already_assigned} ->
+        {:noreply, put_flash(socket, :error, "The device already serves that site.")}
+
+      {:error, _reason} ->
+        {:noreply, put_flash(socket, :error, "Failed to add the site.")}
+    end
+  end
+
+  # The panel's device carries its sites and tokens; both change here.
+  defp reload_selected_device(socket) do
+    case Database.get_device_for_panel(socket.assigns.selected_device.id, socket.assigns.subject) do
+      nil -> socket
+      device -> assign(socket, selected_device: device)
+    end
   end
 
   def handle_event(event, params, socket)
@@ -400,6 +439,100 @@ defmodule PortalWeb.Devices do
 
   def handle_event("handle_keydown", _params, socket) do
     {:noreply, socket}
+  end
+
+  # ---- Sites served ----
+
+  def handle_event("edit_device_sites", _params, socket) do
+    device = socket.assigns.selected_device
+    options = Database.list_assignable_sites(device, socket.assigns.subject)
+
+    {:noreply,
+     merge_state(socket, :device_sites, editing?: true, options: options, confirm_site_id: nil)}
+  end
+
+  def handle_event("cancel_edit_device_sites", _params, socket) do
+    {:noreply, merge_state(socket, :device_sites, editing?: false, confirm_site_id: nil)}
+  end
+
+  # Serving the Internet resource next to other resources is allowed but
+  # confirmed first, as on the Sites page.
+  def handle_event("assign_device_site", %{"site_id" => site_id} = params, socket) do
+    device = socket.assigns.selected_device
+    subject = socket.assigns.subject
+    confirmed? = Map.get(params, "confirmed") == "true"
+
+    with {:ok, site} <- Database.fetch_site(site_id, subject) do
+      if not confirmed? and Portal.Devices.cohosts_internet?(site, device.id, subject) do
+        {:noreply, merge_state(socket, :device_sites, confirm_site_id: site.id)}
+      else
+        assign_device_site(socket, site, device)
+      end
+    else
+      _ -> {:noreply, put_flash(socket, :error, "Site not found.")}
+    end
+  end
+
+  def handle_event("cancel_assign_device_site", _params, socket) do
+    {:noreply, merge_state(socket, :device_sites, confirm_site_id: nil)}
+  end
+
+  def handle_event("remove_device_site", %{"site_id" => site_id}, socket) do
+    device = socket.assigns.selected_device
+    subject = socket.assigns.subject
+
+    with {:ok, site} <- Database.fetch_site(site_id, subject),
+         {:ok, _device} <- Portal.Devices.unassign_from_site(site, device.id, subject) do
+      {:noreply,
+       socket
+       |> put_flash(:success, "Device no longer serves #{site.name}.")
+       |> reload_selected_device()}
+    else
+      {:error, :last_site} ->
+        {:noreply,
+         put_flash(
+           socket,
+           :error,
+           "This is the only site the gateway serves. Add it to another site first, or delete the gateway."
+         )}
+
+      _ ->
+        {:noreply, put_flash(socket, :error, "Failed to remove the site.")}
+    end
+  end
+
+  # ---- Token ----
+
+  def handle_event("rotate_device_token", _params, socket) do
+    {:noreply, merge_state(socket, :device_confirm, rotate_token?: true)}
+  end
+
+  def handle_event("cancel_rotate_device_token", _params, socket) do
+    {:noreply, merge_state(socket, :device_confirm, rotate_token?: false)}
+  end
+
+  def handle_event("confirm_rotate_device_token", _params, socket) do
+    device = socket.assigns.selected_device
+
+    case Database.rotate_device_token(device, socket.assigns.subject) do
+      {:ok, encoded_token} ->
+        {:noreply,
+         socket
+         |> put_flash(:success, "Token rotated.")
+         |> merge_state(:device_confirm, rotate_token?: false)
+         |> assign(rotated_token: %{encoded: encoded_token})
+         |> reload_selected_device()}
+
+      _ ->
+        {:noreply,
+         socket
+         |> put_flash(:error, "Failed to rotate token.")
+         |> merge_state(:device_confirm, rotate_token?: false)}
+    end
+  end
+
+  def handle_event("dismiss_rotated_device_token", _params, socket) do
+    {:noreply, assign(socket, rotated_token: nil)}
   end
 
   def handle_event("confirm_delete_device", _params, socket) do
@@ -710,7 +843,7 @@ defmodule PortalWeb.Devices do
       device =
         from(c in Device, as: :devices)
         |> where([devices: d], d.id == ^id)
-        |> preload(device_actors: :actor, site_devices: :site)
+        |> preload(device_actors: :actor, site_devices: :site, gateway_tokens: [])
         |> Safe.scoped(subject)
         |> Safe.one()
 
@@ -720,6 +853,46 @@ defmodule PortalWeb.Devices do
 
         _ ->
           nil
+      end
+    end
+
+    def fetch_site(id, subject) do
+      from(s in Portal.Site, as: :sites)
+      |> where([sites: s], s.id == ^id)
+      |> Safe.scoped(subject)
+      |> Safe.one()
+      |> case do
+        %Portal.Site{} = site -> {:ok, site}
+        _ -> {:error, :not_found}
+      end
+    end
+
+    # The account's sites the device does not serve yet, for the editor.
+    def list_assignable_sites(%Device{} = device, subject) do
+      from(s in Portal.Site, as: :sites)
+      |> where(
+        [sites: s],
+        not exists(
+          from(sd in Portal.SiteDevice,
+            where:
+              sd.account_id == parent_as(:sites).account_id and
+                sd.site_id == parent_as(:sites).id and sd.device_id == ^device.id
+          )
+        )
+      )
+      |> order_by([sites: s], asc: s.name)
+      |> select([sites: s], %{id: s.id, name: s.name})
+      |> Safe.scoped(subject)
+      |> Safe.all()
+      |> case do
+        {:error, _} -> []
+        sites -> sites
+      end
+    end
+
+    def rotate_device_token(%Device{} = device, subject) do
+      with {:ok, token} <- Portal.Authentication.rotate_gateway_token(device, subject) do
+        {:ok, Portal.Authentication.encode_fragment!(token)}
       end
     end
 

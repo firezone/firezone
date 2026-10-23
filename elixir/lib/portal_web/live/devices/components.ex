@@ -163,6 +163,8 @@ defmodule PortalWeb.Devices.Components do
   attr :policy_authorizations_page, :integer, default: 1
   attr :policy_authorizations_has_next, :boolean, default: false
   attr :policy_authorizations_expanded_id, :string, default: nil
+  attr :sites_state, :map, default: %{editing?: false, options: [], confirm_site_id: nil}
+  attr :rotated_token, :map, default: nil
 
   def device_panel(assigns) do
     assigns =
@@ -204,6 +206,9 @@ defmodule PortalWeb.Devices.Components do
           policy_authorizations_page={@policy_authorizations_page}
           policy_authorizations_has_next={@policy_authorizations_has_next}
           policy_authorizations_expanded_id={@policy_authorizations_expanded_id}
+          sites_state={@sites_state}
+          rotated_token={@rotated_token}
+          confirm_rotate_token={@confirm_rotate_token}
         />
       </div>
     </div>
@@ -301,6 +306,9 @@ defmodule PortalWeb.Devices.Components do
   attr :policy_authorizations_page, :integer, default: 1
   attr :policy_authorizations_has_next, :boolean, default: false
   attr :policy_authorizations_expanded_id, :string, default: nil
+  attr :sites_state, :map, default: %{editing?: false, options: [], confirm_site_id: nil}
+  attr :rotated_token, :map, default: nil
+  attr :confirm_rotate_token, :boolean, default: false
 
   def device_details_view(assigns) do
     ~H"""
@@ -325,7 +333,9 @@ defmodule PortalWeb.Devices.Components do
             />
           </div>
           <div :if={@tab == :overview} class="flex-1 overflow-y-auto">
+            <.device_token_reveal :if={@rotated_token} device={@device} rotated_token={@rotated_token} />
             <.device_users_section account={@account} device={@device} />
+            <.device_sites_section account={@account} device={@device} sites_state={@sites_state} />
             <.device_pools_section
               :if={@device_pools != []}
               account={@account}
@@ -359,6 +369,7 @@ defmodule PortalWeb.Devices.Components do
           device={@device}
           confirm_delete_device={@confirm_delete_device}
           confirm_unverify_device={@confirm_unverify_device}
+          confirm_rotate_token={@confirm_rotate_token}
         />
       </div>
     </div>
@@ -629,6 +640,173 @@ defmodule PortalWeb.Devices.Components do
 
   defp device_user_names(%{device_actors: device_actors}) do
     Enum.map_join(device_actors, ", ", & &1.actor.name)
+  end
+
+  # A device with a token of its own can have it rotated here; devices that
+  # connect with a user's or a site's token have nothing to rotate.
+  defp bound_token?(%{gateway_tokens: tokens}) when is_list(tokens) do
+    Enum.any?(tokens, &is_nil(&1.rotated_at))
+  end
+
+  defp bound_token?(_device), do: false
+
+  attr :account, :any, required: true
+  attr :device, :any, required: true
+  attr :sites_state, :map, required: true
+
+  # The sites the device serves, with an editor to add one or take one away.
+  def device_sites_section(assigns) do
+    sites =
+      assigns.device.site_devices
+      |> Enum.map(& &1.site)
+      |> Enum.reject(&is_nil/1)
+      |> Enum.sort_by(& &1.name)
+
+    assigns = assign(assigns, :sites, sites)
+
+    ~H"""
+    <div class="px-5 pt-4 pb-3 border-b border-border">
+      <div class="flex items-center justify-between mb-3">
+        <.section_heading title="Serves" />
+        <Form.button
+          :if={not @sites_state.editing?}
+          type="button"
+          size="xs"
+          phx-click="edit_device_sites"
+        >
+          <Core.icon name="ri-pencil-line" class="w-3 h-3" /> Edit
+        </Form.button>
+        <Form.button
+          :if={@sites_state.editing?}
+          type="button"
+          size="xs"
+          phx-click="cancel_edit_device_sites"
+        >
+          Done
+        </Form.button>
+      </div>
+      <p :if={@sites == []} class="text-xs text-subtle mb-2">
+        This device does not serve any site's resources.
+      </p>
+      <div :if={@sites != []} class="flex flex-wrap gap-1.5 mb-2">
+        <span
+          :for={site <- @sites}
+          id={"device-site-#{site.id}"}
+          class="inline-flex items-center gap-1 px-2 py-1 rounded border border-border bg-raised text-xs text-body"
+        >
+          <Navigation.link navigate={~p"/#{@account}/sites/#{site.id}"} class="hover:text-brand">
+            {site.name}
+          </Navigation.link>
+          <button
+            :if={@sites_state.editing?}
+            type="button"
+            phx-click="remove_device_site"
+            phx-value-site_id={site.id}
+            class="text-subtle hover:text-error"
+            title={"Stop serving #{site.name}"}
+          >
+            <Core.icon name="ri-close-line" class="w-3 h-3" />
+          </button>
+        </span>
+      </div>
+      <form
+        :if={@sites_state.editing? and @sites_state.options != []}
+        id="device-sites-editor"
+        phx-submit="assign_device_site"
+        class="flex items-center gap-2"
+      >
+        <select
+          name="site_id"
+          class="block w-full rounded border border-border-strong bg-transparent px-2 py-1.5 text-xs text-heading"
+        >
+          <option :for={site <- @sites_state.options} value={site.id}>{site.name}</option>
+        </select>
+        <Form.button type="submit" size="xs">Add</Form.button>
+      </form>
+      <p
+        :if={@sites_state.editing? and @sites_state.options == []}
+        class="text-xs text-subtle"
+      >
+        The device already serves every site.
+      </p>
+      <div
+        :if={@sites_state.confirm_site_id}
+        class="mt-2 rounded border border-warning/40 bg-warning-light p-3 space-y-2"
+      >
+        <p class="text-xs text-body">
+          <span class="font-medium">This device would serve the Internet resource next to other resources.</span>
+          Users with access to the Internet resource can reach any non-private address this
+          device can reach, and gateways below 1.6.5 do not route a site's other resources
+          while serving the Internet resource.
+        </p>
+        <div class="flex items-center gap-2">
+          <Form.button type="button" size="xs" phx-click="cancel_assign_device_site">
+            Cancel
+          </Form.button>
+          <Form.button
+            type="button"
+            size="xs"
+            phx-click="assign_device_site"
+            phx-value-site_id={@sites_state.confirm_site_id}
+            phx-value-confirmed="true"
+          >
+            Add anyway
+          </Form.button>
+        </div>
+      </div>
+    </div>
+    """
+  end
+
+  attr :device, :any, required: true
+  attr :rotated_token, :map, required: true
+
+  def device_token_reveal(assigns) do
+    ~H"""
+    <div
+      id={"device-token-reveal-#{@device.id}"}
+      phx-hook="CopyClipboard"
+      class="m-5 rounded-md border-2 border-brand bg-brand-muted p-4 space-y-3"
+    >
+      <div class="flex items-center gap-2">
+        <Core.icon name="ri-key-2-line" class="w-4 h-4 text-brand" />
+        <span class="text-xs font-semibold text-brand">New device token</span>
+      </div>
+      <p class="text-xs text-body">
+        Copy it now - it won't be shown again. The expiring token keeps working until
+        this device connects with the replacement, or 4 hours pass.
+      </p>
+      <code
+        id={"device-token-reveal-#{@device.id}-code"}
+        class="block w-full rounded border border-border-strong bg-surface p-2 font-mono text-xs text-heading break-all"
+        phx-no-format
+      >{@rotated_token.encoded}</code>
+      <div class="flex items-center gap-2">
+        <Form.button
+          type="button"
+          size="xs"
+          style="primary"
+          data-copy-to-clipboard-target={"device-token-reveal-#{@device.id}-code"}
+        >
+          <span
+            id={"device-token-reveal-#{@device.id}-default-message"}
+            class="inline-flex items-center gap-1.5"
+          >
+            <Core.icon name="ri-clipboard-line" class="w-3.5 h-3.5" /> Copy token
+          </span>
+          <span
+            id={"device-token-reveal-#{@device.id}-success-message"}
+            class="hidden inline-flex items-center gap-1.5"
+          >
+            <Core.icon name="ri-check-line" class="w-3.5 h-3.5" /> Copied
+          </span>
+        </Form.button>
+        <Form.button type="button" size="xs" phx-click="dismiss_rotated_device_token">
+          Dismiss
+        </Form.button>
+      </div>
+    </div>
+    """
   end
 
   attr :account, :any, required: true
@@ -1047,13 +1225,18 @@ defmodule PortalWeb.Devices.Components do
   attr :device, :any, required: true
   attr :confirm_delete_device, :boolean, default: false
   attr :confirm_unverify_device, :boolean, default: false
+  attr :confirm_rotate_token, :boolean, default: false
 
   def device_sidebar(assigns) do
     ~H"""
     <div class="w-1/3 shrink-0 overflow-y-auto p-4 space-y-5">
       <.device_details_card device={@device} />
       <div class="border-t border-border"></div>
-      <.device_actions device={@device} confirm_unverify_device={@confirm_unverify_device} />
+      <.device_actions
+        device={@device}
+        confirm_unverify_device={@confirm_unverify_device}
+        confirm_rotate_token={@confirm_rotate_token}
+      />
       <div class="border-t border-border"></div>
       <.device_danger_zone confirm_delete_device={@confirm_delete_device} />
     </div>
@@ -1113,7 +1296,7 @@ defmodule PortalWeb.Devices.Components do
         <.device_detail_row label="Version">
           <.version
             current={@device.last_seen_version}
-            latest={ComponentVersions.client_version(@device)}
+            latest={ComponentVersions.latest_version(@device)}
           />
         </.device_detail_row>
         <.device_detail_row label="Last Seen">
@@ -1133,14 +1316,44 @@ defmodule PortalWeb.Devices.Components do
 
   attr :device, :any, required: true
   attr :confirm_unverify_device, :boolean, default: false
+  attr :confirm_rotate_token, :boolean, default: false
 
   def device_actions(assigns) do
-    assigns = assign(assigns, :action, device_action(assigns))
+    assigns =
+      assigns
+      |> assign(:action, device_action(assigns))
+      |> assign(:bound_token?, bound_token?(assigns.device))
 
     ~H"""
     <section>
       <.section_heading title="Actions" />
       <div class="space-y-1.5">
+        <Form.action_button
+          :if={@bound_token? and not @confirm_rotate_token}
+          icon="ri-refresh-line"
+          phx-click="rotate_device_token"
+        >
+          Rotate token
+        </Form.action_button>
+        <div
+          :if={@bound_token? and @confirm_rotate_token}
+          class="px-3 py-2.5 rounded border border-border bg-raised"
+        >
+          <p class="text-xs font-medium text-heading mb-1">Rotate this device's token?</p>
+          <p class="text-xs text-body mb-3">
+            The current token keeps working until the device connects with the new
+            token, or 4 hours pass - whichever comes first. A token that was never
+            used is replaced right away.
+          </p>
+          <div class="flex items-center gap-1.5">
+            <Form.button type="button" phx-click="cancel_rotate_device_token" size="xs">
+              Cancel
+            </Form.button>
+            <Form.button type="button" phx-click="confirm_rotate_device_token" size="xs">
+              Rotate
+            </Form.button>
+          </div>
+        </div>
         <Core.popover :if={@action in [:attested_verify, :attested_unverify]} class="block" placement="left">
           <:target>
             <Form.action_button
