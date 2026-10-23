@@ -8,11 +8,10 @@ use super::{
     reference::PrivateKey,
     sim_net::{ExecMutScope, Host},
     sim_relay::{SimRelay, map_explode},
+    sim_tunnel::SimTunnel,
     site_network::{IcmpError, icmp_error_reply},
-    sut::encrypt,
     transition::{DPort, DnsTransport, Identifier, IpFamily, SPort, Seq},
 };
-use anyhow::Result;
 use chrono::{DateTime, Utc};
 use connlib_model::{ClientId, RelayId, ResourceView};
 use dns_types::{DomainName, Query, RecordData, RecordType, prelude::*};
@@ -33,7 +32,7 @@ use tunnel_proto::{
 pub(crate) struct SimClient {
     id: ClientId,
 
-    pub(crate) sut: ClientState,
+    pub(crate) tunnel: SimTunnel<ClientState>,
 
     /// The malicious behaviours sampled for this client.
     malicious_behaviour: MaliciousBehaviour,
@@ -90,7 +89,7 @@ impl SimClient {
 
         Self {
             id,
-            sut,
+            tunnel: SimTunnel::new(sut),
             malicious_behaviour,
             dns_records: Default::default(),
             dns_by_sentinel: Default::default(),
@@ -110,21 +109,31 @@ impl SimClient {
         }
     }
 
+    pub(crate) fn sut(&self) -> &ClientState {
+        self.tunnel.state()
+    }
+
+    pub(crate) fn sut_mut(&mut self) -> &mut ClientState {
+        self.tunnel.state_mut()
+    }
+
+    /// Shuts the tunnel down and starts a new one, returning the datagrams the old one sent on
+    /// the way out.
     pub(crate) fn restart(
         &mut self,
         key: PrivateKey,
         is_internet_resource_active: bool,
         now: Instant,
         utc_now: DateTime<Utc>,
-    ) {
+    ) -> Vec<Transmit> {
         let dns_resource_records = self.dns_resource_record_cache.clone();
 
-        // Overwrite the ClientState with a new key.
-        // This is effectively the same as restarting a client / signing out and in again.
+        // A new tunnel with a new key is effectively the same as restarting a client / signing
+        // out and in again.
         //
         // We keep all the state in `SimClient` which is equivalent to host system.
         // That is where we cache resolved DNS names for example.
-        self.sut = ClientState::new(
+        let mut sut = ClientState::new(
             key.0,
             dns_resource_records,
             is_internet_resource_active,
@@ -134,11 +143,14 @@ impl SimClient {
                 .to_std()
                 .unwrap(),
         );
-        self.sut.set_flow_logs_enabled(true);
+        sut.set_flow_logs_enabled(true);
+        let old = std::mem::replace(&mut self.tunnel, SimTunnel::new(sut));
 
         self.search_domain = None;
         self.dns_by_sentinel = DnsMapping::default();
         self.routes.clear();
+
+        old.shut_down(now).collect()
     }
 
     /// Returns the _effective_ DNS servers that connlib is using.
@@ -167,8 +179,7 @@ impl SimClient {
         query_id: u16,
         upstream: dns::Upstream,
         dns_transport: DnsTransport,
-        now: Instant,
-    ) -> Option<Transmit> {
+    ) {
         let ips = self
             .dns_records
             .get(&record_domain)
@@ -191,7 +202,6 @@ impl SimClient {
             upstream,
             dns_transport,
             false,
-            now,
         )
     }
 
@@ -203,17 +213,16 @@ impl SimClient {
         upstream: dns::Upstream,
         dns_transport: DnsTransport,
         edns: bool,
-        now: Instant,
-    ) -> Option<Transmit> {
+    ) {
         let Some(sentinel) = self.dns_by_sentinel.sentinel_by_upstream(&upstream) else {
             tracing::error!(%upstream, "Unknown DNS server");
-            return None;
+            return;
         };
 
         tracing::debug!(%sentinel, %domain, "Sending DNS query");
 
         let src = self
-            .sut
+            .sut()
             .tunnel_ip_for(sentinel)
             .expect("tunnel should be initialised");
 
@@ -229,15 +238,13 @@ impl SimClient {
 
                 self.sent_udp_dns_queries
                     .insert((upstream, query_id, local_port), packet.clone());
-                self.encapsulate(packet, now)
+                self.tunnel.read_from_tun(packet);
             }
             DnsTransport::Tcp => {
                 self.tcp_dns_client
                     .send_query(SocketAddr::new(sentinel, 53), query)
                     .unwrap();
                 self.sent_tcp_dns_queries.insert((upstream, query_id));
-
-                None
             }
         }
     }
@@ -262,32 +269,11 @@ impl SimClient {
         }
     }
 
-    pub(crate) fn encapsulate(
-        &mut self,
-        packet: IpPacket,
-        now: Instant,
-    ) -> Option<snownet::Transmit> {
-        match self.handle_tun_input(packet, now) {
-            Ok(Some(transmit)) => Some(transmit),
-            Ok(None) => {
-                self.sut.handle_timeout(now); // If we handled the packet internally, make sure to advance state.
-
-                None
-            }
-            Err(e) => {
-                tracing::warn!("{e:#}");
-
-                None
-            }
-        }
+    pub(crate) fn send(&mut self, packet: IpPacket) {
+        self.tunnel.read_from_tun(packet);
     }
 
-    pub(crate) fn encapsulate_probe(
-        &mut self,
-        id: ProbeId,
-        packet: IpPacket,
-        now: Instant,
-    ) -> Option<snownet::Transmit> {
+    pub(crate) fn send_probe(&mut self, id: ProbeId, packet: IpPacket, now: Instant) {
         let protocol = probe_protocol_from_request(&packet)
             .expect("probe packets must be ICMP echo requests, UDP or TCP packets");
         assert!(
@@ -304,20 +290,7 @@ impl SimClient {
                 packet: packet.clone(),
             }));
 
-        self.encapsulate(packet, now)
-    }
-
-    /// Drive the SUT's TUN -> network path, returning the encrypted datagram (if any).
-    fn handle_tun_input(
-        &mut self,
-        mut packet: IpPacket,
-        now: Instant,
-    ) -> Result<Option<snownet::Transmit>> {
-        let Some(encapsulation) = self.sut.handle_tun_input(&mut packet, now)? else {
-            return Ok(None);
-        };
-
-        Ok(encrypt(encapsulation, &packet))
+        self.send(packet);
     }
 
     /// Returns the next packet the simulated applications send and the probe it submits, if any.
@@ -334,48 +307,24 @@ impl SimClient {
         self.record_tcp_responses(now);
     }
 
-    pub fn handle_timeout(&mut self, now: Instant) {
-        if self.sut.poll_timeout().is_some_and(|t| t <= now) {
-            self.sut.handle_timeout(now)
-        }
+    pub(crate) fn receive(&mut self, transmit: Transmit) {
+        self.tunnel.receive(transmit);
     }
 
-    pub(crate) fn receive(&mut self, transmit: Transmit, now: Instant) -> Option<Transmit> {
-        let (local, from) = (transmit.dst, transmit.src.unwrap());
-        let Some(packet) = self
-            .sut
-            .handle_network_input(local, from, &transmit.payload, now)
-            .and_then(|decapsulation| {
-                let Some(decapsulation) = decapsulation else {
-                    return Ok(None);
-                };
+    /// Delivers the packets the Client wrote to its TUN device, returning whether there were any.
+    pub(crate) fn handle_written(&mut self, now: Instant) -> bool {
+        let mut any = false;
 
-                self.sut.handle_peer_input(
-                    local,
-                    from,
-                    decapsulation.decrypt(&transmit.payload),
-                    now,
-                )
-            })
-            .inspect_err(|e| tracing::warn!("{e:#}"))
-            .ok()
-            .flatten()
-        else {
-            self.sut.handle_timeout(now);
-            return None;
-        };
+        while let Some(packet) = self.tunnel.poll_written() {
+            self.on_received_packet(packet, now);
+            any = true;
+        }
 
-        let transmit = self.on_received_packet(packet, now)?;
-
-        Some(transmit)
+        any
     }
 
     /// Process an IP packet received on the client.
-    pub(crate) fn on_received_packet(
-        &mut self,
-        packet: IpPacket,
-        now: Instant,
-    ) -> Option<snownet::Transmit> {
+    fn on_received_packet(&mut self, packet: IpPacket, now: Instant) {
         match packet.icmp_error() {
             Ok(Some((failed_packet, _))) => {
                 match failed_packet.layer4_protocol() {
@@ -412,7 +361,7 @@ impl SimClient {
                     }
                 }
 
-                return None;
+                return;
             }
             Ok(None) => {}
             Err(e) => {
@@ -449,34 +398,36 @@ impl SimClient {
                     self.handle_dns_response(upstream, transport, &response);
                 }
 
-                return None;
+                return;
             }
 
             let Some(id) = ProbeId::from_payload(udp.payload()) else {
                 tracing::error!("UDP probe payload does not contain a probe ID");
-                return None;
+                return;
             };
 
             if self.sent_probes.iter().any(|(sent, _)| *sent == id) {
                 self.record_received_response(id, packet, now);
-                return None;
+                return;
             }
 
             self.record_received_request(id, packet.clone(), now);
 
-            let reply = icmp_error.or_else(|| echo_reply(packet))?;
-            return self.handle_tun_input(reply, now).ok().flatten();
+            if let Some(reply) = icmp_error.or_else(|| echo_reply(packet)) {
+                self.send(reply);
+            }
+            return;
         }
 
         if self.tcp_dns_client.accepts(&packet) {
             self.tcp_dns_client.handle_inbound(packet);
-            return None;
+            return;
         }
 
         if self.tcp_client.accepts(&packet) {
             self.tcp_client.handle_inbound(packet);
             self.record_tcp_responses(now);
-            return None;
+            return;
         }
 
         if let Some(icmp) = packet.as_icmpv4()
@@ -484,13 +435,13 @@ impl SimClient {
         {
             let Some(id) = ProbeId::from_payload(icmp.payload()) else {
                 tracing::error!("ICMP probe payload does not contain a probe ID");
-                return None;
+                return;
             };
 
             self.record_received_request(id, packet.clone(), now);
-            let transmit = self.handle_icmp_request(&packet, echo, icmp.payload(), now)?;
+            self.handle_icmp_request(&packet, echo, icmp.payload());
 
-            return Some(transmit);
+            return;
         }
 
         if let Some(icmp) = packet.as_icmpv6()
@@ -498,13 +449,13 @@ impl SimClient {
         {
             let Some(id) = ProbeId::from_payload(icmp.payload()) else {
                 tracing::error!("ICMP probe payload does not contain a probe ID");
-                return None;
+                return;
             };
 
             self.record_received_request(id, packet.clone(), now);
-            let transmit = self.handle_icmp_request(&packet, echo, icmp.payload(), now)?;
+            self.handle_icmp_request(&packet, echo, icmp.payload());
 
-            return Some(transmit);
+            return;
         }
 
         if let Some(icmp) = packet.as_icmpv4()
@@ -512,11 +463,11 @@ impl SimClient {
         {
             let Some(id) = ProbeId::from_payload(icmp.payload()) else {
                 tracing::error!("ICMP probe payload does not contain a probe ID");
-                return None;
+                return;
             };
 
             self.record_received_response(id, packet, now);
-            return None;
+            return;
         }
 
         if let Some(icmp) = packet.as_icmpv6()
@@ -524,11 +475,11 @@ impl SimClient {
         {
             let Some(id) = ProbeId::from_payload(icmp.payload()) else {
                 tracing::error!("ICMP probe payload does not contain a probe ID");
-                return None;
+                return;
             };
 
             self.record_received_response(id, packet, now);
-            return None;
+            return;
         }
 
         // Silently ignore TCP packets on port 53 originating from connlib's DNS
@@ -550,12 +501,10 @@ impl SimClient {
             }
         {
             tracing::debug!(?packet, "Ignoring TCP teardown from DNS sentinel");
-            return None;
+            return;
         }
 
         tracing::error!(?packet, "Unhandled packet");
-
-        None
     }
 
     pub(crate) fn update_relays<'a>(
@@ -564,11 +513,9 @@ impl SimClient {
         to_add: impl Iterator<Item = (&'a RelayId, &'a Host<SimRelay>)> + 'a,
         now: Instant,
     ) {
-        self.sut.update_relays(
-            to_remove.collect(),
-            map_explode(to_add, format!("client_{}", self.id)).collect(),
-            now,
-        )
+        let to_add = map_explode(to_add, format!("client_{}", self.id)).collect();
+        self.sut_mut()
+            .update_relays(to_remove.collect(), to_add, now)
     }
 
     pub(crate) fn handle_dns_response(
@@ -629,13 +576,7 @@ impl SimClient {
         }
     }
 
-    fn handle_icmp_request(
-        &mut self,
-        packet: &IpPacket,
-        echo: IcmpEchoHeader,
-        payload: &[u8],
-        now: Instant,
-    ) -> Option<Transmit> {
+    fn handle_icmp_request(&mut self, packet: &IpPacket, echo: IcmpEchoHeader, payload: &[u8]) {
         let reply = ip_packet::make::icmp_reply_packet(
             packet.destination(),
             packet.source(),
@@ -645,7 +586,7 @@ impl SimClient {
         )
         .expect("src and dst are taken from incoming packet");
 
-        self.encapsulate(reply, now)
+        self.send(reply);
     }
 
     fn record_received_request(&mut self, id: ProbeId, packet: IpPacket, at: Instant) {
