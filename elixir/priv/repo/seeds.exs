@@ -296,7 +296,7 @@ defmodule Portal.Repo.Seeds do
         last_seen_remote_ip_location_lon: location_lon,
         last_seen_version: version,
         last_seen_at: DateTime.utc_now(),
-        gateway_token_id: gateway_token.id
+        token_id: gateway_token.id
       )
       |> Repo.update!()
 
@@ -357,7 +357,7 @@ defmodule Portal.Repo.Seeds do
         last_seen_remote_ip_location_lon: location_lon,
         last_seen_version: version,
         last_seen_at: DateTime.utc_now(),
-        client_token_id: client_token_id
+        token_id: client_token_id
       )
       |> Repo.update!()
 
@@ -3035,7 +3035,7 @@ defmodule Portal.Repo.Seeds do
           last_seen_remote_ip_location_lon: location_lon,
           last_seen_version: version,
           last_seen_at: DateTime.utc_now(),
-          client_token_id: token.id
+          token_id: token.id
         )
         |> Repo.update!()
       end
