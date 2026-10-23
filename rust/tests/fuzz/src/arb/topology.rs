@@ -181,7 +181,6 @@ pub(super) fn arb_stub_portal(g: &mut Generator, domain_tree: &[DomainName]) -> 
         gateways_by_site,
         regular_sites,
         g.u32(),
-        g.u32(),
         cidr_resources,
         dns_resources,
         device_pool_resources,
@@ -190,6 +189,7 @@ pub(super) fn arb_stub_portal(g: &mut Generator, domain_tree: &[DomainName]) -> 
         upstream_do53,
         upstream_doh,
     )
+    // TODO: Remove with classic ICE.
     .with_iceless(g.bool())
 }
 
