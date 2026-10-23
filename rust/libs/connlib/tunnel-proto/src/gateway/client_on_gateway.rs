@@ -1,4 +1,5 @@
 use std::collections::{BTreeSet, HashMap, HashSet, VecDeque};
+use std::iter;
 use std::net::{IpAddr, Ipv4Addr};
 use std::time::Instant;
 
@@ -158,6 +159,13 @@ impl ClientOnGateway {
 
     pub(crate) fn poll_event(&mut self) -> Option<GatewayEvent> {
         self.buffered_events.pop_front()
+    }
+
+    pub(crate) fn poll_timeout(&self) -> Option<Instant> {
+        iter::empty()
+            .chain(self.resources.poll_timeout())
+            .chain(self.nat_table.poll_timeout())
+            .min()
     }
 
     pub(crate) fn handle_timeout(&mut self, now: Instant) {
