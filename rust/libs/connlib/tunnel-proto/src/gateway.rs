@@ -17,6 +17,7 @@ use connlib_model::{ClientId, IceCandidate, RelayId, ResourceId};
 use dns_types::DomainName;
 use fast_random_state::FastRandomState;
 use ip_packet::{FzP2pControlSlice, IpPacket, Protocol};
+use prefetch::Prefetch as _;
 use secrecy::ExposeSecret as _;
 use snownet::{IceConfig, IceRole, Node, RelaySocket};
 use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
@@ -192,8 +193,8 @@ impl GatewayState {
 
     /// Handles UDP packets received on the network interface.
     ///
-    /// Most of these packets will be WireGuard data messages and will thus yield a [`snownet::PendingDecapsulate`].
-    /// Decrypt it from `packet` and pass the result to [`GatewayState::handle_peer_input`].
+    /// Most of these packets will be WireGuard data messages and will thus yield a [`snownet::DecapsulateBatch`].
+    /// Add the further segments of the same datagram to it, decrypt it from `packet` and pass the result to [`GatewayState::handle_peer_batch`].
     /// Some of them will however be handled internally, for example, TURN control packets exchanged with relays.
     ///
     /// In case this function returns `None`, you should call [`GatewayState::handle_timeout`] next to fully advance the internal state.
@@ -203,9 +204,9 @@ impl GatewayState {
         from: SocketAddr,
         packet: &[u8],
         now: Instant,
-    ) -> Result<Option<snownet::PendingDecapsulate>> {
+    ) -> Result<Option<snownet::DecapsulateBatch<'_>>> {
         match self.node.begin_decapsulate(local, from, packet, now) {
-            Ok(decapsulation) => Ok(decapsulation.map(|batch| batch.finish())),
+            Ok(decapsulation) => Ok(decapsulation),
             Err(e) => Err(e.context(FailedToDecapsulate(packet_kind::classify(packet)))),
         }
     }
@@ -230,24 +231,6 @@ impl GatewayState {
             from,
             now,
         }
-    }
-
-    /// Handles a WireGuard data message decrypted from a [`snownet::PendingDecapsulate`] as a batch of its own.
-    ///
-    /// `local` and `from` are the addresses the message was received on and from.
-    ///
-    /// In case this function returns `None`, you should call [`GatewayState::handle_timeout`] next to fully advance the internal state.
-    pub fn handle_peer_input(
-        &mut self,
-        local: SocketAddr,
-        from: SocketAddr,
-        packet: snownet::DecryptedIpPacket,
-        now: Instant,
-    ) -> Result<Option<IpPacket>> {
-        let result = self.handle_peer_message(packet, local, from, now);
-        self.insert_inbound_flows();
-
-        result
     }
 
     fn handle_peer_message(
@@ -819,6 +802,7 @@ impl Iterator for PeerBatch<'_> {
 
     fn next(&mut self) -> Option<Self::Item> {
         let packet = self.decrypted.next()?;
+        self.decrypted.prefetch();
 
         Some(
             self.state

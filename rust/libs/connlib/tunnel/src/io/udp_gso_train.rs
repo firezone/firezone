@@ -2,6 +2,7 @@ use std::net::SocketAddr;
 
 use bufferpool::Bytes;
 use ip_packet::{Ecn, IpPacket};
+use prefetch::Prefetch as _;
 use snownet::PendingEncapsulate;
 use socket_factory::DatagramOut;
 
@@ -10,6 +11,7 @@ const MAX_SEGMENT_SIZE: usize =
 
 /// Datagrams to one connection that one GSO send can carry: all of the same size, except for a
 /// shorter last one.
+#[derive(Clone)]
 pub struct UdpGsoTrain {
     connection: Connection,
     /// The GSO segment size: the length of the first datagram.
@@ -72,27 +74,51 @@ impl UdpGsoTrain {
         true
     }
 
-    /// Encrypts `packets`, the ones this train was built from, back-to-back into one datagram.
+    /// Appends the datagrams of a batch, all of them or none.
+    pub fn try_append_batch(
+        &mut self,
+        src: Option<SocketAddr>,
+        dst: SocketAddr,
+        datagrams: impl Iterator<Item = (Ecn, usize)>,
+    ) -> bool {
+        let mut train = self.clone();
+
+        for (ecn, len) in datagrams {
+            if !train.try_append(src, dst, ecn, len) {
+                return false;
+            }
+        }
+        *self = train;
+
+        true
+    }
+
+    /// Encrypts `batches`, the ones this train was built from, back-to-back into one datagram.
     ///
-    /// Packets that fail to encrypt are skipped; returns `None` if none are left.
+    /// Encryption stops at the first packet that fails; returns `None` if none made it.
     pub fn encrypt(
         self,
-        packets: impl Iterator<Item = (PendingEncapsulate, IpPacket)>,
+        batches: impl Iterator<Item = (PendingEncapsulate, Vec<IpPacket>)>,
     ) -> Option<DatagramOut> {
         let mut buffer = Bytes::fitting(self.len);
         let datagram = buffer.expose(self.len);
         let mut len = 0;
+        let mut batches = batches.peekable();
 
-        for (encapsulation, packet) in packets {
-            let end = len + encapsulation.datagram_len(&packet);
+        'batches: while let Some((encapsulation, packets)) = batches.next() {
+            if let Some(next) = batches.peek().and_then(|(_, packets)| packets.first()) {
+                next.prefetch();
+            }
 
-            match encapsulation
-                .encrypt_into([(&packet, &mut datagram[len..end])])
-                .next()
-            {
-                Some(Ok(())) => len = end,
-                Some(Err(e)) => tracing::debug!("Failed to encrypt packet: {e}"),
-                None => {}
+            for result in encapsulation.encrypt_into(&packets, &mut datagram[len..]) {
+                match result {
+                    Ok(datagram_len) => len += datagram_len,
+                    Err(e) => {
+                        tracing::debug!("Failed to encrypt packet: {e}");
+
+                        break 'batches;
+                    }
+                }
             }
         }
         buffer.truncate(len);
@@ -116,7 +142,7 @@ impl UdpGsoTrain {
     }
 }
 
-#[derive(PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 struct Connection {
     src: Option<SocketAddr>,
     dst: SocketAddr,

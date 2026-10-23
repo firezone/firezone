@@ -36,6 +36,7 @@ lru = { workspace = true }
 opentelemetry = { workspace = true, features = ["metrics"] }
 otel-attributes = { workspace = true }
 otel-instruments = { workspace = true }
+prefetch = { workspace = true }
 rand = { workspace = true }
 rangemap = { workspace = true }
 ringbuffer = { workspace = true }

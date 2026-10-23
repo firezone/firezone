@@ -9094,6 +9094,7 @@ dependencies = [
  "opentelemetry",
  "otel-attributes",
  "otel-instruments",
+ "prefetch",
  "proptest",
  "rand 0.10.3",
  "rangemap",

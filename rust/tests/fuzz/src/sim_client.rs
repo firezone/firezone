@@ -345,6 +345,7 @@ impl SimClient {
         let Some(packet) = self
             .sut
             .handle_network_input(local, from, &transmit.payload, now)
+            .map(|batch| batch.map(|batch| batch.finish()))
             .and_then(|decapsulation| {
                 let Some(decapsulation) = decapsulation else {
                     return Ok(None);

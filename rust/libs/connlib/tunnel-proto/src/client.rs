@@ -731,8 +731,8 @@ impl ClientState {
 
     /// Handles UDP packets received on the network interface.
     ///
-    /// Most of these packets will be WireGuard data messages and will thus yield a [`snownet::PendingDecapsulate`].
-    /// Decrypt it from `packet` and pass the result to [`ClientState::handle_peer_input`].
+    /// Most of these packets will be WireGuard data messages and will thus yield a [`snownet::DecapsulateBatch`].
+    /// Add the further segments of the same datagram to it, decrypt it from `packet` and pass the result to [`ClientState::handle_peer_input`].
     /// Some of them will however be handled internally, for example, TURN control packets exchanged with relays.
     ///
     /// In case this function returns `None`, you should call [`ClientState::handle_timeout`] next to fully advance the internal state.
@@ -742,9 +742,9 @@ impl ClientState {
         from: SocketAddr,
         packet: &[u8],
         now: Instant,
-    ) -> Result<Option<snownet::PendingDecapsulate>> {
+    ) -> Result<Option<snownet::DecapsulateBatch<'_>>> {
         match self.node.begin_decapsulate(local, from, packet, now) {
-            Ok(decapsulation) => Ok(decapsulation.map(|batch| batch.finish())),
+            Ok(decapsulation) => Ok(decapsulation),
             Err(e) => Err(e.context(FailedToDecapsulate(packet_kind::classify(packet)))),
         }
     }

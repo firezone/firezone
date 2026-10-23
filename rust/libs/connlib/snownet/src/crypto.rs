@@ -5,6 +5,7 @@ use std::time::Instant;
 use anyhow::Result;
 use bufferpool::Bytes;
 use ip_packet::IpPacket;
+use prefetch::Prefetch as _;
 
 use crate::node::Transmit;
 
@@ -90,34 +91,46 @@ impl PendingEncapsulate {
         datagram_len(self.channel, packet)
     }
 
-    /// Encrypts `packets`, those of the batch in order, each into a `dst` of
-    /// [`PendingEncapsulate::datagram_len`] bytes, as the iterator is pulled.
-    pub fn encrypt_into<'a, I>(
+    /// Encrypts `packets`, those of the batch in order, back-to-back into `dst` as the iterator
+    /// is pulled, yielding the length of each datagram.
+    ///
+    /// `dst` must hold the [`PendingEncapsulate::datagram_len`] of every packet. A packet that
+    /// fails to encrypt still takes up its datagram's space, so stop at the first error.
+    pub fn encrypt_into<'a>(
         self,
-        packets: I,
-    ) -> impl Iterator<Item = Result<(), sanstun::Error>> + 'a
-    where
-        I: IntoIterator<Item = (&'a IpPacket, &'a mut [u8])>,
-        I::IntoIter: 'a,
-    {
+        packets: &'a [IpPacket],
+        mut dst: &'a mut [u8],
+    ) -> impl Iterator<Item = Result<usize, sanstun::Error>> + 'a {
         let channel = self.channel;
-        let messages = packets.into_iter().map(move |(packet, dst)| {
+        let messages = packets.iter().enumerate().map(move |(i, packet)| {
+            if let Some(next) = packets.get(i + 1) {
+                next.prefetch();
+            }
+
+            let (datagram, rest) =
+                std::mem::take(&mut dst).split_at_mut(datagram_len(channel, packet));
+            dst = rest;
+
             let message = match channel {
                 Some(channel) => {
-                    let (header, message) = dst.split_at_mut(ip_packet::DATA_CHANNEL_OVERHEAD);
+                    let (header, message) = datagram.split_at_mut(ip_packet::DATA_CHANNEL_OVERHEAD);
                     crate::channel_data::encode_header_to_slice(header, channel, message.len());
 
                     message
                 }
-                None => dst,
+                None => datagram,
             };
 
             (packet.packet(), message)
         });
+        let lens = packets
+            .iter()
+            .map(move |packet| datagram_len(channel, packet));
 
         self.pending
             .encrypt(messages)
-            .map(|result| result.map(drop))
+            .zip(lens)
+            .map(|(result, len)| result.map(|_| len))
     }
 
     /// Encrypts `packet`, the only one of the batch, into a standalone [`Transmit`].
@@ -130,7 +143,7 @@ impl PendingEncapsulate {
         let len = self.datagram_len(packet);
         let mut payload = Bytes::fitting(len);
         let result = self
-            .encrypt_into([(packet, payload.expose(len))])
+            .encrypt_into(std::slice::from_ref(packet), payload.expose(len))
             .next()
             .unwrap_or(Err(sanstun::Error::EmptyPlaintext));
         result?;
@@ -266,43 +279,46 @@ impl PendingDecapsulate {
             )
         });
 
-        DecryptedBatch {
-            tunnel: self.tunnel,
-            src: self.src,
-            dst: self.dst,
-            decrypted: self.pending.decrypt(messages),
-        }
+        let decrypted = self
+            .pending
+            .decrypt(messages)
+            .map(|decrypted| DecryptedIpPacket {
+                tunnel: self.tunnel,
+                src: self.src,
+                dst: self.dst,
+                decrypted: decrypted.map(IpPacket::new),
+            })
+            .collect::<Vec<_>>();
+
+        DecryptedBatch(decrypted.into_iter())
     }
 }
 
 /// The outcome of a [`PendingDecapsulate`], yielding one [`DecryptedIpPacket`] per message.
-pub struct DecryptedBatch {
-    tunnel: sanstun::TunnelId,
-    src: SocketAddr,
-    dst: SocketAddr,
-    decrypted: sanstun::DecryptedBatch<bufferpool::Bytes>,
-}
+pub struct DecryptedBatch(std::vec::IntoIter<DecryptedIpPacket>);
 
 impl Iterator for DecryptedBatch {
     type Item = DecryptedIpPacket;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let decrypted = self.decrypted.next()?;
-
-        Some(DecryptedIpPacket {
-            tunnel: self.tunnel,
-            src: self.src,
-            dst: self.dst,
-            decrypted: decrypted.map(IpPacket::new),
-        })
+        self.0.next()
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
-        self.decrypted.size_hint()
+        self.0.size_hint()
     }
 }
 
 impl ExactSizeIterator for DecryptedBatch {}
+
+/// Prefetches the next packet of the batch.
+impl prefetch::Prefetch for DecryptedBatch {
+    fn prefetch(&self) {
+        if let Some(packet) = self.0.as_slice().first() {
+            packet.prefetch();
+        }
+    }
+}
 
 /// One decrypted message of a [`DecryptedBatch`].
 pub struct DecryptedIpPacket {

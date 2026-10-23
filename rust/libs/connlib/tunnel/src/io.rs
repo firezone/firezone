@@ -7,7 +7,7 @@ mod udp_dns;
 mod udp_gso_train;
 
 pub(crate) use crypto::MAX_DECRYPT_BACKLOG_MEMORY;
-pub use crypto::{DecryptBatch, DecryptedIpPackets, EncryptBatch};
+pub use crypto::{DecryptBatch, DecryptedDatagram, DecryptedIpPackets, EncryptBatch};
 pub use device::{Device, TunChannelClosed};
 pub(crate) use udp_gso_train::UdpGsoTrain;
 

@@ -80,14 +80,19 @@ impl SimGateway {
         let Some(packet) = self
             .sut
             .handle_network_input(local, from, &transmit.payload, now)
+            .map(|batch| batch.map(|batch| batch.finish()))
             .and_then(|decapsulation| {
                 let Some(decapsulation) = decapsulation else {
                     return Ok(None);
                 };
 
-                decapsulation
-                    .decrypt([&*transmit.payload])
-                    .map(|packet| self.sut.handle_peer_input(local, from, packet, now))
+                self.sut
+                    .handle_peer_batch(
+                        decapsulation.decrypt([&*transmit.payload]),
+                        local,
+                        from,
+                        now,
+                    )
                     .next()
                     .unwrap_or(Ok(None))
             })
