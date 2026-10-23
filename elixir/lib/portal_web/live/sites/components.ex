@@ -214,6 +214,7 @@ defmodule PortalWeb.Sites.Components do
           gateway_actions_open_id={@gateway_actions_open_id}
           rotated_gateway_token={@rotated_gateway_token}
           device_tokens={@device_tokens}
+          device_picker={@device_picker}
         />
 
         <.site_resources_tab
@@ -319,6 +320,9 @@ defmodule PortalWeb.Sites.Components do
         <Form.button :if={@tab == :gateways} phx-click="deploy_gateway" size="xs">
           <Core.icon name="ri-add-line" class="w-3 h-3" /> Deploy gateway
         </Form.button>
+        <Form.button :if={@tab == :gateways} phx-click="open_device_picker" size="xs">
+          <Core.icon name="ri-link" class="w-3 h-3" /> Add existing device
+        </Form.button>
         <Form.button
           :if={@tab == :resources and @site.managed_by == :account}
           phx-click="add_resource"
@@ -377,12 +381,14 @@ defmodule PortalWeb.Sites.Components do
   attr :gateway_actions_open_id, :string, default: nil
   attr :rotated_gateway_token, :map, default: nil
   attr :device_tokens, :map, default: %{}
+  attr :device_picker, :map, default: nil
 
   def site_gateways_tab(assigns) do
     assigns =
       assign(assigns, :legacy_token_ids, MapSet.new(assigns.gateway_tokens, & &1.id))
     ~H"""
     <div class="flex-1 overflow-y-auto">
+      <.site_device_picker :if={@device_picker} picker={@device_picker} />
       <ul>
         <li
           :for={gateway <- @gateways}
@@ -463,6 +469,14 @@ defmodule PortalWeb.Sites.Components do
               >
                 <Core.icon name={token_action_icon(action)} class="w-3.5 h-3.5 shrink-0" />
                 {token_action_label(action)}
+              </button>
+              <button
+                type="button"
+                phx-click="remove_gateway_from_site"
+                phx-value-id={gateway.id}
+                class="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-body hover:text-heading hover:bg-raised transition-colors"
+              >
+                <Core.icon name="ri-link-unlink" class="w-3.5 h-3.5 shrink-0" /> Remove from site
               </button>
               <button
                 type="button"
@@ -721,6 +735,68 @@ defmodule PortalWeb.Sites.Components do
           No gateways are currently online.
         </p>
       </div>
+    </div>
+    """
+  end
+
+  attr :picker, :map, required: true
+
+  # Devices in the account not yet assigned to the site. Gateways can be
+  # added; other devices are listed so the admin sees why they cannot be yet.
+  def site_device_picker(assigns) do
+    ~H"""
+    <div class="px-5 py-3 border-b border-border bg-raised space-y-2">
+      <form
+        id="site-device-picker"
+        phx-change="search_devices_to_assign"
+        phx-submit="search_devices_to_assign"
+      >
+        <div class="flex items-center gap-2">
+          <input
+            type="text"
+            name="search"
+            value={@picker.search}
+            placeholder="Search devices by name or slug"
+            phx-debounce="200"
+            autocomplete="off"
+            class="block w-full rounded border border-border-strong bg-transparent px-2 py-1.5 text-xs text-heading"
+          />
+          <Form.button type="button" size="xs" phx-click="close_device_picker">
+            Cancel
+          </Form.button>
+        </div>
+      </form>
+      <p :if={@picker.results == []} class="text-xs text-subtle">
+        No devices left to add.
+      </p>
+      <ul :if={@picker.results != []} class="divide-y divide-border rounded border border-border">
+        <li
+          :for={device <- @picker.results}
+          id={"assignable-device-#{device.id}"}
+          class="flex items-center gap-3 px-3 py-2"
+        >
+          <div class="flex-1 min-w-0">
+            <p class="font-mono text-xs font-medium text-heading truncate">{device.name}</p>
+            <p class="text-[11px] text-subtle truncate">{device.slug}</p>
+          </div>
+          <Form.button
+            :if={device.type == :gateway}
+            type="button"
+            size="xs"
+            phx-click="assign_device"
+            phx-value-id={device.id}
+          >
+            Add
+          </Form.button>
+          <span
+            :if={device.type != :gateway}
+            class="text-[11px] text-subtle"
+            title="Only gateways can serve a site's resources for now."
+          >
+            Client: cannot serve resources yet
+          </span>
+        </li>
+      </ul>
     </div>
     """
   end
