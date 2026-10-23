@@ -82,7 +82,7 @@ defmodule Portal.Repo.Seeds do
   end
 
   defp entra_tenant_id do
-    System.get_env("ENTRA_TENANT_ID", "dummy")
+    System.get_env("ENTRA_TENANT_ID", "00000000-0000-4000-8000-000000000001")
   end
 
   # Helper function to create auth providers with the new structure
