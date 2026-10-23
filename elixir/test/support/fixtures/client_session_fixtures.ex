@@ -53,5 +53,6 @@ defmodule Portal.ClientSessionFixtures do
     )
     |> Ecto.Changeset.put_change(:token_id, token.id)
     |> Portal.Repo.update!()
+    |> tap(&record_device_actor(&1, actor.id, session_attrs[:inserted_at]))
   end
 end
