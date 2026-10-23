@@ -40,6 +40,7 @@ defmodule Portal.Device do
           ipv4: Postgrex.INET.t(),
           ipv6: Postgrex.INET.t(),
           online?: boolean(),
+          proto_range: Portal.Version.proto_range() | nil,
           attested?: boolean(),
           firezone_id_merged?: boolean(),
           public_key: String.t() | nil,
@@ -146,6 +147,8 @@ defmodule Portal.Device do
     # The token minted with a Gateway, carried only on the provisioning response.
     field :provisioned_token, :any, virtual: true
     field :online?, :boolean, virtual: true, default: false
+    # The protocol minors this session speaks; see Portal.Version.proto_range/3.
+    field :proto_range, :map, virtual: true
 
     # Whether THIS connection proved possession of an MDM-issued certificate.
     # Live connection state, unlike last_attested_at, which is the row's

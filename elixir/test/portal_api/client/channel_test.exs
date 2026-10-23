@@ -108,6 +108,8 @@ defmodule PortalAPI.Client.ChannelTest do
     session_meta = %{
       site_id: gateway.site_id,
       site_ids: gateway |> Repo.preload(:site_devices) |> Portal.Device.served_site_ids(),
+      proto_min: gateway.proto_range && gateway.proto_range.min,
+      proto_max: gateway.proto_range && gateway.proto_range.max,
       public_key: gateway.public_key,
       psk_base: gateway.psk_base,
       version: gateway.last_seen_version,
@@ -4501,6 +4503,35 @@ defmodule PortalAPI.Client.ChannelTest do
 
       assert_push "flow_creation_failed", %{reason: :version_mismatch, resource_id: resource_id}
       assert resource_id == resource.id
+    end
+
+    test "reaches a gateway two minors ahead when it states a range covering the client", %{
+      account: account,
+      client: client,
+      subject: subject,
+      dns_resource: resource,
+      global_relay: global_relay
+    } do
+      # A 1.5 client cannot normally reach a 1.7 gateway; a unified 1.7
+      # binary says it speaks 1.5 through 1.7, which the legacy rule cannot.
+      socket = join_channel(client, subject, client_version: "1.5.16")
+      assert_push "init", %{resources: _, relays: _, interface: _}
+      :ok = Portal.Presence.Relays.connect(global_relay)
+
+      gateway =
+        gateway_fixture(
+          account: account,
+          site: Repo.get_by!(Portal.Site, account_id: account.id, id: resource.site_id),
+          last_seen_user_agent: "Linux/24.04 connlib/1.7.0",
+          last_seen_version: "1.7.0"
+        )
+
+      gateway_token = gateway_token_fixture(gateway: gateway)
+      :ok = connect_gateway_presence(%{gateway | proto_range: %{min: 5, max: 7}}, gateway_token.id)
+
+      ref = push(socket, "prepare_connection", %{"resource_id" => resource.id})
+      gateway_id = gateway.id
+      assert_reply ref, :ok, %{gateway_id: ^gateway_id}
     end
 
     test "returns :version_mismatch when gateway has no version", %{

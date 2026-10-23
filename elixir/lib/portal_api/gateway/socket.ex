@@ -65,7 +65,7 @@ defmodule PortalAPI.Gateway.Socket do
          {:ok, gateway} <- maybe_put_firezone_id(gateway, attrs, subject) do
       version = derive_version(context.user_agent)
       {context, version} = PortalAPI.Sockets.truncate_session_fields(context, version)
-      gateway = apply_session(gateway, gateway_token.id, public_key, context, version)
+      gateway = apply_session(gateway, gateway_token.id, public_key, context, version, attrs)
       subject = Authentication.Subject.with_device(%{subject | context: context}, gateway)
 
       OpenTelemetry.Tracer.set_attributes(%{
@@ -216,11 +216,12 @@ defmodule PortalAPI.Gateway.Socket do
 
   # The connection snapshot lives directly on the device struct: these are the
   # same fields the flush later persists as the device's latest session.
-  defp apply_session(gateway, token_id, public_key, context, version) do
+  defp apply_session(gateway, token_id, public_key, context, version, attrs) do
     %{
       gateway
       | token_id: token_id,
         public_key: public_key,
+        proto_range: Version.proto_range(attrs, :gateway, version),
         last_seen_user_agent: context.user_agent,
         last_seen_remote_ip: context.remote_ip,
         last_seen_remote_ip_location_region: context.remote_ip_location_region,

@@ -1269,15 +1269,21 @@ defmodule PortalAPI.Client.Channel.Shared do
   #   - the target client predates `client_device_access_authorized` / `_denied`
   #     handling (older clients silently drop the message, leaving the initiator
   #     stuck waiting), or
-  #   - initiator and target are on different minor versions — snownet's wire
-  #     format may change on a minor cadence, so cross-minor pairs are unsafe.
+  #   - the two speak no common protocol minor: snownet's wire format may
+  #     change on a minor cadence, and each side says which minors it speaks.
   defp check_peer_compatibility(target_meta, socket) do
     target_user_agent = Map.get(target_meta, :user_agent)
     target_version = Map.get(target_meta, :version)
     initiator_version = socket.assigns.client.last_seen_version
 
+    initiator_range =
+      socket.assigns.client.proto_range ||
+        Portal.Version.proto_range(nil, :client, initiator_version)
+
+    target_range = Portal.Version.proto_range_from_meta(target_meta, :client)
+
     if Portal.Version.supports_device_access?(target_user_agent, target_version) and
-         Portal.Version.same_minor_version?(initiator_version, target_version) do
+         Portal.Version.compatible?(initiator_range, target_range) do
       :ok
     else
       {:error, :version_mismatch}
@@ -3249,8 +3255,10 @@ defmodule PortalAPI.Client.Channel.Shared do
         Portal.Presence.Devices.all_connected_gateways(client.account_id)
         |> Enum.filter(&(&1.id != client.id and Portal.Device.serves_site?(&1, resource_site_id)))
 
+      client_range = client.proto_range || Portal.Version.proto_range(nil, :client, client_version)
+
       compatible_gateways =
-        filter_compatible_gateways(site_gateways, resource, client_version)
+        filter_compatible_gateways(site_gateways, resource, client_version, client_range)
 
       cond do
         compatible_gateways != [] ->
@@ -3371,31 +3379,25 @@ defmodule PortalAPI.Client.Channel.Shared do
       end
     end
 
-    # Filters gateways by the resource type, gateway version, and client version.
-    defp filter_compatible_gateways(gateways, _resource, nil), do: gateways
+    # Filters gateways by the protocol range they share with the client and
+    # by whether the gateway understands the resource. A client that reported
+    # no version is not filtered, as before; one whose version cannot be read
+    # reaches nothing.
+    defp filter_compatible_gateways(gateways, _resource, nil, _client_range), do: gateways
+    defp filter_compatible_gateways(_gateways, _resource, _version, nil), do: []
 
-    defp filter_compatible_gateways(gateways, resource, client_version) do
-      case Version.parse(client_version) do
-        {:ok, version} ->
-          Enum.filter(gateways, &compatible_gateway?(&1, resource, version))
-
-        :error ->
-          []
-      end
+    defp filter_compatible_gateways(gateways, resource, _version, client_range) do
+      Enum.filter(gateways, &compatible_gateway?(&1, resource, client_range))
     end
 
-    defp compatible_gateway?(gateway, resource, version) do
-      gateway_version_str = gateway.last_seen_version
+    defp compatible_gateway?(gateway, resource, client_range) do
+      gateway_version = gateway.last_seen_version
 
-      case gateway_version_str && Version.parse(gateway_version_str) do
-        {:ok, gateway_version} ->
-          Version.match?(gateway_version, ">= #{version.major}.#{version.minor - 1}.0") and
-            Version.match?(gateway_version, "< #{version.major}.#{version.minor + 2}.0") and
-            not is_nil(Portal.Resource.adapt_resource_for_version(resource, gateway_version_str))
+      gateway_range =
+        gateway.proto_range || Portal.Version.proto_range(nil, :gateway, gateway_version)
 
-        _ ->
-          false
-      end
+      Portal.Version.compatible?(client_range, gateway_range) and
+        not is_nil(Portal.Resource.adapt_resource_for_version(resource, gateway_version))
     end
 
     defp site_id_from_resource(%Portal.Cache.Cacheable.Resource{site: site}) do

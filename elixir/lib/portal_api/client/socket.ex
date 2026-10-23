@@ -131,7 +131,7 @@ defmodule PortalAPI.Client.Socket do
       {context, version} = PortalAPI.Sockets.truncate_session_fields(subject.context, version)
       subject = %{subject | context: context}
 
-      client = apply_session(client, token_id, public_key, subject, version)
+      client = apply_session(client, token_id, public_key, subject, version, attrs)
       set_connect_attributes(token_id, client, subject, version)
 
       {:ok, assign_connect(socket, subject, client, version, attested?, proof)}
@@ -228,11 +228,12 @@ defmodule PortalAPI.Client.Socket do
 
   # The connection snapshot lives directly on the device struct: these are the
   # same fields the flush later persists as the device's latest session.
-  defp apply_session(client, token_id, public_key, subject, version) do
+  defp apply_session(client, token_id, public_key, subject, version, attrs) do
     %{
       client
       | token_id: token_id,
         public_key: public_key,
+        proto_range: Version.proto_range(attrs, :client, version),
         last_seen_user_agent: subject.context.user_agent,
         last_seen_remote_ip: subject.context.remote_ip,
         last_seen_remote_ip_location_region: subject.context.remote_ip_location_region,
