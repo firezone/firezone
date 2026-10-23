@@ -47,6 +47,8 @@ const TUN_CAPACITY: usize = 100;
 pub struct EventLoop<R> {
     tunnel: Tunnel<R>,
     socket: SocketThreadEnds,
+    /// Unused: every address is IPv4.
+    _socket_v6: SocketThreadEnds,
     /// What the TUN device reads.
     tun_reads: InboundTx,
     /// What the event loop writes to the TUN device.
@@ -66,7 +68,7 @@ impl<R: Role> EventLoop<R> {
             .unwrap();
         let _guard = runtime.enter();
 
-        let (mut tunnel, socket) = Tunnel::fake(state);
+        let (mut tunnel, socket, _socket_v6) = Tunnel::fake(state);
         let (tun, tun_reads, tun_writes) = tun::fake(TUN_CAPACITY);
         tunnel.set_tun(tun);
 
@@ -75,6 +77,7 @@ impl<R: Role> EventLoop<R> {
         Self {
             tunnel,
             socket,
+            _socket_v6,
             tun_reads,
             tun_writes,
             alarm: None,
