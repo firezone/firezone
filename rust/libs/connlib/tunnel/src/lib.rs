@@ -18,7 +18,6 @@ use futures::{FutureExt, future::BoxFuture};
 use io::{CryptoWorkers, Io};
 use packet_counts::{TunPacketCounts, UdpPacketCounts};
 use prefetch::IteratorExt as _;
-use resolver::{ResolverControl, ResolverQuery};
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 use sockets::Sockets;
 use std::{
@@ -41,6 +40,7 @@ mod utils;
 pub use tunnel_proto::*;
 
 pub use io::TunChannelClosed;
+pub use resolver::{ResolverControl, ResolverQuery, ResolverTaskEnds};
 pub use sockets::{SocketThreadEnds, UdpSocketThreadStopped};
 pub use utils::turn;
 
@@ -122,13 +122,13 @@ pub struct Tunnel<TRoleState> {
 
 impl<TRoleState> Tunnel<TRoleState> {
     /// Creates a tunnel around `role_state` that does all its work on the calling thread: the
-    /// crypto jobs as they are submitted, the IPv4 and IPv6 sockets' through the returned
-    /// [`SocketThreadEnds`].
+    /// crypto jobs as they are submitted, the IPv4 and IPv6 sockets' and the recursive DNS
+    /// resolver's through the returned [`FakeTunnelEnds`].
     ///
     /// Nothing else can bind a socket.
-    pub fn fake(role_state: TRoleState) -> (Self, SocketThreadEnds, SocketThreadEnds) {
+    pub fn fake(role_state: TRoleState) -> (Self, FakeTunnelEnds) {
         let (sockets, socket_v4, socket_v6) = Sockets::fake();
-        let (resolver, _) = resolver::channels();
+        let (resolver, dns) = resolver::channels();
         let tcp: Arc<dyn SocketFactory<TcpSocket>> =
             Arc::new(|_| Err(std::io::ErrorKind::Unsupported.into()));
         let udp: Arc<dyn SocketFactory<UdpSocket>> =
@@ -147,7 +147,13 @@ impl<TRoleState> Tunnel<TRoleState> {
             needs_timeout: false,
         };
 
-        (tunnel, socket_v4, socket_v6)
+        let ends = FakeTunnelEnds {
+            socket_v4,
+            socket_v6,
+            dns,
+        };
+
+        (tunnel, ends)
     }
 
     pub fn state_mut(&mut self) -> &mut TRoleState {
@@ -693,6 +699,13 @@ impl GatewayTunnel {
 
         Poll::Pending
     }
+}
+
+/// The far ends of a [`Tunnel::fake`]'s channels.
+pub struct FakeTunnelEnds {
+    pub socket_v4: SocketThreadEnds,
+    pub socket_v6: SocketThreadEnds,
+    pub dns: ResolverTaskEnds,
 }
 
 #[derive(Debug, thiserror::Error)]
