@@ -71,6 +71,7 @@ members = [
     "tests/loadtest",
     "tests/seeded-rng",
     "tests/tunnel-bench",
+    "tests/tunnel-fixture",
     "tools/tidy-dependabot-pr",
     "tools/uniffi-bindgen",
 ]
@@ -277,6 +278,7 @@ tun-offload = { path = "libs/connlib/tun-offload" }
 tun-windows = { path = "libs/connlib/tun-windows" }
 tunnel = { path = "libs/connlib/tunnel" }
 tunnel-bypass-resolver = { path = "libs/tunnel-bypass-resolver" }
+tunnel-fixture = { path = "tests/tunnel-fixture" }
 tunnel-proto = { path = "libs/connlib/tunnel-proto" }
 uniffi = "0.31.1"
 url = "2.5.2"
