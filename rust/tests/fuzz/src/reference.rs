@@ -22,6 +22,7 @@ use tunnel_proto::messages::Filter;
 
 use crate::resource as client;
 
+// TODO: Remove with classic ICE.
 const MIN_IDLE_FOR_REKEY_DROP: Duration = Duration::from_secs(180 - 10);
 
 /// How long after a relay frees up its ports until no node ignores it anymore: how long a node
@@ -108,6 +109,7 @@ impl ReferenceState {
             }
         }
 
+        // TODO: Remove with classic ICE.
         let iceless = portal.iceless();
         for _ in self.icmp_flows.extract_if(.., |_, flow| {
             !transition.retains_flow(flow.client_id, flow.route, iceless)
@@ -415,7 +417,7 @@ impl ReferenceState {
                     ExpectedOutcome::Dropped => outcome,
                     ExpectedOutcome::Rejected { .. } => outcome,
                 };
-                self.record_expected_probe(*probe_id, *client_id, request, now, outcome);
+                self.record_expected_probe(portal, *probe_id, *client_id, request, now, outcome);
             }
             Transition::SendTcpData {
                 flow_id,
@@ -464,7 +466,14 @@ impl ReferenceState {
                     ExpectedOutcome::Dropped => outcome,
                     ExpectedOutcome::Rejected { .. } => outcome,
                 };
-                self.record_expected_probe(*probe_id, flow.client_id, request, now, outcome);
+                self.record_expected_probe(
+                    portal,
+                    *probe_id,
+                    flow.client_id,
+                    request,
+                    now,
+                    outcome,
+                );
             }
             Transition::UpdateSystemDnsServers { servers } => {
                 for client in self.clients.values_mut() {
@@ -484,6 +493,7 @@ impl ReferenceState {
             } => {
                 self.node_may_lack_relays |= self.no_relay_accepts_allocations();
 
+                // TODO: Remove with classic ICE: a roam then never resets connections.
                 // With ICE-less connections, a roam re-keys in place and keeps
                 // the connection alive, so we only reset when the portal hands
                 // out classic ICE flows.
@@ -499,6 +509,7 @@ impl ReferenceState {
 
                 // When roaming, we are not connected to any resource and wait for the next packet to re-establish a connection.
                 client.exec_mut(|client| {
+                    // TODO: Remove with classic ICE; the instant only anchors the loss window.
                     if !all_iceless {
                         // Reconnecting needs the portal, so recovery can only
                         // start once the portal connection is back.
@@ -545,6 +556,7 @@ impl ReferenceState {
             Transition::PartitionRelaysFromPortal => {
                 self.node_may_lack_relays = !self.has_healthy_relay();
 
+                // TODO: Remove with classic ICE.
                 // With ICE-less connections, losing all relays does not fail
                 // the connection: the WG session idles until the relays return
                 // and probes revive the path. Classic ICE flows disconnect for
@@ -809,7 +821,7 @@ impl ReferenceState {
             _ => ExpectedOutcome::RoundTripCompleted(route),
         };
 
-        self.record_expected_probe(id, origin, request, sent_at, outcome)
+        self.record_expected_probe(portal, id, origin, request, sent_at, outcome)
     }
 
     fn record_probe(
@@ -832,18 +844,19 @@ impl ReferenceState {
             .unwrap()
             .exec_mut(|client| client.note_sent(outcome.remote(), sent_at));
 
-        self.record_expected_probe(id, origin, request, sent_at, outcome)
+        self.record_expected_probe(portal, id, origin, request, sent_at, outcome)
     }
 
     fn record_expected_probe(
         &mut self,
+        portal: &StubPortal,
         id: ProbeId,
         origin: ClientId,
         request: ProbeRequest,
         sent_at: Instant,
         outcome: ExpectedOutcome,
     ) -> ExpectedOutcome {
-        let trace_requirement = self.trace_requirement(origin, outcome, sent_at);
+        let trace_requirement = self.trace_requirement(portal, origin, outcome, sent_at);
         let previous = self.expected_probes.insert(
             id,
             ExpectedProbe {
@@ -1117,12 +1130,18 @@ impl ReferenceState {
         });
     }
 
+    // TODO: Remove with classic ICE: every trace is then exact.
     fn trace_requirement(
         &self,
+        portal: &StubPortal,
         origin: ClientId,
         outcome: ExpectedOutcome,
         sent_at: Instant,
     ) -> TraceRequirement {
+        if portal.iceless() {
+            return TraceRequirement::Exact;
+        }
+
         let known_loss = match outcome {
             ExpectedOutcome::Dropped => None,
             ExpectedOutcome::RoundTripCompleted(Route::Peer(client))
@@ -1168,6 +1187,7 @@ impl ReferenceState {
         }
     }
 
+    // TODO: Remove with classic ICE.
     fn can_drop_during_rekey(&self, origin: ClientId, remote: Remote, sent_at: Instant) -> bool {
         let client = self.clients[&origin].inner();
 

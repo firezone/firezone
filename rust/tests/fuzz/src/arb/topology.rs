@@ -190,6 +190,7 @@ pub(super) fn arb_stub_portal(g: &mut Generator, domain_tree: &[DomainName]) -> 
         upstream_do53,
         upstream_doh,
     )
+    // TODO: Remove with classic ICE.
     .with_iceless(g.bool())
 }
 

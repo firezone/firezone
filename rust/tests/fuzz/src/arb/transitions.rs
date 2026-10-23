@@ -143,6 +143,7 @@ pub(super) fn generate(
         .iter()
         .filter(|relay| !state.recovering_relays.contains_key(relay))
         .count();
+    // TODO: Remove the classic branch with classic ICE.
     // An ICE-less connection without a relay for longer than a WireGuard handshake attempt
     // expires, which the reference does not predict. ICE-less flows therefore keep a healthy relay.
     let can_exhaust_relay = if portal.iceless() {

@@ -221,6 +221,7 @@ pub(crate) enum RejectionResponse {
     Reset,
 }
 
+// TODO: Remove with classic ICE, together with `KnownLoss`: every trace is then exact.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum TraceRequirement {
     Exact,

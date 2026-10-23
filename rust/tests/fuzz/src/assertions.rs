@@ -97,6 +97,7 @@ fn assert_probes(
 
         assert_submitted_request(expected, submitted_request);
 
+        // TODO: Remove with classic ICE.
         match (
             expected.trace_requirement,
             trace.received_requests.as_slice(),
@@ -243,6 +244,7 @@ fn assert_round_trip(
         if trace.received_responses.is_empty() && response == RemoteResponse::Nothing {
             return;
         }
+        // TODO: Remove with classic ICE.
         if trace.received_responses.is_empty()
             && expected.trace_requirement
                 == TraceRequirement::ExactOrLoss(KnownLoss::WireGuardRekey)
