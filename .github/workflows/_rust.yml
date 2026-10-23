@@ -49,7 +49,7 @@ jobs:
         name: cargo doc
         shell: bash
       - run: cargo fmt -- --check
-      - run: cargo deny check --hide-inclusion-graph --deny unnecessary-skip --deny no-license-field
+      - run: mise run //rust:deny
         shell: bash
       # cargo-shear does not compile the workspace; it runs `cargo metadata` and
       # parses sources, so it piggy-backs on the toolchain already set up here.
