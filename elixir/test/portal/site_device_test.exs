@@ -25,7 +25,7 @@ defmodule Portal.SiteDeviceTest do
 
     test "a device can be assigned to several sites" do
       account = account_fixture()
-      device = gateway_fixture(account: account)
+      device = client_fixture(account: account)
       site_device_fixture(device: device, site: site_fixture(account: account))
       site_device_fixture(device: device, site: site_fixture(account: account))
 
