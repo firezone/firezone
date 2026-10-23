@@ -13,6 +13,7 @@ members = [
     "libs/atomicfs",
     "libs/backoff",
     "libs/bin-shared",
+    "libs/client-service",
     "libs/client-shared",
     "libs/clock",
     "libs/connlib/bootstrap-dns-client",
@@ -108,6 +109,7 @@ chrono = { version = "0.4.45", default-features = false, features = ["std", "clo
 clap = "4.6.1"
 clap_complete = "4.6.9"
 client-ipc = { path = "gui-client/src-ipc" }
+client-service = { path = "libs/client-service" }
 client-shared = { path = "libs/client-shared" }
 clock = { path = "libs/clock" }
 connlib-model = { path = "libs/connlib/model" }
@@ -130,6 +132,8 @@ eventloop-budget = { path = "libs/eventloop-budget" }
 fast-random-state = { path = "libs/fast-random-state" }
 fastrand = "2.3.0"
 filetime = "0.2.29"
+firezone-cli = { path = "gui-client/src-cli" }
+firezone-gateway = { path = "gateway" }
 flow-log-spool = { path = "libs/flow-log-spool" }
 flow-log-upload = { path = "libs/flow-log-upload" }
 flow-log-writer = { path = "libs/flow-log-writer" }

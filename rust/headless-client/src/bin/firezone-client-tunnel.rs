@@ -1,3 +1,6 @@
+//! The tunnel service under its old name: `firezone run` is the same
+//! program, and this binary stays for the installs that still start it.
+
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
 #[global_allocator]
@@ -6,7 +9,7 @@ static ALLOC: mimalloc::MiMalloc = mimalloc::MiMalloc;
 use anyhow::{Result, anyhow};
 use bin_shared::{DnsControlMethod, TOKEN_ENV_KEY};
 use clap::Parser as _;
-use firezone_gui_client::service;
+use client_service::service;
 use std::path::PathBuf;
 
 fn main() -> Result<()> {
@@ -25,6 +28,8 @@ fn main() -> Result<()> {
     assert!(std::env::var(TOKEN_ENV_KEY).is_err());
 
     let cli = Cli::parse();
+
+    client_service::set_daemon_version(env!("CARGO_PKG_VERSION"));
 
     match cli.command {
         Cmd::Install => service::install(),

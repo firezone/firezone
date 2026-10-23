@@ -1,0 +1,11 @@
+// The firezone daemon runs as the `firezone` user and configures DNS for its
+// tunnel through systemd-resolved, which asks polkit before taking orders
+// from anyone but root.
+polkit.addRule(function (action, subject) {
+  if (
+    action.id.indexOf("org.freedesktop.resolve1.") === 0 &&
+    subject.user === "firezone"
+  ) {
+    return polkit.Result.YES;
+  }
+});

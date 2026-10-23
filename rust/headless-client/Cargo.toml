@@ -7,15 +7,77 @@ authors = ["Firezone, Inc."]
 license = { workspace = true }
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+# The `firezone` package: the daemon and the CLI in one binary, replacing the
+# Gateway package in place. The GUI package bundles the same binary and
+# conflicts with this one, so a machine has one daemon.
+[package.metadata.deb]
+name = "firezone"
+maintainer = "Firezone, Inc. <support@firezone.dev>"
+copyright = "2026 Firezone, Inc."
+maintainer-scripts = "debian/"
+systemd-units = { unit-name = "firezone", enable = false }
+extended-description = "" # Empty string to avoid embedding the README
+revision = ""
+section = "Network"
+depends = 'iptables,systemd'
+provides = "firezone-gateway, firezone-headless-client"
+replaces = "firezone-gateway, firezone-headless-client"
+conflicts = "firezone-gateway, firezone-headless-client"
+assets = [
+    ["target/release/firezone", "usr/bin/", "755"],
+    ["debian/firezone-gateway-init.sh", "usr/bin/firezone-gateway-init", "755"],
+    ["debian/firezone.sysusers", "usr/lib/sysusers.d/firezone.conf", "644"],
+    ["debian/firezone.tmpfiles", "usr/lib/tmpfiles.d/firezone.conf", "644"],
+    ["debian/10-firezone.rules", "usr/share/polkit-1/rules.d/10-firezone.rules", "644"],
+]
+
+[package.metadata.generate-rpm]
+name = "firezone"
+summary = "Firezone: the daemon and the CLI in one binary"
+license = "Apache-2.0"
+requires = { iptables = "*", systemd = "*" }
+provides = ["firezone-gateway", "firezone-headless-client"]
+obsoletes = ["firezone-gateway", "firezone-headless-client"]
+conflicts = ["firezone-gateway", "firezone-headless-client"]
+post_install_script = "debian/postinst"
+pre_uninstall_script = "debian/prerm"
+assets = [
+    { source = "target/release/firezone", dest = "/usr/bin/firezone", mode = "755" },
+    { source = "debian/firezone.service", dest = "/usr/lib/systemd/system/firezone.service", mode = "644" },
+    { source = "debian/firezone-gateway-init.sh", dest = "/usr/bin/firezone-gateway-init", mode = "755" },
+    { source = "debian/firezone.sysusers", dest = "/usr/lib/sysusers.d/firezone.conf", mode = "644" },
+    { source = "debian/firezone.tmpfiles", dest = "/usr/lib/tmpfiles.d/firezone.conf", mode = "644" },
+    { source = "debian/10-firezone.rules", dest = "/usr/share/polkit-1/rules.d/10-firezone.rules", mode = "644" },
+]
+
+# One crate, two binaries: `firezone` is the name going forward and
+# `firezone-headless-client` stays as an alias.
+[[bin]]
+name = "firezone"
+path = "src/bin/firezone.rs"
+
+[[bin]]
+name = "firezone-headless-client"
+path = "src/bin/firezone-headless-client.rs"
+
+# The tunnel service under its old name, for the installs that still run it.
+[[bin]]
+name = "firezone-client-tunnel"
+path = "src/bin/firezone-client-tunnel.rs"
+
 [dependencies]
 anyhow = { workspace = true }
 backoff = { workspace = true }
 bin-shared = { workspace = true }
 clap = { workspace = true, features = ["derive", "env", "string"] }
+client-service = { workspace = true }
 client-shared = { workspace = true }
+firezone-cli = { workspace = true }
+firezone-gateway = { workspace = true }
 flow-log-upload = { workspace = true }
 flow-log-writer = { workspace = true }
 futures = { workspace = true }
+gui-ipc = { workspace = true }
 humantime = { workspace = true }
 ip-packet = { workspace = true }
 ip_network = { workspace = true }

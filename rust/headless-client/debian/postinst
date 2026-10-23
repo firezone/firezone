@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+
+set -e
+
+systemd-sysusers firezone.conf
+
+#DEBHELPER#
+
+# A deterministic ID from `/etc/machine-id`, the same one the Gateway package
+# derived, so a host upgraded from it keeps its identity in the portal.
+FIREZONE_ID=$(systemd-id128 --app-specific=753b38f9f96947ef8083802d5909a372 machine-id)
+
+# We fully overwrite the `gateway-preset-env` file on every run.
+# Maintainer scripts need to be deterministic and that seems to be the easiest way.
+printf "# This file is managed by maintainer scripts. Do not touch!\n# Use \`etc/firezone/gateway-env\` for custom configuration.\n" >/etc/firezone/gateway-preset-env
+printf "FIREZONE_ID=%s\n" "${FIREZONE_ID}" >>/etc/firezone/gateway-preset-env
+
+# The old names keep working: the binary picks its role from the name it was
+# started under.
+ln -sf firezone /usr/bin/firezone-gateway
+ln -sf firezone /usr/bin/firezone-headless-client
+
+# A host that ran the Gateway package keeps what it had: its unit drop-ins,
+# and the init script that set its sysctl and masquerade rules.
+if [ -d /etc/systemd/system/firezone-gateway.service.d ]; then
+    mkdir -p /etc/systemd/system/firezone.service.d
+    cp -n /etc/systemd/system/firezone-gateway.service.d/*.conf /etc/systemd/system/firezone.service.d/ 2>/dev/null || true
+fi
+
+if [ -s /etc/firezone/gateway-token ]; then
+    mkdir -p /etc/systemd/system/firezone.service.d
+    if [ ! -f /etc/systemd/system/firezone.service.d/gateway-init.conf ]; then
+        printf "# Written on upgrade from the firezone-gateway package.\n[Service]\nExecStartPre=/usr/bin/firezone-gateway-init\n" >/etc/systemd/system/firezone.service.d/gateway-init.conf
+    fi
+
+    systemctl daemon-reload
+    systemctl enable firezone.service >/dev/null 2>&1 || true
+    systemctl restart firezone.service >/dev/null 2>&1 || true
+fi

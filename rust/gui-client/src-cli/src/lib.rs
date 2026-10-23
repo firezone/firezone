@@ -1,10 +1,15 @@
 //! Remote control for the running Firezone GUI Client.
+//!
+//! Built as the `firezone-cli` binary and linked into the `firezone` binary,
+//! whose subcommands of the same names run the same code.
 
-use crate::cli::{Cli, Cmd, InternetResourceCmd, ResourcesCmd};
+#![cfg_attr(test, allow(clippy::unwrap_used))]
+
+pub use crate::cli::{Cli, Cmd, InternetResourceCmd, ResourcesCmd};
 use anyhow::{Context as _, ErrorExt as _, Result, bail};
 use clap::Parser as _;
 use connlib_model::ResourceView;
-use gui_ipc::{ClientMsg, NotRunning, ServerError, ServerMsg, TunnelStatus};
+use gui_ipc::{ClientMsg, NotRunning, ServerError, ServerMsg, TunnelStatus, VersionMismatch};
 use secrecy::SecretString;
 use std::{
     io::{BufRead as _, IsTerminal as _},
@@ -13,15 +18,16 @@ use std::{
 use tokio::runtime::Runtime;
 use tracing_subscriber::filter::LevelFilter;
 
-mod cli;
+pub mod cli;
 #[cfg(target_os = "windows")]
 mod shell;
 
+/// The entry point of the `firezone-cli` binary.
 #[allow(
     clippy::print_stderr,
     reason = "reporting the failure to the user is what this is for"
 )]
-fn main() -> ExitCode {
+pub fn main() -> ExitCode {
     let cli = Cli::parse();
     let debug = cli.debug;
 
@@ -34,18 +40,22 @@ fn main() -> ExitCode {
             .init();
     }
 
-    let Err(error) = run(cli) else {
+    let Err(error) = execute(cli.command()) else {
         return ExitCode::SUCCESS;
     };
 
-    // Under `--debug` the causes are the point.
-    let message = expected(&error)
-        .filter(|_| !debug)
-        .unwrap_or_else(|| format!("{error:#}"));
-
-    eprintln!("{message}");
+    eprintln!("{}", user_message(&error, debug));
 
     ExitCode::FAILURE
+}
+
+/// The message to print for a failure: the plain fact for the ones a user is
+/// expected to run into, the cause chain for the rest, and always the cause
+/// chain under `--debug`, where the causes are the point.
+pub fn user_message(error: &anyhow::Error, debug: bool) -> String {
+    expected(error)
+        .filter(|_| !debug)
+        .unwrap_or_else(|| format!("{error:#}"))
 }
 
 /// The message to print for a failure the user is expected to run into.
@@ -54,6 +64,10 @@ fn main() -> ExitCode {
 fn expected(error: &anyhow::Error) -> Option<String> {
     if error.any_is::<NotRunning>() {
         return Some(NotRunning.to_string());
+    }
+
+    if let Some(mismatch) = error.any_downcast_ref::<VersionMismatch>() {
+        return Some(mismatch.to_string());
     }
 
     let server_error = error.any_downcast_ref::<ServerError>()?;
@@ -161,13 +175,14 @@ Signing in from the Firezone tray menu stores a token too."
     }
 }
 
-fn run(cli: Cli) -> Result<()> {
+/// Carries out one command against the running GUI.
+pub fn execute(command: Cmd) -> Result<()> {
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
         .context("Failed to build runtime")?;
 
-    match cli.command() {
+    match command {
         Cmd::Status => {
             let reply = rt
                 .block_on(gui_ipc::request(ClientMsg::Status))
