@@ -3,6 +3,7 @@ defmodule Portal.DeviceActorFixtures do
   Test helpers for recording that an actor has connected on a device.
   """
 
+  import Ecto.Query
   import Portal.AccountFixtures
   import Portal.ActorFixtures
   import Portal.DeviceFixtures
@@ -24,10 +25,10 @@ defmodule Portal.DeviceActorFixtures do
     account =
       cond do
         device = Map.get(attrs, :device) ->
-          device.account || Portal.Repo.preload(device, :account).account
+          Portal.Repo.preload(device, :account).account
 
         actor = Map.get(attrs, :actor) ->
-          actor.account || Portal.Repo.preload(actor, :account).account
+          Portal.Repo.preload(actor, :account).account
 
         true ->
           Map.get(attrs, :account) || account_fixture()
@@ -47,6 +48,21 @@ defmodule Portal.DeviceActorFixtures do
       |> Map.put_new(:first_seen_at, now)
       |> Map.put_new(:last_seen_at, now)
 
+    # The client fixture already records its own actor, so a pair that exists
+    # is widened to the given window rather than inserted again.
+    first_seen_at = device_actor_attrs.first_seen_at
+    last_seen_at = device_actor_attrs.last_seen_at
+
+    widen =
+      from(da in Portal.DeviceActor,
+        update: [
+          set: [
+            first_seen_at: fragment("LEAST(?, ?)", da.first_seen_at, ^first_seen_at),
+            last_seen_at: fragment("GREATEST(?, ?)", da.last_seen_at, ^last_seen_at)
+          ]
+        ]
+      )
+
     {:ok, device_actor} =
       %Portal.DeviceActor{}
       |> Ecto.Changeset.cast(device_actor_attrs, [
@@ -57,8 +73,15 @@ defmodule Portal.DeviceActorFixtures do
         :last_seen_at
       ])
       |> Portal.DeviceActor.changeset()
-      |> Portal.Repo.insert()
+      |> Portal.Repo.insert(
+        on_conflict: widen,
+        conflict_target: [:account_id, :device_id, :actor_id]
+      )
 
-    device_actor
+    Portal.Repo.get_by!(Portal.DeviceActor,
+      account_id: device_actor.account_id,
+      device_id: device_actor.device_id,
+      actor_id: device_actor.actor_id
+    )
   end
 end

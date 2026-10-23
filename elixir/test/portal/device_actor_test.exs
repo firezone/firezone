@@ -63,7 +63,10 @@ defmodule Portal.DeviceActorTest do
       device_actor_fixture(device: device, actor: first)
       device_actor_fixture(device: device, actor: second)
 
-      assert device |> Repo.preload(:device_actors) |> Map.fetch!(:device_actors) |> length() == 2
+      actor_ids =
+        device |> Repo.preload(:device_actors) |> Map.fetch!(:device_actors) |> Enum.map(& &1.actor_id)
+
+      assert Enum.sort(actor_ids) == Enum.sort([device.actor_id, first.id, second.id])
     end
   end
 end
