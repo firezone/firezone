@@ -37,7 +37,7 @@ mod utils;
 
 pub use tunnel_proto::*;
 
-pub use io::{CryptoWorkersStopped, TunChannelClosed};
+pub use io::TunChannelClosed;
 pub use sockets::UdpSocketThreadStopped;
 pub use utils::turn;
 
