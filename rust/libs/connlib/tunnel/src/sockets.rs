@@ -390,10 +390,11 @@ const _: () = {
 struct ThreadedUdpSocket {
     thread_name: String,
     join_handle: std::thread::JoinHandle<()>,
-    channels: Option<Channels>,
+    main_thread_ends: Option<MainThreadEnds>,
 }
 
-struct Channels {
+/// The ends of a socket's channels that the main thread holds.
+struct MainThreadEnds {
     outbound_tx: mpsc::Sender<Outbound>,
     /// Waits for room in the outbound channel once it is full.
     waiting_for_room:
@@ -403,15 +404,47 @@ struct Channels {
     error_rx: mpsc::Receiver<anyhow::Error>,
 }
 
+/// The ends of a socket's channels that its thread holds.
+struct SocketThreadEnds {
+    outbound_rx: mpsc::Receiver<Outbound>,
+    inbound_tx: mpsc::Sender<DatagramBatch>,
+    error_tx: mpsc::Sender<anyhow::Error>,
+}
+
+fn channels() -> (MainThreadEnds, SocketThreadEnds) {
+    let (outbound_tx, outbound_rx) = mpsc::channel(QUEUE_SIZE);
+    let (inbound_tx, inbound_rx) = mpsc::channel(INBOUND_QUEUE_SIZE);
+    let (error_tx, error_rx) = mpsc::channel(QUEUE_SIZE);
+
+    let main_thread_ends = MainThreadEnds {
+        outbound_tx,
+        waiting_for_room: None,
+        inbound_rx,
+        error_rx,
+    };
+    let socket_thread_ends = SocketThreadEnds {
+        outbound_rx,
+        inbound_tx,
+        error_tx,
+    };
+
+    (main_thread_ends, socket_thread_ends)
+}
+
 impl ThreadedUdpSocket {
     fn new(sf: Arc<dyn SocketFactory<UdpSocket>>, preferred_addr: SocketAddr) -> io::Result<Self> {
-        let (outbound_tx, mut outbound_rx) = mpsc::channel(QUEUE_SIZE);
-        let (inbound_tx, inbound_rx) = mpsc::channel(INBOUND_QUEUE_SIZE);
-        let (error_tx, error_rx) = mpsc::channel(QUEUE_SIZE);
+        let (
+            main_thread_ends,
+            SocketThreadEnds {
+                mut outbound_rx,
+                inbound_tx,
+                error_tx,
+            },
+        ) = channels();
         let (startup_tx, startup_rx) = std::sync::mpsc::sync_channel(0);
 
         tokio::spawn(otel_instruments::periodic_queue_length(
-            outbound_tx.downgrade(),
+            main_thread_ends.outbound_tx.downgrade(),
             [
                 otel::attr::queue_item_gso_batch(),
                 otel::attr::network_type_for_addr(preferred_addr),
@@ -596,22 +629,17 @@ impl ThreadedUdpSocket {
         Ok(Self {
             thread_name,
             join_handle,
-            channels: Some(Channels {
-                outbound_tx,
-                waiting_for_room: None,
-                inbound_rx,
-                error_rx,
-            }),
+            main_thread_ends: Some(main_thread_ends),
         })
     }
 
     /// Reserves room in the outbound channel for another item.
     fn poll_reserve(&mut self, cx: &mut Context<'_>) -> Poll<Result<Reserved<'_>>> {
-        let channels = self.channels_mut()?;
+        let ends = self.main_thread_ends_mut()?;
 
-        if channels.waiting_for_room.is_none() {
+        if ends.waiting_for_room.is_none() {
             // Fast path without registering a waker.
-            match channels.outbound_tx.try_reserve() {
+            match ends.outbound_tx.try_reserve() {
                 Ok(permit) => return Poll::Ready(Ok(Reserved::Borrowed(permit))),
                 Err(TrySendError::Full(())) => {}
                 Err(TrySendError::Closed(())) => {
@@ -620,14 +648,14 @@ impl ThreadedUdpSocket {
             }
         }
 
-        let outbound_tx = &channels.outbound_tx;
+        let outbound_tx = &ends.outbound_tx;
         // This allocates but we only get here when the socket is already full so we will have to suspend anyway.
-        let waiting_for_room = channels
+        let waiting_for_room = ends
             .waiting_for_room
             .get_or_insert_with(|| outbound_tx.clone().reserve_owned().boxed());
 
         let result = ready!(waiting_for_room.poll_unpin(cx));
-        channels.waiting_for_room = None;
+        ends.waiting_for_room = None;
         let permit = result.map_err(|_| UdpSocketThreadStopped)?;
 
         Poll::Ready(Ok(Reserved::Owned(permit)))
@@ -635,7 +663,8 @@ impl ThreadedUdpSocket {
 
     /// Reserves room in the outbound channel for another item if it has some right now.
     fn try_reserve(&self) -> Option<Reserved<'_>> {
-        let permit = self.channels.as_ref()?.outbound_tx.try_reserve().ok()?;
+        let ends = self.main_thread_ends.as_ref()?;
+        let permit = ends.outbound_tx.try_reserve().ok()?;
 
         Some(Reserved::Borrowed(permit))
     }
@@ -647,29 +676,29 @@ impl ThreadedUdpSocket {
     /// stopped (reported via `poll_error`); no waker is registered on close, since
     /// we'll be shutting down anyway.
     fn poll_recv_from(&mut self, cx: &mut Context<'_>, batches: &mut Vec<DatagramBatch>) {
-        let Some(channels) = self.channels.as_mut() else {
+        let Some(ends) = self.main_thread_ends.as_mut() else {
             return;
         };
 
-        let _ = channels
+        let _ = ends
             .inbound_rx
             .poll_recv_many(cx, batches, UDP_RECV_BATCH_LIMIT);
     }
 
     fn poll_error(&mut self, cx: &mut Context<'_>) -> Poll<anyhow::Error> {
-        let Some(channels) = self.channels.as_mut() else {
+        let Some(ends) = self.main_thread_ends.as_mut() else {
             return Poll::Pending;
         };
 
-        let Some(error) = ready!(channels.error_rx.poll_recv(cx)) else {
+        let Some(error) = ready!(ends.error_rx.poll_recv(cx)) else {
             return Poll::Pending;
         };
 
         Poll::Ready(error)
     }
 
-    fn channels_mut(&mut self) -> Result<&mut Channels> {
-        self.channels.as_mut().context("Missing channels")
+    fn main_thread_ends_mut(&mut self) -> Result<&mut MainThreadEnds> {
+        self.main_thread_ends.as_mut().context("Missing channels")
     }
 }
 
@@ -677,7 +706,7 @@ impl Drop for ThreadedUdpSocket {
     fn drop(&mut self) {
         let start = Instant::now();
 
-        let _ = self.channels.take();
+        let _ = self.main_thread_ends.take();
 
         const TIMEOUT: Duration = Duration::from_millis(500);
 
