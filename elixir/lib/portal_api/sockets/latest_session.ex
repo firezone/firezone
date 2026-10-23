@@ -8,6 +8,9 @@ defmodule PortalAPI.Sockets.LatestSession do
   an older session. Entries whose non-nil token or device row no longer exists are
   returned as failed, separately per cause, so the caller can disconnect a
   deleted token's session without touching the device's other sessions.
+
+  Entries that connected as an actor also record that actor on the device in
+  `device_actors`, one row per device and actor, widening its seen window.
   """
   alias __MODULE__.Database
   require Logger
@@ -35,6 +38,8 @@ defmodule PortalAPI.Sockets.LatestSession do
     device_failed =
       Enum.filter(live, fn {attrs, _metadata} -> MapSet.member?(missing, attrs.device_id) end)
 
+    record_device_actors(live)
+
     {length(entries) - length(revoked) - length(device_failed), revoked, device_failed}
   rescue
     error ->
@@ -43,6 +48,38 @@ defmodule PortalAPI.Sockets.LatestSession do
       # Returned as token-style failures so each entry's own session is
       # disconnected to retry, without booting the device's other sessions.
       {0, entries, []}
+  end
+
+  # The sessions are already durable on the device rows above, so a failure
+  # here is logged rather than failing the batch: the next connect of the same
+  # actor writes the row again.
+  defp record_device_actors(entries) do
+    entries
+    |> device_actor_rows()
+    |> Database.upsert_device_actors()
+  rescue
+    error ->
+      Logger.error("Failed to record device actors: " <> Exception.message(error))
+  end
+
+  # One row per device and actor, spanning every connect of that pair in the
+  # batch. Entries without an actor (gateways) record nothing.
+  defp device_actor_rows(entries) do
+    entries
+    |> Enum.filter(fn {attrs, _metadata} -> attrs[:actor_id] end)
+    |> Enum.group_by(fn {attrs, _metadata} -> {attrs.account_id, attrs.device_id, attrs.actor_id} end)
+    |> Enum.map(fn {{account_id, device_id, actor_id}, pair_entries} ->
+      seen_at = Enum.map(pair_entries, &connected_at/1)
+
+      %{
+        account_id: account_id,
+        device_id: device_id,
+        actor_id: actor_id,
+        first_seen_at: Enum.min(seen_at, DateTime),
+        last_seen_at: Enum.max(seen_at, DateTime)
+      }
+    end)
+    |> Enum.sort_by(&{&1.account_id, &1.device_id, &1.actor_id})
   end
 
   # Newest entry per device wins within a batch; rows are sorted so
@@ -159,6 +196,13 @@ defmodule PortalAPI.Sockets.LatestSession do
     }
 
     @probe_types %{account_id: Ecto.UUID, device_id: Ecto.UUID}
+    @device_actor_types %{
+      account_id: Ecto.UUID,
+      device_id: Ecto.UUID,
+      actor_id: Ecto.UUID,
+      first_seen_at: :utc_datetime_usec,
+      last_seen_at: :utc_datetime_usec
+    }
     @token_probe_types %{account_id: Ecto.UUID, token_id: Ecto.UUID}
     @identity_probe_types %{
       account_id: Ecto.UUID,
@@ -555,6 +599,47 @@ defmodule PortalAPI.Sockets.LatestSession do
           row
         end
       end)
+    end
+
+    # Inserted through a join on the device and actor rows: a pair whose device
+    # or actor was deleted between connect and flush is skipped rather than
+    # failing the statement on a foreign key. An existing row keeps the earlier
+    # first-seen and takes the later last-seen time, whichever flush wins.
+    def upsert_device_actors([]), do: :ok
+
+    def upsert_device_actors(rows) do
+      source =
+        from(v in values(rows, @device_actor_types),
+          join: d in Device,
+          on: d.account_id == v.account_id and d.id == v.device_id,
+          join: a in Portal.Actor,
+          on: a.account_id == v.account_id and a.id == v.actor_id,
+          select: %{
+            account_id: v.account_id,
+            device_id: v.device_id,
+            actor_id: v.actor_id,
+            first_seen_at: v.first_seen_at,
+            last_seen_at: v.last_seen_at
+          }
+        )
+
+      widen =
+        from(da in Portal.DeviceActor,
+          update: [
+            set: [
+              first_seen_at: fragment("LEAST(?, EXCLUDED.first_seen_at)", da.first_seen_at),
+              last_seen_at: fragment("GREATEST(?, EXCLUDED.last_seen_at)", da.last_seen_at)
+            ]
+          ]
+        )
+
+      Safe.unscoped()
+      |> Safe.insert_all(Portal.DeviceActor, source,
+        on_conflict: widen,
+        conflict_target: [:account_id, :device_id, :actor_id]
+      )
+
+      :ok
     end
 
     def existing_device_ids(rows) do
