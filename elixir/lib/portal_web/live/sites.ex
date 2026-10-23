@@ -1512,113 +1512,16 @@ defmodule PortalWeb.Sites do
       )
     end
 
-    @doc """
-    Assigns a device to the site. Only gateways can serve resources until the
-    unified device ships, so other devices are refused.
-    """
-    @spec assign_device_to_site(Site.t(), Ecto.UUID.t(), Portal.Authentication.Subject.t()) ::
-            {:ok, Portal.SiteDevice.t()} | {:error, :not_found | :not_a_gateway | Ecto.Changeset.t()}
+    def cohosts_internet?(site, device_id, subject) do
+      Portal.Devices.cohosts_internet?(site, device_id, subject)
+    end
+
     def assign_device_to_site(site, device_id, subject) do
-      with {:ok, device} <- fetch_device(device_id, subject),
-           :ok <- ensure_can_serve(device) do
-        %Portal.SiteDevice{}
-        |> cast(%{account_id: site.account_id, site_id: site.id, device_id: device.id}, [
-          :account_id,
-          :site_id,
-          :device_id
-        ])
-        |> Portal.SiteDevice.changeset()
-        |> Safe.scoped(subject)
-        |> Safe.insert()
-      end
+      Portal.Devices.assign_to_site(site, device_id, subject)
     end
 
-    @doc """
-    Whether assigning the device to the site would have it serve the Internet
-    resource alongside other resources: the site is the Internet Site and the
-    device already serves another site, or the other way round.
-    """
-    @spec cohosts_internet?(Site.t(), Ecto.UUID.t(), Portal.Authentication.Subject.t()) ::
-            boolean()
-    def cohosts_internet?(%Site{} = site, device_id, subject) do
-      from(sd in Portal.SiteDevice, as: :site_devices)
-      |> join(:inner, [site_devices: sd], s in Site,
-        on: s.account_id == sd.account_id and s.id == sd.site_id,
-        as: :sites
-      )
-      |> where([site_devices: sd], sd.device_id == ^device_id and sd.site_id != ^site.id)
-      |> where_other_side_of_internet(site)
-      |> Safe.scoped(subject)
-      |> Safe.exists?()
-    end
-
-    defp where_other_side_of_internet(queryable, %Site{managed_by: :system}), do: queryable
-
-    defp where_other_side_of_internet(queryable, %Site{}) do
-      where(queryable, [sites: s], s.managed_by == :system)
-    end
-
-    defp ensure_can_serve(%Device{type: :gateway}), do: :ok
-    defp ensure_can_serve(%Device{}), do: {:error, :not_a_gateway}
-
-    @doc """
-    Takes a device off the site. A gateway's site column still has to name
-    one of its sites: when that is the site being removed, the column moves
-    to another assignment, and a gateway with no other site stays put.
-    """
-    @spec remove_device_from_site(Site.t(), Ecto.UUID.t(), Portal.Authentication.Subject.t()) ::
-            :ok | {:error, :not_found | :last_site | :unauthorized}
     def remove_device_from_site(site, device_id, subject) do
-      with {:ok, device} <- fetch_device(device_id, subject) do
-        other_site_ids =
-          from(sd in Portal.SiteDevice, as: :site_devices)
-          |> where([site_devices: sd], sd.device_id == ^device.id and sd.site_id != ^site.id)
-          |> select([site_devices: sd], sd.site_id)
-          |> Safe.scoped(subject)
-          |> Safe.all()
-
-        cond do
-          device.site_id != site.id -> delete_site_device(site, device, subject)
-          other_site_ids == [] -> {:error, :last_site}
-          true -> move_home_site(device, hd(other_site_ids), subject)
-        end
-      end
-    end
-
-    # The mirror trigger removes the old assignment with the move.
-    defp move_home_site(device, site_id, subject) do
-      device
-      |> change(site_id: site_id)
-      |> Safe.scoped(subject)
-      |> Safe.update()
-      |> case do
-        {:ok, _device} -> :ok
-        {:error, _reason} = error -> error
-      end
-    end
-
-    defp delete_site_device(site, device, subject) do
-      from(sd in Portal.SiteDevice, as: :site_devices)
-      |> where([site_devices: sd], sd.site_id == ^site.id and sd.device_id == ^device.id)
-      |> Safe.scoped(subject)
-      |> Safe.delete_all()
-      |> case do
-        {count, _} when count > 0 -> :ok
-        {0, _} -> {:error, :not_found}
-        {:error, _reason} = error -> error
-      end
-    end
-
-    defp fetch_device(device_id, subject) do
-      from(d in Device, as: :devices)
-      |> where([devices: d], d.id == ^device_id)
-      |> Safe.scoped(subject)
-      |> Safe.one()
-      |> case do
-        nil -> {:error, :not_found}
-        {:error, :unauthorized} -> {:error, :unauthorized}
-        device -> {:ok, device}
-      end
+      with {:ok, _device} <- Portal.Devices.unassign_from_site(site, device_id, subject), do: :ok
     end
 
     @spec list_resources_for_site(Ecto.UUID.t(), Portal.Authentication.Subject.t()) :: [

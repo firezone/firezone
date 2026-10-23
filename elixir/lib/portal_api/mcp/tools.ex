@@ -59,6 +59,8 @@ defmodule PortalAPI.MCP.Tools do
     {:delete, "/sites/{id}"} => {true, true},
     {:delete, "/sites/{site_id}/gateway_tokens"} => {true, true},
     {:delete, "/sites/{site_id}/gateway_tokens/{id}"} => {true, true},
+    {:post, "/sites/{site_id}/devices"} => {false, true},
+    {:delete, "/sites/{site_id}/devices/{id}"} => {true, true},
     {:post, "/sites/{site_id}/gateways"} => {false, false},
     {:put, "/sites/{site_id}/gateways/{id}"} => {true, true},
     {:delete, "/sites/{site_id}/gateways/{id}"} => {true, true},

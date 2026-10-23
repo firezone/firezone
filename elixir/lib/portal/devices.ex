@@ -76,9 +76,145 @@ defmodule Portal.Devices do
     end
   end
 
+  @doc """
+  Assigns a device to a site so it serves the site's resources. Only
+  gateways can serve until the unified device ships, so other devices are
+  refused with `:not_a_gateway`.
+  """
+  @spec assign_to_site(Site.t(), Ecto.UUID.t(), Authentication.Subject.t()) ::
+          {:ok, Portal.SiteDevice.t()}
+          | {:error, :not_found | :not_a_gateway | :already_assigned | :unauthorized}
+  def assign_to_site(%Site{} = site, device_id, %Authentication.Subject{} = subject) do
+    with {:ok, device} <- Database.fetch_device(device_id, subject),
+         :ok <- ensure_can_serve(device) do
+      Database.insert_site_device(site, device, subject)
+    end
+  end
+
+  defp ensure_can_serve(%Device{type: :gateway}), do: :ok
+  defp ensure_can_serve(%Device{}), do: {:error, :not_a_gateway}
+
+  @doc """
+  Takes a device off a site. A gateway's site column still has to name one
+  of its sites: when that is the site being removed, the column moves to
+  another assignment, and a gateway with no other site stays put with
+  `:last_site`.
+  """
+  @spec unassign_from_site(Site.t(), Ecto.UUID.t(), Authentication.Subject.t()) ::
+          {:ok, Device.t()} | {:error, :not_found | :last_site | :unauthorized}
+  def unassign_from_site(%Site{} = site, device_id, %Authentication.Subject{} = subject) do
+    with {:ok, device} <- Database.fetch_device(device_id, subject),
+         other_site_ids = Database.other_site_ids(site, device, subject),
+         {:ok, device} <- do_unassign(site, device, other_site_ids, subject) do
+      {:ok, device}
+    end
+  end
+
+  defp do_unassign(site, %Device{site_id: home_site_id} = device, _other_site_ids, subject)
+       when home_site_id != site.id do
+    with :ok <- Database.delete_site_device(site, device, subject), do: {:ok, device}
+  end
+
+  defp do_unassign(_site, _device, [], _subject), do: {:error, :last_site}
+
+  # The mirror trigger removes the old assignment with the move.
+  defp do_unassign(_site, device, [site_id | _], subject) do
+    Database.move_home_site(device, site_id, subject)
+  end
+
+  @doc """
+  Whether assigning the device to the site would have it serve the Internet
+  resource alongside other resources: the site is the Internet Site and the
+  device already serves another site, or the other way round.
+  """
+  @spec cohosts_internet?(Site.t(), Ecto.UUID.t(), Authentication.Subject.t()) :: boolean()
+  def cohosts_internet?(%Site{} = site, device_id, %Authentication.Subject{} = subject) do
+    Database.cohosts_internet?(site, device_id, subject)
+  end
+
   defmodule Database do
     import Ecto.Query
+    import Ecto.Changeset
     alias Portal.Safe
+    alias Portal.{Device, Site, SiteDevice}
+
+    def fetch_device(device_id, subject) do
+      from(d in Device, as: :devices)
+      |> where([devices: d], d.id == ^device_id)
+      |> Safe.scoped(subject)
+      |> Safe.one()
+      |> case do
+        nil -> {:error, :not_found}
+        {:error, :unauthorized} -> {:error, :unauthorized}
+        device -> {:ok, device}
+      end
+    end
+
+    def insert_site_device(site, device, subject) do
+      %SiteDevice{}
+      |> cast(%{account_id: site.account_id, site_id: site.id, device_id: device.id}, [
+        :account_id,
+        :site_id,
+        :device_id
+      ])
+      |> SiteDevice.changeset()
+      |> Safe.scoped(subject)
+      |> Safe.insert()
+      |> case do
+        {:ok, site_device} -> {:ok, site_device}
+        {:error, %Ecto.Changeset{errors: [account_id: _]}} -> {:error, :already_assigned}
+        {:error, _reason} = error -> error
+      end
+    end
+
+    def other_site_ids(site, device, subject) do
+      from(sd in SiteDevice, as: :site_devices)
+      |> where([site_devices: sd], sd.device_id == ^device.id and sd.site_id != ^site.id)
+      |> select([site_devices: sd], sd.site_id)
+      |> Safe.scoped(subject)
+      |> Safe.all()
+      |> case do
+        {:error, :unauthorized} -> []
+        site_ids -> site_ids
+      end
+    end
+
+    def delete_site_device(site, device, subject) do
+      from(sd in SiteDevice, as: :site_devices)
+      |> where([site_devices: sd], sd.site_id == ^site.id and sd.device_id == ^device.id)
+      |> Safe.scoped(subject)
+      |> Safe.delete_all()
+      |> case do
+        {count, _} when count > 0 -> :ok
+        {0, _} -> {:error, :not_found}
+        {:error, _reason} = error -> error
+      end
+    end
+
+    def move_home_site(device, site_id, subject) do
+      device
+      |> change(site_id: site_id)
+      |> Safe.scoped(subject)
+      |> Safe.update()
+    end
+
+    def cohosts_internet?(%Site{} = site, device_id, subject) do
+      from(sd in SiteDevice, as: :site_devices)
+      |> join(:inner, [site_devices: sd], s in Site,
+        on: s.account_id == sd.account_id and s.id == sd.site_id,
+        as: :sites
+      )
+      |> where([site_devices: sd], sd.device_id == ^device_id and sd.site_id != ^site.id)
+      |> where_other_side_of_internet(site)
+      |> Safe.scoped(subject)
+      |> Safe.exists?()
+    end
+
+    defp where_other_side_of_internet(queryable, %Site{managed_by: :system}), do: queryable
+
+    defp where_other_side_of_internet(queryable, %Site{}) do
+      where(queryable, [sites: s], s.managed_by == :system)
+    end
 
     # Repo.transact/1 rolls the transaction back when fun returns
     # {:error, _}, which is what makes provision_gateway/3 all-or-nothing.
