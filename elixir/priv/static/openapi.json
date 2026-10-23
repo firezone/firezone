@@ -1832,9 +1832,10 @@
             "type": "string"
           },
           "expires_at": {
-            "description": "Expiration",
+            "description": "Expiration. Tokens issued to a Gateway never expire and have none.",
             "example": "2025-01-15T12:34:56.789Z",
             "format": "date-time",
+            "nullable": true,
             "type": "string"
           },
           "id": {

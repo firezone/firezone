@@ -40,7 +40,8 @@ defmodule PortalAPI.Schemas.ClientToken do
           example: "2025-01-15T12:34:56.789Z",
           type: :string,
           format: :"date-time",
-          description: "Expiration"
+          nullable: true,
+          description: "Expiration. Tokens issued to a Gateway never expire and have none."
         },
         inserted_at: %Schema{
           example: "2025-01-15T12:34:56.789Z",
