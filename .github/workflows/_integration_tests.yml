@@ -156,7 +156,8 @@ jobs:
           - script: curl-portal-down
           - script: curl-portal-restart
           - script: curl-ecn
-          - script: dns
+          - name: dns
+            script: dns
           - script: dns-portal-down
           - script: dns-nm
           - script: dns-two-resources
