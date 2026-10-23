@@ -337,7 +337,7 @@ pub(crate) type PendingDatagrams = Vec<oneshot::Receiver<DatagramOut>>;
 /// enough to keep the send task fed, shallow enough that a transient send backlog cannot balloon
 /// memory. The platform split lives entirely in [`UDP_SEND_BATCH_LIMIT`].
 /// See [`MAX_UDP_OUTBOUND_QUEUE_MEMORY`] for the resulting bound.
-const QUEUE_SIZE: usize = 2 * UDP_SEND_BATCH_LIMIT;
+pub(crate) const QUEUE_SIZE: usize = 2 * UDP_SEND_BATCH_LIMIT;
 
 /// How many incoming UDP batches a socket's channel holds at most.
 ///

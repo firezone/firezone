@@ -970,6 +970,17 @@ pub struct DatagramBatch {
 }
 
 impl DatagramBatch {
+    /// A batch without any datagrams, for tests that only care that a batch arrived.
+    #[doc(hidden)]
+    pub fn empty() -> Self {
+        Self {
+            buffers: Vec::new(),
+            metas: Vec::new(),
+            port: 0,
+            num_packets: 0,
+        }
+    }
+
     pub(crate) fn new(
         mut buffers: Vec<Bytes>,
         mut metas: Vec<quinn_udp::RecvMeta>,
