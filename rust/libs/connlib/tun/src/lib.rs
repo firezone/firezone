@@ -132,15 +132,15 @@ pub fn inbound_channel() -> (InboundTx, InboundRx) {
     (InboundTx(tx), InboundRx(rx))
 }
 
-/// Creates a TUN device for tests whose outbound channel holds `capacity` batches.
+/// Creates a TUN device that is not backed by a real one; its outbound channel holds `capacity` batches.
 ///
 /// Returns the ends of its channels that the TUN threads would hold.
 #[doc(hidden)]
-pub fn test_device(capacity: usize) -> (Box<dyn Tun>, InboundTx, OutboundRx) {
+pub fn fake(capacity: usize) -> (Box<dyn Tun>, InboundTx, OutboundRx) {
     let (outbound_tx, outbound_rx) = mpsc::channel(capacity);
     let (inbound_tx, inbound_rx) = inbound_channel();
 
-    let device = TestDevice {
+    let device = FakeDevice {
         outbound_tx: OutboundTx(PollSender::new(outbound_tx)),
         inbound_rx,
     };
@@ -148,12 +148,12 @@ pub fn test_device(capacity: usize) -> (Box<dyn Tun>, InboundTx, OutboundRx) {
     (Box::new(device), inbound_tx, OutboundRx(outbound_rx))
 }
 
-struct TestDevice {
+struct FakeDevice {
     outbound_tx: OutboundTx,
     inbound_rx: InboundRx,
 }
 
-impl Tun for TestDevice {
+impl Tun for FakeDevice {
     fn sender(&mut self) -> &mut OutboundTx {
         &mut self.outbound_tx
     }
