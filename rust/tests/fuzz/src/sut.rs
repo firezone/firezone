@@ -52,7 +52,6 @@ pub struct TunnelTest {
     udp_flows: BTreeMap<FlowId, ResolvedUdpFlow>,
     tcp_flows: BTreeMap<FlowId, ResolvedTcpFlow>,
     pub(crate) dns_nat_observations: Vec<DnsNatObservation>,
-
 }
 
 #[derive(Clone, Copy)]
