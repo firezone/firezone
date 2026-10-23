@@ -18,7 +18,7 @@ use dns_types::DomainName;
 use fast_random_state::FastRandomState;
 use ip_packet::{FzP2pControlSlice, IpPacket};
 use secrecy::ExposeSecret as _;
-use snownet::{IceConfig, IceRole, Node, RelaySocket};
+use snownet::{IceConfig, Node, RelaySocket};
 use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 use std::iter;
 use std::net::{IpAddr, SocketAddr};
@@ -319,6 +319,7 @@ impl GatewayState {
         expires_at: Option<Duration>,
         resource: ResourceDescription,
         use_iceless: bool,
+        ice_role: crate::messages::IceRole,
         now: Instant,
         flow_logs_ingest_token: IngestToken,
     ) {
@@ -328,7 +329,7 @@ impl GatewayState {
             sanstun::StaticSecret::from(Zeroizing::new(client.preshared_key.expose_secret().0)),
             gateway_ice.into(),
             client_ice.into(),
-            IceRole::Controlled,
+            ice_role.into(),
             IceConfig::server_default(),
             IceConfig::server_idle(),
             use_iceless,

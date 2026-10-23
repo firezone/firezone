@@ -903,6 +903,7 @@ impl Tunnel {
             None,
             serde_json::from_value(resource.description()).unwrap(),
             false,
+            tunnel_proto::messages::IceRole::Controlled,
             self.now,
             ingest_token(),
         );
