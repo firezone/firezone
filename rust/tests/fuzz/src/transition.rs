@@ -248,18 +248,15 @@ impl Transition {
         match self {
             Transition::AddResource(_) => match route {
                 Route::Resource { .. } => false,
-                Route::Gateway(_) => true,
                 Route::Peer(_) => true,
             },
             Transition::RemoveResource(resource) => match route {
                 Route::Resource { resource: used, .. } => used != *resource,
-                Route::Gateway(_) => false,
                 Route::Peer(_) => false,
             },
             Transition::EditResource(edit) => classify(&edit.old, &edit.new).retains_flow(route),
             Transition::UpdateDevicePoolMembers { revoked, .. } => match route {
                 Route::Resource { .. } => true,
-                Route::Gateway(_) => true,
                 Route::Peer(peer) => !revoked.iter().any(|authorization| {
                     let parties = (authorization.initiator, authorization.target);
 
@@ -285,7 +282,6 @@ impl Transition {
                 client_id: changed, ..
             } => match route {
                 Route::Resource { .. } => iceless || client_id != *changed,
-                Route::Gateway(_) => iceless || client_id != *changed,
                 Route::Peer(peer) => iceless || (client_id != *changed && peer != *changed),
             },
             Transition::ReconnectPortal { .. } => true,
@@ -294,7 +290,6 @@ impl Transition {
                 ..
             } => match route {
                 Route::Resource { .. } => client_id != *restarted,
-                Route::Gateway(_) => client_id != *restarted,
                 Route::Peer(peer) => client_id != *restarted && peer != *restarted,
             },
             Transition::DeployNewRelays(_) => iceless,
@@ -305,12 +300,10 @@ impl Transition {
             Transition::FreeRelayPorts(_) => true,
             Transition::DeauthorizeWhileGatewayIsPartitioned(resource) => match route {
                 Route::Resource { resource: used, .. } => used != *resource,
-                Route::Gateway(_) => false,
                 Route::Peer(_) => false,
             },
             Transition::RevokeGatewayAuthorization(resource) => match route {
                 Route::Resource { resource: used, .. } => used != *resource,
-                Route::Gateway(_) => false,
                 Route::Peer(_) => true,
             },
             Transition::ExpirePeerAuthorizations { client, peer, .. } => match route {
@@ -319,7 +312,6 @@ impl Transition {
                         || (client_id == *peer && remote == *client))
                 }
                 Route::Resource { .. } => true,
-                Route::Gateway(_) => true,
             },
             Transition::RevokePeerAuthorization { client, peer, .. } => match route {
                 Route::Peer(remote) => {
@@ -327,7 +319,6 @@ impl Transition {
                         || (client_id == *peer && remote == *client))
                 }
                 Route::Resource { .. } => true,
-                Route::Gateway(_) => true,
             },
             Transition::UpdateDnsRecords { .. } => true,
         }
@@ -366,15 +357,12 @@ impl EditEffect<'_> {
                 EditEffect::Filters { resource_id, .. } | EditEffect::Access { resource_id, .. },
                 Route::Resource { resource, .. },
             ) => resource != *resource_id,
-            (EditEffect::Filters { .. } | EditEffect::Access { .. }, Route::Gateway(_)) => false,
             (EditEffect::Filters { .. } | EditEffect::Access { .. }, Route::Peer(_)) => true,
             (EditEffect::DevicePoolRouting, Route::Resource { .. }) => true,
-            (EditEffect::DevicePoolRouting, Route::Gateway(_)) => true,
             (EditEffect::DevicePoolRouting, Route::Peer(_)) => false,
             (EditEffect::Type { old, .. }, Route::Resource { resource, .. }) => {
                 resource != old.id()
             }
-            (EditEffect::Type { .. }, Route::Gateway(_)) => false,
             (EditEffect::Type { old, new, .. }, Route::Peer(_)) => {
                 !is_device_pool(old) && !is_device_pool(new)
             }

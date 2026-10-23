@@ -1137,9 +1137,13 @@ fn assert_destination_is_dns_resource(
 }
 
 /// Tracks whether any [`Level::ERROR`] events are emitted and panics on `Drop` in case.
+///
+/// The first such event is kept, so the panic names the assertion that
+/// failed even where no log output is enabled.
 pub(crate) struct PanicOnErrorEvents<S> {
     subscriber: PhantomData<S>,
     has_seen_error: AtomicBool,
+    first_error: std::sync::Mutex<Option<String>>,
 }
 
 impl<S> PanicOnErrorEvents<S> {
@@ -1147,6 +1151,7 @@ impl<S> PanicOnErrorEvents<S> {
         Self {
             subscriber: PhantomData,
             has_seen_error: Default::default(),
+            first_error: std::sync::Mutex::new(None),
         }
     }
 }
@@ -1154,7 +1159,29 @@ impl<S> PanicOnErrorEvents<S> {
 impl<S> Drop for PanicOnErrorEvents<S> {
     fn drop(&mut self) {
         if self.has_seen_error.load(Ordering::SeqCst) {
-            panic!("Testcase failed");
+            let first_error = self
+                .first_error
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .take()
+                .unwrap_or_default();
+
+            panic!("Testcase failed: {first_error}");
+        }
+    }
+}
+
+/// Renders an event's message and fields the way the log line would.
+struct EventRenderer(String);
+
+impl tracing::field::Visit for EventRenderer {
+    fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
+        use std::fmt::Write as _;
+
+        if field.name() == "message" {
+            let _ = write!(self.0, "{value:?} ");
+        } else {
+            let _ = write!(self.0, "{}={value:?} ", field.name());
         }
     }
 }
@@ -1173,6 +1200,13 @@ where
         _ctx: tracing_subscriber::layer::Context<'_, S>,
     ) {
         if _event.metadata().level() == &Level::ERROR {
+            let mut rendered = EventRenderer(format!("{}: ", _event.metadata().target()));
+            _event.record(&mut rendered);
+
+            self.first_error
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .get_or_insert(rendered.0);
             self.has_seen_error.store(true, Ordering::SeqCst)
         }
     }

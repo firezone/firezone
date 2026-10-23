@@ -899,8 +899,13 @@ impl ReferenceState {
                     .connected_resources()
                     .any(|resource| client.gateway_for_resource(resource) == Some(*gateway))
             });
+            // A device's own tunnel address is only reachable through a pool; a
+            // gateway serves resources and is in none, so it refuses.
             if let Some(gateway) = connected_gateway {
-                return ExpectedOutcome::RoundTripCompleted(Route::Gateway(gateway));
+                return ExpectedOutcome::Rejected {
+                    by: RejectionRemote::Gateway(gateway),
+                    response: RejectionResponse::Prohibited,
+                };
             }
 
             // The portal answers a request for a tunnel IP that no client holds with "not
@@ -1714,7 +1719,6 @@ fn address_record_type(src: IpAddr) -> RecordType {
 fn reset_by(route: Route) -> ExpectedOutcome {
     let by = match route {
         Route::Resource { gateway, .. } => RejectionRemote::Gateway(gateway),
-        Route::Gateway(gateway) => RejectionRemote::Gateway(gateway),
         Route::Peer(client) => RejectionRemote::Client(client),
     };
 
