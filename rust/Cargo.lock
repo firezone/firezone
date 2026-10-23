@@ -6772,7 +6772,7 @@ dependencies = [
 [[package]]
 name = "sanstun"
 version = "0.1.0"
-source = "git+https://github.com/firezone/sanstun?branch=main#a9550b80d063fc65ead9246766d8f3984b4a9143"
+source = "git+https://github.com/firezone/sanstun?branch=batched-crypto#4046f6fc0cce557d6143e30b2d6ee475b2c8d5d2"
 dependencies = [
  "blake2",
  "chacha20",
@@ -8219,7 +8219,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd"
 dependencies = [
  "fastrand",
- "getrandom 0.4.2",
+ "getrandom 0.3.4",
  "once_cell",
  "rustix",
  "windows-sys 0.61.2",
