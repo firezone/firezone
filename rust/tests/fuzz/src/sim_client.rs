@@ -350,12 +350,11 @@ impl SimClient {
                     return Ok(None);
                 };
 
-                self.sut.handle_peer_input(
-                    local,
-                    from,
-                    decapsulation.decrypt(&transmit.payload),
-                    now,
-                )
+                decapsulation
+                    .decrypt([&*transmit.payload])
+                    .map(|packet| self.sut.handle_peer_input(local, from, packet, now))
+                    .next()
+                    .unwrap_or(Ok(None))
             })
             .inspect_err(|e| tracing::warn!("{e:#}"))
             .ok()

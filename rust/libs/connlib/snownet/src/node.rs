@@ -10,7 +10,7 @@ pub use connections::UnknownConnection;
 
 use crate::agent::Agent;
 use crate::allocation::{self, Allocation, RelaySocket, Socket};
-use crate::crypto::{DecryptedIpPacket, PendingDecapsulate, PendingEncapsulate};
+use crate::crypto::{DecapsulateBatch, DecryptedIpPacket, EncapsulateBatch};
 use crate::node::allocations::Allocations;
 use crate::node::buffered_candidates::BufferedCandidates;
 use crate::node::connection_state::{ConnectionState, PeerSocket};
@@ -34,6 +34,7 @@ use ringbuffer::{AllocRingBuffer, RingBuffer};
 use smallvec::SmallVec;
 use std::collections::{BTreeSet, HashSet};
 use std::hash::Hash;
+use std::num::NonZeroUsize;
 use std::ops::ControlFlow;
 use std::time::{Duration, Instant};
 use std::{collections::VecDeque, net::SocketAddr};
@@ -537,14 +538,15 @@ where
     /// - `Ok(None)` if the packet was handled internally, for example, a response from a TURN server.
     ///   Call [`Node::handle_timeout`] before suspending to send any replies.
     /// - `Ok(Some)` if the packet was an encrypted WireGuard data message from a peer.
-    ///   Decrypt it from `datagram` and pass the result to [`Node::commit_decrypted`].
+    ///   Add further segments of the same datagram with [`DecapsulateBatch::increment`], finish the
+    ///   batch, decrypt it and pass each result to [`Node::commit_decrypted`].
     pub fn begin_decapsulate(
         &mut self,
         local: SocketAddr,
         from: SocketAddr,
         datagram: &[u8],
         now: Instant,
-    ) -> Result<Option<PendingDecapsulate>> {
+    ) -> Result<Option<DecapsulateBatch<'_>>> {
         self.last_now = now;
 
         let (from, offset, relayed) = match self.allocations_try_handle(from, local, datagram, now)
@@ -571,7 +573,7 @@ where
         Ok(Some(pending))
     }
 
-    /// Commits a packet decrypted from a [`PendingDecapsulate`].
+    /// Commits a packet decrypted from a [`DecapsulateBatch`].
     ///
     /// # Returns
     ///
@@ -608,7 +610,7 @@ where
         Ok(Some((cid, packet)))
     }
 
-    /// Encapsulate an outgoing IP packet.
+    /// Starts a batch of outgoing IP packets to `cid`, beginning with `packet`.
     ///
     /// Wireguard is an IP tunnel, so we "enforce" that only IP packets are sent through it.
     /// We say "enforce" an [`IpPacket`] can be created from an (almost) arbitrary byte buffer at virtually no cost.
@@ -618,7 +620,7 @@ where
         cid: TId,
         packet: &IpPacket,
         now: Instant,
-    ) -> Result<Option<PendingEncapsulate>> {
+    ) -> Result<Option<EncapsulateBatch<'_>>> {
         self.last_now = now;
 
         let conn = self.connections.get_mut(&cid, now)?;
@@ -1033,7 +1035,7 @@ where
         datagram: &[u8],
         offset: usize,
         now: Instant,
-    ) -> ControlFlow<Result<()>, PendingDecapsulate> {
+    ) -> ControlFlow<Result<()>, DecapsulateBatch<'_>> {
         let packet = &datagram[offset..];
 
         let parsed_packet = match self.interface.receive(from, packet, now) {
@@ -1077,6 +1079,13 @@ where
             Ok(c) => c,
             Err(e) => return ControlFlow::Break(Err(e)),
         };
+        let tunnel = conn.tunnel.id();
+        let channel = match offset {
+            0 => None,
+            _ => crate::channel_data::decode(datagram)
+                .ok()
+                .map(|cd| cd.channel()),
+        };
 
         let control_flow = conn.decapsulate(
             cid,
@@ -1091,7 +1100,15 @@ where
         );
 
         match control_flow {
-            ControlFlow::Continue(pending) => ControlFlow::Continue(pending),
+            ControlFlow::Continue(batch) => ControlFlow::Continue(DecapsulateBatch::new(
+                &mut self.interface,
+                tunnel,
+                from,
+                destination,
+                offset,
+                channel,
+                batch,
+            )),
             ControlFlow::Break(Ok(())) => ControlFlow::Break(Ok(())),
             ControlFlow::Break(Err(e)) => {
                 ControlFlow::Break(Err(e.context(format!("cid={cid} length={}", packet.len()))))
@@ -1678,8 +1695,9 @@ where
                     }
                 }
                 path_agent::Payload::Plaintext(ref ip) => {
-                    if let Ok(Some(encapsulation)) =
+                    if let Ok(Some(batch)) =
                         self.encapsulate(cid, peer_socket, ip, now, allocations)
+                        && let Ok(encapsulation) = batch.finish(NonZeroUsize::MIN)
                         && let Ok(transmit) = encapsulation.encrypt(ip)
                     {
                         transmits.push_back(transmit);
@@ -1791,7 +1809,7 @@ where
         }
     }
 
-    /// Reserves the WireGuard counter for `packet` and decides where to send it.
+    /// Starts a batch of packets to send, beginning with `packet`, and decides where to send it.
     fn encapsulate<TId>(
         &mut self,
         cid: TId,
@@ -1799,7 +1817,7 @@ where
         packet: &IpPacket,
         now: Instant,
         allocations: &mut Allocations<RId>,
-    ) -> Result<Option<PendingEncapsulate>>
+    ) -> Result<Option<EncapsulateBatch<'_>>>
     where
         TId: fmt::Display,
     {
@@ -1823,7 +1841,7 @@ where
             }
         };
 
-        let pending = self.tunnel.begin_encapsulate(now)?;
+        let batch = self.tunnel.begin_encapsulate(now)?;
 
         let channel = match relay {
             Some((peer, allocation)) => {
@@ -1838,7 +1856,7 @@ where
             None => None,
         };
 
-        Ok(Some(PendingEncapsulate::new(src, dst, channel, pending)))
+        Ok(Some(EncapsulateBatch::new(src, dst, channel, batch)))
     }
 
     #[expect(
@@ -1856,7 +1874,7 @@ where
         allocations: &mut Allocations<RId>,
         transmits: &mut VecDeque<Transmit>,
         now: Instant,
-    ) -> ControlFlow<Result<()>, PendingDecapsulate>
+    ) -> ControlFlow<Result<()>, sanstun::DecapsulateBatch<'_>>
     where
         TId: fmt::Display,
         RId: Ord + Hash + fmt::Display + Copy,
@@ -1901,13 +1919,7 @@ where
             ),
             sanstun::ReceivedMessage::TransportData(data) => {
                 match self.tunnel.begin_decapsulate(data, now) {
-                    Ok(pending) => ControlFlow::Continue(PendingDecapsulate::new(
-                        self.tunnel.id(),
-                        from,
-                        destination,
-                        offset,
-                        pending,
-                    )),
+                    Ok(batch) => ControlFlow::Continue(batch),
                     Err(e) => ControlFlow::Break(Err(anyhow::Error::new(e).context("data packet"))),
                 }
             }

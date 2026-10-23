@@ -58,6 +58,7 @@ use snownet::{Node, RelaySocket};
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
+use std::num::NonZeroUsize;
 use std::ops::ControlFlow;
 use std::time::{Duration, Instant};
 use std::{io, iter};
@@ -743,7 +744,7 @@ impl ClientState {
         now: Instant,
     ) -> Result<Option<snownet::PendingDecapsulate>> {
         match self.node.begin_decapsulate(local, from, packet, now) {
-            Ok(decapsulation) => Ok(decapsulation),
+            Ok(decapsulation) => Ok(decapsulation.map(|batch| batch.finish())),
             Err(e) => Err(e.context(FailedToDecapsulate(packet_kind::classify(packet)))),
         }
     }
@@ -2892,7 +2893,9 @@ fn encapsulate_or_buffer(
     }
 
     match node.encapsulate(pid, packet, now) {
-        Ok(Some(encapsulation)) => {
+        Ok(Some(batch)) => {
+            let encapsulation = batch.finish(NonZeroUsize::MIN)?;
+
             flow_tracker::record_transmit(encapsulation.src(), encapsulation.dst());
 
             return Ok(Some(encapsulation));

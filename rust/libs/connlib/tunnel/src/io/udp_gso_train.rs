@@ -86,9 +86,13 @@ impl UdpGsoTrain {
         for (encapsulation, packet) in packets {
             let end = len + encapsulation.datagram_len(&packet);
 
-            match encapsulation.encrypt_into(&packet, &mut datagram[len..end]) {
-                Ok(()) => len = end,
-                Err(e) => tracing::debug!("Failed to encrypt packet: {e}"),
+            match encapsulation
+                .encrypt_into([(&packet, &mut datagram[len..end])])
+                .next()
+            {
+                Some(Ok(())) => len = end,
+                Some(Err(e)) => tracing::debug!("Failed to encrypt packet: {e}"),
+                None => {}
             }
         }
         buffer.truncate(len);

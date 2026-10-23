@@ -816,14 +816,14 @@ impl Tunnel {
             .handle_network_input(*GATEWAY_SOCKET, *CLIENT_SOCKET, &datagram.payload, self.now)
             .unwrap()
             .unwrap();
-        let request = self
-            .gateway
-            .handle_peer_input(
-                *GATEWAY_SOCKET,
-                *CLIENT_SOCKET,
-                decapsulation.decrypt(&datagram.payload),
-                self.now,
-            )
+        let request = decapsulation
+            .decrypt([&*datagram.payload])
+            .map(|packet| {
+                self.gateway
+                    .handle_peer_input(*GATEWAY_SOCKET, *CLIENT_SOCKET, packet, self.now)
+            })
+            .next()
+            .unwrap()
             .unwrap()
             .unwrap();
         let udp = request.as_udp().unwrap();
@@ -936,18 +936,18 @@ impl Tunnel {
                 .client
                 .handle_network_input(to, from, payload, self.now)
         {
-            let _ =
-                self.client
-                    .handle_peer_input(to, from, decapsulation.decrypt(payload), self.now);
+            for packet in decapsulation.decrypt([payload]) {
+                let _ = self.client.handle_peer_input(to, from, packet, self.now);
+            }
         }
         if to == *GATEWAY_SOCKET
             && let Ok(Some(decapsulation)) = self
                 .gateway
                 .handle_network_input(to, from, payload, self.now)
         {
-            let _ =
-                self.gateway
-                    .handle_peer_input(to, from, decapsulation.decrypt(payload), self.now);
+            for packet in decapsulation.decrypt([payload]) {
+                let _ = self.gateway.handle_peer_input(to, from, packet, self.now);
+            }
         }
     }
 }

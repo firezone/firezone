@@ -462,11 +462,15 @@ fn decrypt(job: DecryptJob, decrypted: oneshot::Sender<DecryptedIpPackets>) {
             (message.decapsulation, buffer, &buffer[message.segment])
         })
         .prefetching_with(|(_, _, ciphertext)| *ciphertext)
-        .map(|(decapsulation, buffer, ciphertext)| DecryptedDatagram {
-            local: buffer.local(),
-            from: buffer.from(),
-            ecn: buffer.ecn(),
-            packet: decapsulation.decrypt(ciphertext),
+        .flat_map(|(decapsulation, buffer, ciphertext)| {
+            decapsulation
+                .decrypt([ciphertext])
+                .map(|packet| DecryptedDatagram {
+                    local: buffer.local(),
+                    from: buffer.from(),
+                    ecn: buffer.ecn(),
+                    packet,
+                })
         })
         .collect();
 

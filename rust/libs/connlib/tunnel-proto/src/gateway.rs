@@ -22,6 +22,7 @@ use snownet::{IceConfig, IceRole, Node, RelaySocket};
 use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 use std::iter;
 use std::net::{IpAddr, SocketAddr};
+use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use zeroize::Zeroizing;
@@ -164,7 +165,7 @@ impl GatewayState {
         now: Instant,
     ) -> Result<Option<snownet::PendingDecapsulate>> {
         match self.node.begin_decapsulate(local, from, packet, now) {
-            Ok(decapsulation) => Ok(decapsulation),
+            Ok(decapsulation) => Ok(decapsulation.map(|batch| batch.finish())),
             Err(e) => Err(e.context(FailedToDecapsulate(packet_kind::classify(packet)))),
         }
     }
@@ -701,7 +702,8 @@ fn encapsulate(
     now: Instant,
 ) -> Result<Option<snownet::PendingEncapsulate>> {
     match node.encapsulate(cid, packet, now) {
-        Ok(encapsulation) => Ok(encapsulation),
+        Ok(Some(batch)) => Ok(Some(batch.finish(NonZeroUsize::MIN)?)),
+        Ok(None) => Ok(None),
         // The Gateway does not buffer: it only sends in response to Client traffic.
         Err(e) if e.any_is::<snownet::StillConnecting>() => {
             tracing::debug!(%cid, "Connection is still establishing; dropping packet");
