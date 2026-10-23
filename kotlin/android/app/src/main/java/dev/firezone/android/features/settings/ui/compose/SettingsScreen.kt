@@ -29,6 +29,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import dev.firezone.android.R
+import dev.firezone.android.core.data.model.CloudRegion
 import dev.firezone.android.core.data.model.Config
 import dev.firezone.android.core.data.model.ManagedConfigStatus
 import dev.firezone.android.features.settings.ui.DeviceTrustSettingsViewModel
@@ -41,7 +42,6 @@ internal enum class SettingsPage(
     val icon: ImageVector,
 ) {
     GENERAL(R.string.general_settings_title, FirezoneIcons.DiscoverTune),
-    ADVANCED(R.string.advanced_settings_title, FirezoneIcons.Settings),
     DEVICE_TRUST(R.string.device_trust_settings_title, FirezoneIcons.VerifiedUser),
     LOGS(R.string.log_settings_title, FirezoneIcons.Description),
 }
@@ -50,7 +50,6 @@ internal enum class SettingsPage(
 internal fun settingsPages(showDeviceTrust: Boolean): List<SettingsPage> =
     buildList {
         add(SettingsPage.GENERAL)
-        add(SettingsPage.ADVANCED)
 
         if (showDeviceTrust) {
             add(SettingsPage.DEVICE_TRUST)
@@ -63,12 +62,14 @@ internal fun settingsPages(showDeviceTrust: Boolean): List<SettingsPage> =
 @Composable
 internal fun SettingsScreen(
     config: Config,
+    cloudRegion: CloudRegion,
     managedStatus: ManagedConfigStatus,
     isSaveEnabled: Boolean,
     logSizeBytes: Long,
     deviceTrustState: DeviceTrustSettingsViewModel.UiState,
     showDeviceTrust: Boolean,
     warnBeforeSaving: Boolean,
+    onCloudRegionChange: (CloudRegion) -> Unit,
     onAuthUrlChange: (String) -> Unit,
     onApiUrlChange: (String) -> Unit,
     onLogFilterChange: (String) -> Unit,
@@ -150,20 +151,14 @@ internal fun SettingsScreen(
                 SettingsPage.GENERAL -> {
                     GeneralSettingsPage(
                         config = config,
+                        cloudRegion = cloudRegion,
                         managedStatus = managedStatus,
+                        onCloudRegionChange = onCloudRegionChange,
+                        onAuthUrlChange = onAuthUrlChange,
+                        onApiUrlChange = onApiUrlChange,
                         onAccountSlugChange = onAccountSlugChange,
                         onStartOnLoginChange = onStartOnLoginChange,
                         onConnectOnStartChange = onConnectOnStartChange,
-                    )
-                }
-
-                SettingsPage.ADVANCED -> {
-                    AdvancedSettingsPage(
-                        config = config,
-                        managedStatus = managedStatus,
-                        onAuthUrlChange = onAuthUrlChange,
-                        onApiUrlChange = onApiUrlChange,
-                        onLogFilterChange = onLogFilterChange,
                         onResetToDefaults = onResetToDefaults,
                         buildSha = buildSha,
                     )
@@ -178,7 +173,10 @@ internal fun SettingsScreen(
 
                 SettingsPage.LOGS -> {
                     LogSettingsPage(
+                        config = config,
+                        managedStatus = managedStatus,
                         logSizeBytes = logSizeBytes,
+                        onLogFilterChange = onLogFilterChange,
                         onClearLogs = onClearLogs,
                         onExportLogs = onExportLogs,
                     )

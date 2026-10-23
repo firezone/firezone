@@ -11,6 +11,7 @@ import com.github.takahirom.roborazzi.captureScreenRoboImage
 import com.github.takahirom.roborazzi.roborazziSystemPropertyOutputDirectory
 import dev.firezone.android.R
 import dev.firezone.android.STORE_SCREENSHOT_QUALIFIERS
+import dev.firezone.android.core.data.model.CloudRegion
 import dev.firezone.android.core.data.model.ManagedConfigStatus
 import dev.firezone.android.features.settings.ui.compose.SettingsScreen
 import dev.firezone.android.ui.theme.FirezoneTheme
@@ -40,7 +41,23 @@ class SettingsScreenshotTest {
     fun generalSettings() = captureSettingsPage("settings-general", R.string.general_settings_title)
 
     @Test
-    fun advancedSettings() = captureSettingsPage("settings-advanced", R.string.advanced_settings_title)
+    fun generalSettingsCustom() =
+        captureSettingsPage(
+            "settings-general-custom",
+            R.string.general_settings_title,
+            config = selfHostedConfig,
+            cloudRegion = CloudRegion.CUSTOM,
+        )
+
+    @Test
+    fun generalSettingsManaged() =
+        captureSettingsPage(
+            "settings-general-managed",
+            R.string.general_settings_title,
+            config = euConfig,
+            cloudRegion = CloudRegion.EU,
+            managedStatus = urlsManaged,
+        )
 
     @Test
     fun deviceTrustSettingsWithCertificate() = captureDeviceTrustPage("device-trust-filled", availableCertificate)
@@ -64,8 +81,11 @@ class SettingsScreenshotTest {
         name: String,
         tabLabel: Int,
         deviceTrustState: DeviceTrustSettingsViewModel.UiState = DeviceTrustSettingsViewModel.UiState(),
+        config: FirezoneConfig = sampleConfig,
+        cloudRegion: CloudRegion = CloudRegion.US,
+        managedStatus: ManagedConfigStatus = ManagedConfigStatus.NOTHING_MANAGED,
     ) {
-        composeRule.setContent { FirezoneTheme { SettingsScreenSample(deviceTrustState) } }
+        composeRule.setContent { FirezoneTheme { SettingsScreenSample(deviceTrustState, config, cloudRegion, managedStatus) } }
         composeRule.onNodeWithText(RuntimeEnvironment.getApplication().getString(tabLabel)).performClick()
         composeRule.waitForIdle()
 
@@ -85,6 +105,26 @@ private val sampleConfig =
         accountSlug = "example-corp",
         startOnLogin = true,
         connectOnStart = false,
+    )
+
+// What a user of a self-hosted portal sees.
+private val selfHostedConfig =
+    sampleConfig.copy(
+        authUrl = "https://firezone.example.com",
+        apiUrl = "wss://api.firezone.example.com",
+    )
+
+// What a user of the EU cloud sees when an administrator set the URLs.
+private val euConfig =
+    sampleConfig.copy(
+        authUrl = "https://eu.app.firezone.dev",
+        apiUrl = "wss://eu.api.firezone.dev",
+    )
+
+private val urlsManaged =
+    ManagedConfigStatus.NOTHING_MANAGED.copy(
+        isAuthUrlManaged = true,
+        isApiUrlManaged = true,
     )
 
 // The alias the certificate below is filed under in the system KeyChain.
@@ -147,15 +187,22 @@ private fun row(
 ): DetailField = DetailField(label, value, null)
 
 @Composable
-private fun SettingsScreenSample(deviceTrustState: DeviceTrustSettingsViewModel.UiState) {
+private fun SettingsScreenSample(
+    deviceTrustState: DeviceTrustSettingsViewModel.UiState,
+    config: FirezoneConfig,
+    cloudRegion: CloudRegion,
+    managedStatus: ManagedConfigStatus,
+) {
     SettingsScreen(
-        config = sampleConfig,
-        managedStatus = ManagedConfigStatus.NOTHING_MANAGED,
+        config = config,
+        cloudRegion = cloudRegion,
+        managedStatus = managedStatus,
         isSaveEnabled = true,
         logSizeBytes = LOG_DIRECTORY_BYTES,
         deviceTrustState = deviceTrustState,
         showDeviceTrust = deviceTrustState.alias != null,
         warnBeforeSaving = false,
+        onCloudRegionChange = {},
         onAuthUrlChange = {},
         onApiUrlChange = {},
         onLogFilterChange = {},
@@ -170,7 +217,7 @@ private fun SettingsScreenSample(deviceTrustState: DeviceTrustSettingsViewModel.
         onDeviceTrustShown = {},
         onSave = {},
         onCancel = {},
-        // The advanced page shows the commit the app was built from, which changes with every
+        // The general page shows the commit the app was built from, which changes with every
         // push; pin it so the image only changes when the UI does.
         buildSha = "0000000000000000000000000000000000000000",
     )

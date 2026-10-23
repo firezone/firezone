@@ -208,6 +208,25 @@ class Repository
 
         fun getDeviceIdSync(): String? = sharedPreferences.getString(DEVICE_ID_KEY, null)
 
+        /** The auth and API URLs last saved with the Custom region picked, or `null` before any were. */
+        fun getLastCustomUrlsSync(): Pair<String, String>? {
+            val authUrl = sharedPreferences.getString(LAST_CUSTOM_AUTH_URL_KEY, null) ?: return null
+            val apiUrl = sharedPreferences.getString(LAST_CUSTOM_API_URL_KEY, null) ?: return null
+
+            return authUrl to apiUrl
+        }
+
+        fun saveLastCustomUrlsSync(
+            authUrl: String,
+            apiUrl: String,
+        ) {
+            sharedPreferences
+                .edit()
+                .putString(LAST_CUSTOM_AUTH_URL_KEY, authUrl)
+                .putString(LAST_CUSTOM_API_URL_KEY, apiUrl)
+                .apply()
+        }
+
         private fun saveFavoritesSync() {
             sharedPreferences.edit().putStringSet(FAVORITE_RESOURCES_KEY, favorites.value.inner).apply()
             _favorites.value = Favorites(favorites.value.inner)
@@ -325,6 +344,8 @@ class Repository
         companion object {
             private const val AUTH_URL_KEY = "authUrl"
             private const val API_URL_KEY = "apiUrl"
+            private const val LAST_CUSTOM_AUTH_URL_KEY = "lastCustomAuthUrl"
+            private const val LAST_CUSTOM_API_URL_KEY = "lastCustomApiUrl"
             private const val FAVORITE_RESOURCES_KEY = "favoriteResources"
             private const val LOG_FILTER_KEY = "logFilter"
             private const val ACCOUNT_SLUG_KEY = "accountSlug"
