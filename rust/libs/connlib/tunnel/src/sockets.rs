@@ -319,7 +319,7 @@ fn poll_flush_overflow(
 }
 
 /// What a UDP socket thread sends, in queue order.
-enum Outbound {
+pub(crate) enum Outbound {
     Ready(DatagramOut),
     Pending(PendingDatagrams),
 }
@@ -389,7 +389,7 @@ const _: () = {
 
 struct ThreadedUdpSocket {
     thread_name: String,
-    join_handle: std::thread::JoinHandle<()>,
+    join_handle: Option<std::thread::JoinHandle<()>>,
     main_thread_ends: Option<MainThreadEnds>,
 }
 
@@ -405,10 +405,10 @@ struct MainThreadEnds {
 }
 
 /// The ends of a socket's channels that its thread holds.
-struct SocketThreadEnds {
-    outbound_rx: mpsc::Receiver<Outbound>,
-    inbound_tx: mpsc::Sender<DatagramBatch>,
-    error_tx: mpsc::Sender<anyhow::Error>,
+pub(crate) struct SocketThreadEnds {
+    pub(crate) outbound_rx: mpsc::Receiver<Outbound>,
+    pub(crate) inbound_tx: mpsc::Sender<DatagramBatch>,
+    pub(crate) error_tx: mpsc::Sender<anyhow::Error>,
 }
 
 fn channels() -> (MainThreadEnds, SocketThreadEnds) {
@@ -628,7 +628,7 @@ impl ThreadedUdpSocket {
 
         Ok(Self {
             thread_name,
-            join_handle,
+            join_handle: Some(join_handle),
             main_thread_ends: Some(main_thread_ends),
         })
     }
@@ -708,9 +708,13 @@ impl Drop for ThreadedUdpSocket {
 
         let _ = self.main_thread_ends.take();
 
+        let Some(join_handle) = self.join_handle.as_ref() else {
+            return;
+        };
+
         const TIMEOUT: Duration = Duration::from_millis(500);
 
-        while !self.join_handle.is_finished() {
+        while !join_handle.is_finished() {
             let elapsed = start.elapsed();
 
             if elapsed > TIMEOUT {
@@ -720,6 +724,50 @@ impl Drop for ThreadedUdpSocket {
         }
 
         tracing::debug!(name = %self.thread_name, duration = ?start.elapsed(), "Background thread stopped");
+    }
+}
+
+#[cfg(test)]
+#[expect(dead_code, reason = "Not used by any test yet")]
+impl Sockets {
+    /// Creates sockets for both families without threads; the returned ends play their part.
+    pub(crate) fn fake() -> (Self, SocketThreadEnds, SocketThreadEnds) {
+        let fake_socket = || {
+            let (main_thread_ends, socket_thread_ends) = channels();
+            let socket = ThreadedUdpSocket {
+                thread_name: "fake".to_owned(),
+                join_handle: None,
+                main_thread_ends: Some(main_thread_ends),
+            };
+
+            (socket, socket_thread_ends)
+        };
+        let (socket_v4, ends_v4) = fake_socket();
+        let (socket_v6, ends_v6) = fake_socket();
+
+        let sockets = Self {
+            socket_v4: Some(socket_v4),
+            socket_v6: Some(socket_v6),
+            ..Self::default()
+        };
+
+        (sockets, ends_v4, ends_v6)
+    }
+
+    pub(crate) fn remove_v4(&mut self) {
+        self.socket_v4 = None;
+    }
+
+    pub(crate) fn remove_v6(&mut self) {
+        self.socket_v6 = None;
+    }
+
+    /// How many items wait for room in the channel of the socket for `version`.
+    pub(crate) fn num_waiting(&self, version: IpVersion) -> usize {
+        match version {
+            IpVersion::V4 => self.overflow_v4.len(),
+            IpVersion::V6 => self.overflow_v6.len(),
+        }
     }
 }
 
