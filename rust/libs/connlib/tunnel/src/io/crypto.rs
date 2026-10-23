@@ -81,8 +81,14 @@ impl DecryptedIpPackets {
     }
 }
 
+impl Default for CryptoWorkers {
+    fn default() -> Self {
+        Self::with_num_workers(num_crypto_workers())
+    }
+}
+
 impl CryptoWorkers {
-    pub fn new(num_workers: usize) -> Self {
+    pub fn with_num_workers(num_workers: usize) -> Self {
         let packet_counter = otel_instruments::network_packets();
 
         Self {
@@ -390,7 +396,7 @@ impl DecryptJob {
 }
 
 /// How many crypto workers to spawn: up to half of the cores.
-pub fn num_crypto_workers() -> usize {
+fn num_crypto_workers() -> usize {
     let cores = thread::available_parallelism().map_or(1, NonZeroUsize::get);
 
     (cores / 2).max(2)

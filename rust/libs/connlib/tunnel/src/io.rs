@@ -17,7 +17,7 @@ use crate::{
 };
 use anyhow::{ErrorExt, Result};
 use bootstrap_dns_client::BootstrapDnsClient;
-use crypto::{CryptoWorkers, Decrypting, num_crypto_workers};
+use crypto::{CryptoWorkers, Decrypting};
 use dns_types::DoHUrl;
 use fast_random_state::FastRandomState;
 use futures::{
@@ -335,7 +335,7 @@ impl Io {
                 10,
             ),
             doh_tls_config: TlsConfig::webpki_roots(),
-            crypto: CryptoWorkers::new(num_crypto_workers()),
+            crypto: CryptoWorkers::default(),
             decrypting: Decrypting::default(),
             tun: Device::new(),
             udp_dns_server: Default::default(),
