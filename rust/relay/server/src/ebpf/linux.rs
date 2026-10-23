@@ -1,4 +1,5 @@
 use std::{
+    ffi::CString,
     io,
     net::{Ipv4Addr, Ipv6Addr, SocketAddr},
 };
@@ -6,7 +7,10 @@ use std::{
 use anyhow::{Context as _, Result};
 use aya::{
     Pod,
-    maps::{HashMap, MapData, PerCpuArray, PerCpuValues, PerfEventArray, perf::PerfEvent},
+    maps::{
+        HashMap, MapData, PerCpuArray, PerCpuValues, PerfEventArray,
+        perf::{PerfEvent, PerfEventArrayBuffer},
+    },
     programs::{Xdp, XdpMode},
 };
 use aya_log::EbpfLogger;
@@ -76,7 +80,7 @@ impl Program {
         };
 
         program
-            .attach(interface, xdp_mode)
+            .attach(CString::new(interface)?.as_c_str(), xdp_mode)
             .with_context(|| format!("Failed to attached to interface {interface}"))?;
 
         let mut stats = PerfEventArray::try_from(
@@ -94,7 +98,8 @@ impl Program {
             .context("Failed to determine number of CPUs")?
         {
             // open a separate perf buffer for each cpu
-            let stats_array_buf = stats.open(cpu_id, Some(PAGE_COUNT))?;
+            let stats_array_buf = PerfEventArrayBuffer::open(cpu_id, PAGE_COUNT)?;
+            stats.set(cpu_id, &stats_array_buf)?;
             // SAFETY: `PerfEventArrayBuffer` owns its descriptor, so it stays open as long as we hold it.
             let mut fd = unsafe { AsyncFd::register(stats_array_buf)? };
 
