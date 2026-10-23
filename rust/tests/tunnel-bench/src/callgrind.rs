@@ -21,7 +21,7 @@ use std::time::Instant;
 
 use bufferpool::Bytes;
 use socket_factory::{DatagramBatch, DatagramOut};
-use tun::{InboundTx, OutboundRx, PacketBatch};
+use tun::PacketBatch;
 use tunnel::{ClientState, FakeTunnelEnds, GatewayState, Tunnel, TunnelError};
 
 pub use idle::Idle;
@@ -40,33 +40,22 @@ pub fn measure<T>(f: impl FnOnce() -> T) -> T {
     result
 }
 
-/// How many batches the TUN device's outbound channel holds, as many as a real one's.
-const TUN_CAPACITY: usize = 100;
-
 /// A tunnel's event loop, driven the way the Client and the Gateway drive theirs.
 pub struct EventLoop<R> {
     tunnel: Tunnel<R>,
-    /// The fake tunnel's sockets and resolver; every address is IPv4.
+    /// The fake tunnel's TUN device, sockets and resolver; every address is IPv4.
     ends: FakeTunnelEnds,
-    /// What the TUN device reads.
-    tun_reads: InboundTx,
-    /// What the event loop writes to the TUN device.
-    tun_writes: OutboundRx,
     /// The deadline the event loop asked to be woken at.
     alarm: Option<Instant>,
 }
 
 impl<R: Role> EventLoop<R> {
     pub fn new(state: R) -> Self {
-        let (mut tunnel, ends) = Tunnel::fake(state);
-        let (tun, tun_reads, tun_writes) = tun::fake(TUN_CAPACITY);
-        tunnel.set_tun(tun);
+        let (tunnel, ends) = Tunnel::fake(state);
 
         Self {
             tunnel,
             ends,
-            tun_reads,
-            tun_writes,
             alarm: None,
         }
     }
@@ -107,7 +96,7 @@ impl<R: Role> EventLoop<R> {
 
     /// Hands `batch` to the event loop as if the TUN device had read it.
     pub fn read_from_tun(&self, batch: PacketBatch) {
-        let send = pin!(self.tun_reads.send(batch));
+        let send = pin!(self.ends.tun_inbound.send(batch));
 
         assert!(
             send.poll(&mut Context::from_waker(Waker::noop()))
@@ -121,7 +110,7 @@ impl<R: Role> EventLoop<R> {
         let mut cx = Context::from_waker(Waker::noop());
         let mut packets = 0;
 
-        while let Poll::Ready(Some(batch)) = pin!(self.tun_writes.recv()).poll(&mut cx) {
+        while let Poll::Ready(Some(batch)) = pin!(self.ends.tun_outbound.recv()).poll(&mut cx) {
             packets += batch.len();
         }
 
