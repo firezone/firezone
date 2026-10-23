@@ -23,10 +23,10 @@ defmodule Portal.SiteDeviceFixtures do
     account =
       cond do
         site = Map.get(attrs, :site) ->
-          site.account || Portal.Repo.preload(site, :account).account
+          Portal.Repo.preload(site, :account).account
 
         device = Map.get(attrs, :device) ->
-          device.account || Portal.Repo.preload(device, :account).account
+          Portal.Repo.preload(device, :account).account
 
         true ->
           Map.get(attrs, :account) || account_fixture()
