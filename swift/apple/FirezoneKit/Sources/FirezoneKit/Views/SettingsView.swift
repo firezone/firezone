@@ -321,30 +321,45 @@ public struct SettingsView: View {
           HStack {
             Spacer()
             Form {
-              // Auth Base URL
               HStack {
-                Text("Auth Base URL")
+                Text("Server")
                   .frame(width: 150, alignment: .trailing)
-                TextField(
-                  "",
-                  text: $viewModel.authURL,
-                  prompt: Text(PlaceholderText.authURL)
-                )
-                .disabled(configuration.isAuthURLForced)
+                Picker("", selection: $viewModel.cloudRegion) {
+                  ForEach(CloudRegion.allCases) { region in
+                    Text(region.title).tag(region)
+                  }
+                }
+                .labelsHidden()
+                .disabled(viewModel.isCloudRegionForced)
                 .frame(width: 250)
               }
 
-              // API URL
-              HStack {
-                Text("API URL")
-                  .frame(width: 150, alignment: .trailing)
-                TextField(
-                  "",
-                  text: $viewModel.apiURL,
-                  prompt: Text(PlaceholderText.apiURL)
-                )
-                .disabled(configuration.isApiURLForced)
-                .frame(width: 250)
+              if viewModel.cloudRegion == .custom {
+                // Auth Base URL
+                HStack {
+                  Text("Auth Base URL")
+                    .frame(width: 150, alignment: .trailing)
+                  TextField(
+                    "",
+                    text: $viewModel.authURL,
+                    prompt: Text(PlaceholderText.authURL)
+                  )
+                  .disabled(configuration.isAuthURLForced)
+                  .frame(width: 250)
+                }
+
+                // API URL
+                HStack {
+                  Text("API URL")
+                    .frame(width: 150, alignment: .trailing)
+                  TextField(
+                    "",
+                    text: $viewModel.apiURL,
+                    prompt: Text(PlaceholderText.apiURL)
+                  )
+                  .disabled(configuration.isApiURLForced)
+                  .frame(width: 250)
+                }
               }
 
               // Log Filter
@@ -372,31 +387,39 @@ public struct SettingsView: View {
         Form {
           Section(
             content: {
-              VStack(alignment: .leading, spacing: 2) {
-                Text("Auth Base URL")
-                  .foregroundStyle(.secondary)
-                  .font(.caption)
-                TextField(
-                  PlaceholderText.authURL,
-                  text: $viewModel.authURL
-                )
-                .autocorrectionDisabled()
-                .textInputAutocapitalization(.never)
-                .submitLabel(.done)
-                .disabled(configuration.isAuthURLForced)
+              Picker("Server", selection: $viewModel.cloudRegion) {
+                ForEach(CloudRegion.allCases) { region in
+                  Text(region.title).tag(region)
+                }
               }
-              VStack(alignment: .leading, spacing: 2) {
-                Text("API URL")
-                  .foregroundStyle(.secondary)
-                  .font(.caption)
-                TextField(
-                  PlaceholderText.apiURL,
-                  text: $viewModel.apiURL
-                )
-                .autocorrectionDisabled()
-                .textInputAutocapitalization(.never)
-                .submitLabel(.done)
-                .disabled(configuration.isApiURLForced)
+              .disabled(viewModel.isCloudRegionForced)
+              if viewModel.cloudRegion == .custom {
+                VStack(alignment: .leading, spacing: 2) {
+                  Text("Auth Base URL")
+                    .foregroundStyle(.secondary)
+                    .font(.caption)
+                  TextField(
+                    PlaceholderText.authURL,
+                    text: $viewModel.authURL
+                  )
+                  .autocorrectionDisabled()
+                  .textInputAutocapitalization(.never)
+                  .submitLabel(.done)
+                  .disabled(configuration.isAuthURLForced)
+                }
+                VStack(alignment: .leading, spacing: 2) {
+                  Text("API URL")
+                    .foregroundStyle(.secondary)
+                    .font(.caption)
+                  TextField(
+                    PlaceholderText.apiURL,
+                    text: $viewModel.apiURL
+                  )
+                  .autocorrectionDisabled()
+                  .textInputAutocapitalization(.never)
+                  .submitLabel(.done)
+                  .disabled(configuration.isApiURLForced)
+                }
               }
               VStack(alignment: .leading, spacing: 2) {
                 Text("Log Filter")

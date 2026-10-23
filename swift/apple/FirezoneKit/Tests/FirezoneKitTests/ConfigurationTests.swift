@@ -285,6 +285,92 @@ struct ConfigurationTests {
     #expect(providerConfiguration[Configuration.Keys.apiURL] == "wss://saved-user-change.api")
   }
 
+  // MARK: - Cloud Region
+
+  @Test("Saved US URLs show the US region")
+  @MainActor
+  func savedUSURLsShowUSRegion() async {
+    let config = Configuration(userDefaults: UserDefaults.makeTestDefaults())
+    config.loadProviderConfiguration(
+      [
+        Configuration.Keys.authURL: "https://app.firezone.dev/",
+        Configuration.Keys.apiURL: "wss://api.firezone.dev",
+      ]
+    )
+
+    let viewModel = SettingsViewModel(configuration: config)
+
+    #expect(viewModel.cloudRegion == .us)
+  }
+
+  @Test("Saved self-hosted URLs show custom and keep the URLs")
+  @MainActor
+  func savedSelfHostedURLsShowCustom() async {
+    let config = Configuration(userDefaults: UserDefaults.makeTestDefaults())
+    config.loadProviderConfiguration(
+      [
+        Configuration.Keys.authURL: "https://firezone.example.com",
+        Configuration.Keys.apiURL: "wss://api.example.com",
+      ]
+    )
+
+    let viewModel = SettingsViewModel(configuration: config)
+
+    #expect(viewModel.cloudRegion == .custom)
+    #expect(viewModel.authURL == "https://firezone.example.com")
+    #expect(viewModel.apiURL == "wss://api.example.com")
+  }
+
+  @Test("Picking the EU region saves the EU URLs")
+  @MainActor
+  func pickingEURegionSavesEUURLs() async throws {
+    let config = Configuration(userDefaults: UserDefaults.makeTestDefaults())
+    let viewModel = SettingsViewModel(configuration: config)
+
+    viewModel.cloudRegion = .eu
+    try await viewModel.save()
+
+    #expect(config.authURL == "https://eu.app.firezone.dev")
+    #expect(config.apiURL == "wss://eu.api.firezone.dev")
+  }
+
+  @Test("Forced EU URLs show the EU region, locked")
+  @MainActor
+  func forcedEUURLsShowEURegion() async throws {
+    let defaults = try #require(
+      ForcedUserDefaults(
+        forcedKeys: [Configuration.Keys.authURL, Configuration.Keys.apiURL],
+        forcedValues: [
+          Configuration.Keys.authURL: "https://eu.app.firezone.dev",
+          Configuration.Keys.apiURL: "wss://eu.api.firezone.dev",
+        ]
+      )
+    )
+    let config = Configuration(userDefaults: defaults)
+
+    let viewModel = SettingsViewModel(configuration: config)
+
+    #expect(viewModel.cloudRegion == .eu)
+    #expect(viewModel.isCloudRegionForced)
+  }
+
+  @Test("One forced URL shows custom")
+  @MainActor
+  func oneForcedURLShowsCustom() async throws {
+    let defaults = try #require(
+      ForcedUserDefaults(
+        forcedKeys: [Configuration.Keys.apiURL],
+        forcedValues: [Configuration.Keys.apiURL: "wss://api.firezone.dev"]
+      )
+    )
+    let config = Configuration(userDefaults: defaults)
+    config.loadProviderConfiguration([Configuration.Keys.authURL: "https://app.firezone.dev"])
+
+    let viewModel = SettingsViewModel(configuration: config)
+
+    #expect(viewModel.cloudRegion == .custom)
+  }
+
   // MARK: - Published Properties Initialization
 
   @Test("Published MDM-only properties initialize from UserDefaults")
