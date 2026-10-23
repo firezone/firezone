@@ -57,6 +57,8 @@ public class Configuration: ObservableObject {
     public static let disableUpdateCheck = "disableUpdateCheck"
     public static let supportURL = "supportURL"
     public static let userDefaultsMigrated = "userDefaultsMigrated"
+    static let lastCustomAuthURL = "lastCustomAuthURL"
+    static let lastCustomApiURL = "lastCustomApiURL"
   }
 
   // Each entry describes a key persisted to providerConfiguration. The getters
@@ -169,6 +171,22 @@ public class Configuration: ObservableObject {
         Keys.internetResourceEnabled, default: ConfigurationDefaults.internetResourceEnabled)
     }
     set { setProviderValue(newValue, forKey: Keys.internetResourceEnabled) }
+  }
+
+  /// The URLs last saved with the Custom region picked, so that picking Custom again brings them
+  /// back. Only this app reads them: they are not a managed setting and never reach the tunnel.
+  var lastCustomURLs: (authURL: String, apiURL: String)? {
+    get {
+      guard let authURL = defaults.string(forKey: Keys.lastCustomAuthURL),
+        let apiURL = defaults.string(forKey: Keys.lastCustomApiURL)
+      else { return nil }
+
+      return (authURL, apiURL)
+    }
+    set {
+      defaults.set(newValue?.authURL, forKey: Keys.lastCustomAuthURL)
+      defaults.set(newValue?.apiURL, forKey: Keys.lastCustomApiURL)
+    }
   }
 
   var hideAdminPortalMenuItem: Bool { managedBool(Keys.hideAdminPortalMenuItem) }

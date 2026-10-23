@@ -16,6 +16,8 @@ class SettingsViewModel: ObservableObject {
 
   @Published private(set) var shouldDisableApplyButton = false
   @Published private(set) var shouldDisableResetButton = false
+  // Kept apart from the URLs so that picking Custom does not snap back to a region whose URLs match.
+  @Published private(set) var cloudRegion: CloudRegion
   @Published var authURL: String
   @Published var apiURL: String
   @Published var logFilter: String
@@ -47,10 +49,12 @@ class SettingsViewModel: ObservableObject {
 
     authURL = self.configuration.authURL
     apiURL = self.configuration.apiURL
+    cloudRegion = .custom
     logFilter = self.configuration.logFilter
     accountSlug = self.configuration.accountSlug
     connectOnStart = self.configuration.connectOnStart
     startOnLogin = self.configuration.startOnLogin
+    cloudRegion = detectCloudRegion()
 
     Publishers.MergeMany(
       $authURL,
@@ -95,6 +99,7 @@ class SettingsViewModel: ObservableObject {
       connectOnStart = ConfigurationDefaults.connectOnStart
     }
     if !configuration.isStartOnLoginForced { startOnLogin = ConfigurationDefaults.startOnLogin }
+    cloudRegion = detectCloudRegion()
 
     updateDerivedState()
   }
@@ -106,8 +111,24 @@ class SettingsViewModel: ObservableObject {
     if !configuration.isAccountSlugForced { configuration.accountSlug = accountSlug }
     if !configuration.isConnectOnStartForced { configuration.connectOnStart = connectOnStart }
     if !configuration.isStartOnLoginForced { configuration.startOnLogin = startOnLogin }
+    if cloudRegion == .custom, !isCloudRegionForced {
+      configuration.lastCustomURLs = (authURL, apiURL)
+    }
 
     updateDerivedState()
+  }
+
+  /// Picks `region` on the user's behalf: US and EU bring their own URLs, and Custom brings back
+  /// the last ones saved with it, if any.
+  func selectCloudRegion(_ region: CloudRegion) {
+    guard region != cloudRegion, !isCloudRegionForced else { return }
+
+    cloudRegion = region
+
+    guard let urls = region.urls ?? configuration.lastCustomURLs else { return }
+
+    authURL = urls.authURL
+    apiURL = urls.apiURL
   }
 
   func refreshLogDirectorySize() {
@@ -158,6 +179,10 @@ class SettingsViewModel: ObservableObject {
   }
 
   func isValid() -> Bool {
+    areURLsValid() && isLogFilterValid()
+  }
+
+  func areURLsValid() -> Bool {
     guard let apiURL = URL(string: apiURL),
       apiURL.host != nil,
       ["wss", "ws"].contains(apiURL.scheme),
@@ -174,12 +199,11 @@ class SettingsViewModel: ObservableObject {
       return false
     }
 
-    guard !logFilter.isEmpty
-    else {
-      return false
-    }
-
     return true
+  }
+
+  func isLogFilterValid() -> Bool {
+    !logFilter.isEmpty
   }
 
   func isDefault() -> Bool {
@@ -202,6 +226,17 @@ class SettingsViewModel: ObservableObject {
       && startOnLogin == configuration.startOnLogin)
   }
 
+  var isCloudRegionForced: Bool {
+    configuration.isAuthURLForced || configuration.isApiURLForced
+  }
+
+  // With only one of the URLs forced, `custom` keeps the other one editable.
+  private func detectCloudRegion() -> CloudRegion {
+    guard configuration.isAuthURLForced == configuration.isApiURLForced else { return .custom }
+
+    return CloudRegion.of(authURL: authURL, apiURL: apiURL)
+  }
+
   private func updateDerivedState() {
     shouldDisableApplyButton = (isAllForced() || isSaved() || !isValid())
 
@@ -215,5 +250,6 @@ class SettingsViewModel: ObservableObject {
     if configuration.isAccountSlugForced { accountSlug = configuration.accountSlug }
     if configuration.isConnectOnStartForced { connectOnStart = configuration.connectOnStart }
     if configuration.isStartOnLoginForced { startOnLogin = configuration.startOnLogin }
+    if isCloudRegionForced { cloudRegion = detectCloudRegion() }
   }
 }

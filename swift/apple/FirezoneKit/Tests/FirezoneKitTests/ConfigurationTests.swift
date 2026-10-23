@@ -285,6 +285,270 @@ struct ConfigurationTests {
     #expect(providerConfiguration[Configuration.Keys.apiURL] == "wss://saved-user-change.api")
   }
 
+  // MARK: - Cloud Region
+
+  @Test("Saved US URLs show the US region")
+  @MainActor
+  func savedUSURLsShowUSRegion() async {
+    let config = Configuration(userDefaults: UserDefaults.makeTestDefaults())
+    config.loadProviderConfiguration(
+      [
+        Configuration.Keys.authURL: "https://app.firezone.dev/",
+        Configuration.Keys.apiURL: "wss://api.firezone.dev",
+      ]
+    )
+
+    let viewModel = SettingsViewModel(configuration: config)
+
+    #expect(viewModel.cloudRegion == .us)
+  }
+
+  @Test("Saved self-hosted URLs show custom and keep the URLs")
+  @MainActor
+  func savedSelfHostedURLsShowCustom() async {
+    let config = Configuration(userDefaults: UserDefaults.makeTestDefaults())
+    config.loadProviderConfiguration(
+      [
+        Configuration.Keys.authURL: "https://firezone.example.com",
+        Configuration.Keys.apiURL: "wss://api.example.com",
+      ]
+    )
+
+    let viewModel = SettingsViewModel(configuration: config)
+
+    #expect(viewModel.cloudRegion == .custom)
+    #expect(viewModel.authURL == "https://firezone.example.com")
+    #expect(viewModel.apiURL == "wss://api.example.com")
+  }
+
+  @Test("Picking the EU region saves the EU URLs")
+  @MainActor
+  func pickingEURegionSavesEUURLs() async throws {
+    let config = Configuration(userDefaults: UserDefaults.makeTestDefaults())
+    let viewModel = SettingsViewModel(configuration: config)
+
+    viewModel.selectCloudRegion(.eu)
+    try await viewModel.save()
+
+    #expect(config.authURL == "https://eu.app.firezone.dev")
+    #expect(config.apiURL == "wss://eu.api.firezone.dev")
+  }
+
+  @Test("Forced EU URLs show the EU region, locked")
+  @MainActor
+  func forcedEUURLsShowEURegion() async throws {
+    let defaults = try #require(
+      ForcedUserDefaults(
+        forcedKeys: [Configuration.Keys.authURL, Configuration.Keys.apiURL],
+        forcedValues: [
+          Configuration.Keys.authURL: "https://eu.app.firezone.dev",
+          Configuration.Keys.apiURL: "wss://eu.api.firezone.dev",
+        ]
+      )
+    )
+    let config = Configuration(userDefaults: defaults)
+
+    let viewModel = SettingsViewModel(configuration: config)
+
+    #expect(viewModel.cloudRegion == .eu)
+    #expect(viewModel.isCloudRegionForced)
+  }
+
+  @Test("One forced URL shows custom")
+  @MainActor
+  func oneForcedURLShowsCustom() async throws {
+    let defaults = try #require(
+      ForcedUserDefaults(
+        forcedKeys: [Configuration.Keys.apiURL],
+        forcedValues: [Configuration.Keys.apiURL: "wss://api.firezone.dev"]
+      )
+    )
+    let config = Configuration(userDefaults: defaults)
+    config.loadProviderConfiguration([Configuration.Keys.authURL: "https://app.firezone.dev"])
+
+    let viewModel = SettingsViewModel(configuration: config)
+
+    #expect(viewModel.cloudRegion == .custom)
+  }
+
+  @Test("Region URLs match despite trailing slashes, case, and whitespace")
+  func regionURLsMatchLoosely() {
+    #expect(
+      CloudRegion.of(
+        authURL: " HTTPS://EU.app.firezone.dev// ", apiURL: "wss://eu.api.firezone.dev/")
+        == .eu
+    )
+    #expect(
+      CloudRegion.of(authURL: "https://app.firezone.dev", apiURL: "wss://eu.api.firezone.dev")
+        == .custom
+    )
+    #expect(
+      CloudRegion.of(authURL: "https://app.firezone.dev/path", apiURL: "wss://api.firezone.dev")
+        == .custom
+    )
+  }
+
+  @Test("Picking custom keeps the URLs of the region picked before")
+  @MainActor
+  func pickingCustomKeepsURLs() async {
+    let config = Configuration(userDefaults: UserDefaults.makeTestDefaults())
+    let viewModel = SettingsViewModel(configuration: config)
+
+    viewModel.selectCloudRegion(.eu)
+    viewModel.selectCloudRegion(.custom)
+
+    #expect(viewModel.authURL == "https://eu.app.firezone.dev")
+    #expect(viewModel.apiURL == "wss://eu.api.firezone.dev")
+  }
+
+  @Test("Forced US URLs with a trailing slash show the US region, locked")
+  @MainActor
+  func forcedUSURLsWithTrailingSlashShowUSRegion() async throws {
+    let defaults = try #require(
+      ForcedUserDefaults(
+        forcedKeys: [Configuration.Keys.authURL, Configuration.Keys.apiURL],
+        forcedValues: [
+          Configuration.Keys.authURL: "https://app.firezone.dev/",
+          Configuration.Keys.apiURL: "wss://api.firezone.dev/",
+        ]
+      )
+    )
+    let config = Configuration(userDefaults: defaults)
+
+    let viewModel = SettingsViewModel(configuration: config)
+
+    #expect(viewModel.cloudRegion == .us)
+    #expect(viewModel.isCloudRegionForced)
+  }
+
+  @Test("Forced self-hosted URLs show custom, locked, and cannot be changed by the picker")
+  @MainActor
+  func forcedSelfHostedURLsShowCustom() async throws {
+    let defaults = try #require(
+      ForcedUserDefaults(
+        forcedKeys: [Configuration.Keys.authURL, Configuration.Keys.apiURL],
+        forcedValues: [
+          Configuration.Keys.authURL: "https://firezone.example.com",
+          Configuration.Keys.apiURL: "wss://api.example.com",
+        ]
+      )
+    )
+    let config = Configuration(userDefaults: defaults)
+    let viewModel = SettingsViewModel(configuration: config)
+
+    #expect(viewModel.cloudRegion == .custom)
+    #expect(viewModel.isCloudRegionForced)
+
+    viewModel.selectCloudRegion(.us)
+    try await viewModel.save()
+
+    #expect(viewModel.authURL == "https://firezone.example.com")
+    #expect(viewModel.apiURL == "wss://api.example.com")
+    #expect(config.authURL == "https://firezone.example.com")
+    #expect(config.apiURL == "wss://api.example.com")
+  }
+
+  @Test("Picking custom brings back the URLs last saved with custom")
+  @MainActor
+  func pickingCustomRestoresLastCustomURLs() async throws {
+    let config = Configuration(userDefaults: UserDefaults.makeTestDefaults())
+    let viewModel = SettingsViewModel(configuration: config)
+
+    viewModel.selectCloudRegion(.us)
+    viewModel.selectCloudRegion(.custom)
+    viewModel.authURL = "https://firezone.example.com"
+    viewModel.apiURL = "wss://api.example.com"
+    try await viewModel.save()
+
+    viewModel.selectCloudRegion(.eu)
+    try await viewModel.save()
+
+    #expect(config.authURL == "https://eu.app.firezone.dev")
+    #expect(config.apiURL == "wss://eu.api.firezone.dev")
+
+    let reopened = SettingsViewModel(configuration: config)
+    #expect(reopened.cloudRegion == .eu)
+
+    reopened.selectCloudRegion(.custom)
+
+    #expect(reopened.authURL == "https://firezone.example.com")
+    #expect(reopened.apiURL == "wss://api.example.com")
+  }
+
+  @Test("Custom URLs are only remembered once saved")
+  @MainActor
+  func unsavedCustomURLsAreNotRemembered() async throws {
+    let config = Configuration(userDefaults: UserDefaults.makeTestDefaults())
+    let viewModel = SettingsViewModel(configuration: config)
+
+    viewModel.selectCloudRegion(.us)
+    viewModel.selectCloudRegion(.custom)
+    viewModel.authURL = "https://firezone.example.com"
+    viewModel.apiURL = "wss://api.example.com"
+    viewModel.selectCloudRegion(.eu)
+    try await viewModel.save()
+
+    #expect(config.lastCustomURLs == nil)
+
+    viewModel.selectCloudRegion(.custom)
+
+    #expect(viewModel.authURL == "https://eu.app.firezone.dev")
+    #expect(viewModel.apiURL == "wss://eu.api.firezone.dev")
+  }
+
+  @Test("Remembered custom URLs do not change the region shown")
+  @MainActor
+  func rememberedCustomURLsDoNotChangeRegion() async {
+    let config = Configuration(userDefaults: UserDefaults.makeTestDefaults())
+    config.lastCustomURLs = ("https://firezone.example.com", "wss://api.example.com")
+    config.loadProviderConfiguration(
+      [
+        Configuration.Keys.authURL: "https://app.firezone.dev",
+        Configuration.Keys.apiURL: "wss://api.firezone.dev",
+      ]
+    )
+
+    let viewModel = SettingsViewModel(configuration: config)
+
+    #expect(viewModel.cloudRegion == .us)
+    #expect(config.toProviderConfiguration()[Configuration.Keys.lastCustomAuthURL] == nil)
+  }
+
+  @Test("Forced URLs saved with custom are not remembered")
+  @MainActor
+  func forcedCustomURLsAreNotRemembered() async throws {
+    let defaults = try #require(
+      ForcedUserDefaults(
+        forcedKeys: [Configuration.Keys.authURL, Configuration.Keys.apiURL],
+        forcedValues: [
+          Configuration.Keys.authURL: "https://firezone.example.com",
+          Configuration.Keys.apiURL: "wss://api.example.com",
+        ]
+      )
+    )
+    let config = Configuration(userDefaults: defaults)
+    let viewModel = SettingsViewModel(configuration: config)
+
+    viewModel.accountSlug = "example"
+    try await viewModel.save()
+
+    #expect(config.lastCustomURLs == nil)
+  }
+
+  @Test("An empty log filter is invalid without blaming the URLs")
+  @MainActor
+  func emptyLogFilterIsInvalid() async {
+    let config = Configuration(userDefaults: UserDefaults.makeTestDefaults())
+    let viewModel = SettingsViewModel(configuration: config)
+
+    viewModel.selectCloudRegion(.us)
+    viewModel.logFilter = ""
+
+    #expect(viewModel.areURLsValid())
+    #expect(!viewModel.isLogFilterValid())
+    #expect(!viewModel.isValid())
+  }
+
   // MARK: - Published Properties Initialization
 
   @Test("Published MDM-only properties initialize from UserDefaults")

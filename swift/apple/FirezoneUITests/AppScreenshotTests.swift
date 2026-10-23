@@ -22,7 +22,6 @@
     /// the gallery takes that as a picture of the tab it asked for.
     private static let settingsTabs = [
       (label: "General", name: "general", showing: "Account Slug"),
-      (label: "Advanced", name: "advanced", showing: "Auth Base URL"),
       (label: "Diagnostic Logs", name: "logs", showing: "Clear Log Directory"),
     ]
 

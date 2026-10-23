@@ -57,19 +57,9 @@ public struct SettingsView: View {
     static let accountSlug = "Account slug or ID (optional)"
   }
 
-  private struct FootnoteText {
-    static let forAdvanced = try? AttributedString(
-      markdown: """
-        **WARNING:** These settings are intended for internal debug purposes **only**. \
-        Changing these will disrupt access to your Firezone resources.
-        """
-    )
-  }
-
   /// The tabs of the settings screen.
   public enum Tab: Hashable {
     case general
-    case advanced
     case deviceTrust
     case logs
   }
@@ -95,14 +85,8 @@ public struct SettingsView: View {
                   Image(systemName: "slider.horizontal.3")
                   Text("General")
                 }
+                .badge(viewModel.areURLsValid() ? nil : "!")
                 .tag(Tab.general)
-              advancedTab
-                .tabItem {
-                  Image(systemName: "gearshape.2")
-                  Text("Advanced")
-                }
-                .badge(viewModel.isValid() ? nil : "!")
-                .tag(Tab.advanced)
               if store.deviceTrustCertificateSummary != nil {
                 deviceTrustTab
                   .tabItem {
@@ -116,6 +100,7 @@ public struct SettingsView: View {
                   Image(systemName: "doc.text")
                   Text("Diagnostic Logs")
                 }
+                .badge(viewModel.isLogFilterValid() ? nil : "!")
                 .tag(Tab.logs)
             }
           }
@@ -164,11 +149,6 @@ public struct SettingsView: View {
               Text("General")
             }
             .tag(Tab.general)
-          advancedTab
-            .tabItem {
-              Text("Advanced")
-            }
-            .tag(Tab.advanced)
           if store.deviceTrustCertificateSummary != nil {
             deviceTrustTab
               .tabItem {
@@ -232,6 +212,13 @@ public struct SettingsView: View {
     #endif
   }
 
+  private var cloudRegion: Binding<CloudRegion> {
+    Binding(
+      get: { viewModel.cloudRegion },
+      set: { viewModel.selectCloudRegion($0) }
+    )
+  }
+
   private var generalTab: some View {
     #if os(macOS)
       VStack {
@@ -239,30 +226,74 @@ public struct SettingsView: View {
         HStack {
           Spacer()
           Form {
-            HStack {
-              Text("Account Slug")
-                .frame(width: 150, alignment: .trailing)
-              TextField(
-                "",
-                text: $viewModel.accountSlug,
-                prompt: Text(PlaceholderText.accountSlug)
-              )
-              .disabled(configuration.isAccountSlugForced)
-              .frame(width: 250)
-            }
-            .padding(.bottom, 10)
+            Section {
+              LabeledContent("Account Slug") {
+                TextField(
+                  "",
+                  text: $viewModel.accountSlug,
+                  prompt: Text(PlaceholderText.accountSlug)
+                )
+                .labelsHidden()
+                .disabled(configuration.isAccountSlugForced)
+                .frame(width: 250)
+              }
 
-            Toggle(isOn: $viewModel.connectOnStart) {
-              Text("Automatically connect when Firezone is launched")
-            }
-            .toggleStyle(.checkbox)
-            .disabled(configuration.isConnectOnStartForced)
+              LabeledContent(CloudRegion.pickerTitle) {
+                Picker(CloudRegion.pickerTitle, selection: cloudRegion) {
+                  ForEach(CloudRegion.allCases) { region in
+                    Text(region.title).tag(region)
+                  }
+                }
+                .labelsHidden()
+                .fixedSize()
+                .disabled(viewModel.isCloudRegionForced)
+              }
 
-            Toggle(isOn: $viewModel.startOnLogin) {
-              Text("Start Firezone when you sign into your Mac")
+              if viewModel.cloudRegion == .custom {
+                LabeledContent("Auth Base URL") {
+                  TextField(
+                    "",
+                    text: $viewModel.authURL,
+                    prompt: Text(PlaceholderText.authURL)
+                  )
+                  .labelsHidden()
+                  .disabled(configuration.isAuthURLForced)
+                  .frame(width: 250)
+                }
+
+                LabeledContent("API URL") {
+                  TextField(
+                    "",
+                    text: $viewModel.apiURL,
+                    prompt: Text(PlaceholderText.apiURL)
+                  )
+                  .labelsHidden()
+                  .disabled(configuration.isApiURLForced)
+                  .frame(width: 250)
+                }
+              }
+            } header: {
+              Text("Sign-in")
+                .font(.headline)
             }
-            .toggleStyle(.checkbox)
-            .disabled(configuration.isStartOnLoginForced)
+
+            Section {
+              Toggle(isOn: $viewModel.connectOnStart) {
+                Text("Automatically connect when Firezone is launched")
+              }
+              .toggleStyle(.checkbox)
+              .disabled(configuration.isConnectOnStartForced)
+
+              Toggle(isOn: $viewModel.startOnLogin) {
+                Text("Start Firezone when you sign into your Mac")
+              }
+              .toggleStyle(.checkbox)
+              .disabled(configuration.isStartOnLoginForced)
+            } header: {
+              Text("Startup")
+                .font(.headline)
+                .padding(.top, 10)
+            }
           }
           .padding(10)
           Spacer()
@@ -272,106 +303,46 @@ public struct SettingsView: View {
     #elseif os(iOS)
       VStack {
         Form {
-          Section(
-            content: {
-              VStack(alignment: .leading, spacing: 2) {
-                Text("Account Slug")
-                  .foregroundStyle(.secondary)
-                  .font(.caption)
-                TextField(
-                  PlaceholderText.accountSlug,
-                  text: $viewModel.accountSlug
-                )
-                .autocorrectionDisabled()
-                .textInputAutocapitalization(.never)
-                .submitLabel(.done)
-                .disabled(configuration.isAccountSlugForced)
-                .padding(.bottom, 10)
-
-                Spacer()
-
-                Toggle(isOn: $viewModel.connectOnStart) {
-                  Text("Automatically connect when Firezone is launched")
-                }
-                .toggleStyle(.switch)
-                .disabled(configuration.isConnectOnStartForced)
-              }
-            },
-            header: { Text("General Settings") },
-          )
-        }
-      }
-    #endif
-  }
-
-  private var advancedTab: some View {
-    #if os(macOS)
-      ScrollView {
-        VStack(spacing: 24) {
-          // Note
-          HStack {
-            Spacer()
-            Text(FootnoteText.forAdvanced ?? "")
-              .foregroundStyle(.secondary)
-              .frame(width: 400, alignment: .trailing)
-            Spacer()
-          }
-
-          // Text fields
-          HStack {
-            Spacer()
-            Form {
-              // Auth Base URL
-              HStack {
-                Text("Auth Base URL")
-                  .frame(width: 150, alignment: .trailing)
-                TextField(
-                  "",
-                  text: $viewModel.authURL,
-                  prompt: Text(PlaceholderText.authURL)
-                )
-                .disabled(configuration.isAuthURLForced)
-                .frame(width: 250)
-              }
-
-              // API URL
-              HStack {
-                Text("API URL")
-                  .frame(width: 150, alignment: .trailing)
-                TextField(
-                  "",
-                  text: $viewModel.apiURL,
-                  prompt: Text(PlaceholderText.apiURL)
-                )
-                .disabled(configuration.isApiURLForced)
-                .frame(width: 250)
-              }
-
-              // Log Filter
-              HStack {
-                Text("Log Filter")
-                  .frame(width: 150, alignment: .trailing)
-                TextField(
-                  "",
-                  text: $viewModel.logFilter,
-                  prompt: Text(PlaceholderText.logFilter)
-                )
-                .disabled(configuration.isLogFilterForced)
-                .frame(width: 250)
-              }
+          Section("Sign-in") {
+            VStack(alignment: .leading, spacing: 2) {
+              Text("Account Slug")
+                .foregroundStyle(.secondary)
+                .font(.caption)
+              TextField(
+                PlaceholderText.accountSlug,
+                text: $viewModel.accountSlug
+              )
+              .autocorrectionDisabled()
+              .textInputAutocapitalization(.never)
+              .submitLabel(.done)
+              .disabled(configuration.isAccountSlugForced)
             }
-            .frame(width: 500)
-            Spacer()
-          }
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical)
-      }
-    #elseif os(iOS)
-      VStack {
-        Form {
-          Section(
-            content: {
+
+            // A menu rather than a form picker, so the choice sits under its caption like
+            // the other fields instead of being pushed to a second, indented line.
+            VStack(alignment: .leading, spacing: 2) {
+              Text(CloudRegion.pickerTitle)
+                .foregroundStyle(.secondary)
+                .font(.caption)
+              Menu {
+                Picker(CloudRegion.pickerTitle, selection: cloudRegion) {
+                  ForEach(CloudRegion.allCases) { region in
+                    Text(region.title).tag(region)
+                  }
+                }
+              } label: {
+                HStack(spacing: 4) {
+                  Text(viewModel.cloudRegion.title)
+                  Image(systemName: "chevron.up.chevron.down")
+                    .font(.footnote)
+                }
+              }
+              .accessibilityLabel(CloudRegion.pickerTitle)
+              .accessibilityValue(viewModel.cloudRegion.title)
+              .disabled(viewModel.isCloudRegionForced)
+            }
+
+            if viewModel.cloudRegion == .custom {
               VStack(alignment: .leading, spacing: 2) {
                 Text("Auth Base URL")
                   .foregroundStyle(.secondary)
@@ -398,34 +369,28 @@ public struct SettingsView: View {
                 .submitLabel(.done)
                 .disabled(configuration.isApiURLForced)
               }
-              VStack(alignment: .leading, spacing: 2) {
-                Text("Log Filter")
-                  .foregroundStyle(.secondary)
-                  .font(.caption)
-                TextField(
-                  PlaceholderText.logFilter,
-                  text: $viewModel.logFilter
-                )
-                .autocorrectionDisabled()
-                .textInputAutocapitalization(.never)
-                .submitLabel(.done)
-                .disabled(configuration.isLogFilterForced)
-              }
-              HStack {
-                Spacer()
-                Button(
-                  "Reset to Defaults",
-                  action: {
-                    viewModel.reset()
-                  }
-                )
-                .disabled(viewModel.shouldDisableResetButton)
-                Spacer()
-              }
-            },
-            header: { Text("Advanced Settings") },
-            footer: { Text(FootnoteText.forAdvanced ?? "") }
-          )
+            }
+          }
+          Section("Startup") {
+            Toggle(isOn: $viewModel.connectOnStart) {
+              Text("Automatically connect when Firezone is launched")
+            }
+            .toggleStyle(.switch)
+            .disabled(configuration.isConnectOnStartForced)
+          }
+          Section {
+            HStack {
+              Spacer()
+              Button(
+                "Reset to Defaults",
+                action: {
+                  viewModel.reset()
+                }
+              )
+              .disabled(viewModel.shouldDisableResetButton)
+              Spacer()
+            }
+          }
         }
         Spacer()
         HStack {
@@ -444,6 +409,19 @@ public struct SettingsView: View {
       VStack {
         Form {
           Section(header: Text("Logs")) {
+            VStack(alignment: .leading, spacing: 2) {
+              Text("Log Filter")
+                .foregroundStyle(.secondary)
+                .font(.caption)
+              TextField(
+                PlaceholderText.logFilter,
+                text: $viewModel.logFilter
+              )
+              .autocorrectionDisabled()
+              .textInputAutocapitalization(.never)
+              .submitLabel(.done)
+              .disabled(configuration.isLogFilterForced)
+            }
             LogDirectorySizeView(sizeText: viewModel.logDirectorySizeText)
               .onAppear {
                 viewModel.refreshLogDirectorySize()
@@ -505,33 +483,54 @@ public struct SettingsView: View {
       }
     #elseif os(macOS)
       VStack {
-        VStack(alignment: .leading, spacing: 10) {
-          LogDirectorySizeView(sizeText: viewModel.logDirectorySizeText)
-            .onAppear {
-              viewModel.refreshLogDirectorySize()
+        Spacer()
+        HStack {
+          Spacer()
+          Form {
+            LabeledContent("Log Filter") {
+              TextField(
+                "",
+                text: $viewModel.logFilter,
+                prompt: Text(PlaceholderText.logFilter)
+              )
+              .labelsHidden()
+              .disabled(configuration.isLogFilterForced)
+              .frame(width: 250)
             }
-            .onDisappear {
-              viewModel.cancelLogDirectorySizeRefresh()
+            LogDirectorySizeView(sizeText: viewModel.logDirectorySizeText)
+              .onAppear {
+                viewModel.refreshLogDirectorySize()
+              }
+              .onDisappear {
+                viewModel.cancelLogDirectorySizeRefresh()
+              }
+            LabeledContent {
+              HStack(spacing: 12) {
+                ButtonWithProgress(
+                  systemImageName: "trash",
+                  title: "Clear Log Directory",
+                  isProcessing: viewModel.isClearingLogs,
+                  action: {
+                    viewModel.clearLogs()
+                  }
+                )
+                ButtonWithProgress(
+                  systemImageName: "arrow.up.doc",
+                  title: "Export Logs",
+                  isProcessing: viewModel.isExportingLogs,
+                  action: {
+                    self.exportLogsWithSavePanelOnMac()
+                  }
+                )
+              }
+            } label: {
+              EmptyView()
             }
-          HStack(spacing: 30) {
-            ButtonWithProgress(
-              systemImageName: "trash",
-              title: "Clear Log Directory",
-              isProcessing: viewModel.isClearingLogs,
-              action: {
-                viewModel.clearLogs()
-              }
-            )
-            ButtonWithProgress(
-              systemImageName: "arrow.up.doc",
-              title: "Export Logs",
-              isProcessing: viewModel.isExportingLogs,
-              action: {
-                self.exportLogsWithSavePanelOnMac()
-              }
-            )
           }
+          .padding(10)
+          Spacer()
         }
+        Spacer()
       }
     #else
       #error("Unsupported platform")
@@ -675,32 +674,35 @@ struct LogDirectorySizeView: View {
   let sizeText: String?
 
   var body: some View {
-    HStack(spacing: 10) {
-      #if os(macOS)
-        Label(
-          title: { Text("Log directory size:") },
-          icon: {}
-        )
-      #elseif os(iOS)
+    #if os(macOS)
+      LabeledContent("Log directory size") {
+        size
+      }
+    #elseif os(iOS)
+      HStack(spacing: 10) {
         Label(
           title: { Text("Log directory size:") },
           icon: {}
         )
         .foregroundColor(.secondary)
         Spacer()
-      #endif
-      Label(
-        title: {
-          Text(sizeText ?? "")
-        },
-        icon: {
-          if sizeText == nil {
-            ProgressView().controlSize(.small)
-              .frame(maxWidth: 12, maxHeight: 12)
-          }
+        size
+      }
+    #endif
+  }
+
+  private var size: some View {
+    Label(
+      title: {
+        Text(sizeText ?? "")
+      },
+      icon: {
+        if sizeText == nil {
+          ProgressView().controlSize(.small)
+            .frame(maxWidth: 12, maxHeight: 12)
         }
-      )
-    }
+      }
+    )
   }
 }
 
