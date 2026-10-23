@@ -867,6 +867,14 @@ defmodule Portal.Dev.AccountPopulation do
       )
       |> Repo.update!()
 
+    Repo.insert!(%Portal.DeviceActor{
+      account_id: state.account.id,
+      device_id: client.id,
+      actor_id: actor.id,
+      first_seen_at: client.inserted_at,
+      last_seen_at: client.last_seen_at
+    })
+
     {client, state}
   end
 

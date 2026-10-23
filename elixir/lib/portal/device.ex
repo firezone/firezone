@@ -96,7 +96,7 @@ defmodule Portal.Device do
 
     # Client-only
     belongs_to :actor, Portal.Actor
-    has_many :device_actors, Portal.DeviceActor, references: :id
+    has_many :device_actors, Portal.DeviceActor, references: :id, preload_order: [desc: :last_seen_at]
     field :hostname, :string
 
     # Device trust. Enforced client-only today, but gateways may adopt

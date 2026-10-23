@@ -325,7 +325,7 @@ defmodule PortalWeb.Devices.Components do
             />
           </div>
           <div :if={@tab == :overview} class="flex-1 overflow-y-auto">
-            <.device_owner_section account={@account} device={@device} />
+            <.device_users_section account={@account} device={@device} />
             <.device_pools_section
               :if={@device_pools != []}
               account={@account}
@@ -469,9 +469,9 @@ defmodule PortalWeb.Devices.Components do
                         </p>
                       </div>
                       <div>
-                        <p class="text-subtle font-medium mb-1">Owner</p>
+                        <p class="text-subtle font-medium mb-1">Users</p>
                         <p class="text-heading">
-                          {if @device.actor, do: @device.actor.name, else: "—"}
+                          {device_user_names(@device)}
                         </p>
                       </div>
                       <div>
@@ -543,28 +543,65 @@ defmodule PortalWeb.Devices.Components do
   attr :account, :any, required: true
   attr :device, :any, required: true
 
-  def device_owner_section(assigns) do
+  # Every actor who has signed in on the device, most recently seen first.
+  def device_users_section(assigns) do
     ~H"""
     <div class="px-5 pt-4 pb-3 border-b border-border">
-      <.section_heading title="Owner" />
-      <Navigation.link
-        navigate={~p"/#{@account}/actors/#{@device.actor.id}"}
-        class="flex items-center gap-3 px-3 py-2.5 rounded border border-border bg-raised hover:border-border-strong transition-colors group"
-      >
-        <div class="flex items-center justify-center w-8 h-8 rounded-full shrink-0 text-xs font-semibold bg-brand-muted text-brand">
-          {String.slice(@device.actor.name, 0, 2) |> String.upcase()}
-        </div>
-        <div class="min-w-0">
-          <p class="text-sm font-medium text-heading group-hover:text-brand truncate transition-colors">
-            {@device.actor.name}
-          </p>
-          <p :if={@device.actor.email} class="text-xs text-subtle truncate">
-            {@device.actor.email}
-          </p>
-        </div>
-      </Navigation.link>
+      <.section_heading title="Users" />
+      <p :if={@device.device_actors == []} class="text-xs text-subtle">
+        No one has signed in on this device yet.
+      </p>
+      <ul class="space-y-1">
+        <li :for={device_actor <- @device.device_actors}>
+          <Navigation.link
+            navigate={~p"/#{@account}/actors/#{device_actor.actor.id}"}
+            class="flex items-center gap-3 px-3 py-2.5 rounded border border-border bg-raised hover:border-border-strong transition-colors group"
+          >
+            <div class="flex items-center justify-center w-8 h-8 rounded-full shrink-0 text-xs font-semibold bg-brand-muted text-brand">
+              {String.slice(device_actor.actor.name, 0, 2) |> String.upcase()}
+            </div>
+            <div class="min-w-0 flex-1">
+              <p class="text-sm font-medium text-heading group-hover:text-brand truncate transition-colors">
+                {device_actor.actor.name}
+              </p>
+              <p :if={device_actor.actor.email} class="text-xs text-subtle truncate">
+                {device_actor.actor.email}
+              </p>
+            </div>
+            <span class="text-xs text-subtle shrink-0">
+              Last seen <Core.relative_datetime datetime={device_actor.last_seen_at} />
+            </span>
+          </Navigation.link>
+        </li>
+      </ul>
     </div>
     """
+  end
+
+  attr :account, :any, required: true
+  attr :device, :any, required: true
+  attr :class, :string, default: nil
+  attr :return_to, :string, default: nil
+
+  # The table cell: each user on its own line, most recently seen first.
+  def device_users(assigns) do
+    ~H"""
+    <span :if={@device.device_actors == []} class={["text-subtle", @class]}>—</span>
+    <div :for={device_actor <- @device.device_actors} class="truncate">
+      <.actor_name_and_role
+        account={@account}
+        actor={device_actor.actor}
+        class={@class}
+        return_to={@return_to}
+      />
+    </div>
+    """
+  end
+
+  defp device_user_names(%{device_actors: []}), do: "—"
+
+  defp device_user_names(%{device_actors: device_actors}) do
+    Enum.map_join(device_actors, ", ", & &1.actor.name)
   end
 
   attr :account, :any, required: true

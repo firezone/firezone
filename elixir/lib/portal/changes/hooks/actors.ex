@@ -1,6 +1,6 @@
 defmodule Portal.Changes.Hooks.Actors do
   @behaviour Portal.Changes.Hooks
-  alias Portal.{Changes.Change, PubSub}
+  alias Portal.{Changes.Change, PG, PubSub}
   alias __MODULE__.Database
   import Portal.SchemaHelpers
 
@@ -21,9 +21,15 @@ defmodule Portal.Changes.Hooks.Actors do
     PubSub.Changes.broadcast(actor.account_id, :actors, change)
   end
 
+  # A device outlives the actors who signed in on it, so the actor's own
+  # sessions are taken down here rather than by a device deletion. Sessions
+  # with a token are also caught by the token's cascade; tokenless X.509
+  # sessions only by this.
   @impl true
   def on_delete(lsn, old_data) do
     actor = struct_from_params(Portal.Actor, old_data)
+    PG.deliver(actor.id, :disconnect)
+
     change = %Change{lsn: lsn, op: :delete, old_struct: actor}
     PubSub.Changes.broadcast(actor.account_id, :actors, change)
   end

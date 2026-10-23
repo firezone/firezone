@@ -94,6 +94,45 @@ defmodule PortalWeb.DevicesTest do
       assert html =~ client.slug
     end
 
+    test "lists every user who signed in on a device", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      owner = actor_fixture(account: account, name: "Shared Owner")
+      guest = actor_fixture(account: account, name: "Shared Guest")
+      client = client_fixture(account: account, actor: owner, name: "Shared Workstation")
+      record_device_actor(client, guest.id)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/devices")
+
+      html = render_async(lv)
+      assert html =~ "Users"
+      assert html =~ owner.name
+      assert html =~ guest.name
+    end
+
+    test "finds a device by any of its users", %{conn: conn, account: account, actor: actor} do
+      owner = actor_fixture(account: account, name: "Primary Person")
+      guest = actor_fixture(account: account, name: "Visiting Person", email: "visitor@example.com")
+      client = client_fixture(account: account, actor: owner, name: "Shared Workstation")
+      record_device_actor(client, guest.id)
+      other_client = client_fixture(account: account, actor: actor, name: "Other Laptop")
+
+      conn = authorize_conn(conn, actor)
+
+      for search <- [guest.name, guest.email] do
+        {:ok, lv, _html} =
+          live(conn, ~p"/#{account}/devices?#{%{"devices_filter[search]" => search}}")
+
+        assert has_element?(lv, "#device-#{client.id}")
+        refute has_element?(lv, "#device-#{other_client.id}")
+      end
+    end
+
     test "filters devices by client name, slug, or actor name/email", %{
       conn: conn,
       account: account,

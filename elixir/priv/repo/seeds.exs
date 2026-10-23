@@ -361,6 +361,14 @@ defmodule Portal.Repo.Seeds do
       )
       |> Repo.update!()
 
+    Repo.insert!(%Portal.DeviceActor{
+      account_id: client.account_id,
+      device_id: client.id,
+      actor_id: subject.actor.id,
+      first_seen_at: client.inserted_at,
+      last_seen_at: client.last_seen_at
+    })
+
     {:ok, client}
   end
 

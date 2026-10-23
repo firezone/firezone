@@ -112,5 +112,23 @@ defmodule Portal.Changes.Hooks.ActorsTest do
       assert deleted_actor.name == actor.name
       assert deleted_actor.type == actor.type
     end
+
+    test "disconnects the sessions of the deleted actor" do
+      account = account_fixture()
+      actor = actor_fixture(account: account)
+      :ok = Portal.PG.join(actor.id)
+
+      old_data = %{
+        "id" => actor.id,
+        "account_id" => account.id,
+        "name" => actor.name,
+        "type" => actor.type,
+        "is_disabled" => false
+      }
+
+      assert :ok == on_delete(0, old_data)
+
+      assert_receive :disconnect
+    end
   end
 end

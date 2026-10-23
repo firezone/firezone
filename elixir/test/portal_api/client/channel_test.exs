@@ -1125,6 +1125,22 @@ defmodule PortalAPI.Client.ChannelTest do
       assert_receive {:EXIT, _pid, :shutdown}
     end
 
+    test "is reachable by the actor's id so a deleted actor takes its sessions down", %{
+      actor: actor,
+      client: client,
+      subject: subject
+    } do
+      Process.flag(:trap_exit, true)
+      join_channel(client, subject)
+
+      assert_push "init", _init_payload
+
+      assert :ok = PG.deliver(actor.id, :disconnect)
+
+      assert_push "disconnect", %{reason: "token_expired"}
+      assert_receive {:EXIT, _pid, :shutdown}
+    end
+
     test "disconnects an X.509 channel when actor CDC reports it disabled", %{
       account: account,
       actor: actor,
