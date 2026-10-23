@@ -8,6 +8,8 @@
 
 use std::collections::BTreeSet;
 use std::net::IpAddr;
+
+use ip_network_table::IpNetworkTable;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -51,6 +53,58 @@ impl DnsResourceNatEntry {
     }
 }
 
+/// The addresses of the CIDR resources the device's sites serve.
+///
+/// A peer authorized for the Internet resource must not reach into one of
+/// them without being authorized for it: the Internet catch-all stops at
+/// the resources the device serves, whichever site they belong to.
+pub(crate) struct LocalResources {
+    networks: IpNetworkTable<ResourceId>,
+}
+
+impl Default for LocalResources {
+    fn default() -> Self {
+        Self {
+            networks: IpNetworkTable::new(),
+        }
+    }
+}
+
+impl LocalResources {
+    fn set(&mut self, resources: impl IntoIterator<Item = ResourceDescription>) {
+        self.networks = IpNetworkTable::new();
+
+        for resource in resources {
+            self.upsert(resource);
+        }
+    }
+
+    fn upsert(&mut self, resource: ResourceDescription) {
+        self.remove(resource.id());
+
+        if let ResourceDescription::Cidr(cidr) = resource {
+            self.networks.insert(cidr.address, cidr.id);
+        }
+    }
+
+    fn remove(&mut self, id: ResourceId) {
+        let stale = self
+            .networks
+            .iter()
+            .filter(|(_, rid)| **rid == id)
+            .map(|(network, _)| network)
+            .collect::<Vec<_>>();
+
+        for network in stale {
+            self.networks.remove(network);
+        }
+    }
+
+    pub(crate) fn contains(&self, ip: IpAddr) -> bool {
+        self.networks.longest_match(ip).is_some()
+    }
+}
+
 /// Opaque request struct for when a domain name needs to be resolved.
 #[derive(Debug)]
 pub struct ResolveDnsRequest {
@@ -75,6 +129,19 @@ impl ResolveDnsRequest {
 }
 
 impl DeviceState {
+    /// Replaces the list of resources the device's sites serve.
+    pub fn set_local_resources(&mut self, resources: Vec<ResourceDescription>) {
+        self.local_resources.set(resources);
+    }
+
+    pub fn upsert_local_resource(&mut self, resource: ResourceDescription) {
+        self.local_resources.upsert(resource);
+    }
+
+    pub fn remove_local_resource(&mut self, id: ResourceId) {
+        self.local_resources.remove(id);
+    }
+
     /// Sets the tunnel addresses of a device that is only ever served.
     ///
     /// A device that is also a client learns them, with its DNS settings,

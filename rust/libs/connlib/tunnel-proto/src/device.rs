@@ -10,6 +10,7 @@ mod served;
 mod tracked_state;
 
 pub(crate) use crate::device::gateway_on_client::GatewayOnClient;
+pub(crate) use crate::device::served::LocalResources;
 pub use crate::device::served::{DnsResourceNatEntry, ResolveDnsRequest};
 
 use crate::authorization_rejections::AuthorizationRejections;
@@ -203,6 +204,8 @@ pub struct DeviceState {
 
     /// The next sweep of served NAT and authorization state, while we serve anything.
     next_serving_tick: Option<Instant>,
+    /// The resources the device's sites serve, whether or not a peer is authorized for them.
+    local_resources: LocalResources,
 }
 
 impl DeviceState {
@@ -247,6 +250,7 @@ impl DeviceState {
             unix_ts_clock: UnixTsClock::new(now, unix_ts),
             dns_lookup_duration: otel_instruments::dns_lookup_duration(),
             next_serving_tick: None,
+            local_resources: LocalResources::default(),
         }
     }
 
@@ -892,7 +896,7 @@ impl DeviceState {
         if from_peer_itself {
             let peer = self.clients.peer_by_id_mut(&pid).expect("checked above");
 
-            let packet = match peer.translate_outbound(packet, now)? {
+            let packet = match peer.translate_outbound(packet, &self.local_resources, now)? {
                 TranslateOutboundResult::Send(p) => p,
                 TranslateOutboundResult::IcmpError {
                     reply,

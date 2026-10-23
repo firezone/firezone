@@ -587,6 +587,16 @@ impl ResourceTargets {
         Ok(internet_resource)
     }
 
+    /// Whether `resource_ip` is inside a CIDR or DNS resource the peer is authorized for.
+    pub(crate) fn is_authorized_resource(
+        &mut self,
+        resource_ip: IpAddr,
+        protocol: Result<Protocol, UnsupportedProtocol>,
+    ) -> bool {
+        self.classify_non_internet_resource(resource_ip, protocol)
+            .is_ok()
+    }
+
     fn classify_non_internet_resource(
         &mut self,
         resource_ip: IpAddr,

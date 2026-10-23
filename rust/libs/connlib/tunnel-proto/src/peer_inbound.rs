@@ -14,6 +14,7 @@ use dns_types::DomainName;
 use ip_packet::IpPacket;
 
 use crate::conn_track::Originator;
+use crate::device::LocalResources;
 use crate::messages::gateway::ResourceDescription;
 use crate::messages::{Filter, IngestToken};
 use crate::{IpConfig, p2p_control};
@@ -240,23 +241,70 @@ impl PeerInbound {
 
     /// Classifies a packet the peer sent us and decides where it goes.
     ///
-    /// A peer that this device serves nothing to may only reach the device
-    /// itself, through its pools. A peer that is served resources follows the
-    /// serving rules, under which the device's own tunnel address is reachable
-    /// for the DNS it answers on behalf of its resources.
+    /// The device itself is reached through its pools, with their filters.
+    /// A peer that is served resources may also ask the DNS server the device
+    /// runs on its tunnel addresses for them. Everything else is a resource,
+    /// admitted by the routing table of what the peer is authorized for; the
+    /// Internet resource stops at the resources the device serves (`local`),
+    /// and other devices' tunnel addresses are never forwarded.
     pub(crate) fn translate_outbound(
         &mut self,
         packet: IpPacket,
+        local: &LocalResources,
         now: Instant,
     ) -> Result<TranslateOutboundResult> {
-        if self.resources.is_empty() {
+        let dst = packet.destination();
+
+        if self.local_tun.is_ip(dst) {
+            if self.serves() && is_tun_dns_query(&packet) {
+                // The peer opened the query to the DNS server we run for it.
+                flow_tracker::record_peer(self.id, flow_tracker::Role::Responder);
+
+                return self.resources.translate_outbound(packet, now);
+            }
+
             return self.self_targets.translate_outbound(packet, now);
         }
 
-        if self.local_tun.is_ip(packet.destination()) && !self.self_targets.is_empty() {
+        if !self.serves() {
             return self.self_targets.translate_outbound(packet, now);
+        }
+
+        // A flow to a resource we serve is always the peer's.
+        flow_tracker::record_peer(self.id, flow_tracker::Role::Responder);
+
+        if local.contains(dst)
+            && !self
+                .resources
+                .is_authorized_resource(dst, packet.destination_protocol())
+        {
+            tracing::debug!(%dst, "Peer is not authorized for the served resource it sends to");
+
+            let no_authorization = packet.destination_protocol().ok().map(|protocol| {
+                p2p_control::no_authorization::NoAuthorization {
+                    dst,
+                    protocol: protocol.into(),
+                }
+            });
+
+            return Ok(TranslateOutboundResult::IcmpError {
+                reply: ip_packet::make::icmp_dest_unreachable_prohibited(&packet)?,
+                no_authorization,
+            });
         }
 
         self.resources.translate_outbound(packet, now)
     }
+}
+
+/// Whether the packet queries the DNS server a serving device runs on its tunnel addresses.
+fn is_tun_dns_query(packet: &IpPacket) -> bool {
+    packet
+        .destination_protocol()
+        .is_ok_and(|protocol| match protocol {
+            ip_packet::Protocol::Udp(port) | ip_packet::Protocol::Tcp(port) => {
+                port == crate::TUN_DNS_PORT
+            }
+            ip_packet::Protocol::IcmpEcho(_) => false,
+        })
 }
