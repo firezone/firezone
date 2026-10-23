@@ -9,6 +9,7 @@ publish = false
 bufferpool = { workspace = true }
 fastrand = { workspace = true }
 ip-packet = { workspace = true }
+quinn-udp = { workspace = true }
 rand = { workspace = true }
 socket-factory = { workspace = true }
 tokio = { workspace = true, features = ["rt", "test-util", "time"] }

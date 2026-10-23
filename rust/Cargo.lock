@@ -2489,6 +2489,7 @@ dependencies = [
  "fastrand",
  "gungraun",
  "ip-packet",
+ "quinn-udp",
  "rand 0.10.3",
  "socket-factory",
  "tokio",

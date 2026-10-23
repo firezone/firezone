@@ -3,7 +3,7 @@ use std::net::SocketAddr;
 use std::time::{Duration, Instant};
 
 use bufferpool::Bytes;
-use socket_factory::{DatagramBatch, DatagramOut};
+use socket_factory::DatagramOut;
 use tunnel::GatewayState;
 use tunnel_fixture::{
     Client, Connectivity, GATEWAY_SOCKET, KEEPALIVE, Relay, Resource, Tunnel, client_index,
@@ -119,7 +119,7 @@ impl Idle {
             let mut batches = to_gateway
                 .chunks(RECV_BATCH_SIZE)
                 .map(|datagrams| {
-                    DatagramBatch::received(
+                    crate::received(
                         *GATEWAY_SOCKET,
                         datagrams.iter().map(|(from, payload)| {
                             let mut buffer = Bytes::fitting(payload.len());

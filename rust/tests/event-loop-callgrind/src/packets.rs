@@ -165,7 +165,7 @@ fn received_batches(
         .encapsulate(&peer.reads, count, now, local.socket)
         .into_iter()
         .map(|datagram| {
-            Input::Network(DatagramBatch::received(
+            Input::Network(crate::received(
                 local.socket,
                 [(peer.socket, datagram.packet, datagram.segment_size)],
             ))

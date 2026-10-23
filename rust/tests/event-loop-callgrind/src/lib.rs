@@ -14,10 +14,12 @@ mod packets;
 mod seeded_rng;
 
 use std::future::Future as _;
+use std::net::SocketAddr;
 use std::pin::pin;
 use std::task::{Context, Poll, Waker};
 use std::time::Instant;
 
+use bufferpool::Bytes;
 use socket_factory::{DatagramBatch, DatagramOut};
 use tun::{InboundTx, OutboundRx, PacketBatch};
 use tunnel::{ClientState, GatewayState, SocketThreadEnds, Tunnel, TunnelError};
@@ -206,4 +208,29 @@ impl Role for GatewayState {
     fn handle_timeout(&mut self, now: Instant) {
         GatewayState::handle_timeout(self, now);
     }
+}
+
+/// Creates a batch as if a socket bound to `local` had received `datagrams` in one syscall.
+///
+/// Each datagram is given by its source, its buffer and the size of the segments coalesced into
+/// it.
+fn received(
+    local: SocketAddr,
+    datagrams: impl IntoIterator<Item = (SocketAddr, Bytes, usize)>,
+) -> DatagramBatch {
+    let (buffers, metas): (Vec<_>, Vec<_>) = datagrams
+        .into_iter()
+        .map(|(from, buffer, stride)| {
+            let mut meta = quinn_udp::RecvMeta::default();
+            meta.addr = from;
+            meta.len = buffer.len();
+            meta.stride = stride;
+            meta.dst_ip = Some(local.ip());
+
+            (buffer, meta)
+        })
+        .unzip();
+    let len = buffers.len();
+
+    DatagramBatch::new(buffers, metas, local.port(), len)
 }
