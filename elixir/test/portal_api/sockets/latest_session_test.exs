@@ -68,8 +68,121 @@ defmodule PortalAPI.Sockets.LatestSessionTest do
     end
   end
 
-  defp upsert(attrs) do
-    LatestSession.upsert_all([{attrs, %{timestamp: DateTime.utc_now()}}])
+  describe "device actors" do
+    test "records the actor that connected on the device", %{client: client, token: token} do
+      connected_at = DateTime.utc_now()
+
+      assert {1, [], []} = upsert(entry(client, token), connected_at)
+
+      row = device_actor(client, client.actor_id)
+      assert DateTime.compare(row.first_seen_at, connected_at) == :eq
+      assert DateTime.compare(row.last_seen_at, connected_at) == :eq
+    end
+
+    test "a later connect moves last seen and keeps first seen", %{client: client, token: token} do
+      first = DateTime.utc_now() |> DateTime.add(-1, :day)
+      later = DateTime.utc_now()
+
+      upsert(entry(client, token), first)
+      upsert(entry(client, token), later)
+
+      row = device_actor(client, client.actor_id)
+      assert DateTime.compare(row.first_seen_at, first) == :eq
+      assert DateTime.compare(row.last_seen_at, later) == :eq
+    end
+
+    test "a flush of an older session never narrows the window", %{client: client, token: token} do
+      earlier = DateTime.utc_now() |> DateTime.add(-1, :day)
+      later = DateTime.utc_now()
+
+      upsert(entry(client, token), later)
+      upsert(entry(client, token), earlier)
+
+      row = device_actor(client, client.actor_id)
+      assert DateTime.compare(row.first_seen_at, earlier) == :eq
+      assert DateTime.compare(row.last_seen_at, later) == :eq
+    end
+
+    test "another actor on the same device gets its own row", %{
+      account: account,
+      client: client,
+      token: token
+    } do
+      other = actor_fixture(account: account)
+
+      upsert(entry(client, token))
+      upsert(%{entry(client, token) | actor_id: other.id})
+
+      assert device_actor(client, client.actor_id)
+      assert device_actor(client, other.id)
+    end
+
+    test "several connects of one pair in a batch collapse into one row", %{
+      client: client,
+      token: token
+    } do
+      first = DateTime.utc_now() |> DateTime.add(-1, :hour)
+      later = DateTime.utc_now()
+
+      assert {2, [], []} =
+               LatestSession.upsert_all([
+                 {entry(client, token), %{timestamp: later}},
+                 {entry(client, token), %{timestamp: first}}
+               ])
+
+      row = device_actor(client, client.actor_id)
+      assert DateTime.compare(row.first_seen_at, first) == :eq
+      assert DateTime.compare(row.last_seen_at, later) == :eq
+    end
+
+    test "an entry without an actor records nothing", %{client: client, token: token} do
+      assert {1, [], []} = upsert(%{entry(client, token) | actor_id: nil})
+
+      assert Repo.aggregate(Portal.DeviceActor, :count) == 0
+    end
+
+    test "an actor deleted before the flush is skipped without failing the batch", %{
+      account: account,
+      client: client,
+      token: token
+    } do
+      # The device owner's deletion takes the device with it; a second actor
+      # on the same machine is the one that can vanish on its own.
+      other = actor_fixture(account: account)
+      Repo.delete!(other)
+
+      assert {1, [], []} = upsert(%{entry(client, token) | actor_id: other.id})
+
+      refute device_actor(client, other.id)
+    end
+
+    test "a device deleted before the flush is reported without failing the batch", %{
+      account: account,
+      token: token
+    } do
+      client = client_fixture(account: account)
+      Repo.delete!(client)
+
+      assert {0, [], [_missing]} = upsert(entry(client, token))
+
+      assert Repo.aggregate(Portal.DeviceActor, :count) == 0
+    end
+  end
+
+  defp upsert(attrs, timestamp \\ DateTime.utc_now()) do
+    LatestSession.upsert_all([{attrs, %{timestamp: timestamp}}])
+  end
+
+  defp device_actor(client, actor_id) do
+    Repo.get_by(Portal.DeviceActor,
+      account_id: client.account_id,
+      device_id: client.id,
+      actor_id: actor_id
+    )
+  end
+
+  defp entry(client, token) do
+    client |> attested_entry(token) |> Map.drop(attested_keys())
   end
 
   defp attested_keys do
