@@ -56,12 +56,22 @@ defmodule PortalWeb.OIDCTest do
       assert domains == ["primary.example", "alias.example", "secondary.example"]
     end
 
-    for overrides <- [%{}, %{"hd" => nil}, %{"hd" => ""}, %{"hd" => "example.com", "email_verified" => false}] do
+    for overrides <- [%{"hd" => nil}, %{"hd" => ""}, %{"email_verified" => false}, %{"hd" => "example.com", "email_verified" => false}] do
       @google_claim_overrides overrides
       test "rejects setup without verified Workspace identity #{inspect(overrides)}", %{config: config} do
         google_setup_token(@google_claim_overrides)
         Req.Test.stub(Portal.Google.APIClient, fn _conn -> flunk("must verify identity before reading domains") end)
         assert {:error, _} = OIDC.verify_google_callback(config, "code", "test-verifier")
+      end
+    end
+
+    for email <- ["person@gmail.com", "person@googlemail.com", "person@company.example"] do
+      @personal_google_email email
+      test "verifies a personal account without domain restrictions: #{email}", %{config: config} do
+        google_setup_token(%{"email" => @personal_google_email})
+        Req.Test.stub(Portal.Google.APIClient, fn _conn -> flunk("personal accounts must not read Workspace domains") end)
+        assert {:ok, %{issuer: _, domains: nil, name: nil}} =
+                 OIDC.verify_google_callback(config, "code", "test-verifier")
       end
     end
 

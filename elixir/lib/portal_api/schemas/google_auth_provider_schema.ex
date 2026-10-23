@@ -34,7 +34,7 @@ defmodule PortalAPI.Schemas.GoogleAuthProvider do
           items: %Schema{type: :string},
           uniqueItems: true,
           readOnly: true,
-          description: "Verified Google Workspace domains allowed to sign in. Empty for legacy providers that have not been reverified and remain unrestricted."
+          description: "Verified Google Workspace domains allowed to sign in. Empty when Workspace domain validation is off, including personal Google accounts and existing unrestricted providers."
         },
         context: %Schema{
           example: "clients_and_portal",

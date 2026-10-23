@@ -37,7 +37,7 @@ defmodule PortalWeb.VerificationController do
   defp render_oidc_result(conn, %{ok: true, type: "google-auth-provider", issuer: issuer,
                                 domains: domains, name: name, lv_pid: lv_pid,
                                 verification_ref: verification_ref})
-       when is_list(domains) and domains != [] and is_binary(verification_ref) do
+       when (is_nil(domains) or (is_list(domains) and domains != [])) and is_binary(verification_ref) do
     case notify_and_await_ack(PortalWeb.OIDC.deserialize_pid(lv_pid),
            {:google_verify_complete, issuer, domains, name, verification_ref}) do
       :ok -> render(conn, :success)

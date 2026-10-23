@@ -245,6 +245,19 @@ defmodule PortalWeb.OIDCControllerTest do
       refute Map.has_key?(result, :access_token)
       refute Map.has_key?(result, :id_token)
     end
+    test "returns a personal Google verification with restrictions unset", %{conn: conn} do
+      verification_ref = Ecto.UUID.generate()
+      lv_pid = pending_verification_process(Map.new(oidc_config()), verification_ref)
+      state = PortalWeb.OIDC.sign_verification_state(PortalWeb.OIDC.serialize_pid(lv_pid),
+        "google-auth-provider", %{verification_ref: verification_ref})
+      Req.Test.stub(Portal.Google.APIClient, fn _conn -> flunk("must not read domains for personal accounts") end)
+      conn = get(conn, ~p"/auth/oidc/callback", %{"state" => state, "code" => "code"})
+      assert {:ok, %{ok: true, domains: nil, name: nil, verification_ref: ^verification_ref} = result} =
+        oidc_verification_result_from_redirect(redirected_to(conn))
+      refute Map.has_key?(result, :access_token)
+      refute Map.has_key?(result, :id_token)
+    end
+
   end
 
   describe "callback/2 with Entra verification state" do

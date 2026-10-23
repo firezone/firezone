@@ -3389,11 +3389,60 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       end
     end
 
+    test "saves a verified personal Google provider with restrictions unset", ctx do
+      Mocks.OIDC.stub_discovery_document()
+      {:ok, lv, _} = ctx.conn |> authorize_conn(ctx.actor)
+        |> live(~p"/#{ctx.account}/settings/authentication/google/new")
+      lv |> element("#verify-button") |> render_click()
+      verification_ref = verification_ref_from_open_url(lv)
+      ack_ref = make_ref()
+      send(lv.pid, {:google_verify_complete, "https://accounts.google.com", nil, nil,
+        verification_ref, {self(), ack_ref}})
+      assert_receive {:verification_ack, ^ack_ref}
+      assert render(lv) =~ "Workspace domain validation is off"
+      render_change(lv, "validate", %{"auth_provider" => %{"name" => "Personal Google",
+        "workspace_domains" => ["attacker.example"]}})
+      lv |> form("#auth-provider-form") |> render_submit()
+      provider = Repo.get_by!(Portal.Google.AuthProvider, account_id: ctx.account.id)
+      assert provider.name == "Personal Google"
+      assert provider.workspace_domains == nil
+    end
+
+    test "editing an existing unrestricted Google provider keeps validation off", ctx do
+      provider = google_provider_fixture(account: ctx.account, workspace_domains: nil)
+      {:ok, lv, _} = ctx.conn |> authorize_conn(ctx.actor)
+        |> live(~p"/#{ctx.account}/settings/authentication/google/#{provider.id}/edit")
+      lv |> form("#auth-provider-form", %{auth_provider: %{name: "Existing Google", portal_session_lifetime_secs: 3600}})
+        |> render_change()
+      lv |> form("#auth-provider-form") |> render_submit()
+      saved = Repo.get!(Portal.Google.AuthProvider, provider.id)
+      assert saved.name == "Existing Google"
+      assert saved.portal_session_lifetime_secs == 3600
+      assert saved.workspace_domains == nil
+    end
+
+    test "personal verification cannot clear existing Google domain restrictions", ctx do
+      Mocks.OIDC.stub_discovery_document()
+      provider = google_provider_fixture(account: ctx.account, workspace_domains: ["primary.example"])
+      {:ok, lv, _} = ctx.conn |> authorize_conn(ctx.actor)
+        |> live(~p"/#{ctx.account}/settings/authentication/google/#{provider.id}/edit")
+      lv |> element("#verify-button") |> render_click()
+      verification_ref = verification_ref_from_open_url(lv)
+      ack_ref = make_ref()
+      send(lv.pid, {:google_verify_complete, "https://accounts.google.com", nil, nil,
+        verification_ref, {self(), ack_ref}})
+      assert_receive {:verification_ack, ^ack_ref}
+      assert render(lv) =~ "Existing domain restrictions have been kept"
+      assert has_element?(lv, "#verified-organization-0", "primary.example")
+      lv |> form("#auth-provider-form") |> render_submit()
+      assert Repo.get!(Portal.Google.AuthProvider, provider.id).workspace_domains == ["primary.example"]
+    end
+
     test "keeps legacy Google sign-in unrestricted until domains are saved", ctx do
       provider = google_provider_fixture(account: ctx.account, workspace_domains: nil)
       {:ok, lv, html} = ctx.conn |> authorize_conn(ctx.actor)
         |> live(~p"/#{ctx.account}/settings/authentication/google/#{provider.id}/edit")
-      assert html =~ "Verify at least one"
+      assert html =~ "Workspace domain validation is off"
       assert Repo.get!(Portal.Google.AuthProvider, provider.id).workspace_domains == nil
       Mocks.OIDC.stub_discovery_document()
       complete_allowlist_verification(lv, "google", "primary.example")

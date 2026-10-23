@@ -1243,7 +1243,7 @@ defmodule PortalWeb.OIDCController do
       {:ok, identity} ->
         Map.merge(identity, %{ok: true})
       {:error, _reason} ->
-        %{ok: false, error: "Sign in with a Google Workspace administrator and grant read-only access to your organization's domains to verify this provider."}
+        %{ok: false, error: "Could not verify this Google account. For a Workspace account, sign in as an administrator and grant read-only access to your organization's domains."}
     end
     result = Map.merge(result, %{type: "google-auth-provider", lv_pid: lv_pid_string,
                                 verification_ref: verification_ref})

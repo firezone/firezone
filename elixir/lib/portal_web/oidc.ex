@@ -688,15 +688,28 @@ defmodule PortalWeb.OIDC do
   end
 
   @doc """
-  Verifies a Workspace administrator and reads their customer's verified domains.
+  Verifies a Google account and reads verified domains for Workspace accounts.
+  Personal accounts have no hosted-domain claim and leave restrictions unset.
   Access tokens are used only for setup and are never returned to the browser.
   """
   def verify_google_callback(config, code, verifier) do
     with {:ok, tokens} <- exchange_code_with_config(config, code, verifier),
-         {:ok, %{"hd" => hosted_domain, "email_verified" => true} = claims}
-           when is_binary(hosted_domain) and hosted_domain != "" <-
-           verify_token_with_config(config, tokens["id_token"], verifier),
-         access_token when is_binary(access_token) <- tokens["access_token"],
+         {:ok, %{"email_verified" => true} = claims} <-
+           verify_token_with_config(config, tokens["id_token"], verifier) do
+      case Map.fetch(claims, "hd") do
+        :error -> {:ok, %{issuer: claims["iss"], domains: nil, name: nil}}
+        {:ok, hosted_domain} when is_binary(hosted_domain) and hosted_domain != "" ->
+          verify_google_workspace(claims, tokens, hosted_domain)
+        _ -> {:error, :google_workspace_verification_failed}
+      end
+    else
+      {:error, _} = error -> error
+      _ -> {:error, :google_workspace_verification_failed}
+    end
+  end
+
+  defp verify_google_workspace(claims, tokens, hosted_domain) do
+    with access_token when is_binary(access_token) <- tokens["access_token"],
          {:ok, %Req.Response{status: 200, body: %{"domains" => domains}}} when is_list(domains) <-
            Google.APIClient.get_domains(access_token),
          verified_domains = google_verified_domains(domains),

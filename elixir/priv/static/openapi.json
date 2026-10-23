@@ -12253,7 +12253,7 @@
             "type": "string"
           },
           "workspace_domains": {
-            "description": "Verified Google Workspace domains allowed to sign in. Empty for legacy providers that have not been reverified and remain unrestricted.",
+            "description": "Verified Google Workspace domains allowed to sign in. Empty when Workspace domain validation is off, including personal Google accounts and existing unrestricted providers.",
             "items": {
               "type": "string"
             },
