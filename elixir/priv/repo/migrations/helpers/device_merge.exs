@@ -29,7 +29,32 @@ defmodule Portal.Repo.Migrations.DeviceMerge do
   @doc "Every group of rows that describe one machine, winner first."
   @spec groups() :: [group()]
   def groups do
-    Database.firezone_id_groups() ++ Database.certificate_groups()
+    Enum.map(Database.firezone_id_rows() ++ Database.certificate_rows(), &to_group/1)
+  end
+
+  @doc """
+  Orders one key's rows into a group: the row seen last wins, falling back
+  to the creation time for rows never seen, then to the id so the choice is
+  stable. Rows mixing a client and a gateway are flagged rather than merged.
+  """
+  @spec to_group(%{account_id: Ecto.UUID.t(), key: String.t(), rows: [map()]}) :: group()
+  def to_group(%{account_id: account_id, key: key, rows: rows}) do
+    [winner | losers] =
+      Enum.sort_by(rows, &{&1.seen_at, &1.id}, fn {a_seen, a_id}, {b_seen, b_id} ->
+        case DateTime.compare(a_seen, b_seen) do
+          :gt -> true
+          :lt -> false
+          :eq -> a_id <= b_id
+        end
+      end)
+
+    %{
+      account_id: account_id,
+      key: key,
+      winner: winner,
+      losers: losers,
+      mixed_types?: rows |> Enum.map(& &1.type) |> Enum.uniq() |> length() > 1
+    }
   end
 
   @doc "Prints what `merge_all/0` would do without changing anything."
@@ -83,52 +108,49 @@ defmodule Portal.Repo.Migrations.DeviceMerge do
 
     def transact(fun), do: Repo.transact(fun)
 
-    # Rows that share a firezone_id, seen last first; ties fall back to the
-    # creation time and then the id so the choice is stable.
-    def firezone_id_groups do
+    @row_columns """
+    jsonb_build_object(
+      'id', id, 'slug', slug, 'type', type,
+      'seen_at', COALESCE(last_seen_at, inserted_at)
+    )
+    """
+
+    def firezone_id_rows do
       """
-      SELECT account_id, firezone_id,
-             array_agg(id ORDER BY COALESCE(last_seen_at, inserted_at) DESC, id) AS ids,
-             array_agg(slug ORDER BY COALESCE(last_seen_at, inserted_at) DESC, id) AS slugs,
-             array_agg(type ORDER BY COALESCE(last_seen_at, inserted_at) DESC, id) AS types
+      SELECT account_id, firezone_id, jsonb_agg(#{@row_columns}) AS rows
       FROM devices
       WHERE firezone_id IS NOT NULL
       GROUP BY account_id, firezone_id
       HAVING count(*) > 1
       ORDER BY account_id, firezone_id
       """
-      |> query_groups(& &1)
+      |> query_rows()
     end
 
-    def certificate_groups do
+    def certificate_rows do
       """
       SELECT account_id,
              encode(last_attested_cert_issuer, 'hex') || ':' || last_attested_cert_serial,
-             array_agg(id ORDER BY COALESCE(last_seen_at, inserted_at) DESC, id) AS ids,
-             array_agg(slug ORDER BY COALESCE(last_seen_at, inserted_at) DESC, id) AS slugs,
-             array_agg(type ORDER BY COALESCE(last_seen_at, inserted_at) DESC, id) AS types
+             jsonb_agg(#{@row_columns}) AS rows
       FROM devices
       WHERE last_attested_cert_issuer IS NOT NULL AND last_attested_cert_serial IS NOT NULL
       GROUP BY account_id, last_attested_cert_issuer, last_attested_cert_serial
       HAVING count(*) > 1
       ORDER BY 1, 2
       """
-      |> query_groups(& &1)
+      |> query_rows()
     end
 
-    defp query_groups(sql, key_fun) do
-      for [account_id, key, ids, slugs, types] <- Repo.query!(sql).rows do
-        [winner | losers] =
-          Enum.zip_with([ids, slugs, types], fn [id, slug, type] ->
-            %{id: Ecto.UUID.load!(id), slug: slug, type: type}
-          end)
-
+    defp query_rows(sql) do
+      for [account_id, key, rows] <- Repo.query!(sql).rows do
         %{
           account_id: Ecto.UUID.load!(account_id),
-          key: key_fun.(key),
-          winner: winner,
-          losers: losers,
-          mixed_types?: Enum.uniq(types) |> length() > 1
+          key: key,
+          rows:
+            for row <- rows do
+              {:ok, seen_at, _offset} = DateTime.from_iso8601(row["seen_at"])
+              %{id: row["id"], slug: row["slug"], type: row["type"], seen_at: seen_at}
+            end
         }
       end
     end

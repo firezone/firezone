@@ -1,4 +1,7 @@
 defmodule Portal.Repo.Migrations.MergeDuplicateDevicesTest do
+  # Rows sharing a key cannot be created once the account-wide identity
+  # indexes exist, so the grouping is tested on synthetic rows and the merge
+  # on groups built by hand from distinct devices.
   use Portal.DataCase, async: true
 
   import Ecto.Query
@@ -21,53 +24,56 @@ defmodule Portal.Repo.Migrations.MergeDuplicateDevicesTest do
     %{account: account}
   end
 
-  defp seen(device, seconds_ago) do
-    record_last_seen(device, DateTime.add(DateTime.utc_now(), -seconds_ago, :second))
+  defp row(attrs) do
+    Map.merge(%{id: Ecto.UUID.generate(), slug: "slug", type: "client", seen_at: ~U[2026-10-01 00:00:00Z]}, Map.new(attrs))
   end
 
-  describe "groups/0" do
-    test "keeps the row seen last and lists the rest", %{account: account} do
-      older = client_fixture(account: account, firezone_id: "laptop") |> seen(600)
-      newer = client_fixture(account: account, firezone_id: "laptop") |> seen(60)
-      _other = client_fixture(account: account, firezone_id: "desktop")
+  defp group(account, winner, losers) do
+    %{
+      account_id: account.id,
+      key: "key",
+      winner: %{id: winner.id, slug: winner.slug, type: to_string(winner.type)},
+      losers: Enum.map(losers, &%{id: &1.id, slug: &1.slug, type: to_string(&1.type)}),
+      mixed_types?: false
+    }
+  end
 
-      assert [group] = DeviceMerge.groups()
-      assert group.account_id == account.id
-      assert group.key == "laptop"
+  describe "to_group/1" do
+    test "keeps the row seen last and lists the rest" do
+      older = row(seen_at: ~U[2026-10-01 00:00:00Z])
+      newer = row(seen_at: ~U[2026-10-02 00:00:00Z])
+
+      group = DeviceMerge.to_group(%{account_id: Ecto.UUID.generate(), key: "laptop", rows: [older, newer]})
+
       assert group.winner.id == newer.id
       assert Enum.map(group.losers, & &1.id) == [older.id]
       refute group.mixed_types?
     end
 
-    test "falls back to the creation time for rows never seen", %{account: account} do
-      first = client_fixture(account: account, firezone_id: "laptop") |> record_last_seen(nil)
-      second = client_fixture(account: account, firezone_id: "laptop") |> record_last_seen(nil)
+    test "breaks a tie on the id so the choice is stable" do
+      seen_at = ~U[2026-10-01 00:00:00Z]
+      low = row(id: "00000000-0000-0000-0000-000000000001", seen_at: seen_at)
+      high = row(id: "00000000-0000-0000-0000-000000000002", seen_at: seen_at)
 
-      assert [group] = DeviceMerge.groups()
-      assert group.winner.id == second.id
-      assert Enum.map(group.losers, & &1.id) == [first.id]
+      group = DeviceMerge.to_group(%{account_id: Ecto.UUID.generate(), key: "k", rows: [high, low]})
+
+      assert group.winner.id == low.id
     end
 
-    test "flags a group mixing client and gateway rows", %{account: account} do
-      client_fixture(account: account, firezone_id: "box")
-      gateway_fixture(account: account, firezone_id: "box")
+    test "flags a group mixing client and gateway rows" do
+      rows = [row(type: "client"), row(type: "gateway")]
 
-      assert [%{mixed_types?: true}] = DeviceMerge.groups()
+      assert %{mixed_types?: true} =
+               DeviceMerge.to_group(%{account_id: Ecto.UUID.generate(), key: "box", rows: rows})
     end
+  end
 
-    test "groups attested rows by certificate", %{account: account} do
-      for _ <- 1..2 do
-        client_fixture(
-          account: account,
-          last_attested_cert_issuer: "issuer",
-          last_attested_cert_serial: "AA",
-          last_attested_cert_fingerprint: Ecto.UUID.generate(),
-          last_attested_at: DateTime.utc_now()
-        )
-      end
+  describe "groups/0" do
+    test "is empty when no two rows share a key", %{account: account} do
+      client_fixture(account: account, firezone_id: "laptop")
+      client_fixture(account: account, firezone_id: "desktop")
 
-      assert [group] = DeviceMerge.groups()
-      assert group.key =~ "AA"
+      assert DeviceMerge.groups() == []
     end
   end
 
@@ -75,8 +81,8 @@ defmodule Portal.Repo.Migrations.MergeDuplicateDevicesTest do
     test "moves everything the losers had onto the winner and deletes them", %{account: account} do
       owner = actor_fixture(account: account)
       guest = actor_fixture(account: account)
-      loser = client_fixture(account: account, actor: owner, firezone_id: "laptop") |> seen(600)
-      winner = client_fixture(account: account, actor: guest, firezone_id: "laptop") |> seen(60)
+      loser = client_fixture(account: account, actor: owner)
+      winner = client_fixture(account: account, actor: guest)
       earlier = DateTime.add(DateTime.utc_now(), -86_400, :second)
       device_actor_fixture(device: loser, actor: owner, first_seen_at: earlier, last_seen_at: earlier)
 
@@ -86,8 +92,7 @@ defmodule Portal.Repo.Migrations.MergeDuplicateDevicesTest do
       authorization =
         policy_authorization_fixture(account: account, resource: pool, client: peer, gateway: loser)
 
-      [group] = DeviceMerge.groups()
-      assert :ok = DeviceMerge.merge(group)
+      assert :ok = DeviceMerge.merge(group(account, winner, [loser]))
 
       refute Repo.get_by(Device, account_id: account.id, id: loser.id)
       assert Repo.get_by(Device, account_id: account.id, id: winner.id)
@@ -108,11 +113,10 @@ defmodule Portal.Repo.Migrations.MergeDuplicateDevicesTest do
     test "merges gateways from two sites into one serving both", %{account: account} do
       site_a = site_fixture(account: account)
       site_b = site_fixture(account: account)
-      loser = gateway_fixture(account: account, site: site_a, firezone_id: "gw") |> seen(600)
-      winner = gateway_fixture(account: account, site: site_b, firezone_id: "gw") |> seen(60)
+      loser = gateway_fixture(account: account, site: site_a)
+      winner = gateway_fixture(account: account, site: site_b)
 
-      [group] = DeviceMerge.groups()
-      assert :ok = DeviceMerge.merge(group)
+      assert :ok = DeviceMerge.merge(group(account, winner, [loser]))
 
       site_ids =
         Repo.all(from(sd in SiteDevice, where: sd.device_id == ^winner.id, select: sd.site_id))
@@ -124,33 +128,22 @@ defmodule Portal.Repo.Migrations.MergeDuplicateDevicesTest do
 
     test "a bound token follows the machine when the winner has none", %{account: account} do
       loser =
-        gateway_fixture(
-          account: account,
-          site: site_fixture(account: account),
-          firezone_id: "gw",
-          token: :single_owner
-        )
-        |> seen(600)
+        gateway_fixture(account: account, site: site_fixture(account: account), token: :single_owner)
 
-      winner =
-        gateway_fixture(account: account, site: site_fixture(account: account), firezone_id: "gw")
-        |> seen(60)
-
+      winner = gateway_fixture(account: account, site: site_fixture(account: account))
       token = Repo.get_by!(Portal.ClientToken, account_id: account.id, device_id: loser.id)
 
-      [group] = DeviceMerge.groups()
-      assert :ok = DeviceMerge.merge(group)
+      assert :ok = DeviceMerge.merge(group(account, winner, [loser]))
 
       assert Repo.get_by!(Portal.ClientToken, account_id: account.id, id: token.id).device_id ==
                winner.id
     end
 
     test "leaves a mixed group alone", %{account: account} do
-      client = client_fixture(account: account, firezone_id: "box")
-      gateway = gateway_fixture(account: account, firezone_id: "box")
+      client = client_fixture(account: account)
+      gateway = gateway_fixture(account: account)
 
-      [group] = DeviceMerge.groups()
-      assert :ok = DeviceMerge.merge(group)
+      assert :ok = DeviceMerge.merge(%{group(account, client, [gateway]) | mixed_types?: true})
 
       assert Repo.get_by(Device, account_id: account.id, id: client.id)
       assert Repo.get_by(Device, account_id: account.id, id: gateway.id)
@@ -158,16 +151,10 @@ defmodule Portal.Repo.Migrations.MergeDuplicateDevicesTest do
   end
 
   describe "merge_all/0" do
-    test "merges every mergeable group and reports the skipped ones", %{account: account} do
-      client_fixture(account: account, firezone_id: "laptop") |> seen(600)
-      client_fixture(account: account, firezone_id: "laptop") |> seen(60)
-      client_fixture(account: account, firezone_id: "box")
-      gateway_fixture(account: account, firezone_id: "box")
+    test "has nothing to do without duplicates", %{account: account} do
+      client_fixture(account: account)
 
-      assert %{merged: [merged], skipped: [skipped]} = DeviceMerge.merge_all()
-      assert merged.key == "laptop"
-      assert skipped.key == "box"
-      assert Repo.aggregate(from(d in Device, where: d.account_id == ^account.id), :count) == 3
+      assert %{merged: [], skipped: []} = DeviceMerge.merge_all()
     end
   end
 end
