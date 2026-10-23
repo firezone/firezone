@@ -18,6 +18,9 @@ use crate::probe::{FlowId, ProbeId};
 use crate::reference::PrivateKey;
 use crate::transition::{DPort, Identifier, SPort, Seq};
 
+/// The high bit that tells a gateway id from a client id, see [`Context::fresh_gateway_id`].
+const GATEWAY_ID_MARKER: u128 = 1 << 127;
+
 struct Ipv4Cursor {
     iter: Ipv4RangeIterator,
 }
@@ -226,11 +229,14 @@ impl<'a> Generator<'a> {
         ClientId::from_u128(u128::from(n) << 64)
     }
 
+    /// Clients and gateways are devices in one id space, so a gateway's id
+    /// carries a marker bit that keeps it apart from the client with the
+    /// same number: gateway `n` is `8000...` where client `n` is `0000...`.
     pub(super) fn fresh_gateway_id(&mut self) -> GatewayId {
         let n = self.next_gateway;
         self.next_gateway += 1;
 
-        GatewayId::from_u128(u128::from(n) << 64)
+        GatewayId::from_u128(GATEWAY_ID_MARKER | u128::from(n) << 64)
     }
 
     pub(super) fn fresh_relay_id(&mut self) -> RelayId {

@@ -2792,7 +2792,11 @@ impl OutboundAuthorizations {
         Some(&self.gateway(resource_id)?.gateway_id)
     }
 
-    pub(crate) fn client_token(&self, resource_id: ResourceId, client_id: ClientId) -> Option<&IngestToken> {
+    pub(crate) fn client_token(
+        &self,
+        resource_id: ResourceId,
+        client_id: ClientId,
+    ) -> Option<&IngestToken> {
         self.device_pools.get(&resource_id)?.get(&client_id)
     }
 
