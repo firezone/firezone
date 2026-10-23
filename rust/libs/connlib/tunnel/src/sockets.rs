@@ -185,14 +185,21 @@ impl Sockets {
 
     /// Sends a datagram the main thread encrypted, or a control message.
     ///
+    /// The datagram is dropped if [`QUEUE_SIZE`] items already wait for room in its socket.
     /// Failures are returned by [`Sockets::poll_flush`].
     pub fn send_ready(&mut self, transmit: snownet::Transmit) {
+        let (version, overflow) = match transmit.dst {
+            SocketAddr::V4(_) => (IpVersion::V4, &self.overflow_v4),
+            SocketAddr::V6(_) => (IpVersion::V6, &self.overflow_v6),
+        };
+
+        if overflow.len() >= QUEUE_SIZE {
+            tracing::trace!(dst = %transmit.dst, "UDP socket is full; dropping datagram");
+            return;
+        }
+
         UdpPacketCounts::transmit(&self.packet_counter).record(&transmit.payload);
 
-        let version = match transmit.dst {
-            SocketAddr::V4(_) => IpVersion::V4,
-            SocketAddr::V6(_) => IpVersion::V6,
-        };
         let datagram = DatagramOut {
             src: transmit.src,
             dst: transmit.dst,
@@ -354,14 +361,16 @@ const INBOUND_QUEUE_SIZE: usize = UDP_RECV_BATCH_LIMIT;
 /// while nothing waits, and up to [`UDP_SEND_BATCH_LIMIT`] drained by the send task.
 /// An item carries at most one TUN batch of packets, so at most as many trains, each with a
 /// [`DatagramOut`]. A train's GSO buffer is at most one packet buffer or twice its length, so at
-/// most twice [`ip_packet::MAX_FZ_PAYLOAD`] per packet.
+/// most twice [`ip_packet::MAX_FZ_PAYLOAD`] per packet. On top, up to [`QUEUE_SIZE`] single
+/// datagrams from [`Sockets::send_ready`] wait for room.
 ///
 /// Every size class pools its buffers separately, so backlogs of differently sized trains can
 /// leave more than this pooled.
 const MAX_UDP_OUTBOUND_QUEUE_MEMORY: usize = 2
-    * (QUEUE_SIZE + 1 + UDP_SEND_BATCH_LIMIT)
-    * tun::MAX_BATCH_SIZE
-    * (size_of::<DatagramOut>() + 2 * ip_packet::MAX_FZ_PAYLOAD);
+    * ((QUEUE_SIZE + 1 + UDP_SEND_BATCH_LIMIT)
+        * tun::MAX_BATCH_SIZE
+        * (size_of::<DatagramOut>() + 2 * ip_packet::MAX_FZ_PAYLOAD)
+        + QUEUE_SIZE * (size_of::<DatagramOut>() + ip_packet::MAX_FZ_PAYLOAD));
 
 /// Worst-case memory pinned by the inbound UDP receive path while in flight.
 ///

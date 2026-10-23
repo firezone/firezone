@@ -245,6 +245,18 @@ async fn stalled_io_does_not_wake_itself() {
     assert!(io.poll(&mut cx).is_pending());
 }
 
+#[tokio::test(start_paused = true)]
+async fn transmits_while_udp_is_stalled_are_bounded() {
+    let (mut io, _ends) = Io::fake();
+    io.stall_udp(V4_PEER);
+
+    for _ in 0..2 * QUEUE_SIZE {
+        io.send_network(transmit(V4_PEER, 4));
+    }
+
+    assert_eq!(io.sockets.num_waiting(IpVersion::V4), QUEUE_SIZE);
+}
+
 #[tokio::test]
 async fn send_errors_do_not_hold_up_later_datagrams() {
     let peer = tokio::net::UdpSocket::bind((Ipv4Addr::LOCALHOST, 0))
