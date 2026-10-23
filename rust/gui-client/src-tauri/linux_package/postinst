@@ -53,7 +53,9 @@ fi
 
 # The daemon is the same binary as the `firezone` package's; the old name of
 # the tunnel service keeps working for scripts that call it.
-ln -sf firezone /usr/bin/firezone-client-tunnel
+if [ -x /usr/bin/firezone ]; then
+    ln -sf firezone /usr/bin/firezone-client-tunnel
+fi
 
 # `systemctl enable` also creates the firezone-client-tunnel.service alias.
 # systemd re-owns the state and log directories to the `firezone` user on

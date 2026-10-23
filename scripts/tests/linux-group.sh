@@ -30,8 +30,10 @@ sudo cp "scripts/tests/systemd/env" "/etc/default/firezone-client-tunnel"
 
 # The daemon's user and the group that may control it must exist before it
 # starts, and the unit loads the (empty) Gateway token file as a credential.
-sudo systemd-sysusers "rust/headless-client/debian/$SERVICE_NAME.sysusers"
-sudo systemd-tmpfiles --create "rust/headless-client/debian/$SERVICE_NAME.tmpfiles"
+# Both tools take a relative argument for a config name to look up, so the
+# files are named by absolute path.
+sudo systemd-sysusers "$PWD/rust/headless-client/debian/$SERVICE_NAME.sysusers"
+sudo systemd-tmpfiles --create "$PWD/rust/headless-client/debian/$SERVICE_NAME.tmpfiles"
 sudo systemctl start "$SERVICE_NAME" || debug_exit
 
 # Make sure the socket has the right permissions
