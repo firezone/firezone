@@ -164,12 +164,12 @@ defmodule PortalAPI.SiteController do
   operation :delete,
     summary: "Delete a Site",
     description: """
-    Deletes a Site. Deleting is not blocked when the Site still has Gateways \
-    or Resources.
+    Deletes a Site. A Site that still has Resources cannot be deleted: delete \
+    or move them first, which returns 409 otherwise.
 
-    The Site's Gateways, Gateway tokens, and Resources are deleted with it. \
-    Every Policy for those Resources is deleted too, and Clients lose access \
-    to them right away. The system-managed Internet Site cannot be deleted.
+    The Site's Gateways are kept and stop serving it; they keep serving any \
+    other Site they are assigned to. Gateway tokens bound to the Site are \
+    deleted with it. The system-managed Internet Site cannot be deleted.
     """,
     parameters: [
       id: [
@@ -186,6 +186,7 @@ defmodule PortalAPI.SiteController do
           :unauthorized,
           :forbidden,
           :not_found,
+          :conflict,
           :too_many_requests
         ])
 
@@ -197,10 +198,19 @@ defmodule PortalAPI.SiteController do
 
     with {:ok, site} <- Database.fetch_site(id, subject),
          :ok <- validate_not_system_managed(site),
+         :ok <- validate_no_resources(site, subject),
          {:ok, site} <- Database.delete_site(site, subject) do
       json(conn, JSON.encode(site))
     else
       error -> Error.handle(conn, error)
+    end
+  end
+
+  defp validate_no_resources(site, subject) do
+    if Database.resources_remain?(site, subject) do
+      {:error, :conflict, reason: "Site still has Resources; delete or move them first"}
+    else
+      :ok
     end
   end
 
@@ -250,10 +260,28 @@ defmodule PortalAPI.SiteController do
       |> Safe.update()
     end
 
+    # The site's tokens go with it either way; deleting them first clears
+    # the token column on the gateways that used them before the site's own
+    # key actions touch those rows, which the token key check otherwise
+    # trips on within one transaction.
     def delete_site(site, subject) do
-      site
+      Portal.Repo.transact(fn ->
+        from(t in Portal.ClientToken, as: :client_tokens)
+        |> where([client_tokens: t], t.site_id == ^site.id)
+        |> Safe.scoped(subject)
+        |> Safe.delete_all()
+
+        site
+        |> Safe.scoped(subject)
+        |> Safe.delete()
+      end)
+    end
+
+    def resources_remain?(site, subject) do
+      from(r in Portal.Resource, as: :resources)
+      |> where([resources: r], r.site_id == ^site.id)
       |> Safe.scoped(subject)
-      |> Safe.delete()
+      |> Safe.exists?()
     end
 
     defp changeset(site, attrs, _subject) do

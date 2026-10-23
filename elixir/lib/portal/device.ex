@@ -259,9 +259,10 @@ defmodule Portal.Device do
           name: :devices_account_id_cert_issuer_serial_actor_id_index
         )
 
+      # A gateway's site column names its home site when it has one; the
+      # sites it serves are its site_devices rows.
       :gateway ->
         changeset
-        |> validate_required([:site_id])
         |> validate_length(:device_serial, max: 255)
         |> validate_length(:device_uuid, max: 255)
         |> validate_gateway_verification()
