@@ -349,9 +349,9 @@ fn user_agent_product() -> &'static str {
         return "firezone";
     };
 
-    if invoked_as(&program, "firezone-headless-client") {
-        "headless-client"
-    } else if invoked_as(&program, "firezone-client-tunnel") {
+    // Every alias of this binary is the same component to the portal; only
+    // the daemon under its old name keeps serving the GUI as a client.
+    if invoked_as(&program, "firezone-client-tunnel") {
         "gui-client"
     } else {
         "firezone"

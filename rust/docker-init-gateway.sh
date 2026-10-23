@@ -5,6 +5,9 @@ if [ -f "${FIREZONE_TOKEN}" ]; then
     export FIREZONE_TOKEN
 fi
 
+# A gateway has no DNS to control; the daemon reads its resolvers from `resolv.conf`.
+export FIREZONE_DNS_CONTROL=${FIREZONE_DNS_CONTROL:-"disabled"}
+
 IFACE="tun-firezone"
 # Enable masquerading for Firezone tunnel traffic
 iptables -C FORWARD -i $IFACE -j ACCEPT >/dev/null 2>&1 || iptables -I FORWARD 1 -i $IFACE -j ACCEPT
