@@ -719,7 +719,13 @@ defmodule Portal.Billing do
           pool
 
         {:error, :not_found} ->
-          {:ok, pool} = Database.create_self_device_pool(account)
+          admin =
+            case Database.fetch_oldest_admin(account) do
+              {:ok, admin} -> admin
+              _other -> nil
+            end
+
+          {:ok, pool} = Database.create_self_device_pool(account, admin)
           pool
       end
 
@@ -1106,9 +1112,9 @@ defmodule Portal.Billing do
       end
     end
 
-    def create_self_device_pool(%Account{} = account) do
+    def create_self_device_pool(%Account{} = account, admin) do
       %Portal.Resource{account_id: account.id}
-      |> Ecto.Changeset.cast(Portal.Resource.self_device_pool_attrs(), [
+      |> Ecto.Changeset.cast(Portal.Resource.self_device_pool_attrs(admin), [
         :type,
         :device_membership_criteria,
         :name

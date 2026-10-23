@@ -1254,7 +1254,7 @@ defmodule PortalWeb.SignUp do
           internet_resource: &create_internet_resource_changeset/2,
           account_owner_group: &create_account_owner_group_changeset/1,
           account_owner_membership: &create_account_owner_membership_changeset/2,
-          self_device_pool: &create_self_device_pool_changeset/1,
+          self_device_pool: &create_self_device_pool_changeset/2,
           self_device_pool_policy: &create_self_device_pool_policy_changeset/2
         }
 
@@ -1445,9 +1445,9 @@ defmodule PortalWeb.SignUp do
     |> Portal.Membership.changeset()
   end
 
-  defp create_self_device_pool_changeset(account) do
+  defp create_self_device_pool_changeset(account, actor) do
     %Portal.Resource{account_id: account.id}
-    |> cast(Portal.Resource.self_device_pool_attrs(), [:type, :device_membership_criteria, :name])
+    |> cast(Portal.Resource.self_device_pool_attrs(actor), [:type, :device_membership_criteria, :name])
     |> validate_required([:type, :device_membership_criteria, :name])
     |> Portal.Resource.changeset()
   end
@@ -1594,8 +1594,8 @@ defmodule PortalWeb.SignUp do
         changeset_fns.account_owner_membership.(account_owner_group, actor)
         |> insert()
       end)
-      |> Ecto.Multi.run(:self_device_pool, fn _repo, %{account: account} ->
-        changeset_fns.self_device_pool.(account)
+      |> Ecto.Multi.run(:self_device_pool, fn _repo, %{account: account, actor: actor} ->
+        changeset_fns.self_device_pool.(account, actor)
         |> insert()
       end)
       |> Ecto.Multi.run(:self_device_pool_policy, fn _repo,

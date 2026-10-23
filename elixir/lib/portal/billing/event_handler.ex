@@ -537,10 +537,6 @@ defmodule Portal.Billing.EventHandler do
     {:ok, _resource} = Database.insert(changeset)
     changeset = create_account_owner_group_changeset(account)
     {:ok, account_owner_group} = Database.insert(changeset)
-    changeset = create_self_device_pool_changeset(account)
-    {:ok, self_device_pool} = Database.insert(changeset)
-    changeset = create_self_device_pool_policy_changeset(account_owner_group, self_device_pool)
-    {:ok, _policy} = Database.insert(changeset)
 
     # Create email provider
     {:ok, _email_provider} = Database.create_email_provider(account)
@@ -556,6 +552,11 @@ defmodule Portal.Billing.EventHandler do
 
     changeset = create_account_owner_membership_changeset(account_owner_group, actor)
     {:ok, _membership} = Database.insert(changeset)
+
+    changeset = create_self_device_pool_changeset(account, actor)
+    {:ok, self_device_pool} = Database.insert(changeset)
+    changeset = create_self_device_pool_policy_changeset(account_owner_group, self_device_pool)
+    {:ok, _policy} = Database.insert(changeset)
 
     :ok
   end
@@ -636,9 +637,9 @@ defmodule Portal.Billing.EventHandler do
     |> validate_required([:name, :type])
   end
 
-  defp create_self_device_pool_changeset(account) do
+  defp create_self_device_pool_changeset(account, actor) do
     %Portal.Resource{account_id: account.id}
-    |> cast(Portal.Resource.self_device_pool_attrs(), [:type, :device_membership_criteria, :name])
+    |> cast(Portal.Resource.self_device_pool_attrs(actor), [:type, :device_membership_criteria, :name])
     |> validate_required([:type, :device_membership_criteria, :name])
     |> Portal.Resource.changeset()
   end
