@@ -147,12 +147,47 @@ defmodule PortalAPI.SiteDeviceController do
   end
 
   defmodule Database do
+    import Ecto.Query
+    alias Portal.{Device, Safe, Site}
+
     def fetch_site(id, subject) do
-      PortalAPI.GatewayController.Database.fetch_site(id, subject)
+      from(s in Site, where: s.id == ^id)
+      |> Safe.scoped(subject)
+      |> Safe.one()
+      |> case do
+        nil -> {:error, :not_found}
+        {:error, :unauthorized} -> {:error, :unauthorized}
+        site -> {:ok, site}
+      end
     end
 
+    # The gateway as the gateway routes render it, with the rotation state
+    # of the token it last connected with, limited to the site's gateways.
     def fetch_gateway(site_id, id, subject) do
-      PortalAPI.GatewayController.Database.fetch_gateway(site_id, id, subject)
+      from(d in Device, as: :gateways)
+      |> where([gateways: d], d.id == ^id and d.type == :gateway)
+      |> where(
+        [gateways: d],
+        exists(
+          from(sd in Portal.SiteDevice,
+            where:
+              sd.account_id == parent_as(:gateways).account_id and
+                sd.device_id == parent_as(:gateways).id and sd.site_id == ^site_id
+          )
+        )
+      )
+      |> join(:left, [gateways: d], t in Portal.ClientToken,
+        on: t.id == d.token_id and t.account_id == d.account_id,
+        as: :gateway_token
+      )
+      |> select_merge([gateway_token: t], %{gateway_token_rotated_at: t.rotated_at})
+      |> Safe.scoped(subject)
+      |> Safe.one()
+      |> case do
+        nil -> {:error, :not_found}
+        {:error, :unauthorized} -> {:error, :unauthorized}
+        gateway -> {:ok, gateway}
+      end
     end
   end
 end
