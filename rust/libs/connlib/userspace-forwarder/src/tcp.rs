@@ -47,6 +47,8 @@ struct Flow {
     send_credit: usize,
     /// Bytes the driver may still read from the host for us.
     recv_outstanding: usize,
+    /// Whether the handshake completed; before that the receive half reads as closed.
+    established: bool,
     shutdown_sent: bool,
 }
 
@@ -233,6 +235,7 @@ impl Tcp {
                     host: Host::Connecting,
                     send_credit: INITIAL_SEND_CREDIT,
                     recv_outstanding: 0,
+                    established: false,
                     shutdown_sent: false,
                 },
             );
@@ -248,6 +251,10 @@ impl Tcp {
             }
 
             let socket = self.sockets.get_mut::<Socket>(f.handle);
+
+            if socket.state() == State::Established {
+                f.established = true;
+            }
 
             while socket.can_recv() && f.send_credit > 0 {
                 let credit = f.send_credit;
@@ -267,7 +274,7 @@ impl Tcp {
                     .push_back(Command::TcpSend { flow: *flow, data });
             }
 
-            if !socket.may_recv() && !f.shutdown_sent {
+            if f.established && !socket.may_recv() && !f.shutdown_sent {
                 f.shutdown_sent = true;
                 out.commands
                     .push_back(Command::TcpShutdownWrite { flow: *flow });
