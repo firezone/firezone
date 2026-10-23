@@ -1558,6 +1558,7 @@ defmodule PortalWeb.Actors do
         from(c in ClientToken, as: :client_tokens)
         |> where([client_tokens: c], c.actor_id == ^actor_id)
         |> order_by([client_tokens: c], desc: c.inserted_at)
+        |> preload([:device, :site])
         |> Safe.scoped(subject)
         |> Safe.all()
 
@@ -1571,13 +1572,13 @@ defmodule PortalWeb.Actors do
 
       devices_by_token_id =
         from(d in Device,
-          where: d.client_token_id in ^token_ids,
-          distinct: d.client_token_id,
-          order_by: [asc: d.client_token_id, desc: d.last_seen_at]
+          where: d.token_id in ^token_ids,
+          distinct: d.token_id,
+          order_by: [asc: d.token_id, desc: d.last_seen_at]
         )
         |> Safe.scoped(subject)
         |> Safe.all()
-        |> Map.new(&{&1.client_token_id, &1})
+        |> Map.new(&{&1.token_id, &1})
 
       Enum.map(tokens, fn token ->
         %{token | last_used_device: Map.get(devices_by_token_id, token.id)}
