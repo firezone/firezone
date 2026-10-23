@@ -25,7 +25,7 @@ impl AllowedPeer {
     /// so it connects here and never to the tunnel daemon.
     pub fn firezone_gui_client_or_cli() -> Self {
         Self {
-            exes: vec![gui_exe(), cli_exe()],
+            exes: vec![gui_exe(), cli_exe(), cli_alias_exe()],
         }
     }
 
@@ -110,6 +110,11 @@ fn gui_exe() -> PathBuf {
 /// the same reason as [`gui_exe`].
 fn cli_exe() -> PathBuf {
     PathBuf::from(option_env!("FIREZONE_CLI_PEER_EXE").unwrap_or("/usr/bin/firezone"))
+}
+
+/// The CLI under its old name, which the `firezone` package keeps as an alias.
+fn cli_alias_exe() -> PathBuf {
+    PathBuf::from("/usr/bin/firezone-cli")
 }
 
 fn peer_pidfd(socket_fd: RawFd) -> io::Result<OwnedFd> {

@@ -57,13 +57,13 @@ pub enum Cmd {
 }
 
 /// Omitting the subcommand is equivalent to [`ResourcesCmd::List`].
-#[derive(clap::Subcommand)]
+#[derive(Clone, Debug, clap::Subcommand)]
 pub enum ResourcesCmd {
     #[command(about = "List the Resources this Client can reach. This is the default.")]
     List,
 }
 
-#[derive(clap::Subcommand)]
+#[derive(Clone, Debug, clap::Subcommand)]
 pub enum InternetResourceCmd {
     #[command(about = "Route traffic through the Internet Resource.")]
     Enable,
