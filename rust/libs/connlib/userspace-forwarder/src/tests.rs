@@ -215,14 +215,16 @@ fn tcp_connection_is_proxied_both_ways() {
     assert_eq!(tcp.acknowledgment_number(), 1001);
     let mut server_seq = tcp.sequence_number().wrapping_add(1);
 
+    // The host connects before the peer's ACK arrives: nothing to do yet, and the
+    // half-open receive side must not read as the peer having closed.
+    f.handle_event(Event::TcpConnected { flow }, t0);
+    assert!(commands(&mut f).is_empty());
+
+    // Once established, the driver may read from the host.
     f.handle_packet(
         segment(1001, server_seq, flags(false, true, false), &[]),
         t0,
     );
-    assert!(commands(&mut f).is_empty());
-
-    // Once the host is connected, the driver may read from it.
-    f.handle_event(Event::TcpConnected { flow }, t0);
     let [Command::TcpRecvCredit { flow: f1, bytes }] =
         <[Command; 1]>::try_from(commands(&mut f)).unwrap()
     else {
