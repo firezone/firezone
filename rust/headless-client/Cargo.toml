@@ -73,7 +73,6 @@ clap = { workspace = true, features = ["derive", "env", "string"] }
 client-service = { workspace = true }
 client-shared = { workspace = true }
 firezone-cli = { workspace = true }
-firezone-gateway = { workspace = true }
 flow-log-upload = { workspace = true }
 flow-log-writer = { workspace = true }
 futures = { workspace = true }

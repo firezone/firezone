@@ -133,7 +133,7 @@ fast-random-state = { path = "libs/fast-random-state" }
 fastrand = "2.3.0"
 filetime = "0.2.29"
 firezone-cli = { path = "gui-client/src-cli" }
-firezone-gateway = { path = "gateway" }
+firezone-headless-client = { path = "headless-client" }
 flow-log-spool = { path = "libs/flow-log-spool" }
 flow-log-upload = { path = "libs/flow-log-upload" }
 flow-log-writer = { path = "libs/flow-log-writer" }
@@ -146,7 +146,6 @@ gui-ipc = { path = "gui-client/src-gui-ipc" }
 hex = "0.4.3"
 hex-display = "0.4.0"
 hex-literal = "1.1.0"
-hickory-resolver = "0.26.1"
 hmac = "0.13.0"
 http = "1.4.1"
 http-body-util = "0.1.3"

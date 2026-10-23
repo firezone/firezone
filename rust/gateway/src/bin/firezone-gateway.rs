@@ -1,9 +1,6 @@
-//! The `firezone-gateway` binary, kept under its own name for the installs
-//! that start it; `firezone run --role gateway` is the same program.
-
-#[global_allocator]
-static ALLOC: mimalloc::MiMalloc = mimalloc::MiMalloc;
+//! The `firezone-gateway` binary: an alias of `firezone`, kept under the
+//! Gateway's old name for the installs and images that start it.
 
 fn main() -> std::process::ExitCode {
-    firezone_gateway::main()
+    firezone_headless_client::main()
 }
