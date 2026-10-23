@@ -60,6 +60,13 @@ pub mod tunnel_proto {
     pub use super::stub_portal::StubPortal;
     pub use super::sut::TunnelTest;
 
+    /// Whether the next fuzz case writes a trace even without `RUST_LOG`.
+    ///
+    /// A replay sets this to run a failed input once more with its trace on,
+    /// so the log says what happened where no log filter was configured.
+    pub static TRACE_NEXT_CASE: std::sync::atomic::AtomicBool =
+        std::sync::atomic::AtomicBool::new(false);
+
     /// Initializes an error-detecting subscriber for the current fuzz case.
     ///
     /// Mass fuzzing writes no logs; setting `RUST_LOG` additionally writes a
@@ -68,7 +75,13 @@ pub mod tunnel_proto {
         const DEFAULT_FILTER: &str =
             "debug,tunnel_proto=trace,fuzz=debug,ip_packet=trace,path_agent=trace";
 
-        let log_layer = std::env::var("RUST_LOG").ok().map(|filter| {
+        let filter = std::env::var("RUST_LOG").ok().or_else(|| {
+            TRACE_NEXT_CASE
+                .load(std::sync::atomic::Ordering::SeqCst)
+                .then(|| "info".to_owned())
+        });
+
+        let log_layer = filter.map(|filter| {
             tracing_subscriber::fmt::layer()
                 .with_writer(std::io::stderr)
                 .with_ansi(false)
