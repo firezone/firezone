@@ -2,7 +2,7 @@ use crate::{ConnectedAs, PHOENIX_TOPIC};
 use anyhow::{Context as _, ErrorExt as _, Result};
 use bootstrap_dns_client::BootstrapDnsClient;
 use clock::Clock;
-use connlib_model::{ClientOrGatewayId, PublicKey, ResourceId, ResourceView};
+use connlib_model::{PublicKey, ResourceId, ResourceView};
 use parking_lot::Mutex;
 use phoenix_channel::{PhoenixChannel, PublicKeyParam};
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
@@ -27,7 +27,9 @@ use tunnel::messages::client::{
     InitClient, ResourceAuthorization, ResourceFiltersUpdated,
 };
 use tunnel::messages::{IngestToken, RelaysPresence, SnownetCapabilities};
-use tunnel::{ClientEvent, ClientTunnel, DnsResourceRecord, IpConfig, TunConfig, TunnelError};
+use tunnel::{
+    ClientEvent, ClientTunnel, DnsResourceRecord, IpConfig, PeerKind, TunConfig, TunnelError,
+};
 
 /// In-memory cache for DNS resource records.
 ///
@@ -361,7 +363,8 @@ impl Eventloop {
     async fn handle_tunnel_event(&mut self, event: Result<ClientEvent, TunnelError>) -> Result<()> {
         match event {
             Ok(ClientEvent::AddedIceCandidates {
-                conn_id: ClientOrGatewayId::Gateway(gid),
+                conn_id: gid,
+                kind: PeerKind::Gateway,
                 candidates,
             }) => {
                 tracing::debug!(%gid, ?candidates, "Sending new ICE candidates to gateway");
@@ -377,7 +380,8 @@ impl Eventloop {
                     .context("Failed to send message to portal")?;
             }
             Ok(ClientEvent::RemovedIceCandidates {
-                conn_id: ClientOrGatewayId::Gateway(gid),
+                conn_id: gid,
+                kind: PeerKind::Gateway,
                 candidates,
             }) => {
                 tracing::debug!(%gid, ?candidates, "Sending invalidated ICE candidates to gateway");
@@ -393,7 +397,8 @@ impl Eventloop {
                     .context("Failed to send message to portal")?;
             }
             Ok(ClientEvent::AddedIceCandidates {
-                conn_id: ClientOrGatewayId::Client(cid),
+                conn_id: cid,
+                kind: PeerKind::Client,
                 candidates,
             }) => {
                 tracing::debug!(%cid, ?candidates, "Sending new ICE candidates to client");
@@ -409,7 +414,8 @@ impl Eventloop {
                     .context("Failed to send message to portal")?;
             }
             Ok(ClientEvent::RemovedIceCandidates {
-                conn_id: ClientOrGatewayId::Client(cid),
+                conn_id: cid,
+                kind: PeerKind::Client,
                 candidates,
             }) => {
                 tracing::debug!(%cid, ?candidates, "Sending invalidated ICE candidates to client");

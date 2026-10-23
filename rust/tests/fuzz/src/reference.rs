@@ -494,7 +494,7 @@ impl ReferenceState {
                 client.ip4.clone_from(ip4);
                 client.ip6.clone_from(ip6);
                 client.migrate_nat(*nat_ip4);
-                let added = self.network.add_host(*client_id, client);
+                let added = self.network.add_host(HostId::Client(*client_id), client);
                 debug_assert!(added);
 
                 // When roaming, we are not connected to any resource and wait for the next packet to re-establish a connection.

@@ -11,7 +11,7 @@ use crate::flux_capacitor::FluxCapacitor;
 use crate::probe::{DnsNatObservation, FlowId, ProbeId, ProbeObservation, ProbeTrace, Remote};
 use crate::resource as client;
 use crate::transition::Transition;
-use connlib_model::{ClientId, ClientOrGatewayId, GatewayId, PublicKey, RelayId};
+use connlib_model::{ClientId, GatewayId, PublicKey, RelayId};
 use dns_types::ResponseCode;
 use dns_types::prelude::*;
 use ip_packet::{Ecn, IpPacket};
@@ -31,7 +31,7 @@ use tunnel_proto::dns::is_subdomain;
 use tunnel_proto::messages::client::{FailReason, ResourceAuthorization};
 use tunnel_proto::messages::gateway::Client;
 use tunnel_proto::messages::{IceCredentials, Key, SecretKey};
-use tunnel_proto::{ClientEvent, GatewayEvent, dns, messages::Interface};
+use tunnel_proto::{ClientEvent, GatewayEvent, PeerKind, dns, messages::Interface};
 
 /// The actual system-under-test.
 ///
@@ -652,7 +652,7 @@ impl TunnelTest {
                 let client = self.clients.get_mut(&client_id).unwrap();
                 client.update_interface(ip4, ip6);
                 client.migrate_nat(nat_ip4);
-                let added = self.network.add_host(client_id, client);
+                let added = self.network.add_host(HostId::Client(client_id), client);
                 debug_assert!(added);
                 client.exec_mut(|c| {
                     c.sut.reset(now, "roam");
@@ -1353,7 +1353,8 @@ impl TunnelTest {
         match event {
             ClientEvent::AddedIceCandidates {
                 candidates,
-                conn_id: ClientOrGatewayId::Gateway(conn_id),
+                conn_id,
+                kind: PeerKind::Gateway,
             } => {
                 let gateway = self.gateways.get_mut(&conn_id).expect("unknown gateway");
 
@@ -1365,7 +1366,8 @@ impl TunnelTest {
             }
             ClientEvent::RemovedIceCandidates {
                 candidates,
-                conn_id: ClientOrGatewayId::Gateway(conn_id),
+                conn_id,
+                kind: PeerKind::Gateway,
             } => {
                 let gateway = self.gateways.get_mut(&conn_id).expect("unknown gateway");
 
@@ -1376,7 +1378,8 @@ impl TunnelTest {
                 });
             }
             ClientEvent::AddedIceCandidates {
-                conn_id: ClientOrGatewayId::Client(conn_id),
+                conn_id,
+                kind: PeerKind::Client,
                 candidates,
             } => {
                 let client = self.clients.get_mut(&conn_id).expect("unknown client");
@@ -1388,7 +1391,8 @@ impl TunnelTest {
                 });
             }
             ClientEvent::RemovedIceCandidates {
-                conn_id: ClientOrGatewayId::Client(conn_id),
+                conn_id,
+                kind: PeerKind::Client,
                 candidates,
             } => {
                 let client = self.clients.get_mut(&conn_id).expect("unknown client");
@@ -1607,12 +1611,7 @@ impl TunnelTest {
                 client.exec_mut(|c| c.dns_resource_record_cache = records);
             }
             ClientEvent::NoRelays { excluded_relay_ids } => {
-                let relays = portal.request_relays(
-                    ClientOrGatewayId::Client(src),
-                    &excluded_relay_ids,
-                    &self.relays,
-                    now,
-                );
+                let relays = portal.request_relays(src, &excluded_relay_ids, &self.relays, now);
                 let client = self.clients.get_mut(&src).unwrap();
                 client.exec_mut(|c| c.update_relays(iter::empty(), relays.into_iter(), now));
             }
@@ -1886,12 +1885,7 @@ fn on_gateway_event(
             })
         }
         GatewayEvent::NoRelays { excluded_relay_ids } => {
-            let relays = portal.request_relays(
-                ClientOrGatewayId::Gateway(src),
-                &excluded_relay_ids,
-                relays,
-                now,
-            );
+            let relays = portal.request_relays(src, &excluded_relay_ids, relays, now);
             gateway.exec_mut(|g| g.update_relays(iter::empty(), relays.into_iter(), now));
         }
     }

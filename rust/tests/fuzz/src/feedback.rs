@@ -21,7 +21,7 @@ use std::{
     time::Duration,
 };
 
-use connlib_model::{ClientId, ClientOrGatewayId, GatewayId, ResourceId};
+use connlib_model::{ClientId, GatewayId, ResourceId};
 use itertools::Itertools as _;
 use snownet::ConnectionPath;
 use tunnel_proto::dns;
@@ -699,7 +699,7 @@ fn remote_path_feedback(
         .get(&origin)?
         .inner()
         .sut
-        .connection_path(ClientOrGatewayId::Client(peer))?;
+        .connection_path(peer)?;
 
     Some(PathFeedback::new(origin_edge, remote_edge, selected))
 }
@@ -739,7 +739,7 @@ fn gateway_path_feedback(
         .get(&origin)?
         .inner()
         .sut
-        .connection_path(ClientOrGatewayId::Gateway(gateway))?;
+        .connection_path(gateway)?;
     Some(PathFeedback::new(origin_edge, gateway_edge, selected))
 }
 

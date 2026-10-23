@@ -617,15 +617,3 @@ impl From<RelayId> for HostId {
         Self::Relay(v)
     }
 }
-
-impl From<GatewayId> for HostId {
-    fn from(v: GatewayId) -> Self {
-        Self::Gateway(v)
-    }
-}
-
-impl From<ClientId> for HostId {
-    fn from(v: ClientId) -> Self {
-        Self::Client(v)
-    }
-}

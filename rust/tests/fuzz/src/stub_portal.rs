@@ -1,4 +1,4 @@
-use connlib_model::{ClientId, ClientOrGatewayId, GatewayId, RelayId, ResourceId, Site, SiteId};
+use connlib_model::{ClientId, DeviceId, GatewayId, RelayId, ResourceId, Site, SiteId};
 use dns_types::DomainName;
 use ip_packet::Protocol;
 use itertools::Itertools;
@@ -63,7 +63,7 @@ pub struct StubPortal {
     load_balanced_requests: BTreeMap<(ClientId, SiteId), u32>,
     /// When the portal handed each node relays.
     #[debug(skip)]
-    relay_handouts: BTreeMap<ClientOrGatewayId, Vec<Instant>>,
+    relay_handouts: BTreeMap<DeviceId, Vec<Instant>>,
 
     /// Stable index used to pick a resource candidate (`index % len`).
     resource_selector: u32,
@@ -764,7 +764,7 @@ impl StubPortal {
     /// Answers `node`'s request for relays with every relay it did not exclude.
     pub(crate) fn request_relays<'a>(
         &mut self,
-        node: ClientOrGatewayId,
+        node: DeviceId,
         excluded_relay_ids: &[RelayId],
         relays: &'a BTreeMap<RelayId, Host<SimRelay>>,
         now: Instant,
@@ -781,7 +781,7 @@ impl StubPortal {
         relays
     }
 
-    pub(crate) fn relay_handouts(&self) -> &BTreeMap<ClientOrGatewayId, Vec<Instant>> {
+    pub(crate) fn relay_handouts(&self) -> &BTreeMap<DeviceId, Vec<Instant>> {
         &self.relay_handouts
     }
 

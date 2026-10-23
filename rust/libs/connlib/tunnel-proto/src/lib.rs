@@ -9,7 +9,7 @@
 #![cfg_attr(test, allow(clippy::print_stderr))]
 
 use connlib_model::{
-    ClientId, ClientOrGatewayId, GatewayId, IceCandidate, RelayId, ResourceId, ResourceView,
+    ClientId, DeviceId, GatewayId, IceCandidate, RelayId, ResourceId, ResourceView,
 };
 use dns_types::DomainName;
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
@@ -64,14 +64,29 @@ pub use unroutable_packet::UnroutablePacket;
 // their consumers into `connlib-model` so this crate can expose only the
 // state-machine API.
 
+/// What a peer is to this device, for protocols that name peers by kind.
+///
+/// Every peer is a device. The legacy client protocols still tell gateways
+/// and clients apart in their messages, so a candidate event says which
+/// message to send; the unified protocol ignores it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PeerKind {
+    /// The peer serves resources to this device.
+    Gateway,
+    /// The peer is reached through a device pool, or reaches this device through one.
+    Client,
+}
+
 #[derive(Debug)]
 pub enum ClientEvent {
     AddedIceCandidates {
-        conn_id: ClientOrGatewayId,
+        conn_id: DeviceId,
+        kind: PeerKind,
         candidates: BTreeSet<IceCandidate>,
     },
     RemovedIceCandidates {
-        conn_id: ClientOrGatewayId,
+        conn_id: DeviceId,
+        kind: PeerKind,
         candidates: BTreeSet<IceCandidate>,
     },
     /// Requests access through the candidate resources, most preferred first.

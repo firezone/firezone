@@ -33,7 +33,7 @@ use std::{
 };
 
 use chrono::{DateTime, Utc};
-use connlib_model::{ClientId, ClientOrGatewayId, ResourceId};
+use connlib_model::{ClientId, DeviceId, ResourceId};
 use dns_types::DomainName;
 use fast_random_state::FastRandomState;
 use ip_packet::{IcmpError, IpPacket, Protocol, TcpFlags, UnsupportedProtocol};
@@ -64,23 +64,20 @@ thread_local! {
 /// A scope is assembled from the facts gathered while processing a packet; the
 /// scope plus the inner 4-tuple keys a flow.
 pub trait Scope: Copy + Eq + Hash + Debug {
-    fn from_flow(peer: ClientOrGatewayId, resource: Option<ResourceId>) -> Option<Self>;
+    fn from_flow(peer: DeviceId, resource: Option<ResourceId>) -> Option<Self>;
 }
 
 /// The Client scopes its flows by the peer they are tunneled through.
-impl Scope for ClientOrGatewayId {
-    fn from_flow(peer: ClientOrGatewayId, _: Option<ResourceId>) -> Option<Self> {
+impl Scope for DeviceId {
+    fn from_flow(peer: DeviceId, _: Option<ResourceId>) -> Option<Self> {
         Some(peer)
     }
 }
 
 /// The Gateway scopes its flows by the client and the resource it accesses.
 impl Scope for (ClientId, ResourceId) {
-    fn from_flow(peer: ClientOrGatewayId, resource: Option<ResourceId>) -> Option<Self> {
-        match peer {
-            ClientOrGatewayId::Client(cid) => Some((cid, resource?)),
-            ClientOrGatewayId::Gateway(_) => None,
-        }
+    fn from_flow(peer: DeviceId, resource: Option<ResourceId>) -> Option<Self> {
+        Some((peer, resource?))
     }
 }
 
@@ -783,7 +780,7 @@ struct FlowData {
     /// in transmit direction. Absence means the packet was never sent.
     outer_tx: Option<FlowContext<Instant>>,
     /// The peer the packet is tunneled through and our role in the flow.
-    peer: Option<(ClientOrGatewayId, Role)>,
+    peer: Option<(DeviceId, Role)>,
     resource: Option<ResourceId>,
     /// The portal's per-authorization ingest token (carries the attribution).
     ingest_token: Option<IngestToken>,
@@ -870,9 +867,7 @@ fn update_current_flow(f: impl FnOnce(&mut FlowData)) {
 
 /// Records the peer the current packet is tunneled through and our role in the
 /// flow it belongs to.
-pub fn record_peer(peer: impl Into<ClientOrGatewayId>, role: Role) {
-    let peer = peer.into();
-
+pub fn record_peer(peer: DeviceId, role: Role) {
     update_current_flow(|data| {
         data.peer = Some((peer, role));
     });

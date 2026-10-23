@@ -24,7 +24,7 @@ use crate::ref_client::RefClient;
 use crate::ref_gateway::RefGateway;
 use crate::reference::ReferenceState;
 use crate::resource::{CidrResource, DevicePoolResource, DnsResource, InternetResource};
-use crate::sim_net::{EdgeConfig, Expiry, FilterMode, Host, Mapping, RoutingTable};
+use crate::sim_net::{EdgeConfig, Expiry, FilterMode, Host, HostId, Mapping, RoutingTable};
 use crate::site_network::{IcmpError, RouteType, Routes};
 use crate::stub_portal::{PoolMembers, StubPortal};
 
@@ -49,12 +49,12 @@ pub(super) fn generate(
     let network = clients
         .iter()
         .fold(RoutingTable::default(), |mut network, (id, host)| {
-            let ok = network.add_host(*id, host);
+            let ok = network.add_host(HostId::Client(*id), host);
             debug_assert!(ok, "client socket IPs must be unique by construction");
             network
         });
     let network = gateways.iter().fold(network, |mut network, (id, host)| {
-        let ok = network.add_host(*id, host);
+        let ok = network.add_host(HostId::Gateway(*id), host);
         debug_assert!(ok, "gateway socket IPs must be unique by construction");
         network
     });
