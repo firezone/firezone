@@ -925,7 +925,7 @@ impl<'a> Handler<'a> {
         let portal = PhoenixChannel::disconnected(
             url,
             Some(token),
-            get_user_agent("gui-client", env!("CARGO_PKG_VERSION")),
+            get_user_agent(crate::user_agent_product(), env!("CARGO_PKG_VERSION")),
             "client",
             (),
             || {

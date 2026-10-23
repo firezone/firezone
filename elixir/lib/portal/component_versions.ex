@@ -34,13 +34,31 @@ defmodule Portal.ComponentVersions do
   end
 
   @doc "The latest version available for whatever the device runs."
+  def latest_version(%Device{type: :gateway, last_seen_user_agent: ua}) when is_binary(ua) do
+    case get_component_type_from_user_agent(ua) do
+      :firezone -> component_version(:firezone)
+      _ -> gateway_version()
+    end
+  end
+
   def latest_version(%Device{type: :gateway}), do: gateway_version()
   def latest_version(%Device{} = client), do: client_version(client)
 
+  # Until the releases endpoint lists the unified binary, the Gateway's
+  # release line is the one it continues.
+  def component_version(:firezone) do
+    versions()
+    |> Keyword.get_lazy(:firezone, fn -> gateway_version() end)
+  end
+
   def component_version(component) do
+    versions()
+    |> Keyword.get(component, "0.0.0")
+  end
+
+  defp versions do
     Portal.Config.get_env(:portal, ComponentVersions, [])
     |> Keyword.get(:versions, [])
-    |> Keyword.get(component, "0.0.0")
   end
 
   def fetch_versions do
@@ -69,6 +87,7 @@ defmodule Portal.ComponentVersions do
 
   def get_component_type_from_user_agent(user_agent) when is_binary(user_agent) do
     cond do
+      String.contains?(user_agent, "firezone/") -> :firezone
       String.contains?(user_agent, "headless-client/") -> :headless
       String.contains?(user_agent, "gui-client/") -> :gui
       String.contains?(user_agent, "apple-client/") -> :apple
@@ -105,14 +124,21 @@ defmodule Portal.ComponentVersions do
     end
   end
 
-  defp decode_versions_response(%{
-         "apple" => apple,
-         "android" => android,
-         "gateway" => gateway,
-         "gui" => gui,
-         "headless" => headless
-       }) do
-    %{apple: apple, android: android, gateway: gateway, gui: gui, headless: headless}
+  defp decode_versions_response(
+         %{
+           "apple" => apple,
+           "android" => android,
+           "gateway" => gateway,
+           "gui" => gui,
+           "headless" => headless
+         } = body
+       ) do
+    versions = %{apple: apple, android: android, gateway: gateway, gui: gui, headless: headless}
+
+    case body do
+      %{"firezone" => firezone} -> Map.put(versions, :firezone, firezone)
+      _ -> versions
+    end
   end
 
   defp decode_versions_response(_response) do

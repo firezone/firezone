@@ -15,6 +15,7 @@ defmodule Portal.Version do
       "apple-client/" <> version -> version
       "android-client/" <> version -> version
       "gateway/" <> version -> version
+      "firezone/" <> version -> version
       _ -> nil
     end)
     |> case do
@@ -38,12 +39,18 @@ defmodule Portal.Version do
         last_seen_user_agent: user_agent
       })
       when is_binary(version) and is_binary(user_agent) do
-    component = ComponentVersions.get_component_type_from_user_agent(user_agent)
-    min_version = Map.fetch!(@site_payload_min_versions, component)
+    case ComponentVersions.get_component_type_from_user_agent(user_agent) do
+      # The unified binary is newer than every client that lacked this.
+      :firezone ->
+        true
 
-    case Version.parse(version) do
-      {:ok, version} -> Version.compare(version, Version.parse!(min_version)) != :lt
-      :error -> false
+      component ->
+        min_version = Map.fetch!(@site_payload_min_versions, component)
+
+        case Version.parse(version) do
+          {:ok, version} -> Version.compare(version, Version.parse!(min_version)) != :lt
+          :error -> false
+        end
     end
   end
 
@@ -63,6 +70,7 @@ defmodule Portal.Version do
       :android -> Version.compare(client.last_seen_version, "1.5.5") == :lt
       :gui -> Version.compare(client.last_seen_version, "1.5.9") == :lt
       :headless -> Version.compare(client.last_seen_version, "1.5.5") == :lt
+      :firezone -> false
     end
   end
 
@@ -92,6 +100,7 @@ defmodule Portal.Version do
         :apple -> Version.compare(client.last_seen_version, "1.5.16") != :lt
         :gui -> Version.compare(client.last_seen_version, "1.5.13") != :lt
         :android -> Version.compare(client.last_seen_version, "1.5.11") != :lt
+        :firezone -> true
       end
     end
   end
@@ -115,6 +124,7 @@ defmodule Portal.Version do
       :gui -> Version.compare(version, "1.5.11") != :lt
       :headless -> Version.compare(version, "1.5.7") != :lt
       :android -> Version.compare(version, "1.5.9") != :lt
+      :firezone -> true
     end
   end
 

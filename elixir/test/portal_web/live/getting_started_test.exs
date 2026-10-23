@@ -479,12 +479,12 @@ defmodule PortalWeb.GettingStartedTest do
 
       # Step 3: the Gateway, with an install command for a pre-created Gateway
       assert has_element?(view, "#getting-started-remote-step-2", "Install a Gateway")
-      assert has_element?(view, "#getting-started-gateway-debian-install", "apt install firezone-gateway")
+      assert has_element?(view, "#getting-started-gateway-debian-install", "apt install firezone")
 
       assert has_element?(
                view,
                "#getting-started-gateway-debian-connect",
-               "sudo firezone-gateway authenticate && sudo firezone-gateway enable-service"
+               "sudo firezone authenticate && sudo firezone enable-service"
              )
 
       assert has_element?(view, "#getting-started-gateway-debian-token")

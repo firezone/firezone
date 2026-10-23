@@ -284,7 +284,7 @@ pub fn main() -> std::process::ExitCode {
     // The Gateway keeps its own command line until the two are one program,
     // so its role is picked before anything is parsed.
     if let Some(gateway_args) = gateway_args(&args, gateway_token_present) {
-        return firezone_gateway::main_with(gateway_args);
+        return firezone_gateway::main_as(gateway_args, user_agent_product());
     }
 
     match try_main() {
@@ -375,6 +375,24 @@ fn gui_command(command: firezone_cli::Cmd) -> Result<()> {
     firezone_cli::execute(command).map_err(|e| anyhow!(firezone_cli::user_message(&e, false)))
 }
 
+/// What the portal is told runs here: the old names keep their old products,
+/// the `firezone` binary says so in every role.
+fn user_agent_product() -> &'static str {
+    let Some(program) = std::env::args_os().next() else {
+        return "firezone";
+    };
+
+    if invoked_as(&program, "firezone-headless-client") {
+        "headless-client"
+    } else if invoked_as(&program, "firezone-gateway") {
+        "gateway"
+    } else if invoked_as(&program, "firezone-client-tunnel") {
+        "gui-client"
+    } else {
+        "firezone"
+    }
+}
+
 /// Whether this process was started under the standalone client's old name,
 /// whose `run` has always meant "connect in the foreground".
 fn invoked_as_headless_client() -> bool {
@@ -438,6 +456,7 @@ fn try_main() -> Result<()> {
             foreground: false, ..
         }) if !invoked_as_headless_client() => {
             client_service::set_daemon_version(VERSION);
+            client_service::set_user_agent_product(user_agent_product());
 
             return client_service::service::run(cli.log_dir, cli.dns_control);
         }
@@ -644,7 +663,7 @@ fn try_main() -> Result<()> {
         let portal = PhoenixChannel::disconnected(
             url,
             Some(token),
-            get_user_agent("headless-client", env!("CARGO_PKG_VERSION")),
+            get_user_agent(user_agent_product(), env!("CARGO_PKG_VERSION")),
             "client",
             (),
             move || {

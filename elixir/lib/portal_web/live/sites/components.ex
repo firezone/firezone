@@ -1993,7 +1993,7 @@ defmodule PortalWeb.Sites.Components do
   defp gateway_debian_install do
     """
     sudo apt update
-    sudo apt install firezone-gateway
+    sudo apt install firezone
     """
   end
 
@@ -2008,7 +2008,7 @@ defmodule PortalWeb.Sites.Components do
 
   defp gateway_debian_authenticate do
     """
-    sudo firezone-gateway authenticate
+    sudo firezone authenticate
     """
   end
 

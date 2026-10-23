@@ -364,7 +364,7 @@ defmodule Portal.Device do
   end
 
   def gateway_outdated?(gateway) do
-    latest_release = Portal.ComponentVersions.gateway_version()
+    latest_release = Portal.ComponentVersions.latest_version(gateway)
     version = gateway.last_seen_version
 
     if version do

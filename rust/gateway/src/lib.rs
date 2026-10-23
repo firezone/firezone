@@ -61,6 +61,16 @@ where
     I: IntoIterator,
     I::Item: Into<std::ffi::OsString> + Clone,
 {
+    main_as(args, "gateway")
+}
+
+/// Like [`main_with`], presenting `product` to the portal in the user agent
+/// so the unified `firezone` binary is told apart from the Gateway it replaces.
+pub fn main_as<I>(args: I, product: &'static str) -> ExitCode
+where
+    I: IntoIterator,
+    I::Item: Into<std::ffi::OsString> + Clone,
+{
     let cli = Cli::parse_from(args);
 
     if let Some(command) = cli.command {
@@ -94,7 +104,7 @@ where
         .build()
         .expect("Failed to create tokio runtime");
 
-    match runtime.block_on(try_main(cli)) {
+    match runtime.block_on(try_main(cli, product)) {
         Ok(()) => {
             tracing::info!("Goodbye!");
             telemetry::stop();
@@ -141,7 +151,7 @@ fn has_necessary_permissions() -> bool {
     is_root || has_net_admin
 }
 
-async fn try_main(cli: Cli) -> Result<()> {
+async fn try_main(cli: Cli, product: &'static str) -> Result<()> {
     let flow_logs_dir = PathBuf::from(FLOW_LOGS_DIR);
 
     // Hold the guard until exit so the writer thread drains on shutdown.
@@ -278,7 +288,7 @@ async fn try_main(cli: Cli) -> Result<()> {
     let portal = PhoenixChannel::disconnected(
         login,
         token,
-        get_user_agent("gateway", env!("CARGO_PKG_VERSION")),
+        get_user_agent(product, env!("CARGO_PKG_VERSION")),
         PHOENIX_TOPIC,
         (),
         move || {

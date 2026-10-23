@@ -105,6 +105,12 @@ defmodule Portal.ComponentVersionsTest do
       assert get_component_type_from_user_agent("Fedora/42.0.0 gui-client/1.5.10") == :gui
       assert get_component_type_from_user_agent("Darwin/24.0.0 apple-client/1.5.11") == :apple
       assert get_component_type_from_user_agent("Linux/6.1.0 android-client/1.5.8") == :android
+      assert get_component_type_from_user_agent("Fedora/42.0.0 firezone/1.7.0") == :firezone
+    end
+
+    test "the unified binary's latest version falls back to the Gateway's" do
+      assert Portal.ComponentVersions.component_version(:firezone) ==
+               Portal.ComponentVersions.gateway_version()
     end
 
     test "returns :gui when last_seen_user_agent is nil" do

@@ -110,6 +110,11 @@ defmodule Portal.VersionTest do
                {:ok, "1.4.5"}
     end
 
+    test "can decode the unified binary's version" do
+      assert Portal.Version.fetch_version("Fedora/42.0.0 firezone/1.7.0 (arm64; 24.1.0)") ==
+               {:ok, "1.7.0"}
+    end
+
     test "returns error for an unparsable user agent" do
       assert Portal.Version.fetch_version("not a user agent") == {:error, :invalid_user_agent}
     end

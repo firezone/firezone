@@ -22,6 +22,19 @@ pub mod settings;
 /// `Hello`. Set once by the binary; the crate's own version stands in when
 /// nothing set it.
 static DAEMON_VERSION: std::sync::OnceLock<&'static str> = std::sync::OnceLock::new();
+static USER_AGENT_PRODUCT: std::sync::OnceLock<&'static str> = std::sync::OnceLock::new();
+
+/// Names the product in the user agent the daemon presents to the portal.
+///
+/// The GUI's own tunnel service keeps `gui-client`; the `firezone` binary
+/// says so, in every role, so the portal can tell the unified binary apart.
+pub fn set_user_agent_product(product: &'static str) {
+    let _ = USER_AGENT_PRODUCT.set(product);
+}
+
+pub fn user_agent_product() -> &'static str {
+    USER_AGENT_PRODUCT.get().copied().unwrap_or("gui-client")
+}
 
 /// Records the version of the binary that runs the service, for `Hello`.
 pub fn set_daemon_version(version: &'static str) {
