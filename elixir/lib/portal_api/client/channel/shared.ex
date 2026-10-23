@@ -934,17 +934,17 @@ defmodule PortalAPI.Client.Channel.Shared do
              socket.assigns.subject
            ),
          {:ok, gateways} when gateways != [] <-
-           Database.all_compatible_gateways_for_client_and_resource(
+           Portal.Routing.candidates(
+             resource,
              socket.assigns.client,
-             socket.assigns.client_version,
-             resource
+             socket.assigns.client_version
            ) do
       location = {
         socket.assigns.subject.context.remote_ip_location_lat,
         socket.assigns.subject.context.remote_ip_location_lon
       }
 
-      gateway = Device.load_balance_gateways(location, gateways, connected_gateway_ids)
+      gateway = Portal.Routing.select_receiver(gateways, location, connected_gateway_ids)
 
       reply =
         {:ok,
@@ -1471,10 +1471,10 @@ defmodule PortalAPI.Client.Channel.Shared do
          socket,
          address
        ) do
-    case Database.all_compatible_gateways_for_client_and_resource(
+    case Portal.Routing.candidates(
+           resource,
            socket.assigns.client,
-           socket.assigns.client_version,
-           resource
+           socket.assigns.client_version
          ) do
       {:ok, [_ | _] = gateways} ->
         location = {
@@ -1482,7 +1482,7 @@ defmodule PortalAPI.Client.Channel.Shared do
           socket.assigns.subject.context.remote_ip_location_lon
         }
 
-        gateway = Device.load_balance_gateways(location, gateways, connected_gateway_ids)
+        gateway = Portal.Routing.select_receiver(gateways, location, connected_gateway_ids)
         policy_authorization_id = Ecto.UUID.generate()
 
         %Credentials{
@@ -3115,32 +3115,6 @@ defmodule PortalAPI.Client.Channel.Shared do
       Portal.Safe.preload(client, :site_devices)
     end
 
-    # The candidates are the online gateways assigned to the resource's site,
-    # through any of their sites, and never the device asking.
-    def all_compatible_gateways_for_client_and_resource(client, client_version, resource) do
-      resource_site_id = site_id_from_resource(resource)
-
-      site_gateways =
-        Portal.Presence.Devices.all_connected_gateways(client.account_id)
-        |> Enum.filter(&(&1.id != client.id and Portal.Device.serves_site?(&1, resource_site_id)))
-
-      client_range = client.proto_range || Portal.Version.proto_range(nil, :client, client_version)
-
-      compatible_gateways =
-        filter_compatible_gateways(site_gateways, resource, client_version, client_range)
-
-      cond do
-        compatible_gateways != [] ->
-          {:ok, compatible_gateways}
-
-        site_gateways != [] ->
-          {:error, :version_mismatch}
-
-        true ->
-          {:ok, []}
-      end
-    end
-
     @doc """
       Fetches the client device in the subject's account that answers at `slug`.
       Returns `{:error, :not_found}` for a miss or unauthorized read.
@@ -3248,29 +3222,5 @@ defmodule PortalAPI.Client.Channel.Shared do
       end
     end
 
-    # Filters gateways by the protocol range they share with the client and
-    # by whether the gateway understands the resource. A client that reported
-    # no version is not filtered, as before; one whose version cannot be read
-    # reaches nothing.
-    defp filter_compatible_gateways(gateways, _resource, nil, _client_range), do: gateways
-    defp filter_compatible_gateways(_gateways, _resource, _version, nil), do: []
-
-    defp filter_compatible_gateways(gateways, resource, _version, client_range) do
-      Enum.filter(gateways, &compatible_gateway?(&1, resource, client_range))
-    end
-
-    defp compatible_gateway?(gateway, resource, client_range) do
-      gateway_version = gateway.last_seen_version
-
-      gateway_range =
-        gateway.proto_range || Portal.Version.proto_range(nil, :gateway, gateway_version)
-
-      Portal.Version.compatible?(client_range, gateway_range) and
-        not is_nil(Portal.Resource.adapt_resource_for_version(resource, gateway_version))
-    end
-
-    defp site_id_from_resource(%Portal.Cache.Cacheable.Resource{site: site}) do
-      Ecto.UUID.load!(site.id)
-    end
   end
 end
