@@ -53,6 +53,9 @@ const DISCONNECT_TIMEOUT: Duration = Duration::from_secs(2);
 /// For how long we will at most try to re-key a WireGuard tunnel.
 const WG_REKEY_ATTEMPT_TIME: Duration = Duration::from_secs(20);
 
+/// How often we record the number of connections per network path; metrics are exported every minute.
+const CONNECTION_COUNT_INTERVAL: Duration = Duration::from_secs(10);
+
 /// A node within a `snownet` network maintains connections to several other nodes.
 ///
 /// [`Node`] is built in a SANS-IO fashion, meaning it neither advances time nor network state on its own.
@@ -99,6 +102,7 @@ pub struct Node<TId, RId> {
     last_now: Instant,
 
     connection_count: Gauge<u64>,
+    next_connection_count: Instant,
 
     rng: StdRng,
 
@@ -192,6 +196,7 @@ where
             connections: Default::default(),
             buffered_candidates: Default::default(),
             connection_count: otel_instruments::connection_count(),
+            next_connection_count: now,
             unix_now: now,
             unix_ts,
         }
@@ -703,20 +708,24 @@ where
             now,
         );
 
-        let mut connections_by_path = [0u64; ConnectionPath::KINDS.len()];
+        if now >= self.next_connection_count {
+            self.next_connection_count = now + CONNECTION_COUNT_INTERVAL;
 
-        for (_, connection) in self.connections.iter_established() {
-            if let Some(peer_socket) = connection.state.peer_socket() {
-                connections_by_path[peer_socket.kind_index()] += 1;
+            let mut connections_by_path = [0u64; ConnectionPath::KINDS.len()];
+
+            for (_, connection) in self.connections.iter_established() {
+                if let Some(peer_socket) = connection.state.peer_socket() {
+                    connections_by_path[peer_socket.kind_index()] += 1;
+                }
             }
-        }
 
-        // Report the current number of connections per network path. Every bucket is
-        // emitted (including `0`) so that a path draining to zero is not stuck at its
-        // last non-zero value.
-        for (kind, count) in ConnectionPath::KINDS.into_iter().zip(connections_by_path) {
-            self.connection_count
-                .record(count, &[otel_attributes::connection_socket(kind)]);
+            // Report the current number of connections per network path. Every bucket is
+            // emitted (including `0`) so that a path draining to zero is not stuck at its
+            // last non-zero value.
+            for (kind, count) in ConnectionPath::KINDS.into_iter().zip(connections_by_path) {
+                self.connection_count
+                    .record(count, &[otel_attributes::connection_socket(kind)]);
+            }
         }
 
         self.buffered_candidates.handle_timeout(now);
@@ -874,6 +883,7 @@ where
             default_ice_config,
             idle_ice_config,
             poll_timeout_cache: Default::default(),
+            indexed_deadline: None,
             candidate_timeout: Some(now + CANDIDATE_TIMEOUT),
         };
 
@@ -1386,6 +1396,8 @@ struct Connection<RId> {
     idle_ice_config: IceConfig,
 
     poll_timeout_cache: TimeoutCache,
+    /// The deadline under which [`Connections`] indexes this connection.
+    indexed_deadline: Option<(Instant, &'static str)>,
 }
 
 impl<RId> Connection<RId>
