@@ -122,18 +122,19 @@ pub struct Tunnel<TRoleState> {
 
 impl<TRoleState> Tunnel<TRoleState> {
     /// Creates a tunnel around `role_state` that does all its work on the calling thread: the
-    /// crypto jobs as they are submitted, the IPv4 and IPv6 sockets' and the recursive DNS
-    /// resolver's through the returned [`FakeTunnelEnds`].
+    /// crypto jobs as they are submitted, the TUN device's, the IPv4 and IPv6 sockets' and the
+    /// recursive DNS resolver's through the returned [`FakeTunnelEnds`].
     ///
     /// Nothing else can bind a socket.
     pub fn fake(role_state: TRoleState) -> (Self, FakeTunnelEnds) {
         let (sockets, socket_v4, socket_v6) = Sockets::fake();
+        let (tun, tun_inbound, tun_outbound) = tun::fake(tun::CHANNEL_CAPACITY);
         let (resolver, dns) = resolver::channels();
         let tcp: Arc<dyn SocketFactory<TcpSocket>> =
             Arc::new(|_| Err(std::io::ErrorKind::Unsupported.into()));
         let udp: Arc<dyn SocketFactory<UdpSocket>> =
             Arc::new(|_| Err(std::io::ErrorKind::Unsupported.into()));
-        let tunnel = Self {
+        let mut tunnel = Self {
             role_state,
             io: Io::new(
                 sockets,
@@ -147,10 +148,14 @@ impl<TRoleState> Tunnel<TRoleState> {
             needs_timeout: false,
         };
 
+        tunnel.set_tun(tun);
+
         let ends = FakeTunnelEnds {
             socket_v4,
             socket_v6,
             dns,
+            tun_inbound,
+            tun_outbound,
         };
 
         (tunnel, ends)
@@ -706,6 +711,10 @@ pub struct FakeTunnelEnds {
     pub socket_v4: SocketThreadEnds,
     pub socket_v6: SocketThreadEnds,
     pub dns: ResolverTaskEnds,
+    /// Packets sent here are read from the TUN device.
+    pub tun_inbound: tun::InboundTx,
+    /// Receives the packets written to the TUN device.
+    pub tun_outbound: tun::OutboundRx,
 }
 
 #[derive(Debug, thiserror::Error)]
