@@ -18,6 +18,24 @@ pub mod logging;
 pub mod service;
 pub mod settings;
 
+/// The version of the binary serving the IPC socket, as told to the GUI in
+/// `Hello`. Set once by the binary; the crate's own version stands in when
+/// nothing set it.
+static DAEMON_VERSION: std::sync::OnceLock<&'static str> = std::sync::OnceLock::new();
+
+/// Records the version of the binary that runs the service, for `Hello`.
+pub fn set_daemon_version(version: &'static str) {
+    let _ = DAEMON_VERSION.set(version);
+}
+
+/// The version of the binary that runs the service.
+pub fn daemon_version() -> &'static str {
+    DAEMON_VERSION
+        .get()
+        .copied()
+        .unwrap_or(env!("CARGO_PKG_VERSION"))
+}
+
 /// Whether `FIREZONE_NO_TELEMETRY` was set when this binary was built.
 ///
 /// CI stamps it into every build that is not a release, so the smoke test, the

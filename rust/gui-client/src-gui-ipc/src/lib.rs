@@ -5,10 +5,22 @@ use client_ipc::{ConnectOptions, SocketId};
 use futures::{SinkExt as _, StreamExt as _};
 use secrecy::{ExposeSecret as _, SecretString};
 
+/// The version of the messages on the GUI's socket.
+///
+/// Bumped whenever [`ClientMsg`] or [`ServerMsg`] change shape. The CLI and
+/// the GUI ship in one package, so they only differ in the middle of an
+/// upgrade; [`request`] compares this to what the GUI answers and says so
+/// instead of failing to read the reply.
+pub const IPC_VERSION: u32 = 1;
+
 /// IPC messages that a newly launched process (a second instance, a deep-link
 /// handler or a CLI subcommand) may send to the running instance of Firezone.
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
 pub enum ClientMsg {
+    /// The first message of a CLI request: which version of these messages it speaks.
+    Hello {
+        ipc_version: u32,
+    },
     Deeplink(url::Url),
     NewInstance,
     OpenTrayMenu,
@@ -39,6 +51,11 @@ where
 /// IPC messages that the running instance sends back in reply to a [`ClientMsg`].
 #[derive(Debug, PartialEq, serde::Deserialize, serde::Serialize)]
 pub enum ServerMsg {
+    /// The answer to [`ClientMsg::Hello`]: the GUI's own version of these messages.
+    Hello {
+        ipc_version: u32,
+        version: String,
+    },
     Ack,
     Resources(Vec<connlib_model::ResourceView>),
     Status(TunnelStatus),
@@ -67,6 +84,17 @@ pub enum ServerError {
 #[derive(Debug, thiserror::Error)]
 #[error("Firezone is not running.")]
 pub struct NotRunning;
+
+/// The running instance speaks another version of these messages, which only
+/// happens in the middle of an upgrade, since the CLI and the GUI ship in one
+/// package.
+#[derive(Debug, thiserror::Error)]
+#[error(
+    "The running Firezone is version {gui_version}, which this command does not match. Restart Firezone to finish the upgrade."
+)]
+pub struct VersionMismatch {
+    pub gui_version: String,
+}
 
 /// The running instance's state, as reported to the CLI.
 #[derive(Debug, PartialEq, serde::Deserialize, serde::Serialize)]
@@ -100,6 +128,43 @@ pub async fn request(msg: ClientMsg) -> Result<ServerMsg> {
 
                 e
             })?;
+
+    // Say which version of the messages we speak before asking anything, so
+    // a GUI from another build is told apart from one that fails the request.
+    write
+        .send(&ClientMsg::Hello {
+            ipc_version: IPC_VERSION,
+        })
+        .await
+        .context("Failed to send hello")?;
+
+    match read.next().await {
+        Some(Ok(ServerMsg::Hello {
+            ipc_version,
+            version,
+        })) => {
+            if ipc_version != IPC_VERSION {
+                return Err(VersionMismatch {
+                    gui_version: version,
+                }
+                .into());
+            }
+        }
+        // A GUI from before `Hello` cannot read it and closes the connection.
+        Some(Ok(other)) => {
+            return Err(anyhow::Error::new(VersionMismatch {
+                gui_version: "unknown".to_owned(),
+            })
+            .context(format!("Unexpected reply to hello: {other:?}")));
+        }
+        None => {
+            return Err(anyhow::Error::new(VersionMismatch {
+                gui_version: "unknown".to_owned(),
+            })
+            .context("No reply to hello"));
+        }
+        Some(Err(e)) => return Err(e.context("Failed to receive reply to hello")),
+    }
 
     write.send(&msg).await.context("Failed to send request")?;
 
