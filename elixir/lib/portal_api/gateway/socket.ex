@@ -57,6 +57,7 @@ defmodule PortalAPI.Gateway.Socket do
     attrs = normalize_device_attrs(attrs)
 
     with {:ok, gateway_token} <- Authentication.verify_gateway_token(encoded_token),
+         {:ok, subject} <- build_subject(gateway_token, context),
          {:ok, public_key} <- validate_public_key(attrs),
          {:ok, site, gateway} <- resolve_gateway(gateway_token, attrs),
          :ok <- ensure_gateway_not_connected(gateway),
@@ -65,6 +66,7 @@ defmodule PortalAPI.Gateway.Socket do
       version = derive_version(context.user_agent)
       {context, version} = PortalAPI.Sockets.truncate_session_fields(context, version)
       gateway = apply_session(gateway, gateway_token.id, public_key, context, version)
+      subject = Authentication.Subject.with_device(%{subject | context: context}, gateway)
 
       OpenTelemetry.Tracer.set_attributes(%{
         token_id: gateway_token.id,
@@ -76,6 +78,7 @@ defmodule PortalAPI.Gateway.Socket do
       socket =
         socket
         |> assign(:token_id, gateway_token.id)
+        |> assign(:subject, subject)
         |> assign(:site, site)
         |> assign(:gateway, gateway)
         |> assign(:session_ref, make_ref())
@@ -100,6 +103,16 @@ defmodule PortalAPI.Gateway.Socket do
         Logger.info("Gateway socket connection failed", error: error, stacktrace: trace)
 
         error
+    end
+  end
+
+  # A gateway token belongs to the account's Infrastructure service account, so
+  # a gateway session carries a Subject like every other session: the same
+  # actor on every gateway of the account, with the connection's own context.
+  defp build_subject(gateway_token, context) do
+    case Authentication.build_subject(gateway_token, context) do
+      {:ok, subject} -> {:ok, subject}
+      {:error, _reason} -> {:error, :invalid_token}
     end
   end
 
@@ -268,9 +281,9 @@ defmodule PortalAPI.Gateway.Socket do
 
   # Session logs ride the same flushed batch that persists the sessions, so a
   # reconnect storm collapses into one bulk insert here rather than a write per
-  # connect. Only durable sessions are logged. Gateways authenticate with a
-  # token and have no actor, so the subject snapshot is the gateway identity
-  # and its connection context. The connect-time timestamp rides the queue
+  # connect. Only durable sessions are logged. The subject snapshot is the
+  # session's Subject, the Infrastructure actor with the connection context,
+  # plus the gateway identity. The connect-time timestamp rides the queue
   # entry's metadata rather than the session row's flush-time inserted_at. Each
   # log entry carries its session_ref so the caller can learn which sessions'
   # logs failed and withhold their durability confirmation.
@@ -291,22 +304,23 @@ defmodule PortalAPI.Gateway.Socket do
     MapSet.new(failed, fn {_log_attrs, session_ref} -> session_ref end)
   end
 
-  defp session_log_attrs(attrs, %{timestamp: timestamp}) do
+  defp session_log_attrs(attrs, %{timestamp: timestamp} = metadata) do
     %{
       account_id: attrs.account_id,
       log_id: LogId.build_session_log(),
       timestamp: timestamp,
       context: :gateway,
-      subject: %{
-        gateway_id: attrs[:device_id],
-        token_id: attrs[:gateway_token_id],
-        ip: format_ip(attrs[:remote_ip]),
-        ip_region: attrs[:remote_ip_location_region],
-        ip_city: attrs[:remote_ip_location_city],
-        ip_lat: attrs[:remote_ip_location_lat],
-        ip_lon: attrs[:remote_ip_location_lon],
-        user_agent: attrs[:user_agent]
-      }
+      subject:
+        Map.merge(Map.get(metadata, :subject) || %{}, %{
+          gateway_id: attrs[:device_id],
+          token_id: attrs[:gateway_token_id],
+          ip: format_ip(attrs[:remote_ip]),
+          ip_region: attrs[:remote_ip_location_region],
+          ip_city: attrs[:remote_ip_location_city],
+          ip_lat: attrs[:remote_ip_location_lat],
+          ip_lon: attrs[:remote_ip_location_lon],
+          user_agent: attrs[:user_agent]
+        })
     }
   end
 

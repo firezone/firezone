@@ -1139,7 +1139,10 @@ defmodule PortalAPI.Gateway.Channel.Shared do
           Portal.Queue.enqueue(
             :gateway_session_queue,
             session_attrs(socket.assigns.gateway, socket.assigns.session_ref),
-            metadata: %{timestamp: DateTime.utc_now()}
+            metadata: %{
+              subject: Portal.Authentication.Subject.to_map(socket.assigns.subject),
+              timestamp: DateTime.utc_now()
+            }
           )
 
           {:noreply, arm_session_durability_timer(socket)}

@@ -77,6 +77,28 @@ defmodule PortalAPI.Gateway.SocketTest do
       assert socket.assigns.token_id == token1.id
     end
 
+    test "assigns a Subject for the account's Infrastructure actor" do
+      token = gateway_token_fixture()
+      encrypted_secret = encode_gateway_token(token)
+
+      attrs = connect_attrs(token: encrypted_secret)
+      connect_info = build_connect_info(token: encrypted_secret)
+
+      assert {:ok, socket} = connect(Socket, attrs, connect_info: connect_info)
+
+      assert %Portal.Authentication.Subject{} = subject = socket.assigns.subject
+      assert subject.account.id == token.account_id
+      assert subject.actor.id == token.actor_id
+      assert subject.actor.managed_by == :system
+      assert subject.actor.type == :service_account
+      assert subject.credential == %Portal.Authentication.Credential.ClientToken{
+               id: token.id,
+               auth_provider_id: nil
+             }
+      assert subject.context.type == :gateway
+      assert is_nil(subject.expires_at)
+    end
+
     test "creates a new gateway" do
       token = gateway_token_fixture()
       encrypted_secret = encode_gateway_token(token)
