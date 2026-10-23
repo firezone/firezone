@@ -86,14 +86,12 @@ fzLib.buildRustPackage (
       ln -s ${firezone-gui-client-frontend} gui-client/dist
 
       # The Nix Tauri hook installs from the deb bundle, which copies the
-      # tunnel binary and the completions from paths that assume no --target
+      # firezone binary and the completions from paths that assume no --target
       # triple in the cargo target directory. Every `files` entry has to be
       # listed: a path left behind is only found when the bundle step fails.
       substituteInPlace gui-client/src-tauri/tauri.conf.json \
-        --replace-fail '../../target/release/firezone-client-tunnel' \
-          '../../target/${stdenv.hostPlatform.rust.rustcTarget}/release/firezone-client-tunnel' \
-        --replace-fail '"../../target/release/firezone-cli"' \
-          '"../../target/${stdenv.hostPlatform.rust.rustcTarget}/release/firezone-cli"' \
+        --replace-fail '"../../target/release/firezone"' \
+          '"../../target/${stdenv.hostPlatform.rust.rustcTarget}/release/firezone"' \
         --replace-fail '../../target/release/completions/firezone.bash' \
           '../../target/${stdenv.hostPlatform.rust.rustcTarget}/release/completions/firezone.bash' \
         --replace-fail '../../target/release/completions/_firezone' \
@@ -102,18 +100,19 @@ fzLib.buildRustPackage (
           '../../target/${stdenv.hostPlatform.rust.rustcTarget}/release/completions/firezone.fish'
     '';
 
-    # The `firezone` CLI and the tunnel daemon are workspace members of their
-    # own, so the Tauri hook's single `cargo tauri build` never compiles them,
-    # yet the deb bundle it installs from expects both binaries to be there.
+    # The `firezone` binary (daemon and CLI) and the CLI crate that writes the
+    # shell completions are workspace members of their own, so the Tauri
+    # hook's single `cargo tauri build` never compiles them, yet the deb
+    # bundle it installs from expects their output to be there.
     preBuild = ''
       cargo build --release --offline -j $NIX_BUILD_CORES -p firezone-cli
       cargo build --release --offline -j $NIX_BUILD_CORES \
-        -p firezone-headless-client --bin firezone-client-tunnel
+        -p firezone-headless-client --bin firezone
     '';
 
     # wrapGAppsHook3 wraps every executable in $out/bin, which would stamp the
     # GUI-only --add-flags (notably --no-deep-links) onto the bundled
-    # firezone-client-tunnel daemon, crashing it on startup with an
+    # firezone daemon, crashing it on startup with an
     # "unexpected argument '--no-deep-links'" error. Disable the blanket
     # wrapping and wrap only the GUI binary ourselves in postFixup.
     dontWrapGApps = true;

@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-SERVICE_NAME="firezone-client-tunnel"
+SERVICE_NAME="firezone"
 
 DISPLAY_USER=$(who | awk '{print $1}' | head -n 1)
 
@@ -20,17 +20,19 @@ elif [ -n "${DISPLAY_USER:-}" ]; then
     echo "Detected invoking user from display session: $INVOKING_USER"
 fi
 
-# Creates the system group `firezone-client`.
-systemd-sysusers firezone-client-tunnel.conf
+# Creates the `firezone` user the daemon runs as and the `firezone-client`
+# group whose members may control it, then the files the unit expects.
+systemd-sysusers firezone.conf
+systemd-tmpfiles --create firezone.conf
 
 # Fail if we couldn't detect an invoking user - this likely means there's no graphical
-# environment and the headless client should be used instead.
+# environment and the `firezone` package should be used instead.
 if [ -z "${INVOKING_USER:-}" ]; then
     echo ""
     echo "****************************************************************************"
     echo "ERROR: Could not detect a user to add to the firezone-client group."
     echo "This likely means no graphical environment was detected."
-    echo "Consider using the headless client (firezone-headless-client) instead."
+    echo "Consider installing the firezone package instead."
     echo "****************************************************************************"
     echo ""
     exit 1
@@ -49,6 +51,13 @@ if ! id -nG "$INVOKING_USER" | grep -qw "firezone-client"; then
     echo ""
 fi
 
+# The daemon is the same binary as the `firezone` package's; the old name of
+# the tunnel service keeps working for scripts that call it.
+ln -sf firezone /usr/bin/firezone-client-tunnel
+
+# `systemctl enable` also creates the firezone-client-tunnel.service alias.
+# systemd re-owns the state and log directories to the `firezone` user on
+# the first start, so an upgrade keeps its device ID and settings.
 systemctl daemon-reload
 systemctl enable "$SERVICE_NAME"
 systemctl restart "$SERVICE_NAME"

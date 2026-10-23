@@ -49,7 +49,7 @@ mod platform;
 #[path = "macos.rs"]
 mod platform;
 
-/// Command-line args for the headless Client
+/// Command-line args for the `firezone` binary: the daemon and the CLI.
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Cli {

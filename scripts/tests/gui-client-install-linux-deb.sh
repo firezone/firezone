@@ -4,7 +4,7 @@
 
 set -euox pipefail
 
-SERVICE_NAME=firezone-client-tunnel
+SERVICE_NAME=firezone
 
 function debug_exit() {
     systemctl status "$SERVICE_NAME"
@@ -20,8 +20,10 @@ dpkg --listfiles firezone-client-gui
 # Print the deps
 dpkg --info "$DEB_PATH"
 
-# Confirm that all three binaries and at least one icon were installed
-which firezone-client-gui firezone-client-tunnel firezone
+# Confirm the GUI, the daemon-and-CLI binary, its alias and at least one icon
+# were installed, and that the package carries the daemon's unit.
+which firezone-client-gui firezone firezone-client-tunnel
+test -f /usr/lib/systemd/system/firezone.service
 stat /usr/share/icons/hicolor/512x512/apps/firezone-client-gui.png
 
 # Make sure the binaries got built, packaged, and installed, and at least
@@ -30,5 +32,6 @@ stat /usr/share/icons/hicolor/512x512/apps/firezone-client-gui.png
 firezone-client-gui --help | grep "Usage: firezone-client-gui"
 firezone --help | grep "Usage: firezone \["
 
-# Make sure the Tunnel service is running
+# Make sure the daemon is running, under its new name and the old one.
 systemctl status "$SERVICE_NAME" || debug_exit
+systemctl status firezone-client-tunnel || debug_exit

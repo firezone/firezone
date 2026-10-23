@@ -5,9 +5,10 @@
 
 source "./scripts/tests/lib.sh"
 
-BINARY_NAME=firezone-client-tunnel
+BINARY_NAME=firezone
+FZ_USER="firezone"
 FZ_GROUP="firezone-client"
-SERVICE_NAME=firezone-client-tunnel
+SERVICE_NAME=firezone
 SOCKET=/run/dev.firezone.client/tunnel.sock
 export RUST_LOG=info
 
@@ -23,16 +24,18 @@ function debug_exit() {
 # Copy the Linux Client out of the build dir
 sudo cp "rust/target/debug/$BINARY_NAME" "/usr/bin/$BINARY_NAME"
 
-# Set up the systemd service
-sudo cp "rust/gui-client/src-tauri/linux_package/$SERVICE_NAME.service" /usr/lib/systemd/system/
+# Set up the systemd service the way the packages do
+sudo cp "rust/headless-client/debian/$SERVICE_NAME.service" /usr/lib/systemd/system/
 sudo cp "scripts/tests/systemd/env" "/etc/default/firezone-client-tunnel"
 
-# The firezone group must exist before the daemon starts
-sudo groupadd "$FZ_GROUP"
+# The daemon's user and the group that may control it must exist before it
+# starts, and the unit loads the (empty) Gateway token file as a credential.
+sudo systemd-sysusers "rust/headless-client/debian/$SERVICE_NAME.sysusers"
+sudo systemd-tmpfiles --create "rust/headless-client/debian/$SERVICE_NAME.tmpfiles"
 sudo systemctl start "$SERVICE_NAME" || debug_exit
 
 # Make sure the socket has the right permissions
-if [ "root $FZ_GROUP" != "$(stat -c '%U %G' $SOCKET)" ]
+if [ "$FZ_USER $FZ_GROUP" != "$(stat -c '%U %G' $SOCKET)" ]
 then
     exit 1
 fi

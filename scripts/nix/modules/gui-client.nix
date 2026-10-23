@@ -1,7 +1,7 @@
 # NixOS module for the Firezone GUI client. The privileged tunnel daemon
-# is adapted from rust/gui-client/src-tauri/linux_package/
-# firezone-client-tunnel.service; the GUI itself runs in the user's
-# desktop session.
+# is adapted from rust/headless-client/debian/firezone.service, run here
+# under its old unit name; the GUI itself runs in the user's desktop
+# session.
 self:
 {
   config,
@@ -100,8 +100,10 @@ in
       // cfg.extraEnvironment;
 
       serviceConfig = {
-        Type = "notify";
-        ExecStart = "${lib.getExe' cfg.package "firezone-client-tunnel"} run";
+        Type = "simple";
+        # The same binary serves as a Gateway when told to; this host runs
+        # the client daemon whatever else is installed on it.
+        ExecStart = "${lib.getExe' cfg.package "firezone"} run --role client";
         # Root is required to control DNS.
         User = "root";
         Group = "firezone-client";
