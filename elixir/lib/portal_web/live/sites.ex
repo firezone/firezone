@@ -565,9 +565,6 @@ defmodule PortalWeb.Sites do
          |> reload_panel_gateways(site.id)
          |> merge_state(:site_panel, %{device_picker: nil})}
 
-      {:error, :not_a_gateway} ->
-        {:noreply, put_flash(socket, :error, "Only gateways can serve a site's resources for now.")}
-
       {:error, _reason} ->
         {:noreply, put_flash(socket, :error, "Failed to add device to site.")}
     end
@@ -1431,7 +1428,6 @@ defmodule PortalWeb.Sites do
     def list_gateways_for_site(site_id, subject) do
       from(d in Device, as: :devices)
       |> join_site_devices()
-      |> where([devices: d], d.type == :gateway)
       |> where([site_devices: sd], sd.site_id == ^site_id)
       |> order_by([devices: d], asc: d.name)
       |> Safe.scoped(subject)
@@ -1533,7 +1529,6 @@ defmodule PortalWeb.Sites do
     def count_gateways_by_site(site_ids, subject) do
       from(d in Device, as: :devices)
       |> join_site_devices()
-      |> where([devices: d], d.type == :gateway)
       |> where([site_devices: sd], sd.site_id in ^site_ids)
       |> group_by([site_devices: sd], sd.site_id)
       |> select([site_devices: sd, devices: d], {sd.site_id, count(d.id)})

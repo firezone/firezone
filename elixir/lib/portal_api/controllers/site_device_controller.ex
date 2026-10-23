@@ -65,13 +65,6 @@ defmodule PortalAPI.SiteDeviceController do
       |> put_resp_header("location", ~p"/sites/#{site_id}/gateways/#{gateway}")
       |> json(JSON.encode(gateway, schema: PortalAPI.Schemas.Gateway.Schema))
     else
-      {:error, :not_a_gateway} ->
-        Error.handle(
-          conn,
-          {:error, :unprocessable_entity,
-           validation_errors: %{device_id: ["only gateways can serve a site's resources for now"]}}
-        )
-
       {:error, :already_assigned} ->
         Error.handle(conn, {:error, :conflict, reason: "Device is already assigned to this Site"})
 
@@ -161,11 +154,11 @@ defmodule PortalAPI.SiteDeviceController do
       end
     end
 
-    # The gateway as the gateway routes render it, with the rotation state
-    # of the token it last connected with, limited to the site's gateways.
+    # The device as the gateway routes render it, with the rotation state
+    # of the token it last connected with, limited to the site's devices.
     def fetch_gateway(site_id, id, subject) do
       from(d in Device, as: :gateways)
-      |> where([gateways: d], d.id == ^id and d.type == :gateway)
+      |> where([gateways: d], d.id == ^id)
       |> where(
         [gateways: d],
         exists(

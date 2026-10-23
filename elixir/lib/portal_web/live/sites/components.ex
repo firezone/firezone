@@ -735,8 +735,9 @@ defmodule PortalWeb.Sites.Components do
 
   attr :picker, :map, required: true
 
-  # Devices in the account not yet assigned to the site. Gateways can be
-  # added; other devices are listed so the admin sees why they cannot be yet.
+  # Devices in the account not yet assigned to the site. Any device can be
+  # added; whether it is picked to serve depends on what it reports it can
+  # do when it connects, which the device's own panel shows.
   def site_device_picker(assigns) do
     ~H"""
     <div class="px-5 py-3 border-b border-border bg-raised space-y-2">
@@ -774,7 +775,7 @@ defmodule PortalWeb.Sites.Components do
             <p class="text-[11px] text-subtle truncate">{device.slug}</p>
           </div>
           <Form.button
-            :if={device.type == :gateway and @picker.confirm_id != device.id}
+            :if={@picker.confirm_id != device.id}
             type="button"
             size="xs"
             phx-click="assign_device"
@@ -807,12 +808,8 @@ defmodule PortalWeb.Sites.Components do
               </Form.button>
             </div>
           </div>
-          <span
-            :if={device.type != :gateway}
-            class="text-[11px] text-subtle"
-            title="Only gateways can serve a site's resources for now."
-          >
-            Client: cannot serve resources yet
+          <span :if={device.type != :gateway} class="text-[11px] text-subtle">
+            Client
           </span>
         </li>
       </ul>

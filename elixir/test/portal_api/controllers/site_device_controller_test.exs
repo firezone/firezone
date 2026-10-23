@@ -53,7 +53,12 @@ defmodule PortalAPI.SiteDeviceControllerTest do
       assert assigned?(account, other_site, gateway)
     end
 
-    test "refuses a client", %{conn: conn, account: account, actor: actor, site: site} do
+    test "assigns a client, which serves once it reports it routes", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      site: site
+    } do
       client = client_fixture(account: account)
 
       conn =
@@ -62,11 +67,9 @@ defmodule PortalAPI.SiteDeviceControllerTest do
         |> put_req_header("content-type", "application/json")
         |> post("/sites/#{site.id}/devices", device: %{id: client.id})
 
-      assert %{"status" => 422, "validation_errors" => %{"device_id" => [message]}} =
-               json_response(conn, 422)
-
-      assert message =~ "only gateways"
-      refute assigned?(account, site, client)
+      assert %{"data" => %{"id" => id}} = json_response(conn, 201)
+      assert id == client.id
+      assert assigned?(account, site, client)
     end
 
     test "returns 409 when the gateway is already assigned", %{

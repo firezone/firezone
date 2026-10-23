@@ -609,7 +609,7 @@ defmodule PortalWeb.SitesTest do
       assert html =~ "edge-gw"
     end
 
-    test "lists clients as not yet able to serve and refuses to add them", %{
+    test "lists clients and adds them like any other device", %{
       conn: conn,
       account: account,
       site: site
@@ -618,14 +618,12 @@ defmodule PortalWeb.SitesTest do
 
       {:ok, lv, _html} = live(conn, ~p"/#{account}/sites/#{site.id}")
 
-      html = render_click(lv, "open_device_picker")
+      render_click(lv, "open_device_picker")
       assert has_element?(lv, "#assignable-device-#{client.id}")
-      assert html =~ "cannot serve resources yet"
 
-      html = render_click(lv, "assign_device", %{"id" => client.id})
-      assert html =~ "Only gateways can serve"
+      render_click(lv, "assign_device", %{"id" => client.id})
 
-      refute Repo.get_by(Portal.SiteDevice,
+      assert Repo.get_by(Portal.SiteDevice,
                account_id: account.id,
                site_id: site.id,
                device_id: client.id

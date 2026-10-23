@@ -3,8 +3,10 @@ defmodule Portal.Routing do
   Picks the device that serves a resource for an initiating device.
 
   Candidates are the online devices assigned to the resource's site, through
-  any of their sites, whose protocol range overlaps the initiator's and that
-  understand the resource, never the initiator itself. The receiver among
+  any of their sites, that report they route resources, whose protocol range
+  overlaps the initiator's and that understand the resource, never the
+  initiator itself. A gateway from before capabilities were reported routes;
+  a client from then does not. The receiver among
   them is the nearest, then the newest, then one at random, preferring any
   the initiator is already connected to. Every rule about who may serve what
   lives here so it has one home when it changes.
@@ -33,7 +35,7 @@ defmodule Portal.Routing do
 
     site_devices =
       initiator.account_id
-      |> Presence.Devices.all_connected_gateways()
+      |> Presence.Devices.all_connected_routers()
       |> Enum.filter(&(&1.id != initiator.id and Device.serves_site?(&1, site_id)))
 
     initiator_range = initiator_range(initiator, initiator_version)
@@ -71,7 +73,7 @@ defmodule Portal.Routing do
   def compatible?(%Device{last_seen_version: nil}, _resource, _range), do: false
 
   def compatible?(%Device{last_seen_version: version} = device, resource, initiator_range) do
-    device_range = device.proto_range || FzVersion.proto_range(nil, :gateway, version)
+    device_range = device.proto_range || FzVersion.proto_range(nil, device.type, version)
 
     FzVersion.compatible?(initiator_range, device_range) and
       not is_nil(Portal.Resource.adapt_resource_for_version(resource, version))

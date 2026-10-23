@@ -113,22 +113,18 @@ defmodule Portal.Devices do
     do: Database.fetch_sites(ids, subject)
 
   @doc """
-  Assigns a device to a site so it serves the site's resources. Only
-  gateways can serve until the unified device ships, so other devices are
-  refused with `:not_a_gateway`.
+  Assigns a device to a site so it serves the site's resources. Any device
+  can be assigned; whether it is picked to serve depends on what it reports
+  it can do when it connects.
   """
   @spec assign_to_site(Site.t(), Ecto.UUID.t(), Authentication.Subject.t()) ::
           {:ok, Portal.SiteDevice.t()}
-          | {:error, :not_found | :not_a_gateway | :already_assigned | :unauthorized}
+          | {:error, :not_found | :already_assigned | :unauthorized}
   def assign_to_site(%Site{} = site, device_id, %Authentication.Subject{} = subject) do
-    with {:ok, device} <- Database.fetch_device(device_id, subject),
-         :ok <- ensure_can_serve(device) do
+    with {:ok, device} <- Database.fetch_device(device_id, subject) do
       Database.insert_site_device(site, device, subject)
     end
   end
-
-  defp ensure_can_serve(%Device{type: :gateway}), do: :ok
-  defp ensure_can_serve(%Device{}), do: {:error, :not_a_gateway}
 
   @doc """
   Takes a device off a site. A gateway's site column still has to name one

@@ -345,9 +345,6 @@ defmodule PortalWeb.Devices do
          |> put_flash(:success, "Device now serves #{site.name}.")
          |> merge_state(:device_sites, options: options, confirm_site_id: nil)}
 
-      {:error, :not_a_gateway} ->
-        {:noreply, put_flash(socket, :error, "Only gateways can serve a site's resources for now.")}
-
       {:error, :already_assigned} ->
         {:noreply, put_flash(socket, :error, "The device already serves that site.")}
 

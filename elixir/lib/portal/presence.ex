@@ -41,9 +41,32 @@ defmodule Portal.Presence do
         remote_ip: device.last_seen_remote_ip,
         remote_ip_location_lat: device.last_seen_remote_ip_location_lat,
         remote_ip_location_lon: device.last_seen_remote_ip_location_lon,
-        attested?: device.attested?
+        attested?: device.attested?,
+        capabilities: default_capabilities(device.type)
       }
       |> Map.merge(extra)
+    end
+
+    @doc """
+    What a device can do, as it reported on connect. A device from before
+    capabilities were reported gets the defaults of its kind: a gateway
+    routes every resource it is assigned, a client only itself.
+    """
+    @spec default_capabilities(:client | :gateway) :: %{
+            route_resources: boolean(),
+            dns_recursion: boolean(),
+            iceless: boolean()
+          }
+    def default_capabilities(:gateway), do: %{route_resources: true, dns_recursion: true, iceless: false}
+    def default_capabilities(_client), do: %{route_resources: false, dns_recursion: false, iceless: false}
+
+    @doc "Whether a device, by its presence meta, routes the resources of the sites it serves."
+    @spec routes_resources?(map()) :: boolean()
+    def routes_resources?(meta) do
+      case Map.get(meta, :capabilities) do
+        %{route_resources: route?} -> route? == true
+        _ -> default_capabilities(meta.type).route_resources
+      end
     end
 
     defp site_ids(%Device{} = device), do: Device.served_site_ids(device)
@@ -157,22 +180,29 @@ defmodule Portal.Presence do
       |> Enum.any?(fn %{metas: metas} -> Enum.any?(metas, &(Map.get(&1, :actor_id) == actor_id)) end)
     end
 
-    def fetch_gateway(account_id, gateway_id) do
-      case __MODULE__.Account.get(account_id, gateway_id) do
-        %{metas: [%{type: :gateway} = meta | _]} ->
-          {:ok, from_meta(gateway_id, account_id, meta)}
+    @doc "An online device that routes resources, as a device struct, by id."
+    def fetch_gateway(account_id, device_id) do
+      case __MODULE__.Account.get(account_id, device_id) do
+        %{metas: [meta | _]} ->
+          if routes_resources?(meta),
+            do: {:ok, from_meta(device_id, account_id, meta)},
+            else: {:error, :offline}
 
-        _offline_or_not_a_gateway ->
+        _offline ->
           {:error, :offline}
       end
     end
 
-    def all_connected_gateways(account_id) do
+    @doc "Every online device in the account that routes resources, as device structs."
+    def all_connected_routers(account_id) do
       account_id
       |> __MODULE__.Account.list()
       |> Enum.flat_map(fn
-        {id, %{metas: [%{type: :gateway} = meta | _]}} -> [from_meta(id, account_id, meta)]
-        _other_kind -> []
+        {id, %{metas: [meta | _]}} ->
+          if routes_resources?(meta), do: [from_meta(id, account_id, meta)], else: []
+
+        _other ->
+          []
       end)
     end
 
@@ -188,7 +218,7 @@ defmodule Portal.Presence do
           end,
         psk_base: meta.psk_base,
         online?: true,
-        proto_range: Portal.Version.proto_range_from_meta(meta, :gateway),
+        proto_range: Portal.Version.proto_range_from_meta(meta, meta.type),
         public_key: meta.public_key,
         last_seen_version: meta.version,
         last_seen_remote_ip: normalize_ip(meta.remote_ip),

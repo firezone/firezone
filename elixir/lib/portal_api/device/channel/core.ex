@@ -417,7 +417,11 @@ defmodule PortalAPI.Device.Channel.Core do
 
         # Pool authorization reads a target's groups off its presence, so
         # they follow its memberships.
-        :ok = Presence.Devices.connect(device, token_id(socket), %{group_ids: Outbound.group_ids(socket)})
+        :ok =
+          Presence.Devices.connect(device, token_id(socket), %{
+            group_ids: Outbound.group_ids(socket),
+            capabilities: capabilities(socket)
+          })
 
         for {_pid, ref} <- socket.assigns[:presence_monitors] || [] do
           Process.demonitor(ref, [:flush])
@@ -809,6 +813,23 @@ defmodule PortalAPI.Device.Channel.Core do
     {:noreply, assign(socket, :iceless_capable, payload["iceless"] == true)}
   end
 
+  # What the device can do, reported after init on the unified protocol and
+  # carried in its presence so routing can pick it, or not.
+  def handle_in("set_capabilities", payload, socket) when is_map(payload) do
+    capabilities = %{
+      route_resources: payload["route_resources"] == true,
+      dns_recursion: payload["dns_recursion"] == true,
+      iceless: payload["iceless"] == true
+    }
+
+    socket =
+      socket
+      |> assign(:capabilities, capabilities)
+      |> assign(:iceless_capable, capabilities.iceless)
+
+    {:noreply, track_presence(socket)}
+  end
+
   def handle_in("no_relays", payload, socket) do
     Relays.handle_no_relays(socket, payload, relay_peer(socket))
   end
@@ -830,6 +851,11 @@ defmodule PortalAPI.Device.Channel.Core do
   ####################################
   ##### Helpers ######################
   ####################################
+
+  # What the device reported it can do, or the defaults of its kind.
+  defp capabilities(socket) do
+    socket.assigns[:capabilities] || Presence.Devices.default_capabilities(device(socket).type)
+  end
 
   # Which peers a candidate broadcast names: a client lists gateways, a
   # gateway lists clients, a device on the unified protocol lists devices.
