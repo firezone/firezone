@@ -490,6 +490,21 @@ defmodule Portal.AuthenticationTest do
     end
   end
 
+  describe "rotate_gateway_token/2 ownership" do
+    test "the replacement stays with the service account that owns the current token" do
+      account = account_fixture()
+      owner = service_account_fixture(account: account)
+      subject = admin_subject_fixture(account: account)
+      gateway = gateway_fixture(account: account, site: site_fixture(account: account))
+
+      assert {:ok, current} = create_device_token(gateway, owner, subject)
+      gateway_session_fixture(account: account, gateway: gateway, token: current)
+
+      assert {:ok, replacement} = rotate_gateway_token(gateway, subject)
+      assert replacement.actor_id == owner.id
+    end
+  end
+
   describe "create_interactive_client_token/1" do
     test "creates a client token with required attributes" do
       account = account_fixture()

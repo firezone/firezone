@@ -75,6 +75,60 @@ defmodule Portal.DevicesTest do
     end
   end
 
+  describe "provision_device/4" do
+    setup do
+      account = account_fixture()
+      site = site_fixture(account: account)
+      subject = subject_fixture(account: account, actor: %{type: :api_client, account: account})
+      %{account: account, site: site, subject: subject}
+    end
+
+    test "mints the token under the Infrastructure actor when no owner is given", %{
+      account: account,
+      site: site,
+      subject: subject
+    } do
+      assert {:ok, _gateway, token, _encoded} = Devices.provision_device(site, nil, "gw", subject)
+
+      assert token.actor_id == Portal.Actor.fetch_infrastructure_actor(account.id).id
+    end
+
+    test "mints the token under a service account of the account", %{
+      account: account,
+      site: site,
+      subject: subject
+    } do
+      owner = service_account_fixture(account: account)
+
+      assert {:ok, _gateway, token, _encoded} =
+               Devices.provision_device(site, owner, "gw", subject)
+
+      assert token.actor_id == owner.id
+    end
+
+    test "refuses an owner that is not a service account", %{site: site, subject: subject} do
+      owner = actor_fixture(account: Repo.get!(Portal.Account, site.account_id), type: :account_user)
+
+      assert {:error, :not_a_service_account} =
+               Devices.provision_device(site, owner, "gw", subject)
+    end
+
+    test "refuses a service account of another account and leaves no device behind", %{
+      site: site,
+      subject: subject
+    } do
+      owner = service_account_fixture()
+
+      assert {:error, :not_a_service_account} =
+               Devices.provision_device(site, owner, "gw", subject)
+
+      assert Repo.aggregate(
+               from(d in Device, where: d.site_id == ^site.id and d.type == :gateway),
+               :count
+             ) == 0
+    end
+  end
+
   describe "next_free_slug/3" do
     setup do
       %{account: account_fixture()}
