@@ -100,7 +100,8 @@ defmodule PortalAPI.Gateway.ChannelTest do
   defp with_session(gateway, token, opts) do
     %{
       gateway
-      | gateway_token_id: token.id,
+      | token_id: token.id,
+        gateway_token_id: token.id,
         last_seen_user_agent: "Firezone-Gateway/1.3.0",
         last_seen_version: Keyword.get(opts, :version, gateway.last_seen_version || "1.3.0"),
         last_seen_at: DateTime.utc_now()
@@ -113,7 +114,13 @@ defmodule PortalAPI.Gateway.ChannelTest do
   defp broadcast_struct(gateway) do
     Portal.SchemaHelpers.struct_from_params(
       Portal.Device,
-      Map.from_struct(%{gateway | public_key: nil, gateway_token_id: nil, last_seen_version: nil})
+      Map.from_struct(%{
+        gateway
+        | public_key: nil,
+          token_id: nil,
+          gateway_token_id: nil,
+          last_seen_version: nil
+      })
     )
   end
 
@@ -233,7 +240,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       persisted =
         Portal.Repo.get_by!(Portal.Device, id: gateway.id, account_id: gateway.account_id)
 
-      assert persisted.gateway_token_id == token.id
+      assert persisted.token_id == token.id
       assert persisted.public_key == socket.assigns.gateway.public_key
       assert persisted.last_seen_user_agent == socket.assigns.gateway.last_seen_user_agent
       assert persisted.last_seen_version == socket.assigns.gateway.last_seen_version

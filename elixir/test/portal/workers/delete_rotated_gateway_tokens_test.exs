@@ -5,7 +5,7 @@ defmodule Portal.Workers.DeleteRotatedGatewayTokensTest do
   import Portal.DeviceFixtures
   import Portal.TokenFixtures
 
-  alias Portal.GatewayToken
+  alias Portal.ClientToken, as: GatewayToken
   alias Portal.Workers.DeleteRotatedGatewayTokens
 
   describe "perform/1" do

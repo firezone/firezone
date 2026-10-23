@@ -653,7 +653,7 @@ defmodule Portal.AuthenticationTest do
       assert is_nil(token.site_id)
       assert is_nil(token.rotated_at)
       assert token.secret_fragment != nil
-      assert Portal.GatewayToken.single_owner?(token)
+      assert Portal.ClientToken.bound?(token)
     end
 
     test "returns error when the gateway already has an active token" do
@@ -700,7 +700,7 @@ defmodule Portal.AuthenticationTest do
       assert new_token.id != old_token.id
       assert is_nil(new_token.rotated_at)
 
-      old_token = Repo.get_by!(Portal.GatewayToken, account_id: account.id, id: old_token.id)
+      old_token = Repo.get_by!(Portal.ClientToken, account_id: account.id, id: old_token.id)
       assert old_token.rotated_at != nil
     end
 
@@ -716,7 +716,7 @@ defmodule Portal.AuthenticationTest do
       assert is_nil(new_token.rotated_at)
 
       # No session ever referenced the old token, so it is gone outright
-      refute Repo.get_by(Portal.GatewayToken, account_id: account.id, id: old_token.id)
+      refute Repo.get_by(Portal.ClientToken, account_id: account.id, id: old_token.id)
     end
 
     test "re-rotating replaces the pending token and keeps the rotated deadline" do
@@ -729,19 +729,19 @@ defmodule Portal.AuthenticationTest do
       {:ok, pending_token} = rotate_gateway_token(gateway, subject)
 
       in_use_token =
-        Repo.get_by!(Portal.GatewayToken, account_id: account.id, id: in_use_token.id)
+        Repo.get_by!(Portal.ClientToken, account_id: account.id, id: in_use_token.id)
 
       original_rotated_at = in_use_token.rotated_at
 
       assert {:ok, replacement_token} = rotate_gateway_token(gateway, subject)
 
       # The unconfirmed pending token is gone, replaced by the new one
-      refute Repo.get_by(Portal.GatewayToken, account_id: account.id, id: pending_token.id)
+      refute Repo.get_by(Portal.ClientToken, account_id: account.id, id: pending_token.id)
       assert is_nil(replacement_token.rotated_at)
 
       # The in-use rotated token keeps its original deadline
       in_use_token =
-        Repo.get_by!(Portal.GatewayToken, account_id: account.id, id: in_use_token.id)
+        Repo.get_by!(Portal.ClientToken, account_id: account.id, id: in_use_token.id)
 
       assert in_use_token.rotated_at == original_rotated_at
     end
@@ -756,14 +756,14 @@ defmodule Portal.AuthenticationTest do
       {:ok, pending_token} = rotate_gateway_token(gateway, subject)
 
       # Simulate confirmation racing ahead: only the rotated token remains
-      Portal.GatewayToken
+      Portal.ClientToken
       |> Repo.get_by!(account_id: account.id, id: pending_token.id)
       |> Repo.delete!()
 
       assert {:ok, new_token} = rotate_gateway_token(gateway, subject)
       assert is_nil(new_token.rotated_at)
 
-      old_token = Repo.get_by!(Portal.GatewayToken, account_id: account.id, id: old_token.id)
+      old_token = Repo.get_by!(Portal.ClientToken, account_id: account.id, id: old_token.id)
       assert old_token.rotated_at != nil
     end
 
@@ -819,7 +819,7 @@ defmodule Portal.AuthenticationTest do
 
       assert {:ok, _verified} = verify_gateway_token(encode_fragment!(active))
 
-      refute Repo.get_by(Portal.GatewayToken, account_id: rotated.account_id, id: rotated.id)
+      refute Repo.get_by(Portal.ClientToken, account_id: rotated.account_id, id: rotated.id)
     end
 
     test "using the rotated token does not delete the active sibling" do
@@ -829,8 +829,8 @@ defmodule Portal.AuthenticationTest do
 
       assert {:ok, _verified} = verify_gateway_token(encode_fragment!(rotated))
 
-      assert Repo.get_by(Portal.GatewayToken, account_id: active.account_id, id: active.id)
-      assert Repo.get_by(Portal.GatewayToken, account_id: rotated.account_id, id: rotated.id)
+      assert Repo.get_by(Portal.ClientToken, account_id: active.account_id, id: active.id)
+      assert Repo.get_by(Portal.ClientToken, account_id: rotated.account_id, id: rotated.id)
     end
 
     test "verifying an active token with no sibling reports none" do
@@ -850,7 +850,7 @@ defmodule Portal.AuthenticationTest do
       assert {:ok, verified} = verify_gateway_token(encode_fragment!(token_1))
       assert is_nil(verified.rotated_sibling_id)
 
-      assert Repo.get_by(Portal.GatewayToken, account_id: account.id, id: token_2.id)
+      assert Repo.get_by(Portal.ClientToken, account_id: account.id, id: token_2.id)
     end
   end
 

@@ -3,6 +3,7 @@ defmodule Portal.Actor do
   import Ecto.Changeset
   import Portal.Changeset
   alias Portal.Email
+  alias __MODULE__.Database
 
   @primary_key false
   @foreign_key_type :binary_id
@@ -88,6 +89,29 @@ defmodule Portal.Actor do
     %{name: @infrastructure_name, type: :service_account, managed_by: :system}
   end
 
+  @doc "The account's Infrastructure service account, or nil if it was never provisioned."
+  @spec fetch_infrastructure_actor(Ecto.UUID.t()) :: t() | nil
+  def fetch_infrastructure_actor(account_id), do: Database.fetch_infrastructure_actor(account_id)
+
+  @doc """
+  The account's Infrastructure service account, provisioned on the spot if the
+  account somehow has none. Every account is meant to be created with one; a
+  concurrent creation loses on the unique index and reads the winner.
+  """
+  @spec fetch_or_create_infrastructure_actor(Ecto.UUID.t()) :: t()
+  def fetch_or_create_infrastructure_actor(account_id) do
+    case fetch_infrastructure_actor(account_id) do
+      %__MODULE__{} = actor ->
+        actor
+
+      nil ->
+        case Database.insert_infrastructure_actor(account_id) do
+          {:ok, actor} -> actor
+          {:error, _changeset} -> Database.fetch_infrastructure_actor(account_id)
+        end
+    end
+  end
+
   @doc "Whether the system owns `actor`, so admins cannot change or delete it."
   @spec system_managed?(t()) :: boolean()
   def system_managed?(%__MODULE__{managed_by: managed_by}), do: managed_by == :system
@@ -171,5 +195,33 @@ defmodule Portal.Actor do
       other ->
         other
     end)
+  end
+
+  defmodule Database do
+    @moduledoc false
+    import Ecto.Query
+    alias Portal.Safe
+
+    def insert_infrastructure_actor(account_id) do
+      %Portal.Actor{account_id: account_id}
+      |> Ecto.Changeset.cast(Portal.Actor.infrastructure_attrs(), [:name, :type, :managed_by])
+      |> Portal.Actor.changeset()
+      |> Ecto.Changeset.unique_constraint(:managed_by,
+        name: :actors_one_infrastructure_per_account_index
+      )
+      |> Safe.unscoped()
+      |> Safe.insert()
+    end
+
+    def fetch_infrastructure_actor(account_id) do
+      from(a in Portal.Actor,
+        where: a.account_id == ^account_id,
+        where: a.managed_by == :system,
+        where: a.type == :service_account,
+        limit: 1
+      )
+      |> Safe.unscoped()
+      |> Safe.one()
+    end
   end
 end

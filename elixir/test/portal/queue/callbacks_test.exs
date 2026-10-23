@@ -657,7 +657,7 @@ defmodule Portal.Queue.CallbacksTest do
       assert 1 = on_flush.([{attrs, %{timestamp: timestamp}}])
 
       device = Repo.get_by!(Device, id: gateway.id, account_id: account.id)
-      assert device.gateway_token_id == token.id
+      assert device.token_id == token.id
       assert device.last_seen_at == timestamp
       assert_receive {:confirm_session_durability, ^session_ref}
 

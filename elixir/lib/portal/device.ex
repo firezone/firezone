@@ -124,7 +124,7 @@ defmodule Portal.Device do
     # Gateway-only
     belongs_to :site, Portal.Site
 
-    has_many :gateway_tokens, Portal.GatewayToken,
+    has_many :gateway_tokens, Portal.ClientToken,
       foreign_key: :device_id,
       references: :id
 

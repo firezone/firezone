@@ -8,6 +8,18 @@ defmodule Portal.DeviceFixtures do
   import Portal.SiteFixtures
   import Portal.TokenFixtures
 
+  # The latest session's token, in the one column every kind shares and in
+  # the legacy column only when the token still lives in gateway_tokens.
+  defp put_latest_gateway_token(changeset, %Portal.GatewayToken{} = token) do
+    changeset
+    |> Ecto.Changeset.put_change(:token_id, token.id)
+    |> Ecto.Changeset.put_change(:gateway_token_id, token.id)
+  end
+
+  defp put_latest_gateway_token(changeset, %Portal.ClientToken{} = token) do
+    Ecto.Changeset.put_change(changeset, :token_id, token.id)
+  end
+
   ##############################################################################
   # Address helpers shared by client and gateway fixtures
   ##############################################################################
@@ -362,6 +374,7 @@ defmodule Portal.DeviceFixtures do
         nil -> gateway_token_fixture(account: account, site: site)
         :single_owner -> gateway_token_fixture(gateway: gateway)
         %Portal.GatewayToken{} = token -> token
+        %Portal.ClientToken{} = token -> token
       end
 
     public_key = Map.get(device_attrs, :public_key, generate_public_key())
@@ -397,7 +410,7 @@ defmodule Portal.DeviceFixtures do
           :last_seen_at
         ]
       )
-      |> Ecto.Changeset.put_change(:gateway_token_id, token.id)
+      |> put_latest_gateway_token(token)
       |> Portal.Repo.update!()
 
     Portal.Repo.preload(gateway, :site)
@@ -423,7 +436,10 @@ defmodule Portal.DeviceFixtures do
 
     case Map.get(attrs, :token) do
       nil -> client
-      token -> client |> Ecto.Changeset.change(client_token_id: token.id) |> Portal.Repo.update!()
+      token ->
+        client
+        |> Ecto.Changeset.change(client_token_id: token.id, token_id: token.id)
+        |> Portal.Repo.update!()
     end
   end
 

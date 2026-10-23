@@ -116,7 +116,7 @@ defmodule Portal.GatewayTokenTest do
 
     test "rejects a second active token for the same gateway" do
       gateway = gateway_fixture()
-      gateway_token_fixture(gateway: gateway)
+      legacy_gateway_token_fixture(gateway: gateway)
 
       changeset =
         %GatewayToken{}
@@ -141,7 +141,7 @@ defmodule Portal.GatewayTokenTest do
 
     test "rejects a second rotated token for the same gateway" do
       gateway = gateway_fixture()
-      gateway_token_fixture(gateway: gateway, rotated_at: DateTime.utc_now())
+      legacy_gateway_token_fixture(gateway: gateway, rotated_at: DateTime.utc_now())
 
       changeset =
         %GatewayToken{}

@@ -11,7 +11,7 @@ defmodule Portal.DevicesTest do
 
   alias Portal.Device
   alias Portal.Devices
-  alias Portal.GatewayToken
+  alias Portal.ClientToken, as: GatewayToken
 
   describe "provision_gateway/3" do
     test "creates a gateway and mints its single-owner token" do

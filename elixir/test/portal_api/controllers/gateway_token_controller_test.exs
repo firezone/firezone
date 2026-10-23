@@ -1,6 +1,6 @@
 defmodule PortalAPI.GatewayTokenControllerTest do
   use PortalAPI.ConnCase, async: true
-  alias Portal.GatewayToken
+  alias Portal.ClientToken, as: GatewayToken
 
   import Portal.AccountFixtures
   import Portal.ActorFixtures

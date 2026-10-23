@@ -426,7 +426,7 @@ defmodule Portal.QueueTest do
       Queue.flush(ctx.queue)
 
       device = reload_device(ctx.gateway)
-      assert device.gateway_token_id == ctx.token.id
+      assert device.token_id == ctx.token.id
       assert device.last_seen_user_agent == valid.user_agent
     end
 

@@ -115,7 +115,7 @@ defmodule PortalAPI.Gateway.Socket do
 
   # Multi-owner (site) token: gateways are identified by their reported
   # firezone_id and created on the fly
-  defp resolve_gateway(%Portal.GatewayToken{device_id: nil} = gateway_token, attrs) do
+  defp resolve_gateway(%Portal.ClientToken{device_id: nil} = gateway_token, attrs) do
     with {:ok, site} <- Database.fetch_site(gateway_token.account_id, gateway_token.site_id),
          changeset = insert_changeset(site, attrs),
          {:ok, _} <- apply_action(changeset, :validate),
@@ -126,7 +126,7 @@ defmodule PortalAPI.Gateway.Socket do
 
   # Single-owner token: the token identifies the gateway directly; the
   # reported firezone_id is kept in sync as a telemetry hint
-  defp resolve_gateway(%Portal.GatewayToken{} = gateway_token, _attrs) do
+  defp resolve_gateway(%Portal.ClientToken{} = gateway_token, _attrs) do
     with {:ok, gateway} <-
            Database.fetch_gateway(gateway_token.account_id, gateway_token.device_id) do
       {:ok, gateway.site, gateway}

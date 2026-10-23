@@ -193,9 +193,10 @@ defmodule PortalAPI.Sockets.LatestSession do
       last_attested_cert_serial: :string
     }
 
+    # Gateway tokens live in client_tokens too, so both kinds are probed there.
     @token_schemas %{
       client_token_id: Portal.ClientToken,
-      gateway_token_id: Portal.GatewayToken
+      gateway_token_id: Portal.ClientToken
     }
 
     def missing_token_ids(entries, token_field) do
@@ -303,7 +304,7 @@ defmodule PortalAPI.Sockets.LatestSession do
           last_seen_remote_ip_location_lon: dynamic([d, v], v.remote_ip_location_lon),
           last_seen_version: dynamic([d, v], v.version),
           last_seen_at: dynamic([d, v], v.last_seen_at)
-        ] ++ [{:token_id, mirrored_token_id()}, {token_field, dynamic([d, v], v.token_id)}]
+        ] ++ [{:token_id, mirrored_token_id()}, {token_field, role_token_id(token_field)}]
 
       {_count, ids} =
         from(d in Device,
@@ -340,6 +341,22 @@ defmodule PortalAPI.Sockets.LatestSession do
         )
       )
     end
+
+    # The legacy gateway_token_id column still references gateway_tokens, which
+    # no longer receives every gateway token: one minted into client_tokens
+    # leaves it null rather than failing the batch on that foreign key.
+    defp role_token_id(:gateway_token_id) do
+      dynamic(
+        [d, v],
+        fragment(
+          "(SELECT gt.id FROM gateway_tokens gt WHERE gt.account_id = ? AND gt.id = ?)",
+          v.account_id,
+          v.token_id
+        )
+      )
+    end
+
+    defp role_token_id(:client_token_id), do: dynamic([d, v], v.token_id)
 
     defp unique_violation?(%Postgrex.Error{postgres: %{code: :unique_violation}}), do: true
     defp unique_violation?(_error), do: false

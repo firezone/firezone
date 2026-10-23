@@ -19,11 +19,11 @@ defmodule Portal.Repo.Migrations.CopyGatewayTokensIntoClientTokensTest do
     site = site_fixture(account: account)
     gateway = gateway_fixture(account: account, site: site)
 
-    site_token = gateway_token_fixture(account: account, site: site)
-    device_token = gateway_token_fixture(account: account, gateway: gateway)
+    site_token = legacy_gateway_token_fixture(account: account, site: site)
+    device_token = legacy_gateway_token_fixture(account: account, gateway: gateway)
 
     rotated =
-      gateway_token_fixture(account: account, gateway: gateway, rotated_at: DateTime.utc_now())
+      legacy_gateway_token_fixture(account: account, gateway: gateway, rotated_at: DateTime.utc_now())
 
     Repo.query!(Migration.copy_statement())
 
@@ -43,7 +43,7 @@ defmodule Portal.Repo.Migrations.CopyGatewayTokensIntoClientTokensTest do
   test "is idempotent" do
     account = account_fixture()
     infrastructure_actor_fixture(account: account)
-    gateway_token_fixture(account: account, site: site_fixture(account: account))
+    legacy_gateway_token_fixture(account: account, site: site_fixture(account: account))
 
     Repo.query!(Migration.copy_statement())
     Repo.query!(Migration.copy_statement())
@@ -53,7 +53,7 @@ defmodule Portal.Repo.Migrations.CopyGatewayTokensIntoClientTokensTest do
 
   test "skips accounts without an Infrastructure actor rather than failing" do
     account = account_fixture()
-    gateway_token_fixture(account: account, site: site_fixture(account: account))
+    legacy_gateway_token_fixture(account: account, site: site_fixture(account: account))
 
     Repo.query!(Migration.copy_statement())
 

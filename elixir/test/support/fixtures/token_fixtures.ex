@@ -92,12 +92,50 @@ defmodule Portal.TokenFixtures do
   end
 
   @doc """
-  Generate a gateway token using Portal.GatewayToken schema.
+  Generate a gateway token: a client token owned by the account's Infrastructure
+  service account, created if the account has none yet.
 
   Pass `gateway: device` to build a single-owner token bound to that gateway
   instead of a multi-owner site token.
   """
   def gateway_token_fixture(attrs \\ %{}) do
+    attrs = Enum.into(attrs, %{})
+
+    attrs =
+      case Map.pop(attrs, :gateway) do
+        {nil, attrs} ->
+          account = Map.get(attrs, :account) || account_fixture()
+          site = Map.get(attrs, :site) || site_fixture(account: account)
+
+          attrs
+          |> Map.put(:account_id, account.id)
+          |> Map.put(:site_id, site.id)
+
+        {gateway, attrs} ->
+          attrs
+          |> Map.put(:account_id, gateway.account_id)
+          |> Map.put(:device_id, gateway.id)
+      end
+
+    actor =
+      Portal.Actor.fetch_infrastructure_actor(attrs.account_id) ||
+        Portal.ActorFixtures.infrastructure_actor_fixture(
+          account: Portal.Repo.get!(Portal.Account, attrs.account_id)
+        )
+
+    attrs
+    |> Map.drop([:account, :site])
+    |> Map.put(:actor_id, actor.id)
+    |> infrastructure_token_secrets()
+    |> then(&struct!(Portal.ClientToken, &1))
+    |> Portal.Repo.insert!()
+  end
+
+  @doc """
+  Generate a row in the legacy gateway_tokens table, for code that still
+  reads or mirrors it.
+  """
+  def legacy_gateway_token_fixture(attrs \\ %{}) do
     attrs = Enum.into(attrs, %{})
 
     case Map.pop(attrs, :gateway) do
@@ -114,6 +152,7 @@ defmodule Portal.TokenFixtures do
         |> Map.put(:account_id, gateway.account_id)
         |> Map.put(:device_id, gateway.id)
     end
+    |> Map.drop([:account, :site])
     |> infrastructure_token_secrets()
     |> then(&struct!(Portal.GatewayToken, &1))
     |> Portal.Repo.insert!()

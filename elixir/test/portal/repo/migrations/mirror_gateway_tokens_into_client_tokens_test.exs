@@ -23,7 +23,7 @@ defmodule Portal.Repo.Migrations.MirrorGatewayTokensIntoClientTokensTest do
     infrastructure: infrastructure,
     gateway: gateway
   } do
-    token = gateway_token_fixture(account: account, gateway: gateway)
+    token = legacy_gateway_token_fixture(account: account, gateway: gateway)
 
     mirror = Repo.get_by!(ClientToken, account_id: account.id, id: token.id)
     assert mirror.actor_id == infrastructure.id
@@ -34,7 +34,7 @@ defmodule Portal.Repo.Migrations.MirrorGatewayTokensIntoClientTokensTest do
   end
 
   test "rotating a gateway token mirrors the stamp", %{account: account, gateway: gateway} do
-    token = gateway_token_fixture(account: account, gateway: gateway)
+    token = legacy_gateway_token_fixture(account: account, gateway: gateway)
     rotated_at = DateTime.utc_now() |> DateTime.truncate(:microsecond)
 
     from(t in GatewayToken, where: t.account_id == ^account.id and t.id == ^token.id)
@@ -45,7 +45,7 @@ defmodule Portal.Repo.Migrations.MirrorGatewayTokensIntoClientTokensTest do
   end
 
   test "deleting a gateway token deletes the mirror", %{account: account, site: site} do
-    token = gateway_token_fixture(account: account, site: site)
+    token = legacy_gateway_token_fixture(account: account, site: site)
     assert Repo.get_by(ClientToken, account_id: account.id, id: token.id)
 
     Repo.delete!(token)
@@ -55,7 +55,7 @@ defmodule Portal.Repo.Migrations.MirrorGatewayTokensIntoClientTokensTest do
 
   test "an account without an Infrastructure actor gets no mirror" do
     account = account_fixture()
-    token = gateway_token_fixture(account: account, site: site_fixture(account: account))
+    token = legacy_gateway_token_fixture(account: account, site: site_fixture(account: account))
 
     refute Repo.get_by(ClientToken, account_id: account.id, id: token.id)
   end
