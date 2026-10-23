@@ -37,7 +37,7 @@ sudo systemd-tmpfiles --create "$PWD/rust/headless-client/debian/$SERVICE_NAME.t
 sudo systemctl start "$SERVICE_NAME" || debug_exit
 
 # Make sure the socket has the right permissions
-if [ "$FZ_USER $FZ_GROUP" != "$(stat -c '%U %G' $SOCKET)" ]
+if [ "$FZ_USER $FZ_GROUP" != "$(sudo stat -c '%U %G' $SOCKET)" ]
 then
     exit 1
 fi
