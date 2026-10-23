@@ -103,7 +103,7 @@ in
         Type = "simple";
         # The same binary serves as a Gateway when told to; this host runs
         # the client daemon whatever else is installed on it.
-        ExecStart = "${lib.getExe' cfg.package "firezone"} run --role client";
+        ExecStart = "${lib.getExe' cfg.package "firezone"} run";
         # Root is required to control DNS.
         User = "root";
         Group = "firezone-client";
