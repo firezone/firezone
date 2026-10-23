@@ -131,33 +131,6 @@ defmodule Portal.TokenFixtures do
     |> Portal.Repo.insert!()
   end
 
-  @doc """
-  Generate a row in the legacy gateway_tokens table, for code that still
-  reads or mirrors it.
-  """
-  def legacy_gateway_token_fixture(attrs \\ %{}) do
-    attrs = Enum.into(attrs, %{})
-
-    case Map.pop(attrs, :gateway) do
-      {nil, attrs} ->
-        account = Map.get(attrs, :account) || account_fixture()
-        site = Map.get(attrs, :site) || site_fixture(account: account)
-
-        attrs
-        |> Map.put(:account_id, account.id)
-        |> Map.put(:site_id, site.id)
-
-      {gateway, attrs} ->
-        attrs
-        |> Map.put(:account_id, gateway.account_id)
-        |> Map.put(:device_id, gateway.id)
-    end
-    |> Map.drop([:account, :site])
-    |> infrastructure_token_secrets()
-    |> then(&struct!(Portal.GatewayToken, &1))
-    |> Portal.Repo.insert!()
-  end
-
   def valid_api_token_attrs do
     %{
       name: "Test API Token",

@@ -12,25 +12,24 @@ defmodule PortalAPI.Sockets.LatestSession do
   alias __MODULE__.Database
   require Logger
 
-  @spec upsert_all([{map(), map()}], :client_token_id | :gateway_token_id) ::
+  @spec upsert_all([{map(), map()}]) ::
           {non_neg_integer(), [{map(), map()}], [{map(), map()}]}
-  def upsert_all([], _token_field), do: {0, [], []}
+  def upsert_all([]), do: {0, [], []}
 
-  def upsert_all(entries, token_field)
-      when token_field in [:client_token_id, :gateway_token_id] do
+  def upsert_all(entries) do
     # A token hard-deleted before its channel joined the token PG group missed
     # the deletion broadcast; failing the entry here is the backstop that
     # disconnects it. Channels enqueue only after joining the group, so a
     # deletion after this probe is always broadcast to the channel.
-    dead_tokens = Database.missing_token_ids(entries, token_field)
+    dead_tokens = Database.missing_token_ids(entries)
 
     {live, revoked} =
       Enum.split_with(entries, fn {attrs, _metadata} ->
-        not MapSet.member?(dead_tokens, Map.fetch!(attrs, token_field))
+        not MapSet.member?(dead_tokens, attrs.token_id)
       end)
 
-    rows = rows(live, token_field)
-    updated_ids = Database.update_devices(rows, token_field)
+    rows = rows(live)
+    updated_ids = Database.update_devices(rows)
     missing = missing_device_ids(rows, updated_ids)
 
     device_failed =
@@ -48,7 +47,7 @@ defmodule PortalAPI.Sockets.LatestSession do
 
   # Newest entry per device wins within a batch; rows are sorted so
   # concurrent flushes lock device rows in a consistent order.
-  defp rows(entries, token_field) do
+  defp rows(entries) do
     entries
     |> Enum.group_by(fn {attrs, _metadata} -> {attrs.account_id, attrs.device_id} end)
     |> Enum.map(fn {_key, device_entries} ->
@@ -71,7 +70,7 @@ defmodule PortalAPI.Sockets.LatestSession do
         last_attested_cert_fingerprint: attested[:last_attested_cert_fingerprint],
         last_attested_cert_issuer: attested[:last_attested_cert_issuer],
         last_attested_at: attested[:last_attested_at],
-        token_id: Map.fetch!(attrs, token_field),
+        token_id: attrs.token_id,
         public_key: attrs[:public_key],
         user_agent: attrs[:user_agent],
         remote_ip: attrs[:remote_ip],
@@ -193,23 +192,16 @@ defmodule PortalAPI.Sockets.LatestSession do
       last_attested_cert_serial: :string
     }
 
-    # Gateway tokens live in client_tokens too, so both kinds are probed there.
-    @token_schemas %{
-      client_token_id: Portal.ClientToken,
-      gateway_token_id: Portal.ClientToken
-    }
-
-    def missing_token_ids(entries, token_field) do
+    def missing_token_ids(entries) do
       probe_rows =
         entries
         |> Enum.map(fn {attrs, _metadata} ->
-          %{account_id: attrs.account_id, token_id: Map.fetch!(attrs, token_field)}
+          %{account_id: attrs.account_id, token_id: attrs.token_id}
         end)
         |> Enum.reject(&is_nil(&1.token_id))
         |> Enum.uniq()
 
-      schema = Map.fetch!(@token_schemas, token_field)
-      existing = existing_token_ids(schema, probe_rows)
+      existing = existing_token_ids(Portal.ClientToken, probe_rows)
 
       probe_rows
       |> Enum.map(& &1.token_id)
@@ -232,10 +224,10 @@ defmodule PortalAPI.Sockets.LatestSession do
       queryable |> Safe.unscoped() |> Safe.all() |> MapSet.new()
     end
 
-    def update_devices([], _token_field), do: MapSet.new()
+    def update_devices([]), do: MapSet.new()
 
-    def update_devices(rows, token_field) do
-      do_update_devices(rows, token_field, _retries_left = 1)
+    def update_devices(rows) do
+      do_update_devices(rows, _retries_left = 1)
     end
 
     # The probe-then-update window is not atomic: a flush on another node can
@@ -244,7 +236,7 @@ defmodule PortalAPI.Sockets.LatestSession do
     # loser) and retrying once resolves the collision at the entry level
     # instead of failing every session in the batch; anything beyond that is
     # left to the caller's batch-level rescue.
-    defp do_update_devices(rows, token_field, retries_left) do
+    defp do_update_devices(rows, retries_left) do
       rows =
         rows
         |> dedupe_proposed_firezone_ids()
@@ -304,7 +296,7 @@ defmodule PortalAPI.Sockets.LatestSession do
           last_seen_remote_ip_location_lon: dynamic([d, v], v.remote_ip_location_lon),
           last_seen_version: dynamic([d, v], v.version),
           last_seen_at: dynamic([d, v], v.last_seen_at)
-        ] ++ [{:token_id, mirrored_token_id()}, {token_field, role_token_id(token_field)}]
+        ] ++ [token_id: existing_token_id()]
 
       {_count, ids} =
         from(d in Device,
@@ -321,17 +313,16 @@ defmodule PortalAPI.Sockets.LatestSession do
     rescue
       error in Postgrex.Error ->
         if retries_left > 0 and unique_violation?(error) do
-          do_update_devices(rows, token_field, retries_left - 1)
+          do_update_devices(rows, retries_left - 1)
         else
           reraise error, __STACKTRACE__
         end
     end
 
-    # token_id references client_tokens, which holds every client token and,
-    # while the tables are merged, a mirror of each gateway token. A gateway
-    # token without a mirror leaves the column null rather than failing the
+    # token_id references client_tokens. A token deleted between the probe
+    # above and this update leaves the column null rather than failing the
     # whole batch on the foreign key.
-    defp mirrored_token_id do
+    defp existing_token_id do
       dynamic(
         [d, v],
         fragment(
@@ -341,22 +332,6 @@ defmodule PortalAPI.Sockets.LatestSession do
         )
       )
     end
-
-    # The legacy gateway_token_id column still references gateway_tokens, which
-    # no longer receives every gateway token: one minted into client_tokens
-    # leaves it null rather than failing the batch on that foreign key.
-    defp role_token_id(:gateway_token_id) do
-      dynamic(
-        [d, v],
-        fragment(
-          "(SELECT gt.id FROM gateway_tokens gt WHERE gt.account_id = ? AND gt.id = ?)",
-          v.account_id,
-          v.token_id
-        )
-      )
-    end
-
-    defp role_token_id(:client_token_id), do: dynamic([d, v], v.token_id)
 
     defp unique_violation?(%Postgrex.Error{postgres: %{code: :unique_violation}}), do: true
     defp unique_violation?(_error), do: false

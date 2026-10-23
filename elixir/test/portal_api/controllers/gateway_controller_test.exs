@@ -550,7 +550,7 @@ defmodule PortalAPI.GatewayControllerTest do
       # never-connected state a freshly provisioned Gateway has.
       fresh =
         gateway_fixture(account: account, site: site)
-        |> Ecto.Changeset.change(gateway_token_id: nil, token_id: nil)
+        |> Ecto.Changeset.change(token_id: nil)
         |> Repo.update!()
 
       conn =

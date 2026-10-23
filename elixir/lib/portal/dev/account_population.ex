@@ -806,7 +806,7 @@ defmodule Portal.Dev.AccountPopulation do
         last_seen_remote_ip_location_lon: -122.4194,
         last_seen_version: "1.4.0",
         last_seen_at: DateTime.utc_now(),
-        gateway_token_id: token.id
+        token_id: token.id
       )
       |> Repo.update!()
 
@@ -863,7 +863,7 @@ defmodule Portal.Dev.AccountPopulation do
         last_seen_remote_ip_location_lon: -74.0060,
         last_seen_version: "1.4.0",
         last_seen_at: DateTime.utc_now(),
-        client_token_id: token.id
+        token_id: token.id
       )
       |> Repo.update!()
 

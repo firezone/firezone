@@ -151,7 +151,7 @@ defmodule Portal.Workers.OutdatedGatewaysTest do
       assert :ok =
                Portal.Presence.Devices.connect(
                  gateway,
-                 gateway.gateway_token_id
+                 gateway.token_id
                )
 
       assert gateway.id in Portal.Presence.Devices.online_ids(account.id, :gateway)
@@ -175,7 +175,7 @@ defmodule Portal.Workers.OutdatedGatewaysTest do
       site = site_fixture(account: account)
       gateway = gateway_fixture(account: account, site: site, last_seen_version: "0.9.0")
 
-      assert :ok = Portal.Presence.Devices.connect(gateway, gateway.gateway_token_id)
+      assert :ok = Portal.Presence.Devices.connect(gateway, gateway.token_id)
 
       assert :ok = perform_job(OutdatedGateways, %{})
 
@@ -202,7 +202,7 @@ defmodule Portal.Workers.OutdatedGatewaysTest do
       site = site_fixture(account: account)
       gateway = gateway_fixture(account: account, site: site, last_seen_version: "0.9.0")
 
-      assert :ok = Portal.Presence.Devices.connect(gateway, gateway.gateway_token_id)
+      assert :ok = Portal.Presence.Devices.connect(gateway, gateway.token_id)
 
       assert :ok = perform_job(OutdatedGateways, %{})
 
@@ -219,7 +219,7 @@ defmodule Portal.Workers.OutdatedGatewaysTest do
       site = site_fixture(account: account)
       gateway = gateway_fixture(account: account, site: site, last_seen_version: "0.9.0")
 
-      assert :ok = Portal.Presence.Devices.connect(gateway, gateway.gateway_token_id)
+      assert :ok = Portal.Presence.Devices.connect(gateway, gateway.token_id)
 
       assert :ok = perform_job(OutdatedGateways, %{})
 
@@ -234,7 +234,7 @@ defmodule Portal.Workers.OutdatedGatewaysTest do
       site = site_fixture(account: account)
       gateway = gateway_fixture(account: account, site: site, last_seen_version: "0.9.0")
 
-      assert :ok = Portal.Presence.Devices.connect(gateway, gateway.gateway_token_id)
+      assert :ok = Portal.Presence.Devices.connect(gateway, gateway.token_id)
 
       assert :ok = perform_job(OutdatedGateways, %{})
       assert [_email] = collect_queued_emails(account.id)
@@ -264,7 +264,7 @@ defmodule Portal.Workers.OutdatedGatewaysTest do
           last_seen_version: "0.9.0"
         )
 
-      assert :ok = Portal.Presence.Devices.connect(gateway, gateway.gateway_token_id)
+      assert :ok = Portal.Presence.Devices.connect(gateway, gateway.token_id)
 
       assert :ok = perform_job(OutdatedGateways, %{})
 
@@ -288,7 +288,7 @@ defmodule Portal.Workers.OutdatedGatewaysTest do
           last_seen_version: "0.9.0"
         )
 
-      assert :ok = Portal.Presence.Devices.connect(gateway, gateway.gateway_token_id)
+      assert :ok = Portal.Presence.Devices.connect(gateway, gateway.token_id)
 
       assert :ok = perform_job(OutdatedGateways, %{})
 

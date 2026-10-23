@@ -37,7 +37,7 @@ defmodule Portal.ClientToken do
     field :secret_hash, :string, redact: true
 
     # The device that most recently connected with this token (see
-    # devices.client_token_id), for display on token lists
+    # devices.token_id), for display on token lists
     field :last_used_device, :any, virtual: true
 
     # Bound tokens have no expiry of their own.

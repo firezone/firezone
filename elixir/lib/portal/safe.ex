@@ -973,9 +973,6 @@ defmodule Portal.Safe do
   def permit(_action, Portal.Site, :api_client), do: :ok
   def permit(:read, Portal.Site, _), do: :ok
 
-  # GatewayToken permissions
-  def permit(_action, Portal.GatewayToken, :account_admin_user), do: :ok
-  def permit(_action, Portal.GatewayToken, :api_client), do: :ok
 
   # Resource permissions
   def permit(_action, Portal.Resource, :account_admin_user), do: :ok

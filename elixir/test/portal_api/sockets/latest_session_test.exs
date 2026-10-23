@@ -58,18 +58,18 @@ defmodule PortalAPI.Sockets.LatestSessionTest do
       client: client,
       token: token
     } do
-      entry = client |> attested_entry(token) |> Map.put(:client_token_id, nil)
+      entry = client |> attested_entry(token) |> Map.put(:token_id, nil)
 
       assert {1, [], []} = upsert(entry)
 
       device = Repo.get_by!(Portal.Device, account_id: client.account_id, id: client.id)
-      assert is_nil(device.client_token_id)
+      assert is_nil(device.token_id)
       assert is_nil(device.token_id)
     end
   end
 
   defp upsert(attrs) do
-    LatestSession.upsert_all([{attrs, %{timestamp: DateTime.utc_now()}}], :client_token_id)
+    LatestSession.upsert_all([{attrs, %{timestamp: DateTime.utc_now()}}])
   end
 
   defp attested_keys do
@@ -90,7 +90,7 @@ defmodule PortalAPI.Sockets.LatestSessionTest do
       last_attested_cert_fingerprint: "fp-1",
       last_attested_cert_issuer: <<"issuer-der">>,
       last_attested_at: DateTime.utc_now(),
-      client_token_id: token.id,
+      token_id: token.id,
       public_key: generate_public_key(),
       user_agent: "iOS/12.5 (iPhone) connlib/1.4.0",
       remote_ip: %Postgrex.INET{address: {100, 64, 0, 2}},

@@ -47,7 +47,7 @@ defmodule PortalAPI.Client.ChannelTest do
     # Socket.connect does
     device = %{
       fetch_device!(client)
-      | client_token_id: subject.credential.id,
+      | token_id: subject.credential.id,
         public_key: Portal.DeviceFixtures.generate_public_key(),
         last_seen_user_agent: subject.context.user_agent,
         last_seen_remote_ip: subject.context.remote_ip,
@@ -81,7 +81,7 @@ defmodule PortalAPI.Client.ChannelTest do
   defp broadcast_struct(client) do
     Portal.SchemaHelpers.struct_from_params(
       Portal.Device,
-      Map.from_struct(%{client | public_key: nil, client_token_id: nil, last_seen_version: nil})
+      Map.from_struct(%{client | public_key: nil, token_id: nil, last_seen_version: nil})
     )
   end
 
@@ -90,7 +90,7 @@ defmodule PortalAPI.Client.ChannelTest do
   defp with_session(client, subject, version) do
     %{
       client
-      | client_token_id: subject.credential.id,
+      | token_id: subject.credential.id,
         public_key: Portal.DeviceFixtures.generate_public_key(),
         last_seen_user_agent: subject.context.user_agent,
         last_seen_remote_ip: subject.context.remote_ip,
@@ -390,7 +390,7 @@ defmodule PortalAPI.Client.ChannelTest do
       persisted =
         Portal.Repo.get_by!(Portal.Device, id: client.id, account_id: client.account_id)
 
-      assert persisted.client_token_id == subject.credential.id
+      assert persisted.token_id == subject.credential.id
       assert persisted.public_key == socket.assigns.client.public_key
       assert persisted.last_seen_user_agent == socket.assigns.client.last_seen_user_agent
       assert persisted.last_seen_version == socket.assigns.client.last_seen_version
@@ -2423,7 +2423,7 @@ defmodule PortalAPI.Client.ChannelTest do
 
       assert updated.name == "Updated Name"
       assert updated.public_key == connected.public_key
-      assert updated.client_token_id == connected.client_token_id
+      assert updated.token_id == connected.token_id
       assert updated.last_seen_version == connected.last_seen_version
       assert updated.last_seen_user_agent == connected.last_seen_user_agent
       assert updated.last_seen_remote_ip == connected.last_seen_remote_ip
