@@ -575,17 +575,7 @@ impl GatewayState {
     }
 
     pub fn poll_event(&mut self) -> Option<GatewayEvent> {
-        if let Some(ev) = self.buffered_events.pop_front() {
-            return Some(ev);
-        }
-
-        for peer in self.peers.iter_mut() {
-            if let Some(ev) = peer.poll_event() {
-                return Some(ev);
-            }
-        }
-
-        None
+        self.buffered_events.pop_front()
     }
 
     /// Records whether we currently have a live connection to the portal.
