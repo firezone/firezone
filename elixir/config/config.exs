@@ -91,6 +91,7 @@ config :portal, Portal.ChangeLogs.Consumer,
     memberships
     groups
     actors
+    device_actors
     external_identities
     google_auth_providers
     github_auth_providers
@@ -154,6 +155,7 @@ config :portal, Portal.Changes.Consumer,
     groups
     memberships
     devices
+    device_actors
     external_identities
     policy_authorizations
     sites

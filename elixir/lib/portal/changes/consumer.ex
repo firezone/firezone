@@ -20,6 +20,7 @@ defmodule Portal.Changes.Consumer do
     "groups" => Hooks.Groups,
     "memberships" => Hooks.Memberships,
     "devices" => Hooks.Devices,
+    "device_actors" => Hooks.DeviceActors,
     "external_identities" => Hooks.ExternalIdentities,
     "policy_authorizations" => Hooks.PolicyAuthorizations,
     "sites" => Hooks.Sites,
