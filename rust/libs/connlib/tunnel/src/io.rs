@@ -307,8 +307,7 @@ impl Io {
         udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
         nameservers: BTreeSet<IpAddr>,
     ) -> Self {
-        let mut sockets = Sockets::default();
-        sockets.rebind(udp_socket_factory.clone()); // Bind sockets on startup.
+        let sockets = Sockets::new(udp_socket_factory.clone());
 
         Self {
             sockets,
@@ -452,7 +451,7 @@ impl Io {
     pub fn reset(&mut self) {
         self.tcp_socket_factory.reset();
         self.udp_socket_factory.reset();
-        self.sockets.rebind(self.udp_socket_factory.clone());
+        self.sockets.rebind();
         self.dns_queries =
             FuturesTupleSet::new(|| futures_bounded::Delay::tokio(DNS_QUERY_TIMEOUT), 1000);
         self.doh_clients_bootstrap =
