@@ -215,6 +215,43 @@ defmodule PortalWeb.Devices.Components do
     """
   end
 
+  attr :account, :any, required: true
+  attr :state, :map, required: true
+
+  # The add-device flow as a panel of its own, since there is no device to
+  # select until the form is submitted.
+  def add_device_panel(assigns) do
+    ~H"""
+    <div
+      id="add-device-panel"
+      class={[
+        "absolute inset-y-0 right-0 z-20 flex flex-col w-full lg:w-3/4 xl:w-2/3",
+        "bg-elevated border-l border-border-strong",
+        "shadow-[-4px_0px_20px_rgba(0,0,0,0.07)]",
+        "transition-transform duration-200 ease-in-out",
+        if(@state.step, do: "translate-x-0", else: "translate-x-full")
+      ]}
+    >
+      <div :if={@state.step} class="flex flex-col h-full overflow-hidden">
+        <div class="shrink-0 px-5 pt-4 pb-3 border-b border-border bg-elevated">
+          <div class="flex items-center justify-between gap-3">
+            <h2 class="text-sm font-semibold text-heading">Add a Device</h2>
+            <Form.icon_button icon="ri-close-line" title="Close" phx-click="close_add_device" />
+          </div>
+        </div>
+        <PortalWeb.Devices.AddDevice.add_device_form :if={@state.step == :form} state={@state} />
+        <PortalWeb.Devices.AddDevice.add_device_user_note :if={@state.step == :user} />
+        <PortalWeb.Devices.AddDevice.add_device_instructions
+          :if={@state.step == :instructions}
+          account={@account}
+          state={@state}
+          navigate={~p"/#{@account}/devices/#{@state.device}"}
+        />
+      </div>
+    </div>
+    """
+  end
+
   attr :device_edit_form, :any, default: nil
 
   def device_edit_view(assigns) do

@@ -62,10 +62,6 @@ defmodule PortalWeb.Sites.Components do
       assigns
       |> assign(assigns.panel)
       |> assign(
-        deploy_env: assigns.deploy_state.env,
-        deploy_tab: assigns.deploy_state.tab,
-        deploy_connected?: assigns.deploy_state.connected?,
-        deploy_token: assigns.deploy_state.token,
         resource_form: assigns.resource_form_state.form,
         filters_dropdown_open: assigns.resource_form_state.filters_dropdown_open,
         active_protocols: assigns.resource_form_state.active_protocols,
@@ -126,9 +122,7 @@ defmodule PortalWeb.Sites.Components do
           :if={@view == :deploy}
           account={@account}
           site={@site}
-          deploy_env={@deploy_env}
-          deploy_tab={@deploy_tab}
-          deploy_connected?={@deploy_connected?}
+          deploy_state={@deploy_state}
         />
 
         <.site_add_resource_view
@@ -318,7 +312,7 @@ defmodule PortalWeb.Sites.Components do
       </button>
       <div class="ml-auto pb-2 flex items-center gap-2">
         <Form.button :if={@tab == :gateways} phx-click="deploy_gateway" size="xs">
-          <Core.icon name="ri-add-line" class="w-3 h-3" /> Deploy gateway
+          <Core.icon name="ri-add-line" class="w-3 h-3" /> Add device
         </Form.button>
         <Form.button :if={@tab == :gateways} phx-click="open_device_picker" size="xs">
           <Core.icon name="ri-link" class="w-3 h-3" /> Add existing device
@@ -724,7 +718,7 @@ defmodule PortalWeb.Sites.Components do
           phx-click="deploy_gateway"
           class="flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
         >
-          <Core.icon name="ri-add-line" class="w-3.5 h-3.5" /> Deploy a gateway
+          <Core.icon name="ri-add-line" class="w-3.5 h-3.5" /> Add a device
         </button>
       </div>
       <div
@@ -1152,32 +1146,24 @@ defmodule PortalWeb.Sites.Components do
 
   attr :account, :any, required: true
   attr :site, :any, required: true
-  attr :deploy_env, :any, default: nil
-  attr :deploy_tab, :string, required: true
-  attr :deploy_connected?, :boolean, required: true
+  attr :deploy_state, :map, required: true
 
   def site_deploy_view(assigns) do
     ~H"""
     <div class="flex flex-1 min-h-0 flex-col overflow-hidden">
       <.site_deploy_header />
-      <div class="flex-1 overflow-y-auto">
-        <.site_deploy_tabs deploy_tab={@deploy_tab} />
-        <.site_deploy_instructions deploy_tab={@deploy_tab} deploy_env={@deploy_env} />
-      </div>
-      <div class="shrink-0 px-5 py-3 border-t border-border bg-raised flex items-center justify-between gap-4">
-        <p class="text-xs text-subtle">
-          Gateway not connecting? See our
-          <Navigation.website_link path="/kb/administer/troubleshooting" fragment="gateway-not-connecting">
-            troubleshooting guide.
-          </Navigation.website_link>
-        </p>
-        <Core.initial_connection_status
-          :if={@deploy_env}
-          type="gateway"
-          navigate={~p"/#{@account}/sites/#{@site}"}
-          connected?={@deploy_connected?}
-        />
-      </div>
+      <PortalWeb.Devices.AddDevice.add_device_form
+        :if={@deploy_state.step == :form}
+        state={@deploy_state}
+        site={@site}
+      />
+      <PortalWeb.Devices.AddDevice.add_device_user_note :if={@deploy_state.step == :user} />
+      <PortalWeb.Devices.AddDevice.add_device_instructions
+        :if={@deploy_state.step == :instructions}
+        account={@account}
+        state={@deploy_state}
+        navigate={~p"/#{@account}/sites/#{@site}"}
+      />
     </div>
     """
   end
@@ -1186,7 +1172,7 @@ defmodule PortalWeb.Sites.Components do
     ~H"""
     <div class="shrink-0 px-5 pt-4 pb-3 border-b border-border bg-elevated">
       <div class="flex items-center justify-between gap-3">
-        <h2 class="text-sm font-semibold text-heading">Deploy a Gateway</h2>
+        <h2 class="text-sm font-semibold text-heading">Add a Device</h2>
         <Form.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_deploy" />
       </div>
     </div>

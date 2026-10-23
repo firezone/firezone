@@ -97,6 +97,56 @@ defmodule PortalWeb.DevicesTest do
       assert html =~ client.slug
     end
 
+    test "adds a device from the Devices page", %{conn: conn, account: account, actor: actor} do
+      site = site_fixture(account: account, name: "Lab")
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/devices")
+
+      html = render_click(lv, "open_add_device")
+      assert html =~ "Add a Device"
+      assert html =~ "Lab"
+
+      html =
+        render_submit(lv, "add_device_submit", %{
+          "device" => %{"name" => "rack-1", "site_ids" => [site.id]}
+        })
+
+      assert html =~ "rack-1"
+      assert html =~ "Choose your deployment environment"
+      assert html =~ "Waiting for connection..."
+
+      gateway = Repo.get_by!(Device, account_id: account.id, name: "rack-1")
+      token = Repo.get_by!(Portal.ClientToken, account_id: account.id, device_id: gateway.id)
+
+      send(lv.pid, %Phoenix.Socket.Broadcast{
+        topic: "presences:account_devices:#{account.id}",
+        event: "presence_diff",
+        payload: %{joins: %{gateway.id => %{metas: [%{token_id: token.id}]}}, leaves: %{}}
+      })
+
+      assert render(lv) =~ "Connected, click to continue"
+
+      html = render_click(lv, "close_add_device")
+      refute html =~ "Add a Device"
+    end
+
+    test "adds a device that serves no site yet", %{conn: conn, account: account, actor: actor} do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/devices")
+
+      render_click(lv, "open_add_device")
+      html = render_submit(lv, "add_device_submit", %{"device" => %{"name" => "spare"}})
+      assert html =~ "Choose your deployment environment"
+
+      gateway = Repo.get_by!(Device, account_id: account.id, name: "spare")
+      assert is_nil(gateway.site_id)
+    end
+
     test "lists gateways with the sites they serve", %{conn: conn, account: account, actor: actor} do
       site = site_fixture(account: account, name: "Lab")
       gateway = gateway_fixture(account: account, site: site)

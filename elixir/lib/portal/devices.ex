@@ -51,21 +51,31 @@ defmodule Portal.Devices do
   end
 
   @doc """
-  Inserts a device that serves `site` and mints the token it connects with,
-  owned by `actor`: a service account of the account, or its Infrastructure
-  service account when nil. See `provision_gateway/3` for why both writes
-  share one transaction.
+  Inserts a device that serves the given sites and mints the token it
+  connects with, owned by `actor`: a service account of the account, or its
+  Infrastructure service account when nil. The first site is the device's
+  home site; the rest are assignments. A device may serve no site at all and
+  be assigned later. See `provision_gateway/3` for why the writes share one
+  transaction.
   """
   @spec provision_device(
-          Site.t(),
+          Site.t() | [Site.t()],
           Portal.Actor.t() | nil,
           String.t() | nil,
           Authentication.Subject.t()
         ) ::
           {:ok, Device.t(), ClientToken.t(), binary()} | {:error, term()}
-  def provision_device(%Site{} = site, actor, name, %Authentication.Subject{} = subject) do
+  def provision_device(%Site{} = site, actor, name, subject) do
+    provision_device([site], actor, name, subject)
+  end
+
+  def provision_device(sites, actor, name, %Authentication.Subject{} = subject)
+      when is_list(sites) do
+    {home, extra} = List.pop_at(sites, 0)
+
     Database.transact(fn ->
-      with {:ok, gateway} <- Database.insert_gateway(site, name, subject),
+      with {:ok, gateway} <- Database.insert_gateway(home, name, subject),
+           :ok <- assign_extra_sites(gateway, extra, subject),
            {:ok, token} <- Authentication.create_device_token(gateway, actor, subject) do
         {:ok, {gateway, %{token | secret_fragment: nil}, Authentication.encode_fragment!(token)}}
       end
@@ -75,6 +85,32 @@ defmodule Portal.Devices do
       {:error, reason} -> {:error, reason}
     end
   end
+
+  # The home site's assignment is written by the mirror trigger; the rest
+  # are written here.
+  defp assign_extra_sites(gateway, sites, subject) do
+    Enum.reduce_while(sites, :ok, fn site, :ok ->
+      case Database.insert_site_device(site, gateway, subject) do
+        {:ok, _site_device} -> {:cont, :ok}
+        {:error, :already_assigned} -> {:cont, :ok}
+        {:error, reason} -> {:halt, {:error, reason}}
+      end
+    end)
+  end
+
+  @doc "The account's service accounts a new device may connect as, Infrastructure first."
+  @spec list_service_accounts(Authentication.Subject.t()) :: [Portal.Actor.t()]
+  def list_service_accounts(%Authentication.Subject{} = subject),
+    do: Database.list_service_accounts(subject)
+
+  @doc "The account's own sites a new device may serve."
+  @spec list_sites(Authentication.Subject.t()) :: [Site.t()]
+  def list_sites(%Authentication.Subject{} = subject), do: Database.list_sites(subject)
+
+  @doc "The sites with these ids, in the order given; unknown ids are dropped."
+  @spec fetch_sites([Ecto.UUID.t()], Authentication.Subject.t()) :: [Site.t()]
+  def fetch_sites(ids, %Authentication.Subject{} = subject) when is_list(ids),
+    do: Database.fetch_sites(ids, subject)
 
   @doc """
   Assigns a device to a site so it serves the site's resources. Only
@@ -236,10 +272,49 @@ defmodule Portal.Devices do
       %Device{}
       |> Ecto.Changeset.cast(%{name: name}, [:name])
       |> Ecto.Changeset.put_change(:type, :gateway)
-      |> Ecto.Changeset.put_change(:site_id, site.id)
+      |> Ecto.Changeset.put_change(:site_id, site && site.id)
       |> put_free_slug(subject.account.id, nil)
       |> Safe.scoped(subject)
       |> Safe.insert()
+    end
+
+    @doc "The account's service accounts, the Infrastructure one first."
+    def list_service_accounts(subject) do
+      from(a in Portal.Actor, as: :actors)
+      |> where([actors: a], a.type == :service_account and a.is_disabled == false)
+      |> order_by([actors: a],
+        asc: fragment("CASE WHEN ? = 'system' THEN 0 ELSE 1 END", a.managed_by),
+        asc: a.name
+      )
+      |> Safe.scoped(subject)
+      |> Safe.all()
+      |> case do
+        {:error, _} -> []
+        actors -> actors
+      end
+    end
+
+    def list_sites(subject) do
+      from(s in Site, as: :sites)
+      |> where([sites: s], s.managed_by == :account)
+      |> order_by([sites: s], asc: s.name)
+      |> Safe.scoped(subject)
+      |> Safe.all()
+      |> case do
+        {:error, _} -> []
+        sites -> sites
+      end
+    end
+
+    def fetch_sites(ids, subject) do
+      from(s in Site, as: :sites)
+      |> where([sites: s], s.id in ^ids)
+      |> Safe.scoped(subject)
+      |> Safe.all()
+      |> case do
+        {:error, _} -> []
+        sites -> Enum.sort_by(sites, &Enum.find_index(ids, fn id -> id == &1.id end))
+      end
     end
 
     def put_free_slug(changeset, account_id, owner_name) do
