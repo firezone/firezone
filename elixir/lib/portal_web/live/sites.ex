@@ -880,7 +880,10 @@ defmodule PortalWeb.Sites do
     site = socket.assigns.selected_site
     results = Database.search_devices_to_assign(site.id, "", socket.assigns.subject)
 
-    {:noreply, merge_state(socket, :site_panel, %{device_picker: %{search: "", results: results}})}
+    {:noreply,
+     merge_state(socket, :site_panel, %{
+       device_picker: %{search: "", results: results, confirm_id: nil}
+     })}
   end
 
   def handle_event("close_device_picker", _params, socket) do
@@ -891,12 +894,37 @@ defmodule PortalWeb.Sites do
     site = socket.assigns.selected_site
     results = Database.search_devices_to_assign(site.id, search, socket.assigns.subject)
 
-    {:noreply, merge_state(socket, :site_panel, %{device_picker: %{search: search, results: results}})}
+    {:noreply,
+     merge_state(socket, :site_panel, %{
+       device_picker: %{search: search, results: results, confirm_id: nil}
+     })}
   end
 
-  def handle_event("assign_device", %{"id" => device_id}, socket) do
+  # Serving the Internet resource next to other resources is allowed but
+  # worth a pause: the admin confirms the combination before it is created.
+  def handle_event("assign_device", %{"id" => device_id} = params, socket) do
     site = socket.assigns.selected_site
+    confirmed? = Map.get(params, "confirmed") == "true"
 
+    if not confirmed? and
+         Database.cohosts_internet?(site, device_id, socket.assigns.subject) do
+      {:noreply,
+       update(socket, :site_panel, fn panel ->
+         %{panel | device_picker: Map.put(panel.device_picker, :confirm_id, device_id)}
+       end)}
+    else
+      assign_device(socket, site, device_id)
+    end
+  end
+
+  def handle_event("cancel_assign_device", _params, socket) do
+    {:noreply,
+     update(socket, :site_panel, fn panel ->
+       %{panel | device_picker: Map.put(panel.device_picker, :confirm_id, nil)}
+     end)}
+  end
+
+  defp assign_device(socket, site, device_id) do
     case Database.assign_device_to_site(site, device_id, socket.assigns.subject) do
       {:ok, _site_device} ->
         {:noreply,
@@ -1497,6 +1525,31 @@ defmodule PortalWeb.Sites do
         |> Safe.scoped(subject)
         |> Safe.insert()
       end
+    end
+
+    @doc """
+    Whether assigning the device to the site would have it serve the Internet
+    resource alongside other resources: the site is the Internet Site and the
+    device already serves another site, or the other way round.
+    """
+    @spec cohosts_internet?(Site.t(), Ecto.UUID.t(), Portal.Authentication.Subject.t()) ::
+            boolean()
+    def cohosts_internet?(%Site{} = site, device_id, subject) do
+      from(sd in Portal.SiteDevice, as: :site_devices)
+      |> join(:inner, [site_devices: sd], s in Site,
+        on: s.account_id == sd.account_id and s.id == sd.site_id,
+        as: :sites
+      )
+      |> where([site_devices: sd], sd.device_id == ^device_id and sd.site_id != ^site.id)
+      |> where_other_side_of_internet(site)
+      |> Safe.scoped(subject)
+      |> Safe.exists?()
+    end
+
+    defp where_other_side_of_internet(queryable, %Site{managed_by: :system}), do: queryable
+
+    defp where_other_side_of_internet(queryable, %Site{}) do
+      where(queryable, [sites: s], s.managed_by == :system)
     end
 
     defp ensure_can_serve(%Device{type: :gateway}), do: :ok

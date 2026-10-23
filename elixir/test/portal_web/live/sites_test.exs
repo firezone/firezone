@@ -595,6 +595,71 @@ defmodule PortalWeb.SitesTest do
              )
     end
 
+    test "asks for confirmation before a device serves the Internet resource next to others", %{
+      conn: conn,
+      account: account,
+      site: site
+    } do
+      internet_site = internet_site_fixture(account: account)
+      gateway = gateway_fixture(account: account, site: internet_site, name: "exit-gw")
+
+      {:ok, lv, _html} = live(conn, ~p"/#{account}/sites/#{site.id}")
+
+      render_click(lv, "open_device_picker")
+      html = render_click(lv, "assign_device", %{"id" => gateway.id})
+      assert html =~ "would serve the Internet resource next to other resources"
+
+      refute Repo.get_by(Portal.SiteDevice,
+               account_id: account.id,
+               site_id: site.id,
+               device_id: gateway.id
+             )
+
+      html = render_click(lv, "cancel_assign_device")
+      refute html =~ "would serve the Internet resource"
+
+      render_click(lv, "assign_device", %{"id" => gateway.id})
+      html = render_click(lv, "assign_device", %{"id" => gateway.id, "confirmed" => "true"})
+      assert html =~ "Device added to site."
+
+      assert Repo.get_by(Portal.SiteDevice,
+               account_id: account.id,
+               site_id: site.id,
+               device_id: gateway.id
+             )
+    end
+
+    test "asks for confirmation before adding a gateway of another site to the Internet Site", %{
+      conn: conn,
+      account: account,
+      site: site
+    } do
+      internet_site = internet_site_fixture(account: account)
+      gateway = gateway_fixture(account: account, site: site, name: "lan-gw")
+
+      {:ok, lv, _html} = live(conn, ~p"/#{account}/sites/#{internet_site.id}")
+
+      render_click(lv, "open_device_picker")
+      html = render_click(lv, "assign_device", %{"id" => gateway.id})
+      assert html =~ "would serve the Internet resource next to other resources"
+    end
+
+    test "adds a gateway without a warning when nothing is co-hosted", %{
+      conn: conn,
+      account: account,
+      site: site,
+      other_site: other_site
+    } do
+      gateway = gateway_fixture(account: account, site: other_site)
+
+      {:ok, lv, _html} = live(conn, ~p"/#{account}/sites/#{site.id}")
+
+      render_click(lv, "open_device_picker")
+      html = render_click(lv, "assign_device", %{"id" => gateway.id})
+      refute html =~ "would serve the Internet resource"
+      assert html =~ "Device added to site."
+    end
+
     test "removes a gateway from a site it was added to", %{
       conn: conn,
       account: account,
