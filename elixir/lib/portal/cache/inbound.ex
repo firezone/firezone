@@ -43,7 +43,7 @@ defmodule Portal.Cache.Inbound do
     When more than one non-expired authorization exists for a pair, the longest-expiring one is
     kept to minimize unnecessary access churn.
   """
-  @spec hydrate(%Device{}) :: t()
+  @spec hydrate(Device.t()) :: t()
   def hydrate(device) do
     OpenTelemetry.Tracer.with_span "Portal.Cache.Inbound.hydrate",
       attributes: %{
