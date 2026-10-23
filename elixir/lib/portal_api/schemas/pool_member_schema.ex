@@ -8,7 +8,8 @@ defmodule PortalAPI.Schemas.PoolMember do
     @derive {PortalAPI.JSON.Encoder,
              for: Portal.Device,
              internal: [
-               :posture, :account_id,
+               :posture,
+               :proto_range, :account_id,
                :actor_id,
                :attested?,
                :token_id,

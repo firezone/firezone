@@ -591,6 +591,34 @@ defmodule PortalAPI.Client.SocketTest do
     end
   end
 
+  describe "connect/3 protocol range" do
+    test "a client that states its range keeps it for the session" do
+      account = account_fixture()
+      actor = actor_fixture(account: account)
+      token = client_token_fixture(account: account, actor: actor)
+      encoded_token = encode_token(token)
+
+      attrs =
+        Map.merge(connect_attrs(token: encoded_token), %{"proto_min" => "5", "proto_max" => "7"})
+
+      assert {:ok, socket} = connect(Socket, attrs, connect_info: build_connect_info())
+      assert socket.assigns.client.proto_range == %{min: 5, max: 7}
+    end
+
+    test "a client that says nothing speaks its own minor" do
+      account = account_fixture()
+      actor = actor_fixture(account: account)
+      token = client_token_fixture(account: account, actor: actor)
+      encoded_token = encode_token(token)
+
+      assert {:ok, socket} =
+               connect(Socket, connect_attrs(token: encoded_token), connect_info: build_connect_info())
+
+      assert %{min: minor, max: minor} = socket.assigns.client.proto_range
+      assert is_integer(minor)
+    end
+  end
+
   describe "connect/3 device attestation" do
     setup :setup_device_trust
 

@@ -12,6 +12,7 @@ defmodule PortalAPI.Schemas.Gateway do
                :actor_id,
                :attested?,
                :posture,
+               :proto_range,
                :token_id,
                :device_serial,
                :device_uuid,

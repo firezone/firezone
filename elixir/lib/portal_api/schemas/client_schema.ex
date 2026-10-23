@@ -11,6 +11,7 @@ defmodule PortalAPI.Schemas.Client do
                :account_id,
                :attested?,
                :posture,
+               :proto_range,
                :token_id,
                :firezone_id_merged?,
                :gateway_token_rotated_at,
