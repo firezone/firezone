@@ -38,6 +38,15 @@ defmodule Portal.Policies.Postures.EvaluatorTest do
     evaluate(leaf("intune.#{field}", op, value), device) == {:ok, nil}
   end
 
+  describe "evaluate/3 for any device" do
+    test "a gateway-typed device is evaluated like a client" do
+      device = device(type: :gateway, posture: %{intune: [intune(compliance_state: "compliant")]})
+
+      assert evaluate(all_rows(leaf("intune.compliance_state", "is_in", ["compliant"])), device) ==
+               {:ok, nil}
+    end
+  end
+
   describe "evaluate/3 structure" do
     test "nil postures pass without an expiry" do
       assert Evaluator.evaluate(nil, device(), @now) == {:ok, nil}
