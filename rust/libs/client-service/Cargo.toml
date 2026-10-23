@@ -29,7 +29,6 @@ serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 serde_variant = { workspace = true }
 specta = { workspace = true, features = ["url", "derive"] }
-socket-factory = { workspace = true }
 strum = { workspace = true }
 telemetry = { workspace = true }
 thiserror = { workspace = true }
@@ -47,6 +46,7 @@ nix = { workspace = true, features = ["user"] }
 tracing-journald = { workspace = true }
 
 [target.'cfg(target_os = "windows")'.dependencies]
+admx-macro = { workspace = true }
 windows-security = { workspace = true }
 windows-service = { workspace = true }
 winreg = { workspace = true }

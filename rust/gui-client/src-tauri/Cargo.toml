@@ -14,8 +14,6 @@ enum_representation = "discriminated"
 [dependencies]
 anyhow = { workspace = true }
 arboard = { workspace = true }
-backoff = { workspace = true }
-bin-shared = { workspace = true }
 chrono = { workspace = true }
 clap = { workspace = true, features = ["derive", "env"] }
 client-ipc = { workspace = true }
@@ -24,22 +22,14 @@ client-shared = { workspace = true }
 connlib-model = { workspace = true }
 derive_more = { workspace = true, features = ["debug"] }
 desktop-notifications = { workspace = true }
-flow-log-upload = { workspace = true }
-flow-log-writer = { workspace = true }
 futures = { workspace = true }
 gui-ipc = { workspace = true }
 hex = { workspace = true }
-humantime = { workspace = true }
-ip-packet = { workspace = true }
-ip_network = { workspace = true }
 keyring-core = { workspace = true }
 known-dirs = { workspace = true }
 logging = { workspace = true }
 native-dialog = { workspace = true }
-opentelemetry = { workspace = true }
-output_vt100 = { workspace = true }
 parking_lot = { workspace = true }
-phoenix-channel = { workspace = true }
 png = { workspace = true } # `png` is mostly free since we already need it for Tauri
 rand = { workspace = true }
 reqwest = { workspace = true, features = ["stream", "rustls-no-provider"] }
@@ -49,7 +39,6 @@ secrecy = { workspace = true, features = ["serde"] }
 semver = { workspace = true, features = ["serde"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
-serde_variant = { workspace = true }
 socket-factory = { workspace = true }
 specta = { workspace = true, features = ["url"] }
 specta-typescript = { workspace = true }
@@ -67,15 +56,12 @@ tokio = { workspace = true, features = ["signal", "time", "macros", "rt", "rt-mu
 tokio-stream = { workspace = true }
 tokio-util = { workspace = true, features = ["codec"] }
 tracing = { workspace = true }
-tracing-log = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
-tunnel-bypass-resolver = { workspace = true }
 tunnel-proto = { workspace = true }
 url = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }
 windows-package-identity = { workspace = true }
 x509-keystore = { workspace = true }
-zip = { workspace = true, features = ["deflate", "time"] }
 
 # Windows and macOS keep Tauri's built-in tray.
 [target.'cfg(not(target_os = "linux"))'.dependencies]
@@ -85,19 +71,10 @@ tauri = { workspace = true, features = ["tray-icon"] }
 dbus-secret-service-keyring-store = { workspace = true }
 dirs = { workspace = true }
 ksni = { workspace = true } # Tray icon for Linux.
-mimalloc = { workspace = true }
 nix = { workspace = true, features = ["user"] }
-tracing-journald = { workspace = true }
-
-[target.'cfg(target_os = "macos")'.dependencies]
-mimalloc = { workspace = true }
 
 [target.'cfg(target_os = "windows")'.dependencies]
-admx-macro = { workspace = true }
-mimalloc = { workspace = true }
 windows-native-keyring-store = { workspace = true }
-windows-security = { workspace = true }
-windows-service = { workspace = true }
 winreg = { workspace = true }
 
 [target.'cfg(target_os = "windows")'.dependencies.windows]
@@ -146,7 +123,6 @@ windows-package-identity = { workspace = true }
 embed-resource = { workspace = true }
 
 [dev-dependencies]
-bin-shared = { workspace = true, features = ["test"] }
 client-ipc = { workspace = true, features = ["test"] }
 tempfile = { workspace = true }
 
