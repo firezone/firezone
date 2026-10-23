@@ -883,6 +883,7 @@ where
             default_ice_config,
             idle_ice_config,
             poll_timeout_cache: Default::default(),
+            indexed_deadline: None,
             candidate_timeout: Some(now + CANDIDATE_TIMEOUT),
         };
 
@@ -1395,6 +1396,8 @@ struct Connection<RId> {
     idle_ice_config: IceConfig,
 
     poll_timeout_cache: TimeoutCache,
+    /// The deadline under which [`Connections`] indexes this connection.
+    indexed_deadline: Option<Instant>,
 }
 
 impl<RId> Connection<RId>

@@ -1,8 +1,8 @@
 use std::{
-    collections::{HashMap, VecDeque},
+    collections::{BTreeSet, HashMap, HashSet, VecDeque},
     fmt,
     hash::Hash,
-    iter,
+    iter, mem,
     time::{Duration, Instant},
 };
 
@@ -24,6 +24,13 @@ const GOODBYE_TIMEOUT: Duration = Duration::from_secs(5);
 
 pub struct Connections<TId, RId> {
     established: HashMap<TId, Connection<RId>, FastRandomState>,
+    /// Connections handed out mutably since they were last indexed.
+    touched: HashSet<TId, FastRandomState>,
+    deadlines: BTreeSet<(Instant, TId)>,
+    /// Whether an indexed connection had no relay.
+    missing_relay: bool,
+    /// Failed connections, as found when indexing them.
+    failed: Vec<TId>,
     /// Closed connections waiting to send their goodbye; they stay in the index maps below.
     closing: HashMap<TId, (Connection<RId>, Goodbye), FastRandomState>,
 
@@ -40,6 +47,10 @@ impl<TId, RId> Default for Connections<TId, RId> {
     fn default() -> Self {
         Self {
             established: Default::default(),
+            touched: Default::default(),
+            deadlines: Default::default(),
+            missing_relay: false,
+            failed: Default::default(),
             closing: Default::default(),
             established_by_tunnel_id: Default::default(),
             established_by_local_ufrag: Default::default(),
@@ -60,8 +71,7 @@ where
 
     pub(crate) fn remove_established(&mut self, id: &TId, now: Instant) -> Option<Connection<RId>> {
         let connection = self
-            .established
-            .remove(id)
+            .take_established(id)
             .or_else(|| self.closing.remove(id).map(|(c, _)| c))?;
 
         self.established_by_tunnel_id
@@ -85,8 +95,7 @@ where
     /// Closes the connection to `id` and sends `goodbye` to the peer.
     pub(crate) fn close(&mut self, id: TId, goodbye: IpPacket, now: Instant) -> Result<()> {
         let connection = self
-            .established
-            .remove(&id)
+            .take_established(&id)
             .context("Cannot close unknown connection")?;
 
         tracing::debug!("Connection closed proactively (goodbye pending)");
@@ -124,10 +133,38 @@ where
         inflight_stun_requests: &mut InflightStunRequests<TId>,
         now: Instant,
     ) {
-        for (&cid, connection) in self.established.iter_mut() {
-            if connection.relay.is_none() {
+        self.reindex();
+
+        if mem::take(&mut self.missing_relay) {
+            for (&cid, connection) in self.established.iter_mut() {
+                if connection.relay.is_some() {
+                    continue;
+                }
+
                 connection.assign_relay(cid, allocations, events, now);
+                self.touched.insert(cid);
+
+                // Without a relay to sample, the remaining connections cannot get one either.
+                if connection.relay.is_none() {
+                    self.missing_relay = true;
+                    break;
+                }
             }
+
+            self.reindex();
+        }
+
+        let due = self
+            .deadlines
+            .iter()
+            .take_while(|(deadline, _)| *deadline <= now)
+            .map(|(_, id)| *id)
+            .collect::<Vec<_>>();
+
+        for cid in due {
+            let Some(connection) = self.established.get_mut(&cid) else {
+                continue;
+            };
 
             connection.handle_timeout(
                 cid,
@@ -137,6 +174,7 @@ where
                 events,
                 inflight_stun_requests,
             );
+            self.touched.insert(cid);
         }
 
         for (&cid, (connection, goodbye)) in self.closing.iter_mut() {
@@ -190,6 +228,7 @@ where
             connection.state = ConnectionState::Failed;
         }
 
+        self.reindex();
         self.remove_failed(events, now);
     }
 
@@ -199,9 +238,9 @@ where
     pub(crate) fn reset_for_roam(&mut self, now: Instant) -> usize {
         let mut num_connections = 0;
 
-        for (cid, conn) in self.established.iter_mut() {
+        for (cid, conn) in self.iter_mut() {
             conn.reset_for_roam(now);
-            conn.clear_relay(*cid);
+            conn.clear_relay(cid);
 
             num_connections += 1;
         }
@@ -224,7 +263,9 @@ where
     ) -> Option<Connection<RId>> {
         let tunnel_id = connection.tunnel.id();
         let local_ufrag = connection.agent.local_ufrag().map(|s| s.to_owned());
-        let existing = self.established.insert(id, connection);
+        let existing = self.take_established(&id);
+        self.established.insert(id, connection);
+        self.touched.insert(id);
 
         // Remove previous mappings for connection.
         self.established_by_tunnel_id.retain(|_, c| c != &id);
@@ -240,13 +281,25 @@ where
         &mut self,
         id: RId,
     ) -> impl Iterator<Item = (TId, &mut Connection<RId>)> + '_ {
-        self.established
-            .iter_mut()
-            .filter_map(move |(cid, c)| (c.relay == Some(id)).then_some((*cid, c)))
+        let touched = &mut self.touched;
+
+        self.established.iter_mut().filter_map(move |(cid, c)| {
+            (c.relay == Some(id)).then(|| {
+                touched.insert(*cid);
+
+                (*cid, c)
+            })
+        })
     }
 
     pub(crate) fn iter_mut(&mut self) -> impl Iterator<Item = (TId, &mut Connection<RId>)> {
-        self.established.iter_mut().map(|(id, c)| (*id, c))
+        let touched = &mut self.touched;
+
+        self.established.iter_mut().map(move |(id, c)| {
+            touched.insert(*id);
+
+            (*id, c)
+        })
     }
 
     pub(crate) fn get_mut(&mut self, id: &TId, now: Instant) -> Result<&mut Connection<RId>> {
@@ -254,6 +307,7 @@ where
             .established
             .get_mut(id)
             .with_context(|| UnknownConnection::by_id(*id, &self.disconnected_ids, now))?;
+        self.touched.insert(*id);
 
         Ok(connection)
     }
@@ -292,6 +346,7 @@ where
             .with_context(|| {
                 UnknownConnection::by_public_key(key, &self.disconnected_public_keys, now)
             })?;
+        self.touched.insert(*id);
 
         Ok((*id, conn))
     }
@@ -339,6 +394,8 @@ where
         now: Instant,
     ) -> Result<&mut Connection<RId>> {
         if let Some(connection) = self.established.get_mut(id) {
+            self.touched.insert(*id);
+
             return Ok(connection);
         }
 
@@ -370,6 +427,10 @@ where
 
     pub(crate) fn clear(&mut self) {
         self.established.clear();
+        self.touched.clear();
+        self.deadlines.clear();
+        self.missing_relay = false;
+        self.failed.clear();
         self.established_by_tunnel_id.clear();
     }
 
@@ -382,11 +443,13 @@ where
     }
 
     pub(crate) fn poll_timeout(&mut self) -> Option<Instant> {
+        self.reindex();
+
         iter::empty()
             .chain(
-                self.established
-                    .values_mut()
-                    .filter_map(|c| c.poll_timeout()),
+                self.deadlines
+                    .first()
+                    .and_then(|(_, id)| self.established.get(id)?.indexed_deadline),
             )
             .chain(self.closing.iter_mut().flat_map(|(id, (c, goodbye))| {
                 let ready_at = c
@@ -418,10 +481,53 @@ where
             .min()
     }
 
+    /// Re-indexes the connections touched since the last call.
+    fn reindex(&mut self) {
+        for id in mem::take(&mut self.touched) {
+            let Some(connection) = self.established.get_mut(&id) else {
+                continue;
+            };
+
+            let deadline = connection.poll_timeout();
+            let old = mem::replace(&mut connection.indexed_deadline, deadline);
+
+            if old != deadline {
+                if let Some(old) = old {
+                    self.deadlines.remove(&(old, id));
+                }
+                if let Some(new) = deadline {
+                    self.deadlines.insert((new, id));
+                }
+            }
+
+            self.missing_relay |= connection.relay.is_none();
+
+            if connection.is_failed() {
+                self.failed.push(id);
+            }
+        }
+    }
+
+    fn take_established(&mut self, id: &TId) -> Option<Connection<RId>> {
+        let mut connection = self.established.remove(id)?;
+        if let Some(deadline) = connection.indexed_deadline.take() {
+            self.deadlines.remove(&(deadline, *id));
+        }
+
+        Some(connection)
+    }
+
     fn remove_failed(&mut self, events: &mut VecDeque<Event<TId, RId>>, now: Instant) {
         self.remove_closing(Connection::is_failed, now);
 
-        for (id, conn) in self.established.extract_if(|_, conn| conn.is_failed()) {
+        for id in mem::take(&mut self.failed) {
+            if !self.established.get(&id).is_some_and(Connection::is_failed) {
+                continue;
+            }
+            let Some(conn) = self.take_established(&id) else {
+                continue;
+            };
+
             events.push_back(Event::ConnectionFailed(id));
 
             for (tunnel_id, _) in self.established_by_tunnel_id.extract_if(|_, c| *c == id) {
@@ -775,6 +881,7 @@ mod tests {
             default_ice_config: IceConfig::client_default(),
             idle_ice_config: IceConfig::client_idle(),
             poll_timeout_cache: Default::default(),
+            indexed_deadline: None,
         }
     }
 }
