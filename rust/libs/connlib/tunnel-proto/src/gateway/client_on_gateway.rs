@@ -41,6 +41,16 @@ pub struct ClientOnGateway {
     nat_table: NatTable,
 }
 
+/// How [`ClientOnGateway::translate_inbound`] rewrote a packet.
+#[derive(Debug, Clone, Copy)]
+pub enum InboundRewrite {
+    None,
+    /// The source was translated from the resource's IP to the client's proxy IP.
+    Source(Protocol, IpAddr),
+    /// The packet was replaced by an ICMP error for the client.
+    IcmpError,
+}
+
 #[derive(Debug, PartialEq)]
 pub enum TranslateOutboundResult {
     Send(IpPacket),
@@ -392,15 +402,19 @@ impl ClientOnGateway {
         Ok(result)
     }
 
-    pub fn translate_inbound(&mut self, packet: &mut IpPacket, now: Instant) -> Result<()> {
+    pub fn translate_inbound(
+        &mut self,
+        packet: &mut IpPacket,
+        now: Instant,
+    ) -> Result<InboundRewrite> {
         // Traffic from our own IP is allowed.
         match packet.source() {
-            IpAddr::V4(src) if src == self.gateway_tun.v4 => return Ok(()),
-            IpAddr::V6(src) if src == self.gateway_tun.v6 => return Ok(()),
+            IpAddr::V4(src) if src == self.gateway_tun.v4 => return Ok(InboundRewrite::None),
+            IpAddr::V6(src) if src == self.gateway_tun.v6 => return Ok(InboundRewrite::None),
             IpAddr::V4(_) | IpAddr::V6(_) => {}
         }
 
-        self.transform_tun_to_network(packet, now)?;
+        let rewrite = self.transform_tun_to_network(packet, now)?;
 
         self.ensure_client_ip(packet.destination())?;
         ensure_not_peer_ip(packet.source())
@@ -408,7 +422,7 @@ impl ClientOnGateway {
 
         // Always allow ICMP errors to pass through, even in the presence of filters that don't allow ICMP.
         if packet.icmp_error().is_ok_and(|e| e.is_some()) {
-            return Ok(());
+            return Ok(rewrite);
         }
 
         let rid = self
@@ -417,7 +431,7 @@ impl ClientOnGateway {
 
         flow_tracker::record_resource(rid);
 
-        Ok(())
+        Ok(rewrite)
     }
 
     fn transform_network_to_tun(
@@ -488,7 +502,11 @@ impl ClientOnGateway {
         Ok(TranslateOutboundResult::Send(packet))
     }
 
-    fn transform_tun_to_network(&mut self, packet: &mut IpPacket, now: Instant) -> Result<()> {
+    fn transform_tun_to_network(
+        &mut self,
+        packet: &mut IpPacket,
+        now: Instant,
+    ) -> Result<InboundRewrite> {
         let (proto, ip) = match self.nat_table.translate_incoming(packet, now)? {
             TranslateIncomingResult::Ok { proto, src } => (proto, src),
             TranslateIncomingResult::IcmpError(prototype) => {
@@ -498,7 +516,7 @@ impl ClientOnGateway {
                     .into_packet(self.client_tun.v4, self.client_tun.v6)
                     .context("Failed to create ICMP error")?;
 
-                return Ok(());
+                return Ok(InboundRewrite::IcmpError);
             }
             TranslateIncomingResult::ExpiredNatSession => {
                 bail!(UnroutablePacket::expired_nat_session(packet))
@@ -506,7 +524,7 @@ impl ClientOnGateway {
             TranslateIncomingResult::NoNatSession => {
                 // No NAT session means packet is likely for Internet Resource or a CIDR resource.
 
-                return Ok(());
+                return Ok(InboundRewrite::None);
             }
         };
 
@@ -514,7 +532,7 @@ impl ClientOnGateway {
             .translate_source(proto, ip)
             .context("Failed to translate packet to new source")?;
 
-        Ok(())
+        Ok(InboundRewrite::Source(proto, ip))
     }
 
     pub(crate) fn is_allowed(&self, resource: ResourceId) -> bool {
