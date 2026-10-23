@@ -7,7 +7,7 @@ mod udp_dns;
 mod udp_gso_train;
 
 pub(crate) use crypto::MAX_DECRYPT_BACKLOG_MEMORY;
-pub use crypto::{CryptoWorkersStopped, DecryptBatch, DecryptedIpPackets, EncryptBatch};
+pub use crypto::{DecryptBatch, DecryptedIpPackets, EncryptBatch};
 pub use device::{Device, TunChannelClosed};
 pub(crate) use udp_gso_train::UdpGsoTrain;
 
@@ -17,7 +17,7 @@ use crate::{
 };
 use anyhow::{ErrorExt, Result};
 use bootstrap_dns_client::BootstrapDnsClient;
-use crypto::{CryptoWorkers, Decrypting};
+use crypto::{CryptoWorkers, Decrypting, num_crypto_workers};
 use dns_types::DoHUrl;
 use fast_random_state::FastRandomState;
 use futures::{
@@ -212,12 +212,6 @@ impl<'a, 'cx> PollState<'a, 'cx> {
         }
     }
 
-    fn poll_crypto_workers(&mut self) {
-        if self.io.crypto.is_stopped() {
-            self.input.error.push(CryptoWorkersStopped);
-        }
-    }
-
     fn poll_device(&mut self) {
         if !self.udp_has_room {
             return;
@@ -341,7 +335,7 @@ impl Io {
                 10,
             ),
             doh_tls_config: TlsConfig::webpki_roots(),
-            crypto: CryptoWorkers::new(),
+            crypto: CryptoWorkers::new(num_crypto_workers()),
             decrypting: Decrypting::default(),
             tun: Device::new(),
             udp_dns_server: Default::default(),
@@ -417,7 +411,6 @@ impl Io {
         state.poll_decrypted();
         state.poll_network();
         state.poll_socket_errors();
-        state.poll_crypto_workers();
         state.poll_device();
         state.poll_dns_queries();
         state.poll_dns_responses();

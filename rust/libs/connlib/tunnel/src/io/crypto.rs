@@ -57,9 +57,11 @@ impl Prefetch for DecryptedDatagram {
 /// Encrypts and decrypts WireGuard data messages on worker threads.
 ///
 /// Jobs of either kind go to the next worker round-robin.
+/// Without any workers, jobs run on the thread that submits them.
 pub struct CryptoWorkers {
     workers: Vec<mpsc::Sender<Job>>,
     next_worker: usize,
+    packet_counter: Counter<u64>,
     /// The open train to each destination of the current [`EncryptBatch`], kept for its capacity.
     open_trains: Vec<EncryptJob>,
 }
@@ -80,10 +82,13 @@ impl DecryptedIpPackets {
 }
 
 impl CryptoWorkers {
-    pub fn new() -> Self {
+    pub fn new(num_workers: usize) -> Self {
+        let packet_counter = otel_instruments::network_packets();
+
         Self {
-            workers: spawn_workers(num_crypto_workers(), otel_instruments::network_packets()),
+            workers: spawn_workers(num_workers, packet_counter.clone()),
             next_worker: 0,
+            packet_counter,
             open_trains: Vec::new(),
         }
     }
@@ -119,14 +124,9 @@ impl CryptoWorkers {
         }
     }
 
-    /// Whether every worker stopped, or none started.
-    pub fn is_stopped(&self) -> bool {
-        self.workers.is_empty()
-    }
-
     /// Sends `job` to the worker after the one picked last, removing the workers that stopped.
     ///
-    /// Without any workers left, `job` is dropped.
+    /// Without any workers left, `job` runs inline.
     fn send(&mut self, mut job: Job) {
         while !self.workers.is_empty() {
             let index = self.next_worker % self.workers.len();
@@ -142,6 +142,8 @@ impl CryptoWorkers {
                 }
             }
         }
+
+        run(job, &self.packet_counter);
     }
 }
 
@@ -199,8 +201,6 @@ impl EncryptBatch<'_> {
         pending
             .get_or_insert_with(|| Vec::with_capacity(max_trains))
             .push(rx);
-
-        // A stopped worker drops the sender, so the socket skips the train.
         self.crypto.send(Job::Encrypt(job, tx));
     }
 }
@@ -283,8 +283,6 @@ impl<'a> DecryptBatch<'a> {
         let job = mem::replace(&mut self.job, DecryptJob::new());
 
         let (tx, rx) = oneshot::channel();
-
-        // A stopped worker drops the sender, so `Decrypting::poll_next` skips the job.
         self.crypto.send(Job::Decrypt(job, tx));
         self.decrypting.jobs.push_back(rx);
     }
@@ -388,7 +386,7 @@ impl DecryptJob {
 }
 
 /// How many crypto workers to spawn: up to half of the cores.
-fn num_crypto_workers() -> usize {
+pub fn num_crypto_workers() -> usize {
     let cores = thread::available_parallelism().map_or(1, NonZeroUsize::get);
 
     (cores / 2).max(2)
@@ -405,12 +403,7 @@ fn spawn_workers(num_workers: usize, packet_counter: Counter<u64>) -> Vec<mpsc::
                 .name(name.clone())
                 .spawn(move || {
                     for job in rx {
-                        match job {
-                            Job::Encrypt(train, encrypted) => {
-                                encrypt(train, encrypted, &packet_counter)
-                            }
-                            Job::Decrypt(job, decrypted) => decrypt(job, decrypted),
-                        }
+                        run(job, &packet_counter);
                     }
                 })
                 .inspect_err(|e| tracing::warn!(%name, "Failed to spawn crypto worker: {e}"))
@@ -419,6 +412,13 @@ fn spawn_workers(num_workers: usize, packet_counter: Counter<u64>) -> Vec<mpsc::
             Some(tx)
         })
         .collect()
+}
+
+fn run(job: Job, packet_counter: &Counter<u64>) {
+    match job {
+        Job::Encrypt(train, encrypted) => encrypt(train, encrypted, packet_counter),
+        Job::Decrypt(job, decrypted) => decrypt(job, decrypted),
+    }
 }
 
 fn encrypt(
@@ -463,7 +463,3 @@ fn decrypt(job: DecryptJob, decrypted: oneshot::Sender<DecryptedIpPackets>) {
     // We stopped if the receiver is gone; the channel for the next job is closed too.
     let _ = decrypted.send(DecryptedIpPackets(packets));
 }
-
-#[derive(Debug, thiserror::Error)]
-#[error("All crypto workers stopped")]
-pub struct CryptoWorkersStopped;
