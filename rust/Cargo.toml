@@ -65,6 +65,7 @@ members = [
     "relay/proto",
     "relay/server",
     "tests/doh-test-server",
+    "tests/event-loop-callgrind",
     "tests/fuzz",
     "tests/gui-smoke-test",
     "tests/http-test-server",
@@ -140,6 +141,7 @@ futures = { version = "0.3.32" }
 futures-bounded = "0.3.0"
 glob = "0.3.3"
 gui-ipc = { path = "gui-client/src-gui-ipc" }
+gungraun = "0.20.0"
 hex = "0.4.3"
 hex-display = "0.4.0"
 hex-literal = "1.1.0"
