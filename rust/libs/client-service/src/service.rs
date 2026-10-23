@@ -948,11 +948,15 @@ impl<'a> Handler<'a> {
                 Arc::new(tcp_socket_factory),
             );
 
+            let kernel_forwarding =
+                crate::kernel_forwarding(crate::kernel_forwarding_disabled_by_env());
+
             client_shared::Session::connect_device(
                 Arc::new(tcp_socket_factory),
                 Arc::new(UdpSocketFactory::default()),
                 portal,
-                client_shared::local_capabilities(client_shared::host_forwards()),
+                client_shared::local_capabilities(kernel_forwarding.is_some()),
+                kernel_forwarding,
                 is_internet_resource_active,
                 dns,
                 known_dirs::flow_logs(),

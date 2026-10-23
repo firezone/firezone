@@ -144,6 +144,19 @@ pub struct Capabilities {
     pub dns_recursion: bool,
     /// Whether the device connects without ICE where the portal allows.
     pub iceless: bool,
+    /// How the device forwards served traffic, once it knows; the kernel forwarder
+    /// is only decided when serving starts.
+    pub forwarding: Option<Forwarding>,
+}
+
+/// How a device forwards the traffic of the resources it serves.
+#[derive(Debug, Serialize, PartialEq, Eq, Clone, Copy)]
+#[serde(rename_all = "snake_case")]
+pub enum Forwarding {
+    /// Written to the TUN device for the kernel to route and masquerade.
+    Kernel,
+    /// Terminated in the daemon and carried by host sockets.
+    Userspace,
 }
 
 #[derive(Debug, Deserialize)]
@@ -259,11 +272,12 @@ mod tests {
             route_resources: true,
             dns_recursion: true,
             iceless: false,
+            forwarding: Some(Forwarding::Kernel),
         });
 
         assert_eq!(
             serde_json::to_string(&msg).unwrap(),
-            r#"{"event":"set_capabilities","payload":{"route_resources":true,"dns_recursion":true,"iceless":false}}"#
+            r#"{"event":"set_capabilities","payload":{"route_resources":true,"dns_recursion":true,"iceless":false,"forwarding":"kernel"}}"#
         );
     }
 }

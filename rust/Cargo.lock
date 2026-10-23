@@ -8887,11 +8887,13 @@ dependencies = [
  "rand 0.10.3",
  "snownet",
  "socket-factory",
+ "socket2",
  "thiserror 2.0.21",
  "tokio",
  "tracing",
  "tun",
  "tunnel-proto",
+ "userspace-forwarder",
 ]
 
 [[package]]
@@ -9239,6 +9241,15 @@ dependencies = [
  "regex",
  "serde",
  "url",
+]
+
+[[package]]
+name = "userspace-forwarder"
+version = "0.1.0"
+dependencies = [
+ "ip-packet",
+ "l3-tcp",
+ "tracing",
 ]
 
 [[package]]

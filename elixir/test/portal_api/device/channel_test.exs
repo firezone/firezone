@@ -196,13 +196,15 @@ defmodule PortalAPI.Device.ChannelTest do
       push(socket, "set_capabilities", %{
         "route_resources" => true,
         "dns_recursion" => true,
-        "iceless" => false
+        "iceless" => false,
+        "forwarding" => "userspace"
       })
 
       # Presence tracking is asynchronous to the push.
       :sys.get_state(socket.channel_pid)
 
       assert Presence.Devices.routes_resources?(presence_meta(account, client))
+      assert presence_meta(account, client).capabilities.forwarding == :userspace
       assert [%{id: id}] = Presence.Devices.all_connected_routers(account.id)
       assert id == client.id
     end

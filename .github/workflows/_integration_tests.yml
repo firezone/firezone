@@ -187,6 +187,13 @@ jobs:
             script: download
             gateway_disable_ipv6: 1
             min_gateway_version: 1.4.19
+          - name: download-userspace-forwarding
+            script: download
+            # The gateway forwards in userspace instead of setting the kernel up.
+            gateway_no_kernel_forwarding: true
+          - name: dns-userspace-forwarding
+            script: dns
+            gateway_no_kernel_forwarding: true
           - script: download-packet-loss
             rust_log: debug
           - name: download-packet-loss-iceless
@@ -267,6 +274,10 @@ jobs:
 
           if [[ -n "${{ matrix.test.gateway_disable_ipv6 }}" ]]; then
             export GATEWAY_DISABLE_IPV6="${{ matrix.test.gateway_disable_ipv6 }}"
+          fi
+
+          if [[ -n "${{ matrix.test.gateway_no_kernel_forwarding }}" ]]; then
+            export GATEWAY_NO_KERNEL_FORWARDING="${{ matrix.test.gateway_no_kernel_forwarding }}"
           fi
 
           # The `*-router` images are pre-built in the `collect-images` job and

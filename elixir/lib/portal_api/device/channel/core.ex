@@ -861,7 +861,8 @@ defmodule PortalAPI.Device.Channel.Core do
     capabilities = %{
       route_resources: payload["route_resources"] == true,
       dns_recursion: payload["dns_recursion"] == true,
-      iceless: payload["iceless"] == true
+      iceless: payload["iceless"] == true,
+      forwarding: forwarding(payload["forwarding"])
     }
 
     socket =
@@ -895,6 +896,11 @@ defmodule PortalAPI.Device.Channel.Core do
   ####################################
 
   # What the device reported it can do, or the defaults of its kind.
+  # How the device forwards served traffic, shown to admins; unknown values are nothing.
+  defp forwarding("kernel"), do: :kernel
+  defp forwarding("userspace"), do: :userspace
+  defp forwarding(_), do: nil
+
   defp capabilities(socket) do
     socket.assigns[:capabilities] || Presence.Devices.default_capabilities(device(socket).type)
   end

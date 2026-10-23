@@ -62,11 +62,12 @@ LockPersonality=true
 RestrictAddressFamilies=AF_INET AF_INET6 AF_NETLINK AF_UNIX
 DeviceAllow=/dev/net/tun
 
-# CAP_NET_ADMIN for the tunnel; CAP_CHOWN to hand the IPC socket and the
-# device ID to the `firezone-client` group; CAP_SYS_PTRACE to read a peer's
+# CAP_NET_ADMIN for the tunnel; CAP_NET_RAW for the ICMP sockets that answer
+# pings to served resources; CAP_CHOWN to hand the IPC socket and the device ID
+# to the `firezone-client` group; CAP_SYS_PTRACE to read a peer's
 # `/proc/<pid>/exe` for the IPC allowlist.
-AmbientCapabilities=CAP_NET_ADMIN CAP_CHOWN CAP_SYS_PTRACE
-CapabilityBoundingSet=CAP_NET_ADMIN CAP_CHOWN CAP_SYS_PTRACE
+AmbientCapabilities=CAP_NET_ADMIN CAP_NET_RAW CAP_CHOWN CAP_SYS_PTRACE
+CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_RAW CAP_CHOWN CAP_SYS_PTRACE
 
 InaccessiblePaths=/root /home
 

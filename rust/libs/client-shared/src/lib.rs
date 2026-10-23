@@ -8,6 +8,7 @@ pub use tunnel::TunConfig;
 use tunnel::messages::SnownetCapabilities;
 use tunnel::messages::client::EgressMessages;
 pub use tunnel::messages::client::{IngressMessages, ResourceDescription};
+pub use tunnel::messages::device::Forwarding;
 pub use tunnel::messages::device::{
     EgressMessages as DeviceEgressMessages, IngressMessages as DeviceIngressMessages,
 };
@@ -76,27 +77,27 @@ pub enum Event {
 
 /// What this binary can do, for a device that may serve sites.
 ///
-/// `route_resources` is what the host allows: forwarding is the admin's
-/// job, and the portal only routes to a device that reports it on.
-pub fn local_capabilities(route_resources: bool) -> Capabilities {
+/// Every device forwards the traffic of the resources it serves: in the kernel
+/// where the host lets the daemon set that up, in userspace everywhere else.
+pub fn local_capabilities(kernel_forwarding: bool) -> Capabilities {
     Capabilities {
-        route_resources,
+        route_resources: true,
         dns_recursion: true,
         iceless: SnownetCapabilities::LOCAL.iceless,
+        forwarding: Some(if kernel_forwarding {
+            Forwarding::Kernel
+        } else {
+            Forwarding::Userspace
+        }),
     }
 }
 
-/// Whether the host forwards packets, which is what serving a site needs.
+/// Sets the host up to forward and masquerade served traffic in the kernel.
 ///
-/// Enabling forwarding and the masquerade rules is the admin's job; the daemon
-/// only reports whether it is on, so the portal can show why a device does
-/// not serve.
-pub fn host_forwards() -> bool {
-    if !cfg!(target_os = "linux") {
-        return false;
-    }
-
-    std::fs::read_to_string("/proc/sys/net/ipv4/ip_forward").is_ok_and(|v| v.trim() == "1")
+/// Called when the first resource to serve arrives; the guard keeps the setup
+/// and dropping it undoes it. A failure falls back to the userspace forwarder.
+pub trait KernelForwarding: Send + 'static {
+    fn enable(&mut self) -> anyhow::Result<Box<dyn std::any::Any + Send>>;
 }
 
 /// Who the portal says this session belongs to.
@@ -122,6 +123,7 @@ impl Session {
             route_resources: false,
             dns_recursion: false,
             iceless: SnownetCapabilities::LOCAL.iceless,
+            forwarding: None,
         };
 
         Self::connect_with::<protocol::ClientWire>(
@@ -129,6 +131,7 @@ impl Session {
             udp_socket_factory,
             portal,
             capabilities,
+            None,
             is_internet_resource_active,
             dns_servers,
             flow_logs_dir,
@@ -143,6 +146,7 @@ impl Session {
         udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
         portal: PhoenixChannel<(), DeviceEgressMessages, DeviceIngressMessages, PublicKeyParam>,
         capabilities: Capabilities,
+        kernel_forwarding: Option<Box<dyn KernelForwarding>>,
         is_internet_resource_active: bool,
         dns_servers: Vec<IpAddr>,
         flow_logs_dir: Option<PathBuf>,
@@ -154,6 +158,7 @@ impl Session {
             udp_socket_factory,
             portal,
             capabilities,
+            kernel_forwarding,
             is_internet_resource_active,
             dns_servers,
             flow_logs_dir,
@@ -167,6 +172,7 @@ impl Session {
         udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
         portal: PhoenixChannel<(), W::Egress, W::Ingress, PublicKeyParam>,
         capabilities: Capabilities,
+        kernel_forwarding: Option<Box<dyn KernelForwarding>>,
         is_internet_resource_active: bool,
         dns_servers: Vec<IpAddr>,
         flow_logs_dir: Option<PathBuf>,
@@ -188,6 +194,7 @@ impl Session {
                     local_flow_logs,
                     portal,
                     capabilities,
+                    kernel_forwarding,
                     cmd_rx,
                     resource_list_sender,
                     tun_config_sender,

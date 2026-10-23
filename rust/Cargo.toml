@@ -42,6 +42,7 @@ members = [
     "libs/connlib/tun-windows",
     "libs/connlib/tunnel",
     "libs/connlib/tunnel-proto",
+    "libs/connlib/userspace-forwarder",
     "libs/desktop-notifications",
     "libs/eventloop-budget",
     "libs/fast-random-state",
@@ -281,6 +282,7 @@ tun-windows = { path = "libs/connlib/tun-windows" }
 tunnel = { path = "libs/connlib/tunnel" }
 tunnel-bypass-resolver = { path = "libs/tunnel-bypass-resolver" }
 tunnel-proto = { path = "libs/connlib/tunnel-proto" }
+userspace-forwarder = { path = "libs/connlib/userspace-forwarder" }
 uniffi = "0.31.1"
 url = "2.5.2"
 uuid = "1.23.2"

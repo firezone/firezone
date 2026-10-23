@@ -55,10 +55,14 @@ defmodule Portal.Presence do
     @spec default_capabilities(:client | :gateway) :: %{
             route_resources: boolean(),
             dns_recursion: boolean(),
-            iceless: boolean()
+            iceless: boolean(),
+            forwarding: :kernel | :userspace | nil
           }
-    def default_capabilities(:gateway), do: %{route_resources: true, dns_recursion: true, iceless: false}
-    def default_capabilities(_client), do: %{route_resources: false, dns_recursion: false, iceless: false}
+    def default_capabilities(:gateway),
+      do: %{route_resources: true, dns_recursion: true, iceless: false, forwarding: :kernel}
+
+    def default_capabilities(_client),
+      do: %{route_resources: false, dns_recursion: false, iceless: false, forwarding: nil}
 
     @doc "Whether a device, by its presence meta, routes the resources of the sites it serves."
     @spec routes_resources?(map()) :: boolean()

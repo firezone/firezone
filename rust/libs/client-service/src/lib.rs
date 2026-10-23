@@ -69,3 +69,35 @@ pub fn firezone_client_group() -> anyhow::Result<nix::unistd::Group> {
 
     Ok(group)
 }
+
+/// The kernel forwarder for served traffic on this host, unless disabled or unavailable.
+///
+/// Without one, served traffic is forwarded in userspace.
+pub fn kernel_forwarding(disabled: bool) -> Option<Box<dyn client_shared::KernelForwarding>> {
+    if disabled {
+        tracing::info!("Kernel forwarding disabled, served traffic is forwarded in userspace");
+        return None;
+    }
+
+    if !bin_shared::forwarding::is_available() {
+        tracing::info!(
+            "Kernel forwarding unavailable on this host, served traffic is forwarded in userspace"
+        );
+        return None;
+    }
+
+    Some(Box::new(HostForwarding))
+}
+
+/// Whether `FIREZONE_NO_KERNEL_FORWARDING` asks for userspace forwarding only.
+pub fn kernel_forwarding_disabled_by_env() -> bool {
+    std::env::var("FIREZONE_NO_KERNEL_FORWARDING").is_ok_and(|v| matches!(v.as_str(), "1" | "true"))
+}
+
+struct HostForwarding;
+
+impl client_shared::KernelForwarding for HostForwarding {
+    fn enable(&mut self) -> anyhow::Result<Box<dyn std::any::Any + Send>> {
+        Ok(Box::new(bin_shared::forwarding::enable()?))
+    }
+}

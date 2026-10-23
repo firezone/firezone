@@ -1,5 +1,6 @@
 use crate::ConnectedAs;
 use crate::protocol::{Capabilities, Incoming, Init, Outgoing, Wire};
+use crate::{Forwarding, KernelForwarding};
 use anyhow::{Context as _, ErrorExt as _, Result};
 use bootstrap_dns_client::BootstrapDnsClient;
 use clock::Clock;
@@ -76,6 +77,14 @@ pub struct Eventloop {
     >,
     /// Whether the portal lists sites for this device, so it runs the DNS server for them.
     serving: bool,
+    /// The resources behind the served sites; forwarding starts with the first.
+    local_resource_ids: BTreeSet<ResourceId>,
+    /// How served traffic leaves the host right now.
+    forwarding: ForwardingState,
+    kernel_forwarding: Option<Box<dyn KernelForwarding>>,
+    /// What the portal was told on connect, and what it is told after a change.
+    initial_capabilities: Capabilities,
+    capabilities: Capabilities,
     /// The tunnel addresses, once known.
     tun_ip: Option<IpConfig>,
     /// The sockets the DNS servers on the tunnel addresses are bound to.
@@ -103,6 +112,14 @@ pub struct Eventloop {
     logged_permission_denied: bool,
 
     tunnel_errors: opentelemetry::metrics::Counter<u64>,
+}
+
+/// How served traffic leaves the host.
+enum ForwardingState {
+    Off,
+    /// The kernel routes it; the guard holds the host setup.
+    Kernel(#[expect(dead_code, reason = "held for its drop")] Box<dyn std::any::Any + Send>),
+    Userspace,
 }
 
 /// Commands that can be sent to the [`Eventloop`].
@@ -197,6 +214,7 @@ impl Eventloop {
         local_flow_logs: bool,
         portal: PhoenixChannel<(), W::Egress, W::Ingress, PublicKeyParam>,
         capabilities: Capabilities,
+        kernel_forwarding: Option<Box<dyn KernelForwarding>>,
         cmd_rx: mpsc::UnboundedReceiver<Command>,
         resource_list_sender: watch::Sender<Vec<ResourceView>>,
         tun_config_sender: watch::Sender<Option<TunConfig>>,
@@ -238,6 +256,11 @@ impl Eventloop {
                 1000,
             ),
             serving: false,
+            local_resource_ids: BTreeSet::new(),
+            forwarding: ForwardingState::Off,
+            kernel_forwarding,
+            initial_capabilities: capabilities,
+            capabilities,
             tun_ip: None,
             tun_dns_bound: Vec::new(),
             tun_dns_retry: None,
@@ -325,6 +348,7 @@ impl Eventloop {
                 Ok(ControlFlow::Continue(()))
             }
             CombinedEvent::Portal(Some(Ok(PortalEvent::Connected))) => {
+                self.resend_capabilities().await?;
                 if let Some(tunnel) = self.tunnel.as_mut() {
                     tunnel.state_mut().set_portal_connected(true);
                 }
@@ -745,8 +769,11 @@ impl Eventloop {
                     );
                 }
 
+                let local_resource_ids = local_resources.iter().map(|r| r.id()).collect();
                 state.set_local_resources(local_resources);
                 self.set_serving(!sites_served.is_empty(), &sites_served);
+                self.local_resource_ids = local_resource_ids;
+                self.update_forwarding().await?;
             }
             Incoming::ResourceCreatedOrUpdated(resource) => {
                 tunnel.state_mut().add_resource(resource, now);
@@ -962,14 +989,22 @@ impl Eventloop {
                 sites_served,
                 local_resources,
             } => {
+                let local_resource_ids = local_resources.iter().map(|r| r.id()).collect();
                 tunnel.state_mut().set_local_resources(local_resources);
                 self.set_serving(!sites_served.is_empty(), &sites_served);
+                self.local_resource_ids = local_resource_ids;
+                self.update_forwarding().await?;
             }
             Incoming::LocalResourceCreatedOrUpdated(resource) => {
+                let id = resource.id();
                 tunnel.state_mut().upsert_local_resource(resource);
+                self.local_resource_ids.insert(id);
+                self.update_forwarding().await?;
             }
             Incoming::LocalResourceDeleted(resource) => {
                 tunnel.state_mut().remove_local_resource(resource);
+                self.local_resource_ids.remove(&resource);
+                self.update_forwarding().await?;
             }
             Incoming::ServedResourceUpdated(resource) => {
                 tunnel.state_mut().update_served_resource(resource);
@@ -1057,6 +1092,79 @@ impl Eventloop {
         }
 
         Ok(())
+    }
+
+    /// Starts forwarding for the first resource to serve and stops it after the last.
+    ///
+    /// The kernel forwarder is tried first where there is one; the userspace
+    /// forwarder is always there. The portal learns which one came up.
+    async fn update_forwarding(&mut self) -> Result<()> {
+        let wanted = self.serving && !self.local_resource_ids.is_empty();
+        let now = self.clock.now();
+
+        match (wanted, &self.forwarding) {
+            (true, ForwardingState::Off) => {
+                let guard = self.kernel_forwarding.as_mut().and_then(|kernel| {
+                    kernel
+                        .enable()
+                        .inspect_err(|e| {
+                            tracing::warn!(
+                                "Kernel forwarding failed, forwarding served traffic in userspace: {e:#}"
+                            )
+                        })
+                        .ok()
+                });
+
+                let forwarding = match guard {
+                    Some(guard) => {
+                        self.forwarding = ForwardingState::Kernel(guard);
+                        Forwarding::Kernel
+                    }
+                    None => {
+                        if let Some(tunnel) = self.tunnel.as_mut() {
+                            tunnel.set_userspace_forwarding(true, now);
+                        }
+                        self.forwarding = ForwardingState::Userspace;
+                        Forwarding::Userspace
+                    }
+                };
+
+                tracing::info!(?forwarding, "Forwarding served traffic");
+
+                if self.capabilities.forwarding != Some(forwarding) {
+                    self.capabilities.forwarding = Some(forwarding);
+                    send_to_portal(
+                        &self.portal_cmd_tx,
+                        Outgoing::Capabilities(self.capabilities),
+                    )
+                    .await?;
+                }
+            }
+            (false, ForwardingState::Kernel(_) | ForwardingState::Userspace) => {
+                self.forwarding = ForwardingState::Off;
+                if let Some(tunnel) = self.tunnel.as_mut() {
+                    tunnel.set_userspace_forwarding(false, now);
+                }
+
+                tracing::info!("Stopped forwarding served traffic");
+            }
+            (false, ForwardingState::Off) | (true, _) => {}
+        }
+
+        Ok(())
+    }
+
+    /// The connect carries the initial capabilities; what changed since follows.
+    async fn resend_capabilities(&mut self) -> Result<()> {
+        if self.capabilities == self.initial_capabilities {
+            return Ok(());
+        }
+
+        send_to_portal(
+            &self.portal_cmd_tx,
+            Outgoing::Capabilities(self.capabilities),
+        )
+        .await
     }
 
     /// Records whether the portal lists sites for this device.

@@ -16,6 +16,7 @@ use connlib_model::PublicKey;
 use eventloop_budget::Budget;
 use futures::{FutureExt, future::BoxFuture};
 use io::Io;
+use ip_packet::IpPacket;
 use packet_counts::{TunPacketCounts, UdpPacketCounts};
 use prefetch::IteratorExt as _;
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
@@ -117,6 +118,11 @@ pub struct Tunnel<TRoleState> {
     /// Not every component advertises a deadline for that work, so the tunnel says so itself:
     /// [`Tunnel::next_timeout`] reports `now` and the alarm rings straight away.
     needs_timeout: bool,
+
+    /// The tunnel addresses, once the state announced them.
+    ///
+    /// Packets for them stay on the TUN device however served traffic is forwarded.
+    local_ips: Option<IpConfig>,
 }
 
 impl<TRoleState> Tunnel<TRoleState> {
@@ -158,6 +164,7 @@ impl DeviceTunnel {
             packet_counter: otel_instruments::network_packets(),
             dropped_packets: otel_instruments::network_packet_dropped(),
             needs_timeout: false,
+            local_ips: None,
         }
     }
 
@@ -187,6 +194,11 @@ impl DeviceTunnel {
 
         self.role_state.reset(now, reason);
         self.io.reset();
+    }
+
+    /// Whether served traffic goes through the userspace forwarder instead of the TUN device.
+    pub fn set_userspace_forwarding(&mut self, enabled: bool, now: Instant) {
+        self.io.set_userspace_forwarding(enabled, now);
     }
 
     pub fn update_system_resolvers(&mut self, resolvers: Vec<IpAddr>) -> Vec<IpAddr> {
@@ -237,6 +249,8 @@ impl DeviceTunnel {
             // Pass up existing events.
             if let Some(event) = self.role_state.poll_event() {
                 if let ClientEvent::TunInterfaceUpdated(config) = &event {
+                    self.local_ips = Some(config.ip);
+
                     for url in &config.dns_by_sentinel.upstream_servers() {
                         let dns::Upstream::DoH { server } = url else {
                             continue;
@@ -252,7 +266,7 @@ impl DeviceTunnel {
             // Drain all buffered IP packets.
             while let Some(packet) = self.role_state.poll_packets() {
                 tun_transmitted.record(&packet);
-                self.io.queue_tun(packet);
+                queue_to_tun(&mut self.io, self.local_ips, packet, now);
                 tick.want_continue();
             }
 
@@ -276,6 +290,7 @@ impl DeviceTunnel {
                 tcp_dns_queries,
                 udp_dns_queries,
                 mut device,
+                forwarded,
                 network,
                 decrypted,
                 mut error,
@@ -336,6 +351,23 @@ impl DeviceTunnel {
                     tick.want_continue();
                 }
 
+                if !forwarded.is_empty() {
+                    let mut batch = self.io.start_encrypt_batch(forwarded.len());
+
+                    for mut packet in forwarded {
+                        match self.role_state.handle_tun_input(&mut packet, now) {
+                            Ok(Some(encapsulation)) => batch.encrypt(encapsulation, packet),
+                            Ok(None) => {}
+                            Err(e) => error.push(
+                                e.context("Failed to handle packet from the userspace forwarder"),
+                            ),
+                        }
+                    }
+
+                    self.needs_timeout = true;
+                    tick.want_continue();
+                }
+
                 if let Some(mut datagrams) = network {
                     let mut decrypts = self.io.start_decrypt_batch(datagrams.len());
 
@@ -383,7 +415,7 @@ impl DeviceTunnel {
                                 let packet = packet.with_ecn_from_transport(received.ecn);
 
                                 tun_transmitted.record(&packet);
-                                self.io.queue_tun(packet);
+                                queue_to_tun(&mut self.io, self.local_ips, packet, now);
                             }
                             Ok(None) => self.needs_timeout = true,
                             Err(e) => error.push(e.context(FailedToHandleNetworkPacket {
@@ -478,6 +510,18 @@ fn forward_tun_dns_query(
 }
 
 /// Answers a query of the DNS server on our tunnel addresses.
+/// Writes a packet from the state to the TUN device, or forwards it in userspace
+/// when it is served traffic and the kernel is not routing it.
+fn queue_to_tun(io: &mut Io, local_ips: Option<IpConfig>, packet: IpPacket, now: Instant) {
+    if io.is_userspace_forwarding() && local_ips.is_some_and(|ips| !ips.is_ip(packet.destination()))
+    {
+        io.forward(packet, now);
+        return;
+    }
+
+    io.queue_tun(packet);
+}
+
 fn send_tun_dns_response(io: &mut Io, response: dns::RecursiveResponse) -> std::io::Result<()> {
     let message = response.message.unwrap_or_else(|e| {
         tracing::debug!("DNS query failed: {e}");

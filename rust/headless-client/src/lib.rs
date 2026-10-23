@@ -164,6 +164,11 @@ struct Cli {
     /// spooling and uploading them is always controlled by the portal.
     #[arg(long, env = "FIREZONE_FLOW_LOGS", default_value_t = false)]
     flow_logs: bool,
+
+    /// Forward the traffic of served resources in userspace only, instead of setting
+    /// the host up to forward and masquerade it in the kernel.
+    #[arg(long, env = "FIREZONE_NO_KERNEL_FORWARDING", default_value_t = false)]
+    no_kernel_forwarding: bool,
 }
 
 #[derive(Debug, Clone, Copy, clap::ValueEnum)]
@@ -344,18 +349,9 @@ fn gui_command(command: firezone_cli::Cmd) -> Result<()> {
 
 /// What the portal is told runs here: the old names keep their old products,
 /// the `firezone` binary says so in every role.
+/// Every alias of this binary is the same component to the portal.
 fn user_agent_product() -> &'static str {
-    let Some(program) = std::env::args_os().next() else {
-        return "firezone";
-    };
-
-    // Every alias of this binary is the same component to the portal; only
-    // the daemon under its old name keeps serving the GUI as a client.
-    if invoked_as(&program, "firezone-client-tunnel") {
-        "gui-client"
-    } else {
-        "firezone"
-    }
+    "firezone"
 }
 
 /// Whether this process was started under the standalone client's old name,
@@ -650,11 +646,14 @@ fn try_main() -> Result<()> {
             flow_log_upload::spawn(dir, Arc::new(tcp_socket_factory));
         }
 
+        let kernel_forwarding = client_service::kernel_forwarding(cli.no_kernel_forwarding);
+
         let (session, mut event_stream) = client_shared::Session::connect_device(
             Arc::new(tcp_socket_factory),
             Arc::new(UdpSocketFactory::default()),
             portal,
-            client_shared::local_capabilities(client_shared::host_forwards()),
+            client_shared::local_capabilities(kernel_forwarding.is_some()),
+            kernel_forwarding,
             cli.activate_internet_resource,
             dns_controller.system_resolvers(),
             flow_logs_dir.clone(),
