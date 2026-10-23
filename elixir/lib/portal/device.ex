@@ -25,8 +25,6 @@ defmodule Portal.Device do
     last_seen_at
     last_attested_at
     token_id
-    client_token_id
-    gateway_token_id
   ]a
 
   @latest_session_columns Enum.map(@latest_session_fields, &Atom.to_string/1)
@@ -54,8 +52,6 @@ defmodule Portal.Device do
           last_seen_version: String.t() | nil,
           last_seen_at: DateTime.t() | nil,
           token_id: Ecto.UUID.t() | nil,
-          client_token_id: Ecto.UUID.t() | nil,
-          gateway_token_id: Ecto.UUID.t() | nil,
           account_id: Ecto.UUID.t(),
           actor_id: Ecto.UUID.t() | nil,
           site_id: Ecto.UUID.t() | nil,
@@ -140,11 +136,8 @@ defmodule Portal.Device do
     field :last_seen_remote_ip_location_lon, :float
     field :last_seen_version, :string
     field :last_seen_at, :utc_datetime_usec
-    # The token of the latest session, whichever table it lives in. The two
-    # role-specific columns below are kept in step until every reader moves.
+    # The token of the latest session.
     field :token_id, :binary_id
-    field :client_token_id, :binary_id
-    field :gateway_token_id, :binary_id
 
     # Virtual fields
     # The token minted with a Gateway, carried only on the provisioning response.

@@ -277,7 +277,7 @@ defmodule PortalAPI.GatewayController do
 
     # Surfaces the rotation state of the token the gateway last connected
     # with, so a caller can tell a pending rotation from a completed one.
-    # Left join because gateway_token_id is null until the gateway's first
+    # Left join because token_id is null until the gateway's first
     # connect, and select_merge because rotated_at lives on the token
     # rather than the device.
     defp with_token_rotation(queryable) do

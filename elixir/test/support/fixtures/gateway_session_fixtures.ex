@@ -56,14 +56,6 @@ defmodule Portal.GatewaySessionFixtures do
     |> Portal.Repo.update!()
   end
 
-  # The latest session's token, in the one column every kind shares and in
-  # the legacy column only when the token still lives in gateway_tokens.
-  defp put_latest_token(changeset, %Portal.GatewayToken{} = token) do
-    changeset
-    |> Ecto.Changeset.put_change(:token_id, token.id)
-    |> Ecto.Changeset.put_change(:gateway_token_id, token.id)
-  end
-
   defp put_latest_token(changeset, %Portal.ClientToken{} = token) do
     Ecto.Changeset.put_change(changeset, :token_id, token.id)
   end

@@ -86,7 +86,7 @@ defmodule Portal.QueueTest do
         flush_interval: :timer.seconds(5),
         flush_threshold: 1_000,
         label: "client session",
-        on_flush: &flush_upsert(&1, :client_token_id, cb_opts)
+        on_flush: &flush_upsert(&1, cb_opts)
       ],
       queue_opts
     )
@@ -100,7 +100,7 @@ defmodule Portal.QueueTest do
         flush_interval: :timer.seconds(5),
         flush_threshold: 1_000,
         label: "gateway session",
-        on_flush: &flush_upsert(&1, :gateway_token_id, cb_opts)
+        on_flush: &flush_upsert(&1, cb_opts)
       ],
       queue_opts
     )
@@ -157,8 +157,8 @@ defmodule Portal.QueueTest do
     inserted
   end
 
-  defp flush_upsert(entries, token_field, cb_opts) do
-    {persisted, revoked, missing} = Sockets.LatestSession.upsert_all(entries, token_field)
+  defp flush_upsert(entries, cb_opts) do
+    {persisted, revoked, missing} = Sockets.LatestSession.upsert_all(entries)
 
     failed = revoked ++ missing
     dispatch_failed(failed, cb_opts)
@@ -217,7 +217,7 @@ defmodule Portal.QueueTest do
         session_ref: make_ref(),
         account_id: ctx.account.id,
         device_id: ctx.client.id,
-        client_token_id: ctx.token.id,
+        token_id: ctx.token.id,
         user_agent: "macOS/14.0 apple-client/1.3.0",
         remote_ip: {100, 64, 0, 1},
         remote_ip_location_region: "US",
@@ -238,7 +238,7 @@ defmodule Portal.QueueTest do
       Queue.flush(ctx.queue)
 
       device = reload_device(ctx.client)
-      assert device.client_token_id == ctx.token.id
+      assert device.token_id == ctx.token.id
       assert device.public_key == attrs.public_key
       assert device.last_seen_user_agent == attrs.user_agent
       assert device.last_seen_version == attrs.version
@@ -294,7 +294,7 @@ defmodule Portal.QueueTest do
 
     test "skips sessions whose token was deleted", ctx do
       other_token = client_token_fixture(account: ctx.account)
-      attrs = client_session_attrs(ctx, %{client_token_id: other_token.id})
+      attrs = client_session_attrs(ctx, %{token_id: other_token.id})
       Repo.delete!(other_token)
 
       Queue.enqueue(ctx.queue, attrs)
@@ -302,7 +302,7 @@ defmodule Portal.QueueTest do
 
       assert Process.alive?(ctx.queue)
       device = reload_device(ctx.client)
-      assert is_nil(device.client_token_id)
+      assert is_nil(device.token_id)
       assert is_nil(device.last_seen_at)
     end
 
@@ -310,7 +310,7 @@ defmodule Portal.QueueTest do
       now = DateTime.utc_now()
 
       other_token = client_token_fixture(account: ctx.account)
-      revoked = client_session_attrs(ctx, %{client_token_id: other_token.id, version: "1.0.0"})
+      revoked = client_session_attrs(ctx, %{token_id: other_token.id, version: "1.0.0"})
       Repo.delete!(other_token)
 
       live = client_session_attrs(ctx, %{version: "1.3.1"})
@@ -320,19 +320,19 @@ defmodule Portal.QueueTest do
       Queue.flush(ctx.queue)
 
       device = reload_device(ctx.client)
-      assert device.client_token_id == ctx.token.id
+      assert device.token_id == ctx.token.id
       assert device.last_seen_version == "1.3.1"
     end
 
     test "hard-deleting the token nilifies the device's token column", ctx do
       Queue.enqueue(ctx.queue, client_session_attrs(ctx))
       Queue.flush(ctx.queue)
-      assert reload_device(ctx.client).client_token_id == ctx.token.id
+      assert reload_device(ctx.client).token_id == ctx.token.id
 
       Repo.delete!(ctx.token)
 
       device = reload_device(ctx.client)
-      assert is_nil(device.client_token_id)
+      assert is_nil(device.token_id)
       assert device.last_seen_at
     end
 
@@ -399,7 +399,7 @@ defmodule Portal.QueueTest do
         session_ref: make_ref(),
         account_id: ctx.account.id,
         device_id: ctx.gateway.id,
-        gateway_token_id: ctx.token.id,
+        token_id: ctx.token.id,
         public_key: ctx.gateway.public_key,
         user_agent: "Linux/6.1.0 connlib/1.3.0 (x86_64)",
         remote_ip: {100, 64, 0, 1},
@@ -432,7 +432,7 @@ defmodule Portal.QueueTest do
 
     test "skips gateway sessions whose token was deleted", ctx do
       other_token = gateway_token_fixture(account: ctx.account, site: ctx.site)
-      attrs = gateway_session_attrs(ctx, %{gateway_token_id: other_token.id})
+      attrs = gateway_session_attrs(ctx, %{token_id: other_token.id})
       Repo.delete!(other_token)
 
       Queue.enqueue(ctx.queue, attrs)
@@ -615,7 +615,7 @@ defmodule Portal.QueueTest do
         session_ref: make_ref(),
         account_id: ctx.account.id,
         device_id: ctx.client.id,
-        client_token_id: ctx.token.id,
+        token_id: ctx.token.id,
         user_agent: "test/1.0",
         public_key: Base.encode64(:crypto.strong_rand_bytes(32)),
         version: "1.3.0",
@@ -854,7 +854,7 @@ defmodule Portal.QueueTest do
         session_ref: make_ref(),
         account_id: ctx.account.id,
         device_id: ctx.client.id,
-        client_token_id: ctx.token.id,
+        token_id: ctx.token.id,
         user_agent: "test/1.0",
         public_key: Base.encode64(:crypto.strong_rand_bytes(32)),
         version: "1.3.0",
@@ -1069,7 +1069,7 @@ defmodule Portal.QueueTest do
         session_ref: make_ref(),
         account_id: ctx.account.id,
         device_id: ctx.client.id,
-        client_token_id: ctx.token.id,
+        token_id: ctx.token.id,
         user_agent: "macOS/14.0 apple-client/1.3.0",
         remote_ip: {100, 64, 0, 1},
         remote_ip_location_region: "US",

@@ -3170,7 +3170,7 @@ defmodule PortalAPI.Client.Channel.Shared do
       device_uuid: client.device_uuid,
       identifier_for_vendor: client.identifier_for_vendor,
       firebase_installation_id: client.firebase_installation_id,
-      client_token_id: client.client_token_id,
+      token_id: client.token_id,
       public_key: client.public_key,
       user_agent: client.last_seen_user_agent,
       remote_ip: client.last_seen_remote_ip,

@@ -552,7 +552,7 @@ defmodule PortalAPI.Client.SocketTest do
       client = socket.assigns.client
 
       assert is_reference(socket.assigns.session_ref)
-      assert client.client_token_id == token.id
+      assert client.token_id == token.id
       assert client.token_id == token.id
       assert client.last_seen_user_agent == connect_info.user_agent
       assert client.last_seen_remote_ip == @client_remote_ip
@@ -632,7 +632,7 @@ defmodule PortalAPI.Client.SocketTest do
       assert socket.assigns.subject.credential.auth_provider_id == provider.id
       assert socket.assigns.subject.expires_at.microsecond == {0, 6}
       assert socket.assigns.client.attested?
-      assert is_nil(socket.assigns.client.client_token_id)
+      assert is_nil(socket.assigns.client.token_id)
     end
 
     test "authenticates a service account from an X.509 actor ID claim", %{
@@ -654,7 +654,7 @@ defmodule PortalAPI.Client.SocketTest do
       assert %Portal.Authentication.Credential.X509{} = socket.assigns.subject.credential
       assert socket.assigns.subject.credential.auth_provider_id == provider.id
       assert socket.assigns.client.attested?
-      assert is_nil(socket.assigns.client.client_token_id)
+      assert is_nil(socket.assigns.client.token_id)
     end
 
     test "prefers an X.509 actor ID claim over an email claim", %{

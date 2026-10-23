@@ -1184,7 +1184,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
       session_ref: session_ref,
       account_id: gateway.account_id,
       device_id: gateway.id,
-      gateway_token_id: gateway.gateway_token_id,
+      token_id: gateway.token_id,
       public_key: gateway.public_key,
       user_agent: gateway.last_seen_user_agent,
       remote_ip: gateway.last_seen_remote_ip,

@@ -162,11 +162,6 @@ defmodule Portal.SafeTest do
       assert Safe.permit(:read, Portal.Site, :service_account) == :ok
     end
 
-    test "GatewayToken: admin and api_client only" do
-      assert Safe.permit(:delete, Portal.GatewayToken, :account_admin_user) == :ok
-      assert Safe.permit(:delete, Portal.GatewayToken, :api_client) == :ok
-    end
-
     test "Resource: admin and api_client all actions, every type may read" do
       assert Safe.permit(:delete, Portal.Resource, :account_admin_user) == :ok
       assert Safe.permit(:delete, Portal.Resource, :api_client) == :ok
@@ -212,7 +207,6 @@ defmodule Portal.SafeTest do
       assert Safe.permit(:read, Portal.ExternalIdentity, :service_account) == {:error, :unauthorized}
       assert Safe.permit(:read, Portal.ClientToken, :account_user) == {:error, :unauthorized}
       assert Safe.permit(:read, Portal.APIToken, :api_client) == {:error, :unauthorized}
-      assert Safe.permit(:read, Portal.GatewayToken, :account_user) == {:error, :unauthorized}
     end
 
     test "non-read actions are denied where only read is granted" do

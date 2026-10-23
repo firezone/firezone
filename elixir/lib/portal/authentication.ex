@@ -357,9 +357,6 @@ defmodule Portal.Authentication do
   def encode_fragment!(%Portal.RelayToken{} = token),
     do: encode_token(nil, token.id, token.secret_fragment, "relay")
 
-  def encode_fragment!(%Portal.GatewayToken{} = token),
-    do: encode_token(token.account_id, token.id, token.secret_fragment, "gateway")
-
   def encode_fragment!(%Portal.APIToken{} = token),
     do: encode_token(token.account_id, token.id, token.secret_fragment, "api_client")
 
@@ -711,9 +708,7 @@ defmodule Portal.Authentication do
       used_by_device =
         from(d in Portal.Device,
           where: d.account_id == parent_as(:gateway_tokens).account_id,
-          where:
-            d.token_id == parent_as(:gateway_tokens).id or
-              d.gateway_token_id == parent_as(:gateway_tokens).id
+          where: d.token_id == parent_as(:gateway_tokens).id
         )
 
       from(t in ClientToken, as: :gateway_tokens)
