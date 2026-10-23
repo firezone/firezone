@@ -47,8 +47,7 @@ defmodule Portal.Workers.OutdatedGateways do
     online_ids = Portal.Presence.Devices.online_ids(account.id)
 
     Database.all_site_devices_for_account!(account)
-    |> Enum.filter(&(&1.id in online_ids))
-    |> Enum.filter(&Device.linux_daemon?/1)
+    |> Enum.filter(&(&1.id in online_ids and Device.linux_daemon?(&1)))
   end
 
   defp send_notifications([], _account, _incompatible_client_count) do
