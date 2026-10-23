@@ -988,6 +988,11 @@ defmodule Portal.Safe do
   def permit(_action, Portal.DeviceActor, :api_client), do: :ok
   def permit(:read, Portal.DeviceActor, _), do: :ok
 
+  # SiteDevice permissions
+  def permit(_action, Portal.SiteDevice, :account_admin_user), do: :ok
+  def permit(_action, Portal.SiteDevice, :api_client), do: :ok
+  def permit(:read, Portal.SiteDevice, _), do: :ok
+
   # Membership permissions
   def permit(_action, Portal.Membership, :account_admin_user), do: :ok
   def permit(_action, Portal.Membership, :api_client), do: :ok

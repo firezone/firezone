@@ -106,6 +106,7 @@ config :portal, Portal.ChangeLogs.Consumer,
     google_directories
     devices
     sites
+    site_devices
     policies
     resources
     client_tokens
@@ -159,6 +160,7 @@ config :portal, Portal.Changes.Consumer,
     external_identities
     policy_authorizations
     sites
+    site_devices
     policies
     resources
     client_tokens
