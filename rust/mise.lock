@@ -250,6 +250,30 @@ checksum = "sha256:5c90cb0045cef3d3c36113c2aa21a7dcae11627d2d6e3098b679dea5b6681
 url = "https://github.com/getsentry/sentry-cli/releases/download/3.6.2/sentry-cli-Windows-x86_64.exe"
 url_api = "https://api.github.com/repos/getsentry/sentry-cli/releases/assets/486164038"
 
+[[tools."github:gungraun/gungraun"]]
+version = "0.20.0"
+backend = "github:gungraun/gungraun"
+
+[tools."github:gungraun/gungraun"."platforms.linux-arm64"]
+checksum = "sha256:30ddf6737e486d1d3c11746eb603d8a228afeb1614dcf84ebe9ee1442f59d2f3"
+url = "https://github.com/gungraun/gungraun/releases/download/v0.20.0/gungraun-runner-v0.20.0-aarch64-unknown-linux-gnu.tar.gz"
+url_api = "https://api.github.com/repos/gungraun/gungraun/releases/assets/591083958"
+
+[tools."github:gungraun/gungraun"."platforms.linux-arm64-musl"]
+checksum = "sha256:30ddf6737e486d1d3c11746eb603d8a228afeb1614dcf84ebe9ee1442f59d2f3"
+url = "https://github.com/gungraun/gungraun/releases/download/v0.20.0/gungraun-runner-v0.20.0-aarch64-unknown-linux-gnu.tar.gz"
+url_api = "https://api.github.com/repos/gungraun/gungraun/releases/assets/591083958"
+
+[tools."github:gungraun/gungraun"."platforms.linux-x64"]
+checksum = "sha256:b3b39d4243e43597512a1f79016a1f38cbf90e5869c0c2535fe4097c69ed91aa"
+url = "https://github.com/gungraun/gungraun/releases/download/v0.20.0/gungraun-runner-v0.20.0-x86_64-unknown-linux-gnu.tar.gz"
+url_api = "https://api.github.com/repos/gungraun/gungraun/releases/assets/591083730"
+
+[tools."github:gungraun/gungraun"."platforms.linux-x64-musl"]
+checksum = "sha256:f6dcbd5af550c199b23ba258eb69d5444af8299c0c49309aa785599f60f9ec8b"
+url = "https://github.com/gungraun/gungraun/releases/download/v0.20.0/gungraun-runner-v0.20.0-x86_64-unknown-linux-musl.tar.gz"
+url_api = "https://api.github.com/repos/gungraun/gungraun/releases/assets/591084341"
+
 [[tools."github:taiki-e/cargo-llvm-cov"]]
 version = "0.6.21"
 backend = "github:taiki-e/cargo-llvm-cov"
