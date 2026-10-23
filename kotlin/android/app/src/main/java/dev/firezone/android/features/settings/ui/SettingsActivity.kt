@@ -55,6 +55,7 @@ internal class SettingsActivity : AppCompatActivity() {
 
                 SettingsScreen(
                     config = viewModel.config,
+                    cloudRegion = viewModel.cloudRegion,
                     managedStatus = managedStatus ?: ManagedConfigStatus.NOTHING_MANAGED,
                     isSaveEnabled = uiState.isSaveButtonEnabled,
                     logSizeBytes = uiState.logSizeBytes,
@@ -67,6 +68,7 @@ internal class SettingsActivity : AppCompatActivity() {
                     // The app applies the log filter live once it's persisted, so only warn
                     // about a re-login when a setting that actually invalidates the session changed.
                     warnBeforeSaving = isUserSignedIn && viewModel.requiresReLogin(),
+                    onCloudRegionChange = viewModel::onCloudRegionChanged,
                     onAuthUrlChange = viewModel::onValidateAuthUrl,
                     onApiUrlChange = viewModel::onValidateApiUrl,
                     onLogFilterChange = viewModel::onValidateLogFilter,

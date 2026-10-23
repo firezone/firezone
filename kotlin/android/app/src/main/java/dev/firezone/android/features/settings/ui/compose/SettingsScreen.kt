@@ -29,6 +29,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import dev.firezone.android.R
+import dev.firezone.android.core.data.model.CloudRegion
 import dev.firezone.android.core.data.model.Config
 import dev.firezone.android.core.data.model.ManagedConfigStatus
 import dev.firezone.android.features.settings.ui.DeviceTrustSettingsViewModel
@@ -63,12 +64,14 @@ internal fun settingsPages(showDeviceTrust: Boolean): List<SettingsPage> =
 @Composable
 internal fun SettingsScreen(
     config: Config,
+    cloudRegion: CloudRegion,
     managedStatus: ManagedConfigStatus,
     isSaveEnabled: Boolean,
     logSizeBytes: Long,
     deviceTrustState: DeviceTrustSettingsViewModel.UiState,
     showDeviceTrust: Boolean,
     warnBeforeSaving: Boolean,
+    onCloudRegionChange: (CloudRegion) -> Unit,
     onAuthUrlChange: (String) -> Unit,
     onApiUrlChange: (String) -> Unit,
     onLogFilterChange: (String) -> Unit,
@@ -160,7 +163,9 @@ internal fun SettingsScreen(
                 SettingsPage.ADVANCED -> {
                     AdvancedSettingsPage(
                         config = config,
+                        cloudRegion = cloudRegion,
                         managedStatus = managedStatus,
+                        onCloudRegionChange = onCloudRegionChange,
                         onAuthUrlChange = onAuthUrlChange,
                         onApiUrlChange = onApiUrlChange,
                         onLogFilterChange = onLogFilterChange,

@@ -12,6 +12,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.firezone.android.core.data.Repository
+import dev.firezone.android.core.data.model.CloudRegion
 import dev.firezone.android.core.data.model.Config
 import dev.firezone.android.core.data.model.ManagedConfigStatus
 import kotlinx.coroutines.Dispatchers
@@ -55,6 +56,10 @@ internal class SettingsViewModel
         )
             private set
 
+        // Kept apart from the URLs so that picking Custom does not snap back to a region whose URLs match.
+        var cloudRegion by mutableStateOf(CloudRegion.CUSTOM)
+            private set
+
         // Snapshot of the persisted config as it was loaded, used to detect which
         // fields the user actually changed when saving.
         private var savedConfig = config
@@ -70,6 +75,7 @@ internal class SettingsViewModel
                     config = it
                     savedConfig = it
                     _managedStatusStateFlow.value = repo.getManagedStatus()
+                    cloudRegion = detectCloudRegion()
                     onFieldUpdated()
                 }
             }
@@ -114,6 +120,14 @@ internal class SettingsViewModel
 
         fun onCancel() {
             actionMutableStateFlow.value = ViewAction.NavigateBack
+        }
+
+        fun onCloudRegionChanged(region: CloudRegion) {
+            cloudRegion = region
+            if (region.authUrl != null && region.apiUrl != null) {
+                config = config.copy(authUrl = region.authUrl, apiUrl = region.apiUrl)
+            }
+            onFieldUpdated()
         }
 
         fun onValidateAuthUrl(authUrl: String) {
@@ -201,6 +215,7 @@ internal class SettingsViewModel
             config = repo.getDefaultConfigSync()
             shouldResetFavoritesOnSave = true
             _managedStatusStateFlow.value = repo.getManagedStatus()
+            cloudRegion = detectCloudRegion()
             onFieldUpdated()
         }
 
@@ -238,6 +253,16 @@ internal class SettingsViewModel
         }.catch { e ->
             emit(Result.failure(e))
         }.flowOn(Dispatchers.IO)
+
+        // With only one of the URLs managed, Custom keeps the other one editable.
+        private fun detectCloudRegion(): CloudRegion {
+            val managedStatus = repo.getManagedStatus()
+            if (managedStatus.isAuthUrlManaged != managedStatus.isApiUrlManaged) {
+                return CloudRegion.CUSTOM
+            }
+
+            return CloudRegion.of(config.authUrl, config.apiUrl)
+        }
 
         private fun getLogZipPath(context: Context) = "${context.cacheDir.absolutePath}/logs.zip"
 

@@ -23,13 +23,17 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.withLink
 import androidx.compose.ui.unit.dp
 import dev.firezone.android.R
+import dev.firezone.android.core.data.model.CloudRegion
 import dev.firezone.android.core.data.model.Config
 import dev.firezone.android.core.data.model.ManagedConfigStatus
+import kotlinx.collections.immutable.toImmutableList
 
 @Composable
 fun AdvancedSettingsPage(
     config: Config,
+    cloudRegion: CloudRegion,
     managedStatus: ManagedConfigStatus,
+    onCloudRegionChange: (CloudRegion) -> Unit,
     onAuthUrlChange: (String) -> Unit,
     onApiUrlChange: (String) -> Unit,
     onLogFilterChange: (String) -> Unit,
@@ -46,18 +50,28 @@ fun AdvancedSettingsPage(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            ManagedTextField(
-                label = stringResource(R.string.auth_url),
-                value = config.authUrl,
-                isManaged = managedStatus.isAuthUrlManaged,
-                onValueChange = onAuthUrlChange,
+            ManagedDropdownField(
+                label = stringResource(R.string.cloud_region),
+                options = CloudRegion.entries.toImmutableList(),
+                selected = cloudRegion,
+                optionLabel = { stringResource(it.labelRes()) },
+                isManaged = managedStatus.isAuthUrlManaged || managedStatus.isApiUrlManaged,
+                onSelect = onCloudRegionChange,
             )
-            ManagedTextField(
-                label = stringResource(R.string.api_url),
-                value = config.apiUrl,
-                isManaged = managedStatus.isApiUrlManaged,
-                onValueChange = onApiUrlChange,
-            )
+            if (cloudRegion == CloudRegion.CUSTOM) {
+                ManagedTextField(
+                    label = stringResource(R.string.auth_url),
+                    value = config.authUrl,
+                    isManaged = managedStatus.isAuthUrlManaged,
+                    onValueChange = onAuthUrlChange,
+                )
+                ManagedTextField(
+                    label = stringResource(R.string.api_url),
+                    value = config.apiUrl,
+                    isManaged = managedStatus.isApiUrlManaged,
+                    onValueChange = onApiUrlChange,
+                )
+            }
             ManagedTextField(
                 label = stringResource(R.string.log_filter),
                 value = config.logFilter,
@@ -99,3 +113,10 @@ fun AdvancedSettingsPage(
         )
     }
 }
+
+private fun CloudRegion.labelRes(): Int =
+    when (this) {
+        CloudRegion.US -> R.string.cloud_region_us
+        CloudRegion.EU -> R.string.cloud_region_eu
+        CloudRegion.CUSTOM -> R.string.cloud_region_custom
+    }

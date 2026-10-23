@@ -11,6 +11,7 @@ import com.github.takahirom.roborazzi.captureScreenRoboImage
 import com.github.takahirom.roborazzi.roborazziSystemPropertyOutputDirectory
 import dev.firezone.android.R
 import dev.firezone.android.STORE_SCREENSHOT_QUALIFIERS
+import dev.firezone.android.core.data.model.CloudRegion
 import dev.firezone.android.core.data.model.ManagedConfigStatus
 import dev.firezone.android.features.settings.ui.compose.SettingsScreen
 import dev.firezone.android.ui.theme.FirezoneTheme
@@ -43,6 +44,15 @@ class SettingsScreenshotTest {
     fun advancedSettings() = captureSettingsPage("settings-advanced", R.string.advanced_settings_title)
 
     @Test
+    fun advancedSettingsCustom() =
+        captureSettingsPage(
+            "settings-advanced-custom",
+            R.string.advanced_settings_title,
+            config = selfHostedConfig,
+            cloudRegion = CloudRegion.CUSTOM,
+        )
+
+    @Test
     fun deviceTrustSettingsWithCertificate() = captureDeviceTrustPage("device-trust-filled", availableCertificate)
 
     @Test
@@ -64,8 +74,10 @@ class SettingsScreenshotTest {
         name: String,
         tabLabel: Int,
         deviceTrustState: DeviceTrustSettingsViewModel.UiState = DeviceTrustSettingsViewModel.UiState(),
+        config: FirezoneConfig = sampleConfig,
+        cloudRegion: CloudRegion = CloudRegion.US,
     ) {
-        composeRule.setContent { FirezoneTheme { SettingsScreenSample(deviceTrustState) } }
+        composeRule.setContent { FirezoneTheme { SettingsScreenSample(deviceTrustState, config, cloudRegion) } }
         composeRule.onNodeWithText(RuntimeEnvironment.getApplication().getString(tabLabel)).performClick()
         composeRule.waitForIdle()
 
@@ -85,6 +97,13 @@ private val sampleConfig =
         accountSlug = "example-corp",
         startOnLogin = true,
         connectOnStart = false,
+    )
+
+// What a user of a self-hosted portal sees.
+private val selfHostedConfig =
+    sampleConfig.copy(
+        authUrl = "https://firezone.example.com",
+        apiUrl = "wss://api.firezone.example.com",
     )
 
 // The alias the certificate below is filed under in the system KeyChain.
@@ -147,15 +166,21 @@ private fun row(
 ): DetailField = DetailField(label, value, null)
 
 @Composable
-private fun SettingsScreenSample(deviceTrustState: DeviceTrustSettingsViewModel.UiState) {
+private fun SettingsScreenSample(
+    deviceTrustState: DeviceTrustSettingsViewModel.UiState,
+    config: FirezoneConfig,
+    cloudRegion: CloudRegion,
+) {
     SettingsScreen(
-        config = sampleConfig,
+        config = config,
+        cloudRegion = cloudRegion,
         managedStatus = ManagedConfigStatus.NOTHING_MANAGED,
         isSaveEnabled = true,
         logSizeBytes = LOG_DIRECTORY_BYTES,
         deviceTrustState = deviceTrustState,
         showDeviceTrust = deviceTrustState.alias != null,
         warnBeforeSaving = false,
+        onCloudRegionChange = {},
         onAuthUrlChange = {},
         onApiUrlChange = {},
         onLogFilterChange = {},

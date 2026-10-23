@@ -7,6 +7,7 @@ import android.content.SharedPreferences
 import android.os.Bundle
 import android.os.Looper
 import dev.firezone.android.core.data.Repository
+import dev.firezone.android.core.data.model.CloudRegion
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
@@ -68,6 +69,71 @@ class SettingsViewModelTest {
             repository.favorites.value.inner
                 .isEmpty(),
         )
+    }
+
+    @Test
+    fun `saved US URLs show the US region`() {
+        saveUrls("https://app.firezone.dev", "wss://api.firezone.dev")
+
+        populateFields()
+
+        assertEquals(CloudRegion.US, viewModel.cloudRegion)
+    }
+
+    @Test
+    fun `saved self-hosted URLs show custom and keep the URLs`() {
+        saveUrls("https://firezone.example.com", "wss://api.example.com")
+
+        populateFields()
+
+        assertEquals(CloudRegion.CUSTOM, viewModel.cloudRegion)
+        assertEquals("https://firezone.example.com", viewModel.config.authUrl)
+        assertEquals("wss://api.example.com", viewModel.config.apiUrl)
+    }
+
+    @Test
+    fun `picking the EU region saves the EU URLs`() {
+        saveUrls("https://app.firezone.dev", "wss://api.firezone.dev")
+        populateFields()
+
+        viewModel.onCloudRegionChanged(CloudRegion.EU)
+        viewModel.onSaveSettingsCompleted()
+        shadowOf(Looper.getMainLooper()).idle()
+
+        assertEquals("https://eu.app.firezone.dev", repository.getConfigSync().authUrl)
+        assertEquals("wss://eu.api.firezone.dev", repository.getConfigSync().apiUrl)
+    }
+
+    @Test
+    fun `one managed URL shows custom`() =
+        runBlocking {
+            saveUrls("https://app.firezone.dev", "wss://api.firezone.dev")
+            repository
+                .saveManagedConfiguration(
+                    Bundle().apply {
+                        putString("apiUrl", "wss://api.firezone.dev")
+                    },
+                ).first()
+
+            populateFields()
+
+            assertEquals(CloudRegion.CUSTOM, viewModel.cloudRegion)
+        }
+
+    private fun saveUrls(
+        authUrl: String,
+        apiUrl: String,
+    ) {
+        sharedPreferences
+            .edit()
+            .putString("authUrl", authUrl)
+            .putString("apiUrl", apiUrl)
+            .commit()
+    }
+
+    private fun populateFields() {
+        viewModel.populateFieldsFromConfig()
+        shadowOf(Looper.getMainLooper()).idle()
     }
 
     private companion object {
