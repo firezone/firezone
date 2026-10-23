@@ -327,7 +327,6 @@ defmodule Portal.Device do
   The sites the device serves: its loaded assignments, or the site column
   when they are not loaded. Clients serve none until they can be assigned.
   """
-  @spec served_site_ids(t()) :: [Ecto.UUID.t()]
   def served_site_ids(%__MODULE__{site_devices: site_devices}) when is_list(site_devices) do
     Enum.map(site_devices, & &1.site_id)
   end
@@ -335,7 +334,6 @@ defmodule Portal.Device do
   def served_site_ids(%__MODULE__{site_id: nil}), do: []
   def served_site_ids(%__MODULE__{site_id: site_id}), do: [site_id]
 
-  @spec serves_site?(t(), Ecto.UUID.t()) :: boolean()
   def serves_site?(%__MODULE__{} = device, site_id), do: site_id in served_site_ids(device)
 
   def load_balance_gateways({_lat, _lon}, []) do
