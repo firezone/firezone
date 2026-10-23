@@ -176,11 +176,50 @@ never hairpins two peers. Node keyed by `DeviceId`; ICE role and presets per
 connection from the portal. A routing device answers site-scoped recursion on
 `tun_ip:53535` and resolves DNS resources for peers through the bypass
 resolvers, never through the sentinels its own OS resolver points at.
-The daemon never configures forwarding or NAT. Enabling IP forwarding and
-the masquerade rules on a host that routes is the admin's job, documented per
-platform; the gateway package's init script becomes those docs. The daemon
-reads whether forwarding is on and reports it as a capability so the portal
-can show why a device is not serving.
+**Forwarding.** Served traffic leaves the daemon through one of two
+forwarders behind one trait, chosen at run time; no flag selects a role.
+
+- _Kernel forwarder_ (Linux only). The daemon translates the packet and
+  writes it to the TUN device, as the gateway does today. The daemon owns
+  the host setup instead of the admin: when the first resource to serve
+  arrives it sets the forwarding sysctls and creates an nftables table of
+  its own, `firezone`, holding the two masquerade rules scoped to the tunnel
+  interface and prefixes. The table is deleted and recreated whenever
+  serving starts and deleted when it stops or the daemon exits, so a crash
+  leaves at most a stale table that the next start replaces. The sysctl
+  value found is recorded and put back on shutdown if the daemon changed
+  it; a value the admin set is left alone both ways. Nothing is touched before there is something to serve,
+  so a laptop that only reaches resources is never turned into a router.
+  The rules go away when the device stops serving, not at the next
+  restart. `--no-kernel-forwarding` (and `FIREZONE_NO_KERNEL_FORWARDING`)
+  skips this forwarder; a container without `NET_ADMIN` falls through to
+  the next one instead of failing.
+- _Userspace forwarder_ (every platform; the Linux fallback). TCP is
+  terminated by smoltcp through `l3-tcp`, as the TCP DNS server already
+  does, and each connection is paired with a host socket to the real
+  resource address; UDP is a per-flow host socket keyed like a NAT entry.
+  The resource sees the host's own address, as masquerade produces today,
+  so policies and flow logs do not change. Served networks are already out
+  of the device's own tunnel routes, so the host sockets leave by the LAN.
+  ICMP echo is forwarded through the unprivileged ping APIs every platform
+  has (the IP Helper ICMP functions on Windows, datagram ICMP sockets on
+  macOS, iOS and Android, ping sockets on Linux): a table keyed by peer and
+  echo identifier, the request re-sent with the same payload, the reply
+  rebuilt with the original identifier, sequence and payload, entries
+  expiring after a few seconds. Errors map from the host sockets: a refused
+  TCP connect is a reset from the smoltcp socket, UDP port unreachable
+  becomes an ICMP destination unreachable to the peer, timeouts stay
+  timeouts. ICMP traceroute works through the same echo API where it
+  reports time exceeded; UDP traceroute is best effort.
+
+Windows serves through the userspace forwarder only: there is no NAT the
+daemon can own on Windows (WinNAT allows one instance per host, conflicts
+with Hyper-V, WSL and Docker Desktop, and has no IPv6). Pings to the
+device's own tunnel address need neither forwarder; the host stack answers
+them. The capability report names the forwarder that came up, `kernel` or
+`userspace`, or reports that the device cannot route, so the portal and
+support can tell the paths apart. The gateway init script survives as docs
+for admins who manage forwarding and NAT themselves.
 
 ### 2.4 Linux binaries: two, `firezone` and the GUI
 
@@ -255,8 +294,8 @@ The daemon runs as the `firezone` user with `CAP_NET_ADMIN`, as the gateway
 does today. DNS control through systemd-resolved is authorized by a polkit
 rule shipped in the package; `resolv.conf` control is documented as requiring
 root and is not the default. Windows follows the same two-binary shape
-(`firezone.exe` as the service, GUI MSI depends on it) but is out of scope
-here.
+(`firezone.exe` as the service, GUI MSI depends on it); it serves through
+the userspace forwarder only (2.3).
 
 ### 2.5 Admin UI
 
@@ -327,9 +366,9 @@ device A as the initiator. LAN hosts get CIDR and IP resources only.
 
 Later options, each independent: a "Connected sites" shortcut that creates
 the service account, group, resources and policies; a transparent form
-without NAT where the receiver routes the
-originating prefix back through the tunnel; a userspace TCP and UDP path so a
-phone or App Store Mac can serve networks behind it without kernel forwarding.
+without NAT where the receiver routes the originating prefix back through
+the tunnel. A phone or App Store Mac serving the network behind it needs no
+kernel forwarding once the userspace forwarder (2.3, phase 5b) ships.
 
 ## 3. Rollout, step by step
 
@@ -370,6 +409,8 @@ pre-fix gateway is warned about at assignment time (2.12b), not prevented.
   refactor; existing tests.
 - **0.8 Docs: forwarding and masquerade per platform.** The content of
   `firezone-gateway-init.sh` as a docs page, linked from the deploy UI later.
+  Stays the reference for admins who run `--no-kernel-forwarding` and manage
+  NAT themselves once phase 5b lands.
 
 - **0.9 Comms: upgrade asks for the clusters on old protocols.** A
   meaningful share of active clients and gateways still speak the pre-July
@@ -660,8 +701,9 @@ firezone` and `firezone authenticate`. Depends 3.7.
 - **5.8 Rust: tunnel-bench and loadtest** on `DeviceState`. Depends 5.4.
 - **5.9 Rust: `firezone run` on `DeviceState` over `/device/v1`.**
   Capabilities reported (`route_resources` from the forwarding sysctl on
-  Linux, `dns_recursion`, `iceless`); `--role` from 3.4 removed; gateway
-  event loop and crate deleted. Depends 4.12 deployed, 5.7.
+  Linux until phase 5b, then from the forwarder that came up;
+  `dns_recursion`, `iceless`); `--role` from 3.4 removed; gateway event loop
+  and crate deleted. Depends 4.12 deployed, 5.7.
 - **5.10 Integration tests** on one image for both roles. Depends 5.9.
 - **5.11 Portal: version gate** marking `firezone >= x` as routing-capable
   over `/device/v1`. Depends 5.9.
@@ -669,6 +711,38 @@ firezone` and `firezone authenticate`. Depends 3.7.
   assignments and co-hosting; targeted email to admins of accounts with
   gateways below the routing-capable version, pointing at the post and the
   upgrade path (the conversation 0.9 started). Depends 5.11.
+
+### Phase 5b: forwarding owned by the daemon
+
+- **5b.1 Rust: `Forwarder` trait** behind the served branch of
+  `PeerInbound`'s outbound translation, with the TUN write as the first
+  implementation; selection order kernel, userspace, none; the capability
+  report carries which one came up. Depends 5.9.
+- **5b.2 Rust: Linux kernel forwarder owns host setup.** Sysctls and the
+  `firezone` nftables table created on the first resource to
+  serve, torn down when serving stops; prior sysctl restored on shutdown
+  only if the daemon changed it; `--no-kernel-forwarding` and the matching
+  environment variable; falls through without `NET_ADMIN`. Docker image
+  and deb drop the init script. Depends 5b.1.
+- **5b.3 Rust: userspace forwarder, TCP and UDP.** smoltcp through
+  `l3-tcp` paired with host sockets per connection; per-flow UDP sockets;
+  reset and destination-unreachable mapping from socket errors; flow-log
+  records from the forwarder. Depends 5b.1.
+- **5b.4 Rust: userspace forwarder, ICMP.** Echo through the platform ping
+  APIs with the identifier table from 2.3; time exceeded relayed where the
+  API reports it; error replies to the peer for unreachable resources.
+  Depends 5b.3.
+- **5b.5 Fuzz: userspace forwarder in the simulation** behind the trait
+  from 5b.1, so the existing TCP, UDP and ICMP echo probes cover both
+  paths; a reference-model expectation for the error mapping. Depends 5b.4.
+- **5b.6 Windows: `firezone.exe` serves.** Userspace forwarder only; the
+  MSI install test adds a served resource and pings it through a second
+  device. Depends 5b.4.
+- **5b.7 Integration tests: both forwarders** on the one image from 5.10,
+  the Linux container once with and once without `NET_ADMIN`, with ping,
+  TCP and UDP downloads. Depends 5b.2, 5b.4.
+- **5b.8 Portal and docs.** Device detail shows the forwarder in use; the
+  0.8 page gains the opt-out flag and the Windows note. Depends 5b.1.
 
 ### Phase 6: contract
 
@@ -721,10 +795,10 @@ legacy gateways `[m-1, m+1]`, `firezone` 1.7 `[5, 7]`, `firezone` 1.8
 | `firezone` 1.7 (R2) | 1.5, 1.6, 1.7  | 1.5, 1.6, `firezone` 1.7 | Clients 1.5, 1.6, `firezone` 1.7 |
 | `firezone` 1.8 (R3) | 1.6, 1.7, 1.8  | 1.6, `firezone` 1.7, 1.8 | Clients 1.6, `firezone` 1.7, 1.8 |
 
-Apple, Android and the Windows GUI need no release. PR count is about 90
+Apple, Android and the Windows GUI need no release. PR count is about 98
 code PRs plus 3 docs PRs before merging small neighbours: phase 0 has 4,
 phase 1 has 19, phase 2 has 22, phase 3 has 12, phase 4 has 13,
-phase 5 has 12, phase 6 has 8.
+phase 5 has 12, phase 5b has 8, phase 6 has 8.
 
 ## 4. Decisions taken
 
@@ -735,6 +809,11 @@ phase 5 has 12, phase 6 has 8.
    (step 1.4b). The Infrastructure actor never counts.
 3. **Binary shape:** one executable, `firezone`, with `run` as the daemon.
 4. **Site assignment:** explicit rows only; rules not planned.
+5. **Forwarding:** on Linux the daemon owns kernel forwarding (sysctls and
+   an nftables table it creates), enabled only once it has a resource to
+   serve, with `--no-kernel-forwarding` as the opt-out; everywhere else, and
+   as the Linux fallback, a userspace forwarder in smoltcp with ICMP echo
+   through the platform ping APIs. Windows serves through userspace only.
 
 ## 5. Risks
 
@@ -748,6 +827,13 @@ phase 5 has 12, phase 6 has 8.
 - One binary, two roles, one version: solved by protocol ranges (3.0), which
   must ship before R2 or the unified binary is incompatible with half the
   fleet in one role or the other.
+- The userspace forwarder costs a host socket and userspace copies per
+  flow, so throughput and connection counts sit below kernel forwarding;
+  UDP traceroute through it is best effort. Kernel forwarding stays the
+  Linux default for that reason.
+- A daemon that edits sysctls and nftables on a host it shares with other
+  firewalls: contained by a table of its own and by never touching the
+  host before there is a resource to serve.
 - Rollback: phases 1 to 3 are expand-only or code-only with downs; phase 4 is
   code; phase 5 ships a new binary against adapters; phase 6 is the only
   irreversible step.
@@ -763,4 +849,5 @@ phase 5 has 12, phase 6 has 8.
 | 3     | 13    | medium    |
 | 4     | 13    | large     |
 | 5     | 12    | large     |
+| 5b    | 8     | medium    |
 | 6     | 8     | medium    |
