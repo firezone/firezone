@@ -285,28 +285,26 @@ async fn send_errors_do_not_hold_up_later_datagrams() {
     let num_failing = 4 * QUEUE_SIZE;
     let oversized = std::iter::repeat_with(|| transmit(peer_addr, 70_000)).take(num_failing);
 
-    let num_errors = tokio::time::timeout(Duration::from_secs(5), async {
-        let mut num_errors = 0;
-
+    tokio::time::timeout(Duration::from_secs(5), async {
+        // Sends without polling `Io` for errors, so the socket thread's error channel fills up.
         for transmit in oversized.chain([transmit(peer_addr, 4)]) {
             io.send_network(transmit);
-
-            while io.sockets.num_waiting(IpVersion::V4) > 0 {
-                num_errors += next_send_errors(&mut io).await;
-            }
-        }
-        while num_errors < num_failing {
-            num_errors += next_send_errors(&mut io).await;
+            poll_fn(|cx| io.flush(cx)).await.unwrap();
         }
 
         peer.recv_from(&mut [0; 16]).await.unwrap();
-
-        num_errors
     })
     .await
     .unwrap();
+    let mut input = poll_fn(|cx| io.poll(cx)).await;
 
-    assert_eq!(num_errors, num_failing);
+    // Hosts without IPv6 also report failing to bind the IPv6 socket.
+    let num_errors = input
+        .error
+        .drain()
+        .filter(|e| format!("{e:#}").contains("exceeds the maximum UDP payload"))
+        .count();
+    assert_eq!(num_errors, QUEUE_SIZE);
 }
 
 #[tokio::test]
@@ -489,16 +487,6 @@ fn datagram_from(from: SocketAddr) -> DatagramBatch {
 
 fn batch() -> tun::PacketBatch {
     tun::PacketBatch::new(packet())
-}
-
-async fn next_send_errors(io: &mut Io) -> usize {
-    let mut input = poll_fn(|cx| io.poll(cx)).await;
-
-    input
-        .error
-        .drain()
-        .filter(|e| format!("{e:#}").contains("exceeds the maximum UDP payload"))
-        .count()
 }
 
 fn transmit(dst: SocketAddr, len: usize) -> snownet::Transmit {

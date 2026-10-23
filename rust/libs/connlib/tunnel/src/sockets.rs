@@ -559,8 +559,13 @@ impl ThreadedUdpSocket {
                                 );
                             }
 
-                            // Dedicated channel so errors can't hold up received datagrams.
-                            error_tx.send(e).await
+                            // Dedicated channel so errors can't hold up received datagrams, dropped
+                            // when full so they can't hold up the datagrams to send either.
+                            match error_tx.try_send(e) {
+                                Ok(()) => Ok(()),
+                                Err(TrySendError::Full(_)) => Ok(()),
+                                Err(TrySendError::Closed(_)) => Err(()),
+                            }
                         };
 
                         let reason = 'send: loop {
@@ -617,7 +622,7 @@ impl ThreadedUdpSocket {
                                         );
                                     }
 
-                                    if error_tx.send(e).await.is_err() {
+                                    if let Err(TrySendError::Closed(_)) = error_tx.try_send(e) {
                                         tracing::debug!(
                                             "Channel for errors closed; exiting UDP recv task"
                                         );
