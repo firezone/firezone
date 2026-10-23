@@ -9024,17 +9024,11 @@ version = "0.1.0"
 dependencies = [
  "anyhow-ext",
  "bufferpool",
- "connlib-model",
  "criterion",
- "dns-types",
- "flow-tracker",
  "ip-packet",
  "libc",
  "mimalloc",
- "rand 0.10.3",
- "relay-proto",
  "serde_json",
- "snownet",
  "socket-factory",
  "tokio",
  "tun",
@@ -9043,8 +9037,7 @@ dependencies = [
  "tun-offload",
  "tun-windows",
  "tunnel",
- "tunnel-proto",
- "uuid",
+ "tunnel-fixture",
  "windows",
 ]
 
@@ -9057,6 +9050,25 @@ dependencies = [
  "parking_lot",
  "socket-factory",
  "tokio",
+]
+
+[[package]]
+name = "tunnel-fixture"
+version = "0.1.0"
+dependencies = [
+ "bufferpool",
+ "connlib-model",
+ "dns-types",
+ "flow-tracker",
+ "ip-packet",
+ "rand 0.10.3",
+ "relay-proto",
+ "serde_json",
+ "snownet",
+ "socket-factory",
+ "tunnel",
+ "tunnel-proto",
+ "uuid",
 ]
 
 [[package]]
