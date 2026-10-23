@@ -244,6 +244,12 @@ defmodule PortalWeb.SignUpTest do
       assert actor.allow_email_otp_sign_in
       assert actor.preferences.getting_started == :pending
 
+      infrastructure =
+        Portal.Repo.get_by!(Portal.Actor, account_id: account.id, name: "Infrastructure")
+
+      assert infrastructure.type == :service_account
+      assert infrastructure.managed_by == :system
+
       identity = Portal.Repo.get_by!(Portal.ExternalIdentity, account_id: account.id)
       assert identity.actor_id == actor.id
       assert identity.issuer == "https://accounts.google.com"
@@ -349,7 +355,7 @@ defmodule PortalWeb.SignUpTest do
       assert html =~ "Your account has been created!"
 
       account = Portal.Repo.get_by!(Portal.Account, name: "Honest Corp")
-      assert Portal.Repo.get_by!(Portal.Actor, account_id: account.id).email == "ada@example.com"
+      assert Portal.Repo.get_by!(Portal.Actor, account_id: account.id, type: :account_admin_user).email == "ada@example.com"
       refute Portal.Repo.get_by(Portal.Actor, email: "victim@example.com")
     end
 
@@ -440,7 +446,7 @@ defmodule PortalWeb.SignUpTest do
       refute Portal.Repo.get_by(Portal.Google.AuthProvider, account_id: account.id)
       assert Portal.Repo.get_by!(Portal.EmailOTP.AuthProvider, account_id: account.id)
 
-      actor = Portal.Repo.get_by!(Portal.Actor, account_id: account.id)
+      actor = Portal.Repo.get_by!(Portal.Actor, account_id: account.id, type: :account_admin_user)
       assert actor.email == "octocat@example.com"
       assert actor.type == :account_admin_user
 

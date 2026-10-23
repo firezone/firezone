@@ -255,6 +255,12 @@ defmodule Portal.Billing.EventHandlerTest do
 
       assert Portal.Repo.get_by!(Portal.Group, account_id: account.id, name: "Everyone")
 
+      infrastructure =
+        Portal.Repo.get_by!(Portal.Actor, account_id: account.id, name: "Infrastructure")
+
+      assert infrastructure.type == :service_account
+      assert infrastructure.managed_by == :system
+
       owner_group =
         Portal.Repo.get_by!(Portal.Group, account_id: account.id, name: "Account owner")
 

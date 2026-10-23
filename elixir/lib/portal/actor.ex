@@ -75,6 +75,19 @@ defmodule Portal.Actor do
     |> check_constraint(:managed_by, name: :actors_managed_by_is_valid)
   end
 
+  @infrastructure_name "Infrastructure"
+
+  @doc """
+  Attributes of the service account every account gets at creation: the actor
+  infrastructure devices connect with when nobody else is named, owned by the
+  system so it cannot be renamed, disabled or deleted. Compare
+  `Portal.Group.account_owner_attrs/0`.
+  """
+  @spec infrastructure_attrs() :: map()
+  def infrastructure_attrs do
+    %{name: @infrastructure_name, type: :service_account, managed_by: :system}
+  end
+
   @doc "Whether the system owns `actor`, so admins cannot change or delete it."
   @spec system_managed?(t()) :: boolean()
   def system_managed?(%__MODULE__{managed_by: managed_by}), do: managed_by == :system
