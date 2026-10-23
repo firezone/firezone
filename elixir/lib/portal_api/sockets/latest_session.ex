@@ -206,7 +206,6 @@ defmodule PortalAPI.Sockets.LatestSession do
     @token_probe_types %{account_id: Ecto.UUID, token_id: Ecto.UUID}
     @identity_probe_types %{
       account_id: Ecto.UUID,
-      actor_id: Ecto.UUID,
       device_id: Ecto.UUID,
       firezone_id: :string
     }
@@ -229,7 +228,6 @@ defmodule PortalAPI.Sockets.LatestSession do
                           last_attested_cert_issuer last_attested_at]a
     @attested_probe_types %{
       account_id: Ecto.UUID,
-      actor_id: Ecto.UUID,
       device_id: Ecto.UUID,
       last_attested_mdm_device_id: :string,
       last_attested_cert_issuer: :binary,
@@ -400,7 +398,7 @@ defmodule PortalAPI.Sockets.LatestSession do
     end
 
     # Two rows in the same batch can propose the same previously unused
-    # {account_id, actor_id, firezone_id}: both would pass the persisted-row
+    # {account_id, firezone_id}: both would pass the persisted-row
     # probe and the bulk UPDATE would violate the unique index, failing every
     # session in the batch. The newest session wins the identifier (device_id
     # tie-break keeps it deterministic); losers keep their session but skip
@@ -408,8 +406,8 @@ defmodule PortalAPI.Sockets.LatestSession do
     defp dedupe_proposed_firezone_ids(rows) do
       losers =
         rows
-        |> Enum.filter(&(not is_nil(&1.firezone_id) and not is_nil(&1.actor_id)))
-        |> Enum.group_by(&{&1.account_id, &1.actor_id, &1.firezone_id})
+        |> Enum.filter(&(not is_nil(&1.firezone_id)))
+        |> Enum.group_by(&{&1.account_id, &1.firezone_id})
         |> Enum.flat_map(fn {_key, contenders} ->
           contenders |> sort_newest_first() |> tl()
         end)
@@ -445,8 +443,8 @@ defmodule PortalAPI.Sockets.LatestSession do
       end)
     end
 
-    # A merged firezone_id can collide with another device row of the same
-    # actor. The colliding entry keeps its session but skips the identity
+    # A merged firezone_id can collide with another device row of the
+    # account. The colliding entry keeps its session but skips the identity
     # change, so one poisoned entry cannot fail the whole batch; the merge
     # retries on the device's next connect. Entries carry a firezone_id only
     # when their connect actually adopted a new one, so in the steady state
@@ -459,8 +457,8 @@ defmodule PortalAPI.Sockets.LatestSession do
     # column is cleared for them, so only unattested merges reach this probe.
     defp strip_conflicting_firezone_ids(rows) do
       probe_rows =
-        for row <- rows, not is_nil(row.firezone_id), not is_nil(row.actor_id) do
-          Map.take(row, [:account_id, :actor_id, :device_id, :firezone_id])
+        for row <- rows, not is_nil(row.firezone_id) do
+          Map.take(row, [:account_id, :device_id, :firezone_id])
         end
 
       conflicts =
@@ -470,9 +468,8 @@ defmodule PortalAPI.Sockets.LatestSession do
           from(d in Device,
             join: v in values(probe_rows, @identity_probe_types),
             on:
-              d.account_id == v.account_id and d.actor_id == v.actor_id and
-                d.firezone_id == v.firezone_id and d.id != v.device_id,
-            where: d.type == :client,
+              d.account_id == v.account_id and d.firezone_id == v.firezone_id and
+                d.id != v.device_id,
             select: %{device_id: v.device_id, conflicting_id: d.id, firezone_id: v.firezone_id}
           )
           |> probe()
@@ -499,7 +496,7 @@ defmodule PortalAPI.Sockets.LatestSession do
     end
 
     # Two rows in the same batch can propose the same attested identifier for
-    # different devices of one actor (a cloned certificate, or two machines
+    # different devices of one account (a cloned certificate, or two machines
     # whose MDM stamped the same identity), which would violate the partial
     # unique indexes and fail every session in the batch. The snapshot with
     # the freshest proof wins; losers keep their session but skip the
@@ -511,7 +508,7 @@ defmodule PortalAPI.Sockets.LatestSession do
               rows
               |> Enum.filter(&claims_attested_identity?(&1, fields))
               |> Enum.group_by(fn row ->
-                {row.account_id, row.actor_id, Enum.map(fields, &Map.fetch!(row, &1))}
+                {row.account_id, Enum.map(fields, &Map.fetch!(row, &1))}
               end),
             loser <- contenders |> sort_freshest_proof_first() |> tl(),
             uniq: true do
@@ -542,7 +539,7 @@ defmodule PortalAPI.Sockets.LatestSession do
     end
 
     # A proposed attested identifier can already sit on another device row of
-    # the same actor: the connect-time adoption check refuses that, but a
+    # the account: the connect-time adoption check refuses that, but a
     # concurrent adoption on another node can land in between. As with
     # firezone_id, the conflicting entry keeps its session and skips the
     # attested update; a conflict that appears between this probe and the
@@ -552,7 +549,7 @@ defmodule PortalAPI.Sockets.LatestSession do
       probe_rows =
         for row <- rows,
             Enum.any?(@attested_unique_keys, &claims_attested_identity?(row, &1)) do
-          Map.take(row, [:account_id, :actor_id, :device_id | @attested_unique_fields])
+          Map.take(row, [:account_id, :device_id | @attested_unique_fields])
         end
 
       conflicts =
@@ -561,12 +558,11 @@ defmodule PortalAPI.Sockets.LatestSession do
         else
           from(d in Device,
             join: v in values(probe_rows, @attested_probe_types),
-            on: d.account_id == v.account_id and d.actor_id == v.actor_id and d.id != v.device_id,
+            on: d.account_id == v.account_id and d.id != v.device_id,
             where:
-              d.type == :client and
-                (d.last_attested_mdm_device_id == v.last_attested_mdm_device_id or
-                   (d.last_attested_cert_issuer == v.last_attested_cert_issuer and
-                      d.last_attested_cert_serial == v.last_attested_cert_serial)),
+              d.last_attested_mdm_device_id == v.last_attested_mdm_device_id or
+                (d.last_attested_cert_issuer == v.last_attested_cert_issuer and
+                   d.last_attested_cert_serial == v.last_attested_cert_serial),
             select: %{device_id: v.device_id, conflicting_id: d.id}
           )
           |> probe()
@@ -586,7 +582,7 @@ defmodule PortalAPI.Sockets.LatestSession do
     # A key with any column missing claims nothing: the partial unique index
     # skips those rows, so they cannot collide.
     defp claims_attested_identity?(row, fields) do
-      not is_nil(row.actor_id) and Enum.all?(fields, &(not is_nil(Map.fetch!(row, &1))))
+      Enum.all?(fields, &(not is_nil(Map.fetch!(row, &1))))
     end
 
     defp strip_attested_fields(rows, device_ids) do

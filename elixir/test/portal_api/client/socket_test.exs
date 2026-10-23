@@ -1285,6 +1285,24 @@ defmodule PortalAPI.Client.SocketTest do
       assert client.id == existing.id
     end
 
+    test "another actor on the same machine resolves to the same device", %{
+      account: account,
+      actor: actor,
+      subject: subject
+    } do
+      other = actor_fixture(account: account)
+      existing = client_fixture(account: account, actor: other, firezone_id: "fz-shared")
+
+      changeset =
+        device_trust_changeset(account, actor, %{
+          "name" => "Shared Workstation",
+          "firezone_id" => "fz-shared"
+        })
+
+      assert {:ok, client, false} = Socket.Database.resolve_client(changeset, nil, subject)
+      assert client.id == existing.id
+    end
+
     test "an unattested connect with no match inserts a new device", %{
       account: account,
       actor: actor,
@@ -1395,10 +1413,10 @@ defmodule PortalAPI.Client.SocketTest do
       refute client.id == attested.id
     end
 
-    test "the MDM device id is unique per actor", %{account: account, actor: actor} do
+    test "the MDM device id is unique across the account", %{account: account, actor: actor} do
       client_fixture(
         account: account,
-        actor: actor,
+        actor: actor_fixture(account: account),
         last_attested_mdm_device_id: "mdm-dup",
         firezone_id: "fz-a"
       )

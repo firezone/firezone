@@ -178,7 +178,7 @@ defmodule PortalAPI.Gateway.Socket do
       gateway
       |> cast(%{firezone_id: reported}, [:firezone_id])
       |> Device.changeset()
-      |> unique_constraint(:firezone_id, name: :devices_account_id_site_id_firezone_id_index)
+      |> unique_constraint(:firezone_id, name: :devices_account_id_firezone_id_index)
 
     case Database.update_gateway(changeset, subject) do
       {:ok, gateway} ->

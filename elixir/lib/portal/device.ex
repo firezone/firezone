@@ -189,9 +189,9 @@ defmodule Portal.Device do
     |> assoc_constraint(:site)
     |> validate_type_fields()
     |> check_constraint(:type, name: :devices_type_check)
-    |> check_constraint(:actor_id, name: :device_type_client_fields)
-    |> check_constraint(:site_id, name: :device_type_gateway_fields)
-    |> unique_firezone_id_constraint()
+    # The machine is identified by its firezone_id alone, whoever signs in on
+    # it and whichever sites it serves.
+    |> unique_constraint(:firezone_id, name: :devices_account_id_firezone_id_index)
     |> unique_constraint(:ipv4, name: :devices_account_id_ipv4_index)
     |> unique_constraint(:ipv6, name: :devices_account_id_ipv6_index)
     |> unique_constraint(:hostname, name: :devices_account_id_hostname_index)
@@ -253,10 +253,10 @@ defmodule Portal.Device do
         # shares with the certificate serial past what a btree entry holds.
         |> validate_length(:last_attested_cert_issuer, max: 1024, count: :bytes)
         |> unique_constraint(:last_attested_mdm_device_id,
-          name: :devices_account_id_actor_id_last_attested_mdm_device_id_index
+          name: :devices_account_id_last_attested_mdm_device_id_index
         )
         |> unique_constraint(:last_attested_cert_serial,
-          name: :devices_account_id_cert_issuer_serial_actor_id_index
+          name: :devices_account_id_cert_issuer_serial_index
         )
 
       # A gateway's site column names its home site when it has one; the
@@ -303,23 +303,6 @@ defmodule Portal.Device do
       "" -> nil
       hostname -> hostname
     end)
-  end
-
-  defp unique_firezone_id_constraint(changeset) do
-    case get_field(changeset, :type) do
-      :client ->
-        unique_constraint(changeset, :firezone_id,
-          name: :devices_account_id_actor_id_firezone_id_index
-        )
-
-      :gateway ->
-        unique_constraint(changeset, :firezone_id,
-          name: :devices_account_id_site_id_firezone_id_index
-        )
-
-      _ ->
-        changeset
-    end
   end
 
   # Gateway device helpers
