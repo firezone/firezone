@@ -1,4 +1,5 @@
-use crate::{ConnectedAs, PHOENIX_TOPIC};
+use crate::ConnectedAs;
+use crate::protocol::{Capabilities, Incoming, Init, Outgoing, Wire};
 use anyhow::{Context as _, ErrorExt as _, Result};
 use bootstrap_dns_client::BootstrapDnsClient;
 use clock::Clock;
@@ -7,13 +8,13 @@ use parking_lot::Mutex;
 use phoenix_channel::{PhoenixChannel, PublicKeyParam};
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 use std::ops::ControlFlow;
-use std::pin::pin;
+use std::pin::{Pin, pin};
 use std::sync::Arc;
 use std::time::Duration;
 use std::{
     collections::BTreeSet,
     io,
-    net::IpAddr,
+    net::{IpAddr, SocketAddr},
     task::{Context, Poll},
 };
 use std::{future, iter, mem};
@@ -21,15 +22,26 @@ use tokio::sync::{mpsc, watch};
 use tun::Tun;
 use tunnel::messages::client::{
     Authorization, AuthorizationCreated, AuthorizationCreationFailed, ClientDeviceAccessAuthorized,
-    ClientDeviceAccessDenied, ClientIceCandidateError, ClientIceCandidates, ClientRejectAccess,
-    DeviceDomainBrowseFailed, DeviceDomainBrowsed, DeviceDomainResolutionFailed,
-    DeviceDomainResolved, EgressMessages, FailReason, GatewayIceCandidates, IngressMessages,
-    InitClient, ResourceAuthorization, ResourceFiltersUpdated,
+    ClientDeviceAccessDenied, ClientIceCandidateError, DeviceDomainBrowseFailed,
+    DeviceDomainBrowsed, DeviceDomainResolutionFailed, DeviceDomainResolved, FailReason,
+    ResourceAuthorization, ResourceFiltersUpdated,
 };
-use tunnel::messages::{IngestToken, RelaysPresence, SnownetCapabilities};
+use tunnel::messages::device::{CreateAuthorization, Target};
+use tunnel::messages::{IngestToken, RelaysPresence, gateway};
 use tunnel::{
-    ClientEvent, ClientTunnel, DnsResourceRecord, IpConfig, PeerKind, TunConfig, TunnelError,
+    ClientEvent, ClientTunnel, DnsResourceRecord, IpConfig, ResolveDnsRequest, TUN_DNS_PORT,
+    TunConfig, TunnelError,
 };
+
+/// How long a lookup for a served DNS resource may take.
+const DNS_RESOLUTION_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// How often, and how many times, binding the DNS servers on the tunnel addresses is retried.
+///
+/// The addresses are configured by the application once it hears about them,
+/// so the first attempts may be too early.
+const TUN_DNS_BIND_INTERVAL: Duration = Duration::from_millis(500);
+const TUN_DNS_BIND_ATTEMPTS: u32 = 20;
 
 /// In-memory cache for DNS resource records.
 ///
@@ -56,6 +68,20 @@ pub struct Eventloop {
     tunnel: Option<ClientTunnel>,
 
     resolver_bypass: tunnel_bypass_resolver::Bypass,
+
+    /// Lookups for the DNS resources we serve, through the bypass resolvers.
+    resolve_tasks: futures_bounded::FuturesTupleSet<
+        Result<Vec<IpAddr>, Arc<anyhow::Error>>,
+        ResolveDnsRequest,
+    >,
+    /// Whether the portal lists sites for this device, so it runs the DNS server for them.
+    serving: bool,
+    /// The tunnel addresses, once known.
+    tun_ip: Option<IpConfig>,
+    /// The sockets the DNS servers on the tunnel addresses are bound to.
+    tun_dns_bound: Vec<SocketAddr>,
+    tun_dns_retry: Option<Pin<Box<tokio::time::Sleep>>>,
+    tun_dns_attempts: u32,
 
     /// Flow-log spool root; the reports themselves are spooled by the
     /// entrypoint's `flow_log_writer` layer.
@@ -96,13 +122,13 @@ pub enum UserNotification {
 
 enum PortalCommand {
     Connect(PublicKeyParam),
-    Send(EgressMessages),
+    Send(Outgoing),
     UpdateDnsServers(Vec<IpAddr>),
 }
 
 /// An update from the portal connection task to the main event-loop.
 enum PortalEvent {
-    Message(IngressMessages),
+    Message(Incoming),
     /// The portal connection (re)established.
     Connected,
     /// The portal connection dropped and is being re-established.
@@ -162,14 +188,15 @@ impl DisconnectError {
 }
 
 impl Eventloop {
-    pub(crate) fn new(
+    pub(crate) fn new<W: Wire>(
         tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
         udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
         is_internet_resource_active: bool,
         dns_servers: Vec<IpAddr>,
         flow_logs_dir: Option<std::path::PathBuf>,
         local_flow_logs: bool,
-        portal: PhoenixChannel<(), EgressMessages, IngressMessages, PublicKeyParam>,
+        portal: PhoenixChannel<(), W::Egress, W::Ingress, PublicKeyParam>,
+        capabilities: Capabilities,
         cmd_rx: mpsc::UnboundedReceiver<Command>,
         resource_list_sender: watch::Sender<Vec<ResourceView>>,
         tun_config_sender: watch::Sender<Option<TunConfig>>,
@@ -183,7 +210,7 @@ impl Eventloop {
         let mut tunnel = ClientTunnel::new(
             tcp_socket_factory.clone(),
             udp_socket_factory.clone(),
-            std::collections::BTreeSet::new(),
+            BTreeSet::from_iter(dns_servers.iter().copied()),
             DNS_RESOURCE_RECORDS_CACHE.lock().clone(),
             is_internet_resource_active,
             clock.now(),
@@ -191,9 +218,10 @@ impl Eventloop {
         tunnel.update_system_resolvers(dns_servers.clone());
         let resolver_bypass = tunnel_bypass_resolver::Bypass::with_servers(dns_servers.clone());
 
-        tokio::spawn(phoenix_channel_event_loop(
+        tokio::spawn(phoenix_channel_event_loop::<W>(
             portal,
             PublicKeyParam(tunnel.public_key().to_bytes()),
+            capabilities,
             portal_event_tx,
             portal_cmd_rx,
             udp_socket_factory.clone(),
@@ -205,6 +233,15 @@ impl Eventloop {
             clock,
             tunnel: Some(tunnel),
             resolver_bypass,
+            resolve_tasks: futures_bounded::FuturesTupleSet::new(
+                || futures_bounded::Delay::tokio(DNS_RESOLUTION_TIMEOUT),
+                1000,
+            ),
+            serving: false,
+            tun_ip: None,
+            tun_dns_bound: Vec::new(),
+            tun_dns_retry: None,
+            tun_dns_attempts: 0,
             flow_logs_dir,
             local_flow_logs,
             cmd_rx,
@@ -225,6 +262,8 @@ enum CombinedEvent {
     Tunnel(Result<ClientEvent, TunnelError>),
     Portal(Option<Result<PortalEvent, phoenix_channel::Error>>),
     Clock(clock::Event),
+    DomainResolved((Result<Vec<IpAddr>, Arc<anyhow::Error>>, ResolveDnsRequest)),
+    BindTunDns,
 }
 
 impl Eventloop {
@@ -299,6 +338,26 @@ impl Eventloop {
 
                 Ok(ControlFlow::Continue(()))
             }
+            CombinedEvent::DomainResolved((result, request)) => {
+                let now = self.clock.now();
+                let Some(tunnel) = self.tunnel.as_mut() else {
+                    return Ok(ControlFlow::Continue(()));
+                };
+
+                if let Err(e) = tunnel
+                    .state_mut()
+                    .handle_domain_resolved(request, result, now)
+                {
+                    tracing::warn!("Failed to set DNS resource NAT: {e:#}");
+                }
+
+                Ok(ControlFlow::Continue(()))
+            }
+            CombinedEvent::BindTunDns => {
+                self.bind_tun_dns();
+
+                Ok(ControlFlow::Continue(()))
+            }
             CombinedEvent::Portal(Some(Err(e))) => Err(DisconnectError(
                 anyhow::Error::new(e).context("Connection to portal failed"),
             )),
@@ -364,72 +423,38 @@ impl Eventloop {
     async fn handle_tunnel_event(&mut self, event: Result<ClientEvent, TunnelError>) -> Result<()> {
         match event {
             Ok(ClientEvent::AddedIceCandidates {
-                conn_id: gid,
-                kind: PeerKind::Gateway,
+                conn_id,
+                kind,
                 candidates,
             }) => {
-                tracing::debug!(%gid, ?candidates, "Sending new ICE candidates to gateway");
+                tracing::debug!(%conn_id, ?candidates, "Sending new ICE candidates to peer");
 
-                self.portal_cmd_tx
-                    .send(PortalCommand::Send(
-                        EgressMessages::NewGatewayIceCandidates(GatewayIceCandidates {
-                            gateway_id: gid,
-                            candidates: Vec::from_iter(candidates),
-                        }),
-                    ))
-                    .await
-                    .context("Failed to send message to portal")?;
+                send_to_portal(
+                    &self.portal_cmd_tx,
+                    Outgoing::IceCandidates {
+                        peer: conn_id,
+                        kind,
+                        candidates,
+                    },
+                )
+                .await?;
             }
             Ok(ClientEvent::RemovedIceCandidates {
-                conn_id: gid,
-                kind: PeerKind::Gateway,
+                conn_id,
+                kind,
                 candidates,
             }) => {
-                tracing::debug!(%gid, ?candidates, "Sending invalidated ICE candidates to gateway");
+                tracing::debug!(%conn_id, ?candidates, "Sending invalidated ICE candidates to peer");
 
-                self.portal_cmd_tx
-                    .send(PortalCommand::Send(
-                        EgressMessages::InvalidateGatewayIceCandidates(GatewayIceCandidates {
-                            gateway_id: gid,
-                            candidates: Vec::from_iter(candidates),
-                        }),
-                    ))
-                    .await
-                    .context("Failed to send message to portal")?;
-            }
-            Ok(ClientEvent::AddedIceCandidates {
-                conn_id: cid,
-                kind: PeerKind::Client,
-                candidates,
-            }) => {
-                tracing::debug!(%cid, ?candidates, "Sending new ICE candidates to client");
-
-                self.portal_cmd_tx
-                    .send(PortalCommand::Send(EgressMessages::NewClientIceCandidates(
-                        ClientIceCandidates {
-                            client_id: cid,
-                            candidates: Vec::from_iter(candidates),
-                        },
-                    )))
-                    .await
-                    .context("Failed to send message to portal")?;
-            }
-            Ok(ClientEvent::RemovedIceCandidates {
-                conn_id: cid,
-                kind: PeerKind::Client,
-                candidates,
-            }) => {
-                tracing::debug!(%cid, ?candidates, "Sending invalidated ICE candidates to client");
-
-                self.portal_cmd_tx
-                    .send(PortalCommand::Send(
-                        EgressMessages::InvalidateClientIceCandidates(ClientIceCandidates {
-                            client_id: cid,
-                            candidates: Vec::from_iter(candidates),
-                        }),
-                    ))
-                    .await
-                    .context("Failed to send message to portal")?;
+                send_to_portal(
+                    &self.portal_cmd_tx,
+                    Outgoing::InvalidateIceCandidates {
+                        peer: conn_id,
+                        kind,
+                        candidates,
+                    },
+                )
+                .await?;
             }
             Ok(ClientEvent::RequestAccess {
                 resource_ids,
@@ -442,31 +467,34 @@ impl Eventloop {
                     None => (None, None),
                 };
 
-                self.portal_cmd_tx
-                    .send(PortalCommand::Send(EgressMessages::RequestAccess {
+                send_to_portal(
+                    &self.portal_cmd_tx,
+                    Outgoing::RequestAccess {
                         resource_ids,
                         ipv4,
                         ipv6,
                         preferred_gateways,
-                    }))
-                    .await
-                    .context("Failed to send message to portal")?;
+                    },
+                )
+                .await?;
             }
             Ok(ClientEvent::DeviceDomainQueried { domain }) => {
-                self.portal_cmd_tx
-                    .send(PortalCommand::Send(EgressMessages::ResolveDeviceDomain {
+                send_to_portal(
+                    &self.portal_cmd_tx,
+                    Outgoing::ResolveDeviceDomain {
                         domain: domain.to_string(),
-                    }))
-                    .await
-                    .context("Failed to send message to portal")?;
+                    },
+                )
+                .await?;
             }
             Ok(ClientEvent::DeviceDomainBrowsed { domain }) => {
-                self.portal_cmd_tx
-                    .send(PortalCommand::Send(EgressMessages::BrowseDeviceDomain {
+                send_to_portal(
+                    &self.portal_cmd_tx,
+                    Outgoing::BrowseDeviceDomain {
                         domain: domain.to_string(),
-                    }))
-                    .await
-                    .context("Failed to send message to portal")?;
+                    },
+                )
+                .await?;
             }
             Ok(ClientEvent::ResourcesChanged { resources }) => {
                 self.resource_list_sender
@@ -474,6 +502,9 @@ impl Eventloop {
                     .context("Failed to emit event")?;
             }
             Ok(ClientEvent::TunInterfaceUpdated(config)) => {
+                self.tun_ip = Some(config.ip);
+                self.schedule_tun_dns_bind();
+
                 self.tun_config_sender
                     .send(Some(config))
                     .context("Failed to emit event")?;
@@ -482,21 +513,102 @@ impl Eventloop {
                 *DNS_RESOURCE_RECORDS_CACHE.lock() = records;
             }
             Ok(ClientEvent::NoRelays { excluded_relay_ids }) => {
-                self.portal_cmd_tx
-                    .send(PortalCommand::Send(EgressMessages::NoRelays {
-                        excluded_relay_ids,
-                    }))
-                    .await
-                    .context("Failed to send message to portal")?;
+                send_to_portal(
+                    &self.portal_cmd_tx,
+                    Outgoing::NoRelays { excluded_relay_ids },
+                )
+                .await?;
             }
             Ok(ClientEvent::ResolveDns(request)) => {
-                // The client protocol never authorizes a peer to reach a resource through us.
-                tracing::debug!(domain = %request.domain(), "Ignoring DNS resolution request: not serving");
+                let domain = request.domain().to_string();
+
+                if self
+                    .resolve_tasks
+                    .try_push(
+                        async move {
+                            tunnel_bypass_resolver::resolve(&domain)
+                                .await
+                                .map_err(Arc::new)
+                        },
+                        request,
+                    )
+                    .is_err()
+                {
+                    tracing::warn!("Too many DNS resolution requests, dropping existing one");
+                }
             }
             Err(error) => self.handle_tunnel_error(error)?,
         }
 
         Ok(())
+    }
+
+    /// Binds the DNS servers on the tunnel addresses once we serve a site, shortly.
+    fn schedule_tun_dns_bind(&mut self) {
+        if self.wanted_tun_dns() == self.tun_dns_bound {
+            return;
+        }
+
+        self.tun_dns_attempts = 0;
+        self.tun_dns_retry = Some(Box::pin(tokio::time::sleep(Duration::from_millis(200))));
+    }
+
+    /// The sockets the DNS servers on the tunnel addresses should be bound to.
+    fn wanted_tun_dns(&self) -> Vec<SocketAddr> {
+        match (self.serving, self.tun_ip) {
+            (true, Some(ip)) => vec![
+                SocketAddr::new(ip.v4.into(), TUN_DNS_PORT),
+                SocketAddr::new(ip.v6.into(), TUN_DNS_PORT),
+            ],
+            _ => Vec::new(),
+        }
+    }
+
+    fn bind_tun_dns(&mut self) {
+        self.tun_dns_retry = None;
+
+        let wanted = self.wanted_tun_dns();
+        if wanted == self.tun_dns_bound {
+            return;
+        }
+
+        let Some(tunnel) = self.tunnel.as_mut() else {
+            return;
+        };
+
+        // A host without one of the families cannot bind that address; the other
+        // family is better than none.
+        let attempts = iter::once(wanted.clone())
+            .chain(wanted.iter().map(|socket| vec![*socket]))
+            .filter(|sockets| sockets.len() == wanted.len() || !wanted.is_empty());
+
+        for sockets in attempts {
+            match tunnel.rebind_dns(sockets.clone()) {
+                Ok(()) => {
+                    tracing::info!(?sockets, "Bound DNS servers on the tunnel addresses");
+                    self.tun_dns_bound = sockets;
+
+                    return;
+                }
+                Err(mut e) => {
+                    for e in e.drain() {
+                        tracing::debug!("Failed to bind DNS server on the tunnel addresses: {e:#}");
+                    }
+                }
+            }
+        }
+
+        self.tun_dns_attempts += 1;
+
+        if self.tun_dns_attempts >= TUN_DNS_BIND_ATTEMPTS {
+            tracing::warn!(
+                ?wanted,
+                "Giving up binding the DNS servers on the tunnel addresses"
+            );
+            return;
+        }
+
+        self.tun_dns_retry = Some(Box::pin(tokio::time::sleep(TUN_DNS_BIND_INTERVAL)));
     }
 
     fn handle_tunnel_error(&mut self, mut e: TunnelError) -> Result<()> {
@@ -535,45 +647,41 @@ impl Eventloop {
         Ok(())
     }
 
-    async fn handle_portal_message(&mut self, msg: IngressMessages) -> Result<()> {
+    async fn handle_portal_message(&mut self, msg: Incoming) -> Result<()> {
         let now = self.clock.now();
         let Some(tunnel) = self.tunnel.as_mut() else {
             return Ok(());
         };
 
         match msg {
-            IngressMessages::ConfigChanged(config) => {
-                tunnel.state_mut().update_interface_config(config.interface)
+            Incoming::ConfigChanged(interface) => {
+                tunnel.state_mut().update_interface_config(interface)
             }
-            IngressMessages::GatewayIceCandidates(GatewayIceCandidates {
-                gateway_id,
-                candidates,
-            }) => {
+            Incoming::IceCandidates { peer, candidates } => {
+                for candidate in candidates {
+                    tunnel.state_mut().add_ice_candidate(peer, candidate, now)
+                }
+            }
+            Incoming::InvalidateIceCandidates { peer, candidates } => {
                 for candidate in candidates {
                     tunnel
                         .state_mut()
-                        .add_ice_candidate(gateway_id, candidate, now)
+                        .remove_ice_candidate(peer, candidate, now)
                 }
             }
-            IngressMessages::ClientIceCandidates(ClientIceCandidates {
-                client_id,
-                candidates,
-            }) => {
-                for candidate in candidates {
-                    tunnel
-                        .state_mut()
-                        .add_ice_candidate(client_id, candidate, now)
-                }
-            }
-            IngressMessages::Init(InitClient {
-                interface,
-                resources,
-                relays,
-                authorizations,
-                flow_logs,
-                account_slug,
-                actor_name,
-            }) => {
+            Incoming::Init(init) => {
+                let Init {
+                    interface,
+                    resources,
+                    relays,
+                    authorizations,
+                    flow_logs,
+                    account_slug,
+                    actor_name,
+                    sites_served,
+                    local_resources,
+                } = *init;
+
                 self.connected_as_sender
                     .send(Some(ConnectedAs {
                         account_slug,
@@ -637,14 +745,17 @@ impl Eventloop {
                         now,
                     );
                 }
+
+                state.set_local_resources(local_resources);
+                self.set_serving(!sites_served.is_empty(), &sites_served);
             }
-            IngressMessages::ResourceCreatedOrUpdated(resource) => {
+            Incoming::ResourceCreatedOrUpdated(resource) => {
                 tunnel.state_mut().add_resource(resource, now);
             }
-            IngressMessages::ResourceDeleted(resource) => {
+            Incoming::ResourceDeleted(resource) => {
                 tunnel.state_mut().remove_resource(resource, now);
             }
-            IngressMessages::RelaysPresence(RelaysPresence {
+            Incoming::RelaysPresence(RelaysPresence {
                 disconnected_ids,
                 connected,
             }) => tunnel.state_mut().update_relays(
@@ -652,27 +763,7 @@ impl Eventloop {
                 tunnel::turn(&connected),
                 now,
             ),
-            IngressMessages::InvalidateGatewayIceCandidates(GatewayIceCandidates {
-                gateway_id,
-                candidates,
-            }) => {
-                for candidate in candidates {
-                    tunnel
-                        .state_mut()
-                        .remove_ice_candidate(gateway_id, candidate, now)
-                }
-            }
-            IngressMessages::InvalidateClientIceCandidates(ClientIceCandidates {
-                client_id,
-                candidates,
-            }) => {
-                for candidate in candidates {
-                    tunnel
-                        .state_mut()
-                        .remove_ice_candidate(client_id, candidate, now)
-                }
-            }
-            IngressMessages::AuthorizationCreated(AuthorizationCreated {
+            Incoming::AuthorizationCreated(AuthorizationCreated {
                 resource_id,
                 gateway_id,
                 site_id,
@@ -709,7 +800,7 @@ impl Eventloop {
                     }
                 };
             }
-            IngressMessages::AuthorizationCreationFailed(AuthorizationCreationFailed {
+            Incoming::AuthorizationCreationFailed(AuthorizationCreationFailed {
                 reason,
                 resource_id,
                 ..
@@ -741,23 +832,25 @@ impl Eventloop {
                     | FailReason::Unknown => {}
                 }
             }
-            IngressMessages::ClientDeviceAccessAuthorized(ClientDeviceAccessAuthorized {
-                client_id,
-                client_name,
-                client_slug,
-                client_public_key,
-                client_ipv4,
-                client_ipv6,
-                preshared_key,
-                local_ice_credentials,
-                remote_ice_credentials,
-                ice_role,
-                use_iceless,
-                resource_id,
-                resource,
-                expires_at,
-                flow_logs_ingest_token,
-            }) => {
+            Incoming::ClientDeviceAccessAuthorized(msg) => {
+                let ClientDeviceAccessAuthorized {
+                    client_id,
+                    client_name,
+                    client_slug,
+                    client_public_key,
+                    client_ipv4,
+                    client_ipv6,
+                    preshared_key,
+                    local_ice_credentials,
+                    remote_ice_credentials,
+                    ice_role,
+                    use_iceless,
+                    resource_id,
+                    resource,
+                    expires_at,
+                    flow_logs_ingest_token,
+                } = *msg;
+
                 persist_ingest_token(self.flow_logs_dir.as_deref(), &flow_logs_ingest_token);
 
                 // The portal only sends a resource to the target device; the
@@ -789,34 +882,115 @@ impl Eventloop {
                     now,
                 );
             }
-            IngressMessages::ResourceFiltersUpdated(ResourceFiltersUpdated { id, filters }) => {
+            Incoming::CreateAuthorization(msg) => {
+                let CreateAuthorization {
+                    reference,
+                    target,
+                    client,
+                    client_ice_credentials,
+                    gateway_ice_credentials,
+                    resource,
+                    expires_at,
+                    use_iceless,
+                    ice_role,
+                    flow_logs_ingest_token,
+                } = *msg;
+
+                persist_ingest_token(self.flow_logs_dir.as_deref(), &flow_logs_ingest_token);
+
+                let client_tun = IpConfig {
+                    v4: client.ipv4,
+                    v6: client.ipv6,
+                };
+
+                match target {
+                    Target::Resource { resource_id } => {
+                        let Some(resource) = resource.filter(|r| r.id() == resource_id) else {
+                            tracing::warn!(%resource_id, "Ignoring authorization without the resource it is for");
+
+                            return Ok(());
+                        };
+
+                        tunnel.state_mut().create_authorization(
+                            gateway::Client {
+                                id: client.id,
+                                public_key: client.public_key,
+                                preshared_key: client.preshared_key,
+                                ipv4: client.ipv4,
+                                ipv6: client.ipv6,
+                            },
+                            client_ice_credentials,
+                            gateway_ice_credentials,
+                            expires_at,
+                            resource,
+                            use_iceless,
+                            ice_role,
+                            now,
+                            flow_logs_ingest_token,
+                        );
+                    }
+                    Target::Device { pool_id, filters } => {
+                        tunnel.state_mut().handle_client_device_access_authorized(
+                            client.id,
+                            PublicKey::from(client.public_key.0),
+                            client_tun,
+                            client.preshared_key,
+                            gateway_ice_credentials,
+                            client_ice_credentials,
+                            ice_role,
+                            use_iceless,
+                            client.name.unwrap_or_default(),
+                            client.slug.unwrap_or_default(),
+                            None,
+                            Some(ResourceAuthorization {
+                                resource_id: pool_id,
+                                filters,
+                                expires_at,
+                            }),
+                            flow_logs_ingest_token,
+                            now,
+                        );
+                    }
+                }
+
+                send_to_portal(
+                    &self.portal_cmd_tx,
+                    Outgoing::AuthorizationCreated { reference },
+                )
+                .await?;
+            }
+            Incoming::SitesServedChanged {
+                sites_served,
+                local_resources,
+            } => {
+                tunnel.state_mut().set_local_resources(local_resources);
+                self.set_serving(!sites_served.is_empty(), &sites_served);
+            }
+            Incoming::LocalResourceCreatedOrUpdated(resource) => {
+                tunnel.state_mut().upsert_local_resource(resource);
+            }
+            Incoming::LocalResourceDeleted(resource) => {
+                tunnel.state_mut().remove_local_resource(resource);
+            }
+            Incoming::ServedResourceUpdated(resource) => {
+                tunnel.state_mut().update_served_resource(resource);
+            }
+            Incoming::ResourceFiltersUpdated(ResourceFiltersUpdated { id, filters }) => {
                 tunnel
                     .state_mut()
                     .handle_resource_filters_updated(id, filters);
             }
-            IngressMessages::RejectAccess(ClientRejectAccess {
-                client_id,
-                resource_id,
-            }) => {
+            Incoming::RejectAccess { peer, resource_id } => {
                 tunnel
                     .state_mut()
-                    .handle_reject_client_device_access(client_id, resource_id);
+                    .revoke_authorization(peer, resource_id, now);
             }
-            // OBSOLETE - safe to remove this when https://github.com/firezone/firezone/pull/13714 is deployed to production.
-            IngressMessages::AccessAuthorizationExpiryUpdated(_) => {}
-            IngressMessages::ClientDeviceAccessDenied(ClientDeviceAccessDenied {
-                ipv4,
-                ipv6,
-                reason,
-            }) => {
+            Incoming::ClientDeviceAccessDenied(ClientDeviceAccessDenied { ipv4, ipv6, reason }) => {
                 tunnel
                     .state_mut()
                     .handle_client_device_access_denied(ipv4, ipv6, reason);
             }
-            IngressMessages::ClientIceCandidateError(ClientIceCandidateError {
-                client_id,
-                reason,
-            }) => {
+            Incoming::ClientIceCandidateError(ClientIceCandidateError { client_id, reason }) => {
                 tracing::debug!(%client_id, ?reason, "ICE candidates could not be delivered to peer");
 
                 match reason {
@@ -834,7 +1008,7 @@ impl Eventloop {
                     | FailReason::Unknown => {}
                 }
             }
-            IngressMessages::DeviceDomainResolved(DeviceDomainResolved { domain, ipv4, ipv6 }) => {
+            Incoming::DeviceDomainResolved(DeviceDomainResolved { domain, ipv4, ipv6 }) => {
                 let Some(domain) = parse_portal_domain(&domain) else {
                     return Ok(());
                 };
@@ -842,7 +1016,7 @@ impl Eventloop {
                     .state_mut()
                     .handle_device_domain_resolved(domain, Ok((ipv4, ipv6)), now);
             }
-            IngressMessages::DeviceDomainResolutionFailed(DeviceDomainResolutionFailed {
+            Incoming::DeviceDomainResolutionFailed(DeviceDomainResolutionFailed {
                 domain,
                 reason,
             }) => {
@@ -853,7 +1027,7 @@ impl Eventloop {
                     .state_mut()
                     .handle_device_domain_resolved(domain, Err(reason), now);
             }
-            IngressMessages::DeviceDomainBrowsed(DeviceDomainBrowsed {
+            Incoming::DeviceDomainBrowsed(DeviceDomainBrowsed {
                 domain,
                 names,
                 ttl,
@@ -872,10 +1046,7 @@ impl Eventloop {
                     now,
                 );
             }
-            IngressMessages::DeviceDomainBrowseFailed(DeviceDomainBrowseFailed {
-                domain,
-                reason,
-            }) => {
+            Incoming::DeviceDomainBrowseFailed(DeviceDomainBrowseFailed { domain, reason }) => {
                 let Some(domain) = parse_portal_domain(&domain) else {
                     return Ok(());
                 };
@@ -883,9 +1054,24 @@ impl Eventloop {
                     .state_mut()
                     .handle_device_domain_browsed(domain, Err(reason), now);
             }
+            Incoming::Ignored => {}
         }
 
         Ok(())
+    }
+
+    /// Records whether the portal lists sites for this device.
+    fn set_serving(&mut self, serving: bool, sites: &[connlib_model::Site]) {
+        if serving != self.serving {
+            tracing::info!(
+                sites = ?sites.iter().map(|site| &site.name).collect::<Vec<_>>(),
+                "Serving {}",
+                if serving { "sites" } else { "no site" }
+            );
+        }
+
+        self.serving = serving;
+        self.schedule_tun_dns_bind();
     }
 
     fn next_event(&mut self, cx: &mut Context) -> Poll<CombinedEvent> {
@@ -899,6 +1085,22 @@ impl Eventloop {
 
         if let Poll::Ready(event) = self.portal_event_rx.poll_recv(cx) {
             return Poll::Ready(CombinedEvent::Portal(event));
+        }
+
+        if let Poll::Ready((result, request)) = self.resolve_tasks.poll_unpin(cx) {
+            let result = result.unwrap_or_else(|e| {
+                Err(Arc::new(
+                    anyhow::Error::new(e).context("DNS resolution timed out"),
+                ))
+            });
+
+            return Poll::Ready(CombinedEvent::DomainResolved((result, request)));
+        }
+
+        if let Some(retry) = self.tun_dns_retry.as_mut()
+            && retry.as_mut().poll(cx).is_ready()
+        {
+            return Poll::Ready(CombinedEvent::BindTunDns);
         }
 
         let now = self.clock.now();
@@ -932,6 +1134,12 @@ impl Eventloop {
     }
 }
 
+async fn send_to_portal(tx: &mpsc::Sender<PortalCommand>, msg: Outgoing) -> Result<()> {
+    tx.send(PortalCommand::Send(msg))
+        .await
+        .context("Failed to send message to portal")
+}
+
 /// Tokens deliberately travel here rather than through the flow-log tracing
 /// events, so they can never leak into log output.
 fn persist_ingest_token(spool_root: Option<&std::path::Path>, token: &IngestToken) {
@@ -959,9 +1167,10 @@ fn persist_ingest_token(spool_root: Option<&std::path::Path>, token: &IngestToke
     }
 }
 
-async fn phoenix_channel_event_loop(
-    mut portal: PhoenixChannel<(), EgressMessages, IngressMessages, PublicKeyParam>,
+async fn phoenix_channel_event_loop<W: Wire>(
+    mut portal: PhoenixChannel<(), W::Egress, W::Ingress, PublicKeyParam>,
     mut public_key: PublicKeyParam,
+    capabilities: Capabilities,
     event_tx: mpsc::Sender<Result<PortalEvent, phoenix_channel::Error>>,
     mut cmd_rx: mpsc::Receiver<PortalCommand>,
     udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
@@ -988,7 +1197,11 @@ async fn phoenix_channel_event_loop(
         // This allows `Hiccup` events to use the updated `BootstrapDnsClient` to resolve the domain.
         match select(pin!(cmd_rx.recv()), poll_fn(|cx| portal.poll(cx))).await {
             Either::Left((Some(PortalCommand::Send(msg)), _)) => {
-                match portal.send(PHOENIX_TOPIC, msg) {
+                let Some(msg) = W::encode(msg) else {
+                    continue;
+                };
+
+                match portal.send(W::TOPIC, msg) {
                     Ok(()) => {}
                     Err(phoenix_channel::NotConnected(msg)) => {
                         tracing::debug!(?msg, "Failed to send message to portal: Not connected")
@@ -1014,7 +1227,11 @@ async fn phoenix_channel_event_loop(
                 break;
             }
             Either::Right((Ok(phoenix_channel::Event::Message { msg, .. }), _)) => {
-                if event_tx.send(Ok(PortalEvent::Message(msg))).await.is_err() {
+                if event_tx
+                    .send(Ok(PortalEvent::Message(W::decode(msg))))
+                    .await
+                    .is_err()
+                {
                     tracing::debug!("Event channel closed: exiting phoenix-channel event-loop");
 
                     break;
@@ -1045,11 +1262,10 @@ async fn phoenix_channel_event_loop(
                 portal.connect(ips, backoff, public_key.clone());
             }
             Either::Right((Ok(phoenix_channel::Event::Connected), _)) => {
-                if let Err(phoenix_channel::NotConnected(msg)) = portal.send(
-                    PHOENIX_TOPIC,
-                    EgressMessages::SetSnownetCapabilities(SnownetCapabilities::LOCAL),
-                ) {
-                    tracing::debug!(?msg, "Failed to send snownet capabilities: Not connected");
+                if let Some(msg) = W::encode(Outgoing::Capabilities(capabilities))
+                    && let Err(phoenix_channel::NotConnected(msg)) = portal.send(W::TOPIC, msg)
+                {
+                    tracing::debug!(?msg, "Failed to send capabilities: Not connected");
                 }
 
                 let _ = event_tx.send(Ok(PortalEvent::Connected)).await;

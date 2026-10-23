@@ -3,9 +3,14 @@
 //! Main connlib library for clients.
 pub use connlib_model::StaticSecret;
 pub use eventloop::DisconnectError;
+pub use protocol::Capabilities;
 pub use tunnel::TunConfig;
+use tunnel::messages::SnownetCapabilities;
 use tunnel::messages::client::EgressMessages;
 pub use tunnel::messages::client::{IngressMessages, ResourceDescription};
+pub use tunnel::messages::device::{
+    EgressMessages as DeviceEgressMessages, IngressMessages as DeviceIngressMessages,
+};
 
 use anyhow::Result;
 use connlib_model::{ResourceId, ResourceView};
@@ -30,8 +35,7 @@ use tun::Tun;
 use crate::eventloop::UserNotification;
 
 mod eventloop;
-
-const PHOENIX_TOPIC: &str = "client";
+mod protocol;
 
 /// A session is the entry-point for connlib, maintains the runtime and the tunnel.
 ///
@@ -70,6 +74,18 @@ pub enum Event {
     Disconnected(DisconnectError),
 }
 
+/// What this binary can do, for a device that may serve sites.
+///
+/// `route_resources` is what the host allows: forwarding is the admin's
+/// job, and the portal only routes to a device that reports it on.
+pub fn local_capabilities(route_resources: bool) -> Capabilities {
+    Capabilities {
+        route_resources,
+        dns_recursion: true,
+        iceless: SnownetCapabilities::LOCAL.iceless,
+    }
+}
+
 /// Who the portal says this session belongs to.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ConnectedAs {
@@ -78,10 +94,66 @@ pub struct ConnectedAs {
 }
 
 impl Session {
+    /// Connects over the client protocol, as the platform apps do.
     pub fn connect(
         tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
         udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
         portal: PhoenixChannel<(), EgressMessages, IngressMessages, PublicKeyParam>,
+        is_internet_resource_active: bool,
+        dns_servers: Vec<IpAddr>,
+        flow_logs_dir: Option<PathBuf>,
+        local_flow_logs: bool,
+        handle: tokio::runtime::Handle,
+    ) -> (Self, EventStream) {
+        let capabilities = Capabilities {
+            route_resources: false,
+            dns_recursion: false,
+            iceless: SnownetCapabilities::LOCAL.iceless,
+        };
+
+        Self::connect_with::<protocol::ClientWire>(
+            tcp_socket_factory,
+            udp_socket_factory,
+            portal,
+            capabilities,
+            is_internet_resource_active,
+            dns_servers,
+            flow_logs_dir,
+            local_flow_logs,
+            handle,
+        )
+    }
+
+    /// Connects over the unified protocol, `/device/v1`, with what the device can do.
+    pub fn connect_device(
+        tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
+        udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
+        portal: PhoenixChannel<(), DeviceEgressMessages, DeviceIngressMessages, PublicKeyParam>,
+        capabilities: Capabilities,
+        is_internet_resource_active: bool,
+        dns_servers: Vec<IpAddr>,
+        flow_logs_dir: Option<PathBuf>,
+        local_flow_logs: bool,
+        handle: tokio::runtime::Handle,
+    ) -> (Self, EventStream) {
+        Self::connect_with::<protocol::DeviceWire>(
+            tcp_socket_factory,
+            udp_socket_factory,
+            portal,
+            capabilities,
+            is_internet_resource_active,
+            dns_servers,
+            flow_logs_dir,
+            local_flow_logs,
+            handle,
+        )
+    }
+
+    fn connect_with<W: protocol::Wire>(
+        tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
+        udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
+        portal: PhoenixChannel<(), W::Egress, W::Ingress, PublicKeyParam>,
+        capabilities: Capabilities,
         is_internet_resource_active: bool,
         dns_servers: Vec<IpAddr>,
         flow_logs_dir: Option<PathBuf>,
@@ -94,7 +166,7 @@ impl Session {
              tun_config_sender,
              connected_as_sender,
              user_notification_sender| {
-                Eventloop::new(
+                Eventloop::new::<W>(
                     tcp_socket_factory,
                     udp_socket_factory,
                     is_internet_resource_active,
@@ -102,6 +174,7 @@ impl Session {
                     flow_logs_dir,
                     local_flow_logs,
                     portal,
+                    capabilities,
                     cmd_rx,
                     resource_list_sender,
                     tun_config_sender,
