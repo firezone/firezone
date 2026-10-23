@@ -286,11 +286,7 @@ pub struct Client {
 }
 
 impl Tunnel {
-    pub fn established(
-        clients: usize,
-        connectivity: Connectivity,
-        resource: Resource,
-    ) -> Self {
+    pub fn established(clients: usize, connectivity: Connectivity, resource: Resource) -> Self {
         let now = Instant::now();
         let unix_ts = SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)
