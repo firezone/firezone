@@ -72,6 +72,21 @@ impl IntoIterator for NoParams {
     }
 }
 
+/// The protocol minors a `firezone` binary of `version` speaks: its own and
+/// the two before it, on both sides of a connection.
+///
+/// A device plays both roles, so unlike the legacy rules it states a range
+/// instead of being assigned one by the portal.
+pub fn proto_range(version: &str) -> (u64, u64) {
+    let minor = version
+        .split('.')
+        .nth(1)
+        .and_then(|minor| minor.parse::<u64>().ok())
+        .unwrap_or(0);
+
+    (minor.saturating_sub(2), minor)
+}
+
 impl LoginUrl<PublicKeyParam> {
     pub fn client<E>(
         url: impl TryInto<Url, Error = E>,
@@ -432,6 +447,13 @@ fn set_ws_scheme<E>(url: &mut Url) -> Result<(), LoginUrlError<E>> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn proto_range_spans_two_minors_back() {
+        assert_eq!(super::proto_range("1.8.3"), (6, 8));
+        assert_eq!(super::proto_range("1.1.0"), (0, 1));
+        assert_eq!(super::proto_range("garbage"), (0, 0));
+    }
+
     use super::*;
     use std::borrow::Cow;
 

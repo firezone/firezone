@@ -86,6 +86,19 @@ pub fn local_capabilities(route_resources: bool) -> Capabilities {
     }
 }
 
+/// Whether the host forwards packets, which is what serving a site needs.
+///
+/// Enabling forwarding and the masquerade rules is the admin's job; the daemon
+/// only reports whether it is on, so the portal can show why a device does
+/// not serve.
+pub fn host_forwards() -> bool {
+    if !cfg!(target_os = "linux") {
+        return false;
+    }
+
+    std::fs::read_to_string("/proc/sys/net/ipv4/ip_forward").is_ok_and(|v| v.trim() == "1")
+}
+
 /// Who the portal says this session belongs to.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ConnectedAs {

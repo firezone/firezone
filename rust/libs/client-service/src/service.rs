@@ -909,45 +909,87 @@ impl<'a> Handler<'a> {
         self.point_telemetry_at_api_url();
 
         let api_url = self.api_url().to_string();
-        let url = LoginUrl::client(
-            Url::parse(&api_url).context("Failed to parse URL")?,
-            device_id.id.clone(),
-            None,
-            DeviceInfo {
-                device_serial: device_info::serial(),
-                device_uuid: device_info::uuid(),
-                ..Default::default()
-            },
-            certificate,
-        )
-        .context("Failed to create `LoginUrl`")?;
-
-        let portal = PhoenixChannel::disconnected(
-            url,
-            Some(token),
-            get_user_agent(crate::user_agent_product(), env!("CARGO_PKG_VERSION")),
-            "client",
-            (),
-            || {
-                ExponentialBackoffBuilder::default()
-                    .with_max_elapsed_time(Some(Duration::from_secs(60 * 60 * 24 * 30)))
-                    .build()
-            },
-            Arc::new(tcp_socket_factory),
-        );
+        let device_info = DeviceInfo {
+            device_serial: device_info::serial(),
+            device_uuid: device_info::uuid(),
+            ..Default::default()
+        };
+        let user_agent = get_user_agent(crate::user_agent_product(), env!("CARGO_PKG_VERSION"));
+        let backoff = || {
+            ExponentialBackoffBuilder::default()
+                .with_max_elapsed_time(Some(Duration::from_secs(60 * 60 * 24 * 30)))
+                .build()
+        };
 
         // Read the resolvers before starting connlib, in case connlib's startup interferes.
         let dns = self.dns_controller.system_resolvers();
-        let (connlib, event_stream) = client_shared::Session::connect(
-            Arc::new(tcp_socket_factory),
-            Arc::new(UdpSocketFactory::default()),
-            portal,
-            is_internet_resource_active,
-            dns,
-            known_dirs::flow_logs(),
-            false,
-            tokio::runtime::Handle::current(),
-        );
+
+        // The `firezone` binary speaks the unified protocol, so a desktop it runs on can
+        // be assigned to sites. Under the daemon's old name the portal only knows it as
+        // a client.
+        let (connlib, event_stream) = if crate::user_agent_product() == "firezone" {
+            let url = LoginUrl::device(
+                Url::parse(&api_url).context("Failed to parse URL")?,
+                device_id.id.clone(),
+                None,
+                device_info,
+                certificate,
+                phoenix_channel::proto_range(crate::daemon_version()),
+            )
+            .context("Failed to create `LoginUrl`")?;
+
+            let portal = PhoenixChannel::disconnected(
+                url,
+                Some(token),
+                user_agent,
+                "device",
+                (),
+                backoff,
+                Arc::new(tcp_socket_factory),
+            );
+
+            client_shared::Session::connect_device(
+                Arc::new(tcp_socket_factory),
+                Arc::new(UdpSocketFactory::default()),
+                portal,
+                client_shared::local_capabilities(client_shared::host_forwards()),
+                is_internet_resource_active,
+                dns,
+                known_dirs::flow_logs(),
+                false,
+                tokio::runtime::Handle::current(),
+            )
+        } else {
+            let url = LoginUrl::client(
+                Url::parse(&api_url).context("Failed to parse URL")?,
+                device_id.id.clone(),
+                None,
+                device_info,
+                certificate,
+            )
+            .context("Failed to create `LoginUrl`")?;
+
+            let portal = PhoenixChannel::disconnected(
+                url,
+                Some(token),
+                user_agent,
+                "client",
+                (),
+                backoff,
+                Arc::new(tcp_socket_factory),
+            );
+
+            client_shared::Session::connect(
+                Arc::new(tcp_socket_factory),
+                Arc::new(UdpSocketFactory::default()),
+                portal,
+                is_internet_resource_active,
+                dns,
+                known_dirs::flow_logs(),
+                false,
+                tokio::runtime::Handle::current(),
+            )
+        };
 
         analytics::new_session(device_id.id, api_url);
 

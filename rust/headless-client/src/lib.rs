@@ -333,31 +333,6 @@ fn read_systemd_credential(name: &str) -> Result<Option<SecretString>> {
     }
 }
 
-/// Whether the host forwards packets, which is what serving a site needs.
-///
-/// Enabling forwarding and the masquerade rules is the admin's job; the daemon
-/// only reports whether it is on, so the portal can show why a device does
-/// not serve.
-fn host_forwards() -> bool {
-    if !cfg!(target_os = "linux") {
-        return false;
-    }
-
-    std::fs::read_to_string("/proc/sys/net/ipv4/ip_forward").is_ok_and(|v| v.trim() == "1")
-}
-
-/// The protocol minors this binary speaks: its own and the two before it,
-/// on both sides of a connection.
-fn proto_range() -> (u64, u64) {
-    let minor = VERSION
-        .split('.')
-        .nth(1)
-        .and_then(|minor| minor.parse::<u64>().ok())
-        .unwrap_or(0);
-
-    (minor.saturating_sub(2), minor)
-}
-
 /// Runs one of the GUI remote-control commands, reporting a failure the way
 /// the `firezone-cli` binary does.
 fn gui_command(command: firezone_cli::Cmd) -> Result<()> {
@@ -605,7 +580,7 @@ fn try_main() -> Result<()> {
             ..Default::default()
         },
         certificate,
-        proto_range(),
+        phoenix_channel::proto_range(VERSION),
     )?;
 
     if cli.check {
@@ -676,7 +651,7 @@ fn try_main() -> Result<()> {
             Arc::new(tcp_socket_factory),
             Arc::new(UdpSocketFactory::default()),
             portal,
-            client_shared::local_capabilities(host_forwards()),
+            client_shared::local_capabilities(client_shared::host_forwards()),
             cli.activate_internet_resource,
             dns_controller.system_resolvers(),
             flow_logs_dir.clone(),
@@ -1055,13 +1030,6 @@ mod tests {
         // The old name of the command keeps working.
         let actual = Cli::try_parse_from(["firezone-headless-client", "x509"]).unwrap();
         assert!(matches!(actual._command, Some(Cmd::Identity)));
-    }
-
-    #[test]
-    fn proto_range_spans_two_minors_back() {
-        let (min, max) = super::proto_range();
-
-        assert_eq!(max.saturating_sub(min), 2.min(max));
     }
 
     #[test]
