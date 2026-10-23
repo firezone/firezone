@@ -48,7 +48,7 @@ impl Packets {
     pub fn new(direction: Direction, resource: Resource) -> Self {
         seeded_rng::reset();
 
-        let (client, gateway, now) = connect(resource, true);
+        let (client, gateway, now) = connect(resource);
         let (local, mut peer) = match direction {
             Direction::ClientOutbound | Direction::ClientInbound => (client, gateway),
             Direction::GatewayInbound | Direction::GatewayOutbound => (gateway, client),

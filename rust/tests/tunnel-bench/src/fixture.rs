@@ -112,8 +112,8 @@ impl State {
 }
 
 /// Returns both sides of a connection, through which the Client may reach `resource`.
-pub fn connect(resource: Resource, flow_logs: bool) -> (Side, Side, Instant) {
-    let mut tunnel = Tunnel::established(1, Connectivity::Ice, resource, flow_logs);
+pub fn connect(resource: Resource) -> (Side, Side, Instant) {
+    let mut tunnel = Tunnel::established(1, Connectivity::Ice, resource);
     let reply = tunnel.reply();
     let client = tunnel.clients.remove(0);
 
@@ -290,7 +290,6 @@ impl Tunnel {
         clients: usize,
         connectivity: Connectivity,
         resource: Resource,
-        flow_logs: bool,
     ) -> Self {
         let now = Instant::now();
         let unix_ts = SystemTime::now()
@@ -299,12 +298,12 @@ impl Tunnel {
         let relay = Relay::new(now);
 
         let mut gateway = GatewayState::new([2; 32], now, unix_ts);
-        gateway.set_flow_logs_enabled(flow_logs);
+        gateway.set_flow_logs_enabled(true);
         gateway.update_tun_device(GATEWAY_TUN);
         gateway.update_relays(BTreeSet::new(), relay.description("gateway"), now);
 
         let clients = (0..clients)
-            .map(|index| Client::new(index, resource, flow_logs, &relay, now, unix_ts))
+            .map(|index| Client::new(index, resource, &relay, now, unix_ts))
             .collect();
 
         let mut tunnel = Self {
@@ -538,7 +537,6 @@ impl Client {
     fn new(
         index: usize,
         resource: Resource,
-        flow_logs: bool,
         relay: &Relay,
         now: Instant,
         unix_ts: Duration,
@@ -548,7 +546,7 @@ impl Client {
         key[..8].copy_from_slice(&(index as u64).to_be_bytes());
 
         let mut state = ClientState::new(key, BTreeSet::new(), false, now, unix_ts);
-        state.set_flow_logs_enabled(flow_logs);
+        state.set_flow_logs_enabled(true);
         state.update_interface_config(Interface {
             ipv4: tun.v4,
             ipv6: tun.v6,

@@ -42,7 +42,7 @@ impl Idle {
             gateway,
             relay,
             now,
-        } = Tunnel::established(clients, connectivity, Resource::Cidr, true);
+        } = Tunnel::established(clients, connectivity, Resource::Cidr);
         let client_deadlines = clients
             .iter_mut()
             .map(|client| client.state.poll_timeout())
