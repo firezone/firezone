@@ -1,6 +1,5 @@
 pub(crate) mod dns_config;
 
-mod client_on_client;
 mod dns_cache;
 mod dns_resource_nat;
 mod gateway_on_client;
@@ -9,13 +8,11 @@ pub(crate) mod resource;
 mod routing;
 mod tracked_state;
 
-pub(crate) use crate::client::client_on_client::ClientOnClient;
 pub(crate) use crate::client::gateway_on_client::GatewayOnClient;
 
 use crate::authorization_rejections::AuthorizationRejections;
 use resource::{DevicePoolResource, InternetResource, Resource};
 
-use crate::client::client_on_client::InboundResult;
 use crate::client::dns_cache::DnsCache;
 use crate::client::dns_config::DnsConfig;
 use crate::client::pending_authorizations::{
@@ -33,6 +30,7 @@ use crate::messages::IngestToken;
 use crate::messages::{
     Filter, IceCredentials, IceRole, Interface as InterfaceConfig, SecretKey, client::FailReason,
 };
+use crate::peer_inbound::{PeerInbound, TranslateOutboundResult};
 use crate::peer_store::{Peer, PeerStore};
 use crate::portal_connection::PortalConnection;
 use crate::unique_packet_buffer::UniquePacketBuffer;
@@ -127,7 +125,7 @@ pub struct ClientState {
     /// All gateways we are connected to and the associated, connection-specific state.
     gateways: PeerStore<GatewayId, GatewayOnClient>,
     /// All clients we are connected to and the associated, connection-specific state.
-    clients: PeerStore<ClientId, ClientOnClient>,
+    clients: PeerStore<ClientId, PeerInbound>,
 
     /// Tracks the flows tunneled through this Client.
     flow_tracker: flow_tracker::Tracker<DeviceId>,
@@ -291,7 +289,7 @@ impl ClientState {
                 self.outbound_authorizations
                     .client_token(pool, peer.id())
                     .is_some()
-                    || peer.inbound_resource_ids().contains(&pool)
+                    || peer.self_target_ids().contains(&pool)
             })
             .map(|peer| ConnectedDeviceView {
                 id: peer.id(),
@@ -374,7 +372,7 @@ impl ClientState {
     /// Abandons the pending authorizations and any connection to an offline device.
     pub fn set_device_offline(&mut self, cid: ClientId, now: Instant) {
         if let Some(peer) = self.clients.peer_by_id(&cid) {
-            let tun = peer.remote_tun();
+            let tun = peer.peer_tun();
 
             for _ in self
                 .pending_authorizations
@@ -835,14 +833,14 @@ impl ClientState {
         let from_peer_itself = self
             .clients
             .peer_by_id(&pid)
-            .is_some_and(|peer| peer.remote_tun().is_ip(packet.source()));
+            .is_some_and(|peer| peer.peer_tun().is_ip(packet.source()));
 
         if from_peer_itself {
             let peer = self.clients.peer_by_id_mut(&pid).expect("checked above");
 
-            let packet = match peer.ensure_allowed_inbound(packet, now)? {
-                InboundResult::Send(p) => p,
-                InboundResult::Filtered {
+            let packet = match peer.translate_outbound(packet, now)? {
+                TranslateOutboundResult::Send(p) => p,
+                TranslateOutboundResult::IcmpError {
                     reply,
                     no_authorization,
                 } => {
@@ -1218,10 +1216,10 @@ impl ClientState {
         });
 
         let peer = self.clients.upsert(cid, || {
-            ClientOnClient::new(
+            PeerInbound::new(
                 cid,
-                local_tun,
                 client_tun,
+                local_tun,
                 client_name.clone(),
                 client_slug.clone(),
             )
@@ -1235,7 +1233,7 @@ impl ClientState {
         // We only add the inbound resource and filters on the *target* side of the connection.
         // The initiating side does not request connections if the filters don't allow it.
         if let Some((resource_id, filters, expires_at)) = authorization {
-            peer.add_resource(
+            peer.add_self_target(
                 resource_id,
                 filters,
                 expires_at,
@@ -1289,7 +1287,7 @@ impl ClientState {
         filters: Vec<Filter>,
     ) {
         for peer in self.clients.iter_mut() {
-            peer.update_resource(resource_id, filters.clone());
+            peer.update_self_target_filters(resource_id, filters.clone());
         }
     }
 
@@ -1300,7 +1298,7 @@ impl ClientState {
         let Some(peer) = self.clients.peer_by_id_mut(&cid) else {
             return;
         };
-        peer.remove_resource(&resource_id);
+        peer.revoke(&resource_id);
     }
 
     /// Resyncs inbound client-to-client authorizations from the portal's `init`.
@@ -1312,7 +1310,7 @@ impl ClientState {
 
         for peer in self.clients.iter_mut() {
             let retain = authorizations.get(&peer.id()).unwrap_or(&no_authorizations);
-            peer.retain_authorizations(retain);
+            peer.retain(retain);
         }
     }
 
@@ -1329,7 +1327,7 @@ impl ClientState {
         };
 
         let new_expiry = self.unix_ts_clock.instant_at(expires_at, now);
-        peer.update_resource_expiry(resource_id, new_expiry, now);
+        peer.update_expiry(resource_id, new_expiry, now);
     }
 
     /// For DNS queries to IPs that are a CIDR resources we want to mangle and forward to the gateway that handles that resource.
@@ -1416,7 +1414,7 @@ impl ClientState {
                     .peer_by_id(&pid)
                     .context("Reporting peer is not a client peer")?;
                 anyhow::ensure!(
-                    peer.remote_tun().is_ip(event.dst),
+                    peer.peer_tun().is_ip(event.dst),
                     "Destination does not belong to the client peer"
                 );
 
@@ -2689,7 +2687,7 @@ impl ClientState {
         }
 
         for peer in self.clients.iter_mut() {
-            peer.remove_resource(&id);
+            peer.revoke(&id);
         }
 
         let Some((_, peer)) =
@@ -2747,7 +2745,7 @@ fn reply_with_icmp_prohibited(buffered_packets: &mut VecDeque<IpPacket>, packet:
 }
 
 #[derive(Default)]
-struct OutboundAuthorizations {
+pub(crate) struct OutboundAuthorizations {
     gateways: HashMap<ResourceId, GatewayAuthorization, FastRandomState>,
     device_pools:
         HashMap<ResourceId, HashMap<ClientId, IngestToken, FastRandomState>, FastRandomState>,
@@ -2774,7 +2772,7 @@ impl OutboundAuthorizations {
         );
     }
 
-    fn authorize_client(
+    pub(crate) fn authorize_client(
         &mut self,
         resource_id: ResourceId,
         client_id: ClientId,
@@ -2794,11 +2792,11 @@ impl OutboundAuthorizations {
         Some(&self.gateway(resource_id)?.gateway_id)
     }
 
-    fn client_token(&self, resource_id: ResourceId, client_id: ClientId) -> Option<&IngestToken> {
+    pub(crate) fn client_token(&self, resource_id: ResourceId, client_id: ClientId) -> Option<&IngestToken> {
         self.device_pools.get(&resource_id)?.get(&client_id)
     }
 
-    fn remove_client(&mut self, resource_id: ResourceId, client_id: ClientId) {
+    pub(crate) fn remove_client(&mut self, resource_id: ResourceId, client_id: ClientId) {
         if let Some(clients) = self.device_pools.get_mut(&resource_id) {
             clients.remove(&client_id);
         }
@@ -2846,7 +2844,7 @@ fn is_dns_sentinel(dst: IpAddr) -> bool {
 /// part in, keeping the target Client's check for errors referencing an unknown
 /// flow exercised.
 fn client_for_icmp_error(
-    clients: &PeerStore<ClientId, ClientOnClient>,
+    clients: &PeerStore<ClientId, PeerInbound>,
     packet: &IpPacket,
 ) -> Option<ClientId> {
     if !packet.icmp_error().is_ok_and(|error| error.is_some()) {

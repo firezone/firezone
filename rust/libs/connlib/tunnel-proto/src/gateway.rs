@@ -1,12 +1,9 @@
-mod client_on_gateway;
-mod nat_table;
-
-pub(crate) use crate::gateway::client_on_gateway::ClientOnGateway;
+pub(crate) mod nat_table;
 
 use crate::authorization_rejections::AuthorizationRejections;
-use crate::gateway::client_on_gateway::TranslateOutboundResult;
 use crate::messages::gateway::{Client, ResourceDescription};
 use crate::messages::{IceCredentials, IngestToken, ResolveRequest};
+use crate::peer_inbound::{PeerInbound, TranslateOutboundResult};
 use crate::peer_store::PeerStore;
 use crate::portal_connection::PortalConnection;
 use crate::unix_ts::UnixTsClock;
@@ -35,7 +32,7 @@ pub struct GatewayState {
     /// Manages wireguard tunnels to clients.
     node: Node<ClientId, RelayId>,
     /// All clients we are connected to and the associated, connection-specific state.
-    peers: PeerStore<ClientId, ClientOnGateway>,
+    peers: PeerStore<ClientId, PeerInbound>,
 
     /// Tracks the flows tunneled through this Gateway.
     flow_tracker: flow_tracker::Tracker<(ClientId, ResourceId)>,
@@ -294,7 +291,7 @@ impl GatewayState {
             return;
         };
 
-        peer.remove_resource(rid);
+        peer.revoke(rid);
         if peer.is_empty() {
             self.peers.remove(cid);
             self.node
@@ -377,7 +374,13 @@ impl GatewayState {
         );
 
         let peer = self.peers.upsert(client, || {
-            ClientOnGateway::new(client, client_tun, gateway_tun)
+            PeerInbound::new(
+                client,
+                client_tun,
+                gateway_tun,
+                String::new(),
+                String::new(),
+            )
         });
 
         peer.add_resource(resource.clone(), expires_at, now);
@@ -415,7 +418,7 @@ impl GatewayState {
         self.peers
             .peer_by_id_mut(&client)
             .context("No peer state")?
-            .update_resource_expiry(resource, new_expiry, now);
+            .update_expiry(resource, new_expiry, now);
 
         Ok(())
     }
@@ -648,14 +651,14 @@ impl GatewayState {
         for client in self.peers.iter_mut() {
             let resources = authorizations.remove(&client.id()).unwrap_or_default();
 
-            client.retain_authorizations(resources);
+            client.retain(&resources);
         }
     }
 }
 
 fn handle_assigned_ips_event(
     fz_p2p_control: FzP2pControlSlice,
-    peer: &ClientOnGateway,
+    peer: &PeerInbound,
     buffered_events: &mut VecDeque<GatewayEvent>,
 ) -> Option<IpPacket> {
     use p2p_control::dns_resource_nat;

@@ -16,12 +16,17 @@ use crate::filter_engine::FilterEngine;
 use crate::gateway::nat_table::{NatTable, TranslateIncomingResult};
 use crate::messages::gateway::ResourceDescription;
 use crate::messages::{Filter, IngestToken};
+use crate::peer_inbound::TranslateOutboundResult;
 use crate::routing_table::{self, RoutingTable};
 use crate::unroutable_packet::UnroutablePacket;
 use crate::{GatewayEvent, IpConfig, NotAllowedResource, NotClientIp, p2p_control};
 
-/// The state of one client on a gateway.
-pub struct ClientOnGateway {
+/// The resources this device serves to one peer.
+///
+/// Each is a CIDR, DNS or Internet resource the portal authorized the peer
+/// to reach through this device, with the routing table, NAT and filters
+/// that carry its traffic.
+pub(crate) struct ResourceTargets {
     id: ClientId,
 
     client_tun: IpConfig,
@@ -42,23 +47,13 @@ pub struct ClientOnGateway {
     buffered_events: VecDeque<GatewayEvent>,
 }
 
-#[derive(Debug, PartialEq)]
-pub enum TranslateOutboundResult {
-    Send(IpPacket),
-    IcmpError {
-        reply: IpPacket,
-        /// Identifies traffic rejected by the access policy.
-        no_authorization: Option<p2p_control::no_authorization::NoAuthorization>,
-    },
-}
-
-impl ClientOnGateway {
+impl ResourceTargets {
     pub(crate) fn new(
         id: ClientId,
         client_tun: IpConfig,
         gateway_tun: IpConfig,
-    ) -> ClientOnGateway {
-        ClientOnGateway {
+    ) -> ResourceTargets {
+        ResourceTargets {
             id,
             client_tun,
             gateway_tun,
@@ -359,7 +354,7 @@ impl ClientOnGateway {
         }
     }
 
-    pub fn translate_outbound(
+    pub(crate) fn translate_outbound(
         &mut self,
         packet: IpPacket,
         now: Instant,
@@ -398,7 +393,7 @@ impl ClientOnGateway {
         Ok(result)
     }
 
-    pub fn translate_inbound(&mut self, packet: &mut IpPacket, now: Instant) -> Result<()> {
+    pub(crate) fn translate_inbound(&mut self, packet: &mut IpPacket, now: Instant) -> Result<()> {
         // Traffic from our own IP is allowed.
         match packet.source() {
             IpAddr::V4(src) if src == self.gateway_tun.v4 => return Ok(()),
@@ -616,14 +611,6 @@ impl ClientOnGateway {
 
         Ok(entry.resource_id)
     }
-
-    pub fn id(&self) -> ClientId {
-        self.id
-    }
-
-    pub fn client_tun(&self) -> IpConfig {
-        self.client_tun
-    }
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -793,7 +780,7 @@ fn is_reserved(addr: Ipv4Addr) -> bool {
 ///
 /// A Client's counterpart is always a resource or this Gateway's own TUN device, never
 /// another Client. Admitting a tunnel address here would let the Internet Resource's
-/// catch-all in [`ClientOnGateway::classify_resource`] carry traffic between two Clients
+/// catch-all in [`ResourceTargets::classify_resource`] carry traffic between two Clients
 /// of this Gateway, hair-pinning through the TUN device and side-stepping the device pool
 /// authorization that governs Client-to-Client access.
 fn ensure_not_peer_ip(ip: IpAddr) -> Result<()> {
@@ -824,7 +811,7 @@ mod tests {
 
     #[test]
     fn gateway_filters_expire_individually() {
-        let mut peer = ClientOnGateway::new(client_id(), client_tun(), gateway_tun());
+        let mut peer = ResourceTargets::new(client_id(), client_tun(), gateway_tun());
         let now = Instant::now();
         let then = now + Duration::from_secs(10);
         let after_then = then + Duration::from_secs(10);
@@ -904,7 +891,7 @@ mod tests {
 
     #[test]
     fn re_adding_resource_with_past_expiry_clears_it_on_next_handle_timeout() {
-        let mut peer = ClientOnGateway::new(client_id(), client_tun(), gateway_tun());
+        let mut peer = ResourceTargets::new(client_id(), client_tun(), gateway_tun());
         let now = Instant::now();
 
         peer.add_resource(foo_dns_resource(), Some(now + Duration::from_secs(60)), now);
@@ -924,7 +911,7 @@ mod tests {
 
     #[test]
     fn allows_packets_for_and_from_gateway_tun_ip() {
-        let mut peer = ClientOnGateway::new(client_id(), client_tun(), gateway_tun());
+        let mut peer = ResourceTargets::new(client_id(), client_tun(), gateway_tun());
 
         let request = ip_packet::make::tcp_packet(
             client_tun_ipv4(),
@@ -956,7 +943,7 @@ mod tests {
 
     #[test]
     fn dns_and_cidr_filters_dot_mix() {
-        let mut peer = ClientOnGateway::new(client_id(), client_tun(), gateway_tun());
+        let mut peer = ResourceTargets::new(client_id(), client_tun(), gateway_tun());
         peer.add_resource(foo_dns_resource(), None, Instant::now());
         peer.add_resource(bar_cidr_resource(), None, Instant::now());
         peer.setup_nat(
@@ -1022,7 +1009,7 @@ mod tests {
 
     #[test]
     fn internet_resource_doesnt_allow_all_traffic_for_dns_resources() {
-        let mut peer = ClientOnGateway::new(client_id(), client_tun(), gateway_tun());
+        let mut peer = ResourceTargets::new(client_id(), client_tun(), gateway_tun());
         peer.add_resource(foo_dns_resource(), None, Instant::now());
         peer.add_resource(internet_resource(), None, Instant::now());
         peer.setup_nat(
@@ -1072,7 +1059,7 @@ mod tests {
 
     #[test]
     fn cidr_resource_takes_precedence_over_internet_resource() {
-        let mut peer = ClientOnGateway::new(client_id(), client_tun(), gateway_tun());
+        let mut peer = ResourceTargets::new(client_id(), client_tun(), gateway_tun());
         peer.add_resource(bar_cidr_resource(), None, Instant::now());
         peer.add_resource(internet_resource(), None, Instant::now());
 
@@ -1119,7 +1106,7 @@ mod tests {
 
     #[test]
     fn internet_resource_alone_does_not_reach_private_ranges() {
-        let mut peer = ClientOnGateway::new(client_id(), client_tun(), gateway_tun());
+        let mut peer = ResourceTargets::new(client_id(), client_tun(), gateway_tun());
         peer.add_resource(internet_resource(), None, Instant::now());
 
         let pkt = ip_packet::make::udp_packet(
@@ -1139,7 +1126,7 @@ mod tests {
 
     #[test]
     fn internet_resource_does_not_allow_traffic_to_another_client() {
-        let mut peer = ClientOnGateway::new(client_id(), client_tun(), gateway_tun());
+        let mut peer = ResourceTargets::new(client_id(), client_tun(), gateway_tun());
         peer.add_resource(internet_resource(), None, Instant::now());
 
         let request = ip_packet::make::udp_packet(
@@ -1160,7 +1147,7 @@ mod tests {
     #[test]
     fn internet_resource_does_not_allow_traffic_from_another_client() {
         let now = Instant::now();
-        let mut peer = ClientOnGateway::new(client_id(), client_tun(), gateway_tun());
+        let mut peer = ResourceTargets::new(client_id(), client_tun(), gateway_tun());
         peer.add_resource(internet_resource(), None, now);
 
         let mut hairpinned = ip_packet::make::udp_packet(
@@ -1186,7 +1173,7 @@ mod tests {
     fn dns_resource_packet_is_dropped_after_nat_session_expires() {
         let _guard = logging::test("trace");
 
-        let mut peer = ClientOnGateway::new(client_id(), client_tun(), gateway_tun());
+        let mut peer = ResourceTargets::new(client_id(), client_tun(), gateway_tun());
         peer.add_resource(foo_dns_resource(), None, Instant::now());
         peer.setup_nat(
             foo_name().parse().unwrap(),
@@ -1254,7 +1241,7 @@ mod tests {
 
         let now = Instant::now();
 
-        let mut peer = ClientOnGateway::new(client_id(), client_tun(), gateway_tun());
+        let mut peer = ResourceTargets::new(client_id(), client_tun(), gateway_tun());
         peer.add_resource(foo_dns_resource(), None, Instant::now());
         peer.setup_nat(
             foo_name().parse().unwrap(),
@@ -1343,7 +1330,7 @@ mod tests {
 
         let now = Instant::now();
 
-        let mut peer = ClientOnGateway::new(client_id(), client_tun(), gateway_tun());
+        let mut peer = ResourceTargets::new(client_id(), client_tun(), gateway_tun());
         peer.add_resource(foo_dns_resource(), None, Instant::now());
         peer.add_resource(baz_dns_resource(), None, Instant::now());
         peer.setup_nat(
@@ -1395,7 +1382,7 @@ mod tests {
 
         let now = Instant::now();
 
-        let mut peer = ClientOnGateway::new(client_id(), client_tun(), gateway_tun());
+        let mut peer = ResourceTargets::new(client_id(), client_tun(), gateway_tun());
         peer.add_resource(foo_dns_resource(), None, Instant::now());
         peer.setup_nat(
             foo_name().parse().unwrap(),
@@ -1443,7 +1430,7 @@ mod tests {
 
         let now = Instant::now();
 
-        let mut peer = ClientOnGateway::new(client_id(), client_tun(), gateway_tun());
+        let mut peer = ResourceTargets::new(client_id(), client_tun(), gateway_tun());
 
         peer.add_resource(foo_dns_resource(), None, Instant::now());
         peer.add_resource(foo_dns_resource2(), None, Instant::now());
@@ -1508,7 +1495,7 @@ mod tests {
 
     #[test]
     fn rejects_proxy_ips_outside_reserved_ranges() {
-        let mut peer = ClientOnGateway::new(client_id(), client_tun(), gateway_tun());
+        let mut peer = ResourceTargets::new(client_id(), client_tun(), gateway_tun());
         peer.add_resource(foo_dns_resource(), None, Instant::now());
 
         let bad_ips = [
@@ -1538,7 +1525,7 @@ mod tests {
 
         let now = Instant::now();
 
-        let mut peer = ClientOnGateway::new(client_id(), client_tun(), gateway_tun());
+        let mut peer = ResourceTargets::new(client_id(), client_tun(), gateway_tun());
 
         let icmp_unreachable = ip_packet::make::icmp_dest_unreachable_network(
             &ip_packet::make::udp_packet(proxy_ip4_1(), client_tun_ipv4(), 443, 50000, &[])
@@ -1756,7 +1743,7 @@ mod proptests {
         #[strategy(any::<Vec<u8>>())] payload: Vec<u8>,
     ) {
         // This test could be extended to test multiple src
-        let mut peer = ClientOnGateway::new(
+        let mut peer = ResourceTargets::new(
             client_id,
             IpConfig {
                 v4: client_v4,
@@ -1809,7 +1796,7 @@ mod proptests {
         } else {
             client_v6.into()
         };
-        let mut peer = ClientOnGateway::new(
+        let mut peer = ResourceTargets::new(
             client_id,
             IpConfig {
                 v4: client_v4,
@@ -1868,7 +1855,7 @@ mod proptests {
         };
         let (filters, protocol) = protocol_config;
         // This test could be extended to test multiple src
-        let mut peer = ClientOnGateway::new(
+        let mut peer = ResourceTargets::new(
             client_id,
             IpConfig {
                 v4: client_v4,
@@ -1926,7 +1913,7 @@ mod proptests {
         let ((filters_allowed, protocol_allowed), (filters_removed, protocol_removed)) =
             protocol_config;
         // This test could be extended to test multiple src
-        let mut peer = ClientOnGateway::new(
+        let mut peer = ResourceTargets::new(
             client_id,
             IpConfig {
                 v4: client_v4,
