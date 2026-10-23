@@ -86,7 +86,7 @@ pub(crate) struct EventLoopEnds {
 }
 
 /// The ends of the resolver task's channels that the task holds.
-pub(crate) struct ResolverTaskEnds {
+pub struct ResolverTaskEnds {
     queries_rx: mpsc::Receiver<ResolverQuery>,
     responses_tx: mpsc::Sender<dns::RecursiveResponse>,
     control_rx: mpsc::Receiver<ResolverControl>,
@@ -147,6 +147,28 @@ impl EventLoopEnds {
         let _ = self
             .responses_rx
             .poll_recv_many(cx, responses, RESPONSE_QUEUE_SIZE);
+    }
+}
+
+impl ResolverTaskEnds {
+    /// Takes the next query the event loop sent, if any.
+    pub fn try_recv_query(&mut self) -> Option<ResolverQuery> {
+        self.queries_rx.try_recv().ok()
+    }
+
+    /// Takes the next control message the event loop sent, if any.
+    pub fn try_recv_control(&mut self) -> Option<ResolverControl> {
+        self.control_rx.try_recv().ok()
+    }
+
+    /// Hands `response` to the event loop, or returns it if the channel is full.
+    pub fn respond(
+        &self,
+        response: dns::RecursiveResponse,
+    ) -> Result<(), Box<dns::RecursiveResponse>> {
+        self.responses_tx
+            .try_send(response)
+            .map_err(|e| Box::new(e.into_inner()))
     }
 }
 
