@@ -1954,7 +1954,7 @@ defmodule PortalWeb.Settings.Authentication do
 
   defp verification_errors(changeset) do
     changeset.errors
-    |> Enum.filter(fn {field, _error} -> field in [:issuer] end)
+    |> Enum.filter(fn {field, _error} -> field in [:issuer, :tenant_ids, :workspace_domains] end)
     |> Enum.map_join(" ", fn {_field, {message, _opts}} -> message end)
   end
 

@@ -3438,6 +3438,18 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       assert Repo.get!(Portal.Google.AuthProvider, provider.id).workspace_domains == ["primary.example"]
     end
 
+    test "shows a verification error when another Entra provider already accepts the tenant", ctx do
+      Mocks.OIDC.stub_discovery_document()
+      tenant_id = "12345678-1234-1234-1234-123456789012"
+      entra_provider_fixture(account: ctx.account, name: "Existing Entra", tenant_ids: [tenant_id])
+      {:ok, lv, _} = ctx.conn |> authorize_conn(ctx.actor)
+        |> live(~p"/#{ctx.account}/settings/authentication/entra/new")
+      complete_allowlist_verification(lv, "entra", tenant_id)
+      lv |> form("#auth-provider-form") |> render_submit()
+      assert render(lv) =~ "A tenant is already verified on another Entra authentication provider in this account."
+      assert Repo.aggregate(Portal.Entra.AuthProvider, :count) == 1
+    end
+
     test "keeps legacy Google sign-in unrestricted until domains are saved", ctx do
       provider = google_provider_fixture(account: ctx.account, workspace_domains: nil)
       {:ok, lv, html} = ctx.conn |> authorize_conn(ctx.actor)

@@ -17,6 +17,10 @@ email addresses on stored identities, not verified tenant names.
 <%= Enum.join(tenant.domains, ", ") %>
 Tenant ID: <%= tenant.id %>
 <% end %>
+Each tenant can belong to only one Entra provider in your Firezone account.
+If a listed tenant is already verified on a disabled provider, re-enable that
+provider instead.
+
 WHAT TO DO
 
 1. Open Settings -> Authentication in your Firezone account:

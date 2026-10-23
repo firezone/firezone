@@ -51,6 +51,10 @@ defmodule Portal.Entra.AuthProvider do
     |> update_change(:tenant_ids, &Enum.uniq/1)
     |> validate_length(:tenant_ids, min: 1)
     |> check_constraint(:tenant_ids, name: :tenant_ids_must_not_be_empty)
+    |> exclusion_constraint(:tenant_ids,
+      name: :entra_auth_providers_tenant_ids_excl,
+      message: "A tenant is already verified on another Entra authentication provider in this account."
+    )
     |> validate_number(:portal_session_lifetime_secs,
       greater_than_or_equal_to: @portal_session_lifetime_min,
       less_than_or_equal_to: @portal_session_lifetime_max

@@ -9,6 +9,7 @@
   <li style="margin: 0 0 16px; line-height: 24px"><strong><%= Enum.join(tenant.domains, ", ") %></strong><br><code style="font-size: 12px; background-color: #f3f4f6; padding: 4px 6px; border-radius: 3px; overflow-wrap: anywhere; word-break: break-all"><%= tenant.id %></code></li>
 <% end %>
 </ul>
+<p style="margin: 16px 0 0; line-height: 24px">Each tenant can belong to only one Entra provider in your Firezone account. If a listed tenant is already verified on a disabled provider, re-enable that provider instead.</p>
 <h2 style="margin: 24px 0 16px; font-size: 18px; font-weight: 600; color: #000000">What to do</h2>
 <ol style="margin: 0; padding-left: 20px; line-height: 24px">
   <li style="margin-bottom: 12px">Open <a href="<%= @settings_url %>" style="color: #5e00d6; text-decoration: none">Settings &rarr; Authentication</a> in your Firezone account.</li>
