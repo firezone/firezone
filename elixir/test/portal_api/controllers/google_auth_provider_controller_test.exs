@@ -43,7 +43,7 @@ defmodule PortalAPI.GoogleAuthProviderControllerTest do
       assert by_id[personal.id]["workspace_domains"] == []
       assert by_id[first.id]["workspace_domains"] == ["first.example"]
       assert by_id[second.id]["workspace_domains"] == ["second.example"]
-      assert by_id[personal.id]["is_legacy_unrestricted"] == false
+      refute Enum.any?(data, &Map.has_key?(&1, "is_legacy_unrestricted"))
     end
 
     test "only lists providers from the authorized account", %{
@@ -182,7 +182,7 @@ defmodule PortalAPI.GoogleAuthProviderControllerTest do
       provider = google_provider_fixture(account: account, workspace_domains: nil, is_legacy_unrestricted: true)
       conn = conn |> authorize_conn(actor) |> get("/google_auth_providers/#{provider.id}")
       assert json_response(conn, 200)["data"]["workspace_domains"] == []
-      assert json_response(conn, 200)["data"]["is_legacy_unrestricted"] == true
+      refute Map.has_key?(json_response(conn, 200)["data"], "is_legacy_unrestricted")
     end
 
     test "returns not found for unknown id", %{conn: conn, actor: actor} do

@@ -12230,11 +12230,6 @@
             "example": false,
             "type": "boolean"
           },
-          "is_legacy_unrestricted": {
-            "description": "Whether an existing provider retains support for both personal and Workspace accounts without domain validation. New providers default to false.",
-            "readOnly": true,
-            "type": "boolean"
-          },
           "issuer": {
             "description": "Issuer",
             "example": "https://accounts.google.com",
@@ -12258,7 +12253,7 @@
             "type": "string"
           },
           "workspace_domains": {
-            "description": "Verified Google Workspace domains allowed to sign in. Empty for personal-only providers and existing unrestricted providers. See is_legacy_unrestricted to distinguish them.",
+            "description": "Verified Google Workspace domains allowed to sign in. Empty for personal-only providers and existing unrestricted providers.",
             "items": {
               "type": "string"
             },
@@ -12279,8 +12274,7 @@
           "name",
           "portal_session_lifetime_secs",
           "updated_at",
-          "workspace_domains",
-          "is_legacy_unrestricted"
+          "workspace_domains"
         ],
         "title": "GoogleAuthProvider",
         "type": "object"

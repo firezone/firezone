@@ -1167,7 +1167,7 @@ defmodule PortalAPI.MCPControllerTest do
   end
 
   test "Google MCP tools distinguish multiple providers in one account", %{conn: conn, account: account, actor: actor} do
-    personal = google_provider_fixture(account: account)
+    personal = google_provider_fixture(account: account, is_legacy_unrestricted: true)
     first = google_provider_fixture(account: account, workspace_domains: ["first.example"])
     second = google_provider_fixture(account: account, workspace_domains: ["second.example"])
     for {provider, domains} <- [{personal, []}, {first, ["first.example"]}, {second, ["second.example"]}] do
@@ -1175,6 +1175,7 @@ defmodule PortalAPI.MCPControllerTest do
       assert %{"result" => %{"isError" => false, "structuredContent" => %{"data" => data}}} = result
       assert data["id"] == provider.id
       assert data["workspace_domains"] == domains
+      refute Map.has_key?(data, "is_legacy_unrestricted")
     end
   end
 
