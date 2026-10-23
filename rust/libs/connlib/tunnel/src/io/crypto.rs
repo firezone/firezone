@@ -201,6 +201,8 @@ impl EncryptBatch<'_> {
         pending
             .get_or_insert_with(|| Vec::with_capacity(max_trains))
             .push(rx);
+
+        // A stopped worker drops the sender, so the socket skips the train.
         self.crypto.send(Job::Encrypt(job, tx));
     }
 }
@@ -283,6 +285,8 @@ impl<'a> DecryptBatch<'a> {
         let job = mem::replace(&mut self.job, DecryptJob::new());
 
         let (tx, rx) = oneshot::channel();
+
+        // A stopped worker drops the sender, so `Decrypting::poll_next` skips the job.
         self.crypto.send(Job::Decrypt(job, tx));
         self.decrypting.jobs.push_back(rx);
     }
