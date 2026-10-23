@@ -2,7 +2,7 @@ use std::net::SocketAddr;
 
 use bufferpool::Bytes;
 use ip_packet::{Ecn, IpPacket};
-use prefetch::Prefetch as _;
+use prefetch::{IteratorExt as _, Prefetch as _};
 use snownet::PendingEncapsulate;
 use socket_factory::DatagramOut;
 
@@ -110,7 +110,10 @@ impl UdpGsoTrain {
                 next.prefetch();
             }
 
-            for result in encapsulation.encrypt_into(&packets, &mut datagram[len..]) {
+            for result in encapsulation.encrypt_into(
+                packets.iter().prefetching_with(|packet| *packet),
+                &mut datagram[len..],
+            ) {
                 match result {
                     Ok(datagram_len) => len += datagram_len,
                     Err(e) => {

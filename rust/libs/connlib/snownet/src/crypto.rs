@@ -5,7 +5,6 @@ use std::time::Instant;
 use anyhow::Result;
 use bufferpool::Bytes;
 use ip_packet::IpPacket;
-use prefetch::Prefetch as _;
 
 use crate::node::Transmit;
 
@@ -98,15 +97,11 @@ impl PendingEncapsulate {
     /// fails to encrypt still takes up its datagram's space, so stop at the first error.
     pub fn encrypt_into<'a>(
         self,
-        packets: &'a [IpPacket],
+        packets: impl IntoIterator<Item = &'a IpPacket> + 'a,
         mut dst: &'a mut [u8],
     ) -> impl Iterator<Item = Result<usize, sanstun::Error>> + 'a {
         let channel = self.channel;
-        let messages = packets.iter().enumerate().map(move |(i, packet)| {
-            if let Some(next) = packets.get(i + 1) {
-                next.prefetch();
-            }
-
+        let messages = packets.into_iter().map(move |packet| {
             let (datagram, rest) =
                 std::mem::take(&mut dst).split_at_mut(datagram_len(channel, packet));
             dst = rest;
@@ -123,14 +118,11 @@ impl PendingEncapsulate {
 
             (packet.packet(), message)
         });
-        let lens = packets
-            .iter()
-            .map(move |packet| datagram_len(channel, packet));
+        let channel_data_overhead = channel_data_overhead(channel);
 
         self.pending
             .encrypt(messages)
-            .zip(lens)
-            .map(|(result, len)| result.map(|_| len))
+            .map(move |result| result.map(|message| channel_data_overhead + message.len()))
     }
 
     /// Encrypts `packet`, the only one of the batch, into a standalone [`Transmit`].
@@ -143,7 +135,7 @@ impl PendingEncapsulate {
         let len = self.datagram_len(packet);
         let mut payload = Bytes::fitting(len);
         let result = self
-            .encrypt_into(std::slice::from_ref(packet), payload.expose(len))
+            .encrypt_into(std::iter::once(packet), payload.expose(len))
             .next()
             .unwrap_or(Err(sanstun::Error::EmptyPlaintext));
         result?;
@@ -158,12 +150,16 @@ impl PendingEncapsulate {
 }
 
 fn datagram_len(channel: Option<u16>, packet: &IpPacket) -> usize {
-    let channel_data_overhead = match channel {
+    channel_data_overhead(channel)
+        + packet.packet().len().next_multiple_of(16)
+        + ip_packet::WG_OVERHEAD
+}
+
+fn channel_data_overhead(channel: Option<u16>) -> usize {
+    match channel {
         Some(_) => ip_packet::DATA_CHANNEL_OVERHEAD,
         None => 0,
-    };
-
-    channel_data_overhead + packet.packet().len().next_multiple_of(16) + ip_packet::WG_OVERHEAD
+    }
 }
 
 /// The WireGuard data messages of one received datagram that passed the replay check, with the
