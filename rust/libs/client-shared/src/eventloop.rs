@@ -183,6 +183,7 @@ impl Eventloop {
         let mut tunnel = ClientTunnel::new(
             tcp_socket_factory.clone(),
             udp_socket_factory.clone(),
+            std::collections::BTreeSet::new(),
             DNS_RESOURCE_RECORDS_CACHE.lock().clone(),
             is_internet_resource_active,
             clock.now(),
@@ -487,6 +488,10 @@ impl Eventloop {
                     }))
                     .await
                     .context("Failed to send message to portal")?;
+            }
+            Ok(ClientEvent::ResolveDns(request)) => {
+                // The client protocol never authorizes a peer to reach a resource through us.
+                tracing::debug!(domain = %request.domain(), "Ignoring DNS resolution request: not serving");
             }
             Err(error) => self.handle_tunnel_error(error)?,
         }

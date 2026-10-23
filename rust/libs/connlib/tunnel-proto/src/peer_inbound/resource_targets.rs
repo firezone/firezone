@@ -1,4 +1,4 @@
-use std::collections::{BTreeSet, HashMap, HashSet, VecDeque};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::net::{IpAddr, Ipv4Addr};
 use std::time::Instant;
 
@@ -9,17 +9,17 @@ use fast_random_state::FastRandomState;
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_packet::{IpPacket, Protocol, UnsupportedProtocol};
 
-use crate::client::{IPV4_RESOURCES, IPV6_RESOURCES};
+use crate::device::{IPV4_RESOURCES, IPV6_RESOURCES};
 use crate::expiring_map;
 use crate::expiring_map::{ExpiringMap, NEVER_EXPIRES_TTL};
 use crate::filter_engine::FilterEngine;
-use crate::gateway::nat_table::{NatTable, TranslateIncomingResult};
 use crate::messages::gateway::ResourceDescription;
 use crate::messages::{Filter, IngestToken};
 use crate::peer_inbound::TranslateOutboundResult;
+use crate::peer_inbound::nat_table::{NatTable, TranslateIncomingResult};
 use crate::routing_table::{self, RoutingTable};
 use crate::unroutable_packet::UnroutablePacket;
-use crate::{GatewayEvent, IpConfig, NotAllowedResource, NotClientIp, p2p_control};
+use crate::{IpConfig, NotAllowedResource, NotClientIp, p2p_control};
 
 /// The resources this device serves to one peer.
 ///
@@ -44,7 +44,6 @@ pub(crate) struct ResourceTargets {
     routing_table: RoutingTable<RouteEntry>,
     permanent_translations: HashMap<IpAddr, TranslationState, FastRandomState>,
     nat_table: NatTable,
-    buffered_events: VecDeque<GatewayEvent>,
 }
 
 impl ResourceTargets {
@@ -62,7 +61,6 @@ impl ResourceTargets {
             routing_table: RoutingTable::new(),
             permanent_translations: Default::default(),
             nat_table: Default::default(),
-            buffered_events: Default::default(),
             internet_resource_enabled: None,
         }
     }
@@ -149,10 +147,6 @@ impl ResourceTargets {
 
     pub(crate) fn is_empty(&self) -> bool {
         self.resources.is_empty()
-    }
-
-    pub(crate) fn poll_event(&mut self) -> Option<GatewayEvent> {
-        self.buffered_events.pop_front()
     }
 
     pub(crate) fn handle_timeout(&mut self, now: Instant) {
@@ -804,8 +798,8 @@ mod tests {
     use ip_packet::make::TcpFlags;
 
     use crate::{
-        gateway::nat_table,
         messages::{Filter, PortRange, gateway::ResourceDescriptionCidr},
+        peer_inbound::nat_table,
         unroutable_packet::RoutingError,
     };
 

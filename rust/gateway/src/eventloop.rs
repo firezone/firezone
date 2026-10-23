@@ -24,7 +24,7 @@ use tunnel::messages::gateway::{
 };
 use tunnel::messages::{self, RelaysPresence, SnownetCapabilities};
 use tunnel::{
-    GatewayEvent, GatewayTunnel, IPV4_TUNNEL, IPV6_TUNNEL, IpConfig, ResolveDnsRequest, TunnelError,
+    ClientEvent, GatewayTunnel, IPV4_TUNNEL, IPV6_TUNNEL, IpConfig, ResolveDnsRequest, TunnelError,
 };
 
 use crate::{RELEASE, account_slug};
@@ -124,7 +124,7 @@ impl Eventloop {
 
 enum CombinedEvent {
     SigIntTerm,
-    Tunnel(Result<GatewayEvent, TunnelError>),
+    Tunnel(Result<ClientEvent, TunnelError>),
     Portal(Option<Result<PortalEvent, phoenix_channel::Error>>),
     DomainResolved((Result<Vec<IpAddr>, Arc<anyhow::Error>>, ResolveDnsRequest)),
     Clock(clock::Event),
@@ -267,13 +267,11 @@ impl Eventloop {
         Ok(())
     }
 
-    async fn handle_tunnel_event(
-        &mut self,
-        event: Result<GatewayEvent, TunnelError>,
-    ) -> Result<()> {
+    async fn handle_tunnel_event(&mut self, event: Result<ClientEvent, TunnelError>) -> Result<()> {
         match event {
-            Ok(GatewayEvent::AddedIceCandidates {
+            Ok(ClientEvent::AddedIceCandidates {
                 conn_id: client,
+                kind: _,
                 candidates,
             }) => {
                 self.portal_cmd_tx
@@ -285,8 +283,9 @@ impl Eventloop {
                     )))
                     .await?;
             }
-            Ok(GatewayEvent::RemovedIceCandidates {
+            Ok(ClientEvent::RemovedIceCandidates {
                 conn_id: client,
+                kind: _,
                 candidates,
             }) => {
                 self.portal_cmd_tx
@@ -298,7 +297,7 @@ impl Eventloop {
                     ))
                     .await?;
             }
-            Ok(GatewayEvent::ResolveDns(setup_nat)) => {
+            Ok(ClientEvent::ResolveDns(setup_nat)) => {
                 if self
                     .resolve_tasks
                     .try_push(self.resolve(setup_nat.domain().clone()), setup_nat)
@@ -307,7 +306,7 @@ impl Eventloop {
                     tracing::warn!("Too many dns resolution requests, dropping existing one");
                 };
             }
-            Ok(GatewayEvent::NoRelays { excluded_relay_ids }) => {
+            Ok(ClientEvent::NoRelays { excluded_relay_ids }) => {
                 self.portal_cmd_tx
                     .send(PortalCommand::Send(EgressMessages::NoRelays {
                         excluded_relay_ids,
@@ -315,6 +314,15 @@ impl Eventloop {
                     .await
                     .context("Failed to send message to portal")?;
             }
+            // A gateway only serves; the outbound half of the device has nothing to say.
+            Ok(
+                ClientEvent::RequestAccess { .. }
+                | ClientEvent::DeviceDomainQueried { .. }
+                | ClientEvent::DeviceDomainBrowsed { .. }
+                | ClientEvent::ResourcesChanged { .. }
+                | ClientEvent::DnsRecordsChanged { .. }
+                | ClientEvent::TunInterfaceUpdated(_),
+            ) => {}
             Err(error) => self.handle_tunnel_error(error)?,
         }
 
@@ -499,12 +507,9 @@ impl Eventloop {
                     expires_at,
                 } in authorizations
                 {
-                    if let Err(e) = tunnel
+                    tunnel
                         .state_mut()
-                        .update_access_authorization_expiry(cid, rid, expires_at, now)
-                    {
-                        tracing::debug!(%cid, %rid, "Failed to update access authorization: {e:#}");
-                    }
+                        .update_access_authorization_expiry(cid, rid, expires_at, now);
                 }
 
                 let tun_ip_stack = self
@@ -555,7 +560,9 @@ impl Eventloop {
                 }
             }
             IngressMessages::ResourceUpdated(resource_description) => {
-                tunnel.state_mut().update_resource(resource_description);
+                tunnel
+                    .state_mut()
+                    .update_served_resource(resource_description);
             }
             // OBSOLETE - safe to remove this when https://github.com/firezone/firezone/pull/13714 is deployed to production.
             IngressMessages::AccessAuthorizationExpiryUpdated(_) => {}

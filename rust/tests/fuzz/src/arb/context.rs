@@ -18,7 +18,7 @@ use crate::probe::{FlowId, ProbeId};
 use crate::reference::PrivateKey;
 use crate::transition::{DPort, Identifier, SPort, Seq};
 
-/// The high bit that tells a gateway id from a client id, see [`Context::fresh_gateway_id`].
+/// The high bit that tells a gateway id from a client id, see [`Generator::fresh_gateway_id`].
 const GATEWAY_ID_MARKER: u128 = 1 << 127;
 
 struct Ipv4Cursor {

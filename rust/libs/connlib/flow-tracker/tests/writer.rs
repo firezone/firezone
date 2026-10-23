@@ -164,7 +164,7 @@ fn tracked_packets_spool_open_and_completed_reports() {
 
     let spool = SpoolObserver::new(authz_id);
     let now = Instant::now();
-    let mut tracker = enabled_tracker::<(ClientId, ResourceId)>(now);
+    let mut tracker = enabled_tracker::<(DeviceId, Option<ResourceId>)>(now);
 
     let client = ClientId::from_u128(1);
     let resource = ResourceId::from_u128(2);

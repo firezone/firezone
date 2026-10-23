@@ -1,16 +1,14 @@
 //! Sans-IO core of connlib's tunnel implementation.
 //!
-//! This crate contains the pure, side-effect-free state machines for the Client
-//! ([`ClientState`]) and the Gateway ([`GatewayState`]) as well as all supporting logic.
+//! This crate contains the pure, side-effect-free state machine of a device
+//! ([`DeviceState`]) as well as all supporting logic.
 //! The IO / runtime shell lives in the `tunnel` crate which depends on and re-exports this crate.
 
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 #![cfg_attr(test, allow(clippy::print_stdout))]
 #![cfg_attr(test, allow(clippy::print_stderr))]
 
-use connlib_model::{
-    ClientId, DeviceId, GatewayId, IceCandidate, RelayId, ResourceId, ResourceView,
-};
+use connlib_model::{DeviceId, GatewayId, IceCandidate, RelayId, ResourceId, ResourceView};
 use dns_types::DomainName;
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use logging::DisplayBTreeSet;
@@ -21,12 +19,11 @@ use std::{
 
 mod authorization_rejections;
 mod cache;
-mod client;
 mod conn_track;
+mod device;
 pub mod dns;
 mod expiring_map;
 mod filter_engine;
-mod gateway;
 #[cfg(any(test, feature = "malicious-behaviour"))]
 mod malicious_behaviour;
 pub mod messages;
@@ -53,10 +50,18 @@ pub const IPV6_TUNNEL: Ipv6Network =
         Err(_) => unreachable!(),
     };
 
-pub use client::dns_config::DnsMapping;
-pub use client::{ClientState, DNS_SENTINELS_V4, DNS_SENTINELS_V6, IPV4_RESOURCES, IPV6_RESOURCES};
+pub use device::dns_config::DnsMapping;
+pub use device::{
+    DNS_SENTINELS_V4, DNS_SENTINELS_V6, DeviceState, DnsResourceNatEntry, IPV4_RESOURCES,
+    IPV6_RESOURCES, ResolveDnsRequest,
+};
 pub use dns::DnsResourceRecord;
-pub use gateway::{DnsResourceNatEntry, GatewayState, ResolveDnsRequest};
+
+/// The state of a device, under the name the platform bindings use.
+pub type ClientState = DeviceState;
+
+/// The port of the DNS server a serving device runs on its tunnel addresses.
+pub const TUN_DNS_PORT: u16 = 53535;
 #[cfg(feature = "malicious-behaviour")]
 pub use malicious_behaviour::{Guard as MaliciousBehaviourGuard, MaliciousBehaviour};
 pub use unroutable_packet::UnroutablePacket;
@@ -117,6 +122,8 @@ pub enum ClientEvent {
     NoRelays {
         excluded_relay_ids: Vec<RelayId>,
     },
+    /// A peer reaches a DNS resource we serve; resolve its domain for the NAT.
+    ResolveDns(ResolveDnsRequest),
 }
 
 #[derive(Clone, derive_more::Debug, PartialEq, Eq, Hash)]
@@ -148,23 +155,6 @@ impl IpConfig {
             IpAddr::V6(v6) => v6 == self.v6,
         }
     }
-}
-
-#[derive(Debug)]
-pub enum GatewayEvent {
-    AddedIceCandidates {
-        conn_id: ClientId,
-        candidates: BTreeSet<IceCandidate>,
-    },
-    RemovedIceCandidates {
-        conn_id: ClientId,
-        candidates: BTreeSet<IceCandidate>,
-    },
-    ResolveDns(ResolveDnsRequest),
-    /// We ran out of relays and need a new set from the portal, without the excluded ones.
-    NoRelays {
-        excluded_relay_ids: Vec<RelayId>,
-    },
 }
 
 #[derive(Debug, thiserror::Error)]

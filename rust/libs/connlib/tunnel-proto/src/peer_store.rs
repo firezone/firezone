@@ -5,7 +5,7 @@ use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
 use fast_random_state::FastRandomState;
 
-use crate::client::GatewayOnClient;
+use crate::device::GatewayOnClient;
 use crate::peer_inbound::PeerInbound;
 
 pub(crate) struct PeerStore<TId, P> {
@@ -85,15 +85,6 @@ where
 
         let id = self.id_by_ip.get(&ip)?;
         let peer = self.peer_by_id.get(id)?;
-
-        Some((*id, peer))
-    }
-
-    pub(crate) fn peer_by_ip_mut(&mut self, ip: impl Into<IpAddr>) -> Option<(TId, &mut P)> {
-        let ip = ip.into();
-
-        let id = self.id_by_ip.get(&ip)?;
-        let peer = self.peer_by_id.get_mut(id)?;
 
         Some((*id, peer))
     }

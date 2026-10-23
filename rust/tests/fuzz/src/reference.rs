@@ -64,7 +64,7 @@ pub struct ReferenceState {
 
 /// Implementation of our reference state machine.
 ///
-/// The logic in here represents what we expect the [`ClientState`](tunnel_proto::ClientState) & [`GatewayState`](tunnel_proto::GatewayState) to do.
+/// The logic in here represents what we expect the [`DeviceState`](tunnel_proto::DeviceState) to do.
 /// Care has to be taken that we don't implement things in a buggy way here.
 /// After all, if your test has bugs, it won't catch any in the actual implementation.
 impl ReferenceState {

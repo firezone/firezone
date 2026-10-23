@@ -421,7 +421,7 @@ fn assert_submitted_request(expected: &ExpectedProbe, submitted_request: &Submit
     }
 
     if submitted_request.at != expected.sent_at {
-        tracing::error!(target: "assertions", id = ?expected.id, "Probe request was submitted at the wrong time");
+        tracing::error!(target: "assertions", id = ?expected.id, expected_at = ?expected.sent_at, actual_at = ?submitted_request.at, "Probe request was submitted at the wrong time");
     }
 
     if submitted_request.packet.source() != expected.request.source() {

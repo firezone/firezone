@@ -1,5 +1,6 @@
 //! What this device admits from one peer.
 
+pub(crate) mod nat_table;
 mod resource_targets;
 mod self_targets;
 
@@ -15,7 +16,7 @@ use ip_packet::IpPacket;
 use crate::conn_track::Originator;
 use crate::messages::gateway::ResourceDescription;
 use crate::messages::{Filter, IngestToken};
-use crate::{GatewayEvent, IpConfig, p2p_control};
+use crate::{IpConfig, p2p_control};
 
 pub(crate) use resource_targets::ResourceTargets;
 pub(crate) use self_targets::SelfTargets;
@@ -39,6 +40,8 @@ pub(crate) struct PeerInbound {
 
     self_targets: SelfTargets,
     resources: ResourceTargets,
+    /// Whether the peer was ever served a resource, so its connection is ours to close.
+    was_served: bool,
 }
 
 /// The decision for a packet the peer sent through the tunnel.
@@ -71,6 +74,7 @@ impl PeerInbound {
             remote_slug,
             self_targets: SelfTargets::new(id, local_tun, peer_tun),
             resources: ResourceTargets::new(id, peer_tun, local_tun),
+            was_served: false,
         }
     }
 
@@ -109,8 +113,14 @@ impl PeerInbound {
         self.resources.handle_timeout(now);
     }
 
-    pub(crate) fn poll_event(&mut self) -> Option<GatewayEvent> {
-        self.resources.poll_event()
+    /// Whether the peer is currently served a resource.
+    pub(crate) fn serves(&self) -> bool {
+        !self.resources.is_empty()
+    }
+
+    /// Whether the peer was served a resource at some point.
+    pub(crate) fn was_served(&self) -> bool {
+        self.was_served
     }
 
     ////////////////////////////////////////
@@ -166,6 +176,7 @@ impl PeerInbound {
         now: Instant,
     ) {
         self.resources.add_resource(resource, expires_at, now);
+        self.was_served = true;
     }
 
     /// Records the portal's per-flow ingest token for a served resource.

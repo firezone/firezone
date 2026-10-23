@@ -403,6 +403,11 @@ impl Io {
         self.nameservers.fastest()
     }
 
+    /// Whether `local` is one of the DNS servers bound on our tunnel addresses.
+    pub fn is_tun_dns_server(&self, local: SocketAddr) -> bool {
+        self.udp_dns_server.contains_key(&local) || self.tcp_dns_server.contains_key(&local)
+    }
+
     /// Polls all IO sources that are ready.
     ///
     /// The TUN device is only read while nothing waits for room in the UDP sockets, and decrypted

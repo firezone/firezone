@@ -275,6 +275,8 @@ async fn try_main(cli: Cli, product: &'static str) -> Result<()> {
         Arc::new(tcp_socket_factory),
         Arc::new(UdpSocketFactory::default()),
         nameservers,
+        std::collections::BTreeSet::new(),
+        false,
         clock.now(),
     );
 

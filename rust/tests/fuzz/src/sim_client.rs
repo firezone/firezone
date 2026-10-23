@@ -470,6 +470,9 @@ impl SimClient {
 
         if self.tcp_dns_client.accepts(&packet) {
             self.tcp_dns_client.handle_inbound(packet);
+            // Read the segment now, as an application would: the response must not
+            // wait in the socket until the next tick, which may be past the query's timeout.
+            self.tcp_dns_client.handle_timeout(now);
             return None;
         }
 
