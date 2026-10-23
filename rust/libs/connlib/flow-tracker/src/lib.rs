@@ -193,7 +193,10 @@ where
             );
         }
 
-        CurrentFlowGuard { tracker: self, now }
+        CurrentFlowGuard {
+            tracker: Some(self),
+            now,
+        }
     }
 
     /// Begins gathering flow data for one packet received on the network interface.
@@ -214,7 +217,10 @@ where
             );
         }
 
-        CurrentFlowGuard { tracker: self, now }
+        CurrentFlowGuard {
+            tracker: Some(self),
+            now,
+        }
     }
 
     /// Inserts the flow data of a batch of packets.
@@ -761,7 +767,8 @@ impl Clock {
 /// gathered at a time.
 #[must_use]
 pub struct CurrentFlowGuard<'a, S: Scope> {
-    tracker: &'a mut Tracker<S>,
+    /// Taken by [`CurrentFlowGuard::into_batch`], which hands it back to the caller.
+    tracker: Option<&'a mut Tracker<S>>,
     now: Instant,
 }
 
@@ -770,17 +777,41 @@ impl<'a, S: Scope> CurrentFlowGuard<'a, S> {
     ///
     /// Further packets of the same flow are counted with [`FlowBatch::add`]; the batch is
     /// inserted with [`Tracker::insert_batch`].
-    pub fn into_batch(self) -> FlowBatch {
-        FlowBatch {
+    pub fn into_batch(mut self) -> (FlowBatch, &'a mut Tracker<S>) {
+        let batch = FlowBatch {
             data: CURRENT_FLOW.with_borrow_mut(|data| mem::replace(data, FlowData::EMPTY)),
             now: self.now,
-        }
+        };
+        let tracker = self.tracker.take().expect("the tracker is only taken here");
+
+        (batch, tracker)
+    }
+
+    /// Drops the gathered flow data, so the packet is not recorded.
+    pub fn discard(&mut self) {
+        let Some(tracker) = self.tracker.as_deref_mut() else {
+            return;
+        };
+
+        CURRENT_FLOW.with_borrow_mut(|data| {
+            tracker.mru_ingest_token = data
+                .ingest_token
+                .take()
+                .or_else(|| data.mru_ingest_token.take());
+
+            data.clear();
+        });
     }
 }
 
 impl<S: Scope> Drop for CurrentFlowGuard<'_, S> {
     fn drop(&mut self) {
-        CURRENT_FLOW.with_borrow_mut(|data| self.tracker.finish_packet(data, self.now));
+        let now = self.now;
+        let Some(tracker) = self.tracker.as_deref_mut() else {
+            return;
+        };
+
+        CURRENT_FLOW.with_borrow_mut(|data| tracker.finish_packet(data, now));
     }
 }
 

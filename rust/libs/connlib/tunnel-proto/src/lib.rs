@@ -13,7 +13,6 @@ use connlib_model::{
 };
 use dns_types::DomainName;
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
-use ip_packet::{IpPacket, Protocol, TcpFlags};
 use logging::DisplayBTreeSet;
 use std::{
     collections::BTreeSet,
@@ -27,6 +26,7 @@ mod conn_track;
 pub mod dns;
 mod expiring_map;
 mod filter_engine;
+mod flow;
 mod gateway;
 #[cfg(any(test, feature = "malicious-behaviour"))]
 mod malicious_behaviour;
@@ -54,9 +54,15 @@ pub const IPV6_TUNNEL: Ipv6Network =
     };
 
 pub use client::dns_config::DnsMapping;
-pub use client::{ClientState, DNS_SENTINELS_V4, DNS_SENTINELS_V6, IPV4_RESOURCES, IPV6_RESOURCES};
+pub use client::{
+    ClientState, DNS_SENTINELS_V4, DNS_SENTINELS_V6, IPV4_RESOURCES, IPV6_RESOURCES,
+    PeerBatch as ClientPeerBatch,
+};
 pub use dns::DnsResourceRecord;
-pub use gateway::{DnsResourceNatEntry, GatewayState, PeerBatch, ResolveDnsRequest, TunBatch};
+pub use flow::TunBatch;
+pub use gateway::{
+    DnsResourceNatEntry, GatewayState, PeerBatch as GatewayPeerBatch, ResolveDnsRequest,
+};
 #[cfg(feature = "malicious-behaviour")]
 pub use malicious_behaviour::{Guard as MaliciousBehaviourGuard, MaliciousBehaviour};
 pub use unroutable_packet::UnroutablePacket;
@@ -168,37 +174,6 @@ pub fn is_peer(dst: IpAddr) -> bool {
     match dst {
         IpAddr::V4(v4) => IPV4_TUNNEL.contains(v4),
         IpAddr::V6(v6) => IPV6_TUNNEL.contains(v6),
-    }
-}
-
-/// The 5-tuple of a packet whose routing decision later packets of the same flow can reuse.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct Flow {
-    src: IpAddr,
-    dst: IpAddr,
-    src_proto: Protocol,
-    dst_proto: Protocol,
-}
-
-impl Flow {
-    /// Returns the flow of `packet`, unless it changes the state of its flow.
-    ///
-    /// ICMP errors belong to the flow of the packet that failed and a TCP SYN, FIN or RST changes
-    /// connection-tracking and NAT state, so they take the slow path.
-    fn of(packet: &IpPacket) -> Option<Self> {
-        if packet
-            .tcp_flags()
-            .is_some_and(|flags| flags.intersects(TcpFlags::SYN | TcpFlags::FIN | TcpFlags::RST))
-        {
-            return None;
-        }
-
-        Some(Self {
-            src: packet.source(),
-            dst: packet.destination(),
-            src_proto: packet.source_protocol().ok()?,
-            dst_proto: packet.destination_protocol().ok()?,
-        })
     }
 }
 

@@ -428,7 +428,7 @@ fn batch_counts_its_packets_towards_one_flow() {
         flow_tracker::record_decrypted_packet(&tcp_packet(ack(), &[0; 100]));
         flow_tracker::record_peer(ClientId::from_u128(1), Role::Responder);
         flow_tracker::record_ingest_token(Some(&test_token(authz_id, "responder")));
-        let mut batch = flow.into_batch();
+        let (mut batch, tracker) = flow.into_batch();
         batch.add(&tcp_packet(ack(), &[0; 200]));
         batch.add(&tcp_packet(ack(), &[0; 50]));
         tracker.insert_batch(batch);

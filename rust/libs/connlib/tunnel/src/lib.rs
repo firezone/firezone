@@ -16,6 +16,7 @@ use connlib_model::PublicKey;
 use eventloop_budget::Budget;
 use futures::{FutureExt, future::BoxFuture};
 use io::Io;
+use ip_packet::IpPacket;
 use packet_counts::{TunPacketCounts, UdpPacketCounts};
 use prefetch::IteratorExt as _;
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
@@ -290,15 +291,14 @@ impl ClientTunnel {
                 if let Some(packets) = device.as_mut().map(|packets| packets.drain()) {
                     let mut batch = self.io.start_encrypt_batch(packets.len());
 
-                    for mut packet in packets.prefetching().inspect(|p| tun_received.record(p)) {
-                        match self.role_state.handle_tun_input(&mut packet, now) {
-                            Ok(Some(encapsulation)) => batch.encrypt(encapsulation, vec![packet]),
-                            Ok(None) => {}
-                            Err(e) => {
-                                error.push(e.context("Failed to handle packet from TUN device"))
-                            }
-                        }
-                    }
+                    encrypt_tun_batches(
+                        &mut self.role_state,
+                        packets.prefetching().inspect(|p| tun_received.record(p)),
+                        now,
+                        ClientState::begin_tun_batch,
+                        |encapsulation, packets| batch.encrypt(encapsulation, packets),
+                        |e| error.push(e.context("Failed to handle packet from TUN device")),
+                    );
 
                     // Packets encrypted inline would go out after this batch, despite their lower counters.
                     #[cfg(debug_assertions)]
@@ -377,10 +377,7 @@ impl ClientTunnel {
                             packets,
                         } = received;
 
-                        for packet in packets.prefetching() {
-                            let result =
-                                self.role_state.handle_peer_input(local, from, packet, now);
-
+                        for result in self.role_state.handle_peer_batch(packets, local, from, now) {
                             match result {
                                 Ok(Some(packet)) => {
                                     let packet = packet.with_ecn_from_transport(ecn);
@@ -539,62 +536,31 @@ impl GatewayTunnel {
 
                 if let Some(packets) = device.as_mut().map(|packets| packets.drain()) {
                     let mut batch = self.io.start_encrypt_batch(packets.len());
-                    let mut packets = packets
-                        .prefetching()
-                        .inspect(|p| tun_received.record(p))
-                        .peekable();
-                    let mut on_error = |e: anyhow::Error| {
-                        let routing_error = e
-                            .any_downcast_ref::<UnroutablePacket>()
-                            .map(|e| e.reason())
-                            .unwrap_or(RoutingError::Other);
 
-                        // TODO: Include more attributes here like IPv4/IPv6?
-                        self.dropped_packets.add(
-                            1,
-                            &[
-                                otel::attr::error_type(routing_error),
-                                otel::attr::network_io_direction_receive(),
-                            ],
-                        );
+                    encrypt_tun_batches(
+                        &mut self.role_state,
+                        packets.prefetching().inspect(|p| tun_received.record(p)),
+                        now,
+                        GatewayState::begin_tun_batch,
+                        |encapsulation, packets| batch.encrypt(encapsulation, packets),
+                        |e| {
+                            let routing_error = e
+                                .any_downcast_ref::<UnroutablePacket>()
+                                .map(|e| e.reason())
+                                .unwrap_or(RoutingError::Other);
 
-                        error.push(e.context("Failed to handle packet from TUN device"));
-                    };
+                            // TODO: Include more attributes here like IPv4/IPv6?
+                            self.dropped_packets.add(
+                                1,
+                                &[
+                                    otel::attr::error_type(routing_error),
+                                    otel::attr::network_io_direction_receive(),
+                                ],
+                            );
 
-                    while let Some(mut first) = packets.next() {
-                        let mut tun_batch = match self.role_state.begin_tun_batch(&mut first, now) {
-                            Ok(Some(tun_batch)) => tun_batch,
-                            Ok(None) => continue,
-                            Err(e) => {
-                                on_error(e);
-                                continue;
-                            }
-                        };
-
-                        // A batch is encrypted into one GSO train, so it ends where the train would.
-                        let (src, dst) = (tun_batch.src(), tun_batch.dst());
-                        let mut train = io::UdpGsoTrain::new(
-                            src,
-                            dst,
-                            first.ecn(),
-                            tun_batch.datagram_len(&first),
-                        );
-                        let mut group =
-                            Vec::with_capacity(train.max_segments().min(packets.size_hint().0 + 1));
-                        group.push(first);
-
-                        while let Some(next) = packets.peek_mut()
-                            && train.try_append(src, dst, next.ecn(), tun_batch.datagram_len(next))
-                            && tun_batch.try_push(next)
-                        {
-                            group.extend(packets.next());
-                        }
-
-                        match tun_batch.finish() {
-                            Ok(encapsulation) => batch.encrypt(encapsulation, group),
-                            Err(e) => on_error(e),
-                        }
-                    }
+                            error.push(e.context("Failed to handle packet from TUN device"));
+                        },
+                    );
 
                     // Packets encrypted inline would go out after this batch, despite their lower counters.
                     #[cfg(debug_assertions)]
@@ -758,6 +724,53 @@ impl GatewayTunnel {
         }
 
         Poll::Pending
+    }
+}
+
+/// Routes `packets` read from the TUN device in per-flow batches, handing each finished batch
+/// with its packets to `encrypt`.
+///
+/// A batch is encrypted into one GSO train, so it ends where the train would.
+fn encrypt_tun_batches<TState, S: flow_tracker::Scope>(
+    state: &mut TState,
+    packets: impl Iterator<Item = IpPacket>,
+    now: Instant,
+    mut begin: impl for<'a> FnMut(
+        &'a mut TState,
+        &mut IpPacket,
+        Instant,
+    ) -> Result<Option<TunBatch<'a, S>>>,
+    mut encrypt: impl FnMut(snownet::PendingEncapsulate, Vec<IpPacket>),
+    mut on_error: impl FnMut(anyhow::Error),
+) {
+    let mut packets = packets.peekable();
+
+    while let Some(mut first) = packets.next() {
+        let mut batch = match begin(state, &mut first, now) {
+            Ok(Some(batch)) => batch,
+            Ok(None) => continue,
+            Err(e) => {
+                on_error(e);
+                continue;
+            }
+        };
+
+        let (src, dst) = (batch.src(), batch.dst());
+        let mut train = io::UdpGsoTrain::new(src, dst, first.ecn(), batch.datagram_len(&first));
+        let mut group = Vec::with_capacity(train.max_segments().min(packets.size_hint().0 + 1));
+        group.push(first);
+
+        while let Some(next) = packets.peek_mut()
+            && train.try_append(src, dst, next.ecn(), batch.datagram_len(next))
+            && batch.try_push(next)
+        {
+            group.extend(packets.next());
+        }
+
+        match batch.finish() {
+            Ok(encapsulation) => encrypt(encapsulation, group),
+            Err(e) => on_error(e),
+        }
     }
 }
 

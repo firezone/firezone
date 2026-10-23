@@ -941,8 +941,10 @@ impl Tunnel {
         {
             let decapsulation = batch.finish();
 
-            for packet in decapsulation.decrypt([payload]) {
-                let _ = self.client.handle_peer_input(to, from, packet, self.now);
+            for _ in
+                self.client
+                    .handle_peer_batch(decapsulation.decrypt([payload]), to, from, self.now)
+            {
             }
         }
         if to == *GATEWAY_SOCKET

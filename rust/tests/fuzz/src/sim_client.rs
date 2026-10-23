@@ -351,9 +351,13 @@ impl SimClient {
                     return Ok(None);
                 };
 
-                decapsulation
-                    .decrypt([&*transmit.payload])
-                    .map(|packet| self.sut.handle_peer_input(local, from, packet, now))
+                self.sut
+                    .handle_peer_batch(
+                        decapsulation.decrypt([&*transmit.payload]),
+                        local,
+                        from,
+                        now,
+                    )
                     .next()
                     .unwrap_or(Ok(None))
             })

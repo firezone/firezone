@@ -4,6 +4,7 @@ mod nat_table;
 pub(crate) use crate::gateway::client_on_gateway::ClientOnGateway;
 
 use crate::authorization_rejections::AuthorizationRejections;
+use crate::flow::{Flow, TunBatch};
 use crate::gateway::client_on_gateway::{InboundRewrite, OutboundRewrite, TranslateOutboundResult};
 use crate::messages::gateway::{Client, ResourceDescription};
 use crate::messages::{IceCredentials, IngestToken, ResolveRequest};
@@ -11,7 +12,7 @@ use crate::peer_store::PeerStore;
 use crate::portal_connection::PortalConnection;
 use crate::unix_ts::UnixTsClock;
 use crate::unroutable_packet::UnroutablePacket;
-use crate::{FailedToDecapsulate, Flow, GatewayEvent, IpConfig, p2p_control, packet_kind};
+use crate::{FailedToDecapsulate, GatewayEvent, IpConfig, p2p_control, packet_kind};
 use anyhow::{Context, ErrorExt, Result};
 use connlib_model::{ClientId, IceCandidate, RelayId, ResourceId};
 use dns_types::DomainName;
@@ -149,7 +150,7 @@ impl GatewayState {
         &mut self,
         packet: &mut IpPacket,
         now: Instant,
-    ) -> Result<Option<TunBatch<'_>>> {
+    ) -> Result<Option<TunBatch<'_, (ClientId, ResourceId)>>> {
         let guard = self.flow_tracker.begin_tun_packet(packet, now);
 
         if packet.is_fz_p2p_control() {
@@ -181,14 +182,7 @@ impl GatewayState {
 
         flow_tracker::record_transmit(tunnel.src(), tunnel.dst());
 
-        Ok(Some(TunBatch {
-            flow,
-            nat,
-            tunnel,
-            flows: guard.into_batch(),
-            flow_tracker: &mut self.flow_tracker,
-            len: NonZeroUsize::MIN,
-        }))
+        Ok(Some(TunBatch::new(flow, nat, tunnel, guard)))
     }
 
     /// Handles UDP packets received on the network interface.
@@ -331,7 +325,7 @@ impl GatewayState {
                         cid,
                         flow,
                         rewrite,
-                        flows: guard.into_batch(),
+                        flows: guard.into_batch().0,
                     });
                 }
 
@@ -818,70 +812,6 @@ impl Iterator for PeerBatch<'_> {
 impl Drop for PeerBatch<'_> {
     fn drop(&mut self) {
         self.state.insert_inbound_flows();
-    }
-}
-
-/// A batch of packets received on the TUN device that share one flow and thus one routing decision.
-///
-/// Holds the state borrowed until [`TunBatch::finish`] reserves the batch's WireGuard counters,
-/// so no other packet or event can change the decision in between.
-#[must_use = "no counters are reserved until the batch is finished"]
-pub struct TunBatch<'a> {
-    /// The flow further packets must belong to; `None` admits no further packets.
-    flow: Option<Flow>,
-    /// The source rewrite of the first packet, applied to every further one.
-    nat: Option<(Protocol, IpAddr)>,
-    tunnel: snownet::EncapsulateBatch<'a>,
-    flows: flow_tracker::FlowBatch,
-    flow_tracker: &'a mut flow_tracker::Tracker<(ClientId, ResourceId)>,
-    len: NonZeroUsize,
-}
-
-impl TunBatch<'_> {
-    pub fn src(&self) -> Option<SocketAddr> {
-        self.tunnel.src()
-    }
-
-    pub fn dst(&self) -> SocketAddr {
-        self.tunnel.dst()
-    }
-
-    /// Returns the length of the datagram `packet` encrypts to.
-    pub fn datagram_len(&self, packet: &IpPacket) -> usize {
-        self.tunnel.datagram_len(packet)
-    }
-
-    /// Adds `packet` to the batch if it belongs to the batch's flow, translating it like the first one.
-    ///
-    /// Returns `false` and leaves `packet` untouched otherwise; finish the batch and begin a new
-    /// one with the packet then.
-    pub fn try_push(&mut self, packet: &mut IpPacket) -> bool {
-        if self.flow.is_none() || Flow::of(packet) != self.flow {
-            return false;
-        }
-
-        if let Some((proto, ip)) = self.nat
-            && packet.translate_source(proto, ip).is_err()
-        {
-            return false;
-        }
-
-        self.flows.add(packet);
-        self.len = self.len.saturating_add(1);
-
-        true
-    }
-
-    /// Reserves the batch's counters and records its flow.
-    pub fn finish(self) -> Result<snownet::PendingEncapsulate> {
-        let encapsulation = self
-            .tunnel
-            .finish(self.len)
-            .context("Failed to encapsulate")?;
-
-        self.flow_tracker.insert_batch(self.flows);
-
-        Ok(encapsulation)
     }
 }
 

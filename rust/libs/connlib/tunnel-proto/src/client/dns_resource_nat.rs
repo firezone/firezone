@@ -170,7 +170,8 @@ impl DnsResourceNat {
 
     /// Handles an outgoing packet for a DNS resource.
     ///
-    /// Continues if the packet should be sent now. If the DNS resource NAT is still being created, a
+    /// Continues if the packet should be sent now, with whether the DNS resource NAT is confirmed
+    /// and further packets of the flow may skip this check. If the NAT is still being created, a
     /// copy of the packet gets buffered instead.
     pub fn handle_outgoing(
         &mut self,
@@ -179,11 +180,11 @@ impl DnsResourceNat {
         rid: ResourceId,
         packet: &IpPacket,
         now: Instant,
-    ) -> ControlFlow<()> {
+    ) -> ControlFlow<(), bool> {
         let Some((_, state, assigned_ips)) = self.inner.get_mut(&(gid, domain.id(), rid)) else {
             tracing::debug!(%gid, %domain, %rid, "No DNS resource NAT entry");
 
-            return ControlFlow::Continue(()); // Pass-through packet.
+            return ControlFlow::Continue(false); // Pass-through packet.
         };
 
         match state {
@@ -221,12 +222,13 @@ impl DnsResourceNat {
                     ));
                 }
 
-                ControlFlow::Continue(())
+                ControlFlow::Continue(false)
             }
-            State::Recreating { .. } | State::Confirmed | State::Failed => {
+            State::Confirmed => ControlFlow::Continue(true),
+            State::Recreating { .. } | State::Failed => {
                 // Some of these might be black-holed on the Gateway (i.e. in `Failed`).
                 // But there isn't much we can do ...
-                ControlFlow::Continue(())
+                ControlFlow::Continue(false)
             }
         }
     }
