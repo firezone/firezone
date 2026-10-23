@@ -545,6 +545,30 @@ defmodule PortalWeb.ServiceAccountsTest do
       assert html =~ "tab-token-copy-code"
     end
 
+    test "create_token tells the headless Client where this deployment is", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      Portal.Config.put_env_override(:api_url_override, nil)
+      Portal.Config.put_env_override(:api_external_url, "https://eu.api.firezone.dev/")
+      service_account = service_account_fixture(account: account)
+      expiration = Date.utc_today() |> Date.add(30) |> Date.to_iso8601()
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/service_accounts/#{service_account}")
+
+      render_click(lv, "open_add_token_form")
+
+      render_submit(element(lv, "form[phx-submit='create_token']"), %{
+        "token_expiration" => expiration
+      })
+
+      assert has_element?(lv, "#tab-token-api-url", "FIREZONE_API_URL=wss://eu.api.firezone.dev/")
+    end
+
     test "dismiss_created_token hides token value", %{
       conn: conn,
       account: account,

@@ -759,6 +759,28 @@ defmodule PortalWeb.GettingStartedTest do
       assert has_element?(view, "#getting-started-client-linux", "ARM64")
       refute has_element?(view, "#getting-started-client-macos")
     end
+
+    test "tells the Client where this deployment is", %{conn: conn, account: account, actor: actor} do
+      Portal.Config.put_env_override(:web_external_url, "https://eu.app.firezone.dev/")
+      Portal.Config.put_env_override(:api_url_override, nil)
+      Portal.Config.put_env_override(:api_external_url, "https://eu.api.firezone.dev/")
+
+      view = open_with_user_agent(conn, account, actor, "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0)")
+
+      assert has_element?(view, "#getting-started-client-urls", "https://eu.app.firezone.dev/")
+      assert has_element?(view, "#getting-started-client-urls", "wss://eu.api.firezone.dev/")
+    end
+
+    test "skips the settings step for the default URLs", %{conn: conn, account: account, actor: actor} do
+      Portal.Config.put_env_override(:web_external_url, "https://app.firezone.dev/")
+      Portal.Config.put_env_override(:api_url_override, nil)
+      Portal.Config.put_env_override(:api_external_url, "https://api.firezone.dev/")
+
+      view = open_with_user_agent(conn, account, actor, "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0)")
+
+      assert has_element?(view, "#getting-started-client-macos")
+      refute has_element?(view, "#getting-started-client-urls")
+    end
   end
 
   describe "modal footer" do

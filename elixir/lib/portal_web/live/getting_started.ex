@@ -583,7 +583,7 @@ defmodule PortalWeb.GettingStarted do
         <Core.code_block
           id="getting-started-gateway-debian-install"
           class="text-xs rounded"
-        >{SiteComponents.gateway_debian_install_commands() |> String.trim()}</Core.code_block>
+        >{SiteComponents.gateway_debian_install_commands(@gateway_env) |> String.trim()}</Core.code_block>
         <p class="pt-1 text-xs text-body">2. Connect it, and paste this token when asked:</p>
         <Core.code_block
           id="getting-started-gateway-debian-connect"
@@ -643,7 +643,13 @@ defmodule PortalWeb.GettingStarted do
   # Installing a Client is a download, an installer and a sign in, so the steps for
   # the chosen platform are shown right here rather than linked to.
   defp client_install(assigns) do
-    assigns = assign(assigns, tabs: @client_tabs, client: client(assigns.client_tab))
+    assigns =
+      assign(assigns,
+        tabs: @client_tabs,
+        client: client(assigns.client_tab),
+        auth_url: PortalWeb.DeploymentURLs.auth_url(),
+        api_url: PortalWeb.DeploymentURLs.api_url()
+      )
 
     ~H"""
     <div class="mb-4">
@@ -661,6 +667,16 @@ defmodule PortalWeb.GettingStarted do
           </span>
         </li>
         <li>{@client.install}</li>
+        <li :if={@auth_url || @api_url} id="getting-started-client-urls">
+          In the Advanced settings, set
+          <span :if={@auth_url}>
+            Auth Base URL to <code class="font-mono text-heading">{@auth_url}</code>
+          </span>
+          <span :if={@auth_url && @api_url}>and</span>
+          <span :if={@api_url}>
+            API URL to <code class="font-mono text-heading">{@api_url}</code>
+          </span>
+        </li>
         <li>
           {@client.open} and sign in to <span class="font-medium text-heading">{@account.slug}</span>.
         </li>
