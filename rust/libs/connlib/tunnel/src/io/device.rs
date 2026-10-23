@@ -119,9 +119,9 @@ mod tests {
     #[tokio::test]
     async fn flush_fails_when_channel_closed() {
         let mut device = Device::new();
-        let (test_tun, send_rx, _recv_tx) = TestTun::with_capacity(1);
+        let (tun, _recv_tx, send_rx) = tun::fake(1);
         drop(send_rx);
-        device.set_tun(Box::new(test_tun));
+        device.set_tun(tun);
 
         device.queue(test_packet(1));
         device.flush_batch();
@@ -136,8 +136,8 @@ mod tests {
     #[tokio::test]
     async fn full_channel_is_not_ready_until_drained() {
         let mut device = Device::new();
-        let (test_tun, mut send_rx, _recv_tx) = TestTun::with_capacity(1);
-        device.set_tun(Box::new(test_tun));
+        let (tun, _recv_tx, mut send_rx) = tun::fake(1);
+        device.set_tun(tun);
         let mut cx = Context::from_waker(Waker::noop());
 
         device.queue(test_packet(1));
@@ -163,8 +163,8 @@ mod tests {
     #[tokio::test]
     async fn queue_starts_new_batch_when_full() {
         let mut device = Device::new();
-        let (test_tun, mut send_rx, _send_tx) = TestTun::with_capacity(4);
-        device.set_tun(Box::new(test_tun));
+        let (tun, _recv_tx, mut send_rx) = tun::fake(4);
+        device.set_tun(tun);
 
         for i in 0..(2 * tun::MAX_BATCH_SIZE + tun::MAX_BATCH_SIZE / 2) {
             device.queue(test_packet(i as u16));
@@ -193,33 +193,5 @@ mod tests {
             &[],
         )
         .unwrap()
-    }
-
-    struct TestTun {
-        send_tx: tun::OutboundTx,
-        recv_rx: tun::InboundRx,
-    }
-
-    impl TestTun {
-        fn with_capacity(capacity: usize) -> (Self, tun::OutboundRx, tun::InboundTx) {
-            let (send_tx, send_rx) = tun::outbound_channel_for_test(capacity);
-            let (recv_tx, recv_rx) = tun::inbound_channel();
-
-            (Self { send_tx, recv_rx }, send_rx, recv_tx)
-        }
-    }
-
-    impl Tun for TestTun {
-        fn sender(&mut self) -> &mut tun::OutboundTx {
-            &mut self.send_tx
-        }
-
-        fn receiver(&mut self) -> &mut tun::InboundRx {
-            &mut self.recv_rx
-        }
-
-        fn name(&self) -> &str {
-            "test"
-        }
     }
 }

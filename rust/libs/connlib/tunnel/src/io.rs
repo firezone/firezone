@@ -737,14 +737,11 @@ mod tests {
     /// Helper functions to make the test more concise.
     impl Io {
         fn for_test() -> Io {
-            let mut io = Io::new(
+            Io::new(
                 Arc::new(socket_factory::tcp),
                 Arc::new(socket_factory::udp),
                 BTreeSet::new(),
-            );
-            io.set_tun(Box::new(DummyTun::new()));
-
-            io
+            )
         }
 
         async fn next_dns_response(&mut self) -> dns::RecursiveResponse {
@@ -759,39 +756,6 @@ mod tests {
                     return response;
                 }
             }
-        }
-    }
-
-    struct DummyTun {
-        tx: tun::OutboundTx,
-        rx: tun::InboundRx,
-        _keep_alive: (tun::OutboundRx, tun::InboundTx),
-    }
-
-    impl DummyTun {
-        fn new() -> Self {
-            let (tx, outbound_rx) = tun::outbound_channel();
-            let (inbound_tx, rx) = tun::inbound_channel();
-
-            Self {
-                tx,
-                rx,
-                _keep_alive: (outbound_rx, inbound_tx),
-            }
-        }
-    }
-
-    impl Tun for DummyTun {
-        fn sender(&mut self) -> &mut tun::OutboundTx {
-            &mut self.tx
-        }
-
-        fn receiver(&mut self) -> &mut tun::InboundRx {
-            &mut self.rx
-        }
-
-        fn name(&self) -> &str {
-            "dummy"
         }
     }
 }
