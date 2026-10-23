@@ -36,7 +36,6 @@ smallvec = { workspace = true }
 snownet = { workspace = true }
 socket-factory = { workspace = true }
 stun_codec = { workspace = true }
-tokio = { workspace = true, features = ["rt", "test-util", "time"] }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
 tun = { workspace = true }
