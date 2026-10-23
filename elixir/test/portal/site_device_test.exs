@@ -35,7 +35,7 @@ defmodule Portal.SiteDeviceTest do
     test "is removed with the site" do
       account = account_fixture()
       site = site_fixture(account: account)
-      site_device = site_device_fixture(site: site)
+      site_device = site_device_fixture(site: site, device: client_fixture(account: account))
 
       Repo.delete!(site)
 
