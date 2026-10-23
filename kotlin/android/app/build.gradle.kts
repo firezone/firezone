@@ -162,6 +162,8 @@ android {
             // location, and the JaCoCo agent skips those by default, so nothing a Robolectric test
             // executes was counted. The JDK's own location-less classes cannot be instrumented.
             all { test ->
+                // Robolectric reflects into `jdk.internal.access` to intercept `FileDescriptor`.
+                test.jvmArgs("--add-opens=java.base/jdk.internal.access=ALL-UNNAMED")
                 test.extensions.configure<JacocoTaskExtension> {
                     isIncludeNoLocationClasses = true
                     excludes = listOf("jdk.internal.*")
@@ -377,7 +379,7 @@ dependencies {
     debugImplementation("androidx.compose.ui:ui-test-manifest")
     testImplementation("io.github.takahirom.roborazzi:roborazzi:1.76.0")
     testImplementation("io.github.takahirom.roborazzi:roborazzi-compose:1.76.0")
-    testImplementation("org.robolectric:robolectric:4.16.1")
+    testImplementation("org.robolectric:robolectric:4.17")
 }
 
 roborazzi {
