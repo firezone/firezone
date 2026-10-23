@@ -64,6 +64,7 @@ defmodule PortalAPI.Sockets.LatestSessionTest do
 
       device = Repo.get_by!(Portal.Device, account_id: client.account_id, id: client.id)
       assert is_nil(device.client_token_id)
+      assert is_nil(device.token_id)
     end
   end
 

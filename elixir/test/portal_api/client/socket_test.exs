@@ -553,6 +553,7 @@ defmodule PortalAPI.Client.SocketTest do
 
       assert is_reference(socket.assigns.session_ref)
       assert client.client_token_id == token.id
+      assert client.token_id == token.id
       assert client.last_seen_user_agent == connect_info.user_agent
       assert client.last_seen_remote_ip == @client_remote_ip
       assert client.last_seen_remote_ip_location_region == "Ukraine"

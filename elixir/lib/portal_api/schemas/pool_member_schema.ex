@@ -12,6 +12,7 @@ defmodule PortalAPI.Schemas.PoolMember do
                :actor_id,
                :attested?,
                :client_token_id,
+               :token_id,
                :device_serial,
                :device_uuid,
                :firebase_installation_id,
