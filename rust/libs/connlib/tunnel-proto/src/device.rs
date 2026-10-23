@@ -2214,7 +2214,7 @@ impl DeviceState {
                 .map(UpstreamQuery::Udp),
             dns::Transport::Tcp => self
                 .tcp_dns_client
-                .send_query(server, query.clone())
+                .send_query(server, query.clone(), now)
                 .map(UpstreamQuery::Tcp),
         };
 

@@ -126,12 +126,16 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
         &mut self,
         server: SocketAddr,
         message: dns_types::Query,
+        now: Instant,
     ) -> Result<QueryToken> {
         let (ipv4_source, ipv6_source) = self
             .source_ips
             .ok_or_else(|| anyhow!("No source interface set"))?;
 
-        let deadline = self.last_now + self.query_timeout;
+        // The query's lifetime starts now, not at the last poll: after an idle
+        // stretch the last poll may lie further back than the timeout itself.
+        self.last_now = now;
+        let deadline = now + self.query_timeout;
         let token = QueryToken(self.next_token);
         self.next_token += 1;
 
@@ -685,7 +689,7 @@ mod tests {
         let server = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(8, 8, 8, 8)), 53);
         let query = create_test_query();
 
-        let token = client.send_query(server, query.clone()).unwrap();
+        let token = client.send_query(server, query.clone(), now).unwrap();
         client.handle_timeout(now);
         client.handle_timeout(now);
 
@@ -714,7 +718,7 @@ mod tests {
         let mut client = create_test_client(now);
         let server = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(8, 8, 8, 8)), 53);
 
-        client.send_query(server, create_test_query()).unwrap();
+        client.send_query(server, create_test_query(), now).unwrap();
         client.handle_timeout(now);
         client.handle_timeout(now);
 
@@ -739,7 +743,7 @@ mod tests {
         let mut client = create_test_client(now);
         let server = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(8, 8, 8, 8)), 53);
 
-        client.send_query(server, create_test_query()).unwrap();
+        client.send_query(server, create_test_query(), now).unwrap();
         client.handle_timeout(now);
         client.handle_timeout(now);
         let local = local_socket(&client.poll_outbound().unwrap());
@@ -778,7 +782,7 @@ mod tests {
         let server = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(8, 8, 8, 8)), 53);
         let query = create_test_query();
 
-        let token = client.send_query(server, query.clone()).unwrap();
+        let token = client.send_query(server, query.clone(), now).unwrap();
 
         // Advance time past the query deadline without ever delivering a TCP reply.
         client.handle_timeout(now + Duration::from_secs(10) + Duration::from_millis(1));
