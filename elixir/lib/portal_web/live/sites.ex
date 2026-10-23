@@ -1572,23 +1572,22 @@ defmodule PortalWeb.Sites do
           |> Safe.all()
 
         cond do
-          device.site_id != site.id ->
-            delete_site_device(site, device, subject)
-
-          other_site_ids == [] ->
-            {:error, :last_site}
-
-          true ->
-            # The mirror trigger removes the old assignment with the move.
-            device
-            |> change(site_id: hd(other_site_ids))
-            |> Safe.scoped(subject)
-            |> Safe.update()
-            |> case do
-              {:ok, _device} -> :ok
-              {:error, _reason} = error -> error
-            end
+          device.site_id != site.id -> delete_site_device(site, device, subject)
+          other_site_ids == [] -> {:error, :last_site}
+          true -> move_home_site(device, hd(other_site_ids), subject)
         end
+      end
+    end
+
+    # The mirror trigger removes the old assignment with the move.
+    defp move_home_site(device, site_id, subject) do
+      device
+      |> change(site_id: site_id)
+      |> Safe.scoped(subject)
+      |> Safe.update()
+      |> case do
+        {:ok, _device} -> :ok
+        {:error, _reason} = error -> error
       end
     end
 
