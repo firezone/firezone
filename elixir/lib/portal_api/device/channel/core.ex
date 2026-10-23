@@ -578,18 +578,16 @@ defmodule PortalAPI.Device.Channel.Core do
          gateway_ipv6, preshared_key, ice_credentials, use_iceless},
         socket
       ) do
-    Outbound.connect(
-      socket,
-      rid_bytes,
-      site_id,
-      gateway_id,
-      gateway_public_key,
-      gateway_ipv4,
-      gateway_ipv6,
-      preshared_key,
-      ice_credentials,
-      use_iceless
-    )
+    Outbound.connect(socket, rid_bytes, %{
+      site_id: site_id,
+      id: gateway_id,
+      public_key: gateway_public_key,
+      ipv4: gateway_ipv4,
+      ipv6: gateway_ipv6,
+      preshared_key: preshared_key,
+      ice_credentials: ice_credentials,
+      use_iceless: use_iceless
+    })
   end
 
   def handle_info({:authorization_creation_timeout, resource_id, generation}, socket) do
@@ -874,7 +872,7 @@ defmodule PortalAPI.Device.Channel.Core do
 
   defmodule Database do
     @moduledoc false
-    import Ecto.Query, only: [from: 2, dynamic: 1]
+    import Ecto.Query, only: [from: 2]
 
     # Re-read rather than taken from the subject: the account's slug and
     # config can change while the device stays connected.
@@ -910,104 +908,6 @@ defmodule PortalAPI.Device.Channel.Core do
       )
       |> Portal.Safe.unscoped()
       |> Portal.Safe.delete_all()
-    end
-
-    @doc """
-    Fetches the client device in the subject's account that answers at `slug`.
-    Returns `{:error, :not_found}` for a miss or unauthorized read.
-    """
-    def get_device_by_slug(slug, subject) when is_binary(slug) do
-      from(d in Portal.Device,
-        where: d.type == :client,
-        where: d.slug == ^slug
-      )
-      |> Portal.Safe.scoped(subject)
-      |> Portal.Safe.one()
-      |> case do
-        %Portal.Device{} = device -> {:ok, device}
-        _ -> {:error, :not_found}
-      end
-    end
-
-    @doc """
-    The DNS label of each of the device pools, derived from its name by the
-    rules device slugs are made with. A pool whose name gives no label is
-    left out.
-    """
-    def device_pool_labels([], _subject), do: []
-
-    def device_pool_labels(resource_ids, subject) do
-      from(r in Portal.Resource,
-        where: r.id in ^resource_ids,
-        select: {r.id, fragment("rtrim(left(device_slug_label(?), 63), '-')", r.name)}
-      )
-      |> Portal.Safe.scoped(subject)
-      |> Portal.Safe.all()
-      |> case do
-        {:error, :unauthorized} -> []
-        labels -> Enum.reject(labels, &match?({_id, ""}, &1))
-      end
-    end
-
-    @doc """
-    The slugs of up to `limit` client devices that pools with any of these
-    criteria hold when `subject` asks, most recently seen first, and how many
-    devices they hold in all.
-    """
-    def member_slugs(criteria, limit, subject) do
-      in_any_pool =
-        Enum.reduce(criteria, dynamic(false), fn criteria, in_any_pool ->
-          scope = Portal.Resource.DeviceMembershipCriteria.scope(criteria, subject)
-          dynamic(^in_any_pool or ^Portal.Resource.DeviceMembershipCriteria.members(criteria, scope))
-        end)
-
-      members = from(d in Portal.Device, as: :devices, where: d.type == :client, where: ^in_any_pool)
-
-      slugs =
-        from(d in members,
-          order_by: [desc_nulls_last: d.last_seen_at, asc: d.slug],
-          limit: ^(limit + 1),
-          select: d.slug
-        )
-        |> Portal.Safe.scoped(subject)
-        |> Portal.Safe.all()
-        |> case do
-          {:error, :unauthorized} -> []
-          slugs -> slugs
-        end
-
-      if length(slugs) > limit do
-        total = members |> Portal.Safe.scoped(subject) |> Portal.Safe.aggregate(:count)
-
-        {Enum.take(slugs, limit), total}
-      else
-        {slugs, length(slugs)}
-      end
-    end
-
-    @doc "Fetches a client device by its tunnel IPv4 or IPv6 within the subject's account."
-    def get_device_by_address({:ipv4, ipv4_tuple}, subject) do
-      fetch_device_by_inet(:ipv4, %Postgrex.INET{address: ipv4_tuple}, subject)
-    end
-
-    def get_device_by_address({:ipv6, ipv6_tuple}, subject) do
-      fetch_device_by_inet(:ipv6, %Postgrex.INET{address: ipv6_tuple}, subject)
-    end
-
-    defp fetch_device_by_inet(family, %Postgrex.INET{} = inet, subject) do
-      query =
-        case family do
-          :ipv4 -> from(d in Portal.Device, where: d.type == :client, where: d.ipv4 == ^inet)
-          :ipv6 -> from(d in Portal.Device, where: d.type == :client, where: d.ipv6 == ^inet)
-        end
-
-      query
-      |> Portal.Safe.scoped(subject)
-      |> Portal.Safe.one()
-      |> case do
-        %Portal.Device{} = device -> {:ok, device}
-        _ -> {:error, :not_found}
-      end
     end
   end
 end

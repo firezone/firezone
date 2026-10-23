@@ -24,6 +24,7 @@ defmodule PortalAPI.Device.Channel.Outbound do
   alias Portal.Repo.Batch
   alias PortalAPI.Client.Views
   alias PortalAPI.Device.Channel.{Core, Credentials, DeviceDomains}
+  alias __MODULE__.Database
 
   require Logger
 
@@ -52,7 +53,7 @@ defmodule PortalAPI.Device.Channel.Outbound do
   def hydrate(socket) do
     Process.send_after(self(), :recompute_authorized_resources, @recompute_every)
 
-    device = Core.Database.preload_site_devices(Core.device(socket))
+    device = Database.preload_site_devices(Core.device(socket))
     socket = Core.put_device(socket, device)
 
     {:ok, resources, [], cache} =
@@ -440,20 +441,31 @@ defmodule PortalAPI.Device.Channel.Outbound do
   here is released with the receiver's keys and credentials, unless the
   request already timed out, in which case the late answer is dropped.
   """
-  @spec connect(Phoenix.Socket.t(), binary(), term(), Ecto.UUID.t(), binary(), term(), term(), binary(), map(), boolean()) ::
-          {:noreply, Phoenix.Socket.t()}
-  def connect(
-        socket,
-        rid_bytes,
-        site_id,
-        gateway_id,
-        gateway_public_key,
-        gateway_ipv4,
-        gateway_ipv6,
-        preshared_key,
-        ice_credentials,
-        use_iceless
-      ) do
+  @typedoc "What the device serving a resource answered with."
+  @type receiver_ack :: %{
+          site_id: Ecto.UUID.t() | nil,
+          id: Ecto.UUID.t(),
+          public_key: String.t(),
+          ipv4: term(),
+          ipv6: term(),
+          preshared_key: String.t(),
+          ice_credentials: %{initiator: map(), receiver: map()},
+          use_iceless: boolean()
+        }
+
+  @spec connect(Phoenix.Socket.t(), binary(), receiver_ack()) :: {:noreply, Phoenix.Socket.t()}
+  def connect(socket, rid_bytes, receiver) do
+    %{
+      site_id: site_id,
+      id: gateway_id,
+      public_key: gateway_public_key,
+      ipv4: gateway_ipv4,
+      ipv6: gateway_ipv6,
+      preshared_key: preshared_key,
+      ice_credentials: ice_credentials,
+      use_iceless: use_iceless
+    } = receiver
+
     resource_id = Ecto.UUID.load!(rid_bytes)
 
     case Map.pop(socket.assigns.pending_authorizations, resource_id) do
@@ -1360,4 +1372,14 @@ defmodule PortalAPI.Device.Channel.Outbound do
 
   defp maybe_put_client_id(payload, nil), do: payload
   defp maybe_put_client_id(payload, client_id), do: Map.put(payload, :client_id, client_id)
+
+  defmodule Database do
+    @moduledoc false
+
+    # The sites a device serves are left out of what it may reach, so they
+    # are read once, when its outbound view is built.
+    def preload_site_devices(%Portal.Device{} = device) do
+      Portal.Safe.preload(device, :site_devices)
+    end
+  end
 end
