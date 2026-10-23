@@ -9,7 +9,8 @@ defmodule Portal.SiteDeviceFixtures do
 
   @doc """
   Assigns a device to a site. The site, device, and account are created
-  unless provided; the default device is a gateway of that site.
+  unless provided; the default device is a gateway of that site, which the
+  mirror trigger already assigns, so an existing assignment is returned as is.
 
   ## Examples
 
@@ -42,7 +43,10 @@ defmodule Portal.SiteDeviceFixtures do
         [:account_id, :site_id, :device_id]
       )
       |> Portal.SiteDevice.changeset()
-      |> Portal.Repo.insert()
+      |> Portal.Repo.insert(
+        on_conflict: :nothing,
+        conflict_target: [:account_id, :site_id, :device_id]
+      )
 
     site_device
   end
