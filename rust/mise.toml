@@ -79,7 +79,7 @@ run = "cargo shear"
 
 [tasks.deny]
 description = "Check licenses and security advisories (CI check)"
-run = "cargo deny check --hide-inclusion-graph --deny unnecessary-skip"
+run = "cargo deny check --hide-inclusion-graph --deny unnecessary-skip --deny no-license-field"
 
 [tasks.test]
 description = "Run tests (CI check)"

@@ -148,6 +148,10 @@ allow = [
 # canonical license text of a valid SPDX license file.
 # [possible values: any between 0.0 and 1.0].
 confidence-threshold = 0.8
+# Lint level for licenses in the allow list that no crate uses
+unused-allowed-license = "deny"
+# Lint level for exceptions that no crate matches
+unused-license-exception = "deny"
 # Allow 1 or more licenses on a per-crate basis, so that particular licenses
 # aren't accepted for every possible crate as with the normal allow list
 exceptions = [
@@ -163,18 +167,13 @@ exceptions = [
 # licensing information
 [[licenses.clarify]]
 # The package spec the clarification applies to
-crate = "ring"
+crate = "dlopen2"
 # The SPDX expression for the license requirements of the crate
-expression = "MIT AND ISC AND OpenSSL"
+expression = "MIT"
 license-files = [
     # Each entry is a crate relative path, and the (opaque) hash of its contents
-    { path = "LICENSE", hash = 0xbd0eed23 },
+    { path = "LICENSE", hash = 0xea2c3d1e },
 ]
-
-[[licenses.clarify]]
-crate = "dlopen2"
-expression = "MIT"
-license-files = [{ path = "LICENSE", hash = 0xea2c3d1e }]
 
 [licenses.private]
 # One or more files in the crate's source used as the "source of truth" for
