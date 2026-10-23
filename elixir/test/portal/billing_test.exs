@@ -633,7 +633,7 @@ defmodule Portal.BillingTest do
     test "restricts a new service account when adhoc service accounts and seats are full" do
       account =
         update_account(business_account_fixture(), %{
-          limits: %{monthly_active_users_count: 1, adhoc_service_accounts_count: 1}
+          limits: %{monthly_active_users_count: 1, adhoc_service_accounts_count: 0}
         })
 
       make_active(account, actor_fixture(account: account))
@@ -652,13 +652,15 @@ defmodule Portal.BillingTest do
       refute client_seat_restricted?(account, active.id)
     end
 
-    test "service accounts take a seat" do
+    test "service accounts take a seat beyond the included one" do
       account = business_account_with_seats(1)
-      service_account = actor_fixture(account: account, type: :service_account)
-      make_active(account, service_account)
+      first = actor_fixture(account: account, type: :service_account)
+      second = actor_fixture(account: account, type: :service_account)
+      make_active(account, first)
+      make_active(account, second)
 
       assert client_seat_restricted?(account, actor_fixture(account: account).id)
-      refute client_seat_restricted?(account, service_account.id)
+      refute client_seat_restricted?(account, second.id)
 
       assert seats_warning_level(account, 1) == :at_limit
     end
@@ -1237,15 +1239,15 @@ defmodule Portal.BillingTest do
         client_session_fixture(account: account, actor: actor, client: client)
       end
 
-      assert Portal.Billing.monthly_active_usage(account) == %{seats: 2, adhoc_service_accounts: 2}
+      assert Portal.Billing.monthly_active_usage(account) == %{seats: 1, adhoc_service_accounts: 3}
     end
 
-    test "counts no ad hoc service accounts without the add-on", %{account: account} do
+    test "counts the one included ad hoc service account without the add-on", %{account: account} do
       actor = actor_fixture(type: :service_account, account: account)
       client = client_fixture(account: account, actor: actor)
       client_session_fixture(account: account, actor: actor, client: client)
 
-      assert Portal.Billing.monthly_active_usage(account) == %{seats: 1, adhoc_service_accounts: 0}
+      assert Portal.Billing.monthly_active_usage(account) == %{seats: 0, adhoc_service_accounts: 1}
     end
   end
 
@@ -1322,16 +1324,17 @@ defmodule Portal.BillingTest do
       assert Portal.Billing.count_monthly_active_users(account) == 1
     end
 
-    test "includes service accounts", %{account: account} do
+    test "includes service accounts beyond the included one", %{account: account} do
       user = actor_fixture(type: :account_user, account: account)
-      service_account = actor_fixture(type: :service_account, account: account)
+      first = actor_fixture(type: :service_account, account: account)
+      second = actor_fixture(type: :service_account, account: account)
 
-      client1 = client_fixture(account: account, actor: user)
-      client2 = client_fixture(account: account, actor: service_account)
-      client_session_fixture(account: account, actor: user, client: client1)
-      client_session_fixture(account: account, actor: service_account, client: client2)
+      for actor <- [user, first, second] do
+        client = client_fixture(account: account, actor: actor)
+        client_session_fixture(account: account, actor: actor, client: client)
+      end
 
-      # Service accounts take a seat too
+      # One service account is included with every plan; the second takes a seat.
       assert Portal.Billing.count_monthly_active_users(account) == 2
     end
 
@@ -1339,15 +1342,28 @@ defmodule Portal.BillingTest do
       assert Portal.Billing.count_monthly_active_users(account) == 0
     end
 
-    test "service accounts take a seat only beyond adhoc_service_accounts_count", %{account: account} do
-      account = update_account(account, %{limits: %{adhoc_service_accounts_count: 1}})
+    test "every plan includes one service account that takes no seat", %{account: account} do
+      account = update_account(account, %{limits: %{adhoc_service_accounts_count: 0}})
 
-      for type <- [:account_user, :service_account, :service_account] do
+      for type <- [:account_user, :service_account] do
         actor = actor_fixture(type: type, account: account)
         client = client_fixture(account: account, actor: actor)
         client_session_fixture(account: account, actor: actor, client: client)
       end
 
+      assert Portal.Billing.count_monthly_active_users(account) == 1
+    end
+
+    test "service accounts take a seat only beyond the ad-hoc allowance", %{account: account} do
+      account = update_account(account, %{limits: %{adhoc_service_accounts_count: 1}})
+
+      for type <- [:account_user, :service_account, :service_account, :service_account] do
+        actor = actor_fixture(type: type, account: account)
+        client = client_fixture(account: account, actor: actor)
+        client_session_fixture(account: account, actor: actor, client: client)
+      end
+
+      # One bought plus the one every plan includes: the third takes a seat.
       assert Portal.Billing.count_monthly_active_users(account) == 2
     end
 

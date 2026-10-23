@@ -44,7 +44,7 @@ defmodule PortalAPI.AccountController do
       monthly_active_usage.seats
     )
     |> put_adhoc_service_accounts_limit(
-      account.limits.adhoc_service_accounts_count,
+      Portal.Accounts.Limits.adhoc_service_accounts_allowance(account.limits),
       monthly_active_usage.adhoc_service_accounts
     )
     |> put_limit(:service_accounts, account.limits.service_accounts_count, service_accounts_count)

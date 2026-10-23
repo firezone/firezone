@@ -3,6 +3,8 @@ defmodule Portal.Accounts.Limits do
   import Ecto.Changeset
 
   @primary_key false
+
+  @type t :: %__MODULE__{}
   embedded_schema do
     field :users_count, :integer
     field :monthly_active_users_count, :integer
@@ -22,6 +24,23 @@ defmodule Portal.Accounts.Limits do
     field :ingestion_refill_rate, :integer
     field :ingestion_capacity, :integer
   end
+
+  # Every plan includes this many active service accounts that take no seat,
+  # on top of whatever ad-hoc allowance was bought. One is enough for the
+  # service account a customer runs their routing devices under.
+  @free_service_accounts 1
+
+  @doc """
+  How many active service accounts take no seat: the bought ad-hoc allowance
+  plus the one every plan includes. `nil` means unlimited.
+  """
+  @spec adhoc_service_accounts_allowance(t() | nil) :: non_neg_integer() | nil
+  def adhoc_service_accounts_allowance(%__MODULE__{adhoc_service_accounts_count: nil}), do: nil
+
+  def adhoc_service_accounts_allowance(%__MODULE__{adhoc_service_accounts_count: bought}),
+    do: bought + @free_service_accounts
+
+  def adhoc_service_accounts_allowance(nil), do: @free_service_accounts
 
   def changeset(limits \\ %__MODULE__{}, attrs) do
     fields = ~w[
