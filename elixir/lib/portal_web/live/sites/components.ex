@@ -746,7 +746,11 @@ defmodule PortalWeb.Sites.Components do
   def site_device_picker(assigns) do
     ~H"""
     <div class="px-5 py-3 border-b border-border bg-raised space-y-2">
-      <form phx-change="search_devices_to_assign" phx-submit="search_devices_to_assign">
+      <form
+        id="site-device-picker"
+        phx-change="search_devices_to_assign"
+        phx-submit="search_devices_to_assign"
+      >
         <div class="flex items-center gap-2">
           <input
             type="text"
