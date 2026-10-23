@@ -9,8 +9,11 @@ use crate::{
     controller::ControllerRequest,
     gui::Managed,
     logging::FileCount,
-    settings::{AdvancedSettings, AdvancedSettingsViewModel, GeneralSettingsViewModel},
+    settings::{
+        AdvancedSettings, AdvancedSettingsViewModel, CloudRegion, GeneralSettingsViewModel,
+    },
 };
+use url::Url;
 
 #[derive(Clone, serde::Deserialize, specta::Type)]
 pub struct GeneralSettingsForm {
@@ -18,6 +21,36 @@ pub struct GeneralSettingsForm {
     pub start_on_login: bool,
     pub connect_on_start: bool,
     pub account_slug: String,
+}
+
+#[derive(Clone, serde::Deserialize, specta::Type)]
+pub struct AdvancedSettingsForm {
+    pub cloud_region: CloudRegion,
+    /// Only used for [`CloudRegion::Custom`].
+    pub auth_url: String,
+    /// Only used for [`CloudRegion::Custom`].
+    pub api_url: String,
+    pub log_filter: String,
+}
+
+impl TryFrom<AdvancedSettingsForm> for AdvancedSettings {
+    type Error = anyhow::Error;
+
+    fn try_from(form: AdvancedSettingsForm) -> Result<Self> {
+        let (auth_url, api_url) = match form.cloud_region.urls() {
+            Some(urls) => urls,
+            None => (
+                Url::parse(&form.auth_url).context("Invalid auth URL")?,
+                Url::parse(&form.api_url).context("Invalid API URL")?,
+            ),
+        };
+
+        Ok(Self {
+            auth_url,
+            api_url,
+            log_filter: form.log_filter,
+        })
+    }
 }
 
 #[derive(Clone, Debug, serde::Serialize, specta::Type, PartialEq, Eq)]
@@ -170,6 +203,25 @@ pub async fn apply_general_settings(
 #[specta::specta]
 pub async fn apply_advanced_settings(
     managed: tauri::State<'_, Managed>,
+    settings: AdvancedSettingsForm,
+) -> Result<(), Error> {
+    let settings = AdvancedSettings::try_from(settings)?;
+
+    send_advanced_settings(managed, settings).await?;
+
+    Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn reset_advanced_settings(managed: tauri::State<'_, Managed>) -> Result<(), Error> {
+    send_advanced_settings(managed, AdvancedSettings::default()).await?;
+
+    Ok(())
+}
+
+async fn send_advanced_settings(
+    managed: tauri::State<'_, Managed>,
     settings: AdvancedSettings,
 ) -> Result<(), Error> {
     if managed.inner().inject_faults {
@@ -179,14 +231,6 @@ pub async fn apply_advanced_settings(
     managed
         .send_request(ControllerRequest::ApplyAdvancedSettings(Box::new(settings)))
         .await?;
-
-    Ok(())
-}
-
-#[tauri::command]
-#[specta::specta]
-pub async fn reset_advanced_settings(managed: tauri::State<'_, Managed>) -> Result<(), Error> {
-    apply_advanced_settings(managed, AdvancedSettings::default()).await?;
 
     Ok(())
 }
@@ -360,5 +404,35 @@ mod tests {
             std::fs::read_to_string(bindings_path()).unwrap(),
             "the committed bindings.ts is stale: run `cargo run -p firezone-gui-client --example export-bindings`"
         );
+    }
+
+    #[test]
+    fn a_cloud_region_ignores_the_typed_urls() {
+        let form = AdvancedSettingsForm {
+            cloud_region: CloudRegion::Eu,
+            auth_url: "https://ignored.example.com".to_owned(),
+            api_url: "wss://ignored.example.com".to_owned(),
+            log_filter: "info".to_owned(),
+        };
+
+        let settings = AdvancedSettings::try_from(form).unwrap();
+
+        assert_eq!(settings.auth_url.as_str(), "https://eu.app.firezone.dev/");
+        assert_eq!(settings.api_url.as_str(), "wss://eu.api.firezone.dev/");
+    }
+
+    #[test]
+    fn custom_uses_the_typed_urls() {
+        let form = AdvancedSettingsForm {
+            cloud_region: CloudRegion::Custom,
+            auth_url: "https://firezone.example.com".to_owned(),
+            api_url: "wss://api.example.com".to_owned(),
+            log_filter: "info".to_owned(),
+        };
+
+        let settings = AdvancedSettings::try_from(form).unwrap();
+
+        assert_eq!(settings.auth_url.as_str(), "https://firezone.example.com/");
+        assert_eq!(settings.api_url.as_str(), "wss://api.example.com/");
     }
 }

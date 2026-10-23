@@ -45,7 +45,7 @@ pub struct MdmSettings {
     pub support_url: Option<Url>,
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize, specta::Type)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct AdvancedSettings {
     // Installs from before the "General" settings split wrote `auth_base_url` to disk.
     #[serde(alias = "auth_base_url")]
@@ -103,8 +103,54 @@ impl GeneralSettingsViewModel {
     }
 }
 
+/// The Firezone Cloud deployment a client signs in to, or [`CloudRegion::Custom`] for any other URLs.
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize, specta::Type)]
+pub enum CloudRegion {
+    Us,
+    Eu,
+    Custom,
+}
+
+impl CloudRegion {
+    /// Returns the region whose URLs are exactly `auth_url` and `api_url`, or [`CloudRegion::Custom`].
+    pub fn from_urls(auth_url: &Url, api_url: &Url) -> Self {
+        [Self::Us, Self::Eu]
+            .into_iter()
+            .find(|region| {
+                region
+                    .urls()
+                    .is_some_and(|(auth, api)| &auth == auth_url && &api == api_url)
+            })
+            .unwrap_or(Self::Custom)
+    }
+
+    /// Returns the compiled-in auth and API URLs of the region, [`None`] for [`CloudRegion::Custom`].
+    ///
+    /// These are never taken from the portal: the region decides which portal the client talks to.
+    pub fn urls(self) -> Option<(Url, Url)> {
+        let (auth_url, api_url) = match self {
+            Self::Us => (cloud_region::US_AUTH_URL, cloud_region::US_API_URL),
+            Self::Eu => (cloud_region::EU_AUTH_URL, cloud_region::EU_API_URL),
+            Self::Custom => return None,
+        };
+
+        Some((
+            Url::parse(auth_url).expect("static URL is a valid URL"),
+            Url::parse(api_url).expect("static URL is a valid URL"),
+        ))
+    }
+}
+
+mod cloud_region {
+    pub(crate) const US_AUTH_URL: &str = "https://app.firezone.dev";
+    pub(crate) const US_API_URL: &str = "wss://api.firezone.dev/";
+    pub(crate) const EU_AUTH_URL: &str = "https://eu.app.firezone.dev";
+    pub(crate) const EU_API_URL: &str = "wss://eu.api.firezone.dev/";
+}
+
 #[derive(Clone, Serialize, specta::Type)]
 pub struct AdvancedSettingsViewModel {
+    pub cloud_region: CloudRegion,
     pub auth_url: String,
     pub auth_url_is_managed: bool,
     pub api_url: String,
@@ -115,19 +161,26 @@ pub struct AdvancedSettingsViewModel {
 
 impl AdvancedSettingsViewModel {
     pub fn new(mdm_settings: MdmSettings, advanced_settings: AdvancedSettings) -> Self {
+        let auth_url_is_managed = mdm_settings.auth_url.is_some();
+        let api_url_is_managed = mdm_settings.api_url.is_some();
+        let auth_url = mdm_settings.auth_url.unwrap_or(advanced_settings.auth_url);
+        let api_url = mdm_settings.api_url.unwrap_or(advanced_settings.api_url);
+
+        // With only one of the URLs managed, `Custom` keeps the other one editable.
+        let cloud_region = if auth_url_is_managed == api_url_is_managed {
+            CloudRegion::from_urls(&auth_url, &api_url)
+        } else {
+            CloudRegion::Custom
+        };
+
         Self {
-            auth_url_is_managed: mdm_settings.auth_url.is_some(),
-            api_url_is_managed: mdm_settings.api_url.is_some(),
+            cloud_region,
+            auth_url_is_managed,
+            api_url_is_managed,
             log_filter_is_managed: mdm_settings.log_filter.is_some(),
 
-            auth_url: mdm_settings
-                .auth_url
-                .unwrap_or(advanced_settings.auth_url)
-                .to_string(),
-            api_url: mdm_settings
-                .api_url
-                .unwrap_or(advanced_settings.api_url)
-                .to_string(),
+            auth_url: auth_url.to_string(),
+            api_url: api_url.to_string(),
             log_filter: mdm_settings
                 .log_filter
                 .unwrap_or(advanced_settings.log_filter),
@@ -294,4 +347,68 @@ const FILE_SDDL: &str = "D:P(A;;FA;;;SY)(A;;FA;;;BA)";
 #[expect(clippy::unnecessary_wraps)]
 fn set_file_permissions(_: &Path) -> Result<()> {
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn saved_us_urls_show_the_us_region() {
+        let advanced_settings =
+            advanced_settings("https://app.firezone.dev", "wss://api.firezone.dev");
+
+        let view_model = AdvancedSettingsViewModel::new(MdmSettings::default(), advanced_settings);
+
+        assert_eq!(view_model.cloud_region, CloudRegion::Us);
+    }
+
+    #[test]
+    fn saved_self_hosted_urls_show_custom() {
+        let advanced_settings =
+            advanced_settings("https://firezone.example.com", "wss://api.example.com");
+
+        let view_model = AdvancedSettingsViewModel::new(MdmSettings::default(), advanced_settings);
+
+        assert_eq!(view_model.cloud_region, CloudRegion::Custom);
+        assert_eq!(view_model.auth_url, "https://firezone.example.com/");
+        assert_eq!(view_model.api_url, "wss://api.example.com/");
+    }
+
+    #[test]
+    fn managed_eu_urls_override_saved_urls() {
+        let mdm_settings = MdmSettings {
+            auth_url: Some(Url::parse("https://eu.app.firezone.dev").unwrap()),
+            api_url: Some(Url::parse("wss://eu.api.firezone.dev").unwrap()),
+            ..Default::default()
+        };
+        let advanced_settings =
+            advanced_settings("https://app.firezone.dev", "wss://api.firezone.dev");
+
+        let view_model = AdvancedSettingsViewModel::new(mdm_settings, advanced_settings);
+
+        assert_eq!(view_model.cloud_region, CloudRegion::Eu);
+    }
+
+    #[test]
+    fn one_managed_url_shows_custom() {
+        let mdm_settings = MdmSettings {
+            api_url: Some(Url::parse("wss://api.firezone.dev").unwrap()),
+            ..Default::default()
+        };
+        let advanced_settings =
+            advanced_settings("https://app.firezone.dev", "wss://api.firezone.dev");
+
+        let view_model = AdvancedSettingsViewModel::new(mdm_settings, advanced_settings);
+
+        assert_eq!(view_model.cloud_region, CloudRegion::Custom);
+    }
+
+    fn advanced_settings(auth_url: &str, api_url: &str) -> AdvancedSettings {
+        AdvancedSettings {
+            auth_url: Url::parse(auth_url).unwrap(),
+            api_url: Url::parse(api_url).unwrap(),
+            log_filter: "info".to_owned(),
+        }
+    }
 }
