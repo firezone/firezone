@@ -367,6 +367,7 @@ defmodule Portal.Analytics.AccountSnapshot do
       from(a in Portal.Actor,
         where: a.account_id in ^account_ids,
         where: a.is_disabled == false,
+        where: a.managed_by == :account,
         group_by: a.account_id,
         select:
           {a.account_id,

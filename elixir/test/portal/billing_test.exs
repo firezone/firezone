@@ -174,6 +174,16 @@ defmodule Portal.BillingTest do
       assert can_create_service_accounts?(account) == false
     end
 
+    test "does not count system-managed service accounts", %{account: account} do
+      account = update_account(account, %{limits: %{service_accounts_count: 1}})
+
+      actor_fixture(type: :service_account, account: account, managed_by: :system)
+      assert can_create_service_accounts?(account) == true
+
+      actor_fixture(type: :service_account, account: account)
+      assert can_create_service_accounts?(account) == false
+    end
+
     test "returns true when service accounts limit is not set", %{account: account} do
       account = update_account(account, %{limits: %{service_accounts_count: nil}})
       assert can_create_service_accounts?(account) == true
@@ -549,28 +559,35 @@ defmodule Portal.BillingTest do
     test "is false below the limit", %{account: account, actor: actor} do
       connect_device(account, actor)
 
-      refute connected_devices_limit_reached?(account, actor.id, Ecto.UUID.generate())
+      refute connected_devices_limit_reached?(account, actor, Ecto.UUID.generate())
     end
 
     test "is true at the limit", %{account: account, actor: actor} do
       connect_device(account, actor)
       connect_device(account, actor)
 
-      assert connected_devices_limit_reached?(account, actor.id, Ecto.UUID.generate())
+      assert connected_devices_limit_reached?(account, actor, Ecto.UUID.generate())
     end
 
     test "never counts the device itself", %{account: account, actor: actor} do
       connect_device(account, actor)
       device = connect_device(account, actor)
 
-      refute connected_devices_limit_reached?(account, actor.id, device.id)
+      refute connected_devices_limit_reached?(account, actor, device.id)
+    end
+
+    test "never applies to a system-managed actor", %{account: account} do
+      actor = actor_fixture(account: account, type: :service_account, managed_by: :system)
+      for _ <- 1..3, do: connect_device(account, actor)
+
+      refute connected_devices_limit_reached?(account, actor, Ecto.UUID.generate())
     end
 
     test "is always false when the limit is nil (unlimited)", %{account: account, actor: actor} do
       account = update_account(account, %{limits: %{connected_devices_per_actor: nil}})
       for _ <- 1..5, do: connect_device(account, actor)
 
-      refute connected_devices_limit_reached?(account, actor.id, Ecto.UUID.generate())
+      refute connected_devices_limit_reached?(account, actor, Ecto.UUID.generate())
     end
   end
 
@@ -1233,6 +1250,15 @@ defmodule Portal.BillingTest do
   end
 
   describe "count_monthly_active_users/1" do
+    test "never counts a system-managed actor", %{account: account} do
+      actor = actor_fixture(type: :service_account, account: account, managed_by: :system)
+      client = client_fixture(account: account, actor: actor)
+      client_session_fixture(account: account, actor: actor, client: client)
+
+      assert Portal.Billing.count_monthly_active_users(account) == 0
+      assert Portal.Billing.monthly_active_usage(account) == %{seats: 0, adhoc_service_accounts: 0}
+    end
+
     test "counts distinct active users within last month", %{account: account} do
       actor1 = actor_fixture(type: :account_user, account: account)
       actor2 = actor_fixture(type: :account_admin_user, account: account)

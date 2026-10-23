@@ -167,7 +167,7 @@ defmodule PortalAPI.Client.Socket do
   defp check_connected_devices(subject, client) do
     if Portal.Billing.connected_devices_limit_reached?(
          subject.account,
-         subject.actor.id,
+         subject.actor,
          client.id
        ) do
       {:error, :connected_devices_limit_reached}
