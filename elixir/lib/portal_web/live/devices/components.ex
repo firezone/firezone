@@ -598,6 +598,33 @@ defmodule PortalWeb.Devices.Components do
     """
   end
 
+  attr :account, :any, required: true
+  attr :device, :any, required: true
+
+  # The sites the device serves, as chips linking to each site.
+  def device_sites(assigns) do
+    sites =
+      assigns.device.site_devices
+      |> Enum.map(& &1.site)
+      |> Enum.reject(&is_nil/1)
+      |> Enum.sort_by(& &1.name)
+
+    assigns = assign(assigns, :sites, sites)
+
+    ~H"""
+    <span :if={@sites == []} class="text-xs text-subtle">—</span>
+    <div :if={@sites != []} class="flex flex-wrap gap-1">
+      <Navigation.link
+        :for={site <- @sites}
+        navigate={~p"/#{@account}/sites/#{site.id}"}
+        class="inline-flex items-center px-1.5 py-0.5 rounded border border-border bg-raised text-[11px] text-body hover:text-brand hover:border-border-strong transition-colors"
+      >
+        {site.name}
+      </Navigation.link>
+    </div>
+    """
+  end
+
   defp device_user_names(%{device_actors: []}), do: "—"
 
   defp device_user_names(%{device_actors: device_actors}) do

@@ -31,6 +31,7 @@ defmodule PortalWeb.DevicesTest do
   import Portal.PolicyFixtures
   import Portal.ResourceFixtures
   import Portal.SiteFixtures
+  import Portal.SiteDeviceFixtures
   import Portal.TokenFixtures
 
   setup do
@@ -92,6 +93,62 @@ defmodule PortalWeb.DevicesTest do
 
       assert html =~ "Devices"
       assert html =~ client.slug
+    end
+
+    test "lists gateways with the sites they serve", %{conn: conn, account: account, actor: actor} do
+      site = site_fixture(account: account, name: "Lab")
+      gateway = gateway_fixture(account: account, site: site)
+      other_site = site_fixture(account: account, name: "Office")
+      site_device_fixture(site: other_site, device: gateway)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/devices")
+
+      html = render_async(lv)
+      assert has_element?(lv, "#device-#{gateway.id}")
+      assert html =~ "Serves"
+      assert html =~ "Lab"
+      assert html =~ "Office"
+    end
+
+    test "filters devices by the site they serve", %{conn: conn, account: account, actor: actor} do
+      site = site_fixture(account: account)
+      gateway = gateway_fixture(account: account, site: site)
+      other = gateway_fixture(account: account, site: site_fixture(account: account))
+      client = client_fixture(account: account, actor: actor)
+
+      conn = authorize_conn(conn, actor)
+
+      {:ok, lv, _html} =
+        live(conn, ~p"/#{account}/devices?#{%{"devices_filter[serves_site]" => site.id}}")
+
+      render_async(lv)
+      assert has_element?(lv, "#device-#{gateway.id}")
+      refute has_element?(lv, "#device-#{other.id}")
+      refute has_element?(lv, "#device-#{client.id}")
+    end
+
+    test "filters devices that have users", %{conn: conn, account: account, actor: actor} do
+      gateway = gateway_fixture(account: account)
+      client = client_fixture(account: account, actor: actor)
+
+      conn = authorize_conn(conn, actor)
+
+      {:ok, lv, _html} =
+        live(conn, ~p"/#{account}/devices?#{%{"devices_filter[has_users]" => "true"}}")
+
+      render_async(lv)
+      assert has_element?(lv, "#device-#{client.id}")
+      refute has_element?(lv, "#device-#{gateway.id}")
+
+      {:ok, lv, _html} =
+        live(conn, ~p"/#{account}/devices?#{%{"devices_filter[has_users]" => "false"}}")
+
+      render_async(lv)
+      refute has_element?(lv, "#device-#{client.id}")
+      assert has_element?(lv, "#device-#{gateway.id}")
     end
 
     test "lists every user who signed in on a device", %{
@@ -977,7 +1034,7 @@ defmodule PortalWeb.DevicesTest do
       assert render_async(lv) =~ "renamed-client"
     end
 
-    test "ignores non-client device changes", %{conn: conn, account: account, actor: actor} do
+    test "counts gateway device changes too", %{conn: conn, account: account, actor: actor} do
       {:ok, lv, _html} =
         conn
         |> authorize_conn(actor)
@@ -988,7 +1045,7 @@ defmodule PortalWeb.DevicesTest do
       send(lv.pid, %Change{op: :insert, struct: %Device{type: :gateway}})
 
       html = render(lv)
-      assert html =~ "0"
+      assert html =~ "1"
       assert html =~ "Total"
     end
   end

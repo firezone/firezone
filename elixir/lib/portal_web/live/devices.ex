@@ -115,7 +115,7 @@ defmodule PortalWeb.Devices do
   end
 
   defp load_devices(subject, list_opts) do
-    list_opts = Keyword.put(list_opts, :preload, [:users, :online?])
+    list_opts = Keyword.put(list_opts, :preload, [:users, :sites, :online?])
 
     with {:ok, devices, metadata} <- Database.list_devices(subject, list_opts) do
       {:ok,
@@ -136,7 +136,8 @@ defmodule PortalWeb.Devices do
         </:icon>
         <:title>Devices</:title>
         <:description>
-          End-user devices and servers that access your protected Resources.
+          Every device in the account: the ones people sign in on and the ones
+          that serve your Sites.
         </:description>
         <:action>
           <Navigation.docs_action path="/deploy/clients" />
@@ -193,13 +194,16 @@ defmodule PortalWeb.Devices do
               return_to={@return_to}
             />
           </:col>
+          <:col :let={device} label="Serves" class="w-48">
+            <DeviceComponents.device_sites account={@account} device={device} />
+          </:col>
           <:col :let={device} label="Serial" class="w-44">
             <DeviceComponents.serial_cell serial={Map.get(@serials_by_device, device.id)} />
           </:col>
           <:col :let={device} field={{:devices, :last_seen_version}} label="Version" class="w-32">
             <DeviceComponents.version
               current={device.last_seen_version}
-              latest={ComponentVersions.client_version(device)}
+              latest={ComponentVersions.latest_version(device)}
             />
           </:col>
           <:col :let={device} label="Status" class="w-28">
@@ -497,7 +501,7 @@ defmodule PortalWeb.Devices do
      |> push_patch(to: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/devices"))}
   end
 
-  def handle_info(%Change{op: :insert, struct: %Device{type: :client}} = change, socket) do
+  def handle_info(%Change{op: :insert, struct: %Device{}} = change, socket) do
     {:noreply,
      socket
      |> update(:devices_count, fn
@@ -507,7 +511,7 @@ defmodule PortalWeb.Devices do
      |> mark_stale_if_unreflected(change)}
   end
 
-  def handle_info(%Change{op: :delete, old_struct: %Device{type: :client}} = change, socket) do
+  def handle_info(%Change{op: :delete, old_struct: %Device{}} = change, socket) do
     {:noreply,
      socket
      |> update(:devices_count, fn
@@ -517,12 +521,9 @@ defmodule PortalWeb.Devices do
      |> mark_stale_if_unreflected(change)}
   end
 
-  def handle_info(%Change{struct: %Device{type: :client}} = change, socket) do
+  def handle_info(%Change{struct: %Device{}} = change, socket) do
     {:noreply, mark_stale_if_unreflected(socket, change)}
   end
-
-  def handle_info(%Change{struct: %Device{type: :gateway}}, socket), do: {:noreply, socket}
-  def handle_info(%Change{old_struct: %Device{type: :gateway}}, socket), do: {:noreply, socket}
 
   def handle_info(
         %Phoenix.Socket.Broadcast{topic: "presences:account_devices:" <> _account_id} = event,
@@ -561,7 +562,6 @@ defmodule PortalWeb.Devices do
 
     def count_devices(subject) do
       from(d in Device, as: :devices)
-      |> where([devices: d], d.type == :client)
       |> Safe.scoped(subject)
       |> Safe.aggregate(:count)
     end
@@ -594,17 +594,16 @@ defmodule PortalWeb.Devices do
 
     defp page_query(_subject) do
       from(d in Device, as: :devices)
-      |> where([devices: d], d.type == :client)
     end
 
     defp maybe_filter_by_presence(base_query, presence, subject) do
       case presence do
         "online" ->
-          ids = Devices.online_ids(subject.account.id, :client)
+          ids = Devices.online_ids(subject.account.id)
           where(base_query, [devices: d], d.id in ^ids)
 
         "offline" ->
-          ids = Devices.online_ids(subject.account.id, :client)
+          ids = Devices.online_ids(subject.account.id)
           where(base_query, [devices: d], d.id not in ^ids)
 
         _ ->
@@ -641,6 +640,9 @@ defmodule PortalWeb.Devices do
       Enum.reduce(preload, devices, fn
         :users, devices ->
           Safe.preload(devices, device_actors: :actor)
+
+        :sites, devices ->
+          Safe.preload(devices, site_devices: :site)
 
         :online?, devices ->
           Devices.preload_presence(devices)
@@ -707,14 +709,13 @@ defmodule PortalWeb.Devices do
     def get_device_for_panel(id, subject) do
       device =
         from(c in Device, as: :devices)
-        |> where([devices: d], d.type == :client)
         |> where([devices: d], d.id == ^id)
-        |> preload(device_actors: :actor)
+        |> preload(device_actors: :actor, site_devices: :site)
         |> Safe.scoped(subject)
         |> Safe.one()
 
       case device do
-        %Device{type: :client} ->
+        %Device{} ->
           Devices.preload_presence([device]) |> List.first()
 
         _ ->
@@ -750,6 +751,7 @@ defmodule PortalWeb.Devices do
     def preloads do
       [
         device_actors: :actor,
+        site_devices: :site,
         online?: &Devices.preload_presence/1
       ]
     end
@@ -782,8 +784,66 @@ defmodule PortalWeb.Devices do
             {"Offline", "offline"}
           ],
           fun: &filter_by_presence/2
+        },
+        %Portal.Repo.Filter{
+          name: :serves_site,
+          title: "Serves site",
+          type: {:string, :select},
+          values: &site_values/1,
+          fun: &filter_by_serves_site/2
+        },
+        %Portal.Repo.Filter{
+          name: :has_users,
+          title: "Has users",
+          type: :boolean,
+          fun: &filter_by_has_users/1
         }
       ]
+    end
+
+    defmodule SiteOption do
+      defstruct [:id, :name]
+    end
+
+    defp site_values(subject) do
+      from(s in Portal.Site, as: :sites)
+      |> where([sites: s], s.account_id == ^subject.account.id)
+      |> order_by([sites: s], asc: s.name)
+      |> select([sites: s], %{id: s.id, name: s.name})
+      |> Safe.scoped(subject)
+      |> Safe.all()
+      |> case do
+        {:error, _} -> []
+        sites -> Enum.map(sites, &%SiteOption{id: &1.id, name: &1.name})
+      end
+    end
+
+    def filter_by_serves_site(queryable, site_id) do
+      {queryable,
+       dynamic(
+         [devices: d],
+         exists(
+           from(sd in Portal.SiteDevice,
+             where:
+               sd.account_id == parent_as(:devices).account_id and
+                 sd.device_id == parent_as(:devices).id and sd.site_id == ^site_id
+           )
+         )
+       )}
+    end
+
+    def filter_by_has_users(queryable) do
+      {queryable,
+       dynamic(
+         [devices: d],
+         exists(
+           from(da in Portal.DeviceActor,
+             where:
+               da.account_id == parent_as(:devices).account_id and
+                 da.device_id == parent_as(:devices).id
+           )
+         )
+       )}
     end
 
     # Any actor who has signed in on the device matches, not only its owner.
@@ -932,7 +992,7 @@ defmodule PortalWeb.Devices do
               via: :intune | nil
             }
           ]
-    def list_posture_for_device(%Device{type: :client} = device, subject) do
+    def list_posture_for_device(%Device{} = device, subject) do
       providers_by_id = subject |> list_posture_providers() |> Map.new(&{&1.id, &1})
 
       device
