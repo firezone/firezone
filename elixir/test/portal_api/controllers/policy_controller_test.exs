@@ -1224,6 +1224,40 @@ defmodule PortalAPI.PolicyControllerTest do
       assert Enum.any?(messages, &(&1 =~ "PolicyPostureNode"))
     end
 
+    test "refuses conditions while policy conditions are off for the account", %{conn: conn} do
+      account = account_fixture(features: %{policy_conditions: false})
+      actor = api_client_fixture(account: account)
+      conn = conn |> authorize_conn(actor) |> put_req_header("content-type", "application/json")
+      condition = %{"property" => "remote_ip_location_region", "operator" => "is_in", "values" => ["US"]}
+
+      attrs = %{
+        "group_id" => group_fixture(account: account).id,
+        "resource_id" => resource_fixture(account: account).id,
+        "conditions" => [condition]
+      }
+
+      assert %{"status" => 403, "detail" => "Policy conditions are not enabled for this account"} =
+               conn |> post("/policies", policy: attrs) |> json_response(403)
+
+      assert %{"data" => %{"conditions" => []}} =
+               conn |> post("/policies", policy: %{attrs | "conditions" => []}) |> json_response(201)
+
+      policy =
+        policy_with_conditions_fixture(%{
+          account: account,
+          conditions: [%{property: :client_verified, operator: :is, values: ["true"]}]
+        })
+
+      assert %{"status" => 403} =
+               conn |> put("/policies/#{policy.id}", policy: %{"conditions" => [condition]}) |> json_response(403)
+
+      assert %{"data" => %{"description" => "Kept"}} =
+               conn |> put("/policies/#{policy.id}", policy: %{"description" => "Kept"}) |> json_response(200)
+
+      assert %{"data" => %{"conditions" => []}} =
+               conn |> put("/policies/#{policy.id}", policy: %{"conditions" => []}) |> json_response(200)
+    end
+
     test "refuses postures while device posture is off for the account", %{conn: conn} do
       account = account_fixture()
       actor = api_client_fixture(account: account)
