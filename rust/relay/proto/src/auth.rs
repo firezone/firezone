@@ -37,14 +37,13 @@
 use base64::Engine;
 use base64::prelude::BASE64_STANDARD_NO_PAD;
 use bytecodec::Encode;
+use hmac::{Hmac, KeyInit as _, Mac as _};
 use once_cell::sync::Lazy;
-use rand::RngExt;
 use secrecy::{ExposeSecret, SecretString};
 use sha2::digest::FixedOutput;
 use sha2::{Digest, Sha256};
-use std::collections::HashMap;
-use std::collections::hash_map::Entry;
 use std::fmt;
+use std::net::IpAddr;
 use std::time::{Duration, SystemTime};
 use stun_codec::Message;
 use stun_codec::rfc5389::attributes::{MessageIntegrity, Realm, Username};
@@ -155,89 +154,84 @@ impl Encode for MessageEncoder {
     }
 }
 
-/// Tracks valid nonces for the TURN relay.
+/// Issues and checks nonces for the TURN relay.
 ///
-/// The semantic nature of nonces is an implementation detail of the relay in TURN.
-/// This could just as easily also be a time-based logic (i.e. nonces are valid for 10min).
+/// Nonces are stateless: each one is an HMAC of the client socket and a time window.
+/// This way, the relay does not store anything for a client before it authenticates.
 ///
-/// For simplicity reasons, we use a count-based strategy.
-/// Each nonce can be used for a certain number of requests before it is invalid.
-///
-/// We remember the nonce we last handed out to each client socket and keep
-/// reusing it for as long as it is valid, rather than minting a fresh one on
-/// every request. This bounds the stored nonces to one per client socket
-/// instead of one per request.
-#[derive(Default, Debug, Clone)]
+/// A nonce is valid in the window it was issued in and in the next one.
+#[derive(Clone)]
 pub(crate) struct Nonces {
-    inner: HashMap<ClientSocket, Nonce>,
+    key: [u8; 32],
 }
 
-#[derive(Debug, Clone, Copy)]
-struct Nonce {
-    value: Uuid,
-    remaining_requests: u64,
+impl fmt::Debug for Nonces {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Nonces").finish_non_exhaustive()
+    }
 }
 
 impl Nonces {
-    /// How many requests a client can perform with the same nonce.
-    const NUM_REQUESTS: u64 = 10_000;
+    /// How long a single time window is.
+    const WINDOW: Duration = Duration::from_secs(10 * 60);
+
+    pub(crate) fn new(key: [u8; 32]) -> Self {
+        Self { key }
+    }
 
     /// Returns a valid nonce for the given client.
-    ///
-    /// If we have already issued a nonce to this client that is still valid, the
-    /// same nonce is returned. Otherwise, a fresh one is minted using `rng`.
-    pub(crate) fn issue(&mut self, client: ClientSocket, rng: &mut impl RngExt) -> Uuid {
-        if let Some(nonce) = self
-            .inner
-            .get(&client)
-            .filter(|nonce| nonce.remaining_requests > 0)
-        {
-            return nonce.value;
-        }
+    pub(crate) fn issue(&self, client: ClientSocket, now: SystemTime) -> String {
+        let window = window_at(now);
+        let tag = self.mac(client, window).finalize().into_bytes();
 
-        let value = Uuid::from_u128(rng.random());
-        self.add_new(client, value);
-
-        value
+        format!("{window}:{}", hex::encode(tag))
     }
 
-    pub(crate) fn add_new(&mut self, client: ClientSocket, value: Uuid) {
-        self.inner.insert(
-            client,
-            Nonce {
-                value,
-                remaining_requests: Self::NUM_REQUESTS,
-            },
-        );
-    }
-
-    /// Record the usage of a nonce in a request.
-    pub(crate) fn handle_nonce_used(
-        &mut self,
+    /// Checks that the nonce was issued to this client and has not expired.
+    pub(crate) fn verify(
+        &self,
         client: ClientSocket,
-        value: Uuid,
+        nonce: &str,
+        now: SystemTime,
     ) -> Result<(), Error> {
-        let mut entry = match self.inner.entry(client) {
-            Entry::Vacant(_) => return Err(Error::UnknownNonce),
-            Entry::Occupied(entry) => entry,
-        };
+        let (window, tag) = nonce.split_once(':').ok_or(Error::UnknownNonce)?;
+        let window = window.parse::<u64>().map_err(|_| Error::UnknownNonce)?;
+        let tag = hex::decode(tag).map_err(|_| Error::UnknownNonce)?;
 
-        let nonce = entry.get_mut();
+        self.mac(client, window)
+            .verify_slice(&tag)
+            .map_err(|_| Error::UnknownNonce)?;
 
-        if nonce.value != value {
-            return Err(Error::UnknownNonce);
+        let current = window_at(now);
+
+        if window > current || current - window > 1 {
+            return Err(Error::StaleNonce);
         }
-
-        if nonce.remaining_requests == 0 {
-            entry.remove();
-
-            return Err(Error::NonceUsedUp);
-        }
-
-        nonce.remaining_requests -= 1;
 
         Ok(())
     }
+
+    fn mac(&self, client: ClientSocket, window: u64) -> Hmac<Sha256> {
+        let socket = client.into_socket();
+        let mut mac =
+            Hmac::<Sha256>::new_from_slice(&self.key).expect("HMAC accepts keys of any size");
+
+        match socket.ip() {
+            IpAddr::V4(ip) => mac.update(&ip.octets()),
+            IpAddr::V6(ip) => mac.update(&ip.octets()),
+        }
+        mac.update(&socket.port().to_be_bytes());
+        mac.update(&window.to_be_bytes());
+
+        mac
+    }
+}
+
+fn window_at(now: SystemTime) -> u64 {
+    now.duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
+        / Nonces::WINDOW.as_secs()
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -248,8 +242,8 @@ pub(crate) enum Error {
     InvalidPassword,
     #[error("invalid username")]
     InvalidUsername,
-    #[error("nonce has been used up")]
-    NonceUsedUp,
+    #[error("nonce has expired")]
+    StaleNonce,
     #[error("unknown nonce")]
     UnknownNonce,
     #[error("cannot authenticate message")]
@@ -351,7 +345,6 @@ pub(crate) fn systemtime_from_unix(seconds: u64) -> Option<SystemTime> {
 mod tests {
     use super::*;
     use crate::Attribute;
-    use rand::{SeedableRng as _, rngs::StdRng};
     use std::net::SocketAddr;
     use stun_codec::rfc5389::methods::BINDING;
     use stun_codec::{Message, MessageClass, TransactionId};
@@ -510,87 +503,115 @@ mod tests {
     }
 
     #[test]
-    fn nonces_are_valid_for_a_fixed_number_of_requests() {
-        let mut nonces = Nonces::default();
-        let client = client_socket(1);
-        let nonce = Uuid::new_v4();
+    fn nonce_is_valid_for_the_client_it_was_issued_to() {
+        let nonces = Nonces::new([1; 32]);
+        let now = systemtime_from_unix(1685200000).unwrap();
 
-        nonces.add_new(client, nonce);
+        let nonce = nonces.issue(client_socket(1), now);
 
-        for _ in 0..Nonces::NUM_REQUESTS {
-            nonces.handle_nonce_used(client, nonce).unwrap();
-        }
-
-        assert!(matches!(
-            nonces.handle_nonce_used(client, nonce).unwrap_err(),
-            Error::NonceUsedUp
-        ));
+        nonces.verify(client_socket(1), &nonce, now).unwrap();
     }
 
     #[test]
-    fn unknown_nonces_are_invalid() {
-        let mut nonces = Nonces::default();
-        let client = client_socket(1);
-        let nonce = Uuid::new_v4();
+    fn issues_the_same_nonce_within_one_window() {
+        let nonces = Nonces::new([1; 32]);
+        let now = systemtime_from_unix(1685200000).unwrap();
 
-        assert!(matches!(
-            nonces.handle_nonce_used(client, nonce).unwrap_err(),
-            Error::UnknownNonce
-        ));
-    }
-
-    #[test]
-    fn reuses_the_same_nonce_for_repeated_requests_from_one_client() {
-        let mut nonces = Nonces::default();
-        let client = client_socket(1);
-        let mut rng = StdRng::seed_from_u64(0);
-
-        let first = nonces.issue(client, &mut rng);
-        let second = nonces.issue(client, &mut rng);
+        let first = nonces.issue(client_socket(1), now);
+        let second = nonces.issue(client_socket(1), now + Duration::from_secs(1));
 
         assert_eq!(first, second);
     }
 
     #[test]
     fn issues_distinct_nonces_to_distinct_clients() {
-        let mut nonces = Nonces::default();
-        let mut rng = StdRng::seed_from_u64(0);
+        let nonces = Nonces::new([1; 32]);
+        let now = systemtime_from_unix(1685200000).unwrap();
 
-        let alice = nonces.issue(client_socket(1), &mut rng);
-        let bob = nonces.issue(client_socket(2), &mut rng);
+        let alice = nonces.issue(client_socket(1), now);
+        let bob = nonces.issue(client_socket(2), now);
 
         assert_ne!(alice, bob);
     }
 
     #[test]
     fn a_nonce_issued_to_one_client_is_invalid_for_another() {
-        let mut nonces = Nonces::default();
-        let mut rng = StdRng::seed_from_u64(0);
+        let nonces = Nonces::new([1; 32]);
+        let now = systemtime_from_unix(1685200000).unwrap();
 
-        let nonce = nonces.issue(client_socket(1), &mut rng);
+        let nonce = nonces.issue(client_socket(1), now);
 
         assert!(matches!(
-            nonces
-                .handle_nonce_used(client_socket(2), nonce)
+            nonces.verify(client_socket(2), &nonce, now).unwrap_err(),
+            Error::UnknownNonce
+        ));
+    }
+
+    #[test]
+    fn a_nonce_issued_with_another_key_is_invalid() {
+        let now = systemtime_from_unix(1685200000).unwrap();
+
+        let nonce = Nonces::new([1; 32]).issue(client_socket(1), now);
+
+        assert!(matches!(
+            Nonces::new([2; 32])
+                .verify(client_socket(1), &nonce, now)
                 .unwrap_err(),
             Error::UnknownNonce
         ));
     }
 
     #[test]
-    fn issues_a_fresh_nonce_once_the_previous_one_is_used_up() {
-        let mut nonces = Nonces::default();
-        let client = client_socket(1);
-        let mut rng = StdRng::seed_from_u64(0);
+    fn malformed_nonces_are_invalid() {
+        let nonces = Nonces::new([1; 32]);
+        let now = systemtime_from_unix(1685200000).unwrap();
 
-        let first = nonces.issue(client, &mut rng);
-        for _ in 0..Nonces::NUM_REQUESTS {
-            nonces.handle_nonce_used(client, first).unwrap();
+        for nonce in ["", "foo", "1:", ":00", "x:00", "2808666:zz"] {
+            assert!(matches!(
+                nonces.verify(client_socket(1), nonce, now).unwrap_err(),
+                Error::UnknownNonce
+            ));
         }
+    }
 
-        let second = nonces.issue(client, &mut rng);
+    #[test]
+    fn a_nonce_stays_valid_in_the_next_window() {
+        let nonces = Nonces::new([1; 32]);
+        let now = systemtime_from_unix(1685200000).unwrap();
 
-        assert_ne!(first, second);
+        let nonce = nonces.issue(client_socket(1), now);
+
+        nonces
+            .verify(client_socket(1), &nonce, now + Nonces::WINDOW)
+            .unwrap();
+    }
+
+    #[test]
+    fn a_nonce_expires_after_two_windows() {
+        let nonces = Nonces::new([1; 32]);
+        let now = systemtime_from_unix(1685200000).unwrap();
+
+        let nonce = nonces.issue(client_socket(1), now);
+
+        assert!(matches!(
+            nonces
+                .verify(client_socket(1), &nonce, now + Nonces::WINDOW * 2)
+                .unwrap_err(),
+            Error::StaleNonce
+        ));
+    }
+
+    #[test]
+    fn a_nonce_from_a_future_window_is_stale() {
+        let nonces = Nonces::new([1; 32]);
+        let now = systemtime_from_unix(1685200000).unwrap();
+
+        let nonce = nonces.issue(client_socket(1), now + Nonces::WINDOW);
+
+        assert!(matches!(
+            nonces.verify(client_socket(1), &nonce, now).unwrap_err(),
+            Error::StaleNonce
+        ));
     }
 
     fn message_integrity(
