@@ -1680,7 +1680,7 @@ defmodule PortalWeb.Groups do
 
       changeset =
         %Portal.Policy{}
-        |> cast(attrs, ~w[group_id resource_id flow_log_uploads_enabled postures]a)
+        |> cast(attrs, ~w[group_id resource_id flow_log_uploads_enabled require_attestation postures]a)
         |> validate_required(~w[group_id resource_id]a)
         |> cast_embed(:conditions, with: &Portal.Policies.Condition.changeset/3)
         |> Portal.Policy.changeset()
