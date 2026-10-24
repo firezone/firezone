@@ -121,7 +121,8 @@ pub enum Env {
 impl From<ApiUrl<'_>> for Env {
     fn from(value: ApiUrl) -> Self {
         match value {
-            ApiUrl::PROD => Self::Production,
+            // The EU cloud reports to the same PostHog and Sentry projects as the US one.
+            ApiUrl::PROD | ApiUrl::PROD_EU => Self::Production,
             ApiUrl::STAGING => Self::Staging,
             ApiUrl::DOCKER_COMPOSE | ApiUrl::LOCALHOST => Self::DockerCompose,
             _ => Self::OnPrem,
@@ -607,6 +608,7 @@ mod tests {
         assert_eq!(Env::parse("entrypoint"), Env::Entrypoint);
         assert_eq!(Env::parse("production"), Env::Production);
         assert_eq!(Env::parse("wss://api.firezone.dev"), Env::Production);
+        assert_eq!(Env::parse("wss://eu.api.firezone.dev"), Env::Production);
         assert_eq!(Env::parse("wss://api.firez.one"), Env::Staging);
         assert_eq!(Env::parse("https://example.com"), Env::OnPrem);
     }
