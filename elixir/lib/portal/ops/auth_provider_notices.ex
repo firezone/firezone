@@ -14,11 +14,12 @@ defmodule Portal.Ops.AuthProviderNotices do
   embed_templates "auth_provider_notices/*.text", suffix: "_text"
 
   def email(provider, notice) when provider in [:entra, :google] do
-    subject = notice_subject(provider, notice.name)
+    subject = notice_subject(provider)
 
     email =
       Mailer.default_email()
       |> subject(subject)
+      |> reply_to("support@firezone.dev")
       |> Mailer.with_account_id(notice.account_id)
       |> Mailer.render_body(__MODULE__, provider,
         notice: notice,
@@ -32,8 +33,8 @@ defmodule Portal.Ops.AuthProviderNotices do
     )
   end
 
-  defp notice_subject(:entra, name), do: "Action required: Microsoft Entra sign-in for #{name}"
-  defp notice_subject(:google, name), do: "Google sign-in update for #{name}"
+  defp notice_subject(:entra), do: "Action required: verify your Entra tenants in Firezone"
+  defp notice_subject(:google), do: "Improve Google sign-in security in Firezone"
 
   # The body is rendered by the escaped HTML templates in this module.
   # sobelow_skip ["XSS.Raw"]

@@ -320,11 +320,21 @@ defmodule Portal.Ops do
       opts = send_window_job_opts(first_send_at, index)
       Enum.each(window, fn {account_id, emails} ->
         email = AuthProviderNotices.email(provider, Map.fetch!(notices, account_id))
-        enqueue_account_emails({account_id, emails}, email.subject, email.html_body, email.text_body, opts)
+        enqueue_auth_provider_notice(email, emails, opts)
       end)
     end)
 
     :ok
+  end
+
+  defp enqueue_auth_provider_notice(email, recipients, job_opts) do
+    recipients
+    |> Enum.chunk_every(@max_bcc_per_message)
+    |> Enum.each(fn chunk ->
+      email
+      |> Mailer.bcc_recipients(chunk)
+      |> Mailer.enqueue(job_opts)
+    end)
   end
 
   @doc """
