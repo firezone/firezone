@@ -337,6 +337,60 @@ defmodule PortalWeb.SitesTest do
       refute html =~ "Deploy a Gateway"
     end
 
+    test "points every deploy method at this deployment's API URL", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      Portal.Config.put_env_override(:api_url_override, nil)
+      Portal.Config.put_env_override(:api_external_url, "https://eu.api.firezone.dev/")
+      site = site_fixture(account: account)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/sites/#{site.id}")
+
+      render_click(lv, "deploy_gateway")
+
+      assert lv
+             |> element("#deploy-code-debian-install")
+             |> render() =~
+               ~s(echo &quot;FIREZONE_API_URL=wss://eu.api.firezone.dev/&quot; | sudo tee -a /etc/firezone/gateway-env)
+
+      for {tab, expected} <- [
+            {"systemd-instructions", ~s(FIREZONE_API_URL=&quot;wss://eu.api.firezone.dev/&quot;)},
+            {"docker-instructions", ~s(--env FIREZONE_API_URL=&quot;wss://eu.api.firezone.dev/&quot;)},
+            {"custom-instructions", "FIREZONE_API_URL=wss://eu.api.firezone.dev/"}
+          ] do
+        assert render_click(lv, "deploy_tab_selected", %{"tab" => tab}) =~ expected
+      end
+
+      render_click(lv, "deploy_tab_selected", %{"tab" => "terraform-instructions"})
+      assert has_element?(lv, "#deploy-code-terraform-api-url", "wss://eu.api.firezone.dev/")
+    end
+
+    test "leaves the API URL out when it is the Gateway's default", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      Portal.Config.put_env_override(:api_url_override, nil)
+      Portal.Config.put_env_override(:api_external_url, "https://api.firezone.dev/")
+      site = site_fixture(account: account)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/sites/#{site.id}")
+
+      refute render_click(lv, "deploy_gateway") =~ "FIREZONE_API_URL"
+
+      for tab <- ~w[systemd-instructions docker-instructions terraform-instructions custom-instructions] do
+        refute render_click(lv, "deploy_tab_selected", %{"tab" => tab}) =~ "FIREZONE_API_URL"
+      end
+    end
+
     test "shows account-managed delete confirmation, cancels it, then deletes the site", %{
       conn: conn,
       account: account,
