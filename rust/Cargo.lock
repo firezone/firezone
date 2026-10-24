@@ -6454,6 +6454,7 @@ dependencies = [
  "bytecodec",
  "derive_more",
  "hex",
+ "hmac 0.13.0",
  "logging",
  "once_cell",
  "otel-attributes",

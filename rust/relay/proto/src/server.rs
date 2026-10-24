@@ -40,7 +40,6 @@ use stun_codec::rfc8656::attributes::{
 use stun_codec::rfc8656::errors::{AddressFamilyNotSupported, PeerAddressFamilyMismatch};
 use stun_codec::{Message, MessageClass, Method, TransactionId};
 use tracing::field;
-use uuid::Uuid;
 
 /// A sans-IO STUN & TURN server.
 ///
@@ -206,8 +205,8 @@ where
             pending_commands: Default::default(),
             auth_secret: SecretString::from(hex::encode(rng.random::<[u8; 32]>())),
             accounts_by_hash: Default::default(),
+            nonces: Nonces::new(rng.random()),
             rng,
-            nonces: Default::default(),
             allocations_up_down_counter,
             responses_counter,
             data_relayed: 0,
@@ -282,11 +281,6 @@ where
 
     pub fn listen_port(&self) -> u16 {
         self.listen_port
-    }
-
-    /// Registers a new, valid nonce for the given client.
-    pub fn add_nonce(&mut self, client: ClientSocket, nonce: Uuid) {
-        self.nonces.add_new(client, nonce);
     }
 
     pub fn num_relayed_bytes(&self) -> u64 {
@@ -400,7 +394,7 @@ where
         // In case of a 401 or 438 response, attach a realm and nonce.
         if is_auth_error {
             error_response.add_attribute((*FIREZONE).clone());
-            error_response.add_attribute(self.new_nonce_attribute(sender));
+            error_response.add_attribute(self.new_nonce_attribute(sender, now_utc));
         }
 
         let message = match message.username() {
@@ -931,16 +925,9 @@ where
 
                 error_response
             })?
-            .value()
-            .parse::<Uuid>()
-            .map_err(|e| {
-                let (error_response, msg) = make_error_response(Unauthorized, request);
-                tracing::warn!(target: "relay", "{msg}: Failed to parse nonce: {e}");
+            .value();
 
-                error_response
-            })?;
-
-        self.nonces.handle_nonce_used(sender, nonce).map_err(|e| {
+        self.nonces.verify(sender, nonce, now_utc).map_err(|e| {
             let (error_response, msg) = make_error_response(StaleNonce, request);
             tracing::debug!(target: "relay", "{msg}: Nonce is invalid: {e}");
 
@@ -953,7 +940,7 @@ where
                 let (error_response, msg) = make_error_response(Unauthorized, request);
 
                 match e {
-                    auth::Error::UnknownNonce | auth::Error::NonceUsedUp | auth::Error::Expired | auth::Error::InvalidPassword => {
+                    auth::Error::UnknownNonce | auth::Error::StaleNonce | auth::Error::Expired | auth::Error::InvalidPassword => {
                         tracing::debug!(target: "relay", "{msg}: MessageIntegrity check failed: {e}");
                     },
                     auth::Error::CannotAuthenticate(_) | auth::Error::InvalidUsername => {
@@ -1208,11 +1195,9 @@ where
         tracing::info!(target: "relay", channel = %chan.value(), %client, %peer, %allocation, "Channel binding is now deleted (and can be rebound)");
     }
 
-    fn new_nonce_attribute(&mut self, sender: ClientSocket) -> Nonce {
-        let nonce = self.nonces.issue(sender, &mut self.rng);
-
-        Nonce::new(nonce.to_string())
-            .expect("UUIDs are valid nonces because they are less than 128 characters long")
+    fn new_nonce_attribute(&self, sender: ClientSocket, now_utc: SystemTime) -> Nonce {
+        Nonce::new(self.nonces.issue(sender, now_utc))
+            .expect("our nonces are valid because they are less than 128 characters long")
     }
 }
 

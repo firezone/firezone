@@ -11,6 +11,7 @@ bimap = { workspace = true }
 bytecodec = { workspace = true }
 derive_more = { workspace = true, features = ["from"] }
 hex = { workspace = true }
+hmac = { workspace = true }
 logging = { workspace = true }
 once_cell = { workspace = true }
 otel-attributes = { workspace = true }
