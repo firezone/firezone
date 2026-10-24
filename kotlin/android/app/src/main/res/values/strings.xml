@@ -20,6 +20,10 @@
 	<string name="connect_on_start">Connect on Start</string>
 	<!-- Advanced Settings -->
 	<string name="advanced_settings_title">Advanced</string>
+	<string name="cloud_region">Server</string>
+	<string name="cloud_region_us">Firezone Cloud (US)</string>
+	<string name="cloud_region_eu">Firezone Cloud (EU)</string>
+	<string name="cloud_region_custom">Custom</string>
 	<string name="auth_url">Auth URL</string>
 	<string name="api_url">API URL</string>
 	<string name="log_filter">Log Filter</string>
