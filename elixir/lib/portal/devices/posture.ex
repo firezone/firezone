@@ -10,7 +10,7 @@ defmodule Portal.Devices.Posture do
 
   Only the first two prove anything. The third is only as trustworthy as the
   actor and the device running the Client, so callers label rows matched that
-  way.
+  way, and it is used only when the device attested neither of the others.
 
   Defender for Endpoint issues no device id of its own for a certificate to
   attest and its machines report no hardware serial, so a Defender row is
@@ -140,11 +140,7 @@ defmodule Portal.Devices.Posture do
   @doc "The identifiers a client device is matched on, which are the keys its channel listens under."
   @spec device_keys(Device.t()) :: [key()]
   def device_keys(%Device{} = device) do
-    keys(
-      mdm_device_id: device.last_attested_mdm_device_id,
-      serial: device.last_attested_device_serial,
-      serial: device.device_serial
-    )
+    keys(for {rung, value} <- match_keys(device), do: {key_kind(rung), value})
   end
 
   @doc "The Entra device ids of the matched Intune rows, which are the keys Defender rows arrive under."
@@ -174,15 +170,19 @@ defmodule Portal.Devices.Posture do
   def rung_fields(:sophos, :mdm_device_id), do: []
   def rung_fields(:sophos, _serial_rung), do: [:serial_number]
 
+  # An attested device's reported serial is ignored, so it cannot claim another device's row.
   defp match_keys(%Device{} = device) do
-    Enum.reject(
-      [
-        mdm_device_id: device.last_attested_mdm_device_id,
-        attested_serial: device.last_attested_device_serial,
-        device_serial: device.device_serial
-      ],
-      fn {_rung, value} -> is_nil(value) end
-    )
+    attested =
+      Enum.reject(
+        [mdm_device_id: device.last_attested_mdm_device_id, attested_serial: device.last_attested_device_serial],
+        fn {_rung, value} -> is_nil(value) end
+      )
+
+    if attested == [] and not is_nil(device.device_serial) do
+      [device_serial: device.device_serial]
+    else
+      attested
+    end
   end
 
   # One joined result row per combination of matched provider rows; the
@@ -245,6 +245,9 @@ defmodule Portal.Devices.Posture do
       if Enum.any?(rung_fields(type, rung), &(Map.fetch!(row, &1) == value)), do: rung
     end)
   end
+
+  defp key_kind(:mdm_device_id), do: :mdm_device_id
+  defp key_kind(_serial_rung), do: :serial
 
   defp keys(pairs) do
     pairs

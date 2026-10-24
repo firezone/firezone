@@ -1327,6 +1327,12 @@ defmodule PortalWeb.Policies.Components do
             {if @policy.flow_log_uploads_enabled, do: "Enabled", else: "Disabled"}
           </dd>
         </div>
+        <div>
+          <dt class="text-[10px] text-subtle mb-0.5">Device attestation</dt>
+          <dd class="text-xs text-body font-medium">
+            {if @policy.require_attestation, do: "Required", else: "Not required"}
+          </dd>
+        </div>
         <div :if={@policy.description}>
           <dt class="text-[10px] text-subtle mb-0.5">Description</dt>
           <dd class="text-xs text-body font-medium">{@policy.description}</dd>
@@ -1427,7 +1433,6 @@ defmodule PortalWeb.Policies.Components do
 
   @spec condition_short_label(atom()) :: String.t()
   def condition_short_label(:client_verified), do: "Verified"
-  def condition_short_label(:device_attested), do: "Attested"
   def condition_short_label(:auth_provider_id), do: "Auth"
   def condition_short_label(:remote_ip_location_region), do: "Location"
   def condition_short_label(:remote_ip), do: "IP Range"
@@ -1436,10 +1441,6 @@ defmodule PortalWeb.Policies.Components do
 
   @spec condition_type_badge_class(atom()) :: String.t()
   defp condition_type_badge_class(:client_verified),
-    do:
-      "inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium shrink-0 text-success bg-success-light"
-
-  defp condition_type_badge_class(:device_attested),
     do:
       "inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium shrink-0 text-success bg-success-light"
 
@@ -1466,9 +1467,6 @@ defmodule PortalWeb.Policies.Components do
   @spec condition_values_display(map(), list(), any()) :: String.t()
   defp condition_values_display(%{property: :client_verified}, _providers, _account),
     do: "Device must be verified"
-
-  defp condition_values_display(%{property: :device_attested}, _providers, _account),
-    do: "Devices must have a trusted X.509 certificate"
 
   defp condition_values_display(
          %{property: :remote_ip_location_region, values: values},
@@ -1556,8 +1554,7 @@ defmodule PortalWeb.Policies.Components do
       :remote_ip_location_region,
       :remote_ip,
       :auth_provider_id,
-      :client_verified,
-      :device_attested
+      :client_verified
     ]
 
   def available_conditions(_resource),
@@ -1566,13 +1563,11 @@ defmodule PortalWeb.Policies.Components do
       :remote_ip,
       :auth_provider_id,
       :client_verified,
-      :device_attested,
       :current_utc_datetime
     ]
 
   @spec condition_type_label(atom()) :: String.t()
   def condition_type_label(:client_verified), do: "Require Verified Device"
-  def condition_type_label(:device_attested), do: "Require Attestation"
   def condition_type_label(:auth_provider_id), do: "Authentication Provider"
   def condition_type_label(:remote_ip_location_region), do: "Device Location"
   def condition_type_label(:remote_ip), do: "IP Range"
@@ -1597,7 +1592,6 @@ defmodule PortalWeb.Policies.Components do
   def grant_condition_card(assigns) do
     ~H"""
     <.grant_client_verified_condition_card :if={@type == :client_verified} type={@type} />
-    <.grant_device_attested_condition_card :if={@type == :device_attested} type={@type} />
     <.grant_ip_range_condition_card
       :if={@type == :remote_ip}
       type={@type}
@@ -1675,31 +1669,6 @@ defmodule PortalWeb.Policies.Components do
       <input
         type="hidden"
         name="policy[conditions][client_verified][values][]"
-        value="true"
-      />
-    </div>
-    """
-  end
-
-  attr :type, :atom, required: true
-
-  defp grant_device_attested_condition_card(assigns) do
-    ~H"""
-    <div class="rounded-lg border border-border overflow-hidden">
-      <.grant_condition_card_header type={@type} />
-      <input
-        type="hidden"
-        name="policy[conditions][device_attested][property]"
-        value="device_attested"
-      />
-      <input
-        type="hidden"
-        name="policy[conditions][device_attested][operator]"
-        value="is"
-      />
-      <input
-        type="hidden"
-        name="policy[conditions][device_attested][values][]"
         value="true"
       />
     </div>
