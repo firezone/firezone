@@ -1434,6 +1434,7 @@ impl TunnelTest {
                         None,
                         resource,
                         use_iceless,
+                        tunnel_proto::messages::IceRole::Controlled,
                         now,
                         test_ingest_token(),
                     );

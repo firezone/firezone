@@ -1,8 +1,8 @@
 //! Gateway related messages that are needed within connlib
 
 use crate::messages::{
-    Filter, FlowLogsConfig, IceCredentials, IngestToken, Interface, Key, Relay, RelaysPresence,
-    SecretKey, SnownetCapabilities, WarnOnInvalidFilter,
+    Filter, FlowLogsConfig, IceCredentials, IceRole, IngestToken, Interface, Key, Relay,
+    RelaysPresence, SecretKey, SnownetCapabilities, WarnOnInvalidFilter,
 };
 use connlib_model::{ClientId, IceCandidate, RelayId, ResourceId};
 use ip_network::IpNetwork;
@@ -155,8 +155,18 @@ pub struct CreateAuthorization {
     #[serde(default)]
     pub use_iceless: bool,
 
+    /// The ICE role the portal assigns this side of the connection.
+    ///
+    /// Portals that predate the field never send it, and a gateway was always controlled.
+    #[serde(default = "controlled")]
+    pub ice_role: IceRole,
+
     /// The responder-side ingest token for this flow's logs.
     pub flow_logs_ingest_token: IngestToken,
+}
+
+fn controlled() -> IceRole {
+    IceRole::Controlled
 }
 
 /// OBSOLETE - safe to remove this when <https://github.com/firezone/firezone/pull/13714> is deployed to production.
@@ -395,7 +405,24 @@ mod tests {
             panic!("expected CreateAuthorization");
         };
         assert!(!authorization.use_iceless);
+        assert_eq!(authorization.ice_role, IceRole::Controlled);
         assert_eq!(authorization.flow_logs_ingest_token.as_str(), token);
+    }
+
+    #[test]
+    fn create_authorization_takes_ice_role_from_portal() {
+        let token = flow_tracker::TEST_INGEST_TOKEN;
+        let json = CREATE_AUTHORIZATION.replace(
+            r#""flow_id""#,
+            &format!(r#""flow_logs_ingest_token":"{token}","ice_role":"controlling","flow_id""#),
+        );
+
+        let message = serde_json::from_str::<IngressMessages>(&json).unwrap();
+
+        let IngressMessages::CreateAuthorization(authorization) = message else {
+            panic!("expected CreateAuthorization");
+        };
+        assert_eq!(authorization.ice_role, IceRole::Controlling);
     }
 
     #[test]
