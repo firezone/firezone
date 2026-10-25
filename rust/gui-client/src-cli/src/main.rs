@@ -8,6 +8,7 @@ use gui_ipc::{ClientMsg, NotRunning, ServerError, ServerMsg, TunnelStatus};
 use secrecy::SecretString;
 use std::{
     io::{BufRead as _, IsTerminal as _},
+    net::IpAddr,
     process::ExitCode,
 };
 use tokio::runtime::Runtime;
@@ -178,7 +179,12 @@ fn run(cli: Cli) -> Result<()> {
 
             print_status(&status);
         }
-        Cmd::Connect => connect(&rt)?,
+        Cmd::Connect {
+            additional_host_candidates,
+        } => connect(
+            &rt,
+            additional_host_candidates.map(|ips| ips.into_iter().flatten().collect()),
+        )?,
         Cmd::Disconnect => {
             expect_ack(&rt, ClientMsg::Disconnect).context("Failed to disconnect")?
         }
@@ -199,10 +205,17 @@ fn run(cli: Cli) -> Result<()> {
     Ok(())
 }
 
-fn connect(rt: &Runtime) -> Result<()> {
+fn connect(rt: &Runtime, additional_host_candidates: Option<Vec<IpAddr>>) -> Result<()> {
     let token = supplied_token().context("Failed to read token")?;
 
-    expect_ack(rt, ClientMsg::Connect { token }).context("Failed to connect")?;
+    expect_ack(
+        rt,
+        ClientMsg::Connect {
+            token,
+            additional_host_candidates,
+        },
+    )
+    .context("Failed to connect")?;
 
     Ok(())
 }
@@ -434,7 +447,12 @@ mod tests {
     #[test]
     fn subcommands() {
         assert!(matches!(command(&["firezone", "status"]), Cmd::Status));
-        assert!(matches!(command(&["firezone", "connect"]), Cmd::Connect));
+        assert!(matches!(
+            command(&["firezone", "connect"]),
+            Cmd::Connect {
+                additional_host_candidates: None
+            }
+        ));
         assert!(matches!(
             command(&["firezone", "disconnect"]),
             Cmd::Disconnect
