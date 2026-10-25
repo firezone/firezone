@@ -1119,7 +1119,10 @@ defmodule PortalWeb.SignUpTest do
 
   defp assert_follow_up_scheduled(account, email) do
     actor = Portal.Repo.get_by!(Portal.Actor, account_id: account.id, email: email)
-    assert [job] = all_enqueued(worker: Portal.Workers.SignUpFollowUp)
+    assert [job, feedback_job] =
+      all_enqueued(worker: Portal.Workers.SignUpFollowUp) |> Enum.sort_by(& &1.scheduled_at, DateTime)
+    assert feedback_job.args == %{"account_id" => account.id, "actor_id" => actor.id, "stage" => "feedback"}
+    assert_in_delta DateTime.diff(feedback_job.scheduled_at, DateTime.utc_now(), :second), 3 * 24 * 60 * 60, 60
     assert job.args == %{"account_id" => account.id, "actor_id" => actor.id}
     delay = DateTime.diff(job.scheduled_at, DateTime.utc_now(), :second)
     assert_in_delta delay, 15 * 60, 60
