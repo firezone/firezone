@@ -465,6 +465,21 @@ impl Session {
         self.inner.set_dns(dns_servers);
     }
 
+    pub fn set_additional_host_candidates(&self, ips: Vec<String>) {
+        tracing::debug!(?ips, "Received set_additional_host_candidates command");
+
+        let ips = ips
+            .into_iter()
+            .filter_map(|ip| {
+                ip.parse()
+                    .inspect_err(|e| tracing::debug!(%ip, "Failed to parse additional host candidate as IP address: {e}"))
+                    .ok()
+            })
+            .collect();
+
+        self.inner.set_additional_host_candidates(ips);
+    }
+
     pub fn reset(&self, reason: String) {
         tracing::debug!(%reason, "Received reset command");
 
