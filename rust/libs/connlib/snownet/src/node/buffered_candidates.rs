@@ -61,12 +61,12 @@ where
         self.inner.clear();
     }
 
-    pub(crate) fn poll_timeout(&self) -> Option<(Instant, &'static str)> {
+    pub(crate) fn poll_timeout(&self) -> Option<Instant> {
         self.inner
             .values()
             .filter_map(|candidates| candidates.first())
-            .map(|(received_at, _)| (*received_at + Self::TIMEOUT, "buffered candidates"))
-            .min_by_key(|(instant, _)| *instant)
+            .map(|(received_at, _)| *received_at + Self::TIMEOUT)
+            .min()
     }
 
     pub(crate) fn handle_timeout(&mut self, now: Instant) {
@@ -118,7 +118,7 @@ mod tests {
         buffer.push(1, "early".to_owned(), now);
         buffer.push(1, "late".to_owned(), now + Duration::from_secs(5));
 
-        let (timeout, _) = buffer.poll_timeout().unwrap();
+        let timeout = buffer.poll_timeout().unwrap();
         assert_eq!(timeout, now + BufferedCandidates::<u32>::TIMEOUT);
 
         buffer.handle_timeout(timeout);
