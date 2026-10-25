@@ -84,6 +84,7 @@ pub enum Command {
     SetDns(Vec<IpAddr>),
     SetTun(Box<dyn Tun>),
     SetInternetResourceState(bool),
+    SetAdditionalHostCandidates(Vec<IpAddr>),
 }
 
 #[derive(Debug, PartialEq, Eq, Hash)]
@@ -330,6 +331,14 @@ impl Eventloop {
                 };
 
                 tunnel.state_mut().set_internet_resource_state(active, now)
+            }
+            Command::SetAdditionalHostCandidates(ips) => {
+                let now = self.clock.now();
+                let Some(tunnel) = self.tunnel.as_mut() else {
+                    return Ok(ControlFlow::Continue(()));
+                };
+
+                tunnel.set_additional_host_candidates(ips, now);
             }
             Command::SetTun(tun) => {
                 let Some(tunnel) = self.tunnel.as_mut() else {

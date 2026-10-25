@@ -143,6 +143,10 @@ impl Session {
         let _ = self.channel.send(Command::SetInternetResourceState(active));
     }
 
+    pub fn set_additional_host_candidates(&self, ips: Vec<IpAddr>) {
+        let _ = self.channel.send(Command::SetAdditionalHostCandidates(ips));
+    }
+
     /// Sets a new [`Tun`] device handle.
     pub fn set_tun(&self, new_tun: Box<dyn Tun>) {
         let _ = self.channel.send(Command::SetTun(new_tun));
