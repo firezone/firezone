@@ -193,7 +193,7 @@ actor Adapter {
   private let token: Token
   private let deviceId: String
   private let logFilter: String
-  private let additionalHostCandidates: [String]
+  private var additionalHostCandidates: [String]
   /// Persistent keychain reference to the client identity MDM put on the VPN profile.
   private let identityReference: Data?
 
@@ -447,6 +447,12 @@ actor Adapter {
     }
 
     sendCommand(.setInternetResourceState(enabled))
+  }
+
+  func setAdditionalHostCandidates(_ ips: [String]) async {
+    additionalHostCandidates = ips
+
+    sendCommand(.setAdditionalHostCandidates(ips))
   }
 
   // MARK: - Network settings

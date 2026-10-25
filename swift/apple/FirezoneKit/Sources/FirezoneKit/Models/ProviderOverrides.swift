@@ -16,14 +16,15 @@ public struct ProviderOverrides: Sendable {
   public var logFilter: String?
   // swiftlint:disable:next discouraged_optional_boolean - nil means "leave as stored"
   public var internetResourceEnabled: Bool?
-  /// Comma-separated IPs; empty clears them.
-  public var additionalHostCandidates: String?
+  // swiftlint:disable:next discouraged_optional_collection - nil means "leave as stored"
+  public var additionalHostCandidates: [String]?
 
   public init(
     logFilter: String? = nil,
     // swiftlint:disable:next discouraged_optional_boolean - nil means "leave as stored"
     internetResourceEnabled: Bool? = nil,
-    additionalHostCandidates: String? = nil
+    // swiftlint:disable:next discouraged_optional_collection - nil means "leave as stored"
+    additionalHostCandidates: [String]? = nil
   ) {
     self.logFilter = logFilter
     self.internetResourceEnabled = internetResourceEnabled

@@ -688,6 +688,17 @@ struct ProviderMessageCodableTests {
     }
   }
 
+  @Test("setAdditionalHostCandidates round-trips through JSON")
+  func setAdditionalHostCandidatesRoundTrip() throws {
+    let decoded = try roundTrip(.setAdditionalHostCandidates(["192.0.2.1", "2001:db8::1"]))
+
+    if case .setAdditionalHostCandidates(let ips) = decoded {
+      #expect(ips == ["192.0.2.1", "2001:db8::1"])
+    } else {
+      Issue.record("Expected .setAdditionalHostCandidates, got \(decoded)")
+    }
+  }
+
   @Test("Unknown message type fails to decode")
   func unknownTypeFailsToDecode() throws {
     let data = try encoder.encode(["type": "getResourceList"])

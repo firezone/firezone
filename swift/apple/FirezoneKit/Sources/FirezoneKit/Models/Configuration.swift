@@ -174,12 +174,17 @@ public class Configuration: ObservableObject {
     }
     set { setProviderValue(newValue, forKey: Keys.internetResourceEnabled) }
   }
-  var additionalHostCandidates: String {
+  var additionalHostCandidates: [String] {
     get {
       providerString(
-        Keys.additionalHostCandidates, default: ConfigurationDefaults.additionalHostCandidates)
+        Keys.additionalHostCandidates, default: ConfigurationDefaults.additionalHostCandidates
+      )
+      .split(separator: ",")
+      .map(String.init)
     }
-    set { setProviderValue(newValue, forKey: Keys.additionalHostCandidates) }
+    set {
+      setProviderValue(newValue.joined(separator: ","), forKey: Keys.additionalHostCandidates)
+    }
   }
 
   var hideAdminPortalMenuItem: Bool { managedBool(Keys.hideAdminPortalMenuItem) }

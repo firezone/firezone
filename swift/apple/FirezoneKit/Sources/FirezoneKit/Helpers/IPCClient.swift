@@ -165,6 +165,15 @@ public enum IPCClient {
   }
 
   @MainActor
+  public static func setAdditionalHostCandidates(
+    session: any TunnelSessionProtocol,
+    _ ips: [String]
+  ) async throws {
+    let message = ProviderMessage.setAdditionalHostCandidates(ips)
+    _ = try await sendProviderMessage(session: session, message: message)
+  }
+
+  @MainActor
   static func drainFlowLogs(session: any TunnelSessionProtocol) async throws {
     let message = ProviderMessage.drainFlowLogs
     _ = try await sendProviderMessage(session: session, message: message)
