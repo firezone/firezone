@@ -147,7 +147,7 @@ where
             self.reindex();
         }
 
-        self.established.handle_timeout(now, |cid, connection| {
+        for (cid, connection) in self.established.due_mut(now) {
             connection.handle_timeout(
                 cid,
                 now,
@@ -156,7 +156,7 @@ where
                 events,
                 inflight_stun_requests,
             );
-        });
+        }
 
         for (&cid, (connection, goodbye)) in self.closing.iter_mut() {
             if now >= goodbye.deadline {

@@ -116,18 +116,17 @@ where
         self.peer_by_id.clear();
     }
 
-    /// Calls `f` on every peer that is due at `now` or was handed out mutably since the last call.
-    ///
-    /// Returns the IDs of the visited peers.
-    pub(crate) fn handle_timeout(&mut self, now: Instant, mut f: impl FnMut(&mut P)) -> Vec<TId> {
-        let visited = self.peer_by_id.handle_timeout(now, |_, p| f(p));
-        self.peer_by_id.reindex(|_, _| {});
+    /// Hands out the peers that are due at `now` or were handed out mutably since the last [`PeerStore::reindex`].
+    pub(crate) fn due_mut(&mut self, now: Instant) -> impl Iterator<Item = (TId, &mut P)> {
+        self.peer_by_id.due_mut(now)
+    }
 
-        visited
+    pub(crate) fn reindex(&mut self) {
+        self.peer_by_id.reindex(|_, _| {});
     }
 }
 
-/// A peer whose [`PollTimeout::poll_timeout`] says when [`PeerStore::handle_timeout`] needs to visit it next.
+/// A peer whose [`PollTimeout::poll_timeout`] says when [`PeerStore::due_mut`] needs to hand it out next.
 pub(crate) trait Peer: PollTimeout {
     fn tun_ipv4(&self) -> Ipv4Addr;
     fn tun_ipv6(&self) -> Ipv6Addr;
@@ -188,16 +187,11 @@ mod tests {
     struct DummyPeer {
         ipv4: Ipv4Addr,
         ipv6: Ipv6Addr,
-        deadline: Option<Instant>,
     }
 
     impl DummyPeer {
         fn new(ipv4: Ipv4Addr, ipv6: Ipv6Addr) -> Self {
-            Self {
-                ipv4,
-                ipv6,
-                deadline: None,
-            }
+            Self { ipv4, ipv6 }
         }
     }
 
@@ -213,7 +207,7 @@ mod tests {
 
     impl PollTimeout for DummyPeer {
         fn poll_timeout(&mut self) -> Option<Instant> {
-            self.deadline
+            None
         }
     }
 
@@ -260,37 +254,5 @@ mod tests {
 
         assert!(peer_storage.peer_by_id(&0).is_some());
         assert!(peer_storage.peer_by_ip(Ipv4Addr::new(1, 1, 1, 1)).is_none())
-    }
-
-    #[test]
-    fn handle_timeout_visits_touched_and_due_peers() {
-        let mut peer_storage = PeerStore::<u64, DummyPeer>::default();
-        let now = Instant::now();
-        let later = now + std::time::Duration::from_secs(1);
-        peer_storage.upsert(0, || {
-            DummyPeer::new(Ipv4Addr::new(1, 1, 1, 1), Ipv6Addr::LOCALHOST)
-        });
-        peer_storage.upsert(1, || {
-            DummyPeer::new(Ipv4Addr::new(2, 2, 2, 2), Ipv6Addr::UNSPECIFIED)
-        });
-
-        let mut visited = peer_storage.handle_timeout(now, |p| p.deadline = Some(later));
-        visited.sort();
-        assert_eq!(visited, vec![0, 1]);
-
-        assert_eq!(peer_storage.handle_timeout(now, |_| {}), Vec::<u64>::new());
-
-        peer_storage.peer_by_id_mut(&0).unwrap().deadline = None;
-        assert_eq!(peer_storage.handle_timeout(now, |_| {}), vec![0]);
-
-        assert_eq!(peer_storage.handle_timeout(later, |_| {}), vec![1]);
-        assert_eq!(
-            peer_storage.handle_timeout(later, |p| p.deadline = None),
-            vec![1]
-        );
-        assert_eq!(
-            peer_storage.handle_timeout(later, |_| {}),
-            Vec::<u64>::new()
-        );
     }
 }

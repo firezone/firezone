@@ -471,15 +471,18 @@ impl GatewayState {
         self.flow_tracker.handle_timeout(now);
         self.authorization_rejections.handle_timeout(now);
 
-        for id in self.peers.handle_timeout(now, |p| p.handle_timeout(now)) {
-            if !self
-                .peers
-                .peer_by_id(&id)
-                .is_some_and(ClientOnGateway::is_empty)
-            {
-                continue;
-            }
+        let empty = self
+            .peers
+            .due_mut(now)
+            .filter_map(|(id, peer)| {
+                peer.handle_timeout(now);
 
+                peer.is_empty().then_some(id)
+            })
+            .collect::<Vec<_>>();
+        self.peers.reindex();
+
+        for id in empty {
             self.peers.remove(&id);
             tracing::debug!(cid = %id, "Access to last resource for Client removed");
 

@@ -60,7 +60,7 @@ fn only_mutable_access_marks() {
 }
 
 #[test]
-fn handle_timeout_visits_marked_then_due_in_deadline_order() {
+fn due_mut_hands_out_marked_then_due_in_deadline_order() {
     let now = Instant::now();
     let mut map = DeadlineMap::default();
     map.insert(1, Value(Some(now + Duration::from_secs(2))));
@@ -70,22 +70,27 @@ fn handle_timeout_visits_marked_then_due_in_deadline_order() {
     map.reindex(|_, _| {});
 
     let _ = map.get_mut(&4);
-    let visited = map.handle_timeout(now + Duration::from_secs(3), |_, _| {});
+    let due = map
+        .due_mut(now + Duration::from_secs(3))
+        .map(|(k, _)| k)
+        .collect::<Vec<_>>();
 
-    assert_eq!(visited, vec![4, 2, 1, 3]);
+    assert_eq!(due, vec![4, 2, 1, 3]);
 }
 
 #[test]
-fn handle_timeout_leaves_visited_entries_marked() {
+fn due_mut_marks_handed_out_entries() {
     let now = Instant::now();
     let mut map = DeadlineMap::default();
     map.insert(1, Value(Some(now)));
     map.insert(2, Value(Some(now + Duration::from_secs(1))));
     map.reindex(|_, _| {});
 
-    let visited = map.handle_timeout(now, |_, v| v.0 = None);
+    for (k, v) in map.due_mut(now) {
+        assert_eq!(k, 1);
+        v.0 = None;
+    }
 
-    assert_eq!(visited, vec![1]);
     assert_eq!(reindexed(&mut map), vec![1]);
     assert_eq!(map.poll_timeout(), Some(now + Duration::from_secs(1)));
 }
@@ -104,10 +109,7 @@ fn removal_unindexes() {
     let removed = map.extract_if(|k, _| *k == 2);
     assert_eq!(removed.len(), 1);
     assert_eq!(map.poll_timeout(), None);
-    assert!(
-        map.handle_timeout(now + Duration::from_secs(1), |_, _| {})
-            .is_empty()
-    );
+    assert_eq!(map.due_mut(now + Duration::from_secs(1)).count(), 0);
 }
 
 #[test]

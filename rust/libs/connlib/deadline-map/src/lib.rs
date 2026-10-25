@@ -179,10 +179,8 @@ where
         Some(*deadline)
     }
 
-    /// Calls `f` on the marked entries and then on those due at `now` in deadline order, leaving them marked.
-    ///
-    /// Returns the keys of the visited entries.
-    pub fn handle_timeout(&mut self, now: Instant, mut f: impl FnMut(K, &mut V)) -> Vec<K> {
+    /// Hands out and marks the marked entries and then those due at `now` in deadline order.
+    pub fn due_mut(&mut self, now: Instant) -> impl Iterator<Item = (K, &mut V)> {
         let due = self
             .deadlines
             .iter()
@@ -190,20 +188,17 @@ where
             .map(|(_, key)| *key)
             .filter(|key| !self.touched.contains(key))
             .collect::<Vec<_>>();
-        let keys = self.touched.drain().chain(due).collect::<Vec<_>>();
+        let keys = self.touched.iter().copied().chain(due).collect::<Vec<_>>();
+        self.touched.extend(&keys);
 
-        keys.into_iter()
-            .filter(|key| {
-                let Some(value) = self.entries.get_mut(key) else {
-                    return false;
-                };
+        let entries = &mut self.entries;
 
-                f(*key, value);
-                self.touched.insert(*key);
+        keys.into_iter().filter_map(move |key| {
+            let value: *mut V = entries.get_mut(&key)?;
 
-                true
-            })
-            .collect()
+            // SAFETY: `keys` holds every key at most once, so the handed out values never alias.
+            Some((key, unsafe { &mut *value }))
+        })
     }
 
     fn unindex(&mut self, key: &K) {
