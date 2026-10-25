@@ -161,6 +161,10 @@ impl<TRoleState> Tunnel<TRoleState> {
         (tunnel, ends)
     }
 
+    pub fn state(&self) -> &TRoleState {
+        &self.role_state
+    }
+
     pub fn state_mut(&mut self) -> &mut TRoleState {
         &mut self.role_state
     }
