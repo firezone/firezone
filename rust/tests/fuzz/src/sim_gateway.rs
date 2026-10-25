@@ -393,6 +393,8 @@ impl SimGateway {
 
 impl Host<SimGateway> {
     /// Takes one turn with what has arrived by `now` and puts what it sent onto the network.
+    ///
+    /// Returns the event for the portal or another host and whether it has more to do at `now`.
     pub(crate) fn step(
         &mut self,
         global_dns_records: &DnsRecords,
@@ -400,40 +402,27 @@ impl Host<SimGateway> {
         now: Instant,
     ) -> (Option<GatewayEvent>, bool) {
         let arrived = std::iter::from_fn(|| self.poll_inbox(now)).collect::<Vec<_>>();
-        let turn = self.exec_mut(|host| {
-            host.tunnel.receive(arrived);
-            host.step(global_dns_records, now)
+        let turn = self.exec_mut(|g| {
+            g.tunnel.receive(arrived);
+            g.advance_resources(global_dns_records, now);
+
+            let (event, mut busy) = g.tunnel.poll_event(now);
+
+            while let Ok(mut batch) = g.tunnel.ends.tun_outbound.try_recv() {
+                for packet in batch.drain() {
+                    g.on_received_packet(packet, now);
+                }
+                busy = true;
+            }
+
+            (event, busy)
         });
 
-        for transmit in self.exec_mut(|host| host.tunnel.take_sent()) {
+        for transmit in self.exec_mut(|g| g.tunnel.take_sent()) {
             transmits.push_from(transmit, self, now);
         }
 
         turn
-    }
-}
-
-impl SimGateway {
-    /// Takes one turn: polls the tunnel once and handles what it wrote.
-    ///
-    /// Returns the event for the portal or another host and whether it has more to do at `now`.
-    fn step(
-        &mut self,
-        global_dns_records: &DnsRecords,
-        now: Instant,
-    ) -> (Option<GatewayEvent>, bool) {
-        self.advance_resources(global_dns_records, now);
-
-        let (event, mut busy) = self.tunnel.poll_event(now);
-
-        while let Ok(mut batch) = self.tunnel.ends.tun_outbound.try_recv() {
-            for packet in batch.drain() {
-                self.on_received_packet(packet, now);
-            }
-            busy = true;
-        }
-
-        (event, busy)
     }
 }
 

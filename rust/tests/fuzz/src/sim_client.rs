@@ -751,6 +751,8 @@ fn probe_protocol_from_request(packet: &IpPacket) -> Option<ProbeProtocol> {
 
 impl Host<SimClient> {
     /// Takes one turn with what has arrived by `now` and puts what it sent onto the network.
+    ///
+    /// Returns the event for the portal or another host and whether it has more to do at `now`.
     pub(crate) fn step(
         &mut self,
         global_dns_records: &DnsRecords,
@@ -758,52 +760,44 @@ impl Host<SimClient> {
         now: Instant,
     ) -> (Option<ClientEvent>, bool) {
         let arrived = std::iter::from_fn(|| self.poll_inbox(now)).collect::<Vec<_>>();
-        let turn = self.exec_mut(|host| {
-            host.tunnel.receive(arrived);
-            host.step(global_dns_records, now)
+        let (event, busy) = self.exec_mut(|c| {
+            c.tunnel.receive(arrived);
+            c.drive_apps(now);
+
+            let (event, mut busy) = c.tunnel.poll_event(now);
+
+            busy |= c.answer_dns_query(global_dns_records);
+            while let Ok(mut batch) = c.tunnel.ends.tun_outbound.try_recv() {
+                for packet in batch.drain() {
+                    c.on_received_packet(packet, now);
+                }
+                busy = true;
+            }
+
+            (event.and_then(|event| c.handle_local_event(event)), busy)
         });
 
-        for transmit in self.exec_mut(|host| host.tunnel.take_sent()) {
+        for transmit in self.exec_mut(|c| c.tunnel.take_sent()) {
             transmits.push_from(transmit, self, now);
         }
 
-        turn
+        (event, busy)
     }
 }
 
 impl SimClient {
-    /// Takes one turn: polls the tunnel once, handles what it wrote and the events that are local
-    /// to the Client, and answers a recursive DNS query from `global_dns_records`.
-    ///
-    /// Returns the event for the portal or another host and whether it has more to do at `now`.
-    fn step(
-        &mut self,
-        global_dns_records: &DnsRecords,
-        now: Instant,
-    ) -> (Option<ClientEvent>, bool) {
-        self.drive_apps(now);
-
-        let (event, mut busy) = self.tunnel.poll_event(now);
-
-        busy |= self.answer_dns_query(global_dns_records);
-        while let Ok(mut batch) = self.tunnel.ends.tun_outbound.try_recv() {
-            for packet in batch.drain() {
-                self.on_received_packet(packet, now);
-            }
-            busy = true;
-        }
-
-        let event = match event {
-            None => None,
-            Some(ClientEvent::ResourcesChanged { resources }) => {
+    /// Handles `event` if it only concerns the Client, and returns it otherwise.
+    fn handle_local_event(&mut self, event: ClientEvent) -> Option<ClientEvent> {
+        match event {
+            ClientEvent::ResourcesChanged { resources } => {
                 self.observed_resource_list = resources;
                 None
             }
-            Some(ClientEvent::DnsRecordsChanged { records }) => {
+            ClientEvent::DnsRecordsChanged { records } => {
                 self.dns_resource_record_cache = records;
                 None
             }
-            Some(ClientEvent::TunInterfaceUpdated(config)) => {
+            ClientEvent::TunInterfaceUpdated(config) => {
                 if self.dns_by_sentinel == config.dns_by_sentinel
                     && self.routes == config.routes
                     && self.search_domain == config.search_domain
@@ -820,17 +814,13 @@ impl SimClient {
                     .set_source_interface(config.ip.v4, config.ip.v6);
                 None
             }
-            Some(
-                event @ (ClientEvent::AddedIceCandidates { .. }
-                | ClientEvent::RemovedIceCandidates { .. }
-                | ClientEvent::RequestAccess { .. }
-                | ClientEvent::DeviceDomainQueried { .. }
-                | ClientEvent::DeviceDomainBrowsed { .. }
-                | ClientEvent::NoRelays { .. }),
-            ) => Some(event),
-        };
-
-        (event, busy)
+            event @ (ClientEvent::AddedIceCandidates { .. }
+            | ClientEvent::RemovedIceCandidates { .. }
+            | ClientEvent::RequestAccess { .. }
+            | ClientEvent::DeviceDomainQueried { .. }
+            | ClientEvent::DeviceDomainBrowsed { .. }
+            | ClientEvent::NoRelays { .. }) => Some(event),
+        }
     }
 }
 
