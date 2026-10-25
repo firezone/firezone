@@ -45,7 +45,7 @@ impl<R: Role> SimTunnel<R> {
             };
 
             socket
-                .receive(DatagramBatch::received(transmits.map(|transmit| {
+                .receive(DatagramBatch::from_datagrams(transmits.map(|transmit| {
                     DatagramOut {
                         src: transmit.src,
                         dst: transmit.dst,
