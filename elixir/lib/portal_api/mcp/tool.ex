@@ -9,6 +9,13 @@ defmodule PortalAPI.MCP.Tool do
 
   `entity` is the `Portal.Scope` entity the underlying operation is scoped by,
   resolved once when the table is built rather than per request.
+
+  `response_fields` lists the record fields a read tool can narrow its
+  response to with the `fields` argument, and is `nil` for every other tool.
+
+  `variants` is set on a tool that stands for one operation per posture
+  provider type. It maps each type to that type's tool and to the name each
+  argument has there.
   """
 
   @enforce_keys [:name, :method, :path_template, :input_schema]
@@ -26,6 +33,8 @@ defmodule PortalAPI.MCP.Tool do
     path_params: [],
     query_params: [],
     body_params: [],
+    response_fields: nil,
+    variants: nil,
     write?: false,
     entity: nil
   ]

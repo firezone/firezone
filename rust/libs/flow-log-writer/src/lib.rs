@@ -70,7 +70,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use anyhow::{Context as _, ErrorExt as _};
+use anyhow::{Context as _, ErrorExt as _, Result};
 use base64::Engine as _;
 use chrono::DateTime;
 use flow_log_spool::serialize;
@@ -150,7 +150,7 @@ where
 ///
 /// The spool path derives from the token's (unverified) `role` and
 /// `policy_authorization_id` claims, which are validated first.
-pub fn write_token(spool_root: &Path, token: &str) -> anyhow::Result<()> {
+pub fn write_token(spool_root: &Path, token: &str) -> Result<()> {
     #[derive(serde::Deserialize)]
     struct Claims {
         role: Option<String>,

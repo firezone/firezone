@@ -159,9 +159,9 @@ defmodule PortalWeb.Components.Navigation do
       <li>
         <.link
           navigate={~p"/#{@subject.account}/settings/profile"}
-          class="block py-2 px-4 text-sm hover:bg-raised hover:text-heading"
+          class="flex items-center gap-2 py-2 px-4 text-sm hover:bg-raised hover:text-heading"
         >
-          Your settings
+          <Core.icon name="ri-settings-3-line" class="w-4 h-4 shrink-0" /> Your settings
         </.link>
       </li>
       <li :if={PortalWeb.GettingStarted.offered?(@subject.actor)}>
@@ -346,7 +346,9 @@ defmodule PortalWeb.Components.Navigation do
 
       <%!-- Settings --%>
       <div class="border-t border-border py-2 px-2 shrink-0">
-        <% settings_active? = String.contains?(@current_path, "/settings") %>
+        <% settings_active? =
+          String.contains?(@current_path, "/settings") and
+            not String.contains?(@current_path, "/settings/profile") %>
         <.link
           navigate={~p"/#{@account}/settings/account"}
           data-sidebar-nav-item
@@ -511,14 +513,6 @@ defmodule PortalWeb.Components.Navigation do
           icon="ri-building-fill"
         >
           Account
-        </.settings_tab>
-        <.settings_tab
-          current_path={@current_path}
-          navigate={~p"/#{@account}/settings/notifications"}
-          tab_path="settings/notifications"
-          icon="ri-notification-fill"
-        >
-          Notifications
         </.settings_tab>
         <.settings_tab
           current_path={@current_path}
@@ -731,7 +725,11 @@ defmodule PortalWeb.Components.Navigation do
     ~H"""
     <button
       type="button"
-      class="flex mx-3 text-sm bg-neutral-800 rounded-full md:mr-0"
+      class={[
+        "group flex items-center gap-1 mx-3 md:mr-0 p-0.5 pr-1 rounded-full text-sm",
+        "text-body hover:text-heading hover:bg-raised transition-colors",
+        "aria-expanded:bg-raised aria-expanded:text-heading"
+      ]}
       id={"#{@id}-button"}
       phx-hook="Popover"
       data-popover-target-id={"#{@id}-dropdown"}
@@ -739,6 +737,10 @@ defmodule PortalWeb.Components.Navigation do
       data-popover-placement="bottom"
     >
       {render_slot(@button)}
+      <Core.icon
+        name="ri-arrow-down-s-line"
+        class="w-4 h-4 shrink-0 transition-transform group-aria-expanded:rotate-180"
+      />
     </button>
     <div
       class="invisible opacity-0 fixed z-50 my-4 w-56 text-base list-none bg-elevated rounded-sm divide-y divide-border shadow-sm"

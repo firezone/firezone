@@ -1,6 +1,6 @@
 use anyhow::{Context as _, ErrorExt, Result, bail};
 use futures::future::{self, Either};
-use ip_packet::{IpPacket, IpPacketBuf};
+use ip_packet::IpPacket;
 use opentelemetry::KeyValue;
 use std::io;
 use std::mem;
@@ -34,7 +34,11 @@ where
         .build()
         .context("Failed to create runtime")?
         .block_on(async move {
-            let fd = AsyncFd::with_interest(fd, tokio::io::Interest::WRITABLE)?;
+            // SAFETY: The caller of `Io::from_fd` keeps the descriptor open until the workers stop.
+            let fd = unsafe {
+                AsyncFd::register_with_interest(fd, tokio::io::Interest::WRITABLE)
+                    .map_err(io::Error::from)?
+            };
 
             while let Some(mut batch) = outbound_rx.recv().await {
                 for packet in batch.drain() {
@@ -149,7 +153,7 @@ fn drop_attributes(e: &io::Error) -> [KeyValue; 3] {
 pub fn tun_recv<T>(
     fd: T,
     inbound_tx: tun::InboundTx,
-    read: impl Fn(i32, &mut IpPacketBuf) -> std::result::Result<usize, io::Error>,
+    read: impl Fn(i32, &mut [u8]) -> std::result::Result<usize, io::Error>,
 ) -> Result<()>
 where
     T: AsRawFd + Clone,
@@ -159,7 +163,11 @@ where
         .build()
         .context("Failed to create runtime")?
         .block_on(async move {
-            let fd = AsyncFd::with_interest(fd, tokio::io::Interest::READABLE)?;
+            // SAFETY: The caller of `Io::from_fd` keeps the descriptor open until the workers stop.
+            let fd = unsafe {
+                AsyncFd::register_with_interest(fd, tokio::io::Interest::READABLE)
+                    .map_err(io::Error::from)?
+            };
             let mut batch = PacketBatch::default();
 
             loop {
@@ -179,7 +187,7 @@ where
                 // channel item feeds a whole read burst into the state loop instead of
                 // one packet.
                 loop {
-                    let mut ip_packet_buf = IpPacketBuf::new();
+                    let mut ip_packet_buf = ip_packet::packet_buffer();
 
                     let len = match guard
                         .try_io(|fd| read(fd.get_ref().as_raw_fd(), &mut ip_packet_buf))

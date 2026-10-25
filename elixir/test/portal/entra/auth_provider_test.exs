@@ -16,13 +16,13 @@ defmodule Portal.Entra.AuthProviderTest do
     test "validates required fields", %{account: account} do
       changeset =
         %AuthProvider{account_id: account.id}
-        |> Ecto.Changeset.cast(%{}, [:name, :context, :issuer, :is_verified])
+        |> Ecto.Changeset.cast(%{}, [:name, :context, :tenant_ids, :is_verified])
         |> AuthProvider.changeset()
 
       refute changeset.valid?
       # name and context have defaults, so they won't be blank
-      # issuer is required
-      assert "can't be blank" in errors_on(changeset).issuer
+      # At least one verified tenant is required
+      assert "can't be blank" in errors_on(changeset).tenant_ids
       # is_verified must be explicitly accepted (true)
       assert "must be accepted" in errors_on(changeset).is_verified
     end
@@ -34,10 +34,10 @@ defmodule Portal.Entra.AuthProviderTest do
           %{
             name: "Test Entra",
             context: :clients_and_portal,
-            issuer: "https://login.microsoftonline.com/test-tenant/v2.0",
+            tenant_ids: ["d2b51d74-45ab-481d-87c5-6ad746469ae4"],
             is_verified: false
           },
-          [:name, :context, :issuer, :is_verified]
+          [:name, :context, :tenant_ids, :is_verified]
         )
         |> AuthProvider.changeset()
 
@@ -45,52 +45,28 @@ defmodule Portal.Entra.AuthProviderTest do
       assert "must be accepted" in errors_on(changeset).is_verified
     end
 
-    test "validates issuer length constraints", %{account: account} do
-      # Test empty string shows can't be blank (not length error)
-      changeset =
-        %AuthProvider{account_id: account.id}
-        |> Ecto.Changeset.cast(
-          %{
-            name: "Test Entra",
-            context: :clients_and_portal,
-            issuer: "",
-            is_verified: true
-          },
-          [:name, :context, :issuer, :is_verified]
-        )
-        |> AuthProvider.changeset()
+    test "requires at least one tenant ID", %{account: account} do
+      for tenant_ids <- [[], nil] do
+        changeset =
+          %AuthProvider{account_id: account.id}
+          |> Ecto.Changeset.cast(%{tenant_ids: tenant_ids, is_verified: true}, [:tenant_ids, :is_verified])
+          |> AuthProvider.changeset()
 
-      refute changeset.valid?
-      assert "can't be blank" in errors_on(changeset).issuer
-
-      # Test maximum length (> 2000)
-      long_issuer = String.duplicate("a", 2001)
-
-      changeset =
-        %AuthProvider{account_id: account.id}
-        |> Ecto.Changeset.cast(
-          %{
-            name: "Test Entra",
-            context: :clients_and_portal,
-            issuer: long_issuer,
-            is_verified: true
-          },
-          [:name, :context, :issuer, :is_verified]
-        )
-        |> AuthProvider.changeset()
-
-      refute changeset.valid?
-      assert "should be at most 2000 character(s)" in errors_on(changeset).issuer
+        refute changeset.valid?
+        assert errors_on(changeset).tenant_ids != []
+      end
     end
 
-    test "inserts issuer at maximum length", %{account: account} do
+    test "persists multiple tenant IDs and removes duplicates", %{account: account} do
+      first = Ecto.UUID.generate()
+      second = Ecto.UUID.generate()
       provider =
-        entra_provider_fixture(
-          account: account,
-          issuer: String.duplicate("a", 2000)
-        )
+        entra_provider_fixture(account: account)
+        |> Ecto.Changeset.cast(%{tenant_ids: [first, second, first], is_verified: true}, [:tenant_ids, :is_verified])
+        |> AuthProvider.changeset()
+        |> Repo.update!()
 
-      assert String.length(provider.issuer) == 2000
+      assert Repo.reload!(provider).tenant_ids == [first, second]
     end
 
     test "validates portal_session_lifetime_secs range", %{account: account} do
@@ -101,11 +77,11 @@ defmodule Portal.Entra.AuthProviderTest do
           %{
             name: "Test Entra",
             context: :portal_only,
-            issuer: "https://login.microsoftonline.com/test-tenant/v2.0",
+            tenant_ids: ["d2b51d74-45ab-481d-87c5-6ad746469ae4"],
             is_verified: true,
             portal_session_lifetime_secs: 299
           },
-          [:name, :context, :issuer, :is_verified, :portal_session_lifetime_secs]
+          [:name, :context, :tenant_ids, :is_verified, :portal_session_lifetime_secs]
         )
         |> AuthProvider.changeset()
 
@@ -120,11 +96,11 @@ defmodule Portal.Entra.AuthProviderTest do
           %{
             name: "Test Entra",
             context: :portal_only,
-            issuer: "https://login.microsoftonline.com/test-tenant/v2.0",
+            tenant_ids: ["d2b51d74-45ab-481d-87c5-6ad746469ae4"],
             is_verified: true,
             portal_session_lifetime_secs: 86_401
           },
-          [:name, :context, :issuer, :is_verified, :portal_session_lifetime_secs]
+          [:name, :context, :tenant_ids, :is_verified, :portal_session_lifetime_secs]
         )
         |> AuthProvider.changeset()
 
@@ -141,11 +117,11 @@ defmodule Portal.Entra.AuthProviderTest do
           %{
             name: "Test Entra",
             context: :clients_only,
-            issuer: "https://login.microsoftonline.com/test-tenant/v2.0",
+            tenant_ids: ["d2b51d74-45ab-481d-87c5-6ad746469ae4"],
             is_verified: true,
             client_session_lifetime_secs: 3599
           },
-          [:name, :context, :issuer, :is_verified, :client_session_lifetime_secs]
+          [:name, :context, :tenant_ids, :is_verified, :client_session_lifetime_secs]
         )
         |> AuthProvider.changeset()
 
@@ -160,11 +136,11 @@ defmodule Portal.Entra.AuthProviderTest do
           %{
             name: "Test Entra",
             context: :clients_only,
-            issuer: "https://login.microsoftonline.com/test-tenant/v2.0",
+            tenant_ids: ["d2b51d74-45ab-481d-87c5-6ad746469ae4"],
             is_verified: true,
             client_session_lifetime_secs: 7_776_001
           },
-          [:name, :context, :issuer, :is_verified, :client_session_lifetime_secs]
+          [:name, :context, :tenant_ids, :is_verified, :client_session_lifetime_secs]
         )
         |> AuthProvider.changeset()
 
@@ -183,10 +159,10 @@ defmodule Portal.Entra.AuthProviderTest do
             %{
               name: "Test Entra",
               context: context,
-              issuer: "https://login.microsoftonline.com/test-tenant/v2.0",
+              tenant_ids: ["d2b51d74-45ab-481d-87c5-6ad746469ae4"],
               is_verified: true
             },
-            [:name, :context, :issuer, :is_verified]
+            [:name, :context, :tenant_ids, :is_verified]
           )
           |> AuthProvider.changeset()
 
@@ -200,10 +176,10 @@ defmodule Portal.Entra.AuthProviderTest do
           %{
             name: "Test Entra",
             context: :invalid_context,
-            issuer: "https://login.microsoftonline.com/test-tenant/v2.0",
+            tenant_ids: ["d2b51d74-45ab-481d-87c5-6ad746469ae4"],
             is_verified: true
           },
-          [:name, :context, :issuer, :is_verified]
+          [:name, :context, :tenant_ids, :is_verified]
         )
         |> AuthProvider.changeset()
 
@@ -218,7 +194,7 @@ defmodule Portal.Entra.AuthProviderTest do
           %{
             name: "Test Entra",
             context: :clients_and_portal,
-            issuer: "https://login.microsoftonline.com/test-tenant/v2.0",
+            tenant_ids: ["d2b51d74-45ab-481d-87c5-6ad746469ae4"],
             is_verified: true,
             portal_session_lifetime_secs: 28_800,
             client_session_lifetime_secs: 604_800
@@ -226,7 +202,7 @@ defmodule Portal.Entra.AuthProviderTest do
           [
             :name,
             :context,
-            :issuer,
+            :tenant_ids,
             :is_verified,
             :portal_session_lifetime_secs,
             :client_session_lifetime_secs
@@ -242,10 +218,10 @@ defmodule Portal.Entra.AuthProviderTest do
         %AuthProvider{account_id: account.id}
         |> Ecto.Changeset.cast(
           %{
-            issuer: "https://login.microsoftonline.com/test-tenant/v2.0",
+            tenant_ids: ["d2b51d74-45ab-481d-87c5-6ad746469ae4"],
             is_verified: true
           },
-          [:issuer, :is_verified]
+          [:tenant_ids, :is_verified]
         )
         |> AuthProvider.changeset()
 
@@ -256,61 +232,17 @@ defmodule Portal.Entra.AuthProviderTest do
     end
   end
 
-  describe "changeset/1 issuer IP blocking" do
-    setup do
-      account = account_fixture()
-      %{account: account}
-    end
+  describe "changeset/1 tenant ID validation" do
+    test "rejects values that are not tenant UUIDs" do
+      for tenant_ids <- [["test-tenant"], ["http://169.254.169.254"], "d2b51d74-45ab-481d-87c5-6ad746469ae4"] do
+        changeset =
+          %AuthProvider{}
+          |> Ecto.Changeset.cast(%{tenant_ids: tenant_ids, is_verified: true}, [:tenant_ids, :is_verified])
+          |> AuthProvider.changeset()
 
-    test "rejects private IP in issuer (169.254.169.254)", %{account: account} do
-      changeset =
-        %AuthProvider{account_id: account.id}
-        |> Ecto.Changeset.cast(
-          %{
-            name: "Test Entra",
-            context: :clients_and_portal,
-            issuer: "http://169.254.169.254",
-            is_verified: true
-          },
-          [:name, :context, :issuer, :is_verified]
-        )
-        |> AuthProvider.changeset()
-
-      assert "must not be a private or reserved IP address" in errors_on(changeset).issuer
-    end
-
-    test "rejects private IP in issuer (192.168.1.1)", %{account: account} do
-      changeset =
-        %AuthProvider{account_id: account.id}
-        |> Ecto.Changeset.cast(
-          %{
-            name: "Test Entra",
-            context: :clients_and_portal,
-            issuer: "http://192.168.1.1",
-            is_verified: true
-          },
-          [:name, :context, :issuer, :is_verified]
-        )
-        |> AuthProvider.changeset()
-
-      assert "must not be a private or reserved IP address" in errors_on(changeset).issuer
-    end
-
-    test "rejects FQDN that resolves to a private IP", %{account: account} do
-      changeset =
-        %AuthProvider{account_id: account.id}
-        |> Ecto.Changeset.cast(
-          %{
-            name: "Test Entra",
-            context: :clients_and_portal,
-            issuer: "http://localhost",
-            is_verified: true
-          },
-          [:name, :context, :issuer, :is_verified]
-        )
-        |> AuthProvider.changeset()
-
-      assert "must not be a private or reserved IP address" in errors_on(changeset).issuer
+        refute changeset.valid?
+        assert "is invalid" in errors_on(changeset).tenant_ids
+      end
     end
   end
 

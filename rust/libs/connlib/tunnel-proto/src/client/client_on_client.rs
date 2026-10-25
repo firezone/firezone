@@ -6,9 +6,10 @@ use crate::routing_table::{RouteEntry, RoutingTable};
 use crate::{IpConfig, p2p_control};
 use anyhow::{Context, Result};
 use connlib_model::{ClientId, ResourceId};
+use fast_random_state::FastRandomState;
 use ip_packet::IpPacket;
 use smallvec::SmallVec;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeSet, HashMap};
 use std::time::Instant;
 
 /// Peer-level state of a connection with another Client.
@@ -35,7 +36,7 @@ pub(crate) struct ClientOnClient {
     /// unless it matches a recorded outbound flow (return traffic).
     resources: ExpiringMap<ResourceId, ResourceOnClient>,
     /// Filters of revoked authorizations, retained until this peer receives them again.
-    rejected_resources: BTreeMap<ResourceId, FilterEngine>,
+    rejected_resources: HashMap<ResourceId, FilterEngine, FastRandomState>,
     /// Cached OR of every resource's filters; recomputed whenever `resources` changes.
     inbound_filter: FilterEngine,
     /// Tracks outbound flows so legitimate return traffic is admitted.
@@ -80,7 +81,7 @@ impl ClientOnClient {
             remote_name,
             remote_slug,
             resources: ExpiringMap::default(),
-            rejected_resources: BTreeMap::default(),
+            rejected_resources: HashMap::default(),
             // No resources -> no allowed inbound traffic by default.
             inbound_filter: FilterEngine::DenyAll,
             conn_track: ConnTrack::default(),

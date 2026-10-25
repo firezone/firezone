@@ -4,9 +4,7 @@ use std::net::SocketAddr;
 use std::ops::ControlFlow;
 use std::time::{Duration, Instant};
 
-use boringtun::noise::{Packet, Tunn, TunnResult};
-
-use crate::candidate::Candidate;
+use crate::candidate::{Candidate, CandidateKind};
 use crate::event::{Event, Payload, Transmit};
 use crate::retransmit::PairRetransmit;
 use crate::score::pair_score;
@@ -37,7 +35,7 @@ pub struct PathAgent {
     /// in between means the peer isn't hearing us: the primary path is dead.
     peer_rekeys: u32,
 
-    responder: Responder,
+    responder_dedup: Option<ResponderDedup>,
     forwarded_response: Option<Vec<u8>>,
 
     pending_transmits: VecDeque<Transmit>,
@@ -46,15 +44,12 @@ pub struct PathAgent {
     last_now: Option<Instant>,
     events: VecDeque<Event>,
 
-    peer_reflexive_addrs: BTreeSet<SocketAddr>,
     next_pair_id: u16,
 }
 
-#[derive(Default)]
-struct Responder {
-    last_init: Option<Vec<u8>>,
-    dedup: Option<ResponderDedup>,
-}
+/// An initiation's sender index and timestamp. Within one tunnel, only a
+/// copy of the same initiation shares both.
+type InitId = (u32, u128);
 
 pub(crate) struct PairState {
     pub(crate) kinds: (crate::CandidateKind, crate::CandidateKind),
@@ -162,13 +157,13 @@ struct InflightProbe {
 }
 
 struct OutboundInit {
-    bytes: Vec<u8>,
+    bytes: sanstun::Datagram,
     /// Relay pairs the current `bytes` have been fanned out to. Cleared when a
-    /// boringtun re-init replaces `bytes`, so the fresh init reaches every pair.
+    /// WireGuard re-init replaces `bytes`, so the fresh init reaches every pair.
     fanned: BTreeSet<(SocketAddr, SocketAddr)>,
     /// One-time fast-retransmit ladder, armed per relay pair on its first
     /// fan-out to win the channel-bind race. Not re-armed on a re-init;
-    /// boringtun's own cadence drives retransmission after the head.
+    /// WireGuard's own cadence drives retransmission after the head.
     ladder: BTreeMap<(SocketAddr, SocketAddr), PairRetransmit>,
     /// When bootstrap began; wakes `poll_timeout` to fan a relay pair that
     /// arrives after the initial fan-out.
@@ -176,7 +171,7 @@ struct OutboundInit {
 }
 
 impl OutboundInit {
-    fn new(bytes: Vec<u8>, started_at: Instant) -> Self {
+    fn new(bytes: sanstun::Datagram, started_at: Instant) -> Self {
         Self {
             bytes,
             fanned: BTreeSet::new(),
@@ -187,8 +182,8 @@ impl OutboundInit {
 }
 
 struct ResponderDedup {
-    init_bytes: Vec<u8>,
-    response_bytes: Vec<u8>,
+    init: InitId,
+    response_bytes: sanstun::Datagram,
     cached_at: Instant,
 }
 
@@ -262,19 +257,17 @@ impl PathAgent {
         self.last_now = Some(now);
 
         // Promote a previously-registered peer-reflexive in place so the
-        // existing `PairState` (RTT, inflight, schedule) survives. Only consume
-        // the marker once we actually promote: at registration time the srflx
-        // candidate is not in `remotes` yet, so `find` is `None` and we must
-        // leave the marker for the later signaled candidate.
-        if self.peer_reflexive_addrs.contains(&c.addr())
-            && let Some(existing) = self.remotes.iter_mut().find(|x| x.addr() == c.addr())
+        // existing `PairState` (RTT, inflight, schedule) survives.
+        if let Some(existing) = self
+            .remotes
+            .iter_mut()
+            .find(|x| x.kind() == CandidateKind::PeerReflexive && x.addr() == c.addr())
         {
             tracing::debug!(
                 remote = %c.addr(),
                 kind = ?c.kind(),
                 "Promoting peer-reflexive remote to signaled candidate",
             );
-            self.peer_reflexive_addrs.remove(&c.addr());
             *existing = c;
             for ((_, remote_addr), state) in self.pairs.iter_mut() {
                 if *remote_addr == c.addr() {
@@ -365,7 +358,6 @@ impl PathAgent {
 
         let removed = self.remotes.remove(i).addr();
         self.pairs.retain(|(_, remote), _| *remote != removed);
-        self.peer_reflexive_addrs.remove(&removed);
 
         if self.primary.is_some_and(|(_, remote)| remote == removed) {
             self.clear_and_reprobe(now);
@@ -437,303 +429,189 @@ impl PathAgent {
             .any(|c| c.addr() == addr && c.is_relayed())
     }
 
-    pub fn initiate_handshake(&mut self, tunnel: &mut Tunn, now: Instant) {
+    pub fn send_handshake_initiation(&mut self, init: sanstun::Datagram, now: Instant) {
         self.last_now = Some(now);
 
-        const MAX_SCRATCH_SPACE: usize = 148;
+        // Before the session is confirmed we cannot probe: fan the init out
+        // over the relay pairs to bootstrap one. This is the *only* use of
+        // the fan-out.
+        if !self.session_confirmed {
+            tracing::debug!(bytes = init.len(), "Buffered bootstrap HandshakeInit");
+            self.forwarded_response = None;
+            match &mut self.outbound_init {
+                // A WireGuard re-init: carry the fresh bytes and re-fan them
+                // once to every relay pair. The fast ladder is a one-time
+                // head armed on the first init, so it is not restarted here.
+                Some(outbound) => {
+                    outbound.bytes = init;
+                    outbound.fanned.clear();
+                }
+                None => self.outbound_init = Some(OutboundInit::new(init, now)),
+            }
 
-        let mut buf = [0u8; MAX_SCRATCH_SPACE];
-
-        let TunnResult::WriteToNetwork(bytes) =
-            tunnel.format_handshake_initiation_at(&mut buf, false, now)
-        else {
-            tracing::debug!("boringtun declined to emit a HandshakeInit");
             return;
-        };
+        }
 
-        self.handle_outbound(bytes.to_vec(), now);
-    }
+        // Established: the re-key rides the primary and counts toward distress.
+        self.unanswered_rekeys = self.unanswered_rekeys.saturating_add(1);
 
-    pub fn handle_outbound(&mut self, bytes: Vec<u8>, now: Instant) {
-        self.last_now = Some(now);
+        if let Some((local, remote)) = self.primary {
+            self.pending_transmits.push_back(Transmit {
+                local,
+                remote,
+                payload: Payload::Ciphertext(init),
+            });
+        }
 
-        match Tunn::parse_incoming_packet(&bytes) {
-            // Before the session is confirmed we cannot probe: fan the init out
-            // over the relay pairs to bootstrap one. This is the *only* use of
-            // the fan-out.
-            Ok(Packet::HandshakeInit(_)) if !self.session_confirmed => {
-                tracing::debug!(bytes = bytes.len(), "Buffered bootstrap HandshakeInit");
-                self.forwarded_response = None;
-                match &mut self.outbound_init {
-                    // A boringtun re-init: carry the fresh bytes and re-fan them
-                    // once to every relay pair. The fast ladder is a one-time
-                    // head armed on the first init, so it is not restarted here.
-                    Some(init) => {
-                        init.bytes = bytes;
-                        init.fanned.clear();
-                    }
-                    None => self.outbound_init = Some(OutboundInit::new(bytes, now)),
-                }
-            }
-            // Established: the re-key rides the primary and counts toward distress.
-            Ok(Packet::HandshakeInit(_)) => {
-                self.unanswered_rekeys = self.unanswered_rekeys.saturating_add(1);
-
-                if let Some((local, remote)) = self.primary {
-                    self.pending_transmits.push_back(Transmit {
-                        local,
-                        remote,
-                        payload: Payload::Ciphertext(bytes),
-                    });
-                }
-
-                // The second unanswered re-key is WireGuard telling us the path
-                // is dead: drop the primary and re-probe. Fire once on the
-                // crossing — once the primary is cleared, probing recovers it
-                // and the re-key rides the new path; re-firing would flap. The
-                // count resets when a response finally lands (see
-                // `handle_inbound_network`).
-                if self.primary.is_some() && self.unanswered_rekeys == REKEY_DISTRESS_ATTEMPTS {
-                    tracing::debug!("Unanswered re-keys; clearing primary and re-probing");
-                    self.clear_and_reprobe(now);
-                }
-            }
-            // Handshake responses are sent inline where their init is handled
-            // (`handle_inbound_network`), on the init's arrival path, so they
-            // never reach here. Data and everything else ride the primary;
-            // without one there is nothing to send (WireGuard buffers it and
-            // re-sends once a path exists).
-            _ => {
-                if let Some((local, remote)) = self.primary {
-                    self.pending_transmits.push_back(Transmit {
-                        local,
-                        remote,
-                        payload: Payload::Ciphertext(bytes),
-                    });
-                }
-            }
+        // The second unanswered re-key is WireGuard telling us the path
+        // is dead: drop the primary and re-probe. Fire once on the
+        // crossing: once the primary is cleared, probing recovers it
+        // and the re-key rides the new path; re-firing would flap. The
+        // count resets when a response finally lands (see
+        // `handle_handshake_response`).
+        if self.primary.is_some() && self.unanswered_rekeys == REKEY_DISTRESS_ATTEMPTS {
+            tracing::debug!("Unanswered re-keys; clearing primary and re-probing");
+            self.clear_and_reprobe(now);
         }
     }
 
-    /// Handshake bytes run through `tunnel` to authenticate before any state
-    /// mutation; dedup hits short-circuit before the call.
-    pub fn handle_inbound_network<'b>(
+    /// Runs `init`, received on `path`, through `tunnel`.
+    ///
+    /// An accepted init's response is cached and queued on `path`. A copy of an init we already
+    /// accepted is answered with the cached response.
+    pub fn handle_handshake_initiation(
         &mut self,
-        tunnel: &mut Tunn,
-        bytes: &'b [u8],
+        tunnel: &mut sanstun::Tunnel,
+        init: sanstun::HandshakeInitiation,
         path: (SocketAddr, SocketAddr),
         now: Instant,
-    ) -> ControlFlow<(), &'b [u8]> {
-        self.last_now = Some(now);
+    ) -> Result<(), sanstun::Error> {
+        let init_id = (init.sender_index(), init.timestamp());
 
-        let Ok(parsed) = Tunn::parse_incoming_packet(bytes) else {
-            return ControlFlow::Continue(bytes);
-        };
+        let response = match tunnel.handle_handshake_initiation(init, now) {
+            Ok(response) => response,
+            Err(sanstun::Error::ReplayedHandshakeInitiation) => {
+                self.last_now = Some(now);
 
-        match parsed {
-            // A replayed init is served from the cache without touching boringtun.
-            Packet::HandshakeInit(_) if let Some(response) = self.cached_response(bytes, now) => {
+                let response = self
+                    .cached_response(init_id, now)
+                    .ok_or(sanstun::Error::ReplayedHandshakeInitiation)?;
+
                 tracing::trace!(local = %path.0, remote = %path.1, "Replaying cached HandshakeResponse");
 
-                let response_bytes = response.to_vec();
-                self.pending_transmits.push_back(Transmit {
-                    local: path.0,
-                    remote: path.1,
-                    payload: Payload::Ciphertext(response_bytes),
-                });
-
-                ControlFlow::Break(())
-            }
-            // Drop dups arriving on multiple pairs in one tick so boringtun
-            // doesn't reject them as WrongTai64nTimestamp.
-            Packet::HandshakeInit(_) if self.responder.last_init.as_deref() == Some(bytes) => {
-                tracing::trace!(local = %path.0, remote = %path.1, "Dropped duplicate inbound HandshakeInit");
-
-                ControlFlow::Break(())
-            }
-            Packet::HandshakeResponse(_) if self.forwarded_response.as_deref() == Some(bytes) => {
-                tracing::trace!(local = %path.0, remote = %path.1, "Dropped duplicate HandshakeResponse");
-
-                ControlFlow::Break(())
-            }
-            Packet::HandshakeInit(_) => {
-                let Some(response) = self.decapsulate_init(tunnel, bytes, path, now) else {
-                    return ControlFlow::Break(());
-                };
-
-                tracing::debug!(local = %path.0, remote = %path.1, "Inbound HandshakeInit accepted");
-
-                // Remembered so fanned-out duplicates arriving on other pairs in
-                // this tick are dropped (see the duplicate-init arm above).
-                self.responder.last_init = Some(bytes.to_vec());
-
-                self.register_peer_reflexive(path, now);
-
-                // The init that *establishes* the session hands us a working
-                // path for free: it arrived over the relay fan-out (the worst
-                // tier), so adopting it as the preliminary primary is sound —
-                // probing can only promote away from a relay, never get trapped.
-                // Without this the responder stays pathless until its first
-                // probe reply and its connection drops inbound data until then.
-                //
-                // A *mid-session* init (a re-key) is different: it rides the
-                // peer's primary, which may be a better tier we haven't validated
-                // for our own sending, so it must not move our primary — probing
-                // decides. Hence we only adopt on the establishing init.
-                if !self.session_confirmed
-                    && self.primary.is_none()
-                    && self.pairs.contains_key(&path)
-                {
-                    self.set_primary(path);
-                }
-
-                // Distinct inits with no data in between mean the peer isn't
-                // hearing us: WireGuard distress.
-                self.peer_rekeys = self.peer_rekeys.saturating_add(1);
-                if self.primary.is_some() && self.peer_rekeys == REKEY_DISTRESS_ATTEMPTS {
-                    tracing::debug!(local = %path.0, remote = %path.1, "Peer re-keyed without hearing us; clearing primary and re-probing");
-                    self.clear_and_reprobe(now);
-                }
-
-                // boringtun's response MUST go back on the path the init arrived
-                // on, never the primary — otherwise bootstrap (and re-keys)
-                // can't complete. Cache it so a retransmitted init is answered
-                // from memory without re-decapsulating.
-                tracing::debug!(local = %path.0, remote = %path.1, "Sending HandshakeResponse on init's recv path");
-
-                self.responder.dedup = Some(ResponderDedup {
-                    init_bytes: bytes.to_vec(),
-                    response_bytes: response.clone(),
-                    cached_at: now,
-                });
                 self.pending_transmits.push_back(Transmit {
                     local: path.0,
                     remote: path.1,
                     payload: Payload::Ciphertext(response),
                 });
 
-                ControlFlow::Break(())
+                return Ok(());
             }
-            Packet::HandshakeResponse(_) => {
-                let Some(outbound) = self.decapsulate_response(tunnel, bytes, path, now) else {
-                    return ControlFlow::Break(());
-                };
+            Err(e) => return Err(e),
+        };
+        self.last_now = Some(now);
 
-                tracing::debug!(local = %path.0, remote = %path.1, "Inbound HandshakeResponse accepted");
+        tracing::debug!(local = %path.0, remote = %path.1, "Inbound HandshakeInit accepted");
 
-                // Our re-key was answered: the path works both ways.
-                self.outbound_init = None;
-                self.unanswered_rekeys = 0;
-                self.forwarded_response = Some(bytes.to_vec());
-                self.confirm_session(now);
+        self.register_peer_reflexive(path, now);
 
-                // A response is bidirectionally validated, so it is safe to
-                // adopt as a (tier-ranked) preliminary primary before probing.
-                self.promote_from_handshake(path);
-
-                for b in outbound {
-                    self.handle_outbound(b, now);
-                }
-
-                ControlFlow::Break(())
-            }
-            Packet::PacketData(_) => ControlFlow::Continue(bytes),
-            Packet::PacketCookieReply(_) => ControlFlow::Continue(bytes),
+        // The init that *establishes* the session hands us a working
+        // path for free: it arrived over the relay fan-out (the worst
+        // tier), so adopting it as the preliminary primary is sound:
+        // probing can only promote away from a relay, never get trapped.
+        // Without this the responder stays pathless until its first
+        // probe reply and its connection drops inbound data until then.
+        //
+        // A *mid-session* init (a re-key) is different: it rides the
+        // peer's primary, which may be a better tier we haven't validated
+        // for our own sending, so it must not move our primary; probing
+        // decides. Hence we only adopt on the establishing init.
+        if !self.session_confirmed && self.primary.is_none() && self.pairs.contains_key(&path) {
+            self.set_primary(path);
         }
+
+        // Distinct inits with no data in between mean the peer isn't
+        // hearing us: WireGuard distress.
+        self.peer_rekeys = self.peer_rekeys.saturating_add(1);
+        if self.primary.is_some() && self.peer_rekeys == REKEY_DISTRESS_ATTEMPTS {
+            tracing::debug!(local = %path.0, remote = %path.1, "Peer re-keyed without hearing us; clearing primary and re-probing");
+            self.clear_and_reprobe(now);
+        }
+
+        // The response MUST go back on the path the init arrived on,
+        // never the primary: otherwise bootstrap (and re-keys) can't
+        // complete. Cache it so a retransmitted init is answered from
+        // memory without re-decapsulating.
+        tracing::debug!(local = %path.0, remote = %path.1, "Sending HandshakeResponse on init's recv path");
+
+        self.responder_dedup = Some(ResponderDedup {
+            init: init_id,
+            response_bytes: response.clone(),
+            cached_at: now,
+        });
+        self.pending_transmits.push_back(Transmit {
+            local: path.0,
+            remote: path.1,
+            payload: Payload::Ciphertext(response),
+        });
+
+        Ok(())
     }
 
-    fn cached_response(&self, init: &[u8], now: Instant) -> Option<&[u8]> {
-        let d = self.responder.dedup.as_ref()?;
+    /// Runs `response`, received on `path` as `datagram`, through `tunnel`.
+    ///
+    /// Duplicates are dropped before they reach `tunnel`; an accepted response
+    /// confirms the session and its keepalive is queued on `path`.
+    pub fn handle_handshake_response(
+        &mut self,
+        tunnel: &mut sanstun::Tunnel,
+        response: sanstun::HandshakeResponse,
+        datagram: &[u8],
+        path: (SocketAddr, SocketAddr),
+        now: Instant,
+    ) -> Result<(), sanstun::Error> {
+        if self.forwarded_response.as_deref() == Some(datagram) {
+            tracing::trace!(local = %path.0, remote = %path.1, "Dropped duplicate HandshakeResponse");
+
+            return Ok(());
+        }
+
+        let keepalive = tunnel.handle_handshake_response(response, now)?;
+        self.last_now = Some(now);
+
+        tracing::debug!(local = %path.0, remote = %path.1, "Inbound HandshakeResponse accepted");
+
+        // Our re-key was answered: the path works both ways.
+        self.outbound_init = None;
+        self.unanswered_rekeys = 0;
+        self.forwarded_response = Some(datagram.to_vec());
+        self.confirm_session(now);
+
+        // A response is bidirectionally validated, so it is safe to
+        // adopt as a (tier-ranked) preliminary primary before probing.
+        self.promote_from_handshake(path);
+
+        self.pending_transmits.push_back(Transmit {
+            local: path.0,
+            remote: path.1,
+            payload: Payload::Ciphertext(keepalive),
+        });
+
+        Ok(())
+    }
+
+    fn cached_response(&self, init: InitId, now: Instant) -> Option<sanstun::Datagram> {
+        let d = self.responder_dedup.as_ref()?;
 
         if now.duration_since(d.cached_at) >= RESPONDER_DEDUP_TTL {
             return None;
         }
 
-        if d.init_bytes != init {
+        if d.init != init {
             return None;
         }
 
-        Some(d.response_bytes.as_slice())
-    }
-
-    /// Authenticates an inbound init. An init yields at most one packet in
-    /// return, so this is `Some(Some(response))` when boringtun wants a
-    /// handshake response sent back, or `Some(None)` when it accepts the init
-    /// silently. The outer `None` means the packet was fully handled here
-    /// (rejected, or answered with a cookie under load) and the caller does
-    /// nothing further.
-    fn decapsulate_init(
-        &mut self,
-        tunnel: &mut Tunn,
-        bytes: &[u8],
-        path: (SocketAddr, SocketAddr),
-        now: Instant,
-    ) -> Option<Vec<u8>> {
-        let mut buf = [0u8; ip_packet::MAX_FZ_PAYLOAD];
-        let reply = match tunnel.decapsulate_at(Some(path.1.ip()), bytes, &mut buf, now) {
-            TunnResult::Done => return None,
-            TunnResult::WriteToNetwork(response) => response,
-            TunnResult::Err(e) => {
-                tracing::debug!(local = %path.0, remote = %path.1, error = ?e, "Inbound HandshakeInit rejected");
-                return None;
-            }
-            TunnResult::WriteToTunnelV4(_, _) | TunnResult::WriteToTunnelV6(_, _) => {
-                tracing::warn!(local = %path.0, remote = %path.1, "Unexpected data packet from HandshakeInit");
-                return None;
-            }
-        };
-
-        // Cookie replies don't establish a session; send them without touching state.
-        if matches!(
-            Tunn::parse_incoming_packet(reply),
-            Ok(Packet::PacketCookieReply(_))
-        ) {
-            tracing::debug!(local = %path.0, remote = %path.1, "Replying with cookie under load");
-
-            self.pending_transmits.push_back(Transmit {
-                local: path.0,
-                remote: path.1,
-                payload: Payload::Ciphertext(reply.to_vec()),
-            });
-
-            return None;
-        }
-
-        Some(reply.to_vec())
-    }
-
-    /// Authenticates an inbound response, returning the packets boringtun wants
-    /// to send afterwards (e.g. queued data). `None` means it was rejected.
-    fn decapsulate_response(
-        &mut self,
-        tunnel: &mut Tunn,
-        bytes: &[u8],
-        path: (SocketAddr, SocketAddr),
-        now: Instant,
-    ) -> Option<Vec<Vec<u8>>> {
-        let mut buf = [0u8; ip_packet::MAX_FZ_PAYLOAD];
-        let mut outbound = Vec::<Vec<u8>>::new();
-        match tunnel.decapsulate_at(Some(path.1.ip()), bytes, &mut buf, now) {
-            TunnResult::Done => {}
-            TunnResult::WriteToNetwork(first) => {
-                outbound.push(first.to_vec());
-                while let TunnResult::WriteToNetwork(more) =
-                    tunnel.decapsulate_at(Some(path.1.ip()), &[], &mut buf, now)
-                {
-                    outbound.push(more.to_vec());
-                }
-            }
-            TunnResult::Err(e) => {
-                tracing::debug!(local = %path.0, remote = %path.1, error = ?e, "Inbound HandshakeResponse rejected");
-                return None;
-            }
-            TunnResult::WriteToTunnelV4(_, _) | TunnResult::WriteToTunnelV6(_, _) => {
-                tracing::warn!(local = %path.0, remote = %path.1, "Unexpected data packet from HandshakeResponse");
-                return None;
-            }
-        }
-
-        Some(outbound)
+        Some(d.response_bytes.clone())
     }
 
     pub fn poll_transmit(&mut self) -> Option<Transmit> {
@@ -818,7 +696,7 @@ impl PathAgent {
     /// Records that the session is confirmed, which starts probing and ends the
     /// bootstrap fan-out.
     ///
-    /// [`Self::handle_inbound_network`] detects an answered init itself; the
+    /// [`Self::handle_handshake_response`] detects an answered init itself; the
     /// caller reports the other case: the peer's transport data decrypting
     /// under a session we answered.
     pub fn confirm_session(&mut self, now: Instant) {
@@ -861,8 +739,7 @@ impl PathAgent {
                     .then_some(i.started_at)
             });
         let dedup_expiry = self
-            .responder
-            .dedup
+            .responder_dedup
             .as_ref()
             .map(|d| d.cached_at + RESPONDER_DEDUP_TTL);
 
@@ -888,10 +765,10 @@ impl PathAgent {
     }
 
     fn expire_dedup(&mut self, now: Instant) {
-        if let Some(d) = &self.responder.dedup
+        if let Some(d) = &self.responder_dedup
             && now.duration_since(d.cached_at) >= RESPONDER_DEDUP_TTL
         {
-            self.responder.dedup = None;
+            self.responder_dedup = None;
         }
     }
 
@@ -1028,16 +905,19 @@ impl PathAgent {
     fn register_peer_reflexive(&mut self, pair: (SocketAddr, SocketAddr), now: Instant) {
         // The peer reached us from a mapping they didn't advertise (symmetric
         // NAT). Registering it is a new candidate, which re-probes.
-        if self.peer_reflexive_addrs.len() < MAX_PEER_REFLEXIVE
-            && !self.remotes.iter().any(|c| c.addr() == pair.1)
-        {
+        let peer_reflexive = self
+            .remotes
+            .iter()
+            .filter(|c| c.kind() == CandidateKind::PeerReflexive)
+            .count();
+
+        if peer_reflexive < MAX_PEER_REFLEXIVE && !self.remotes.iter().any(|c| c.addr() == pair.1) {
             tracing::debug!(
                 local = %pair.0,
                 remote = %pair.1,
                 "Discovered peer-reflexive remote candidate",
             );
-            self.peer_reflexive_addrs.insert(pair.1);
-            self.add_remote_candidate(Candidate::server_reflexive(pair.1, pair.1), now);
+            self.add_remote_candidate(Candidate::peer_reflexive(pair.1), now);
         }
     }
 

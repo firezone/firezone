@@ -603,6 +603,9 @@ defmodule PortalWeb.ActorsTest do
       assert html =~ "Enable"
       refute html =~ "Disable this actor?"
 
+      # The next reload would kill this one mid-query, which breaks the test's sandbox connection
+      render_async(lv)
+
       html = render_click(lv, "enable", %{"id" => other_actor.id})
       refute html =~ "Enable"
       assert html =~ "Disable"

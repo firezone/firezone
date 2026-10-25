@@ -7,12 +7,12 @@ license = { workspace = true }
 
 [dependencies]
 anyhow = { workspace = true }
-bufferpool = { workspace = true }
 ip-packet = { workspace = true }
 logging = { workspace = true }
 otel-attributes = { workspace = true }
 otel-instruments = { workspace = true }
 tokio = { workspace = true, features = ["rt", "sync"] }
+tokio-util = { workspace = true }
 tracing = { workspace = true }
 
 [lints]

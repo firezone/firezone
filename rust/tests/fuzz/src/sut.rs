@@ -1,6 +1,5 @@
 use super::buffered_transmits::BufferedTransmits;
-use super::dns_records::DnsRecords;
-use super::icmp_error_hosts::IcmpErrorHosts;
+use super::dns_records::{DnsRecords, record_ip};
 use super::reference::ReferenceState;
 use super::sim_client::SimClient;
 use super::sim_gateway::SimGateway;
@@ -33,8 +32,6 @@ use tunnel_proto::messages::client::{FailReason, ResourceAuthorization};
 use tunnel_proto::messages::gateway::Client;
 use tunnel_proto::messages::{IceCredentials, Key, SecretKey};
 use tunnel_proto::{ClientEvent, GatewayEvent, dns, messages::Interface};
-
-bufferpool::buffer_pool!(static PAYLOADS: Vec<u8> = (1024, "test"), batch: 64);
 
 /// The actual system-under-test.
 ///
@@ -117,7 +114,7 @@ impl TunnelTest {
                     |ref_gateway, _, _| {
                         ref_gateway.init(
                             *gid,
-                            ref_state.tcp_resources.clone(),
+                            ref_state.tcp_services.clone(),
                             flux_capacitor.now(),
                             flux_capacitor.now(),
                         )
@@ -169,9 +166,7 @@ impl TunnelTest {
         for gateway in gateways.values_mut() {
             let upstream_do53_servers = upstream_do53_servers.clone();
 
-            gateway.exec_mut(|g| {
-                g.deploy_new_dns_servers(upstream_do53_servers, &ref_state.icmp_error_hosts)
-            })
+            gateway.exec_mut(|g| g.deploy_new_dns_servers(upstream_do53_servers))
         }
 
         let mut this = Self {
@@ -602,9 +597,7 @@ impl TunnelTest {
                 for gateway in self.gateways.values_mut() {
                     let upstream_do53_servers = upstream_do53_servers.clone();
 
-                    gateway.exec_mut(|g| {
-                        g.deploy_new_dns_servers(upstream_do53_servers, &ref_state.icmp_error_hosts)
-                    })
+                    gateway.exec_mut(|g| g.deploy_new_dns_servers(upstream_do53_servers))
                 }
             }
             Transition::UpdateUpstreamDoHServers(upstream_doh) => {
@@ -1012,12 +1005,7 @@ impl TunnelTest {
             // iteration are turned into packets before we look for more work.
             // Timeouts are not fired here; that happens once we run out of IO
             // progress below.
-            self.drive_network(
-                &ref_state.global_dns_records,
-                &ref_state.icmp_error_hosts,
-                buffered_transmits,
-                now,
-            );
+            self.drive_network(&ref_state.global_dns_records, buffered_transmits, now);
 
             for (id, gateway) in self.gateways.iter_mut() {
                 let Some(event) = gateway.exec_mut(|g| g.sut.poll_event()) else {
@@ -1031,7 +1019,7 @@ impl TunnelTest {
                     gateway,
                     &self.relays,
                     portal,
-                    &ref_state.global_dns_records,
+                    ref_state,
                     now,
                 );
                 continue 'outer;
@@ -1105,7 +1093,7 @@ impl TunnelTest {
                             Transmit {
                                 src: Some(src),
                                 dst,
-                                payload: PAYLOADS.pull_initialised(&payload),
+                                payload: bufferpool::Bytes::copied_from(&payload),
                                 ecn: Ecn::NonEct,
                             },
                             relay,
@@ -1131,9 +1119,8 @@ impl TunnelTest {
                     continue;
                 };
 
-                let Some(transmit) = client.exec_mut(|sim| {
-                    sim.on_received_packet(packet, &ref_state.icmp_error_hosts, now)
-                }) else {
+                let Some(transmit) = client.exec_mut(|sim| sim.on_received_packet(packet, now))
+                else {
                     continue 'outer;
                 };
 
@@ -1191,7 +1178,6 @@ impl TunnelTest {
     fn drive_network(
         &mut self,
         global_dns_records: &DnsRecords,
-        icmp_error_hosts: &IcmpErrorHosts,
         buffered_transmits: &mut BufferedTransmits,
         now: Instant,
     ) {
@@ -1229,9 +1215,7 @@ impl TunnelTest {
 
             // Handle the client's `Transmit`s.
             while let Some(transmit) = client.poll_inbox(now) {
-                let Some(transmit) =
-                    client.exec_mut(|c| c.receive(transmit, icmp_error_hosts, now))
-                else {
+                let Some(transmit) = client.exec_mut(|c| c.receive(transmit, now)) else {
                     continue;
                 };
 
@@ -1246,8 +1230,7 @@ impl TunnelTest {
             }
 
             while let Some(transmit) = gateway.poll_inbox(now) {
-                let Some(reply) = gateway.exec_mut(|g| g.receive(transmit, icmp_error_hosts, now))
-                else {
+                let Some(reply) = gateway.exec_mut(|g| g.receive(transmit, now)) else {
                     continue;
                 };
 
@@ -1484,7 +1467,7 @@ impl TunnelTest {
                         gateway,
                         &self.relays,
                         portal,
-                        &ref_state.global_dns_records,
+                        ref_state,
                         now,
                     );
                 }
@@ -1780,6 +1763,16 @@ impl TunnelTest {
     }
 }
 
+pub(crate) fn encrypt(
+    encapsulation: snownet::PendingEncapsulate,
+    packet: &IpPacket,
+) -> Option<Transmit> {
+    encapsulation
+        .encrypt(packet)
+        .inspect_err(|e| tracing::debug!("Failed to encrypt packet: {e}"))
+        .ok()
+}
+
 fn address_from_destination(
     destination: &Destination,
     state: &TunnelTest,
@@ -1860,7 +1853,7 @@ fn on_gateway_event(
     gateway: &mut Host<SimGateway>,
     relays: &BTreeMap<RelayId, Host<SimRelay>>,
     portal: &mut StubPortal,
-    global_dns_records: &DnsRecords,
+    ref_state: &ReferenceState,
     now: Instant,
 ) {
     match event {
@@ -1890,8 +1883,10 @@ fn on_gateway_event(
             let client = r.client();
             let domain = r.domain().clone();
             let proxy_ips = r.proxy_ips().to_vec();
-            let resolved_ips = global_dns_records
-                .domain_ips_iter(&domain)
+            let resolved_ips = ref_state.gateways[&src]
+                .inner()
+                .resolve(&domain, &ref_state.global_dns_records)
+                .filter_map(|record| record_ip(&record))
                 .collect::<Vec<_>>();
 
             gateway.exec_mut(|g| {

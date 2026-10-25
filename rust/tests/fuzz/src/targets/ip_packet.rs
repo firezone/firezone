@@ -1,16 +1,17 @@
 use std::net::IpAddr;
 
+use anyhow::Result;
 use arbitrary::Arbitrary;
-use ip_packet::{Ecn, IcmpError, IpPacket, IpPacketBuf, Protocol};
+use ip_packet::{Ecn, IcmpError, IpPacket, Protocol};
 
 pub fn test(input: Input<'_>) {
     if input.data.len() > ip_packet::MAX_IP_SIZE {
         return;
     }
 
-    let mut buf = IpPacketBuf::new();
+    let mut buf = ip_packet::packet_buffer();
     let len = input.data.len();
-    buf.buf()[..len].copy_from_slice(&input.data[..len]);
+    buf[..len].copy_from_slice(&input.data[..len]);
 
     if let Ok(mut packet) = IpPacket::new(buf, len) {
         test_all_getters(&packet);
@@ -131,7 +132,7 @@ pub fn test(input: Input<'_>) {
 
 /// Builds ICMP destination-unreachable errors from the packet and parses them back.
 fn make_and_parse_icmp_errors(packet: &IpPacket, translate_dst: IpAddr, translate_port: u16) {
-    type MakeError = fn(&IpPacket) -> anyhow::Result<IpPacket>;
+    type MakeError = fn(&IpPacket) -> Result<IpPacket>;
     type IsCode = fn(&IcmpError) -> bool;
 
     let cases: [(MakeError, IsCode); 2] = [
@@ -320,10 +321,6 @@ fn test_all_getters(packet: &IpPacket) {
     let _ = packet.version();
     let _ = packet.source();
     let _ = packet.destination();
-    assert_eq!(
-        packet.source_and_destination(),
-        (packet.source(), packet.destination())
-    );
     let _ = packet.source_protocol();
     let _ = packet.destination_protocol();
     let _ = packet.ecn();

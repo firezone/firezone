@@ -6,6 +6,7 @@ license = { workspace = true }
 
 [target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
 anyhow = { workspace = true }
+bufferpool = { workspace = true }
 futures = { workspace = true }
 ip-packet = { workspace = true }
 libc = { workspace = true }

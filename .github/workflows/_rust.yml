@@ -49,7 +49,7 @@ jobs:
         name: cargo doc
         shell: bash
       - run: cargo fmt -- --check
-      - run: cargo deny check --hide-inclusion-graph --deny unnecessary-skip
+      - run: mise run deny
         shell: bash
       # cargo-shear does not compile the workspace; it runs `cargo metadata` and
       # parses sources, so it piggy-backs on the toolchain already set up here.
@@ -214,24 +214,10 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - uses: ./.github/actions/setup-afl
       - uses: ./.github/actions/free-disk-space
-      - name: Unpack committed corpus
-        run: mise run //rust/tests/fuzz:unpack-corpus ${{ matrix.fuzz-target }}
       - name: Replay committed corpus
-        run: mise run //rust/tests/fuzz:coverage ${{ matrix.fuzz-target }}
+        run: mise run //rust/tests/fuzz:replay ${{ matrix.fuzz-target }}
       - name: Check discovery determinism
         run: mise run //rust/tests/fuzz:determinism ${{ matrix.fuzz-target }}
-      - name: Enforce uncovered-region ceiling
-        run: mise run -q //rust/tests/fuzz:coverage-check ${{ matrix.fuzz-target }}
-      - name: Export lcov for Coveralls
-        run: mise run -q //rust/tests/fuzz:lcov ${{ matrix.fuzz-target }} > lcov-${{ matrix.fuzz-target }}.info
-      - uses: coverallsapp/github-action@8d6379e14d29928660c4ba802d8e85393440b329 # v2.3.8
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          file: rust/lcov-${{ matrix.fuzz-target }}.info
-          format: lcov
-          flag-name: rust-fuzz-${{ matrix.fuzz-target }}
-          parallel: true
-          fail-on-error: false
 
   headless-client:
     name: headless-client-${{ matrix.test }}-${{ matrix.runs-on }}

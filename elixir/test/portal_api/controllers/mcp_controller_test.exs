@@ -8,6 +8,8 @@ defmodule PortalAPI.MCPControllerTest do
 
   alias PortalAPI.MCP
 
+  import Portal.AuthProviderFixtures
+
   setup do
     account = account_fixture()
     actor = actor_fixture(type: :account_admin_user, account: account)
@@ -502,6 +504,8 @@ defmodule PortalAPI.MCPControllerTest do
       assert result["instructions"] =~ "Firezone"
       assert result["instructions"] =~ "metadata.next_page"
       assert result["instructions"] =~ "page_cursor"
+      assert result["instructions"] =~ "`fields`"
+      assert result["instructions"] =~ "list_posture_fields"
       assert %{"name" => "firezone"} = result["_meta"][MCP.server_info_key()]
     end
   end
@@ -632,6 +636,91 @@ defmodule PortalAPI.MCPControllerTest do
                json_response(conn, 200)
 
       assert found["id"] == resource.id
+    end
+
+    test "returns only the requested fields", %{conn: conn, account: account, actor: actor} do
+      site = site_fixture(account: account)
+      resource = resource_fixture(account: account, site: site, name: "trimmed")
+
+      conn =
+        conn
+        |> authorize_mcp_conn(actor)
+        |> call_tool("list_resources", %{"fields" => ["name"]})
+
+      assert %{"result" => result} = json_response(conn, 200)
+      assert result["isError"] == false
+      assert %{"data" => [data], "metadata" => %{"count" => 1}} = result["structuredContent"]
+      assert data == %{"id" => resource.id, "name" => "trimmed"}
+
+      assert [%{"type" => "text", "text" => text}] = result["content"]
+      assert Jason.decode!(text) == result["structuredContent"]
+    end
+
+    test "returns only the requested fields of a single record", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      site = site_fixture(account: account)
+      resource = resource_fixture(account: account, site: site, name: "trimmed")
+
+      conn =
+        conn
+        |> authorize_mcp_conn(actor)
+        |> call_tool("get_resource", %{"id" => resource.id, "fields" => ["name", "type"]})
+
+      assert %{"result" => %{"structuredContent" => %{"data" => data}}} = json_response(conn, 200)
+      assert Map.keys(data) |> Enum.sort() == ["id", "name", "type"]
+    end
+
+    test "returns a tool error for an unknown field", %{conn: conn, actor: actor} do
+      conn =
+        conn
+        |> authorize_mcp_conn(actor)
+        |> call_tool("list_resources", %{"fields" => ["name", "secret"]})
+
+      assert %{"result" => %{"isError" => true, "content" => [%{"text" => text}]}} =
+               json_response(conn, 200)
+
+      assert text =~ ~s|unknown field(s): "secret"|
+      assert text =~ "Accepted fields are:"
+    end
+
+    test "returns a tool error for fields that are not a list", %{conn: conn, actor: actor} do
+      for fields <- ["name", []] do
+        response =
+          conn
+          |> authorize_mcp_conn(actor)
+          |> call_tool("list_resources", %{"fields" => fields})
+          |> json_response(200)
+
+        assert %{"result" => %{"isError" => true, "content" => [%{"text" => text}]}} = response
+        assert text =~ "non-empty list"
+      end
+    end
+
+    test "treats fields as unknown on a tool that does not offer it", %{conn: conn, actor: actor} do
+      conn =
+        conn
+        |> authorize_mcp_conn(actor)
+        |> call_tool("list_logs", %{"type" => "session", "fields" => ["subject"]})
+
+      assert %{"result" => %{"isError" => true, "content" => [%{"text" => text}]}} =
+               json_response(conn, 200)
+
+      assert text =~ "unknown argument(s): fields"
+    end
+
+    test "lists posture fields for one provider", %{conn: conn, actor: actor} do
+      conn =
+        conn
+        |> authorize_mcp_conn(actor)
+        |> call_tool("list_posture_fields", %{"provider" => "santa", "fields" => ["type"]})
+
+      assert %{"result" => %{"structuredContent" => %{"data" => [_ | _] = data}}} =
+               json_response(conn, 200)
+
+      assert Enum.all?(data, &(Map.keys(&1) == ["type"]))
     end
 
     test "creates a record through a write tool", %{conn: conn, account: account, actor: actor} do
@@ -829,6 +918,123 @@ defmodule PortalAPI.MCPControllerTest do
     end
   end
 
+  describe "posture provider tools" do
+    import Portal.DevicePostureFixtures
+    import Portal.IruFixtures
+    import Portal.SentinelOneFixtures
+
+    setup do
+      account = device_posture_account_fixture()
+      actor = actor_fixture(type: :account_admin_user, account: account)
+      %{account: account, actor: actor}
+    end
+
+    test "lists the providers of the requested type", %{conn: conn, account: account, actor: actor} do
+      provider = iru_posture_provider_fixture(account: account)
+      _other_type = sentinelone_posture_provider_fixture(account: account)
+
+      conn =
+        conn
+        |> authorize_mcp_conn(actor)
+        |> call_tool("list_posture_providers", %{"type" => "iru", "fields" => ["name"]})
+
+      assert %{"result" => %{"isError" => false, "structuredContent" => %{"data" => [data]}}} =
+               json_response(conn, 200)
+
+      assert data == %{"id" => provider.id, "name" => provider.posture_provider.name}
+    end
+
+    test "updates a provider through the type's own REST operation", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      provider = iru_posture_provider_fixture(account: account)
+
+      conn =
+        conn
+        |> authorize_mcp_conn(actor, ~w[posture_providers:read posture_providers:write])
+        |> call_tool("update_posture_provider", %{
+          "type" => "iru",
+          "id" => provider.id,
+          "posture_provider" => %{"name" => "Renamed"}
+        })
+
+      assert %{"result" => %{"isError" => false, "structuredContent" => %{"data" => data}}} =
+               json_response(conn, 200)
+
+      assert data["name"] == "Renamed"
+      assert Portal.Repo.get_by!(Portal.PostureProvider, id: provider.id).name == "Renamed"
+    end
+
+    test "requires the posture providers write scope to update", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      provider = iru_posture_provider_fixture(account: account)
+
+      conn =
+        conn
+        |> authorize_mcp_conn(actor)
+        |> call_tool("update_posture_provider", %{
+          "type" => "iru",
+          "id" => provider.id,
+          "posture_provider" => %{"name" => "Renamed"}
+        })
+
+      assert %{"error" => %{"message" => message}} = json_response(conn, 403)
+      assert message =~ "posture_providers:write"
+    end
+
+    test "maps id to the SentinelOne agent UUID", %{conn: conn, account: account, actor: actor} do
+      device = sentinelone_device_fixture(account: account)
+
+      conn =
+        conn
+        |> authorize_mcp_conn(actor)
+        |> call_tool("get_posture_device", %{"type" => "sentinelone", "id" => device.uuid})
+
+      assert %{"result" => %{"isError" => false, "structuredContent" => %{"data" => data}}} =
+               json_response(conn, 200)
+
+      assert data["uuid"] == device.uuid
+    end
+
+    test "returns a tool error for a missing or unknown type", %{conn: conn, actor: actor} do
+      for {arguments, expected} <- [
+            {%{}, "missing required argument(s): type"},
+            {%{"type" => "kolide"}, "`type` must be one of: defender, intune, iru, santa, sentinelone, sophos"}
+          ] do
+        response =
+          conn
+          |> authorize_mcp_conn(actor)
+          |> call_tool("list_posture_providers", arguments)
+          |> json_response(200)
+
+        assert %{"result" => %{"isError" => true, "content" => [%{"text" => text}]}} = response
+        assert text == expected
+      end
+    end
+
+    test "rejects a type's own argument names", %{conn: conn, actor: actor} do
+      conn =
+        conn
+        |> authorize_mcp_conn(actor, ~w[posture_providers:read posture_providers:write])
+        |> call_tool("update_posture_provider", %{
+          "type" => "iru",
+          "id" => Ecto.UUID.generate(),
+          "iru_posture_provider" => %{"name" => "Renamed"}
+        })
+
+      assert %{"result" => %{"isError" => true, "content" => [%{"text" => text}]}} =
+               json_response(conn, 200)
+
+      assert text =~ "unknown argument(s): iru_posture_provider"
+      assert text =~ "posture_provider"
+    end
+  end
+
   describe "policy postures" do
     import Portal.DevicePostureFixtures
     import Portal.GroupFixtures
@@ -942,6 +1148,35 @@ defmodule PortalAPI.MCPControllerTest do
           MCP.client_capabilities_key() => %{}
         })
     }
+  end
+
+  test "auth provider tools return verified tenant and domain arrays", %{conn: conn, account: account, actor: actor} do
+    tenant_ids = ["12345678-1234-1234-1234-123456789012", "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"]
+    domains = ["primary.example", "secondary.example"]
+    entra = entra_provider_fixture(account: account, tenant_ids: tenant_ids)
+    google = google_provider_fixture(account: account, workspace_domains: domains)
+    for {tool, provider, field, expected} <- [
+      {"get_entra_auth_provider", entra, "tenant_ids", tenant_ids},
+      {"get_google_auth_provider", google, "workspace_domains", domains}
+    ] do
+      result = conn |> authorize_mcp_conn(actor) |> call_tool(tool, %{"id" => provider.id}) |> json_response(200)
+      assert %{"result" => %{"isError" => false, "structuredContent" => %{"data" => data}}} = result
+      assert data[field] == expected
+      if field == "tenant_ids", do: refute(Map.has_key?(data, "issuer"))
+    end
+  end
+
+  test "Google MCP tools distinguish multiple providers in one account", %{conn: conn, account: account, actor: actor} do
+    personal = google_provider_fixture(account: account, is_legacy_unrestricted: true)
+    first = google_provider_fixture(account: account, workspace_domains: ["first.example"])
+    second = google_provider_fixture(account: account, workspace_domains: ["second.example"])
+    for {provider, domains} <- [{personal, []}, {first, ["first.example"]}, {second, ["second.example"]}] do
+      result = conn |> authorize_mcp_conn(actor) |> call_tool("get_google_auth_provider", %{"id" => provider.id}) |> json_response(200)
+      assert %{"result" => %{"isError" => false, "structuredContent" => %{"data" => data}}} = result
+      assert data["id"] == provider.id
+      assert data["workspace_domains"] == domains
+      refute Map.has_key?(data, "is_legacy_unrestricted")
+    end
   end
 
   defp headers(conn, method) do

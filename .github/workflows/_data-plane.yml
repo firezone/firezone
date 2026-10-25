@@ -83,10 +83,10 @@ jobs:
       matrix:
         include:
           # mark:next-gateway-version
-          - release_name: gateway-1.6.3
+          - release_name: gateway-1.6.4
             config_name: release-drafter-gateway.yml
           # mark:next-headless-version
-          - release_name: headless-client-1.5.14
+          - release_name: headless-client-1.5.15
             config_name: release-drafter-headless-client.yml
 
     steps:
@@ -119,9 +119,9 @@ jobs:
         target: [x86_64-pc-windows-msvc]
         package: [firezone-headless-client]
         # mark:next-headless-version
-        release_name: [headless-client-1.5.14]
+        release_name: [headless-client-1.5.15]
         # mark:next-headless-version
-        version: [1.5.14]
+        version: [1.5.15]
     env:
       ARTIFACT_PATH: ${{ matrix.artifact }}_${{ matrix.version }}_${{ matrix.arch }}.exe
       RELEASE_NAME: ${{ matrix.release_name }}
@@ -218,9 +218,9 @@ jobs:
             artifact: firezone-client-headless-linux
             image_name: client
             # mark:next-headless-version
-            release_name: headless-client-1.5.14
+            release_name: headless-client-1.5.15
             # mark:next-headless-version
-            version: 1.5.14
+            version: 1.5.15
           - package: firezone-relay
             artifact: firezone-relay
             image_name: relay
@@ -228,9 +228,9 @@ jobs:
             artifact: firezone-gateway
             image_name: gateway
             # mark:next-gateway-version
-            release_name: gateway-1.6.3
+            release_name: gateway-1.6.4
             # mark:next-gateway-version
-            version: 1.6.3
+            version: 1.6.4
           - package: http-test-server
             artifact: http-test-server
             image_name: http-test-server
@@ -478,7 +478,7 @@ jobs:
           - name: relay
           - name: gateway
             # mark:next-gateway-version
-            version: 1.6.3
+            version: 1.6.4
           - name: client
             # mark:next-client-version
             version: 1.0.6
@@ -546,7 +546,7 @@ jobs:
           severity: CRITICAL,HIGH
       - name: Upload Trivy scan results to GitHub Security tab
         if: ${{ matrix.image.name != 'http-test-server' }}
-        uses: github/codeql-action/upload-sarif@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4.37.7
+        uses: github/codeql-action/upload-sarif@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
         with:
           sarif_file: trivy-results.sarif
           category: trivy-${{ matrix.image_prefix && format('{0}-', matrix.image_prefix) || '' }}${{ matrix.image.name }}

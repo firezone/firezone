@@ -3,7 +3,9 @@ use crate::{
     channel_data,
     node::Transmit,
 };
+use bufferpool::Bytes;
 use bytecodec::{DecodeExt as _, EncodeExt as _};
+use fast_random_state::FastRandomState;
 use hex_display::HexDisplayExt as _;
 use ip_packet::Ecn;
 use is::Candidate;
@@ -12,7 +14,7 @@ use rand::{SeedableRng as _, rngs::StdRng};
 use ringbuffer::{AllocRingBuffer, RingBuffer as _};
 use smallvec::SmallVec;
 use std::{
-    collections::{BTreeMap, VecDeque},
+    collections::{HashMap, VecDeque},
     iter,
     net::{SocketAddr, SocketAddrV4, SocketAddrV6},
     time::{Duration, Instant},
@@ -89,7 +91,11 @@ pub struct Allocation {
     buffered_transmits: VecDeque<Transmit>,
     events: VecDeque<Event>,
 
-    sent_requests: BTreeMap<TransactionId, (SocketAddr, Message<Attribute>, ExponentialBackoff)>,
+    sent_requests: HashMap<
+        TransactionId,
+        (SocketAddr, Message<Attribute>, ExponentialBackoff),
+        FastRandomState,
+    >,
 
     channel_bindings: ChannelBindings,
     buffered_channel_bindings: AllocRingBuffer<SocketAddr>,
@@ -714,7 +720,7 @@ impl Allocation {
 
     /// Attempts to decapsulate and incoming packet as a channel-data message.
     ///
-    /// Returns the original sender, the packet and _our_ relay socket that this packet was sent to.
+    /// Returns the original sender and _our_ relay socket that this packet was sent to.
     /// Our relay socket is the destination that the remote peer sees for us.
     /// TURN is designed such that the remote has no knowledge of the existence of a relay.
     /// It simply sends data to a socket.
@@ -723,14 +729,14 @@ impl Allocation {
         from: SocketAddr,
         packet: channel_data::Packet<'p>,
         now: Instant,
-    ) -> Option<(SocketAddr, &'p [u8], Socket)> {
+    ) -> Option<(SocketAddr, Socket)> {
         if !self.server.matches(from) {
             tracing::trace!(?self.server, "Packet is not for this allocation");
 
             return None;
         }
 
-        let (peer, payload) = self.channel_bindings.try_handle_packet(packet, now)?;
+        let (peer, _) = self.channel_bindings.try_handle_packet(packet, now)?;
 
         // Our socket on the relay.
         // If the remote sent from an IP4 address, it must have been received on our IP4 allocation.
@@ -742,7 +748,7 @@ impl Allocation {
 
         tracing::trace!(%peer, ?socket, "Decapsulated channel-data message");
 
-        Some((peer, payload, socket))
+        Some((peer, socket))
     }
 
     #[tracing::instrument(level = "debug", skip_all, fields(active_socket = ?self.active_socket))]
@@ -933,8 +939,23 @@ impl Allocation {
         buffer: &mut [u8],
         now: Instant,
     ) -> Option<EncodeOk> {
-        let active_socket = self.active_socket.as_mut()?;
         let payload_length = buffer.len() - 4;
+        let (channel_number, socket) = self.channel_to_peer(peer, now)?;
+
+        crate::channel_data::encode_header_to_slice(
+            &mut buffer[..4],
+            channel_number,
+            payload_length,
+        );
+
+        Some(EncodeOk { socket })
+    }
+
+    /// Returns the channel number for sending data to `peer` and the relay socket to send it to.
+    ///
+    /// Binds a new channel if there is none yet.
+    pub fn channel_to_peer(&mut self, peer: SocketAddr, now: Instant) -> Option<(u16, SocketAddr)> {
+        let active_socket = self.active_socket.as_mut()?;
 
         let connected_channel_to_peer = self.channel_bindings.connected_channel_to_peer(peer, now);
         let inflight_channel_to_peer = self.channel_bindings.inflight_channel_to_peer(peer, now);
@@ -952,17 +973,10 @@ impl Allocation {
                 return None;
             }
         };
-        crate::channel_data::encode_header_to_slice(
-            &mut buffer[..4],
-            channel_number,
-            payload_length,
-        );
 
         active_socket.reset(now);
 
-        Some(EncodeOk {
-            socket: active_socket.addr,
-        })
+        Some((channel_number, active_socket.addr))
     }
 
     /// Whether this [`Allocation`] can be freed.
@@ -1227,7 +1241,7 @@ impl Allocation {
         self.buffered_transmits.push_back(Transmit {
             src: None,
             dst,
-            payload: crate::DATAGRAMS.pull_initialised(&encode(message)),
+            payload: Bytes::copied_from(&encode(message)),
             ecn: Ecn::NonEct,
         });
 
@@ -1547,7 +1561,7 @@ stun_codec::define_attribute_enums!(
 
 #[derive(Debug)]
 struct ChannelBindings {
-    inner: BTreeMap<u16, Channel>,
+    inner: HashMap<u16, Channel, FastRandomState>,
     next_channel: u16,
 }
 

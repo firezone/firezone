@@ -15,9 +15,11 @@ mod sys;
 #[cfg(test)]
 mod tests;
 
-use anyhow::Result;
+pub use bulk::Device;
+
 use libc::{F_GETFL, F_SETFL, O_NONBLOCK, fcntl};
 use std::{io, os::fd::RawFd};
+use tokio::io::Interest;
 
 /// Receive buffer we request for the utun control socket via `SO_RCVBUF`.
 ///
@@ -63,18 +65,57 @@ impl Io {
         raise_recv_buffer(fd);
         raise_max_pending_packets(fd);
         let max_coalesced_len = max_coalesced_len(fd);
-        let workers = tun::Workers::spawn(
-            runtime,
-            move |outbound_rx| send(fd, outbound_rx, max_coalesced_len),
-            move |inbound_tx| recv(fd, inbound_tx),
-        )?;
+        let workers = match sys::batch_syscalls() {
+            Some(syscalls) => tun::Workers::spawn(
+                runtime,
+                move |outbound_rx| {
+                    let open = move || bulk::Fd::open(fd, Interest::WRITABLE, syscalls);
+
+                    bulk::send(open, outbound_rx, max_coalesced_len)
+                },
+                move |inbound_tx| {
+                    let open = move || bulk::Fd::open(fd, Interest::READABLE, syscalls);
+
+                    bulk::recv(open, inbound_tx)
+                },
+            )?,
+            None => tun::Workers::spawn(
+                runtime,
+                move |outbound_rx| per_packet_io::tun_send(fd, outbound_rx, per_packet::write),
+                move |inbound_tx| per_packet_io::tun_recv(fd, inbound_tx, per_packet::read),
+            )?,
+        };
 
         Ok(Self { name, workers })
+    }
+
+    /// Starts the batched workers on a device other than a `utun`, such as an in-memory one for
+    /// benchmarks.
+    pub fn with_device<D>(
+        name: impl Into<String>,
+        device: D,
+        max_coalesced_len: Option<usize>,
+        runtime: &tokio::runtime::Handle,
+    ) -> io::Result<Self>
+    where
+        D: Device + Clone + Send + 'static,
+    {
+        let send_device = device.clone();
+        let workers = tun::Workers::spawn(
+            runtime,
+            move |outbound_rx| bulk::send(move || Ok(send_device), outbound_rx, max_coalesced_len),
+            move |inbound_tx| bulk::recv(move || Ok(device), inbound_tx),
+        )?;
+
+        Ok(Self {
+            name: name.into(),
+            workers,
+        })
     }
 }
 
 impl tun::Tun for Io {
-    fn sender(&self) -> &tun::OutboundTx {
+    fn sender(&mut self) -> &mut tun::OutboundTx {
         self.workers.sender()
     }
 
@@ -107,22 +148,6 @@ fn name(fd: RawFd) -> io::Result<String> {
     }
 
     Ok(String::from_utf8_lossy(&tunnel_name[..(tunnel_name_len - 1) as usize]).to_string())
-}
-
-/// Sends packets from `outbound_rx` to the TUN `fd` until the channel closes.
-fn send(fd: RawFd, outbound_rx: tun::OutboundRx, max_coalesced_len: Option<usize>) -> Result<()> {
-    match sys::batch_syscalls() {
-        Some(syscalls) => bulk::send(fd, syscalls, outbound_rx, max_coalesced_len),
-        None => crate::per_packet_io::tun_send(fd, outbound_rx, per_packet::write),
-    }
-}
-
-/// Receives packets from the TUN `fd` into `inbound_tx` until the fd or the channel closes.
-fn recv(fd: RawFd, inbound_tx: tun::InboundTx) -> Result<()> {
-    match sys::batch_syscalls() {
-        Some(syscalls) => bulk::recv(fd, syscalls, inbound_tx),
-        None => crate::per_packet_io::tun_recv(fd, inbound_tx, per_packet::read),
-    }
 }
 
 fn get_last_error() -> io::Error {

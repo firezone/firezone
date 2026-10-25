@@ -28,10 +28,6 @@ defmodule PortalAPI.Schemas.Policy do
         IANA timezone name, e.g. `"M/09:00-17:00/America/New_York"`.
       * `client_verified` with `is`: `values` is a single-element list
         containing `"true"` or `"false"`.
-      * `device_attested` with `is`: `values` is a single-element list
-        containing `"true"` or `"false"`. `"true"` requires the Client to
-        have presented a valid X.509 certificate from one of the account's
-        trust anchors on its current connection.
       """,
       type: :object,
       properties: %{
@@ -44,8 +40,7 @@ defmodule PortalAPI.Schemas.Policy do
             "remote_ip",
             "auth_provider_id",
             "current_utc_datetime",
-            "client_verified",
-            "device_attested"
+            "client_verified"
           ]
         },
         operator: %Schema{
@@ -91,85 +86,91 @@ defmodule PortalAPI.Schemas.Policy do
                      "### #{provider} fields\n\n| Field | Type | Platforms |\n| --- | --- | --- |\n" <> rows
                    end)
 
+    @grammar """
+    One node of a Policy's device posture expression. A node has exactly one
+    of these shapes:
+
+    * `and`: a non-empty list of nodes that must all hold.
+    * `or`: a non-empty list of nodes of which at least one must hold.
+    * `not`: a node that must not hold.
+    * a leaf: a `field`, an `op`, and for most operators a `value`.
+
+    A leaf's `field` is `<provider>.<attribute>`, such as
+    `intune.compliance_state` or `firezone.last_seen_version`. The provider
+    is one of `firezone` (the connecting device's own record), `intune`,
+    `iru`, `defender`, `santa`, `sentinelone` or `sophos`. The attribute is
+    one of that provider's synced device attributes. Every synced provider also has a
+    boolean `enrolled` that is true when the provider knows the device.
+
+    The attribute's type decides which operators apply and what `value`
+    must be:
+
+    * strings: `is`, `is_not`, `is_in`, `is_not_in`, `contains`,
+      `does_not_contain`, `starts_with`, `ends_with`, `matches`,
+      `does_not_match`. Comparisons ignore case. `is_in` and `is_not_in`
+      take a list of strings. `matches` and `does_not_match` take a regular
+      expression.
+    * booleans: `is` with `true` or `false`.
+    * numbers: `eq`, `ne`, `gt`, `gte`, `lt`, `lte`.
+    * versions: `is`, `is_not`, `gt`, `gte`, `lt`, `lte`, compared segment
+      by segment, so `14.4` equals `14.4.0`.
+    * timestamps: `before` and `after` with an ISO 8601 datetime such as
+      `2026-01-01T00:00:00Z`; `within_last` and `not_within_last` with an
+      ISO 8601 duration such as `PT24H` or `P30D`. A date-only attribute
+      counts as the start of that day in UTC.
+    * IP addresses: `is_in_cidr` and `is_not_in_cidr` with a list of CIDRs.
+      `firezone.ipv4` takes IPv4 CIDRs only and `firezone.ipv6` IPv6 only.
+    * lists of strings: `contains`, `does_not_contain`, `contains_any_of`,
+      `contains_all_of`, `is_empty`, `is_not_empty`.
+    * JSON attributes: `is_empty`, `is_not_empty`.
+
+    The value `@latest` on `firezone.last_seen_version` stands for the newest
+    Client release for the device's platform.
+
+    `enum_string` uses the string operators; `integer` and `float` use the
+    numeric operators. `string_array` values use a single string for `contains`
+    and `does_not_contain`, or a non-empty string list for `contains_any_of`
+    and `contains_all_of`.
+
+    Every attribute also accepts `exists` and `does_not_exist`. These and
+    `is_empty` / `is_not_empty` take no value: omit `value` or set it to null.
+    Missing attributes fail every operator except `does_not_exist`, including
+    negative operators such as `is_not`. A missing provider is evaluated as
+    one empty row. Its synthetic `enrolled` field is false, so `enrolled is
+    false` can explicitly match an unenrolled device. `not` negates the
+    result and can also match missing data; use a positive `enrolled is true`
+    check when enrollment is required.
+
+    Leaves that do not apply to the device's platform are removed before
+    evaluation, including inside `or` and `not`. An expression with no
+    applicable leaves passes. If the platform is unknown, no leaves are
+    removed. Each field lists the platforms it applies to.
+    Provider `os_up_to_date` fields are computed from known OS releases;
+    they are not raw provider attributes.
+
+    When a device matches more than one record of a provider, a leaf holds
+    when any record satisfies it. Set `rows` to `all` to require every
+    record. Different leaves may match different provider rows; `and` does
+    not require one row to satisfy all leaves. `rows` is not allowed for
+    `firezone`, which always describes exactly one connecting device.
+
+    Expressions allow at most 10 nested boolean levels and 100 leaves.
+    List values contain 1–100 items; strings are at most 1024 bytes and
+    regular expressions at most 256 bytes. Unknown fields, incompatible
+    operators, invalid values, and exceeded limits return HTTP 422 with
+    a path in `validation_errors.postures`.
+    """
+
+    @doc "The expression grammar, without the field catalog."
+    def grammar, do: @grammar
+
     OpenApiSpex.schema(%{
       title: "PolicyPostureNode",
-      description: """
-      One node of a Policy's device posture expression. A node has exactly one
-      of these shapes:
-
-      * `and`: a non-empty list of nodes that must all hold.
-      * `or`: a non-empty list of nodes of which at least one must hold.
-      * `not`: a node that must not hold.
-      * a leaf: a `field`, an `op`, and for most operators a `value`.
-
-      A leaf's `field` is `<provider>.<attribute>`, such as
-      `intune.compliance_state` or `firezone.last_seen_version`. The provider
-      is one of `firezone` (the connecting device's own record), `intune`,
-      `iru`, `defender`, `santa`, `sentinelone` or `sophos`. The attribute is
-      one of that provider's synced device attributes. Every synced provider also has a
-      boolean `enrolled` that is true when the provider knows the device.
-
-      The attribute's type decides which operators apply and what `value`
-      must be:
-
-      * strings: `is`, `is_not`, `is_in`, `is_not_in`, `contains`,
-        `does_not_contain`, `starts_with`, `ends_with`, `matches`,
-        `does_not_match`. Comparisons ignore case. `is_in` and `is_not_in`
-        take a list of strings. `matches` and `does_not_match` take a regular
-        expression.
-      * booleans: `is` with `true` or `false`.
-      * numbers: `eq`, `ne`, `gt`, `gte`, `lt`, `lte`.
-      * versions: `is`, `is_not`, `gt`, `gte`, `lt`, `lte`, compared segment
-        by segment, so `14.4` equals `14.4.0`.
-      * timestamps: `before` and `after` with an ISO 8601 datetime such as
-        `2026-01-01T00:00:00Z`; `within_last` and `not_within_last` with an
-        ISO 8601 duration such as `PT24H` or `P30D`. A date-only attribute
-        counts as the start of that day in UTC.
-      * IP addresses: `is_in_cidr` and `is_not_in_cidr` with a list of CIDRs.
-        `firezone.ipv4` takes IPv4 CIDRs only and `firezone.ipv6` IPv6 only.
-      * lists of strings: `contains`, `does_not_contain`, `contains_any_of`,
-        `contains_all_of`, `is_empty`, `is_not_empty`.
-      * JSON attributes: `is_empty`, `is_not_empty`.
-
-      The value `@latest` on `firezone.last_seen_version` stands for the newest
-      Client release for the device's platform.
-
-      `enum_string` uses the string operators; `integer` and `float` use the
-      numeric operators. `string_array` values use a single string for `contains`
-      and `does_not_contain`, or a non-empty string list for `contains_any_of`
-      and `contains_all_of`.
-
-      Every attribute also accepts `exists` and `does_not_exist`. These and
-      `is_empty` / `is_not_empty` take no value: omit `value` or set it to null.
-      Missing attributes fail every operator except `does_not_exist`, including
-      negative operators such as `is_not`. A missing provider is evaluated as
-      one empty row. Its synthetic `enrolled` field is false, so `enrolled is
-      false` can explicitly match an unenrolled device. `not` negates the
-      result and can also match missing data; use a positive `enrolled is true`
-      check when enrollment is required.
-
-      Leaves that do not apply to the device's platform are removed before
-      evaluation, including inside `or` and `not`. An expression with no
-      applicable leaves passes. If the platform is unknown, no leaves are
-      removed. Supported platforms for each field are listed below.
-      Provider `os_up_to_date` fields are computed from known OS releases;
-      they are not raw provider attributes.
-
-      When a device matches more than one record of a provider, a leaf holds
-      when any record satisfies it. Set `rows` to `all` to require every
-      record. Different leaves may match different provider rows; `and` does
-      not require one row to satisfy all leaves. `rows` is not allowed for
-      `firezone`, which always describes exactly one connecting device.
-
-      Expressions allow at most 10 nested boolean levels and 100 leaves.
-      List values contain 1–100 items; strings are at most 1024 bytes and
-      regular expressions at most 256 bytes. Unknown fields, incompatible
-      operators, invalid values, and exceeded limits return HTTP 422 with
-      a path in `validation_errors.postures`.
-
-      Supported fields (generated from the same registry used for validation):
-
-      """ <> @field_catalog,
+      description:
+        @grammar <>
+          "\n`GET /posture_fields` lists the same fields as structured data.\n\n" <>
+          "Supported fields (generated from the same registry used for validation):\n\n" <>
+          @field_catalog,
       type: :object,
       example: %{
         "and" => [
@@ -221,6 +222,16 @@ defmodule PortalAPI.Schemas.Policy do
             "Whether flow logs are reported for connections authorized by this Policy. " <>
               "Defaults to true. Always false for Internet Resource policies.",
           default: true
+        },
+        require_attestation: %Schema{
+          example: false,
+          type: :boolean,
+          description:
+            "Whether the Client must present a valid X.509 certificate from one of the account's " <>
+              "trust anchors on its current connection. Device posture checks then match only on " <>
+              "the identifiers that certificate proves. Defaults to false. Setting it to true " <>
+              "returns 422 when the account has no trust anchors.",
+          default: false
         },
         is_disabled: %Schema{
           example: false,
@@ -282,6 +293,13 @@ defmodule PortalAPI.Schemas.Policy do
           description:
             "Whether flow logs are reported for connections authorized by this Policy. " <>
               "Always false for Internet Resource policies."
+        },
+        require_attestation: %Schema{
+          type: :boolean,
+          description:
+            "Whether the Client must present a valid X.509 certificate from one of the account's " <>
+              "trust anchors on its current connection. Setting it to true returns 422 when the " <>
+              "account has no trust anchors."
         },
         is_disabled: %Schema{
           example: false,
@@ -364,6 +382,12 @@ defmodule PortalAPI.Schemas.Policy do
           type: :boolean,
           description: "Whether flow logs are reported for connections authorized by this Policy"
         },
+        require_attestation: %Schema{
+          example: false,
+          type: :boolean,
+          description:
+            "Whether the Client must present a valid X.509 certificate from one of the account's trust anchors"
+        },
         is_disabled: %Schema{
           example: false,
           type: :boolean,
@@ -401,6 +425,7 @@ defmodule PortalAPI.Schemas.Policy do
         :id,
         :is_disabled,
         :postures,
+        :require_attestation,
         :resource_id
       ]
     })

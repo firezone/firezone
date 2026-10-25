@@ -68,7 +68,85 @@ defmodule Portal.OAuthTest do
       end
     end
 
-    test "rejects metadata that requests client authentication or contains a secret" do
+    test "selects public or signed authentication without weakening a signed preference" do
+      assert {:ok, "none"} = ClientMetadata.authentication_method(%{})
+
+      assert {:ok, "none"} =
+               ClientMetadata.authentication_method(%{
+                 "token_endpoint_auth_methods_supported" => ["private_key_jwt", "none"]
+               })
+
+      assert {:ok, "private_key_jwt"} =
+               ClientMetadata.authentication_method(%{
+                 "token_endpoint_auth_methods_supported" => ["private_key_jwt"],
+                 "jwks_uri" => "https://client.example.com/keys"
+               })
+
+      assert {:error, :invalid_document} =
+               ClientMetadata.authentication_method(%{
+                 "token_endpoint_auth_method" => "private_key_jwt",
+                 "token_endpoint_auth_methods_supported" => ["private_key_jwt", "none"],
+                 "jwks_uri" => "http://client.example.com/keys"
+               })
+    end
+
+    test "selects signed authentication when the client prefers it" do
+      client_id = "https://localhost/chatgpt.json"
+
+      Req.Test.stub(ClientMetadata, fn conn ->
+        Req.Test.json(conn, %{
+          "client_id" => client_id,
+          "client_name" => "ChatGPT",
+          "redirect_uris" => [redirect_uri()],
+          "token_endpoint_auth_method" => "private_key_jwt",
+          "token_endpoint_auth_methods_supported" => ["none", "private_key_jwt"],
+          "jwks_uri" => "https://localhost/jwks.json"
+        })
+      end)
+
+      assert {:ok, client, uri} =
+               OAuth.validate_client(%{
+                 "client_id" => client_id,
+                 "redirect_uri" => redirect_uri()
+               })
+
+      assert client.client_id == client_id
+      assert client.token_endpoint_auth_method == "private_key_jwt"
+      assert uri == redirect_uri()
+    end
+
+    test "rejects unsupported or malformed method lists even with a public-client preference" do
+      for {methods, index} <-
+            Enum.with_index([
+              ["private_key_jwt"],
+              [],
+              nil,
+              "none",
+              ["none", nil],
+              ["none", ""],
+              ["none", " "]
+            ]) do
+        client_id = "https://localhost/methods-#{index}.json"
+
+        Req.Test.stub(ClientMetadata, fn conn ->
+          Req.Test.json(conn, %{
+            "client_id" => client_id,
+            "client_name" => "Invalid methods",
+            "redirect_uris" => [redirect_uri()],
+            "token_endpoint_auth_method" => "none",
+            "token_endpoint_auth_methods_supported" => methods
+          })
+        end)
+
+        assert {:error, "invalid_client", _description} =
+                 OAuth.validate_client(%{
+                   "client_id" => client_id,
+                   "redirect_uri" => redirect_uri()
+                 })
+      end
+    end
+
+    test "rejects metadata that requires client authentication or contains a secret" do
       for {suffix, extra} <- [
             {"private-key", %{"token_endpoint_auth_method" => "private_key_jwt"}},
             {"secret", %{"client_secret" => "must-not-be-here"}}
@@ -347,6 +425,108 @@ defmodule Portal.OAuthTest do
 
       assert request.requested_scopes == ["gateway_tokens:write"]
       assert request.scopes == []
+    end
+  end
+
+  test "Claude-style public CIMD clients retain PKCE exchange, refresh, and revocation",
+       context do
+    client_id = "https://localhost/claude-public-client.json"
+
+    Req.Test.stub(ClientMetadata, fn conn ->
+      Req.Test.json(conn, %{
+        "client_id" => client_id,
+        "client_name" => "Claude",
+        "redirect_uris" => [redirect_uri()],
+        "token_endpoint_auth_method" => "none",
+        "grant_types" => [
+          "authorization_code",
+          "refresh_token",
+          "urn:ietf:params:oauth:grant-type:jwt-bearer"
+        ],
+        "response_types" => ["code"]
+      })
+    end)
+
+    assert {:ok, client, _} =
+             OAuth.validate_client(%{"client_id" => client_id, "redirect_uri" => redirect_uri()})
+
+    assert client.token_endpoint_auth_method == "none"
+    context = %{context | client: client}
+    pid = self()
+
+    Req.Test.stub(ClientMetadata, fn conn ->
+      send(pid, :unexpected_key_fetch)
+      Req.Test.json(conn, %{})
+    end)
+
+    code = consent(context)
+    assert {:ok, issued} = OAuth.exchange(exchange_params(context, code), @resource)
+
+    assert {:ok, rotated} =
+             OAuth.refresh(refresh_params(context, issued.refresh_token), @resource)
+
+    assert :ok = OAuth.revoke(rotated.access_token)
+
+    {:ok, {_nonce, account_id, id, _fragment}} =
+      Portal.Authentication.decode_fragment(rotated.access_token, "mcp")
+
+    refute Repo.get_by(Portal.OAuthToken, id: id, account_id: account_id)
+    refute_receive :unexpected_key_fetch
+  end
+
+  describe "signed client token exchanges" do
+    test "requires signed authentication for token revocation", context do
+      keys = Portal.Crypto.JWK.generate_jwk_and_jwks()
+      client = oauth_client_fixture(token_endpoint_auth_method: "private_key_jwt",
+        jwks_uri: "https://localhost/jwks.json")
+      context = %{context | client: client}
+      Req.Test.stub(ClientMetadata, &Req.Test.json(&1, keys.jwks))
+      {token, access, _} = oauth_token_fixture(account: context.account, actor: context.actor,
+        client: client, resource: @resource)
+      assert :ok = OAuth.revoke(access)
+      assert Repo.get_by(Portal.OAuthToken, id: token.id, account_id: context.account.id)
+      wrong_client = Map.put(signed_assertion(client, keys, "revoke"), "client_id", "another-client")
+      assert :ok = OAuth.revoke(access, wrong_client)
+      assert Repo.get_by(Portal.OAuthToken, id: token.id, account_id: context.account.id)
+      assert :ok = OAuth.revoke(access, signed_assertion(client, keys, "revoke"))
+      refute Repo.get_by(Portal.OAuthToken, id: token.id, account_id: context.account.id)
+    end
+
+    test "rejects forged codes before fetching remote keys", context do
+      client = oauth_client_fixture(token_endpoint_auth_method: "private_key_jwt",
+        jwks_uri: "https://localhost/jwks.json")
+      context = %{context | client: client}
+      pid = self()
+      Req.Test.stub(ClientMetadata, fn conn -> send(pid, :keys_fetched); Req.Test.json(conn, %{}) end)
+      assert {:error, "invalid_grant", _} = OAuth.exchange(exchange_params(context, "forged"), @resource)
+      assert {:error, "invalid_grant", _} = OAuth.refresh(refresh_params(context, "forged"), @resource)
+      refute_receive :keys_fetched
+    end
+
+    test "requires a valid assertion for both code exchange and refresh", context do
+      keys = Portal.Crypto.JWK.generate_jwk_and_jwks()
+
+      client =
+        oauth_client_fixture(
+          token_endpoint_auth_method: "private_key_jwt",
+          jwks_uri: "https://localhost/jwks.json"
+        )
+
+      context = %{context | client: client}
+      Req.Test.stub(ClientMetadata, &Req.Test.json(&1, keys.jwks))
+      code = consent(context)
+      params = exchange_params(context, code)
+
+      assert {:error, "invalid_client", _} = OAuth.exchange(params, @resource)
+
+      assert {:ok, tokens} =
+               OAuth.exchange(Map.merge(params, signed_assertion(client, keys)), @resource)
+
+      refresh = refresh_params(context, tokens.refresh_token)
+      assert {:error, "invalid_client", _} = OAuth.refresh(refresh, @resource)
+
+      assert {:ok, _} =
+               OAuth.refresh(Map.merge(refresh, signed_assertion(client, keys)), @resource)
     end
   end
 
@@ -642,6 +822,30 @@ defmodule Portal.OAuthTest do
       assert OAuth.list_grants(context.subject) == []
       assert Portal.Repo.all(Portal.OAuthToken) == []
     end
+  end
+
+  defp signed_assertion(client, keys, endpoint \\ "token") do
+    now = System.system_time(:second)
+
+    claims = %{
+      "iss" => client.client_id,
+      "sub" => client.client_id,
+      "aud" => PortalWeb.Endpoint.url() <> "/oauth/#{endpoint}",
+      "iat" => now,
+      "exp" => now + 60,
+      "jti" => Ecto.UUID.generate()
+    }
+
+    {_, token} =
+      keys.jwk
+      |> JOSE.JWK.from_map()
+      |> JOSE.JWT.sign(%{"alg" => "RS256", "kid" => keys.kid}, claims)
+      |> JOSE.JWS.compact()
+
+    %{
+      "client_assertion_type" => "urn:ietf:params:oauth:client-assertion-type:jwt-bearer",
+      "client_assertion" => token
+    }
   end
 
   defp consent(context, scope \\ "policies:read", resource \\ @resource) do

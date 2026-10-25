@@ -770,7 +770,7 @@ defmodule PortalWeb.GroupsTest do
 
       render_click(lv, "delete", %{"id" => group.id})
 
-      html = render(lv)
+      html = render_async(lv)
       refute html =~ group.name
     end
   end

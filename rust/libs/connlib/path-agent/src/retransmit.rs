@@ -2,7 +2,7 @@ use std::time::{Duration, Instant};
 
 pub(crate) struct PairRetransmit {
     /// `None` once the ladder is spent: it runs once and stops, leaving further
-    /// retransmission to boringtun's own re-init cadence.
+    /// retransmission to WireGuard's own re-init cadence.
     pub(crate) next_fire_at: Option<Instant>,
     pub(crate) step: usize,
 }

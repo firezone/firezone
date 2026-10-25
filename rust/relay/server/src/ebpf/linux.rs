@@ -1,4 +1,5 @@
 use std::{
+    ffi::CString,
     io,
     net::{Ipv4Addr, Ipv6Addr, SocketAddr},
 };
@@ -6,7 +7,10 @@ use std::{
 use anyhow::{Context as _, Result};
 use aya::{
     Pod,
-    maps::{HashMap, MapData, PerCpuArray, PerCpuValues, PerfEventArray, perf::PerfEvent},
+    maps::{
+        HashMap, MapData, PerCpuArray, PerCpuValues, PerfEventArray,
+        perf::{PerfEvent, PerfEventArrayBuffer},
+    },
     programs::{Xdp, XdpMode},
 };
 use aya_log::EbpfLogger;
@@ -48,7 +52,8 @@ impl Program {
             "/ebpf-turn-router-main"
         )))?;
         let logger = EbpfLogger::init(&mut ebpf)?;
-        let mut logger = AsyncFd::with_interest(logger, Interest::READABLE)?;
+        // SAFETY: `EbpfLogger` owns its descriptor, so it stays open as long as we hold it.
+        let mut logger = unsafe { AsyncFd::register_with_interest(logger, Interest::READABLE)? };
         tokio::task::spawn(async move {
             loop {
                 let mut guard = match logger.readable_mut().await {
@@ -75,7 +80,7 @@ impl Program {
         };
 
         program
-            .attach(interface, xdp_mode)
+            .attach(CString::new(interface)?.as_c_str(), xdp_mode)
             .with_context(|| format!("Failed to attached to interface {interface}"))?;
 
         let mut stats = PerfEventArray::try_from(
@@ -83,18 +88,20 @@ impl Program {
                 .context("`STATS` perf array not found")?,
         )?;
 
-        let packet_size = crate::metrics::packet_size();
+        let packet_size = otel_instruments::relay_packet_size();
 
-        let processing_duration = crate::metrics::xdp_processing_duration();
-        let packets = crate::metrics::packets();
+        let processing_duration = otel_instruments::relay_xdp_processing_duration();
+        let packets = otel_instruments::relay_packets();
 
         for cpu_id in aya::util::online_cpus()
             .map_err(|(_, error)| error)
             .context("Failed to determine number of CPUs")?
         {
             // open a separate perf buffer for each cpu
-            let stats_array_buf = stats.open(cpu_id, Some(PAGE_COUNT))?;
-            let mut fd = AsyncFd::new(stats_array_buf)?;
+            let stats_array_buf = PerfEventArrayBuffer::open(cpu_id, PAGE_COUNT)?;
+            stats.set(cpu_id, &stats_array_buf)?;
+            // SAFETY: `PerfEventArrayBuffer` owns its descriptor, so it stays open as long as we hold it.
+            let mut fd = unsafe { AsyncFd::register(stats_array_buf)? };
 
             tracing::debug!(%cpu_id, "Subscribing to stats events from eBPF kernel");
 
@@ -129,16 +136,16 @@ impl Program {
 
                                             packet_size.record(
                                                 stats.relayed_data(),
-                                                &[crate::metrics::datapath_xdp()],
+                                                &[otel_attributes::relay_datapath_xdp()],
                                             );
                                             packets.add(
                                                 1,
                                                 &[
-                                                    crate::metrics::datapath_xdp(),
-                                                    crate::metrics::network_type(
+                                                    otel_attributes::relay_datapath_xdp(),
+                                                    otel_attributes::network_type_for_ip_version(
                                                         stats.ip_version(),
                                                     ),
-                                                    crate::metrics::network_ecn(stats.ecn()),
+                                                    otel_attributes::network_ecn(stats.ecn()),
                                                 ],
                                             );
                                             processing_duration.record(

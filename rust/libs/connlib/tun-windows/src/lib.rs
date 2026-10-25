@@ -2,18 +2,15 @@
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
 use anyhow::{Context as _, Result};
-use ip_packet::{IpPacket, IpPacketBuf};
+use bufferpool::Bytes;
+use ip_packet::IpPacket;
 use opentelemetry::{KeyValue, metrics::Histogram};
-use std::{
-    env::VarError,
-    sync::{Arc, Weak},
-    time::Duration,
-};
-use tun_offload::{ChecksumMode, PacketCoalescer, Protocol};
+use std::{env::VarError, io, sync::Arc, time::Duration};
+use tun_offload::{ChecksumMode, CoalescedPacket, PacketCoalescer, Protocol};
 
 pub struct Io {
     name: String,
-    session: Arc<wintun::Session>,
+    device: Box<dyn Device>,
     workers: tun::Workers,
 }
 
@@ -36,19 +33,38 @@ impl Io {
         let session = adapter
             .start_session(capacity)
             .with_context(|| format!("Failed to start session with capacity {capacity}"))?;
-        let session = Arc::new(session);
-        let send_session = Arc::downgrade(&session);
-        let recv_session = Arc::downgrade(&session);
+
+        Self::with_device(
+            name,
+            Session(Arc::new(session)),
+            should_coalesce_tcp,
+            runtime,
+        )
+    }
+
+    /// Starts the worker threads on a device other than a Wintun session, such as an in-memory
+    /// one for benchmarks.
+    pub fn with_device<D>(
+        name: impl Into<String>,
+        device: D,
+        should_coalesce_tcp: fn() -> bool,
+        runtime: &tokio::runtime::Handle,
+    ) -> Result<Self>
+    where
+        D: Device + Clone,
+    {
+        let send_device = device.clone();
+        let recv_device = device.clone();
 
         let workers = tun::Workers::spawn(
             runtime,
             move |outbound_rx| {
-                send_worker(outbound_rx, send_session, should_coalesce_tcp);
+                send_worker(outbound_rx, send_device, should_coalesce_tcp);
 
                 Ok(())
             },
             move |inbound_tx| {
-                recv_worker(inbound_tx, recv_session);
+                recv_worker(inbound_tx, recv_device);
 
                 Ok(())
             },
@@ -57,7 +73,7 @@ impl Io {
 
         Ok(Self {
             name: name.into(),
-            session,
+            device: Box::new(device),
             workers,
         })
     }
@@ -66,12 +82,102 @@ impl Io {
 impl Drop for Io {
     fn drop(&mut self) {
         // Cancel blocking reads before closing channels and joining the workers.
-        let _ = self.session.shutdown();
+        self.device.shutdown();
     }
 }
 
+/// What the worker threads exchange packets with.
+pub trait Device: Send + Sync + 'static {
+    /// Writes one packet.
+    fn send(&self, packet: &CoalescedPacket) -> io::Result<()>;
+
+    /// Blocks until a packet is available and copies it into `buf`, returning its length.
+    ///
+    /// Returns zero once the device is shut down.
+    fn receive_blocking(&self, buf: &mut [u8]) -> io::Result<usize>;
+
+    /// Copies the next queued packet into `buf`, returning its length, or zero if none is queued.
+    fn try_receive(&self, buf: &mut [u8]) -> io::Result<usize>;
+
+    /// Cancels blocking reads.
+    fn shutdown(&self);
+}
+
+#[derive(Clone)]
+struct Session(Arc<wintun::Session>);
+
+impl Device for Session {
+    fn send(&self, packet: &CoalescedPacket) -> io::Result<()> {
+        let bytes = packet.packet();
+        let len = bytes
+            .len()
+            .try_into()
+            .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "Packet too large"))?;
+
+        let mut pkt = self.0.allocate_send_packet(len).map_err(io_error)?;
+        pkt.bytes_mut().copy_from_slice(bytes);
+        // `send_packet` cannot fail to enqueue the packet, since we already allocated
+        // space in the ring buffer.
+        self.0.send_packet(pkt);
+
+        Ok(())
+    }
+
+    fn receive_blocking(&self, buf: &mut [u8]) -> io::Result<usize> {
+        loop {
+            let pkt = match self.0.receive_blocking() {
+                Ok(pkt) => pkt,
+                Err(wintun::Error::ShuttingDown) => return Ok(0),
+                Err(e) => return Err(io_error(e)),
+            };
+
+            if let Some(len) = copy_packet(&pkt, buf) {
+                return Ok(len);
+            }
+        }
+    }
+
+    fn try_receive(&self, buf: &mut [u8]) -> io::Result<usize> {
+        loop {
+            let Some(pkt) = self.0.try_receive().map_err(io_error)? else {
+                return Ok(0);
+            };
+
+            if let Some(len) = copy_packet(&pkt, buf) {
+                return Ok(len);
+            }
+        }
+    }
+
+    fn shutdown(&self) {
+        let _ = self.0.shutdown();
+    }
+}
+
+/// Copies a received packet into `buf`, skipping (with a warning) one that does not fit.
+fn copy_packet(pkt: &wintun::Packet, buf: &mut [u8]) -> Option<usize> {
+    let src = pkt.bytes();
+
+    if src.len() > buf.len() {
+        tracing::warn!(len = %src.len(), "Received too large packet");
+        return None;
+    }
+
+    buf[..src.len()].copy_from_slice(src);
+
+    Some(src.len())
+}
+
+fn io_error(e: wintun::Error) -> io::Error {
+    if let wintun::Error::Io(e) = e {
+        return e;
+    }
+
+    io::Error::other(e)
+}
+
 impl tun::Tun for Io {
-    fn sender(&self) -> &tun::OutboundTx {
+    fn sender(&mut self) -> &mut tun::OutboundTx {
         self.workers.sender()
     }
     fn receiver(&mut self) -> &mut tun::InboundRx {
@@ -172,11 +278,10 @@ const MAX_RING_FULL_RETRIES: u32 = 24;
 const SPIN_LIMIT: u32 = 6;
 
 // Moves packets from Internet towards the user
-fn send_worker(
-    mut packet_rx: tun::OutboundRx,
-    session: Weak<wintun::Session>,
-    should_coalesce_tcp: fn() -> bool,
-) {
+fn send_worker<D>(mut packet_rx: tun::OutboundRx, device: D, should_coalesce_tcp: fn() -> bool)
+where
+    D: Device,
+{
     let batch_size_histogram = otel_instruments::network_packets_batch_count();
     let write_retry_histogram = otel_instruments::network_retries();
     let dropped_packets_counter = otel_instruments::network_packet_dropped();
@@ -200,32 +305,13 @@ fn send_worker(
         }
 
         'next_packet: for packet in coalescer.take().iter() {
-            let bytes = packet.packet();
             let num_segments = packet.num_segments();
-
-            let Ok(len) = bytes.len().try_into() else {
-                tracing::warn!("Packet too large; length does not fit into u16");
-                dropped_packets_counter.add(num_segments as u64, &drop_attributes_without_error());
-                continue 'next_packet;
-            };
 
             let mut attempt = 0;
 
             loop {
-                let Some(session) = session.upgrade() else {
-                    tracing::debug!(
-                        "Stopping TUN send worker thread because the `wintun::Session` was dropped"
-                    );
-                    return;
-                };
-
-                match session.allocate_send_packet(len) {
-                    Ok(mut pkt) => {
-                        pkt.bytes_mut().copy_from_slice(bytes);
-                        // `send_packet` cannot fail to enqueue the packet, since we already allocated
-                        // space in the ring buffer.
-                        session.send_packet(pkt);
-
+                match device.send(packet) {
+                    Ok(()) => {
                         if num_segments > 1 {
                             batch_size_histogram.record(num_segments as u64, &metric_attributes());
                         }
@@ -266,11 +352,11 @@ fn send_worker(
 /// Whether the write failed because the WinTUN ring buffer is full.
 ///
 /// Dropping in this case is expected back-pressure; any other error is a genuine failure.
-fn is_ring_full(e: &wintun::Error) -> bool {
+fn is_ring_full(e: &io::Error) -> bool {
     // See <https://learn.microsoft.com/en-us/windows/win32/debug/system-error-codes--0-499->.
     const ERROR_BUFFER_OVERFLOW: i32 = 0x6F;
 
-    matches!(e, wintun::Error::Io(io) if io.raw_os_error() == Some(ERROR_BUFFER_OVERFLOW))
+    e.raw_os_error() == Some(ERROR_BUFFER_OVERFLOW)
 }
 
 /// Briefly back off after a full ring buffer before trying again.
@@ -307,53 +393,36 @@ fn metric_attributes() -> [KeyValue; 2] {
 
 /// Attributes for a dropped packet, including the OS error code so ring-full
 /// drops can be told apart from other write failures.
-fn drop_attributes(e: &wintun::Error) -> [KeyValue; 3] {
-    let error_code = if let wintun::Error::Io(io) = e {
-        io.raw_os_error().unwrap_or_default() as i64
-    } else {
-        0
-    };
-
+fn drop_attributes(e: &io::Error) -> [KeyValue; 3] {
     [
         KeyValue::new("system.device", "tun"),
         KeyValue::new("network.io.direction", "transmit"),
-        KeyValue::new("error.code", error_code),
+        KeyValue::new("error.code", e.raw_os_error().unwrap_or_default() as i64),
     ]
 }
 
-fn drop_attributes_without_error() -> [KeyValue; 3] {
-    [
-        KeyValue::new("system.device", "tun"),
-        KeyValue::new("network.io.direction", "transmit"),
-        KeyValue::new("error.code", 0),
-    ]
-}
-
-fn recv_worker(packet_tx: tun::InboundTx, session: Weak<wintun::Session>) {
+fn recv_worker<D>(packet_tx: tun::InboundTx, device: D)
+where
+    D: Device,
+{
     let mut batch = tun::PacketBatch::default();
+    let mut buf = ip_packet::packet_buffer();
 
     'recv: loop {
-        let Some(session) = session.upgrade() else {
-            tracing::debug!(
-                "Stopping TUN recv worker thread because the `wintun::Session` was dropped"
-            );
-            break;
-        };
-
         // Block for the first packet of a batch.
-        let pkt = match session.receive_blocking() {
-            Ok(pkt) => pkt,
-            Err(wintun::Error::ShuttingDown) => {
+        let len = match device.receive_blocking(&mut buf) {
+            Ok(0) => {
                 tracing::debug!("Stopping TUN recv worker thread because Wintun is shutting down");
                 break;
             }
+            Ok(len) => len,
             Err(e) => {
                 tracing::error!("Failed to receive from wintun session: {e}");
                 break;
             }
         };
 
-        if let Some(packet) = parse_packet(&pkt)
+        if let Some(packet) = parse_packet(&mut buf, len)
             && push_or_start_new_batch(&mut batch, packet, &packet_tx).is_err()
         {
             break 'recv;
@@ -362,16 +431,15 @@ fn recv_worker(packet_tx: tun::InboundTx, session: Weak<wintun::Session>) {
         // Drain whatever else is already in the ring buffer, so one channel item
         // carries the whole burst.
         loop {
-            match session.try_receive() {
-                Ok(Some(pkt)) => {
-                    if let Some(packet) = parse_packet(&pkt)
+            match device.try_receive(&mut buf) {
+                Ok(0) => break, // Ring buffer is drained; hand off what we have.
+                Ok(len) => {
+                    if let Some(packet) = parse_packet(&mut buf, len)
                         && push_or_start_new_batch(&mut batch, packet, &packet_tx).is_err()
                     {
                         break 'recv;
                     }
                 }
-                // Ring buffer is drained; hand off what we have.
-                Ok(None) => break,
                 // Any genuine error will surface via `receive_blocking` above.
                 Err(_) => break,
             }
@@ -416,20 +484,9 @@ fn push_or_start_new_batch(
         })
 }
 
-fn parse_packet(pkt: &wintun::Packet) -> Option<IpPacket> {
-    let mut ip_packet_buf = IpPacketBuf::new();
-
-    let src = pkt.bytes();
-    let dst = ip_packet_buf.buf();
-
-    if src.len() > dst.len() {
-        tracing::warn!(len = %src.len(), "Received too large packet");
-        return None;
-    }
-
-    dst[..src.len()].copy_from_slice(src);
-
-    let pkt = match IpPacket::new(ip_packet_buf, src.len()) {
+/// Parses the first `len` bytes of `buf` as an IP packet, leaving a fresh buffer in its place.
+fn parse_packet(buf: &mut Bytes, len: usize) -> Option<IpPacket> {
+    let pkt = match IpPacket::new(std::mem::replace(buf, ip_packet::packet_buffer()), len) {
         Ok(pkt) => pkt,
         Err(e) => {
             tracing::debug!("Failed to parse IP packet: {e:#}");
@@ -446,6 +503,50 @@ fn parse_packet(pkt: &wintun::Packet) -> Option<IpPacket> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The driver the Client ships.
+    const WINTUN_DLL: &str = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../bin-shared/src/wintun/bin/amd64/wintun.dll"
+    );
+
+    #[test]
+    #[ignore = "Needs admin to create a Wintun adapter"]
+    fn dropping_io_joins_the_workers() {
+        // SAFETY: the bundled library is Wintun.
+        let wintun = unsafe { wintun::load_from_path(WINTUN_DLL) }.unwrap();
+        let adapter = wintun::Adapter::create(&wintun, "Firezone Test", "Firezone", None).unwrap();
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .unwrap();
+
+        // Twice, so a session that did not end would fail the second start.
+        for _ in 0..2 {
+            let mut io = Io::new("test", &adapter, || true, runtime.handle()).unwrap();
+            let packet = ip_packet::make::udp_packet(
+                std::net::Ipv4Addr::new(100, 64, 0, 1),
+                std::net::Ipv4Addr::new(100, 64, 0, 2),
+                1,
+                2,
+                &[0; 8],
+            )
+            .unwrap();
+            io.workers
+                .sender()
+                .try_send(tun::PacketBatch::new(packet))
+                .unwrap();
+            std::thread::sleep(Duration::from_millis(100));
+
+            let (done, joined) = std::sync::mpsc::channel();
+            std::thread::spawn(move || {
+                drop(io);
+                let _ = done.send(());
+            });
+            joined
+                .recv_timeout(Duration::from_secs(5))
+                .expect("dropping Io should join both worker threads");
+        }
+    }
 
     #[test]
     fn ring_capacity_tracks_line_rate_and_service_gap() {

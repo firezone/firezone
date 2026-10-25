@@ -1,14 +1,88 @@
 use std::{
-    collections::{BTreeSet, VecDeque},
+    collections::{BTreeMap, BTreeSet, VecDeque},
+    iter,
     net::SocketAddr,
     time::Instant,
 };
 
 use dns_types::ResponseCode;
 use dns_types::prelude::*;
-use ip_packet::{IpPacket, MAX_UDP_PAYLOAD};
+use ip_packet::{IpPacket, MAX_UDP_PAYLOAD, UdpSlice};
 
 use super::dns_records::DnsRecords;
+
+/// The UDP and TCP DNS servers listening on a set of sockets.
+#[derive(Default)]
+pub(crate) struct DnsServers {
+    udp: BTreeMap<SocketAddr, UdpDnsServerResource>,
+    tcp: BTreeMap<SocketAddr, TcpDnsServerResource>,
+}
+
+impl DnsServers {
+    pub(crate) fn deploy(&mut self, socket: SocketAddr) {
+        self.udp.insert(socket, UdpDnsServerResource::default());
+        self.tcp.insert(socket, TcpDnsServerResource::new(socket));
+    }
+
+    pub(crate) fn clear(&mut self) {
+        self.udp.clear();
+        self.tcp.clear();
+    }
+
+    /// Returns the UDP server that `packet` is a query to.
+    pub(crate) fn udp_server_for(
+        &mut self,
+        packet: &IpPacket,
+    ) -> Option<&mut UdpDnsServerResource> {
+        let udp = packet.as_udp()?;
+        if !is_dns_query(&udp) {
+            return None;
+        }
+
+        self.udp.get_mut(&SocketAddr::new(
+            packet.destination(),
+            udp.destination_port(),
+        ))
+    }
+
+    /// Returns the TCP server that `packet` is addressed to.
+    pub(crate) fn tcp_server_for(
+        &mut self,
+        packet: &IpPacket,
+    ) -> Option<&mut TcpDnsServerResource> {
+        let tcp = packet.as_tcp()?;
+
+        self.tcp.get_mut(&SocketAddr::new(
+            packet.destination(),
+            tcp.destination_port(),
+        ))
+    }
+
+    /// Answers the queries received so far.
+    pub(crate) fn poll_answers(&mut self, records: &DnsRecords, now: Instant) -> Vec<IpPacket> {
+        let udp = self.udp.values_mut().flat_map(|server| {
+            server.handle_timeout(records);
+
+            iter::from_fn(|| server.poll_outbound())
+        });
+        let tcp = self.tcp.values_mut().flat_map(|server| {
+            server.handle_timeout(records, now);
+
+            iter::from_fn(|| server.poll_outbound())
+        });
+
+        udp.chain(tcp).collect()
+    }
+}
+
+/// Tells a DNS query from a probe.
+///
+/// Synthetic UDP probes contain only their eight-byte probe ID. DNS queries have a longer
+/// wire header, so probes still exercise normal packet routing when they happen to target a
+/// DNS server port.
+pub(crate) fn is_dns_query(udp: &UdpSlice) -> bool {
+    udp.payload().len() != size_of::<u64>()
+}
 
 pub struct TcpDnsServerResource {
     socket: SocketAddr,

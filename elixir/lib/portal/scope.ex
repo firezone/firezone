@@ -43,7 +43,7 @@ defmodule Portal.Scope do
     policies: [:read, :write],
     auth_providers: [:read],
     directories: [:read],
-    posture_providers: [:read],
+    posture_providers: [:read, :write],
     logs: [:read]
   ]
 
@@ -193,7 +193,7 @@ defmodule Portal.Scope do
     do: "List, create, edit and delete the policies granting access."
 
   def description(:posture_providers),
-    do: "List posture providers and the devices they report."
+    do: "List posture providers and the devices they report, and rename, disable or delete providers."
 
   def description(:resources),
     do: "List, create, edit and delete resources and their pool members."

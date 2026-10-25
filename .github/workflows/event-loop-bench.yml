@@ -25,38 +25,62 @@ concurrency:
 
 jobs:
   event-loop-bench:
-    name: event-loop-bench
-    # PRs from forks and Dependabot have no access to the Bencher API key.
-    if: github.event_name == 'push' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]')
-    runs-on: ubuntu-24.04
+    name: event-loop-bench-${{ matrix.runs-on }}
+    strategy:
+      fail-fast: false
+      matrix:
+        runs-on: [ubuntu-24.04, macos-26, windows-2025]
+    runs-on: ${{ matrix.runs-on }}
     permissions:
       contents: read
     env:
       BENCHER_PROJECT: firezone-1l75jv1z
       BENCHER_SPEC: intel-v1
+      # Bencher only measures on Linux. PRs from forks and Dependabot have no access to its API key.
+      BENCHER: ${{ startsWith(matrix.runs-on, 'ubuntu') && (github.event_name == 'push' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]')) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-rust-stable
       - uses: ./.github/actions/setup-rust-sccache
         with:
           azure-connection-string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
+      # Runs each benchmark once, so a broken one fails here instead of on Bencher.
+      - name: Test bench
+        run: cargo run --release -p tunnel-bench -- --test
       - uses: bencherdev/bencher@f80847436d7157936b40525db4c2a1064124f04a # v0.6.13
-      - name: Build bench
-        run: |
-          cargo build --release -p tunnel-bench
-          cp target/release/tunnel-bench tests/tunnel-bench/
+        if: env.BENCHER == 'true'
       - name: Push image to the Bencher registry
+        if: env.BENCHER == 'true'
         env:
           BENCHER_API_KEY: ${{ secrets.BENCHER_API_KEY }}
         run: |
           set -euo pipefail
 
+          cp target/release/tunnel-bench tests/tunnel-bench/
           image="registry.bencher.dev/$BENCHER_PROJECT:$GITHUB_SHA"
           docker login registry.bencher.dev -u "$BENCHER_PROJECT" --password-stdin <<<"$BENCHER_API_KEY"
           docker build --platform linux/amd64 -t "$image" tests/tunnel-bench
           docker push "$image"
           echo "IMAGE=$image" >>"$GITHUB_ENV"
+      - name: Describe the measures
+        if: env.BENCHER == 'true'
+        env:
+          BENCHER_API_KEY: ${{ secrets.BENCHER_API_KEY }}
+        run: |
+          set -euo pipefail
+
+          # A project key may set units but not rename, so the name only goes into a create.
+          describe() {
+            bencher measure update --units "$3" "$BENCHER_PROJECT" "$1" >/dev/null ||
+              bencher measure create --slug "$1" --name "$2" --units "$3" "$BENCHER_PROJECT" >/dev/null
+          }
+          describe throughput "Throughput" "bits/s"
+          describe event-loop "Event loop CPU" "ns/packet"
+          describe udp "UDP thread CPU" "ns/packet"
+          describe crypto "Crypto workers CPU" "ns/packet"
+          describe tun "TUN threads CPU" "ns/packet"
       - name: Run on Bencher Bare Metal
+        if: env.BENCHER == 'true'
         env:
           BENCHER_API_KEY: ${{ secrets.BENCHER_API_KEY }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
@@ -72,15 +96,19 @@ jobs:
               --start-point-reset
             )
           else
-            branch=(
-              --branch main
-              --threshold-measure latency
-              --threshold-test t_test
-              --threshold-max-sample-size 64
-              --threshold-min-sample-size 10
-              --threshold-upper-boundary 0.99
-              --thresholds-reset
-            )
+            branch=(--branch main --thresholds-reset)
+            # Lower throughput and higher CPU per packet are regressions.
+            for measure in throughput event-loop udp crypto tun; do
+              if [ "$measure" = throughput ]; then lower=0.99; upper=_; else lower=_; upper=0.99; fi
+              branch+=(
+                --threshold-measure "$measure"
+                --threshold-test t_test
+                --threshold-max-sample-size 64
+                --threshold-min-sample-size 10
+                --threshold-lower-boundary "$lower"
+                --threshold-upper-boundary "$upper"
+              )
+            done
           fi
 
           # Bare Metal jobs can queue for hours, so only submit the job. Its results and
@@ -92,5 +120,6 @@ jobs:
             --image "$IMAGE" \
             --job-timeout 300 \
             "${branch[@]}" \
-            --adapter rust_criterion \
+            --adapter json \
+            --file /tmp/tunnel-bench.json \
             --detach

@@ -29,6 +29,7 @@ libc = { workspace = true }
 rand = { workspace = true }
 relay-proto = { workspace = true }
 secrecy = { workspace = true, features = ["serde"] }
+seeded-rng = { workspace = true }
 serde_json = { workspace = true }
 sha2 = { workspace = true }
 smallvec = { workspace = true }
@@ -39,6 +40,7 @@ tracing-subscriber = { workspace = true, features = ["env-filter"] }
 tunnel-proto = { workspace = true, features = ["malicious-behaviour"] }
 uuid = { workspace = true }
 x509-claims = { workspace = true }
+zeroize = { workspace = true }
 
 [lints]
 workspace = true

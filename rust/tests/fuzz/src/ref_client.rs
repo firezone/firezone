@@ -1,7 +1,6 @@
 use super::{
     DeviceListing, DeviceListingQuery, QueryId,
     dns_records::DnsRecords,
-    icmp_error_hosts::IcmpErrorHosts,
     probe::Remote,
     reference::PrivateKey,
     resource::{
@@ -10,6 +9,7 @@ use super::{
     },
     sim_client::SimClient,
     sim_net::ExecMutScope,
+    site_network::{RouteType, Routes},
     transition::{Destination, DnsQuery, DnsTransport},
 };
 use tunnel_proto::{
@@ -24,7 +24,7 @@ use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_packet::Protocol;
 use itertools::Itertools as _;
 use std::{
-    cmp::Ordering,
+    cmp::{Ordering, Reverse},
     collections::{BTreeMap, BTreeSet, VecDeque},
     iter, mem,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
@@ -104,14 +104,17 @@ pub struct RefClient {
     #[debug(skip)]
     pub(crate) expected_device_listings: BTreeMap<DeviceListingQuery, DeviceListing>,
 
+    // TODO: Remove with classic ICE.
     #[debug(skip)]
     connection_resets: Vec<Instant>,
 
+    // TODO: Remove with classic ICE.
     /// Per Gateway, the instants at which this client sent a packet on that
     /// connection.
     #[debug(skip)]
     gateway_send_times: BTreeMap<GatewayId, BTreeSet<Instant>>,
 
+    // TODO: Remove with classic ICE.
     /// Per peer Client, the instants at which this client sent a packet on that
     /// connection.
     #[debug(skip)]
@@ -126,8 +129,6 @@ pub struct RefClient {
     inbound_peer_authorizations: BTreeMap<ClientId, BTreeSet<ResourceId>>,
     #[debug(skip)]
     rejected_inbound_peer_authorizations: BTreeMap<ClientId, BTreeMap<ResourceId, Vec<Filter>>>,
-
-    resource_selector: u32,
 }
 
 impl RefClient {
@@ -144,7 +145,6 @@ impl RefClient {
         internet_resource_active: bool,
         malicious_behaviour: MaliciousBehaviour,
         os: crate::os::SimulatedOs,
-        resource_selector: u32,
     ) -> Self {
         Self {
             id,
@@ -155,7 +155,6 @@ impl RefClient {
             internet_resource_active,
             malicious_behaviour,
             os,
-            resource_selector,
             dns_records: Default::default(),
             connected_cidr_resources: Default::default(),
             connected_dns_resources: Default::default(),
@@ -486,6 +485,7 @@ impl RefClient {
         gateways: &BTreeSet<GatewayId>,
         now: Instant,
     ) {
+        // TODO: Remove with classic ICE.
         for gateway in gateways {
             self.gateway_send_times.remove(gateway);
         }
@@ -511,6 +511,7 @@ impl RefClient {
             .extract_if(.., |_, gateway| failed.contains(gateway))
         {}
 
+        // TODO: Remove with classic ICE.
         self.connection_resets.push(now);
         self.discard_connections(affected);
     }
@@ -535,6 +536,7 @@ impl RefClient {
         gateway: GatewayId,
         resources: &BTreeSet<ResourceId>,
     ) {
+        // TODO: Remove with classic ICE.
         self.gateway_send_times.remove(&gateway);
 
         let connected = self.connected_resources().collect::<BTreeSet<_>>();
@@ -562,6 +564,7 @@ impl RefClient {
     }
 
     pub(crate) fn reset_connections(&mut self, now: Instant) {
+        // TODO: Remove with classic ICE: the reset instant and the send times only serve the loss windows.
         self.connection_resets.push(now);
 
         // A reset tears the connection down; a subsequent packet re-establishes it
@@ -696,6 +699,7 @@ impl RefClient {
         }
     }
 
+    // TODO: Remove with classic ICE, together with its callers.
     pub(crate) fn note_sent(&mut self, remote: Option<Remote>, now: Instant) {
         match remote {
             Some(Remote::Gateway(gateway)) => {
@@ -789,8 +793,8 @@ impl RefClient {
         query: &DnsQuery,
         gateway: Option<GatewayId>,
         upstream_do53: &[UpstreamDo53],
-        global_dns_records: &DnsRecords,
-        icmp_error_hosts: &IcmpErrorHosts,
+        resolve: impl Fn(Option<GatewayId>, &DomainName) -> BTreeSet<RecordType>,
+        routes: Option<&Routes>,
     ) {
         if self.is_device_dns_query(query) {
             self.expect_dns_response(query);
@@ -798,7 +802,9 @@ impl RefClient {
         }
 
         if let Some(resource) = self.is_site_specific_dns_query(query) {
-            self.prepare_dns_resource_connection(resource, global_dns_records);
+            let resolutions = self
+                .dns_resource_resolutions_on_connect(resource, |domain| resolve(gateway, domain));
+            self.add_dns_resource_resolutions(resource, resolutions);
             self.connected_dns_resources.insert(resource);
             self.connected_through(resource, gateway);
             self.expect_dns_response(query);
@@ -810,14 +816,14 @@ impl RefClient {
             && matches!(query.r_type, RecordType::A | RecordType::AAAA)
         {
             // connlib sets up the NAT for every domain it resolves on the Gateways it is connected to.
-            let record_types = global_dns_records.domain_rtypes(&query.domain);
             for resource in self.dns_resources_by_domain(
                 &query.domain,
                 |r| self.connected_dns_resources.contains(&r.id),
                 |_| true,
             ) {
+                let record_types = resolve(self.gateway_for_resource(resource.id), &query.domain);
                 self.dns_resource_resolutions
-                    .insert((resource.id, query.domain.clone()), record_types.clone());
+                    .insert((resource.id, query.domain.clone()), record_types);
             }
         }
 
@@ -846,7 +852,7 @@ impl RefClient {
                 return;
             }
 
-            if self.resolver_is_unreachable(query, icmp_error_hosts) {
+            if self.resolver_is_unreachable(query, routes) {
                 // The resolver answers with an ICMP error; connlib fails the query
                 // and responds with SERVFAIL, so no records are learned.
                 self.expect_dns_handshake(&query.dns_server, query.query_id, query.transport);
@@ -908,11 +914,11 @@ impl RefClient {
     }
 
     /// Returns whether the query's resolver answers tunnelled traffic with ICMP errors.
-    fn resolver_is_unreachable(&self, query: &DnsQuery, icmp_error_hosts: &IcmpErrorHosts) -> bool {
+    fn resolver_is_unreachable(&self, query: &DnsQuery, routes: Option<&Routes>) -> bool {
         match &query.dns_server {
-            dns::Upstream::Do53 { server } => {
-                icmp_error_hosts.icmp_error_for_ip(server.ip()).is_some()
-            }
+            dns::Upstream::Do53 { server } => routes.is_some_and(|routes| {
+                matches!(routes.route(server.ip()), RouteType::Unreachable(_))
+            }),
             dns::Upstream::DoH { .. } => false,
         }
     }
@@ -1048,6 +1054,7 @@ impl RefClient {
         protocol_filter_allows(filters, proto)
     }
 
+    /// Returns the most specific resource whose filters allow `proto`; filter breadth only breaks ties.
     pub(crate) fn dns_resource_by_domain_and_proto(
         &self,
         domain: &DomainName,
@@ -1059,25 +1066,19 @@ impl RefClient {
             |resource| resource.ip_stack.supports_ip(src),
             |resource| protocol_filter_allows(&resource.filters, proto),
         );
-        candidates.sort_by(|left, right| {
-            filter_breadth(&left.filters)
-                .cmp(&filter_breadth(&right.filters))
-                .then_with(|| {
-                    dns::Pattern::new(&left.address)
-                        .unwrap()
-                        .cmp(&dns::Pattern::new(&right.address).unwrap())
-                })
-                .then_with(|| right.id.cmp(&left.id))
+        candidates.sort_by_key(|r| {
+            (
+                dns::Pattern::new(&r.address).unwrap(),
+                filter_breadth(&r.filters),
+                Reverse(r.id),
+            )
         });
-        let ids = candidates
+
+        candidates
             .iter()
-            .filter(|resource| self.filter_allows(&resource.filters, proto))
-            .map(|resource| resource.id)
-            .collect_vec();
-        let selected = self
-            .select_gateway_resource(&ids)
-            .or_else(|| candidates.first().map(|r| r.id))?;
-        candidates.into_iter().find(|r| r.id == selected)
+            .find(|resource| self.filter_allows(&resource.filters, proto))
+            .or_else(|| candidates.first())
+            .cloned()
     }
 
     pub(crate) fn dns_resource_by_domain(
@@ -1091,7 +1092,7 @@ impl RefClient {
             .next()
     }
 
-    fn dns_resources_by_domain(
+    pub(crate) fn dns_resources_by_domain(
         &self,
         domain: &DomainName,
         eligible: impl Fn(&DnsResource) -> bool,
@@ -1119,23 +1120,6 @@ impl RefClient {
                 by_preference.then(by_pattern).then(by_id).reverse()
             })
             .collect()
-    }
-
-    /// Prefers existing connections, then applies the portal's sampled candidate index.
-    fn select_gateway_resource(&self, candidates: &[ResourceId]) -> Option<ResourceId> {
-        if candidates.is_empty() {
-            return None;
-        }
-
-        candidates
-            .iter()
-            .copied()
-            .find(|candidate| self.connected_resources().any(|id| id == *candidate))
-            .or_else(|| {
-                candidates
-                    .get(self.resource_selector as usize % candidates.len())
-                    .copied()
-            })
     }
 
     fn dns_resource_by_domain_for_records(
@@ -1246,6 +1230,7 @@ impl RefClient {
             .collect()
     }
 
+    /// Returns the most specific resource whose filters allow `proto`; filter breadth only breaks ties.
     pub(crate) fn cidr_resource_by_ip_and_proto(
         &self,
         ip: IpAddr,
@@ -1253,19 +1238,19 @@ impl RefClient {
     ) -> Option<ResourceId> {
         let mut candidates =
             self.cidr_resources_by_ip(ip, |r| protocol_filter_allows(&r.filters, proto));
-        candidates.sort_by(|left, right| {
-            filter_breadth(&left.filters)
-                .cmp(&filter_breadth(&right.filters))
-                .then_with(|| right.address.netmask().cmp(&left.address.netmask()))
-                .then_with(|| right.id.cmp(&left.id))
+        candidates.sort_by_key(|r| {
+            (
+                Reverse(r.address.netmask()),
+                filter_breadth(&r.filters),
+                Reverse(r.id),
+            )
         });
-        let ids = candidates
+
+        candidates
             .iter()
-            .filter(|resource| self.filter_allows(&resource.filters, proto))
-            .map(|resource| resource.id)
-            .collect_vec();
-        self.select_gateway_resource(&ids)
-            .or_else(|| candidates.first().map(|r| r.id))
+            .find(|resource| self.filter_allows(&resource.filters, proto))
+            .or_else(|| candidates.first())
+            .map(|r| r.id)
     }
 
     pub(crate) fn cidr_resource_by_ip(
@@ -1393,17 +1378,18 @@ impl RefClient {
             .flatten()
     }
 
-    pub(crate) fn prepare_dns_resource_connection(
-        &mut self,
+    /// The records a Gateway resolves the domains `resource` serves to as the client connects
+    /// to it, none once it is connected.
+    pub(crate) fn dns_resource_resolutions_on_connect(
+        &self,
         resource: ResourceId,
-        global_dns_records: &DnsRecords,
-    ) {
+        resolve: impl Fn(&DomainName) -> BTreeSet<RecordType>,
+    ) -> BTreeMap<DomainName, BTreeSet<RecordType>> {
         if self.connected_dns_resources.contains(&resource) {
-            return;
+            return BTreeMap::new();
         }
 
-        let domains = self
-            .resolved_domains()
+        self.resolved_domains()
             .filter(|(domain, records)| {
                 self.dns_resource_serves(
                     resource,
@@ -1412,11 +1398,20 @@ impl RefClient {
                     records.contains(&RecordType::AAAA),
                 )
             })
-            .map(|(domain, _)| domain)
-            .collect_vec();
+            .map(|(domain, _)| {
+                let record_types = resolve(&domain);
 
-        for domain in domains {
-            let record_types = global_dns_records.domain_rtypes(&domain);
+                (domain, record_types)
+            })
+            .collect()
+    }
+
+    pub(crate) fn add_dns_resource_resolutions(
+        &mut self,
+        resource: ResourceId,
+        resolutions: BTreeMap<DomainName, BTreeSet<RecordType>>,
+    ) {
+        for (domain, record_types) in resolutions {
             self.dns_resource_resolutions
                 .insert((resource, domain), record_types);
         }
@@ -1501,12 +1496,8 @@ impl RefClient {
             return None;
         }
 
-        let candidates = self
-            .dns_resources_by_domain(&query.domain, |_| true, |_| true)
-            .into_iter()
+        self.dns_resource_by_domain(&query.domain, |_| true, |_| true)
             .map(|r| r.id)
-            .collect_vec();
-        self.select_gateway_resource(&candidates)
     }
 
     pub(crate) fn all_resource_ids(&self) -> Vec<ResourceId> {
@@ -1548,6 +1539,7 @@ impl RefClient {
         self.system_dns_resolvers = servers.to_vec();
     }
 
+    // TODO: Remove with classic ICE.
     pub(crate) fn last_packet_sent_to_gateway_before(
         &self,
         gateway: GatewayId,
@@ -1560,6 +1552,7 @@ impl RefClient {
             .copied()
     }
 
+    // TODO: Remove with classic ICE.
     pub(crate) fn last_packet_sent_to_client_before(
         &self,
         client: ClientId,
@@ -1572,6 +1565,7 @@ impl RefClient {
             .copied()
     }
 
+    // TODO: Remove with classic ICE.
     /// Checks whether the given instant falls within a time period T .. T + ICE_TIMEOUT where T marks every point in time where we reset all our connections.
     pub(crate) fn has_reset_connections_within_ice_timeout(&self, at: Instant) -> bool {
         let ice_timeout = Duration::from_millis(22_000); // TODO: Figure out why this isn't exactly ICE timeout but longer?

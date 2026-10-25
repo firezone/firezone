@@ -1,10 +1,12 @@
 use std::{
-    collections::{BTreeMap, btree_map::Entry},
+    collections::{HashMap, hash_map::Entry},
     fmt,
+    hash::Hash,
     net::{IpAddr, SocketAddr},
     time::{Duration, Instant},
 };
 
+use fast_random_state::FastRandomState;
 use is::Candidate;
 use itertools::Itertools as _;
 use rand::{Rng, SeedableRng as _, rngs::StdRng, seq::IteratorRandom as _};
@@ -21,26 +23,26 @@ use crate::{
 const BLOCK_DURATION: Duration = Duration::from_secs(60);
 
 pub(crate) struct Allocations<RId> {
-    inner: BTreeMap<RId, Allocation>,
+    inner: HashMap<RId, Allocation, FastRandomState>,
     previous_relays_by_ip: AllocRingBuffer<IpAddr>,
     /// Relays we freed an allocation of because of a failure, and until when we ignore them.
-    blocked: BTreeMap<RId, Instant>,
+    blocked: HashMap<RId, Instant, FastRandomState>,
 
     rng: StdRng,
 }
 
 impl<RId> Allocations<RId>
 where
-    RId: Ord + fmt::Display + Copy,
+    RId: Eq + Hash + fmt::Display + Copy,
 {
     pub(crate) fn new(rng: &mut impl Rng) -> Self {
         let mut seed = [0u8; 32];
         rng.fill_bytes(&mut seed);
 
         Self {
-            inner: BTreeMap::default(),
+            inner: HashMap::default(),
             previous_relays_by_ip: AllocRingBuffer::with_capacity_power_of_2(6), // 64 entries
-            blocked: BTreeMap::default(),
+            blocked: HashMap::default(),
             rng: StdRng::from_seed(seed),
         }
     }
@@ -249,7 +251,7 @@ where
     pub(crate) fn gc(&mut self, now: Instant) -> Gc<RId> {
         let removed = self
             .inner
-            .extract_if(.., |rid, allocation| match allocation.can_be_freed() {
+            .extract_if(|rid, allocation| match allocation.can_be_freed() {
                 Some(e) => {
                     tracing::info!(%rid, "Disconnecting from relay; {e}");
 

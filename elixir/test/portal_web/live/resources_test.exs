@@ -1126,6 +1126,9 @@ defmodule PortalWeb.ResourcesTest do
       |> form("#grant-form")
       |> render_submit()
 
+      # The next reload would kill this one mid-query, which breaks the test's sandbox connection
+      render_async(lv)
+
       default_policy =
         Repo.get_by!(Policy, resource_id: resource.id, group_id: default_group.id)
 
@@ -2572,7 +2575,7 @@ defmodule PortalWeb.ResourcesTest do
 
       assert_patch(lv, ~p"/#{account}/resources/#{matching.id}?#{filter}")
 
-      html = render(lv)
+      html = render_async(lv)
       assert html =~ "alpha-renamed"
       refute html =~ other.name
 

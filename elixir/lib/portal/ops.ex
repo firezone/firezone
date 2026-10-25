@@ -2,6 +2,7 @@ defmodule Portal.Ops do
   alias __MODULE__.Database
   alias Portal.{Banner, Billing, EmailSuppression, Mailer}
   alias Portal.Workers.DeleteAccount
+  alias Portal.Ops.AuthProviderNotices
 
   @max_bcc_per_message 50
   @max_recipients_per_send_window 100
@@ -226,6 +227,179 @@ defmodule Portal.Ops do
     end
   end
 
+  @doc """
+  Queues the one-off Entra tenant notice for accounts with enabled users whose
+  stored Entra tenants are missing from every enabled Entra provider.
+
+  Rechecks current providers and active admins, shows recipients, and prompts
+  once before queuing. Uses the standard dormant-account and batching rules.
+  Call after deploying the verified-tenant UI. This function is not idempotent.
+
+  Pass account IDs to notify a subset instead of all qualifying accounts.
+
+      Portal.Ops.notify_entra_auth_provider_admins()
+      Portal.Ops.notify_entra_auth_provider_admins([account_id])
+  """
+  def notify_entra_auth_provider_admins(account_ids \\ :all)
+      when account_ids == :all or is_list(account_ids) do
+    Database.entra_auth_provider_notices(account_ids)
+    |> queue_auth_provider_notices(:entra)
+  end
+
+  @doc """
+  Queues the one-off Google domain-validation notice for unrestricted, enabled
+  Google providers with enabled users whose Google identity email domains are
+  outside the known consumer-domain exclusions.
+
+  Rechecks current providers and active admins, shows recipients, and prompts
+  once before queuing. Existing providers are not modified. Uses the standard
+  dormant-account and batching rules. Call after deploying the updated Google
+  verification UI. This function is not idempotent.
+
+      Portal.Ops.notify_google_auth_provider_admins()
+      Portal.Ops.notify_google_auth_provider_admins([account_id])
+  """
+  def notify_google_auth_provider_admins(account_ids \\ :all)
+      when account_ids == :all or is_list(account_ids) do
+    Database.google_auth_provider_notices(account_ids)
+    |> queue_auth_provider_notices(:google)
+  end
+
+  defp queue_auth_provider_notices(notices, provider) do
+    notices_by_account = Map.new(notices, &{&1.account_id, &1})
+
+    {emails_by_account, dormant} =
+      notices_by_account
+      |> Map.keys()
+      |> Database.get_account_admin_emails_by_account()
+      |> Enum.map(fn {account_id, emails} ->
+        {account_id, emails |> Enum.map(&EmailSuppression.normalize_email/1) |> Enum.uniq() |> Enum.sort()}
+      end)
+      |> Enum.reject(fn {_account_id, emails} -> emails == [] end)
+      |> split_dormant_accounts()
+
+    emails_by_account = Enum.sort_by(emails_by_account, fn {id, _} -> notices_by_account[id].slug end)
+
+    if dormant != [] do
+      IO.puts("Skipping #{length(dormant)} dormant account(s) with no sessions on record.")
+    end
+
+    confirm_auth_provider_notices(emails_by_account, notices_by_account, provider)
+  end
+
+  defp confirm_auth_provider_notices([], _notices, _provider) do
+    IO.puts("No admin recipients found.")
+    {:error, :no_recipients}
+  end
+
+  defp confirm_auth_provider_notices(emails_by_account, notices, provider) do
+    Enum.each(emails_by_account, fn {id, emails} ->
+      notice = Map.fetch!(notices, id)
+      IO.puts("#{notice.name} (#{notice.slug}): #{Enum.join(emails, ", ")}")
+    end)
+
+    count = Enum.sum(Enum.map(emails_by_account, fn {_, emails} -> length(emails) end))
+    IO.puts("About to queue #{provider} notices for #{count} admin recipient(s) across #{length(emails_by_account)} account(s). Continue? [y/N]")
+
+    case IO.gets("") do
+      answer when answer in ["y\n", "Y\n"] ->
+        enqueue_auth_provider_notices(emails_by_account, notices, provider)
+      _ ->
+        IO.puts("Aborted.")
+        :aborted
+    end
+  end
+
+  defp enqueue_auth_provider_notices(emails_by_account, notices, provider) do
+    first_send_at = DateTime.utc_now()
+
+    emails_by_account
+    |> account_send_windows()
+    |> Enum.with_index()
+    |> Enum.each(fn {window, index} ->
+      opts = send_window_job_opts(first_send_at, index)
+      Enum.each(window, fn {account_id, emails} ->
+        email = AuthProviderNotices.email(provider, Map.fetch!(notices, account_id))
+        enqueue_auth_provider_notice(email, emails, opts)
+      end)
+    end)
+
+    :ok
+  end
+
+  defp enqueue_auth_provider_notice(email, recipients, job_opts) do
+    recipients
+    |> Enum.chunk_every(@max_bcc_per_message)
+    |> Enum.each(fn chunk ->
+      email
+      |> Mailer.bcc_recipients(chunk)
+      |> Mailer.enqueue(job_opts)
+    end)
+  end
+
+  @doc """
+  Queues the monthly product announcement for every admin who has not turned
+  product announcements off in their settings.
+
+  `html_body` is placed as it is inside the usual email layout, between the
+  logo and the sign-off, so it must be trusted HTML. `text_body` is the plain
+  text version of the same content. Each email gets its own link to turn
+  product announcements off.
+
+  A person who is an admin of more than one account gets the email once.
+  Accounts on a free plan with no sessions on record are skipped.
+
+  ## Examples
+
+      iex> html = File.read!("/tmp/2026-11.html")
+      iex> text = File.read!("/tmp/2026-11.txt")
+      iex> queue_product_announcement("What's new in Firezone: November 2026", html, text)
+
+  """
+  def queue_product_announcement(subject, html_body, text_body) do
+    queue_product_announcement(:all, subject, html_body, text_body)
+  end
+
+  def queue_product_announcement(account_ids, subject, html_body, text_body)
+      when account_ids == :all or is_list(account_ids) do
+    {actors_by_account, dormant} =
+      account_ids
+      |> Database.product_announcement_recipients()
+      |> Enum.group_by(& &1.account_id)
+      |> Enum.to_list()
+      |> split_dormant_accounts()
+
+    recipients =
+      actors_by_account
+      |> Enum.flat_map(fn {_account_id, actors} -> actors end)
+      |> Enum.sort_by(& &1.inserted_at, DateTime)
+      |> Enum.uniq_by(&EmailSuppression.normalize_email(&1.email))
+
+    if dormant != [] do
+      IO.puts("Skipping #{length(dormant)} dormant account(s) with no sessions on record.")
+    end
+
+    if recipients == [] do
+      IO.puts("No admin recipients found.")
+      {:error, :no_recipients}
+    else
+      recipients_by_account = recipients |> Enum.group_by(& &1.account_id) |> Enum.to_list()
+
+      IO.puts(
+        "About to send product announcement '#{subject}' to #{length(recipients)} unique admin(s) across #{length(recipients_by_account)} account(s). Continue? [y/N]"
+      )
+
+      case IO.gets("") |> String.trim() do
+        answer when answer in ["y", "Y"] ->
+          enqueue_product_announcement(recipients_by_account, subject, html_body, text_body)
+
+        _ ->
+          IO.puts("Aborted.")
+          :aborted
+      end
+    end
+  end
+
   defp split_dormant_accounts(emails_by_account) do
     {paid, unpaid} =
       emails_by_account
@@ -325,6 +499,28 @@ defmodule Portal.Ops do
     |> Mailer.enqueue(job_opts)
   end
 
+  defp enqueue_product_announcement(recipients_by_account, subject, html_body, text_body) do
+    first_send_at = DateTime.utc_now()
+
+    recipients_by_account
+    |> account_send_windows()
+    |> Enum.with_index()
+    |> Enum.each(fn {send_window, window_index} ->
+      job_opts = send_window_job_opts(first_send_at, window_index)
+
+      for {_account_id, actors} <- send_window, actor <- actors do
+        enqueue_product_announcement_email(actor, subject, html_body, text_body, job_opts)
+      end
+    end)
+
+    :ok
+  end
+
+  defp enqueue_product_announcement_email(actor, subject, html_body, text_body, job_opts) do
+    Mailer.Notifications.product_announcement_email(subject, html_body, text_body, actor)
+    |> Mailer.enqueue(job_opts)
+  end
+
   defp send_window_job_opts(_first_send_at, 0), do: []
 
   defp send_window_job_opts(first_send_at, window_index) do
@@ -334,7 +530,7 @@ defmodule Portal.Ops do
 
   defmodule Database do
     import Ecto.Query
-    alias Portal.{Account, Actor, Safe}
+    alias Portal.{Account, Actor, ExternalIdentity, Safe}
     alias Portal.Workers.DeleteSubscription
 
     def delete_disabled_account(id) do
@@ -372,6 +568,76 @@ defmodule Portal.Ops do
       |> Safe.delete()
     end
 
+    # Temporary selectors for the verified-organization rollout notices.
+    @google_issuers ["https://accounts.google.com", "accounts.google.com"]
+    @consumer_domains ~w[gmail.com googlemail.com hotmail.com outlook.com yahoo.com icloud.com qq.com]
+    @entra_issuer_pattern "^https://login[.]microsoftonline[.]com/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/v2[.]0$"
+
+    def entra_auth_provider_notices(account_ids) do
+      from(a in Account,
+        as: :accounts,
+        join: i in ExternalIdentity, as: :identities, on: i.account_id == a.id,
+        join: u in Actor, on: u.account_id == a.id and u.id == i.actor_id,
+        where: a.is_disabled == false and is_nil(a.scheduled_deletion_at),
+        where: u.is_disabled == false and u.type in [:account_admin_user, :account_user],
+        where: fragment("? ~ ?", i.issuer, ^@entra_issuer_pattern),
+        where: exists(from(p in Portal.Entra.AuthProvider,
+          where: p.account_id == parent_as(:accounts).id and p.is_disabled == false,
+          select: 1)),
+        where: not exists(from(p in Portal.Entra.AuthProvider,
+          where: p.account_id == parent_as(:accounts).id and p.is_disabled == false,
+          where: fragment("lower(split_part(?, '/', 4)) = ANY(SELECT unnest(?)::text)",
+            parent_as(:identities).issuer, p.tenant_ids),
+          select: 1)),
+        select: %{account_id: a.id, name: a.name, slug: a.slug,
+          tenant_id: fragment("lower(split_part(?, '/', 4))", i.issuer),
+          domain: fragment("lower(split_part(btrim(?::text), '@', 2))", i.email)}
+      )
+      |> filter_notice_accounts(account_ids)
+      |> Safe.unscoped()
+      |> Safe.all()
+      |> Enum.group_by(&{&1.account_id, &1.name, &1.slug})
+      |> Enum.map(fn {{account_id, name, slug}, rows} ->
+        tenants = rows |> Enum.group_by(& &1.tenant_id)
+          |> Enum.map(fn {id, identities} ->
+            %{id: id, domains: identities |> Enum.map(& &1.domain) |> Enum.reject(&(&1 in [nil, ""])) |> Enum.uniq() |> Enum.sort()}
+          end)
+          |> Enum.sort_by(& &1.id)
+        %{account_id: account_id, name: name, slug: slug, tenants: tenants}
+      end)
+    end
+
+    def google_auth_provider_notices(account_ids) do
+      from(a in Account,
+        as: :accounts,
+        join: p in Portal.Google.AuthProvider, on: p.account_id == a.id,
+        join: i in ExternalIdentity, on: i.account_id == a.id,
+        join: u in Actor, on: u.account_id == a.id and u.id == i.actor_id,
+        where: a.is_disabled == false and is_nil(a.scheduled_deletion_at),
+        where: p.is_disabled == false and is_nil(p.workspace_domains) and p.is_legacy_unrestricted == true,
+        where: u.is_disabled == false and u.type in [:account_admin_user, :account_user],
+        where: i.issuer in ^@google_issuers and not is_nil(i.email),
+        where: fragment("position('@' in ?::text) > 1", i.email),
+        where: fragment("split_part(btrim(?::text), '@', 2) <> ''", i.email),
+        group_by: [a.id, a.name, a.slug],
+        having: filter(count(i.id), fragment("lower(split_part(btrim(?::text), '@', 2))", i.email) not in ^@consumer_domains) > 0,
+        select: %{account_id: a.id, name: a.name, slug: a.slug,
+          domains: fragment("array_agg(DISTINCT lower(split_part(btrim(?::text), '@', 2)))", i.email),
+          consumer_identity_count: filter(count(i.id), fragment("lower(split_part(btrim(?::text), '@', 2))", i.email) in ^@consumer_domains)}
+      )
+      |> filter_notice_accounts(account_ids)
+      |> Safe.unscoped()
+      |> Safe.all()
+      |> Enum.map(fn notice ->
+        Map.update!(notice, :domains, fn domains ->
+          domains |> Enum.reject(&(&1 in @consumer_domains)) |> Enum.sort()
+        end)
+      end)
+    end
+
+    defp filter_notice_accounts(query, :all), do: query
+    defp filter_notice_accounts(query, ids), do: where(query, [accounts: a], a.id in ^ids)
+
     def get_account_admin_emails_by_account(account_ids_or_all) do
       Actor
       |> where([a], a.type == :account_admin_user)
@@ -383,6 +649,21 @@ defmodule Portal.Ops do
       |> Enum.group_by(fn {account_id, _email} -> account_id end, fn {_account_id, email} ->
         email
       end)
+    end
+
+    def product_announcement_recipients(account_ids_or_all) do
+      from(a in Actor,
+        where: a.type == :account_admin_user,
+        where: a.is_disabled == false,
+        where:
+          fragment(
+            "COALESCE(NULLIF(?->'notifications'->'product_announcements', 'null') @> '[\"email\"]', true)",
+            a.preferences
+          )
+      )
+      |> maybe_filter_account_ids(account_ids_or_all)
+      |> Safe.unscoped()
+      |> Safe.all()
     end
 
     def list_accounts(account_ids) do

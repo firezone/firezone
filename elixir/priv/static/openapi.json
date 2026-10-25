@@ -665,6 +665,12 @@
             },
             "nullable": true
           },
+          "require_attestation": {
+            "default": false,
+            "description": "Whether the Client must present a valid X.509 certificate from one of the account's trust anchors on its current connection. Device posture checks then match only on the identifiers that certificate proves. Defaults to false. Setting it to true returns 422 when the account has no trust anchors.",
+            "example": false,
+            "type": "boolean"
+          },
           "resource_id": {
             "description": "Resource ID",
             "example": "a9f60587-793c-46ae-8525-597f43ab2fb1",
@@ -1617,6 +1623,127 @@
         "title": "ClientTokenCreateResponse",
         "type": "object"
       },
+      "PostureField": {
+        "description": "A field a Policy's `postures` expression can test",
+        "properties": {
+          "field": {
+            "description": "Value for a leaf's `field`, as `<provider>.<attribute>`",
+            "example": "intune.compliance_state",
+            "type": "string"
+          },
+          "operators": {
+            "description": "Values for a leaf's `op` that this field accepts",
+            "example": [
+              "is",
+              "is_not",
+              "exists",
+              "does_not_exist"
+            ],
+            "items": {
+              "enum": [
+                "eq",
+                "ne",
+                "gt",
+                "gte",
+                "lt",
+                "lte",
+                "is",
+                "is_not",
+                "is_in",
+                "is_not_in",
+                "contains",
+                "does_not_contain",
+                "starts_with",
+                "ends_with",
+                "matches",
+                "does_not_match",
+                "is_in_cidr",
+                "is_not_in_cidr",
+                "is_empty",
+                "is_not_empty",
+                "before",
+                "after",
+                "within_last",
+                "not_within_last",
+                "contains_any_of",
+                "contains_all_of",
+                "exists",
+                "does_not_exist"
+              ],
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "platforms": {
+            "description": "Platforms the field applies to. A leaf on this field is skipped for a device on any other platform.",
+            "example": [
+              "windows",
+              "macos",
+              "ios",
+              "android"
+            ],
+            "items": {
+              "enum": [
+                "windows",
+                "macos",
+                "linux",
+                "ios",
+                "android"
+              ],
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "provider": {
+            "description": "Provider the field comes from",
+            "enum": [
+              "firezone",
+              "intune",
+              "iru",
+              "defender",
+              "santa",
+              "sentinelone",
+              "sophos"
+            ],
+            "example": "intune",
+            "type": "string"
+          },
+          "rows_supported": {
+            "description": "Whether a leaf on this field accepts `rows`. False for `firezone` fields, which describe exactly one connecting device.",
+            "example": true,
+            "type": "boolean"
+          },
+          "type": {
+            "description": "Type of the field, which decides the operators and the value",
+            "enum": [
+              "string",
+              "enum_string",
+              "boolean",
+              "integer",
+              "float",
+              "version",
+              "datetime",
+              "ip",
+              "ipv4",
+              "ipv6",
+              "string_array",
+              "json"
+            ],
+            "example": "enum_string",
+            "type": "string"
+          }
+        },
+        "required": [
+          "field",
+          "provider",
+          "type",
+          "operators",
+          "platforms",
+          "rows_supported"
+        ],
+        "title": "PostureField",
+        "type": "object"
+      },
       "DefenderPostureProvider": {
         "description": "Microsoft Defender for Endpoint posture provider",
         "properties": {
@@ -1802,11 +1929,6 @@
             "example": false,
             "type": "boolean"
           },
-          "issuer": {
-            "description": "Issuer",
-            "example": "https://login.microsoftonline.com/tenant-id/v2.0",
-            "type": "string"
-          },
           "name": {
             "description": "Provider name",
             "example": "Entra",
@@ -1817,6 +1939,20 @@
             "example": 28800,
             "nullable": true,
             "type": "integer"
+          },
+          "tenant_ids": {
+            "description": "Verified Entra tenant IDs allowed to authenticate through this provider",
+            "example": [
+              "12345678-1234-1234-1234-123456789012"
+            ],
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "minItems": 1,
+            "readOnly": true,
+            "type": "array",
+            "uniqueItems": true
           },
           "updated_at": {
             "description": "Update timestamp",
@@ -1834,7 +1970,7 @@
           "inserted_at",
           "is_default",
           "is_disabled",
-          "issuer",
+          "tenant_ids",
           "name",
           "portal_session_lifetime_secs",
           "updated_at"
@@ -6164,6 +6300,34 @@
         "title": "ClientTokenListResponse",
         "type": "object"
       },
+      "IntunePostureProviderUpdateRequest": {
+        "description": "PUT/PATCH body for updating an Intune posture provider. All fields are optional; omitted fields keep their current value.",
+        "properties": {
+          "intune_posture_provider": {
+            "additionalProperties": false,
+            "properties": {
+              "is_disabled": {
+                "description": "Whether the provider is disabled. A provider can be enabled only while it is verified.",
+                "example": false,
+                "type": "boolean"
+              },
+              "name": {
+                "description": "Name shown to admins, unique across the account's posture providers",
+                "example": "Microsoft Intune",
+                "maxLength": 255,
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "type": "object"
+          }
+        },
+        "required": [
+          "intune_posture_provider"
+        ],
+        "title": "IntunePostureProviderUpdateRequest",
+        "type": "object"
+      },
       "IruPostureProviderListResponse": {
         "properties": {
           "data": {
@@ -6383,6 +6547,34 @@
         "title": "GoogleDirectory",
         "type": "object"
       },
+      "IruPostureProviderUpdateRequest": {
+        "description": "PUT/PATCH body for updating an Iru posture provider. All fields are optional; omitted fields keep their current value.",
+        "properties": {
+          "iru_posture_provider": {
+            "additionalProperties": false,
+            "properties": {
+              "is_disabled": {
+                "description": "Whether the provider is disabled. A provider can be enabled only while it is verified.",
+                "example": false,
+                "type": "boolean"
+              },
+              "name": {
+                "description": "Name shown to admins, unique across the account's posture providers",
+                "example": "Iru",
+                "maxLength": 255,
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "type": "object"
+          }
+        },
+        "required": [
+          "iru_posture_provider"
+        ],
+        "title": "IruPostureProviderUpdateRequest",
+        "type": "object"
+      },
       "PolicyResponse": {
         "description": "Response schema for single Policy",
         "properties": {
@@ -6530,6 +6722,12 @@
       "Membership": {
         "description": "Membership",
         "properties": {
+          "email": {
+            "description": "Actor Email",
+            "example": "john.doe@example.com",
+            "nullable": true,
+            "type": "string"
+          },
           "id": {
             "description": "Actor ID",
             "example": "7cb89288-1fb3-433e-a522-2d087e45988d",
@@ -6554,6 +6752,7 @@
           }
         },
         "required": [
+          "email",
           "id",
           "name",
           "type"
@@ -6562,7 +6761,7 @@
         "type": "object"
       },
       "PolicyPostureNode": {
-        "description": "One node of a Policy's device posture expression. A node has exactly one\nof these shapes:\n\n* `and`: a non-empty list of nodes that must all hold.\n* `or`: a non-empty list of nodes of which at least one must hold.\n* `not`: a node that must not hold.\n* a leaf: a `field`, an `op`, and for most operators a `value`.\n\nA leaf's `field` is `<provider>.<attribute>`, such as\n`intune.compliance_state` or `firezone.last_seen_version`. The provider\nis one of `firezone` (the connecting device's own record), `intune`,\n`iru`, `defender`, `santa`, `sentinelone` or `sophos`. The attribute is\none of that provider's synced device attributes. Every synced provider also has a\nboolean `enrolled` that is true when the provider knows the device.\n\nThe attribute's type decides which operators apply and what `value`\nmust be:\n\n* strings: `is`, `is_not`, `is_in`, `is_not_in`, `contains`,\n  `does_not_contain`, `starts_with`, `ends_with`, `matches`,\n  `does_not_match`. Comparisons ignore case. `is_in` and `is_not_in`\n  take a list of strings. `matches` and `does_not_match` take a regular\n  expression.\n* booleans: `is` with `true` or `false`.\n* numbers: `eq`, `ne`, `gt`, `gte`, `lt`, `lte`.\n* versions: `is`, `is_not`, `gt`, `gte`, `lt`, `lte`, compared segment\n  by segment, so `14.4` equals `14.4.0`.\n* timestamps: `before` and `after` with an ISO 8601 datetime such as\n  `2026-01-01T00:00:00Z`; `within_last` and `not_within_last` with an\n  ISO 8601 duration such as `PT24H` or `P30D`. A date-only attribute\n  counts as the start of that day in UTC.\n* IP addresses: `is_in_cidr` and `is_not_in_cidr` with a list of CIDRs.\n  `firezone.ipv4` takes IPv4 CIDRs only and `firezone.ipv6` IPv6 only.\n* lists of strings: `contains`, `does_not_contain`, `contains_any_of`,\n  `contains_all_of`, `is_empty`, `is_not_empty`.\n* JSON attributes: `is_empty`, `is_not_empty`.\n\nThe value `@latest` on `firezone.last_seen_version` stands for the newest\nClient release for the device's platform.\n\n`enum_string` uses the string operators; `integer` and `float` use the\nnumeric operators. `string_array` values use a single string for `contains`\nand `does_not_contain`, or a non-empty string list for `contains_any_of`\nand `contains_all_of`.\n\nEvery attribute also accepts `exists` and `does_not_exist`. These and\n`is_empty` / `is_not_empty` take no value: omit `value` or set it to null.\nMissing attributes fail every operator except `does_not_exist`, including\nnegative operators such as `is_not`. A missing provider is evaluated as\none empty row. Its synthetic `enrolled` field is false, so `enrolled is\nfalse` can explicitly match an unenrolled device. `not` negates the\nresult and can also match missing data; use a positive `enrolled is true`\ncheck when enrollment is required.\n\nLeaves that do not apply to the device's platform are removed before\nevaluation, including inside `or` and `not`. An expression with no\napplicable leaves passes. If the platform is unknown, no leaves are\nremoved. Supported platforms for each field are listed below.\nProvider `os_up_to_date` fields are computed from known OS releases;\nthey are not raw provider attributes.\n\nWhen a device matches more than one record of a provider, a leaf holds\nwhen any record satisfies it. Set `rows` to `all` to require every\nrecord. Different leaves may match different provider rows; `and` does\nnot require one row to satisfy all leaves. `rows` is not allowed for\n`firezone`, which always describes exactly one connecting device.\n\nExpressions allow at most 10 nested boolean levels and 100 leaves.\nList values contain 1–100 items; strings are at most 1024 bytes and\nregular expressions at most 256 bytes. Unknown fields, incompatible\noperators, invalid values, and exceeded limits return HTTP 422 with\na path in `validation_errors.postures`.\n\nSupported fields (generated from the same registry used for validation):\n\n### defender fields\n\n| Field | Type | Platforms |\n| --- | --- | --- |\n| `defender.agent_version` | version | windows, macos, linux |\n| `defender.computer_dns_name` | string | windows, macos, linux |\n| `defender.defender_id` | string | windows, macos, linux |\n| `defender.device_value` | enum_string | windows, macos, linux |\n| `defender.enrolled` | boolean | windows, macos, linux |\n| `defender.entra_device_id` | string | windows, macos, linux |\n| `defender.entra_joined` | boolean | windows, macos, linux |\n| `defender.exclusion_reason` | enum_string | windows, macos, linux |\n| `defender.exposure_level` | enum_string | windows, macos, linux |\n| `defender.first_seen_at` | datetime | windows, macos, linux |\n| `defender.health_status` | enum_string | windows, macos, linux |\n| `defender.ip_addresses` | json | windows, macos, linux |\n| `defender.is_excluded` | boolean | windows, macos, linux |\n| `defender.is_potential_duplication` | boolean | windows, macos, linux |\n| `defender.last_external_ip_address` | ip | windows, macos, linux |\n| `defender.last_ip_address` | ip | windows, macos, linux |\n| `defender.last_seen_at` | datetime | windows, macos, linux |\n| `defender.machine_tags` | string_array | windows, macos, linux |\n| `defender.managed_by` | enum_string | windows, macos, linux |\n| `defender.managed_by_status` | enum_string | windows, macos, linux |\n| `defender.onboarding_status` | enum_string | windows, macos, linux |\n| `defender.os_architecture` | enum_string | windows, macos, linux |\n| `defender.os_build` | integer | windows, macos, linux |\n| `defender.os_platform` | enum_string | windows, macos, linux |\n| `defender.os_processor` | string | windows, macos, linux |\n| `defender.os_up_to_date` | boolean | macos |\n| `defender.rbac_group_id` | integer | windows, macos, linux |\n| `defender.rbac_group_name` | string | windows, macos, linux |\n| `defender.risk_score` | enum_string | windows, macos, linux |\n| `defender.version` | string | windows, macos, linux |\n| `defender.vm_cloud_provider` | string | windows, macos, linux |\n| `defender.vm_id` | string | windows, macos, linux |\n| `defender.vm_resource_id` | string | windows, macos, linux |\n| `defender.vm_subscription_id` | string | windows, macos, linux |\n\n### firezone fields\n\n| Field | Type | Platforms |\n| --- | --- | --- |\n| `firezone.device_serial` | string | windows, macos, linux, ios, android |\n| `firezone.device_uuid` | string | windows, macos, linux, ios, android |\n| `firezone.hostname` | string | windows, macos, linux, ios, android |\n| `firezone.identifier_for_vendor` | string | windows, macos, linux, ios, android |\n| `firezone.ipv4` | ipv4 | windows, macos, linux, ios, android |\n| `firezone.ipv6` | ipv6 | windows, macos, linux, ios, android |\n| `firezone.last_attested_at` | datetime | windows, macos, linux, ios, android |\n| `firezone.last_attested_cert_fingerprint` | string | windows, macos, linux, ios, android |\n| `firezone.last_attested_cert_serial` | string | windows, macos, linux, ios, android |\n| `firezone.last_attested_device_serial` | string | windows, macos, linux, ios, android |\n| `firezone.last_attested_device_uuid` | string | windows, macos, linux, ios, android |\n| `firezone.last_attested_mdm_device_id` | string | windows, macos, linux, ios, android |\n| `firezone.last_seen_remote_ip_location_city` | string | windows, macos, linux, ios, android |\n| `firezone.last_seen_user_agent` | string | windows, macos, linux, ios, android |\n| `firezone.last_seen_version` | version | windows, macos, linux, ios, android |\n| `firezone.name` | string | windows, macos, linux, ios, android |\n\n### intune fields\n\n| Field | Type | Platforms |\n| --- | --- | --- |\n| `intune.android_security_patch_level` | datetime | windows, macos, ios, android |\n| `intune.attestation_bit_locker_enabled` | boolean | windows |\n| `intune.attestation_boot_app_security_version` | version | windows |\n| `intune.attestation_boot_debugging` | boolean | windows |\n| `intune.attestation_boot_manager_security_version` | version | windows |\n| `intune.attestation_boot_manager_version` | version | windows |\n| `intune.attestation_boot_revision_list_info` | string | windows |\n| `intune.attestation_code_integrity` | boolean | windows |\n| `intune.attestation_code_integrity_check_version` | version | windows |\n| `intune.attestation_code_integrity_policy` | string | windows |\n| `intune.attestation_content_version` | version | windows |\n| `intune.attestation_data_execution_policy_enabled` | boolean | windows |\n| `intune.attestation_early_launch_anti_malware_driver_protection` | boolean | windows |\n| `intune.attestation_health_status_mismatch_info` | string | windows |\n| `intune.attestation_identity_key` | string | windows |\n| `intune.attestation_issued_at` | datetime | windows |\n| `intune.attestation_operating_system_kernel_debugging` | boolean | windows |\n| `intune.attestation_operating_system_rev_list_info` | string | windows |\n| `intune.attestation_pcr0` | string | windows |\n| `intune.attestation_pcr_hash_algorithm` | string | windows |\n| `intune.attestation_reset_count` | integer | windows |\n| `intune.attestation_restart_count` | integer | windows |\n| `intune.attestation_safe_mode` | boolean | windows |\n| `intune.attestation_secure_boot` | boolean | windows |\n| `intune.attestation_secure_boot_config_policy_fingerprint` | string | windows |\n| `intune.attestation_status` | enum_string | windows |\n| `intune.attestation_supported` | boolean | windows |\n| `intune.attestation_test_signing` | boolean | windows |\n| `intune.attestation_tpm_version` | version | windows |\n| `intune.attestation_virtual_secure_mode` | boolean | windows |\n| `intune.attestation_windows_pe` | boolean | windows |\n| `intune.compliance_grace_period_expiration_at` | datetime | windows, macos, ios, android |\n| `intune.compliance_state` | enum_string | windows, macos, ios, android |\n| `intune.config_manager_compliance_policy` | boolean | windows, macos, ios, android |\n| `intune.config_manager_device_configuration` | boolean | windows, macos, ios, android |\n| `intune.config_manager_inventory` | boolean | windows, macos, ios, android |\n| `intune.config_manager_modern_apps` | boolean | windows, macos, ios, android |\n| `intune.config_manager_resource_access` | boolean | windows, macos, ios, android |\n| `intune.config_manager_windows_update_for_business` | boolean | windows, macos, ios, android |\n| `intune.device_category_display_name` | string | windows, macos, ios, android |\n| `intune.device_enrollment_type` | enum_string | windows, macos, ios, android |\n| `intune.device_name` | string | windows, macos, ios, android |\n| `intune.device_registration_state` | enum_string | windows, macos, ios, android |\n| `intune.eas_activated` | boolean | windows, macos, ios, android |\n| `intune.eas_activated_at` | datetime | windows, macos, ios, android |\n| `intune.eas_device_id` | string | windows, macos, ios, android |\n| `intune.email_address` | string | windows, macos, ios, android |\n| `intune.enrolled` | boolean | windows, macos, ios, android |\n| `intune.enrolled_at` | datetime | windows, macos, ios, android |\n| `intune.enrollment_profile_name` | string | windows, macos, ios, android |\n| `intune.entra_device_id` | string | windows, macos, ios, android |\n| `intune.entra_registered` | boolean | windows, macos, ios, android |\n| `intune.ethernet_mac_address` | string | windows, macos, ios, android |\n| `intune.exchange_access_state` | enum_string | windows, macos, ios, android |\n| `intune.exchange_access_state_reason` | enum_string | windows, macos, ios, android |\n| `intune.exchange_last_successful_sync_at` | datetime | windows, macos, ios, android |\n| `intune.free_storage_space_bytes` | integer | windows, macos, ios, android |\n| `intune.iccid` | string | windows, macos, ios, android |\n| `intune.imei` | string | windows, macos, ios, android |\n| `intune.intune_id` | string | windows, macos, ios, android |\n| `intune.is_encrypted` | boolean | windows, macos, ios, android |\n| `intune.is_supervised` | boolean | macos, ios |\n| `intune.jail_broken` | boolean | ios, android |\n| `intune.last_sync_at` | datetime | windows, macos, ios, android |\n| `intune.managed_device_name` | string | windows, macos, ios, android |\n| `intune.managed_device_owner_type` | enum_string | windows, macos, ios, android |\n| `intune.management_agent` | enum_string | windows, macos, ios, android |\n| `intune.management_certificate_expires_at` | datetime | windows, macos, ios, android |\n| `intune.management_state` | enum_string | windows, macos, ios, android |\n| `intune.manufacturer` | string | windows, macos, ios, android |\n| `intune.meid` | string | windows, macos, ios, android |\n| `intune.model` | string | windows, macos, ios, android |\n| `intune.notes` | string | windows, macos, ios, android |\n| `intune.operating_system` | string | windows, macos, ios, android |\n| `intune.os_up_to_date` | boolean | windows, macos, ios, android |\n| `intune.os_version` | version | windows, macos, ios, android |\n| `intune.partner_reported_threat_state` | enum_string | windows, macos, ios, android |\n| `intune.phone_number` | string | windows, macos, ios, android |\n| `intune.physical_memory_bytes` | integer | windows, macos, ios, android |\n| `intune.require_user_enrollment_approval` | boolean | windows, macos, ios, android |\n| `intune.serial_number` | string | windows, macos, ios, android |\n| `intune.subscriber_carrier` | string | windows, macos, ios, android |\n| `intune.total_storage_space_bytes` | integer | windows, macos, ios, android |\n| `intune.udid` | string | windows, macos, ios, android |\n| `intune.user_display_name` | string | windows, macos, ios, android |\n| `intune.user_id` | string | windows, macos, ios, android |\n| `intune.user_principal_name` | string | windows, macos, ios, android |\n| `intune.wifi_mac_address` | string | windows, macos, ios, android |\n\n### iru fields\n\n| Field | Type | Platforms |\n| --- | --- | --- |\n| `iru.activation_lock_allowed_while_supervised` | boolean | macos, ios |\n| `iru.activation_lock_bypass_code_failed` | boolean | macos, ios |\n| `iru.activation_lock_collected_at` | datetime | macos, ios |\n| `iru.activation_lock_supported` | boolean | macos, ios |\n| `iru.agent_installed` | boolean | macos, ios |\n| `iru.agent_version` | version | macos, ios |\n| `iru.any_signed_os` | boolean | macos, ios |\n| `iru.apple_silicon` | boolean | macos, ios |\n| `iru.asset_tag` | string | macos, ios |\n| `iru.blueprint_id` | string | macos, ios |\n| `iru.blueprint_name` | string | macos, ios |\n| `iru.bootstrap_token_auth` | boolean | macos, ios |\n| `iru.bootstrap_token_escrowed` | boolean | macos, ios |\n| `iru.cellular_technology` | enum_string | macos, ios |\n| `iru.data_roaming` | boolean | macos, ios |\n| `iru.device_activation_lock_enabled` | boolean | macos, ios |\n| `iru.device_capacity_gb` | float | macos, ios |\n| `iru.device_family` | enum_string | macos, ios |\n| `iru.device_name` | string | macos, ios |\n| `iru.display_os_version` | version | macos, ios |\n| `iru.enrolled` | boolean | macos, ios |\n| `iru.external_boot_level` | enum_string | macos |\n| `iru.filevault_collected_at` | datetime | macos, ios |\n| `iru.filevault_enabled` | boolean | macos |\n| `iru.filevault_key_escrowed` | boolean | macos, ios |\n| `iru.filevault_key_rotation_scheduled_at` | datetime | macos, ios |\n| `iru.filevault_key_type` | enum_string | macos |\n| `iru.filevault_regeneration_needed` | boolean | macos, ios |\n| `iru.firewall_allow_signed_applications` | boolean | macos, ios |\n| `iru.firewall_block_all_incoming` | boolean | macos, ios |\n| `iru.firewall_collected_at` | datetime | macos, ios |\n| `iru.firewall_enabled` | boolean | macos |\n| `iru.firewall_logging` | boolean | macos, ios |\n| `iru.firewall_logging_option` | enum_string | macos |\n| `iru.firewall_stealth_mode` | boolean | macos, ios |\n| `iru.firewall_unloading` | boolean | macos, ios |\n| `iru.firewall_version` | version | macos |\n| `iru.first_enrolled_at` | datetime | macos, ios |\n| `iru.gatekeeper_collected_at` | datetime | macos, ios |\n| `iru.gatekeeper_enabled` | boolean | macos |\n| `iru.gatekeeper_opaque_version` | version | macos |\n| `iru.gatekeeper_trusted_developers` | boolean | macos, ios |\n| `iru.gatekeeper_version` | version | macos |\n| `iru.host_name` | string | macos, ios |\n| `iru.hotspot` | boolean | macos, ios |\n| `iru.inventory_collected_at` | datetime | macos, ios |\n| `iru.iru_id` | string | macos, ios |\n| `iru.is_missing` | boolean | macos, ios |\n| `iru.is_removed` | boolean | macos, ios |\n| `iru.kext_requires_bootstrap_token` | boolean | macos, ios |\n| `iru.last_check_in_at` | datetime | macos, ios |\n| `iru.last_enrolled_at` | datetime | macos, ios |\n| `iru.local_hostname` | string | macos, ios |\n| `iru.lost_mode_status` | enum_string | macos, ios |\n| `iru.malware_removal_tool_version` | version | macos |\n| `iru.mdm_enabled` | boolean | macos, ios |\n| `iru.mdm_manages_kext` | boolean | macos, ios |\n| `iru.model` | string | macos, ios |\n| `iru.model_identifier` | string | macos, ios |\n| `iru.model_name` | string | macos, ios |\n| `iru.os_build` | string | macos, ios |\n| `iru.os_name` | string | macos, ios |\n| `iru.os_up_to_date` | boolean | macos, ios |\n| `iru.os_version` | version | macos, ios |\n| `iru.platform` | enum_string | macos, ios |\n| `iru.secure_boot_level` | enum_string | macos |\n| `iru.serial_number` | string | macos, ios |\n| `iru.shared_ipad` | boolean | macos, ios |\n| `iru.sip_enabled` | boolean | macos |\n| `iru.software_update_requires_bootstrap_token` | boolean | macos, ios |\n| `iru.ssv_enabled` | boolean | macos |\n| `iru.startup_settings_collected_at` | datetime | macos, ios |\n| `iru.supplemental_build_version` | string | macos, ios |\n| `iru.supplemental_os_version_extra` | version | macos, ios |\n| `iru.tags` | string_array | macos, ios |\n| `iru.user_activation_lock_enabled` | boolean | macos, ios |\n| `iru.user_email` | string | macos, ios |\n| `iru.user_id` | string | macos, ios |\n| `iru.user_is_archived` | boolean | macos, ios |\n| `iru.user_manages_kext` | boolean | macos, ios |\n| `iru.user_name` | string | macos, ios |\n| `iru.xprotect_version` | version | macos |\n\n### santa fields\n\n| Field | Type | Platforms |\n| --- | --- | --- |\n| `santa.configured_client_mode` | enum_string | macos |\n| `santa.enrolled` | boolean | macos |\n| `santa.first_seen_at` | datetime | macos |\n| `santa.hostname` | string | macos |\n| `santa.last_preflight_at` | datetime | macos |\n| `santa.last_preflight_ip` | ip | macos |\n| `santa.last_seen_client_mode` | enum_string | macos |\n| `santa.last_sync_at` | datetime | macos |\n| `santa.machine_model` | string | macos |\n| `santa.os_build` | string | macos |\n| `santa.os_type` | enum_string | macos |\n| `santa.os_up_to_date` | boolean | macos |\n| `santa.os_version` | version | macos |\n| `santa.primary_user` | string | macos |\n| `santa.primary_user_groups` | string_array | macos |\n| `santa.rule_sync_at` | datetime | macos |\n| `santa.santa_id` | string | macos |\n| `santa.santa_version` | version | macos |\n| `santa.santanetd_version` | version | macos |\n| `santa.serial_number` | string | macos |\n| `santa.sip_status` | integer | macos |\n| `santa.tags` | string_array | macos |\n| `santa.temporary_admin_mode_ends_at` | datetime | macos |\n| `santa.temporary_admin_mode_user` | string | macos |\n| `santa.temporary_monitor_mode_ends_at` | datetime | macos |\n\n### sentinelone fields\n\n| Field | Type | Platforms |\n| --- | --- | --- |\n| `sentinelone.account_name` | string | windows, macos, linux |\n| `sentinelone.active_protection` | string_array | windows, macos, linux |\n| `sentinelone.active_threats` | integer | windows, macos, linux |\n| `sentinelone.ad_computer_distinguished_name` | string | windows, macos, linux |\n| `sentinelone.ad_computer_member_of` | string_array | windows, macos, linux |\n| `sentinelone.ad_last_user_distinguished_name` | string | windows, macos, linux |\n| `sentinelone.ad_last_user_member_of` | string_array | windows, macos, linux |\n| `sentinelone.ad_mail` | string | windows, macos, linux |\n| `sentinelone.ad_user_principal_name` | string | windows, macos, linux |\n| `sentinelone.agent_version` | version | windows, macos, linux |\n| `sentinelone.allow_remote_shell` | boolean | windows, macos, linux |\n| `sentinelone.apps_vulnerability_status` | enum_string | windows, macos, linux |\n| `sentinelone.cloud_providers` | json | windows, macos, linux |\n| `sentinelone.computer_name` | string | windows, macos, linux |\n| `sentinelone.console_migration_status` | enum_string | windows, macos, linux |\n| `sentinelone.core_count` | integer | windows, macos, linux |\n| `sentinelone.cpu_count` | integer | windows, macos, linux |\n| `sentinelone.cpu_id` | string | windows, macos, linux |\n| `sentinelone.detection_state` | enum_string | windows, macos, linux |\n| `sentinelone.domain` | string | windows, macos, linux |\n| `sentinelone.encrypted_applications` | boolean | windows, macos, linux |\n| `sentinelone.enrolled` | boolean | windows, macos, linux |\n| `sentinelone.external_id` | string | windows, macos, linux |\n| `sentinelone.external_ip` | ip | windows, macos, linux |\n| `sentinelone.firewall_enabled` | boolean | windows, macos, linux |\n| `sentinelone.first_full_mode_at` | datetime | windows, macos, linux |\n| `sentinelone.full_disk_scan_updated_at` | datetime | windows, macos, linux |\n| `sentinelone.group_id` | string | windows, macos, linux |\n| `sentinelone.group_ip` | string | windows, macos, linux |\n| `sentinelone.group_name` | string | windows, macos, linux |\n| `sentinelone.has_containerized_workload` | boolean | windows, macos, linux |\n| `sentinelone.in_remote_shell_session` | boolean | windows, macos, linux |\n| `sentinelone.infected` | boolean | windows, macos, linux |\n| `sentinelone.installer_type` | enum_string | windows, macos, linux |\n| `sentinelone.is_active` | boolean | windows, macos, linux |\n| `sentinelone.is_ad_connector` | boolean | windows, macos, linux |\n| `sentinelone.is_decommissioned` | boolean | windows, macos, linux |\n| `sentinelone.is_hyper_automate` | boolean | windows, macos, linux |\n| `sentinelone.is_pending_uninstall` | boolean | windows, macos, linux |\n| `sentinelone.is_uninstalled` | boolean | windows, macos, linux |\n| `sentinelone.is_up_to_date` | boolean | windows, macos, linux |\n| `sentinelone.last_active_at` | datetime | windows, macos, linux |\n| `sentinelone.last_ip_to_management` | ip | windows, macos, linux |\n| `sentinelone.last_logged_in_user_name` | string | windows, macos, linux |\n| `sentinelone.last_successful_scan_at` | datetime | windows, macos, linux |\n| `sentinelone.location_enabled` | boolean | windows, macos, linux |\n| `sentinelone.location_type` | enum_string | windows, macos, linux |\n| `sentinelone.locations` | json | windows, macos, linux |\n| `sentinelone.machine_sid` | string | windows, macos, linux |\n| `sentinelone.machine_type` | enum_string | windows, macos, linux |\n| `sentinelone.missing_permissions` | string_array | windows, macos, linux |\n| `sentinelone.mitigation_mode` | enum_string | windows, macos, linux |\n| `sentinelone.mitigation_mode_suspicious` | enum_string | windows, macos, linux |\n| `sentinelone.model_name` | string | windows, macos, linux |\n| `sentinelone.network_interfaces` | json | windows, macos, linux |\n| `sentinelone.network_quarantine_enabled` | boolean | windows, macos, linux |\n| `sentinelone.network_status` | enum_string | windows, macos, linux |\n| `sentinelone.operational_state` | enum_string | windows, macos, linux |\n| `sentinelone.operational_state_expires_at` | datetime | windows, macos, linux |\n| `sentinelone.os_arch` | enum_string | windows, macos, linux |\n| `sentinelone.os_name` | string | windows, macos, linux |\n| `sentinelone.os_revision` | version | windows, macos, linux |\n| `sentinelone.os_start_time` | datetime | windows, macos, linux |\n| `sentinelone.os_type` | enum_string | windows, macos, linux |\n| `sentinelone.os_up_to_date` | boolean | windows, macos |\n| `sentinelone.os_username` | string | windows, macos, linux |\n| `sentinelone.protected_containers_count` | integer | windows, macos, linux |\n| `sentinelone.protected_pods_count` | integer | windows, macos, linux |\n| `sentinelone.protected_tasks_count` | integer | windows, macos, linux |\n| `sentinelone.proxy_console` | boolean | windows, macos, linux |\n| `sentinelone.proxy_deep_visibility` | boolean | windows, macos, linux |\n| `sentinelone.proxy_method` | enum_string | windows, macos, linux |\n| `sentinelone.proxy_pac_file_usage` | boolean | windows, macos, linux |\n| `sentinelone.ranger_status` | enum_string | windows, macos, linux |\n| `sentinelone.ranger_version` | version | windows, macos, linux |\n| `sentinelone.registered_at` | datetime | windows, macos, linux |\n| `sentinelone.remote_profiling_state` | enum_string | windows, macos, linux |\n| `sentinelone.remote_profiling_state_expires_at` | datetime | windows, macos, linux |\n| `sentinelone.scan_aborted_at` | datetime | windows, macos, linux |\n| `sentinelone.scan_finished_at` | datetime | windows, macos, linux |\n| `sentinelone.scan_started_at` | datetime | windows, macos, linux |\n| `sentinelone.scan_status` | enum_string | windows, macos, linux |\n| `sentinelone.sentinelone_account_id` | string | windows, macos, linux |\n| `sentinelone.sentinelone_id` | string | windows, macos, linux |\n| `sentinelone.serial_number` | string | windows, macos, linux |\n| `sentinelone.site_id` | string | windows, macos, linux |\n| `sentinelone.site_name` | string | windows, macos, linux |\n| `sentinelone.storage_name` | string | windows, macos, linux |\n| `sentinelone.storage_type` | string | windows, macos, linux |\n| `sentinelone.tags` | json | windows, macos, linux |\n| `sentinelone.threat_reboot_required` | boolean | windows, macos, linux |\n| `sentinelone.total_memory` | integer | windows, macos, linux |\n| `sentinelone.user_actions_needed` | string_array | windows, macos, linux |\n| `sentinelone.uuid` | string | windows, macos, linux |\n\n### sophos fields\n\n| Field | Type | Platforms |\n| --- | --- | --- |\n| `sophos.assigned_products` | json | windows, macos, linux |\n| `sophos.associated_person_id` | string | windows, macos, linux |\n| `sophos.associated_person_name` | string | windows, macos, linux |\n| `sophos.associated_person_via_login` | string | windows, macos, linux |\n| `sophos.cloned` | boolean | windows, macos, linux |\n| `sophos.cloud_instance_id` | string | windows, macos, linux |\n| `sophos.cloud_provider` | enum_string | windows, macos, linux |\n| `sophos.device_software` | json | windows, macos, linux |\n| `sophos.encryption_overall_status` | enum_string | windows, macos, linux |\n| `sophos.encryption_volumes` | json | windows, macos, linux |\n| `sophos.enrolled` | boolean | windows, macos, linux |\n| `sophos.group_hierarchy` | json | windows, macos, linux |\n| `sophos.group_id` | string | windows, macos, linux |\n| `sophos.group_name` | string | windows, macos, linux |\n| `sophos.health_overall` | enum_string | windows, macos, linux |\n| `sophos.health_service_details` | json | windows, macos, linux |\n| `sophos.health_services_status` | enum_string | windows, macos, linux |\n| `sophos.health_threats_status` | enum_string | windows, macos, linux |\n| `sophos.hostname` | string | windows, macos, linux |\n| `sophos.ipv4_addresses` | string_array | windows, macos, linux |\n| `sophos.ipv6_addresses` | string_array | windows, macos, linux |\n| `sophos.isolation_admin_isolated` | boolean | windows, macos, linux |\n| `sophos.isolation_self_isolated` | boolean | windows, macos, linux |\n| `sophos.isolation_status` | enum_string | windows, macos, linux |\n| `sophos.last_agent_update_at` | datetime | windows, macos, linux |\n| `sophos.last_os_update_at` | datetime | windows, macos, linux |\n| `sophos.last_seen_at` | datetime | windows, macos, linux |\n| `sophos.lockdown_status` | enum_string | windows, macos, linux |\n| `sophos.mac_addresses` | string_array | windows, macos, linux |\n| `sophos.online` | boolean | windows, macos, linux |\n| `sophos.os_build` | integer | windows, macos, linux |\n| `sophos.os_is_server` | boolean | windows, macos, linux |\n| `sophos.os_major_version` | integer | windows, macos, linux |\n| `sophos.os_minor_version` | integer | windows, macos, linux |\n| `sophos.os_name` | string | windows, macos, linux |\n| `sophos.os_platform` | enum_string | windows, macos, linux |\n| `sophos.os_up_to_date` | boolean | macos |\n| `sophos.packages` | json | windows, macos, linux |\n| `sophos.serial_number` | string | windows, macos, linux |\n| `sophos.sophos_id` | string | windows, macos, linux |\n| `sophos.tags` | json | windows, macos, linux |\n| `sophos.tamper_protection_enabled` | boolean | windows, macos, linux |\n| `sophos.tamper_protection_supported` | boolean | windows, macos, linux |\n| `sophos.type` | enum_string | windows, macos, linux |",
+        "description": "One node of a Policy's device posture expression. A node has exactly one\nof these shapes:\n\n* `and`: a non-empty list of nodes that must all hold.\n* `or`: a non-empty list of nodes of which at least one must hold.\n* `not`: a node that must not hold.\n* a leaf: a `field`, an `op`, and for most operators a `value`.\n\nA leaf's `field` is `<provider>.<attribute>`, such as\n`intune.compliance_state` or `firezone.last_seen_version`. The provider\nis one of `firezone` (the connecting device's own record), `intune`,\n`iru`, `defender`, `santa`, `sentinelone` or `sophos`. The attribute is\none of that provider's synced device attributes. Every synced provider also has a\nboolean `enrolled` that is true when the provider knows the device.\n\nThe attribute's type decides which operators apply and what `value`\nmust be:\n\n* strings: `is`, `is_not`, `is_in`, `is_not_in`, `contains`,\n  `does_not_contain`, `starts_with`, `ends_with`, `matches`,\n  `does_not_match`. Comparisons ignore case. `is_in` and `is_not_in`\n  take a list of strings. `matches` and `does_not_match` take a regular\n  expression.\n* booleans: `is` with `true` or `false`.\n* numbers: `eq`, `ne`, `gt`, `gte`, `lt`, `lte`.\n* versions: `is`, `is_not`, `gt`, `gte`, `lt`, `lte`, compared segment\n  by segment, so `14.4` equals `14.4.0`.\n* timestamps: `before` and `after` with an ISO 8601 datetime such as\n  `2026-01-01T00:00:00Z`; `within_last` and `not_within_last` with an\n  ISO 8601 duration such as `PT24H` or `P30D`. A date-only attribute\n  counts as the start of that day in UTC.\n* IP addresses: `is_in_cidr` and `is_not_in_cidr` with a list of CIDRs.\n  `firezone.ipv4` takes IPv4 CIDRs only and `firezone.ipv6` IPv6 only.\n* lists of strings: `contains`, `does_not_contain`, `contains_any_of`,\n  `contains_all_of`, `is_empty`, `is_not_empty`.\n* JSON attributes: `is_empty`, `is_not_empty`.\n\nThe value `@latest` on `firezone.last_seen_version` stands for the newest\nClient release for the device's platform.\n\n`enum_string` uses the string operators; `integer` and `float` use the\nnumeric operators. `string_array` values use a single string for `contains`\nand `does_not_contain`, or a non-empty string list for `contains_any_of`\nand `contains_all_of`.\n\nEvery attribute also accepts `exists` and `does_not_exist`. These and\n`is_empty` / `is_not_empty` take no value: omit `value` or set it to null.\nMissing attributes fail every operator except `does_not_exist`, including\nnegative operators such as `is_not`. A missing provider is evaluated as\none empty row. Its synthetic `enrolled` field is false, so `enrolled is\nfalse` can explicitly match an unenrolled device. `not` negates the\nresult and can also match missing data; use a positive `enrolled is true`\ncheck when enrollment is required.\n\nLeaves that do not apply to the device's platform are removed before\nevaluation, including inside `or` and `not`. An expression with no\napplicable leaves passes. If the platform is unknown, no leaves are\nremoved. Each field lists the platforms it applies to.\nProvider `os_up_to_date` fields are computed from known OS releases;\nthey are not raw provider attributes.\n\nWhen a device matches more than one record of a provider, a leaf holds\nwhen any record satisfies it. Set `rows` to `all` to require every\nrecord. Different leaves may match different provider rows; `and` does\nnot require one row to satisfy all leaves. `rows` is not allowed for\n`firezone`, which always describes exactly one connecting device.\n\nExpressions allow at most 10 nested boolean levels and 100 leaves.\nList values contain 1–100 items; strings are at most 1024 bytes and\nregular expressions at most 256 bytes. Unknown fields, incompatible\noperators, invalid values, and exceeded limits return HTTP 422 with\na path in `validation_errors.postures`.\n\n`GET /posture_fields` lists the same fields as structured data.\n\nSupported fields (generated from the same registry used for validation):\n\n### defender fields\n\n| Field | Type | Platforms |\n| --- | --- | --- |\n| `defender.agent_version` | version | windows, macos, linux |\n| `defender.computer_dns_name` | string | windows, macos, linux |\n| `defender.defender_id` | string | windows, macos, linux |\n| `defender.device_value` | enum_string | windows, macos, linux |\n| `defender.enrolled` | boolean | windows, macos, linux |\n| `defender.entra_device_id` | string | windows, macos, linux |\n| `defender.entra_joined` | boolean | windows, macos, linux |\n| `defender.exclusion_reason` | enum_string | windows, macos, linux |\n| `defender.exposure_level` | enum_string | windows, macos, linux |\n| `defender.first_seen_at` | datetime | windows, macos, linux |\n| `defender.health_status` | enum_string | windows, macos, linux |\n| `defender.ip_addresses` | json | windows, macos, linux |\n| `defender.is_excluded` | boolean | windows, macos, linux |\n| `defender.is_potential_duplication` | boolean | windows, macos, linux |\n| `defender.last_external_ip_address` | ip | windows, macos, linux |\n| `defender.last_ip_address` | ip | windows, macos, linux |\n| `defender.last_seen_at` | datetime | windows, macos, linux |\n| `defender.machine_tags` | string_array | windows, macos, linux |\n| `defender.managed_by` | enum_string | windows, macos, linux |\n| `defender.managed_by_status` | enum_string | windows, macos, linux |\n| `defender.onboarding_status` | enum_string | windows, macos, linux |\n| `defender.os_architecture` | enum_string | windows, macos, linux |\n| `defender.os_build` | integer | windows, macos, linux |\n| `defender.os_platform` | enum_string | windows, macos, linux |\n| `defender.os_processor` | string | windows, macos, linux |\n| `defender.os_up_to_date` | boolean | macos |\n| `defender.rbac_group_id` | integer | windows, macos, linux |\n| `defender.rbac_group_name` | string | windows, macos, linux |\n| `defender.risk_score` | enum_string | windows, macos, linux |\n| `defender.version` | string | windows, macos, linux |\n| `defender.vm_cloud_provider` | string | windows, macos, linux |\n| `defender.vm_id` | string | windows, macos, linux |\n| `defender.vm_resource_id` | string | windows, macos, linux |\n| `defender.vm_subscription_id` | string | windows, macos, linux |\n\n### firezone fields\n\n| Field | Type | Platforms |\n| --- | --- | --- |\n| `firezone.device_serial` | string | windows, macos, linux, ios, android |\n| `firezone.device_uuid` | string | windows, macos, linux, ios, android |\n| `firezone.hostname` | string | windows, macos, linux, ios, android |\n| `firezone.identifier_for_vendor` | string | windows, macos, linux, ios, android |\n| `firezone.ipv4` | ipv4 | windows, macos, linux, ios, android |\n| `firezone.ipv6` | ipv6 | windows, macos, linux, ios, android |\n| `firezone.last_attested_at` | datetime | windows, macos, linux, ios, android |\n| `firezone.last_attested_cert_fingerprint` | string | windows, macos, linux, ios, android |\n| `firezone.last_attested_cert_serial` | string | windows, macos, linux, ios, android |\n| `firezone.last_attested_device_serial` | string | windows, macos, linux, ios, android |\n| `firezone.last_attested_device_uuid` | string | windows, macos, linux, ios, android |\n| `firezone.last_attested_mdm_device_id` | string | windows, macos, linux, ios, android |\n| `firezone.last_seen_remote_ip_location_city` | string | windows, macos, linux, ios, android |\n| `firezone.last_seen_user_agent` | string | windows, macos, linux, ios, android |\n| `firezone.last_seen_version` | version | windows, macos, linux, ios, android |\n| `firezone.name` | string | windows, macos, linux, ios, android |\n\n### intune fields\n\n| Field | Type | Platforms |\n| --- | --- | --- |\n| `intune.android_security_patch_level` | datetime | windows, macos, ios, android |\n| `intune.attestation_bit_locker_enabled` | boolean | windows |\n| `intune.attestation_boot_app_security_version` | version | windows |\n| `intune.attestation_boot_debugging` | boolean | windows |\n| `intune.attestation_boot_manager_security_version` | version | windows |\n| `intune.attestation_boot_manager_version` | version | windows |\n| `intune.attestation_boot_revision_list_info` | string | windows |\n| `intune.attestation_code_integrity` | boolean | windows |\n| `intune.attestation_code_integrity_check_version` | version | windows |\n| `intune.attestation_code_integrity_policy` | string | windows |\n| `intune.attestation_content_version` | version | windows |\n| `intune.attestation_data_execution_policy_enabled` | boolean | windows |\n| `intune.attestation_early_launch_anti_malware_driver_protection` | boolean | windows |\n| `intune.attestation_health_status_mismatch_info` | string | windows |\n| `intune.attestation_identity_key` | string | windows |\n| `intune.attestation_issued_at` | datetime | windows |\n| `intune.attestation_operating_system_kernel_debugging` | boolean | windows |\n| `intune.attestation_operating_system_rev_list_info` | string | windows |\n| `intune.attestation_pcr0` | string | windows |\n| `intune.attestation_pcr_hash_algorithm` | string | windows |\n| `intune.attestation_reset_count` | integer | windows |\n| `intune.attestation_restart_count` | integer | windows |\n| `intune.attestation_safe_mode` | boolean | windows |\n| `intune.attestation_secure_boot` | boolean | windows |\n| `intune.attestation_secure_boot_config_policy_fingerprint` | string | windows |\n| `intune.attestation_status` | enum_string | windows |\n| `intune.attestation_supported` | boolean | windows |\n| `intune.attestation_test_signing` | boolean | windows |\n| `intune.attestation_tpm_version` | version | windows |\n| `intune.attestation_virtual_secure_mode` | boolean | windows |\n| `intune.attestation_windows_pe` | boolean | windows |\n| `intune.compliance_grace_period_expiration_at` | datetime | windows, macos, ios, android |\n| `intune.compliance_state` | enum_string | windows, macos, ios, android |\n| `intune.config_manager_compliance_policy` | boolean | windows, macos, ios, android |\n| `intune.config_manager_device_configuration` | boolean | windows, macos, ios, android |\n| `intune.config_manager_inventory` | boolean | windows, macos, ios, android |\n| `intune.config_manager_modern_apps` | boolean | windows, macos, ios, android |\n| `intune.config_manager_resource_access` | boolean | windows, macos, ios, android |\n| `intune.config_manager_windows_update_for_business` | boolean | windows, macos, ios, android |\n| `intune.device_category_display_name` | string | windows, macos, ios, android |\n| `intune.device_enrollment_type` | enum_string | windows, macos, ios, android |\n| `intune.device_name` | string | windows, macos, ios, android |\n| `intune.device_registration_state` | enum_string | windows, macos, ios, android |\n| `intune.eas_activated` | boolean | windows, macos, ios, android |\n| `intune.eas_activated_at` | datetime | windows, macos, ios, android |\n| `intune.eas_device_id` | string | windows, macos, ios, android |\n| `intune.email_address` | string | windows, macos, ios, android |\n| `intune.enrolled` | boolean | windows, macos, ios, android |\n| `intune.enrolled_at` | datetime | windows, macos, ios, android |\n| `intune.enrollment_profile_name` | string | windows, macos, ios, android |\n| `intune.entra_device_id` | string | windows, macos, ios, android |\n| `intune.entra_registered` | boolean | windows, macos, ios, android |\n| `intune.ethernet_mac_address` | string | windows, macos, ios, android |\n| `intune.exchange_access_state` | enum_string | windows, macos, ios, android |\n| `intune.exchange_access_state_reason` | enum_string | windows, macos, ios, android |\n| `intune.exchange_last_successful_sync_at` | datetime | windows, macos, ios, android |\n| `intune.free_storage_space_bytes` | integer | windows, macos, ios, android |\n| `intune.iccid` | string | windows, macos, ios, android |\n| `intune.imei` | string | windows, macos, ios, android |\n| `intune.intune_id` | string | windows, macos, ios, android |\n| `intune.is_encrypted` | boolean | windows, macos, ios, android |\n| `intune.is_supervised` | boolean | macos, ios |\n| `intune.jail_broken` | boolean | ios, android |\n| `intune.last_sync_at` | datetime | windows, macos, ios, android |\n| `intune.managed_device_name` | string | windows, macos, ios, android |\n| `intune.managed_device_owner_type` | enum_string | windows, macos, ios, android |\n| `intune.management_agent` | enum_string | windows, macos, ios, android |\n| `intune.management_certificate_expires_at` | datetime | windows, macos, ios, android |\n| `intune.management_state` | enum_string | windows, macos, ios, android |\n| `intune.manufacturer` | string | windows, macos, ios, android |\n| `intune.meid` | string | windows, macos, ios, android |\n| `intune.model` | string | windows, macos, ios, android |\n| `intune.notes` | string | windows, macos, ios, android |\n| `intune.operating_system` | string | windows, macos, ios, android |\n| `intune.os_up_to_date` | boolean | windows, macos, ios, android |\n| `intune.os_version` | version | windows, macos, ios, android |\n| `intune.partner_reported_threat_state` | enum_string | windows, macos, ios, android |\n| `intune.phone_number` | string | windows, macos, ios, android |\n| `intune.physical_memory_bytes` | integer | windows, macos, ios, android |\n| `intune.require_user_enrollment_approval` | boolean | windows, macos, ios, android |\n| `intune.serial_number` | string | windows, macos, ios, android |\n| `intune.subscriber_carrier` | string | windows, macos, ios, android |\n| `intune.total_storage_space_bytes` | integer | windows, macos, ios, android |\n| `intune.udid` | string | windows, macos, ios, android |\n| `intune.user_display_name` | string | windows, macos, ios, android |\n| `intune.user_id` | string | windows, macos, ios, android |\n| `intune.user_principal_name` | string | windows, macos, ios, android |\n| `intune.wifi_mac_address` | string | windows, macos, ios, android |\n\n### iru fields\n\n| Field | Type | Platforms |\n| --- | --- | --- |\n| `iru.activation_lock_allowed_while_supervised` | boolean | macos, ios |\n| `iru.activation_lock_bypass_code_failed` | boolean | macos, ios |\n| `iru.activation_lock_collected_at` | datetime | macos, ios |\n| `iru.activation_lock_supported` | boolean | macos, ios |\n| `iru.agent_installed` | boolean | macos, ios |\n| `iru.agent_version` | version | macos, ios |\n| `iru.any_signed_os` | boolean | macos, ios |\n| `iru.apple_silicon` | boolean | macos, ios |\n| `iru.asset_tag` | string | macos, ios |\n| `iru.blueprint_id` | string | macos, ios |\n| `iru.blueprint_name` | string | macos, ios |\n| `iru.bootstrap_token_auth` | boolean | macos, ios |\n| `iru.bootstrap_token_escrowed` | boolean | macos, ios |\n| `iru.cellular_technology` | enum_string | macos, ios |\n| `iru.data_roaming` | boolean | macos, ios |\n| `iru.device_activation_lock_enabled` | boolean | macos, ios |\n| `iru.device_capacity_gb` | float | macos, ios |\n| `iru.device_family` | enum_string | macos, ios |\n| `iru.device_name` | string | macos, ios |\n| `iru.display_os_version` | version | macos, ios |\n| `iru.enrolled` | boolean | macos, ios |\n| `iru.external_boot_level` | enum_string | macos |\n| `iru.filevault_collected_at` | datetime | macos, ios |\n| `iru.filevault_enabled` | boolean | macos |\n| `iru.filevault_key_escrowed` | boolean | macos, ios |\n| `iru.filevault_key_rotation_scheduled_at` | datetime | macos, ios |\n| `iru.filevault_key_type` | enum_string | macos |\n| `iru.filevault_regeneration_needed` | boolean | macos, ios |\n| `iru.firewall_allow_signed_applications` | boolean | macos, ios |\n| `iru.firewall_block_all_incoming` | boolean | macos, ios |\n| `iru.firewall_collected_at` | datetime | macos, ios |\n| `iru.firewall_enabled` | boolean | macos |\n| `iru.firewall_logging` | boolean | macos, ios |\n| `iru.firewall_logging_option` | enum_string | macos |\n| `iru.firewall_stealth_mode` | boolean | macos, ios |\n| `iru.firewall_unloading` | boolean | macos, ios |\n| `iru.firewall_version` | version | macos |\n| `iru.first_enrolled_at` | datetime | macos, ios |\n| `iru.gatekeeper_collected_at` | datetime | macos, ios |\n| `iru.gatekeeper_enabled` | boolean | macos |\n| `iru.gatekeeper_opaque_version` | version | macos |\n| `iru.gatekeeper_trusted_developers` | boolean | macos, ios |\n| `iru.gatekeeper_version` | version | macos |\n| `iru.host_name` | string | macos, ios |\n| `iru.hotspot` | boolean | macos, ios |\n| `iru.inventory_collected_at` | datetime | macos, ios |\n| `iru.iru_id` | string | macos, ios |\n| `iru.is_missing` | boolean | macos, ios |\n| `iru.is_removed` | boolean | macos, ios |\n| `iru.kext_requires_bootstrap_token` | boolean | macos, ios |\n| `iru.last_check_in_at` | datetime | macos, ios |\n| `iru.last_enrolled_at` | datetime | macos, ios |\n| `iru.local_hostname` | string | macos, ios |\n| `iru.lost_mode_status` | enum_string | macos, ios |\n| `iru.malware_removal_tool_version` | version | macos |\n| `iru.mdm_enabled` | boolean | macos, ios |\n| `iru.mdm_manages_kext` | boolean | macos, ios |\n| `iru.model` | string | macos, ios |\n| `iru.model_identifier` | string | macos, ios |\n| `iru.model_name` | string | macos, ios |\n| `iru.os_build` | string | macos, ios |\n| `iru.os_name` | string | macos, ios |\n| `iru.os_up_to_date` | boolean | macos, ios |\n| `iru.os_version` | version | macos, ios |\n| `iru.platform` | enum_string | macos, ios |\n| `iru.secure_boot_level` | enum_string | macos |\n| `iru.serial_number` | string | macos, ios |\n| `iru.shared_ipad` | boolean | macos, ios |\n| `iru.sip_enabled` | boolean | macos |\n| `iru.software_update_requires_bootstrap_token` | boolean | macos, ios |\n| `iru.ssv_enabled` | boolean | macos |\n| `iru.startup_settings_collected_at` | datetime | macos, ios |\n| `iru.supplemental_build_version` | string | macos, ios |\n| `iru.supplemental_os_version_extra` | version | macos, ios |\n| `iru.tags` | string_array | macos, ios |\n| `iru.user_activation_lock_enabled` | boolean | macos, ios |\n| `iru.user_email` | string | macos, ios |\n| `iru.user_id` | string | macos, ios |\n| `iru.user_is_archived` | boolean | macos, ios |\n| `iru.user_manages_kext` | boolean | macos, ios |\n| `iru.user_name` | string | macos, ios |\n| `iru.xprotect_version` | version | macos |\n\n### santa fields\n\n| Field | Type | Platforms |\n| --- | --- | --- |\n| `santa.configured_client_mode` | enum_string | macos |\n| `santa.enrolled` | boolean | macos |\n| `santa.first_seen_at` | datetime | macos |\n| `santa.hostname` | string | macos |\n| `santa.last_preflight_at` | datetime | macos |\n| `santa.last_preflight_ip` | ip | macos |\n| `santa.last_seen_client_mode` | enum_string | macos |\n| `santa.last_sync_at` | datetime | macos |\n| `santa.machine_model` | string | macos |\n| `santa.os_build` | string | macos |\n| `santa.os_type` | enum_string | macos |\n| `santa.os_up_to_date` | boolean | macos |\n| `santa.os_version` | version | macos |\n| `santa.primary_user` | string | macos |\n| `santa.primary_user_groups` | string_array | macos |\n| `santa.rule_sync_at` | datetime | macos |\n| `santa.santa_id` | string | macos |\n| `santa.santa_version` | version | macos |\n| `santa.santanetd_version` | version | macos |\n| `santa.serial_number` | string | macos |\n| `santa.sip_status` | integer | macos |\n| `santa.tags` | string_array | macos |\n| `santa.temporary_admin_mode_ends_at` | datetime | macos |\n| `santa.temporary_admin_mode_user` | string | macos |\n| `santa.temporary_monitor_mode_ends_at` | datetime | macos |\n\n### sentinelone fields\n\n| Field | Type | Platforms |\n| --- | --- | --- |\n| `sentinelone.account_name` | string | windows, macos, linux |\n| `sentinelone.active_protection` | string_array | windows, macos, linux |\n| `sentinelone.active_threats` | integer | windows, macos, linux |\n| `sentinelone.ad_computer_distinguished_name` | string | windows, macos, linux |\n| `sentinelone.ad_computer_member_of` | string_array | windows, macos, linux |\n| `sentinelone.ad_last_user_distinguished_name` | string | windows, macos, linux |\n| `sentinelone.ad_last_user_member_of` | string_array | windows, macos, linux |\n| `sentinelone.ad_mail` | string | windows, macos, linux |\n| `sentinelone.ad_user_principal_name` | string | windows, macos, linux |\n| `sentinelone.agent_version` | version | windows, macos, linux |\n| `sentinelone.allow_remote_shell` | boolean | windows, macos, linux |\n| `sentinelone.apps_vulnerability_status` | enum_string | windows, macos, linux |\n| `sentinelone.cloud_providers` | json | windows, macos, linux |\n| `sentinelone.computer_name` | string | windows, macos, linux |\n| `sentinelone.console_migration_status` | enum_string | windows, macos, linux |\n| `sentinelone.core_count` | integer | windows, macos, linux |\n| `sentinelone.cpu_count` | integer | windows, macos, linux |\n| `sentinelone.cpu_id` | string | windows, macos, linux |\n| `sentinelone.detection_state` | enum_string | windows, macos, linux |\n| `sentinelone.domain` | string | windows, macos, linux |\n| `sentinelone.encrypted_applications` | boolean | windows, macos, linux |\n| `sentinelone.enrolled` | boolean | windows, macos, linux |\n| `sentinelone.external_id` | string | windows, macos, linux |\n| `sentinelone.external_ip` | ip | windows, macos, linux |\n| `sentinelone.firewall_enabled` | boolean | windows, macos, linux |\n| `sentinelone.first_full_mode_at` | datetime | windows, macos, linux |\n| `sentinelone.full_disk_scan_updated_at` | datetime | windows, macos, linux |\n| `sentinelone.group_id` | string | windows, macos, linux |\n| `sentinelone.group_ip` | string | windows, macos, linux |\n| `sentinelone.group_name` | string | windows, macos, linux |\n| `sentinelone.has_containerized_workload` | boolean | windows, macos, linux |\n| `sentinelone.in_remote_shell_session` | boolean | windows, macos, linux |\n| `sentinelone.infected` | boolean | windows, macos, linux |\n| `sentinelone.installer_type` | enum_string | windows, macos, linux |\n| `sentinelone.is_active` | boolean | windows, macos, linux |\n| `sentinelone.is_ad_connector` | boolean | windows, macos, linux |\n| `sentinelone.is_decommissioned` | boolean | windows, macos, linux |\n| `sentinelone.is_hyper_automate` | boolean | windows, macos, linux |\n| `sentinelone.is_pending_uninstall` | boolean | windows, macos, linux |\n| `sentinelone.is_uninstalled` | boolean | windows, macos, linux |\n| `sentinelone.is_up_to_date` | boolean | windows, macos, linux |\n| `sentinelone.last_active_at` | datetime | windows, macos, linux |\n| `sentinelone.last_ip_to_management` | ip | windows, macos, linux |\n| `sentinelone.last_logged_in_user_name` | string | windows, macos, linux |\n| `sentinelone.last_successful_scan_at` | datetime | windows, macos, linux |\n| `sentinelone.location_enabled` | boolean | windows, macos, linux |\n| `sentinelone.location_type` | enum_string | windows, macos, linux |\n| `sentinelone.locations` | json | windows, macos, linux |\n| `sentinelone.machine_sid` | string | windows, macos, linux |\n| `sentinelone.machine_type` | enum_string | windows, macos, linux |\n| `sentinelone.missing_permissions` | string_array | windows, macos, linux |\n| `sentinelone.mitigation_mode` | enum_string | windows, macos, linux |\n| `sentinelone.mitigation_mode_suspicious` | enum_string | windows, macos, linux |\n| `sentinelone.model_name` | string | windows, macos, linux |\n| `sentinelone.network_interfaces` | json | windows, macos, linux |\n| `sentinelone.network_quarantine_enabled` | boolean | windows, macos, linux |\n| `sentinelone.network_status` | enum_string | windows, macos, linux |\n| `sentinelone.operational_state` | enum_string | windows, macos, linux |\n| `sentinelone.operational_state_expires_at` | datetime | windows, macos, linux |\n| `sentinelone.os_arch` | enum_string | windows, macos, linux |\n| `sentinelone.os_name` | string | windows, macos, linux |\n| `sentinelone.os_revision` | version | windows, macos, linux |\n| `sentinelone.os_start_time` | datetime | windows, macos, linux |\n| `sentinelone.os_type` | enum_string | windows, macos, linux |\n| `sentinelone.os_up_to_date` | boolean | windows, macos |\n| `sentinelone.os_username` | string | windows, macos, linux |\n| `sentinelone.protected_containers_count` | integer | windows, macos, linux |\n| `sentinelone.protected_pods_count` | integer | windows, macos, linux |\n| `sentinelone.protected_tasks_count` | integer | windows, macos, linux |\n| `sentinelone.proxy_console` | boolean | windows, macos, linux |\n| `sentinelone.proxy_deep_visibility` | boolean | windows, macos, linux |\n| `sentinelone.proxy_method` | enum_string | windows, macos, linux |\n| `sentinelone.proxy_pac_file_usage` | boolean | windows, macos, linux |\n| `sentinelone.ranger_status` | enum_string | windows, macos, linux |\n| `sentinelone.ranger_version` | version | windows, macos, linux |\n| `sentinelone.registered_at` | datetime | windows, macos, linux |\n| `sentinelone.remote_profiling_state` | enum_string | windows, macos, linux |\n| `sentinelone.remote_profiling_state_expires_at` | datetime | windows, macos, linux |\n| `sentinelone.scan_aborted_at` | datetime | windows, macos, linux |\n| `sentinelone.scan_finished_at` | datetime | windows, macos, linux |\n| `sentinelone.scan_started_at` | datetime | windows, macos, linux |\n| `sentinelone.scan_status` | enum_string | windows, macos, linux |\n| `sentinelone.sentinelone_account_id` | string | windows, macos, linux |\n| `sentinelone.sentinelone_id` | string | windows, macos, linux |\n| `sentinelone.serial_number` | string | windows, macos, linux |\n| `sentinelone.site_id` | string | windows, macos, linux |\n| `sentinelone.site_name` | string | windows, macos, linux |\n| `sentinelone.storage_name` | string | windows, macos, linux |\n| `sentinelone.storage_type` | string | windows, macos, linux |\n| `sentinelone.tags` | json | windows, macos, linux |\n| `sentinelone.threat_reboot_required` | boolean | windows, macos, linux |\n| `sentinelone.total_memory` | integer | windows, macos, linux |\n| `sentinelone.user_actions_needed` | string_array | windows, macos, linux |\n| `sentinelone.uuid` | string | windows, macos, linux |\n\n### sophos fields\n\n| Field | Type | Platforms |\n| --- | --- | --- |\n| `sophos.assigned_products` | json | windows, macos, linux |\n| `sophos.associated_person_id` | string | windows, macos, linux |\n| `sophos.associated_person_name` | string | windows, macos, linux |\n| `sophos.associated_person_via_login` | string | windows, macos, linux |\n| `sophos.cloned` | boolean | windows, macos, linux |\n| `sophos.cloud_instance_id` | string | windows, macos, linux |\n| `sophos.cloud_provider` | enum_string | windows, macos, linux |\n| `sophos.device_software` | json | windows, macos, linux |\n| `sophos.encryption_overall_status` | enum_string | windows, macos, linux |\n| `sophos.encryption_volumes` | json | windows, macos, linux |\n| `sophos.enrolled` | boolean | windows, macos, linux |\n| `sophos.group_hierarchy` | json | windows, macos, linux |\n| `sophos.group_id` | string | windows, macos, linux |\n| `sophos.group_name` | string | windows, macos, linux |\n| `sophos.health_overall` | enum_string | windows, macos, linux |\n| `sophos.health_service_details` | json | windows, macos, linux |\n| `sophos.health_services_status` | enum_string | windows, macos, linux |\n| `sophos.health_threats_status` | enum_string | windows, macos, linux |\n| `sophos.hostname` | string | windows, macos, linux |\n| `sophos.ipv4_addresses` | string_array | windows, macos, linux |\n| `sophos.ipv6_addresses` | string_array | windows, macos, linux |\n| `sophos.isolation_admin_isolated` | boolean | windows, macos, linux |\n| `sophos.isolation_self_isolated` | boolean | windows, macos, linux |\n| `sophos.isolation_status` | enum_string | windows, macos, linux |\n| `sophos.last_agent_update_at` | datetime | windows, macos, linux |\n| `sophos.last_os_update_at` | datetime | windows, macos, linux |\n| `sophos.last_seen_at` | datetime | windows, macos, linux |\n| `sophos.lockdown_status` | enum_string | windows, macos, linux |\n| `sophos.mac_addresses` | string_array | windows, macos, linux |\n| `sophos.online` | boolean | windows, macos, linux |\n| `sophos.os_build` | integer | windows, macos, linux |\n| `sophos.os_is_server` | boolean | windows, macos, linux |\n| `sophos.os_major_version` | integer | windows, macos, linux |\n| `sophos.os_minor_version` | integer | windows, macos, linux |\n| `sophos.os_name` | string | windows, macos, linux |\n| `sophos.os_platform` | enum_string | windows, macos, linux |\n| `sophos.os_up_to_date` | boolean | macos |\n| `sophos.packages` | json | windows, macos, linux |\n| `sophos.serial_number` | string | windows, macos, linux |\n| `sophos.sophos_id` | string | windows, macos, linux |\n| `sophos.tags` | json | windows, macos, linux |\n| `sophos.tamper_protection_enabled` | boolean | windows, macos, linux |\n| `sophos.tamper_protection_supported` | boolean | windows, macos, linux |\n| `sophos.type` | enum_string | windows, macos, linux |",
         "example": {
           "and": [
             {
@@ -7026,6 +7225,34 @@
           "updated_at"
         ],
         "title": "OktaDirectory",
+        "type": "object"
+      },
+      "SentinelOnePostureProviderUpdateRequest": {
+        "description": "PUT/PATCH body for updating a SentinelOne posture provider. All fields are optional; omitted fields keep their current value.",
+        "properties": {
+          "sentinelone_posture_provider": {
+            "additionalProperties": false,
+            "properties": {
+              "is_disabled": {
+                "description": "Whether the provider is disabled. A provider can be enabled only while it is verified.",
+                "example": false,
+                "type": "boolean"
+              },
+              "name": {
+                "description": "Name shown to admins, unique across the account's posture providers",
+                "example": "SentinelOne",
+                "maxLength": 255,
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "type": "object"
+          }
+        },
+        "required": [
+          "sentinelone_posture_provider"
+        ],
+        "title": "SentinelOnePostureProviderUpdateRequest",
         "type": "object"
       },
       "GatewayCreate": {
@@ -8222,7 +8449,7 @@
             "type": "boolean"
           },
           "last_seen_at": {
-            "description": "Last time the actor was seen",
+            "description": "Latest time the Actor was active: a Client of theirs connected, they signed in to the admin portal, or one of their API or OAuth tokens was used. Null when none of these was recorded, and always null in a delete response.",
             "example": "2024-01-15T10:30:00Z",
             "format": "date-time",
             "nullable": true,
@@ -8378,6 +8605,10 @@
               ]
             },
             "nullable": true
+          },
+          "require_attestation": {
+            "description": "Whether the Client must present a valid X.509 certificate from one of the account's trust anchors on its current connection. Setting it to true returns 422 when the account has no trust anchors.",
+            "type": "boolean"
           },
           "resource_id": {
             "description": "Resource ID",
@@ -9783,7 +10014,7 @@
             "type": "string"
           },
           "last_seen_at": {
-            "description": "Timestamp of the latest connection",
+            "description": "When the latest connection started. It is not updated while the Client stays connected, so check `online` too. Every Client has connected at least once, when it was created. Null when the Client has not connected since this field started to be recorded in February 2026.",
             "example": "2025-01-01T00:00:00Z",
             "format": "date-time",
             "nullable": true,
@@ -10451,6 +10682,16 @@
             "nullable": true,
             "type": "string"
           },
+          "type": {
+            "description": "`managed` for the built-in Everyone Group, which includes every user and admin Actor implicitly, has no explicit memberships, and cannot be updated or deleted. `static` for every other Group.",
+            "enum": [
+              "managed",
+              "static"
+            ],
+            "example": "static",
+            "readOnly": true,
+            "type": "string"
+          },
           "updated_at": {
             "description": "Last update timestamp",
             "example": "2024-01-15T10:30:00Z",
@@ -10467,6 +10708,7 @@
           "inserted_at",
           "name",
           "synced_at",
+          "type",
           "updated_at"
         ],
         "title": "Group",
@@ -10798,6 +11040,34 @@
         "title": "ipv4 list device comparison",
         "type": "object"
       },
+      "SantaPostureProviderUpdateRequest": {
+        "description": "PUT/PATCH body for updating a Santa posture provider. All fields are optional; omitted fields keep their current value.",
+        "properties": {
+          "santa_posture_provider": {
+            "additionalProperties": false,
+            "properties": {
+              "is_disabled": {
+                "description": "Whether the provider is disabled. A provider can be enabled only while it is verified.",
+                "example": false,
+                "type": "boolean"
+              },
+              "name": {
+                "description": "Name shown to admins, unique across the account's posture providers",
+                "example": "Santa",
+                "maxLength": 255,
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "type": "object"
+          }
+        },
+        "required": [
+          "santa_posture_provider"
+        ],
+        "title": "SantaPostureProviderUpdateRequest",
+        "type": "object"
+      },
       "GatewayUpdate": {
         "description": "Update schema for a single Gateway",
         "properties": {
@@ -10974,6 +11244,34 @@
           }
         },
         "title": "ClientResponse",
+        "type": "object"
+      },
+      "DefenderPostureProviderUpdateRequest": {
+        "description": "PUT/PATCH body for updating a Defender posture provider. All fields are optional; omitted fields keep their current value.",
+        "properties": {
+          "defender_posture_provider": {
+            "additionalProperties": false,
+            "properties": {
+              "is_disabled": {
+                "description": "Whether the provider is disabled. A provider can be enabled only while it is verified.",
+                "example": false,
+                "type": "boolean"
+              },
+              "name": {
+                "description": "Name shown to admins, unique across the account's posture providers",
+                "example": "Microsoft Defender for Endpoint",
+                "maxLength": 255,
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "type": "object"
+          }
+        },
+        "required": [
+          "defender_posture_provider"
+        ],
+        "title": "DefenderPostureProviderUpdateRequest",
         "type": "object"
       },
       "datetime duration provider comparison": {
@@ -11246,6 +11544,11 @@
             },
             "nullable": true
           },
+          "require_attestation": {
+            "description": "Whether the Client must present a valid X.509 certificate from one of the account's trust anchors",
+            "example": false,
+            "type": "boolean"
+          },
           "resource_id": {
             "description": "Resource ID",
             "example": "a9f60587-793c-46ae-8525-597f43ab2fb1",
@@ -11261,6 +11564,7 @@
           "id",
           "is_disabled",
           "postures",
+          "require_attestation",
           "resource_id"
         ],
         "title": "Policy",
@@ -11419,7 +11723,7 @@
         "type": "object"
       },
       "PolicyCondition": {
-        "description": "A condition that must be satisfied for the Policy to grant access.\n\nAll conditions on a Policy must evaluate to true for access to be\ngranted. A condition is made up of a `property`, an `operator`, and a\nlist of `values`. The valid operators and the meaning of `values`\ndepend on the `property`:\n\n* `remote_ip_location_region` with `is_in` / `is_not_in`: `values` are\n  ISO 3166-1 alpha-2 country codes, e.g. `[\"US\", \"CA\"]`.\n* `remote_ip` with `is_in_cidr` / `is_not_in_cidr`: `values` are CIDR\n  ranges (IPv4 or IPv6), e.g. `[\"10.0.0.0/8\", \"2607:f8b0::/32\"]`.\n* `auth_provider_id` with `is_in` / `is_not_in`: `values` are\n  authentication provider IDs (UUIDs).\n* `current_utc_datetime` with `is_in_day_of_week_time_ranges`: each\n  value is a `DAY/TIME_RANGES/TIMEZONE` string where `DAY` is one of\n  `M T W R F S U` (Monday through Sunday), `TIME_RANGES` is a\n  comma-separated list of `HH:MM-HH:MM` ranges, and `TIMEZONE` is an\n  IANA timezone name, e.g. `\"M/09:00-17:00/America/New_York\"`.\n* `client_verified` with `is`: `values` is a single-element list\n  containing `\"true\"` or `\"false\"`.\n* `device_attested` with `is`: `values` is a single-element list\n  containing `\"true\"` or `\"false\"`. `\"true\"` requires the Client to\n  have presented a valid X.509 certificate from one of the account's\n  trust anchors on its current connection.\n",
+        "description": "A condition that must be satisfied for the Policy to grant access.\n\nAll conditions on a Policy must evaluate to true for access to be\ngranted. A condition is made up of a `property`, an `operator`, and a\nlist of `values`. The valid operators and the meaning of `values`\ndepend on the `property`:\n\n* `remote_ip_location_region` with `is_in` / `is_not_in`: `values` are\n  ISO 3166-1 alpha-2 country codes, e.g. `[\"US\", \"CA\"]`.\n* `remote_ip` with `is_in_cidr` / `is_not_in_cidr`: `values` are CIDR\n  ranges (IPv4 or IPv6), e.g. `[\"10.0.0.0/8\", \"2607:f8b0::/32\"]`.\n* `auth_provider_id` with `is_in` / `is_not_in`: `values` are\n  authentication provider IDs (UUIDs).\n* `current_utc_datetime` with `is_in_day_of_week_time_ranges`: each\n  value is a `DAY/TIME_RANGES/TIMEZONE` string where `DAY` is one of\n  `M T W R F S U` (Monday through Sunday), `TIME_RANGES` is a\n  comma-separated list of `HH:MM-HH:MM` ranges, and `TIMEZONE` is an\n  IANA timezone name, e.g. `\"M/09:00-17:00/America/New_York\"`.\n* `client_verified` with `is`: `values` is a single-element list\n  containing `\"true\"` or `\"false\"`.\n",
         "properties": {
           "operator": {
             "description": "How the values are compared against the property",
@@ -11441,8 +11745,7 @@
               "remote_ip",
               "auth_provider_id",
               "current_utc_datetime",
-              "client_verified",
-              "device_attested"
+              "client_verified"
             ],
             "example": "remote_ip_location_region",
             "type": "string"
@@ -11595,6 +11898,34 @@
           "slug"
         ],
         "title": "Account",
+        "type": "object"
+      },
+      "SophosPostureProviderUpdateRequest": {
+        "description": "PUT/PATCH body for updating a Sophos posture provider. All fields are optional; omitted fields keep their current value.",
+        "properties": {
+          "sophos_posture_provider": {
+            "additionalProperties": false,
+            "properties": {
+              "is_disabled": {
+                "description": "Whether the provider is disabled. A provider can be enabled only while it is verified.",
+                "example": false,
+                "type": "boolean"
+              },
+              "name": {
+                "description": "Name shown to admins, unique across the account's posture providers",
+                "example": "Sophos XDR",
+                "maxLength": 255,
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "type": "object"
+          }
+        },
+        "required": [
+          "sophos_posture_provider"
+        ],
+        "title": "SophosPostureProviderUpdateRequest",
         "type": "object"
       },
       "DeviceMembershipCriteria": {
@@ -11935,6 +12266,15 @@
             "example": "2025-01-15T10:30:00Z",
             "format": "date-time",
             "type": "string"
+          },
+          "workspace_domains": {
+            "description": "Verified Google Workspace domains allowed to sign in. Empty for personal-only providers and existing unrestricted providers.",
+            "items": {
+              "type": "string"
+            },
+            "readOnly": true,
+            "type": "array",
+            "uniqueItems": true
           }
         },
         "required": [
@@ -11948,7 +12288,8 @@
           "issuer",
           "name",
           "portal_session_lifetime_secs",
-          "updated_at"
+          "updated_at",
+          "workspace_domains"
         ],
         "title": "GoogleAuthProvider",
         "type": "object"
@@ -13530,6 +13871,23 @@
           "value"
         ],
         "title": "ipv6 list device comparison",
+        "type": "object"
+      },
+      "PostureFieldListResponse": {
+        "description": "Response schema for every Posture Field",
+        "properties": {
+          "data": {
+            "description": "Posture Fields",
+            "items": {
+              "$ref": "#/components/schemas/PostureField"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "title": "PostureFieldListResponse",
         "type": "object"
       },
       "FlowLogIngestRequest": {
@@ -15301,6 +15659,113 @@
         "summary": "Show GitHub Auth Provider",
         "tags": [
           "GitHub Auth Providers"
+        ]
+      }
+    },
+    "/posture_fields": {
+      "get": {
+        "callbacks": {},
+        "description": "Lists every field a Policy's `postures` expression can test, with its type, operators, and platforms. Filter by `provider` to keep the response small.\n\nOne node of a Policy's device posture expression. A node has exactly one\nof these shapes:\n\n* `and`: a non-empty list of nodes that must all hold.\n* `or`: a non-empty list of nodes of which at least one must hold.\n* `not`: a node that must not hold.\n* a leaf: a `field`, an `op`, and for most operators a `value`.\n\nA leaf's `field` is `<provider>.<attribute>`, such as\n`intune.compliance_state` or `firezone.last_seen_version`. The provider\nis one of `firezone` (the connecting device's own record), `intune`,\n`iru`, `defender`, `santa`, `sentinelone` or `sophos`. The attribute is\none of that provider's synced device attributes. Every synced provider also has a\nboolean `enrolled` that is true when the provider knows the device.\n\nThe attribute's type decides which operators apply and what `value`\nmust be:\n\n* strings: `is`, `is_not`, `is_in`, `is_not_in`, `contains`,\n  `does_not_contain`, `starts_with`, `ends_with`, `matches`,\n  `does_not_match`. Comparisons ignore case. `is_in` and `is_not_in`\n  take a list of strings. `matches` and `does_not_match` take a regular\n  expression.\n* booleans: `is` with `true` or `false`.\n* numbers: `eq`, `ne`, `gt`, `gte`, `lt`, `lte`.\n* versions: `is`, `is_not`, `gt`, `gte`, `lt`, `lte`, compared segment\n  by segment, so `14.4` equals `14.4.0`.\n* timestamps: `before` and `after` with an ISO 8601 datetime such as\n  `2026-01-01T00:00:00Z`; `within_last` and `not_within_last` with an\n  ISO 8601 duration such as `PT24H` or `P30D`. A date-only attribute\n  counts as the start of that day in UTC.\n* IP addresses: `is_in_cidr` and `is_not_in_cidr` with a list of CIDRs.\n  `firezone.ipv4` takes IPv4 CIDRs only and `firezone.ipv6` IPv6 only.\n* lists of strings: `contains`, `does_not_contain`, `contains_any_of`,\n  `contains_all_of`, `is_empty`, `is_not_empty`.\n* JSON attributes: `is_empty`, `is_not_empty`.\n\nThe value `@latest` on `firezone.last_seen_version` stands for the newest\nClient release for the device's platform.\n\n`enum_string` uses the string operators; `integer` and `float` use the\nnumeric operators. `string_array` values use a single string for `contains`\nand `does_not_contain`, or a non-empty string list for `contains_any_of`\nand `contains_all_of`.\n\nEvery attribute also accepts `exists` and `does_not_exist`. These and\n`is_empty` / `is_not_empty` take no value: omit `value` or set it to null.\nMissing attributes fail every operator except `does_not_exist`, including\nnegative operators such as `is_not`. A missing provider is evaluated as\none empty row. Its synthetic `enrolled` field is false, so `enrolled is\nfalse` can explicitly match an unenrolled device. `not` negates the\nresult and can also match missing data; use a positive `enrolled is true`\ncheck when enrollment is required.\n\nLeaves that do not apply to the device's platform are removed before\nevaluation, including inside `or` and `not`. An expression with no\napplicable leaves passes. If the platform is unknown, no leaves are\nremoved. Each field lists the platforms it applies to.\nProvider `os_up_to_date` fields are computed from known OS releases;\nthey are not raw provider attributes.\n\nWhen a device matches more than one record of a provider, a leaf holds\nwhen any record satisfies it. Set `rows` to `all` to require every\nrecord. Different leaves may match different provider rows; `and` does\nnot require one row to satisfy all leaves. `rows` is not allowed for\n`firezone`, which always describes exactly one connecting device.\n\nExpressions allow at most 10 nested boolean levels and 100 leaves.\nList values contain 1–100 items; strings are at most 1024 bytes and\nregular expressions at most 256 bytes. Unknown fields, incompatible\noperators, invalid values, and exceeded limits return HTTP 422 with\na path in `validation_errors.postures`.\n",
+        "operationId": "PortalAPI.PostureFieldController.index",
+        "parameters": [
+          {
+            "description": "Filter to the fields of this provider",
+            "in": "query",
+            "name": "provider",
+            "required": false,
+            "schema": {
+              "enum": [
+                "firezone",
+                "intune",
+                "iru",
+                "defender",
+                "santa",
+                "sentinelone",
+                "sophos"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PostureFieldListResponse"
+                }
+              }
+            },
+            "description": "Posture Field Response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The request could not be processed.",
+                  "status": 400,
+                  "title": "Bad Request",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Authentication credentials were missing or invalid.",
+                  "status": 401,
+                  "title": "Unauthorized",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
+                  "status": 429,
+                  "title": "Too Many Requests",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "summary": "List Posture Fields",
+        "tags": [
+          "Policies"
         ]
       }
     },
@@ -17157,6 +17622,118 @@
       }
     },
     "/iru_posture_providers/{id}": {
+      "delete": {
+        "callbacks": {},
+        "description": "Deletes an Iru posture provider and every device synced from it. This\ncannot be undone. Policies keep their posture rules. Once no enabled Iru\nprovider is left, `iru.*` posture rules see every device as not\nenrolled. Returns the deleted provider.\n",
+        "operationId": "PortalAPI.IruPostureProviderController.delete",
+        "parameters": [
+          {
+            "description": "Iru posture provider ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IruPostureProviderResponse"
+                }
+              }
+            },
+            "description": "Iru posture provider response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The request could not be processed.",
+                  "status": 400,
+                  "title": "Bad Request",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Authentication credentials were missing or invalid.",
+                  "status": 401,
+                  "title": "Unauthorized",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The requested resource could not be found.",
+                  "status": 404,
+                  "title": "Not Found",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
+                  "status": 429,
+                  "title": "Too Many Requests",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "summary": "Delete an Iru posture provider",
+        "tags": [
+          "Iru Posture Providers"
+        ]
+      },
       "get": {
         "callbacks": {},
         "operationId": "PortalAPI.IruPostureProviderController.show",
@@ -17264,6 +17841,294 @@
           }
         },
         "summary": "Show an Iru posture provider",
+        "tags": [
+          "Iru Posture Providers"
+        ]
+      },
+      "patch": {
+        "callbacks": {},
+        "description": "Renames, enables, or disables an Iru posture provider. Connecting a\nprovider or changing its tenant happens in the web console.\n\nA disabled provider stops syncing, and policies stop trusting its devices.\nOnce no enabled Iru provider is left, `iru.*` posture rules see every\ndevice as not enrolled. Enabling requires a verified provider, clears any\nsync error, and queues a device sync.\n",
+        "operationId": "PortalAPI.IruPostureProviderController.update (2)",
+        "parameters": [
+          {
+            "description": "Iru posture provider ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IruPostureProviderUpdateRequest"
+              }
+            }
+          },
+          "description": "Iru posture provider attributes",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IruPostureProviderResponse"
+                }
+              }
+            },
+            "description": "Iru posture provider response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The request could not be processed.",
+                  "status": 400,
+                  "title": "Bad Request",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Authentication credentials were missing or invalid.",
+                  "status": 401,
+                  "title": "Unauthorized",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The requested resource could not be found.",
+                  "status": 404,
+                  "title": "Not Found",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The request body failed validation.",
+                  "status": 422,
+                  "title": "Unprocessable Content",
+                  "type": "about:blank",
+                  "validation_errors": {
+                    "name": [
+                      "can't be blank"
+                    ]
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblemDetails"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
+                  "status": 429,
+                  "title": "Too Many Requests",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "summary": "Update an Iru posture provider",
+        "tags": [
+          "Iru Posture Providers"
+        ]
+      },
+      "put": {
+        "callbacks": {},
+        "description": "Renames, enables, or disables an Iru posture provider. Connecting a\nprovider or changing its tenant happens in the web console.\n\nA disabled provider stops syncing, and policies stop trusting its devices.\nOnce no enabled Iru provider is left, `iru.*` posture rules see every\ndevice as not enrolled. Enabling requires a verified provider, clears any\nsync error, and queues a device sync.\n",
+        "operationId": "PortalAPI.IruPostureProviderController.update",
+        "parameters": [
+          {
+            "description": "Iru posture provider ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IruPostureProviderUpdateRequest"
+              }
+            }
+          },
+          "description": "Iru posture provider attributes",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IruPostureProviderResponse"
+                }
+              }
+            },
+            "description": "Iru posture provider response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The request could not be processed.",
+                  "status": 400,
+                  "title": "Bad Request",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Authentication credentials were missing or invalid.",
+                  "status": 401,
+                  "title": "Unauthorized",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The requested resource could not be found.",
+                  "status": 404,
+                  "title": "Not Found",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The request body failed validation.",
+                  "status": 422,
+                  "title": "Unprocessable Content",
+                  "type": "about:blank",
+                  "validation_errors": {
+                    "name": [
+                      "can't be blank"
+                    ]
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblemDetails"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
+                  "status": 429,
+                  "title": "Too Many Requests",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "summary": "Update an Iru posture provider",
         "tags": [
           "Iru Posture Providers"
         ]
@@ -17507,6 +18372,7 @@
     "/sites/{id}": {
       "delete": {
         "callbacks": {},
+        "description": "Deletes a Site. Deleting is not blocked when the Site still has Gateways or Resources.\n\nThe Site's Gateways, Gateway tokens, and Resources are deleted with it. Every Policy for those Resources is deleted too, and Clients lose access to them right away. The system-managed Internet Site cannot be deleted.\n",
         "operationId": "PortalAPI.SiteController.delete",
         "parameters": [
           {
@@ -18363,7 +19229,7 @@
       },
       "patch": {
         "callbacks": {},
-        "description": "Updates a Policy.\n\nA Policy is enabled or disabled through the `is_disabled` field. Disabling a Policy stops it granting access without deleting it.\n\nSet `policy.postures` to replace the entire device posture expression.\nOmit it to preserve existing postures. Send `{\"policy\":{\"postures\":null}}`\nto remove the posture requirement; clearing is allowed even after an\naccount downgrade. Other policy attributes, including `conditions`, are\nunchanged when omitted. Conditions and postures must both hold.\n\nNon-null postures require the `device_posture` entitlement (Enterprise)\nor return 403. Invalid expressions return 422 with a path in\n`validation_errors.postures`. See `PolicyPostureNode` for the expression\ngrammar, complete field catalog, operator types, platform behavior, and\nlimits. Changing postures revokes this policy's active authorizations,\ninterrupting affected connections until they are reauthorized.\n",
+        "description": "Updates a Policy.\n\nA Policy is enabled or disabled through the `is_disabled` field. Disabling a Policy stops it granting access without deleting it.\n\nSet `policy.postures` to replace the entire device posture expression.\nOmit it to preserve existing postures. Send `{\"policy\":{\"postures\":null}}`\nto remove the posture requirement; clearing is allowed even after an\naccount downgrade. Other policy attributes, including `conditions`, are\nunchanged when omitted. Conditions and postures must both hold.\n\nNon-empty `conditions` require the `policy_conditions` entitlement or\nreturn 403. Sending an empty list to remove them is allowed even after\nan account downgrade.\n\nNon-null postures require the `device_posture` entitlement (Enterprise)\nor return 403. Invalid expressions return 422 with a path in\n`validation_errors.postures`. See `PolicyPostureNode` for the expression\ngrammar, complete field catalog, operator types, platform behavior, and\nlimits. `GET /posture_fields` lists the same fields as structured data.\nChanging postures revokes this policy's active authorizations,\ninterrupting affected connections until they are reauthorized.\n",
         "operationId": "PortalAPI.PolicyController.update (2)",
         "parameters": [
           {
@@ -18508,7 +19374,7 @@
       },
       "put": {
         "callbacks": {},
-        "description": "Updates a Policy.\n\nA Policy is enabled or disabled through the `is_disabled` field. Disabling a Policy stops it granting access without deleting it.\n\nSet `policy.postures` to replace the entire device posture expression.\nOmit it to preserve existing postures. Send `{\"policy\":{\"postures\":null}}`\nto remove the posture requirement; clearing is allowed even after an\naccount downgrade. Other policy attributes, including `conditions`, are\nunchanged when omitted. Conditions and postures must both hold.\n\nNon-null postures require the `device_posture` entitlement (Enterprise)\nor return 403. Invalid expressions return 422 with a path in\n`validation_errors.postures`. See `PolicyPostureNode` for the expression\ngrammar, complete field catalog, operator types, platform behavior, and\nlimits. Changing postures revokes this policy's active authorizations,\ninterrupting affected connections until they are reauthorized.\n",
+        "description": "Updates a Policy.\n\nA Policy is enabled or disabled through the `is_disabled` field. Disabling a Policy stops it granting access without deleting it.\n\nSet `policy.postures` to replace the entire device posture expression.\nOmit it to preserve existing postures. Send `{\"policy\":{\"postures\":null}}`\nto remove the posture requirement; clearing is allowed even after an\naccount downgrade. Other policy attributes, including `conditions`, are\nunchanged when omitted. Conditions and postures must both hold.\n\nNon-empty `conditions` require the `policy_conditions` entitlement or\nreturn 403. Sending an empty list to remove them is allowed even after\nan account downgrade.\n\nNon-null postures require the `device_posture` entitlement (Enterprise)\nor return 403. Invalid expressions return 422 with a path in\n`validation_errors.postures`. See `PolicyPostureNode` for the expression\ngrammar, complete field catalog, operator types, platform behavior, and\nlimits. `GET /posture_fields` lists the same fields as structured data.\nChanging postures revokes this policy's active authorizations,\ninterrupting affected connections until they are reauthorized.\n",
         "operationId": "PortalAPI.PolicyController.update",
         "parameters": [
           {
@@ -18653,6 +19519,118 @@
       }
     },
     "/intune_posture_providers/{id}": {
+      "delete": {
+        "callbacks": {},
+        "description": "Deletes an Intune posture provider and every device synced from it. This\ncannot be undone. Policies keep their posture rules. Once no enabled Intune\nprovider is left, `intune.*` posture rules see every device as not\nenrolled. Returns the deleted provider.\n",
+        "operationId": "PortalAPI.IntunePostureProviderController.delete",
+        "parameters": [
+          {
+            "description": "Intune posture provider ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntunePostureProviderResponse"
+                }
+              }
+            },
+            "description": "Intune posture provider response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The request could not be processed.",
+                  "status": 400,
+                  "title": "Bad Request",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Authentication credentials were missing or invalid.",
+                  "status": 401,
+                  "title": "Unauthorized",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The requested resource could not be found.",
+                  "status": 404,
+                  "title": "Not Found",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
+                  "status": 429,
+                  "title": "Too Many Requests",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "summary": "Delete an Intune posture provider",
+        "tags": [
+          "Intune Posture Providers"
+        ]
+      },
       "get": {
         "callbacks": {},
         "operationId": "PortalAPI.IntunePostureProviderController.show",
@@ -18760,6 +19738,294 @@
           }
         },
         "summary": "Show an Intune posture provider",
+        "tags": [
+          "Intune Posture Providers"
+        ]
+      },
+      "patch": {
+        "callbacks": {},
+        "description": "Renames, enables, or disables an Intune posture provider. Connecting a\nprovider or changing its tenant happens in the web console.\n\nA disabled provider stops syncing, and policies stop trusting its devices.\nOnce no enabled Intune provider is left, `intune.*` posture rules see every\ndevice as not enrolled. Enabling requires a verified provider, clears any\nsync error, and queues a device sync.\n",
+        "operationId": "PortalAPI.IntunePostureProviderController.update (2)",
+        "parameters": [
+          {
+            "description": "Intune posture provider ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IntunePostureProviderUpdateRequest"
+              }
+            }
+          },
+          "description": "Intune posture provider attributes",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntunePostureProviderResponse"
+                }
+              }
+            },
+            "description": "Intune posture provider response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The request could not be processed.",
+                  "status": 400,
+                  "title": "Bad Request",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Authentication credentials were missing or invalid.",
+                  "status": 401,
+                  "title": "Unauthorized",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The requested resource could not be found.",
+                  "status": 404,
+                  "title": "Not Found",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The request body failed validation.",
+                  "status": 422,
+                  "title": "Unprocessable Content",
+                  "type": "about:blank",
+                  "validation_errors": {
+                    "name": [
+                      "can't be blank"
+                    ]
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblemDetails"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
+                  "status": 429,
+                  "title": "Too Many Requests",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "summary": "Update an Intune posture provider",
+        "tags": [
+          "Intune Posture Providers"
+        ]
+      },
+      "put": {
+        "callbacks": {},
+        "description": "Renames, enables, or disables an Intune posture provider. Connecting a\nprovider or changing its tenant happens in the web console.\n\nA disabled provider stops syncing, and policies stop trusting its devices.\nOnce no enabled Intune provider is left, `intune.*` posture rules see every\ndevice as not enrolled. Enabling requires a verified provider, clears any\nsync error, and queues a device sync.\n",
+        "operationId": "PortalAPI.IntunePostureProviderController.update",
+        "parameters": [
+          {
+            "description": "Intune posture provider ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IntunePostureProviderUpdateRequest"
+              }
+            }
+          },
+          "description": "Intune posture provider attributes",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IntunePostureProviderResponse"
+                }
+              }
+            },
+            "description": "Intune posture provider response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The request could not be processed.",
+                  "status": 400,
+                  "title": "Bad Request",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Authentication credentials were missing or invalid.",
+                  "status": 401,
+                  "title": "Unauthorized",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The requested resource could not be found.",
+                  "status": 404,
+                  "title": "Not Found",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The request body failed validation.",
+                  "status": 422,
+                  "title": "Unprocessable Content",
+                  "type": "about:blank",
+                  "validation_errors": {
+                    "name": [
+                      "can't be blank"
+                    ]
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblemDetails"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
+                  "status": 429,
+                  "title": "Too Many Requests",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "summary": "Update an Intune posture provider",
         "tags": [
           "Intune Posture Providers"
         ]
@@ -20134,6 +21400,118 @@
       }
     },
     "/defender_posture_providers/{id}": {
+      "delete": {
+        "callbacks": {},
+        "description": "Deletes a Defender posture provider and every device synced from it. This\ncannot be undone. Policies keep their posture rules. Once no enabled Defender\nprovider is left, `defender.*` posture rules see every device as not\nenrolled. Returns the deleted provider.\n",
+        "operationId": "PortalAPI.DefenderPostureProviderController.delete",
+        "parameters": [
+          {
+            "description": "Defender posture provider ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DefenderPostureProviderResponse"
+                }
+              }
+            },
+            "description": "Defender posture provider response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The request could not be processed.",
+                  "status": 400,
+                  "title": "Bad Request",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Authentication credentials were missing or invalid.",
+                  "status": 401,
+                  "title": "Unauthorized",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The requested resource could not be found.",
+                  "status": 404,
+                  "title": "Not Found",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
+                  "status": 429,
+                  "title": "Too Many Requests",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "summary": "Delete a Defender posture provider",
+        "tags": [
+          "Defender Posture Providers"
+        ]
+      },
       "get": {
         "callbacks": {},
         "operationId": "PortalAPI.DefenderPostureProviderController.show",
@@ -20241,6 +21619,294 @@
           }
         },
         "summary": "Show a Defender posture provider",
+        "tags": [
+          "Defender Posture Providers"
+        ]
+      },
+      "patch": {
+        "callbacks": {},
+        "description": "Renames, enables, or disables a Defender posture provider. Connecting a\nprovider or changing its tenant happens in the web console.\n\nA disabled provider stops syncing, and policies stop trusting its devices.\nOnce no enabled Defender provider is left, `defender.*` posture rules see every\ndevice as not enrolled. Enabling requires a verified provider, clears any\nsync error, and queues a device sync.\n",
+        "operationId": "PortalAPI.DefenderPostureProviderController.update (2)",
+        "parameters": [
+          {
+            "description": "Defender posture provider ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DefenderPostureProviderUpdateRequest"
+              }
+            }
+          },
+          "description": "Defender posture provider attributes",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DefenderPostureProviderResponse"
+                }
+              }
+            },
+            "description": "Defender posture provider response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The request could not be processed.",
+                  "status": 400,
+                  "title": "Bad Request",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Authentication credentials were missing or invalid.",
+                  "status": 401,
+                  "title": "Unauthorized",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The requested resource could not be found.",
+                  "status": 404,
+                  "title": "Not Found",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The request body failed validation.",
+                  "status": 422,
+                  "title": "Unprocessable Content",
+                  "type": "about:blank",
+                  "validation_errors": {
+                    "name": [
+                      "can't be blank"
+                    ]
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblemDetails"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
+                  "status": 429,
+                  "title": "Too Many Requests",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "summary": "Update a Defender posture provider",
+        "tags": [
+          "Defender Posture Providers"
+        ]
+      },
+      "put": {
+        "callbacks": {},
+        "description": "Renames, enables, or disables a Defender posture provider. Connecting a\nprovider or changing its tenant happens in the web console.\n\nA disabled provider stops syncing, and policies stop trusting its devices.\nOnce no enabled Defender provider is left, `defender.*` posture rules see every\ndevice as not enrolled. Enabling requires a verified provider, clears any\nsync error, and queues a device sync.\n",
+        "operationId": "PortalAPI.DefenderPostureProviderController.update",
+        "parameters": [
+          {
+            "description": "Defender posture provider ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DefenderPostureProviderUpdateRequest"
+              }
+            }
+          },
+          "description": "Defender posture provider attributes",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DefenderPostureProviderResponse"
+                }
+              }
+            },
+            "description": "Defender posture provider response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The request could not be processed.",
+                  "status": 400,
+                  "title": "Bad Request",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Authentication credentials were missing or invalid.",
+                  "status": 401,
+                  "title": "Unauthorized",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The requested resource could not be found.",
+                  "status": 404,
+                  "title": "Not Found",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The request body failed validation.",
+                  "status": 422,
+                  "title": "Unprocessable Content",
+                  "type": "about:blank",
+                  "validation_errors": {
+                    "name": [
+                      "can't be blank"
+                    ]
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblemDetails"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
+                  "status": 429,
+                  "title": "Too Many Requests",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "summary": "Update a Defender posture provider",
         "tags": [
           "Defender Posture Providers"
         ]
@@ -20357,6 +22023,7 @@
     "/groups/{group_id}/memberships": {
       "get": {
         "callbacks": {},
+        "description": "Lists the Actors in a Group.\n\nThe built-in Everyone Group has no explicit memberships. For it, this lists every user and admin Actor in the account, which is who the Group grants access to. Service accounts and API clients are never members of the Everyone Group.\n",
         "operationId": "PortalAPI.MembershipController.index",
         "parameters": [
           {
@@ -21011,6 +22678,118 @@
       }
     },
     "/santa_posture_providers/{id}": {
+      "delete": {
+        "callbacks": {},
+        "description": "Deletes a Santa posture provider and every device synced from it. This\ncannot be undone. Policies keep their posture rules. Once no enabled Santa\nprovider is left, `santa.*` posture rules see every device as not\nenrolled. Returns the deleted provider.\n",
+        "operationId": "PortalAPI.SantaPostureProviderController.delete",
+        "parameters": [
+          {
+            "description": "Santa posture provider ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SantaPostureProviderResponse"
+                }
+              }
+            },
+            "description": "Santa posture provider response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The request could not be processed.",
+                  "status": 400,
+                  "title": "Bad Request",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Authentication credentials were missing or invalid.",
+                  "status": 401,
+                  "title": "Unauthorized",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The requested resource could not be found.",
+                  "status": 404,
+                  "title": "Not Found",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
+                  "status": 429,
+                  "title": "Too Many Requests",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "summary": "Delete a Santa posture provider",
+        "tags": [
+          "Santa Posture Providers"
+        ]
+      },
       "get": {
         "callbacks": {},
         "operationId": "PortalAPI.SantaPostureProviderController.show",
@@ -21118,6 +22897,294 @@
           }
         },
         "summary": "Show a Santa posture provider",
+        "tags": [
+          "Santa Posture Providers"
+        ]
+      },
+      "patch": {
+        "callbacks": {},
+        "description": "Renames, enables, or disables a Santa posture provider. Connecting a\nprovider or changing its tenant happens in the web console.\n\nA disabled provider stops syncing, and policies stop trusting its devices.\nOnce no enabled Santa provider is left, `santa.*` posture rules see every\ndevice as not enrolled. Enabling requires a verified provider, clears any\nsync error, and queues a device sync.\n",
+        "operationId": "PortalAPI.SantaPostureProviderController.update (2)",
+        "parameters": [
+          {
+            "description": "Santa posture provider ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SantaPostureProviderUpdateRequest"
+              }
+            }
+          },
+          "description": "Santa posture provider attributes",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SantaPostureProviderResponse"
+                }
+              }
+            },
+            "description": "Santa posture provider response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The request could not be processed.",
+                  "status": 400,
+                  "title": "Bad Request",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Authentication credentials were missing or invalid.",
+                  "status": 401,
+                  "title": "Unauthorized",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The requested resource could not be found.",
+                  "status": 404,
+                  "title": "Not Found",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The request body failed validation.",
+                  "status": 422,
+                  "title": "Unprocessable Content",
+                  "type": "about:blank",
+                  "validation_errors": {
+                    "name": [
+                      "can't be blank"
+                    ]
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblemDetails"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
+                  "status": 429,
+                  "title": "Too Many Requests",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "summary": "Update a Santa posture provider",
+        "tags": [
+          "Santa Posture Providers"
+        ]
+      },
+      "put": {
+        "callbacks": {},
+        "description": "Renames, enables, or disables a Santa posture provider. Connecting a\nprovider or changing its tenant happens in the web console.\n\nA disabled provider stops syncing, and policies stop trusting its devices.\nOnce no enabled Santa provider is left, `santa.*` posture rules see every\ndevice as not enrolled. Enabling requires a verified provider, clears any\nsync error, and queues a device sync.\n",
+        "operationId": "PortalAPI.SantaPostureProviderController.update",
+        "parameters": [
+          {
+            "description": "Santa posture provider ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SantaPostureProviderUpdateRequest"
+              }
+            }
+          },
+          "description": "Santa posture provider attributes",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SantaPostureProviderResponse"
+                }
+              }
+            },
+            "description": "Santa posture provider response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The request could not be processed.",
+                  "status": 400,
+                  "title": "Bad Request",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Authentication credentials were missing or invalid.",
+                  "status": 401,
+                  "title": "Unauthorized",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The requested resource could not be found.",
+                  "status": 404,
+                  "title": "Not Found",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The request body failed validation.",
+                  "status": 422,
+                  "title": "Unprocessable Content",
+                  "type": "about:blank",
+                  "validation_errors": {
+                    "name": [
+                      "can't be blank"
+                    ]
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblemDetails"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
+                  "status": 429,
+                  "title": "Too Many Requests",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "summary": "Update a Santa posture provider",
         "tags": [
           "Santa Posture Providers"
         ]
@@ -21462,6 +23529,7 @@
     "/resources/{id}": {
       "delete": {
         "callbacks": {},
+        "description": "Deletes a Resource. Deleting is not blocked when Policies still use the Resource.\n\nEvery Policy for the Resource is deleted with it, and Clients lose access to the Resource right away. Use `GET /policies?resource_id=...` first to see which Policies will be deleted. The Internet Resource cannot be deleted.\n",
         "operationId": "PortalAPI.ResourceController.delete",
         "parameters": [
           {
@@ -22510,6 +24578,62 @@
             "name": "firezone_id",
             "required": false,
             "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Filter to Clients owned by this Actor",
+            "in": "query",
+            "name": "actor_id",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Filter to Clients that are connected (`true`) or not connected (`false`) right now",
+            "in": "query",
+            "name": "online",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "description": "Filter to Clients whose latest connection started before this RFC 3339 timestamp.\nA Client with no recorded `last_seen_at` counts as last seen when it was created.\n`last_seen_at` is set when a Client connects, so a Client that has stayed\nconnected since before this time also matches; add `online=false` to leave it out.\n",
+            "example": "2026-01-01T00:00:00Z",
+            "in": "query",
+            "name": "last_seen_before",
+            "required": false,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Filter to Clients whose latest connection started at or after this RFC 3339\ntimestamp. A Client with no recorded `last_seen_at` counts as last seen when it\nwas created.\n",
+            "example": "2026-01-01T00:00:00Z",
+            "in": "query",
+            "name": "last_seen_after",
+            "required": false,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Filter to Clients of this type, read from the user agent of the latest session:\n`headless` (Linux and Windows headless Clients), `gui` (Linux and Windows GUI\nClients), `apple` (macOS and iOS), or `android`. Clients with no recorded user\nagent match no type.\n",
+            "in": "query",
+            "name": "client_type",
+            "required": false,
+            "schema": {
+              "enum": [
+                "headless",
+                "gui",
+                "apple",
+                "android"
+              ],
               "type": "string"
             }
           }
@@ -23907,6 +26031,118 @@
       }
     },
     "/sentinelone_posture_providers/{id}": {
+      "delete": {
+        "callbacks": {},
+        "description": "Deletes a SentinelOne posture provider and every device synced from it. This\ncannot be undone. Policies keep their posture rules. Once no enabled SentinelOne\nprovider is left, `sentinelone.*` posture rules see every device as not\nenrolled. Returns the deleted provider.\n",
+        "operationId": "PortalAPI.SentinelOnePostureProviderController.delete",
+        "parameters": [
+          {
+            "description": "SentinelOne posture provider ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SentinelOnePostureProviderResponse"
+                }
+              }
+            },
+            "description": "SentinelOne posture provider response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The request could not be processed.",
+                  "status": 400,
+                  "title": "Bad Request",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Authentication credentials were missing or invalid.",
+                  "status": 401,
+                  "title": "Unauthorized",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The requested resource could not be found.",
+                  "status": 404,
+                  "title": "Not Found",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
+                  "status": 429,
+                  "title": "Too Many Requests",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "summary": "Delete a SentinelOne posture provider",
+        "tags": [
+          "SentinelOne Posture Providers"
+        ]
+      },
       "get": {
         "callbacks": {},
         "operationId": "PortalAPI.SentinelOnePostureProviderController.show",
@@ -24014,6 +26250,294 @@
           }
         },
         "summary": "Show a SentinelOne posture provider",
+        "tags": [
+          "SentinelOne Posture Providers"
+        ]
+      },
+      "patch": {
+        "callbacks": {},
+        "description": "Renames, enables, or disables a SentinelOne posture provider. Connecting a\nprovider or changing its tenant happens in the web console.\n\nA disabled provider stops syncing, and policies stop trusting its devices.\nOnce no enabled SentinelOne provider is left, `sentinelone.*` posture rules see every\ndevice as not enrolled. Enabling requires a verified provider, clears any\nsync error, and queues a device sync.\n",
+        "operationId": "PortalAPI.SentinelOnePostureProviderController.update (2)",
+        "parameters": [
+          {
+            "description": "SentinelOne posture provider ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SentinelOnePostureProviderUpdateRequest"
+              }
+            }
+          },
+          "description": "SentinelOne posture provider attributes",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SentinelOnePostureProviderResponse"
+                }
+              }
+            },
+            "description": "SentinelOne posture provider response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The request could not be processed.",
+                  "status": 400,
+                  "title": "Bad Request",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Authentication credentials were missing or invalid.",
+                  "status": 401,
+                  "title": "Unauthorized",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The requested resource could not be found.",
+                  "status": 404,
+                  "title": "Not Found",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The request body failed validation.",
+                  "status": 422,
+                  "title": "Unprocessable Content",
+                  "type": "about:blank",
+                  "validation_errors": {
+                    "name": [
+                      "can't be blank"
+                    ]
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblemDetails"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
+                  "status": 429,
+                  "title": "Too Many Requests",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "summary": "Update a SentinelOne posture provider",
+        "tags": [
+          "SentinelOne Posture Providers"
+        ]
+      },
+      "put": {
+        "callbacks": {},
+        "description": "Renames, enables, or disables a SentinelOne posture provider. Connecting a\nprovider or changing its tenant happens in the web console.\n\nA disabled provider stops syncing, and policies stop trusting its devices.\nOnce no enabled SentinelOne provider is left, `sentinelone.*` posture rules see every\ndevice as not enrolled. Enabling requires a verified provider, clears any\nsync error, and queues a device sync.\n",
+        "operationId": "PortalAPI.SentinelOnePostureProviderController.update",
+        "parameters": [
+          {
+            "description": "SentinelOne posture provider ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SentinelOnePostureProviderUpdateRequest"
+              }
+            }
+          },
+          "description": "SentinelOne posture provider attributes",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SentinelOnePostureProviderResponse"
+                }
+              }
+            },
+            "description": "SentinelOne posture provider response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The request could not be processed.",
+                  "status": 400,
+                  "title": "Bad Request",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Authentication credentials were missing or invalid.",
+                  "status": 401,
+                  "title": "Unauthorized",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The requested resource could not be found.",
+                  "status": 404,
+                  "title": "Not Found",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The request body failed validation.",
+                  "status": 422,
+                  "title": "Unprocessable Content",
+                  "type": "about:blank",
+                  "validation_errors": {
+                    "name": [
+                      "can't be blank"
+                    ]
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblemDetails"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
+                  "status": 429,
+                  "title": "Too Many Requests",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "summary": "Update a SentinelOne posture provider",
         "tags": [
           "SentinelOne Posture Providers"
         ]
@@ -24358,6 +26882,7 @@
     "/groups/{id}": {
       "delete": {
         "callbacks": {},
+        "description": "Deletes a Group and its memberships.\n\nPolicies that grant the Group are kept, but their `group_id` becomes null and they grant no access. A Policy for a synced Group is linked again automatically if the Group reappears on a later directory sync. The built-in Everyone Group cannot be deleted.\n",
         "operationId": "PortalAPI.GroupController.delete",
         "parameters": [
           {
@@ -25641,7 +28166,7 @@
       },
       "post": {
         "callbacks": {},
-        "description": "Creates a Policy.\n\nA Policy is enabled by default. Pass `is_disabled: true` to create it disabled, so it grants no access until enabled.\n\nEnterprise accounts with the `device_posture` entitlement can include\n`policy.postures`, a boolean expression of `and`, `or`, `not`, and typed\nprovider-field comparisons. Postures and all `policy.conditions` must hold\ntogether. For example:\n\n```json\n{\"policy\": {\"group_id\": \"00000000-0000-0000-0000-000000000001\",\n  \"resource_id\": \"00000000-0000-0000-0000-000000000002\",\n  \"postures\": {\"and\": [\n    {\"field\": \"intune.enrolled\", \"op\": \"is\", \"value\": true},\n    {\"field\": \"intune.compliance_state\", \"op\": \"is\", \"value\": \"compliant\"}\n  ]}}}\n```\n\nOmit `postures` or use null for no posture requirement. Non-null postures\nwithout the entitlement return 403. Invalid expressions return 422 with\ndetails in `validation_errors.postures`. See `PolicyPostureNode` for the\ncomplete field catalog, operator types, platform behavior, and limits.\n",
+        "description": "Creates a Policy.\n\nA Policy is enabled by default. Pass `is_disabled: true` to create it disabled, so it grants no access until enabled.\n\nEnterprise accounts with the `device_posture` entitlement can include\n`policy.postures`, a boolean expression of `and`, `or`, `not`, and typed\nprovider-field comparisons. Postures and all `policy.conditions` must hold\ntogether. For example:\n\n```json\n{\"policy\": {\"group_id\": \"00000000-0000-0000-0000-000000000001\",\n  \"resource_id\": \"00000000-0000-0000-0000-000000000002\",\n  \"postures\": {\"and\": [\n    {\"field\": \"intune.enrolled\", \"op\": \"is\", \"value\": true},\n    {\"field\": \"intune.compliance_state\", \"op\": \"is\", \"value\": \"compliant\"}\n  ]}}}\n```\n\nNon-empty `conditions` without the `policy_conditions` entitlement return\n403. Omit `postures` or use null for no posture requirement. Non-null\npostures without the entitlement return 403. Invalid expressions return 422 with\ndetails in `validation_errors.postures`. See `PolicyPostureNode` for the\ncomplete field catalog, operator types, platform behavior, and limits.\n`GET /posture_fields` lists the same fields as structured data.\n",
         "operationId": "PortalAPI.PolicyController.create",
         "parameters": [],
         "requestBody": {
@@ -25777,7 +28302,7 @@
     "/logs": {
       "get": {
         "callbacks": {},
-        "description": "Lists log entries of the requested `type` for the authenticated account.\n\n- `change`: audit entries recording each insert, update, or delete event\n  against an account-scoped object, most recent first.\n- `session`: one entry per Client, Gateway, or Portal session created,\n  most recent first.\n- `flow`: one entry per network flow reported by Clients and Gateways,\n  most recently started first.\n- `api_request`: one entry per authenticated REST API request, most\n  recent first.\n\nThe `begin` and `end` query parameters bound the time window. For\n`change`, `session`, and `api_request`, entries match when their\n`timestamp` falls inside the window; for `flow`, entries match when\nthe flow was active at any point inside the window, i.e. when\n`[flow_start, flow_end)` overlaps it. Both must be RFC 3339 (ISO\n8601) timestamps, for example `2026-05-26T00:00:00Z`; values with a\nnon-UTC offset are accepted and converted to UTC. When omitted,\n`begin` defaults to 90 days before the current time and `end`\ndefaults to the current time. `begin` must be less than or equal to\n`end`.\n\nResults can be further narrowed by `actor_id` (every type) or\n`actor_email` (`change`, `session`, and `flow`), which matches the\nemail recorded when the entry was created. API requests are made by\nAPI clients, which have no email, so `actor_email` is not supported\nfor `api_request`.\n\nUse the `next_page` cursor returned in `metadata` to fetch the\nfollowing page of results.\n",
+        "description": "Retrieves Firezone audit, session, network flow, or REST API request logs\nfor the authenticated account. Use this to investigate configuration\nchanges, review session activity, or troubleshoot network access and API\nrequests. Returns a page of log entries, most recent first.\n\n- `change`: audit entries recording each insert, update, or delete event\n  against an account-scoped object, most recent first.\n- `session`: one entry per Client, Gateway, or Portal session created,\n  most recent first.\n- `flow`: one entry per network flow reported by Clients and Gateways,\n  most recently started first.\n- `api_request`: one entry per authenticated REST API request, most\n  recent first.\n\nSelect one log stream with the required `type` argument. Narrow results\nwith `begin` and `end` RFC 3339 timestamps, for example\n`2026-05-26T00:00:00Z`. The inclusive window applies to the entry's\n`timestamp`, or `flow_start` for flows. Non-UTC offsets are converted\nto UTC. The default window is the last 90 days; `begin` must not be\nlater than `end`.\n\nResults can be further narrowed by `actor_id` (every type) or\n`actor_email` (`change`, `session`, and `flow`), which matches the\nemail recorded when the entry was created. API requests are made by\nAPI clients, which have no email, so `actor_email` is not supported\nfor `api_request`.\n\nReturns up to `limit` entries (default 50, maximum 100). Pass the\n`next_page` cursor from the response's `metadata` as `page_cursor`\nto retrieve the next page.\n",
         "operationId": "PortalAPI.LogController.index",
         "parameters": [
           {
@@ -26750,6 +29275,118 @@
       }
     },
     "/sophos_posture_providers/{id}": {
+      "delete": {
+        "callbacks": {},
+        "description": "Deletes a Sophos posture provider and every device synced from it. This\ncannot be undone. Policies keep their posture rules. Once no enabled Sophos\nprovider is left, `sophos.*` posture rules see every device as not\nenrolled. Returns the deleted provider.\n",
+        "operationId": "PortalAPI.SophosPostureProviderController.delete",
+        "parameters": [
+          {
+            "description": "Sophos posture provider ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SophosPostureProviderResponse"
+                }
+              }
+            },
+            "description": "Sophos posture provider response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The request could not be processed.",
+                  "status": 400,
+                  "title": "Bad Request",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Authentication credentials were missing or invalid.",
+                  "status": 401,
+                  "title": "Unauthorized",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The requested resource could not be found.",
+                  "status": 404,
+                  "title": "Not Found",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
+                  "status": 429,
+                  "title": "Too Many Requests",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "summary": "Delete a Sophos posture provider",
+        "tags": [
+          "Sophos Posture Providers"
+        ]
+      },
       "get": {
         "callbacks": {},
         "operationId": "PortalAPI.SophosPostureProviderController.show",
@@ -26857,6 +29494,294 @@
           }
         },
         "summary": "Show a Sophos posture provider",
+        "tags": [
+          "Sophos Posture Providers"
+        ]
+      },
+      "patch": {
+        "callbacks": {},
+        "description": "Renames, enables, or disables a Sophos posture provider. Connecting a\nprovider or changing its tenant happens in the web console.\n\nA disabled provider stops syncing, and policies stop trusting its devices.\nOnce no enabled Sophos provider is left, `sophos.*` posture rules see every\ndevice as not enrolled. Enabling requires a verified provider, clears any\nsync error, and queues a device sync.\n",
+        "operationId": "PortalAPI.SophosPostureProviderController.update (2)",
+        "parameters": [
+          {
+            "description": "Sophos posture provider ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SophosPostureProviderUpdateRequest"
+              }
+            }
+          },
+          "description": "Sophos posture provider attributes",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SophosPostureProviderResponse"
+                }
+              }
+            },
+            "description": "Sophos posture provider response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The request could not be processed.",
+                  "status": 400,
+                  "title": "Bad Request",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Authentication credentials were missing or invalid.",
+                  "status": 401,
+                  "title": "Unauthorized",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The requested resource could not be found.",
+                  "status": 404,
+                  "title": "Not Found",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The request body failed validation.",
+                  "status": 422,
+                  "title": "Unprocessable Content",
+                  "type": "about:blank",
+                  "validation_errors": {
+                    "name": [
+                      "can't be blank"
+                    ]
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblemDetails"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
+                  "status": 429,
+                  "title": "Too Many Requests",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "summary": "Update a Sophos posture provider",
+        "tags": [
+          "Sophos Posture Providers"
+        ]
+      },
+      "put": {
+        "callbacks": {},
+        "description": "Renames, enables, or disables a Sophos posture provider. Connecting a\nprovider or changing its tenant happens in the web console.\n\nA disabled provider stops syncing, and policies stop trusting its devices.\nOnce no enabled Sophos provider is left, `sophos.*` posture rules see every\ndevice as not enrolled. Enabling requires a verified provider, clears any\nsync error, and queues a device sync.\n",
+        "operationId": "PortalAPI.SophosPostureProviderController.update",
+        "parameters": [
+          {
+            "description": "Sophos posture provider ID",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SophosPostureProviderUpdateRequest"
+              }
+            }
+          },
+          "description": "Sophos posture provider attributes",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SophosPostureProviderResponse"
+                }
+              }
+            },
+            "description": "Sophos posture provider response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The request could not be processed.",
+                  "status": 400,
+                  "title": "Bad Request",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Authentication credentials were missing or invalid.",
+                  "status": 401,
+                  "title": "Unauthorized",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "You do not have permission to perform this action.",
+                  "status": 403,
+                  "title": "Forbidden",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The requested resource could not be found.",
+                  "status": 404,
+                  "title": "Not Found",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "The request body failed validation.",
+                  "status": 422,
+                  "title": "Unprocessable Content",
+                  "type": "about:blank",
+                  "validation_errors": {
+                    "name": [
+                      "can't be blank"
+                    ]
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblemDetails"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "example": {
+                  "detail": "Rate limit exceeded. Retry after the time indicated in the Retry-After header.",
+                  "status": 429,
+                  "title": "Too Many Requests",
+                  "type": "about:blank"
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "summary": "Update a Sophos posture provider",
         "tags": [
           "Sophos Posture Providers"
         ]

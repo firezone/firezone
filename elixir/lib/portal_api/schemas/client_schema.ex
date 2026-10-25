@@ -169,7 +169,11 @@ defmodule PortalAPI.Schemas.Client do
           type: :string,
           format: :"date-time",
           nullable: true,
-          description: "Timestamp of the latest connection"
+          description:
+            "When the latest connection started. It is not updated while the Client stays " <>
+              "connected, so check `online` too. Every Client has connected at least once, " <>
+              "when it was created. Null when the Client has not connected since this field " <>
+              "started to be recorded in February 2026."
         },
         last_seen_version: %Schema{
           example: "1.5.0",

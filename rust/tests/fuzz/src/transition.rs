@@ -243,6 +243,7 @@ impl Transition {
         }
     }
 
+    // TODO: Remove the `iceless` parameter with classic ICE: every flow then survives roams and relay changes.
     /// Returns whether a flow remains predictable across this transition.
     pub(crate) fn retains_flow(&self, client_id: ClientId, route: Route, iceless: bool) -> bool {
         match self {

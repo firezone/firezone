@@ -2,7 +2,7 @@
 
 mod plain_ip;
 
-use ip_packet::{IpPacket, IpPacketBuf};
+use ip_packet::IpPacket;
 use std::os::fd::{AsRawFd as _, OwnedFd};
 use std::sync::Arc;
 use std::{io, os::fd::RawFd};
@@ -14,7 +14,7 @@ pub struct Io {
 }
 
 impl tun::Tun for Io {
-    fn sender(&self) -> &tun::OutboundTx {
+    fn sender(&mut self) -> &mut tun::OutboundTx {
         self.workers.sender()
     }
 
@@ -61,9 +61,7 @@ fn interface_name(fd: &OwnedFd) -> io::Result<String> {
 }
 
 /// Read from the given file descriptor in the buffer.
-fn read(fd: RawFd, dst: &mut IpPacketBuf) -> io::Result<usize> {
-    let dst = dst.buf();
-
+fn read(fd: RawFd, dst: &mut [u8]) -> io::Result<usize> {
     // Safety: Within this module, the file descriptor is always valid.
     match unsafe { libc::read(fd, dst.as_mut_ptr() as _, dst.len()) } {
         -1 => Err(io::Error::last_os_error()),

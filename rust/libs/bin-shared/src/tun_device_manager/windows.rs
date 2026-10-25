@@ -232,7 +232,7 @@ impl Tun {
 }
 
 impl tun::Tun for Tun {
-    fn sender(&self) -> &tun::OutboundTx {
+    fn sender(&mut self) -> &mut tun::OutboundTx {
         self.io.sender()
     }
 

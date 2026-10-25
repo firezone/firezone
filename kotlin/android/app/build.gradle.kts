@@ -13,6 +13,7 @@ plugins {
     id("com.google.dagger.hilt.android")
     id("com.google.gms.google-services")
     id("com.google.firebase.crashlytics")
+    id("io.sentry.android.gradle")
     id("com.diffplug.spotless")
     id("kotlin-parcelize")
     id("com.google.devtools.ksp")
@@ -64,12 +65,12 @@ android {
         targetSdk = 36
         versionCode = (System.currentTimeMillis() / 1000 / 10).toInt()
         // mark:next-android-version
-        versionName = "1.5.16"
+        versionName = "1.5.18"
         multiDexEnabled = true
         testInstrumentationRunner = "dev.firezone.android.core.HiltTestRunner"
 
         val gitSha = System.getenv("GITHUB_SHA") ?: "unknown"
-        resValue("string", "git_sha", "Build: \"${gitSha.take(8)}\"")
+        resValue("string", "git_sha", gitSha)
 
         // CI sets this for every build that is not a release, so nothing it builds reports.
         val noTelemetry = System.getenv("FIREZONE_NO_TELEMETRY") == "true"
@@ -161,6 +162,8 @@ android {
             // location, and the JaCoCo agent skips those by default, so nothing a Robolectric test
             // executes was counted. The JDK's own location-less classes cannot be instrumented.
             all { test ->
+                // Robolectric reflects into `jdk.internal.access` to intercept `FileDescriptor`.
+                test.jvmArgs("--add-opens=java.base/jdk.internal.access=ALL-UNNAMED")
                 test.extensions.configure<JacocoTaskExtension> {
                     isIncludeNoLocationClasses = true
                     excludes = listOf("jdk.internal.*")
@@ -344,7 +347,7 @@ dependencies {
     implementation("net.java.dev.jna:jna:5.19.1@aar")
 
     // Sentry
-    implementation("io.sentry:sentry-android:8.57.0")
+    implementation("io.sentry:sentry-android:8.60.0")
 
     // Compose
     val composeBom = platform("androidx.compose:compose-bom:2026.09.00")
@@ -365,7 +368,7 @@ dependencies {
     // 32.2.x, so it loads. 1.5.0 rewrote ComposeViewModelForwarding to flag forwarding
     // inside nested blocks; our UI model that wraps a resource is named `ResourceUiModel`
     // (not `*ViewModel`) so the check doesn't mistake it for a real ViewModel.
-    lintChecks("com.slack.lint.compose:compose-lint-checks:1.6.0")
+    lintChecks("com.slack.lint.compose:compose-lint-checks:1.6.1")
 
     // Screenshots. Roborazzi draws Compose through Robolectric's native graphics, so the
     // screens render on the JVM without an emulator.
@@ -376,11 +379,27 @@ dependencies {
     debugImplementation("androidx.compose.ui:ui-test-manifest")
     testImplementation("io.github.takahirom.roborazzi:roborazzi:1.76.0")
     testImplementation("io.github.takahirom.roborazzi:roborazzi-compose:1.76.0")
-    testImplementation("org.robolectric:robolectric:4.16.1")
+    testImplementation("org.robolectric:robolectric:4.17")
 }
 
 roborazzi {
     outputDir.set(layout.projectDirectory.dir("../screenshots"))
+}
+
+// Only here for the R8 mapping, which the release job uploads. Everything else the plugin does is off.
+sentry {
+    org = "firezone-inc"
+    projectName = "android-client"
+    autoUploadProguardMapping =
+        providers
+            .environmentVariable("SENTRY_UPLOAD_MAPPING")
+            .map { it == "true" }
+            .orElse(false)
+    autoInstallation { enabled = false }
+    tracingInstrumentation { enabled = false }
+    runtimeOptimizations { enabled = false }
+    includeDependenciesReport = false
+    telemetry = false
 }
 
 val rustDir = layout.projectDirectory.dir("../../../rust")
