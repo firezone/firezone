@@ -146,7 +146,7 @@ defmodule Portal.MixProject do
       # TODO: Remove override when this issue is resolved:
       # https://github.com/open-telemetry/opentelemetry-erlang-contrib/issues/428
       {:opentelemetry_semantic_conventions, "~> 1.27", override: true},
-      {:sentry, "~> 13.1"},
+      {:sentry, "~> 14.0"},
       {:logger_json, "~> 7.0"},
       {:req, "~> 0.7.2"},
 
