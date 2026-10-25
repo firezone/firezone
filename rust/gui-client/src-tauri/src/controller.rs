@@ -901,25 +901,26 @@ impl<I: GuiIntegration> Controller<I> {
 
                 gui_ipc::ServerMsg::Ack
             }
-            gui_ipc::ClientMsg::Connect {
-                token,
-                additional_host_candidates,
-            } => {
-                // The Tunnel service handles messages in order, so the session started below already uses these.
-                if let Some(additional_host_candidates) = additional_host_candidates {
-                    self.send_ipc(&service::ClientMsg::ApplyAdvancedSettings(
-                        AdvancedSettings {
-                            additional_host_candidates,
-                            ..self.advanced_settings.clone()
-                        },
-                    ))
-                    .await?;
-                }
-
+            gui_ipc::ClientMsg::Connect { token } => {
                 return self.connect_over_gui_ipc(token).await;
             }
             gui_ipc::ClientMsg::Disconnect => {
                 self.disconnect().await?;
+
+                gui_ipc::ServerMsg::Ack
+            }
+            gui_ipc::ClientMsg::ListAdditionalHostCandidates => {
+                gui_ipc::ServerMsg::AdditionalHostCandidates(
+                    self.advanced_settings.additional_host_candidates.clone(),
+                )
+            }
+            gui_ipc::ClientMsg::SetAdditionalHostCandidates(ips) => {
+                self.send_ipc(&service::ClientMsg::SetAdditionalHostCandidates(
+                    ips.clone(),
+                ))
+                .await?;
+                // The Tunnel service only replies if saving them fails.
+                self.advanced_settings.additional_host_candidates = ips;
 
                 gui_ipc::ServerMsg::Ack
             }
@@ -1606,10 +1607,7 @@ mod tests {
         mock_tunnel.send_hello().await;
 
         let response = test_controller
-            .gui_ipc_request(gui_ipc::ClientMsg::Connect {
-                token: None,
-                additional_host_candidates: None,
-            })
+            .gui_ipc_request(gui_ipc::ClientMsg::Connect { token: None })
             .await;
 
         assert_eq!(
@@ -1631,36 +1629,29 @@ mod tests {
         mock_tunnel.send_hello().await;
         let candidates = vec![IpAddr::from([192, 168, 2, 1])];
 
-        let (_rx, mut tx) = test_controller.gui_ipc_connect().await;
-        tx.send(&gui_ipc::ClientMsg::Connect {
-            token: Some(SecretString::from("cli-token")),
-            additional_host_candidates: Some(candidates.clone()),
-        })
-        .await
-        .unwrap();
-        let applied = mock_tunnel.rx_apply_advanced_settings().await;
-        let _token = mock_tunnel.rx_connect().await;
-        mock_tunnel
-            .send_advanced_settings_applied(Ok(applied.clone()))
+        let response = test_controller
+            .gui_ipc_request(gui_ipc::ClientMsg::SetAdditionalHostCandidates(
+                candidates.clone(),
+            ))
             .await;
-        test_controller
-            .wait_integration(|i| (!i.advanced_settings.is_empty()).then_some(()))
-            .await;
+        let applied = mock_tunnel.rx_set_additional_host_candidates().await;
         test_controller
             .ctrl_tx
             .send(ControllerRequest::ApplyAdvancedSettings(Box::default()))
             .await
             .unwrap();
-        let reset = mock_tunnel.rx_apply_advanced_settings().await;
+        let saved = mock_tunnel.rx_apply_advanced_settings().await;
+        let listed = test_controller
+            .gui_ipc_request(gui_ipc::ClientMsg::ListAdditionalHostCandidates)
+            .await;
 
+        assert_eq!(response, gui_ipc::ServerMsg::Ack);
+        assert_eq!(applied, candidates);
+        assert_eq!(saved.additional_host_candidates, candidates);
         assert_eq!(
-            applied,
-            AdvancedSettings {
-                additional_host_candidates: candidates.clone(),
-                ..AdvancedSettings::default()
-            }
+            listed,
+            gui_ipc::ServerMsg::AdditionalHostCandidates(candidates)
         );
-        assert_eq!(reset.additional_host_candidates, candidates);
     }
 
     #[tokio::test]
@@ -1673,7 +1664,6 @@ mod tests {
         let (mut rx, mut tx) = test_controller.gui_ipc_connect().await;
         tx.send(&gui_ipc::ClientMsg::Connect {
             token: Some(SecretString::from("cli-token")),
-            additional_host_candidates: None,
         })
         .await
         .unwrap();
@@ -1707,12 +1697,9 @@ mod tests {
             "expected `Disconnect` but got {msg:?}"
         );
         let (_rx, mut tx) = test_controller.gui_ipc_connect().await;
-        tx.send(&gui_ipc::ClientMsg::Connect {
-            token: None,
-            additional_host_candidates: None,
-        })
-        .await
-        .unwrap();
+        tx.send(&gui_ipc::ClientMsg::Connect { token: None })
+            .await
+            .unwrap();
         let stored_token = mock_tunnel.rx_connect().await;
         assert_eq!(stored_token.expose_secret(), "cli-token");
     }
@@ -1750,7 +1737,6 @@ mod tests {
         let (mut rx, mut tx) = test_controller.gui_ipc_connect().await;
         tx.send(&gui_ipc::ClientMsg::Connect {
             token: Some(SecretString::from("cli-token")),
-            additional_host_candidates: None,
         })
         .await
         .unwrap();
@@ -1770,12 +1756,9 @@ mod tests {
         );
 
         let (_rx, mut tx) = test_controller.gui_ipc_connect().await;
-        tx.send(&gui_ipc::ClientMsg::Connect {
-            token: None,
-            additional_host_candidates: None,
-        })
-        .await
-        .unwrap();
+        tx.send(&gui_ipc::ClientMsg::Connect { token: None })
+            .await
+            .unwrap();
         let stored_token = mock_tunnel.rx_connect().await;
         assert_eq!(stored_token.expose_secret(), browser_token.expose_secret());
     }
@@ -1800,12 +1783,9 @@ mod tests {
             "expected `Disconnect` but got {msg:?}"
         );
         let (_rx, mut tx) = test_controller.gui_ipc_connect().await;
-        tx.send(&gui_ipc::ClientMsg::Connect {
-            token: None,
-            additional_host_candidates: None,
-        })
-        .await
-        .unwrap();
+        tx.send(&gui_ipc::ClientMsg::Connect { token: None })
+            .await
+            .unwrap();
         let _stored_token = mock_tunnel.rx_connect().await;
     }
 
@@ -2568,6 +2548,14 @@ mod tests {
                 .send(&service::ServerMsg::AdvancedSettingsApplied(result))
                 .await
                 .unwrap();
+        }
+
+        async fn rx_set_additional_host_candidates(&mut self) -> Vec<IpAddr> {
+            let msg = self.next_msg().await;
+            let service::ClientMsg::SetAdditionalHostCandidates(ips) = msg else {
+                panic!("expected `SetAdditionalHostCandidates` but got {msg:?}");
+            };
+            ips
         }
     }
 

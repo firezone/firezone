@@ -53,7 +53,7 @@ pub struct AdvancedSettings {
     pub auth_url: Url,
     pub api_url: Url,
     pub log_filter: String,
-    /// Set only through the CLI's `connect`, so the settings page neither shows nor sends it.
+    /// Set only through the CLI's `host-candidates`, so the settings page neither shows nor sends it.
     #[serde(default)]
     #[specta(skip)]
     pub additional_host_candidates: Vec<IpAddr>,

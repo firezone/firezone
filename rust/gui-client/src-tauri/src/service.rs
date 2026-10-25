@@ -26,7 +26,7 @@ use ip_network::IpNetwork;
 use logging::FilterReloadHandle;
 use phoenix_channel::{DeviceInfo, LoginUrl, PhoenixChannel, get_user_agent};
 use secrecy::{ExposeSecret, SecretString};
-use std::{io, mem, panic::AssertUnwindSafe, pin::pin, sync::Arc, time::Duration};
+use std::{io, mem, net::IpAddr, panic::AssertUnwindSafe, pin::pin, sync::Arc, time::Duration};
 use telemetry::analytics;
 use tokio::time::Instant;
 use tracing::Instrument as _;
@@ -66,6 +66,10 @@ pub enum ClientMsg {
     /// Persist new advanced settings to the protected on-disk file owned by
     /// the Tunnel service and reload the log filter.
     ApplyAdvancedSettings(AdvancedSettings),
+    /// Apply new additional host candidates to the running session and persist them.
+    ///
+    /// Only a failure to persist them is reported, as [`ServerMsg::AdvancedSettingsApplied`].
+    SetAdditionalHostCandidates(Vec<IpAddr>),
     SetInternetResourceState(bool),
     StartTelemetry {
         release: String,
@@ -803,6 +807,17 @@ impl<'a> Handler<'a> {
                 };
                 self.send_ipc(ServerMsg::AdvancedSettingsApplied(response))
                     .await?;
+            }
+            ClientMsg::SetAdditionalHostCandidates(ips) => {
+                if let Some(connlib) = self.session.as_connlib() {
+                    connlib.set_additional_host_candidates(ips.clone());
+                }
+                self.advanced_settings.additional_host_candidates = ips;
+
+                if let Err(e) = save_advanced(&self.advanced_settings).await {
+                    self.send_ipc(ServerMsg::AdvancedSettingsApplied(Err(format!("{e:#}"))))
+                        .await?;
+                }
             }
             ClientMsg::SetInternetResourceState(state) => {
                 let Some(connlib) = self.session.as_connlib() else {
