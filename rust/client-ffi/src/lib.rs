@@ -18,6 +18,7 @@ use crate::fd::RawFd;
 
 use std::{
     fmt,
+    net::IpAddr,
     path::PathBuf,
     sync::{Arc, OnceLock},
     time::Duration,
@@ -311,6 +312,7 @@ pub fn connect_android(
         Some(device_name),
         device_info,
         is_internet_resource_active,
+        Vec::default(),
         tls_identity,
         tcp_socket_factory,
         udp_socket_factory,
@@ -326,11 +328,20 @@ pub fn connect_apple(
     device_name: Option<String>,
     device_info: DeviceInfo,
     is_internet_resource_active: bool,
+    additional_host_candidates: Vec<String>,
     tls_identity: Option<Arc<dyn ClientTlsIdentity>>,
 ) -> Result<Connection, ConnlibError> {
     // iOS doesn't need socket protection like Android
     let tcp_socket_factory = Arc::new(socket_factory::tcp);
     let udp_socket_factory = Arc::new(socket_factory::udp);
+
+    let additional_host_candidates = additional_host_candidates
+        .into_iter()
+        .map(|ip| {
+            ip.parse::<IpAddr>()
+                .with_context(|| format!("Invalid additional host candidate: {ip}"))
+        })
+        .collect::<Result<Vec<_>>>()?;
 
     // Locate the TUN device before `connect` spawns anything: every failed
     // search used to leave a Tokio runtime and its threads behind, and the
@@ -344,6 +355,7 @@ pub fn connect_apple(
         device_name,
         device_info,
         is_internet_resource_active,
+        additional_host_candidates,
         tls_identity,
         tcp_socket_factory,
         udp_socket_factory,
@@ -381,6 +393,7 @@ pub fn connect_dummy(
         device_name,
         device_info,
         is_internet_resource_active,
+        Vec::default(),
         tls_identity,
         tcp_socket_factory,
         udp_socket_factory,
@@ -589,6 +602,7 @@ fn connect(
     device_name: Option<String>,
     device_info: DeviceInfo,
     is_internet_resource_active: bool,
+    additional_host_candidates: Vec<IpAddr>,
     tls_identity: Option<Arc<dyn ClientTlsIdentity>>,
     tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
     udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
@@ -675,7 +689,7 @@ fn connect(
         portal,
         is_internet_resource_active,
         Vec::default(),
-        Vec::default(),
+        additional_host_candidates,
         flow_logs_dir,
         false,
         runtime.handle().clone(),

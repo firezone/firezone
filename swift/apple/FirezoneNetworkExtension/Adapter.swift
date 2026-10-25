@@ -193,6 +193,7 @@ actor Adapter {
   private let token: Token
   private let deviceId: String
   private let logFilter: String
+  private let additionalHostCandidates: [String]
   /// Persistent keychain reference to the client identity MDM put on the VPN profile.
   private let identityReference: Data?
 
@@ -202,6 +203,7 @@ actor Adapter {
     deviceId: String,
     logFilter: String,
     internetResourceEnabled: Bool,
+    additionalHostCandidates: [String],
     identityReference: Data?,
     providerCommandSender: Sender<ProviderCommand>
   ) {
@@ -210,6 +212,7 @@ actor Adapter {
     self.deviceId = deviceId
     self.logFilter = logFilter
     self.internetResourceEnabled = internetResourceEnabled
+    self.additionalHostCandidates = additionalHostCandidates
     self.identityReference = identityReference
     self.providerCommandSender = providerCommandSender
     self.pendingUnreachableResources = []
@@ -270,6 +273,7 @@ actor Adapter {
         deviceName: deviceName,
         deviceInfo: deviceInfo,
         isInternetResourceActive: internetResourceEnabled,
+        additionalHostCandidates: additionalHostCandidates,
         tlsIdentity: tlsIdentity
       )
       events = connection.events

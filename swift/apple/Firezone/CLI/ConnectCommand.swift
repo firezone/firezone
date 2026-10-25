@@ -23,6 +23,15 @@ extension FirezoneCLI {
     @Option(name: .long, help: ArgumentHelp("Auth base URL.", visibility: .hidden))
     var authBaseUrl: String?
 
+    @Option(
+      name: .long,
+      help: ArgumentHelp(
+        "Advertise a local IP as an additional host candidate, e.g. to use a direct link to a Gateway.",
+        visibility: .hidden
+      )
+    )
+    var additionalHostCandidate: [String] = []
+
     @Flag(name: .long, help: "Stay in the foreground and stop the tunnel on exit.")
     var foreground = false
 
@@ -44,6 +53,10 @@ extension FirezoneCLI {
       // Only what was actually asked for. The VPN profile is shared with the app, so
       // anything left unset here keeps the value the app stored.
       let logFilter = Self.setting(nil, "FIREZONE_LOG_FILTER")
+      let additionalHostCandidates = Self.setting(
+        additionalHostCandidate.isEmpty ? nil : additionalHostCandidate.joined(separator: ","),
+        "FIREZONE_ADDITIONAL_HOST_CANDIDATES"
+      )
 
       // Only used to build the sign-in URL, never written to the profile.
       let authBaseURLOverride = Self.setting(authBaseUrl, "FIREZONE_AUTH_BASE_URL")
@@ -51,7 +64,10 @@ extension FirezoneCLI {
       try await SystemExtension.requireInstalled()
 
       let tunnel = try await startTunnel(
-        overrides: ProviderOverrides(logFilter: logFilter)
+        overrides: ProviderOverrides(
+          logFilter: logFilter,
+          additionalHostCandidates: additionalHostCandidates
+        )
       )
 
       // Fall back to what the app is configured with, so a self-hosted deployment

@@ -32,6 +32,7 @@ public enum ConfigurationDefaults {
   public static let startOnLogin = false
   public static let disableUpdateCheck = false
   public static let internetResourceEnabled = false
+  public static let additionalHostCandidates = ""
 }
 
 @MainActor
@@ -50,6 +51,7 @@ public class Configuration: ObservableObject {
     public static let logFilter = "logFilter"
     public static let accountSlug = "accountSlug"
     public static let internetResourceEnabled = "internetResourceEnabled"
+    public static let additionalHostCandidates = "additionalHostCandidates"
     public static let hideAdminPortalMenuItem = "hideAdminPortalMenuItem"
     public static let hideResourceList = "hideResourceList"
     public static let connectOnStart = "connectOnStart"
@@ -90,6 +92,8 @@ public class Configuration: ObservableObject {
     .bool(key: Keys.startOnLogin, default: ConfigurationDefaults.startOnLogin),
     .bool(
       key: Keys.internetResourceEnabled, default: ConfigurationDefaults.internetResourceEnabled),
+    .string(
+      key: Keys.additionalHostCandidates, default: ConfigurationDefaults.additionalHostCandidates),
   ]
 
   // Subset of provider entries whose MDM forced values are cached in
@@ -169,6 +173,13 @@ public class Configuration: ObservableObject {
         Keys.internetResourceEnabled, default: ConfigurationDefaults.internetResourceEnabled)
     }
     set { setProviderValue(newValue, forKey: Keys.internetResourceEnabled) }
+  }
+  var additionalHostCandidates: String {
+    get {
+      providerString(
+        Keys.additionalHostCandidates, default: ConfigurationDefaults.additionalHostCandidates)
+    }
+    set { setProviderValue(newValue, forKey: Keys.additionalHostCandidates) }
   }
 
   var hideAdminPortalMenuItem: Bool { managedBool(Keys.hideAdminPortalMenuItem) }
