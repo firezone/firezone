@@ -17,6 +17,7 @@ members = [
     "libs/clock",
     "libs/connlib/bootstrap-dns-client",
     "libs/connlib/bufferpool",
+    "libs/connlib/deadline-map",
     "libs/connlib/dns-over-tcp",
     "libs/connlib/dns-types",
     "libs/connlib/etc-hosts-dns-client",
@@ -117,6 +118,7 @@ criterion = { version = "0.8.2", default-features = false }
 cryptoki = "0.12.0"
 dashmap = "6.2.1"
 dbus-secret-service-keyring-store = { version = "1.0.0", features = ["crypto-rust"] }
+deadline-map = { path = "libs/connlib/deadline-map" }
 derive_more = { version = "2.1.1", default-features = false }
 desktop-notifications = { path = "libs/desktop-notifications" }
 dirs = "7.0.0"

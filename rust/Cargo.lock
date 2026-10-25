@@ -1928,6 +1928,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "deadline-map"
+version = "0.1.0"
+dependencies = [
+ "fast-random-state",
+]
+
+[[package]]
 name = "debugid"
 version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7494,6 +7501,7 @@ dependencies = [
  "bufferpool",
  "bytecodec",
  "bytes",
+ "deadline-map",
  "derive_more",
  "fast-random-state",
  "hex",
@@ -9178,6 +9186,7 @@ dependencies = [
  "bimap",
  "chrono",
  "connlib-model",
+ "deadline-map",
  "derive_more",
  "divan",
  "dns-over-tcp",
