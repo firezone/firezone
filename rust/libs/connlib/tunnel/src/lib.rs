@@ -180,14 +180,14 @@ impl ClientTunnel {
             return Some(now);
         }
 
-        self.role_state.poll_timeout().map(|(deadline, _)| deadline)
+        self.role_state.poll_timeout()
     }
 
     pub fn reset(&mut self, reason: &str, now: Instant) {
         if self
             .role_state
             .poll_timeout()
-            .is_some_and(|(timeout, _)| timeout <= now)
+            .is_some_and(|timeout| timeout <= now)
         {
             self.role_state.handle_timeout(now);
         }
@@ -430,7 +430,7 @@ impl GatewayTunnel {
             return Some(now);
         }
 
-        self.role_state.poll_timeout().map(|(deadline, _)| deadline)
+        self.role_state.poll_timeout()
     }
 
     /// Shut down the Gateway tunnel.

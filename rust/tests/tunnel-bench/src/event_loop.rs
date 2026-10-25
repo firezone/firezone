@@ -836,10 +836,10 @@ impl Tunnel {
         self.now += Duration::from_millis(10);
         let now = self.now;
 
-        if self.client.poll_timeout().is_some_and(|(t, _)| t <= now) {
+        if self.client.poll_timeout().is_some_and(|t| t <= now) {
             self.client.handle_timeout(now);
         }
-        if self.gateway.poll_timeout().is_some_and(|(t, _)| t <= now) {
+        if self.gateway.poll_timeout().is_some_and(|t| t <= now) {
             self.gateway.handle_timeout(now);
         }
 

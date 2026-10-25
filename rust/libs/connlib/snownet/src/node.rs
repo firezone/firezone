@@ -648,16 +648,16 @@ where
     /// This function only takes `&mut self` because it caches certain computations internally.
     /// The returned timestamp will **not** change unless other state is modified.
     #[must_use]
-    pub fn poll_timeout(&mut self) -> Option<(Instant, &'static str)> {
+    pub fn poll_timeout(&mut self) -> Option<Instant> {
         let queued_io = (!self.buffered_transmits.is_empty() || !self.pending_events.is_empty())
-            .then_some((self.last_now, "queued IO"));
+            .then_some(self.last_now);
 
         iter::empty()
             .chain(queued_io)
             .chain(self.connections.poll_timeout())
             .chain(self.buffered_candidates.poll_timeout())
             .chain(self.allocations.poll_timeout())
-            .min_by_key(|(instant, _)| *instant)
+            .min()
     }
 
     /// Advances time within the [`Node`].
@@ -1427,28 +1427,14 @@ where
     }
 
     #[must_use]
-    fn poll_timeout(&mut self) -> Option<(Instant, &'static str)> {
+    fn poll_timeout(&mut self) -> Option<Instant> {
         let timeout = iter::empty()
-            .chain(
-                self.agent
-                    .poll_timeout()
-                    .map(|instant| (instant, "ICE agent")),
-            )
-            .chain(
-                self.tunnel
-                    .poll_timeout()
-                    .map(|instant| (instant, "WireGuard tunnel")),
-            )
-            .chain(
-                self.candidate_timeout
-                    .map(|instant| (instant, "candidate timeout")),
-            )
-            .chain(
-                self.disconnect_timeout()
-                    .map(|instant| (instant, "disconnect timeout")),
-            )
+            .chain(self.agent.poll_timeout())
+            .chain(self.tunnel.poll_timeout())
+            .chain(self.candidate_timeout)
+            .chain(self.disconnect_timeout())
             .chain(self.state.poll_timeout(&self.agent))
-            .min_by_key(|(instant, _)| *instant);
+            .min();
 
         self.poll_timeout_cache.update(timeout)
     }

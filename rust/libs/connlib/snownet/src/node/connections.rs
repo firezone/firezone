@@ -381,7 +381,7 @@ where
         !self.established.is_empty() && self.established.values().all(|c| c.agent.is_iceless())
     }
 
-    pub(crate) fn poll_timeout(&mut self) -> Option<(Instant, &'static str)> {
+    pub(crate) fn poll_timeout(&mut self) -> Option<Instant> {
         iter::empty()
             .chain(
                 self.established
@@ -393,44 +393,29 @@ where
                     .first_handshake_completed_at
                     .filter(|_| c.ready_socket(*id).is_ok());
 
-                iter::once((goodbye.deadline, "goodbye timeout"))
-                    .chain(ready_at.map(|t| (t, "goodbye ready")))
+                iter::once(goodbye.deadline)
+                    .chain(ready_at)
                     .chain(c.poll_timeout())
             }))
             .chain(
                 self.disconnected_ids
                     .values()
-                    .map(|t| {
-                        (
-                            *t + Self::RECENT_DISCONNECT_TIMEOUT,
-                            "recently disconnected IDs",
-                        )
-                    })
-                    .min_by_key(|(t, _)| *t),
+                    .map(|t| *t + Self::RECENT_DISCONNECT_TIMEOUT)
+                    .min(),
             )
             .chain(
                 self.disconnected_public_keys
                     .values()
-                    .map(|t| {
-                        (
-                            *t + Self::RECENT_DISCONNECT_TIMEOUT,
-                            "recently disconnected public keys",
-                        )
-                    })
-                    .min_by_key(|(t, _)| *t),
+                    .map(|t| *t + Self::RECENT_DISCONNECT_TIMEOUT)
+                    .min(),
             )
             .chain(
                 self.disconnected_tunnel_ids
                     .values()
-                    .map(|t| {
-                        (
-                            *t + Self::RECENT_DISCONNECT_TIMEOUT,
-                            "recently disconnected tunnel ids",
-                        )
-                    })
-                    .min_by_key(|(t, _)| *t),
+                    .map(|t| *t + Self::RECENT_DISCONNECT_TIMEOUT)
+                    .min(),
             )
-            .min_by_key(|(instant, _)| *instant)
+            .min()
     }
 
     fn remove_failed(&mut self, events: &mut VecDeque<Event<TId, RId>>, now: Instant) {
