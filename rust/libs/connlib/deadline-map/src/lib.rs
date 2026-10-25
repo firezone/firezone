@@ -1,33 +1,57 @@
-//! A hash map that indexes its values by the deadline they report.
+//! A hash map that caches the deadline each of its values reports.
 
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
 #[cfg(test)]
 mod tests;
 
-use std::collections::{BTreeSet, HashMap, HashSet};
+use std::collections::HashMap;
 use std::hash::Hash;
 use std::time::Instant;
 
 use fast_random_state::FastRandomState;
 
-/// A value that [`DeadlineMap`] indexes by its next deadline.
+/// A value whose next deadline [`DeadlineMap`] caches.
 pub trait PollTimeout {
     fn poll_timeout(&mut self) -> Option<Instant>;
 }
 
-/// A hash map that indexes its values by their [`PollTimeout::poll_timeout`].
+/// A hash map that caches the [`PollTimeout::poll_timeout`] of each value.
 ///
-/// Every mutable access marks the value; marked values are re-indexed before the index is read.
+/// Every mutable access marks the value; marked values are polled again before the cache is read.
 pub struct DeadlineMap<K, V>
 where
     V: PollTimeout,
 {
-    entries: HashMap<K, V, FastRandomState>,
-    /// Entries handed out mutably since they were last indexed.
-    touched: HashSet<K, FastRandomState>,
-    deadline_by_key: HashMap<K, Instant, FastRandomState>,
-    deadlines: BTreeSet<(Instant, K)>,
+    entries: HashMap<K, Entry<V>, FastRandomState>,
+}
+
+struct Entry<V>
+where
+    V: PollTimeout,
+{
+    value: V,
+    deadline: Option<Instant>,
+    dirty: bool,
+}
+
+impl<V> Entry<V>
+where
+    V: PollTimeout,
+{
+    fn new(value: V) -> Self {
+        Self {
+            value,
+            deadline: None,
+            dirty: true,
+        }
+    }
+
+    fn mark(&mut self) -> &mut V {
+        self.dirty = true;
+
+        &mut self.value
+    }
 }
 
 impl<K, V> Default for DeadlineMap<K, V>
@@ -37,16 +61,13 @@ where
     fn default() -> Self {
         Self {
             entries: Default::default(),
-            touched: Default::default(),
-            deadline_by_key: Default::default(),
-            deadlines: Default::default(),
         }
     }
 }
 
 impl<K, V> DeadlineMap<K, V>
 where
-    K: Eq + Hash + Ord + Copy,
+    K: Eq + Hash + Copy,
     V: PollTimeout,
 {
     pub fn len(&self) -> usize {
@@ -62,11 +83,11 @@ where
     }
 
     pub fn get(&self, key: &K) -> Option<&V> {
-        self.entries.get(key)
+        self.entries.get(key).map(|e| &e.value)
     }
 
     pub fn iter(&self) -> impl Iterator<Item = (K, &V)> {
-        self.entries.iter().map(|(k, v)| (*k, v))
+        self.entries.iter().map(|(k, e)| (*k, &e.value))
     }
 
     pub fn keys(&self) -> impl Iterator<Item = K> + '_ {
@@ -74,14 +95,11 @@ where
     }
 
     pub fn values(&self) -> impl Iterator<Item = &V> {
-        self.entries.values()
+        self.entries.values().map(|e| &e.value)
     }
 
     pub fn get_mut(&mut self, key: &K) -> Option<&mut V> {
-        let value = self.entries.get_mut(key)?;
-        self.touched.insert(*key);
-
-        Some(value)
+        Some(self.entries.get_mut(key)?.mark())
     }
 
     pub fn iter_mut(&mut self) -> impl Iterator<Item = (K, &mut V)> {
@@ -93,119 +111,61 @@ where
         &mut self,
         mut predicate: impl FnMut(&V) -> bool,
     ) -> impl Iterator<Item = (K, &mut V)> {
-        let touched = &mut self.touched;
-
-        self.entries.iter_mut().filter_map(move |(k, v)| {
-            if !predicate(v) {
-                return None;
-            }
-
-            touched.insert(*k);
-
-            Some((*k, v))
-        })
+        self.entries
+            .iter_mut()
+            .filter(move |(_, e)| predicate(&e.value))
+            .map(|(k, e)| (*k, e.mark()))
     }
 
     pub fn insert(&mut self, key: K, value: V) -> Option<V> {
-        self.touched.insert(key);
-
-        self.entries.insert(key, value)
+        self.entries.insert(key, Entry::new(value)).map(|e| e.value)
     }
 
     pub fn get_or_insert(&mut self, key: K, value: V) -> &mut V {
-        self.touched.insert(key);
-
-        self.entries.entry(key).or_insert(value)
+        self.entries.entry(key).or_insert(Entry::new(value)).mark()
     }
 
     pub fn remove(&mut self, key: &K) -> Option<V> {
-        self.unindex(key);
-
-        self.entries.remove(key)
+        self.entries.remove(key).map(|e| e.value)
     }
 
     pub fn extract_if(&mut self, mut predicate: impl FnMut(&K, &V) -> bool) -> Vec<(K, V)> {
-        let removed = self
-            .entries
-            .extract_if(|k, v| predicate(k, v))
-            .collect::<Vec<_>>();
-
-        for (k, _) in &removed {
-            self.unindex(k);
-        }
-
-        removed
+        self.entries
+            .extract_if(|k, e| predicate(k, &e.value))
+            .map(|(k, e)| (k, e.value))
+            .collect()
     }
 
     pub fn clear(&mut self) {
         self.entries.clear();
-        self.touched.clear();
-        self.deadline_by_key.clear();
-        self.deadlines.clear();
     }
 
-    /// Re-indexes the marked entries and passes each to `f`.
+    /// Polls the marked entries again and passes each to `f`.
     pub fn reindex(&mut self, mut f: impl FnMut(K, &V)) {
-        for key in self.touched.drain() {
-            let Some(value) = self.entries.get_mut(&key) else {
+        for (key, entry) in &mut self.entries {
+            if !entry.dirty {
                 continue;
-            };
-
-            let new = value.poll_timeout();
-            let old = match new {
-                Some(deadline) => self.deadline_by_key.insert(key, deadline),
-                None => self.deadline_by_key.remove(&key),
-            };
-
-            if old != new {
-                if let Some(old) = old {
-                    self.deadlines.remove(&(old, key));
-                }
-                if let Some(new) = new {
-                    self.deadlines.insert((new, key));
-                }
             }
 
-            f(key, value);
+            entry.deadline = entry.value.poll_timeout();
+            entry.dirty = false;
+
+            f(*key, &entry.value);
         }
     }
 
-    /// Re-indexes the marked entries and returns the earliest deadline.
+    /// Polls the marked entries again and returns the earliest deadline.
     pub fn poll_timeout(&mut self) -> Option<Instant> {
         self.reindex(|_, _| {});
 
-        let (deadline, _) = self.deadlines.first()?;
-
-        Some(*deadline)
+        self.entries.values().filter_map(|e| e.deadline).min()
     }
 
-    /// Hands out and marks the marked entries and then those due at `now` in deadline order.
+    /// Hands out and marks the marked entries and those due at `now`.
     pub fn due_mut(&mut self, now: Instant) -> impl Iterator<Item = (K, &mut V)> {
-        let due = self
-            .deadlines
-            .iter()
-            .take_while(|(deadline, _)| *deadline <= now)
-            .map(|(_, key)| *key)
-            .filter(|key| !self.touched.contains(key))
-            .collect::<Vec<_>>();
-        let keys = self.touched.iter().copied().chain(due).collect::<Vec<_>>();
-        self.touched.extend(&keys);
-
-        let entries = &mut self.entries;
-
-        keys.into_iter().filter_map(move |key| {
-            let value: *mut V = entries.get_mut(&key)?;
-
-            // SAFETY: `keys` holds every key at most once, so the handed out values never alias.
-            Some((key, unsafe { &mut *value }))
-        })
-    }
-
-    fn unindex(&mut self, key: &K) {
-        self.touched.remove(key);
-
-        if let Some(deadline) = self.deadline_by_key.remove(key) {
-            self.deadlines.remove(&(deadline, *key));
-        }
+        self.entries
+            .iter_mut()
+            .filter(move |(_, e)| e.dirty || e.deadline.is_some_and(|d| d <= now))
+            .map(|(k, e)| (*k, e.mark()))
     }
 }

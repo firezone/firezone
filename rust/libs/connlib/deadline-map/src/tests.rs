@@ -60,7 +60,7 @@ fn only_mutable_access_marks() {
 }
 
 #[test]
-fn due_mut_hands_out_marked_then_due_in_deadline_order() {
+fn due_mut_hands_out_marked_and_due() {
     let now = Instant::now();
     let mut map = DeadlineMap::default();
     map.insert(1, Value(Some(now + Duration::from_secs(2))));
@@ -70,12 +70,13 @@ fn due_mut_hands_out_marked_then_due_in_deadline_order() {
     map.reindex(|_, _| {});
 
     let _ = map.get_mut(&4);
-    let due = map
+    let mut due = map
         .due_mut(now + Duration::from_secs(3))
         .map(|(k, _)| k)
         .collect::<Vec<_>>();
+    due.sort();
 
-    assert_eq!(due, vec![4, 2, 1, 3]);
+    assert_eq!(due, vec![1, 2, 3, 4]);
 }
 
 #[test]
@@ -96,7 +97,7 @@ fn due_mut_marks_handed_out_entries() {
 }
 
 #[test]
-fn removal_unindexes() {
+fn removal_forgets_deadline() {
     let now = Instant::now();
     let mut map = DeadlineMap::default();
     map.insert(1, Value(Some(now)));
