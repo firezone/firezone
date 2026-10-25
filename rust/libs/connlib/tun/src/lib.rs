@@ -33,7 +33,7 @@ pub const MAX_BATCH_SIZE: usize = cfg_select! {
 };
 
 /// Capacity (in batches) of the channels connecting the TUN device threads to the main thread.
-const CHANNEL_CAPACITY: usize = cfg_select! {
+pub const CHANNEL_CAPACITY: usize = cfg_select! {
     target_os = "linux" => { 100 }
     target_os = "windows" => { 100 }
     target_os = "macos" => { 100 }

@@ -970,7 +970,7 @@ pub struct DatagramBatch {
 }
 
 impl DatagramBatch {
-    pub(crate) fn new(
+    pub fn new(
         mut buffers: Vec<Bytes>,
         mut metas: Vec<quinn_udp::RecvMeta>,
         port: u16,
