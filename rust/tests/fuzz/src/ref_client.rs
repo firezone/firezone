@@ -802,7 +802,9 @@ impl RefClient {
         }
 
         if let Some(resource) = self.is_site_specific_dns_query(query) {
-            self.prepare_dns_resource_connection(resource, |domain| resolve(gateway, domain));
+            let resolutions = self
+                .dns_resource_resolutions_on_connect(resource, |domain| resolve(gateway, domain));
+            self.add_dns_resource_resolutions(resource, resolutions);
             self.connected_dns_resources.insert(resource);
             self.connected_through(resource, gateway);
             self.expect_dns_response(query);
@@ -1376,17 +1378,18 @@ impl RefClient {
             .flatten()
     }
 
-    pub(crate) fn prepare_dns_resource_connection(
-        &mut self,
+    /// The records a Gateway resolves the domains `resource` serves to as the client connects
+    /// to it, none once it is connected.
+    pub(crate) fn dns_resource_resolutions_on_connect(
+        &self,
         resource: ResourceId,
         resolve: impl Fn(&DomainName) -> BTreeSet<RecordType>,
-    ) {
+    ) -> BTreeMap<DomainName, BTreeSet<RecordType>> {
         if self.connected_dns_resources.contains(&resource) {
-            return;
+            return BTreeMap::new();
         }
 
-        let domains = self
-            .resolved_domains()
+        self.resolved_domains()
             .filter(|(domain, records)| {
                 self.dns_resource_serves(
                     resource,
@@ -1395,11 +1398,20 @@ impl RefClient {
                     records.contains(&RecordType::AAAA),
                 )
             })
-            .map(|(domain, _)| domain)
-            .collect_vec();
+            .map(|(domain, _)| {
+                let record_types = resolve(&domain);
 
-        for domain in domains {
-            let record_types = resolve(&domain);
+                (domain, record_types)
+            })
+            .collect()
+    }
+
+    pub(crate) fn add_dns_resource_resolutions(
+        &mut self,
+        resource: ResourceId,
+        resolutions: BTreeMap<DomainName, BTreeSet<RecordType>>,
+    ) {
+        for (domain, record_types) in resolutions {
             self.dns_resource_resolutions
                 .insert((resource, domain), record_types);
         }
