@@ -70,9 +70,9 @@ pub struct RefClient {
     #[debug(skip)]
     pub(crate) dns_records: BTreeMap<DomainName, BTreeSet<RecordType>>,
 
-    /// The resources the client holds access to, and the Gateway each goes through.
+    /// The resources the client holds an authorization for, and the Gateway each goes through.
     #[debug(skip)]
-    access: BTreeMap<ResourceId, GatewayId>,
+    authorizations: BTreeMap<ResourceId, GatewayId>,
 
     /// The current record kinds resolved by a connected gateway for each DNS resource domain.
     #[debug(skip)]
@@ -144,7 +144,7 @@ impl RefClient {
             malicious_behaviour,
             os,
             dns_records: Default::default(),
-            access: Default::default(),
+            authorizations: Default::default(),
             dns_resource_resolutions: Default::default(),
             expected_udp_dns_handshakes: Default::default(),
             expected_tcp_dns_handshakes: Default::default(),
@@ -204,7 +204,7 @@ impl RefClient {
     pub(crate) fn disconnect_resource(&mut self, resource: &ResourceId) {
         for _ in self.routes.extract_if(.., |(r, _)| r == resource) {}
 
-        self.access.remove(resource);
+        self.authorizations.remove(resource);
         self.dns_resource_resolutions
             .retain(|(candidate, _), _| candidate != resource);
     }
@@ -417,7 +417,7 @@ impl RefClient {
     }
 
     pub(crate) fn connected_resources(&self) -> impl Iterator<Item = ResourceId> + '_ {
-        self.access.keys().copied()
+        self.authorizations.keys().copied()
     }
 
     pub(crate) fn restart(&mut self, key: PrivateKey, now: Instant) {
@@ -445,7 +445,7 @@ impl RefClient {
         }
 
         let affected = self
-            .access
+            .authorizations
             .iter()
             .filter(|(_, gateway)| gateways.contains(gateway))
             .map(|(resource, _)| *resource)
@@ -469,9 +469,9 @@ impl RefClient {
         self.discard_connections(affected);
     }
 
-    /// The Gateway `resource` goes through, if the client holds access to it.
+    /// The Gateway `resource` goes through, if the client holds an authorization for it.
     pub(crate) fn gateway_for_resource(&self, resource: ResourceId) -> Option<GatewayId> {
-        self.access.get(&resource).copied()
+        self.authorizations.get(&resource).copied()
     }
 
     pub(crate) fn preferred_gateway(&self, site: SiteId) -> Option<GatewayId> {
@@ -493,7 +493,7 @@ impl RefClient {
         let affected = resources
             .iter()
             .copied()
-            .filter(|resource| self.access.contains_key(resource))
+            .filter(|resource| self.authorizations.contains_key(resource))
             .collect();
 
         self.discard_connections(affected);
@@ -501,7 +501,7 @@ impl RefClient {
 
     fn discard_connections(&mut self, affected: Vec<ResourceId>) {
         for resource in affected {
-            self.access.remove(&resource);
+            self.authorizations.remove(&resource);
             self.dns_resource_resolutions
                 .retain(|(candidate, _), _| *candidate != resource);
         }
@@ -517,7 +517,7 @@ impl RefClient {
         self.gateway_send_times.clear();
         self.client_send_times.clear();
 
-        self.access.clear();
+        self.authorizations.clear();
         self.dns_resource_resolutions.clear();
         // Peer authorizations in both directions go with their connections.
         self.outbound_peer_authorizations.clear();
@@ -604,10 +604,10 @@ impl RefClient {
             .collect()
     }
 
-    /// A site is online while the client holds access to a resource in it.
+    /// A site is online while the client holds an authorization for a resource in it.
     fn expected_resource_status(&self, resource: &Resource) -> ResourceStatus {
         let online = resource.sites().iter().any(|site| {
-            self.access.keys().any(|held| {
+            self.authorizations.keys().any(|held| {
                 self.site_for_resource(*held)
                     .is_some_and(|s| s.id == site.id)
             })
@@ -646,10 +646,10 @@ impl RefClient {
         }
     }
 
-    /// The client holds access to `resource` through `gateway`, which it prefers for the
+    /// The client holds an authorization for `resource` through `gateway`, which it prefers for the
     /// resource's site from now on.
     pub(crate) fn connect_to_resource(&mut self, resource: ResourceId, gateway: GatewayId) {
-        let previous = self.access.insert(resource, gateway);
+        let previous = self.authorizations.insert(resource, gateway);
         if previous.is_none() {
             tracing::debug!(%resource, %gateway, "Now connected to resource");
         }
@@ -690,7 +690,7 @@ impl RefClient {
             // connlib sets up the NAT for every domain it resolves on the Gateways it is connected to.
             for resource in self.dns_resources_by_domain(
                 &query.domain,
-                |r| self.access.contains_key(&r.id),
+                |r| self.authorizations.contains_key(&r.id),
                 |_| true,
             ) {
                 let record_types = resolve(self.gateway_for_resource(resource.id), &query.domain);
@@ -1254,7 +1254,7 @@ impl RefClient {
         resource: ResourceId,
         resolve: impl Fn(&DomainName) -> BTreeSet<RecordType>,
     ) -> BTreeMap<DomainName, BTreeSet<RecordType>> {
-        if self.access.contains_key(&resource) {
+        if self.authorizations.contains_key(&resource) {
             return BTreeMap::new();
         }
 
