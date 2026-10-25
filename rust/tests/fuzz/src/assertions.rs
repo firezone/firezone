@@ -1,9 +1,9 @@
 use super::{
     probe::{
-        DnsNatSessions, ExpectedOutcome, ExpectedProbe, InvalidDnsNatObservation, KnownLoss,
-        ProbeId, ProbeProtocol, ProbeRequest, ProbeTrace, ReceivedRequest, ReceivedResponse,
-        RejectionRemote, RejectionResponse, Remote, RemoteResponse, SubmittedRequest,
-        TraceRequirement, remote_response,
+        Answer, DnsNatObservation, DnsNatSessions, ExpectedOutcome, ExpectedProbe,
+        InvalidDnsNatObservation, KnownLoss, ProbeId, ProbeProtocol, ProbeRequest, ProbeTrace,
+        ReceivedRequest, ReceivedResponse, RejectionResponse, Remote, RemoteResponse,
+        SubmittedRequest, TraceRequirement, remote_response,
     },
     ref_client::RefClient,
     ref_gateway::RefGateway,
@@ -113,39 +113,8 @@ fn assert_probes(
         }
 
         match expected.outcome {
-            ExpectedOutcome::Dropped => {
-                let ([], [], []) = (
-                    trace.received_requests.as_slice(),
-                    trace.received_responses.as_slice(),
-                    trace.completed_streams.as_slice(),
-                ) else {
-                    tracing::error!(target: "assertions", id = ?expected.id, observations = ?trace.observations, "Dropped probe produced remote observations");
-                    continue;
-                };
-            }
-            ExpectedOutcome::RoundTripCompleted(_)
-                if matches!(
-                    expected.request,
-                    ProbeRequest::Tcp {
-                        write_len: Some(_),
-                        ..
-                    }
-                ) =>
-            {
-                let ([], [], [completed_stream]) = (
-                    trace.received_requests.as_slice(),
-                    trace.received_responses.as_slice(),
-                    trace.completed_streams.as_slice(),
-                ) else {
-                    tracing::error!(target: "assertions", id = ?expected.id, observations = ?trace.observations, "TCP write was not echoed exactly once");
-                    continue;
-                };
-
-                if completed_stream.client != expected.origin {
-                    tracing::error!(target: "assertions", id = ?expected.id, expected = ?expected.origin, actual = ?completed_stream.client, "TCP echo was received by the wrong client");
-                }
-            }
-            ExpectedOutcome::RoundTripCompleted(route) => assert_round_trip(
+            ExpectedOutcome::Dropped => assert_dropped(expected, &trace),
+            ExpectedOutcome::RoundTripCompleted(route, Answer::Echo) => assert_round_trip(
                 expected,
                 &trace,
                 submitted_request,
@@ -154,62 +123,104 @@ fn assert_probes(
                 ref_clients,
                 ref_gateways,
             ),
-            // A SYN to a closed port reaches the network behind the Gateway like any other.
-            ExpectedOutcome::Rejected {
-                by: RejectionRemote::Gateway(gateway),
-                response: RejectionResponse::Reset,
-            } if matches!(
-                expected.request,
-                ProbeRequest::Tcp {
-                    write_len: None,
-                    ..
-                }
-            ) =>
-            {
-                assert_round_trip(
-                    expected,
-                    &trace,
-                    submitted_request,
-                    Remote::Gateway(gateway),
-                    RemoteResponse::Reset,
-                    ref_clients,
-                    ref_gateways,
-                )
+            ExpectedOutcome::RoundTripCompleted(route, Answer::Reset) => assert_round_trip(
+                expected,
+                &trace,
+                submitted_request,
+                route.remote(),
+                RemoteResponse::Reset,
+                ref_clients,
+                ref_gateways,
+            ),
+            ExpectedOutcome::RoundTripCompleted(_, Answer::WriteEchoed) => {
+                assert_write_echoed(expected, &trace)
+            }
+            ExpectedOutcome::RoundTripCompleted(_, Answer::WriteReset) => {
+                assert_write_reset(expected, &trace, submitted_request)
             }
             ExpectedOutcome::Rejected { response, .. } => {
-                let ([], [received_response], []) = (
-                    trace.received_requests.as_slice(),
-                    trace.received_responses.as_slice(),
-                    trace.completed_streams.as_slice(),
-                ) else {
-                    tracing::error!(target: "assertions", id = ?expected.id, observations = ?trace.observations, "Rejected probe does not have exactly one received response and no received requests");
-                    continue;
-                };
-
-                if received_response.client != expected.origin {
-                    tracing::error!(target: "assertions", id = ?expected.id, expected = ?expected.origin, actual = ?received_response.client, "Rejection response was received by the wrong client");
-                }
-
-                match response {
-                    RejectionResponse::Prohibited => assert_icmp_error_response(
-                        expected,
-                        submitted_request,
-                        received_response,
-                        Some(response),
-                    ),
-                    RejectionResponse::Unreachable => assert_icmp_error_response(
-                        expected,
-                        submitted_request,
-                        received_response,
-                        Some(response),
-                    ),
-                    RejectionResponse::Reset => {
-                        assert_reset_response(expected, submitted_request, received_response)
-                    }
-                }
+                assert_rejected(expected, &trace, submitted_request, response)
             }
         }
     }
+}
+
+/// Checks that nothing but the Client's own submission observed the probe.
+fn assert_dropped(expected: &ExpectedProbe, trace: &ProbeTrace) {
+    let ([], [], []) = (
+        trace.received_requests.as_slice(),
+        trace.received_responses.as_slice(),
+        trace.completed_streams.as_slice(),
+    ) else {
+        tracing::error!(target: "assertions", id = ?expected.id, observations = ?trace.observations, "Dropped probe produced remote observations");
+        return;
+    };
+}
+
+/// Checks that the Client read back all of its TCP write and nothing else observed it.
+fn assert_write_echoed(expected: &ExpectedProbe, trace: &ProbeTrace) {
+    let ([], [], [completed_stream]) = (
+        trace.received_requests.as_slice(),
+        trace.received_responses.as_slice(),
+        trace.completed_streams.as_slice(),
+    ) else {
+        tracing::error!(target: "assertions", id = ?expected.id, observations = ?trace.observations, "TCP write was not echoed exactly once");
+        return;
+    };
+
+    if completed_stream.client != expected.origin {
+        tracing::error!(target: "assertions", id = ?expected.id, expected = ?expected.origin, actual = ?completed_stream.client, "TCP echo was received by the wrong client");
+    }
+}
+
+/// Checks that the Client received a reset for its TCP write and nothing else observed it.
+fn assert_write_reset(
+    expected: &ExpectedProbe,
+    trace: &ProbeTrace,
+    submitted_request: &SubmittedRequest,
+) {
+    let ([], [received_response], []) = (
+        trace.received_requests.as_slice(),
+        trace.received_responses.as_slice(),
+        trace.completed_streams.as_slice(),
+    ) else {
+        tracing::error!(target: "assertions", id = ?expected.id, observations = ?trace.observations, "Reset TCP write does not have exactly one received response and no received requests");
+        return;
+    };
+
+    if received_response.client != expected.origin {
+        tracing::error!(target: "assertions", id = ?expected.id, expected = ?expected.origin, actual = ?received_response.client, "TCP reset was received by the wrong client");
+    }
+
+    assert_reset_response(expected, submitted_request, received_response);
+}
+
+/// Checks that the Client received the ICMP error `response` and nothing received the probe.
+fn assert_rejected(
+    expected: &ExpectedProbe,
+    trace: &ProbeTrace,
+    submitted_request: &SubmittedRequest,
+    response: RejectionResponse,
+) {
+    let ([], [received_response], []) = (
+        trace.received_requests.as_slice(),
+        trace.received_responses.as_slice(),
+        trace.completed_streams.as_slice(),
+    ) else {
+        tracing::error!(target: "assertions", id = ?expected.id, observations = ?trace.observations, "Rejected probe does not have exactly one received response and no received requests");
+        return;
+    };
+
+    if received_response.client != expected.origin {
+        tracing::error!(target: "assertions", id = ?expected.id, expected = ?expected.origin, actual = ?received_response.client, "Rejection response was received by the wrong client");
+    }
+
+    assert_icmp_error_response(
+        expected,
+        submitted_request,
+        received_response,
+        Some(response),
+    );
 }
 
 /// Checks a probe that `expected_remote` received and answers with `answer` where its network
@@ -273,30 +284,8 @@ fn assert_round_trip(
 /// Checks the gateway's stable DNS NAT mapping for each transport session.
 fn assert_dns_nat(state: &TunnelTest) {
     let observations = state.dns_nat_observations();
-    let observations_by_flow = observations
-        .iter()
-        .map(|observation| (observation.flow_id, observation))
-        .into_group_map();
 
-    for (flow_id, flow_observations) in observations_by_flow {
-        let [first, remaining @ ..] = flow_observations.as_slice() else {
-            continue;
-        };
-        let expected_proxy = first.submitted.packet.destination();
-        let expected_generation = first.received.dns_nat_generation;
-
-        for current in remaining {
-            let actual_proxy = current.submitted.packet.destination();
-            if actual_proxy != expected_proxy {
-                tracing::error!(target: "assertions", ?flow_id, %expected_proxy, %actual_proxy, "Flow changed its DNS proxy destination");
-            }
-
-            let actual_generation = current.received.dns_nat_generation;
-            if actual_generation != expected_generation {
-                tracing::error!(target: "assertions", ?flow_id, ?expected_generation, ?actual_generation, "Flow crossed a DNS NAT reset");
-            }
-        }
-    }
+    assert_flows_keep_their_dns_nat(observations);
 
     let DnsNatSessions { invalid, sessions } = DnsNatSessions::new(observations);
     for (observation, error) in invalid {
@@ -400,6 +389,34 @@ fn assert_dns_nat(state: &TunnelTest) {
         for (actual, _) in remaining {
             if actual != expected {
                 tracing::error!(target: "assertions", %client, %gateway, dns_nat_generation, %domain, resolution_order, %proxy, %expected, %actual, "DNS proxy mapped to different destinations within one resolution");
+            }
+        }
+    }
+}
+
+/// Checks that each flow keeps the DNS proxy it started with, on the same NAT generation.
+fn assert_flows_keep_their_dns_nat(observations: &[DnsNatObservation]) {
+    let observations_by_flow = observations
+        .iter()
+        .map(|observation| (observation.flow_id, observation))
+        .into_group_map();
+
+    for (flow_id, flow_observations) in observations_by_flow {
+        let [first, remaining @ ..] = flow_observations.as_slice() else {
+            continue;
+        };
+        let expected_proxy = first.submitted.packet.destination();
+        let expected_generation = first.received.dns_nat_generation;
+
+        for current in remaining {
+            let actual_proxy = current.submitted.packet.destination();
+            if actual_proxy != expected_proxy {
+                tracing::error!(target: "assertions", ?flow_id, %expected_proxy, %actual_proxy, "Flow changed its DNS proxy destination");
+            }
+
+            let actual_generation = current.received.dns_nat_generation;
+            if actual_generation != expected_generation {
+                tracing::error!(target: "assertions", ?flow_id, ?expected_generation, ?actual_generation, "Flow crossed a DNS NAT reset");
             }
         }
     }

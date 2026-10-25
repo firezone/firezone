@@ -28,8 +28,8 @@ use tunnel_proto::dns;
 
 use crate::{
     probe::{
-        DNS_NAT_SESSION_TTL, DnsNatObservation, DnsNatSessions, ExpectedOutcome, ExpectedProbe,
-        FlowId, ProbeId, ProbeRequest, ReceivedRequest, RejectionRemote, RejectionResponse, Remote,
+        Answer, DNS_NAT_SESSION_TTL, DnsNatObservation, DnsNatSessions, ExpectedOutcome,
+        ExpectedProbe, FlowId, ProbeId, ProbeRequest, ReceivedRequest, RejectionRemote, Remote,
         Route, SubmittedRequest,
     },
     reference::ReferenceState,
@@ -636,7 +636,7 @@ fn completed_round_trip<'a>(
     expected: &'a ExpectedProbe,
     state: &'a TunnelTest,
 ) -> Option<CompletedRoundTrip<'a>> {
-    let ExpectedOutcome::RoundTripCompleted(route) = expected.outcome else {
+    let ExpectedOutcome::RoundTripCompleted(route, _) = expected.outcome else {
         return None;
     };
     let trace = state.probe_trace(expected.id);
@@ -764,11 +764,8 @@ fn record_tcp_connect_outcome(
     };
     let (reset, icmp_error) = match expected.outcome {
         ExpectedOutcome::Dropped => return,
-        ExpectedOutcome::RoundTripCompleted(_) => (false, false),
-        ExpectedOutcome::Rejected {
-            response: RejectionResponse::Reset,
-            ..
-        } => (true, false),
+        ExpectedOutcome::RoundTripCompleted(_, Answer::Reset) => (true, false),
+        ExpectedOutcome::RoundTripCompleted(_, _) => (false, false),
         ExpectedOutcome::Rejected { .. } => (false, true),
     };
     let ipv6 = submitted.packet.destination().is_ipv6();
@@ -824,12 +821,12 @@ fn record_translated_icmp_error_feedback(reference: &ReferenceState, state: &Tun
 fn record_site_network_feedback(reference: &ReferenceState, state: &TunnelTest) {
     for expected in reference.expected_probes.values() {
         let gateway = match expected.outcome {
-            ExpectedOutcome::RoundTripCompleted(Route::Resource { gateway, .. }) => gateway,
+            ExpectedOutcome::RoundTripCompleted(Route::Resource { gateway, .. }, _) => gateway,
             ExpectedOutcome::Rejected {
                 by: RejectionRemote::Gateway(gateway),
                 ..
             } => gateway,
-            ExpectedOutcome::RoundTripCompleted(_)
+            ExpectedOutcome::RoundTripCompleted(_, _)
             | ExpectedOutcome::Rejected { .. }
             | ExpectedOutcome::Dropped => continue,
         };
