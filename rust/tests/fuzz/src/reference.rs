@@ -250,17 +250,21 @@ impl ReferenceState {
                 identifier,
                 probe_id,
             } => {
-                let outcome = self.record_probe(
+                let request = ProbeRequest::Icmp {
+                    src: *src,
+                    dst: dst.clone(),
+                    seq: *seq,
+                    identifier: *identifier,
+                };
+                let (outcome, authorization) = self.verdict(portal, *client_id, &request);
+                self.record_probe(
                     portal,
                     *probe_id,
                     *client_id,
-                    ProbeRequest::Icmp {
-                        src: *src,
-                        dst: dst.clone(),
-                        seq: *seq,
-                        identifier: *identifier,
-                    },
+                    request,
                     now,
+                    outcome,
+                    authorization,
                 );
 
                 match outcome {
@@ -333,17 +337,21 @@ impl ReferenceState {
                 dport,
                 probe_id,
             } => {
-                let outcome = self.record_probe(
+                let request = ProbeRequest::Udp {
+                    src: *src,
+                    dst: dst.clone(),
+                    sport: *sport,
+                    dport: *dport,
+                };
+                let (outcome, authorization) = self.verdict(portal, *client_id, &request);
+                self.record_probe(
                     portal,
                     *probe_id,
                     *client_id,
-                    ProbeRequest::Udp {
-                        src: *src,
-                        dst: dst.clone(),
-                        sport: *sport,
-                        dport: *dport,
-                    },
+                    request,
                     now,
+                    outcome,
+                    authorization,
                 );
 
                 match outcome {
@@ -414,18 +422,7 @@ impl ReferenceState {
                     dport: *dport,
                     write_len: None,
                 };
-                let outcome = self.dispatch(
-                    portal,
-                    *client_id,
-                    request.source(),
-                    request.destination(),
-                    request.protocol(),
-                );
-                self.clients
-                    .get_mut(client_id)
-                    .unwrap()
-                    .exec_mut(|client| client.note_sent(outcome.remote(), now));
-
+                let (outcome, authorization) = self.verdict(portal, *client_id, &request);
                 let outcome = match outcome {
                     ExpectedOutcome::RoundTripCompleted(route) if self.serves_tcp(dst, *dport) => {
                         let flow = TcpFlow {
@@ -445,7 +442,15 @@ impl ReferenceState {
                     ExpectedOutcome::Dropped => outcome,
                     ExpectedOutcome::Rejected { .. } => outcome,
                 };
-                self.record_expected_probe(portal, *probe_id, *client_id, request, now, outcome);
+                self.record_probe(
+                    portal,
+                    *probe_id,
+                    *client_id,
+                    request,
+                    now,
+                    outcome,
+                    authorization,
+                );
             }
             Transition::SendTcpData {
                 flow_id,
@@ -464,18 +469,7 @@ impl ReferenceState {
                     dport: flow.dport,
                     write_len: Some(*len),
                 };
-                let outcome = self.dispatch(
-                    portal,
-                    flow.client_id,
-                    request.source(),
-                    request.destination(),
-                    request.protocol(),
-                );
-                self.clients
-                    .get_mut(&flow.client_id)
-                    .unwrap()
-                    .exec_mut(|client| client.note_sent(outcome.remote(), now));
-
+                let (outcome, authorization) = self.verdict(portal, flow.client_id, &request);
                 let outcome = match outcome {
                     ExpectedOutcome::RoundTripCompleted(route)
                         if route.remote() == flow.route.remote() =>
@@ -494,13 +488,14 @@ impl ReferenceState {
                     ExpectedOutcome::Dropped => outcome,
                     ExpectedOutcome::Rejected { .. } => outcome,
                 };
-                self.record_expected_probe(
+                self.record_probe(
                     portal,
                     *probe_id,
                     flow.client_id,
                     request,
                     now,
                     outcome,
+                    authorization,
                 );
             }
             Transition::UpdateSystemDnsServers { servers } => {
@@ -789,15 +784,13 @@ impl ReferenceState {
                 (ExpectedOutcome::RoundTripCompleted(route), authorization)
             }
         };
-        self.record_authorization(origin, request.destination(), authorization);
-        self.clients
-            .get_mut(&origin)
-            .unwrap()
-            .exec_mut(|client| client.note_sent(Some(route.remote()), sent_at));
+        self.record_probe(portal, id, origin, request, sent_at, outcome, authorization);
 
-        self.record_expected_probe(portal, id, origin, request, sent_at, outcome)
+        outcome
     }
 
+    /// Records that `origin` sent `request`, the authorization it holds afterwards and the
+    /// outcome to expect.
     fn record_probe(
         &mut self,
         portal: &StubPortal,
@@ -805,31 +798,15 @@ impl ReferenceState {
         origin: ClientId,
         request: ProbeRequest,
         sent_at: Instant,
-    ) -> ExpectedOutcome {
-        let outcome = self.dispatch(
-            portal,
-            origin,
-            request.source(),
-            request.destination(),
-            request.protocol(),
-        );
+        outcome: ExpectedOutcome,
+        authorization: Option<Authorization>,
+    ) {
+        self.record_authorization(origin, request.destination(), authorization);
         self.clients
             .get_mut(&origin)
             .unwrap()
             .exec_mut(|client| client.note_sent(outcome.remote(), sent_at));
 
-        self.record_expected_probe(portal, id, origin, request, sent_at, outcome)
-    }
-
-    fn record_expected_probe(
-        &mut self,
-        portal: &StubPortal,
-        id: ProbeId,
-        origin: ClientId,
-        request: ProbeRequest,
-        sent_at: Instant,
-        outcome: ExpectedOutcome,
-    ) -> ExpectedOutcome {
         let trace_requirement = self.trace_requirement(portal, origin, outcome, sent_at);
         let previous = self.expected_probes.insert(
             id,
@@ -844,8 +821,6 @@ impl ReferenceState {
         );
 
         assert!(previous.is_none(), "probe IDs must be unique");
-
-        outcome
     }
 
     fn serves_tcp(&self, dst: &Destination, dport: DPort) -> bool {
@@ -858,32 +833,16 @@ impl ReferenceState {
         }
     }
 
-    /// Follows a packet from `origin` to its destination and records what it leaves behind.
-    fn dispatch(
-        &mut self,
-        portal: &StubPortal,
-        origin: ClientId,
-        src: IpAddr,
-        dst: &Destination,
-        protocol: Protocol,
-    ) -> ExpectedOutcome {
-        let (outcome, authorization) = self.verdict(portal, origin, src, dst, protocol);
-        self.record_authorization(origin, dst, authorization);
-
-        outcome
-    }
-
     /// Follows a packet from `origin` to its destination: the client picks where it goes,
     /// the portal supplies the gateway or pool, and the remote end accepts or rejects it.
     fn verdict(
         &self,
         portal: &StubPortal,
         origin: ClientId,
-        src: IpAddr,
-        dst: &Destination,
-        protocol: Protocol,
+        request: &ProbeRequest,
     ) -> (ExpectedOutcome, Option<Authorization>) {
         let client = self.clients[&origin].inner();
+        let (src, dst, protocol) = (request.source(), request.destination(), request.protocol());
 
         if dst.ip_addr().is_some_and(|ip| ip.is_multicast()) {
             return (ExpectedOutcome::Dropped, None);
