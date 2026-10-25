@@ -15,7 +15,7 @@ use tracing::Span;
 use super::sim_client::SimClient;
 use super::sim_gateway::SimGateway;
 use super::sim_relay::SimRelay;
-use super::sim_tunnel::{Role, SimTunnel};
+use super::sim_tunnel::SimTunnel;
 
 #[derive(Clone, derive_more::Debug)]
 pub(crate) struct Host<T> {
@@ -479,7 +479,7 @@ pub(crate) trait PollTimeout {
 
 /// A host that runs a tunnel.
 pub(crate) trait Node: ExecMutScope {
-    type Role: Role;
+    type Role: tunnel::Role;
 
     fn tunnel(&mut self) -> &mut SimTunnel<Self::Role>;
 
@@ -490,7 +490,7 @@ pub(crate) trait Node: ExecMutScope {
         &mut self,
         global_dns_records: &DnsRecords,
         now: Instant,
-    ) -> (Option<<Self::Role as Role>::Event>, bool);
+    ) -> (Option<<Self::Role as tunnel::Role>::Event>, bool);
 }
 
 impl<T: Node> Host<T> {
@@ -500,7 +500,7 @@ impl<T: Node> Host<T> {
         global_dns_records: &DnsRecords,
         transmits: &mut BufferedTransmits,
         now: Instant,
-    ) -> (Option<<T::Role as Role>::Event>, bool) {
+    ) -> (Option<<T::Role as tunnel::Role>::Event>, bool) {
         let arrived = iter::from_fn(|| self.inbox.pop(now)).collect::<Vec<_>>();
         let turn = self.exec_mut(|node| {
             node.tunnel().receive(arrived);

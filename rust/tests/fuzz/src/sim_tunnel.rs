@@ -10,10 +10,7 @@ use std::{
 use itertools::Itertools as _;
 use snownet::Transmit;
 use socket_factory::DatagramOut;
-use tunnel::{
-    ClientEvent, ClientState, FakeTunnelEnds, GatewayEvent, GatewayState, ResolverQuery,
-    SocketThreadEnds, Tunnel, TunnelError,
-};
+use tunnel::{ClientState, FakeTunnelEnds, ResolverQuery, Role, SocketThreadEnds, Tunnel};
 
 /// A tunnel and the OS around it: its TUN device and its sockets.
 pub(crate) struct SimTunnel<R> {
@@ -82,13 +79,16 @@ impl<R: Role> SimTunnel<R> {
     pub(crate) fn poll_event(&mut self, now: Instant) -> (Option<R::Event>, bool) {
         if self.alarm.is_some_and(|alarm| alarm <= now) {
             self.alarm = None;
-            self.inner.state_mut().handle_timeout(now);
+            self.inner.handle_timeout(now);
         }
 
         let woken = Arc::new(Woken::default());
         let waker = Waker::from(woken.clone());
 
-        match R::poll(&mut self.inner, &mut Context::from_waker(&waker), now) {
+        match self
+            .inner
+            .poll_next_event(&mut Context::from_waker(&waker), now)
+        {
             Poll::Ready(Ok(event)) => return (Some(event), true),
             Poll::Ready(Err(mut errors)) => {
                 for e in errors.drain() {
@@ -104,7 +104,7 @@ impl<R: Role> SimTunnel<R> {
             return (None, true);
         }
 
-        self.alarm = R::next_timeout(&mut self.inner, now);
+        self.alarm = self.inner.next_timeout(now);
 
         (None, self.alarm.is_some_and(|alarm| alarm <= now))
     }
@@ -131,58 +131,5 @@ impl Wake for Woken {
 
     fn wake_by_ref(self: &Arc<Self>) {
         self.0.store(true, Ordering::Relaxed);
-    }
-}
-
-/// The calls that differ between a [`tunnel::ClientTunnel`] and a [`tunnel::GatewayTunnel`].
-pub(crate) trait Role: Sized {
-    type Event;
-
-    fn poll(
-        tunnel: &mut Tunnel<Self>,
-        cx: &mut Context<'_>,
-        now: Instant,
-    ) -> Poll<Result<Self::Event, TunnelError>>;
-    fn next_timeout(tunnel: &mut Tunnel<Self>, now: Instant) -> Option<Instant>;
-    fn handle_timeout(&mut self, now: Instant);
-}
-
-impl Role for ClientState {
-    type Event = ClientEvent;
-
-    fn poll(
-        tunnel: &mut Tunnel<Self>,
-        cx: &mut Context<'_>,
-        now: Instant,
-    ) -> Poll<Result<Self::Event, TunnelError>> {
-        tunnel.poll_next_event(cx, now)
-    }
-
-    fn next_timeout(tunnel: &mut Tunnel<Self>, now: Instant) -> Option<Instant> {
-        tunnel.next_timeout(now)
-    }
-
-    fn handle_timeout(&mut self, now: Instant) {
-        ClientState::handle_timeout(self, now);
-    }
-}
-
-impl Role for GatewayState {
-    type Event = GatewayEvent;
-
-    fn poll(
-        tunnel: &mut Tunnel<Self>,
-        cx: &mut Context<'_>,
-        now: Instant,
-    ) -> Poll<Result<Self::Event, TunnelError>> {
-        tunnel.poll_next_event(cx, now)
-    }
-
-    fn next_timeout(tunnel: &mut Tunnel<Self>, now: Instant) -> Option<Instant> {
-        tunnel.next_timeout(now)
-    }
-
-    fn handle_timeout(&mut self, now: Instant) {
-        GatewayState::handle_timeout(self, now);
     }
 }
