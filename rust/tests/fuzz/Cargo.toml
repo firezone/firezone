@@ -26,7 +26,6 @@ ip_network_table = { workspace = true }
 itertools = { workspace = true, features = ["use_std"] }
 l3-tcp = { workspace = true }
 libc = { workspace = true }
-quinn-udp = { workspace = true }
 rand = { workspace = true }
 relay-proto = { workspace = true }
 secrecy = { workspace = true, features = ["serde"] }

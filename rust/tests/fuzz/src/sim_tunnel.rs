@@ -7,13 +7,12 @@ use std::{
     time::Instant,
 };
 
-use ip_packet::Ecn;
 use itertools::Itertools as _;
 use snownet::Transmit;
-use socket_factory::{DatagramBatch, DatagramOut};
+use socket_factory::DatagramOut;
 use tunnel::{
-    ClientEvent, ClientState, FakeTunnelEnds, GatewayEvent, GatewayState, ResolverQuery, Tunnel,
-    TunnelError,
+    ClientEvent, ClientState, FakeTunnelEnds, GatewayEvent, GatewayState, ResolverQuery,
+    SocketThreadEnds, Tunnel, TunnelError,
 };
 
 /// A tunnel and the OS around it: its TUN device and its sockets.
@@ -41,7 +40,7 @@ impl<R: Role> SimTunnel<R> {
             .into_iter()
             .chunk_by(|transmit| (transmit.dst.is_ipv4(), transmit.dst.port()));
 
-        for ((is_ipv4, port), datagrams) in &by_socket {
+        for ((is_ipv4, _), transmits) in &by_socket {
             let socket = if is_ipv4 {
                 &self.ends.socket_v4
             } else {
@@ -49,18 +48,25 @@ impl<R: Role> SimTunnel<R> {
             };
 
             socket
-                .receive(received(port, &datagrams.collect::<Vec<_>>()))
+                .receive(SocketThreadEnds::batch(transmits.map(|transmit| {
+                    DatagramOut {
+                        src: transmit.src,
+                        dst: transmit.dst,
+                        segment_size: transmit.payload.len(),
+                        packet: transmit.payload,
+                        ecn: transmit.ecn,
+                    }
+                })))
                 .expect("socket channel has room");
         }
     }
 
     /// Takes what the tunnel sent out of the sockets' channels.
     pub(crate) fn take_sent(&mut self) -> Vec<Transmit> {
-        let mut datagrams = Vec::new();
-        self.ends.socket_v4.take_sent(&mut datagrams);
-        self.ends.socket_v6.take_sent(&mut datagrams);
+        let mut sent = self.ends.socket_v4.take_sent();
+        sent.extend(self.ends.socket_v6.take_sent());
 
-        datagrams.into_iter().flat_map(segments).collect()
+        sent
     }
 
     /// Takes the next recursive DNS query the tunnel sent, ignoring its resolver configuration.
@@ -126,50 +132,6 @@ impl Wake for Woken {
     fn wake_by_ref(self: &Arc<Self>) {
         self.0.store(true, Ordering::Relaxed);
     }
-}
-
-/// Creates a batch as if a socket bound to `port` had received `transmits` in one syscall.
-fn received(port: u16, transmits: &[Transmit]) -> DatagramBatch {
-    let (buffers, metas): (Vec<_>, Vec<_>) = transmits
-        .iter()
-        .map(|transmit| {
-            let mut meta = quinn_udp::RecvMeta::default();
-            meta.addr = transmit
-                .src
-                .expect("`src` should always be set in these tests");
-            meta.len = transmit.payload.len();
-            meta.stride = transmit.payload.len();
-            meta.dst_ip = Some(transmit.dst.ip());
-            meta.ecn = match transmit.ecn {
-                Ecn::NonEct => None,
-                Ecn::Ect1 => Some(quinn_udp::EcnCodepoint::Ect1),
-                Ecn::Ect0 => Some(quinn_udp::EcnCodepoint::Ect0),
-                Ecn::Ce => Some(quinn_udp::EcnCodepoint::Ce),
-            };
-
-            (transmit.payload.clone(), meta)
-        })
-        .unzip();
-    let len = buffers.len();
-
-    DatagramBatch::new(buffers, metas, port, len)
-}
-
-/// Splits a datagram sent with GSO into the datagrams it puts on the wire.
-fn segments(datagram: DatagramOut) -> impl Iterator<Item = Transmit> {
-    let segment_size = datagram.segment_size.max(1);
-
-    datagram
-        .packet
-        .chunks(segment_size)
-        .map(|segment| Transmit {
-            src: datagram.src,
-            dst: datagram.dst,
-            payload: bufferpool::Bytes::copied_from(segment),
-            ecn: datagram.ecn,
-        })
-        .collect::<Vec<_>>()
-        .into_iter()
 }
 
 /// The calls that differ between a [`tunnel::ClientTunnel`] and a [`tunnel::GatewayTunnel`].

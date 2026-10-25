@@ -3135,7 +3135,6 @@ dependencies = [
  "itertools 0.15.0",
  "l3-tcp",
  "libc",
- "quinn-udp",
  "rand 0.10.3",
  "relay-proto",
  "secrecy",
