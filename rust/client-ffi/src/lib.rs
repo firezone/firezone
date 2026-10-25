@@ -337,11 +337,12 @@ pub fn connect_apple(
 
     let additional_host_candidates = additional_host_candidates
         .into_iter()
-        .map(|ip| {
-            ip.parse::<IpAddr>()
-                .with_context(|| format!("Invalid additional host candidate: {ip}"))
+        .filter_map(|ip| {
+            ip.parse()
+                .inspect_err(|e| tracing::debug!(%ip, "Failed to parse additional host candidate as IP address: {e}"))
+                .ok()
         })
-        .collect::<Result<Vec<_>>>()?;
+        .collect();
 
     // Locate the TUN device before `connect` spawns anything: every failed
     // search used to leave a Tokio runtime and its threads behind, and the
