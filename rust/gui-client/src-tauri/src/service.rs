@@ -928,7 +928,7 @@ impl<'a> Handler<'a> {
             portal,
             is_internet_resource_active,
             dns,
-            Vec::default(),
+            self.advanced_settings.additional_host_candidates.clone(),
             known_dirs::flow_logs(),
             false,
             tokio::runtime::Handle::current(),
