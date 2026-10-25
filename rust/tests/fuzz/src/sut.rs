@@ -558,9 +558,7 @@ impl TunnelTest {
             Transition::UpdateSystemDnsServers { servers } => {
                 for client in self.clients.values_mut() {
                     client.exec_mut(|c| {
-                        c.tunnel
-                            .tunnel_mut()
-                            .update_system_resolvers(servers.clone());
+                        c.tunnel.tunnel.update_system_resolvers(servers.clone());
                     });
                 }
             }
@@ -655,7 +653,7 @@ impl TunnelTest {
                 let added = self.network.add_host(client_id, client);
                 debug_assert!(added);
                 client.exec_mut(|c| {
-                    c.tunnel.tunnel_mut().reset("roam", now);
+                    c.tunnel.tunnel.reset("roam", now);
                     c.sut_mut().set_portal_connected(false);
                 });
 
@@ -851,7 +849,7 @@ impl TunnelTest {
                         upstream_doh: portal.upstream_doh().to_vec(),
                         search_domain: portal.search_domain(),
                     });
-                    c.tunnel.tunnel_mut().update_system_resolvers(system_dns);
+                    c.tunnel.tunnel.update_system_resolvers(system_dns);
                     c.sut_mut().set_resources(all_resources, now);
 
                     c.update_relays(iter::empty(), self.relays.iter(), now);
@@ -985,36 +983,33 @@ impl TunnelTest {
             let now = self.flux_capacitor.now();
             let now_utc = self.flux_capacitor.now::<SystemTime>();
 
+            while let Some(transmit) = buffered_transmits.pop(now) {
+                self.dispatch_transmit(transmit, now);
+            }
+
+            let mut busy = false;
             let gateway_events = self
                 .gateways
                 .iter_mut()
                 .filter_map(|(id, g)| {
-                    Some((*id, g.step(global_dns_records, buffered_transmits, now)?))
+                    let (event, more) = g.step(global_dns_records, buffered_transmits, now);
+                    busy |= more;
+
+                    Some((*id, event?))
                 })
                 .collect::<Vec<_>>();
             let client_events = self
                 .clients
                 .iter_mut()
                 .filter_map(|(id, c)| {
-                    Some((*id, c.step(global_dns_records, buffered_transmits, now)?))
+                    let (event, more) = c.step(global_dns_records, buffered_transmits, now);
+                    busy |= more;
+
+                    Some((*id, event?))
                 })
                 .collect::<Vec<_>>();
             for relay in self.relays.values_mut() {
                 relay.step(buffered_transmits, now, now_utc);
-            }
-
-            if gateway_events.is_empty() && client_events.is_empty() {
-                if let Some(transmit) = buffered_transmits.pop(now) {
-                    self.dispatch_transmit(transmit, now);
-                } else if !buffered_transmits.is_empty() {
-                    self.flux_capacitor.small_tick(); // Small tick to get to the next transmit.
-                } else if let Some(deadline) = self.poll_timeout().filter(|t| *t <= cut_off) {
-                    self.flux_capacitor.advance_until(deadline);
-                } else {
-                    break;
-                }
-
-                continue;
             }
 
             for (id, event) in gateway_events {
@@ -1033,6 +1028,22 @@ impl TunnelTest {
             }
             for (id, event) in client_events {
                 self.on_client_event(id, event, ref_state, portal);
+            }
+
+            if busy
+                || buffered_transmits
+                    .next_transmit()
+                    .is_some_and(|at| at <= now)
+            {
+                continue;
+            }
+
+            if !buffered_transmits.is_empty() {
+                self.flux_capacitor.small_tick(); // Small tick to get to the next transmit.
+            } else if let Some(deadline) = self.poll_timeout().filter(|t| *t <= cut_off) {
+                self.flux_capacitor.advance_until(deadline);
+            } else {
+                break;
             }
         }
 
@@ -1227,7 +1238,7 @@ impl TunnelTest {
                 // The gateway's candidates and the portal's `flow_created` reply travel
                 // independently, so the client may receive them before it knows about
                 // the connection.
-                while let Some(event) = gateway.exec_mut(|g| g.tunnel.poll_event(now)) {
+                while let (Some(event), _) = gateway.exec_mut(|g| g.tunnel.poll_event(now)) {
                     on_gateway_event(
                         gateway_id,
                         event,

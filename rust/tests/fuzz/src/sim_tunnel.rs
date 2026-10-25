@@ -1,37 +1,27 @@
 use std::{
-    collections::VecDeque,
-    net::SocketAddr,
-    task::{Context, Poll, Waker},
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
+    task::{Context, Poll, Wake, Waker},
     time::Instant,
 };
 
-use ip_packet::{Ecn, IpPacket};
+use ip_packet::Ecn;
+use itertools::Itertools as _;
 use snownet::Transmit;
 use socket_factory::{DatagramBatch, DatagramOut};
-use tun::PacketBatch;
 use tunnel::{
     ClientEvent, ClientState, FakeTunnelEnds, GatewayEvent, GatewayState, ResolverQuery, Tunnel,
-    TunnelError, dns,
+    TunnelError,
 };
-
-/// How many datagrams a socket receives at once.
-const RECV_BATCH_SIZE: usize = 32;
 
 /// A tunnel and the OS around it: its TUN device and its sockets.
 pub(crate) struct SimTunnel<R> {
-    tunnel: Tunnel<R>,
-    ends: FakeTunnelEnds,
-    /// The deadline the tunnel asked to be woken at.
-    alarm: Option<Instant>,
-
-    /// Packets the TUN device has yet to read.
-    unread: VecDeque<IpPacket>,
-    /// Datagrams the sockets have yet to receive.
-    unreceived: VecDeque<Transmit>,
-    /// Datagrams the tunnel sent.
-    sent: VecDeque<Transmit>,
-    /// Packets the tunnel wrote to the TUN device.
-    written: VecDeque<IpPacket>,
+    pub(crate) tunnel: Tunnel<R>,
+    pub(crate) ends: FakeTunnelEnds,
+    /// The deadline the tunnel asked to be woken at when it last went idle.
+    pub(crate) alarm: Option<Instant>,
 }
 
 impl<R: Role> SimTunnel<R> {
@@ -42,41 +32,35 @@ impl<R: Role> SimTunnel<R> {
             tunnel,
             ends,
             alarm: None,
-            unread: VecDeque::new(),
-            unreceived: VecDeque::new(),
-            sent: VecDeque::new(),
-            written: VecDeque::new(),
         }
     }
 
-    pub(crate) fn state(&self) -> &R {
-        self.tunnel.state()
+    /// Hands `transmits` to the sockets they are addressed to, one batch per socket.
+    pub(crate) fn receive(&mut self, transmits: Vec<Transmit>) {
+        let by_socket = transmits
+            .into_iter()
+            .chunk_by(|transmit| (transmit.dst.is_ipv4(), transmit.dst.port()));
+
+        for ((is_ipv4, port), datagrams) in &by_socket {
+            let socket = if is_ipv4 {
+                &self.ends.socket_v4
+            } else {
+                &self.ends.socket_v6
+            };
+
+            socket
+                .receive(received(port, &datagrams.collect::<Vec<_>>()))
+                .expect("socket channel has room");
+        }
     }
 
-    pub(crate) fn state_mut(&mut self) -> &mut R {
-        self.tunnel.state_mut()
-    }
+    /// Takes what the tunnel sent out of the sockets' channels.
+    pub(crate) fn take_sent(&mut self) -> Vec<Transmit> {
+        let mut datagrams = Vec::new();
+        self.ends.socket_v4.take_sent(&mut datagrams);
+        self.ends.socket_v6.take_sent(&mut datagrams);
 
-    pub(crate) fn tunnel_mut(&mut self) -> &mut Tunnel<R> {
-        &mut self.tunnel
-    }
-
-    /// Queues `packet` for the TUN device to read.
-    pub(crate) fn read_from_tun(&mut self, packet: IpPacket) {
-        self.unread.push_back(packet);
-    }
-
-    /// Queues `transmit` for the sockets to receive on `transmit.dst`.
-    pub(crate) fn receive(&mut self, transmit: Transmit) {
-        self.unreceived.push_back(transmit);
-    }
-
-    pub(crate) fn poll_transmit(&mut self) -> Option<Transmit> {
-        self.sent.pop_front()
-    }
-
-    pub(crate) fn poll_written(&mut self) -> Option<IpPacket> {
-        self.written.pop_front()
+        datagrams.into_iter().flat_map(segments).collect()
     }
 
     /// Takes the next recursive DNS query the tunnel sent, ignoring its resolver configuration.
@@ -86,141 +70,62 @@ impl<R: Role> SimTunnel<R> {
         self.ends.dns.try_recv_query()
     }
 
-    pub(crate) fn respond(&mut self, response: dns::RecursiveResponse) {
-        if self.ends.dns.respond(response).is_err() {
-            tracing::debug!("Resolver channel is full; dropping DNS response");
-        }
-    }
-
-    /// The deadline the tunnel asked to be woken at when it last went idle.
-    pub(crate) fn deadline(&self) -> Option<Instant> {
-        self.alarm
-    }
-
-    /// Runs the tunnel until it emits an event or waits for input or a later deadline.
+    /// Handles a deadline that has passed and polls the tunnel once.
     ///
-    /// Handles a deadline that has passed before anything else, and asks for the next deadline
-    /// only once the tunnel is pending.
-    pub(crate) fn poll_event(&mut self, now: Instant) -> Option<R::Event> {
-        let mut cx = Context::from_waker(Waker::noop());
-
-        loop {
-            let fed = self.feed();
-
-            if self.alarm.is_some_and(|alarm| alarm <= now) {
-                self.alarm = None;
-                self.tunnel.state_mut().handle_timeout(now);
-            }
-
-            let poll = R::poll(&mut self.tunnel, &mut cx, now);
-            let drained = self.drain();
-
-            match poll {
-                Poll::Ready(Ok(event)) => return Some(event),
-                Poll::Ready(Err(mut errors)) => {
-                    for e in errors.drain() {
-                        tracing::warn!("{e:#}");
-                    }
-
-                    continue;
-                }
-                Poll::Pending => {}
-            }
-
-            if fed || drained {
-                continue;
-            }
-
-            self.alarm = R::next_timeout(&mut self.tunnel, now);
-
-            if !self.alarm.is_some_and(|alarm| alarm <= now) {
-                return None;
-            }
-        }
-    }
-
-    /// Hands the queued packets and datagrams to the tunnel, as far as its channels have room.
-    fn feed(&mut self) -> bool {
-        let mut fed = false;
-
-        while let Some(first) = self.unread.pop_front() {
-            let mut batch = PacketBatch::new(first);
-            while let Some(packet) = self.unread.pop_front() {
-                if let Err(packet) = batch.try_push(packet) {
-                    self.unread.push_front(packet);
-                    break;
-                }
-            }
-
-            if let Err(e) = self.ends.tun_inbound.try_send(batch) {
-                let mut batch = e.into_inner();
-                for packet in batch.drain().collect::<Vec<_>>().into_iter().rev() {
-                    self.unread.push_front(packet);
-                }
-                break;
-            }
-
-            fed = true;
+    /// Returns the event it emitted and whether it has more to do at `now`.
+    pub(crate) fn poll_event(&mut self, now: Instant) -> (Option<R::Event>, bool) {
+        if self.alarm.is_some_and(|alarm| alarm <= now) {
+            self.alarm = None;
+            self.tunnel.state_mut().handle_timeout(now);
         }
 
-        while let Some(first) = self.unreceived.front() {
-            let socket = match first.dst {
-                SocketAddr::V4(_) => &self.ends.socket_v4,
-                SocketAddr::V6(_) => &self.ends.socket_v6,
-            };
-            let local = first.dst;
-            let len = self
-                .unreceived
-                .iter()
-                .take(RECV_BATCH_SIZE)
-                .take_while(|transmit| same_socket(transmit.dst, local))
-                .count();
-            let datagrams = self.unreceived.drain(..len).collect::<Vec<_>>();
+        let woken = Arc::new(Woken::default());
+        let waker = Waker::from(woken.clone());
 
-            if socket.receive(received(local.port(), &datagrams)).is_err() {
-                for transmit in datagrams.into_iter().rev() {
-                    self.unreceived.push_front(transmit);
+        match R::poll(&mut self.tunnel, &mut Context::from_waker(&waker), now) {
+            Poll::Ready(Ok(event)) => return (Some(event), true),
+            Poll::Ready(Err(mut errors)) => {
+                for e in errors.drain() {
+                    tracing::warn!("{e:#}");
                 }
-                break;
+
+                return (None, true);
             }
-
-            fed = true;
+            Poll::Pending => {}
         }
 
-        fed
-    }
-
-    /// Takes what the tunnel sent and wrote to the TUN device out of their channels.
-    fn drain(&mut self) -> bool {
-        let num_sent = self.sent.len();
-        let num_written = self.written.len();
-
-        let mut datagrams = Vec::new();
-        self.ends.socket_v4.take_sent(&mut datagrams);
-        self.ends.socket_v6.take_sent(&mut datagrams);
-        self.sent.extend(datagrams.into_iter().flat_map(segments));
-
-        while let Ok(mut batch) = self.ends.tun_outbound.try_recv() {
-            self.written.extend(batch.drain());
+        if woken.0.load(Ordering::Relaxed) {
+            return (None, true);
         }
 
-        self.sent.len() != num_sent || self.written.len() != num_written
+        self.alarm = R::next_timeout(&mut self.tunnel, now);
+
+        (None, self.alarm.is_some_and(|alarm| alarm <= now))
     }
 }
 
 impl SimTunnel<ClientState> {
     /// Shuts the tunnel down, returning the datagrams it sent on the way out.
-    pub(crate) fn shut_down(mut self, now: Instant) -> impl Iterator<Item = Transmit> {
+    pub(crate) fn shut_down(mut self, now: Instant) -> Vec<Transmit> {
         self.tunnel.state_mut().shut_down(now);
-        while self.poll_event(now).is_some() {}
+        while self.poll_event(now).1 {}
 
-        self.sent.into_iter()
+        self.take_sent()
     }
 }
 
-/// Whether a datagram to `dst` is received by the same socket as one to `local`.
-fn same_socket(dst: SocketAddr, local: SocketAddr) -> bool {
-    dst.is_ipv4() == local.is_ipv4() && dst.port() == local.port()
+/// Records whether the tunnel asked to be polled again.
+#[derive(Default)]
+struct Woken(AtomicBool);
+
+impl Wake for Woken {
+    fn wake(self: Arc<Self>) {
+        self.wake_by_ref();
+    }
+
+    fn wake_by_ref(self: &Arc<Self>) {
+        self.0.store(true, Ordering::Relaxed);
+    }
 }
 
 /// Creates a batch as if a socket bound to `port` had received `transmits` in one syscall.

@@ -15,6 +15,7 @@ use tracing::Span;
 use super::sim_client::SimClient;
 use super::sim_gateway::SimGateway;
 use super::sim_relay::SimRelay;
+use super::sim_tunnel::{Role, SimTunnel};
 
 #[derive(Clone, derive_more::Debug)]
 pub(crate) struct Host<T> {
@@ -478,42 +479,46 @@ pub(crate) trait PollTimeout {
 
 /// A host that runs a tunnel.
 pub(crate) trait Node: ExecMutScope {
-    type Event;
+    type Role: Role;
 
-    fn receive(&mut self, transmit: Transmit);
+    fn tunnel(&mut self) -> &mut SimTunnel<Self::Role>;
 
-    /// Runs until it emits an event for the portal or another host, or can make no more progress at `now`.
-    fn step(&mut self, global_dns_records: &DnsRecords, now: Instant) -> Option<Self::Event>;
-
-    fn poll_transmit(&mut self) -> Option<Transmit>;
+    /// Takes one turn: polls the tunnel once and handles what it wrote.
+    ///
+    /// Returns the event for the portal or another host and whether it has more to do at `now`.
+    fn step(
+        &mut self,
+        global_dns_records: &DnsRecords,
+        now: Instant,
+    ) -> (Option<<Self::Role as Role>::Event>, bool);
 }
 
 impl<T: Node> Host<T> {
-    /// Steps the host with what has arrived by `now` and puts what it sent onto the network.
+    /// Takes one turn with what has arrived by `now` and puts what it sent onto the network.
     pub(crate) fn step(
         &mut self,
         global_dns_records: &DnsRecords,
         transmits: &mut BufferedTransmits,
         now: Instant,
-    ) -> Option<T::Event> {
-        while let Some(transmit) = self.inbox.pop(now) {
-            self.exec_mut(|node| node.receive(transmit));
-        }
+    ) -> (Option<<T::Role as Role>::Event>, bool) {
+        let arrived = iter::from_fn(|| self.inbox.pop(now)).collect::<Vec<_>>();
+        let turn = self.exec_mut(|node| {
+            node.tunnel().receive(arrived);
+            node.step(global_dns_records, now)
+        });
 
-        let event = self.exec_mut(|node| node.step(global_dns_records, now));
-
-        while let Some(transmit) = self.exec_mut(|node| node.poll_transmit()) {
+        for transmit in self.exec_mut(|node| node.tunnel().take_sent()) {
             transmits.push_from(transmit, self, now);
         }
 
-        event
+        turn
     }
 }
 
 impl PollTimeout for SimClient {
     fn poll_timeout(&mut self) -> Option<Instant> {
         iter::empty()
-            .chain(self.tunnel.deadline())
+            .chain(self.tunnel.alarm)
             .chain(self.tcp_dns_client.poll_timeout())
             .min()
     }
@@ -521,7 +526,7 @@ impl PollTimeout for SimClient {
 
 impl PollTimeout for SimGateway {
     fn poll_timeout(&mut self) -> Option<Instant> {
-        self.tunnel.deadline()
+        self.tunnel.alarm
     }
 }
 

@@ -24,6 +24,7 @@ use std::{
     net::{IpAddr, SocketAddr},
     time::{Duration, Instant},
 };
+use tun::PacketBatch;
 use tunnel_proto::{
     ClientEvent, ClientState, DNS_SENTINELS_V4, DNS_SENTINELS_V6, DnsMapping, DnsResourceRecord,
     MaliciousBehaviour, MaliciousBehaviourGuard as Guard, dns,
@@ -111,11 +112,11 @@ impl SimClient {
     }
 
     pub(crate) fn sut(&self) -> &ClientState {
-        self.tunnel.state()
+        self.tunnel.tunnel.state()
     }
 
     pub(crate) fn sut_mut(&mut self) -> &mut ClientState {
-        self.tunnel.state_mut()
+        self.tunnel.tunnel.state_mut()
     }
 
     /// Shuts the tunnel down and starts a new one, returning the datagrams the old one sent on
@@ -151,7 +152,7 @@ impl SimClient {
         self.dns_by_sentinel = DnsMapping::default();
         self.routes.clear();
 
-        old.shut_down(now).collect()
+        old.shut_down(now)
     }
 
     /// Returns the _effective_ DNS servers that connlib is using.
@@ -235,7 +236,7 @@ impl SimClient {
 
                 self.sent_udp_dns_queries
                     .insert((upstream, query_id, local_port), packet.clone());
-                self.tunnel.read_from_tun(packet);
+                self.send(packet);
             }
             DnsTransport::Tcp => {
                 self.tcp_dns_client
@@ -267,7 +268,11 @@ impl SimClient {
     }
 
     pub(crate) fn send(&mut self, packet: IpPacket) {
-        self.tunnel.read_from_tun(packet);
+        self.tunnel
+            .ends
+            .tun_inbound
+            .try_send(PacketBatch::new(packet))
+            .expect("TUN channel has room");
     }
 
     pub(crate) fn send_probe(&mut self, id: ProbeId, packet: IpPacket, now: Instant) {
@@ -328,8 +333,8 @@ impl SimClient {
         }
     }
 
-    /// Answers the recursive DNS queries the tunnel sent, returning whether there were any.
-    fn answer_dns_queries(&mut self, global_dns_records: &DnsRecords) -> bool {
+    /// Answers the next recursive DNS query the tunnel sent, returning whether there was one.
+    fn answer_dns_query(&mut self, global_dns_records: &DnsRecords) -> bool {
         // Long enough that a query repeated within one `advance` window is served
         // from connlib's DNS cache, short enough that an `Idle` (minutes) expires
         // the entry, so the corpus exercises the cache hit and expiry paths. The
@@ -338,33 +343,37 @@ impl SimClient {
         // observationally transparent.
         const TTL: u32 = 30;
 
-        let mut any = false;
+        let Some(query) = self.tunnel.poll_dns_query() else {
+            return false;
+        };
 
-        while let Some(query) = self.tunnel.poll_dns_query() {
-            let server = query
-                .server
-                .expect("Clients always name the upstream server");
+        let server = query
+            .server
+            .expect("Clients always name the upstream server");
 
-            // DoH queries are always sent with an ID of 0, simulate that in the tests.
-            let message = match server {
-                dns::Upstream::DoH { .. } => query.message.clone().with_id(0),
-                dns::Upstream::Do53 { .. } => query.message.clone(),
-            };
-            let qtype = message.qtype();
-            let domain = message.domain();
+        // DoH queries are always sent with an ID of 0, simulate that in the tests.
+        let message = match server {
+            dns::Upstream::DoH { .. } => query.message.clone().with_id(0),
+            dns::Upstream::Do53 { .. } => query.message.clone(),
+        };
+        let qtype = message.qtype();
+        let domain = message.domain();
 
-            tracing::debug!(%domain, %qtype, "Responding to DNS query");
+        tracing::debug!(%domain, %qtype, "Responding to DNS query");
 
-            let response = dns_types::ResponseBuilder::for_query(&message, ResponseCode::NOERROR)
-                .with_records(
-                    global_dns_records
-                        .domain_records_iter(&domain)
-                        .filter(|record| qtype == record.rtype())
-                        .map(|rdata| (domain.clone(), TTL, rdata)),
-                )
-                .build();
+        let response = dns_types::ResponseBuilder::for_query(&message, ResponseCode::NOERROR)
+            .with_records(
+                global_dns_records
+                    .domain_records_iter(&domain)
+                    .filter(|record| qtype == record.rtype())
+                    .map(|rdata| (domain.clone(), TTL, rdata)),
+            )
+            .build();
 
-            self.tunnel.respond(dns::RecursiveResponse {
+        self.tunnel
+            .ends
+            .dns
+            .respond(dns::RecursiveResponse {
                 server,
                 query: query.message,
                 message: Ok(response), // TODO: Vary this?
@@ -373,11 +382,10 @@ impl SimClient {
                 remote: query.remote,
                 started_at: query.started_at,
                 recursion: dns::Recursion::Local,
-            });
-            any = true;
-        }
+            })
+            .expect("DNS response channel has room");
 
-        any
+        true
     }
 
     /// Process an IP packet received on the client.
@@ -741,67 +749,69 @@ fn probe_protocol_from_request(packet: &IpPacket) -> Option<ProbeProtocol> {
 }
 
 impl Node for SimClient {
-    type Event = ClientEvent;
+    type Role = ClientState;
 
-    fn receive(&mut self, transmit: Transmit) {
-        self.tunnel.receive(transmit);
+    fn tunnel(&mut self) -> &mut SimTunnel<ClientState> {
+        &mut self.tunnel
     }
 
-    /// Handles the events that are local to the Client and answers its recursive DNS queries from
+    /// Also handles the events that are local to the Client and answers a recursive DNS query from
     /// `global_dns_records`.
-    fn step(&mut self, global_dns_records: &DnsRecords, now: Instant) -> Option<ClientEvent> {
-        loop {
-            self.drive_apps(now);
+    fn step(
+        &mut self,
+        global_dns_records: &DnsRecords,
+        now: Instant,
+    ) -> (Option<ClientEvent>, bool) {
+        self.drive_apps(now);
 
-            if let Some(event) = self.tunnel.poll_event(now) {
-                match event {
-                    ClientEvent::ResourcesChanged { resources } => {
-                        self.observed_resource_list = resources;
-                    }
-                    ClientEvent::DnsRecordsChanged { records } => {
-                        self.dns_resource_record_cache = records;
-                    }
-                    ClientEvent::TunInterfaceUpdated(config) => {
-                        if self.dns_by_sentinel == config.dns_by_sentinel
-                            && self.routes == config.routes
-                            && self.search_domain == config.search_domain
-                        {
-                            tracing::error!(
-                                "Emitted `TunInterfaceUpdated` without changing DNS servers, routes or search domain"
-                            );
-                        }
+        let (event, mut busy) = self.tunnel.poll_event(now);
 
-                        self.set_new_dns_servers(config.dns_by_sentinel);
-                        self.routes = config.routes;
-                        self.search_domain = config.search_domain;
-                        self.tcp_dns_client
-                            .set_source_interface(config.ip.v4, config.ip.v6);
-                    }
-                    event @ (ClientEvent::AddedIceCandidates { .. }
-                    | ClientEvent::RemovedIceCandidates { .. }
-                    | ClientEvent::RequestAccess { .. }
-                    | ClientEvent::DeviceDomainQueried { .. }
-                    | ClientEvent::DeviceDomainBrowsed { .. }
-                    | ClientEvent::NoRelays { .. }) => return Some(event),
+        busy |= self.answer_dns_query(global_dns_records);
+        while let Ok(mut batch) = self.tunnel.ends.tun_outbound.try_recv() {
+            for packet in batch.drain() {
+                self.on_received_packet(packet, now);
+            }
+            busy = true;
+        }
+
+        let event = match event {
+            None => None,
+            Some(ClientEvent::ResourcesChanged { resources }) => {
+                self.observed_resource_list = resources;
+                None
+            }
+            Some(ClientEvent::DnsRecordsChanged { records }) => {
+                self.dns_resource_record_cache = records;
+                None
+            }
+            Some(ClientEvent::TunInterfaceUpdated(config)) => {
+                if self.dns_by_sentinel == config.dns_by_sentinel
+                    && self.routes == config.routes
+                    && self.search_domain == config.search_domain
+                {
+                    tracing::error!(
+                        "Emitted `TunInterfaceUpdated` without changing DNS servers, routes or search domain"
+                    );
                 }
 
-                continue;
+                self.set_new_dns_servers(config.dns_by_sentinel);
+                self.routes = config.routes;
+                self.search_domain = config.search_domain;
+                self.tcp_dns_client
+                    .set_source_interface(config.ip.v4, config.ip.v6);
+                None
             }
+            Some(
+                event @ (ClientEvent::AddedIceCandidates { .. }
+                | ClientEvent::RemovedIceCandidates { .. }
+                | ClientEvent::RequestAccess { .. }
+                | ClientEvent::DeviceDomainQueried { .. }
+                | ClientEvent::DeviceDomainBrowsed { .. }
+                | ClientEvent::NoRelays { .. }),
+            ) => Some(event),
+        };
 
-            let mut progressed = self.answer_dns_queries(global_dns_records);
-            while let Some(packet) = self.tunnel.poll_written() {
-                self.on_received_packet(packet, now);
-                progressed = true;
-            }
-
-            if !progressed {
-                return None;
-            }
-        }
-    }
-
-    fn poll_transmit(&mut self) -> Option<Transmit> {
-        self.tunnel.poll_transmit()
+        (event, busy)
     }
 }
 
