@@ -108,6 +108,8 @@ impl Reserved<'_> {
 }
 
 pub(crate) struct Sockets {
+    /// Binds the sockets; sockets without one are kept as they are across [`Sockets::rebind`].
+    socket_factory: Option<Arc<dyn SocketFactory<UdpSocket>>>,
     socket_v4: Option<ThreadedUdpSocket>,
     socket_v6: Option<ThreadedUdpSocket>,
 
@@ -126,9 +128,18 @@ pub(crate) struct Sockets {
     returned_recv_batches: Arc<Mutex<Vec<DatagramBatch>>>,
 }
 
-impl Default for Sockets {
-    fn default() -> Self {
+impl Sockets {
+    /// Creates sockets for both families, bound to the unspecified address.
+    pub fn new(socket_factory: Arc<dyn SocketFactory<UdpSocket>>) -> Self {
+        let mut sockets = Self::without_sockets(Some(socket_factory));
+        sockets.rebind();
+
+        sockets
+    }
+
+    fn without_sockets(socket_factory: Option<Arc<dyn SocketFactory<UdpSocket>>>) -> Self {
         Self {
+            socket_factory,
             socket_v4: None,
             socket_v6: None,
             overflow_v4: VecDeque::new(),
@@ -139,14 +150,18 @@ impl Default for Sockets {
             returned_recv_batches: Arc::default(),
         }
     }
-}
 
-impl Sockets {
-    pub fn rebind(&mut self, socket_factory: Arc<dyn SocketFactory<UdpSocket>>) {
-        self.socket_v4 = None;
-        self.socket_v6 = None;
+    /// Drops the items waiting for room and binds new sockets through the socket factory.
+    pub fn rebind(&mut self) {
         self.overflow_v4.clear();
         self.overflow_v6.clear();
+
+        let Some(socket_factory) = self.socket_factory.clone() else {
+            return;
+        };
+
+        self.socket_v4 = None;
+        self.socket_v6 = None;
 
         self.socket_v4 = self.bind(&socket_factory, SocketAddr::V4(UNSPECIFIED_V4_SOCKET));
         self.socket_v6 = self.bind(&socket_factory, SocketAddr::V6(UNSPECIFIED_V6_SOCKET));
@@ -748,7 +763,7 @@ impl Sockets {
         let sockets = Self {
             socket_v4: Some(socket_v4),
             socket_v6: Some(socket_v6),
-            ..Self::default()
+            ..Self::without_sockets(None)
         };
 
         (sockets, ends_v4, ends_v6)
