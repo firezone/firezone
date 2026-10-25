@@ -1,4 +1,4 @@
-use crate::buffered_transmits::BufferedTransmits;
+use crate::{buffered_transmits::BufferedTransmits, dns_records::DnsRecords};
 use anyhow::{Context as _, Result, bail};
 use connlib_model::{ClientId, GatewayId, RelayId};
 use ip_network::IpNetwork;
@@ -474,6 +474,40 @@ where
 
 pub(crate) trait PollTimeout {
     fn poll_timeout(&mut self) -> Option<Instant>;
+}
+
+/// A host that runs a tunnel.
+pub(crate) trait Node: ExecMutScope {
+    type Event;
+
+    fn receive(&mut self, transmit: Transmit);
+
+    /// Runs until it emits an event for the portal or another host, or can make no more progress at `now`.
+    fn step(&mut self, global_dns_records: &DnsRecords, now: Instant) -> Option<Self::Event>;
+
+    fn poll_transmit(&mut self) -> Option<Transmit>;
+}
+
+impl<T: Node> Host<T> {
+    /// Steps the host with what has arrived by `now` and puts what it sent onto the network.
+    pub(crate) fn step(
+        &mut self,
+        global_dns_records: &DnsRecords,
+        transmits: &mut BufferedTransmits,
+        now: Instant,
+    ) -> Option<T::Event> {
+        while let Some(transmit) = self.inbox.pop(now) {
+            self.exec_mut(|node| node.receive(transmit));
+        }
+
+        let event = self.exec_mut(|node| node.step(global_dns_records, now));
+
+        while let Some(transmit) = self.exec_mut(|node| node.poll_transmit()) {
+            transmits.push_from(transmit, self, now);
+        }
+
+        event
+    }
 }
 
 impl PollTimeout for SimClient {

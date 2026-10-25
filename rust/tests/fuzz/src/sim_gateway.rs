@@ -2,7 +2,7 @@ use super::{
     dns_records::DnsRecords,
     dns_server_resource::DnsServers,
     probe::{ProbeId, ProbeObservation, ReceivedRequest, Remote},
-    sim_net::{ExecMutScope, Host},
+    sim_net::{ExecMutScope, Host, Node},
     sim_relay::{SimRelay, map_explode},
     sim_tunnel::SimTunnel,
     site_network::SiteNetwork,
@@ -17,7 +17,7 @@ use std::{
     net::{IpAddr, SocketAddr},
     time::Instant,
 };
-use tunnel_proto::GatewayState;
+use tunnel_proto::{GatewayEvent, GatewayState};
 
 /// Simulation state for a particular client.
 pub(crate) struct SimGateway {
@@ -82,12 +82,8 @@ impl SimGateway {
         self.tunnel.state_mut()
     }
 
-    pub(crate) fn receive(&mut self, transmit: Transmit) {
-        self.tunnel.receive(transmit);
-    }
-
     /// Hands the packets the resources and DNS servers send to the Gateway's TUN device.
-    pub(crate) fn advance_resources(&mut self, global_dns_records: &DnsRecords, now: Instant) {
+    fn advance_resources(&mut self, global_dns_records: &DnsRecords, now: Instant) {
         let packets = self
             .dns_servers
             .poll_answers(&self.site_specific_dns_records, now)
@@ -99,18 +95,6 @@ impl SimGateway {
         for packet in packets {
             self.tunnel.read_from_tun(packet);
         }
-    }
-
-    /// Delivers the packets the Gateway wrote to its TUN device, returning whether there were any.
-    pub(crate) fn handle_written(&mut self, now: Instant) -> bool {
-        let mut any = false;
-
-        while let Some(packet) = self.tunnel.poll_written() {
-            self.on_received_packet(packet, now);
-            any = true;
-        }
-
-        any
     }
 
     pub(crate) fn deploy_new_dns_servers(
@@ -395,6 +379,38 @@ impl SimGateway {
         self.next_observation_order += 1;
 
         order
+    }
+}
+
+impl Node for SimGateway {
+    type Event = GatewayEvent;
+
+    fn receive(&mut self, transmit: Transmit) {
+        self.tunnel.receive(transmit);
+    }
+
+    fn step(&mut self, global_dns_records: &DnsRecords, now: Instant) -> Option<GatewayEvent> {
+        loop {
+            self.advance_resources(global_dns_records, now);
+
+            if let Some(event) = self.tunnel.poll_event(now) {
+                return Some(event);
+            }
+
+            let mut delivered = false;
+            while let Some(packet) = self.tunnel.poll_written() {
+                self.on_received_packet(packet, now);
+                delivered = true;
+            }
+
+            if !delivered {
+                return None;
+            }
+        }
+    }
+
+    fn poll_transmit(&mut self) -> Option<Transmit> {
+        self.tunnel.poll_transmit()
     }
 }
 

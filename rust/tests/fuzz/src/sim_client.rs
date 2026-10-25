@@ -1,12 +1,13 @@
 use super::{
     DeviceListing, DeviceListingQuery, QueryId,
+    dns_records::DnsRecords,
     echo::echo_reply,
     probe::{
         CompletedStream, ProbeId, ProbeObservation, ProbeProtocol, ReceivedRequest,
         ReceivedResponse, Remote, SubmittedRequest,
     },
     reference::PrivateKey,
-    sim_net::{ExecMutScope, Host},
+    sim_net::{ExecMutScope, Host, Node},
     sim_relay::{SimRelay, map_explode},
     sim_tunnel::SimTunnel,
     site_network::{IcmpError, icmp_error_reply},
@@ -14,7 +15,7 @@ use super::{
 };
 use chrono::{DateTime, Utc};
 use connlib_model::{ClientId, RelayId, ResourceView};
-use dns_types::{DomainName, Query, RecordData, RecordType, prelude::*};
+use dns_types::{DomainName, Query, RecordData, RecordType, ResponseCode, prelude::*};
 use ip_network::IpNetwork;
 use ip_packet::{IcmpEchoHeader, Icmpv4Type, Icmpv6Type, IpPacket, Layer4Protocol};
 use snownet::Transmit;
@@ -24,7 +25,7 @@ use std::{
     time::{Duration, Instant},
 };
 use tunnel_proto::{
-    ClientState, DNS_SENTINELS_V4, DNS_SENTINELS_V6, DnsMapping, DnsResourceRecord,
+    ClientEvent, ClientState, DNS_SENTINELS_V4, DNS_SENTINELS_V6, DnsMapping, DnsResourceRecord,
     MaliciousBehaviour, MaliciousBehaviourGuard as Guard, dns,
 };
 
@@ -167,10 +168,6 @@ impl SimClient {
         self.tcp_dns_client.reset();
     }
 
-    pub(crate) fn dns_mapping(&self) -> &DnsMapping {
-        &self.dns_by_sentinel
-    }
-
     pub(crate) fn send_dns_resource_ptr_query_for(
         &mut self,
         record_domain: DomainName,
@@ -293,30 +290,90 @@ impl SimClient {
         self.send(packet);
     }
 
-    /// Returns the next packet the simulated applications send and the probe it submits, if any.
-    pub fn poll_outbound(&mut self) -> Option<(IpPacket, Option<ProbeId>)> {
-        self.tcp_dns_client
-            .poll_outbound()
-            .map(|packet| (packet, None))
-            .or_else(|| self.tcp_client.poll_outbound())
-    }
+    /// Hands what the simulated applications send to the TUN device and records the TCP DNS
+    /// responses they received.
+    fn drive_apps(&mut self, now: Instant) {
+        while let Some(result) = self.tcp_dns_client.poll_query_result() {
+            match result.result {
+                Ok(message) => {
+                    let upstream = self
+                        .dns_by_sentinel
+                        .upstream_by_sentinel(result.server.ip())
+                        .unwrap();
 
-    pub fn drive_tcp(&mut self, now: Instant) {
+                    self.received_tcp_dns_responses
+                        .insert((upstream.clone(), result.query.id()));
+                    self.handle_dns_response(upstream, DnsTransport::Tcp, &message)
+                }
+                Err(e) => {
+                    tracing::error!("TCP DNS query failed: {e:#}");
+                }
+            }
+        }
+
         self.tcp_dns_client.handle_timeout(now);
         self.tcp_client.handle_timeout(now);
         self.record_tcp_responses(now);
+
+        while let Some((packet, probe)) = self
+            .tcp_dns_client
+            .poll_outbound()
+            .map(|packet| (packet, None))
+            .or_else(|| self.tcp_client.poll_outbound())
+        {
+            match probe {
+                Some(id) => self.send_probe(id, packet, now),
+                None => self.send(packet),
+            }
+        }
     }
 
-    pub(crate) fn receive(&mut self, transmit: Transmit) {
-        self.tunnel.receive(transmit);
-    }
+    /// Answers the recursive DNS queries the tunnel sent, returning whether there were any.
+    fn answer_dns_queries(&mut self, global_dns_records: &DnsRecords) -> bool {
+        // Long enough that a query repeated within one `advance` window is served
+        // from connlib's DNS cache, short enough that an `Idle` (minutes) expires
+        // the entry, so the corpus exercises the cache hit and expiry paths. The
+        // reference model is cache-agnostic (it expects a response per query
+        // regardless of how it is produced), so activating the cache is
+        // observationally transparent.
+        const TTL: u32 = 30;
 
-    /// Delivers the packets the Client wrote to its TUN device, returning whether there were any.
-    pub(crate) fn handle_written(&mut self, now: Instant) -> bool {
         let mut any = false;
 
-        while let Some(packet) = self.tunnel.poll_written() {
-            self.on_received_packet(packet, now);
+        while let Some(query) = self.tunnel.poll_dns_query() {
+            let server = query
+                .server
+                .expect("Clients always name the upstream server");
+
+            // DoH queries are always sent with an ID of 0, simulate that in the tests.
+            let message = match server {
+                dns::Upstream::DoH { .. } => query.message.clone().with_id(0),
+                dns::Upstream::Do53 { .. } => query.message.clone(),
+            };
+            let qtype = message.qtype();
+            let domain = message.domain();
+
+            tracing::debug!(%domain, %qtype, "Responding to DNS query");
+
+            let response = dns_types::ResponseBuilder::for_query(&message, ResponseCode::NOERROR)
+                .with_records(
+                    global_dns_records
+                        .domain_records_iter(&domain)
+                        .filter(|record| qtype == record.rtype())
+                        .map(|rdata| (domain.clone(), TTL, rdata)),
+                )
+                .build();
+
+            self.tunnel.respond(dns::RecursiveResponse {
+                server,
+                query: query.message,
+                message: Ok(response), // TODO: Vary this?
+                transport: query.transport,
+                local: query.local,
+                remote: query.remote,
+                started_at: query.started_at,
+                recursion: dns::Recursion::Local,
+            });
             any = true;
         }
 
@@ -681,6 +738,71 @@ fn probe_protocol_from_request(packet: &IpPacket) -> Option<ProbeProtocol> {
         sport: SPort(udp.source_port()),
         dport: DPort(udp.destination_port()),
     })
+}
+
+impl Node for SimClient {
+    type Event = ClientEvent;
+
+    fn receive(&mut self, transmit: Transmit) {
+        self.tunnel.receive(transmit);
+    }
+
+    /// Handles the events that are local to the Client and answers its recursive DNS queries from
+    /// `global_dns_records`.
+    fn step(&mut self, global_dns_records: &DnsRecords, now: Instant) -> Option<ClientEvent> {
+        loop {
+            self.drive_apps(now);
+
+            if let Some(event) = self.tunnel.poll_event(now) {
+                match event {
+                    ClientEvent::ResourcesChanged { resources } => {
+                        self.observed_resource_list = resources;
+                    }
+                    ClientEvent::DnsRecordsChanged { records } => {
+                        self.dns_resource_record_cache = records;
+                    }
+                    ClientEvent::TunInterfaceUpdated(config) => {
+                        if self.dns_by_sentinel == config.dns_by_sentinel
+                            && self.routes == config.routes
+                            && self.search_domain == config.search_domain
+                        {
+                            tracing::error!(
+                                "Emitted `TunInterfaceUpdated` without changing DNS servers, routes or search domain"
+                            );
+                        }
+
+                        self.set_new_dns_servers(config.dns_by_sentinel);
+                        self.routes = config.routes;
+                        self.search_domain = config.search_domain;
+                        self.tcp_dns_client
+                            .set_source_interface(config.ip.v4, config.ip.v6);
+                    }
+                    event @ (ClientEvent::AddedIceCandidates { .. }
+                    | ClientEvent::RemovedIceCandidates { .. }
+                    | ClientEvent::RequestAccess { .. }
+                    | ClientEvent::DeviceDomainQueried { .. }
+                    | ClientEvent::DeviceDomainBrowsed { .. }
+                    | ClientEvent::NoRelays { .. }) => return Some(event),
+                }
+
+                continue;
+            }
+
+            let mut progressed = self.answer_dns_queries(global_dns_records);
+            while let Some(packet) = self.tunnel.poll_written() {
+                self.on_received_packet(packet, now);
+                progressed = true;
+            }
+
+            if !progressed {
+                return None;
+            }
+        }
+    }
+
+    fn poll_transmit(&mut self) -> Option<Transmit> {
+        self.tunnel.poll_transmit()
+    }
 }
 
 impl ExecMutScope for SimClient {

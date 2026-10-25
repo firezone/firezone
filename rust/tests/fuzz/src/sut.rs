@@ -1,20 +1,18 @@
 use super::buffered_transmits::BufferedTransmits;
-use super::dns_records::{DnsRecords, record_ip};
+use super::dns_records::record_ip;
 use super::reference::ReferenceState;
 use super::sim_client::SimClient;
 use super::sim_gateway::SimGateway;
 use super::sim_net::{Host, HostId, RoutingTable};
 use super::sim_relay::SimRelay;
 use super::stub_portal::StubPortal;
-use super::transition::{DPort, Destination, DnsQuery, DnsTransport, Identifier, SPort, Seq};
+use super::transition::{DPort, Destination, DnsQuery, Identifier, SPort, Seq};
 use crate::flux_capacitor::FluxCapacitor;
 use crate::probe::{DnsNatObservation, FlowId, ProbeId, ProbeObservation, ProbeTrace, Remote};
 use crate::resource as client;
 use crate::transition::Transition;
 use connlib_model::{ClientId, ClientOrGatewayId, GatewayId, PublicKey, RelayId};
-use dns_types::ResponseCode;
-use dns_types::prelude::*;
-use ip_packet::{Ecn, IpPacket};
+use ip_packet::IpPacket;
 use rand::SeedableRng;
 use rand::distr::SampleString;
 use sha2::Digest;
@@ -31,7 +29,7 @@ use tunnel_proto::dns::is_subdomain;
 use tunnel_proto::messages::client::{FailReason, ResourceAuthorization};
 use tunnel_proto::messages::gateway::Client;
 use tunnel_proto::messages::{IceCredentials, Key, SecretKey};
-use tunnel_proto::{ClientEvent, GatewayEvent, dns, messages::Interface};
+use tunnel_proto::{ClientEvent, GatewayEvent, messages::Interface};
 
 /// The actual system-under-test.
 ///
@@ -981,22 +979,49 @@ impl TunnelTest {
         buffered_transmits: &mut BufferedTransmits,
         cut_off: Instant,
     ) {
-        'outer: while self.flux_capacitor.now::<Instant>() < cut_off {
+        let global_dns_records = &ref_state.global_dns_records;
+
+        while self.flux_capacitor.now::<Instant>() < cut_off {
             let now = self.flux_capacitor.now();
+            let now_utc = self.flux_capacitor.now::<SystemTime>();
 
-            // Drive the network at the top so state changes from the previous
-            // iteration are turned into packets before we look for more work.
-            // Timeouts are not fired here; that happens once we run out of IO
-            // progress below.
-            self.drive_network(&ref_state.global_dns_records, buffered_transmits, now);
+            let gateway_events = self
+                .gateways
+                .iter_mut()
+                .filter_map(|(id, g)| {
+                    Some((*id, g.step(global_dns_records, buffered_transmits, now)?))
+                })
+                .collect::<Vec<_>>();
+            let client_events = self
+                .clients
+                .iter_mut()
+                .filter_map(|(id, c)| {
+                    Some((*id, c.step(global_dns_records, buffered_transmits, now)?))
+                })
+                .collect::<Vec<_>>();
+            for relay in self.relays.values_mut() {
+                relay.step(buffered_transmits, now, now_utc);
+            }
 
-            for (id, gateway) in self.gateways.iter_mut() {
-                let Some(event) = gateway.exec_mut(|g| g.tunnel.poll_event(now)) else {
-                    continue;
-                };
+            if gateway_events.is_empty() && client_events.is_empty() {
+                if let Some(transmit) = buffered_transmits.pop(now) {
+                    self.dispatch_transmit(transmit, now);
+                } else if !buffered_transmits.is_empty() {
+                    self.flux_capacitor.small_tick(); // Small tick to get to the next transmit.
+                } else if let Some(deadline) = self.poll_timeout().filter(|t| *t <= cut_off) {
+                    self.flux_capacitor.advance_until(deadline);
+                } else {
+                    break;
+                }
+
+                continue;
+            }
+
+            for (id, event) in gateway_events {
+                let gateway = self.gateways.get_mut(&id).expect("unknown gateway");
 
                 on_gateway_event(
-                    *id,
+                    id,
                     event,
                     &mut self.clients,
                     gateway,
@@ -1005,227 +1030,14 @@ impl TunnelTest {
                     ref_state,
                     now,
                 );
-                continue 'outer;
             }
-
-            // Collect client events first to avoid borrow checker issues
-            let client_event = self.clients.iter_mut().find_map(|(client_id, client)| {
-                client
-                    .exec_mut(|c| c.tunnel.poll_event(now))
-                    .map(|event| (*client_id, event))
-            });
-
-            if let Some((client_id, event)) = client_event {
-                self.on_client_event(client_id, event, ref_state, portal);
-                continue;
+            for (id, event) in client_events {
+                self.on_client_event(id, event, ref_state, portal);
             }
-
-            let dns_query = self.clients.iter_mut().find_map(|(client_id, client)| {
-                client
-                    .exec_mut(|c| c.tunnel.poll_dns_query())
-                    .map(|query| (*client_id, query))
-            });
-
-            if let Some((client_id, query)) = dns_query {
-                let server = query
-                    .server
-                    .expect("Clients always name the upstream server");
-
-                // DoH queries are always sent with an ID of 0, simulate that in the tests.
-                let message = match server {
-                    dns::Upstream::DoH { .. } => query.message.clone().with_id(0),
-                    dns::Upstream::Do53 { .. } => query.message.clone(),
-                };
-
-                let response = self.on_recursive_dns_query(&message, &ref_state.global_dns_records);
-                let client = self.clients.get_mut(&client_id).unwrap();
-                client.exec_mut(|c| {
-                    c.tunnel.respond(dns::RecursiveResponse {
-                        server,
-                        query: query.message,
-                        message: Ok(response), // TODO: Vary this?
-                        transport: query.transport,
-                        local: query.local,
-                        remote: query.remote,
-                        started_at: query.started_at,
-                        recursion: dns::Recursion::Local,
-                    })
-                });
-
-                continue;
-            }
-
-            for relay in self.relays.values_mut() {
-                let Some(message) = relay.exec_mut(|r| r.sut.next_command()) else {
-                    continue;
-                };
-
-                match message {
-                    relay_proto::Command::SendMessage { payload, recipient } => {
-                        let dst = recipient.into_socket();
-                        let src = relay
-                            .sending_socket_for(dst.ip())
-                            .expect("relay to never emit packets without a matching socket");
-
-                        buffered_transmits.push_from(
-                            Transmit {
-                                src: Some(src),
-                                dst,
-                                payload: bufferpool::Bytes::copied_from(&payload),
-                                ecn: Ecn::NonEct,
-                            },
-                            relay,
-                            now,
-                        );
-                    }
-
-                    relay_proto::Command::CreateAllocation { port, family } => {
-                        relay.exec_mut(|r| r.allocations.insert((family, port)));
-                    }
-                    relay_proto::Command::FreeAllocation { port, family } => {
-                        relay.exec_mut(|r| r.allocations.remove(&(family, port)));
-                    }
-                    relay_proto::Command::CreateChannelBinding { .. }
-                    | relay_proto::Command::DeleteChannelBinding { .. } => {}
-                }
-
-                continue 'outer;
-            }
-
-            for client in self.clients.values_mut() {
-                if client.exec_mut(|c| c.handle_written(now)) {
-                    continue 'outer;
-                }
-            }
-
-            for gateway in self.gateways.values_mut() {
-                if gateway.exec_mut(|g| g.handle_written(now)) {
-                    continue 'outer;
-                }
-            }
-
-            self.drain_transmits(buffered_transmits, now);
-
-            if let Some(transmit) = buffered_transmits.pop(now) {
-                self.dispatch_transmit(transmit, now);
-                continue;
-            }
-
-            if !buffered_transmits.is_empty() {
-                self.flux_capacitor.small_tick(); // Small tick to get to the next transmit.
-                continue;
-            }
-
-            let Some(time_to_next_action) = self.poll_timeout() else {
-                break; // Nothing to do.
-            };
-
-            if time_to_next_action > cut_off {
-                break; // Nothing to do before cut-off.
-            }
-
-            // The buffer is empty here (see the `is_empty` guard above), so nothing
-            // is in flight; jump to the next deadline and fire whatever is due.
-            self.flux_capacitor.advance_until(time_to_next_action);
-            self.handle_timeout(self.flux_capacitor.now());
         }
 
         for (transmit, at) in buffered_transmits.drain() {
             self.dispatch_transmit(transmit, at);
-        }
-    }
-
-    fn drain_transmits(&mut self, buffered_transmits: &mut BufferedTransmits, now: Instant) {
-        for gateway in self.gateways.values_mut() {
-            while let Some(transmit) = gateway.exec_mut(|g| g.tunnel.poll_transmit()) {
-                buffered_transmits.push_from(transmit, gateway, now);
-            }
-        }
-
-        for client in self.clients.values_mut() {
-            while let Some(transmit) = client.exec_mut(|c| c.tunnel.poll_transmit()) {
-                buffered_transmits.push_from(transmit, client, now);
-            }
-        }
-    }
-
-    /// Drive the simulated network: drain every host's outbound/inbound packets
-    /// and advance the simulated application TCP stacks.
-    fn drive_network(
-        &mut self,
-        global_dns_records: &DnsRecords,
-        buffered_transmits: &mut BufferedTransmits,
-        now: Instant,
-    ) {
-        // Handle the TCP DNS client, i.e. simulate applications making TCP DNS queries.
-        for client in self.clients.values_mut() {
-            client.exec_mut(|c| {
-                while let Some(result) = c.tcp_dns_client.poll_query_result() {
-                    match result.result {
-                        Ok(message) => {
-                            let upstream = c
-                                .dns_mapping()
-                                .upstream_by_sentinel(result.server.ip())
-                                .unwrap();
-
-                            c.received_tcp_dns_responses
-                                .insert((upstream.clone(), result.query.id()));
-                            c.handle_dns_response(upstream, DnsTransport::Tcp, &message)
-                        }
-                        Err(e) => {
-                            tracing::error!("TCP DNS query failed: {e:#}");
-                        }
-                    }
-                }
-            });
-        }
-        for client in self.clients.values_mut() {
-            client.exec_mut(|c| c.drive_tcp(now));
-
-            client.exec_mut(|c| {
-                while let Some((packet, probe)) = c.poll_outbound() {
-                    match probe {
-                        Some(id) => c.send_probe(id, packet, now),
-                        None => c.send(packet),
-                    }
-                }
-            });
-
-            while let Some(transmit) = client.poll_inbox(now) {
-                client.exec_mut(|c| c.receive(transmit));
-            }
-        }
-
-        // Handle all gateway `Transmit`s.
-        for gateway in self.gateways.values_mut() {
-            gateway.exec_mut(|g| g.advance_resources(global_dns_records, now));
-
-            while let Some(transmit) = gateway.poll_inbox(now) {
-                gateway.exec_mut(|g| g.receive(transmit));
-            }
-        }
-
-        let now_utc = self.flux_capacitor.now::<SystemTime>();
-
-        // Handle all relay `Transmit`s.
-        for relay in self.relays.values_mut() {
-            while let Some(transmit) = relay.poll_inbox(now) {
-                let Some(reply) = relay.exec_mut(|r| r.receive(transmit, now, now_utc)) else {
-                    continue;
-                };
-
-                buffered_transmits.push_from(reply, relay, now);
-            }
-        }
-    }
-
-    fn handle_timeout(&mut self, now: Instant) {
-        for relay in self.relays.values_mut() {
-            relay.exec_mut(|r| {
-                if r.sut.poll_timeout().is_some_and(|t| t <= now) {
-                    r.sut.handle_timeout(now)
-                }
-            })
         }
     }
 
@@ -1308,14 +1120,11 @@ impl TunnelTest {
         let now = self.flux_capacitor.now();
 
         // Simulate a client that has not yet reconnected to the portal after a
-        // roam: drop the portal-bound messages it emits. Local events (resource,
-        // DNS and TUN interface updates) still flow so the harness state stays in
-        // sync.
+        // roam: drop the messages it sends to the portal.
         let portal_unreachable = self
             .client_portal_offline_until
             .is_some_and(|(cid, until)| cid == src && now < until);
-        let is_portal_bound = is_portal_bound_event(&event);
-        if portal_unreachable && is_portal_bound {
+        if portal_unreachable {
             tracing::trace!(%src, ?event, "Dropping portal-bound client event during roam outage");
 
             return;
@@ -1547,35 +1356,6 @@ impl TunnelTest {
                     );
                 });
             }
-            ClientEvent::ResourcesChanged { resources } => {
-                let client = self.clients.get_mut(&src).unwrap();
-                client.exec_mut(|c| {
-                    c.observed_resource_list = resources;
-                });
-            }
-            ClientEvent::TunInterfaceUpdated(config) => {
-                let client = self.clients.get_mut(&src).unwrap();
-                if client.inner().dns_mapping() == &config.dns_by_sentinel
-                    && client.inner().routes == config.routes
-                    && client.inner().search_domain == config.search_domain
-                {
-                    tracing::error!(
-                        "Emitted `TunInterfaceUpdated` without changing DNS servers, routes or search domain"
-                    );
-                }
-
-                client.exec_mut(|c| {
-                    c.set_new_dns_servers(config.dns_by_sentinel);
-                    c.routes = config.routes;
-                    c.search_domain = config.search_domain;
-                    c.tcp_dns_client
-                        .set_source_interface(config.ip.v4, config.ip.v6);
-                });
-            }
-            ClientEvent::DnsRecordsChanged { records } => {
-                let client = self.clients.get_mut(&src).unwrap();
-                client.exec_mut(|c| c.dns_resource_record_cache = records);
-            }
             ClientEvent::NoRelays { excluded_relay_ids } => {
                 let relays = portal.request_relays(
                     ClientOrGatewayId::Client(src),
@@ -1607,37 +1387,12 @@ impl TunnelTest {
                         .handle_device_domain_browsed(domain, result, now);
                 });
             }
+            ClientEvent::ResourcesChanged { .. }
+            | ClientEvent::DnsRecordsChanged { .. }
+            | ClientEvent::TunInterfaceUpdated(_) => {
+                unreachable!("the client handles local events itself")
+            }
         }
-    }
-
-    fn on_recursive_dns_query(
-        &self,
-        query: &dns_types::Query,
-        global_dns_records: &DnsRecords,
-    ) -> dns_types::Response {
-        // Long enough that a query repeated within one `advance` window is served
-        // from connlib's DNS cache, short enough that an `Idle` (minutes) expires
-        // the entry — so the corpus exercises the cache hit and expiry paths. The
-        // reference model is cache-agnostic (it expects a response per query
-        // regardless of how it is produced), so activating the cache is
-        // observationally transparent.
-        const TTL: u32 = 30;
-
-        let qtype = query.qtype();
-        let domain = query.domain();
-
-        let response = dns_types::ResponseBuilder::for_query(query, ResponseCode::NOERROR)
-            .with_records(
-                global_dns_records
-                    .domain_records_iter(&domain)
-                    .filter(|record| qtype == record.rtype())
-                    .map(|rdata| (domain.clone(), TTL, rdata)),
-            )
-            .build();
-
-        tracing::debug!(%domain, %qtype, "Responding to DNS query");
-
-        response
     }
 
     fn deploy_new_relays(&mut self, new_relays: BTreeMap<RelayId, Host<u64>>, now: Instant) {
@@ -1859,21 +1614,6 @@ fn on_gateway_event(
             );
             gateway.exec_mut(|g| g.update_relays(iter::empty(), relays.into_iter(), now));
         }
-    }
-}
-
-#[allow(clippy::match_like_matches_macro)]
-fn is_portal_bound_event(event: &ClientEvent) -> bool {
-    match event {
-        ClientEvent::AddedIceCandidates { .. } => true,
-        ClientEvent::RemovedIceCandidates { .. } => true,
-        ClientEvent::RequestAccess { .. } => true,
-        ClientEvent::DeviceDomainQueried { .. } => true,
-        ClientEvent::DeviceDomainBrowsed { .. } => true,
-        ClientEvent::ResourcesChanged { .. } => false,
-        ClientEvent::DnsRecordsChanged { .. } => false,
-        ClientEvent::TunInterfaceUpdated(_) => false,
-        ClientEvent::NoRelays { .. } => true,
     }
 }
 
