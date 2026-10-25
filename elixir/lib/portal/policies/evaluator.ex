@@ -5,8 +5,8 @@ defmodule Portal.Policies.Evaluator do
   @days_of_week ~w[M T W R F S U]
 
   @doc """
-  Checks a policy's conditions and postures together. Both must hold, and
-  the result expires when the first of them stops holding.
+  Checks a policy's attestation requirement, conditions and postures together.
+  All must hold, and the result expires when the first of them stops holding.
   """
   def ensure_policy_conforms(policy, %Device{type: :client} = client, auth_provider_id) do
     conditions = ensure_conforms(policy.conditions, client, auth_provider_id)
@@ -18,7 +18,13 @@ defmodule Portal.Policies.Evaluator do
       {{:ok, _expires_at}, {:error, violated}} -> {:error, violated}
       {{:error, left}, {:error, right}} -> {:error, left ++ right}
     end
+    |> ensure_attested(policy.require_attestation, client)
   end
+
+  # Reported as the property the old condition used, which Clients already know.
+  defp ensure_attested({:ok, _expires_at}, true, %Device{attested?: false}), do: {:error, [:device_attested]}
+  defp ensure_attested({:error, violated}, true, %Device{attested?: false}), do: {:error, [:device_attested | violated]}
+  defp ensure_attested(result, _require_attestation, %Device{}), do: result
 
   def ensure_conforms([], %Device{type: :client}, _auth_provider_id) do
     {:ok, nil}
@@ -177,34 +183,6 @@ defmodule Portal.Policies.Evaluator do
   def fetch_conformation_expiration(
         %{
           property: :client_verified,
-          operator: :is,
-          values: _other
-        },
-        %Device{type: :client},
-        _auth_provider_id
-      ) do
-    {:ok, nil}
-  end
-
-  def fetch_conformation_expiration(
-        %{
-          property: :device_attested,
-          operator: :is,
-          values: ["true"]
-        },
-        %Device{type: :client, attested?: attested?},
-        _auth_provider_id
-      ) do
-    if attested? do
-      {:ok, nil}
-    else
-      :error
-    end
-  end
-
-  def fetch_conformation_expiration(
-        %{
-          property: :device_attested,
           operator: :is,
           values: _other
         },

@@ -1517,24 +1517,22 @@ defmodule PortalWeb.PoliciesTest do
       assert html =~ "Require Verified Device"
     end
 
-    test "manages device_attested condition", %{conn: conn, account: account, actor: actor} do
-      group = group_fixture(account: account)
-      resource = resource_fixture(account: account)
-      policy = policy_fixture(group: group, resource: resource)
+    test "the attestation toggle is disabled without trust anchors", %{conn: conn, account: account, actor: actor} do
+      policy = policy_fixture(account: account)
 
       {:ok, lv, _html} =
         conn
         |> authorize_conn(actor)
         |> live(~p"/#{account}/policies/#{policy.id}/edit")
 
-      html = render_click(lv, "toggle_conditions_dropdown")
-      refute html =~ "Require Attestation</span"
+      assert lv |> element("#policy-postures-require-attestation") |> render() =~ "disabled"
 
-      html = render_click(lv, "add_condition", %{"type" => "device_attested"})
-      assert html =~ "Require Attestation"
+      render_click(lv, "postures_require_attestation", %{})
+      refute lv |> element("#policy-postures-require-attestation") |> render() =~ "checked"
     end
 
-    test "saves device_attested condition to DB", %{conn: conn, account: account, actor: actor} do
+    test "saves require_attestation", %{conn: conn, account: account, actor: actor} do
+      trust_anchor_fixture(account: account)
       group = group_fixture(account: account)
       resource = resource_fixture(account: account)
       policy = policy_fixture(group: group, resource: resource)
@@ -1544,59 +1542,63 @@ defmodule PortalWeb.PoliciesTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/policies/#{policy.id}/edit")
 
-      render_click(lv, "toggle_conditions_dropdown")
-      render_click(lv, "add_condition", %{"type" => "device_attested"})
+      render_click(lv, "postures_require_attestation", %{})
 
       html =
         lv
-        |> form("[phx-submit='submit_policy_form']",
-          policy: %{
-            group_id: group.id,
-            resource_id: resource.id,
-            description: "With client attested condition"
-          }
-        )
+        |> form("[phx-submit='submit_policy_form']", policy: %{group_id: group.id, resource_id: resource.id})
         |> render_submit()
 
       assert html =~ "Save these changes?"
       html = render_click(lv, "save_policy_breaking_change")
       assert html =~ "updated successfully"
 
-      policy = Repo.get_by!(Policy, id: policy.id, account_id: account.id)
-
-      assert Enum.any?(
-               policy.conditions,
-               &(&1.property == :device_attested and &1.values == ["true"])
-             )
+      assert Repo.get_by!(Policy, id: policy.id, account_id: account.id).require_attestation
     end
 
-    test "renders device_attested condition from saved policy", %{
+    test "turns off require_attestation after the last trust anchor is gone", %{
       conn: conn,
       account: account,
       actor: actor
     } do
       group = group_fixture(account: account)
       resource = resource_fixture(account: account)
+      anchor = trust_anchor_fixture(account: account)
+      policy = policy_fixture(group: group, resource: resource, require_attestation: true)
+      Repo.delete!(anchor)
 
-      policy =
-        policy_fixture(
-          group: group,
-          resource: resource,
-          conditions: [
-            %{
-              property: :device_attested,
-              operator: :is,
-              values: ["true"]
-            }
-          ]
-        )
-
-      {:ok, _lv, html} =
+      {:ok, lv, _html} =
         conn
         |> authorize_conn(actor)
         |> live(~p"/#{account}/policies/#{policy.id}/edit")
 
-      assert html =~ "Require Attestation"
+      toggle = lv |> element("#policy-postures-require-attestation") |> render()
+      assert toggle =~ "checked"
+      refute toggle =~ "disabled"
+
+      render_click(lv, "postures_require_attestation", %{})
+
+      lv
+      |> form("[phx-submit='submit_policy_form']", policy: %{group_id: group.id, resource_id: resource.id})
+      |> render_submit()
+
+      html = render_click(lv, "save_policy_breaking_change")
+      assert html =~ "updated successfully"
+
+      refute Repo.get_by!(Policy, id: policy.id, account_id: account.id).require_attestation
+    end
+
+    test "is available without the policy conditions feature", %{conn: conn} do
+      account = account_fixture(features: %{policy_conditions: false})
+      actor = admin_actor_fixture(account: account)
+      trust_anchor_fixture(account: account)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/policies/new")
+
+      refute lv |> element("#policy-postures-require-attestation") |> render() =~ "disabled"
     end
   end
 
@@ -1654,9 +1656,8 @@ defmodule PortalWeb.PoliciesTest do
       assert html =~ "Connect Intune or Iru to use this check."
       assert html =~ "to configure over 300 posture fields"
       assert html =~ "kb/device-posture/grammar?utm_source=product"
-      assert html =~ "are defined. Devices will be identified by Firezone-reported attributes only."
       assert html =~ "settings/trust_anchors"
-      assert html =~ "kb/device-trust?utm_source=product#device-attributes"
+      refute html =~ "Unattested devices are matched on the serial number their Client reports"
 
       assert toggle(lv, "disk_encryption") =~ "disabled"
       refute toggle(lv, "client_up_to_date") =~ "disabled"
@@ -1664,6 +1665,8 @@ defmodule PortalWeb.PoliciesTest do
       html = render_click(lv, "postures_toggle_check", %{"name" => "client_up_to_date"})
       assert toggle(lv, "client_up_to_date") =~ "checked"
       assert html =~ ~s(&quot;field&quot;:&quot;firezone.last_seen_version&quot;)
+      assert html =~ "Unattested devices are matched on the serial number their Client reports"
+      assert html =~ "kb/device-trust?utm_source=product#device-attributes"
 
       html =
         lv
@@ -1697,7 +1700,7 @@ defmodule PortalWeb.PoliciesTest do
       assert toggle(lv, "app_allowlisting") =~ "disabled"
     end
 
-    test "connected providers and trust anchors unlock checks and silence the warning", %{
+    test "connected providers unlock checks and required attestation silences the warning", %{
       conn: conn,
       account: account,
       actor: actor
@@ -1705,12 +1708,11 @@ defmodule PortalWeb.PoliciesTest do
       Portal.IntuneFixtures.intune_posture_provider_fixture(account: account)
       trust_anchor_fixture(account: account)
 
-      {:ok, lv, html} =
+      {:ok, lv, _html} =
         conn
         |> authorize_conn(actor)
         |> live(~p"/#{account}/policies/new")
 
-      refute html =~ "Devices will be identified by Firezone-reported attributes only."
       refute toggle(lv, "compliant") =~ "disabled"
       assert toggle(lv, "firewall") =~ "disabled"
 
@@ -1718,6 +1720,10 @@ defmodule PortalWeb.PoliciesTest do
       html = render_click(lv, "postures_toggle_check", %{"name" => "disk_encryption"})
       assert html =~ ~s(&quot;field&quot;:&quot;intune.compliance_state&quot;)
       assert html =~ ~s(&quot;field&quot;:&quot;iru.filevault_enabled&quot;)
+      assert html =~ "Unattested devices are matched on the serial number their Client reports"
+
+      html = render_click(lv, "postures_require_attestation", %{})
+      refute html =~ "Unattested devices are matched on the serial number their Client reports"
 
       html = render_click(lv, "postures_toggle_check", %{"name" => "compliant"})
       refute html =~ ~s(&quot;field&quot;:&quot;intune.compliance_state&quot;)
