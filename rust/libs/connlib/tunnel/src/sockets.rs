@@ -128,10 +128,18 @@ pub(crate) struct Sockets {
     returned_recv_batches: Arc<Mutex<Vec<DatagramBatch>>>,
 }
 
-impl Default for Sockets {
-    fn default() -> Self {
+impl Sockets {
+    /// Creates sockets for both families, bound to the unspecified address.
+    pub fn new(socket_factory: Arc<dyn SocketFactory<UdpSocket>>) -> Self {
+        let mut sockets = Self::without_sockets(Some(socket_factory));
+        sockets.rebind();
+
+        sockets
+    }
+
+    fn without_sockets(socket_factory: Option<Arc<dyn SocketFactory<UdpSocket>>>) -> Self {
         Self {
-            socket_factory: None,
+            socket_factory,
             socket_v4: None,
             socket_v6: None,
             overflow_v4: VecDeque::new(),
@@ -141,19 +149,6 @@ impl Default for Sockets {
             recv_batches: Some(Vec::with_capacity(2 * UDP_RECV_BATCH_LIMIT)),
             returned_recv_batches: Arc::default(),
         }
-    }
-}
-
-impl Sockets {
-    /// Creates sockets for both families, bound to the unspecified address.
-    pub fn new(socket_factory: Arc<dyn SocketFactory<UdpSocket>>) -> Self {
-        let mut sockets = Self {
-            socket_factory: Some(socket_factory),
-            ..Self::default()
-        };
-        sockets.rebind();
-
-        sockets
     }
 
     /// Drops the items waiting for room and binds new sockets through the socket factory.
@@ -768,7 +763,7 @@ impl Sockets {
         let sockets = Self {
             socket_v4: Some(socket_v4),
             socket_v6: Some(socket_v6),
-            ..Self::default()
+            ..Self::without_sockets(None)
         };
 
         (sockets, ends_v4, ends_v6)
