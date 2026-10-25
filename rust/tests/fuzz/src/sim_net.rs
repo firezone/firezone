@@ -1,4 +1,4 @@
-use crate::{buffered_transmits::BufferedTransmits, dns_records::DnsRecords};
+use crate::buffered_transmits::BufferedTransmits;
 use anyhow::{Context as _, Result, bail};
 use connlib_model::{ClientId, GatewayId, RelayId};
 use ip_network::IpNetwork;
@@ -15,7 +15,6 @@ use tracing::Span;
 use super::sim_client::SimClient;
 use super::sim_gateway::SimGateway;
 use super::sim_relay::SimRelay;
-use super::sim_tunnel::SimTunnel;
 
 #[derive(Clone, derive_more::Debug)]
 pub(crate) struct Host<T> {
@@ -475,44 +474,6 @@ where
 
 pub(crate) trait PollTimeout {
     fn poll_timeout(&mut self) -> Option<Instant>;
-}
-
-/// A host that runs a tunnel.
-pub(crate) trait Node: ExecMutScope {
-    type Role: tunnel::Role;
-
-    fn tunnel(&mut self) -> &mut SimTunnel<Self::Role>;
-
-    /// Takes one turn: polls the tunnel once and handles what it wrote.
-    ///
-    /// Returns the event for the portal or another host and whether it has more to do at `now`.
-    fn step(
-        &mut self,
-        global_dns_records: &DnsRecords,
-        now: Instant,
-    ) -> (Option<<Self::Role as tunnel::Role>::Event>, bool);
-}
-
-impl<T: Node> Host<T> {
-    /// Takes one turn with what has arrived by `now` and puts what it sent onto the network.
-    pub(crate) fn step(
-        &mut self,
-        global_dns_records: &DnsRecords,
-        transmits: &mut BufferedTransmits,
-        now: Instant,
-    ) -> (Option<<T::Role as tunnel::Role>::Event>, bool) {
-        let arrived = iter::from_fn(|| self.inbox.pop(now)).collect::<Vec<_>>();
-        let turn = self.exec_mut(|node| {
-            node.tunnel().receive(arrived);
-            node.step(global_dns_records, now)
-        });
-
-        for transmit in self.exec_mut(|node| node.tunnel().take_sent()) {
-            transmits.push_from(transmit, self, now);
-        }
-
-        turn
-    }
 }
 
 impl PollTimeout for SimClient {

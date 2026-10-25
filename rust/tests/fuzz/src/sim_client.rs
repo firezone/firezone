@@ -1,5 +1,6 @@
 use super::{
     DeviceListing, DeviceListingQuery, QueryId,
+    buffered_transmits::BufferedTransmits,
     dns_records::DnsRecords,
     echo::echo_reply,
     probe::{
@@ -7,7 +8,7 @@ use super::{
         ReceivedResponse, Remote, SubmittedRequest,
     },
     reference::PrivateKey,
-    sim_net::{ExecMutScope, Host, Node},
+    sim_net::{ExecMutScope, Host},
     sim_relay::{SimRelay, map_explode},
     sim_tunnel::SimTunnel,
     site_network::{IcmpError, icmp_error_reply},
@@ -748,15 +749,33 @@ fn probe_protocol_from_request(packet: &IpPacket) -> Option<ProbeProtocol> {
     })
 }
 
-impl Node for SimClient {
-    type Role = ClientState;
+impl Host<SimClient> {
+    /// Takes one turn with what has arrived by `now` and puts what it sent onto the network.
+    pub(crate) fn step(
+        &mut self,
+        global_dns_records: &DnsRecords,
+        transmits: &mut BufferedTransmits,
+        now: Instant,
+    ) -> (Option<ClientEvent>, bool) {
+        let arrived = std::iter::from_fn(|| self.poll_inbox(now)).collect::<Vec<_>>();
+        let turn = self.exec_mut(|host| {
+            host.tunnel.receive(arrived);
+            host.step(global_dns_records, now)
+        });
 
-    fn tunnel(&mut self) -> &mut SimTunnel<ClientState> {
-        &mut self.tunnel
+        for transmit in self.exec_mut(|host| host.tunnel.take_sent()) {
+            transmits.push_from(transmit, self, now);
+        }
+
+        turn
     }
+}
 
-    /// Also handles the events that are local to the Client and answers a recursive DNS query from
-    /// `global_dns_records`.
+impl SimClient {
+    /// Takes one turn: polls the tunnel once, handles what it wrote and the events that are local
+    /// to the Client, and answers a recursive DNS query from `global_dns_records`.
+    ///
+    /// Returns the event for the portal or another host and whether it has more to do at `now`.
     fn step(
         &mut self,
         global_dns_records: &DnsRecords,

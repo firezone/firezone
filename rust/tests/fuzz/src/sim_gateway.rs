@@ -1,8 +1,9 @@
 use super::{
+    buffered_transmits::BufferedTransmits,
     dns_records::DnsRecords,
     dns_server_resource::DnsServers,
     probe::{ProbeId, ProbeObservation, ReceivedRequest, Remote},
-    sim_net::{ExecMutScope, Host, Node},
+    sim_net::{ExecMutScope, Host},
     sim_relay::{SimRelay, map_explode},
     sim_tunnel::SimTunnel,
     site_network::SiteNetwork,
@@ -390,13 +391,32 @@ impl SimGateway {
     }
 }
 
-impl Node for SimGateway {
-    type Role = GatewayState;
+impl Host<SimGateway> {
+    /// Takes one turn with what has arrived by `now` and puts what it sent onto the network.
+    pub(crate) fn step(
+        &mut self,
+        global_dns_records: &DnsRecords,
+        transmits: &mut BufferedTransmits,
+        now: Instant,
+    ) -> (Option<GatewayEvent>, bool) {
+        let arrived = std::iter::from_fn(|| self.poll_inbox(now)).collect::<Vec<_>>();
+        let turn = self.exec_mut(|host| {
+            host.tunnel.receive(arrived);
+            host.step(global_dns_records, now)
+        });
 
-    fn tunnel(&mut self) -> &mut SimTunnel<GatewayState> {
-        &mut self.tunnel
+        for transmit in self.exec_mut(|host| host.tunnel.take_sent()) {
+            transmits.push_from(transmit, self, now);
+        }
+
+        turn
     }
+}
 
+impl SimGateway {
+    /// Takes one turn: polls the tunnel once and handles what it wrote.
+    ///
+    /// Returns the event for the portal or another host and whether it has more to do at `now`.
     fn step(
         &mut self,
         global_dns_records: &DnsRecords,
