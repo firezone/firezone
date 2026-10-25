@@ -44,7 +44,7 @@ pub use resolver::{ResolverControl, ResolverQuery, ResolverTaskEnds};
 pub use sockets::{SocketThreadEnds, UdpSocketThreadStopped};
 pub use utils::turn;
 
-/// How many times we will at most loop before force-yielding from [`ClientTunnel::poll_next_event`] & [`GatewayTunnel::poll_next_event`].
+/// How many times we will at most loop before force-yielding from [`Tunnel::poll_next_event`].
 ///
 /// It is obviously system-dependent, how long it takes for the event loop to exhaust these iterations.
 /// It has been measured that on GitHub's standard Linux runners, 3000 iterations is roughly 1s during an iperf run.
@@ -176,6 +176,84 @@ impl<TRoleState> Tunnel<TRoleState> {
     }
 }
 
+/// The per-role behaviour of a [`Tunnel`], implemented by [`ClientState`] and [`GatewayState`].
+pub trait Role: Sized {
+    type Event;
+
+    fn poll_next_event(
+        tunnel: &mut Tunnel<Self>,
+        cx: &mut Context<'_>,
+        now: Instant,
+    ) -> Poll<Result<Self::Event, TunnelError>>;
+    fn poll_timeout(&mut self) -> Option<Instant>;
+    fn handle_timeout(&mut self, now: Instant);
+}
+
+impl Role for ClientState {
+    type Event = ClientEvent;
+
+    fn poll_next_event(
+        tunnel: &mut Tunnel<Self>,
+        cx: &mut Context<'_>,
+        now: Instant,
+    ) -> Poll<Result<Self::Event, TunnelError>> {
+        tunnel.poll_client_event(cx, now)
+    }
+
+    fn poll_timeout(&mut self) -> Option<Instant> {
+        ClientState::poll_timeout(self)
+    }
+
+    fn handle_timeout(&mut self, now: Instant) {
+        ClientState::handle_timeout(self, now);
+    }
+}
+
+impl Role for GatewayState {
+    type Event = GatewayEvent;
+
+    fn poll_next_event(
+        tunnel: &mut Tunnel<Self>,
+        cx: &mut Context<'_>,
+        now: Instant,
+    ) -> Poll<Result<Self::Event, TunnelError>> {
+        tunnel.poll_gateway_event(cx, now)
+    }
+
+    fn poll_timeout(&mut self) -> Option<Instant> {
+        GatewayState::poll_timeout(self)
+    }
+
+    fn handle_timeout(&mut self, now: Instant) {
+        GatewayState::handle_timeout(self, now);
+    }
+}
+
+impl<R: Role> Tunnel<R> {
+    pub fn poll_next_event(
+        &mut self,
+        cx: &mut Context<'_>,
+        now: Instant,
+    ) -> Poll<Result<R::Event, TunnelError>> {
+        R::poll_next_event(self, cx, now)
+    }
+
+    /// The instant by which the event loop must poll again.
+    ///
+    /// Asks the state once, so call this right before suspending rather than on every wake-up.
+    pub fn next_timeout(&mut self, now: Instant) -> Option<Instant> {
+        if mem::take(&mut self.needs_timeout) {
+            return Some(now);
+        }
+
+        self.role_state.poll_timeout()
+    }
+
+    pub fn handle_timeout(&mut self, now: Instant) {
+        self.role_state.handle_timeout(now);
+    }
+}
+
 impl ClientTunnel {
     pub fn new(
         tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
@@ -213,17 +291,6 @@ impl ClientTunnel {
 
     pub fn public_key(&self) -> PublicKey {
         self.role_state.public_key()
-    }
-
-    /// The instant by which the event loop must poll again.
-    ///
-    /// Asks the state once, so call this right before suspending rather than on every wake-up.
-    pub fn next_timeout(&mut self, now: Instant) -> Option<Instant> {
-        if mem::take(&mut self.needs_timeout) {
-            return Some(now);
-        }
-
-        self.role_state.poll_timeout()
     }
 
     pub fn reset(&mut self, reason: &str, now: Instant) {
@@ -271,7 +338,7 @@ impl ClientTunnel {
         .boxed()
     }
 
-    pub fn poll_next_event(
+    fn poll_client_event(
         &mut self,
         cx: &mut Context<'_>,
         now: Instant,
@@ -467,17 +534,6 @@ impl GatewayTunnel {
         self.role_state.public_key()
     }
 
-    /// The instant by which the event loop must poll again.
-    ///
-    /// Asks the state once, so call this right before suspending rather than on every wake-up.
-    pub fn next_timeout(&mut self, now: Instant) -> Option<Instant> {
-        if mem::take(&mut self.needs_timeout) {
-            return Some(now);
-        }
-
-        self.role_state.poll_timeout()
-    }
-
     /// Shut down the Gateway tunnel.
     pub fn shut_down(mut self, now: Instant) -> BoxFuture<'static, Result<()>> {
         // Initiate shutdown.
@@ -502,7 +558,7 @@ impl GatewayTunnel {
         .boxed()
     }
 
-    pub fn poll_next_event(
+    fn poll_gateway_event(
         &mut self,
         cx: &mut Context<'_>,
         now: Instant,
