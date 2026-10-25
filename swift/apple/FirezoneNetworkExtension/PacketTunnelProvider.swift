@@ -304,6 +304,13 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         }
         completionHandler?(nil)
 
+      case .setAdditionalHostCandidates(let ips):
+        let adapter = self.adapter
+        Task { @Sendable in
+          await adapter?.setAdditionalHostCandidates(ips)
+        }
+        completionHandler?(nil)
+
       case .signOut:
         do { try Token.delete() } catch { Log.error(error) }
         completionHandler?(nil)
