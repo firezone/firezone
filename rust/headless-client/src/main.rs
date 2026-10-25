@@ -23,7 +23,7 @@ use phoenix_channel::get_user_agent;
 use phoenix_channel::{DeviceInfo, LoginUrl};
 use secrecy::SecretString;
 use std::{
-    net::{IpAddr, UdpSocket},
+    net::IpAddr,
     path::{Path, PathBuf},
     sync::Arc,
     time::Duration,
@@ -313,12 +313,6 @@ fn try_main() -> Result<()> {
     );
 
     tracing::debug!(?cli);
-
-    for ip in &cli.additional_host_candidates {
-        UdpSocket::bind((*ip, 0)).with_context(|| {
-            format!("Additional host candidate {ip} is not assigned to a local interface")
-        })?;
-    }
 
     // Start background log cleanup if file logging is enabled
     let _cleanup_handle = cli

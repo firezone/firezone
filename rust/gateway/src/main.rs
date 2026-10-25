@@ -23,11 +23,7 @@ use tunnel::GatewayTunnel;
 use clock::Clock;
 use phoenix_channel::PhoenixChannel;
 use secrecy::{ExposeSecret, SecretString};
-use std::{
-    collections::BTreeSet,
-    fmt,
-    net::{IpAddr, UdpSocket},
-};
+use std::{collections::BTreeSet, fmt, net::IpAddr};
 use std::{path::PathBuf, process::ExitCode};
 use std::{sync::Arc, time::Duration};
 use tracing_subscriber::layer;
@@ -160,12 +156,6 @@ async fn try_main(cli: Cli) -> Result<()> {
     );
 
     tracing::debug!(?cli);
-
-    for ip in &cli.additional_host_candidates {
-        UdpSocket::bind((*ip, 0)).with_context(|| {
-            format!("Additional host candidate {ip} is not assigned to a local interface")
-        })?;
-    }
 
     if cli.firezone_name.is_some() {
         tracing::info!(
