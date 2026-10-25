@@ -11,9 +11,7 @@ use dns_types::{DomainNameRef, Query, RecordType, ResponseCode, prelude::*};
 use futures_bounded::FuturesTupleSet;
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 
-use crate::io::udp_dns;
-
-use super::tcp_dns;
+use super::{tcp_dns, udp_dns};
 
 const MAX_DNS_SERVERS: usize = 20; // We don't bother selecting from more than 10 servers over UDP and TCP.
 const DNS_TIMEOUT: Duration = Duration::from_secs(2); // Every sensible DNS servers should respond within 2s.
