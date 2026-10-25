@@ -558,7 +558,7 @@ impl TunnelTest {
             Transition::UpdateSystemDnsServers { servers } => {
                 for client in self.clients.values_mut() {
                     client.exec_mut(|c| {
-                        c.tunnel.tunnel.update_system_resolvers(servers.clone());
+                        c.tunnel.inner.update_system_resolvers(servers.clone());
                     });
                 }
             }
@@ -653,7 +653,7 @@ impl TunnelTest {
                 let added = self.network.add_host(client_id, client);
                 debug_assert!(added);
                 client.exec_mut(|c| {
-                    c.tunnel.tunnel.reset("roam", now);
+                    c.tunnel.inner.reset("roam", now);
                     c.sut_mut().set_portal_connected(false);
                 });
 
@@ -849,7 +849,7 @@ impl TunnelTest {
                         upstream_doh: portal.upstream_doh().to_vec(),
                         search_domain: portal.search_domain(),
                     });
-                    c.tunnel.tunnel.update_system_resolvers(system_dns);
+                    c.tunnel.inner.update_system_resolvers(system_dns);
                     c.sut_mut().set_resources(all_resources, now);
 
                     c.update_relays(iter::empty(), self.relays.iter(), now);

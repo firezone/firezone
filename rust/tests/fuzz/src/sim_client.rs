@@ -112,11 +112,11 @@ impl SimClient {
     }
 
     pub(crate) fn sut(&self) -> &ClientState {
-        self.tunnel.tunnel.state()
+        self.tunnel.inner.state()
     }
 
     pub(crate) fn sut_mut(&mut self) -> &mut ClientState {
-        self.tunnel.tunnel.state_mut()
+        self.tunnel.inner.state_mut()
     }
 
     /// Shuts the tunnel down and starts a new one, returning the datagrams the old one sent on

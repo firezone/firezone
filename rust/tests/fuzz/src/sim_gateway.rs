@@ -75,11 +75,11 @@ impl SimGateway {
     }
 
     pub(crate) fn sut(&self) -> &GatewayState {
-        self.tunnel.tunnel.state()
+        self.tunnel.inner.state()
     }
 
     pub(crate) fn sut_mut(&mut self) -> &mut GatewayState {
-        self.tunnel.tunnel.state_mut()
+        self.tunnel.inner.state_mut()
     }
 
     fn read_from_tun(&mut self, packet: IpPacket) {
