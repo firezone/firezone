@@ -9042,7 +9042,6 @@ dependencies = [
  "opentelemetry",
  "otel-instruments",
  "prefetch",
- "quinn-udp",
  "rand 0.10.3",
  "snownet",
  "socket-factory",

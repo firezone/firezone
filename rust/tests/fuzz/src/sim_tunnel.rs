@@ -9,8 +9,8 @@ use std::{
 
 use itertools::Itertools as _;
 use snownet::Transmit;
-use socket_factory::DatagramOut;
-use tunnel::{ClientState, FakeTunnelEnds, ResolverQuery, Role, SocketThreadEnds, Tunnel};
+use socket_factory::{DatagramBatch, DatagramOut};
+use tunnel::{ClientState, FakeTunnelEnds, ResolverQuery, Role, Tunnel};
 
 /// A tunnel and the OS around it: its TUN device and its sockets.
 pub(crate) struct SimTunnel<R> {
@@ -45,7 +45,7 @@ impl<R: Role> SimTunnel<R> {
             };
 
             socket
-                .receive(SocketThreadEnds::batch(transmits.map(|transmit| {
+                .receive(DatagramBatch::received(transmits.map(|transmit| {
                     DatagramOut {
                         src: transmit.src,
                         dst: transmit.dst,

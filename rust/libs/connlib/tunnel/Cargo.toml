@@ -23,7 +23,6 @@ logging = { workspace = true }
 opentelemetry = { workspace = true, features = ["metrics"] }
 otel-instruments = { workspace = true }
 prefetch = { workspace = true }
-quinn-udp = { workspace = true }
 rand = { workspace = true }
 snownet = { workspace = true }
 socket-factory = { workspace = true }
