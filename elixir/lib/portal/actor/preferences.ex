@@ -13,11 +13,12 @@ defmodule Portal.Actor.Preferences do
   #   * `:dismissed` / `:completed`: chose to explore alone, or finished; it's gone
   @getting_started_values [:pending, :closed, :device_mesh, :remote_access, :dismissed, :completed]
 
-  @notifications [:outdated_gateways, :seat_limit_warnings, :product_announcements]
+  @notifications [:outdated_gateways, :seat_limit_warnings, :product_announcements, :product_feedback_requests]
   @default_channels [:email]
 
   @type t :: %__MODULE__{}
-  @type notification :: :outdated_gateways | :seat_limit_warnings | :product_announcements
+  @type notification ::
+          :outdated_gateways | :seat_limit_warnings | :product_announcements | :product_feedback_requests
   @type channel :: :email
 
   @primary_key false
@@ -36,6 +37,7 @@ defmodule Portal.Actor.Preferences do
       field :outdated_gateways, {:array, Ecto.Enum}, values: [:email]
       field :seat_limit_warnings, {:array, Ecto.Enum}, values: [:email]
       field :product_announcements, {:array, Ecto.Enum}, values: [:email]
+      field :product_feedback_requests, {:array, Ecto.Enum}, values: [:email]
     end
   end
 
