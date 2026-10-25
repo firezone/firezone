@@ -801,7 +801,7 @@ impl ReferenceState {
         outcome: ExpectedOutcome,
         authorization: Option<Authorization>,
     ) {
-        self.record_authorization(origin, request.destination(), authorization);
+        self.record_authorization(origin, authorization);
         self.clients
             .get_mut(&origin)
             .unwrap()
@@ -1006,13 +1006,8 @@ impl ReferenceState {
         (outcome, Some(authorization))
     }
 
-    /// Records the authorization `origin` holds after its packet to `dst`.
-    fn record_authorization(
-        &mut self,
-        origin: ClientId,
-        dst: &Destination,
-        authorization: Option<Authorization>,
-    ) {
+    /// Records the authorization `origin` holds after its packet.
+    fn record_authorization(&mut self, origin: ClientId, authorization: Option<Authorization>) {
         match authorization {
             Some(Authorization::Resource {
                 resource,
@@ -1021,7 +1016,7 @@ impl ReferenceState {
             }) => {
                 self.clients.get_mut(&origin).unwrap().exec_mut(|client| {
                     client.add_dns_resource_resolutions(resource, resolutions);
-                    client.connect_to_resource(resource, gateway, dst.clone());
+                    client.connect_to_resource(resource, gateway);
                 });
             }
             Some(Authorization::Peer { peer, pool }) => {
