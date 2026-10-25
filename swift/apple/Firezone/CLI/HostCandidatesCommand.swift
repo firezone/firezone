@@ -100,7 +100,7 @@ extension FirezoneCLI {
 
     fileprivate static func validate(_ ip: String) throws {
       guard IPv4Address(ip) != nil || IPv6Address(ip) != nil else {
-        throw ValidationError("'\(ip)' is not an IP address.")
+        throw ArgumentParser.ValidationError("'\(ip)' is not an IP address.")
       }
     }
 
