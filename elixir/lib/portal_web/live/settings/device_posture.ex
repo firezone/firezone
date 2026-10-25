@@ -692,12 +692,15 @@ defmodule PortalWeb.Settings.DevicePosture do
                 {length(@providers)}
               </span>
             </div>
-            <Navigation.link
-              patch={~p"/#{@account}/settings/device_posture/new"}
-              class="flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
-            >
-              <Core.icon name="ri-add-line" class="w-3 h-3" /> Add posture provider
-            </Navigation.link>
+            <div class="flex items-center gap-2">
+              <Navigation.docs_action path="/device-posture" />
+              <Navigation.link
+                patch={~p"/#{@account}/settings/device_posture/new"}
+                class="flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
+              >
+                <Core.icon name="ri-add-line" class="w-3 h-3" /> Add posture provider
+              </Navigation.link>
+            </div>
           </div>
 
           <div class="flex-1 overflow-auto">
