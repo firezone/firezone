@@ -24,7 +24,9 @@ use crate::ref_client::RefClient;
 use crate::ref_gateway::RefGateway;
 use crate::reference::ReferenceState;
 use crate::resource::{CidrResource, DevicePoolResource, DnsResource, InternetResource};
-use crate::sim_net::{EdgeConfig, Expiry, FilterMode, Host, Mapping, RoutingTable};
+use crate::sim_net::{
+    EdgeConfig, Expiry, FilterMode, Host, HostId, LinkInterface, Mapping, RoutingTable,
+};
 use crate::site_network::{IcmpError, RouteType, Routes};
 use crate::stub_portal::{PoolMembers, StubPortal};
 
@@ -33,13 +35,14 @@ pub(super) fn generate(
     portal: &StubPortal,
     domain_tree: Vec<DomainName>,
 ) -> ReferenceState {
-    let clients = arb_clients(g, portal);
+    let mut clients = arb_clients(g, portal);
     let dns_resource_records = arb_dns_resource_records(g, portal, &domain_tree);
     let host_routes = arb_host_routes(g, &dns_resource_records, portal.upstream_do53());
     let sites = arb_sites(g, portal, &host_routes);
     let tcp_services = arb_tcp_services(g, &dns_resource_records, &sites);
-    let gateways = arb_gateways(g, portal, &domain_tree, &sites);
+    let mut gateways = arb_gateways(g, portal, &domain_tree, &sites);
     let relays = arb_relays(g);
+    let links = link_some_clients_to_gateways(&mut clients, &mut gateways);
 
     let global_dns_records = merge_dns_records(
         arb_global_dns_records(g, &domain_tree),
@@ -63,6 +66,12 @@ pub(super) fn generate(
         debug_assert!(ok, "relay socket IPs must be unique by construction");
         network
     });
+    let network = links
+        .into_iter()
+        .fold(network, |mut network, (client, gateway)| {
+            network.add_link(client, gateway);
+            network
+        });
 
     ReferenceState::from_parts(
         clients,
@@ -73,6 +82,43 @@ pub(super) fn generate(
         tcp_services,
         network,
     )
+}
+
+/// Connects some Clients to the Gateway at the same position with a dedicated link, like a cable
+/// between two machines.
+///
+/// Whether a Client has a link derives from its key rather than from a fresh draw, so existing
+/// inputs keep decoding to the same scenario.
+fn link_some_clients_to_gateways(
+    clients: &mut BTreeMap<ClientId, Host<RefClient>>,
+    gateways: &mut BTreeMap<GatewayId, Host<RefGateway>>,
+) -> Vec<((HostId, LinkInterface), (HostId, LinkInterface))> {
+    clients
+        .iter_mut()
+        .zip(gateways.iter_mut())
+        .filter(|((_, client), _)| client.inner().key.0[31] % 2 == 1)
+        .enumerate()
+        .map(|(n, ((cid, client), (gid, gateway)))| {
+            let n = u8::try_from(n * 2).expect("at most two clients");
+            let client_link = link_interface(n + 1);
+            let gateway_link = link_interface(n + 2);
+
+            client.connect_link(client_link);
+            gateway.connect_link(gateway_link);
+
+            (
+                (HostId::from(*cid), client_link),
+                (HostId::from(*gid), gateway_link),
+            )
+        })
+        .collect()
+}
+
+fn link_interface(host: u8) -> LinkInterface {
+    LinkInterface {
+        ip4: Ipv4Addr::new(192, 168, 123, host),
+        ip6: Ipv6Addr::new(0xfd00, 0, 0, 0x123, 0, 0, 0, u16::from(host)),
+    }
 }
 
 pub(super) fn pick_site<'a>(g: &mut Generator, sites: &'a [Site]) -> &'a Site {

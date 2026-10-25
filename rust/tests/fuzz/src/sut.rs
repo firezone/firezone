@@ -141,7 +141,7 @@ impl TunnelTest {
 
         // Configure client and gateway with the relays.
         for client in clients.values_mut() {
-            let sockets = client.interface_sockets();
+            let sockets = client.link_sockets();
             client.exec_mut(|c| {
                 c.sut
                     .set_additional_host_candidates(sockets, flux_capacitor.now());
@@ -149,7 +149,7 @@ impl TunnelTest {
             });
         }
         for gateway in gateways.values_mut() {
-            let sockets = gateway.interface_sockets();
+            let sockets = gateway.link_sockets();
             gateway.exec_mut(|g| {
                 g.sut
                     .set_additional_host_candidates(sockets, flux_capacitor.now());
@@ -642,9 +642,12 @@ impl TunnelTest {
                 // 1. Dead-socket window: the old link is gone but the new one is
                 //    not up yet. Unregister the client from the network so all
                 //    traffic to it is dropped (as `HostId::Stale`) and advance
-                //    simulated time.
+                //    simulated time. A Client on a link leaves it behind, like a
+                //    laptop unplugged from its cable.
                 let client = self.clients.get_mut(&client_id).unwrap();
                 self.network.remove_host(client);
+                self.network.unplug_link(client_id);
+                client.unplug_link();
                 client.set_offline();
 
                 let dead_until = now + dead_window;
@@ -662,10 +665,10 @@ impl TunnelTest {
                 client.migrate_nat(nat_ip4);
                 let added = self.network.add_host(client_id, client);
                 debug_assert!(added);
-                let sockets = client.interface_sockets();
+                let sockets = client.link_sockets();
                 client.exec_mut(|c| {
-                    c.sut.set_additional_host_candidates(sockets, now);
                     c.sut.reset(now, "roam");
+                    c.sut.set_additional_host_candidates(sockets, now);
                     c.sut.set_portal_connected(false);
                 });
 
@@ -849,7 +852,7 @@ impl TunnelTest {
                 let all_resources = ref_client.inner().resource_descriptions();
                 let internet_resource_state = ref_client.inner().internet_resource_active;
 
-                let sockets = client.interface_sockets();
+                let sockets = client.link_sockets();
                 client.exec_mut(|c| {
                     c.restart(key, internet_resource_state, now, utc_now);
                     c.sut.set_additional_host_candidates(sockets, now);
@@ -1288,6 +1291,11 @@ impl TunnelTest {
             .src
             .expect("`src` should always be set in these tests");
         let dst = transmit.dst;
+
+        if !self.network.permits(src.ip(), dst.ip()) {
+            tracing::debug!(%src, %dst, "Dropping packet that a link does not carry");
+            return;
+        }
 
         let Some(host) = self.network.host_by_ip(dst.ip()) else {
             tracing::error!("Unhandled packet: {src} -> {dst}");

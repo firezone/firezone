@@ -524,6 +524,8 @@ impl ReferenceState {
 
                 let client = self.clients.get_mut(client_id).unwrap();
                 self.network.remove_host(client);
+                self.network.unplug_link(*client_id);
+                client.unplug_link();
                 client.ip4.clone_from(ip4);
                 client.ip6.clone_from(ip6);
                 client.migrate_nat(*nat_ip4);
@@ -602,14 +604,17 @@ impl ReferenceState {
                         let client_has_ip6 = client.ip6.is_some();
                         let unreachable_gateways = gateway_edges
                             .iter()
-                            .filter(|(_, (gateway_edge, gateway_has_ip4, gateway_has_ip6))| {
-                                !direct_path_possible(
-                                    client_edge,
-                                    *gateway_edge,
-                                    client_has_ip4 && *gateway_has_ip4,
-                                    client_has_ip6 && *gateway_has_ip6,
-                                )
-                            })
+                            .filter(
+                                |(gateway_id, (gateway_edge, gateway_has_ip4, gateway_has_ip6))| {
+                                    !self.network.linked(*client_id, **gateway_id)
+                                        && !direct_path_possible(
+                                            client_edge,
+                                            *gateway_edge,
+                                            client_has_ip4 && *gateway_has_ip4,
+                                            client_has_ip6 && *gateway_has_ip6,
+                                        )
+                                },
+                            )
                             .map(|(id, _)| *id)
                             .collect::<BTreeSet<_>>();
 
