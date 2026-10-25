@@ -40,19 +40,7 @@ pub enum Cmd {
         about = "Bring the tunnel up.",
         long_about = "Bring the tunnel up.\n\nReturns once the tunnel is up and leaves it running, since the tunnel lives in the GUI rather than in this process. Use `disconnect` to stop it.\n\nA token piped on stdin or set in FIREZONE_TOKEN is used and saved once the portal accepts it; otherwise the stored one is used."
     )]
-    Connect {
-        // Private API without stability guarantees. Not given leaves the stored
-        // list as is; an empty value clears it.
-        #[arg(
-            long = "additional-host-candidate",
-            env = "FIREZONE_ADDITIONAL_HOST_CANDIDATES",
-            value_delimiter = ',',
-            value_parser = parse_host_candidate,
-            hide = true,
-            help = "Advertise a local IP as an additional host candidate, e.g. to use a direct link to a Gateway."
-        )]
-        additional_host_candidates: Option<Vec<Option<IpAddr>>>,
-    },
+    Connect,
     #[command(about = "Disconnect, keeping the stored token.")]
     Disconnect,
     #[command(about = "Sign out and remove the stored token.")]
@@ -66,6 +54,12 @@ pub enum Cmd {
     InternetResource {
         #[command(subcommand)]
         command: InternetResourceCmd,
+    },
+    // Private API without stability guarantees.
+    #[command(about = "Manage additional host candidates.", hide = true)]
+    HostCandidates {
+        #[command(subcommand)]
+        command: HostCandidatesCmd,
     },
 }
 
@@ -84,13 +78,14 @@ pub enum InternetResourceCmd {
     Disable,
 }
 
-/// Parses one host candidate, reading an empty value as `None`.
-///
-/// This lets an empty `FIREZONE_ADDITIONAL_HOST_CANDIDATES` clear the stored list.
-fn parse_host_candidate(value: &str) -> Result<Option<IpAddr>, std::net::AddrParseError> {
-    if value.is_empty() {
-        return Ok(None);
-    }
-
-    Ok(Some(value.parse()?))
+#[derive(clap::Subcommand)]
+pub enum HostCandidatesCmd {
+    #[command(about = "Advertise a local IP as an additional host candidate.")]
+    Add { ip: IpAddr },
+    #[command(about = "Stop advertising a local IP as an additional host candidate.")]
+    Remove { ip: IpAddr },
+    #[command(about = "List the additional host candidates.")]
+    List,
+    #[command(about = "Remove all additional host candidates.")]
+    Clear,
 }

@@ -22,12 +22,12 @@ pub enum ClientMsg {
     Connect {
         #[serde(serialize_with = "serialize_token")]
         token: Option<SecretString>,
-        /// Replaces the stored additional host candidates, unless `None`.
-        #[serde(default)]
-        additional_host_candidates: Option<Vec<IpAddr>>,
     },
     /// End the session, keeping the stored token.
     Disconnect,
+    ListAdditionalHostCandidates,
+    /// Replace the stored additional host candidates, applying them to a running session.
+    SetAdditionalHostCandidates(Vec<IpAddr>),
 }
 
 fn serialize_token<S>(token: &Option<SecretString>, serializer: S) -> Result<S::Ok, S::Error>
@@ -46,6 +46,7 @@ pub enum ServerMsg {
     Ack,
     Resources(Vec<connlib_model::ResourceView>),
     Status(TunnelStatus),
+    AdditionalHostCandidates(Vec<IpAddr>),
     Error(ServerError),
 }
 

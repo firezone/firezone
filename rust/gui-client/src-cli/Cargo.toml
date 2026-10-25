@@ -9,7 +9,7 @@ license = { workspace = true }
 
 [dependencies]
 anyhow = { workspace = true }
-clap = { workspace = true, features = ["derive", "env"] }
+clap = { workspace = true, features = ["derive"] }
 connlib-model = { workspace = true }
 gui-ipc = { workspace = true }
 secrecy = { workspace = true }
@@ -23,7 +23,7 @@ workspace = true
 features = ["Win32_Foundation", "Win32_System_Diagnostics_ToolHelp"]
 
 [build-dependencies]
-clap = { workspace = true, features = ["derive", "env"] }
+clap = { workspace = true, features = ["derive"] }
 clap_complete = { workspace = true }
 
 [target.'cfg(target_os = "windows")'.build-dependencies]
