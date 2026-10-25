@@ -7,7 +7,7 @@ use socket_factory::{DatagramBatch, DatagramOut};
 use tun::PacketBatch;
 use tunnel::{ClientState, GatewayState};
 
-use super::{EventLoop, seeded_rng};
+use super::EventLoop;
 
 /// How many packets a benchmark sends through the event loop.
 pub const PACKETS: usize = 1024;
@@ -46,8 +46,6 @@ impl Packets {
     /// Connects a Client to a Gateway with flow logs on and lets the event loop of `direction`'s
     /// side handle [`WARM_UP`] packets.
     pub fn new(direction: Direction, resource: Resource) -> Self {
-        seeded_rng::reset();
-
         let (client, gateway, now) = connect(resource);
         let (local, mut peer) = match direction {
             Direction::ClientOutbound | Direction::ClientInbound => (client, gateway),

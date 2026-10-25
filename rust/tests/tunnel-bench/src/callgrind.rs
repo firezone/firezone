@@ -11,7 +11,6 @@
 mod idle;
 mod packets;
 mod requests;
-pub mod seeded_rng;
 
 use std::future::Future as _;
 use std::net::SocketAddr;

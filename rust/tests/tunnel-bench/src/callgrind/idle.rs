@@ -10,7 +10,7 @@ use bufferpool::Bytes;
 use socket_factory::DatagramOut;
 use tunnel::GatewayState;
 
-use super::{EventLoop, seeded_rng};
+use super::EventLoop;
 
 /// How long a benchmark keeps the connections idle: whole keepalive periods, so that it covers
 /// every phase of the connections' timers.
@@ -35,8 +35,6 @@ pub struct Idle {
 
 impl Idle {
     pub fn new(connectivity: Connectivity, clients: usize) -> Self {
-        seeded_rng::reset();
-
         let Tunnel {
             mut clients,
             gateway,

@@ -11,7 +11,6 @@ bufferpool = { workspace = true }
 connlib-model = { workspace = true }
 criterion = { workspace = true }
 dns-types = { workspace = true }
-fastrand = { workspace = true }
 flow-tracker = { workspace = true }
 ip-packet = { workspace = true }
 mimalloc = { workspace = true }
@@ -43,6 +42,7 @@ windows = { workspace = true, features = ["Win32_Foundation", "Win32_System_Diag
 
 [target.'cfg(target_os = "linux")'.dev-dependencies]
 gungraun = { workspace = true }
+seeded-rng = { workspace = true }
 
 [[bench]]
 name = "event_loop"
