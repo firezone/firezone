@@ -4,6 +4,7 @@ use anyhow::{Context as _, ErrorExt as _, Result};
 use futures::{FutureExt as _, future::BoxFuture, ready};
 use ip_packet::IpVersion;
 use opentelemetry::metrics::Counter;
+use snownet::Transmit;
 use socket_factory::{
     DatagramBatch, DatagramIn, DatagramOut, PerfUdpSocket, SocketFactory, UdpSocket,
 };
@@ -811,20 +812,38 @@ impl SocketThreadEnds {
             .map_err(TrySendError::into_inner)
     }
 
-    /// Appends the datagrams the main thread sent to `sent`, in order.
+    /// Takes the datagrams the main thread sent, in order and split into the segments that go
+    /// on the wire.
     ///
-    /// Datagrams the crypto workers have yet to encrypt are skipped, so use inline crypto workers.
-    pub fn take_sent(&mut self, sent: &mut Vec<DatagramOut>) {
+    /// Blocks until the crypto workers have encrypted the datagrams they are working on.
+    pub fn take_sent(&mut self) -> Vec<Transmit> {
+        let mut sent = Vec::new();
+
         while let Ok(outbound) = self.outbound_rx.try_recv() {
             match outbound {
                 Outbound::Ready(datagram) => sent.push(datagram),
                 Outbound::Pending(datagrams) => sent.extend(
                     datagrams
                         .into_iter()
-                        .filter_map(|mut datagram| datagram.try_recv().ok()),
+                        .filter_map(|datagram| datagram.blocking_recv().ok()),
                 ),
             }
         }
+
+        sent.into_iter()
+            .flat_map(|datagram| {
+                datagram
+                    .packet
+                    .chunks(datagram.segment_size.max(1))
+                    .map(|segment| Transmit {
+                        src: datagram.src,
+                        dst: datagram.dst,
+                        payload: bufferpool::Bytes::copied_from(segment),
+                        ecn: datagram.ecn,
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .collect()
     }
 }
 

@@ -702,12 +702,7 @@ impl PerfUdpSocket {
 
         let transmit = quinn_udp::Transmit {
             destination: dst,
-            ecn: match ecn {
-                Ecn::NonEct => None,
-                Ecn::Ect1 => Some(quinn_udp::EcnCodepoint::Ect1),
-                Ecn::Ect0 => Some(quinn_udp::EcnCodepoint::Ect0),
-                Ecn::Ce => Some(quinn_udp::EcnCodepoint::Ce),
-            },
+            ecn: ecn_codepoint(ecn),
             contents: packet,
             segment_size: Some(segment_size),
             src_ip,
@@ -990,6 +985,37 @@ impl DatagramBatch {
         }
     }
 
+    /// Creates the batch a socket bound to the datagrams' `dst` receives in one syscall.
+    ///
+    /// A datagram longer than its `segment_size` arrives coalesced, as with GRO.
+    ///
+    /// # Panics
+    ///
+    /// If a datagram has no `src`.
+    pub fn from_datagrams(datagrams: impl IntoIterator<Item = DatagramOut>) -> Self {
+        let mut port = 0;
+        let (buffers, metas): (Vec<_>, Vec<_>) = datagrams
+            .into_iter()
+            .map(|datagram| {
+                port = datagram.dst.port();
+
+                let mut meta = quinn_udp::RecvMeta::default();
+                meta.addr = datagram
+                    .src
+                    .expect("received datagrams should have a `src`");
+                meta.len = datagram.packet.len();
+                meta.stride = datagram.segment_size;
+                meta.dst_ip = Some(datagram.dst.ip());
+                meta.ecn = ecn_codepoint(datagram.ecn);
+
+                (datagram.packet, meta)
+            })
+            .unzip();
+        let len = buffers.len();
+
+        Self::new(buffers, metas, port, len)
+    }
+
     /// How many datagrams this batch carries, as counted from the kernel's receive metadata.
     ///
     /// [`DatagramBatch::drain`] may yield fewer datagrams than this: receives with
@@ -1119,6 +1145,15 @@ impl Index<Segment> for DatagramIn {
 
     fn index(&self, segment: Segment) -> &[u8] {
         &self.buffer[..self.len][segment.start..segment.end]
+    }
+}
+
+fn ecn_codepoint(ecn: Ecn) -> Option<EcnCodepoint> {
+    match ecn {
+        Ecn::NonEct => None,
+        Ecn::Ect1 => Some(EcnCodepoint::Ect1),
+        Ecn::Ect0 => Some(EcnCodepoint::Ect0),
+        Ecn::Ce => Some(EcnCodepoint::Ce),
     }
 }
 
