@@ -30,12 +30,15 @@ async fn rebind_dns_clears_all_servers_on_failure() {
 
 impl Io {
     fn for_test() -> Io {
+        let udp: Arc<dyn SocketFactory<UdpSocket>> = Arc::new(socket_factory::udp);
         let (resolver, _) = resolver::channels();
 
         Io::new(
+            Sockets::new(udp.clone()),
+            CryptoWorkers::default(),
             resolver,
             Arc::new(socket_factory::tcp),
-            Arc::new(socket_factory::udp),
+            udp,
         )
     }
 }
