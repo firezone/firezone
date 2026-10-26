@@ -226,9 +226,12 @@ jobs:
       # The idle benchmarks set up 1000 connections under Valgrind, so each gets a runner of its own.
       matrix:
         include:
-          - { group: packets, filter: "instructions::packet_group::*" }
-          - { group: idle-ice, filter: "instructions::idle_group::idle::ice" }
-          - { group: idle-iceless, filter: "instructions::idle_group::idle::iceless" }
+          - group: packets
+            filter: "instructions::packet_group::*"
+          - group: idle-ice
+            filter: "instructions::idle_group::idle::ice"
+          - group: idle-iceless
+            filter: "instructions::idle_group::idle::iceless"
     runs-on: ubuntu-24.04
     env:
       # Replaces the workflow's `RUSTFLAGS`, which would drop the frame pointers from `.cargo/config.toml`.
