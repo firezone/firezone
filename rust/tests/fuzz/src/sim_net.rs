@@ -8,7 +8,6 @@ use std::{
     collections::BTreeMap,
     iter,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
-    ops::RangeBounds,
     time::{Duration, Instant},
 };
 use tracing::Span;
@@ -30,8 +29,6 @@ pub(crate) struct Host<T> {
 
     edge: Edge,
 
-    link: Option<LinkInterface>,
-
     /// Whether this host is detached from the network (e.g. mid-roam).
     ///
     /// An offline host can neither send nor receive.
@@ -45,21 +42,6 @@ pub(crate) struct Host<T> {
     /// We buffer them here because we need also apply our latency on inbound packets.
     #[debug(skip)]
     inbox: BufferedTransmits,
-}
-
-/// A host's interface on a dedicated link to one other host, e.g. a cable between two machines.
-///
-/// Traffic on a link bypasses both hosts' edges.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct LinkInterface {
-    pub(crate) ip4: Ipv4Addr,
-    pub(crate) ip6: Ipv6Addr,
-}
-
-impl LinkInterface {
-    fn ips(&self) -> [IpAddr; 2] {
-        [self.ip4.into(), self.ip6.into()]
-    }
 }
 
 /// The filtering behaviour of a host's network edge, per [RFC 4787, section 5](https://datatracker.ietf.org/doc/html/rfc4787#section-5).
@@ -353,7 +335,6 @@ impl<T> Host<T> {
             span: Span::none(),
             latency,
             edge,
-            link: None,
             offline: false,
             inbox: BufferedTransmits::default(),
         }
@@ -382,25 +363,11 @@ impl<T> Host<T> {
         Some(SocketAddr::new(ip, self.port))
     }
 
-    pub(crate) fn connect_link(&mut self, link: LinkInterface) {
-        self.link = Some(link);
-    }
-
-    pub(crate) fn unplug_link(&mut self) {
-        self.link = None;
-    }
-
-    pub(crate) fn link_sockets(&self) -> Vec<SocketAddr> {
-        self.link
-            .iter()
-            .flat_map(LinkInterface::ips)
+    pub(crate) fn interface_sockets(&self) -> Vec<SocketAddr> {
+        interface_ips(self)
+            .into_iter()
             .map(|ip| SocketAddr::new(ip, self.port))
             .collect()
-    }
-
-    fn is_on_link(&self, socket: SocketAddr) -> bool {
-        self.link
-            .is_some_and(|link| link.ips().contains(&socket.ip()))
     }
 
     pub(crate) fn update_interface(&mut self, ip4: Option<Ipv4Addr>, ip6: Option<Ipv6Addr>) {
@@ -456,9 +423,6 @@ impl<T> Host<T> {
         dst: SocketAddr,
         now: Instant,
     ) -> Result<SocketAddr> {
-        if self.is_on_link(src) {
-            return Ok(src);
-        }
         if self.offline {
             bail!("host is offline");
         }
@@ -478,9 +442,6 @@ impl<T> Host<T> {
         dst: SocketAddr,
         now: Instant,
     ) -> Result<SocketAddr> {
-        if self.is_on_link(dst) {
-            return Ok(dst);
-        }
         if self.offline {
             bail!("host is offline");
         }
@@ -566,7 +527,6 @@ where
             port: self.port,
             latency: self.latency,
             edge: self.edge.clone(),
-            link: self.link,
             offline: self.offline,
             inbox: self.inbox.clone(),
         }
@@ -576,15 +536,12 @@ where
 #[derive(Debug, Clone)]
 pub(crate) struct RoutingTable {
     routes: IpNetworkTable<HostId>,
-    /// The other end of each link interface's link, or `None` once the link is unplugged.
-    links: BTreeMap<IpAddr, Option<IpAddr>>,
 }
 
 impl Default for RoutingTable {
     fn default() -> Self {
         Self {
             routes: IpNetworkTable::new(),
-            links: BTreeMap::new(),
         }
     }
 }
@@ -624,60 +581,6 @@ impl RoutingTable {
         true
     }
 
-    pub(crate) fn add_link(
-        &mut self,
-        (a, a_link): (HostId, LinkInterface),
-        (b, b_link): (HostId, LinkInterface),
-    ) {
-        for (a_ip, b_ip) in a_link.ips().into_iter().zip(b_link.ips()) {
-            self.routes.insert(a_ip, a);
-            self.routes.insert(b_ip, b);
-            self.links.insert(a_ip, Some(b_ip));
-            self.links.insert(b_ip, Some(a_ip));
-        }
-    }
-
-    /// Unplugs the link of `host`; the addresses of both ends stay but no longer reach anything.
-    pub(crate) fn unplug_link(&mut self, host: impl Into<HostId>) {
-        let host = host.into();
-        let ends = self
-            .links
-            .iter()
-            .filter(|(end, _)| self.host_by_ip(**end) == Some(host))
-            .flat_map(|(end, other)| iter::once(*end).chain(*other))
-            .collect::<Vec<_>>();
-
-        for end in ends {
-            self.links.insert(end, None);
-        }
-    }
-
-    /// Whether a link connects `a` and `b`.
-    pub(crate) fn linked(&self, a: impl Into<HostId>, b: impl Into<HostId>) -> bool {
-        let (a, b) = (a.into(), b.into());
-
-        self.links.iter().any(|(end, other)| {
-            self.host_by_ip(*end) == Some(a)
-                && other.is_some_and(|other| self.host_by_ip(other) == Some(b))
-        })
-    }
-
-    /// Whether a packet from `src` to `dst` may be routed.
-    ///
-    /// A link only carries packets between its two ends.
-    pub(crate) fn permits(&self, src: IpAddr, dst: IpAddr) -> bool {
-        match (self.links.get(&src), self.links.get(&dst)) {
-            (None, None) => true,
-            (Some(other), Some(_)) => *other == Some(dst),
-            (Some(_), None) => false,
-            (None, Some(_)) => false,
-        }
-    }
-
-    pub(crate) fn is_link_address(&self, ip: IpAddr) -> bool {
-        self.links.contains_key(&ip)
-    }
-
     pub(crate) fn remove_host<T>(&mut self, host: &Host<T>) {
         let ips = interface_ips(host)
             .into_iter()
@@ -698,34 +601,6 @@ impl RoutingTable {
 
     pub(crate) fn host_by_ip(&self, ip: IpAddr) -> Option<HostId> {
         self.routes.exact_match(ip).copied()
-    }
-}
-
-/// When each link delivered a packet, by sending and receiving host.
-#[derive(Debug, Default)]
-pub(crate) struct LinkTraffic {
-    deliveries: BTreeMap<(HostId, HostId), Vec<Instant>>,
-}
-
-impl LinkTraffic {
-    pub(crate) fn record(&mut self, from: HostId, to: HostId, at: Instant) {
-        self.deliveries.entry((from, to)).or_default().push(at);
-    }
-
-    /// Whether a link delivered packets from `a` to `b` and from `b` to `a` within `window`.
-    pub(crate) fn delivered_both_ways(
-        &self,
-        a: impl Into<HostId>,
-        b: impl Into<HostId>,
-        window: impl RangeBounds<Instant>,
-    ) -> bool {
-        let (a, b) = (a.into(), b.into());
-
-        [(a, b), (b, a)].iter().all(|direction| {
-            self.deliveries
-                .get(direction)
-                .is_some_and(|deliveries| deliveries.iter().any(|at| window.contains(at)))
-        })
     }
 }
 
