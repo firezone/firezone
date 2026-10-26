@@ -7,28 +7,28 @@ const BASE: usize = (b'C' as usize) << 24 | (b'T' as usize) << 16;
 const ZERO_STATS: usize = BASE + 1;
 const TOGGLE_COLLECT: usize = BASE + 2;
 
-/// Runs `f`, counting only what it runs with counting toggled on, such as in
-/// [`EventLoop::run`](crate::instructions::EventLoop::run).
+/// Runs `f` with counting off, except for what it runs in [`count`].
 ///
 /// Discards what was counted before, such as AEAD calls during set-up that
 /// `--toggle-collect` counted.
 pub fn measure<T>(f: impl FnOnce() -> T) -> T {
-    zero_stats();
-    toggle_collect();
+    request(ZERO_STATS);
+
+    toggled(f)
+}
+
+/// Runs `f` with counting on, inside [`measure`].
+pub fn count<T>(f: impl FnOnce() -> T) -> T {
+    toggled(f)
+}
+
+/// Runs `f` with counting switched from on to off or from off to on.
+fn toggled<T>(f: impl FnOnce() -> T) -> T {
+    request(TOGGLE_COLLECT);
     let result = f();
-    toggle_collect();
+    request(TOGGLE_COLLECT);
 
     result
-}
-
-/// Resets the counters of the current thread.
-fn zero_stats() {
-    request(ZERO_STATS);
-}
-
-/// Switches counting on if it is off and off if it is on.
-pub fn toggle_collect() {
-    request(TOGGLE_COLLECT);
 }
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]

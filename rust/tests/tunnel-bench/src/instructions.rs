@@ -53,26 +53,25 @@ impl<R: Role> EventLoop<R> {
     pub fn run(&mut self, now: Instant) {
         let mut cx = Context::from_waker(Waker::noop());
 
-        callgrind::toggle_collect();
-        loop {
-            if self.alarm.is_some_and(|alarm| alarm <= now) {
-                self.alarm = None;
-                self.tunnel.handle_timeout(now);
-            }
+        callgrind::count(|| {
+            loop {
+                if self.alarm.is_some_and(|alarm| alarm <= now) {
+                    self.tunnel.handle_timeout(now);
+                }
 
-            while let Poll::Ready(result) = self.tunnel.poll_next_event(&mut cx, now) {
-                if let Err(mut errors) = result {
-                    for _ in errors.drain() {}
+                while let Poll::Ready(result) = self.tunnel.poll_next_event(&mut cx, now) {
+                    if let Err(mut errors) = result {
+                        for _ in errors.drain() {}
+                    }
+                }
+
+                self.alarm = self.tunnel.next_timeout(now);
+
+                if !self.alarm.is_some_and(|alarm| alarm <= now) {
+                    break;
                 }
             }
-
-            self.alarm = self.tunnel.next_timeout(now);
-
-            if !self.alarm.is_some_and(|alarm| alarm <= now) {
-                break;
-            }
-        }
-        callgrind::toggle_collect();
+        });
     }
 
     /// The deadline the event loop asked to be woken at.
