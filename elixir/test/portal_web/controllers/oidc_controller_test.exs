@@ -3236,6 +3236,29 @@ defmodule PortalWeb.OIDCControllerTest do
       assert identity.issuer == "https://login.microsoftonline.com/#{@other_tenant_id}/v2.0"
     end
 
+    test "signs in a guest user through the provider's sign-in tenant", ctx do
+      # A unique tenant keeps the cached discovery document out of other tests.
+      tenant_id = Ecto.UUID.generate()
+      issuer = "https://login.microsoftonline.com/#{tenant_id}/v2.0"
+
+      provider =
+        ctx.provider
+        |> Ecto.Changeset.change(tenant_ids: [tenant_id], sign_in_tenant_id: tenant_id)
+        |> Repo.update!()
+
+      Mocks.OIDC.set_discovery_document_overrides(%{"issuer" => issuer})
+      expect_entra_token_exchange(ctx.actor, tenant_id)
+      Mocks.OIDC.set_userinfo_response(%{})
+
+      conn = perform_callback(ctx.conn, build_entra_auth_state(ctx.account, provider))
+
+      assert redirected_to(conn) =~ "/#{ctx.account.slug}/sites"
+      discovery_path = "/#{tenant_id}/v2.0/.well-known/openid-configuration"
+      assert_received {:oidc_request, ^discovery_path, _conn}
+      identity = Repo.get_by!(Portal.ExternalIdentity, account_id: ctx.account.id)
+      assert identity.issuer == issuer
+    end
+
     test "rejects an ID token from another tenant", ctx do
       expect_entra_token_exchange(ctx.actor, @other_tenant_id)
       Mocks.OIDC.set_userinfo_response(%{})
