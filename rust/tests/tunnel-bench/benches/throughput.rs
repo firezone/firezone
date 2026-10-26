@@ -2,16 +2,11 @@
 #[global_allocator]
 static ALLOC: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
-mod event_loop;
-mod measure;
-mod thread_cpu;
-
 use std::time::Duration;
 
 use criterion::Criterion;
 use criterion::measurement::Measurement;
-
-use measure::{Measure, StageCpu, Wall};
+use tunnel_bench::measure::{Measure, StageCpu, Wall};
 
 fn main() {
     match Measure::from_env() {
@@ -28,6 +23,6 @@ fn run<M: Measurement + Copy>(measurement: M, measure: Measure) {
         .without_plots()
         .configure_from_args();
 
-    event_loop::bench(&mut criterion, measurement, measure.name());
+    tunnel_bench::throughput::bench(&mut criterion, measurement, measure.name());
     criterion.final_summary();
 }

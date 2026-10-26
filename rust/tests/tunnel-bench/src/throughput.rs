@@ -15,7 +15,7 @@ use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::ops::RangeInclusive;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Condvar, LazyLock, Mutex};
-use std::task::{Context, Poll};
+use std::task::Poll;
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant, SystemTime};
 
@@ -30,7 +30,8 @@ use relay_proto::auth::AccountId;
 use relay_proto::{AllocationPort, ChannelData, ClientSocket, Command, PeerSocket};
 use snownet::RelaySocket;
 use socket_factory::{DatagramOut, PerfUdpSocket, SocketFactory, TcpSocket, UdpSocket};
-use tunnel::{ClientState, ClientTunnel, GatewayState, GatewayTunnel, TunChannelClosed};
+use tokio::runtime::Runtime;
+use tunnel::{ClientState, ClientTunnel, GatewayState, GatewayTunnel, Role, TunChannelClosed};
 use tunnel_proto::messages::{IceCredentials, IngestToken, Interface, Key, SecretKey, gateway};
 use tunnel_proto::{ClientEvent, GatewayEvent, IpConfig};
 use uuid::Uuid;
@@ -361,48 +362,25 @@ impl EventLoop {
             })
             .build()
             .unwrap();
-        let mut poll_next_event: Box<dyn FnMut(&mut Context<'_>) -> Poll<_> + Send> = {
-            let _guard = runtime.enter();
-            let tun = device.io(runtime.handle());
+        let handle = runtime.handle().clone();
+        let _guard = handle.enter();
+        let tun = device.io(&handle);
+        let thread = match state {
+            State::Client(client) => {
+                let mut tunnel = ClientTunnel::new(tcp, udp, BTreeSet::new(), false, now);
+                *tunnel.state_mut() = client;
+                tunnel.set_tun(tun);
 
-            match state {
-                State::Client(client) => {
-                    let mut tunnel = ClientTunnel::new(tcp, udp, BTreeSet::new(), false, now);
-                    *tunnel.state_mut() = client;
-                    tunnel.set_tun(tun);
+                run(tunnel, runtime, now)
+            }
+            State::Gateway(gateway) => {
+                let mut tunnel = GatewayTunnel::new(tcp, udp, BTreeSet::new(), now);
+                *tunnel.state_mut() = gateway;
+                tunnel.set_tun(tun);
 
-                    Box::new(move |cx| tunnel.poll_next_event(cx, now).map_ok(drop))
-                }
-                State::Gateway(gateway) => {
-                    let mut tunnel = GatewayTunnel::new(tcp, udp, BTreeSet::new(), now);
-                    *tunnel.state_mut() = gateway;
-                    tunnel.set_tun(tun);
-
-                    Box::new(move |cx| tunnel.poll_next_event(cx, now).map_ok(drop))
-                }
+                run(tunnel, runtime, now)
             }
         };
-
-        let thread = std::thread::Builder::new()
-            .name("event-loop".to_owned())
-            .spawn(move || {
-                // Errors other than the TUN device closing, like the IPv6 socket failing to bind,
-                // are irrelevant here: a lost packet fails the benchmark.
-                runtime.block_on(poll_fn(|cx| {
-                    loop {
-                        match poll_next_event(cx) {
-                            Poll::Ready(Ok(())) => {}
-                            Poll::Ready(Err(mut errors)) => {
-                                if errors.drain().any(|e| e.any_is::<TunChannelClosed>()) {
-                                    return Poll::Ready(());
-                                }
-                            }
-                            Poll::Pending => return Poll::Pending,
-                        }
-                    }
-                }))
-            })
-            .unwrap();
 
         Self {
             thread,
@@ -421,6 +399,33 @@ impl EventLoop {
         self.device.stop();
         self.thread.join().unwrap();
     }
+}
+
+/// Polls `tunnel` on a thread of its own until its TUN device closes.
+fn run<R>(mut tunnel: tunnel::Tunnel<R>, runtime: Runtime, now: Instant) -> JoinHandle<()>
+where
+    R: Role + Send + 'static,
+{
+    std::thread::Builder::new()
+        .name("event-loop".to_owned())
+        .spawn(move || {
+            // Errors other than the TUN device closing, like the IPv6 socket failing to bind,
+            // are irrelevant here: a lost packet fails the benchmark.
+            runtime.block_on(poll_fn(|cx| {
+                loop {
+                    match tunnel.poll_next_event(cx, now) {
+                        Poll::Ready(Ok(_)) => {}
+                        Poll::Ready(Err(mut errors)) => {
+                            if errors.drain().any(|e| e.any_is::<TunChannelClosed>()) {
+                                return Poll::Ready(());
+                            }
+                        }
+                        Poll::Pending => return Poll::Pending,
+                    }
+                }
+            }))
+        })
+        .unwrap()
 }
 
 /// Counts the packets arriving at the far end.
