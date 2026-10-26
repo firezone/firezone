@@ -698,7 +698,7 @@ fn remote_path_feedback(
         .clients
         .get(&origin)?
         .inner()
-        .sut
+        .sut()
         .connection_path(ClientOrGatewayId::Client(peer))?;
 
     Some(PathFeedback::new(origin_edge, remote_edge, selected))
@@ -738,7 +738,7 @@ fn gateway_path_feedback(
         .clients
         .get(&origin)?
         .inner()
-        .sut
+        .sut()
         .connection_path(ClientOrGatewayId::Gateway(gateway))?;
     Some(PathFeedback::new(origin_edge, gateway_edge, selected))
 }
