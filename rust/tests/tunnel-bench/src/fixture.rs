@@ -206,8 +206,6 @@ pub struct Host<R> {
     ends: FakeTunnelEnds,
     /// The deadline the tunnel asked to be woken at.
     alarm: Option<Instant>,
-    /// Whether Callgrind counts the instructions of [`Host::run`].
-    counted: bool,
 }
 
 impl<R: Role> Host<R> {
@@ -218,13 +216,7 @@ impl<R: Role> Host<R> {
             tunnel,
             ends,
             alarm: None,
-            counted: false,
         }
-    }
-
-    /// Lets Callgrind count the instructions of every further [`Host::run`].
-    pub fn count(&mut self) {
-        self.counted = true;
     }
 
     /// Wakes the tunnel at `now` and polls it until it waits for input or a later deadline,
@@ -233,14 +225,6 @@ impl<R: Role> Host<R> {
     /// Like the Client's and the Gateway's event loops, it handles a deadline that has passed
     /// before anything else, and asks for the next deadline only once the tunnel is pending.
     pub fn run(&mut self, now: Instant) -> Vec<R::Event> {
-        if self.counted {
-            callgrind::count(|| self.poll(now))
-        } else {
-            self.poll(now)
-        }
-    }
-
-    fn poll(&mut self, now: Instant) -> Vec<R::Event> {
         let mut cx = Context::from_waker(Waker::noop());
         let mut events = Vec::new();
 
@@ -615,11 +599,12 @@ impl Network {
         }
     }
 
-    /// Runs the Gateway's tunnel, handles its events and puts what it sent in flight.
+    /// Runs the Gateway's tunnel, counting its instructions, handles its events and puts what it
+    /// sent in flight.
     fn wake_gateway(&mut self) {
         let now = self.now;
 
-        for event in self.gateway.run(now) {
+        for event in callgrind::count(|| self.gateway.run(now)) {
             match event {
                 GatewayEvent::AddedIceCandidates {
                     conn_id,

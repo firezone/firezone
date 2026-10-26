@@ -13,8 +13,7 @@ pub struct Idle {
 
 impl Idle {
     pub fn new(connectivity: Connectivity, clients: usize) -> Self {
-        let mut network = Network::established(clients, connectivity, Resource::Cidr);
-        network.gateway.count();
+        let network = Network::established(clients, connectivity, Resource::Cidr);
 
         Self { network }
     }

@@ -1,6 +1,7 @@
 use std::collections::VecDeque;
 use std::time::Instant;
 
+use crate::callgrind;
 use crate::fixture::{AnyHost, Host, Resource, connect, tun_batches};
 use socket_factory::{DatagramBatch, DatagramOut};
 use tun::PacketBatch;
@@ -65,11 +66,7 @@ impl Packets {
         let warm_up = inputs(WARM_UP);
         let inputs = inputs(PACKETS);
 
-        let mut host = local.host;
-        match &mut host {
-            AnyHost::Client(host) => host.count(),
-            AnyHost::Gateway(host) => host.count(),
-        }
+        let host = local.host;
         let mut packets = Self {
             host,
             inputs: warm_up,
@@ -118,7 +115,7 @@ fn send<R: tunnel::Role>(
             }
         }
 
-        host.run(now);
+        callgrind::count(|| host.run(now));
 
         let before = delivered;
         delivered += host.written_to_tun().len();
