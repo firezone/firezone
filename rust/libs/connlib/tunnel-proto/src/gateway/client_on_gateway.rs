@@ -1,4 +1,4 @@
-use std::collections::{BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet, hash_map::Entry};
 use std::iter;
 use std::net::{IpAddr, Ipv4Addr};
 use std::time::Instant;
@@ -98,13 +98,6 @@ impl ClientOnGateway {
             );
         }
 
-        if self.have_proxy_ips_been_reassigned(&name, &proxy_ips) {
-            tracing::info!("Client has re-assigned proxy IPs, resetting DNS resource NAT");
-
-            self.nat_table = Default::default();
-            self.permanent_translations = Default::default();
-        }
-
         let resource = self
             .resources
             .get_mut(&resource_id)
@@ -136,10 +129,21 @@ impl ClientOnGateway {
 
             tracing::debug!(%name, %proxy_ip, real_ip = ?maybe_real_ip);
 
-            let state = self
-                .permanent_translations
-                .entry(proxy_ip)
-                .or_insert_with(|| TranslationState::new(name.clone()));
+            // A Client that restarted without its DNS records re-numbers its domains from scratch.
+            let state = match self.permanent_translations.entry(proxy_ip) {
+                Entry::Vacant(entry) => entry.insert(TranslationState::new(name.clone())),
+                Entry::Occupied(entry) if entry.get().domain == name => entry.into_mut(),
+                Entry::Occupied(entry) => {
+                    tracing::debug!(%proxy_ip, old = %entry.get().domain, new = %name, "Client has re-assigned proxy IP");
+
+                    self.nat_table.remove_sessions_to(proxy_ip);
+
+                    let state = entry.into_mut();
+                    *state = TranslationState::new(name.clone());
+
+                    state
+                }
+            };
 
             state.resources.insert(resource_id);
             state.resolved_ip = maybe_real_ip.copied();
@@ -284,28 +288,6 @@ impl ClientOnGateway {
         }
 
         self.recalculate_filters();
-    }
-
-    /// Checks if the given proxy IPs assigned for a domain are consistent with what we have stored.
-    ///
-    /// When a Client signs out and back in again, it starts re-numbering DNS resources and thus may
-    /// reuse a proxy IP previously assigned to a different domain.
-    fn have_proxy_ips_been_reassigned(
-        &self,
-        name: &DomainName,
-        proxy_ips: &BTreeSet<IpAddr>,
-    ) -> bool {
-        for ip in proxy_ips {
-            let Some(state) = self.permanent_translations.get(ip) else {
-                continue;
-            };
-
-            if state.domain != name {
-                return true;
-            }
-        }
-
-        false
     }
 
     // Call this after any resources change
@@ -1350,9 +1332,8 @@ mod tests {
     //   - foo_dns_resource2: allows TCP/443
     //
     // setup_nat is called for each with the same proxy IP and the same domain.
-    // Because the stored domain matches the incoming name,
-    // have_proxy_ips_been_reassigned returns false and no state reset occurs.
-    // The second resource's ID is appended to state.resources while the
+    // Because the stored domain matches the incoming name, the proxy IP is not
+    // re-assigned. The second resource's ID is appended to state.resources while the
     // existing TranslationState (and its resolved IP) is preserved.
     #[test]
     fn multiple_resources_can_share_same_proxy_ip() {

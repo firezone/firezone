@@ -933,16 +933,25 @@ impl TunnelTest {
             return;
         };
 
-        match received.remote {
-            Remote::Gateway(_) => {}
-            Remote::Client(_) => return,
-        }
+        let Remote::Gateway(gateway) = received.remote else {
+            return;
+        };
+        let dns_nat_generation = received.dns_nat_version.and_then(|version| {
+            let gateway = self.gateway(gateway)?;
+
+            Some(gateway.dns_nat_generation_at(
+                submitted.client,
+                submitted.packet.destination(),
+                version,
+            ))
+        });
 
         self.dns_nat_observations.push(DnsNatObservation {
             domain: name.clone(),
             flow_id,
             submitted: (*submitted).clone(),
             received: (*received).clone(),
+            dns_nat_generation,
             dns_addresses: ref_state
                 .global_dns_records
                 .domain_ips_iter(name)

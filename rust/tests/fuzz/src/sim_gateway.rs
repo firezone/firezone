@@ -28,7 +28,7 @@ pub(crate) struct SimGateway {
     pub(crate) probe_observations: Vec<ProbeObservation>,
 
     dns_resolutions: BTreeMap<(ClientId, DomainName), Vec<DnsResolution>>,
-    dns_nat_generations: BTreeMap<ClientId, u64>,
+    dns_nat_resets: BTreeMap<ClientId, Vec<DnsNatReset>>,
     dns_proxy_owners: BTreeMap<(ClientId, IpAddr), DomainName>,
     next_observation_order: u64,
 
@@ -45,9 +45,16 @@ pub(crate) struct SimGateway {
 pub(crate) struct DnsResolution {
     pub(crate) at: Instant,
     pub(crate) order: u64,
-    pub(crate) dns_nat_generation: u64,
+    dns_nat_version: u64,
     proxy_ips: Vec<IpAddr>,
     pub(crate) addresses: Vec<IpAddr>,
+}
+
+/// A reset of the DNS resource NAT state the Gateway holds for a Client.
+#[derive(Debug, Clone)]
+enum DnsNatReset {
+    AllProxies,
+    Proxies(BTreeSet<IpAddr>),
 }
 
 impl SimGateway {
@@ -67,7 +74,7 @@ impl SimGateway {
             dns_servers: Default::default(),
             network,
             dns_resolutions: Default::default(),
-            dns_nat_generations: Default::default(),
+            dns_nat_resets: Default::default(),
             dns_proxy_owners: Default::default(),
             next_observation_order: 0,
             authorized_resources: Default::default(),
@@ -192,13 +199,20 @@ impl SimGateway {
         addresses: Vec<IpAddr>,
         at: Instant,
     ) {
-        let proxies_were_reassigned = proxy_ips.iter().any(|proxy_ip| {
-            self.dns_proxy_owners
-                .get(&(client, *proxy_ip))
-                .is_some_and(|owner| owner != &domain)
-        });
-        if proxies_were_reassigned {
-            self.start_new_dns_nat_generation(client);
+        let reassigned_proxies = proxy_ips
+            .iter()
+            .filter(|proxy_ip| {
+                self.dns_proxy_owners
+                    .get(&(client, **proxy_ip))
+                    .is_some_and(|owner| owner != &domain)
+            })
+            .copied()
+            .collect::<BTreeSet<_>>();
+        if !reassigned_proxies.is_empty() {
+            self.dns_nat_resets
+                .entry(client)
+                .or_default()
+                .push(DnsNatReset::Proxies(reassigned_proxies));
         }
 
         for proxy_ip in &proxy_ips {
@@ -206,11 +220,10 @@ impl SimGateway {
                 .insert((client, *proxy_ip), domain.clone());
         }
 
-        let dns_nat_generation = self.dns_nat_generation(client);
         let resolution = DnsResolution {
             at,
             order: self.next_observation_order(),
-            dns_nat_generation,
+            dns_nat_version: self.dns_nat_version(client),
             proxy_ips,
             addresses,
         };
@@ -246,8 +259,11 @@ impl SimGateway {
             .get(&(client, domain.clone()))
             .into_iter()
             .flatten()
-            .filter(move |resolution| resolution.dns_nat_generation == dns_nat_generation)
             .filter(move |resolution| resolution.proxy_ips.contains(&proxy_ip))
+            .filter(move |resolution| {
+                self.dns_nat_generation_at(client, proxy_ip, resolution.dns_nat_version)
+                    == dns_nat_generation
+            })
     }
 
     pub(crate) fn record_authorization(
@@ -343,10 +359,10 @@ impl SimGateway {
 
     fn push_received_request(&mut self, id: Option<ProbeId>, packet: IpPacket, at: Instant) {
         let gateway_order = Some(self.next_observation_order());
-        let dns_nat_generation = self
+        let dns_nat_version = self
             .clients_by_ip
             .get(&packet.source())
-            .map(|client| self.dns_nat_generation(*client));
+            .map(|client| self.dns_nat_version(*client));
 
         self.probe_observations
             .push(ProbeObservation::RequestReceived(ReceivedRequest {
@@ -354,25 +370,37 @@ impl SimGateway {
                 at,
                 remote: Remote::Gateway(self.id),
                 gateway_order,
-                dns_nat_generation,
+                dns_nat_version,
                 packet,
             }));
     }
 
-    pub(crate) fn dns_nat_generation(&self, client: ClientId) -> u64 {
-        self.dns_nat_generations
-            .get(&client)
-            .copied()
-            .unwrap_or_default()
+    /// Returns the current DNS NAT generation of `proxy_ip` for `client`.
+    pub(crate) fn dns_nat_generation(&self, client: ClientId, proxy_ip: IpAddr) -> u64 {
+        self.dns_nat_generation_at(client, proxy_ip, self.dns_nat_version(client))
     }
 
-    fn start_new_dns_nat_generation(&mut self, client: ClientId) {
-        let generation = self.dns_nat_generation(client) + 1;
-        self.dns_nat_generations.insert(client, generation);
-        for _ in self
-            .dns_proxy_owners
-            .extract_if(.., |(owner, _), _| *owner == client)
-        {}
+    /// Returns the DNS NAT generation of `proxy_ip` for `client` after the first `version` resets.
+    pub(crate) fn dns_nat_generation_at(
+        &self,
+        client: ClientId,
+        proxy_ip: IpAddr,
+        version: u64,
+    ) -> u64 {
+        self.dns_nat_resets
+            .get(&client)
+            .into_iter()
+            .flatten()
+            .take(version as usize)
+            .filter(|reset| match reset {
+                DnsNatReset::AllProxies => true,
+                DnsNatReset::Proxies(proxies) => proxies.contains(&proxy_ip),
+            })
+            .count() as u64
+    }
+
+    fn dns_nat_version(&self, client: ClientId) -> u64 {
+        self.dns_nat_resets.get(&client).map_or(0, Vec::len) as u64
     }
 
     fn record_peer_removed(&mut self, client: ClientId) {
@@ -380,7 +408,14 @@ impl SimGateway {
             .clients_by_ip
             .extract_if(.., |_, owner| *owner == client)
         {}
-        self.start_new_dns_nat_generation(client);
+        self.dns_nat_resets
+            .entry(client)
+            .or_default()
+            .push(DnsNatReset::AllProxies);
+        for _ in self
+            .dns_proxy_owners
+            .extract_if(.., |(owner, _), _| *owner == client)
+        {}
     }
 
     fn next_observation_order(&mut self) -> u64 {

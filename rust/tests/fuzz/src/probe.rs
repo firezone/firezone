@@ -322,7 +322,8 @@ pub(crate) struct ReceivedRequest {
     pub(crate) at: Instant,
     pub(crate) remote: Remote,
     pub(crate) gateway_order: Option<u64>,
-    pub(crate) dns_nat_generation: Option<u64>,
+    /// How many times the Gateway had reset DNS resource NAT state for the Client.
+    pub(crate) dns_nat_version: Option<u64>,
     pub(crate) packet: IpPacket,
 }
 
@@ -355,6 +356,8 @@ pub(crate) struct DnsNatObservation {
     pub(crate) flow_id: FlowId,
     pub(crate) submitted: SubmittedRequest,
     pub(crate) received: ReceivedRequest,
+    /// The Gateway's DNS NAT generation of the proxy IP when it received the request.
+    pub(crate) dns_nat_generation: Option<u64>,
     pub(crate) response_received_at: Option<Instant>,
     pub(crate) dns_addresses: BTreeSet<IpAddr>,
 }
@@ -481,7 +484,7 @@ impl DnsNatObservation {
             Ok(Protocol::Tcp(port)) => return Err(InvalidDnsNatObservation::Tcp(port)),
             Err(error) => return Err(InvalidDnsNatObservation::UnsupportedProtocol(error)),
         };
-        let Some(dns_nat_generation) = self.received.dns_nat_generation else {
+        let Some(dns_nat_generation) = self.dns_nat_generation else {
             return Err(InvalidDnsNatObservation::MissingGeneration(gateway));
         };
 

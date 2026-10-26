@@ -674,7 +674,7 @@ impl SimClient {
                 at,
                 remote: Remote::Client(self.id),
                 gateway_order: None,
-                dns_nat_generation: None,
+                dns_nat_version: None,
                 packet,
             }));
     }
