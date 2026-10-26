@@ -326,7 +326,7 @@ sentry = { git = "https://github.com/getsentry/sentry-rust", branch = "master" }
 sentry-tracing = { git = "https://github.com/getsentry/sentry-rust", branch = "master" }
 ip_network = { git = "https://github.com/JakubOnderka/ip_network", branch = "master" } # Waiting for release.
 ip_network_table = { git = "https://github.com/edmonds/ip_network_table", branch = "some-useful-traits" } # For `Debug` and `Clone`
-quinn-udp = { git = "https://github.com/firezone/quinn", version = "0.6.0", branch = "main" } # Waiting for https://github.com/quinn-rs/quinn/pull/2748.
+quinn-udp = { git = "https://github.com/firezone/quinn", version = "0.6.0", rev = "482735009a2056d35c24082339865c1f8bae6dd0" } # Waiting for https://github.com/quinn-rs/quinn/pull/2748.
 proptest = { git = "https://github.com/proptest-rs/proptest", branch = "main" } # Waiting for release.
 
 # Enforce `tracing-macros` to have released `tracing` version.
