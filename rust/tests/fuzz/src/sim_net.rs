@@ -8,6 +8,7 @@ use std::{
     collections::BTreeMap,
     iter,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
+    ops::RangeBounds,
     time::{Duration, Instant},
 };
 use tracing::Span;
@@ -673,6 +674,10 @@ impl RoutingTable {
         }
     }
 
+    pub(crate) fn is_link_address(&self, ip: IpAddr) -> bool {
+        self.links.contains_key(&ip)
+    }
+
     pub(crate) fn remove_host<T>(&mut self, host: &Host<T>) {
         let ips = interface_ips(host)
             .into_iter()
@@ -693,6 +698,34 @@ impl RoutingTable {
 
     pub(crate) fn host_by_ip(&self, ip: IpAddr) -> Option<HostId> {
         self.routes.exact_match(ip).copied()
+    }
+}
+
+/// When each link delivered a packet, by sending and receiving host.
+#[derive(Debug, Default)]
+pub(crate) struct LinkTraffic {
+    deliveries: BTreeMap<(HostId, HostId), Vec<Instant>>,
+}
+
+impl LinkTraffic {
+    pub(crate) fn record(&mut self, from: HostId, to: HostId, at: Instant) {
+        self.deliveries.entry((from, to)).or_default().push(at);
+    }
+
+    /// Whether a link delivered packets from `a` to `b` and from `b` to `a` within `window`.
+    pub(crate) fn delivered_both_ways(
+        &self,
+        a: impl Into<HostId>,
+        b: impl Into<HostId>,
+        window: impl RangeBounds<Instant>,
+    ) -> bool {
+        let (a, b) = (a.into(), b.into());
+
+        [(a, b), (b, a)].iter().all(|direction| {
+            self.deliveries
+                .get(direction)
+                .is_some_and(|deliveries| deliveries.iter().any(|at| window.contains(at)))
+        })
     }
 }
 

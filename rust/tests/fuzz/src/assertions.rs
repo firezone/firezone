@@ -10,6 +10,7 @@ use super::{
     reference::ReferenceState,
     resource::Resource,
     sim_client::SimClient,
+    sim_net::direct_path_possible,
     site_network::{IcmpError, icmp_error_reply},
     stub_portal::StubPortal,
     sut::TunnelTest,
@@ -49,6 +50,8 @@ pub fn check_invariants(ref_state: &ReferenceState, state: &TunnelTest, portal: 
         state,
     );
     assert_dns_nat(state);
+    assert_links_carry_connectivity_checks(state);
+    assert_link_is_the_only_path_without_relays(ref_state, state, portal);
 
     for (node, handed_out_at) in portal.relay_handouts() {
         assert_relays_are_not_handed_out_in_a_loop(node, handed_out_at);
@@ -66,6 +69,80 @@ pub fn check_invariants(ref_state: &ReferenceState, state: &TunnelTest, portal: 
         assert_routes_are_valid(ref_client, sut_client);
         assert_resource_list(ref_client, sut_client);
         assert_dns_resource_record_cache(ref_client, sut_client);
+    }
+}
+
+/// How long after a linked Client's connection to its Gateway comes up the link must have carried
+/// connectivity checks.
+///
+/// A new pair is checked within the path agent's 1s probe burst, or within ICE's 50ms pacing per
+/// pair and 250ms initial retransmit, and answered within a round trip at the highest simulated
+/// latencies (250ms for a Client, 200ms for a Gateway).
+const LINK_CHECK_BOUND: Duration = Duration::from_secs(3);
+
+/// Checks that each connection between linked hosts checked their link, as both advertise it.
+fn assert_links_carry_connectivity_checks(state: &TunnelTest) {
+    for ((client, gateway), connection) in &state.linked_connections {
+        let Some(up_since) = connection.up_since else {
+            continue;
+        };
+        let deadline = up_since + LINK_CHECK_BOUND;
+        if state.now() < deadline {
+            continue;
+        }
+
+        let window = connection.down_since..=deadline;
+        if !state
+            .link_traffic
+            .delivered_both_ways(*client, *gateway, window)
+        {
+            tracing::error!(target: "assertions", %client, %gateway, ?up_since, "Link carried no connectivity checks for the connection");
+        }
+    }
+}
+
+/// Checks that a connection the link alone keeps alive while the relays are gone uses the link.
+fn assert_link_is_the_only_path_without_relays(
+    ref_state: &ReferenceState,
+    state: &TunnelTest,
+    portal: &StubPortal,
+) {
+    // TODO: Remove with classic ICE: an ICE-less connection idles without relays instead of failing.
+    if portal.iceless() {
+        return;
+    }
+    let Some(partition) = &state.relay_partition else {
+        return;
+    };
+
+    for (pair, before) in &partition.before {
+        let (client, gateway) = pair;
+        let Some(up_since) = before.up_since else {
+            continue;
+        };
+        let client_host = &ref_state.clients[client];
+        let gateway_host = &ref_state.gateways[gateway];
+        if direct_path_possible(
+            client_host.edge_config(),
+            gateway_host.edge_config(),
+            client_host.ip4.is_some() && gateway_host.ip4.is_some(),
+            client_host.ip6.is_some() && gateway_host.ip6.is_some(),
+        ) {
+            continue;
+        }
+
+        if partition.after.get(pair) != Some(before) {
+            tracing::error!(target: "assertions", %client, %gateway, ?up_since, "Connection over a link did not survive losing its relays");
+            continue;
+        }
+
+        let window = before.down_since..=partition.end;
+        if !state
+            .link_traffic
+            .delivered_both_ways(*client, *gateway, window)
+        {
+            tracing::error!(target: "assertions", %client, %gateway, ?up_since, "Connection survived losing its relays without using its link");
+        }
     }
 }
 

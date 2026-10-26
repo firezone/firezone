@@ -3,7 +3,7 @@ use super::dns_records::{DnsRecords, record_ip};
 use super::reference::ReferenceState;
 use super::sim_client::SimClient;
 use super::sim_gateway::SimGateway;
-use super::sim_net::{Host, HostId, RoutingTable};
+use super::sim_net::{Host, HostId, LinkTraffic, RoutingTable};
 use super::sim_relay::SimRelay;
 use super::stub_portal::StubPortal;
 use super::transition::{DPort, Destination, DnsQuery, DnsTransport, Identifier, SPort, Seq};
@@ -48,10 +48,28 @@ pub struct TunnelTest {
     /// the portal after a roam.
     client_portal_offline_until: Option<(ClientId, Instant)>,
     network: RoutingTable,
+    pub(crate) link_traffic: LinkTraffic,
+    pub(crate) linked_connections: BTreeMap<(ClientId, GatewayId), LinkedConnection>,
+    /// The relay partition of the last transition, if it was one.
+    pub(crate) relay_partition: Option<RelayPartition>,
     icmp_flows: BTreeMap<FlowId, ResolvedIcmpFlow>,
     udp_flows: BTreeMap<FlowId, ResolvedUdpFlow>,
     tcp_flows: BTreeMap<FlowId, ResolvedTcpFlow>,
     pub(crate) dns_nat_observations: Vec<DnsNatObservation>,
+}
+
+/// The uptime of a linked Client's connection to its Gateway, as the Client sees it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct LinkedConnection {
+    pub(crate) down_since: Instant,
+    pub(crate) up_since: Option<Instant>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct RelayPartition {
+    pub(crate) end: Instant,
+    pub(crate) before: BTreeMap<(ClientId, GatewayId), LinkedConnection>,
+    pub(crate) after: BTreeMap<(ClientId, GatewayId), LinkedConnection>,
 }
 
 #[derive(Clone, Copy)]
@@ -169,9 +187,26 @@ impl TunnelTest {
             gateway.exec_mut(|g| g.deploy_new_dns_servers(upstream_do53_servers))
         }
 
+        let linked_connections = clients
+            .keys()
+            .flat_map(|cid| gateways.keys().map(move |gid| (*cid, *gid)))
+            .filter(|(cid, gid)| ref_state.network.linked(*cid, *gid))
+            .map(|pair| {
+                let connection = LinkedConnection {
+                    down_since: flux_capacitor.now(),
+                    up_since: None,
+                };
+
+                (pair, connection)
+            })
+            .collect();
+
         let mut this = Self {
             flux_capacitor,
             network: ref_state.network.clone(),
+            link_traffic: LinkTraffic::default(),
+            linked_connections,
+            relay_partition: None,
             client_portal_offline_until: None,
             clients,
             gateways,
@@ -282,6 +317,7 @@ impl TunnelTest {
         let now = self.flux_capacitor.now();
         let utc_now = self.flux_capacitor.now();
         let mut application_probe = None;
+        self.relay_partition = None;
 
         // Act: Apply the transition
         match transition {
@@ -648,6 +684,8 @@ impl TunnelTest {
                 self.network.remove_host(client);
                 self.network.unplug_link(client_id);
                 client.unplug_link();
+                self.linked_connections
+                    .retain(|(linked_client, _), _| *linked_client != client_id);
                 client.set_offline();
 
                 let dead_until = now + dead_window;
@@ -728,6 +766,8 @@ impl TunnelTest {
                 }
             }
             Transition::PartitionRelaysFromPortal => {
+                let before = self.linked_connections.clone();
+
                 // 1. Disconnect all relays.
                 for client in self.clients.values_mut() {
                     client.exec_mut(|c| {
@@ -742,6 +782,12 @@ impl TunnelTest {
 
                 // 2. Advance state to ensure this is reflected.
                 self.advance(ref_state, portal, &mut buffered_transmits);
+
+                self.relay_partition = Some(RelayPartition {
+                    end: self.flux_capacitor.now(),
+                    before,
+                    after: self.linked_connections.clone(),
+                });
 
                 let now = self.flux_capacitor.now();
 
@@ -1003,6 +1049,7 @@ impl TunnelTest {
     ) {
         'outer: while self.flux_capacitor.now::<Instant>() < cut_off {
             let now = self.flux_capacitor.now();
+            self.observe_linked_connections(now);
 
             // Drive the network at the top so state changes from the previous
             // iteration are turned into packets before we look for more work.
@@ -1160,6 +1207,29 @@ impl TunnelTest {
         for (transmit, at) in buffered_transmits.drain() {
             self.dispatch_transmit(transmit, at);
         }
+        self.observe_linked_connections(self.flux_capacitor.now());
+    }
+
+    fn observe_linked_connections(&mut self, now: Instant) {
+        for ((cid, gid), connection) in &mut self.linked_connections {
+            let established = self.clients[cid]
+                .inner()
+                .sut
+                .connection_path(ClientOrGatewayId::Gateway(*gid))
+                .is_some();
+
+            match (established, connection.up_since) {
+                (true, None) => connection.up_since = Some(now),
+                (false, Some(_)) => {
+                    *connection = LinkedConnection {
+                        down_since: now,
+                        up_since: None,
+                    }
+                }
+                (true, Some(_)) => {}
+                (false, None) => {}
+            }
+        }
     }
 
     fn drain_transmits(&mut self, buffered_transmits: &mut BufferedTransmits, now: Instant) {
@@ -1301,6 +1371,12 @@ impl TunnelTest {
             tracing::error!("Unhandled packet: {src} -> {dst}");
             return;
         };
+
+        if self.network.is_link_address(src.ip())
+            && let Some(sender) = self.network.host_by_ip(src.ip())
+        {
+            self.link_traffic.record(sender, host, at);
+        }
 
         match host {
             HostId::Client(id) => {
