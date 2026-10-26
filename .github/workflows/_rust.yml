@@ -220,14 +220,19 @@ jobs:
         run: mise run //rust/tests/fuzz:determinism ${{ matrix.fuzz-target }}
 
   bench-instructions:
-    name: bench-instructions
+    name: bench-instructions-${{ matrix.group }}
+    strategy:
+      fail-fast: false
+      # The idle benchmarks set up 1000 connections under Valgrind, so each gets a runner of its own.
+      matrix:
+        include:
+          - { group: packets, filter: "instructions::packet_group::*" }
+          - { group: idle-ice, filter: "instructions::idle_group::idle::ice" }
+          - { group: idle-iceless, filter: "instructions::idle_group::idle::iceless" }
     runs-on: ubuntu-24.04
     env:
       # Replaces the workflow's `RUSTFLAGS`, which would drop the frame pointers from `.cargo/config.toml`.
       RUSTFLAGS: "--deny warnings -C force-frame-pointers=yes"
-      BENCHER_PROJECT: firezone-1l75jv1z
-      # Bencher tracks PRs and `main`. PRs from forks and Dependabot have no access to its API key.
-      BENCHER: ${{ github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]') }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-rust-stable
@@ -244,18 +249,43 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Run
+        env:
+          FILTER: ${{ matrix.filter }}
+          GROUP: ${{ matrix.group }}
         run: |
           set -o pipefail
-          cargo bench -p tunnel-bench --bench instructions | tee "$RUNNER_TEMP/instructions.txt"
+          cargo bench -p tunnel-bench --bench instructions -- "$FILTER" | tee "$RUNNER_TEMP/instructions-$GROUP.txt"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: instructions-${{ matrix.group }}
+          path: ${{ runner.temp }}/instructions-${{ matrix.group }}.txt
+          if-no-files-found: error
+
+  # One report for all groups: each `bencher run` on a PR resets its branch, which would drop the other groups' results.
+  bench-instructions-report:
+    name: bench-instructions-report
+    needs: bench-instructions
+    # Bencher tracks PRs and `main`. PRs from forks and Dependabot have no access to its API key.
+    if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]')
+    runs-on: ubuntu-24.04
+    env:
+      BENCHER_PROJECT: firezone-1l75jv1z
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: instructions-*
+          path: ${{ runner.temp }}/instructions
+          merge-multiple: true
       - uses: bencherdev/bencher@f80847436d7157936b40525db4c2a1064124f04a # v0.6.13
-        if: env.BENCHER == 'true'
       - name: Report to Bencher
-        if: env.BENCHER == 'true'
+        working-directory: ${{ runner.temp }}
         env:
           BENCHER_API_KEY: ${{ secrets.BENCHER_API_KEY }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
           set -euo pipefail
+
+          cat instructions/*.txt > instructions.txt
 
           if [ "$GITHUB_REF" = refs/heads/main ]; then
             # Instruction counts are deterministic, so any increase beyond 1% is a regression.
@@ -284,7 +314,7 @@ jobs:
             --testbed github-actions-callgrind \
             "${branch[@]}" \
             --adapter rust_gungraun \
-            --file "$RUNNER_TEMP/instructions.txt"
+            --file instructions.txt
 
   headless-client:
     name: headless-client-${{ matrix.test }}-${{ matrix.runs-on }}
