@@ -34,6 +34,7 @@ import dev.firezone.android.core.data.model.Config
 import dev.firezone.android.core.data.model.ManagedConfigStatus
 import dev.firezone.android.features.settings.ui.DeviceTrustSettingsViewModel
 import dev.firezone.android.ui.FirezoneIcons
+import kotlinx.collections.immutable.ImmutableSet
 import kotlinx.coroutines.launch
 
 /** A settings page and how the title and navigation bar name it. */
@@ -64,7 +65,7 @@ internal fun SettingsScreen(
     config: Config,
     cloudRegion: CloudRegion,
     managedStatus: ManagedConfigStatus,
-    savablePages: Set<SettingsPage>,
+    savablePages: ImmutableSet<SettingsPage>,
     logSizeBytes: Long,
     deviceTrustState: DeviceTrustSettingsViewModel.UiState,
     showDeviceTrust: Boolean,

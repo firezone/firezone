@@ -17,6 +17,7 @@ import dev.firezone.android.core.data.model.ManagedConfigStatus
 import dev.firezone.android.features.settings.ui.compose.SettingsPage
 import dev.firezone.android.features.settings.ui.compose.SettingsScreen
 import dev.firezone.android.ui.theme.FirezoneTheme
+import kotlinx.collections.immutable.persistentSetOf
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -199,7 +200,7 @@ private fun SettingsScreenSample(
         config = config,
         cloudRegion = cloudRegion,
         managedStatus = managedStatus,
-        savablePages = setOf(SettingsPage.GENERAL, SettingsPage.LOGS),
+        savablePages = persistentSetOf(SettingsPage.GENERAL, SettingsPage.LOGS),
         logSizeBytes = LOG_DIRECTORY_BYTES,
         deviceTrustState = deviceTrustState,
         showDeviceTrust = deviceTrustState.alias != null,

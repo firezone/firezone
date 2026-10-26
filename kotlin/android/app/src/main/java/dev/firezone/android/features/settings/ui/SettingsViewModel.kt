@@ -16,6 +16,9 @@ import dev.firezone.android.core.data.model.CloudRegion
 import dev.firezone.android.core.data.model.Config
 import dev.firezone.android.core.data.model.ManagedConfigStatus
 import dev.firezone.android.features.settings.ui.compose.SettingsPage
+import kotlinx.collections.immutable.ImmutableSet
+import kotlinx.collections.immutable.persistentSetOf
+import kotlinx.collections.immutable.toImmutableSet
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -305,7 +308,7 @@ internal class SettingsViewModel
                             if (config.logFilter != savedConfig.logFilter && config.logFilter.isNotBlank()) {
                                 add(SettingsPage.LOGS)
                             }
-                        },
+                        }.toImmutableSet(),
                 )
         }
 
@@ -318,7 +321,7 @@ internal class SettingsViewModel
             }
 
         internal data class UiState(
-            val savablePages: Set<SettingsPage> = emptySet(),
+            val savablePages: ImmutableSet<SettingsPage> = persistentSetOf(),
             val logSizeBytes: Long = 0,
         )
 
