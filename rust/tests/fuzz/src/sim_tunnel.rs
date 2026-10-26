@@ -14,20 +14,10 @@ use socket_factory::{DatagramBatch, DatagramOut};
 use tun::PacketBatch;
 use tunnel::{ClientState, FakeTunnelEnds, ResolverQuery, Role, Tunnel};
 
-/// How the OS around a tunnel hands it what it reads.
-#[derive(Debug, Clone, Copy)]
-pub(crate) struct IoBatching {
-    /// Whether one TUN read returns all packets that are ready, instead of one.
-    pub(crate) tun_reads: bool,
-    /// Whether the sockets coalesce received datagrams like Linux GRO.
-    pub(crate) gro: bool,
-}
-
 /// A tunnel and the OS around it: its TUN device and its sockets.
 pub(crate) struct SimTunnel<R> {
     inner: Tunnel<R>,
     pub(crate) ends: FakeTunnelEnds,
-    pub(crate) io: IoBatching,
     /// The packets the TUN device reads on the next poll.
     pending_tun_reads: Vec<IpPacket>,
     /// The deadline the tunnel asked to be woken at when it last went idle.
@@ -39,13 +29,12 @@ pub(crate) struct SimTunnel<R> {
 }
 
 impl<R: Role> SimTunnel<R> {
-    pub(crate) fn new(state: R, io: IoBatching) -> Self {
+    pub(crate) fn new(state: R) -> Self {
         let (tunnel, ends) = Tunnel::fake(state);
 
         Self {
             inner: tunnel,
             ends,
-            io,
             pending_tun_reads: Vec::new(),
             alarm: None,
             idle: false,
@@ -84,7 +73,7 @@ impl<R: Role> SimTunnel<R> {
             let datagrams =
                 transmits.fold(Vec::<Vec<Transmit>>::new(), |mut datagrams, transmit| {
                     match datagrams.last_mut() {
-                        Some(segments) if self.io.gro && gro_merges(segments, &transmit) => {
+                        Some(segments) if gro_merges(segments, &transmit) => {
                             segments.push(transmit)
                         }
                         _ => datagrams.push(vec![transmit]),
@@ -166,13 +155,13 @@ impl<R: Role> SimTunnel<R> {
     }
 
     /// Hands the queued packets to the TUN device's channel, as many per read as a real device
-    /// returns if [`IoBatching::tun_reads`] is set and one otherwise.
+    /// returns.
     fn flush_tun_reads(&mut self) {
         let mut batches = Vec::<PacketBatch>::new();
 
         for packet in self.pending_tun_reads.drain(..) {
             let packet = match batches.last_mut() {
-                Some(batch) if self.io.tun_reads => match batch.try_push(packet) {
+                Some(batch) => match batch.try_push(packet) {
                     Ok(()) => continue,
                     Err(packet) => packet,
                 },

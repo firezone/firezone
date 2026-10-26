@@ -3,7 +3,6 @@ use super::{
     reference::PrivateKey,
     sim_gateway::SimGateway,
     sim_net::ExecMutScope,
-    sim_tunnel::IoBatching,
     site_network::{Routes, SiteNetwork},
 };
 use chrono::{DateTime, Utc};
@@ -28,7 +27,6 @@ pub struct RefGateway {
     site_specific_dns_records: DnsRecords,
     /// Names the Gateway's upstream resolver does not resolve.
     unresolvable_names: BTreeSet<DomainName>,
-    io: IoBatching,
 }
 
 impl RefGateway {
@@ -40,7 +38,6 @@ impl RefGateway {
         routes: Routes,
         site_specific_dns_records: DnsRecords,
         unresolvable_names: BTreeSet<DomainName>,
-        io: IoBatching,
     ) -> Self {
         Self {
             key,
@@ -49,7 +46,6 @@ impl RefGateway {
             routes,
             site_specific_dns_records,
             unresolvable_names,
-            io,
         }
     }
 
@@ -78,7 +74,7 @@ impl RefGateway {
 
         let network = SiteNetwork::new(self.routes, tcp_services, now);
 
-        SimGateway::new(id, sut, network, self.site_specific_dns_records, self.io)
+        SimGateway::new(id, sut, network, self.site_specific_dns_records)
     }
 
     pub fn dns_records(&self) -> &DnsRecords {

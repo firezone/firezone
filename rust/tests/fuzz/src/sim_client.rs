@@ -10,7 +10,7 @@ use super::{
     reference::PrivateKey,
     sim_net::{ExecMutScope, Host},
     sim_relay::{SimRelay, map_explode},
-    sim_tunnel::{IoBatching, SimTunnel},
+    sim_tunnel::SimTunnel,
     site_network::{IcmpError, icmp_error_reply},
     transition::{DPort, DnsTransport, Identifier, IpFamily, SPort, Seq},
 };
@@ -85,14 +85,13 @@ impl SimClient {
         mut sut: ClientState,
         malicious_behaviour: MaliciousBehaviour,
         os: crate::os::SimulatedOs,
-        io: IoBatching,
         now: Instant,
     ) -> Self {
         sut.set_flow_logs_enabled(true);
 
         Self {
             id,
-            tunnel: SimTunnel::new(sut, io),
+            tunnel: SimTunnel::new(sut),
             malicious_behaviour,
             dns_records: Default::default(),
             dns_by_sentinel: Default::default(),
@@ -147,8 +146,7 @@ impl SimClient {
                 .unwrap(),
         );
         sut.set_flow_logs_enabled(true);
-        let io = self.tunnel.io;
-        let old = std::mem::replace(&mut self.tunnel, SimTunnel::new(sut, io));
+        let old = std::mem::replace(&mut self.tunnel, SimTunnel::new(sut));
 
         self.search_domain = None;
         self.dns_by_sentinel = DnsMapping::default();

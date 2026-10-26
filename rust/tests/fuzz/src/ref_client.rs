@@ -9,7 +9,6 @@ use super::{
     },
     sim_client::SimClient,
     sim_net::ExecMutScope,
-    sim_tunnel::IoBatching,
     site_network::{RouteType, Routes},
     transition::{Destination, DnsQuery, DnsTransport},
 };
@@ -55,8 +54,6 @@ pub struct RefClient {
 
     /// The operating system this client simulates.
     pub(crate) os: crate::os::SimulatedOs,
-
-    io: IoBatching,
 
     /// Tracks all resources in the order they have been added in.
     ///
@@ -136,7 +133,6 @@ impl RefClient {
         internet_resource_active: bool,
         malicious_behaviour: MaliciousBehaviour,
         os: crate::os::SimulatedOs,
-        io: IoBatching,
     ) -> Self {
         Self {
             id,
@@ -147,7 +143,6 @@ impl RefClient {
             internet_resource_active,
             malicious_behaviour,
             os,
-            io,
             dns_records: Default::default(),
             authorizations: Default::default(),
             dns_resource_resolutions: Default::default(),
@@ -202,7 +197,6 @@ impl RefClient {
             client_state,
             self.malicious_behaviour,
             self.os,
-            self.io,
             now,
         )
     }

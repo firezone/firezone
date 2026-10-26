@@ -5,7 +5,7 @@ use super::{
     probe::{ProbeId, ProbeObservation, ReceivedRequest, Remote},
     sim_net::{ExecMutScope, Host},
     sim_relay::{SimRelay, map_explode},
-    sim_tunnel::{IoBatching, SimTunnel},
+    sim_tunnel::SimTunnel,
     site_network::SiteNetwork,
 };
 use connlib_model::{ClientId, GatewayId, RelayId, ResourceId};
@@ -55,13 +55,12 @@ impl SimGateway {
         mut sut: GatewayState,
         network: SiteNetwork,
         site_specific_dns_records: DnsRecords,
-        io: IoBatching,
     ) -> Self {
         sut.set_flow_logs_enabled(true);
 
         Self {
             id,
-            tunnel: SimTunnel::new(sut, io),
+            tunnel: SimTunnel::new(sut),
             site_specific_dns_records,
             probe_observations: Default::default(),
             dns_servers: Default::default(),
