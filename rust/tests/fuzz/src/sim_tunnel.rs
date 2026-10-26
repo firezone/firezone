@@ -14,10 +14,14 @@ use tunnel::{ClientState, FakeTunnelEnds, ResolverQuery, Role, Tunnel};
 
 /// A tunnel and the OS around it: its TUN device and its sockets.
 pub(crate) struct SimTunnel<R> {
-    pub(crate) inner: Tunnel<R>,
+    inner: Tunnel<R>,
     pub(crate) ends: FakeTunnelEnds,
     /// The deadline the tunnel asked to be woken at when it last went idle.
     pub(crate) alarm: Option<Instant>,
+    /// Whether the last poll found nothing to do and nothing has touched the tunnel since.
+    idle: bool,
+    /// Set by any waker the tunnel was ever handed.
+    woken_since_idle: Arc<AtomicBool>,
 }
 
 impl<R: Role> SimTunnel<R> {
@@ -28,7 +32,19 @@ impl<R: Role> SimTunnel<R> {
             inner: tunnel,
             ends,
             alarm: None,
+            idle: false,
+            woken_since_idle: Arc::default(),
         }
+    }
+
+    pub(crate) fn inner(&self) -> &Tunnel<R> {
+        &self.inner
+    }
+
+    pub(crate) fn inner_mut(&mut self) -> &mut Tunnel<R> {
+        self.idle = false;
+
+        &mut self.inner
     }
 
     /// Hands `transmits` to the sockets they are addressed to, one batch per socket.
@@ -79,10 +95,20 @@ impl<R: Role> SimTunnel<R> {
     pub(crate) fn poll_event(&mut self, now: Instant) -> (Option<R::Event>, bool) {
         if self.alarm.is_some_and(|alarm| alarm <= now) {
             self.alarm = None;
+            self.idle = false;
             self.inner.handle_timeout(now);
         }
 
-        let woken = Arc::new(Woken::default());
+        let woken_since_idle = self.woken_since_idle.swap(false, Ordering::Relaxed);
+        if self.idle && !woken_since_idle {
+            return (None, false);
+        }
+        self.idle = false;
+
+        let woken = Arc::new(Woken {
+            this_poll: AtomicBool::new(false),
+            since_idle: self.woken_since_idle.clone(),
+        });
         let waker = Waker::from(woken.clone());
 
         match self
@@ -100,10 +126,11 @@ impl<R: Role> SimTunnel<R> {
             Poll::Pending => {}
         }
 
-        if woken.0.load(Ordering::Relaxed) {
+        if woken.this_poll.load(Ordering::Relaxed) {
             return (None, true);
         }
 
+        self.idle = true;
         self.alarm = self.inner.next_timeout(now);
 
         (None, self.alarm.is_some_and(|alarm| alarm <= now))
@@ -113,7 +140,7 @@ impl<R: Role> SimTunnel<R> {
 impl SimTunnel<ClientState> {
     /// Shuts the tunnel down, returning the datagrams it sent on the way out.
     pub(crate) fn shut_down(mut self, now: Instant) -> Vec<Transmit> {
-        self.inner.state_mut().shut_down(now);
+        self.inner_mut().state_mut().shut_down(now);
         while self.poll_event(now).1 {}
 
         self.take_sent()
@@ -121,8 +148,10 @@ impl SimTunnel<ClientState> {
 }
 
 /// Records whether the tunnel asked to be polled again.
-#[derive(Default)]
-struct Woken(AtomicBool);
+struct Woken {
+    this_poll: AtomicBool,
+    since_idle: Arc<AtomicBool>,
+}
 
 impl Wake for Woken {
     fn wake(self: Arc<Self>) {
@@ -130,6 +159,7 @@ impl Wake for Woken {
     }
 
     fn wake_by_ref(self: &Arc<Self>) {
-        self.0.store(true, Ordering::Relaxed);
+        self.this_poll.store(true, Ordering::Relaxed);
+        self.since_idle.store(true, Ordering::Relaxed);
     }
 }
