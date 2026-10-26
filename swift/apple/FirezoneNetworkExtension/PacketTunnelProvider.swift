@@ -298,6 +298,18 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         }
         completionHandler?(nil)
 
+      case .setLogFilter(let logFilter):
+        do {
+          try configureLogger(
+            logDir: SharedAccess.connlibLogFolderURL?.path ?? "/tmp/firezone",
+            logFilter: logFilter,
+            flowLogsDir: SharedAccess.flowLogsFolderURL?.path
+          )
+        } catch {
+          Log.error(error)
+        }
+        completionHandler?(nil)
+
       case .signOut:
         do { try Token.delete() } catch { Log.error(error) }
         completionHandler?(nil)

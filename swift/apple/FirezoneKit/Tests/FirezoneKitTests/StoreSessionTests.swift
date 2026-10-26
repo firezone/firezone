@@ -106,6 +106,25 @@
       }
     }
 
+    @Test("a new log filter reaches the tunnel")
+    func aNewLogFilterReachesTheTunnel() async throws {
+      let app = try await signedOut()
+      try await app.store.signIn(token: Self.token)
+      try await waitUntil { app.store.vpnStatus == .connected }
+      // The setting is process-wide, so leave it the way the next test expects it.
+      let logFilter = app.store.configuration.logFilter
+      defer { app.store.configuration.logFilter = logFilter }
+
+      app.store.configuration.logFilter = "trace"
+
+      try await waitUntil {
+        app.tunnel.messages.contains {
+          if case .setLogFilter("trace") = $0 { return true }
+          return false
+        }
+      }
+    }
+
     @Test("an unreachable resource is reported by name")
     func anUnreachableResourceIsReported() async throws {
       let app = try await signedOut()

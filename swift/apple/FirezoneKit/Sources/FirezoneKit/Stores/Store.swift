@@ -93,6 +93,7 @@ public final class Store: ObservableObject {
   private struct ConfigurationSnapshot: Equatable {
     var providerConfiguration: [String: String]
     var internetResourceEnabled: Bool
+    var logFilter: String
     var startOnLogin: Bool
   }
 
@@ -608,6 +609,7 @@ public final class Store: ObservableObject {
     ConfigurationSnapshot(
       providerConfiguration: configuration.toProviderConfiguration(),
       internetResourceEnabled: configuration.internetResourceEnabled,
+      logFilter: configuration.logFilter,
       startOnLogin: configuration.startOnLogin
     )
   }
@@ -658,6 +660,15 @@ public final class Store: ObservableObject {
           )
         }
         synced.internetResourceEnabled = target.internetResourceEnabled
+      }
+      if synced.logFilter != target.logFilter {
+        // A tunnel that is not running reads the saved filter when it starts.
+        if let session = try manager().session(),
+          [.connected, .connecting, .reasserting].contains(session.status)
+        {
+          try await IPCClient.setLogFilter(session: session, target.logFilter)
+        }
+        synced.logFilter = target.logFilter
       }
     } catch {
       Log.error(error)

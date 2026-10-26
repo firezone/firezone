@@ -165,6 +165,12 @@ public enum IPCClient {
   }
 
   @MainActor
+  static func setLogFilter(session: any TunnelSessionProtocol, _ logFilter: String) async throws {
+    let message = ProviderMessage.setLogFilter(logFilter)
+    _ = try await sendProviderMessage(session: session, message: message)
+  }
+
+  @MainActor
   static func drainFlowLogs(session: any TunnelSessionProtocol) async throws {
     let message = ProviderMessage.drainFlowLogs
     _ = try await sendProviderMessage(session: session, message: message)

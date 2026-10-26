@@ -973,6 +973,17 @@ struct ProviderMessageCodableTests {
     }
   }
 
+  @Test("setLogFilter round-trips through JSON")
+  func setLogFilterRoundTrip() throws {
+    let decoded = try roundTrip(.setLogFilter("debug,connlib=trace"))
+
+    if case .setLogFilter(let logFilter) = decoded {
+      #expect(logFilter == "debug,connlib=trace")
+    } else {
+      Issue.record("Expected .setLogFilter, got \(decoded)")
+    }
+  }
+
   @Test("Unknown message type fails to decode")
   func unknownTypeFailsToDecode() throws {
     let data = try encoder.encode(["type": "getResourceList"])
