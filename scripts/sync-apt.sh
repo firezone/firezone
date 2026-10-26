@@ -24,11 +24,20 @@ if [ -z "${GPG_KEY_ID:-}" ]; then
     exit 1
 fi
 
+if [ -z "${GPG_KEY_EXPIRY:-}" ]; then
+    echo "Error: GPG_KEY_EXPIRY not set"
+    exit 1
+fi
+
 cleanup() {
     rm -rf "${WORK_DIR}"
 }
 
 trap cleanup EXIT
+
+# The expiry is set here rather than in the stored key, so renewing it only takes a change to `GPG_KEY_EXPIRY`.
+GPG_KEY_FINGERPRINT=$(gpg --list-secret-keys --with-colons "${GPG_KEY_ID}" | awk -F: '$1 == "fpr" { print $10; exit }')
+gpg --batch --quick-set-expire "${GPG_KEY_FINGERPRINT}" "${GPG_KEY_EXPIRY}"
 
 for DISTRIBUTION in "stable" "preview"; do
     POOL_DIR="${WORK_DIR}/pool-${DISTRIBUTION}"
