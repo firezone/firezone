@@ -177,7 +177,7 @@ fn additional_host_candidates(sockets: Vec<SocketAddr>) -> BTreeSet<SocketAddr> 
             let ip = socket.ip();
 
             if ip.is_unspecified() || is_routed_through_tunnel(ip) {
-                tracing::warn!(%ip, "Ignoring unusable additional host candidate");
+                tracing::debug!(%ip, "Ignoring unusable additional host candidate");
 
                 return false;
             }
