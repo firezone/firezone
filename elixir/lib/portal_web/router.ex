@@ -5,6 +5,7 @@ defmodule PortalWeb.Router do
     plug :accepts, ["html", "xml"]
     plug :fetch_session
     plug PortalWeb.WebsiteAttribution
+    plug PortalWeb.Cookie.SignUpBrowser
     plug :protect_from_forgery
     plug :fetch_live_flash
     plug :put_root_layout, html: {PortalWeb.Layouts, :root}
@@ -74,6 +75,7 @@ defmodule PortalWeb.Router do
     pipe_through :public
 
     live_session :public_sign_up,
+      session: {PortalWeb.Cookie.SignUpBrowser, :live_session, []},
       on_mount: [
         PortalWeb.LiveHooks.PutDynamicRepo,
         PortalWeb.LiveHooks.AllowEctoSandbox
@@ -89,6 +91,8 @@ defmodule PortalWeb.Router do
     end
 
     post "/sign_up/:auth_provider_type", OIDCController, :sign_up
+    post "/verify_sign_up", SignUpController, :verify
+    post "/sign_up/:provider/complete", SignUpController, :complete_identity
   end
 
   # Machine to machine, so no CSRF protection and no session: the client
