@@ -23,7 +23,7 @@ use tunnel::GatewayTunnel;
 use clock::Clock;
 use phoenix_channel::PhoenixChannel;
 use secrecy::{ExposeSecret, SecretString};
-use std::{collections::BTreeSet, fmt};
+use std::{collections::BTreeSet, fmt, net::IpAddr};
 use std::{path::PathBuf, process::ExitCode};
 use std::{sync::Arc, time::Duration};
 use tracing_subscriber::layer;
@@ -256,6 +256,7 @@ async fn try_main(cli: Cli) -> Result<()> {
         nameservers,
         clock.now(),
     );
+    tunnel.set_additional_host_candidates(cli.additional_host_candidates, clock.now());
 
     flow_log_upload::spawn(flow_logs_dir.clone(), Arc::new(tcp_socket_factory));
 
@@ -428,6 +429,20 @@ struct Cli {
     /// It may be removed / changed anytime.
     #[arg(long, env, hide = true)]
     otlp_grpc_endpoint: Option<String>,
+
+    /// Advertise a local IP as an additional host candidate, e.g. to use a direct link to a Client.
+    ///
+    /// The IP must be assigned to a local interface.
+    ///
+    /// This configuration option is private API and has no stability guarantees.
+    /// It may be removed / changed anytime.
+    #[arg(
+        long = "additional-host-candidate",
+        env = "FIREZONE_ADDITIONAL_HOST_CANDIDATES",
+        value_delimiter = ',',
+        hide = true
+    )]
+    additional_host_candidates: Vec<IpAddr>,
 
     /// Do not try to increase the `core.rmem_max` and `core.wmem_max` kernel parameters.
     #[arg(long, env = "FIREZONE_NO_INC_BUF", default_value_t = false)]

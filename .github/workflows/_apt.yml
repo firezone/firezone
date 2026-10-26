@@ -41,3 +41,4 @@ jobs:
         env:
           AZURE_STORAGE_ACCOUNT: firezoneartifacts
           GPG_KEY_ID: ${{ steps.setup-gpg.outputs.key_id }}
+          GPG_KEY_EXPIRY: "2031-10-24"

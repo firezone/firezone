@@ -2,18 +2,26 @@ use core::fmt;
 use std::collections::HashMap;
 use std::hash::Hash;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+use std::time::Instant;
 
+use deadline_map::{DeadlineMap, PollTimeout};
 use fast_random_state::FastRandomState;
 
 use crate::client::{ClientOnClient, GatewayOnClient};
 use crate::gateway::ClientOnGateway;
 
-pub(crate) struct PeerStore<TId, P> {
+pub(crate) struct PeerStore<TId, P>
+where
+    P: Peer,
+{
     id_by_ip: HashMap<IpAddr, TId, FastRandomState>,
-    peer_by_id: HashMap<TId, P, FastRandomState>,
+    peer_by_id: DeadlineMap<TId, P>,
 }
 
-impl<TId, P> Default for PeerStore<TId, P> {
+impl<TId, P> Default for PeerStore<TId, P>
+where
+    P: Peer,
+{
     fn default() -> Self {
         Self {
             id_by_ip: HashMap::default(),
@@ -27,11 +35,8 @@ where
     TId: Eq + Hash + Copy + fmt::Debug + fmt::Display,
     P: Peer,
 {
-    pub(crate) fn extract_if(&mut self, f: impl Fn(&TId, &mut P) -> bool) -> Vec<(TId, P)> {
-        let removed_peers = self
-            .peer_by_id
-            .extract_if(|id, peer| f(id, peer))
-            .collect::<Vec<_>>();
+    pub(crate) fn extract_if(&mut self, f: impl Fn(&TId, &P) -> bool) -> Vec<(TId, P)> {
+        let removed_peers = self.peer_by_id.extract_if(f);
 
         self.id_by_ip
             .retain(|_, id| self.peer_by_id.contains_key(id));
@@ -59,7 +64,7 @@ where
             self.peer_by_id.remove(&pid);
         }
 
-        let peer = self.peer_by_id.entry(pid).or_insert(peer);
+        let peer = self.peer_by_id.get_or_insert(pid, peer);
 
         self.id_by_ip.insert(peer.tun_ipv4().into(), pid);
         self.id_by_ip.insert(peer.tun_ipv6().into(), pid);
@@ -99,7 +104,7 @@ where
     }
 
     pub(crate) fn iter_mut(&mut self) -> impl Iterator<Item = &mut P> {
-        self.peer_by_id.values_mut()
+        self.peer_by_id.iter_mut().map(|(_, p)| p)
     }
 
     pub(crate) fn iter(&self) -> impl Iterator<Item = &P> {
@@ -110,9 +115,19 @@ where
         self.id_by_ip.clear();
         self.peer_by_id.clear();
     }
+
+    /// Hands out the peers that are due at `now` or were handed out mutably since the last [`PeerStore::reindex`].
+    pub(crate) fn due_mut(&mut self, now: Instant) -> impl Iterator<Item = (TId, &mut P)> {
+        self.peer_by_id.due_mut(now)
+    }
+
+    pub(crate) fn reindex(&mut self) {
+        self.peer_by_id.reindex(|_, _| {});
+    }
 }
 
-pub(crate) trait Peer {
+/// A peer whose [`PollTimeout::poll_timeout`] says when [`PeerStore::due_mut`] needs to hand it out next.
+pub(crate) trait Peer: PollTimeout {
     fn tun_ipv4(&self) -> Ipv4Addr;
     fn tun_ipv6(&self) -> Ipv6Addr;
 }
@@ -127,6 +142,12 @@ impl Peer for ClientOnGateway {
     }
 }
 
+impl PollTimeout for ClientOnGateway {
+    fn poll_timeout(&mut self) -> Option<Instant> {
+        ClientOnGateway::poll_timeout(self)
+    }
+}
+
 impl Peer for GatewayOnClient {
     fn tun_ipv4(&self) -> Ipv4Addr {
         self.gateway_tun().v4
@@ -137,6 +158,12 @@ impl Peer for GatewayOnClient {
     }
 }
 
+impl PollTimeout for GatewayOnClient {
+    fn poll_timeout(&mut self) -> Option<Instant> {
+        None
+    }
+}
+
 impl Peer for ClientOnClient {
     fn tun_ipv4(&self) -> Ipv4Addr {
         self.remote_tun().v4
@@ -144,6 +171,12 @@ impl Peer for ClientOnClient {
 
     fn tun_ipv6(&self) -> Ipv6Addr {
         self.remote_tun().v6
+    }
+}
+
+impl PollTimeout for ClientOnClient {
+    fn poll_timeout(&mut self) -> Option<Instant> {
+        ClientOnClient::poll_timeout(self)
     }
 }
 
@@ -169,6 +202,12 @@ mod tests {
 
         fn tun_ipv6(&self) -> Ipv6Addr {
             self.ipv6
+        }
+    }
+
+    impl PollTimeout for DummyPeer {
+        fn poll_timeout(&mut self) -> Option<Instant> {
+            None
         }
     }
 

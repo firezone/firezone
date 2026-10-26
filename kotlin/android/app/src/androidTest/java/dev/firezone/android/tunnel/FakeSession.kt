@@ -47,6 +47,10 @@ class FakeSession(
         commands.trySend("reset")
     }
 
+    override fun setAdditionalHostCandidates(ips: List<String>) {
+        commands.trySend("setAdditionalHostCandidates=$ips")
+    }
+
     override fun setDns(dnsServers: List<String>) {
         commands.trySend("setDns=$dnsServers")
     }

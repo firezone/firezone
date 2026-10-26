@@ -569,12 +569,19 @@ impl GatewayState {
         self.flow_tracker.handle_timeout(now);
         self.authorization_rejections.handle_timeout(now);
 
-        self.peers.iter_mut().for_each(|p| {
-            p.handle_timeout(now);
-        });
-        let removed_peers = self.peers.extract_if(|_, p| p.is_empty());
+        let empty = self
+            .peers
+            .due_mut(now)
+            .filter_map(|(id, peer)| {
+                peer.handle_timeout(now);
 
-        for (id, _) in removed_peers {
+                peer.is_empty().then_some(id)
+            })
+            .collect::<Vec<_>>();
+        self.peers.reindex();
+
+        for id in empty {
+            self.peers.remove(&id);
             tracing::debug!(cid = %id, "Access to last resource for Client removed");
 
             self.node.close_connection(id, p2p_control::goodbye(), now);
@@ -714,6 +721,15 @@ impl GatewayState {
         now: Instant,
     ) {
         self.node.update_relays(to_remove, &to_add, now);
+        self.drain_node_events()
+    }
+
+    /// Sets the local sockets to advertise as host candidates in addition to the ones learned from relays.
+    ///
+    /// Sockets on IPs that route through the tunnel are rejected.
+    pub fn set_additional_host_candidates(&mut self, sockets: Vec<SocketAddr>, now: Instant) {
+        self.node
+            .set_additional_host_candidates(crate::additional_host_candidates(sockets), now);
         self.drain_node_events()
     }
 

@@ -1940,6 +1940,14 @@
             "nullable": true,
             "type": "integer"
           },
+          "sign_in_tenant_id": {
+            "description": "Verified tenant ID whose sign-in endpoint users authenticate through, so that B2B guest users of that tenant can sign in. Null when users authenticate through their home tenant.",
+            "example": "12345678-1234-1234-1234-123456789012",
+            "format": "uuid",
+            "nullable": true,
+            "readOnly": true,
+            "type": "string"
+          },
           "tenant_ids": {
             "description": "Verified Entra tenant IDs allowed to authenticate through this provider",
             "example": [
@@ -1973,6 +1981,7 @@
           "tenant_ids",
           "name",
           "portal_session_lifetime_secs",
+          "sign_in_tenant_id",
           "updated_at"
         ],
         "title": "EntraAuthProvider",

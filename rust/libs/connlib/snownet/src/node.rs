@@ -54,6 +54,9 @@ const DISCONNECT_TIMEOUT: Duration = Duration::from_secs(2);
 /// For how long we will at most try to re-key a WireGuard tunnel.
 const WG_REKEY_ATTEMPT_TIME: Duration = Duration::from_secs(20);
 
+/// How often we record the number of connections per network path; metrics are exported every minute.
+const CONNECTION_COUNT_INTERVAL: Duration = Duration::from_secs(10);
+
 /// A node within a `snownet` network maintains connections to several other nodes.
 ///
 /// [`Node`] is built in a SANS-IO fashion, meaning it neither advances time nor network state on its own.
@@ -88,6 +91,7 @@ pub struct Node<TId, RId> {
     buffered_transmits: VecDeque<Transmit>,
 
     allocations: Allocations<RId>,
+    additional_host_candidates: Vec<Candidate>,
 
     connections: Connections<TId, RId>,
     buffered_candidates: BufferedCandidates<TId>,
@@ -100,6 +104,7 @@ pub struct Node<TId, RId> {
     last_now: Instant,
 
     connection_count: Gauge<u64>,
+    next_connection_count: Instant,
 
     rng: StdRng,
 
@@ -189,10 +194,12 @@ where
             pending_events: VecDeque::default(),
             last_now: now,
             allocations,
+            additional_host_candidates: Default::default(),
             inflight_stun_requests: Default::default(),
             connections: Default::default(),
             buffered_candidates: Default::default(),
             connection_count: otel_instruments::connection_count(),
+            next_connection_count: now,
             unix_now: now,
             unix_ts,
         }
@@ -225,6 +232,13 @@ where
                 %num_iceless,
                 "Soft-reset iceless connections (path-agent reset, key kept)"
             );
+
+            for (cid, c) in self.connections.iter_mut() {
+                for candidate in &self.additional_host_candidates {
+                    c.add_local_candidate(cid, candidate, &mut self.pending_events, now);
+                }
+            }
+
             return;
         }
 
@@ -323,8 +337,13 @@ where
             let current_candidates = c.agent.local_candidates().collect::<SmallVec<[_; 16]>>();
 
             // Re-seed connection with all candidates.
-            let new_candidates =
-                seed_agent_with_local_candidates(c.relay, &mut c.agent, &self.allocations, now);
+            let new_candidates = seed_agent_with_local_candidates(
+                c.relay,
+                &mut c.agent,
+                &self.allocations,
+                &self.additional_host_candidates,
+                now,
+            );
 
             // Tell the remote about all of them.
             self.pending_events.extend(
@@ -387,6 +406,9 @@ where
         tracing::debug!(index = %connection.tunnel.id(), "Created WireGuard tunnel");
 
         connection.assign_relay(cid, &mut self.allocations, &mut self.pending_events, now);
+        for candidate in &self.additional_host_candidates {
+            connection.add_local_candidate(cid, candidate, &mut self.pending_events, now);
+        }
 
         if self.allocations.is_empty() {
             tracing::debug!("No relays available; requesting a new set");
@@ -712,20 +734,24 @@ where
             now,
         );
 
-        let mut connections_by_path = [0u64; ConnectionPath::KINDS.len()];
+        if now >= self.next_connection_count {
+            self.next_connection_count = now + CONNECTION_COUNT_INTERVAL;
 
-        for (_, connection) in self.connections.iter_established() {
-            if let Some(peer_socket) = connection.state.peer_socket() {
-                connections_by_path[peer_socket.kind_index()] += 1;
+            let mut connections_by_path = [0u64; ConnectionPath::KINDS.len()];
+
+            for (_, connection) in self.connections.iter_established() {
+                if let Some(peer_socket) = connection.state.peer_socket() {
+                    connections_by_path[peer_socket.kind_index()] += 1;
+                }
             }
-        }
 
-        // Report the current number of connections per network path. Every bucket is
-        // emitted (including `0`) so that a path draining to zero is not stuck at its
-        // last non-zero value.
-        for (kind, count) in ConnectionPath::KINDS.into_iter().zip(connections_by_path) {
-            self.connection_count
-                .record(count, &[otel_attributes::connection_socket(kind)]);
+            // Report the current number of connections per network path. Every bucket is
+            // emitted (including `0`) so that a path draining to zero is not stuck at its
+            // last non-zero value.
+            for (kind, count) in ConnectionPath::KINDS.into_iter().zip(connections_by_path) {
+                self.connection_count
+                    .record(count, &[otel_attributes::connection_socket(kind)]);
+            }
         }
 
         self.buffered_candidates.handle_timeout(now);
@@ -827,6 +853,42 @@ where
 
         // Fourth, detach existing connections from removed relays.
         self.connections.clear_relays(to_remove.into_iter());
+    }
+
+    /// Sets the local addresses to advertise as host candidates in addition to the ones learned from relays.
+    ///
+    /// Existing connections get the new candidates and have the ones no longer present invalidated.
+    pub fn set_additional_host_candidates(&mut self, addrs: BTreeSet<SocketAddr>, now: Instant) {
+        self.last_now = now;
+
+        let candidates = addrs
+            .into_iter()
+            .filter_map(|addr| {
+                Candidate::host(addr, "udp")
+                    .inspect_err(|e| tracing::debug!(%addr, "Invalid host candidate: {e}"))
+                    .ok()
+            })
+            .collect::<Vec<_>>();
+        let removed = mem::replace(&mut self.additional_host_candidates, candidates)
+            .into_iter()
+            .filter(|c| !self.additional_host_candidates.contains(c))
+            .collect::<Vec<_>>();
+
+        for (cid, c) in self.connections.iter_mut() {
+            let relay_candidates = c
+                .relay
+                .map(|rid| self.allocations.candidates_for_relay(&rid))
+                .into_iter()
+                .flatten()
+                .collect::<SmallVec<[_; 8]>>();
+
+            for candidate in removed.iter().filter(|r| !relay_candidates.contains(r)) {
+                c.invalidate_local_candidate(cid, candidate, &mut self.pending_events, now);
+            }
+            for candidate in &self.additional_host_candidates {
+                c.add_local_candidate(cid, candidate, &mut self.pending_events, now);
+            }
+        }
     }
 
     fn init_connection(
@@ -1181,6 +1243,7 @@ fn seed_agent_with_local_candidates<'a, RId>(
     selected_relay: Option<RId>,
     agent: &'a mut Agent,
     allocations: &Allocations<RId>,
+    additional_host_candidates: &'a [Candidate],
     now: Instant,
 ) -> impl Iterator<Item = Candidate> + use<'a, RId>
 where
@@ -1190,6 +1253,7 @@ where
         .map(|rid| allocations.candidates_for_relay(&rid))
         .into_iter()
         .flatten()
+        .chain(additional_host_candidates.iter().cloned())
         .filter_map(move |c| agent.add_local_candidate(c, now))
 }
 
@@ -1413,6 +1477,27 @@ struct Connection<RId> {
     poll_timeout_cache: TimeoutCache,
 }
 
+impl<RId> Connection<RId> {
+    #[must_use]
+    fn poll_timeout(&mut self) -> Option<Instant> {
+        let timeout = iter::empty()
+            .chain(self.agent.poll_timeout())
+            .chain(self.tunnel.poll_timeout())
+            .chain(self.candidate_timeout)
+            .chain(self.disconnect_timeout())
+            .chain(self.state.poll_timeout(&self.agent))
+            .min();
+
+        self.poll_timeout_cache.update(timeout)
+    }
+
+    fn disconnect_timeout(&self) -> Option<Instant> {
+        let disconnected_at = self.disconnected_at?;
+
+        Some(disconnected_at + DISCONNECT_TIMEOUT)
+    }
+}
+
 impl<RId> Connection<RId>
 where
     RId: PartialEq + Eq + Hash + fmt::Debug + fmt::Display + Copy + Ord,
@@ -1449,25 +1534,6 @@ where
         }
 
         Ok(socket)
-    }
-
-    #[must_use]
-    fn poll_timeout(&mut self) -> Option<Instant> {
-        let timeout = iter::empty()
-            .chain(self.agent.poll_timeout())
-            .chain(self.tunnel.poll_timeout())
-            .chain(self.candidate_timeout)
-            .chain(self.disconnect_timeout())
-            .chain(self.state.poll_timeout(&self.agent))
-            .min();
-
-        self.poll_timeout_cache.update(timeout)
-    }
-
-    fn disconnect_timeout(&self) -> Option<Instant> {
-        let disconnected_at = self.disconnected_at?;
-
-        Some(disconnected_at + DISCONNECT_TIMEOUT)
     }
 
     fn handle_timeout<TId>(
@@ -2135,6 +2201,16 @@ where
             return;
         }
 
+        self.invalidate_local_candidate(id, candidate, pending_events, now);
+    }
+
+    fn invalidate_local_candidate<TId>(
+        &mut self,
+        id: TId,
+        candidate: &Candidate,
+        pending_events: &mut VecDeque<Event<TId, RId>>,
+        now: Instant,
+    ) {
         let was_present = self.agent.invalidate_candidate(candidate, now);
 
         if was_present {

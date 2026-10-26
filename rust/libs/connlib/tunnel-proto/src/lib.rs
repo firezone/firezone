@@ -16,7 +16,7 @@ use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use logging::DisplayBTreeSet;
 use std::{
     collections::BTreeSet,
-    net::{IpAddr, Ipv4Addr, Ipv6Addr},
+    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
 };
 
 mod authorization_rejections;
@@ -174,6 +174,34 @@ pub fn is_peer(dst: IpAddr) -> bool {
     match dst {
         IpAddr::V4(v4) => IPV4_TUNNEL.contains(v4),
         IpAddr::V6(v6) => IPV6_TUNNEL.contains(v6),
+    }
+}
+
+fn additional_host_candidates(sockets: Vec<SocketAddr>) -> BTreeSet<SocketAddr> {
+    sockets
+        .into_iter()
+        .filter(|socket| {
+            let ip = socket.ip();
+
+            if ip.is_unspecified() || is_routed_through_tunnel(ip) {
+                tracing::debug!(%ip, "Ignoring unusable additional host candidate");
+
+                return false;
+            }
+
+            true
+        })
+        .collect()
+}
+
+fn is_routed_through_tunnel(ip: IpAddr) -> bool {
+    match ip {
+        IpAddr::V4(v4) => {
+            IPV4_TUNNEL.contains(v4) || IPV4_RESOURCES.contains(v4) || DNS_SENTINELS_V4.contains(v4)
+        }
+        IpAddr::V6(v6) => {
+            IPV6_TUNNEL.contains(v6) || IPV6_RESOURCES.contains(v6) || DNS_SENTINELS_V6.contains(v6)
+        }
     }
 }
 

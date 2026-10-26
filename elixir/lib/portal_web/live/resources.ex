@@ -659,10 +659,16 @@ defmodule PortalWeb.Resources do
     {:noreply, socket}
   end
 
-  def handle_event("open_edit_form", _params, socket) do
-    resource = socket.assigns.selected_resource
-
+  def handle_event(
+        "open_edit_form",
+        _params,
+        %{assigns: %{selected_resource: %Resource{} = resource}} = socket
+      ) do
     {:noreply, push_patch(socket, to: edit_resource_path(socket, resource.id))}
+  end
+
+  def handle_event("open_edit_form", _params, %{assigns: %{selected_resource: nil}} = socket) do
+    {:noreply, socket}
   end
 
   def handle_event("cancel_resource_form", _params, socket) do
@@ -685,11 +691,23 @@ defmodule PortalWeb.Resources do
     {:noreply, socket}
   end
 
-  def handle_event("change_policy_authorizations_page", %{"page" => page}, socket) do
+  def handle_event(
+        "change_policy_authorizations_page",
+        %{"page" => page},
+        %{assigns: %{selected_resource: %Resource{} = resource}} = socket
+      ) do
     {:noreply,
      push_patch(socket,
-       to: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/resources/#{socket.assigns.selected_resource.id}", tab: "authorizations", page: page)
+       to: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/resources/#{resource.id}", tab: "authorizations", page: page)
      )}
+  end
+
+  def handle_event(
+        "change_policy_authorizations_page",
+        _params,
+        %{assigns: %{selected_resource: nil}} = socket
+      ) do
+    {:noreply, socket}
   end
 
   def handle_event("toggle_policy_authorization_row", %{"id" => id}, socket) do

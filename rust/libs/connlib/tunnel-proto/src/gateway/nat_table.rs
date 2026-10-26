@@ -52,6 +52,13 @@ pub(crate) const ICMP_TTL: Duration = Duration::from_secs(60 * 2);
 pub(crate) const UNCONFIRMED_TTL: Duration = Duration::from_secs(60);
 
 impl NatTable {
+    pub(crate) fn poll_timeout(&self) -> Option<Instant> {
+        self.state_by_inside
+            .iter()
+            .filter_map(|(inside, state)| state.remove_at(inside.0))
+            .min()
+    }
+
     pub(crate) fn handle_timeout(&mut self, now: Instant) {
         let expired = self.state_by_inside.extract_if(|inside, state| {
             state

@@ -69,6 +69,42 @@ defmodule Portal.Entra.AuthProviderTest do
       assert Repo.reload!(provider).tenant_ids == [first, second]
     end
 
+    test "requires the sign-in tenant to be a verified tenant", %{account: account} do
+      verified = Ecto.UUID.generate()
+      provider = entra_provider_fixture(account: account, tenant_ids: [verified])
+
+      changeset =
+        provider
+        |> Ecto.Changeset.cast(%{sign_in_tenant_id: Ecto.UUID.generate(), is_verified: true}, [
+          :sign_in_tenant_id,
+          :is_verified
+        ])
+        |> AuthProvider.changeset()
+
+      assert "must be a verified tenant" in errors_on(changeset).sign_in_tenant_id
+
+      provider =
+        provider
+        |> Ecto.Changeset.cast(%{sign_in_tenant_id: verified, is_verified: true}, [
+          :sign_in_tenant_id,
+          :is_verified
+        ])
+        |> AuthProvider.changeset()
+        |> Repo.update!()
+
+      assert Repo.reload!(provider).sign_in_tenant_id == verified
+    end
+
+    test "rejects a sign-in tenant that is not verified in the database", %{account: account} do
+      provider = entra_provider_fixture(account: account)
+
+      assert_raise Ecto.ConstraintError, ~r/sign_in_tenant_id_must_be_verified/, fn ->
+        provider
+        |> Ecto.Changeset.change(sign_in_tenant_id: Ecto.UUID.generate())
+        |> Repo.update()
+      end
+    end
+
     test "validates portal_session_lifetime_secs range", %{account: account} do
       # Test below minimum (< 300)
       changeset =

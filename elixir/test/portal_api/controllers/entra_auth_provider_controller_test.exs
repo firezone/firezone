@@ -144,7 +144,8 @@ defmodule PortalAPI.EntraAuthProviderControllerTest do
     end
 
     test "shows an entra auth provider", %{conn: conn, account: account, actor: actor} do
-      provider = entra_provider_fixture(account: account)
+      tenant_id = "12345678-1234-1234-1234-123456789012"
+      provider = entra_provider_fixture(account: account, tenant_ids: [tenant_id], sign_in_tenant_id: tenant_id)
 
       conn =
         conn
@@ -156,6 +157,7 @@ defmodule PortalAPI.EntraAuthProviderControllerTest do
       assert data["id"] == provider.id
       assert data["account_id"] == account.id
       assert data["tenant_ids"] == provider.tenant_ids
+      assert data["sign_in_tenant_id"] == tenant_id
       refute Map.has_key?(data, "issuer")
     end
 

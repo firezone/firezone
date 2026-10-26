@@ -170,6 +170,10 @@ impl<TRoleState> Tunnel<TRoleState> {
         &mut self.role_state
     }
 
+    pub fn into_state(self) -> TRoleState {
+        self.role_state
+    }
+
     pub fn set_tun(&mut self, tun: Box<dyn Tun>) {
         self.io.set_tun(tun);
     }
@@ -309,6 +313,12 @@ impl ClientTunnel {
 
         self.role_state.reset(now, reason);
         self.io.reset();
+    }
+
+    /// Advertises the given local IPs as additional host candidates on our UDP port.
+    pub fn set_additional_host_candidates(&mut self, ips: Vec<IpAddr>, now: Instant) {
+        self.role_state
+            .set_additional_host_candidates(listen_sockets(ips), now);
     }
 
     pub fn update_system_resolvers(&mut self, resolvers: Vec<IpAddr>) -> Vec<IpAddr> {
@@ -558,6 +568,12 @@ impl GatewayTunnel {
 
     pub fn public_key(&self) -> PublicKey {
         self.role_state.public_key()
+    }
+
+    /// Advertises the given local IPs as additional host candidates on our UDP port.
+    pub fn set_additional_host_candidates(&mut self, ips: Vec<IpAddr>, now: Instant) {
+        self.role_state
+            .set_additional_host_candidates(listen_sockets(ips), now);
     }
 
     /// Shut down the Gateway tunnel.
@@ -874,4 +890,10 @@ pub struct FakeTunnelEnds {
 pub struct FailedToHandleNetworkPacket {
     local: SocketAddr,
     from: SocketAddr,
+}
+
+fn listen_sockets(ips: Vec<IpAddr>) -> Vec<SocketAddr> {
+    ips.into_iter()
+        .map(|ip| SocketAddr::new(ip, sockets::DEFAULT_LISTEN_PORT))
+        .collect()
 }
