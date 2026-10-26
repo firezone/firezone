@@ -530,6 +530,8 @@ impl ReferenceState {
 
                 let client = self.clients.get_mut(client_id).unwrap();
                 self.network.remove_host(client);
+                self.network.unplug_link(*client_id);
+                client.unplug_link();
                 client.ip4.clone_from(ip4);
                 client.ip6.clone_from(ip6);
                 client.migrate_nat(*nat_ip4);

@@ -49,6 +49,7 @@ pub fn check_invariants(ref_state: &ReferenceState, state: &TunnelTest, portal: 
         state,
     );
     assert_dns_nat(state);
+    assert_links_carry_connectivity_checks(state);
 
     for (node, handed_out_at) in portal.relay_handouts() {
         assert_relays_are_not_handed_out_in_a_loop(node, handed_out_at);
@@ -66,6 +67,34 @@ pub fn check_invariants(ref_state: &ReferenceState, state: &TunnelTest, portal: 
         assert_routes_are_valid(ref_client, sut_client);
         assert_resource_list(ref_client, sut_client);
         assert_dns_resource_record_cache(ref_client, sut_client);
+    }
+}
+
+/// How long after a linked Client's connection to its Gateway comes up the link must have carried
+/// connectivity checks.
+///
+/// A new pair is checked within the path agent's 1s probe burst and answered within a round trip
+/// at the highest simulated latencies (250ms for a Client, 200ms for a Gateway).
+const LINK_CHECK_BOUND: Duration = Duration::from_secs(3);
+
+/// Checks that each connection between linked hosts checked their link, as both advertise it.
+fn assert_links_carry_connectivity_checks(state: &TunnelTest) {
+    for ((client, gateway), connection) in &state.linked_connections {
+        let Some(up_since) = connection.up_since else {
+            continue;
+        };
+        let deadline = up_since + LINK_CHECK_BOUND;
+        if state.now() < deadline {
+            continue;
+        }
+
+        let window = connection.down_since..=deadline;
+        if !state
+            .link_traffic
+            .delivered_both_ways(*client, *gateway, window)
+        {
+            tracing::error!(target: "assertions", %client, %gateway, ?up_since, "Link carried no connectivity checks for the connection");
+        }
     }
 }
 
