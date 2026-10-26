@@ -965,37 +965,6 @@ pub struct DatagramBatch {
 }
 
 impl DatagramBatch {
-    /// Creates the batch a socket bound to the datagrams' `dst` receives in one syscall.
-    ///
-    /// A datagram longer than its `segment_size` arrives coalesced, as with GRO.
-    ///
-    /// # Panics
-    ///
-    /// If a datagram has no `src`.
-    pub fn received(datagrams: impl IntoIterator<Item = DatagramOut>) -> Self {
-        let mut port = 0;
-        let (buffers, metas): (Vec<_>, Vec<_>) = datagrams
-            .into_iter()
-            .map(|datagram| {
-                port = datagram.dst.port();
-
-                let mut meta = quinn_udp::RecvMeta::default();
-                meta.addr = datagram
-                    .src
-                    .expect("received datagrams should have a `src`");
-                meta.len = datagram.packet.len();
-                meta.stride = datagram.segment_size;
-                meta.dst_ip = Some(datagram.dst.ip());
-                meta.ecn = ecn_codepoint(datagram.ecn);
-
-                (datagram.packet, meta)
-            })
-            .unzip();
-        let len = buffers.len();
-
-        Self::new(buffers, metas, port, len)
-    }
-
     pub fn new(
         mut buffers: Vec<Bytes>,
         mut metas: Vec<quinn_udp::RecvMeta>,
