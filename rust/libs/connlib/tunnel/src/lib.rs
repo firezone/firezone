@@ -169,6 +169,10 @@ impl<TRoleState> Tunnel<TRoleState> {
         &mut self.role_state
     }
 
+    pub fn into_state(self) -> TRoleState {
+        self.role_state
+    }
+
     pub fn set_tun(&mut self, tun: Box<dyn Tun>) {
         self.io.set_tun(tun);
     }
