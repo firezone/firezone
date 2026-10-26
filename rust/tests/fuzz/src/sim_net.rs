@@ -363,13 +363,6 @@ impl<T> Host<T> {
         Some(SocketAddr::new(ip, self.port))
     }
 
-    pub(crate) fn interface_sockets(&self) -> Vec<SocketAddr> {
-        interface_ips(self)
-            .into_iter()
-            .map(|ip| SocketAddr::new(ip, self.port))
-            .collect()
-    }
-
     pub(crate) fn update_interface(&mut self, ip4: Option<Ipv4Addr>, ip6: Option<Ipv6Addr>) {
         self.ip4 = ip4;
         self.ip6 = ip6;

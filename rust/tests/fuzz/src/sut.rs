@@ -139,20 +139,12 @@ impl TunnelTest {
 
         // Configure client and gateway with the relays.
         for client in clients.values_mut() {
-            let sockets = client.interface_sockets();
-            client.exec_mut(|c| {
-                c.sut_mut()
-                    .set_additional_host_candidates(sockets, flux_capacitor.now());
-                c.update_relays(iter::empty(), relays.iter(), flux_capacitor.now())
-            });
+            client
+                .exec_mut(|c| c.update_relays(iter::empty(), relays.iter(), flux_capacitor.now()));
         }
         for gateway in gateways.values_mut() {
-            let sockets = gateway.interface_sockets();
-            gateway.exec_mut(|g| {
-                g.sut_mut()
-                    .set_additional_host_candidates(sockets, flux_capacitor.now());
-                g.update_relays(iter::empty(), relays.iter(), flux_capacitor.now())
-            });
+            gateway
+                .exec_mut(|g| g.update_relays(iter::empty(), relays.iter(), flux_capacitor.now()));
         }
 
         let upstream_do53_servers = portal
@@ -662,9 +654,7 @@ impl TunnelTest {
                 client.migrate_nat(nat_ip4);
                 let added = self.network.add_host(client_id, client);
                 debug_assert!(added);
-                let sockets = client.interface_sockets();
                 client.exec_mut(|c| {
-                    c.sut_mut().set_additional_host_candidates(sockets, now);
                     c.tunnel.inner_mut().reset("roam", now);
                     c.sut_mut().set_portal_connected(false);
                 });
@@ -851,10 +841,7 @@ impl TunnelTest {
                 }
 
                 let client = self.clients.get_mut(&client_id).unwrap();
-                let sockets = client.interface_sockets();
                 client.exec_mut(|c| {
-                    c.sut_mut().set_additional_host_candidates(sockets, now);
-
                     // Apply to new instance.
                     c.sut_mut().update_interface_config(Interface {
                         ipv4,
