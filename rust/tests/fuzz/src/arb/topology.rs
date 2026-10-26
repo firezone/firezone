@@ -84,7 +84,7 @@ pub(super) fn generate(
 }
 
 /// Connects some Clients each to a different Gateway with a dedicated link, like a cable between
-/// two machines, if the portal is ICE-less.
+/// two machines, if the portal hands out ICE-less connections.
 ///
 /// Drawn last, so an input that runs out of bytes before it has no links.
 fn arb_links(
