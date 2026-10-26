@@ -173,7 +173,7 @@ impl fmt::Debug for Nonces {
 
 impl Nonces {
     /// How long a single time window is.
-    const WINDOW: Duration = Duration::from_secs(10 * 60);
+    const WINDOW: Duration = Duration::from_secs(60 * 60);
 
     pub(crate) fn new(key: [u8; 32]) -> Self {
         Self { key }
