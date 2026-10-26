@@ -256,7 +256,7 @@ impl ReferenceState {
                     seq: *seq,
                     identifier: *identifier,
                 };
-                let (outcome, authorization) = self.verdict(portal, *client_id, &request);
+                let (outcome, authorization) = self.verdict(portal, *client_id, &request, None);
                 self.record_probe(
                     portal,
                     *probe_id,
@@ -343,7 +343,7 @@ impl ReferenceState {
                     sport: *sport,
                     dport: *dport,
                 };
-                let (outcome, authorization) = self.verdict(portal, *client_id, &request);
+                let (outcome, authorization) = self.verdict(portal, *client_id, &request, None);
                 self.record_probe(
                     portal,
                     *probe_id,
@@ -422,7 +422,7 @@ impl ReferenceState {
                     dport: *dport,
                     write_len: None,
                 };
-                let (outcome, authorization) = self.verdict(portal, *client_id, &request);
+                let (outcome, authorization) = self.verdict(portal, *client_id, &request, None);
                 let outcome = match outcome {
                     ExpectedOutcome::RoundTripCompleted(route, _)
                         if self.serves_tcp(dst, *dport) =>
@@ -473,7 +473,8 @@ impl ReferenceState {
                     dport: flow.dport,
                     write_len: Some(*len),
                 };
-                let (outcome, authorization) = self.verdict(portal, flow.client_id, &request);
+                let (outcome, authorization) =
+                    self.verdict(portal, flow.client_id, &request, Some(flow.route));
                 let outcome = match outcome {
                     ExpectedOutcome::RoundTripCompleted(route, _)
                         if route.remote() == flow.route.remote() =>
@@ -773,6 +774,7 @@ impl ReferenceState {
                 request.source(),
                 request.destination(),
                 request.protocol(),
+                false,
             ),
             Route::Gateway(_) => (
                 ExpectedOutcome::RoundTripCompleted(route, Answer::Echo),
@@ -847,11 +849,14 @@ impl ReferenceState {
 
     /// Follows a packet from `origin` to its destination: the client picks where it goes,
     /// the portal supplies the gateway or pool, and the remote end accepts or rejects it.
+    ///
+    /// `established` is the route of the TCP flow the packet belongs to, if any.
     fn verdict(
         &self,
         portal: &StubPortal,
         origin: ClientId,
         request: &ProbeRequest,
+        established: Option<Route>,
     ) -> (ExpectedOutcome, Option<Authorization>) {
         let client = self.clients[&origin].inner();
         let (src, dst, protocol) = (request.source(), request.destination(), request.protocol());
@@ -899,7 +904,18 @@ impl ReferenceState {
             return (ExpectedOutcome::Dropped, None);
         };
 
-        self.resource_verdict(portal, origin, resource, gateway, src, dst, protocol)
+        let established = established == Some(Route::Resource { resource, gateway });
+
+        self.resource_verdict(
+            portal,
+            origin,
+            resource,
+            gateway,
+            src,
+            dst,
+            protocol,
+            established,
+        )
     }
 
     /// Whether `origin` reaches the peer client at `ip`, which takes an authorization on both
@@ -974,6 +990,7 @@ impl ReferenceState {
         src: IpAddr,
         dst: &Destination,
         protocol: Protocol,
+        established: bool,
     ) -> (ExpectedOutcome, Option<Authorization>) {
         let resolutions = match dst {
             Destination::DomainName { .. } => {
@@ -1000,6 +1017,7 @@ impl ReferenceState {
             dst,
             protocol,
             &resolutions,
+            established,
         );
         let outcome = match rejection {
             Some(response) => ExpectedOutcome::Rejected {
@@ -1068,6 +1086,9 @@ impl ReferenceState {
     ///
     /// `resolutions` are the records the Gateway resolves the resource's domains to as the
     /// client connects, ahead of the ones the client already holds.
+    ///
+    /// An `established` TCP flow keeps translating through the NAT session the Gateway
+    /// created for it, whatever the domain resolves to since.
     fn gateway_verdict(
         &self,
         portal: &StubPortal,
@@ -1078,6 +1099,7 @@ impl ReferenceState {
         dst: &Destination,
         protocol: Protocol,
         resolutions: &BTreeMap<DomainName, BTreeSet<RecordType>>,
+        established: bool,
     ) -> Option<RejectionResponse> {
         let client = self.clients[&origin].inner();
 
@@ -1112,6 +1134,9 @@ impl ReferenceState {
         let Destination::DomainName { name, .. } = dst else {
             return None;
         };
+        if established {
+            return None;
+        }
         let resolves_for_source = resolutions
             .get(name)
             .or_else(|| client.dns_resource_resolution(resource, name))
