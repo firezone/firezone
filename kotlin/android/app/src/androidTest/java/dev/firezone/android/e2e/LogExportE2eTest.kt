@@ -37,7 +37,6 @@ import org.junit.Test
 import java.io.File
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
-import java.util.regex.Pattern
 import java.util.zip.ZipInputStream
 import javax.inject.Inject
 
@@ -78,7 +77,7 @@ class LogExportE2eTest {
 
         clickTextOnScreen(context.getString(R.string.log_settings_title))
         // Export stays disabled until the page has measured the logs.
-        awaitTextOnScreen(context.getString(R.string.log_directory_size, Formatter.formatShortFileSize(context, log.length())))
+        awaitTextOnScreen(Formatter.formatShortFileSize(context, log.length()))
         clickButton(context.getString(R.string.share_diagnostic_logs))
 
         await("the share sheet") { chooser.get() != null }
@@ -108,7 +107,7 @@ class LogExportE2eTest {
     private fun clickButton(label: String) {
         UiDevice
             .getInstance(InstrumentationRegistry.getInstrumentation())
-            .wait(Until.findObject(By.text(Pattern.compile(Pattern.quote(label), Pattern.CASE_INSENSITIVE))), TIMEOUT_MS)
+            .wait(Until.findObject(By.desc(label)), TIMEOUT_MS)
             ?.click()
             ?: throw AssertionError("Timed out waiting for \"$label\" on screen, showing ${resumedActivity()}")
     }

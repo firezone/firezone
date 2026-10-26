@@ -3,14 +3,15 @@ package dev.firezone.android.features.settings.ui.compose
 
 import android.text.format.Formatter
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -48,19 +49,24 @@ fun LogSettingsPage(
                 isManaged = managedStatus.isLogFilterManaged,
                 onValueChange = onLogFilterChange,
             )
-            Text(
-                text = stringResource(R.string.log_directory_size, Formatter.formatShortFileSize(context, logSizeBytes)),
-                style = MaterialTheme.typography.bodyLarge,
-                modifier = Modifier.padding(vertical = 8.dp),
+            OutlinedTextField(
+                value = Formatter.formatShortFileSize(context, logSizeBytes),
+                onValueChange = {},
+                readOnly = true,
+                label = { Text(stringResource(R.string.log_files)) },
+                singleLine = true,
+                trailingIcon = {
+                    Row {
+                        IconButton(onClick = onClearLogs, enabled = hasLogs) {
+                            Icon(imageVector = FirezoneIcons.Delete, contentDescription = stringResource(R.string.clear_log_directory))
+                        }
+                        IconButton(onClick = onExportLogs, enabled = hasLogs) {
+                            Icon(imageVector = FirezoneIcons.Share, contentDescription = stringResource(R.string.share_diagnostic_logs))
+                        }
+                    }
+                },
+                modifier = Modifier.fillMaxWidth(),
             )
-            OutlinedButton(onClick = onClearLogs, enabled = hasLogs, modifier = Modifier.fillMaxWidth()) {
-                Icon(imageVector = FirezoneIcons.Delete, contentDescription = null)
-                Text(text = stringResource(R.string.clear_log_directory), modifier = Modifier.padding(start = 8.dp))
-            }
-            OutlinedButton(onClick = onExportLogs, enabled = hasLogs, modifier = Modifier.fillMaxWidth()) {
-                Icon(imageVector = FirezoneIcons.Share, contentDescription = null)
-                Text(text = stringResource(R.string.share_diagnostic_logs), modifier = Modifier.padding(start = 8.dp))
-            }
         }
     }
 }
