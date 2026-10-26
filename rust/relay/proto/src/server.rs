@@ -1654,23 +1654,6 @@ mod tests {
         );
     }
 
-    fn next_response(server: &mut Server<StdRng>) -> Message<Attribute> {
-        let payload = std::iter::from_fn(|| server.next_command())
-            .find_map(|command| {
-                let Command::SendMessage { payload, .. } = command else {
-                    return None;
-                };
-
-                Some(payload)
-            })
-            .expect("the relay sends a response");
-
-        MessageDecoder::<Attribute>::new()
-            .decode_from_bytes(&payload)
-            .expect("the relay's response decodes")
-            .expect("the relay's response is well-formed")
-    }
-
     fn issue_nonce(
         server: &mut Server<StdRng>,
         client: ClientSocket,
@@ -1690,6 +1673,23 @@ mod tests {
             .get_attribute::<Nonce>()
             .cloned()
             .expect("a `401` carries a nonce")
+    }
+
+    fn next_response(server: &mut Server<StdRng>) -> Message<Attribute> {
+        let payload = std::iter::from_fn(|| server.next_command())
+            .find_map(|command| {
+                let Command::SendMessage { payload, .. } = command else {
+                    return None;
+                };
+
+                Some(payload)
+            })
+            .expect("the relay sends a response");
+
+        MessageDecoder::<Attribute>::new()
+            .decode_from_bytes(&payload)
+            .expect("the relay's response decodes")
+            .expect("the relay's response is well-formed")
     }
 
     fn authenticated_request(
