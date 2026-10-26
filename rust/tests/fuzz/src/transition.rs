@@ -109,6 +109,9 @@ pub enum Transition {
     RestartClient {
         client_id: ClientId,
         key: PrivateKey,
+        /// The Client's process dies: it sends no `goodbye` and loses the DNS resource records
+        /// it cached in memory.
+        crash: bool,
     },
     DeployNewRelays(BTreeMap<RelayId, Host<u64>>),
     PartitionRelaysFromPortal,

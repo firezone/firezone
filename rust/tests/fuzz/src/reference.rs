@@ -668,12 +668,19 @@ impl ReferenceState {
             Transition::RevokeGatewayAuthorization(resource) => {
                 self.expect_gateway_connections_closed(portal, *resource);
             }
-            Transition::RestartClient { client_id, key } => {
+            Transition::RestartClient {
+                client_id,
+                key,
+                crash,
+            } => {
                 self.node_may_lack_relays |= self.no_relay_accepts_allocations();
 
                 for (id, client) in &mut self.clients {
                     if id == client_id {
                         client.exec_mut(|c| c.restart(*key, now));
+                        if *crash {
+                            client.exec_mut(|c| c.dns_records.clear());
+                        }
                     } else {
                         client.exec_mut(|c| c.forget_peer_authorizations(*client_id));
                     }
@@ -1223,6 +1230,19 @@ impl ReferenceState {
     }
 
     /// Peer authorizations a receiving client can expire while the sender keeps its own.
+    /// Whether `client` or any other Client holds an authorization between `client` and a peer.
+    pub(crate) fn has_peer_authorizations(&self, client: ClientId) -> bool {
+        self.clients.iter().any(|(id, state)| {
+            let mut peers = state.inner().authorized_peers();
+
+            if *id == client {
+                return peers.next().is_some();
+            }
+
+            peers.any(|peer| peer == client)
+        })
+    }
+
     pub(crate) fn expirable_peer_authorizations(
         &self,
     ) -> Vec<(ClientId, ClientId, BTreeSet<ResourceId>)> {

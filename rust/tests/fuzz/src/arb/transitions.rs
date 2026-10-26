@@ -321,7 +321,13 @@ pub(super) fn generate(
         K::RestartClient => {
             let client_id = client_ids[g.choose_index(client_ids.len())];
             let key = g.fresh_private_key();
-            Transition::RestartClient { client_id, key }
+            // Without a `goodbye`, peer Clients would keep authorizations we do not model.
+            let crash = !state.has_peer_authorizations(client_id) && g.bool();
+            Transition::RestartClient {
+                client_id,
+                key,
+                crash,
+            }
         }
         K::SetInternetResourceState => {
             let client_id = client_ids[g.choose_index(client_ids.len())];

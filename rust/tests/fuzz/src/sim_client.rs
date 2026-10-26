@@ -122,13 +122,21 @@ impl SimClient {
 
     /// Shuts the tunnel down and starts a new one, returning the datagrams the old one sent on
     /// the way out.
+    ///
+    /// A crashed tunnel sends nothing and the new one starts without the cached DNS resource
+    /// records, so applications have to resolve their domains again.
     pub(crate) fn restart(
         &mut self,
         key: PrivateKey,
+        crash: bool,
         is_internet_resource_active: bool,
         now: Instant,
         utc_now: DateTime<Utc>,
     ) -> Vec<Transmit> {
+        if crash {
+            self.dns_resource_record_cache.clear();
+            self.dns_records.clear();
+        }
         let dns_resource_records = self.dns_resource_record_cache.clone();
 
         // A new tunnel with a new key is effectively the same as restarting a client / signing
@@ -152,6 +160,10 @@ impl SimClient {
         self.search_domain = None;
         self.dns_by_sentinel = DnsMapping::default();
         self.routes.clear();
+
+        if crash {
+            return Vec::new();
+        }
 
         old.shut_down(now)
     }

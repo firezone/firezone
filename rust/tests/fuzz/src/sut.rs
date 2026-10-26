@@ -819,7 +819,11 @@ impl TunnelTest {
                         .exec_mut(|g| g.sut_mut().remove_access(client_id, &rid, now));
                 }
             }
-            Transition::RestartClient { client_id, key } => {
+            Transition::RestartClient {
+                client_id,
+                key,
+                crash,
+            } => {
                 let client = self.clients.get_mut(&client_id).unwrap();
                 let ref_client = &ref_state.clients[&client_id];
 
@@ -830,14 +834,16 @@ impl TunnelTest {
                 let all_resources = ref_client.inner().resource_descriptions();
                 let internet_resource_state = ref_client.inner().internet_resource_active;
 
-                // Cleanly shut down the client and send what it sent on the way out.
-                let transmits =
-                    client.exec_mut(|c| c.restart(key, internet_resource_state, now, utc_now));
+                // Shut down the client and send what it sent on the way out.
+                let transmits = client
+                    .exec_mut(|c| c.restart(key, crash, internet_resource_state, now, utc_now));
                 for transmit in transmits {
                     buffered_transmits.push_from(transmit, client, now);
                 }
-                for gateway in self.gateways.values_mut() {
-                    gateway.exec_mut(|gateway| gateway.record_client_restart(client_id));
+                if !crash {
+                    for gateway in self.gateways.values_mut() {
+                        gateway.exec_mut(|gateway| gateway.record_client_restart(client_id));
+                    }
                 }
 
                 let client = self.clients.get_mut(&client_id).unwrap();
