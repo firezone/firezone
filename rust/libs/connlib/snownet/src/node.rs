@@ -613,6 +613,13 @@ where
             .get_established_mut_by_tunnel_id(tunnel, now)?;
 
         let control_flow = conn.commit_decrypted(cid, (dst, src), decrypted, now);
+        conn.handle_tunnel_events(
+            cid,
+            &mut self.allocations,
+            &mut self.buffered_transmits,
+            &mut self.pending_events,
+            now,
+        );
         let is_closing = self.connections.is_closing(&cid);
 
         let packet = match control_flow {
@@ -665,16 +672,16 @@ where
     /// This function only takes `&mut self` because it caches certain computations internally.
     /// The returned timestamp will **not** change unless other state is modified.
     #[must_use]
-    pub fn poll_timeout(&mut self) -> Option<(Instant, &'static str)> {
+    pub fn poll_timeout(&mut self) -> Option<Instant> {
         let queued_io = (!self.buffered_transmits.is_empty() || !self.pending_events.is_empty())
-            .then_some((self.last_now, "queued IO"));
+            .then_some(self.last_now);
 
         iter::empty()
             .chain(queued_io)
             .chain(self.connections.poll_timeout())
             .chain(self.buffered_candidates.poll_timeout())
             .chain(self.allocations.poll_timeout())
-            .min_by_key(|(instant, _)| *instant)
+            .min()
     }
 
     /// Advances time within the [`Node`].
@@ -1142,6 +1149,13 @@ where
             &mut self.buffered_transmits,
             now,
         );
+        conn.handle_tunnel_events(
+            cid,
+            &mut self.allocations,
+            &mut self.buffered_transmits,
+            &mut self.pending_events,
+            now,
+        );
 
         match control_flow {
             ControlFlow::Continue(pending) => ControlFlow::Continue(pending),
@@ -1482,28 +1496,14 @@ where
     }
 
     #[must_use]
-    fn poll_timeout(&mut self) -> Option<(Instant, &'static str)> {
+    fn poll_timeout(&mut self) -> Option<Instant> {
         let timeout = iter::empty()
-            .chain(
-                self.agent
-                    .poll_timeout()
-                    .map(|instant| (instant, "ICE agent")),
-            )
-            .chain(
-                self.tunnel
-                    .poll_timeout()
-                    .map(|instant| (instant, "WireGuard tunnel")),
-            )
-            .chain(
-                self.candidate_timeout
-                    .map(|instant| (instant, "candidate timeout")),
-            )
-            .chain(
-                self.disconnect_timeout()
-                    .map(|instant| (instant, "disconnect timeout")),
-            )
+            .chain(self.agent.poll_timeout())
+            .chain(self.tunnel.poll_timeout())
+            .chain(self.candidate_timeout)
+            .chain(self.disconnect_timeout())
             .chain(self.state.poll_timeout(&self.agent))
-            .min_by_key(|(instant, _)| *instant);
+            .min();
 
         self.poll_timeout_cache.update(timeout)
     }
@@ -1554,36 +1554,7 @@ where
             self.tunnel.handle_timeout(now);
         }
 
-        while let Some(event) = self.tunnel.poll_event() {
-            match event {
-                sanstun::Event::SendHandshakeInitiation(init) => match &mut self.agent {
-                    Agent::Path(agent) => agent.send_handshake_initiation(init, now),
-                    Agent::Ice(_) => self.buffer_or_send(&cid, init, allocations, transmits, now),
-                },
-                sanstun::Event::SendKeepalive(keepalive) => {
-                    self.buffer_or_send(&cid, keepalive, allocations, transmits, now)
-                }
-                sanstun::Event::Established {
-                    started_at,
-                    confirmed_at,
-                } => {
-                    self.first_handshake_completed_at = Some(confirmed_at);
-                    self.agent.confirm_session(confirmed_at);
-
-                    tracing::debug!(%cid, duration_since_intent = ?self.duration_since_intent(confirmed_at), handshake_duration = ?confirmed_at.duration_since(started_at), "Completed wireguard handshake");
-
-                    // Only signal establishment once we can actually send, i.e. ICE has nominated
-                    // a socket. Otherwise, the event is emitted once a socket is nominated.
-                    if self.state.has_nominated_socket() {
-                        pending_events.push_back(Event::ConnectionEstablished(cid));
-                    }
-                }
-                sanstun::Event::ConnectionExpired => {
-                    tracing::info!(state = %self.state, index = %self.tunnel.id(), "Connection failed (wireguard tunnel expired)");
-                    self.state = ConnectionState::Failed;
-                }
-            }
-        }
+        self.handle_tunnel_events(cid, allocations, transmits, pending_events, now);
 
         if !due {
             return;
@@ -1786,6 +1757,49 @@ where
                 payload: Bytes::copied_from(&data_channel_packet),
                 ecn: Ecn::NonEct,
             });
+        }
+    }
+
+    fn handle_tunnel_events<TId>(
+        &mut self,
+        cid: TId,
+        allocations: &mut Allocations<RId>,
+        transmits: &mut VecDeque<Transmit>,
+        pending_events: &mut VecDeque<Event<TId, RId>>,
+        now: Instant,
+    ) where
+        TId: Copy + fmt::Display,
+        RId: Copy + Ord + Hash + fmt::Display,
+    {
+        while let Some(event) = self.tunnel.poll_event() {
+            match event {
+                sanstun::Event::SendHandshakeInitiation(init) => match &mut self.agent {
+                    Agent::Path(agent) => agent.send_handshake_initiation(init, now),
+                    Agent::Ice(_) => self.buffer_or_send(&cid, init, allocations, transmits, now),
+                },
+                sanstun::Event::SendKeepalive(keepalive) => {
+                    self.buffer_or_send(&cid, keepalive, allocations, transmits, now)
+                }
+                sanstun::Event::Established {
+                    started_at,
+                    confirmed_at,
+                } => {
+                    self.first_handshake_completed_at = Some(confirmed_at);
+                    self.agent.confirm_session(confirmed_at);
+
+                    tracing::debug!(%cid, duration_since_intent = ?self.duration_since_intent(confirmed_at), handshake_duration = ?confirmed_at.duration_since(started_at), "Completed wireguard handshake");
+
+                    // Only signal establishment once we can actually send, i.e. ICE has nominated
+                    // a socket. Otherwise, the event is emitted once a socket is nominated.
+                    if self.state.has_nominated_socket() {
+                        pending_events.push_back(Event::ConnectionEstablished(cid));
+                    }
+                }
+                sanstun::Event::ConnectionExpired => {
+                    tracing::info!(state = %self.state, index = %self.tunnel.id(), "Connection failed (wireguard tunnel expired)");
+                    self.state = ConnectionState::Failed;
+                }
+            }
         }
     }
 

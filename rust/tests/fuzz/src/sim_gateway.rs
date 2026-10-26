@@ -1,29 +1,29 @@
 use super::{
+    buffered_transmits::BufferedTransmits,
     dns_records::DnsRecords,
     dns_server_resource::DnsServers,
     probe::{ProbeId, ProbeObservation, ReceivedRequest, Remote},
     sim_net::{ExecMutScope, Host},
     sim_relay::{SimRelay, map_explode},
+    sim_tunnel::SimTunnel,
     site_network::SiteNetwork,
-    sut::encrypt,
 };
-use anyhow::Result;
 use connlib_model::{ClientId, GatewayId, RelayId, ResourceId};
 use dns_types::DomainName;
 use ip_packet::IpPacket;
-use snownet::Transmit;
 use std::{
     collections::{BTreeMap, BTreeSet},
-    iter, mem,
+    mem,
     net::{IpAddr, SocketAddr},
     time::Instant,
 };
-use tunnel_proto::GatewayState;
+use tun::PacketBatch;
+use tunnel_proto::{GatewayEvent, GatewayState};
 
 /// Simulation state for a particular client.
 pub(crate) struct SimGateway {
     id: GatewayId,
-    pub(crate) sut: GatewayState,
+    pub(crate) tunnel: SimTunnel<GatewayState>,
 
     pub(crate) probe_observations: Vec<ProbeObservation>,
 
@@ -61,7 +61,7 @@ impl SimGateway {
 
         Self {
             id,
-            sut,
+            tunnel: SimTunnel::new(sut),
             site_specific_dns_records,
             probe_observations: Default::default(),
             dns_servers: Default::default(),
@@ -75,74 +75,35 @@ impl SimGateway {
         }
     }
 
-    pub(crate) fn receive(&mut self, transmit: Transmit, now: Instant) -> Option<Transmit> {
-        let (local, from) = (transmit.dst, transmit.src.unwrap());
-        let Some(packet) = self
-            .sut
-            .handle_network_input(local, from, &transmit.payload, now)
-            .and_then(|decapsulation| {
-                let Some(decapsulation) = decapsulation else {
-                    return Ok(None);
-                };
-
-                self.sut.handle_peer_input(
-                    local,
-                    from,
-                    decapsulation.decrypt(&transmit.payload),
-                    now,
-                )
-            })
-            .inspect_err(|e| tracing::warn!("{e:#}"))
-            .ok()
-            .flatten()
-        else {
-            self.sut.handle_timeout(now);
-            return None;
-        };
-
-        self.on_received_packet(packet, now)
+    pub(crate) fn sut(&self) -> &GatewayState {
+        self.tunnel.inner().state()
     }
 
-    pub(crate) fn advance_resources(
-        &mut self,
-        global_dns_records: &DnsRecords,
-        now: Instant,
-    ) -> Vec<Transmit> {
-        let packets = iter::empty()
-            .chain(
-                self.dns_servers
-                    .poll_answers(&self.site_specific_dns_records, now),
-            )
+    pub(crate) fn sut_mut(&mut self) -> &mut GatewayState {
+        self.tunnel.inner_mut().state_mut()
+    }
+
+    fn read_from_tun(&mut self, packet: IpPacket) {
+        self.tunnel
+            .ends
+            .tun_inbound
+            .try_send(PacketBatch::new(packet))
+            .expect("TUN channel has room");
+    }
+
+    /// Hands the packets the resources and DNS servers send to the Gateway's TUN device.
+    fn advance_resources(&mut self, global_dns_records: &DnsRecords, now: Instant) {
+        let packets = self
+            .dns_servers
+            .poll_answers(&self.site_specific_dns_records, now)
+            .into_iter()
             .chain(self.network.poll_dns_answers(global_dns_records, now))
             .chain(self.network.poll_tcp_servers(now))
             .collect::<Vec<_>>();
 
-        packets
-            .into_iter()
-            .filter_map(|packet| match self.handle_tun_input(packet, now) {
-                Ok(maybe_transmit) => maybe_transmit,
-                // The gateway could not encrypt the packet (e.g. no session during a re-key). In
-                // production this error bubbles up to the event loop and the packet is dropped;
-                // model that as a drop here rather than panicking.
-                Err(e) => {
-                    tracing::debug!("Gateway failed to encapsulate resource packet: {e:#}");
-                    None
-                }
-            })
-            .collect()
-    }
-
-    /// Drive the SUT's TUN -> network path, returning the encrypted datagram (if any).
-    fn handle_tun_input(
-        &mut self,
-        mut packet: IpPacket,
-        now: Instant,
-    ) -> Result<Option<snownet::Transmit>> {
-        let Some(encapsulation) = self.sut.handle_tun_input(&mut packet, now)? else {
-            return Ok(None);
-        };
-
-        Ok(encrypt(encapsulation, &packet))
+        for packet in packets {
+            self.read_from_tun(packet);
+        }
     }
 
     pub(crate) fn deploy_new_dns_servers(
@@ -153,7 +114,7 @@ impl SimGateway {
         self.dns_servers.clear();
 
         let tun_dns_server_port = 53535; // Hardcoded here so we think about backwards-compatibility when changing it.
-        let Some(ip_config) = self.sut.tunnel_ip_config() else {
+        let Some(ip_config) = self.sut().tunnel_ip_config() else {
             tracing::error!("Tunnel IP configuration not set");
             return;
         };
@@ -164,22 +125,16 @@ impl SimGateway {
             .deploy(SocketAddr::from((ip_config.v6, tun_dns_server_port)));
     }
 
-    pub fn handle_timeout(&mut self, now: Instant) {
-        if self.sut.poll_timeout().is_some_and(|(t, _)| t <= now) {
-            self.sut.handle_timeout(now)
-        }
-    }
-
     /// Process an IP packet received on the gateway.
-    fn on_received_packet(&mut self, packet: IpPacket, now: Instant) -> Option<Transmit> {
+    fn on_received_packet(&mut self, packet: IpPacket, now: Instant) {
         if let Some(server) = self.dns_servers.udp_server_for(&packet) {
             server.handle_input(packet);
-            return None;
+            return;
         }
 
         if let Some(server) = self.dns_servers.tcp_server_for(&packet) {
             server.handle_input(packet, now);
-            return None;
+            return;
         }
 
         let dns_resolutions = &self.dns_resolutions;
@@ -192,7 +147,9 @@ impl SimGateway {
             self.record_received_request(packet, now);
         }
 
-        self.handle_tun_input(delivery.reply?, now).unwrap()
+        if let Some(reply) = delivery.reply {
+            self.read_from_tun(reply);
+        }
     }
 
     pub(crate) fn update_relays<'a>(
@@ -201,11 +158,9 @@ impl SimGateway {
         to_add: impl Iterator<Item = (&'a RelayId, &'a Host<SimRelay>)> + 'a,
         now: Instant,
     ) {
-        self.sut.update_relays(
-            to_remove.collect(),
-            map_explode(to_add, format!("gateway_{}", self.id)).collect(),
-            now,
-        )
+        let to_add = map_explode(to_add, format!("gateway_{}", self.id)).collect();
+        self.sut_mut()
+            .update_relays(to_remove.collect(), to_add, now)
     }
 
     fn record_received_tcp_syn(&mut self, packet: &IpPacket, now: Instant) {
@@ -309,7 +264,7 @@ impl SimGateway {
     }
 
     pub(crate) fn remove_access(&mut self, client: &ClientId, resource: &ResourceId, now: Instant) {
-        self.sut.remove_access(client, resource, now);
+        self.sut_mut().remove_access(client, resource, now);
         self.record_resource_disabled(*client, *resource);
     }
 
@@ -364,7 +319,7 @@ impl SimGateway {
             self.record_peer_removed(client);
         }
 
-        self.sut.retain_authorizations(authorizations);
+        self.sut_mut().retain_authorizations(authorizations);
     }
 
     fn record_received_request(&mut self, packet: IpPacket, at: Instant) {
@@ -433,6 +388,41 @@ impl SimGateway {
         self.next_observation_order += 1;
 
         order
+    }
+}
+
+impl Host<SimGateway> {
+    /// Takes one turn with what has arrived by `now` and puts what it sent onto the network.
+    ///
+    /// Returns the event for the portal or another host and whether it has more to do at `now`.
+    pub(crate) fn step(
+        &mut self,
+        global_dns_records: &DnsRecords,
+        transmits: &mut BufferedTransmits,
+        now: Instant,
+    ) -> (Option<GatewayEvent>, bool) {
+        let arrived = std::iter::from_fn(|| self.poll_inbox(now)).collect::<Vec<_>>();
+        let turn = self.exec_mut(|g| {
+            g.tunnel.receive(arrived);
+            g.advance_resources(global_dns_records, now);
+
+            let (event, mut busy) = g.tunnel.poll_event(now);
+
+            while let Ok(mut batch) = g.tunnel.ends.tun_outbound.try_recv() {
+                for packet in batch.drain() {
+                    g.on_received_packet(packet, now);
+                }
+                busy = true;
+            }
+
+            (event, busy)
+        });
+
+        for transmit in self.exec_mut(|g| g.tunnel.take_sent()) {
+            transmits.push_from(transmit, self, now);
+        }
+
+        turn
     }
 }
 

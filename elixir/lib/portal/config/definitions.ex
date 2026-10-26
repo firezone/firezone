@@ -912,7 +912,7 @@ defmodule Portal.Config.Definitions do
   )
 
   @doc """
-  Sender address of the founder follow-up email sent 15 minutes after a web sign-up.
+  Sender address of the founder follow-up emails sent 15 minutes and 3 days after a web sign-up.
 
   The follow-up email is disabled when this is unset or blank. The address must be
   allowed as a sender on the outbound email adapter.

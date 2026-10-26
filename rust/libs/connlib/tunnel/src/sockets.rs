@@ -4,6 +4,7 @@ use anyhow::{Context as _, ErrorExt as _, Result};
 use futures::{FutureExt as _, future::BoxFuture, ready};
 use ip_packet::IpVersion;
 use opentelemetry::metrics::Counter;
+use snownet::Transmit;
 use socket_factory::{
     DatagramBatch, DatagramIn, DatagramOut, PerfUdpSocket, SocketFactory, UdpSocket,
 };
@@ -108,6 +109,8 @@ impl Reserved<'_> {
 }
 
 pub(crate) struct Sockets {
+    /// Binds the sockets; sockets without one are kept as they are across [`Sockets::rebind`].
+    socket_factory: Option<Arc<dyn SocketFactory<UdpSocket>>>,
     socket_v4: Option<ThreadedUdpSocket>,
     socket_v6: Option<ThreadedUdpSocket>,
 
@@ -126,9 +129,18 @@ pub(crate) struct Sockets {
     returned_recv_batches: Arc<Mutex<Vec<DatagramBatch>>>,
 }
 
-impl Default for Sockets {
-    fn default() -> Self {
+impl Sockets {
+    /// Creates sockets for both families, bound to the unspecified address.
+    pub fn new(socket_factory: Arc<dyn SocketFactory<UdpSocket>>) -> Self {
+        let mut sockets = Self::without_sockets(Some(socket_factory));
+        sockets.rebind();
+
+        sockets
+    }
+
+    fn without_sockets(socket_factory: Option<Arc<dyn SocketFactory<UdpSocket>>>) -> Self {
         Self {
+            socket_factory,
             socket_v4: None,
             socket_v6: None,
             overflow_v4: VecDeque::new(),
@@ -139,14 +151,18 @@ impl Default for Sockets {
             returned_recv_batches: Arc::default(),
         }
     }
-}
 
-impl Sockets {
-    pub fn rebind(&mut self, socket_factory: Arc<dyn SocketFactory<UdpSocket>>) {
-        self.socket_v4 = None;
-        self.socket_v6 = None;
+    /// Drops the items waiting for room and binds new sockets through the socket factory.
+    pub fn rebind(&mut self) {
         self.overflow_v4.clear();
         self.overflow_v6.clear();
+
+        let Some(socket_factory) = self.socket_factory.clone() else {
+            return;
+        };
+
+        self.socket_v4 = None;
+        self.socket_v6 = None;
 
         self.socket_v4 = self.bind(&socket_factory, SocketAddr::V4(UNSPECIFIED_V4_SOCKET));
         self.socket_v6 = self.bind(&socket_factory, SocketAddr::V6(UNSPECIFIED_V6_SOCKET));
@@ -185,14 +201,21 @@ impl Sockets {
 
     /// Sends a datagram the main thread encrypted, or a control message.
     ///
+    /// The datagram is dropped if [`QUEUE_SIZE`] items already wait for room in its socket.
     /// Failures are returned by [`Sockets::poll_flush`].
     pub fn send_ready(&mut self, transmit: snownet::Transmit) {
+        let (version, overflow) = match transmit.dst {
+            SocketAddr::V4(_) => (IpVersion::V4, &self.overflow_v4),
+            SocketAddr::V6(_) => (IpVersion::V6, &self.overflow_v6),
+        };
+
+        if overflow.len() >= QUEUE_SIZE {
+            tracing::trace!(dst = %transmit.dst, "UDP socket is full; dropping datagram");
+            return;
+        }
+
         UdpPacketCounts::transmit(&self.packet_counter).record(&transmit.payload);
 
-        let version = match transmit.dst {
-            SocketAddr::V4(_) => IpVersion::V4,
-            SocketAddr::V6(_) => IpVersion::V6,
-        };
         let datagram = DatagramOut {
             src: transmit.src,
             dst: transmit.dst,
@@ -337,7 +360,7 @@ pub(crate) type PendingDatagrams = Vec<oneshot::Receiver<DatagramOut>>;
 /// enough to keep the send task fed, shallow enough that a transient send backlog cannot balloon
 /// memory. The platform split lives entirely in [`UDP_SEND_BATCH_LIMIT`].
 /// See [`MAX_UDP_OUTBOUND_QUEUE_MEMORY`] for the resulting bound.
-const QUEUE_SIZE: usize = 2 * UDP_SEND_BATCH_LIMIT;
+pub(crate) const QUEUE_SIZE: usize = 2 * UDP_SEND_BATCH_LIMIT;
 
 /// How many incoming UDP batches a socket's channel holds at most.
 ///
@@ -354,14 +377,16 @@ const INBOUND_QUEUE_SIZE: usize = UDP_RECV_BATCH_LIMIT;
 /// while nothing waits, and up to [`UDP_SEND_BATCH_LIMIT`] drained by the send task.
 /// An item carries at most one TUN batch of packets, so at most as many trains, each with a
 /// [`DatagramOut`]. A train's GSO buffer is at most one packet buffer or twice its length, so at
-/// most twice [`ip_packet::MAX_FZ_PAYLOAD`] per packet.
+/// most twice [`ip_packet::MAX_FZ_PAYLOAD`] per packet. On top, up to [`QUEUE_SIZE`] single
+/// datagrams from [`Sockets::send_ready`] wait for room.
 ///
 /// Every size class pools its buffers separately, so backlogs of differently sized trains can
 /// leave more than this pooled.
 const MAX_UDP_OUTBOUND_QUEUE_MEMORY: usize = 2
-    * (QUEUE_SIZE + 1 + UDP_SEND_BATCH_LIMIT)
-    * tun::MAX_BATCH_SIZE
-    * (size_of::<DatagramOut>() + 2 * ip_packet::MAX_FZ_PAYLOAD);
+    * ((QUEUE_SIZE + 1 + UDP_SEND_BATCH_LIMIT)
+        * tun::MAX_BATCH_SIZE
+        * (size_of::<DatagramOut>() + 2 * ip_packet::MAX_FZ_PAYLOAD)
+        + QUEUE_SIZE * (size_of::<DatagramOut>() + ip_packet::MAX_FZ_PAYLOAD));
 
 /// Worst-case memory pinned by the inbound UDP receive path while in flight.
 ///
@@ -405,7 +430,7 @@ struct MainThreadEnds {
 }
 
 /// The ends of a socket's channels that its thread holds.
-pub(crate) struct SocketThreadEnds {
+pub struct SocketThreadEnds {
     pub(crate) outbound_rx: mpsc::Receiver<Outbound>,
     pub(crate) inbound_tx: mpsc::Sender<DatagramBatch>,
     pub(crate) error_tx: mpsc::Sender<anyhow::Error>,
@@ -535,8 +560,13 @@ impl ThreadedUdpSocket {
                                 );
                             }
 
-                            // Dedicated channel so errors can't hold up received datagrams.
-                            error_tx.send(e).await
+                            // Dedicated channel so errors can't hold up received datagrams, dropped
+                            // when full so they can't hold up the datagrams to send either.
+                            match error_tx.try_send(e) {
+                                Ok(()) => Ok(()),
+                                Err(TrySendError::Full(_)) => Ok(()),
+                                Err(TrySendError::Closed(_)) => Err(()),
+                            }
                         };
 
                         let reason = 'send: loop {
@@ -593,7 +623,7 @@ impl ThreadedUdpSocket {
                                         );
                                     }
 
-                                    if error_tx.send(e).await.is_err() {
+                                    if let Err(TrySendError::Closed(_)) = error_tx.try_send(e) {
                                         tracing::debug!(
                                             "Channel for errors closed; exiting UDP recv task"
                                         );
@@ -727,8 +757,6 @@ impl Drop for ThreadedUdpSocket {
     }
 }
 
-#[cfg(test)]
-#[expect(dead_code, reason = "Not used by any test yet")]
 impl Sockets {
     /// Creates sockets for both families without threads; the returned ends play their part.
     pub(crate) fn fake() -> (Self, SocketThreadEnds, SocketThreadEnds) {
@@ -748,12 +776,16 @@ impl Sockets {
         let sockets = Self {
             socket_v4: Some(socket_v4),
             socket_v6: Some(socket_v6),
-            ..Self::default()
+            ..Self::without_sockets(None)
         };
 
         (sockets, ends_v4, ends_v6)
     }
+}
 
+#[cfg(test)]
+#[expect(dead_code, reason = "Not used by any test yet")]
+impl Sockets {
     pub(crate) fn remove_v4(&mut self) {
         self.socket_v4 = None;
     }
@@ -768,6 +800,50 @@ impl Sockets {
             IpVersion::V4 => self.overflow_v4.len(),
             IpVersion::V6 => self.overflow_v6.len(),
         }
+    }
+}
+
+impl SocketThreadEnds {
+    /// Hands `batch` to the main thread as if the socket had received it, or returns it if the
+    /// channel is full.
+    pub fn receive(&self, batch: DatagramBatch) -> Result<(), DatagramBatch> {
+        self.inbound_tx
+            .try_send(batch)
+            .map_err(TrySendError::into_inner)
+    }
+
+    /// Takes the datagrams the main thread sent, in order and split into the segments that go
+    /// on the wire.
+    ///
+    /// Blocks until the crypto workers have encrypted the datagrams they are working on.
+    pub fn take_sent(&mut self) -> Vec<Transmit> {
+        let mut sent = Vec::new();
+
+        while let Ok(outbound) = self.outbound_rx.try_recv() {
+            match outbound {
+                Outbound::Ready(datagram) => sent.push(datagram),
+                Outbound::Pending(datagrams) => sent.extend(
+                    datagrams
+                        .into_iter()
+                        .filter_map(|datagram| datagram.blocking_recv().ok()),
+                ),
+            }
+        }
+
+        sent.into_iter()
+            .flat_map(|datagram| {
+                datagram
+                    .packet
+                    .chunks(datagram.segment_size.max(1))
+                    .map(|segment| Transmit {
+                        src: datagram.src,
+                        dst: datagram.dst,
+                        payload: bufferpool::Bytes::copied_from(segment),
+                        ecn: datagram.ecn,
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .collect()
     }
 }
 

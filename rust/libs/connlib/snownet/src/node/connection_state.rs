@@ -37,15 +37,13 @@ pub(crate) enum ConnectionState {
 }
 
 impl ConnectionState {
-    pub(crate) fn poll_timeout(&self, agent: &Agent) -> Option<(Instant, &'static str)> {
+    pub(crate) fn poll_timeout(&self, agent: &Agent) -> Option<Instant> {
         if !agent.is_negotiation_complete() {
             return None;
         }
 
         match self {
-            ConnectionState::Connected { last_activity, .. } => {
-                Some((idle_at(*last_activity), "idle transition"))
-            }
+            ConnectionState::Connected { last_activity, .. } => Some(idle_at(*last_activity)),
             ConnectionState::Connecting { .. }
             | ConnectionState::Idle { .. }
             | ConnectionState::Failed => None,

@@ -266,7 +266,7 @@ impl Eventloop {
             }
             CombinedEvent::Clock(clock::Event::Alarm(now)) => {
                 if let Some(tunnel) = self.tunnel.as_mut() {
-                    tunnel.state_mut().handle_timeout(now);
+                    tunnel.handle_timeout(now);
                 }
 
                 Ok(ControlFlow::Continue(()))

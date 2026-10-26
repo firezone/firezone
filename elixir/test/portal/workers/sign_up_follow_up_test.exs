@@ -17,11 +17,13 @@ defmodule Portal.Workers.SignUpFollowUpTest do
     %{account: account, actor: actor}
   end
 
-  test "schedules one job per account 15 minutes out", %{account: account, actor: actor} do
+  test "schedules each follow-up once per account", %{account: account, actor: actor} do
     assert :ok = SignUpFollowUp.schedule(account, actor)
     assert :ok = SignUpFollowUp.schedule(account, actor)
 
-    assert [job] = all_enqueued(worker: SignUpFollowUp)
+    assert [job, feedback_job] = all_enqueued(worker: SignUpFollowUp) |> Enum.sort_by(& &1.scheduled_at, DateTime)
+    assert feedback_job.args == %{"account_id" => account.id, "actor_id" => actor.id, "stage" => "feedback"}
+    assert_in_delta DateTime.diff(feedback_job.scheduled_at, DateTime.utc_now(), :second), 3 * 24 * 60 * 60, 60
     assert job.args == %{"account_id" => account.id, "actor_id" => actor.id}
     delay = DateTime.diff(job.scheduled_at, DateTime.utc_now(), :second)
     assert_in_delta delay, 15 * 60, 60
@@ -40,12 +42,39 @@ defmodule Portal.Workers.SignUpFollowUpTest do
       assert email.from == {"Jamil Bou Kheir", "jamil@firezone.dev"}
       assert email.to == [{"", actor.email}]
       assert email.bcc == [{"", "23723443@bcc.na2.hubspot.com"}]
-      assert email.subject == "Tell me what you think of Firezone"
-      assert email.text_body =~ "I'm Jamil, Firezone's founder."
-      assert email.html_body =~ "<p>I&#39;m Jamil, Firezone&#39;s founder.</p>"
+      assert email.subject == "Need a hand getting started?"
+      assert email.text_body =~ "I'm Jamil, one of Firezone's founders."
+      assert email.html_body =~ "<p>I&#39;m Jamil, one of Firezone&#39;s founders.</p>"
+      assert email.text_body =~ "Thanks for signing up! Wanted to reach out and see what you're hoping to accomplish with Firezone."
+      assert email.text_body =~ "Need any help getting set up? Just reply here and I'm happy to help."
+      assert_unsubscribe_link(email, actor)
       assert email.private[:account_id] == account.id
       true
     end)
+  end
+
+  test "sends the three-day feedback email", %{account: account, actor: actor} do
+    assert :ok = perform_job(SignUpFollowUp, %{"account_id" => account.id, "actor_id" => actor.id, "stage" => "feedback"})
+
+    assert_email_sent(fn email ->
+      assert email.subject == "How's Firezone working out?"
+      assert email.text_body =~ "Just checking in to see how things are going with Firezone."
+      assert email.text_body =~ "What's working well? Anything that's been frustrating or could be better?"
+      assert email.text_body =~ "We take feedback seriously, so I'd love to hear your thoughts."
+      assert email.bcc == [{"", "23723443@bcc.na2.hubspot.com"}]
+      assert_unsubscribe_link(email, actor)
+      true
+    end)
+  end
+
+  test "skips both emails when product feedback requests are turned off", %{account: account, actor: actor} do
+    actor_preferences_fixture(actor, notifications: %{product_feedback_requests: []})
+
+    for extra_args <- [%{}, %{"stage" => "feedback"}] do
+      assert :ok = perform_job(SignUpFollowUp, Map.merge(%{"account_id" => account.id, "actor_id" => actor.id}, extra_args))
+    end
+
+    refute_email_sent()
   end
 
   test "sends without a BCC when no logging address is configured", %{
@@ -85,4 +114,12 @@ defmodule Portal.Workers.SignUpFollowUpTest do
     assert :ok = perform_job(SignUpFollowUp, %{"account_id" => account.id, "actor_id" => actor.id})
     refute_email_sent()
   end
+  defp assert_unsubscribe_link(email, actor) do
+    [token] = Regex.run(~r{/#{actor.account_id}/unsubscribe/([A-Za-z0-9_.-]+)}, email.text_body, capture: :all_but_first)
+    assert {:ok, {account_id, actor_id, :product_feedback_requests}} = Portal.UnsubscribeToken.verify(token)
+    assert account_id == actor.account_id
+    assert actor_id == actor.id
+    assert email.html_body =~ token
+  end
+
 end

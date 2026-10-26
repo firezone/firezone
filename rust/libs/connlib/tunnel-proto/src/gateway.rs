@@ -456,19 +456,12 @@ impl GatewayState {
         Ok(())
     }
 
-    pub fn poll_timeout(&mut self) -> Option<(Instant, &'static str)> {
+    pub fn poll_timeout(&mut self) -> Option<Instant> {
         iter::empty()
-            .chain(
-                self.authorization_rejections
-                    .poll_timeout()
-                    .map(|instant| (instant, "Authorization rejection expiry")),
-            )
+            .chain(self.authorization_rejections.poll_timeout())
             .chain(self.node.poll_timeout())
-            .chain(
-                self.next_periodic_tick
-                    .map(|instant| (instant, "periodic tick")),
-            )
-            .min_by_key(|(instant, _)| *instant)
+            .chain(self.next_periodic_tick)
+            .min()
     }
 
     pub fn handle_timeout(&mut self, now: Instant) {

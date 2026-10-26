@@ -176,12 +176,28 @@ pub(crate) enum Remote {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ExpectedOutcome {
+    /// Nothing observes the packet.
     Dropped,
-    RoundTripCompleted(Route),
+    /// The route's remote receives the request and the Client its answer.
+    RoundTripCompleted(Route, Answer),
+    /// `by` answers with an ICMP error and nothing receives the request.
     Rejected {
         by: RejectionRemote,
         response: RejectionResponse,
     },
+}
+
+/// What a request that reaches its destination is answered with.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Answer {
+    /// The reply the request asks for: an echo reply, the UDP payload or a SYN-ACK.
+    Echo,
+    /// A TCP reset to a SYN, because nothing listens on the port.
+    Reset,
+    /// All bytes of a TCP write, read back.
+    WriteEchoed,
+    /// A TCP reset to a write, because the remote does not know the connection.
+    WriteReset,
 }
 
 impl ExpectedOutcome {
@@ -189,7 +205,7 @@ impl ExpectedOutcome {
     pub(crate) fn remote(self) -> Option<Remote> {
         match self {
             ExpectedOutcome::Dropped => None,
-            ExpectedOutcome::RoundTripCompleted(route) => Some(route.remote()),
+            ExpectedOutcome::RoundTripCompleted(route, _) => Some(route.remote()),
             ExpectedOutcome::Rejected {
                 by: RejectionRemote::Local,
                 ..
@@ -217,8 +233,6 @@ pub(crate) enum RejectionRemote {
 pub(crate) enum RejectionResponse {
     Prohibited,
     Unreachable,
-    /// A TCP reset.
-    Reset,
 }
 
 // TODO: Remove with classic ICE, together with `KnownLoss`: every trace is then exact.

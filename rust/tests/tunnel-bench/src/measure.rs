@@ -8,7 +8,7 @@ use criterion::measurement::{Measurement, ValueFormatter, WallTime};
 use crate::thread_cpu::thread_cpu_times;
 
 /// How the measurement is selected; `event-loop` when unset.
-pub const ENV: &str = "TUNNEL_BENCH_MEASURE";
+const ENV: &str = "TUNNEL_BENCH_MEASURE";
 
 /// A stage of the pipeline, named by the prefix its threads share.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -20,9 +20,9 @@ pub enum Stage {
 }
 
 impl Stage {
-    pub const ALL: [Stage; 4] = [Stage::EventLoop, Stage::Udp, Stage::Crypto, Stage::Tun];
+    pub(crate) const ALL: [Stage; 4] = [Stage::EventLoop, Stage::Udp, Stage::Crypto, Stage::Tun];
 
-    pub fn name(self) -> &'static str {
+    pub(crate) fn name(self) -> &'static str {
         match self {
             Stage::EventLoop => "event-loop",
             Stage::Udp => "udp",
@@ -31,7 +31,7 @@ impl Stage {
         }
     }
 
-    pub fn thread_prefix(self) -> &'static str {
+    pub(crate) fn thread_prefix(self) -> &'static str {
         match self {
             Stage::EventLoop => "event-loop",
             Stage::Udp => "UDP",
@@ -41,7 +41,7 @@ impl Stage {
     }
 
     /// The CPU time all threads of this stage have used so far.
-    pub fn cpu(self) -> Duration {
+    fn cpu(self) -> Duration {
         thread_cpu_times()
             .into_iter()
             .filter(|(name, _)| name.starts_with(self.thread_prefix()))

@@ -70,25 +70,13 @@ pub struct RefClient {
     #[debug(skip)]
     pub(crate) dns_records: BTreeMap<DomainName, BTreeSet<RecordType>>,
 
-    /// Whether we are connected to the gateway serving the Internet resource.
+    /// The resources the client holds an authorization for, and the Gateway each goes through.
     #[debug(skip)]
-    pub(crate) connected_internet_resource: bool,
-
-    /// The CIDR resources the client is connected to.
-    #[debug(skip)]
-    pub(crate) connected_cidr_resources: BTreeSet<ResourceId>,
-
-    /// The DNS resources the client is connected to.
-    #[debug(skip)]
-    pub(crate) connected_dns_resources: BTreeSet<ResourceId>,
+    authorizations: BTreeMap<ResourceId, GatewayId>,
 
     /// The current record kinds resolved by a connected gateway for each DNS resource domain.
     #[debug(skip)]
     dns_resource_resolutions: BTreeMap<(ResourceId, DomainName), BTreeSet<RecordType>>,
-
-    /// The [`ResourceStatus`] of each site.
-    #[debug(skip)]
-    site_status: BTreeMap<SiteId, ResourceStatus>,
 
     /// The Gateway we prefer per site when asking for access, until our connection to it fails.
     #[debug(skip)]
@@ -156,16 +144,13 @@ impl RefClient {
             malicious_behaviour,
             os,
             dns_records: Default::default(),
-            connected_cidr_resources: Default::default(),
-            connected_dns_resources: Default::default(),
+            authorizations: Default::default(),
             dns_resource_resolutions: Default::default(),
-            connected_internet_resource: Default::default(),
             expected_udp_dns_handshakes: Default::default(),
             expected_tcp_dns_handshakes: Default::default(),
             expected_device_listings: Default::default(),
             resources: Default::default(),
             routes: Default::default(),
-            site_status: Default::default(),
             gateways_by_site: Default::default(),
             connection_resets: Default::default(),
             gateway_send_times: Default::default(),
@@ -219,33 +204,9 @@ impl RefClient {
     pub(crate) fn disconnect_resource(&mut self, resource: &ResourceId) {
         for _ in self.routes.extract_if(.., |(r, _)| r == resource) {}
 
-        self.discard_authorization(resource);
+        self.authorizations.remove(resource);
         self.dns_resource_resolutions
             .retain(|(candidate, _), _| candidate != resource);
-
-        let site = match self.site_for_resource(*resource) {
-            Ok(site) => site,
-            Err(SiteLookupError::ResourceHasNoSite) => return,
-            Err(SiteLookupError::ResourceNotFound) => {
-                tracing::error!(%resource, "No site for resource");
-                return;
-            }
-        };
-
-        // If this was the last resource we were connected to for this site,
-        // the connection will be GC'd.
-        if self
-            .connected_resources()
-            .all(|r| self.site_for_resource(r).is_ok_and(|s| s != site))
-        {
-            tracing::debug!(
-                last_resource = %resource,
-                site = %site.id,
-                "We are no longer connected to any resources in this site"
-            );
-
-            self.site_status.remove(&site.id);
-        }
     }
 
     pub(crate) fn set_internet_resource_state(&mut self, active: bool) {
@@ -456,14 +417,7 @@ impl RefClient {
     }
 
     pub(crate) fn connected_resources(&self) -> impl Iterator<Item = ResourceId> + '_ {
-        iter::empty()
-            .chain(self.connected_cidr_resources.clone())
-            .chain(self.connected_dns_resources.clone())
-            .chain(
-                self.connected_internet_resource
-                    .then(|| self.internet_resource())
-                    .flatten(),
-            )
+        self.authorizations.keys().copied()
     }
 
     pub(crate) fn restart(&mut self, key: PrivateKey, now: Instant) {
@@ -491,11 +445,10 @@ impl RefClient {
         }
 
         let affected = self
-            .connected_resources()
-            .filter(|rid| {
-                self.gateway_for_resource(*rid)
-                    .is_some_and(|g| gateways.contains(&g))
-            })
+            .authorizations
+            .iter()
+            .filter(|(_, gateway)| gateways.contains(gateway))
+            .map(|(resource, _)| *resource)
             .collect::<Vec<_>>();
 
         if affected.is_empty() {
@@ -516,11 +469,9 @@ impl RefClient {
         self.discard_connections(affected);
     }
 
-    /// The Gateway we are connected to, or would ask the portal to prefer, for `resource`.
+    /// The Gateway `resource` goes through, if the client holds an authorization for it.
     pub(crate) fn gateway_for_resource(&self, resource: ResourceId) -> Option<GatewayId> {
-        let site = self.site_for_resource(resource).ok()?;
-
-        self.gateways_by_site.get(&site.id).copied()
+        self.authorizations.get(&resource).copied()
     }
 
     pub(crate) fn preferred_gateway(&self, site: SiteId) -> Option<GatewayId> {
@@ -539,11 +490,10 @@ impl RefClient {
         // TODO: Remove with classic ICE.
         self.gateway_send_times.remove(&gateway);
 
-        let connected = self.connected_resources().collect::<BTreeSet<_>>();
         let affected = resources
             .iter()
             .copied()
-            .filter(|resource| connected.contains(resource))
+            .filter(|resource| self.authorizations.contains_key(resource))
             .collect();
 
         self.discard_connections(affected);
@@ -551,15 +501,9 @@ impl RefClient {
 
     fn discard_connections(&mut self, affected: Vec<ResourceId>) {
         for resource in affected {
-            self.discard_authorization(&resource);
+            self.authorizations.remove(&resource);
             self.dns_resource_resolutions
                 .retain(|(candidate, _), _| *candidate != resource);
-
-            if let Ok(site) = self.site_for_resource(resource)
-                && let Some(status) = self.site_status.get_mut(&site.id)
-            {
-                *status = ResourceStatus::Unknown;
-            }
         }
     }
 
@@ -573,18 +517,12 @@ impl RefClient {
         self.gateway_send_times.clear();
         self.client_send_times.clear();
 
-        self.connected_cidr_resources.clear();
-        self.connected_dns_resources.clear();
+        self.authorizations.clear();
         self.dns_resource_resolutions.clear();
-        self.connected_internet_resource = false;
         // Peer authorizations in both directions go with their connections.
         self.outbound_peer_authorizations.clear();
         self.inbound_peer_authorizations.clear();
         self.rejected_inbound_peer_authorizations.clear();
-
-        for status in self.site_status.values_mut() {
-            *status = ResourceStatus::Unknown;
-        }
     }
 
     pub(crate) fn add_internet_resource(&mut self, resource: InternetResource) {
@@ -666,27 +604,17 @@ impl RefClient {
             .collect()
     }
 
+    /// A site is online while the client holds an authorization for a resource in it.
     fn expected_resource_status(&self, resource: &Resource) -> ResourceStatus {
-        let sites = resource.sites();
+        let online = resource.sites().iter().any(|site| {
+            self.authorizations.keys().any(|held| {
+                self.site_for_resource(*held)
+                    .is_some_and(|s| s.id == site.id)
+            })
+        });
 
-        if sites.is_empty() {
-            return ResourceStatus::Unknown;
-        }
-
-        if sites.iter().any(|site| {
-            self.site_status
-                .get(&site.id)
-                .is_some_and(|status| *status == ResourceStatus::Online)
-        }) {
+        if online {
             return ResourceStatus::Online;
-        }
-
-        if sites.iter().all(|site| {
-            self.site_status
-                .get(&site.id)
-                .is_some_and(|status| *status == ResourceStatus::Offline)
-        }) {
-            return ResourceStatus::Offline;
         }
 
         ResourceStatus::Unknown
@@ -718,73 +646,16 @@ impl RefClient {
         }
     }
 
-    pub(crate) fn connect_to_resource(
-        &mut self,
-        resource: ResourceId,
-        gateway: GatewayId,
-        destination: Destination,
-    ) {
-        match destination {
-            Destination::DomainName { .. } => {
-                self.connected_dns_resources.insert(resource);
-            }
-            Destination::IpAddr(_) => self.connect_to_internet_or_cidr_resource(resource),
+    /// The client holds an authorization for `resource` through `gateway`, which it prefers for the
+    /// resource's site from now on.
+    pub(crate) fn connect_to_resource(&mut self, resource: ResourceId, gateway: GatewayId) {
+        let previous = self.authorizations.insert(resource, gateway);
+        if previous.is_none() {
+            tracing::debug!(%resource, %gateway, "Now connected to resource");
         }
 
-        self.connected_through(resource, Some(gateway));
-    }
-
-    /// `resource` is online, and we prefer the Gateway the portal handed us for its site.
-    fn connected_through(&mut self, resource: ResourceId, gateway: Option<GatewayId>) {
-        if let (Ok(site), Some(gateway)) = (self.site_for_resource(resource), gateway) {
+        if let Some(site) = self.site_for_resource(resource) {
             self.gateways_by_site.insert(site.id, gateway);
-        }
-
-        self.set_resource_online(resource);
-    }
-
-    /// The client no longer holds an authorization for `resource`; the next packet requests a new one.
-    fn discard_authorization(&mut self, resource: &ResourceId) {
-        self.connected_cidr_resources.remove(resource);
-        self.connected_dns_resources.remove(resource);
-
-        if self.internet_resource().is_some_and(|r| r == *resource) {
-            self.connected_internet_resource = false;
-        }
-    }
-
-    fn set_resource_online(&mut self, rid: ResourceId) {
-        let site = match self.site_for_resource(rid) {
-            Ok(site) => site,
-            Err(SiteLookupError::ResourceHasNoSite) => return,
-            Err(SiteLookupError::ResourceNotFound) => {
-                tracing::error!(%rid, "Unknown resource or multi-site resource");
-                return;
-            }
-        };
-
-        let previous = self.site_status.insert(site.id, ResourceStatus::Online);
-
-        if previous.is_none_or(|s| s != ResourceStatus::Online) {
-            tracing::debug!(%rid, sid = %site.id, "Resource is now online");
-        }
-    }
-
-    fn connect_to_internet_or_cidr_resource(&mut self, rid: ResourceId) {
-        if self.internet_resource_active
-            && let Some(internet) = self.internet_resource()
-            && internet == rid
-        {
-            self.connected_internet_resource = true;
-            return;
-        }
-
-        if self.resources.iter().any(|r| r.id() == rid) {
-            let is_new = self.connected_cidr_resources.insert(rid);
-
-            if is_new {
-                tracing::debug!(%rid, "Now connected to CIDR resource");
-            }
         }
     }
 
@@ -805,8 +676,9 @@ impl RefClient {
             let resolutions = self
                 .dns_resource_resolutions_on_connect(resource, |domain| resolve(gateway, domain));
             self.add_dns_resource_resolutions(resource, resolutions);
-            self.connected_dns_resources.insert(resource);
-            self.connected_through(resource, gateway);
+            if let Some(gateway) = gateway {
+                self.connect_to_resource(resource, gateway);
+            }
             self.expect_dns_response(query);
 
             return;
@@ -818,7 +690,7 @@ impl RefClient {
             // connlib sets up the NAT for every domain it resolves on the Gateways it is connected to.
             for resource in self.dns_resources_by_domain(
                 &query.domain,
-                |r| self.connected_dns_resources.contains(&r.id),
+                |r| self.authorizations.contains_key(&r.id),
                 |_| true,
             ) {
                 let record_types = resolve(self.gateway_for_resource(resource.id), &query.domain);
@@ -860,8 +732,9 @@ impl RefClient {
                 self.expect_dns_response(query);
             }
 
-            self.connect_to_internet_or_cidr_resource(resource);
-            self.connected_through(resource, gateway);
+            if let Some(gateway) = gateway {
+                self.connect_to_resource(resource, gateway);
+            }
 
             return;
         }
@@ -982,19 +855,15 @@ impl RefClient {
             .collect()
     }
 
-    fn site_for_resource(&self, resource: ResourceId) -> Result<Site, SiteLookupError> {
-        let r = self
-            .resources
-            .iter()
-            .find(|r| r.id() == resource)
-            .ok_or(SiteLookupError::ResourceNotFound)?;
+    fn site_for_resource(&self, resource: ResourceId) -> Option<Site> {
+        let r = self.resources.iter().find(|r| r.id() == resource)?;
 
         let sites = r.sites();
         if sites.is_empty() {
-            return Err(SiteLookupError::ResourceHasNoSite);
+            return None;
         }
 
-        Ok(r.site().expect("resources should only have 1 site").clone())
+        Some(r.site().expect("resources should only have 1 site").clone())
     }
 
     pub(crate) fn active_internet_resource(&self) -> Option<ResourceId> {
@@ -1385,7 +1254,7 @@ impl RefClient {
         resource: ResourceId,
         resolve: impl Fn(&DomainName) -> BTreeSet<RecordType>,
     ) -> BTreeMap<DomainName, BTreeSet<RecordType>> {
-        if self.connected_dns_resources.contains(&resource) {
+        if self.authorizations.contains_key(&resource) {
             return BTreeMap::new();
         }
 
@@ -1730,14 +1599,6 @@ fn default_routes_v4() -> Vec<IpNetwork> {
         IpNetwork::V4(Ipv4Network::new(Ipv4Addr::new(100, 96, 0, 0), 11).unwrap()),
         IpNetwork::V4(Ipv4Network::new(Ipv4Addr::new(100, 100, 111, 0), 24).unwrap()),
     ]
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum SiteLookupError {
-    /// Resource does not exist for this client.
-    ResourceNotFound,
-    /// Resource exists but has no site by design (e.g. device pool resources).
-    ResourceHasNoSite,
 }
 
 fn default_routes_v6() -> Vec<IpNetwork> {
