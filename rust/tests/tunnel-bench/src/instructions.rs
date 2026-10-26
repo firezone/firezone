@@ -11,8 +11,6 @@
 mod idle;
 mod packets;
 
-use std::future::Future as _;
-use std::pin::pin;
 use std::task::{Context, Poll, Waker};
 use std::time::Instant;
 
@@ -81,21 +79,17 @@ impl<R: Role> EventLoop<R> {
 
     /// Hands `batch` to the event loop as if the TUN device had read it.
     pub fn read_from_tun(&self, batch: PacketBatch) {
-        let send = pin!(self.ends.tun_inbound.send(batch));
-
-        assert!(
-            send.poll(&mut Context::from_waker(Waker::noop()))
-                .is_ready(),
-            "TUN channel should have room"
-        );
+        self.ends
+            .tun_inbound
+            .try_send(batch)
+            .expect("TUN channel should have room");
     }
 
     /// Returns how many packets the event loop wrote to the TUN device, dropping them.
     pub fn written_to_tun(&mut self) -> usize {
-        let mut cx = Context::from_waker(Waker::noop());
         let mut packets = 0;
 
-        while let Poll::Ready(Some(batch)) = pin!(self.ends.tun_outbound.recv()).poll(&mut cx) {
+        while let Ok(batch) = self.ends.tun_outbound.try_recv() {
             packets += batch.len();
         }
 
