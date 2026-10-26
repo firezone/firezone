@@ -251,7 +251,7 @@ jobs:
           install_args: --cd rust github:gungraun/gungraun
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - name: Run
+      - name: Count instructions of the ${{ matrix.group }} benchmarks
         env:
           FILTER: ${{ matrix.filter }}
           GROUP: ${{ matrix.group }}
