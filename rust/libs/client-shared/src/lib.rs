@@ -84,6 +84,7 @@ impl Session {
         portal: PhoenixChannel<(), EgressMessages, IngressMessages, PublicKeyParam>,
         is_internet_resource_active: bool,
         dns_servers: Vec<IpAddr>,
+        additional_host_candidates: Vec<IpAddr>,
         flow_logs_dir: Option<PathBuf>,
         local_flow_logs: bool,
         handle: tokio::runtime::Handle,
@@ -99,6 +100,7 @@ impl Session {
                     udp_socket_factory,
                     is_internet_resource_active,
                     dns_servers,
+                    additional_host_candidates,
                     flow_logs_dir,
                     local_flow_logs,
                     portal,
@@ -139,6 +141,10 @@ impl Session {
 
     pub fn set_internet_resource_state(&self, active: bool) {
         let _ = self.channel.send(Command::SetInternetResourceState(active));
+    }
+
+    pub fn set_additional_host_candidates(&self, ips: Vec<IpAddr>) {
+        let _ = self.channel.send(Command::SetAdditionalHostCandidates(ips));
     }
 
     /// Sets a new [`Tun`] device handle.

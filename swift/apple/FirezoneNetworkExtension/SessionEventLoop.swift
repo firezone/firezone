@@ -5,6 +5,7 @@ import Foundation
 enum SessionCommand {
   case disconnect
   case setInternetResourceState(Bool)
+  case setAdditionalHostCandidates([String])
   case setDns([String])
   case reset(String)
 }
@@ -84,6 +85,9 @@ private func forwardCommands(from commandReceiver: Receiver<SessionCommand>, to 
 
     case .setInternetResourceState(let active):
       session.setInternetResourceState(active: active)
+
+    case .setAdditionalHostCandidates(let ips):
+      session.setAdditionalHostCandidates(ips: ips)
 
     case .setDns(let servers):
       session.setDns(dnsServers: servers)

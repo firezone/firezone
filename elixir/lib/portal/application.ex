@@ -121,9 +121,12 @@ defmodule Portal.Application do
     # Configure Sentry to capture Logger messages
     :logger.add_handler(:sentry, Sentry.LoggerHandler, %{
       config: %{
-        level: :warning,
-        metadata: :all,
-        capture_log_messages: true
+        capture_level: :warning,
+        capture_metadata: :all,
+        capture_log_messages: true,
+        # Sentry drops the :bandit domain by default, which is where Bandit logs
+        # exceptions raised by our plugs and controllers.
+        capture_excluded_domains: []
       }
     })
   end

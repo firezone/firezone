@@ -34,9 +34,12 @@ serde_json = { workspace = true }
 sha2 = { workspace = true }
 smallvec = { workspace = true }
 snownet = { workspace = true }
+socket-factory = { workspace = true }
 stun_codec = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
+tun = { workspace = true }
+tunnel = { workspace = true }
 tunnel-proto = { workspace = true, features = ["malicious-behaviour"] }
 uuid = { workspace = true }
 x509-claims = { workspace = true }

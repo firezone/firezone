@@ -87,6 +87,7 @@ pub struct Node<TId, RId> {
     buffered_transmits: VecDeque<Transmit>,
 
     allocations: Allocations<RId>,
+    additional_host_candidates: Vec<Candidate>,
 
     connections: Connections<TId, RId>,
     buffered_candidates: BufferedCandidates<TId>,
@@ -188,6 +189,7 @@ where
             pending_events: VecDeque::default(),
             last_now: now,
             allocations,
+            additional_host_candidates: Default::default(),
             inflight_stun_requests: Default::default(),
             connections: Default::default(),
             buffered_candidates: Default::default(),
@@ -224,6 +226,13 @@ where
                 %num_iceless,
                 "Soft-reset iceless connections (path-agent reset, key kept)"
             );
+
+            for (cid, c) in self.connections.iter_mut() {
+                for candidate in &self.additional_host_candidates {
+                    c.add_local_candidate(cid, candidate, &mut self.pending_events, now);
+                }
+            }
+
             return;
         }
 
@@ -322,8 +331,13 @@ where
             let current_candidates = c.agent.local_candidates().collect::<SmallVec<[_; 16]>>();
 
             // Re-seed connection with all candidates.
-            let new_candidates =
-                seed_agent_with_local_candidates(c.relay, &mut c.agent, &self.allocations, now);
+            let new_candidates = seed_agent_with_local_candidates(
+                c.relay,
+                &mut c.agent,
+                &self.allocations,
+                &self.additional_host_candidates,
+                now,
+            );
 
             // Tell the remote about all of them.
             self.pending_events.extend(
@@ -386,6 +400,9 @@ where
         tracing::debug!(index = %connection.tunnel.id(), "Created WireGuard tunnel");
 
         connection.assign_relay(cid, &mut self.allocations, &mut self.pending_events, now);
+        for candidate in &self.additional_host_candidates {
+            connection.add_local_candidate(cid, candidate, &mut self.pending_events, now);
+        }
 
         if self.allocations.is_empty() {
             tracing::debug!("No relays available; requesting a new set");
@@ -596,6 +613,13 @@ where
             .get_established_mut_by_tunnel_id(tunnel, now)?;
 
         let control_flow = conn.commit_decrypted(cid, (dst, src), decrypted, now);
+        conn.handle_tunnel_events(
+            cid,
+            &mut self.allocations,
+            &mut self.buffered_transmits,
+            &mut self.pending_events,
+            now,
+        );
         let is_closing = self.connections.is_closing(&cid);
 
         let packet = match control_flow {
@@ -818,6 +842,42 @@ where
 
         // Fourth, detach existing connections from removed relays.
         self.connections.clear_relays(to_remove.into_iter());
+    }
+
+    /// Sets the local addresses to advertise as host candidates in addition to the ones learned from relays.
+    ///
+    /// Existing connections get the new candidates and have the ones no longer present invalidated.
+    pub fn set_additional_host_candidates(&mut self, addrs: BTreeSet<SocketAddr>, now: Instant) {
+        self.last_now = now;
+
+        let candidates = addrs
+            .into_iter()
+            .filter_map(|addr| {
+                Candidate::host(addr, "udp")
+                    .inspect_err(|e| tracing::debug!(%addr, "Invalid host candidate: {e}"))
+                    .ok()
+            })
+            .collect::<Vec<_>>();
+        let removed = mem::replace(&mut self.additional_host_candidates, candidates)
+            .into_iter()
+            .filter(|c| !self.additional_host_candidates.contains(c))
+            .collect::<Vec<_>>();
+
+        for (cid, c) in self.connections.iter_mut() {
+            let relay_candidates = c
+                .relay
+                .map(|rid| self.allocations.candidates_for_relay(&rid))
+                .into_iter()
+                .flatten()
+                .collect::<SmallVec<[_; 8]>>();
+
+            for candidate in removed.iter().filter(|r| !relay_candidates.contains(r)) {
+                c.invalidate_local_candidate(cid, candidate, &mut self.pending_events, now);
+            }
+            for candidate in &self.additional_host_candidates {
+                c.add_local_candidate(cid, candidate, &mut self.pending_events, now);
+            }
+        }
     }
 
     fn init_connection(
@@ -1089,6 +1149,13 @@ where
             &mut self.buffered_transmits,
             now,
         );
+        conn.handle_tunnel_events(
+            cid,
+            &mut self.allocations,
+            &mut self.buffered_transmits,
+            &mut self.pending_events,
+            now,
+        );
 
         match control_flow {
             ControlFlow::Continue(pending) => ControlFlow::Continue(pending),
@@ -1156,6 +1223,7 @@ fn seed_agent_with_local_candidates<'a, RId>(
     selected_relay: Option<RId>,
     agent: &'a mut Agent,
     allocations: &Allocations<RId>,
+    additional_host_candidates: &'a [Candidate],
     now: Instant,
 ) -> impl Iterator<Item = Candidate> + use<'a, RId>
 where
@@ -1165,6 +1233,7 @@ where
         .map(|rid| allocations.candidates_for_relay(&rid))
         .into_iter()
         .flatten()
+        .chain(additional_host_candidates.iter().cloned())
         .filter_map(move |c| agent.add_local_candidate(c, now))
 }
 
@@ -1485,36 +1554,7 @@ where
             self.tunnel.handle_timeout(now);
         }
 
-        while let Some(event) = self.tunnel.poll_event() {
-            match event {
-                sanstun::Event::SendHandshakeInitiation(init) => match &mut self.agent {
-                    Agent::Path(agent) => agent.send_handshake_initiation(init, now),
-                    Agent::Ice(_) => self.buffer_or_send(&cid, init, allocations, transmits, now),
-                },
-                sanstun::Event::SendKeepalive(keepalive) => {
-                    self.buffer_or_send(&cid, keepalive, allocations, transmits, now)
-                }
-                sanstun::Event::Established {
-                    started_at,
-                    confirmed_at,
-                } => {
-                    self.first_handshake_completed_at = Some(confirmed_at);
-                    self.agent.confirm_session(confirmed_at);
-
-                    tracing::debug!(%cid, duration_since_intent = ?self.duration_since_intent(confirmed_at), handshake_duration = ?confirmed_at.duration_since(started_at), "Completed wireguard handshake");
-
-                    // Only signal establishment once we can actually send, i.e. ICE has nominated
-                    // a socket. Otherwise, the event is emitted once a socket is nominated.
-                    if self.state.has_nominated_socket() {
-                        pending_events.push_back(Event::ConnectionEstablished(cid));
-                    }
-                }
-                sanstun::Event::ConnectionExpired => {
-                    tracing::info!(state = %self.state, index = %self.tunnel.id(), "Connection failed (wireguard tunnel expired)");
-                    self.state = ConnectionState::Failed;
-                }
-            }
-        }
+        self.handle_tunnel_events(cid, allocations, transmits, pending_events, now);
 
         if !due {
             return;
@@ -1717,6 +1757,49 @@ where
                 payload: Bytes::copied_from(&data_channel_packet),
                 ecn: Ecn::NonEct,
             });
+        }
+    }
+
+    fn handle_tunnel_events<TId>(
+        &mut self,
+        cid: TId,
+        allocations: &mut Allocations<RId>,
+        transmits: &mut VecDeque<Transmit>,
+        pending_events: &mut VecDeque<Event<TId, RId>>,
+        now: Instant,
+    ) where
+        TId: Copy + fmt::Display,
+        RId: Copy + Ord + Hash + fmt::Display,
+    {
+        while let Some(event) = self.tunnel.poll_event() {
+            match event {
+                sanstun::Event::SendHandshakeInitiation(init) => match &mut self.agent {
+                    Agent::Path(agent) => agent.send_handshake_initiation(init, now),
+                    Agent::Ice(_) => self.buffer_or_send(&cid, init, allocations, transmits, now),
+                },
+                sanstun::Event::SendKeepalive(keepalive) => {
+                    self.buffer_or_send(&cid, keepalive, allocations, transmits, now)
+                }
+                sanstun::Event::Established {
+                    started_at,
+                    confirmed_at,
+                } => {
+                    self.first_handshake_completed_at = Some(confirmed_at);
+                    self.agent.confirm_session(confirmed_at);
+
+                    tracing::debug!(%cid, duration_since_intent = ?self.duration_since_intent(confirmed_at), handshake_duration = ?confirmed_at.duration_since(started_at), "Completed wireguard handshake");
+
+                    // Only signal establishment once we can actually send, i.e. ICE has nominated
+                    // a socket. Otherwise, the event is emitted once a socket is nominated.
+                    if self.state.has_nominated_socket() {
+                        pending_events.push_back(Event::ConnectionEstablished(cid));
+                    }
+                }
+                sanstun::Event::ConnectionExpired => {
+                    tracing::info!(state = %self.state, index = %self.tunnel.id(), "Connection failed (wireguard tunnel expired)");
+                    self.state = ConnectionState::Failed;
+                }
+            }
         }
     }
 
@@ -2097,6 +2180,16 @@ where
             return;
         }
 
+        self.invalidate_local_candidate(id, candidate, pending_events, now);
+    }
+
+    fn invalidate_local_candidate<TId>(
+        &mut self,
+        id: TId,
+        candidate: &Candidate,
+        pending_events: &mut VecDeque<Event<TId, RId>>,
+        now: Instant,
+    ) {
         let was_present = self.agent.invalidate_candidate(candidate, now);
 
         if was_present {

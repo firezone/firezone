@@ -6,6 +6,7 @@ use connlib_model::ResourceId;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashSet,
+    net::IpAddr,
     path::{Path, PathBuf},
 };
 use url::Url;
@@ -52,6 +53,10 @@ pub struct AdvancedSettings {
     pub auth_url: Url,
     pub api_url: Url,
     pub log_filter: String,
+    /// Set only through the CLI's `host-candidates`, so the settings page neither shows nor sends it.
+    #[serde(default)]
+    #[specta(skip)]
+    pub additional_host_candidates: Vec<IpAddr>,
 }
 
 #[derive(Clone, Deserialize, Serialize, Default)]
@@ -161,6 +166,7 @@ impl Default for AdvancedSettings {
             auth_url: Url::parse(defaults::AUTH_URL).expect("static URL is a valid URL"),
             api_url: Url::parse(defaults::API_URL).expect("static URL is a valid URL"),
             log_filter: defaults::LOG_FILTER.to_string(),
+            additional_host_candidates: Vec::default(),
         }
     }
 }

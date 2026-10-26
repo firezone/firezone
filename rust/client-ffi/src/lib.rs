@@ -18,6 +18,7 @@ use crate::fd::RawFd;
 
 use std::{
     fmt,
+    net::IpAddr,
     path::PathBuf,
     sync::{Arc, OnceLock},
     time::Duration,
@@ -311,6 +312,7 @@ pub fn connect_android(
         Some(device_name),
         device_info,
         is_internet_resource_active,
+        Vec::default(),
         tls_identity,
         tcp_socket_factory,
         udp_socket_factory,
@@ -326,11 +328,21 @@ pub fn connect_apple(
     device_name: Option<String>,
     device_info: DeviceInfo,
     is_internet_resource_active: bool,
+    additional_host_candidates: Vec<String>,
     tls_identity: Option<Arc<dyn ClientTlsIdentity>>,
 ) -> Result<Connection, ConnlibError> {
     // iOS doesn't need socket protection like Android
     let tcp_socket_factory = Arc::new(socket_factory::tcp);
     let udp_socket_factory = Arc::new(socket_factory::udp);
+
+    let additional_host_candidates = additional_host_candidates
+        .into_iter()
+        .filter_map(|ip| {
+            ip.parse()
+                .inspect_err(|e| tracing::debug!(%ip, "Failed to parse additional host candidate as IP address: {e}"))
+                .ok()
+        })
+        .collect();
 
     // Locate the TUN device before `connect` spawns anything: every failed
     // search used to leave a Tokio runtime and its threads behind, and the
@@ -344,6 +356,7 @@ pub fn connect_apple(
         device_name,
         device_info,
         is_internet_resource_active,
+        additional_host_candidates,
         tls_identity,
         tcp_socket_factory,
         udp_socket_factory,
@@ -381,6 +394,7 @@ pub fn connect_dummy(
         device_name,
         device_info,
         is_internet_resource_active,
+        Vec::default(),
         tls_identity,
         tcp_socket_factory,
         udp_socket_factory,
@@ -450,6 +464,21 @@ impl Session {
             .collect();
 
         self.inner.set_dns(dns_servers);
+    }
+
+    pub fn set_additional_host_candidates(&self, ips: Vec<String>) {
+        tracing::debug!(?ips, "Received set_additional_host_candidates command");
+
+        let ips = ips
+            .into_iter()
+            .filter_map(|ip| {
+                ip.parse()
+                    .inspect_err(|e| tracing::debug!(%ip, "Failed to parse additional host candidate as IP address: {e}"))
+                    .ok()
+            })
+            .collect();
+
+        self.inner.set_additional_host_candidates(ips);
     }
 
     pub fn reset(&self, reason: String) {
@@ -589,6 +618,7 @@ fn connect(
     device_name: Option<String>,
     device_info: DeviceInfo,
     is_internet_resource_active: bool,
+    additional_host_candidates: Vec<IpAddr>,
     tls_identity: Option<Arc<dyn ClientTlsIdentity>>,
     tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
     udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
@@ -675,6 +705,7 @@ fn connect(
         portal,
         is_internet_resource_active,
         Vec::default(),
+        additional_host_candidates,
         flow_logs_dir,
         false,
         runtime.handle().clone(),

@@ -298,7 +298,7 @@ x509-keystore = { path = "libs/x509-keystore" }
 x509-parser = "0.18.0"
 zbus = "5.15.0"
 zeroize = "1.8.1"
-zip = { version = "8.6.0", default-features = false }
+zip = { version = "9.0.1", default-features = false }
 
 [workspace.lints.clippy]
 dbg_macro = "warn"
