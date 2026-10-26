@@ -154,6 +154,18 @@ az storage blob upload-batch \
     --overwrite \
     --output table
 
+# Publish the public key alongside, so a renewed key reaches clients on the next sync.
+echo "Uploading public signing key..."
+gpg --armor --export "${GPG_KEY_ID}" >"${WORK_DIR}/key.gpg"
+az storage blob upload \
+    --container-name apt \
+    --name key.gpg \
+    --file "${WORK_DIR}/key.gpg" \
+    --auth-mode login \
+    --account-name "${AZURE_STORAGE_ACCOUNT}" \
+    --overwrite \
+    --output table
+
 # Delete import files
 az storage blob delete-batch \
     --source apt \
