@@ -119,9 +119,9 @@ pub trait GuiIntegration {
 
 #[derive(strum::Display)]
 pub enum ControllerRequest {
-    ApplyAdvancedSettings(Box<AdvancedSettings>),
     ApplyGeneralSettings(Box<GeneralSettingsForm>),
     ResetGeneralSettings,
+    ApplyLogFilter(String),
     /// Clear the GUI's logs and await the Tunnel service to clear its logs
     ClearLogs(oneshot::Sender<Result<(), String>>),
     /// The same as the arguments to `client::logging::export_logs_to`
@@ -484,30 +484,49 @@ impl<I: GuiIntegration> Controller<I> {
         use ControllerRequest::*;
 
         match req {
-            ApplyAdvancedSettings(settings) => {
-                self.send_ipc(&service::ClientMsg::ApplyAdvancedSettings(*settings))
+            ApplyGeneralSettings(settings) => {
+                let (general_settings, advanced_settings) = match settings.apply(
+                    &self.mdm_settings,
+                    self.general_settings.clone(),
+                    self.advanced_settings.clone(),
+                ) {
+                    Ok(settings) => settings,
+                    Err(e) => {
+                        self.integration
+                            .show_notification("Failed to save settings", format!("{e:#}"))?;
+                        return Ok(());
+                    }
+                };
+
+                self.apply_general_settings(general_settings, advanced_settings)
                     .await?;
             }
-            ApplyGeneralSettings(settings) => {
-                let account_slug = settings.account_slug.trim();
+            ResetGeneralSettings => {
+                let defaults = AdvancedSettings::default();
 
-                self.apply_general_settings(GeneralSettings {
-                    start_minimized: settings.start_minimized,
-                    start_on_login: Some(settings.start_on_login),
-                    connect_on_start: Some(settings.connect_on_start),
-                    account_slug: (!account_slug.is_empty()).then_some(account_slug.to_owned()),
-                    ..self.general_settings.clone()
-                })
+                self.apply_general_settings(
+                    GeneralSettings {
+                        start_minimized: true,
+                        start_on_login: None,
+                        connect_on_start: None,
+                        account_slug: None,
+                        ..self.general_settings.clone()
+                    },
+                    AdvancedSettings {
+                        auth_url: defaults.auth_url,
+                        api_url: defaults.api_url,
+                        ..self.advanced_settings.clone()
+                    },
+                )
                 .await?;
             }
-            ResetGeneralSettings => {
-                self.apply_general_settings(GeneralSettings {
-                    start_minimized: true,
-                    start_on_login: None,
-                    connect_on_start: None,
-                    account_slug: None,
-                    ..self.general_settings.clone()
-                })
+            ApplyLogFilter(log_filter) => {
+                self.send_ipc(&service::ClientMsg::ApplyAdvancedSettings(
+                    AdvancedSettings {
+                        log_filter,
+                        ..self.advanced_settings.clone()
+                    },
+                ))
                 .await?;
             }
             ClearLogs(completion_tx) => {
@@ -657,8 +676,13 @@ impl<I: GuiIntegration> Controller<I> {
         Ok(())
     }
 
-    async fn apply_general_settings(&mut self, settings: GeneralSettings) -> Result<()> {
-        self.general_settings = settings;
+    /// Saves the general settings and, if the auth or API URL changed, asks the Tunnel service to save those.
+    async fn apply_general_settings(
+        &mut self,
+        general_settings: GeneralSettings,
+        advanced_settings: AdvancedSettings,
+    ) -> Result<()> {
+        self.general_settings = general_settings;
 
         self.integration
             .save_general_settings(&self.general_settings)
@@ -667,6 +691,17 @@ impl<I: GuiIntegration> Controller<I> {
         gui::set_autostart(self.general_settings.start_on_login.is_some_and(|v| v)).await?;
 
         self.notify_settings_changed()?;
+
+        if advanced_settings != self.advanced_settings {
+            // The Tunnel service's `AdvancedSettingsApplied` reply shows the notification.
+            self.send_ipc(&service::ClientMsg::ApplyAdvancedSettings(
+                advanced_settings,
+            ))
+            .await?;
+
+            return Ok(());
+        }
+
         self.integration.show_notification("Settings saved", "")?;
 
         Ok(())
@@ -2108,6 +2143,29 @@ mod tests {
 
         let migrated = mock_tunnel.rx_apply_advanced_settings().await;
         assert_eq!(migrated, canned);
+    }
+
+    #[tokio::test]
+    async fn apply_log_filter_keeps_the_saved_urls() {
+        let _guard = logging::test("debug");
+        let mut test_controller = Controller::start_for_test();
+        let mut mock_tunnel = test_controller.tunnel_service_ipc_accept().await;
+
+        mock_tunnel.send_hello().await;
+        test_controller
+            .ctrl_tx
+            .send(ControllerRequest::ApplyLogFilter("trace".to_owned()))
+            .await
+            .unwrap();
+
+        let applied = mock_tunnel.rx_apply_advanced_settings().await;
+        assert_eq!(
+            applied,
+            AdvancedSettings {
+                log_filter: "trace".to_owned(),
+                ..AdvancedSettings::default()
+            }
+        );
     }
 
     async fn boot_tunnel(

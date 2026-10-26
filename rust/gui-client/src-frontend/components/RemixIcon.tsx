@@ -1,10 +1,9 @@
 import React from "react";
-import arrowDown from "remixicon/icons/Arrows/arrow-down-s-line.svg";
 import home from "remixicon/icons/Buildings/home-line.svg";
 import palette from "remixicon/icons/Design/palette-line.svg";
 import database from "remixicon/icons/Device/database-2-line.svg";
 import certificate from "remixicon/icons/Document/certificate-line.svg";
-import equalizer from "remixicon/icons/Media/equalizer-line.svg";
+import arrowDown from "remixicon/icons/Arrows/arrow-down-s-line.svg";
 import alert from "remixicon/icons/System/alert-line.svg";
 import check from "remixicon/icons/System/checkbox-circle-line.svg";
 import close from "remixicon/icons/System/close-line.svg";
@@ -21,7 +20,6 @@ const icons = {
   close,
   database,
   "delete-bin": deleteBin,
-  equalizer,
   home,
   information,
   palette,

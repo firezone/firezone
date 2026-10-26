@@ -1,4 +1,5 @@
-import React, { InputHTMLAttributes } from "react";
+import React, { InputHTMLAttributes, SelectHTMLAttributes } from "react";
+import RemixIcon from "./RemixIcon";
 
 type ManagedTextInputProps = InputHTMLAttributes<HTMLInputElement> & {
   managed: boolean;
@@ -24,6 +25,41 @@ export function ManagedTextInput({
   }
 
   return <ManagedTooltip fullWidth>{input}</ManagedTooltip>;
+}
+
+type ManagedSelectProps = SelectHTMLAttributes<HTMLSelectElement> & {
+  managed: boolean;
+};
+
+export function ManagedSelect({
+  disabled,
+  managed,
+  className = "",
+  ...selectProps
+}: ManagedSelectProps) {
+  // The native arrow sits flush against the right border, so draw our own with padding.
+  const select = (
+    <span className="relative flex w-full">
+      <select
+        aria-disabled={managed || undefined}
+        className={`form-input appearance-none pr-9 ${className}`}
+        disabled={managed || disabled}
+        {...selectProps}
+      />
+      <RemixIcon
+        className={`pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-subtle ${
+          managed || disabled ? "opacity-40" : ""
+        }`}
+        name="arrow-down"
+      />
+    </span>
+  );
+
+  if (!managed) {
+    return select;
+  }
+
+  return <ManagedTooltip fullWidth>{select}</ManagedTooltip>;
 }
 
 interface ManagedToggleSwitchProps {

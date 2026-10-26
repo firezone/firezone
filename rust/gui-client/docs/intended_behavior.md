@@ -226,18 +226,24 @@ The signed-in tray menu also offers favoriting resources and an "Admin Portal...
 
 ## Settings
 
-Settings are split across an **Advanced** page (Auth Base URL, API URL, Log Filter), a **General** page (start minimized, start on login, connect on start, account slug), and optional **MDM / managed** values that lock the corresponding fields.
+The **Settings** page holds the account slug, start minimized, start on login, connect on start, and the authentication and control plane (Firezone Cloud US, Firezone Cloud EU, or Custom with an Auth Base URL and API URL).
+The **Diagnostics** page holds the log filter.
+Optional **MDM / managed** values lock the corresponding fields.
+
+- The region is not stored: it is derived from the auth and API URLs. URLs that match the US or EU preset (ignoring trivial differences such as a trailing slash) show that region; anything else shows Custom with the two URL fields.
+- When an admin manages the auth or API URL, the region dropdown is locked; with Custom, the managed URL fields are locked too.
+- Picking Custom fills in the URLs last saved with Custom, or the current URLs if none were saved. Saving with US or EU keeps those remembered URLs. They are a GUI-side convenience only and are never sent to the Tunnel service until saved with Custom.
 
 The **advanced settings and MDM (managed) policy are owned by the Tunnel service**, not the GUI.
 The GUI reads both from the service over IPC when it first connects, and sends edited advanced settings back over IPC; it never reads or writes them from disk or the registry directly.
 General settings stay GUI-owned, in the user's profile.
 
-- Clicking "Apply" sends the advanced settings to the Tunnel service, which validates them, persists them, and reloads its log filter; the GUI then reloads its own log filter and shows a "Settings saved" notification.
+- Clicking "Apply" sends changed auth / API URLs or the log filter to the Tunnel service, which validates them, persists them, and reloads its log filter; the GUI then reloads its own log filter and shows a "Settings saved" notification.
   A rejected change (e.g. an unparsable log filter) shows "Failed to save settings" and is not persisted.
   Applying does **not** sign the user out.
-- Log filter changes take effect immediately. Auth Base URL and API URL changes take effect on the next sign-in.
+- Log filter changes take effect immediately. Region and URL changes take effect on the next sign-in.
 - A machine-scope MDM policy wins over the stored advanced setting for the same field.
-- "Reset to Defaults" restores the built-in defaults.
+- "Reset to Defaults" on the General page restores the built-in defaults, including the default region; "Reset to Default" on the Diagnostics page restores the default log filter.
 
 The service stores `advanced_settings.json` in its own config dir (`/var/lib/dev.firezone.client/config/` on Linux, `%PROGRAMDATA%\dev.firezone.client\config\` on Windows), protected so another process running as the desktop user cannot, for example, rewrite `auth_url` to redirect the next sign-in.
 

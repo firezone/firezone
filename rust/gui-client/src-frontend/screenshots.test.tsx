@@ -8,10 +8,10 @@ import { afterEach, beforeEach, test, vi } from "vitest";
 import { cdp, page } from "vitest/browser";
 import App from "./components/App";
 import {
-  AdvancedSettingsViewModel,
   events,
   FileCount,
   GeneralSettingsViewModel,
+  LogFilterViewModel,
   SessionViewModel,
   X509Certificate,
   X509DetailField,
@@ -31,7 +31,7 @@ interface Screen {
   route: string;
   session?: SessionViewModel;
   generalSettings?: GeneralSettingsViewModel;
-  advancedSettings?: AdvancedSettingsViewModel;
+  logFilter?: LogFilterViewModel;
   /// The certificate the keystore holds, when the device trust tab is available.
   deviceTrustCertificate?: X509Certificate;
   logCount?: FileCount;
@@ -46,13 +46,16 @@ const generalSettings: GeneralSettingsViewModel = {
   connect_on_start_is_managed: false,
   account_slug: "example-corp",
   account_slug_is_managed: false,
+  cloud_region: "Us",
+  auth_url: "https://app.firezone.dev/",
+  auth_url_is_managed: false,
+  api_url: "wss://api.firezone.dev/",
+  api_url_is_managed: false,
+  custom_auth_url: "https://app.firezone.dev/",
+  custom_api_url: "wss://api.firezone.dev/",
 };
 
-const advancedSettings: AdvancedSettingsViewModel = {
-  auth_url: "https://app.firezone.dev",
-  auth_url_is_managed: false,
-  api_url: "wss://api.firezone.dev",
-  api_url_is_managed: false,
+const logFilter: LogFilterViewModel = {
   log_filter: "info",
   log_filter_is_managed: false,
 };
@@ -142,24 +145,28 @@ const screens: Record<string, Screen> = {
     },
   },
   "general-settings": { route: "/general-settings", generalSettings },
+  "general-settings-custom": {
+    route: "/general-settings",
+    generalSettings: {
+      ...generalSettings,
+      cloud_region: "Custom",
+      auth_url: "https://firezone.example.com/",
+      api_url: "wss://api.firezone.example.com/",
+    },
+  },
   "general-settings-managed": {
     route: "/general-settings",
     generalSettings: {
       ...generalSettings,
       account_slug_is_managed: true,
       connect_on_start_is_managed: true,
-    },
-  },
-  "advanced-settings": { route: "/advanced-settings", advancedSettings },
-  "advanced-settings-managed": {
-    route: "/advanced-settings",
-    advancedSettings: {
-      ...advancedSettings,
-      api_url_is_managed: true,
+      cloud_region: "Eu",
+      auth_url: "https://eu.app.firezone.dev/",
       auth_url_is_managed: true,
-      log_filter_is_managed: true,
+      api_url: "wss://eu.api.firezone.dev/",
+      api_url_is_managed: true,
     },
-    hover: "Auth Base URL",
+    hover: "Authentication and control plane",
   },
   "device-trust-happy": {
     route: "/device-trust",
@@ -169,6 +176,13 @@ const screens: Record<string, Screen> = {
   diagnostics: {
     route: "/diagnostics",
     logCount: { bytes: 3_400_000, files: 12 },
+    logFilter,
+  },
+  "diagnostics-managed": {
+    route: "/diagnostics",
+    logCount: { bytes: 3_400_000, files: 12 },
+    logFilter: { log_filter: "debug", log_filter_is_managed: true },
+    hover: "Log Filter",
   },
   about: { route: "/about" },
 };
@@ -243,8 +257,8 @@ for (const [name, screen] of Object.entries(screens)) {
         if (screen.session) await events.sessionChanged.emit(screen.session);
         if (screen.generalSettings)
           await events.generalSettingsChanged.emit(screen.generalSettings);
-        if (screen.advancedSettings)
-          await events.advancedSettingsChanged.emit(screen.advancedSettings);
+        if (screen.logFilter)
+          await events.logFilterChanged.emit(screen.logFilter);
         if (screen.deviceTrustCertificate)
           await events.x509CertificateChanged.emit(
             screen.deviceTrustCertificate

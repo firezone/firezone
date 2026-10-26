@@ -24,22 +24,6 @@ async exportLogs() : Promise<Result<null, Error>> {
     else return { status: "error", error: e  as any };
 }
 },
-async applyAdvancedSettings(settings: AdvancedSettings) : Promise<Result<null, Error>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("apply_advanced_settings", { settings }) };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
-async resetAdvancedSettings() : Promise<Result<null, Error>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("reset_advanced_settings") };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
 async applyGeneralSettings(settings: GeneralSettingsForm) : Promise<Result<null, Error>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("apply_general_settings", { settings }) };
@@ -51,6 +35,22 @@ async applyGeneralSettings(settings: GeneralSettingsForm) : Promise<Result<null,
 async resetGeneralSettings() : Promise<Result<null, Error>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("reset_general_settings") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async applyLogFilter(logFilter: string) : Promise<Result<null, Error>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("apply_log_filter", { logFilter }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async resetLogFilter() : Promise<Result<null, Error>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("reset_log_filter") };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
@@ -86,14 +86,14 @@ async updateState() : Promise<Result<null, Error>> {
 
 
 export const events = __makeEvents__<{
-advancedSettingsChanged: AdvancedSettingsChanged,
 generalSettingsChanged: GeneralSettingsChanged,
+logFilterChanged: LogFilterChanged,
 logsRecounted: LogsRecounted,
 sessionChanged: SessionChanged,
 x509CertificateChanged: X509CertificateChanged
 }>({
-advancedSettingsChanged: "advanced-settings-changed",
 generalSettingsChanged: "general-settings-changed",
+logFilterChanged: "log-filter-changed",
 logsRecounted: "logs-recounted",
 sessionChanged: "session-changed",
 x509CertificateChanged: "x509-certificate-changed"
@@ -105,14 +105,33 @@ x509CertificateChanged: "x509-certificate-changed"
 
 /** user-defined types **/
 
-export type AdvancedSettings = { auth_url: string; api_url: string; log_filter: string }
-export type AdvancedSettingsChanged = AdvancedSettingsViewModel
-export type AdvancedSettingsViewModel = { auth_url: string; auth_url_is_managed: boolean; api_url: string; api_url_is_managed: boolean; log_filter: string; log_filter_is_managed: boolean }
+/**
+ * The Firezone Cloud deployment a client signs in to, or [`CloudRegion::Custom`] for any other URLs.
+ */
+export type CloudRegion = "Us" | "Eu" | "Custom"
 export type Error = string
 export type FileCount = { bytes: number; files: number }
 export type GeneralSettingsChanged = GeneralSettingsViewModel
-export type GeneralSettingsForm = { start_minimized: boolean; start_on_login: boolean; connect_on_start: boolean; account_slug: string }
-export type GeneralSettingsViewModel = { start_minimized: boolean; start_on_login: boolean; connect_on_start: boolean; connect_on_start_is_managed: boolean; account_slug: string; account_slug_is_managed: boolean }
+export type GeneralSettingsForm = { start_minimized: boolean; start_on_login: boolean; connect_on_start: boolean; account_slug: string; cloud_region: CloudRegion;
+/**
+ * Only used for [`CloudRegion::Custom`].
+ */
+auth_url: string;
+/**
+ * Only used for [`CloudRegion::Custom`].
+ */
+api_url: string }
+export type GeneralSettingsViewModel = { start_minimized: boolean; start_on_login: boolean; connect_on_start: boolean; connect_on_start_is_managed: boolean; account_slug: string; account_slug_is_managed: boolean; cloud_region: CloudRegion; auth_url: string; auth_url_is_managed: boolean; api_url: string; api_url_is_managed: boolean;
+/**
+ * What the auth URL field shows when [`CloudRegion::Custom`] is picked: the last saved custom URL, or else `auth_url`.
+ */
+custom_auth_url: string;
+/**
+ * What the API URL field shows when [`CloudRegion::Custom`] is picked: the last saved custom URL, or else `api_url`.
+ */
+custom_api_url: string }
+export type LogFilterChanged = LogFilterViewModel
+export type LogFilterViewModel = { log_filter: string; log_filter_is_managed: boolean }
 export type LogsRecounted = FileCount
 export type SessionChanged = SessionViewModel
 export type SessionViewModel = { SignedIn: { account_slug: string; actor_name: string } } | "Loading" | "SignedOut"

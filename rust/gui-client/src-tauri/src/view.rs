@@ -9,8 +9,12 @@ use crate::{
     controller::ControllerRequest,
     gui::Managed,
     logging::FileCount,
-    settings::{AdvancedSettings, AdvancedSettingsViewModel, GeneralSettingsViewModel},
+    settings::{
+        AdvancedSettings, CloudRegion, GeneralSettings, GeneralSettingsViewModel,
+        LogFilterViewModel, MdmSettings,
+    },
 };
+use url::Url;
 
 #[derive(Clone, serde::Deserialize, specta::Type)]
 pub struct GeneralSettingsForm {
@@ -18,6 +22,65 @@ pub struct GeneralSettingsForm {
     pub start_on_login: bool,
     pub connect_on_start: bool,
     pub account_slug: String,
+    pub cloud_region: CloudRegion,
+    /// Only used for [`CloudRegion::Custom`].
+    pub auth_url: String,
+    /// Only used for [`CloudRegion::Custom`].
+    pub api_url: String,
+}
+
+impl GeneralSettingsForm {
+    /// Returns `general_settings` and `advanced_settings` with the form's values applied.
+    ///
+    /// A managed URL wins over the saved one, so the form leaves it alone. Saving with
+    /// [`CloudRegion::Custom`] also remembers the URLs for the next time it is picked.
+    pub fn apply(
+        self,
+        mdm_settings: &MdmSettings,
+        general_settings: GeneralSettings,
+        advanced_settings: AdvancedSettings,
+    ) -> Result<(GeneralSettings, AdvancedSettings)> {
+        let (auth_url, api_url) = self.urls()?;
+        let account_slug = self.account_slug.trim();
+
+        let mut general_settings = GeneralSettings {
+            start_minimized: self.start_minimized,
+            start_on_login: Some(self.start_on_login),
+            connect_on_start: Some(self.connect_on_start),
+            account_slug: (!account_slug.is_empty()).then(|| account_slug.to_owned()),
+            ..general_settings
+        };
+        if self.cloud_region == CloudRegion::Custom {
+            general_settings.custom_auth_url = Some(auth_url.clone());
+            general_settings.custom_api_url = Some(api_url.clone());
+        }
+
+        let advanced_settings = AdvancedSettings {
+            auth_url: match mdm_settings.auth_url {
+                Some(_) => advanced_settings.auth_url,
+                None => auth_url,
+            },
+            api_url: match mdm_settings.api_url {
+                Some(_) => advanced_settings.api_url,
+                None => api_url,
+            },
+            log_filter: advanced_settings.log_filter,
+        };
+
+        Ok((general_settings, advanced_settings))
+    }
+
+    /// Returns the auth and API URLs of the selected region, or the typed ones for [`CloudRegion::Custom`].
+    pub fn urls(&self) -> Result<(Url, Url)> {
+        if let Some(urls) = self.cloud_region.urls() {
+            return Ok(urls);
+        }
+
+        Ok((
+            Url::parse(&self.auth_url).context("Invalid auth URL")?,
+            Url::parse(&self.api_url).context("Invalid API URL")?,
+        ))
+    }
 }
 
 #[derive(Clone, Debug, serde::Serialize, specta::Type, PartialEq, Eq)]
@@ -37,7 +100,7 @@ pub struct SessionChanged(pub SessionViewModel);
 pub struct GeneralSettingsChanged(pub GeneralSettingsViewModel);
 
 #[derive(Clone, serde::Serialize, specta::Type, tauri_specta::Event)]
-pub struct AdvancedSettingsChanged(pub AdvancedSettingsViewModel);
+pub struct LogFilterChanged(pub LogFilterViewModel);
 
 #[derive(Clone, serde::Serialize, specta::Type, tauri_specta::Event)]
 pub struct LogsRecounted(pub FileCount);
@@ -168,16 +231,16 @@ pub async fn apply_general_settings(
 
 #[tauri::command]
 #[specta::specta]
-pub async fn apply_advanced_settings(
+pub async fn apply_log_filter(
     managed: tauri::State<'_, Managed>,
-    settings: AdvancedSettings,
+    log_filter: String,
 ) -> Result<(), Error> {
     if managed.inner().inject_faults {
         tokio::time::sleep(Duration::from_secs(2)).await;
     }
 
     managed
-        .send_request(ControllerRequest::ApplyAdvancedSettings(Box::new(settings)))
+        .send_request(ControllerRequest::ApplyLogFilter(log_filter))
         .await?;
 
     Ok(())
@@ -185,8 +248,8 @@ pub async fn apply_advanced_settings(
 
 #[tauri::command]
 #[specta::specta]
-pub async fn reset_advanced_settings(managed: tauri::State<'_, Managed>) -> Result<(), Error> {
-    apply_advanced_settings(managed, AdvancedSettings::default()).await?;
+pub async fn reset_log_filter(managed: tauri::State<'_, Managed>) -> Result<(), Error> {
+    apply_log_filter(managed, AdvancedSettings::default().log_filter).await?;
 
     Ok(())
 }
@@ -279,17 +342,17 @@ pub fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
         .events(tauri_specta::collect_events![
             SessionChanged,
             GeneralSettingsChanged,
-            AdvancedSettingsChanged,
+            LogFilterChanged,
             LogsRecounted,
             X509CertificateChanged,
         ])
         .commands(tauri_specta::collect_commands![
             clear_logs,
             export_logs,
-            apply_advanced_settings,
-            reset_advanced_settings,
             apply_general_settings,
             reset_general_settings,
+            apply_log_filter,
+            reset_log_filter,
             sign_in,
             sign_out,
             update_state,
@@ -360,5 +423,143 @@ mod tests {
             std::fs::read_to_string(bindings_path()).unwrap(),
             "the committed bindings.ts is stale: run `cargo run -p firezone-gui-client --example export-bindings`"
         );
+    }
+
+    #[test]
+    fn a_cloud_region_ignores_the_typed_urls() {
+        let form = general_settings_form(CloudRegion::Eu, "not a URL", "wss://ignored.example.com");
+
+        let (auth_url, api_url) = form.urls().unwrap();
+
+        assert_eq!(auth_url.as_str(), "https://eu.app.firezone.dev/");
+        assert_eq!(api_url.as_str(), "wss://eu.api.firezone.dev/");
+    }
+
+    #[test]
+    fn custom_uses_the_typed_urls() {
+        let form = general_settings_form(
+            CloudRegion::Custom,
+            "https://firezone.example.com",
+            "wss://api.example.com",
+        );
+
+        let (auth_url, api_url) = form.urls().unwrap();
+
+        assert_eq!(auth_url.as_str(), "https://firezone.example.com/");
+        assert_eq!(api_url.as_str(), "wss://api.example.com/");
+    }
+
+    #[test]
+    fn custom_rejects_an_invalid_url() {
+        let form = general_settings_form(CloudRegion::Custom, "not a URL", "wss://api.example.com");
+
+        assert!(form.urls().is_err());
+    }
+
+    #[test]
+    fn saving_custom_remembers_the_urls() {
+        let form = general_settings_form(
+            CloudRegion::Custom,
+            "https://firezone.example.com",
+            "wss://api.example.com",
+        );
+
+        let (general_settings, advanced_settings) = form
+            .apply(
+                &MdmSettings::default(),
+                GeneralSettings::default(),
+                AdvancedSettings::default(),
+            )
+            .unwrap();
+
+        assert_eq!(
+            general_settings.custom_auth_url.unwrap().as_str(),
+            "https://firezone.example.com/"
+        );
+        assert_eq!(
+            general_settings.custom_api_url.unwrap().as_str(),
+            "wss://api.example.com/"
+        );
+        assert_eq!(
+            advanced_settings.auth_url.as_str(),
+            "https://firezone.example.com/"
+        );
+    }
+
+    #[test]
+    fn saving_a_cloud_region_keeps_the_remembered_custom_urls() {
+        let remembered = GeneralSettings {
+            custom_auth_url: Some(Url::parse("https://firezone.example.com").unwrap()),
+            custom_api_url: Some(Url::parse("wss://api.example.com").unwrap()),
+            ..Default::default()
+        };
+        let form = general_settings_form(CloudRegion::Us, "", "");
+
+        let (general_settings, advanced_settings) = form
+            .apply(
+                &MdmSettings::default(),
+                remembered,
+                AdvancedSettings::default(),
+            )
+            .unwrap();
+
+        assert_eq!(
+            general_settings.custom_auth_url.unwrap().as_str(),
+            "https://firezone.example.com/"
+        );
+        assert_eq!(
+            general_settings.custom_api_url.unwrap().as_str(),
+            "wss://api.example.com/"
+        );
+        assert_eq!(
+            advanced_settings.auth_url.as_str(),
+            "https://app.firezone.dev/"
+        );
+        assert_eq!(
+            advanced_settings.api_url.as_str(),
+            "wss://api.firezone.dev/"
+        );
+    }
+
+    #[test]
+    fn a_managed_url_keeps_the_saved_one() {
+        let mdm_settings = MdmSettings {
+            auth_url: Some(Url::parse("https://managed.example.com").unwrap()),
+            ..Default::default()
+        };
+        let saved = AdvancedSettings {
+            auth_url: Url::parse("https://saved.example.com").unwrap(),
+            ..AdvancedSettings::default()
+        };
+        let form = general_settings_form(CloudRegion::Eu, "", "");
+
+        let (_, advanced_settings) = form
+            .apply(&mdm_settings, GeneralSettings::default(), saved)
+            .unwrap();
+
+        assert_eq!(
+            advanced_settings.auth_url.as_str(),
+            "https://saved.example.com/"
+        );
+        assert_eq!(
+            advanced_settings.api_url.as_str(),
+            "wss://eu.api.firezone.dev/"
+        );
+    }
+
+    fn general_settings_form(
+        cloud_region: CloudRegion,
+        auth_url: &str,
+        api_url: &str,
+    ) -> GeneralSettingsForm {
+        GeneralSettingsForm {
+            start_minimized: true,
+            start_on_login: false,
+            connect_on_start: false,
+            account_slug: String::new(),
+            cloud_region,
+            auth_url: auth_url.to_owned(),
+            api_url: api_url.to_owned(),
+        }
     }
 }
