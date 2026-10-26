@@ -222,6 +222,7 @@ if config_env() == :prod do
     outbound_email_adapter_configured?: !!env_var_to_config!(:outbound_email_adapter)
 
   config :portal, web_external_url: env_var_to_config!(:web_external_url)
+  config :portal, data_residency_region: env_var_to_config!(:data_residency_region)
 
   # Shared cookie and proxy config (used by both Web and API endpoints)
   config :portal,
@@ -817,6 +818,7 @@ if config_env() == :prod do
           end) do
     config :sentry,
       environment_name: environment_name,
-      dsn: env_var_to_config!(:sentry_dsn)
+      dsn: env_var_to_config!(:sentry_dsn),
+      tags: %{data_residency_region: env_var_to_config!(:data_residency_region)}
   end
 end

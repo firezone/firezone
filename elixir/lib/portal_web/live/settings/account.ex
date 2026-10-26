@@ -17,6 +17,7 @@ defmodule PortalWeb.Settings.Account do
         page_title: "Account",
         billing_provisioned: Billing.account_provisioned?(account),
         billing_plan_type: Billing.plan_type(account),
+        data_residency_region: Page.data_residency_region(),
         error: nil,
         slug_confirmation: "",
         confirm_delete_account: false,
@@ -128,6 +129,34 @@ defmodule PortalWeb.Settings.Account do
             >
               Manage plan
             </Form.button>
+          </div>
+
+          <%!-- Data residency (Firezone Cloud only) --%>
+          <div
+            :if={@data_residency_region != :on_prem}
+            id="data-residency"
+            class="mt-6 rounded border border-border bg-raised p-4 space-y-3"
+          >
+            <span class="text-xs font-semibold tracking-widest uppercase text-subtle">
+              Data Residency
+            </span>
+            <div class="flex items-center gap-2 pt-2 border-t border-border">
+              <Page.residency_flag region={@data_residency_region} />
+              <span class="text-xs text-body font-medium">
+                Data residency region: {Page.data_residency_name(@data_residency_region)}
+              </span>
+            </div>
+            <p :if={@data_residency_region == :us} class="text-xs text-subtle">
+              EU data residency is in closed beta.
+              <a
+                href="https://www.firezone.dev/eu"
+                target="_blank"
+                rel="noopener"
+                class={Core.link_style()}
+              >
+                Click here for more information.
+              </a>
+            </p>
           </div>
 
           <%!-- Plan features (always shown) --%>
