@@ -64,7 +64,7 @@ defmodule PortalWeb.OIDC do
     {:ok, config}
   end
 
-  def config_for_provider(%Entra.AuthProvider{}) do
+  def config_for_provider(%Entra.AuthProvider{} = provider) do
     config = Portal.Config.fetch_env!(:portal, Portal.Entra.AuthProvider)
 
     discovery_document_uri =
@@ -77,7 +77,7 @@ defmodule PortalWeb.OIDC do
         req_opts: @discovery_req_opts
       })
 
-    {:ok, config}
+    {:ok, maybe_put_entra_sign_in_tenant(config, provider)}
   end
 
   def config_for_provider(%OIDC.AuthProvider{} = provider) do
@@ -989,6 +989,19 @@ defmodule PortalWeb.OIDC do
     do: {:error, {:invalid_entra_id_token, :missing_tenant}}
 
   # The multi-tenant discovery document accepts a token from any tenant.
+  # B2B guests only get a token from the inviting tenant when they sign in through
+  # that tenant's endpoint; /organizations issues it from their home tenant.
+  defp maybe_put_entra_sign_in_tenant(config, %Entra.AuthProvider{sign_in_tenant_id: nil}),
+    do: config
+
+  defp maybe_put_entra_sign_in_tenant(config, %Entra.AuthProvider{sign_in_tenant_id: tenant_id}) do
+    Map.put(
+      config,
+      :discovery_document_uri,
+      @entra_issuer_prefix <> tenant_id <> @entra_issuer_suffix <> "/.well-known/openid-configuration"
+    )
+  end
+
   defp verify_entra_provider_tenant(claims, %Entra.AuthProvider{tenant_ids: tenant_ids}) do
     case verify_entra_tenant_claims(claims) do
       {:ok, tenant_id, _issuer} ->

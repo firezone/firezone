@@ -1220,6 +1220,55 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       updated = Portal.Repo.get!(Portal.Entra.AuthProvider, provider.id)
       assert updated.email_claim == "email"
     end
+
+    test "allows selecting a verified sign-in tenant", %{account: account, actor: actor, conn: conn} do
+      [first, second] = [Ecto.UUID.generate(), Ecto.UUID.generate()]
+      provider = entra_provider_fixture(account: account, tenant_ids: [first, second])
+      conn = authorize_conn(conn, actor)
+
+      {:ok, lv, html} = live(conn, ~p"/#{account}/settings/authentication/entra/#{provider.id}/edit")
+
+      assert html =~ "Sign-in Tenant"
+
+      lv
+      |> form("#auth-provider-form", %{"auth_provider" => %{"sign_in_tenant_id" => second}})
+      |> render_change()
+
+      lv |> form("#auth-provider-form") |> render_submit()
+      assert Repo.get!(Portal.Entra.AuthProvider, provider.id).sign_in_tenant_id == second
+
+      {:ok, lv, _html} = live(conn, ~p"/#{account}/settings/authentication/entra/#{provider.id}/edit")
+
+      lv
+      |> form("#auth-provider-form", %{"auth_provider" => %{"sign_in_tenant_id" => ""}})
+      |> render_change()
+
+      lv |> form("#auth-provider-form") |> render_submit()
+      assert Repo.get!(Portal.Entra.AuthProvider, provider.id).sign_in_tenant_id == nil
+    end
+
+    test "clears the sign-in tenant when its tenant is removed", %{
+      account: account,
+      actor: actor,
+      conn: conn
+    } do
+      [first, second] = [Ecto.UUID.generate(), Ecto.UUID.generate()]
+
+      provider =
+        entra_provider_fixture(account: account, tenant_ids: [first, second], sign_in_tenant_id: second)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/authentication/entra/#{provider.id}/edit")
+
+      lv |> element("#verified-organization-1 button") |> render_click()
+      lv |> form("#auth-provider-form") |> render_submit()
+
+      saved = Repo.get!(Portal.Entra.AuthProvider, provider.id)
+      assert saved.tenant_ids == [first]
+      assert saved.sign_in_tenant_id == nil
+    end
   end
 
   describe "edit okta provider" do
