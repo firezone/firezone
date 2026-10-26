@@ -133,6 +133,7 @@ where
     ) {
         self.reindex();
 
+        // Only look for connections without a relay if one was indexed, so we don't check all connections on every timeout.
         if mem::take(&mut self.missing_relay) {
             for (cid, connection) in self.established.filter_mut(|c| c.relay.is_none()) {
                 connection.assign_relay(cid, allocations, events, now);
