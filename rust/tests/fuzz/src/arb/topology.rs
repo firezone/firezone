@@ -42,12 +42,11 @@ pub(super) fn generate(
     let tcp_services = arb_tcp_services(g, &dns_resource_records, &sites);
     let mut gateways = arb_gateways(g, portal, &domain_tree, &sites);
     let relays = arb_relays(g);
-    let links = link_some_clients_to_gateways(&mut clients, &mut gateways);
-
     let global_dns_records = merge_dns_records(
         arb_global_dns_records(g, &domain_tree),
         dns_resource_records,
     );
+    let links = arb_links(g, &mut clients, &mut gateways);
 
     let network = clients
         .iter()
@@ -84,34 +83,38 @@ pub(super) fn generate(
     )
 }
 
-/// Connects some Clients to the Gateway at the same position with a dedicated link, like a cable
-/// between two machines.
+/// Connects some Clients each to a different Gateway with a dedicated link, like a cable between
+/// two machines.
 ///
-/// Whether a Client has a link derives from its key rather than from a fresh draw, so existing
-/// inputs keep decoding to the same scenario.
-fn link_some_clients_to_gateways(
+/// Drawn last, so an input that runs out of bytes before it has no links.
+fn arb_links(
+    g: &mut Generator,
     clients: &mut BTreeMap<ClientId, Host<RefClient>>,
     gateways: &mut BTreeMap<GatewayId, Host<RefGateway>>,
 ) -> Vec<((HostId, LinkInterface), (HostId, LinkInterface))> {
-    clients
-        .iter_mut()
-        .zip(gateways.iter_mut())
-        .filter(|((_, client), _)| client.inner().key.0[31] % 2 == 1)
-        .enumerate()
-        .map(|(n, ((cid, client), (gid, gateway)))| {
-            let n = u8::try_from(n * 2).expect("at most two clients");
-            let client_link = link_interface(n + 1);
-            let gateway_link = link_interface(n + 2);
+    let mut unlinked = gateways.iter_mut().collect::<Vec<_>>();
+    let mut links = Vec::new();
 
-            client.connect_link(client_link);
-            gateway.connect_link(gateway_link);
+    for (cid, client) in clients.iter_mut() {
+        let Some(index) = g.choose_index(unlinked.len() + 1).checked_sub(1) else {
+            continue;
+        };
+        let (gid, gateway) = unlinked.remove(index);
 
-            (
-                (HostId::from(*cid), client_link),
-                (HostId::from(*gid), gateway_link),
-            )
-        })
-        .collect()
+        let n = u8::try_from(links.len() * 2).expect("at most two clients");
+        let client_link = link_interface(n + 1);
+        let gateway_link = link_interface(n + 2);
+
+        client.connect_link(client_link);
+        gateway.connect_link(gateway_link);
+
+        links.push((
+            (HostId::from(*cid), client_link),
+            (HostId::from(*gid), gateway_link),
+        ));
+    }
+
+    links
 }
 
 fn link_interface(host: u8) -> LinkInterface {
