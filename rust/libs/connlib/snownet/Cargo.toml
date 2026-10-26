@@ -10,6 +10,7 @@ bnum = { workspace = true }
 bufferpool = { workspace = true }
 bytecodec = { workspace = true }
 bytes = { workspace = true }
+deadline-map = { workspace = true }
 derive_more = { workspace = true, features = ["debug"] }
 fast-random-state = { workspace = true }
 hex = { workspace = true }

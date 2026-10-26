@@ -1466,6 +1466,27 @@ struct Connection<RId> {
     poll_timeout_cache: TimeoutCache,
 }
 
+impl<RId> Connection<RId> {
+    #[must_use]
+    fn poll_timeout(&mut self) -> Option<Instant> {
+        let timeout = iter::empty()
+            .chain(self.agent.poll_timeout())
+            .chain(self.tunnel.poll_timeout())
+            .chain(self.candidate_timeout)
+            .chain(self.disconnect_timeout())
+            .chain(self.state.poll_timeout(&self.agent))
+            .min();
+
+        self.poll_timeout_cache.update(timeout)
+    }
+
+    fn disconnect_timeout(&self) -> Option<Instant> {
+        let disconnected_at = self.disconnected_at?;
+
+        Some(disconnected_at + DISCONNECT_TIMEOUT)
+    }
+}
+
 impl<RId> Connection<RId>
 where
     RId: PartialEq + Eq + Hash + fmt::Debug + fmt::Display + Copy + Ord,
@@ -1502,25 +1523,6 @@ where
         }
 
         Ok(socket)
-    }
-
-    #[must_use]
-    fn poll_timeout(&mut self) -> Option<Instant> {
-        let timeout = iter::empty()
-            .chain(self.agent.poll_timeout())
-            .chain(self.tunnel.poll_timeout())
-            .chain(self.candidate_timeout)
-            .chain(self.disconnect_timeout())
-            .chain(self.state.poll_timeout(&self.agent))
-            .min();
-
-        self.poll_timeout_cache.update(timeout)
-    }
-
-    fn disconnect_timeout(&self) -> Option<Instant> {
-        let disconnected_at = self.disconnected_at?;
-
-        Some(disconnected_at + DISCONNECT_TIMEOUT)
     }
 
     fn handle_timeout<TId>(
