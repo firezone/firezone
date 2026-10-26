@@ -532,18 +532,7 @@ impl Network {
             else {
                 break;
             };
-            self.now = match step.as_nanos() {
-                0 => self.now.max(next),
-                step_nanos => {
-                    let steps = next
-                        .saturating_duration_since(self.now)
-                        .as_nanos()
-                        .div_ceil(step_nanos)
-                        .max(1);
-
-                    self.now + step * u32::try_from(steps).unwrap()
-                }
-            };
+            self.now = self.step_to(next, step, 1);
             let now = self.now;
 
             if self.gateway.deadline().is_some_and(|t| t <= now) {
@@ -559,7 +548,23 @@ impl Network {
                 }
             }
         }
-        self.now = self.now.max(until);
+        self.now = self.step_to(until, step, 0);
+    }
+
+    /// Returns the earliest instant from now in whole `step`s, at least `min_steps` of them, that
+    /// is not before `t`; without steps, the later of now and `t`.
+    fn step_to(&self, t: Instant, step: Duration, min_steps: u128) -> Instant {
+        if step.is_zero() {
+            return self.now.max(t);
+        }
+
+        let steps = t
+            .saturating_duration_since(self.now)
+            .as_nanos()
+            .div_ceil(step.as_nanos())
+            .max(min_steps);
+
+        self.now + step * u32::try_from(steps).unwrap()
     }
 
     /// Delivers the datagrams in flight and those sent in turn, until there are none.
