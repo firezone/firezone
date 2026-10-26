@@ -5,7 +5,7 @@ use super::{
     probe::{ProbeId, ProbeObservation, ReceivedRequest, Remote},
     sim_net::{ExecMutScope, Host},
     sim_relay::{SimRelay, map_explode},
-    sim_tunnel::SimTunnel,
+    sim_tunnel::{IoBatching, SimTunnel},
     site_network::SiteNetwork,
 };
 use connlib_model::{ClientId, GatewayId, RelayId, ResourceId};
@@ -17,7 +17,6 @@ use std::{
     net::{IpAddr, SocketAddr},
     time::Instant,
 };
-use tun::PacketBatch;
 use tunnel_proto::{GatewayEvent, GatewayState};
 
 /// Simulation state for a particular client.
@@ -56,12 +55,13 @@ impl SimGateway {
         mut sut: GatewayState,
         network: SiteNetwork,
         site_specific_dns_records: DnsRecords,
+        io: IoBatching,
     ) -> Self {
         sut.set_flow_logs_enabled(true);
 
         Self {
             id,
-            tunnel: SimTunnel::new(sut),
+            tunnel: SimTunnel::new(sut, io),
             site_specific_dns_records,
             probe_observations: Default::default(),
             dns_servers: Default::default(),
@@ -84,11 +84,7 @@ impl SimGateway {
     }
 
     fn read_from_tun(&mut self, packet: IpPacket) {
-        self.tunnel
-            .ends
-            .tun_inbound
-            .try_send(PacketBatch::new(packet))
-            .expect("TUN channel has room");
+        self.tunnel.read_from_tun(packet);
     }
 
     /// Hands the packets the resources and DNS servers send to the Gateway's TUN device.

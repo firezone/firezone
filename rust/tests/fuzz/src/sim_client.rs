@@ -10,7 +10,7 @@ use super::{
     reference::PrivateKey,
     sim_net::{ExecMutScope, Host},
     sim_relay::{SimRelay, map_explode},
-    sim_tunnel::SimTunnel,
+    sim_tunnel::{IoBatching, SimTunnel},
     site_network::{IcmpError, icmp_error_reply},
     transition::{DPort, DnsTransport, Identifier, IpFamily, SPort, Seq},
 };
@@ -25,7 +25,6 @@ use std::{
     net::{IpAddr, SocketAddr},
     time::{Duration, Instant},
 };
-use tun::PacketBatch;
 use tunnel_proto::{
     ClientEvent, ClientState, DNS_SENTINELS_V4, DNS_SENTINELS_V6, DnsMapping, DnsResourceRecord,
     MaliciousBehaviour, MaliciousBehaviourGuard as Guard, dns,
@@ -86,13 +85,14 @@ impl SimClient {
         mut sut: ClientState,
         malicious_behaviour: MaliciousBehaviour,
         os: crate::os::SimulatedOs,
+        io: IoBatching,
         now: Instant,
     ) -> Self {
         sut.set_flow_logs_enabled(true);
 
         Self {
             id,
-            tunnel: SimTunnel::new(sut),
+            tunnel: SimTunnel::new(sut, io),
             malicious_behaviour,
             dns_records: Default::default(),
             dns_by_sentinel: Default::default(),
@@ -147,7 +147,8 @@ impl SimClient {
                 .unwrap(),
         );
         sut.set_flow_logs_enabled(true);
-        let old = std::mem::replace(&mut self.tunnel, SimTunnel::new(sut));
+        let io = self.tunnel.io;
+        let old = std::mem::replace(&mut self.tunnel, SimTunnel::new(sut, io));
 
         self.search_domain = None;
         self.dns_by_sentinel = DnsMapping::default();
@@ -269,11 +270,7 @@ impl SimClient {
     }
 
     pub(crate) fn send(&mut self, packet: IpPacket) {
-        self.tunnel
-            .ends
-            .tun_inbound
-            .try_send(PacketBatch::new(packet))
-            .expect("TUN channel has room");
+        self.tunnel.read_from_tun(packet);
     }
 
     pub(crate) fn send_probe(&mut self, id: ProbeId, packet: IpPacket, now: Instant) {

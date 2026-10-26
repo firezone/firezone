@@ -7,15 +7,29 @@ use std::{
     time::Instant,
 };
 
+use ip_packet::IpPacket;
 use itertools::Itertools as _;
 use snownet::Transmit;
 use socket_factory::{DatagramBatch, DatagramOut};
+use tun::PacketBatch;
 use tunnel::{ClientState, FakeTunnelEnds, ResolverQuery, Role, Tunnel};
+
+/// How the OS around a tunnel hands it what it reads.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct IoBatching {
+    /// Whether one TUN read returns all packets that are ready, instead of one.
+    pub(crate) tun_reads: bool,
+    /// Whether the sockets coalesce received datagrams like Linux GRO.
+    pub(crate) gro: bool,
+}
 
 /// A tunnel and the OS around it: its TUN device and its sockets.
 pub(crate) struct SimTunnel<R> {
     inner: Tunnel<R>,
     pub(crate) ends: FakeTunnelEnds,
+    pub(crate) io: IoBatching,
+    /// The packets the TUN device reads on the next poll.
+    pending_tun_reads: Vec<IpPacket>,
     /// The deadline the tunnel asked to be woken at when it last went idle.
     pub(crate) alarm: Option<Instant>,
     /// Whether the last poll found nothing to do and nothing has touched the tunnel since.
@@ -25,12 +39,14 @@ pub(crate) struct SimTunnel<R> {
 }
 
 impl<R: Role> SimTunnel<R> {
-    pub(crate) fn new(state: R) -> Self {
+    pub(crate) fn new(state: R, io: IoBatching) -> Self {
         let (tunnel, ends) = Tunnel::fake(state);
 
         Self {
             inner: tunnel,
             ends,
+            io,
+            pending_tun_reads: Vec::new(),
             alarm: None,
             idle: false,
             woken_since_idle: Arc::default(),
@@ -47,6 +63,11 @@ impl<R: Role> SimTunnel<R> {
         &mut self.inner
     }
 
+    /// Queues `packet` for the TUN device to read.
+    pub(crate) fn read_from_tun(&mut self, packet: IpPacket) {
+        self.pending_tun_reads.push(packet);
+    }
+
     /// Hands `transmits` to the sockets they are addressed to, one batch per socket.
     pub(crate) fn receive(&mut self, transmits: Vec<Transmit>) {
         let by_socket = transmits
@@ -60,16 +81,22 @@ impl<R: Role> SimTunnel<R> {
                 &self.ends.socket_v6
             };
 
-            socket
-                .receive(DatagramBatch::from_datagrams(transmits.map(|transmit| {
-                    DatagramOut {
-                        src: transmit.src,
-                        dst: transmit.dst,
-                        segment_size: transmit.payload.len(),
-                        packet: transmit.payload,
-                        ecn: transmit.ecn,
+            let datagrams =
+                transmits.fold(Vec::<Vec<Transmit>>::new(), |mut datagrams, transmit| {
+                    match datagrams.last_mut() {
+                        Some(segments) if self.io.gro && gro_merges(segments, &transmit) => {
+                            segments.push(transmit)
+                        }
+                        _ => datagrams.push(vec![transmit]),
                     }
-                })))
+
+                    datagrams
+                });
+
+            socket
+                .receive(DatagramBatch::from_datagrams(
+                    datagrams.into_iter().map(coalesce),
+                ))
                 .expect("socket channel has room");
         }
     }
@@ -93,6 +120,8 @@ impl<R: Role> SimTunnel<R> {
     ///
     /// Returns the event it emitted and whether it has more to do at `now`.
     pub(crate) fn poll_event(&mut self, now: Instant) -> (Option<R::Event>, bool) {
+        self.flush_tun_reads();
+
         if self.alarm.is_some_and(|alarm| alarm <= now) {
             self.alarm = None;
             self.idle = false;
@@ -135,6 +164,31 @@ impl<R: Role> SimTunnel<R> {
 
         (None, self.alarm.is_some_and(|alarm| alarm <= now))
     }
+
+    /// Hands the queued packets to the TUN device's channel, as many per read as a real device
+    /// returns if [`IoBatching::tun_reads`] is set and one otherwise.
+    fn flush_tun_reads(&mut self) {
+        let mut batches = Vec::<PacketBatch>::new();
+
+        for packet in self.pending_tun_reads.drain(..) {
+            let packet = match batches.last_mut() {
+                Some(batch) if self.io.tun_reads => match batch.try_push(packet) {
+                    Ok(()) => continue,
+                    Err(packet) => packet,
+                },
+                _ => packet,
+            };
+
+            batches.push(PacketBatch::new(packet));
+        }
+
+        for batch in batches {
+            self.ends
+                .tun_inbound
+                .try_send(batch)
+                .expect("TUN channel has room");
+        }
+    }
 }
 
 impl SimTunnel<ClientState> {
@@ -144,6 +198,43 @@ impl SimTunnel<ClientState> {
         while self.poll_event(now).1 {}
 
         self.take_sent()
+    }
+}
+
+/// Whether Linux GRO appends `next` to the datagram made of `segments`.
+fn gro_merges(segments: &[Transmit], next: &Transmit) -> bool {
+    let (Some(first), Some(last)) = (segments.first(), segments.last()) else {
+        return false;
+    };
+    let segment_size = first.payload.len();
+    let len = segments
+        .iter()
+        .map(|segment| segment.payload.len())
+        .sum::<usize>();
+
+    first.src == next.src
+        && first.dst == next.dst
+        && first.ecn == next.ecn
+        && last.payload.len() == segment_size
+        && (1..=segment_size).contains(&next.payload.len())
+        && len + next.payload.len() <= DatagramOut::max_len(next.dst, segment_size)
+}
+
+/// Builds the datagram a socket receives for `segments`, coalesced as by GRO.
+fn coalesce(segments: Vec<Transmit>) -> DatagramOut {
+    let first = &segments[0];
+    let len = segments.iter().map(|segment| segment.payload.len()).sum();
+    let mut packet = bufferpool::Bytes::fitting(len);
+    for segment in &segments {
+        packet.extend_from_slice(&segment.payload);
+    }
+
+    DatagramOut {
+        src: first.src,
+        dst: first.dst,
+        segment_size: first.payload.len(),
+        packet,
+        ecn: first.ecn,
     }
 }
 

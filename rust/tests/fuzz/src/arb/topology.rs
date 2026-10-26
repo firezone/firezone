@@ -25,6 +25,7 @@ use crate::ref_gateway::RefGateway;
 use crate::reference::ReferenceState;
 use crate::resource::{CidrResource, DevicePoolResource, DnsResource, InternetResource};
 use crate::sim_net::{EdgeConfig, Expiry, FilterMode, Host, Mapping, RoutingTable};
+use crate::sim_tunnel::IoBatching;
 use crate::site_network::{IcmpError, RouteType, Routes};
 use crate::stub_portal::{PoolMembers, StubPortal};
 
@@ -382,6 +383,7 @@ fn arb_client_host(
     let send_untracked_icmp_errors = g.bool();
     let os = arb_simulated_os(g);
     let ignore_no_authorization_events = g.bool();
+    let io = arb_io_batching(g);
 
     let inner = RefClient::new(
         id,
@@ -396,6 +398,7 @@ fn arb_client_host(
             ignore_no_authorization_events,
         },
         os,
+        io,
     );
 
     let (ip4, ip6) = arb_socket_ip_stack(g);
@@ -423,6 +426,7 @@ fn arb_gateways(
                 site.routes,
                 site_specific,
                 site.unresolvable_names,
+                arb_io_batching(g),
             );
             let latency = g.latency(200);
             let edge = arb_edge_config(g);
@@ -431,6 +435,13 @@ fn arb_gateways(
             (id, host)
         })
         .collect::<BTreeMap<_, _>>()
+}
+
+fn arb_io_batching(g: &mut Generator) -> IoBatching {
+    IoBatching {
+        tun_reads: g.bool(),
+        gro: g.bool(),
+    }
 }
 
 fn arb_simulated_os(g: &mut Generator) -> SimulatedOs {
