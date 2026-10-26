@@ -561,7 +561,9 @@ defmodule PortalWeb.OIDCController do
   end
 
   # Google and Okta consistently return email_verified=true, so we enforce the claim
-  # to surface any misbehavior. Entra does not set email_verified, so we cannot check it.
+  # to surface any misbehavior. Entra does not set email_verified, and B2B guests
+  # and their home tenants control the email and preferred_username claims, so the
+  # first link of an Entra identity always requires proof.
   # Generic OIDC providers send it inconsistently, so we let the admin choose via
   # email_verification_method (none/claim/proof).
   # GitHub never re-checks an address after verifying it once, and the customer does
@@ -578,6 +580,7 @@ defmodule PortalWeb.OIDCController do
 
   defp email_verification_method(%Portal.GitHub.AuthProvider{}), do: :proof
   defp email_verification_method(%Portal.Okta.AuthProvider{}), do: :claim
+  defp email_verification_method(%Portal.Entra.AuthProvider{}), do: :proof
 
   defp email_verification_method(%Portal.OIDC.AuthProvider{email_verification_method: method}),
     do: method
@@ -2222,7 +2225,7 @@ defmodule PortalWeb.OIDCController do
       with {:ok, id} <- Ecto.UUID.cast(id),
            %AuthProvider{type: type} <-
              from(p in AuthProvider,
-               where: p.account_id == ^account_id and p.id == ^id and p.type in [:oidc, :github]
+               where: p.account_id == ^account_id and p.id == ^id and p.type in [:oidc, :github, :entra]
              )
              |> Safe.unscoped()
              |> Safe.one() do
