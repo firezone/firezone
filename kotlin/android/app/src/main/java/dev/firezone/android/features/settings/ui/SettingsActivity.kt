@@ -57,7 +57,7 @@ internal class SettingsActivity : AppCompatActivity() {
                     config = viewModel.config,
                     cloudRegion = viewModel.cloudRegion,
                     managedStatus = managedStatus ?: ManagedConfigStatus.NOTHING_MANAGED,
-                    isSaveEnabled = uiState.isSaveButtonEnabled,
+                    savablePages = uiState.savablePages,
                     logSizeBytes = uiState.logSizeBytes,
                     deviceTrustState = deviceTrustState,
                     // The page exists where a certificate is required or one was found, and
@@ -81,7 +81,7 @@ internal class SettingsActivity : AppCompatActivity() {
                     onLogsShown = { viewModel.onViewResume(applicationContext) },
                     onSelectCertificate = ::chooseCertificate,
                     onDeviceTrustShown = deviceTrustViewModel::loadDetails,
-                    onSave = viewModel::onSaveSettingsCompleted,
+                    onSave = viewModel::save,
                     onCancel = viewModel::onCancel,
                 )
             }

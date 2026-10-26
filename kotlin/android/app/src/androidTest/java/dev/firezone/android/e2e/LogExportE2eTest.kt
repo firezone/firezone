@@ -75,7 +75,7 @@ class LogExportE2eTest {
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK),
         )
 
-        clickTextOnScreen(context.getString(R.string.log_settings_title))
+        clickTextOnScreen(context.getString(R.string.diagnostics_settings_title))
         // Export stays disabled until the page has measured the logs.
         awaitTextOnScreen(Formatter.formatShortFileSize(context, log.length()))
         clickButton(context.getString(R.string.share_diagnostic_logs))

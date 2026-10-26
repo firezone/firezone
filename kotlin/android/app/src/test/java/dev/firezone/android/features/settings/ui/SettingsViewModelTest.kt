@@ -8,6 +8,7 @@ import android.os.Bundle
 import android.os.Looper
 import dev.firezone.android.core.data.Repository
 import dev.firezone.android.core.data.model.CloudRegion
+import dev.firezone.android.features.settings.ui.compose.SettingsPage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
@@ -62,7 +63,7 @@ class SettingsViewModelTest {
         repository.addFavoriteResource(FAVORITE_ID)
 
         viewModel.resetSettingsToDefaults()
-        viewModel.onSaveSettingsCompleted()
+        viewModel.save(SettingsPage.GENERAL)
         shadowOf(Looper.getMainLooper()).idle()
 
         assertTrue(
@@ -97,7 +98,7 @@ class SettingsViewModelTest {
         populateFields()
 
         viewModel.onCloudRegionChanged(CloudRegion.EU)
-        viewModel.onSaveSettingsCompleted()
+        viewModel.save(SettingsPage.GENERAL)
         shadowOf(Looper.getMainLooper()).idle()
 
         assertEquals("https://eu.app.firezone.dev", repository.getConfigSync().authUrl)
@@ -137,7 +138,7 @@ class SettingsViewModelTest {
         viewModel.onCloudRegionChanged(CloudRegion.CUSTOM)
         viewModel.onValidateAuthUrl("https://firezone.example.com")
         viewModel.onValidateApiUrl("wss://api.firezone.example.com")
-        viewModel.onSaveSettingsCompleted()
+        viewModel.save(SettingsPage.GENERAL)
         shadowOf(Looper.getMainLooper()).idle()
 
         assertEquals(CloudRegion.CUSTOM, viewModel.cloudRegion)
@@ -172,10 +173,24 @@ class SettingsViewModelTest {
         populateFields()
 
         viewModel.onValidateLogFilter("debug")
-        viewModel.onSaveSettingsCompleted()
+        viewModel.save(SettingsPage.LOGS)
         shadowOf(Looper.getMainLooper()).idle()
 
         assertEquals("debug", repository.getConfigSync().logFilter)
+    }
+
+    @Test
+    fun `saving the settings page does not write the edited log filter`() {
+        populateFields()
+        val savedLogFilter = viewModel.config.logFilter
+
+        viewModel.onValidateAccountSlug("example-corp")
+        viewModel.onValidateLogFilter("firezone=trace")
+        save()
+
+        assertEquals("example-corp", repository.getConfigSync().accountSlug)
+        assertEquals(savedLogFilter, repository.getConfigSync().logFilter)
+        assertEquals(SettingsViewModel.ViewAction.NavigateBack, viewModel.actionStateFlow.value)
     }
 
     @Test
@@ -246,7 +261,7 @@ class SettingsViewModelTest {
         }
 
     private fun save() {
-        viewModel.onSaveSettingsCompleted()
+        viewModel.save(SettingsPage.GENERAL)
         shadowOf(Looper.getMainLooper()).idle()
     }
 

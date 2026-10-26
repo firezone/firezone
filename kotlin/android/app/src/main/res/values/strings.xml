@@ -14,7 +14,6 @@
 	</string>
 	<string name="settings_save_warning_confirm">Okay</string>
 	<!-- General Settings -->
-	<string name="general_settings_title">General</string>
 	<string name="settings_section_sign_in">Sign-in</string>
 	<string name="settings_section_startup">Startup</string>
 	<string name="account_slug">Account Slug</string>
@@ -30,6 +29,7 @@
 	<!-- Device Trust Settings -->
 	<string name="device_trust_settings_title">Device Trust</string>
 	<!-- Diagnostic Logs Settings -->
+	<string name="diagnostics_settings_title">Diagnostics</string>
 	<string name="log_settings_title">Logs</string>
 	<string name="log_filter">Log Filter</string>
 	<string name="share_diagnostic_logs">Export Logs</string>

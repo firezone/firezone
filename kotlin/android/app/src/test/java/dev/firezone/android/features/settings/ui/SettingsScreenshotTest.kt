@@ -3,8 +3,9 @@ package dev.firezone.android.features.settings.ui
 
 import android.app.Application
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.isSelectable
 import androidx.compose.ui.test.junit4.createComposeRule
-import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import com.github.takahirom.roborazzi.ExperimentalRoborazziApi
 import com.github.takahirom.roborazzi.captureScreenRoboImage
@@ -13,6 +14,7 @@ import dev.firezone.android.R
 import dev.firezone.android.STORE_SCREENSHOT_QUALIFIERS
 import dev.firezone.android.core.data.model.CloudRegion
 import dev.firezone.android.core.data.model.ManagedConfigStatus
+import dev.firezone.android.features.settings.ui.compose.SettingsPage
 import dev.firezone.android.features.settings.ui.compose.SettingsScreen
 import dev.firezone.android.ui.theme.FirezoneTheme
 import org.junit.Rule
@@ -38,13 +40,13 @@ class SettingsScreenshotTest {
     val composeRule = createComposeRule()
 
     @Test
-    fun generalSettings() = captureSettingsPage("settings-general", R.string.general_settings_title)
+    fun generalSettings() = captureSettingsPage("settings-general", R.string.settings_title)
 
     @Test
     fun generalSettingsCustom() =
         captureSettingsPage(
             "settings-general-custom",
-            R.string.general_settings_title,
+            R.string.settings_title,
             config = selfHostedConfig,
             cloudRegion = CloudRegion.CUSTOM,
         )
@@ -53,7 +55,7 @@ class SettingsScreenshotTest {
     fun generalSettingsManaged() =
         captureSettingsPage(
             "settings-general-managed",
-            R.string.general_settings_title,
+            R.string.settings_title,
             config = euConfig,
             cloudRegion = CloudRegion.EU,
             managedStatus = urlsManaged,
@@ -69,7 +71,7 @@ class SettingsScreenshotTest {
     fun deviceTrustSettingsWithExpiredCertificate() = captureDeviceTrustPage("device-trust-expired", expiredCertificate)
 
     @Test
-    fun logSettings() = captureSettingsPage("settings-logs", R.string.log_settings_title)
+    fun logSettings() = captureSettingsPage("settings-logs", R.string.diagnostics_settings_title)
 
     private fun captureDeviceTrustPage(
         name: String,
@@ -86,7 +88,7 @@ class SettingsScreenshotTest {
         managedStatus: ManagedConfigStatus = ManagedConfigStatus.NOTHING_MANAGED,
     ) {
         composeRule.setContent { FirezoneTheme { SettingsScreenSample(deviceTrustState, config, cloudRegion, managedStatus) } }
-        composeRule.onNodeWithText(RuntimeEnvironment.getApplication().getString(tabLabel)).performClick()
+        composeRule.onNode(hasText(RuntimeEnvironment.getApplication().getString(tabLabel)) and isSelectable()).performClick()
         composeRule.waitForIdle()
 
         captureScreenRoboImage("${roborazziSystemPropertyOutputDirectory()}/$name.png")
@@ -197,7 +199,7 @@ private fun SettingsScreenSample(
         config = config,
         cloudRegion = cloudRegion,
         managedStatus = managedStatus,
-        isSaveEnabled = true,
+        savablePages = setOf(SettingsPage.GENERAL, SettingsPage.LOGS),
         logSizeBytes = LOG_DIRECTORY_BYTES,
         deviceTrustState = deviceTrustState,
         showDeviceTrust = deviceTrustState.alias != null,

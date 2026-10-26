@@ -36,14 +36,14 @@ import dev.firezone.android.features.settings.ui.DeviceTrustSettingsViewModel
 import dev.firezone.android.ui.FirezoneIcons
 import kotlinx.coroutines.launch
 
-/** A settings page and how the navigation bar names it. */
+/** A settings page and how the title and navigation bar name it. */
 internal enum class SettingsPage(
     val labelRes: Int,
     val icon: ImageVector,
 ) {
-    GENERAL(R.string.general_settings_title, FirezoneIcons.DiscoverTune),
+    GENERAL(R.string.settings_title, FirezoneIcons.DiscoverTune),
     DEVICE_TRUST(R.string.device_trust_settings_title, FirezoneIcons.VerifiedUser),
-    LOGS(R.string.log_settings_title, FirezoneIcons.Description),
+    LOGS(R.string.diagnostics_settings_title, FirezoneIcons.Description),
 }
 
 /** The pages to show, in order. */
@@ -64,7 +64,7 @@ internal fun SettingsScreen(
     config: Config,
     cloudRegion: CloudRegion,
     managedStatus: ManagedConfigStatus,
-    isSaveEnabled: Boolean,
+    savablePages: Set<SettingsPage>,
     logSizeBytes: Long,
     deviceTrustState: DeviceTrustSettingsViewModel.UiState,
     showDeviceTrust: Boolean,
@@ -82,7 +82,7 @@ internal fun SettingsScreen(
     onLogsShown: () -> Unit,
     onSelectCertificate: () -> Unit,
     onDeviceTrustShown: () -> Unit,
-    onSave: () -> Unit,
+    onSave: (SettingsPage) -> Unit,
     onCancel: () -> Unit,
     modifier: Modifier = Modifier,
     buildSha: String = stringResource(R.string.git_sha),
@@ -111,7 +111,7 @@ internal fun SettingsScreen(
                     TopAppBarDefaults.centerAlignedTopAppBarColors(
                         containerColor = MaterialTheme.colorScheme.background,
                     ),
-                title = { Text(stringResource(R.string.settings_title)) },
+                title = { Text(stringResource((currentPage ?: SettingsPage.GENERAL).labelRes)) },
                 navigationIcon = {
                     // Brand orange marks the call to action, which on this bar is Save.
                     TextButton(
@@ -123,8 +123,14 @@ internal fun SettingsScreen(
                 },
                 actions = {
                     TextButton(
-                        onClick = { if (warnBeforeSaving) showSaveWarning = true else onSave() },
-                        enabled = isSaveEnabled,
+                        onClick = {
+                            if (currentPage == SettingsPage.GENERAL && warnBeforeSaving) {
+                                showSaveWarning = true
+                            } else if (currentPage != null) {
+                                onSave(currentPage)
+                            }
+                        },
+                        enabled = currentPage != null && currentPage in savablePages,
                     ) {
                         Text(stringResource(R.string.save))
                     }
@@ -194,7 +200,7 @@ internal fun SettingsScreen(
                 TextButton(
                     onClick = {
                         showSaveWarning = false
-                        onSave()
+                        onSave(SettingsPage.GENERAL)
                     },
                 ) {
                     Text(stringResource(R.string.settings_save_warning_confirm))

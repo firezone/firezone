@@ -15,6 +15,7 @@ import dev.firezone.android.core.data.Repository
 import dev.firezone.android.core.data.model.CloudRegion
 import dev.firezone.android.core.data.model.Config
 import dev.firezone.android.core.data.model.ManagedConfigStatus
+import dev.firezone.android.features.settings.ui.compose.SettingsPage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -106,16 +107,28 @@ internal class SettingsViewModel
             }
         }
 
-        fun onSaveSettingsCompleted() {
+        // Saves only the given page; unsaved edits on the other page are discarded with the screen.
+        fun save(page: SettingsPage) {
+            val toSave =
+                when (page) {
+                    SettingsPage.GENERAL -> config.copy(logFilter = savedConfig.logFilter)
+                    SettingsPage.LOGS -> savedConfig.copy(logFilter = config.logFilter)
+                    SettingsPage.DEVICE_TRUST -> return
+                }
+
             // Only URLs the user typed are worth offering again; managed ones come back by themselves.
             val managedStatus = repo.getManagedStatus()
-            if (cloudRegion == CloudRegion.CUSTOM && !managedStatus.isAuthUrlManaged && !managedStatus.isApiUrlManaged) {
+            if (page == SettingsPage.GENERAL &&
+                cloudRegion == CloudRegion.CUSTOM &&
+                !managedStatus.isAuthUrlManaged &&
+                !managedStatus.isApiUrlManaged
+            ) {
                 repo.saveLastCustomUrlsSync(config.authUrl, config.apiUrl)
             }
 
             viewModelScope.launch {
-                repo.saveSettings(config).collect {
-                    if (shouldResetFavoritesOnSave) {
+                repo.saveSettings(toSave).collect {
+                    if (page == SettingsPage.GENERAL && shouldResetFavoritesOnSave) {
                         repo.resetFavorites()
                         shouldResetFavoritesOnSave = false
                     }
@@ -224,7 +237,8 @@ internal class SettingsViewModel
         }
 
         fun resetSettingsToDefaults() {
-            config = repo.getDefaultConfigSync()
+            // The log filter lives on the diagnostics page, so this page's reset leaves it alone.
+            config = repo.getDefaultConfigSync().copy(logFilter = config.logFilter)
             shouldResetFavoritesOnSave = true
             _managedStatusStateFlow.value = repo.getManagedStatus()
             cloudRegion = detectCloudRegion()
@@ -281,14 +295,19 @@ internal class SettingsViewModel
         private fun onFieldUpdated() {
             _uiState.value =
                 _uiState.value.copy(
-                    isSaveButtonEnabled = areFieldsValid(),
+                    savablePages =
+                        buildSet {
+                            val settingsChanged =
+                                shouldResetFavoritesOnSave || config.copy(logFilter = savedConfig.logFilter) != savedConfig
+                            if (settingsChanged && URLUtil.isValidUrl(config.authUrl) && isUriValid(config.apiUrl)) {
+                                add(SettingsPage.GENERAL)
+                            }
+                            if (config.logFilter != savedConfig.logFilter && config.logFilter.isNotBlank()) {
+                                add(SettingsPage.LOGS)
+                            }
+                        },
                 )
         }
-
-        private fun areFieldsValid(): Boolean =
-            URLUtil.isValidUrl(config.authUrl) &&
-                isUriValid(config.apiUrl) &&
-                config.logFilter.isNotBlank()
 
         private fun isUriValid(uri: String): Boolean =
             try {
@@ -299,7 +318,7 @@ internal class SettingsViewModel
             }
 
         internal data class UiState(
-            val isSaveButtonEnabled: Boolean = false,
+            val savablePages: Set<SettingsPage> = emptySet(),
             val logSizeBytes: Long = 0,
         )
 
