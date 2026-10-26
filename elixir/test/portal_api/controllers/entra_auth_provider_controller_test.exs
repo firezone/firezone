@@ -55,8 +55,7 @@ defmodule PortalAPI.EntraAuthProviderControllerTest do
       account: account,
       actor: actor
     } do
-      # Entra is a singleton auth provider per account, so this only
-      # exercises the metadata shape, not multi-page cursoring.
+      # A single provider is sufficient to exercise the metadata shape.
       entra_provider_fixture(account: account)
 
       conn =
@@ -87,9 +86,6 @@ defmodule PortalAPI.EntraAuthProviderControllerTest do
                json_response(conn, 400)
     end
 
-    # This provider type is limited to one per account by a unique index
-    # on account_id, so the filter can only be exercised against a single
-    # local provider. The empty-result test below covers exclusion.
     test "filters by name", %{conn: conn, account: account, actor: actor} do
       match = entra_provider_fixture(account: account, name: "Corp SSO")
 
@@ -159,7 +155,8 @@ defmodule PortalAPI.EntraAuthProviderControllerTest do
       assert %{"data" => data} = json_response(conn, 200)
       assert data["id"] == provider.id
       assert data["account_id"] == account.id
-      assert data["issuer"] == provider.issuer
+      assert data["tenant_ids"] == provider.tenant_ids
+      refute Map.has_key?(data, "issuer")
     end
 
     test "returns not found for unknown id", %{conn: conn, actor: actor} do

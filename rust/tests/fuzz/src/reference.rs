@@ -1,6 +1,6 @@
 use super::dns_records::DnsRecords;
 use super::probe::{
-    ExpectedOutcome, ExpectedProbe, FlowId, IcmpFlow, KnownLoss, ProbeId, ProbeRequest,
+    Answer, ExpectedOutcome, ExpectedProbe, FlowId, IcmpFlow, KnownLoss, ProbeId, ProbeRequest,
     RejectionRemote, RejectionResponse, Remote, Route, TcpFlow, TraceRequirement, UdpFlow,
 };
 use super::{ref_client::*, ref_gateway::*, sim_net::*, stub_portal::StubPortal, transition::*};
@@ -250,21 +250,25 @@ impl ReferenceState {
                 identifier,
                 probe_id,
             } => {
-                let outcome = self.record_probe(
+                let request = ProbeRequest::Icmp {
+                    src: *src,
+                    dst: dst.clone(),
+                    seq: *seq,
+                    identifier: *identifier,
+                };
+                let (outcome, authorization) = self.verdict(portal, *client_id, &request);
+                self.record_probe(
                     portal,
                     *probe_id,
                     *client_id,
-                    ProbeRequest::Icmp {
-                        src: *src,
-                        dst: dst.clone(),
-                        seq: *seq,
-                        identifier: *identifier,
-                    },
+                    request,
                     now,
+                    outcome,
+                    authorization,
                 );
 
                 match outcome {
-                    ExpectedOutcome::RoundTripCompleted(route) => {
+                    ExpectedOutcome::RoundTripCompleted(route, _) => {
                         let flow = IcmpFlow {
                             client_id: *client_id,
                             src: *src,
@@ -296,7 +300,21 @@ impl ReferenceState {
                     flow.clone()
                 };
 
-                match self.record_icmp_probe(portal, *probe_id, &flow, *seq, now) {
+                let request = ProbeRequest::Icmp {
+                    src: flow.src,
+                    dst: flow.dst,
+                    seq: *seq,
+                    identifier: flow.identifier,
+                };
+
+                match self.record_flow_probe(
+                    portal,
+                    *probe_id,
+                    flow.client_id,
+                    flow.route,
+                    request,
+                    now,
+                ) {
                     ExpectedOutcome::RoundTripCompleted { .. } => {}
                     ExpectedOutcome::Dropped => {
                         panic!("reused ICMP route must complete a round trip")
@@ -319,21 +337,25 @@ impl ReferenceState {
                 dport,
                 probe_id,
             } => {
-                let outcome = self.record_probe(
+                let request = ProbeRequest::Udp {
+                    src: *src,
+                    dst: dst.clone(),
+                    sport: *sport,
+                    dport: *dport,
+                };
+                let (outcome, authorization) = self.verdict(portal, *client_id, &request);
+                self.record_probe(
                     portal,
                     *probe_id,
                     *client_id,
-                    ProbeRequest::Udp {
-                        src: *src,
-                        dst: dst.clone(),
-                        sport: *sport,
-                        dport: *dport,
-                    },
+                    request,
                     now,
+                    outcome,
+                    authorization,
                 );
 
                 match outcome {
-                    ExpectedOutcome::RoundTripCompleted(route) => {
+                    ExpectedOutcome::RoundTripCompleted(route, _) => {
                         let flow = UdpFlow {
                             client_id: *client_id,
                             src: *src,
@@ -356,7 +378,21 @@ impl ReferenceState {
                     .expect("reused UDP flow must exist")
                     .clone();
 
-                match self.record_udp_probe(portal, *probe_id, &flow, now) {
+                let request = ProbeRequest::Udp {
+                    src: flow.src,
+                    dst: flow.dst,
+                    sport: flow.sport,
+                    dport: flow.dport,
+                };
+
+                match self.record_flow_probe(
+                    portal,
+                    *probe_id,
+                    flow.client_id,
+                    flow.route,
+                    request,
+                    now,
+                ) {
                     ExpectedOutcome::RoundTripCompleted { .. } => {}
                     ExpectedOutcome::Dropped => {
                         panic!("reused UDP route must complete a round trip")
@@ -386,20 +422,11 @@ impl ReferenceState {
                     dport: *dport,
                     write_len: None,
                 };
-                let outcome = self.dispatch(
-                    portal,
-                    *client_id,
-                    request.source(),
-                    request.destination(),
-                    request.protocol(),
-                );
-                self.clients
-                    .get_mut(client_id)
-                    .unwrap()
-                    .exec_mut(|client| client.note_sent(outcome.remote(), now));
-
+                let (outcome, authorization) = self.verdict(portal, *client_id, &request);
                 let outcome = match outcome {
-                    ExpectedOutcome::RoundTripCompleted(route) if self.serves_tcp(dst, *dport) => {
+                    ExpectedOutcome::RoundTripCompleted(route, _)
+                        if self.serves_tcp(dst, *dport) =>
+                    {
                         let flow = TcpFlow {
                             client_id: *client_id,
                             src: *src,
@@ -413,11 +440,21 @@ impl ReferenceState {
 
                         outcome
                     }
-                    ExpectedOutcome::RoundTripCompleted(route) => reset_by(route),
+                    ExpectedOutcome::RoundTripCompleted(route, _) => {
+                        ExpectedOutcome::RoundTripCompleted(route, Answer::Reset)
+                    }
                     ExpectedOutcome::Dropped => outcome,
                     ExpectedOutcome::Rejected { .. } => outcome,
                 };
-                self.record_expected_probe(portal, *probe_id, *client_id, request, now, outcome);
+                self.record_probe(
+                    portal,
+                    *probe_id,
+                    *client_id,
+                    request,
+                    now,
+                    outcome,
+                    authorization,
+                );
             }
             Transition::SendTcpData {
                 flow_id,
@@ -436,20 +473,9 @@ impl ReferenceState {
                     dport: flow.dport,
                     write_len: Some(*len),
                 };
-                let outcome = self.dispatch(
-                    portal,
-                    flow.client_id,
-                    request.source(),
-                    request.destination(),
-                    request.protocol(),
-                );
-                self.clients
-                    .get_mut(&flow.client_id)
-                    .unwrap()
-                    .exec_mut(|client| client.note_sent(outcome.remote(), now));
-
+                let (outcome, authorization) = self.verdict(portal, flow.client_id, &request);
                 let outcome = match outcome {
-                    ExpectedOutcome::RoundTripCompleted(route)
+                    ExpectedOutcome::RoundTripCompleted(route, _)
                         if route.remote() == flow.route.remote() =>
                     {
                         self.tcp_flows.insert(
@@ -460,19 +486,22 @@ impl ReferenceState {
                             },
                         );
 
-                        outcome
+                        ExpectedOutcome::RoundTripCompleted(route, Answer::WriteEchoed)
                     }
-                    ExpectedOutcome::RoundTripCompleted(route) => reset_by(route),
+                    ExpectedOutcome::RoundTripCompleted(route, _) => {
+                        ExpectedOutcome::RoundTripCompleted(route, Answer::WriteReset)
+                    }
                     ExpectedOutcome::Dropped => outcome,
                     ExpectedOutcome::Rejected { .. } => outcome,
                 };
-                self.record_expected_probe(
+                self.record_probe(
                     portal,
                     *probe_id,
                     flow.client_id,
                     request,
                     now,
                     outcome,
+                    authorization,
                 );
             }
             Transition::UpdateSystemDnsServers { servers } => {
@@ -724,41 +753,8 @@ impl ReferenceState {
         }
     }
 
-    fn record_icmp_probe(
-        &mut self,
-        portal: &StubPortal,
-        id: ProbeId,
-        flow: &IcmpFlow,
-        seq: Seq,
-        sent_at: Instant,
-    ) -> ExpectedOutcome {
-        let request = ProbeRequest::Icmp {
-            src: flow.src,
-            dst: flow.dst.clone(),
-            seq,
-            identifier: flow.identifier,
-        };
-
-        self.record_flow_probe(portal, id, flow.client_id, flow.route, request, sent_at)
-    }
-
-    fn record_udp_probe(
-        &mut self,
-        portal: &StubPortal,
-        id: ProbeId,
-        flow: &UdpFlow,
-        sent_at: Instant,
-    ) -> ExpectedOutcome {
-        let request = ProbeRequest::Udp {
-            src: flow.src,
-            dst: flow.dst.clone(),
-            sport: flow.sport,
-            dport: flow.dport,
-        };
-
-        self.record_flow_probe(portal, id, flow.client_id, flow.route, request, sent_at)
-    }
-
+    /// Follows a packet on a flow the client keeps sending on, bound to the route it took
+    /// when it was created.
     fn record_flow_probe(
         &mut self,
         portal: &StubPortal,
@@ -768,62 +764,45 @@ impl ReferenceState {
         request: ProbeRequest,
         sent_at: Instant,
     ) -> ExpectedOutcome {
-        // A retained flow completes its round trip; asking the portal again only refreshes
-        // the authorization a peer that reconnected since took from us.
-        if let Route::Peer(peer) = route {
-            let _ = self.pool_towards_peer(portal, origin, peer, request.protocol());
-        }
+        let (outcome, authorization) = match route {
+            Route::Resource { resource, gateway } => self.resource_verdict(
+                portal,
+                origin,
+                resource,
+                gateway,
+                request.source(),
+                request.destination(),
+                request.protocol(),
+            ),
+            Route::Gateway(_) => (
+                ExpectedOutcome::RoundTripCompleted(route, Answer::Echo),
+                None,
+            ),
+            // A retained flow completes its round trip; asking the portal again only refreshes
+            // the authorization a peer that reconnected since took from us.
+            Route::Peer(peer) => {
+                let authorization =
+                    match self.pool_towards_peer(portal, origin, peer, request.protocol()) {
+                        Ok(PoolTowardsPeer::Granted(pool)) => {
+                            Some(Authorization::Peer { peer, pool })
+                        }
+                        Ok(PoolTowardsPeer::Held(_)) => None,
+                        Err(_) => None,
+                    };
 
-        self.clients.get_mut(&origin).unwrap().exec_mut(|client| {
-            if let Route::Resource { resource, gateway } = route {
-                client.connect_to_resource(resource, gateway, request.destination().clone());
+                (
+                    ExpectedOutcome::RoundTripCompleted(route, Answer::Echo),
+                    authorization,
+                )
             }
-            client.note_sent(Some(route.remote()), sent_at);
-        });
-
-        // Each time the client resolves a domain again, the Gateway does too and stops
-        // translating for an address family the domain no longer has.
-        let outcome = match (route, request.destination()) {
-            (Route::Resource { resource, gateway }, Destination::DomainName { name, .. })
-                if self.clients[&origin]
-                    .inner()
-                    .dns_resource_resolution(resource, name)
-                    .is_some_and(|records| {
-                        !records.contains(&address_record_type(request.source()))
-                    }) =>
-            {
-                ExpectedOutcome::Rejected {
-                    by: RejectionRemote::Gateway(gateway),
-                    response: RejectionResponse::Unreachable,
-                }
-            }
-            // The Gateway filters every packet by the CIDR routes it still authorizes, so a
-            // flow that only another resource's filters let through is rejected once that
-            // resource is gone.
-            (Route::Resource { resource, gateway }, dst)
-                if !self.clients[&origin]
-                    .inner()
-                    .strict_resource_filter_allows(resource, request.protocol())
-                    && !dst.ip_addr().is_some_and(|ip| {
-                        portal.gateway_cidr_authorization_allows(
-                            origin,
-                            gateway,
-                            ip,
-                            request.protocol(),
-                        )
-                    }) =>
-            {
-                ExpectedOutcome::Rejected {
-                    by: RejectionRemote::Gateway(gateway),
-                    response: RejectionResponse::Prohibited,
-                }
-            }
-            _ => ExpectedOutcome::RoundTripCompleted(route),
         };
+        self.record_probe(portal, id, origin, request, sent_at, outcome, authorization);
 
-        self.record_expected_probe(portal, id, origin, request, sent_at, outcome)
+        outcome
     }
 
+    /// Records that `origin` sent `request`, the authorization it holds afterwards and the
+    /// outcome to expect.
     fn record_probe(
         &mut self,
         portal: &StubPortal,
@@ -831,31 +810,15 @@ impl ReferenceState {
         origin: ClientId,
         request: ProbeRequest,
         sent_at: Instant,
-    ) -> ExpectedOutcome {
-        let outcome = self.dispatch(
-            portal,
-            origin,
-            request.source(),
-            request.destination(),
-            request.protocol(),
-        );
+        outcome: ExpectedOutcome,
+        authorization: Option<Authorization>,
+    ) {
+        self.record_authorization(origin, authorization);
         self.clients
             .get_mut(&origin)
             .unwrap()
             .exec_mut(|client| client.note_sent(outcome.remote(), sent_at));
 
-        self.record_expected_probe(portal, id, origin, request, sent_at, outcome)
-    }
-
-    fn record_expected_probe(
-        &mut self,
-        portal: &StubPortal,
-        id: ProbeId,
-        origin: ClientId,
-        request: ProbeRequest,
-        sent_at: Instant,
-        outcome: ExpectedOutcome,
-    ) -> ExpectedOutcome {
         let trace_requirement = self.trace_requirement(portal, origin, outcome, sent_at);
         let previous = self.expected_probes.insert(
             id,
@@ -870,8 +833,6 @@ impl ReferenceState {
         );
 
         assert!(previous.is_none(), "probe IDs must be unique");
-
-        outcome
     }
 
     fn serves_tcp(&self, dst: &Destination, dport: DPort) -> bool {
@@ -886,138 +847,205 @@ impl ReferenceState {
 
     /// Follows a packet from `origin` to its destination: the client picks where it goes,
     /// the portal supplies the gateway or pool, and the remote end accepts or rejects it.
-    fn dispatch(
-        &mut self,
+    fn verdict(
+        &self,
         portal: &StubPortal,
         origin: ClientId,
-        src: IpAddr,
-        dst: &Destination,
-        protocol: Protocol,
-    ) -> ExpectedOutcome {
-        if dst.ip_addr().is_some_and(|ip| ip.is_multicast()) {
-            return ExpectedOutcome::Dropped;
-        }
+        request: &ProbeRequest,
+    ) -> (ExpectedOutcome, Option<Authorization>) {
+        let client = self.clients[&origin].inner();
+        let (src, dst, protocol) = (request.source(), request.destination(), request.protocol());
 
+        if dst.ip_addr().is_some_and(|ip| ip.is_multicast()) {
+            return (ExpectedOutcome::Dropped, None);
+        }
         if dst
             .ip_addr()
-            .is_some_and(|ip| self.clients[&origin].inner().tunnel_ip_for(ip) == ip)
+            .is_some_and(|ip| client.tunnel_ip_for(ip) == ip)
         {
-            return ExpectedOutcome::Dropped;
+            return (ExpectedOutcome::Dropped, None);
         }
-
         if let Some(ip) = dst.ip_addr().filter(|ip| tunnel_proto::is_peer(*ip)) {
-            let client = self.clients[&origin].inner();
             let connected_gateway = portal.gateway_by_ip(ip).filter(|gateway| {
                 client
                     .connected_resources()
                     .any(|resource| client.gateway_for_resource(resource) == Some(*gateway))
             });
             if let Some(gateway) = connected_gateway {
-                return ExpectedOutcome::RoundTripCompleted(Route::Gateway(gateway));
+                return (
+                    ExpectedOutcome::RoundTripCompleted(Route::Gateway(gateway), Answer::Echo),
+                    None,
+                );
             }
 
-            // The portal answers a request for a tunnel IP that no client holds with "not
-            // found", and connlib turns that into an ICMP error. It sends the same error
-            // without asking when none of its pools permits the protocol, and has no route
-            // at all without a pool.
-            let Some(peer) = self.client_ip_to_id().get(&ip).copied() else {
-                if self.clients[&origin].inner().device_pool_ids().is_empty() {
-                    return ExpectedOutcome::Dropped;
-                }
-
-                return ExpectedOutcome::Rejected {
-                    by: RejectionRemote::Local,
-                    response: RejectionResponse::Prohibited,
-                };
-            };
-
-            let pool = match self.pool_towards_peer(portal, origin, peer, protocol) {
-                Ok(pool) => pool,
-                Err(outcome) => return outcome,
-            };
-            if !self.clients[&peer]
-                .inner()
-                .inbound_peer_filter_allows(origin, protocol)
-            {
-                let receiver = self.clients[&peer].inner();
-                let no_authorization = !receiver.has_inbound_peer_authorization(origin)
-                    || receiver.rejected_inbound_peer_filter_allows(origin, protocol);
-                if no_authorization
-                    && !self.clients[&origin]
-                        .inner()
-                        .malicious_behaviour
-                        .ignore_no_authorization_events
-                {
-                    self.apply_peer_authorization(origin, peer, pool);
-                }
-
-                return ExpectedOutcome::Rejected {
-                    by: RejectionRemote::Client(peer),
-                    response: RejectionResponse::Prohibited,
-                };
-            }
-
-            return ExpectedOutcome::RoundTripCompleted(Route::Peer(peer));
+            return self.peer_verdict(portal, origin, ip, protocol);
         }
-
-        let resource = match self.select_resource(origin, src, dst, protocol) {
-            Ok(resource) => resource,
-            Err(outcome) => return outcome,
-        };
-        let Some(gateway) = self.select_gateway(portal, origin, resource) else {
-            return ExpectedOutcome::Dropped;
-        };
-        if let Destination::DomainName { .. } = dst {
-            let resolver = self.gateways[&gateway].inner();
-            let records = &self.global_dns_records;
-            self.clients.get_mut(&origin).unwrap().exec_mut(|client| {
-                client.prepare_dns_resource_connection(resource, |domain| {
-                    resolver
-                        .resolve(domain, records)
-                        .map(|record| record.rtype())
-                        .collect()
-                })
-            });
-        }
-        let rejection = self.gateway_verdict(portal, origin, gateway, resource, src, dst, protocol);
-
-        self.clients
-            .get_mut(&origin)
-            .unwrap()
-            .exec_mut(|client| client.connect_to_resource(resource, gateway, dst.clone()));
-
-        match rejection {
-            Some(response) => ExpectedOutcome::Rejected {
-                by: RejectionRemote::Gateway(gateway),
-                response,
-            },
-            None => ExpectedOutcome::RoundTripCompleted(Route::Resource { resource, gateway }),
-        }
-    }
-
-    /// The resource `origin` sends a packet through.
-    fn select_resource(
-        &self,
-        origin: ClientId,
-        src: IpAddr,
-        dst: &Destination,
-        protocol: Protocol,
-    ) -> Result<ResourceId, ExpectedOutcome> {
-        let client = self.clients[&origin].inner();
 
         let Some(resource) = client.resource_by_dst(src, dst, protocol) else {
-            return Err(ExpectedOutcome::Dropped);
+            return (ExpectedOutcome::Dropped, None);
         };
         if !client.strict_resource_filter_allows(resource, protocol)
             && !client.malicious_behaviour.ignore_resource_filters
         {
-            return Err(ExpectedOutcome::Rejected {
-                by: RejectionRemote::Local,
-                response: RejectionResponse::Prohibited,
-            });
+            return (
+                ExpectedOutcome::Rejected {
+                    by: RejectionRemote::Local,
+                    response: RejectionResponse::Prohibited,
+                },
+                None,
+            );
+        }
+        let Some(gateway) = self.select_gateway(portal, origin, resource) else {
+            return (ExpectedOutcome::Dropped, None);
+        };
+
+        self.resource_verdict(portal, origin, resource, gateway, src, dst, protocol)
+    }
+
+    /// Whether `origin` reaches the peer client at `ip`, which takes an authorization on both
+    /// sides.
+    fn peer_verdict(
+        &self,
+        portal: &StubPortal,
+        origin: ClientId,
+        ip: IpAddr,
+        protocol: Protocol,
+    ) -> (ExpectedOutcome, Option<Authorization>) {
+        let client = self.clients[&origin].inner();
+
+        // The portal answers a request for a tunnel IP that no client holds with "not
+        // found", and connlib turns that into an ICMP error. It sends the same error
+        // without asking when none of its pools permits the protocol, and has no route
+        // at all without a pool.
+        let Some(peer) = self.client_ip_to_id().get(&ip).copied() else {
+            if client.device_pool_ids().is_empty() {
+                return (ExpectedOutcome::Dropped, None);
+            }
+
+            return (
+                ExpectedOutcome::Rejected {
+                    by: RejectionRemote::Local,
+                    response: RejectionResponse::Prohibited,
+                },
+                None,
+            );
+        };
+        let (pool, granted) = match self.pool_towards_peer(portal, origin, peer, protocol) {
+            Ok(PoolTowardsPeer::Held(pool)) => (pool, false),
+            Ok(PoolTowardsPeer::Granted(pool)) => (pool, true),
+            Err(outcome) => return (outcome, None),
+        };
+        let authorization = Authorization::Peer { peer, pool };
+
+        // The receiver judges the packet by the inbound authorizations it holds once the
+        // granted one is installed.
+        let receiver = self.clients[&peer].inner();
+        let inbound_allows = receiver.inbound_peer_filter_allows(origin, protocol)
+            || (granted && receiver.strict_resource_filter_allows(pool, protocol));
+        if inbound_allows {
+            return (
+                ExpectedOutcome::RoundTripCompleted(Route::Peer(peer), Answer::Echo),
+                granted.then_some(authorization),
+            );
         }
 
-        Ok(resource)
+        let no_authorization = !receiver.has_inbound_peer_authorization(origin)
+            || receiver.rejected_inbound_peer_filter_allows(origin, protocol);
+        let requests_authorization = granted
+            || (no_authorization && !client.malicious_behaviour.ignore_no_authorization_events);
+
+        (
+            ExpectedOutcome::Rejected {
+                by: RejectionRemote::Client(peer),
+                response: RejectionResponse::Prohibited,
+            },
+            requests_authorization.then_some(authorization),
+        )
+    }
+
+    /// The Gateway's verdict for a packet to `resource` through `gateway`, which the client
+    /// holds access to afterwards either way.
+    fn resource_verdict(
+        &self,
+        portal: &StubPortal,
+        origin: ClientId,
+        resource: ResourceId,
+        gateway: GatewayId,
+        src: IpAddr,
+        dst: &Destination,
+        protocol: Protocol,
+    ) -> (ExpectedOutcome, Option<Authorization>) {
+        let resolutions = match dst {
+            Destination::DomainName { .. } => {
+                let resolver = self.gateways[&gateway].inner();
+                let records = &self.global_dns_records;
+
+                self.clients[&origin]
+                    .inner()
+                    .dns_resource_resolutions_on_connect(resource, |domain| {
+                        resolver
+                            .resolve(domain, records)
+                            .map(|record| record.rtype())
+                            .collect()
+                    })
+            }
+            Destination::IpAddr(_) => BTreeMap::new(),
+        };
+        let rejection = self.gateway_verdict(
+            portal,
+            origin,
+            gateway,
+            resource,
+            src,
+            dst,
+            protocol,
+            &resolutions,
+        );
+        let outcome = match rejection {
+            Some(response) => ExpectedOutcome::Rejected {
+                by: RejectionRemote::Gateway(gateway),
+                response,
+            },
+            None => ExpectedOutcome::RoundTripCompleted(
+                Route::Resource { resource, gateway },
+                Answer::Echo,
+            ),
+        };
+
+        let authorization = Authorization::Resource {
+            resource,
+            gateway,
+            resolutions,
+        };
+
+        (outcome, Some(authorization))
+    }
+
+    /// Records the authorization `origin` holds after its packet.
+    fn record_authorization(&mut self, origin: ClientId, authorization: Option<Authorization>) {
+        match authorization {
+            Some(Authorization::Resource {
+                resource,
+                gateway,
+                resolutions,
+            }) => {
+                self.clients.get_mut(&origin).unwrap().exec_mut(|client| {
+                    client.add_dns_resource_resolutions(resource, resolutions);
+                    client.connect_to_resource(resource, gateway);
+                });
+            }
+            Some(Authorization::Peer { peer, pool }) => {
+                self.clients
+                    .get_mut(&origin)
+                    .unwrap()
+                    .exec_mut(|client| client.record_outbound_peer_authorization(peer, pool));
+                self.clients
+                    .get_mut(&peer)
+                    .unwrap()
+                    .exec_mut(|receiver| receiver.add_inbound_peer_pool(origin, pool));
+            }
+            None => {}
+        }
     }
 
     /// The Gateway the portal hands `origin` for `resource`.
@@ -1037,6 +1065,9 @@ impl ReferenceState {
     }
 
     /// Why `gateway` rejects a packet from `origin` for `resource`, if it does.
+    ///
+    /// `resolutions` are the records the Gateway resolves the resource's domains to as the
+    /// client connects, ahead of the ones the client already holds.
     fn gateway_verdict(
         &self,
         portal: &StubPortal,
@@ -1046,6 +1077,7 @@ impl ReferenceState {
         src: IpAddr,
         dst: &Destination,
         protocol: Protocol,
+        resolutions: &BTreeMap<DomainName, BTreeSet<RecordType>>,
     ) -> Option<RejectionResponse> {
         let client = self.clients[&origin].inner();
 
@@ -1080,22 +1112,23 @@ impl ReferenceState {
         let Destination::DomainName { name, .. } = dst else {
             return None;
         };
-        let resolves_for_source = client
-            .dns_resource_resolution(resource, name)
+        let resolves_for_source = resolutions
+            .get(name)
+            .or_else(|| client.dns_resource_resolution(resource, name))
             .is_some_and(|records| records.contains(&address_record_type(src)));
 
         (!resolves_for_source).then_some(RejectionResponse::Unreachable)
     }
 
-    /// The pool a packet from `origin` to `peer` travels through, asking the portal for an
-    /// authorization when none fits.
+    /// The pool a packet from `origin` to `peer` travels through, which the portal grants
+    /// when the client holds none that fits.
     fn pool_towards_peer(
-        &mut self,
+        &self,
         portal: &StubPortal,
         origin: ClientId,
         peer: ClientId,
         protocol: Protocol,
-    ) -> Result<ResourceId, ExpectedOutcome> {
+    ) -> Result<PoolTowardsPeer, ExpectedOutcome> {
         let client = self.clients[&origin].inner();
         let authorized = client.authorized_pools_towards(peer).collect::<Vec<_>>();
         if authorized.is_empty() && client.device_pool_ids().is_empty() {
@@ -1104,7 +1137,7 @@ impl ReferenceState {
 
         let candidates = client.candidate_pools(protocol);
         if let Some(pool) = candidates.iter().find(|pool| authorized.contains(pool)) {
-            return Ok(*pool);
+            return Ok(PoolTowardsPeer::Held(*pool));
         }
 
         let Some(pool) = portal.pick_device_pool(&candidates, peer) else {
@@ -1114,20 +1147,7 @@ impl ReferenceState {
             });
         };
 
-        self.clients
-            .get_mut(&origin)
-            .unwrap()
-            .exec_mut(|client| client.record_outbound_peer_authorization(peer, pool));
-        self.apply_peer_authorization(origin, peer, pool);
-
-        Ok(pool)
-    }
-
-    /// Installs the inbound half of a peer authorization on `peer`.
-    fn apply_peer_authorization(&mut self, origin: ClientId, peer: ClientId, pool: ResourceId) {
-        self.clients.get_mut(&peer).unwrap().exec_mut(|peer| {
-            peer.add_inbound_peer_pool(origin, pool);
-        });
+        Ok(PoolTowardsPeer::Granted(pool))
     }
 
     // TODO: Remove with classic ICE: every trace is then exact.
@@ -1142,42 +1162,22 @@ impl ReferenceState {
             return TraceRequirement::Exact;
         }
 
-        let known_loss = match outcome {
-            ExpectedOutcome::Dropped => None,
-            ExpectedOutcome::RoundTripCompleted(Route::Peer(client))
+        let Some(remote) = outcome.remote() else {
+            return TraceRequirement::Exact;
+        };
+        let known_loss = match remote {
+            Remote::Client(client)
                 if self.clients[&client]
                     .inner()
                     .has_reset_connections_within_ice_timeout(sent_at) =>
             {
                 Some(KnownLoss::ConnectionReset)
             }
-            ExpectedOutcome::RoundTripCompleted(route) => self
-                .can_drop_during_rekey(origin, route.remote(), sent_at)
+            Remote::Client(_) => self
+                .can_drop_during_rekey(origin, remote, sent_at)
                 .then_some(KnownLoss::WireGuardRekey),
-            ExpectedOutcome::Rejected {
-                by: RejectionRemote::Local,
-                ..
-            } => None,
-            ExpectedOutcome::Rejected {
-                by: RejectionRemote::Gateway(gateway),
-                ..
-            } => self
-                .can_drop_during_rekey(origin, Remote::Gateway(gateway), sent_at)
-                .then_some(KnownLoss::WireGuardRekey),
-            ExpectedOutcome::Rejected {
-                by: RejectionRemote::Client(client),
-                ..
-            } if self.clients[&client]
-                .inner()
-                .has_reset_connections_within_ice_timeout(sent_at) =>
-            {
-                Some(KnownLoss::ConnectionReset)
-            }
-            ExpectedOutcome::Rejected {
-                by: RejectionRemote::Client(client),
-                ..
-            } => self
-                .can_drop_during_rekey(origin, Remote::Client(client), sent_at)
+            Remote::Gateway(_) => self
+                .can_drop_during_rekey(origin, remote, sent_at)
                 .then_some(KnownLoss::WireGuardRekey),
         };
 
@@ -1691,6 +1691,29 @@ impl ReferenceState {
     }
 }
 
+/// The portal's grant that a packet leaves its sender holding.
+#[derive(Debug)]
+enum Authorization {
+    /// Access to `resource` through `gateway`.
+    Resource {
+        resource: ResourceId,
+        gateway: GatewayId,
+        /// The records `gateway` resolves the resource's domains to as the client connects.
+        resolutions: BTreeMap<DomainName, BTreeSet<RecordType>>,
+    },
+    /// Access to `peer` through `pool`, recorded by the sender and installed on the receiver.
+    Peer { peer: ClientId, pool: ResourceId },
+}
+
+/// The pool a packet to a peer travels through.
+#[derive(Debug)]
+enum PoolTowardsPeer {
+    /// A pool the client already holds an authorization through.
+    Held(ResourceId),
+    /// The pool the portal grants because the client holds none that fits.
+    Granted(ResourceId),
+}
+
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) struct PrivateKey(pub [u8; 32]);
 
@@ -1724,18 +1747,5 @@ fn address_record_type(src: IpAddr) -> RecordType {
         RecordType::A
     } else {
         RecordType::AAAA
-    }
-}
-
-fn reset_by(route: Route) -> ExpectedOutcome {
-    let by = match route {
-        Route::Resource { gateway, .. } => RejectionRemote::Gateway(gateway),
-        Route::Gateway(gateway) => RejectionRemote::Gateway(gateway),
-        Route::Peer(client) => RejectionRemote::Client(client),
-    };
-
-    ExpectedOutcome::Rejected {
-        by,
-        response: RejectionResponse::Reset,
     }
 }

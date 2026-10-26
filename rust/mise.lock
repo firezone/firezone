@@ -55,22 +55,22 @@ version = "2.1.4"
 backend = "github:DevinR528/cargo-sort"
 
 [tools."github:DevinR528/cargo-sort"."platforms.linux-x64"]
-checksum = "sha256:c10fdf954e51221d63743884aaf6ee5d576464abdc4965b395e3ec26948072ee"
+checksum = "sha256:c35c3df1f2e512890ee2ffd6151aa265fbfe06accbea0d9226e0bb14d821845b"
 url = "https://github.com/DevinR528/cargo-sort/releases/download/v2.1.4/cargo-sort-x86_64-unknown-linux-gnu.tar.gz"
 url_api = "https://api.github.com/repos/DevinR528/cargo-sort/releases/assets/405268442"
 
 [tools."github:DevinR528/cargo-sort"."platforms.linux-x64-musl"]
-checksum = "sha256:c10fdf954e51221d63743884aaf6ee5d576464abdc4965b395e3ec26948072ee"
+checksum = "sha256:c35c3df1f2e512890ee2ffd6151aa265fbfe06accbea0d9226e0bb14d821845b"
 url = "https://github.com/DevinR528/cargo-sort/releases/download/v2.1.4/cargo-sort-x86_64-unknown-linux-gnu.tar.gz"
 url_api = "https://api.github.com/repos/DevinR528/cargo-sort/releases/assets/405268442"
 
 [tools."github:DevinR528/cargo-sort"."platforms.macos-arm64"]
-checksum = "sha256:d2091a14be8482d8771ac379ef46a9501d678cee000a5e855490009fad3a65a3"
+checksum = "sha256:8969e3ed1d66d4862beb277b2b827ee8eac624a1e41d025e53e790fa0ed23839"
 url = "https://github.com/DevinR528/cargo-sort/releases/download/v2.1.4/cargo-sort-aarch64-apple-darwin.tar.gz"
 url_api = "https://api.github.com/repos/DevinR528/cargo-sort/releases/assets/405268421"
 
 [tools."github:DevinR528/cargo-sort"."platforms.windows-x64"]
-checksum = "sha256:0c59ef2433e523e060909cdfa678969eaa81a44fdc4313cb5a1a9592e8ded2b3"
+checksum = "sha256:0c9fcce93c8436b01a486bb699d483b597f345cf6609df7d6a7309a94ba28111"
 url = "https://github.com/DevinR528/cargo-sort/releases/download/v2.1.4/cargo-sort-x86_64-pc-windows-msvc.zip"
 url_api = "https://api.github.com/repos/DevinR528/cargo-sort/releases/assets/405268766"
 

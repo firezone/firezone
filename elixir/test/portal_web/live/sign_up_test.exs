@@ -232,6 +232,8 @@ defmodule PortalWeb.SignUpTest do
       google_provider = Portal.Repo.get_by!(Portal.Google.AuthProvider, account_id: account.id)
       assert google_provider.issuer == "https://accounts.google.com"
       assert google_provider.name == "Google"
+      assert google_provider.workspace_domains == nil
+      refute google_provider.is_legacy_unrestricted
       refute google_provider.is_disabled
       assert google_provider.is_default
       assert html =~ ~s(href="/#{account.slug}/sign_in/google/#{google_provider.id}")
@@ -258,6 +260,23 @@ defmodule PortalWeb.SignUpTest do
         assert email.text_body =~ "http://localhost:13100/#{account.slug}"
         true
       end)
+    end
+
+    test "creates a Workspace provider from the verified sign-up domain", %{conn: conn} do
+      Stripe.stub([
+        {"POST", "/v1/customers", 200, Stripe.customer_object("cus_workspace", "Workspace Corp", "workspace@example.com")}
+      ] ++ Stripe.mock_create_subscription_endpoint())
+      conn = with_google_identity(conn, email: "workspace@example.com", workspace_domain: "workspace.example")
+      {:ok, lv, _} = live(conn, ~p"/sign_up/google")
+      html = lv |> form("#google-sign-up-form", registration: %{
+        account: %{name: "Workspace Corp"}, actor: %{name: "Workspace Owner"}, sign_up_survey: @survey})
+        |> render_submit()
+      assert html =~ "Your account has been created!"
+      account = Portal.Repo.get_by!(Portal.Account, name: "Workspace Corp")
+      provider = Portal.Repo.get_by!(Portal.Google.AuthProvider, account_id: account.id)
+      assert provider.workspace_domains == ["workspace.example"]
+      refute provider.is_legacy_unrestricted
+      assert provider.name == "Google"
     end
 
     test "submitting when the email now owns an account lists the accounts", %{conn: conn} do
@@ -1086,6 +1105,7 @@ defmodule PortalWeb.SignUpTest do
       "name" => Keyword.get(attrs, :name, "Ada Lovelace"),
       "given_name" => "Ada",
       "family_name" => "Lovelace",
+      "workspace_domain" => Keyword.get(attrs, :workspace_domain),
       "expires_at" => Keyword.get(attrs, :expires_at, System.os_time(:second) + 900)
     }
 
@@ -1099,7 +1119,10 @@ defmodule PortalWeb.SignUpTest do
 
   defp assert_follow_up_scheduled(account, email) do
     actor = Portal.Repo.get_by!(Portal.Actor, account_id: account.id, email: email)
-    assert [job] = all_enqueued(worker: Portal.Workers.SignUpFollowUp)
+    assert [job, feedback_job] =
+      all_enqueued(worker: Portal.Workers.SignUpFollowUp) |> Enum.sort_by(& &1.scheduled_at, DateTime)
+    assert feedback_job.args == %{"account_id" => account.id, "actor_id" => actor.id, "stage" => "feedback"}
+    assert_in_delta DateTime.diff(feedback_job.scheduled_at, DateTime.utc_now(), :second), 3 * 24 * 60 * 60, 60
     assert job.args == %{"account_id" => account.id, "actor_id" => actor.id}
     delay = DateTime.diff(job.scheduled_at, DateTime.utc_now(), :second)
     assert_in_delta delay, 15 * 60, 60

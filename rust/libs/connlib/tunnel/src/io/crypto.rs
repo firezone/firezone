@@ -72,6 +72,7 @@ enum Job {
 }
 
 /// Packets decrypted from the jobs of an [`Io::start_decrypt_batch`](super::Io::start_decrypt_batch).
+#[derive(Default)]
 pub struct DecryptedIpPackets(Vec<DecryptedDatagram>);
 
 impl DecryptedIpPackets {
@@ -305,11 +306,9 @@ impl<'a> DecryptBatch<'a> {
     fn submit(&mut self) {
         let job = mem::replace(&mut self.job, DecryptJob::new());
 
-        let (tx, rx) = oneshot::channel();
-
         // A stopped worker drops the sender, so `Decrypting::poll_next` skips the job.
+        let tx = self.decrypting.add_job();
         self.crypto.send(Job::Decrypt(job, tx));
-        self.decrypting.jobs.push_back(rx);
     }
 }
 
@@ -369,6 +368,14 @@ pub struct Decrypting {
 }
 
 impl Decrypting {
+    /// Queues a job that completes once the returned sender sends its packets.
+    pub(crate) fn add_job(&mut self) -> oneshot::Sender<DecryptedIpPackets> {
+        let (tx, rx) = oneshot::channel();
+        self.jobs.push_back(rx);
+
+        tx
+    }
+
     /// Whether we may hand more received buffers to the workers.
     pub fn has_room(&self) -> bool {
         self.jobs.len() < MAX_JOBS_IN_FLIGHT

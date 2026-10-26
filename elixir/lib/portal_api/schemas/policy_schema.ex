@@ -28,10 +28,6 @@ defmodule PortalAPI.Schemas.Policy do
         IANA timezone name, e.g. `"M/09:00-17:00/America/New_York"`.
       * `client_verified` with `is`: `values` is a single-element list
         containing `"true"` or `"false"`.
-      * `device_attested` with `is`: `values` is a single-element list
-        containing `"true"` or `"false"`. `"true"` requires the Client to
-        have presented a valid X.509 certificate from one of the account's
-        trust anchors on its current connection.
       """,
       type: :object,
       properties: %{
@@ -44,8 +40,7 @@ defmodule PortalAPI.Schemas.Policy do
             "remote_ip",
             "auth_provider_id",
             "current_utc_datetime",
-            "client_verified",
-            "device_attested"
+            "client_verified"
           ]
         },
         operator: %Schema{
@@ -228,6 +223,16 @@ defmodule PortalAPI.Schemas.Policy do
               "Defaults to true. Always false for Internet Resource policies.",
           default: true
         },
+        require_attestation: %Schema{
+          example: false,
+          type: :boolean,
+          description:
+            "Whether the Client must present a valid X.509 certificate from one of the account's " <>
+              "trust anchors on its current connection. Device posture checks then match only on " <>
+              "the identifiers that certificate proves. Defaults to false. Setting it to true " <>
+              "returns 422 when the account has no trust anchors.",
+          default: false
+        },
         is_disabled: %Schema{
           example: false,
           type: :boolean,
@@ -288,6 +293,13 @@ defmodule PortalAPI.Schemas.Policy do
           description:
             "Whether flow logs are reported for connections authorized by this Policy. " <>
               "Always false for Internet Resource policies."
+        },
+        require_attestation: %Schema{
+          type: :boolean,
+          description:
+            "Whether the Client must present a valid X.509 certificate from one of the account's " <>
+              "trust anchors on its current connection. Setting it to true returns 422 when the " <>
+              "account has no trust anchors."
         },
         is_disabled: %Schema{
           example: false,
@@ -370,6 +382,12 @@ defmodule PortalAPI.Schemas.Policy do
           type: :boolean,
           description: "Whether flow logs are reported for connections authorized by this Policy"
         },
+        require_attestation: %Schema{
+          example: false,
+          type: :boolean,
+          description:
+            "Whether the Client must present a valid X.509 certificate from one of the account's trust anchors"
+        },
         is_disabled: %Schema{
           example: false,
           type: :boolean,
@@ -407,6 +425,7 @@ defmodule PortalAPI.Schemas.Policy do
         :id,
         :is_disabled,
         :postures,
+        :require_attestation,
         :resource_id
       ]
     })

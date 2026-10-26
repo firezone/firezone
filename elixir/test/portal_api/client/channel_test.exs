@@ -22,6 +22,7 @@ defmodule PortalAPI.Client.ChannelTest do
   import Portal.SiteFixtures
   import Portal.SubjectFixtures
   import Portal.TokenFixtures
+  import Portal.TrustAnchorFixtures
 
   defp join_channel(client, subject, opts \\ []) do
     channel = Keyword.get(opts, :channel, PortalAPI.Client.Channel)
@@ -2270,7 +2271,7 @@ defmodule PortalAPI.Client.ChannelTest do
       assert payload == resource.id
     end
 
-    test "for device_attested conditions grants only the connection that attested",
+    test "for policies requiring attestation grants only the connection that attested",
          %{
            client: client,
            actor: actor,
@@ -2288,18 +2289,8 @@ defmodule PortalAPI.Client.ChannelTest do
           ip_stack: :ipv4_only
         )
 
-      policy_fixture(
-        account: account,
-        group: group,
-        resource: resource,
-        conditions: [
-          %{
-            property: :device_attested,
-            operator: :is,
-            values: ["true"]
-          }
-        ]
-      )
+      trust_anchor_fixture(account: account)
+      policy_fixture(account: account, group: group, resource: resource, require_attestation: true)
 
       membership =
         membership_fixture(
@@ -2343,12 +2334,8 @@ defmodule PortalAPI.Client.ChannelTest do
       site = site_fixture(account: account)
       resource = dns_resource_fixture(account: account, site: site, ip_stack: :ipv4_only)
 
-      policy_fixture(
-        account: account,
-        group: group,
-        resource: resource,
-        conditions: [%{property: :device_attested, operator: :is, values: ["true"]}]
-      )
+      trust_anchor_fixture(account: account)
+      policy_fixture(account: account, group: group, resource: resource, require_attestation: true)
 
       membership_fixture(account: account, actor: actor, group: group)
 

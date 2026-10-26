@@ -1,4 +1,7 @@
-use super::sim_net::{ExecMutScope, Host};
+use super::{
+    buffered_transmits::BufferedTransmits,
+    sim_net::{ExecMutScope, Host},
+};
 use bufferpool::Bytes;
 use bytecodec::{DecodeExt as _, EncodeExt as _};
 use connlib_model::RelayId;
@@ -268,6 +271,54 @@ impl SimRelay {
         let password = relay_proto::auth::generate_password(auth_secret, &username);
 
         (username, password)
+    }
+}
+
+impl Host<SimRelay> {
+    /// Steps the relay with what is due at `now` and puts what it sent onto the network.
+    pub(crate) fn step(
+        &mut self,
+        transmits: &mut BufferedTransmits,
+        now: Instant,
+        now_utc: SystemTime,
+    ) {
+        self.exec_mut(|r| {
+            if r.sut.poll_timeout().is_some_and(|t| t <= now) {
+                r.sut.handle_timeout(now)
+            }
+        });
+
+        while let Some(transmit) = self.poll_inbox(now) {
+            let reply = self.exec_mut(|r| r.receive(transmit, now, now_utc));
+            transmits.push_from(reply, self, now);
+        }
+
+        while let Some(command) = self.exec_mut(|r| r.sut.next_command()) {
+            match command {
+                relay_proto::Command::SendMessage { payload, recipient } => {
+                    let dst = recipient.into_socket();
+                    let src = self
+                        .sending_socket_for(dst.ip())
+                        .expect("relay to never emit packets without a matching socket");
+                    let transmit = Transmit {
+                        src: Some(src),
+                        dst,
+                        payload: Bytes::copied_from(&payload),
+                        ecn: Ecn::NonEct,
+                    };
+
+                    transmits.push_from(transmit, self, now);
+                }
+                relay_proto::Command::CreateAllocation { port, family } => {
+                    self.exec_mut(|r| r.allocations.insert((family, port)));
+                }
+                relay_proto::Command::FreeAllocation { port, family } => {
+                    self.exec_mut(|r| r.allocations.remove(&(family, port)));
+                }
+                relay_proto::Command::CreateChannelBinding { .. }
+                | relay_proto::Command::DeleteChannelBinding { .. } => {}
+            }
+        }
     }
 }
 

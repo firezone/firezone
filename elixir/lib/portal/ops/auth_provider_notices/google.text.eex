@@ -1,0 +1,17 @@
+Hi,
+
+You can now restrict Google sign-ins for <%= @notice.name %> to verified Workspace
+domains.
+
+To enable this security improvement, go to Settings -> Authentication:
+<%= @settings_url %>
+
+Edit your Google provider and click Verify Now using a Workspace administrator
+account. Review the domains and save.
+
+If your users belong to multiple Workspace organizations, use Verify another
+domain to include each organization before saving.
+
+This is optional. Your existing sign-in setup keeps working unchanged.
+
+Questions? Reply to this email.

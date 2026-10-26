@@ -26,6 +26,7 @@ defmodule PortalWeb.Policies.PostureComponents do
 
     ~H"""
     <div class="space-y-4">
+      <.require_attestation_toggle id={"#{@id}-require-attestation"} account={@account} state={@state} />
       <%= if not @conditions_enabled? and @state.availability == :locked do %>
         <Form.upgrade_locked_section
           account={@account}
@@ -43,6 +44,39 @@ defmodule PortalWeb.Policies.PostureComponents do
         {render_slot(@inner_block)}
         <.postures_section id={@id} account={@account} state={@state} />
       <% end %>
+    </div>
+    """
+  end
+
+  attr :id, :string, required: true
+  attr :account, :any, required: true
+  attr :state, :map, required: true
+
+  def require_attestation_toggle(assigns) do
+    ~H"""
+    <div class="border-t border-border pt-4">
+      <div class="flex items-center justify-between py-1">
+        <div>
+          <p class="text-xs font-semibold text-body">Require device attestation</p>
+          <p class="text-xs text-subtle">
+            Only devices with a certificate from a trust anchor can connect
+          </p>
+          <p :if={not @state.trust_anchors?} class="text-xs text-subtle">
+            Add a
+            <Navigation.link navigate={~p"/#{@account}/settings/trust_anchors"} class="font-medium underline hover:no-underline">
+              trust anchor
+            </Navigation.link>
+            to turn this on.
+          </p>
+        </div>
+        <input type="hidden" name="policy[require_attestation]" value={to_string(@state.require_attestation?)} />
+        <Core.toggle
+          id={@id}
+          checked={@state.require_attestation?}
+          disabled={not @state.trust_anchors? and not @state.require_attestation?}
+          phx-click="postures_require_attestation"
+        />
+      </div>
     </div>
     """
   end
@@ -116,16 +150,12 @@ defmodule PortalWeb.Policies.PostureComponents do
         </div>
       </div>
       <div
-        :if={@state.availability == :enabled and not @state.trust_anchors?}
+        :if={@state.availability == :enabled and not is_nil(@state.wire) and not @state.require_attestation?}
         class="mb-3 flex items-start gap-1.5 rounded border border-warning-light bg-warning-light px-3 py-2 text-xs text-warning"
       >
         <Core.icon name="ri-error-warning-line" class="w-3.5 h-3.5 shrink-0 mt-0.5" />
         <span>
-          No
-          <Navigation.link navigate={~p"/#{@account}/settings/trust_anchors"} class="font-medium underline hover:no-underline">
-            trust anchors
-          </Navigation.link>
-          are defined. Devices will be identified by Firezone-reported attributes only.
+          Device attestation is off. Unattested devices are matched on the serial number their Client reports, which a user can change.
           <Navigation.website_link path="/kb/device-trust" fragment="device-attributes" class="font-medium underline hover:no-underline">
             Learn more
           </Navigation.website_link>

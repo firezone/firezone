@@ -665,6 +665,12 @@
             },
             "nullable": true
           },
+          "require_attestation": {
+            "default": false,
+            "description": "Whether the Client must present a valid X.509 certificate from one of the account's trust anchors on its current connection. Device posture checks then match only on the identifiers that certificate proves. Defaults to false. Setting it to true returns 422 when the account has no trust anchors.",
+            "example": false,
+            "type": "boolean"
+          },
           "resource_id": {
             "description": "Resource ID",
             "example": "a9f60587-793c-46ae-8525-597f43ab2fb1",
@@ -1923,11 +1929,6 @@
             "example": false,
             "type": "boolean"
           },
-          "issuer": {
-            "description": "Issuer",
-            "example": "https://login.microsoftonline.com/tenant-id/v2.0",
-            "type": "string"
-          },
           "name": {
             "description": "Provider name",
             "example": "Entra",
@@ -1938,6 +1939,20 @@
             "example": 28800,
             "nullable": true,
             "type": "integer"
+          },
+          "tenant_ids": {
+            "description": "Verified Entra tenant IDs allowed to authenticate through this provider",
+            "example": [
+              "12345678-1234-1234-1234-123456789012"
+            ],
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "minItems": 1,
+            "readOnly": true,
+            "type": "array",
+            "uniqueItems": true
           },
           "updated_at": {
             "description": "Update timestamp",
@@ -1955,7 +1970,7 @@
           "inserted_at",
           "is_default",
           "is_disabled",
-          "issuer",
+          "tenant_ids",
           "name",
           "portal_session_lifetime_secs",
           "updated_at"
@@ -8591,6 +8606,10 @@
             },
             "nullable": true
           },
+          "require_attestation": {
+            "description": "Whether the Client must present a valid X.509 certificate from one of the account's trust anchors on its current connection. Setting it to true returns 422 when the account has no trust anchors.",
+            "type": "boolean"
+          },
           "resource_id": {
             "description": "Resource ID",
             "format": "uuid",
@@ -11525,6 +11544,11 @@
             },
             "nullable": true
           },
+          "require_attestation": {
+            "description": "Whether the Client must present a valid X.509 certificate from one of the account's trust anchors",
+            "example": false,
+            "type": "boolean"
+          },
           "resource_id": {
             "description": "Resource ID",
             "example": "a9f60587-793c-46ae-8525-597f43ab2fb1",
@@ -11540,6 +11564,7 @@
           "id",
           "is_disabled",
           "postures",
+          "require_attestation",
           "resource_id"
         ],
         "title": "Policy",
@@ -11698,7 +11723,7 @@
         "type": "object"
       },
       "PolicyCondition": {
-        "description": "A condition that must be satisfied for the Policy to grant access.\n\nAll conditions on a Policy must evaluate to true for access to be\ngranted. A condition is made up of a `property`, an `operator`, and a\nlist of `values`. The valid operators and the meaning of `values`\ndepend on the `property`:\n\n* `remote_ip_location_region` with `is_in` / `is_not_in`: `values` are\n  ISO 3166-1 alpha-2 country codes, e.g. `[\"US\", \"CA\"]`.\n* `remote_ip` with `is_in_cidr` / `is_not_in_cidr`: `values` are CIDR\n  ranges (IPv4 or IPv6), e.g. `[\"10.0.0.0/8\", \"2607:f8b0::/32\"]`.\n* `auth_provider_id` with `is_in` / `is_not_in`: `values` are\n  authentication provider IDs (UUIDs).\n* `current_utc_datetime` with `is_in_day_of_week_time_ranges`: each\n  value is a `DAY/TIME_RANGES/TIMEZONE` string where `DAY` is one of\n  `M T W R F S U` (Monday through Sunday), `TIME_RANGES` is a\n  comma-separated list of `HH:MM-HH:MM` ranges, and `TIMEZONE` is an\n  IANA timezone name, e.g. `\"M/09:00-17:00/America/New_York\"`.\n* `client_verified` with `is`: `values` is a single-element list\n  containing `\"true\"` or `\"false\"`.\n* `device_attested` with `is`: `values` is a single-element list\n  containing `\"true\"` or `\"false\"`. `\"true\"` requires the Client to\n  have presented a valid X.509 certificate from one of the account's\n  trust anchors on its current connection.\n",
+        "description": "A condition that must be satisfied for the Policy to grant access.\n\nAll conditions on a Policy must evaluate to true for access to be\ngranted. A condition is made up of a `property`, an `operator`, and a\nlist of `values`. The valid operators and the meaning of `values`\ndepend on the `property`:\n\n* `remote_ip_location_region` with `is_in` / `is_not_in`: `values` are\n  ISO 3166-1 alpha-2 country codes, e.g. `[\"US\", \"CA\"]`.\n* `remote_ip` with `is_in_cidr` / `is_not_in_cidr`: `values` are CIDR\n  ranges (IPv4 or IPv6), e.g. `[\"10.0.0.0/8\", \"2607:f8b0::/32\"]`.\n* `auth_provider_id` with `is_in` / `is_not_in`: `values` are\n  authentication provider IDs (UUIDs).\n* `current_utc_datetime` with `is_in_day_of_week_time_ranges`: each\n  value is a `DAY/TIME_RANGES/TIMEZONE` string where `DAY` is one of\n  `M T W R F S U` (Monday through Sunday), `TIME_RANGES` is a\n  comma-separated list of `HH:MM-HH:MM` ranges, and `TIMEZONE` is an\n  IANA timezone name, e.g. `\"M/09:00-17:00/America/New_York\"`.\n* `client_verified` with `is`: `values` is a single-element list\n  containing `\"true\"` or `\"false\"`.\n",
         "properties": {
           "operator": {
             "description": "How the values are compared against the property",
@@ -11720,8 +11745,7 @@
               "remote_ip",
               "auth_provider_id",
               "current_utc_datetime",
-              "client_verified",
-              "device_attested"
+              "client_verified"
             ],
             "example": "remote_ip_location_region",
             "type": "string"
@@ -12242,6 +12266,15 @@
             "example": "2025-01-15T10:30:00Z",
             "format": "date-time",
             "type": "string"
+          },
+          "workspace_domains": {
+            "description": "Verified Google Workspace domains allowed to sign in. Empty for personal-only providers and existing unrestricted providers.",
+            "items": {
+              "type": "string"
+            },
+            "readOnly": true,
+            "type": "array",
+            "uniqueItems": true
           }
         },
         "required": [
@@ -12255,7 +12288,8 @@
           "issuer",
           "name",
           "portal_session_lifetime_secs",
-          "updated_at"
+          "updated_at",
+          "workspace_domains"
         ],
         "title": "GoogleAuthProvider",
         "type": "object"
@@ -19195,7 +19229,7 @@
       },
       "patch": {
         "callbacks": {},
-        "description": "Updates a Policy.\n\nA Policy is enabled or disabled through the `is_disabled` field. Disabling a Policy stops it granting access without deleting it.\n\nSet `policy.postures` to replace the entire device posture expression.\nOmit it to preserve existing postures. Send `{\"policy\":{\"postures\":null}}`\nto remove the posture requirement; clearing is allowed even after an\naccount downgrade. Other policy attributes, including `conditions`, are\nunchanged when omitted. Conditions and postures must both hold.\n\nNon-null postures require the `device_posture` entitlement (Enterprise)\nor return 403. Invalid expressions return 422 with a path in\n`validation_errors.postures`. See `PolicyPostureNode` for the expression\ngrammar, complete field catalog, operator types, platform behavior, and\nlimits. `GET /posture_fields` lists the same fields as structured data.\nChanging postures revokes this policy's active authorizations,\ninterrupting affected connections until they are reauthorized.\n",
+        "description": "Updates a Policy.\n\nA Policy is enabled or disabled through the `is_disabled` field. Disabling a Policy stops it granting access without deleting it.\n\nSet `policy.postures` to replace the entire device posture expression.\nOmit it to preserve existing postures. Send `{\"policy\":{\"postures\":null}}`\nto remove the posture requirement; clearing is allowed even after an\naccount downgrade. Other policy attributes, including `conditions`, are\nunchanged when omitted. Conditions and postures must both hold.\n\nNon-empty `conditions` require the `policy_conditions` entitlement or\nreturn 403. Sending an empty list to remove them is allowed even after\nan account downgrade.\n\nNon-null postures require the `device_posture` entitlement (Enterprise)\nor return 403. Invalid expressions return 422 with a path in\n`validation_errors.postures`. See `PolicyPostureNode` for the expression\ngrammar, complete field catalog, operator types, platform behavior, and\nlimits. `GET /posture_fields` lists the same fields as structured data.\nChanging postures revokes this policy's active authorizations,\ninterrupting affected connections until they are reauthorized.\n",
         "operationId": "PortalAPI.PolicyController.update (2)",
         "parameters": [
           {
@@ -19340,7 +19374,7 @@
       },
       "put": {
         "callbacks": {},
-        "description": "Updates a Policy.\n\nA Policy is enabled or disabled through the `is_disabled` field. Disabling a Policy stops it granting access without deleting it.\n\nSet `policy.postures` to replace the entire device posture expression.\nOmit it to preserve existing postures. Send `{\"policy\":{\"postures\":null}}`\nto remove the posture requirement; clearing is allowed even after an\naccount downgrade. Other policy attributes, including `conditions`, are\nunchanged when omitted. Conditions and postures must both hold.\n\nNon-null postures require the `device_posture` entitlement (Enterprise)\nor return 403. Invalid expressions return 422 with a path in\n`validation_errors.postures`. See `PolicyPostureNode` for the expression\ngrammar, complete field catalog, operator types, platform behavior, and\nlimits. `GET /posture_fields` lists the same fields as structured data.\nChanging postures revokes this policy's active authorizations,\ninterrupting affected connections until they are reauthorized.\n",
+        "description": "Updates a Policy.\n\nA Policy is enabled or disabled through the `is_disabled` field. Disabling a Policy stops it granting access without deleting it.\n\nSet `policy.postures` to replace the entire device posture expression.\nOmit it to preserve existing postures. Send `{\"policy\":{\"postures\":null}}`\nto remove the posture requirement; clearing is allowed even after an\naccount downgrade. Other policy attributes, including `conditions`, are\nunchanged when omitted. Conditions and postures must both hold.\n\nNon-empty `conditions` require the `policy_conditions` entitlement or\nreturn 403. Sending an empty list to remove them is allowed even after\nan account downgrade.\n\nNon-null postures require the `device_posture` entitlement (Enterprise)\nor return 403. Invalid expressions return 422 with a path in\n`validation_errors.postures`. See `PolicyPostureNode` for the expression\ngrammar, complete field catalog, operator types, platform behavior, and\nlimits. `GET /posture_fields` lists the same fields as structured data.\nChanging postures revokes this policy's active authorizations,\ninterrupting affected connections until they are reauthorized.\n",
         "operationId": "PortalAPI.PolicyController.update",
         "parameters": [
           {
@@ -28132,7 +28166,7 @@
       },
       "post": {
         "callbacks": {},
-        "description": "Creates a Policy.\n\nA Policy is enabled by default. Pass `is_disabled: true` to create it disabled, so it grants no access until enabled.\n\nEnterprise accounts with the `device_posture` entitlement can include\n`policy.postures`, a boolean expression of `and`, `or`, `not`, and typed\nprovider-field comparisons. Postures and all `policy.conditions` must hold\ntogether. For example:\n\n```json\n{\"policy\": {\"group_id\": \"00000000-0000-0000-0000-000000000001\",\n  \"resource_id\": \"00000000-0000-0000-0000-000000000002\",\n  \"postures\": {\"and\": [\n    {\"field\": \"intune.enrolled\", \"op\": \"is\", \"value\": true},\n    {\"field\": \"intune.compliance_state\", \"op\": \"is\", \"value\": \"compliant\"}\n  ]}}}\n```\n\nOmit `postures` or use null for no posture requirement. Non-null postures\nwithout the entitlement return 403. Invalid expressions return 422 with\ndetails in `validation_errors.postures`. See `PolicyPostureNode` for the\ncomplete field catalog, operator types, platform behavior, and limits.\n`GET /posture_fields` lists the same fields as structured data.\n",
+        "description": "Creates a Policy.\n\nA Policy is enabled by default. Pass `is_disabled: true` to create it disabled, so it grants no access until enabled.\n\nEnterprise accounts with the `device_posture` entitlement can include\n`policy.postures`, a boolean expression of `and`, `or`, `not`, and typed\nprovider-field comparisons. Postures and all `policy.conditions` must hold\ntogether. For example:\n\n```json\n{\"policy\": {\"group_id\": \"00000000-0000-0000-0000-000000000001\",\n  \"resource_id\": \"00000000-0000-0000-0000-000000000002\",\n  \"postures\": {\"and\": [\n    {\"field\": \"intune.enrolled\", \"op\": \"is\", \"value\": true},\n    {\"field\": \"intune.compliance_state\", \"op\": \"is\", \"value\": \"compliant\"}\n  ]}}}\n```\n\nNon-empty `conditions` without the `policy_conditions` entitlement return\n403. Omit `postures` or use null for no posture requirement. Non-null\npostures without the entitlement return 403. Invalid expressions return 422 with\ndetails in `validation_errors.postures`. See `PolicyPostureNode` for the\ncomplete field catalog, operator types, platform behavior, and limits.\n`GET /posture_fields` lists the same fields as structured data.\n",
         "operationId": "PortalAPI.PolicyController.create",
         "parameters": [],
         "requestBody": {

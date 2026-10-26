@@ -33,7 +33,7 @@ pub const MAX_BATCH_SIZE: usize = cfg_select! {
 };
 
 /// Capacity (in batches) of the channels connecting the TUN device threads to the main thread.
-const CHANNEL_CAPACITY: usize = cfg_select! {
+pub const CHANNEL_CAPACITY: usize = cfg_select! {
     target_os = "linux" => { 100 }
     target_os = "windows" => { 100 }
     target_os = "macos" => { 100 }
@@ -221,6 +221,10 @@ impl OutboundRx {
     pub fn blocking_recv(&mut self) -> Option<PacketBatch> {
         self.0.blocking_recv()
     }
+
+    pub fn try_recv(&mut self) -> Result<PacketBatch, mpsc::error::TryRecvError> {
+        self.0.try_recv()
+    }
 }
 
 /// The sending half of the channel of packet batches read from the TUN device.
@@ -240,6 +244,13 @@ impl InboundTx {
         batch: PacketBatch,
     ) -> Result<(), mpsc::error::SendError<PacketBatch>> {
         self.0.blocking_send(batch)
+    }
+
+    pub fn try_send(
+        &self,
+        batch: PacketBatch,
+    ) -> Result<(), mpsc::error::TrySendError<PacketBatch>> {
+        self.0.try_send(batch)
     }
 
     pub fn downgrade(&self) -> mpsc::WeakSender<PacketBatch> {

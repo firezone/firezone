@@ -1934,7 +1934,7 @@ defmodule PortalWeb.Resources do
     def insert_policy(attrs, subject) do
       changeset =
         %Portal.Policy{}
-        |> cast(attrs, ~w[description group_id resource_id flow_log_uploads_enabled postures]a)
+        |> cast(attrs, ~w[description group_id resource_id flow_log_uploads_enabled require_attestation postures]a)
         |> validate_required(~w[group_id resource_id]a)
         |> cast_embed(:conditions, with: &Portal.Policies.Condition.changeset/3)
         |> Portal.Policy.changeset()
