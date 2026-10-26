@@ -219,6 +219,73 @@ jobs:
       - name: Check discovery determinism
         run: mise run //rust/tests/fuzz:determinism ${{ matrix.fuzz-target }}
 
+  bench-instructions:
+    name: bench-instructions
+    runs-on: ubuntu-24.04
+    env:
+      # Replaces the workflow's `RUSTFLAGS`, which would drop the frame pointers from `.cargo/config.toml`.
+      RUSTFLAGS: "--deny warnings -C force-frame-pointers=yes"
+      BENCHER_PROJECT: firezone-1l75jv1z
+      # Bencher tracks PRs and `main`. PRs from forks and Dependabot have no access to its API key.
+      BENCHER: ${{ github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]') }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-rust-stable
+      - uses: ./.github/actions/setup-rust-sccache
+        with:
+          azure-connection-string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
+      - uses: ./.github/actions/apt-install
+        with:
+          packages: valgrind
+          install-recommends: false
+      - uses: ./.github/actions/setup-mise
+        with:
+          install_args: --cd rust github:gungraun/gungraun
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Run
+        run: |
+          set -o pipefail
+          cargo bench -p tunnel-bench --bench instructions | tee "$RUNNER_TEMP/instructions.txt"
+      - uses: bencherdev/bencher@f80847436d7157936b40525db4c2a1064124f04a # v0.6.13
+        if: env.BENCHER == 'true'
+      - name: Report to Bencher
+        if: env.BENCHER == 'true'
+        env:
+          BENCHER_API_KEY: ${{ secrets.BENCHER_API_KEY }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+
+          if [ "$GITHUB_REF" = refs/heads/main ]; then
+            # Instruction counts are deterministic, so any increase beyond 1% is a regression.
+            branch=(
+              --branch main
+              --thresholds-reset
+              --threshold-measure instructions
+              --threshold-test percentage
+              --threshold-max-sample-size 64
+              --threshold-upper-boundary 0.01
+            )
+          else
+            branch=(
+              --branch "${GITHUB_HEAD_REF:-$GITHUB_REF_NAME}"
+              --start-point "${GITHUB_BASE_REF:-main}"
+              --start-point-clone-thresholds
+              --start-point-reset
+            )
+            if [ -n "$BASE_SHA" ]; then
+              branch+=(--start-point-hash "$BASE_SHA")
+            fi
+          fi
+
+          bencher run \
+            --project "$BENCHER_PROJECT" \
+            --testbed github-actions-callgrind \
+            "${branch[@]}" \
+            --adapter rust_gungraun \
+            --file "$RUNNER_TEMP/instructions.txt"
+
   headless-client:
     name: headless-client-${{ matrix.test }}-${{ matrix.runs-on }}
     strategy:
