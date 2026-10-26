@@ -21,6 +21,7 @@ struct FirezoneCLI: AsyncParsableCommand {
       Status.self,
       Resources.self,
       InternetResource.self,
+      HostCandidates.self,
       Extension.self,
     ]
   )

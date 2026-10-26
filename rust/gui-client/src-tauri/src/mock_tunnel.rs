@@ -106,7 +106,9 @@ async fn serve(server_io: DuplexStream) -> Result<()> {
                     .await?;
             }
             // The real service has no reply for these either.
-            ClientMsg::SetInternetResourceState(_) | ClientMsg::StartTelemetry { .. } => {}
+            ClientMsg::SetAdditionalHostCandidates(_)
+            | ClientMsg::SetInternetResourceState(_)
+            | ClientMsg::StartTelemetry { .. } => {}
             ClientMsg::Panic => panic!("Explicit panic"),
         }
     }

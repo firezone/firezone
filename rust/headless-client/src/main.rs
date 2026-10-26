@@ -23,6 +23,7 @@ use phoenix_channel::get_user_agent;
 use phoenix_channel::{DeviceInfo, LoginUrl};
 use secrecy::SecretString;
 use std::{
+    net::IpAddr,
     path::{Path, PathBuf},
     sync::Arc,
     time::Duration,
@@ -134,6 +135,20 @@ struct Cli {
     /// It may be removed / changed anytime.
     #[arg(long, env, hide = true)]
     otlp_grpc_endpoint: Option<String>,
+
+    /// Advertise a local IP as an additional host candidate, e.g. to use a direct link to a Gateway.
+    ///
+    /// The IP must be assigned to a local interface.
+    ///
+    /// This configuration option is private API and has no stability guarantees.
+    /// It may be removed / changed anytime.
+    #[arg(
+        long = "additional-host-candidate",
+        env = "FIREZONE_ADDITIONAL_HOST_CANDIDATES",
+        value_delimiter = ',',
+        hide = true
+    )]
+    additional_host_candidates: Vec<IpAddr>,
 
     /// A filesystem path where the token can be found
     // Apparently passing secrets through stdin is the most secure method, but
@@ -468,6 +483,7 @@ fn try_main() -> Result<()> {
             portal,
             cli.activate_internet_resource,
             dns_controller.system_resolvers(),
+            cli.additional_host_candidates.clone(),
             flow_logs_dir.clone(),
             cli.flow_logs,
             rt.handle().clone(),

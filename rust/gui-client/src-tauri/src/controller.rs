@@ -485,8 +485,16 @@ impl<I: GuiIntegration> Controller<I> {
 
         match req {
             ApplyAdvancedSettings(settings) => {
-                self.send_ipc(&service::ClientMsg::ApplyAdvancedSettings(*settings))
-                    .await?;
+                self.send_ipc(&service::ClientMsg::ApplyAdvancedSettings(
+                    AdvancedSettings {
+                        additional_host_candidates: self
+                            .advanced_settings
+                            .additional_host_candidates
+                            .clone(),
+                        ..*settings
+                    },
+                ))
+                .await?;
             }
             ApplyGeneralSettings(settings) => {
                 let account_slug = settings.account_slug.trim();
@@ -898,6 +906,21 @@ impl<I: GuiIntegration> Controller<I> {
             }
             gui_ipc::ClientMsg::Disconnect => {
                 self.disconnect().await?;
+
+                gui_ipc::ServerMsg::Ack
+            }
+            gui_ipc::ClientMsg::ListAdditionalHostCandidates => {
+                gui_ipc::ServerMsg::AdditionalHostCandidates(
+                    self.advanced_settings.additional_host_candidates.clone(),
+                )
+            }
+            gui_ipc::ClientMsg::SetAdditionalHostCandidates(ips) => {
+                self.send_ipc(&service::ClientMsg::SetAdditionalHostCandidates(
+                    ips.clone(),
+                ))
+                .await?;
+                // The Tunnel service only replies if saving them fails.
+                self.advanced_settings.additional_host_candidates = ips;
 
                 gui_ipc::ServerMsg::Ack
             }
@@ -1325,7 +1348,7 @@ async fn try_migrate_advanced_settings(
 
 #[cfg(test)]
 mod tests {
-    use std::{sync::Arc, time::Instant};
+    use std::{net::IpAddr, sync::Arc, time::Instant};
 
     use connlib_model::{ResourceId, Site, SiteId};
     use parking_lot::{Mutex, MutexGuard};
@@ -1595,6 +1618,39 @@ mod tests {
                     AdvancedSettings::default().auth_url
                 ),
             })
+        );
+    }
+
+    #[tokio::test]
+    async fn the_settings_page_keeps_the_additional_host_candidates_set_over_gui_ipc() {
+        let _guard = logging::test("debug");
+        let mut test_controller = Controller::start_for_test();
+        let mut mock_tunnel = test_controller.tunnel_service_ipc_accept().await;
+        mock_tunnel.send_hello().await;
+        let candidates = vec![IpAddr::from([192, 168, 2, 1])];
+
+        let response = test_controller
+            .gui_ipc_request(gui_ipc::ClientMsg::SetAdditionalHostCandidates(
+                candidates.clone(),
+            ))
+            .await;
+        let applied = mock_tunnel.rx_set_additional_host_candidates().await;
+        test_controller
+            .ctrl_tx
+            .send(ControllerRequest::ApplyAdvancedSettings(Box::default()))
+            .await
+            .unwrap();
+        let saved = mock_tunnel.rx_apply_advanced_settings().await;
+        let listed = test_controller
+            .gui_ipc_request(gui_ipc::ClientMsg::ListAdditionalHostCandidates)
+            .await;
+
+        assert_eq!(response, gui_ipc::ServerMsg::Ack);
+        assert_eq!(applied, candidates);
+        assert_eq!(saved.additional_host_candidates, candidates);
+        assert_eq!(
+            listed,
+            gui_ipc::ServerMsg::AdditionalHostCandidates(candidates)
         );
     }
 
@@ -2126,6 +2182,7 @@ mod tests {
             auth_url: Url::parse("https://canned.example.com").unwrap(),
             api_url: Url::parse("wss://canned.api.example.com/").unwrap(),
             log_filter: "trace".to_owned(),
+            additional_host_candidates: Vec::default(),
         }
     }
 
@@ -2491,6 +2548,14 @@ mod tests {
                 .send(&service::ServerMsg::AdvancedSettingsApplied(result))
                 .await
                 .unwrap();
+        }
+
+        async fn rx_set_additional_host_candidates(&mut self) -> Vec<IpAddr> {
+            let msg = self.next_msg().await;
+            let service::ClientMsg::SetAdditionalHostCandidates(ips) = msg else {
+                panic!("expected `SetAdditionalHostCandidates` but got {msg:?}");
+            };
+            ips
         }
     }
 
