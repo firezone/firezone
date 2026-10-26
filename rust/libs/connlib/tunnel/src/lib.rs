@@ -446,9 +446,9 @@ impl ClientTunnel {
                     for datagram in datagrams.drain() {
                         let mut datagram = decrypts.add(datagram);
                         let mut segments = datagram.segments();
-                        let mut pending = segments.next();
+                        let mut pending = None;
 
-                        while let Some(segment) = pending.take() {
+                        while let Some(segment) = pending.take().or_else(|| segments.next()) {
                             let packet = &datagram[segment];
 
                             udp_received.record(packet);
@@ -713,9 +713,9 @@ impl GatewayTunnel {
                     for datagram in datagrams.drain() {
                         let mut datagram = decrypts.add(datagram);
                         let mut segments = datagram.segments();
-                        let mut pending = segments.next();
+                        let mut pending = None;
 
-                        while let Some(segment) = pending.take() {
+                        while let Some(segment) = pending.take().or_else(|| segments.next()) {
                             let packet = &datagram[segment];
 
                             udp_received.record(packet);
