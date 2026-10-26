@@ -388,15 +388,11 @@ where
                     .values_mut()
                     .filter_map(|c| c.poll_timeout()),
             )
-            .chain(self.closing.iter_mut().flat_map(|(id, (c, goodbye))| {
-                let ready_at = c
-                    .first_handshake_completed_at
-                    .filter(|_| c.ready_socket(*id).is_ok());
-
-                iter::once(goodbye.deadline)
-                    .chain(ready_at)
-                    .chain(c.poll_timeout())
-            }))
+            .chain(
+                self.closing
+                    .values_mut()
+                    .flat_map(|(c, goodbye)| iter::once(goodbye.deadline).chain(c.poll_timeout())),
+            )
             .chain(
                 self.disconnected_ids
                     .values()
