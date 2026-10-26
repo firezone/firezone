@@ -25,7 +25,6 @@ use std::{
     net::{IpAddr, SocketAddr},
     time::{Duration, Instant},
 };
-use tun::PacketBatch;
 use tunnel_proto::{
     ClientEvent, ClientState, DNS_SENTINELS_V4, DNS_SENTINELS_V6, DnsMapping, DnsResourceRecord,
     MaliciousBehaviour, MaliciousBehaviourGuard as Guard, dns,
@@ -269,11 +268,7 @@ impl SimClient {
     }
 
     pub(crate) fn send(&mut self, packet: IpPacket) {
-        self.tunnel
-            .ends
-            .tun_inbound
-            .try_send(PacketBatch::new(packet))
-            .expect("TUN channel has room");
+        self.tunnel.read_from_tun(packet);
     }
 
     pub(crate) fn send_probe(&mut self, id: ProbeId, packet: IpPacket, now: Instant) {
