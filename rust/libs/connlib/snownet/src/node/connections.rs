@@ -388,11 +388,11 @@ where
                     .values_mut()
                     .filter_map(|c| c.poll_timeout()),
             )
-            .chain(
-                self.closing
-                    .values_mut()
-                    .flat_map(|(c, goodbye)| iter::once(goodbye.deadline).chain(c.poll_timeout())),
-            )
+            .chain(self.closing.values_mut().flat_map(|(c, goodbye)| {
+                iter::empty()
+                    .chain(Some(goodbye.deadline))
+                    .chain(c.poll_timeout())
+            }))
             .chain(
                 self.disconnected_ids
                     .values()
