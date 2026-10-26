@@ -25,7 +25,7 @@ use socket_factory::{PerfUdpSocket, SocketFactory, TcpSocket, UdpSocket};
 use tokio::runtime::Runtime;
 use tunnel::{ClientTunnel, GatewayTunnel, Role, TunChannelClosed, Tunnel};
 
-use crate::fixture::{RESOURCES, SIZE, Side, State, connect};
+use crate::fixture::{AnyHost, RESOURCES, SIZE, Side, connect};
 use crate::measure::Stage;
 use crate::thread_cpu::thread_cpu_times;
 use device::Device;
@@ -138,17 +138,14 @@ fn outbound<M: Measurement + Copy>(
     now: Instant,
 ) -> Option<(String, Measures)> {
     let device = Device::new(&local.reads);
-    let event_loop = EventLoop::spawn(local.state, local.socket, now, &device);
+    let event_loop = EventLoop::spawn(local.host, local.socket, now, &device);
     let arrivals = Arc::new(Arrivals::default());
     let (runtime, socket) = bind_peer(peer.socket);
 
     #[cfg(target_os = "macos")]
     {
         let mut peer = peer;
-        let datagrams = peer
-            .state
-            .encapsulate(&peer.reads, FLOW_SOCKET_PACKETS, now, local.socket);
-        for datagram in datagrams {
+        for datagram in peer.encrypt(FLOW_SOCKET_PACKETS, local.socket, now) {
             runtime.block_on(socket.send(datagram)).unwrap();
         }
 
@@ -195,7 +192,7 @@ fn inbound<M: Measurement + Copy>(
     now: Instant,
 ) -> Option<(String, Measures)> {
     let device = Device::new(&local.reads);
-    let event_loop = EventLoop::spawn(local.state, local.socket, now, &device);
+    let event_loop = EventLoop::spawn(local.host, local.socket, now, &device);
     let (runtime, socket) = bind_peer(peer.socket);
 
     #[cfg(target_os = "macos")]
@@ -208,10 +205,7 @@ fn inbound<M: Measurement + Copy>(
         }
     }
 
-    let inputs = |packets| {
-        peer.state
-            .encapsulate(&peer.reads, packets, now, local.socket)
-    };
+    let inputs = |packets| peer.encrypt(packets, local.socket, now);
     let measures = measure(
         group,
         measurement,
@@ -242,7 +236,7 @@ struct EventLoop {
 
 impl EventLoop {
     /// Spawns the event loop of a tunnel bound to `socket`, with its TUN workers on `device`.
-    fn spawn(state: State, socket: SocketAddr, now: Instant, device: &Device) -> Self {
+    fn spawn(host: AnyHost, socket: SocketAddr, now: Instant, device: &Device) -> Self {
         let tcp: Arc<dyn SocketFactory<TcpSocket>> = Arc::new(socket_factory::tcp);
         let udp: Arc<dyn SocketFactory<UdpSocket>> = Arc::new(move |addr| match addr {
             SocketAddr::V4(_) => socket_factory::udp(socket),
@@ -264,17 +258,17 @@ impl EventLoop {
         let handle = runtime.handle().clone();
         let _guard = handle.enter();
         let tun = device.io(&handle);
-        let thread = match state {
-            State::Client(client) => {
+        let thread = match host {
+            AnyHost::Client(client) => {
                 let mut tunnel = ClientTunnel::new(tcp, udp, BTreeSet::new(), false, now);
-                *tunnel.state_mut() = client;
+                *tunnel.state_mut() = client.into_state();
                 tunnel.set_tun(tun);
 
                 run(tunnel, runtime, now)
             }
-            State::Gateway(gateway) => {
+            AnyHost::Gateway(gateway) => {
                 let mut tunnel = GatewayTunnel::new(tcp, udp, BTreeSet::new(), now);
-                *tunnel.state_mut() = gateway;
+                *tunnel.state_mut() = gateway.into_state();
                 tunnel.set_tun(tun);
 
                 run(tunnel, runtime, now)

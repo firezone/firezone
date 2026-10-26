@@ -1,13 +1,9 @@
 use std::collections::VecDeque;
 use std::time::Instant;
 
-use crate::fixture::{Resource, State, connect};
-use ip_packet::IpPacket;
+use crate::fixture::{AnyHost, Host, Resource, connect, tun_batches};
 use socket_factory::{DatagramBatch, DatagramOut};
 use tun::PacketBatch;
-use tunnel::{ClientState, GatewayState};
-
-use super::EventLoop;
 
 /// How many packets a benchmark sends through the event loop.
 pub const PACKETS: usize = 1024;
@@ -27,14 +23,9 @@ pub enum Direction {
 /// Packets for one side of an established connection to handle, as the TUN device reads them or
 /// the socket receives them from the other side.
 pub struct Packets {
-    event_loop: AnyEventLoop,
+    host: AnyHost,
     inputs: VecDeque<Input>,
     now: Instant,
-}
-
-enum AnyEventLoop {
-    Client(EventLoop<ClientState>),
-    Gateway(EventLoop<GatewayState>),
 }
 
 enum Input {
@@ -51,21 +42,36 @@ impl Packets {
             Direction::ClientOutbound | Direction::ClientInbound => (client, gateway),
             Direction::GatewayInbound | Direction::GatewayOutbound => (gateway, client),
         };
-        let mut inputs = |count| match direction {
-            Direction::ClientOutbound | Direction::GatewayOutbound => tun_batches(&local, count),
-            Direction::GatewayInbound | Direction::ClientInbound => {
-                received_batches(&local, &mut peer, count, now)
+        let mut inputs = |count| -> VecDeque<Input> {
+            match direction {
+                Direction::ClientOutbound | Direction::GatewayOutbound => {
+                    tun_batches(&local.reads, count)
+                        .into_iter()
+                        .map(Input::Tun)
+                        .collect()
+                }
+                Direction::GatewayInbound | Direction::ClientInbound => peer
+                    .encrypt(count, local.socket, now)
+                    .into_iter()
+                    .map(|datagram| {
+                        Input::Network(DatagramBatch::from_datagrams([DatagramOut {
+                            src: Some(peer.socket),
+                            ..datagram
+                        }]))
+                    })
+                    .collect(),
             }
         };
         let warm_up = inputs(WARM_UP);
         let inputs = inputs(PACKETS);
 
-        let event_loop = match local.state {
-            State::Client(state) => AnyEventLoop::Client(EventLoop::new(state)),
-            State::Gateway(state) => AnyEventLoop::Gateway(EventLoop::new(state)),
-        };
+        let mut host = local.host;
+        match &mut host {
+            AnyHost::Client(host) => host.count(),
+            AnyHost::Gateway(host) => host.count(),
+        }
         let mut packets = Self {
-            event_loop,
+            host,
             inputs: warm_up,
             now,
         };
@@ -83,17 +89,15 @@ impl Packets {
     /// Hands the inputs to the event loop as fast as it takes them, until `count` packets came
     /// out of it.
     fn send(&mut self, count: usize) {
-        match &mut self.event_loop {
-            AnyEventLoop::Client(event_loop) => send(event_loop, &mut self.inputs, count, self.now),
-            AnyEventLoop::Gateway(event_loop) => {
-                send(event_loop, &mut self.inputs, count, self.now)
-            }
+        match &mut self.host {
+            AnyHost::Client(host) => send(host, &mut self.inputs, count, self.now),
+            AnyHost::Gateway(host) => send(host, &mut self.inputs, count, self.now),
         }
     }
 }
 
 fn send<R: tunnel::Role>(
-    event_loop: &mut EventLoop<R>,
+    host: &mut Host<R>,
     inputs: &mut VecDeque<Input>,
     count: usize,
     now: Instant,
@@ -104,9 +108,9 @@ fn send<R: tunnel::Role>(
         let pending = inputs.len();
         while let Some(input) = inputs.pop_front() {
             match input {
-                Input::Tun(batch) => event_loop.read_from_tun(batch),
+                Input::Tun(batch) => host.read_from_tun(batch),
                 Input::Network(batch) => {
-                    if let Err(batch) = event_loop.receive(batch) {
+                    if let Err(batch) = host.receive(batch) {
                         inputs.push_front(Input::Network(batch));
                         break;
                     }
@@ -114,11 +118,11 @@ fn send<R: tunnel::Role>(
             }
         }
 
-        event_loop.run(now);
+        host.run(now);
 
         let before = delivered;
-        delivered += event_loop.written_to_tun();
-        delivered += event_loop.take_sent().len();
+        delivered += host.written_to_tun().len();
+        delivered += host.take_sent().len();
 
         assert!(
             delivered > before || inputs.len() < pending,
@@ -126,44 +130,6 @@ fn send<R: tunnel::Role>(
             count - delivered
         );
     }
-}
-
-/// Returns `count` copies of what `local` reads from its TUN device, in batches as full as the
-/// TUN device's.
-fn tun_batches(local: &crate::fixture::Side, count: usize) -> VecDeque<Input> {
-    let packets = vec![local.reads.clone(); count];
-
-    packets
-        .chunks(tun::MAX_BATCH_SIZE)
-        .map(|chunk| {
-            let mut batch = PacketBatch::default();
-            for packet in chunk {
-                batch.try_push(IpPacket::clone(packet)).unwrap();
-            }
-
-            Input::Tun(batch)
-        })
-        .collect()
-}
-
-/// Returns `count` copies of what `peer` reads from its TUN device, encrypted for `local` and
-/// coalesced like GRO does.
-fn received_batches(
-    local: &crate::fixture::Side,
-    peer: &mut crate::fixture::Side,
-    count: usize,
-    now: Instant,
-) -> VecDeque<Input> {
-    peer.state
-        .encapsulate(&peer.reads, count, now, local.socket)
-        .into_iter()
-        .map(|datagram| {
-            Input::Network(DatagramBatch::from_datagrams([DatagramOut {
-                src: Some(peer.socket),
-                ..datagram
-            }]))
-        })
-        .collect()
 }
 
 #[cfg(test)]

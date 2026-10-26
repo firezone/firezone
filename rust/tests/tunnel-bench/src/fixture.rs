@@ -1,11 +1,13 @@
-//! Clients and a Gateway connected in-process, through a TURN relay run by its sans-IO state.
+//! Clients and a Gateway connected in-process through their fake tunnels, and a TURN relay run by
+//! its sans-IO state.
 
 #![allow(clippy::unwrap_used, clippy::wildcard_enum_match_arm)]
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, VecDeque};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4};
 use std::ops::RangeInclusive;
 use std::sync::LazyLock;
+use std::task::{Context, Poll, Waker};
 use std::time::{Duration, Instant, SystemTime};
 
 use connlib_model::{ClientId, GatewayId, RelayId, ResourceId, SiteId};
@@ -14,12 +16,15 @@ use ip_packet::{Ecn, IpPacket};
 use rand::{SeedableRng as _, rngs::StdRng};
 use relay_proto::auth::AccountId;
 use relay_proto::{AllocationPort, ChannelData, ClientSocket, Command, PeerSocket};
-use snownet::RelaySocket;
-use socket_factory::DatagramOut;
-use tunnel::{ClientState, GatewayState};
+use snownet::{RelaySocket, Transmit};
+use socket_factory::{DatagramBatch, DatagramOut};
+use tun::PacketBatch;
+use tunnel::{ClientState, FakeTunnelEnds, GatewayState, Role, Tunnel};
 use tunnel_proto::messages::{IceCredentials, IngestToken, Interface, Key, SecretKey, gateway};
 use tunnel_proto::{ClientEvent, GatewayEvent, IpConfig};
 use uuid::Uuid;
+
+use crate::callgrind;
 
 /// The size of the IP packets sent through the tunnel.
 pub const SIZE: usize = 1280;
@@ -41,95 +46,17 @@ pub enum Connectivity {
 
 pub const CONNECTIVITIES: [Connectivity; 2] = [Connectivity::Ice, Connectivity::Iceless];
 
-/// How often the handshake lets time pass, which is also the round-trip time.
+/// How often the set-up lets time pass, which is also the round-trip time.
 const STEP: Duration = Duration::from_millis(100);
+
+/// How many datagrams one receive returns at most (`quinn_udp::BATCH_SIZE` on Linux).
+const RECV_BATCH_SIZE: usize = 32;
 
 /// How often an idle connection sends a keepalive.
 pub const KEEPALIVE: Duration = Duration::from_secs(25);
 
 /// How often a connection renews its WireGuard session.
 const REKEY: Duration = Duration::from_secs(120);
-
-/// One side of an established connection.
-pub struct Side {
-    pub state: State,
-    pub socket: SocketAddr,
-    /// What this side reads from its TUN device.
-    pub reads: IpPacket,
-}
-
-pub enum State {
-    Client(ClientState),
-    Gateway(GatewayState),
-}
-
-impl State {
-    /// Returns `count` copies of `packet` encrypted for `dst`, in as few GSO batches as fit.
-    pub fn encapsulate(
-        &mut self,
-        packet: &IpPacket,
-        count: usize,
-        now: Instant,
-        dst: SocketAddr,
-    ) -> Vec<DatagramOut> {
-        let segments = (0..count)
-            .map(|_| {
-                let mut packet = packet.clone();
-                let encapsulation = match self {
-                    State::Client(client) => client.handle_tun_input(&mut packet, now),
-                    State::Gateway(gateway) => gateway.handle_tun_input(&mut packet, now),
-                };
-
-                encapsulation
-                    .unwrap()
-                    .unwrap()
-                    .encrypt(&packet)
-                    .unwrap()
-                    .payload
-                    .to_vec()
-            })
-            .collect::<Vec<_>>();
-        let segment_size = segments[0].len();
-
-        segments
-            .chunks(DatagramOut::max_len(dst, segment_size) / segment_size)
-            .map(|segments| {
-                let mut packet = bufferpool::Bytes::fitting(64 * 1024);
-                for segment in segments {
-                    packet.extend_from_slice(segment);
-                }
-
-                DatagramOut {
-                    src: None,
-                    dst,
-                    packet,
-                    segment_size,
-                    ecn: Ecn::NonEct,
-                }
-            })
-            .collect()
-    }
-}
-
-/// Returns both sides of a connection, through which the Client may reach `resource`.
-pub fn connect(resource: Resource) -> (Side, Side, Instant) {
-    let mut tunnel = Tunnel::established(1, Connectivity::Ice, resource);
-    let reply = tunnel.reply();
-    let client = tunnel.clients.remove(0);
-
-    let client = Side {
-        socket: client_socket(client.index),
-        reads: client.request(),
-        state: State::Client(client.state),
-    };
-    let gateway = Side {
-        state: State::Gateway(tunnel.gateway),
-        socket: *GATEWAY_SOCKET,
-        reads: reply,
-    };
-
-    (client, gateway, tunnel.now)
-}
 
 /// The port of the first Client's socket; each further Client takes the next one.
 const CLIENT_PORT: u16 = 1111;
@@ -140,7 +67,7 @@ pub static GATEWAY_SOCKET: LazyLock<SocketAddr> =
 ///
 /// Only the first Client's socket gets bound, by the packet benchmarks. The others need an address
 /// each, as the Gateway rate-limits handshakes per source address.
-pub fn client_socket(index: usize) -> SocketAddr {
+fn client_socket(index: usize) -> SocketAddr {
     let ip = match index {
         0 => *LOCAL_IP,
         _ => {
@@ -153,7 +80,7 @@ pub fn client_socket(index: usize) -> SocketAddr {
 }
 
 /// Returns the index of the Client with the socket `socket`, if any.
-pub fn client_index(socket: SocketAddr) -> Option<usize> {
+fn client_index(socket: SocketAddr) -> Option<usize> {
     socket.port().checked_sub(CLIENT_PORT).map(usize::from)
 }
 
@@ -269,23 +196,242 @@ impl Resource {
     }
 }
 
+/// A Client's or the Gateway's tunnel, running on the calling thread and on simulated time.
+///
+/// Its crypto jobs run inline, and the caller stands in for its UDP socket and TUN device: time
+/// only moves when the caller moves it, to the deadline the tunnel asked for.
+pub struct Host<R> {
+    tunnel: Tunnel<R>,
+    /// The fake tunnel's TUN device, sockets and resolver; every address is IPv4.
+    ends: FakeTunnelEnds,
+    /// The deadline the tunnel asked to be woken at.
+    alarm: Option<Instant>,
+    /// Whether Callgrind counts the instructions of [`Host::run`].
+    counted: bool,
+}
+
+impl<R: Role> Host<R> {
+    fn new(state: R) -> Self {
+        let (tunnel, ends) = Tunnel::fake(state);
+
+        Self {
+            tunnel,
+            ends,
+            alarm: None,
+            counted: false,
+        }
+    }
+
+    /// Lets Callgrind count the instructions of every further [`Host::run`].
+    pub fn count(&mut self) {
+        self.counted = true;
+    }
+
+    /// Wakes the tunnel at `now` and polls it until it waits for input or a later deadline,
+    /// returning its events.
+    ///
+    /// Like the Client's and the Gateway's event loops, it handles a deadline that has passed
+    /// before anything else, and asks for the next deadline only once the tunnel is pending.
+    pub fn run(&mut self, now: Instant) -> Vec<R::Event> {
+        if self.counted {
+            callgrind::count(|| self.poll(now))
+        } else {
+            self.poll(now)
+        }
+    }
+
+    fn poll(&mut self, now: Instant) -> Vec<R::Event> {
+        let mut cx = Context::from_waker(Waker::noop());
+        let mut events = Vec::new();
+
+        loop {
+            if self.alarm.is_some_and(|alarm| alarm <= now) {
+                self.tunnel.handle_timeout(now);
+            }
+
+            while let Poll::Ready(result) = self.tunnel.poll_next_event(&mut cx, now) {
+                match result {
+                    Ok(event) => events.push(event),
+                    Err(mut errors) => for _ in errors.drain() {},
+                }
+            }
+
+            self.alarm = self.tunnel.next_timeout(now);
+
+            if !self.alarm.is_some_and(|alarm| alarm <= now) {
+                return events;
+            }
+        }
+    }
+
+    /// The deadline the tunnel asked to be woken at.
+    pub fn deadline(&self) -> Option<Instant> {
+        self.alarm
+    }
+
+    /// Returns the tunnel's state to change, and has the tunnel woken at `now`.
+    pub fn state_mut(&mut self, now: Instant) -> &mut R {
+        self.alarm = Some(now);
+
+        self.tunnel.state_mut()
+    }
+
+    pub fn into_state(self) -> R {
+        self.tunnel.into_state()
+    }
+
+    /// Hands `batch` to the tunnel as if the TUN device had read it.
+    pub fn read_from_tun(&self, batch: PacketBatch) {
+        self.ends
+            .tun_inbound
+            .try_send(batch)
+            .expect("TUN channel should have room");
+    }
+
+    /// Takes the packets the tunnel wrote to the TUN device.
+    pub fn written_to_tun(&mut self) -> Vec<IpPacket> {
+        let mut packets = Vec::new();
+
+        while let Ok(mut batch) = self.ends.tun_outbound.try_recv() {
+            packets.extend(batch.drain());
+        }
+
+        packets
+    }
+
+    /// Hands `batch` to the tunnel as if its socket had received it, or returns it if the
+    /// socket's channel is full.
+    pub fn receive(&self, batch: DatagramBatch) -> Result<(), DatagramBatch> {
+        self.ends.socket_v4.receive(batch)
+    }
+
+    /// Takes the datagrams the tunnel sent, split into the segments that go on the wire.
+    pub fn take_sent(&mut self) -> Vec<Transmit> {
+        self.ends.socket_v4.take_sent()
+    }
+
+    /// Returns `count` copies of `packet` as the tunnel encrypts them for `dst`, in as few GSO
+    /// batches as fit.
+    fn encrypt(
+        &mut self,
+        packet: &IpPacket,
+        count: usize,
+        dst: SocketAddr,
+        now: Instant,
+    ) -> Vec<DatagramOut> {
+        let mut segments = Vec::new();
+        for batch in tun_batches(packet, count) {
+            self.read_from_tun(batch);
+            self.run(now);
+            segments.extend(self.take_sent());
+        }
+        let segment_size = segments[0].payload.len();
+
+        segments
+            .chunks(DatagramOut::max_len(dst, segment_size) / segment_size)
+            .map(|segments| {
+                let mut packet = bufferpool::Bytes::fitting(64 * 1024);
+                for segment in segments {
+                    packet.extend_from_slice(&segment.payload);
+                }
+
+                DatagramOut {
+                    src: None,
+                    dst,
+                    packet,
+                    segment_size,
+                    ecn: Ecn::NonEct,
+                }
+            })
+            .collect()
+    }
+}
+
+/// Returns `count` copies of `packet`, in batches as full as the TUN device's.
+pub fn tun_batches(packet: &IpPacket, count: usize) -> Vec<PacketBatch> {
+    let packets = vec![packet.clone(); count];
+
+    packets
+        .chunks(tun::MAX_BATCH_SIZE)
+        .map(|chunk| {
+            let mut batch = PacketBatch::default();
+            for packet in chunk {
+                batch.try_push(packet.clone()).unwrap();
+            }
+
+            batch
+        })
+        .collect()
+}
+
+pub enum AnyHost {
+    Client(Host<ClientState>),
+    Gateway(Host<GatewayState>),
+}
+
+/// One side of an established connection.
+pub struct Side {
+    pub host: AnyHost,
+    pub socket: SocketAddr,
+    /// What this side reads from its TUN device.
+    pub reads: IpPacket,
+}
+
+impl Side {
+    /// Returns `count` copies of what this side reads from its TUN device, encrypted for `dst`
+    /// in as few GSO batches as fit.
+    pub fn encrypt(&mut self, count: usize, dst: SocketAddr, now: Instant) -> Vec<DatagramOut> {
+        match &mut self.host {
+            AnyHost::Client(host) => host.encrypt(&self.reads, count, dst, now),
+            AnyHost::Gateway(host) => host.encrypt(&self.reads, count, dst, now),
+        }
+    }
+}
+
+/// Returns both sides of a connection, through which the Client may reach `resource`.
+pub fn connect(resource: Resource) -> (Side, Side, Instant) {
+    let mut network = Network::established(1, Connectivity::Ice, resource);
+    let reply = network.reply();
+    let client = network.clients.remove(0);
+
+    let client = Side {
+        socket: client_socket(client.index),
+        reads: client.request(),
+        host: AnyHost::Client(client.host),
+    };
+    let gateway = Side {
+        host: AnyHost::Gateway(network.gateway),
+        socket: *GATEWAY_SOCKET,
+        reads: reply,
+    };
+
+    (client, gateway, network.now)
+}
+
 /// Clients and a Gateway with an established connection each, through which the Clients may
 /// reach the given resource.
-pub struct Tunnel {
+///
+/// Datagrams pass between them and the relay without delay, and simulated time jumps from one
+/// deadline to the next.
+pub struct Network {
     pub clients: Vec<Client>,
-    pub gateway: GatewayState,
-    pub relay: Relay,
+    pub gateway: Host<GatewayState>,
+    relay: Relay,
     pub now: Instant,
+    connectivity: Connectivity,
+    resource: Resource,
+    /// Datagrams in flight, as source, destination and payload.
+    in_flight: VecDeque<(SocketAddr, SocketAddr, Vec<u8>)>,
 }
 
 pub struct Client {
     index: usize,
-    pub state: ClientState,
+    pub host: Host<ClientState>,
     /// Where it sends packets for the resource: its address or the DNS proxy IP.
     dst: IpAddr,
 }
 
-impl Tunnel {
+impl Network {
     pub fn established(clients: usize, connectivity: Connectivity, resource: Resource) -> Self {
         let now = Instant::now();
         let unix_ts = SystemTime::now()
@@ -293,115 +439,182 @@ impl Tunnel {
             .unwrap();
         let relay = Relay::new(now);
 
-        let mut gateway = GatewayState::new([2; 32], now, unix_ts);
-        gateway.set_flow_logs_enabled(true);
-        gateway.update_tun_device(GATEWAY_TUN);
-        gateway.update_relays(BTreeSet::new(), relay.description("gateway"), now);
+        let mut gateway = Host::new(GatewayState::new([2; 32], now, unix_ts));
+        let state = gateway.state_mut(now);
+        state.set_flow_logs_enabled(true);
+        state.update_tun_device(GATEWAY_TUN);
+        state.update_relays(BTreeSet::new(), relay.description("gateway"), now);
 
         let clients = (0..clients)
             .map(|index| Client::new(index, resource, &relay, now, unix_ts))
             .collect();
 
-        let mut tunnel = Self {
+        let mut network = Self {
             clients,
             gateway,
             relay,
             now,
+            connectivity,
+            resource,
+            in_flight: VecDeque::new(),
         };
 
         // A Gateway only signals candidates for a connection once it has a relay allocation.
-        tunnel.run_until(now + Duration::from_secs(1), connectivity, resource);
+        network.step_until(now + Duration::from_secs(1));
 
         // Spread over a session, so the connections' keepalives and rekeys do not fire at once.
-        let start = tunnel.now;
-        let count = u32::try_from(tunnel.clients.len()).unwrap();
-        for index in 0..tunnel.clients.len() {
-            let at = start + REKEY * u32::try_from(index).unwrap() / count;
-            tunnel.run_until(at, connectivity, resource);
+        let start = network.now;
+        let count = u32::try_from(network.clients.len()).unwrap();
+        for index in 0..network.clients.len() {
+            network.step_until(start + REKEY * u32::try_from(index).unwrap() / count);
 
-            let client = &mut tunnel.clients[index];
-            client
-                .state
-                .handle_tun_input(&mut client.request(), tunnel.now)
-                .unwrap();
+            network.request(index);
         }
 
         // Until the TURN allocations' retransmits and the connections' initial probing are done.
-        tunnel.run_until(tunnel.now + Duration::from_secs(20), connectivity, resource);
+        network.step_until(network.now + Duration::from_secs(20));
 
-        tunnel
+        network
     }
 
     /// Mirrors the first Client's request as the Gateway writes it to its TUN device.
     fn reply(&mut self) -> IpPacket {
-        let client = &mut self.clients[0];
-        let socket = client_socket(client.index);
-        let mut request = client.request();
-        let datagram = client
-            .state
-            .handle_tun_input(&mut request, self.now)
-            .unwrap()
-            .unwrap()
-            .encrypt(&request)
-            .unwrap();
-        let decapsulation = self
-            .gateway
-            .handle_network_input(*GATEWAY_SOCKET, socket, &datagram.payload, self.now)
-            .unwrap()
-            .unwrap();
-        let request = self
-            .gateway
-            .handle_peer_input(
-                *GATEWAY_SOCKET,
-                socket,
-                decapsulation.decrypt(&datagram.payload),
-                self.now,
-            )
-            .unwrap()
-            .unwrap();
+        let request = self.forward(0).pop().unwrap();
         let udp = request.as_udp().unwrap();
         let (sport, dport) = (udp.source_port(), udp.destination_port());
 
         packet(request.destination(), request.source(), dport, sport)
     }
 
-    fn run_until(&mut self, until: Instant, connectivity: Connectivity, resource: Resource) {
-        while self.now < until {
-            self.step(connectivity, resource);
-        }
+    /// Has a Client send its request for the resource, and returns what the Gateway wrote to its
+    /// TUN device meanwhile.
+    pub fn forward(&mut self, index: usize) -> Vec<IpPacket> {
+        self.request(index);
+        self.deliver();
+
+        self.gateway.written_to_tun()
     }
 
-    /// Advances the time by [`STEP`], delivering what the Clients and the Gateway sent meanwhile.
-    fn step(&mut self, connectivity: Connectivity, resource: Resource) {
-        self.now += STEP;
-        let now = self.now;
+    /// Has a Client's TUN device read its request for the resource.
+    fn request(&mut self, index: usize) {
+        let client = &self.clients[index];
+        client
+            .host
+            .read_from_tun(PacketBatch::new(client.request()));
+        self.wake_client(index);
+    }
 
-        for client in &mut self.clients {
-            if client.state.poll_timeout().is_some_and(|t| t <= now) {
-                client.state.handle_timeout(now);
+    /// Lets time pass until `until`, waking every tunnel at its deadline.
+    pub fn run_until(&mut self, until: Instant) {
+        self.advance(until, Duration::ZERO);
+    }
+
+    /// Lets time pass until `until` in steps of [`STEP`], waking the tunnels due at each.
+    ///
+    /// Waking them together lines up their timers, which keeps the idle benchmark's wake-ups few.
+    fn step_until(&mut self, until: Instant) {
+        self.advance(until, STEP);
+    }
+
+    fn advance(&mut self, until: Instant, step: Duration) {
+        loop {
+            self.deliver();
+            for _ in self.gateway.written_to_tun() {}
+
+            let Some(next) = self
+                .clients
+                .iter()
+                .map(|client| client.host.deadline())
+                .chain([self.gateway.deadline()])
+                .flatten()
+                .min()
+                .filter(|next| *next <= until)
+            else {
+                break;
+            };
+            self.now = match step.as_nanos() {
+                0 => self.now.max(next),
+                step_nanos => {
+                    let steps = next
+                        .saturating_duration_since(self.now)
+                        .as_nanos()
+                        .div_ceil(step_nanos)
+                        .max(1);
+
+                    self.now + step * u32::try_from(steps).unwrap()
+                }
+            };
+            let now = self.now;
+
+            if self.gateway.deadline().is_some_and(|t| t <= now) {
+                self.wake_gateway();
             }
-        }
-        if self.gateway.poll_timeout().is_some_and(|t| t <= now) {
-            self.gateway.handle_timeout(now);
-        }
-
-        for index in 0..self.clients.len() {
-            while let Some(event) = self.clients[index].state.poll_event() {
-                match event {
-                    ClientEvent::RequestAccess { .. } => {
-                        self.authorize(index, connectivity, resource)
-                    }
-                    ClientEvent::AddedIceCandidates { candidates, .. } => {
-                        for candidate in candidates {
-                            self.gateway
-                                .add_ice_candidate(client_id(index), candidate, now);
-                        }
-                    }
-                    _ => {}
+            for index in 0..self.clients.len() {
+                if self.clients[index]
+                    .host
+                    .deadline()
+                    .is_some_and(|t| t <= now)
+                {
+                    self.wake_client(index);
                 }
             }
         }
-        while let Some(event) = self.gateway.poll_event() {
+        self.now = self.now.max(until);
+    }
+
+    /// Delivers the datagrams in flight and those sent in turn, until there are none.
+    fn deliver(&mut self) {
+        let mut to_gateway = Vec::new();
+
+        while !self.in_flight.is_empty() {
+            while let Some((from, to, payload)) = self.in_flight.pop_front() {
+                if self.relay.serves(to) {
+                    let datagrams = self.relay.handle(from, to, &payload, self.now);
+                    self.in_flight.extend(datagrams);
+
+                    continue;
+                }
+
+                if to == *GATEWAY_SOCKET {
+                    to_gateway.push(datagram(from, to, &payload));
+
+                    continue;
+                }
+
+                if let Some(index) = client_index(to).filter(|index| *index < self.clients.len()) {
+                    let batch = DatagramBatch::from_datagrams([datagram(from, to, &payload)]);
+                    self.clients[index].host.receive(batch).unwrap();
+                    self.wake_client(index);
+                }
+            }
+
+            if to_gateway.is_empty() {
+                continue;
+            }
+            let mut batches = VecDeque::new();
+            let mut datagrams = to_gateway.drain(..).peekable();
+            while datagrams.peek().is_some() {
+                batches.push_back(DatagramBatch::from_datagrams(
+                    datagrams.by_ref().take(RECV_BATCH_SIZE),
+                ));
+            }
+            drop(datagrams);
+
+            while let Some(batch) = batches.pop_front() {
+                if let Err(batch) = self.gateway.receive(batch) {
+                    batches.push_front(batch);
+                    self.wake_gateway();
+                }
+            }
+            self.wake_gateway();
+        }
+    }
+
+    /// Runs the Gateway's tunnel, handles its events and puts what it sent in flight.
+    fn wake_gateway(&mut self) {
+        let now = self.now;
+
+        for event in self.gateway.run(now) {
             match event {
                 GatewayEvent::AddedIceCandidates {
                     conn_id,
@@ -413,11 +626,15 @@ impl Tunnel {
                         .find(|client| client_id(client.index) == conn_id)
                         .unwrap();
                     for candidate in candidates {
-                        client.state.add_ice_candidate(GID, candidate, now);
+                        client
+                            .host
+                            .state_mut(now)
+                            .add_ice_candidate(GID, candidate, now);
                     }
                 }
                 GatewayEvent::ResolveDns(request) => {
                     self.gateway
+                        .state_mut(now)
                         .handle_domain_resolved(request, Ok(vec![DNS_RESOURCE_IP.into()]), now)
                         .unwrap();
                 }
@@ -425,21 +642,47 @@ impl Tunnel {
             }
         }
 
-        for index in 0..self.clients.len() {
-            while let Some(transmit) = self.clients[index].state.poll_transmit() {
-                self.deliver(client_socket(index), transmit.dst, &transmit.payload);
-            }
-        }
-        while let Some(transmit) = self.gateway.poll_transmit() {
-            self.deliver(*GATEWAY_SOCKET, transmit.dst, &transmit.payload);
-        }
-        for client in &mut self.clients {
-            for _ in std::iter::from_fn(|| client.state.poll_packets()) {}
+        for transmit in self.gateway.take_sent() {
+            self.in_flight
+                .push_back((*GATEWAY_SOCKET, transmit.dst, transmit.payload.to_vec()));
         }
     }
 
-    fn authorize(&mut self, index: usize, connectivity: Connectivity, resource: Resource) {
-        let client = &mut self.clients[index];
+    /// Runs a Client's tunnel, handles its events and puts what it sent in flight.
+    fn wake_client(&mut self, index: usize) {
+        let now = self.now;
+
+        for event in self.clients[index].host.run(now) {
+            match event {
+                ClientEvent::RequestAccess { .. } => self.authorize(index),
+                ClientEvent::AddedIceCandidates { candidates, .. } => {
+                    for candidate in candidates {
+                        self.gateway.state_mut(now).add_ice_candidate(
+                            client_id(index),
+                            candidate,
+                            now,
+                        );
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        let host = &mut self.clients[index].host;
+        for _ in host.written_to_tun() {}
+        for transmit in host.take_sent() {
+            self.in_flight.push_back((
+                client_socket(index),
+                transmit.dst,
+                transmit.payload.to_vec(),
+            ));
+        }
+    }
+
+    fn authorize(&mut self, index: usize) {
+        let now = self.now;
+        let client = self.clients[index].host.state_mut(now);
+        let gateway = self.gateway.state_mut(now);
         let tun = client_tun(index);
         let preshared_key = || SecretKey::init_with(|| Key([3; 32]));
         let client_ice = IceCredentials {
@@ -451,10 +694,10 @@ impl Tunnel {
             password: format!("gateway-password-{index}"),
         };
 
-        self.gateway.create_authorization(
+        gateway.create_authorization(
             gateway::Client {
                 id: client_id(index),
-                public_key: client.state.public_key().into(),
+                public_key: client.public_key().into(),
                 preshared_key: preshared_key(),
                 ipv4: tun.v4,
                 ipv6: tun.v6,
@@ -462,70 +705,36 @@ impl Tunnel {
             client_ice.clone(),
             gateway_ice.clone(),
             None,
-            serde_json::from_value(resource.description()).unwrap(),
-            connectivity.iceless(),
-            self.now,
+            serde_json::from_value(self.resource.description()).unwrap(),
+            self.connectivity.iceless(),
+            now,
             ingest_token(),
         );
         client
-            .state
             .handle_resource_access_authorized(
-                resource.id(),
+                self.resource.id(),
                 GID,
-                self.gateway.public_key(),
+                gateway.public_key(),
                 GATEWAY_TUN,
                 SITE,
                 preshared_key(),
                 client_ice,
                 gateway_ice,
-                connectivity.iceless(),
+                self.connectivity.iceless(),
                 ingest_token(),
-                self.now,
+                now,
             )
             .unwrap();
     }
-
-    fn deliver(&mut self, from: SocketAddr, to: SocketAddr, payload: &[u8]) {
-        if self.relay.serves(to) {
-            for (from, to, payload) in self.relay.handle(from, to, payload, self.now) {
-                self.deliver(from, to, &payload);
-            }
-
-            return;
-        }
-
-        if to == *GATEWAY_SOCKET {
-            if let Ok(Some(decapsulation)) = self
-                .gateway
-                .handle_network_input(to, from, payload, self.now)
-            {
-                let _ = self.gateway.handle_peer_input(
-                    to,
-                    from,
-                    decapsulation.decrypt(payload),
-                    self.now,
-                );
-            }
-
-            return;
-        }
-
-        if let Some(client) = client_index(to).and_then(|index| self.clients.get_mut(index)) {
-            receive(&mut client.state, to, from, payload, self.now);
-        }
-    }
 }
 
-/// Lets a Client handle a datagram that arrived on its socket `local`.
-pub fn receive(
-    client: &mut ClientState,
-    local: SocketAddr,
-    from: SocketAddr,
-    payload: &[u8],
-    now: Instant,
-) {
-    if let Ok(Some(decapsulation)) = client.handle_network_input(local, from, payload, now) {
-        let _ = client.handle_peer_input(local, from, decapsulation.decrypt(payload), now);
+fn datagram(from: SocketAddr, to: SocketAddr, payload: &[u8]) -> DatagramOut {
+    DatagramOut {
+        src: Some(from),
+        dst: to,
+        packet: bufferpool::Bytes::copied_from(payload),
+        segment_size: payload.len(),
+        ecn: Ecn::NonEct,
     }
 }
 
@@ -541,7 +750,8 @@ impl Client {
         let mut key = [1; 32];
         key[..8].copy_from_slice(&(index as u64).to_be_bytes());
 
-        let mut state = ClientState::new(key, BTreeSet::new(), false, now, unix_ts);
+        let mut host = Host::new(ClientState::new(key, BTreeSet::new(), false, now, unix_ts));
+        let state = host.state_mut(now);
         state.set_flow_logs_enabled(true);
         state.update_interface_config(Interface {
             ipv4: tun.v4,
@@ -552,7 +762,13 @@ impl Client {
             search_domain: None,
         });
         state.update_system_resolvers(vec![IpAddr::from([1, 1, 1, 1])]);
-        let sentinel = std::iter::from_fn(|| state.poll_event())
+        state.set_resources(
+            vec![serde_json::from_value(resource.description()).unwrap()],
+            now,
+        );
+        let sentinel = host
+            .run(now)
+            .into_iter()
             .find_map(|event| {
                 let ClientEvent::TunInterfaceUpdated(config) = event else {
                     return None;
@@ -561,22 +777,18 @@ impl Client {
                 config.dns_by_sentinel.sentinel_ips().first().copied()
             })
             .unwrap();
-        state.set_resources(
-            vec![serde_json::from_value(resource.description()).unwrap()],
-            now,
-        );
-        state.update_relays(
+
+        let dst = match resource {
+            Resource::Cidr => CIDR_RESOURCE_IP.into(),
+            Resource::Dns => resolve(&mut host, tun.v4, sentinel, now),
+        };
+        host.state_mut(now).update_relays(
             BTreeSet::new(),
             relay.description(&format!("client-{index}")),
             now,
         );
 
-        let dst = match resource {
-            Resource::Cidr => CIDR_RESOURCE_IP.into(),
-            Resource::Dns => resolve(&mut state, tun.v4, sentinel, now),
-        };
-
-        Self { index, state, dst }
+        Self { index, host, dst }
     }
 
     pub fn request(&self) -> IpPacket {
@@ -585,12 +797,18 @@ impl Client {
 }
 
 /// Resolves the DNS resource through the Client's stub resolver and returns its proxy IP.
-fn resolve(client: &mut ClientState, tun: Ipv4Addr, sentinel: IpAddr, now: Instant) -> IpAddr {
+fn resolve(
+    client: &mut Host<ClientState>,
+    tun: Ipv4Addr,
+    sentinel: IpAddr,
+    now: Instant,
+) -> IpAddr {
     let query = Query::new(DNS_RESOURCE_DOMAIN.parse().unwrap(), RecordType::A).into_bytes();
-    let mut query = ip_packet::make::udp_packet(tun, sentinel, 5353, 53, &query).unwrap();
+    let query = ip_packet::make::udp_packet(tun, sentinel, 5353, 53, &query).unwrap();
 
-    client.handle_tun_input(&mut query, now).unwrap();
-    let response = client.poll_packets().unwrap();
+    client.read_from_tun(PacketBatch::new(query));
+    client.run(now);
+    let response = client.written_to_tun().pop().unwrap();
     let response = Response::parse(response.as_udp().unwrap().payload()).unwrap();
 
     response
@@ -605,7 +823,7 @@ fn packet(src: IpAddr, dst: IpAddr, sport: u16, dport: u16) -> IpPacket {
 }
 
 /// A TURN relay on [`RELAY_SOCKET`], run by the relay's own sans-IO state.
-pub struct Relay {
+struct Relay {
     server: relay_proto::Server<StdRng>,
     /// The ports of its allocations.
     allocations: BTreeSet<u16>,
@@ -654,14 +872,14 @@ impl Relay {
     }
 
     /// Whether `socket` is the relay's own or one of its allocations.
-    pub fn serves(&self, socket: SocketAddr) -> bool {
+    fn serves(&self, socket: SocketAddr) -> bool {
         socket == RELAY_SOCKET.into()
             || socket.ip() == *RELAY_SOCKET.ip() && self.allocations.contains(&socket.port())
     }
 
     /// Handles a datagram to one of its sockets and returns the datagrams it sends in turn, as
     /// source, destination and payload.
-    pub fn handle(
+    fn handle(
         &mut self,
         from: SocketAddr,
         to: SocketAddr,
