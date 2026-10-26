@@ -21,8 +21,8 @@
     /// opened leaves the one before it on screen, holding perfectly still, and
     /// the gallery takes that as a picture of the tab it asked for.
     private static let settingsTabs = [
-      (label: "General", name: "general", showing: "Account Slug"),
-      (label: "Diagnostic Logs", name: "logs", showing: "Clear Log Directory"),
+      (label: "Settings", name: "general", showing: "Account Slug"),
+      (label: "Diagnostics", name: "logs", showing: "Clear Log Directory"),
     ]
 
     /// A field every parsed certificate carries, so the Device Trust tab can be
@@ -68,7 +68,7 @@
 
         let window = try onlyWindow(of: app)
 
-        // General is already selected, and is clicked anyway so that every tab
+        // Settings is already selected, and is clicked anyway so that every tab
         // arrives the same way.
         for tab in Self.settingsTabs {
           try selectTab(tab.label, showing: tab.showing, in: window)

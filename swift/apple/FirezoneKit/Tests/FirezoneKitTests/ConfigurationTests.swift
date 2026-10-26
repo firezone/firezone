@@ -546,7 +546,28 @@ struct ConfigurationTests {
 
     #expect(viewModel.areURLsValid())
     #expect(!viewModel.isLogFilterValid())
-    #expect(!viewModel.isValid())
+  }
+
+  @Test("Saving one tab leaves the other tab's edits unsaved")
+  @MainActor
+  func savingOneTabLeavesTheOtherUnsaved() async throws {
+    let config = Configuration(userDefaults: UserDefaults.makeTestDefaults())
+    let viewModel = SettingsViewModel(configuration: config)
+    let logFilter = config.logFilter
+
+    viewModel.accountSlug = "example"
+    viewModel.logFilter = "trace"
+
+    viewModel.selectedTab = .general
+    try await viewModel.save()
+
+    #expect(config.accountSlug == "example")
+    #expect(config.logFilter == logFilter)
+
+    viewModel.selectedTab = .logs
+    try await viewModel.save()
+
+    #expect(config.logFilter == "trace")
   }
 
   // MARK: - Published Properties Initialization

@@ -22,7 +22,7 @@ public struct SettingsView: View {
   private enum ConfirmationAlertContinueAction: Int {
     case none
     case saveSettings
-    case saveAllSettingsAndDismiss
+    case saveSettingsAndDismiss
 
     func performAction(on view: SettingsView) async throws {
       switch self {
@@ -30,16 +30,14 @@ public struct SettingsView: View {
         break
       case .saveSettings:
         try await view.saveSettings()
-      case .saveAllSettingsAndDismiss:
-        try await view.saveAllSettingsAndDismiss()
+      case .saveSettingsAndDismiss:
+        try await view.saveSettingsAndDismiss()
       }
     }
   }
 
   @State private var isShowingConfirmationAlert = false
   @State private var confirmationAlertContinueAction: ConfirmationAlertContinueAction = .none
-
-  @State private var selectedTab: Tab
 
   #if os(iOS)
     private struct LogArchive: Identifiable {
@@ -62,13 +60,21 @@ public struct SettingsView: View {
     case general
     case deviceTrust
     case logs
+
+    var title: String {
+      switch self {
+      case .general: return "Settings"
+      case .deviceTrust: return "Device Trust"
+      case .logs: return "Diagnostics"
+      }
+    }
   }
 
   public init(store: Store, selectedTab: Tab = .general) {
     self.store = store
     self.configuration = store.configuration
-    _viewModel = StateObject(wrappedValue: SettingsViewModel(store: store))
-    _selectedTab = State(initialValue: selectedTab)
+    _viewModel = StateObject(
+      wrappedValue: SettingsViewModel(store: store, selectedTab: selectedTab))
   }
 
   public var body: some View {
@@ -79,11 +85,11 @@ public struct SettingsView: View {
             .ignoresSafeArea()
 
           VStack {
-            TabView(selection: $selectedTab) {
+            TabView(selection: $viewModel.selectedTab) {
               generalTab
                 .tabItem {
                   Image(systemName: "slider.horizontal.3")
-                  Text("General")
+                  Text(Tab.general.title)
                 }
                 .badge(viewModel.areURLsValid() ? nil : "!")
                 .tag(Tab.general)
@@ -91,14 +97,14 @@ public struct SettingsView: View {
                 deviceTrustTab
                   .tabItem {
                     Image(systemName: "rosette")
-                    Text("Device Trust")
+                    Text(Tab.deviceTrust.title)
                   }
                   .tag(Tab.deviceTrust)
               }
               logsTab
                 .tabItem {
                   Image(systemName: "doc.text")
-                  Text("Diagnostic Logs")
+                  Text(Tab.logs.title)
                 }
                 .badge(viewModel.isLogFilterValid() ? nil : "!")
                 .tag(Tab.logs)
@@ -108,8 +114,8 @@ public struct SettingsView: View {
           .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
               Button("Save") {
-                let action = ConfirmationAlertContinueAction.saveAllSettingsAndDismiss
-                if case .connected = store.vpnStatus {
+                let action = ConfirmationAlertContinueAction.saveSettingsAndDismiss
+                if viewModel.selectedTab == .general, case .connected = store.vpnStatus {
                   self.confirmationAlertContinueAction = action
                   self.isShowingConfirmationAlert = true
                 } else {
@@ -122,7 +128,7 @@ public struct SettingsView: View {
               Button("Cancel") { dismiss() }
             }
           }
-          .navigationTitle("Settings")
+          .navigationTitle(viewModel.selectedTab.title)
           .navigationBarTitleDisplayMode(.inline)
           .alert(
             "Some settings may not have been applied",
@@ -143,22 +149,22 @@ public struct SettingsView: View {
       }
     #elseif os(macOS)
       VStack {
-        TabView(selection: $selectedTab) {
+        TabView(selection: $viewModel.selectedTab) {
           generalTab
             .tabItem {
-              Text("General")
+              Text(Tab.general.title)
             }
             .tag(Tab.general)
           if store.deviceTrustCertificateSummary != nil {
             deviceTrustTab
               .tabItem {
-                Text("Device Trust")
+                Text(Tab.deviceTrust.title)
               }
               .tag(Tab.deviceTrust)
           }
           logsTab
             .tabItem {
-              Text("Diagnostic Logs")
+              Text(Tab.logs.title)
             }
             .tag(Tab.logs)
         }
@@ -179,7 +185,9 @@ public struct SettingsView: View {
             "Apply",
             action: {
               let action = ConfirmationAlertContinueAction.saveSettings
-              if [.connected, .connecting, .reasserting].contains(store.vpnStatus) {
+              if viewModel.selectedTab == .general,
+                [.connected, .connecting, .reasserting].contains(store.vpnStatus)
+              {
                 self.confirmationAlertContinueAction = action
                 self.isShowingConfirmationAlert = true
               } else {
@@ -194,6 +202,7 @@ public struct SettingsView: View {
         .padding([.leading, .trailing], 40)
         Spacer()
       }
+      .navigationTitle(viewModel.selectedTab.title)
       .alert(
         "Some settings may not have been applied",
         isPresented: $isShowingConfirmationAlert,
@@ -441,8 +450,6 @@ public struct SettingsView: View {
               )
               Spacer()
             }
-          }
-          Section {
             HStack {
               Spacer()
               ButtonWithProgress(
@@ -561,7 +568,7 @@ public struct SettingsView: View {
     #endif
   }
 
-  private func saveAllSettingsAndDismiss() async throws {
+  private func saveSettingsAndDismiss() async throws {
     try await saveSettings()
     dismiss()
   }

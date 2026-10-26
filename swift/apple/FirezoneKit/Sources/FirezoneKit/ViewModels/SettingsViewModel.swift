@@ -14,6 +14,8 @@ class SettingsViewModel: ObservableObject {
   private var cancellables: Set<AnyCancellable> = []
   private var logDirectorySizeTask: Task<Void, Never>?
 
+  // Save, Apply and Reset act on this tab's settings only.
+  @Published var selectedTab: SettingsView.Tab
   @Published private(set) var shouldDisableApplyButton = false
   @Published private(set) var shouldDisableResetButton = false
   // Kept apart from the URLs so that picking Custom does not snap back to a region whose URLs match.
@@ -43,9 +45,14 @@ class SettingsViewModel: ObservableObject {
 
   /// `store` powers the diagnostic logs actions; without one they report an
   /// unknown size and clear nothing.
-  init(configuration: Configuration? = nil, store: Store? = nil) {
+  init(
+    configuration: Configuration? = nil,
+    store: Store? = nil,
+    selectedTab: SettingsView.Tab = .general
+  ) {
     self.configuration = configuration ?? store?.configuration ?? Configuration.shared
     self.store = store
+    self.selectedTab = selectedTab
 
     authURL = self.configuration.authURL
     apiURL = self.configuration.apiURL
@@ -87,32 +94,51 @@ class SettingsViewModel: ObservableObject {
     })
     .store(in: &cancellables)
 
+    $selectedTab
+      .receive(on: RunLoop.main)
+      .sink(receiveValue: { [weak self] _ in
+        self?.updateDerivedState()
+      })
+      .store(in: &cancellables)
+
     updateDerivedState()
   }
 
   func reset() {
-    if !configuration.isAuthURLForced { authURL = ConfigurationDefaults.authURL }
-    if !configuration.isApiURLForced { apiURL = ConfigurationDefaults.apiURL }
-    if !configuration.isLogFilterForced { logFilter = ConfigurationDefaults.logFilter }
-    if !configuration.isAccountSlugForced { accountSlug = ConfigurationDefaults.accountSlug }
-    if !configuration.isConnectOnStartForced {
-      connectOnStart = ConfigurationDefaults.connectOnStart
+    switch selectedTab {
+    case .general:
+      if !configuration.isAuthURLForced { authURL = ConfigurationDefaults.authURL }
+      if !configuration.isApiURLForced { apiURL = ConfigurationDefaults.apiURL }
+      if !configuration.isAccountSlugForced { accountSlug = ConfigurationDefaults.accountSlug }
+      if !configuration.isConnectOnStartForced {
+        connectOnStart = ConfigurationDefaults.connectOnStart
+      }
+      if !configuration.isStartOnLoginForced { startOnLogin = ConfigurationDefaults.startOnLogin }
+      cloudRegion = detectCloudRegion()
+    case .logs:
+      if !configuration.isLogFilterForced { logFilter = ConfigurationDefaults.logFilter }
+    case .deviceTrust:
+      break
     }
-    if !configuration.isStartOnLoginForced { startOnLogin = ConfigurationDefaults.startOnLogin }
-    cloudRegion = detectCloudRegion()
 
     updateDerivedState()
   }
 
   func save() async throws {
-    if !configuration.isAuthURLForced { configuration.authURL = authURL }
-    if !configuration.isApiURLForced { configuration.apiURL = apiURL }
-    if !configuration.isLogFilterForced { configuration.logFilter = logFilter }
-    if !configuration.isAccountSlugForced { configuration.accountSlug = accountSlug }
-    if !configuration.isConnectOnStartForced { configuration.connectOnStart = connectOnStart }
-    if !configuration.isStartOnLoginForced { configuration.startOnLogin = startOnLogin }
-    if cloudRegion == .custom, !isCloudRegionForced {
-      configuration.lastCustomURLs = (authURL, apiURL)
+    switch selectedTab {
+    case .general:
+      if !configuration.isAuthURLForced { configuration.authURL = authURL }
+      if !configuration.isApiURLForced { configuration.apiURL = apiURL }
+      if !configuration.isAccountSlugForced { configuration.accountSlug = accountSlug }
+      if !configuration.isConnectOnStartForced { configuration.connectOnStart = connectOnStart }
+      if !configuration.isStartOnLoginForced { configuration.startOnLogin = startOnLogin }
+      if cloudRegion == .custom, !isCloudRegionForced {
+        configuration.lastCustomURLs = (authURL, apiURL)
+      }
+    case .logs:
+      if !configuration.isLogFilterForced { configuration.logFilter = logFilter }
+    case .deviceTrust:
+      break
     }
 
     updateDerivedState()
@@ -171,17 +197,6 @@ class SettingsViewModel: ObservableObject {
     "firezone_logs_\(LogExporter.now()).zip"
   }
 
-  func isAllForced() -> Bool {
-    return
-      (configuration.isAuthURLForced && configuration.isApiURLForced
-      && configuration.isLogFilterForced && configuration.isAccountSlugForced
-      && configuration.isConnectOnStartForced && configuration.isStartOnLoginForced)
-  }
-
-  func isValid() -> Bool {
-    areURLsValid() && isLogFilterValid()
-  }
-
   func areURLsValid() -> Bool {
     guard let apiURL = URL(string: apiURL),
       apiURL.host != nil,
@@ -206,26 +221,6 @@ class SettingsViewModel: ObservableObject {
     !logFilter.isEmpty
   }
 
-  func isDefault() -> Bool {
-    return
-      ((configuration.isAuthURLForced || authURL == ConfigurationDefaults.authURL)
-      && (configuration.isApiURLForced || apiURL == ConfigurationDefaults.apiURL)
-      && (configuration.isLogFilterForced || logFilter == ConfigurationDefaults.logFilter)
-      && (configuration.isAccountSlugForced || accountSlug == ConfigurationDefaults.accountSlug)
-      && (configuration.isConnectOnStartForced
-        || connectOnStart == ConfigurationDefaults.connectOnStart)
-      && (configuration.isStartOnLoginForced
-        || startOnLogin == ConfigurationDefaults.startOnLogin))
-  }
-
-  func isSaved() -> Bool {
-    return
-      (authURL == configuration.authURL && apiURL == configuration.apiURL
-      && logFilter == configuration.logFilter && accountSlug == configuration.accountSlug
-      && connectOnStart == configuration.connectOnStart
-      && startOnLogin == configuration.startOnLogin)
-  }
-
   var isCloudRegionForced: Bool {
     configuration.isAuthURLForced || configuration.isApiURLForced
   }
@@ -238,9 +233,38 @@ class SettingsViewModel: ObservableObject {
   }
 
   private func updateDerivedState() {
-    shouldDisableApplyButton = (isAllForced() || isSaved() || !isValid())
+    switch selectedTab {
+    case .general:
+      let isAllForced =
+        configuration.isAuthURLForced && configuration.isApiURLForced
+        && configuration.isAccountSlugForced && configuration.isConnectOnStartForced
+        && configuration.isStartOnLoginForced
+      let isSaved =
+        authURL == configuration.authURL && apiURL == configuration.apiURL
+        && accountSlug == configuration.accountSlug
+        && connectOnStart == configuration.connectOnStart
+        && startOnLogin == configuration.startOnLogin
+      let isDefault =
+        (configuration.isAuthURLForced || authURL == ConfigurationDefaults.authURL)
+        && (configuration.isApiURLForced || apiURL == ConfigurationDefaults.apiURL)
+        && (configuration.isAccountSlugForced || accountSlug == ConfigurationDefaults.accountSlug)
+        && (configuration.isConnectOnStartForced
+          || connectOnStart == ConfigurationDefaults.connectOnStart)
+        && (configuration.isStartOnLoginForced
+          || startOnLogin == ConfigurationDefaults.startOnLogin)
 
-    shouldDisableResetButton = (isAllForced() || isDefault())
+      shouldDisableApplyButton = isAllForced || isSaved || !areURLsValid()
+      shouldDisableResetButton = isAllForced || isDefault
+    case .logs:
+      let isForced = configuration.isLogFilterForced
+
+      shouldDisableApplyButton =
+        isForced || logFilter == configuration.logFilter || !isLogFilterValid()
+      shouldDisableResetButton = isForced || logFilter == ConfigurationDefaults.logFilter
+    case .deviceTrust:
+      shouldDisableApplyButton = true
+      shouldDisableResetButton = true
+    }
   }
 
   private func syncForcedValuesFromConfiguration() {
