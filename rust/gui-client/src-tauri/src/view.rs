@@ -65,6 +65,7 @@ impl GeneralSettingsForm {
                 None => api_url,
             },
             log_filter: advanced_settings.log_filter,
+            additional_host_candidates: advanced_settings.additional_host_candidates,
         };
 
         Ok((general_settings, advanced_settings))

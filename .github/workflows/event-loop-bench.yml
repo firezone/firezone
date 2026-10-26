@@ -46,7 +46,7 @@ jobs:
           azure-connection-string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
       # Runs each benchmark once, so a broken one fails here instead of on Bencher.
       - name: Test bench
-        run: cargo run --release -p tunnel-bench -- --test
+        run: cargo bench -p tunnel-bench --bench throughput -- --test
       - uses: bencherdev/bencher@f80847436d7157936b40525db4c2a1064124f04a # v0.6.13
         if: env.BENCHER == 'true'
       - name: Push image to the Bencher registry
@@ -56,7 +56,11 @@ jobs:
         run: |
           set -euo pipefail
 
-          cp target/release/tunnel-bench tests/tunnel-bench/
+          bench=$(
+            cargo bench --no-run -p tunnel-bench --bench throughput --message-format=json |
+              jq -r 'select(.reason == "compiler-artifact" and .target.name == "throughput") | .executable'
+          )
+          cp "$bench" tests/tunnel-bench/tunnel-bench
           image="registry.bencher.dev/$BENCHER_PROJECT:$GITHUB_SHA"
           docker login registry.bencher.dev -u "$BENCHER_PROJECT" --password-stdin <<<"$BENCHER_API_KEY"
           docker build --platform linux/amd64 -t "$image" tests/tunnel-bench

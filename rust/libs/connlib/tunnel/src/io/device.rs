@@ -12,7 +12,7 @@ pub struct Device {
 
     /// The batch of packets queued since the last call to [`Device::flush_batch`].
     current_batch: PacketBatch,
-    /// Completed batches waiting for room in the channel.
+    /// Completed batches waiting for room in the channel, at most [`tun::CHANNEL_CAPACITY`].
     pending_batches: VecDeque<PacketBatch>,
 }
 
@@ -87,7 +87,7 @@ impl Device {
             // The batch is full: complete it and start a new one.
             let batch = mem::replace(&mut self.current_batch, PacketBatch::new(packet));
 
-            self.pending_batches.push_back(batch);
+            self.push_pending(batch);
         }
     }
 
@@ -101,7 +101,26 @@ impl Device {
 
         let batch = mem::take(&mut self.current_batch);
 
+        self.push_pending(batch);
+    }
+
+    fn push_pending(&mut self, batch: PacketBatch) {
+        if self.pending_batches.len() >= tun::CHANNEL_CAPACITY {
+            tracing::trace!(
+                num_packets = batch.len(),
+                "TUN device is full; dropping packets"
+            );
+            return;
+        }
+
         self.pending_batches.push_back(batch);
+    }
+}
+
+#[cfg(test)]
+impl Device {
+    pub(crate) fn num_pending(&self) -> usize {
+        self.pending_batches.len()
     }
 }
 

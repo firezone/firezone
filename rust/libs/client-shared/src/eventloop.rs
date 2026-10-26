@@ -84,6 +84,7 @@ pub enum Command {
     SetDns(Vec<IpAddr>),
     SetTun(Box<dyn Tun>),
     SetInternetResourceState(bool),
+    SetAdditionalHostCandidates(Vec<IpAddr>),
 }
 
 #[derive(Debug, PartialEq, Eq, Hash)]
@@ -165,6 +166,7 @@ impl Eventloop {
         udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
         is_internet_resource_active: bool,
         dns_servers: Vec<IpAddr>,
+        additional_host_candidates: Vec<IpAddr>,
         flow_logs_dir: Option<std::path::PathBuf>,
         local_flow_logs: bool,
         portal: PhoenixChannel<(), EgressMessages, IngressMessages, PublicKeyParam>,
@@ -186,6 +188,7 @@ impl Eventloop {
             clock.now(),
         );
         tunnel.update_system_resolvers(dns_servers.clone());
+        tunnel.set_additional_host_candidates(additional_host_candidates, clock.now());
         let resolver_bypass = tunnel_bypass_resolver::Bypass::with_servers(dns_servers.clone());
 
         tokio::spawn(phoenix_channel_event_loop(
@@ -263,7 +266,7 @@ impl Eventloop {
             }
             CombinedEvent::Clock(clock::Event::Alarm(now)) => {
                 if let Some(tunnel) = self.tunnel.as_mut() {
-                    tunnel.state_mut().handle_timeout(now);
+                    tunnel.handle_timeout(now);
                 }
 
                 Ok(ControlFlow::Continue(()))
@@ -328,6 +331,14 @@ impl Eventloop {
                 };
 
                 tunnel.state_mut().set_internet_resource_state(active, now)
+            }
+            Command::SetAdditionalHostCandidates(ips) => {
+                let now = self.clock.now();
+                let Some(tunnel) = self.tunnel.as_mut() else {
+                    return Ok(ControlFlow::Continue(()));
+                };
+
+                tunnel.set_additional_host_candidates(ips, now);
             }
             Command::SetTun(tun) => {
                 let Some(tunnel) = self.tunnel.as_mut() else {

@@ -3,6 +3,7 @@
 // referring to the rest of the crate.
 
 use clap::Parser;
+use std::net::IpAddr;
 
 #[derive(Parser)]
 // The binary is built as `firezone-cli` to keep it from colliding with the GUI
@@ -54,6 +55,12 @@ pub enum Cmd {
         #[command(subcommand)]
         command: InternetResourceCmd,
     },
+    // Private API without stability guarantees.
+    #[command(about = "Manage additional host candidates.", hide = true)]
+    HostCandidates {
+        #[command(subcommand)]
+        command: HostCandidatesCmd,
+    },
 }
 
 /// Omitting the subcommand is equivalent to [`ResourcesCmd::List`].
@@ -69,4 +76,16 @@ pub enum InternetResourceCmd {
     Enable,
     #[command(about = "Stop routing traffic through the Internet Resource.")]
     Disable,
+}
+
+#[derive(clap::Subcommand)]
+pub enum HostCandidatesCmd {
+    #[command(about = "Advertise a local IP as an additional host candidate.")]
+    Add { ip: IpAddr },
+    #[command(about = "Stop advertising a local IP as an additional host candidate.")]
+    Remove { ip: IpAddr },
+    #[command(about = "List the additional host candidates.")]
+    List,
+    #[command(about = "Remove all additional host candidates.")]
+    Clear,
 }

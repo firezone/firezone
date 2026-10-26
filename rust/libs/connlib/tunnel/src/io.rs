@@ -3,7 +3,7 @@ mod device;
 mod udp_gso_train;
 
 pub(crate) use crypto::MAX_DECRYPT_BACKLOG_MEMORY;
-pub use crypto::{DecryptBatch, DecryptedIpPackets, EncryptBatch};
+pub use crypto::{CryptoWorkers, DecryptBatch, DecryptedIpPackets, EncryptBatch};
 pub use device::{Device, TunChannelClosed};
 pub(crate) use udp_gso_train::UdpGsoTrain;
 
@@ -13,7 +13,7 @@ use crate::{
     sockets::{ReceivedDatagrams, Sockets},
 };
 use anyhow::Result;
-use crypto::{CryptoWorkers, Decrypting};
+use crypto::Decrypting;
 use fast_random_state::FastRandomState;
 use ip_packet::IpPacket;
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
@@ -192,19 +192,16 @@ impl<'a, 'cx> PollState<'a, 'cx> {
 }
 
 impl Io {
-    /// Creates a new I/O abstraction
-    ///
-    /// Must be called within a Tokio runtime context so we can bind the sockets.
     pub fn new(
+        sockets: Sockets,
+        crypto: CryptoWorkers,
         resolver: resolver::EventLoopEnds,
         tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
         udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
     ) -> Self {
-        let sockets = Sockets::new(udp_socket_factory.clone());
-
         Self {
             sockets,
-            crypto: CryptoWorkers::default(),
+            crypto,
             decrypting: Decrypting::default(),
             resolver,
             udp_dns_server: Default::default(),

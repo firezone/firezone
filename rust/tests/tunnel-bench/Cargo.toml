@@ -13,7 +13,6 @@ criterion = { workspace = true }
 dns-types = { workspace = true }
 flow-tracker = { workspace = true }
 ip-packet = { workspace = true }
-mimalloc = { workspace = true }
 rand = { workspace = true }
 relay-proto = { workspace = true }
 serde_json = { workspace = true }
@@ -38,6 +37,13 @@ libc = { workspace = true }
 [target.'cfg(windows)'.dependencies]
 tun-windows = { workspace = true }
 windows = { workspace = true, features = ["Win32_Foundation", "Win32_System_Diagnostics_ToolHelp", "Win32_System_Threading"] }
+
+[dev-dependencies]
+mimalloc = { workspace = true }
+
+[[bench]]
+name = "throughput"
+harness = false
 
 [lints]
 workspace = true

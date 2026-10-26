@@ -479,7 +479,7 @@ pub(crate) trait PollTimeout {
 impl PollTimeout for SimClient {
     fn poll_timeout(&mut self) -> Option<Instant> {
         iter::empty()
-            .chain(self.sut.poll_timeout())
+            .chain(self.tunnel.alarm)
             .chain(self.tcp_dns_client.poll_timeout())
             .min()
     }
@@ -487,7 +487,7 @@ impl PollTimeout for SimClient {
 
 impl PollTimeout for SimGateway {
     fn poll_timeout(&mut self) -> Option<Instant> {
-        self.sut.poll_timeout()
+        self.tunnel.alarm
     }
 }
 
