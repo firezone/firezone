@@ -163,7 +163,7 @@
     var body: some View {
       Button("About Firezone") {
         NSApp.activate(ignoringOtherApps: true)
-        NSApp.orderFrontStandardAboutPanel(nil)
+        NSApp.orderFrontStandardAboutPanel(options: aboutPanelOptions())
       }
 
       if !store.configuration.publishedHideAdminPortalMenuItem {
@@ -185,6 +185,27 @@
       SettingsOpener { openSettings in
         Button("Settings") { openSettings() }
       }
+    }
+
+    /// Shows the commit the app was built from where the panel would show the build number.
+    private func aboutPanelOptions() -> [NSApplication.AboutPanelOptionKey: Any] {
+      guard let shortGitSha = BundleHelper.shortGitSha,
+        let commitURL = BundleHelper.commitURL
+      else { return [:] }
+
+      let paragraph = NSMutableParagraphStyle()
+      paragraph.alignment = .center
+
+      let credits = NSAttributedString(
+        string: "View commit",
+        attributes: [
+          .link: commitURL,
+          .font: NSFont.systemFont(ofSize: NSFont.smallSystemFontSize),
+          .paragraphStyle: paragraph,
+        ]
+      )
+
+      return [.version: shortGitSha, .credits: credits]
     }
 
     func openAdminPortal() {

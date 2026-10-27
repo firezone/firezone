@@ -31,6 +31,21 @@ public enum BundleHelper {
     return gitSha
   }
 
+  static var shortGitSha: String? {
+    gitSha.map { String($0.prefix(8)) }
+  }
+
+  static var commitURL: URL? {
+    gitSha.flatMap { URL(string: "https://github.com/firezone/firezone/commit/\($0)") }
+  }
+
+  /// The marketing version and the commit it was built from, as "1.5.24 (0123abcd)".
+  static var versionDescription: String {
+    let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown"
+
+    return "\(version) (\(shortGitSha ?? "unknown"))"
+  }
+
   /// The app group the app shares with its extensions, or `nil` when the bundle's
   /// Info.plist declares no `AppGroupIdentifier`, which is every process except the app
   /// and its extensions (a test, most obviously).

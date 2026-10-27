@@ -238,7 +238,7 @@ public struct SettingsView: View {
         }
         .formStyle(.grouped)
 
-        paneFooter(for: .general)
+        paneFooter
       }
       .frame(width: Self.paneWidth)
     #elseif os(iOS)
@@ -335,13 +335,6 @@ public struct SettingsView: View {
             }
           }
         }
-        Spacer()
-        HStack {
-          BuildLabel()
-          Spacer()
-        }
-        .padding([.leading, .bottom], 20)
-        .background(Color(uiColor: .secondarySystemBackground))
       }
       .background(Color(uiColor: .secondarySystemBackground))
     #endif
@@ -409,6 +402,22 @@ public struct SettingsView: View {
               }
             )
           }
+          Section("About") {
+            HStack {
+              Text("Version")
+                .foregroundStyle(.secondary)
+                .font(.caption)
+              Spacer()
+              if let commitURL = BundleHelper.commitURL {
+                Link(BundleHelper.versionDescription, destination: commitURL)
+              } else {
+                Text(BundleHelper.versionDescription)
+              }
+            }
+            .contextMenu {
+              Button("Copy") { UIPasteboard.general.string = BundleHelper.versionDescription }
+            }
+          }
         }
       }
     #elseif os(macOS)
@@ -446,7 +455,7 @@ public struct SettingsView: View {
         }
         .formStyle(.grouped)
 
-        paneFooter(for: .logs)
+        paneFooter
       }
       .frame(width: Self.paneWidth)
     #else
@@ -526,12 +535,8 @@ public struct SettingsView: View {
   }
 
   #if os(macOS)
-    private func paneFooter(for tab: Tab) -> some View {
+    private var paneFooter: some View {
       HStack {
-        if tab == .general {
-          BuildLabel()
-            .font(.caption)
-        }
         Spacer()
         resetButton
       }
@@ -733,20 +738,3 @@ struct FormTextField: View {
     }
   }
 #endif
-
-private struct BuildLabel: View {
-  var body: some View {
-    HStack(spacing: 0) {
-      Text("Build: ")
-        .foregroundColor(.gray)
-      if let gitSha = BundleHelper.gitSha,
-        let url = URL(string: "https://github.com/firezone/firezone/commit/\(gitSha)")
-      {
-        Link(String(gitSha.prefix(8)), destination: url)
-      } else {
-        Text("unknown")
-          .foregroundColor(.gray)
-      }
-    }
-  }
-}
