@@ -479,6 +479,12 @@ struct ConfigurationTests {
   @MainActor
   func unsavedCustomURLsAreNotRemembered() async throws {
     let config = Configuration(userDefaults: UserDefaults.makeTestDefaults())
+    config.loadProviderConfiguration(
+      [
+        Configuration.Keys.authURL: "https://app.firezone.dev",
+        Configuration.Keys.apiURL: "wss://api.firezone.dev",
+      ]
+    )
     let viewModel = SettingsViewModel(configuration: config)
 
     viewModel.selectPortal(.cloudUs)
@@ -494,6 +500,29 @@ struct ConfigurationTests {
 
     #expect(viewModel.authURL == "https://eu.app.firezone.dev")
     #expect(viewModel.apiURL == "wss://eu.api.firezone.dev")
+  }
+
+  @Test("Switching to Firezone Cloud remembers existing custom URLs without saving them again")
+  @MainActor
+  func switchingToCloudRemembersExistingCustomURLs() async throws {
+    let config = Configuration(userDefaults: UserDefaults.makeTestDefaults())
+    config.loadProviderConfiguration(
+      [
+        Configuration.Keys.authURL: "https://firezone.example.com",
+        Configuration.Keys.apiURL: "wss://api.example.com",
+      ]
+    )
+    let viewModel = SettingsViewModel(configuration: config)
+    viewModel.authURL = "https://unsaved.example.com"
+
+    viewModel.selectPortal(.cloudEu)
+    try await viewModel.save()
+
+    let reopened = SettingsViewModel(configuration: config)
+    reopened.selectPortal(.custom)
+
+    #expect(reopened.authURL == "https://firezone.example.com")
+    #expect(reopened.apiURL == "wss://api.example.com")
   }
 
   @Test("Remembered custom URLs do not change the portal shown")

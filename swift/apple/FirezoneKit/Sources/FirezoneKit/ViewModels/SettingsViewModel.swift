@@ -141,6 +141,11 @@ class SettingsViewModel: ObservableObject {
       apiURLError = isApiURLValid() ? nil : "Enter a valid ws:// or wss:// URL"
 
       if areURLsValid() {
+        if !isPortalForced, portal != .custom,
+          Portal.of(authURL: configuration.authURL, apiURL: configuration.apiURL) == .custom
+        {
+          configuration.lastCustomURLs = (configuration.authURL, configuration.apiURL)
+        }
         if !configuration.isAuthURLForced { configuration.authURL = authURL }
         if !configuration.isApiURLForced { configuration.apiURL = apiURL }
         if portal == .custom, !isPortalForced {
