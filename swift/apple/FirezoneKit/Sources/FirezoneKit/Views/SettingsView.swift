@@ -508,7 +508,8 @@ public struct SettingsView: View {
     withErrorHandler {
       var changedSignIn = false
       for tab in tabs {
-        if try await viewModel.save(tab) { changedSignIn = true }
+        let changed = try await viewModel.save(tab)
+        changedSignIn = changedSignIn || changed
       }
 
       if changedSignIn, [.connected, .connecting, .reasserting].contains(store.vpnStatus) {
