@@ -693,16 +693,11 @@ impl<I: GuiIntegration> Controller<I> {
         self.notify_settings_changed()?;
 
         if advanced_settings != self.advanced_settings {
-            // The Tunnel service's `AdvancedSettingsApplied` reply shows the notification.
             self.send_ipc(&service::ClientMsg::ApplyAdvancedSettings(
                 advanced_settings,
             ))
             .await?;
-
-            return Ok(());
         }
-
-        self.integration.show_notification("Settings saved", "")?;
 
         Ok(())
     }
@@ -814,8 +809,6 @@ impl<I: GuiIntegration> Controller<I> {
 
                 self.notify_settings_changed()?;
                 self.refresh_ui_state();
-
-                self.integration.show_notification("Settings saved", "")?;
             }
             service::ServerMsg::AdvancedSettingsApplied(Err(err)) => {
                 tracing::error!("Tunnel service failed to save advanced settings: {err}");

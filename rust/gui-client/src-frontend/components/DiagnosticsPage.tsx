@@ -1,9 +1,8 @@
-import React, { useEffect, useId, useState } from "react";
+import React from "react";
 import { FileCount, LogFilterViewModel } from "../generated/bindings";
-import Button from "./Button";
-import { ManagedTextInput } from "./ManagedInput";
 import RemixIcon from "./RemixIcon";
 import SettingRow from "./SettingRow";
+import TextSetting from "./TextSetting";
 
 interface DiagnosticsPageProps {
   logCount: FileCount | null;
@@ -11,7 +10,6 @@ interface DiagnosticsPageProps {
   exportLogs: () => void;
   clearLogs: () => void;
   saveLogFilter: (logFilter: string) => void;
-  resetLogFilter: () => void;
 }
 
 const defaultLogFilter: LogFilterViewModel = {
@@ -25,49 +23,29 @@ export default function Diagnostics({
   exportLogs,
   clearLogs,
   saveLogFilter,
-  resetLogFilter,
 }: DiagnosticsPageProps) {
   const bytes = logCount?.bytes ?? 0;
   const megabytes = Math.round((bytes / 1_000_000) * 10) / 10;
 
-  const [localLogFilter, setLocalLogFilter] = useState<LogFilterViewModel>(
-    logFilter ?? defaultLogFilter
-  );
-
-  useEffect(() => {
-    setLocalLogFilter(logFilter ?? defaultLogFilter);
-  }, [logFilter]);
-
-  const logFilterInputId = useId();
+  const saved = logFilter ?? defaultLogFilter;
 
   return (
     <div className="page">
-      <form
-        className="max-w-xl space-y-3"
-        onSubmit={(event) => {
-          event.preventDefault();
-          saveLogFilter(localLogFilter.log_filter);
-        }}
-      >
+      <div className="max-w-xl space-y-3">
         <section>
           <h2 className="form-label">Logs</h2>
           <div className="panel divide-y divide-border">
-            <SettingRow field inputId={logFilterInputId} label="Log Filter">
-              <ManagedTextInput
-                className="h-8 py-1 font-mono text-xs"
-                id={logFilterInputId}
-                managed={localLogFilter.log_filter_is_managed}
-                name="log_filter"
-                onChange={(event) =>
-                  setLocalLogFilter({
-                    ...localLogFilter,
-                    log_filter: event.target.value,
-                  })
-                }
-                required
-                value={localLogFilter.log_filter}
-              />
-            </SettingRow>
+            <TextSetting
+              className="font-mono text-xs"
+              label="Log Filter"
+              managed={saved.log_filter_is_managed}
+              name="log_filter"
+              save={saveLogFilter}
+              validate={(filter) =>
+                filter === "" ? "Enter a log filter" : null
+              }
+              value={saved.log_filter}
+            />
 
             <SettingRow label="Log Files">
               <div className="flex items-center gap-1">
@@ -96,24 +74,7 @@ export default function Diagnostics({
             </SettingRow>
           </div>
         </section>
-
-        <div className="flex justify-end gap-2 border-t border-border pt-3">
-          <Button
-            disabled={localLogFilter.log_filter_is_managed}
-            onClick={resetLogFilter}
-            type="reset"
-          >
-            Reset to Default
-          </Button>
-          <Button
-            disabled={localLogFilter.log_filter_is_managed}
-            type="submit"
-            variant="primary"
-          >
-            Apply
-          </Button>
-        </div>
-      </form>
+      </div>
     </div>
   );
 }

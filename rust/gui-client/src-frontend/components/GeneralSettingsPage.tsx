@@ -1,16 +1,17 @@
-import React, { useEffect, useId, useState } from "react";
-import { GeneralSettingsViewModel, Portal } from "../generated/bindings";
+import React, { useId, useState } from "react";
+import {
+  GeneralSettingsForm,
+  GeneralSettingsViewModel,
+  Portal,
+} from "../generated/bindings";
 import Button from "./Button";
 import SettingRow from "./SettingRow";
-import {
-  ManagedSelect,
-  ManagedTextInput,
-  ManagedToggleSwitch,
-} from "./ManagedInput";
+import TextSetting from "./TextSetting";
+import { ManagedSelect, ManagedToggleSwitch } from "./ManagedInput";
 
 interface Props {
   settings: GeneralSettingsViewModel | null;
-  saveSettings: (settings: GeneralSettingsViewModel) => void;
+  saveSettings: (settings: GeneralSettingsForm) => void;
   resetSettings: () => void;
 }
 
@@ -35,65 +36,66 @@ export default function GeneralSettingsPage({
   saveSettings,
   resetSettings,
 }: Props) {
-  const [localSettings, setLocalSettings] = useState<GeneralSettingsViewModel>(
-    settings ?? defaultSettings
-  );
+  const saved = settings ?? defaultSettings;
 
-  useEffect(() => {
-    setLocalSettings(settings ?? defaultSettings);
-  }, [settings]);
+  // Custom with a cloud portal's URLs is saved as that cloud portal, so the page keeps the
+  // choice until the user enters URLs of their own.
+  const [customPicked, setCustomPicked] = useState(false);
+  const portal = customPicked ? "Custom" : saved.portal;
+  const customAuthUrl =
+    saved.portal === "Custom" ? saved.auth_url : saved.custom_auth_url;
+  const customApiUrl =
+    saved.portal === "Custom" ? saved.api_url : saved.custom_api_url;
+
+  const save = (changes: Partial<GeneralSettingsForm>) =>
+    saveSettings({
+      start_minimized: saved.start_minimized,
+      start_on_login: saved.start_on_login,
+      connect_on_start: saved.connect_on_start,
+      account_slug: saved.account_slug,
+      portal: saved.portal,
+      auth_url: saved.auth_url,
+      api_url: saved.api_url,
+      ...changes,
+    });
+
+  // Picking "Custom" brings back the URLs last saved with it.
+  const selectPortal = (portal: Portal) => {
+    setCustomPicked(portal === "Custom");
+    save(
+      portal === "Custom"
+        ? { portal, auth_url: customAuthUrl, api_url: customApiUrl }
+        : { portal }
+    );
+  };
 
   const portalInputId = useId();
-  const authUrlInputId = useId();
-  const apiUrlInputId = useId();
-  const accountSlugInputId = useId();
   const startMinimizedInputId = useId();
   const startOnLoginInputId = useId();
   const connectOnStartInputId = useId();
 
   return (
     <div className="page">
-      <form
-        className="max-w-xl space-y-3"
-        onSubmit={(event) => {
-          event.preventDefault();
-          saveSettings(localSettings);
-        }}
-      >
+      <div className="max-w-xl space-y-3">
         <section>
           <h2 className="form-label">Sign-in</h2>
           <div className="panel divide-y divide-border">
-            <SettingRow field inputId={accountSlugInputId} label="Account slug">
-              <ManagedTextInput
-                className="h-8 py-1"
-                id={accountSlugInputId}
-                managed={localSettings.account_slug_is_managed}
-                name="account_slug"
-                onChange={(event) =>
-                  setLocalSettings({
-                    ...localSettings,
-                    account_slug: event.target.value,
-                  })
-                }
-                value={localSettings.account_slug}
-              />
-            </SettingRow>
+            <TextSetting
+              label="Account slug"
+              managed={saved.account_slug_is_managed}
+              name="account_slug"
+              save={(account_slug) => save({ account_slug })}
+              value={saved.account_slug}
+            />
 
             <SettingRow field inputId={portalInputId} label="Portal">
               <ManagedSelect
                 className="h-8 py-1"
                 id={portalInputId}
-                managed={
-                  localSettings.auth_url_is_managed ||
-                  localSettings.api_url_is_managed
-                }
+                managed={saved.auth_url_is_managed || saved.api_url_is_managed}
                 name="portal"
-                onChange={(event) =>
-                  setLocalSettings(
-                    selectPortal(localSettings, event.target.value as Portal)
-                  )
-                }
-                value={localSettings.portal}
+                onChange={(event) => selectPortal(event.target.value as Portal)}
+                value={portal}
               >
                 <option value="CloudUs">Firezone Cloud (US)</option>
                 <option value="CloudEu">Firezone Cloud (EU)</option>
@@ -101,41 +103,33 @@ export default function GeneralSettingsPage({
               </ManagedSelect>
             </SettingRow>
 
-            {localSettings.portal === "Custom" && (
+            {portal === "Custom" && (
               <>
-                <SettingRow field inputId={authUrlInputId} label="Auth URL">
-                  <ManagedTextInput
-                    className="h-8 py-1"
-                    id={authUrlInputId}
-                    managed={localSettings.auth_url_is_managed}
-                    name="auth_url"
-                    onChange={(event) =>
-                      setLocalSettings({
-                        ...localSettings,
-                        auth_url: event.target.value,
-                      })
-                    }
-                    required
-                    value={localSettings.auth_url}
-                  />
-                </SettingRow>
+                <TextSetting
+                  label="Auth URL"
+                  managed={saved.auth_url_is_managed}
+                  name="auth_url"
+                  save={(auth_url) =>
+                    save({ portal, auth_url, api_url: customApiUrl })
+                  }
+                  validate={(url) =>
+                    isUrl(url) ? null : "Enter a valid https:// URL"
+                  }
+                  value={customAuthUrl}
+                />
 
-                <SettingRow field inputId={apiUrlInputId} label="API URL">
-                  <ManagedTextInput
-                    className="h-8 py-1"
-                    id={apiUrlInputId}
-                    managed={localSettings.api_url_is_managed}
-                    name="api_url"
-                    onChange={(event) =>
-                      setLocalSettings({
-                        ...localSettings,
-                        api_url: event.target.value,
-                      })
-                    }
-                    required
-                    value={localSettings.api_url}
-                  />
-                </SettingRow>
+                <TextSetting
+                  label="API URL"
+                  managed={saved.api_url_is_managed}
+                  name="api_url"
+                  save={(api_url) =>
+                    save({ portal, auth_url: customAuthUrl, api_url })
+                  }
+                  validate={(url) =>
+                    isUrl(url) ? null : "Enter a valid wss:// URL"
+                  }
+                  value={customApiUrl}
+                />
               </>
             )}
           </div>
@@ -146,31 +140,21 @@ export default function GeneralSettingsPage({
           <div className="panel divide-y divide-border">
             <SettingRow inputId={startMinimizedInputId} label="Start minimized">
               <ManagedToggleSwitch
-                checked={localSettings.start_minimized}
+                checked={saved.start_minimized}
                 id={startMinimizedInputId}
                 managed={false}
                 name="start_minimized"
-                onChange={(checked) =>
-                  setLocalSettings({
-                    ...localSettings,
-                    start_minimized: checked,
-                  })
-                }
+                onChange={(start_minimized) => save({ start_minimized })}
               />
             </SettingRow>
 
             <SettingRow inputId={startOnLoginInputId} label="Start on login">
               <ManagedToggleSwitch
-                checked={localSettings.start_on_login}
+                checked={saved.start_on_login}
                 id={startOnLoginInputId}
                 managed={false}
                 name="start_on_login"
-                onChange={(checked) =>
-                  setLocalSettings({
-                    ...localSettings,
-                    start_on_login: checked,
-                  })
-                }
+                onChange={(start_on_login) => save({ start_on_login })}
               />
             </SettingRow>
 
@@ -179,48 +163,38 @@ export default function GeneralSettingsPage({
               label="Connect on start"
             >
               <ManagedToggleSwitch
-                checked={localSettings.connect_on_start}
+                checked={saved.connect_on_start}
                 id={connectOnStartInputId}
-                managed={localSettings.connect_on_start_is_managed}
+                managed={saved.connect_on_start_is_managed}
                 name="connect-on-start"
-                onChange={(checked) =>
-                  setLocalSettings({
-                    ...localSettings,
-                    connect_on_start: checked,
-                  })
-                }
+                onChange={(connect_on_start) => save({ connect_on_start })}
               />
             </SettingRow>
           </div>
         </section>
 
-        <div className="flex justify-end gap-2 border-t border-border pt-3">
-          <Button onClick={resetSettings} type="reset">
+        <div className="flex justify-end border-t border-border pt-3">
+          <Button
+            onClick={() => {
+              setCustomPicked(false);
+              resetSettings();
+            }}
+            type="button"
+          >
             Reset to Defaults
           </Button>
-          <Button type="submit" variant="primary">
-            Apply
-          </Button>
         </div>
-      </form>
+      </div>
     </div>
   );
 }
 
-// Picking "Custom" fills in the URLs last saved with it, so switching to a cloud portal and
-// back does not make the user type them again.
-function selectPortal(
-  settings: GeneralSettingsViewModel,
-  portal: Portal
-): GeneralSettingsViewModel {
-  if (portal !== "Custom") {
-    return { ...settings, portal };
+// The check `Url::parse` makes on the Rust side.
+function isUrl(value: string) {
+  try {
+    new URL(value);
+    return true;
+  } catch {
+    return false;
   }
-
-  return {
-    ...settings,
-    portal,
-    auth_url: settings.custom_auth_url,
-    api_url: settings.custom_api_url,
-  };
 }

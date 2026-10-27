@@ -301,6 +301,15 @@
       color-mix(in oklch, var(--control-focus) 30%, transparent);
   }
 
+  .form-input[aria-invalid="true"],
+  .form-input[aria-invalid="true"]:hover:not(:disabled) {
+    border-color: var(--error);
+  }
+
+  .form-input[aria-invalid="true"]:focus {
+    box-shadow: 0 0 0 1px color-mix(in oklch, var(--error) 30%, transparent);
+  }
+
   .form-input:disabled {
     @apply cursor-not-allowed opacity-40;
   }

@@ -48,14 +48,6 @@ async applyLogFilter(logFilter: string) : Promise<Result<null, Error>> {
     else return { status: "error", error: e  as any };
 }
 },
-async resetLogFilter() : Promise<Result<null, Error>> {
-    try {
-    return { status: "ok", data: await TAURI_INVOKE("reset_log_filter") };
-} catch (e) {
-    if(e instanceof Error) throw e;
-    else return { status: "error", error: e  as any };
-}
-},
 async signIn() : Promise<Result<null, Error>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("sign_in") };

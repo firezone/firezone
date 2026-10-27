@@ -21,6 +21,15 @@ const usSettings: GeneralSettingsViewModel = {
   custom_api_url: "wss://api.firezone.dev/",
 };
 
+const customSettings: GeneralSettingsViewModel = {
+  ...usSettings,
+  portal: "Custom",
+  auth_url: "https://firezone.example.com/",
+  api_url: "wss://api.firezone.example.com/",
+  custom_auth_url: "https://firezone.example.com/",
+  custom_api_url: "wss://api.firezone.example.com/",
+};
+
 // No `act`: the user events below arrive from outside React, so the assertions retry until
 // the page has caught up instead.
 
@@ -53,7 +62,7 @@ async function render(settings: GeneralSettingsViewModel) {
   return saveSettings;
 }
 
-test("picking Custom fills in the last saved custom URLs", async () => {
+test("picking Custom saves the last saved custom URLs", async () => {
   const saveSettings = await render({
     ...usSettings,
     custom_auth_url: "https://firezone.example.com/",
@@ -61,15 +70,6 @@ test("picking Custom fills in the last saved custom URLs", async () => {
   });
 
   await userEvent.selectOptions(page.getByLabelText("Portal"), "Custom");
-
-  await expect
-    .element(page.getByLabelText("Auth URL"))
-    .toHaveValue("https://firezone.example.com/");
-  await expect
-    .element(page.getByLabelText("API URL"))
-    .toHaveValue("wss://api.firezone.example.com/");
-
-  await page.getByRole("button", { name: "Apply" }).click();
 
   await vi.waitFor(() =>
     expect(saveSettings).toHaveBeenCalledWith(
@@ -80,6 +80,56 @@ test("picking Custom fills in the last saved custom URLs", async () => {
       })
     )
   );
+});
+
+test("leaving a valid URL saves it", async () => {
+  const saveSettings = await render(customSettings);
+
+  await userEvent.fill(
+    page.getByLabelText("Auth URL"),
+    "https://other.example.com/"
+  );
+  await userEvent.click(page.getByLabelText("Account slug"));
+
+  await vi.waitFor(() =>
+    expect(saveSettings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        portal: "Custom",
+        auth_url: "https://other.example.com/",
+        api_url: "wss://api.firezone.example.com/",
+      })
+    )
+  );
+});
+
+test("leaving an invalid URL shows an error and saves nothing", async () => {
+  const saveSettings = await render(customSettings);
+
+  await userEvent.fill(page.getByLabelText("Auth URL"), "not a url");
+  await userEvent.click(page.getByLabelText("Account slug"));
+
+  await expect
+    .element(page.getByText("Enter a valid https:// URL"))
+    .toBeInTheDocument();
+  await expect
+    .element(page.getByLabelText("Auth URL"))
+    .toHaveAttribute("aria-invalid", "true");
+  await expect
+    .element(page.getByLabelText("Auth URL"))
+    .toHaveValue("not a url");
+  expect(saveSettings).not.toHaveBeenCalled();
+});
+
+test("Escape puts back the saved value", async () => {
+  const saveSettings = await render(customSettings);
+
+  await userEvent.fill(page.getByLabelText("Auth URL"), "not a url");
+  await userEvent.keyboard("{Escape}");
+
+  await expect
+    .element(page.getByLabelText("Auth URL"))
+    .toHaveValue("https://firezone.example.com/");
+  expect(saveSettings).not.toHaveBeenCalled();
 });
 
 test("picking Custom without saved custom URLs shows the current ones", async () => {

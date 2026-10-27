@@ -5,7 +5,7 @@ import React, { act } from "react";
 import { createRoot, Root } from "react-dom/client";
 import { MemoryRouter } from "react-router";
 import { afterEach, beforeEach, test, vi } from "vitest";
-import { cdp, page } from "vitest/browser";
+import { cdp, page, userEvent } from "vitest/browser";
 import App from "./components/App";
 import {
   events,
@@ -37,6 +37,8 @@ interface Screen {
   logCount?: FileCount;
   // Label of a field to leave the pointer over, for a screen whose tooltip is the point.
   hover?: string;
+  // A field to type into and press Enter on, for a screen that shows a rejected value.
+  input?: { label: string; value: string };
 }
 
 const generalSettings: GeneralSettingsViewModel = {
@@ -154,6 +156,16 @@ const screens: Record<string, Screen> = {
       api_url: "wss://api.firezone.example.com/",
     },
   },
+  "general-settings-invalid-url": {
+    route: "/general-settings",
+    generalSettings: {
+      ...generalSettings,
+      portal: "Custom",
+      auth_url: "https://firezone.example.com/",
+      api_url: "wss://api.firezone.example.com/",
+    },
+    input: { label: "Auth URL", value: "firezone.example.com" },
+  },
   "general-settings-managed": {
     route: "/general-settings",
     generalSettings: {
@@ -267,6 +279,15 @@ for (const [name, screen] of Object.entries(screens)) {
       });
 
       await settle();
+
+      if (screen.input) {
+        const { label, value } = screen.input;
+        await act(async () => {
+          await userEvent.fill(page.getByLabelText(label), value);
+          await userEvent.keyboard("{Enter}");
+        });
+        await settle();
+      }
 
       if (screen.hover) {
         await page.getByLabelText(screen.hover).hover();

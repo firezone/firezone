@@ -3,7 +3,7 @@ use std::{path::PathBuf, time::Duration};
 use anyhow::{Context as _, Result};
 use logging::err_with_src;
 use serde::Serialize;
-use tauri_plugin_dialog::DialogExt as _;
+use tauri_plugin_dialog::{DialogExt as _, MessageDialogButtons, MessageDialogKind};
 
 use crate::{
     controller::ControllerRequest,
@@ -249,15 +249,29 @@ pub async fn apply_log_filter(
 
 #[tauri::command]
 #[specta::specta]
-pub async fn reset_log_filter(managed: tauri::State<'_, Managed>) -> Result<(), Error> {
-    apply_log_filter(managed, AdvancedSettings::default().log_filter).await?;
+pub async fn reset_general_settings(
+    window: tauri::WebviewWindow,
+    managed: tauri::State<'_, Managed>,
+) -> Result<(), Error> {
+    let (tx, rx) = tokio::sync::oneshot::channel();
 
-    Ok(())
-}
+    window
+        .dialog()
+        .message("Reset settings to defaults?")
+        .kind(MessageDialogKind::Warning)
+        .buttons(MessageDialogButtons::OkCancelCustom(
+            "Reset".to_owned(),
+            "Cancel".to_owned(),
+        ))
+        .parent(&window)
+        .show(|confirmed| {
+            let _ = tx.send(confirmed);
+        });
 
-#[tauri::command]
-#[specta::specta]
-pub async fn reset_general_settings(managed: tauri::State<'_, Managed>) -> Result<(), Error> {
+    if !rx.await.unwrap_or(false) {
+        return Ok(());
+    }
+
     managed
         .send_request(ControllerRequest::ResetGeneralSettings)
         .await?;
@@ -353,7 +367,6 @@ pub fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
             apply_general_settings,
             reset_general_settings,
             apply_log_filter,
-            reset_log_filter,
             sign_in,
             sign_out,
             update_state,

@@ -179,7 +179,6 @@ export default function App() {
                   exportLogs={commands.exportLogs}
                   clearLogs={commands.clearLogs}
                   saveLogFilter={commands.applyLogFilter}
-                  resetLogFilter={commands.resetLogFilter}
                 />
               }
             />

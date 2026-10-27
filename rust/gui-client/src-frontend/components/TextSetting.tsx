@@ -1,0 +1,86 @@
+import React, { useEffect, useId, useRef, useState } from "react";
+import { ManagedTextInput } from "./ManagedInput";
+import SettingRow from "./SettingRow";
+
+interface TextSettingProps {
+  label: string;
+  name: string;
+  managed: boolean;
+  value: string;
+  // Returns what is wrong with `value`, or `null` to save it.
+  validate?: (value: string) => string | null;
+  save: (value: string) => void;
+  className?: string;
+}
+
+// A text field that saves on Enter and on blur, and reverts on Escape.
+export default function TextSetting({
+  label,
+  name,
+  managed,
+  value,
+  validate = () => null,
+  save,
+  className = "",
+}: TextSettingProps) {
+  const inputId = useId();
+  const errorId = useId();
+  const [draft, setDraft] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const lastSaved = useRef<string | null>(null);
+
+  // The saved value comes back after a save, possibly normalised, and replaces the draft.
+  useEffect(() => {
+    setDraft(null);
+    setError(null);
+    lastSaved.current = null;
+  }, [value]);
+
+  const commit = () => {
+    if (draft === null || draft === value || draft === lastSaved.current) {
+      return;
+    }
+
+    const problem = validate(draft);
+    setError(problem);
+    if (problem !== null) {
+      return;
+    }
+
+    lastSaved.current = draft;
+    save(draft);
+  };
+
+  return (
+    <SettingRow
+      error={error ?? undefined}
+      errorId={errorId}
+      field
+      inputId={inputId}
+      label={label}
+    >
+      <ManagedTextInput
+        aria-describedby={error ? errorId : undefined}
+        aria-invalid={error ? true : undefined}
+        className={`h-8 py-1 ${className}`}
+        id={inputId}
+        managed={managed}
+        name={name}
+        onBlur={commit}
+        onChange={(event) => {
+          setDraft(event.target.value);
+          setError(null);
+        }}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") {
+            commit();
+          } else if (event.key === "Escape") {
+            setDraft(null);
+            setError(null);
+          }
+        }}
+        value={draft ?? value}
+      />
+    </SettingRow>
+  );
+}
