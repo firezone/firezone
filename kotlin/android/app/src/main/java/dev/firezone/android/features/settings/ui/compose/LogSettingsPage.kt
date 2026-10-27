@@ -14,6 +14,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -25,6 +26,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import dev.firezone.android.R
 import dev.firezone.android.core.data.model.Config
@@ -85,17 +87,21 @@ fun LogSettingsPage(
         SettingsGroup(title = stringResource(R.string.settings_section_about)) {
             SettingsRow(
                 title = stringResource(R.string.version),
-                summary = version,
-                action =
-                    Modifier.combinedClickable(
-                        onClick = {
-                            if (buildSha != "unknown") {
-                                uriHandler.openUri("https://github.com/firezone/firezone/commit/$buildSha")
-                            }
-                        },
-                        onLongClick = { ClipboardUtils.copyToClipboard(context, "Version", version) },
-                    ),
-            )
+                summary = versionName,
+            ) {
+                if (buildSha != "unknown") {
+                    Text(
+                        text = "${buildSha.take(8)} (GitHub)",
+                        color = MaterialTheme.colorScheme.primary,
+                        textDecoration = TextDecoration.Underline,
+                        modifier =
+                            Modifier.combinedClickable(
+                                onClick = { uriHandler.openUri("https://github.com/firezone/firezone/commit/$buildSha") },
+                                onLongClick = { ClipboardUtils.copyToClipboard(context, "Version", version) },
+                            ),
+                    )
+                }
+            }
         }
     }
 
