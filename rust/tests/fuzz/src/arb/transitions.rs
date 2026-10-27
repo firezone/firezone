@@ -1,4 +1,8 @@
-use std::{collections::BTreeMap, iter, time::Duration};
+use std::{
+    collections::BTreeMap,
+    iter,
+    time::{Duration, Instant},
+};
 
 use connlib_model::Site;
 use dns_types::DomainName;
@@ -16,7 +20,7 @@ use super::values::{
 };
 use super::{dns_queries, packets};
 use crate::dns_records::record_ip;
-use crate::probe::{FlowId, Remote};
+use crate::probe::{FlowId, IcmpFlow, Remote, UdpFlow};
 use crate::reference::ReferenceState;
 use crate::resource::{CidrResource, DevicePoolResource, DnsResource, Resource, ResourceEdit};
 use crate::sim_net::{EdgeConfig, Host};
@@ -72,15 +76,19 @@ const LEGAL_WITHOUT_HEALTHY_RELAY: [TransitionKind; 7] = [
 ];
 
 #[derive(Clone, Copy)]
-enum ExistingFlow {
+enum ExistingFlow<'a> {
     Udp(FlowId),
     Icmp(FlowId, Seq),
+    /// Sending on an expired flow starts a new one with the same identity.
+    ExpiredUdp(&'a UdpFlow),
+    ExpiredIcmp(&'a IcmpFlow),
 }
 
 pub(super) fn generate(
     g: &mut Generator,
     state: &ReferenceState,
     portal: &StubPortal,
+    now: Instant,
 ) -> Transition {
     let addable_resources = state.resources_unknown_to_all_clients(portal);
     let editable_resources = state.editable_resources_on_any_client(portal);
@@ -102,12 +110,24 @@ pub(super) fn generate(
         return packets::generate(g, target);
     }
     let existing_flows = iter::empty()
-        .chain(state.udp_flows().into_iter().map(ExistingFlow::Udp))
+        .chain(state.udp_flows(now).into_iter().map(ExistingFlow::Udp))
         .chain(
             state
-                .icmp_flows()
+                .icmp_flows(now)
                 .into_iter()
                 .map(|(flow_id, seq)| ExistingFlow::Icmp(flow_id, seq)),
+        )
+        .chain(
+            state
+                .expired_udp_flows(now)
+                .into_iter()
+                .map(ExistingFlow::ExpiredUdp),
+        )
+        .chain(
+            state
+                .expired_icmp_flows(now)
+                .into_iter()
+                .map(ExistingFlow::ExpiredIcmp),
         )
         .collect::<Vec<_>>();
     // A connect through a Gateway that does not deliver to its name's network leaves no
@@ -361,6 +381,24 @@ pub(super) fn generate(
                 ExistingFlow::Icmp(flow_id, seq) => Transition::SendIcmpPacketOnExistingFlow {
                     flow_id,
                     seq,
+                    probe_id,
+                },
+                ExistingFlow::ExpiredUdp(flow) => Transition::SendUdpPacketOnNewFlow {
+                    flow_id: g.fresh_flow_id(),
+                    client_id: flow.client_id,
+                    src: flow.src,
+                    dst: flow.dst.clone(),
+                    sport: flow.sport,
+                    dport: flow.dport,
+                    probe_id,
+                },
+                ExistingFlow::ExpiredIcmp(flow) => Transition::SendIcmpPacketOnNewFlow {
+                    flow_id: g.fresh_flow_id(),
+                    client_id: flow.client_id,
+                    src: flow.src,
+                    dst: flow.dst.clone(),
+                    seq: flow.next_seq,
+                    identifier: flow.identifier,
                     probe_id,
                 },
             }
