@@ -122,21 +122,13 @@ impl SimClient {
 
     /// Shuts the tunnel down and starts a new one, returning the datagrams the old one sent on
     /// the way out.
-    ///
-    /// A crashed tunnel sends nothing and the new one starts without the cached DNS resource
-    /// records, so applications have to resolve their domains again.
     pub(crate) fn restart(
         &mut self,
         key: PrivateKey,
-        crash: bool,
         is_internet_resource_active: bool,
         now: Instant,
         utc_now: DateTime<Utc>,
     ) -> Vec<Transmit> {
-        if crash {
-            self.dns_resource_record_cache.clear();
-            self.dns_records.clear();
-        }
         let dns_resource_records = self.dns_resource_record_cache.clone();
 
         // A new tunnel with a new key is effectively the same as restarting a client / signing
@@ -161,11 +153,23 @@ impl SimClient {
         self.dns_by_sentinel = DnsMapping::default();
         self.routes.clear();
 
-        if crash {
-            return Vec::new();
-        }
-
         old.shut_down(now)
+    }
+
+    /// Starts a new tunnel as if the Client's process died: nothing leaves the old tunnel and
+    /// the new one starts without the cached DNS resource records, so applications have to
+    /// resolve their domains again.
+    pub(crate) fn crash(
+        &mut self,
+        key: PrivateKey,
+        is_internet_resource_active: bool,
+        now: Instant,
+        utc_now: DateTime<Utc>,
+    ) {
+        self.dns_resource_record_cache.clear();
+        self.dns_records.clear();
+
+        let _goodbye = self.restart(key, is_internet_resource_active, now, utc_now);
     }
 
     /// Returns the _effective_ DNS servers that connlib is using.

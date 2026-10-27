@@ -109,9 +109,6 @@ pub enum Transition {
     RestartClient {
         client_id: ClientId,
         key: PrivateKey,
-        /// The Client's process dies: it sends no `goodbye` and loses the DNS resource records
-        /// it cached in memory.
-        crash: bool,
     },
     DeployNewRelays(BTreeMap<RelayId, Host<u64>>),
     PartitionRelaysFromPortal,
@@ -145,6 +142,12 @@ pub enum Transition {
     UpdateDnsRecords {
         domain: DomainName,
         records: BTreeSet<OwnedRecordData>,
+    },
+    /// Restarts a Client whose process died: it sends no `goodbye` and loses the DNS resource
+    /// records it cached in memory.
+    CrashClient {
+        client_id: ClientId,
+        key: PrivateKey,
     },
 }
 
@@ -184,6 +187,7 @@ impl Transition {
             Transition::ExpirePeerAuthorizations { .. } => true,
             Transition::RevokePeerAuthorization { .. } => true,
             Transition::UpdateDnsRecords { .. } => false,
+            Transition::CrashClient { .. } => false,
         }
     }
 
@@ -243,6 +247,7 @@ impl Transition {
                 Destination::DomainName { name, .. } => name != domain,
                 Destination::IpAddr(_) => true,
             },
+            Transition::CrashClient { .. } => self.retains_flow(client_id, route, false),
         }
     }
 
@@ -334,6 +339,13 @@ impl Transition {
                 Route::Gateway(_) => true,
             },
             Transition::UpdateDnsRecords { .. } => true,
+            Transition::CrashClient {
+                client_id: crashed, ..
+            } => match route {
+                Route::Resource { .. } => client_id != *crashed,
+                Route::Gateway(_) => client_id != *crashed,
+                Route::Peer(peer) => client_id != *crashed && peer != *crashed,
+            },
         }
     }
 }

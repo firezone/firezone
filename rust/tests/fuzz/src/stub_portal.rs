@@ -262,21 +262,17 @@ impl StubPortal {
             Transition::UpdateSystemDnsServers { .. } => {}
             Transition::RoamClient { .. } => {}
             Transition::ReconnectPortal { .. } => {}
-            Transition::RestartClient {
-                client_id, crash, ..
-            } => {
+            Transition::RestartClient { client_id, .. } => {
                 for _ in self
                     .load_balanced_requests
                     .extract_if(.., |(client, _), _| client == client_id)
                 {}
 
                 // The Gateways drop everything they held for the Client on its `goodbye`.
-                if !crash {
-                    for _ in self
-                        .gateway_policy_authorizations
-                        .extract_if(.., |(client, _), _| client == client_id)
-                    {}
-                }
+                for _ in self
+                    .gateway_policy_authorizations
+                    .extract_if(.., |(client, _), _| client == client_id)
+                {}
             }
             Transition::DeployNewRelays(_) => {}
             Transition::PartitionRelaysFromPortal => {}
@@ -299,6 +295,13 @@ impl StubPortal {
                 });
             }
             Transition::UpdateDnsRecords { .. } => {}
+            Transition::CrashClient { client_id, .. } => {
+                // Without a `goodbye`, the Gateways keep what they held for the Client.
+                for _ in self
+                    .load_balanced_requests
+                    .extract_if(.., |(client, _), _| client == client_id)
+                {}
+            }
         }
     }
 

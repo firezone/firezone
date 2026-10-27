@@ -264,6 +264,10 @@ impl Recorder {
                 self.changes
                     .push((Scope::Everything, Change::DnsRecordsChanged));
             }
+            Transition::CrashClient { client_id, .. } => {
+                self.changes
+                    .push((Scope::Client(*client_id), Change::Crashed));
+            }
             Transition::UpdateSystemDnsServers { .. }
             | Transition::UpdateUpstreamDo53Servers(_)
             | Transition::UpdateUpstreamDoHServers(_) => {
@@ -544,9 +548,10 @@ enum Change {
     Idled,
     DnsRecordsChanged,
     DnsServersChanged,
+    Crashed,
 }
 
-const KINDS: u16 = 22;
+const KINDS: u16 = 23;
 
 #[derive(Clone, Copy)]
 enum Scope {
