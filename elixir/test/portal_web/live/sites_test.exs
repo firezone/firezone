@@ -356,18 +356,18 @@ defmodule PortalWeb.SitesTest do
       assert lv
              |> element("#deploy-code-debian-install")
              |> render() =~
-               ~s(echo &quot;FIREZONE_API_URL=wss://eu.api.firezone.dev/&quot; | sudo tee -a /etc/firezone/gateway-env)
+               ~s(echo &quot;FIREZONE_API_URL=https://eu.api.firezone.dev/&quot; | sudo tee -a /etc/firezone/gateway-env)
 
       for {tab, expected} <- [
-            {"systemd-instructions", ~s(FIREZONE_API_URL=&quot;wss://eu.api.firezone.dev/&quot;)},
-            {"docker-instructions", ~s(--env FIREZONE_API_URL=&quot;wss://eu.api.firezone.dev/&quot;)},
-            {"custom-instructions", "FIREZONE_API_URL=wss://eu.api.firezone.dev/"}
+            {"systemd-instructions", ~s(FIREZONE_API_URL=&quot;https://eu.api.firezone.dev/&quot;)},
+            {"docker-instructions", ~s(--env FIREZONE_API_URL=&quot;https://eu.api.firezone.dev/&quot;)},
+            {"custom-instructions", "FIREZONE_API_URL=https://eu.api.firezone.dev/"}
           ] do
         assert render_click(lv, "deploy_tab_selected", %{"tab" => tab}) =~ expected
       end
 
       render_click(lv, "deploy_tab_selected", %{"tab" => "terraform-instructions"})
-      assert has_element?(lv, "#deploy-code-terraform-api-url", "wss://eu.api.firezone.dev/")
+      assert has_element?(lv, "#deploy-code-terraform-api-url", "https://eu.api.firezone.dev/")
     end
 
     test "leaves the API URL out when it is the Gateway's default", %{

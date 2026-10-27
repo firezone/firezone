@@ -566,7 +566,7 @@ defmodule PortalWeb.ServiceAccountsTest do
         "token_expiration" => expiration
       })
 
-      assert has_element?(lv, "#tab-token-api-url", "FIREZONE_API_URL=wss://eu.api.firezone.dev/")
+      assert has_element?(lv, "#tab-token-api-url", "FIREZONE_API_URL=https://eu.api.firezone.dev/")
     end
 
     test "dismiss_created_token hides token value", %{

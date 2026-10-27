@@ -768,7 +768,7 @@ defmodule PortalWeb.GettingStartedTest do
       view = open_with_user_agent(conn, account, actor, "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0)")
 
       assert has_element?(view, "#getting-started-client-urls", "https://eu.app.firezone.dev/")
-      assert has_element?(view, "#getting-started-client-urls", "wss://eu.api.firezone.dev/")
+      assert has_element?(view, "#getting-started-client-urls", "https://eu.api.firezone.dev/")
     end
 
     test "skips the settings step for the default URLs", %{conn: conn, account: account, actor: actor} do
