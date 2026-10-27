@@ -51,10 +51,10 @@ class PendingAuthSessionTest {
             session.begin(nonce = "nonce-", state = EXPECTED_STATE, signedInWith = originalConfig)
 
             repository.saveSettings(repository.getConfigSync().copy(authUrl = "https://eu.app.firezone.dev")).first()
-            AuthCallbackHandler(session, tokenStore).handle(callbackUri(state = EXPECTED_STATE, fragment = "fragment"))
+            AuthCallbackHandler(session, tokenStore, repository).handle(callbackUri(state = EXPECTED_STATE, fragment = "fragment"))
 
             assertEquals("nonce-fragment", tokenStore.get())
-            assertEquals(originalConfig, tokenStore.signedInWith())
+            assertEquals(originalConfig, repository.getActiveSignInConfigSync())
         }
 
     @Test

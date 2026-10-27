@@ -10,6 +10,7 @@ import com.google.gson.reflect.TypeToken
 import dev.firezone.android.BuildConfig
 import dev.firezone.android.core.data.model.Config
 import dev.firezone.android.core.data.model.ManagedConfigStatus
+import dev.firezone.android.core.data.model.SignInConfig
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
@@ -79,6 +80,32 @@ class Repository
         val favorites = _favorites.asStateFlow()
 
         fun getConfigSync(): Config = getUserConfigSync().withManagedOverrides()
+
+        fun getActiveSignInConfigSync(): SignInConfig? {
+            val accountSlug = sharedPreferences.getString(SIGNED_IN_ACCOUNT_SLUG_KEY, null) ?: return null
+            val authUrl = sharedPreferences.getString(SIGNED_IN_AUTH_URL_KEY, null) ?: return null
+            val apiUrl = sharedPreferences.getString(SIGNED_IN_API_URL_KEY, null) ?: return null
+
+            return SignInConfig(accountSlug, authUrl, apiUrl)
+        }
+
+        fun saveActiveSignInConfigSync(config: SignInConfig) {
+            sharedPreferences
+                .edit()
+                .putString(SIGNED_IN_ACCOUNT_SLUG_KEY, config.accountSlug)
+                .putString(SIGNED_IN_AUTH_URL_KEY, config.authUrl)
+                .putString(SIGNED_IN_API_URL_KEY, config.apiUrl)
+                .apply()
+        }
+
+        fun clearActiveSignInConfigSync() {
+            sharedPreferences
+                .edit()
+                .remove(SIGNED_IN_ACCOUNT_SLUG_KEY)
+                .remove(SIGNED_IN_AUTH_URL_KEY)
+                .remove(SIGNED_IN_API_URL_KEY)
+                .apply()
+        }
 
         fun getConfig(): Flow<Config> =
             flow {
@@ -344,6 +371,9 @@ class Repository
         companion object {
             private const val AUTH_URL_KEY = "authUrl"
             private const val API_URL_KEY = "apiUrl"
+            private const val SIGNED_IN_ACCOUNT_SLUG_KEY = "signedInAccountSlug"
+            private const val SIGNED_IN_AUTH_URL_KEY = "signedInAuthUrl"
+            private const val SIGNED_IN_API_URL_KEY = "signedInApiUrl"
             private const val LAST_CUSTOM_AUTH_URL_KEY = "lastCustomAuthUrl"
             private const val LAST_CUSTOM_API_URL_KEY = "lastCustomApiUrl"
             private const val FAVORITE_RESOURCES_KEY = "favoriteResources"

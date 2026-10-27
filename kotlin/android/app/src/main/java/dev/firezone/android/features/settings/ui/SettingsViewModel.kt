@@ -11,7 +11,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.firezone.android.core.data.Repository
-import dev.firezone.android.core.data.TokenStore
 import dev.firezone.android.core.data.model.Config
 import dev.firezone.android.core.data.model.ManagedConfigStatus
 import dev.firezone.android.core.data.model.Portal
@@ -41,7 +40,6 @@ internal class SettingsViewModel
     @Inject
     constructor(
         private val repo: Repository,
-        tokenStore: TokenStore,
     ) : ViewModel() {
         private val _uiState = MutableStateFlow(UiState())
         val uiState: StateFlow<UiState> = _uiState
@@ -63,7 +61,7 @@ internal class SettingsViewModel
             private set
 
         // `null` while signed out.
-        val signedInWith: SignInConfig? = tokenStore.signedInWith()
+        val signedInWith: SignInConfig? = repo.getActiveSignInConfigSync()
 
         // Each change saves the whole config, so the saves have to land in the order they were made.
         private val saveMutex = Mutex()

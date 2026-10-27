@@ -9,4 +9,7 @@ import dev.firezone.android.core.data.model.signInConfig
 internal fun TokenStore.signIn(
     token: String,
     repo: Repository,
-) = save(token, repo.getConfigSync().signInConfig())
+) {
+    repo.saveActiveSignInConfigSync(repo.getConfigSync().signInConfig())
+    save(token)
+}

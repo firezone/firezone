@@ -10,6 +10,7 @@ import dev.firezone.android.core.data.Repository
 import dev.firezone.android.core.data.TokenStore
 import dev.firezone.android.core.data.model.Portal
 import dev.firezone.android.core.data.model.SignInConfig
+import dev.firezone.android.features.session.ui.SessionViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
@@ -41,7 +42,7 @@ class SettingsViewModelTest {
         sharedPreferences.edit().clear().commit()
         repository = Repository(RuntimeEnvironment.getApplication(), Dispatchers.Unconfined, sharedPreferences)
         tokenStore = TokenStore(sharedPreferences)
-        viewModel = SettingsViewModel(repository, tokenStore)
+        viewModel = SettingsViewModel(repository)
     }
 
     @Test
@@ -173,20 +174,22 @@ class SettingsViewModelTest {
     fun `the settings a session signed in with are remembered until sign-out`() {
         val signedInWith = SignInConfig("example-corp", "https://app.firezone.dev", "wss://api.firezone.dev")
 
-        assertNull(SettingsViewModel(repository, tokenStore).signedInWith)
+        assertNull(SettingsViewModel(repository).signedInWith)
 
-        tokenStore.save("token", signedInWith)
+        repository.saveActiveSignInConfigSync(signedInWith)
+        tokenStore.save("token")
         reopen()
 
         viewModel.onPortalChanged(Portal.CLOUD_EU)
         settle()
 
         assertEquals("wss://eu.api.firezone.dev", repository.getConfigSync().apiUrl)
-        assertEquals(signedInWith, tokenStore.signedInWith())
+        assertEquals(signedInWith, repository.getActiveSignInConfigSync())
         assertEquals(signedInWith, viewModel.signedInWith)
 
-        tokenStore.clear()
-        assertNull(SettingsViewModel(repository, tokenStore).signedInWith)
+        SessionViewModel(repository, tokenStore).clearToken()
+        assertNull(tokenStore.get())
+        assertNull(SettingsViewModel(repository).signedInWith)
     }
 
     @Test
@@ -298,7 +301,7 @@ class SettingsViewModelTest {
 
     // What opening the settings screen again starts from.
     private fun reopen() {
-        viewModel = SettingsViewModel(repository, tokenStore)
+        viewModel = SettingsViewModel(repository)
         populateFields()
     }
 

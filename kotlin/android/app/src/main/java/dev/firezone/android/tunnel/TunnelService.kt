@@ -418,7 +418,7 @@ class TunnelService : VpnService() {
             if (managedToken != null) {
                 config.apiUrl
             } else {
-                tokenStore.signedInWith()?.apiUrl ?: config.apiUrl
+                repo.getActiveSignInConfigSync()?.apiUrl ?: config.apiUrl
             }
         resourceState = repo.getInternetResourceStateSync()
 
@@ -818,6 +818,7 @@ class TunnelService : VpnService() {
 
                                     if (event.error.requiresSignIn()) {
                                         tokenStore.clear()
+                                        repo.clearActiveSignInConfigSync()
                                     }
 
                                     stopReason = StopReason.Disconnected(event.error.userMessage())
