@@ -511,48 +511,25 @@ fn connect(
 }
 
 fn interface_index(src: IpAddr) -> io::Result<NonZeroU32> {
-    let mut first = std::ptr::null_mut();
-    // SAFETY: getifaddrs owns a linked list until freeifaddrs. Each address family
-    // determines its sockaddr layout, and interface names are NUL-terminated.
-    let index = unsafe {
-        if libc::getifaddrs(&mut first) != 0 {
-            return Err(io::Error::last_os_error());
-        }
-
-        let mut current = first;
-        let mut index = None;
-        while let Some(interface) = current.as_ref() {
-            current = interface.ifa_next;
-            let Some(address) = interface.ifa_addr.as_ref() else {
-                continue;
+    let interface = nix::ifaddrs::getifaddrs()?
+        .find(|interface| {
+            let Some(address) = interface.address else {
+                return false;
             };
-            let matches = match (i32::from(address.sa_family), src) {
-                (libc::AF_INET, IpAddr::V4(src)) => {
-                    (*interface.ifa_addr.cast::<libc::sockaddr_in>())
-                        .sin_addr
-                        .s_addr
-                        .to_ne_bytes()
-                        == src.octets()
-                }
-                (libc::AF_INET6, IpAddr::V6(src)) => {
-                    (*interface.ifa_addr.cast::<libc::sockaddr_in6>())
-                        .sin6_addr
-                        .s6_addr
-                        == src.octets()
-                }
-                _ => false,
-            };
-            if !matches {
-                continue;
+            match src {
+                IpAddr::V4(src) => address
+                    .as_sockaddr_in()
+                    .is_some_and(|addr| addr.ip() == src),
+                IpAddr::V6(src) => address
+                    .as_sockaddr_in6()
+                    .is_some_and(|addr| addr.ip() == src),
             }
-
-            index = NonZeroU32::new(libc::if_nametoindex(interface.ifa_name));
-            break;
-        }
-        libc::freeifaddrs(first);
-        index
-    };
-    let index = index.ok_or_else(|| io::Error::from(io::ErrorKind::AddrNotAvailable))?;
+        })
+        .ok_or_else(|| io::Error::from(io::ErrorKind::AddrNotAvailable))?;
+    let index = nix::net::if_::if_nametoindex(interface.interface_name.as_str())
+        .ok()
+        .and_then(NonZeroU32::new)
+        .ok_or_else(|| io::Error::from(io::ErrorKind::AddrNotAvailable))?;
 
     Ok(index)
 }

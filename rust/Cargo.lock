@@ -7563,6 +7563,7 @@ dependencies = [
  "ip-packet",
  "libc",
  "memchr",
+ "nix 0.31.3",
  "opentelemetry",
  "otel-instruments",
  "parking_lot",
