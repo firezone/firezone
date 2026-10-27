@@ -200,7 +200,32 @@ impl From<x509_keystore::ValidationError> for X509ValidationError {
 
 #[tauri::command]
 #[specta::specta]
-pub async fn clear_logs(managed: tauri::State<'_, Managed>) -> Result<(), Error> {
+pub async fn clear_logs(
+    window: tauri::WebviewWindow,
+    managed: tauri::State<'_, Managed>,
+) -> Result<(), Error> {
+    let (confirm_tx, confirm_rx) = tokio::sync::oneshot::channel();
+
+    window
+        .dialog()
+        .message(
+            "This deletes all log files on this device. Export them first if you need them for a support request.",
+        )
+        .title("Clear log files?")
+        .kind(MessageDialogKind::Warning)
+        .buttons(MessageDialogButtons::OkCancelCustom(
+            "Clear".to_owned(),
+            "Cancel".to_owned(),
+        ))
+        .parent(&window)
+        .show(|confirmed| {
+            let _ = confirm_tx.send(confirmed);
+        });
+
+    if !confirm_rx.await.unwrap_or(false) {
+        return Ok(());
+    }
+
     let (tx, rx) = tokio::sync::oneshot::channel();
 
     managed
