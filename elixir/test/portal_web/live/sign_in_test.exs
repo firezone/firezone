@@ -82,7 +82,7 @@ defmodule PortalWeb.SignInTest do
 
       {:ok, lv, _html} = live(conn, ~p"/#{account}/sign_in")
 
-      assert has_element?(lv, "#data-residency", "Firezone Cloud region: European Union")
+      assert has_element?(lv, "#data-residency", "Cloud region: European Union")
     end
 
     test "hides the data residency region on on-prem portals", %{conn: conn, account: account} do
@@ -93,11 +93,30 @@ defmodule PortalWeb.SignInTest do
       refute has_element?(lv, "#eu-beta-banner")
     end
 
-    test "shows the EU beta banner and links the EU portal on the US portal", %{
+    test "links the EU portal without the EU beta banner on the US portal", %{
       conn: conn,
       account: account
     } do
       Portal.Config.put_env_override(:data_residency_region, :us)
+      Portal.Config.put_env_override(:web_external_url, "https://app.firezone.dev")
+
+      {:ok, lv, _html} = live(conn, ~p"/#{account}/sign_in")
+
+      refute has_element?(lv, "#eu-beta-banner")
+
+      assert has_element?(
+               lv,
+               "#other-region-portal[href='https://eu.app.firezone.dev']",
+               "Go to the EU portal"
+             )
+    end
+
+    test "shows the EU beta banner and links the US portal on the EU portal", %{
+      conn: conn,
+      account: account
+    } do
+      Portal.Config.put_env_override(:data_residency_region, :eu)
+      Portal.Config.put_env_override(:web_external_url, "https://eu.app.firezone.dev")
 
       {:ok, lv, _html} = live(conn, ~p"/#{account}/sign_in")
 
@@ -111,26 +130,23 @@ defmodule PortalWeb.SignInTest do
 
       assert has_element?(
                lv,
-               "#other-region-portal[href='https://eu.app.firezone.dev']",
-               "Go to the EU portal"
+               "#other-region-portal[href='https://app.firezone.dev']",
+               "Go to the US portal"
              )
     end
 
-    test "links the US portal without the EU beta banner on the EU portal", %{
+    test "shows the region without the EU beta banner or portal link on other portals", %{
       conn: conn,
       account: account
     } do
       Portal.Config.put_env_override(:data_residency_region, :eu)
+      Portal.Config.put_env_override(:web_external_url, "https://eu.app.firez.one")
 
       {:ok, lv, _html} = live(conn, ~p"/#{account}/sign_in")
 
+      assert has_element?(lv, "#data-residency", "Cloud region: European Union")
       refute has_element?(lv, "#eu-beta-banner")
-
-      assert has_element?(
-               lv,
-               "#other-region-portal[href='https://app.firezone.dev']",
-               "Go to the US portal"
-             )
+      refute has_element?(lv, "#other-region-portal")
     end
 
     test "renders the sign-in on a branded card for small screens", %{conn: conn, account: account} do

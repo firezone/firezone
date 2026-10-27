@@ -72,6 +72,18 @@ defmodule PortalWeb.SignUpTest do
       refute html =~ ~s(name="registration[phone]")
     end
 
+    test "links the same page on the EU portal from the US portal", %{conn: conn} do
+      Portal.Config.put_env_override(:data_residency_region, :us)
+      Portal.Config.put_env_override(:web_external_url, "https://app.firezone.dev")
+
+      {:ok, lv, _html} = live(conn, ~p"/sign_up/email")
+
+      assert has_element?(
+               lv,
+               "#other-region-portal[href='https://eu.app.firezone.dev/sign_up/email']"
+             )
+    end
+
     test "renders the sign-up on a branded card for small screens", %{conn: conn} do
       {:ok, lv, _html} = live(conn, ~p"/sign_up")
 

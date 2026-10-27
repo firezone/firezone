@@ -76,7 +76,8 @@ defmodule PortalWeb.Router do
     live_session :public_sign_up,
       on_mount: [
         PortalWeb.LiveHooks.PutDynamicRepo,
-        PortalWeb.LiveHooks.AllowEctoSandbox
+        PortalWeb.LiveHooks.AllowEctoSandbox,
+        PortalWeb.LiveHooks.SetCurrentUri
       ] do
       live "/sign_up", SignUp, :choose
       live "/sign_up/email", SignUp, :fill_form

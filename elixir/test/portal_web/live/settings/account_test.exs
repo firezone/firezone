@@ -189,13 +189,14 @@ defmodule PortalWeb.Settings.AccountTest do
       actor: actor
     } do
       Portal.Config.put_env_override(:data_residency_region, :us)
+      Portal.Config.put_env_override(:web_external_url, "https://app.firezone.dev")
 
       {:ok, lv, _html} =
         conn
         |> authorize_conn(actor)
         |> live(~p"/#{account}/settings/account")
 
-      assert has_element?(lv, "#data-residency", "Firezone Cloud region: United States")
+      assert has_element?(lv, "#data-residency", "Cloud region: United States")
       assert has_element?(lv, "#data-residency", "Firezone Cloud EU is in closed beta.")
       assert has_element?(lv, "#data-residency a[href='https://www.firezone.dev/eu']")
     end
@@ -212,7 +213,24 @@ defmodule PortalWeb.Settings.AccountTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/settings/account")
 
-      assert has_element?(lv, "#data-residency", "Firezone Cloud region: European Union")
+      assert has_element?(lv, "#data-residency", "Cloud region: European Union")
+      refute has_element?(lv, "#data-residency", "closed beta")
+    end
+
+    test "shows the US region without the closed beta link on other US portals", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      Portal.Config.put_env_override(:data_residency_region, :us)
+      Portal.Config.put_env_override(:web_external_url, "https://app.firez.one")
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/account")
+
+      assert has_element?(lv, "#data-residency", "Cloud region: United States")
       refute has_element?(lv, "#data-residency", "closed beta")
     end
 
