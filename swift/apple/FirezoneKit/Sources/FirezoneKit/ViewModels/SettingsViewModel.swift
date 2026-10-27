@@ -22,6 +22,10 @@ class SettingsViewModel: ObservableObject {
   @Published var authURL: String
   @Published var apiURL: String
   @Published var logFilter: String
+  /// Why the last save left a value out; nil when it was saved.
+  @Published private(set) var authURLError: String?
+  @Published private(set) var apiURLError: String?
+  @Published private(set) var logFilterError: String?
   @Published var accountSlug: String
   @Published var connectOnStart: Bool
   @Published var startOnLogin: Bool
@@ -133,6 +137,9 @@ class SettingsViewModel: ObservableObject {
 
     switch tab ?? selectedTab {
     case .general:
+      authURLError = isAuthURLValid() ? nil : "Enter a valid https:// URL"
+      apiURLError = isApiURLValid() ? nil : "Enter a valid wss:// URL"
+
       if areURLsValid() {
         if !configuration.isAuthURLForced { configuration.authURL = authURL }
         if !configuration.isApiURLForced { configuration.apiURL = apiURL }
@@ -144,6 +151,8 @@ class SettingsViewModel: ObservableObject {
       if !configuration.isConnectOnStartForced { configuration.connectOnStart = connectOnStart }
       if !configuration.isStartOnLoginForced { configuration.startOnLogin = startOnLogin }
     case .logs:
+      logFilterError = isLogFilterValid() ? nil : "Enter a log filter"
+
       if !configuration.isLogFilterForced, isLogFilterValid() {
         configuration.logFilter = logFilter
       }
@@ -209,19 +218,43 @@ class SettingsViewModel: ObservableObject {
     "firezone_logs_\(LogExporter.now()).zip"
   }
 
-  func areURLsValid() -> Bool {
-    guard let apiURL = URL(string: apiURL),
-      apiURL.host != nil,
-      ["wss", "ws"].contains(apiURL.scheme),
-      apiURL.pathComponents.isEmpty
-    else {
-      return false
+  /// Puts invalid values back to the saved ones, so that the settings reopen showing what is in
+  /// effect.
+  func discardInvalidDrafts() {
+    if !areURLsValid() {
+      authURL = configuration.authURL
+      apiURL = configuration.apiURL
+      portal = detectPortal()
     }
+    if !isLogFilterValid() { logFilter = configuration.logFilter }
 
+    authURLError = nil
+    apiURLError = nil
+    logFilterError = nil
+    updateDerivedState()
+  }
+
+  func areURLsValid() -> Bool {
+    isAuthURLValid() && isApiURLValid()
+  }
+
+  private func isAuthURLValid() -> Bool {
     guard let authURL = URL(string: authURL),
       authURL.host != nil,
       ["http", "https"].contains(authURL.scheme),
       authURL.pathComponents.isEmpty
+    else {
+      return false
+    }
+
+    return true
+  }
+
+  private func isApiURLValid() -> Bool {
+    guard let apiURL = URL(string: apiURL),
+      apiURL.host != nil,
+      ["wss", "ws"].contains(apiURL.scheme),
+      apiURL.pathComponents.isEmpty
     else {
       return false
     }

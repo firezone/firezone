@@ -589,6 +589,26 @@ struct ConfigurationTests {
     #expect(config.logFilter == logFilter)
   }
 
+  @Test("An invalid URL is not saved and says why")
+  @MainActor
+  func invalidURLIsNotSavedAndSaysWhy() async throws {
+    let config = Configuration(userDefaults: UserDefaults.makeTestDefaults())
+    let viewModel = SettingsViewModel(configuration: config)
+    let apiURL = config.apiURL
+
+    viewModel.apiURL = "https://api.example.com"
+    try await viewModel.save(.general)
+
+    #expect(config.apiURL == apiURL)
+    #expect(viewModel.apiURLError == "Enter a valid wss:// URL")
+    #expect(viewModel.authURLError == nil)
+
+    viewModel.discardInvalidDrafts()
+
+    #expect(viewModel.apiURL == apiURL)
+    #expect(viewModel.apiURLError == nil)
+  }
+
   @Test("Saving reports whether the account slug or portal changed")
   @MainActor
   func savingReportsSignInChanges() async throws {

@@ -95,7 +95,10 @@ public struct SettingsView: View {
       .onChange(of: viewModel.portal) { _ in commit(.general) }
       .onChange(of: viewModel.connectOnStart) { _ in commit(.general) }
       .onChange(of: viewModel.startOnLogin) { _ in commit(.general) }
-      .onDisappear { commitTextFields() }
+      .onDisappear {
+        commitTextFields()
+        viewModel.discardInvalidDrafts()
+      }
       .alert(SignOutAlert.title, isPresented: $isShowingSignOutAlert) {
         Button("OK") {
           if dismissesAfterSignOutAlert { dismiss() }
@@ -205,6 +208,7 @@ public struct SettingsView: View {
               .focused($focusedField, equals: .authURL)
               .onSubmit { commit(.general) }
               .disabled(configuration.isAuthURLForced)
+              errorText(viewModel.authURLError)
 
               TextField(
                 "API URL",
@@ -214,6 +218,7 @@ public struct SettingsView: View {
               .focused($focusedField, equals: .apiURL)
               .onSubmit { commit(.general) }
               .disabled(configuration.isApiURLForced)
+              errorText(viewModel.apiURLError)
             }
           }
 
@@ -295,6 +300,7 @@ public struct SettingsView: View {
                 .focused($focusedField, equals: .authURL)
                 .onSubmit { commit(.general) }
                 .disabled(configuration.isAuthURLForced)
+                errorText(viewModel.authURLError)
               }
               VStack(alignment: .leading, spacing: 2) {
                 Text("API URL")
@@ -310,6 +316,7 @@ public struct SettingsView: View {
                 .focused($focusedField, equals: .apiURL)
                 .onSubmit { commit(.general) }
                 .disabled(configuration.isApiURLForced)
+                errorText(viewModel.apiURLError)
               }
             }
           }
@@ -359,6 +366,7 @@ public struct SettingsView: View {
               .focused($focusedField, equals: .logFilter)
               .onSubmit { commit(.logs) }
               .disabled(configuration.isLogFilterForced)
+              errorText(viewModel.logFilterError)
             }
             LogFilesView(
               sizeText: viewModel.logDirectorySizeText,
@@ -415,6 +423,7 @@ public struct SettingsView: View {
             .focused($focusedField, equals: .logFilter)
             .onSubmit { commit(.logs) }
             .disabled(configuration.isLogFilterForced)
+            errorText(viewModel.logFilterError)
 
             LogFilesView(
               sizeText: viewModel.logDirectorySizeText,
@@ -468,6 +477,15 @@ public struct SettingsView: View {
     #else
       #error("Unsupported platform")
     #endif
+  }
+
+  @ViewBuilder
+  private func errorText(_ error: String?) -> some View {
+    if let error {
+      Text(error)
+        .font(.caption)
+        .foregroundStyle(.red)
+    }
   }
 
   private var resetButton: some View {
