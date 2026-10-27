@@ -6363,7 +6363,7 @@ dependencies = [
 [[package]]
 name = "quinn-udp"
 version = "0.6.3"
-source = "git+https://github.com/firezone/quinn?rev=482735009a2056d35c24082339865c1f8bae6dd0#482735009a2056d35c24082339865c1f8bae6dd0"
+source = "git+https://github.com/firezone/quinn?rev=81beed4235440cc899f05cb64ee5e1f8a25ff18c#81beed4235440cc899f05cb64ee5e1f8a25ff18c"
 dependencies = [
  "cfg_aliases",
  "libc",
