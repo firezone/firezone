@@ -249,13 +249,18 @@ impl<I: GuiIntegration> Controller<I> {
 
         let auth = auth::Auth::new()?;
 
-        if let Err(e) =
-            try_migrate_advanced_settings(&legacy_advanced_settings_path, &mut ipc_client).await
-        {
-            tracing::warn!("Failed to migrate advanced settings to service: {e:#}");
-        }
+        let migration_sent =
+            match try_migrate_advanced_settings(&legacy_advanced_settings_path, &mut ipc_client)
+                .await
+            {
+                Ok(sent) => sent,
+                Err(e) => {
+                    tracing::warn!("Failed to migrate advanced settings to service: {e:#}");
+                    false
+                }
+            };
 
-        let controller = Controller {
+        let mut controller = Controller {
             general_settings,
             mdm_settings,
             advanced_settings,
@@ -289,6 +294,18 @@ impl<I: GuiIntegration> Controller<I> {
             pending_connect_replies: Vec::new(),
             unconfirmed_token: None,
         };
+
+        if migration_sent {
+            let response = tokio::time::timeout(Duration::from_secs(5), controller.ipc_rx.next())
+                .await
+                .context("Timed out waiting for legacy settings migration")?
+                .context("Tunnel service disconnected during legacy settings migration")??;
+            anyhow::ensure!(
+                matches!(response, service::ServerMsg::AdvancedSettingsApplied(_)),
+                "Expected settings migration response"
+            );
+            controller.handle_service_ipc_msg(response).await?;
+        }
 
         controller.main_loop().await?;
 
@@ -1415,9 +1432,9 @@ fn try_delete_legacy_config(path: &Path) -> Result<()> {
 async fn try_migrate_advanced_settings(
     path: &Path,
     ipc_client: &mut ipc::ClientWrite<service::ClientMsg>,
-) -> Result<()> {
+) -> Result<bool> {
     if !path.exists() {
-        return Ok(());
+        return Ok(false);
     }
 
     let content =
@@ -1429,7 +1446,7 @@ async fn try_migrate_advanced_settings(
         .await
         .context("Failed to send legacy advanced_settings migration")?;
 
-    Ok(())
+    Ok(true)
 }
 
 #[cfg(test)]
@@ -2250,6 +2267,41 @@ mod tests {
 
         let migrated = mock_tunnel.rx_apply_advanced_settings().await;
         assert_eq!(migrated, canned);
+        test_controller
+            .ctrl_tx
+            .send(ControllerRequest::SignIn)
+            .await
+            .unwrap();
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        assert!(test_controller.integration().opened_urls.is_empty());
+
+        mock_tunnel
+            .send_advanced_settings_applied(Ok(canned.clone()))
+            .await;
+        let opened = test_controller
+            .wait_integration(|i| i.opened_urls.first().cloned())
+            .await;
+        assert!(opened.starts_with(canned.auth_url.as_str()));
+        let callback = Url::parse(&opened).unwrap();
+        let state = callback
+            .query_pairs()
+            .find_map(|(key, value)| (key == "state").then_some(value))
+            .unwrap();
+        let callback = format!(
+            "firezone-fd0020211111://handle_client_sign_in_callback?fragment=fragment&state={state}"
+        )
+        .parse()
+        .unwrap();
+        let _ = test_controller
+            .gui_ipc_request(gui_ipc::ClientMsg::Deeplink(callback))
+            .await;
+        let service::ClientMsg::Connect {
+            expected_api_url, ..
+        } = mock_tunnel.next_msg().await
+        else {
+            panic!("expected connect after migration");
+        };
+        assert_eq!(expected_api_url, Some(canned.api_url));
     }
 
     #[tokio::test]
