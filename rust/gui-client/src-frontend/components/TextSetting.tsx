@@ -9,7 +9,8 @@ interface TextSettingProps {
   value: string;
   // Returns what is wrong with `value`, or `null` to save it.
   validate?: (value: string) => string | null;
-  save: (value: string) => void;
+  // May resolve to a string saying why the value was rejected, which shows like a validation error.
+  save: (value: string) => unknown;
   className?: string;
 }
 
@@ -48,7 +49,12 @@ export default function TextSetting({
     }
 
     lastSaved.current = draft;
-    save(draft);
+    void Promise.resolve(save(draft)).then((rejection) => {
+      if (typeof rejection === "string" && lastSaved.current === draft) {
+        lastSaved.current = null;
+        setError(rejection);
+      }
+    });
   };
 
   return (

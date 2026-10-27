@@ -273,6 +273,8 @@ pub async fn apply_log_filter(
     managed: tauri::State<'_, Managed>,
     log_filter: String,
 ) -> Result<(), Error> {
+    check_log_filter(&log_filter)?;
+
     if managed.inner().inject_faults {
         tokio::time::sleep(Duration::from_secs(2)).await;
     }
@@ -280,6 +282,13 @@ pub async fn apply_log_filter(
     managed
         .send_request(ControllerRequest::ApplyLogFilter(log_filter))
         .await?;
+
+    Ok(())
+}
+
+fn check_log_filter(log_filter: &str) -> Result<(), Error> {
+    logging::try_filter::<tracing_subscriber::Registry>(log_filter)
+        .map_err(|e| Error(format!("Invalid log filter: {e}")))?;
 
     Ok(())
 }
@@ -505,6 +514,18 @@ mod tests {
         let form = general_settings_form(Portal::Custom, "not a URL", "wss://api.example.com");
 
         assert!(form.urls().is_err());
+    }
+
+    #[test]
+    fn accepts_a_log_filter_connlib_can_parse() {
+        assert!(check_log_filter("info,connlib=debug").is_ok());
+    }
+
+    #[test]
+    fn rejects_a_log_filter_connlib_cannot_parse() {
+        let Error(message) = check_log_filter("info,connlib=nonsense").unwrap_err();
+
+        assert!(message.starts_with("Invalid log filter: "), "{message}");
     }
 
     #[test]

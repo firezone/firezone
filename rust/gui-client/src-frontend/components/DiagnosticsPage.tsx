@@ -1,5 +1,5 @@
 import React from "react";
-import { FileCount, LogFilterViewModel } from "../generated/bindings";
+import { FileCount, LogFilterViewModel, Result } from "../generated/bindings";
 import RemixIcon from "./RemixIcon";
 import SettingRow from "./SettingRow";
 import TextSetting from "./TextSetting";
@@ -9,7 +9,7 @@ interface DiagnosticsPageProps {
   logFilter: LogFilterViewModel | null;
   exportLogs: () => void;
   clearLogs: () => void;
-  saveLogFilter: (logFilter: string) => void;
+  saveLogFilter: (logFilter: string) => Promise<Result<null, string>>;
 }
 
 const defaultLogFilter: LogFilterViewModel = {
@@ -40,7 +40,10 @@ export default function Diagnostics({
               label="Log Filter"
               managed={saved.log_filter_is_managed}
               name="log_filter"
-              save={saveLogFilter}
+              save={async (filter) => {
+                const result = await saveLogFilter(filter);
+                return result.status === "error" ? result.error : null;
+              }}
               validate={(filter) =>
                 filter === "" ? "Enter a log filter" : null
               }
