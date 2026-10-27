@@ -8,6 +8,8 @@ defmodule PortalAPI.MCPControllerTest do
 
   alias PortalAPI.MCP
 
+  import Portal.AuthProviderFixtures
+
   setup do
     account = account_fixture()
     actor = actor_fixture(type: :account_admin_user, account: account)
@@ -1146,6 +1148,38 @@ defmodule PortalAPI.MCPControllerTest do
           MCP.client_capabilities_key() => %{}
         })
     }
+  end
+
+  test "auth provider tools return verified tenant and domain arrays", %{conn: conn, account: account, actor: actor} do
+    tenant_ids = ["12345678-1234-1234-1234-123456789012", "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"]
+    domains = ["primary.example", "secondary.example"]
+    entra = entra_provider_fixture(account: account, tenant_ids: tenant_ids, sign_in_tenant_id: hd(tenant_ids))
+    google = google_provider_fixture(account: account, workspace_domains: domains)
+    for {tool, provider, field, expected} <- [
+      {"get_entra_auth_provider", entra, "tenant_ids", tenant_ids},
+      {"get_google_auth_provider", google, "workspace_domains", domains}
+    ] do
+      result = conn |> authorize_mcp_conn(actor) |> call_tool(tool, %{"id" => provider.id}) |> json_response(200)
+      assert %{"result" => %{"isError" => false, "structuredContent" => %{"data" => data}}} = result
+      assert data[field] == expected
+      if field == "tenant_ids" do
+        refute Map.has_key?(data, "issuer")
+        assert data["sign_in_tenant_id"] == hd(tenant_ids)
+      end
+    end
+  end
+
+  test "Google MCP tools distinguish multiple providers in one account", %{conn: conn, account: account, actor: actor} do
+    personal = google_provider_fixture(account: account, is_legacy_unrestricted: true)
+    first = google_provider_fixture(account: account, workspace_domains: ["first.example"])
+    second = google_provider_fixture(account: account, workspace_domains: ["second.example"])
+    for {provider, domains} <- [{personal, []}, {first, ["first.example"]}, {second, ["second.example"]}] do
+      result = conn |> authorize_mcp_conn(actor) |> call_tool("get_google_auth_provider", %{"id" => provider.id}) |> json_response(200)
+      assert %{"result" => %{"isError" => false, "structuredContent" => %{"data" => data}}} = result
+      assert data["id"] == provider.id
+      assert data["workspace_domains"] == domains
+      refute Map.has_key?(data, "is_legacy_unrestricted")
+    end
   end
 
   defp headers(conn, method) do

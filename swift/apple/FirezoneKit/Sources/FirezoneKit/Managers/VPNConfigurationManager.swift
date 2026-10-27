@@ -291,6 +291,14 @@ public final class VPNConfigurationManager {
     return configuration.internetResourceEnabled
   }
 
+  /// The local IPs the tunnel advertises as additional host candidates.
+  public func additionalHostCandidates() throws -> [String] {
+    let configuration = Configuration()
+    configuration.loadProviderConfiguration(try providerConfiguration())
+
+    return configuration.additionalHostCandidates
+  }
+
   func providerConfiguration() throws -> [String: String] {
     guard let protocolConfiguration = manager.protocolConfiguration as? NETunnelProviderProtocol
     else {

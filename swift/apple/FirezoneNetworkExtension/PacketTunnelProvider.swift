@@ -133,6 +133,11 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
       providerConfiguration[Configuration.Keys.internetResourceEnabled],
       default: ConfigurationDefaults.internetResourceEnabled
     )
+    let additionalHostCandidates =
+      (providerConfiguration[Configuration.Keys.additionalHostCandidates]
+      ?? ConfigurationDefaults.additionalHostCandidates)
+      .split(separator: ",")
+      .map(String.init)
 
     Telemetry.setEnvironmentOrClose(apiURL)
 
@@ -146,6 +151,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
       deviceId: firezoneId.uuid,
       logFilter: logFilter,
       internetResourceEnabled: internetResourceEnabled,
+      additionalHostCandidates: additionalHostCandidates,
       identityReference: identityReference,
       providerCommandSender: commandSender
     )
@@ -295,6 +301,13 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         let adapter = self.adapter
         Task { @Sendable in
           await adapter?.setInternetResourceEnabled(enabled)
+        }
+        completionHandler?(nil)
+
+      case .setAdditionalHostCandidates(let ips):
+        let adapter = self.adapter
+        Task { @Sendable in
+          await adapter?.setAdditionalHostCandidates(ips)
         }
         completionHandler?(nil)
 

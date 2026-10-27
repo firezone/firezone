@@ -575,6 +575,14 @@ impl Allocation {
             "Method of response should match the one from our request"
         );
 
+        // `BINDING` responses skip the message integrity check, so we must not take a nonce from them.
+        if message.method() != BINDING
+            && let Some(new_nonce) = message.get_attribute::<Nonce>()
+            && let Some(credentials) = &mut self.credentials
+        {
+            credentials.nonce = Some(new_nonce.clone());
+        }
+
         match message.method() {
             BINDING => {
                 // First, see if we need to update our host candidate.
@@ -859,10 +867,9 @@ impl Allocation {
         self.buffered_transmits.pop_front()
     }
 
-    pub fn poll_timeout(&self) -> Option<(Instant, &'static str)> {
+    pub fn poll_timeout(&self) -> Option<Instant> {
         let next_refresh = if !self.refresh_in_flight() {
             self.refresh_allocation_at()
-                .map(|refresh_at| (refresh_at, "refresh allocation"))
         } else {
             None
         };
@@ -870,11 +877,10 @@ impl Allocation {
         let next_timeout = self
             .sent_requests
             .values()
-            .map(|(_, _, b)| (b.next_trigger(), "resend TURN message"));
+            .map(|(_, _, b)| b.next_trigger());
 
         let next_keepalive = if self.has_allocation() {
-            self.active_socket
-                .map(|a| (a.next_binding, "TURN keep-alive"))
+            self.active_socket.map(|a| a.next_binding)
         } else {
             None
         };
@@ -883,7 +889,7 @@ impl Allocation {
             .chain(next_refresh)
             .chain(next_keepalive)
             .chain(next_timeout)
-            .min_by_key(|(instant, _)| *instant)
+            .min()
     }
 
     #[tracing::instrument(level = "debug", skip(self, now), fields(active_socket = ?self.active_socket))]
@@ -2185,7 +2191,7 @@ mod tests {
 
         let mut expected_backoffs = VecDeque::from(backoff::steps(start));
 
-        while let Some((timeout, _)) = allocation.poll_timeout() {
+        while let Some(timeout) = allocation.poll_timeout() {
             assert_eq!(expected_backoffs.pop_front().unwrap(), timeout);
 
             assert!(allocation.poll_transmit().is_some());
@@ -2291,6 +2297,28 @@ mod tests {
                 .unwrap()
                 .get_attribute::<Nonce>()
                 .map(|n| n.value()),
+            Some("nonce2")
+        );
+    }
+
+    #[test]
+    fn uses_nonce_from_success_response_for_next_request() {
+        let mut now = Instant::now();
+        let mut allocation = Allocation::for_test_ip4(now).with_binding_response(PEER1, now);
+
+        let allocate = allocation.next_message().unwrap();
+        let mut response = allocate_response(&allocate, &[RELAY_ADDR_IP4]);
+        response.add_attribute(Nonce::new("nonce2".to_owned()).unwrap());
+        allocation.handle_test_input_ip4(response, now);
+
+        now += ALLOCATION_LIFETIME / 2;
+        allocation.handle_timeout(now);
+
+        let refresh = iter::from_fn(|| allocation.next_message())
+            .find(|m| m.method() == REFRESH)
+            .unwrap();
+        assert_eq!(
+            refresh.get_attribute::<Nonce>().map(|n| n.value()),
             Some("nonce2")
         );
     }
@@ -2503,11 +2531,11 @@ mod tests {
             Instant::now(),
         );
 
-        let (refresh_at, _) = allocation.poll_timeout().unwrap();
+        let refresh_at = allocation.poll_timeout().unwrap();
 
         allocation.handle_timeout(refresh_at);
 
-        assert!(allocation.poll_timeout().unwrap().0 > refresh_at);
+        assert!(allocation.poll_timeout().unwrap() > refresh_at);
     }
 
     #[test]
@@ -2694,7 +2722,7 @@ mod tests {
 
         // Test that we send binding requests it.
         {
-            now = allocation.poll_timeout().unwrap().0;
+            now = allocation.poll_timeout().unwrap();
             allocation.handle_timeout(now);
 
             let binding = allocation.next_message().unwrap();
@@ -2703,7 +2731,7 @@ mod tests {
 
         // Simulate bindings timing out
         for _ in backoff::steps(now) {
-            allocation.handle_timeout(allocation.poll_timeout().unwrap().0);
+            allocation.handle_timeout(allocation.poll_timeout().unwrap());
         }
 
         assert_eq!(
@@ -2978,7 +3006,7 @@ mod tests {
             start,
         );
 
-        while let Some((timeout, _)) = allocation.poll_timeout() {
+        while let Some(timeout) = allocation.poll_timeout() {
             allocation.handle_timeout(timeout);
 
             // We expect two transmits.
@@ -2994,7 +3022,7 @@ mod tests {
     fn allocation_can_be_freed_after_all_requests_time_out() {
         let mut allocation = Allocation::for_test_dual(Instant::now());
 
-        while let Some((timeout, _)) = allocation.poll_timeout() {
+        while let Some(timeout) = allocation.poll_timeout() {
             allocation.handle_timeout(timeout);
 
             // We expect two transmits.

@@ -81,6 +81,9 @@ defmodule PortalWeb.OIDCController do
           expected_tenant_id
         )
 
+      {:google_auth_provider, lv_pid_string, verification_ref} ->
+        handle_google_auth_provider_verification(conn, code, lv_pid_string, verification_ref)
+
       {:google_directory_sync, lv_pid_string, verification_ref} ->
         handle_google_directory_sync_verification(
           conn,
@@ -150,6 +153,10 @@ defmodule PortalWeb.OIDCController do
           expected_tenant_id,
           silent?
         )
+
+      {:google_auth_provider, lv_pid_string, verification_ref} ->
+        google_auth_provider_result(conn, lv_pid_string, verification_ref,
+          {:error, :google_workspace_verification_failed})
 
       {:google_directory_sync, lv_pid_string, verification_ref} ->
         handle_google_directory_sync_authorization_error(
@@ -554,7 +561,10 @@ defmodule PortalWeb.OIDCController do
   end
 
   # Google and Okta consistently return email_verified=true, so we enforce the claim
-  # to surface any misbehavior. Entra does not set email_verified, so we cannot check it.
+  # to surface any misbehavior. Entra does not set email_verified. A UPN can only use a
+  # domain verified in the token's tenant, which the tenant check pins to the customer,
+  # so it is trusted as is. B2B guests and their home tenants control the email and
+  # preferred_username claims, so linking by those requires proof.
   # Generic OIDC providers send it inconsistently, so we let the admin choose via
   # email_verification_method (none/claim/proof).
   # GitHub never re-checks an address after verifying it once, and the customer does
@@ -571,6 +581,8 @@ defmodule PortalWeb.OIDCController do
 
   defp email_verification_method(%Portal.GitHub.AuthProvider{}), do: :proof
   defp email_verification_method(%Portal.Okta.AuthProvider{}), do: :claim
+  defp email_verification_method(%Portal.Entra.AuthProvider{email_claim: "upn"}), do: :none
+  defp email_verification_method(%Portal.Entra.AuthProvider{}), do: :proof
 
   defp email_verification_method(%Portal.OIDC.AuthProvider{email_verification_method: method}),
     do: method
@@ -1117,12 +1129,13 @@ defmodule PortalWeb.OIDCController do
          {:ok, claims, userinfo_result} <-
            PortalWeb.OIDC.verify_callback(config, code, cookie.verifier, iss: iss),
          {:ok, profile} <- IdentityProfile.build(claims, userinfo(userinfo_result), nil),
-         :ok <- enforce_verified_email(profile) do
+         :ok <- enforce_verified_email(profile),
+         {:ok, workspace_domain} <- sign_up_workspace_domain(provider_type, claims) do
       conn
       |> Cookie.SignUpState.delete()
       |> put_session(
         PortalWeb.SignUp.session_key(),
-        PortalWeb.SignUp.session_identity(profile, provider_type)
+        PortalWeb.SignUp.session_identity(profile, provider_type, workspace_domain)
       )
       |> redirect(to: ~p"/sign_up/#{provider_type}")
     else
@@ -1134,6 +1147,17 @@ defmodule PortalWeb.OIDCController do
         |> redirect_to_sign_up_with_error(sign_up_error_message(provider_type, reason))
     end
   end
+
+  # Domain policy comes from the signed ID token, never from userinfo or the signup form.
+  defp sign_up_workspace_domain("google", claims) do
+    case Map.fetch(claims, "hd") do
+      :error -> {:ok, nil}
+      {:ok, domain} when is_binary(domain) and domain != "" -> {:ok, String.downcase(domain)}
+      _ -> {:error, {:invalid_jwt, "invalid Google Workspace domain"}}
+    end
+  end
+
+  defp sign_up_workspace_domain(_provider, _claims), do: {:ok, nil}
 
   defp sign_up_verification_type(provider_type), do: "#{provider_type}_sign_up"
 
@@ -1215,6 +1239,31 @@ defmodule PortalWeb.OIDCController do
       |> request_pending_verification()
       |> verify_oidc_callback(code, iss, lv_pid_string)
 
+    token = Phoenix.Token.sign(PortalWeb.Endpoint, "oidc-verification-result", result)
+    redirect(conn, to: ~p"/verification/oidc?result=#{token}")
+  end
+
+  defp handle_google_auth_provider_verification(conn, code, lv_pid_string, verification_ref) do
+    result =
+      with {:ok, %{config: config, verifier: verifier}} <-
+             lv_pid_string
+             |> PortalWeb.OIDC.deserialize_pid()
+             |> request_pending_verification(verification_ref) do
+        PortalWeb.OIDC.verify_google_callback(config, code, verifier)
+      end
+
+    google_auth_provider_result(conn, lv_pid_string, verification_ref, result)
+  end
+
+  defp google_auth_provider_result(conn, lv_pid_string, verification_ref, result) do
+    result = case result do
+      {:ok, identity} ->
+        Map.merge(identity, %{ok: true})
+      {:error, _reason} ->
+        %{ok: false, error: "Could not verify this Google account. For a Workspace account, sign in as an administrator and grant read-only access to your organization's domains."}
+    end
+    result = Map.merge(result, %{type: "google-auth-provider", lv_pid: lv_pid_string,
+                                verification_ref: verification_ref})
     token = Phoenix.Token.sign(PortalWeb.Endpoint, "oidc-verification-result", result)
     redirect(conn, to: ~p"/verification/oidc?result=#{token}")
   end
@@ -1913,6 +1962,11 @@ defmodule PortalWeb.OIDCController do
   defp parse_verified_callback_state(%{type: "oidc-auth-provider", lv_pid: lv_pid}),
     do: {:oidc_verification, lv_pid}
 
+  defp parse_verified_callback_state(%{type: "google-auth-provider", lv_pid: lv_pid,
+                                      verification_ref: verification_ref})
+       when is_binary(verification_ref),
+       do: {:google_auth_provider, lv_pid, verification_ref}
+
   defp parse_verified_callback_state(%{type: "google-sign-up"}), do: {:sign_up, "google"}
   defp parse_verified_callback_state(%{type: "github-sign-up"}), do: {:sign_up, "github"}
 
@@ -2173,7 +2227,7 @@ defmodule PortalWeb.OIDCController do
       with {:ok, id} <- Ecto.UUID.cast(id),
            %AuthProvider{type: type} <-
              from(p in AuthProvider,
-               where: p.account_id == ^account_id and p.id == ^id and p.type in [:oidc, :github]
+               where: p.account_id == ^account_id and p.id == ^id and p.type in [:oidc, :github, :entra]
              )
              |> Safe.unscoped()
              |> Safe.one() do

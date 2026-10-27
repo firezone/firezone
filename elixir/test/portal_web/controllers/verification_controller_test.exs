@@ -102,6 +102,30 @@ defmodule PortalWeb.VerificationControllerTest do
                        ^verification_ref}
     end
 
+    for {domains, name} <- [{["example.com"], "example.com"}, {nil, nil}] do
+      @google_domains domains
+      @google_name name
+      test "passes Google verification result #{inspect(domains)} to the active settings flow", %{conn: conn} do
+      parent = self()
+      lv_pid = spawn(fn ->
+        receive do
+          {:google_verify_complete, issuer, domains, name, verification_ref, {from, ref}} ->
+            send(parent, {:google_verified, issuer, domains, name, verification_ref})
+            send(from, {:verification_ack, ref})
+        end
+      end)
+      verification_ref = Ecto.UUID.generate()
+      token = sign_oidc_result(%{ok: true, type: "google-auth-provider",
+        issuer: "https://accounts.google.com", domains: @google_domains, name: @google_name,
+        lv_pid: serialize_pid(lv_pid), verification_ref: verification_ref})
+      conn = get(conn, ~p"/verification/oidc", %{"result" => token})
+      assert conn.resp_body =~ "Verification Successful"
+      assert_received {:google_verified, "https://accounts.google.com", @google_domains,
+        @google_name, ^verification_ref}
+    end
+
+    end
+
     test "with failure result token, sends failure message to LV and renders failure", %{
       conn: conn
     } do

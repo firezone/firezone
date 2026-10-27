@@ -659,10 +659,16 @@ defmodule PortalWeb.Resources do
     {:noreply, socket}
   end
 
-  def handle_event("open_edit_form", _params, socket) do
-    resource = socket.assigns.selected_resource
-
+  def handle_event(
+        "open_edit_form",
+        _params,
+        %{assigns: %{selected_resource: %Resource{} = resource}} = socket
+      ) do
     {:noreply, push_patch(socket, to: edit_resource_path(socket, resource.id))}
+  end
+
+  def handle_event("open_edit_form", _params, %{assigns: %{selected_resource: nil}} = socket) do
+    {:noreply, socket}
   end
 
   def handle_event("cancel_resource_form", _params, socket) do
@@ -685,11 +691,23 @@ defmodule PortalWeb.Resources do
     {:noreply, socket}
   end
 
-  def handle_event("change_policy_authorizations_page", %{"page" => page}, socket) do
+  def handle_event(
+        "change_policy_authorizations_page",
+        %{"page" => page},
+        %{assigns: %{selected_resource: %Resource{} = resource}} = socket
+      ) do
     {:noreply,
      push_patch(socket,
-       to: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/resources/#{socket.assigns.selected_resource.id}", tab: "authorizations", page: page)
+       to: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/resources/#{resource.id}", tab: "authorizations", page: page)
      )}
+  end
+
+  def handle_event(
+        "change_policy_authorizations_page",
+        _params,
+        %{assigns: %{selected_resource: nil}} = socket
+      ) do
+    {:noreply, socket}
   end
 
   def handle_event("toggle_policy_authorization_row", %{"id" => id}, socket) do
@@ -1934,7 +1952,7 @@ defmodule PortalWeb.Resources do
     def insert_policy(attrs, subject) do
       changeset =
         %Portal.Policy{}
-        |> cast(attrs, ~w[description group_id resource_id flow_log_uploads_enabled postures]a)
+        |> cast(attrs, ~w[description group_id resource_id flow_log_uploads_enabled require_attestation postures]a)
         |> validate_required(~w[group_id resource_id]a)
         |> cast_embed(:conditions, with: &Portal.Policies.Condition.changeset/3)
         |> Portal.Policy.changeset()

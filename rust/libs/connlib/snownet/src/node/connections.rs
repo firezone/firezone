@@ -2,11 +2,12 @@ use std::{
     collections::{HashMap, VecDeque},
     fmt,
     hash::Hash,
-    iter,
+    iter, mem,
     time::{Duration, Instant},
 };
 
 use anyhow::{Context as _, Result, bail};
+use deadline_map::{DeadlineMap, PollTimeout};
 use fast_random_state::FastRandomState;
 use ip_packet::IpPacket;
 use is::stun::{StunMessage, TransId};
@@ -23,7 +24,11 @@ use crate::{
 const GOODBYE_TIMEOUT: Duration = Duration::from_secs(5);
 
 pub struct Connections<TId, RId> {
-    established: HashMap<TId, Connection<RId>, FastRandomState>,
+    established: DeadlineMap<TId, Connection<RId>>,
+    /// Whether an indexed connection had no relay.
+    missing_relay: bool,
+    /// Failed connections, as found when indexing them.
+    failed: Vec<TId>,
     /// Closed connections waiting to send their goodbye; they stay in the index maps below.
     closing: HashMap<TId, (Connection<RId>, Goodbye), FastRandomState>,
 
@@ -40,6 +45,8 @@ impl<TId, RId> Default for Connections<TId, RId> {
     fn default() -> Self {
         Self {
             established: Default::default(),
+            missing_relay: false,
+            failed: Default::default(),
             closing: Default::default(),
             established_by_tunnel_id: Default::default(),
             established_by_local_ufrag: Default::default(),
@@ -124,11 +131,24 @@ where
         inflight_stun_requests: &mut InflightStunRequests<TId>,
         now: Instant,
     ) {
-        for (&cid, connection) in self.established.iter_mut() {
-            if connection.relay.is_none() {
+        self.reindex();
+
+        // Only look for connections without a relay if one was indexed, so we don't check all connections on every timeout.
+        if mem::take(&mut self.missing_relay) {
+            for (cid, connection) in self.established.filter_mut(|c| c.relay.is_none()) {
                 connection.assign_relay(cid, allocations, events, now);
+
+                // Without a relay to sample, the remaining connections cannot get one either.
+                if connection.relay.is_none() {
+                    self.missing_relay = true;
+                    break;
+                }
             }
 
+            self.reindex();
+        }
+
+        for (cid, connection) in self.established.due_mut(now) {
             connection.handle_timeout(
                 cid,
                 now,
@@ -190,6 +210,7 @@ where
             connection.state = ConnectionState::Failed;
         }
 
+        self.reindex();
         self.remove_failed(events, now);
     }
 
@@ -199,9 +220,9 @@ where
     pub(crate) fn reset_for_roam(&mut self, now: Instant) -> usize {
         let mut num_connections = 0;
 
-        for (cid, conn) in self.established.iter_mut() {
+        for (cid, conn) in self.iter_mut() {
             conn.reset_for_roam(now);
-            conn.clear_relay(*cid);
+            conn.clear_relay(cid);
 
             num_connections += 1;
         }
@@ -240,13 +261,11 @@ where
         &mut self,
         id: RId,
     ) -> impl Iterator<Item = (TId, &mut Connection<RId>)> + '_ {
-        self.established
-            .iter_mut()
-            .filter_map(move |(cid, c)| (c.relay == Some(id)).then_some((*cid, c)))
+        self.established.filter_mut(move |c| c.relay == Some(id))
     }
 
     pub(crate) fn iter_mut(&mut self) -> impl Iterator<Item = (TId, &mut Connection<RId>)> {
-        self.established.iter_mut().map(|(id, c)| (*id, c))
+        self.established.iter_mut()
     }
 
     pub(crate) fn get_mut(&mut self, id: &TId, now: Instant) -> Result<&mut Connection<RId>> {
@@ -284,16 +303,23 @@ where
         key: [u8; 32],
         now: Instant,
     ) -> Result<(TId, &mut Connection<RId>)> {
+        let has_key = |c: &Connection<RId>| c.tunnel.remote_static_public().as_bytes() == &key;
+
         let (id, conn) = self
             .established
-            .iter_mut()
-            .chain(self.closing.iter_mut().map(|(id, (c, _))| (id, c)))
-            .find(|(_, c)| c.tunnel.remote_static_public().as_bytes() == &key)
+            .filter_mut(has_key)
+            .chain(
+                self.closing
+                    .iter_mut()
+                    .map(|(id, (c, _))| (*id, c))
+                    .filter(|(_, c)| has_key(c)),
+            )
+            .next()
             .with_context(|| {
                 UnknownConnection::by_public_key(key, &self.disconnected_public_keys, now)
             })?;
 
-        Ok((*id, conn))
+        Ok((id, conn))
     }
 
     pub(crate) fn get_established_mut_for_stun_message(
@@ -355,7 +381,7 @@ where
     }
 
     pub(crate) fn iter_established(&self) -> impl Iterator<Item = (TId, &Connection<RId>)> {
-        self.established.iter().map(|(id, conn)| (*id, conn))
+        self.established.iter()
     }
 
     pub(crate) fn len(&self) -> usize {
@@ -370,73 +396,75 @@ where
 
     pub(crate) fn clear(&mut self) {
         self.established.clear();
+        self.missing_relay = false;
+        self.failed.clear();
         self.established_by_tunnel_id.clear();
     }
 
     pub(crate) fn iter_ids(&self) -> impl Iterator<Item = TId> + '_ {
-        self.established.keys().copied()
+        self.established.keys()
     }
 
     pub(crate) fn all_iceless(&self) -> bool {
         !self.established.is_empty() && self.established.values().all(|c| c.agent.is_iceless())
     }
 
-    pub(crate) fn poll_timeout(&mut self) -> Option<(Instant, &'static str)> {
-        iter::empty()
-            .chain(
-                self.established
-                    .values_mut()
-                    .filter_map(|c| c.poll_timeout()),
-            )
-            .chain(self.closing.iter_mut().flat_map(|(id, (c, goodbye))| {
-                let ready_at = c
-                    .first_handshake_completed_at
-                    .filter(|_| c.ready_socket(*id).is_ok());
+    pub(crate) fn poll_timeout(&mut self) -> Option<Instant> {
+        self.reindex();
 
-                iter::once((goodbye.deadline, "goodbye timeout"))
-                    .chain(ready_at.map(|t| (t, "goodbye ready")))
+        iter::empty()
+            .chain(self.established.poll_timeout())
+            .chain(self.closing.values_mut().flat_map(|(c, goodbye)| {
+                iter::empty()
+                    .chain(Some(goodbye.deadline))
                     .chain(c.poll_timeout())
             }))
             .chain(
                 self.disconnected_ids
                     .values()
-                    .map(|t| {
-                        (
-                            *t + Self::RECENT_DISCONNECT_TIMEOUT,
-                            "recently disconnected IDs",
-                        )
-                    })
-                    .min_by_key(|(t, _)| *t),
+                    .map(|t| *t + Self::RECENT_DISCONNECT_TIMEOUT)
+                    .min(),
             )
             .chain(
                 self.disconnected_public_keys
                     .values()
-                    .map(|t| {
-                        (
-                            *t + Self::RECENT_DISCONNECT_TIMEOUT,
-                            "recently disconnected public keys",
-                        )
-                    })
-                    .min_by_key(|(t, _)| *t),
+                    .map(|t| *t + Self::RECENT_DISCONNECT_TIMEOUT)
+                    .min(),
             )
             .chain(
                 self.disconnected_tunnel_ids
                     .values()
-                    .map(|t| {
-                        (
-                            *t + Self::RECENT_DISCONNECT_TIMEOUT,
-                            "recently disconnected tunnel ids",
-                        )
-                    })
-                    .min_by_key(|(t, _)| *t),
+                    .map(|t| *t + Self::RECENT_DISCONNECT_TIMEOUT)
+                    .min(),
             )
-            .min_by_key(|(instant, _)| *instant)
+            .min()
+    }
+
+    /// Re-indexes the connections touched since the last call.
+    fn reindex(&mut self) {
+        let missing_relay = &mut self.missing_relay;
+        let failed = &mut self.failed;
+
+        self.established.reindex(|id, connection| {
+            *missing_relay |= connection.relay.is_none();
+
+            if connection.is_failed() {
+                failed.push(id);
+            }
+        });
     }
 
     fn remove_failed(&mut self, events: &mut VecDeque<Event<TId, RId>>, now: Instant) {
         self.remove_closing(Connection::is_failed, now);
 
-        for (id, conn) in self.established.extract_if(|_, conn| conn.is_failed()) {
+        for id in mem::take(&mut self.failed) {
+            if !self.established.get(&id).is_some_and(Connection::is_failed) {
+                continue;
+            }
+            let Some(conn) = self.established.remove(&id) else {
+                continue;
+            };
+
             events.push_back(Event::ConnectionFailed(id));
 
             for (tunnel_id, _) in self.established_by_tunnel_id.extract_if(|_, c| *c == id) {
@@ -459,6 +487,12 @@ where
             .retain(|_, v| now.duration_since(*v) < Self::RECENT_DISCONNECT_TIMEOUT);
         self.disconnected_ufrags
             .retain(|_, v| now.duration_since(*v) < Self::RECENT_DISCONNECT_TIMEOUT);
+    }
+}
+
+impl<RId> PollTimeout for Connection<RId> {
+    fn poll_timeout(&mut self) -> Option<Instant> {
+        Connection::poll_timeout(self)
     }
 }
 

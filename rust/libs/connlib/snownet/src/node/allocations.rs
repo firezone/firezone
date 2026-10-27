@@ -212,11 +212,11 @@ where
             .map(|(id, _)| *id)
     }
 
-    pub(crate) fn poll_timeout(&mut self) -> Option<(Instant, &'static str)> {
+    pub(crate) fn poll_timeout(&mut self) -> Option<Instant> {
         self.inner
             .values_mut()
             .filter_map(|a| a.poll_timeout())
-            .min_by_key(|(t, _)| *t)
+            .min()
     }
 
     /// The relays we currently ignore.

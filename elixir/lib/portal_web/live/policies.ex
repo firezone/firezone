@@ -465,7 +465,7 @@ defmodule PortalWeb.Policies do
       tab: :overview
     }) ++
       init_condition_assigns(policy, socket) ++
-      [policy_postures: Postures.for_account(socket.assigns.account, policy.postures)]
+      [policy_postures: Postures.for_account(socket.assigns.account, policy.postures, policy.require_attestation)]
   end
 
   defp edit_changeset(socket, params) do
@@ -478,7 +478,10 @@ defmodule PortalWeb.Policies do
   # The same set the policies hook treats as breaking: saving it revokes every
   # authorization the policy granted.
   defp breaking_change?(changeset) do
-    Enum.any?(~w[group_id resource_id conditions postures flow_log_uploads_enabled]a, &Map.has_key?(changeset.changes, &1))
+    Enum.any?(
+      ~w[group_id resource_id conditions postures flow_log_uploads_enabled require_attestation]a,
+      &Map.has_key?(changeset.changes, &1)
+    )
   end
 
   defp update_policy(socket, changeset) do
@@ -526,11 +529,19 @@ defmodule PortalWeb.Policies do
     {:noreply, socket}
   end
 
-  def handle_event("change_policy_authorizations_page", %{"page" => page}, socket) do
+  def handle_event(
+        "change_policy_authorizations_page",
+        %{"page" => page},
+        %{assigns: %{selected_policy: %Policy{} = policy}} = socket
+      ) do
     {:noreply,
      push_patch(socket,
-       to: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/policies/#{socket.assigns.selected_policy.id}", tab: "authorizations", page: page)
+       to: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/policies/#{policy.id}", tab: "authorizations", page: page)
      )}
+  end
+
+  def handle_event("change_policy_authorizations_page", _params, %{assigns: %{selected_policy: nil}} = socket) do
+    {:noreply, socket}
   end
 
   def handle_event("toggle_policy_authorization_row", %{"id" => id}, socket) do
@@ -613,9 +624,12 @@ defmodule PortalWeb.Policies do
      |> push_patch(to: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/policies"))}
   end
 
-  def handle_event("open_edit_form", _params, socket) do
-    {:noreply,
-     push_patch(socket, to: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/policies/#{socket.assigns.selected_policy.id}/edit"))}
+  def handle_event("open_edit_form", _params, %{assigns: %{selected_policy: %Policy{} = policy}} = socket) do
+    {:noreply, push_patch(socket, to: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/policies/#{policy.id}/edit"))}
+  end
+
+  def handle_event("open_edit_form", _params, %{assigns: %{selected_policy: nil}} = socket) do
+    {:noreply, socket}
   end
 
   def handle_event("cancel_policy_form", _params, socket) do
@@ -928,7 +942,7 @@ defmodule PortalWeb.Policies do
 
   defp new_policy(attrs, %Authentication.Subject{} = subject) do
     %Policy{}
-    |> cast(attrs, ~w[description group_id resource_id flow_log_uploads_enabled postures]a)
+    |> cast(attrs, ~w[description group_id resource_id flow_log_uploads_enabled require_attestation postures]a)
     |> validate_required(~w[group_id resource_id]a)
     |> cast_embed(:conditions, with: &Portal.Policies.Condition.changeset/3)
     |> Policy.changeset()
@@ -945,7 +959,7 @@ defmodule PortalWeb.Policies do
 
   defp change_policy(%Policy{} = policy, attrs \\ %{}) do
     policy
-    |> cast(attrs, ~w[description group_id resource_id flow_log_uploads_enabled postures]a)
+    |> cast(attrs, ~w[description group_id resource_id flow_log_uploads_enabled require_attestation postures]a)
     |> validate_required(~w[group_id resource_id]a)
     |> cast_embed(:conditions, with: &Portal.Policies.Condition.changeset/3)
     |> Policy.changeset()

@@ -1695,44 +1695,19 @@ impl ClientState {
             .or_else(|| self.tcp_dns_server.poll_outbound())
     }
 
-    pub fn poll_timeout(&mut self) -> Option<(Instant, &'static str)> {
+    pub fn poll_timeout(&mut self) -> Option<Instant> {
         iter::empty()
-            .chain(
-                self.authorization_rejections
-                    .poll_timeout()
-                    .map(|instant| (instant, "Authorization rejection expiry")),
-            )
-            .chain(
-                self.udp_dns_client
-                    .poll_timeout()
-                    .map(|instant| (instant, "UDP DNS client")),
-            )
-            .chain(
-                self.dns_cache
-                    .poll_timeout()
-                    .map(|instant| (instant, "DNS cache")),
-            )
-            .chain(
-                self.tcp_dns_client
-                    .poll_timeout()
-                    .map(|instant| (instant, "TCP DNS client")),
-            )
-            .chain(
-                self.tcp_dns_server
-                    .poll_timeout()
-                    .map(|instant| (instant, "TCP DNS server")),
-            )
-            .chain(
-                self.device_stub_resolver
-                    .poll_timeout()
-                    .map(|instant| (instant, "Device stub resolver")),
-            )
+            .chain(self.authorization_rejections.poll_timeout())
+            .chain(self.udp_dns_client.poll_timeout())
+            .chain(self.dns_cache.poll_timeout())
+            .chain(self.tcp_dns_client.poll_timeout())
+            .chain(self.tcp_dns_server.poll_timeout())
+            .chain(self.device_stub_resolver.poll_timeout())
             .chain(
                 self.clients
                     .iter_mut()
                     .filter_map(|peer| peer.poll_timeout())
-                    .min()
-                    .map(|instant| (instant, "Client peer authorization expiry")),
+                    .min(),
             )
             .chain(
                 self.sites_status
@@ -1741,11 +1716,10 @@ impl ClientState {
                         ResourceStatus::Offline => Some(*set_at + OFFLINE_SITE_STATUS_TIMEOUT),
                         ResourceStatus::Unknown | ResourceStatus::Online => None,
                     })
-                    .min()
-                    .map(|instant| (instant, "Offline site status expiry")),
+                    .min(),
             )
             .chain(self.node.poll_timeout())
-            .min_by_key(|(instant, _)| *instant)
+            .min()
     }
 
     pub fn handle_timeout(&mut self, now: Instant) {
@@ -2704,6 +2678,15 @@ impl ClientState {
         self.node.update_relays(to_remove, &to_add, now);
         self.drain_node_events(now); // Ensure all state changes are fully-propagated.
     }
+
+    /// Sets the local sockets to advertise as host candidates in addition to the ones learned from relays.
+    ///
+    /// Sockets on IPs that route through the tunnel are rejected.
+    pub fn set_additional_host_candidates(&mut self, sockets: Vec<SocketAddr>, now: Instant) {
+        self.node
+            .set_additional_host_candidates(crate::additional_host_candidates(sockets), now);
+        self.drain_node_events(now);
+    }
 }
 
 fn internet_resource(
@@ -3217,10 +3200,7 @@ mod tests {
 
         let expires_at = now + OFFLINE_SITE_STATUS_TIMEOUT;
 
-        assert_eq!(
-            state.poll_timeout(),
-            Some((expires_at, "Offline site status expiry"))
-        );
+        assert_eq!(state.poll_timeout(), Some(expires_at));
 
         state.handle_timeout(expires_at);
 
