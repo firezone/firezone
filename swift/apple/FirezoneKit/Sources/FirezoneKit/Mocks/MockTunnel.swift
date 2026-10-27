@@ -304,6 +304,7 @@
     public enum MockWindow: String {
       case main
       case settings
+      case about
 
       public static func fromCommandLine() -> Self? {
         // `none` leaves the full app running with its menu bar item and no window.

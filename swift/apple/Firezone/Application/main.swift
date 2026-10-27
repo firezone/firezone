@@ -74,6 +74,8 @@ import Foundation
     UITestMainApp.main()
   case .settings:
     UITestSettingsApp.main()
+  case .about:
+    UITestAboutApp.main()
   case nil:
     break
   }

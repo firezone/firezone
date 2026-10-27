@@ -156,14 +156,43 @@
     }
   }
 
+  extension NSApplication {
+    /// Brings the app forward and opens the standard About panel.
+    @MainActor
+    public func showAboutPanel() {
+      activate(ignoringOtherApps: true)
+      orderFrontStandardAboutPanel(options: Self.aboutPanelOptions())
+    }
+
+    /// Shows the commit the app was built from where the panel would show the build number.
+    private static func aboutPanelOptions() -> [AboutPanelOptionKey: Any] {
+      guard let shortGitSha = BundleHelper.shortGitSha,
+        let commitURL = BundleHelper.commitURL
+      else { return [:] }
+
+      let paragraph = NSMutableParagraphStyle()
+      paragraph.alignment = .center
+
+      let credits = NSAttributedString(
+        string: "View commit",
+        attributes: [
+          .link: commitURL,
+          .font: NSFont.systemFont(ofSize: NSFont.smallSystemFontSize),
+          .paragraphStyle: paragraph,
+        ]
+      )
+
+      return [.version: shortGitSha, .credits: credits]
+    }
+  }
+
   /// System menu section (About, Admin Portal, Help, Settings)
   struct SystemMenuSection: View {
     @EnvironmentObject var store: Store
 
     var body: some View {
       Button("About Firezone") {
-        NSApp.activate(ignoringOtherApps: true)
-        NSApp.orderFrontStandardAboutPanel(options: aboutPanelOptions())
+        NSApp.showAboutPanel()
       }
 
       if !store.configuration.publishedHideAdminPortalMenuItem {
@@ -185,27 +214,6 @@
       SettingsOpener { openSettings in
         Button("Settings") { openSettings() }
       }
-    }
-
-    /// Shows the commit the app was built from where the panel would show the build number.
-    private func aboutPanelOptions() -> [NSApplication.AboutPanelOptionKey: Any] {
-      guard let shortGitSha = BundleHelper.shortGitSha,
-        let commitURL = BundleHelper.commitURL
-      else { return [:] }
-
-      let paragraph = NSMutableParagraphStyle()
-      paragraph.alignment = .center
-
-      let credits = NSAttributedString(
-        string: "View commit",
-        attributes: [
-          .link: commitURL,
-          .font: NSFont.systemFont(ofSize: NSFont.smallSystemFontSize),
-          .paragraphStyle: paragraph,
-        ]
-      )
-
-      return [.version: shortGitSha, .credits: credits]
     }
 
     func openAdminPortal() {

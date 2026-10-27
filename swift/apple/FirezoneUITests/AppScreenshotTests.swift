@@ -90,6 +90,17 @@
       }
     }
 
+    /// The About panel the menu's "About Firezone" opens, which names the commit the
+    /// app was built from.
+    func testAboutPanel() throws {
+      for appearance in Appearance.allCases {
+        let app = launchApp(scenario: "welcome", appearance: appearance, window: "about")
+        defer { app.terminate() }
+
+        capture(try aboutPanel(of: app), as: "about", in: appearance)
+      }
+    }
+
     /// The certificate tab, in each of the states a scenario describes.
     func testCertificate() throws {
       for scenario in Self.certificateScenarios {
@@ -344,6 +355,23 @@
       }
 
       return window
+    }
+
+    /// The About panel is a panel rather than a window, which XCUITest may report as
+    /// a dialog.
+    private func aboutPanel(of app: XCUIApplication) throws -> XCUIElement {
+      let candidates = [app.windows.firstMatch, app.dialogs.firstMatch]
+      let deadline = Date().addingTimeInterval(30)
+
+      while Date() < deadline {
+        if let panel = candidates.first(where: { $0.exists }) { return panel }
+
+        Thread.sleep(forTimeInterval: 0.5)
+      }
+
+      print("No About panel appeared; the app presents:\n\(app.debugDescription)")
+
+      throw AppScreenshotError.windowDidNotAppear
     }
 
     /// Opens the tab named `label` and waits for `anchor`, which only its own

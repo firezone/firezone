@@ -317,6 +317,21 @@ extension DeviceTrustValidationError {
     }
   }
 
+  struct UITestAboutApp: App {
+    init() {
+      NSApplication.applyMockPresentation()
+    }
+
+    var body: some Scene {
+      MenuBarExtra {
+        EmptyView()
+      } label: {
+        Text("Firezone UI Test")
+          .onAppear { NSApp.showAboutPanel() }
+      }
+    }
+  }
+
   /// A menu bar scene whose one job is presenting the window scene beside it.
   ///
   /// XCUITest's launch presents no scene at all, and `openWindow` lives in a
