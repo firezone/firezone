@@ -452,8 +452,6 @@ defmodule PortalWeb.Components.Page do
   end
 
   def residency_flag(%{region: :eu} = assigns) do
-    assigns = assign(assigns, :stars, for(i <- 0..11, do: star_position(i)))
-
     ~H"""
     <svg
       class={["shrink-0 rounded-[2px]", @class]}
@@ -462,25 +460,24 @@ defmodule PortalWeb.Components.Page do
       aria-label="European Union flag"
     >
       <rect width="30" height="20" fill="#003399" />
-      <circle :for={{x, y} <- @stars} cx={x} cy={y} r="0.9" fill="#ffcc00" />
+      <circle
+        :for={i <- 0..11}
+        cx="15"
+        cy="4"
+        r="0.9"
+        fill="#ffcc00"
+        transform={"rotate(#{i * 30} 15 10)"}
+      />
     </svg>
     """
-  end
-
-  defp star_position(i) do
-    angle = i * :math.pi() / 6
-
-    {Float.round(15 + 6 * :math.sin(angle), 2), Float.round(10 - 6 * :math.cos(angle), 2)}
   end
 
   @doc """
   Shows which region the portal keeps its data in, at the bottom of the sign in
   pages. On-prem portals show nothing.
   """
-  attr :region, :atom, default: nil
-
   def data_residency_footer(assigns) do
-    assigns = assign(assigns, :region, assigns.region || data_residency_region())
+    assigns = assign(assigns, :region, data_residency_region())
 
     ~H"""
     <p

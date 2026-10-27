@@ -68,7 +68,7 @@ defmodule Portal.Analytics.PostHog do
 
     if Keyword.fetch!(config, :enabled) do
       event = %{"event" => event, "properties" => Map.put(properties, "distinct_id", distinct_id)}
-      post(config, @single_event_path, put_deployment(event, config[:web_external_url]))
+      post(config, @single_event_path, put_deployment(event, deployment(config)))
     else
       :ok
     end
@@ -86,8 +86,8 @@ defmodule Portal.Analytics.PostHog do
     config = fetch_config()
 
     if Keyword.fetch!(config, :enabled) do
-      url = config[:web_external_url]
-      post(config, @batch_path, %{"batch" => Enum.map(events, &put_deployment(&1, url))})
+      deployment = deployment(config)
+      post(config, @batch_path, %{"batch" => Enum.map(events, &put_deployment(&1, deployment))})
     else
       :ok
     end
@@ -123,13 +123,15 @@ defmodule Portal.Analytics.PostHog do
   defp fetch_config, do: Portal.Config.fetch_env!(:portal, __MODULE__)
 
   # Environments share one PostHog project, so every event says which portal sent it.
-  defp put_deployment(event, url) do
-    region = Portal.Config.fetch_env!(:portal, :data_residency_region)
-
-    event
-    |> put_in(["properties", "web_external_url"], url)
-    |> put_in(["properties", "data_residency_region"], Atom.to_string(region))
+  defp deployment(config) do
+    %{
+      "web_external_url" => config[:web_external_url],
+      "data_residency_region" =>
+        Atom.to_string(Portal.Config.fetch_env!(:portal, :data_residency_region))
+    }
   end
+
+  defp put_deployment(event, deployment), do: Map.update!(event, "properties", &Map.merge(&1, deployment))
 
   defp post(config, path, body) do
     body = Map.put(body, "api_key", Keyword.fetch!(config, :project_api_key))
