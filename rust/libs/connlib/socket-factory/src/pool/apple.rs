@@ -34,6 +34,7 @@ use std::{
     collections::{BTreeMap, VecDeque},
     io,
     net::{IpAddr, SocketAddr},
+    num::NonZeroU32,
     sync::Arc,
     task::{Context, Poll, Waker},
     time::{Duration, Instant},
@@ -469,6 +470,14 @@ fn connect(
 
     let socket = socket2::Socket::new(dst_addr.domain(), socket2::Type::DGRAM, None)?;
 
+    if let Some(src) = src {
+        let index = interface_index(src)?;
+        match src {
+            IpAddr::V4(_) => socket.bind_device_by_index_v4(Some(index))?,
+            IpAddr::V6(_) => socket.bind_device_by_index_v6(Some(index))?,
+        }
+    }
+
     if dst.is_ipv6() {
         socket.set_only_v6(true)?;
         crate::prefer_stable_ipv6_source(&socket);
@@ -499,6 +508,53 @@ fn connect(
     }
 
     Ok(socket)
+}
+
+fn interface_index(src: IpAddr) -> io::Result<NonZeroU32> {
+    let mut first = std::ptr::null_mut();
+    // SAFETY: getifaddrs owns a linked list until freeifaddrs. Each address family
+    // determines its sockaddr layout, and interface names are NUL-terminated.
+    let index = unsafe {
+        if libc::getifaddrs(&mut first) != 0 {
+            return Err(io::Error::last_os_error());
+        }
+
+        let mut current = first;
+        let mut index = None;
+        while let Some(interface) = current.as_ref() {
+            current = interface.ifa_next;
+            let Some(address) = interface.ifa_addr.as_ref() else {
+                continue;
+            };
+            let matches = match (i32::from(address.sa_family), src) {
+                (libc::AF_INET, IpAddr::V4(src)) => {
+                    (*interface.ifa_addr.cast::<libc::sockaddr_in>())
+                        .sin_addr
+                        .s_addr
+                        .to_ne_bytes()
+                        == src.octets()
+                }
+                (libc::AF_INET6, IpAddr::V6(src)) => {
+                    (*interface.ifa_addr.cast::<libc::sockaddr_in6>())
+                        .sin6_addr
+                        .s6_addr
+                        == src.octets()
+                }
+                _ => false,
+            };
+            if !matches {
+                continue;
+            }
+
+            index = NonZeroU32::new(libc::if_nametoindex(interface.ifa_name));
+            break;
+        }
+        libc::freeifaddrs(first);
+        index
+    };
+    let index = index.ok_or_else(|| io::Error::from(io::ErrorKind::AddrNotAvailable))?;
+
+    Ok(index)
 }
 
 #[cfg(test)]
