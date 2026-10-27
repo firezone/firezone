@@ -20,10 +20,8 @@ export default mergeConfig(
     // The About screen prints the version and the commit it was built from, which would
     // move its image on every push.
     define: {
-      __APP_VERSION__: JSON.stringify("0.0.0"),
-      __GIT_VERSION__: JSON.stringify(
-        "0000000000000000000000000000000000000000"
-      ),
+      __APP_VERSION__: JSON.stringify("1.0.0"),
+      __GIT_VERSION__: JSON.stringify("deadbeef"),
     },
 
     test: {

@@ -24,16 +24,14 @@ export default function AboutPage() {
           <span>{__APP_VERSION__}</span>
         </p>
         <p className="mb-6 font-mono text-sm text-subtle">
-          (
           <button
             className="hover:text-brand hover:underline"
             onClick={openCommit}
             role="link"
             type="button"
           >
-            {__GIT_VERSION__.substring(0, 8)}
+            {__GIT_VERSION__.substring(0, 8)} (GitHub)
           </button>
-          )
         </p>
         <button
           className="rounded px-2 py-1.5 text-sm font-medium text-brand transition-colors hover:bg-brand-muted hover:text-brand-dark"
