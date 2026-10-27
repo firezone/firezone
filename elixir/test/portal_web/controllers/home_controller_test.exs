@@ -110,6 +110,32 @@ defmodule PortalWeb.HomeControllerTest do
       refute html =~ "Sign in to Firezone"
     end
 
+    test "shows the EU beta banner and links the EU portal on the US portal", %{conn: conn} do
+      Portal.Config.put_env_override(:data_residency_region, :us)
+
+      html = conn |> get(~p"/getting_started") |> response(200)
+
+      assert html =~ "Firezone Cloud EU is now in closed beta."
+      assert html =~ "https://www.firezone.dev/eu#request-access"
+      assert html =~ ~s(href="https://eu.app.firezone.dev")
+    end
+
+    test "links the US portal without the EU beta banner on the EU portal", %{conn: conn} do
+      Portal.Config.put_env_override(:data_residency_region, :eu)
+
+      html = conn |> get(~p"/getting_started") |> response(200)
+
+      refute html =~ "Firezone Cloud EU is now in closed beta."
+      assert html =~ ~s(href="https://app.firezone.dev")
+    end
+
+    test "shows no region links on on-prem portals", %{conn: conn} do
+      html = conn |> get(~p"/getting_started") |> response(200)
+
+      refute html =~ "eu-beta-banner"
+      refute html =~ "other-region-portal"
+    end
+
     test "sets security headers", %{conn: conn} do
       conn = get(conn, ~p"/getting_started")
 

@@ -473,8 +473,31 @@ defmodule PortalWeb.Components.Page do
   end
 
   @doc """
+  Tells visitors of the US portal that Firezone Cloud EU is in closed beta, at
+  the top of the sign in pages. Other portals show nothing.
+  """
+  def eu_beta_banner(assigns) do
+    assigns = assign(assigns, :region, data_residency_region())
+
+    ~H"""
+    <Core.flash :if={@region == :us} id="eu-beta-banner" kind={:info}>
+      Firezone Cloud EU is now in closed beta.
+      <a
+        href="https://www.firezone.dev/eu#request-access"
+        target="_blank"
+        rel="noopener"
+        class="font-medium underline"
+      >
+        Request access
+      </a>
+    </Core.flash>
+    """
+  end
+
+  @doc """
   Shows which region the portal keeps its data in, at the bottom of the sign in
-  pages. On-prem portals show nothing.
+  pages, with a link to the portal of the other region. On-prem portals show
+  nothing.
   """
   def data_residency_footer(assigns) do
     assigns = assign(assigns, :region, data_residency_region())
@@ -483,11 +506,21 @@ defmodule PortalWeb.Components.Page do
     <p
       :if={@region != :on_prem}
       id="data-residency"
-      class="flex items-center justify-center gap-1.5 mt-6 text-xs text-showcase-text/70 lg:text-subtle"
+      class="flex flex-wrap items-center justify-center gap-1.5 mt-6 text-xs text-showcase-text/70 lg:text-subtle"
     >
       <.residency_flag region={@region} class="w-4 h-auto" />
-      <span>Data residency: {data_residency_name(@region)}</span>
+      <span>Firezone Cloud region: {data_residency_name(@region)}</span>
+      <span aria-hidden="true">&middot;</span>
+      <a id="other-region-portal" href={other_region_portal_url(@region)} class="hover:underline">
+        Go to the {other_region_short_name(@region)} portal &rarr;
+      </a>
     </p>
     """
   end
+
+  defp other_region_short_name(:us), do: "EU"
+  defp other_region_short_name(:eu), do: "US"
+
+  defp other_region_portal_url(:us), do: "https://eu.app.firezone.dev"
+  defp other_region_portal_url(:eu), do: "https://app.firezone.dev"
 end

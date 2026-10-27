@@ -82,13 +82,55 @@ defmodule PortalWeb.SignInTest do
 
       {:ok, lv, _html} = live(conn, ~p"/#{account}/sign_in")
 
-      assert has_element?(lv, "#data-residency", "Data residency: European Union")
+      assert has_element?(lv, "#data-residency", "Firezone Cloud region: European Union")
     end
 
     test "hides the data residency region on on-prem portals", %{conn: conn, account: account} do
       {:ok, lv, _html} = live(conn, ~p"/#{account}/sign_in")
 
       refute has_element?(lv, "#data-residency")
+      refute has_element?(lv, "#other-region-portal")
+      refute has_element?(lv, "#eu-beta-banner")
+    end
+
+    test "shows the EU beta banner and links the EU portal on the US portal", %{
+      conn: conn,
+      account: account
+    } do
+      Portal.Config.put_env_override(:data_residency_region, :us)
+
+      {:ok, lv, _html} = live(conn, ~p"/#{account}/sign_in")
+
+      assert has_element?(lv, "#eu-beta-banner", "Firezone Cloud EU is now in closed beta.")
+
+      assert has_element?(
+               lv,
+               "#eu-beta-banner a[href='https://www.firezone.dev/eu#request-access']",
+               "Request access"
+             )
+
+      assert has_element?(
+               lv,
+               "#other-region-portal[href='https://eu.app.firezone.dev']",
+               "Go to the EU portal"
+             )
+    end
+
+    test "links the US portal without the EU beta banner on the EU portal", %{
+      conn: conn,
+      account: account
+    } do
+      Portal.Config.put_env_override(:data_residency_region, :eu)
+
+      {:ok, lv, _html} = live(conn, ~p"/#{account}/sign_in")
+
+      refute has_element?(lv, "#eu-beta-banner")
+
+      assert has_element?(
+               lv,
+               "#other-region-portal[href='https://app.firezone.dev']",
+               "Go to the US portal"
+             )
     end
 
     test "renders the sign-in on a branded card for small screens", %{conn: conn, account: account} do
