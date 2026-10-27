@@ -176,7 +176,14 @@ class SettingsViewModelTest {
         assertNull(SettingsViewModel(repository, tokenStore).signedInWith)
 
         tokenStore.save("token", signedInWith)
-        assertEquals(signedInWith, SettingsViewModel(repository, tokenStore).signedInWith)
+        reopen()
+
+        viewModel.onPortalChanged(Portal.CLOUD_EU)
+        settle()
+
+        assertEquals("wss://eu.api.firezone.dev", repository.getConfigSync().apiUrl)
+        assertEquals(signedInWith, tokenStore.signedInWith())
+        assertEquals(signedInWith, viewModel.signedInWith)
 
         tokenStore.clear()
         assertNull(SettingsViewModel(repository, tokenStore).signedInWith)
@@ -215,6 +222,20 @@ class SettingsViewModelTest {
         viewModel.onPortalChanged(Portal.CLOUD_EU)
         settle()
 
+        reopen()
+        viewModel.onPortalChanged(Portal.CUSTOM)
+
+        assertEquals("https://firezone.example.com", viewModel.config.authUrl)
+        assertEquals("wss://api.firezone.example.com", viewModel.config.apiUrl)
+    }
+
+    @Test
+    fun `switching away from existing custom URLs remembers them without editing`() {
+        saveUrls("https://firezone.example.com", "wss://api.firezone.example.com")
+        populateFields()
+
+        viewModel.onPortalChanged(Portal.CLOUD_EU)
+        settle()
         reopen()
         viewModel.onPortalChanged(Portal.CUSTOM)
 

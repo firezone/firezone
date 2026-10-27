@@ -2,6 +2,7 @@
 package dev.firezone.android.features.auth
 
 import android.net.Uri
+import dev.firezone.android.core.data.model.SignInConfig
 import java.security.MessageDigest
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -19,12 +20,13 @@ internal class PendingAuthSession
         fun begin(
             nonce: String,
             state: String,
+            signedInWith: SignInConfig,
         ) {
             require(nonce.isNotBlank())
             require(state.isNotBlank())
 
             synchronized(lock) {
-                pendingRequest = PendingRequest(nonce = nonce, state = state)
+                pendingRequest = PendingRequest(nonce = nonce, state = state, signedInWith = signedInWith)
             }
         }
 
@@ -45,7 +47,7 @@ internal class PendingAuthSession
                 }
 
                 pendingRequest = null
-                AuthCallbackOutcome.Success(request.nonce + callback.fragment)
+                AuthCallbackOutcome.Success(request.nonce + callback.fragment, request.signedInWith)
             }
         }
 
@@ -99,6 +101,7 @@ internal class PendingAuthSession
         private data class PendingRequest(
             val nonce: String,
             val state: String,
+            val signedInWith: SignInConfig,
         )
 
         private sealed interface ParsedCallback {
@@ -123,6 +126,7 @@ internal class PendingAuthSession
 internal sealed interface AuthCallbackOutcome {
     data class Success(
         val token: String,
+        val signedInWith: SignInConfig,
     ) : AuthCallbackOutcome
 
     data class Error(

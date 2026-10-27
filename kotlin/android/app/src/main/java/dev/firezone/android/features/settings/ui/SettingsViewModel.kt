@@ -100,6 +100,10 @@ internal class SettingsViewModel
 
         fun onPortalChanged(newPortal: Portal) {
             val previousPortal = portal
+            val managedStatus = repo.getManagedStatus()
+            if (previousPortal == Portal.CUSTOM && !managedStatus.isAuthUrlManaged && !managedStatus.isApiUrlManaged) {
+                repo.saveLastCustomUrlsSync(config.authUrl, config.apiUrl)
+            }
             portal = newPortal
 
             if (newPortal.authUrl != null && newPortal.apiUrl != null) {

@@ -408,11 +408,18 @@ class TunnelService : VpnService() {
             return
         }
 
+        val managedToken = appRestrictions.getString("token")
         val token =
-            (appRestrictions.getString("token") ?: tokenStore.get())
+            (managedToken ?: tokenStore.get())
                 ?.takeUnless(String::isBlank)
         val certificateAlias = repo.getX509CertificateAliasSync(appRestrictions)
         val config = repo.getConfigSync()
+        val apiUrl =
+            if (managedToken != null) {
+                config.apiUrl
+            } else {
+                tokenStore.signedInWith()?.apiUrl ?: config.apiUrl
+            }
         resourceState = repo.getInternetResourceStateSync()
 
         if (token != null) {
@@ -429,7 +436,7 @@ class TunnelService : VpnService() {
                     try {
                         // Set telemetry environment and user context
                         val deviceIdValue = deviceId()
-                        Telemetry.start(this@TunnelService, config.apiUrl)
+                        Telemetry.start(this@TunnelService, apiUrl)
                         Telemetry.setFirezoneId(deviceIdValue)
                         // The portal names the account in `init`; until then this session has none.
                         Telemetry.setAccountSlug(null)
@@ -463,7 +470,7 @@ class TunnelService : VpnService() {
                         sessionFactory
                             .open(
                                 AndroidSessionConfig(
-                                    apiUrl = config.apiUrl,
+                                    apiUrl = apiUrl,
                                     token = token,
                                     deviceId = deviceIdValue,
                                     deviceName = getDeviceName(),

@@ -2,12 +2,21 @@
 package dev.firezone.android.features.auth
 
 import android.app.Application
+import android.content.Context
 import android.net.Uri
+import dev.firezone.android.core.data.Repository
+import dev.firezone.android.core.data.TokenStore
+import dev.firezone.android.core.data.model.SignInConfig
+import dev.firezone.android.core.data.model.signInConfig
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
@@ -20,15 +29,33 @@ class PendingAuthSessionTest {
 
     @Test
     fun `valid callback consumes pending request once`() {
-        session.begin(nonce = "nonce-", state = EXPECTED_STATE)
+        session.begin(nonce = "nonce-", state = EXPECTED_STATE, signedInWith = SIGN_IN_CONFIG)
         val callback = callbackUri(state = EXPECTED_STATE, fragment = "fragment")
 
         assertEquals(
-            AuthCallbackOutcome.Success("nonce-fragment"),
+            AuthCallbackOutcome.Success("nonce-fragment", SIGN_IN_CONFIG),
             session.complete(callback),
         )
         assertError(session.complete(callback), "No pending authentication request")
     }
+
+    @Test
+    fun `callback remembers the configuration used before settings changed`() =
+        runBlocking {
+            val context = RuntimeEnvironment.getApplication()
+            val preferences = context.getSharedPreferences("pending-auth-session-test", Context.MODE_PRIVATE)
+            preferences.edit().clear().commit()
+            val repository = Repository(context, Dispatchers.Unconfined, preferences)
+            val tokenStore = TokenStore(preferences)
+            val originalConfig = repository.getConfigSync().signInConfig()
+            session.begin(nonce = "nonce-", state = EXPECTED_STATE, signedInWith = originalConfig)
+
+            repository.saveSettings(repository.getConfigSync().copy(authUrl = "https://eu.app.firezone.dev")).first()
+            AuthCallbackHandler(session, tokenStore).handle(callbackUri(state = EXPECTED_STATE, fragment = "fragment"))
+
+            assertEquals("nonce-fragment", tokenStore.get())
+            assertEquals(originalConfig, tokenStore.signedInWith())
+        }
 
     @Test
     fun `callback without pending request is rejected`() {
@@ -40,21 +67,21 @@ class PendingAuthSessionTest {
 
     @Test
     fun `mismatched state is rejected without consuming pending request`() {
-        session.begin(nonce = "nonce-", state = EXPECTED_STATE)
+        session.begin(nonce = "nonce-", state = EXPECTED_STATE, signedInWith = SIGN_IN_CONFIG)
 
         assertError(
             session.complete(callbackUri(state = "other-state", fragment = "fragment")),
             "Invalid state parameter",
         )
         assertEquals(
-            AuthCallbackOutcome.Success("nonce-fragment"),
+            AuthCallbackOutcome.Success("nonce-fragment", SIGN_IN_CONFIG),
             session.complete(callbackUri(state = EXPECTED_STATE, fragment = "fragment")),
         )
     }
 
     @Test
     fun `malformed callbacks are rejected without consuming pending request`() {
-        session.begin(nonce = "nonce-", state = EXPECTED_STATE)
+        session.begin(nonce = "nonce-", state = EXPECTED_STATE, signedInWith = SIGN_IN_CONFIG)
         val malformedCallbacks =
             listOf(
                 null,
@@ -70,42 +97,42 @@ class PendingAuthSessionTest {
             assertTrue(session.complete(callback) is AuthCallbackOutcome.Error)
         }
         assertEquals(
-            AuthCallbackOutcome.Success("nonce-fragment"),
+            AuthCallbackOutcome.Success("nonce-fragment", SIGN_IN_CONFIG),
             session.complete(callbackUri(state = EXPECTED_STATE, fragment = "fragment")),
         )
     }
 
     @Test
     fun `new request replaces previous request`() {
-        session.begin(nonce = "old-nonce-", state = "old-state")
-        session.begin(nonce = "new-nonce-", state = "new-state")
+        session.begin(nonce = "old-nonce-", state = "old-state", signedInWith = SIGN_IN_CONFIG)
+        session.begin(nonce = "new-nonce-", state = "new-state", signedInWith = SIGN_IN_CONFIG)
 
         assertError(
             session.complete(callbackUri(state = "old-state", fragment = "fragment")),
             "Invalid state parameter",
         )
         assertEquals(
-            AuthCallbackOutcome.Success("new-nonce-fragment"),
+            AuthCallbackOutcome.Success("new-nonce-fragment", SIGN_IN_CONFIG),
             session.complete(callbackUri(state = "new-state", fragment = "fragment")),
         )
     }
 
     @Test
     fun `canceling old request does not cancel replacement`() {
-        session.begin(nonce = "old-nonce-", state = "old-state")
-        session.begin(nonce = "new-nonce-", state = "new-state")
+        session.begin(nonce = "old-nonce-", state = "old-state", signedInWith = SIGN_IN_CONFIG)
+        session.begin(nonce = "new-nonce-", state = "new-state", signedInWith = SIGN_IN_CONFIG)
 
         session.cancel("old-state")
 
         assertEquals(
-            AuthCallbackOutcome.Success("new-nonce-fragment"),
+            AuthCallbackOutcome.Success("new-nonce-fragment", SIGN_IN_CONFIG),
             session.complete(callbackUri(state = "new-state", fragment = "fragment")),
         )
     }
 
     @Test
     fun `concurrent callbacks consume pending request exactly once`() {
-        session.begin(nonce = "nonce-", state = EXPECTED_STATE)
+        session.begin(nonce = "nonce-", state = EXPECTED_STATE, signedInWith = SIGN_IN_CONFIG)
         val executor = Executors.newFixedThreadPool(2)
         val ready = CountDownLatch(2)
         val start = CountDownLatch(1)
@@ -161,5 +188,6 @@ class PendingAuthSessionTest {
 
     private companion object {
         const val EXPECTED_STATE = "expected-state"
+        val SIGN_IN_CONFIG = SignInConfig("example-corp", "https://app.firezone.dev", "wss://api.firezone.dev")
     }
 }

@@ -11,7 +11,7 @@
 	<string name="reset_to_defaults">Reset to defaults</string>
 	<string name="reset_to_defaults_confirm_title">Reset settings to defaults?</string>
 	<string name="reset_to_defaults_confirm">Reset</string>
-	<string name="sign_in_change_note">Changes to the account slug or control plane take effect after you sign out and sign in again.</string>
+	<string name="sign_in_change_note">Sign out and sign in again after changing the account slug or control plane.</string>
 	<!-- General Settings -->
 	<string name="settings_section_sign_in">Sign-in</string>
 	<string name="settings_section_startup">Startup</string>
