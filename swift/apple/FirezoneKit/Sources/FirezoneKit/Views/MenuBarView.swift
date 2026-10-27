@@ -164,17 +164,21 @@
       orderFrontStandardAboutPanel(options: Self.aboutPanelOptions())
     }
 
-    /// Shows the commit the app was built from where the panel would show the build number.
     private static func aboutPanelOptions() -> [AboutPanelOptionKey: Any] {
+      var options: [AboutPanelOptionKey: Any] = [
+        .applicationVersion: BundleHelper.version,
+        .version: "",
+      ]
+
       guard let shortGitSha = BundleHelper.shortGitSha,
         let commitURL = BundleHelper.commitURL
-      else { return [:] }
+      else { return options }
 
       let paragraph = NSMutableParagraphStyle()
       paragraph.alignment = .center
 
       let credits = NSAttributedString(
-        string: "View commit",
+        string: "\(shortGitSha) (GitHub)",
         attributes: [
           .link: commitURL,
           .font: NSFont.systemFont(ofSize: NSFont.smallSystemFontSize),
@@ -182,7 +186,8 @@
         ]
       )
 
-      return [.version: shortGitSha, .credits: credits]
+      options[.credits] = credits
+      return options
     }
   }
 

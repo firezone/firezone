@@ -403,10 +403,13 @@ public struct SettingsView: View {
                 .foregroundStyle(.secondary)
                 .font(.caption)
               Spacer()
-              if let commitURL = BundleHelper.commitURL {
-                Link(BundleHelper.versionDescription, destination: commitURL)
-              } else {
-                Text(BundleHelper.versionDescription)
+              VStack(alignment: .trailing) {
+                Text(BundleHelper.version)
+                if let shortGitSha = BundleHelper.shortGitSha,
+                  let commitURL = BundleHelper.commitURL
+                {
+                  Link("\(shortGitSha) (GitHub)", destination: commitURL)
+                }
               }
             }
             .contextMenu {

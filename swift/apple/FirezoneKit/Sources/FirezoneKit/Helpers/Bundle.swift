@@ -24,6 +24,8 @@ public enum BundleHelper {
   }
 
   static var gitSha: String? {
+    if MockRun.isActive { return "deadbeef" }
+
     guard let gitSha = Bundle.main.object(forInfoDictionaryKey: "GitSha") as? String,
       !gitSha.isEmpty
     else { return nil }
@@ -39,10 +41,14 @@ public enum BundleHelper {
     gitSha.flatMap { URL(string: "https://github.com/firezone/firezone/commit/\($0)") }
   }
 
+  static var version: String {
+    if MockRun.isActive { return "1.0.0" }
+
+    return Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown"
+  }
+
   /// The marketing version and the commit it was built from, as "1.5.24 (0123abcd)".
   static var versionDescription: String {
-    let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown"
-
     return "\(version) (\(shortGitSha ?? "unknown"))"
   }
 
