@@ -5,16 +5,13 @@ import android.text.format.Formatter
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -41,31 +38,27 @@ fun LogSettingsPage(
         modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(start = 16.dp, top = 4.dp, end = 16.dp, bottom = 8.dp),
+            .padding(horizontal = 16.dp, vertical = 8.dp),
     ) {
-        SettingsSection(stringResource(R.string.log_settings_title)) {
-            ManagedTextField(
-                label = stringResource(R.string.log_filter),
+        SettingsGroup(title = stringResource(R.string.log_settings_title)) {
+            TextPreferenceRow(
+                title = stringResource(R.string.log_filter),
                 value = config.logFilter,
                 isManaged = managedStatus.isLogFilterManaged,
                 onValueChange = onLogFilterChange,
+                isValid = String::isNotBlank,
             )
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
+            SettingsRow(
+                title = stringResource(R.string.log_files),
+                summary = Formatter.formatShortFileSize(context, logSizeBytes),
             ) {
-                Text(text = stringResource(R.string.log_files), modifier = Modifier.weight(1f))
-                Text(
-                    text = Formatter.formatShortFileSize(context, logSizeBytes),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                IconButton(onClick = onExportLogs, enabled = hasLogs) {
-                    Icon(imageVector = FirezoneIcons.Share, contentDescription = stringResource(R.string.share_diagnostic_logs))
-                }
-                IconButton(onClick = onClearLogs, enabled = hasLogs) {
-                    Icon(imageVector = FirezoneIcons.Delete, contentDescription = stringResource(R.string.clear_log_directory))
+                Row(Modifier.offset(x = ICON_BUTTON_INSET)) {
+                    IconButton(onClick = onExportLogs, enabled = hasLogs) {
+                        Icon(imageVector = FirezoneIcons.Share, contentDescription = stringResource(R.string.share_diagnostic_logs))
+                    }
+                    IconButton(onClick = onClearLogs, enabled = hasLogs) {
+                        Icon(imageVector = FirezoneIcons.Delete, contentDescription = stringResource(R.string.clear_log_directory))
+                    }
                 }
             }
         }

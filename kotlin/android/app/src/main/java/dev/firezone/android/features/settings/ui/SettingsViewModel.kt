@@ -302,7 +302,7 @@ internal class SettingsViewModel
                         buildSet {
                             val settingsChanged =
                                 shouldResetFavoritesOnSave || config.copy(logFilter = savedConfig.logFilter) != savedConfig
-                            if (settingsChanged && URLUtil.isValidUrl(config.authUrl) && isUriValid(config.apiUrl)) {
+                            if (settingsChanged && isValidAuthUrl(config.authUrl) && isValidApiUrl(config.apiUrl)) {
                                 add(SettingsPage.GENERAL)
                             }
                             if (config.logFilter != savedConfig.logFilter && config.logFilter.isNotBlank()) {
@@ -312,14 +312,6 @@ internal class SettingsViewModel
                 )
         }
 
-        private fun isUriValid(uri: String): Boolean =
-            try {
-                URI(uri)
-                true
-            } catch (e: URISyntaxException) {
-                false
-            }
-
         internal data class UiState(
             val savablePages: ImmutableSet<SettingsPage> = persistentSetOf(),
             val logSizeBytes: Long = 0,
@@ -328,4 +320,14 @@ internal class SettingsViewModel
         internal sealed class ViewAction {
             data object NavigateBack : ViewAction()
         }
+    }
+
+internal fun isValidAuthUrl(url: String): Boolean = URLUtil.isValidUrl(url)
+
+internal fun isValidApiUrl(url: String): Boolean =
+    try {
+        URI(url)
+        true
+    } catch (e: URISyntaxException) {
+        false
     }
