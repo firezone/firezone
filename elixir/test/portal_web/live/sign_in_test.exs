@@ -77,6 +77,20 @@ defmodule PortalWeb.SignInTest do
       refute html =~ "Send code"
     end
 
+    test "shows the data residency region below the card", %{conn: conn, account: account} do
+      Portal.Config.put_env_override(:data_residency_region, :eu)
+
+      {:ok, lv, _html} = live(conn, ~p"/#{account}/sign_in")
+
+      assert has_element?(lv, "#data-residency", "Data residency: European Union")
+    end
+
+    test "hides the data residency region on on-prem portals", %{conn: conn, account: account} do
+      {:ok, lv, _html} = live(conn, ~p"/#{account}/sign_in")
+
+      refute has_element?(lv, "#data-residency")
+    end
+
     test "renders the sign-in on a branded card for small screens", %{conn: conn, account: account} do
       {:ok, lv, _html} = live(conn, ~p"/#{account}/sign_in")
 

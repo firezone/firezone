@@ -174,6 +174,48 @@ defmodule PortalWeb.Settings.AccountTest do
       refute html =~ "ICE-less"
     end
 
+    test "hides data residency on on-prem portals", %{conn: conn, account: account, actor: actor} do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/account")
+
+      refute has_element?(lv, "#data-residency")
+    end
+
+    test "shows the US region with the EU closed beta link", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      Portal.Config.put_env_override(:data_residency_region, :us)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/account")
+
+      assert has_element?(lv, "#data-residency", "Data residency region: United States")
+      assert has_element?(lv, "#data-residency", "EU data residency is in closed beta.")
+      assert has_element?(lv, "#data-residency a[href='https://www.firezone.dev/eu']")
+    end
+
+    test "shows the EU region without the closed beta link", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      Portal.Config.put_env_override(:data_residency_region, :eu)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/account")
+
+      assert has_element?(lv, "#data-residency", "Data residency region: European Union")
+      refute has_element?(lv, "#data-residency", "closed beta")
+    end
+
     test "renders usage section", %{conn: conn, account: account, actor: actor} do
       {:ok, _lv, html} =
         conn
