@@ -279,12 +279,12 @@ impl SocketPool {
             Err(e) => {
                 tracing::debug!(?src, %dst, "Failed to connect flow socket: {e}");
 
-                inner.flow_sockets_supported = match e.kind() {
-                    io::ErrorKind::NetworkUnreachable => true,
-                    io::ErrorKind::HostUnreachable => true,
-                    io::ErrorKind::AddrNotAvailable => true,
-                    _ => false,
-                };
+                match e.kind() {
+                    io::ErrorKind::NetworkUnreachable => {}
+                    io::ErrorKind::HostUnreachable => {}
+                    io::ErrorKind::AddrNotAvailable => {}
+                    _ => inner.flow_sockets_supported = false,
+                }
 
                 None
             }
