@@ -300,8 +300,12 @@
     /// Holds the observers below for the life of the process.
     @MainActor private var mockObservers: [any NSObjectProtocol] = []
 
-    extension AppView.WindowDefinition {
-      public static func mockFromCommandLine() -> Self? {
+    /// The window a screenshot run shows.
+    public enum MockWindow: String {
+      case main
+      case settings
+
+      public static func fromCommandLine() -> Self? {
         // `none` leaves the full app running with its menu bar item and no window.
         guard let name = flagValue("--mock-window"), name != "none" else { return nil }
 

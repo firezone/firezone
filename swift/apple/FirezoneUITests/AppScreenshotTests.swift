@@ -195,6 +195,11 @@
       ]
       app.launch()
 
+      // The app opens Settings itself, which a menu bar app cannot always rely on.
+      if window == "settings", !app.windows.firstMatch.waitForExistence(timeout: 10) {
+        app.typeKey(",", modifierFlags: .command)
+      }
+
       return app
     }
 
@@ -355,6 +360,7 @@
     ) throws {
       let candidates = [
         window.toolbars.buttons[label],
+        window.toolbarButtons[label],
         window.tabs[label],
         window.tabGroups.buttons[label],
         window.radioButtons[label],

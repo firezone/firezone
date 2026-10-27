@@ -175,25 +175,19 @@ public struct SettingsView: View {
         }
       }
     #elseif os(macOS)
-      VStack(spacing: 0) {
-        switch viewModel.selectedTab {
-        case .general: generalTab
-        case .deviceTrust: deviceTrustTab
-        case .logs: logsTab
+      TabView(selection: $viewModel.selectedTab) {
+        generalTab
+          .tabItem { Label(Tab.general.title, systemImage: Tab.general.systemImage) }
+          .tag(Tab.general)
+        if store.deviceTrustCertificateSummary != nil {
+          deviceTrustTab
+            .tabItem { Label(Tab.deviceTrust.title, systemImage: Tab.deviceTrust.systemImage) }
+            .tag(Tab.deviceTrust)
         }
+        logsTab
+          .tabItem { Label(Tab.logs.title, systemImage: Tab.logs.systemImage) }
+          .tag(Tab.logs)
       }
-      .toolbar {
-        ToolbarItem(placement: .principal) {
-          HStack(spacing: 4) {
-            ForEach(panes, id: \.self) { tab in
-              SettingsPaneButton(tab: tab, isSelected: viewModel.selectedTab == tab) {
-                viewModel.selectedTab = tab
-              }
-            }
-          }
-        }
-      }
-      .navigationTitle(viewModel.selectedTab.title)
       .onChange(of: focusedField) { _ in commitTextFields() }
       .onDisappear { commitTextFields() }
       .alert(SignOutAlert.title, isPresented: $isShowingSignOutAlert) {
@@ -273,7 +267,7 @@ public struct SettingsView: View {
 
         paneFooter(for: .general)
       }
-      .frame(width: Self.paneWidth, height: 400)
+      .frame(width: Self.paneWidth)
       .onChange(of: viewModel.portal) { _ in commit(.general) }
       .onChange(of: viewModel.connectOnStart) { _ in commit(.general) }
       .onChange(of: viewModel.startOnLogin) { _ in commit(.general) }
@@ -478,7 +472,7 @@ public struct SettingsView: View {
 
         paneFooter(for: .logs)
       }
-      .frame(width: Self.paneWidth, height: 240)
+      .frame(width: Self.paneWidth)
     #else
       #error("Unsupported platform")
     #endif
@@ -515,12 +509,6 @@ public struct SettingsView: View {
   }
 
   #if os(macOS)
-    private var panes: [Tab] {
-      guard store.deviceTrustCertificateSummary != nil else { return [.general, .logs] }
-
-      return [.general, .deviceTrust, .logs]
-    }
-
     private func paneFooter(for tab: Tab) -> some View {
       HStack {
         if tab == .general {
@@ -564,11 +552,7 @@ public struct SettingsView: View {
       savePanel.nameFieldLabel = "Save log archive to:"
       savePanel.nameFieldStringValue = viewModel.logArchiveFileName()
 
-      guard
-        let window = NSApp.windows.first(where: {
-          $0.identifier?.rawValue.hasPrefix("firezone-settings") ?? false
-        })
-      else {
+      guard let window = NSApp.keyWindow else {
         viewModel.isExportingLogs = false
         Log.log("Settings window not found. Can't show save panel.")
         return
@@ -756,37 +740,6 @@ struct FormTextField: View {
 
     func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {
       // Nothing to do
-    }
-  }
-#endif
-
-#if os(macOS)
-  /// A pane of the settings window's toolbar.
-  private struct SettingsPaneButton: View {
-    let tab: SettingsView.Tab
-    let isSelected: Bool
-    let action: () -> Void
-
-    var body: some View {
-      Button(action: action) {
-        VStack(spacing: 3) {
-          Image(systemName: tab.systemImage)
-            .font(.system(size: 18))
-            .frame(height: 22)
-          Text(tab.title)
-            .font(.system(size: 11))
-        }
-        .frame(minWidth: 64)
-        .padding(4)
-        .background(
-          RoundedRectangle(cornerRadius: 6)
-            .fill(isSelected ? Color.primary.opacity(0.1) : Color.clear)
-        )
-        .contentShape(Rectangle())
-      }
-      .buttonStyle(.plain)
-      .accessibilityLabel(tab.title)
-      .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
   }
 #endif

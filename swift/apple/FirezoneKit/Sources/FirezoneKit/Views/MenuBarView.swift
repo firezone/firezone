@@ -182,8 +182,8 @@
         }
       }
 
-      Button("Settings") {
-        AppView.WindowDefinition.settings.openWindow()
+      SettingsOpener { openSettings in
+        Button("Settings") { openSettings() }
       }
     }
 
