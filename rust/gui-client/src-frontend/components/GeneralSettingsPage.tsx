@@ -119,7 +119,7 @@ export default function GeneralSettingsPage({
               value={saved.account_slug}
             />
 
-            <SettingRow field inputId={portalInputId} label="Portal">
+            <SettingRow field inputId={portalInputId} label="Control plane">
               <ManagedSelect
                 className="h-8 py-1"
                 id={portalInputId}
@@ -172,8 +172,8 @@ export default function GeneralSettingsPage({
           </div>
           {signInPending && (
             <p className="mt-1.5 text-xs text-subtle">
-              Changes to the account slug or portal take effect after you sign
-              out and sign in again.
+              Changes to the account slug or control plane take effect after you
+              sign out and sign in again.
             </p>
           )}
         </section>

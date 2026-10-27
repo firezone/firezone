@@ -226,7 +226,7 @@ The signed-in tray menu also offers favoriting resources and an "Admin Portal...
 
 ## Settings
 
-The **Settings** page holds the account slug, start minimized, start on login, connect on start, and the authentication and control plane (Firezone Cloud US, Firezone Cloud EU, or Custom with an Auth Base URL and API URL).
+The **Settings** page holds the account slug, start minimized, start on login, connect on start, and the control plane (Firezone Cloud US, Firezone Cloud EU, or Custom with an Auth Base URL and API URL).
 The **Diagnostics** page holds the log filter.
 Optional **MDM / managed** values lock the corresponding fields.
 

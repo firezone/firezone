@@ -58,7 +58,9 @@ async function render(settings: GeneralSettingsViewModel) {
       resetSettings={() => {}}
     />
   );
-  await expect.element(page.getByLabelText("Portal")).toBeInTheDocument();
+  await expect
+    .element(page.getByLabelText("Control plane"))
+    .toBeInTheDocument();
 
   return saveSettings;
 }
@@ -70,7 +72,7 @@ test("picking Custom saves the last saved custom URLs", async () => {
     custom_api_url: "wss://api.firezone.example.com/",
   });
 
-  await userEvent.selectOptions(page.getByLabelText("Portal"), "Custom");
+  await userEvent.selectOptions(page.getByLabelText("Control plane"), "Custom");
 
   await vi.waitFor(() =>
     expect(saveSettings).toHaveBeenCalledWith(
@@ -164,7 +166,7 @@ test("leaving an https:// API URL shows an error and saves nothing", async () =>
 });
 
 const pendingNote =
-  "Changes to the account slug or portal take effect after you sign out and sign in again.";
+  "Changes to the account slug or control plane take effect after you sign out and sign in again.";
 
 const signedIn: GeneralSettingsViewModel = {
   ...usSettings,
@@ -241,7 +243,7 @@ test("Escape puts back the saved value", async () => {
 test("picking Custom without saved custom URLs shows the current ones", async () => {
   await render(usSettings);
 
-  await userEvent.selectOptions(page.getByLabelText("Portal"), "Custom");
+  await userEvent.selectOptions(page.getByLabelText("Control plane"), "Custom");
 
   await expect
     .element(page.getByLabelText("Auth URL"))

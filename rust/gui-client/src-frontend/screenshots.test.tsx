@@ -191,7 +191,7 @@ const screens: Record<string, Screen> = {
       api_url: "wss://eu.api.firezone.dev/",
       api_url_is_managed: true,
     },
-    hover: "Portal",
+    hover: "Control plane",
   },
   "device-trust-happy": {
     route: "/device-trust",
