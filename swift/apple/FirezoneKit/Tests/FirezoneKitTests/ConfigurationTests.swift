@@ -548,6 +548,20 @@ struct ConfigurationTests {
     #expect(!viewModel.isLogFilterValid())
   }
 
+  @Test("A log filter connlib cannot parse is not saved and says why")
+  @MainActor
+  func unparsableLogFilterIsNotSaved() async throws {
+    let config = Configuration(userDefaults: UserDefaults.makeTestDefaults())
+    let viewModel = SettingsViewModel(configuration: config)
+    let logFilter = config.logFilter
+
+    viewModel.logFilter = "foo[bar]=debug"
+    try await viewModel.save(.logs)
+
+    #expect(config.logFilter == logFilter)
+    #expect(viewModel.logFilterError?.hasPrefix("Use a level") == true)
+  }
+
   @Test("Saving one tab leaves the other tab's edits unsaved")
   @MainActor
   func savingOneTabLeavesTheOtherUnsaved() async throws {

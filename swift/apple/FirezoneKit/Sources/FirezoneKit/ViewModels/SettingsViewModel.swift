@@ -151,7 +151,7 @@ class SettingsViewModel: ObservableObject {
       if !configuration.isConnectOnStartForced { configuration.connectOnStart = connectOnStart }
       if !configuration.isStartOnLoginForced { configuration.startOnLogin = startOnLogin }
     case .logs:
-      logFilterError = isLogFilterValid() ? nil : "Enter a log filter"
+      logFilterError = logFilterProblem()
 
       if !configuration.isLogFilterForced, isLogFilterValid() {
         configuration.logFilter = logFilter
@@ -263,7 +263,17 @@ class SettingsViewModel: ObservableObject {
   }
 
   func isLogFilterValid() -> Bool {
-    !logFilter.isEmpty
+    logFilterProblem() == nil
+  }
+
+  private func logFilterProblem() -> String? {
+    if logFilter.isEmpty { return "Enter a log filter" }
+
+    if !LogFilter.isValid(logFilter) {
+      return "Use a level such as info, or target=level pairs separated by commas"
+    }
+
+    return nil
   }
 
   private var signInSettings: [String] {
