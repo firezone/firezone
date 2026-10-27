@@ -699,6 +699,9 @@ public final class Store: ObservableObject {
     guard let session = try manager().session() else {
       throw VPNConfigurationManagerError.managerNotInitialized
     }
+    guard configuration.signInValues == signInValues else {
+      throw AuthClientError.settingsChanged
+    }
     try IPCClient.start(
       session: session,
       token: token,
