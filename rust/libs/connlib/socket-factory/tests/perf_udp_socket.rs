@@ -98,6 +98,47 @@ async fn explicit_source_connects_after_unassigned_source() {
     assert!(sender.ip().is_loopback());
 }
 
+#[cfg(apple)]
+#[tokio::test]
+async fn failed_source_keeps_full_flow_cache() {
+    let peers = (0..16)
+        .map(|_| std::net::UdpSocket::bind("127.0.0.1:0").unwrap())
+        .collect::<Vec<_>>();
+    let socket = udp("0.0.0.0:0".parse().unwrap())
+        .unwrap()
+        .into_perf()
+        .unwrap();
+
+    for peer in &peers {
+        socket
+            .send(DatagramOut {
+                src: Some("127.0.0.1:0".parse().unwrap()),
+                dst: peer.local_addr().unwrap(),
+                packet: bufferpool::Bytes::copied_from(b"hello"),
+                segment_size: 5,
+                ecn: Ecn::NonEct,
+            })
+            .await
+            .unwrap();
+    }
+    assert_eq!(socket.flow_socket_count(), peers.len());
+
+    assert!(
+        socket
+            .send(DatagramOut {
+                src: Some("192.0.2.1:0".parse().unwrap()),
+                dst: peers[0].local_addr().unwrap(),
+                packet: bufferpool::Bytes::copied_from(b"hello"),
+                segment_size: 5,
+                ecn: Ecn::NonEct,
+            })
+            .await
+            .is_err()
+    );
+
+    assert_eq!(socket.flow_socket_count(), peers.len());
+}
+
 /// ICMP errors from sending to a closed port must not fill the receive buffer and starve every
 /// later receive.
 #[cfg(target_os = "linux")]

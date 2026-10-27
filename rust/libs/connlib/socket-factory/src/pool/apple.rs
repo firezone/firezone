@@ -245,18 +245,18 @@ impl SocketPool {
             return None;
         }
 
-        if inner.flows.len() >= MAX_FLOW_SOCKETS {
-            evict_one(
-                &mut inner,
-                self.local.port(),
-                recv_buf_size,
-                &self.evictions,
-            );
-        }
-
         match connect(self.local, src, dst, inner.buffer_sizes) {
             Ok(socket) => {
                 tracing::debug!(?src, %dst, "Connected new flow socket");
+
+                if inner.flows.len() >= MAX_FLOW_SOCKETS {
+                    evict_one(
+                        &mut inner,
+                        self.local.port(),
+                        recv_buf_size,
+                        &self.evictions,
+                    );
+                }
 
                 inner.rates.forget(&key);
 
