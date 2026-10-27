@@ -16,6 +16,10 @@
     "name": "by_account_id"
   },
   {
+    "file": "elixir/lib/portal/safe.ex",
+    "name": "sql_stream"
+  },
+  {
     "file": "elixir/lib/portal_api/mcp/capture_adapter.ex",
     "name": "read_req_body"
   },
