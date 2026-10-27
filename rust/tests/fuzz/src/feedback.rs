@@ -883,11 +883,8 @@ fn record_live_dns_flow_feedback(reference: &ReferenceState, state: &TunnelTest)
         let Some(gateway) = state.gateway(gateway) else {
             continue;
         };
-        if observation.dns_nat_generation
-            != Some(gateway.dns_nat_generation(
-                observation.submitted.client,
-                observation.submitted.packet.destination(),
-            ))
+        if observation.received.dns_nat_generation
+            != Some(gateway.dns_nat_generation(observation.submitted.client))
         {
             continue;
         }

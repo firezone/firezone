@@ -119,7 +119,7 @@ impl ReferenceState {
         }) {}
         for _ in self
             .tcp_flows
-            .extract_if(.., |_, flow| !transition.retains_tcp_flow(flow))
+            .extract_if(.., |_, flow| !transition.retains_tcp_flow(flow, iceless))
         {}
     }
 

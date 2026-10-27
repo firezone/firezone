@@ -406,7 +406,7 @@ fn assert_flows_keep_their_dns_nat(observations: &[DnsNatObservation]) {
             continue;
         };
         let expected_proxy = first.submitted.packet.destination();
-        let expected_generation = first.dns_nat_generation;
+        let expected_generation = first.received.dns_nat_generation;
 
         for current in remaining {
             let actual_proxy = current.submitted.packet.destination();
@@ -414,7 +414,7 @@ fn assert_flows_keep_their_dns_nat(observations: &[DnsNatObservation]) {
                 tracing::error!(target: "assertions", ?flow_id, %expected_proxy, %actual_proxy, "Flow changed its DNS proxy destination");
             }
 
-            let actual_generation = current.dns_nat_generation;
+            let actual_generation = current.received.dns_nat_generation;
             if actual_generation != expected_generation {
                 tracing::error!(target: "assertions", ?flow_id, ?expected_generation, ?actual_generation, "Flow crossed a DNS NAT reset");
             }

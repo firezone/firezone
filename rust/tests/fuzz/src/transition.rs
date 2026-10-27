@@ -196,7 +196,7 @@ impl Transition {
     /// TCP retransmits whatever the tunnel loses while it reconnects, so a connection
     /// survives as long as the client reaches its resource through the same Gateway with
     /// the same authorization.
-    pub(crate) fn retains_tcp_flow(&self, flow: &TcpFlow) -> bool {
+    pub(crate) fn retains_tcp_flow(&self, flow: &TcpFlow, iceless: bool) -> bool {
         let (client_id, route) = (flow.client_id, flow.route);
 
         match self {
@@ -228,7 +228,14 @@ impl Transition {
             Transition::UpdateUpstreamDo53Servers(_) => true,
             Transition::UpdateUpstreamDoHServers(_) => true,
             Transition::UpdateUpstreamSearchDomain(_) => true,
-            Transition::RoamClient { .. } => true,
+            // TODO: Remove with classic ICE.
+            // Roaming over classic ICE rotates the Client's key, which resets its DNS resource NAT.
+            Transition::RoamClient {
+                client_id: roamed, ..
+            } => match &flow.dst {
+                Destination::DomainName { .. } => iceless || client_id != *roamed,
+                Destination::IpAddr(_) => true,
+            },
             Transition::ReconnectPortal { .. } => true,
             Transition::RestartClient { .. } => self.retains_flow(client_id, route, false),
             Transition::DeployNewRelays(_) => true,
