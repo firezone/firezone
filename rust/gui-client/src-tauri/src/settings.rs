@@ -78,6 +78,17 @@ pub struct GeneralSettings {
     /// The API URL last saved with [`Portal::Custom`], to prefill the field when it is picked again.
     #[serde(default)]
     pub custom_api_url: Option<Url>,
+    /// What the current session signed in with, [`None`] when signed out.
+    #[serde(default)]
+    pub signed_in_with: Option<SignedInWith>,
+}
+
+/// The account slug and portal URLs a session signed in with, which later changes do not affect until the next sign-in.
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+pub struct SignedInWith {
+    pub account_slug: Option<String>,
+    pub auth_url: Url,
+    pub api_url: Url,
 }
 
 fn start_minimized_default() -> bool {
@@ -101,6 +112,16 @@ pub struct GeneralSettingsViewModel {
     pub custom_auth_url: String,
     /// What the API URL field shows when [`Portal::Custom`] is picked: the last saved custom URL, or else `api_url`.
     pub custom_api_url: String,
+    /// What the current session signed in with, [`None`] when signed out.
+    pub signed_in_with: Option<SignedInWithViewModel>,
+}
+
+#[derive(Clone, Serialize, specta::Type)]
+pub struct SignedInWithViewModel {
+    pub account_slug: String,
+    pub portal: Portal,
+    pub auth_url: String,
+    pub api_url: String,
 }
 
 impl GeneralSettingsViewModel {
@@ -151,6 +172,14 @@ impl GeneralSettingsViewModel {
             api_url_is_managed,
             custom_auth_url,
             custom_api_url,
+            signed_in_with: general_settings.signed_in_with.map(|signed_in_with| {
+                SignedInWithViewModel {
+                    account_slug: signed_in_with.account_slug.unwrap_or_default(),
+                    portal: Portal::from_urls(&signed_in_with.auth_url, &signed_in_with.api_url),
+                    auth_url: signed_in_with.auth_url.to_string(),
+                    api_url: signed_in_with.api_url.to_string(),
+                }
+            }),
         }
     }
 }
@@ -482,6 +511,28 @@ mod tests {
         assert_eq!(view_model.portal, Portal::CloudEu);
         assert_eq!(view_model.custom_auth_url, "https://firezone.example.com/");
         assert_eq!(view_model.custom_api_url, "wss://api.example.com/");
+    }
+
+    #[test]
+    fn signed_in_with_names_the_portal_it_signed_in_to() {
+        let general_settings = GeneralSettings {
+            signed_in_with: Some(SignedInWith {
+                account_slug: None,
+                auth_url: Url::parse("https://eu.app.firezone.dev").unwrap(),
+                api_url: Url::parse("wss://eu.api.firezone.dev").unwrap(),
+            }),
+            ..Default::default()
+        };
+
+        let view_model = GeneralSettingsViewModel::new(
+            MdmSettings::default(),
+            general_settings,
+            advanced_settings("https://app.firezone.dev", "wss://api.firezone.dev"),
+        );
+
+        let signed_in_with = view_model.signed_in_with.unwrap();
+        assert_eq!(signed_in_with.portal, Portal::CloudEu);
+        assert_eq!(signed_in_with.account_slug, "");
     }
 
     fn view_model(

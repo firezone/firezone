@@ -19,6 +19,7 @@ const usSettings: GeneralSettingsViewModel = {
   api_url_is_managed: false,
   custom_auth_url: "https://app.firezone.dev/",
   custom_api_url: "wss://api.firezone.dev/",
+  signed_in_with: null,
 };
 
 const customSettings: GeneralSettingsViewModel = {
@@ -160,6 +161,69 @@ test("leaving an https:// API URL shows an error and saves nothing", async () =>
     .element(page.getByText("Enter a valid ws:// or wss:// URL"))
     .toBeInTheDocument();
   expect(saveSettings).not.toHaveBeenCalled();
+});
+
+const pendingNote =
+  "Changes to the account slug or portal take effect after you sign out and sign in again.";
+
+const signedIn: GeneralSettingsViewModel = {
+  ...usSettings,
+  account_slug: "firezone",
+  signed_in_with: {
+    account_slug: "firezone",
+    portal: "CloudUs",
+    auth_url: "https://app.firezone.dev/",
+    api_url: "wss://api.firezone.dev/",
+  },
+};
+
+test("editing the account slug while signed out shows no sign-in note", async () => {
+  await render({ ...signedIn, signed_in_with: null });
+
+  await userEvent.fill(page.getByLabelText("Account slug"), "other");
+
+  await expect
+    .element(page.getByLabelText("Account slug"))
+    .toHaveValue("other");
+  await expect.element(page.getByText(pendingNote)).not.toBeInTheDocument();
+});
+
+test("a draft account slug shows the sign-in note until it is reverted", async () => {
+  await render(signedIn);
+
+  await expect.element(page.getByText(pendingNote)).not.toBeInTheDocument();
+
+  await userEvent.fill(page.getByLabelText("Account slug"), "other");
+  await expect.element(page.getByText(pendingNote)).toBeInTheDocument();
+
+  await userEvent.fill(page.getByLabelText("Account slug"), "firezone");
+  await expect.element(page.getByText(pendingNote)).not.toBeInTheDocument();
+});
+
+test("a saved portal other than the signed-in one shows the sign-in note", async () => {
+  await render({ ...signedIn, portal: "CloudEu" });
+
+  await expect.element(page.getByText(pendingNote)).toBeInTheDocument();
+});
+
+test("a draft custom URL shows the sign-in note", async () => {
+  await render({
+    ...customSettings,
+    signed_in_with: {
+      account_slug: "",
+      portal: "Custom",
+      auth_url: "https://firezone.example.com/",
+      api_url: "wss://api.firezone.example.com/",
+    },
+  });
+
+  await expect.element(page.getByText(pendingNote)).not.toBeInTheDocument();
+
+  await userEvent.fill(
+    page.getByLabelText("Auth URL"),
+    "https://other.example.com"
+  );
+  await expect.element(page.getByText(pendingNote)).toBeInTheDocument();
 });
 
 test("Escape puts back the saved value", async () => {

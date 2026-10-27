@@ -11,6 +11,8 @@ interface TextSettingProps {
   validate?: (value: string) => string | null;
   // May resolve to a string saying why the value was rejected, which shows like a validation error.
   save: (value: string) => unknown;
+  // Called with what the field shows while it differs from `value`, `null` once it does not.
+  onDraftChange?: (draft: string | null) => void;
   className?: string;
 }
 
@@ -22,6 +24,7 @@ export default function TextSetting({
   value,
   validate = () => null,
   save,
+  onDraftChange,
   className = "",
 }: TextSettingProps) {
   const inputId = useId();
@@ -30,9 +33,14 @@ export default function TextSetting({
   const [error, setError] = useState<string | null>(null);
   const lastSaved = useRef<string | null>(null);
 
+  const updateDraft = (draft: string | null) => {
+    setDraft(draft);
+    onDraftChange?.(draft);
+  };
+
   // The saved value comes back after a save, possibly normalised, and replaces the draft.
   useEffect(() => {
-    setDraft(null);
+    updateDraft(null);
     setError(null);
     lastSaved.current = null;
   }, [value]);
@@ -74,14 +82,14 @@ export default function TextSetting({
         name={name}
         onBlur={commit}
         onChange={(event) => {
-          setDraft(event.target.value);
+          updateDraft(event.target.value);
           setError(null);
         }}
         onKeyDown={(event) => {
           if (event.key === "Enter") {
             commit();
           } else if (event.key === "Escape") {
-            setDraft(null);
+            updateDraft(null);
             setError(null);
           }
         }}

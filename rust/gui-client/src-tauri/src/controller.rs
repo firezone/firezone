@@ -3,7 +3,7 @@ use crate::{
     gui::{self, system_tray},
     logging::{self, FileCount},
     service,
-    settings::{AdvancedSettings, GeneralSettings, MdmSettings},
+    settings::{AdvancedSettings, GeneralSettings, MdmSettings, SignedInWith},
     updates, uptime,
     view::{GeneralSettingsForm, SessionViewModel},
 };
@@ -473,6 +473,8 @@ impl<I: GuiIntegration> Controller<I> {
             .auth
             .handle_response(auth_response)
             .context("Couldn't handle auth response")?;
+        self.set_signed_in_with(Some(self.current_sign_in()))
+            .await?;
 
         self.update_telemetry_context().await?;
         self.start_session(token).await?;
@@ -569,6 +571,7 @@ impl<I: GuiIntegration> Controller<I> {
                     .start_sign_in()
                     .context("Couldn't start sign-in flow")?
                     .to_url(&auth_url, account_slug.as_deref());
+                self.set_signed_in_with(None).await?;
                 self.refresh_ui_state();
 
                 #[cfg(debug_assertions)]
@@ -997,6 +1000,8 @@ impl<I: GuiIntegration> Controller<I> {
             Ok(()) => {
                 if let Some(token) = self.unconfirmed_token.take() {
                     self.auth.sign_in_with_token(&token);
+                    self.set_signed_in_with(Some(self.current_sign_in()))
+                        .await?;
                 }
                 ran_before::set().await?;
                 self.status = Status::WaitingForTunnel;
@@ -1182,6 +1187,7 @@ impl<I: GuiIntegration> Controller<I> {
             | Status::WaitingForTunnel => {}
         }
         self.auth.sign_out()?;
+        self.set_signed_in_with(None).await?;
 
         self.disconnect().await
     }
@@ -1208,6 +1214,27 @@ impl<I: GuiIntegration> Controller<I> {
             .send(msg)
             .await
             .context("Failed to send IPC message")
+    }
+
+    fn current_sign_in(&self) -> SignedInWith {
+        SignedInWith {
+            account_slug: self.account_slug().map(ToOwned::to_owned),
+            auth_url: self.auth_url().clone(),
+            api_url: self.api_url().clone(),
+        }
+    }
+
+    async fn set_signed_in_with(&mut self, signed_in_with: Option<SignedInWith>) -> Result<()> {
+        if self.general_settings.signed_in_with == signed_in_with {
+            return Ok(());
+        }
+
+        self.general_settings.signed_in_with = signed_in_with;
+        self.integration
+            .save_general_settings(&self.general_settings)
+            .await?;
+
+        self.notify_settings_changed()
     }
 
     fn notify_settings_changed(&mut self) -> Result<()> {
@@ -2207,6 +2234,67 @@ mod tests {
                 ..AdvancedSettings::default()
             }
         );
+    }
+
+    #[tokio::test]
+    async fn remembers_what_the_session_signed_in_with_until_sign_out() {
+        let _guard = logging::test("debug");
+        let mut test_controller = Controller::start_for_test();
+        let mut mock_tunnel = test_controller.tunnel_service_ipc_accept().await;
+        mock_tunnel.send_hello().await;
+
+        test_controller.sign_in().await;
+        let signed_in_with = test_controller
+            .wait_integration(|i| i.general_settings.last()?.signed_in_with.clone())
+            .await;
+        assert_eq!(
+            signed_in_with,
+            SignedInWith {
+                account_slug: None,
+                auth_url: AdvancedSettings::default().auth_url,
+                api_url: AdvancedSettings::default().api_url,
+            }
+        );
+
+        test_controller
+            .ctrl_tx
+            .send(ControllerRequest::ApplyGeneralSettings(Box::new(
+                GeneralSettingsForm {
+                    start_minimized: true,
+                    start_on_login: false,
+                    connect_on_start: false,
+                    account_slug: "other".to_owned(),
+                    portal: crate::settings::Portal::CloudUs,
+                    auth_url: String::new(),
+                    api_url: String::new(),
+                },
+            )))
+            .await
+            .unwrap();
+        let general_settings = test_controller
+            .wait_integration(|i| {
+                i.general_settings
+                    .last()
+                    .filter(|s| s.account_slug.as_deref() == Some("other"))
+                    .cloned()
+            })
+            .await;
+        assert_eq!(general_settings.signed_in_with, Some(signed_in_with));
+
+        test_controller
+            .ctrl_tx
+            .send(ControllerRequest::SignOut)
+            .await
+            .unwrap();
+        test_controller
+            .wait_integration(|i| {
+                i.general_settings
+                    .last()?
+                    .signed_in_with
+                    .is_none()
+                    .then_some(())
+            })
+            .await;
     }
 
     async fn boot_tunnel(

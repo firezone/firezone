@@ -55,6 +55,7 @@ const generalSettings: GeneralSettingsViewModel = {
   api_url_is_managed: false,
   custom_auth_url: "https://app.firezone.dev/",
   custom_api_url: "wss://api.firezone.dev/",
+  signed_in_with: null,
 };
 
 const logFilter: LogFilterViewModel = {
@@ -165,6 +166,18 @@ const screens: Record<string, Screen> = {
       api_url: "wss://api.firezone.example.com/",
     },
     input: { label: "Auth URL", value: "firezone.example.com" },
+  },
+  "general-settings-pending-sign-in": {
+    route: "/general-settings",
+    generalSettings: {
+      ...generalSettings,
+      signed_in_with: {
+        account_slug: "example-corp",
+        portal: "CloudEu",
+        auth_url: "https://eu.app.firezone.dev/",
+        api_url: "wss://eu.api.firezone.dev/",
+      },
+    },
   },
   "general-settings-managed": {
     route: "/general-settings",

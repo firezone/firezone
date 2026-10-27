@@ -117,7 +117,11 @@ custom_auth_url: string;
 /**
  * What the API URL field shows when [`Portal::Custom`] is picked: the last saved custom URL, or else `api_url`.
  */
-custom_api_url: string }
+custom_api_url: string;
+/**
+ * What the current session signed in with, [`None`] when signed out.
+ */
+signed_in_with: SignedInWithViewModel | null }
 export type LogFilterChanged = LogFilterViewModel
 export type LogFilterViewModel = { log_filter: string; log_filter_is_managed: boolean }
 export type LogsRecounted = FileCount
@@ -127,6 +131,7 @@ export type LogsRecounted = FileCount
 export type Portal = "CloudUs" | "CloudEu" | "Custom"
 export type SessionChanged = SessionViewModel
 export type SessionViewModel = { SignedIn: { account_slug: string; actor_name: string } } | "Loading" | "SignedOut"
+export type SignedInWithViewModel = { account_slug: string; portal: Portal; auth_url: string; api_url: string }
 /**
  * A certificate the Tunnel service loaded from the platform keystore.
  */
