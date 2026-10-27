@@ -18,7 +18,7 @@ public enum Portal: String, CaseIterable, Identifiable, Sendable {
   public var id: Self { self }
 
   /// The label of the setting that picks a portal.
-  public static let pickerTitle = "Portal"
+  public static let pickerTitle = "Control plane"
 
   public var title: String {
     switch self {
