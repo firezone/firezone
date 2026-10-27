@@ -11,7 +11,7 @@
 	<string name="reset_to_defaults">Reset to defaults</string>
 	<string name="reset_to_defaults_confirm_title">Reset settings to defaults?</string>
 	<string name="reset_to_defaults_confirm">Reset</string>
-	<string name="sign_in_change_note">Changes to the account slug or portal take effect after you sign out and sign in again.</string>
+	<string name="sign_in_change_note">Changes to the account slug or control plane take effect after you sign out and sign in again.</string>
 	<!-- General Settings -->
 	<string name="settings_section_sign_in">Sign-in</string>
 	<string name="settings_section_startup">Startup</string>
@@ -20,7 +20,7 @@
 	<string name="account_slug">Account Slug</string>
 	<string name="start_on_login">Start on Boot</string>
 	<string name="connect_on_start">Connect on Start</string>
-	<string name="portal">Portal</string>
+	<string name="portal">Control plane</string>
 	<string name="portal_cloud_us">Firezone Cloud (US)</string>
 	<string name="portal_cloud_eu">Firezone Cloud (EU)</string>
 	<string name="portal_custom">Custom</string>

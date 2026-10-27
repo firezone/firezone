@@ -102,7 +102,7 @@ class GeneralSettingsPageTest {
         composeRule.onNodeWithText(note).assertDoesNotExist()
         composeRule.onNodeWithText("Cancel").performClick()
 
-        composeRule.onNodeWithText("Portal").performClick()
+        composeRule.onNodeWithText("Control plane").performClick()
         composeRule.onNodeWithText(note).assertIsDisplayed()
     }
 }
