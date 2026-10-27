@@ -192,6 +192,10 @@ defmodule PortalWeb.Settings.Account do
               label="Device Posture"
               enabled={feature_enabled?(@account, :device_posture)}
             />
+            <.feature_row
+              label="Account Slug Changes"
+              enabled={feature_enabled?(@account, :slug_changes)}
+            />
           </div>
 
           <%!-- Actions (pending deletion, self-initiated, not locked) --%>
@@ -515,7 +519,14 @@ defmodule PortalWeb.Settings.Account do
             label="Account Name"
             phx-debounce="300"
           />
-          <div>
+          <div :if={not Account.slug_changes_enabled?(@account)}>
+            <Form.input field={@form[:slug]} type="readonly" label="Account Slug" />
+            <p id="slug-help" class="mt-2 text-xs text-subtle">
+              The slug is the first part of your portal URL and what users type to sign in.
+              Slug changes are available on the Team plan and higher.
+            </p>
+          </div>
+          <div :if={Account.slug_changes_enabled?(@account)}>
             <Form.input
               field={@form[:slug]}
               label="Account Slug"
@@ -778,6 +789,9 @@ defmodule PortalWeb.Settings.Account do
   defp validate_slug_change(changeset, account, slug_history) do
     validate_change(changeset, :slug, fn :slug, slug ->
       cond do
+        not Account.slug_changes_enabled?(account) ->
+          [slug: "cannot be changed on your current plan"]
+
         Account.locked?(account) ->
           [slug: "cannot be changed while the account is locked"]
 

@@ -13,7 +13,7 @@ defmodule PortalWeb.Settings.AccountTest do
   import Portal.SubjectFixtures
 
   setup do
-    account = account_fixture()
+    account = account_fixture(features: %{slug_changes: true})
     actor = admin_actor_fixture(account: account)
     %{account: account, actor: actor}
   end
@@ -376,6 +376,27 @@ defmodule PortalWeb.Settings.AccountTest do
   end
 
   describe "edit account slug" do
+    test "shows the slug read-only without the slug_changes feature", %{conn: conn} do
+      account = account_fixture(features: %{slug_changes: false})
+      actor = admin_actor_fixture(account: account)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/account")
+
+      html = render_click(lv, "open_edit_account")
+
+      assert html =~ "Slug changes are available on the Team plan and higher."
+      refute html =~ "Old slugs keep working"
+      refute html =~ ~s(<input type="text" name="account[slug]")
+
+      html = render_submit(lv, "submit_account", %{"account" => %{"slug" => "new-slug"}})
+
+      assert html =~ "cannot be changed on your current plan"
+      assert fetch_account!(account.id).slug == account.slug
+    end
+
     test "explains how slug changes work", %{conn: conn, account: account, actor: actor} do
       {:ok, lv, _html} =
         conn
