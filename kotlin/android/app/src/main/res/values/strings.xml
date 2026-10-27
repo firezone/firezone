@@ -8,10 +8,8 @@
 	<!-- Settings -->
 	<string name="settings_title">Settings</string>
 	<string name="save">Save</string>
-	<string name="settings_save_warning_title">Warning</string>
-	<string name="settings_save_warning_message">
-		Some changed settings will not be applied until you sign out and sign back in.
-	</string>
+	<string name="settings_save_warning_title">Takes effect after sign-out</string>
+	<string name="settings_save_warning_message">Changes to the account slug or portal only take effect after you sign out and sign in again.</string>
 	<string name="settings_save_warning_confirm">Okay</string>
 	<!-- General Settings -->
 	<string name="settings_section_sign_in">Sign-in</string>
@@ -19,10 +17,10 @@
 	<string name="account_slug">Account Slug</string>
 	<string name="start_on_login">Start on Boot</string>
 	<string name="connect_on_start">Connect on Start</string>
-	<string name="cloud_region">Authentication and control plane</string>
-	<string name="cloud_region_us">Firezone Cloud US</string>
-	<string name="cloud_region_eu">Firezone Cloud EU</string>
-	<string name="cloud_region_custom">Custom</string>
+	<string name="portal">Portal</string>
+	<string name="portal_cloud_us">Firezone Cloud (US)</string>
+	<string name="portal_cloud_eu">Firezone Cloud (EU)</string>
+	<string name="portal_custom">Custom</string>
 	<string name="auth_url">Auth URL</string>
 	<string name="api_url">API URL</string>
 	<string name="button_reset_to_defaults">Reset to Defaults</string>

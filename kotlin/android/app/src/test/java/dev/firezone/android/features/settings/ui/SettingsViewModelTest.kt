@@ -7,7 +7,7 @@ import android.content.SharedPreferences
 import android.os.Bundle
 import android.os.Looper
 import dev.firezone.android.core.data.Repository
-import dev.firezone.android.core.data.model.CloudRegion
+import dev.firezone.android.core.data.model.Portal
 import dev.firezone.android.features.settings.ui.compose.SettingsPage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
@@ -73,12 +73,12 @@ class SettingsViewModelTest {
     }
 
     @Test
-    fun `saved US URLs show the US region`() {
+    fun `saved US URLs show the US portal`() {
         saveUrls("https://app.firezone.dev", "wss://api.firezone.dev")
 
         populateFields()
 
-        assertEquals(CloudRegion.US, viewModel.cloudRegion)
+        assertEquals(Portal.CLOUD_US, viewModel.portal)
     }
 
     @Test
@@ -87,17 +87,17 @@ class SettingsViewModelTest {
 
         populateFields()
 
-        assertEquals(CloudRegion.CUSTOM, viewModel.cloudRegion)
+        assertEquals(Portal.CUSTOM, viewModel.portal)
         assertEquals("https://firezone.example.com", viewModel.config.authUrl)
         assertEquals("wss://api.example.com", viewModel.config.apiUrl)
     }
 
     @Test
-    fun `picking the EU region saves the EU URLs`() {
+    fun `picking the EU portal saves the EU URLs`() {
         saveUrls("https://app.firezone.dev", "wss://api.firezone.dev")
         populateFields()
 
-        viewModel.onCloudRegionChanged(CloudRegion.EU)
+        viewModel.onPortalChanged(Portal.CLOUD_EU)
         viewModel.save(SettingsPage.GENERAL)
         shadowOf(Looper.getMainLooper()).idle()
 
@@ -118,16 +118,16 @@ class SettingsViewModelTest {
 
             populateFields()
 
-            assertEquals(CloudRegion.CUSTOM, viewModel.cloudRegion)
+            assertEquals(Portal.CUSTOM, viewModel.portal)
         }
 
     @Test
-    fun `saved URLs with a trailing slash still show their region`() {
+    fun `saved URLs with a trailing slash still show their portal`() {
         saveUrls("https://eu.app.firezone.dev/", "wss://eu.api.firezone.dev/")
 
         populateFields()
 
-        assertEquals(CloudRegion.EU, viewModel.cloudRegion)
+        assertEquals(Portal.CLOUD_EU, viewModel.portal)
     }
 
     @Test
@@ -135,26 +135,26 @@ class SettingsViewModelTest {
         saveUrls("https://app.firezone.dev", "wss://api.firezone.dev")
         populateFields()
 
-        viewModel.onCloudRegionChanged(CloudRegion.CUSTOM)
+        viewModel.onPortalChanged(Portal.CUSTOM)
         viewModel.onValidateAuthUrl("https://firezone.example.com")
         viewModel.onValidateApiUrl("wss://api.firezone.example.com")
         viewModel.save(SettingsPage.GENERAL)
         shadowOf(Looper.getMainLooper()).idle()
 
-        assertEquals(CloudRegion.CUSTOM, viewModel.cloudRegion)
+        assertEquals(Portal.CUSTOM, viewModel.portal)
         assertEquals("https://firezone.example.com", repository.getConfigSync().authUrl)
         assertEquals("wss://api.firezone.example.com", repository.getConfigSync().apiUrl)
     }
 
     @Test
-    fun `managed EU URLs show the EU region`() =
+    fun `managed EU URLs show the EU portal`() =
         runBlocking {
             saveUrls("https://app.firezone.dev", "wss://api.firezone.dev")
             manageUrls("https://eu.app.firezone.dev/", "wss://eu.api.firezone.dev")
 
             populateFields()
 
-            assertEquals(CloudRegion.EU, viewModel.cloudRegion)
+            assertEquals(Portal.CLOUD_EU, viewModel.portal)
         }
 
     @Test
@@ -164,7 +164,7 @@ class SettingsViewModelTest {
 
             populateFields()
 
-            assertEquals(CloudRegion.CUSTOM, viewModel.cloudRegion)
+            assertEquals(Portal.CUSTOM, viewModel.portal)
             assertEquals("https://firezone.example.com", viewModel.config.authUrl)
         }
 
@@ -197,17 +197,17 @@ class SettingsViewModelTest {
     fun `switching back to custom brings back the last saved custom URLs`() {
         saveUrls("https://app.firezone.dev", "wss://api.firezone.dev")
         populateFields()
-        viewModel.onCloudRegionChanged(CloudRegion.CUSTOM)
+        viewModel.onPortalChanged(Portal.CUSTOM)
         viewModel.onValidateAuthUrl("https://firezone.example.com")
         viewModel.onValidateApiUrl("wss://api.firezone.example.com")
         save()
 
         reopen()
-        viewModel.onCloudRegionChanged(CloudRegion.EU)
+        viewModel.onPortalChanged(Portal.CLOUD_EU)
         save()
 
         reopen()
-        viewModel.onCloudRegionChanged(CloudRegion.CUSTOM)
+        viewModel.onPortalChanged(Portal.CUSTOM)
 
         assertEquals("https://firezone.example.com", viewModel.config.authUrl)
         assertEquals("wss://api.firezone.example.com", viewModel.config.apiUrl)
@@ -218,18 +218,18 @@ class SettingsViewModelTest {
         saveUrls("https://eu.app.firezone.dev", "wss://eu.api.firezone.dev")
         populateFields()
 
-        viewModel.onCloudRegionChanged(CloudRegion.CUSTOM)
+        viewModel.onPortalChanged(Portal.CUSTOM)
 
         assertEquals("https://eu.app.firezone.dev", viewModel.config.authUrl)
         assertEquals("wss://eu.api.firezone.dev", viewModel.config.apiUrl)
     }
 
     @Test
-    fun `saving a region does not remember its URLs as custom`() {
+    fun `saving a cloud portal does not remember its URLs as custom`() {
         repository.saveLastCustomUrlsSync("https://firezone.example.com", "wss://api.firezone.example.com")
         populateFields()
 
-        viewModel.onCloudRegionChanged(CloudRegion.US)
+        viewModel.onPortalChanged(Portal.CLOUD_US)
         save()
 
         assertEquals(
@@ -239,13 +239,13 @@ class SettingsViewModelTest {
     }
 
     @Test
-    fun `remembered custom URLs do not change the region shown`() {
+    fun `remembered custom URLs do not change the portal shown`() {
         saveUrls("https://app.firezone.dev", "wss://api.firezone.dev")
         repository.saveLastCustomUrlsSync("https://firezone.example.com", "wss://api.firezone.example.com")
 
         populateFields()
 
-        assertEquals(CloudRegion.US, viewModel.cloudRegion)
+        assertEquals(Portal.CLOUD_US, viewModel.portal)
         assertEquals("https://app.firezone.dev", viewModel.config.authUrl)
     }
 

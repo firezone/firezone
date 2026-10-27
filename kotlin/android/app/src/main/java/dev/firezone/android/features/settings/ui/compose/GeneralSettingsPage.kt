@@ -23,17 +23,17 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.withLink
 import androidx.compose.ui.unit.dp
 import dev.firezone.android.R
-import dev.firezone.android.core.data.model.CloudRegion
 import dev.firezone.android.core.data.model.Config
 import dev.firezone.android.core.data.model.ManagedConfigStatus
+import dev.firezone.android.core.data.model.Portal
 import kotlinx.collections.immutable.toImmutableList
 
 @Composable
 fun GeneralSettingsPage(
     config: Config,
-    cloudRegion: CloudRegion,
+    portal: Portal,
     managedStatus: ManagedConfigStatus,
-    onCloudRegionChange: (CloudRegion) -> Unit,
+    onPortalChange: (Portal) -> Unit,
     onAuthUrlChange: (String) -> Unit,
     onApiUrlChange: (String) -> Unit,
     onAccountSlugChange: (String) -> Unit,
@@ -59,16 +59,16 @@ fun GeneralSettingsPage(
                     isManaged = managedStatus.isAccountSlugManaged,
                     onValueChange = onAccountSlugChange,
                 )
-                // There are no managed keys for the region: managed URLs decide it.
+                // There are no managed keys for the portal: managed URLs decide it.
                 ManagedDropdownField(
-                    label = stringResource(R.string.cloud_region),
-                    options = CloudRegion.entries.toImmutableList(),
-                    selected = cloudRegion,
+                    label = stringResource(R.string.portal),
+                    options = Portal.entries.toImmutableList(),
+                    selected = portal,
                     optionLabel = { stringResource(it.labelRes()) },
                     isManaged = managedStatus.isAuthUrlManaged || managedStatus.isApiUrlManaged,
-                    onSelect = onCloudRegionChange,
+                    onSelect = onPortalChange,
                 )
-                if (cloudRegion == CloudRegion.CUSTOM) {
+                if (portal == Portal.CUSTOM) {
                     ManagedTextField(
                         label = stringResource(R.string.auth_url),
                         value = config.authUrl,
@@ -133,9 +133,9 @@ fun GeneralSettingsPage(
     }
 }
 
-private fun CloudRegion.labelRes(): Int =
+private fun Portal.labelRes(): Int =
     when (this) {
-        CloudRegion.US -> R.string.cloud_region_us
-        CloudRegion.EU -> R.string.cloud_region_eu
-        CloudRegion.CUSTOM -> R.string.cloud_region_custom
+        Portal.CLOUD_US -> R.string.portal_cloud_us
+        Portal.CLOUD_EU -> R.string.portal_cloud_eu
+        Portal.CUSTOM -> R.string.portal_custom
     }

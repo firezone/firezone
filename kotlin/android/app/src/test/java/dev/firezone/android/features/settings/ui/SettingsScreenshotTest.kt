@@ -12,8 +12,8 @@ import com.github.takahirom.roborazzi.captureScreenRoboImage
 import com.github.takahirom.roborazzi.roborazziSystemPropertyOutputDirectory
 import dev.firezone.android.R
 import dev.firezone.android.STORE_SCREENSHOT_QUALIFIERS
-import dev.firezone.android.core.data.model.CloudRegion
 import dev.firezone.android.core.data.model.ManagedConfigStatus
+import dev.firezone.android.core.data.model.Portal
 import dev.firezone.android.features.settings.ui.compose.SettingsPage
 import dev.firezone.android.features.settings.ui.compose.SettingsScreen
 import dev.firezone.android.ui.theme.FirezoneTheme
@@ -49,7 +49,7 @@ class SettingsScreenshotTest {
             "settings-general-custom",
             R.string.settings_title,
             config = selfHostedConfig,
-            cloudRegion = CloudRegion.CUSTOM,
+            portal = Portal.CUSTOM,
         )
 
     @Test
@@ -58,7 +58,7 @@ class SettingsScreenshotTest {
             "settings-general-managed",
             R.string.settings_title,
             config = euConfig,
-            cloudRegion = CloudRegion.EU,
+            portal = Portal.CLOUD_EU,
             managedStatus = urlsManaged,
         )
 
@@ -85,10 +85,10 @@ class SettingsScreenshotTest {
         tabLabel: Int,
         deviceTrustState: DeviceTrustSettingsViewModel.UiState = DeviceTrustSettingsViewModel.UiState(),
         config: FirezoneConfig = sampleConfig,
-        cloudRegion: CloudRegion = CloudRegion.US,
+        portal: Portal = Portal.CLOUD_US,
         managedStatus: ManagedConfigStatus = ManagedConfigStatus.NOTHING_MANAGED,
     ) {
-        composeRule.setContent { FirezoneTheme { SettingsScreenSample(deviceTrustState, config, cloudRegion, managedStatus) } }
+        composeRule.setContent { FirezoneTheme { SettingsScreenSample(deviceTrustState, config, portal, managedStatus) } }
         composeRule.onNode(hasText(RuntimeEnvironment.getApplication().getString(tabLabel)) and isSelectable()).performClick()
         composeRule.waitForIdle()
 
@@ -193,19 +193,19 @@ private fun row(
 private fun SettingsScreenSample(
     deviceTrustState: DeviceTrustSettingsViewModel.UiState,
     config: FirezoneConfig,
-    cloudRegion: CloudRegion,
+    portal: Portal,
     managedStatus: ManagedConfigStatus,
 ) {
     SettingsScreen(
         config = config,
-        cloudRegion = cloudRegion,
+        portal = portal,
         managedStatus = managedStatus,
         savablePages = persistentSetOf(SettingsPage.GENERAL, SettingsPage.LOGS),
         logSizeBytes = LOG_DIRECTORY_BYTES,
         deviceTrustState = deviceTrustState,
         showDeviceTrust = deviceTrustState.alias != null,
         warnBeforeSaving = false,
-        onCloudRegionChange = {},
+        onPortalChange = {},
         onAuthUrlChange = {},
         onApiUrlChange = {},
         onLogFilterChange = {},

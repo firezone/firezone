@@ -29,9 +29,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import dev.firezone.android.R
-import dev.firezone.android.core.data.model.CloudRegion
 import dev.firezone.android.core.data.model.Config
 import dev.firezone.android.core.data.model.ManagedConfigStatus
+import dev.firezone.android.core.data.model.Portal
 import dev.firezone.android.features.settings.ui.DeviceTrustSettingsViewModel
 import dev.firezone.android.ui.FirezoneIcons
 import kotlinx.collections.immutable.ImmutableSet
@@ -63,14 +63,14 @@ internal fun settingsPages(showDeviceTrust: Boolean): List<SettingsPage> =
 @Composable
 internal fun SettingsScreen(
     config: Config,
-    cloudRegion: CloudRegion,
+    portal: Portal,
     managedStatus: ManagedConfigStatus,
     savablePages: ImmutableSet<SettingsPage>,
     logSizeBytes: Long,
     deviceTrustState: DeviceTrustSettingsViewModel.UiState,
     showDeviceTrust: Boolean,
     warnBeforeSaving: Boolean,
-    onCloudRegionChange: (CloudRegion) -> Unit,
+    onPortalChange: (Portal) -> Unit,
     onAuthUrlChange: (String) -> Unit,
     onApiUrlChange: (String) -> Unit,
     onLogFilterChange: (String) -> Unit,
@@ -158,9 +158,9 @@ internal fun SettingsScreen(
                 SettingsPage.GENERAL -> {
                     GeneralSettingsPage(
                         config = config,
-                        cloudRegion = cloudRegion,
+                        portal = portal,
                         managedStatus = managedStatus,
-                        onCloudRegionChange = onCloudRegionChange,
+                        onPortalChange = onPortalChange,
                         onAuthUrlChange = onAuthUrlChange,
                         onApiUrlChange = onApiUrlChange,
                         onAccountSlugChange = onAccountSlugChange,
