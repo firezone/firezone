@@ -1,0 +1,12 @@
+Account Transfer in Progress
+
+Your Firezone account "<%= @account.slug %>" (<%= @account.id %>) is being moved to the <%= @destination_region %> region.
+
+The account is disabled while the move runs. Nobody can sign in, Clients cannot connect, and Gateways are offline.
+
+We email you again when the account is ready in the new region. After the move, every session, Gateway token, and API token is invalid. Each Gateway needs a new token and the new API URL, every API token has to be recreated, and users sign in again.
+
+Logs are not moved. They are deleted from the old region when the transfer completes.
+
+Thanks,
+The Firezone Team

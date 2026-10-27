@@ -2,6 +2,7 @@ defmodule Portal.Ops.RegionTransferTest do
   use Portal.DataCase, async: true
   import ExUnit.CaptureIO
   import Portal.AccountFixtures
+  import Portal.OutboundEmailTestHelpers
   import Portal.ActorFixtures
   import Portal.DeviceFixtures
   import Portal.GroupFixtures
@@ -12,6 +13,7 @@ defmodule Portal.Ops.RegionTransferTest do
   alias Portal.Ops.RegionTransfer
 
   setup do
+    Portal.Config.put_env_override(:data_residency_region, :us)
     account = account_fixture()
     actor = admin_actor_fixture(account: account)
     group = group_fixture(account: account)
@@ -27,10 +29,10 @@ defmodule Portal.Ops.RegionTransferTest do
     dir = Path.join(System.tmp_dir!(), "region-transfer-#{Ecto.UUID.generate()}")
     on_exit(fn -> File.rm_rf!(dir) end)
 
-    %{account: account, gateway: gateway, client: client, dir: dir}
+    %{account: account, actor: actor, gateway: gateway, client: client, dir: dir}
   end
 
-  describe "export/3" do
+  describe "export/2" do
     test "disables the account and writes one file per table", %{account: account, dir: dir} do
       output =
         capture_io("y\n", fn ->
@@ -50,6 +52,20 @@ defmodule Portal.Ops.RegionTransferTest do
       account = Repo.reload!(account)
       assert account.is_disabled
       assert account.disabled_reason == "Region transfer in progress"
+    end
+
+    test "emails the admins that the account is disabled for the move", %{
+      account: account,
+      actor: actor,
+      dir: dir
+    } do
+      capture_io("y\n", fn -> {:ok, _manifest} = RegionTransfer.export(account.id, dir) end)
+
+      [email] = collect_queued_emails(account.id)
+      assert email.subject == "Firezone Account Transfer in Progress"
+      assert email.text_body =~ "moved to the European Union region"
+      assert email.text_body =~ "every session, Gateway token, and API token is invalid"
+      assert Enum.map(email.bcc, fn {_name, address} -> address end) == [actor.email]
     end
 
     test "cuts the devices and gateway_tokens cycle through a nullable column", %{
@@ -101,6 +117,7 @@ defmodule Portal.Ops.RegionTransferTest do
 
     test "restores every row and the cut foreign keys", %{
       account: account,
+      actor: actor,
       gateway: gateway,
       client: client,
       dir: dir
@@ -128,9 +145,17 @@ defmodule Portal.Ops.RegionTransferTest do
       assert Repo.get_by!(Portal.GatewayToken, id: gateway.gateway_token_id).device_id == gateway.id
       assert Repo.get_by!(Portal.Device, id: client.id).actor_id == client.actor_id
 
+      Portal.Config.put_env_override(:data_residency_region, :eu)
       assert {:ok, enabled} = RegionTransfer.enable(account.id)
       refute enabled.is_disabled
       assert is_nil(enabled.disabled_reason)
+
+      assert email =
+               Enum.find(collect_queued_emails(account.id), &(&1.subject == "Firezone Account Transfer Complete"))
+
+      assert email.text_body =~ "now in the European Union region"
+      assert email.text_body =~ "/#{account.slug}"
+      assert Enum.map(email.bcc, fn {_name, address} -> address end) == [actor.email]
     end
 
     test "does nothing without confirmation", %{account: account, dir: dir} do

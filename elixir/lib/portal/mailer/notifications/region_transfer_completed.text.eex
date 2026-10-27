@@ -1,0 +1,14 @@
+Account Transfer Complete
+
+Your Firezone account "<%= @account.slug %>" (<%= @account.id %>) is now in the <%= @region %> region and enabled.
+
+Sign in to the new portal:
+<%= @sign_in_url %>
+
+Next steps:
+- Create a new token for each Gateway and redeploy it with the new API URL: <%= @api_url %>
+- Recreate every API token.
+- Ask users to sign in again. Links to the old portal redirect to the new one.
+
+Thanks,
+The Firezone Team
