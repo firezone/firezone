@@ -1,5 +1,5 @@
 import React, { useEffect, useId, useState } from "react";
-import { CloudRegion, GeneralSettingsViewModel } from "../generated/bindings";
+import { GeneralSettingsViewModel, Portal } from "../generated/bindings";
 import Button from "./Button";
 import SettingRow from "./SettingRow";
 import {
@@ -21,7 +21,7 @@ const defaultSettings: GeneralSettingsViewModel = {
   start_on_login: false,
   account_slug_is_managed: false,
   connect_on_start_is_managed: false,
-  cloud_region: "Custom",
+  portal: "Custom",
   auth_url: "",
   auth_url_is_managed: false,
   api_url: "",
@@ -43,7 +43,7 @@ export default function GeneralSettingsPage({
     setLocalSettings(settings ?? defaultSettings);
   }, [settings]);
 
-  const cloudRegionInputId = useId();
+  const portalInputId = useId();
   const authUrlInputId = useId();
   const apiUrlInputId = useId();
   const accountSlugInputId = useId();
@@ -79,42 +79,31 @@ export default function GeneralSettingsPage({
               />
             </SettingRow>
 
-            <SettingRow
-              field
-              inputId={cloudRegionInputId}
-              label="Authentication and control plane"
-            >
+            <SettingRow field inputId={portalInputId} label="Portal">
               <ManagedSelect
                 className="h-8 py-1"
-                id={cloudRegionInputId}
+                id={portalInputId}
                 managed={
                   localSettings.auth_url_is_managed ||
                   localSettings.api_url_is_managed
                 }
-                name="cloud_region"
+                name="portal"
                 onChange={(event) =>
                   setLocalSettings(
-                    selectCloudRegion(
-                      localSettings,
-                      event.target.value as CloudRegion
-                    )
+                    selectPortal(localSettings, event.target.value as Portal)
                   )
                 }
-                value={localSettings.cloud_region}
+                value={localSettings.portal}
               >
-                <option value="Us">Firezone Cloud US</option>
-                <option value="Eu">Firezone Cloud EU</option>
+                <option value="CloudUs">Firezone Cloud (US)</option>
+                <option value="CloudEu">Firezone Cloud (EU)</option>
                 <option value="Custom">Custom</option>
               </ManagedSelect>
             </SettingRow>
 
-            {localSettings.cloud_region === "Custom" && (
+            {localSettings.portal === "Custom" && (
               <>
-                <SettingRow
-                  field
-                  inputId={authUrlInputId}
-                  label="Auth Base URL"
-                >
+                <SettingRow field inputId={authUrlInputId} label="Auth URL">
                   <ManagedTextInput
                     className="h-8 py-1"
                     id={authUrlInputId}
@@ -218,19 +207,19 @@ export default function GeneralSettingsPage({
   );
 }
 
-// Picking "Custom" fills in the URLs last saved with it, so switching to a cloud region and
+// Picking "Custom" fills in the URLs last saved with it, so switching to a cloud portal and
 // back does not make the user type them again.
-function selectCloudRegion(
+function selectPortal(
   settings: GeneralSettingsViewModel,
-  cloudRegion: CloudRegion
+  portal: Portal
 ): GeneralSettingsViewModel {
-  if (cloudRegion !== "Custom") {
-    return { ...settings, cloud_region: cloudRegion };
+  if (portal !== "Custom") {
+    return { ...settings, portal };
   }
 
   return {
     ...settings,
-    cloud_region: cloudRegion,
+    portal,
     auth_url: settings.custom_auth_url,
     api_url: settings.custom_api_url,
   };

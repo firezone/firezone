@@ -12,7 +12,7 @@ const usSettings: GeneralSettingsViewModel = {
   connect_on_start_is_managed: false,
   account_slug: "",
   account_slug_is_managed: false,
-  cloud_region: "Us",
+  portal: "CloudUs",
   auth_url: "https://app.firezone.dev/",
   auth_url_is_managed: false,
   api_url: "wss://api.firezone.dev/",
@@ -48,9 +48,7 @@ async function render(settings: GeneralSettingsViewModel) {
       resetSettings={() => {}}
     />
   );
-  await expect
-    .element(page.getByLabelText("Authentication and control plane"))
-    .toBeInTheDocument();
+  await expect.element(page.getByLabelText("Portal")).toBeInTheDocument();
 
   return saveSettings;
 }
@@ -62,13 +60,10 @@ test("picking Custom fills in the last saved custom URLs", async () => {
     custom_api_url: "wss://api.firezone.example.com/",
   });
 
-  await userEvent.selectOptions(
-    page.getByLabelText("Authentication and control plane"),
-    "Custom"
-  );
+  await userEvent.selectOptions(page.getByLabelText("Portal"), "Custom");
 
   await expect
-    .element(page.getByLabelText("Auth Base URL"))
+    .element(page.getByLabelText("Auth URL"))
     .toHaveValue("https://firezone.example.com/");
   await expect
     .element(page.getByLabelText("API URL"))
@@ -79,7 +74,7 @@ test("picking Custom fills in the last saved custom URLs", async () => {
   await vi.waitFor(() =>
     expect(saveSettings).toHaveBeenCalledWith(
       expect.objectContaining({
-        cloud_region: "Custom",
+        portal: "Custom",
         auth_url: "https://firezone.example.com/",
         api_url: "wss://api.firezone.example.com/",
       })
@@ -90,24 +85,19 @@ test("picking Custom fills in the last saved custom URLs", async () => {
 test("picking Custom without saved custom URLs shows the current ones", async () => {
   await render(usSettings);
 
-  await userEvent.selectOptions(
-    page.getByLabelText("Authentication and control plane"),
-    "Custom"
-  );
+  await userEvent.selectOptions(page.getByLabelText("Portal"), "Custom");
 
   await expect
-    .element(page.getByLabelText("Auth Base URL"))
+    .element(page.getByLabelText("Auth URL"))
     .toHaveValue("https://app.firezone.dev/");
   await expect
     .element(page.getByLabelText("API URL"))
     .toHaveValue("wss://api.firezone.dev/");
 });
 
-test("a cloud region hides the URL fields", async () => {
+test("a cloud portal hides the URL fields", async () => {
   await render(usSettings);
 
-  await expect
-    .element(page.getByLabelText("Auth Base URL"))
-    .not.toBeInTheDocument();
+  await expect.element(page.getByLabelText("Auth URL")).not.toBeInTheDocument();
   await expect.element(page.getByLabelText("API URL")).not.toBeInTheDocument();
 });

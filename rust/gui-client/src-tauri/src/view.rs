@@ -10,8 +10,8 @@ use crate::{
     gui::Managed,
     logging::FileCount,
     settings::{
-        AdvancedSettings, CloudRegion, GeneralSettings, GeneralSettingsViewModel,
-        LogFilterViewModel, MdmSettings,
+        AdvancedSettings, GeneralSettings, GeneralSettingsViewModel, LogFilterViewModel,
+        MdmSettings, Portal,
     },
 };
 use url::Url;
@@ -22,10 +22,10 @@ pub struct GeneralSettingsForm {
     pub start_on_login: bool,
     pub connect_on_start: bool,
     pub account_slug: String,
-    pub cloud_region: CloudRegion,
-    /// Only used for [`CloudRegion::Custom`].
+    pub portal: Portal,
+    /// Only used for [`Portal::Custom`].
     pub auth_url: String,
-    /// Only used for [`CloudRegion::Custom`].
+    /// Only used for [`Portal::Custom`].
     pub api_url: String,
 }
 
@@ -33,7 +33,7 @@ impl GeneralSettingsForm {
     /// Returns `general_settings` and `advanced_settings` with the form's values applied.
     ///
     /// A managed URL wins over the saved one, so the form leaves it alone. Saving with
-    /// [`CloudRegion::Custom`] also remembers the URLs for the next time it is picked.
+    /// [`Portal::Custom`] also remembers the URLs for the next time it is picked.
     pub fn apply(
         self,
         mdm_settings: &MdmSettings,
@@ -50,7 +50,7 @@ impl GeneralSettingsForm {
             account_slug: (!account_slug.is_empty()).then(|| account_slug.to_owned()),
             ..general_settings
         };
-        if self.cloud_region == CloudRegion::Custom {
+        if self.portal == Portal::Custom {
             general_settings.custom_auth_url = Some(auth_url.clone());
             general_settings.custom_api_url = Some(api_url.clone());
         }
@@ -71,9 +71,9 @@ impl GeneralSettingsForm {
         Ok((general_settings, advanced_settings))
     }
 
-    /// Returns the auth and API URLs of the selected region, or the typed ones for [`CloudRegion::Custom`].
+    /// Returns the auth and API URLs of the selected portal, or the typed ones for [`Portal::Custom`].
     pub fn urls(&self) -> Result<(Url, Url)> {
-        if let Some(urls) = self.cloud_region.urls() {
+        if let Some(urls) = self.portal.urls() {
             return Ok(urls);
         }
 
@@ -427,8 +427,8 @@ mod tests {
     }
 
     #[test]
-    fn a_cloud_region_ignores_the_typed_urls() {
-        let form = general_settings_form(CloudRegion::Eu, "not a URL", "wss://ignored.example.com");
+    fn a_cloud_portal_ignores_the_typed_urls() {
+        let form = general_settings_form(Portal::CloudEu, "not a URL", "wss://ignored.example.com");
 
         let (auth_url, api_url) = form.urls().unwrap();
 
@@ -439,7 +439,7 @@ mod tests {
     #[test]
     fn custom_uses_the_typed_urls() {
         let form = general_settings_form(
-            CloudRegion::Custom,
+            Portal::Custom,
             "https://firezone.example.com",
             "wss://api.example.com",
         );
@@ -452,7 +452,7 @@ mod tests {
 
     #[test]
     fn custom_rejects_an_invalid_url() {
-        let form = general_settings_form(CloudRegion::Custom, "not a URL", "wss://api.example.com");
+        let form = general_settings_form(Portal::Custom, "not a URL", "wss://api.example.com");
 
         assert!(form.urls().is_err());
     }
@@ -460,7 +460,7 @@ mod tests {
     #[test]
     fn saving_custom_remembers_the_urls() {
         let form = general_settings_form(
-            CloudRegion::Custom,
+            Portal::Custom,
             "https://firezone.example.com",
             "wss://api.example.com",
         );
@@ -488,13 +488,13 @@ mod tests {
     }
 
     #[test]
-    fn saving_a_cloud_region_keeps_the_remembered_custom_urls() {
+    fn saving_a_cloud_portal_keeps_the_remembered_custom_urls() {
         let remembered = GeneralSettings {
             custom_auth_url: Some(Url::parse("https://firezone.example.com").unwrap()),
             custom_api_url: Some(Url::parse("wss://api.example.com").unwrap()),
             ..Default::default()
         };
-        let form = general_settings_form(CloudRegion::Us, "", "");
+        let form = general_settings_form(Portal::CloudUs, "", "");
 
         let (general_settings, advanced_settings) = form
             .apply(
@@ -532,7 +532,7 @@ mod tests {
             auth_url: Url::parse("https://saved.example.com").unwrap(),
             ..AdvancedSettings::default()
         };
-        let form = general_settings_form(CloudRegion::Eu, "", "");
+        let form = general_settings_form(Portal::CloudEu, "", "");
 
         let (_, advanced_settings) = form
             .apply(&mdm_settings, GeneralSettings::default(), saved)
@@ -548,17 +548,13 @@ mod tests {
         );
     }
 
-    fn general_settings_form(
-        cloud_region: CloudRegion,
-        auth_url: &str,
-        api_url: &str,
-    ) -> GeneralSettingsForm {
+    fn general_settings_form(portal: Portal, auth_url: &str, api_url: &str) -> GeneralSettingsForm {
         GeneralSettingsForm {
             start_minimized: true,
             start_on_login: false,
             connect_on_start: false,
             account_slug: String::new(),
-            cloud_region,
+            portal,
             auth_url: auth_url.to_owned(),
             api_url: api_url.to_owned(),
         }

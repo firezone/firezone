@@ -72,10 +72,10 @@ pub struct GeneralSettings {
     pub connect_on_start: Option<bool>,
     #[serde(default)]
     pub account_slug: Option<String>,
-    /// The auth URL last saved with [`CloudRegion::Custom`], to prefill the field when it is picked again.
+    /// The auth URL last saved with [`Portal::Custom`], to prefill the field when it is picked again.
     #[serde(default)]
     pub custom_auth_url: Option<Url>,
-    /// The API URL last saved with [`CloudRegion::Custom`], to prefill the field when it is picked again.
+    /// The API URL last saved with [`Portal::Custom`], to prefill the field when it is picked again.
     #[serde(default)]
     pub custom_api_url: Option<Url>,
 }
@@ -92,14 +92,14 @@ pub struct GeneralSettingsViewModel {
     pub connect_on_start_is_managed: bool,
     pub account_slug: String,
     pub account_slug_is_managed: bool,
-    pub cloud_region: CloudRegion,
+    pub portal: Portal,
     pub auth_url: String,
     pub auth_url_is_managed: bool,
     pub api_url: String,
     pub api_url_is_managed: bool,
-    /// What the auth URL field shows when [`CloudRegion::Custom`] is picked: the last saved custom URL, or else `auth_url`.
+    /// What the auth URL field shows when [`Portal::Custom`] is picked: the last saved custom URL, or else `auth_url`.
     pub custom_auth_url: String,
-    /// What the API URL field shows when [`CloudRegion::Custom`] is picked: the last saved custom URL, or else `api_url`.
+    /// What the API URL field shows when [`Portal::Custom`] is picked: the last saved custom URL, or else `api_url`.
     pub custom_api_url: String,
 }
 
@@ -115,10 +115,10 @@ impl GeneralSettingsViewModel {
         let api_url = mdm_settings.api_url.unwrap_or(advanced_settings.api_url);
 
         // With only one of the URLs managed, `Custom` keeps the other one editable.
-        let cloud_region = if auth_url_is_managed == api_url_is_managed {
-            CloudRegion::from_urls(&auth_url, &api_url)
+        let portal = if auth_url_is_managed == api_url_is_managed {
+            Portal::from_urls(&auth_url, &api_url)
         } else {
-            CloudRegion::Custom
+            Portal::Custom
         };
         let custom_auth_url = general_settings
             .custom_auth_url
@@ -144,7 +144,7 @@ impl GeneralSettingsViewModel {
                 .account_slug
                 .or(general_settings.account_slug)
                 .unwrap_or_default(),
-            cloud_region,
+            portal,
             auth_url: auth_url.to_string(),
             auth_url_is_managed,
             api_url: api_url.to_string(),
@@ -155,34 +155,34 @@ impl GeneralSettingsViewModel {
     }
 }
 
-/// The Firezone Cloud deployment a client signs in to, or [`CloudRegion::Custom`] for any other URLs.
+/// The portal a client signs in to: a Firezone Cloud deployment, or [`Portal::Custom`] for any other URLs.
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize, specta::Type)]
-pub enum CloudRegion {
-    Us,
-    Eu,
+pub enum Portal {
+    CloudUs,
+    CloudEu,
     Custom,
 }
 
-impl CloudRegion {
-    /// Returns the region whose URLs are exactly `auth_url` and `api_url`, or [`CloudRegion::Custom`].
+impl Portal {
+    /// Returns the portal whose URLs are exactly `auth_url` and `api_url`, or [`Portal::Custom`].
     pub fn from_urls(auth_url: &Url, api_url: &Url) -> Self {
-        [Self::Us, Self::Eu]
+        [Self::CloudUs, Self::CloudEu]
             .into_iter()
-            .find(|region| {
-                region
+            .find(|portal| {
+                portal
                     .urls()
                     .is_some_and(|(auth, api)| &auth == auth_url && &api == api_url)
             })
             .unwrap_or(Self::Custom)
     }
 
-    /// Returns the compiled-in auth and API URLs of the region, [`None`] for [`CloudRegion::Custom`].
+    /// Returns the compiled-in auth and API URLs of the portal, [`None`] for [`Portal::Custom`].
     ///
-    /// These are never taken from the portal: the region decides which portal the client talks to.
+    /// These are never taken from the portal itself: they decide which portal the client talks to.
     pub fn urls(self) -> Option<(Url, Url)> {
         let (auth_url, api_url) = match self {
-            Self::Us => (cloud_region::US_AUTH_URL, cloud_region::US_API_URL),
-            Self::Eu => (cloud_region::EU_AUTH_URL, cloud_region::EU_API_URL),
+            Self::CloudUs => (portal::US_AUTH_URL, portal::US_API_URL),
+            Self::CloudEu => (portal::EU_AUTH_URL, portal::EU_API_URL),
             Self::Custom => return None,
         };
 
@@ -193,7 +193,7 @@ impl CloudRegion {
     }
 }
 
-mod cloud_region {
+mod portal {
     pub(crate) const US_AUTH_URL: &str = "https://app.firezone.dev";
     pub(crate) const US_API_URL: &str = "wss://api.firezone.dev/";
     pub(crate) const EU_AUTH_URL: &str = "https://eu.app.firezone.dev";
@@ -384,13 +384,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn saved_us_urls_show_the_us_region() {
+    fn saved_us_urls_show_firezone_cloud_us() {
         let view_model = view_model(
             MdmSettings::default(),
             advanced_settings("https://app.firezone.dev", "wss://api.firezone.dev"),
         );
 
-        assert_eq!(view_model.cloud_region, CloudRegion::Us);
+        assert_eq!(view_model.portal, Portal::CloudUs);
     }
 
     #[test]
@@ -400,7 +400,7 @@ mod tests {
             advanced_settings("https://firezone.example.com", "wss://api.example.com"),
         );
 
-        assert_eq!(view_model.cloud_region, CloudRegion::Custom);
+        assert_eq!(view_model.portal, Portal::Custom);
         assert_eq!(view_model.auth_url, "https://firezone.example.com/");
         assert_eq!(view_model.api_url, "wss://api.example.com/");
     }
@@ -418,13 +418,13 @@ mod tests {
             advanced_settings("https://app.firezone.dev", "wss://api.firezone.dev"),
         );
 
-        assert_eq!(view_model.cloud_region, CloudRegion::Eu);
+        assert_eq!(view_model.portal, Portal::CloudEu);
         assert!(view_model.auth_url_is_managed);
         assert!(view_model.api_url_is_managed);
     }
 
     #[test]
-    fn managed_urls_match_a_region_despite_trivial_differences() {
+    fn managed_urls_match_a_portal_despite_trivial_differences() {
         let mdm_settings = MdmSettings {
             auth_url: Some(Url::parse("HTTPS://EU.APP.FIREZONE.DEV:443/").unwrap()),
             api_url: Some(Url::parse("wss://eu.api.firezone.dev").unwrap()),
@@ -436,7 +436,7 @@ mod tests {
             advanced_settings("https://app.firezone.dev", "wss://api.firezone.dev"),
         );
 
-        assert_eq!(view_model.cloud_region, CloudRegion::Eu);
+        assert_eq!(view_model.portal, Portal::CloudEu);
     }
 
     #[test]
@@ -451,7 +451,7 @@ mod tests {
             advanced_settings("https://app.firezone.dev", "wss://api.firezone.dev"),
         );
 
-        assert_eq!(view_model.cloud_region, CloudRegion::Custom);
+        assert_eq!(view_model.portal, Portal::Custom);
     }
 
     #[test]
@@ -479,7 +479,7 @@ mod tests {
             advanced_settings("https://eu.app.firezone.dev", "wss://eu.api.firezone.dev"),
         );
 
-        assert_eq!(view_model.cloud_region, CloudRegion::Eu);
+        assert_eq!(view_model.portal, Portal::CloudEu);
         assert_eq!(view_model.custom_auth_url, "https://firezone.example.com/");
         assert_eq!(view_model.custom_api_url, "wss://api.example.com/");
     }

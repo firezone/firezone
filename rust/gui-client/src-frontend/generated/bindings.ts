@@ -105,34 +105,34 @@ x509CertificateChanged: "x509-certificate-changed"
 
 /** user-defined types **/
 
-/**
- * The Firezone Cloud deployment a client signs in to, or [`CloudRegion::Custom`] for any other URLs.
- */
-export type CloudRegion = "Us" | "Eu" | "Custom"
 export type Error = string
 export type FileCount = { bytes: number; files: number }
 export type GeneralSettingsChanged = GeneralSettingsViewModel
-export type GeneralSettingsForm = { start_minimized: boolean; start_on_login: boolean; connect_on_start: boolean; account_slug: string; cloud_region: CloudRegion;
+export type GeneralSettingsForm = { start_minimized: boolean; start_on_login: boolean; connect_on_start: boolean; account_slug: string; portal: Portal;
 /**
- * Only used for [`CloudRegion::Custom`].
+ * Only used for [`Portal::Custom`].
  */
 auth_url: string;
 /**
- * Only used for [`CloudRegion::Custom`].
+ * Only used for [`Portal::Custom`].
  */
 api_url: string }
-export type GeneralSettingsViewModel = { start_minimized: boolean; start_on_login: boolean; connect_on_start: boolean; connect_on_start_is_managed: boolean; account_slug: string; account_slug_is_managed: boolean; cloud_region: CloudRegion; auth_url: string; auth_url_is_managed: boolean; api_url: string; api_url_is_managed: boolean;
+export type GeneralSettingsViewModel = { start_minimized: boolean; start_on_login: boolean; connect_on_start: boolean; connect_on_start_is_managed: boolean; account_slug: string; account_slug_is_managed: boolean; portal: Portal; auth_url: string; auth_url_is_managed: boolean; api_url: string; api_url_is_managed: boolean;
 /**
- * What the auth URL field shows when [`CloudRegion::Custom`] is picked: the last saved custom URL, or else `auth_url`.
+ * What the auth URL field shows when [`Portal::Custom`] is picked: the last saved custom URL, or else `auth_url`.
  */
 custom_auth_url: string;
 /**
- * What the API URL field shows when [`CloudRegion::Custom`] is picked: the last saved custom URL, or else `api_url`.
+ * What the API URL field shows when [`Portal::Custom`] is picked: the last saved custom URL, or else `api_url`.
  */
 custom_api_url: string }
 export type LogFilterChanged = LogFilterViewModel
 export type LogFilterViewModel = { log_filter: string; log_filter_is_managed: boolean }
 export type LogsRecounted = FileCount
+/**
+ * The portal a client signs in to: a Firezone Cloud deployment, or [`Portal::Custom`] for any other URLs.
+ */
+export type Portal = "CloudUs" | "CloudEu" | "Custom"
 export type SessionChanged = SessionViewModel
 export type SessionViewModel = { SignedIn: { account_slug: string; actor_name: string } } | "Loading" | "SignedOut"
 /**
