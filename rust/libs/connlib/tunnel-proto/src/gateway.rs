@@ -327,7 +327,7 @@ impl GatewayState {
             .peer_by_id(&client.id)
             .is_some_and(|peer| peer.public_key() != client.public_key)
         {
-            tracing::debug!("Client reconnected with a new key; forgetting its previous session");
+            tracing::debug!("Client reconnected with a new key; clearing its previous state");
 
             self.peers.remove(&client.id);
         }
