@@ -122,16 +122,6 @@ impl NatTable {
         Ok(outside.into_inner())
     }
 
-    /// Removes all sessions towards `inside_dst`.
-    pub(crate) fn remove_sessions_to(&mut self, inside_dst: IpAddr) {
-        for (inside, _) in self
-            .state_by_inside
-            .extract_if(|inside, _| inside.1 == inside_dst)
-        {
-            self.table.remove_by_left(&inside);
-        }
-    }
-
     pub(crate) fn try_translate_outgoing_existing(
         &mut self,
         packet: &IpPacket,

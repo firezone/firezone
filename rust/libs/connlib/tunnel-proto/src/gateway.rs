@@ -322,6 +322,16 @@ impl GatewayState {
         now: Instant,
         flow_logs_ingest_token: IngestToken,
     ) {
+        if self
+            .peers
+            .peer_by_id(&client.id)
+            .is_some_and(|peer| peer.public_key() != client.public_key)
+        {
+            tracing::debug!("Client reconnected with a new key; forgetting its previous session");
+
+            self.peers.remove(&client.id);
+        }
+
         self.node.upsert_connection(
             client.id,
             client.public_key.into(),
@@ -336,11 +346,7 @@ impl GatewayState {
         );
 
         let result = self.allow_access(
-            client.id,
-            IpConfig {
-                v4: client.ipv4,
-                v6: client.ipv6,
-            },
+            &client,
             flow_logs_ingest_token,
             expires_at,
             resource,
@@ -355,8 +361,7 @@ impl GatewayState {
 
     pub fn allow_access(
         &mut self,
-        client: ClientId,
-        client_tun: IpConfig,
+        client: &Client,
         flow_logs_ingest_token: IngestToken,
         expires_at: Option<Duration>,
         resource: ResourceDescription,
@@ -369,14 +374,19 @@ impl GatewayState {
         let expires_in = expires_at.map(|e| e.saturating_duration_since(now));
 
         tracing::info!(
-            cid = %client,
+            cid = %client.id,
             rid = %resource.id(),
             expires_in = expires_in.map(tracing::field::debug),
             "Allowing access to resource",
         );
 
-        let peer = self.peers.upsert(client, || {
-            ClientOnGateway::new(client, client_tun, gateway_tun)
+        let peer = self.peers.upsert(client.id, || {
+            let client_tun = IpConfig {
+                v4: client.ipv4,
+                v6: client.ipv6,
+            };
+
+            ClientOnGateway::new(client.id, client.public_key, client_tun, gateway_tun)
         });
 
         peer.add_resource(resource.clone(), expires_at, now);
