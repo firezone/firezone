@@ -2,47 +2,46 @@ defmodule Portal.Ops.RegionTransfer do
   @moduledoc """
   Moves one account between Firezone Cloud regions.
 
-  `export/3` disables the account and writes every row it owns to a directory,
+  `export/2` disables the account and writes every row it owns to a directory,
   one PostgreSQL COPY file per table plus a manifest. `import/1` loads that
   directory into the database of the other region in one transaction, and
   `enable/1` turns the account back on once the move is verified. The runbook
   in the infra repository, README-region-transfer.md, lists the steps around
   these calls.
+
+  The log tables are not moved. They stay in the source region until the
+  account is deleted there, which cascades to them.
   """
   alias __MODULE__.Database
+  alias Portal.Mailer
+  alias Portal.Mailer.Notifications
+  require Logger
 
   @disabled_reason "Region transfer in progress"
   @manifest "manifest.json"
+  @region_names %{us: "United States", eu: "European Union"}
 
   # Session state that users recreate by signing in, rows the account disable
-  # hook deletes anyway, and OAuth state bound to this region's clients.
-  @skipped_tables ~w(client_tokens feedback_submissions oauth_authorization_codes oauth_grants oauth_tokens one_time_passcodes policy_authorizations portal_sessions)
+  # hook deletes anyway, OAuth state bound to this region's clients, and the
+  # log tables, which are deleted with the account in the source region.
+  @skipped_tables ~w(api_request_logs change_logs client_tokens feedback_submissions flow_logs oauth_authorization_codes oauth_grants oauth_tokens one_time_passcodes policy_authorizations portal_sessions session_logs)
 
-  @log_tables ~w(api_request_logs change_logs flow_logs session_logs)
-
-  @doc """
-  Disables the account and exports it to `dir`.
-
-  Options:
-
-    * `:logs` - also export the four log tables. Defaults to `false`.
-  """
+  @doc "Disables the account and exports it to `dir`."
   # sobelow_skip ["Traversal.FileModule"]
-  def export(account_id, dir, opts \\ []) do
-    logs? = Keyword.get(opts, :logs, false)
+  def export(account_id, dir) do
     account = Database.fetch_account!(account_id)
 
     tables = Database.list_account_tables() -- @skipped_tables
-    tables = if logs?, do: tables, else: tables -- @log_tables
     {ordered, deferred} = order_tables(tables, Database.foreign_keys(tables))
     counts = Map.new(ordered, &{&1, Database.count_rows(&1, account.id)})
 
     print_summary("Export", account, Enum.map(ordered, &{&1, counts[&1]}))
-    IO.puts("Skipped: #{Enum.join(@skipped_tables, ", ")}#{if logs?, do: "", else: ", " <> Enum.join(@log_tables, ", ")}")
+    IO.puts("Skipped: #{Enum.join(@skipped_tables, ", ")}")
 
     if confirm?("Disable the account and export it to #{dir}? [y/N]") do
       File.mkdir_p!(dir)
       {:ok, account} = Database.disable_account(account, @disabled_reason)
+      notify_admins(account, &Notifications.region_transfer_started_email(&1, &2, other_region_name()))
 
       account_columns = Database.columns("accounts")
       1 = Database.copy_out("accounts", account_columns, "id", account.id, Path.join(dir, "accounts.copy"))
@@ -104,9 +103,34 @@ defmodule Portal.Ops.RegionTransfer do
     end
   end
 
-  @doc "Turns an imported account back on."
+  @doc "Turns an imported account back on and tells its admins."
   def enable(account_id) do
-    account_id |> Database.fetch_account!() |> Database.enable_account()
+    with {:ok, account} <- account_id |> Database.fetch_account!() |> Database.enable_account() do
+      notify_admins(account, &Notifications.region_transfer_completed_email(&1, &2, region_name()))
+      {:ok, account}
+    end
+  end
+
+  defp notify_admins(account, build_email) do
+    case Database.list_admin_emails(account.id) do
+      [] ->
+        Logger.warning("No admins to notify about the region transfer", account_id: account.id)
+
+      admin_emails ->
+        case account |> build_email.(admin_emails) |> Mailer.enqueue() do
+          {:ok, _job} -> :ok
+          {:error, reason} -> Logger.error("Failed to enqueue region transfer email", account_id: account.id, reason: inspect(reason))
+        end
+    end
+  end
+
+  defp region_name, do: Map.fetch!(@region_names, Portal.Config.fetch_env!(:portal, :data_residency_region))
+
+  defp other_region_name do
+    case Portal.Config.fetch_env!(:portal, :data_residency_region) do
+      :us -> @region_names.eu
+      :eu -> @region_names.us
+    end
   end
 
   defp confirm_import(dir, manifest) do
@@ -203,6 +227,17 @@ defmodule Portal.Ops.RegionTransfer do
       from(a in Account, where: a.slug == ^slug, select: a.id)
       |> Safe.unscoped()
       |> Safe.one() != nil
+    end
+
+    def list_admin_emails(account_id) do
+      from(a in Portal.Actor,
+        where: a.account_id == ^account_id,
+        where: a.type == :account_admin_user,
+        where: a.is_disabled == false,
+        select: a.email
+      )
+      |> Safe.unscoped()
+      |> Safe.all()
     end
 
     def disable_account(%Account{is_disabled: true} = account, _reason), do: {:ok, account}
