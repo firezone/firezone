@@ -11,9 +11,11 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.firezone.android.core.data.Repository
+import dev.firezone.android.core.data.TokenStore
 import dev.firezone.android.core.data.model.Config
 import dev.firezone.android.core.data.model.ManagedConfigStatus
 import dev.firezone.android.core.data.model.Portal
+import dev.firezone.android.core.data.model.SignInConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -39,6 +41,7 @@ internal class SettingsViewModel
     @Inject
     constructor(
         private val repo: Repository,
+        tokenStore: TokenStore,
     ) : ViewModel() {
         private val _uiState = MutableStateFlow(UiState())
         val uiState: StateFlow<UiState> = _uiState
@@ -59,9 +62,8 @@ internal class SettingsViewModel
         var portal by mutableStateOf(Portal.CUSTOM)
             private set
 
-        // Changing the account or the portal only takes effect after signing out and back in.
-        var isSignOutNoticePending by mutableStateOf(false)
-            private set
+        // `null` while signed out.
+        val signedInWith: SignInConfig? = tokenStore.signedInWith()
 
         // Each change saves the whole config, so the saves have to land in the order they were made.
         private val saveMutex = Mutex()
@@ -120,10 +122,6 @@ internal class SettingsViewModel
         fun onStartOnLoginChanged(isChecked: Boolean) = persist(config.copy(startOnLogin = isChecked))
 
         fun onConnectOnStartChanged(isChecked: Boolean) = persist(config.copy(connectOnStart = isChecked))
-
-        fun onSignOutNoticeDismissed() {
-            isSignOutNoticePending = false
-        }
 
         fun deleteLogDirectory(context: Context) {
             viewModelScope.launch(Dispatchers.IO) {
@@ -229,10 +227,6 @@ internal class SettingsViewModel
         private fun getLogZipPath(context: Context) = "${context.cacheDir.absolutePath}/logs.zip"
 
         private fun persist(newConfig: Config) {
-            val requiresReLogin =
-                newConfig.authUrl != config.authUrl ||
-                    newConfig.apiUrl != config.apiUrl ||
-                    newConfig.accountSlug != config.accountSlug
             config = newConfig
 
             // Only URLs the user typed are worth offering again; managed ones come back by themselves.
@@ -243,9 +237,6 @@ internal class SettingsViewModel
 
             viewModelScope.launch {
                 saveMutex.withLock { repo.saveSettings(newConfig).collect() }
-                if (requiresReLogin) {
-                    isSignOutNoticePending = true
-                }
             }
         }
 

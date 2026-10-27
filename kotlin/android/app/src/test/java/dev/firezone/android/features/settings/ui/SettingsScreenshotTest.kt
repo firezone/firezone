@@ -14,6 +14,8 @@ import dev.firezone.android.R
 import dev.firezone.android.STORE_SCREENSHOT_QUALIFIERS
 import dev.firezone.android.core.data.model.ManagedConfigStatus
 import dev.firezone.android.core.data.model.Portal
+import dev.firezone.android.core.data.model.SignInConfig
+import dev.firezone.android.core.data.model.signInConfig
 import dev.firezone.android.features.settings.ui.compose.SettingsScreen
 import dev.firezone.android.ui.theme.FirezoneTheme
 import org.junit.Rule
@@ -61,6 +63,16 @@ class SettingsScreenshotTest {
         )
 
     @Test
+    fun generalSettingsWithPendingSignInChange() =
+        captureSettingsPage(
+            "settings-general-sign-in-change",
+            R.string.settings_title,
+            config = euConfig,
+            portal = Portal.CLOUD_EU,
+            signedInWith = sampleConfig.signInConfig(),
+        )
+
+    @Test
     fun deviceTrustSettingsWithCertificate() = captureDeviceTrustPage("device-trust-filled", availableCertificate)
 
     @Test
@@ -85,8 +97,11 @@ class SettingsScreenshotTest {
         config: FirezoneConfig = sampleConfig,
         portal: Portal = Portal.CLOUD_US,
         managedStatus: ManagedConfigStatus = ManagedConfigStatus.NOTHING_MANAGED,
+        signedInWith: SignInConfig? = null,
     ) {
-        composeRule.setContent { FirezoneTheme { SettingsScreenSample(deviceTrustState, config, portal, managedStatus) } }
+        composeRule.setContent {
+            FirezoneTheme { SettingsScreenSample(deviceTrustState, config, portal, managedStatus, signedInWith) }
+        }
         composeRule.onNode(hasText(RuntimeEnvironment.getApplication().getString(tabLabel)) and isSelectable()).performClick()
         composeRule.waitForIdle()
 
@@ -193,6 +208,7 @@ private fun SettingsScreenSample(
     config: FirezoneConfig,
     portal: Portal,
     managedStatus: ManagedConfigStatus,
+    signedInWith: SignInConfig?,
 ) {
     SettingsScreen(
         config = config,
@@ -201,7 +217,7 @@ private fun SettingsScreenSample(
         logSizeBytes = LOG_DIRECTORY_BYTES,
         deviceTrustState = deviceTrustState,
         showDeviceTrust = deviceTrustState.alias != null,
-        showSignOutNotice = false,
+        signedInWith = signedInWith,
         onPortalChange = {},
         onAuthUrlChange = {},
         onApiUrlChange = {},
@@ -215,7 +231,6 @@ private fun SettingsScreenSample(
         onLogsShown = {},
         onSelectCertificate = {},
         onDeviceTrustShown = {},
-        onSignOutNoticeDismissed = {},
         onBack = {},
         // The diagnostics page shows the version and commit the app was built from, which change
         // with every release and push; pin them so the image only changes when the UI does.

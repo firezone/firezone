@@ -33,6 +33,7 @@ import dev.firezone.android.R
 import dev.firezone.android.core.data.model.Config
 import dev.firezone.android.core.data.model.ManagedConfigStatus
 import dev.firezone.android.core.data.model.Portal
+import dev.firezone.android.core.data.model.SignInConfig
 import dev.firezone.android.features.session.ui.compose.BackTopBar
 import dev.firezone.android.features.settings.ui.DeviceTrustSettingsViewModel
 import dev.firezone.android.ui.FirezoneIcons
@@ -68,7 +69,7 @@ internal fun SettingsScreen(
     logSizeBytes: Long,
     deviceTrustState: DeviceTrustSettingsViewModel.UiState,
     showDeviceTrust: Boolean,
-    showSignOutNotice: Boolean,
+    signedInWith: SignInConfig?,
     onPortalChange: (Portal) -> Unit,
     onAuthUrlChange: (String) -> Unit,
     onApiUrlChange: (String) -> Unit,
@@ -82,7 +83,6 @@ internal fun SettingsScreen(
     onLogsShown: () -> Unit,
     onSelectCertificate: () -> Unit,
     onDeviceTrustShown: () -> Unit,
-    onSignOutNoticeDismissed: () -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
     // Parameters so the screenshot test can pin them; the build's commit changes with every push.
@@ -139,6 +139,7 @@ internal fun SettingsScreen(
                         config = config,
                         portal = portal,
                         managedStatus = managedStatus,
+                        signedInWith = signedInWith,
                         onPortalChange = onPortalChange,
                         onAuthUrlChange = onAuthUrlChange,
                         onApiUrlChange = onApiUrlChange,
@@ -188,19 +189,6 @@ internal fun SettingsScreen(
             dismissButton = {
                 TextButton(onClick = { showResetConfirmation = false }) {
                     Text(stringResource(android.R.string.cancel))
-                }
-            },
-        )
-    }
-
-    if (showSignOutNotice) {
-        AlertDialog(
-            onDismissRequest = onSignOutNoticeDismissed,
-            title = { Text(stringResource(R.string.sign_out_notice_title)) },
-            text = { Text(stringResource(R.string.sign_out_notice_message)) },
-            confirmButton = {
-                TextButton(onClick = onSignOutNoticeDismissed) {
-                    Text(stringResource(R.string.sign_out_notice_confirm))
                 }
             },
         )

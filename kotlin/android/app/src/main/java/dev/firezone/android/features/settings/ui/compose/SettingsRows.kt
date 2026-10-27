@@ -146,6 +146,7 @@ fun TextPreferenceRow(
     modifier: Modifier = Modifier,
     isValid: (String) -> Boolean = { true },
     errorMessage: @Composable (String) -> String? = { null },
+    note: (String) -> String? = { null },
 ) {
     var isEditing by rememberSaveable { mutableStateOf(false) }
 
@@ -178,7 +179,7 @@ fun TextPreferenceRow(
                     onValueChange = { draft = it },
                     singleLine = true,
                     isError = !isDraftValid,
-                    supportingText = draftError?.let { { Text(it) } },
+                    supportingText = (draftError ?: note(draft.text))?.let { { Text(it) } },
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
                     keyboardActions = KeyboardActions(onDone = { if (isDraftValid) confirm() }),
                     modifier = Modifier.fillMaxWidth().focusRequester(focusRequester),
@@ -209,6 +210,7 @@ fun <T> ChoicePreferenceRow(
     isManaged: Boolean,
     onSelect: (T) -> Unit,
     modifier: Modifier = Modifier,
+    note: String? = null,
 ) {
     var isChoosing by rememberSaveable { mutableStateOf(false) }
 
@@ -241,6 +243,14 @@ fun <T> ChoicePreferenceRow(
                             RadioButton(selected = option == selected, onClick = null)
                             Text(optionLabel(option), style = MaterialTheme.typography.bodyLarge)
                         }
+                    }
+                    if (note != null) {
+                        Text(
+                            note,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 8.dp),
+                        )
                     }
                 }
             },

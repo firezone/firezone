@@ -34,8 +34,6 @@ internal class SettingsActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        val isUserSignedIn = intent.getBooleanExtra(EXTRA_IS_USER_SIGNED_IN, false)
-
         setContent {
             FirezoneTheme {
                 val managedStatus by viewModel.managedStatusStateFlow.collectAsStateWithLifecycle()
@@ -53,7 +51,7 @@ internal class SettingsActivity : AppCompatActivity() {
                     showDeviceTrust =
                         repository.isX509CertificateRequired(applicationRestrictions) ||
                             deviceTrustState.alias != null,
-                    showSignOutNotice = isUserSignedIn && viewModel.isSignOutNoticePending,
+                    signedInWith = viewModel.signedInWith,
                     onPortalChange = viewModel::onPortalChanged,
                     onAuthUrlChange = viewModel::onAuthUrlChanged,
                     onApiUrlChange = viewModel::onApiUrlChanged,
@@ -67,7 +65,6 @@ internal class SettingsActivity : AppCompatActivity() {
                     onLogsShown = { viewModel.onViewResume(applicationContext) },
                     onSelectCertificate = ::chooseCertificate,
                     onDeviceTrustShown = deviceTrustViewModel::loadDetails,
-                    onSignOutNoticeDismissed = viewModel::onSignOutNoticeDismissed,
                     onBack = ::finish,
                 )
             }
@@ -116,13 +113,6 @@ internal class SettingsActivity : AppCompatActivity() {
     }
 
     companion object {
-        private const val EXTRA_IS_USER_SIGNED_IN = "isUserSignedIn"
-
-        fun createIntent(
-            context: Context,
-            isUserSignedIn: Boolean,
-        ): Intent =
-            Intent(context, SettingsActivity::class.java)
-                .putExtra(EXTRA_IS_USER_SIGNED_IN, isUserSignedIn)
+        fun createIntent(context: Context): Intent = Intent(context, SettingsActivity::class.java)
     }
 }

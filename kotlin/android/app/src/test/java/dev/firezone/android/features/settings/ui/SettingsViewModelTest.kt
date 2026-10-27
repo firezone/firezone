@@ -7,12 +7,14 @@ import android.content.SharedPreferences
 import android.os.Bundle
 import android.os.Looper
 import dev.firezone.android.core.data.Repository
+import dev.firezone.android.core.data.TokenStore
 import dev.firezone.android.core.data.model.Portal
+import dev.firezone.android.core.data.model.SignInConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -27,6 +29,7 @@ import org.robolectric.annotation.Config
 class SettingsViewModelTest {
     private lateinit var sharedPreferences: SharedPreferences
     private lateinit var repository: Repository
+    private lateinit var tokenStore: TokenStore
     private lateinit var viewModel: SettingsViewModel
 
     @Before
@@ -37,7 +40,8 @@ class SettingsViewModelTest {
                 .getSharedPreferences("settings-view-model-test", Context.MODE_PRIVATE)
         sharedPreferences.edit().clear().commit()
         repository = Repository(RuntimeEnvironment.getApplication(), Dispatchers.Unconfined, sharedPreferences)
-        viewModel = SettingsViewModel(repository)
+        tokenStore = TokenStore(sharedPreferences)
+        viewModel = SettingsViewModel(repository, tokenStore)
     }
 
     @Test
@@ -156,14 +160,26 @@ class SettingsViewModelTest {
         }
 
     @Test
-    fun `a confirmed account slug persists immediately and asks for a sign-out`() {
+    fun `a confirmed account slug persists immediately`() {
         populateFields()
 
         viewModel.onAccountSlugChanged("example-corp")
         settle()
 
         assertEquals("example-corp", repository.getConfigSync().accountSlug)
-        assertTrue(viewModel.isSignOutNoticePending)
+    }
+
+    @Test
+    fun `the settings a session signed in with are remembered until sign-out`() {
+        val signedInWith = SignInConfig("example-corp", "https://app.firezone.dev", "wss://api.firezone.dev")
+
+        assertNull(SettingsViewModel(repository, tokenStore).signedInWith)
+
+        tokenStore.save("token", signedInWith)
+        assertEquals(signedInWith, SettingsViewModel(repository, tokenStore).signedInWith)
+
+        tokenStore.clear()
+        assertNull(SettingsViewModel(repository, tokenStore).signedInWith)
     }
 
     @Test
@@ -174,7 +190,6 @@ class SettingsViewModelTest {
         settle()
 
         assertTrue(repository.getConfigSync().connectOnStart)
-        assertFalse(viewModel.isSignOutNoticePending)
     }
 
     @Test
@@ -261,7 +276,7 @@ class SettingsViewModelTest {
 
     // What opening the settings screen again starts from.
     private fun reopen() {
-        viewModel = SettingsViewModel(repository)
+        viewModel = SettingsViewModel(repository, tokenStore)
         populateFields()
     }
 
