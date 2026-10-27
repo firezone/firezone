@@ -11,9 +11,10 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -49,24 +50,24 @@ fun LogSettingsPage(
                 isManaged = managedStatus.isLogFilterManaged,
                 onValueChange = onLogFilterChange,
             )
-            OutlinedTextField(
-                value = Formatter.formatShortFileSize(context, logSizeBytes),
-                onValueChange = {},
-                readOnly = true,
-                label = { Text(stringResource(R.string.log_files)) },
-                singleLine = true,
-                trailingIcon = {
-                    Row {
-                        IconButton(onClick = onClearLogs, enabled = hasLogs) {
-                            Icon(imageVector = FirezoneIcons.Delete, contentDescription = stringResource(R.string.clear_log_directory))
-                        }
-                        IconButton(onClick = onExportLogs, enabled = hasLogs) {
-                            Icon(imageVector = FirezoneIcons.Share, contentDescription = stringResource(R.string.share_diagnostic_logs))
-                        }
-                    }
-                },
-                modifier = Modifier.fillMaxWidth(),
-            )
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(text = stringResource(R.string.log_files), modifier = Modifier.weight(1f))
+                Text(
+                    text = Formatter.formatShortFileSize(context, logSizeBytes),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                IconButton(onClick = onExportLogs, enabled = hasLogs) {
+                    Icon(imageVector = FirezoneIcons.Share, contentDescription = stringResource(R.string.share_diagnostic_logs))
+                }
+                IconButton(onClick = onClearLogs, enabled = hasLogs) {
+                    Icon(imageVector = FirezoneIcons.Delete, contentDescription = stringResource(R.string.clear_log_directory))
+                }
+            }
         }
     }
 }
