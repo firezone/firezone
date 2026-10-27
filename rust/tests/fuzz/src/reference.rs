@@ -1,7 +1,8 @@
 use super::dns_records::DnsRecords;
 use super::probe::{
-    Answer, ExpectedOutcome, ExpectedProbe, FlowId, IcmpFlow, KnownLoss, ProbeId, ProbeRequest,
-    RejectionRemote, RejectionResponse, Remote, Route, TcpFlow, TraceRequirement, UdpFlow,
+    Answer, DNS_NAT_SESSION_TTL, ExpectedOutcome, ExpectedProbe, FlowId, IcmpFlow, KnownLoss,
+    ProbeId, ProbeRequest, RejectionRemote, RejectionResponse, Remote, Route, TcpFlow,
+    TraceRequirement, UdpFlow,
 };
 use super::{ref_client::*, ref_gateway::*, sim_net::*, stub_portal::StubPortal, transition::*};
 use connlib_model::{ClientId, GatewayId, RelayId, ResourceId, StaticSecret};
@@ -28,6 +29,10 @@ const MIN_IDLE_FOR_REKEY_DROP: Duration = Duration::from_secs(180 - 10);
 /// How long after a relay frees up its ports until no node ignores it anymore: how long a node
 /// ignores a relay that failed its allocation, plus a margin.
 const RELAY_RECOVERY: Duration = Duration::from_secs(60 + 5);
+
+/// How far from its expiry we keep the state of an idle UDP or ICMP flow out of doubt: the Gateway
+/// and the peers count from packets that may reach them later than the reference sends them.
+const FLOW_EXPIRY_MARGIN: Duration = Duration::from_secs(10);
 
 /// The reference state machine of the tunnel.
 ///
@@ -250,6 +255,13 @@ impl ReferenceState {
                 identifier,
                 probe_id,
             } => {
+                if let Some(resumed) =
+                    self.resumed_icmp_flow(*client_id, *src, dst, *identifier, now)
+                {
+                    tracing::debug!(flow = ?resumed, "Resuming expired flow");
+                    self.icmp_flows.remove(&resumed);
+                }
+
                 let request = ProbeRequest::Icmp {
                     src: *src,
                     dst: dst.clone(),
@@ -276,6 +288,7 @@ impl ReferenceState {
                             identifier: *identifier,
                             next_seq: Seq(seq.0.wrapping_add(1)),
                             route,
+                            last_round_trip: now,
                         };
                         let previous = self.icmp_flows.insert(*flow_id, flow);
                         assert!(previous.is_none(), "ICMP flow IDs must be unique");
@@ -315,7 +328,11 @@ impl ReferenceState {
                     request,
                     now,
                 ) {
-                    ExpectedOutcome::RoundTripCompleted { .. } => {}
+                    ExpectedOutcome::RoundTripCompleted { .. } => {
+                        if let Some(flow) = self.icmp_flows.get_mut(flow_id) {
+                            flow.last_round_trip = now;
+                        }
+                    }
                     ExpectedOutcome::Dropped => {
                         panic!("reused ICMP route must complete a round trip")
                     }
@@ -337,6 +354,13 @@ impl ReferenceState {
                 dport,
                 probe_id,
             } => {
+                if let Some(resumed) =
+                    self.resumed_udp_flow(*client_id, *src, dst, (*sport, *dport), now)
+                {
+                    tracing::debug!(flow = ?resumed, "Resuming expired flow");
+                    self.udp_flows.remove(&resumed);
+                }
+
                 let request = ProbeRequest::Udp {
                     src: *src,
                     dst: dst.clone(),
@@ -363,6 +387,7 @@ impl ReferenceState {
                             sport: *sport,
                             dport: *dport,
                             route,
+                            last_round_trip: now,
                         };
                         let previous = self.udp_flows.insert(*flow_id, flow);
                         assert!(previous.is_none(), "UDP flow IDs must be unique");
@@ -393,7 +418,11 @@ impl ReferenceState {
                     request,
                     now,
                 ) {
-                    ExpectedOutcome::RoundTripCompleted { .. } => {}
+                    ExpectedOutcome::RoundTripCompleted { .. } => {
+                        if let Some(flow) = self.udp_flows.get_mut(flow_id) {
+                            flow.last_round_trip = now;
+                        }
+                    }
                     ExpectedOutcome::Dropped => {
                         panic!("reused UDP route must complete a round trip")
                     }
@@ -774,7 +803,7 @@ impl ReferenceState {
                 request.source(),
                 request.destination(),
                 request.protocol(),
-                false,
+                true,
             ),
             Route::Gateway(_) => (
                 ExpectedOutcome::RoundTripCompleted(route, Answer::Echo),
@@ -1087,8 +1116,8 @@ impl ReferenceState {
     /// `resolutions` are the records the Gateway resolves the resource's domains to as the
     /// client connects, ahead of the ones the client already holds.
     ///
-    /// An `established` TCP flow keeps translating through the NAT session the Gateway
-    /// created for it, whatever the domain resolves to since.
+    /// An `established` flow keeps translating through the NAT session the Gateway created for
+    /// it, whatever the domain resolves to since.
     fn gateway_verdict(
         &self,
         portal: &StubPortal,
@@ -1286,15 +1315,95 @@ impl ReferenceState {
             .collect()
     }
 
-    pub(crate) fn icmp_flows(&self) -> Vec<(FlowId, Seq)> {
+    /// The ICMP flows whose state the Gateway and the peers still hold.
+    pub(crate) fn icmp_flows(&self, now: Instant) -> Vec<(FlowId, Seq)> {
         self.icmp_flows
             .iter()
+            .filter(|(_, flow)| is_held(flow.last_round_trip, now))
             .map(|(id, flow)| (*id, flow.next_seq))
             .collect()
     }
 
-    pub(crate) fn udp_flows(&self) -> Vec<FlowId> {
-        self.udp_flows.keys().copied().collect()
+    /// The UDP flows whose state the Gateway and the peers still hold.
+    pub(crate) fn udp_flows(&self, now: Instant) -> Vec<FlowId> {
+        self.udp_flows
+            .iter()
+            .filter(|(_, flow)| is_held(flow.last_round_trip, now))
+            .map(|(id, _)| *id)
+            .collect()
+    }
+
+    /// The ICMP flows whose state the Gateway and the peers dropped, which a new flow can resume.
+    pub(crate) fn expired_icmp_flows(&self, now: Instant) -> Vec<&IcmpFlow> {
+        self.icmp_flows
+            .values()
+            .filter(|flow| has_expired(flow.last_round_trip, now))
+            .filter(|flow| self.can_send(flow.client_id, flow.src, &flow.dst))
+            .collect()
+    }
+
+    /// The UDP flows whose state the Gateway and the peers dropped, which a new flow can resume.
+    pub(crate) fn expired_udp_flows(&self, now: Instant) -> Vec<&UdpFlow> {
+        self.udp_flows
+            .values()
+            .filter(|flow| has_expired(flow.last_round_trip, now))
+            .filter(|flow| self.can_send(flow.client_id, flow.src, &flow.dst))
+            .collect()
+    }
+
+    /// The expired ICMP flow that a new ICMP flow with this identity resumes.
+    pub(crate) fn resumed_icmp_flow(
+        &self,
+        client_id: ClientId,
+        src: IpAddr,
+        dst: &Destination,
+        identifier: Identifier,
+        now: Instant,
+    ) -> Option<FlowId> {
+        self.icmp_flows.iter().find_map(|(id, flow)| {
+            (flow.client_id == client_id
+                && flow.src == src
+                && flow.dst == *dst
+                && flow.identifier == identifier
+                && has_expired(flow.last_round_trip, now))
+            .then_some(*id)
+        })
+    }
+
+    /// The expired UDP flow that a new UDP flow with this identity resumes.
+    pub(crate) fn resumed_udp_flow(
+        &self,
+        client_id: ClientId,
+        src: IpAddr,
+        dst: &Destination,
+        (sport, dport): (SPort, DPort),
+        now: Instant,
+    ) -> Option<FlowId> {
+        self.udp_flows.iter().find_map(|(id, flow)| {
+            (flow.client_id == client_id
+                && flow.src == src
+                && flow.dst == *dst
+                && (flow.sport, flow.dport) == (sport, dport)
+                && has_expired(flow.last_round_trip, now))
+            .then_some(*id)
+        })
+    }
+
+    /// Whether the client still sends from `src` and knows where `dst` points.
+    fn can_send(&self, client_id: ClientId, src: IpAddr, dst: &Destination) -> bool {
+        let client = self.clients[&client_id].inner();
+        let resolved_domains = match src {
+            IpAddr::V4(ip) if ip == client.tunnel_ip4 => client.resolved_v4_domains(),
+            IpAddr::V6(ip) if ip == client.tunnel_ip6 => client.resolved_v6_domains(),
+            IpAddr::V4(_) | IpAddr::V6(_) => return false,
+        };
+
+        match dst {
+            Destination::DomainName { name, .. } => {
+                resolved_domains.iter().any(|(domain, _)| domain == name)
+            }
+            Destination::IpAddr(_) => true,
+        }
     }
 
     pub(crate) fn ipv4_cidr_resource_dsts(&self) -> Vec<(ClientId, Ipv4Network, Vec<Filter>)> {
@@ -1773,4 +1882,14 @@ fn address_record_type(src: IpAddr) -> RecordType {
     } else {
         RecordType::AAAA
     }
+}
+
+/// Whether the Gateway and the peers certainly still hold the state of a UDP or ICMP flow.
+fn is_held(last_round_trip: Instant, now: Instant) -> bool {
+    now + FLOW_EXPIRY_MARGIN < last_round_trip + DNS_NAT_SESSION_TTL
+}
+
+/// Whether the Gateway and the peers certainly dropped the state of a UDP or ICMP flow.
+fn has_expired(last_round_trip: Instant, now: Instant) -> bool {
+    now >= last_round_trip + DNS_NAT_SESSION_TTL + FLOW_EXPIRY_MARGIN
 }

@@ -28,10 +28,10 @@ pub fn test(data: &[u8]) {
             break;
         }
 
-        let transition = generator.transition(&reference, &portal);
+        let transition = generator.transition(&reference, &portal, flux_capacitor.now());
 
         tracing::debug!("Applying transition {applied}: {transition:?}");
-        feedback_recorder.observe(&transition, &reference);
+        feedback_recorder.observe(&transition, &reference, flux_capacitor.now());
 
         reference.invalidate(&transition, &portal);
         tunnel.invalidate(&transition, &reference);
