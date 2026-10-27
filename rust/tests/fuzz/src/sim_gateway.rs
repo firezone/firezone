@@ -17,7 +17,6 @@ use std::{
     net::{IpAddr, SocketAddr},
     time::Instant,
 };
-use tun::PacketBatch;
 use tunnel_proto::{GatewayEvent, GatewayState};
 
 /// Simulation state for a particular client.
@@ -84,11 +83,7 @@ impl SimGateway {
     }
 
     fn read_from_tun(&mut self, packet: IpPacket) {
-        self.tunnel
-            .ends
-            .tun_inbound
-            .try_send(PacketBatch::new(packet))
-            .expect("TUN channel has room");
+        self.tunnel.read_from_tun(packet);
     }
 
     /// Hands the packets the resources and DNS servers send to the Gateway's TUN device.

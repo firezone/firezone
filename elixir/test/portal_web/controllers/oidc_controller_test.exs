@@ -3239,21 +3239,40 @@ defmodule PortalWeb.OIDCControllerTest do
       assert conn.resp_cookies["sess_#{ctx.account.id}"]
     end
 
-    test "requires email proof before linking a token whose email matches an actor", ctx do
-      Portal.Config.put_env_override(:outbound_email_adapter_configured?, true)
-      # A guest's home tenant controls the email claims, so it can claim any address.
-      expect_entra_token_exchange(ctx.actor, @tenant_id, Ecto.UUID.generate())
+    test "links a token whose UPN matches an actor without email proof", ctx do
+      oid = Ecto.UUID.generate()
+      expect_entra_token_exchange(ctx.actor, @tenant_id, oid)
       Mocks.OIDC.set_userinfo_response(%{})
 
       conn = perform_callback(ctx.conn, build_entra_auth_state(ctx.account, ctx.provider))
 
-      assert redirected_to(conn) =~
-               "/#{ctx.account.slug}/sign_in/oidc/#{ctx.provider.id}/verify_identity"
+      assert redirected_to(conn) =~ "/#{ctx.account.slug}/sites"
+      assert conn.resp_cookies["sess_#{ctx.account.id}"]
+      refute_received {:email, _email}
+      identity = Repo.get_by!(Portal.ExternalIdentity, account_id: ctx.account.id)
+      assert identity.actor_id == ctx.actor.id
+      assert identity.idp_id == oid
+    end
 
-      refute conn.resp_cookies["sess_#{ctx.account.id}"]
-      refute Repo.get_by(Portal.ExternalIdentity, account_id: ctx.account.id)
-      assert_received {:email, email}
-      assert email.to == [{"", ctx.actor.email}]
+    for email_claim <- ~w[email preferred_username] do
+      test "requires email proof before linking a token whose #{email_claim} matches an actor",
+           ctx do
+        Portal.Config.put_env_override(:outbound_email_adapter_configured?, true)
+        provider = ctx.provider |> Ecto.Changeset.change(email_claim: unquote(email_claim)) |> Repo.update!()
+        # A guest's home tenant controls these claims, so it can claim any address.
+        expect_entra_token_exchange(ctx.actor, @tenant_id, Ecto.UUID.generate())
+        Mocks.OIDC.set_userinfo_response(%{})
+
+        conn = perform_callback(ctx.conn, build_entra_auth_state(ctx.account, provider))
+
+        assert redirected_to(conn) =~
+                 "/#{ctx.account.slug}/sign_in/oidc/#{provider.id}/verify_identity"
+
+        refute conn.resp_cookies["sess_#{ctx.account.id}"]
+        refute Repo.get_by(Portal.ExternalIdentity, account_id: ctx.account.id)
+        assert_received {:email, email}
+        assert email.to == [{"", ctx.actor.email}]
+      end
     end
 
     test "links a guest user through the provider's sign-in tenant after email proof", ctx do
@@ -3265,7 +3284,7 @@ defmodule PortalWeb.OIDCControllerTest do
 
       provider =
         ctx.provider
-        |> Ecto.Changeset.change(tenant_ids: [tenant_id], sign_in_tenant_id: tenant_id)
+        |> Ecto.Changeset.change(tenant_ids: [tenant_id], sign_in_tenant_id: tenant_id, email_claim: "email")
         |> Repo.update!()
 
       Mocks.OIDC.set_discovery_document_overrides(%{"issuer" => issuer})
@@ -4608,6 +4627,8 @@ defmodule PortalWeb.OIDCControllerTest do
       "exp" => token_exp(),
       "nonce" => PortalWeb.OIDC.nonce("test-verifier"),
       "upn" => actor.email,
+      "email" => actor.email,
+      "preferred_username" => actor.email,
       "name" => actor.name
     }
     |> Mocks.OIDC.sign_openid_connect_token()

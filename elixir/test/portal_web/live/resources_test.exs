@@ -978,6 +978,46 @@ defmodule PortalWeb.ResourcesTest do
       assert html =~ resource.address
     end
 
+    test "ignores an edit click queued while the resource panel is closing", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      resource = resource_fixture(account: account)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/resources/#{resource.id}")
+
+      render_click(lv, "close_panel")
+      assert_patch(lv, ~p"/#{account}/resources")
+
+      render_click(lv, "open_edit_form")
+
+      refute has_element?(lv, "#resource-panel > div")
+    end
+
+    test "ignores an authorizations page change queued while the resource panel is closing", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      resource = resource_fixture(account: account)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/resources/#{resource.id}?tab=authorizations")
+
+      render_click(lv, "close_panel")
+      assert_patch(lv, ~p"/#{account}/resources")
+
+      render_click(lv, "change_policy_authorizations_page", %{"page" => "2"})
+
+      refute has_element?(lv, "#resource-panel > div")
+    end
+
     test "shows conventional nil-site copy consistently in the selected resource panel", %{
       conn: conn,
       account: account,
