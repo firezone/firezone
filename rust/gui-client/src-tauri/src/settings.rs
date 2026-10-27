@@ -58,6 +58,32 @@ pub struct AdvancedSettings {
     pub additional_host_candidates: Vec<IpAddr>,
 }
 
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+pub struct AdvancedSettingsPatch {
+    pub auth_url: Option<Url>,
+    pub api_url: Option<Url>,
+    pub log_filter: Option<String>,
+}
+
+impl AdvancedSettingsPatch {
+    pub fn apply(self, mut settings: AdvancedSettings) -> AdvancedSettings {
+        if let Some(auth_url) = self.auth_url {
+            settings.auth_url = auth_url;
+        }
+        if let Some(api_url) = self.api_url {
+            settings.api_url = api_url;
+        }
+        if let Some(log_filter) = self.log_filter {
+            settings.log_filter = log_filter;
+        }
+        settings
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.auth_url.is_none() && self.api_url.is_none() && self.log_filter.is_none()
+    }
+}
+
 #[derive(Clone, Deserialize, Serialize, Default)]
 pub struct GeneralSettings {
     #[serde(default)]
@@ -78,13 +104,10 @@ pub struct GeneralSettings {
     /// The API URL last saved with [`Portal::Custom`], to prefill the field when it is picked again.
     #[serde(default)]
     pub custom_api_url: Option<Url>,
-    /// What the current session signed in with, [`None`] when signed out.
-    #[serde(default)]
-    pub signed_in_with: Option<SignedInWith>,
 }
 
-/// The account slug and portal URLs a session signed in with, which later changes do not affect until the next sign-in.
-#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+/// The account slug and control-plane URLs used to start a session.
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SignedInWith {
     pub account_slug: Option<String>,
     pub auth_url: Url,
@@ -129,6 +152,7 @@ impl GeneralSettingsViewModel {
         mdm_settings: MdmSettings,
         general_settings: GeneralSettings,
         advanced_settings: AdvancedSettings,
+        signed_in_with: Option<SignedInWith>,
     ) -> Self {
         let auth_url_is_managed = mdm_settings.auth_url.is_some();
         let api_url_is_managed = mdm_settings.api_url.is_some();
@@ -172,13 +196,11 @@ impl GeneralSettingsViewModel {
             api_url_is_managed,
             custom_auth_url,
             custom_api_url,
-            signed_in_with: general_settings.signed_in_with.map(|signed_in_with| {
-                SignedInWithViewModel {
-                    account_slug: signed_in_with.account_slug.unwrap_or_default(),
-                    portal: Portal::from_urls(&signed_in_with.auth_url, &signed_in_with.api_url),
-                    auth_url: signed_in_with.auth_url.to_string(),
-                    api_url: signed_in_with.api_url.to_string(),
-                }
+            signed_in_with: signed_in_with.map(|signed_in_with| SignedInWithViewModel {
+                account_slug: signed_in_with.account_slug.unwrap_or_default(),
+                portal: Portal::from_urls(&signed_in_with.auth_url, &signed_in_with.api_url),
+                auth_url: signed_in_with.auth_url.to_string(),
+                api_url: signed_in_with.api_url.to_string(),
             }),
         }
     }
@@ -413,6 +435,35 @@ mod tests {
     use super::*;
 
     #[test]
+    fn independent_patches_preserve_other_saved_settings() {
+        let candidates = vec![IpAddr::from([192, 168, 2, 1])];
+        let mut saved = AdvancedSettings {
+            additional_host_candidates: candidates.clone(),
+            ..Default::default()
+        };
+        for patch in [
+            AdvancedSettingsPatch {
+                auth_url: Some(Url::parse("https://auth.example.com").unwrap()),
+                ..Default::default()
+            },
+            AdvancedSettingsPatch {
+                api_url: Some(Url::parse("wss://api.example.com").unwrap()),
+                ..Default::default()
+            },
+            AdvancedSettingsPatch {
+                log_filter: Some("trace".to_owned()),
+                ..Default::default()
+            },
+        ] {
+            saved = patch.apply(saved);
+        }
+        assert_eq!(saved.auth_url.as_str(), "https://auth.example.com/");
+        assert_eq!(saved.api_url.as_str(), "wss://api.example.com/");
+        assert_eq!(saved.log_filter, "trace");
+        assert_eq!(saved.additional_host_candidates, candidates);
+    }
+
+    #[test]
     fn saved_us_urls_show_firezone_cloud_us() {
         let view_model = view_model(
             MdmSettings::default(),
@@ -506,6 +557,7 @@ mod tests {
             MdmSettings::default(),
             general_settings,
             advanced_settings("https://eu.app.firezone.dev", "wss://eu.api.firezone.dev"),
+            None,
         );
 
         assert_eq!(view_model.portal, Portal::CloudEu);
@@ -515,19 +567,15 @@ mod tests {
 
     #[test]
     fn signed_in_with_names_the_portal_it_signed_in_to() {
-        let general_settings = GeneralSettings {
-            signed_in_with: Some(SignedInWith {
+        let view_model = GeneralSettingsViewModel::new(
+            MdmSettings::default(),
+            GeneralSettings::default(),
+            advanced_settings("https://app.firezone.dev", "wss://api.firezone.dev"),
+            Some(SignedInWith {
                 account_slug: None,
                 auth_url: Url::parse("https://eu.app.firezone.dev").unwrap(),
                 api_url: Url::parse("wss://eu.api.firezone.dev").unwrap(),
             }),
-            ..Default::default()
-        };
-
-        let view_model = GeneralSettingsViewModel::new(
-            MdmSettings::default(),
-            general_settings,
-            advanced_settings("https://app.firezone.dev", "wss://api.firezone.dev"),
         );
 
         let signed_in_with = view_model.signed_in_with.unwrap();
@@ -539,7 +587,12 @@ mod tests {
         mdm_settings: MdmSettings,
         advanced_settings: AdvancedSettings,
     ) -> GeneralSettingsViewModel {
-        GeneralSettingsViewModel::new(mdm_settings, GeneralSettings::default(), advanced_settings)
+        GeneralSettingsViewModel::new(
+            mdm_settings,
+            GeneralSettings::default(),
+            advanced_settings,
+            None,
+        )
     }
 
     fn advanced_settings(auth_url: &str, api_url: &str) -> AdvancedSettings {

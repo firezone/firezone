@@ -1,7 +1,8 @@
 use crate::{
     logging,
     settings::{
-        AdvancedSettings, MdmSettings, load_advanced_settings, load_mdm_settings, save_advanced,
+        AdvancedSettings, AdvancedSettingsPatch, MdmSettings, load_advanced_settings,
+        load_mdm_settings, save_advanced,
     },
 };
 use anyhow::{Context as _, ErrorExt as _, Result, bail};
@@ -61,11 +62,14 @@ pub enum ClientMsg {
         #[serde(serialize_with = "serialize_token")]
         token: SecretString,
         is_internet_resource_active: bool,
+        #[serde(default)]
+        expected_api_url: Option<url::Url>,
     },
     Disconnect,
     /// Persist new advanced settings to the protected on-disk file owned by
     /// the Tunnel service and reload the log filter.
     ApplyAdvancedSettings(AdvancedSettings),
+    PatchAdvancedSettings(AdvancedSettingsPatch),
     /// Apply new additional host candidates to the running session and persist them.
     ///
     /// Only a failure to persist them is reported, as [`ServerMsg::AdvancedSettingsApplied`].
@@ -745,7 +749,20 @@ impl<'a> Handler<'a> {
             ClientMsg::Connect {
                 token,
                 is_internet_resource_active,
+                expected_api_url,
             } => {
+                if expected_api_url
+                    .as_ref()
+                    .is_some_and(|url| url.as_str() != self.api_url())
+                {
+                    self.send_ipc(ServerMsg::ConnectResult(Err(
+                        "The control plane changed during sign-in. Sign in again to retry."
+                            .to_owned(),
+                    )))
+                    .await?;
+                    return Ok(());
+                }
+
                 if !self.session.is_none() {
                     tracing::debug!(session = ?self.session, "Dropping existing session before connecting");
 
@@ -791,22 +808,11 @@ impl<'a> Handler<'a> {
                 self.send_ipc(ServerMsg::DisconnectedGracefully).await?;
             }
             ClientMsg::ApplyAdvancedSettings(new) => {
-                // Validate the log filter before persisting so we never write an
-                // unparsable value to disk or report a misleading "saved" to the GUI.
-                let response = if let Err(e) = EnvFilter::try_new(&new.log_filter) {
-                    Err(format!("Invalid log filter `{}`: {e}", new.log_filter))
-                } else {
-                    match save_advanced(&new).await {
-                        Ok(()) => {
-                            let _ = self.log_filter_reloader.reload(&new.log_filter);
-                            self.advanced_settings = new.clone();
-                            Ok(new)
-                        }
-                        Err(e) => Err(format!("{e:#}")),
-                    }
-                };
-                self.send_ipc(ServerMsg::AdvancedSettingsApplied(response))
-                    .await?;
+                self.apply_advanced_settings(new).await?;
+            }
+            ClientMsg::PatchAdvancedSettings(patch) => {
+                let new = patch.apply(self.advanced_settings.clone());
+                self.apply_advanced_settings(new).await?;
             }
             ClientMsg::SetAdditionalHostCandidates(ips) => {
                 if let Some(connlib) = self.session.as_connlib() {
@@ -852,6 +858,27 @@ impl<'a> Handler<'a> {
             #[cfg(debug_assertions)]
             ClientMsg::Panic => panic!("Explicit panic"),
         }
+        Ok(())
+    }
+
+    async fn apply_advanced_settings(&mut self, new: AdvancedSettings) -> Result<()> {
+        // Validate the log filter before persisting so we never write an
+        // unparsable value to disk or report a misleading "saved" to the GUI.
+        let response = if let Err(e) = EnvFilter::try_new(&new.log_filter) {
+            Err(format!("Invalid log filter `{}`: {e}", new.log_filter))
+        } else {
+            match save_advanced(&new).await {
+                Ok(()) => {
+                    let _ = self.log_filter_reloader.reload(&new.log_filter);
+                    self.advanced_settings = new.clone();
+                    Ok(new)
+                }
+                Err(e) => Err(format!("{e:#}")),
+            }
+        };
+        self.send_ipc(ServerMsg::AdvancedSettingsApplied(response))
+            .await?;
+
         Ok(())
     }
 
@@ -1103,6 +1130,45 @@ pub fn run_smoke_test() -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn rejects_a_connect_for_another_control_plane_before_using_the_token() {
+        let _guard = logging::test("debug");
+        let id = SocketId::Test(rand::random());
+        let handle = tokio::spawn(async move {
+            let (_, log_filter_reloader) = logging::try_filter::<()>("info").unwrap();
+            let mut signals = signals::Terminate::new().unwrap();
+            ipc_listen(
+                DnsControlMethod::default(),
+                &log_filter_reloader,
+                id,
+                &mut signals,
+            )
+            .await
+        });
+        let (mut rx, mut tx) =
+            ipc::connect::<ServerMsg, ClientMsg>(id, ipc::ConnectOptions::default())
+                .await
+                .unwrap();
+        assert!(matches!(
+            rx.next().await.unwrap().unwrap(),
+            ServerMsg::Hello { .. }
+        ));
+
+        tx.send(&ClientMsg::Connect {
+            token: SecretString::from("unused-token"),
+            is_internet_resource_active: false,
+            expected_api_url: Some(url::Url::parse("wss://other.example.com").unwrap()),
+        })
+        .await
+        .unwrap();
+
+        let ServerMsg::ConnectResult(Err(error)) = rx.next().await.unwrap().unwrap() else {
+            panic!("expected the control-plane mismatch to reject the connection");
+        };
+        assert!(error.contains("Sign in again"));
+        handle.abort();
+    }
 
     #[tokio::test]
     async fn panic_inside_handler_doesnt_interrupt_service() {

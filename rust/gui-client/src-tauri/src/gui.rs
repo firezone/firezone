@@ -10,7 +10,7 @@ use crate::{
     logging::FileCount,
     settings::{
         self, AdvancedSettings, GeneralSettings, GeneralSettingsViewModel, LogFilterViewModel,
-        MdmSettings,
+        MdmSettings, SignedInWith,
     },
     updates,
     view::{
@@ -119,11 +119,13 @@ impl GuiIntegration for TauriIntegration {
         mdm_settings: MdmSettings,
         general_settings: GeneralSettings,
         advanced_settings: AdvancedSettings,
+        signed_in_with: Option<SignedInWith>,
     ) -> Result<()> {
         GeneralSettingsChanged(GeneralSettingsViewModel::new(
             mdm_settings.clone(),
             general_settings,
             advanced_settings.clone(),
+            signed_in_with,
         ))
         .emit(&self.app)
         .context("Failed to emit `general_settings_changed` event")?;
@@ -222,8 +224,14 @@ impl GuiIntegration for TauriIntegration {
         mdm_settings: MdmSettings,
         general_settings: GeneralSettings,
         advanced_settings: AdvancedSettings,
+        signed_in_with: Option<SignedInWith>,
     ) -> Result<()> {
-        self.notify_settings_changed(mdm_settings, general_settings, advanced_settings)?; // Ensure settings are up to date in GUI.
+        self.notify_settings_changed(
+            mdm_settings,
+            general_settings,
+            advanced_settings,
+            signed_in_with,
+        )?; // Ensure settings are up to date in GUI.
         self.navigate("general-settings")?;
         self.set_window_visible(true)?;
 

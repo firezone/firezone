@@ -10,8 +10,8 @@ use crate::{
     gui::Managed,
     logging::FileCount,
     settings::{
-        AdvancedSettings, GeneralSettings, GeneralSettingsViewModel, LogFilterViewModel,
-        MdmSettings, Portal,
+        AdvancedSettings, AdvancedSettingsPatch, GeneralSettings, GeneralSettingsViewModel,
+        LogFilterViewModel, MdmSettings, Portal,
     },
 };
 use url::Url;
@@ -37,7 +37,7 @@ pub struct GeneralSettingsForm {
 }
 
 impl GeneralSettingsForm {
-    /// Returns `general_settings` and `advanced_settings` with the form's values applied.
+    /// Returns the general settings and the requested advanced settings changes.
     ///
     /// A managed URL wins over the saved one, so the form leaves it alone. Saving with
     /// [`Portal::Custom`] also remembers the URLs for the next time it is picked.
@@ -46,7 +46,7 @@ impl GeneralSettingsForm {
         mdm_settings: &MdmSettings,
         general_settings: GeneralSettings,
         advanced_settings: AdvancedSettings,
-    ) -> Result<(GeneralSettings, AdvancedSettings)> {
+    ) -> Result<(GeneralSettings, AdvancedSettingsPatch)> {
         let portal = self.portal.unwrap_or_else(|| {
             Portal::from_urls(&advanced_settings.auth_url, &advanced_settings.api_url)
         });
@@ -61,14 +61,35 @@ impl GeneralSettingsForm {
         if let Some(connect_on_start) = self.connect_on_start {
             general_settings.connect_on_start = Some(connect_on_start);
         }
+        let selected_cloud = self.portal.and_then(Portal::urls).is_some();
+        let patch = AdvancedSettingsPatch {
+            auth_url: ((self.auth_url.is_some() || selected_cloud)
+                && mdm_settings.auth_url.is_none())
+            .then_some(auth_url.clone()),
+            api_url: ((self.api_url.is_some() || selected_cloud) && mdm_settings.api_url.is_none())
+                .then_some(api_url.clone()),
+            log_filter: None,
+        };
         if let Some(account_slug) = self.account_slug {
             let account_slug = account_slug.trim();
             general_settings.account_slug =
                 (!account_slug.is_empty()).then(|| account_slug.to_owned());
         }
         if portal == Portal::Custom {
-            general_settings.custom_auth_url = Some(auth_url.clone());
-            general_settings.custom_api_url = Some(api_url.clone());
+            if self.auth_url.is_some() {
+                general_settings.custom_auth_url = Some(auth_url);
+            } else {
+                general_settings
+                    .custom_auth_url
+                    .get_or_insert_with(|| advanced_settings.auth_url.clone());
+            }
+            if self.api_url.is_some() {
+                general_settings.custom_api_url = Some(api_url);
+            } else {
+                general_settings
+                    .custom_api_url
+                    .get_or_insert_with(|| advanced_settings.api_url.clone());
+            }
         } else if Portal::from_urls(&advanced_settings.auth_url, &advanced_settings.api_url)
             == Portal::Custom
         {
@@ -80,20 +101,7 @@ impl GeneralSettingsForm {
                 .get_or_insert_with(|| advanced_settings.api_url.clone());
         }
 
-        let advanced_settings = AdvancedSettings {
-            auth_url: match mdm_settings.auth_url {
-                Some(_) => advanced_settings.auth_url,
-                None => auth_url,
-            },
-            api_url: match mdm_settings.api_url {
-                Some(_) => advanced_settings.api_url,
-                None => api_url,
-            },
-            log_filter: advanced_settings.log_filter,
-            additional_host_candidates: advanced_settings.additional_host_candidates,
-        };
-
-        Ok((general_settings, advanced_settings))
+        Ok((general_settings, patch))
     }
 
     /// Returns the auth and API URLs of the selected portal, or the typed ones for [`Portal::Custom`].
@@ -243,10 +251,7 @@ pub async fn clear_logs(
 
     window
         .dialog()
-        .message(
-            "This deletes all log files on this device. Export them first if you need them for a support request.",
-        )
-        .title("Clear log files?")
+        .message("Delete all log files?")
         .kind(MessageDialogKind::Warning)
         .buttons(MessageDialogButtons::OkCancelCustom(
             "Clear".to_owned(),
@@ -606,7 +611,7 @@ mod tests {
             "wss://api.example.com/"
         );
         assert_eq!(
-            advanced_settings.auth_url.as_str(),
+            advanced_settings.auth_url.unwrap().as_str(),
             "https://firezone.example.com/"
         );
     }
@@ -633,7 +638,7 @@ mod tests {
             "wss://api.example.com/"
         );
         assert_eq!(
-            advanced_settings.auth_url.as_str(),
+            advanced_settings.auth_url.unwrap().as_str(),
             "https://eu.app.firezone.dev/"
         );
     }
@@ -664,11 +669,11 @@ mod tests {
             "wss://api.example.com/"
         );
         assert_eq!(
-            advanced_settings.auth_url.as_str(),
+            advanced_settings.auth_url.unwrap().as_str(),
             "https://app.firezone.dev/"
         );
         assert_eq!(
-            advanced_settings.api_url.as_str(),
+            advanced_settings.api_url.unwrap().as_str(),
             "wss://api.firezone.dev/"
         );
     }
@@ -689,12 +694,9 @@ mod tests {
             .apply(&mdm_settings, GeneralSettings::default(), saved)
             .unwrap();
 
+        assert!(advanced_settings.auth_url.is_none());
         assert_eq!(
-            advanced_settings.auth_url.as_str(),
-            "https://saved.example.com/"
-        );
-        assert_eq!(
-            advanced_settings.api_url.as_str(),
+            advanced_settings.api_url.unwrap().as_str(),
             "wss://eu.api.firezone.dev/"
         );
     }

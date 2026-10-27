@@ -3,7 +3,9 @@ use crate::{
     gui::{self, system_tray},
     logging::{self, FileCount},
     service,
-    settings::{AdvancedSettings, GeneralSettings, MdmSettings, SignedInWith},
+    settings::{
+        AdvancedSettings, AdvancedSettingsPatch, GeneralSettings, MdmSettings, SignedInWith,
+    },
     updates, uptime,
     view::{GeneralSettingsForm, SessionViewModel},
 };
@@ -37,9 +39,6 @@ pub struct Controller<I: GuiIntegration> {
     general_settings: GeneralSettings,
     mdm_settings: MdmSettings,
     advanced_settings: AdvancedSettings,
-    /// Pauses controller requests until the service acknowledges a settings save,
-    /// so queued saves use the latest saved values.
-    settings_ipc_pending: bool,
     /// Path of the legacy user-writable `advanced_settings.json`. The
     /// authoritative file now lives in the protected service-side location;
     /// this one is migrated and deleted on first connection.
@@ -48,6 +47,7 @@ pub struct Controller<I: GuiIntegration> {
     // Sign-in state with the portal / deep links
     auth: auth::Auth,
     pending_sign_in: Option<SignedInWith>,
+    signed_in_with: Option<SignedInWith>,
     clear_logs_callback: Option<oneshot::Sender<Result<(), String>>>,
     x509: Result<Option<x509_keystore::ParsedCertificate>, x509_keystore::Error>,
     ipc_client: ipc::ClientWrite<service::ClientMsg>,
@@ -88,6 +88,7 @@ pub trait GuiIntegration {
         mdm_settings: MdmSettings,
         general_settings: GeneralSettings,
         advanced_settings: AdvancedSettings,
+        signed_in_with: Option<SignedInWith>,
     ) -> Result<()>;
     fn notify_logs_recounted(&self, file_count: &FileCount) -> Result<()>;
     fn notify_device_trust_changed(
@@ -117,6 +118,7 @@ pub trait GuiIntegration {
         mdm_settings: MdmSettings,
         general_settings: GeneralSettings,
         settings: AdvancedSettings,
+        signed_in_with: Option<SignedInWith>,
     ) -> Result<()>;
     fn show_about_page(&self) -> Result<()>;
 }
@@ -257,10 +259,10 @@ impl<I: GuiIntegration> Controller<I> {
             general_settings,
             mdm_settings,
             advanced_settings,
-            settings_ipc_pending: false,
             legacy_advanced_settings_path,
             auth,
             pending_sign_in: None,
+            signed_in_with: None,
             clear_logs_callback: None,
             x509,
             ipc_client,
@@ -384,7 +386,7 @@ impl<I: GuiIntegration> Controller<I> {
         }
 
         if let Some(token) = self.auth.token() {
-            return self.start_session(token).await;
+            return self.start_session(token, self.current_sign_in()).await;
         }
 
         tracing::info!("No token, starting in signed-out state");
@@ -404,9 +406,7 @@ impl<I: GuiIntegration> Controller<I> {
                 return Poll::Ready(EventloopTick::IpcMsg(maybe_ipc));
             }
 
-            if !self.settings_ipc_pending
-                && let Poll::Ready(maybe_req) = self.ctrl_rx.poll_next_unpin(cx)
-            {
+            if let Poll::Ready(maybe_req) = self.ctrl_rx.poll_next_unpin(cx) {
                 return Poll::Ready(EventloopTick::ControllerRequest(maybe_req));
             }
 
@@ -425,7 +425,11 @@ impl<I: GuiIntegration> Controller<I> {
         .await
     }
 
-    async fn start_session(&mut self, token: SecretString) -> Result<()> {
+    async fn start_session(
+        &mut self,
+        token: SecretString,
+        signed_in_with: SignedInWith,
+    ) -> Result<()> {
         match self.status {
             Status::Disconnected => {}
             Status::Quitting => Err(anyhow!("Can't connect to Firezone, we're quitting"))?,
@@ -442,8 +446,11 @@ impl<I: GuiIntegration> Controller<I> {
         self.send_ipc(&service::ClientMsg::Connect {
             token,
             is_internet_resource_active: self.general_settings.internet_resource_enabled(),
+            expected_api_url: Some(signed_in_with.api_url.clone()),
         })
         .await?;
+
+        self.set_signed_in_with(Some(signed_in_with))?;
 
         // Change the status after we begin connecting
         self.status = Status::WaitingForPortal;
@@ -480,7 +487,7 @@ impl<I: GuiIntegration> Controller<I> {
             .pending_sign_in
             .take()
             .ok_or(auth::Error::NoInflightRequest)?;
-        if self.settings_ipc_pending || signed_in_with != self.current_sign_in() {
+        if signed_in_with != self.current_sign_in() {
             self.sign_out().await?;
             self.integration.show_notification(
                 "Sign-in settings changed",
@@ -494,10 +501,8 @@ impl<I: GuiIntegration> Controller<I> {
             .auth
             .handle_response(auth_response)
             .context("Couldn't handle auth response")?;
-        self.set_signed_in_with(Some(signed_in_with)).await?;
-
         self.update_telemetry_context().await?;
-        self.start_session(token).await?;
+        self.start_session(token, signed_in_with).await?;
 
         Ok(())
     }
@@ -507,7 +512,7 @@ impl<I: GuiIntegration> Controller<I> {
 
         match req {
             ApplyGeneralSettings(settings) => {
-                let (general_settings, advanced_settings) = match settings.apply(
+                let (general_settings, patch) = match settings.apply(
                     &self.mdm_settings,
                     self.general_settings.clone(),
                     self.advanced_settings.clone(),
@@ -520,8 +525,7 @@ impl<I: GuiIntegration> Controller<I> {
                     }
                 };
 
-                self.apply_general_settings(general_settings, advanced_settings)
-                    .await?;
+                self.apply_general_settings(general_settings, patch).await?;
             }
             ResetGeneralSettings => {
                 let defaults = AdvancedSettings::default();
@@ -534,23 +538,22 @@ impl<I: GuiIntegration> Controller<I> {
                         account_slug: None,
                         ..self.general_settings.clone()
                     },
-                    AdvancedSettings {
-                        auth_url: defaults.auth_url,
-                        api_url: defaults.api_url,
-                        ..self.advanced_settings.clone()
+                    AdvancedSettingsPatch {
+                        auth_url: Some(defaults.auth_url),
+                        api_url: Some(defaults.api_url),
+                        log_filter: None,
                     },
                 )
                 .await?;
             }
             ApplyLogFilter(log_filter) => {
-                self.send_ipc(&service::ClientMsg::ApplyAdvancedSettings(
-                    AdvancedSettings {
-                        log_filter,
-                        ..self.advanced_settings.clone()
+                self.send_ipc(&service::ClientMsg::PatchAdvancedSettings(
+                    AdvancedSettingsPatch {
+                        log_filter: Some(log_filter),
+                        ..Default::default()
                     },
                 ))
                 .await?;
-                self.settings_ipc_pending = true;
             }
             ClearLogs(completion_tx) => {
                 if self.clear_logs_callback.is_some() {
@@ -595,7 +598,7 @@ impl<I: GuiIntegration> Controller<I> {
                         signed_in_with.account_slug.as_deref(),
                     );
                 self.pending_sign_in = Some(signed_in_with);
-                self.set_signed_in_with(None).await?;
+                self.set_signed_in_with(None)?;
                 self.refresh_ui_state();
 
                 #[cfg(debug_assertions)]
@@ -661,6 +664,7 @@ impl<I: GuiIntegration> Controller<I> {
                         self.mdm_settings.clone(),
                         self.general_settings.clone(),
                         self.advanced_settings.clone(),
+                        self.signed_in_with.clone(),
                     )?,
                 };
                 self.reload_device_trust().await?;
@@ -703,11 +707,11 @@ impl<I: GuiIntegration> Controller<I> {
         Ok(())
     }
 
-    /// Saves the general settings and, if the auth or API URL changed, asks the Tunnel service to save those.
+    /// Saves the general settings and forwards advanced settings changes to the Tunnel service.
     async fn apply_general_settings(
         &mut self,
         general_settings: GeneralSettings,
-        advanced_settings: AdvancedSettings,
+        patch: AdvancedSettingsPatch,
     ) -> Result<()> {
         self.general_settings = general_settings;
 
@@ -719,12 +723,27 @@ impl<I: GuiIntegration> Controller<I> {
 
         self.notify_settings_changed()?;
 
-        if advanced_settings != self.advanced_settings {
-            self.send_ipc(&service::ClientMsg::ApplyAdvancedSettings(
-                advanced_settings,
-            ))
-            .await?;
-            self.settings_ipc_pending = true;
+        if self.pending_sign_in.as_ref().is_some_and(|pending| {
+            pending.account_slug.as_deref() != self.account_slug()
+                || patch
+                    .auth_url
+                    .as_ref()
+                    .is_some_and(|url| url != &pending.auth_url)
+                || patch
+                    .api_url
+                    .as_ref()
+                    .is_some_and(|url| url != &pending.api_url)
+        }) {
+            self.sign_out().await?;
+            self.integration.show_notification(
+                "Sign-in settings changed",
+                "Start sign-in again to use the current account slug and control plane.",
+            )?;
+        }
+
+        if !patch.is_empty() {
+            self.send_ipc(&service::ClientMsg::PatchAdvancedSettings(patch))
+                .await?;
         }
 
         Ok(())
@@ -823,7 +842,6 @@ impl<I: GuiIntegration> Controller<I> {
             }
             service::ServerMsg::Hello { .. } => {}
             service::ServerMsg::AdvancedSettingsApplied(Ok(new)) => {
-                self.settings_ipc_pending = false;
                 self.advanced_settings = new;
                 if let Err(e) = self
                     .log_filter_reloader
@@ -840,7 +858,6 @@ impl<I: GuiIntegration> Controller<I> {
                 self.refresh_ui_state();
             }
             service::ServerMsg::AdvancedSettingsApplied(Err(err)) => {
-                self.settings_ipc_pending = false;
                 tracing::error!("Tunnel service failed to save advanced settings: {err}");
                 self.integration
                     .show_notification("Failed to save settings", &err)?;
@@ -1011,7 +1028,7 @@ impl<I: GuiIntegration> Controller<I> {
             }
         };
 
-        self.start_session(token).await?;
+        self.start_session(token, self.current_sign_in()).await?;
 
         Ok(GuiIpcReply::WhenConnected)
     }
@@ -1027,8 +1044,6 @@ impl<I: GuiIntegration> Controller<I> {
             Ok(()) => {
                 if let Some(token) = self.unconfirmed_token.take() {
                     self.auth.sign_in_with_token(&token);
-                    self.set_signed_in_with(Some(self.current_sign_in()))
-                        .await?;
                 }
                 ran_before::set().await?;
                 self.status = Status::WaitingForTunnel;
@@ -1215,7 +1230,7 @@ impl<I: GuiIntegration> Controller<I> {
         }
         self.pending_sign_in = None;
         self.auth.sign_out()?;
-        self.set_signed_in_with(None).await?;
+        self.set_signed_in_with(None)?;
 
         self.disconnect().await
     }
@@ -1252,16 +1267,11 @@ impl<I: GuiIntegration> Controller<I> {
         }
     }
 
-    async fn set_signed_in_with(&mut self, signed_in_with: Option<SignedInWith>) -> Result<()> {
-        if self.general_settings.signed_in_with == signed_in_with {
+    fn set_signed_in_with(&mut self, signed_in_with: Option<SignedInWith>) -> Result<()> {
+        if self.signed_in_with == signed_in_with {
             return Ok(());
         }
-
-        self.general_settings.signed_in_with = signed_in_with;
-        self.integration
-            .save_general_settings(&self.general_settings)
-            .await?;
-
+        self.signed_in_with = signed_in_with;
         self.notify_settings_changed()
     }
 
@@ -1270,6 +1280,7 @@ impl<I: GuiIntegration> Controller<I> {
             self.mdm_settings.clone(),
             self.general_settings.clone(),
             self.advanced_settings.clone(),
+            self.signed_in_with.clone(),
         )?;
 
         Ok(())
@@ -1715,14 +1726,14 @@ mod tests {
             .send(ControllerRequest::ApplyLogFilter("debug".to_owned()))
             .await
             .unwrap();
-        let saved = mock_tunnel.rx_apply_advanced_settings().await;
+        let saved = mock_tunnel.rx_patch_advanced_settings().await;
         let listed = test_controller
             .gui_ipc_request(gui_ipc::ClientMsg::ListAdditionalHostCandidates)
             .await;
 
         assert_eq!(response, gui_ipc::ServerMsg::Ack);
         assert_eq!(applied, candidates);
-        assert_eq!(saved.additional_host_candidates, candidates);
+        assert_eq!(saved.log_filter.as_deref(), Some("debug"));
         assert_eq!(
             listed,
             gui_ipc::ServerMsg::AdditionalHostCandidates(candidates)
@@ -2254,61 +2265,90 @@ mod tests {
             .await
             .unwrap();
 
-        let applied = mock_tunnel.rx_apply_advanced_settings().await;
+        let applied = mock_tunnel.rx_patch_advanced_settings().await;
         assert_eq!(
             applied,
-            AdvancedSettings {
-                log_filter: "trace".to_owned(),
-                ..AdvancedSettings::default()
+            AdvancedSettingsPatch {
+                log_filter: Some("trace".to_owned()),
+                ..Default::default()
             }
         );
     }
 
     #[tokio::test]
-    async fn successive_settings_edits_preserve_urls_toggles_and_log_filter() {
+    async fn independent_settings_edits_do_not_wait_for_service_replies() {
         let _guard = logging::test("debug");
         let mut test_controller = Controller::start_for_test();
         let mut mock_tunnel = test_controller.tunnel_service_ipc_accept().await;
         mock_tunnel.send_hello().await;
 
-        for request in [
-            ControllerRequest::ApplyGeneralSettings(Box::new(GeneralSettingsForm {
-                portal: Some(crate::settings::Portal::CloudEu),
+        for form in [
+            GeneralSettingsForm {
+                portal: Some(crate::settings::Portal::Custom),
+                auth_url: Some("https://auth.example.com".to_owned()),
                 ..Default::default()
-            })),
-            ControllerRequest::ApplyGeneralSettings(Box::new(GeneralSettingsForm {
+            },
+            GeneralSettingsForm {
+                portal: Some(crate::settings::Portal::Custom),
+                api_url: Some("wss://api.example.com".to_owned()),
+                ..Default::default()
+            },
+            GeneralSettingsForm {
                 start_minimized: Some(false),
                 ..Default::default()
-            })),
-            ControllerRequest::ApplyLogFilter("trace".to_owned()),
+            },
         ] {
-            test_controller.ctrl_tx.send(request).await.unwrap();
+            test_controller
+                .ctrl_tx
+                .send(ControllerRequest::ApplyGeneralSettings(Box::new(form)))
+                .await
+                .unwrap();
         }
-
-        let first = mock_tunnel.rx_apply_advanced_settings().await;
-        assert_eq!(first.api_url.as_str(), "wss://eu.api.firezone.dev/");
-        assert!(
-            tokio::time::timeout(
-                Duration::from_millis(50),
-                mock_tunnel.rx_apply_advanced_settings(),
-            )
+        test_controller
+            .ctrl_tx
+            .send(ControllerRequest::ApplyLogFilter("trace".to_owned()))
             .await
-            .is_err()
-        );
-        mock_tunnel.send_advanced_settings_applied(Ok(first)).await;
+            .unwrap();
+        test_controller
+            .ctrl_tx
+            .send(ControllerRequest::OpenTrayMenu)
+            .await
+            .unwrap();
 
-        let second = mock_tunnel.rx_apply_advanced_settings().await;
-        assert_eq!(second.auth_url.as_str(), "https://eu.app.firezone.dev/");
-        assert_eq!(second.api_url.as_str(), "wss://eu.api.firezone.dev/");
-        assert_eq!(second.log_filter, "trace");
-        mock_tunnel.send_advanced_settings_applied(Ok(second)).await;
+        let auth = mock_tunnel.rx_patch_advanced_settings().await;
+        assert_eq!(
+            auth.auth_url.as_ref().unwrap().as_str(),
+            "https://auth.example.com/"
+        );
+        assert!(auth.api_url.is_none());
+        assert!(auth.log_filter.is_none());
+        let api = mock_tunnel.rx_patch_advanced_settings().await;
+        assert_eq!(
+            api.api_url.as_ref().unwrap().as_str(),
+            "wss://api.example.com/"
+        );
+        assert!(api.auth_url.is_none());
+        assert!(api.log_filter.is_none());
+        let filter = mock_tunnel.rx_patch_advanced_settings().await;
+        assert_eq!(filter.log_filter.as_deref(), Some("trace"));
+        assert!(filter.auth_url.is_none());
+        assert!(filter.api_url.is_none());
         test_controller
             .wait_integration(|integration| {
                 let general = integration.general_settings.last()?;
-                let advanced = integration.advanced_settings.last()?;
-                (!general.start_minimized && advanced.log_filter == "trace").then_some(())
+                (!general.start_minimized && !integration.tray_menu_opens.is_empty()).then_some(())
             })
             .await;
+        let integration = test_controller.integration();
+        let saved = integration.general_settings.last().unwrap();
+        assert_eq!(
+            saved.custom_auth_url.as_ref().unwrap().as_str(),
+            "https://auth.example.com/"
+        );
+        assert_eq!(
+            saved.custom_api_url.as_ref().unwrap().as_str(),
+            "wss://api.example.com/"
+        );
     }
 
     #[tokio::test]
@@ -2376,7 +2416,7 @@ mod tests {
 
         test_controller.sign_in().await;
         let signed_in_with = test_controller
-            .wait_integration(|i| i.general_settings.last()?.signed_in_with.clone())
+            .wait_integration(|i| i.signed_in_with.last()?.clone())
             .await;
         assert_eq!(
             signed_in_with,
@@ -2397,7 +2437,7 @@ mod tests {
             )))
             .await
             .unwrap();
-        let general_settings = test_controller
+        test_controller
             .wait_integration(|i| {
                 i.general_settings
                     .last()
@@ -2405,7 +2445,10 @@ mod tests {
                     .cloned()
             })
             .await;
-        assert_eq!(general_settings.signed_in_with, Some(signed_in_with));
+        assert_eq!(
+            test_controller.integration().signed_in_with.last(),
+            Some(&Some(signed_in_with))
+        );
 
         test_controller
             .ctrl_tx
@@ -2413,13 +2456,7 @@ mod tests {
             .await
             .unwrap();
         test_controller
-            .wait_integration(|i| {
-                i.general_settings
-                    .last()?
-                    .signed_in_with
-                    .is_none()
-                    .then_some(())
-            })
+            .wait_integration(|i| i.signed_in_with.last()?.is_none().then_some(()))
             .await;
     }
 
@@ -2534,6 +2571,7 @@ mod tests {
         sessions: Vec<SessionViewModel>,
         mdm_settings: Vec<MdmSettings>,
         general_settings: Vec<GeneralSettings>,
+        signed_in_with: Vec<Option<SignedInWith>>,
         advanced_settings: Vec<AdvancedSettings>,
         file_counts: Vec<FileCount>,
         x509: Vec<Option<x509_keystore::ParsedCertificate>>,
@@ -2568,11 +2606,13 @@ mod tests {
             mdm_settings: MdmSettings,
             general_settings: GeneralSettings,
             advanced_settings: AdvancedSettings,
+            signed_in_with: Option<SignedInWith>,
         ) -> Result<()> {
             let mut guard = self.lock();
 
             guard.mdm_settings.push(mdm_settings);
             guard.general_settings.push(general_settings);
+            guard.signed_in_with.push(signed_in_with);
             guard.advanced_settings.push(advanced_settings);
 
             Ok(())
@@ -2652,6 +2692,7 @@ mod tests {
             mdm_settings: MdmSettings,
             general_settings: GeneralSettings,
             settings: AdvancedSettings,
+            _signed_in_with: Option<SignedInWith>,
         ) -> Result<()> {
             self.lock()
                 .shown_settings_page
@@ -2791,6 +2832,14 @@ mod tests {
                 })
                 .await
                 .unwrap();
+        }
+
+        async fn rx_patch_advanced_settings(&mut self) -> AdvancedSettingsPatch {
+            let msg = self.next_msg().await;
+            let service::ClientMsg::PatchAdvancedSettings(patch) = msg else {
+                panic!("expected `PatchAdvancedSettings` but got {msg:?}");
+            };
+            patch
         }
 
         async fn rx_apply_advanced_settings(&mut self) -> AdvancedSettings {
