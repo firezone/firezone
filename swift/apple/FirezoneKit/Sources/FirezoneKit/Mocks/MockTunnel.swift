@@ -37,6 +37,9 @@
     let providerLogFolderSize: Int64
     /// Bytes of random data the app's log directory holds on top of its fixed lines.
     let appLogFolderSize: Int?
+    /// The control plane the app is configured for; Firezone Cloud US when absent.
+    let authURL: String?
+    let apiURL: String?
 
     enum VPNStatus: String, Decodable, Sendable {
       case invalid
@@ -228,8 +231,8 @@
 
       // A DEBUG build points these at the staging stack, which a screenshot of the
       // settings screens would then advertise.
-      configuration.authURL = "https://app.firezone.dev"
-      configuration.apiURL = "wss://api.firezone.dev"
+      configuration.authURL = scenario.authURL ?? "https://app.firezone.dev"
+      configuration.apiURL = scenario.apiURL ?? "wss://api.firezone.dev"
       configuration.logFilter = "info"
     }
   }

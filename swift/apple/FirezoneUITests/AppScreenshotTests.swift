@@ -77,6 +77,19 @@
       }
     }
 
+    /// The Settings tab of an app configured for a self-hosted control plane.
+    func testSettingsWithCustomControlPlane() throws {
+      for appearance in Appearance.allCases {
+        let app = launchApp(
+          scenario: "custom-control-plane", appearance: appearance, window: "settings")
+        defer { app.terminate() }
+
+        let window = try onlyWindow(of: app)
+        try selectTab("Settings", showing: "API URL", in: window)
+        capture(window, as: "settings-general-custom", in: appearance)
+      }
+    }
+
     /// The certificate tab, in each of the states a scenario describes.
     func testCertificate() throws {
       for scenario in Self.certificateScenarios {
