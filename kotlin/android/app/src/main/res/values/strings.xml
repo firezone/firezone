@@ -17,6 +17,7 @@
 	<string name="settings_section_startup">Startup</string>
 	<string name="settings_section_about">About</string>
 	<string name="version">Version</string>
+	<string name="built_from">Built from</string>
 	<string name="account_slug">Account Slug</string>
 	<string name="start_on_login">Start on Boot</string>
 	<string name="connect_on_start">Connect on Start</string>

@@ -90,16 +90,19 @@ fun LogSettingsPage(
                 summary = versionName,
             ) {
                 if (buildSha != "unknown") {
-                    Text(
-                        text = "${buildSha.take(8)} (GitHub)",
-                        color = MaterialTheme.colorScheme.primary,
-                        textDecoration = TextDecoration.Underline,
-                        modifier =
-                            Modifier.combinedClickable(
-                                onClick = { uriHandler.openUri("https://github.com/firezone/firezone/commit/$buildSha") },
-                                onLongClick = { ClipboardUtils.copyToClipboard(context, "Version", version) },
-                            ),
-                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(stringResource(R.string.built_from))
+                        Text(
+                            text = buildSha.take(8),
+                            color = MaterialTheme.colorScheme.primary,
+                            textDecoration = TextDecoration.Underline,
+                            modifier =
+                                Modifier.combinedClickable(
+                                    onClick = { uriHandler.openUri("https://github.com/firezone/firezone/commit/$buildSha") },
+                                    onLongClick = { ClipboardUtils.copyToClipboard(context, "Version", version) },
+                                ),
+                        )
+                    }
                 }
             }
         }

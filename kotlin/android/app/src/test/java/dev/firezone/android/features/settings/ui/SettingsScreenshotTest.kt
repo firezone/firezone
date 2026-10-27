@@ -235,6 +235,6 @@ private fun SettingsScreenSample(
         // The diagnostics page shows the version and commit the app was built from, which change
         // with every release and push; pin them so the image only changes when the UI does.
         versionName = "1.0.0",
-        buildSha = "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+        buildSha = "0000000000000000000000000000000000000000",
     )
 }
