@@ -37,7 +37,7 @@ pub struct Controller<I: GuiIntegration> {
     general_settings: GeneralSettings,
     mdm_settings: MdmSettings,
     advanced_settings: AdvancedSettings,
-    settings_pending: bool,
+    settings_ipc_pending: bool,
     /// Path of the legacy user-writable `advanced_settings.json`. The
     /// authoritative file now lives in the protected service-side location;
     /// this one is migrated and deleted on first connection.
@@ -255,7 +255,7 @@ impl<I: GuiIntegration> Controller<I> {
             general_settings,
             mdm_settings,
             advanced_settings,
-            settings_pending: false,
+            settings_ipc_pending: false,
             legacy_advanced_settings_path,
             auth,
             pending_sign_in: None,
@@ -402,7 +402,7 @@ impl<I: GuiIntegration> Controller<I> {
                 return Poll::Ready(EventloopTick::IpcMsg(maybe_ipc));
             }
 
-            if !self.settings_pending
+            if !self.settings_ipc_pending
                 && let Poll::Ready(maybe_req) = self.ctrl_rx.poll_next_unpin(cx)
             {
                 return Poll::Ready(EventloopTick::ControllerRequest(maybe_req));
@@ -478,7 +478,7 @@ impl<I: GuiIntegration> Controller<I> {
             .pending_sign_in
             .take()
             .ok_or(auth::Error::NoInflightRequest)?;
-        if self.settings_pending || signed_in_with != self.current_sign_in() {
+        if self.settings_ipc_pending || signed_in_with != self.current_sign_in() {
             self.sign_out().await?;
             self.integration.show_notification(
                 "Sign-in settings changed",
@@ -548,7 +548,7 @@ impl<I: GuiIntegration> Controller<I> {
                     },
                 ))
                 .await?;
-                self.settings_pending = true;
+                self.settings_ipc_pending = true;
             }
             ClearLogs(completion_tx) => {
                 if self.clear_logs_callback.is_some() {
@@ -722,7 +722,7 @@ impl<I: GuiIntegration> Controller<I> {
                 advanced_settings,
             ))
             .await?;
-            self.settings_pending = true;
+            self.settings_ipc_pending = true;
         }
 
         Ok(())
@@ -821,7 +821,7 @@ impl<I: GuiIntegration> Controller<I> {
             }
             service::ServerMsg::Hello { .. } => {}
             service::ServerMsg::AdvancedSettingsApplied(Ok(new)) => {
-                self.settings_pending = false;
+                self.settings_ipc_pending = false;
                 self.advanced_settings = new;
                 if let Err(e) = self
                     .log_filter_reloader
@@ -838,7 +838,7 @@ impl<I: GuiIntegration> Controller<I> {
                 self.refresh_ui_state();
             }
             service::ServerMsg::AdvancedSettingsApplied(Err(err)) => {
-                self.settings_pending = false;
+                self.settings_ipc_pending = false;
                 tracing::error!("Tunnel service failed to save advanced settings: {err}");
                 self.integration
                     .show_notification("Failed to save settings", &err)?;
