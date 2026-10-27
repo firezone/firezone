@@ -305,9 +305,15 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         completionHandler?(nil)
 
       case .setLogFilter(let logFilter):
+        guard let logDir = SharedAccess.connlibLogFolderURL?.path else {
+          Log.error("Cannot update log filter: log directory unavailable")
+          completionHandler?(nil)
+          return
+        }
+
         do {
           try configureLogger(
-            logDir: SharedAccess.connlibLogFolderURL?.path ?? "/tmp/firezone",
+            logDir: logDir,
             logFilter: logFilter,
             flowLogsDir: SharedAccess.flowLogsFolderURL?.path
           )

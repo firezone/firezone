@@ -25,7 +25,7 @@
       let viewModel = SettingsViewModel(store: store)
 
       viewModel.accountSlug = "other-corp"
-      try await viewModel.save(.general)
+      try await viewModel.save(.settings)
 
       #expect(!viewModel.showsSignInChangeNote)
     }
@@ -50,7 +50,7 @@
       let viewModel = SettingsViewModel(store: store)
 
       viewModel.accountSlug = "other-corp"
-      try await viewModel.save(.general)
+      try await viewModel.save(.settings)
 
       #expect(viewModel.showsSignInChangeNote)
       #expect(SettingsViewModel(store: store).showsSignInChangeNote)
@@ -58,7 +58,7 @@
       viewModel.accountSlug = Self.accountSlug
       #expect(viewModel.showsSignInChangeNote)
 
-      try await viewModel.save(.general)
+      try await viewModel.save(.settings)
       #expect(!viewModel.showsSignInChangeNote)
     }
 
@@ -68,7 +68,7 @@
       let viewModel = SettingsViewModel(store: store)
 
       viewModel.accountSlug = "other-corp"
-      try await viewModel.save(.general)
+      try await viewModel.save(.settings)
       #expect(viewModel.showsSignInChangeNote)
 
       try await store.signOut()

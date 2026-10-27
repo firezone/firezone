@@ -51,13 +51,13 @@ public struct SettingsView: View {
 
   /// The tabs of the settings screen.
   public enum Tab: Hashable {
-    case general
+    case settings
     case deviceTrust
     case logs
 
     var title: String {
       switch self {
-      case .general: return "Settings"
+      case .settings: return "Settings"
       case .deviceTrust: return "Device Trust"
       case .logs: return "Diagnostics"
       }
@@ -66,7 +66,7 @@ public struct SettingsView: View {
     #if os(macOS)
       var systemImage: String {
         switch self {
-        case .general: return "gearshape"
+        case .settings: return "gearshape"
         case .deviceTrust: return "checkmark.shield"
         case .logs: return "stethoscope"
         }
@@ -74,7 +74,7 @@ public struct SettingsView: View {
     #endif
   }
 
-  public init(store: Store, selectedTab: Tab = .general) {
+  public init(store: Store, selectedTab: Tab = .settings) {
     self.store = store
     self.configuration = store.configuration
     _viewModel = StateObject(
@@ -84,9 +84,9 @@ public struct SettingsView: View {
   public var body: some View {
     content
       .onChange(of: focusedField) { _ in commitTextFields() }
-      .onChange(of: viewModel.portal) { _ in commit(.general) }
-      .onChange(of: viewModel.connectOnStart) { _ in commit(.general) }
-      .onChange(of: viewModel.startOnLogin) { _ in commit(.general) }
+      .onChange(of: viewModel.portal) { _ in commit(.settings) }
+      .onChange(of: viewModel.connectOnStart) { _ in commit(.settings) }
+      .onChange(of: viewModel.startOnLogin) { _ in commit(.settings) }
       .onDisappear {
         commitTextFields()
         viewModel.discardInvalidDrafts()
@@ -103,13 +103,13 @@ public struct SettingsView: View {
 
           VStack {
             TabView(selection: $viewModel.selectedTab) {
-              generalTab
+              settingsTab
                 .tabItem {
                   Image(systemName: "slider.horizontal.3")
-                  Text(Tab.general.title)
+                  Text(Tab.settings.title)
                 }
                 .badge(viewModel.areURLsValid() ? nil : "!")
-                .tag(Tab.general)
+                .tag(Tab.settings)
               if store.deviceTrustCertificateSummary != nil {
                 deviceTrustTab
                   .tabItem {
@@ -130,7 +130,7 @@ public struct SettingsView: View {
           .padding(.bottom, 10)
           .toolbar {
             ToolbarItem(placement: .confirmationAction) {
-              Button("Done") { commit(.general, .logs, thenDismiss: true) }
+              Button("Done") { commit(.settings, .logs, thenDismiss: true) }
             }
           }
           .navigationTitle(viewModel.selectedTab.title)
@@ -139,9 +139,9 @@ public struct SettingsView: View {
       }
     #elseif os(macOS)
       TabView(selection: $viewModel.selectedTab) {
-        generalTab
-          .tabItem { Label(Tab.general.title, systemImage: Tab.general.systemImage) }
-          .tag(Tab.general)
+        settingsTab
+          .tabItem { Label(Tab.settings.title, systemImage: Tab.settings.systemImage) }
+          .tag(Tab.settings)
         if store.deviceTrustCertificateSummary != nil {
           deviceTrustTab
             .tabItem { Label(Tab.deviceTrust.title, systemImage: Tab.deviceTrust.systemImage) }
@@ -163,7 +163,7 @@ public struct SettingsView: View {
     )
   }
 
-  private var generalTab: some View {
+  private var settingsTab: some View {
     #if os(macOS)
       Form {
         Section {
@@ -173,7 +173,7 @@ public struct SettingsView: View {
             prompt: Text(PlaceholderText.accountSlug)
           )
           .focused($focusedField, equals: .accountSlug)
-          .onSubmit { commit(.general) }
+          .onSubmit { commit(.settings) }
           .disabled(configuration.isAccountSlugForced)
 
           Picker(Portal.pickerTitle, selection: portalSelection) {
@@ -190,7 +190,7 @@ public struct SettingsView: View {
               prompt: Text(PlaceholderText.authURL)
             )
             .focused($focusedField, equals: .authURL)
-            .onSubmit { commit(.general) }
+            .onSubmit { commit(.settings) }
             .disabled(configuration.isAuthURLForced)
             errorText(viewModel.authURLError)
 
@@ -200,7 +200,7 @@ public struct SettingsView: View {
               prompt: Text(PlaceholderText.apiURL)
             )
             .focused($focusedField, equals: .apiURL)
-            .onSubmit { commit(.general) }
+            .onSubmit { commit(.settings) }
             .disabled(configuration.isApiURLForced)
             errorText(viewModel.apiURLError)
           }
@@ -248,7 +248,7 @@ public struct SettingsView: View {
               .textInputAutocapitalization(.never)
               .submitLabel(.done)
               .focused($focusedField, equals: .accountSlug)
-              .onSubmit { commit(.general) }
+              .onSubmit { commit(.settings) }
               .disabled(configuration.isAccountSlugForced)
             }
 
@@ -289,7 +289,7 @@ public struct SettingsView: View {
                 .textInputAutocapitalization(.never)
                 .submitLabel(.done)
                 .focused($focusedField, equals: .authURL)
-                .onSubmit { commit(.general) }
+                .onSubmit { commit(.settings) }
                 .disabled(configuration.isAuthURLForced)
                 errorText(viewModel.authURLError)
               }
@@ -305,7 +305,7 @@ public struct SettingsView: View {
                 .textInputAutocapitalization(.never)
                 .submitLabel(.done)
                 .focused($focusedField, equals: .apiURL)
-                .onSubmit { commit(.general) }
+                .onSubmit { commit(.settings) }
                 .disabled(configuration.isApiURLForced)
                 errorText(viewModel.apiURLError)
               }
@@ -537,7 +537,7 @@ public struct SettingsView: View {
   }
 
   private func commitTextFields() {
-    commit(.general, .logs)
+    commit(.settings, .logs)
   }
 
   #if os(macOS)

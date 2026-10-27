@@ -208,19 +208,19 @@ public class Configuration: ObservableObject {
     }
   }
 
-  var signInValues: SignInValues {
-    SignInValues(accountSlug: accountSlug, authURL: authURL, apiURL: apiURL)
+  var signInSettings: SignInSettings {
+    SignInSettings(accountSlug: accountSlug, authURL: authURL, apiURL: apiURL)
   }
 
   /// What the last sign-in from this app used, until signing out. Only this app reads it.
-  var signedInWith: SignInValues? {
+  var signedInWith: SignInSettings? {
     get {
       guard let accountSlug = defaults.string(forKey: Keys.signedInAccountSlug),
         let authURL = defaults.string(forKey: Keys.signedInAuthURL),
         let apiURL = defaults.string(forKey: Keys.signedInApiURL)
       else { return nil }
 
-      return SignInValues(accountSlug: accountSlug, authURL: authURL, apiURL: apiURL)
+      return SignInSettings(accountSlug: accountSlug, authURL: authURL, apiURL: apiURL)
     }
     set {
       defaults.set(newValue?.accountSlug, forKey: Keys.signedInAccountSlug)
@@ -356,7 +356,7 @@ public class Configuration: ObservableObject {
 }
 
 /// The account slug and endpoints selected for a sign-in.
-struct SignInValues: Equatable {
+struct SignInSettings: Equatable {
   let accountSlug: String
   let authURL: String
   let apiURL: String

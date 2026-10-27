@@ -543,7 +543,7 @@ struct ConfigurationTests {
     #expect(config.toProviderConfiguration()[Configuration.Keys.lastCustomAuthURL] == nil)
   }
 
-  @Test("Forced URLs saved with custom are not remembered")
+  @Test("Editing the account slug does not cache managed custom URLs")
   @MainActor
   func forcedCustomURLsAreNotRemembered() async throws {
     let defaults = try #require(
@@ -559,27 +559,31 @@ struct ConfigurationTests {
     let viewModel = SettingsViewModel(configuration: config)
 
     viewModel.accountSlug = "example"
-    try await viewModel.save()
+    try await viewModel.save(.settings)
 
+    #expect(config.accountSlug == "example")
     #expect(config.lastCustomURLs == nil)
   }
 
-  @Test("An empty log filter is invalid without blaming the URLs")
+  @Test("An empty log filter is saved without an error")
   @MainActor
-  func emptyLogFilterIsInvalid() async {
+  func emptyLogFilterIsSaved() async throws {
     let config = Configuration(userDefaults: UserDefaults.makeTestDefaults())
     let viewModel = SettingsViewModel(configuration: config)
 
     viewModel.selectPortal(.cloudUs)
     viewModel.logFilter = ""
+    try await viewModel.save(.logs)
 
     #expect(viewModel.areURLsValid())
-    #expect(!viewModel.isLogFilterValid())
+    #expect(viewModel.isLogFilterValid())
+    #expect(config.logFilter.isEmpty)
+    #expect(viewModel.logFilterError == nil)
   }
 
-  @Test("A log filter connlib cannot parse is not saved and says why")
+  @Test("A log filter outside the editable subset is not saved and says why")
   @MainActor
-  func unparsableLogFilterIsNotSaved() async throws {
+  func unsupportedLogFilterIsNotSaved() async throws {
     let config = Configuration(userDefaults: UserDefaults.makeTestDefaults())
     let viewModel = SettingsViewModel(configuration: config)
     let logFilter = config.logFilter
@@ -591,7 +595,7 @@ struct ConfigurationTests {
     #expect(viewModel.logFilterError?.hasPrefix("Use a level") == true)
   }
 
-  @Test("A log filter set by MDM is not flagged, whatever its syntax")
+  @Test("Closing Diagnostics does not flag a managed log filter outside the editable subset")
   @MainActor
   func forcedLogFilterIsNotFlagged() async throws {
     let defaults = try #require(
@@ -600,7 +604,8 @@ struct ConfigurationTests {
         forcedValues: [Configuration.Keys.logFilter: "foo[bar]=debug"]
       )
     )
-    let viewModel = SettingsViewModel(configuration: Configuration(userDefaults: defaults))
+    let viewModel = SettingsViewModel(
+      configuration: Configuration(userDefaults: defaults), selectedTab: .logs)
 
     try await viewModel.save(.logs)
 
@@ -619,7 +624,7 @@ struct ConfigurationTests {
     viewModel.accountSlug = "example"
     viewModel.logFilter = "trace"
 
-    viewModel.selectedTab = .general
+    viewModel.selectedTab = .settings
     try await viewModel.save()
 
     #expect(config.accountSlug == "example")
@@ -631,7 +636,7 @@ struct ConfigurationTests {
     #expect(config.logFilter == "trace")
   }
 
-  @Test("Saving skips invalid URLs and an empty log filter, but not the other settings")
+  @Test("Saving skips invalid URLs and log filters, but not the other settings")
   @MainActor
   func savingSkipsInvalidValues() async throws {
     let config = Configuration(userDefaults: UserDefaults.makeTestDefaults())
@@ -641,8 +646,8 @@ struct ConfigurationTests {
 
     viewModel.authURL = "not a URL"
     viewModel.accountSlug = "example"
-    viewModel.logFilter = ""
-    try await viewModel.save(.general)
+    viewModel.logFilter = "foo=verbose"
+    try await viewModel.save(.settings)
     try await viewModel.save(.logs)
 
     #expect(config.authURL == authURL)
@@ -658,7 +663,7 @@ struct ConfigurationTests {
     let apiURL = config.apiURL
 
     viewModel.apiURL = "https://api.example.com"
-    try await viewModel.save(.general)
+    try await viewModel.save(.settings)
 
     #expect(config.apiURL == apiURL)
     #expect(viewModel.apiURLError == "Enter a valid ws:// or wss:// URL")

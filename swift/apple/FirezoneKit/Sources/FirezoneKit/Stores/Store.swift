@@ -687,7 +687,7 @@ public final class Store: ObservableObject {
   }
 
   func signIn(token: String) async throws {
-    let signInValues = configuration.signInValues
+    let signInSettings = configuration.signInSettings
     try await manager().save(configuration: configuration)
     try await manager().enable()
 
@@ -699,7 +699,7 @@ public final class Store: ObservableObject {
     guard let session = try manager().session() else {
       throw VPNConfigurationManagerError.managerNotInitialized
     }
-    guard configuration.signInValues == signInValues else {
+    guard configuration.signInSettings == signInSettings else {
       throw AuthClientError.settingsChanged
     }
     try IPCClient.start(
@@ -708,7 +708,7 @@ public final class Store: ObservableObject {
       identityReference: identityReference()
     )
 
-    configuration.signedInWith = signInValues
+    configuration.signedInWith = signInSettings
   }
 
   /// The keychain reference of the certificate the app displayed, [`nil`] when none is loadable.

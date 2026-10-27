@@ -9,13 +9,14 @@ import Foundation
 // Android and desktop validate a filter with connlib's own `logging::try_filter`. The Apple app
 // links libconnlib but does not compile its generated Swift bindings, so it checks a strict
 // subset of tracing's `EnvFilter` syntax instead: anything accepted here parses there too.
+// Unifying the FFI entrypoints would let this use connlib: https://github.com/firezone/firezone/issues/16014.
 enum LogFilter {
   private static let levels: Set<String> = ["trace", "debug", "info", "warn", "error", "off"]
   private static let targetCharacters = CharacterSet(
     charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_:-"
   )
 
-  /// Whether `filter` is a comma-separated list of `level` or `target=level` directives.
+  /// Whether `filter` is empty or a comma-separated list of `level` or `target=level` directives.
   ///
   /// Whitespace is rejected rather than trimmed: `EnvFilter` reads " hyper=off" as a broken
   /// directive, and "info " as a target named "info ".

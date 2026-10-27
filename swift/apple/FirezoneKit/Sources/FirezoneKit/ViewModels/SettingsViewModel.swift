@@ -52,7 +52,7 @@ class SettingsViewModel: ObservableObject {
   init(
     configuration: Configuration? = nil,
     store: Store? = nil,
-    selectedTab: SettingsView.Tab = .general
+    selectedTab: SettingsView.Tab = .settings
   ) {
     self.configuration = configuration ?? store?.configuration ?? Configuration.shared
     self.store = store
@@ -115,7 +115,7 @@ class SettingsViewModel: ObservableObject {
 
   func reset() {
     switch selectedTab {
-    case .general:
+    case .settings:
       if !configuration.isAuthURLForced { authURL = ConfigurationDefaults.authURL }
       if !configuration.isApiURLForced { apiURL = ConfigurationDefaults.apiURL }
       if !configuration.isAccountSlugForced { accountSlug = ConfigurationDefaults.accountSlug }
@@ -136,7 +136,7 @@ class SettingsViewModel: ObservableObject {
   /// Saves the settings of `tab`, or of the selected tab, skipping any that are invalid.
   func save(_ tab: SettingsView.Tab? = nil) async throws {
     switch tab ?? selectedTab {
-    case .general:
+    case .settings:
       authURLError = isAuthURLValid() ? nil : "Enter a valid http:// or https:// URL"
       apiURLError = isApiURLValid() ? nil : "Enter a valid ws:// or wss:// URL"
 
@@ -273,8 +273,6 @@ class SettingsViewModel: ObservableObject {
   private func logFilterProblem() -> String? {
     if configuration.isLogFilterForced { return nil }
 
-    if logFilter.isEmpty { return "Enter a log filter" }
-
     if !LogFilter.isValid(logFilter) {
       return "Use a level such as info, or target=level pairs separated by commas"
     }
@@ -289,9 +287,9 @@ class SettingsViewModel: ObservableObject {
       let signedInWith = configuration.signedInWith
     else { return false }
 
-    let draft = SignInValues(accountSlug: accountSlug, authURL: authURL, apiURL: apiURL)
+    let draft = SignInSettings(accountSlug: accountSlug, authURL: authURL, apiURL: apiURL)
 
-    return draft != signedInWith || configuration.signInValues != signedInWith
+    return draft != signedInWith || configuration.signInSettings != signedInWith
   }
 
   var isPortalForced: Bool {
@@ -307,7 +305,7 @@ class SettingsViewModel: ObservableObject {
 
   private func updateDerivedState() {
     switch selectedTab {
-    case .general:
+    case .settings:
       let isAllForced =
         configuration.isAuthURLForced && configuration.isApiURLForced
         && configuration.isAccountSlugForced && configuration.isConnectOnStartForced
