@@ -416,4 +416,78 @@ defmodule PortalWeb.Components.Page do
     </div>
     """
   end
+
+  @doc """
+  The Firezone Cloud region this portal keeps its data in, or `:on_prem`.
+  """
+  def data_residency_region, do: Portal.Config.fetch_env!(:portal, :data_residency_region)
+
+  def data_residency_name(:us), do: "United States"
+  def data_residency_name(:eu), do: "European Union"
+
+  @doc """
+  The flag of a data residency region, drawn inline so it looks the same on
+  every platform (Windows has no flag emoji).
+  """
+  attr :region, :atom, required: true
+  attr :class, :string, default: "w-5 h-auto"
+
+  def residency_flag(%{region: :us} = assigns) do
+    ~H"""
+    <svg
+      class={["shrink-0 rounded-[2px]", @class]}
+      viewBox="0 0 19 10"
+      role="img"
+      aria-label="United States flag"
+    >
+      <rect width="19" height="10" fill="#b22234" />
+      <path
+        d="M0 1.15h19M0 2.69h19M0 4.23h19M0 5.77h19M0 7.31h19M0 8.85h19"
+        stroke="#fff"
+        stroke-width="0.77"
+      />
+      <rect width="7.6" height="5.38" fill="#3c3b6e" />
+    </svg>
+    """
+  end
+
+  def residency_flag(%{region: :eu} = assigns) do
+    ~H"""
+    <svg
+      class={["shrink-0 rounded-[2px]", @class]}
+      viewBox="0 0 30 20"
+      role="img"
+      aria-label="European Union flag"
+    >
+      <rect width="30" height="20" fill="#003399" />
+      <circle
+        :for={i <- 0..11}
+        cx="15"
+        cy="4"
+        r="0.9"
+        fill="#ffcc00"
+        transform={"rotate(#{i * 30} 15 10)"}
+      />
+    </svg>
+    """
+  end
+
+  @doc """
+  Shows which region the portal keeps its data in, at the bottom of the sign in
+  pages. On-prem portals show nothing.
+  """
+  def data_residency_footer(assigns) do
+    assigns = assign(assigns, :region, data_residency_region())
+
+    ~H"""
+    <p
+      :if={@region != :on_prem}
+      id="data-residency"
+      class="flex items-center justify-center gap-1.5 mt-6 text-xs text-showcase-text/70 lg:text-subtle"
+    >
+      <.residency_flag region={@region} class="w-4 h-auto" />
+      <span>Data residency: {data_residency_name(@region)}</span>
+    </p>
+    """
+  end
 end

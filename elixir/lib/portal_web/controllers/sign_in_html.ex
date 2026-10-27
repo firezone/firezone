@@ -197,6 +197,8 @@ defmodule PortalWeb.SignInHTML do
   end
 
   def headless_client_signed_in(assigns) do
+    assigns = Map.put(assigns, :api_url, PortalWeb.DeploymentURLs.api_url())
+
     ~H"""
     <!DOCTYPE html>
     <html lang="en" class="scrollbar-gutter-stable">
@@ -317,6 +319,18 @@ defmodule PortalWeb.SignInHTML do
                 phx-no-format
               >FIREZONE_TOKEN</code>
               environment variable.
+            </p>
+            <p
+              :if={@api_url}
+              id="api-url-hint"
+              class="mt-2 text-xs text-subtle leading-relaxed"
+            >
+              Also set
+              <code
+                class="px-1 py-0.5 rounded border border-border bg-raised font-mono"
+                phx-no-format
+              >FIREZONE_API_URL={@api_url}</code>
+              so the Client connects to this portal.
             </p>
           </div>
         </div>

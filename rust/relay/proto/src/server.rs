@@ -40,7 +40,6 @@ use stun_codec::rfc8656::attributes::{
 use stun_codec::rfc8656::errors::{AddressFamilyNotSupported, PeerAddressFamilyMismatch};
 use stun_codec::{Message, MessageClass, Method, TransactionId};
 use tracing::field;
-use uuid::Uuid;
 
 /// A sans-IO STUN & TURN server.
 ///
@@ -206,8 +205,8 @@ where
             pending_commands: Default::default(),
             auth_secret: SecretString::from(hex::encode(rng.random::<[u8; 32]>())),
             accounts_by_hash: Default::default(),
+            nonces: Nonces::new(rng.random()),
             rng,
-            nonces: Default::default(),
             allocations_up_down_counter,
             responses_counter,
             data_relayed: 0,
@@ -282,11 +281,6 @@ where
 
     pub fn listen_port(&self) -> u16 {
         self.listen_port
-    }
-
-    /// Registers a new, valid nonce for the given client.
-    pub fn add_nonce(&mut self, client: ClientSocket, nonce: Uuid) {
-        self.nonces.add_new(client, nonce);
     }
 
     pub fn num_relayed_bytes(&self) -> u64 {
@@ -400,7 +394,7 @@ where
         // In case of a 401 or 438 response, attach a realm and nonce.
         if is_auth_error {
             error_response.add_attribute((*FIREZONE).clone());
-            error_response.add_attribute(self.new_nonce_attribute(sender));
+            error_response.add_attribute(self.new_nonce_attribute(sender, now_utc));
         }
 
         let message = match message.username() {
@@ -640,7 +634,7 @@ where
                 family: second_relay_addr.family(),
             });
         }
-        self.authenticate_and_send(&username, request, message, sender);
+        self.authenticate_and_send(&username, request, message, sender, now_utc);
 
         if let Some(second_relay_addr) = maybe_second_relay_addr {
             tracing::info!(
@@ -711,6 +705,7 @@ where
                 request,
                 refresh_success_response(effective_lifetime, request.transaction_id()),
                 sender,
+                now_utc,
             );
 
             return Ok(());
@@ -725,6 +720,7 @@ where
             request,
             refresh_success_response(effective_lifetime, request.transaction_id()),
             sender,
+            now_utc,
         );
 
         Ok(())
@@ -822,6 +818,7 @@ where
                 request,
                 channel_bind_success_response(request.transaction_id()),
                 sender,
+                now_utc,
             );
 
             return Ok(());
@@ -839,6 +836,7 @@ where
             request,
             channel_bind_success_response(request.transaction_id()),
             sender,
+            now_utc,
         );
 
         tracing::info!(target: "relay", %sender, allocation = %port, peer = %peer_address, channel = %requested_channel.value(), "Successfully bound channel");
@@ -865,6 +863,7 @@ where
             request,
             create_permission_success_response(request.transaction_id()),
             sender,
+            now_utc,
         );
 
         Ok(())
@@ -931,16 +930,9 @@ where
 
                 error_response
             })?
-            .value()
-            .parse::<Uuid>()
-            .map_err(|e| {
-                let (error_response, msg) = make_error_response(Unauthorized, request);
-                tracing::warn!(target: "relay", "{msg}: Failed to parse nonce: {e}");
+            .value();
 
-                error_response
-            })?;
-
-        self.nonces.handle_nonce_used(sender, nonce).map_err(|e| {
+        self.nonces.verify(sender, nonce, now_utc).map_err(|e| {
             let (error_response, msg) = make_error_response(StaleNonce, request);
             tracing::debug!(target: "relay", "{msg}: Nonce is invalid: {e}");
 
@@ -953,7 +945,7 @@ where
                 let (error_response, msg) = make_error_response(Unauthorized, request);
 
                 match e {
-                    auth::Error::UnknownNonce | auth::Error::NonceUsedUp | auth::Error::Expired | auth::Error::InvalidPassword => {
+                    auth::Error::UnknownNonce | auth::Error::StaleNonce | auth::Error::Expired | auth::Error::InvalidPassword => {
                         tracing::debug!(target: "relay", "{msg}: MessageIntegrity check failed: {e}");
                     },
                     auth::Error::CannotAuthenticate(_) | auth::Error::InvalidUsername => {
@@ -1057,9 +1049,12 @@ where
         &mut self,
         username: &Username,
         request: &impl StunRequest,
-        message: Message<Attribute>,
+        mut message: Message<Attribute>,
         recipient: ClientSocket,
+        now_utc: SystemTime,
     ) {
+        message.add_attribute(self.new_nonce_attribute(recipient, now_utc));
+
         let authenticated_message = match AuthenticatedMessage::new(
             &self.auth_secret,
             username,
@@ -1208,11 +1203,9 @@ where
         tracing::info!(target: "relay", channel = %chan.value(), %client, %peer, %allocation, "Channel binding is now deleted (and can be rebound)");
     }
 
-    fn new_nonce_attribute(&mut self, sender: ClientSocket) -> Nonce {
-        let nonce = self.nonces.issue(sender, &mut self.rng);
-
-        Nonce::new(nonce.to_string())
-            .expect("UUIDs are valid nonces because they are less than 128 characters long")
+    fn new_nonce_attribute(&self, sender: ClientSocket, now_utc: SystemTime) -> Nonce {
+        Nonce::new(self.nonces.issue(sender, now_utc))
+            .expect("our nonces are valid because they are less than 128 characters long")
     }
 }
 
@@ -1608,6 +1601,59 @@ mod tests {
         assert_eq!(server.next_command(), None);
     }
 
+    #[test]
+    fn success_responses_renew_the_nonce() {
+        let now = Instant::now();
+        let issued_at = SystemTime::UNIX_EPOCH;
+        let client = ClientSocket::new(SocketAddr::from(([127, 0, 0, 1], 50_000)));
+        let account = auth::AccountId::from(Uuid::nil());
+        let mut server = Server::new(
+            Ipv4Addr::LOCALHOST,
+            StdRng::seed_from_u64(0),
+            3478,
+            49_152..=49_153,
+        );
+
+        server.set_accounts([account]);
+        let nonce = issue_nonce(&mut server, client, now, issued_at);
+        let username = Username::new(format!(
+            "2145916800:{}:credential-salt",
+            auth::hash_account_id(&account)
+        ))
+        .unwrap();
+
+        let allocate = authenticated_request(
+            &server,
+            ALLOCATE,
+            TransactionId::new([1; 12]),
+            &username,
+            &nonce,
+            [Attribute::RequestedTransport(RequestedTransport::new(
+                UDP_TRANSPORT,
+            ))],
+        );
+        server.handle_client_input(&allocate, client, now, issued_at + Nonces::WINDOW);
+        let renewed = next_response(&mut server)
+            .get_attribute::<Nonce>()
+            .cloned()
+            .expect("a success response carries a nonce");
+
+        let refresh = authenticated_request(
+            &server,
+            REFRESH,
+            TransactionId::new([2; 12]),
+            &username,
+            &renewed,
+            [],
+        );
+        server.handle_client_input(&refresh, client, now, issued_at + Nonces::WINDOW * 2);
+
+        assert_eq!(
+            next_response(&mut server).class(),
+            MessageClass::SuccessResponse
+        );
+    }
+
     fn issue_nonce(
         server: &mut Server<StdRng>,
         client: ClientSocket,
@@ -1623,17 +1669,27 @@ mod tests {
             .expect("a well-formed ALLOCATE encodes");
         server.handle_client_input(&bytes, client, now, now_utc);
 
-        let Some(Command::SendMessage { payload, .. }) = server.next_command() else {
-            panic!("the relay answers an unauthenticated ALLOCATE");
-        };
+        next_response(server)
+            .get_attribute::<Nonce>()
+            .cloned()
+            .expect("a `401` carries a nonce")
+    }
+
+    fn next_response(server: &mut Server<StdRng>) -> Message<Attribute> {
+        let payload = std::iter::from_fn(|| server.next_command())
+            .find_map(|command| {
+                let Command::SendMessage { payload, .. } = command else {
+                    return None;
+                };
+
+                Some(payload)
+            })
+            .expect("the relay sends a response");
 
         MessageDecoder::<Attribute>::new()
             .decode_from_bytes(&payload)
             .expect("the relay's response decodes")
             .expect("the relay's response is well-formed")
-            .get_attribute::<Nonce>()
-            .cloned()
-            .expect("a `401` carries a nonce")
     }
 
     fn authenticated_request(
