@@ -183,13 +183,12 @@ defmodule PortalWeb.Settings.AccountTest do
       refute has_element?(lv, "#data-residency")
     end
 
-    test "shows the US region with the EU closed beta link", %{
+    test "shows where the US region stores account data", %{
       conn: conn,
       account: account,
       actor: actor
     } do
       Portal.Config.put_env_override(:data_residency_region, :us)
-      Portal.Config.put_env_override(:web_external_url, "https://app.firezone.dev")
 
       {:ok, lv, _html} =
         conn
@@ -197,11 +196,18 @@ defmodule PortalWeb.Settings.AccountTest do
         |> live(~p"/#{account}/settings/account")
 
       assert has_element?(lv, "#data-residency", "Cloud region: United States")
-      assert has_element?(lv, "#data-residency", "Firezone Cloud EU is in closed beta.")
-      assert has_element?(lv, "#data-residency a[href='https://www.firezone.dev/eu']")
+      assert has_element?(lv, "#data-residency", "Iowa, United States")
+      assert has_element?(lv, "#data-residency", "Arizona, United States")
+
+      assert has_element?(
+               lv,
+               "#data-residency a[href='https://www.firezone.dev/kb/architecture/regional-availability']"
+             )
+
+      refute has_element?(lv, "#data-residency", "closed beta")
     end
 
-    test "shows the EU region without the closed beta link", %{
+    test "shows where the EU region stores account data", %{
       conn: conn,
       account: account,
       actor: actor
@@ -214,24 +220,61 @@ defmodule PortalWeb.Settings.AccountTest do
         |> live(~p"/#{account}/settings/account")
 
       assert has_element?(lv, "#data-residency", "Cloud region: European Union")
-      refute has_element?(lv, "#data-residency", "closed beta")
+      assert has_element?(lv, "#data-residency", "Gävle, Sweden")
+      assert has_element?(lv, "#data-residency", "Paris, France")
     end
 
-    test "shows the US region without the closed beta link on other US portals", %{
+    test "hides the transfer request without a support recipient", %{
       conn: conn,
       account: account,
       actor: actor
     } do
       Portal.Config.put_env_override(:data_residency_region, :us)
-      Portal.Config.put_env_override(:web_external_url, "https://app.firez.one")
+      Portal.Config.put_env_override(Portal.Mailer.InternalEmail, recipient: nil)
 
       {:ok, lv, _html} =
         conn
         |> authorize_conn(actor)
         |> live(~p"/#{account}/settings/account")
 
-      assert has_element?(lv, "#data-residency", "Cloud region: United States")
-      refute has_element?(lv, "#data-residency", "closed beta")
+      assert has_element?(lv, "#data-residency")
+      refute has_element?(lv, "#request-region-transfer")
+    end
+
+    test "sends a region transfer request to support", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      Portal.Config.put_env_override(:data_residency_region, :us)
+      Portal.Config.put_env_override(Portal.Mailer.InternalEmail, recipient: "support@firezone.dev")
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/account")
+
+      html =
+        lv
+        |> element("#request-region-transfer", "Request transfer to the European Union region")
+        |> render_click()
+
+      assert html =~ "Transfer your account to the European Union region?"
+      assert html =~ "maintenance window of up to 8 hours"
+      assert html =~ actor.email
+
+      html = render_click(lv, "request_region_transfer")
+
+      assert html =~ "Request sent. Firezone support will contact you at #{actor.email}"
+      refute html =~ "region-transfer-modal"
+
+      assert_receive {:email, email}
+      assert email.to == [{"", "support@firezone.dev"}]
+      assert email.subject == "Region transfer request: #{account.name}"
+      assert email.reply_to == {actor.name, actor.email}
+      assert email.text_body =~ "Account: #{account.name} (#{account.id})"
+      assert email.text_body =~ "From region: United States"
+      assert email.text_body =~ "To region: European Union"
     end
 
     test "renders usage section", %{conn: conn, account: account, actor: actor} do
