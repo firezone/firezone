@@ -261,6 +261,7 @@ defmodule PortalWeb.Settings.AccountTest do
 
       assert html =~ "Transfer your account to the European Union region?"
       assert html =~ "maintenance window of up to 8 hours"
+      assert html =~ "every session, Gateway token, and API token is invalid"
       assert html =~ actor.email
 
       html = render_click(lv, "request_region_transfer")

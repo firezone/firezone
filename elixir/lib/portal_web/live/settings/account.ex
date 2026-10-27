@@ -403,9 +403,10 @@ defmodule PortalWeb.Settings.Account do
                   Gateways are offline.
                 </p>
                 <p>
-                  After the transfer, update your Clients and Gateways to use the new portal.
-                  Clients that still use the old portal are redirected when they sign in, so
-                  that can wait. Gateways do not sign in, so they stay offline until you update them.
+                  After the transfer, every session, Gateway token, and API token is invalid.
+                  Users sign in again, and a sign-in on the old portal redirects to the new one.
+                  Each Gateway needs a new token and the new API URL before it comes back online.
+                  Recreate every API token.
                 </p>
               </div>
             </:body>
