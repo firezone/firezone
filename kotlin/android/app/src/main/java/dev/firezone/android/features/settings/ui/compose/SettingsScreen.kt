@@ -28,6 +28,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
+import dev.firezone.android.BuildConfig
 import dev.firezone.android.R
 import dev.firezone.android.core.data.model.Config
 import dev.firezone.android.core.data.model.ManagedConfigStatus
@@ -84,6 +85,8 @@ internal fun SettingsScreen(
     onSignOutNoticeDismissed: () -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
+    // Parameters so the screenshot test can pin them; the build's commit changes with every push.
+    versionName: String = BuildConfig.VERSION_NAME,
     buildSha: String = stringResource(R.string.git_sha),
 ) {
     val pages = remember(showDeviceTrust) { settingsPages(showDeviceTrust) }
@@ -142,7 +145,6 @@ internal fun SettingsScreen(
                         onAccountSlugChange = onAccountSlugChange,
                         onStartOnLoginChange = onStartOnLoginChange,
                         onConnectOnStartChange = onConnectOnStartChange,
-                        buildSha = buildSha,
                     )
                 }
 
@@ -161,6 +163,8 @@ internal fun SettingsScreen(
                         onLogFilterChange = onLogFilterChange,
                         onClearLogs = onClearLogs,
                         onExportLogs = onExportLogs,
+                        versionName = versionName,
+                        buildSha = buildSha,
                     )
                 }
             }

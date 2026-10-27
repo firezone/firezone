@@ -217,8 +217,9 @@ private fun SettingsScreenSample(
         onDeviceTrustShown = {},
         onSignOutNoticeDismissed = {},
         onBack = {},
-        // The general page shows the commit the app was built from, which changes with every
-        // push; pin it so the image only changes when the UI does.
+        // The diagnostics page shows the version and commit the app was built from, which change
+        // with every release and push; pin them so the image only changes when the UI does.
+        versionName = "1.0.0",
         buildSha = "0000000000000000000000000000000000000000",
     )
 }

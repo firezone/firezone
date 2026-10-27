@@ -2,6 +2,8 @@
 package dev.firezone.android.features.settings.ui.compose
 
 import android.text.format.Formatter
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -14,11 +16,13 @@ import androidx.compose.material3.IconButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import dev.firezone.android.R
 import dev.firezone.android.core.data.model.Config
 import dev.firezone.android.core.data.model.ManagedConfigStatus
+import dev.firezone.android.core.utils.ClipboardUtils
 import dev.firezone.android.ui.FirezoneIcons
 
 @Composable
@@ -29,16 +33,21 @@ fun LogSettingsPage(
     onLogFilterChange: (String) -> Unit,
     onClearLogs: () -> Unit,
     onExportLogs: () -> Unit,
+    versionName: String,
+    buildSha: String,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
+    val uriHandler = LocalUriHandler.current
     val hasLogs = logSizeBytes > 0
+    val version = "$versionName (${buildSha.take(8)})"
 
     Column(
         modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         SettingsGroup(title = stringResource(R.string.log_settings_title)) {
             TextPreferenceRow(
@@ -61,6 +70,21 @@ fun LogSettingsPage(
                     }
                 }
             }
+        }
+        SettingsGroup(title = stringResource(R.string.settings_section_about)) {
+            SettingsRow(
+                title = stringResource(R.string.version),
+                summary = version,
+                action =
+                    Modifier.combinedClickable(
+                        onClick = {
+                            if (buildSha != "unknown") {
+                                uriHandler.openUri("https://github.com/firezone/firezone/commit/$buildSha")
+                            }
+                        },
+                        onLongClick = { ClipboardUtils.copyToClipboard(context, "Version", version) },
+                    ),
+            )
         }
     }
 }
