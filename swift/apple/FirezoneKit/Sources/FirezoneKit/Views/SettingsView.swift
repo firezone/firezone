@@ -626,13 +626,54 @@ struct ButtonWithProgress: View {
           .frame(width: 16, height: 16)
       }
     }
-    // Inside a Form row, any other style makes a tap anywhere on the row fire every button in it.
-    .buttonStyle(.borderless)
+    #if os(macOS)
+      .buttonStyle(HoverHighlightButtonStyle())
+    #else
+      // Inside a Form row, any other style makes a tap anywhere on the row fire every button in it.
+      .buttonStyle(.borderless)
+      .hoverEffect(.highlight)
+    #endif
     .disabled(isProcessing)
     .accessibilityLabel(title)
     .help(title)
   }
 }
+
+#if os(macOS)
+  /// An icon button that shows a rounded highlight under the pointer, like the accessory
+  /// buttons in System Settings.
+  private struct HoverHighlightButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+      HoverHighlightButton(configuration: configuration)
+    }
+  }
+
+  private struct HoverHighlightButton: View {
+    let configuration: ButtonStyleConfiguration
+
+    @Environment(\.isEnabled) private var isEnabled
+    @State private var isHovered = false
+
+    var body: some View {
+      configuration.label
+        .padding(4)
+        .background(
+          RoundedRectangle(cornerRadius: 5)
+            .fill(Color.primary.opacity(highlightOpacity))
+        )
+        .contentShape(Rectangle())
+        .onHover { isHovered = $0 }
+    }
+
+    private var highlightOpacity: Double {
+      guard isEnabled else { return 0 }
+
+      if configuration.isPressed { return 0.15 }
+
+      return isHovered ? 0.08 : 0
+    }
+  }
+#endif
 
 struct LogFilesView: View {
   /// nil while the size is being computed.
