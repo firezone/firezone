@@ -431,60 +431,46 @@ public struct SettingsView: View {
               .submitLabel(.done)
               .disabled(configuration.isLogFilterForced)
             }
-            LogDirectorySizeView(sizeText: viewModel.logDirectorySizeText)
-              .onAppear {
-                viewModel.refreshLogDirectorySize()
-              }
-              .onDisappear {
-                viewModel.cancelLogDirectorySizeRefresh()
-              }
-            HStack {
-              Spacer()
-              ButtonWithProgress(
-                systemImageName: "trash",
-                title: "Clear Log Directory",
-                isProcessing: viewModel.isClearingLogs,
-                action: {
-                  viewModel.clearLogs()
-                }
-              )
-              Spacer()
-            }
-            HStack {
-              Spacer()
-              ButtonWithProgress(
-                systemImageName: "arrow.up.doc",
-                title: "Export Logs",
-                isProcessing: viewModel.isExportingLogs,
-                action: {
-                  viewModel.isExportingLogs = true
-                  Task {
-                    do {
-                      let archiveURL = try await store.exportLogs()
-                      self.exportedLogArchive = LogArchive(url: archiveURL)
-                    } catch {
-                      Log.error(error)
-                      viewModel.isExportingLogs = false
-                    }
+            LogFilesView(
+              sizeText: viewModel.logDirectorySizeText,
+              isExporting: viewModel.isExportingLogs,
+              isClearing: viewModel.isClearingLogs,
+              export: {
+                viewModel.isExportingLogs = true
+                Task {
+                  do {
+                    let archiveURL = try await store.exportLogs()
+                    self.exportedLogArchive = LogArchive(url: archiveURL)
+                  } catch {
+                    Log.error(error)
+                    viewModel.isExportingLogs = false
                   }
                 }
-              )
-              .sheet(
-                item: $exportedLogArchive,
-                onDismiss: {
-                  viewModel.isExportingLogs = false
-                },
-                content: { archive in
-                  ShareSheetView(
-                    localFileURL: archive.url,
-                    completionHandler: {
-                      self.exportedLogArchive = nil
-                    }
-                  )
-                }
-              )
-              Spacer()
+              },
+              clear: {
+                viewModel.clearLogs()
+              }
+            )
+            .onAppear {
+              viewModel.refreshLogDirectorySize()
             }
+            .onDisappear {
+              viewModel.cancelLogDirectorySizeRefresh()
+            }
+            .sheet(
+              item: $exportedLogArchive,
+              onDismiss: {
+                viewModel.isExportingLogs = false
+              },
+              content: { archive in
+                ShareSheetView(
+                  localFileURL: archive.url,
+                  completionHandler: {
+                    self.exportedLogArchive = nil
+                  }
+                )
+              }
+            )
           }
         }
       }
@@ -504,34 +490,22 @@ public struct SettingsView: View {
               .disabled(configuration.isLogFilterForced)
               .frame(width: 250)
             }
-            LogDirectorySizeView(sizeText: viewModel.logDirectorySizeText)
-              .onAppear {
-                viewModel.refreshLogDirectorySize()
+            LogFilesView(
+              sizeText: viewModel.logDirectorySizeText,
+              isExporting: viewModel.isExportingLogs,
+              isClearing: viewModel.isClearingLogs,
+              export: {
+                self.exportLogsWithSavePanelOnMac()
+              },
+              clear: {
+                viewModel.clearLogs()
               }
-              .onDisappear {
-                viewModel.cancelLogDirectorySizeRefresh()
-              }
-            LabeledContent {
-              HStack(spacing: 12) {
-                ButtonWithProgress(
-                  systemImageName: "trash",
-                  title: "Clear Log Directory",
-                  isProcessing: viewModel.isClearingLogs,
-                  action: {
-                    viewModel.clearLogs()
-                  }
-                )
-                ButtonWithProgress(
-                  systemImageName: "arrow.up.doc",
-                  title: "Export Logs",
-                  isProcessing: viewModel.isExportingLogs,
-                  action: {
-                    self.exportLogsWithSavePanelOnMac()
-                  }
-                )
-              }
-            } label: {
-              EmptyView()
+            )
+            .onAppear {
+              viewModel.refreshLogDirectorySize()
+            }
+            .onDisappear {
+              viewModel.cancelLogDirectorySizeRefresh()
             }
           }
           .padding(10)
@@ -653,63 +627,69 @@ struct ButtonWithProgress: View {
   let action: () -> Void
 
   var body: some View {
-
-    VStack {
-      Button(action: action) {
-        Label(
-          title: { Text(title) },
-          icon: {
-            if isProcessing {
-              ProgressView().controlSize(.small)
-                .frame(maxWidth: 12, maxHeight: 12)
-            } else {
-              Image(systemName: systemImageName)
-                .frame(maxWidth: 12, maxHeight: 12)
-            }
-          }
-        )
-        .labelStyle(.titleAndIcon)
+    Button(action: action) {
+      if isProcessing {
+        ProgressView().controlSize(.small)
+          .frame(width: 16, height: 16)
+      } else {
+        Image(systemName: systemImageName)
+          .frame(width: 16, height: 16)
       }
-      .disabled(isProcessing)
     }
-    .frame(minHeight: 30)
+    // Inside a Form row, any other style makes a tap anywhere on the row fire every button in it.
+    .buttonStyle(.borderless)
+    .disabled(isProcessing)
+    .accessibilityLabel(title)
+    .help(title)
   }
 }
 
-struct LogDirectorySizeView: View {
+struct LogFilesView: View {
   /// nil while the size is being computed.
   let sizeText: String?
+  let isExporting: Bool
+  let isClearing: Bool
+  let export: () -> Void
+  let clear: () -> Void
 
   var body: some View {
     #if os(macOS)
-      LabeledContent("Log directory size") {
-        size
+      LabeledContent("Log Files") {
+        controls
       }
     #elseif os(iOS)
-      HStack(spacing: 10) {
-        Label(
-          title: { Text("Log directory size:") },
-          icon: {}
-        )
-        .foregroundColor(.secondary)
+      HStack {
+        Text("Log Files")
+          .foregroundStyle(.secondary)
+          .font(.caption)
         Spacer()
-        size
+        controls
       }
     #endif
   }
 
-  private var size: some View {
-    Label(
-      title: {
-        Text(sizeText ?? "")
-      },
-      icon: {
-        if sizeText == nil {
-          ProgressView().controlSize(.small)
-            .frame(maxWidth: 12, maxHeight: 12)
-        }
+  private var controls: some View {
+    HStack(spacing: 12) {
+      if let sizeText {
+        Text(sizeText)
+          .foregroundStyle(.secondary)
+      } else {
+        ProgressView().controlSize(.small)
+          .frame(width: 16, height: 16)
       }
-    )
+      ButtonWithProgress(
+        systemImageName: "arrow.up.doc",
+        title: "Export Logs",
+        isProcessing: isExporting,
+        action: export
+      )
+      ButtonWithProgress(
+        systemImageName: "trash",
+        title: "Clear Log Directory",
+        isProcessing: isClearing,
+        action: clear
+      )
+    }
   }
 }
 
