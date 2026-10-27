@@ -45,6 +45,7 @@ pub struct Controller<I: GuiIntegration> {
     legacy_advanced_settings_path: PathBuf,
     // Sign-in state with the portal / deep links
     auth: auth::Auth,
+    pending_sign_in: Option<SignedInWith>,
     clear_logs_callback: Option<oneshot::Sender<Result<(), String>>>,
     x509: Result<Option<x509_keystore::ParsedCertificate>, x509_keystore::Error>,
     ipc_client: ipc::ClientWrite<service::ClientMsg>,
@@ -257,6 +258,7 @@ impl<I: GuiIntegration> Controller<I> {
             settings_pending: false,
             legacy_advanced_settings_path,
             auth,
+            pending_sign_in: None,
             clear_logs_callback: None,
             x509,
             ipc_client,
@@ -472,13 +474,25 @@ impl<I: GuiIntegration> Controller<I> {
 
         tracing::info!("Received deep link over IPC");
 
+        let signed_in_with = self
+            .pending_sign_in
+            .take()
+            .ok_or(auth::Error::NoInflightRequest)?;
+        if self.settings_pending || signed_in_with != self.current_sign_in() {
+            self.sign_out().await?;
+            self.integration.show_notification(
+                "Sign-in settings changed",
+                "Start sign-in again to use the current account slug and control plane.",
+            )?;
+            return Ok(());
+        }
+
         // Uses `std::fs`
         let token = self
             .auth
             .handle_response(auth_response)
             .context("Couldn't handle auth response")?;
-        self.set_signed_in_with(Some(self.current_sign_in()))
-            .await?;
+        self.set_signed_in_with(Some(signed_in_with)).await?;
 
         self.update_telemetry_context().await?;
         self.start_session(token).await?;
@@ -568,14 +582,17 @@ impl<I: GuiIntegration> Controller<I> {
             OpenTrayMenu => self.integration.open_tray_menu()?,
             CloseTrayMenu => self.integration.close_tray_menu()?,
             SignIn | SystemTrayMenu(system_tray::Event::SignIn) => {
-                let auth_url = self.auth_url().clone();
-                let account_slug = self.account_slug().map(|a| a.to_owned());
+                let signed_in_with = self.current_sign_in();
 
                 let url = self
                     .auth
                     .start_sign_in()
                     .context("Couldn't start sign-in flow")?
-                    .to_url(&auth_url, account_slug.as_deref());
+                    .to_url(
+                        &signed_in_with.auth_url,
+                        signed_in_with.account_slug.as_deref(),
+                    );
+                self.pending_sign_in = Some(signed_in_with);
                 self.set_signed_in_with(None).await?;
                 self.refresh_ui_state();
 
@@ -1194,6 +1211,7 @@ impl<I: GuiIntegration> Controller<I> {
             | Status::WaitingForPortal
             | Status::WaitingForTunnel => {}
         }
+        self.pending_sign_in = None;
         self.auth.sign_out()?;
         self.set_signed_in_with(None).await?;
 
@@ -2292,6 +2310,62 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn rejects_a_browser_response_after_sign_in_settings_change() {
+        let _guard = logging::test("debug");
+        let mut test_controller = Controller::start_for_test();
+        let mut mock_tunnel = test_controller.tunnel_service_ipc_accept().await;
+        mock_tunnel.send_hello().await;
+        let callback = test_controller.begin_sign_in().await;
+
+        for account_slug in ["other", ""] {
+            test_controller
+                .ctrl_tx
+                .send(ControllerRequest::ApplyGeneralSettings(Box::new(
+                    GeneralSettingsForm {
+                        account_slug: Some(account_slug.to_owned()),
+                        ..Default::default()
+                    },
+                )))
+                .await
+                .unwrap();
+            test_controller
+                .wait_integration(|integration| {
+                    let settings = integration.general_settings.last()?;
+                    (settings.account_slug.as_deref().unwrap_or_default() == account_slug)
+                        .then_some(())
+                })
+                .await;
+            let ack = test_controller
+                .gui_ipc_request(gui_ipc::ClientMsg::Deeplink(callback.clone()))
+                .await;
+            assert_eq!(ack, gui_ipc::ServerMsg::Ack);
+            if account_slug == "other" {
+                assert!(matches!(
+                    mock_tunnel.next_msg().await,
+                    service::ClientMsg::Disconnect
+                ));
+            }
+        }
+
+        assert_eq!(
+            test_controller.integration().nth_notification(0).unwrap().0,
+            "Sign-in settings changed"
+        );
+        assert_eq!(
+            test_controller.integration().sessions.last(),
+            Some(&SessionViewModel::SignedOut)
+        );
+        assert!(
+            tokio::time::timeout(Duration::from_millis(50), mock_tunnel.next_msg())
+                .await
+                .is_err()
+        );
+
+        test_controller.sign_in().await;
+        let _ = mock_tunnel.rx_connect().await;
+    }
+
+    #[tokio::test]
     async fn remembers_what_the_session_signed_in_with_until_sign_out() {
         let _guard = logging::test("debug");
         let mut test_controller = Controller::start_for_test();
@@ -2410,23 +2484,27 @@ mod tests {
         }
 
         async fn sign_in(&mut self) {
+            let callback = self.begin_sign_in().await;
+            let ack = self
+                .gui_ipc_request(gui_ipc::ClientMsg::Deeplink(callback))
+                .await;
+            assert_eq!(ack, gui_ipc::ServerMsg::Ack);
+        }
+
+        async fn begin_sign_in(&mut self) -> Url {
+            let previous = self.integration().opened_urls.len();
             self.ctrl_tx.send(ControllerRequest::SignIn).await.unwrap();
 
-            let first_url = self
-                .wait_integration(|i| i.opened_urls.first().cloned())
+            let opened_url = self
+                .wait_integration(|i| i.opened_urls.get(previous).cloned())
                 .await;
-            let url = Url::parse(&first_url).unwrap();
+            let url = Url::parse(&opened_url).unwrap();
             let state = url
                 .query_pairs()
                 .find_map(|(key, value)| (key == "state").then_some(value))
                 .unwrap();
 
-            let (mut rx, mut tx) = self.gui_ipc_connect().await;
-            tx.send(&gui_ipc::ClientMsg::Deeplink(format!("firezone-fd0020211111://handle_client_sign_in_callback?account_name=Firezone&account_slug=firezone&actor_name=Foo+Bar&fragment=a_very_secret_string&identity_provider_identifier=1234&state={state}").parse().unwrap()))
-            .await
-            .unwrap();
-            let ack = rx.next().await.unwrap().unwrap();
-            assert_eq!(ack, gui_ipc::ServerMsg::Ack);
+            format!("firezone-fd0020211111://handle_client_sign_in_callback?account_name=Firezone&account_slug=firezone&actor_name=Foo+Bar&fragment=a_very_secret_string&identity_provider_identifier=1234&state={state}").parse().unwrap()
         }
 
         fn integration(&self) -> MutexGuard<'_, MockIntegration> {
