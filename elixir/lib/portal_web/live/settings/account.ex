@@ -408,6 +408,16 @@ defmodule PortalWeb.Settings.Account do
                   Each Gateway needs a new token and the new API URL before it comes back online.
                   Recreate every API token.
                 </p>
+                <p>
+                  Logs are not moved. They are deleted from the old region when the transfer
+                  completes, and that region's database backups expire 30 days later.
+                </p>
+                <p :if={Portal.Billing.paid_plan?(@account)}>
+                  Your billing moves too. We recreate your subscription under a new billing
+                  customer in the {Page.data_residency_name(Page.other_region(@data_residency_region))} region,
+                  apply any remaining credit at the exchange rate on the day of the transfer, and
+                  bill in {billing_currency(Page.other_region(@data_residency_region))} from then on.
+                </p>
               </div>
             </:body>
             <:cancel_button>Cancel</:cancel_button>
@@ -786,6 +796,9 @@ defmodule PortalWeb.Settings.Account do
       _ -> ""
     end
   end
+
+  defp billing_currency(:us), do: "USD"
+  defp billing_currency(:eu), do: "EUR"
 
   defp region_transfer_enabled?(region) do
     region in [:us, :eu] and InternalEmail.enabled?()

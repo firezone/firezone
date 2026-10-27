@@ -248,6 +248,7 @@ defmodule PortalWeb.Settings.AccountTest do
     } do
       Portal.Config.put_env_override(:data_residency_region, :us)
       Portal.Config.put_env_override(Portal.Mailer.InternalEmail, recipient: "support@firezone.dev")
+      account = update_account(account, metadata: %{stripe: %{product_name: "Team"}})
 
       {:ok, lv, _html} =
         conn
@@ -262,6 +263,8 @@ defmodule PortalWeb.Settings.AccountTest do
       assert html =~ "Transfer your account to the European Union region?"
       assert html =~ "maintenance window of up to 8 hours"
       assert html =~ "every session, Gateway token, and API token is invalid"
+      assert html =~ "Logs are not moved."
+      assert html =~ "bill in EUR from then on"
       assert html =~ actor.email
 
       html = render_click(lv, "request_region_transfer")
