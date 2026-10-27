@@ -256,6 +256,7 @@ class SettingsViewModelTest {
 
     @Test
     fun `saving a cloud portal does not remember its URLs as custom`() {
+        saveUrls("https://app.firezone.dev", "wss://api.firezone.dev")
         repository.saveLastCustomUrlsSync("https://firezone.example.com", "wss://api.firezone.example.com")
         populateFields()
 
