@@ -145,7 +145,7 @@ fun TextPreferenceRow(
     onValueChange: (String) -> Unit,
     modifier: Modifier = Modifier,
     isValid: (String) -> Boolean = { true },
-    invalidMessage: String? = null,
+    errorMessage: @Composable (String) -> String? = { null },
 ) {
     var isEditing by rememberSaveable { mutableStateOf(false) }
 
@@ -161,7 +161,8 @@ fun TextPreferenceRow(
         var draft by rememberSaveable(stateSaver = TextFieldValue.Saver) {
             mutableStateOf(TextFieldValue(value, TextRange(value.length)))
         }
-        val isDraftValid = isValid(draft.text)
+        val draftError = errorMessage(draft.text)
+        val isDraftValid = isValid(draft.text) && draftError == null
         val confirm = {
             onValueChange(draft.text)
             isEditing = false
@@ -177,7 +178,7 @@ fun TextPreferenceRow(
                     onValueChange = { draft = it },
                     singleLine = true,
                     isError = !isDraftValid,
-                    supportingText = invalidMessage?.takeIf { !isDraftValid }?.let { { Text(it) } },
+                    supportingText = draftError?.let { { Text(it) } },
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
                     keyboardActions = KeyboardActions(onDone = { if (isDraftValid) confirm() }),
                     modifier = Modifier.fillMaxWidth().focusRequester(focusRequester),

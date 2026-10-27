@@ -38,6 +38,7 @@
 	<string name="log_filter">Log Filter</string>
 	<string name="share_diagnostic_logs">Export Logs</string>
 	<string name="log_files">Log Files</string>
+	<string name="log_filter_invalid">Invalid log filter: %1$s</string>
 	<string name="clear_log_directory">Clear Log Directory</string>
 	<string name="clear_logs_confirm_title">Clear log files?</string>
 	<string name="clear_logs_confirm_message">This deletes all log files on this device. Export them first if you need them for a support request.</string>

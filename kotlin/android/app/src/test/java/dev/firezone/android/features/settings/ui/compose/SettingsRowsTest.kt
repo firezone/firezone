@@ -46,8 +46,7 @@ class SettingsRowsTest {
                 value = "info",
                 isManaged = false,
                 onValueChange = { staged = it },
-                isValid = String::isNotBlank,
-                invalidMessage = "Enter a filter",
+                errorMessage = { if (it.isBlank()) "Enter a filter" else null },
             )
         }
 

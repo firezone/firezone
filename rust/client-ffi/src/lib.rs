@@ -806,6 +806,15 @@ pub fn configure_logger(
     Ok(())
 }
 
+/// Checks that [`configure_logger`] would accept `log_filter`.
+#[uniffi::export]
+pub fn validate_log_filter(log_filter: String) -> Result<(), ConnlibError> {
+    // `ParseError` already renders its source, so keep `{:#}` from repeating it.
+    logging::try_filter::<tracing_subscriber::Registry>(&log_filter).map_err(|e| anyhow!("{e}"))?;
+
+    Ok(())
+}
+
 #[cfg(target_os = "android")]
 fn protected_tcp_socket_factory(callback: Arc<dyn ProtectSocket>) -> impl SocketFactory<TcpSocket> {
     move |addr| {
@@ -1040,5 +1049,29 @@ impl From<anyhow::Error> for ConnlibError {
 impl From<uniffi::UnexpectedUniFFICallbackError> for CallbackError {
     fn from(value: uniffi::UnexpectedUniFFICallbackError) -> Self {
         Self::Failed(format!("Callback failed: {}", value.reason))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn validate_log_filter_accepts_valid_filters() {
+        validate_log_filter("info".to_owned()).expect("`info` should be valid");
+        validate_log_filter("debug,firezone_tunnel=trace".to_owned())
+            .expect("a per-target directive should be valid");
+    }
+
+    #[test]
+    fn validate_log_filter_rejects_invalid_filters() {
+        let Err(error) = validate_log_filter("info,foo=bar=baz".to_owned()) else {
+            panic!("`foo=bar=baz` should be rejected");
+        };
+
+        assert_eq!(
+            error.to_string(),
+            r#"error parsing level filter: expected one of "off", "error", "warn", "info", "debug", "trace", or a number 0-5"#
+        );
     }
 }

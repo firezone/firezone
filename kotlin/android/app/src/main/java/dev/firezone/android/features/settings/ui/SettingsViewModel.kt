@@ -24,6 +24,8 @@ import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import uniffi.connlib.ConnlibException
+import uniffi.connlib.validateLogFilter
 import java.io.File
 import java.io.FileOutputStream
 import java.net.URI
@@ -250,6 +252,15 @@ internal class SettingsViewModel
         internal data class UiState(
             val logSizeBytes: Long = 0,
         )
+    }
+
+// Returns why connlib would reject `logFilter`, or `null` if it accepts it.
+internal fun logFilterError(logFilter: String): String? =
+    try {
+        validateLogFilter(logFilter)
+        null
+    } catch (e: ConnlibException) {
+        e.use { it.message() }
     }
 
 internal fun isValidAuthUrl(url: String): Boolean = isValidUrl(url, "http", "https")

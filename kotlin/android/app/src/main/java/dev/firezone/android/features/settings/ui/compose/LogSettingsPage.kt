@@ -30,6 +30,7 @@ import dev.firezone.android.R
 import dev.firezone.android.core.data.model.Config
 import dev.firezone.android.core.data.model.ManagedConfigStatus
 import dev.firezone.android.core.utils.ClipboardUtils
+import dev.firezone.android.features.settings.ui.logFilterError
 import dev.firezone.android.ui.FirezoneIcons
 
 @Composable
@@ -43,6 +44,7 @@ fun LogSettingsPage(
     versionName: String,
     buildSha: String,
     modifier: Modifier = Modifier,
+    validateLogFilter: (String) -> String? = ::logFilterError,
 ) {
     val context = LocalContext.current
     val uriHandler = LocalUriHandler.current
@@ -64,6 +66,7 @@ fun LogSettingsPage(
                 isManaged = managedStatus.isLogFilterManaged,
                 onValueChange = onLogFilterChange,
                 isValid = String::isNotBlank,
+                errorMessage = { filter -> validateLogFilter(filter)?.let { stringResource(R.string.log_filter_invalid, it) } },
             )
             SettingsRow(
                 title = stringResource(R.string.log_files),
