@@ -510,7 +510,7 @@ public struct SettingsView: View {
   private var signInChangeNote: some View {
     if viewModel.showsSignInChangeNote {
       Text(
-        "Changes to the account slug or control plane take effect after you sign out and sign in again."
+        "Sign out and sign in again after changing the account slug or control plane."
       )
       .foregroundStyle(.secondary)
     }

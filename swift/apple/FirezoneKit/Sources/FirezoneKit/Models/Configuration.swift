@@ -355,7 +355,7 @@ public class Configuration: ObservableObject {
   nonisolated static func string(_ value: Bool) -> String { value ? "true" : "false" }
 }
 
-/// The settings a sign-in is made with, which only take effect on the next sign-in.
+/// The account slug and endpoints selected for a sign-in.
 struct SignInValues: Equatable {
   let accountSlug: String
   let authURL: String

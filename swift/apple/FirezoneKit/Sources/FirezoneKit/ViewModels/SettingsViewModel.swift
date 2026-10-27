@@ -283,7 +283,7 @@ class SettingsViewModel: ObservableObject {
   }
 
   /// Whether the running session signed in with an account slug or portal other than the one
-  /// drafted or saved here, which only takes effect on the next sign-in.
+  /// drafted or saved here.
   var showsSignInChangeNote: Bool {
     guard let store, [.connected, .connecting, .reasserting].contains(store.vpnStatus),
       let signedInWith = configuration.signedInWith
