@@ -37,6 +37,8 @@ pub struct Controller<I: GuiIntegration> {
     general_settings: GeneralSettings,
     mdm_settings: MdmSettings,
     advanced_settings: AdvancedSettings,
+    /// Pauses controller requests until the service acknowledges a settings save,
+    /// so queued saves use the latest saved values.
     settings_ipc_pending: bool,
     /// Path of the legacy user-writable `advanced_settings.json`. The
     /// authoritative file now lives in the protected service-side location;
