@@ -304,7 +304,7 @@ impl<I: GuiIntegration> Controller<I> {
                 matches!(response, service::ServerMsg::AdvancedSettingsApplied(_)),
                 "Expected settings migration response"
             );
-            controller.handle_service_ipc_msg(response).await?;
+            let _ = controller.handle_service_ipc_msg(response).await?;
         }
 
         controller.main_loop().await?;
