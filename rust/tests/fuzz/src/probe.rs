@@ -57,7 +57,6 @@ pub(crate) struct IcmpFlow {
     pub(crate) identifier: Identifier,
     pub(crate) next_seq: Seq,
     pub(crate) route: Route,
-    pub(crate) last_round_trip: Instant,
 }
 
 #[derive(Debug, Clone)]
@@ -68,7 +67,6 @@ pub(crate) struct UdpFlow {
     pub(crate) sport: SPort,
     pub(crate) dport: DPort,
     pub(crate) route: Route,
-    pub(crate) last_round_trip: Instant,
 }
 
 #[derive(Debug, Clone)]
