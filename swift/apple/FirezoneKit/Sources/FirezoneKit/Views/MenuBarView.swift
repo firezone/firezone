@@ -177,14 +177,15 @@
       let paragraph = NSMutableParagraphStyle()
       paragraph.alignment = .center
 
-      let credits = NSAttributedString(
-        string: "\(shortGitSha) (GitHub)",
+      let credits = NSMutableAttributedString(
+        string: "Built from \(shortGitSha)",
         attributes: [
-          .link: commitURL,
           .font: NSFont.systemFont(ofSize: NSFont.smallSystemFontSize),
           .paragraphStyle: paragraph,
         ]
       )
+      credits.addAttribute(
+        .link, value: commitURL, range: (credits.string as NSString).range(of: shortGitSha))
 
       options[.credits] = credits
       return options

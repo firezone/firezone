@@ -24,7 +24,7 @@ public enum BundleHelper {
   }
 
   static var gitSha: String? {
-    if MockRun.isActive { return "deadbeef" }
+    if MockRun.isActive { return "00000000" }
 
     guard let gitSha = Bundle.main.object(forInfoDictionaryKey: "GitSha") as? String,
       !gitSha.isEmpty

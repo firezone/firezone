@@ -408,7 +408,10 @@ public struct SettingsView: View {
                 if let shortGitSha = BundleHelper.shortGitSha,
                   let commitURL = BundleHelper.commitURL
                 {
-                  Link("\(shortGitSha) (GitHub)", destination: commitURL)
+                  HStack(spacing: 4) {
+                    Text("Built from")
+                    Link(shortGitSha, destination: commitURL)
+                  }
                 }
               }
             }
