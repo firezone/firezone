@@ -268,6 +268,7 @@ defmodule PortalWeb.Actors.Components do
       |> assign(assigns.panel)
       |> assign(assigns.related_state)
       |> assign(assigns.token_state)
+      |> assign(:api_url, PortalWeb.DeploymentURLs.api_url())
 
     ~H"""
     <div class="flex-1 overflow-y-auto">
@@ -683,6 +684,11 @@ defmodule PortalWeb.Actors.Components do
               <Core.icon name="ri-clipboard-line" class="w-4 h-4" />
             </button>
           </div>
+          <p :if={@api_url} id="tab-token-api-url" class="text-xs text-subtle">
+            Set <code class="font-mono">FIREZONE_API_URL={@api_url}</code>
+            alongside <code class="font-mono">FIREZONE_TOKEN</code>
+            so the headless Client connects to this portal.
+          </p>
         </div>
 
         <div :if={is_nil(@created_token) and @adding_token} class="px-5 py-4 space-y-4">
