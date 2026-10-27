@@ -137,8 +137,8 @@ class SettingsViewModel: ObservableObject {
 
     switch tab ?? selectedTab {
     case .general:
-      authURLError = isAuthURLValid() ? nil : "Enter a valid https:// URL"
-      apiURLError = isApiURLValid() ? nil : "Enter a valid wss:// URL"
+      authURLError = isAuthURLValid() ? nil : "Enter a valid http:// or https:// URL"
+      apiURLError = isApiURLValid() ? nil : "Enter a valid ws:// or wss:// URL"
 
       if areURLsValid() {
         if !configuration.isAuthURLForced { configuration.authURL = authURL }

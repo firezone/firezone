@@ -600,7 +600,7 @@ struct ConfigurationTests {
     try await viewModel.save(.general)
 
     #expect(config.apiURL == apiURL)
-    #expect(viewModel.apiURLError == "Enter a valid wss:// URL")
+    #expect(viewModel.apiURLError == "Enter a valid ws:// or wss:// URL")
     #expect(viewModel.authURLError == nil)
 
     viewModel.discardInvalidDrafts()
