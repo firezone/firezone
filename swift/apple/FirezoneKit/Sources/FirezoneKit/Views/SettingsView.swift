@@ -642,6 +642,8 @@ struct LogFilesView: View {
   let export: () -> Void
   let clear: () -> Void
 
+  @State private var isConfirmingClear = false
+
   var body: some View {
     #if os(macOS)
       LabeledContent("Log Files") {
@@ -677,8 +679,19 @@ struct LogFilesView: View {
         systemImageName: "trash",
         title: "Clear Log Directory",
         isProcessing: isClearing,
-        action: clear
+        action: { isConfirmingClear = true }
       )
+      .alert("Clear log files?", isPresented: $isConfirmingClear) {
+        Button("Clear", role: .destructive) { clear() }
+        Button("Cancel", role: .cancel) {}
+      } message: {
+        Text(
+          """
+          This deletes all log files on this device. \
+          Export them first if you need them for a support request.
+          """
+        )
+      }
     }
   }
 }
