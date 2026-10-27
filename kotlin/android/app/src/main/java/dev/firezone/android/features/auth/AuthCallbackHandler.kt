@@ -16,7 +16,7 @@ internal class AuthCallbackHandler
         fun handle(uri: Uri?): AuthCallbackOutcome {
             val outcome = pendingAuthSession.complete(uri)
             if (outcome is AuthCallbackOutcome.Success) {
-                repo.saveActiveSignInConfigSync(outcome.signedInWith)
+                repo.saveActiveSignInSettingsSync(outcome.signedInWith)
                 tokenStore.save(outcome.token)
             }
 

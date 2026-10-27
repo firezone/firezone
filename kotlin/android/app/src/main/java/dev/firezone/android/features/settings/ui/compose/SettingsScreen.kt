@@ -33,7 +33,7 @@ import dev.firezone.android.R
 import dev.firezone.android.core.data.model.Config
 import dev.firezone.android.core.data.model.ManagedConfigStatus
 import dev.firezone.android.core.data.model.Portal
-import dev.firezone.android.core.data.model.SignInConfig
+import dev.firezone.android.core.data.model.SignInSettings
 import dev.firezone.android.features.session.ui.compose.BackTopBar
 import dev.firezone.android.features.settings.ui.DeviceTrustSettingsViewModel
 import dev.firezone.android.ui.FirezoneIcons
@@ -69,7 +69,7 @@ internal fun SettingsScreen(
     logSizeBytes: Long,
     deviceTrustState: DeviceTrustSettingsViewModel.UiState,
     showDeviceTrust: Boolean,
-    signedInWith: SignInConfig?,
+    signedInWith: SignInSettings?,
     onPortalChange: (Portal) -> Unit,
     onAuthUrlChange: (String) -> Unit,
     onApiUrlChange: (String) -> Unit,

@@ -17,8 +17,8 @@ import dev.firezone.android.R
 import dev.firezone.android.core.data.model.Config
 import dev.firezone.android.core.data.model.ManagedConfigStatus
 import dev.firezone.android.core.data.model.Portal
-import dev.firezone.android.core.data.model.SignInConfig
-import dev.firezone.android.core.data.model.signInConfig
+import dev.firezone.android.core.data.model.SignInSettings
+import dev.firezone.android.core.data.model.signInSettings
 import dev.firezone.android.features.settings.ui.isValidApiUrl
 import dev.firezone.android.features.settings.ui.isValidAuthUrl
 import kotlinx.collections.immutable.toImmutableList
@@ -28,7 +28,7 @@ fun GeneralSettingsPage(
     config: Config,
     portal: Portal,
     managedStatus: ManagedConfigStatus,
-    signedInWith: SignInConfig?,
+    signedInWith: SignInSettings?,
     onPortalChange: (Portal) -> Unit,
     onAuthUrlChange: (String) -> Unit,
     onApiUrlChange: (String) -> Unit,
@@ -85,7 +85,7 @@ fun GeneralSettingsPage(
                     )
                 }
             }
-            if (signInChangeNote != null && config.signInConfig() != signedInWith) {
+            if (signInChangeNote != null && config.signInSettings() != signedInWith) {
                 Text(
                     signInChangeNote,
                     style = MaterialTheme.typography.bodySmall,

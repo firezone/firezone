@@ -10,7 +10,7 @@ import com.google.gson.reflect.TypeToken
 import dev.firezone.android.BuildConfig
 import dev.firezone.android.core.data.model.Config
 import dev.firezone.android.core.data.model.ManagedConfigStatus
-import dev.firezone.android.core.data.model.SignInConfig
+import dev.firezone.android.core.data.model.SignInSettings
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
@@ -81,15 +81,15 @@ class Repository
 
         fun getConfigSync(): Config = getUserConfigSync().withManagedOverrides()
 
-        fun getActiveSignInConfigSync(): SignInConfig? {
+        fun getActiveSignInSettingsSync(): SignInSettings? {
             val accountSlug = sharedPreferences.getString(SIGNED_IN_ACCOUNT_SLUG_KEY, null) ?: return null
             val authUrl = sharedPreferences.getString(SIGNED_IN_AUTH_URL_KEY, null) ?: return null
             val apiUrl = sharedPreferences.getString(SIGNED_IN_API_URL_KEY, null) ?: return null
 
-            return SignInConfig(accountSlug, authUrl, apiUrl)
+            return SignInSettings(accountSlug, authUrl, apiUrl)
         }
 
-        fun saveActiveSignInConfigSync(config: SignInConfig) {
+        fun saveActiveSignInSettingsSync(config: SignInSettings) {
             sharedPreferences
                 .edit()
                 .putString(SIGNED_IN_ACCOUNT_SLUG_KEY, config.accountSlug)
@@ -98,7 +98,7 @@ class Repository
                 .apply()
         }
 
-        fun clearActiveSignInConfigSync() {
+        fun clearActiveSignInSettingsSync() {
             sharedPreferences
                 .edit()
                 .remove(SIGNED_IN_ACCOUNT_SLUG_KEY)

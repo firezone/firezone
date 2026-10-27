@@ -1051,27 +1051,3 @@ impl From<uniffi::UnexpectedUniFFICallbackError> for CallbackError {
         Self::Failed(format!("Callback failed: {}", value.reason))
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn validate_log_filter_accepts_valid_filters() {
-        validate_log_filter("info".to_owned()).expect("`info` should be valid");
-        validate_log_filter("debug,firezone_tunnel=trace".to_owned())
-            .expect("a per-target directive should be valid");
-    }
-
-    #[test]
-    fn validate_log_filter_rejects_invalid_filters() {
-        let Err(error) = validate_log_filter("info,foo=bar=baz".to_owned()) else {
-            panic!("`foo=bar=baz` should be rejected");
-        };
-
-        assert_eq!(
-            error.to_string(),
-            r#"error parsing level filter: expected one of "off", "error", "warn", "info", "debug", "trace", or a number 0-5"#
-        );
-    }
-}

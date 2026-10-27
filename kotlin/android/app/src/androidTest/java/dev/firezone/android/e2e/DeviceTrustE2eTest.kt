@@ -10,6 +10,7 @@ import dagger.hilt.android.testing.HiltAndroidTest
 import dev.firezone.android.core.data.Repository
 import dev.firezone.android.core.data.TokenStore
 import dev.firezone.android.core.data.X509_CERTIFICATE_RESTRICTION
+import dev.firezone.android.core.data.model.signInSettings
 import dev.firezone.android.core.x509.FakeKeyChain
 import dev.firezone.android.core.x509.TestIdentity
 import dev.firezone.android.core.x509.testIdentity
@@ -90,7 +91,8 @@ class DeviceTrustE2eTest {
     fun aDeviceCertificateAccompaniesThePortalToken() {
         val certificate = testIdentity(SERIAL_CLAIM)
         givenCertificate(certificate)
-        tokenStore.signIn(TOKEN, repo)
+        repo.saveActiveSignInSettingsSync(repo.getConfigSync().signInSettings())
+        tokenStore.save(TOKEN)
 
         startTunnelService()
         val session = awaitSession()
@@ -117,7 +119,8 @@ class DeviceTrustE2eTest {
     @Test
     fun aTokenAloneConnectsWithoutACertificate() {
         FakeKeyChain.install(ALIAS, testIdentity(SERIAL_CLAIM), granted = false)
-        tokenStore.signIn(TOKEN, repo)
+        repo.saveActiveSignInSettingsSync(repo.getConfigSync().signInSettings())
+        tokenStore.save(TOKEN)
 
         launchApp()
 
@@ -139,7 +142,8 @@ class DeviceTrustE2eTest {
         val certificate = testIdentity(SERIAL_CLAIM)
         FakeKeyChain.install(ALIAS, certificate, granted = true)
         FakeKeyChain.policyAnswers(ALIAS)
-        tokenStore.signIn(TOKEN, repo)
+        repo.saveActiveSignInSettingsSync(repo.getConfigSync().signInSettings())
+        tokenStore.save(TOKEN)
 
         launchApp()
 
@@ -172,7 +176,8 @@ class DeviceTrustE2eTest {
         FakeKeyChain.install(ALIAS, certificate, granted = false)
         FakeKeyChain.userChooses(ALIAS)
         TestRestrictions.bundle.putBoolean(X509_CERTIFICATE_RESTRICTION, true)
-        tokenStore.signIn(TOKEN, repo)
+        repo.saveActiveSignInSettingsSync(repo.getConfigSync().signInSettings())
+        tokenStore.save(TOKEN)
 
         launchApp()
 
@@ -199,7 +204,8 @@ class DeviceTrustE2eTest {
         FakeKeyChain.install(OTHER_ALIAS, testIdentity("mailto:user@example.com", commonName = "mail.example.com"), granted = false)
         FakeKeyChain.userChooses(OTHER_ALIAS, ALIAS)
         TestRestrictions.bundle.putBoolean(X509_CERTIFICATE_RESTRICTION, true)
-        tokenStore.signIn(TOKEN, repo)
+        repo.saveActiveSignInSettingsSync(repo.getConfigSync().signInSettings())
+        tokenStore.save(TOKEN)
 
         launchApp()
 
@@ -224,7 +230,8 @@ class DeviceTrustE2eTest {
     fun aRequiredCertificateStopsTheTunnelUntilReleased() {
         FakeKeyChain.install(ALIAS, testIdentity(SERIAL_CLAIM), granted = false)
         TestRestrictions.bundle.putBoolean(X509_CERTIFICATE_RESTRICTION, true)
-        tokenStore.signIn(TOKEN, repo)
+        repo.saveActiveSignInSettingsSync(repo.getConfigSync().signInSettings())
+        tokenStore.save(TOKEN)
 
         startTunnelService()
 

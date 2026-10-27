@@ -14,8 +14,8 @@ import androidx.compose.ui.test.performTextReplacement
 import dev.firezone.android.R
 import dev.firezone.android.core.data.model.ManagedConfigStatus
 import dev.firezone.android.core.data.model.Portal
-import dev.firezone.android.core.data.model.SignInConfig
-import dev.firezone.android.core.data.model.signInConfig
+import dev.firezone.android.core.data.model.SignInSettings
+import dev.firezone.android.core.data.model.signInSettings
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -42,7 +42,7 @@ class GeneralSettingsPageTest {
             connectOnStart = false,
         ),
     )
-    private var signedInWith by mutableStateOf<SignInConfig?>(null)
+    private var signedInWith by mutableStateOf<SignInSettings?>(null)
 
     private fun showPage() {
         composeRule.setContent {
@@ -75,7 +75,7 @@ class GeneralSettingsPageTest {
     @Test
     fun `the note shows while saved values differ from the session's`() {
         val original = config
-        signedInWith = original.signInConfig()
+        signedInWith = original.signInSettings()
         showPage()
         composeRule.onNodeWithText(note).assertDoesNotExist()
 
@@ -86,13 +86,13 @@ class GeneralSettingsPageTest {
         composeRule.onNodeWithText(note).assertDoesNotExist()
 
         config = original.copy(accountSlug = "other-corp")
-        signedInWith = config.signInConfig()
+        signedInWith = config.signInSettings()
         composeRule.onNodeWithText(note).assertDoesNotExist()
     }
 
     @Test
     fun `the dialogs note an edit as soon as it differs from the session's`() {
-        signedInWith = config.signInConfig()
+        signedInWith = config.signInSettings()
         showPage()
 
         composeRule.onNodeWithText("Account Slug").performClick()

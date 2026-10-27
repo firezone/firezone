@@ -12,6 +12,7 @@ import dagger.hilt.android.testing.HiltAndroidTest
 import dev.firezone.android.core.BootReceiver
 import dev.firezone.android.core.data.Repository
 import dev.firezone.android.core.data.TokenStore
+import dev.firezone.android.core.data.model.signInSettings
 import dev.firezone.android.tunnel.FakeDisconnectError
 import dev.firezone.android.tunnel.FakeSession
 import dev.firezone.android.tunnel.FakeSessionFactory
@@ -68,7 +69,8 @@ class BootE2eTest {
 
     @Test
     fun aStoredTokenConnectsOnBootWhenConfigured() {
-        tokenStore.signIn(TOKEN, repo)
+        repo.saveActiveSignInSettingsSync(repo.getConfigSync().signInSettings())
+        tokenStore.save(TOKEN)
         configureStartOnLogin(true)
 
         boot()
@@ -80,7 +82,8 @@ class BootE2eTest {
 
     @Test
     fun nothingConnectsOnBootUnlessConfigured() {
-        tokenStore.signIn(TOKEN, repo)
+        repo.saveActiveSignInSettingsSync(repo.getConfigSync().signInSettings())
+        tokenStore.save(TOKEN)
         configureStartOnLogin(false)
 
         boot()
@@ -91,7 +94,8 @@ class BootE2eTest {
 
     @Test
     fun aBootWithoutConsentAsksForItInANotification() {
-        tokenStore.signIn(TOKEN, repo)
+        repo.saveActiveSignInSettingsSync(repo.getConfigSync().signInSettings())
+        tokenStore.save(TOKEN)
         configureStartOnLogin(true)
         revokeVpnConsent()
 
@@ -107,7 +111,8 @@ class BootE2eTest {
     // Nobody asked for this tunnel, so nobody is told when it goes away.
     @Test
     fun aBootStartedTunnelDisconnectsWithoutNotifying() {
-        tokenStore.signIn(TOKEN, repo)
+        repo.saveActiveSignInSettingsSync(repo.getConfigSync().signInSettings())
+        tokenStore.save(TOKEN)
         configureStartOnLogin(true)
 
         boot()

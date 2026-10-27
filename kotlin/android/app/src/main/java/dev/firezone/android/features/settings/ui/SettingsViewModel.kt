@@ -14,7 +14,7 @@ import dev.firezone.android.core.data.Repository
 import dev.firezone.android.core.data.model.Config
 import dev.firezone.android.core.data.model.ManagedConfigStatus
 import dev.firezone.android.core.data.model.Portal
-import dev.firezone.android.core.data.model.SignInConfig
+import dev.firezone.android.core.data.model.SignInSettings
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -61,7 +61,7 @@ internal class SettingsViewModel
             private set
 
         // `null` while signed out.
-        val signedInWith: SignInConfig? = repo.getActiveSignInConfigSync()
+        val signedInWith: SignInSettings? = repo.getActiveSignInSettingsSync()
 
         // Each change saves the whole config, so the saves have to land in the order they were made.
         private val saveMutex = Mutex()

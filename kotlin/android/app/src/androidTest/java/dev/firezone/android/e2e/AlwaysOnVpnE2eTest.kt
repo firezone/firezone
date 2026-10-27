@@ -9,6 +9,7 @@ import dagger.hilt.android.testing.HiltAndroidTest
 import dev.firezone.android.RequiresManagedDevice
 import dev.firezone.android.core.data.Repository
 import dev.firezone.android.core.data.TokenStore
+import dev.firezone.android.core.data.model.signInSettings
 import dev.firezone.android.core.x509.TestDpc
 import dev.firezone.android.tunnel.FakeSession
 import dev.firezone.android.tunnel.FakeSessionFactory
@@ -69,7 +70,8 @@ class AlwaysOnVpnE2eTest {
 
     @Test
     fun theSystemStartsTheTunnelOnceMadeAlwaysOn() {
-        tokenStore.signIn(TOKEN, repo)
+        repo.saveActiveSignInSettingsSync(repo.getConfigSync().signInSettings())
+        tokenStore.save(TOKEN)
 
         TestDpc.setAlwaysOnVpn(context.packageName, lockdown = false)
 
@@ -80,7 +82,8 @@ class AlwaysOnVpnE2eTest {
 
     @Test
     fun clearingTheAlwaysOnVpnRevokesTheTunnel() {
-        tokenStore.signIn(TOKEN, repo)
+        repo.saveActiveSignInSettingsSync(repo.getConfigSync().signInSettings())
+        tokenStore.save(TOKEN)
         TestDpc.setAlwaysOnVpn(context.packageName, lockdown = false)
         val session = awaitSession()
 

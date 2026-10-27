@@ -14,8 +14,8 @@ import dev.firezone.android.R
 import dev.firezone.android.STORE_SCREENSHOT_QUALIFIERS
 import dev.firezone.android.core.data.model.ManagedConfigStatus
 import dev.firezone.android.core.data.model.Portal
-import dev.firezone.android.core.data.model.SignInConfig
-import dev.firezone.android.core.data.model.signInConfig
+import dev.firezone.android.core.data.model.SignInSettings
+import dev.firezone.android.core.data.model.signInSettings
 import dev.firezone.android.features.settings.ui.compose.SettingsScreen
 import dev.firezone.android.ui.theme.FirezoneTheme
 import org.junit.Rule
@@ -69,7 +69,7 @@ class SettingsScreenshotTest {
             R.string.settings_title,
             config = euConfig,
             portal = Portal.CLOUD_EU,
-            signedInWith = sampleConfig.signInConfig(),
+            signedInWith = sampleConfig.signInSettings(),
         )
 
     @Test
@@ -97,7 +97,7 @@ class SettingsScreenshotTest {
         config: FirezoneConfig = sampleConfig,
         portal: Portal = Portal.CLOUD_US,
         managedStatus: ManagedConfigStatus = ManagedConfigStatus.NOTHING_MANAGED,
-        signedInWith: SignInConfig? = null,
+        signedInWith: SignInSettings? = null,
     ) {
         composeRule.setContent {
             FirezoneTheme { SettingsScreenSample(deviceTrustState, config, portal, managedStatus, signedInWith) }
@@ -208,7 +208,7 @@ private fun SettingsScreenSample(
     config: FirezoneConfig,
     portal: Portal,
     managedStatus: ManagedConfigStatus,
-    signedInWith: SignInConfig?,
+    signedInWith: SignInSettings?,
 ) {
     SettingsScreen(
         config = config,

@@ -40,7 +40,7 @@
 	<string name="log_filter_invalid">Invalid log filter: %1$s</string>
 	<string name="clear_log_directory">Clear Log Directory</string>
 	<string name="clear_logs_confirm_title">Clear log files?</string>
-	<string name="clear_logs_confirm_message">This deletes all log files on this device. Export them first if you need them for a support request.</string>
+	<string name="clear_logs_confirm_message">This deletes all log files on this device.</string>
 	<string name="clear_logs_confirm">Clear</string>
 
 	<!-- Device Trust Certificate -->

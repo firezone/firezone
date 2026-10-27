@@ -5,7 +5,7 @@ import android.net.Uri
 import androidx.lifecycle.ViewModel
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.firezone.android.core.data.Repository
-import dev.firezone.android.core.data.model.signInConfig
+import dev.firezone.android.core.data.model.signInSettings
 import dev.firezone.android.features.auth.AuthCallbackHandler
 import dev.firezone.android.features.auth.AuthCallbackOutcome
 import dev.firezone.android.features.auth.PendingAuthSession
@@ -37,7 +37,7 @@ internal class AuthViewModel
             val nonce = generateRandomString(NONCE_LENGTH)
             authState = state
             val config = repo.getConfigSync()
-            pendingAuthSession.begin(nonce = nonce, state = state, signedInWith = config.signInConfig())
+            pendingAuthSession.begin(nonce = nonce, state = state, signedInWith = config.signInSettings())
             val authUrl = "${config.authUrl}/${config.accountSlug}?state=$state&nonce=$nonce&as=gui-client"
 
             actionMutableStateFlow.value =

@@ -2,10 +2,10 @@
 package dev.firezone.android.core.data.model
 
 /** The settings a sign-in uses; changing any of them only takes effect at the next sign-in. */
-data class SignInConfig(
+data class SignInSettings(
     val accountSlug: String,
     val authUrl: String,
     val apiUrl: String,
 )
 
-fun Config.signInConfig(): SignInConfig = SignInConfig(accountSlug, authUrl, apiUrl)
+fun Config.signInSettings(): SignInSettings = SignInSettings(accountSlug, authUrl, apiUrl)

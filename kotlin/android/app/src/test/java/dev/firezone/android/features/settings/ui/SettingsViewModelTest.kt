@@ -9,7 +9,7 @@ import android.os.Looper
 import dev.firezone.android.core.data.Repository
 import dev.firezone.android.core.data.TokenStore
 import dev.firezone.android.core.data.model.Portal
-import dev.firezone.android.core.data.model.SignInConfig
+import dev.firezone.android.core.data.model.SignInSettings
 import dev.firezone.android.features.session.ui.SessionViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
@@ -172,11 +172,11 @@ class SettingsViewModelTest {
 
     @Test
     fun `the settings a session signed in with are remembered until sign-out`() {
-        val signedInWith = SignInConfig("example-corp", "https://app.firezone.dev", "wss://api.firezone.dev")
+        val signedInWith = SignInSettings("example-corp", "https://app.firezone.dev", "wss://api.firezone.dev")
 
         assertNull(SettingsViewModel(repository).signedInWith)
 
-        repository.saveActiveSignInConfigSync(signedInWith)
+        repository.saveActiveSignInSettingsSync(signedInWith)
         tokenStore.save("token")
         reopen()
 
@@ -184,7 +184,7 @@ class SettingsViewModelTest {
         settle()
 
         assertEquals("wss://eu.api.firezone.dev", repository.getConfigSync().apiUrl)
-        assertEquals(signedInWith, repository.getActiveSignInConfigSync())
+        assertEquals(signedInWith, repository.getActiveSignInSettingsSync())
         assertEquals(signedInWith, viewModel.signedInWith)
 
         SessionViewModel(repository, tokenStore).clearToken()

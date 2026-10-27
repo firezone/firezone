@@ -29,6 +29,6 @@ internal class SessionViewModel
 
         fun clearToken() {
             tokenStore.clear()
-            repo.clearActiveSignInConfigSync()
+            repo.clearActiveSignInSettingsSync()
         }
     }
