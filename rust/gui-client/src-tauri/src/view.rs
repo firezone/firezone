@@ -53,6 +53,11 @@ impl GeneralSettingsForm {
         if self.portal == Portal::Custom {
             general_settings.custom_auth_url = Some(auth_url.clone());
             general_settings.custom_api_url = Some(api_url.clone());
+        } else if Portal::from_urls(&advanced_settings.auth_url, &advanced_settings.api_url)
+            == Portal::Custom
+        {
+            general_settings.custom_auth_url = Some(advanced_settings.auth_url.clone());
+            general_settings.custom_api_url = Some(advanced_settings.api_url.clone());
         }
 
         let advanced_settings = AdvancedSettings {
@@ -573,6 +578,33 @@ mod tests {
         assert_eq!(
             advanced_settings.auth_url.as_str(),
             "https://firezone.example.com/"
+        );
+    }
+
+    #[test]
+    fn switching_an_existing_custom_configuration_to_cloud_remembers_its_urls() {
+        let saved = AdvancedSettings {
+            auth_url: Url::parse("https://firezone.example.com").unwrap(),
+            api_url: Url::parse("wss://api.example.com").unwrap(),
+            ..AdvancedSettings::default()
+        };
+        let form = general_settings_form(Portal::CloudEu, "", "");
+
+        let (general_settings, advanced_settings) = form
+            .apply(&MdmSettings::default(), GeneralSettings::default(), saved)
+            .unwrap();
+
+        assert_eq!(
+            general_settings.custom_auth_url.unwrap().as_str(),
+            "https://firezone.example.com/"
+        );
+        assert_eq!(
+            general_settings.custom_api_url.unwrap().as_str(),
+            "wss://api.example.com/"
+        );
+        assert_eq!(
+            advanced_settings.auth_url.as_str(),
+            "https://eu.app.firezone.dev/"
         );
     }
 
