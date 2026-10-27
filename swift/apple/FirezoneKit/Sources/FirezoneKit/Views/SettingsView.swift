@@ -643,7 +643,7 @@ struct ButtonWithProgress: View {
   /// An icon button that shows a rounded highlight under the pointer, like the accessory
   /// buttons in System Settings.
   private struct HoverHighlightButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
+    func makeBody(configuration: ButtonStyleConfiguration) -> some View {
       HoverHighlightButton(configuration: configuration)
     }
   }
