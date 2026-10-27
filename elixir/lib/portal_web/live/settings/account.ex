@@ -131,23 +131,23 @@ defmodule PortalWeb.Settings.Account do
             </Form.button>
           </div>
 
-          <%!-- Data residency (Firezone Cloud only) --%>
+          <%!-- Firezone Cloud region (Firezone Cloud only) --%>
           <div
             :if={@data_residency_region != :on_prem}
             id="data-residency"
             class="mt-6 rounded border border-border bg-raised p-4 space-y-3"
           >
             <span class="text-xs font-semibold tracking-widest uppercase text-subtle">
-              Data Residency
+              Firezone Cloud Region
             </span>
             <div class="flex items-center gap-2 pt-2 border-t border-border">
               <Page.residency_flag region={@data_residency_region} />
               <span class="text-xs text-body font-medium">
-                Data residency region: {Page.data_residency_name(@data_residency_region)}
+                Firezone Cloud region: {Page.data_residency_name(@data_residency_region)}
               </span>
             </div>
             <p :if={@data_residency_region == :us} class="text-xs text-subtle">
-              EU data residency is in closed beta.
+              Firezone Cloud EU is in closed beta.
               <a
                 href="https://www.firezone.dev/eu"
                 target="_blank"

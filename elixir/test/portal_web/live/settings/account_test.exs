@@ -195,8 +195,8 @@ defmodule PortalWeb.Settings.AccountTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/settings/account")
 
-      assert has_element?(lv, "#data-residency", "Data residency region: United States")
-      assert has_element?(lv, "#data-residency", "EU data residency is in closed beta.")
+      assert has_element?(lv, "#data-residency", "Firezone Cloud region: United States")
+      assert has_element?(lv, "#data-residency", "Firezone Cloud EU is in closed beta.")
       assert has_element?(lv, "#data-residency a[href='https://www.firezone.dev/eu']")
     end
 
@@ -212,7 +212,7 @@ defmodule PortalWeb.Settings.AccountTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/settings/account")
 
-      assert has_element?(lv, "#data-residency", "Data residency region: European Union")
+      assert has_element?(lv, "#data-residency", "Firezone Cloud region: European Union")
       refute has_element?(lv, "#data-residency", "closed beta")
     end
 

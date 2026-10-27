@@ -82,7 +82,7 @@ defmodule PortalWeb.SignInTest do
 
       {:ok, lv, _html} = live(conn, ~p"/#{account}/sign_in")
 
-      assert has_element?(lv, "#data-residency", "Data residency: European Union")
+      assert has_element?(lv, "#data-residency", "Firezone Cloud region: European Union")
     end
 
     test "hides the data residency region on on-prem portals", %{conn: conn, account: account} do

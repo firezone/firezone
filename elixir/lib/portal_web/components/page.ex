@@ -509,7 +509,7 @@ defmodule PortalWeb.Components.Page do
       class="flex flex-wrap items-center justify-center gap-1.5 mt-6 text-xs text-showcase-text/70 lg:text-subtle"
     >
       <.residency_flag region={@region} class="w-4 h-auto" />
-      <span>Data residency: {data_residency_name(@region)}</span>
+      <span>Firezone Cloud region: {data_residency_name(@region)}</span>
       <span aria-hidden="true">&middot;</span>
       <a id="other-region-portal" href={other_region_portal_url(@region)} class="hover:underline">
         Go to the {other_region_short_name(@region)} portal &rarr;
