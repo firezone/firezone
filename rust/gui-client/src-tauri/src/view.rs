@@ -16,17 +16,24 @@ use crate::{
 };
 use url::Url;
 
-#[derive(Clone, serde::Deserialize, specta::Type)]
+#[derive(Clone, Default, serde::Deserialize, specta::Type)]
 pub struct GeneralSettingsForm {
-    pub start_minimized: bool,
-    pub start_on_login: bool,
-    pub connect_on_start: bool,
-    pub account_slug: String,
-    pub portal: Portal,
+    #[serde(default)]
+    pub start_minimized: Option<bool>,
+    #[serde(default)]
+    pub start_on_login: Option<bool>,
+    #[serde(default)]
+    pub connect_on_start: Option<bool>,
+    #[serde(default)]
+    pub account_slug: Option<String>,
+    #[serde(default)]
+    pub portal: Option<Portal>,
     /// Only used for [`Portal::Custom`].
-    pub auth_url: String,
+    #[serde(default)]
+    pub auth_url: Option<String>,
     /// Only used for [`Portal::Custom`].
-    pub api_url: String,
+    #[serde(default)]
+    pub api_url: Option<String>,
 }
 
 impl GeneralSettingsForm {
@@ -40,17 +47,26 @@ impl GeneralSettingsForm {
         general_settings: GeneralSettings,
         advanced_settings: AdvancedSettings,
     ) -> Result<(GeneralSettings, AdvancedSettings)> {
-        let (auth_url, api_url) = self.urls()?;
-        let account_slug = self.account_slug.trim();
-
-        let mut general_settings = GeneralSettings {
-            start_minimized: self.start_minimized,
-            start_on_login: Some(self.start_on_login),
-            connect_on_start: Some(self.connect_on_start),
-            account_slug: (!account_slug.is_empty()).then(|| account_slug.to_owned()),
-            ..general_settings
-        };
-        if self.portal == Portal::Custom {
+        let portal = self.portal.unwrap_or_else(|| {
+            Portal::from_urls(&advanced_settings.auth_url, &advanced_settings.api_url)
+        });
+        let (auth_url, api_url) = self.urls(&advanced_settings)?;
+        let mut general_settings = general_settings;
+        if let Some(start_minimized) = self.start_minimized {
+            general_settings.start_minimized = start_minimized;
+        }
+        if let Some(start_on_login) = self.start_on_login {
+            general_settings.start_on_login = Some(start_on_login);
+        }
+        if let Some(connect_on_start) = self.connect_on_start {
+            general_settings.connect_on_start = Some(connect_on_start);
+        }
+        if let Some(account_slug) = self.account_slug {
+            let account_slug = account_slug.trim();
+            general_settings.account_slug =
+                (!account_slug.is_empty()).then(|| account_slug.to_owned());
+        }
+        if portal == Portal::Custom {
             general_settings.custom_auth_url = Some(auth_url.clone());
             general_settings.custom_api_url = Some(api_url.clone());
         } else if Portal::from_urls(&advanced_settings.auth_url, &advanced_settings.api_url)
@@ -77,14 +93,24 @@ impl GeneralSettingsForm {
     }
 
     /// Returns the auth and API URLs of the selected portal, or the typed ones for [`Portal::Custom`].
-    pub fn urls(&self) -> Result<(Url, Url)> {
-        if let Some(urls) = self.portal.urls() {
+    pub fn urls(&self, current: &AdvancedSettings) -> Result<(Url, Url)> {
+        if let Some(urls) = self.portal.and_then(Portal::urls) {
             return Ok(urls);
         }
 
         Ok((
-            parse_url(&self.auth_url, &["http", "https"]).context("Invalid auth URL")?,
-            parse_url(&self.api_url, &["ws", "wss"]).context("Invalid API URL")?,
+            parse_url(
+                self.auth_url
+                    .as_deref()
+                    .unwrap_or(current.auth_url.as_str()),
+                &["http", "https"],
+            )
+            .context("Invalid auth URL")?,
+            parse_url(
+                self.api_url.as_deref().unwrap_or(current.api_url.as_str()),
+                &["ws", "wss"],
+            )
+            .context("Invalid API URL")?,
         ))
     }
 }
@@ -494,7 +520,7 @@ mod tests {
     fn a_cloud_portal_ignores_the_typed_urls() {
         let form = general_settings_form(Portal::CloudEu, "not a URL", "wss://ignored.example.com");
 
-        let (auth_url, api_url) = form.urls().unwrap();
+        let (auth_url, api_url) = form.urls(&AdvancedSettings::default()).unwrap();
 
         assert_eq!(auth_url.as_str(), "https://eu.app.firezone.dev/");
         assert_eq!(api_url.as_str(), "wss://eu.api.firezone.dev/");
@@ -508,7 +534,7 @@ mod tests {
             "wss://api.example.com",
         );
 
-        let (auth_url, api_url) = form.urls().unwrap();
+        let (auth_url, api_url) = form.urls(&AdvancedSettings::default()).unwrap();
 
         assert_eq!(auth_url.as_str(), "https://firezone.example.com/");
         assert_eq!(api_url.as_str(), "wss://api.example.com/");
@@ -518,7 +544,7 @@ mod tests {
     fn custom_rejects_an_invalid_url() {
         let form = general_settings_form(Portal::Custom, "not a URL", "wss://api.example.com");
 
-        assert!(form.urls().is_err());
+        assert!(form.urls(&AdvancedSettings::default()).is_err());
     }
 
     #[test]
@@ -541,14 +567,14 @@ mod tests {
             "ws://localhost:8081",
         );
 
-        assert!(form.urls().is_ok());
+        assert!(form.urls(&AdvancedSettings::default()).is_ok());
     }
 
     #[test]
     fn custom_rejects_a_url_with_the_wrong_scheme() {
         let form = general_settings_form(Portal::Custom, "ftp://x", "wss://api.example.com");
 
-        assert!(form.urls().is_err());
+        assert!(form.urls(&AdvancedSettings::default()).is_err());
     }
 
     #[test]
@@ -671,13 +697,10 @@ mod tests {
 
     fn general_settings_form(portal: Portal, auth_url: &str, api_url: &str) -> GeneralSettingsForm {
         GeneralSettingsForm {
-            start_minimized: true,
-            start_on_login: false,
-            connect_on_start: false,
-            account_slug: String::new(),
-            portal,
-            auth_url: auth_url.to_owned(),
-            api_url: api_url.to_owned(),
+            portal: Some(portal),
+            auth_url: Some(auth_url.to_owned()),
+            api_url: Some(api_url.to_owned()),
+            ..Default::default()
         }
     }
 }

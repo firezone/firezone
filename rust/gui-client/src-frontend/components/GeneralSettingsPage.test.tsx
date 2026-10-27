@@ -99,10 +99,26 @@ test("leaving a valid URL saves it", async () => {
       expect.objectContaining({
         portal: "Custom",
         auth_url: "https://other.example.com/",
-        api_url: "wss://api.firezone.example.com/",
       })
     )
   );
+});
+
+test("successive edits submit only the changed settings", async () => {
+  const saveSettings = await render(customSettings);
+
+  await userEvent.fill(
+    page.getByLabelText("Auth URL"),
+    "https://other.example.com/"
+  );
+  await userEvent.click(page.getByRole("switch", { name: "Start minimized" }));
+
+  await vi.waitFor(() => expect(saveSettings).toHaveBeenCalledTimes(2));
+  expect(saveSettings).toHaveBeenNthCalledWith(1, {
+    portal: "Custom",
+    auth_url: "https://other.example.com/",
+  });
+  expect(saveSettings).toHaveBeenNthCalledWith(2, { start_minimized: false });
 });
 
 test("leaving a local http:// auth URL saves it", async () => {
@@ -166,7 +182,7 @@ test("leaving an https:// API URL shows an error and saves nothing", async () =>
 });
 
 const pendingNote =
-  "Changes to the account slug or control plane take effect after you sign out and sign in again.";
+  "Sign out and sign in again after changing the account slug or control plane.";
 
 const signedIn: GeneralSettingsViewModel = {
   ...usSettings,

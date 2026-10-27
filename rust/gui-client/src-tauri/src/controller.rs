@@ -37,6 +37,7 @@ pub struct Controller<I: GuiIntegration> {
     general_settings: GeneralSettings,
     mdm_settings: MdmSettings,
     advanced_settings: AdvancedSettings,
+    settings_pending: bool,
     /// Path of the legacy user-writable `advanced_settings.json`. The
     /// authoritative file now lives in the protected service-side location;
     /// this one is migrated and deleted on first connection.
@@ -253,6 +254,7 @@ impl<I: GuiIntegration> Controller<I> {
             general_settings,
             mdm_settings,
             advanced_settings,
+            settings_pending: false,
             legacy_advanced_settings_path,
             auth,
             clear_logs_callback: None,
@@ -398,7 +400,9 @@ impl<I: GuiIntegration> Controller<I> {
                 return Poll::Ready(EventloopTick::IpcMsg(maybe_ipc));
             }
 
-            if let Poll::Ready(maybe_req) = self.ctrl_rx.poll_next_unpin(cx) {
+            if !self.settings_pending
+                && let Poll::Ready(maybe_req) = self.ctrl_rx.poll_next_unpin(cx)
+            {
                 return Poll::Ready(EventloopTick::ControllerRequest(maybe_req));
             }
 
@@ -530,6 +534,7 @@ impl<I: GuiIntegration> Controller<I> {
                     },
                 ))
                 .await?;
+                self.settings_pending = true;
             }
             ClearLogs(completion_tx) => {
                 if self.clear_logs_callback.is_some() {
@@ -700,6 +705,7 @@ impl<I: GuiIntegration> Controller<I> {
                 advanced_settings,
             ))
             .await?;
+            self.settings_pending = true;
         }
 
         Ok(())
@@ -798,6 +804,7 @@ impl<I: GuiIntegration> Controller<I> {
             }
             service::ServerMsg::Hello { .. } => {}
             service::ServerMsg::AdvancedSettingsApplied(Ok(new)) => {
+                self.settings_pending = false;
                 self.advanced_settings = new;
                 if let Err(e) = self
                     .log_filter_reloader
@@ -814,6 +821,7 @@ impl<I: GuiIntegration> Controller<I> {
                 self.refresh_ui_state();
             }
             service::ServerMsg::AdvancedSettingsApplied(Err(err)) => {
+                self.settings_pending = false;
                 tracing::error!("Tunnel service failed to save advanced settings: {err}");
                 self.integration
                     .show_notification("Failed to save settings", &err)?;
@@ -2237,6 +2245,53 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn successive_settings_edits_preserve_urls_toggles_and_log_filter() {
+        let _guard = logging::test("debug");
+        let mut test_controller = Controller::start_for_test();
+        let mut mock_tunnel = test_controller.tunnel_service_ipc_accept().await;
+        mock_tunnel.send_hello().await;
+
+        for request in [
+            ControllerRequest::ApplyGeneralSettings(Box::new(GeneralSettingsForm {
+                portal: Some(crate::settings::Portal::CloudEu),
+                ..Default::default()
+            })),
+            ControllerRequest::ApplyGeneralSettings(Box::new(GeneralSettingsForm {
+                start_minimized: Some(false),
+                ..Default::default()
+            })),
+            ControllerRequest::ApplyLogFilter("trace".to_owned()),
+        ] {
+            test_controller.ctrl_tx.send(request).await.unwrap();
+        }
+
+        let first = mock_tunnel.rx_apply_advanced_settings().await;
+        assert_eq!(first.api_url.as_str(), "wss://eu.api.firezone.dev/");
+        assert!(
+            tokio::time::timeout(
+                Duration::from_millis(50),
+                mock_tunnel.rx_apply_advanced_settings(),
+            )
+            .await
+            .is_err()
+        );
+        mock_tunnel.send_advanced_settings_applied(Ok(first)).await;
+
+        let second = mock_tunnel.rx_apply_advanced_settings().await;
+        assert_eq!(second.auth_url.as_str(), "https://eu.app.firezone.dev/");
+        assert_eq!(second.api_url.as_str(), "wss://eu.api.firezone.dev/");
+        assert_eq!(second.log_filter, "trace");
+        mock_tunnel.send_advanced_settings_applied(Ok(second)).await;
+        test_controller
+            .wait_integration(|integration| {
+                let general = integration.general_settings.last()?;
+                let advanced = integration.advanced_settings.last()?;
+                (!general.start_minimized && advanced.log_filter == "trace").then_some(())
+            })
+            .await;
+    }
+
+    #[tokio::test]
     async fn remembers_what_the_session_signed_in_with_until_sign_out() {
         let _guard = logging::test("debug");
         let mut test_controller = Controller::start_for_test();
@@ -2260,13 +2315,8 @@ mod tests {
             .ctrl_tx
             .send(ControllerRequest::ApplyGeneralSettings(Box::new(
                 GeneralSettingsForm {
-                    start_minimized: true,
-                    start_on_login: false,
-                    connect_on_start: false,
-                    account_slug: "other".to_owned(),
-                    portal: crate::settings::Portal::CloudUs,
-                    auth_url: String::new(),
-                    api_url: String::new(),
+                    account_slug: Some("other".to_owned()),
+                    ..Default::default()
                 },
             )))
             .await

@@ -76,17 +76,7 @@ export default function GeneralSettingsPage({
     signedInWith !== null &&
     (differs(savedSignIn, signedInWith) || differs(draftSignIn, signedInWith));
 
-  const save = (changes: Partial<GeneralSettingsForm>) =>
-    saveSettings({
-      start_minimized: saved.start_minimized,
-      start_on_login: saved.start_on_login,
-      connect_on_start: saved.connect_on_start,
-      account_slug: saved.account_slug,
-      portal: saved.portal,
-      auth_url: saved.auth_url,
-      api_url: saved.api_url,
-      ...changes,
-    });
+  const save = (changes: Partial<GeneralSettingsForm>) => saveSettings(changes);
 
   // Picking "Custom" brings back the URLs last saved with it.
   const selectPortal = (portal: Portal) => {
@@ -141,9 +131,7 @@ export default function GeneralSettingsPage({
                   managed={saved.auth_url_is_managed}
                   name="auth_url"
                   onDraftChange={updateDraft("auth_url")}
-                  save={(auth_url) =>
-                    save({ portal, auth_url, api_url: customApiUrl })
-                  }
+                  save={(auth_url) => save({ portal, auth_url })}
                   validate={(url) =>
                     isUrl(url, ["http:", "https:"])
                       ? null
@@ -157,9 +145,7 @@ export default function GeneralSettingsPage({
                   managed={saved.api_url_is_managed}
                   name="api_url"
                   onDraftChange={updateDraft("api_url")}
-                  save={(api_url) =>
-                    save({ portal, auth_url: customAuthUrl, api_url })
-                  }
+                  save={(api_url) => save({ portal, api_url })}
                   validate={(url) =>
                     isUrl(url, ["ws:", "wss:"])
                       ? null
@@ -172,8 +158,8 @@ export default function GeneralSettingsPage({
           </div>
           {signInPending && (
             <p className="mt-1.5 text-xs text-subtle">
-              Changes to the account slug or control plane take effect after you
-              sign out and sign in again.
+              Sign out and sign in again after changing the account slug or
+              control plane.
             </p>
           )}
         </section>

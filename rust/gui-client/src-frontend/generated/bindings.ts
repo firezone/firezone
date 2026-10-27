@@ -100,15 +100,15 @@ x509CertificateChanged: "x509-certificate-changed"
 export type Error = string
 export type FileCount = { bytes: number; files: number }
 export type GeneralSettingsChanged = GeneralSettingsViewModel
-export type GeneralSettingsForm = { start_minimized: boolean; start_on_login: boolean; connect_on_start: boolean; account_slug: string; portal: Portal;
+export type GeneralSettingsForm = { start_minimized?: boolean | null; start_on_login?: boolean | null; connect_on_start?: boolean | null; account_slug?: string | null; portal?: Portal | null;
 /**
  * Only used for [`Portal::Custom`].
  */
-auth_url: string;
+auth_url?: string | null;
 /**
  * Only used for [`Portal::Custom`].
  */
-api_url: string }
+api_url?: string | null }
 export type GeneralSettingsViewModel = { start_minimized: boolean; start_on_login: boolean; connect_on_start: boolean; connect_on_start_is_managed: boolean; account_slug: string; account_slug_is_managed: boolean; portal: Portal; auth_url: string; auth_url_is_managed: boolean; api_url: string; api_url_is_managed: boolean;
 /**
  * What the auth URL field shows when [`Portal::Custom`] is picked: the last saved custom URL, or else `auth_url`.
