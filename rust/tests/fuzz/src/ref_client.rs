@@ -319,20 +319,6 @@ impl RefClient {
             .is_some_and(|pools| !pools.is_empty())
     }
 
-    /// Whether a Gateway resolved any DNS resource domain for this client.
-    pub(crate) fn has_dns_resource_resolutions(&self) -> bool {
-        !self.dns_resource_resolutions.is_empty()
-    }
-
-    /// The peers this client holds an inbound, outbound or rejected authorization with.
-    pub(crate) fn authorized_peers(&self) -> impl Iterator<Item = ClientId> + '_ {
-        self.outbound_peer_authorizations
-            .keys()
-            .chain(self.inbound_peer_authorizations.keys())
-            .chain(self.rejected_inbound_peer_authorizations.keys())
-            .copied()
-    }
-
     pub(crate) fn inbound_peer_pools(
         &self,
     ) -> impl Iterator<Item = (ClientId, BTreeSet<ResourceId>)> + '_ {

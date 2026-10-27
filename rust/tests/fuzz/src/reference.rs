@@ -686,11 +686,19 @@ impl ReferenceState {
             Transition::CrashClient { client_id, key } => {
                 self.node_may_lack_relays |= self.no_relay_accepts_allocations();
 
-                // Applications resolve their domains again once the cached records are gone.
-                self.clients.get_mut(client_id).unwrap().exec_mut(|c| {
-                    c.restart(*key, now);
-                    c.dns_records.clear();
-                });
+                for (id, client) in &mut self.clients {
+                    if id == client_id {
+                        // Applications resolve their domains again once the cached records are gone.
+                        client.exec_mut(|c| {
+                            c.restart(*key, now);
+                            c.dns_records.clear();
+                        });
+                    } else {
+                        // Without a `goodbye`, the peers lose their connections to the crashed
+                        // client, and their authorizations towards it with them.
+                        client.exec_mut(|c| c.forget_peer_authorizations(*client_id));
+                    }
+                }
             }
         };
 
@@ -1229,19 +1237,6 @@ impl ReferenceState {
             .into_iter()
             .filter(|resource| portal.site_for_resource(*resource).is_some())
             .collect()
-    }
-
-    /// Whether `client` or any other Client holds an authorization between `client` and a peer.
-    pub(crate) fn has_peer_authorizations(&self, client: ClientId) -> bool {
-        self.clients.iter().any(|(id, state)| {
-            let mut peers = state.inner().authorized_peers();
-
-            if *id == client {
-                return peers.next().is_some();
-            }
-
-            peers.any(|peer| peer == client)
-        })
     }
 
     /// Peer authorizations a receiving client can expire while the sender keeps its own.
