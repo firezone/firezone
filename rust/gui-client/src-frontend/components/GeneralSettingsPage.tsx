@@ -3,7 +3,7 @@ import {
   ClientSettingsForm,
   GeneralSettingsViewModel,
   Portal,
-  SignedInWithViewModel,
+  SignInSettingsViewModel,
 } from "../generated/bindings";
 import Button from "./Button";
 import SettingRow from "./SettingRow";
@@ -59,13 +59,13 @@ export default function GeneralSettingsPage({
         : { ...drafts, [field]: draft ?? undefined }
     );
 
-  const savedSignIn: SignedInWithViewModel = {
+  const savedSignIn: SignInSettingsViewModel = {
     account_slug: saved.account_slug,
     portal: saved.portal,
     auth_url: saved.auth_url,
     api_url: saved.api_url,
   };
-  const draftSignIn: SignedInWithViewModel = {
+  const draftSignIn: SignInSettingsViewModel = {
     account_slug: drafts.account_slug ?? saved.account_slug,
     portal,
     auth_url: drafts.auth_url ?? customAuthUrl,
@@ -220,8 +220,8 @@ export default function GeneralSettingsPage({
 
 // Cloud portals compare by name, Custom ones by their URLs.
 function differs(
-  signIn: SignedInWithViewModel,
-  signedInWith: SignedInWithViewModel
+  signIn: SignInSettingsViewModel,
+  signedInWith: SignInSettingsViewModel
 ) {
   if (signIn.account_slug.trim() !== signedInWith.account_slug) {
     return true;

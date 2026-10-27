@@ -4,7 +4,7 @@ use crate::{
     logging::{self, FileCount},
     service,
     settings::{
-        AdvancedSettings, AdvancedSettingsPatch, GeneralSettings, MdmSettings, SignedInWith,
+        AdvancedSettings, AdvancedSettingsPatch, GeneralSettings, MdmSettings, SignInSettings,
     },
     updates, uptime,
     view::{ClientSettingsForm, SessionViewModel},
@@ -46,7 +46,7 @@ pub struct Controller<I: GuiIntegration> {
     legacy_advanced_settings_path: PathBuf,
     // Sign-in state with the portal / deep links
     auth: auth::Auth,
-    signed_in_with: Option<SignedInWith>,
+    signed_in_with: Option<SignInSettings>,
     clear_logs_callback: Option<oneshot::Sender<Result<(), String>>>,
     x509: Result<Option<x509_keystore::ParsedCertificate>, x509_keystore::Error>,
     ipc_client: ipc::ClientWrite<service::ClientMsg>,
@@ -87,7 +87,7 @@ pub trait GuiIntegration {
         mdm_settings: MdmSettings,
         general_settings: GeneralSettings,
         advanced_settings: AdvancedSettings,
-        signed_in_with: Option<SignedInWith>,
+        signed_in_with: Option<SignInSettings>,
     ) -> Result<()>;
     fn notify_logs_recounted(&self, file_count: &FileCount) -> Result<()>;
     fn notify_device_trust_changed(
@@ -117,7 +117,7 @@ pub trait GuiIntegration {
         mdm_settings: MdmSettings,
         general_settings: GeneralSettings,
         settings: AdvancedSettings,
-        signed_in_with: Option<SignedInWith>,
+        signed_in_with: Option<SignInSettings>,
     ) -> Result<()>;
     fn show_about_page(&self) -> Result<()>;
 }
@@ -1248,15 +1248,15 @@ impl<I: GuiIntegration> Controller<I> {
             .context("Failed to send IPC message")
     }
 
-    fn current_sign_in(&self) -> SignedInWith {
-        SignedInWith {
+    fn current_sign_in(&self) -> SignInSettings {
+        SignInSettings {
             account_slug: self.account_slug().map(ToOwned::to_owned),
             auth_url: self.auth_url().clone(),
             api_url: self.api_url().clone(),
         }
     }
 
-    fn set_signed_in_with(&mut self, signed_in_with: Option<SignedInWith>) -> Result<()> {
+    fn set_signed_in_with(&mut self, signed_in_with: Option<SignInSettings>) -> Result<()> {
         if self.signed_in_with == signed_in_with {
             return Ok(());
         }
@@ -2489,7 +2489,7 @@ mod tests {
             .await;
         assert_eq!(
             signed_in_with,
-            SignedInWith {
+            SignInSettings {
                 account_slug: None,
                 auth_url: AdvancedSettings::default().auth_url,
                 api_url: AdvancedSettings::default().api_url,
@@ -2640,7 +2640,7 @@ mod tests {
         sessions: Vec<SessionViewModel>,
         mdm_settings: Vec<MdmSettings>,
         general_settings: Vec<GeneralSettings>,
-        signed_in_with: Vec<Option<SignedInWith>>,
+        signed_in_with: Vec<Option<SignInSettings>>,
         advanced_settings: Vec<AdvancedSettings>,
         file_counts: Vec<FileCount>,
         x509: Vec<Option<x509_keystore::ParsedCertificate>>,
@@ -2675,7 +2675,7 @@ mod tests {
             mdm_settings: MdmSettings,
             general_settings: GeneralSettings,
             advanced_settings: AdvancedSettings,
-            signed_in_with: Option<SignedInWith>,
+            signed_in_with: Option<SignInSettings>,
         ) -> Result<()> {
             let mut guard = self.lock();
 
@@ -2761,7 +2761,7 @@ mod tests {
             mdm_settings: MdmSettings,
             general_settings: GeneralSettings,
             settings: AdvancedSettings,
-            _signed_in_with: Option<SignedInWith>,
+            _signed_in_with: Option<SignInSettings>,
         ) -> Result<()> {
             self.lock()
                 .shown_settings_page

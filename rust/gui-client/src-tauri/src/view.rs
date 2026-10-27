@@ -559,6 +559,7 @@ mod tests {
     #[test]
     fn accepts_a_log_filter_connlib_can_parse() {
         assert!(check_log_filter("info,connlib=debug").is_ok());
+        assert!(check_log_filter("").is_ok());
     }
 
     #[test]

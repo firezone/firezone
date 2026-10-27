@@ -990,7 +990,7 @@ impl<'a> Handler<'a> {
             tokio::runtime::Handle::current(),
         );
 
-        analytics::new_session(device_id.id, api_url);
+        analytics::new_session(device_id.id, api_url.to_string());
 
         let tun = self
             .tun_device

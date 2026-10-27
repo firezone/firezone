@@ -108,7 +108,7 @@ pub struct GeneralSettings {
 
 /// The account slug and control-plane URLs captured when sign-in started.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct SignedInWith {
+pub struct SignInSettings {
     pub account_slug: Option<String>,
     pub auth_url: Url,
     pub api_url: Url,
@@ -136,11 +136,11 @@ pub struct GeneralSettingsViewModel {
     /// What the API URL field shows when [`Portal::Custom`] is picked: the last saved custom URL, or else `api_url`.
     pub custom_api_url: String,
     /// The settings captured when sign-in started, [`None`] when signed out.
-    pub signed_in_with: Option<SignedInWithViewModel>,
+    pub signed_in_with: Option<SignInSettingsViewModel>,
 }
 
 #[derive(Clone, Serialize, specta::Type)]
-pub struct SignedInWithViewModel {
+pub struct SignInSettingsViewModel {
     pub account_slug: String,
     pub portal: Portal,
     pub auth_url: String,
@@ -152,7 +152,7 @@ impl GeneralSettingsViewModel {
         mdm_settings: MdmSettings,
         general_settings: GeneralSettings,
         advanced_settings: AdvancedSettings,
-        signed_in_with: Option<SignedInWith>,
+        signed_in_with: Option<SignInSettings>,
     ) -> Self {
         let auth_url_is_managed = mdm_settings.auth_url.is_some();
         let api_url_is_managed = mdm_settings.api_url.is_some();
@@ -196,7 +196,7 @@ impl GeneralSettingsViewModel {
             api_url_is_managed,
             custom_auth_url,
             custom_api_url,
-            signed_in_with: signed_in_with.map(|signed_in_with| SignedInWithViewModel {
+            signed_in_with: signed_in_with.map(|signed_in_with| SignInSettingsViewModel {
                 account_slug: signed_in_with.account_slug.unwrap_or_default(),
                 portal: Portal::from_urls(&signed_in_with.auth_url, &signed_in_with.api_url),
                 auth_url: signed_in_with.auth_url.to_string(),
@@ -571,7 +571,7 @@ mod tests {
             MdmSettings::default(),
             GeneralSettings::default(),
             advanced_settings("https://app.firezone.dev", "wss://api.firezone.dev"),
-            Some(SignedInWith {
+            Some(SignInSettings {
                 account_slug: None,
                 auth_url: Url::parse("https://eu.app.firezone.dev").unwrap(),
                 api_url: Url::parse("wss://eu.api.firezone.dev").unwrap(),

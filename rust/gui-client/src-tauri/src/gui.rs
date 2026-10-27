@@ -10,7 +10,7 @@ use crate::{
     logging::FileCount,
     settings::{
         self, AdvancedSettings, GeneralSettings, GeneralSettingsViewModel, LogFilterViewModel,
-        MdmSettings, SignedInWith,
+        MdmSettings, SignInSettings,
     },
     updates,
     view::{
@@ -119,7 +119,7 @@ impl GuiIntegration for TauriIntegration {
         mdm_settings: MdmSettings,
         general_settings: GeneralSettings,
         advanced_settings: AdvancedSettings,
-        signed_in_with: Option<SignedInWith>,
+        signed_in_with: Option<SignInSettings>,
     ) -> Result<()> {
         GeneralSettingsChanged(GeneralSettingsViewModel::new(
             mdm_settings.clone(),
@@ -224,7 +224,7 @@ impl GuiIntegration for TauriIntegration {
         mdm_settings: MdmSettings,
         general_settings: GeneralSettings,
         advanced_settings: AdvancedSettings,
-        signed_in_with: Option<SignedInWith>,
+        signed_in_with: Option<SignInSettings>,
     ) -> Result<()> {
         self.notify_settings_changed(
             mdm_settings,

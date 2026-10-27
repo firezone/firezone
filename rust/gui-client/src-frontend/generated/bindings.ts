@@ -121,7 +121,7 @@ custom_api_url: string;
 /**
  * The settings captured when sign-in started, [`None`] when signed out.
  */
-signed_in_with: SignedInWithViewModel | null }
+signed_in_with: SignInSettingsViewModel | null }
 export type LogFilterChanged = LogFilterViewModel
 export type LogFilterViewModel = { log_filter: string; log_filter_is_managed: boolean }
 export type LogsRecounted = FileCount
@@ -131,7 +131,7 @@ export type LogsRecounted = FileCount
 export type Portal = "CloudUs" | "CloudEu" | "Custom"
 export type SessionChanged = SessionViewModel
 export type SessionViewModel = { SignedIn: { account_slug: string; actor_name: string } } | "Loading" | "SignedOut"
-export type SignedInWithViewModel = { account_slug: string; portal: Portal; auth_url: string; api_url: string }
+export type SignInSettingsViewModel = { account_slug: string; portal: Portal; auth_url: string; api_url: string }
 /**
  * A certificate the Tunnel service loaded from the platform keystore.
  */

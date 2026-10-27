@@ -44,9 +44,6 @@ export default function Diagnostics({
                 const result = await saveLogFilter(filter);
                 return result.status === "error" ? result.error : null;
               }}
-              validate={(filter) =>
-                filter === "" ? "Enter a log filter" : null
-              }
               value={saved.log_filter}
             />
 

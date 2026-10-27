@@ -51,3 +51,26 @@ test("a rejected log filter shows the returned message and keeps the draft", asy
     .toHaveValue("info,connlib=nonsense");
   expect(saveLogFilter).toHaveBeenCalledWith("info,connlib=nonsense");
 });
+
+test("an empty log filter is saved", async () => {
+  const saveLogFilter = vi.fn().mockResolvedValue({ status: "ok", data: null });
+
+  root.render(
+    <DiagnosticsPage
+      logCount={null}
+      logFilter={{ log_filter: "info", log_filter_is_managed: false }}
+      exportLogs={() => {}}
+      clearLogs={() => {}}
+      saveLogFilter={saveLogFilter}
+    />
+  );
+
+  await userEvent.fill(page.getByLabelText("Log Filter"), "");
+  await userEvent.keyboard("{Enter}");
+
+  expect(saveLogFilter).toHaveBeenCalledWith("");
+  await expect.element(page.getByLabelText("Log Filter")).toHaveValue("");
+  await expect
+    .element(page.getByLabelText("Log Filter"))
+    .not.toHaveAttribute("aria-invalid", "true");
+});
