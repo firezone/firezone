@@ -7,10 +7,13 @@
 
 	<!-- Settings -->
 	<string name="settings_title">Settings</string>
-	<string name="save">Save</string>
-	<string name="settings_save_warning_title">Takes effect after sign-out</string>
-	<string name="settings_save_warning_message">Changes to the account slug or portal only take effect after you sign out and sign in again.</string>
-	<string name="settings_save_warning_confirm">Okay</string>
+	<string name="more_options">More options</string>
+	<string name="reset_to_defaults">Reset to defaults</string>
+	<string name="reset_to_defaults_confirm_title">Reset settings to defaults?</string>
+	<string name="reset_to_defaults_confirm">Reset</string>
+	<string name="sign_out_notice_title">Takes effect after sign-out</string>
+	<string name="sign_out_notice_message">Changes to the account slug or portal only take effect after you sign out and sign in again.</string>
+	<string name="sign_out_notice_confirm">Okay</string>
 	<!-- General Settings -->
 	<string name="settings_section_sign_in">Sign-in</string>
 	<string name="settings_section_startup">Startup</string>
@@ -23,7 +26,6 @@
 	<string name="portal_custom">Custom</string>
 	<string name="auth_url">Auth URL</string>
 	<string name="api_url">API URL</string>
-	<string name="button_reset_to_defaults">Reset to Defaults</string>
 	<!-- Device Trust Settings -->
 	<string name="device_trust_settings_title">Device Trust</string>
 	<!-- Diagnostic Logs Settings -->

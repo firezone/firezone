@@ -1,22 +1,22 @@
 // Licensed under Apache 2.0 (C) 2026 Firezone, Inc.
 package dev.firezone.android.features.settings.ui.compose
 
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.CenterAlignedTopAppBar
-import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -32,6 +32,7 @@ import dev.firezone.android.R
 import dev.firezone.android.core.data.model.Config
 import dev.firezone.android.core.data.model.ManagedConfigStatus
 import dev.firezone.android.core.data.model.Portal
+import dev.firezone.android.features.session.ui.compose.BackTopBar
 import dev.firezone.android.features.settings.ui.DeviceTrustSettingsViewModel
 import dev.firezone.android.ui.FirezoneIcons
 import kotlinx.coroutines.launch
@@ -58,17 +59,15 @@ internal fun settingsPages(showDeviceTrust: Boolean): List<SettingsPage> =
         add(SettingsPage.LOGS)
     }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun SettingsScreen(
     config: Config,
     portal: Portal,
     managedStatus: ManagedConfigStatus,
-    canSave: Boolean,
     logSizeBytes: Long,
     deviceTrustState: DeviceTrustSettingsViewModel.UiState,
     showDeviceTrust: Boolean,
-    warnBeforeSaving: Boolean,
+    showSignOutNotice: Boolean,
     onPortalChange: (Portal) -> Unit,
     onAuthUrlChange: (String) -> Unit,
     onApiUrlChange: (String) -> Unit,
@@ -82,15 +81,15 @@ internal fun SettingsScreen(
     onLogsShown: () -> Unit,
     onSelectCertificate: () -> Unit,
     onDeviceTrustShown: () -> Unit,
-    onSave: () -> Unit,
-    onCancel: () -> Unit,
+    onSignOutNoticeDismissed: () -> Unit,
+    onBack: () -> Unit,
     modifier: Modifier = Modifier,
     buildSha: String = stringResource(R.string.git_sha),
 ) {
     val pages = remember(showDeviceTrust) { settingsPages(showDeviceTrust) }
     val pagerState = rememberPagerState(pageCount = { pages.size })
     val scope = rememberCoroutineScope()
-    var showSaveWarning by rememberSaveable { mutableStateOf(false) }
+    var showResetConfirmation by rememberSaveable { mutableStateOf(false) }
 
     // Revoking the certificate drops a page, so the index can outrun the list for a frame.
     val currentPage = pages.getOrNull(pagerState.currentPage)
@@ -105,37 +104,12 @@ internal fun SettingsScreen(
     Scaffold(
         modifier = modifier,
         topBar = {
-            CenterAlignedTopAppBar(
-                // M3 defaults the bar to `surface`, which seams against the canvas the page is painted with.
-                colors =
-                    TopAppBarDefaults.centerAlignedTopAppBarColors(
-                        containerColor = MaterialTheme.colorScheme.background,
-                    ),
-                title = { Text(stringResource((currentPage ?: SettingsPage.GENERAL).labelRes)) },
-                navigationIcon = {
-                    // Brand orange marks the call to action, which on this bar is Save.
-                    TextButton(
-                        onClick = onCancel,
-                        colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.onSurfaceVariant),
-                    ) {
-                        Text(stringResource(android.R.string.cancel))
-                    }
-                },
+            BackTopBar(
+                title = stringResource((currentPage ?: SettingsPage.GENERAL).labelRes),
+                onBack = onBack,
                 actions = {
-                    // Only the general page saves; the other pages apply their changes as they are made.
                     if (currentPage == SettingsPage.GENERAL) {
-                        TextButton(
-                            onClick = {
-                                if (warnBeforeSaving) {
-                                    showSaveWarning = true
-                                } else {
-                                    onSave()
-                                }
-                            },
-                            enabled = canSave,
-                        ) {
-                            Text(stringResource(R.string.save))
-                        }
+                        OverflowMenu(onResetToDefaults = { showResetConfirmation = true })
                     }
                 },
             )
@@ -168,7 +142,6 @@ internal fun SettingsScreen(
                         onAccountSlugChange = onAccountSlugChange,
                         onStartOnLoginChange = onStartOnLoginChange,
                         onConnectOnStartChange = onConnectOnStartChange,
-                        onResetToDefaults = onResetToDefaults,
                         buildSha = buildSha,
                     )
                 }
@@ -194,21 +167,58 @@ internal fun SettingsScreen(
         }
     }
 
-    if (showSaveWarning) {
+    if (showResetConfirmation) {
         AlertDialog(
-            onDismissRequest = { showSaveWarning = false },
-            title = { Text(stringResource(R.string.settings_save_warning_title)) },
-            text = { Text(stringResource(R.string.settings_save_warning_message)) },
+            onDismissRequest = { showResetConfirmation = false },
+            title = { Text(stringResource(R.string.reset_to_defaults_confirm_title)) },
             confirmButton = {
                 TextButton(
                     onClick = {
-                        showSaveWarning = false
-                        onSave()
+                        showResetConfirmation = false
+                        onResetToDefaults()
                     },
                 ) {
-                    Text(stringResource(R.string.settings_save_warning_confirm))
+                    Text(stringResource(R.string.reset_to_defaults_confirm))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showResetConfirmation = false }) {
+                    Text(stringResource(android.R.string.cancel))
                 }
             },
         )
+    }
+
+    if (showSignOutNotice) {
+        AlertDialog(
+            onDismissRequest = onSignOutNoticeDismissed,
+            title = { Text(stringResource(R.string.sign_out_notice_title)) },
+            text = { Text(stringResource(R.string.sign_out_notice_message)) },
+            confirmButton = {
+                TextButton(onClick = onSignOutNoticeDismissed) {
+                    Text(stringResource(R.string.sign_out_notice_confirm))
+                }
+            },
+        )
+    }
+}
+
+@Composable
+private fun OverflowMenu(onResetToDefaults: () -> Unit) {
+    var expanded by remember { mutableStateOf(false) }
+
+    Box {
+        IconButton(onClick = { expanded = true }) {
+            Icon(imageVector = FirezoneIcons.MoreVert, contentDescription = stringResource(R.string.more_options))
+        }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.reset_to_defaults)) },
+                onClick = {
+                    expanded = false
+                    onResetToDefaults()
+                },
+            )
+        }
     }
 }

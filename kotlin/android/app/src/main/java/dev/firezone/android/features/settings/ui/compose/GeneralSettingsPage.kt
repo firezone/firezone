@@ -1,7 +1,6 @@
 // Licensed under Apache 2.0 (C) 2026 Firezone, Inc.
 package dev.firezone.android.features.settings.ui.compose
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -40,7 +39,6 @@ fun GeneralSettingsPage(
     onAccountSlugChange: (String) -> Unit,
     onStartOnLoginChange: (Boolean) -> Unit,
     onConnectOnStartChange: (Boolean) -> Unit,
-    onResetToDefaults: () -> Unit,
     modifier: Modifier = Modifier,
     // A parameter so the screenshot test can pin it; the build's commit changes with every push.
     buildSha: String = stringResource(R.string.git_sha),
@@ -99,12 +97,6 @@ fun GeneralSettingsPage(
                 checked = config.connectOnStart,
                 isManaged = managedStatus.isConnectOnStartManaged,
                 onCheckedChange = onConnectOnStartChange,
-            )
-        }
-        SettingsGroup {
-            SettingsRow(
-                title = stringResource(R.string.button_reset_to_defaults),
-                action = Modifier.clickable(onClick = onResetToDefaults),
             )
         }
 

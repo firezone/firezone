@@ -23,6 +23,8 @@ import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.io.File
 import java.io.FileOutputStream
 import java.net.URI
@@ -40,10 +42,6 @@ internal class SettingsViewModel
         private val _uiState = MutableStateFlow(UiState())
         val uiState: StateFlow<UiState> = _uiState
 
-        private val actionMutableStateFlow = MutableStateFlow<ViewAction?>(null)
-        val actionStateFlow: StateFlow<ViewAction?> = actionMutableStateFlow
-
-        // Compose state rather than a flow: a dispatcher hop between keystroke and text field drops input.
         var config by mutableStateOf(
             Config(
                 authUrl = "",
@@ -60,34 +58,25 @@ internal class SettingsViewModel
         var portal by mutableStateOf(Portal.CUSTOM)
             private set
 
-        // Snapshot of the persisted config as it was loaded, used to detect which
-        // fields the user actually changed when saving.
-        private var savedConfig = config
+        // Changing the account or the portal only takes effect after signing out and back in.
+        var isSignOutNoticePending by mutableStateOf(false)
+            private set
+
+        // Each change saves the whole config, so the saves have to land in the order they were made.
+        private val saveMutex = Mutex()
 
         private val _managedStatusStateFlow = MutableStateFlow<ManagedConfigStatus?>(null)
         val managedStatusStateFlow: StateFlow<ManagedConfigStatus?> = _managedStatusStateFlow
-
-        private var shouldResetFavoritesOnSave = false
 
         fun populateFieldsFromConfig() {
             viewModelScope.launch {
                 repo.getConfig().collect {
                     config = it
-                    savedConfig = it
                     _managedStatusStateFlow.value = repo.getManagedStatus()
-                    portal = detectPortal()
-                    onFieldUpdated()
+                    portal = detectPortal(it)
                 }
             }
         }
-
-        // The log filter is applied live, so it never requires a re-login.
-        // Changing the account or the portal endpoints invalidates the current session and only
-        // takes effect after signing out and back in.
-        fun requiresReLogin(): Boolean =
-            config.authUrl != savedConfig.authUrl ||
-                config.apiUrl != savedConfig.apiUrl ||
-                config.accountSlug != savedConfig.accountSlug
 
         fun onViewResume(context: Context) {
             val directory = File(context.cacheDir.absolutePath + "/logs")
@@ -106,75 +95,33 @@ internal class SettingsViewModel
             }
         }
 
-        fun save() {
-            // Only URLs the user typed are worth offering again; managed ones come back by themselves.
-            val managedStatus = repo.getManagedStatus()
-            if (portal == Portal.CUSTOM &&
-                !managedStatus.isAuthUrlManaged &&
-                !managedStatus.isApiUrlManaged
-            ) {
-                repo.saveLastCustomUrlsSync(config.authUrl, config.apiUrl)
-            }
-
-            viewModelScope.launch {
-                repo.saveSettings(config).collect {
-                    if (shouldResetFavoritesOnSave) {
-                        repo.resetFavorites()
-                        shouldResetFavoritesOnSave = false
-                    }
-                    actionMutableStateFlow.value = ViewAction.NavigateBack
-                }
-            }
-        }
-
-        fun onCancel() {
-            actionMutableStateFlow.value = ViewAction.NavigateBack
-        }
-
         fun onPortalChanged(newPortal: Portal) {
             val previousPortal = portal
             portal = newPortal
 
             if (newPortal.authUrl != null && newPortal.apiUrl != null) {
-                config = config.copy(authUrl = newPortal.authUrl, apiUrl = newPortal.apiUrl)
+                persist(config.copy(authUrl = newPortal.authUrl, apiUrl = newPortal.apiUrl))
             } else if (previousPortal != Portal.CUSTOM) {
-                repo.getLastCustomUrlsSync()?.let { (authUrl, apiUrl) ->
-                    config = config.copy(authUrl = authUrl, apiUrl = apiUrl)
-                }
+                // Without any custom URLs saved yet, Custom starts from the cloud portal's.
+                val (authUrl, apiUrl) = repo.getLastCustomUrlsSync() ?: (config.authUrl to config.apiUrl)
+                persist(config.copy(authUrl = authUrl, apiUrl = apiUrl))
             }
-            onFieldUpdated()
         }
 
-        fun onValidateAuthUrl(authUrl: String) {
-            config = config.copy(authUrl = authUrl)
-            onFieldUpdated()
-        }
+        fun onAuthUrlChanged(authUrl: String) = persist(config.copy(authUrl = authUrl))
 
-        fun onValidateApiUrl(apiUrl: String) {
-            config = config.copy(apiUrl = apiUrl)
-            onFieldUpdated()
-        }
+        fun onApiUrlChanged(apiUrl: String) = persist(config.copy(apiUrl = apiUrl))
 
-        // Saved straight away, leaving the other settings as they were last saved.
-        fun onLogFilterConfirmed(logFilter: String) {
-            config = config.copy(logFilter = logFilter)
-            savedConfig = savedConfig.copy(logFilter = logFilter)
-            viewModelScope.launch { repo.saveSettings(savedConfig).collect() }
-        }
+        fun onLogFilterChanged(logFilter: String) = persist(config.copy(logFilter = logFilter))
 
-        fun onValidateAccountSlug(accountSlug: String) {
-            config = config.copy(accountSlug = accountSlug)
-            onFieldUpdated()
-        }
+        fun onAccountSlugChanged(accountSlug: String) = persist(config.copy(accountSlug = accountSlug))
 
-        fun onStartOnLoginChanged(isChecked: Boolean) {
-            config = config.copy(startOnLogin = isChecked)
-            onFieldUpdated()
-        }
+        fun onStartOnLoginChanged(isChecked: Boolean) = persist(config.copy(startOnLogin = isChecked))
 
-        fun onConnectOnStartChanged(isChecked: Boolean) {
-            config = config.copy(connectOnStart = isChecked)
-            onFieldUpdated()
+        fun onConnectOnStartChanged(isChecked: Boolean) = persist(config.copy(connectOnStart = isChecked))
+
+        fun onSignOutNoticeDismissed() {
+            isSignOutNoticePending = false
         }
 
         fun deleteLogDirectory(context: Context) {
@@ -230,15 +177,11 @@ internal class SettingsViewModel
 
         fun resetSettingsToDefaults() {
             // The log filter lives on the diagnostics page, so this page's reset leaves it alone.
-            config = repo.getDefaultConfigSync().copy(logFilter = config.logFilter)
-            shouldResetFavoritesOnSave = true
+            val defaults = repo.getDefaultConfigSync().copy(logFilter = config.logFilter)
             _managedStatusStateFlow.value = repo.getManagedStatus()
-            portal = detectPortal()
-            onFieldUpdated()
-        }
-
-        fun clearAction() {
-            actionMutableStateFlow.value = null
+            portal = detectPortal(defaults)
+            persist(defaults)
+            repo.resetFavorites()
         }
 
         fun deleteLogZip(context: Context) {
@@ -273,7 +216,7 @@ internal class SettingsViewModel
         }.flowOn(Dispatchers.IO)
 
         // With only one of the URLs managed, Custom keeps the other one editable.
-        private fun detectPortal(): Portal {
+        private fun detectPortal(config: Config): Portal {
             val managedStatus = repo.getManagedStatus()
             if (managedStatus.isAuthUrlManaged != managedStatus.isApiUrlManaged) {
                 return Portal.CUSTOM
@@ -284,24 +227,30 @@ internal class SettingsViewModel
 
         private fun getLogZipPath(context: Context) = "${context.cacheDir.absolutePath}/logs.zip"
 
-        private fun onFieldUpdated() {
-            _uiState.value =
-                _uiState.value.copy(
-                    canSave =
-                        (shouldResetFavoritesOnSave || config != savedConfig) &&
-                            isValidAuthUrl(config.authUrl) &&
-                            isValidApiUrl(config.apiUrl),
-                )
+        private fun persist(newConfig: Config) {
+            val requiresReLogin =
+                newConfig.authUrl != config.authUrl ||
+                    newConfig.apiUrl != config.apiUrl ||
+                    newConfig.accountSlug != config.accountSlug
+            config = newConfig
+
+            // Only URLs the user typed are worth offering again; managed ones come back by themselves.
+            val managedStatus = repo.getManagedStatus()
+            if (portal == Portal.CUSTOM && !managedStatus.isAuthUrlManaged && !managedStatus.isApiUrlManaged) {
+                repo.saveLastCustomUrlsSync(newConfig.authUrl, newConfig.apiUrl)
+            }
+
+            viewModelScope.launch {
+                saveMutex.withLock { repo.saveSettings(newConfig).collect() }
+                if (requiresReLogin) {
+                    isSignOutNoticePending = true
+                }
+            }
         }
 
         internal data class UiState(
-            val canSave: Boolean = false,
             val logSizeBytes: Long = 0,
         )
-
-        internal sealed class ViewAction {
-            data object NavigateBack : ViewAction()
-        }
     }
 
 internal fun isValidAuthUrl(url: String): Boolean = URLUtil.isValidUrl(url)

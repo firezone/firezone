@@ -12,8 +12,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotEquals
-import org.junit.Assert.assertNull
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -42,7 +41,7 @@ class SettingsViewModelTest {
     }
 
     @Test
-    fun `canceling a reset keeps favorites and managed values`() =
+    fun `a reset clears favorites and keeps managed values`() =
         runBlocking {
             repository.addFavoriteResource(FAVORITE_ID)
             repository
@@ -53,25 +52,14 @@ class SettingsViewModelTest {
                 ).first()
 
             viewModel.resetSettingsToDefaults()
-            viewModel.onCancel()
+            settle()
 
-            assertTrue(FAVORITE_ID in repository.favorites.value.inner)
+            assertTrue(
+                repository.favorites.value.inner
+                    .isEmpty(),
+            )
             assertEquals("https://managed.example.com", viewModel.config.authUrl)
         }
-
-    @Test
-    fun `saving a reset clears favorites`() {
-        repository.addFavoriteResource(FAVORITE_ID)
-
-        viewModel.resetSettingsToDefaults()
-        viewModel.save()
-        shadowOf(Looper.getMainLooper()).idle()
-
-        assertTrue(
-            repository.favorites.value.inner
-                .isEmpty(),
-        )
-    }
 
     @Test
     fun `saved US URLs show the US portal`() {
@@ -99,8 +87,7 @@ class SettingsViewModelTest {
         populateFields()
 
         viewModel.onPortalChanged(Portal.CLOUD_EU)
-        viewModel.save()
-        shadowOf(Looper.getMainLooper()).idle()
+        settle()
 
         assertEquals("https://eu.app.firezone.dev", repository.getConfigSync().authUrl)
         assertEquals("wss://eu.api.firezone.dev", repository.getConfigSync().apiUrl)
@@ -137,10 +124,9 @@ class SettingsViewModelTest {
         populateFields()
 
         viewModel.onPortalChanged(Portal.CUSTOM)
-        viewModel.onValidateAuthUrl("https://firezone.example.com")
-        viewModel.onValidateApiUrl("wss://api.firezone.example.com")
-        viewModel.save()
-        shadowOf(Looper.getMainLooper()).idle()
+        viewModel.onAuthUrlChanged("https://firezone.example.com")
+        viewModel.onApiUrlChanged("wss://api.firezone.example.com")
+        settle()
 
         assertEquals(Portal.CUSTOM, viewModel.portal)
         assertEquals("https://firezone.example.com", repository.getConfigSync().authUrl)
@@ -170,16 +156,35 @@ class SettingsViewModelTest {
         }
 
     @Test
-    fun `confirming the log filter saves it without Save`() {
+    fun `a confirmed account slug persists immediately and asks for a sign-out`() {
         populateFields()
 
-        viewModel.onValidateAccountSlug("example-corp")
-        viewModel.onLogFilterConfirmed("debug")
-        shadowOf(Looper.getMainLooper()).idle()
+        viewModel.onAccountSlugChanged("example-corp")
+        settle()
+
+        assertEquals("example-corp", repository.getConfigSync().accountSlug)
+        assertTrue(viewModel.isSignOutNoticePending)
+    }
+
+    @Test
+    fun `a toggled switch persists immediately`() {
+        populateFields()
+
+        viewModel.onConnectOnStartChanged(true)
+        settle()
+
+        assertTrue(repository.getConfigSync().connectOnStart)
+        assertFalse(viewModel.isSignOutNoticePending)
+    }
+
+    @Test
+    fun `a confirmed log filter persists immediately`() {
+        populateFields()
+
+        viewModel.onLogFilterChanged("debug")
+        settle()
 
         assertEquals("debug", repository.getConfigSync().logFilter)
-        assertNotEquals("example-corp", repository.getConfigSync().accountSlug)
-        assertNull(viewModel.actionStateFlow.value)
     }
 
     @Test
@@ -187,13 +192,13 @@ class SettingsViewModelTest {
         saveUrls("https://app.firezone.dev", "wss://api.firezone.dev")
         populateFields()
         viewModel.onPortalChanged(Portal.CUSTOM)
-        viewModel.onValidateAuthUrl("https://firezone.example.com")
-        viewModel.onValidateApiUrl("wss://api.firezone.example.com")
-        save()
+        viewModel.onAuthUrlChanged("https://firezone.example.com")
+        viewModel.onApiUrlChanged("wss://api.firezone.example.com")
+        settle()
 
         reopen()
         viewModel.onPortalChanged(Portal.CLOUD_EU)
-        save()
+        settle()
 
         reopen()
         viewModel.onPortalChanged(Portal.CUSTOM)
@@ -219,7 +224,7 @@ class SettingsViewModelTest {
         populateFields()
 
         viewModel.onPortalChanged(Portal.CLOUD_US)
-        save()
+        settle()
 
         assertEquals(
             "https://firezone.example.com" to "wss://api.firezone.example.com",
@@ -244,13 +249,13 @@ class SettingsViewModelTest {
             manageUrls("https://firezone.example.com", "wss://api.firezone.example.com")
             populateFields()
 
-            save()
+            viewModel.onConnectOnStartChanged(true)
+            settle()
 
             assertEquals(null, repository.getLastCustomUrlsSync())
         }
 
-    private fun save() {
-        viewModel.save()
+    private fun settle() {
         shadowOf(Looper.getMainLooper()).idle()
     }
 

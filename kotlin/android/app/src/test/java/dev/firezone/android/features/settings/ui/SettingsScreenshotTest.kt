@@ -198,11 +198,10 @@ private fun SettingsScreenSample(
         config = config,
         portal = portal,
         managedStatus = managedStatus,
-        canSave = true,
         logSizeBytes = LOG_DIRECTORY_BYTES,
         deviceTrustState = deviceTrustState,
         showDeviceTrust = deviceTrustState.alias != null,
-        warnBeforeSaving = false,
+        showSignOutNotice = false,
         onPortalChange = {},
         onAuthUrlChange = {},
         onApiUrlChange = {},
@@ -216,8 +215,8 @@ private fun SettingsScreenSample(
         onLogsShown = {},
         onSelectCertificate = {},
         onDeviceTrustShown = {},
-        onSave = {},
-        onCancel = {},
+        onSignOutNoticeDismissed = {},
+        onBack = {},
         // The general page shows the commit the app was built from, which changes with every
         // push; pin it so the image only changes when the UI does.
         buildSha = "0000000000000000000000000000000000000000",

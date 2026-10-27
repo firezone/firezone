@@ -8,7 +8,6 @@ import android.widget.Toast
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dagger.hilt.android.AndroidEntryPoint
@@ -42,22 +41,11 @@ internal class SettingsActivity : AppCompatActivity() {
                 val managedStatus by viewModel.managedStatusStateFlow.collectAsStateWithLifecycle()
                 val uiState by viewModel.uiState.collectAsStateWithLifecycle()
                 val deviceTrustState by deviceTrustViewModel.uiStateFlow.collectAsStateWithLifecycle()
-                val action by viewModel.actionStateFlow.collectAsStateWithLifecycle()
-
-                LaunchedEffect(action) {
-                    action?.let {
-                        viewModel.clearAction()
-                        when (it) {
-                            SettingsViewModel.ViewAction.NavigateBack -> finish()
-                        }
-                    }
-                }
 
                 SettingsScreen(
                     config = viewModel.config,
                     portal = viewModel.portal,
                     managedStatus = managedStatus ?: ManagedConfigStatus.NOTHING_MANAGED,
-                    canSave = uiState.canSave,
                     logSizeBytes = uiState.logSizeBytes,
                     deviceTrustState = deviceTrustState,
                     // The page exists where a certificate is required or one was found, and
@@ -65,14 +53,12 @@ internal class SettingsActivity : AppCompatActivity() {
                     showDeviceTrust =
                         repository.isX509CertificateRequired(applicationRestrictions) ||
                             deviceTrustState.alias != null,
-                    // The app applies the log filter live once it's persisted, so only warn
-                    // about a re-login when a setting that actually invalidates the session changed.
-                    warnBeforeSaving = isUserSignedIn && viewModel.requiresReLogin(),
+                    showSignOutNotice = isUserSignedIn && viewModel.isSignOutNoticePending,
                     onPortalChange = viewModel::onPortalChanged,
-                    onAuthUrlChange = viewModel::onValidateAuthUrl,
-                    onApiUrlChange = viewModel::onValidateApiUrl,
-                    onLogFilterChange = viewModel::onLogFilterConfirmed,
-                    onAccountSlugChange = viewModel::onValidateAccountSlug,
+                    onAuthUrlChange = viewModel::onAuthUrlChanged,
+                    onApiUrlChange = viewModel::onApiUrlChanged,
+                    onLogFilterChange = viewModel::onLogFilterChanged,
+                    onAccountSlugChange = viewModel::onAccountSlugChanged,
                     onStartOnLoginChange = viewModel::onStartOnLoginChanged,
                     onConnectOnStartChange = viewModel::onConnectOnStartChanged,
                     onResetToDefaults = viewModel::resetSettingsToDefaults,
@@ -81,8 +67,8 @@ internal class SettingsActivity : AppCompatActivity() {
                     onLogsShown = { viewModel.onViewResume(applicationContext) },
                     onSelectCertificate = ::chooseCertificate,
                     onDeviceTrustShown = deviceTrustViewModel::loadDetails,
-                    onSave = viewModel::save,
-                    onCancel = viewModel::onCancel,
+                    onSignOutNoticeDismissed = viewModel::onSignOutNoticeDismissed,
+                    onBack = ::finish,
                 )
             }
         }
