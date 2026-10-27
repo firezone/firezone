@@ -44,6 +44,8 @@ config :portal, flow_logs_upload_batch_size: 1000
 # Don't run manual migrations by default
 config :portal, run_manual_migrations: false
 
+config :portal, data_residency_region: :on_prem
+
 config :portal, Portal.Repo,
   hostname: "localhost",
   username: "postgres",

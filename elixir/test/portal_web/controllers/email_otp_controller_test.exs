@@ -836,6 +836,7 @@ defmodule PortalWeb.EmailOTPControllerTest do
       assert conn.resp_body =~ "token-value"
       assert conn.resp_body =~ "Copy to clipboard"
       assert conn.resp_body =~ actor.name
+      assert conn.resp_body =~ "FIREZONE_API_URL=ws://localhost:13001/"
 
       # Email OTP cookie should be cleared
       state = get_cookie_state(conn)

@@ -268,7 +268,7 @@ impl ReferenceState {
                     seq: *seq,
                     identifier: *identifier,
                 };
-                let (outcome, authorization) = self.verdict(portal, *client_id, &request);
+                let (outcome, authorization) = self.verdict(portal, *client_id, &request, None);
                 self.record_probe(
                     portal,
                     *probe_id,
@@ -367,7 +367,7 @@ impl ReferenceState {
                     sport: *sport,
                     dport: *dport,
                 };
-                let (outcome, authorization) = self.verdict(portal, *client_id, &request);
+                let (outcome, authorization) = self.verdict(portal, *client_id, &request, None);
                 self.record_probe(
                     portal,
                     *probe_id,
@@ -451,7 +451,7 @@ impl ReferenceState {
                     dport: *dport,
                     write_len: None,
                 };
-                let (outcome, authorization) = self.verdict(portal, *client_id, &request);
+                let (outcome, authorization) = self.verdict(portal, *client_id, &request, None);
                 let outcome = match outcome {
                     ExpectedOutcome::RoundTripCompleted(route, _)
                         if self.serves_tcp(dst, *dport) =>
@@ -502,7 +502,8 @@ impl ReferenceState {
                     dport: flow.dport,
                     write_len: Some(*len),
                 };
-                let (outcome, authorization) = self.verdict(portal, flow.client_id, &request);
+                let (outcome, authorization) =
+                    self.verdict(portal, flow.client_id, &request, Some(flow.route));
                 let outcome = match outcome {
                     ExpectedOutcome::RoundTripCompleted(route, _)
                         if route.remote() == flow.route.remote() =>
@@ -877,11 +878,14 @@ impl ReferenceState {
 
     /// Follows a packet from `origin` to its destination: the client picks where it goes,
     /// the portal supplies the gateway or pool, and the remote end accepts or rejects it.
+    ///
+    /// `established` is the route of the TCP flow the packet belongs to, if any.
     fn verdict(
         &self,
         portal: &StubPortal,
         origin: ClientId,
         request: &ProbeRequest,
+        established: Option<Route>,
     ) -> (ExpectedOutcome, Option<Authorization>) {
         let client = self.clients[&origin].inner();
         let (src, dst, protocol) = (request.source(), request.destination(), request.protocol());
@@ -929,7 +933,18 @@ impl ReferenceState {
             return (ExpectedOutcome::Dropped, None);
         };
 
-        self.resource_verdict(portal, origin, resource, gateway, src, dst, protocol, false)
+        let established = established == Some(Route::Resource { resource, gateway });
+
+        self.resource_verdict(
+            portal,
+            origin,
+            resource,
+            gateway,
+            src,
+            dst,
+            protocol,
+            established,
+        )
     }
 
     /// Whether `origin` reaches the peer client at `ip`, which takes an authorization on both

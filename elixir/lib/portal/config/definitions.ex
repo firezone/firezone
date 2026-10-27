@@ -128,6 +128,17 @@ defmodule Portal.Config.Definitions do
   )
 
   @doc """
+  The Firezone Cloud region this deployment keeps its customer data in, shown to
+  users on the sign in pages and in account settings. On-prem deployments keep
+  the default and show nothing.
+  """
+  defconfig(
+    :data_residency_region,
+    Ecto.ParameterizedType.init(Ecto.Enum, values: [:us, :eu, :on_prem]),
+    default: :on_prem
+  )
+
+  @doc """
   The external URL the REST API will be accessible at.
 
   Advertised as the server URL in the OpenAPI spec and SwaggerUI, and used to
