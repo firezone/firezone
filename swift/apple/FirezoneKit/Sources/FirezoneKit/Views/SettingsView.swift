@@ -55,6 +55,12 @@ public struct SettingsView: View {
     static let accountSlug = "Account slug or ID (optional)"
   }
 
+  private enum SignOutAlert {
+    static let title = "Takes effect after sign-out"
+    static let message =
+      "Changes to the account slug or portal only take effect after you sign out and sign in again."
+  }
+
   /// The tabs of the settings screen.
   public enum Tab: Hashable {
     case general
@@ -131,7 +137,7 @@ public struct SettingsView: View {
           .navigationTitle(viewModel.selectedTab.title)
           .navigationBarTitleDisplayMode(.inline)
           .alert(
-            "Some settings may not have been applied",
+            SignOutAlert.title,
             isPresented: $isShowingConfirmationAlert,
             presenting: confirmationAlertContinueAction,
             actions: { confirmationAlertContinueAction in
@@ -142,7 +148,7 @@ public struct SettingsView: View {
               }
             },
             message: { _ in
-              Text("Some settings require signing out and in again before they take effect.")
+              Text(SignOutAlert.message)
             }
           )
         }
@@ -204,7 +210,7 @@ public struct SettingsView: View {
       }
       .navigationTitle(viewModel.selectedTab.title)
       .alert(
-        "Some settings may not have been applied",
+        SignOutAlert.title,
         isPresented: $isShowingConfirmationAlert,
         presenting: confirmationAlertContinueAction,
         actions: { confirmationAlertContinueAction in
@@ -213,7 +219,7 @@ public struct SettingsView: View {
           }
         },
         message: { _ in
-          Text("Some settings require signing out and in again before they take effect.")
+          Text(SignOutAlert.message)
         }
       )
     #else
@@ -221,10 +227,10 @@ public struct SettingsView: View {
     #endif
   }
 
-  private var cloudRegion: Binding<CloudRegion> {
+  private var portalSelection: Binding<Portal> {
     Binding(
-      get: { viewModel.cloudRegion },
-      set: { viewModel.selectCloudRegion($0) }
+      get: { viewModel.portal },
+      set: { viewModel.selectPortal($0) }
     )
   }
 
@@ -247,19 +253,19 @@ public struct SettingsView: View {
                 .frame(width: 250)
               }
 
-              LabeledContent(CloudRegion.pickerTitle) {
-                Picker(CloudRegion.pickerTitle, selection: cloudRegion) {
-                  ForEach(CloudRegion.allCases) { region in
-                    Text(region.title).tag(region)
+              LabeledContent(Portal.pickerTitle) {
+                Picker(Portal.pickerTitle, selection: portalSelection) {
+                  ForEach(Portal.allCases) { portal in
+                    Text(portal.title).tag(portal)
                   }
                 }
                 .labelsHidden()
                 .fixedSize()
-                .disabled(viewModel.isCloudRegionForced)
+                .disabled(viewModel.isPortalForced)
               }
 
-              if viewModel.cloudRegion == .custom {
-                LabeledContent("Auth Base URL") {
+              if viewModel.portal == .custom {
+                LabeledContent("Auth URL") {
                   TextField(
                     "",
                     text: $viewModel.authURL,
@@ -330,30 +336,30 @@ public struct SettingsView: View {
             // A menu rather than a form picker, so the choice sits under its caption like
             // the other fields instead of being pushed to a second, indented line.
             VStack(alignment: .leading, spacing: 2) {
-              Text(CloudRegion.pickerTitle)
+              Text(Portal.pickerTitle)
                 .foregroundStyle(.secondary)
                 .font(.caption)
               Menu {
-                Picker(CloudRegion.pickerTitle, selection: cloudRegion) {
-                  ForEach(CloudRegion.allCases) { region in
-                    Text(region.title).tag(region)
+                Picker(Portal.pickerTitle, selection: portalSelection) {
+                  ForEach(Portal.allCases) { portal in
+                    Text(portal.title).tag(portal)
                   }
                 }
               } label: {
                 HStack(spacing: 4) {
-                  Text(viewModel.cloudRegion.title)
+                  Text(viewModel.portal.title)
                   Image(systemName: "chevron.up.chevron.down")
                     .font(.footnote)
                 }
               }
-              .accessibilityLabel(CloudRegion.pickerTitle)
-              .accessibilityValue(viewModel.cloudRegion.title)
-              .disabled(viewModel.isCloudRegionForced)
+              .accessibilityLabel(Portal.pickerTitle)
+              .accessibilityValue(viewModel.portal.title)
+              .disabled(viewModel.isPortalForced)
             }
 
-            if viewModel.cloudRegion == .custom {
+            if viewModel.portal == .custom {
               VStack(alignment: .leading, spacing: 2) {
-                Text("Auth Base URL")
+                Text("Auth URL")
                   .foregroundStyle(.secondary)
                   .font(.caption)
                 TextField(

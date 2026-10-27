@@ -189,7 +189,7 @@ public class Configuration: ObservableObject {
     }
   }
 
-  /// The URLs last saved with the Custom region picked, so that picking Custom again brings them
+  /// The URLs last saved with the Custom portal picked, so that picking Custom again brings them
   /// back. Only this app reads them: they are not a managed setting and never reach the tunnel.
   var lastCustomURLs: (authURL: String, apiURL: String)? {
     get {

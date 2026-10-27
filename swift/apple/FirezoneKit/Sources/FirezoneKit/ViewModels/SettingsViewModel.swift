@@ -18,8 +18,8 @@ class SettingsViewModel: ObservableObject {
   @Published var selectedTab: SettingsView.Tab
   @Published private(set) var shouldDisableApplyButton = false
   @Published private(set) var shouldDisableResetButton = false
-  // Kept apart from the URLs so that picking Custom does not snap back to a region whose URLs match.
-  @Published private(set) var cloudRegion: CloudRegion
+  // Kept apart from the URLs so that picking Custom does not snap back to the portal they match.
+  @Published private(set) var portal: Portal
   @Published var authURL: String
   @Published var apiURL: String
   @Published var logFilter: String
@@ -56,12 +56,12 @@ class SettingsViewModel: ObservableObject {
 
     authURL = self.configuration.authURL
     apiURL = self.configuration.apiURL
-    cloudRegion = .custom
+    portal = .custom
     logFilter = self.configuration.logFilter
     accountSlug = self.configuration.accountSlug
     connectOnStart = self.configuration.connectOnStart
     startOnLogin = self.configuration.startOnLogin
-    cloudRegion = detectCloudRegion()
+    portal = detectPortal()
 
     Publishers.MergeMany(
       $authURL,
@@ -114,7 +114,7 @@ class SettingsViewModel: ObservableObject {
         connectOnStart = ConfigurationDefaults.connectOnStart
       }
       if !configuration.isStartOnLoginForced { startOnLogin = ConfigurationDefaults.startOnLogin }
-      cloudRegion = detectCloudRegion()
+      portal = detectPortal()
     case .logs:
       if !configuration.isLogFilterForced { logFilter = ConfigurationDefaults.logFilter }
     case .deviceTrust:
@@ -132,7 +132,7 @@ class SettingsViewModel: ObservableObject {
       if !configuration.isAccountSlugForced { configuration.accountSlug = accountSlug }
       if !configuration.isConnectOnStartForced { configuration.connectOnStart = connectOnStart }
       if !configuration.isStartOnLoginForced { configuration.startOnLogin = startOnLogin }
-      if cloudRegion == .custom, !isCloudRegionForced {
+      if portal == .custom, !isPortalForced {
         configuration.lastCustomURLs = (authURL, apiURL)
       }
     case .logs:
@@ -144,14 +144,14 @@ class SettingsViewModel: ObservableObject {
     updateDerivedState()
   }
 
-  /// Picks `region` on the user's behalf: US and EU bring their own URLs, and Custom brings back
-  /// the last ones saved with it, if any.
-  func selectCloudRegion(_ region: CloudRegion) {
-    guard region != cloudRegion, !isCloudRegionForced else { return }
+  /// Picks `portal` on the user's behalf: Firezone Cloud brings its own URLs, and Custom brings
+  /// back the last ones saved with it, if any.
+  func selectPortal(_ portal: Portal) {
+    guard portal != self.portal, !isPortalForced else { return }
 
-    cloudRegion = region
+    self.portal = portal
 
-    guard let urls = region.urls ?? configuration.lastCustomURLs else { return }
+    guard let urls = portal.urls ?? configuration.lastCustomURLs else { return }
 
     authURL = urls.authURL
     apiURL = urls.apiURL
@@ -221,15 +221,15 @@ class SettingsViewModel: ObservableObject {
     !logFilter.isEmpty
   }
 
-  var isCloudRegionForced: Bool {
+  var isPortalForced: Bool {
     configuration.isAuthURLForced || configuration.isApiURLForced
   }
 
   // With only one of the URLs forced, `custom` keeps the other one editable.
-  private func detectCloudRegion() -> CloudRegion {
+  private func detectPortal() -> Portal {
     guard configuration.isAuthURLForced == configuration.isApiURLForced else { return .custom }
 
-    return CloudRegion.of(authURL: authURL, apiURL: apiURL)
+    return Portal.of(authURL: authURL, apiURL: apiURL)
   }
 
   private func updateDerivedState() {
@@ -274,6 +274,6 @@ class SettingsViewModel: ObservableObject {
     if configuration.isAccountSlugForced { accountSlug = configuration.accountSlug }
     if configuration.isConnectOnStartForced { connectOnStart = configuration.connectOnStart }
     if configuration.isStartOnLoginForced { startOnLogin = configuration.startOnLogin }
-    if isCloudRegionForced { cloudRegion = detectCloudRegion() }
+    if isPortalForced { portal = detectPortal() }
   }
 }

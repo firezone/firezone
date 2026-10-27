@@ -37,7 +37,7 @@
     let providerLogFolderSize: Int64
     /// Bytes of random data the app's log directory holds on top of its fixed lines.
     let appLogFolderSize: Int?
-    /// The control plane the app is configured for; Firezone Cloud US when absent.
+    /// The control plane the app is configured for; Firezone Cloud (US) when absent.
     let authURL: String?
     let apiURL: String?
 

@@ -285,11 +285,11 @@ struct ConfigurationTests {
     #expect(providerConfiguration[Configuration.Keys.apiURL] == "wss://saved-user-change.api")
   }
 
-  // MARK: - Cloud Region
+  // MARK: - Portal
 
-  @Test("Saved US URLs show the US region")
+  @Test("Saved US URLs show Firezone Cloud (US)")
   @MainActor
-  func savedUSURLsShowUSRegion() async {
+  func savedUSURLsShowCloudUS() async {
     let config = Configuration(userDefaults: UserDefaults.makeTestDefaults())
     config.loadProviderConfiguration(
       [
@@ -300,7 +300,7 @@ struct ConfigurationTests {
 
     let viewModel = SettingsViewModel(configuration: config)
 
-    #expect(viewModel.cloudRegion == .us)
+    #expect(viewModel.portal == .cloudUs)
   }
 
   @Test("Saved self-hosted URLs show custom and keep the URLs")
@@ -316,27 +316,27 @@ struct ConfigurationTests {
 
     let viewModel = SettingsViewModel(configuration: config)
 
-    #expect(viewModel.cloudRegion == .custom)
+    #expect(viewModel.portal == .custom)
     #expect(viewModel.authURL == "https://firezone.example.com")
     #expect(viewModel.apiURL == "wss://api.example.com")
   }
 
-  @Test("Picking the EU region saves the EU URLs")
+  @Test("Picking Firezone Cloud (EU) saves the EU URLs")
   @MainActor
-  func pickingEURegionSavesEUURLs() async throws {
+  func pickingCloudEUSavesEUURLs() async throws {
     let config = Configuration(userDefaults: UserDefaults.makeTestDefaults())
     let viewModel = SettingsViewModel(configuration: config)
 
-    viewModel.selectCloudRegion(.eu)
+    viewModel.selectPortal(.cloudEu)
     try await viewModel.save()
 
     #expect(config.authURL == "https://eu.app.firezone.dev")
     #expect(config.apiURL == "wss://eu.api.firezone.dev")
   }
 
-  @Test("Forced EU URLs show the EU region, locked")
+  @Test("Forced EU URLs show Firezone Cloud (EU), locked")
   @MainActor
-  func forcedEUURLsShowEURegion() async throws {
+  func forcedEUURLsShowCloudEU() async throws {
     let defaults = try #require(
       ForcedUserDefaults(
         forcedKeys: [Configuration.Keys.authURL, Configuration.Keys.apiURL],
@@ -350,8 +350,8 @@ struct ConfigurationTests {
 
     let viewModel = SettingsViewModel(configuration: config)
 
-    #expect(viewModel.cloudRegion == .eu)
-    #expect(viewModel.isCloudRegionForced)
+    #expect(viewModel.portal == .cloudEu)
+    #expect(viewModel.isPortalForced)
   }
 
   @Test("One forced URL shows custom")
@@ -368,42 +368,42 @@ struct ConfigurationTests {
 
     let viewModel = SettingsViewModel(configuration: config)
 
-    #expect(viewModel.cloudRegion == .custom)
+    #expect(viewModel.portal == .custom)
   }
 
-  @Test("Region URLs match despite trailing slashes, case, and whitespace")
-  func regionURLsMatchLoosely() {
+  @Test("Portal URLs match despite trailing slashes, case, and whitespace")
+  func portalURLsMatchLoosely() {
     #expect(
-      CloudRegion.of(
+      Portal.of(
         authURL: " HTTPS://EU.app.firezone.dev// ", apiURL: "wss://eu.api.firezone.dev/")
-        == .eu
+        == .cloudEu
     )
     #expect(
-      CloudRegion.of(authURL: "https://app.firezone.dev", apiURL: "wss://eu.api.firezone.dev")
+      Portal.of(authURL: "https://app.firezone.dev", apiURL: "wss://eu.api.firezone.dev")
         == .custom
     )
     #expect(
-      CloudRegion.of(authURL: "https://app.firezone.dev/path", apiURL: "wss://api.firezone.dev")
+      Portal.of(authURL: "https://app.firezone.dev/path", apiURL: "wss://api.firezone.dev")
         == .custom
     )
   }
 
-  @Test("Picking custom keeps the URLs of the region picked before")
+  @Test("Picking custom keeps the URLs of the portal picked before")
   @MainActor
   func pickingCustomKeepsURLs() async {
     let config = Configuration(userDefaults: UserDefaults.makeTestDefaults())
     let viewModel = SettingsViewModel(configuration: config)
 
-    viewModel.selectCloudRegion(.eu)
-    viewModel.selectCloudRegion(.custom)
+    viewModel.selectPortal(.cloudEu)
+    viewModel.selectPortal(.custom)
 
     #expect(viewModel.authURL == "https://eu.app.firezone.dev")
     #expect(viewModel.apiURL == "wss://eu.api.firezone.dev")
   }
 
-  @Test("Forced US URLs with a trailing slash show the US region, locked")
+  @Test("Forced US URLs with a trailing slash show Firezone Cloud (US), locked")
   @MainActor
-  func forcedUSURLsWithTrailingSlashShowUSRegion() async throws {
+  func forcedUSURLsWithTrailingSlashShowCloudUS() async throws {
     let defaults = try #require(
       ForcedUserDefaults(
         forcedKeys: [Configuration.Keys.authURL, Configuration.Keys.apiURL],
@@ -417,8 +417,8 @@ struct ConfigurationTests {
 
     let viewModel = SettingsViewModel(configuration: config)
 
-    #expect(viewModel.cloudRegion == .us)
-    #expect(viewModel.isCloudRegionForced)
+    #expect(viewModel.portal == .cloudUs)
+    #expect(viewModel.isPortalForced)
   }
 
   @Test("Forced self-hosted URLs show custom, locked, and cannot be changed by the picker")
@@ -436,10 +436,10 @@ struct ConfigurationTests {
     let config = Configuration(userDefaults: defaults)
     let viewModel = SettingsViewModel(configuration: config)
 
-    #expect(viewModel.cloudRegion == .custom)
-    #expect(viewModel.isCloudRegionForced)
+    #expect(viewModel.portal == .custom)
+    #expect(viewModel.isPortalForced)
 
-    viewModel.selectCloudRegion(.us)
+    viewModel.selectPortal(.cloudUs)
     try await viewModel.save()
 
     #expect(viewModel.authURL == "https://firezone.example.com")
@@ -454,22 +454,22 @@ struct ConfigurationTests {
     let config = Configuration(userDefaults: UserDefaults.makeTestDefaults())
     let viewModel = SettingsViewModel(configuration: config)
 
-    viewModel.selectCloudRegion(.us)
-    viewModel.selectCloudRegion(.custom)
+    viewModel.selectPortal(.cloudUs)
+    viewModel.selectPortal(.custom)
     viewModel.authURL = "https://firezone.example.com"
     viewModel.apiURL = "wss://api.example.com"
     try await viewModel.save()
 
-    viewModel.selectCloudRegion(.eu)
+    viewModel.selectPortal(.cloudEu)
     try await viewModel.save()
 
     #expect(config.authURL == "https://eu.app.firezone.dev")
     #expect(config.apiURL == "wss://eu.api.firezone.dev")
 
     let reopened = SettingsViewModel(configuration: config)
-    #expect(reopened.cloudRegion == .eu)
+    #expect(reopened.portal == .cloudEu)
 
-    reopened.selectCloudRegion(.custom)
+    reopened.selectPortal(.custom)
 
     #expect(reopened.authURL == "https://firezone.example.com")
     #expect(reopened.apiURL == "wss://api.example.com")
@@ -481,24 +481,24 @@ struct ConfigurationTests {
     let config = Configuration(userDefaults: UserDefaults.makeTestDefaults())
     let viewModel = SettingsViewModel(configuration: config)
 
-    viewModel.selectCloudRegion(.us)
-    viewModel.selectCloudRegion(.custom)
+    viewModel.selectPortal(.cloudUs)
+    viewModel.selectPortal(.custom)
     viewModel.authURL = "https://firezone.example.com"
     viewModel.apiURL = "wss://api.example.com"
-    viewModel.selectCloudRegion(.eu)
+    viewModel.selectPortal(.cloudEu)
     try await viewModel.save()
 
     #expect(config.lastCustomURLs == nil)
 
-    viewModel.selectCloudRegion(.custom)
+    viewModel.selectPortal(.custom)
 
     #expect(viewModel.authURL == "https://eu.app.firezone.dev")
     #expect(viewModel.apiURL == "wss://eu.api.firezone.dev")
   }
 
-  @Test("Remembered custom URLs do not change the region shown")
+  @Test("Remembered custom URLs do not change the portal shown")
   @MainActor
-  func rememberedCustomURLsDoNotChangeRegion() async {
+  func rememberedCustomURLsDoNotChangePortal() async {
     let config = Configuration(userDefaults: UserDefaults.makeTestDefaults())
     config.lastCustomURLs = ("https://firezone.example.com", "wss://api.example.com")
     config.loadProviderConfiguration(
@@ -510,7 +510,7 @@ struct ConfigurationTests {
 
     let viewModel = SettingsViewModel(configuration: config)
 
-    #expect(viewModel.cloudRegion == .us)
+    #expect(viewModel.portal == .cloudUs)
     #expect(config.toProviderConfiguration()[Configuration.Keys.lastCustomAuthURL] == nil)
   }
 
@@ -541,7 +541,7 @@ struct ConfigurationTests {
     let config = Configuration(userDefaults: UserDefaults.makeTestDefaults())
     let viewModel = SettingsViewModel(configuration: config)
 
-    viewModel.selectCloudRegion(.us)
+    viewModel.selectPortal(.cloudUs)
     viewModel.logFilter = ""
 
     #expect(viewModel.areURLsValid())
