@@ -78,10 +78,22 @@ impl GeneralSettingsForm {
         }
 
         Ok((
-            Url::parse(&self.auth_url).context("Invalid auth URL")?,
-            Url::parse(&self.api_url).context("Invalid API URL")?,
+            parse_url(&self.auth_url, &["http", "https"]).context("Invalid auth URL")?,
+            parse_url(&self.api_url, &["ws", "wss"]).context("Invalid API URL")?,
         ))
     }
+}
+
+fn parse_url(value: &str, schemes: &[&str]) -> Result<Url> {
+    let url = Url::parse(value)?;
+
+    anyhow::ensure!(url.has_host(), "URL has no host");
+    anyhow::ensure!(
+        schemes.contains(&url.scheme()),
+        "URL scheme must be one of {schemes:?}"
+    );
+
+    Ok(url)
 }
 
 #[derive(Clone, Debug, serde::Serialize, specta::Type, PartialEq, Eq)]
@@ -466,6 +478,24 @@ mod tests {
     #[test]
     fn custom_rejects_an_invalid_url() {
         let form = general_settings_form(Portal::Custom, "not a URL", "wss://api.example.com");
+
+        assert!(form.urls().is_err());
+    }
+
+    #[test]
+    fn custom_accepts_local_urls() {
+        let form = general_settings_form(
+            Portal::Custom,
+            "http://localhost:4000",
+            "ws://localhost:8081",
+        );
+
+        assert!(form.urls().is_ok());
+    }
+
+    #[test]
+    fn custom_rejects_a_url_with_the_wrong_scheme() {
+        let form = general_settings_form(Portal::Custom, "ftp://x", "wss://api.example.com");
 
         assert!(form.urls().is_err());
     }

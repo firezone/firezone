@@ -102,21 +102,63 @@ test("leaving a valid URL saves it", async () => {
   );
 });
 
-test("leaving an invalid URL shows an error and saves nothing", async () => {
+test("leaving a local http:// auth URL saves it", async () => {
   const saveSettings = await render(customSettings);
 
-  await userEvent.fill(page.getByLabelText("Auth URL"), "not a url");
+  await userEvent.fill(
+    page.getByLabelText("Auth URL"),
+    "http://localhost:4000"
+  );
+  await userEvent.click(page.getByLabelText("Account slug"));
+
+  await vi.waitFor(() =>
+    expect(saveSettings).toHaveBeenCalledWith(
+      expect.objectContaining({ auth_url: "http://localhost:4000" })
+    )
+  );
+});
+
+test("leaving a local ws:// API URL saves it", async () => {
+  const saveSettings = await render(customSettings);
+
+  await userEvent.fill(page.getByLabelText("API URL"), "ws://localhost:8081");
+  await userEvent.click(page.getByLabelText("Account slug"));
+
+  await vi.waitFor(() =>
+    expect(saveSettings).toHaveBeenCalledWith(
+      expect.objectContaining({ api_url: "ws://localhost:8081" })
+    )
+  );
+});
+
+test.each(["not a url", "ftp://x", "wss://api.firezone.example.com/"])(
+  "leaving %s as the auth URL shows an error and saves nothing",
+  async (url) => {
+    const saveSettings = await render(customSettings);
+
+    await userEvent.fill(page.getByLabelText("Auth URL"), url);
+    await userEvent.click(page.getByLabelText("Account slug"));
+
+    await expect
+      .element(page.getByText("Enter a valid http:// or https:// URL"))
+      .toBeInTheDocument();
+    await expect
+      .element(page.getByLabelText("Auth URL"))
+      .toHaveAttribute("aria-invalid", "true");
+    await expect.element(page.getByLabelText("Auth URL")).toHaveValue(url);
+    expect(saveSettings).not.toHaveBeenCalled();
+  }
+);
+
+test("leaving an https:// API URL shows an error and saves nothing", async () => {
+  const saveSettings = await render(customSettings);
+
+  await userEvent.fill(page.getByLabelText("API URL"), "https://x.example.com");
   await userEvent.click(page.getByLabelText("Account slug"));
 
   await expect
-    .element(page.getByText("Enter a valid https:// URL"))
+    .element(page.getByText("Enter a valid ws:// or wss:// URL"))
     .toBeInTheDocument();
-  await expect
-    .element(page.getByLabelText("Auth URL"))
-    .toHaveAttribute("aria-invalid", "true");
-  await expect
-    .element(page.getByLabelText("Auth URL"))
-    .toHaveValue("not a url");
   expect(saveSettings).not.toHaveBeenCalled();
 });
 

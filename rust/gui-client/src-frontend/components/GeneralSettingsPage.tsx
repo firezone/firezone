@@ -113,7 +113,9 @@ export default function GeneralSettingsPage({
                     save({ portal, auth_url, api_url: customApiUrl })
                   }
                   validate={(url) =>
-                    isUrl(url) ? null : "Enter a valid https:// URL"
+                    isUrl(url, ["http:", "https:"])
+                      ? null
+                      : "Enter a valid http:// or https:// URL"
                   }
                   value={customAuthUrl}
                 />
@@ -126,7 +128,9 @@ export default function GeneralSettingsPage({
                     save({ portal, auth_url: customAuthUrl, api_url })
                   }
                   validate={(url) =>
-                    isUrl(url) ? null : "Enter a valid wss:// URL"
+                    isUrl(url, ["ws:", "wss:"])
+                      ? null
+                      : "Enter a valid ws:// or wss:// URL"
                   }
                   value={customApiUrl}
                 />
@@ -189,11 +193,11 @@ export default function GeneralSettingsPage({
   );
 }
 
-// The check `Url::parse` makes on the Rust side.
-function isUrl(value: string) {
+// Matches the check on the Rust side and in the Apple client.
+function isUrl(value: string, protocols: string[]) {
   try {
-    new URL(value);
-    return true;
+    const url = new URL(value);
+    return url.hostname !== "" && protocols.includes(url.protocol);
   } catch {
     return false;
   }
