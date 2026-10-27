@@ -14,10 +14,8 @@ import dev.firezone.android.R
 import dev.firezone.android.STORE_SCREENSHOT_QUALIFIERS
 import dev.firezone.android.core.data.model.ManagedConfigStatus
 import dev.firezone.android.core.data.model.Portal
-import dev.firezone.android.features.settings.ui.compose.SettingsPage
 import dev.firezone.android.features.settings.ui.compose.SettingsScreen
 import dev.firezone.android.ui.theme.FirezoneTheme
-import kotlinx.collections.immutable.persistentSetOf
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -200,7 +198,7 @@ private fun SettingsScreenSample(
         config = config,
         portal = portal,
         managedStatus = managedStatus,
-        savablePages = persistentSetOf(SettingsPage.GENERAL, SettingsPage.LOGS),
+        canSave = true,
         logSizeBytes = LOG_DIRECTORY_BYTES,
         deviceTrustState = deviceTrustState,
         showDeviceTrust = deviceTrustState.alias != null,

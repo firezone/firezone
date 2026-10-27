@@ -57,7 +57,7 @@ internal class SettingsActivity : AppCompatActivity() {
                     config = viewModel.config,
                     portal = viewModel.portal,
                     managedStatus = managedStatus ?: ManagedConfigStatus.NOTHING_MANAGED,
-                    savablePages = uiState.savablePages,
+                    canSave = uiState.canSave,
                     logSizeBytes = uiState.logSizeBytes,
                     deviceTrustState = deviceTrustState,
                     // The page exists where a certificate is required or one was found, and
@@ -71,7 +71,7 @@ internal class SettingsActivity : AppCompatActivity() {
                     onPortalChange = viewModel::onPortalChanged,
                     onAuthUrlChange = viewModel::onValidateAuthUrl,
                     onApiUrlChange = viewModel::onValidateApiUrl,
-                    onLogFilterChange = viewModel::onValidateLogFilter,
+                    onLogFilterChange = viewModel::onLogFilterConfirmed,
                     onAccountSlugChange = viewModel::onValidateAccountSlug,
                     onStartOnLoginChange = viewModel::onStartOnLoginChanged,
                     onConnectOnStartChange = viewModel::onConnectOnStartChanged,

@@ -8,11 +8,12 @@ import android.os.Bundle
 import android.os.Looper
 import dev.firezone.android.core.data.Repository
 import dev.firezone.android.core.data.model.Portal
-import dev.firezone.android.features.settings.ui.compose.SettingsPage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -63,7 +64,7 @@ class SettingsViewModelTest {
         repository.addFavoriteResource(FAVORITE_ID)
 
         viewModel.resetSettingsToDefaults()
-        viewModel.save(SettingsPage.GENERAL)
+        viewModel.save()
         shadowOf(Looper.getMainLooper()).idle()
 
         assertTrue(
@@ -98,7 +99,7 @@ class SettingsViewModelTest {
         populateFields()
 
         viewModel.onPortalChanged(Portal.CLOUD_EU)
-        viewModel.save(SettingsPage.GENERAL)
+        viewModel.save()
         shadowOf(Looper.getMainLooper()).idle()
 
         assertEquals("https://eu.app.firezone.dev", repository.getConfigSync().authUrl)
@@ -138,7 +139,7 @@ class SettingsViewModelTest {
         viewModel.onPortalChanged(Portal.CUSTOM)
         viewModel.onValidateAuthUrl("https://firezone.example.com")
         viewModel.onValidateApiUrl("wss://api.firezone.example.com")
-        viewModel.save(SettingsPage.GENERAL)
+        viewModel.save()
         shadowOf(Looper.getMainLooper()).idle()
 
         assertEquals(Portal.CUSTOM, viewModel.portal)
@@ -169,28 +170,16 @@ class SettingsViewModelTest {
         }
 
     @Test
-    fun `saving keeps the log filter`() {
+    fun `confirming the log filter saves it without Save`() {
         populateFields()
 
-        viewModel.onValidateLogFilter("debug")
-        viewModel.save(SettingsPage.LOGS)
+        viewModel.onValidateAccountSlug("example-corp")
+        viewModel.onLogFilterConfirmed("debug")
         shadowOf(Looper.getMainLooper()).idle()
 
         assertEquals("debug", repository.getConfigSync().logFilter)
-    }
-
-    @Test
-    fun `saving the settings page does not write the edited log filter`() {
-        populateFields()
-        val savedLogFilter = viewModel.config.logFilter
-
-        viewModel.onValidateAccountSlug("example-corp")
-        viewModel.onValidateLogFilter("firezone=trace")
-        save()
-
-        assertEquals("example-corp", repository.getConfigSync().accountSlug)
-        assertEquals(savedLogFilter, repository.getConfigSync().logFilter)
-        assertEquals(SettingsViewModel.ViewAction.NavigateBack, viewModel.actionStateFlow.value)
+        assertNotEquals("example-corp", repository.getConfigSync().accountSlug)
+        assertNull(viewModel.actionStateFlow.value)
     }
 
     @Test
@@ -261,7 +250,7 @@ class SettingsViewModelTest {
         }
 
     private fun save() {
-        viewModel.save(SettingsPage.GENERAL)
+        viewModel.save()
         shadowOf(Looper.getMainLooper()).idle()
     }
 

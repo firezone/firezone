@@ -15,10 +15,6 @@ import dev.firezone.android.core.data.Repository
 import dev.firezone.android.core.data.model.Config
 import dev.firezone.android.core.data.model.ManagedConfigStatus
 import dev.firezone.android.core.data.model.Portal
-import dev.firezone.android.features.settings.ui.compose.SettingsPage
-import kotlinx.collections.immutable.ImmutableSet
-import kotlinx.collections.immutable.persistentSetOf
-import kotlinx.collections.immutable.toImmutableSet
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -110,19 +106,10 @@ internal class SettingsViewModel
             }
         }
 
-        // Saves only the given page; unsaved edits on the other page are discarded with the screen.
-        fun save(page: SettingsPage) {
-            val toSave =
-                when (page) {
-                    SettingsPage.GENERAL -> config.copy(logFilter = savedConfig.logFilter)
-                    SettingsPage.LOGS -> savedConfig.copy(logFilter = config.logFilter)
-                    SettingsPage.DEVICE_TRUST -> return
-                }
-
+        fun save() {
             // Only URLs the user typed are worth offering again; managed ones come back by themselves.
             val managedStatus = repo.getManagedStatus()
-            if (page == SettingsPage.GENERAL &&
-                portal == Portal.CUSTOM &&
+            if (portal == Portal.CUSTOM &&
                 !managedStatus.isAuthUrlManaged &&
                 !managedStatus.isApiUrlManaged
             ) {
@@ -130,8 +117,8 @@ internal class SettingsViewModel
             }
 
             viewModelScope.launch {
-                repo.saveSettings(toSave).collect {
-                    if (page == SettingsPage.GENERAL && shouldResetFavoritesOnSave) {
+                repo.saveSettings(config).collect {
+                    if (shouldResetFavoritesOnSave) {
                         repo.resetFavorites()
                         shouldResetFavoritesOnSave = false
                     }
@@ -168,9 +155,11 @@ internal class SettingsViewModel
             onFieldUpdated()
         }
 
-        fun onValidateLogFilter(logFilter: String) {
+        // Saved straight away, leaving the other settings as they were last saved.
+        fun onLogFilterConfirmed(logFilter: String) {
             config = config.copy(logFilter = logFilter)
-            onFieldUpdated()
+            savedConfig = savedConfig.copy(logFilter = logFilter)
+            viewModelScope.launch { repo.saveSettings(savedConfig).collect() }
         }
 
         fun onValidateAccountSlug(accountSlug: String) {
@@ -298,22 +287,15 @@ internal class SettingsViewModel
         private fun onFieldUpdated() {
             _uiState.value =
                 _uiState.value.copy(
-                    savablePages =
-                        buildSet {
-                            val settingsChanged =
-                                shouldResetFavoritesOnSave || config.copy(logFilter = savedConfig.logFilter) != savedConfig
-                            if (settingsChanged && isValidAuthUrl(config.authUrl) && isValidApiUrl(config.apiUrl)) {
-                                add(SettingsPage.GENERAL)
-                            }
-                            if (config.logFilter != savedConfig.logFilter && config.logFilter.isNotBlank()) {
-                                add(SettingsPage.LOGS)
-                            }
-                        }.toImmutableSet(),
+                    canSave =
+                        (shouldResetFavoritesOnSave || config != savedConfig) &&
+                            isValidAuthUrl(config.authUrl) &&
+                            isValidApiUrl(config.apiUrl),
                 )
         }
 
         internal data class UiState(
-            val savablePages: ImmutableSet<SettingsPage> = persistentSetOf(),
+            val canSave: Boolean = false,
             val logSizeBytes: Long = 0,
         )
 

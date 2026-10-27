@@ -34,7 +34,6 @@ import dev.firezone.android.core.data.model.ManagedConfigStatus
 import dev.firezone.android.core.data.model.Portal
 import dev.firezone.android.features.settings.ui.DeviceTrustSettingsViewModel
 import dev.firezone.android.ui.FirezoneIcons
-import kotlinx.collections.immutable.ImmutableSet
 import kotlinx.coroutines.launch
 
 /** A settings page and how the title and navigation bar name it. */
@@ -65,7 +64,7 @@ internal fun SettingsScreen(
     config: Config,
     portal: Portal,
     managedStatus: ManagedConfigStatus,
-    savablePages: ImmutableSet<SettingsPage>,
+    canSave: Boolean,
     logSizeBytes: Long,
     deviceTrustState: DeviceTrustSettingsViewModel.UiState,
     showDeviceTrust: Boolean,
@@ -83,7 +82,7 @@ internal fun SettingsScreen(
     onLogsShown: () -> Unit,
     onSelectCertificate: () -> Unit,
     onDeviceTrustShown: () -> Unit,
-    onSave: (SettingsPage) -> Unit,
+    onSave: () -> Unit,
     onCancel: () -> Unit,
     modifier: Modifier = Modifier,
     buildSha: String = stringResource(R.string.git_sha),
@@ -123,17 +122,20 @@ internal fun SettingsScreen(
                     }
                 },
                 actions = {
-                    TextButton(
-                        onClick = {
-                            if (currentPage == SettingsPage.GENERAL && warnBeforeSaving) {
-                                showSaveWarning = true
-                            } else if (currentPage != null) {
-                                onSave(currentPage)
-                            }
-                        },
-                        enabled = currentPage != null && currentPage in savablePages,
-                    ) {
-                        Text(stringResource(R.string.save))
+                    // Only the general page saves; the other pages apply their changes as they are made.
+                    if (currentPage == SettingsPage.GENERAL) {
+                        TextButton(
+                            onClick = {
+                                if (warnBeforeSaving) {
+                                    showSaveWarning = true
+                                } else {
+                                    onSave()
+                                }
+                            },
+                            enabled = canSave,
+                        ) {
+                            Text(stringResource(R.string.save))
+                        }
                     }
                 },
             )
@@ -201,7 +203,7 @@ internal fun SettingsScreen(
                 TextButton(
                     onClick = {
                         showSaveWarning = false
-                        onSave(SettingsPage.GENERAL)
+                        onSave()
                     },
                 ) {
                     Text(stringResource(R.string.settings_save_warning_confirm))
