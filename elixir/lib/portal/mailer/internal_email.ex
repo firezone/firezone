@@ -44,6 +44,7 @@ defmodule Portal.Mailer.InternalEmail do
     Sign-up questionnaire
 
     Account: #{account.name} (#{account.id})
+    Region: #{region()}
     Actor: #{actor.name} <#{actor.email}>
 
     #{survey_answers(survey)}
@@ -120,5 +121,11 @@ defmodule Portal.Mailer.InternalEmail do
   end
   defp recipient do
     Portal.Config.fetch_env!(:portal, __MODULE__) |> Keyword.fetch!(:recipient)
+  end
+
+  defp region do
+    Portal.Config.fetch_env!(:portal, :data_residency_region)
+    |> Atom.to_string()
+    |> String.upcase()
   end
 end
