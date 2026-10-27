@@ -8,8 +8,15 @@ defmodule PortalWeb.Settings.Account do
   alias __MODULE__.Database
   require Logger
 
+  @slug_changes_per_window 3
+  @slug_change_window_days 30
+
+  # First path segments the router already uses.
+  @reserved_slugs ~w(auth browser dev error find_account getting_started oauth sign_in sign_up try verification verify_sign_up)
+
   def mount(_params, session, socket) do
     account = socket.assigns.account
+    slug_history = Database.list_account_slugs(socket.assigns.subject)
 
     socket =
       assign(socket,
@@ -23,7 +30,8 @@ defmodule PortalWeb.Settings.Account do
         confirm_delete_account: false,
         deletion_feedback_form: nil,
         edit_account_open: false,
-        name_form: to_form(Database.change_account_name(account)),
+        slug_history: slug_history,
+        account_form: to_form(account_changeset(account, %{}, slug_history)),
         usage: if(connected?(socket), do: load_usage(account, socket.assigns.subject))
       )
 
@@ -370,7 +378,12 @@ defmodule PortalWeb.Settings.Account do
         </div>
       </div>
 
-      <.edit_account_panel open={@edit_account_open} form={@name_form} />
+      <.edit_account_panel
+        open={@edit_account_open}
+        form={@account_form}
+        account={@account}
+        slug_changes_left={slug_changes_left(@slug_history)}
+      />
     </div>
     """
   end
@@ -464,8 +477,16 @@ defmodule PortalWeb.Settings.Account do
 
   attr :open, :boolean, required: true
   attr :form, :any, required: true
+  attr :account, :any, required: true
+  attr :slug_changes_left, :integer, required: true
 
   defp edit_account_panel(assigns) do
+    assigns =
+      assign(assigns,
+        slug_changes_per_window: @slug_changes_per_window,
+        slug_change_window_days: @slug_change_window_days
+      )
+
     ~H"""
     <div class={[
       "absolute inset-y-0 right-0 z-20",
@@ -481,19 +502,50 @@ defmodule PortalWeb.Settings.Account do
       </div>
 
       <.form
-        id="account-name-form"
+        id="account-form"
         for={@form}
-        phx-change="change_account_name"
-        phx-submit="submit_account_name"
+        phx-change="change_account"
+        phx-submit="submit_account"
         as={:account}
         class="flex flex-col flex-1 overflow-hidden"
       >
-        <div class="flex-1 overflow-y-auto p-5">
+        <div class="flex-1 overflow-y-auto p-5 space-y-5">
           <Form.input
             field={@form[:name]}
             label="Account Name"
             phx-debounce="300"
           />
+          <div>
+            <Form.input
+              field={@form[:slug]}
+              label="Account Slug"
+              phx-debounce="300"
+              autocomplete="off"
+              spellcheck="false"
+            />
+            <div id="slug-help" class="mt-2 space-y-1.5 text-xs text-subtle">
+              <p>
+                The slug is the first part of your portal URL and what users type to sign in.
+                Lowercase letters, numbers, hyphens, and underscores only.
+              </p>
+              <p>
+                Old slugs keep working: links that use them redirect to the new slug,
+                and no other account can claim them. Your account ID
+                <span class="font-mono text-heading">{@account.id}</span>
+                always works in place of the slug.
+              </p>
+              <p>
+                You can pick up to {@slug_changes_per_window} new slugs every {@slug_change_window_days} days.
+                Switching back to a slug you used before does not count.
+                <span :if={@slug_changes_left > 0} class="text-heading">
+                  {@slug_changes_left} left.
+                </span>
+                <span :if={@slug_changes_left == 0} class="text-warning">
+                  None left right now.
+                </span>
+              </p>
+            </div>
+          </div>
         </div>
 
         <Form.panel_footer>
@@ -545,11 +597,13 @@ defmodule PortalWeb.Settings.Account do
 
   def handle_event("open_edit_account", _params, socket) do
     account = socket.assigns.account
+    slug_history = Database.list_account_slugs(socket.assigns.subject)
 
     {:noreply,
      assign(socket,
        edit_account_open: true,
-       name_form: to_form(Database.change_account_name(account))
+       slug_history: slug_history,
+       account_form: to_form(account_changeset(account, %{}, slug_history))
      )}
   end
 
@@ -557,30 +611,34 @@ defmodule PortalWeb.Settings.Account do
     {:noreply, assign(socket, edit_account_open: false)}
   end
 
-  def handle_event("change_account_name", %{"account" => params}, socket) do
+  def handle_event("change_account", %{"account" => params}, socket) do
     changeset =
       socket.assigns.account
-      |> Database.change_account_name(params)
+      |> account_changeset(params, socket.assigns.slug_history)
       |> Map.put(:action, :validate)
 
-    {:noreply, assign(socket, name_form: to_form(changeset))}
+    {:noreply, assign(socket, account_form: to_form(changeset))}
   end
 
-  def handle_event("submit_account_name", %{"account" => params}, socket) do
+  def handle_event("submit_account", %{"account" => params}, socket) do
     account = socket.assigns.account
-    subject = socket.assigns.subject
+    changeset = account_changeset(account, params, socket.assigns.slug_history)
 
-    case Database.update_account_name(account, params, subject) do
+    case Database.update_account(changeset, socket.assigns.subject) do
+      {:ok, %{slug: slug} = updated_account} when slug != account.slug ->
+        {:noreply, push_navigate(socket, to: ~p"/#{updated_account}/settings/account")}
+
       {:ok, updated_account} ->
         {:noreply,
          assign(socket,
            account: updated_account,
            edit_account_open: false,
-           name_form: to_form(Database.change_account_name(updated_account))
+           account_form:
+             to_form(account_changeset(updated_account, %{}, socket.assigns.slug_history))
          )}
 
       {:error, changeset} ->
-        {:noreply, assign(socket, name_form: to_form(changeset))}
+        {:noreply, assign(socket, account_form: to_form(changeset))}
     end
   end
 
@@ -701,28 +759,82 @@ defmodule PortalWeb.Settings.Account do
     end
   end
 
+  defp account_changeset(%Account{} = account, attrs, slug_history) do
+    account
+    |> cast(attrs, [:name, :slug])
+    |> update_change(:slug, &normalize_slug/1)
+    |> Account.changeset()
+    |> validate_required([:name, :slug])
+    |> validate_format(:slug, ~r/^[a-z0-9]+([_-][a-z0-9]+)*$/,
+      message: "may only contain lowercase letters, numbers, hyphens, and underscores"
+    )
+    |> validate_exclusion(:slug, @reserved_slugs, message: "is reserved")
+    |> validate_change(:slug, fn :slug, slug ->
+      if Portal.Repo.valid_uuid?(slug), do: [slug: "may not look like an account ID"], else: []
+    end)
+    |> validate_slug_change(account, slug_history)
+  end
+
+  defp validate_slug_change(changeset, account, slug_history) do
+    validate_change(changeset, :slug, fn :slug, slug ->
+      cond do
+        Account.locked?(account) ->
+          [slug: "cannot be changed while the account is locked"]
+
+        used_before?(slug_history, slug) ->
+          []
+
+        slug_changes_left(slug_history) == 0 ->
+          [
+            slug:
+              "can be changed at most #{@slug_changes_per_window} times every #{@slug_change_window_days} days"
+          ]
+
+        true ->
+          []
+      end
+    end)
+  end
+
+  defp normalize_slug(nil), do: nil
+  defp normalize_slug(slug), do: slug |> String.trim() |> String.downcase()
+
+  defp used_before?(slug_history, slug) do
+    Enum.any?(slug_history, &(String.downcase(&1.slug) == slug))
+  end
+
+  # The oldest row is the slug the account started with, so it never counts
+  # as a change.
+  defp slug_changes_left(slug_history) do
+    window_start = DateTime.add(DateTime.utc_now(), -@slug_change_window_days, :day)
+
+    recent_changes =
+      slug_history
+      |> Enum.drop(1)
+      |> Enum.count(&(DateTime.compare(&1.inserted_at, window_start) == :gt))
+
+    max(@slug_changes_per_window - recent_changes, 0)
+  end
+
   defmodule Database do
     import Ecto.Query
-    import Ecto.Changeset
     alias Portal.Safe
     alias Portal.Account
     alias Portal.Actor
 
-    @spec update_account_name(Account.t(), map(), Portal.Authentication.Subject.t()) ::
+    @spec update_account(Ecto.Changeset.t(), Portal.Authentication.Subject.t()) ::
             {:ok, Account.t()} | {:error, Ecto.Changeset.t()}
-    def update_account_name(%Account{} = account, attrs, subject) do
-      account
-      |> cast(attrs, [:name])
-      |> Account.changeset()
+    def update_account(%Ecto.Changeset{data: %Account{}} = changeset, subject) do
+      changeset
       |> Safe.scoped(subject)
       |> Safe.update()
     end
 
-    @spec change_account_name(Account.t(), map()) :: Ecto.Changeset.t()
-    def change_account_name(%Account{} = account, attrs \\ %{}) do
-      account
-      |> cast(attrs, [:name])
-      |> Account.changeset()
+    @spec list_account_slugs(Portal.Authentication.Subject.t()) :: [Portal.AccountSlug.t()]
+    def list_account_slugs(subject) do
+      from(s in Portal.AccountSlug, order_by: [asc: s.inserted_at, asc: s.id])
+      |> Safe.scoped(subject)
+      |> Safe.all()
     end
 
     @spec count_account_admin_users_for_account(Portal.Authentication.Subject.t()) :: integer()

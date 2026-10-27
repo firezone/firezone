@@ -2175,19 +2175,37 @@ defmodule PortalWeb.OIDCController do
     @pending_identity_profile_fields @profile_fields -- [:firezone_avatar_url]
 
     def get_account_by_id_or_slug!(id_or_slug) do
+      slug_owner =
+        from(s in Portal.AccountSlug, where: s.slug == ^id_or_slug, select: s.account_id)
+
       query =
         if Portal.Repo.valid_uuid?(id_or_slug),
-          do: from(a in Account, where: a.id == ^id_or_slug or a.slug == ^id_or_slug),
-          else: from(a in Account, where: a.slug == ^id_or_slug)
+          do:
+            from(a in Account,
+              where: a.id == ^id_or_slug or a.slug == ^id_or_slug or a.id in subquery(slug_owner)
+            ),
+          else:
+            from(a in Account,
+              where: a.slug == ^id_or_slug or a.id in subquery(slug_owner)
+            )
 
       query |> Safe.unscoped() |> Safe.one!()
     end
 
     def fetch_account_by_id_or_slug(id_or_slug) do
+      slug_owner =
+        from(s in Portal.AccountSlug, where: s.slug == ^id_or_slug, select: s.account_id)
+
       query =
         if Portal.Repo.valid_uuid?(id_or_slug),
-          do: from(a in Account, where: a.id == ^id_or_slug or a.slug == ^id_or_slug),
-          else: from(a in Account, where: a.slug == ^id_or_slug)
+          do:
+            from(a in Account,
+              where: a.id == ^id_or_slug or a.slug == ^id_or_slug or a.id in subquery(slug_owner)
+            ),
+          else:
+            from(a in Account,
+              where: a.slug == ^id_or_slug or a.id in subquery(slug_owner)
+            )
 
       query
       |> Safe.unscoped()

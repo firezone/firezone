@@ -80,10 +80,13 @@ defmodule PortalWeb.Plugs.AutoRedirectDefaultProvider do
     }
 
     def get_account_by_id_or_slug(id_or_slug) do
+      slug_owner =
+        from(s in Portal.AccountSlug, where: s.slug == ^id_or_slug, select: s.account_id)
+
       if Portal.Repo.valid_uuid?(id_or_slug) do
         where(Account, [a], a.id == ^id_or_slug)
       else
-        where(Account, [a], a.slug == ^id_or_slug)
+        where(Account, [a], a.slug == ^id_or_slug or a.id in subquery(slug_owner))
       end
       |> Safe.unscoped()
       |> Safe.one()

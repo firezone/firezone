@@ -348,7 +348,7 @@ defmodule PortalWeb.Settings.AccountTest do
 
       html =
         lv
-        |> form("form[phx-submit='submit_account_name']", %{account: %{name: "ab"}})
+        |> form("form[phx-submit='submit_account']", %{account: %{name: "ab"}})
         |> render_change()
 
       assert html =~ "too short"
@@ -365,13 +365,203 @@ defmodule PortalWeb.Settings.AccountTest do
       new_name = "Updated Account Name"
 
       lv
-      |> form("form[phx-submit='submit_account_name']", %{account: %{name: new_name}})
+      |> form("form[phx-submit='submit_account']", %{account: %{name: new_name}})
       |> render_submit()
 
       html = render(lv)
       assert html =~ new_name
       # Panel slides back off-screen after save (translate-x-full = hidden)
       assert html =~ "translate-x-full"
+    end
+  end
+
+  describe "edit account slug" do
+    test "explains how slug changes work", %{conn: conn, account: account, actor: actor} do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/account")
+
+      html = render_click(lv, "open_edit_account")
+
+      assert html =~ "Account Slug"
+      assert html =~ "Old slugs keep working"
+      assert html =~ "up to 3 new slugs every 30 days"
+      assert html =~ account.id
+      assert html =~ "3 left."
+    end
+
+    test "saves a new slug and moves to the new URL", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      old_slug = account.slug
+      conn = authorize_conn(conn, actor)
+
+      {:ok, lv, _html} = live(conn, ~p"/#{account}/settings/account")
+      render_click(lv, "open_edit_account")
+
+      assert {:error, {:live_redirect, %{to: to}}} =
+               lv
+               |> form("form[phx-submit='submit_account']", %{account: %{slug: " New_Slug-1 "}})
+               |> render_submit()
+
+      assert to == "/new_slug-1/settings/account"
+      assert fetch_account!(account.id).slug == "new_slug-1"
+
+      assert conn |> get("/#{old_slug}/settings/account") |> redirected_to() ==
+               "/new_slug-1/settings/account"
+
+      {:ok, _lv, html} = live(conn, to)
+      assert html =~ "new_slug-1"
+    end
+
+    test "validates the slug format", %{conn: conn, account: account, actor: actor} do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/account")
+
+      render_click(lv, "open_edit_account")
+
+      for {slug, message} <- [
+            {"ab", "should be at least 3 character(s)"},
+            {"bad slug", "may only contain lowercase letters"},
+            {"sign_in", "is reserved"},
+            {Ecto.UUID.generate(), "may not look like an account ID"},
+            {"", "can&#39;t be blank"}
+          ] do
+        html =
+          lv
+          |> form("form[phx-submit='submit_account']", %{account: %{slug: slug}})
+          |> render_change()
+
+        assert html =~ message, "expected #{inspect(slug)} to fail with #{message}"
+      end
+    end
+
+    test "rejects a slug another account used before", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      other = account_fixture()
+      taken_slug = other.slug
+      update_account(other, slug: "#{taken_slug}_moved")
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/account")
+
+      render_click(lv, "open_edit_account")
+
+      html =
+        lv
+        |> form("form[phx-submit='submit_account']", %{account: %{slug: taken_slug}})
+        |> render_submit()
+
+      assert html =~ "has already been taken"
+      assert fetch_account!(account.id).slug == account.slug
+    end
+
+    test "allows three new slugs per 30 days and then stops", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      first_slug = account.slug
+      conn = authorize_conn(conn, actor)
+
+      account =
+        Enum.reduce(1..3, account, fn n, account ->
+          {:ok, lv, _html} = live(conn, ~p"/#{account}/settings/account")
+          render_click(lv, "open_edit_account")
+
+          assert {:error, {:live_redirect, _}} =
+                   lv
+                   |> form("form[phx-submit='submit_account']", %{
+                     account: %{slug: "#{first_slug}_v#{n}"}
+                   })
+                   |> render_submit()
+
+          fetch_account!(account.id)
+        end)
+
+      {:ok, lv, _html} = live(conn, ~p"/#{account}/settings/account")
+      html = render_click(lv, "open_edit_account")
+      assert html =~ "None left right now."
+
+      html =
+        lv
+        |> form("form[phx-submit='submit_account']", %{account: %{slug: "#{first_slug}_v4"}})
+        |> render_submit()
+
+      assert html =~ "can be changed at most 3 times every 30 days"
+      assert fetch_account!(account.id).slug == "#{first_slug}_v3"
+
+      assert {:error, {:live_redirect, %{to: to}}} =
+               lv
+               |> form("form[phx-submit='submit_account']", %{account: %{slug: first_slug}})
+               |> render_submit()
+
+      assert to == "/#{first_slug}/settings/account"
+    end
+
+    test "ignores slug changes older than 30 days", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      first_slug = account.slug
+      long_ago = DateTime.add(DateTime.utc_now(), -31, :day)
+
+      Portal.Repo.update_all(Portal.AccountSlug,
+        set: [inserted_at: DateTime.add(long_ago, -1, :day)]
+      )
+
+      for n <- 1..3 do
+        Portal.Repo.insert!(%Portal.AccountSlug{
+          account_id: account.id,
+          slug: "#{first_slug}_old#{n}",
+          inserted_at: long_ago
+        })
+      end
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/account")
+
+      html = render_click(lv, "open_edit_account")
+      assert html =~ "3 left."
+    end
+
+    test "refuses to change the slug of a locked account", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      account =
+        account
+        |> Ecto.Changeset.change(lock_enabled_at: DateTime.utc_now())
+        |> Portal.Repo.update!()
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/account")
+
+      render_click(lv, "open_edit_account")
+
+      html =
+        lv
+        |> form("form[phx-submit='submit_account']", %{account: %{slug: "#{account.slug}_v2"}})
+        |> render_submit()
+
+      assert html =~ "cannot be changed while the account is locked"
+      assert fetch_account!(account.id).slug == account.slug
     end
   end
 

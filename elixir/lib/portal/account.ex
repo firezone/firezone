@@ -1,6 +1,7 @@
 defmodule Portal.Account do
   use Ecto.Schema
   import Ecto.Changeset
+  alias __MODULE__.Database
 
   @type t :: %__MODULE__{}
 
@@ -12,6 +13,8 @@ defmodule Portal.Account do
     field :name, :string
     field :slug, :string
     field :key, :string
+
+    has_many :slugs, Portal.AccountSlug
 
     field :legal_name, :string
 
@@ -119,6 +122,7 @@ defmodule Portal.Account do
     |> validate_length(:legal_name, min: 1, max: 255)
     |> unique_constraint(:slug, name: :accounts_slug_index)
     |> unique_constraint(:key, name: :accounts_key_index)
+    |> prepare_changes(&register_slug/1)
   end
 
   @base36 ~c"abcdefghijklmnopqrstuvwxyz0123456789"
@@ -165,6 +169,60 @@ defmodule Portal.Account do
 
   defp account_feature_enabled?(account, feature) do
     Map.fetch!(account.features || %Portal.Accounts.Features{}, feature) || false
+  end
+
+  # Every slug an account uses is kept in account_slugs so that old slugs keep
+  # redirecting and no other account can take them. Runs inside the insert or
+  # update transaction, so a lost race on the slug rolls the whole change back.
+  defp register_slug(changeset) do
+    case fetch_change(changeset, :slug) do
+      {:ok, slug} when is_binary(slug) -> register_slug(changeset, slug)
+      _ -> changeset
+    end
+  end
+
+  defp register_slug(changeset, slug) do
+    account_id = get_field(changeset, :id)
+
+    case Database.slug_owner_id(changeset.repo, slug) do
+      nil -> insert_slug(changeset, slug)
+      ^account_id -> changeset
+      _other_account_id -> add_error(changeset, :slug, "has already been taken")
+    end
+  end
+
+  # The account row does not exist yet on insert, so the slug row goes in as a
+  # child of the account instead of ahead of it.
+  defp insert_slug(%Ecto.Changeset{action: :insert} = changeset, slug) do
+    slug_changeset =
+      %Portal.AccountSlug{}
+      |> change(%{slug: slug})
+      |> Portal.AccountSlug.changeset()
+
+    put_assoc(changeset, :slugs, [slug_changeset])
+  end
+
+  defp insert_slug(changeset, slug) do
+    case Database.insert_slug(changeset.repo, get_field(changeset, :id), slug) do
+      {:ok, _account_slug} -> changeset
+      {:error, _slug_changeset} -> add_error(changeset, :slug, "has already been taken")
+    end
+  end
+
+  defmodule Database do
+    import Ecto.Query
+    alias Portal.Safe
+
+    def slug_owner_id(repo, slug) do
+      Safe.one(repo, from(s in Portal.AccountSlug, where: s.slug == ^slug, select: s.account_id))
+    end
+
+    def insert_slug(repo, account_id, slug) do
+      slug_changeset =
+        Ecto.Changeset.change(%Portal.AccountSlug{}, %{account_id: account_id, slug: slug})
+
+      Safe.insert(repo, slug_changeset)
+    end
   end
 end
 

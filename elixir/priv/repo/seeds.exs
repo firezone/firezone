@@ -2641,6 +2641,7 @@ defmodule Portal.Repo.Seeds do
         api_refill_rate: 10_000,
         api_capacity: 100_000
       })
+      |> Account.changeset()
       |> Repo.insert!()
 
     other_account =
@@ -2655,6 +2656,7 @@ defmodule Portal.Repo.Seeds do
         [:name, :legal_name, :slug, :key]
       )
       |> put_change(:id, "9b9290bf-e1bc-4dd3-b401-511908262690")
+      |> Account.changeset()
       |> Repo.insert!()
 
     IO.puts("Created accounts: ")

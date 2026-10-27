@@ -14,6 +14,17 @@ defmodule Portal.AccountTest do
     |> Account.changeset()
   end
 
+  defp slug_rows(account) do
+    import Ecto.Query
+
+    Repo.all(
+      from(s in Portal.AccountSlug,
+        where: s.account_id == ^account.id,
+        order_by: [asc: s.inserted_at]
+      )
+    )
+  end
+
   describe "changeset/1 basic validations" do
     test "inserts name at maximum length" do
       account = account_fixture(name: String.duplicate("a", 64))
@@ -43,6 +54,81 @@ defmodule Portal.AccountTest do
     test "rejects legal_name exceeding maximum length" do
       changeset = build_changeset(%{legal_name: String.duplicate("a", 256)})
       assert %{legal_name: ["should be at most 255 character(s)"]} = errors_on(changeset)
+    end
+  end
+
+  describe "changeset/1 slug registry" do
+    test "registers the slug when the account is created" do
+      account = account_fixture()
+
+      assert [%Portal.AccountSlug{slug: slug}] = slug_rows(account)
+      assert slug == account.slug
+    end
+
+    test "keeps the old slug when the slug changes" do
+      account = account_fixture()
+      old_slug = account.slug
+      account = update_account(account, slug: "#{old_slug}_v2")
+
+      assert Enum.map(slug_rows(account), & &1.slug) == [old_slug, "#{old_slug}_v2"]
+    end
+
+    test "does not add a row when the account switches back to an old slug" do
+      account = account_fixture()
+      old_slug = account.slug
+
+      account =
+        account
+        |> update_account(slug: "#{old_slug}_v2")
+        |> update_account(slug: old_slug)
+
+      assert account.slug == old_slug
+      assert Enum.map(slug_rows(account), & &1.slug) == [old_slug, "#{old_slug}_v2"]
+    end
+
+    test "rejects a slug that another account used before" do
+      other = account_fixture()
+      old_slug = other.slug
+      update_account(other, slug: "#{old_slug}_v2")
+
+      changeset =
+        account_fixture()
+        |> cast(%{slug: old_slug}, [:slug])
+        |> Account.changeset()
+
+      assert {:error, changeset} = Repo.update(changeset)
+      assert %{slug: ["has already been taken"]} = errors_on(changeset)
+    end
+
+    test "rejects a slug that another account uses now" do
+      other = account_fixture()
+
+      changeset =
+        account_fixture()
+        |> cast(%{slug: other.slug}, [:slug])
+        |> Account.changeset()
+
+      assert {:error, changeset} = Repo.update(changeset)
+      assert %{slug: ["has already been taken"]} = errors_on(changeset)
+    end
+
+    test "treats slugs case-insensitively" do
+      other = account_fixture()
+
+      changeset =
+        account_fixture()
+        |> cast(%{slug: String.upcase(other.slug)}, [:slug])
+        |> Account.changeset()
+
+      assert {:error, changeset} = Repo.update(changeset)
+      assert %{slug: ["has already been taken"]} = errors_on(changeset)
+    end
+
+    test "removes the registry rows with the account" do
+      account = account_fixture()
+      Repo.delete!(account)
+
+      assert slug_rows(account) == []
     end
   end
 
