@@ -29,6 +29,9 @@ const MIN_IDLE_FOR_REKEY_DROP: Duration = Duration::from_secs(180 - 10);
 /// ignores a relay that failed its allocation, plus a margin.
 const RELAY_RECOVERY: Duration = Duration::from_secs(60 + 5);
 
+/// How long the Gateway keeps the NAT session of an idle UDP or ICMP flow.
+const UDP_ICMP_NAT_TTL: Duration = Duration::from_secs(60 * 2);
+
 /// The reference state machine of the tunnel.
 ///
 /// This is the "expected" part of our test.
@@ -276,6 +279,7 @@ impl ReferenceState {
                             identifier: *identifier,
                             next_seq: Seq(seq.0.wrapping_add(1)),
                             route,
+                            last_round_trip: now,
                         };
                         let previous = self.icmp_flows.insert(*flow_id, flow);
                         assert!(previous.is_none(), "ICMP flow IDs must be unique");
@@ -314,8 +318,13 @@ impl ReferenceState {
                     flow.route,
                     request,
                     now,
+                    now < flow.last_round_trip + UDP_ICMP_NAT_TTL,
                 ) {
-                    ExpectedOutcome::RoundTripCompleted { .. } => {}
+                    ExpectedOutcome::RoundTripCompleted { .. } => {
+                        if let Some(flow) = self.icmp_flows.get_mut(flow_id) {
+                            flow.last_round_trip = now;
+                        }
+                    }
                     ExpectedOutcome::Dropped => {
                         panic!("reused ICMP route must complete a round trip")
                     }
@@ -363,6 +372,7 @@ impl ReferenceState {
                             sport: *sport,
                             dport: *dport,
                             route,
+                            last_round_trip: now,
                         };
                         let previous = self.udp_flows.insert(*flow_id, flow);
                         assert!(previous.is_none(), "UDP flow IDs must be unique");
@@ -392,8 +402,13 @@ impl ReferenceState {
                     flow.route,
                     request,
                     now,
+                    now < flow.last_round_trip + UDP_ICMP_NAT_TTL,
                 ) {
-                    ExpectedOutcome::RoundTripCompleted { .. } => {}
+                    ExpectedOutcome::RoundTripCompleted { .. } => {
+                        if let Some(flow) = self.udp_flows.get_mut(flow_id) {
+                            flow.last_round_trip = now;
+                        }
+                    }
                     ExpectedOutcome::Dropped => {
                         panic!("reused UDP route must complete a round trip")
                     }
@@ -756,6 +771,8 @@ impl ReferenceState {
 
     /// Follows a packet on a flow the client keeps sending on, bound to the route it took
     /// when it was created.
+    ///
+    /// `established` is whether the Gateway still holds the flow's NAT session.
     fn record_flow_probe(
         &mut self,
         portal: &StubPortal,
@@ -764,6 +781,7 @@ impl ReferenceState {
         route: Route,
         request: ProbeRequest,
         sent_at: Instant,
+        established: bool,
     ) -> ExpectedOutcome {
         let (outcome, authorization) = match route {
             Route::Resource { resource, gateway } => self.resource_verdict(
@@ -774,7 +792,7 @@ impl ReferenceState {
                 request.source(),
                 request.destination(),
                 request.protocol(),
-                false,
+                established,
             ),
             Route::Gateway(_) => (
                 ExpectedOutcome::RoundTripCompleted(route, Answer::Echo),
@@ -1087,8 +1105,8 @@ impl ReferenceState {
     /// `resolutions` are the records the Gateway resolves the resource's domains to as the
     /// client connects, ahead of the ones the client already holds.
     ///
-    /// An `established` TCP flow keeps translating through the NAT session the Gateway
-    /// created for it, whatever the domain resolves to since.
+    /// An `established` flow keeps translating through the NAT session the Gateway created
+    /// for it, whatever the domain resolves to since.
     fn gateway_verdict(
         &self,
         portal: &StubPortal,
