@@ -7,6 +7,8 @@ import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
 import dagger.hilt.android.EntryPointAccessors
 import dagger.hilt.components.SingletonComponent
+import dev.firezone.android.core.data.Repository
+import dev.firezone.android.core.data.model.signInConfig
 import dev.firezone.android.features.auth.AuthCallbackHandler
 import dev.firezone.android.features.auth.PendingAuthSession
 import dev.firezone.android.features.auth.ui.fabricatedAuthCallback
@@ -63,7 +65,7 @@ object DebugOverrides {
     private fun signIn(activity: Activity) {
         val auth = EntryPointAccessors.fromApplication<AuthEntryPoint>(activity)
 
-        auth.pendingAuthSession().begin(nonce = NONCE, state = STATE)
+        auth.pendingAuthSession().begin(nonce = NONCE, state = STATE, signedInWith = auth.repository().getConfigSync().signInConfig())
         auth.authCallbackHandler().handle(fabricatedAuthCallback(STATE))
     }
 
@@ -73,6 +75,8 @@ object DebugOverrides {
         fun pendingAuthSession(): PendingAuthSession
 
         fun authCallbackHandler(): AuthCallbackHandler
+
+        fun repository(): Repository
     }
 
     private const val EXTRA_MOCK_TUNNEL = "mockTunnel"
