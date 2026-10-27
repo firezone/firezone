@@ -70,5 +70,10 @@ class LogSettingsPageTest {
         composeRule.onNode(hasSetTextAction()).performTextReplacement("debug")
         composeRule.onNodeWithText("OK").assertIsEnabled().performClick()
         assertEquals("debug", savedLogFilter)
+
+        composeRule.onNodeWithText("Log Filter").performClick()
+        composeRule.onNode(hasSetTextAction()).performTextReplacement("")
+        composeRule.onNodeWithText("OK").assertIsEnabled().performClick()
+        assertEquals("", savedLogFilter)
     }
 }

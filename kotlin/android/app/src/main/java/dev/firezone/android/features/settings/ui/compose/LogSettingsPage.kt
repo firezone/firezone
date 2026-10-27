@@ -67,7 +67,6 @@ fun LogSettingsPage(
                 value = config.logFilter,
                 isManaged = managedStatus.isLogFilterManaged,
                 onValueChange = onLogFilterChange,
-                isValid = String::isNotBlank,
                 errorMessage = { filter -> validateLogFilter(filter)?.let { stringResource(R.string.log_filter_invalid, it) } },
             )
             SettingsRow(

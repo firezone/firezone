@@ -10,7 +10,6 @@ import dagger.hilt.android.testing.HiltAndroidRule
 import dagger.hilt.android.testing.HiltAndroidTest
 import dev.firezone.android.core.data.Repository
 import dev.firezone.android.core.data.TokenStore
-import dev.firezone.android.core.data.model.signInSettings
 import dev.firezone.android.tunnel.FakeDisconnectError
 import dev.firezone.android.tunnel.FakeSession
 import dev.firezone.android.tunnel.FakeSessionFactory
@@ -270,10 +269,7 @@ class TunnelE2eTest {
         return awaitSession()
     }
 
-    private fun signIn() {
-        repo.saveActiveSignInSettingsSync(repo.getConfigSync().signInSettings())
-        tokenStore.save(TOKEN)
-    }
+    private fun signIn() = tokenStore.save(TOKEN)
 
     private fun awaitSession(): FakeSession = runBlocking { withTimeout(TIMEOUT_MS) { FakeSessionFactory.awaitSession() } }
 

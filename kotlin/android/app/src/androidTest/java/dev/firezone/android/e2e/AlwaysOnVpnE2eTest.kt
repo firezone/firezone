@@ -7,9 +7,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import dagger.hilt.android.testing.HiltAndroidRule
 import dagger.hilt.android.testing.HiltAndroidTest
 import dev.firezone.android.RequiresManagedDevice
-import dev.firezone.android.core.data.Repository
 import dev.firezone.android.core.data.TokenStore
-import dev.firezone.android.core.data.model.signInSettings
 import dev.firezone.android.core.x509.TestDpc
 import dev.firezone.android.tunnel.FakeSession
 import dev.firezone.android.tunnel.FakeSessionFactory
@@ -40,9 +38,6 @@ class AlwaysOnVpnE2eTest {
     val hiltRule = HiltAndroidRule(this)
 
     @Inject
-    lateinit var repo: Repository
-
-    @Inject
     internal lateinit var tokenStore: TokenStore
 
     @Inject
@@ -70,7 +65,6 @@ class AlwaysOnVpnE2eTest {
 
     @Test
     fun theSystemStartsTheTunnelOnceMadeAlwaysOn() {
-        repo.saveActiveSignInSettingsSync(repo.getConfigSync().signInSettings())
         tokenStore.save(TOKEN)
 
         TestDpc.setAlwaysOnVpn(context.packageName, lockdown = false)
@@ -82,7 +76,6 @@ class AlwaysOnVpnE2eTest {
 
     @Test
     fun clearingTheAlwaysOnVpnRevokesTheTunnel() {
-        repo.saveActiveSignInSettingsSync(repo.getConfigSync().signInSettings())
         tokenStore.save(TOKEN)
         TestDpc.setAlwaysOnVpn(context.packageName, lockdown = false)
         val session = awaitSession()

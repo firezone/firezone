@@ -7,7 +7,6 @@ import dagger.hilt.android.testing.HiltAndroidRule
 import dagger.hilt.android.testing.HiltAndroidTest
 import dev.firezone.android.core.data.Repository
 import dev.firezone.android.core.data.TokenStore
-import dev.firezone.android.core.data.model.signInSettings
 import dev.firezone.android.tunnel.FakeSession
 import dev.firezone.android.tunnel.FakeSessionFactory
 import dev.firezone.android.tunnel.TestRestrictions
@@ -59,7 +58,6 @@ class ConnectOnStartE2eTest {
 
     @Test
     fun aStoredTokenConnectsOnLaunch() {
-        repo.saveActiveSignInSettingsSync(repo.getConfigSync().signInSettings())
         tokenStore.save(TOKEN)
         configureConnectOnStart(true)
 
@@ -73,7 +71,6 @@ class ConnectOnStartE2eTest {
 
     @Test
     fun aStoredTokenWaitsOnTheSignInScreenUnlessConfigured() {
-        repo.saveActiveSignInSettingsSync(repo.getConfigSync().signInSettings())
         tokenStore.save(TOKEN)
         configureConnectOnStart(false)
 
