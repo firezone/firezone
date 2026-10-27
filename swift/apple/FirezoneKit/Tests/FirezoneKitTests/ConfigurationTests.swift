@@ -641,21 +641,6 @@ struct ConfigurationTests {
     #expect(viewModel.apiURLError == nil)
   }
 
-  @Test("Saving reports whether the account slug or portal changed")
-  @MainActor
-  func savingReportsSignInChanges() async throws {
-    let config = Configuration(userDefaults: UserDefaults.makeTestDefaults())
-    let viewModel = SettingsViewModel(configuration: config)
-
-    viewModel.connectOnStart.toggle()
-    let changedByToggle = try await viewModel.save(.general)
-    viewModel.selectPortal(.cloudEu)
-    let changedByPortal = try await viewModel.save(.general)
-
-    #expect(!changedByToggle)
-    #expect(changedByPortal)
-  }
-
   // MARK: - Published Properties Initialization
 
   @Test("Published MDM-only properties initialize from UserDefaults")

@@ -6,6 +6,7 @@
 
 import Combine
 import Foundation
+import NetworkExtension
 
 @MainActor
 class SettingsViewModel: ObservableObject {
@@ -97,6 +98,11 @@ class SettingsViewModel: ObservableObject {
     })
     .store(in: &cancellables)
 
+    // The sign-in note depends on whether the session is running.
+    store?.$vpnStatus
+      .sink(receiveValue: { [weak self] _ in self?.objectWillChange.send() })
+      .store(in: &cancellables)
+
     $selectedTab
       .receive(on: RunLoop.main)
       .sink(receiveValue: { [weak self] _ in
@@ -128,13 +134,7 @@ class SettingsViewModel: ObservableObject {
   }
 
   /// Saves the settings of `tab`, or of the selected tab, skipping any that are invalid.
-  ///
-  /// Returns whether the account slug or the portal changed, which only take effect on the next
-  /// sign-in.
-  @discardableResult
-  func save(_ tab: SettingsView.Tab? = nil) async throws -> Bool {
-    let savedSignInSettings = signInSettings
-
+  func save(_ tab: SettingsView.Tab? = nil) async throws {
     switch tab ?? selectedTab {
     case .general:
       authURLError = isAuthURLValid() ? nil : "Enter a valid http:// or https:// URL"
@@ -161,8 +161,6 @@ class SettingsViewModel: ObservableObject {
     }
 
     updateDerivedState()
-
-    return signInSettings != savedSignInSettings
   }
 
   /// Picks `portal` on the user's behalf: Firezone Cloud brings its own URLs, and Custom brings
@@ -279,8 +277,16 @@ class SettingsViewModel: ObservableObject {
     return nil
   }
 
-  private var signInSettings: [String] {
-    [configuration.accountSlug, configuration.authURL, configuration.apiURL]
+  /// Whether the running session signed in with an account slug or portal other than the one
+  /// drafted or saved here, which only takes effect on the next sign-in.
+  var showsSignInChangeNote: Bool {
+    guard let store, [.connected, .connecting, .reasserting].contains(store.vpnStatus),
+      let signedInWith = configuration.signedInWith
+    else { return false }
+
+    let draft = SignInValues(accountSlug: accountSlug, authURL: authURL, apiURL: apiURL)
+
+    return draft != signedInWith || configuration.signInValues != signedInWith
   }
 
   var isPortalForced: Bool {

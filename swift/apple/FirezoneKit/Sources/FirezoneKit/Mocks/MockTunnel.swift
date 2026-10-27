@@ -175,14 +175,18 @@
       return mock(scenario: .named(name))
     }
 
-    static func mock(scenario: MockScenario = .connected, logDirectory: URL? = nil) -> Store {
+    static func mock(
+      scenario: MockScenario = .connected,
+      configuration: Configuration = .shared,
+      logDirectory: URL? = nil
+    ) -> Store {
       // swiftlint:disable:next no_userdefaults_standard - DI entry point
       let defaults = UserDefaults.standard
       defaults.set(scenario.favorites, forKey: Favorites.key)
       // Otherwise the welcome window opens over the screen being photographed.
       defaults.set(true, forKey: "launchedBefore")
 
-      seedConfiguration(with: scenario)
+      seedConfiguration(configuration, with: scenario)
 
       let logDirectory =
         logDirectory ?? MockFixtures.makeLogDirectory(randomBytes: scenario.appLogFolderSize ?? 0)
@@ -194,12 +198,13 @@
         providerLogFolderSize: scenario.providerLogFolderSize
       )
       let tunnelManagerFactory = MockTunnelProviderManagerFactory(
-        manager: MockTunnelProviderManager(session: session),
+        manager: MockTunnelProviderManager(session: session, configuration: configuration),
         installed: scenario.hasVPNConfiguration
       )
 
       #if os(macOS)
         return Store(
+          configuration: configuration,
           sessionNotification: MockSessionNotification(decision: scenario.notifications.status),
           systemExtensionManager: MockSystemExtensionManager(
             status: scenario.systemExtension.status
@@ -211,6 +216,7 @@
         )
       #else
         return Store(
+          configuration: configuration,
           sessionNotification: MockSessionNotification(decision: scenario.notifications.status),
           tunnelManagerFactory: tunnelManagerFactory,
           x509CertificateSource: scenario.clientCertificate.source,
@@ -224,9 +230,9 @@
     /// `SettingsViewModel` snapshots each unforced setting when it is built and only
     /// ever re-reads the forced ones, so a value that arrives later leaves the form
     /// showing a stale one, ready to be saved back over it.
-    private static func seedConfiguration(with scenario: MockScenario) {
-      let configuration = Configuration.shared
-
+    private static func seedConfiguration(
+      _ configuration: Configuration, with scenario: MockScenario
+    ) {
       configuration.accountSlug = "example-corp"
 
       // A DEBUG build points these at the staging stack, which a screenshot of the
@@ -234,6 +240,9 @@
       configuration.authURL = scenario.authURL ?? "https://app.firezone.dev"
       configuration.apiURL = scenario.apiURL ?? "wss://api.firezone.dev"
       configuration.logFilter = "info"
+      // A scenario's session was never signed in here, so a real sign-in recorded in the
+      // app's defaults would put the sign-in note on the screenshots.
+      configuration.signedInWith = nil
     }
   }
 

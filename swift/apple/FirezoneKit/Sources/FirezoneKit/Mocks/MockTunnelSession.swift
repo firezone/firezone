@@ -186,11 +186,11 @@
 
     let session: MockTunnelSession
 
-    init(session: MockTunnelSession) {
+    init(session: MockTunnelSession, configuration: Configuration) {
       self.session = session
 
       let proto = NETunnelProviderProtocol()
-      proto.providerConfiguration = Configuration.shared.toProviderConfiguration()
+      proto.providerConfiguration = configuration.toProviderConfiguration()
       proto.providerBundleIdentifier = extensionBundleIdentifier
       proto.serverAddress = "Firezone"
       protocolConfiguration = proto

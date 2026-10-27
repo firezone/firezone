@@ -61,6 +61,9 @@ public class Configuration: ObservableObject {
     public static let userDefaultsMigrated = "userDefaultsMigrated"
     static let lastCustomAuthURL = "lastCustomAuthURL"
     static let lastCustomApiURL = "lastCustomApiURL"
+    static let signedInAccountSlug = "signedInAccountSlug"
+    static let signedInAuthURL = "signedInAuthURL"
+    static let signedInApiURL = "signedInApiURL"
   }
 
   // Each entry describes a key persisted to providerConfiguration. The getters
@@ -205,6 +208,27 @@ public class Configuration: ObservableObject {
     }
   }
 
+  var signInValues: SignInValues {
+    SignInValues(accountSlug: accountSlug, authURL: authURL, apiURL: apiURL)
+  }
+
+  /// What the last sign-in from this app used, until signing out. Only this app reads it.
+  var signedInWith: SignInValues? {
+    get {
+      guard let accountSlug = defaults.string(forKey: Keys.signedInAccountSlug),
+        let authURL = defaults.string(forKey: Keys.signedInAuthURL),
+        let apiURL = defaults.string(forKey: Keys.signedInApiURL)
+      else { return nil }
+
+      return SignInValues(accountSlug: accountSlug, authURL: authURL, apiURL: apiURL)
+    }
+    set {
+      defaults.set(newValue?.accountSlug, forKey: Keys.signedInAccountSlug)
+      defaults.set(newValue?.authURL, forKey: Keys.signedInAuthURL)
+      defaults.set(newValue?.apiURL, forKey: Keys.signedInApiURL)
+    }
+  }
+
   var hideAdminPortalMenuItem: Bool { managedBool(Keys.hideAdminPortalMenuItem) }
   var hideResourceList: Bool { managedBool(Keys.hideResourceList) }
   var disableUpdateCheck: Bool { managedBool(Keys.disableUpdateCheck) }
@@ -329,6 +353,13 @@ public class Configuration: ObservableObject {
   }
 
   nonisolated static func string(_ value: Bool) -> String { value ? "true" : "false" }
+}
+
+/// The settings a sign-in is made with, which only take effect on the next sign-in.
+struct SignInValues: Equatable {
+  let accountSlug: String
+  let authURL: String
+  let apiURL: String
 }
 
 extension Dictionary where Key == String, Value == String {

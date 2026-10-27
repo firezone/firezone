@@ -27,8 +27,6 @@ public struct SettingsView: View {
   }
 
   @FocusState private var focusedField: Field?
-  @State private var isShowingSignOutAlert = false
-  @State private var dismissesAfterSignOutAlert = false
   @State private var isConfirmingReset = false
 
   #if os(iOS)
@@ -49,12 +47,6 @@ public struct SettingsView: View {
     static let apiURL = "Control plane WebSocket URL"
     static let logFilter = "RUST_LOG-style filter string"
     static let accountSlug = "Account slug or ID (optional)"
-  }
-
-  private enum SignOutAlert {
-    static let title = "Takes effect after sign-out"
-    static let message =
-      "Changes to the account slug or portal only take effect after you sign out and sign in again."
   }
 
   /// The tabs of the settings screen.
@@ -98,13 +90,6 @@ public struct SettingsView: View {
       .onDisappear {
         commitTextFields()
         viewModel.discardInvalidDrafts()
-      }
-      .alert(SignOutAlert.title, isPresented: $isShowingSignOutAlert) {
-        Button("OK") {
-          if dismissesAfterSignOutAlert { dismiss() }
-        }
-      } message: {
-        Text(SignOutAlert.message)
       }
   }
 
@@ -181,7 +166,7 @@ public struct SettingsView: View {
   private var generalTab: some View {
     #if os(macOS)
       Form {
-        Section("Sign-in") {
+        Section {
           TextField(
             "Account Slug",
             text: $viewModel.accountSlug,
@@ -219,6 +204,10 @@ public struct SettingsView: View {
             .disabled(configuration.isApiURLForced)
             errorText(viewModel.apiURLError)
           }
+        } header: {
+          Text("Sign-in")
+        } footer: {
+          signInChangeNote
         }
 
         Section {
@@ -246,7 +235,7 @@ public struct SettingsView: View {
     #elseif os(iOS)
       VStack {
         Form {
-          Section("Sign-in") {
+          Section {
             VStack(alignment: .leading, spacing: 2) {
               Text("Account Slug")
                 .foregroundStyle(.secondary)
@@ -321,6 +310,10 @@ public struct SettingsView: View {
                 errorText(viewModel.apiURLError)
               }
             }
+          } header: {
+            Text("Sign-in")
+          } footer: {
+            signInChangeNote
           }
           Section("Startup") {
             Toggle(isOn: $viewModel.connectOnStart) {
@@ -513,24 +506,27 @@ public struct SettingsView: View {
       }
   }
 
-  /// Saves the settings of `tabs`, and says so when a change waits for the next sign-in.
+  @ViewBuilder
+  private var signInChangeNote: some View {
+    if viewModel.showsSignInChangeNote {
+      Text(
+        "Changes to the account slug or portal take effect after you sign out and sign in again."
+      )
+      .foregroundStyle(.secondary)
+    }
+  }
+
+  /// Saves the settings of `tabs`.
   private func commit(_ tabs: Tab..., thenDismiss: Bool = false) {
     // Read now: the commit from `onDisappear` runs once the view is gone.
     let viewModel = viewModel
 
     withErrorHandler {
-      var changedSignIn = false
       for tab in tabs {
-        let changed = try await viewModel.save(tab)
-        changedSignIn = changedSignIn || changed
+        try await viewModel.save(tab)
       }
 
-      if changedSignIn, [.connected, .connecting, .reasserting].contains(store.vpnStatus) {
-        dismissesAfterSignOutAlert = thenDismiss
-        isShowingSignOutAlert = true
-      } else if thenDismiss {
-        dismiss()
-      }
+      if thenDismiss { dismiss() }
     }
   }
 

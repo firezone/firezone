@@ -703,6 +703,8 @@ public final class Store: ObservableObject {
       token: token,
       identityReference: identityReference()
     )
+
+    configuration.signedInWith = configuration.signInValues
   }
 
   /// The keychain reference of the certificate the app displayed, [`nil`] when none is loadable.
@@ -715,6 +717,8 @@ public final class Store: ObservableObject {
       throw VPNConfigurationManagerError.managerNotInitialized
     }
     try await IPCClient.signOut(session: session)
+
+    configuration.signedInWith = nil
   }
 
   // Calculates the total size of our logs by summing the size of the
