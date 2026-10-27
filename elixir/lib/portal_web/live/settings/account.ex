@@ -143,10 +143,13 @@ defmodule PortalWeb.Settings.Account do
             <div class="flex items-center gap-2 pt-2 border-t border-border">
               <Page.residency_flag region={@data_residency_region} />
               <span class="text-xs text-body font-medium">
-                Firezone Cloud region: {Page.data_residency_name(@data_residency_region)}
+                Cloud region: <strong>{Page.data_residency_name(@data_residency_region)}</strong>
               </span>
             </div>
-            <p :if={@data_residency_region == :us} class="text-xs text-subtle">
+            <p
+              :if={@data_residency_region == :us and Page.firezone_cloud?(:us)}
+              class="text-xs text-subtle"
+            >
               Firezone Cloud EU is in closed beta.
               <a
                 href="https://www.firezone.dev/eu"

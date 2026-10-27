@@ -472,6 +472,23 @@ defmodule PortalWeb.Components.Page do
     """
   end
 
+  @firezone_cloud_urls %{us: "https://app.firezone.dev", eu: "https://eu.app.firezone.dev"}
+
+  @doc """
+  Whether this portal is the production Firezone Cloud portal for its region,
+  rather than staging or a local portal configured with the same region.
+  """
+  def firezone_cloud?(region) do
+    case Map.fetch(@firezone_cloud_urls, region) do
+      {:ok, url} ->
+        URI.parse(url).host ==
+          URI.parse(Portal.Config.get_env(:portal, :web_external_url) || "").host
+
+      :error ->
+        false
+    end
+  end
+
   @doc """
   Tells visitors of the US portal that Firezone Cloud EU is in closed beta, at
   the top of the sign in pages. Other portals show nothing.
@@ -480,7 +497,7 @@ defmodule PortalWeb.Components.Page do
     assigns = assign(assigns, :region, data_residency_region())
 
     ~H"""
-    <Core.flash :if={@region == :us} id="eu-beta-banner" kind={:info}>
+    <Core.flash :if={@region == :us and firezone_cloud?(@region)} id="eu-beta-banner" kind={:info}>
       Firezone Cloud EU is now in closed beta.
       <a
         href="https://www.firezone.dev/eu#request-access"
@@ -496,11 +513,19 @@ defmodule PortalWeb.Components.Page do
 
   @doc """
   Shows which region the portal keeps its data in, at the bottom of the sign in
-  pages, with a link to the portal of the other region. On-prem portals show
+  pages. The Firezone Cloud portals also link to the other region's portal, at
+  the same page unless the page belongs to an account. On-prem portals show
   nothing.
   """
+  attr :path, :string, default: nil, doc: "The current path and query string"
+
   def data_residency_footer(assigns) do
-    assigns = assign(assigns, :region, data_residency_region())
+    region = data_residency_region()
+
+    assigns =
+      assigns
+      |> assign(:region, region)
+      |> assign(:show_other_region, firezone_cloud?(region))
 
     ~H"""
     <p
@@ -508,10 +533,15 @@ defmodule PortalWeb.Components.Page do
       id="data-residency"
       class="flex flex-wrap items-center justify-center gap-1.5 mt-6 text-xs text-showcase-text/70 lg:text-subtle"
     >
-      <.residency_flag region={@region} class="w-4 h-auto" />
-      <span>Firezone Cloud region: {data_residency_name(@region)}</span>
-      <span aria-hidden="true">&middot;</span>
-      <a id="other-region-portal" href={other_region_portal_url(@region)} class="hover:underline">
+      <.residency_flag region={@region} class="w-5 h-auto" />
+      <span>Cloud region: <strong>{data_residency_name(@region)}</strong></span>
+      <span :if={@show_other_region} aria-hidden="true">&middot;</span>
+      <a
+        :if={@show_other_region}
+        id="other-region-portal"
+        href={other_region_portal_url(@region, @path)}
+        class="hover:underline"
+      >
         Go to the {other_region_short_name(@region)} portal &rarr;
       </a>
     </p>
@@ -521,6 +551,20 @@ defmodule PortalWeb.Components.Page do
   defp other_region_short_name(:us), do: "EU"
   defp other_region_short_name(:eu), do: "US"
 
-  defp other_region_portal_url(:us), do: "https://eu.app.firezone.dev"
-  defp other_region_portal_url(:eu), do: "https://app.firezone.dev"
+  defp other_region(:us), do: :eu
+  defp other_region(:eu), do: :us
+
+  defp other_region_portal_url(region, path) do
+    base = Map.fetch!(@firezone_cloud_urls, other_region(region))
+
+    if path && not account_scoped?(path), do: base <> path, else: base
+  end
+
+  # Accounts live in one region, so their pages don't exist in the other one.
+  defp account_scoped?(path) do
+    case Phoenix.Router.route_info(PortalWeb.Router, "GET", URI.parse(path).path, nil) do
+      %{path_params: path_params} -> Map.has_key?(path_params, "account_id_or_slug")
+      :error -> true
+    end
+  end
 end
