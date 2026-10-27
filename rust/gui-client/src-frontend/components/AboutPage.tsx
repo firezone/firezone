@@ -23,14 +23,15 @@ export default function AboutPage() {
         <p className="mb-1 text-2xl font-bold text-heading">
           <span>{__APP_VERSION__}</span>
         </p>
-        <p className="mb-6 font-mono text-sm text-subtle">
+        <p className="mb-6 text-sm text-subtle">
+          Built from{" "}
           <button
-            className="hover:text-brand hover:underline"
+            className="font-mono hover:text-brand hover:underline"
             onClick={openCommit}
             role="link"
             type="button"
           >
-            {__GIT_VERSION__.substring(0, 8)} (GitHub)
+            {__GIT_VERSION__.substring(0, 8)}
           </button>
         </p>
         <button
