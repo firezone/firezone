@@ -57,6 +57,47 @@ async fn sends_and_receives_a_datagram() {
     assert_eq!(datagram.from(), peer_addr);
 }
 
+#[cfg(apple)]
+#[tokio::test]
+async fn explicit_source_connects_after_unassigned_source() {
+    let peer = tokio::net::UdpSocket::bind("127.0.0.1:0").await.unwrap();
+    let peer_addr = peer.local_addr().unwrap();
+    let socket = udp("0.0.0.0:0".parse().unwrap())
+        .unwrap()
+        .into_perf()
+        .unwrap();
+
+    assert!(
+        socket
+            .send(DatagramOut {
+                src: Some("192.0.2.1:0".parse().unwrap()),
+                dst: peer_addr,
+                packet: bufferpool::Bytes::copied_from(b"hello"),
+                segment_size: 5,
+                ecn: Ecn::NonEct,
+            })
+            .await
+            .is_err()
+    );
+
+    socket
+        .send(DatagramOut {
+            src: Some("127.0.0.1:0".parse().unwrap()),
+            dst: peer_addr,
+            packet: bufferpool::Bytes::copied_from(b"hello"),
+            segment_size: 5,
+            ecn: Ecn::NonEct,
+        })
+        .await
+        .unwrap();
+
+    assert_eq!(socket.flow_socket_count(), 1);
+    let mut buf = [0u8; 16];
+    let (len, sender) = peer.recv_from(&mut buf).await.unwrap();
+    assert_eq!(&buf[..len], b"hello");
+    assert!(sender.ip().is_loopback());
+}
+
 /// ICMP errors from sending to a closed port must not fill the receive buffer and starve every
 /// later receive.
 #[cfg(target_os = "linux")]

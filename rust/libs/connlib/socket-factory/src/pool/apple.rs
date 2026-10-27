@@ -17,7 +17,8 @@
 //! The catch-all remains as the wildcard receiver (ICE peer-reflexive traffic, NAT
 //! rebinds) and as the fallback when connecting fails.
 //!
-//! Only pairs with real traffic get a flow socket, decided by two gates:
+//! Explicit source addresses get a bound flow socket immediately. Other pairs get a flow
+//! socket when either of these gates proves they carry real traffic:
 //!
 //! - A single transmit carrying at least [`PROMOTE_BATCH_SIZE`] datagrams. Batching is
 //!   what `sendmsg_x` accelerates, and a batch that large only forms when the event loop
@@ -27,8 +28,7 @@
 //!   constant-bitrate media) may never coalesce a batch yet still need the flow
 //!   advisories only a connected socket gets.
 //!
-//! Everything else — probes, keepalives, sparse control traffic — is served correctly by
-//! the catch-all socket and would otherwise thrash the bounded cache.
+//! Sparse traffic without an explicit source uses the catch-all socket.
 
 use std::{
     collections::{BTreeMap, VecDeque},
@@ -92,14 +92,9 @@ struct Inner {
     flows: BTreeMap<Key, Flow>,
     /// Send rates of pairs that have not (yet) earned a flow socket.
     rates: RateGate,
-    /// Latched off the first time connecting a flow socket fails.
-    ///
-    /// A failure means the environment (e.g. the iOS Network Extension sandbox) doesn't permit
-    /// the `SO_REUSEPORT`-bind + `connect` we rely on. That is a property of the environment, not
-    /// the destination, so we stop connecting *new* flow sockets - new destinations fall back to
-    /// the catch-all socket - and avoid re-running the failing syscalls on the send path. Any flow
-    /// sockets already connected keep working. Re-binding the sockets on a network change builds a
-    /// fresh [`SocketPool`], giving connecting another chance.
+    /// Whether the environment permits `SO_REUSEPORT`-bound flow sockets.
+    /// Route and address errors affect only their pair; other failures disable new flows
+    /// until the pool is reset on a network change.
     flow_sockets_supported: bool,
     buffer_sizes: Option<(usize, usize)>,
     /// Datagrams rescued from an evicted socket's receive buffer just before closing it.
@@ -147,8 +142,8 @@ impl SocketPool {
 
     /// Picks the socket to send a transmit of `datagrams` datagrams for `(src, dst)` on.
     ///
-    /// Reuses (or connects) a flow socket; pairs below the promotion threshold and
-    /// connect failures fall back to the catch-all socket.
+    /// Reuses or connects a flow socket. Implicit-source pairs below the promotion
+    /// threshold and connect failures fall back to the catch-all socket.
     pub(crate) fn get_send_socket(
         &self,
         src: Option<IpAddr>,
@@ -220,11 +215,10 @@ impl SocketPool {
         }
     }
 
-    /// Returns the flow socket for the given `(src, dst)` pair, connecting a new one once
-    /// the pair proves it sends big batches.
+    /// Returns the flow socket for `(src, dst)`, binding explicit sources immediately.
     ///
-    /// Returns `None` for pairs below the promotion threshold and when connecting fails
-    /// (or has failed before); see `Inner::flow_sockets_supported`.
+    /// Returns `None` for implicit-source pairs below the promotion threshold and when
+    /// connecting fails; see `Inner::flow_sockets_supported`.
     fn get_or_connect(
         &self,
         src: Option<IpAddr>,
@@ -243,7 +237,10 @@ impl SocketPool {
             return None;
         }
 
-        if datagrams < PROMOTE_BATCH_SIZE && !inner.rates.record(key, datagrams, Instant::now()) {
+        if src.is_none()
+            && datagrams < PROMOTE_BATCH_SIZE
+            && !inner.rates.record(key, datagrams, Instant::now())
+        {
             return None;
         }
 
@@ -280,9 +277,14 @@ impl SocketPool {
                 Some(socket)
             }
             Err(e) => {
-                tracing::debug!(?src, %dst, "Disabling flow sockets; connecting failed: {e}");
+                tracing::debug!(?src, %dst, "Failed to connect flow socket: {e}");
 
-                inner.flow_sockets_supported = false;
+                inner.flow_sockets_supported = match e.kind() {
+                    io::ErrorKind::NetworkUnreachable => true,
+                    io::ErrorKind::HostUnreachable => true,
+                    io::ErrorKind::AddrNotAvailable => true,
+                    _ => false,
+                };
 
                 None
             }
