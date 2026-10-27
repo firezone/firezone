@@ -165,7 +165,7 @@ jobs:
       - name: Check for breaking OpenAPI changes
         id: oasdiff
         if: github.base_ref != '' && inputs.check_openapi_breaking_changes
-        uses: oasdiff/oasdiff-action/breaking@45c956ed8138f7f18f0425d34e3d66730b805cb2 # v0.1.9
+        uses: oasdiff/oasdiff-action/breaking@9ce3a29eb0e6478dd0140932a678c7fb59d08f22 # v0.1.20
         with:
           base: base-openapi.json
           revision: elixir/priv/static/openapi.json
