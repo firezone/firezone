@@ -78,7 +78,7 @@ pub struct Controller<I: GuiIntegration> {
     ///
     /// Saving it earlier would replace the stored token with one that may be
     /// stale, and a rejection would then delete the replacement.
-    unconfirmed_token: Option<SecretString>,
+    unconfirmed_token: Option<(SecretString, SignedInWith)>,
 }
 
 pub trait GuiIntegration {
@@ -467,7 +467,9 @@ impl<I: GuiIntegration> Controller<I> {
         })
         .await?;
 
-        self.set_signed_in_with(Some(signed_in_with))?;
+        if self.unconfirmed_token.is_none() {
+            self.set_signed_in_with(Some(signed_in_with))?;
+        }
 
         // Change the status after we begin connecting
         self.status = Status::WaitingForPortal;
@@ -1035,7 +1037,7 @@ impl<I: GuiIntegration> Controller<I> {
         };
         let token = match token {
             Some(token) => {
-                self.unconfirmed_token = Some(token.clone());
+                self.unconfirmed_token = Some((token.clone(), signed_in_with.clone()));
 
                 token
             }
@@ -1066,8 +1068,9 @@ impl<I: GuiIntegration> Controller<I> {
 
         match result {
             Ok(()) => {
-                if let Some(token) = self.unconfirmed_token.take() {
+                if let Some((token, signed_in_with)) = self.unconfirmed_token.take() {
                     self.auth.sign_in_with_token(&token);
+                    self.set_signed_in_with(Some(signed_in_with))?;
                 }
                 ran_before::set().await?;
                 self.status = Status::WaitingForTunnel;
@@ -1844,6 +1847,21 @@ mod tests {
             "expected `Disconnect` but got {msg:?}"
         );
 
+        let browser_settings = test_controller
+            .integration()
+            .signed_in_with
+            .last()
+            .unwrap()
+            .clone()
+            .unwrap();
+        let changed = canned_advanced_settings();
+        mock_tunnel
+            .send_advanced_settings_applied(Ok(changed.clone()))
+            .await;
+        test_controller
+            .wait_integration(|i| (i.advanced_settings.last() == Some(&changed)).then_some(()))
+            .await;
+
         let (mut rx, mut tx) = test_controller.gui_ipc_connect().await;
         tx.send(&gui_ipc::ClientMsg::Connect {
             token: Some(SecretString::from("cli-token")),
@@ -1869,8 +1887,20 @@ mod tests {
         tx.send(&gui_ipc::ClientMsg::Connect { token: None })
             .await
             .unwrap();
-        let stored_token = mock_tunnel.rx_connect().await;
+        let service::ClientMsg::Connect {
+            token: stored_token,
+            expected_api_url,
+            ..
+        } = mock_tunnel.next_msg().await
+        else {
+            panic!("expected a reconnect with the original token");
+        };
         assert_eq!(stored_token.expose_secret(), browser_token.expose_secret());
+        assert_eq!(expected_api_url, Some(browser_settings.api_url.clone()));
+        assert_eq!(
+            test_controller.integration().signed_in_with.last(),
+            Some(&Some(browser_settings))
+        );
     }
 
     #[tokio::test]
