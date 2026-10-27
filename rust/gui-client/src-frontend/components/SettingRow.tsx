@@ -1,7 +1,7 @@
 import React from "react";
 
 interface SettingRowProps extends React.PropsWithChildren {
-  inputId: string;
+  inputId?: string;
   label: string;
   // Text inputs and selects get a fixed-width column so they line up across rows.
   field?: boolean;
