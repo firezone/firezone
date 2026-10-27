@@ -562,6 +562,24 @@ struct ConfigurationTests {
     #expect(viewModel.logFilterError?.hasPrefix("Use a level") == true)
   }
 
+  @Test("A log filter set by MDM is not flagged, whatever its syntax")
+  @MainActor
+  func forcedLogFilterIsNotFlagged() async throws {
+    let defaults = try #require(
+      ForcedUserDefaults(
+        forcedKeys: [Configuration.Keys.logFilter],
+        forcedValues: [Configuration.Keys.logFilter: "foo[bar]=debug"]
+      )
+    )
+    let viewModel = SettingsViewModel(configuration: Configuration(userDefaults: defaults))
+
+    try await viewModel.save(.logs)
+
+    #expect(viewModel.logFilter == "foo[bar]=debug")
+    #expect(viewModel.isLogFilterValid())
+    #expect(viewModel.logFilterError == nil)
+  }
+
   @Test("Saving one tab leaves the other tab's edits unsaved")
   @MainActor
   func savingOneTabLeavesTheOtherUnsaved() async throws {

@@ -266,7 +266,10 @@ class SettingsViewModel: ObservableObject {
     logFilterProblem() == nil
   }
 
+  /// An admin may use syntax the subset leaves out, and the user cannot edit a forced value.
   private func logFilterProblem() -> String? {
+    if configuration.isLogFilterForced { return nil }
+
     if logFilter.isEmpty { return "Enter a log filter" }
 
     if !LogFilter.isValid(logFilter) {
