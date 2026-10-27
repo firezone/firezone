@@ -2,6 +2,7 @@
 package dev.firezone.android.features.settings.ui.compose
 
 import android.app.Application
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -46,12 +47,14 @@ class SettingsRowsTest {
                 isManaged = false,
                 onValueChange = { staged = it },
                 isValid = String::isNotBlank,
+                invalidMessage = "Enter a filter",
             )
         }
 
         composeRule.onNodeWithText("Log Filter").performClick()
         composeRule.onNode(hasSetTextAction()).performTextReplacement(" ")
         composeRule.onNodeWithText("OK").assertIsNotEnabled()
+        composeRule.onNodeWithText("Enter a filter").assertIsDisplayed()
 
         assertNull(staged)
     }

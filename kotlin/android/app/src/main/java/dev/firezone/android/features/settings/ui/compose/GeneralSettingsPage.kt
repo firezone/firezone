@@ -62,6 +62,7 @@ fun GeneralSettingsPage(
                     isManaged = managedStatus.isAuthUrlManaged,
                     onValueChange = onAuthUrlChange,
                     isValid = ::isValidAuthUrl,
+                    invalidMessage = stringResource(R.string.auth_url_invalid),
                 )
                 TextPreferenceRow(
                     title = stringResource(R.string.api_url),
@@ -69,6 +70,7 @@ fun GeneralSettingsPage(
                     isManaged = managedStatus.isApiUrlManaged,
                     onValueChange = onApiUrlChange,
                     isValid = ::isValidApiUrl,
+                    invalidMessage = stringResource(R.string.api_url_invalid),
                 )
             }
         }

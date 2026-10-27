@@ -28,6 +28,8 @@
 	<string name="portal_custom">Custom</string>
 	<string name="auth_url">Auth URL</string>
 	<string name="api_url">API URL</string>
+	<string name="auth_url_invalid">Enter a valid http:// or https:// URL</string>
+	<string name="api_url_invalid">Enter a valid ws:// or wss:// URL</string>
 	<!-- Device Trust Settings -->
 	<string name="device_trust_settings_title">Device Trust</string>
 	<!-- Diagnostic Logs Settings -->

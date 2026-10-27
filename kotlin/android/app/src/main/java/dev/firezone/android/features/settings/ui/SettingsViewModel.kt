@@ -3,7 +3,6 @@ package dev.firezone.android.features.settings.ui
 
 import android.content.Context
 import android.content.Intent
-import android.webkit.URLUtil
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -253,12 +252,19 @@ internal class SettingsViewModel
         )
     }
 
-internal fun isValidAuthUrl(url: String): Boolean = URLUtil.isValidUrl(url)
+internal fun isValidAuthUrl(url: String): Boolean = isValidUrl(url, "http", "https")
 
-internal fun isValidApiUrl(url: String): Boolean =
-    try {
-        URI(url)
-        true
-    } catch (e: URISyntaxException) {
-        false
-    }
+internal fun isValidApiUrl(url: String): Boolean = isValidUrl(url, "ws", "wss")
+
+private fun isValidUrl(
+    url: String,
+    vararg schemes: String,
+): Boolean {
+    val uri =
+        try {
+            URI(url)
+        } catch (e: URISyntaxException) {
+            return false
+        }
+    return uri.host != null && uri.scheme in schemes
+}

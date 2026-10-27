@@ -145,6 +145,7 @@ fun TextPreferenceRow(
     onValueChange: (String) -> Unit,
     modifier: Modifier = Modifier,
     isValid: (String) -> Boolean = { true },
+    invalidMessage: String? = null,
 ) {
     var isEditing by rememberSaveable { mutableStateOf(false) }
 
@@ -176,6 +177,7 @@ fun TextPreferenceRow(
                     onValueChange = { draft = it },
                     singleLine = true,
                     isError = !isDraftValid,
+                    supportingText = invalidMessage?.takeIf { !isDraftValid }?.let { { Text(it) } },
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
                     keyboardActions = KeyboardActions(onDone = { if (isDraftValid) confirm() }),
                     modifier = Modifier.fillMaxWidth().focusRequester(focusRequester),
