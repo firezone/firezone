@@ -728,12 +728,7 @@ struct LogFilesView: View {
         Button("Clear", role: .destructive) { clear() }
         Button("Cancel", role: .cancel) {}
       } message: {
-        Text(
-          """
-          This deletes all log files on this device. \
-          Export them first if you need them for a support request.
-          """
-        )
+        Text("This deletes all log files on this device.")
       }
     }
   }
