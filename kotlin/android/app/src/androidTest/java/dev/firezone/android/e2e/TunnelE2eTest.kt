@@ -269,7 +269,7 @@ class TunnelE2eTest {
         return awaitSession()
     }
 
-    private fun signIn() = tokenStore.save(TOKEN)
+    private fun signIn() = tokenStore.signIn(TOKEN, repo)
 
     private fun awaitSession(): FakeSession = runBlocking { withTimeout(TIMEOUT_MS) { FakeSessionFactory.awaitSession() } }
 

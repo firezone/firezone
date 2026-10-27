@@ -68,7 +68,7 @@ class BootE2eTest {
 
     @Test
     fun aStoredTokenConnectsOnBootWhenConfigured() {
-        tokenStore.save(TOKEN)
+        tokenStore.signIn(TOKEN, repo)
         configureStartOnLogin(true)
 
         boot()
@@ -80,7 +80,7 @@ class BootE2eTest {
 
     @Test
     fun nothingConnectsOnBootUnlessConfigured() {
-        tokenStore.save(TOKEN)
+        tokenStore.signIn(TOKEN, repo)
         configureStartOnLogin(false)
 
         boot()
@@ -91,7 +91,7 @@ class BootE2eTest {
 
     @Test
     fun aBootWithoutConsentAsksForItInANotification() {
-        tokenStore.save(TOKEN)
+        tokenStore.signIn(TOKEN, repo)
         configureStartOnLogin(true)
         revokeVpnConsent()
 
@@ -107,7 +107,7 @@ class BootE2eTest {
     // Nobody asked for this tunnel, so nobody is told when it goes away.
     @Test
     fun aBootStartedTunnelDisconnectsWithoutNotifying() {
-        tokenStore.save(TOKEN)
+        tokenStore.signIn(TOKEN, repo)
         configureStartOnLogin(true)
 
         boot()

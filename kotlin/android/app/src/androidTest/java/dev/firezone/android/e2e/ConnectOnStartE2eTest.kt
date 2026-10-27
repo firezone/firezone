@@ -58,7 +58,7 @@ class ConnectOnStartE2eTest {
 
     @Test
     fun aStoredTokenConnectsOnLaunch() {
-        tokenStore.save(TOKEN)
+        tokenStore.signIn(TOKEN, repo)
         configureConnectOnStart(true)
 
         launchApp()
@@ -71,7 +71,7 @@ class ConnectOnStartE2eTest {
 
     @Test
     fun aStoredTokenWaitsOnTheSignInScreenUnlessConfigured() {
-        tokenStore.save(TOKEN)
+        tokenStore.signIn(TOKEN, repo)
         configureConnectOnStart(false)
 
         launchApp()

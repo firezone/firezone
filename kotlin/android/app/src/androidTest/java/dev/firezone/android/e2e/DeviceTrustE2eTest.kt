@@ -90,7 +90,7 @@ class DeviceTrustE2eTest {
     fun aDeviceCertificateAccompaniesThePortalToken() {
         val certificate = testIdentity(SERIAL_CLAIM)
         givenCertificate(certificate)
-        tokenStore.save(TOKEN)
+        tokenStore.signIn(TOKEN, repo)
 
         startTunnelService()
         val session = awaitSession()
@@ -117,7 +117,7 @@ class DeviceTrustE2eTest {
     @Test
     fun aTokenAloneConnectsWithoutACertificate() {
         FakeKeyChain.install(ALIAS, testIdentity(SERIAL_CLAIM), granted = false)
-        tokenStore.save(TOKEN)
+        tokenStore.signIn(TOKEN, repo)
 
         launchApp()
 
@@ -139,7 +139,7 @@ class DeviceTrustE2eTest {
         val certificate = testIdentity(SERIAL_CLAIM)
         FakeKeyChain.install(ALIAS, certificate, granted = true)
         FakeKeyChain.policyAnswers(ALIAS)
-        tokenStore.save(TOKEN)
+        tokenStore.signIn(TOKEN, repo)
 
         launchApp()
 
@@ -172,7 +172,7 @@ class DeviceTrustE2eTest {
         FakeKeyChain.install(ALIAS, certificate, granted = false)
         FakeKeyChain.userChooses(ALIAS)
         TestRestrictions.bundle.putBoolean(X509_CERTIFICATE_RESTRICTION, true)
-        tokenStore.save(TOKEN)
+        tokenStore.signIn(TOKEN, repo)
 
         launchApp()
 
@@ -199,7 +199,7 @@ class DeviceTrustE2eTest {
         FakeKeyChain.install(OTHER_ALIAS, testIdentity("mailto:user@example.com", commonName = "mail.example.com"), granted = false)
         FakeKeyChain.userChooses(OTHER_ALIAS, ALIAS)
         TestRestrictions.bundle.putBoolean(X509_CERTIFICATE_RESTRICTION, true)
-        tokenStore.save(TOKEN)
+        tokenStore.signIn(TOKEN, repo)
 
         launchApp()
 
@@ -224,7 +224,7 @@ class DeviceTrustE2eTest {
     fun aRequiredCertificateStopsTheTunnelUntilReleased() {
         FakeKeyChain.install(ALIAS, testIdentity(SERIAL_CLAIM), granted = false)
         TestRestrictions.bundle.putBoolean(X509_CERTIFICATE_RESTRICTION, true)
-        tokenStore.save(TOKEN)
+        tokenStore.signIn(TOKEN, repo)
 
         startTunnelService()
 
