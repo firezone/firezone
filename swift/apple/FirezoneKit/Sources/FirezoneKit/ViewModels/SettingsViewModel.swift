@@ -16,7 +16,6 @@ class SettingsViewModel: ObservableObject {
 
   // Save and Reset act on one tab's settings only.
   @Published var selectedTab: SettingsView.Tab
-  @Published private(set) var shouldDisableSaveButton = false
   @Published private(set) var shouldDisableResetButton = false
   // Kept apart from the URLs so that picking Custom does not snap back to the portal they match.
   @Published private(set) var portal: Portal
@@ -256,11 +255,6 @@ class SettingsViewModel: ObservableObject {
         configuration.isAuthURLForced && configuration.isApiURLForced
         && configuration.isAccountSlugForced && configuration.isConnectOnStartForced
         && configuration.isStartOnLoginForced
-      let isSaved =
-        authURL == configuration.authURL && apiURL == configuration.apiURL
-        && accountSlug == configuration.accountSlug
-        && connectOnStart == configuration.connectOnStart
-        && startOnLogin == configuration.startOnLogin
       let isDefault =
         (configuration.isAuthURLForced || authURL == ConfigurationDefaults.authURL)
         && (configuration.isApiURLForced || apiURL == ConfigurationDefaults.apiURL)
@@ -270,16 +264,11 @@ class SettingsViewModel: ObservableObject {
         && (configuration.isStartOnLoginForced
           || startOnLogin == ConfigurationDefaults.startOnLogin)
 
-      shouldDisableSaveButton = isAllForced || isSaved || !areURLsValid()
       shouldDisableResetButton = isAllForced || isDefault
     case .logs:
-      let isForced = configuration.isLogFilterForced
-
-      shouldDisableSaveButton =
-        isForced || logFilter == configuration.logFilter || !isLogFilterValid()
-      shouldDisableResetButton = isForced || logFilter == ConfigurationDefaults.logFilter
+      shouldDisableResetButton =
+        configuration.isLogFilterForced || logFilter == ConfigurationDefaults.logFilter
     case .deviceTrust:
-      shouldDisableSaveButton = true
       shouldDisableResetButton = true
     }
   }

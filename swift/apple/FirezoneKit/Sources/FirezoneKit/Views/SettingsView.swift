@@ -19,22 +19,17 @@ public struct SettingsView: View {
   private let store: Store
   private let configuration: Configuration
 
-  private enum ConfirmationAlertContinueAction: Int {
-    case none
-    case saveSettingsAndDismiss
-
-    func performAction(on view: SettingsView) async throws {
-      switch self {
-      case .none:
-        break
-      case .saveSettingsAndDismiss:
-        try await view.saveSettingsAndDismiss()
-      }
-    }
+  private enum Field: Hashable {
+    case accountSlug
+    case authURL
+    case apiURL
+    case logFilter
   }
 
-  @State private var isShowingConfirmationAlert = false
-  @State private var confirmationAlertContinueAction: ConfirmationAlertContinueAction = .none
+  @FocusState private var focusedField: Field?
+  @State private var isShowingSignOutAlert = false
+  @State private var dismissesAfterSignOutAlert = false
+  @State private var isConfirmingReset = false
 
   #if os(iOS)
     private struct LogArchive: Identifiable {
@@ -46,17 +41,7 @@ public struct SettingsView: View {
   #endif
 
   #if os(macOS)
-    private enum Field: Hashable {
-      case accountSlug
-      case authURL
-      case apiURL
-      case logFilter
-    }
-
     private static let paneWidth: CGFloat = 500
-
-    @FocusState private var focusedField: Field?
-    @State private var isShowingSignOutAlert = false
   #endif
 
   private struct PlaceholderText {
@@ -105,6 +90,23 @@ public struct SettingsView: View {
   }
 
   public var body: some View {
+    content
+      .onChange(of: focusedField) { _ in commitTextFields() }
+      .onChange(of: viewModel.portal) { _ in commit(.general) }
+      .onChange(of: viewModel.connectOnStart) { _ in commit(.general) }
+      .onChange(of: viewModel.startOnLogin) { _ in commit(.general) }
+      .onDisappear { commitTextFields() }
+      .alert(SignOutAlert.title, isPresented: $isShowingSignOutAlert) {
+        Button("OK") {
+          if dismissesAfterSignOutAlert { dismiss() }
+        }
+      } message: {
+        Text(SignOutAlert.message)
+      }
+  }
+
+  @ViewBuilder
+  private var content: some View {
     #if os(iOS)
       NavigationView {
         ZStack {
@@ -139,39 +141,12 @@ public struct SettingsView: View {
           }
           .padding(.bottom, 10)
           .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
-              Button("Save") {
-                let action = ConfirmationAlertContinueAction.saveSettingsAndDismiss
-                if viewModel.selectedTab == .general, case .connected = store.vpnStatus {
-                  self.confirmationAlertContinueAction = action
-                  self.isShowingConfirmationAlert = true
-                } else {
-                  withErrorHandler { try await action.performAction(on: self) }
-                }
-              }
-              .disabled(viewModel.shouldDisableSaveButton)
-            }
-            ToolbarItem(placement: .navigationBarLeading) {
-              Button("Cancel") { dismiss() }
+            ToolbarItem(placement: .confirmationAction) {
+              Button("Done") { commit(.general, .logs, thenDismiss: true) }
             }
           }
           .navigationTitle(viewModel.selectedTab.title)
           .navigationBarTitleDisplayMode(.inline)
-          .alert(
-            SignOutAlert.title,
-            isPresented: $isShowingConfirmationAlert,
-            presenting: confirmationAlertContinueAction,
-            actions: { confirmationAlertContinueAction in
-              Button("OK") {
-                withErrorHandler {
-                  try await confirmationAlertContinueAction.performAction(on: self)
-                }
-              }
-            },
-            message: { _ in
-              Text(SignOutAlert.message)
-            }
-          )
         }
       }
     #elseif os(macOS)
@@ -187,13 +162,6 @@ public struct SettingsView: View {
         logsTab
           .tabItem { Label(Tab.logs.title, systemImage: Tab.logs.systemImage) }
           .tag(Tab.logs)
-      }
-      .onChange(of: focusedField) { _ in commitTextFields() }
-      .onDisappear { commitTextFields() }
-      .alert(SignOutAlert.title, isPresented: $isShowingSignOutAlert) {
-        Button("OK") {}
-      } message: {
-        Text(SignOutAlert.message)
       }
     #else
       #error("Unsupported platform")
@@ -268,9 +236,6 @@ public struct SettingsView: View {
         paneFooter(for: .general)
       }
       .frame(width: Self.paneWidth)
-      .onChange(of: viewModel.portal) { _ in commit(.general) }
-      .onChange(of: viewModel.connectOnStart) { _ in commit(.general) }
-      .onChange(of: viewModel.startOnLogin) { _ in commit(.general) }
     #elseif os(iOS)
       VStack {
         Form {
@@ -286,6 +251,8 @@ public struct SettingsView: View {
               .autocorrectionDisabled()
               .textInputAutocapitalization(.never)
               .submitLabel(.done)
+              .focused($focusedField, equals: .accountSlug)
+              .onSubmit { commit(.general) }
               .disabled(configuration.isAccountSlugForced)
             }
 
@@ -325,6 +292,8 @@ public struct SettingsView: View {
                 .autocorrectionDisabled()
                 .textInputAutocapitalization(.never)
                 .submitLabel(.done)
+                .focused($focusedField, equals: .authURL)
+                .onSubmit { commit(.general) }
                 .disabled(configuration.isAuthURLForced)
               }
               VStack(alignment: .leading, spacing: 2) {
@@ -338,6 +307,8 @@ public struct SettingsView: View {
                 .autocorrectionDisabled()
                 .textInputAutocapitalization(.never)
                 .submitLabel(.done)
+                .focused($focusedField, equals: .apiURL)
+                .onSubmit { commit(.general) }
                 .disabled(configuration.isApiURLForced)
               }
             }
@@ -352,13 +323,7 @@ public struct SettingsView: View {
           Section {
             HStack {
               Spacer()
-              Button(
-                "Reset to Defaults",
-                action: {
-                  viewModel.reset()
-                }
-              )
-              .disabled(viewModel.shouldDisableResetButton)
+              resetButton
               Spacer()
             }
           }
@@ -391,6 +356,8 @@ public struct SettingsView: View {
               .autocorrectionDisabled()
               .textInputAutocapitalization(.never)
               .submitLabel(.done)
+              .focused($focusedField, equals: .logFilter)
+              .onSubmit { commit(.logs) }
               .disabled(configuration.isLogFilterForced)
             }
             LogFilesView(
@@ -503,9 +470,40 @@ public struct SettingsView: View {
     #endif
   }
 
-  private func saveSettingsAndDismiss() async throws {
-    try await saveSettings()
-    dismiss()
+  private var resetButton: some View {
+    Button("Reset to Defaults") { isConfirmingReset = true }
+      .disabled(viewModel.shouldDisableResetButton)
+      .alert("Reset settings to defaults?", isPresented: $isConfirmingReset) {
+        Button("Reset", role: .destructive) {
+          viewModel.reset()
+          commit(viewModel.selectedTab)
+        }
+        Button("Cancel", role: .cancel) {}
+      }
+  }
+
+  /// Saves the settings of `tabs`, and says so when a change waits for the next sign-in.
+  private func commit(_ tabs: Tab..., thenDismiss: Bool = false) {
+    // Read now: the commit from `onDisappear` runs once the view is gone.
+    let viewModel = viewModel
+
+    withErrorHandler {
+      var changedSignIn = false
+      for tab in tabs {
+        if try await viewModel.save(tab) { changedSignIn = true }
+      }
+
+      if changedSignIn, [.connected, .connecting, .reasserting].contains(store.vpnStatus) {
+        dismissesAfterSignOutAlert = thenDismiss
+        isShowingSignOutAlert = true
+      } else if thenDismiss {
+        dismiss()
+      }
+    }
+  }
+
+  private func commitTextFields() {
+    commit(.general, .logs)
   }
 
   #if os(macOS)
@@ -516,32 +514,9 @@ public struct SettingsView: View {
             .font(.caption)
         }
         Spacer()
-        Button("Reset to Defaults") {
-          viewModel.reset()
-          commit(tab)
-        }
-        .disabled(viewModel.shouldDisableResetButton)
+        resetButton
       }
       .padding([.horizontal, .bottom], 20)
-    }
-
-    /// Saves `tab`'s settings, and says so when the change waits for the next sign-in.
-    private func commit(_ tab: Tab) {
-      // Read now: the commit from `onDisappear` runs once the view is gone.
-      let viewModel = viewModel
-
-      withErrorHandler {
-        let changedSignIn = try await viewModel.save(tab)
-
-        if changedSignIn, [.connected, .connecting, .reasserting].contains(store.vpnStatus) {
-          isShowingSignOutAlert = true
-        }
-      }
-    }
-
-    private func commitTextFields() {
-      commit(.general)
-      commit(.logs)
     }
 
     private func exportLogsWithSavePanelOnMac() {
@@ -591,10 +566,6 @@ public struct SettingsView: View {
       }
     }
   #endif
-
-  private func saveSettings() async throws {
-    try await viewModel.save()
-  }
 
   private func withErrorHandler(action: @escaping () async throws -> Void) {
     Task {
