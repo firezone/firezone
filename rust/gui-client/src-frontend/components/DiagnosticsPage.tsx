@@ -53,6 +53,23 @@ export default function Diagnostics({
         <section>
           <h2 className="form-label">Logs</h2>
           <div className="panel divide-y divide-border">
+            <SettingRow field inputId={logFilterInputId} label="Log Filter">
+              <ManagedTextInput
+                className="h-8 py-1 font-mono text-xs"
+                id={logFilterInputId}
+                managed={localLogFilter.log_filter_is_managed}
+                name="log_filter"
+                onChange={(event) =>
+                  setLocalLogFilter({
+                    ...localLogFilter,
+                    log_filter: event.target.value,
+                  })
+                }
+                required
+                value={localLogFilter.log_filter}
+              />
+            </SettingRow>
+
             <div className="flex min-h-10 items-center justify-between gap-6 px-4 py-3">
               <div>
                 <p className="text-sm font-medium text-heading">
@@ -73,23 +90,6 @@ export default function Diagnostics({
                 </Button>
               </div>
             </div>
-
-            <SettingRow field inputId={logFilterInputId} label="Log Filter">
-              <ManagedTextInput
-                className="h-8 py-1 font-mono text-xs"
-                id={logFilterInputId}
-                managed={localLogFilter.log_filter_is_managed}
-                name="log_filter"
-                onChange={(event) =>
-                  setLocalLogFilter({
-                    ...localLogFilter,
-                    log_filter: event.target.value,
-                  })
-                }
-                required
-                value={localLogFilter.log_filter}
-              />
-            </SettingRow>
           </div>
         </section>
 
