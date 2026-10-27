@@ -72,8 +72,12 @@ impl GeneralSettingsForm {
         } else if Portal::from_urls(&advanced_settings.auth_url, &advanced_settings.api_url)
             == Portal::Custom
         {
-            general_settings.custom_auth_url = Some(advanced_settings.auth_url.clone());
-            general_settings.custom_api_url = Some(advanced_settings.api_url.clone());
+            general_settings
+                .custom_auth_url
+                .get_or_insert_with(|| advanced_settings.auth_url.clone());
+            general_settings
+                .custom_api_url
+                .get_or_insert_with(|| advanced_settings.api_url.clone());
         }
 
         let advanced_settings = AdvancedSettings {
