@@ -1026,6 +1026,13 @@ impl<I: GuiIntegration> Controller<I> {
             Status::Quitting => {}
         }
 
+        let signed_in_with = if token.is_none() {
+            self.signed_in_with
+                .clone()
+                .unwrap_or_else(|| self.current_sign_in())
+        } else {
+            self.current_sign_in()
+        };
         let token = match token {
             Some(token) => {
                 self.unconfirmed_token = Some(token.clone());
@@ -1045,7 +1052,7 @@ impl<I: GuiIntegration> Controller<I> {
             }
         };
 
-        self.start_session(token, self.current_sign_in()).await?;
+        self.start_session(token, signed_in_with).await?;
 
         Ok(GuiIpcReply::WhenConnected)
     }
