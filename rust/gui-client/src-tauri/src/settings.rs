@@ -106,7 +106,7 @@ pub struct GeneralSettings {
     pub custom_api_url: Option<Url>,
 }
 
-/// The account slug and control-plane URLs used to start a session.
+/// The account slug and control-plane URLs captured when sign-in started.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SignedInWith {
     pub account_slug: Option<String>,
@@ -135,7 +135,7 @@ pub struct GeneralSettingsViewModel {
     pub custom_auth_url: String,
     /// What the API URL field shows when [`Portal::Custom`] is picked: the last saved custom URL, or else `api_url`.
     pub custom_api_url: String,
-    /// What the current session signed in with, [`None`] when signed out.
+    /// The settings captured when sign-in started, [`None`] when signed out.
     pub signed_in_with: Option<SignedInWithViewModel>,
 }
 

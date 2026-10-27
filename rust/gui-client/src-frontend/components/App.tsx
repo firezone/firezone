@@ -155,8 +155,8 @@ export default function App() {
               element={
                 <GeneralSettingsPage
                   settings={generalSettings}
-                  saveSettings={commands.applyGeneralSettings}
-                  resetSettings={commands.resetGeneralSettings}
+                  saveSettings={commands.applyClientSettings}
+                  resetSettings={commands.resetClientSettings}
                 />
               }
             />

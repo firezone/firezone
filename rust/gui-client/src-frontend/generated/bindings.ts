@@ -24,17 +24,17 @@ async exportLogs() : Promise<Result<null, Error>> {
     else return { status: "error", error: e  as any };
 }
 },
-async applyGeneralSettings(settings: GeneralSettingsForm) : Promise<Result<null, Error>> {
+async applyClientSettings(settings: ClientSettingsForm) : Promise<Result<null, Error>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("apply_general_settings", { settings }) };
+    return { status: "ok", data: await TAURI_INVOKE("apply_client_settings", { settings }) };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
 }
 },
-async resetGeneralSettings() : Promise<Result<null, Error>> {
+async resetClientSettings() : Promise<Result<null, Error>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("reset_general_settings") };
+    return { status: "ok", data: await TAURI_INVOKE("reset_client_settings") };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
@@ -97,10 +97,7 @@ x509CertificateChanged: "x509-certificate-changed"
 
 /** user-defined types **/
 
-export type Error = string
-export type FileCount = { bytes: number; files: number }
-export type GeneralSettingsChanged = GeneralSettingsViewModel
-export type GeneralSettingsForm = { start_minimized?: boolean | null; start_on_login?: boolean | null; connect_on_start?: boolean | null; account_slug?: string | null; portal?: Portal | null;
+export type ClientSettingsForm = { start_minimized?: boolean | null; start_on_login?: boolean | null; connect_on_start?: boolean | null; account_slug?: string | null; portal?: Portal | null;
 /**
  * Only used for [`Portal::Custom`].
  */
@@ -109,6 +106,9 @@ auth_url?: string | null;
  * Only used for [`Portal::Custom`].
  */
 api_url?: string | null }
+export type Error = string
+export type FileCount = { bytes: number; files: number }
+export type GeneralSettingsChanged = GeneralSettingsViewModel
 export type GeneralSettingsViewModel = { start_minimized: boolean; start_on_login: boolean; connect_on_start: boolean; connect_on_start_is_managed: boolean; account_slug: string; account_slug_is_managed: boolean; portal: Portal; auth_url: string; auth_url_is_managed: boolean; api_url: string; api_url_is_managed: boolean;
 /**
  * What the auth URL field shows when [`Portal::Custom`] is picked: the last saved custom URL, or else `auth_url`.
@@ -119,7 +119,7 @@ custom_auth_url: string;
  */
 custom_api_url: string;
 /**
- * What the current session signed in with, [`None`] when signed out.
+ * The settings captured when sign-in started, [`None`] when signed out.
  */
 signed_in_with: SignedInWithViewModel | null }
 export type LogFilterChanged = LogFilterViewModel

@@ -63,7 +63,7 @@ pub enum ClientMsg {
         token: SecretString,
         is_internet_resource_active: bool,
         #[serde(default)]
-        expected_api_url: Option<url::Url>,
+        api_url: Option<url::Url>,
     },
     Disconnect,
     /// Persist new advanced settings to the protected on-disk file owned by
@@ -265,14 +265,17 @@ enum Session {
         event_stream: client_shared::EventStream,
         connlib: client_shared::Session,
         started_at: Instant,
+        api_url: Url,
     },
     Connected {
         event_stream: client_shared::EventStream,
         connlib: client_shared::Session,
+        api_url: Url,
     },
     WaitingForNetwork {
         token: SecretString,
         is_internet_resource_active: bool,
+        api_url: Url,
     },
     #[default]
     None,
@@ -285,21 +288,25 @@ impl Session {
                 event_stream,
                 connlib,
                 started_at,
+                api_url,
             } => {
                 tracing::debug!(elapsed = ?started_at.elapsed(), "Tunnel ready");
 
                 *self = Self::Connected {
                     event_stream,
                     connlib,
+                    api_url,
                 };
             }
             Session::Connected {
                 event_stream,
                 connlib,
+                api_url,
             } => {
                 *self = Self::Connected {
                     event_stream,
                     connlib,
+                    api_url,
                 };
             }
             Session::WaitingForNetwork { .. } => {
@@ -309,6 +316,15 @@ impl Session {
         }
 
         Ok(())
+    }
+
+    fn api_url(&self) -> Option<&Url> {
+        match self {
+            Self::Creating { api_url, .. } => Some(api_url),
+            Self::Connected { api_url, .. } => Some(api_url),
+            Self::WaitingForNetwork { api_url, .. } => Some(api_url),
+            Self::None => None,
+        }
     }
 
     fn as_connlib(&self) -> Option<&client_shared::Session> {
@@ -616,12 +632,14 @@ impl<'a> Handler<'a> {
             Session::WaitingForNetwork {
                 token,
                 is_internet_resource_active,
+                api_url,
             } => {
                 tracing::info!(%reason, "Attempting to re-connect");
 
                 let token = token.clone();
                 let is_internet_resource_active = *is_internet_resource_active;
-                let result = self.try_connect(token, is_internet_resource_active);
+                let api_url = api_url.clone();
+                let result = self.try_connect(token, is_internet_resource_active, api_url);
 
                 if let Some(e) = result
                     .as_ref()
@@ -749,19 +767,14 @@ impl<'a> Handler<'a> {
             ClientMsg::Connect {
                 token,
                 is_internet_resource_active,
-                expected_api_url,
+                api_url,
             } => {
-                if expected_api_url
-                    .as_ref()
-                    .is_some_and(|url| url.as_str() != self.api_url())
-                {
-                    self.send_ipc(ServerMsg::ConnectResult(Err(
-                        "The control plane changed during sign-in. Sign in again to retry."
-                            .to_owned(),
-                    )))
-                    .await?;
-                    return Ok(());
-                }
+                let api_url = self
+                    .mdm_settings
+                    .api_url
+                    .clone()
+                    .or(api_url)
+                    .unwrap_or_else(|| self.advanced_settings.api_url.clone());
 
                 if !self.session.is_none() {
                     tracing::debug!(session = ?self.session, "Dropping existing session before connecting");
@@ -773,7 +786,8 @@ impl<'a> Handler<'a> {
                 // there must not report the previous one's.
                 telemetry::set_account_slug(None);
 
-                let result = self.try_connect(token.clone(), is_internet_resource_active);
+                let result =
+                    self.try_connect(token.clone(), is_internet_resource_active, api_url.clone());
 
                 if let Some(e) = result
                     .as_ref()
@@ -786,6 +800,7 @@ impl<'a> Handler<'a> {
                     self.session = Session::WaitingForNetwork {
                         token,
                         is_internet_resource_active,
+                        api_url,
                     };
 
                     return Ok(());
@@ -846,7 +861,7 @@ impl<'a> Handler<'a> {
 
                 if !no_telemetry {
                     self.telemetry_release = Some(release.clone());
-                    self.point_telemetry_at_api_url();
+                    self.point_telemetry_at_api_url(self.api_url());
 
                     opentelemetry::global::set_meter_provider(
                         telemetry::SentryMeterProvider::default(),
@@ -882,12 +897,12 @@ impl<'a> Handler<'a> {
         Ok(())
     }
 
-    /// Effective `api_url`: machine-scope MDM policy wins over the stored
-    /// advanced setting.
+    /// Returns the API URL selected by MDM, the active session, or the saved settings, in that order.
     fn api_url(&self) -> &str {
         self.mdm_settings
             .api_url
             .as_ref()
+            .or_else(|| self.session.api_url())
             .map(|u| u.as_str())
             .unwrap_or_else(|| self.advanced_settings.api_url.as_str())
     }
@@ -896,12 +911,12 @@ impl<'a> Handler<'a> {
     ///
     /// Deriving the environment here instead of accepting one from the GUI is what keeps
     /// telemetry off for unofficial deployments: it cannot name a portal we never talk to.
-    fn point_telemetry_at_api_url(&self) {
+    fn point_telemetry_at_api_url(&self, api_url: &str) {
         let Some(release) = &self.telemetry_release else {
             return;
         };
 
-        telemetry::start(self.api_url(), release, telemetry::GUI_DSN);
+        telemetry::start(api_url, release, telemetry::GUI_DSN);
         telemetry::set_firezone_id(self.device_id.id.clone()); // Re-pointing clears the identity.
     }
 
@@ -911,6 +926,7 @@ impl<'a> Handler<'a> {
         &mut self,
         token: SecretString,
         is_internet_resource_active: bool,
+        api_url: Url,
     ) -> Result<Session> {
         let started_at = Instant::now();
 
@@ -932,11 +948,9 @@ impl<'a> Handler<'a> {
         };
 
         // The settings may have moved since the GUI last asked us to start telemetry.
-        self.point_telemetry_at_api_url();
-
-        let api_url = self.api_url().to_string();
+        self.point_telemetry_at_api_url(api_url.as_str());
         let url = LoginUrl::client(
-            Url::parse(&api_url).context("Failed to parse URL")?,
+            api_url.clone(),
             device_id.id.clone(),
             None,
             DeviceInfo {
@@ -988,6 +1002,7 @@ impl<'a> Handler<'a> {
             event_stream,
             connlib,
             started_at,
+            api_url,
         })
     }
 
@@ -1130,45 +1145,6 @@ pub fn run_smoke_test() -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[tokio::test]
-    async fn rejects_a_connect_for_another_control_plane_before_using_the_token() {
-        let _guard = logging::test("debug");
-        let id = SocketId::Test(rand::random());
-        let handle = tokio::spawn(async move {
-            let (_, log_filter_reloader) = logging::try_filter::<()>("info").unwrap();
-            let mut signals = signals::Terminate::new().unwrap();
-            ipc_listen(
-                DnsControlMethod::default(),
-                &log_filter_reloader,
-                id,
-                &mut signals,
-            )
-            .await
-        });
-        let (mut rx, mut tx) =
-            ipc::connect::<ServerMsg, ClientMsg>(id, ipc::ConnectOptions::default())
-                .await
-                .unwrap();
-        assert!(matches!(
-            rx.next().await.unwrap().unwrap(),
-            ServerMsg::Hello { .. }
-        ));
-
-        tx.send(&ClientMsg::Connect {
-            token: SecretString::from("unused-token"),
-            is_internet_resource_active: false,
-            expected_api_url: Some(url::Url::parse("wss://other.example.com").unwrap()),
-        })
-        .await
-        .unwrap();
-
-        let ServerMsg::ConnectResult(Err(error)) = rx.next().await.unwrap().unwrap() else {
-            panic!("expected the control-plane mismatch to reject the connection");
-        };
-        assert!(error.contains("Sign in again"));
-        handle.abort();
-    }
 
     #[tokio::test]
     async fn panic_inside_handler_doesnt_interrupt_service() {

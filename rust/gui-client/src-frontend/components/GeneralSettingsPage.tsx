@@ -1,6 +1,6 @@
 import React, { useId, useState } from "react";
 import {
-  GeneralSettingsForm,
+  ClientSettingsForm,
   GeneralSettingsViewModel,
   Portal,
   SignedInWithViewModel,
@@ -12,7 +12,7 @@ import { ManagedSelect, ManagedToggleSwitch } from "./ManagedInput";
 
 interface Props {
   settings: GeneralSettingsViewModel | null;
-  saveSettings: (settings: GeneralSettingsForm) => void;
+  saveSettings: (settings: ClientSettingsForm) => void;
   resetSettings: () => void;
 }
 
@@ -76,7 +76,7 @@ export default function GeneralSettingsPage({
     signedInWith !== null &&
     (differs(savedSignIn, signedInWith) || differs(draftSignIn, signedInWith));
 
-  const save = (changes: Partial<GeneralSettingsForm>) => saveSettings(changes);
+  const save = (changes: Partial<ClientSettingsForm>) => saveSettings(changes);
 
   // Picking "Custom" brings back the URLs last saved with it.
   const selectPortal = (portal: Portal) => {

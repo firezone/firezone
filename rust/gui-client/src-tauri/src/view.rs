@@ -17,7 +17,7 @@ use crate::{
 use url::Url;
 
 #[derive(Clone, Default, serde::Deserialize, specta::Type)]
-pub struct GeneralSettingsForm {
+pub struct ClientSettingsForm {
     #[serde(default)]
     pub start_minimized: Option<bool>,
     #[serde(default)]
@@ -36,7 +36,7 @@ pub struct GeneralSettingsForm {
     pub api_url: Option<String>,
 }
 
-impl GeneralSettingsForm {
+impl ClientSettingsForm {
     /// Returns the general settings and the requested advanced settings changes.
     ///
     /// A managed URL wins over the saved one, so the form leaves it alone. Saving with
@@ -292,16 +292,16 @@ pub async fn export_logs(
 
 #[tauri::command]
 #[specta::specta]
-pub async fn apply_general_settings(
+pub async fn apply_client_settings(
     managed: tauri::State<'_, Managed>,
-    settings: GeneralSettingsForm,
+    settings: ClientSettingsForm,
 ) -> Result<(), Error> {
     if managed.inner().inject_faults {
         tokio::time::sleep(Duration::from_secs(2)).await;
     }
 
     managed
-        .send_request(ControllerRequest::ApplyGeneralSettings(Box::new(settings)))
+        .send_request(ControllerRequest::ApplyClientSettings(Box::new(settings)))
         .await?;
 
     Ok(())
@@ -335,7 +335,7 @@ fn check_log_filter(log_filter: &str) -> Result<(), Error> {
 
 #[tauri::command]
 #[specta::specta]
-pub async fn reset_general_settings(
+pub async fn reset_client_settings(
     window: tauri::WebviewWindow,
     managed: tauri::State<'_, Managed>,
 ) -> Result<(), Error> {
@@ -359,7 +359,7 @@ pub async fn reset_general_settings(
     }
 
     managed
-        .send_request(ControllerRequest::ResetGeneralSettings)
+        .send_request(ControllerRequest::ResetClientSettings)
         .await?;
 
     Ok(())
@@ -450,8 +450,8 @@ pub fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
         .commands(tauri_specta::collect_commands![
             clear_logs,
             export_logs,
-            apply_general_settings,
-            reset_general_settings,
+            apply_client_settings,
+            reset_client_settings,
             apply_log_filter,
             sign_in,
             sign_out,
@@ -527,7 +527,7 @@ mod tests {
 
     #[test]
     fn a_cloud_portal_ignores_the_typed_urls() {
-        let form = general_settings_form(Portal::CloudEu, "not a URL", "wss://ignored.example.com");
+        let form = client_settings_form(Portal::CloudEu, "not a URL", "wss://ignored.example.com");
 
         let (auth_url, api_url) = form.urls(&AdvancedSettings::default()).unwrap();
 
@@ -537,7 +537,7 @@ mod tests {
 
     #[test]
     fn custom_uses_the_typed_urls() {
-        let form = general_settings_form(
+        let form = client_settings_form(
             Portal::Custom,
             "https://firezone.example.com",
             "wss://api.example.com",
@@ -551,7 +551,7 @@ mod tests {
 
     #[test]
     fn custom_rejects_an_invalid_url() {
-        let form = general_settings_form(Portal::Custom, "not a URL", "wss://api.example.com");
+        let form = client_settings_form(Portal::Custom, "not a URL", "wss://api.example.com");
 
         assert!(form.urls(&AdvancedSettings::default()).is_err());
     }
@@ -570,7 +570,7 @@ mod tests {
 
     #[test]
     fn custom_accepts_local_urls() {
-        let form = general_settings_form(
+        let form = client_settings_form(
             Portal::Custom,
             "http://localhost:4000",
             "ws://localhost:8081",
@@ -581,14 +581,14 @@ mod tests {
 
     #[test]
     fn custom_rejects_a_url_with_the_wrong_scheme() {
-        let form = general_settings_form(Portal::Custom, "ftp://x", "wss://api.example.com");
+        let form = client_settings_form(Portal::Custom, "ftp://x", "wss://api.example.com");
 
         assert!(form.urls(&AdvancedSettings::default()).is_err());
     }
 
     #[test]
     fn saving_custom_remembers_the_urls() {
-        let form = general_settings_form(
+        let form = client_settings_form(
             Portal::Custom,
             "https://firezone.example.com",
             "wss://api.example.com",
@@ -623,7 +623,7 @@ mod tests {
             api_url: Url::parse("wss://api.example.com").unwrap(),
             ..AdvancedSettings::default()
         };
-        let form = general_settings_form(Portal::CloudEu, "", "");
+        let form = client_settings_form(Portal::CloudEu, "", "");
 
         let (general_settings, advanced_settings) = form
             .apply(&MdmSettings::default(), GeneralSettings::default(), saved)
@@ -650,7 +650,7 @@ mod tests {
             custom_api_url: Some(Url::parse("wss://api.example.com").unwrap()),
             ..Default::default()
         };
-        let form = general_settings_form(Portal::CloudUs, "", "");
+        let form = client_settings_form(Portal::CloudUs, "", "");
 
         let (general_settings, advanced_settings) = form
             .apply(
@@ -688,7 +688,7 @@ mod tests {
             auth_url: Url::parse("https://saved.example.com").unwrap(),
             ..AdvancedSettings::default()
         };
-        let form = general_settings_form(Portal::CloudEu, "", "");
+        let form = client_settings_form(Portal::CloudEu, "", "");
 
         let (_, advanced_settings) = form
             .apply(&mdm_settings, GeneralSettings::default(), saved)
@@ -701,8 +701,8 @@ mod tests {
         );
     }
 
-    fn general_settings_form(portal: Portal, auth_url: &str, api_url: &str) -> GeneralSettingsForm {
-        GeneralSettingsForm {
+    fn client_settings_form(portal: Portal, auth_url: &str, api_url: &str) -> ClientSettingsForm {
+        ClientSettingsForm {
             portal: Some(portal),
             auth_url: Some(auth_url.to_owned()),
             api_url: Some(api_url.to_owned()),
