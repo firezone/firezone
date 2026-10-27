@@ -686,18 +686,16 @@ impl ReferenceState {
             Transition::CrashClient { client_id, key } => {
                 self.node_may_lack_relays |= self.no_relay_accepts_allocations();
 
-                for (id, client) in &mut self.clients {
-                    if id == client_id {
-                        // Applications resolve their domains again once the cached records are gone.
-                        client.exec_mut(|c| {
-                            c.restart(*key, now);
-                            c.dns_records.clear();
-                        });
-                    } else {
-                        // Without a `goodbye`, the peers lose their connections to the crashed
-                        // client, and their authorizations towards it with them.
-                        client.exec_mut(|c| c.forget_peer_authorizations(*client_id));
-                    }
+                // Applications resolve their domains again once the cached records are gone.
+                self.clients.get_mut(client_id).unwrap().exec_mut(|c| {
+                    c.restart(*key, now);
+                    c.dns_records.clear();
+                });
+
+                // Without a `goodbye`, the peers lose their connections to the crashed client, and
+                // their authorizations towards it with them.
+                for (_, peer) in self.clients.iter_mut().filter(|(id, _)| *id != client_id) {
+                    peer.exec_mut(|c| c.forget_peer_authorizations(*client_id));
                 }
             }
         };
