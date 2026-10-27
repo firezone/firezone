@@ -180,66 +180,68 @@ public struct SettingsView: View {
 
   private var generalTab: some View {
     #if os(macOS)
-      VStack(spacing: 0) {
-        Form {
-          Section("Sign-in") {
-            TextField(
-              "Account Slug",
-              text: $viewModel.accountSlug,
-              prompt: Text(PlaceholderText.accountSlug)
-            )
-            .focused($focusedField, equals: .accountSlug)
-            .onSubmit { commit(.general) }
-            .disabled(configuration.isAccountSlugForced)
+      Form {
+        Section("Sign-in") {
+          TextField(
+            "Account Slug",
+            text: $viewModel.accountSlug,
+            prompt: Text(PlaceholderText.accountSlug)
+          )
+          .focused($focusedField, equals: .accountSlug)
+          .onSubmit { commit(.general) }
+          .disabled(configuration.isAccountSlugForced)
 
-            Picker(Portal.pickerTitle, selection: portalSelection) {
-              ForEach(Portal.allCases) { portal in
-                Text(portal.title).tag(portal)
-              }
-            }
-            .disabled(viewModel.isPortalForced)
-
-            if viewModel.portal == .custom {
-              TextField(
-                "Auth URL",
-                text: $viewModel.authURL,
-                prompt: Text(PlaceholderText.authURL)
-              )
-              .focused($focusedField, equals: .authURL)
-              .onSubmit { commit(.general) }
-              .disabled(configuration.isAuthURLForced)
-              errorText(viewModel.authURLError)
-
-              TextField(
-                "API URL",
-                text: $viewModel.apiURL,
-                prompt: Text(PlaceholderText.apiURL)
-              )
-              .focused($focusedField, equals: .apiURL)
-              .onSubmit { commit(.general) }
-              .disabled(configuration.isApiURLForced)
-              errorText(viewModel.apiURLError)
+          Picker(Portal.pickerTitle, selection: portalSelection) {
+            ForEach(Portal.allCases) { portal in
+              Text(portal.title).tag(portal)
             }
           }
+          .disabled(viewModel.isPortalForced)
 
-          Section("Startup") {
-            Toggle(isOn: $viewModel.connectOnStart) {
-              Text("Automatically connect when Firezone is launched")
-            }
-            .toggleStyle(.switch)
-            .disabled(configuration.isConnectOnStartForced)
+          if viewModel.portal == .custom {
+            TextField(
+              "Auth URL",
+              text: $viewModel.authURL,
+              prompt: Text(PlaceholderText.authURL)
+            )
+            .focused($focusedField, equals: .authURL)
+            .onSubmit { commit(.general) }
+            .disabled(configuration.isAuthURLForced)
+            errorText(viewModel.authURLError)
 
-            Toggle(isOn: $viewModel.startOnLogin) {
-              Text("Start Firezone when you sign into your Mac")
-            }
-            .toggleStyle(.switch)
-            .disabled(configuration.isStartOnLoginForced)
+            TextField(
+              "API URL",
+              text: $viewModel.apiURL,
+              prompt: Text(PlaceholderText.apiURL)
+            )
+            .focused($focusedField, equals: .apiURL)
+            .onSubmit { commit(.general) }
+            .disabled(configuration.isApiURLForced)
+            errorText(viewModel.apiURLError)
           }
         }
-        .formStyle(.grouped)
 
-        paneFooter
+        Section {
+          Toggle(isOn: $viewModel.connectOnStart) {
+            Text("Automatically connect when Firezone is launched")
+          }
+          .toggleStyle(.switch)
+          .disabled(configuration.isConnectOnStartForced)
+
+          Toggle(isOn: $viewModel.startOnLogin) {
+            Text("Start Firezone when you sign into your Mac")
+          }
+          .toggleStyle(.switch)
+          .disabled(configuration.isStartOnLoginForced)
+        } header: {
+          Text("Startup")
+        } footer: {
+          paneFooter
+        }
       }
+      .formStyle(.grouped)
+      .scrollDisabled(true)
+      .fixedSize(horizontal: false, vertical: true)
       .frame(width: Self.paneWidth)
     #elseif os(iOS)
       VStack {
@@ -421,42 +423,44 @@ public struct SettingsView: View {
         }
       }
     #elseif os(macOS)
-      VStack(spacing: 0) {
-        Form {
-          Section("Logs") {
-            TextField(
-              "Log Filter",
-              text: $viewModel.logFilter,
-              prompt: Text(PlaceholderText.logFilter)
-            )
-            .focused($focusedField, equals: .logFilter)
-            .onSubmit { commit(.logs) }
-            .disabled(configuration.isLogFilterForced)
-            errorText(viewModel.logFilterError)
+      Form {
+        Section {
+          TextField(
+            "Log Filter",
+            text: $viewModel.logFilter,
+            prompt: Text(PlaceholderText.logFilter)
+          )
+          .focused($focusedField, equals: .logFilter)
+          .onSubmit { commit(.logs) }
+          .disabled(configuration.isLogFilterForced)
+          errorText(viewModel.logFilterError)
 
-            LogFilesView(
-              sizeText: viewModel.logDirectorySizeText,
-              isExporting: viewModel.isExportingLogs,
-              isClearing: viewModel.isClearingLogs,
-              export: {
-                self.exportLogsWithSavePanelOnMac()
-              },
-              clear: {
-                viewModel.clearLogs()
-              }
-            )
-            .onAppear {
-              viewModel.refreshLogDirectorySize()
+          LogFilesView(
+            sizeText: viewModel.logDirectorySizeText,
+            isExporting: viewModel.isExportingLogs,
+            isClearing: viewModel.isClearingLogs,
+            export: {
+              self.exportLogsWithSavePanelOnMac()
+            },
+            clear: {
+              viewModel.clearLogs()
             }
-            .onDisappear {
-              viewModel.cancelLogDirectorySizeRefresh()
-            }
+          )
+          .onAppear {
+            viewModel.refreshLogDirectorySize()
           }
+          .onDisappear {
+            viewModel.cancelLogDirectorySizeRefresh()
+          }
+        } header: {
+          Text("Logs")
+        } footer: {
+          paneFooter
         }
-        .formStyle(.grouped)
-
-        paneFooter
       }
+      .formStyle(.grouped)
+      .scrollDisabled(true)
+      .fixedSize(horizontal: false, vertical: true)
       .frame(width: Self.paneWidth)
     #else
       #error("Unsupported platform")
@@ -540,7 +544,6 @@ public struct SettingsView: View {
         Spacer()
         resetButton
       }
-      .padding([.horizontal, .bottom], 20)
     }
 
     private func exportLogsWithSavePanelOnMac() {
