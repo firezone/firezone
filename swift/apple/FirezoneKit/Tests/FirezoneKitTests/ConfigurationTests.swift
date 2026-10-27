@@ -570,6 +570,40 @@ struct ConfigurationTests {
     #expect(config.logFilter == "trace")
   }
 
+  @Test("Saving skips invalid URLs and an empty log filter, but not the other settings")
+  @MainActor
+  func savingSkipsInvalidValues() async throws {
+    let config = Configuration(userDefaults: UserDefaults.makeTestDefaults())
+    let viewModel = SettingsViewModel(configuration: config)
+    let authURL = config.authURL
+    let logFilter = config.logFilter
+
+    viewModel.authURL = "not a URL"
+    viewModel.accountSlug = "example"
+    viewModel.logFilter = ""
+    try await viewModel.save(.general)
+    try await viewModel.save(.logs)
+
+    #expect(config.authURL == authURL)
+    #expect(config.accountSlug == "example")
+    #expect(config.logFilter == logFilter)
+  }
+
+  @Test("Saving reports whether the account slug or portal changed")
+  @MainActor
+  func savingReportsSignInChanges() async throws {
+    let config = Configuration(userDefaults: UserDefaults.makeTestDefaults())
+    let viewModel = SettingsViewModel(configuration: config)
+
+    viewModel.connectOnStart.toggle()
+    let changedByToggle = try await viewModel.save(.general)
+    viewModel.selectPortal(.cloudEu)
+    let changedByPortal = try await viewModel.save(.general)
+
+    #expect(!changedByToggle)
+    #expect(changedByPortal)
+  }
+
   // MARK: - Published Properties Initialization
 
   @Test("Published MDM-only properties initialize from UserDefaults")

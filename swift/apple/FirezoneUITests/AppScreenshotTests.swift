@@ -354,9 +354,9 @@
       _ label: String, showing anchor: String, in window: XCUIElement
     ) throws {
       let candidates = [
+        window.toolbars.buttons[label],
         window.tabs[label],
         window.tabGroups.buttons[label],
-        window.toolbars.buttons[label],
         window.radioButtons[label],
         window.buttons[label],
       ]

@@ -21,15 +21,12 @@ public struct SettingsView: View {
 
   private enum ConfirmationAlertContinueAction: Int {
     case none
-    case saveSettings
     case saveSettingsAndDismiss
 
     func performAction(on view: SettingsView) async throws {
       switch self {
       case .none:
         break
-      case .saveSettings:
-        try await view.saveSettings()
       case .saveSettingsAndDismiss:
         try await view.saveSettingsAndDismiss()
       }
@@ -46,6 +43,20 @@ public struct SettingsView: View {
     }
 
     @State private var exportedLogArchive: LogArchive?
+  #endif
+
+  #if os(macOS)
+    private enum Field: Hashable {
+      case accountSlug
+      case authURL
+      case apiURL
+      case logFilter
+    }
+
+    private static let paneWidth: CGFloat = 500
+
+    @FocusState private var focusedField: Field?
+    @State private var isShowingSignOutAlert = false
   #endif
 
   private struct PlaceholderText {
@@ -74,6 +85,16 @@ public struct SettingsView: View {
       case .logs: return "Diagnostics"
       }
     }
+
+    #if os(macOS)
+      var systemImage: String {
+        switch self {
+        case .general: return "gearshape"
+        case .deviceTrust: return "checkmark.shield"
+        case .logs: return "stethoscope"
+        }
+      }
+    #endif
   }
 
   public init(store: Store, selectedTab: Tab = .general) {
@@ -128,7 +149,7 @@ public struct SettingsView: View {
                   withErrorHandler { try await action.performAction(on: self) }
                 }
               }
-              .disabled(viewModel.shouldDisableApplyButton)
+              .disabled(viewModel.shouldDisableSaveButton)
             }
             ToolbarItem(placement: .navigationBarLeading) {
               Button("Cancel") { dismiss() }
@@ -154,74 +175,32 @@ public struct SettingsView: View {
         }
       }
     #elseif os(macOS)
-      VStack {
-        TabView(selection: $viewModel.selectedTab) {
-          generalTab
-            .tabItem {
-              Text(Tab.general.title)
-            }
-            .tag(Tab.general)
-          if store.deviceTrustCertificateSummary != nil {
-            deviceTrustTab
-              .tabItem {
-                Text(Tab.deviceTrust.title)
+      VStack(spacing: 0) {
+        switch viewModel.selectedTab {
+        case .general: generalTab
+        case .deviceTrust: deviceTrustTab
+        case .logs: logsTab
+        }
+      }
+      .toolbar {
+        ToolbarItem(placement: .principal) {
+          HStack(spacing: 4) {
+            ForEach(panes, id: \.self) { tab in
+              SettingsPaneButton(tab: tab, isSelected: viewModel.selectedTab == tab) {
+                viewModel.selectedTab = tab
               }
-              .tag(Tab.deviceTrust)
+            }
           }
-          logsTab
-            .tabItem {
-              Text(Tab.logs.title)
-            }
-            .tag(Tab.logs)
         }
-        .padding(20)
-        Spacer()
-        HStack(spacing: 5) {
-          BuildLabel()
-          Spacer()
-          Button(
-            "Reset to Defaults",
-            action: {
-              viewModel.reset()
-            }
-          )
-          .disabled(viewModel.shouldDisableResetButton)
-
-          Button(
-            "Apply",
-            action: {
-              let action = ConfirmationAlertContinueAction.saveSettings
-              if viewModel.selectedTab == .general,
-                [.connected, .connecting, .reasserting].contains(store.vpnStatus)
-              {
-                self.confirmationAlertContinueAction = action
-                self.isShowingConfirmationAlert = true
-              } else {
-                withErrorHandler { try await action.performAction(on: self) }
-              }
-            }
-          )
-          .disabled(viewModel.shouldDisableApplyButton)
-
-        }
-        .padding([.bottom], 20)
-        .padding([.leading, .trailing], 40)
-        Spacer()
       }
       .navigationTitle(viewModel.selectedTab.title)
-      .alert(
-        SignOutAlert.title,
-        isPresented: $isShowingConfirmationAlert,
-        presenting: confirmationAlertContinueAction,
-        actions: { confirmationAlertContinueAction in
-          Button("OK", role: .destructive) {
-            withErrorHandler { try await confirmationAlertContinueAction.performAction(on: self) }
-          }
-        },
-        message: { _ in
-          Text(SignOutAlert.message)
-        }
-      )
+      .onChange(of: focusedField) { _ in commitTextFields() }
+      .onDisappear { commitTextFields() }
+      .alert(SignOutAlert.title, isPresented: $isShowingSignOutAlert) {
+        Button("OK") {}
+      } message: {
+        Text(SignOutAlert.message)
+      }
     #else
       #error("Unsupported platform")
     #endif
@@ -236,85 +215,68 @@ public struct SettingsView: View {
 
   private var generalTab: some View {
     #if os(macOS)
-      VStack {
-        Spacer()
-        HStack {
-          Spacer()
-          Form {
-            Section {
-              LabeledContent("Account Slug") {
-                TextField(
-                  "",
-                  text: $viewModel.accountSlug,
-                  prompt: Text(PlaceholderText.accountSlug)
-                )
-                .labelsHidden()
-                .disabled(configuration.isAccountSlugForced)
-                .frame(width: 250)
-              }
+      VStack(spacing: 0) {
+        Form {
+          Section("Sign-in") {
+            TextField(
+              "Account Slug",
+              text: $viewModel.accountSlug,
+              prompt: Text(PlaceholderText.accountSlug)
+            )
+            .focused($focusedField, equals: .accountSlug)
+            .onSubmit { commit(.general) }
+            .disabled(configuration.isAccountSlugForced)
 
-              LabeledContent(Portal.pickerTitle) {
-                Picker(Portal.pickerTitle, selection: portalSelection) {
-                  ForEach(Portal.allCases) { portal in
-                    Text(portal.title).tag(portal)
-                  }
-                }
-                .labelsHidden()
-                .fixedSize()
-                .disabled(viewModel.isPortalForced)
+            Picker(Portal.pickerTitle, selection: portalSelection) {
+              ForEach(Portal.allCases) { portal in
+                Text(portal.title).tag(portal)
               }
-
-              if viewModel.portal == .custom {
-                LabeledContent("Auth URL") {
-                  TextField(
-                    "",
-                    text: $viewModel.authURL,
-                    prompt: Text(PlaceholderText.authURL)
-                  )
-                  .labelsHidden()
-                  .disabled(configuration.isAuthURLForced)
-                  .frame(width: 250)
-                }
-
-                LabeledContent("API URL") {
-                  TextField(
-                    "",
-                    text: $viewModel.apiURL,
-                    prompt: Text(PlaceholderText.apiURL)
-                  )
-                  .labelsHidden()
-                  .disabled(configuration.isApiURLForced)
-                  .frame(width: 250)
-                }
-              }
-            } header: {
-              Text("Sign-in")
-                .font(.headline)
             }
+            .disabled(viewModel.isPortalForced)
 
-            Section {
-              Toggle(isOn: $viewModel.connectOnStart) {
-                Text("Automatically connect when Firezone is launched")
-              }
-              .toggleStyle(.checkbox)
-              .disabled(configuration.isConnectOnStartForced)
+            if viewModel.portal == .custom {
+              TextField(
+                "Auth URL",
+                text: $viewModel.authURL,
+                prompt: Text(PlaceholderText.authURL)
+              )
+              .focused($focusedField, equals: .authURL)
+              .onSubmit { commit(.general) }
+              .disabled(configuration.isAuthURLForced)
 
-              Toggle(isOn: $viewModel.startOnLogin) {
-                Text("Start Firezone when you sign into your Mac")
-              }
-              .toggleStyle(.checkbox)
-              .disabled(configuration.isStartOnLoginForced)
-            } header: {
-              Text("Startup")
-                .font(.headline)
-                .padding(.top, 10)
+              TextField(
+                "API URL",
+                text: $viewModel.apiURL,
+                prompt: Text(PlaceholderText.apiURL)
+              )
+              .focused($focusedField, equals: .apiURL)
+              .onSubmit { commit(.general) }
+              .disabled(configuration.isApiURLForced)
             }
           }
-          .padding(10)
-          Spacer()
+
+          Section("Startup") {
+            Toggle(isOn: $viewModel.connectOnStart) {
+              Text("Automatically connect when Firezone is launched")
+            }
+            .toggleStyle(.switch)
+            .disabled(configuration.isConnectOnStartForced)
+
+            Toggle(isOn: $viewModel.startOnLogin) {
+              Text("Start Firezone when you sign into your Mac")
+            }
+            .toggleStyle(.switch)
+            .disabled(configuration.isStartOnLoginForced)
+          }
         }
-        Spacer()
+        .formStyle(.grouped)
+
+        paneFooter(for: .general)
       }
+      .frame(width: Self.paneWidth, height: 400)
+      .onChange(of: viewModel.portal) { _ in commit(.general) }
+      .onChange(of: viewModel.connectOnStart) { _ in commit(.general) }
+      .onChange(of: viewModel.startOnLogin) { _ in commit(.general) }
     #elseif os(iOS)
       VStack {
         Form {
@@ -481,21 +443,18 @@ public struct SettingsView: View {
         }
       }
     #elseif os(macOS)
-      VStack {
-        Spacer()
-        HStack {
-          Spacer()
-          Form {
-            LabeledContent("Log Filter") {
-              TextField(
-                "",
-                text: $viewModel.logFilter,
-                prompt: Text(PlaceholderText.logFilter)
-              )
-              .labelsHidden()
-              .disabled(configuration.isLogFilterForced)
-              .frame(width: 250)
-            }
+      VStack(spacing: 0) {
+        Form {
+          Section("Logs") {
+            TextField(
+              "Log Filter",
+              text: $viewModel.logFilter,
+              prompt: Text(PlaceholderText.logFilter)
+            )
+            .focused($focusedField, equals: .logFilter)
+            .onSubmit { commit(.logs) }
+            .disabled(configuration.isLogFilterForced)
+
             LogFilesView(
               sizeText: viewModel.logDirectorySizeText,
               isExporting: viewModel.isExportingLogs,
@@ -514,11 +473,12 @@ public struct SettingsView: View {
               viewModel.cancelLogDirectorySizeRefresh()
             }
           }
-          .padding(10)
-          Spacer()
         }
-        Spacer()
+        .formStyle(.grouped)
+
+        paneFooter(for: .logs)
       }
+      .frame(width: Self.paneWidth, height: 240)
     #else
       #error("Unsupported platform")
     #endif
@@ -539,6 +499,7 @@ public struct SettingsView: View {
         .frame(maxWidth: .infinity)
         .padding(.vertical)
       }
+      .frame(width: Self.paneWidth, height: 400)
     #elseif os(iOS)
       if let summary = store.deviceTrustCertificateSummary {
         DeviceTrustSettingsView(summary: summary)
@@ -554,6 +515,47 @@ public struct SettingsView: View {
   }
 
   #if os(macOS)
+    private var panes: [Tab] {
+      guard store.deviceTrustCertificateSummary != nil else { return [.general, .logs] }
+
+      return [.general, .deviceTrust, .logs]
+    }
+
+    private func paneFooter(for tab: Tab) -> some View {
+      HStack {
+        if tab == .general {
+          BuildLabel()
+            .font(.caption)
+        }
+        Spacer()
+        Button("Reset to Defaults") {
+          viewModel.reset()
+          commit(tab)
+        }
+        .disabled(viewModel.shouldDisableResetButton)
+      }
+      .padding([.horizontal, .bottom], 20)
+    }
+
+    /// Saves `tab`'s settings, and says so when the change waits for the next sign-in.
+    private func commit(_ tab: Tab) {
+      // Read now: the commit from `onDisappear` runs once the view is gone.
+      let viewModel = viewModel
+
+      withErrorHandler {
+        let changedSignIn = try await viewModel.save(tab)
+
+        if changedSignIn, [.connected, .connecting, .reasserting].contains(store.vpnStatus) {
+          isShowingSignOutAlert = true
+        }
+      }
+    }
+
+    private func commitTextFields() {
+      commit(.general)
+      commit(.logs)
+    }
+
     private func exportLogsWithSavePanelOnMac() {
       viewModel.isExportingLogs = true
 
@@ -754,6 +756,37 @@ struct FormTextField: View {
 
     func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {
       // Nothing to do
+    }
+  }
+#endif
+
+#if os(macOS)
+  /// A pane of the settings window's toolbar.
+  private struct SettingsPaneButton: View {
+    let tab: SettingsView.Tab
+    let isSelected: Bool
+    let action: () -> Void
+
+    var body: some View {
+      Button(action: action) {
+        VStack(spacing: 3) {
+          Image(systemName: tab.systemImage)
+            .font(.system(size: 18))
+            .frame(height: 22)
+          Text(tab.title)
+            .font(.system(size: 11))
+        }
+        .frame(minWidth: 64)
+        .padding(4)
+        .background(
+          RoundedRectangle(cornerRadius: 6)
+            .fill(isSelected ? Color.primary.opacity(0.1) : Color.clear)
+        )
+        .contentShape(Rectangle())
+      }
+      .buttonStyle(.plain)
+      .accessibilityLabel(tab.title)
+      .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
   }
 #endif

@@ -14,9 +14,9 @@ class SettingsViewModel: ObservableObject {
   private var cancellables: Set<AnyCancellable> = []
   private var logDirectorySizeTask: Task<Void, Never>?
 
-  // Save, Apply and Reset act on this tab's settings only.
+  // Save and Reset act on one tab's settings only.
   @Published var selectedTab: SettingsView.Tab
-  @Published private(set) var shouldDisableApplyButton = false
+  @Published private(set) var shouldDisableSaveButton = false
   @Published private(set) var shouldDisableResetButton = false
   // Kept apart from the URLs so that picking Custom does not snap back to the portal they match.
   @Published private(set) var portal: Portal
@@ -124,24 +124,37 @@ class SettingsViewModel: ObservableObject {
     updateDerivedState()
   }
 
-  func save() async throws {
-    switch selectedTab {
+  /// Saves the settings of `tab`, or of the selected tab, skipping any that are invalid.
+  ///
+  /// Returns whether the account slug or the portal changed, which only take effect on the next
+  /// sign-in.
+  @discardableResult
+  func save(_ tab: SettingsView.Tab? = nil) async throws -> Bool {
+    let savedSignInSettings = signInSettings
+
+    switch tab ?? selectedTab {
     case .general:
-      if !configuration.isAuthURLForced { configuration.authURL = authURL }
-      if !configuration.isApiURLForced { configuration.apiURL = apiURL }
+      if areURLsValid() {
+        if !configuration.isAuthURLForced { configuration.authURL = authURL }
+        if !configuration.isApiURLForced { configuration.apiURL = apiURL }
+        if portal == .custom, !isPortalForced {
+          configuration.lastCustomURLs = (authURL, apiURL)
+        }
+      }
       if !configuration.isAccountSlugForced { configuration.accountSlug = accountSlug }
       if !configuration.isConnectOnStartForced { configuration.connectOnStart = connectOnStart }
       if !configuration.isStartOnLoginForced { configuration.startOnLogin = startOnLogin }
-      if portal == .custom, !isPortalForced {
-        configuration.lastCustomURLs = (authURL, apiURL)
-      }
     case .logs:
-      if !configuration.isLogFilterForced { configuration.logFilter = logFilter }
+      if !configuration.isLogFilterForced, isLogFilterValid() {
+        configuration.logFilter = logFilter
+      }
     case .deviceTrust:
       break
     }
 
     updateDerivedState()
+
+    return signInSettings != savedSignInSettings
   }
 
   /// Picks `portal` on the user's behalf: Firezone Cloud brings its own URLs, and Custom brings
@@ -221,6 +234,10 @@ class SettingsViewModel: ObservableObject {
     !logFilter.isEmpty
   }
 
+  private var signInSettings: [String] {
+    [configuration.accountSlug, configuration.authURL, configuration.apiURL]
+  }
+
   var isPortalForced: Bool {
     configuration.isAuthURLForced || configuration.isApiURLForced
   }
@@ -253,16 +270,16 @@ class SettingsViewModel: ObservableObject {
         && (configuration.isStartOnLoginForced
           || startOnLogin == ConfigurationDefaults.startOnLogin)
 
-      shouldDisableApplyButton = isAllForced || isSaved || !areURLsValid()
+      shouldDisableSaveButton = isAllForced || isSaved || !areURLsValid()
       shouldDisableResetButton = isAllForced || isDefault
     case .logs:
       let isForced = configuration.isLogFilterForced
 
-      shouldDisableApplyButton =
+      shouldDisableSaveButton =
         isForced || logFilter == configuration.logFilter || !isLogFilterValid()
       shouldDisableResetButton = isForced || logFilter == ConfigurationDefaults.logFilter
     case .deviceTrust:
-      shouldDisableApplyButton = true
+      shouldDisableSaveButton = true
       shouldDisableResetButton = true
     }
   }

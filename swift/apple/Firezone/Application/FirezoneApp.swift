@@ -294,6 +294,8 @@ extension DeviceTrustValidationError {
     ) {
       SettingsView(store: store)
     }
+    .windowResizability(.contentSize)
+    .windowToolbarStyle(.expanded)
   }
 #endif
 

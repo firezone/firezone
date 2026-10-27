@@ -223,7 +223,7 @@
     ///
     /// `SettingsViewModel` snapshots each unforced setting when it is built and only
     /// ever re-reads the forced ones, so a value that arrives later leaves the form
-    /// showing a stale one and its Apply button lit.
+    /// showing a stale one, ready to be saved back over it.
     private static func seedConfiguration(with scenario: MockScenario) {
       let configuration = Configuration.shared
 
