@@ -11,6 +11,7 @@ enum AuthClientError: LocalizedError {
   case invalidCallbackURL
   case randomNumberGenerationFailure(errorStatus: Int32)
   case invalidAuthURL
+  case settingsChanged
 
   var errorDescription: String? {
     switch self {
@@ -30,6 +31,8 @@ enum AuthClientError: LocalizedError {
       return """
         The provided Auth URL seems invalid. Please double-check your settings.
         """
+    case .settingsChanged:
+      return "Sign-in settings changed. Please try signing in again."
     }
   }
 }

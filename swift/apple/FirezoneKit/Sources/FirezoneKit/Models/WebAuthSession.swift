@@ -16,10 +16,11 @@ struct WebAuthSession {
 
   static func signIn(store: Store, configuration: Configuration? = nil) async throws {
     let configuration = configuration ?? Configuration.shared
+    let signInValues = configuration.signInValues
 
-    guard let authURL = URL(string: configuration.authURL),
+    guard let authURL = URL(string: signInValues.authURL),
       let authClient = try? AuthClient(
-        authURL: authURL.appendingPathComponent(configuration.accountSlug)),
+        authURL: authURL.appendingPathComponent(signInValues.accountSlug)),
       let url = try? authClient.build()
     else {
       // Should never get here because we perform URL validation on input, but handle this just in case
@@ -38,6 +39,10 @@ struct WebAuthSession {
     )
 
     if let token {
+      guard configuration.signInValues == signInValues else {
+        throw AuthClientError.settingsChanged
+      }
+
       try await store.signIn(token: token)
     }
   }

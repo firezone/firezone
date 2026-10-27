@@ -687,6 +687,7 @@ public final class Store: ObservableObject {
   }
 
   func signIn(token: String) async throws {
+    let signInValues = configuration.signInValues
     try await manager().save(configuration: configuration)
     try await manager().enable()
 
@@ -704,7 +705,7 @@ public final class Store: ObservableObject {
       identityReference: identityReference()
     )
 
-    configuration.signedInWith = configuration.signInValues
+    configuration.signedInWith = signInValues
   }
 
   /// The keychain reference of the certificate the app displayed, [`nil`] when none is loadable.
