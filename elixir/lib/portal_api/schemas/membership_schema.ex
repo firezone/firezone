@@ -12,6 +12,7 @@ defmodule PortalAPI.Schemas.Membership do
                :allow_email_otp_sign_in,
                :created_by_directory_id,
                :disabled_by_directory_id,
+               :managed_by,
                :identity_count,
                :inserted_at,
                :is_disabled,

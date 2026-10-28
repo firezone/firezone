@@ -17,6 +17,11 @@ defmodule Portal.Actor do
     field :type, Ecto.Enum,
       values: [:account_user, :account_admin_user, :service_account, :api_client]
 
+    # Who owns the actor. The system provisions a few per account, such as the
+    # service account behind infrastructure devices; those cannot be changed or
+    # deleted by admins.
+    field :managed_by, Ecto.Enum, values: ~w[account system]a, default: :account
+
     field :email, :string
     field :password_hash, :string, redact: true
     field :allow_email_otp_sign_in, :boolean, default: false
@@ -57,6 +62,7 @@ defmodule Portal.Actor do
     |> trim_change(~w[name email]a)
     |> validate_length(:name, max: 255)
     |> validate_type_transition()
+    |> validate_system_actor_unchanged()
     |> track_disabling_directory()
     |> normalize_email(:email)
     |> validate_email(:email)
@@ -66,7 +72,12 @@ defmodule Portal.Actor do
     |> check_constraint(:disabled_by_directory_id, name: :disabled_by_directory_requires_disabled)
     |> unique_constraint(:email, name: :actors_account_id_email_index)
     |> check_constraint(:type, name: :type_is_valid)
+    |> check_constraint(:managed_by, name: :actors_managed_by_is_valid)
   end
+
+  @doc "Whether the system owns `actor`, so admins cannot change or delete it."
+  @spec system_managed?(t()) :: boolean()
+  def system_managed?(%__MODULE__{managed_by: managed_by}), do: managed_by == :system
 
   def email_meaningfully_changed?(%Ecto.Changeset{} = changeset) do
     case fetch_change(changeset, :email) do
@@ -74,6 +85,15 @@ defmodule Portal.Actor do
       :error -> false
     end
   end
+
+  # A system-managed actor is exactly what the system made it: no rename, no
+  # email, no type change, no disabling. Creating one is the only write.
+  defp validate_system_actor_unchanged(%Ecto.Changeset{data: %__MODULE__{managed_by: :system}} = changeset)
+       when changeset.changes != %{} do
+    add_error(changeset, :base, "system-managed actors cannot be changed")
+  end
+
+  defp validate_system_actor_unchanged(changeset), do: changeset
 
   defp validate_type_transition(changeset) do
     old_type = changeset.data.type

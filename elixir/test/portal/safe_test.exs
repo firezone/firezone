@@ -31,6 +31,21 @@ defmodule Portal.SafeTest do
   end
 
   describe "delete/1" do
+    test "refuses a system-managed actor even for an admin" do
+      account = account_fixture()
+      subject = admin_subject_fixture(account: account)
+
+      actor =
+        Portal.ActorFixtures.service_account_fixture(account: account, managed_by: :system)
+
+      assert {:error, :unauthorized} = actor |> Safe.scoped(subject) |> Safe.delete()
+
+      assert {:error, :unauthorized} =
+               actor |> Ecto.Changeset.change() |> Safe.scoped(subject) |> Safe.delete()
+
+      assert Portal.Repo.get_by(Portal.Actor, id: actor.id)
+    end
+
     test "returns not_found when the row was already deleted" do
       account = account_fixture()
       subject = admin_subject_fixture(account: account)

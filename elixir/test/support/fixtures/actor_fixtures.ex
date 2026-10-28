@@ -63,7 +63,14 @@ defmodule Portal.ActorFixtures do
 
     {:ok, actor} =
       %Portal.Actor{}
-      |> Ecto.Changeset.cast(actor_attrs, [:name, :type, :email, :allow_email_otp_sign_in, :password_hash])
+      |> Ecto.Changeset.cast(actor_attrs, [
+        :name,
+        :type,
+        :email,
+        :allow_email_otp_sign_in,
+        :password_hash,
+        :managed_by
+      ])
       |> Ecto.Changeset.put_assoc(:account, account)
       |> Portal.Actor.changeset()
       |> Portal.Repo.insert()
