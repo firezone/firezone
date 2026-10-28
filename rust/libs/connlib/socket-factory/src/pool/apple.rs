@@ -220,7 +220,7 @@ impl SocketPool {
         recv_buf_size: usize,
     ) -> Option<Arc<OwnedSocket>> {
         let key = (src, dst);
-        let mut inner = self.lock();
+        let inner = &mut *self.lock();
 
         if let Some(flow) = inner.flows.get(&key) {
             return Some(flow.socket.clone());
@@ -238,32 +238,23 @@ impl SocketPool {
             Ok(socket) => {
                 tracing::debug!(?src, %dst, "Connected new flow socket");
 
-                if inner.flows.len() >= MAX_FLOW_SOCKETS {
-                    let Inner {
-                        flows,
-                        drained,
-                        recv_waker,
-                        ..
-                    } = &mut *inner;
-                    if let Some((src, dst)) =
-                        evict_one(flows, self.local.port(), recv_buf_size, drained, recv_waker)
-                    {
-                        self.evictions.add(1, &[]);
-                        tracing::debug!(?src, %dst, "Evicted flow socket");
-                    }
+                if inner.flows.len() >= MAX_FLOW_SOCKETS
+                    && let Some((src, dst)) = evict_one(
+                        &mut inner.flows,
+                        self.local.port(),
+                        recv_buf_size,
+                        &mut inner.drained,
+                        &mut inner.recv_waker,
+                    )
+                {
+                    self.evictions.add(1, &[]);
+                    tracing::debug!(?src, %dst, "Evicted flow socket");
                 }
 
                 inner.rates.forget(&key);
 
                 let socket = Arc::new(socket);
-                inner.flows.insert(
-                    key,
-                    CachedSocket {
-                        socket: socket.clone(),
-                        created_at: Instant::now(),
-                        last_received: Mutex::new(None),
-                    },
-                );
+                inner.flows.insert(key, CachedSocket::new(socket.clone()));
 
                 // The receive task only learns about the new socket on its next poll.
                 if let Some(waker) = inner.recv_waker.take() {
@@ -283,7 +274,7 @@ impl SocketPool {
     }
 
     fn get_or_bind_source(&self, src: IpAddr, recv_buf_size: usize) -> Option<Arc<OwnedSocket>> {
-        let mut inner = self.lock();
+        let inner = &mut *self.lock();
         if let Some(source) = inner.sources.get(&src) {
             return Some(source.socket.clone());
         }
@@ -291,30 +282,17 @@ impl SocketPool {
         match create_socket(self.local, Some(src), None, inner.buffer_sizes) {
             Ok(socket) => {
                 if inner.sources.len() >= MAX_SOURCE_SOCKETS {
-                    let Inner {
-                        sources,
-                        drained,
-                        recv_waker,
-                        ..
-                    } = &mut *inner;
                     let _ = evict_one(
-                        sources,
+                        &mut inner.sources,
                         self.local.port(),
                         recv_buf_size,
-                        drained,
-                        recv_waker,
+                        &mut inner.drained,
+                        &mut inner.recv_waker,
                     );
                 }
 
                 let socket = Arc::new(socket);
-                inner.sources.insert(
-                    src,
-                    CachedSocket {
-                        socket: socket.clone(),
-                        created_at: Instant::now(),
-                        last_received: Mutex::new(None),
-                    },
-                );
+                inner.sources.insert(src, CachedSocket::new(socket.clone()));
                 if let Some(waker) = inner.recv_waker.take() {
                     waker.wake();
                 }
@@ -322,7 +300,7 @@ impl SocketPool {
                 Some(socket)
             }
             Err(e) => {
-                tracing::debug!(?src, "Failed to bind source socket: {e}");
+                tracing::debug!(%src, "Failed to bind source socket: {e}");
 
                 None
             }
@@ -367,6 +345,14 @@ impl Inner {
 }
 
 impl CachedSocket {
+    fn new(socket: Arc<OwnedSocket>) -> Self {
+        Self {
+            socket,
+            created_at: Instant::now(),
+            last_received: Mutex::new(None),
+        }
+    }
+
     fn record_received(&self, now: Instant) {
         *self.last_received.lock() = Some(now);
     }
