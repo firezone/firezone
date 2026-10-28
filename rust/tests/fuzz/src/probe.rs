@@ -87,7 +87,6 @@ pub(crate) enum Route {
         resource: ResourceId,
         gateway: GatewayId,
     },
-    Gateway(GatewayId),
     Peer(ClientId),
 }
 
@@ -95,7 +94,6 @@ impl Route {
     pub(crate) fn remote(self) -> Remote {
         match self {
             Route::Resource { gateway, .. } => Remote::Gateway(gateway),
-            Route::Gateway(gateway) => Remote::Gateway(gateway),
             Route::Peer(client) => Remote::Client(client),
         }
     }

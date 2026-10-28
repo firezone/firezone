@@ -821,9 +821,6 @@ impl ReferenceState {
                 request.protocol(),
                 true,
             ),
-            Route::Gateway(gateway) => {
-                (gateway_tun_probe_outcome(gateway, request.protocol()), None)
-            }
             // A retained flow completes its round trip; asking the portal again only refreshes
             // the authorization a peer that reconnected since took from us.
             Route::Peer(peer) => {
@@ -1900,7 +1897,7 @@ fn gateway_tun_probe_outcome(gateway: GatewayId, protocol: Protocol) -> Expected
     match protocol {
         Protocol::Tcp(53535) => panic!("gateway TUN probes do not target the DNS listener"),
         Protocol::Udp(53535) => panic!("gateway TUN probes do not target the DNS listener"),
-        _ => ExpectedOutcome::Rejected {
+        Protocol::Tcp(_) | Protocol::Udp(_) | Protocol::IcmpEcho(_) => ExpectedOutcome::Rejected {
             by: RejectionRemote::Gateway(gateway),
             response: RejectionResponse::Prohibited,
         },
