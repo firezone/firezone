@@ -322,13 +322,14 @@ public struct SettingsView: View {
             .toggleStyle(.switch)
             .disabled(configuration.isConnectOnStartForced)
           }
-          Section {
-            HStack {
-              Spacer()
-              resetButton
-              Spacer()
-            }
-          }
+        }
+        .safeAreaInset(edge: .bottom) {
+          resetButton
+            .buttonStyle(.bordered)
+            .controlSize(.large)
+            .padding()
+            .frame(maxWidth: .infinity)
+            .background(Color(uiColor: .systemGroupedBackground))
         }
       }
       .background(Color(uiColor: .secondarySystemBackground))
