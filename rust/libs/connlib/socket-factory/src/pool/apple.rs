@@ -511,6 +511,14 @@ fn create_socket(
     let bind_result = socket.bind(&bind_addr);
     trace_socket_scope("after_bind", &socket, src, dst, Some(&bind_result));
     bind_result?;
+    // NECP can scope the socket to the primary interface during bind.
+    let clear_result = if local.is_ipv4() {
+        socket.bind_device_by_index_v4(None)
+    } else {
+        socket.bind_device_by_index_v6(None)
+    };
+    trace_socket_scope("after_clear_scope", &socket, src, dst, Some(&clear_result));
+    clear_result?;
     if let Some(destination) = dst {
         let connect_result = socket.connect(&socket2::SockAddr::from(destination));
         trace_socket_scope("after_connect", &socket, src, dst, Some(&connect_result));
