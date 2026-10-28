@@ -4,7 +4,7 @@ mod nat_table;
 pub(crate) use crate::gateway::client_on_gateway::ClientOnGateway;
 
 use crate::authorization_rejections::AuthorizationRejections;
-use crate::gateway::client_on_gateway::TranslateOutboundResult;
+use crate::gateway::client_on_gateway::{ProxyIpAlreadyAssigned, TranslateOutboundResult};
 use crate::messages::gateway::{Client, ResourceDescription};
 use crate::messages::{IceCredentials, IngestToken, ResolveRequest};
 use crate::peer_store::PeerStore;
@@ -393,12 +393,19 @@ impl GatewayState {
         peer.set_ingest_token(resource.id(), flow_logs_ingest_token);
 
         if let Some(entry) = dns_resource_nat {
-            peer.setup_nat(
+            if let Err(e) = peer.setup_nat(
                 entry.domain,
                 resource.id(),
                 BTreeSet::from_iter(entry.resolved_ips),
                 BTreeSet::from_iter(entry.proxy_ips),
-            )?;
+            ) {
+                if e.any_is::<ProxyIpAlreadyAssigned>() {
+                    tracing::debug!("Conflicting proxy assignment; closing connection: {e:#}");
+                    self.cleanup_connection(&client.id, now);
+                }
+
+                return Err(e);
+            }
         }
 
         Ok(())
@@ -437,25 +444,34 @@ impl GatewayState {
     ) -> Result<()> {
         use p2p_control::dns_resource_nat;
 
-        let nat_status = resolve_result
-            .and_then(|addresses| {
-                self.peers
-                    .peer_by_id_mut(&req.client)
-                    .context("Unknown peer")?
-                    .setup_nat(
-                        req.domain.clone(),
-                        req.resource,
-                        BTreeSet::from_iter(addresses),
-                        BTreeSet::from_iter(req.proxy_ips),
-                    )?;
+        let result = resolve_result.and_then(|addresses| {
+            self.peers
+                .peer_by_id_mut(&req.client)
+                .context("Unknown peer")?
+                .setup_nat(
+                    req.domain.clone(),
+                    req.resource,
+                    BTreeSet::from_iter(addresses),
+                    BTreeSet::from_iter(req.proxy_ips),
+                )?;
 
-                Ok(dns_resource_nat::NatStatus::Active)
-            })
-            .unwrap_or_else(|e| {
+            Ok(())
+        });
+
+        let nat_status = match result {
+            Ok(()) => dns_resource_nat::NatStatus::Active,
+            Err(e) if e.any_is::<ProxyIpAlreadyAssigned>() => {
+                tracing::debug!("Conflicting proxy assignment; closing connection: {e:#}");
+                self.cleanup_connection(&req.client, now);
+
+                return Ok(());
+            }
+            Err(e) => {
                 tracing::warn!("Failed to setup DNS resource NAT: {e:#}");
 
                 dns_resource_nat::NatStatus::Inactive
-            });
+            }
+        };
 
         let packet = dns_resource_nat::domain_status(req.resource, req.domain, nat_status)?;
 

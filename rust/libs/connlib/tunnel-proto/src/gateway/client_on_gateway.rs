@@ -104,7 +104,7 @@ impl ClientOnGateway {
                 self.permanent_translations
                     .get(proxy_ip)
                     .is_none_or(|state| state.domain == name),
-                "Proxy IP {proxy_ip} is assigned to a different domain"
+                ProxyIpAlreadyAssigned(*proxy_ip)
             );
         }
 
@@ -594,6 +594,10 @@ impl ClientOnGateway {
         self.client_tun
     }
 }
+
+#[derive(Debug, thiserror::Error)]
+#[error("Proxy IP {0} is assigned to a different domain")]
+pub(super) struct ProxyIpAlreadyAssigned(IpAddr);
 
 #[derive(Debug, thiserror::Error)]
 #[error("Internet resource rejects IP: {0}")]
@@ -1280,7 +1284,7 @@ mod tests {
             BTreeSet::from([proxy_ip4_1(), proxy_ip4_2()]),
         );
 
-        assert!(result.is_err());
+        assert!(result.unwrap_err().any_is::<ProxyIpAlreadyAssigned>());
 
         let TranslateOutboundResult::Send(packet) = peer.translate_outbound(request, now).unwrap()
         else {
