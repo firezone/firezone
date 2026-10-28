@@ -3,7 +3,7 @@ use std::{path::PathBuf, time::Duration};
 use anyhow::{Context as _, Result};
 use logging::err_with_src;
 use serde::Serialize;
-use tauri_plugin_dialog::{DialogExt as _, MessageDialogButtons, MessageDialogKind};
+use tauri_plugin_dialog::DialogExt as _;
 
 use crate::{
     controller::ControllerRequest,
@@ -243,29 +243,7 @@ impl From<x509_keystore::ValidationError> for X509ValidationError {
 
 #[tauri::command]
 #[specta::specta]
-pub async fn clear_logs(
-    window: tauri::WebviewWindow,
-    managed: tauri::State<'_, Managed>,
-) -> Result<(), Error> {
-    let (confirm_tx, confirm_rx) = tokio::sync::oneshot::channel();
-
-    window
-        .dialog()
-        .message("Delete all log files?")
-        .kind(MessageDialogKind::Warning)
-        .buttons(MessageDialogButtons::OkCancelCustom(
-            "Clear".to_owned(),
-            "Cancel".to_owned(),
-        ))
-        .parent(&window)
-        .show(|confirmed| {
-            let _ = confirm_tx.send(confirmed);
-        });
-
-    if !confirm_rx.await.unwrap_or(false) {
-        return Ok(());
-    }
-
+pub async fn clear_logs(managed: tauri::State<'_, Managed>) -> Result<(), Error> {
     let (tx, rx) = tokio::sync::oneshot::channel();
 
     managed
@@ -335,29 +313,7 @@ fn check_log_filter(log_filter: &str) -> Result<(), Error> {
 
 #[tauri::command]
 #[specta::specta]
-pub async fn reset_client_settings(
-    window: tauri::WebviewWindow,
-    managed: tauri::State<'_, Managed>,
-) -> Result<(), Error> {
-    let (tx, rx) = tokio::sync::oneshot::channel();
-
-    window
-        .dialog()
-        .message("Reset settings to defaults?")
-        .kind(MessageDialogKind::Warning)
-        .buttons(MessageDialogButtons::OkCancelCustom(
-            "Reset".to_owned(),
-            "Cancel".to_owned(),
-        ))
-        .parent(&window)
-        .show(|confirmed| {
-            let _ = tx.send(confirmed);
-        });
-
-    if !rx.await.unwrap_or(false) {
-        return Ok(());
-    }
-
+pub async fn reset_client_settings(managed: tauri::State<'_, Managed>) -> Result<(), Error> {
     managed
         .send_request(ControllerRequest::ResetClientSettings)
         .await?;

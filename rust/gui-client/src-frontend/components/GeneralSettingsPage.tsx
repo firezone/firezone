@@ -6,6 +6,7 @@ import {
   SignInSettingsViewModel,
 } from "../generated/bindings";
 import Button from "./Button";
+import ConfirmationDialog from "./ConfirmationDialog";
 import SettingRow from "./SettingRow";
 import TextSetting from "./TextSetting";
 import { ManagedSelect, ManagedToggleSwitch } from "./ManagedInput";
@@ -41,6 +42,7 @@ export default function GeneralSettingsPage({
   resetSettings,
 }: Props) {
   const saved = settings ?? defaultSettings;
+  const [confirmReset, setConfirmReset] = useState(false);
 
   // Custom with a cloud control plane's URLs is saved as that control plane, so the page
   // keeps the choice until the user enters URLs of their own.
@@ -217,17 +219,23 @@ export default function GeneralSettingsPage({
         </section>
 
         <div className="flex justify-end border-t border-border pt-3">
-          <Button
-            onClick={() => {
-              setCustomPicked(false);
-              resetSettings();
-            }}
-            type="button"
-          >
+          <Button onClick={() => setConfirmReset(true)} type="button">
             Reset to Defaults
           </Button>
         </div>
       </div>
+      {confirmReset && (
+        <ConfirmationDialog
+          question="Reset settings to defaults?"
+          confirmLabel="Reset"
+          onCancel={() => setConfirmReset(false)}
+          onConfirm={() => {
+            setConfirmReset(false);
+            setCustomPicked(false);
+            resetSettings();
+          }}
+        />
+      )}
     </div>
   );
 }
