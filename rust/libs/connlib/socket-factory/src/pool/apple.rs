@@ -1,5 +1,4 @@
-//! The Apple [`SocketPool`]: an unconnected catch-all socket plus a cache of connected "flow"
-//! sockets.
+//! The Apple [`SocketPool`]: unconnected wildcard and source sockets, plus connected flow sockets.
 //!
 //! Darwin gates its UDP fast path on connected sockets:
 //!
@@ -17,8 +16,8 @@
 //! The catch-all remains as the wildcard receiver (ICE peer-reflexive traffic, NAT
 //! rebinds) and as the fallback when connecting fails.
 //!
-//! Explicit source addresses get a bound flow socket immediately. Other pairs get a flow
-//! socket when either of these gates proves they carry real traffic:
+//! Explicit sources use unconnected sockets bound to their address and interface. Every
+//! pair earns a connected flow socket when either gate proves it carries real traffic:
 //!
 //! - A single transmit carrying at least [`PROMOTE_BATCH_SIZE`] datagrams. Batching is
 //!   what `sendmsg_x` accelerates, and a batch that large only forms when the event loop
@@ -28,7 +27,7 @@
 //!   constant-bitrate media) may never coalesce a batch yet still need the flow
 //!   advisories only a connected socket gets.
 //!
-//! Sparse traffic without an explicit source uses the catch-all socket.
+//! The catch-all socket also remains the final fallback if creating a source socket fails.
 
 use std::{
     collections::{BTreeMap, VecDeque},
@@ -54,6 +53,8 @@ use super::{OwnedSocket, Socket, poll_recv_ready};
 /// Apple devices only ever run Clients, so the steady-state working set is tiny:
 /// the data-bearing gateway path(s) and the relays.
 const MAX_FLOW_SOCKETS: usize = 16;
+const MAX_SOURCE_SOCKETS: usize = 16;
+const SOURCE_RETRY_DELAY: Duration = Duration::from_secs(1);
 
 /// Datagrams a single transmit must carry for its pair to earn a flow socket.
 ///
@@ -77,8 +78,7 @@ const RATE_WINDOW: Duration = Duration::from_secs(1);
 
 type Key = (Option<IpAddr>, SocketAddr);
 
-/// The unconnected catch-all socket plus a cache of connected flow sockets, keyed by
-/// `(source IP, destination)`.
+/// Unconnected wildcard and source sockets, plus connected per-pair flow sockets.
 pub(crate) struct SocketPool {
     /// Unconnected socket bound to the wildcard address; receives from any peer and is the
     /// fallback for sends when connecting fails.
@@ -90,14 +90,16 @@ pub(crate) struct SocketPool {
 }
 
 struct Inner {
-    flows: BTreeMap<Key, Flow>,
+    flows: BTreeMap<Key, CachedSocket>,
+    sources: BTreeMap<IpAddr, CachedSocket>,
+    source_failures: BTreeMap<IpAddr, Instant>,
     /// Send rates of pairs that have not (yet) earned a flow socket.
     rates: RateGate,
-    /// Whether policy permits creating connected flow sockets.
-    /// `EPERM` disables new flows until the pool is reset on a network change.
+    /// A failed promotion disables new connected flows until the pool is reset.
+    /// Unconnected source sockets and the wildcard remain available.
     flow_sockets_supported: bool,
     buffer_sizes: Option<(usize, usize)>,
-    /// Datagrams rescued from an evicted socket's receive buffer just before closing it.
+    /// Datagrams rescued from evicted sockets before closing them.
     drained: VecDeque<DatagramBatch>,
     /// Waker of the receive task; woken when new sockets or drained datagrams appear.
     recv_waker: Option<Waker>,
@@ -105,16 +107,11 @@ struct Inner {
     round_robin: usize,
 }
 
-/// A connected flow socket plus the metadata the cache needs to evict it.
-struct Flow {
+/// A cached socket plus the metadata used to choose an eviction victim.
+struct CachedSocket {
     socket: Arc<OwnedSocket>,
     created_at: Instant,
-    /// When we last read a datagram off this socket.
-    ///
-    /// Inbound on the exact 4-tuple is the only signal that a path actually works:
-    /// sends are self-generated and keep flowing to dead destinations too.
-    ///
-    /// Interior-mutable so the receive path can update it while iterating the cache.
+    /// Inbound activity, used to keep useful sockets during eviction.
     last_received: Mutex<Option<Instant>>,
 }
 
@@ -129,6 +126,8 @@ impl SocketPool {
             local,
             inner: Mutex::new(Inner {
                 flows: BTreeMap::new(),
+                sources: BTreeMap::new(),
+                source_failures: BTreeMap::new(),
                 rates: RateGate::default(),
                 flow_sockets_supported: true,
                 buffer_sizes: None,
@@ -142,8 +141,7 @@ impl SocketPool {
 
     /// Picks the socket to send a transmit of `datagrams` datagrams for `(src, dst)` on.
     ///
-    /// Reuses or connects a flow socket. Implicit-source pairs below the promotion
-    /// threshold and connect failures fall back to the catch-all socket.
+    /// Uses a connected flow once promoted, then a source-bound socket, then the wildcard.
     pub(crate) fn get_send_socket(
         &self,
         src: Option<IpAddr>,
@@ -152,10 +150,11 @@ impl SocketPool {
         recv_buf_size: usize,
     ) -> Arc<OwnedSocket> {
         self.get_or_connect(src, dst, datagrams, recv_buf_size)
+            .or_else(|| src.and_then(|src| self.get_or_bind_source(src, recv_buf_size)))
             .unwrap_or_else(|| self.wildcard.clone())
     }
 
-    /// Polls the catch-all socket and all flow sockets for an incoming batch, applying
+    /// Polls all wildcard, source and flow sockets for an incoming batch, applying
     /// `try_recv` to whichever is ready first.
     ///
     /// This readiness multiplexing is the one place where async-await does not suffice: the
@@ -171,26 +170,26 @@ impl SocketPool {
     {
         let mut inner = self.lock();
 
-        // Register the waker first: a flow socket connected after we inspect the
+        // Register the waker first: a socket created after we inspect the
         // set below must still be able to wake us.
         match &mut inner.recv_waker {
             Some(existing) if existing.will_wake(cx.waker()) => {}
             slot => *slot = Some(cx.waker().clone()),
         }
 
-        // Datagrams rescued from an evicted flow socket are the oldest; yield them first.
+        // Datagrams rescued from evicted sockets are the oldest; yield them first.
         if let Some(batch) = inner.drained.pop_front() {
             return Poll::Ready(Ok(batch));
         }
 
         // Rotate the polling order by one slot per call so no socket can starve the others
         // under sustained traffic. The catch-all socket takes part as one slot among the flows.
-        let position = inner.round_robin % (inner.flows.len() + 1);
+        let position = inner.round_robin % (inner.flows.len() + inner.sources.len() + 1);
         inner.round_robin = inner.round_robin.wrapping_add(1);
 
         for (socket, flow) in inner.rotated_recv_order(self.wildcard.as_socket(), position) {
             if let Poll::Ready(result) = poll_recv_ready(cx, socket, &mut try_recv) {
-                // Only flow sockets track a last-received time (for eviction); the wildcard is `None`.
+                // Cached sockets track receive times for eviction; the wildcard is `None`.
                 if let Some(flow) = flow
                     && result.is_ok()
                 {
@@ -210,15 +209,12 @@ impl SocketPool {
         let mut inner = self.lock();
         inner.buffer_sizes = Some((send, recv));
 
-        for flow in inner.flows.values() {
-            flow.socket.apply_buffer_sizes(send, recv, port);
+        for cached in inner.flows.values().chain(inner.sources.values()) {
+            cached.socket.apply_buffer_sizes(send, recv, port);
         }
     }
 
-    /// Returns the flow socket for `(src, dst)`, binding explicit sources immediately.
-    ///
-    /// Returns `None` for implicit-source pairs below the promotion threshold and when
-    /// connecting fails; see `Inner::flow_sockets_supported`.
+    /// Returns a connected flow socket once the pair passes the promotion gates.
     fn get_or_connect(
         &self,
         src: Option<IpAddr>,
@@ -237,14 +233,11 @@ impl SocketPool {
             return None;
         }
 
-        if src.is_none()
-            && datagrams < PROMOTE_BATCH_SIZE
-            && !inner.rates.record(key, datagrams, Instant::now())
-        {
+        if datagrams < PROMOTE_BATCH_SIZE && !inner.rates.record(key, datagrams, Instant::now()) {
             return None;
         }
 
-        match connect(self.local, src, dst, inner.buffer_sizes) {
+        match create_socket(self.local, src, Some(dst), inner.buffer_sizes) {
             Ok(socket) => {
                 tracing::debug!(?src, %dst, "Connected new flow socket");
 
@@ -262,7 +255,7 @@ impl SocketPool {
                 let socket = Arc::new(socket);
                 inner.flows.insert(
                     key,
-                    Flow {
+                    CachedSocket {
                         socket: socket.clone(),
                         created_at: Instant::now(),
                         last_received: Mutex::new(None),
@@ -277,11 +270,65 @@ impl SocketPool {
                 Some(socket)
             }
             Err(e) => {
-                tracing::debug!(?src, %dst, "Failed to connect flow socket: {e}");
+                tracing::debug!(?src, %dst, "Disabling flow promotion; connecting failed: {e}");
 
-                if e.raw_os_error() == Some(libc::EPERM) {
-                    inner.flow_sockets_supported = false;
+                inner.flow_sockets_supported = false;
+
+                None
+            }
+        }
+    }
+
+    fn get_or_bind_source(&self, src: IpAddr, recv_buf_size: usize) -> Option<Arc<OwnedSocket>> {
+        let mut inner = self.lock();
+        if let Some(source) = inner.sources.get(&src) {
+            return Some(source.socket.clone());
+        }
+
+        let now = Instant::now();
+        if inner
+            .source_failures
+            .get(&src)
+            .is_some_and(|failed_at| now.duration_since(*failed_at) < SOURCE_RETRY_DELAY)
+        {
+            return None;
+        }
+        inner.source_failures.remove(&src);
+
+        match create_socket(self.local, Some(src), None, inner.buffer_sizes) {
+            Ok(socket) => {
+                if inner.sources.len() >= MAX_SOURCE_SOCKETS {
+                    evict_source(&mut inner, self.local.port(), recv_buf_size);
                 }
+
+                let socket = Arc::new(socket);
+                inner.sources.insert(
+                    src,
+                    CachedSocket {
+                        socket: socket.clone(),
+                        created_at: now,
+                        last_received: Mutex::new(None),
+                    },
+                );
+                if let Some(waker) = inner.recv_waker.take() {
+                    waker.wake();
+                }
+
+                Some(socket)
+            }
+            Err(e) => {
+                tracing::debug!(?src, "Failed to bind source socket: {e}");
+
+                if inner.source_failures.len() >= MAX_SOURCE_SOCKETS
+                    && let Some(oldest) = inner
+                        .source_failures
+                        .iter()
+                        .min_by_key(|(_, failed_at)| **failed_at)
+                        .map(|(src, _)| *src)
+                {
+                    inner.source_failures.remove(&oldest);
+                }
+                inner.source_failures.insert(src, now);
 
                 None
             }
@@ -298,16 +345,15 @@ impl SocketPool {
 }
 
 impl Inner {
-    /// All receive sockets - the catch-all `wildcard` plus the flow sockets - rotated so that
+    /// All receive sockets, rotated so that
     /// `position` starts the round.
     ///
-    /// Each flow socket carries its [`Flow`] so the receive path can refresh its last-received
-    /// timestamp; the wildcard carries `None`.
+    /// Cached sockets carry their metadata to refresh receive timestamps; the wildcard carries `None`.
     fn rotated_recv_order<'a>(
         &'a self,
         wildcard: Socket<'a>,
         position: usize,
-    ) -> impl Iterator<Item = (Socket<'a>, Option<&'a Flow>)> {
+    ) -> impl Iterator<Item = (Socket<'a>, Option<&'a CachedSocket>)> {
         std::iter::empty()
             .chain(Some((wildcard, None)))
             .chain(
@@ -315,13 +361,18 @@ impl Inner {
                     .values()
                     .map(|flow| (flow.socket.as_socket(), Some(flow))),
             )
+            .chain(
+                self.sources
+                    .values()
+                    .map(|source| (source.socket.as_socket(), Some(source))),
+            )
             .cycle()
             .skip(position)
-            .take(self.flows.len() + 1)
+            .take(self.flows.len() + self.sources.len() + 1)
     }
 }
 
-impl Flow {
+impl CachedSocket {
     fn record_received(&self, now: Instant) {
         *self.last_received.lock() = Some(now);
     }
@@ -404,7 +455,7 @@ fn evict_one(
 
     evictions.add(1, &[]);
 
-    drain(&victim, port, recv_buf_size, &mut inner.drained);
+    drain(&victim.socket, port, recv_buf_size, &mut inner.drained);
 
     if !inner.drained.is_empty()
         && let Some(waker) = inner.recv_waker.take()
@@ -413,6 +464,27 @@ fn evict_one(
     }
 
     tracing::debug!(src = ?key.0, dst = %key.1, "Evicted flow socket");
+}
+
+fn evict_source(inner: &mut Inner, port: u16, recv_buf_size: usize) {
+    let Some(src) = inner
+        .sources
+        .iter()
+        .min_by_key(|(_, source)| eviction_rank(*source.last_received.lock(), source.created_at))
+        .map(|(src, _)| *src)
+    else {
+        return;
+    };
+    let Some(victim) = inner.sources.remove(&src) else {
+        return;
+    };
+
+    drain(&victim.socket, port, recv_buf_size, &mut inner.drained);
+    if !inner.drained.is_empty()
+        && let Some(waker) = inner.recv_waker.take()
+    {
+        waker.wake();
+    }
 }
 
 /// Eviction order: sockets that never received anything first (oldest first),
@@ -430,11 +502,10 @@ fn eviction_rank(last_received: Option<Instant>, created_at: Instant) -> (bool, 
 
 /// Reads an evicted socket dry before it is closed.
 ///
-/// A connected socket captures inbound for its 4-tuple; whatever is already queued would be
-/// discarded by the kernel on close. Packets arriving after the close are delivered to the
-/// catch-all socket instead.
-fn drain(victim: &Flow, port: u16, recv_buf_size: usize, out: &mut VecDeque<DatagramBatch>) {
-    let socket = victim.socket.as_socket();
+/// Closing a socket discards queued datagrams; drain them before another socket receives
+/// subsequent traffic for its address or connected pair.
+fn drain(victim: &OwnedSocket, port: u16, recv_buf_size: usize, out: &mut VecDeque<DatagramBatch>) {
+    let socket = victim.as_socket();
 
     loop {
         let mut batch = RecvBatch::pull(recv_buf_size);
@@ -452,19 +523,17 @@ fn drain(victim: &Flow, port: u16, recv_buf_size: usize, out: &mut VecDeque<Data
     }
 }
 
-fn connect(
+fn create_socket(
     local: SocketAddr,
     src: Option<IpAddr>,
-    dst: SocketAddr,
+    dst: Option<SocketAddr>,
     buffer_sizes: Option<(usize, usize)>,
 ) -> io::Result<OwnedSocket> {
     let bind_addr = socket2::SockAddr::from(SocketAddr::new(
         src.unwrap_or_else(|| local.ip()),
         local.port(),
     ));
-    let dst_addr = socket2::SockAddr::from(dst);
-
-    let socket = socket2::Socket::new(dst_addr.domain(), socket2::Type::DGRAM, None)?;
+    let socket = socket2::Socket::new(bind_addr.domain(), socket2::Type::DGRAM, None)?;
 
     if let Some(src) = src {
         let index = interface_index(src)?;
@@ -474,7 +543,7 @@ fn connect(
         }
     }
 
-    if dst.is_ipv6() {
+    if local.is_ipv6() {
         socket.set_only_v6(true)?;
         crate::prefer_stable_ipv6_source(&socket);
     }
@@ -494,10 +563,12 @@ fn connect(
     }
 
     socket.bind(&bind_addr)?;
-    socket.connect(&dst_addr)?;
+    if let Some(dst) = dst {
+        socket.connect(&socket2::SockAddr::from(dst))?;
+    }
 
     let socket = tokio::net::UdpSocket::try_from(std::net::UdpSocket::from(socket))?;
-    let socket = OwnedSocket::new(socket, state, true);
+    let socket = OwnedSocket::new(socket, state, dst.is_some());
 
     if let Some((send, recv)) = buffer_sizes {
         socket.apply_buffer_sizes(send, recv, local.port());
@@ -535,6 +606,40 @@ mod tests {
     use std::net::Ipv4Addr;
 
     use super::*;
+
+    #[tokio::test]
+    async fn source_sockets_keep_the_source_interface_and_port_after_promotion() {
+        for (local, source) in [
+            ("0.0.0.0:0", IpAddr::V4(Ipv4Addr::LOCALHOST)),
+            ("[::]:0", IpAddr::V6(std::net::Ipv6Addr::LOCALHOST)),
+        ] {
+            let socket = crate::udp(local.parse().unwrap())
+                .unwrap()
+                .into_perf()
+                .unwrap();
+            let destination = SocketAddr::new(source, 9);
+            let expected_index = interface_index(source).unwrap();
+
+            for datagrams in [1, PROMOTE_BATCH_SIZE] {
+                let selected =
+                    socket
+                        .pool
+                        .get_send_socket(Some(source), destination, datagrams, 1500);
+                let borrowed = selected.as_socket();
+                assert_eq!(borrowed.connected, datagrams == PROMOTE_BATCH_SIZE);
+                assert_eq!(
+                    selected.local_addr().unwrap(),
+                    SocketAddr::new(source, socket.pool.local.port())
+                );
+                let sockref = socket2::SockRef::from(borrowed.inner);
+                let index = match source {
+                    IpAddr::V4(_) => sockref.device_index_v4().unwrap(),
+                    IpAddr::V6(_) => sockref.device_index_v6().unwrap(),
+                };
+                assert_eq!(index, Some(expected_index));
+            }
+        }
+    }
 
     #[test]
     fn never_received_sockets_are_evicted_before_received_ones() {

@@ -59,7 +59,58 @@ async fn sends_and_receives_a_datagram() {
 
 #[cfg(apple)]
 #[tokio::test]
-async fn explicit_source_connects_after_unassigned_source() {
+async fn explicit_source_round_trips_before_and_after_promotion() {
+    let peer = tokio::net::UdpSocket::bind("127.0.0.1:0").await.unwrap();
+    let peer_addr = peer.local_addr().unwrap();
+    let socket = udp("0.0.0.0:0".parse().unwrap()).unwrap();
+    let port = socket2::SockRef::from(&socket)
+        .local_addr()
+        .unwrap()
+        .as_socket()
+        .unwrap()
+        .port();
+    let socket = socket.into_perf().unwrap();
+    let source = std::net::SocketAddr::from(([127, 0, 0, 1], port));
+
+    for datagrams in [1, 16] {
+        socket
+            .send(DatagramOut {
+                src: Some(source),
+                dst: peer_addr,
+                packet: bufferpool::Bytes::copied_from(&b"hello".repeat(datagrams)),
+                segment_size: 5,
+                ecn: Ecn::NonEct,
+            })
+            .await
+            .unwrap();
+
+        assert_eq!(socket.flow_socket_count(), usize::from(datagrams == 16));
+        let mut buf = [0u8; 16];
+        for _ in 0..datagrams {
+            let (len, sender) =
+                tokio::time::timeout(std::time::Duration::from_secs(3), peer.recv_from(&mut buf))
+                    .await
+                    .unwrap()
+                    .unwrap();
+            assert_eq!(&buf[..len], b"hello");
+            assert_eq!(sender, source);
+        }
+
+        peer.send_to(b"world", source).await.unwrap();
+        let mut batch = tokio::time::timeout(std::time::Duration::from_secs(3), socket.recv_from())
+            .await
+            .unwrap()
+            .unwrap();
+        let datagram = batch.drain().next().unwrap();
+        let segment = datagram.segments().next().unwrap();
+        assert_eq!(&datagram[segment], b"world");
+        assert_eq!(datagram.from(), peer_addr);
+    }
+}
+
+#[cfg(apple)]
+#[tokio::test]
+async fn source_socket_works_after_failed_promotion() {
     let Some(unassigned) = unassigned_ipv4_address() else {
         eprintln!("skipping test: every candidate IPv4 address is assigned");
         return;
@@ -77,7 +128,7 @@ async fn explicit_source_connects_after_unassigned_source() {
             .send(DatagramOut {
                 src: Some((unassigned, 0).into()),
                 dst: peer_addr,
-                packet: bufferpool::Bytes::copied_from(b"hello"),
+                packet: bufferpool::Bytes::copied_from(&b"hello".repeat(16)),
                 segment_size: 5,
                 ecn: Ecn::NonEct,
             })
@@ -96,7 +147,7 @@ async fn explicit_source_connects_after_unassigned_source() {
         .await
         .unwrap();
 
-    assert_eq!(socket.flow_socket_count(), 1);
+    assert_eq!(socket.flow_socket_count(), 0);
     let mut buf = [0u8; 16];
     let (len, sender) = peer.recv_from(&mut buf).await.unwrap();
     assert_eq!(&buf[..len], b"hello");
@@ -124,7 +175,7 @@ async fn failed_source_keeps_full_flow_cache() {
             .send(DatagramOut {
                 src: Some("127.0.0.1:0".parse().unwrap()),
                 dst: peer.local_addr().unwrap(),
-                packet: bufferpool::Bytes::copied_from(b"hello"),
+                packet: bufferpool::Bytes::copied_from(&b"hello".repeat(16)),
                 segment_size: 5,
                 ecn: Ecn::NonEct,
             })
@@ -138,7 +189,7 @@ async fn failed_source_keeps_full_flow_cache() {
             .send(DatagramOut {
                 src: Some((unassigned, 0).into()),
                 dst: peers[0].local_addr().unwrap(),
-                packet: bufferpool::Bytes::copied_from(b"hello"),
+                packet: bufferpool::Bytes::copied_from(&b"hello".repeat(16)),
                 segment_size: 5,
                 ecn: Ecn::NonEct,
             })
