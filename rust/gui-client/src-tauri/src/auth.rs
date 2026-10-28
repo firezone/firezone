@@ -14,7 +14,10 @@ use subtle::ConstantTimeEq;
 use url::Url;
 
 const NONCE_LENGTH: usize = 32;
-const CREDENTIAL_PREFIX: &str = "firezone-credential-v1:";
+#[cfg(target_os = "windows")]
+const SIGN_IN_SETTINGS_ATTRIBUTE: &str = "comment";
+#[cfg(not(target_os = "windows"))]
+const SIGN_IN_SETTINGS_ATTRIBUTE: &str = "sign-in-settings";
 
 /// Whether to skip the portal during sign-in.
 ///
@@ -62,9 +65,7 @@ enum State {
     SignedIn(Credential),
 }
 
-#[derive(serde::Deserialize, serde::Serialize)]
 struct Credential {
-    #[serde(serialize_with = "serialize_token")]
     token: SecretString,
     sign_in_settings: Option<SignInSettings>,
 }
@@ -264,13 +265,22 @@ impl Auth {
             sign_in_settings,
         };
         let result = (|| -> Result<()> {
-            let payload: SecretString = serde_json::to_string(&credential)?.into();
-            let password: SecretString =
-                format!("{CREDENTIAL_PREFIX}{}", payload.expose_secret()).into();
             // This MUST be the only place the GUI can call `set_password`.
             self.token_entry
-                .set_password(password.expose_secret())
-                .context("Failed to save credential in keyring")?;
+                .set_password(token.expose_secret())
+                .context("Failed to save token in keyring")?;
+            let settings = credential
+                .sign_in_settings
+                .as_ref()
+                .map(serde_json::to_string)
+                .transpose()?
+                .unwrap_or_default();
+            self.token_entry
+                .update_attributes(&std::collections::HashMap::from([(
+                    SIGN_IN_SETTINGS_ATTRIBUTE,
+                    settings.as_str(),
+                )]))
+                .context("Failed to save sign-in settings in keyring")?;
             Ok(())
         })();
         if let Err(e) = result {
@@ -299,21 +309,24 @@ impl Auth {
     /// Performs I/O
     fn credential_from_keyring(&self) -> Option<Credential> {
         // This MUST be the only place the GUI can call `get_password`.
-        let password: SecretString = self.token_entry.get_password().ok()?.into();
-        let Some(payload) = password.expose_secret().strip_prefix(CREDENTIAL_PREFIX) else {
-            return Some(Credential {
-                token: password,
-                sign_in_settings: None,
+        let token = self.token_entry.get_password().ok()?.into();
+        let sign_in_settings = self
+            .token_entry
+            .get_attributes()
+            .ok()
+            .and_then(|mut attributes| attributes.remove(SIGN_IN_SETTINGS_ATTRIBUTE))
+            .filter(|settings| !settings.is_empty())
+            .and_then(|settings| {
+                serde_json::from_str(&settings)
+                    .inspect_err(|_| {
+                        tracing::warn!("Couldn't read saved sign-in settings");
+                    })
+                    .ok()
             });
-        };
-
-        match serde_json::from_str(payload) {
-            Ok(credential) => Some(credential),
-            Err(_) => {
-                tracing::warn!("Couldn't read saved credential; sign in again");
-                None
-            }
-        }
+        Some(Credential {
+            token,
+            sign_in_settings,
+        })
     }
 
     pub fn ongoing_request(&self) -> Option<&Request> {
@@ -322,13 +335,6 @@ impl Auth {
             State::SignedIn(_) | State::SignedOut => None,
         }
     }
-}
-
-fn serialize_token<S: serde::Serializer>(
-    token: &SecretString,
-    serializer: S,
-) -> std::result::Result<S::Ok, S::Error> {
-    serializer.serialize_str(token.expose_secret())
 }
 
 fn delete_if_exists(path: &Path) -> Result<(), Error> {
@@ -496,7 +502,7 @@ mod tests {
 
             // Make sure we automatically got the token back
             assert!(state.token().is_some());
-            assert_eq!(state.sign_in_settings(), Some(&sign_in_settings()));
+            assert!(state.sign_in_settings().is_none());
 
             // Accidentally sign in again, this can happen if the user holds the systray menu open while a sign in is succeeding.
             // For now, we treat that like signing out and back in immediately, so it wipes the old token.
@@ -522,7 +528,7 @@ mod tests {
     }
 
     #[test]
-    fn upgrades_legacy_token_after_acceptance() {
+    fn keeps_raw_legacy_tokens_readable_without_metadata_support() {
         let store = keyring_core::mock::Store::new().unwrap();
         let session_dir = tempdir().unwrap();
         let key = "dev.firezone.client/test_legacy/token";
@@ -538,34 +544,34 @@ mod tests {
         auth.sign_in_with_token(&token, sign_in_settings());
         let restored = Auth::new_with_key(key, store, session_dir.path().to_path_buf()).unwrap();
         assert_eq!(restored.token().unwrap().expose_secret(), "legacy-token");
-        assert_eq!(restored.sign_in_settings(), Some(&sign_in_settings()));
+        assert!(restored.sign_in_settings().is_none());
+        assert_eq!(entry.get_password().unwrap(), "legacy-token");
+        assert_eq!(auth.sign_in_settings(), Some(&sign_in_settings()));
     }
 
     #[test]
-    fn failed_keyring_write_keeps_token_and_settings_paired() {
+    fn saves_and_restores_sign_in_settings_as_keyring_attributes() {
         let store = keyring_core::mock::Store::new().unwrap();
         let session_dir = tempdir().unwrap();
-        let key = "dev.firezone.client/test_failed_write/token";
-        let mut auth =
-            Auth::new_with_key(key, store.clone(), session_dir.path().to_path_buf()).unwrap();
-        auth.sign_in_with_token(&bogus_secret("old-token"), sign_in_settings());
-        let mock: &keyring_core::mock::Cred = auth.token_entry.as_any().downcast_ref().unwrap();
-        mock.set_error(keyring_core::Error::Invalid(
-            "password".to_owned(),
-            "test failure".to_owned(),
-        ));
-        let new_settings = SignInSettings {
-            auth_url: "https://eu.app.firezone.dev/".parse().unwrap(),
-            api_url: "wss://eu.api.firezone.dev/".parse().unwrap(),
-            ..sign_in_settings()
-        };
-        auth.sign_in_with_token(&bogus_secret("new-token"), new_settings.clone());
-        assert_eq!(auth.token().unwrap().expose_secret(), "new-token");
-        assert_eq!(auth.sign_in_settings(), Some(&new_settings));
+        let mut auth = Auth::new_with_key(
+            "dev.firezone.client/test_metadata/token",
+            store,
+            session_dir.path().to_path_buf(),
+        )
+        .unwrap();
+        auth.token_entry =
+            keyring_core::Entry::new_with_credential(Arc::new(AttributeCredential {
+                inner: auth.token_entry,
+                attributes: Default::default(),
+            }));
+        auth.sign_in_with_token(&bogus_secret("accepted-token"), sign_in_settings());
+        assert_eq!(auth.token_entry.get_password().unwrap(), "accepted-token");
+        let restored = auth.credential_from_keyring().unwrap();
+        assert_eq!(restored.token.expose_secret(), "accepted-token");
+        assert_eq!(restored.sign_in_settings, Some(sign_in_settings()));
 
-        let restored = Auth::new_with_key(key, store, session_dir.path().to_path_buf()).unwrap();
-        assert_eq!(restored.token().unwrap().expose_secret(), "old-token");
-        assert_eq!(restored.sign_in_settings(), Some(&sign_in_settings()));
+        auth.sign_out().unwrap();
+        assert!(auth.credential_from_keyring().is_none());
     }
 
     #[test]
@@ -634,5 +640,58 @@ mod tests {
             _ => panic!("Expected StatesDontMatch error"),
         }
         assert!(state.token().is_none());
+    }
+
+    struct AttributeCredential {
+        inner: keyring_core::Entry,
+        attributes: std::sync::Mutex<std::collections::HashMap<String, String>>,
+    }
+
+    impl keyring_core::api::CredentialApi for AttributeCredential {
+        fn set_secret(&self, secret: &[u8]) -> keyring_core::Result<()> {
+            self.inner.set_secret(secret)
+        }
+
+        fn get_secret(&self) -> keyring_core::Result<Vec<u8>> {
+            self.inner.get_secret()
+        }
+
+        fn get_attributes(
+            &self,
+        ) -> keyring_core::Result<std::collections::HashMap<String, String>> {
+            self.inner.get_secret()?;
+            Ok(self.attributes.lock().unwrap().clone())
+        }
+
+        fn update_attributes(
+            &self,
+            attributes: &std::collections::HashMap<&str, &str>,
+        ) -> keyring_core::Result<()> {
+            self.inner.get_secret()?;
+            self.attributes.lock().unwrap().extend(
+                attributes
+                    .iter()
+                    .map(|(key, value)| (key.to_string(), value.to_string())),
+            );
+            Ok(())
+        }
+
+        fn delete_credential(&self) -> keyring_core::Result<()> {
+            self.inner.delete_credential()?;
+            self.attributes.lock().unwrap().clear();
+            Ok(())
+        }
+
+        fn get_credential(&self) -> keyring_core::Result<Option<Arc<keyring_core::Credential>>> {
+            Ok(None)
+        }
+
+        fn get_specifiers(&self) -> Option<(String, String)> {
+            None
+        }
+
+        fn as_any(&self) -> &dyn std::any::Any {
+            self
+        }
     }
 }
