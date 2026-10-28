@@ -1823,6 +1823,11 @@
         "properties": {
           "gateway": {
             "$ref": "#/components/schemas/GatewayCreate"
+          },
+          "issue_token": {
+            "default": true,
+            "description": "Whether to mint the Gateway's token and return it in the response. Requires the `gateway_tokens:write` scope when true.\n",
+            "type": "boolean"
           }
         },
         "title": "GatewayCreateRequest",
@@ -7853,7 +7858,7 @@
         "type": "object"
       },
       "GatewayProvisionResponse": {
-        "description": "Response schema for a newly provisioned Gateway. Includes the one-time token secret - it is not shown again.\n",
+        "description": "Response schema for a newly provisioned Gateway. Includes the one-time token secret - it is not shown again - unless the request set `issue_token` to false.\n",
         "properties": {
           "data": {
             "allOf": [
@@ -7863,13 +7868,10 @@
               {
                 "properties": {
                   "token": {
-                    "description": "One-time Gateway token secret",
+                    "description": "One-time Gateway token secret. Omitted when `issue_token` is false.",
                     "type": "string"
                   }
                 },
-                "required": [
-                  "token"
-                ],
                 "type": "object"
               }
             ]
@@ -27795,7 +27797,7 @@
       },
       "post": {
         "callbacks": {},
-        "description": "Creates a Gateway and mints its single-owner token in one call. The token is returned once here - store it securely. If it's lost, rotate it via `POST /sites/{site_id}/gateways/{gateway_id}/token/rotate` once the Gateway has connected, or delete and re-provision it.\n\n`name` is optional; a random name is generated when omitted. `ipv4` and `ipv6` are the Gateway's tunnel addresses, allocated from the account's pool when the Gateway row is created - they are always present in this response, before the Gateway has ever connected.\n",
+        "description": "Creates a Gateway and mints its single-owner token in one call. The token is returned once here - store it securely. If it's lost, rotate it via `POST /sites/{site_id}/gateways/{gateway_id}/token/rotate` once the Gateway has connected, or delete and re-provision it.\n\nReturning the token requires the `gateway_tokens:write` scope in addition to `gateways:write`. Set `issue_token` to `false` to create the Gateway without a token, which needs only `gateways:write`; mint its token later via `POST /sites/{site_id}/gateways/{gateway_id}/token`.\n\n`name` is optional; a random name is generated when omitted. `ipv4` and `ipv6` are the Gateway's tunnel addresses, allocated from the account's pool when the Gateway row is created - they are always present in this response, before the Gateway has ever connected.\n",
         "operationId": "PortalAPI.GatewayController.create",
         "parameters": [
           {
