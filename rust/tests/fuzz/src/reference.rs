@@ -821,10 +821,6 @@ impl ReferenceState {
                 request.protocol(),
                 true,
             ),
-            Route::Gateway(_) => (
-                ExpectedOutcome::RoundTripCompleted(route, Answer::Echo),
-                None,
-            ),
             // A retained flow completes its round trip; asking the portal again only refreshes
             // the authorization a peer that reconnected since took from us.
             Route::Peer(peer) => {
@@ -922,10 +918,7 @@ impl ReferenceState {
                     .any(|resource| client.gateway_for_resource(resource) == Some(*gateway))
             });
             if let Some(gateway) = connected_gateway {
-                return (
-                    ExpectedOutcome::RoundTripCompleted(Route::Gateway(gateway), Answer::Echo),
-                    None,
-                );
+                return (gateway_tun_probe_outcome(gateway, protocol), None);
             }
 
             return self.peer_verdict(portal, origin, ip, protocol);
@@ -1897,6 +1890,17 @@ fn address_record_type(src: IpAddr) -> RecordType {
         RecordType::A
     } else {
         RecordType::AAAA
+    }
+}
+
+fn gateway_tun_probe_outcome(gateway: GatewayId, protocol: Protocol) -> ExpectedOutcome {
+    match protocol {
+        Protocol::Tcp(53535) => panic!("gateway TUN probes do not target the DNS listener"),
+        Protocol::Udp(53535) => panic!("gateway TUN probes do not target the DNS listener"),
+        Protocol::Tcp(_) | Protocol::Udp(_) | Protocol::IcmpEcho(_) => ExpectedOutcome::Rejected {
+            by: RejectionRemote::Gateway(gateway),
+            response: RejectionResponse::Prohibited,
+        },
     }
 }
 

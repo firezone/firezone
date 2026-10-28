@@ -513,9 +513,15 @@ impl ClientOnGateway {
     fn ensure_allowed_outbound(&mut self, packet: &IpPacket) -> Result<()> {
         self.ensure_client_ip(packet.source())?;
 
-        // Traffic to our own IP is allowed.
         if self.gateway_tun.is_ip(packet.destination()) {
-            return Ok(());
+            match packet.destination_protocol() {
+                Ok(Protocol::Tcp(super::TUN_DNS_PORT)) => return Ok(()),
+                Ok(Protocol::Udp(super::TUN_DNS_PORT)) => return Ok(()),
+                _ => bail!(
+                    "Only DNS on port {} is allowed to the gateway TUN IP",
+                    super::TUN_DNS_PORT
+                ),
+            }
         }
 
         ensure_not_peer_ip(packet.destination())?;
@@ -896,35 +902,62 @@ mod tests {
     }
 
     #[test]
-    fn allows_packets_for_and_from_gateway_tun_ip() {
+    fn only_allows_dns_port_on_gateway_tun_ip() {
         let mut peer = ClientOnGateway::new(client_id(), client_key(), client_tun(), gateway_tun());
 
-        let request = ip_packet::make::tcp_packet(
-            client_tun_ipv4(),
-            gateway_tun_ipv4(),
-            5401,
-            80,
-            TcpFlags::default(),
-            &[0u8; 100],
-        )
-        .unwrap();
+        for (client, gateway) in [
+            (
+                IpAddr::V4(client_tun_ipv4()),
+                IpAddr::V4(gateway_tun_ipv4()),
+            ),
+            (
+                IpAddr::V6(client_tun_ipv6()),
+                IpAddr::V6(gateway_tun_ipv6()),
+            ),
+        ] {
+            for request in [
+                ip_packet::make::tcp_packet(
+                    client,
+                    gateway,
+                    5401,
+                    super::super::TUN_DNS_PORT,
+                    TcpFlags::default(),
+                    &[],
+                )
+                .unwrap(),
+                ip_packet::make::udp_packet(client, gateway, 5401, super::super::TUN_DNS_PORT, &[])
+                    .unwrap(),
+            ] {
+                assert!(matches!(
+                    peer.translate_outbound(request, Instant::now()).unwrap(),
+                    TranslateOutboundResult::Send(_)
+                ));
+            }
 
-        let mut response = ip_packet::make::tcp_packet(
-            gateway_tun_ipv4(),
-            client_tun_ipv4(),
-            80,
-            5401,
-            TcpFlags::default(),
-            &[0u8; 100],
-        )
-        .unwrap();
+            for request in [
+                ip_packet::make::tcp_packet(client, gateway, 5401, 80, TcpFlags::default(), &[])
+                    .unwrap(),
+                ip_packet::make::udp_packet(client, gateway, 5401, 53, &[]).unwrap(),
+                ip_packet::make::icmp_request_packet(client, gateway, 1, 1, &[]).unwrap(),
+            ] {
+                assert!(matches!(
+                    peer.translate_outbound(request, Instant::now()).unwrap(),
+                    TranslateOutboundResult::IcmpError { .. }
+                ));
+            }
 
-        assert!(matches!(
-            peer.translate_outbound(request, Instant::now()).unwrap(),
-            TranslateOutboundResult::Send(_)
-        ));
-        peer.translate_inbound(&mut response, Instant::now())
+            let mut response = ip_packet::make::tcp_packet(
+                gateway,
+                client,
+                super::super::TUN_DNS_PORT,
+                5401,
+                TcpFlags::default(),
+                &[],
+            )
             .unwrap();
+            peer.translate_inbound(&mut response, Instant::now())
+                .unwrap();
+        }
     }
 
     #[test]
