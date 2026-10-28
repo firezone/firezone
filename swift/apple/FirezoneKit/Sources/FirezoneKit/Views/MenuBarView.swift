@@ -179,7 +179,7 @@
       let paragraph = NSMutableParagraphStyle()
       paragraph.alignment = .center
 
-      let prefix = "Version \(BundleHelper.version) ("
+      let prefix = "\(BundleHelper.version) ("
       let credits = NSMutableAttributedString(
         string: prefix + shortGitSha + ")",
         attributes: [
