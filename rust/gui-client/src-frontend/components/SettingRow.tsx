@@ -18,7 +18,7 @@ export default function SettingRow({
   errorId,
 }: SettingRowProps) {
   return (
-    <div className="flex min-h-10 flex-col justify-center px-4 py-1">
+    <div className="flex min-h-10 flex-col justify-center px-4 py-2">
       <div className="flex items-center justify-between gap-6">
         <label
           className="block text-sm font-medium text-heading"

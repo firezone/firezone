@@ -96,7 +96,7 @@ export default function GeneralSettingsPage({
 
   return (
     <div className="page">
-      <div className="max-w-xl space-y-3">
+      <div className="space-y-3">
         <section>
           <h2 className="form-label">Sign-in</h2>
           <div className="panel divide-y divide-border">
@@ -115,7 +115,6 @@ export default function GeneralSettingsPage({
               label="Control plane"
             >
               <ManagedSelect
-                className="h-8 py-1"
                 id={controlPlaneInputId}
                 managed={saved.auth_url_is_managed || saved.api_url_is_managed}
                 name="control_plane"

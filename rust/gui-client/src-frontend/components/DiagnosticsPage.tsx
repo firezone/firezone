@@ -31,7 +31,7 @@ export default function Diagnostics({
 
   return (
     <div className="page">
-      <div className="max-w-xl space-y-3">
+      <div className="space-y-3">
         <section>
           <h2 className="form-label">Logs</h2>
           <div className="panel divide-y divide-border">

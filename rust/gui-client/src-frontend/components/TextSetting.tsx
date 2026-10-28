@@ -76,7 +76,7 @@ export default function TextSetting({
       <ManagedTextInput
         aria-describedby={error ? errorId : undefined}
         aria-invalid={error ? true : undefined}
-        className={`h-8 py-1 ${className}`}
+        className={className}
         id={inputId}
         managed={managed}
         name={name}
