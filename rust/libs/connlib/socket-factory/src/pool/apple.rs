@@ -54,7 +54,6 @@ use super::{OwnedSocket, Socket, poll_recv_ready};
 /// the data-bearing gateway path(s) and the relays.
 const MAX_FLOW_SOCKETS: usize = 16;
 const MAX_SOURCE_SOCKETS: usize = 16;
-const SOURCE_RETRY_DELAY: Duration = Duration::from_secs(1);
 
 /// Datagrams a single transmit must carry for its pair to earn a flow socket.
 ///
@@ -92,7 +91,6 @@ pub(crate) struct SocketPool {
 struct Inner {
     flows: BTreeMap<Key, CachedSocket>,
     sources: BTreeMap<IpAddr, CachedSocket>,
-    source_failures: BTreeMap<IpAddr, Instant>,
     /// Send rates of pairs that have not (yet) earned a flow socket.
     rates: RateGate,
     /// A failed promotion disables new connected flows until the pool is reset.
@@ -127,7 +125,6 @@ impl SocketPool {
             inner: Mutex::new(Inner {
                 flows: BTreeMap::new(),
                 sources: BTreeMap::new(),
-                source_failures: BTreeMap::new(),
                 rates: RateGate::default(),
                 flow_sockets_supported: true,
                 buffer_sizes: None,
@@ -291,16 +288,6 @@ impl SocketPool {
             return Some(source.socket.clone());
         }
 
-        let now = Instant::now();
-        if inner
-            .source_failures
-            .get(&src)
-            .is_some_and(|failed_at| now.duration_since(*failed_at) < SOURCE_RETRY_DELAY)
-        {
-            return None;
-        }
-        inner.source_failures.remove(&src);
-
         match create_socket(self.local, Some(src), None, inner.buffer_sizes) {
             Ok(socket) => {
                 if inner.sources.len() >= MAX_SOURCE_SOCKETS {
@@ -324,7 +311,7 @@ impl SocketPool {
                     src,
                     CachedSocket {
                         socket: socket.clone(),
-                        created_at: now,
+                        created_at: Instant::now(),
                         last_received: Mutex::new(None),
                     },
                 );
@@ -336,17 +323,6 @@ impl SocketPool {
             }
             Err(e) => {
                 tracing::debug!(?src, "Failed to bind source socket: {e}");
-
-                if inner.source_failures.len() >= MAX_SOURCE_SOCKETS
-                    && let Some(oldest) = inner
-                        .source_failures
-                        .iter()
-                        .min_by_key(|(_, failed_at)| **failed_at)
-                        .map(|(src, _)| *src)
-                {
-                    inner.source_failures.remove(&oldest);
-                }
-                inner.source_failures.insert(src, now);
 
                 None
             }
