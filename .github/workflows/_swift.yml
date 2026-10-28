@@ -62,7 +62,7 @@ jobs:
       - name: Dispatch Mac-to-Mac benchmarks
         env:
           # workflow_dispatch requires Actions: write on firezone/infra.
-          GH_TOKEN: ${{ secrets.RELEASE_PR_BOT_GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.INFRA_REPOSITORY_TOKEN }}
           FIREZONE_SHA: ${{ github.sha }}
           BENCHMARK_PROTOCOL: ${{ matrix.protocol }}
         run: |
