@@ -172,10 +172,7 @@
       try openSettings(in: app, on: "settings-general-custom")
       try selectTab("Settings", showing: "API URL", in: app)
       if UIDevice.current.userInterfaceIdiom == .pad {
-        try selectControlPlane("Firezone Cloud (EU)", in: app)
-        deliver(app, as: "settings-general-eu", in: appearance)
         try selectControlPlane("Firezone Cloud (US)", in: app)
-        deliver(app, as: "settings-general-us", in: appearance)
         try selectControlPlane("Custom", in: app)
       }
       let form = app.collectionViews.containing(.button, identifier: "Reset to Defaults").firstMatch
