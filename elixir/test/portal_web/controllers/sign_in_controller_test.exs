@@ -42,6 +42,35 @@ defmodule PortalWeb.SignInControllerTest do
       assert query_params["identity_provider_identifier"] == "user@example.com"
       assert query_params["account_name"] == account.name
       assert query_params["account_slug"] == account.slug
+      refute Map.has_key?(query_params, "region")
+    end
+
+    for region <- [:us, :eu] do
+      test "tells the Client the #{region} region on Firezone Cloud", %{conn: conn, account: account} do
+        Portal.Config.put_env_override(:data_residency_region, unquote(region))
+        actor = actor_fixture(account: account, type: :account_admin_user)
+
+        client_auth_cookie = %PortalWeb.Cookie.ClientAuth{
+          actor_name: actor.name,
+          fragment: "test_fragment_value",
+          identity_provider_identifier: "user@example.com",
+          state: "STATE"
+        }
+
+        %{value: signed_value} = PortalWeb.Cookie.ClientAuth.put(conn, client_auth_cookie).resp_cookies["client_auth"]
+
+        query_params =
+          conn
+          |> put_req_cookie("client_auth", signed_value)
+          |> get(~p"/#{account}/sign_in/client_redirect")
+          |> redirected_to(302)
+          |> URI.parse()
+          |> Map.fetch!(:query)
+          |> URI.decode_query()
+
+        assert query_params["region"] == unquote(Atom.to_string(region))
+        assert query_params["account_slug"] == account.slug
+      end
     end
 
     test "instructs user to restart sign in when cookie not present", %{
