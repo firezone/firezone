@@ -114,6 +114,13 @@ struct CachedSocket {
 
 impl SocketPool {
     pub(crate) fn new(wildcard: OwnedSocket) -> Self {
+        trace_socket_scope(
+            "wildcard_bound",
+            &socket2::SockRef::from(wildcard.as_socket().inner),
+            None,
+            None,
+            None,
+        );
         let local = wildcard
             .local_addr()
             .expect("a bound socket to have a local address");
@@ -479,6 +486,7 @@ fn create_socket(
         local.port(),
     ));
     let socket = socket2::Socket::new(bind_addr.domain(), socket2::Type::DGRAM, None)?;
+    trace_socket_scope("created", &socket, src, dst, None);
 
     if local.is_ipv6() {
         socket.set_only_v6(true)?;
@@ -499,9 +507,14 @@ fn create_socket(
         state.set_apple_fast_path();
     }
 
-    socket.bind(&bind_addr)?;
-    if let Some(dst) = dst {
-        socket.connect(&socket2::SockAddr::from(dst))?;
+    trace_socket_scope("before_bind", &socket, src, dst, None);
+    let bind_result = socket.bind(&bind_addr);
+    trace_socket_scope("after_bind", &socket, src, dst, Some(&bind_result));
+    bind_result?;
+    if let Some(destination) = dst {
+        let connect_result = socket.connect(&socket2::SockAddr::from(destination));
+        trace_socket_scope("after_connect", &socket, src, dst, Some(&connect_result));
+        connect_result?;
     }
 
     let socket = tokio::net::UdpSocket::try_from(std::net::UdpSocket::from(socket))?;
@@ -512,6 +525,27 @@ fn create_socket(
     }
 
     Ok(socket)
+}
+
+fn trace_socket_scope(
+    stage: &str,
+    socket: &socket2::Socket,
+    src: Option<IpAddr>,
+    dst: Option<SocketAddr>,
+    operation: Option<&io::Result<()>>,
+) {
+    tracing::debug!(
+        stage,
+        ?src,
+        ?dst,
+        bound_if_v4 = ?socket.device_index_v4(),
+        bound_if_v6 = ?socket.device_index_v6(),
+        local_addr = ?socket.local_addr().map(|addr| addr.as_socket()),
+        peer_addr = ?socket.peer_addr().map(|addr| addr.as_socket()),
+        operation_ok = ?operation.map(|result| result.is_ok()),
+        raw_errno = ?operation.and_then(|result| result.as_ref().err()).and_then(io::Error::raw_os_error),
+        "Apple UDP socket scope snapshot"
+    );
 }
 
 #[cfg(test)]
