@@ -392,20 +392,22 @@ impl GatewayState {
         peer.add_resource(resource.clone(), expires_at, now);
         peer.set_ingest_token(resource.id(), flow_logs_ingest_token);
 
-        if let Some(entry) = dns_resource_nat
-            && let Err(e) = peer.setup_nat(
+        if let Some(entry) = dns_resource_nat {
+            match peer.setup_nat(
                 entry.domain,
                 resource.id(),
                 BTreeSet::from_iter(entry.resolved_ips),
                 BTreeSet::from_iter(entry.proxy_ips),
-            )
-        {
-            if e.any_is::<ProxyIpAlreadyAssigned>() {
-                tracing::debug!("Conflicting proxy assignment; closing connection: {e:#}");
-                self.cleanup_connection(&client.id, now);
-            }
+            ) {
+                Ok(()) => {}
+                Err(e) if e.any_is::<ProxyIpAlreadyAssigned>() => {
+                    tracing::debug!("Conflicting proxy assignment; closing connection: {e:#}");
+                    self.cleanup_connection(&client.id, now);
 
-            return Err(e);
+                    return Err(e);
+                }
+                Err(e) => return Err(e),
+            }
         }
 
         Ok(())
