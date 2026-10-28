@@ -481,6 +481,13 @@ defmodule PortalWeb.Components.Page do
   end
 
   @firezone_cloud_urls %{us: "https://app.firezone.dev", eu: "https://eu.app.firezone.dev"}
+  @firezone_api_urls %{us: "wss://api.firezone.dev", eu: "wss://eu.api.firezone.dev"}
+
+  @doc "The admin portal URL of a Firezone Cloud region."
+  def portal_url(region), do: Map.fetch!(@firezone_cloud_urls, region)
+
+  @doc "The control plane API URL of a Firezone Cloud region."
+  def api_url(region), do: Map.fetch!(@firezone_api_urls, region)
 
   @doc "The portal URL of a Firezone Cloud region, by atom or by its name in the slug registry."
   @spec cloud_url(atom() | String.t()) :: {:ok, String.t()} | :error

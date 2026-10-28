@@ -72,7 +72,8 @@ defmodule Portal.Mailer.InternalEmail do
         %Portal.Account{} = account,
         %Portal.Authentication.Subject{} = subject,
         from_region,
-        to_region
+        to_region,
+        %{portal: portal_url, api: api_url}
       ) do
     default_email()
     |> to("support@firezone.dev")
@@ -89,6 +90,10 @@ defmodule Portal.Mailer.InternalEmail do
 
     From region: #{from_region}
     To region: #{to_region}
+
+    Client notes for the customer:
+    - Clients at macOS and iOS 1.5.24, Android 1.5.18, Windows and Linux 1.5.20 or later switch to the new region on their own.
+    - Older Clients, headless Clients, and Gateways need the auth URL #{portal_url} and the API URL #{api_url}.
     """)
   end
 
