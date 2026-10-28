@@ -66,7 +66,7 @@ jobs:
           BENCHMARK_PROTOCOL: ${{ matrix.protocol }}
         run: |
           gh api --method POST /repos/firezone/infra/dispatches \
-            --raw-field event_type=benchmark-apple-release \
+            --raw-field event_type=benchmark-release \
             --raw-field "client_payload[git_sha]=$FIREZONE_SHA" \
             --raw-field 'client_payload[device_pair]=iMac <> Macbook' \
             --raw-field "client_payload[protocol]=$BENCHMARK_PROTOCOL" \
