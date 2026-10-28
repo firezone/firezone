@@ -114,6 +114,59 @@ struct AuthClientTests {
     }
   }
 
+  @Test("saving an untouched open Settings window cannot undo the callback region")
+  func regionSurvivesSavingOpenSettings() async throws {
+    let configuration = makeConfiguration()
+    let us = try #require(ControlPlane.cloudUs.urls)
+    configuration.authURL = us.authURL
+    configuration.apiURL = us.apiURL
+    let viewModel = SettingsViewModel(configuration: configuration)
+    let captured = configuration.signInSettings
+    let authURL = try #require(URL(string: captured.authURL))
+    let client = try #require(try AuthClient(authURL: authURL))
+
+    _ = try client.completeSignIn(
+      from: callback(for: client, region: "eu"), configuration: configuration,
+      signInSettings: captured)
+    try await viewModel.save(.settings)
+
+    #expect(viewModel.controlPlane == .cloudEu)
+    #expect(configuration.authURL == ControlPlane.cloudEu.urls?.authURL)
+    #expect(configuration.apiURL == ControlPlane.cloudEu.urls?.apiURL)
+    #expect(configuration.lastCustomURLs?.authURL == "https://custom.example.com")
+    #expect(configuration.lastCustomURLs?.apiURL == "wss://custom.example.com")
+  }
+
+  @Test("region updates preserve deliberate Settings drafts", arguments: [false, true])
+  func regionPreservesSettingsDrafts(editURLs: Bool) async throws {
+    let configuration = makeConfiguration()
+    let us = try #require(ControlPlane.cloudUs.urls)
+    configuration.authURL = us.authURL
+    configuration.apiURL = us.apiURL
+    configuration.lastCustomURLs = nil
+    let viewModel = SettingsViewModel(configuration: configuration)
+    viewModel.selectControlPlane(.custom)
+    if editURLs {
+      viewModel.authURL = "https://draft.example.com"
+      viewModel.apiURL = "wss://draft.example.com"
+    }
+    let draftURLs = (authURL: viewModel.authURL, apiURL: viewModel.apiURL)
+    let captured = configuration.signInSettings
+    let authURL = try #require(URL(string: captured.authURL))
+    let client = try #require(try AuthClient(authURL: authURL))
+
+    _ = try client.completeSignIn(
+      from: callback(for: client, region: "eu"), configuration: configuration,
+      signInSettings: captured)
+    try await viewModel.save(.settings)
+
+    #expect(viewModel.controlPlane == .custom)
+    #expect(configuration.authURL == draftURLs.authURL)
+    #expect(configuration.apiURL == draftURLs.apiURL)
+    #expect(configuration.lastCustomURLs?.authURL == draftURLs.authURL)
+    #expect(configuration.lastCustomURLs?.apiURL == draftURLs.apiURL)
+  }
+
   private func makeConfiguration(defaults: UserDefaults = .makeTestDefaults()) -> Configuration {
     let configuration = Configuration(userDefaults: defaults)
     configuration.authURL = "https://custom.example.com"
