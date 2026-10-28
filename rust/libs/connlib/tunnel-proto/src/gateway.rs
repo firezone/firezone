@@ -14,7 +14,7 @@ use crate::unroutable_packet::UnroutablePacket;
 use crate::{FailedToDecapsulate, GatewayEvent, IpConfig, p2p_control, packet_kind};
 use anyhow::{Context, ErrorExt, Result};
 use connlib_model::{ClientId, IceCandidate, PublicKey, RelayId, ResourceId};
-use dns_types::{DomainName, Query};
+use dns_types::DomainName;
 use fast_random_state::FastRandomState;
 use ip_packet::{FzP2pControlSlice, IpPacket};
 use secrecy::ExposeSecret as _;
@@ -97,12 +97,6 @@ impl GatewayState {
 
     pub fn tunnel_ip_config(&self) -> Option<IpConfig> {
         self.tun_ip_config
-    }
-
-    pub fn allows_tun_dns_query(&self, remote: SocketAddr, query: &Query, now: Instant) -> bool {
-        self.peers
-            .peer_by_ip(remote.ip())
-            .is_some_and(|(_, peer)| peer.allows_tun_dns_query(query, now))
     }
 
     pub fn public_key(&self) -> sanstun::PublicKey {
@@ -786,67 +780,5 @@ impl ResolveDnsRequest {
 
     pub fn proxy_ips(&self) -> &[IpAddr] {
         &self.proxy_ips
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::messages::gateway::ResourceDescriptionDns;
-    use dns_types::RecordType;
-
-    #[test]
-    fn tun_dns_query_uses_the_sending_clients_resources() {
-        let now = Instant::now();
-        let mut gateway = GatewayState::new([0; 32], now, Duration::ZERO);
-        let client_ip = "100.64.0.1".parse().unwrap();
-        let client = gateway.peers.upsert(ClientId::from_u128(1), || {
-            ClientOnGateway::new(
-                ClientId::from_u128(1),
-                crate::messages::Key::default(),
-                IpConfig {
-                    v4: client_ip,
-                    v6: "fd00:2021:1111::1".parse().unwrap(),
-                },
-                IpConfig {
-                    v4: "100.64.0.2".parse().unwrap(),
-                    v6: "fd00:2021:1111::2".parse().unwrap(),
-                },
-            )
-        });
-        client.add_resource(
-            ResourceDescription::Dns(ResourceDescriptionDns {
-                id: ResourceId::from_u128(1),
-                address: "example.com".to_owned(),
-                name: "example".to_owned(),
-                filters: vec![],
-            }),
-            None,
-            now,
-        );
-
-        gateway.peers.upsert(ClientId::from_u128(2), || {
-            ClientOnGateway::new(
-                ClientId::from_u128(2),
-                crate::messages::Key::default(),
-                IpConfig {
-                    v4: "100.64.0.3".parse().unwrap(),
-                    v6: "fd00:2021:1111::3".parse().unwrap(),
-                },
-                IpConfig {
-                    v4: "100.64.0.2".parse().unwrap(),
-                    v6: "fd00:2021:1111::2".parse().unwrap(),
-                },
-            )
-        });
-
-        let query = Query::new("example.com".parse().unwrap(), RecordType::TXT);
-        assert!(gateway.allows_tun_dns_query(SocketAddr::new(client_ip.into(), 5401), &query, now));
-        assert!(gateway.allows_tun_dns_query(
-            "[fd00:2021:1111::1]:5401".parse().unwrap(),
-            &query,
-            now
-        ));
-        assert!(!gateway.allows_tun_dns_query("100.64.0.3:5401".parse().unwrap(), &query, now));
     }
 }

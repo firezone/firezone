@@ -137,10 +137,6 @@ impl Query {
         self.question().qtype()
     }
 
-    pub fn is_standard_query(&self) -> bool {
-        self.inner.header().opcode() == domain::base::iana::Opcode::QUERY
-    }
-
     pub fn into_bytes(self) -> Vec<u8> {
         self.inner.into_octets()
     }
