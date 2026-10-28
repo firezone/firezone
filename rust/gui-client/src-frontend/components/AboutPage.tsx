@@ -23,7 +23,7 @@ export default function AboutPage() {
         <p className="mb-6 text-2xl font-bold text-heading">
           {__APP_VERSION__} (
           <button
-            className="font-mono hover:text-brand hover:underline"
+            className="font-mono text-brand underline hover:text-brand-dark"
             onClick={openCommit}
             role="link"
             type="button"
