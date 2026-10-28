@@ -6,6 +6,7 @@
 
 import Combine
 import Foundation
+import NetworkExtension
 
 @MainActor
 class SettingsViewModel: ObservableObject {
@@ -14,11 +15,18 @@ class SettingsViewModel: ObservableObject {
   private var cancellables: Set<AnyCancellable> = []
   private var logDirectorySizeTask: Task<Void, Never>?
 
-  @Published private(set) var shouldDisableApplyButton = false
+  // Save and Reset act on one tab's settings only.
+  @Published var selectedTab: SettingsView.Tab
   @Published private(set) var shouldDisableResetButton = false
+  // Kept apart from the URLs so that picking Custom does not snap back to the control plane they match.
+  @Published private(set) var controlPlane: ControlPlane
   @Published var authURL: String
   @Published var apiURL: String
   @Published var logFilter: String
+  /// Why the last save left a value out; nil when it was saved.
+  @Published private(set) var authURLError: String?
+  @Published private(set) var apiURLError: String?
+  @Published private(set) var logFilterError: String?
   @Published var accountSlug: String
   @Published var connectOnStart: Bool
   @Published var startOnLogin: Bool
@@ -41,16 +49,23 @@ class SettingsViewModel: ObservableObject {
 
   /// `store` powers the diagnostic logs actions; without one they report an
   /// unknown size and clear nothing.
-  init(configuration: Configuration? = nil, store: Store? = nil) {
+  init(
+    configuration: Configuration? = nil,
+    store: Store? = nil,
+    selectedTab: SettingsView.Tab = .settings
+  ) {
     self.configuration = configuration ?? store?.configuration ?? Configuration.shared
     self.store = store
+    self.selectedTab = selectedTab
 
     authURL = self.configuration.authURL
     apiURL = self.configuration.apiURL
+    controlPlane = .custom
     logFilter = self.configuration.logFilter
     accountSlug = self.configuration.accountSlug
     connectOnStart = self.configuration.connectOnStart
     startOnLogin = self.configuration.startOnLogin
+    controlPlane = detectControlPlane()
 
     Publishers.MergeMany(
       $authURL,
@@ -83,31 +98,87 @@ class SettingsViewModel: ObservableObject {
     })
     .store(in: &cancellables)
 
+    // The sign-in note depends on whether the session is running.
+    store?.$vpnStatus
+      .sink(receiveValue: { [weak self] _ in self?.objectWillChange.send() })
+      .store(in: &cancellables)
+
+    $selectedTab
+      .receive(on: RunLoop.main)
+      .sink(receiveValue: { [weak self] _ in
+        self?.updateDerivedState()
+      })
+      .store(in: &cancellables)
+
     updateDerivedState()
   }
 
   func reset() {
-    if !configuration.isAuthURLForced { authURL = ConfigurationDefaults.authURL }
-    if !configuration.isApiURLForced { apiURL = ConfigurationDefaults.apiURL }
-    if !configuration.isLogFilterForced { logFilter = ConfigurationDefaults.logFilter }
-    if !configuration.isAccountSlugForced { accountSlug = ConfigurationDefaults.accountSlug }
-    if !configuration.isConnectOnStartForced {
-      connectOnStart = ConfigurationDefaults.connectOnStart
+    switch selectedTab {
+    case .settings:
+      if !configuration.isAuthURLForced { authURL = ConfigurationDefaults.authURL }
+      if !configuration.isApiURLForced { apiURL = ConfigurationDefaults.apiURL }
+      if !configuration.isAccountSlugForced { accountSlug = ConfigurationDefaults.accountSlug }
+      if !configuration.isConnectOnStartForced {
+        connectOnStart = ConfigurationDefaults.connectOnStart
+      }
+      if !configuration.isStartOnLoginForced { startOnLogin = ConfigurationDefaults.startOnLogin }
+      controlPlane = detectControlPlane()
+    case .logs:
+      if !configuration.isLogFilterForced { logFilter = ConfigurationDefaults.logFilter }
+    case .deviceTrust:
+      break
     }
-    if !configuration.isStartOnLoginForced { startOnLogin = ConfigurationDefaults.startOnLogin }
 
     updateDerivedState()
   }
 
-  func save() async throws {
-    if !configuration.isAuthURLForced { configuration.authURL = authURL }
-    if !configuration.isApiURLForced { configuration.apiURL = apiURL }
-    if !configuration.isLogFilterForced { configuration.logFilter = logFilter }
-    if !configuration.isAccountSlugForced { configuration.accountSlug = accountSlug }
-    if !configuration.isConnectOnStartForced { configuration.connectOnStart = connectOnStart }
-    if !configuration.isStartOnLoginForced { configuration.startOnLogin = startOnLogin }
+  /// Saves the settings of `tab`, or of the selected tab, skipping any that are invalid.
+  func save(_ tab: SettingsView.Tab? = nil) async throws {
+    switch tab ?? selectedTab {
+    case .settings:
+      authURLError = isAuthURLValid() ? nil : "Enter a valid http:// or https:// URL"
+      apiURLError = isApiURLValid() ? nil : "Enter a valid ws:// or wss:// URL"
+
+      if areURLsValid() {
+        if !isControlPlaneForced, controlPlane != .custom,
+          ControlPlane.of(authURL: configuration.authURL, apiURL: configuration.apiURL) == .custom
+        {
+          configuration.lastCustomURLs = (configuration.authURL, configuration.apiURL)
+        }
+        if !configuration.isAuthURLForced { configuration.authURL = authURL }
+        if !configuration.isApiURLForced { configuration.apiURL = apiURL }
+        if controlPlane == .custom, !isControlPlaneForced {
+          configuration.lastCustomURLs = (authURL, apiURL)
+        }
+      }
+      if !configuration.isAccountSlugForced { configuration.accountSlug = accountSlug }
+      if !configuration.isConnectOnStartForced { configuration.connectOnStart = connectOnStart }
+      if !configuration.isStartOnLoginForced { configuration.startOnLogin = startOnLogin }
+    case .logs:
+      logFilterError = logFilterProblem()
+
+      if !configuration.isLogFilterForced, isLogFilterValid() {
+        configuration.logFilter = logFilter
+      }
+    case .deviceTrust:
+      break
+    }
 
     updateDerivedState()
+  }
+
+  /// Picks `controlPlane` on the user's behalf: Firezone Cloud brings its own URLs, and Custom brings
+  /// back the last ones saved with it, if any.
+  func selectControlPlane(_ controlPlane: ControlPlane) {
+    guard controlPlane != self.controlPlane, !isControlPlaneForced else { return }
+
+    self.controlPlane = controlPlane
+
+    guard let urls = controlPlane.urls ?? configuration.lastCustomURLs else { return }
+
+    authURL = urls.authURL
+    apiURL = urls.apiURL
   }
 
   func refreshLogDirectorySize() {
@@ -150,22 +221,27 @@ class SettingsViewModel: ObservableObject {
     "firezone_logs_\(LogExporter.now()).zip"
   }
 
-  func isAllForced() -> Bool {
-    return
-      (configuration.isAuthURLForced && configuration.isApiURLForced
-      && configuration.isLogFilterForced && configuration.isAccountSlugForced
-      && configuration.isConnectOnStartForced && configuration.isStartOnLoginForced)
+  /// Puts invalid values back to the saved ones, so that the settings reopen showing what is in
+  /// effect.
+  func discardInvalidDrafts() {
+    if !areURLsValid() {
+      authURL = configuration.authURL
+      apiURL = configuration.apiURL
+      controlPlane = detectControlPlane()
+    }
+    if !isLogFilterValid() { logFilter = configuration.logFilter }
+
+    authURLError = nil
+    apiURLError = nil
+    logFilterError = nil
+    updateDerivedState()
   }
 
-  func isValid() -> Bool {
-    guard let apiURL = URL(string: apiURL),
-      apiURL.host != nil,
-      ["wss", "ws"].contains(apiURL.scheme),
-      apiURL.pathComponents.isEmpty
-    else {
-      return false
-    }
+  func areURLsValid() -> Bool {
+    isAuthURLValid() && isApiURLValid()
+  }
 
+  private func isAuthURLValid() -> Bool {
     guard let authURL = URL(string: authURL),
       authURL.host != nil,
       ["http", "https"].contains(authURL.scheme),
@@ -174,7 +250,14 @@ class SettingsViewModel: ObservableObject {
       return false
     }
 
-    guard !logFilter.isEmpty
+    return true
+  }
+
+  private func isApiURLValid() -> Bool {
+    guard let apiURL = URL(string: apiURL),
+      apiURL.host != nil,
+      ["wss", "ws"].contains(apiURL.scheme),
+      apiURL.pathComponents.isEmpty
     else {
       return false
     }
@@ -182,30 +265,67 @@ class SettingsViewModel: ObservableObject {
     return true
   }
 
-  func isDefault() -> Bool {
-    return
-      ((configuration.isAuthURLForced || authURL == ConfigurationDefaults.authURL)
-      && (configuration.isApiURLForced || apiURL == ConfigurationDefaults.apiURL)
-      && (configuration.isLogFilterForced || logFilter == ConfigurationDefaults.logFilter)
-      && (configuration.isAccountSlugForced || accountSlug == ConfigurationDefaults.accountSlug)
-      && (configuration.isConnectOnStartForced
-        || connectOnStart == ConfigurationDefaults.connectOnStart)
-      && (configuration.isStartOnLoginForced
-        || startOnLogin == ConfigurationDefaults.startOnLogin))
+  func isLogFilterValid() -> Bool {
+    logFilterProblem() == nil
   }
 
-  func isSaved() -> Bool {
-    return
-      (authURL == configuration.authURL && apiURL == configuration.apiURL
-      && logFilter == configuration.logFilter && accountSlug == configuration.accountSlug
-      && connectOnStart == configuration.connectOnStart
-      && startOnLogin == configuration.startOnLogin)
+  /// An admin may use syntax the subset leaves out, and the user cannot edit a forced value.
+  private func logFilterProblem() -> String? {
+    if configuration.isLogFilterForced { return nil }
+
+    if !LogFilter.isValid(logFilter) {
+      return "Use a level such as info, or target=level pairs separated by commas"
+    }
+
+    return nil
+  }
+
+  /// Whether the running session signed in with an account slug or control plane other than the one
+  /// drafted or saved here.
+  var showsSignInChangeNote: Bool {
+    guard let store, [.connected, .connecting, .reasserting].contains(store.vpnStatus),
+      let signedInWith = configuration.signedInWith
+    else { return false }
+
+    let draft = SignInSettings(accountSlug: accountSlug, authURL: authURL, apiURL: apiURL)
+
+    return draft != signedInWith || configuration.signInSettings != signedInWith
+  }
+
+  var isControlPlaneForced: Bool {
+    configuration.isAuthURLForced || configuration.isApiURLForced
+  }
+
+  // With only one of the URLs forced, `custom` keeps the other one editable.
+  private func detectControlPlane() -> ControlPlane {
+    guard configuration.isAuthURLForced == configuration.isApiURLForced else { return .custom }
+
+    return ControlPlane.of(authURL: authURL, apiURL: apiURL)
   }
 
   private func updateDerivedState() {
-    shouldDisableApplyButton = (isAllForced() || isSaved() || !isValid())
+    switch selectedTab {
+    case .settings:
+      let isAllForced =
+        configuration.isAuthURLForced && configuration.isApiURLForced
+        && configuration.isAccountSlugForced && configuration.isConnectOnStartForced
+        && configuration.isStartOnLoginForced
+      let isDefault =
+        (configuration.isAuthURLForced || authURL == ConfigurationDefaults.authURL)
+        && (configuration.isApiURLForced || apiURL == ConfigurationDefaults.apiURL)
+        && (configuration.isAccountSlugForced || accountSlug == ConfigurationDefaults.accountSlug)
+        && (configuration.isConnectOnStartForced
+          || connectOnStart == ConfigurationDefaults.connectOnStart)
+        && (configuration.isStartOnLoginForced
+          || startOnLogin == ConfigurationDefaults.startOnLogin)
 
-    shouldDisableResetButton = (isAllForced() || isDefault())
+      shouldDisableResetButton = isAllForced || isDefault
+    case .logs:
+      shouldDisableResetButton =
+        configuration.isLogFilterForced || logFilter == ConfigurationDefaults.logFilter
+    case .deviceTrust:
+      shouldDisableResetButton = true
+    }
   }
 
   private func syncForcedValuesFromConfiguration() {
@@ -215,5 +335,6 @@ class SettingsViewModel: ObservableObject {
     if configuration.isAccountSlugForced { accountSlug = configuration.accountSlug }
     if configuration.isConnectOnStartForced { connectOnStart = configuration.connectOnStart }
     if configuration.isStartOnLoginForced { startOnLogin = configuration.startOnLogin }
+    if isControlPlaneForced { controlPlane = detectControlPlane() }
   }
 }

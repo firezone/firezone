@@ -69,11 +69,13 @@ import Foundation
   // A screenshot run wants exactly one window on the screen, and which one is
   // an argument. Each choice is its own app (see FirezoneApp.swift), picked
   // here because an app's scene list is fixed once its `main` runs.
-  switch FirezoneKit.AppView.WindowDefinition.mockFromCommandLine() {
+  switch FirezoneKit.MockWindow.fromCommandLine() {
   case .main:
     UITestMainApp.main()
   case .settings:
     UITestSettingsApp.main()
+  case .about:
+    UITestAboutApp.main()
   case nil:
     break
   }
