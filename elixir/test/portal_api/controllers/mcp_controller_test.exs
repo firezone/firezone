@@ -219,6 +219,20 @@ defmodule PortalAPI.MCPControllerTest do
       assert json_response(conn, 401)
     end
 
+    test "rejects a token once its admin is demoted", %{conn: conn, actor: actor} do
+      {_token, encoded, _refresh} =
+        Portal.OAuthFixtures.oauth_token_fixture(account: actor.account, actor: actor)
+
+      actor |> Ecto.Changeset.change(type: :account_user) |> Portal.Repo.update!()
+
+      conn =
+        conn
+        |> put_req_header("authorization", "Bearer " <> encoded)
+        |> rpc("server/discover")
+
+      assert json_response(conn, 401)
+    end
+
     test "answers GET with 405", %{conn: conn, actor: actor} do
       conn = conn |> authorize_mcp_conn(actor) |> get("/mcp")
 

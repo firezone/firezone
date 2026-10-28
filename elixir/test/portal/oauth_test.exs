@@ -778,6 +778,33 @@ defmodule Portal.OAuthTest do
       assert {:ok, response} = OAuth.refresh(refresh_params(context, refresh), @resource)
       assert response.scope == "policies:read"
     end
+
+    test "refuses a refresh token once its admin is demoted", %{actor: actor} = context do
+      refresh = refreshable_token(context)
+
+      actor |> Ecto.Changeset.change(type: :account_user) |> Portal.Repo.update!()
+
+      assert {:error, "invalid_grant", _description} =
+               OAuth.refresh(refresh_params(context, refresh), @resource)
+    end
+
+    test "refuses a refresh token while its actor is disabled", %{actor: actor} = context do
+      refresh = refreshable_token(context)
+
+      actor |> Ecto.Changeset.change(is_disabled: true) |> Portal.Repo.update!()
+
+      assert {:error, "invalid_grant", _description} =
+               OAuth.refresh(refresh_params(context, refresh), @resource)
+    end
+
+    test "refuses a refresh token while its account is disabled", %{account: account} = context do
+      refresh = refreshable_token(context)
+
+      account |> Ecto.Changeset.change(is_disabled: true) |> Portal.Repo.update!()
+
+      assert {:error, "invalid_grant", _description} =
+               OAuth.refresh(refresh_params(context, refresh), @resource)
+    end
   end
 
   describe "revoke/1" do
