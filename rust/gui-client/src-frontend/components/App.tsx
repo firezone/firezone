@@ -28,38 +28,46 @@ export default function App() {
     useState<X509Certificate | null>();
 
   useEffect(() => {
-    const sessionChangedUnlisten = events.sessionChanged.listen((event) => {
-      console.log("session_changed", { session: event.payload });
-      setSession(event.payload);
-    });
-    const generalSettingsChangedUnlisten = events.generalSettingsChanged.listen(
-      (event) => {
+    let cancelled = false;
+    let unlisten: (() => void)[] | null = null;
+
+    void Promise.all([
+      events.sessionChanged.listen((event) => {
+        console.log("session_changed", { session: event.payload });
+        setSession(event.payload);
+      }),
+      events.generalSettingsChanged.listen((event) => {
         console.log("general_settings_changed", { settings: event.payload });
         setGeneralSettings(event.payload);
-      }
-    );
-    const logFilterChangedUnlisten = events.logFilterChanged.listen((event) => {
-      console.log("log_filter_changed", { log_filter: event.payload });
-      setLogFilter(event.payload);
-    });
-    const logsRecountedUnlisten = events.logsRecounted.listen((event) => {
-      console.log("logs_recounted", { file_count: event.payload });
-      setLogCount(event.payload);
-    });
-    const deviceTrustCertificateChangedUnlisten =
+      }),
+      events.logFilterChanged.listen((event) => {
+        console.log("log_filter_changed", { log_filter: event.payload });
+        setLogFilter(event.payload);
+      }),
+      events.logsRecounted.listen((event) => {
+        console.log("logs_recounted", { file_count: event.payload });
+        setLogCount(event.payload);
+      }),
       events.x509CertificateChanged.listen((event) => {
         console.log("x509_certificate_changed", { certificate: event.payload });
         setDeviceTrustCertificate(event.payload);
-      });
+      }),
+    ]).then((newUnlisten) => {
+      if (cancelled) {
+        newUnlisten.forEach((stopListening) => stopListening());
+        return;
+      }
 
-    commands.updateState();
+      unlisten = newUnlisten;
+
+      // `listen` registers asynchronously. Requesting state any earlier can make
+      // the controller's events arrive before their listeners exist.
+      void commands.updateState();
+    });
 
     return () => {
-      sessionChangedUnlisten.then((unlisten) => unlisten());
-      generalSettingsChangedUnlisten.then((unlisten) => unlisten());
-      logFilterChangedUnlisten.then((unlisten) => unlisten());
-      logsRecountedUnlisten.then((unlisten) => unlisten());
-      deviceTrustCertificateChangedUnlisten.then((unlisten) => unlisten());
+      cancelled = true;
+      unlisten?.forEach((stopListening) => stopListening());
     };
   }, []);
 
