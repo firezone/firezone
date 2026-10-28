@@ -40,6 +40,7 @@ public struct SettingsView: View {
 
   #if os(macOS)
     private static let paneWidth: CGFloat = 500
+    @State private var deviceTrustContentHeight: CGFloat?
   #endif
 
   private struct PlaceholderText {
@@ -470,17 +471,19 @@ public struct SettingsView: View {
   private var deviceTrustTab: some View {
     #if os(macOS)
       if let summary = store.deviceTrustCertificateSummary {
-        ViewThatFits(in: .vertical) {
+        ScrollView {
           DeviceTrustSettingsView(summary: summary)
-            .fixedSize(horizontal: false, vertical: true)
             .padding()
-
-          ScrollView {
-            DeviceTrustSettingsView(summary: summary)
-              .padding()
-          }
+            .background {
+              GeometryReader { geometry in
+                Color.clear
+                  .onAppear { deviceTrustContentHeight = geometry.size.height }
+                  .onChange(of: geometry.size.height) { deviceTrustContentHeight = $0 }
+              }
+            }
         }
         .frame(width: Self.paneWidth)
+        .frame(idealHeight: deviceTrustContentHeight, maxHeight: deviceTrustContentHeight)
       }
     #elseif os(iOS)
       if let summary = store.deviceTrustCertificateSummary {
