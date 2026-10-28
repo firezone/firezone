@@ -13,7 +13,7 @@ use crate::unix_ts::UnixTsClock;
 use crate::unroutable_packet::UnroutablePacket;
 use crate::{FailedToDecapsulate, GatewayEvent, IpConfig, p2p_control, packet_kind};
 use anyhow::{Context, ErrorExt, Result};
-use connlib_model::{ClientId, IceCandidate, RelayId, ResourceId};
+use connlib_model::{ClientId, IceCandidate, PublicKey, RelayId, ResourceId};
 use dns_types::DomainName;
 use fast_random_state::FastRandomState;
 use ip_packet::{FzP2pControlSlice, IpPacket};
@@ -446,9 +446,15 @@ impl GatewayState {
     ) -> Result<()> {
         use p2p_control::dns_resource_nat;
 
+        let Some(client) = self.node.connection_id(req.client_public_key, now) else {
+            tracing::debug!("Ignoring DNS resolution for a disconnected Client");
+
+            return Ok(());
+        };
+
         let result = resolve_result.and_then(|addresses| {
             self.peers
-                .peer_by_id_mut(&req.client)
+                .peer_by_id_mut(&client)
                 .context("Unknown peer")?
                 .setup_nat(
                     req.domain.clone(),
@@ -464,7 +470,7 @@ impl GatewayState {
             Ok(()) => dns_resource_nat::NatStatus::Active,
             Err(e) if e.any_is::<ProxyIpAlreadyAssigned>() => {
                 tracing::debug!("Conflicting proxy assignment; closing connection: {e:#}");
-                self.cleanup_connection(&req.client, now);
+                self.cleanup_connection(&client, now);
 
                 return Ok(());
             }
@@ -477,7 +483,7 @@ impl GatewayState {
 
         let packet = dns_resource_nat::domain_status(req.resource, req.domain, nat_status)?;
 
-        if let Some(transmit) = encrypt_packet(packet, req.client, &mut self.node, now)? {
+        if let Some(transmit) = encrypt_packet(packet, client, &mut self.node, now)? {
             self.buffered_transmits.push_back(transmit);
         }
 
@@ -710,7 +716,7 @@ fn handle_assigned_ips_event(
 
     buffered_events.push_back(GatewayEvent::ResolveDns(ResolveDnsRequest {
         domain: req.domain,
-        client: peer.id(),
+        client_public_key: peer.public_key().into(),
         resource: req.resource,
         proxy_ips: req.proxy_ips,
     }));
@@ -755,7 +761,7 @@ fn encapsulate(
 #[derive(Debug)]
 pub struct ResolveDnsRequest {
     domain: DomainName,
-    client: ClientId,
+    client_public_key: PublicKey,
     resource: ResourceId,
     proxy_ips: Vec<IpAddr>,
 }
@@ -765,8 +771,8 @@ impl ResolveDnsRequest {
         &self.domain
     }
 
-    pub fn client(&self) -> ClientId {
-        self.client
+    pub fn client_public_key(&self) -> PublicKey {
+        self.client_public_key
     }
 
     pub fn proxy_ips(&self) -> &[IpAddr] {
