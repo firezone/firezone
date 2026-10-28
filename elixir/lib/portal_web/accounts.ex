@@ -19,6 +19,22 @@ defmodule PortalWeb.Accounts do
     end
   end
 
+  @doc """
+  The URL of the same path on the region that holds a slug this portal does
+  not know, or nil when no other region holds it or the registry cannot say.
+  """
+  @spec other_region_url(String.t(), [String.t()], String.t()) :: String.t() | nil
+  def other_region_url(id_or_slug, rest, query_string) do
+    with false <- Portal.Repo.valid_uuid?(id_or_slug),
+         {:ok, %{region: region}} <- Portal.SlugRegistry.Cache.lookup(String.downcase(id_or_slug)),
+         true <- region != Atom.to_string(Portal.SlugRegistry.region()),
+         {:ok, base} <- PortalWeb.Components.Page.cloud_url(region) do
+      base <> path(id_or_slug, rest, query_string)
+    else
+      _ -> nil
+    end
+  end
+
   @spec old_slug?(String.t(), Portal.Account.t()) :: boolean()
   def old_slug?(id_or_slug, %Portal.Account{} = account) do
     id_or_slug != account.id and
@@ -27,8 +43,12 @@ defmodule PortalWeb.Accounts do
 
   @spec current_path(Portal.Account.t(), [String.t()], String.t()) :: String.t()
   def current_path(%Portal.Account{} = account, rest, query_string) do
+    path(account.slug, rest, query_string)
+  end
+
+  defp path(first, rest, query_string) do
     path =
-      Enum.map_join([account.slug | rest], "/", fn segment ->
+      Enum.map_join([first | rest], "/", fn segment ->
         URI.encode(segment, &URI.char_unreserved?/1)
       end)
 

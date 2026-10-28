@@ -59,6 +59,7 @@ defmodule Portal.Application do
       # Application services
       Portal.Presence,
       Portal.Mailer.RateLimiter,
+      Portal.SlugRegistry.Cache,
       Portal.ComponentVersions,
       Portal.OSReleases,
       Portal.ClockDriftAlarm,

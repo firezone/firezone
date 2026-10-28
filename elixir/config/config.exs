@@ -45,6 +45,7 @@ config :portal, flow_logs_upload_batch_size: 1000
 config :portal, run_manual_migrations: false
 
 config :portal, data_residency_region: :on_prem
+config :portal, slug_registry_table_url: nil
 
 config :portal, Portal.Repo,
   hostname: "localhost",
@@ -222,6 +223,13 @@ config :portal, Portal.Azure.ManagedIdentity,
   client_id: nil,
   req_opts: [
     connect_options: [timeout: 1_000],
+    receive_timeout: 5_000,
+    retry: :transient
+  ]
+
+config :portal, Portal.SlugRegistry.AzureTable,
+  req_opts: [
+    connect_options: [timeout: 2_000],
     receive_timeout: 5_000,
     retry: :transient
   ]

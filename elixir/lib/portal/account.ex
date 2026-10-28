@@ -182,13 +182,53 @@ defmodule Portal.Account do
   end
 
   defp register_slug(changeset, slug) do
+    changeset = ensure_id(changeset)
     account_id = get_field(changeset, :id)
 
-    case Database.slug_owner_id(changeset.repo, slug) do
-      nil -> insert_slug(changeset, slug)
-      ^account_id -> changeset
-      _other_account_id -> add_error(changeset, :slug, "has already been taken")
+    cond do
+      slug_staged?(changeset, slug) ->
+        changeset
+
+      Database.slug_owner_id(changeset.repo, slug) == account_id ->
+        changeset
+
+      is_nil(Database.slug_owner_id(changeset.repo, slug)) ->
+        claim_and_insert_slug(changeset, slug, account_id)
+
+      true ->
+        add_error(changeset, :slug, "has already been taken")
     end
+  end
+
+  # The shared registry comes first: a slug another region holds never
+  # reaches the local table.
+  defp claim_and_insert_slug(changeset, slug, account_id) do
+    case Portal.SlugRegistry.claim(slug, account_id) do
+      :ok ->
+        insert_slug(changeset, slug)
+
+      {:error, :taken} ->
+        add_error(changeset, :slug, "has already been taken")
+
+      {:error, :unavailable} ->
+        add_error(changeset, :slug, "cannot be reserved right now, please try again in a few minutes")
+    end
+  end
+
+  # The registry needs the account ID before the row exists, so an insert
+  # picks its ID here instead of at write time.
+  defp ensure_id(%Ecto.Changeset{action: :insert} = changeset) do
+    if get_field(changeset, :id), do: changeset, else: put_change(changeset, :id, Ecto.UUID.generate())
+  end
+
+  defp ensure_id(changeset), do: changeset
+
+  # Safe applies the schema changeset itself, so the registration can run
+  # twice in one insert; the second run finds the child already attached.
+  defp slug_staged?(changeset, slug) do
+    changeset
+    |> get_change(:slugs, [])
+    |> Enum.any?(&(get_field(&1, :slug) == slug))
   end
 
   # The account row does not exist yet on insert, so the slug row goes in as a

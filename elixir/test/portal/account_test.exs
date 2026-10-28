@@ -57,6 +57,70 @@ defmodule Portal.AccountTest do
     end
   end
 
+  describe "changeset/1 with the shared slug registry" do
+    import Plug.Conn
+    import Portal.SlugRegistryHelpers
+
+    setup do
+      use_azure_registry(:us)
+      :ok
+    end
+
+    test "claims the slug in the registry before the local insert" do
+      test_pid = self()
+
+      stub_registry(fn
+        %{method: "POST", request_path: "/slugs"} = conn ->
+          send(test_pid, {:claimed, json_body(conn)})
+          send_resp(conn, 204, "")
+      end)
+
+      account = account_fixture(slug: "claimed-first")
+
+      assert_received {:claimed, %{"RowKey" => "claimed-first", "AccountId" => account_id, "Region" => "us"}}
+      assert account_id == account.id
+      assert [%Portal.AccountSlug{slug: "claimed-first"}] = slug_rows(account)
+    end
+
+    test "refuses a slug another region holds" do
+      stub_registry(fn
+        %{method: "POST"} = conn -> send_resp(conn, 409, "")
+        %{method: "GET"} = conn -> Req.Test.json(conn, entity("eu-owned", Ecto.UUID.generate(), "eu"))
+      end)
+
+      assert_raise Ecto.InvalidChangesetError, ~r/has already been taken/, fn ->
+        account_fixture(slug: "eu-owned")
+      end
+
+      assert Repo.aggregate(Portal.AccountSlug, :count) == 0
+    end
+
+    test "refuses to create the account when the registry is unavailable" do
+      stub_registry(fn conn -> send_resp(conn, 503, "") end)
+
+      assert_raise Ecto.InvalidChangesetError, ~r/cannot be reserved right now/, fn ->
+        account_fixture(slug: "unreachable")
+      end
+    end
+
+    test "claims a changed slug and keeps the old one locally" do
+      test_pid = self()
+
+      stub_registry(fn
+        %{method: "POST", request_path: "/slugs"} = conn ->
+          send(test_pid, {:claimed, json_body(conn)["RowKey"]})
+          send_resp(conn, 204, "")
+      end)
+
+      account = account_fixture(slug: "first-slug")
+      account = update_account(account, slug: "second-slug")
+
+      assert_received {:claimed, "first-slug"}
+      assert_received {:claimed, "second-slug"}
+      assert Enum.map(slug_rows(account), & &1.slug) == ["first-slug", "second-slug"]
+    end
+  end
+
   describe "changeset/1 slug registry" do
     test "registers the slug when the account is created" do
       account = account_fixture()

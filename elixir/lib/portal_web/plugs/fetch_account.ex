@@ -18,11 +18,24 @@ defmodule PortalWeb.Plugs.FetchAccount do
         |> maybe_redirect_old_slug(account_id_or_slug, rest, account)
 
       nil ->
-        handle_missing_account(conn)
+        conn
+        |> maybe_redirect_other_region(account_id_or_slug, rest)
+        |> handle_missing_account()
     end
   end
 
   def call(conn, _opts), do: conn
+
+  # A slug another region holds sends a GET there with the same path.
+  defp maybe_redirect_other_region(%Plug.Conn{method: method} = conn, account_id_or_slug, rest)
+       when method in ["GET", "HEAD"] do
+    case PortalWeb.Accounts.other_region_url(account_id_or_slug, rest, conn.query_string) do
+      nil -> conn
+      url -> conn |> redirect(external: url) |> halt()
+    end
+  end
+
+  defp maybe_redirect_other_region(conn, _account_id_or_slug, _rest), do: conn
 
   # An old slug still resolves, but GET requests move to the current slug so
   # bookmarks and links heal themselves. Other methods keep going as they are.
@@ -38,6 +51,8 @@ defmodule PortalWeb.Plugs.FetchAccount do
   end
 
   defp maybe_redirect_old_slug(conn, _account_id_or_slug, _rest, _account), do: conn
+
+  defp handle_missing_account(%Plug.Conn{halted: true} = conn), do: conn
 
   defp handle_missing_account(conn) do
     case missing_client_sign_in_redirect(conn) do

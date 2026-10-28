@@ -10,6 +10,60 @@ defmodule PortalWeb.Plugs.FetchAccountTest do
     {:ok, account: account}
   end
 
+  describe "call/2 with the shared slug registry" do
+    import Plug.Conn
+    import Portal.SlugRegistryHelpers
+
+    setup do
+      use_azure_registry(:us)
+      :ok
+    end
+
+    test "sends a GET for a slug another region holds to that region", %{conn: conn} do
+      stub_registry(fn
+        %{method: "GET"} = conn -> Req.Test.json(conn, entity("eu-acme", Ecto.UUID.generate(), "eu"))
+      end)
+
+      conn =
+        conn
+        |> Map.put(:path_info, ["eu-acme", "sites"])
+        |> Map.put(:query_string, "page=2")
+        |> FetchAccount.call([])
+
+      assert conn.halted
+      assert redirected_to(conn) == "https://eu.app.firezone.dev/eu-acme/sites?page=2"
+    end
+
+    test "keeps going for a slug nobody holds", %{conn: conn} do
+      stub_registry(fn _conn -> :default end)
+
+      conn = conn |> Map.put(:path_info, ["nobody-#{System.unique_integer([:positive])}", "sites"]) |> FetchAccount.call([])
+
+      refute conn.halted
+      refute Map.has_key?(conn.assigns, :account)
+    end
+
+    test "keeps going and logs when the registry is unavailable", %{conn: conn} do
+      stub_registry(fn conn -> send_resp(conn, 503, "") end)
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          conn = conn |> Map.put(:path_info, ["down-#{System.unique_integer([:positive])}", "sites"]) |> FetchAccount.call([])
+          refute conn.halted
+        end)
+
+      assert log =~ "Slug registry request failed"
+    end
+
+    test "does not redirect a POST", %{conn: conn} do
+      stub_registry(fn _conn -> flunk("must not look up the registry") end)
+
+      conn = conn |> Map.put(:method, "POST") |> Map.put(:path_info, ["eu-acme", "sites"]) |> FetchAccount.call([])
+
+      refute conn.halted
+    end
+  end
+
   describe "call/2" do
     test "assigns the account for its current slug", %{conn: conn, account: account} do
       conn =

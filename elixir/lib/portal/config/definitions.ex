@@ -469,6 +469,15 @@ defmodule Portal.Config.Definitions do
   defconfig(:azure_client_id, :string, default: nil)
 
   @doc """
+  Table service endpoint of the Azure Storage account that holds the shared
+  slug registry of Firezone Cloud, for example
+  https://firezoneslugs.table.core.windows.net. When set, the portal reserves
+  every account slug there before it writes it to its own database. Unset, the
+  default for on-prem, keeps slugs in this portal's database only.
+  """
+  defconfig(:slug_registry_table_url, :string, default: nil)
+
+  @doc """
   Size of the connection pool to the PostgreSQL database.
   """
   defconfig(:database_pool_size, :integer,
