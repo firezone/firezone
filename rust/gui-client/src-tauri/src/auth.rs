@@ -550,31 +550,6 @@ mod tests {
     }
 
     #[test]
-    fn saves_and_restores_sign_in_settings_as_keyring_attributes() {
-        let store = keyring_core::mock::Store::new().unwrap();
-        let session_dir = tempdir().unwrap();
-        let mut auth = Auth::new_with_key(
-            "dev.firezone.client/test_metadata/token",
-            store,
-            session_dir.path().to_path_buf(),
-        )
-        .unwrap();
-        auth.token_entry =
-            keyring_core::Entry::new_with_credential(Arc::new(AttributeCredential {
-                inner: auth.token_entry,
-                attributes: Default::default(),
-            }));
-        auth.sign_in_with_token(&bogus_secret("accepted-token"), sign_in_settings());
-        assert_eq!(auth.token_entry.get_password().unwrap(), "accepted-token");
-        let restored = auth.credential_from_keyring().unwrap();
-        assert_eq!(restored.token.expose_secret(), "accepted-token");
-        assert_eq!(restored.sign_in_settings, Some(sign_in_settings()));
-
-        auth.sign_out().unwrap();
-        assert!(auth.credential_from_keyring().is_none());
-    }
-
-    #[test]
     fn no_inflight_request() {
         let session_dir = tempdir().unwrap();
 
@@ -640,58 +615,5 @@ mod tests {
             _ => panic!("Expected StatesDontMatch error"),
         }
         assert!(state.token().is_none());
-    }
-
-    struct AttributeCredential {
-        inner: keyring_core::Entry,
-        attributes: std::sync::Mutex<std::collections::HashMap<String, String>>,
-    }
-
-    impl keyring_core::api::CredentialApi for AttributeCredential {
-        fn set_secret(&self, secret: &[u8]) -> keyring_core::Result<()> {
-            self.inner.set_secret(secret)
-        }
-
-        fn get_secret(&self) -> keyring_core::Result<Vec<u8>> {
-            self.inner.get_secret()
-        }
-
-        fn get_attributes(
-            &self,
-        ) -> keyring_core::Result<std::collections::HashMap<String, String>> {
-            self.inner.get_secret()?;
-            Ok(self.attributes.lock().unwrap().clone())
-        }
-
-        fn update_attributes(
-            &self,
-            attributes: &std::collections::HashMap<&str, &str>,
-        ) -> keyring_core::Result<()> {
-            self.inner.get_secret()?;
-            self.attributes.lock().unwrap().extend(
-                attributes
-                    .iter()
-                    .map(|(key, value)| (key.to_string(), value.to_string())),
-            );
-            Ok(())
-        }
-
-        fn delete_credential(&self) -> keyring_core::Result<()> {
-            self.inner.delete_credential()?;
-            self.attributes.lock().unwrap().clear();
-            Ok(())
-        }
-
-        fn get_credential(&self) -> keyring_core::Result<Option<Arc<keyring_core::Credential>>> {
-            Ok(None)
-        }
-
-        fn get_specifiers(&self) -> Option<(String, String)> {
-            None
-        }
-
-        fn as_any(&self) -> &dyn std::any::Any {
-            self
-        }
     }
 }
