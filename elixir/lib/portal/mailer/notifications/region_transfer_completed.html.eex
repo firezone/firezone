@@ -82,7 +82,9 @@
                   </p>
                   <ul style="margin: 8px 0 0; padding-left: 24px; line-height: 24px">
                     <li>Create a new token for each Gateway and redeploy it with the new API URL: <code style="font-size: 12px; background-color: #f3f4f6; padding: 2px 4px; border-radius: 3px;"><%= @api_url %></code></li>
+                    <li>Create new service account tokens for your headless Clients.</li>
                     <li>Recreate every API token.</li>
+                    <li>Reconnect your MCP clients.</li>
                     <li>Ask users to sign in again. Links to the old portal redirect to the new one.</li>
                   </ul>
                   <p style="margin: 16px 0 0; line-height: 24px">

@@ -64,7 +64,8 @@ defmodule Portal.Ops.RegionTransferTest do
       [email] = collect_queued_emails(account.id)
       assert email.subject == "Firezone Account Transfer in Progress"
       assert email.text_body =~ "moved to the European Union region"
-      assert email.text_body =~ "every session, Gateway token, and API token is invalid"
+      assert email.text_body =~ "every session, Gateway token, service account token, and API token is invalid"
+      assert email.text_body =~ "MCP clients have to be reconnected"
       assert Enum.map(email.bcc, fn {_name, address} -> address end) == [actor.email]
     end
 
@@ -154,6 +155,8 @@ defmodule Portal.Ops.RegionTransferTest do
                Enum.find(collect_queued_emails(account.id), &(&1.subject == "Firezone Account Transfer Complete"))
 
       assert email.text_body =~ "now in the European Union region"
+      assert email.text_body =~ "Create new service account tokens for your headless Clients."
+      assert email.text_body =~ "Reconnect your MCP clients."
       assert email.text_body =~ "/#{account.slug}"
       assert Enum.map(email.bcc, fn {_name, address} -> address end) == [actor.email]
     end
