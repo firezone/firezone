@@ -301,6 +301,15 @@
       color-mix(in oklch, var(--control-focus) 30%, transparent);
   }
 
+  .form-input[aria-invalid="true"],
+  .form-input[aria-invalid="true"]:hover:not(:disabled) {
+    border-color: var(--error);
+  }
+
+  .form-input[aria-invalid="true"]:focus {
+    box-shadow: 0 0 0 1px color-mix(in oklch, var(--error) 30%, transparent);
+  }
+
   .form-input:disabled {
     @apply cursor-not-allowed opacity-40;
   }
@@ -370,11 +379,11 @@
   }
 
   .toggle {
-    @apply relative inline-flex h-4 w-7 shrink-0 items-center rounded-full border px-0.5 transition-colors;
+    @apply relative inline-flex h-5 w-9 shrink-0 items-center rounded-full border px-0.5 transition-colors;
   }
 
   .toggle-thumb {
-    @apply h-3 w-3 rounded-full bg-white shadow-sm transition-transform;
+    @apply h-4 w-4 rounded-full bg-white shadow-sm transition-transform;
   }
 
   .managed-tooltip {

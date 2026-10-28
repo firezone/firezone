@@ -9,13 +9,13 @@ use crate::{
     launch_lock::{self, FirstInstance, LaunchLock},
     logging::FileCount,
     settings::{
-        self, AdvancedSettings, AdvancedSettingsViewModel, GeneralSettings,
-        GeneralSettingsViewModel, MdmSettings,
+        self, AdvancedSettings, GeneralSettings, GeneralSettingsViewModel, LogFilterViewModel,
+        MdmSettings, SignInSettings,
     },
     updates,
     view::{
-        AdvancedSettingsChanged, GeneralSettingsChanged, LogsRecounted, SessionChanged,
-        SessionViewModel, X509CertificateChanged,
+        GeneralSettingsChanged, LogFilterChanged, LogsRecounted, SessionChanged, SessionViewModel,
+        X509CertificateChanged,
     },
 };
 use anyhow::{Context, Result, bail};
@@ -119,20 +119,20 @@ impl GuiIntegration for TauriIntegration {
         mdm_settings: MdmSettings,
         general_settings: GeneralSettings,
         advanced_settings: AdvancedSettings,
+        signed_in_with: Option<SignInSettings>,
     ) -> Result<()> {
         GeneralSettingsChanged(GeneralSettingsViewModel::new(
             mdm_settings.clone(),
             general_settings,
+            advanced_settings.clone(),
+            signed_in_with,
         ))
         .emit(&self.app)
         .context("Failed to emit `general_settings_changed` event")?;
 
-        AdvancedSettingsChanged(AdvancedSettingsViewModel::new(
-            mdm_settings,
-            advanced_settings,
-        ))
-        .emit(&self.app)
-        .context("Failed to emit `advanced_settings_changed` event")?;
+        LogFilterChanged(LogFilterViewModel::new(mdm_settings, advanced_settings))
+            .emit(&self.app)
+            .context("Failed to emit `log_filter_changed` event")?;
 
         Ok(())
     }
@@ -224,8 +224,14 @@ impl GuiIntegration for TauriIntegration {
         mdm_settings: MdmSettings,
         general_settings: GeneralSettings,
         advanced_settings: AdvancedSettings,
+        signed_in_with: Option<SignInSettings>,
     ) -> Result<()> {
-        self.notify_settings_changed(mdm_settings, general_settings, advanced_settings)?; // Ensure settings are up to date in GUI.
+        self.notify_settings_changed(
+            mdm_settings,
+            general_settings,
+            advanced_settings,
+            signed_in_with,
+        )?; // Ensure settings are up to date in GUI.
         self.navigate("general-settings")?;
         self.set_window_visible(true)?;
 
@@ -517,9 +523,11 @@ async fn smoke_test(ctrl_tx: mpsc::Sender<ControllerRequest>) -> Result<()> {
     // the protected-storage IPC path. The reply lands in the controller's
     // `AdvancedSettingsApplied` arm; we just need to give it time to land.
     ctrl_tx
-        .send(ControllerRequest::ApplyAdvancedSettings(Box::default()))
+        .send(ControllerRequest::ApplyLogFilter(
+            AdvancedSettings::default().log_filter,
+        ))
         .await
-        .context("Failed to send `ApplyAdvancedSettings` request")?;
+        .context("Failed to send `ApplyLogFilter` request")?;
 
     // Give the app some time to export the zip and reach steady state
     tokio::time::sleep_until(quit_time).await;

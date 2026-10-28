@@ -67,11 +67,13 @@ async fn serve(server_io: DuplexStream) -> Result<()> {
     let mut ipc_rx = FramedRead::new(rx, ipc::Decoder::<ClientMsg>::default());
     let mut ipc_tx = FramedWrite::new(tx, ipc::Encoder::<ServerMsg>::default());
 
+    let mut advanced_settings = AdvancedSettings::default();
+
     // The controller blocks on `Hello` before doing anything else, so it must come first.
     ipc_tx
         .send(&ServerMsg::Hello {
             firezone_id: "00000000-0000-0000-0000-000000000000".to_owned(),
-            advanced_settings: AdvancedSettings::default(),
+            advanced_settings: advanced_settings.clone(),
             mdm_settings: MdmSettings::default(),
             x509_certificate: Ok(None),
         })
@@ -101,8 +103,19 @@ async fn serve(server_io: DuplexStream) -> Result<()> {
                 ipc_tx.send(&ServerMsg::ClearedLogs(Ok(()))).await?;
             }
             ClientMsg::ApplyAdvancedSettings(settings) => {
+                advanced_settings = settings;
                 ipc_tx
-                    .send(&ServerMsg::AdvancedSettingsApplied(Ok(settings)))
+                    .send(&ServerMsg::AdvancedSettingsApplied(Ok(
+                        advanced_settings.clone()
+                    )))
+                    .await?;
+            }
+            ClientMsg::PatchAdvancedSettings(patch) => {
+                advanced_settings = patch.apply(advanced_settings);
+                ipc_tx
+                    .send(&ServerMsg::AdvancedSettingsApplied(Ok(
+                        advanced_settings.clone()
+                    )))
                     .await?;
             }
             // The real service has no reply for these either.
