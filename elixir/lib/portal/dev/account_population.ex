@@ -388,7 +388,7 @@ defmodule Portal.Dev.AccountPopulation do
     internet_resource = create_resource(account, internet_site, 1, :internet, spec)
     account_owner_group = create_group(account, Group.account_owner_attrs())
     create_membership(account, account_owner_group, admin_actor)
-    self_device_pool = create_self_device_pool(account, account_owner_group)
+    self_device_pool = create_self_device_pool(account, account_owner_group, admin_actor)
 
     %{
       account: account,
@@ -653,10 +653,10 @@ defmodule Portal.Dev.AccountPopulation do
     })
   end
 
-  defp create_self_device_pool(account, account_owner_group) do
+  defp create_self_device_pool(account, account_owner_group, admin_actor) do
     resource =
       %Resource{account_id: account.id}
-      |> cast(Resource.self_device_pool_attrs(), [:type, :device_membership_criteria, :name])
+      |> cast(Resource.self_device_pool_attrs(admin_actor), [:type, :device_membership_criteria, :name])
       |> Resource.changeset()
       |> Repo.insert!()
 
