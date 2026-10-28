@@ -183,37 +183,42 @@ public struct SettingsView: View {
       Form {
         Section {
           TextField(
-            "Account Slug",
             text: $viewModel.accountSlug,
             prompt: Text(PlaceholderText.accountSlug)
-          )
+          ) {
+            managedLabel("Account Slug", isManaged: configuration.isAccountSlugForced)
+          }
           .focused($focusedField, equals: .accountSlug)
           .onSubmit { commit(.settings) }
           .disabled(configuration.isAccountSlugForced)
 
-          Picker(ControlPlane.pickerTitle, selection: controlPlaneSelection) {
+          Picker(selection: controlPlaneSelection) {
             ForEach(ControlPlane.allCases) { controlPlane in
               Text(controlPlane.title).tag(controlPlane)
             }
+          } label: {
+            managedLabel(ControlPlane.pickerTitle, isManaged: viewModel.isControlPlaneForced)
           }
           .disabled(viewModel.isControlPlaneForced)
 
           if viewModel.controlPlane == .custom {
             TextField(
-              "Auth URL",
               text: $viewModel.authURL,
               prompt: Text(PlaceholderText.authURL)
-            )
+            ) {
+              managedLabel("Auth URL", isManaged: configuration.isAuthURLForced)
+            }
             .focused($focusedField, equals: .authURL)
             .onSubmit { commit(.settings) }
             .disabled(configuration.isAuthURLForced)
             errorText(viewModel.authURLError)
 
             TextField(
-              "API URL",
               text: $viewModel.apiURL,
               prompt: Text(PlaceholderText.apiURL)
-            )
+            ) {
+              managedLabel("API URL", isManaged: configuration.isApiURLForced)
+            }
             .focused($focusedField, equals: .apiURL)
             .onSubmit { commit(.settings) }
             .disabled(configuration.isApiURLForced)
@@ -222,25 +227,32 @@ public struct SettingsView: View {
         } header: {
           Text("Sign-in")
         } footer: {
-          signInChangeNote
+          signInFooter
         }
 
         Section {
           Toggle(isOn: $viewModel.connectOnStart) {
-            Text("Automatically connect when Firezone is launched")
+            managedLabel(
+              "Automatically connect when Firezone is launched",
+              isManaged: configuration.isConnectOnStartForced)
           }
           .toggleStyle(.switch)
           .disabled(configuration.isConnectOnStartForced)
 
           Toggle(isOn: $viewModel.startOnLogin) {
-            Text("Start Firezone when you sign into your Mac")
+            managedLabel(
+              "Start Firezone when you sign into your Mac",
+              isManaged: configuration.isStartOnLoginForced)
           }
           .toggleStyle(.switch)
           .disabled(configuration.isStartOnLoginForced)
         } header: {
           Text("Startup")
         } footer: {
-          paneFooter
+          VStack(alignment: .leading, spacing: 4) {
+            managedNote(configuration.isConnectOnStartForced || configuration.isStartOnLoginForced)
+            paneFooter
+          }
         }
       }
       .formStyle(.grouped)
@@ -252,7 +264,7 @@ public struct SettingsView: View {
         Form {
           Section {
             VStack(alignment: .leading, spacing: 2) {
-              Text("Account Slug")
+              managedLabel("Account Slug", isManaged: configuration.isAccountSlugForced)
                 .foregroundStyle(.secondary)
                 .font(.caption)
               TextField(
@@ -275,7 +287,7 @@ public struct SettingsView: View {
             // A menu rather than a form picker, so the choice sits under its caption like
             // the other fields instead of being pushed to a second, indented line.
             VStack(alignment: .leading, spacing: 2) {
-              Text(ControlPlane.pickerTitle)
+              managedLabel(ControlPlane.pickerTitle, isManaged: viewModel.isControlPlaneForced)
                 .foregroundStyle(.secondary)
                 .font(.caption)
               Menu {
@@ -298,7 +310,7 @@ public struct SettingsView: View {
 
             if viewModel.controlPlane == .custom {
               VStack(alignment: .leading, spacing: 2) {
-                Text("Auth URL")
+                managedLabel("Auth URL", isManaged: configuration.isAuthURLForced)
                   .foregroundStyle(.secondary)
                   .font(.caption)
                 TextField(
@@ -314,7 +326,7 @@ public struct SettingsView: View {
                 errorText(viewModel.authURLError)
               }
               VStack(alignment: .leading, spacing: 2) {
-                Text("API URL")
+                managedLabel("API URL", isManaged: configuration.isApiURLForced)
                   .foregroundStyle(.secondary)
                   .font(.caption)
                 TextField(
@@ -333,14 +345,20 @@ public struct SettingsView: View {
           } header: {
             Text("Sign-in")
           } footer: {
-            signInChangeNote
+            signInFooter
           }
-          Section("Startup") {
+          Section {
             Toggle(isOn: $viewModel.connectOnStart) {
-              Text("Automatically connect when Firezone is launched")
+              managedLabel(
+                "Automatically connect when Firezone is launched",
+                isManaged: configuration.isConnectOnStartForced)
             }
             .toggleStyle(.switch)
             .disabled(configuration.isConnectOnStartForced)
+          } header: {
+            Text("Startup")
+          } footer: {
+            managedNote(configuration.isConnectOnStartForced)
           }
           Section {
             resetButton
@@ -360,9 +378,9 @@ public struct SettingsView: View {
     #if os(iOS)
       VStack {
         Form {
-          Section(header: Text("Logs")) {
+          Section {
             VStack(alignment: .leading, spacing: 2) {
-              Text("Log Filter")
+              managedLabel("Log Filter", isManaged: configuration.isLogFilterForced)
                 .foregroundStyle(.secondary)
                 .font(.caption)
               TextField(
@@ -417,6 +435,10 @@ public struct SettingsView: View {
                 )
               }
             )
+          } header: {
+            Text("Logs")
+          } footer: {
+            managedNote(configuration.isLogFilterForced)
           }
           Section("About") {
             HStack {
@@ -445,10 +467,11 @@ public struct SettingsView: View {
       Form {
         Section {
           TextField(
-            "Log Filter",
             text: $viewModel.logFilter,
             prompt: Text(PlaceholderText.logFilter)
-          )
+          ) {
+            managedLabel("Log Filter", isManaged: configuration.isLogFilterForced)
+          }
           .focused($focusedField, equals: .logFilter)
           .onSubmit { commit(.logs) }
           .disabled(configuration.isLogFilterForced)
@@ -474,7 +497,10 @@ public struct SettingsView: View {
         } header: {
           Text("Logs")
         } footer: {
-          paneFooter
+          VStack(alignment: .leading, spacing: 4) {
+            managedNote(configuration.isLogFilterForced)
+            paneFooter
+          }
         }
       }
       .formStyle(.grouped)
@@ -542,13 +568,36 @@ public struct SettingsView: View {
       }
   }
 
+  private func managedLabel(_ title: String, isManaged: Bool) -> some View {
+    HStack(alignment: .firstTextBaseline, spacing: 4) {
+      Text(LocalizedStringKey(title))
+        .accessibilityHint(isManaged ? "Managed by your organization." : "")
+      if isManaged {
+        Image(systemName: "lock.fill")
+          .font(.caption)
+          .foregroundStyle(.secondary)
+          .accessibilityHidden(true)
+      }
+    }
+  }
+
   @ViewBuilder
-  private var signInChangeNote: some View {
-    if viewModel.showsSignInChangeNote {
-      Text(
-        "Sign out and sign in again after changing the account slug or control plane."
-      )
-      .foregroundStyle(.secondary)
+  private func managedNote(_ isManaged: Bool) -> some View {
+    if isManaged {
+      Text("Locked settings are managed by your organization.")
+        .foregroundStyle(.secondary)
+    }
+  }
+
+  private var signInFooter: some View {
+    VStack(alignment: .leading, spacing: 4) {
+      if viewModel.showsSignInChangeNote {
+        Text(
+          "Sign out and sign in again after changing the account slug or control plane."
+        )
+        .foregroundStyle(.secondary)
+      }
+      managedNote(configuration.isAccountSlugForced || viewModel.isControlPlaneForced)
     }
   }
 

@@ -35,8 +35,6 @@ interface Screen {
   /// The certificate the keystore holds, when the device trust tab is available.
   deviceTrustCertificate?: X509Certificate;
   logCount?: FileCount;
-  // Label of a field to leave the pointer over, for a screen whose tooltip is the point.
-  hover?: string;
   // A field to type into and press Enter on, for a screen that shows a rejected value.
   input?: { label: string; value: string };
 }
@@ -191,7 +189,6 @@ const screens: Record<string, Screen> = {
       api_url: "wss://eu.api.firezone.dev/",
       api_url_is_managed: true,
     },
-    hover: "Control plane",
   },
   "device-trust-happy": {
     route: "/device-trust",
@@ -207,7 +204,6 @@ const screens: Record<string, Screen> = {
     route: "/diagnostics",
     logCount: { bytes: 3_400_000, files: 12 },
     logFilter: { log_filter: "debug", log_filter_is_managed: true },
-    hover: "Log Filter",
   },
   about: { route: "/about" },
 };
@@ -299,11 +295,6 @@ for (const [name, screen] of Object.entries(screens)) {
           await userEvent.fill(page.getByLabelText(label), value);
           await userEvent.keyboard("{Enter}");
         });
-        await settle();
-      }
-
-      if (screen.hover) {
-        await page.getByLabelText(screen.hover).hover();
         await settle();
       }
 

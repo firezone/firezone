@@ -72,6 +72,7 @@ export default function TextSetting({
       field
       inputId={inputId}
       label={label}
+      managed={managed}
     >
       <ManagedTextInput
         aria-describedby={error ? errorId : undefined}
