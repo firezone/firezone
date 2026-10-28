@@ -1057,6 +1057,7 @@ impl<I: GuiIntegration> Controller<I> {
             Ok(()) => {
                 let token = match self.unconfirmed_token.take() {
                     Some(token) => Some(token),
+                    // Attach sign-in settings to a token saved by an older client.
                     None if self.auth.sign_in_settings().is_none() => self.auth.token(),
                     None => None,
                 };
