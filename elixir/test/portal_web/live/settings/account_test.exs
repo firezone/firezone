@@ -224,13 +224,24 @@ defmodule PortalWeb.Settings.AccountTest do
       assert has_element?(lv, "#data-residency", "Paris, France")
     end
 
-    test "hides the transfer request on on-prem portals", %{conn: conn, account: account, actor: actor} do
+    test "hides and ignores the transfer request on on-prem portals", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
       {:ok, lv, _html} =
         conn
         |> authorize_conn(actor)
         |> live(~p"/#{account}/settings/account")
 
       refute has_element?(lv, "#request-region-transfer")
+
+      html = render_click(lv, "open_region_transfer")
+      refute html =~ "region-transfer-modal"
+
+      html = render_click(lv, "request_region_transfer")
+      refute html =~ "Request sent"
+      refute_receive {:email, _email}
     end
 
     test "sends a region transfer request to support", %{

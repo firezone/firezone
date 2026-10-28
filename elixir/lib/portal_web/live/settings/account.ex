@@ -641,12 +641,18 @@ defmodule PortalWeb.Settings.Account do
     end
   end
 
-  def handle_event("open_region_transfer", _params, socket) do
+  def handle_event("open_region_transfer", _params, %{assigns: %{region_transfer_enabled: true}} = socket) do
     {:noreply, assign(socket, region_transfer_open: true)}
   end
 
+  def handle_event("open_region_transfer", _params, socket), do: {:noreply, socket}
+
   def handle_event("close_region_transfer", _params, socket) do
     {:noreply, assign(socket, region_transfer_open: false)}
+  end
+
+  def handle_event("request_region_transfer", _params, %{assigns: %{region_transfer_enabled: false}} = socket) do
+    {:noreply, socket}
   end
 
   def handle_event("request_region_transfer", _params, socket) do
@@ -801,7 +807,7 @@ defmodule PortalWeb.Settings.Account do
   defp billing_currency(:us), do: "USD"
   defp billing_currency(:eu), do: "EUR"
 
-  defp region_transfer_enabled?(region), do: region in [:us, :eu]
+  defp region_transfer_enabled?(region), do: region != :on_prem
 
   defmodule Database do
     import Ecto.Query
