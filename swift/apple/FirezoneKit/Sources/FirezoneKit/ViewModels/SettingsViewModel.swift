@@ -14,6 +14,8 @@ class SettingsViewModel: ObservableObject {
   private let store: Store?
   private var cancellables: Set<AnyCancellable> = []
   private var logDirectorySizeTask: Task<Void, Never>?
+  private var savedURLs: (authURL: String, apiURL: String)
+  private var savedControlPlane: ControlPlane = .custom
 
   // Save and Reset act on one tab's settings only.
   @Published var selectedTab: SettingsView.Tab
@@ -57,6 +59,7 @@ class SettingsViewModel: ObservableObject {
     self.configuration = configuration ?? store?.configuration ?? Configuration.shared
     self.store = store
     self.selectedTab = selectedTab
+    savedURLs = (self.configuration.authURL, self.configuration.apiURL)
 
     authURL = self.configuration.authURL
     apiURL = self.configuration.apiURL
@@ -66,6 +69,7 @@ class SettingsViewModel: ObservableObject {
     connectOnStart = self.configuration.connectOnStart
     startOnLogin = self.configuration.startOnLogin
     controlPlane = detectControlPlane()
+    savedControlPlane = controlPlane
 
     Publishers.MergeMany(
       $authURL,
@@ -83,7 +87,7 @@ class SettingsViewModel: ObservableObject {
       .receive(on: RunLoop.main)
       .debounce(for: .seconds(0.3), scheduler: RunLoop.main)
       .sink(receiveValue: { [weak self] _ in
-        self?.syncForcedValuesFromConfiguration()
+        self?.syncValuesFromConfiguration()
         self?.updateDerivedState()
       })
       .store(in: &cancellables)
@@ -114,6 +118,7 @@ class SettingsViewModel: ObservableObject {
   }
 
   func reset() {
+    syncValuesFromConfiguration()
     switch selectedTab {
     case .settings:
       if !configuration.isAuthURLForced { authURL = ConfigurationDefaults.authURL }
@@ -137,6 +142,7 @@ class SettingsViewModel: ObservableObject {
   func save(_ tab: SettingsView.Tab? = nil) async throws {
     switch tab ?? selectedTab {
     case .settings:
+      syncValuesFromConfiguration()
       authURLError = isAuthURLValid() ? nil : "Enter a valid http:// or https:// URL"
       apiURLError = isApiURLValid() ? nil : "Enter a valid ws:// or wss:// URL"
 
@@ -151,6 +157,8 @@ class SettingsViewModel: ObservableObject {
         if controlPlane == .custom, !isControlPlaneForced {
           configuration.lastCustomURLs = (authURL, apiURL)
         }
+        savedURLs = (configuration.authURL, configuration.apiURL)
+        savedControlPlane = controlPlane
       }
       if !configuration.isAccountSlugForced { configuration.accountSlug = accountSlug }
       if !configuration.isConnectOnStartForced { configuration.connectOnStart = connectOnStart }
@@ -171,6 +179,7 @@ class SettingsViewModel: ObservableObject {
   /// Picks `controlPlane` on the user's behalf: Firezone Cloud brings its own URLs, and Custom brings
   /// back the last ones saved with it, if any.
   func selectControlPlane(_ controlPlane: ControlPlane) {
+    syncValuesFromConfiguration()
     guard controlPlane != self.controlPlane, !isControlPlaneForced else { return }
 
     self.controlPlane = controlPlane
@@ -328,13 +337,29 @@ class SettingsViewModel: ObservableObject {
     }
   }
 
-  private func syncForcedValuesFromConfiguration() {
+  private func syncValuesFromConfiguration() {
+    let configuredURLs = (authURL: configuration.authURL, apiURL: configuration.apiURL)
+    if configuredURLs != savedURLs {
+      if authURL == savedURLs.authURL, apiURL == savedURLs.apiURL,
+        controlPlane == savedControlPlane
+      {
+        authURL = configuredURLs.authURL
+        apiURL = configuredURLs.apiURL
+        controlPlane = detectControlPlane()
+      }
+      savedURLs = configuredURLs
+      savedControlPlane = ControlPlane.of(
+        authURL: configuredURLs.authURL, apiURL: configuredURLs.apiURL)
+    }
     if configuration.isAuthURLForced { authURL = configuration.authURL }
     if configuration.isApiURLForced { apiURL = configuration.apiURL }
     if configuration.isLogFilterForced { logFilter = configuration.logFilter }
     if configuration.isAccountSlugForced { accountSlug = configuration.accountSlug }
     if configuration.isConnectOnStartForced { connectOnStart = configuration.connectOnStart }
     if configuration.isStartOnLoginForced { startOnLogin = configuration.startOnLogin }
-    if isControlPlaneForced { controlPlane = detectControlPlane() }
+    if isControlPlaneForced {
+      controlPlane = detectControlPlane()
+      savedControlPlane = controlPlane
+    }
   }
 }

@@ -74,3 +74,51 @@ test("an empty log filter is saved", async () => {
     .element(page.getByLabelText("Log Filter"))
     .not.toHaveAttribute("aria-invalid", "true");
 });
+
+test("Clear Logs cancels without deleting and runs only after confirmation", async () => {
+  const clearLogs = vi.fn();
+  root.render(
+    <DiagnosticsPage
+      logCount={null}
+      logFilter={{ log_filter: "info", log_filter_is_managed: false }}
+      exportLogs={() => {}}
+      clearLogs={clearLogs}
+      saveLogFilter={vi.fn()}
+    />
+  );
+  const trigger = page.getByRole("button", { name: "Clear Logs" });
+  const dialog = page.getByRole("dialog", { name: "Delete all log files?" });
+
+  await userEvent.click(trigger);
+  await expect.element(dialog).toBeVisible();
+  await expect
+    .element(page.getByRole("button", { name: "Cancel", exact: true }))
+    .toHaveFocus();
+  expect(clearLogs).not.toHaveBeenCalled();
+  await userEvent.keyboard("{Escape}");
+  await expect.element(dialog).not.toBeInTheDocument();
+  await expect.element(trigger).toHaveFocus();
+  expect(clearLogs).not.toHaveBeenCalled();
+
+  await userEvent.click(trigger);
+  await userEvent.click(
+    page.getByRole("button", { name: "Cancel", exact: true })
+  );
+  await expect.element(trigger).toHaveFocus();
+  expect(clearLogs).not.toHaveBeenCalled();
+
+  await userEvent.click(trigger);
+  await userEvent.click(
+    page.getByRole("button", { name: "Clear", exact: true })
+  );
+  expect(clearLogs).toHaveBeenCalledTimes(1);
+  await expect.element(dialog).not.toBeInTheDocument();
+  await expect.element(trigger).toHaveFocus();
+
+  await userEvent.click(trigger);
+  await userEvent.dblClick(
+    page.getByRole("button", { name: "Clear", exact: true })
+  );
+  expect(clearLogs).toHaveBeenCalledTimes(2);
+  await expect.element(dialog).not.toBeInTheDocument();
+});
