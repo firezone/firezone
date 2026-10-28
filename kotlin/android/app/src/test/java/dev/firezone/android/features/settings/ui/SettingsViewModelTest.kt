@@ -131,7 +131,6 @@ class SettingsViewModelTest {
         viewModel.onControlPlaneChanged(ControlPlane.CUSTOM)
         viewModel.onAuthUrlChanged("https://firezone.example.com")
         viewModel.onApiUrlChanged("wss://api.firezone.example.com")
-        settle()
 
         assertEquals(ControlPlane.CUSTOM, viewModel.controlPlane)
         assertEquals("https://firezone.example.com", repository.getConfigSync().authUrl)
@@ -165,7 +164,6 @@ class SettingsViewModelTest {
         populateFields()
 
         viewModel.onAccountSlugChanged("example-corp")
-        settle()
 
         assertEquals("example-corp", repository.getConfigSync().accountSlug)
     }
@@ -197,7 +195,6 @@ class SettingsViewModelTest {
         populateFields()
 
         viewModel.onConnectOnStartChanged(true)
-        settle()
 
         assertTrue(repository.getConfigSync().connectOnStart)
     }
@@ -207,7 +204,6 @@ class SettingsViewModelTest {
         populateFields()
 
         viewModel.onLogFilterChanged("debug")
-        settle()
 
         assertEquals("debug", repository.getConfigSync().logFilter)
     }

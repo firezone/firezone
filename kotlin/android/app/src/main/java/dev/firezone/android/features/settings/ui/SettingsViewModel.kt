@@ -23,8 +23,6 @@ import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import uniffi.connlib.ConnlibException
 import uniffi.connlib.validateLogFilter
 import java.io.File
@@ -62,9 +60,6 @@ internal class SettingsViewModel
 
         // `null` while signed out.
         val signedInWith: SignInSettings? = repo.getActiveSignInSettingsSync()
-
-        // Each change saves the whole config, so the saves have to land in the order they were made.
-        private val saveMutex = Mutex()
 
         private val _managedStatusStateFlow = MutableStateFlow<ManagedConfigStatus?>(null)
         val managedStatusStateFlow: StateFlow<ManagedConfigStatus?> = _managedStatusStateFlow
@@ -237,9 +232,7 @@ internal class SettingsViewModel
                 repo.saveLastCustomUrlsSync(newConfig.authUrl, newConfig.apiUrl)
             }
 
-            viewModelScope.launch {
-                saveMutex.withLock { repo.saveSettings(newConfig).collect() }
-            }
+            repo.saveSettingsSync(newConfig)
         }
 
         internal data class UiState(

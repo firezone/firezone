@@ -133,31 +133,35 @@ class Repository
                 emit(getDefaultConfigSync())
             }.flowOn(coroutineDispatcher)
 
+        fun saveSettingsSync(value: Config) {
+            val managedStatus = getManagedStatus()
+            val editor = sharedPreferences.edit()
+
+            if (!managedStatus.isAuthUrlManaged) {
+                editor.putString(AUTH_URL_KEY, value.authUrl)
+            }
+            if (!managedStatus.isApiUrlManaged) {
+                editor.putString(API_URL_KEY, value.apiUrl)
+            }
+            if (!managedStatus.isLogFilterManaged) {
+                editor.putString(LOG_FILTER_KEY, value.logFilter)
+            }
+            if (!managedStatus.isAccountSlugManaged) {
+                editor.putString(ACCOUNT_SLUG_KEY, value.accountSlug)
+            }
+            if (!managedStatus.isStartOnLoginManaged) {
+                editor.putBoolean(START_ON_LOGIN_KEY, value.startOnLogin)
+            }
+            if (!managedStatus.isConnectOnStartManaged) {
+                editor.putBoolean(CONNECT_ON_START_KEY, value.connectOnStart)
+            }
+
+            editor.apply()
+        }
+
         fun saveSettings(value: Config): Flow<Unit> =
             flow {
-                val managedStatus = getManagedStatus()
-                val editor = sharedPreferences.edit()
-
-                if (!managedStatus.isAuthUrlManaged) {
-                    editor.putString(AUTH_URL_KEY, value.authUrl)
-                }
-                if (!managedStatus.isApiUrlManaged) {
-                    editor.putString(API_URL_KEY, value.apiUrl)
-                }
-                if (!managedStatus.isLogFilterManaged) {
-                    editor.putString(LOG_FILTER_KEY, value.logFilter)
-                }
-                if (!managedStatus.isAccountSlugManaged) {
-                    editor.putString(ACCOUNT_SLUG_KEY, value.accountSlug)
-                }
-                if (!managedStatus.isStartOnLoginManaged) {
-                    editor.putBoolean(START_ON_LOGIN_KEY, value.startOnLogin)
-                }
-                if (!managedStatus.isConnectOnStartManaged) {
-                    editor.putBoolean(CONNECT_ON_START_KEY, value.connectOnStart)
-                }
-
-                emit(editor.apply())
+                emit(saveSettingsSync(value))
             }.flowOn(coroutineDispatcher)
 
         // TODO: Consider adding support for the legacy managed configuration keys like token,
