@@ -11,7 +11,7 @@ import Testing
 
 @testable import FirezoneKit
 
-private final class ForcedUserDefaults: UserDefaults {
+final class ForcedUserDefaults: UserDefaults {
   let domainName: String
   private let forcedKeys: Set<String>
   private let forcedValues: [String: Any]

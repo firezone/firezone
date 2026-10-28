@@ -4,7 +4,8 @@ use crate::{
     logging::{self, FileCount},
     service,
     settings::{
-        AdvancedSettings, AdvancedSettingsPatch, GeneralSettings, MdmSettings, SignInSettings,
+        AdvancedSettings, AdvancedSettingsPatch, ControlPlane, GeneralSettings, MdmSettings,
+        SignInSettings,
     },
     updates, uptime,
     view::{ClientSettingsForm, SessionViewModel},
@@ -495,6 +496,7 @@ impl<I: GuiIntegration> Controller<I> {
 
         tracing::info!("Received deep link over IPC");
 
+        let control_plane = auth_response.control_plane;
         // Uses `std::fs`
         let token = match self.auth.handle_response(auth_response) {
             Ok(token) => token,
@@ -505,6 +507,30 @@ impl<I: GuiIntegration> Controller<I> {
                 return Err(error).context("Couldn't handle auth response");
             }
         };
+        if let Some((auth_url, api_url)) = control_plane.and_then(ControlPlane::urls) {
+            let patch = AdvancedSettingsPatch {
+                auth_url: self
+                    .mdm_settings
+                    .auth_url
+                    .is_none()
+                    .then_some(auth_url.clone()),
+                api_url: self
+                    .mdm_settings
+                    .api_url
+                    .is_none()
+                    .then_some(api_url.clone()),
+                log_filter: None,
+            };
+            self.set_signed_in_with(Some(SignInSettings {
+                auth_url: self.mdm_settings.auth_url.clone().unwrap_or(auth_url),
+                api_url: self.mdm_settings.api_url.clone().unwrap_or(api_url),
+                ..self.current_sign_in()
+            }))?;
+            if !patch.is_empty() {
+                self.send_ipc(&service::ClientMsg::PatchAdvancedSettings(patch))
+                    .await?;
+            }
+        }
         self.start_session(token).await?;
         self.update_telemetry_context().await?;
 
@@ -2414,12 +2440,86 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn browser_region_updates_control_plane_without_overwriting_other_settings() {
+        let _guard = logging::test("debug");
+        for (region, control_plane, mdm_settings) in [
+            ("us", ControlPlane::CloudUs, MdmSettings::default()),
+            (
+                "eu",
+                ControlPlane::CloudEu,
+                MdmSettings {
+                    api_url: Some("wss://managed.example.com/".parse().unwrap()),
+                    ..Default::default()
+                },
+            ),
+        ] {
+            let general_settings = GeneralSettings {
+                account_slug: Some("original".to_owned()),
+                custom_auth_url: Some("https://custom.example.com/".parse().unwrap()),
+                custom_api_url: Some("wss://custom.example.com/".parse().unwrap()),
+                ..Default::default()
+            };
+            let mut test_controller =
+                Controller::start_for_test_with_settings(general_settings.clone());
+            let mut mock_tunnel = test_controller.tunnel_service_ipc_accept().await;
+            mock_tunnel
+                .tx
+                .send(&service::ServerMsg::Hello {
+                    firezone_id: "test-firezone-id".to_owned(),
+                    advanced_settings: AdvancedSettings::default(),
+                    mdm_settings: mdm_settings.clone(),
+                    x509_certificate: Ok(None),
+                })
+                .await
+                .unwrap();
+            let mut callback = test_controller.begin_sign_in().await;
+            callback.query_pairs_mut().append_pair("region", region);
+            let response = test_controller
+                .gui_ipc_request(gui_ipc::ClientMsg::Deeplink(callback))
+                .await;
+            assert_eq!(response, gui_ipc::ServerMsg::Ack);
+
+            let (auth_url, api_url) = control_plane.urls().unwrap();
+            let patch = mock_tunnel.rx_patch_advanced_settings().await;
+            assert_eq!(patch.auth_url, Some(auth_url.clone()));
+            assert_eq!(
+                patch.api_url,
+                mdm_settings.api_url.is_none().then_some(api_url.clone())
+            );
+            assert!(patch.log_filter.is_none());
+            let service::ClientMsg::Connect {
+                api_url: connected_api,
+                ..
+            } = mock_tunnel.next_msg().await
+            else {
+                panic!("expected a connection after saving the region");
+            };
+            let effective_api = mdm_settings.api_url.unwrap_or(api_url);
+            assert_eq!(connected_api, Some(effective_api.clone()));
+            let integration = test_controller.integration();
+            assert_eq!(
+                integration.signed_in_with.last(),
+                Some(&Some(SignInSettings {
+                    account_slug: general_settings.account_slug.clone(),
+                    auth_url,
+                    api_url: effective_api,
+                }))
+            );
+            let saved = integration.general_settings.last().unwrap();
+            assert_eq!(saved.account_slug, general_settings.account_slug);
+            assert_eq!(saved.custom_auth_url, general_settings.custom_auth_url);
+            assert_eq!(saved.custom_api_url, general_settings.custom_api_url);
+        }
+    }
+
+    #[tokio::test]
     async fn sign_in_settings_stay_frozen_from_browser_start_until_sign_out() {
         let _guard = logging::test("debug");
         let mut test_controller = Controller::start_for_test();
         let mut mock_tunnel = test_controller.tunnel_service_ipc_accept().await;
         mock_tunnel.send_hello().await;
-        let callback = test_controller.begin_sign_in().await;
+        let mut callback = test_controller.begin_sign_in().await;
+        callback.query_pairs_mut().append_pair("region", "unknown");
         let original = test_controller
             .integration()
             .signed_in_with

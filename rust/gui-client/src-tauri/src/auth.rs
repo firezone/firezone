@@ -87,6 +87,7 @@ impl Request {
 pub(crate) struct Response {
     pub(crate) fragment: SecretString,
     pub(crate) state: SecretString,
+    pub(crate) control_plane: Option<crate::settings::ControlPlane>,
 }
 
 #[cfg(debug_assertions)]
@@ -99,6 +100,7 @@ impl Response {
         Self {
             fragment: SecretString::from("fake-fragment"),
             state,
+            control_plane: None,
         }
     }
 }
@@ -432,6 +434,7 @@ mod tests {
             let resp = Response {
                 fragment: bogus_secret("fragment"),
                 state: req.state.clone(),
+                control_plane: None,
             };
 
             // Handle deep link from the server, now we are signed in and have a token
@@ -480,6 +483,7 @@ mod tests {
         let r = state.handle_response(Response {
             fragment: bogus_secret("fragment"),
             state: bogus_secret("state"),
+            control_plane: None,
         });
 
         match r {
@@ -514,6 +518,7 @@ mod tests {
             state: SecretString::from(
                 "bogus state from a replay attack or browser mis-click".to_string(),
             ),
+            control_plane: Some(crate::settings::ControlPlane::CloudEu),
         };
         assert!(state.token().is_none());
 
