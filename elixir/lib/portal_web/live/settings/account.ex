@@ -425,9 +425,18 @@ defmodule PortalWeb.Settings.Account do
                 <p>
                   After the transfer, every session, Gateway token, service account token, and
                   API token is invalid. Users sign in again, and a sign-in on the old portal
-                  redirects to the new one. Each Gateway needs a new token and the new API URL
-                  before it comes back online. Headless Clients need new service account tokens.
-                  Recreate every API token and reconnect your MCP clients.
+                  redirects to the new one.
+                </p>
+                <p>
+                  Clients at these versions or later switch to the new region on their own, so
+                  they need no configuration change: macOS and iOS 1.5.24, Android 1.5.18,
+                  Windows and Linux 1.5.20. Older Clients, headless Clients, and Gateways need
+                  the new URLs: set the auth URL to
+                  <code>{Page.portal_url(Page.other_region(@data_residency_region))}</code>
+                  and the API URL to
+                  <code>{Page.api_url(Page.other_region(@data_residency_region))}</code>.
+                  Each Gateway also needs a new token, and headless Clients need new service
+                  account tokens. Recreate every API token and reconnect your MCP clients.
                 </p>
                 <p>
                   Logs are not moved. They are deleted from the old region when the transfer
@@ -745,7 +754,8 @@ defmodule PortalWeb.Settings.Account do
            |> InternalEmail.region_transfer_request_email(
              subject,
              Page.data_residency_name(region),
-             Page.data_residency_name(to_region)
+             Page.data_residency_name(to_region),
+             %{portal: Page.portal_url(to_region), api: Page.api_url(to_region)}
            )
            |> Portal.Mailer.deliver() do
       {:noreply,

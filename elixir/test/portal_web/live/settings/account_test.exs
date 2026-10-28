@@ -265,7 +265,10 @@ defmodule PortalWeb.Settings.AccountTest do
       assert html =~ "Transfer your account to the European Union region?"
       assert html =~ "maintenance window of up to 8 hours"
       assert html =~ "every session, Gateway token, service account token, and"
-      assert html =~ "Headless Clients need new service account tokens."
+      assert html =~ "macOS and iOS 1.5.24, Android 1.5.18"
+      assert html =~ "https://eu.app.firezone.dev"
+      assert html =~ "wss://eu.api.firezone.dev"
+      assert html =~ "headless Clients need new service"
       assert html =~ "reconnect your MCP clients"
       assert html =~ "Logs are not moved."
       assert html =~ "bill in EUR from then on"
@@ -283,6 +286,7 @@ defmodule PortalWeb.Settings.AccountTest do
       assert email.text_body =~ "Account: #{account.name} (#{account.id})"
       assert email.text_body =~ "From region: United States"
       assert email.text_body =~ "To region: European Union"
+      assert email.text_body =~ "auth URL https://eu.app.firezone.dev and the API URL wss://eu.api.firezone.dev"
     end
 
     test "renders usage section", %{conn: conn, account: account, actor: actor} do
