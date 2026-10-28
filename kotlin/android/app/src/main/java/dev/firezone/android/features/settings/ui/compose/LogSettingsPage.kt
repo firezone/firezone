@@ -86,11 +86,10 @@ fun LogSettingsPage(
         SettingsGroup(title = stringResource(R.string.settings_section_about)) {
             SettingsRow(
                 title = stringResource(R.string.version),
-                summary = versionName,
             ) {
                 if (buildSha != "unknown") {
-                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text(stringResource(R.string.built_from))
+                    Row {
+                        Text("$versionName (")
                         Text(
                             text = buildSha.take(8),
                             color = MaterialTheme.colorScheme.primary,
@@ -101,7 +100,10 @@ fun LogSettingsPage(
                                     onLongClick = { ClipboardUtils.copyToClipboard(context, "Version", version) },
                                 ),
                         )
+                        Text(")")
                     }
+                } else {
+                    Text(versionName)
                 }
             }
         }
