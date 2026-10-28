@@ -60,6 +60,11 @@ async fn sends_and_receives_a_datagram() {
 #[cfg(apple)]
 #[tokio::test]
 async fn explicit_source_connects_after_unassigned_source() {
+    let Some(unassigned) = unassigned_ipv4_address() else {
+        eprintln!("skipping test: every candidate IPv4 address is assigned");
+        return;
+    };
+
     let peer = tokio::net::UdpSocket::bind("127.0.0.1:0").await.unwrap();
     let peer_addr = peer.local_addr().unwrap();
     let socket = udp("0.0.0.0:0".parse().unwrap())
@@ -70,7 +75,7 @@ async fn explicit_source_connects_after_unassigned_source() {
     assert!(
         socket
             .send(DatagramOut {
-                src: Some("192.0.2.1:0".parse().unwrap()),
+                src: Some((unassigned, 0).into()),
                 dst: peer_addr,
                 packet: bufferpool::Bytes::copied_from(b"hello"),
                 segment_size: 5,
@@ -101,6 +106,11 @@ async fn explicit_source_connects_after_unassigned_source() {
 #[cfg(apple)]
 #[tokio::test]
 async fn failed_source_keeps_full_flow_cache() {
+    let Some(unassigned) = unassigned_ipv4_address() else {
+        eprintln!("skipping test: every candidate IPv4 address is assigned");
+        return;
+    };
+
     let peers = (0..16)
         .map(|_| std::net::UdpSocket::bind("127.0.0.1:0").unwrap())
         .collect::<Vec<_>>();
@@ -126,7 +136,7 @@ async fn failed_source_keeps_full_flow_cache() {
     assert!(
         socket
             .send(DatagramOut {
-                src: Some("192.0.2.1:0".parse().unwrap()),
+                src: Some((unassigned, 0).into()),
                 dst: peers[0].local_addr().unwrap(),
                 packet: bufferpool::Bytes::copied_from(b"hello"),
                 segment_size: 5,
@@ -185,4 +195,23 @@ async fn receives_after_many_icmp_errors() {
 
     let datagram = batch.drain().next().unwrap();
     assert_eq!(datagram.from(), peer.local_addr().unwrap());
+}
+
+#[cfg(apple)]
+fn unassigned_ipv4_address() -> Option<std::net::Ipv4Addr> {
+    use std::{collections::HashSet, net::Ipv4Addr};
+
+    let assigned = nix::ifaddrs::getifaddrs()
+        .unwrap()
+        .filter_map(|interface| {
+            interface
+                .address?
+                .as_sockaddr_in()
+                .map(|address| address.ip())
+        })
+        .collect::<HashSet<_>>();
+
+    (1..=254)
+        .map(|host| Ipv4Addr::new(192, 0, 2, host))
+        .find(|address| !assigned.contains(address))
 }

@@ -93,9 +93,8 @@ struct Inner {
     flows: BTreeMap<Key, Flow>,
     /// Send rates of pairs that have not (yet) earned a flow socket.
     rates: RateGate,
-    /// Whether the environment permits `SO_REUSEPORT`-bound flow sockets.
-    /// Route and address errors affect only their pair; other failures disable new flows
-    /// until the pool is reset on a network change.
+    /// Whether policy permits creating connected flow sockets.
+    /// `EPERM` disables new flows until the pool is reset on a network change.
     flow_sockets_supported: bool,
     buffer_sizes: Option<(usize, usize)>,
     /// Datagrams rescued from an evicted socket's receive buffer just before closing it.
@@ -280,11 +279,8 @@ impl SocketPool {
             Err(e) => {
                 tracing::debug!(?src, %dst, "Failed to connect flow socket: {e}");
 
-                match e.kind() {
-                    io::ErrorKind::NetworkUnreachable => {}
-                    io::ErrorKind::HostUnreachable => {}
-                    io::ErrorKind::AddrNotAvailable => {}
-                    _ => inner.flow_sockets_supported = false,
+                if e.raw_os_error() == Some(libc::EPERM) {
+                    inner.flow_sockets_supported = false;
                 }
 
                 None
