@@ -48,7 +48,9 @@ fun GeneralSettingsPage(
         val signInChangeNote = stringResource(R.string.sign_in_change_note).takeIf { signedInWith != null }
 
         Column {
-            SettingsGroup(title = stringResource(R.string.settings_section_sign_in)) {
+            SettingsGroup(
+                title = stringResource(R.string.settings_section_sign_in),
+            ) {
                 TextPreferenceRow(
                     title = stringResource(R.string.account_slug),
                     value = config.accountSlug,
@@ -94,7 +96,9 @@ fun GeneralSettingsPage(
                 )
             }
         }
-        SettingsGroup(title = stringResource(R.string.settings_section_startup)) {
+        SettingsGroup(
+            title = stringResource(R.string.settings_section_startup),
+        ) {
             SwitchPreferenceRow(
                 title = stringResource(R.string.start_on_login),
                 checked = config.startOnLogin,
@@ -107,6 +111,12 @@ fun GeneralSettingsPage(
                 isManaged = managedStatus.isConnectOnStartManaged,
                 onCheckedChange = onConnectOnStartChange,
             )
+        }
+        if (
+            managedStatus.isAccountSlugManaged || managedStatus.isAuthUrlManaged || managedStatus.isApiUrlManaged ||
+            managedStatus.isStartOnLoginManaged || managedStatus.isConnectOnStartManaged
+        ) {
+            ManagedSettingsNote()
         }
     }
 }

@@ -9,6 +9,7 @@ import check from "remixicon/icons/System/checkbox-circle-line.svg";
 import close from "remixicon/icons/System/close-line.svg";
 import deleteBin from "remixicon/icons/System/delete-bin-line.svg";
 import information from "remixicon/icons/System/information-line.svg";
+import lock from "remixicon/icons/System/lock-line.svg";
 import settings from "remixicon/icons/System/settings-3-line.svg";
 import shareForward from "remixicon/icons/System/share-forward-line.svg";
 
@@ -22,6 +23,7 @@ const icons = {
   "delete-bin": deleteBin,
   home,
   information,
+  lock,
   palette,
   settings,
   "share-forward": shareForward,

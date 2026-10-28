@@ -162,6 +162,21 @@
       }
     }
 
+    func testManagedSettings() throws {
+      let appearance = try currentAppearance()
+      let app = launchApp(scenario: "managed-settings")
+      defer { app.terminate() }
+
+      try openSettings(in: app, on: "settings-managed")
+      for tab in Self.settingsTabs {
+        try selectTab(tab.label, showing: tab.showing, in: app)
+        try waitFor(
+          app.staticTexts["Some settings are managed by your organization."].firstMatch,
+          on: "settings-managed")
+        deliver(app, as: "settings-\(tab.name)-managed", in: appearance)
+      }
+    }
+
     /// The Settings tab of an app configured for a self-hosted control plane.
     func testSettingsWithCustomControlPlane() throws {
       let appearance = try currentAppearance()

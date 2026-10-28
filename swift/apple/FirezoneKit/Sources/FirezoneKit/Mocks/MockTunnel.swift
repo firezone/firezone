@@ -40,6 +40,8 @@
     /// The control plane the app is configured for; Firezone Cloud (US) when absent.
     let authURL: String?
     let apiURL: String?
+    // swiftlint:disable:next discouraged_optional_boolean - absent in unmanaged fixtures
+    let managedVPNConfiguration: Bool?
 
     enum VPNStatus: String, Decodable, Sendable {
       case invalid
@@ -197,8 +199,13 @@
         actorName: scenario.actorName,
         providerLogFolderSize: scenario.providerLogFolderSize
       )
+      let manager = MockTunnelProviderManager(session: session, configuration: configuration)
+      if scenario.managedVPNConfiguration == true {
+        let proto = manager.protocolConfiguration as? NETunnelProviderProtocol
+        proto?.providerBundleIdentifier = nil
+      }
       let tunnelManagerFactory = MockTunnelProviderManagerFactory(
-        manager: MockTunnelProviderManager(session: session, configuration: configuration),
+        manager: manager,
         installed: scenario.hasVPNConfiguration
       )
 
@@ -226,10 +233,6 @@
     }
 
     /// Settles the settings the app reports before anything reads them.
-    ///
-    /// `SettingsViewModel` snapshots each unforced setting when it is built and only
-    /// ever re-reads the forced ones, so a value that arrives later leaves the form
-    /// showing a stale one, ready to be saved back over it.
     private static func seedConfiguration(
       _ configuration: Configuration, with scenario: MockScenario
     ) {
