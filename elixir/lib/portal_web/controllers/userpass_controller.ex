@@ -24,7 +24,7 @@ defmodule PortalWeb.UserpassController do
     password = userpass["secret"]
     context_type = context_type(params)
 
-    with %Portal.Account{} = account <- Database.get_account_by_id_or_slug(account_id_or_slug),
+    with %Portal.Account{} = account <- PortalWeb.Accounts.get_by_id_or_slug(account_id_or_slug),
          %Userpass.AuthProvider{} = provider <- fetch_provider(account, auth_provider_id),
          false <- client_sign_in_restricted?(account, context_type),
          %Portal.Actor{} = actor <- fetch_actor(account, email),
@@ -259,17 +259,7 @@ defmodule PortalWeb.UserpassController do
   defmodule Database do
     import Ecto.Query
     alias Portal.Safe
-    alias Portal.Account
     alias Portal.Userpass
-
-    def get_account_by_id_or_slug(id_or_slug) do
-      query =
-        if Portal.Repo.valid_uuid?(id_or_slug),
-          do: from(a in Account, where: a.id == ^id_or_slug or a.slug == ^id_or_slug),
-          else: from(a in Account, where: a.slug == ^id_or_slug)
-
-      query |> Safe.unscoped() |> Safe.one()
-    end
 
     def get_provider(account, id) do
       from(p in Userpass.AuthProvider,

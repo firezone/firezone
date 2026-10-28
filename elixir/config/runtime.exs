@@ -224,6 +224,8 @@ if config_env() == :prod do
   config :portal, web_external_url: env_var_to_config!(:web_external_url)
   config :portal, data_residency_region: env_var_to_config!(:data_residency_region)
 
+  config :portal, slug_registry_table_url: env_var_to_config!(:slug_registry_table_url)
+
   # Shared cookie and proxy config (used by both Web and API endpoints)
   config :portal,
     cookie_secure: env_var_to_config!(:phoenix_secure_cookies),
@@ -260,6 +262,10 @@ if config_env() == :prod do
 
     # Refresh cached OCSP statuses hourly, for CAs that publish no list
     {"45 3 * * *", Portal.Ocsp.Scheduler},
+
+    # Release registry slugs this region no longer holds locally: a claim whose
+    # local write rolled back, or the slugs of a deleted account
+    {"*/30 * * * *", Portal.Workers.SweepSlugRegistry},
 
     # Schedule Entra directory sync daily; Graph change notifications cover
     # the hours in between

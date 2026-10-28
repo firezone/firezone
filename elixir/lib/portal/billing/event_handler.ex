@@ -424,6 +424,7 @@ defmodule Portal.Billing.EventHandler do
     account_slug = generate_account_slug(metadata)
 
     attrs = %{
+      id: Ecto.UUID.generate(),
       name: metadata["account_name"] || customer_name,
       legal_name: customer_name,
       slug: account_slug,
@@ -755,10 +756,12 @@ defmodule Portal.Billing.EventHandler do
   defp put_if_not_nil(map, _key, nil), do: map
   defp put_if_not_nil(map, key, value), do: Map.put(map, key, value)
 
+  # The slug registry records the account ID at claim time, so a key retry
+  # keeps the same ID.
   defp create_account_changeset(attrs) do
     import Ecto.Changeset
 
-    %Portal.Account{}
+    %Portal.Account{id: attrs.id}
     |> cast(attrs, [:name, :legal_name, :slug, :key])
     |> put_change(:key, Portal.Account.new_key())
     |> cast_embed(:metadata)

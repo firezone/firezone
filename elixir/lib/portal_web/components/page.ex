@@ -474,6 +474,13 @@ defmodule PortalWeb.Components.Page do
 
   @firezone_cloud_urls %{us: "https://app.firezone.dev", eu: "https://eu.app.firezone.dev"}
 
+  @doc "The portal URL of a Firezone Cloud region, by atom or by its name in the slug registry."
+  @spec cloud_url(atom() | String.t()) :: {:ok, String.t()} | :error
+  def cloud_url("us"), do: cloud_url(:us)
+  def cloud_url("eu"), do: cloud_url(:eu)
+  def cloud_url(region) when is_atom(region), do: Map.fetch(@firezone_cloud_urls, region)
+  def cloud_url(_region), do: :error
+
   @doc """
   Whether this portal is the production Firezone Cloud portal for its region,
   rather than staging or a local portal configured with the same region.

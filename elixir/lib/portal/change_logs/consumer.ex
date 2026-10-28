@@ -20,6 +20,7 @@ defmodule Portal.ChangeLogs.Consumer do
   # Used to introspect field redactions
   @tables_to_schemas %{
     "accounts" => Portal.Account,
+    "account_slugs" => Portal.AccountSlug,
     "actors" => Portal.Actor,
     "api_tokens" => Portal.APIToken,
     "devices" => Portal.Device,
