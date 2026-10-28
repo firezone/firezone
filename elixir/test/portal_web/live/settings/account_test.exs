@@ -224,20 +224,12 @@ defmodule PortalWeb.Settings.AccountTest do
       assert has_element?(lv, "#data-residency", "Paris, France")
     end
 
-    test "hides the transfer request without a support recipient", %{
-      conn: conn,
-      account: account,
-      actor: actor
-    } do
-      Portal.Config.put_env_override(:data_residency_region, :us)
-      Portal.Config.put_env_override(Portal.Mailer.InternalEmail, recipient: nil)
-
+    test "hides the transfer request on on-prem portals", %{conn: conn, account: account, actor: actor} do
       {:ok, lv, _html} =
         conn
         |> authorize_conn(actor)
         |> live(~p"/#{account}/settings/account")
 
-      assert has_element?(lv, "#data-residency")
       refute has_element?(lv, "#request-region-transfer")
     end
 
@@ -247,7 +239,6 @@ defmodule PortalWeb.Settings.AccountTest do
       actor: actor
     } do
       Portal.Config.put_env_override(:data_residency_region, :us)
-      Portal.Config.put_env_override(Portal.Mailer.InternalEmail, recipient: "support@firezone.dev")
       account = update_account(account, metadata: %{stripe: %{product_name: "Team"}})
 
       {:ok, lv, _html} =

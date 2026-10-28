@@ -801,9 +801,7 @@ defmodule PortalWeb.Settings.Account do
   defp billing_currency(:us), do: "USD"
   defp billing_currency(:eu), do: "EUR"
 
-  defp region_transfer_enabled?(region) do
-    region in [:us, :eu] and InternalEmail.enabled?()
-  end
+  defp region_transfer_enabled?(region), do: region in [:us, :eu]
 
   defmodule Database do
     import Ecto.Query

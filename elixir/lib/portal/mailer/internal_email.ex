@@ -74,8 +74,11 @@ defmodule Portal.Mailer.InternalEmail do
         from_region,
         to_region
       ) do
-    account
-    |> base_email(subject.actor, "Region transfer request: #{account.name}")
+    default_email()
+    |> to("support@firezone.dev")
+    |> reply_to({subject.actor.name, subject.actor.email})
+    |> subject("Region transfer request: #{account.name}")
+    |> with_account_id(account.id)
     |> text_body("""
     Region transfer request
 
