@@ -497,28 +497,6 @@ defmodule PortalWeb.Components.Page do
   end
 
   @doc """
-  Tells visitors of the EU portal that Firezone Cloud EU is in closed beta, at
-  the top of the sign in pages. Other portals show nothing.
-  """
-  def eu_beta_banner(assigns) do
-    assigns = assign(assigns, :region, data_residency_region())
-
-    ~H"""
-    <Core.flash :if={@region == :eu and firezone_cloud?(@region)} id="eu-beta-banner" kind={:info}>
-      Firezone Cloud EU is now in closed beta.
-      <a
-        href="https://www.firezone.dev/eu#request-access"
-        target="_blank"
-        rel="noopener"
-        class="font-medium underline"
-      >
-        Request access
-      </a>
-    </Core.flash>
-    """
-  end
-
-  @doc """
   Shows which region the portal keeps its data in, at the bottom of the sign in
   pages. The Firezone Cloud portals also link to the other region's portal, at
   the same page unless the page belongs to an account. On-prem portals show

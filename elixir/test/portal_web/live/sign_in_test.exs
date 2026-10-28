@@ -111,7 +111,7 @@ defmodule PortalWeb.SignInTest do
              )
     end
 
-    test "shows the EU beta banner and links the US portal on the EU portal", %{
+    test "links the US portal on the EU portal", %{
       conn: conn,
       account: account
     } do
@@ -120,13 +120,7 @@ defmodule PortalWeb.SignInTest do
 
       {:ok, lv, _html} = live(conn, ~p"/#{account}/sign_in")
 
-      assert has_element?(lv, "#eu-beta-banner", "Firezone Cloud EU is now in closed beta.")
-
-      assert has_element?(
-               lv,
-               "#eu-beta-banner a[href='https://www.firezone.dev/eu#request-access']",
-               "Request access"
-             )
+      refute has_element?(lv, "#eu-beta-banner")
 
       assert has_element?(
                lv,

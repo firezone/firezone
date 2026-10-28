@@ -166,14 +166,14 @@ defmodule PortalWeb.Settings.Account do
               :if={@data_residency_region == :us and Page.firezone_cloud?(:us)}
               class="text-xs text-subtle"
             >
-              Firezone Cloud EU is in closed beta.
+              Firezone Cloud EU is also available.
               <a
-                href="https://www.firezone.dev/eu"
+                href="https://www.firezone.dev/kb/architecture/regional-availability"
                 target="_blank"
                 rel="noopener"
                 class={Core.link_style()}
               >
-                Click here for more information.
+                Learn more about regions.
               </a>
             </p>
           </div>

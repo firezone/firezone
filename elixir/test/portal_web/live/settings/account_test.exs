@@ -183,7 +183,7 @@ defmodule PortalWeb.Settings.AccountTest do
       refute has_element?(lv, "#data-residency")
     end
 
-    test "shows the US region with the EU closed beta link", %{
+    test "shows the US region with the regions link", %{
       conn: conn,
       account: account,
       actor: actor
@@ -197,11 +197,15 @@ defmodule PortalWeb.Settings.AccountTest do
         |> live(~p"/#{account}/settings/account")
 
       assert has_element?(lv, "#data-residency", "Cloud region: United States")
-      assert has_element?(lv, "#data-residency", "Firezone Cloud EU is in closed beta.")
-      assert has_element?(lv, "#data-residency a[href='https://www.firezone.dev/eu']")
+      assert has_element?(lv, "#data-residency", "Firezone Cloud EU is also available.")
+
+      assert has_element?(
+               lv,
+               "#data-residency a[href='https://www.firezone.dev/kb/architecture/regional-availability']"
+             )
     end
 
-    test "shows the EU region without the closed beta link", %{
+    test "shows the EU region without the regions link", %{
       conn: conn,
       account: account,
       actor: actor
@@ -214,10 +218,10 @@ defmodule PortalWeb.Settings.AccountTest do
         |> live(~p"/#{account}/settings/account")
 
       assert has_element?(lv, "#data-residency", "Cloud region: European Union")
-      refute has_element?(lv, "#data-residency", "closed beta")
+      refute has_element?(lv, "#data-residency", "also available")
     end
 
-    test "shows the US region without the closed beta link on other US portals", %{
+    test "shows the US region without the regions link on other US portals", %{
       conn: conn,
       account: account,
       actor: actor
@@ -231,7 +235,7 @@ defmodule PortalWeb.Settings.AccountTest do
         |> live(~p"/#{account}/settings/account")
 
       assert has_element?(lv, "#data-residency", "Cloud region: United States")
-      refute has_element?(lv, "#data-residency", "closed beta")
+      refute has_element?(lv, "#data-residency", "also available")
     end
 
     test "renders usage section", %{conn: conn, account: account, actor: actor} do
