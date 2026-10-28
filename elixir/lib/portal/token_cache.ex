@@ -41,6 +41,12 @@ defmodule Portal.TokenCache do
       {:ok, token} ->
         {:reply, {:ok, token}, state}
 
+      {:stale, token} ->
+        case fetch_token(fetch_fun) do
+          {:ok, token, expires_at} -> {:reply, {:ok, token}, Map.put(state, cache_key, {token, expires_at})}
+          {:error, _reason} -> {:reply, {:ok, token}, state}
+        end
+
       :miss ->
         case fetch_token(fetch_fun) do
           {:ok, token, expires_at} ->
@@ -81,6 +87,11 @@ defmodule Portal.TokenCache do
     case Map.get(state, cache_key) do
       {token, expires_at} when expires_at - @expiry_margin_seconds > now ->
         {:ok, token}
+
+      # Inside the refresh margin but not expired: refresh, and fall back to
+      # this token if the refresh fails.
+      {token, expires_at} when expires_at > now ->
+        {:stale, token}
 
       _ ->
         :miss

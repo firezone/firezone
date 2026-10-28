@@ -5,13 +5,13 @@ import React, { act } from "react";
 import { createRoot, Root } from "react-dom/client";
 import { MemoryRouter } from "react-router";
 import { afterEach, beforeEach, test, vi } from "vitest";
-import { cdp, page } from "vitest/browser";
+import { cdp, page, userEvent } from "vitest/browser";
 import App from "./components/App";
 import {
-  AdvancedSettingsViewModel,
   events,
   FileCount,
   GeneralSettingsViewModel,
+  LogFilterViewModel,
   SessionViewModel,
   X509Certificate,
   X509DetailField,
@@ -29,14 +29,15 @@ const COLOR_SCHEMES = ["light", "dark"] as const;
 // leaves a field out to render what the user sees before that event arrives.
 interface Screen {
   route: string;
+  click?: string;
   session?: SessionViewModel;
   generalSettings?: GeneralSettingsViewModel;
-  advancedSettings?: AdvancedSettingsViewModel;
+  logFilter?: LogFilterViewModel;
   /// The certificate the keystore holds, when the device trust tab is available.
   deviceTrustCertificate?: X509Certificate;
   logCount?: FileCount;
-  // Label of a field to leave the pointer over, for a screen whose tooltip is the point.
-  hover?: string;
+  // A field to type into and press Enter on, for a screen that shows a rejected value.
+  input?: { label: string; value: string };
 }
 
 const generalSettings: GeneralSettingsViewModel = {
@@ -46,13 +47,17 @@ const generalSettings: GeneralSettingsViewModel = {
   connect_on_start_is_managed: false,
   account_slug: "example-corp",
   account_slug_is_managed: false,
+  control_plane: "CloudUs",
+  auth_url: "https://app.firezone.dev/",
+  auth_url_is_managed: false,
+  api_url: "wss://api.firezone.dev/",
+  api_url_is_managed: false,
+  custom_auth_url: "https://app.firezone.dev/",
+  custom_api_url: "wss://api.firezone.dev/",
+  signed_in_with: null,
 };
 
-const advancedSettings: AdvancedSettingsViewModel = {
-  auth_url: "https://app.firezone.dev",
-  auth_url_is_managed: false,
-  api_url: "wss://api.firezone.dev",
-  api_url_is_managed: false,
+const logFilter: LogFilterViewModel = {
   log_filter: "info",
   log_filter_is_managed: false,
 };
@@ -142,24 +147,49 @@ const screens: Record<string, Screen> = {
     },
   },
   "general-settings": { route: "/general-settings", generalSettings },
+  "general-settings-custom": {
+    route: "/general-settings",
+    generalSettings: {
+      ...generalSettings,
+      control_plane: "Custom",
+      auth_url: "https://firezone.example.com/",
+      api_url: "wss://api.firezone.example.com/",
+    },
+  },
+  "general-settings-invalid-url": {
+    route: "/general-settings",
+    generalSettings: {
+      ...generalSettings,
+      control_plane: "Custom",
+      auth_url: "https://firezone.example.com/",
+      api_url: "wss://api.firezone.example.com/",
+    },
+    input: { label: "Auth URL", value: "firezone.example.com" },
+  },
+  "general-settings-pending-sign-in": {
+    route: "/general-settings",
+    generalSettings: {
+      ...generalSettings,
+      signed_in_with: {
+        account_slug: "example-corp",
+        control_plane: "CloudEu",
+        auth_url: "https://eu.app.firezone.dev/",
+        api_url: "wss://eu.api.firezone.dev/",
+      },
+    },
+  },
   "general-settings-managed": {
     route: "/general-settings",
     generalSettings: {
       ...generalSettings,
       account_slug_is_managed: true,
       connect_on_start_is_managed: true,
-    },
-  },
-  "advanced-settings": { route: "/advanced-settings", advancedSettings },
-  "advanced-settings-managed": {
-    route: "/advanced-settings",
-    advancedSettings: {
-      ...advancedSettings,
-      api_url_is_managed: true,
+      control_plane: "CloudEu",
+      auth_url: "https://eu.app.firezone.dev/",
       auth_url_is_managed: true,
-      log_filter_is_managed: true,
+      api_url: "wss://eu.api.firezone.dev/",
+      api_url_is_managed: true,
     },
-    hover: "Auth Base URL",
   },
   "device-trust-happy": {
     route: "/device-trust",
@@ -169,6 +199,23 @@ const screens: Record<string, Screen> = {
   diagnostics: {
     route: "/diagnostics",
     logCount: { bytes: 3_400_000, files: 12 },
+    logFilter,
+  },
+  "diagnostics-clear-confirmation": {
+    route: "/diagnostics",
+    logCount: { bytes: 3_400_000, files: 17 },
+    logFilter,
+    click: "Clear Logs",
+  },
+  "settings-reset-confirmation": {
+    route: "/general-settings",
+    generalSettings,
+    click: "Reset to Defaults",
+  },
+  "diagnostics-managed": {
+    route: "/diagnostics",
+    logCount: { bytes: 3_400_000, files: 12 },
+    logFilter: { log_filter: "debug", log_filter_is_managed: true },
   },
   about: { route: "/about" },
 };
@@ -243,8 +290,8 @@ for (const [name, screen] of Object.entries(screens)) {
         if (screen.session) await events.sessionChanged.emit(screen.session);
         if (screen.generalSettings)
           await events.generalSettingsChanged.emit(screen.generalSettings);
-        if (screen.advancedSettings)
-          await events.advancedSettingsChanged.emit(screen.advancedSettings);
+        if (screen.logFilter)
+          await events.logFilterChanged.emit(screen.logFilter);
         if (screen.deviceTrustCertificate)
           await events.x509CertificateChanged.emit(
             screen.deviceTrustCertificate
@@ -254,8 +301,20 @@ for (const [name, screen] of Object.entries(screens)) {
 
       await settle();
 
-      if (screen.hover) {
-        await page.getByLabelText(screen.hover).hover();
+      if (screen.input) {
+        const { label, value } = screen.input;
+        await act(async () => {
+          await userEvent.fill(page.getByLabelText(label), value);
+          await userEvent.keyboard("{Enter}");
+        });
+        await settle();
+      }
+
+      if (screen.click) {
+        const button = page.getByRole("button", { name: screen.click });
+        await act(async () => {
+          await button.click();
+        });
         await settle();
       }
 

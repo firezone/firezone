@@ -93,6 +93,7 @@ public final class Store: ObservableObject {
   private struct ConfigurationSnapshot: Equatable {
     var providerConfiguration: [String: String]
     var internetResourceEnabled: Bool
+    var logFilter: String
     var startOnLogin: Bool
   }
 
@@ -481,6 +482,7 @@ public final class Store: ObservableObject {
             try IPCClient.start(
               session: session,
               token: nil,
+              signInSettings: nil,
               identityReference: identityReference()
             )
           } catch { Log.error(error) }
@@ -543,6 +545,7 @@ public final class Store: ObservableObject {
       try IPCClient.start(
         session: session,
         token: nil,
+        signInSettings: nil,
         identityReference: identityReference()
       )
     }
@@ -608,6 +611,7 @@ public final class Store: ObservableObject {
     ConfigurationSnapshot(
       providerConfiguration: configuration.toProviderConfiguration(),
       internetResourceEnabled: configuration.internetResourceEnabled,
+      logFilter: configuration.logFilter,
       startOnLogin: configuration.startOnLogin
     )
   }
@@ -659,6 +663,15 @@ public final class Store: ObservableObject {
         }
         synced.internetResourceEnabled = target.internetResourceEnabled
       }
+      if synced.logFilter != target.logFilter {
+        // A tunnel that is not running reads the saved filter when it starts.
+        if let session = try manager().session(),
+          [.connected, .connecting, .reasserting].contains(session.status)
+        {
+          try await IPCClient.setLogFilter(session: session, target.logFilter)
+        }
+        synced.logFilter = target.logFilter
+      }
     } catch {
       Log.error(error)
     }
@@ -675,7 +688,7 @@ public final class Store: ObservableObject {
     session.stopTunnel()
   }
 
-  func signIn(token: String) async throws {
+  func signIn(token: String, signInSettings: SignInSettings) async throws {
     try await manager().save(configuration: configuration)
     try await manager().enable()
 
@@ -690,8 +703,11 @@ public final class Store: ObservableObject {
     try IPCClient.start(
       session: session,
       token: token,
+      signInSettings: signInSettings,
       identityReference: identityReference()
     )
+
+    configuration.signedInWith = signInSettings
   }
 
   /// The keychain reference of the certificate the app displayed, [`nil`] when none is loadable.
@@ -704,6 +720,8 @@ public final class Store: ObservableObject {
       throw VPNConfigurationManagerError.managerNotInitialized
     }
     try await IPCClient.signOut(session: session)
+
+    configuration.signedInWith = nil
   }
 
   // Calculates the total size of our logs by summing the size of the

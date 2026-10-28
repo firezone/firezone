@@ -295,6 +295,13 @@ impl StubPortal {
                 });
             }
             Transition::UpdateDnsRecords { .. } => {}
+            Transition::CrashClient { client_id, .. } => {
+                // Without a `goodbye`, the Gateways keep what they held for the Client.
+                for _ in self
+                    .load_balanced_requests
+                    .extract_if(.., |(client, _), _| client == client_id)
+                {}
+            }
         }
     }
 

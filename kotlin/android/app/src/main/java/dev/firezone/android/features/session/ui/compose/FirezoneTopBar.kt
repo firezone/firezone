@@ -58,6 +58,7 @@ fun BackTopBar(
     title: String,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
+    actions: @Composable RowScope.() -> Unit = {},
 ) {
     TopAppBar(
         colors =
@@ -78,5 +79,6 @@ fun BackTopBar(
                 Icon(imageVector = FirezoneIcons.ArrowBack, contentDescription = stringResource(R.string.back))
             }
         },
+        actions = actions,
     )
 }

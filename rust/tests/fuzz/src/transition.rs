@@ -143,6 +143,12 @@ pub enum Transition {
         domain: DomainName,
         records: BTreeSet<OwnedRecordData>,
     },
+    /// Restarts a Client whose process died: it sends no `goodbye` and loses the DNS resource
+    /// records it cached in memory.
+    CrashClient {
+        client_id: ClientId,
+        key: PrivateKey,
+    },
 }
 
 impl Transition {
@@ -181,6 +187,7 @@ impl Transition {
             Transition::ExpirePeerAuthorizations { .. } => true,
             Transition::RevokePeerAuthorization { .. } => true,
             Transition::UpdateDnsRecords { .. } => false,
+            Transition::CrashClient { .. } => false,
         }
     }
 
@@ -189,7 +196,7 @@ impl Transition {
     /// TCP retransmits whatever the tunnel loses while it reconnects, so a connection
     /// survives as long as the client reaches its resource through the same Gateway with
     /// the same authorization.
-    pub(crate) fn retains_tcp_flow(&self, flow: &TcpFlow) -> bool {
+    pub(crate) fn retains_tcp_flow(&self, flow: &TcpFlow, iceless: bool) -> bool {
         let (client_id, route) = (flow.client_id, flow.route);
 
         match self {
@@ -221,7 +228,14 @@ impl Transition {
             Transition::UpdateUpstreamDo53Servers(_) => true,
             Transition::UpdateUpstreamDoHServers(_) => true,
             Transition::UpdateUpstreamSearchDomain(_) => true,
-            Transition::RoamClient { .. } => true,
+            // TODO: Remove with classic ICE.
+            // Roaming over classic ICE rotates the Client's key, which resets its DNS resource NAT.
+            Transition::RoamClient {
+                client_id: roamed, ..
+            } => match &flow.dst {
+                Destination::DomainName { .. } => iceless || client_id != *roamed,
+                Destination::IpAddr(_) => true,
+            },
             Transition::ReconnectPortal { .. } => true,
             Transition::RestartClient { .. } => self.retains_flow(client_id, route, false),
             Transition::DeployNewRelays(_) => true,
@@ -240,6 +254,7 @@ impl Transition {
                 Destination::DomainName { name, .. } => name != domain,
                 Destination::IpAddr(_) => true,
             },
+            Transition::CrashClient { .. } => self.retains_flow(client_id, route, false),
         }
     }
 
@@ -331,6 +346,13 @@ impl Transition {
                 Route::Gateway(_) => true,
             },
             Transition::UpdateDnsRecords { .. } => true,
+            Transition::CrashClient {
+                client_id: crashed, ..
+            } => match route {
+                Route::Resource { .. } => client_id != *crashed,
+                Route::Gateway(_) => client_id != *crashed,
+                Route::Peer(peer) => client_id != *crashed && peer != *crashed,
+            },
         }
     }
 }

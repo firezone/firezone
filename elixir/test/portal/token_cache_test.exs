@@ -76,6 +76,13 @@ defmodule Portal.TokenCacheTest do
     assert_received :fetch
   end
 
+  test "serves a token inside the margin when the refresh fails", %{server: server} do
+    assert TokenCache.fetch(server, :token, fn -> {:ok, %{token: "still-valid", expires_in: 120}} end) ==
+             {:ok, "still-valid"}
+
+    assert TokenCache.fetch(server, :token, fn -> {:error, :imds_down} end) == {:ok, "still-valid"}
+  end
+
   test "does not cache errors and remains available", %{server: server} do
     assert TokenCache.fetch(server, :token, fn -> {:error, :unavailable} end) ==
              {:error, :unavailable}

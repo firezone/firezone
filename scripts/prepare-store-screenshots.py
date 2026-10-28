@@ -33,7 +33,7 @@ MAC_CORNER_RADIUS = {
     "15": {"main": 10, "settings": 10},
     "26": {"main": 15, "settings": 26},
 }
-MAIN_WINDOW_SCREENS = {"first-time", "grant-vpn"}
+MAIN_WINDOW_SCREENS = {"about", "first-time", "grant-vpn"}
 # WindowServer draws the window's edge, and a hairline along its corner arcs,
 # against whatever is behind them, and not the same way twice. A band this wide
 # inside the edge is repainted from the window's own colours further in, and gets

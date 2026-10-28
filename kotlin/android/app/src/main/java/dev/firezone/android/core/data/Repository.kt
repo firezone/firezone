@@ -10,6 +10,7 @@ import com.google.gson.reflect.TypeToken
 import dev.firezone.android.BuildConfig
 import dev.firezone.android.core.data.model.Config
 import dev.firezone.android.core.data.model.ManagedConfigStatus
+import dev.firezone.android.core.data.model.SignInSettings
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
@@ -80,6 +81,32 @@ class Repository
 
         fun getConfigSync(): Config = getUserConfigSync().withManagedOverrides()
 
+        fun getActiveSignInSettingsSync(): SignInSettings? {
+            val accountSlug = sharedPreferences.getString(SIGNED_IN_ACCOUNT_SLUG_KEY, null) ?: return null
+            val authUrl = sharedPreferences.getString(SIGNED_IN_AUTH_URL_KEY, null) ?: return null
+            val apiUrl = sharedPreferences.getString(SIGNED_IN_API_URL_KEY, null) ?: return null
+
+            return SignInSettings(accountSlug, authUrl, apiUrl)
+        }
+
+        fun saveActiveSignInSettingsSync(config: SignInSettings) {
+            sharedPreferences
+                .edit()
+                .putString(SIGNED_IN_ACCOUNT_SLUG_KEY, config.accountSlug)
+                .putString(SIGNED_IN_AUTH_URL_KEY, config.authUrl)
+                .putString(SIGNED_IN_API_URL_KEY, config.apiUrl)
+                .apply()
+        }
+
+        fun clearActiveSignInSettingsSync() {
+            sharedPreferences
+                .edit()
+                .remove(SIGNED_IN_ACCOUNT_SLUG_KEY)
+                .remove(SIGNED_IN_AUTH_URL_KEY)
+                .remove(SIGNED_IN_API_URL_KEY)
+                .apply()
+        }
+
         fun getConfig(): Flow<Config> =
             flow {
                 emit(getConfigSync())
@@ -106,31 +133,35 @@ class Repository
                 emit(getDefaultConfigSync())
             }.flowOn(coroutineDispatcher)
 
+        fun saveSettingsSync(value: Config) {
+            val managedStatus = getManagedStatus()
+            val editor = sharedPreferences.edit()
+
+            if (!managedStatus.isAuthUrlManaged) {
+                editor.putString(AUTH_URL_KEY, value.authUrl)
+            }
+            if (!managedStatus.isApiUrlManaged) {
+                editor.putString(API_URL_KEY, value.apiUrl)
+            }
+            if (!managedStatus.isLogFilterManaged) {
+                editor.putString(LOG_FILTER_KEY, value.logFilter)
+            }
+            if (!managedStatus.isAccountSlugManaged) {
+                editor.putString(ACCOUNT_SLUG_KEY, value.accountSlug)
+            }
+            if (!managedStatus.isStartOnLoginManaged) {
+                editor.putBoolean(START_ON_LOGIN_KEY, value.startOnLogin)
+            }
+            if (!managedStatus.isConnectOnStartManaged) {
+                editor.putBoolean(CONNECT_ON_START_KEY, value.connectOnStart)
+            }
+
+            editor.apply()
+        }
+
         fun saveSettings(value: Config): Flow<Unit> =
             flow {
-                val managedStatus = getManagedStatus()
-                val editor = sharedPreferences.edit()
-
-                if (!managedStatus.isAuthUrlManaged) {
-                    editor.putString(AUTH_URL_KEY, value.authUrl)
-                }
-                if (!managedStatus.isApiUrlManaged) {
-                    editor.putString(API_URL_KEY, value.apiUrl)
-                }
-                if (!managedStatus.isLogFilterManaged) {
-                    editor.putString(LOG_FILTER_KEY, value.logFilter)
-                }
-                if (!managedStatus.isAccountSlugManaged) {
-                    editor.putString(ACCOUNT_SLUG_KEY, value.accountSlug)
-                }
-                if (!managedStatus.isStartOnLoginManaged) {
-                    editor.putBoolean(START_ON_LOGIN_KEY, value.startOnLogin)
-                }
-                if (!managedStatus.isConnectOnStartManaged) {
-                    editor.putBoolean(CONNECT_ON_START_KEY, value.connectOnStart)
-                }
-
-                emit(editor.apply())
+                emit(saveSettingsSync(value))
             }.flowOn(coroutineDispatcher)
 
         // TODO: Consider adding support for the legacy managed configuration keys like token,
@@ -207,6 +238,25 @@ class Repository
         }
 
         fun getDeviceIdSync(): String? = sharedPreferences.getString(DEVICE_ID_KEY, null)
+
+        /** The auth and API URLs last saved with the Custom control plane picked, or `null` before any were. */
+        fun getLastCustomUrlsSync(): Pair<String, String>? {
+            val authUrl = sharedPreferences.getString(LAST_CUSTOM_AUTH_URL_KEY, null) ?: return null
+            val apiUrl = sharedPreferences.getString(LAST_CUSTOM_API_URL_KEY, null) ?: return null
+
+            return authUrl to apiUrl
+        }
+
+        fun saveLastCustomUrlsSync(
+            authUrl: String,
+            apiUrl: String,
+        ) {
+            sharedPreferences
+                .edit()
+                .putString(LAST_CUSTOM_AUTH_URL_KEY, authUrl)
+                .putString(LAST_CUSTOM_API_URL_KEY, apiUrl)
+                .apply()
+        }
 
         private fun saveFavoritesSync() {
             sharedPreferences.edit().putStringSet(FAVORITE_RESOURCES_KEY, favorites.value.inner).apply()
@@ -325,6 +375,11 @@ class Repository
         companion object {
             private const val AUTH_URL_KEY = "authUrl"
             private const val API_URL_KEY = "apiUrl"
+            private const val SIGNED_IN_ACCOUNT_SLUG_KEY = "signedInAccountSlug"
+            private const val SIGNED_IN_AUTH_URL_KEY = "signedInAuthUrl"
+            private const val SIGNED_IN_API_URL_KEY = "signedInApiUrl"
+            private const val LAST_CUSTOM_AUTH_URL_KEY = "lastCustomAuthUrl"
+            private const val LAST_CUSTOM_API_URL_KEY = "lastCustomApiUrl"
             private const val FAVORITE_RESOURCES_KEY = "favoriteResources"
             private const val LOG_FILTER_KEY = "logFilter"
             private const val ACCOUNT_SLUG_KEY = "accountSlug"

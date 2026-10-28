@@ -1,6 +1,6 @@
 defmodule Portal.Ops do
   alias __MODULE__.Database
-  alias Portal.{Banner, Billing, EmailSuppression, Mailer}
+  alias Portal.{Banner, Billing, EmailSuppression, Mailer, SlugRegistry}
   alias Portal.Workers.DeleteAccount
   alias Portal.Ops.AuthProviderNotices
 
@@ -146,6 +146,35 @@ defmodule Portal.Ops do
   def delete_disabled_account(id) do
     {:ok, _account} = Database.delete_disabled_account(id)
     :ok
+  end
+
+  @doc """
+  Claims every local account slug in the shared slug registry.
+
+  Run this once per region when the registry goes live, and again if the
+  registry table is ever lost. A slug that another account already holds in
+  the registry is printed and skipped.
+  """
+  def backfill_slug_registry do
+    if SlugRegistry.adapter() == SlugRegistry.Local do
+      IO.puts("SLUG_REGISTRY_TABLE_URL is not set, so there is no registry to fill.")
+      {:error, :no_registry}
+    else
+      slugs = Database.list_account_slugs()
+
+      IO.puts(
+        "About to claim #{length(slugs)} slug(s) for region #{SlugRegistry.region()} in the slug registry. Continue? [y/N]"
+      )
+
+      case IO.gets("") do
+        answer when answer in ["y\n", "Y\n"] ->
+          claim_slugs(slugs)
+
+        _ ->
+          IO.puts("Aborted.")
+          :aborted
+      end
+    end
   end
 
   @doc """
@@ -528,6 +557,32 @@ defmodule Portal.Ops do
     [scheduled_at: scheduled_at]
   end
 
+  defp claim_slugs(slugs) do
+    slugs
+    |> Enum.reduce_while({:ok, 0}, fn %{slug: slug, account_id: account_id}, {:ok, count} ->
+      case SlugRegistry.claim(slug, account_id) do
+        :ok ->
+          {:cont, {:ok, count + 1}}
+
+        {:error, :taken} ->
+          IO.puts("#{slug}: another account holds this slug in the registry, skipped (account #{account_id})")
+          {:cont, {:ok, count}}
+
+        {:error, :unavailable} ->
+          {:halt, {:error, :slug_registry_unavailable}}
+      end
+    end)
+    |> case do
+      {:ok, count} ->
+        IO.puts("Claimed #{count} slug(s).")
+        {:ok, count}
+
+      {:error, :slug_registry_unavailable} = error ->
+        IO.puts("The slug registry is unavailable. Fix it and run again.")
+        error
+    end
+  end
+
   defmodule Database do
     import Ecto.Query
     alias Portal.{Account, Actor, ExternalIdentity, Safe}
@@ -687,6 +742,12 @@ defmodule Portal.Ops do
         )
       )
       |> select([accounts: a], a.id)
+      |> Safe.unscoped()
+      |> Safe.all()
+    end
+
+    def list_account_slugs do
+      from(s in Portal.AccountSlug, select: %{slug: s.slug, account_id: s.account_id}, order_by: s.slug)
       |> Safe.unscoped()
       |> Safe.all()
     end

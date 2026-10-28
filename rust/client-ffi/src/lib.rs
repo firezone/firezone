@@ -837,6 +837,15 @@ pub fn configure_logger(
     Ok(())
 }
 
+/// Checks that [`configure_logger`] would accept `log_filter`.
+#[uniffi::export]
+pub fn validate_log_filter(log_filter: String) -> Result<(), ConnlibError> {
+    // `ParseError` already renders its source, so keep `{:#}` from repeating it.
+    logging::try_filter::<tracing_subscriber::Registry>(&log_filter).map_err(|e| anyhow!("{e}"))?;
+
+    Ok(())
+}
+
 #[cfg(target_os = "android")]
 fn protected_tcp_socket_factory(callback: Arc<dyn ProtectSocket>) -> impl SocketFactory<TcpSocket> {
     move |addr| {

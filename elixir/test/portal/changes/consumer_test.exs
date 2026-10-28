@@ -276,6 +276,7 @@ defmodule Portal.Changes.ConsumerTest do
       # This test ensures our tables_to_hooks map is properly configured
       tables_to_hooks = %{
         "accounts" => Portal.Changes.Hooks.Accounts,
+        "account_slugs" => Portal.Changes.Hooks.AccountSlugs,
         "memberships" => Portal.Changes.Hooks.Memberships,
         "devices" => Portal.Changes.Hooks.Devices,
         "policy_authorizations" => Portal.Changes.Hooks.PolicyAuthorizations,
@@ -295,6 +296,7 @@ defmodule Portal.Changes.ConsumerTest do
       assert Map.keys(tables_to_hooks) |> Enum.sort() ==
                [
                  "accounts",
+                 "account_slugs",
                  "memberships",
                  "devices",
                  "client_tokens",

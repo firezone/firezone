@@ -1102,6 +1102,11 @@ defmodule Portal.Dev.AccountPopulation do
       end)
 
     Repo.query!(query, values)
+
+    Repo.query!(
+      "INSERT INTO account_slugs (slug, account_id, inserted_at) VALUES ($1, $2, $3)",
+      [attrs.slug, Ecto.UUID.dump!(attrs.id), attrs.inserted_at]
+    )
   end
 
   defp existing_account_id_by_slug(slug) do

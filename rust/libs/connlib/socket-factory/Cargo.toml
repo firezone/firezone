@@ -27,6 +27,7 @@ libc = { workspace = true }
 
 [target.'cfg(target_vendor = "apple")'.dependencies]
 libc = { workspace = true }
+nix = { workspace = true, features = ["net"] }
 parking_lot = { workspace = true }
 
 [dev-dependencies]

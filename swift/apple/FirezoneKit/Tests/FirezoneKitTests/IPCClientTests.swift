@@ -60,16 +60,22 @@ struct IPCClientTests {
   func tokenStartPayload() throws {
     let session = RecordingTunnelSession(status: .disconnected)
     let reference = Data([0xAA, 0xBB])
+    let signInSettings = SignInSettings(
+      accountSlug: "acme", authURL: "https://auth.example.com", apiURL: "wss://api.example.com")
 
     try IPCClient.start(
       session: session,
       token: "the-token",
+      signInSettings: signInSettings,
       identityReference: reference
     )
 
     #expect(session.startTunnelOptions?["authentication"] as? String == "tokenAndCertificate")
     #expect(session.startTunnelOptions?["token"] as? String == "the-token")
     #expect(session.startTunnelOptions?["identityReference"] as? Data == reference)
+    let settingsData = try #require(session.startTunnelOptions?["signInSettings"] as? Data)
+    #expect(
+      try PropertyListDecoder().decode(SignInSettings.self, from: settingsData) == signInSettings)
   }
 
   @Test("Polling decodes state and notifications from one response")

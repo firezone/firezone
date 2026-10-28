@@ -59,7 +59,9 @@ defmodule Portal.AccountFixtures do
     |> cast_embed(:features)
     |> cast_embed(:limits)
     |> cast_embed(:metadata)
+    |> Portal.Account.changeset()
     |> Repo.insert!()
+    |> Repo.reload!()
   end
 
   @doc """
@@ -141,6 +143,7 @@ defmodule Portal.AccountFixtures do
     |> cast_embed(:features)
     |> cast_embed(:limits)
     |> cast_embed(:metadata)
+    |> Portal.Account.changeset()
     |> Repo.update!()
   end
 

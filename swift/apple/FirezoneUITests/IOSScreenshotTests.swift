@@ -18,9 +18,8 @@
     /// opened leaves the one before it on screen, holding perfectly still, and
     /// the gallery takes that as a picture of the tab it asked for.
     private static let settingsTabs = [
-      (label: "General", name: "general", showing: "Account Slug"),
-      (label: "Advanced", name: "advanced", showing: "Auth Base URL"),
-      (label: "Diagnostic Logs", name: "logs", showing: "Clear Log Directory"),
+      (label: "Settings", name: "general", showing: "Account Slug"),
+      (label: "Diagnostics", name: "logs", showing: "Clear Log Directory"),
     ]
 
     /// A field every parsed certificate carries, so the Device Trust tab can be
@@ -161,6 +160,35 @@
         try selectTab(tab.label, showing: tab.showing, in: app)
         deliver(app, as: "settings-\(tab.name)", in: appearance)
       }
+    }
+
+    func testManagedSettings() throws {
+      let appearance = try currentAppearance()
+      let app = launchApp(scenario: "managed-settings")
+      defer { app.terminate() }
+
+      try openSettings(in: app, on: "settings-managed")
+      for tab in Self.settingsTabs {
+        try selectTab(tab.label, showing: tab.showing, in: app)
+        try waitFor(
+          app.staticTexts["Some settings are managed by your organization."].firstMatch,
+          on: "settings-managed")
+        deliver(app, as: "settings-\(tab.name)-managed", in: appearance)
+      }
+    }
+
+    /// The Settings tab of an app configured for a self-hosted control plane.
+    func testSettingsWithCustomControlPlane() throws {
+      let appearance = try currentAppearance()
+      let app = launchApp(scenario: "custom-control-plane")
+      defer { app.terminate() }
+
+      try openSettings(in: app, on: "settings-general-custom")
+      try selectTab("Settings", showing: "API URL", in: app)
+      let form = app.collectionViews.containing(.button, identifier: "Reset to Defaults").firstMatch
+      try waitFor(form, on: "settings-general-custom")
+      form.swipeUp()
+      deliver(app, as: "settings-general-custom", in: appearance)
     }
 
     /// The certificate tab, in each of the states a scenario describes.

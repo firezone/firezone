@@ -4,7 +4,7 @@ use std::{
     time::Duration,
 };
 
-use ::sentry::transports::{RateLimiter, TokioTransportThread};
+use ::sentry::transports::{RateLimiter, TokioTransportThread, TokioTransportThreadOptions};
 use anyhow::Result;
 use bytes::Bytes;
 use http::{Method, Request, Response, StatusCode, header};
@@ -107,7 +107,7 @@ impl SentryTransport {
         let auth = dsn.to_auth(Some(&options.user_agent)).to_string();
         let url = dsn.envelope_api_url().to_string();
 
-        let thread = TokioTransportThread::new(move |envelope, mut rate_limiter| {
+        let thread = TokioTransportThreadOptions::new(move |envelope, mut rate_limiter| {
             // The request is built outside the async block so that `url` and `auth`
             // can be borrowed from the reused closure.
             let request = build_request(&url, &auth, &envelope);
@@ -123,7 +123,8 @@ impl SentryTransport {
 
                 rate_limiter
             }
-        });
+        })
+        .spawn_thread();
 
         Self { thread }
     }

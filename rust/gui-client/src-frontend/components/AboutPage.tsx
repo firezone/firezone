@@ -20,13 +20,10 @@ export default function AboutPage() {
       <div className="flex w-full max-w-sm flex-col items-center text-center">
         <img alt="Firezone Logo" className="mb-6 h-20 w-20" src={logo} />
         <p className="mb-1 text-body">Version</p>
-        <p className="mb-1 text-2xl font-bold text-heading">
-          <span>{__APP_VERSION__}</span>
-        </p>
-        <p className="mb-6 font-mono text-sm text-subtle">
-          (
+        <p className="mb-6 text-lg font-bold text-heading">
+          {__APP_VERSION__} (
           <button
-            className="hover:text-brand hover:underline"
+            className="font-mono text-brand underline hover:text-brand-dark"
             onClick={openCommit}
             role="link"
             type="button"

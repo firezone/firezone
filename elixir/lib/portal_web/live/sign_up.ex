@@ -90,6 +90,7 @@ defmodule PortalWeb.SignUp do
     user_agent = Phoenix.LiveView.get_connect_info(socket, :user_agent)
     real_ip = PortalWeb.Authentication.real_ip(socket)
     website_attribution = PortalWeb.WebsiteAttribution.fetch(session)
+    sign_up_browser_id = PortalWeb.Cookie.SignUpBrowser.from_session(session)
 
     case socket.assigns.live_action do
       :verify ->
@@ -97,14 +98,10 @@ defmodule PortalWeb.SignUp do
          assign(socket,
            page_title: "Verify Sign Up",
            step: :verifying,
-           account: nil,
-           provider: nil,
-           idp_provider: nil,
-           actor: nil,
+           token: nil,
+           trigger_submit: false,
            error_message: nil,
-           website_attribution: website_attribution,
-           user_agent: user_agent,
-           real_ip: real_ip
+           sign_up_browser_id: sign_up_browser_id
          )}
 
       _ ->
@@ -113,14 +110,12 @@ defmodule PortalWeb.SignUp do
             page_title: "Sign Up",
             step: :choose,
             form: registration_form(%{}),
-            account: nil,
-            provider: nil,
-            idp_provider: nil,
-            actor: nil,
+            trigger_submit: false,
             error_message: nil,
             idp_identity: identity_from_session(session),
             existing_accounts: [],
             website_attribution: website_attribution,
+            sign_up_browser_id: sign_up_browser_id,
             user_agent: user_agent,
             real_ip: real_ip
           )
@@ -129,11 +124,13 @@ defmodule PortalWeb.SignUp do
     end
   end
 
+  # The account is created by PortalWeb.SignUpController, which can set the session cookie.
+  # Submitting only once connected keeps link scanners that don't run JS from consuming it.
+  # A failed submission redirects back here with an error flash. Show it instead of resubmitting.
   def handle_params(%{"token" => token}, _uri, %{assigns: %{live_action: :verify}} = socket) do
-    if connected?(socket) do
-      {:noreply, handle_verified_sign_up_token(socket, token)}
-    else
-      {:noreply, socket}
+    case Phoenix.Flash.get(socket.assigns.flash, :error) do
+      nil -> {:noreply, start_sign_up_verification(socket, token)}
+      message -> {:noreply, sign_up_error(socket, message)}
     end
   end
 
@@ -171,8 +168,13 @@ defmodule PortalWeb.SignUp do
 
   # Only what registration needs; the picture URL alone can be 2 KB and the
   # first provider sign-in fills the rest in through the identity upsert.
-  @spec session_identity(PortalWeb.OIDC.IdentityProfile.t(), String.t(), String.t() | nil) :: map()
-  def session_identity(%PortalWeb.OIDC.IdentityProfile{} = profile, provider, workspace_domain \\ nil)
+  @spec session_identity(PortalWeb.OIDC.IdentityProfile.t(), String.t(), String.t() | nil) ::
+          map()
+  def session_identity(
+        %PortalWeb.OIDC.IdentityProfile{} = profile,
+        provider,
+        workspace_domain \\ nil
+      )
       when provider in @idp_sign_up_providers do
     %{
       "provider" => provider,
@@ -187,7 +189,12 @@ defmodule PortalWeb.SignUp do
     }
   end
 
-  defp identity_from_session(session) do
+  @doc """
+  Returns the verified identity stored by `PortalWeb.OIDCController` for an identity provider
+  sign-up, or `nil` when it is missing, malformed or expired.
+  """
+  @spec identity_from_session(map()) :: map() | nil
+  def identity_from_session(session) do
     case Map.get(session, @idp_sign_up_session_key) do
       %{
         "provider" => provider,
@@ -232,15 +239,9 @@ defmodule PortalWeb.SignUp do
 
   def render(%{live_action: :verify} = assigns) do
     ~H"""
-    <.verifying :if={@step == :verifying} />
+    <.verifying :if={@step == :verifying} token={@token} trigger_submit={@trigger_submit} />
+    <.different_browser :if={@step == :different_browser} />
     <.sign_up_error :if={@step == :error} error_message={@error_message} />
-    <.welcome
-      :if={@step == :account_created}
-      account={@account}
-      provider={@provider}
-      idp_provider={@idp_provider}
-      actor={@actor}
-    />
     """
   end
 
@@ -256,6 +257,7 @@ defmodule PortalWeb.SignUp do
       form={@form}
       email={@idp_identity.email}
       provider={@idp_identity.provider}
+      trigger_submit={@trigger_submit}
     />
     <.existing_accounts
       :if={@step == :existing_accounts}
@@ -264,13 +266,6 @@ defmodule PortalWeb.SignUp do
     />
     <.email_sent :if={@step == :email_sent} />
     <.sign_up_error :if={@step == :error} error_message={@error_message} />
-    <.welcome
-      :if={@step == :account_created}
-      account={@account}
-      provider={@provider}
-      idp_provider={@idp_provider}
-      actor={@actor}
-    />
     """
   end
 
@@ -397,6 +392,7 @@ defmodule PortalWeb.SignUp do
   attr :form, :any, required: true
   attr :email, :string, required: true
   attr :provider, :string, required: true, values: @idp_sign_up_providers
+  attr :trigger_submit, :boolean, default: false
 
   defp idp_sign_up_form(assigns) do
     ~H"""
@@ -404,11 +400,20 @@ defmodule PortalWeb.SignUp do
       <:icon><Core.provider_icon provider={@provider} size="md" /></:icon>
     </.step_header>
 
+    <div
+      id={"#{@provider}-sign-up"}
+      class="group/submit"
+      data-submitting={@trigger_submit}
+      inert={@trigger_submit}
+    >
     <.form
       id={"#{@provider}-sign-up-form"}
       for={@form}
+      action={~p"/sign_up/#{@provider}/complete"}
+      method="post"
       phx-submit="submit_identity"
       phx-change="validate"
+      phx-trigger-action={@trigger_submit}
       class="flex flex-col gap-3"
     >
       <div>
@@ -451,12 +456,18 @@ defmodule PortalWeb.SignUp do
 
       <button
         type="submit"
-        phx-disable-with="Creating..."
-        class="w-full py-2.5 rounded text-sm font-semibold bg-brand text-white hover:bg-brand-dark transition-colors mt-1"
+        class={[
+          "w-full py-2.5 rounded text-sm font-semibold bg-brand text-white hover:bg-brand-dark transition-colors mt-1",
+          "phx-submit-loading:opacity-75 group-data-submitting/submit:opacity-75"
+        ]}
       >
-        Create Account
+        <span class="phx-submit-loading:hidden group-data-submitting/submit:hidden">Create Account</span>
+        <span class="hidden phx-submit-loading:inline group-data-submitting/submit:inline">
+          Creating Account…
+        </span>
       </button>
     </.form>
+    </div>
 
     <.terms_notice />
 
@@ -758,7 +769,7 @@ defmodule PortalWeb.SignUp do
           <div>
             <p class="text-sm font-medium text-heading">Click the verification link</p>
             <p class="text-xs text-subtle mt-0.5 leading-relaxed">
-              The link will verify your email and automatically create your organization. It expires in 24 hours.
+              Open it in this browser. The link will verify your email and automatically create your organization. It expires in 24 hours.
             </p>
           </div>
         </li>
@@ -785,111 +796,99 @@ defmodule PortalWeb.SignUp do
     """
   end
 
-  defp welcome(assigns) do
+  # Before the LiveView connects (or without JS), nothing runs until the user clicks Continue.
+  # Once connected, the form submits itself and the controller does all steps in one request,
+  # so the page shows ongoing work rather than claiming any step is done.
+  defp verifying(assigns) do
     ~H"""
-    <.step_header title="Your account has been created!" subtitle="You're all set. Sign in to get started.">
-      <:icon><Core.icon name="ri-checkbox-circle-line" class="w-5 h-5 text-brand" /></:icon>
+    <.step_header
+      title={if @trigger_submit, do: "Setting up your account…", else: "Finish setting up your account"}
+      subtitle={
+        if @trigger_submit,
+          do: "This usually takes a few seconds. You'll be signed in automatically.",
+          else: "Your email is verified. Continue to create your account and sign in."
+      }
+    >
+      <:icon><Core.icon name="ri-mail-check-line" class="w-5 h-5 text-brand" /></:icon>
     </.step_header>
 
-    <div class="rounded border border-border bg-raised p-4 mb-4">
-      <dl class="space-y-3">
-        <div class="flex justify-between items-baseline">
-          <dt class="text-xs font-medium text-subtle">Account Name</dt>
-          <dd class="text-sm text-body font-medium">{@account.name}</dd>
-        </div>
-        <div class="flex justify-between items-baseline">
-          <dt class="text-xs font-medium text-subtle">Account Slug</dt>
-          <dd class="text-sm text-body font-medium">{@account.slug}</dd>
-        </div>
-        <div class="flex justify-between items-baseline">
-          <dt class="text-xs font-medium text-subtle">Sign In URL</dt>
-          <dd class="text-sm text-body font-medium">
-            <Navigation.link href={~p"/#{@account}"}>
-              {url(~p"/#{@account}")}
-            </Navigation.link>
-          </dd>
-        </div>
-      </dl>
+    <div :if={@trigger_submit} class="h-0.75 rounded-full bg-border overflow-hidden mb-5">
+      <div class="indeterminate-bar h-full rounded-full bg-brand"></div>
     </div>
+
+    <.form
+      for={%{}}
+      id="verify-sign-up-form"
+      action={~p"/verify_sign_up"}
+      method="post"
+      phx-trigger-action={@trigger_submit}
+    >
+      <input type="hidden" name="token" value={@token} />
+      <p :if={@trigger_submit} class="text-xs text-subtle text-center">
+        Not redirected? <button type="submit" class={Core.link_style()}>Continue</button>
+      </p>
+      <button
+        :if={!@trigger_submit}
+        type="submit"
+        class="w-full py-2.5 rounded text-sm font-semibold bg-brand text-white hover:bg-brand-dark transition-colors"
+      >
+        Continue
+      </button>
+    </.form>
+    """
+  end
+
+  defp different_browser(assigns) do
+    ~H"""
+    <.step_header
+      title="Open this link in the same browser"
+      subtitle="For your security, sign-up links only work in the browser that requested them."
+    >
+      <:icon><Core.icon name="ri-computer-line" class="w-5 h-5 text-brand" /></:icon>
+    </.step_header>
 
     <div class="rounded border border-border bg-raised p-4 mb-6">
       <p class="text-xs font-semibold text-body uppercase tracking-widest mb-3">
-        Next Steps
+        What you can do
       </p>
       <ul class="space-y-2">
-        <li class="flex items-center gap-3">
-          <span class="shrink-0 w-5 h-5 bg-brand/10 text-brand rounded-full flex items-center justify-center text-xs font-semibold">
-            1
-          </span>
+        <li class="flex items-start gap-2.5">
+          <Core.icon
+            name="ri-arrow-right-s-line"
+            class="w-3.5 h-3.5 mt-0.5 shrink-0 text-subtle"
+          />
           <span class="text-sm text-body">
-            <Navigation.website_link path="/kb/client-apps">Download the Firezone Client</Navigation.website_link>
-            for your platform
+            Open the link from your email in the browser where you filled in the sign-up form.
           </span>
         </li>
-        <li class="flex items-center gap-3">
-          <span class="shrink-0 w-5 h-5 bg-brand/10 text-brand rounded-full flex items-center justify-center text-xs font-semibold">
-            2
-          </span>
+        <li class="flex items-start gap-2.5">
+          <Core.icon
+            name="ri-arrow-right-s-line"
+            class="w-3.5 h-3.5 mt-0.5 shrink-0 text-subtle"
+          />
           <span class="text-sm text-body">
-            <Navigation.website_link path="/kb/quickstart">View the Quickstart Guide</Navigation.website_link>
-            to get started
+            Can't get back to that browser? Start again here and we'll email you a new link.
+          </span>
+        </li>
+        <li class="flex items-start gap-2.5">
+          <Core.icon
+            name="ri-arrow-right-s-line"
+            class="w-3.5 h-3.5 mt-0.5 shrink-0 text-subtle"
+          />
+          <span class="text-sm text-body">
+            Already finished signing up?
+            <Navigation.link href={~p"/"}>Sign in here.</Navigation.link>
           </span>
         </li>
       </ul>
     </div>
 
     <Navigation.link
-      :if={@idp_provider}
-      href={~p"/#{@account}/sign_in/#{idp_provider_type(@idp_provider)}/#{@idp_provider.id}"}
+      href={~p"/sign_up"}
       class="block w-full py-2.5 rounded text-sm font-semibold text-center bg-brand text-white hover:bg-brand-dark transition-colors"
     >
-      Sign In with {provider_name(idp_provider_type(@idp_provider))}
+      Start again
     </Navigation.link>
-
-    <.form
-      :if={is_nil(@idp_provider)}
-      for={%{}}
-      id="sign-in-form"
-      as={:email}
-      action={~p"/#{@account}/sign_in/email_otp/#{@provider}"}
-      method="post"
-    >
-      <Form.input type="hidden" name="email[email]" value={@actor.email} />
-      <button
-        type="submit"
-        class="w-full py-2.5 rounded text-sm font-semibold bg-brand text-white hover:bg-brand-dark transition-colors"
-      >
-        Sign In
-      </button>
-    </.form>
-    """
-  end
-
-  defp verifying(assigns) do
-    ~H"""
-    <.step_header title="Verifying your sign-up link…" subtitle="This will only take a moment.">
-      <:icon><Core.icon name="ri-loader-4-line" class="w-5 h-5 text-brand animate-spin" /></:icon>
-    </.step_header>
-
-    <div class="rounded border border-border bg-raised p-4 mb-6">
-      <p class="text-xs font-semibold text-body uppercase tracking-widest mb-3">
-        What's happening
-      </p>
-      <ol class="space-y-3">
-        <li class="flex items-center gap-3">
-          <span class="shrink-0 w-5 h-5 bg-brand/10 text-brand rounded-full flex items-center justify-center text-xs font-semibold">
-            1
-          </span>
-          <span class="text-sm text-body">Verifying your sign-up link</span>
-        </li>
-        <li class="flex items-center gap-3">
-          <span class="shrink-0 w-5 h-5 bg-page text-subtle rounded-full flex items-center justify-center text-xs font-semibold">
-            2
-          </span>
-          <span class="text-sm text-subtle">Creating your account</span>
-        </li>
-      </ol>
-    </div>
     """
   end
 
@@ -979,12 +978,7 @@ defmodule PortalWeb.SignUp do
     if identity_expired?(identity) do
       {:noreply, sign_up_error(socket, idp_session_error(identity.provider))}
     else
-      changeset =
-        attrs
-        |> Map.put("email", identity.email)
-        |> registration_changeset()
-        |> Map.put(:action, :insert)
-
+      changeset = identity_registration_changeset(identity, attrs)
       {:noreply, apply_idp_registration(socket, changeset)}
     end
   end
@@ -994,29 +988,12 @@ defmodule PortalWeb.SignUp do
     {:noreply, sign_up_error(socket, idp_session_error(provider))}
   end
 
+  # Checked here for immediate feedback. The form then posts to PortalWeb.SignUpController,
+  # which checks again under the owner email lock, creates the account and signs the admin in.
   defp apply_idp_registration(socket, %{valid?: true} = changeset) do
-    registration = Ecto.Changeset.apply_changes(changeset)
-
-    case Database.find_accounts_by_owner_email(registration.email) do
-      [] ->
-        registration = %{
-          email: registration.email,
-          account: %{name: registration.account.name},
-          actor: %{name: registration.actor.name},
-          identity: socket.assigns.idp_identity,
-          marketing_attribution: get_in(socket.assigns.website_attribution || %{}, ["marketing"]),
-          sign_up_survey: survey_attrs(registration.sign_up_survey)
-        }
-
-        handle_registration_result(
-          socket,
-          register_account(registration, socket.assigns.user_agent, socket.assigns.real_ip),
-          socket.assigns.website_attribution,
-          registration.sign_up_survey
-        )
-
-      accounts ->
-        existing_accounts_step(socket, accounts)
+    case Database.find_accounts_by_owner_email(socket.assigns.idp_identity.email) do
+      [] -> assign(socket, form: to_form(changeset, as: :registration), trigger_submit: true)
+      accounts -> existing_accounts_step(socket, accounts)
     end
   end
 
@@ -1051,8 +1028,6 @@ defmodule PortalWeb.SignUp do
   defp provider_name("github"), do: "GitHub"
   defp provider_name(_provider), do: "identity provider"
 
-  defp idp_provider_type(%module{}), do: Portal.AuthProvider.type!(module)
-
   defp existing_accounts_step(socket, accounts) do
     assign(socket, step: :existing_accounts, existing_accounts: accounts)
   end
@@ -1086,7 +1061,8 @@ defmodule PortalWeb.SignUp do
           registration.account.name,
           registration.actor.name,
           survey_attrs(registration.sign_up_survey),
-          socket.assigns.website_attribution
+          socket.assigns.website_attribution,
+          socket.assigns.sign_up_browser_id
         )
       else
         send_existing_accounts_email(registration.email, existing_accounts)
@@ -1098,7 +1074,11 @@ defmodule PortalWeb.SignUp do
 
       {:error, :rate_limited} ->
         new_changeset =
-          Ecto.Changeset.add_error(changeset, :email, "Too many attempts. Please try again later.")
+          Ecto.Changeset.add_error(
+            changeset,
+            :email,
+            "Too many attempts. Please try again later."
+          )
 
         assign(socket, form: to_form(new_changeset, as: :registration))
 
@@ -1158,15 +1138,30 @@ defmodule PortalWeb.SignUp do
     )
   end
 
-  @spec send_verification_email(String.t(), String.t(), String.t(), map(), map() | nil) ::
+  @spec send_verification_email(
+          String.t(),
+          String.t(),
+          String.t(),
+          map(),
+          map() | nil,
+          String.t() | nil
+        ) ::
           {:ok, any()} | {:error, any()}
-  defp send_verification_email(email, company_name, actor_name, sign_up_survey, website_attribution) do
+  defp send_verification_email(
+         email,
+         company_name,
+         actor_name,
+         sign_up_survey,
+         website_attribution,
+         sign_up_browser_id
+       ) do
     payload = %{
       email: email,
       company_name: company_name,
       actor_name: actor_name,
       sign_up_survey: sign_up_survey,
-      website_attribution: website_attribution
+      website_attribution: website_attribution,
+      browser: PortalWeb.Cookie.SignUpBrowser.token_claim(sign_up_browser_id)
     }
 
     token = Phoenix.Token.sign(PortalWeb.Endpoint, @sign_up_token_salt, payload)
@@ -1283,68 +1278,139 @@ defmodule PortalWeb.SignUp do
     end
   end
 
-  defp handle_verified_sign_up_token(socket, token) do
-    case verify_sign_up_token(token) do
-      {:ok, registration_claims} ->
-        complete_verified_sign_up(
-          socket,
-          registration_claims,
-          socket.assigns.user_agent,
-          socket.assigns.real_ip
-        )
+  defp start_sign_up_verification(socket, token) do
+    case verify_sign_up_token(token, socket.assigns.sign_up_browser_id) do
+      {:ok, _registration_claims} ->
+        assign(socket, token: token, trigger_submit: connected?(socket))
+
+      {:error, :different_browser} ->
+        assign(socket, step: :different_browser)
 
       {:error, message} ->
         sign_up_error(socket, message)
     end
   end
 
-  defp verify_sign_up_token(token) do
+  @doc """
+  Verifies a token from the sign-up verification email and returns the registration it carries.
+
+  The token only counts when opened in the browser that requested it, identified by `browser_id`.
+  See `PortalWeb.Cookie.SignUpBrowser`.
+  """
+  @spec verify_sign_up_token(String.t(), String.t() | nil) ::
+          {:ok, map()} | {:error, :different_browser} | {:error, String.t()}
+  def verify_sign_up_token(token, browser_id) do
     case Phoenix.Token.verify(PortalWeb.Endpoint, @sign_up_token_salt, token,
            max_age: @sign_up_token_max_age
          ) do
       {:ok, registration_claims} ->
-        {:ok, registration_claims}
+        if PortalWeb.Cookie.SignUpBrowser.bound?(
+             Map.get(registration_claims, :browser),
+             browser_id
+           ) do
+          {:ok, registration_claims}
+        else
+          {:error, :different_browser}
+        end
 
       {:error, _} ->
         {:error, "This sign-up link is invalid or has expired."}
     end
   end
 
-  defp complete_verified_sign_up(
-         socket,
-         %{
-           email: email,
-           company_name: company_name,
-           actor_name: actor_name
-         } = registration_claims,
-         user_agent,
-         real_ip
-       ) do
-    case Database.find_account_by_owner_email(email) do
-      %Portal.Account{} = account ->
-        redirect(socket, to: ~p"/#{account}/sign_in")
-
-      nil ->
-        registration = %{
+  @doc """
+  Creates the account for a verified email sign-up, unless the email already owns one.
+  """
+  @spec complete_email_sign_up(map(), String.t() | nil, :inet.ip_address()) ::
+          {:ok, map()} | {:error, {:account_exists, [Portal.Account.t()]}} | {:error, String.t()}
+  def complete_email_sign_up(
+        %{
           email: email,
-          account: %{name: company_name},
-          actor: %{name: actor_name},
-          marketing_attribution: get_in(registration_claims, [:website_attribution, "marketing"]),
-          sign_up_survey: Map.get(registration_claims, :sign_up_survey)
-        }
+          company_name: company_name,
+          actor_name: actor_name
+        } = registration_claims,
+        user_agent,
+        real_ip
+      ) do
+    registration = %{
+      email: email,
+      account: %{name: company_name},
+      actor: %{name: actor_name},
+      marketing_attribution: get_in(registration_claims, [:website_attribution, "marketing"]),
+      sign_up_survey: Map.get(registration_claims, :sign_up_survey)
+    }
 
-        handle_registration_result(
-          socket,
-          register_account(registration, user_agent, real_ip),
-          Map.get(registration_claims, :website_attribution),
-          registration.sign_up_survey
-        )
+    website_attribution = Map.get(registration_claims, :website_attribution)
+    register_new_owner(registration, website_attribution, user_agent, real_ip)
+  end
+
+  @doc """
+  Creates the account for an identity provider sign-up, unless the email already owns one.
+
+  The email always comes from the verified `identity`, never from `attrs`.
+  """
+  @spec complete_identity_sign_up(map(), map(), map() | nil, String.t() | nil, :inet.ip_address()) ::
+          {:ok, map()}
+          | {:error, {:account_exists, [Portal.Account.t()]}}
+          | {:error, Ecto.Changeset.t()}
+          | {:error, String.t()}
+  def complete_identity_sign_up(identity, attrs, website_attribution, user_agent, real_ip) do
+    case identity_registration_changeset(identity, attrs) do
+      %{valid?: true} = changeset ->
+        registration = Ecto.Changeset.apply_changes(changeset)
+
+        %{
+          email: registration.email,
+          account: %{name: registration.account.name},
+          actor: %{name: registration.actor.name},
+          identity: identity,
+          marketing_attribution: get_in(website_attribution || %{}, ["marketing"]),
+          sign_up_survey: survey_attrs(registration.sign_up_survey)
+        }
+        |> register_new_owner(website_attribution, user_agent, real_ip)
+
+      changeset ->
+        {:error, changeset}
     end
   end
 
-  defp handle_registration_result(
-         socket,
-         {:ok, %{account: account, provider: provider, actor: actor} = result},
+  defp identity_registration_changeset(identity, attrs) do
+    attrs
+    |> Map.put("email", identity.email)
+    |> registration_changeset()
+    |> Map.put(:action, :insert)
+  end
+
+  # Without the lock, two requests could both pass the existence check and create two accounts.
+  defp register_new_owner(registration, website_attribution, user_agent, real_ip) do
+    Database.with_owner_email_lock(registration.email, fn ->
+      register_account_unless_exists(registration, user_agent, real_ip)
+    end)
+    |> case do
+      {:ok, result} ->
+        registration_completed(result, website_attribution, registration.sign_up_survey)
+        {:ok, result}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  defp register_account_unless_exists(registration, user_agent, real_ip) do
+    case Database.find_accounts_by_owner_email(registration.email) do
+      [] ->
+        case register_account(registration, user_agent, real_ip) do
+          {:ok, result} -> {:ok, result}
+          error -> {:error, registration_error_message(error)}
+        end
+
+      accounts ->
+        {:error, {:account_exists, accounts}}
+    end
+  end
+
+  defp registration_completed(
+         %{account: account, actor: actor},
          website_attribution,
          sign_up_survey
        ) do
@@ -1352,33 +1418,13 @@ defmodule PortalWeb.SignUp do
     Portal.Analytics.registration_completed(account, actor)
     Portal.Workers.SignUpFollowUp.schedule(account, actor)
     send_sign_up_survey(account, actor, sign_up_survey)
-
-    assign(socket,
-      step: :account_created,
-      account: account,
-      provider: provider,
-      idp_provider: result.idp_provider,
-      actor: actor
-    )
   end
 
-  defp handle_registration_result(
-         socket,
-         {:error, :stripe_provision},
-         _website_attribution,
-         _sign_up_survey
-       ) do
-    sign_up_error(socket, "We encountered a temporary error. Please try again.")
-  end
+  defp registration_error_message({:error, :stripe_provision}),
+    do: "We encountered a temporary error. Please try again."
 
-  defp handle_registration_result(
-         socket,
-         {:error, _, _, _},
-         _website_attribution,
-         _sign_up_survey
-       ) do
-    sign_up_error(socket, "We encountered an error creating your account. Please try again.")
-  end
+  defp registration_error_message({:error, _, _, _}),
+    do: "We encountered an error creating your account. Please try again."
 
   defp send_sign_up_survey(_account, _actor, nil), do: :ok
 
@@ -1494,28 +1540,13 @@ defmodule PortalWeb.SignUp do
       X509
     }
 
-    @spec find_account_by_owner_email(String.t()) :: Portal.Account.t() | nil
-    def find_account_by_owner_email(email) do
-      from(a in Portal.Account,
-        where:
-          fragment("?->'stripe'->>'billing_email' = ?", a.metadata, ^email) and
-            fragment(
-              "(?->'stripe'->>'product_name' IS NULL OR ?->'stripe'->>'product_name' = 'Starter')",
-              a.metadata,
-              a.metadata
-            ),
-        order_by: [desc: a.inserted_at],
-        limit: 1
-      )
-      |> Safe.unscoped()
-      |> Safe.one()
-    end
-
     @spec find_accounts_by_owner_email(String.t()) :: [Portal.Account.t()]
     def find_accounts_by_owner_email(email) do
+      email = normalize_owner_email(email)
+
       from(a in Portal.Account,
         where:
-          fragment("?->'stripe'->>'billing_email' = ?", a.metadata, ^email) and
+          fragment("lower(?->'stripe'->>'billing_email') = ?", a.metadata, ^email) and
             fragment(
               "(?->'stripe'->>'product_name' IS NULL OR ?->'stripe'->>'product_name' = 'Starter')",
               a.metadata,
@@ -1526,6 +1557,36 @@ defmodule PortalWeb.SignUp do
       |> Safe.unscoped()
       |> Safe.all()
     end
+
+    @doc """
+    Runs `fun` in a transaction holding an advisory lock on the owner email, so concurrent
+    sign-ups for the same email run one at a time and later ones see the account.
+    """
+    @spec with_owner_email_lock(String.t(), (-> {:ok, any()} | {:error, any()})) ::
+            {:ok, any()} | {:error, any()}
+    def with_owner_email_lock(email, fun) do
+      Safe.transact(
+        fn ->
+          {:ok, _} =
+            Safe.unscoped()
+            |> Safe.query("SELECT pg_advisory_xact_lock($1)", [owner_email_lock_key(email)])
+
+          fun.()
+        end,
+        # Account creation provisions Stripe while the lock is held.
+        timeout: :timer.minutes(1)
+      )
+    end
+
+    defp owner_email_lock_key(email) do
+      <<key::signed-64, _::binary>> =
+        :crypto.hash(:sha256, "sign_up_owner_email:" <> normalize_owner_email(email))
+
+      key
+    end
+
+    # Billing emails are stored as typed, so lookups compare them case-insensitively.
+    defp normalize_owner_email(email), do: email |> String.trim() |> String.downcase()
 
     @spec slug_exists?(String.t()) :: boolean()
     def slug_exists?(slug) do
@@ -1653,7 +1714,8 @@ defmodule PortalWeb.SignUp do
     def create_idp_provider(account, %{provider: "google"} = identity) do
       create_provider(account, :google, Google.AuthProvider, %{
         issuer: identity.issuer,
-        workspace_domains: if(identity.workspace_domain, do: [String.downcase(identity.workspace_domain)]),
+        workspace_domains:
+          if(identity.workspace_domain, do: [String.downcase(identity.workspace_domain)]),
         is_verified: true,
         is_default: true
       })

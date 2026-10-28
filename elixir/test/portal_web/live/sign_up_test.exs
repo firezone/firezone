@@ -25,10 +25,16 @@ defmodule PortalWeb.SignUpTest do
         Stripe.stub([
           {"POST", "/v1/customers", 200, Stripe.customer_object("cus_direct", "Direct Corp", email)}
         ] ++ Stripe.mock_create_subscription_endpoint())
-        conn = conn |> put_req_header("x-geo-location-region", @country) |> with_google_identity(email: email)
-        {:ok, lv, _} = live(conn, ~p"/sign_up/google")
-        html = lv |> form("#google-sign-up-form", registration: %{account: %{name: "Direct Corp"}, actor: %{name: "Direct User"}, sign_up_survey: @survey}) |> render_submit()
-        assert html =~ "Your account has been created!"
+        conn =
+          conn
+          |> put_req_header("x-geo-location-region", @country)
+          |> with_google_identity(email: email)
+          |> get(~p"/sign_up/google")
+
+        {:ok, lv, _} = live(conn)
+        # The browser posts back the session cookie that captured the attribution.
+        conn = submit_identity_form(lv, recycle(conn), "google", %{account: %{name: "Direct Corp"}, actor: %{name: "Direct User"}, sign_up_survey: @survey})
+        assert redirected_to(conn) =~ "/sites"
         account = Portal.Repo.get_by!(Portal.Account, name: "Direct Corp")
         assert account.metadata.marketing_attribution["marketing_allowed"] == @allowed
         assert length(all_enqueued(worker: Portal.Analytics.OpenAI)) == if(@allowed, do: 1, else: 0)
@@ -40,7 +46,8 @@ defmodule PortalWeb.SignUpTest do
         Stripe.stub([
           {"POST", "/v1/customers", 200, Stripe.customer_object("cus_direct", "Direct Corp", email)}
         ] ++ Stripe.mock_create_subscription_endpoint())
-        {:ok, lv, _} = live(put_req_header(conn, "x-geo-location-region", @country), ~p"/sign_up/email")
+        conn = conn |> put_req_header("x-geo-location-region", @country) |> get(~p"/sign_up/email")
+        {:ok, lv, _} = live(conn)
         lv |> form("form", registration: %{email: email, phone: "", account: %{name: "Direct Corp"}, actor: %{name: "Direct User"}, sign_up_survey: @survey}) |> render_submit()
         test_pid = self()
         assert_email_sent(fn email ->
@@ -49,9 +56,10 @@ defmodule PortalWeb.SignUpTest do
           true
         end)
         assert_receive {:verification_token, token}
-        # Verification may happen in a different browser without the signup session.
-        {:ok, _, html} = live(build_conn(), ~p"/verify_sign_up?token=#{token}")
-        assert html =~ "Your account has been created!"
+        # The link only works in the browser that signed up.
+        {:ok, lv, _html} = live(recycle(conn), ~p"/verify_sign_up?token=#{token}")
+        conn = follow_trigger_action(form(lv, "#verify-sign-up-form"), recycle(conn))
+        assert redirected_to(conn) =~ "/sites"
         account = Portal.Repo.get_by!(Portal.Account, name: "Direct Corp")
         assert account.metadata.marketing_attribution["marketing_allowed"] == @allowed
         assert length(all_enqueued(worker: Portal.Analytics.OpenAI)) == if(@allowed, do: 1, else: 0)
@@ -196,7 +204,9 @@ defmodule PortalWeb.SignUpTest do
         |> render_submit()
 
       assert html =~ "too short"
-      refute html =~ "Your account has been created!"
+      refute has_element?(lv, "#google-sign-up-form[phx-trigger-action]")
+      refute has_element?(lv, "#google-sign-up[inert]")
+      refute has_element?(lv, "#google-sign-up[data-submitting]")
     end
 
     test "submitting creates the account with Google and email providers", %{conn: conn} do
@@ -222,17 +232,15 @@ defmodule PortalWeb.SignUpTest do
 
       {:ok, lv, _html} = live(conn, ~p"/sign_up/google")
 
-      html =
-        lv
-        |> form("#google-sign-up-form",
-          registration: %{account: %{name: "Google Corp"}, actor: %{name: "Ada Lovelace"}, sign_up_survey: @survey}
-        )
-        |> render_submit()
+      conn =
+        submit_identity_form(lv, conn, "google", %{
+          account: %{name: "Google Corp"},
+          actor: %{name: "Ada Lovelace"},
+          sign_up_survey: @survey
+        })
 
-      assert html =~ "Your account has been created!"
-      assert html =~ "Google Corp"
-      assert html =~ "Sign In with Google"
-      refute html =~ ~s(id="sign-in-form")
+      assert redirected_to(conn) =~ "/sites"
+      refute get_session(conn, "idp_sign_up")
 
       account = Portal.Repo.get_by!(Portal.Account, name: "Google Corp")
       assert account.metadata.marketing_attribution == attribution
@@ -248,7 +256,6 @@ defmodule PortalWeb.SignUpTest do
       refute google_provider.is_legacy_unrestricted
       refute google_provider.is_disabled
       assert google_provider.is_default
-      assert html =~ ~s(href="/#{account.slug}/sign_in/google/#{google_provider.id}")
 
       assert Portal.Repo.get_by!(Portal.EmailOTP.AuthProvider, account_id: account.id)
 
@@ -257,6 +264,9 @@ defmodule PortalWeb.SignUpTest do
       assert actor.name == "Ada Lovelace"
       assert actor.allow_email_otp_sign_in
       assert actor.preferences.getting_started == :pending
+
+      assert [session] = Portal.Repo.all_by(Portal.PortalSession, actor_id: actor.id)
+      assert session.auth_provider_id == google_provider.id
 
       identity = Portal.Repo.get_by!(Portal.ExternalIdentity, account_id: account.id)
       assert identity.actor_id == actor.id
@@ -280,10 +290,9 @@ defmodule PortalWeb.SignUpTest do
       ] ++ Stripe.mock_create_subscription_endpoint())
       conn = with_google_identity(conn, email: "workspace@example.com", workspace_domain: "workspace.example")
       {:ok, lv, _} = live(conn, ~p"/sign_up/google")
-      html = lv |> form("#google-sign-up-form", registration: %{
+      conn = submit_identity_form(lv, conn, "google", %{
         account: %{name: "Workspace Corp"}, actor: %{name: "Workspace Owner"}, sign_up_survey: @survey})
-        |> render_submit()
-      assert html =~ "Your account has been created!"
+      assert redirected_to(conn) =~ "/sites"
       account = Portal.Repo.get_by!(Portal.Account, name: "Workspace Corp")
       provider = Portal.Repo.get_by!(Portal.Google.AuthProvider, account_id: account.id)
       assert provider.workspace_domains == ["workspace.example"]
@@ -348,40 +357,22 @@ defmodule PortalWeb.SignUpTest do
       refute Portal.Repo.get_by(Portal.Actor, email: victim)
     end
 
-    test "submit_identity ignores an email smuggled into the form", %{conn: conn} do
-      Stripe.stub(
-        [
-          {"POST", "/v1/customers", 200,
-           Stripe.customer_object("cus_test", "Honest Corp", "ada@example.com")}
-        ] ++
-          Stripe.mock_create_subscription_endpoint()
-      )
-
+    test "a valid submission hands the form to the sign-up controller", %{conn: conn} do
       conn = with_google_identity(conn, email: "ada@example.com")
 
       {:ok, lv, _html} = live(conn, ~p"/sign_up/google")
 
-      html =
-        render_submit(lv, "submit_identity", %{
-          "registration" => %{
-            "email" => "victim@example.com",
-            "account" => %{"name" => "Honest Corp"},
-            "actor" => %{"name" => "Ada Lovelace"},
-            "sign_up_survey" => %{
-              "referral_source" => "github",
-              "motivation" => "security",
-              "use_case" => "servers",
-              "role" => "devops",
-              "switching" => "false"
-            }
-          }
-        })
+      lv
+      |> form("#google-sign-up-form",
+        registration: %{account: %{name: "Honest Corp"}, actor: %{name: "Ada Lovelace"}, sign_up_survey: @survey}
+      )
+      |> render_submit()
 
-      assert html =~ "Your account has been created!"
-
-      account = Portal.Repo.get_by!(Portal.Account, name: "Honest Corp")
-      assert Portal.Repo.get_by!(Portal.Actor, account_id: account.id).email == "ada@example.com"
-      refute Portal.Repo.get_by(Portal.Actor, email: "victim@example.com")
+      form = element(lv, "#google-sign-up-form[phx-trigger-action]")
+      assert render(form) =~ ~s(action="/sign_up/google/complete")
+      # The form stays locked while the browser posts it and the account is created.
+      assert has_element?(lv, "#google-sign-up[inert][data-submitting]")
+      refute Portal.Repo.get_by(Portal.Account, name: "Honest Corp")
     end
 
     test "submitting after the Google session expires shows error state", %{conn: conn} do
@@ -404,21 +395,17 @@ defmodule PortalWeb.SignUpTest do
       refute Portal.Repo.get_by(Portal.Account, name: "Late Corp")
     end
 
-    test "Stripe provision failure shows error state", %{conn: conn} do
-      Stripe.stub([{"POST", "/v1/customers", 500, %{}}])
-      conn = with_google_identity(conn)
+    test "shows the error from a failed submission on the form", %{conn: conn} do
+      conn =
+        conn
+        |> with_google_identity()
+        |> fetch_flash()
+        |> put_flash(:error, "We encountered a temporary error. Please try again.")
 
-      {:ok, lv, _html} = live(conn, ~p"/sign_up/google")
+      {:ok, _lv, html} = live(conn, ~p"/sign_up/google")
 
-      html =
-        lv
-        |> form("#google-sign-up-form",
-          registration: %{account: %{name: "Test Corp"}, actor: %{name: "Ada Lovelace"}, sign_up_survey: @survey}
-        )
-        |> render_submit()
-
-      assert html =~ "Something went wrong"
       assert html =~ "temporary error"
+      assert html =~ ~s(id="google-sign-up-form")
     end
   end
 
@@ -449,15 +436,14 @@ defmodule PortalWeb.SignUpTest do
 
       {:ok, lv, _html} = live(conn, ~p"/sign_up/github")
 
-      html =
-        lv
-        |> form("#github-sign-up-form",
-          registration: %{account: %{name: "Octo Corp"}, actor: %{name: "The Octocat"}, sign_up_survey: @survey}
-        )
-        |> render_submit()
+      conn =
+        submit_identity_form(lv, conn, "github", %{
+          account: %{name: "Octo Corp"},
+          actor: %{name: "The Octocat"},
+          sign_up_survey: @survey
+        })
 
-      assert html =~ "Your account has been created!"
-      assert html =~ "Sign In with GitHub"
+      assert redirected_to(conn) =~ "/sites"
 
       account = Portal.Repo.get_by!(Portal.Account, name: "Octo Corp")
 
@@ -466,7 +452,6 @@ defmodule PortalWeb.SignUpTest do
       assert github_provider.name == "GitHub"
       assert github_provider.is_default
       refute github_provider.is_disabled
-      assert html =~ ~s(href="/#{account.slug}/sign_in/github/#{github_provider.id}")
 
       refute Portal.Repo.get_by(Portal.Google.AuthProvider, account_id: account.id)
       assert Portal.Repo.get_by!(Portal.EmailOTP.AuthProvider, account_id: account.id)
@@ -480,6 +465,9 @@ defmodule PortalWeb.SignUpTest do
       assert identity.issuer == "https://github.com/login/oauth"
       assert identity.idp_id == "583231"
       assert identity.email == "octocat@example.com"
+
+      assert [session] = Portal.Repo.all_by(Portal.PortalSession, actor_id: actor.id)
+      assert session.auth_provider_id == github_provider.id
     end
 
     test "lists existing accounts owned by the GitHub email", %{conn: conn} do
@@ -544,6 +532,31 @@ defmodule PortalWeb.SignUpTest do
       assert_email_sent(fn email ->
         assert email.text_body =~ "http://localhost:13100/#{account.slug}"
         refute email.text_body =~ "http://localhost:13100/#{account.id}"
+        true
+      end)
+    end
+
+    test "already-registered email with different case shows email sent step", %{conn: conn} do
+      account = account_fixture(metadata: %{stripe: %{billing_email: "Existing@Example.com"}})
+
+      {:ok, lv, _html} = live(conn, ~p"/sign_up/email")
+
+      html =
+        lv
+        |> form("form",
+          registration: %{
+            email: "existing@example.com",
+            account: %{name: "Another Corp"},
+            actor: %{name: "Another User"},
+            sign_up_survey: @survey
+          }
+        )
+        |> render_submit()
+
+      assert html =~ "Check your email"
+
+      assert_email_sent(fn email ->
+        assert email.text_body =~ "http://localhost:13100/#{account.slug}"
         true
       end)
     end
@@ -809,7 +822,8 @@ defmodule PortalWeb.SignUpTest do
         ] ++ Stripe.mock_create_subscription_endpoint()
       )
 
-      {:ok, lv, _html} = live(with_google_identity(conn), ~p"/sign_up/google")
+      conn = with_google_identity(conn)
+      {:ok, lv, _html} = live(conn, ~p"/sign_up/google")
 
       lv
       |> form("#google-sign-up-form",
@@ -828,29 +842,25 @@ defmodule PortalWeb.SignUpTest do
 
       assert html =~ ~s(name="registration[sign_up_survey][previous_solution_other]")
 
-      html =
-        lv
-        |> form("#google-sign-up-form",
-          registration: %{
-            account: %{name: "Survey Corp"},
-            actor: %{name: "Ada Lovelace"},
-            sign_up_survey: %{
-              referral_source: "other",
-              referral_source_other: "A podcast",
-              motivation: "open_source",
-              use_case: "other",
-              use_case_other: "Lab network",
-              role: "other",
-              role_other: "Hobbyist",
-              switching: "true",
-              previous_solution: "other",
-              previous_solution_other: "  Homegrown WireGuard  "
-            }
+      conn =
+        submit_identity_form(lv, conn, "google", %{
+          account: %{name: "Survey Corp"},
+          actor: %{name: "Ada Lovelace"},
+          sign_up_survey: %{
+            referral_source: "other",
+            referral_source_other: "A podcast",
+            motivation: "open_source",
+            use_case: "other",
+            use_case_other: "Lab network",
+            role: "other",
+            role_other: "Hobbyist",
+            switching: "true",
+            previous_solution: "other",
+            previous_solution_other: "  Homegrown WireGuard  "
           }
-        )
-        |> render_submit()
+        })
 
-      assert html =~ "Your account has been created!"
+      assert redirected_to(conn) =~ "/sites"
 
       account = Portal.Repo.get_by!(Portal.Account, name: "Survey Corp")
 
@@ -875,7 +885,8 @@ defmodule PortalWeb.SignUpTest do
         ] ++ Stripe.mock_create_subscription_endpoint()
       )
 
-      {:ok, lv, _html} = live(conn, ~p"/sign_up/email")
+      conn = get(conn, ~p"/sign_up/email")
+      {:ok, lv, _html} = live(conn)
 
       lv
       |> form("form",
@@ -908,8 +919,9 @@ defmodule PortalWeb.SignUpTest do
       assert {:ok, %{sign_up_survey: %{motivation: "simplicity", previous_solution: nil}}} =
                Phoenix.Token.verify(PortalWeb.Endpoint, @sign_up_token_salt, token)
 
-      {:ok, _lv, html} = live(build_conn(), ~p"/verify_sign_up?token=#{token}")
-      assert html =~ "Your account has been created!"
+      {:ok, lv, _html} = live(recycle(conn), ~p"/verify_sign_up?token=#{token}")
+      conn = follow_trigger_action(form(lv, "#verify-sign-up-form"), recycle(conn))
+      assert redirected_to(conn) =~ "/sites"
 
       assert [job] = all_enqueued(worker: Portal.Workers.OutboundEmail)
       body = job.args["request"]["text_body"]
@@ -920,150 +932,79 @@ defmodule PortalWeb.SignUpTest do
     end
   end
 
-  describe "verify action — mount" do
+  describe "verify action" do
     test "visiting without a token redirects to /sign_up", %{conn: conn} do
       assert {:error, {:live_redirect, %{to: "/sign_up"}}} = live(conn, ~p"/verify_sign_up")
     end
 
-    test "shows verifying UI on initial disconnected render", %{conn: conn} do
-      token =
-        Phoenix.Token.sign(PortalWeb.Endpoint, @sign_up_token_salt, %{
-          email: "newuser@example.com",
-          company_name: "Test Corp",
-          actor_name: "Test User"
-        })
+    test "disconnected render shows the form without creating the account", %{conn: conn} do
+      {conn, browser_id} = sign_up_browser(conn)
+      token = sign_up_token("newuser@example.com", browser_id)
 
       conn = get(conn, ~p"/verify_sign_up?token=#{token}")
 
       html = html_response(conn, 200)
-      assert html =~ "Verifying your sign-up link"
+      assert html =~ "Finish setting up your account"
+      refute html =~ "indeterminate-bar"
+      refute html =~ "phx-trigger-action"
+      refute Portal.Repo.get_by(Portal.Account, name: "Test Corp")
     end
 
-    test "Stripe provision failure shows error state", %{conn: conn} do
-      Stripe.stub([{"POST", "/v1/customers", 500, %{}}])
+    test "connected render submits the token to the sign-up controller", %{conn: conn} do
+      {conn, browser_id} = sign_up_browser(conn)
+      token = sign_up_token("newuser@example.com", browser_id)
 
-      token =
-        Phoenix.Token.sign(PortalWeb.Endpoint, @sign_up_token_salt, %{
-          email: "newuser@example.com",
-          company_name: "Test Corp",
-          actor_name: "Test User"
-        })
+      {:ok, lv, html} = live(conn, ~p"/verify_sign_up?token=#{token}")
 
-      {:ok, _lv, html} = live(conn, ~p"/verify_sign_up?token=#{token}")
+      assert html =~ "Setting up your account…"
+      assert has_element?(lv, ".indeterminate-bar")
+
+      form = element(lv, "#verify-sign-up-form[phx-trigger-action]")
+      assert render(form) =~ ~s(action="/verify_sign_up")
+      assert render(form) =~ ~s(value="#{token}")
+      refute Portal.Repo.get_by(Portal.Account, name: "Test Corp")
+    end
+
+    test "asks for the browser that signed up when opened elsewhere", %{conn: conn} do
+      {_conn, browser_id} = sign_up_browser(conn)
+      token = sign_up_token("newuser@example.com", browser_id)
+      {other_browser, _other_browser_id} = sign_up_browser(build_conn())
+
+      for conn <- [build_conn(), other_browser] do
+        html = conn |> get(~p"/verify_sign_up?token=#{token}") |> html_response(200)
+        assert html =~ "Open this link in the same browser"
+
+        {:ok, lv, html} = live(conn, ~p"/verify_sign_up?token=#{token}")
+        assert html =~ "Open this link in the same browser"
+        refute has_element?(lv, "#verify-sign-up-form")
+      end
+    end
+
+    test "asks for the browser that signed up when the link isn't bound to one", %{conn: conn} do
+      {conn, _browser_id} = sign_up_browser(conn)
+      token = sign_up_token("newuser@example.com", nil)
+
+      {:ok, lv, html} = live(conn, ~p"/verify_sign_up?token=#{token}")
+
+      assert html =~ "Open this link in the same browser"
+      refute has_element?(lv, "#verify-sign-up-form")
+    end
+
+    test "shows the error from a failed submission instead of resubmitting", %{conn: conn} do
+      {conn, browser_id} = sign_up_browser(conn)
+      token = sign_up_token("newuser@example.com", browser_id)
+
+      conn =
+        conn
+        |> Phoenix.ConnTest.init_test_session(%{})
+        |> fetch_flash()
+        |> put_flash(:error, "We encountered a temporary error. Please try again.")
+
+      {:ok, lv, html} = live(conn, ~p"/verify_sign_up?token=#{token}")
 
       assert html =~ "Something went wrong"
       assert html =~ "temporary error"
-    end
-
-    test "DB transaction failure shows error state", %{conn: conn} do
-      Stripe.stub(
-        [
-          {"POST", "/v1/customers", 200,
-           Stripe.customer_object("cus_test", "Test Corp", "newuser@example.com")}
-        ] ++
-          Stripe.mock_create_subscription_endpoint()
-      )
-
-      # Empty company_name passes token verification but fails the account changeset's
-      # validate_required(:name), causing the Ecto.Multi to return {:error, :account, ...}
-      token =
-        Phoenix.Token.sign(PortalWeb.Endpoint, @sign_up_token_salt, %{
-          email: "newuser@example.com",
-          company_name: "",
-          actor_name: "Test User"
-        })
-
-      {:ok, _lv, html} = live(conn, ~p"/verify_sign_up?token=#{token}")
-
-      assert html =~ "Something went wrong"
-      assert html =~ "error creating your account"
-    end
-  end
-
-  describe "verify action (handle_params with token)" do
-    test "valid token for new email creates account and shows welcome step", %{conn: conn} do
-      Portal.Config.put_env_override(:portal, Portal.Analytics.OpenAI, api_key: "test-key")
-      enable_follow_up_email()
-      attribution = %{"marketing_allowed" => true, "captured_at" => System.os_time(:second)}
-      Stripe.stub(
-        [
-          {"POST", "/v1/customers", 200,
-           Stripe.customer_object("cus_test", "Test Corp", "newuser@example.com")}
-        ] ++
-          Stripe.mock_create_subscription_endpoint()
-      )
-
-      token =
-        Phoenix.Token.sign(PortalWeb.Endpoint, @sign_up_token_salt, %{
-          email: "newuser@example.com",
-          company_name: "Test Corp",
-          actor_name: "Test User",
-          website_attribution: %{"marketing" => attribution}
-        })
-
-      {:ok, _lv, html} = live(conn, ~p"/verify_sign_up?token=#{token}")
-
-      assert html =~ "Your account has been created!"
-      assert html =~ "Test Corp"
-      assert html =~ "Sign In"
-
-      account = Portal.Repo.get_by!(Portal.Account, name: "Test Corp")
-      assert account.metadata.marketing_attribution == attribution
-      assert [%{args: %{"event" => event}}] = all_enqueued(worker: Portal.Analytics.OpenAI)
-      assert event["type"] == "registration_completed"
-      assert event["user"]["emails_sha256"] == [Portal.Analytics.hash_email("newuser@example.com")]
-      # Reopening the verification link must not emit another conversion.
-      assert {:error, {:redirect, _}} = live(conn, ~p"/verify_sign_up?token=#{token}")
-      assert [_] = all_enqueued(worker: Portal.Analytics.OpenAI)
-      assert_follow_up_scheduled(account, "newuser@example.com")
-      provider = Portal.Repo.get_by!(Portal.X509.AuthProvider, account_id: account.id)
-      assert provider.name == "X.509"
-      assert provider.context == :clients_only
-      assert provider.is_disabled
-
-      pool =
-        Portal.Repo.get_by!(Portal.Resource, account_id: account.id, type: :device_pool)
-
-      assert pool.name == "My devices"
-      assert pool.device_membership_criteria == Portal.Resource.DeviceMembershipCriteria.own_devices()
-      assert is_nil(pool.address)
-      assert is_nil(pool.site_id)
-
-      assert Portal.Repo.get_by!(Portal.Group, account_id: account.id, name: "Everyone")
-
-      owner_group =
-        Portal.Repo.get_by!(Portal.Group, account_id: account.id, name: "Account owner")
-
-      assert owner_group.type == :static
-
-      policy = Portal.Repo.get_by!(Portal.Policy, account_id: account.id, resource_id: pool.id)
-      assert policy.group_id == owner_group.id
-
-      admin =
-        Portal.Repo.get_by!(Portal.Actor, account_id: account.id, type: :account_admin_user)
-
-      assert Portal.Repo.get_by!(Portal.Membership,
-               account_id: account.id,
-               group_id: owner_group.id,
-               actor_id: admin.id
-             )
-    end
-
-    test "valid token for already-registered email redirects to account sign-in", %{conn: conn} do
-      email = "already-registered@example.com"
-      account = account_fixture(metadata: %{stripe: %{billing_email: email}})
-
-      token =
-        Phoenix.Token.sign(PortalWeb.Endpoint, @sign_up_token_salt, %{
-          email: email,
-          company_name: "Test Corp",
-          actor_name: "Test User"
-        })
-
-      assert {:error, {:redirect, %{to: path}}} =
-               live(conn, ~p"/verify_sign_up?token=#{token}")
-
-      assert path == ~p"/#{account}/sign_in"
+      refute has_element?(lv, "#verify-sign-up-form")
     end
 
     test "invalid token shows error state", %{conn: conn} do
@@ -1123,6 +1064,29 @@ defmodule PortalWeb.SignUpTest do
 
     Plug.Test.init_test_session(conn, %{"idp_sign_up" => identity})
   end
+  # Submits the identity form, which the LiveView validates before the browser posts it to
+  # PortalWeb.SignUpController.
+  defp submit_identity_form(lv, conn, provider, registration) do
+    form = form(lv, "##{provider}-sign-up-form", registration: registration)
+    render_submit(form)
+    follow_trigger_action(form, conn)
+  end
+
+  # Visits a sign-up page so the conn carries the browser cookie that links are bound to.
+  defp sign_up_browser(conn) do
+    conn = get(conn, ~p"/sign_up")
+    {recycle(conn), conn.private.sign_up_browser_id}
+  end
+
+  defp sign_up_token(email, browser_id) do
+    Phoenix.Token.sign(PortalWeb.Endpoint, @sign_up_token_salt, %{
+      email: email,
+      company_name: "Test Corp",
+      actor_name: "Test User",
+      browser: PortalWeb.Cookie.SignUpBrowser.token_claim(browser_id)
+    })
+  end
+
   defp enable_follow_up_email do
     Portal.Config.put_env_override(:portal, Portal.Workers.SignUpFollowUp,
       from_email: "jamil@firezone.dev"

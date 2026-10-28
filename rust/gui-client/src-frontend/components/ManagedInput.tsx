@@ -1,4 +1,5 @@
-import React, { InputHTMLAttributes } from "react";
+import React, { InputHTMLAttributes, SelectHTMLAttributes } from "react";
+import RemixIcon from "./RemixIcon";
 
 type ManagedTextInputProps = InputHTMLAttributes<HTMLInputElement> & {
   managed: boolean;
@@ -10,7 +11,7 @@ export function ManagedTextInput({
   className = "",
   ...inputProps
 }: ManagedTextInputProps) {
-  const input = (
+  return (
     <input
       aria-disabled={managed || undefined}
       className={`form-input ${className}`}
@@ -18,12 +19,35 @@ export function ManagedTextInput({
       {...inputProps}
     />
   );
+}
 
-  if (!managed) {
-    return input;
-  }
+type ManagedSelectProps = SelectHTMLAttributes<HTMLSelectElement> & {
+  managed: boolean;
+};
 
-  return <ManagedTooltip fullWidth>{input}</ManagedTooltip>;
+export function ManagedSelect({
+  disabled,
+  managed,
+  className = "",
+  ...selectProps
+}: ManagedSelectProps) {
+  // The native arrow sits flush against the right border, so draw our own with padding.
+  return (
+    <span className="relative flex w-full">
+      <select
+        aria-disabled={managed || undefined}
+        className={`form-input appearance-none pr-9 ${className}`}
+        disabled={managed || disabled}
+        {...selectProps}
+      />
+      <RemixIcon
+        className={`pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-subtle ${
+          managed || disabled ? "opacity-40" : ""
+        }`}
+        name="arrow-down"
+      />
+    </span>
+  );
 }
 
 interface ManagedToggleSwitchProps {
@@ -41,7 +65,7 @@ export function ManagedToggleSwitch({
   name,
   onChange,
 }: ManagedToggleSwitchProps) {
-  const toggle = (
+  return (
     <button
       aria-checked={checked}
       aria-disabled={managed || undefined}
@@ -57,30 +81,17 @@ export function ManagedToggleSwitch({
     >
       <span
         aria-hidden="true"
-        className={`toggle-thumb ${checked ? "translate-x-2.5" : ""}`}
+        className={`toggle-thumb ${checked ? "translate-x-3.5" : ""}`}
       />
     </button>
   );
-
-  if (!managed) {
-    return toggle;
-  }
-
-  return <ManagedTooltip>{toggle}</ManagedTooltip>;
 }
 
-function ManagedTooltip({
-  children,
-  fullWidth = false,
-}: React.PropsWithChildren<{ fullWidth?: boolean }>) {
+export function ManagedSettingsNotice() {
   return (
-    <span
-      className={`group relative ${fullWidth ? "flex w-full" : "inline-flex"}`}
-    >
-      {children}
-      <span className="managed-tooltip" role="tooltip">
-        This setting is managed by your organisation.
-      </span>
-    </span>
+    <p className="mt-1.5 flex items-start gap-1.5 text-xs text-subtle">
+      <RemixIcon className="mt-px h-3.5 w-3.5" name="lock" />
+      <span>Some settings are managed by your organization.</span>
+    </p>
   );
 }

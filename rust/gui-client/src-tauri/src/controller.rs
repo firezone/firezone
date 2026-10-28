@@ -3,9 +3,12 @@ use crate::{
     gui::{self, system_tray},
     logging::{self, FileCount},
     service,
-    settings::{AdvancedSettings, GeneralSettings, MdmSettings},
+    settings::{
+        AdvancedSettings, AdvancedSettingsPatch, ControlPlane, GeneralSettings, MdmSettings,
+        SignInSettings,
+    },
     updates, uptime,
-    view::{GeneralSettingsForm, SessionViewModel},
+    view::{ClientSettingsForm, SessionViewModel},
 };
 use anyhow::{Context, ErrorExt as _, Result, anyhow, bail};
 use client_ipc::{self as ipc, SocketId};
@@ -44,6 +47,7 @@ pub struct Controller<I: GuiIntegration> {
     legacy_advanced_settings_path: PathBuf,
     // Sign-in state with the portal / deep links
     auth: auth::Auth,
+    signed_in_with: Option<SignInSettings>,
     clear_logs_callback: Option<oneshot::Sender<Result<(), String>>>,
     x509: Result<Option<x509_keystore::ParsedCertificate>, x509_keystore::Error>,
     ipc_client: ipc::ClientWrite<service::ClientMsg>,
@@ -84,6 +88,7 @@ pub trait GuiIntegration {
         mdm_settings: MdmSettings,
         general_settings: GeneralSettings,
         advanced_settings: AdvancedSettings,
+        signed_in_with: Option<SignInSettings>,
     ) -> Result<()>;
     fn notify_logs_recounted(&self, file_count: &FileCount) -> Result<()>;
     fn notify_device_trust_changed(
@@ -113,15 +118,16 @@ pub trait GuiIntegration {
         mdm_settings: MdmSettings,
         general_settings: GeneralSettings,
         settings: AdvancedSettings,
+        signed_in_with: Option<SignInSettings>,
     ) -> Result<()>;
     fn show_about_page(&self) -> Result<()>;
 }
 
 #[derive(strum::Display)]
 pub enum ControllerRequest {
-    ApplyAdvancedSettings(Box<AdvancedSettings>),
-    ApplyGeneralSettings(Box<GeneralSettingsForm>),
-    ResetGeneralSettings,
+    ApplyClientSettings(Box<ClientSettingsForm>),
+    ResetClientSettings,
+    ApplyLogFilter(String),
     /// Clear the GUI's logs and await the Tunnel service to clear its logs
     ClearLogs(oneshot::Sender<Result<(), String>>),
     /// The same as the arguments to `client::logging::export_logs_to`
@@ -243,18 +249,24 @@ impl<I: GuiIntegration> Controller<I> {
 
         let auth = auth::Auth::new()?;
 
-        if let Err(e) =
-            try_migrate_advanced_settings(&legacy_advanced_settings_path, &mut ipc_client).await
-        {
-            tracing::warn!("Failed to migrate advanced settings to service: {e:#}");
-        }
+        let migration_sent =
+            match try_migrate_advanced_settings(&legacy_advanced_settings_path, &mut ipc_client)
+                .await
+            {
+                Ok(sent) => sent,
+                Err(e) => {
+                    tracing::warn!("Failed to migrate advanced settings to service: {e:#}");
+                    false
+                }
+            };
 
-        let controller = Controller {
+        let mut controller = Controller {
             general_settings,
             mdm_settings,
             advanced_settings,
             legacy_advanced_settings_path,
             auth,
+            signed_in_with: None,
             clear_logs_callback: None,
             x509,
             ipc_client,
@@ -281,6 +293,18 @@ impl<I: GuiIntegration> Controller<I> {
             pending_connect_replies: Vec::new(),
             unconfirmed_token: None,
         };
+
+        if migration_sent {
+            let response = tokio::time::timeout(Duration::from_secs(5), controller.ipc_rx.next())
+                .await
+                .context("Timed out waiting for legacy settings migration")?
+                .context("Tunnel service disconnected during legacy settings migration")??;
+            anyhow::ensure!(
+                matches!(response, service::ServerMsg::AdvancedSettingsApplied(_)),
+                "Expected settings migration response"
+            );
+            let _ = controller.handle_service_ipc_msg(response).await?;
+        }
 
         controller.main_loop().await?;
 
@@ -431,11 +455,15 @@ impl<I: GuiIntegration> Controller<I> {
 
         tracing::info!(api_url = %self.api_url(), "Starting connlib...");
 
+        let signed_in_with = self.current_sign_in();
         self.send_ipc(&service::ClientMsg::Connect {
             token,
             is_internet_resource_active: self.general_settings.internet_resource_enabled(),
+            api_url: Some(signed_in_with.api_url.clone()),
         })
         .await?;
+
+        self.set_signed_in_with(Some(signed_in_with))?;
 
         // Change the status after we begin connecting
         self.status = Status::WaitingForPortal;
@@ -468,14 +496,43 @@ impl<I: GuiIntegration> Controller<I> {
 
         tracing::info!("Received deep link over IPC");
 
+        let control_plane = auth_response.control_plane;
         // Uses `std::fs`
-        let token = self
-            .auth
-            .handle_response(auth_response)
-            .context("Couldn't handle auth response")?;
-
-        self.update_telemetry_context().await?;
+        let token = match self.auth.handle_response(auth_response) {
+            Ok(token) => token,
+            Err(error) => {
+                if self.auth.token().is_none() && self.auth.ongoing_request().is_none() {
+                    self.set_signed_in_with(None)?;
+                }
+                return Err(error).context("Couldn't handle auth response");
+            }
+        };
+        if let Some((auth_url, api_url)) = control_plane.and_then(ControlPlane::urls) {
+            let patch = AdvancedSettingsPatch {
+                auth_url: self
+                    .mdm_settings
+                    .auth_url
+                    .is_none()
+                    .then_some(auth_url.clone()),
+                api_url: self
+                    .mdm_settings
+                    .api_url
+                    .is_none()
+                    .then_some(api_url.clone()),
+                log_filter: None,
+            };
+            self.set_signed_in_with(Some(SignInSettings {
+                auth_url: self.mdm_settings.auth_url.clone().unwrap_or(auth_url),
+                api_url: self.mdm_settings.api_url.clone().unwrap_or(api_url),
+                ..self.current_sign_in()
+            }))?;
+            if !patch.is_empty() {
+                self.send_ipc(&service::ClientMsg::PatchAdvancedSettings(patch))
+                    .await?;
+            }
+        }
         self.start_session(token).await?;
+        self.update_telemetry_context().await?;
 
         Ok(())
     }
@@ -484,38 +541,48 @@ impl<I: GuiIntegration> Controller<I> {
         use ControllerRequest::*;
 
         match req {
-            ApplyAdvancedSettings(settings) => {
-                self.send_ipc(&service::ClientMsg::ApplyAdvancedSettings(
-                    AdvancedSettings {
-                        additional_host_candidates: self
-                            .advanced_settings
-                            .additional_host_candidates
-                            .clone(),
-                        ..*settings
+            ApplyClientSettings(settings) => {
+                let (general_settings, patch) = match settings.apply(
+                    &self.mdm_settings,
+                    self.general_settings.clone(),
+                    self.advanced_settings.clone(),
+                ) {
+                    Ok(settings) => settings,
+                    Err(e) => {
+                        self.integration
+                            .show_notification("Failed to save settings", format!("{e:#}"))?;
+                        return Ok(());
+                    }
+                };
+
+                self.apply_client_settings(general_settings, patch).await?;
+            }
+            ResetClientSettings => {
+                let defaults = AdvancedSettings::default();
+
+                self.apply_client_settings(
+                    GeneralSettings {
+                        start_minimized: true,
+                        start_on_login: None,
+                        connect_on_start: None,
+                        account_slug: None,
+                        ..self.general_settings.clone()
+                    },
+                    AdvancedSettingsPatch {
+                        auth_url: Some(defaults.auth_url),
+                        api_url: Some(defaults.api_url),
+                        log_filter: None,
+                    },
+                )
+                .await?;
+            }
+            ApplyLogFilter(log_filter) => {
+                self.send_ipc(&service::ClientMsg::PatchAdvancedSettings(
+                    AdvancedSettingsPatch {
+                        log_filter: Some(log_filter),
+                        ..Default::default()
                     },
                 ))
-                .await?;
-            }
-            ApplyGeneralSettings(settings) => {
-                let account_slug = settings.account_slug.trim();
-
-                self.apply_general_settings(GeneralSettings {
-                    start_minimized: settings.start_minimized,
-                    start_on_login: Some(settings.start_on_login),
-                    connect_on_start: Some(settings.connect_on_start),
-                    account_slug: (!account_slug.is_empty()).then_some(account_slug.to_owned()),
-                    ..self.general_settings.clone()
-                })
-                .await?;
-            }
-            ResetGeneralSettings => {
-                self.apply_general_settings(GeneralSettings {
-                    start_minimized: true,
-                    start_on_login: None,
-                    connect_on_start: None,
-                    account_slug: None,
-                    ..self.general_settings.clone()
-                })
                 .await?;
             }
             ClearLogs(completion_tx) => {
@@ -550,14 +617,17 @@ impl<I: GuiIntegration> Controller<I> {
             OpenTrayMenu => self.integration.open_tray_menu()?,
             CloseTrayMenu => self.integration.close_tray_menu()?,
             SignIn | SystemTrayMenu(system_tray::Event::SignIn) => {
-                let auth_url = self.auth_url().clone();
-                let account_slug = self.account_slug().map(|a| a.to_owned());
+                let signed_in_with = self.current_sign_in();
 
                 let url = self
                     .auth
                     .start_sign_in()
                     .context("Couldn't start sign-in flow")?
-                    .to_url(&auth_url, account_slug.as_deref());
+                    .to_url(
+                        &signed_in_with.auth_url,
+                        signed_in_with.account_slug.as_deref(),
+                    );
+                self.set_signed_in_with(Some(signed_in_with))?;
                 self.refresh_ui_state();
 
                 #[cfg(debug_assertions)]
@@ -623,6 +693,7 @@ impl<I: GuiIntegration> Controller<I> {
                         self.mdm_settings.clone(),
                         self.general_settings.clone(),
                         self.advanced_settings.clone(),
+                        self.signed_in_with.clone(),
                     )?,
                 };
                 self.reload_device_trust().await?;
@@ -665,8 +736,13 @@ impl<I: GuiIntegration> Controller<I> {
         Ok(())
     }
 
-    async fn apply_general_settings(&mut self, settings: GeneralSettings) -> Result<()> {
-        self.general_settings = settings;
+    /// Saves the general settings and forwards advanced settings changes to the Tunnel service.
+    async fn apply_client_settings(
+        &mut self,
+        general_settings: GeneralSettings,
+        patch: AdvancedSettingsPatch,
+    ) -> Result<()> {
+        self.general_settings = general_settings;
 
         self.integration
             .save_general_settings(&self.general_settings)
@@ -675,7 +751,11 @@ impl<I: GuiIntegration> Controller<I> {
         gui::set_autostart(self.general_settings.start_on_login.is_some_and(|v| v)).await?;
 
         self.notify_settings_changed()?;
-        self.integration.show_notification("Settings saved", "")?;
+
+        if !patch.is_empty() {
+            self.send_ipc(&service::ClientMsg::PatchAdvancedSettings(patch))
+                .await?;
+        }
 
         Ok(())
     }
@@ -787,8 +867,6 @@ impl<I: GuiIntegration> Controller<I> {
 
                 self.notify_settings_changed()?;
                 self.refresh_ui_state();
-
-                self.integration.show_notification("Settings saved", "")?;
             }
             service::ServerMsg::AdvancedSettingsApplied(Err(err)) => {
                 tracing::error!("Tunnel service failed to save advanced settings: {err}");
@@ -995,7 +1073,12 @@ impl<I: GuiIntegration> Controller<I> {
                 ))
                 .await;
                 match self.unconfirmed_token.take() {
-                    Some(_) => self.disconnect().await?,
+                    Some(_) => {
+                        if self.auth.token().is_none() && self.auth.ongoing_request().is_none() {
+                            self.set_signed_in_with(None)?;
+                        }
+                        self.disconnect().await?;
+                    }
                     None => self.sign_out().await?,
                 }
 
@@ -1162,6 +1245,7 @@ impl<I: GuiIntegration> Controller<I> {
             | Status::WaitingForTunnel => {}
         }
         self.auth.sign_out()?;
+        self.set_signed_in_with(None)?;
 
         self.disconnect().await
     }
@@ -1190,11 +1274,28 @@ impl<I: GuiIntegration> Controller<I> {
             .context("Failed to send IPC message")
     }
 
+    fn current_sign_in(&self) -> SignInSettings {
+        SignInSettings {
+            account_slug: self.account_slug().map(ToOwned::to_owned),
+            auth_url: self.auth_url().clone(),
+            api_url: self.api_url().clone(),
+        }
+    }
+
+    fn set_signed_in_with(&mut self, signed_in_with: Option<SignInSettings>) -> Result<()> {
+        if self.signed_in_with == signed_in_with {
+            return Ok(());
+        }
+        self.signed_in_with = signed_in_with;
+        self.notify_settings_changed()
+    }
+
     fn notify_settings_changed(&mut self) -> Result<()> {
         self.integration.notify_settings_changed(
             self.mdm_settings.clone(),
             self.general_settings.clone(),
             self.advanced_settings.clone(),
+            self.signed_in_with.clone(),
         )?;
 
         Ok(())
@@ -1218,24 +1319,38 @@ impl<I: GuiIntegration> Controller<I> {
     }
 
     fn auth_url(&self) -> &Url {
-        self.mdm_settings
-            .auth_url
+        self.signed_in_with
             .as_ref()
-            .unwrap_or(&self.advanced_settings.auth_url)
+            .map(|settings| &settings.auth_url)
+            .unwrap_or_else(|| {
+                self.mdm_settings
+                    .auth_url
+                    .as_ref()
+                    .unwrap_or(&self.advanced_settings.auth_url)
+            })
     }
 
     fn api_url(&self) -> &Url {
-        self.mdm_settings
-            .api_url
+        self.signed_in_with
             .as_ref()
-            .unwrap_or(&self.advanced_settings.api_url)
+            .map(|settings| &settings.api_url)
+            .unwrap_or_else(|| {
+                self.mdm_settings
+                    .api_url
+                    .as_ref()
+                    .unwrap_or(&self.advanced_settings.api_url)
+            })
     }
 
     fn account_slug(&self) -> Option<&str> {
-        self.mdm_settings
-            .account_slug
-            .as_deref()
-            .or(self.general_settings.account_slug.as_deref())
+        match &self.signed_in_with {
+            Some(settings) => settings.account_slug.as_deref(),
+            None => self
+                .mdm_settings
+                .account_slug
+                .as_deref()
+                .or(self.general_settings.account_slug.as_deref()),
+        }
     }
 
     /// Where the CLI user signs in to be shown a token to copy.
@@ -1329,9 +1444,9 @@ fn try_delete_legacy_config(path: &Path) -> Result<()> {
 async fn try_migrate_advanced_settings(
     path: &Path,
     ipc_client: &mut ipc::ClientWrite<service::ClientMsg>,
-) -> Result<()> {
+) -> Result<bool> {
     if !path.exists() {
-        return Ok(());
+        return Ok(false);
     }
 
     let content =
@@ -1343,7 +1458,7 @@ async fn try_migrate_advanced_settings(
         .await
         .context("Failed to send legacy advanced_settings migration")?;
 
-    Ok(())
+    Ok(true)
 }
 
 #[cfg(test)]
@@ -1637,17 +1752,17 @@ mod tests {
         let applied = mock_tunnel.rx_set_additional_host_candidates().await;
         test_controller
             .ctrl_tx
-            .send(ControllerRequest::ApplyAdvancedSettings(Box::default()))
+            .send(ControllerRequest::ApplyLogFilter("debug".to_owned()))
             .await
             .unwrap();
-        let saved = mock_tunnel.rx_apply_advanced_settings().await;
+        let saved = mock_tunnel.rx_patch_advanced_settings().await;
         let listed = test_controller
             .gui_ipc_request(gui_ipc::ClientMsg::ListAdditionalHostCandidates)
             .await;
 
         assert_eq!(response, gui_ipc::ServerMsg::Ack);
         assert_eq!(applied, candidates);
-        assert_eq!(saved.additional_host_candidates, candidates);
+        assert_eq!(saved.log_filter.as_deref(), Some("debug"));
         assert_eq!(
             listed,
             gui_ipc::ServerMsg::AdditionalHostCandidates(candidates)
@@ -1734,6 +1849,21 @@ mod tests {
             "expected `Disconnect` but got {msg:?}"
         );
 
+        let browser_settings = test_controller
+            .integration()
+            .signed_in_with
+            .last()
+            .unwrap()
+            .clone()
+            .unwrap();
+        let changed = canned_advanced_settings();
+        mock_tunnel
+            .send_advanced_settings_applied(Ok(changed.clone()))
+            .await;
+        test_controller
+            .wait_integration(|i| (i.advanced_settings.last() == Some(&changed)).then_some(()))
+            .await;
+
         let (mut rx, mut tx) = test_controller.gui_ipc_connect().await;
         tx.send(&gui_ipc::ClientMsg::Connect {
             token: Some(SecretString::from("cli-token")),
@@ -1759,8 +1889,20 @@ mod tests {
         tx.send(&gui_ipc::ClientMsg::Connect { token: None })
             .await
             .unwrap();
-        let stored_token = mock_tunnel.rx_connect().await;
+        let service::ClientMsg::Connect {
+            token: stored_token,
+            api_url,
+            ..
+        } = mock_tunnel.next_msg().await
+        else {
+            panic!("expected a reconnect with the original token");
+        };
         assert_eq!(stored_token.expose_secret(), browser_token.expose_secret());
+        assert_eq!(api_url, Some(browser_settings.api_url.clone()));
+        assert_eq!(
+            test_controller.integration().signed_in_with.last(),
+            Some(&Some(browser_settings))
+        );
     }
 
     #[tokio::test]
@@ -2164,6 +2306,327 @@ mod tests {
 
         let migrated = mock_tunnel.rx_apply_advanced_settings().await;
         assert_eq!(migrated, canned);
+        test_controller
+            .ctrl_tx
+            .send(ControllerRequest::SignIn)
+            .await
+            .unwrap();
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        assert!(test_controller.integration().opened_urls.is_empty());
+
+        mock_tunnel
+            .send_advanced_settings_applied(Ok(canned.clone()))
+            .await;
+        let opened = test_controller
+            .wait_integration(|i| i.opened_urls.first().cloned())
+            .await;
+        assert!(opened.starts_with(canned.auth_url.as_str()));
+        let callback = Url::parse(&opened).unwrap();
+        let state = callback
+            .query_pairs()
+            .find_map(|(key, value)| (key == "state").then_some(value))
+            .unwrap();
+        let callback = format!(
+            "firezone-fd0020211111://handle_client_sign_in_callback?fragment=fragment&state={state}"
+        )
+        .parse()
+        .unwrap();
+        let _ = test_controller
+            .gui_ipc_request(gui_ipc::ClientMsg::Deeplink(callback))
+            .await;
+        let service::ClientMsg::Connect { api_url, .. } = mock_tunnel.next_msg().await else {
+            panic!("expected connect after migration");
+        };
+        assert_eq!(api_url, Some(canned.api_url));
+    }
+
+    #[tokio::test]
+    async fn apply_log_filter_keeps_the_saved_urls() {
+        let _guard = logging::test("debug");
+        let mut test_controller = Controller::start_for_test();
+        let mut mock_tunnel = test_controller.tunnel_service_ipc_accept().await;
+
+        mock_tunnel.send_hello().await;
+        test_controller
+            .ctrl_tx
+            .send(ControllerRequest::ApplyLogFilter("trace".to_owned()))
+            .await
+            .unwrap();
+
+        let applied = mock_tunnel.rx_patch_advanced_settings().await;
+        assert_eq!(
+            applied,
+            AdvancedSettingsPatch {
+                log_filter: Some("trace".to_owned()),
+                ..Default::default()
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn independent_settings_edits_do_not_wait_for_service_replies() {
+        let _guard = logging::test("debug");
+        let mut test_controller = Controller::start_for_test();
+        let mut mock_tunnel = test_controller.tunnel_service_ipc_accept().await;
+        mock_tunnel.send_hello().await;
+
+        for form in [
+            ClientSettingsForm {
+                control_plane: Some(crate::settings::ControlPlane::Custom),
+                auth_url: Some("https://auth.example.com".to_owned()),
+                ..Default::default()
+            },
+            ClientSettingsForm {
+                control_plane: Some(crate::settings::ControlPlane::Custom),
+                api_url: Some("wss://api.example.com".to_owned()),
+                ..Default::default()
+            },
+            ClientSettingsForm {
+                start_minimized: Some(false),
+                ..Default::default()
+            },
+        ] {
+            test_controller
+                .ctrl_tx
+                .send(ControllerRequest::ApplyClientSettings(Box::new(form)))
+                .await
+                .unwrap();
+        }
+        test_controller
+            .ctrl_tx
+            .send(ControllerRequest::ApplyLogFilter("trace".to_owned()))
+            .await
+            .unwrap();
+        test_controller
+            .ctrl_tx
+            .send(ControllerRequest::OpenTrayMenu)
+            .await
+            .unwrap();
+
+        let auth = mock_tunnel.rx_patch_advanced_settings().await;
+        assert_eq!(
+            auth.auth_url.as_ref().unwrap().as_str(),
+            "https://auth.example.com/"
+        );
+        assert!(auth.api_url.is_none());
+        assert!(auth.log_filter.is_none());
+        let api = mock_tunnel.rx_patch_advanced_settings().await;
+        assert_eq!(
+            api.api_url.as_ref().unwrap().as_str(),
+            "wss://api.example.com/"
+        );
+        assert!(api.auth_url.is_none());
+        assert!(api.log_filter.is_none());
+        let filter = mock_tunnel.rx_patch_advanced_settings().await;
+        assert_eq!(filter.log_filter.as_deref(), Some("trace"));
+        assert!(filter.auth_url.is_none());
+        assert!(filter.api_url.is_none());
+        test_controller
+            .wait_integration(|integration| {
+                let general = integration.general_settings.last()?;
+                (!general.start_minimized && !integration.tray_menu_opens.is_empty()).then_some(())
+            })
+            .await;
+        let integration = test_controller.integration();
+        let saved = integration.general_settings.last().unwrap();
+        assert_eq!(
+            saved.custom_auth_url.as_ref().unwrap().as_str(),
+            "https://auth.example.com/"
+        );
+        assert_eq!(
+            saved.custom_api_url.as_ref().unwrap().as_str(),
+            "wss://api.example.com/"
+        );
+    }
+
+    #[tokio::test]
+    async fn browser_region_updates_control_plane_without_overwriting_other_settings() {
+        let _guard = logging::test("debug");
+        for (region, control_plane, mdm_settings) in [
+            ("us", ControlPlane::CloudUs, MdmSettings::default()),
+            (
+                "eu",
+                ControlPlane::CloudEu,
+                MdmSettings {
+                    api_url: Some("wss://managed.example.com/".parse().unwrap()),
+                    ..Default::default()
+                },
+            ),
+        ] {
+            let general_settings = GeneralSettings {
+                account_slug: Some("original".to_owned()),
+                custom_auth_url: Some("https://custom.example.com/".parse().unwrap()),
+                custom_api_url: Some("wss://custom.example.com/".parse().unwrap()),
+                ..Default::default()
+            };
+            let mut test_controller =
+                Controller::start_for_test_with_settings(general_settings.clone());
+            let mut mock_tunnel = test_controller.tunnel_service_ipc_accept().await;
+            mock_tunnel
+                .tx
+                .send(&service::ServerMsg::Hello {
+                    firezone_id: "test-firezone-id".to_owned(),
+                    advanced_settings: AdvancedSettings::default(),
+                    mdm_settings: mdm_settings.clone(),
+                    x509_certificate: Ok(None),
+                })
+                .await
+                .unwrap();
+            let mut callback = test_controller.begin_sign_in().await;
+            callback.query_pairs_mut().append_pair("region", region);
+            let response = test_controller
+                .gui_ipc_request(gui_ipc::ClientMsg::Deeplink(callback))
+                .await;
+            assert_eq!(response, gui_ipc::ServerMsg::Ack);
+
+            let (auth_url, api_url) = control_plane.urls().unwrap();
+            let patch = mock_tunnel.rx_patch_advanced_settings().await;
+            assert_eq!(patch.auth_url, Some(auth_url.clone()));
+            assert_eq!(
+                patch.api_url,
+                mdm_settings.api_url.is_none().then_some(api_url.clone())
+            );
+            assert!(patch.log_filter.is_none());
+            let service::ClientMsg::Connect {
+                api_url: connected_api,
+                ..
+            } = mock_tunnel.next_msg().await
+            else {
+                panic!("expected a connection after saving the region");
+            };
+            let effective_api = mdm_settings.api_url.unwrap_or(api_url);
+            assert_eq!(connected_api, Some(effective_api.clone()));
+            let integration = test_controller.integration();
+            assert_eq!(
+                integration.signed_in_with.last(),
+                Some(&Some(SignInSettings {
+                    account_slug: general_settings.account_slug.clone(),
+                    auth_url,
+                    api_url: effective_api,
+                }))
+            );
+            let saved = integration.general_settings.last().unwrap();
+            assert_eq!(saved.account_slug, general_settings.account_slug);
+            assert_eq!(saved.custom_auth_url, general_settings.custom_auth_url);
+            assert_eq!(saved.custom_api_url, general_settings.custom_api_url);
+        }
+    }
+
+    #[tokio::test]
+    async fn sign_in_settings_stay_frozen_from_browser_start_until_sign_out() {
+        let _guard = logging::test("debug");
+        let mut test_controller = Controller::start_for_test();
+        let mut mock_tunnel = test_controller.tunnel_service_ipc_accept().await;
+        mock_tunnel.send_hello().await;
+        let mut callback = test_controller.begin_sign_in().await;
+        callback.query_pairs_mut().append_pair("region", "unknown");
+        let original = test_controller
+            .integration()
+            .signed_in_with
+            .last()
+            .unwrap()
+            .clone()
+            .unwrap();
+
+        test_controller
+            .ctrl_tx
+            .send(ControllerRequest::ApplyClientSettings(Box::new(
+                ClientSettingsForm {
+                    account_slug: Some("other".to_owned()),
+                    control_plane: Some(crate::settings::ControlPlane::CloudEu),
+                    ..Default::default()
+                },
+            )))
+            .await
+            .unwrap();
+        let patch = mock_tunnel.rx_patch_advanced_settings().await;
+        let changed = patch.apply(AdvancedSettings::default());
+        mock_tunnel
+            .send_advanced_settings_applied(Ok(changed.clone()))
+            .await;
+        test_controller
+            .wait_integration(|i| (i.advanced_settings.last() == Some(&changed)).then_some(()))
+            .await;
+
+        let ack = test_controller
+            .gui_ipc_request(gui_ipc::ClientMsg::Deeplink(callback))
+            .await;
+        assert_eq!(ack, gui_ipc::ServerMsg::Ack);
+        let service::ClientMsg::Connect { api_url, .. } = mock_tunnel.next_msg().await else {
+            panic!("expected the browser flow to connect");
+        };
+        assert_eq!(api_url, Some(original.api_url));
+        assert!(test_controller.integration().notifications.is_empty());
+
+        let _ = test_controller
+            .gui_ipc_request(gui_ipc::ClientMsg::SignOut)
+            .await;
+        assert!(matches!(
+            mock_tunnel.next_msg().await,
+            service::ClientMsg::Disconnect
+        ));
+        test_controller.sign_in().await;
+        let service::ClientMsg::Connect { api_url, .. } = mock_tunnel.next_msg().await else {
+            panic!("expected a new sign-in after sign-out");
+        };
+        assert_eq!(api_url, Some(changed.api_url));
+        let integration = test_controller.integration();
+        let latest = integration.signed_in_with.last().unwrap().as_ref().unwrap();
+        assert_eq!(latest.account_slug.as_deref(), Some("other"));
+        assert_eq!(latest.auth_url, changed.auth_url);
+    }
+
+    #[tokio::test]
+    async fn remembers_what_the_session_signed_in_with_until_sign_out() {
+        let _guard = logging::test("debug");
+        let mut test_controller = Controller::start_for_test();
+        let mut mock_tunnel = test_controller.tunnel_service_ipc_accept().await;
+        mock_tunnel.send_hello().await;
+
+        test_controller.sign_in().await;
+        let signed_in_with = test_controller
+            .wait_integration(|i| i.signed_in_with.last()?.clone())
+            .await;
+        assert_eq!(
+            signed_in_with,
+            SignInSettings {
+                account_slug: None,
+                auth_url: AdvancedSettings::default().auth_url,
+                api_url: AdvancedSettings::default().api_url,
+            }
+        );
+
+        test_controller
+            .ctrl_tx
+            .send(ControllerRequest::ApplyClientSettings(Box::new(
+                ClientSettingsForm {
+                    account_slug: Some("other".to_owned()),
+                    ..Default::default()
+                },
+            )))
+            .await
+            .unwrap();
+        test_controller
+            .wait_integration(|i| {
+                i.general_settings
+                    .last()
+                    .filter(|s| s.account_slug.as_deref() == Some("other"))
+                    .cloned()
+            })
+            .await;
+        assert_eq!(
+            test_controller.integration().signed_in_with.last(),
+            Some(&Some(signed_in_with))
+        );
+
+        test_controller
+            .ctrl_tx
+            .send(ControllerRequest::SignOut)
+            .await
+            .unwrap();
+        test_controller
+            .wait_integration(|i| i.signed_in_with.last()?.is_none().then_some(()))
+            .await;
     }
 
     async fn boot_tunnel(
@@ -2229,23 +2692,27 @@ mod tests {
         }
 
         async fn sign_in(&mut self) {
+            let callback = self.begin_sign_in().await;
+            let ack = self
+                .gui_ipc_request(gui_ipc::ClientMsg::Deeplink(callback))
+                .await;
+            assert_eq!(ack, gui_ipc::ServerMsg::Ack);
+        }
+
+        async fn begin_sign_in(&mut self) -> Url {
+            let previous = self.integration().opened_urls.len();
             self.ctrl_tx.send(ControllerRequest::SignIn).await.unwrap();
 
-            let first_url = self
-                .wait_integration(|i| i.opened_urls.first().cloned())
+            let opened_url = self
+                .wait_integration(|i| i.opened_urls.get(previous).cloned())
                 .await;
-            let url = Url::parse(&first_url).unwrap();
+            let url = Url::parse(&opened_url).unwrap();
             let state = url
                 .query_pairs()
                 .find_map(|(key, value)| (key == "state").then_some(value))
                 .unwrap();
 
-            let (mut rx, mut tx) = self.gui_ipc_connect().await;
-            tx.send(&gui_ipc::ClientMsg::Deeplink(format!("firezone-fd0020211111://handle_client_sign_in_callback?account_name=Firezone&account_slug=firezone&actor_name=Foo+Bar&fragment=a_very_secret_string&identity_provider_identifier=1234&state={state}").parse().unwrap()))
-            .await
-            .unwrap();
-            let ack = rx.next().await.unwrap().unwrap();
-            assert_eq!(ack, gui_ipc::ServerMsg::Ack);
+            format!("firezone-fd0020211111://handle_client_sign_in_callback?account_name=Firezone&account_slug=firezone&actor_name=Foo+Bar&fragment=a_very_secret_string&identity_provider_identifier=1234&state={state}").parse().unwrap()
         }
 
         fn integration(&self) -> MutexGuard<'_, MockIntegration> {
@@ -2273,6 +2740,7 @@ mod tests {
         sessions: Vec<SessionViewModel>,
         mdm_settings: Vec<MdmSettings>,
         general_settings: Vec<GeneralSettings>,
+        signed_in_with: Vec<Option<SignInSettings>>,
         advanced_settings: Vec<AdvancedSettings>,
         file_counts: Vec<FileCount>,
         x509: Vec<Option<x509_keystore::ParsedCertificate>>,
@@ -2307,11 +2775,13 @@ mod tests {
             mdm_settings: MdmSettings,
             general_settings: GeneralSettings,
             advanced_settings: AdvancedSettings,
+            signed_in_with: Option<SignInSettings>,
         ) -> Result<()> {
             let mut guard = self.lock();
 
             guard.mdm_settings.push(mdm_settings);
             guard.general_settings.push(general_settings);
+            guard.signed_in_with.push(signed_in_with);
             guard.advanced_settings.push(advanced_settings);
 
             Ok(())
@@ -2391,6 +2861,7 @@ mod tests {
             mdm_settings: MdmSettings,
             general_settings: GeneralSettings,
             settings: AdvancedSettings,
+            _signed_in_with: Option<SignInSettings>,
         ) -> Result<()> {
             self.lock()
                 .shown_settings_page
@@ -2530,6 +3001,14 @@ mod tests {
                 })
                 .await
                 .unwrap();
+        }
+
+        async fn rx_patch_advanced_settings(&mut self) -> AdvancedSettingsPatch {
+            let msg = self.next_msg().await;
+            let service::ClientMsg::PatchAdvancedSettings(patch) = msg else {
+                panic!("expected `PatchAdvancedSettings` but got {msg:?}");
+            };
+            patch
         }
 
         async fn rx_apply_advanced_settings(&mut self) -> AdvancedSettings {
