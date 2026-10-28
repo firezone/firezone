@@ -214,8 +214,16 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - uses: ./.github/actions/setup-afl
       - uses: ./.github/actions/free-disk-space
-      - name: Replay committed corpus
-        run: mise run //rust/tests/fuzz:replay ${{ matrix.fuzz-target }}
+      - name: Replay committed corpus with coverage
+        run: mise run //rust/tests/fuzz:coverage ${{ matrix.fuzz-target }}
+      - uses: coverallsapp/github-action@8d6379e14d29928660c4ba802d8e85393440b329 # v2.3.8
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          file: rust/tests/fuzz/coverage/${{ matrix.fuzz-target }}/lcov.info
+          format: lcov
+          flag-name: rust-fuzz-${{ matrix.fuzz-target }}
+          parallel: true
+          fail-on-error: false
       - name: Check discovery determinism
         run: mise run //rust/tests/fuzz:determinism ${{ matrix.fuzz-target }}
 
