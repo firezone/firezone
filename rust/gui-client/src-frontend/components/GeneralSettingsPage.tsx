@@ -172,7 +172,11 @@ export default function GeneralSettingsPage({
         <section>
           <h2 className="form-label">Startup</h2>
           <div className="panel divide-y divide-border">
-            <SettingRow inputId={startMinimizedInputId} label="Start minimized">
+            <SettingRow
+              field
+              inputId={startMinimizedInputId}
+              label="Start minimized"
+            >
               <ManagedToggleSwitch
                 checked={saved.start_minimized}
                 id={startMinimizedInputId}
@@ -182,7 +186,11 @@ export default function GeneralSettingsPage({
               />
             </SettingRow>
 
-            <SettingRow inputId={startOnLoginInputId} label="Start on login">
+            <SettingRow
+              field
+              inputId={startOnLoginInputId}
+              label="Start on login"
+            >
               <ManagedToggleSwitch
                 checked={saved.start_on_login}
                 id={startOnLoginInputId}
@@ -193,6 +201,7 @@ export default function GeneralSettingsPage({
             </SettingRow>
 
             <SettingRow
+              field
               inputId={connectOnStartInputId}
               label="Connect on start"
             >
