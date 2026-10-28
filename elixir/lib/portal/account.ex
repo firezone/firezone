@@ -253,8 +253,15 @@ defmodule Portal.Account do
     import Ecto.Query
     alias Portal.Safe
 
+    # "acme_corp" and "acme-corp" would read as the same account, so either
+    # spelling takes the slug for both.
     def slug_owner_id(repo, slug) do
-      Safe.one(repo, from(s in Portal.AccountSlug, where: s.slug == ^slug, select: s.account_id))
+      spellings = Enum.uniq([slug, String.replace(slug, "_", "-"), String.replace(slug, "-", "_")])
+
+      Safe.one(
+        repo,
+        from(s in Portal.AccountSlug, where: s.slug in ^spellings, select: s.account_id, limit: 1)
+      )
     end
 
     def insert_slug(repo, account_id, slug) do

@@ -425,17 +425,17 @@ defmodule PortalWeb.Settings.AccountTest do
 
       assert {:error, {:live_redirect, %{to: to}}} =
                lv
-               |> form("form[phx-submit='submit_account']", %{account: %{slug: " New_Slug-1 "}})
+               |> form("form[phx-submit='submit_account']", %{account: %{slug: " New_Slug_1 "}})
                |> render_submit()
 
-      assert to == "/new_slug-1/settings/account"
-      assert fetch_account!(account.id).slug == "new_slug-1"
+      assert to == "/new_slug_1/settings/account"
+      assert fetch_account!(account.id).slug == "new_slug_1"
 
       assert conn |> get("/#{old_slug}/settings/account") |> redirected_to() ==
-               "/new_slug-1/settings/account"
+               "/new_slug_1/settings/account"
 
       {:ok, _lv, html} = live(conn, to)
-      assert html =~ "new_slug-1"
+      assert html =~ "new_slug_1"
     end
 
     test "validates the slug format", %{conn: conn, account: account, actor: actor} do
@@ -449,7 +449,11 @@ defmodule PortalWeb.Settings.AccountTest do
       for {slug, message} <- [
             {"ab", "should be at least 3 character(s)"},
             {"bad slug", "may only contain lowercase letters"},
+            {"bad-slug", "may only contain lowercase letters"},
             {"sign_in", "is reserved"},
+            {"images", "is reserved"},
+            {"eu", "is reserved"},
+            {"firezone", "is reserved"},
             {Ecto.UUID.generate(), "may not look like an account ID"},
             {"", "can&#39;t be blank"}
           ] do

@@ -176,6 +176,29 @@ defmodule Portal.AccountTest do
       assert %{slug: ["has already been taken"]} = errors_on(changeset)
     end
 
+    test "rejects the underscore twin of a hyphenated slug" do
+      account_fixture(slug: "acme-corp")
+
+      changeset =
+        account_fixture()
+        |> cast(%{slug: "acme_corp"}, [:slug])
+        |> Account.changeset()
+
+      assert {:error, changeset} = Repo.update(changeset)
+      assert %{slug: ["has already been taken"]} = errors_on(changeset)
+    end
+
+    test "lets the owner of a hyphenated slug take the underscore twin" do
+      account = account_fixture(slug: "acme-corp")
+
+      changeset =
+        account
+        |> cast(%{slug: "acme_corp"}, [:slug])
+        |> Account.changeset()
+
+      assert {:ok, %{slug: "acme_corp"}} = Repo.update(changeset)
+    end
+
     test "treats slugs case-insensitively" do
       other = account_fixture()
 
