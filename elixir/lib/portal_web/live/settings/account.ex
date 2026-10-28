@@ -403,10 +403,11 @@ defmodule PortalWeb.Settings.Account do
                   Gateways are offline.
                 </p>
                 <p>
-                  After the transfer, every session, Gateway token, and API token is invalid.
-                  Users sign in again, and a sign-in on the old portal redirects to the new one.
-                  Each Gateway needs a new token and the new API URL before it comes back online.
-                  Recreate every API token.
+                  After the transfer, every session, Gateway token, service account token, and
+                  API token is invalid. Users sign in again, and a sign-in on the old portal
+                  redirects to the new one. Each Gateway needs a new token and the new API URL
+                  before it comes back online. Headless Clients need new service account tokens.
+                  Recreate every API token and reconnect your MCP clients.
                 </p>
                 <p>
                   Logs are not moved. They are deleted from the old region when the transfer

@@ -262,7 +262,9 @@ defmodule PortalWeb.Settings.AccountTest do
 
       assert html =~ "Transfer your account to the European Union region?"
       assert html =~ "maintenance window of up to 8 hours"
-      assert html =~ "every session, Gateway token, and API token is invalid"
+      assert html =~ "every session, Gateway token, service account token, and"
+      assert html =~ "Headless Clients need new service account tokens."
+      assert html =~ "reconnect your MCP clients"
       assert html =~ "Logs are not moved."
       assert html =~ "bill in EUR from then on"
       assert html =~ actor.email
