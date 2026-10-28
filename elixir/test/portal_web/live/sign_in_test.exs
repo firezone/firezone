@@ -90,19 +90,13 @@ defmodule PortalWeb.SignInTest do
 
       refute has_element?(lv, "#data-residency")
       refute has_element?(lv, "#other-region-portal")
-      refute has_element?(lv, "#eu-beta-banner")
     end
 
-    test "links the EU portal without the EU beta banner on the US portal", %{
-      conn: conn,
-      account: account
-    } do
+    test "links the EU portal on the US portal", %{conn: conn, account: account} do
       Portal.Config.put_env_override(:data_residency_region, :us)
       Portal.Config.put_env_override(:web_external_url, "https://app.firezone.dev")
 
       {:ok, lv, _html} = live(conn, ~p"/#{account}/sign_in")
-
-      refute has_element?(lv, "#eu-beta-banner")
 
       assert has_element?(
                lv,
@@ -111,22 +105,11 @@ defmodule PortalWeb.SignInTest do
              )
     end
 
-    test "shows the EU beta banner and links the US portal on the EU portal", %{
-      conn: conn,
-      account: account
-    } do
+    test "links the US portal on the EU portal", %{conn: conn, account: account} do
       Portal.Config.put_env_override(:data_residency_region, :eu)
       Portal.Config.put_env_override(:web_external_url, "https://eu.app.firezone.dev")
 
       {:ok, lv, _html} = live(conn, ~p"/#{account}/sign_in")
-
-      assert has_element?(lv, "#eu-beta-banner", "Firezone Cloud EU is now in closed beta.")
-
-      assert has_element?(
-               lv,
-               "#eu-beta-banner a[href='https://www.firezone.dev/eu#request-access']",
-               "Request access"
-             )
 
       assert has_element?(
                lv,
@@ -135,7 +118,7 @@ defmodule PortalWeb.SignInTest do
              )
     end
 
-    test "shows the region without the EU beta banner or portal link on other portals", %{
+    test "shows the region without a portal link on other portals", %{
       conn: conn,
       account: account
     } do
@@ -145,7 +128,6 @@ defmodule PortalWeb.SignInTest do
       {:ok, lv, _html} = live(conn, ~p"/#{account}/sign_in")
 
       assert has_element?(lv, "#data-residency", "Cloud region: European Union")
-      refute has_element?(lv, "#eu-beta-banner")
       refute has_element?(lv, "#other-region-portal")
     end
 

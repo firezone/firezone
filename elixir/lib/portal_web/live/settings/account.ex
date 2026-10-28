@@ -4,6 +4,7 @@ defmodule PortalWeb.Settings.Account do
   alias Portal.Account
   alias Portal.Accounts.Deletion
   alias Portal.Billing
+  alias Portal.Mailer.InternalEmail
   alias PortalWeb.Settings.Components, as: SettingsComponents
   alias __MODULE__.Database
   require Logger
@@ -33,6 +34,8 @@ defmodule PortalWeb.Settings.Account do
         billing_provisioned: Billing.account_provisioned?(account),
         billing_plan_type: Billing.plan_type(account),
         data_residency_region: Page.data_residency_region(),
+        region_transfer_enabled: region_transfer_enabled?(Page.data_residency_region()),
+        region_transfer_open: false,
         error: nil,
         slug_confirmation: "",
         confirm_delete_account: false,
@@ -145,37 +148,6 @@ defmodule PortalWeb.Settings.Account do
             >
               Manage plan
             </Form.button>
-          </div>
-
-          <%!-- Firezone Cloud region (Firezone Cloud only) --%>
-          <div
-            :if={@data_residency_region != :on_prem}
-            id="data-residency"
-            class="mt-6 rounded border border-border bg-raised p-4 space-y-3"
-          >
-            <span class="text-xs font-semibold tracking-widest uppercase text-subtle">
-              Firezone Cloud Region
-            </span>
-            <div class="flex items-center gap-2 pt-2 border-t border-border">
-              <Page.residency_flag region={@data_residency_region} />
-              <span class="text-xs text-body font-medium">
-                Cloud region: <strong>{Page.data_residency_name(@data_residency_region)}</strong>
-              </span>
-            </div>
-            <p
-              :if={@data_residency_region == :us and Page.firezone_cloud?(:us)}
-              class="text-xs text-subtle"
-            >
-              Firezone Cloud EU is in closed beta.
-              <a
-                href="https://www.firezone.dev/eu"
-                target="_blank"
-                rel="noopener"
-                class={Core.link_style()}
-              >
-                Click here for more information.
-              </a>
-            </p>
           </div>
 
           <%!-- Plan features (always shown) --%>
@@ -387,6 +359,91 @@ defmodule PortalWeb.Settings.Account do
               limit={effective_limit(@account, :sites_count)}
             />
           </div>
+
+          <div :if={@data_residency_region != :on_prem} id="data-residency" class="mt-8 max-w-2xl">
+            <h3 class="text-[10px] font-semibold tracking-widest uppercase text-subtle mb-4">
+              Data Residency
+            </h3>
+            <div class="rounded border border-border bg-raised p-4 space-y-3">
+              <div class="flex items-center gap-2">
+                <Page.residency_flag region={@data_residency_region} />
+                <span class="text-sm text-body font-medium">
+                  Cloud region: <strong>{Page.data_residency_name(@data_residency_region)}</strong>
+                </span>
+              </div>
+              <p class="text-xs text-subtle">Your account data is stored in:</p>
+              <ul class="text-xs text-body space-y-1">
+                <li
+                  :for={{city, country} <- Page.data_residency_locations(@data_residency_region)}
+                  class="flex items-center gap-1.5"
+                >
+                  <Core.icon name="ri-map-pin-line" class="w-3.5 h-3.5 text-subtle" />
+                  {city}, {country}
+                </li>
+              </ul>
+              <p class="text-xs text-subtle">
+                <a
+                  href="https://www.firezone.dev/kb/architecture/regional-availability"
+                  target="_blank"
+                  rel="noopener"
+                  class={Core.link_style()}
+                >
+                  Learn more about Firezone Cloud regions.
+                </a>
+              </p>
+              <div :if={@region_transfer_enabled} class="pt-3 border-t border-border">
+                <Form.button id="request-region-transfer" phx-click="open_region_transfer" size="xs">
+                  Request transfer to the {Page.data_residency_name(Page.other_region(@data_residency_region))} region
+                </Form.button>
+              </div>
+            </div>
+          </div>
+
+          <Form.modal
+            :if={@region_transfer_open}
+            id="region-transfer-modal"
+            on_close="close_region_transfer"
+            on_cancel="close_region_transfer"
+            on_confirm="request_region_transfer"
+          >
+            <:title>
+              Transfer your account to the {Page.data_residency_name(Page.other_region(@data_residency_region))} region?
+            </:title>
+            <:body>
+              <div class="space-y-3 text-sm text-body">
+                <p>
+                  This opens a support request to move your account, and all of its data, to the
+                  {Page.data_residency_name(Page.other_region(@data_residency_region))} region.
+                  Firezone support will contact <strong>{@subject.actor.email}</strong>
+                  to schedule the transfer.
+                </p>
+                <p>
+                  The transfer needs a maintenance window of up to 8 hours. During that window
+                  your account is disabled: nobody can sign in, Clients cannot connect, and
+                  Gateways are offline.
+                </p>
+                <p>
+                  After the transfer, every session, Gateway token, service account token, and
+                  API token is invalid. Users sign in again, and a sign-in on the old portal
+                  redirects to the new one. Each Gateway needs a new token and the new API URL
+                  before it comes back online. Headless Clients need new service account tokens.
+                  Recreate every API token and reconnect your MCP clients.
+                </p>
+                <p>
+                  Logs are not moved. They are deleted from the old region when the transfer
+                  completes, and that region's database backups expire 30 days later.
+                </p>
+                <p :if={Portal.Billing.paid_plan?(@account)}>
+                  Your billing moves too. We recreate your subscription under a new billing
+                  customer in the {Page.data_residency_name(Page.other_region(@data_residency_region))} region,
+                  apply any remaining credit at the exchange rate on the day of the transfer, and
+                  bill in {billing_currency(Page.other_region(@data_residency_region))} from then on.
+                </p>
+              </div>
+            </:body>
+            <:cancel_button>Cancel</:cancel_button>
+            <:confirm_button>Send request</:confirm_button>
+          </Form.modal>
         </div>
       </div>
 
@@ -662,6 +719,52 @@ defmodule PortalWeb.Settings.Account do
     end
   end
 
+  def handle_event("open_region_transfer", _params, %{assigns: %{region_transfer_enabled: true}} = socket) do
+    {:noreply, assign(socket, region_transfer_open: true)}
+  end
+
+  def handle_event("open_region_transfer", _params, socket), do: {:noreply, socket}
+
+  def handle_event("close_region_transfer", _params, socket) do
+    {:noreply, assign(socket, region_transfer_open: false)}
+  end
+
+  def handle_event("request_region_transfer", _params, %{assigns: %{region_transfer_enabled: false}} = socket) do
+    {:noreply, socket}
+  end
+
+  def handle_event("request_region_transfer", _params, socket) do
+    %{account: account, subject: subject, data_residency_region: region} = socket.assigns
+    to_region = Page.other_region(region)
+
+    socket = assign(socket, region_transfer_open: false)
+
+    with {:ok, :reserved} <- Database.reserve_region_transfer_request(account.id),
+         {:ok, _email} <-
+           account
+           |> InternalEmail.region_transfer_request_email(
+             subject,
+             Page.data_residency_name(region),
+             Page.data_residency_name(to_region)
+           )
+           |> Portal.Mailer.deliver() do
+      {:noreply,
+       put_flash(
+         socket,
+         :success,
+         "Request sent. Firezone support will contact you at #{subject.actor.email} to schedule the transfer."
+       )}
+    else
+      {:error, :rate_limited} ->
+        {:noreply,
+         put_flash(socket, :error, "You already sent a request today. Firezone support will contact you.")}
+
+      {:error, reason} ->
+        Logger.error("Failed to send region transfer request", reason: inspect(reason))
+        {:noreply, put_flash(socket, :error, "Could not send the request. Please try again later.")}
+    end
+  end
+
   def handle_event("redirect_to_billing_portal", _params, socket) do
     Portal.Analytics.update_marketing_attribution(
       socket.assigns.account,
@@ -778,6 +881,11 @@ defmodule PortalWeb.Settings.Account do
       _ -> ""
     end
   end
+
+  defp billing_currency(:us), do: "USD"
+  defp billing_currency(:eu), do: "EUR"
+
+  defp region_transfer_enabled?(region), do: region != :on_prem
 
   defp account_changeset(%Account{} = account, attrs, slug_history) do
     account
@@ -897,6 +1005,41 @@ defmodule PortalWeb.Settings.Account do
       )
       |> Safe.scoped(subject)
       |> Safe.aggregate(:count)
+    end
+
+    # Shares the support form's per-account budget so a stuck button cannot
+    # flood support. Serialized across nodes by the row lock.
+    def reserve_region_transfer_request(account_id) do
+      account_id = Ecto.UUID.dump!(account_id)
+
+      Safe.unscoped()
+      |> Safe.transaction(fn ->
+        query!("SELECT id FROM accounts WHERE id = $1 FOR UPDATE", [account_id])
+
+        query!(
+          "DELETE FROM feedback_submissions WHERE account_id = $1 AND inserted_at <= now() - interval '24 hours'",
+          [account_id]
+        )
+
+        %{rows: [[count]]} =
+          query!("SELECT count(*) FROM feedback_submissions WHERE account_id = $1", [account_id])
+
+        if count >= 10 do
+          {:error, :rate_limited}
+        else
+          query!(
+            "INSERT INTO feedback_submissions (account_id, inserted_at) VALUES ($1, clock_timestamp())",
+            [account_id]
+          )
+
+          {:ok, :reserved}
+        end
+      end)
+    end
+
+    defp query!(sql, params) do
+      {:ok, result} = Safe.unscoped() |> Safe.query(sql, params)
+      result
     end
   end
 end

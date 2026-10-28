@@ -68,6 +68,30 @@ defmodule Portal.Mailer.InternalEmail do
     """)
   end
 
+  def region_transfer_request_email(
+        %Portal.Account{} = account,
+        %Portal.Authentication.Subject{} = subject,
+        from_region,
+        to_region
+      ) do
+    default_email()
+    |> to("support@firezone.dev")
+    |> reply_to({subject.actor.name, subject.actor.email})
+    |> subject("Region transfer request: #{account.name}")
+    |> with_account_id(account.id)
+    |> text_body("""
+    Region transfer request
+
+    Account: #{account.name} (#{account.id})
+    Slug: #{account.slug}
+    Plan: #{Portal.Billing.plan_type(account)}
+    Requested by: #{subject.actor.name} <#{subject.actor.email}>
+
+    From region: #{from_region}
+    To region: #{to_region}
+    """)
+  end
+
   def seats_overage_email(%Portal.Account{} = account, active_users_count) do
     limit = account.limits.monthly_active_users_count
 
