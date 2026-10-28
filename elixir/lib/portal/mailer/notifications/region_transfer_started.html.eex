@@ -79,7 +79,7 @@
                   </div>
                   <div role="separator" class="separator" style="background-color: #d1d1d1; height: 1px; line-height: 1px; margin: 32px 0">&zwj;</div>
                   <p style="margin: 0; line-height: 24px">
-                    We email you again when the account is ready in the new region. After the move, every session, Gateway token, and API token is invalid. Each Gateway needs a new token and the new API URL, every API token has to be recreated, and users sign in again.
+                    We email you again when the account is ready in the new region. After the move, every session, Gateway token, service account token, and API token is invalid. Each Gateway needs a new token and the new API URL, headless Clients need new service account tokens, every API token has to be recreated, MCP clients have to be reconnected, and users sign in again.
                   </p>
                   <p style="margin: 16px 0 0; line-height: 24px">
                     Logs are not moved. They are deleted from the old region when the transfer completes.

@@ -7,7 +7,9 @@ Sign in to the new portal:
 
 Next steps:
 - Create a new token for each Gateway and redeploy it with the new API URL: <%= @api_url %>
+- Create new service account tokens for your headless Clients.
 - Recreate every API token.
+- Reconnect your MCP clients.
 - Ask users to sign in again. Links to the old portal redirect to the new one.
 
 Thanks,
