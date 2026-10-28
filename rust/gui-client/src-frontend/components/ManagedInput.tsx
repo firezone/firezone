@@ -93,7 +93,7 @@ export function ManagedToggleSwitch({
     >
       <span
         aria-hidden="true"
-        className={`toggle-thumb ${checked ? "translate-x-2.5" : ""}`}
+        className={`toggle-thumb ${checked ? "translate-x-3.5" : ""}`}
       />
     </button>
   );
