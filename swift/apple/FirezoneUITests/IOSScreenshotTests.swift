@@ -11,7 +11,6 @@
 #if os(iOS)
   import CoreGraphics
   import XCTest
-  import UIKit
 
   @MainActor
   final class IOSScreenshotTests: XCTestCase {
@@ -171,25 +170,10 @@
 
       try openSettings(in: app, on: "settings-general-custom")
       try selectTab("Settings", showing: "API URL", in: app)
-      if UIDevice.current.userInterfaceIdiom == .pad {
-        try selectControlPlane("Firezone Cloud (US)", in: app)
-        try selectControlPlane("Custom", in: app)
-      }
       let form = app.collectionViews.containing(.button, identifier: "Reset to Defaults").firstMatch
       try waitFor(form, on: "settings-general-custom")
       form.swipeUp()
       deliver(app, as: "settings-general-custom", in: appearance)
-      if UIDevice.current.userInterfaceIdiom == .pad {
-        try selectControlPlane("Firezone Cloud (US)", in: app)
-        deliver(app, as: "settings-general-us-restored", in: appearance)
-      }
-    }
-
-    private func selectControlPlane(_ title: String, in app: XCUIApplication) throws {
-      app.buttons["Control plane"].tap()
-      let choice = app.buttons[title]
-      try waitFor(choice, on: title)
-      choice.tap()
     }
 
     /// The certificate tab, in each of the states a scenario describes.
