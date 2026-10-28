@@ -80,7 +80,7 @@ defmodule PortalWeb.OAuthController do
     # Typed into the chooser. Checked here rather than redirected blindly: an
     # account that does not exist would otherwise surface as a crash on a
     # sign-in page the person never asked for.
-    case Database.fetch_account_by_id_or_slug(slug) do
+    case PortalWeb.Accounts.get_by_id_or_slug(slug) do
       %Portal.Account{} = account ->
         redirect(conn, to: ~p"/#{account}/oauth/authorize?#{Map.take(params, @authorize_params)}")
 
@@ -144,24 +144,6 @@ defmodule PortalWeb.OAuthController do
     @moduledoc false
     import Ecto.Query
     alias Portal.Safe
-
-    def fetch_account_by_id_or_slug(id_or_slug) do
-      slug_owner =
-        from(s in Portal.AccountSlug, where: s.slug == ^id_or_slug, select: s.account_id)
-
-      query =
-        if Portal.Repo.valid_uuid?(id_or_slug),
-          do:
-            from(a in Portal.Account,
-              where: a.id == ^id_or_slug or a.slug == ^id_or_slug or a.id in subquery(slug_owner)
-            ),
-          else:
-            from(a in Portal.Account,
-              where: a.slug == ^id_or_slug or a.id in subquery(slug_owner)
-            )
-
-      query |> Safe.unscoped() |> Safe.one()
-    end
 
     def get_accounts_by_ids(account_ids) do
       from(accounts in Portal.Account, where: accounts.id in ^account_ids)

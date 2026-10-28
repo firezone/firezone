@@ -90,6 +90,7 @@ config :portal, Portal.ChangeLogs.Consumer,
   #   2. Add tests and test WAL locally
   table_subscriptions: ~w[
     accounts
+    account_slugs
     memberships
     groups
     actors
@@ -153,6 +154,7 @@ config :portal, Portal.Changes.Consumer,
   #   3. Add tests and test WAL locally
   table_subscriptions: ~w[
     accounts
+    account_slugs
     actors
     groups
     memberships

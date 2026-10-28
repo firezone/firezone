@@ -8,14 +8,12 @@ defmodule Portal.AccountSlug do
 
   @type t :: %__MODULE__{}
 
-  @primary_key {:id, :binary_id, autogenerate: true}
+  @primary_key {:slug, :string, autogenerate: false}
   @foreign_key_type :binary_id
   @timestamps_opts [type: :utc_datetime_usec]
 
   schema "account_slugs" do
     belongs_to :account, Portal.Account
-
-    field :slug, :string
 
     timestamps(updated_at: false)
   end
@@ -23,7 +21,7 @@ defmodule Portal.AccountSlug do
   def changeset(%Ecto.Changeset{} = changeset) do
     changeset
     |> validate_required([:slug])
-    |> unique_constraint(:slug, name: :account_slugs_slug_index)
+    |> unique_constraint(:slug, name: :account_slugs_pkey)
     |> assoc_constraint(:account)
   end
 end

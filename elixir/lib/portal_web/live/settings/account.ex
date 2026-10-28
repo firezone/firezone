@@ -846,7 +846,7 @@ defmodule PortalWeb.Settings.Account do
 
     @spec list_account_slugs(Portal.Authentication.Subject.t()) :: [Portal.AccountSlug.t()]
     def list_account_slugs(subject) do
-      from(s in Portal.AccountSlug, order_by: [asc: s.inserted_at, asc: s.id])
+      from(s in Portal.AccountSlug, order_by: [asc: s.inserted_at, asc: s.slug])
       |> Safe.scoped(subject)
       |> Safe.all()
     end
