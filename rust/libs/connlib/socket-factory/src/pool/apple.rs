@@ -16,7 +16,7 @@
 //! The catch-all remains as the wildcard receiver (ICE peer-reflexive traffic, NAT
 //! rebinds) and as the fallback when connecting fails.
 //!
-//! Explicit sources use unconnected sockets bound to their address and interface. Every
+//! Explicit sources use unconnected sockets bound to their address. Every
 //! pair earns a connected flow socket when either gate proves it carries real traffic:
 //!
 //! - A single transmit carrying at least [`PROMOTE_BATCH_SIZE`] datagrams. Batching is
@@ -33,7 +33,6 @@ use std::{
     collections::{BTreeMap, VecDeque},
     io,
     net::{IpAddr, SocketAddr},
-    num::NonZeroU32,
     sync::Arc,
     task::{Context, Poll, Waker},
     time::{Duration, Instant},
@@ -481,14 +480,6 @@ fn create_socket(
     ));
     let socket = socket2::Socket::new(bind_addr.domain(), socket2::Type::DGRAM, None)?;
 
-    if let Some(src) = src {
-        let index = interface_index(src)?;
-        match src {
-            IpAddr::V4(_) => socket.bind_device_by_index_v4(Some(index))?,
-            IpAddr::V6(_) => socket.bind_device_by_index_v6(Some(index))?,
-        }
-    }
-
     if local.is_ipv6() {
         socket.set_only_v6(true)?;
         crate::prefer_stable_ipv6_source(&socket);
@@ -523,30 +514,6 @@ fn create_socket(
     Ok(socket)
 }
 
-fn interface_index(src: IpAddr) -> io::Result<NonZeroU32> {
-    let interface = nix::ifaddrs::getifaddrs()?
-        .find(|interface| {
-            let Some(address) = interface.address else {
-                return false;
-            };
-            match src {
-                IpAddr::V4(src) => address
-                    .as_sockaddr_in()
-                    .is_some_and(|addr| addr.ip() == src),
-                IpAddr::V6(src) => address
-                    .as_sockaddr_in6()
-                    .is_some_and(|addr| addr.ip() == src),
-            }
-        })
-        .ok_or_else(|| io::Error::from(io::ErrorKind::AddrNotAvailable))?;
-    let index = nix::net::if_::if_nametoindex(interface.interface_name.as_str())
-        .ok()
-        .and_then(NonZeroU32::new)
-        .ok_or_else(|| io::Error::from(io::ErrorKind::AddrNotAvailable))?;
-
-    Ok(index)
-}
-
 #[cfg(test)]
 mod tests {
     use std::net::Ipv4Addr;
@@ -554,7 +521,7 @@ mod tests {
     use super::*;
 
     #[tokio::test]
-    async fn source_sockets_keep_the_source_interface_and_port_after_promotion() {
+    async fn source_sockets_keep_the_source_address_and_port_after_promotion() {
         for (local, source) in [
             ("0.0.0.0:0", IpAddr::V4(Ipv4Addr::LOCALHOST)),
             ("[::]:0", IpAddr::V6(std::net::Ipv6Addr::LOCALHOST)),
@@ -564,7 +531,6 @@ mod tests {
                 .into_perf()
                 .unwrap();
             let destination = SocketAddr::new(source, 9);
-            let expected_index = interface_index(source).unwrap();
 
             for datagrams in [1, PROMOTE_BATCH_SIZE] {
                 let selected =
@@ -577,12 +543,6 @@ mod tests {
                     selected.local_addr().unwrap(),
                     SocketAddr::new(source, socket.pool.local.port())
                 );
-                let sockref = socket2::SockRef::from(borrowed.inner);
-                let index = match source {
-                    IpAddr::V4(_) => sockref.device_index_v4().unwrap(),
-                    IpAddr::V6(_) => sockref.device_index_v6().unwrap(),
-                };
-                assert_eq!(index, Some(expected_index));
             }
         }
     }
