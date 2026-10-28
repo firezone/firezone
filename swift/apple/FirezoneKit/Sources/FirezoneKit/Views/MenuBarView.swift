@@ -174,12 +174,14 @@
         let commitURL = BundleHelper.commitURL
       else { return options }
 
+      options[.applicationVersion] = ""
+
       let paragraph = NSMutableParagraphStyle()
       paragraph.alignment = .center
 
-      let prefix = "Built from "
+      let prefix = "Version \(BundleHelper.version) ("
       let credits = NSMutableAttributedString(
-        string: prefix + shortGitSha,
+        string: prefix + shortGitSha + ")",
         attributes: [
           .font: NSFont.systemFont(ofSize: NSFont.smallSystemFontSize),
           .paragraphStyle: paragraph,

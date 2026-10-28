@@ -402,18 +402,17 @@ public struct SettingsView: View {
             HStack {
               Text("Version")
                 .foregroundStyle(.secondary)
-                .font(.caption)
               Spacer()
-              VStack(alignment: .trailing) {
-                Text(BundleHelper.version)
-                if let shortGitSha = BundleHelper.shortGitSha,
-                  let commitURL = BundleHelper.commitURL
-                {
-                  HStack(spacing: 4) {
-                    Text("Built from")
-                    Link(shortGitSha, destination: commitURL)
-                  }
+              if let shortGitSha = BundleHelper.shortGitSha,
+                let commitURL = BundleHelper.commitURL
+              {
+                HStack(spacing: 0) {
+                  Text("\(BundleHelper.version) (")
+                  Link(shortGitSha, destination: commitURL)
+                  Text(")")
                 }
+              } else {
+                Text(BundleHelper.version)
               }
             }
             .contextMenu {
@@ -697,7 +696,6 @@ struct LogFilesView: View {
       HStack {
         Text("Log Files")
           .foregroundStyle(.secondary)
-          .font(.caption)
         Spacer()
         controls
       }
