@@ -469,19 +469,19 @@ public struct SettingsView: View {
   @ViewBuilder
   private var deviceTrustTab: some View {
     #if os(macOS)
-      ScrollView {
-        HStack {
-          Spacer()
-          if let summary = store.deviceTrustCertificateSummary {
+      if let summary = store.deviceTrustCertificateSummary {
+        ViewThatFits(in: .vertical) {
+          DeviceTrustSettingsView(summary: summary)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding()
+
+          ScrollView {
             DeviceTrustSettingsView(summary: summary)
-              .frame(maxWidth: 600)
+              .padding()
           }
-          Spacer()
         }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical)
+        .frame(width: Self.paneWidth)
       }
-      .frame(width: Self.paneWidth, height: 400)
     #elseif os(iOS)
       if let summary = store.deviceTrustCertificateSummary {
         DeviceTrustSettingsView(summary: summary)
