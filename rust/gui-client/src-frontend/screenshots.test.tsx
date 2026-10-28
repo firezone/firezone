@@ -21,7 +21,7 @@ import "./main.css";
 
 // The window the client actually opens, from `tauri.conf.json`.
 const WINDOW_WIDTH = 900;
-const WINDOW_HEIGHT = 500;
+const WINDOW_HEIGHT = 600;
 
 const COLOR_SCHEMES = ["light", "dark"] as const;
 

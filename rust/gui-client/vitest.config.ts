@@ -31,7 +31,9 @@ export default mergeConfig(
       browser: {
         enabled: true,
         headless: true,
-        provider: playwright(),
+        provider: playwright({
+          launchOptions: { ignoreDefaultArgs: ["--hide-scrollbars"] },
+        }),
         instances: [{ browser: "chromium" }],
         screenshotFailures: false,
       },

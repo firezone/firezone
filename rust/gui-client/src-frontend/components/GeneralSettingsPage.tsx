@@ -96,7 +96,7 @@ export default function GeneralSettingsPage({
 
   return (
     <div className="page">
-      <div className="space-y-3">
+      <div className="space-y-5">
         <section>
           <h2 className="form-label">Sign-in</h2>
           <div className="panel divide-y divide-border">
