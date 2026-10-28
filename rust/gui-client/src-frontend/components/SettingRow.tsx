@@ -27,7 +27,9 @@ export default function SettingRow({
           {label}
         </label>
         {field ? (
-          <div className="flex h-9 w-64 shrink-0 items-center justify-end">{children}</div>
+          <div className="flex h-9 w-64 shrink-0 items-center justify-end">
+            {children}
+          </div>
         ) : (
           children
         )}
