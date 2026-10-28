@@ -76,7 +76,7 @@
       #expect(store.configuration.signedInWith == nil)
       #expect(!viewModel.showsSignInChangeNote)
 
-      try await store.signIn(token: Self.token)
+      try await store.signIn(token: Self.token, signInSettings: store.configuration.signInSettings)
       try await waitUntil { store.vpnStatus == .connected }
       #expect(store.configuration.signedInWith?.accountSlug == "other-corp")
       #expect(!viewModel.showsSignInChangeNote)
@@ -94,7 +94,7 @@
 
     private func signedInStore() async throws -> Store {
       let store = try await startedStore()
-      try await store.signIn(token: Self.token)
+      try await store.signIn(token: Self.token, signInSettings: store.configuration.signInSettings)
       try await waitUntil { store.vpnStatus == .connected }
 
       return store

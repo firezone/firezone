@@ -42,17 +42,22 @@ public enum IPCClient {
   // The GUI must save providerConfiguration before calling this so any MDM forced
   // overrides are available to the provider.
   // A `nil` token asks the provider to load the saved token. The identity reference
-  // pins the optional device certificate the app displayed.
+  // pins the optional device certificate the app displayed. New tokens carry their
+  // sign-in settings; saved tokens retain the settings stored with them in Keychain.
   @MainActor
   public static func start(
     session: any TunnelSessionProtocol,
     token: String?,
+    signInSettings: SignInSettings?,
     identityReference: Data?
   ) throws {
     var options: [String: NSObject] = ["authentication": "tokenAndCertificate" as NSObject]
 
     if let token {
       options["token"] = token as NSObject
+      if let signInSettings {
+        options["signInSettings"] = try encoder.encode(signInSettings) as NSObject
+      }
     }
     if let identityReference {
       options["identityReference"] = identityReference as NSObject

@@ -90,7 +90,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
 
     // Keychain access is thread-safe, so the token loads synchronously. Every
     // session requires one, including starts initiated by the system or an older app.
-    guard let token = loadToken(passedToken: passedToken) else {
+    guard var token = loadToken(passedToken: passedToken) else {
       completionHandler(PacketTunnelProviderError.credentialNotConfigured)
       return
     }
@@ -103,9 +103,8 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         + (identityReference.map { "will be presented (\($0.count) bytes)" }
           ?? "will not be presented"))
 
-    // Only a passed token needs saving, and only once the portal has accepted it: saving
-    // it now would replace a working Keychain token with one that may turn out to be bad.
-    let unsavedToken = passedToken == nil ? nil : token
+    // Save new tokens and legacy tokens without settings only after the portal accepts them.
+    let needsTokenSave = passedToken != nil || token.signInSettings == nil
 
     // The firezone id should be initialized by now
     guard let rawId = defaults.string(forKey: "firezoneId")
@@ -123,9 +122,29 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
       return
     }
 
-    let apiURL =
-      providerConfiguration.withMDMOverride(forKey: Configuration.Keys.apiURL)
-      ?? ConfigurationDefaults.apiURL
+    let signInSettings: SignInSettings
+    do {
+      if let savedSettings = token.signInSettings {
+        signInSettings = savedSettings
+      } else if passedToken != nil, let data = options?["signInSettings"] as? Data {
+        signInSettings = try PropertyListDecoder().decode(SignInSettings.self, from: data)
+      } else {
+        signInSettings = SignInSettings(
+          accountSlug: providerConfiguration.withMDMOverride(forKey: Configuration.Keys.accountSlug)
+            ?? ConfigurationDefaults.accountSlug,
+          authURL: providerConfiguration[Configuration.Keys.authURL]
+            ?? ConfigurationDefaults.authURL,
+          apiURL: providerConfiguration.withMDMOverride(forKey: Configuration.Keys.apiURL)
+            ?? ConfigurationDefaults.apiURL
+        )
+      }
+    } catch {
+      Log.error(error)
+      completionHandler(PacketTunnelProviderError.providerConfigurationIsInvalid)
+      return
+    }
+    token.signInSettings = signInSettings
+    let apiURL = signInSettings.apiURL
     let logFilter =
       providerConfiguration.withMDMOverride(forKey: Configuration.Keys.logFilter)
       ?? ConfigurationDefaults.logFilter
@@ -171,11 +190,11 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     // Start the adapter asynchronously. The Task only captures Sendable values:
     // - adapter: actor (Sendable)
     // - completionHandler: @Sendable
-    // - unsavedToken: Token (Sendable)
-    Task { @Sendable in
+    // - token: Token (Sendable)
+    Task { @Sendable [token] in
       do {
         try await adapter.start()
-        if let unsavedToken { PacketTunnelProvider.handleTokenSave(unsavedToken) }
+        if needsTokenSave { PacketTunnelProvider.handleTokenSave(token) }
         completionHandler(nil)
       } catch {
         Log.error(error)
@@ -186,13 +205,10 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
 
   /// Loads the token from passed value or Keychain.
   private func loadToken(passedToken: String?) -> Token? {
-    // Try to load saved token from Keychain, continuing if Keychain is unavailable.
-    let keychainToken: Token? = {
-      do { return try Token.load() } catch { Log.error(error) }
-      return nil
-    }()
+    if let token = Token(passedToken) { return token }
 
-    return Token(passedToken) ?? keychainToken
+    do { return try Token.load() } catch { Log.error(error) }
+    return nil
   }
 
   private func loadProviderConfiguration() throws -> [String: String] {

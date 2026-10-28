@@ -482,6 +482,7 @@ public final class Store: ObservableObject {
             try IPCClient.start(
               session: session,
               token: nil,
+              signInSettings: nil,
               identityReference: identityReference()
             )
           } catch { Log.error(error) }
@@ -544,6 +545,7 @@ public final class Store: ObservableObject {
       try IPCClient.start(
         session: session,
         token: nil,
+        signInSettings: nil,
         identityReference: identityReference()
       )
     }
@@ -686,8 +688,7 @@ public final class Store: ObservableObject {
     session.stopTunnel()
   }
 
-  func signIn(token: String) async throws {
-    let signInSettings = configuration.signInSettings
+  func signIn(token: String, signInSettings: SignInSettings) async throws {
     try await manager().save(configuration: configuration)
     try await manager().enable()
 
@@ -699,12 +700,10 @@ public final class Store: ObservableObject {
     guard let session = try manager().session() else {
       throw VPNConfigurationManagerError.managerNotInitialized
     }
-    guard configuration.signInSettings == signInSettings else {
-      throw AuthClientError.settingsChanged
-    }
     try IPCClient.start(
       session: session,
       token: token,
+      signInSettings: signInSettings,
       identityReference: identityReference()
     )
 

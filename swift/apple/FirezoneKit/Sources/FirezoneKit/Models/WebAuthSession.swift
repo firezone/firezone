@@ -39,11 +39,7 @@ struct WebAuthSession {
     )
 
     if let token {
-      guard configuration.signInSettings == signInSettings else {
-        throw AuthClientError.settingsChanged
-      }
-
-      try await store.signIn(token: token)
+      try await store.signIn(token: token, signInSettings: signInSettings)
     }
   }
 

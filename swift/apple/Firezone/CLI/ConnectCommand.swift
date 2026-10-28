@@ -107,6 +107,7 @@ extension FirezoneCLI {
         try IPCClient.start(
           session: session,
           token: supplied.description,
+          signInSettings: signIn,
           identityReference: nil
         )
       } else {

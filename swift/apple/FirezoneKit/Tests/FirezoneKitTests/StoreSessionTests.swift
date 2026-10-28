@@ -39,7 +39,8 @@
     func signingInStartsTheTunnelWithTheToken() async throws {
       let app = try await signedOut()
 
-      try await app.store.signIn(token: Self.token)
+      try await app.store.signIn(
+        token: Self.token, signInSettings: app.store.configuration.signInSettings)
 
       let start = try #require(app.tunnel.starts.last)
       #expect(start["authentication"] as? String == "tokenAndCertificate")
@@ -47,12 +48,35 @@
       try await waitUntil { app.store.vpnStatus == .connected }
     }
 
+    @Test(
+      "sign-in uses its captured settings while saved edits remain available for the next sign-in")
+    func signingInUsesCapturedSettings() async throws {
+      let app = try await signedOut()
+      let configuration = app.store.configuration
+      let captured = configuration.signInSettings
+      configuration.authURL = "https://next.example.com"
+      configuration.apiURL = "wss://next.example.com"
+      configuration.accountSlug = "next-account"
+
+      try await app.store.signIn(token: Self.token, signInSettings: captured)
+
+      let start = try #require(app.tunnel.starts.last)
+      let settingsData = try #require(start["signInSettings"] as? Data)
+      #expect(try PropertyListDecoder().decode(SignInSettings.self, from: settingsData) == captured)
+      #expect(configuration.signedInWith == captured)
+      #expect(configuration.signInSettings.apiURL == "wss://next.example.com")
+      #expect(
+        configuration.toProviderConfiguration()[Configuration.Keys.apiURL]
+          == "wss://next.example.com")
+    }
+
     @Test("resources reach the store")
     func resourcesReachTheStore() async throws {
       let app = try await signedOut()
       app.tunnel.resources = [Self.engineeringWiki]
 
-      try await app.store.signIn(token: Self.token)
+      try await app.store.signIn(
+        token: Self.token, signInSettings: app.store.configuration.signInSettings)
 
       try await waitUntil { app.store.resourceList.asArray() == [Self.engineeringWiki] }
     }
@@ -66,7 +90,8 @@
       app.tunnel.actorName = "Jane Doe"
       app.tunnel.accountSlug = "acme-corp"
 
-      try await app.store.signIn(token: Self.token)
+      try await app.store.signIn(
+        token: Self.token, signInSettings: app.store.configuration.signInSettings)
 
       try await waitUntil { app.store.actorName == "Jane Doe" }
       #expect(app.store.sessionHeading == "Signed in as Jane Doe")
@@ -77,7 +102,8 @@
     func aLaterResourceUpdateReachesTheStore() async throws {
       let app = try await signedOut()
       app.tunnel.resources = []
-      try await app.store.signIn(token: Self.token)
+      try await app.store.signIn(
+        token: Self.token, signInSettings: app.store.configuration.signInSettings)
       try await waitUntil {
         if case .loaded = app.store.resourceList { return true }
         return false
@@ -91,7 +117,8 @@
     @Test("enabling the Internet Resource reaches the tunnel")
     func enablingTheInternetResourceReachesTheTunnel() async throws {
       let app = try await signedOut()
-      try await app.store.signIn(token: Self.token)
+      try await app.store.signIn(
+        token: Self.token, signInSettings: app.store.configuration.signInSettings)
       try await waitUntil { app.store.vpnStatus == .connected }
       // The setting is process-wide, so leave it the way the next test expects it.
       defer { app.store.configuration.internetResourceEnabled = false }
@@ -109,7 +136,8 @@
     @Test("a new log filter reaches the tunnel")
     func aNewLogFilterReachesTheTunnel() async throws {
       let app = try await signedOut()
-      try await app.store.signIn(token: Self.token)
+      try await app.store.signIn(
+        token: Self.token, signInSettings: app.store.configuration.signInSettings)
       try await waitUntil { app.store.vpnStatus == .connected }
       // The setting is process-wide, so leave it the way the next test expects it.
       let logFilter = app.store.configuration.logFilter
@@ -129,7 +157,8 @@
     func anUnreachableResourceIsReported() async throws {
       let app = try await signedOut()
       app.tunnel.resources = [Self.engineeringWiki]
-      try await app.store.signIn(token: Self.token)
+      try await app.store.signIn(
+        token: Self.token, signInSettings: app.store.configuration.signInSettings)
       try await waitUntil { app.store.resourceList.asArray() == [Self.engineeringWiki] }
 
       app.tunnel.notifications = [
@@ -150,7 +179,8 @@
     func aDisconnectSaysWhyAndClearsTheSession() async throws {
       let app = try await signedOut()
       app.tunnel.resources = [Self.engineeringWiki]
-      try await app.store.signIn(token: Self.token)
+      try await app.store.signIn(
+        token: Self.token, signInSettings: app.store.configuration.signInSettings)
       try await waitUntil { app.store.resourceList.asArray() == [Self.engineeringWiki] }
 
       app.tunnel.disconnect(with: ConnlibError.disconnected("the portal hung up"))
@@ -165,7 +195,8 @@
     @Test("a disconnect that requires signing in again says so")
     func aDisconnectThatRequiresSigningInAgainSaysSo() async throws {
       let app = try await signedOut()
-      try await app.store.signIn(token: Self.token)
+      try await app.store.signIn(
+        token: Self.token, signInSettings: app.store.configuration.signInSettings)
       try await waitUntil { app.store.vpnStatus == .connected }
 
       app.tunnel.disconnect(with: ConnlibError.sessionExpired("your session expired"))
@@ -182,7 +213,8 @@
       let app = try await signedOut()
       app.tunnel.startFailure = ConnlibError.disconnected("connlib failed to start")
 
-      try await app.store.signIn(token: Self.token)
+      try await app.store.signIn(
+        token: Self.token, signInSettings: app.store.configuration.signInSettings)
 
       try await waitUntil {
         app.notifications.shown.contains(
@@ -194,7 +226,8 @@
     @Test("a disconnect connlib did not word shows nothing")
     func aDisconnectConnlibDidNotWordShowsNothing() async throws {
       let app = try await signedOut()
-      try await app.store.signIn(token: Self.token)
+      try await app.store.signIn(
+        token: Self.token, signInSettings: app.store.configuration.signInSettings)
       try await waitUntil { app.store.vpnStatus == .connected }
 
       app.tunnel.disconnect(with: PacketTunnelProviderError.providerConfigurationIsInvalid)
@@ -206,7 +239,8 @@
     @Test("signing out tells the tunnel and stops it without an alert")
     func signingOutTellsTheTunnelAndStopsIt() async throws {
       let app = try await signedOut()
-      try await app.store.signIn(token: Self.token)
+      try await app.store.signIn(
+        token: Self.token, signInSettings: app.store.configuration.signInSettings)
       try await waitUntil { app.store.vpnStatus == .connected }
 
       try await app.store.signOut()

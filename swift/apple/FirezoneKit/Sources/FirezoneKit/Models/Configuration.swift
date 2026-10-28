@@ -356,10 +356,16 @@ public class Configuration: ObservableObject {
 }
 
 /// The account slug and endpoints selected for a sign-in.
-public struct SignInSettings: Equatable, Sendable {
+public struct SignInSettings: Codable, Equatable, Sendable {
   public let accountSlug: String
   public let authURL: String
   public let apiURL: String
+
+  public init(accountSlug: String, authURL: String, apiURL: String) {
+    self.accountSlug = accountSlug
+    self.authURL = authURL
+    self.apiURL = apiURL
+  }
 }
 
 extension Dictionary where Key == String, Value == String {
