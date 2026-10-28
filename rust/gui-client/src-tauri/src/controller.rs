@@ -248,6 +248,7 @@ impl<I: GuiIntegration> Controller<I> {
         telemetry::set_firezone_id(firezone_id);
 
         let auth = auth::Auth::new()?;
+        let signed_in_with = auth.sign_in_settings().cloned();
 
         let migration_sent =
             match try_migrate_advanced_settings(&legacy_advanced_settings_path, &mut ipc_client)
@@ -266,7 +267,7 @@ impl<I: GuiIntegration> Controller<I> {
             advanced_settings,
             legacy_advanced_settings_path,
             auth,
-            signed_in_with: None,
+            signed_in_with,
             clear_logs_callback: None,
             x509,
             ipc_client,
@@ -312,8 +313,8 @@ impl<I: GuiIntegration> Controller<I> {
     }
 
     pub async fn main_loop(mut self) -> Result<()> {
-        self.update_telemetry_context().await?;
         self.maybe_start_session().await?;
+        self.update_telemetry_context().await?;
         self.notify_device_trust_changed()?;
         self.refresh_ui_state();
 
@@ -531,6 +532,7 @@ impl<I: GuiIntegration> Controller<I> {
                     .await?;
             }
         }
+        self.unconfirmed_token = Some(token.clone());
         self.start_session(token).await?;
         self.update_telemetry_context().await?;
 
@@ -1053,8 +1055,15 @@ impl<I: GuiIntegration> Controller<I> {
 
         match result {
             Ok(()) => {
-                if let Some(token) = self.unconfirmed_token.take() {
-                    self.auth.sign_in_with_token(&token);
+                let token = self.unconfirmed_token.take().or_else(|| {
+                    if self.auth.sign_in_settings().is_none() {
+                        self.auth.token()
+                    } else {
+                        None
+                    }
+                });
+                if let Some(token) = token {
+                    self.auth.sign_in_with_token(&token, self.current_sign_in());
                 }
                 ran_before::set().await?;
                 self.status = Status::WaitingForTunnel;

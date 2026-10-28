@@ -1,5 +1,6 @@
 //! Fulfills <https://github.com/firezone/firezone/issues/2823>
 
+use crate::settings::SignInSettings;
 use anyhow::{Context, Result};
 use keyring_core::CredentialStore;
 use logging::err_with_src;
@@ -13,6 +14,7 @@ use subtle::ConstantTimeEq;
 use url::Url;
 
 const NONCE_LENGTH: usize = 32;
+const CREDENTIAL_PREFIX: &str = "firezone-credential-v1:";
 
 /// Whether to skip the portal during sign-in.
 ///
@@ -57,7 +59,14 @@ pub struct Auth {
 enum State {
     SignedOut,
     NeedResponse(Request),
-    SignedIn,
+    SignedIn(Credential),
+}
+
+#[derive(serde::Deserialize, serde::Serialize)]
+struct Credential {
+    #[serde(serialize_with = "serialize_token")]
+    token: SecretString,
+    sign_in_settings: Option<SignInSettings>,
 }
 
 pub struct Request {
@@ -147,7 +156,8 @@ impl Auth {
         )?;
         let request = this.start_sign_in()?;
         let response = Response::fake(request.state.clone());
-        this.handle_response(response)?;
+        let token = this.handle_response(response)?;
+        this.save_token(&token, None);
 
         Ok(this)
     }
@@ -166,9 +176,9 @@ impl Auth {
             session_dir,
         };
 
-        match this.token_from_keyring() {
-            Some(_) => {
-                this.state = State::SignedIn;
+        match this.credential_from_keyring() {
+            Some(credential) => {
+                this.state = State::SignedIn(credential);
                 tracing::debug!("Reloaded token from keyring, starting in signed-in state.");
             }
             None => tracing::debug!("No token in keyring, starting in signed-out state."),
@@ -218,7 +228,7 @@ impl Auth {
 
     /// Complete an ongoing sign-in flow using parameters from a deep link
     ///
-    /// Returns a valid token.
+    /// Returns a token to validate with the portal before saving it.
     /// Performs I/O.
     ///
     /// Errors if the response is invalid.
@@ -237,58 +247,88 @@ impl Auth {
         );
         let token = SecretString::from(token);
 
-        self.save_token(&token);
-        self.state = State::SignedIn;
+        self.state = State::SignedOut;
         Ok(token)
     }
 
-    /// Signs in with a token obtained outside the browser flow, replacing any stored one.
+    /// Saves an accepted token and its sign-in settings, replacing any stored credential.
     ///
     /// Performs I/O.
-    pub fn sign_in_with_token(&mut self, token: &SecretString) {
-        self.save_token(token);
-        self.state = State::SignedIn;
+    pub fn sign_in_with_token(&mut self, token: &SecretString, settings: SignInSettings) {
+        self.save_token(token, Some(settings));
     }
 
-    fn save_token(&self, token: &SecretString) {
-        // This MUST be the only place the GUI can call `set_password`.
-        if let Err(e) = self
-            .token_entry
-            .set_password(token.expose_secret())
-            .context("Failed to save token in keyring")
-        {
+    fn save_token(&mut self, token: &SecretString, sign_in_settings: Option<SignInSettings>) {
+        let credential = Credential {
+            token: token.clone(),
+            sign_in_settings,
+        };
+        let result = (|| -> Result<()> {
+            let payload: SecretString = serde_json::to_string(&credential)?.into();
+            let password: SecretString =
+                format!("{CREDENTIAL_PREFIX}{}", payload.expose_secret()).into();
+            // This MUST be the only place the GUI can call `set_password`.
+            self.token_entry
+                .set_password(password.expose_secret())
+                .context("Failed to save credential in keyring")?;
+            Ok(())
+        })();
+        if let Err(e) = result {
             tracing::info!("{e:#}"); // Log that we couldn't save it and allow the user to continue anyway.
         }
+        self.state = State::SignedIn(credential);
     }
 
     /// Returns the token if we are signed in.
-    ///
-    /// This will always make syscalls, but it should be fast enough for normal use.
     pub fn token(&self) -> Option<SecretString> {
-        match self.state {
-            State::SignedIn => {}
-            State::NeedResponse(_) | State::SignedOut => return None,
+        match &self.state {
+            State::SignedIn(credential) => Some(credential.token.clone()),
+            State::NeedResponse(_) | State::SignedOut => None,
         }
-
-        self.token_from_keyring()
     }
 
-    /// Retrieves the token from the keyring regardless of in-memory state.
+    pub fn sign_in_settings(&self) -> Option<&SignInSettings> {
+        match &self.state {
+            State::SignedIn(credential) => credential.sign_in_settings.as_ref(),
+            State::NeedResponse(_) | State::SignedOut => None,
+        }
+    }
+
+    /// Retrieves the credential from the keyring regardless of in-memory state.
     ///
     /// Performs I/O
-    fn token_from_keyring(&self) -> Option<SecretString> {
+    fn credential_from_keyring(&self) -> Option<Credential> {
         // This MUST be the only place the GUI can call `get_password`.
-        let token = self.token_entry.get_password().ok()?;
+        let password: SecretString = self.token_entry.get_password().ok()?.into();
+        let Some(payload) = password.expose_secret().strip_prefix(CREDENTIAL_PREFIX) else {
+            return Some(Credential {
+                token: password,
+                sign_in_settings: None,
+            });
+        };
 
-        Some(SecretString::from(token))
+        match serde_json::from_str(payload) {
+            Ok(credential) => Some(credential),
+            Err(_) => {
+                tracing::warn!("Couldn't read saved credential; sign in again");
+                None
+            }
+        }
     }
 
     pub fn ongoing_request(&self) -> Option<&Request> {
         match &self.state {
             State::NeedResponse(x) => Some(x),
-            State::SignedIn | State::SignedOut => None,
+            State::SignedIn(_) | State::SignedOut => None,
         }
     }
+}
+
+fn serialize_token<S: serde::Serializer>(
+    token: &SecretString,
+    serializer: S,
+) -> std::result::Result<S::Ok, S::Error> {
+    serializer.serialize_str(token.expose_secret())
 }
 
 fn delete_if_exists(path: &Path) -> Result<(), Error> {
@@ -323,16 +363,18 @@ fn secure_equality(a: &SecretString, b: &SecretString) -> bool {
 
 pub fn replicate_6791() -> Result<()> {
     tracing::warn!("Debugging issue #6791, pretending to be signed in with a bad token");
-    let this = Auth::new()?;
-    this.save_token(&SecretString::from(
-        "obviously invalid token for testing #6791".to_string(),
-    ));
+    let mut this = Auth::new()?;
+    this.save_token(
+        &SecretString::from("obviously invalid token for testing #6791".to_string()),
+        None,
+    );
     Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use keyring_core::api::CredentialStoreApi as _;
     use tempfile::tempdir;
 
     fn bogus_secret(x: &str) -> SecretString {
@@ -437,19 +479,24 @@ mod tests {
                 control_plane: None,
             };
 
-            // Handle deep link from the server, now we are signed in and have a token
+            let token = state.handle_response(resp).unwrap();
             assert!(state.token().is_none());
-            state.handle_response(resp).unwrap();
-            assert!(state.token().is_some());
+            assert!(state.token_entry.get_password().is_err());
+            state.sign_in_with_token(&token, sign_in_settings());
+            assert_eq!(
+                state.token().unwrap().expose_secret(),
+                token.expose_secret()
+            );
         }
 
         // Recreate the state to simulate closing and re-opening the app
         {
             let mut state =
-                Auth::new_with_key(key, store, session_dir.path().to_path_buf()).unwrap();
+                Auth::new_with_key(key, store.clone(), session_dir.path().to_path_buf()).unwrap();
 
             // Make sure we automatically got the token back
             assert!(state.token().is_some());
+            assert_eq!(state.sign_in_settings(), Some(&sign_in_settings()));
 
             // Accidentally sign in again, this can happen if the user holds the systray menu open while a sign in is succeeding.
             // For now, we treat that like signing out and back in immediately, so it wipes the old token.
@@ -461,6 +508,64 @@ mod tests {
             state.sign_out().unwrap();
             assert!(state.token().is_none());
         }
+        let state = Auth::new_with_key(key, store, session_dir.path().to_path_buf()).unwrap();
+        assert!(state.token().is_none());
+        assert!(state.sign_in_settings().is_none());
+    }
+
+    fn sign_in_settings() -> SignInSettings {
+        SignInSettings {
+            account_slug: Some("example".to_owned()),
+            auth_url: "https://app.firezone.dev/".parse().unwrap(),
+            api_url: "wss://api.firezone.dev/".parse().unwrap(),
+        }
+    }
+
+    #[test]
+    fn upgrades_legacy_token_after_acceptance() {
+        let store = keyring_core::mock::Store::new().unwrap();
+        let session_dir = tempdir().unwrap();
+        let key = "dev.firezone.client/test_legacy/token";
+        let entry = store.build("", key, None).unwrap();
+        entry.set_password("legacy-token").unwrap();
+        let mut auth =
+            Auth::new_with_key(key, store.clone(), session_dir.path().to_path_buf()).unwrap();
+        assert!(auth.sign_in_settings().is_none());
+        let token = auth.token().unwrap();
+        assert_eq!(token.expose_secret(), "legacy-token");
+        assert_eq!(entry.get_password().unwrap(), "legacy-token");
+
+        auth.sign_in_with_token(&token, sign_in_settings());
+        let restored = Auth::new_with_key(key, store, session_dir.path().to_path_buf()).unwrap();
+        assert_eq!(restored.token().unwrap().expose_secret(), "legacy-token");
+        assert_eq!(restored.sign_in_settings(), Some(&sign_in_settings()));
+    }
+
+    #[test]
+    fn failed_keyring_write_keeps_token_and_settings_paired() {
+        let store = keyring_core::mock::Store::new().unwrap();
+        let session_dir = tempdir().unwrap();
+        let key = "dev.firezone.client/test_failed_write/token";
+        let mut auth =
+            Auth::new_with_key(key, store.clone(), session_dir.path().to_path_buf()).unwrap();
+        auth.sign_in_with_token(&bogus_secret("old-token"), sign_in_settings());
+        let mock: &keyring_core::mock::Cred = auth.token_entry.as_any().downcast_ref().unwrap();
+        mock.set_error(keyring_core::Error::Invalid(
+            "password".to_owned(),
+            "test failure".to_owned(),
+        ));
+        let new_settings = SignInSettings {
+            auth_url: "https://eu.app.firezone.dev/".parse().unwrap(),
+            api_url: "wss://eu.api.firezone.dev/".parse().unwrap(),
+            ..sign_in_settings()
+        };
+        auth.sign_in_with_token(&bogus_secret("new-token"), new_settings.clone());
+        assert_eq!(auth.token().unwrap().expose_secret(), "new-token");
+        assert_eq!(auth.sign_in_settings(), Some(&new_settings));
+
+        let restored = Auth::new_with_key(key, store, session_dir.path().to_path_buf()).unwrap();
+        assert_eq!(restored.token().unwrap().expose_secret(), "old-token");
+        assert_eq!(restored.sign_in_settings(), Some(&sign_in_settings()));
     }
 
     #[test]
