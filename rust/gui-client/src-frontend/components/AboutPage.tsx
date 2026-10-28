@@ -20,11 +20,8 @@ export default function AboutPage() {
       <div className="flex w-full max-w-sm flex-col items-center text-center">
         <img alt="Firezone Logo" className="mb-6 h-20 w-20" src={logo} />
         <p className="mb-1 text-body">Version</p>
-        <p className="mb-1 text-2xl font-bold text-heading">
-          <span>{__APP_VERSION__}</span>
-        </p>
-        <p className="mb-6 text-sm text-subtle">
-          Built from{" "}
+        <p className="mb-6 text-2xl font-bold text-heading">
+          {__APP_VERSION__} (
           <button
             className="font-mono hover:text-brand hover:underline"
             onClick={openCommit}
@@ -33,6 +30,7 @@ export default function AboutPage() {
           >
             {__GIT_VERSION__.substring(0, 8)}
           </button>
+          )
         </p>
         <button
           className="rounded px-2 py-1.5 text-sm font-medium text-brand transition-colors hover:bg-brand-muted hover:text-brand-dark"
