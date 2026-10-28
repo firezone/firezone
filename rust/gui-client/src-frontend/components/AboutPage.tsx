@@ -20,7 +20,7 @@ export default function AboutPage() {
       <div className="flex w-full max-w-sm flex-col items-center text-center">
         <img alt="Firezone Logo" className="mb-6 h-20 w-20" src={logo} />
         <p className="mb-1 text-body">Version</p>
-        <p className="mb-6 text-2xl font-bold text-heading">
+        <p className="mb-6 text-lg font-bold text-heading">
           {__APP_VERSION__} (
           <button
             className="font-mono text-brand underline hover:text-brand-dark"
