@@ -56,7 +56,7 @@
         scheduleMeasurement()
       }
 
-      deinit {
+      isolated deinit {
         for observer in keyboardObservers {
           NotificationCenter.default.removeObserver(observer)
         }
