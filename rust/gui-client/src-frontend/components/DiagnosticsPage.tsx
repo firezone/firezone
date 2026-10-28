@@ -2,6 +2,7 @@ import React from "react";
 import { FileCount, LogFilterViewModel, Result } from "../generated/bindings";
 import RemixIcon from "./RemixIcon";
 import SettingRow from "./SettingRow";
+import { ManagedSettingsNotice } from "./ManagedInput";
 import TextSetting from "./TextSetting";
 
 interface DiagnosticsPageProps {
@@ -73,6 +74,7 @@ export default function Diagnostics({
               </div>
             </SettingRow>
           </div>
+          {saved.log_filter_is_managed && <ManagedSettingsNotice />}
         </section>
       </div>
     </div>

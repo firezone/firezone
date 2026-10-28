@@ -1,8 +1,10 @@
 import React from "react";
+import RemixIcon from "./RemixIcon";
 
 interface SettingRowProps extends React.PropsWithChildren {
   inputId?: string;
   label: string;
+  managed?: boolean;
   // Controls share a fixed-width column so they line up across rows.
   field?: boolean;
   error?: string;
@@ -14,6 +16,7 @@ export default function SettingRow({
   field = false,
   inputId,
   label,
+  managed = false,
   error,
   errorId,
 }: SettingRowProps) {
@@ -21,10 +24,13 @@ export default function SettingRow({
     <div className="flex min-h-10 flex-col justify-center pl-4 pr-2 py-2">
       <div className="flex items-center justify-between gap-6">
         <label
-          className="block text-sm font-medium text-heading"
+          className="flex items-center gap-1.5 text-sm font-medium text-heading"
           htmlFor={inputId}
         >
           {label}
+          {managed && (
+            <RemixIcon className="h-3.5 w-3.5 text-subtle" name="lock" />
+          )}
         </label>
         {field ? (
           <div className="flex h-9 w-64 shrink-0 items-center justify-end">

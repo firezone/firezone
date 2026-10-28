@@ -59,7 +59,17 @@ class SettingsScreenshotTest {
             R.string.settings_title,
             config = euConfig,
             controlPlane = ControlPlane.CLOUD_EU,
-            managedStatus = urlsManaged,
+            managedStatus = urlsManaged.copy(isAccountSlugManaged = true, isStartOnLoginManaged = true),
+        )
+
+    @Test
+    fun generalSettingsPartiallyManaged() =
+        captureSettingsPage(
+            "settings-general-managed-custom",
+            R.string.settings_title,
+            config = selfHostedConfig,
+            controlPlane = ControlPlane.CUSTOM,
+            managedStatus = ManagedConfigStatus.NOTHING_MANAGED.copy(isAuthUrlManaged = true),
         )
 
     @Test
@@ -83,6 +93,14 @@ class SettingsScreenshotTest {
 
     @Test
     fun logSettings() = captureSettingsPage("settings-logs", R.string.diagnostics_settings_title)
+
+    @Test
+    fun logSettingsManaged() =
+        captureSettingsPage(
+            "settings-logs-managed",
+            R.string.diagnostics_settings_title,
+            managedStatus = ManagedConfigStatus.NOTHING_MANAGED.copy(isLogFilterManaged = true),
+        )
 
     private fun captureDeviceTrustPage(
         name: String,
