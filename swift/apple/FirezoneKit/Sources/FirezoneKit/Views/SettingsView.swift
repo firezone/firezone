@@ -477,13 +477,21 @@ public struct SettingsView: View {
             .background {
               GeometryReader { geometry in
                 Color.clear
-                  .onAppear { deviceTrustContentHeight = geometry.size.height }
-                  .onChange(of: geometry.size.height) { deviceTrustContentHeight = $0 }
+                  .task(id: geometry.size.height) {
+                    let window = NSApp.keyWindow ?? NSApp.mainWindow
+                    let chromeHeight =
+                      window.map {
+                        $0.frame.height - $0.contentLayoutRect.height
+                      } ?? 0
+                    let screenHeight =
+                      window?.screen?.visibleFrame.height ?? geometry.size.height + chromeHeight
+                    deviceTrustContentHeight = min(
+                      geometry.size.height, screenHeight - chromeHeight)
+                  }
               }
             }
         }
-        .frame(width: Self.paneWidth)
-        .frame(idealHeight: deviceTrustContentHeight, maxHeight: deviceTrustContentHeight)
+        .frame(width: Self.paneWidth, height: deviceTrustContentHeight)
       }
     #elseif os(iOS)
       if let summary = store.deviceTrustCertificateSummary {
