@@ -174,6 +174,7 @@ defmodule Portal.Mailer.Notifications do
       account: account,
       region: region,
       sign_in_url: url(~p"/#{account}"),
+      auth_url: String.trim_trailing(url(~p"/"), "/"),
       api_url: Portal.Config.fetch_env!(:portal, :api_external_url)
     )
   end

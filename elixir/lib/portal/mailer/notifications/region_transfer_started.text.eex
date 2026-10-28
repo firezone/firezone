@@ -6,6 +6,8 @@ The account is disabled while the move runs. Nobody can sign in, Clients cannot 
 
 We email you again when the account is ready in the new region. After the move, every session, Gateway token, service account token, and API token is invalid. Each Gateway needs a new token and the new API URL, headless Clients need new service account tokens, every API token has to be recreated, MCP clients have to be reconnected, and users sign in again.
 
+Clients at macOS and iOS 1.5.24, Android 1.5.18, and Windows and Linux 1.5.20 or later switch to the new region on their own when the user signs in again. Older Clients, headless Clients, and Gateways need the new auth URL and API URL. The next email gives you both.
+
 Logs are not moved. They are deleted from the old region when the transfer completes.
 
 Thanks,

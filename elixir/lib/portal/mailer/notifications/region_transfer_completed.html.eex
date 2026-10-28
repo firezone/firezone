@@ -81,11 +81,12 @@
                     Next steps:
                   </p>
                   <ul style="margin: 8px 0 0; padding-left: 24px; line-height: 24px">
-                    <li>Create a new token for each Gateway and redeploy it with the new API URL: <code style="font-size: 12px; background-color: #f3f4f6; padding: 2px 4px; border-radius: 3px;"><%= @api_url %></code></li>
-                    <li>Create new service account tokens for your headless Clients.</li>
+                    <li>Ask users to sign in again. Links to the old portal redirect to the new one. Clients at macOS and iOS 1.5.24, Android 1.5.18, and Windows and Linux 1.5.20 or later switch to the new region on their own.</li>
+                    <li>Older Clients need the new URLs. Under <strong>Settings &rarr; Advanced</strong>, set the auth URL to <code style="font-size: 12px; background-color: #f3f4f6; padding: 2px 4px; border-radius: 3px;"><%= @auth_url %></code> and the API URL to <code style="font-size: 12px; background-color: #f3f4f6; padding: 2px 4px; border-radius: 3px;"><%= @api_url %></code>. With an MDM, set the <code style="font-size: 12px; background-color: #f3f4f6; padding: 2px 4px; border-radius: 3px;">authURL</code> and <code style="font-size: 12px; background-color: #f3f4f6; padding: 2px 4px; border-radius: 3px;">apiURL</code> managed configuration keys instead.</li>
+                    <li>Create a new token for each Gateway and set its API URL to <code style="font-size: 12px; background-color: #f3f4f6; padding: 2px 4px; border-radius: 3px;"><%= @api_url %></code> in the automation that deploys your Gateways.</li>
+                    <li>Create new service account tokens for your headless Clients. Set their API URL to <code style="font-size: 12px; background-color: #f3f4f6; padding: 2px 4px; border-radius: 3px;"><%= @api_url %></code> too.</li>
                     <li>Recreate every API token.</li>
                     <li>Reconnect your MCP clients.</li>
-                    <li>Ask users to sign in again. Links to the old portal redirect to the new one.</li>
                   </ul>
                   <p style="margin: 16px 0 0; line-height: 24px">
                     Thanks, <br>The Firezone Team
