@@ -48,14 +48,17 @@ afterEach(() => {
   container.remove();
 });
 
-async function render(settings: GeneralSettingsViewModel) {
+async function render(
+  settings: GeneralSettingsViewModel,
+  resetSettings = vi.fn()
+) {
   const saveSettings = vi.fn();
 
   root.render(
     <GeneralSettingsPage
       settings={settings}
       saveSettings={saveSettings}
-      resetSettings={() => {}}
+      resetSettings={resetSettings}
     />
   );
   await expect
@@ -274,4 +277,49 @@ test("a cloud control plane hides the URL fields", async () => {
 
   await expect.element(page.getByLabelText("Auth URL")).not.toBeInTheDocument();
   await expect.element(page.getByLabelText("API URL")).not.toBeInTheDocument();
+});
+
+test("Reset cancels without changing the form and runs only after confirmation", async () => {
+  const resetSettings = vi.fn();
+  await render(usSettings, resetSettings);
+  await userEvent.selectOptions(page.getByLabelText("Control plane"), "Custom");
+  const trigger = page.getByRole("button", { name: "Reset to Defaults" });
+  const dialog = page.getByRole("dialog", {
+    name: "Reset settings to defaults?",
+  });
+
+  await userEvent.click(trigger);
+  await expect.element(dialog).toBeVisible();
+  await expect
+    .element(page.getByRole("button", { name: "Cancel", exact: true }))
+    .toHaveFocus();
+  expect(resetSettings).not.toHaveBeenCalled();
+  await userEvent.keyboard("{Escape}");
+  await expect.element(dialog).not.toBeInTheDocument();
+  await expect.element(trigger).toHaveFocus();
+  await expect.element(page.getByLabelText("Auth URL")).toBeVisible();
+  expect(resetSettings).not.toHaveBeenCalled();
+
+  await userEvent.click(trigger);
+  await userEvent.click(
+    page.getByRole("button", { name: "Cancel", exact: true })
+  );
+  await expect.element(trigger).toHaveFocus();
+  await expect.element(page.getByLabelText("Auth URL")).toBeVisible();
+  expect(resetSettings).not.toHaveBeenCalled();
+
+  await userEvent.click(trigger);
+  await userEvent.click(
+    page.getByRole("button", { name: "Reset", exact: true })
+  );
+  expect(resetSettings).toHaveBeenCalledTimes(1);
+  await expect.element(dialog).not.toBeInTheDocument();
+  await expect.element(trigger).toHaveFocus();
+
+  await userEvent.click(trigger);
+  await userEvent.dblClick(
+    page.getByRole("button", { name: "Reset", exact: true })
+  );
+  expect(resetSettings).toHaveBeenCalledTimes(2);
+  await expect.element(dialog).not.toBeInTheDocument();
 });

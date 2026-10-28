@@ -1,8 +1,9 @@
-import React from "react";
+import React, { useState } from "react";
 import { FileCount, LogFilterViewModel, Result } from "../generated/bindings";
 import RemixIcon from "./RemixIcon";
 import SettingRow from "./SettingRow";
 import TextSetting from "./TextSetting";
+import ConfirmationDialog from "./ConfirmationDialog";
 
 interface DiagnosticsPageProps {
   logCount: FileCount | null;
@@ -24,6 +25,7 @@ export default function Diagnostics({
   clearLogs,
   saveLogFilter,
 }: DiagnosticsPageProps) {
+  const [confirmClear, setConfirmClear] = useState(false);
   const bytes = logCount?.bytes ?? 0;
   const megabytes = Math.round((bytes / 1_000_000) * 10) / 10;
 
@@ -64,7 +66,7 @@ export default function Diagnostics({
                 <button
                   aria-label="Clear Logs"
                   className="icon-button -mr-1"
-                  onClick={clearLogs}
+                  onClick={() => setConfirmClear(true)}
                   title="Clear Logs"
                   type="button"
                 >
@@ -75,6 +77,17 @@ export default function Diagnostics({
           </div>
         </section>
       </div>
+      {confirmClear && (
+        <ConfirmationDialog
+          question="Delete all log files?"
+          confirmLabel="Clear"
+          onCancel={() => setConfirmClear(false)}
+          onConfirm={() => {
+            setConfirmClear(false);
+            clearLogs();
+          }}
+        />
+      )}
     </div>
   );
 }

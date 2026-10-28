@@ -29,6 +29,7 @@ const COLOR_SCHEMES = ["light", "dark"] as const;
 // leaves a field out to render what the user sees before that event arrives.
 interface Screen {
   route: string;
+  click?: string;
   session?: SessionViewModel;
   generalSettings?: GeneralSettingsViewModel;
   logFilter?: LogFilterViewModel;
@@ -203,6 +204,17 @@ const screens: Record<string, Screen> = {
     logCount: { bytes: 3_400_000, files: 12 },
     logFilter,
   },
+  "diagnostics-clear-confirmation": {
+    route: "/diagnostics",
+    logCount: { bytes: 3_400_000, files: 17 },
+    logFilter,
+    click: "Clear Logs",
+  },
+  "settings-reset-confirmation": {
+    route: "/general-settings",
+    generalSettings,
+    click: "Reset to Defaults",
+  },
   "diagnostics-managed": {
     route: "/diagnostics",
     logCount: { bytes: 3_400_000, files: 12 },
@@ -298,6 +310,14 @@ for (const [name, screen] of Object.entries(screens)) {
         await act(async () => {
           await userEvent.fill(page.getByLabelText(label), value);
           await userEvent.keyboard("{Enter}");
+        });
+        await settle();
+      }
+
+      if (screen.click) {
+        const button = page.getByRole("button", { name: screen.click });
+        await act(async () => {
+          await button.click();
         });
         await settle();
       }
