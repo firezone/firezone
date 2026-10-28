@@ -19,7 +19,7 @@ struct TokenTests {
     var attributes: [String: Any] = [kSecValueData as String: Data("legacy-token".utf8)]
     attributes[kSecAttrGeneric as String] = metadata
 
-    let token = try #require(Token(keychainAttributes: attributes))
+    let token = try #require(try Token(keychainAttributes: attributes))
 
     #expect(token.description == "legacy-token")
     #expect(token.signInSettings == nil)
