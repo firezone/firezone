@@ -17,6 +17,18 @@ config_roots = [
     "swift/apple",
 ]
 
+[tools."github:bencherdev/bencher"]
+version = "0.6.13"
+bin = "bencher"
+
+[tools."github:bencherdev/bencher".platforms]
+linux-x64 = { asset_pattern = "bencher-*-linux-x86-64" }
+linux-arm64 = { asset_pattern = "bencher-*-linux-arm-64" }
+macos-x64 = { asset_pattern = "bencher-*-macos-x86-64" }
+macos-arm64 = { asset_pattern = "bencher-*-macos-arm-64" }
+windows-x64 = { asset_pattern = "bencher-*-windows-x86-64.exe" }
+windows-arm64 = { asset_pattern = "bencher-*-windows-arm-64.exe" }
+
 [tasks.lint-setup]
 description = "Install linting tools from version-pinned files (managed by Dependabot)"
 run = """
