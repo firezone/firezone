@@ -107,7 +107,7 @@ struct Inner {
     round_robin: usize,
 }
 
-/// A cached socket plus the metadata used to choose an eviction victim.
+/// A cached socket and its eviction metadata.
 struct CachedSocket {
     socket: Arc<OwnedSocket>,
     created_at: Instant,
