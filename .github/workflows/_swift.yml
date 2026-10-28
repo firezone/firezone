@@ -18,6 +18,7 @@ jobs:
     runs-on: ubuntu-24.04
     outputs:
       build_number: ${{ steps.release-metadata.outputs.build_number }}
+      release_drafted: ${{ steps.update-release-draft.outcome == 'success' }}
     permissions:
       actions: read # inspect store submission artifacts
       contents: write # release-drafter needs to create/update releases
@@ -47,6 +48,30 @@ jobs:
           commitish: ${{ github.sha }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  benchmark-macos:
+    needs: update-release-draft
+    if: needs.update-release-draft.outputs.release_drafted == 'true'
+    runs-on: ubuntu-24.04
+    permissions: {}
+    strategy:
+      fail-fast: false
+      matrix:
+        protocol: [tcp, quic]
+    steps:
+      - name: Dispatch Mac-to-Mac benchmarks
+        env:
+          # workflow_dispatch requires Actions: write on firezone/infra.
+          GH_TOKEN: ${{ secrets.INFRA_REPOSITORY_TOKEN }}
+          FIREZONE_SHA: ${{ github.sha }}
+          BENCHMARK_PROTOCOL: ${{ matrix.protocol }}
+        run: |
+          gh workflow run benchmark-firezone-bare-metal.yml \
+            --repo firezone/infra --ref main \
+            --raw-field git_sha="$FIREZONE_SHA" \
+            --raw-field 'device_pair=iMac <> Macbook' \
+            --raw-field protocol="$BENCHMARK_PROTOCOL" \
+            --raw-field publish=true
 
   test:
     runs-on: macos-26
