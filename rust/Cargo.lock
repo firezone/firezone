@@ -6364,7 +6364,7 @@ dependencies = [
 [[package]]
 name = "quinn-udp"
 version = "0.6.3"
-source = "git+https://github.com/firezone/quinn?branch=main#ef279010009563889f7f91aa728e7f4dcee4d61b"
+source = "git+https://github.com/firezone/quinn?branch=main#0d6aae8dd96d1247bf31736aed3a1ba71a49d1e5"
 dependencies = [
  "cfg_aliases",
  "libc",
@@ -7573,6 +7573,7 @@ dependencies = [
  "ip-packet",
  "libc",
  "memchr",
+ "nix 0.31.3",
  "opentelemetry",
  "otel-instruments",
  "parking_lot",

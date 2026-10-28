@@ -3,8 +3,8 @@
 //!
 //! There are two implementations behind a single platform-selected `SocketPool` alias:
 //!
-//! - `apple`: an unconnected catch-all socket plus a cache of connected per-destination "flow"
-//!   sockets, which unlock Darwin's UDP fast path and flow advisories.
+//! - `apple`: wildcard and source-bound unconnected sockets, plus connected flow sockets
+//!   that unlock Darwin's UDP fast path and flow advisories.
 //! - `fallback`: just the catch-all socket, for every other platform.
 
 #[cfg(apple)]
