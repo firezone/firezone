@@ -1055,13 +1055,11 @@ impl<I: GuiIntegration> Controller<I> {
 
         match result {
             Ok(()) => {
-                let token = self.unconfirmed_token.take().or_else(|| {
-                    if self.auth.sign_in_settings().is_none() {
-                        self.auth.token()
-                    } else {
-                        None
-                    }
-                });
+                let token = match self.unconfirmed_token.take() {
+                    Some(token) => Some(token),
+                    None if self.auth.sign_in_settings().is_none() => self.auth.token(),
+                    None => None,
+                };
                 if let Some(token) = token {
                     self.auth.sign_in_with_token(&token, self.current_sign_in());
                 }
