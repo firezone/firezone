@@ -170,6 +170,9 @@
 
       try openSettings(in: app, on: "settings-general-custom")
       try selectTab("Settings", showing: "API URL", in: app)
+      let form = app.collectionViews.containing(.button, identifier: "Reset to Defaults").firstMatch
+      try waitFor(form, on: "settings-general-custom")
+      form.swipeUp()
       deliver(app, as: "settings-general-custom", in: appearance)
     }
 

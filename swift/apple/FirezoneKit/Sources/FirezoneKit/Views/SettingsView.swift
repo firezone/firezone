@@ -102,33 +102,30 @@ public struct SettingsView: View {
           Color(UIColor.systemGroupedBackground)
             .ignoresSafeArea()
 
-          VStack {
-            TabView(selection: $viewModel.selectedTab) {
-              settingsTab
-                .tabItem {
-                  Image(systemName: "slider.horizontal.3")
-                  Text(Tab.settings.title)
-                }
-                .badge(viewModel.areURLsValid() ? nil : "!")
-                .tag(Tab.settings)
-              if store.deviceTrustCertificateSummary != nil {
-                deviceTrustTab
-                  .tabItem {
-                    Image(systemName: "rosette")
-                    Text(Tab.deviceTrust.title)
-                  }
-                  .tag(Tab.deviceTrust)
+          TabView(selection: $viewModel.selectedTab) {
+            settingsTab
+              .tabItem {
+                Image(systemName: "slider.horizontal.3")
+                Text(Tab.settings.title)
               }
-              logsTab
+              .badge(viewModel.areURLsValid() ? nil : "!")
+              .tag(Tab.settings)
+            if store.deviceTrustCertificateSummary != nil {
+              deviceTrustTab
                 .tabItem {
-                  Image(systemName: "doc.text")
-                  Text(Tab.logs.title)
+                  Image(systemName: "rosette")
+                  Text(Tab.deviceTrust.title)
                 }
-                .badge(viewModel.isLogFilterValid() ? nil : "!")
-                .tag(Tab.logs)
+                .tag(Tab.deviceTrust)
             }
+            logsTab
+              .tabItem {
+                Image(systemName: "doc.text")
+                Text(Tab.logs.title)
+              }
+              .badge(viewModel.isLogFilterValid() ? nil : "!")
+              .tag(Tab.logs)
           }
-          .padding(.bottom, 10)
           .toolbar {
             ToolbarItem(placement: .confirmationAction) {
               Button("Done") { commit(.settings, .logs, thenDismiss: true) }
@@ -323,14 +320,14 @@ public struct SettingsView: View {
             .toggleStyle(.switch)
             .disabled(configuration.isConnectOnStartForced)
           }
-        }
-        .safeAreaInset(edge: .bottom) {
-          resetButton
-            .buttonStyle(.bordered)
-            .controlSize(.large)
-            .padding()
-            .frame(maxWidth: .infinity)
-            .background(Color(uiColor: .systemGroupedBackground))
+          Section {
+            resetButton
+              .frame(maxWidth: .infinity)
+          } footer: {
+            Color.clear
+              .frame(height: 0)
+              .padding(.bottom)
+          }
         }
       }
       .background(Color(uiColor: .secondarySystemBackground))
