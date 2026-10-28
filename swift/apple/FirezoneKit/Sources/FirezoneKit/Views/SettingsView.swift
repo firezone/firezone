@@ -36,6 +36,7 @@ public struct SettingsView: View {
     }
 
     @State private var exportedLogArchive: LogArchive?
+    @State private var settingsContentHeight: CGFloat?
   #endif
 
   #if os(macOS)
@@ -83,7 +84,7 @@ public struct SettingsView: View {
   }
 
   public var body: some View {
-    content
+    sizedContent
       .onChange(of: focusedField) { _ in commitTextFields() }
       .onChange(of: viewModel.controlPlane) { _ in commit(.settings) }
       .onChange(of: viewModel.connectOnStart) { _ in commit(.settings) }
@@ -92,6 +93,22 @@ public struct SettingsView: View {
         commitTextFields()
         viewModel.discardInvalidDrafts()
       }
+  }
+
+  @ViewBuilder
+  private var sizedContent: some View {
+    #if os(iOS)
+      if #available(iOS 18, *), UIDevice.current.userInterfaceIdiom == .pad {
+        content
+          .frame(idealHeight: viewModel.selectedTab == .settings ? settingsContentHeight : nil)
+          .presentationSizing(
+            .form.fitted(horizontal: false, vertical: viewModel.selectedTab == .settings))
+      } else {
+        content
+      }
+    #else
+      content
+    #endif
   }
 
   @ViewBuilder
@@ -248,6 +265,11 @@ public struct SettingsView: View {
               .focused($focusedField, equals: .accountSlug)
               .onSubmit { commit(.settings) }
               .disabled(configuration.isAccountSlugForced)
+            }
+            .background {
+              if #available(iOS 18, *), UIDevice.current.userInterfaceIdiom == .pad {
+                SettingsFormSizeReader(height: $settingsContentHeight)
+              }
             }
 
             // A menu rather than a form picker, so the choice sits under its caption like
