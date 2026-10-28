@@ -77,23 +77,6 @@
       }
     }
 
-    func testManagedSettings() throws {
-      for appearance in Appearance.allCases {
-        let app = launchApp(
-          scenario: "managed-settings", appearance: appearance, window: "settings")
-        defer { app.terminate() }
-
-        let window = try onlyWindow(of: app)
-        for tab in Self.settingsTabs {
-          try selectTab(tab.label, showing: tab.showing, in: window)
-          XCTAssertTrue(
-            window.staticTexts["Locked settings are managed by your organization."].firstMatch
-              .waitForExistence(timeout: 10))
-          capture(window, as: "settings-\(tab.name)-managed", in: appearance)
-        }
-      }
-    }
-
     /// The Settings tab of an app configured for a self-hosted control plane.
     func testSettingsWithCustomControlPlane() throws {
       for appearance in Appearance.allCases {

@@ -7,7 +7,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.addPathNodes
 import androidx.compose.ui.unit.dp
 
-// Material rounded icons (https://fonts.google.com/icons).
+// Material Symbols Rounded (https://fonts.google.com/icons), path data copied verbatim.
 object FirezoneIcons {
     val ArrowBack: ImageVector by lazy {
         materialSymbol(
@@ -124,17 +124,6 @@ object FirezoneIcons {
                     "Q800,346 707,253Q614,160 480,160Q346,160 253,253Q160,346 160,480Q160,614 253,707Q346,800 480,800ZM480,480" +
                     "Q480,480 480,480Q480,480 480,480Q480,480 480,480Q480,480 480,480Q480,480 480,480Q480,480 480,480Q480,480 480,480" +
                     "Q480,480 480,480Z",
-        )
-    }
-
-    val Lock: ImageVector by lazy {
-        materialSymbol(
-            name = "Lock",
-            pathData =
-                "M 720 320 h -40 V 240 c 0 -110.4 -89.6 -200 -200 -200 S 280 129.6 280 240 v 80 H 240 c -44 0 -80 36 -80 80 v 400 c " +
-                    "0 44 36 80 80 80 h 480 c 44 0 80 -36 80 -80 V 400 c 0 -44 -36 -80 -80 -80 z m -240 360 c -44 0 -80 -36 -80 -80 s 36" +
-                    " -80 80 -80 80 36 80 80 -36 80 -80 80 z M 360 320 V 240 c 0 -66.4 53.6 -120 120 -120 s 120 53.6 120 120 v 80 H 360 " +
-                    "z",
         )
     }
 

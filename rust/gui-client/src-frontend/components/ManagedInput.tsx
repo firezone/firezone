@@ -11,7 +11,7 @@ export function ManagedTextInput({
   className = "",
   ...inputProps
 }: ManagedTextInputProps) {
-  return (
+  const input = (
     <input
       aria-disabled={managed || undefined}
       className={`form-input ${className}`}
@@ -19,6 +19,12 @@ export function ManagedTextInput({
       {...inputProps}
     />
   );
+
+  if (!managed) {
+    return input;
+  }
+
+  return <ManagedTooltip fullWidth>{input}</ManagedTooltip>;
 }
 
 type ManagedSelectProps = SelectHTMLAttributes<HTMLSelectElement> & {
@@ -32,7 +38,7 @@ export function ManagedSelect({
   ...selectProps
 }: ManagedSelectProps) {
   // The native arrow sits flush against the right border, so draw our own with padding.
-  return (
+  const select = (
     <span className="relative flex w-full">
       <select
         aria-disabled={managed || undefined}
@@ -48,6 +54,12 @@ export function ManagedSelect({
       />
     </span>
   );
+
+  if (!managed) {
+    return select;
+  }
+
+  return <ManagedTooltip fullWidth>{select}</ManagedTooltip>;
 }
 
 interface ManagedToggleSwitchProps {
@@ -65,7 +77,7 @@ export function ManagedToggleSwitch({
   name,
   onChange,
 }: ManagedToggleSwitchProps) {
-  return (
+  const toggle = (
     <button
       aria-checked={checked}
       aria-disabled={managed || undefined}
@@ -85,12 +97,26 @@ export function ManagedToggleSwitch({
       />
     </button>
   );
+
+  if (!managed) {
+    return toggle;
+  }
+
+  return <ManagedTooltip>{toggle}</ManagedTooltip>;
 }
 
-export function ManagedSettingsNotice() {
+function ManagedTooltip({
+  children,
+  fullWidth = false,
+}: React.PropsWithChildren<{ fullWidth?: boolean }>) {
   return (
-    <p className="mt-1.5 text-xs text-subtle">
-      Locked settings are managed by your organization.
-    </p>
+    <span
+      className={`group relative ${fullWidth ? "flex w-full" : "inline-flex"}`}
+    >
+      {children}
+      <span className="managed-tooltip" role="tooltip">
+        This setting is managed by your organisation.
+      </span>
+    </span>
   );
 }

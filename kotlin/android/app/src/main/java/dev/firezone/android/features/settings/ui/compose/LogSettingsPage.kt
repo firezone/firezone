@@ -61,10 +61,7 @@ fun LogSettingsPage(
             .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        SettingsGroup(
-            title = stringResource(R.string.log_settings_title),
-            hasManagedSettings = managedStatus.isLogFilterManaged,
-        ) {
+        SettingsGroup(title = stringResource(R.string.log_settings_title)) {
             TextPreferenceRow(
                 title = stringResource(R.string.log_filter),
                 value = config.logFilter,

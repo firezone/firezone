@@ -385,4 +385,13 @@
   .toggle-thumb {
     @apply h-4 w-4 rounded-full bg-white shadow-sm transition-transform;
   }
+
+  .managed-tooltip {
+    @apply pointer-events-none absolute right-0 top-full z-20 mt-2 w-max max-w-56 translate-y-1 rounded border border-border bg-elevated px-2.5 py-1.5 text-xs text-body opacity-0 shadow-sm transition-all;
+  }
+
+  .group:hover > .managed-tooltip,
+  .group:focus-within > .managed-tooltip {
+    @apply translate-y-0 opacity-100;
+  }
 }

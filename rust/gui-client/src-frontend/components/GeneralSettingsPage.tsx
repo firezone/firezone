@@ -8,11 +8,7 @@ import {
 import Button from "./Button";
 import SettingRow from "./SettingRow";
 import TextSetting from "./TextSetting";
-import {
-  ManagedSelect,
-  ManagedSettingsNotice,
-  ManagedToggleSwitch,
-} from "./ManagedInput";
+import { ManagedSelect, ManagedToggleSwitch } from "./ManagedInput";
 
 interface Props {
   settings: GeneralSettingsViewModel | null;
@@ -117,7 +113,6 @@ export default function GeneralSettingsPage({
               field
               inputId={controlPlaneInputId}
               label="Control plane"
-              managed={saved.auth_url_is_managed || saved.api_url_is_managed}
             >
               <ManagedSelect
                 id={controlPlaneInputId}
@@ -166,9 +161,6 @@ export default function GeneralSettingsPage({
               </>
             )}
           </div>
-          {(saved.account_slug_is_managed ||
-            saved.auth_url_is_managed ||
-            saved.api_url_is_managed) && <ManagedSettingsNotice />}
           {signInPending && (
             <p className="mt-1.5 text-xs text-subtle">
               Sign out and sign in again after changing the account slug or
@@ -212,7 +204,6 @@ export default function GeneralSettingsPage({
               field
               inputId={connectOnStartInputId}
               label="Connect on start"
-              managed={saved.connect_on_start_is_managed}
             >
               <ManagedToggleSwitch
                 checked={saved.connect_on_start}
@@ -223,7 +214,6 @@ export default function GeneralSettingsPage({
               />
             </SettingRow>
           </div>
-          {saved.connect_on_start_is_managed && <ManagedSettingsNotice />}
         </section>
 
         <div className="flex justify-end border-t border-border pt-3">
