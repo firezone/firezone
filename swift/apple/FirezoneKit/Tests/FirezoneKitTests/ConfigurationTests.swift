@@ -285,7 +285,7 @@ struct ConfigurationTests {
     #expect(providerConfiguration[Configuration.Keys.apiURL] == "wss://saved-user-change.api")
   }
 
-  // MARK: - Portal
+  // MARK: - ControlPlane
 
   @Test("Saved US URLs show Firezone Cloud (US)")
   @MainActor
@@ -300,7 +300,7 @@ struct ConfigurationTests {
 
     let viewModel = SettingsViewModel(configuration: config)
 
-    #expect(viewModel.portal == .cloudUs)
+    #expect(viewModel.controlPlane == .cloudUs)
   }
 
   @Test("Saved self-hosted URLs show custom and keep the URLs")
@@ -316,7 +316,7 @@ struct ConfigurationTests {
 
     let viewModel = SettingsViewModel(configuration: config)
 
-    #expect(viewModel.portal == .custom)
+    #expect(viewModel.controlPlane == .custom)
     #expect(viewModel.authURL == "https://firezone.example.com")
     #expect(viewModel.apiURL == "wss://api.example.com")
   }
@@ -327,7 +327,7 @@ struct ConfigurationTests {
     let config = Configuration(userDefaults: UserDefaults.makeTestDefaults())
     let viewModel = SettingsViewModel(configuration: config)
 
-    viewModel.selectPortal(.cloudEu)
+    viewModel.selectControlPlane(.cloudEu)
     try await viewModel.save()
 
     #expect(config.authURL == "https://eu.app.firezone.dev")
@@ -350,8 +350,8 @@ struct ConfigurationTests {
 
     let viewModel = SettingsViewModel(configuration: config)
 
-    #expect(viewModel.portal == .cloudEu)
-    #expect(viewModel.isPortalForced)
+    #expect(viewModel.controlPlane == .cloudEu)
+    #expect(viewModel.isControlPlaneForced)
   }
 
   @Test("One forced URL shows custom")
@@ -368,34 +368,34 @@ struct ConfigurationTests {
 
     let viewModel = SettingsViewModel(configuration: config)
 
-    #expect(viewModel.portal == .custom)
+    #expect(viewModel.controlPlane == .custom)
   }
 
-  @Test("Portal URLs match despite trailing slashes, case, and whitespace")
-  func portalURLsMatchLoosely() {
+  @Test("Control plane URLs match despite trailing slashes, case, and whitespace")
+  func controlPlaneURLsMatchLoosely() {
     #expect(
-      Portal.of(
+      ControlPlane.of(
         authURL: " HTTPS://EU.app.firezone.dev// ", apiURL: "wss://eu.api.firezone.dev/")
         == .cloudEu
     )
     #expect(
-      Portal.of(authURL: "https://app.firezone.dev", apiURL: "wss://eu.api.firezone.dev")
+      ControlPlane.of(authURL: "https://app.firezone.dev", apiURL: "wss://eu.api.firezone.dev")
         == .custom
     )
     #expect(
-      Portal.of(authURL: "https://app.firezone.dev/path", apiURL: "wss://api.firezone.dev")
+      ControlPlane.of(authURL: "https://app.firezone.dev/path", apiURL: "wss://api.firezone.dev")
         == .custom
     )
   }
 
-  @Test("Picking custom keeps the URLs of the portal picked before")
+  @Test("Picking custom keeps the URLs of the control plane picked before")
   @MainActor
   func pickingCustomKeepsURLs() async {
     let config = Configuration(userDefaults: UserDefaults.makeTestDefaults())
     let viewModel = SettingsViewModel(configuration: config)
 
-    viewModel.selectPortal(.cloudEu)
-    viewModel.selectPortal(.custom)
+    viewModel.selectControlPlane(.cloudEu)
+    viewModel.selectControlPlane(.custom)
 
     #expect(viewModel.authURL == "https://eu.app.firezone.dev")
     #expect(viewModel.apiURL == "wss://eu.api.firezone.dev")
@@ -417,8 +417,8 @@ struct ConfigurationTests {
 
     let viewModel = SettingsViewModel(configuration: config)
 
-    #expect(viewModel.portal == .cloudUs)
-    #expect(viewModel.isPortalForced)
+    #expect(viewModel.controlPlane == .cloudUs)
+    #expect(viewModel.isControlPlaneForced)
   }
 
   @Test("Forced self-hosted URLs show custom, locked, and cannot be changed by the picker")
@@ -436,10 +436,10 @@ struct ConfigurationTests {
     let config = Configuration(userDefaults: defaults)
     let viewModel = SettingsViewModel(configuration: config)
 
-    #expect(viewModel.portal == .custom)
-    #expect(viewModel.isPortalForced)
+    #expect(viewModel.controlPlane == .custom)
+    #expect(viewModel.isControlPlaneForced)
 
-    viewModel.selectPortal(.cloudUs)
+    viewModel.selectControlPlane(.cloudUs)
     try await viewModel.save()
 
     #expect(viewModel.authURL == "https://firezone.example.com")
@@ -454,22 +454,22 @@ struct ConfigurationTests {
     let config = Configuration(userDefaults: UserDefaults.makeTestDefaults())
     let viewModel = SettingsViewModel(configuration: config)
 
-    viewModel.selectPortal(.cloudUs)
-    viewModel.selectPortal(.custom)
+    viewModel.selectControlPlane(.cloudUs)
+    viewModel.selectControlPlane(.custom)
     viewModel.authURL = "https://firezone.example.com"
     viewModel.apiURL = "wss://api.example.com"
     try await viewModel.save()
 
-    viewModel.selectPortal(.cloudEu)
+    viewModel.selectControlPlane(.cloudEu)
     try await viewModel.save()
 
     #expect(config.authURL == "https://eu.app.firezone.dev")
     #expect(config.apiURL == "wss://eu.api.firezone.dev")
 
     let reopened = SettingsViewModel(configuration: config)
-    #expect(reopened.portal == .cloudEu)
+    #expect(reopened.controlPlane == .cloudEu)
 
-    reopened.selectPortal(.custom)
+    reopened.selectControlPlane(.custom)
 
     #expect(reopened.authURL == "https://firezone.example.com")
     #expect(reopened.apiURL == "wss://api.example.com")
@@ -487,16 +487,16 @@ struct ConfigurationTests {
     )
     let viewModel = SettingsViewModel(configuration: config)
 
-    viewModel.selectPortal(.cloudUs)
-    viewModel.selectPortal(.custom)
+    viewModel.selectControlPlane(.cloudUs)
+    viewModel.selectControlPlane(.custom)
     viewModel.authURL = "https://firezone.example.com"
     viewModel.apiURL = "wss://api.example.com"
-    viewModel.selectPortal(.cloudEu)
+    viewModel.selectControlPlane(.cloudEu)
     try await viewModel.save()
 
     #expect(config.lastCustomURLs == nil)
 
-    viewModel.selectPortal(.custom)
+    viewModel.selectControlPlane(.custom)
 
     #expect(viewModel.authURL == "https://eu.app.firezone.dev")
     #expect(viewModel.apiURL == "wss://eu.api.firezone.dev")
@@ -515,19 +515,19 @@ struct ConfigurationTests {
     let viewModel = SettingsViewModel(configuration: config)
     viewModel.authURL = "https://unsaved.example.com"
 
-    viewModel.selectPortal(.cloudEu)
+    viewModel.selectControlPlane(.cloudEu)
     try await viewModel.save()
 
     let reopened = SettingsViewModel(configuration: config)
-    reopened.selectPortal(.custom)
+    reopened.selectControlPlane(.custom)
 
     #expect(reopened.authURL == "https://firezone.example.com")
     #expect(reopened.apiURL == "wss://api.example.com")
   }
 
-  @Test("Remembered custom URLs do not change the portal shown")
+  @Test("Remembered custom URLs do not change the control plane shown")
   @MainActor
-  func rememberedCustomURLsDoNotChangePortal() async {
+  func rememberedCustomURLsDoNotChangeControlPlane() async {
     let config = Configuration(userDefaults: UserDefaults.makeTestDefaults())
     config.lastCustomURLs = ("https://firezone.example.com", "wss://api.example.com")
     config.loadProviderConfiguration(
@@ -539,7 +539,7 @@ struct ConfigurationTests {
 
     let viewModel = SettingsViewModel(configuration: config)
 
-    #expect(viewModel.portal == .cloudUs)
+    #expect(viewModel.controlPlane == .cloudUs)
     #expect(config.toProviderConfiguration()[Configuration.Keys.lastCustomAuthURL] == nil)
   }
 
@@ -571,7 +571,7 @@ struct ConfigurationTests {
     let config = Configuration(userDefaults: UserDefaults.makeTestDefaults())
     let viewModel = SettingsViewModel(configuration: config)
 
-    viewModel.selectPortal(.cloudUs)
+    viewModel.selectControlPlane(.cloudUs)
     viewModel.logFilter = ""
     try await viewModel.save(.logs)
 

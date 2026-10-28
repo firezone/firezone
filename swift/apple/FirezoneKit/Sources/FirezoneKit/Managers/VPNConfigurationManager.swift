@@ -276,10 +276,7 @@ public final class VPNConfigurationManager {
     let configuration = Configuration()
     configuration.loadProviderConfiguration(try providerConfiguration())
 
-    return SignInSettings(
-      authURL: configuration.authURL,
-      accountSlug: configuration.accountSlug
-    )
+    return configuration.signInSettings
   }
 
   /// Whether the Internet Resource is switched on in the profile the app shares with

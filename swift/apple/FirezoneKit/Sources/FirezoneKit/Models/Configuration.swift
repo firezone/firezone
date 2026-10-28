@@ -192,7 +192,7 @@ public class Configuration: ObservableObject {
     }
   }
 
-  /// The URLs last saved with the Custom portal picked, so that picking Custom again brings them
+  /// The URLs last saved with the Custom control plane picked, so that picking Custom again brings them
   /// back. Only this app reads them: they are not a managed setting and never reach the tunnel.
   var lastCustomURLs: (authURL: String, apiURL: String)? {
     get {
@@ -356,10 +356,10 @@ public class Configuration: ObservableObject {
 }
 
 /// The account slug and endpoints selected for a sign-in.
-struct SignInSettings: Equatable {
-  let accountSlug: String
-  let authURL: String
-  let apiURL: String
+public struct SignInSettings: Equatable, Sendable {
+  public let accountSlug: String
+  public let authURL: String
+  public let apiURL: String
 }
 
 extension Dictionary where Key == String, Value == String {

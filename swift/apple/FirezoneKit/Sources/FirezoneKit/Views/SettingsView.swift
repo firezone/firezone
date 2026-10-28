@@ -84,7 +84,7 @@ public struct SettingsView: View {
   public var body: some View {
     content
       .onChange(of: focusedField) { _ in commitTextFields() }
-      .onChange(of: viewModel.portal) { _ in commit(.settings) }
+      .onChange(of: viewModel.controlPlane) { _ in commit(.settings) }
       .onChange(of: viewModel.connectOnStart) { _ in commit(.settings) }
       .onChange(of: viewModel.startOnLogin) { _ in commit(.settings) }
       .onDisappear {
@@ -156,10 +156,10 @@ public struct SettingsView: View {
     #endif
   }
 
-  private var portalSelection: Binding<Portal> {
+  private var controlPlaneSelection: Binding<ControlPlane> {
     Binding(
-      get: { viewModel.portal },
-      set: { viewModel.selectPortal($0) }
+      get: { viewModel.controlPlane },
+      set: { viewModel.selectControlPlane($0) }
     )
   }
 
@@ -176,14 +176,14 @@ public struct SettingsView: View {
           .onSubmit { commit(.settings) }
           .disabled(configuration.isAccountSlugForced)
 
-          Picker(Portal.pickerTitle, selection: portalSelection) {
-            ForEach(Portal.allCases) { portal in
-              Text(portal.title).tag(portal)
+          Picker(ControlPlane.pickerTitle, selection: controlPlaneSelection) {
+            ForEach(ControlPlane.allCases) { controlPlane in
+              Text(controlPlane.title).tag(controlPlane)
             }
           }
-          .disabled(viewModel.isPortalForced)
+          .disabled(viewModel.isControlPlaneForced)
 
-          if viewModel.portal == .custom {
+          if viewModel.controlPlane == .custom {
             TextField(
               "Auth URL",
               text: $viewModel.authURL,
@@ -255,28 +255,28 @@ public struct SettingsView: View {
             // A menu rather than a form picker, so the choice sits under its caption like
             // the other fields instead of being pushed to a second, indented line.
             VStack(alignment: .leading, spacing: 2) {
-              Text(Portal.pickerTitle)
+              Text(ControlPlane.pickerTitle)
                 .foregroundStyle(.secondary)
                 .font(.caption)
               Menu {
-                Picker(Portal.pickerTitle, selection: portalSelection) {
-                  ForEach(Portal.allCases) { portal in
-                    Text(portal.title).tag(portal)
+                Picker(ControlPlane.pickerTitle, selection: controlPlaneSelection) {
+                  ForEach(ControlPlane.allCases) { controlPlane in
+                    Text(controlPlane.title).tag(controlPlane)
                   }
                 }
               } label: {
                 HStack(spacing: 4) {
-                  Text(viewModel.portal.title)
+                  Text(viewModel.controlPlane.title)
                   Image(systemName: "chevron.up.chevron.down")
                     .font(.footnote)
                 }
               }
-              .accessibilityLabel(Portal.pickerTitle)
-              .accessibilityValue(viewModel.portal.title)
-              .disabled(viewModel.isPortalForced)
+              .accessibilityLabel(ControlPlane.pickerTitle)
+              .accessibilityValue(viewModel.controlPlane.title)
+              .disabled(viewModel.isControlPlaneForced)
             }
 
-            if viewModel.portal == .custom {
+            if viewModel.controlPlane == .custom {
               VStack(alignment: .leading, spacing: 2) {
                 Text("Auth URL")
                   .foregroundStyle(.secondary)

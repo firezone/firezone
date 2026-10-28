@@ -1,23 +1,23 @@
 //
-//  Portal.swift
+//  ControlPlane.swift
 //  (c) 2026 Firezone, Inc.
 //  LICENSE: Apache-2.0
 //
 
 import Foundation
 
-/// The portal the app signs in to: a Firezone Cloud deployment, or `custom` for any other URLs.
+/// The control plane the app signs in to: a Firezone Cloud deployment, or `custom` for any other URLs.
 ///
-/// The URLs of a Firezone Cloud portal are compiled in and never taken from the portal itself:
-/// the choice decides which portal the app talks to.
-public enum Portal: String, CaseIterable, Identifiable, Sendable {
+/// The URLs of a Firezone Cloud control plane are compiled in and never taken from the control plane itself:
+/// the choice decides which control plane the app talks to.
+public enum ControlPlane: String, CaseIterable, Identifiable, Sendable {
   case cloudUs
   case cloudEu
   case custom
 
   public var id: Self { self }
 
-  /// The label of the setting that picks a portal.
+  /// The label of the setting that picks a control plane.
   public static let pickerTitle = "Control plane"
 
   public var title: String {
@@ -36,10 +36,10 @@ public enum Portal: String, CaseIterable, Identifiable, Sendable {
     }
   }
 
-  /// The portal whose URLs are `authURL` and `apiURL`, or `custom`.
-  public static func of(authURL: String, apiURL: String) -> Portal {
-    allCases.first { portal in
-      guard let urls = portal.urls else { return false }
+  /// The control plane whose URLs are `authURL` and `apiURL`, or `custom`.
+  public static func of(authURL: String, apiURL: String) -> ControlPlane {
+    allCases.first { controlPlane in
+      guard let urls = controlPlane.urls else { return false }
       return isSameURL(urls.authURL, authURL) && isSameURL(urls.apiURL, apiURL)
     } ?? .custom
   }

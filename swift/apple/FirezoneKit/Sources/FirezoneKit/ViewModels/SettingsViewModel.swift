@@ -18,8 +18,8 @@ class SettingsViewModel: ObservableObject {
   // Save and Reset act on one tab's settings only.
   @Published var selectedTab: SettingsView.Tab
   @Published private(set) var shouldDisableResetButton = false
-  // Kept apart from the URLs so that picking Custom does not snap back to the portal they match.
-  @Published private(set) var portal: Portal
+  // Kept apart from the URLs so that picking Custom does not snap back to the control plane they match.
+  @Published private(set) var controlPlane: ControlPlane
   @Published var authURL: String
   @Published var apiURL: String
   @Published var logFilter: String
@@ -60,12 +60,12 @@ class SettingsViewModel: ObservableObject {
 
     authURL = self.configuration.authURL
     apiURL = self.configuration.apiURL
-    portal = .custom
+    controlPlane = .custom
     logFilter = self.configuration.logFilter
     accountSlug = self.configuration.accountSlug
     connectOnStart = self.configuration.connectOnStart
     startOnLogin = self.configuration.startOnLogin
-    portal = detectPortal()
+    controlPlane = detectControlPlane()
 
     Publishers.MergeMany(
       $authURL,
@@ -123,7 +123,7 @@ class SettingsViewModel: ObservableObject {
         connectOnStart = ConfigurationDefaults.connectOnStart
       }
       if !configuration.isStartOnLoginForced { startOnLogin = ConfigurationDefaults.startOnLogin }
-      portal = detectPortal()
+      controlPlane = detectControlPlane()
     case .logs:
       if !configuration.isLogFilterForced { logFilter = ConfigurationDefaults.logFilter }
     case .deviceTrust:
@@ -141,14 +141,14 @@ class SettingsViewModel: ObservableObject {
       apiURLError = isApiURLValid() ? nil : "Enter a valid ws:// or wss:// URL"
 
       if areURLsValid() {
-        if !isPortalForced, portal != .custom,
-          Portal.of(authURL: configuration.authURL, apiURL: configuration.apiURL) == .custom
+        if !isControlPlaneForced, controlPlane != .custom,
+          ControlPlane.of(authURL: configuration.authURL, apiURL: configuration.apiURL) == .custom
         {
           configuration.lastCustomURLs = (configuration.authURL, configuration.apiURL)
         }
         if !configuration.isAuthURLForced { configuration.authURL = authURL }
         if !configuration.isApiURLForced { configuration.apiURL = apiURL }
-        if portal == .custom, !isPortalForced {
+        if controlPlane == .custom, !isControlPlaneForced {
           configuration.lastCustomURLs = (authURL, apiURL)
         }
       }
@@ -168,14 +168,14 @@ class SettingsViewModel: ObservableObject {
     updateDerivedState()
   }
 
-  /// Picks `portal` on the user's behalf: Firezone Cloud brings its own URLs, and Custom brings
+  /// Picks `controlPlane` on the user's behalf: Firezone Cloud brings its own URLs, and Custom brings
   /// back the last ones saved with it, if any.
-  func selectPortal(_ portal: Portal) {
-    guard portal != self.portal, !isPortalForced else { return }
+  func selectControlPlane(_ controlPlane: ControlPlane) {
+    guard controlPlane != self.controlPlane, !isControlPlaneForced else { return }
 
-    self.portal = portal
+    self.controlPlane = controlPlane
 
-    guard let urls = portal.urls ?? configuration.lastCustomURLs else { return }
+    guard let urls = controlPlane.urls ?? configuration.lastCustomURLs else { return }
 
     authURL = urls.authURL
     apiURL = urls.apiURL
@@ -227,7 +227,7 @@ class SettingsViewModel: ObservableObject {
     if !areURLsValid() {
       authURL = configuration.authURL
       apiURL = configuration.apiURL
-      portal = detectPortal()
+      controlPlane = detectControlPlane()
     }
     if !isLogFilterValid() { logFilter = configuration.logFilter }
 
@@ -280,7 +280,7 @@ class SettingsViewModel: ObservableObject {
     return nil
   }
 
-  /// Whether the running session signed in with an account slug or portal other than the one
+  /// Whether the running session signed in with an account slug or control plane other than the one
   /// drafted or saved here.
   var showsSignInChangeNote: Bool {
     guard let store, [.connected, .connecting, .reasserting].contains(store.vpnStatus),
@@ -292,15 +292,15 @@ class SettingsViewModel: ObservableObject {
     return draft != signedInWith || configuration.signInSettings != signedInWith
   }
 
-  var isPortalForced: Bool {
+  var isControlPlaneForced: Bool {
     configuration.isAuthURLForced || configuration.isApiURLForced
   }
 
   // With only one of the URLs forced, `custom` keeps the other one editable.
-  private func detectPortal() -> Portal {
+  private func detectControlPlane() -> ControlPlane {
     guard configuration.isAuthURLForced == configuration.isApiURLForced else { return .custom }
 
-    return Portal.of(authURL: authURL, apiURL: apiURL)
+    return ControlPlane.of(authURL: authURL, apiURL: apiURL)
   }
 
   private func updateDerivedState() {
@@ -335,6 +335,6 @@ class SettingsViewModel: ObservableObject {
     if configuration.isAccountSlugForced { accountSlug = configuration.accountSlug }
     if configuration.isConnectOnStartForced { connectOnStart = configuration.connectOnStart }
     if configuration.isStartOnLoginForced { startOnLogin = configuration.startOnLogin }
-    if isPortalForced { portal = detectPortal() }
+    if isControlPlaneForced { controlPlane = detectControlPlane() }
   }
 }
