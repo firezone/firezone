@@ -242,12 +242,18 @@ impl SocketPool {
                 tracing::debug!(?src, %dst, "Connected new flow socket");
 
                 if inner.flows.len() >= MAX_FLOW_SOCKETS {
-                    evict_one(
-                        &mut inner,
-                        self.local.port(),
-                        recv_buf_size,
-                        &self.evictions,
-                    );
+                    let Inner {
+                        flows,
+                        drained,
+                        recv_waker,
+                        ..
+                    } = &mut *inner;
+                    if let Some((src, dst)) =
+                        evict_one(flows, self.local.port(), recv_buf_size, drained, recv_waker)
+                    {
+                        self.evictions.add(1, &[]);
+                        tracing::debug!(?src, %dst, "Evicted flow socket");
+                    }
                 }
 
                 inner.rates.forget(&key);
@@ -298,7 +304,19 @@ impl SocketPool {
         match create_socket(self.local, Some(src), None, inner.buffer_sizes) {
             Ok(socket) => {
                 if inner.sources.len() >= MAX_SOURCE_SOCKETS {
-                    evict_source(&mut inner, self.local.port(), recv_buf_size);
+                    let Inner {
+                        sources,
+                        drained,
+                        recv_waker,
+                        ..
+                    } = &mut *inner;
+                    let _ = evict_one(
+                        sources,
+                        self.local.port(),
+                        recv_buf_size,
+                        drained,
+                        recv_waker,
+                    );
                 }
 
                 let socket = Arc::new(socket);
@@ -429,62 +447,28 @@ impl RateGate {
     }
 }
 
-/// Evicts the flow socket that is least likely to still be useful.
-fn evict_one(
-    inner: &mut Inner,
+/// Evicts and drains the least useful cached socket.
+fn evict_one<K: Ord + Copy>(
+    sockets: &mut BTreeMap<K, CachedSocket>,
     port: u16,
     recv_buf_size: usize,
-    evictions: &opentelemetry::metrics::Counter<u64>,
-) {
-    let Some(key) = inner
-        .flows
+    drained: &mut VecDeque<DatagramBatch>,
+    recv_waker: &mut Option<Waker>,
+) -> Option<K> {
+    let key = sockets
         .iter()
-        .min_by_key(|(_, flow)| {
-            let last_received = *flow.last_received.lock();
+        .min_by_key(|(_, cached)| eviction_rank(*cached.last_received.lock(), cached.created_at))
+        .map(|(key, _)| *key)?;
+    let evicted = sockets.remove(&key)?;
 
-            eviction_rank(last_received, flow.created_at)
-        })
-        .map(|(key, _)| *key)
-    else {
-        return;
-    };
-
-    let Some(victim) = inner.flows.remove(&key) else {
-        return;
-    };
-
-    evictions.add(1, &[]);
-
-    drain(&victim.socket, port, recv_buf_size, &mut inner.drained);
-
-    if !inner.drained.is_empty()
-        && let Some(waker) = inner.recv_waker.take()
+    drain(&evicted.socket, port, recv_buf_size, drained);
+    if !drained.is_empty()
+        && let Some(waker) = recv_waker.take()
     {
         waker.wake();
     }
 
-    tracing::debug!(src = ?key.0, dst = %key.1, "Evicted flow socket");
-}
-
-fn evict_source(inner: &mut Inner, port: u16, recv_buf_size: usize) {
-    let Some(src) = inner
-        .sources
-        .iter()
-        .min_by_key(|(_, source)| eviction_rank(*source.last_received.lock(), source.created_at))
-        .map(|(src, _)| *src)
-    else {
-        return;
-    };
-    let Some(victim) = inner.sources.remove(&src) else {
-        return;
-    };
-
-    drain(&victim.socket, port, recv_buf_size, &mut inner.drained);
-    if !inner.drained.is_empty()
-        && let Some(waker) = inner.recv_waker.take()
-    {
-        waker.wake();
-    }
+    Some(key)
 }
 
 /// Eviction order: sockets that never received anything first (oldest first),
@@ -504,8 +488,8 @@ fn eviction_rank(last_received: Option<Instant>, created_at: Instant) -> (bool, 
 ///
 /// Closing a socket discards queued datagrams; drain them before another socket receives
 /// subsequent traffic for its address or connected pair.
-fn drain(victim: &OwnedSocket, port: u16, recv_buf_size: usize, out: &mut VecDeque<DatagramBatch>) {
-    let socket = victim.as_socket();
+fn drain(socket: &OwnedSocket, port: u16, recv_buf_size: usize, out: &mut VecDeque<DatagramBatch>) {
+    let socket = socket.as_socket();
 
     loop {
         let mut batch = RecvBatch::pull(recv_buf_size);
