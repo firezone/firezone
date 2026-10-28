@@ -213,7 +213,15 @@ defmodule PortalAPI.Schemas.Gateway do
       description: "Request body for provisioning a Gateway",
       type: :object,
       properties: %{
-        gateway: Gateway.CreateSchema
+        gateway: Gateway.CreateSchema,
+        issue_token: %Schema{
+          type: :boolean,
+          default: true,
+          description: """
+          Whether to mint the Gateway's token and return it in the response. \
+          Requires the `gateway_tokens:write` scope when true.
+          """
+        }
       }
     })
   end
@@ -227,7 +235,8 @@ defmodule PortalAPI.Schemas.Gateway do
       title: "GatewayProvisionResponse",
       description: """
       Response schema for a newly provisioned Gateway. Includes the \
-      one-time token secret - it is not shown again.
+      one-time token secret - it is not shown again - unless the request \
+      set `issue_token` to false.
       """,
       type: :object,
       properties: %{
@@ -237,9 +246,11 @@ defmodule PortalAPI.Schemas.Gateway do
             %Schema{
               type: :object,
               properties: %{
-                token: %Schema{type: :string, description: "One-time Gateway token secret"}
-              },
-              required: [:token]
+                token: %Schema{
+                  type: :string,
+                  description: "One-time Gateway token secret. Omitted when `issue_token` is false."
+                }
+              }
             }
           ]
         }

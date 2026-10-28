@@ -34,6 +34,19 @@ defmodule Portal.Devices do
   def owner_name(_actor), do: nil
 
   @doc """
+  Inserts a Gateway without a token.
+
+  The Gateway cannot connect until a token is minted for it, which is a
+  separate grant: callers that may manage Gateways are not necessarily allowed
+  to hand out the credential that lets one join a Site.
+  """
+  @spec create_gateway(Site.t(), String.t() | nil, Authentication.Subject.t()) ::
+          {:ok, Device.t()} | {:error, term()}
+  def create_gateway(%Site{} = site, name, %Authentication.Subject{} = subject) do
+    Database.insert_gateway(site, name, subject)
+  end
+
+  @doc """
   Inserts a Gateway and mints its single-owner token.
 
   Both writes happen in one transaction. They are separately authorized -

@@ -713,6 +713,33 @@ defmodule PortalAPI.MCPControllerTest do
       end
     end
 
+    test "create_site_gateway returns a token only with the gateway_tokens:write scope", %{
+      conn: conn,
+      actor: actor,
+      account: account
+    } do
+      site = site_fixture(account: account)
+
+      response =
+        conn
+        |> authorize_mcp_conn(actor, ["gateways:write"])
+        |> call_tool("create_site_gateway", %{"site_id" => site.id})
+        |> json_response(200)
+
+      assert %{"result" => %{"isError" => true, "content" => [%{"text" => text}]}} = response
+      assert text =~ "gateway_tokens:write"
+
+      response =
+        conn
+        |> recycle()
+        |> authorize_mcp_conn(actor, ["gateways:write"])
+        |> call_tool("create_site_gateway", %{"site_id" => site.id, "issue_token" => false})
+        |> json_response(200)
+
+      assert %{"result" => %{"isError" => false, "structuredContent" => %{"data" => data}}} = response
+      refute Map.has_key?(data, "token")
+    end
+
     test "treats fields as unknown on a tool that does not offer it", %{conn: conn, actor: actor} do
       conn =
         conn
