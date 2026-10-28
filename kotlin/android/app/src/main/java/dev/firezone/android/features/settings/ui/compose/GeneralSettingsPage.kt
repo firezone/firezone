@@ -50,7 +50,6 @@ fun GeneralSettingsPage(
         Column {
             SettingsGroup(
                 title = stringResource(R.string.settings_section_sign_in),
-                hasManagedSettings = managedStatus.isAccountSlugManaged || managedStatus.isAuthUrlManaged || managedStatus.isApiUrlManaged,
             ) {
                 TextPreferenceRow(
                     title = stringResource(R.string.account_slug),
@@ -99,7 +98,6 @@ fun GeneralSettingsPage(
         }
         SettingsGroup(
             title = stringResource(R.string.settings_section_startup),
-            hasManagedSettings = managedStatus.isStartOnLoginManaged || managedStatus.isConnectOnStartManaged,
         ) {
             SwitchPreferenceRow(
                 title = stringResource(R.string.start_on_login),
@@ -113,6 +111,12 @@ fun GeneralSettingsPage(
                 isManaged = managedStatus.isConnectOnStartManaged,
                 onCheckedChange = onConnectOnStartChange,
             )
+        }
+        if (
+            managedStatus.isAccountSlugManaged || managedStatus.isAuthUrlManaged || managedStatus.isApiUrlManaged ||
+            managedStatus.isStartOnLoginManaged || managedStatus.isConnectOnStartManaged
+        ) {
+            ManagedSettingsNote()
         }
     }
 }

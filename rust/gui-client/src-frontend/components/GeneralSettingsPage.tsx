@@ -166,9 +166,6 @@ export default function GeneralSettingsPage({
               </>
             )}
           </div>
-          {(saved.account_slug_is_managed ||
-            saved.auth_url_is_managed ||
-            saved.api_url_is_managed) && <ManagedSettingsNotice />}
           {signInPending && (
             <p className="mt-1.5 text-xs text-subtle">
               Sign out and sign in again after changing the account slug or
@@ -223,7 +220,10 @@ export default function GeneralSettingsPage({
               />
             </SettingRow>
           </div>
-          {saved.connect_on_start_is_managed && <ManagedSettingsNotice />}
+          {(saved.account_slug_is_managed ||
+            saved.auth_url_is_managed ||
+            saved.api_url_is_managed ||
+            saved.connect_on_start_is_managed) && <ManagedSettingsNotice />}
         </section>
 
         <div className="flex justify-end border-t border-border pt-3">

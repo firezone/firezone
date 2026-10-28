@@ -250,7 +250,9 @@ public struct SettingsView: View {
           Text("Startup")
         } footer: {
           VStack(alignment: .leading, spacing: 4) {
-            managedNote(configuration.isConnectOnStartForced || configuration.isStartOnLoginForced)
+            managedNote(
+              configuration.isAccountSlugForced || viewModel.isControlPlaneForced
+                || configuration.isConnectOnStartForced || configuration.isStartOnLoginForced)
             paneFooter
           }
         }
@@ -358,7 +360,9 @@ public struct SettingsView: View {
           } header: {
             Text("Startup")
           } footer: {
-            managedNote(configuration.isConnectOnStartForced)
+            managedNote(
+              configuration.isAccountSlugForced || viewModel.isControlPlaneForced
+                || configuration.isConnectOnStartForced)
           }
           Section {
             resetButton
@@ -584,25 +588,23 @@ public struct SettingsView: View {
   @ViewBuilder
   private func managedNote(_ isManaged: Bool) -> some View {
     if isManaged {
-      Text("Locked settings are managed by your organization.")
-        .foregroundStyle(.secondary)
+      HStack(alignment: .firstTextBaseline, spacing: 4) {
+        Image(systemName: "lock.fill")
+          .font(.caption)
+          .accessibilityHidden(true)
+        Text("Some settings are managed by your organization.")
+          .multilineTextAlignment(.leading)
+      }
+      .frame(maxWidth: .infinity, alignment: .leading)
+      .foregroundStyle(Color.secondary)
     }
   }
 
   @ViewBuilder
   private var signInFooter: some View {
-    if viewModel.showsSignInChangeNote || configuration.isAccountSlugForced
-      || viewModel.isControlPlaneForced
-    {
-      VStack(alignment: .leading, spacing: 4) {
-        if viewModel.showsSignInChangeNote {
-          Text(
-            "Sign out and sign in again after changing the account slug or control plane."
-          )
-          .foregroundStyle(.secondary)
-        }
-        managedNote(configuration.isAccountSlugForced || viewModel.isControlPlaneForced)
-      }
+    if viewModel.showsSignInChangeNote {
+      Text("Sign out and sign in again after changing the account slug or control plane.")
+        .foregroundStyle(.secondary)
     }
   }
 

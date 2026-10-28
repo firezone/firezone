@@ -57,7 +57,6 @@ import kotlinx.collections.immutable.ImmutableList
 fun SettingsGroup(
     modifier: Modifier = Modifier,
     title: String? = null,
-    hasManagedSettings: Boolean = false,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     Column(modifier) {
@@ -77,14 +76,28 @@ fun SettingsGroup(
             verticalArrangement = Arrangement.spacedBy(2.dp),
             content = content,
         )
-        if (hasManagedSettings) {
-            Text(
-                text = stringResource(R.string.managed_settings_footer),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(start = 16.dp, top = 8.dp, end = 16.dp),
-            )
-        }
+    }
+}
+
+@Composable
+fun ManagedSettingsNote(modifier: Modifier = Modifier) {
+    Row(
+        modifier.padding(horizontal = 16.dp).semantics(mergeDescendants = true) {},
+        verticalAlignment = Alignment.Top,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Icon(
+            imageVector = FirezoneIcons.Lock,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(16.dp),
+        )
+        Text(
+            text = stringResource(R.string.managed_settings_footer),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.weight(1f),
+        )
     }
 }
 

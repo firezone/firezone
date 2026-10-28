@@ -171,7 +171,7 @@
       for tab in Self.settingsTabs {
         try selectTab(tab.label, showing: tab.showing, in: app)
         try waitFor(
-          app.staticTexts["Locked settings are managed by your organization."].firstMatch,
+          app.staticTexts["Some settings are managed by your organization."].firstMatch,
           on: "settings-managed")
         deliver(app, as: "settings-\(tab.name)-managed", in: appearance)
       }

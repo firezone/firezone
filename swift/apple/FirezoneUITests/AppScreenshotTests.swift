@@ -87,7 +87,7 @@
         for tab in Self.settingsTabs {
           try selectTab(tab.label, showing: tab.showing, in: window)
           XCTAssertTrue(
-            window.staticTexts["Locked settings are managed by your organization."].firstMatch
+            window.staticTexts["Some settings are managed by your organization."].firstMatch
               .waitForExistence(timeout: 10))
           capture(window, as: "settings-\(tab.name)-managed", in: appearance)
         }

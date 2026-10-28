@@ -63,7 +63,6 @@ fun LogSettingsPage(
     ) {
         SettingsGroup(
             title = stringResource(R.string.log_settings_title),
-            hasManagedSettings = managedStatus.isLogFilterManaged,
         ) {
             TextPreferenceRow(
                 title = stringResource(R.string.log_filter),
@@ -85,6 +84,9 @@ fun LogSettingsPage(
                     }
                 }
             }
+        }
+        if (managedStatus.isLogFilterManaged) {
+            ManagedSettingsNote()
         }
         SettingsGroup(title = stringResource(R.string.settings_section_about)) {
             SettingsRow(

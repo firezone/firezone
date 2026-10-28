@@ -176,5 +176,5 @@
 	</string>
 
 	<string name="managed_setting_locked">Locked</string>
-	<string name="managed_settings_footer">Locked settings are managed by your organization.</string>
+	<string name="managed_settings_footer">Some settings are managed by your organization.</string>
 </resources>

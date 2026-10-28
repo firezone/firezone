@@ -89,8 +89,9 @@ export function ManagedToggleSwitch({
 
 export function ManagedSettingsNotice() {
   return (
-    <p className="mt-1.5 text-xs text-subtle">
-      Locked settings are managed by your organization.
+    <p className="mt-1.5 flex items-start gap-1.5 text-xs text-subtle">
+      <RemixIcon className="mt-px h-3.5 w-3.5" name="lock" />
+      <span>Some settings are managed by your organization.</span>
     </p>
   );
 }
