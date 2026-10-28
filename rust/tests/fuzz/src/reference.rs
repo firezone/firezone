@@ -701,12 +701,13 @@ impl ReferenceState {
             Transition::RestartClient { client_id, key } => {
                 self.node_may_lack_relays |= self.no_relay_accepts_allocations();
 
-                for (id, client) in &mut self.clients {
-                    if id == client_id {
-                        client.exec_mut(|c| c.restart(*key, now));
-                    } else {
-                        client.exec_mut(|c| c.forget_peer_authorizations(*client_id));
-                    }
+                self.clients
+                    .get_mut(client_id)
+                    .unwrap()
+                    .exec_mut(|c| c.restart(*key, now));
+
+                for (_, peer) in self.clients.iter_mut().filter(|(id, _)| *id != client_id) {
+                    peer.exec_mut(|c| c.forget_peer_authorizations(*client_id));
                 }
             }
             Transition::UpdateDnsRecords { domain, records } => {
