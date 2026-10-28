@@ -197,10 +197,13 @@ impl GatewayState {
 
         flow_tracker::record_decrypted_packet(&packet);
 
-        let peer = self
-            .peers
-            .peer_by_id_mut(&cid)
-            .with_context(|| format!("No peer for connection {cid}"))?;
+        let Some(peer) = self.peers.peer_by_id_mut(&cid) else {
+            tracing::trace!(%cid, "No peer state for connection; closing connection");
+            drop(_guard);
+            self.cleanup_connection(&cid, now);
+
+            return Ok(None);
+        };
 
         flow_tracker::record_peer(cid, flow_tracker::Role::Responder);
 
