@@ -263,10 +263,8 @@ if config_env() == :prod do
     # Refresh cached OCSP statuses hourly, for CAs that publish no list
     {"45 3 * * *", Portal.Ocsp.Scheduler},
 
-    # Claim every local account slug in the shared slug registry again
-    {"30 4 * * *", Portal.Workers.ReassertAccountSlugs},
-
-    # Release slugs this region claimed in the registry but never wrote locally
+    # Release registry slugs this region no longer holds locally: a claim whose
+    # local write rolled back, or the slugs of a deleted account
     {"*/30 * * * *", Portal.Workers.SweepSlugRegistry},
 
     # Schedule Entra directory sync daily; Graph change notifications cover

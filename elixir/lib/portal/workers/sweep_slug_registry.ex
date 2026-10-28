@@ -1,8 +1,8 @@
 defmodule Portal.Workers.SweepSlugRegistry do
   @moduledoc """
-  Oban worker that releases slugs this region claimed in the shared registry
-  but never wrote locally, which happens when the local transaction rolled
-  back after the claim.
+  Oban worker that releases slugs this region holds in the shared registry
+  but not in its own `account_slugs` table: a claim whose local transaction
+  rolled back, or the slugs of a deleted account, which the cascade removed.
   """
 
   use Oban.Worker,

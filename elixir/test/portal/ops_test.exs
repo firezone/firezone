@@ -12,6 +12,9 @@ defmodule Portal.OpsTest do
   import Portal.ResourceFixtures
   import Portal.TokenFixtures
   import Portal.ObanJobFixtures
+  import Portal.SlugRegistryHelpers
+  import ExUnit.CaptureLog
+  import Plug.Conn
 
   alias Portal.Mocks.Stripe
   alias Portal.Workers.DeleteAccount
@@ -175,6 +178,82 @@ defmodule Portal.OpsTest do
                )
 
       assert job.args == %{"customer_id" => "cus_deleted"}
+    end
+  end
+
+  describe "backfill_slug_registry/0" do
+    import ExUnit.CaptureIO
+
+    test "does nothing with the local registry" do
+      account_fixture()
+
+      output = capture_io(fn -> assert {:error, :no_registry} = backfill_slug_registry() end)
+
+      assert output =~ "SLUG_REGISTRY_TABLE_URL is not set"
+    end
+
+    test "aborts without confirmation" do
+      account_fixture(slug: "keep-local")
+      use_azure_registry(:us)
+      test_pid = self()
+
+      stub_registry(fn conn ->
+        send(test_pid, :registry_called)
+        send_resp(conn, 204, "")
+      end)
+
+      output = capture_io("n\n", fn -> assert :aborted = backfill_slug_registry() end)
+
+      assert output =~ "About to claim 1 slug(s) for region us"
+      assert output =~ "Aborted."
+      refute_received :registry_called
+    end
+
+    test "claims every local slug in the registry" do
+      account = account_fixture(slug: "backfill-me")
+      update_account(account, slug: "backfill-me-too")
+      use_azure_registry(:us)
+      test_pid = self()
+
+      stub_registry(fn
+        %{method: "POST", request_path: "/slugs"} = conn ->
+          send(test_pid, {:claimed, json_body(conn)["RowKey"]})
+          send_resp(conn, 204, "")
+      end)
+
+      output = capture_io("y\n", fn -> assert {:ok, 2} = backfill_slug_registry() end)
+
+      assert output =~ "Claimed 2 slug(s)."
+      assert_received {:claimed, "backfill-me"}
+      assert_received {:claimed, "backfill-me-too"}
+    end
+
+    test "prints a slug that another account holds and goes on" do
+      account = account_fixture(slug: "contested")
+      use_azure_registry(:us)
+
+      stub_registry(fn
+        %{method: "POST"} = conn -> send_resp(conn, 409, "")
+        %{method: "GET"} = conn -> Req.Test.json(conn, entity("contested", Ecto.UUID.generate(), "eu"))
+      end)
+
+      output = capture_io("y\n", fn -> assert {:ok, 0} = backfill_slug_registry() end)
+
+      assert output =~ "contested: another account holds this slug"
+      assert output =~ account.id
+    end
+
+    test "stops when the registry is unavailable" do
+      account_fixture()
+      use_azure_registry(:us)
+      stub_registry(fn conn -> send_resp(conn, 503, "") end)
+
+      output =
+        capture_io("y\n", fn ->
+          capture_log(fn -> assert {:error, :slug_registry_unavailable} = backfill_slug_registry() end)
+        end)
+
+      assert output =~ "The slug registry is unavailable."
     end
   end
 
