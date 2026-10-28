@@ -2,12 +2,12 @@ defmodule PortalAPI.Client.Channel.Shared do
   use PortalAPI, :channel
   alias Portal.Authentication.Credential
   alias PortalAPI.Client.Views
+  alias PortalAPI.Device.Channel.Credentials
 
   alias Portal.{
     Cache,
     Device,
     Devices,
-    FlowLogToken,
     PG,
     Changes.Change,
     PubSub,
@@ -1457,36 +1457,25 @@ defmodule PortalAPI.Client.Channel.Shared do
         }
 
         gateway = Device.load_balance_gateways(location, gateways, connected_gateway_ids)
-        gateway_public_key = gateway.public_key
-
         policy_authorization_id = Ecto.UUID.generate()
 
-        preshared_key =
-          generate_preshared_key(
-            socket.assigns.client,
-            socket.assigns.client.public_key,
-            gateway,
-            gateway_public_key
-          )
-
-        ice_credentials =
-          generate_ice_credentials(
-            socket.assigns.client.public_key,
-            socket.assigns.client,
-            gateway,
-            gateway_public_key
-          )
-
-        {initiator_token, responder_token} =
-          mint_ingest_tokens(
+        %Credentials{
+          preshared_key: preshared_key,
+          ice_credentials: ice_credentials,
+          initiator_ingest_token: initiator_token,
+          responder_ingest_token: responder_token
+        } =
+          Credentials.generate(
             socket.assigns.subject,
-            {Ecto.UUID.load!(resource.id), resource.name, resource.address},
-            policy_authorization_id,
-            policy_id,
-            flow_log_uploads_enabled?(socket.assigns.cache, policy_id),
-            socket.assigns.client,
-            gateway.id,
-            expires_at
+            %{device: socket.assigns.client, public_key: socket.assigns.client.public_key},
+            %{device: gateway, public_key: gateway.public_key},
+            %{
+              id: policy_authorization_id,
+              policy_id: policy_id,
+              resource: {Ecto.UUID.load!(resource.id), resource.name, resource.address},
+              uploads_enabled?: flow_log_uploads_enabled?(socket.assigns.cache, policy_id),
+              expires_at: expires_at
+            }
           )
 
         message =
@@ -2002,20 +1991,23 @@ defmodule PortalAPI.Client.Channel.Shared do
       type: :client
     }
 
-    preshared_key =
-      Portal.Crypto.psk(
-        client,
-        client_public_key,
-        target_client,
-        target_meta.public_key
-      )
-
-    ice_credentials =
-      generate_ice_credentials(
-        client_public_key,
-        client,
-        target_client,
-        target_meta.public_key
+    %Credentials{
+      preshared_key: preshared_key,
+      ice_credentials: ice_credentials,
+      initiator_ingest_token: initiator_token,
+      responder_ingest_token: responder_token
+    } =
+      Credentials.generate(
+        socket.assigns.subject,
+        %{device: client, public_key: client_public_key},
+        %{device: target_client, public_key: target_meta.public_key},
+        %{
+          id: policy_authorization_id,
+          policy_id: policy_id,
+          resource: {Ecto.UUID.load!(resource.id), resource.name, resource.address},
+          uploads_enabled?: flow_log_uploads_enabled?(socket.assigns.cache, policy_id),
+          expires_at: expires_at
+        }
       )
 
     # Mirror the gateway's create-authorization payload on the receiver side: the
@@ -2026,18 +2018,6 @@ defmodule PortalAPI.Client.Channel.Shared do
     rendered_resource = Views.Resource.render(resource, socket.assigns.client, protocol_version(socket))
 
     rendered_subject = PortalAPI.Gateway.Views.Subject.render(socket.assigns.subject)
-
-    {initiator_token, responder_token} =
-      mint_ingest_tokens(
-        socket.assigns.subject,
-        {Ecto.UUID.load!(resource.id), resource.name, resource.address},
-        policy_authorization_id,
-        policy_id,
-        flow_log_uploads_enabled?(socket.assigns.cache, policy_id),
-        client,
-        target_client_id,
-        expires_at
-      )
 
     receiver_message =
       {:client_device_access_authorized, {self(), ref},
@@ -2140,51 +2120,6 @@ defmodule PortalAPI.Client.Channel.Shared do
       api_url: Portal.Config.fetch_env!(:portal, :flow_logs_api_url),
       upload_interval_secs: Portal.Config.fetch_env!(:portal, :flow_logs_upload_interval_secs),
       upload_batch_size: Portal.Config.fetch_env!(:portal, :flow_logs_upload_batch_size)
-    }
-  end
-
-  defp generate_preshared_key(client, client_public_key, gateway, gateway_public_key) do
-    Portal.Crypto.psk(client, client_public_key, gateway, gateway_public_key)
-  end
-
-  # ICE credentials must stay the same for all connections between an initiator and a receiver as long
-  # as they do not lose their state, so we can leverage their public keys, which are reset on each
-  # restart of an initiator or a receiver.
-  defp generate_ice_credentials(initiator_pubkey, initiator, receiver, receiver_pubkey) do
-    ice_credential_seed =
-      [
-        initiator.id,
-        initiator_pubkey,
-        receiver.id,
-        receiver_pubkey
-      ]
-      |> Enum.join(":")
-
-    ice_credential_seed_hash =
-      :crypto.hash(:sha256, ice_credential_seed)
-      |> Base.encode32(case: :lower, padding: false)
-
-    [
-      {:initiator_username, initiator_username},
-      {:initiator_password, initiator_password},
-      {:receiver_username, receiver_username},
-      {:receiver_password, receiver_password}
-    ] =
-      Enum.map(
-        [
-          initiator_username: 0..3,
-          initiator_password: 4..25,
-          receiver_username: 26..29,
-          receiver_password: 30..52
-        ],
-        fn {key, range} ->
-          {key, String.slice(ice_credential_seed_hash, range)}
-        end
-      )
-
-    %{
-      initiator: %{username: initiator_username, password: initiator_password},
-      receiver: %{username: receiver_username, password: receiver_password}
     }
   end
 
@@ -2910,72 +2845,6 @@ defmodule PortalAPI.Client.Channel.Shared do
   # client). Each token snapshots the attribution the corresponding device must
   # report and is the sole authenticator for its flow-log uploads. Both tokens
   # name both endpoint devices, so only `role` differs between them.
-  defp mint_ingest_tokens(
-         %Authentication.Subject{account: account, actor: actor, credential: credential} = subject,
-         {resource_id, resource_name, resource_address},
-         policy_authorization_id,
-         policy_id,
-         flow_log_uploads_enabled,
-         %Device{type: :client} = initiator_client,
-         responder_device_id,
-         expires_at
-       ) do
-    {os_name, os_version, client_version} =
-      PortalAPI.Gateway.Views.Client.parse_user_agent(subject.context.user_agent)
-
-    attribution = %{
-      # The authorization this batch of flow logs reports against. The ingest
-      # endpoint rejects a request whose records mix more than one of these.
-      "policy_authorization_id" => policy_authorization_id,
-      "policy_id" => policy_id,
-      # The same pair as the authorization's initiating_device_id /
-      # receiving_device_id. Shared by both tokens so either side's row names
-      # the pair without a join; `role` says which of the two wrote it.
-      "initiator_device_id" => initiator_client.id,
-      "responder_device_id" => responder_device_id,
-      # Whether the authorizing policy allows this flow's logs to be uploaded
-      # (policies.flow_log_uploads_enabled).
-      # Devices honor it and the ingest endpoint enforces it, so the token can
-      # always be minted while uploads stay policy-gated. The claim name is the
-      # data-plane contract: connlib parses it as a required field.
-      "uploads_enabled" => flow_log_uploads_enabled,
-      "resource_id" => resource_id,
-      "resource_name" => resource_name,
-      "resource_address" => resource_address,
-      # For client-to-client flows the receiving client's own owner is
-      # deliberately not part of this snapshot.
-      "initiator_actor_id" => actor.id,
-      "initiator_actor_email" => actor.email,
-      "initiator_actor_name" => actor.name,
-      "initiator_auth_provider_id" => Credential.auth_provider_id(credential),
-      # The authorization happens now; both tokens share the same authorized_at
-      # so the two sides of the flow agree on the trusted flow_start floor.
-      "authorized_at" => DateTime.to_iso8601(DateTime.utc_now()),
-      # When this authorization expires (independent of the token's own exp,
-      # which adds a reporting grace window on top). Stamped so the flow_log row
-      # records the actual authorization lifetime.
-      "authorization_expires_at" => DateTime.to_iso8601(expires_at),
-      # The connecting client's device telemetry. It describes the initiating
-      # client on both sides of the flow, so it is shared by both tokens and
-      # named for the side it describes rather than for the reporter.
-      "initiator_client_version" => client_version,
-      "initiator_device_os_name" => os_name,
-      "initiator_device_os_version" => os_version,
-      "initiator_device_serial" => initiator_client.device_serial,
-      "initiator_device_uuid" => initiator_client.device_uuid,
-      "initiator_device_identifier_for_vendor" => initiator_client.identifier_for_vendor,
-      "initiator_device_firebase_installation_id" => initiator_client.firebase_installation_id
-    }
-
-    initiator_token =
-      FlowLogToken.mint(account, Map.put(attribution, "role", "initiator"), expires_at)
-
-    responder_token =
-      FlowLogToken.mint(account, Map.put(attribution, "role", "responder"), expires_at)
-
-    {initiator_token, responder_token}
-  end
-
   # Attaches a synthetic `%Portal.PolicyAuthorization{}` to a receiver-side
   # allow message. The receiver uses it to:
   #   1. Arm an authz durability timer keyed by `pa.id`, so that if no
