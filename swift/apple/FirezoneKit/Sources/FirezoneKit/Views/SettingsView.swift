@@ -589,15 +589,20 @@ public struct SettingsView: View {
     }
   }
 
+  @ViewBuilder
   private var signInFooter: some View {
-    VStack(alignment: .leading, spacing: 4) {
-      if viewModel.showsSignInChangeNote {
-        Text(
-          "Sign out and sign in again after changing the account slug or control plane."
-        )
-        .foregroundStyle(.secondary)
+    if viewModel.showsSignInChangeNote || configuration.isAccountSlugForced
+      || viewModel.isControlPlaneForced
+    {
+      VStack(alignment: .leading, spacing: 4) {
+        if viewModel.showsSignInChangeNote {
+          Text(
+            "Sign out and sign in again after changing the account slug or control plane."
+          )
+          .foregroundStyle(.secondary)
+        }
+        managedNote(configuration.isAccountSlugForced || viewModel.isControlPlaneForced)
       }
-      managedNote(configuration.isAccountSlugForced || viewModel.isControlPlaneForced)
     }
   }
 
