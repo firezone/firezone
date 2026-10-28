@@ -27,5 +27,8 @@ internal class SessionViewModel
             repo.removeFavoriteResource(id)
         }
 
-        fun clearToken() = tokenStore.clear()
+        fun clearToken() {
+            tokenStore.clear()
+            repo.clearActiveSignInSettingsSync()
+        }
     }

@@ -8,11 +8,11 @@ class SettingsPagesTest {
     @Test
     fun `the device trust page appears only when asked for`() {
         assertEquals(
-            listOf(SettingsPage.GENERAL, SettingsPage.ADVANCED, SettingsPage.LOGS),
+            listOf(SettingsPage.GENERAL, SettingsPage.LOGS),
             settingsPages(showDeviceTrust = false),
         )
         assertEquals(
-            listOf(SettingsPage.GENERAL, SettingsPage.ADVANCED, SettingsPage.DEVICE_TRUST, SettingsPage.LOGS),
+            listOf(SettingsPage.GENERAL, SettingsPage.DEVICE_TRUST, SettingsPage.LOGS),
             settingsPages(showDeviceTrust = true),
         )
     }

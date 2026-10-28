@@ -77,7 +77,7 @@ internal fun SessionRoute(
         onAddFavorite = { id -> viewModel.addFavoriteResource(id) },
         onRemoveFavorite = { id -> viewModel.removeFavoriteResource(id) },
         onSettings = {
-            context.startActivity(SettingsActivity.createIntent(context, isUserSignedIn = true))
+            context.startActivity(SettingsActivity.createIntent(context))
         },
         onEndSession = {
             viewModel.clearToken()

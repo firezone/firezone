@@ -2,6 +2,7 @@
 package dev.firezone.android.features.auth
 
 import android.net.Uri
+import dev.firezone.android.core.data.Repository
 import dev.firezone.android.core.data.TokenStore
 import javax.inject.Inject
 
@@ -10,10 +11,12 @@ internal class AuthCallbackHandler
     constructor(
         private val pendingAuthSession: PendingAuthSession,
         private val tokenStore: TokenStore,
+        private val repo: Repository,
     ) {
         fun handle(uri: Uri?): AuthCallbackOutcome {
             val outcome = pendingAuthSession.complete(uri)
             if (outcome is AuthCallbackOutcome.Success) {
+                repo.saveActiveSignInSettingsSync(outcome.signedInWith)
                 tokenStore.save(outcome.token)
             }
 

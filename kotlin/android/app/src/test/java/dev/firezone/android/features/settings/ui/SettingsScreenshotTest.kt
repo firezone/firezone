@@ -3,15 +3,19 @@ package dev.firezone.android.features.settings.ui
 
 import android.app.Application
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.isSelectable
 import androidx.compose.ui.test.junit4.createComposeRule
-import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import com.github.takahirom.roborazzi.ExperimentalRoborazziApi
 import com.github.takahirom.roborazzi.captureScreenRoboImage
 import com.github.takahirom.roborazzi.roborazziSystemPropertyOutputDirectory
 import dev.firezone.android.R
 import dev.firezone.android.STORE_SCREENSHOT_QUALIFIERS
+import dev.firezone.android.core.data.model.ControlPlane
 import dev.firezone.android.core.data.model.ManagedConfigStatus
+import dev.firezone.android.core.data.model.SignInSettings
+import dev.firezone.android.core.data.model.signInSettings
 import dev.firezone.android.features.settings.ui.compose.SettingsScreen
 import dev.firezone.android.ui.theme.FirezoneTheme
 import org.junit.Rule
@@ -37,10 +41,36 @@ class SettingsScreenshotTest {
     val composeRule = createComposeRule()
 
     @Test
-    fun generalSettings() = captureSettingsPage("settings-general", R.string.general_settings_title)
+    fun generalSettings() = captureSettingsPage("settings-general", R.string.settings_title)
 
     @Test
-    fun advancedSettings() = captureSettingsPage("settings-advanced", R.string.advanced_settings_title)
+    fun generalSettingsCustom() =
+        captureSettingsPage(
+            "settings-general-custom",
+            R.string.settings_title,
+            config = selfHostedConfig,
+            controlPlane = ControlPlane.CUSTOM,
+        )
+
+    @Test
+    fun generalSettingsManaged() =
+        captureSettingsPage(
+            "settings-general-managed",
+            R.string.settings_title,
+            config = euConfig,
+            controlPlane = ControlPlane.CLOUD_EU,
+            managedStatus = urlsManaged,
+        )
+
+    @Test
+    fun generalSettingsWithPendingSignInChange() =
+        captureSettingsPage(
+            "settings-general-sign-in-change",
+            R.string.settings_title,
+            config = euConfig,
+            controlPlane = ControlPlane.CLOUD_EU,
+            signedInWith = sampleConfig.signInSettings(),
+        )
 
     @Test
     fun deviceTrustSettingsWithCertificate() = captureDeviceTrustPage("device-trust-filled", availableCertificate)
@@ -52,7 +82,7 @@ class SettingsScreenshotTest {
     fun deviceTrustSettingsWithExpiredCertificate() = captureDeviceTrustPage("device-trust-expired", expiredCertificate)
 
     @Test
-    fun logSettings() = captureSettingsPage("settings-logs", R.string.log_settings_title)
+    fun logSettings() = captureSettingsPage("settings-logs", R.string.diagnostics_settings_title)
 
     private fun captureDeviceTrustPage(
         name: String,
@@ -64,9 +94,15 @@ class SettingsScreenshotTest {
         name: String,
         tabLabel: Int,
         deviceTrustState: DeviceTrustSettingsViewModel.UiState = DeviceTrustSettingsViewModel.UiState(),
+        config: FirezoneConfig = sampleConfig,
+        controlPlane: ControlPlane = ControlPlane.CLOUD_US,
+        managedStatus: ManagedConfigStatus = ManagedConfigStatus.NOTHING_MANAGED,
+        signedInWith: SignInSettings? = null,
     ) {
-        composeRule.setContent { FirezoneTheme { SettingsScreenSample(deviceTrustState) } }
-        composeRule.onNodeWithText(RuntimeEnvironment.getApplication().getString(tabLabel)).performClick()
+        composeRule.setContent {
+            FirezoneTheme { SettingsScreenSample(deviceTrustState, config, controlPlane, managedStatus, signedInWith) }
+        }
+        composeRule.onNode(hasText(RuntimeEnvironment.getApplication().getString(tabLabel)) and isSelectable()).performClick()
         composeRule.waitForIdle()
 
         captureScreenRoboImage("${roborazziSystemPropertyOutputDirectory()}/$name.png")
@@ -85,6 +121,26 @@ private val sampleConfig =
         accountSlug = "example-corp",
         startOnLogin = true,
         connectOnStart = false,
+    )
+
+// What a user of a self-hosted control plane sees.
+private val selfHostedConfig =
+    sampleConfig.copy(
+        authUrl = "https://firezone.example.com",
+        apiUrl = "wss://api.firezone.example.com",
+    )
+
+// What a user of the EU cloud sees when an administrator set the URLs.
+private val euConfig =
+    sampleConfig.copy(
+        authUrl = "https://eu.app.firezone.dev",
+        apiUrl = "wss://eu.api.firezone.dev",
+    )
+
+private val urlsManaged =
+    ManagedConfigStatus.NOTHING_MANAGED.copy(
+        isAuthUrlManaged = true,
+        isApiUrlManaged = true,
     )
 
 // The alias the certificate below is filed under in the system KeyChain.
@@ -147,15 +203,22 @@ private fun row(
 ): DetailField = DetailField(label, value, null)
 
 @Composable
-private fun SettingsScreenSample(deviceTrustState: DeviceTrustSettingsViewModel.UiState) {
+private fun SettingsScreenSample(
+    deviceTrustState: DeviceTrustSettingsViewModel.UiState,
+    config: FirezoneConfig,
+    controlPlane: ControlPlane,
+    managedStatus: ManagedConfigStatus,
+    signedInWith: SignInSettings?,
+) {
     SettingsScreen(
-        config = sampleConfig,
-        managedStatus = ManagedConfigStatus.NOTHING_MANAGED,
-        isSaveEnabled = true,
+        config = config,
+        controlPlane = controlPlane,
+        managedStatus = managedStatus,
         logSizeBytes = LOG_DIRECTORY_BYTES,
         deviceTrustState = deviceTrustState,
         showDeviceTrust = deviceTrustState.alias != null,
-        warnBeforeSaving = false,
+        signedInWith = signedInWith,
+        onControlPlaneChange = {},
         onAuthUrlChange = {},
         onApiUrlChange = {},
         onLogFilterChange = {},
@@ -168,10 +231,10 @@ private fun SettingsScreenSample(deviceTrustState: DeviceTrustSettingsViewModel.
         onLogsShown = {},
         onSelectCertificate = {},
         onDeviceTrustShown = {},
-        onSave = {},
-        onCancel = {},
-        // The advanced page shows the commit the app was built from, which changes with every
-        // push; pin it so the image only changes when the UI does.
+        onBack = {},
+        // The diagnostics page shows the version and commit the app was built from, which change
+        // with every release and push; pin them so the image only changes when the UI does.
+        versionName = "1.0.0",
         buildSha = "0000000000000000000000000000000000000000",
     )
 }
