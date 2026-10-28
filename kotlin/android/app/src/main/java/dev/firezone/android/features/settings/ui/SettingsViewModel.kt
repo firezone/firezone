@@ -12,8 +12,8 @@ import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.firezone.android.core.data.Repository
 import dev.firezone.android.core.data.model.Config
+import dev.firezone.android.core.data.model.ControlPlane
 import dev.firezone.android.core.data.model.ManagedConfigStatus
-import dev.firezone.android.core.data.model.Portal
 import dev.firezone.android.core.data.model.SignInSettings
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -56,8 +56,8 @@ internal class SettingsViewModel
         )
             private set
 
-        // Kept apart from the URLs so that picking Custom does not snap back to a portal whose URLs match.
-        var portal by mutableStateOf(Portal.CUSTOM)
+        // Kept apart from the URLs so that picking Custom does not snap back to a control plane whose URLs match.
+        var controlPlane by mutableStateOf(ControlPlane.CUSTOM)
             private set
 
         // `null` while signed out.
@@ -74,7 +74,7 @@ internal class SettingsViewModel
                 repo.getConfig().collect {
                     config = it
                     _managedStatusStateFlow.value = repo.getManagedStatus()
-                    portal = detectPortal(it)
+                    controlPlane = detectControlPlane(it)
                 }
             }
         }
@@ -96,18 +96,18 @@ internal class SettingsViewModel
             }
         }
 
-        fun onPortalChanged(newPortal: Portal) {
-            val previousPortal = portal
+        fun onControlPlaneChanged(newControlPlane: ControlPlane) {
+            val previousControlPlane = controlPlane
             val managedStatus = repo.getManagedStatus()
-            if (previousPortal == Portal.CUSTOM && !managedStatus.isAuthUrlManaged && !managedStatus.isApiUrlManaged) {
+            if (previousControlPlane == ControlPlane.CUSTOM && !managedStatus.isAuthUrlManaged && !managedStatus.isApiUrlManaged) {
                 repo.saveLastCustomUrlsSync(config.authUrl, config.apiUrl)
             }
-            portal = newPortal
+            controlPlane = newControlPlane
 
-            if (newPortal.authUrl != null && newPortal.apiUrl != null) {
-                persist(config.copy(authUrl = newPortal.authUrl, apiUrl = newPortal.apiUrl))
-            } else if (previousPortal != Portal.CUSTOM) {
-                // Without any custom URLs saved yet, Custom starts from the cloud portal's.
+            if (newControlPlane.authUrl != null && newControlPlane.apiUrl != null) {
+                persist(config.copy(authUrl = newControlPlane.authUrl, apiUrl = newControlPlane.apiUrl))
+            } else if (previousControlPlane != ControlPlane.CUSTOM) {
+                // Without any custom URLs saved yet, Custom starts from the cloud control plane's.
                 val (authUrl, apiUrl) = repo.getLastCustomUrlsSync() ?: (config.authUrl to config.apiUrl)
                 persist(config.copy(authUrl = authUrl, apiUrl = apiUrl))
             }
@@ -180,7 +180,7 @@ internal class SettingsViewModel
             // The log filter lives on the diagnostics page, so this page's reset leaves it alone.
             val defaults = repo.getDefaultConfigSync().copy(logFilter = config.logFilter)
             _managedStatusStateFlow.value = repo.getManagedStatus()
-            portal = detectPortal(defaults)
+            controlPlane = detectControlPlane(defaults)
             persist(defaults)
             repo.resetFavorites()
         }
@@ -217,13 +217,13 @@ internal class SettingsViewModel
         }.flowOn(Dispatchers.IO)
 
         // With only one of the URLs managed, Custom keeps the other one editable.
-        private fun detectPortal(config: Config): Portal {
+        private fun detectControlPlane(config: Config): ControlPlane {
             val managedStatus = repo.getManagedStatus()
             if (managedStatus.isAuthUrlManaged != managedStatus.isApiUrlManaged) {
-                return Portal.CUSTOM
+                return ControlPlane.CUSTOM
             }
 
-            return Portal.of(config.authUrl, config.apiUrl)
+            return ControlPlane.of(config.authUrl, config.apiUrl)
         }
 
         private fun getLogZipPath(context: Context) = "${context.cacheDir.absolutePath}/logs.zip"
@@ -233,7 +233,7 @@ internal class SettingsViewModel
 
             // Only URLs the user typed are worth offering again; managed ones come back by themselves.
             val managedStatus = repo.getManagedStatus()
-            if (portal == Portal.CUSTOM && !managedStatus.isAuthUrlManaged && !managedStatus.isApiUrlManaged) {
+            if (controlPlane == ControlPlane.CUSTOM && !managedStatus.isAuthUrlManaged && !managedStatus.isApiUrlManaged) {
                 repo.saveLastCustomUrlsSync(newConfig.authUrl, newConfig.apiUrl)
             }
 

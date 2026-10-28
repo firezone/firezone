@@ -21,10 +21,10 @@
 	<string name="account_slug">Account Slug</string>
 	<string name="start_on_login">Start on Boot</string>
 	<string name="connect_on_start">Connect on Start</string>
-	<string name="portal">Control plane</string>
-	<string name="portal_cloud_us">Firezone Cloud (US)</string>
-	<string name="portal_cloud_eu">Firezone Cloud (EU)</string>
-	<string name="portal_custom">Custom</string>
+	<string name="control_plane">Control plane</string>
+	<string name="control_plane_cloud_us">Firezone Cloud (US)</string>
+	<string name="control_plane_cloud_eu">Firezone Cloud (EU)</string>
+	<string name="control_plane_custom">Custom</string>
 	<string name="auth_url">Auth URL</string>
 	<string name="api_url">API URL</string>
 	<string name="auth_url_invalid">Enter a valid http:// or https:// URL</string>

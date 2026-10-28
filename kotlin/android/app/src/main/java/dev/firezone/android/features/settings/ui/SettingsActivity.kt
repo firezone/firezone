@@ -42,7 +42,7 @@ internal class SettingsActivity : AppCompatActivity() {
 
                 SettingsScreen(
                     config = viewModel.config,
-                    portal = viewModel.portal,
+                    controlPlane = viewModel.controlPlane,
                     managedStatus = managedStatus ?: ManagedConfigStatus.NOTHING_MANAGED,
                     logSizeBytes = uiState.logSizeBytes,
                     deviceTrustState = deviceTrustState,
@@ -52,7 +52,7 @@ internal class SettingsActivity : AppCompatActivity() {
                         repository.isX509CertificateRequired(applicationRestrictions) ||
                             deviceTrustState.alias != null,
                     signedInWith = viewModel.signedInWith,
-                    onPortalChange = viewModel::onPortalChanged,
+                    onControlPlaneChange = viewModel::onControlPlaneChanged,
                     onAuthUrlChange = viewModel::onAuthUrlChanged,
                     onApiUrlChange = viewModel::onApiUrlChanged,
                     onLogFilterChange = viewModel::onLogFilterChanged,

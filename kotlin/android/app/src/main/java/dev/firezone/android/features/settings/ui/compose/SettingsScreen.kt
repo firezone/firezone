@@ -31,8 +31,8 @@ import androidx.compose.ui.res.stringResource
 import dev.firezone.android.BuildConfig
 import dev.firezone.android.R
 import dev.firezone.android.core.data.model.Config
+import dev.firezone.android.core.data.model.ControlPlane
 import dev.firezone.android.core.data.model.ManagedConfigStatus
-import dev.firezone.android.core.data.model.Portal
 import dev.firezone.android.core.data.model.SignInSettings
 import dev.firezone.android.features.session.ui.compose.BackTopBar
 import dev.firezone.android.features.settings.ui.DeviceTrustSettingsViewModel
@@ -64,13 +64,13 @@ internal fun settingsPages(showDeviceTrust: Boolean): List<SettingsPage> =
 @Composable
 internal fun SettingsScreen(
     config: Config,
-    portal: Portal,
+    controlPlane: ControlPlane,
     managedStatus: ManagedConfigStatus,
     logSizeBytes: Long,
     deviceTrustState: DeviceTrustSettingsViewModel.UiState,
     showDeviceTrust: Boolean,
     signedInWith: SignInSettings?,
-    onPortalChange: (Portal) -> Unit,
+    onControlPlaneChange: (ControlPlane) -> Unit,
     onAuthUrlChange: (String) -> Unit,
     onApiUrlChange: (String) -> Unit,
     onLogFilterChange: (String) -> Unit,
@@ -137,10 +137,10 @@ internal fun SettingsScreen(
                 SettingsPage.GENERAL -> {
                     GeneralSettingsPage(
                         config = config,
-                        portal = portal,
+                        controlPlane = controlPlane,
                         managedStatus = managedStatus,
                         signedInWith = signedInWith,
-                        onPortalChange = onPortalChange,
+                        onControlPlaneChange = onControlPlaneChange,
                         onAuthUrlChange = onAuthUrlChange,
                         onApiUrlChange = onApiUrlChange,
                         onAccountSlugChange = onAccountSlugChange,

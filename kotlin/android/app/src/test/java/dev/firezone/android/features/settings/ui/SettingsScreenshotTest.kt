@@ -12,8 +12,8 @@ import com.github.takahirom.roborazzi.captureScreenRoboImage
 import com.github.takahirom.roborazzi.roborazziSystemPropertyOutputDirectory
 import dev.firezone.android.R
 import dev.firezone.android.STORE_SCREENSHOT_QUALIFIERS
+import dev.firezone.android.core.data.model.ControlPlane
 import dev.firezone.android.core.data.model.ManagedConfigStatus
-import dev.firezone.android.core.data.model.Portal
 import dev.firezone.android.core.data.model.SignInSettings
 import dev.firezone.android.core.data.model.signInSettings
 import dev.firezone.android.features.settings.ui.compose.SettingsScreen
@@ -49,7 +49,7 @@ class SettingsScreenshotTest {
             "settings-general-custom",
             R.string.settings_title,
             config = selfHostedConfig,
-            portal = Portal.CUSTOM,
+            controlPlane = ControlPlane.CUSTOM,
         )
 
     @Test
@@ -58,7 +58,7 @@ class SettingsScreenshotTest {
             "settings-general-managed",
             R.string.settings_title,
             config = euConfig,
-            portal = Portal.CLOUD_EU,
+            controlPlane = ControlPlane.CLOUD_EU,
             managedStatus = urlsManaged,
         )
 
@@ -68,7 +68,7 @@ class SettingsScreenshotTest {
             "settings-general-sign-in-change",
             R.string.settings_title,
             config = euConfig,
-            portal = Portal.CLOUD_EU,
+            controlPlane = ControlPlane.CLOUD_EU,
             signedInWith = sampleConfig.signInSettings(),
         )
 
@@ -95,12 +95,12 @@ class SettingsScreenshotTest {
         tabLabel: Int,
         deviceTrustState: DeviceTrustSettingsViewModel.UiState = DeviceTrustSettingsViewModel.UiState(),
         config: FirezoneConfig = sampleConfig,
-        portal: Portal = Portal.CLOUD_US,
+        controlPlane: ControlPlane = ControlPlane.CLOUD_US,
         managedStatus: ManagedConfigStatus = ManagedConfigStatus.NOTHING_MANAGED,
         signedInWith: SignInSettings? = null,
     ) {
         composeRule.setContent {
-            FirezoneTheme { SettingsScreenSample(deviceTrustState, config, portal, managedStatus, signedInWith) }
+            FirezoneTheme { SettingsScreenSample(deviceTrustState, config, controlPlane, managedStatus, signedInWith) }
         }
         composeRule.onNode(hasText(RuntimeEnvironment.getApplication().getString(tabLabel)) and isSelectable()).performClick()
         composeRule.waitForIdle()
@@ -123,7 +123,7 @@ private val sampleConfig =
         connectOnStart = false,
     )
 
-// What a user of a self-hosted portal sees.
+// What a user of a self-hosted control plane sees.
 private val selfHostedConfig =
     sampleConfig.copy(
         authUrl = "https://firezone.example.com",
@@ -206,19 +206,19 @@ private fun row(
 private fun SettingsScreenSample(
     deviceTrustState: DeviceTrustSettingsViewModel.UiState,
     config: FirezoneConfig,
-    portal: Portal,
+    controlPlane: ControlPlane,
     managedStatus: ManagedConfigStatus,
     signedInWith: SignInSettings?,
 ) {
     SettingsScreen(
         config = config,
-        portal = portal,
+        controlPlane = controlPlane,
         managedStatus = managedStatus,
         logSizeBytes = LOG_DIRECTORY_BYTES,
         deviceTrustState = deviceTrustState,
         showDeviceTrust = deviceTrustState.alias != null,
         signedInWith = signedInWith,
-        onPortalChange = {},
+        onControlPlaneChange = {},
         onAuthUrlChange = {},
         onApiUrlChange = {},
         onLogFilterChange = {},

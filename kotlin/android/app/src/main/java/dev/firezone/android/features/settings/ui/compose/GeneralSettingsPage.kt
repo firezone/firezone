@@ -15,8 +15,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import dev.firezone.android.R
 import dev.firezone.android.core.data.model.Config
+import dev.firezone.android.core.data.model.ControlPlane
 import dev.firezone.android.core.data.model.ManagedConfigStatus
-import dev.firezone.android.core.data.model.Portal
 import dev.firezone.android.core.data.model.SignInSettings
 import dev.firezone.android.core.data.model.signInSettings
 import dev.firezone.android.features.settings.ui.isValidApiUrl
@@ -26,10 +26,10 @@ import kotlinx.collections.immutable.toImmutableList
 @Composable
 fun GeneralSettingsPage(
     config: Config,
-    portal: Portal,
+    controlPlane: ControlPlane,
     managedStatus: ManagedConfigStatus,
     signedInWith: SignInSettings?,
-    onPortalChange: (Portal) -> Unit,
+    onControlPlaneChange: (ControlPlane) -> Unit,
     onAuthUrlChange: (String) -> Unit,
     onApiUrlChange: (String) -> Unit,
     onAccountSlugChange: (String) -> Unit,
@@ -56,17 +56,17 @@ fun GeneralSettingsPage(
                     onValueChange = onAccountSlugChange,
                     note = { slug -> signInChangeNote?.takeIf { slug != signedInWith?.accountSlug } },
                 )
-                // There are no managed keys for the portal: managed URLs decide it.
+                // There are no managed keys for the control plane: managed URLs decide it.
                 ChoicePreferenceRow(
-                    title = stringResource(R.string.portal),
-                    options = Portal.entries.toImmutableList(),
-                    selected = portal,
+                    title = stringResource(R.string.control_plane),
+                    options = ControlPlane.entries.toImmutableList(),
+                    selected = controlPlane,
                     optionLabel = { stringResource(it.labelRes()) },
                     isManaged = managedStatus.isAuthUrlManaged || managedStatus.isApiUrlManaged,
-                    onSelect = onPortalChange,
+                    onSelect = onControlPlaneChange,
                     note = signInChangeNote,
                 )
-                if (portal == Portal.CUSTOM) {
+                if (controlPlane == ControlPlane.CUSTOM) {
                     TextPreferenceRow(
                         title = stringResource(R.string.auth_url),
                         value = config.authUrl,
@@ -111,9 +111,9 @@ fun GeneralSettingsPage(
     }
 }
 
-private fun Portal.labelRes(): Int =
+private fun ControlPlane.labelRes(): Int =
     when (this) {
-        Portal.CLOUD_US -> R.string.portal_cloud_us
-        Portal.CLOUD_EU -> R.string.portal_cloud_eu
-        Portal.CUSTOM -> R.string.portal_custom
+        ControlPlane.CLOUD_US -> R.string.control_plane_cloud_us
+        ControlPlane.CLOUD_EU -> R.string.control_plane_cloud_eu
+        ControlPlane.CUSTOM -> R.string.control_plane_custom
     }

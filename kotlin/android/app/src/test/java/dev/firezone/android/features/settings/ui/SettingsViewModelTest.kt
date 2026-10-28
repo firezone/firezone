@@ -8,7 +8,7 @@ import android.os.Bundle
 import android.os.Looper
 import dev.firezone.android.core.data.Repository
 import dev.firezone.android.core.data.TokenStore
-import dev.firezone.android.core.data.model.Portal
+import dev.firezone.android.core.data.model.ControlPlane
 import dev.firezone.android.core.data.model.SignInSettings
 import dev.firezone.android.features.session.ui.SessionViewModel
 import kotlinx.coroutines.Dispatchers
@@ -67,12 +67,12 @@ class SettingsViewModelTest {
         }
 
     @Test
-    fun `saved US URLs show the US portal`() {
+    fun `saved US URLs show the US control plane`() {
         saveUrls("https://app.firezone.dev", "wss://api.firezone.dev")
 
         populateFields()
 
-        assertEquals(Portal.CLOUD_US, viewModel.portal)
+        assertEquals(ControlPlane.CLOUD_US, viewModel.controlPlane)
     }
 
     @Test
@@ -81,17 +81,17 @@ class SettingsViewModelTest {
 
         populateFields()
 
-        assertEquals(Portal.CUSTOM, viewModel.portal)
+        assertEquals(ControlPlane.CUSTOM, viewModel.controlPlane)
         assertEquals("https://firezone.example.com", viewModel.config.authUrl)
         assertEquals("wss://api.example.com", viewModel.config.apiUrl)
     }
 
     @Test
-    fun `picking the EU portal saves the EU URLs`() {
+    fun `picking the EU control plane saves the EU URLs`() {
         saveUrls("https://app.firezone.dev", "wss://api.firezone.dev")
         populateFields()
 
-        viewModel.onPortalChanged(Portal.CLOUD_EU)
+        viewModel.onControlPlaneChanged(ControlPlane.CLOUD_EU)
         settle()
 
         assertEquals("https://eu.app.firezone.dev", repository.getConfigSync().authUrl)
@@ -111,16 +111,16 @@ class SettingsViewModelTest {
 
             populateFields()
 
-            assertEquals(Portal.CUSTOM, viewModel.portal)
+            assertEquals(ControlPlane.CUSTOM, viewModel.controlPlane)
         }
 
     @Test
-    fun `saved URLs with a trailing slash still show their portal`() {
+    fun `saved URLs with a trailing slash still show their control plane`() {
         saveUrls("https://eu.app.firezone.dev/", "wss://eu.api.firezone.dev/")
 
         populateFields()
 
-        assertEquals(Portal.CLOUD_EU, viewModel.portal)
+        assertEquals(ControlPlane.CLOUD_EU, viewModel.controlPlane)
     }
 
     @Test
@@ -128,25 +128,25 @@ class SettingsViewModelTest {
         saveUrls("https://app.firezone.dev", "wss://api.firezone.dev")
         populateFields()
 
-        viewModel.onPortalChanged(Portal.CUSTOM)
+        viewModel.onControlPlaneChanged(ControlPlane.CUSTOM)
         viewModel.onAuthUrlChanged("https://firezone.example.com")
         viewModel.onApiUrlChanged("wss://api.firezone.example.com")
         settle()
 
-        assertEquals(Portal.CUSTOM, viewModel.portal)
+        assertEquals(ControlPlane.CUSTOM, viewModel.controlPlane)
         assertEquals("https://firezone.example.com", repository.getConfigSync().authUrl)
         assertEquals("wss://api.firezone.example.com", repository.getConfigSync().apiUrl)
     }
 
     @Test
-    fun `managed EU URLs show the EU portal`() =
+    fun `managed EU URLs show the EU control plane`() =
         runBlocking {
             saveUrls("https://app.firezone.dev", "wss://api.firezone.dev")
             manageUrls("https://eu.app.firezone.dev/", "wss://eu.api.firezone.dev")
 
             populateFields()
 
-            assertEquals(Portal.CLOUD_EU, viewModel.portal)
+            assertEquals(ControlPlane.CLOUD_EU, viewModel.controlPlane)
         }
 
     @Test
@@ -156,7 +156,7 @@ class SettingsViewModelTest {
 
             populateFields()
 
-            assertEquals(Portal.CUSTOM, viewModel.portal)
+            assertEquals(ControlPlane.CUSTOM, viewModel.controlPlane)
             assertEquals("https://firezone.example.com", viewModel.config.authUrl)
         }
 
@@ -180,7 +180,7 @@ class SettingsViewModelTest {
         tokenStore.save("token")
         reopen()
 
-        viewModel.onPortalChanged(Portal.CLOUD_EU)
+        viewModel.onControlPlaneChanged(ControlPlane.CLOUD_EU)
         settle()
 
         assertEquals("wss://eu.api.firezone.dev", repository.getConfigSync().apiUrl)
@@ -216,17 +216,17 @@ class SettingsViewModelTest {
     fun `switching back to custom brings back the last saved custom URLs`() {
         saveUrls("https://app.firezone.dev", "wss://api.firezone.dev")
         populateFields()
-        viewModel.onPortalChanged(Portal.CUSTOM)
+        viewModel.onControlPlaneChanged(ControlPlane.CUSTOM)
         viewModel.onAuthUrlChanged("https://firezone.example.com")
         viewModel.onApiUrlChanged("wss://api.firezone.example.com")
         settle()
 
         reopen()
-        viewModel.onPortalChanged(Portal.CLOUD_EU)
+        viewModel.onControlPlaneChanged(ControlPlane.CLOUD_EU)
         settle()
 
         reopen()
-        viewModel.onPortalChanged(Portal.CUSTOM)
+        viewModel.onControlPlaneChanged(ControlPlane.CUSTOM)
 
         assertEquals("https://firezone.example.com", viewModel.config.authUrl)
         assertEquals("wss://api.firezone.example.com", viewModel.config.apiUrl)
@@ -237,10 +237,10 @@ class SettingsViewModelTest {
         saveUrls("https://firezone.example.com", "wss://api.firezone.example.com")
         populateFields()
 
-        viewModel.onPortalChanged(Portal.CLOUD_EU)
+        viewModel.onControlPlaneChanged(ControlPlane.CLOUD_EU)
         settle()
         reopen()
-        viewModel.onPortalChanged(Portal.CUSTOM)
+        viewModel.onControlPlaneChanged(ControlPlane.CUSTOM)
 
         assertEquals("https://firezone.example.com", viewModel.config.authUrl)
         assertEquals("wss://api.firezone.example.com", viewModel.config.apiUrl)
@@ -251,19 +251,19 @@ class SettingsViewModelTest {
         saveUrls("https://eu.app.firezone.dev", "wss://eu.api.firezone.dev")
         populateFields()
 
-        viewModel.onPortalChanged(Portal.CUSTOM)
+        viewModel.onControlPlaneChanged(ControlPlane.CUSTOM)
 
         assertEquals("https://eu.app.firezone.dev", viewModel.config.authUrl)
         assertEquals("wss://eu.api.firezone.dev", viewModel.config.apiUrl)
     }
 
     @Test
-    fun `saving a cloud portal does not remember its URLs as custom`() {
+    fun `saving a cloud control plane does not remember its URLs as custom`() {
         saveUrls("https://app.firezone.dev", "wss://api.firezone.dev")
         repository.saveLastCustomUrlsSync("https://firezone.example.com", "wss://api.firezone.example.com")
         populateFields()
 
-        viewModel.onPortalChanged(Portal.CLOUD_US)
+        viewModel.onControlPlaneChanged(ControlPlane.CLOUD_US)
         settle()
 
         assertEquals(
@@ -273,13 +273,13 @@ class SettingsViewModelTest {
     }
 
     @Test
-    fun `remembered custom URLs do not change the portal shown`() {
+    fun `remembered custom URLs do not change the control plane shown`() {
         saveUrls("https://app.firezone.dev", "wss://api.firezone.dev")
         repository.saveLastCustomUrlsSync("https://firezone.example.com", "wss://api.firezone.example.com")
 
         populateFields()
 
-        assertEquals(Portal.CLOUD_US, viewModel.portal)
+        assertEquals(ControlPlane.CLOUD_US, viewModel.controlPlane)
         assertEquals("https://app.firezone.dev", viewModel.config.authUrl)
     }
 

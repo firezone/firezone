@@ -12,8 +12,8 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextReplacement
 import dev.firezone.android.R
+import dev.firezone.android.core.data.model.ControlPlane
 import dev.firezone.android.core.data.model.ManagedConfigStatus
-import dev.firezone.android.core.data.model.Portal
 import dev.firezone.android.core.data.model.SignInSettings
 import dev.firezone.android.core.data.model.signInSettings
 import org.junit.Rule
@@ -48,10 +48,10 @@ class GeneralSettingsPageTest {
         composeRule.setContent {
             GeneralSettingsPage(
                 config = config,
-                portal = Portal.CLOUD_US,
+                controlPlane = ControlPlane.CLOUD_US,
                 managedStatus = ManagedConfigStatus.NOTHING_MANAGED,
                 signedInWith = signedInWith,
-                onPortalChange = {},
+                onControlPlaneChange = {},
                 onAuthUrlChange = {},
                 onApiUrlChange = {},
                 onAccountSlugChange = {},

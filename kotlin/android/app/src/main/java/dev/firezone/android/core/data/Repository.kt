@@ -235,7 +235,7 @@ class Repository
 
         fun getDeviceIdSync(): String? = sharedPreferences.getString(DEVICE_ID_KEY, null)
 
-        /** The auth and API URLs last saved with the Custom portal picked, or `null` before any were. */
+        /** The auth and API URLs last saved with the Custom control plane picked, or `null` before any were. */
         fun getLastCustomUrlsSync(): Pair<String, String>? {
             val authUrl = sharedPreferences.getString(LAST_CUSTOM_AUTH_URL_KEY, null) ?: return null
             val apiUrl = sharedPreferences.getString(LAST_CUSTOM_API_URL_KEY, null) ?: return null

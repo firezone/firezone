@@ -2,11 +2,11 @@
 package dev.firezone.android.core.data.model
 
 /**
- * The portal the app signs in to: a Firezone Cloud deployment, or [CUSTOM] for any other URLs.
+ * The control plane the app signs in to: a Firezone Cloud deployment, or [CUSTOM] for any other URLs.
  *
- * The URLs of the Firezone Cloud portals are compiled in and never taken from the portal itself.
+ * The URLs of the Firezone Cloud control planes are compiled in and never taken from the control plane itself.
  */
-enum class Portal(
+enum class ControlPlane(
     val authUrl: String?,
     val apiUrl: String?,
 ) {
@@ -16,16 +16,16 @@ enum class Portal(
     ;
 
     companion object {
-        /** The portal whose URLs are [authUrl] and [apiUrl], or [CUSTOM]. */
+        /** The control plane whose URLs are [authUrl] and [apiUrl], or [CUSTOM]. */
         fun of(
             authUrl: String,
             apiUrl: String,
-        ): Portal =
-            entries.firstOrNull { portal ->
-                portal.authUrl != null &&
-                    portal.apiUrl != null &&
-                    isSameUrl(portal.authUrl, authUrl) &&
-                    isSameUrl(portal.apiUrl, apiUrl)
+        ): ControlPlane =
+            entries.firstOrNull { controlPlane ->
+                controlPlane.authUrl != null &&
+                    controlPlane.apiUrl != null &&
+                    isSameUrl(controlPlane.authUrl, authUrl) &&
+                    isSameUrl(controlPlane.apiUrl, apiUrl)
             } ?: CUSTOM
 
         // URLs are saved as typed or as an administrator wrote them, so a trailing slash, stray whitespace or a different case still matches.
