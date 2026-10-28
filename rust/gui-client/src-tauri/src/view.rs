@@ -10,8 +10,8 @@ use crate::{
     gui::Managed,
     logging::FileCount,
     settings::{
-        AdvancedSettings, AdvancedSettingsPatch, GeneralSettings, GeneralSettingsViewModel,
-        LogFilterViewModel, MdmSettings, Portal,
+        AdvancedSettings, AdvancedSettingsPatch, ControlPlane, GeneralSettings,
+        GeneralSettingsViewModel, LogFilterViewModel, MdmSettings,
     },
 };
 use url::Url;
@@ -27,11 +27,11 @@ pub struct ClientSettingsForm {
     #[serde(default)]
     pub account_slug: Option<String>,
     #[serde(default)]
-    pub portal: Option<Portal>,
-    /// Only used for [`Portal::Custom`].
+    pub control_plane: Option<ControlPlane>,
+    /// Only used for [`ControlPlane::Custom`].
     #[serde(default)]
     pub auth_url: Option<String>,
-    /// Only used for [`Portal::Custom`].
+    /// Only used for [`ControlPlane::Custom`].
     #[serde(default)]
     pub api_url: Option<String>,
 }
@@ -40,15 +40,15 @@ impl ClientSettingsForm {
     /// Returns the general settings and the requested advanced settings changes.
     ///
     /// A managed URL wins over the saved one, so the form leaves it alone. Saving with
-    /// [`Portal::Custom`] also remembers the URLs for the next time it is picked.
+    /// [`ControlPlane::Custom`] also remembers the URLs for the next time it is picked.
     pub fn apply(
         self,
         mdm_settings: &MdmSettings,
         general_settings: GeneralSettings,
         advanced_settings: AdvancedSettings,
     ) -> Result<(GeneralSettings, AdvancedSettingsPatch)> {
-        let portal = self.portal.unwrap_or_else(|| {
-            Portal::from_urls(&advanced_settings.auth_url, &advanced_settings.api_url)
+        let control_plane = self.control_plane.unwrap_or_else(|| {
+            ControlPlane::from_urls(&advanced_settings.auth_url, &advanced_settings.api_url)
         });
         let (auth_url, api_url) = self.urls(&advanced_settings)?;
         let mut general_settings = general_settings;
@@ -61,7 +61,7 @@ impl ClientSettingsForm {
         if let Some(connect_on_start) = self.connect_on_start {
             general_settings.connect_on_start = Some(connect_on_start);
         }
-        let selected_cloud = self.portal.and_then(Portal::urls).is_some();
+        let selected_cloud = self.control_plane.and_then(ControlPlane::urls).is_some();
         let patch = AdvancedSettingsPatch {
             auth_url: ((self.auth_url.is_some() || selected_cloud)
                 && mdm_settings.auth_url.is_none())
@@ -75,7 +75,7 @@ impl ClientSettingsForm {
             general_settings.account_slug =
                 (!account_slug.is_empty()).then(|| account_slug.to_owned());
         }
-        if portal == Portal::Custom {
+        if control_plane == ControlPlane::Custom {
             if self.auth_url.is_some() {
                 general_settings.custom_auth_url = Some(auth_url);
             } else {
@@ -90,8 +90,8 @@ impl ClientSettingsForm {
                     .custom_api_url
                     .get_or_insert_with(|| advanced_settings.api_url.clone());
             }
-        } else if Portal::from_urls(&advanced_settings.auth_url, &advanced_settings.api_url)
-            == Portal::Custom
+        } else if ControlPlane::from_urls(&advanced_settings.auth_url, &advanced_settings.api_url)
+            == ControlPlane::Custom
         {
             general_settings
                 .custom_auth_url
@@ -104,9 +104,9 @@ impl ClientSettingsForm {
         Ok((general_settings, patch))
     }
 
-    /// Returns the auth and API URLs of the selected portal, or the typed ones for [`Portal::Custom`].
+    /// Returns the auth and API URLs of the selected control plane, or the typed ones for [`ControlPlane::Custom`].
     pub fn urls(&self, current: &AdvancedSettings) -> Result<(Url, Url)> {
-        if let Some(urls) = self.portal.and_then(Portal::urls) {
+        if let Some(urls) = self.control_plane.and_then(ControlPlane::urls) {
             return Ok(urls);
         }
 
@@ -526,8 +526,12 @@ mod tests {
     }
 
     #[test]
-    fn a_cloud_portal_ignores_the_typed_urls() {
-        let form = client_settings_form(Portal::CloudEu, "not a URL", "wss://ignored.example.com");
+    fn a_cloud_control_plane_ignores_the_typed_urls() {
+        let form = client_settings_form(
+            ControlPlane::CloudEu,
+            "not a URL",
+            "wss://ignored.example.com",
+        );
 
         let (auth_url, api_url) = form.urls(&AdvancedSettings::default()).unwrap();
 
@@ -538,7 +542,7 @@ mod tests {
     #[test]
     fn custom_uses_the_typed_urls() {
         let form = client_settings_form(
-            Portal::Custom,
+            ControlPlane::Custom,
             "https://firezone.example.com",
             "wss://api.example.com",
         );
@@ -551,7 +555,7 @@ mod tests {
 
     #[test]
     fn custom_rejects_an_invalid_url() {
-        let form = client_settings_form(Portal::Custom, "not a URL", "wss://api.example.com");
+        let form = client_settings_form(ControlPlane::Custom, "not a URL", "wss://api.example.com");
 
         assert!(form.urls(&AdvancedSettings::default()).is_err());
     }
@@ -572,7 +576,7 @@ mod tests {
     #[test]
     fn custom_accepts_local_urls() {
         let form = client_settings_form(
-            Portal::Custom,
+            ControlPlane::Custom,
             "http://localhost:4000",
             "ws://localhost:8081",
         );
@@ -582,7 +586,7 @@ mod tests {
 
     #[test]
     fn custom_rejects_a_url_with_the_wrong_scheme() {
-        let form = client_settings_form(Portal::Custom, "ftp://x", "wss://api.example.com");
+        let form = client_settings_form(ControlPlane::Custom, "ftp://x", "wss://api.example.com");
 
         assert!(form.urls(&AdvancedSettings::default()).is_err());
     }
@@ -590,7 +594,7 @@ mod tests {
     #[test]
     fn saving_custom_remembers_the_urls() {
         let form = client_settings_form(
-            Portal::Custom,
+            ControlPlane::Custom,
             "https://firezone.example.com",
             "wss://api.example.com",
         );
@@ -624,7 +628,7 @@ mod tests {
             api_url: Url::parse("wss://api.example.com").unwrap(),
             ..AdvancedSettings::default()
         };
-        let form = client_settings_form(Portal::CloudEu, "", "");
+        let form = client_settings_form(ControlPlane::CloudEu, "", "");
 
         let (general_settings, advanced_settings) = form
             .apply(&MdmSettings::default(), GeneralSettings::default(), saved)
@@ -645,13 +649,13 @@ mod tests {
     }
 
     #[test]
-    fn saving_a_cloud_portal_keeps_the_remembered_custom_urls() {
+    fn saving_a_cloud_control_plane_keeps_the_remembered_custom_urls() {
         let remembered = GeneralSettings {
             custom_auth_url: Some(Url::parse("https://firezone.example.com").unwrap()),
             custom_api_url: Some(Url::parse("wss://api.example.com").unwrap()),
             ..Default::default()
         };
-        let form = client_settings_form(Portal::CloudUs, "", "");
+        let form = client_settings_form(ControlPlane::CloudUs, "", "");
 
         let (general_settings, advanced_settings) = form
             .apply(
@@ -689,7 +693,7 @@ mod tests {
             auth_url: Url::parse("https://saved.example.com").unwrap(),
             ..AdvancedSettings::default()
         };
-        let form = client_settings_form(Portal::CloudEu, "", "");
+        let form = client_settings_form(ControlPlane::CloudEu, "", "");
 
         let (_, advanced_settings) = form
             .apply(&mdm_settings, GeneralSettings::default(), saved)
@@ -702,9 +706,13 @@ mod tests {
         );
     }
 
-    fn client_settings_form(portal: Portal, auth_url: &str, api_url: &str) -> ClientSettingsForm {
+    fn client_settings_form(
+        control_plane: ControlPlane,
+        auth_url: &str,
+        api_url: &str,
+    ) -> ClientSettingsForm {
         ClientSettingsForm {
-            portal: Some(portal),
+            control_plane: Some(control_plane),
             auth_url: Some(auth_url.to_owned()),
             api_url: Some(api_url.to_owned()),
             ..Default::default()

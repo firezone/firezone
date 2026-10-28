@@ -12,7 +12,7 @@ const usSettings: GeneralSettingsViewModel = {
   connect_on_start_is_managed: false,
   account_slug: "",
   account_slug_is_managed: false,
-  portal: "CloudUs",
+  control_plane: "CloudUs",
   auth_url: "https://app.firezone.dev/",
   auth_url_is_managed: false,
   api_url: "wss://api.firezone.dev/",
@@ -24,7 +24,7 @@ const usSettings: GeneralSettingsViewModel = {
 
 const customSettings: GeneralSettingsViewModel = {
   ...usSettings,
-  portal: "Custom",
+  control_plane: "Custom",
   auth_url: "https://firezone.example.com/",
   api_url: "wss://api.firezone.example.com/",
   custom_auth_url: "https://firezone.example.com/",
@@ -77,7 +77,7 @@ test("picking Custom saves the last saved custom URLs", async () => {
   await vi.waitFor(() =>
     expect(saveSettings).toHaveBeenCalledWith(
       expect.objectContaining({
-        portal: "Custom",
+        control_plane: "Custom",
         auth_url: "https://firezone.example.com/",
         api_url: "wss://api.firezone.example.com/",
       })
@@ -97,7 +97,7 @@ test("leaving a valid URL saves it", async () => {
   await vi.waitFor(() =>
     expect(saveSettings).toHaveBeenCalledWith(
       expect.objectContaining({
-        portal: "Custom",
+        control_plane: "Custom",
         auth_url: "https://other.example.com/",
       })
     )
@@ -115,7 +115,7 @@ test("successive edits submit only the changed settings", async () => {
 
   await vi.waitFor(() => expect(saveSettings).toHaveBeenCalledTimes(2));
   expect(saveSettings).toHaveBeenNthCalledWith(1, {
-    portal: "Custom",
+    control_plane: "Custom",
     auth_url: "https://other.example.com/",
   });
   expect(saveSettings).toHaveBeenNthCalledWith(2, { start_minimized: false });
@@ -189,7 +189,7 @@ const signedIn: GeneralSettingsViewModel = {
   account_slug: "firezone",
   signed_in_with: {
     account_slug: "firezone",
-    portal: "CloudUs",
+    control_plane: "CloudUs",
     auth_url: "https://app.firezone.dev/",
     api_url: "wss://api.firezone.dev/",
   },
@@ -218,8 +218,8 @@ test("a draft account slug shows the sign-in note until it is reverted", async (
   await expect.element(page.getByText(pendingNote)).not.toBeInTheDocument();
 });
 
-test("a saved portal other than the signed-in one shows the sign-in note", async () => {
-  await render({ ...signedIn, portal: "CloudEu" });
+test("a saved control plane other than the signed-in one shows the sign-in note", async () => {
+  await render({ ...signedIn, control_plane: "CloudEu" });
 
   await expect.element(page.getByText(pendingNote)).toBeInTheDocument();
 });
@@ -229,7 +229,7 @@ test("a draft custom URL shows the sign-in note", async () => {
     ...customSettings,
     signed_in_with: {
       account_slug: "",
-      portal: "Custom",
+      control_plane: "Custom",
       auth_url: "https://firezone.example.com/",
       api_url: "wss://api.firezone.example.com/",
     },
@@ -269,7 +269,7 @@ test("picking Custom without saved custom URLs shows the current ones", async ()
     .toHaveValue("wss://api.firezone.dev/");
 });
 
-test("a cloud portal hides the URL fields", async () => {
+test("a cloud control plane hides the URL fields", async () => {
   await render(usSettings);
 
   await expect.element(page.getByLabelText("Auth URL")).not.toBeInTheDocument();

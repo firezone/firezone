@@ -97,25 +97,29 @@ x509CertificateChanged: "x509-certificate-changed"
 
 /** user-defined types **/
 
-export type ClientSettingsForm = { start_minimized?: boolean | null; start_on_login?: boolean | null; connect_on_start?: boolean | null; account_slug?: string | null; portal?: Portal | null;
+export type ClientSettingsForm = { start_minimized?: boolean | null; start_on_login?: boolean | null; connect_on_start?: boolean | null; account_slug?: string | null; control_plane?: ControlPlane | null;
 /**
- * Only used for [`Portal::Custom`].
+ * Only used for [`ControlPlane::Custom`].
  */
 auth_url?: string | null;
 /**
- * Only used for [`Portal::Custom`].
+ * Only used for [`ControlPlane::Custom`].
  */
 api_url?: string | null }
+/**
+ * The control plane a client signs in to: a Firezone Cloud deployment, or [`ControlPlane::Custom`] for any other URLs.
+ */
+export type ControlPlane = "CloudUs" | "CloudEu" | "Custom"
 export type Error = string
 export type FileCount = { bytes: number; files: number }
 export type GeneralSettingsChanged = GeneralSettingsViewModel
-export type GeneralSettingsViewModel = { start_minimized: boolean; start_on_login: boolean; connect_on_start: boolean; connect_on_start_is_managed: boolean; account_slug: string; account_slug_is_managed: boolean; portal: Portal; auth_url: string; auth_url_is_managed: boolean; api_url: string; api_url_is_managed: boolean;
+export type GeneralSettingsViewModel = { start_minimized: boolean; start_on_login: boolean; connect_on_start: boolean; connect_on_start_is_managed: boolean; account_slug: string; account_slug_is_managed: boolean; control_plane: ControlPlane; auth_url: string; auth_url_is_managed: boolean; api_url: string; api_url_is_managed: boolean;
 /**
- * What the auth URL field shows when [`Portal::Custom`] is picked: the last saved custom URL, or else `auth_url`.
+ * What the auth URL field shows when [`ControlPlane::Custom`] is picked: the last saved custom URL, or else `auth_url`.
  */
 custom_auth_url: string;
 /**
- * What the API URL field shows when [`Portal::Custom`] is picked: the last saved custom URL, or else `api_url`.
+ * What the API URL field shows when [`ControlPlane::Custom`] is picked: the last saved custom URL, or else `api_url`.
  */
 custom_api_url: string;
 /**
@@ -125,13 +129,9 @@ signed_in_with: SignInSettingsViewModel | null }
 export type LogFilterChanged = LogFilterViewModel
 export type LogFilterViewModel = { log_filter: string; log_filter_is_managed: boolean }
 export type LogsRecounted = FileCount
-/**
- * The portal a client signs in to: a Firezone Cloud deployment, or [`Portal::Custom`] for any other URLs.
- */
-export type Portal = "CloudUs" | "CloudEu" | "Custom"
 export type SessionChanged = SessionViewModel
 export type SessionViewModel = { SignedIn: { account_slug: string; actor_name: string } } | "Loading" | "SignedOut"
-export type SignInSettingsViewModel = { account_slug: string; portal: Portal; auth_url: string; api_url: string }
+export type SignInSettingsViewModel = { account_slug: string; control_plane: ControlPlane; auth_url: string; api_url: string }
 /**
  * A certificate the Tunnel service loaded from the platform keystore.
  */

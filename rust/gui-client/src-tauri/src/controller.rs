@@ -2346,12 +2346,12 @@ mod tests {
 
         for form in [
             ClientSettingsForm {
-                portal: Some(crate::settings::Portal::Custom),
+                control_plane: Some(crate::settings::ControlPlane::Custom),
                 auth_url: Some("https://auth.example.com".to_owned()),
                 ..Default::default()
             },
             ClientSettingsForm {
-                portal: Some(crate::settings::Portal::Custom),
+                control_plane: Some(crate::settings::ControlPlane::Custom),
                 api_url: Some("wss://api.example.com".to_owned()),
                 ..Default::default()
             },
@@ -2433,7 +2433,7 @@ mod tests {
             .send(ControllerRequest::ApplyClientSettings(Box::new(
                 ClientSettingsForm {
                     account_slug: Some("other".to_owned()),
-                    portal: Some(crate::settings::Portal::CloudEu),
+                    control_plane: Some(crate::settings::ControlPlane::CloudEu),
                     ..Default::default()
                 },
             )))

@@ -1,8 +1,8 @@
 import React, { useId, useState } from "react";
 import {
   ClientSettingsForm,
+  ControlPlane,
   GeneralSettingsViewModel,
-  Portal,
   SignInSettingsViewModel,
 } from "../generated/bindings";
 import Button from "./Button";
@@ -23,7 +23,7 @@ const defaultSettings: GeneralSettingsViewModel = {
   start_on_login: false,
   account_slug_is_managed: false,
   connect_on_start_is_managed: false,
-  portal: "Custom",
+  control_plane: "Custom",
   auth_url: "",
   auth_url_is_managed: false,
   api_url: "",
@@ -42,14 +42,14 @@ export default function GeneralSettingsPage({
 }: Props) {
   const saved = settings ?? defaultSettings;
 
-  // Custom with a cloud portal's URLs is saved as that cloud portal, so the page keeps the
-  // choice until the user enters URLs of their own.
+  // Custom with a cloud control plane's URLs is saved as that control plane, so the page
+  // keeps the choice until the user enters URLs of their own.
   const [customPicked, setCustomPicked] = useState(false);
-  const portal = customPicked ? "Custom" : saved.portal;
+  const control_plane = customPicked ? "Custom" : saved.control_plane;
   const customAuthUrl =
-    saved.portal === "Custom" ? saved.auth_url : saved.custom_auth_url;
+    saved.control_plane === "Custom" ? saved.auth_url : saved.custom_auth_url;
   const customApiUrl =
-    saved.portal === "Custom" ? saved.api_url : saved.custom_api_url;
+    saved.control_plane === "Custom" ? saved.api_url : saved.custom_api_url;
 
   const [drafts, setDrafts] = useState<Drafts>({});
   const updateDraft = (field: keyof Drafts) => (draft: string | null) =>
@@ -61,13 +61,13 @@ export default function GeneralSettingsPage({
 
   const savedSignIn: SignInSettingsViewModel = {
     account_slug: saved.account_slug,
-    portal: saved.portal,
+    control_plane: saved.control_plane,
     auth_url: saved.auth_url,
     api_url: saved.api_url,
   };
   const draftSignIn: SignInSettingsViewModel = {
     account_slug: drafts.account_slug ?? saved.account_slug,
-    portal,
+    control_plane,
     auth_url: drafts.auth_url ?? customAuthUrl,
     api_url: drafts.api_url ?? customApiUrl,
   };
@@ -79,17 +79,17 @@ export default function GeneralSettingsPage({
   const save = (changes: Partial<ClientSettingsForm>) => saveSettings(changes);
 
   // Picking "Custom" brings back the URLs last saved with it.
-  const selectPortal = (portal: Portal) => {
-    setCustomPicked(portal === "Custom");
+  const selectControlPlane = (control_plane: ControlPlane) => {
+    setCustomPicked(control_plane === "Custom");
     setDrafts(({ account_slug }) => ({ account_slug }));
     save(
-      portal === "Custom"
-        ? { portal, auth_url: customAuthUrl, api_url: customApiUrl }
-        : { portal }
+      control_plane === "Custom"
+        ? { control_plane, auth_url: customAuthUrl, api_url: customApiUrl }
+        : { control_plane }
     );
   };
 
-  const portalInputId = useId();
+  const controlPlaneInputId = useId();
   const startMinimizedInputId = useId();
   const startOnLoginInputId = useId();
   const connectOnStartInputId = useId();
@@ -109,14 +109,20 @@ export default function GeneralSettingsPage({
               value={saved.account_slug}
             />
 
-            <SettingRow field inputId={portalInputId} label="Control plane">
+            <SettingRow
+              field
+              inputId={controlPlaneInputId}
+              label="Control plane"
+            >
               <ManagedSelect
                 className="h-8 py-1"
-                id={portalInputId}
+                id={controlPlaneInputId}
                 managed={saved.auth_url_is_managed || saved.api_url_is_managed}
-                name="portal"
-                onChange={(event) => selectPortal(event.target.value as Portal)}
-                value={portal}
+                name="control_plane"
+                onChange={(event) =>
+                  selectControlPlane(event.target.value as ControlPlane)
+                }
+                value={control_plane}
               >
                 <option value="CloudUs">Firezone Cloud (US)</option>
                 <option value="CloudEu">Firezone Cloud (EU)</option>
@@ -124,14 +130,14 @@ export default function GeneralSettingsPage({
               </ManagedSelect>
             </SettingRow>
 
-            {portal === "Custom" && (
+            {control_plane === "Custom" && (
               <>
                 <TextSetting
                   label="Auth URL"
                   managed={saved.auth_url_is_managed}
                   name="auth_url"
                   onDraftChange={updateDraft("auth_url")}
-                  save={(auth_url) => save({ portal, auth_url })}
+                  save={(auth_url) => save({ control_plane, auth_url })}
                   validate={(url) =>
                     isUrl(url, ["http:", "https:"])
                       ? null
@@ -145,7 +151,7 @@ export default function GeneralSettingsPage({
                   managed={saved.api_url_is_managed}
                   name="api_url"
                   onDraftChange={updateDraft("api_url")}
-                  save={(api_url) => save({ portal, api_url })}
+                  save={(api_url) => save({ control_plane, api_url })}
                   validate={(url) =>
                     isUrl(url, ["ws:", "wss:"])
                       ? null
@@ -218,7 +224,7 @@ export default function GeneralSettingsPage({
   );
 }
 
-// Cloud portals compare by name, Custom ones by their URLs.
+// Cloud control planes compare by name, Custom ones by their URLs.
 function differs(
   signIn: SignInSettingsViewModel,
   signedInWith: SignInSettingsViewModel
@@ -227,8 +233,8 @@ function differs(
     return true;
   }
 
-  if (signIn.portal !== "Custom") {
-    return signIn.portal !== signedInWith.portal;
+  if (signIn.control_plane !== "Custom") {
+    return signIn.control_plane !== signedInWith.control_plane;
   }
 
   return (

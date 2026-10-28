@@ -98,10 +98,10 @@ pub struct GeneralSettings {
     pub connect_on_start: Option<bool>,
     #[serde(default)]
     pub account_slug: Option<String>,
-    /// The auth URL last saved with [`Portal::Custom`], to prefill the field when it is picked again.
+    /// The auth URL last saved with [`ControlPlane::Custom`], to prefill the field when it is picked again.
     #[serde(default)]
     pub custom_auth_url: Option<Url>,
-    /// The API URL last saved with [`Portal::Custom`], to prefill the field when it is picked again.
+    /// The API URL last saved with [`ControlPlane::Custom`], to prefill the field when it is picked again.
     #[serde(default)]
     pub custom_api_url: Option<Url>,
 }
@@ -126,14 +126,14 @@ pub struct GeneralSettingsViewModel {
     pub connect_on_start_is_managed: bool,
     pub account_slug: String,
     pub account_slug_is_managed: bool,
-    pub portal: Portal,
+    pub control_plane: ControlPlane,
     pub auth_url: String,
     pub auth_url_is_managed: bool,
     pub api_url: String,
     pub api_url_is_managed: bool,
-    /// What the auth URL field shows when [`Portal::Custom`] is picked: the last saved custom URL, or else `auth_url`.
+    /// What the auth URL field shows when [`ControlPlane::Custom`] is picked: the last saved custom URL, or else `auth_url`.
     pub custom_auth_url: String,
-    /// What the API URL field shows when [`Portal::Custom`] is picked: the last saved custom URL, or else `api_url`.
+    /// What the API URL field shows when [`ControlPlane::Custom`] is picked: the last saved custom URL, or else `api_url`.
     pub custom_api_url: String,
     /// The settings captured when sign-in started, [`None`] when signed out.
     pub signed_in_with: Option<SignInSettingsViewModel>,
@@ -142,7 +142,7 @@ pub struct GeneralSettingsViewModel {
 #[derive(Clone, Serialize, specta::Type)]
 pub struct SignInSettingsViewModel {
     pub account_slug: String,
-    pub portal: Portal,
+    pub control_plane: ControlPlane,
     pub auth_url: String,
     pub api_url: String,
 }
@@ -160,10 +160,10 @@ impl GeneralSettingsViewModel {
         let api_url = mdm_settings.api_url.unwrap_or(advanced_settings.api_url);
 
         // With only one of the URLs managed, `Custom` keeps the other one editable.
-        let portal = if auth_url_is_managed == api_url_is_managed {
-            Portal::from_urls(&auth_url, &api_url)
+        let control_plane = if auth_url_is_managed == api_url_is_managed {
+            ControlPlane::from_urls(&auth_url, &api_url)
         } else {
-            Portal::Custom
+            ControlPlane::Custom
         };
         let custom_auth_url = general_settings
             .custom_auth_url
@@ -189,7 +189,7 @@ impl GeneralSettingsViewModel {
                 .account_slug
                 .or(general_settings.account_slug)
                 .unwrap_or_default(),
-            portal,
+            control_plane,
             auth_url: auth_url.to_string(),
             auth_url_is_managed,
             api_url: api_url.to_string(),
@@ -198,7 +198,10 @@ impl GeneralSettingsViewModel {
             custom_api_url,
             signed_in_with: signed_in_with.map(|signed_in_with| SignInSettingsViewModel {
                 account_slug: signed_in_with.account_slug.unwrap_or_default(),
-                portal: Portal::from_urls(&signed_in_with.auth_url, &signed_in_with.api_url),
+                control_plane: ControlPlane::from_urls(
+                    &signed_in_with.auth_url,
+                    &signed_in_with.api_url,
+                ),
                 auth_url: signed_in_with.auth_url.to_string(),
                 api_url: signed_in_with.api_url.to_string(),
             }),
@@ -206,34 +209,34 @@ impl GeneralSettingsViewModel {
     }
 }
 
-/// The portal a client signs in to: a Firezone Cloud deployment, or [`Portal::Custom`] for any other URLs.
+/// The control plane a client signs in to: a Firezone Cloud deployment, or [`ControlPlane::Custom`] for any other URLs.
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize, specta::Type)]
-pub enum Portal {
+pub enum ControlPlane {
     CloudUs,
     CloudEu,
     Custom,
 }
 
-impl Portal {
-    /// Returns the portal whose URLs are exactly `auth_url` and `api_url`, or [`Portal::Custom`].
+impl ControlPlane {
+    /// Returns the control plane whose URLs are exactly `auth_url` and `api_url`, or [`ControlPlane::Custom`].
     pub fn from_urls(auth_url: &Url, api_url: &Url) -> Self {
         [Self::CloudUs, Self::CloudEu]
             .into_iter()
-            .find(|portal| {
-                portal
+            .find(|control_plane| {
+                control_plane
                     .urls()
                     .is_some_and(|(auth, api)| &auth == auth_url && &api == api_url)
             })
             .unwrap_or(Self::Custom)
     }
 
-    /// Returns the compiled-in auth and API URLs of the portal, [`None`] for [`Portal::Custom`].
+    /// Returns the compiled-in auth and API URLs of the control plane, [`None`] for [`ControlPlane::Custom`].
     ///
-    /// These are never taken from the portal itself: they decide which portal the client talks to.
+    /// These are never taken from the control plane itself: they decide which control plane the client talks to.
     pub fn urls(self) -> Option<(Url, Url)> {
         let (auth_url, api_url) = match self {
-            Self::CloudUs => (portal::US_AUTH_URL, portal::US_API_URL),
-            Self::CloudEu => (portal::EU_AUTH_URL, portal::EU_API_URL),
+            Self::CloudUs => (control_plane::US_AUTH_URL, control_plane::US_API_URL),
+            Self::CloudEu => (control_plane::EU_AUTH_URL, control_plane::EU_API_URL),
             Self::Custom => return None,
         };
 
@@ -244,7 +247,7 @@ impl Portal {
     }
 }
 
-mod portal {
+mod control_plane {
     pub(crate) const US_AUTH_URL: &str = "https://app.firezone.dev";
     pub(crate) const US_API_URL: &str = "wss://api.firezone.dev/";
     pub(crate) const EU_AUTH_URL: &str = "https://eu.app.firezone.dev";
@@ -470,7 +473,7 @@ mod tests {
             advanced_settings("https://app.firezone.dev", "wss://api.firezone.dev"),
         );
 
-        assert_eq!(view_model.portal, Portal::CloudUs);
+        assert_eq!(view_model.control_plane, ControlPlane::CloudUs);
     }
 
     #[test]
@@ -480,7 +483,7 @@ mod tests {
             advanced_settings("https://firezone.example.com", "wss://api.example.com"),
         );
 
-        assert_eq!(view_model.portal, Portal::Custom);
+        assert_eq!(view_model.control_plane, ControlPlane::Custom);
         assert_eq!(view_model.auth_url, "https://firezone.example.com/");
         assert_eq!(view_model.api_url, "wss://api.example.com/");
     }
@@ -498,13 +501,13 @@ mod tests {
             advanced_settings("https://app.firezone.dev", "wss://api.firezone.dev"),
         );
 
-        assert_eq!(view_model.portal, Portal::CloudEu);
+        assert_eq!(view_model.control_plane, ControlPlane::CloudEu);
         assert!(view_model.auth_url_is_managed);
         assert!(view_model.api_url_is_managed);
     }
 
     #[test]
-    fn managed_urls_match_a_portal_despite_trivial_differences() {
+    fn managed_urls_match_a_control_plane_despite_trivial_differences() {
         let mdm_settings = MdmSettings {
             auth_url: Some(Url::parse("HTTPS://EU.APP.FIREZONE.DEV:443/").unwrap()),
             api_url: Some(Url::parse("wss://eu.api.firezone.dev").unwrap()),
@@ -516,7 +519,7 @@ mod tests {
             advanced_settings("https://app.firezone.dev", "wss://api.firezone.dev"),
         );
 
-        assert_eq!(view_model.portal, Portal::CloudEu);
+        assert_eq!(view_model.control_plane, ControlPlane::CloudEu);
     }
 
     #[test]
@@ -531,7 +534,7 @@ mod tests {
             advanced_settings("https://app.firezone.dev", "wss://api.firezone.dev"),
         );
 
-        assert_eq!(view_model.portal, Portal::Custom);
+        assert_eq!(view_model.control_plane, ControlPlane::Custom);
     }
 
     #[test]
@@ -560,13 +563,13 @@ mod tests {
             None,
         );
 
-        assert_eq!(view_model.portal, Portal::CloudEu);
+        assert_eq!(view_model.control_plane, ControlPlane::CloudEu);
         assert_eq!(view_model.custom_auth_url, "https://firezone.example.com/");
         assert_eq!(view_model.custom_api_url, "wss://api.example.com/");
     }
 
     #[test]
-    fn signed_in_with_names_the_portal_it_signed_in_to() {
+    fn signed_in_with_names_the_control_plane_it_signed_in_to() {
         let view_model = GeneralSettingsViewModel::new(
             MdmSettings::default(),
             GeneralSettings::default(),
@@ -579,7 +582,7 @@ mod tests {
         );
 
         let signed_in_with = view_model.signed_in_with.unwrap();
-        assert_eq!(signed_in_with.portal, Portal::CloudEu);
+        assert_eq!(signed_in_with.control_plane, ControlPlane::CloudEu);
         assert_eq!(signed_in_with.account_slug, "");
     }
 
