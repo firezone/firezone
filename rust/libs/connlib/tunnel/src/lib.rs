@@ -747,6 +747,25 @@ impl GatewayTunnel {
                 }
 
                 for query in udp_dns_queries {
+                    if !self
+                        .role_state
+                        .allows_tun_dns_query(query.remote, &query.message, now)
+                    {
+                        let response = dns_types::ResponseBuilder::for_query(
+                            &query.message,
+                            dns_types::ResponseCode::REFUSED,
+                        )
+                        .build();
+                        if let Err(e) =
+                            self.io
+                                .send_udp_dns_response(query.remote, query.local, response)
+                        {
+                            error.push(e);
+                        }
+                        tick.want_continue();
+                        continue;
+                    }
+
                     self.io.send_dns_query(ResolverQuery {
                         server: None,
                         local: query.local,
@@ -760,6 +779,25 @@ impl GatewayTunnel {
                 }
 
                 for query in tcp_dns_queries {
+                    if !self
+                        .role_state
+                        .allows_tun_dns_query(query.remote, &query.message, now)
+                    {
+                        let response = dns_types::ResponseBuilder::for_query(
+                            &query.message,
+                            dns_types::ResponseCode::REFUSED,
+                        )
+                        .build();
+                        if let Err(e) =
+                            self.io
+                                .send_tcp_dns_response(query.remote, query.local, response)
+                        {
+                            error.push(e);
+                        }
+                        tick.want_continue();
+                        continue;
+                    }
+
                     self.io.send_dns_query(ResolverQuery {
                         server: None,
                         local: query.local,

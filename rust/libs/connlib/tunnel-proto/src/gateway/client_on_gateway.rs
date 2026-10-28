@@ -5,7 +5,7 @@ use std::time::Instant;
 
 use anyhow::{Context, ErrorExt, Result, bail};
 use connlib_model::{ClientId, ResourceId};
-use dns_types::DomainName;
+use dns_types::{DomainName, Query, RecordType};
 use fast_random_state::FastRandomState;
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_packet::{IpPacket, Protocol, UnsupportedProtocol};
@@ -510,12 +510,49 @@ impl ClientOnGateway {
         self.resources.contains_key(&resource)
     }
 
+    pub(crate) fn allows_tun_dns_query(&self, query: &Query, now: Instant) -> bool {
+        if !query.is_standard_query() {
+            return false;
+        }
+
+        let qtype = query.qtype();
+        if qtype != RecordType::TXT && qtype != RecordType::SRV {
+            return false;
+        }
+
+        let domain = query.domain();
+
+        self.resources.iter().any(|(id, resource)| {
+            let Some(entry) = self.resources.get(id) else {
+                return false;
+            };
+            if entry.expires_at <= now {
+                return false;
+            }
+
+            match resource {
+                ResourceOnGateway::Dns { address, .. } => {
+                    crate::dns::is_subdomain(&domain, address)
+                }
+                ResourceOnGateway::Cidr { .. } => false,
+                ResourceOnGateway::Internet => false,
+            }
+        })
+    }
+
     fn ensure_allowed_outbound(&mut self, packet: &IpPacket) -> Result<()> {
         self.ensure_client_ip(packet.source())?;
 
-        // Traffic to our own IP is allowed.
+        // The TUN IP hosts the gateway's DNS server.
         if self.gateway_tun.is_ip(packet.destination()) {
-            return Ok(());
+            match packet.destination_protocol() {
+                Ok(Protocol::Tcp(super::TUN_DNS_PORT)) => return Ok(()),
+                Ok(Protocol::Udp(super::TUN_DNS_PORT)) => return Ok(()),
+                _ => bail!(
+                    "Only DNS on port {} is allowed to the gateway TUN IP",
+                    super::TUN_DNS_PORT
+                ),
+            }
         }
 
         ensure_not_peer_ip(packet.destination())?;
@@ -896,35 +933,97 @@ mod tests {
     }
 
     #[test]
-    fn allows_packets_for_and_from_gateway_tun_ip() {
+    fn only_allows_dns_port_on_gateway_tun_ip() {
         let mut peer = ClientOnGateway::new(client_id(), client_key(), client_tun(), gateway_tun());
 
-        let request = ip_packet::make::tcp_packet(
-            client_tun_ipv4(),
-            gateway_tun_ipv4(),
-            5401,
-            80,
-            TcpFlags::default(),
-            &[0u8; 100],
-        )
-        .unwrap();
+        for (client, gateway) in [
+            (
+                IpAddr::V4(client_tun_ipv4()),
+                IpAddr::V4(gateway_tun_ipv4()),
+            ),
+            (
+                IpAddr::V6(client_tun_ipv6()),
+                IpAddr::V6(gateway_tun_ipv6()),
+            ),
+        ] {
+            for request in [
+                ip_packet::make::tcp_packet(
+                    client,
+                    gateway,
+                    5401,
+                    super::super::TUN_DNS_PORT,
+                    TcpFlags::default(),
+                    &[],
+                )
+                .unwrap(),
+                ip_packet::make::udp_packet(client, gateway, 5401, super::super::TUN_DNS_PORT, &[])
+                    .unwrap(),
+            ] {
+                assert!(matches!(
+                    peer.translate_outbound(request, Instant::now()).unwrap(),
+                    TranslateOutboundResult::Send(_)
+                ));
+            }
 
-        let mut response = ip_packet::make::tcp_packet(
-            gateway_tun_ipv4(),
-            client_tun_ipv4(),
-            80,
-            5401,
-            TcpFlags::default(),
-            &[0u8; 100],
-        )
-        .unwrap();
+            for request in [
+                ip_packet::make::tcp_packet(client, gateway, 5401, 80, TcpFlags::default(), &[])
+                    .unwrap(),
+                ip_packet::make::udp_packet(client, gateway, 5401, 53, &[]).unwrap(),
+                ip_packet::make::icmp_request_packet(client, gateway, 1, 1, &[]).unwrap(),
+            ] {
+                assert!(matches!(
+                    peer.translate_outbound(request, Instant::now()).unwrap(),
+                    TranslateOutboundResult::IcmpError { .. }
+                ));
+            }
 
-        assert!(matches!(
-            peer.translate_outbound(request, Instant::now()).unwrap(),
-            TranslateOutboundResult::Send(_)
-        ));
-        peer.translate_inbound(&mut response, Instant::now())
+            let mut response = ip_packet::make::tcp_packet(
+                gateway,
+                client,
+                super::super::TUN_DNS_PORT,
+                5401,
+                TcpFlags::default(),
+                &[],
+            )
             .unwrap();
+            peer.translate_inbound(&mut response, Instant::now())
+                .unwrap();
+        }
+    }
+
+    #[test]
+    fn tun_dns_queries_require_an_active_dns_resource_and_txt_or_srv_type() {
+        let now = Instant::now();
+        let mut peer = ClientOnGateway::new(client_id(), client_key(), client_tun(), gateway_tun());
+        peer.add_resource(foo_dns_resource(), Some(now + Duration::from_secs(60)), now);
+        peer.add_resource(bar_cidr_resource(), None, now);
+        peer.add_resource(internet_resource(), None, now);
+
+        let mut wildcard = baz_dns_resource();
+        let ResourceDescription::Dns(ref mut dns) = wildcard else {
+            unreachable!()
+        };
+        dns.address = "*.foo.com".to_owned();
+        peer.add_resource(wildcard, Some(now + Duration::from_secs(60)), now);
+
+        let query = |name: &str, record_type| Query::new(name.parse().unwrap(), record_type);
+
+        assert!(peer.allows_tun_dns_query(&query("foo.com", RecordType::TXT), now));
+        assert!(peer.allows_tun_dns_query(&query("service.foo.com", RecordType::SRV), now));
+        assert!(!peer.allows_tun_dns_query(&query("foo.com", RecordType::A), now));
+        assert!(!peer.allows_tun_dns_query(&query("other.com", RecordType::TXT), now));
+        assert!(!peer.allows_tun_dns_query(&query("10.0.0.1", RecordType::TXT), now));
+        let mut update = query("foo.com", RecordType::TXT).into_bytes();
+        update[2] |= 5 << 3;
+        assert!(!peer.allows_tun_dns_query(&Query::parse(&update).unwrap(), now));
+        assert!(!peer.allows_tun_dns_query(
+            &query("foo.com", RecordType::TXT),
+            now + Duration::from_secs(60)
+        ));
+
+        peer.remove_resource(&foo_resource_id());
+        peer.remove_resource(&baz_resource_id());
+        assert!(!peer.allows_tun_dns_query(&query("foo.com", RecordType::TXT), now));
     }
 
     #[test]
