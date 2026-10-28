@@ -12,7 +12,7 @@ defmodule Portal.Workers.SweepSlugRegistryTest do
   end
 
   test "releases old claims of this region that have no local row" do
-    account = account_fixture(slug: "kept-slug")
+    account = account_fixture(slug: "Kept-Slug")
     use_azure_registry(:us)
     orphan_account_id = Ecto.UUID.generate()
     old = DateTime.utc_now() |> DateTime.add(-30, :minute) |> DateTime.to_iso8601()
@@ -23,9 +23,9 @@ defmodule Portal.Workers.SweepSlugRegistryTest do
       %{method: "GET", request_path: "/slugs()"} = conn ->
         Req.Test.json(conn, %{
           "value" => [
-            Map.put(entity("kept-slug", account.id, "us"), "InsertedAt", old),
-            Map.put(entity("orphan-old", orphan_account_id, "us"), "InsertedAt", old),
-            Map.put(entity("orphan-fresh", orphan_account_id, "us"), "InsertedAt", fresh)
+            Map.put(entity("kept_slug", account.id, "us"), "InsertedAt", old),
+            Map.put(entity("orphan_old", orphan_account_id, "us"), "InsertedAt", old),
+            Map.put(entity("orphan_fresh", orphan_account_id, "us"), "InsertedAt", fresh)
           ]
         })
 
@@ -39,8 +39,8 @@ defmodule Portal.Workers.SweepSlugRegistryTest do
 
     assert :ok = perform_job(SweepSlugRegistry, %{})
 
-    assert_received {:deleted, "orphan-old"}
-    refute_received {:deleted, "orphan-fresh"}
-    refute_received {:deleted, "kept-slug"}
+    assert_received {:deleted, "orphan_old"}
+    refute_received {:deleted, "orphan_fresh"}
+    refute_received {:deleted, "kept_slug"}
   end
 end

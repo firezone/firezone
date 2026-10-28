@@ -31,6 +31,19 @@ defmodule Portal.SlugRegistry.AzureTableTest do
       assert is_binary(body["InsertedAt"])
     end
 
+    test "stores the hyphen twin under its underscore key", %{account_id: account_id} do
+      test_pid = self()
+
+      stub_registry(fn
+        %{method: "POST", request_path: "/slugs"} = conn ->
+          send(test_pid, {:inserted, json_body(conn)["RowKey"]})
+          send_resp(conn, 204, "")
+      end)
+
+      assert SlugRegistry.claim("Acme-Corp", account_id) == :ok
+      assert_received {:inserted, "acme_corp"}
+    end
+
     test "succeeds again for a slug the same account holds", %{account_id: account_id} do
       stub_registry(fn
         %{method: "POST"} = conn -> send_resp(conn, 409, "")

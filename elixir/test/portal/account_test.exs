@@ -77,7 +77,7 @@ defmodule Portal.AccountTest do
 
       account = account_fixture(slug: "claimed-first")
 
-      assert_received {:claimed, %{"RowKey" => "claimed-first", "AccountId" => account_id, "Region" => "us"}}
+      assert_received {:claimed, %{"RowKey" => "claimed_first", "AccountId" => account_id, "Region" => "us"}}
       assert account_id == account.id
       assert [%Portal.AccountSlug{slug: "claimed-first"}] = slug_rows(account)
     end
@@ -115,8 +115,8 @@ defmodule Portal.AccountTest do
       account = account_fixture(slug: "first-slug")
       account = update_account(account, slug: "second-slug")
 
-      assert_received {:claimed, "first-slug"}
-      assert_received {:claimed, "second-slug"}
+      assert_received {:claimed, "first_slug"}
+      assert_received {:claimed, "second_slug"}
       assert Enum.map(slug_rows(account), & &1.slug) == ["first-slug", "second-slug"]
     end
   end
@@ -196,7 +196,8 @@ defmodule Portal.AccountTest do
         |> cast(%{slug: "acme_corp"}, [:slug])
         |> Account.changeset()
 
-      assert {:ok, %{slug: "acme_corp"}} = Repo.update(changeset)
+      assert {:ok, %{slug: "acme_corp"} = account} = Repo.update(changeset)
+      assert [%{slug: "acme-corp"}, %{slug: "acme_corp"}] = slug_rows(account)
     end
 
     test "treats slugs case-insensitively" do

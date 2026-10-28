@@ -74,14 +74,15 @@ defmodule PortalWeb.Accounts do
     end
 
     defp query(id_or_slug) do
-      slug_owner = from(s in AccountSlug, where: s.slug == ^id_or_slug, select: s.account_id)
+      spellings = AccountSlug.spellings(id_or_slug)
+      slug_owner = from(s in AccountSlug, where: s.slug in ^spellings, select: s.account_id)
 
       if Portal.Repo.valid_uuid?(id_or_slug) do
         from(a in Account,
-          where: a.id == ^id_or_slug or a.slug == ^id_or_slug or a.id in subquery(slug_owner)
+          where: a.id == ^id_or_slug or a.slug in ^spellings or a.id in subquery(slug_owner)
         )
       else
-        from(a in Account, where: a.slug == ^id_or_slug or a.id in subquery(slug_owner))
+        from(a in Account, where: a.slug in ^spellings or a.id in subquery(slug_owner))
       end
     end
   end

@@ -3,7 +3,9 @@ defmodule Portal.SlugRegistry do
   The registry that keeps account slugs unique across Firezone Cloud regions.
 
   Every portal keeps its own `account_slugs` table and reads only from it. A
-  write claims the slug here first and then in the local table. Without a
+  write claims the slug here first and then in the local table. The registry
+  key is the canonical spelling, lowercase with underscores, so a slug and
+  its hyphen twin share one row. Without a
   registry table URL, the default for on-prem, the `Local` adapter claims
   nothing beyond the local table and answers every lookup with `:not_found`,
   so the portal never leaves its database. With one, the `AzureTable` adapter
@@ -53,5 +55,5 @@ defmodule Portal.SlugRegistry do
     end
   end
 
-  defp normalize(slug), do: String.downcase(slug)
+  defp normalize(slug), do: Portal.AccountSlug.canonical(slug)
 end

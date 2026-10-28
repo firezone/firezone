@@ -185,19 +185,27 @@ defmodule Portal.Account do
     changeset = ensure_id(changeset)
     account_id = get_field(changeset, :id)
 
+    owners = Database.slug_owners(changeset.repo, slug)
+
     cond do
       slug_staged?(changeset, slug) ->
         changeset
 
-      Database.slug_owner_id(changeset.repo, slug) == account_id ->
+      recorded?(owners, slug, account_id) ->
         changeset
 
-      is_nil(Database.slug_owner_id(changeset.repo, slug)) ->
+      Enum.all?(owners, fn {_spelling, owner_id} -> owner_id == account_id end) ->
         claim_and_insert_slug(changeset, slug, account_id)
 
       true ->
         add_error(changeset, :slug, "has already been taken")
     end
+  end
+
+  defp recorded?(owners, slug, account_id) do
+    Enum.any?(owners, fn {spelling, owner_id} ->
+      owner_id == account_id and String.downcase(spelling) == String.downcase(slug)
+    end)
   end
 
   # The shared registry comes first: a slug another region holds never
@@ -255,12 +263,12 @@ defmodule Portal.Account do
 
     # "acme_corp" and "acme-corp" would read as the same account, so either
     # spelling takes the slug for both.
-    def slug_owner_id(repo, slug) do
-      spellings = Enum.uniq([slug, String.replace(slug, "_", "-"), String.replace(slug, "-", "_")])
+    def slug_owners(repo, slug) do
+      spellings = Portal.AccountSlug.spellings(slug)
 
-      Safe.one(
+      Safe.all(
         repo,
-        from(s in Portal.AccountSlug, where: s.slug in ^spellings, select: s.account_id, limit: 1)
+        from(s in Portal.AccountSlug, where: s.slug in ^spellings, select: {s.slug, s.account_id})
       )
     end
 

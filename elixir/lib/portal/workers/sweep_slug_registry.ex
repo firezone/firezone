@@ -11,7 +11,7 @@ defmodule Portal.Workers.SweepSlugRegistry do
     unique: [period: :infinity, states: :incomplete]
 
   alias __MODULE__.Database
-  alias Portal.SlugRegistry
+  alias Portal.{AccountSlug, SlugRegistry}
 
   require Logger
 
@@ -24,7 +24,7 @@ defmodule Portal.Workers.SweepSlugRegistry do
       local = Database.local_slugs(Enum.map(entries, & &1.slug))
 
       entries
-      |> Enum.reject(&(&1.slug in local))
+      |> Enum.reject(&(AccountSlug.canonical(&1.slug) in local))
       |> Enum.filter(&older_than?(&1, cutoff))
       |> Enum.reduce_while({:ok, 0}, &release/2)
       |> report()
@@ -63,11 +63,15 @@ defmodule Portal.Workers.SweepSlugRegistry do
 
     def local_slugs([]), do: MapSet.new()
 
+    # The registry holds one canonical key per slug, so the local rows are
+    # compared in that spelling too.
     def local_slugs(slugs) do
-      from(s in AccountSlug, where: s.slug in ^slugs, select: s.slug)
+      spellings = Enum.flat_map(slugs, &AccountSlug.spellings/1)
+
+      from(s in AccountSlug, where: s.slug in ^spellings, select: s.slug)
       |> Safe.unscoped()
       |> Safe.all()
-      |> MapSet.new()
+      |> MapSet.new(&AccountSlug.canonical/1)
     end
   end
 end

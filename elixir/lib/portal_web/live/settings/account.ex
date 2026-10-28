@@ -641,7 +641,8 @@ defmodule PortalWeb.Settings.Account do
 
   def handle_event("submit_account", %{"account" => params}, socket) do
     account = socket.assigns.account
-    changeset = account_changeset(account, params, socket.assigns.slug_history)
+    slug_history = Database.list_account_slugs(socket.assigns.subject)
+    changeset = account_changeset(account, params, slug_history)
 
     case Database.update_account(changeset, socket.assigns.subject) do
       {:ok, %{slug: slug} = updated_account} when slug != account.slug ->
@@ -652,8 +653,8 @@ defmodule PortalWeb.Settings.Account do
          assign(socket,
            account: updated_account,
            edit_account_open: false,
-           account_form:
-             to_form(account_changeset(updated_account, %{}, socket.assigns.slug_history))
+           slug_history: slug_history,
+           account_form: to_form(account_changeset(updated_account, %{}, slug_history))
          )}
 
       {:error, changeset} ->

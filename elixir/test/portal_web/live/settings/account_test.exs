@@ -491,6 +491,25 @@ defmodule PortalWeb.Settings.AccountTest do
       assert fetch_account!(account.id).slug == account.slug
     end
 
+    test "rechecks the history at submit time", %{conn: conn, account: account, actor: actor} do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/account")
+
+      render_click(lv, "open_edit_account")
+
+      Enum.each(1..3, fn n -> update_account(account, slug: "#{account.slug}_v#{n}") end)
+
+      html =
+        lv
+        |> form("form[phx-submit='submit_account']", %{account: %{slug: "#{account.slug}_v4"}})
+        |> render_submit()
+
+      assert html =~ "can be changed at most 3 times every 30 days"
+      assert fetch_account!(account.id).slug == "#{account.slug}_v3"
+    end
+
     test "allows three new slugs per 30 days and then stops", %{
       conn: conn,
       account: account,

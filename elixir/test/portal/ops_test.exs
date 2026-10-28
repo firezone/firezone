@@ -224,8 +224,8 @@ defmodule Portal.OpsTest do
       output = capture_io("y\n", fn -> assert {:ok, 2} = backfill_slug_registry() end)
 
       assert output =~ "Claimed 2 slug(s)."
-      assert_received {:claimed, "backfill-me"}
-      assert_received {:claimed, "backfill-me-too"}
+      assert_received {:claimed, "backfill_me"}
+      assert_received {:claimed, "backfill_me_too"}
     end
 
     test "prints a slug that another account holds and goes on" do

@@ -103,6 +103,22 @@ defmodule PortalWeb.Plugs.FetchAccountTest do
       assert redirected_to(conn) == "/#{account.slug}/settings/account?foo=bar"
     end
 
+    test "redirects the underscore twin of a hyphenated slug to the current slug", %{
+      conn: conn,
+      account: account
+    } do
+      account = update_account(account, slug: "acme-corp")
+
+      conn =
+        conn
+        |> Map.put(:path_info, ["acme_corp", "sign_in"])
+        |> FetchAccount.call([])
+
+      assert conn.halted
+      assert conn.assigns.account.id == account.id
+      assert redirected_to(conn) == "/acme-corp/sign_in"
+    end
+
     test "keeps a POST for an old slug on its path", %{conn: conn, account: account} do
       old_slug = account.slug
       account = update_account(account, slug: "#{old_slug}_renamed")
