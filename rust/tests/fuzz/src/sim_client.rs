@@ -155,6 +155,22 @@ impl SimClient {
         old.shut_down(now)
     }
 
+    /// Starts a new tunnel as if the Client's process died: nothing leaves the old tunnel and
+    /// the new one starts without the cached DNS resource records, so applications have to
+    /// resolve their domains again.
+    pub(crate) fn crash(
+        &mut self,
+        key: PrivateKey,
+        is_internet_resource_active: bool,
+        now: Instant,
+        utc_now: DateTime<Utc>,
+    ) {
+        self.dns_resource_record_cache.clear();
+        self.dns_records.clear();
+
+        let _goodbye = self.restart(key, is_internet_resource_active, now, utc_now);
+    }
+
     /// Returns the _effective_ DNS servers that connlib is using.
     pub(crate) fn effective_dns_servers(&self) -> Vec<dns::Upstream> {
         self.dns_by_sentinel.upstream_servers()
