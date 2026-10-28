@@ -1636,7 +1636,9 @@ fn on_gateway_event(
             })
         }
         GatewayEvent::ResolveDns(r) => {
-            let client = r.client();
+            let client = clients.iter().find_map(|(id, client)| {
+                (client.inner().sut().public_key() == r.client_public_key()).then_some(*id)
+            });
             let domain = r.domain().clone();
             let proxy_ips = r.proxy_ips().to_vec();
             let resolved_ips = ref_state.gateways[&src]
@@ -1649,7 +1651,9 @@ fn on_gateway_event(
                 g.sut_mut()
                     .handle_domain_resolved(r, Ok(resolved_ips.clone()), now)
                     .unwrap();
-                g.record_dns_resolution(client, domain, proxy_ips, resolved_ips, now);
+                if let Some(client) = client {
+                    g.record_dns_resolution(client, domain, proxy_ips, resolved_ips, now);
+                }
             })
         }
         GatewayEvent::NoRelays { excluded_relay_ids } => {
