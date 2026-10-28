@@ -84,7 +84,10 @@ async fn explicit_source_round_trips_before_and_after_promotion() {
             .await
             .unwrap();
 
-        assert_eq!(socket.flow_socket_count(), usize::from(datagrams == 16));
+        assert_eq!(
+            socket.flow_socket_count(),
+            if datagrams == 16 { 1 } else { 0 }
+        );
         let mut buf = [0u8; 16];
         for _ in 0..datagrams {
             let (len, sender) =
