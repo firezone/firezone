@@ -115,6 +115,18 @@ defmodule Portal.Billing do
 
   def plan_type(nil), do: :unknown
 
+  @doc """
+  Returns the Relay throughput limit in Mbps that a plan includes unless its
+  Stripe metadata sets `relay_throughput_mbps`. `nil` is unlimited.
+  """
+  @spec default_relay_throughput_mbps(:enterprise | :business | :team | :starter | :unknown) ::
+          pos_integer() | nil
+  def default_relay_throughput_mbps(:starter), do: 5
+  def default_relay_throughput_mbps(:team), do: 15
+  def default_relay_throughput_mbps(:business), do: 25
+  def default_relay_throughput_mbps(:enterprise), do: 50
+  def default_relay_throughput_mbps(:unknown), do: nil
+
   @spec paid_plan?(Portal.Account.t()) :: boolean()
   def paid_plan?(%Portal.Account{} = account), do: plan_type(account) in [:team, :business, :enterprise]
 

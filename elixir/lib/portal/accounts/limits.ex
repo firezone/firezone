@@ -21,6 +21,9 @@ defmodule Portal.Accounts.Limits do
     field :api_read_capacity, :integer
     field :ingestion_refill_rate, :integer
     field :ingestion_capacity, :integer
+    # Throughput each Relay allows per direction of a relayed connection; nil
+    # or 0 is unlimited.
+    field :relay_throughput_mbps, :integer
   end
 
   def changeset(limits \\ %__MODULE__{}, attrs) do
@@ -40,6 +43,7 @@ defmodule Portal.Accounts.Limits do
       api_read_capacity
       ingestion_refill_rate
       ingestion_capacity
+      relay_throughput_mbps
     ]a
 
     limits
@@ -57,5 +61,6 @@ defmodule Portal.Accounts.Limits do
     |> validate_number(:api_read_capacity, greater_than_or_equal_to: 0)
     |> validate_number(:ingestion_refill_rate, greater_than_or_equal_to: 0)
     |> validate_number(:ingestion_capacity, greater_than_or_equal_to: 0)
+    |> validate_number(:relay_throughput_mbps, greater_than_or_equal_to: 0)
   end
 end
