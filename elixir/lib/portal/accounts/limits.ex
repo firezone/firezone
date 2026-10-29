@@ -24,6 +24,8 @@ defmodule Portal.Accounts.Limits do
     # Throughput each Relay allows per direction of a relayed connection; nil
     # or 0 is unlimited.
     field :relay_throughput_mbps, :integer
+    # Allocations each Relay allows for the account; nil or 0 is unlimited.
+    field :relay_allocations_count, :integer
   end
 
   def changeset(limits \\ %__MODULE__{}, attrs) do
@@ -44,6 +46,7 @@ defmodule Portal.Accounts.Limits do
       ingestion_refill_rate
       ingestion_capacity
       relay_throughput_mbps
+      relay_allocations_count
     ]a
 
     limits
@@ -62,5 +65,6 @@ defmodule Portal.Accounts.Limits do
     |> validate_number(:ingestion_refill_rate, greater_than_or_equal_to: 0)
     |> validate_number(:ingestion_capacity, greater_than_or_equal_to: 0)
     |> validate_number(:relay_throughput_mbps, greater_than_or_equal_to: 0)
+    |> validate_number(:relay_allocations_count, greater_than_or_equal_to: 0)
   end
 end
