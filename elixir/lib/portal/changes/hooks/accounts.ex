@@ -1,6 +1,6 @@
 defmodule Portal.Changes.Hooks.Accounts do
   @behaviour Portal.Changes.Hooks
-  alias Portal.{Billing, Changes.Change, PubSub}
+  alias Portal.{Accounts.Limits, Billing, Changes.Change, PubSub}
   alias __MODULE__.Database
   import Portal.SchemaHelpers
 
@@ -58,7 +58,8 @@ defmodule Portal.Changes.Hooks.Accounts do
     # Relays apply changed account limits without reconnecting.
     if not account.is_disabled and
          (relay_throughput_mbps(old_account) != relay_throughput_mbps(account) or
-            relay_allocations_count(old_account) != relay_allocations_count(account)) do
+            Limits.relay_allocation_limit(old_account.limits) !=
+              Limits.relay_allocation_limit(account.limits)) do
       PubSub.Changes.broadcast_account(change)
     end
 
@@ -77,9 +78,6 @@ defmodule Portal.Changes.Hooks.Accounts do
 
   defp relay_throughput_mbps(%Portal.Account{limits: %{relay_throughput_mbps: mbps}}), do: mbps
   defp relay_throughput_mbps(%Portal.Account{}), do: nil
-
-  defp relay_allocations_count(%Portal.Account{limits: %{relay_allocations_count: count}}), do: count
-  defp relay_allocations_count(%Portal.Account{}), do: nil
 
   defmodule Database do
     import Ecto.Query
