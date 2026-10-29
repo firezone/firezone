@@ -117,6 +117,13 @@ pub struct RefClient {
     inbound_peer_authorizations: BTreeMap<ClientId, BTreeSet<ResourceId>>,
     #[debug(skip)]
     rejected_inbound_peer_authorizations: BTreeMap<ClientId, BTreeMap<ResourceId, Vec<Filter>>>,
+
+    /// Peers that crashed while we held an authorization towards them over an ICE-less connection.
+    ///
+    /// Nothing tells us about the crash, so we keep sending into the dead connection until
+    /// WireGuard gives up on the handshake after 90s or the peer reaches us with its new key.
+    #[debug(skip)]
+    crashed_peers: BTreeSet<ClientId>,
 }
 
 impl RefClient {
@@ -158,6 +165,7 @@ impl RefClient {
             outbound_peer_authorizations: Default::default(),
             inbound_peer_authorizations: Default::default(),
             rejected_inbound_peer_authorizations: Default::default(),
+            crashed_peers: Default::default(),
         }
     }
 
@@ -244,6 +252,7 @@ impl RefClient {
 
     /// Records a pool through which `peer` may reach us.
     pub(crate) fn add_inbound_peer_pool(&mut self, peer: ClientId, pool: ResourceId) {
+        self.crashed_peers.remove(&peer);
         self.inbound_peer_authorizations
             .entry(peer)
             .or_default()
@@ -338,6 +347,20 @@ impl RefClient {
         self.outbound_peer_authorizations.remove(&peer);
         self.inbound_peer_authorizations.remove(&peer);
         self.rejected_inbound_peer_authorizations.remove(&peer);
+    }
+
+    /// Drops every authorization involving `peer`, which crashed without a `goodbye`.
+    pub(crate) fn forget_crashed_peer(&mut self, peer: ClientId, iceless: bool) {
+        if iceless && self.authorized_pools_towards(peer).next().is_some() {
+            self.crashed_peers.insert(peer);
+        }
+
+        self.forget_peer_authorizations(peer);
+    }
+
+    /// Whether we still send to `peer` through a connection that died with it.
+    pub(crate) fn holds_dead_connection_to(&self, peer: ClientId) -> bool {
+        self.crashed_peers.contains(&peer)
     }
 
     /// Checks whether any active inbound authorization from `peer` permits `protocol`.
@@ -523,6 +546,7 @@ impl RefClient {
         self.outbound_peer_authorizations.clear();
         self.inbound_peer_authorizations.clear();
         self.rejected_inbound_peer_authorizations.clear();
+        self.crashed_peers.clear();
     }
 
     pub(crate) fn add_internet_resource(&mut self, resource: InternetResource) {
