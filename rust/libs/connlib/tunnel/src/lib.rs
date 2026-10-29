@@ -747,7 +747,7 @@ impl GatewayTunnel {
                 }
 
                 for query in udp_dns_queries {
-                    match self.role_state.handle_dns_query(
+                    match self.role_state.handle_site_dns_query(
                         query.local,
                         query.remote,
                         query.message,
@@ -771,7 +771,7 @@ impl GatewayTunnel {
                 }
 
                 for query in tcp_dns_queries {
-                    match self.role_state.handle_dns_query(
+                    match self.role_state.handle_site_dns_query(
                         query.local,
                         query.remote,
                         query.message,

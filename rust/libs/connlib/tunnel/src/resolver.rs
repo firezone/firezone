@@ -55,10 +55,7 @@ pub struct ResolverQuery {
 }
 
 impl ResolverQuery {
-    pub(crate) fn new_gateway(
-        query: tunnel_proto::AuthorizedDnsQuery,
-        started_at: Instant,
-    ) -> Self {
+    pub(crate) fn new_gateway(query: tunnel_proto::SiteDnsQuery, started_at: Instant) -> Self {
         let (local, remote, message, transport) = query.into_parts();
 
         Self {

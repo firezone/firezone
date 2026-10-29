@@ -28,14 +28,14 @@ use zeroize::Zeroizing;
 
 pub const TUN_DNS_PORT: u16 = 53535;
 
-pub struct AuthorizedDnsQuery {
+pub struct SiteDnsQuery {
     local: SocketAddr,
     remote: SocketAddr,
     message: Query,
     transport: crate::dns::Transport,
 }
 
-impl AuthorizedDnsQuery {
+impl SiteDnsQuery {
     pub fn into_parts(self) -> (SocketAddr, SocketAddr, Query, crate::dns::Transport) {
         (self.local, self.remote, self.message, self.transport)
     }
@@ -112,14 +112,14 @@ impl GatewayState {
         self.tun_ip_config
     }
 
-    pub fn handle_dns_query(
+    pub fn handle_site_dns_query(
         &self,
         local: SocketAddr,
         remote: SocketAddr,
         message: Query,
         transport: crate::dns::Transport,
         now: Instant,
-    ) -> Result<AuthorizedDnsQuery, Response> {
+    ) -> Result<SiteDnsQuery, Response> {
         let allowed = self
             .peers
             .peer_by_ip(remote.ip())
@@ -129,7 +129,7 @@ impl GatewayState {
             return Err(ResponseBuilder::for_query(&message, ResponseCode::REFUSED).build());
         }
 
-        Ok(AuthorizedDnsQuery {
+        Ok(SiteDnsQuery {
             local,
             remote,
             message,
