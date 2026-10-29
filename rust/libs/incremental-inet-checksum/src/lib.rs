@@ -117,13 +117,18 @@ fn fold_u32_into_u16(mut csum: u32) -> u16 {
     csum as u16
 }
 
-#[inline(never)]
-fn fold_u128_into_u16(mut csum: u128) -> u16 {
-    csum = (csum & 0xffff) + (csum >> 16);
-    csum = (csum & 0xffff) + (csum >> 16);
-    csum = (csum & 0xffff) + (csum >> 16);
-    csum = (csum & 0xffff) + (csum >> 16);
-    csum = (csum & 0xffff) + (csum >> 16);
+/// Folds the halves of the value first because 128-bit arithmetic is expensive, especially in eBPF.
+#[inline(always)]
+fn fold_u128_into_u16(csum: u128) -> u16 {
+    let (sum, carry) = ((csum >> 64) as u64).overflowing_add(csum as u64);
+
+    // Cannot overflow: with a carry, the sum is at most `u64::MAX - 1`.
+    fold_u64_into_u16(sum + carry as u64)
+}
+
+#[inline(always)]
+fn fold_u64_into_u16(mut csum: u64) -> u16 {
+    csum = (csum & 0xffff_ffff) + (csum >> 32);
     csum = (csum & 0xffff) + (csum >> 16);
     csum = (csum & 0xffff) + (csum >> 16);
     csum = (csum & 0xffff) + (csum >> 16);
@@ -169,6 +174,37 @@ mod tests {
             .into_ip_checksum();
 
         assert_eq!(updated, 0xabcd);
+    }
+
+    #[test]
+    fn folds_u128_like_summing_its_words() {
+        let edge_cases = [
+            0,
+            1,
+            u128::MAX,
+            u128::MAX - 1,
+            u64::MAX as u128,
+            (u64::MAX as u128) << 64,
+            1 << 127,
+            0xffff,
+            0x1_0000,
+        ];
+        let mut lcg = 0x2545_f491_4f6c_dd1d_u128;
+        let pseudo_random = core::iter::repeat_with(|| {
+            lcg = lcg
+                .wrapping_mul(0x2360_ed05_1fc6_5da4_4385_df64_9fcc_f645)
+                .wrapping_add(0x5851_f42d_4c95_7f2d_1405_7b7e_f767_814f);
+            lcg
+        });
+
+        for val in edge_cases.into_iter().chain(pseudo_random.take(100_000)) {
+            let mut sum = (0..8).map(|i| (val >> (16 * i)) as u16 as u32).sum::<u32>();
+            while sum > 0xffff {
+                sum = (sum & 0xffff) + (sum >> 16);
+            }
+
+            assert_eq!(fold_u128_into_u16(val), sum as u16, "{val:#x}");
+        }
     }
 
     #[test]
