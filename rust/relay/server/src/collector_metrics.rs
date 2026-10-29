@@ -6,6 +6,7 @@ pub fn with_exporter(
     builder: MeterProviderBuilder,
     endpoint: &str,
 ) -> Result<MeterProviderBuilder> {
+    // Delta histograms keep Azure Monitor's min/max and averages scoped to each export window.
     let exporter = opentelemetry_otlp::MetricExporter::builder()
         .with_tonic()
         .with_endpoint(endpoint)
