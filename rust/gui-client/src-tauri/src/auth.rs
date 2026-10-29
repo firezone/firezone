@@ -55,8 +55,6 @@ pub enum Error {
 pub struct Auth {
     token_entry: keyring_core::Entry,
     state: State,
-    // Legacy settings are captured in memory before a successful connection saves them.
-    sign_in_settings_need_saving: bool,
     session_dir: PathBuf,
 }
 
@@ -74,7 +72,7 @@ enum State {
 #[derive(Clone)]
 pub struct Credential {
     pub token: SecretString,
-    pub sign_in_settings: Option<SignInSettings>,
+    pub sign_in_settings: SignInSettings,
 }
 
 pub struct Request {
@@ -127,10 +125,10 @@ impl Auth {
     /// Creates a new Auth struct using the "dev.firezone.client/token" keyring key. If the token is stored on disk, the struct is automatically signed in.
     ///
     /// Performs I/O except on `cfg(test)`.
-    pub fn new() -> Result<Self> {
+    pub fn new(configured_sign_in_settings: SignInSettings) -> Result<Self> {
         #[cfg(debug_assertions)]
         if portal_auth_skipped() {
-            return Self::new_fake();
+            return Self::new_fake(configured_sign_in_settings);
         }
 
         #[cfg(all(target_os = "linux", not(test)))]
@@ -151,21 +149,23 @@ impl Auth {
             "dev.firezone.client/token",
             store,
             known_dirs::session().context("Failed to determine `session` directory")?,
+            configured_sign_in_settings,
         )
     }
 
     /// Creates an [`Auth`] backed by an in-memory keystore and a temp session
     /// dir, already signed in with a fabricated token.
     #[cfg(debug_assertions)]
-    fn new_fake() -> Result<Self> {
+    fn new_fake(configured_sign_in_settings: SignInSettings) -> Result<Self> {
         let mut this = Self::new_with_key(
             "dev.firezone.client/token",
             keyring_core::mock::Store::new()?,
             std::env::temp_dir().join("dev.firezone.client.skip-portal-auth"),
+            configured_sign_in_settings.clone(),
         )?;
         let token =
             SecretString::from(format!("{}fake-fragment", generate_nonce().expose_secret()));
-        this.save_token(&token, None);
+        this.save_token(&token, configured_sign_in_settings);
 
         Ok(this)
     }
@@ -177,17 +177,16 @@ impl Auth {
         keyring_key: &'static str,
         store: Arc<CredentialStore>,
         session_dir: PathBuf,
+        configured_sign_in_settings: SignInSettings,
     ) -> Result<Self> {
         let mut this = Self {
             token_entry: store.build("", keyring_key, None)?,
             state: State::SignedOut,
-            sign_in_settings_need_saving: false,
             session_dir,
         };
 
-        match this.credential_from_keyring() {
+        match this.credential_from_keyring(configured_sign_in_settings) {
             Some(credential) => {
-                this.sign_in_settings_need_saving = credential.sign_in_settings.is_none();
                 this.state = State::SignedIn(credential);
                 tracing::debug!("Reloaded token from keyring, starting in signed-in state.");
             }
@@ -216,7 +215,6 @@ impl Auth {
         delete_if_exists(&self.session_dir.join("actor_name.txt"))?;
         delete_if_exists(&self.session_dir.join("session_data.json"))?;
         self.state = State::SignedOut;
-        self.sign_in_settings_need_saving = false;
         Ok(())
     }
 
@@ -261,7 +259,7 @@ impl Auth {
         let settings = req.sign_in_settings.clone();
         self.state = State::AwaitingPortal(Credential {
             token,
-            sign_in_settings: Some(settings),
+            sign_in_settings: settings,
         });
         let State::AwaitingPortal(credential) = &mut self.state else {
             unreachable!("We just set `self.state`")
@@ -273,7 +271,7 @@ impl Auth {
     ///
     /// Performs I/O.
     pub fn sign_in_with_token(&mut self, token: &SecretString, settings: SignInSettings) {
-        self.save_token(token, Some(settings));
+        self.save_token(token, settings);
     }
 
     /// Saves the browser credential once the portal accepts it.
@@ -285,37 +283,17 @@ impl Auth {
         self.save_token(&credential.token, credential.sign_in_settings);
     }
 
-    /// Captures effective settings for a restored token without saved metadata.
-    pub fn capture_legacy_sign_in_settings(&mut self, settings: SignInSettings) {
-        let State::SignedIn(credential) = &mut self.state else {
-            return;
-        };
-        credential.sign_in_settings.get_or_insert(settings);
-    }
-
-    /// Attaches missing sign-in settings to an existing token, for compatibility
-    /// with credentials saved by older clients.
-    pub fn attach_sign_in_settings_to_token(&mut self) {
-        if !self.sign_in_settings_need_saving {
-            return;
-        }
-        let Some(credential) = self.credential().cloned() else {
-            return;
-        };
-        self.save_token(&credential.token, credential.sign_in_settings);
-    }
-
     /// Returns settings captured for the active browser flow or accepted credential.
     pub fn captured_sign_in_settings(&self) -> Option<&SignInSettings> {
         match &self.state {
             State::NeedResponse(request) => Some(&request.sign_in_settings),
-            State::AwaitingPortal(credential) => credential.sign_in_settings.as_ref(),
-            State::SignedIn(credential) => credential.sign_in_settings.as_ref(),
+            State::AwaitingPortal(credential) => Some(&credential.sign_in_settings),
+            State::SignedIn(credential) => Some(&credential.sign_in_settings),
             State::SignedOut => None,
         }
     }
 
-    fn save_token(&mut self, token: &SecretString, sign_in_settings: Option<SignInSettings>) {
+    fn save_token(&mut self, token: &SecretString, sign_in_settings: SignInSettings) {
         let credential = Credential {
             token: token.clone(),
             sign_in_settings,
@@ -325,25 +303,24 @@ impl Auth {
             self.token_entry
                 .set_password(token.expose_secret())
                 .context("Failed to save token in keyring")?;
-            let settings = credential
-                .sign_in_settings
-                .as_ref()
-                .map(serde_json::to_string)
-                .transpose()?
-                .unwrap_or_default();
-            self.token_entry
-                .update_attributes(&std::collections::HashMap::from([(
-                    SIGN_IN_SETTINGS_ATTRIBUTE,
-                    settings.as_str(),
-                )]))
-                .context("Failed to save sign-in settings in keyring")?;
+            self.save_sign_in_settings(&credential.sign_in_settings)?;
             Ok(())
         })();
         if let Err(e) = result {
             tracing::info!("{e:#}"); // Log that we couldn't save it and allow the user to continue anyway.
         }
-        self.sign_in_settings_need_saving = credential.sign_in_settings.is_none();
         self.state = State::SignedIn(credential);
+    }
+
+    fn save_sign_in_settings(&self, settings: &SignInSettings) -> Result<()> {
+        let settings = serde_json::to_string(settings)?;
+        self.token_entry
+            .update_attributes(&std::collections::HashMap::from([(
+                SIGN_IN_SETTINGS_ATTRIBUTE,
+                settings.as_str(),
+            )]))
+            .context("Failed to save sign-in settings in keyring")?;
+        Ok(())
     }
 
     /// Returns the accepted token and its captured sign-in settings.
@@ -363,7 +340,10 @@ impl Auth {
     /// Retrieves the credential from the keyring regardless of in-memory state.
     ///
     /// Performs I/O
-    fn credential_from_keyring(&self) -> Option<Credential> {
+    fn credential_from_keyring(
+        &self,
+        configured_sign_in_settings: SignInSettings,
+    ) -> Option<Credential> {
         // This MUST be the only place the GUI can call `get_password`.
         let token = self.token_entry.get_password().ok()?.into();
         let sign_in_settings = self
@@ -376,6 +356,12 @@ impl Auth {
                 serde_json::from_str(&settings)
                     .inspect_err(|_| tracing::debug!("Couldn't read saved sign-in settings"))
                     .ok()
+            })
+            .unwrap_or_else(|| {
+                if let Err(e) = self.save_sign_in_settings(&configured_sign_in_settings) {
+                    tracing::info!("{e:#}");
+                }
+                configured_sign_in_settings
             });
         Some(Credential {
             token,
@@ -425,10 +411,20 @@ fn secure_equality(a: &SecretString, b: &SecretString) -> bool {
 
 pub fn replicate_6791() -> Result<()> {
     tracing::warn!("Debugging issue #6791, pretending to be signed in with a bad token");
-    let mut this = Auth::new()?;
+    let defaults = crate::settings::AdvancedSettings::default();
+    let settings = SignInSettings {
+        account_slug: None,
+        auth_url: defaults.auth_url,
+        api_url: defaults.api_url,
+    };
+    let mut this = Auth::new(settings.clone())?;
+    let settings = this
+        .captured_sign_in_settings()
+        .cloned()
+        .unwrap_or(settings);
     this.save_token(
         &SecretString::from("obviously invalid token for testing #6791".to_string()),
-        None,
+        settings,
     );
     Ok(())
 }
@@ -529,8 +525,13 @@ mod tests {
 
         {
             // Start the program
-            let mut state =
-                Auth::new_with_key(key, store.clone(), session_dir.path().to_path_buf()).unwrap();
+            let mut state = Auth::new_with_key(
+                key,
+                store.clone(),
+                session_dir.path().to_path_buf(),
+                sign_in_settings(),
+            )
+            .unwrap();
 
             // Delete any token on disk from previous test runs
             state.sign_out().unwrap();
@@ -567,7 +568,7 @@ mod tests {
             state.accept_browser_sign_in();
             assert_eq!(
                 state.credential().unwrap().sign_in_settings,
-                Some(sign_in_settings())
+                sign_in_settings()
             );
             assert_eq!(
                 state.credential().unwrap().token.expose_secret(),
@@ -577,20 +578,20 @@ mod tests {
 
         // Recreate the state to simulate closing and re-opening the app
         {
-            let mut state =
-                Auth::new_with_key(key, store.clone(), session_dir.path().to_path_buf()).unwrap();
+            let mut state = Auth::new_with_key(
+                key,
+                store.clone(),
+                session_dir.path().to_path_buf(),
+                sign_in_settings(),
+            )
+            .unwrap();
 
             // Make sure we automatically got the token back
             assert!(state.credential().is_some());
-            assert!(state.credential().unwrap().sign_in_settings.is_none());
-            state.capture_legacy_sign_in_settings(sign_in_settings());
-            assert_eq!(state.captured_sign_in_settings(), Some(&sign_in_settings()));
-            state.attach_sign_in_settings_to_token();
-            let mut edited = sign_in_settings();
-            edited.account_slug = Some("edited".to_owned());
-            state.capture_legacy_sign_in_settings(edited);
-            state.attach_sign_in_settings_to_token();
-            assert_eq!(state.captured_sign_in_settings(), Some(&sign_in_settings()));
+            assert_eq!(
+                state.credential().unwrap().sign_in_settings,
+                sign_in_settings()
+            );
 
             // Accidentally sign in again, this can happen if the user holds the systray menu open while a sign in is succeeding.
             // For now, we treat that like signing out and back in immediately, so it wipes the old token.
@@ -610,7 +611,13 @@ mod tests {
             assert!(state.credential().is_none());
             assert!(state.is_signed_out());
         }
-        let state = Auth::new_with_key(key, store, session_dir.path().to_path_buf()).unwrap();
+        let state = Auth::new_with_key(
+            key,
+            store,
+            session_dir.path().to_path_buf(),
+            sign_in_settings(),
+        )
+        .unwrap();
         assert!(state.credential().is_none());
     }
 
@@ -623,22 +630,6 @@ mod tests {
     }
 
     #[test]
-    fn attaching_settings_while_signed_out_does_not_create_a_token() {
-        let session_dir = tempdir().unwrap();
-        let mut auth = Auth::new_with_key(
-            "dev.firezone.client/test_attach_signed_out/token",
-            keyring_core::mock::Store::new().unwrap(),
-            session_dir.path().to_path_buf(),
-        )
-        .unwrap();
-
-        auth.attach_sign_in_settings_to_token();
-
-        assert!(auth.credential().is_none());
-        assert!(auth.token_entry.get_password().is_err());
-    }
-
-    #[test]
     fn no_inflight_request() {
         let session_dir = tempdir().unwrap();
 
@@ -647,6 +638,7 @@ mod tests {
             "dev.firezone.client/test_DMRCZ67A_invalid_response/token",
             keyring_core::mock::Store::new().unwrap(),
             session_dir.path().to_path_buf(),
+            sign_in_settings(),
         )
         .unwrap();
 
@@ -679,6 +671,7 @@ mod tests {
             "dev.firezone.client/test_DMRCZ67A_states_dont_match/token",
             keyring_core::mock::Store::new().unwrap(),
             session_dir.path().to_path_buf(),
+            sign_in_settings(),
         )
         .unwrap();
 

@@ -244,8 +244,6 @@ impl<I: GuiIntegration> Controller<I> {
 
         telemetry::set_firezone_id(firezone_id);
 
-        let auth = auth::Auth::new()?;
-
         let migration_sent =
             match try_migrate_advanced_settings(&legacy_advanced_settings_path, &mut ipc_client)
                 .await
@@ -256,6 +254,29 @@ impl<I: GuiIntegration> Controller<I> {
                     false
                 }
             };
+
+        let migration_response = if migration_sent {
+            let response = tokio::time::timeout(Duration::from_secs(5), ipc_rx.next())
+                .await
+                .context("Timed out waiting for legacy settings migration")?
+                .context("Tunnel service disconnected during legacy settings migration")??;
+            anyhow::ensure!(
+                matches!(response, service::ServerMsg::AdvancedSettingsApplied(_)),
+                "Expected settings migration response"
+            );
+            Some(response)
+        } else {
+            None
+        };
+        let advanced_settings = match &migration_response {
+            Some(service::ServerMsg::AdvancedSettingsApplied(Ok(settings))) => settings.clone(),
+            _ => advanced_settings,
+        };
+        let auth = auth::Auth::new(Self::configured_sign_in_settings(
+            &mdm_settings,
+            &general_settings,
+            &advanced_settings,
+        ))?;
 
         let mut controller = Controller {
             general_settings,
@@ -290,15 +311,7 @@ impl<I: GuiIntegration> Controller<I> {
             unconfirmed_credential: None,
         };
 
-        if migration_sent {
-            let response = tokio::time::timeout(Duration::from_secs(5), controller.ipc_rx.next())
-                .await
-                .context("Timed out waiting for legacy settings migration")?
-                .context("Tunnel service disconnected during legacy settings migration")??;
-            anyhow::ensure!(
-                matches!(response, service::ServerMsg::AdvancedSettingsApplied(_)),
-                "Expected settings migration response"
-            );
+        if let Some(response) = migration_response {
             let _ = controller.handle_service_ipc_msg(response).await?;
         }
 
@@ -392,21 +405,18 @@ impl<I: GuiIntegration> Controller<I> {
 
     /// Resume a browser-authenticated session at startup when connect-on-start is enabled.
     async fn maybe_start_session(&mut self) -> Result<()> {
-        if self.auth.credential().is_none() {
+        let Some(credential) = self.auth.credential().cloned() else {
             tracing::info!("No token, starting in signed-out state");
             return Ok(());
-        }
-        self.auth
-            .capture_legacy_sign_in_settings(self.current_sign_in());
+        };
         self.notify_settings_changed()?;
-        let token = self.auth.credential().unwrap().token.clone();
 
         // For backwards-compatibility prior to MDM-config, also connect if not configured.
         if self.connect_on_start().is_some_and(|connect| !connect) {
             return Ok(());
         }
 
-        self.start_session(token).await?;
+        self.start_session(credential.token).await?;
 
         Ok(())
     }
@@ -456,7 +466,7 @@ impl<I: GuiIntegration> Controller<I> {
 
         tracing::info!(api_url = %self.api_url(), "Starting connlib...");
 
-        let signed_in_with = self.current_sign_in();
+        let signed_in_with = self.effective_sign_in_settings();
         self.send_ipc(&service::ClientMsg::Connect {
             token,
             is_internet_resource_active: self.general_settings.internet_resource_enabled(),
@@ -508,7 +518,7 @@ impl<I: GuiIntegration> Controller<I> {
         };
         let token = credential.token.clone();
         let patch = if let Some((auth_url, api_url)) = control_plane.and_then(ControlPlane::urls) {
-            let settings = credential.sign_in_settings.as_mut().unwrap();
+            let settings = &mut credential.sign_in_settings;
             settings.auth_url = self
                 .mdm_settings
                 .auth_url
@@ -614,7 +624,11 @@ impl<I: GuiIntegration> Controller<I> {
             OpenTrayMenu => self.integration.open_tray_menu()?,
             CloseTrayMenu => self.integration.close_tray_menu()?,
             SignIn | SystemTrayMenu(system_tray::Event::SignIn) => {
-                let signed_in_with = self.configured_sign_in();
+                let signed_in_with = Self::configured_sign_in_settings(
+                    &self.mdm_settings,
+                    &self.general_settings,
+                    &self.advanced_settings,
+                );
 
                 let url = self
                     .auth
@@ -1018,7 +1032,7 @@ impl<I: GuiIntegration> Controller<I> {
             Some(token) => {
                 self.unconfirmed_credential = Some(auth::Credential {
                     token: token.clone(),
-                    sign_in_settings: Some(self.current_sign_in()),
+                    sign_in_settings: self.effective_sign_in_settings(),
                 });
 
                 token
@@ -1032,8 +1046,6 @@ impl<I: GuiIntegration> Controller<I> {
                     )));
                 };
 
-                self.auth
-                    .capture_legacy_sign_in_settings(self.current_sign_in());
                 credential.token
             }
         };
@@ -1053,14 +1065,10 @@ impl<I: GuiIntegration> Controller<I> {
         match result {
             Ok(()) => {
                 match self.unconfirmed_credential.take() {
-                    Some(credential) => self.auth.sign_in_with_token(
-                        &credential.token,
-                        credential.sign_in_settings.unwrap(),
-                    ),
-                    None => {
-                        self.auth.accept_browser_sign_in();
-                        self.auth.attach_sign_in_settings_to_token();
-                    }
+                    Some(credential) => self
+                        .auth
+                        .sign_in_with_token(&credential.token, credential.sign_in_settings),
+                    None => self.auth.accept_browser_sign_in(),
                 }
                 ran_before::set().await?;
                 self.status = Status::WaitingForTunnel;
@@ -1219,10 +1227,11 @@ impl<I: GuiIntegration> Controller<I> {
             | Status::WaitingForPortal
             | Status::WaitingForTunnel => {}
         }
-        if self.auth.credential().is_none() && self.auth.ongoing_request().is_none() {
-            if !self.auth.is_signed_out() {
-                self.auth.sign_out()?;
-            }
+        if self.auth.credential().is_none()
+            && self.auth.ongoing_request().is_none()
+            && !self.auth.is_signed_out()
+        {
+            self.auth.sign_out()?;
         }
         self.status = Status::Disconnected;
         self.connected_as = None;
@@ -1279,38 +1288,35 @@ impl<I: GuiIntegration> Controller<I> {
             .context("Failed to send IPC message")
     }
 
-    fn current_sign_in(&self) -> SignInSettings {
-        self.signed_in_with()
-            .cloned()
-            .unwrap_or_else(|| self.configured_sign_in())
+    fn effective_sign_in_settings(&self) -> SignInSettings {
+        self.signed_in_with().cloned().unwrap_or_else(|| {
+            Self::configured_sign_in_settings(
+                &self.mdm_settings,
+                &self.general_settings,
+                &self.advanced_settings,
+            )
+        })
     }
 
-    fn configured_sign_in(&self) -> SignInSettings {
+    fn configured_sign_in_settings(
+        mdm: &MdmSettings,
+        general: &GeneralSettings,
+        advanced: &AdvancedSettings,
+    ) -> SignInSettings {
         SignInSettings {
-            account_slug: self
-                .mdm_settings
+            account_slug: mdm
                 .account_slug
                 .clone()
-                .or_else(|| self.general_settings.account_slug.clone()),
-            auth_url: self
-                .mdm_settings
-                .auth_url
-                .as_ref()
-                .unwrap_or(&self.advanced_settings.auth_url)
-                .clone(),
-            api_url: self
-                .mdm_settings
-                .api_url
-                .as_ref()
-                .unwrap_or(&self.advanced_settings.api_url)
-                .clone(),
+                .or_else(|| general.account_slug.clone()),
+            auth_url: mdm.auth_url.as_ref().unwrap_or(&advanced.auth_url).clone(),
+            api_url: mdm.api_url.as_ref().unwrap_or(&advanced.api_url).clone(),
         }
     }
 
     fn signed_in_with(&self) -> Option<&SignInSettings> {
         self.unconfirmed_credential
             .as_ref()
-            .and_then(|credential| credential.sign_in_settings.as_ref())
+            .map(|credential| &credential.sign_in_settings)
             .or_else(|| self.auth.captured_sign_in_settings())
     }
 
