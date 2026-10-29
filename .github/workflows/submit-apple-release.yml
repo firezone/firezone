@@ -168,6 +168,8 @@ jobs:
         if: steps.version.outputs.phase == 'editable'
         working-directory: swift/apple
         env:
+          # One deadline covers uploading a whole screenshot set and waiting for Apple to process it.
+          ASC_UPLOAD_TIMEOUT: 30m
           ASC_KEY_ID: ${{ secrets.APPLE_APP_STORE_CONNECT_APP_MANAGER_API_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.APPLE_APP_STORE_CONNECT_ISSUER_ID }}
           ASC_PRIVATE_KEY: ${{ secrets.APPLE_APP_STORE_CONNECT_APP_MANAGER_API_KEY }}
