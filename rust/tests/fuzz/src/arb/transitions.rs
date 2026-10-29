@@ -58,6 +58,7 @@ enum TransitionKind {
     UpdateDevicePoolMembers,
     ExhaustRelayPorts,
     FreeRelayPorts,
+    CrashClient,
 }
 
 /// The transitions that open no connection.
@@ -65,7 +66,7 @@ enum TransitionKind {
 /// A node whose allocations all failed cannot open any connection until it gets a relay back,
 /// which the reference model does not predict. While every relay is exhausted or recovering, or a
 /// node may have no relay left, only these are legal.
-const LEGAL_WITHOUT_HEALTHY_RELAY: [TransitionKind; 7] = [
+const LEGAL_WITHOUT_HEALTHY_RELAY: [TransitionKind; 8] = [
     TransitionKind::RoamClient,
     TransitionKind::DeployNewRelays,
     TransitionKind::PartitionRelaysFromPortal,
@@ -73,6 +74,7 @@ const LEGAL_WITHOUT_HEALTHY_RELAY: [TransitionKind; 7] = [
     TransitionKind::RestartClient,
     TransitionKind::FreeRelayPorts,
     TransitionKind::Idle,
+    TransitionKind::CrashClient,
 ];
 
 #[derive(Clone, Copy)]
@@ -206,6 +208,7 @@ pub(super) fn generate(
         (!listed_device_pools.is_empty()).then_some((K::UpdateDevicePoolMembers, 2)),
         can_exhaust_relay.then_some((K::ExhaustRelayPorts, 1)),
         (!exhausted_relays.is_empty()).then_some((K::FreeRelayPorts, 1)),
+        (!client_ids.is_empty()).then_some((K::CrashClient, 1)),
     ]
     .into_iter()
     .flatten()
@@ -342,6 +345,11 @@ pub(super) fn generate(
             let client_id = client_ids[g.choose_index(client_ids.len())];
             let key = g.fresh_private_key();
             Transition::RestartClient { client_id, key }
+        }
+        K::CrashClient => {
+            let client_id = client_ids[g.choose_index(client_ids.len())];
+            let key = g.fresh_private_key();
+            Transition::CrashClient { client_id, key }
         }
         K::SetInternetResourceState => {
             let client_id = client_ids[g.choose_index(client_ids.len())];

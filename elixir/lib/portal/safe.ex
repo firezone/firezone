@@ -858,6 +858,8 @@ defmodule Portal.Safe do
   def permit(:read, Portal.Account, :api_client), do: :ok
   def permit(:read, Portal.Account, :account_user), do: :ok
   def permit(:read, Portal.Account, :service_account), do: :ok
+  # Slug rows only ever change through the Account changeset.
+  def permit(:read, Portal.AccountSlug, :account_admin_user), do: :ok
   # Admin-only permissions (both account_admin_user and api_client)
   def permit(_action, Portal.Actor, :account_admin_user), do: :ok
   def permit(_action, Portal.Actor, :api_client), do: :ok

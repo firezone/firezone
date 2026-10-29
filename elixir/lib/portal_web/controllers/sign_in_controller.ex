@@ -21,6 +21,7 @@ defmodule PortalWeb.SignInController do
             account_slug: account.slug,
             account_name: account.name
           }
+          |> put_region()
           |> URI.encode_query()
 
         redirect(conn, external: "#{scheme}://#{url}?#{query}")
@@ -48,6 +49,15 @@ defmodule PortalWeb.SignInController do
 
   def client_account_disabled(conn, _params) do
     render(conn, :client_account_disabled, layout: false)
+  end
+
+  # Firezone Cloud tells the Client which region the account lives in, so the
+  # Client can pick the matching API host. On-prem portals send nothing.
+  defp put_region(query) do
+    case Portal.Config.fetch_env!(:portal, :data_residency_region) do
+      :on_prem -> query
+      region -> Map.put(query, :region, Atom.to_string(region))
+    end
   end
 
   defp format_redirect_url(raw_client_handler) do

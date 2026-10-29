@@ -174,7 +174,7 @@ defmodule Portal.Okta.WebhookSyncTest do
 
     test "removes a user Okta no longer returns", %{directory: directory} = ctx do
       identity = directory_identity_fixture(directory: ctx.directory, idp_id: "user-1")
-      stub_okta(users: %{})
+      stub_okta(users: %{}, apps_for: %{"user-1" => ["app-1"]})
 
       assert :ok = perform_job(WebhookSync, user_args(directory, "user-1"))
 
@@ -205,6 +205,24 @@ defmodule Portal.Okta.WebhookSyncTest do
       assert Repo.all(ExternalIdentity) == []
     end
 
+    test "does not look up a user no application is assigned to", %{directory: directory} = ctx do
+      identity = directory_identity_fixture(directory: ctx.directory, idp_id: "user-1")
+      stub_okta(users: %{"user-1" => :forbidden}, apps_for: %{"user-1" => []})
+
+      assert :ok = perform_job(WebhookSync, user_args(directory, "user-1"))
+
+      refute Repo.get_by(ExternalIdentity, id: identity.id)
+    end
+
+    test "removes a user the assignment query no longer finds", %{directory: directory} = ctx do
+      identity = directory_identity_fixture(directory: ctx.directory, idp_id: "user-1")
+      stub_okta(apps_for: %{"user-1" => :not_found})
+
+      assert :ok = perform_job(WebhookSync, user_args(directory, "user-1"))
+
+      refute Repo.get_by(ExternalIdentity, id: identity.id)
+    end
+
     test "skips a user without an email", %{directory: directory} do
       stub_okta(
         users: %{"user-1" => okta_user("user-1", "Alice", "Smith", nil)},
@@ -216,16 +234,9 @@ defmodule Portal.Okta.WebhookSyncTest do
       assert Repo.all(ExternalIdentity) == []
     end
 
-    test "fails on unexpected Okta errors", %{directory: directory} = ctx do
-      directory_identity_fixture(directory: ctx.directory, idp_id: "user-1")
-
-      Req.Test.stub(APIClient, fn conn ->
-        if String.ends_with?(conn.request_path, "/oauth2/v1/token") do
-          Req.Test.json(conn, %{"access_token" => "token", "token_type" => "DPoP"})
-        else
-          conn |> Plug.Conn.put_status(500) |> Req.Test.json(%{"errorSummary" => "boom"})
-        end
-      end)
+    test "fails when an assigned user cannot be read", %{directory: directory} = ctx do
+      identity = directory_identity_fixture(directory: ctx.directory, idp_id: "user-1")
+      stub_okta(users: %{"user-1" => :forbidden}, apps_for: %{"user-1" => ["app-1"]})
 
       error =
         assert_raise Portal.Okta.SyncError, fn ->
@@ -233,6 +244,20 @@ defmodule Portal.Okta.WebhookSyncTest do
         end
 
       assert error.step == :get_user
+      assert Repo.get_by(ExternalIdentity, id: identity.id)
+    end
+
+    test "keeps the identity when the assignment query fails", %{directory: directory} = ctx do
+      identity = directory_identity_fixture(directory: ctx.directory, idp_id: "user-1")
+      stub_okta(apps_for: %{"user-1" => :forbidden})
+
+      error =
+        assert_raise Portal.Okta.SyncError, fn ->
+          perform_job(WebhookSync, user_args(directory, "user-1"))
+        end
+
+      assert error.step == :list_user_apps
+      assert Repo.get_by(ExternalIdentity, id: identity.id)
     end
   end
 
@@ -261,7 +286,7 @@ defmodule Portal.Okta.WebhookSyncTest do
     test "deletes a tracked group Okta no longer returns",
          %{account: account, directory: directory, base_directory: base_directory} do
       group = group_fixture(account: account, directory: base_directory, idp_id: "group-1")
-      stub_okta(groups: %{})
+      stub_okta(groups: %{}, apps_for_group: %{"group-1" => ["app-1"]})
 
       assert :ok = perform_job(WebhookSync, group_args(directory, "group-1"))
 
@@ -306,6 +331,62 @@ defmodule Portal.Okta.WebhookSyncTest do
       assert :ok = perform_job(WebhookSync, group_args(directory, "group-1"))
 
       assert Repo.all(Group) == []
+    end
+
+    test "does not look up a group no application is assigned to",
+         %{account: account, directory: directory, base_directory: base_directory} do
+      group = group_fixture(account: account, directory: base_directory, idp_id: "group-1")
+      stub_okta(groups: %{"group-1" => :forbidden}, apps_for_group: %{})
+
+      assert :ok = perform_job(WebhookSync, group_args(directory, "group-1"))
+
+      refute Repo.get_by(Group, id: group.id)
+    end
+
+    test "removes a group the assignment query no longer finds",
+         %{account: account, directory: directory, base_directory: base_directory} do
+      group = group_fixture(account: account, directory: base_directory, idp_id: "group-1")
+      stub_okta(apps_for_group: %{"group-1" => :not_found})
+
+      assert :ok = perform_job(WebhookSync, group_args(directory, "group-1"))
+
+      refute Repo.get_by(Group, id: group.id)
+    end
+
+    test "fails when an assigned group cannot be read",
+         %{account: account, directory: directory, base_directory: base_directory} = ctx do
+      group = group_fixture(account: account, directory: base_directory, idp_id: "group-1")
+      carol = directory_identity_fixture(directory: ctx.directory, idp_id: "user-carol")
+      carol_actor = Actor |> Repo.get_by!(id: carol.actor_id) |> Repo.preload(:account)
+      membership_fixture(actor: carol_actor, group: group)
+      stub_okta(groups: %{"group-1" => :forbidden}, apps_for_group: %{"group-1" => ["app-1"]})
+
+      error =
+        assert_raise Portal.Okta.SyncError, fn ->
+          perform_job(WebhookSync, group_args(directory, "group-1"))
+        end
+
+      assert error.step == :get_group
+      assert Repo.get_by(Group, id: group.id)
+      assert Repo.get_by(Membership, actor_id: carol_actor.id, group_id: group.id)
+    end
+
+    test "keeps the group and its members when the assignment query fails",
+         %{account: account, directory: directory, base_directory: base_directory} = ctx do
+      group = group_fixture(account: account, directory: base_directory, idp_id: "group-1")
+      carol = directory_identity_fixture(directory: ctx.directory, idp_id: "user-carol")
+      carol_actor = Actor |> Repo.get_by!(id: carol.actor_id) |> Repo.preload(:account)
+      membership_fixture(actor: carol_actor, group: group)
+      stub_okta(apps_for_group: %{"group-1" => :forbidden})
+
+      error =
+        assert_raise Portal.Okta.SyncError, fn ->
+          perform_job(WebhookSync, group_args(directory, "group-1"))
+        end
+
+      assert error.step == :list_group_apps
+      assert Repo.get_by(Group, id: group.id)
+      assert Repo.get_by(Membership, actor_id: carol_actor.id, group_id: group.id)
     end
   end
 
@@ -418,7 +499,7 @@ defmodule Portal.Okta.WebhookSyncTest do
 
         ["api", "v1", "apps"] ->
           [_, user_id] = Regex.run(~r/user\.id eq "([^"]+)"/, URI.decode_query(conn.query_string)["filter"])
-          Req.Test.json(conn, Enum.map(Map.get(apps_for, user_id, []), &%{"id" => &1}))
+          json_apps(conn, Map.get(apps_for, user_id, []))
 
         ["api", "v1", "users", user_id, "groups"] ->
           Req.Test.json(
@@ -430,7 +511,7 @@ defmodule Portal.Okta.WebhookSyncTest do
           json_or_404(conn, users[user_id])
 
         ["api", "v1", "groups", group_id, "apps"] ->
-          Req.Test.json(conn, Enum.map(Map.get(apps_for_group, group_id, []), &%{"id" => &1}))
+          json_apps(conn, Map.get(apps_for_group, group_id, []))
 
         ["api", "v1", "groups", group_id, "users"] ->
           case groups[group_id] do
@@ -444,7 +525,7 @@ defmodule Portal.Okta.WebhookSyncTest do
         ["api", "v1", "groups", group_id] ->
           case groups[group_id] do
             {name, _members} -> Req.Test.json(conn, %{"id" => group_id, "profile" => %{"name" => name}})
-            nil -> json_or_404(conn, nil)
+            other -> json_or_404(conn, other)
           end
 
         _ ->
@@ -476,6 +557,9 @@ defmodule Portal.Okta.WebhookSyncTest do
         ["api", "v1", "users", "user-1"] ->
           Req.Test.json(conn, okta_user("user-1", "Ada", "Lovelace", "ada@example.com"))
 
+        ["api", "v1", "groups", "group-1", "apps"] ->
+          Req.Test.json(conn, [%{"id" => "app-1"}])
+
         ["api", "v1", "groups", "group-1"] ->
           Req.Test.json(conn, %{"id" => "group-1", "profile" => %{"name" => "Group 1"}})
 
@@ -485,8 +569,20 @@ defmodule Portal.Okta.WebhookSyncTest do
     end)
   end
 
+  defp json_apps(conn, app_ids) when is_list(app_ids) do
+    Req.Test.json(conn, Enum.map(app_ids, &%{"id" => &1}))
+  end
+
+  defp json_apps(conn, status), do: json_or_404(conn, status)
+
   defp json_or_404(conn, nil) do
     conn |> Plug.Conn.put_status(404) |> Req.Test.json(%{"errorCode" => "E0000007"})
+  end
+
+  defp json_or_404(conn, :not_found), do: json_or_404(conn, nil)
+
+  defp json_or_404(conn, :forbidden) do
+    conn |> Plug.Conn.put_status(403) |> Req.Test.json(%{"errorCode" => "E0000006"})
   end
 
   defp json_or_404(conn, body), do: Req.Test.json(conn, body)

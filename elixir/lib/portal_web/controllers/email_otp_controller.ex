@@ -24,7 +24,7 @@ defmodule PortalWeb.EmailOTPController do
       when is_binary(email) do
     context_type = context_type(params)
 
-    with {:ok, account} <- Database.fetch_account_by_id_or_slug(account_id_or_slug),
+    with {:ok, account} <- PortalWeb.Accounts.fetch_by_id_or_slug(account_id_or_slug),
          {:ok, _provider} <- Database.fetch_provider_by_id(account, auth_provider_id) do
       conn = maybe_send_email_otp(conn, account, email, params, auth_provider_id, context_type)
 
@@ -68,7 +68,7 @@ defmodule PortalWeb.EmailOTPController do
 
     with {:ok, actor_id, passcode_id, email, initiated_context_type} <- fetch_state(conn),
          :ok <- validate_initiated_context(initiated_context_type, context_type),
-         {:ok, account} <- Database.fetch_account_by_id_or_slug(account_id_or_slug),
+         {:ok, account} <- PortalWeb.Accounts.fetch_by_id_or_slug(account_id_or_slug),
          {:ok, provider} <- Database.fetch_provider_by_id(account, auth_provider_id),
          false <- client_sign_in_restricted?(account, context_type),
          false <- client_seat_restricted?(account, actor_id, context_type),
@@ -425,19 +425,7 @@ defmodule PortalWeb.EmailOTPController do
   defmodule Database do
     import Ecto.Query
     alias Portal.Safe
-    alias Portal.{Account, Actor, EmailOTP}
-
-    def fetch_account_by_id_or_slug(id_or_slug) do
-      query =
-        if Portal.Repo.valid_uuid?(id_or_slug),
-          do: from(a in Account, where: a.id == ^id_or_slug or a.slug == ^id_or_slug),
-          else: from(a in Account, where: a.slug == ^id_or_slug)
-
-      query
-      |> Safe.unscoped()
-      |> Safe.one()
-      |> handle_nil()
-    end
+    alias Portal.{Actor, EmailOTP}
 
     def fetch_provider_by_id(account, id) do
       from(p in EmailOTP.AuthProvider,

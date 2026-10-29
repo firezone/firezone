@@ -124,7 +124,7 @@ impl ReferenceState {
         }) {}
         for _ in self
             .tcp_flows
-            .extract_if(.., |_, flow| !transition.retains_tcp_flow(flow))
+            .extract_if(.., |_, flow| !transition.retains_tcp_flow(flow, iceless))
         {}
     }
 
@@ -701,17 +701,33 @@ impl ReferenceState {
             Transition::RestartClient { client_id, key } => {
                 self.node_may_lack_relays |= self.no_relay_accepts_allocations();
 
-                for (id, client) in &mut self.clients {
-                    if id == client_id {
-                        client.exec_mut(|c| c.restart(*key, now));
-                    } else {
-                        client.exec_mut(|c| c.forget_peer_authorizations(*client_id));
-                    }
+                self.clients
+                    .get_mut(client_id)
+                    .unwrap()
+                    .exec_mut(|c| c.restart(*key, now));
+
+                for (_, peer) in self.clients.iter_mut().filter(|(id, _)| *id != client_id) {
+                    peer.exec_mut(|c| c.forget_peer_authorizations(*client_id));
                 }
             }
             Transition::UpdateDnsRecords { domain, records } => {
                 self.global_dns_records
                     .replace(domain.clone(), records.clone());
+            }
+            Transition::CrashClient { client_id, key } => {
+                self.node_may_lack_relays |= self.no_relay_accepts_allocations();
+
+                // Applications resolve their domains again once the cached records are gone.
+                self.clients.get_mut(client_id).unwrap().exec_mut(|c| {
+                    c.restart(*key, now);
+                    c.dns_records.clear();
+                });
+
+                // Without a `goodbye`, the peers lose their connections to the crashed client, and
+                // their authorizations towards it with them.
+                for (_, peer) in self.clients.iter_mut().filter(|(id, _)| *id != client_id) {
+                    peer.exec_mut(|c| c.forget_peer_authorizations(*client_id));
+                }
             }
         };
 
@@ -804,10 +820,6 @@ impl ReferenceState {
                 request.destination(),
                 request.protocol(),
                 true,
-            ),
-            Route::Gateway(_) => (
-                ExpectedOutcome::RoundTripCompleted(route, Answer::Echo),
-                None,
             ),
             // A retained flow completes its round trip; asking the portal again only refreshes
             // the authorization a peer that reconnected since took from us.
@@ -906,10 +918,7 @@ impl ReferenceState {
                     .any(|resource| client.gateway_for_resource(resource) == Some(*gateway))
             });
             if let Some(gateway) = connected_gateway {
-                return (
-                    ExpectedOutcome::RoundTripCompleted(Route::Gateway(gateway), Answer::Echo),
-                    None,
-                );
+                return (gateway_tun_probe_outcome(gateway, protocol), None);
             }
 
             return self.peer_verdict(portal, origin, ip, protocol);
@@ -1881,6 +1890,17 @@ fn address_record_type(src: IpAddr) -> RecordType {
         RecordType::A
     } else {
         RecordType::AAAA
+    }
+}
+
+fn gateway_tun_probe_outcome(gateway: GatewayId, protocol: Protocol) -> ExpectedOutcome {
+    match protocol {
+        Protocol::Tcp(53535) => panic!("gateway TUN probes do not target the DNS listener"),
+        Protocol::Udp(53535) => panic!("gateway TUN probes do not target the DNS listener"),
+        Protocol::Tcp(_) | Protocol::Udp(_) | Protocol::IcmpEcho(_) => ExpectedOutcome::Rejected {
+            by: RejectionRemote::Gateway(gateway),
+            response: RejectionResponse::Prohibited,
+        },
     }
 }
 

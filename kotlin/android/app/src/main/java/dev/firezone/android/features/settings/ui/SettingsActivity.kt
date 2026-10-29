@@ -8,7 +8,6 @@ import android.widget.Toast
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dagger.hilt.android.AndroidEntryPoint
@@ -35,28 +34,16 @@ internal class SettingsActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        val isUserSignedIn = intent.getBooleanExtra(EXTRA_IS_USER_SIGNED_IN, false)
-
         setContent {
             FirezoneTheme {
                 val managedStatus by viewModel.managedStatusStateFlow.collectAsStateWithLifecycle()
                 val uiState by viewModel.uiState.collectAsStateWithLifecycle()
                 val deviceTrustState by deviceTrustViewModel.uiStateFlow.collectAsStateWithLifecycle()
-                val action by viewModel.actionStateFlow.collectAsStateWithLifecycle()
-
-                LaunchedEffect(action) {
-                    action?.let {
-                        viewModel.clearAction()
-                        when (it) {
-                            SettingsViewModel.ViewAction.NavigateBack -> finish()
-                        }
-                    }
-                }
 
                 SettingsScreen(
                     config = viewModel.config,
+                    controlPlane = viewModel.controlPlane,
                     managedStatus = managedStatus ?: ManagedConfigStatus.NOTHING_MANAGED,
-                    isSaveEnabled = uiState.isSaveButtonEnabled,
                     logSizeBytes = uiState.logSizeBytes,
                     deviceTrustState = deviceTrustState,
                     // The page exists where a certificate is required or one was found, and
@@ -64,13 +51,12 @@ internal class SettingsActivity : AppCompatActivity() {
                     showDeviceTrust =
                         repository.isX509CertificateRequired(applicationRestrictions) ||
                             deviceTrustState.alias != null,
-                    // The app applies the log filter live once it's persisted, so only warn
-                    // about a re-login when a setting that actually invalidates the session changed.
-                    warnBeforeSaving = isUserSignedIn && viewModel.requiresReLogin(),
-                    onAuthUrlChange = viewModel::onValidateAuthUrl,
-                    onApiUrlChange = viewModel::onValidateApiUrl,
-                    onLogFilterChange = viewModel::onValidateLogFilter,
-                    onAccountSlugChange = viewModel::onValidateAccountSlug,
+                    signedInWith = viewModel.signedInWith,
+                    onControlPlaneChange = viewModel::onControlPlaneChanged,
+                    onAuthUrlChange = viewModel::onAuthUrlChanged,
+                    onApiUrlChange = viewModel::onApiUrlChanged,
+                    onLogFilterChange = viewModel::onLogFilterChanged,
+                    onAccountSlugChange = viewModel::onAccountSlugChanged,
                     onStartOnLoginChange = viewModel::onStartOnLoginChanged,
                     onConnectOnStartChange = viewModel::onConnectOnStartChanged,
                     onResetToDefaults = viewModel::resetSettingsToDefaults,
@@ -79,8 +65,7 @@ internal class SettingsActivity : AppCompatActivity() {
                     onLogsShown = { viewModel.onViewResume(applicationContext) },
                     onSelectCertificate = ::chooseCertificate,
                     onDeviceTrustShown = deviceTrustViewModel::loadDetails,
-                    onSave = viewModel::onSaveSettingsCompleted,
-                    onCancel = viewModel::onCancel,
+                    onBack = ::finish,
                 )
             }
         }
@@ -128,13 +113,6 @@ internal class SettingsActivity : AppCompatActivity() {
     }
 
     companion object {
-        private const val EXTRA_IS_USER_SIGNED_IN = "isUserSignedIn"
-
-        fun createIntent(
-            context: Context,
-            isUserSignedIn: Boolean,
-        ): Intent =
-            Intent(context, SettingsActivity::class.java)
-                .putExtra(EXTRA_IS_USER_SIGNED_IN, isUserSignedIn)
+        fun createIntent(context: Context): Intent = Intent(context, SettingsActivity::class.java)
     }
 }

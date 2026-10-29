@@ -62,6 +62,7 @@ pub use dns::DnsResourceRecord;
 pub use flow::TunBatch;
 pub use gateway::{
     DnsResourceNatEntry, GatewayState, PeerBatch as GatewayPeerBatch, ResolveDnsRequest,
+    SiteDnsQuery,
 };
 #[cfg(feature = "malicious-behaviour")]
 pub use malicious_behaviour::{Guard as MaliciousBehaviourGuard, MaliciousBehaviour};

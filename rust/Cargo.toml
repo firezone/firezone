@@ -221,8 +221,8 @@ sd-notify = "0.5.0" # This is a pure Rust re-implementation, so it isn't vulnera
 secrecy = "0.10.3"
 seeded-rng = { path = "tests/seeded-rng" }
 semver = "1.0.28"
-sentry = { version = "0.48.0", default-features = false }
-sentry-tracing = "0.48.0"
+sentry = { version = "0.48.5", default-features = false }
+sentry-tracing = "0.48.5"
 serde = "1.0.228"
 serde_json = "1.0.150"
 serde_variant = "0.1.3"
@@ -322,12 +322,9 @@ type_complexity = "allow" # Don't care.
 private-intra-doc-links = "allow" # We don't publish any of our docs but want to catch dead links.
 
 [patch.crates-io]
-sentry = { git = "https://github.com/getsentry/sentry-rust", branch = "master" }
-sentry-tracing = { git = "https://github.com/getsentry/sentry-rust", branch = "master" }
 ip_network = { git = "https://github.com/JakubOnderka/ip_network", branch = "master" } # Waiting for release.
 ip_network_table = { git = "https://github.com/edmonds/ip_network_table", branch = "some-useful-traits" } # For `Debug` and `Clone`
 quinn-udp = { git = "https://github.com/firezone/quinn", version = "0.6.0", branch = "main" } # Waiting for https://github.com/quinn-rs/quinn/pull/2748.
-proptest = { git = "https://github.com/proptest-rs/proptest", branch = "main" } # Waiting for release.
 
 # Enforce `tracing-macros` to have released `tracing` version.
 [patch.'https://github.com/tokio-rs/tracing']

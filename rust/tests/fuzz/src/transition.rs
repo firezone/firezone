@@ -143,6 +143,12 @@ pub enum Transition {
         domain: DomainName,
         records: BTreeSet<OwnedRecordData>,
     },
+    /// Restarts a Client whose process died: it sends no `goodbye` and loses the DNS resource
+    /// records it cached in memory.
+    CrashClient {
+        client_id: ClientId,
+        key: PrivateKey,
+    },
 }
 
 impl Transition {
@@ -181,6 +187,7 @@ impl Transition {
             Transition::ExpirePeerAuthorizations { .. } => true,
             Transition::RevokePeerAuthorization { .. } => true,
             Transition::UpdateDnsRecords { .. } => false,
+            Transition::CrashClient { .. } => false,
         }
     }
 
@@ -189,7 +196,7 @@ impl Transition {
     /// TCP retransmits whatever the tunnel loses while it reconnects, so a connection
     /// survives as long as the client reaches its resource through the same Gateway with
     /// the same authorization.
-    pub(crate) fn retains_tcp_flow(&self, flow: &TcpFlow) -> bool {
+    pub(crate) fn retains_tcp_flow(&self, flow: &TcpFlow, iceless: bool) -> bool {
         let (client_id, route) = (flow.client_id, flow.route);
 
         match self {
@@ -221,7 +228,14 @@ impl Transition {
             Transition::UpdateUpstreamDo53Servers(_) => true,
             Transition::UpdateUpstreamDoHServers(_) => true,
             Transition::UpdateUpstreamSearchDomain(_) => true,
-            Transition::RoamClient { .. } => true,
+            // TODO: Remove with classic ICE.
+            // Roaming over classic ICE rotates the Client's key, which resets its DNS resource NAT.
+            Transition::RoamClient {
+                client_id: roamed, ..
+            } => match &flow.dst {
+                Destination::DomainName { .. } => iceless || client_id != *roamed,
+                Destination::IpAddr(_) => true,
+            },
             Transition::ReconnectPortal { .. } => true,
             Transition::RestartClient { .. } => self.retains_flow(client_id, route, false),
             Transition::DeployNewRelays(_) => true,
@@ -240,6 +254,7 @@ impl Transition {
                 Destination::DomainName { name, .. } => name != domain,
                 Destination::IpAddr(_) => true,
             },
+            Transition::CrashClient { .. } => self.retains_flow(client_id, route, false),
         }
     }
 
@@ -249,18 +264,15 @@ impl Transition {
         match self {
             Transition::AddResource(_) => match route {
                 Route::Resource { .. } => false,
-                Route::Gateway(_) => true,
                 Route::Peer(_) => true,
             },
             Transition::RemoveResource(resource) => match route {
                 Route::Resource { resource: used, .. } => used != *resource,
-                Route::Gateway(_) => false,
                 Route::Peer(_) => false,
             },
             Transition::EditResource(edit) => classify(&edit.old, &edit.new).retains_flow(route),
             Transition::UpdateDevicePoolMembers { revoked, .. } => match route {
                 Route::Resource { .. } => true,
-                Route::Gateway(_) => true,
                 Route::Peer(peer) => !revoked.iter().any(|authorization| {
                     let parties = (authorization.initiator, authorization.target);
 
@@ -286,7 +298,6 @@ impl Transition {
                 client_id: changed, ..
             } => match route {
                 Route::Resource { .. } => iceless || client_id != *changed,
-                Route::Gateway(_) => iceless || client_id != *changed,
                 Route::Peer(peer) => iceless || (client_id != *changed && peer != *changed),
             },
             Transition::ReconnectPortal { .. } => true,
@@ -295,7 +306,6 @@ impl Transition {
                 ..
             } => match route {
                 Route::Resource { .. } => client_id != *restarted,
-                Route::Gateway(_) => client_id != *restarted,
                 Route::Peer(peer) => client_id != *restarted && peer != *restarted,
             },
             Transition::DeployNewRelays(_) => iceless,
@@ -306,12 +316,10 @@ impl Transition {
             Transition::FreeRelayPorts(_) => true,
             Transition::DeauthorizeWhileGatewayIsPartitioned(resource) => match route {
                 Route::Resource { resource: used, .. } => used != *resource,
-                Route::Gateway(_) => false,
                 Route::Peer(_) => false,
             },
             Transition::RevokeGatewayAuthorization(resource) => match route {
                 Route::Resource { resource: used, .. } => used != *resource,
-                Route::Gateway(_) => false,
                 Route::Peer(_) => true,
             },
             Transition::ExpirePeerAuthorizations { client, peer, .. } => match route {
@@ -320,7 +328,6 @@ impl Transition {
                         || (client_id == *peer && remote == *client))
                 }
                 Route::Resource { .. } => true,
-                Route::Gateway(_) => true,
             },
             Transition::RevokePeerAuthorization { client, peer, .. } => match route {
                 Route::Peer(remote) => {
@@ -328,9 +335,14 @@ impl Transition {
                         || (client_id == *peer && remote == *client))
                 }
                 Route::Resource { .. } => true,
-                Route::Gateway(_) => true,
             },
             Transition::UpdateDnsRecords { .. } => true,
+            Transition::CrashClient {
+                client_id: crashed, ..
+            } => match route {
+                Route::Resource { .. } => client_id != *crashed,
+                Route::Peer(peer) => client_id != *crashed && peer != *crashed,
+            },
         }
     }
 }
@@ -367,15 +379,12 @@ impl EditEffect<'_> {
                 EditEffect::Filters { resource_id, .. } | EditEffect::Access { resource_id, .. },
                 Route::Resource { resource, .. },
             ) => resource != *resource_id,
-            (EditEffect::Filters { .. } | EditEffect::Access { .. }, Route::Gateway(_)) => false,
             (EditEffect::Filters { .. } | EditEffect::Access { .. }, Route::Peer(_)) => true,
             (EditEffect::DevicePoolRouting, Route::Resource { .. }) => true,
-            (EditEffect::DevicePoolRouting, Route::Gateway(_)) => true,
             (EditEffect::DevicePoolRouting, Route::Peer(_)) => false,
             (EditEffect::Type { old, .. }, Route::Resource { resource, .. }) => {
                 resource != old.id()
             }
-            (EditEffect::Type { .. }, Route::Gateway(_)) => false,
             (EditEffect::Type { old, new, .. }, Route::Peer(_)) => {
                 !is_device_pool(old) && !is_device_pool(new)
             }

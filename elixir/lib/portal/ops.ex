@@ -1,6 +1,6 @@
 defmodule Portal.Ops do
   alias __MODULE__.Database
-  alias Portal.{Banner, Billing, EmailSuppression, Mailer}
+  alias Portal.{Banner, Billing, EmailSuppression, Mailer, SlugRegistry}
   alias Portal.Workers.DeleteAccount
   alias Portal.Ops.AuthProviderNotices
 
@@ -149,6 +149,35 @@ defmodule Portal.Ops do
   end
 
   @doc """
+  Claims every local account slug in the shared slug registry.
+
+  Run this once per region when the registry goes live, and again if the
+  registry table is ever lost. A slug that another account already holds in
+  the registry is printed and skipped.
+  """
+  def backfill_slug_registry do
+    if SlugRegistry.adapter() == SlugRegistry.Local do
+      IO.puts("SLUG_REGISTRY_TABLE_URL is not set, so there is no registry to fill.")
+      {:error, :no_registry}
+    else
+      slugs = Database.list_account_slugs()
+
+      IO.puts(
+        "About to claim #{length(slugs)} slug(s) for region #{SlugRegistry.region()} in the slug registry. Continue? [y/N]"
+      )
+
+      case IO.gets("") do
+        answer when answer in ["y\n", "Y\n"] ->
+          claim_slugs(slugs)
+
+        _ ->
+          IO.puts("Aborted.")
+          :aborted
+      end
+    end
+  end
+
+  @doc """
   Enqueues account deletion jobs for accounts that are already scheduled for deletion.
 
   This is intended for operational use during the migration from the old daily deletion
@@ -164,6 +193,22 @@ defmodule Portal.Ops do
         {:ok, _job} -> {:cont, {:ok, count + 1}}
         {:error, reason} -> {:halt, {:error, reason}}
       end
+    end)
+  end
+
+  @doc """
+  Sets the Relay throughput limit of each account on a known plan that has no
+  limit yet to the value its plan has in Stripe.
+
+  Run this once after the Relay throughput limits ship, then remove it.
+  """
+  def backfill_relay_throughput_limits do
+    Database.accounts_missing_relay_throughput_limit()
+    |> Enum.group_by(&plan_relay_throughput_mbps(Billing.plan_type(&1)), & &1.id)
+    |> Map.delete(nil)
+    |> Enum.reduce({:ok, 0}, fn {mbps, account_ids}, {:ok, count} ->
+      {updated, _} = Database.set_relay_throughput_limit(account_ids, mbps)
+      {:ok, count + updated}
     end)
   end
 
@@ -528,6 +573,38 @@ defmodule Portal.Ops do
     [scheduled_at: scheduled_at]
   end
 
+  defp claim_slugs(slugs) do
+    slugs
+    |> Enum.reduce_while({:ok, 0}, fn %{slug: slug, account_id: account_id}, {:ok, count} ->
+      case SlugRegistry.claim(slug, account_id) do
+        :ok ->
+          {:cont, {:ok, count + 1}}
+
+        {:error, :taken} ->
+          IO.puts("#{slug}: another account holds this slug in the registry, skipped (account #{account_id})")
+          {:cont, {:ok, count}}
+
+        {:error, :unavailable} ->
+          {:halt, {:error, :slug_registry_unavailable}}
+      end
+    end)
+    |> case do
+      {:ok, count} ->
+        IO.puts("Claimed #{count} slug(s).")
+        {:ok, count}
+
+      {:error, :slug_registry_unavailable} = error ->
+        IO.puts("The slug registry is unavailable. Fix it and run again.")
+        error
+    end
+  end
+
+  defp plan_relay_throughput_mbps(:starter), do: 5
+  defp plan_relay_throughput_mbps(:team), do: 15
+  defp plan_relay_throughput_mbps(:business), do: 25
+  defp plan_relay_throughput_mbps(:enterprise), do: 50
+  defp plan_relay_throughput_mbps(:unknown), do: nil
+
   defmodule Database do
     import Ecto.Query
     alias Portal.{Account, Actor, ExternalIdentity, Safe}
@@ -691,6 +768,12 @@ defmodule Portal.Ops do
       |> Safe.all()
     end
 
+    def list_account_slugs do
+      from(s in Portal.AccountSlug, select: %{slug: s.slug, account_id: s.account_id}, order_by: s.slug)
+      |> Safe.unscoped()
+      |> Safe.all()
+    end
+
     def accounts_missing_deletion_jobs do
       delete_jobs_query =
         [worker: Portal.Workers.DeleteAccount, state: Oban.Job.unique_states(:incomplete)]
@@ -706,6 +789,31 @@ defmodule Portal.Ops do
       )
       |> Safe.unscoped()
       |> Safe.all()
+    end
+
+    def accounts_missing_relay_throughput_limit do
+      from(a in Account, where: is_nil(fragment("?->>'relay_throughput_mbps'", a.limits)))
+      |> Safe.unscoped()
+      |> Safe.all()
+    end
+
+    def set_relay_throughput_limit(account_ids, mbps) do
+      from(a in Account,
+        where: a.id in ^account_ids,
+        where: is_nil(fragment("?->>'relay_throughput_mbps'", a.limits)),
+        update: [
+          set: [
+            limits:
+              fragment(
+                "COALESCE(?, '{}'::jsonb) || jsonb_build_object('relay_throughput_mbps', ?::integer)",
+                a.limits,
+                ^mbps
+              )
+          ]
+        ]
+      )
+      |> Safe.unscoped()
+      |> Safe.update_all([])
     end
 
     defp maybe_filter_account_ids(query, :all) do

@@ -425,6 +425,14 @@ defmodule PortalWeb.Components.Page do
   def data_residency_name(:us), do: "United States"
   def data_residency_name(:eu), do: "European Union"
 
+  # The primary database and its read replica, from the db workspaces in the
+  # infra repository.
+  def data_residency_locations(:us), do: [{"Iowa", "United States"}, {"Arizona", "United States"}]
+  def data_residency_locations(:eu), do: [{"Gävle", "Sweden"}, {"Paris", "France"}]
+
+  def other_region(:us), do: :eu
+  def other_region(:eu), do: :us
+
   @doc """
   The flag of a data residency region, drawn inline so it looks the same on
   every platform (Windows has no flag emoji).
@@ -472,22 +480,88 @@ defmodule PortalWeb.Components.Page do
     """
   end
 
+  @firezone_cloud_urls %{us: "https://app.firezone.dev", eu: "https://eu.app.firezone.dev"}
+  @firezone_api_urls %{us: "wss://api.firezone.dev", eu: "wss://eu.api.firezone.dev"}
+
+  @doc "The admin portal URL of a Firezone Cloud region."
+  def portal_url(region), do: Map.fetch!(@firezone_cloud_urls, region)
+
+  @doc "The control plane API URL of a Firezone Cloud region."
+  def api_url(region), do: Map.fetch!(@firezone_api_urls, region)
+
+  @doc "The portal URL of a Firezone Cloud region, by atom or by its name in the slug registry."
+  @spec cloud_url(atom() | String.t()) :: {:ok, String.t()} | :error
+  def cloud_url("us"), do: cloud_url(:us)
+  def cloud_url("eu"), do: cloud_url(:eu)
+  def cloud_url(region) when is_atom(region), do: Map.fetch(@firezone_cloud_urls, region)
+  def cloud_url(_region), do: :error
+
+  @doc """
+  Whether this portal is the production Firezone Cloud portal for its region,
+  rather than staging or a local portal configured with the same region.
+  """
+  def firezone_cloud?(region) do
+    case Map.fetch(@firezone_cloud_urls, region) do
+      {:ok, url} ->
+        URI.parse(url).host ==
+          URI.parse(Portal.Config.get_env(:portal, :web_external_url) || "").host
+
+      :error ->
+        false
+    end
+  end
+
   @doc """
   Shows which region the portal keeps its data in, at the bottom of the sign in
-  pages. On-prem portals show nothing.
+  pages. The Firezone Cloud portals also link to the other region's portal, at
+  the same page unless the page belongs to an account. On-prem portals show
+  nothing.
   """
+  attr :path, :string, default: nil, doc: "The current path and query string"
+
   def data_residency_footer(assigns) do
-    assigns = assign(assigns, :region, data_residency_region())
+    region = data_residency_region()
+
+    assigns =
+      assigns
+      |> assign(:region, region)
+      |> assign(:show_other_region, firezone_cloud?(region))
 
     ~H"""
     <p
       :if={@region != :on_prem}
       id="data-residency"
-      class="flex items-center justify-center gap-1.5 mt-6 text-xs text-showcase-text/70 lg:text-subtle"
+      class="flex flex-wrap items-center justify-center gap-1.5 mt-6 text-xs text-showcase-text/70 lg:text-subtle"
     >
-      <.residency_flag region={@region} class="w-4 h-auto" />
-      <span>Data residency: {data_residency_name(@region)}</span>
+      <.residency_flag region={@region} class="w-5 h-auto" />
+      <span>Cloud region: <strong>{data_residency_name(@region)}</strong></span>
+      <span :if={@show_other_region} aria-hidden="true">&middot;</span>
+      <a
+        :if={@show_other_region}
+        id="other-region-portal"
+        href={other_region_portal_url(@region, @path)}
+        class="hover:underline"
+      >
+        Go to the {other_region_short_name(@region)} portal &rarr;
+      </a>
     </p>
     """
+  end
+
+  defp other_region_short_name(:us), do: "EU"
+  defp other_region_short_name(:eu), do: "US"
+
+  defp other_region_portal_url(region, path) do
+    base = Map.fetch!(@firezone_cloud_urls, other_region(region))
+
+    if path && not account_scoped?(path), do: base <> path, else: base
+  end
+
+  # Accounts live in one region, so their pages don't exist in the other one.
+  defp account_scoped?(path) do
+    case Phoenix.Router.route_info(PortalWeb.Router, "GET", URI.parse(path).path, nil) do
+      %{path_params: path_params} -> Map.has_key?(path_params, "account_id_or_slug")
+      :error -> true
+    end
   end
 end

@@ -50,7 +50,6 @@ public struct AppView: View {
 
     public enum WindowDefinition: String, CaseIterable {
       case main
-      case settings
 
       public var identifier: String { "firezone-\(rawValue)" }
       public var externalEventMatchString: String { rawValue }

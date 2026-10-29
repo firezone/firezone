@@ -16,6 +16,7 @@ defmodule Portal.Changes.Consumer do
 
   @tables_to_hooks %{
     "accounts" => Hooks.Accounts,
+    "account_slugs" => Hooks.AccountSlugs,
     "actors" => Hooks.Actors,
     "groups" => Hooks.Groups,
     "memberships" => Hooks.Memberships,

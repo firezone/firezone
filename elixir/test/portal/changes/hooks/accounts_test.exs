@@ -70,6 +70,61 @@ defmodule Portal.Changes.Hooks.AccountsTest do
       assert_receive %Change{op: :insert, struct: %Portal.Account{id: ^account_id}, lsn: 0}
     end
 
+    test "broadcasts a changed Relay throughput limit to relays" do
+      account_id = "00000000-0000-0000-0000-000000000004"
+      :ok = PubSub.Changes.subscribe_to_accounts()
+
+      assert :ok ==
+               on_update(
+                 0,
+                 %{"id" => account_id, "is_disabled" => false, "limits" => %{}},
+                 %{
+                   "id" => account_id,
+                   "is_disabled" => false,
+                   "limits" => %{"relay_throughput_mbps" => 25}
+                 }
+               )
+
+      assert_receive %Change{
+        op: :update,
+        struct: %Portal.Account{id: ^account_id, limits: %{relay_throughput_mbps: 25}},
+        lsn: 0
+      }
+    end
+
+    test "does not broadcast other account changes to relays" do
+      account_id = "00000000-0000-0000-0000-000000000005"
+      :ok = PubSub.Changes.subscribe_to_accounts()
+      limits = %{"relay_throughput_mbps" => 25}
+
+      assert :ok ==
+               on_update(
+                 0,
+                 %{"id" => account_id, "is_disabled" => false, "limits" => limits},
+                 %{"id" => account_id, "is_disabled" => false, "limits" => limits, "name" => "x"}
+               )
+
+      refute_receive %Change{}
+    end
+
+    test "does not broadcast the Relay throughput limit of a disabled account" do
+      account_id = "00000000-0000-0000-0000-000000000006"
+      :ok = PubSub.Changes.subscribe_to_accounts()
+
+      assert :ok ==
+               on_update(
+                 0,
+                 %{"id" => account_id, "is_disabled" => true, "limits" => %{}},
+                 %{
+                   "id" => account_id,
+                   "is_disabled" => true,
+                   "limits" => %{"relay_throughput_mbps" => 25}
+                 }
+               )
+
+      refute_receive %Change{}
+    end
+
     test "deletes associated policy authorizations when account is disabled" do
       account = account_fixture()
       policy_authorization = policy_authorization_fixture(account: account)

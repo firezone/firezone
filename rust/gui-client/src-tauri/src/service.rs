@@ -1,7 +1,8 @@
 use crate::{
     logging,
     settings::{
-        AdvancedSettings, MdmSettings, load_advanced_settings, load_mdm_settings, save_advanced,
+        AdvancedSettings, AdvancedSettingsPatch, MdmSettings, load_advanced_settings,
+        load_mdm_settings, save_advanced,
     },
 };
 use anyhow::{Context as _, ErrorExt as _, Result, bail};
@@ -61,11 +62,14 @@ pub enum ClientMsg {
         #[serde(serialize_with = "serialize_token")]
         token: SecretString,
         is_internet_resource_active: bool,
+        #[serde(default)]
+        api_url: Option<url::Url>,
     },
     Disconnect,
     /// Persist new advanced settings to the protected on-disk file owned by
     /// the Tunnel service and reload the log filter.
     ApplyAdvancedSettings(AdvancedSettings),
+    PatchAdvancedSettings(AdvancedSettingsPatch),
     /// Apply new additional host candidates to the running session and persist them.
     ///
     /// Only a failure to persist them is reported, as [`ServerMsg::AdvancedSettingsApplied`].
@@ -261,14 +265,17 @@ enum Session {
         event_stream: client_shared::EventStream,
         connlib: client_shared::Session,
         started_at: Instant,
+        api_url: Url,
     },
     Connected {
         event_stream: client_shared::EventStream,
         connlib: client_shared::Session,
+        api_url: Url,
     },
     WaitingForNetwork {
         token: SecretString,
         is_internet_resource_active: bool,
+        api_url: Url,
     },
     #[default]
     None,
@@ -281,21 +288,25 @@ impl Session {
                 event_stream,
                 connlib,
                 started_at,
+                api_url,
             } => {
                 tracing::debug!(elapsed = ?started_at.elapsed(), "Tunnel ready");
 
                 *self = Self::Connected {
                     event_stream,
                     connlib,
+                    api_url,
                 };
             }
             Session::Connected {
                 event_stream,
                 connlib,
+                api_url,
             } => {
                 *self = Self::Connected {
                     event_stream,
                     connlib,
+                    api_url,
                 };
             }
             Session::WaitingForNetwork { .. } => {
@@ -305,6 +316,15 @@ impl Session {
         }
 
         Ok(())
+    }
+
+    fn api_url(&self) -> Option<&Url> {
+        match self {
+            Self::Creating { api_url, .. } => Some(api_url),
+            Self::Connected { api_url, .. } => Some(api_url),
+            Self::WaitingForNetwork { api_url, .. } => Some(api_url),
+            Self::None => None,
+        }
     }
 
     fn as_connlib(&self) -> Option<&client_shared::Session> {
@@ -612,12 +632,14 @@ impl<'a> Handler<'a> {
             Session::WaitingForNetwork {
                 token,
                 is_internet_resource_active,
+                api_url,
             } => {
                 tracing::info!(%reason, "Attempting to re-connect");
 
                 let token = token.clone();
                 let is_internet_resource_active = *is_internet_resource_active;
-                let result = self.try_connect(token, is_internet_resource_active);
+                let api_url = api_url.clone();
+                let result = self.try_connect(token, is_internet_resource_active, api_url);
 
                 if let Some(e) = result
                     .as_ref()
@@ -745,7 +767,15 @@ impl<'a> Handler<'a> {
             ClientMsg::Connect {
                 token,
                 is_internet_resource_active,
+                api_url,
             } => {
+                let api_url = self
+                    .mdm_settings
+                    .api_url
+                    .clone()
+                    .or(api_url)
+                    .unwrap_or_else(|| self.advanced_settings.api_url.clone());
+
                 if !self.session.is_none() {
                     tracing::debug!(session = ?self.session, "Dropping existing session before connecting");
 
@@ -756,7 +786,8 @@ impl<'a> Handler<'a> {
                 // there must not report the previous one's.
                 telemetry::set_account_slug(None);
 
-                let result = self.try_connect(token.clone(), is_internet_resource_active);
+                let result =
+                    self.try_connect(token.clone(), is_internet_resource_active, api_url.clone());
 
                 if let Some(e) = result
                     .as_ref()
@@ -769,6 +800,7 @@ impl<'a> Handler<'a> {
                     self.session = Session::WaitingForNetwork {
                         token,
                         is_internet_resource_active,
+                        api_url,
                     };
 
                     return Ok(());
@@ -791,22 +823,11 @@ impl<'a> Handler<'a> {
                 self.send_ipc(ServerMsg::DisconnectedGracefully).await?;
             }
             ClientMsg::ApplyAdvancedSettings(new) => {
-                // Validate the log filter before persisting so we never write an
-                // unparsable value to disk or report a misleading "saved" to the GUI.
-                let response = if let Err(e) = EnvFilter::try_new(&new.log_filter) {
-                    Err(format!("Invalid log filter `{}`: {e}", new.log_filter))
-                } else {
-                    match save_advanced(&new).await {
-                        Ok(()) => {
-                            let _ = self.log_filter_reloader.reload(&new.log_filter);
-                            self.advanced_settings = new.clone();
-                            Ok(new)
-                        }
-                        Err(e) => Err(format!("{e:#}")),
-                    }
-                };
-                self.send_ipc(ServerMsg::AdvancedSettingsApplied(response))
-                    .await?;
+                self.apply_advanced_settings(new).await?;
+            }
+            ClientMsg::PatchAdvancedSettings(patch) => {
+                let new = patch.apply(self.advanced_settings.clone());
+                self.apply_advanced_settings(new).await?;
             }
             ClientMsg::SetAdditionalHostCandidates(ips) => {
                 if let Some(connlib) = self.session.as_connlib() {
@@ -840,7 +861,7 @@ impl<'a> Handler<'a> {
 
                 if !no_telemetry {
                     self.telemetry_release = Some(release.clone());
-                    self.point_telemetry_at_api_url();
+                    self.point_telemetry_at_api_url(self.api_url());
 
                     opentelemetry::global::set_meter_provider(
                         telemetry::SentryMeterProvider::default(),
@@ -855,12 +876,33 @@ impl<'a> Handler<'a> {
         Ok(())
     }
 
-    /// Effective `api_url`: machine-scope MDM policy wins over the stored
-    /// advanced setting.
+    async fn apply_advanced_settings(&mut self, new: AdvancedSettings) -> Result<()> {
+        // Validate the log filter before persisting so we never write an
+        // unparsable value to disk or report a misleading "saved" to the GUI.
+        let response = if let Err(e) = EnvFilter::try_new(&new.log_filter) {
+            Err(format!("Invalid log filter `{}`: {e}", new.log_filter))
+        } else {
+            match save_advanced(&new).await {
+                Ok(()) => {
+                    let _ = self.log_filter_reloader.reload(&new.log_filter);
+                    self.advanced_settings = new.clone();
+                    Ok(new)
+                }
+                Err(e) => Err(format!("{e:#}")),
+            }
+        };
+        self.send_ipc(ServerMsg::AdvancedSettingsApplied(response))
+            .await?;
+
+        Ok(())
+    }
+
+    /// Returns the API URL selected by MDM, the active session, or the saved settings, in that order.
     fn api_url(&self) -> &str {
         self.mdm_settings
             .api_url
             .as_ref()
+            .or_else(|| self.session.api_url())
             .map(|u| u.as_str())
             .unwrap_or_else(|| self.advanced_settings.api_url.as_str())
     }
@@ -869,12 +911,12 @@ impl<'a> Handler<'a> {
     ///
     /// Deriving the environment here instead of accepting one from the GUI is what keeps
     /// telemetry off for unofficial deployments: it cannot name a portal we never talk to.
-    fn point_telemetry_at_api_url(&self) {
+    fn point_telemetry_at_api_url(&self, api_url: &str) {
         let Some(release) = &self.telemetry_release else {
             return;
         };
 
-        telemetry::start(self.api_url(), release, telemetry::GUI_DSN);
+        telemetry::start(api_url, release, telemetry::GUI_DSN);
         telemetry::set_firezone_id(self.device_id.id.clone()); // Re-pointing clears the identity.
     }
 
@@ -884,6 +926,7 @@ impl<'a> Handler<'a> {
         &mut self,
         token: SecretString,
         is_internet_resource_active: bool,
+        api_url: Url,
     ) -> Result<Session> {
         let started_at = Instant::now();
 
@@ -905,11 +948,9 @@ impl<'a> Handler<'a> {
         };
 
         // The settings may have moved since the GUI last asked us to start telemetry.
-        self.point_telemetry_at_api_url();
-
-        let api_url = self.api_url().to_string();
+        self.point_telemetry_at_api_url(api_url.as_str());
         let url = LoginUrl::client(
-            Url::parse(&api_url).context("Failed to parse URL")?,
+            api_url.clone(),
             device_id.id.clone(),
             None,
             DeviceInfo {
@@ -949,7 +990,7 @@ impl<'a> Handler<'a> {
             tokio::runtime::Handle::current(),
         );
 
-        analytics::new_session(device_id.id, api_url);
+        analytics::new_session(device_id.id, api_url.to_string());
 
         let tun = self
             .tun_device
@@ -961,6 +1002,7 @@ impl<'a> Handler<'a> {
             event_stream,
             connlib,
             started_at,
+            api_url,
         })
     }
 

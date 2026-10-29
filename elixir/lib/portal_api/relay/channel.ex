@@ -68,12 +68,15 @@ defmodule PortalAPI.Relay.Channel do
       # Old Relay binaries ignore unknown fields on `init`, but fail their
       # Portal connection on unknown events. Account updates therefore remain
       # capability-gated, while the initial snapshot uses the existing event.
+      # For the same reason, throughput limit changes reuse `account_added`.
       init_payload =
         if turn_account_validation do
           :ok = PubSub.Changes.subscribe_to_accounts()
+          accounts = Database.all_enabled_accounts()
 
           %{
-            account_ids: Database.all_enabled_account_ids()
+            account_ids: Enum.map(accounts, fn {id, _mbps} -> id end),
+            throughput_limits_bps: throughput_limits_bps(accounts)
           }
         else
           %{}
@@ -92,8 +95,11 @@ defmodule PortalAPI.Relay.Channel do
 
     if lsn > last_lsn do
       case change do
-        %Change{op: :insert, struct: %Portal.Account{id: id}} ->
-          push(socket, "account_added", %{account_id: id})
+        %Change{op: :insert, struct: %Portal.Account{} = account} ->
+          push(socket, "account_added", account_payload(account))
+
+        %Change{op: :update, struct: %Portal.Account{} = account} ->
+          push(socket, "account_added", account_payload(account))
 
         %Change{op: :delete, old_struct: %Portal.Account{id: id}} ->
           push(socket, "account_removed", %{account_id: id})
@@ -119,6 +125,22 @@ defmodule PortalAPI.Relay.Channel do
     {:reply, {:error, %{reason: :unknown_message}}, socket}
   end
 
+  # Unlimited accounts are omitted to keep the snapshot small.
+  defp throughput_limits_bps(accounts) do
+    for {id, mbps} <- accounts, bps = mbps_to_bps(mbps), not is_nil(bps), into: %{} do
+      {id, bps}
+    end
+  end
+
+  defp account_payload(%Portal.Account{id: id, limits: limits}) do
+    mbps = if limits, do: limits.relay_throughput_mbps
+
+    %{account_id: id, throughput_limit_bps: mbps_to_bps(mbps)}
+  end
+
+  defp mbps_to_bps(mbps) when is_integer(mbps) and mbps > 0, do: mbps * 1_000_000
+  defp mbps_to_bps(_mbps), do: nil
+
   defp abnormal_exit?(:normal), do: false
   defp abnormal_exit?(:shutdown), do: false
   defp abnormal_exit?({:shutdown, _reason}), do: false
@@ -128,10 +150,11 @@ defmodule PortalAPI.Relay.Channel do
     import Ecto.Query
     alias Portal.Safe
 
-    def all_enabled_account_ids do
+    def all_enabled_accounts do
       from(account in Portal.Account,
         where: account.is_disabled == false,
-        select: account.id
+        select:
+          {account.id, fragment("(?->>'relay_throughput_mbps')::integer", account.limits)}
       )
       |> Safe.unscoped()
       |> Safe.all()

@@ -529,6 +529,50 @@ defmodule Portal.Billing.EventHandlerTest do
       assert updated.limits.monthly_active_users_count == 42
     end
 
+    test "sets the Relay throughput limit from subscription metadata", %{
+      account: account,
+      customer: customer
+    } do
+      {product, _price, subscription} =
+        Stripe.build_all(:team, account.metadata.stripe.customer_id, 1, %{
+          "relay_throughput_mbps" => "15"
+        })
+
+      event = Stripe.build_event("customer.subscription.updated", subscription)
+
+      Stripe.stub(
+        Stripe.fetch_customer_endpoint(customer) ++
+          Stripe.fetch_product_endpoint(product)
+      )
+
+      assert {:ok, _event} = EventHandler.handle_event(event)
+
+      updated = Portal.Repo.get!(Portal.Account, account.id)
+      assert updated.limits.relay_throughput_mbps == 15
+    end
+
+    test "leaves the Relay throughput limit unlimited when metadata says so", %{
+      account: account,
+      customer: customer
+    } do
+      {product, _price, subscription} =
+        Stripe.build_all(:team, account.metadata.stripe.customer_id, 1, %{
+          "relay_throughput_mbps" => "unlimited"
+        })
+
+      event = Stripe.build_event("customer.subscription.updated", subscription)
+
+      Stripe.stub(
+        Stripe.fetch_customer_endpoint(customer) ++
+          Stripe.fetch_product_endpoint(product)
+      )
+
+      assert {:ok, _event} = EventHandler.handle_event(event)
+
+      updated = Portal.Repo.get!(Portal.Account, account.id)
+      assert updated.limits.relay_throughput_mbps == nil
+    end
+
     test "sets the monthly active users limit from Business seats", %{
       account: account,
       customer: customer

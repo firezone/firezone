@@ -5,7 +5,7 @@ use std::time::Instant;
 
 use anyhow::{Context, ErrorExt, Result, bail};
 use connlib_model::{ClientId, ResourceId};
-use dns_types::DomainName;
+use dns_types::{DomainName, Query, RecordType};
 use fast_random_state::FastRandomState;
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_packet::{IpPacket, Protocol, UnsupportedProtocol};
@@ -16,7 +16,7 @@ use crate::expiring_map::{ExpiringMap, NEVER_EXPIRES_TTL};
 use crate::filter_engine::FilterEngine;
 use crate::gateway::nat_table::{NatTable, TranslateIncomingResult};
 use crate::messages::gateway::ResourceDescription;
-use crate::messages::{Filter, IngestToken};
+use crate::messages::{Filter, IngestToken, Key};
 use crate::routing_table::{self, RoutingTable};
 use crate::unroutable_packet::UnroutablePacket;
 use crate::{IpConfig, NotAllowedResource, NotClientIp, p2p_control};
@@ -24,6 +24,7 @@ use crate::{IpConfig, NotAllowedResource, NotClientIp, p2p_control};
 /// The state of one client on a gateway.
 pub struct ClientOnGateway {
     id: ClientId,
+    public_key: Key,
 
     client_tun: IpConfig,
     gateway_tun: IpConfig,
@@ -76,11 +77,13 @@ pub enum TranslateOutboundResult {
 impl ClientOnGateway {
     pub(crate) fn new(
         id: ClientId,
+        public_key: Key,
         client_tun: IpConfig,
         gateway_tun: IpConfig,
     ) -> ClientOnGateway {
         ClientOnGateway {
             id,
+            public_key,
             client_tun,
             gateway_tun,
             ingest_tokens: HashMap::default(),
@@ -117,13 +120,13 @@ impl ClientOnGateway {
                 is_dns_addr(*proxy_ip),
                 "Proxy IP {proxy_ip} is not within {IPV4_RESOURCES} or {IPV6_RESOURCES}"
             );
-        }
-
-        if self.have_proxy_ips_been_reassigned(&name, &proxy_ips) {
-            tracing::info!("Client has re-assigned proxy IPs, resetting DNS resource NAT");
-
-            self.nat_table = Default::default();
-            self.permanent_translations = Default::default();
+            // A Client only re-assigns proxy IPs with a new key, which resets its state.
+            anyhow::ensure!(
+                self.permanent_translations
+                    .get(proxy_ip)
+                    .is_none_or(|state| state.domain == name),
+                ProxyIpAlreadyAssigned(*proxy_ip)
+            );
         }
 
         let resource = self
@@ -305,28 +308,6 @@ impl ClientOnGateway {
         }
 
         self.recalculate_filters();
-    }
-
-    /// Checks if the given proxy IPs assigned for a domain are consistent with what we have stored.
-    ///
-    /// When a Client signs out and back in again, it starts re-numbering DNS resources and thus may
-    /// reuse a proxy IP previously assigned to a different domain.
-    fn have_proxy_ips_been_reassigned(
-        &self,
-        name: &DomainName,
-        proxy_ips: &BTreeSet<IpAddr>,
-    ) -> bool {
-        for ip in proxy_ips {
-            let Some(state) = self.permanent_translations.get(ip) else {
-                continue;
-            };
-
-            if state.domain != name {
-                return true;
-            }
-        }
-
-        false
     }
 
     // Call this after any resources change
@@ -564,12 +545,33 @@ impl ClientOnGateway {
         self.resources.contains_key(&resource)
     }
 
+    pub(crate) fn allows_site_dns_query(&self, query: &Query) -> bool {
+        if !query.is_standard_query() || !matches!(query.qtype(), RecordType::TXT | RecordType::SRV)
+        {
+            return false;
+        }
+
+        let domain = query.domain();
+
+        self.resources.values().any(|resource| match resource {
+            ResourceOnGateway::Dns { address, .. } => crate::dns::is_subdomain(&domain, address),
+            ResourceOnGateway::Cidr { .. } => false,
+            ResourceOnGateway::Internet => false,
+        })
+    }
+
     fn ensure_allowed_outbound(&mut self, packet: &IpPacket) -> Result<()> {
         self.ensure_client_ip(packet.source())?;
 
-        // Traffic to our own IP is allowed.
         if self.gateway_tun.is_ip(packet.destination()) {
-            return Ok(());
+            match packet.destination_protocol() {
+                Ok(Protocol::Tcp(super::TUN_DNS_PORT)) => return Ok(()),
+                Ok(Protocol::Udp(super::TUN_DNS_PORT)) => return Ok(()),
+                _ => bail!(
+                    "Only DNS on port {} is allowed to the gateway TUN IP",
+                    super::TUN_DNS_PORT
+                ),
+            }
         }
 
         ensure_not_peer_ip(packet.destination())?;
@@ -640,10 +642,18 @@ impl ClientOnGateway {
         self.id
     }
 
+    pub(crate) fn public_key(&self) -> Key {
+        self.public_key
+    }
+
     pub fn client_tun(&self) -> IpConfig {
         self.client_tun
     }
 }
+
+#[derive(Debug, thiserror::Error)]
+#[error("Proxy IP {0} is assigned to a different domain")]
+pub(super) struct ProxyIpAlreadyAssigned(IpAddr);
 
 #[derive(Debug, thiserror::Error)]
 #[error("Internet resource rejects IP: {0}")]
@@ -837,13 +847,16 @@ mod tests {
 
     use crate::{
         gateway::nat_table,
-        messages::{Filter, PortRange, gateway::ResourceDescriptionCidr},
+        messages::{
+            Filter, PortRange,
+            gateway::{ResourceDescriptionCidr, ResourceDescriptionDns},
+        },
         unroutable_packet::RoutingError,
     };
 
     #[test]
     fn gateway_filters_expire_individually() {
-        let mut peer = ClientOnGateway::new(client_id(), client_tun(), gateway_tun());
+        let mut peer = ClientOnGateway::new(client_id(), client_key(), client_tun(), gateway_tun());
         let now = Instant::now();
         let then = now + Duration::from_secs(10);
         let after_then = then + Duration::from_secs(10);
@@ -923,7 +936,7 @@ mod tests {
 
     #[test]
     fn re_adding_resource_with_past_expiry_clears_it_on_next_handle_timeout() {
-        let mut peer = ClientOnGateway::new(client_id(), client_tun(), gateway_tun());
+        let mut peer = ClientOnGateway::new(client_id(), client_key(), client_tun(), gateway_tun());
         let now = Instant::now();
 
         peer.add_resource(foo_dns_resource(), Some(now + Duration::from_secs(60)), now);
@@ -942,40 +955,95 @@ mod tests {
     }
 
     #[test]
-    fn allows_packets_for_and_from_gateway_tun_ip() {
-        let mut peer = ClientOnGateway::new(client_id(), client_tun(), gateway_tun());
+    fn tun_dns_queries_require_an_active_dns_resource_and_txt_or_srv_type() {
+        let now = Instant::now();
+        let mut peer = ClientOnGateway::new(client_id(), client_key(), client_tun(), gateway_tun());
+        peer.add_resource(foo_dns_resource(), Some(now + Duration::from_secs(60)), now);
+        peer.add_resource(bar_cidr_resource(), None, now);
+        peer.add_resource(internet_resource(), None, now);
 
-        let request = ip_packet::make::tcp_packet(
-            client_tun_ipv4(),
-            gateway_tun_ipv4(),
-            5401,
-            80,
-            TcpFlags::default(),
-            &[0u8; 100],
-        )
-        .unwrap();
+        peer.add_resource(
+            ResourceDescription::Dns(ResourceDescriptionDns {
+                id: baz_resource_id(),
+                address: "*.foo.com".to_owned(),
+                name: "wildcard".to_owned(),
+                filters: vec![],
+            }),
+            Some(now + Duration::from_secs(60)),
+            now,
+        );
 
-        let mut response = ip_packet::make::tcp_packet(
-            gateway_tun_ipv4(),
-            client_tun_ipv4(),
-            80,
-            5401,
-            TcpFlags::default(),
-            &[0u8; 100],
-        )
-        .unwrap();
+        let query = |name: &str, record_type| Query::new(name.parse().unwrap(), record_type);
 
-        assert!(matches!(
-            peer.translate_outbound(request, Instant::now()).unwrap(),
-            TranslateOutboundResult::Send(_, _)
-        ));
-        peer.translate_inbound(&mut response, Instant::now())
+        assert!(peer.allows_site_dns_query(&query("foo.com", RecordType::TXT)));
+        assert!(peer.allows_site_dns_query(&query("service.foo.com", RecordType::SRV)));
+        assert!(!peer.allows_site_dns_query(&query("foo.com", RecordType::A)));
+        assert!(!peer.allows_site_dns_query(&query("other.com", RecordType::TXT)));
+        assert!(!peer.allows_site_dns_query(&query("10.0.0.1", RecordType::TXT)));
+    }
+
+    #[test]
+    fn only_allows_dns_port_on_gateway_tun_ip() {
+        let mut peer = ClientOnGateway::new(client_id(), client_key(), client_tun(), gateway_tun());
+
+        for (client, gateway) in [
+            (
+                IpAddr::V4(client_tun_ipv4()),
+                IpAddr::V4(gateway_tun_ipv4()),
+            ),
+            (
+                IpAddr::V6(client_tun_ipv6()),
+                IpAddr::V6(gateway_tun_ipv6()),
+            ),
+        ] {
+            for request in [
+                ip_packet::make::tcp_packet(
+                    client,
+                    gateway,
+                    5401,
+                    super::super::TUN_DNS_PORT,
+                    TcpFlags::default(),
+                    &[],
+                )
+                .unwrap(),
+                ip_packet::make::udp_packet(client, gateway, 5401, super::super::TUN_DNS_PORT, &[])
+                    .unwrap(),
+            ] {
+                assert!(matches!(
+                    peer.translate_outbound(request, Instant::now()).unwrap(),
+                    TranslateOutboundResult::Send(_, _)
+                ));
+            }
+
+            for request in [
+                ip_packet::make::tcp_packet(client, gateway, 5401, 80, TcpFlags::default(), &[])
+                    .unwrap(),
+                ip_packet::make::udp_packet(client, gateway, 5401, 53, &[]).unwrap(),
+                ip_packet::make::icmp_request_packet(client, gateway, 1, 1, &[]).unwrap(),
+            ] {
+                assert!(matches!(
+                    peer.translate_outbound(request, Instant::now()).unwrap(),
+                    TranslateOutboundResult::IcmpError { .. }
+                ));
+            }
+
+            let mut response = ip_packet::make::tcp_packet(
+                gateway,
+                client,
+                super::super::TUN_DNS_PORT,
+                5401,
+                TcpFlags::default(),
+                &[],
+            )
             .unwrap();
+            peer.translate_inbound(&mut response, Instant::now())
+                .unwrap();
+        }
     }
 
     #[test]
     fn dns_and_cidr_filters_dot_mix() {
-        let mut peer = ClientOnGateway::new(client_id(), client_tun(), gateway_tun());
+        let mut peer = ClientOnGateway::new(client_id(), client_key(), client_tun(), gateway_tun());
         peer.add_resource(foo_dns_resource(), None, Instant::now());
         peer.add_resource(bar_cidr_resource(), None, Instant::now());
         peer.setup_nat(
@@ -1041,7 +1109,7 @@ mod tests {
 
     #[test]
     fn internet_resource_doesnt_allow_all_traffic_for_dns_resources() {
-        let mut peer = ClientOnGateway::new(client_id(), client_tun(), gateway_tun());
+        let mut peer = ClientOnGateway::new(client_id(), client_key(), client_tun(), gateway_tun());
         peer.add_resource(foo_dns_resource(), None, Instant::now());
         peer.add_resource(internet_resource(), None, Instant::now());
         peer.setup_nat(
@@ -1091,7 +1159,7 @@ mod tests {
 
     #[test]
     fn internet_resource_does_not_allow_traffic_to_another_client() {
-        let mut peer = ClientOnGateway::new(client_id(), client_tun(), gateway_tun());
+        let mut peer = ClientOnGateway::new(client_id(), client_key(), client_tun(), gateway_tun());
         peer.add_resource(internet_resource(), None, Instant::now());
 
         let request = ip_packet::make::udp_packet(
@@ -1112,7 +1180,7 @@ mod tests {
     #[test]
     fn internet_resource_does_not_allow_traffic_from_another_client() {
         let now = Instant::now();
-        let mut peer = ClientOnGateway::new(client_id(), client_tun(), gateway_tun());
+        let mut peer = ClientOnGateway::new(client_id(), client_key(), client_tun(), gateway_tun());
         peer.add_resource(internet_resource(), None, now);
 
         let mut hairpinned = ip_packet::make::udp_packet(
@@ -1138,7 +1206,7 @@ mod tests {
     fn dns_resource_packet_is_dropped_after_nat_session_expires() {
         let _guard = logging::test("trace");
 
-        let mut peer = ClientOnGateway::new(client_id(), client_tun(), gateway_tun());
+        let mut peer = ClientOnGateway::new(client_id(), client_key(), client_tun(), gateway_tun());
         peer.add_resource(foo_dns_resource(), None, Instant::now());
         peer.setup_nat(
             foo_name().parse().unwrap(),
@@ -1206,7 +1274,7 @@ mod tests {
 
         let now = Instant::now();
 
-        let mut peer = ClientOnGateway::new(client_id(), client_tun(), gateway_tun());
+        let mut peer = ClientOnGateway::new(client_id(), client_key(), client_tun(), gateway_tun());
         peer.add_resource(foo_dns_resource(), None, Instant::now());
         peer.setup_nat(
             foo_name().parse().unwrap(),
@@ -1290,12 +1358,12 @@ mod tests {
     }
 
     #[test]
-    fn setting_up_dns_resource_nat_with_new_proxy_ips_resets_state() {
+    fn setting_up_dns_resource_nat_rejects_proxy_ips_of_another_domain() {
         let _guard = logging::test("trace");
 
         let now = Instant::now();
 
-        let mut peer = ClientOnGateway::new(client_id(), client_tun(), gateway_tun());
+        let mut peer = ClientOnGateway::new(client_id(), client_key(), client_tun(), gateway_tun());
         peer.add_resource(foo_dns_resource(), None, Instant::now());
         peer.add_resource(baz_dns_resource(), None, Instant::now());
         peer.setup_nat(
@@ -1323,15 +1391,14 @@ mod tests {
 
         assert_eq!(packet.destination(), foo_real_ip1());
 
-        // Client resets state, setup baz resource first with proxy IP 1
-
-        peer.setup_nat(
+        let result = peer.setup_nat(
             baz_name().parse().unwrap(),
             baz_resource_id(),
             BTreeSet::from([baz_real_ip1().into()]),
             BTreeSet::from([proxy_ip4_1(), proxy_ip4_2()]),
-        )
-        .unwrap();
+        );
+
+        assert!(result.unwrap_err().any_is::<ProxyIpAlreadyAssigned>());
 
         let TranslateOutboundResult::Send(packet, _) =
             peer.translate_outbound(request, now).unwrap()
@@ -1339,7 +1406,7 @@ mod tests {
             panic!("Bad translation result")
         };
 
-        assert_eq!(packet.destination(), baz_real_ip1());
+        assert_eq!(packet.destination(), foo_real_ip1());
     }
 
     #[test]
@@ -1348,7 +1415,7 @@ mod tests {
 
         let now = Instant::now();
 
-        let mut peer = ClientOnGateway::new(client_id(), client_tun(), gateway_tun());
+        let mut peer = ClientOnGateway::new(client_id(), client_key(), client_tun(), gateway_tun());
         peer.add_resource(foo_dns_resource(), None, Instant::now());
         peer.setup_nat(
             foo_name().parse().unwrap(),
@@ -1386,9 +1453,8 @@ mod tests {
     //   - foo_dns_resource2: allows TCP/443
     //
     // setup_nat is called for each with the same proxy IP and the same domain.
-    // Because the stored domain matches the incoming name,
-    // have_proxy_ips_been_reassigned returns false and no state reset occurs.
-    // The second resource's ID is appended to state.resources while the
+    // Because the stored domain matches the incoming name, the proxy IP is
+    // accepted. The second resource's ID is appended to state.resources while the
     // existing TranslationState (and its resolved IP) is preserved.
     #[test]
     fn multiple_resources_can_share_same_proxy_ip() {
@@ -1396,7 +1462,7 @@ mod tests {
 
         let now = Instant::now();
 
-        let mut peer = ClientOnGateway::new(client_id(), client_tun(), gateway_tun());
+        let mut peer = ClientOnGateway::new(client_id(), client_key(), client_tun(), gateway_tun());
 
         peer.add_resource(foo_dns_resource(), None, Instant::now());
         peer.add_resource(foo_dns_resource2(), None, Instant::now());
@@ -1461,7 +1527,7 @@ mod tests {
 
     #[test]
     fn rejects_proxy_ips_outside_reserved_ranges() {
-        let mut peer = ClientOnGateway::new(client_id(), client_tun(), gateway_tun());
+        let mut peer = ClientOnGateway::new(client_id(), client_key(), client_tun(), gateway_tun());
         peer.add_resource(foo_dns_resource(), None, Instant::now());
 
         let bad_ips = [
@@ -1491,7 +1557,7 @@ mod tests {
 
         let now = Instant::now();
 
-        let mut peer = ClientOnGateway::new(client_id(), client_tun(), gateway_tun());
+        let mut peer = ClientOnGateway::new(client_id(), client_key(), client_tun(), gateway_tun());
 
         let icmp_unreachable = ip_packet::make::icmp_dest_unreachable_network(
             &ip_packet::make::udp_packet(proxy_ip4_1(), client_tun_ipv4(), 443, 50000, &[])
@@ -1673,6 +1739,10 @@ mod tests {
     fn client_id() -> ClientId {
         "9d4b79f6-1db7-4cb3-a077-712102204d73".parse().unwrap()
     }
+
+    fn client_key() -> Key {
+        Key([1; 32])
+    }
 }
 
 #[cfg(test)]
@@ -1711,6 +1781,7 @@ mod proptests {
         // This test could be extended to test multiple src
         let mut peer = ClientOnGateway::new(
             client_id,
+            Key::default(),
             IpConfig {
                 v4: client_v4,
                 v6: client_v6,
@@ -1764,6 +1835,7 @@ mod proptests {
         };
         let mut peer = ClientOnGateway::new(
             client_id,
+            Key::default(),
             IpConfig {
                 v4: client_v4,
                 v6: client_v6,
@@ -1823,6 +1895,7 @@ mod proptests {
         // This test could be extended to test multiple src
         let mut peer = ClientOnGateway::new(
             client_id,
+            Key::default(),
             IpConfig {
                 v4: client_v4,
                 v6: client_v6,
@@ -1881,6 +1954,7 @@ mod proptests {
         // This test could be extended to test multiple src
         let mut peer = ClientOnGateway::new(
             client_id,
+            Key::default(),
             IpConfig {
                 v4: client_v4,
                 v6: client_v6,

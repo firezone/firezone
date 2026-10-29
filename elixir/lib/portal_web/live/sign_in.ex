@@ -15,7 +15,7 @@ defmodule PortalWeb.SignIn do
   alias __MODULE__.Database
 
   def mount(%{"account_id_or_slug" => account_id_or_slug} = params, session, socket) do
-    account = Database.get_account_by_id_or_slug!(account_id_or_slug)
+    account = PortalWeb.Accounts.get_by_id_or_slug!(account_id_or_slug)
     mount_account(account, params, session, socket)
   end
 
@@ -359,16 +359,6 @@ defmodule PortalWeb.SignIn do
   defmodule Database do
     import Ecto.Query
     alias Portal.Safe
-    alias Portal.Account
-
-    def get_account_by_id_or_slug!(id_or_slug) do
-      query =
-        if Portal.Repo.valid_uuid?(id_or_slug),
-          do: from(a in Account, where: a.id == ^id_or_slug),
-          else: from(a in Account, where: a.slug == ^id_or_slug)
-
-      query |> Safe.unscoped() |> Safe.one!()
-    end
 
     def get_auth_provider(account, module) do
       from(ap in module, where: ap.account_id == ^account.id and not ap.is_disabled)

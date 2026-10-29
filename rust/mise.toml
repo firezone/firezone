@@ -16,6 +16,18 @@ auto_install = false
 "github:getsentry/sentry-cli" = { version = "3.6.2", bin = "sentry-cli", matching_regex = "^sentry-cli-(Darwin|Linux|Windows)-" }
 "github:tauri-apps/tauri" = { version = "2.11.2", version_prefix = "tauri-cli-v" }
 
+[tools."github:bencherdev/bencher"]
+version = "0.6.13"
+bin = "bencher"
+
+[tools."github:bencherdev/bencher".platforms]
+linux-x64 = { asset_pattern = "bencher-*-linux-x86-64" }
+linux-arm64 = { asset_pattern = "bencher-*-linux-arm-64" }
+macos-x64 = { asset_pattern = "bencher-*-macos-x86-64" }
+macos-arm64 = { asset_pattern = "bencher-*-macos-arm-64" }
+windows-x64 = { asset_pattern = "bencher-*-windows-x86-64.exe" }
+windows-arm64 = { asset_pattern = "bencher-*-windows-arm-64.exe" }
+
 # The eBPF program is compiled with this exact nightly toolchain: `aya_build`
 # invokes it via `rustup run` (see `relay/server/build.rs`; keep the two pins
 # in sync). Installing it is a task rather than a `rust` entry in `[tools]`

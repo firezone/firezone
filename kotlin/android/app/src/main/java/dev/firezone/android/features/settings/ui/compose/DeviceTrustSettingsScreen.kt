@@ -9,11 +9,11 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -25,6 +25,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import dev.firezone.android.R
 import dev.firezone.android.features.settings.ui.DeviceTrustSettingsViewModel
 import dev.firezone.android.ui.FirezoneIcons
@@ -53,8 +54,8 @@ internal fun DeviceTrustSettingsScreen(
         modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         CertificateCard(state)
 
@@ -78,9 +79,10 @@ internal fun DeviceTrustSettingsScreen(
             }
         }
 
-        state.details.forEach { field ->
-            HorizontalDivider()
-            DetailField(field)
+        if (state.details.isNotEmpty()) {
+            SettingsGroup {
+                state.details.forEach { field -> DetailField(field) }
+            }
         }
 
         // Under the card when there is nothing to say about a certificate, under the rows when
@@ -98,10 +100,11 @@ internal fun DeviceTrustSettingsScreen(
 private fun WarningBanner(text: String) {
     Card(
         Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
     ) {
         Row(
-            Modifier.padding(12.dp),
+            Modifier.padding(16.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Icon(
@@ -130,19 +133,16 @@ private fun CertificateCard(state: DeviceTrustSettingsViewModel.UiState) {
     val issuer = state.details.valueOf(ISSUER_LABEL)
     val notAfter = state.details.valueOf(NOT_AFTER_LABEL)
 
-    Card(Modifier.fillMaxWidth()) {
-        Row(
-            Modifier.padding(16.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
+    SettingsGroup {
+        SettingsRowContainer {
             Icon(
                 imageVector = FirezoneIcons.VerifiedUser,
                 contentDescription = null,
-                modifier = Modifier.size(32.dp),
+                modifier = Modifier.padding(end = 4.dp).size(32.dp),
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
             )
 
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Column(Modifier.padding(vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(
                     text = commonName ?: stringResource(R.string.device_trust_certificate_title),
                     style = MaterialTheme.typography.titleMedium,
@@ -170,30 +170,30 @@ private fun CertificateCard(state: DeviceTrustSettingsViewModel.UiState) {
 
 @Composable
 private fun DetailField(field: DetailField) {
-    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        Text(
-            text = field.label,
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+    SettingsRowContainer {
+        Column(Modifier.weight(1f)) {
+            Text(text = field.label, style = MaterialTheme.typography.bodyLarge)
 
-        val value = field.value
+            val value = field.value
 
-        if (value != null) {
-            Text(
-                text = value,
-                style = MaterialTheme.typography.bodySmall,
-                fontFamily = FontFamily.Monospace,
-            )
-        } else {
-            Text(
-                text = stringResource(R.string.device_trust_claim_absent),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            if (value != null) {
+                Text(
+                    text = value,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontFamily = FontFamily.Monospace,
+                    letterSpacing = 0.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else {
+                Text(
+                    text = stringResource(R.string.device_trust_claim_absent),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+
+            field.problem?.let { problem -> ClaimProblem(problem) }
         }
-
-        field.problem?.let { problem -> ClaimProblem(problem) }
     }
 }
 
@@ -202,7 +202,7 @@ private fun DetailField(field: DetailField) {
 private fun ClaimProblem(error: ValidationError) {
     Text(
         text = stringResource(error.phrase()),
-        style = MaterialTheme.typography.bodySmall,
+        style = MaterialTheme.typography.bodyMedium,
         color = MaterialTheme.colorScheme.error,
     )
 }

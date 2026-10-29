@@ -13,7 +13,7 @@ defmodule PortalWeb.Settings.AccountTest do
   import Portal.SubjectFixtures
 
   setup do
-    account = account_fixture()
+    account = account_fixture(features: %{slug_changes: true})
     actor = admin_actor_fixture(account: account)
     %{account: account, actor: actor}
   end
@@ -183,7 +183,7 @@ defmodule PortalWeb.Settings.AccountTest do
       refute has_element?(lv, "#data-residency")
     end
 
-    test "shows the US region with the EU closed beta link", %{
+    test "shows where the US region stores account data", %{
       conn: conn,
       account: account,
       actor: actor
@@ -195,12 +195,19 @@ defmodule PortalWeb.Settings.AccountTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/settings/account")
 
-      assert has_element?(lv, "#data-residency", "Data residency region: United States")
-      assert has_element?(lv, "#data-residency", "EU data residency is in closed beta.")
-      assert has_element?(lv, "#data-residency a[href='https://www.firezone.dev/eu']")
+      assert has_element?(lv, "#data-residency", "Cloud region: United States")
+      assert has_element?(lv, "#data-residency", "Iowa, United States")
+      assert has_element?(lv, "#data-residency", "Arizona, United States")
+
+      assert has_element?(
+               lv,
+               "#data-residency a[href='https://www.firezone.dev/kb/architecture/regional-availability']"
+             )
+
+      refute has_element?(lv, "#data-residency", "closed beta")
     end
 
-    test "shows the EU region without the closed beta link", %{
+    test "shows where the EU region stores account data", %{
       conn: conn,
       account: account,
       actor: actor
@@ -212,8 +219,76 @@ defmodule PortalWeb.Settings.AccountTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/settings/account")
 
-      assert has_element?(lv, "#data-residency", "Data residency region: European Union")
-      refute has_element?(lv, "#data-residency", "closed beta")
+      assert has_element?(lv, "#data-residency", "Cloud region: European Union")
+      assert has_element?(lv, "#data-residency", "Gävle, Sweden")
+      assert has_element?(lv, "#data-residency", "Paris, France")
+    end
+
+    test "hides and ignores the transfer request on on-prem portals", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/account")
+
+      refute has_element?(lv, "#request-region-transfer")
+
+      html = render_click(lv, "open_region_transfer")
+      refute html =~ "region-transfer-modal"
+
+      html = render_click(lv, "request_region_transfer")
+      refute html =~ "Request sent"
+      refute_receive {:email, _email}
+    end
+
+    test "sends a region transfer request to support", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      Portal.Config.put_env_override(:data_residency_region, :us)
+      account = update_account(account, metadata: %{stripe: %{product_name: "Team"}})
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/account")
+
+      html =
+        lv
+        |> element("#request-region-transfer", "Request transfer to the European Union region")
+        |> render_click()
+
+      assert html =~ "Transfer your account to the European Union region?"
+      assert html =~ "maintenance window of up to 8 hours"
+      assert html =~ "every session, Gateway token, service account token, and"
+      assert html =~ "macOS and iOS 1.5.24, Android 1.5.18"
+      assert html =~ "https://eu.app.firezone.dev"
+      assert html =~ "wss://eu.api.firezone.dev"
+      assert html =~ "headless Clients need new service"
+      assert html =~ "reconnect your MCP clients"
+      assert html =~ "Logs are not moved."
+      assert html =~ "bill in EUR from then on"
+      assert html =~ actor.email
+
+      html = render_click(lv, "request_region_transfer")
+
+      assert html =~ "Request sent. Firezone support will contact you at #{actor.email}"
+      refute html =~ "region-transfer-modal"
+
+      assert_receive {:email, email}
+      assert email.to == [{"", "support@firezone.dev"}]
+      assert email.subject == "Region transfer request: #{account.name}"
+      assert email.reply_to == {actor.name, actor.email}
+      assert email.text_body =~ "Account: #{account.name} (#{account.id})"
+      assert email.text_body =~ "From region: United States"
+      assert email.text_body =~ "To region: European Union"
+      refute email.text_body =~ "Client notes for the customer"
+      refute email.text_body =~ "Clients at macOS"
+      refute email.text_body =~ "Older Clients"
     end
 
     test "renders usage section", %{conn: conn, account: account, actor: actor} do
@@ -330,7 +405,7 @@ defmodule PortalWeb.Settings.AccountTest do
 
       html =
         lv
-        |> form("form[phx-submit='submit_account_name']", %{account: %{name: "ab"}})
+        |> form("form[phx-submit='submit_account']", %{account: %{name: "ab"}})
         |> render_change()
 
       assert html =~ "too short"
@@ -347,13 +422,247 @@ defmodule PortalWeb.Settings.AccountTest do
       new_name = "Updated Account Name"
 
       lv
-      |> form("form[phx-submit='submit_account_name']", %{account: %{name: new_name}})
+      |> form("form[phx-submit='submit_account']", %{account: %{name: new_name}})
       |> render_submit()
 
       html = render(lv)
       assert html =~ new_name
       # Panel slides back off-screen after save (translate-x-full = hidden)
       assert html =~ "translate-x-full"
+    end
+  end
+
+  describe "edit account slug" do
+    test "shows the slug read-only without the slug_changes feature", %{conn: conn} do
+      account = account_fixture(features: %{slug_changes: false})
+      actor = admin_actor_fixture(account: account)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/account")
+
+      html = render_click(lv, "open_edit_account")
+
+      assert html =~ "Slug changes are available on the Team plan and higher."
+      refute html =~ "Old slugs keep working"
+      refute html =~ ~s(<input type="text" name="account[slug]")
+
+      html = render_submit(lv, "submit_account", %{"account" => %{"slug" => "new-slug"}})
+
+      assert html =~ "cannot be changed on your current plan"
+      assert fetch_account!(account.id).slug == account.slug
+    end
+
+    test "explains how slug changes work", %{conn: conn, account: account, actor: actor} do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/account")
+
+      html = render_click(lv, "open_edit_account")
+
+      assert html =~ "Account Slug"
+      assert html =~ "Old slugs keep working"
+      assert html =~ "up to 3 new slugs every 30 days"
+      assert html =~ account.id
+      assert html =~ "3 left."
+    end
+
+    test "saves a new slug and moves to the new URL", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      old_slug = account.slug
+      conn = authorize_conn(conn, actor)
+
+      {:ok, lv, _html} = live(conn, ~p"/#{account}/settings/account")
+      render_click(lv, "open_edit_account")
+
+      assert {:error, {:live_redirect, %{to: to}}} =
+               lv
+               |> form("form[phx-submit='submit_account']", %{account: %{slug: " New_Slug_1 "}})
+               |> render_submit()
+
+      assert to == "/new_slug_1/settings/account"
+      assert fetch_account!(account.id).slug == "new_slug_1"
+
+      assert conn |> get("/#{old_slug}/settings/account") |> redirected_to() ==
+               "/new_slug_1/settings/account"
+
+      {:ok, _lv, html} = live(conn, to)
+      assert html =~ "new_slug_1"
+    end
+
+    test "validates the slug format", %{conn: conn, account: account, actor: actor} do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/account")
+
+      render_click(lv, "open_edit_account")
+
+      for {slug, message} <- [
+            {"ab", "should be at least 3 character(s)"},
+            {"bad slug", "may only contain lowercase letters"},
+            {"bad-slug", "may only contain lowercase letters"},
+            {"sign_in", "is reserved"},
+            {"images", "is reserved"},
+            {"eu", "is reserved"},
+            {"firezone", "is reserved"},
+            {Ecto.UUID.generate(), "may not look like an account ID"},
+            {"", "can&#39;t be blank"}
+          ] do
+        html =
+          lv
+          |> form("form[phx-submit='submit_account']", %{account: %{slug: slug}})
+          |> render_change()
+
+        assert html =~ message, "expected #{inspect(slug)} to fail with #{message}"
+      end
+    end
+
+    test "rejects a slug another account used before", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      other = account_fixture()
+      taken_slug = other.slug
+      update_account(other, slug: "#{taken_slug}_moved")
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/account")
+
+      render_click(lv, "open_edit_account")
+
+      html =
+        lv
+        |> form("form[phx-submit='submit_account']", %{account: %{slug: taken_slug}})
+        |> render_submit()
+
+      assert html =~ "has already been taken"
+      assert fetch_account!(account.id).slug == account.slug
+    end
+
+    test "rechecks the history at submit time", %{conn: conn, account: account, actor: actor} do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/account")
+
+      render_click(lv, "open_edit_account")
+
+      Enum.each(1..3, fn n -> update_account(account, slug: "#{account.slug}_v#{n}") end)
+
+      html =
+        lv
+        |> form("form[phx-submit='submit_account']", %{account: %{slug: "#{account.slug}_v4"}})
+        |> render_submit()
+
+      assert html =~ "can be changed at most 3 times every 30 days"
+      assert fetch_account!(account.id).slug == "#{account.slug}_v3"
+    end
+
+    test "allows three new slugs per 30 days and then stops", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      first_slug = account.slug
+      conn = authorize_conn(conn, actor)
+
+      account =
+        Enum.reduce(1..3, account, fn n, account ->
+          {:ok, lv, _html} = live(conn, ~p"/#{account}/settings/account")
+          render_click(lv, "open_edit_account")
+
+          assert {:error, {:live_redirect, _}} =
+                   lv
+                   |> form("form[phx-submit='submit_account']", %{
+                     account: %{slug: "#{first_slug}_v#{n}"}
+                   })
+                   |> render_submit()
+
+          fetch_account!(account.id)
+        end)
+
+      {:ok, lv, _html} = live(conn, ~p"/#{account}/settings/account")
+      html = render_click(lv, "open_edit_account")
+      assert html =~ "None left right now."
+
+      html =
+        lv
+        |> form("form[phx-submit='submit_account']", %{account: %{slug: "#{first_slug}_v4"}})
+        |> render_submit()
+
+      assert html =~ "can be changed at most 3 times every 30 days"
+      assert fetch_account!(account.id).slug == "#{first_slug}_v3"
+
+      assert {:error, {:live_redirect, %{to: to}}} =
+               lv
+               |> form("form[phx-submit='submit_account']", %{account: %{slug: first_slug}})
+               |> render_submit()
+
+      assert to == "/#{first_slug}/settings/account"
+    end
+
+    test "ignores slug changes older than 30 days", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      first_slug = account.slug
+      long_ago = DateTime.add(DateTime.utc_now(), -31, :day)
+
+      Portal.Repo.update_all(Portal.AccountSlug,
+        set: [inserted_at: DateTime.add(long_ago, -1, :day)]
+      )
+
+      for n <- 1..3 do
+        Portal.Repo.insert!(%Portal.AccountSlug{
+          account_id: account.id,
+          slug: "#{first_slug}_old#{n}",
+          inserted_at: long_ago
+        })
+      end
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/account")
+
+      html = render_click(lv, "open_edit_account")
+      assert html =~ "3 left."
+    end
+
+    test "refuses to change the slug of a locked account", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      account =
+        account
+        |> Ecto.Changeset.change(lock_enabled_at: DateTime.utc_now())
+        |> Portal.Repo.update!()
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/account")
+
+      render_click(lv, "open_edit_account")
+
+      html =
+        lv
+        |> form("form[phx-submit='submit_account']", %{account: %{slug: "#{account.slug}_v2"}})
+        |> render_submit()
+
+      assert html =~ "cannot be changed while the account is locked"
+      assert fetch_account!(account.id).slug == account.slug
     end
   end
 
