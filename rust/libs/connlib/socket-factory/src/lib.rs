@@ -7,7 +7,9 @@ use smallvec::SmallVec;
 use std::io;
 use std::io::IoSliceMut;
 use std::ops::Index;
+use std::time::Instant;
 use std::{
+    future::Future as _,
     net::{IpAddr, SocketAddr},
     task::{Context, Poll},
 };
@@ -283,6 +285,7 @@ pub struct PerfUdpSocket {
 
     batch_histogram: opentelemetry::metrics::Histogram<u64>,
     send_retry_histogram: opentelemetry::metrics::Histogram<u64>,
+    send_blocked_histogram: opentelemetry::metrics::Histogram<f64>,
     source_ip_resolver:
         Option<Box<dyn Fn(IpAddr) -> std::io::Result<IpAddr> + Send + Sync + 'static>>,
     port: u16,
@@ -325,6 +328,7 @@ impl UdpSocket {
             recv_buf_size,
             batch_histogram: otel_instruments::network_packets_batch_count(),
             send_retry_histogram: otel_instruments::network_retries(),
+            send_blocked_histogram: otel_instruments::network_send_blocked_duration(),
             source_ip_resolver: self.source_ip_resolver,
             port: self.port,
         })
@@ -537,6 +541,7 @@ impl PerfUdpSocket {
         // the kernel already accepted is never re-sent.
         let mut offset = 0;
         let mut attempt = 0;
+        let mut blocked_since = None;
 
         while offset < total {
             // Recompute every iteration: an `EIO` makes `quinn-udp` disable GSO, so
@@ -564,14 +569,20 @@ impl PerfUdpSocket {
                     .state
                     .try_send(UdpSockRef::from(socket.inner), &chunk)
             } else {
-                socket
-                    .inner
-                    .async_io(Interest::WRITABLE, || {
-                        socket
-                            .state
-                            .try_send(UdpSockRef::from(socket.inner), &chunk)
-                    })
-                    .await
+                let mut send = std::pin::pin!(socket.inner.async_io(Interest::WRITABLE, || {
+                    socket
+                        .state
+                        .try_send(UdpSockRef::from(socket.inner), &chunk)
+                }));
+
+                std::future::poll_fn(|cx| {
+                    let result = send.as_mut().poll(cx);
+                    if result.is_pending() {
+                        blocked_since.get_or_insert_with(Instant::now);
+                    }
+                    result
+                })
+                .await
             };
 
             match result {
@@ -585,6 +596,11 @@ impl PerfUdpSocket {
 
                     self.record_send_batch_size(sent.get());
                     self.record_send_retries(attempt);
+                    self.record_send_blocked_duration(
+                        blocked_since.take(),
+                        socket.connected,
+                        "progress",
+                    );
 
                     offset += sent_bytes;
                     attempt = 0; // Each batch gets its own retry budget.
@@ -593,18 +609,26 @@ impl PerfUdpSocket {
                 // once the interface queue drains, so we park until then.
                 #[cfg(apple)]
                 Err(e) if socket.connected && should_retry(&e, attempt) => {
+                    blocked_since.get_or_insert_with(Instant::now);
                     wait_for_send_capacity(socket.inner).await;
                     attempt += 1;
                 }
                 // The unconnected catch-all gets no such signal; spin, since the `ENOBUFS`
                 // clears off-thread (driver / NIC) within microseconds.
                 Err(e) if should_retry(&e, attempt) => {
+                    #[cfg(any(apple, target_os = "windows"))]
+                    blocked_since.get_or_insert_with(Instant::now);
                     spin_and_yield(attempt).await;
                     attempt += 1;
                 }
                 #[cfg(apple)]
                 Err(e) if socket.connected && is_icmp_unreachable(&e) => {
                     self.record_send_retries(attempt);
+                    self.record_send_blocked_duration(
+                        blocked_since.take(),
+                        socket.connected,
+                        "failure",
+                    );
 
                     // The kernel received an ICMP error for this path; the error is one-shot.
                     // Drop the packet: either the path recovers or connlib migrates / times out.
@@ -614,6 +638,11 @@ impl PerfUdpSocket {
                 }
                 Err(e) => {
                     self.record_send_retries(attempt);
+                    self.record_send_blocked_duration(
+                        blocked_since.take(),
+                        socket.connected,
+                        "failure",
+                    );
 
                     return Err(e).with_context(|| {
                         format!(
@@ -652,6 +681,27 @@ impl PerfUdpSocket {
             &[
                 KeyValue::new("network.transport", "udp"),
                 KeyValue::new("network.io.direction", "transmit"),
+            ],
+        );
+    }
+
+    fn record_send_blocked_duration(
+        &self,
+        blocked_since: Option<Instant>,
+        connected: bool,
+        outcome: &'static str,
+    ) {
+        let Some(blocked_since) = blocked_since else {
+            return;
+        };
+
+        self.send_blocked_histogram.record(
+            blocked_since.elapsed().as_secs_f64(),
+            &[
+                KeyValue::new("network.transport", "udp"),
+                KeyValue::new("network.io.direction", "transmit"),
+                KeyValue::new("network.socket.connected", connected),
+                KeyValue::new("outcome", outcome),
             ],
         );
     }
