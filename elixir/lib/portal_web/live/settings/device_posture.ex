@@ -6,6 +6,7 @@ defmodule PortalWeb.Settings.DevicePosture do
   alias Portal.{Changes.Change, Defender, PostureProvider, Intune, Iru, Santa, SentinelOne, Sophos, PubSub}
   alias Portal.Mailer.PostureProviderInterestEmail
   alias PortalWeb.Settings.Components, as: SettingsComponents
+  alias PortalWeb.StoredSecret
   alias __MODULE__.Database
 
   require Logger
@@ -77,6 +78,16 @@ defmodule PortalWeb.Settings.DevicePosture do
   @santa_verification_fields ~w[api_url api_key]a
   @sentinelone_verification_fields ~w[management_url api_token]a
   @sophos_verification_fields ~w[client_id client_secret]a
+
+  @secret_fields ~w[api_token api_key client_secret]a
+
+  # Providers whose secret goes to a host the admin types in, and how the form
+  # names them when that host changes while the secret box is left blank. Iru's
+  # host is always under Iru's own API domain and Sophos's is fixed.
+  @destination_secrets %{
+    "santa" => {:api_key, [:api_url], "API key", "API URL"},
+    "sentinelone" => {:api_token, [:management_url], "API token", "management URL"}
+  }
 
   def mount(_params, _session, socket) do
     if connected?(socket) do
@@ -308,8 +319,7 @@ defmodule PortalWeb.Settings.DevicePosture do
   end
 
   def handle_event("start_verification", _params, %{assigns: %{type: "santa"}} = socket) do
-    send(self(), :verify_santa)
-    {:noreply, assign(socket, verification_error: nil, verifying: true)}
+    start_secret_verification(socket, :verify_santa)
   end
 
   def handle_event(
@@ -317,8 +327,7 @@ defmodule PortalWeb.Settings.DevicePosture do
         _params,
         %{assigns: %{type: "sentinelone"}} = socket
       ) do
-    send(self(), :verify_sentinelone)
-    {:noreply, assign(socket, verification_error: nil, verifying: true)}
+    start_secret_verification(socket, :verify_sentinelone)
   end
 
   def handle_event("start_verification", _params, %{assigns: %{type: "sophos"}} = socket) do
@@ -531,7 +540,10 @@ defmodule PortalWeb.Settings.DevicePosture do
 
     case Santa.APIClient.test_connection(client) do
       :ok ->
-        attrs = Map.put(changeset.changes, :is_verified, true)
+        attrs =
+          changeset.changes
+          |> Map.put(:is_verified, true)
+          |> carry_typed_secret(changeset, :api_key)
 
         {:noreply,
          assign(socket,
@@ -559,7 +571,10 @@ defmodule PortalWeb.Settings.DevicePosture do
 
     case SentinelOne.APIClient.test_connection(client) do
       :ok ->
-        attrs = Map.put(changeset.changes, :is_verified, true)
+        attrs =
+          changeset.changes
+          |> Map.put(:is_verified, true)
+          |> carry_typed_secret(changeset, :api_token)
 
         {:noreply,
          assign(socket,
@@ -1335,14 +1350,14 @@ defmodule PortalWeb.Settings.DevicePosture do
         </label>
         <Form.input
           field={@form[:api_key]}
-          value={typed_api_key(@form)}
           type="password"
           autocomplete="off"
           phx-debounce="300"
           data-1p-ignore
-          placeholder={if @editing?, do: "Leave blank to keep the current key"}
-          required={not @editing?}
+          placeholder={secret_placeholder(@form, @type, :api_key, @editing?)}
+          required={not @editing? or StoredSecret.reentry_required?(@form, :api_key)}
         />
+        <StoredSecret.reentry_error field={@form[:api_key]} />
         <p class="mt-1 text-xs text-subtle">
           Create a read-only key in Workshop under API Keys. It must be able to call
           <code class="text-xs">{Santa.APIClient.list_hosts_path()}</code>.
@@ -1371,14 +1386,14 @@ defmodule PortalWeb.Settings.DevicePosture do
         </label>
         <Form.input
           field={@form[:api_token]}
-          value={typed_api_token(@form)}
           type="password"
           autocomplete="off"
           phx-debounce="300"
           data-1p-ignore
-          placeholder={if @editing?, do: "Leave blank to keep the current token"}
-          required={not @editing?}
+          placeholder={secret_placeholder(@form, @type, :api_token, @editing?)}
+          required={not @editing? or StoredSecret.reentry_required?(@form, :api_token)}
         />
+        <StoredSecret.reentry_error field={@form[:api_token]} />
         <p class="mt-1 text-xs text-subtle">
           Generate a token for a dedicated SentinelOne service user that can view endpoints.
         </p>
@@ -1413,14 +1428,14 @@ defmodule PortalWeb.Settings.DevicePosture do
         </label>
         <Form.input
           field={@form[:client_secret]}
-          value={typed_client_secret(@form)}
           type="password"
           autocomplete="off"
           phx-debounce="300"
           data-1p-ignore
-          placeholder={if @editing?, do: "Leave blank to keep the current secret"}
-          required={not @editing?}
+          placeholder={secret_placeholder(@form, @type, :client_secret, @editing?)}
+          required={not @editing? or StoredSecret.reentry_required?(@form, :client_secret)}
         />
+        <StoredSecret.reentry_error field={@form[:client_secret]} />
         <p class="mt-1 text-xs text-subtle">
           Sophos shows the secret only once, when the credentials are created.
         </p>
@@ -1456,14 +1471,14 @@ defmodule PortalWeb.Settings.DevicePosture do
         </label>
         <Form.input
           field={@form[:api_token]}
-          value={typed_api_token(@form)}
           type="password"
           autocomplete="off"
           phx-debounce="300"
           data-1p-ignore
-          placeholder={if @editing?, do: "Leave blank to keep the current token"}
-          required={not @editing?}
+          placeholder={secret_placeholder(@form, @type, :api_token, @editing?)}
+          required={not @editing? or StoredSecret.reentry_required?(@form, :api_token)}
         />
+        <StoredSecret.reentry_error field={@form[:api_token]} />
         <p class="mt-1 text-xs text-subtle">
           Create the token in Iru under Settings > Access, then turn these endpoints on for it.
         </p>
@@ -1615,12 +1630,46 @@ defmodule PortalWeb.Settings.DevicePosture do
     end
   end
 
-  # The stored token never goes back to the browser, so the box starts empty on
-  # an edit. Leaving it that way submits an empty string, which cast/3 reads as
-  # no change and the stored token stays.
-  defp typed_api_token(form), do: get_change(form.source, :api_token) || ""
-  defp typed_api_key(form), do: get_change(form.source, :api_key) || ""
-  defp typed_client_secret(form), do: get_change(form.source, :client_secret) || ""
+  # Verifying sends the secret to the host in the form, so a stored secret is
+  # never sent to a host it was not saved for.
+  defp start_secret_verification(socket, message) do
+    {secret, _destinations, noun, destination} = @destination_secrets[socket.assigns.type]
+
+    if StoredSecret.reentry_required?(socket.assigns.form, secret) do
+      {:noreply, assign(socket, verification_error: "Enter the #{noun} again for the new #{destination}.")}
+    else
+      send(self(), message)
+      {:noreply, assign(socket, verification_error: nil, verifying: true)}
+    end
+  end
+
+  defp secret_placeholder(_form, _type, _secret, false), do: nil
+
+  defp secret_placeholder(form, type, secret, true) do
+    case @destination_secrets[type] do
+      {^secret, _destinations, _noun, destination} ->
+        if StoredSecret.reentry_required?(form, secret),
+          do: "Enter the #{secret_noun(secret)} again for the new #{destination}",
+          else: "Leave blank to keep the current #{secret_noun(secret)}"
+
+      _other ->
+        "Leave blank to keep the current #{secret_noun(secret)}"
+    end
+  end
+
+  defp secret_noun(:api_key), do: "key"
+  defp secret_noun(:api_token), do: "token"
+  defp secret_noun(:client_secret), do: "secret"
+
+  # Building the verified changeset from its changes alone would forget a
+  # secret typed in again unchanged, and with it the reason a new host is
+  # allowed.
+  defp carry_typed_secret(attrs, changeset, secret) do
+    case changeset.params do
+      %{} = params -> Map.put(attrs, secret, Map.get(params, Atom.to_string(secret), ""))
+      nil -> attrs
+    end
+  end
 
   defp pending_delete?(%{id: id}, %{id: id, action: "delete"}), do: true
   defp pending_delete?(_provider, _pending_confirm), do: false
@@ -1676,28 +1725,32 @@ defmodule PortalWeb.Settings.DevicePosture do
   # out of the base changeset.
   defp provider_changeset(provider, type, attrs) do
     provider
-    |> cast(
-      drop_blank_secret(attrs),
-      @form_fields[type] ++ @programmatic_fields[type] ++ ~w[is_disabled disabled_reason]a
-    )
+    |> cast(attrs, @form_fields[type] ++ @programmatic_fields[type] ++ ~w[is_disabled disabled_reason]a)
+    |> StoredSecret.keep_when_blank(@secret_fields)
     |> base_changeset(type)
     |> validate_required([:name])
     |> validate_length(:name, min: 1, max: 255)
     |> validate_acceptance(:is_verified)
+    |> require_secret_for_new_host(provider, type)
   end
 
-  # An untouched token box submits an empty string, and cast/3 reads that as
-  # "put the field back to its default", which would blank a working token.
-  # Dropping it means the stored one stays; a new provider still has none and
-  # still fails the required check.
-  defp drop_blank_secret(attrs) do
-    Enum.reduce(["api_token", "api_key", "client_secret"], attrs, fn field, attrs ->
-      if blank_secret?(attrs[field]), do: Map.delete(attrs, field), else: attrs
-    end)
-  end
+  # A new provider's data can hold applied changes after a reset, so only a
+  # provider loaded from the database counts as having a stored secret.
+  defp require_secret_for_new_host(changeset, provider, type) do
+    case {Ecto.get_meta(provider, :state), @destination_secrets[type]} do
+      {:loaded, {secret, destinations, _noun, destination}} ->
+        StoredSecret.require_on_destination_change(
+          changeset,
+          provider,
+          secret,
+          destinations,
+          "Required for the new #{destination}."
+        )
 
-  defp blank_secret?(value) when is_binary(value), do: String.trim(value) == ""
-  defp blank_secret?(_value), do: false
+      _other ->
+        changeset
+    end
+  end
 
   # Debounced inputs are not always included when a different input triggers
   # validation. Keep values already received from the browser until that input

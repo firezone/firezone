@@ -14,6 +14,7 @@ defmodule PortalWeb.Settings.Authentication do
   }
 
   alias PortalWeb.Settings.Components, as: SettingsComponents
+  alias PortalWeb.StoredSecret
   alias __MODULE__.Database
 
   import Ecto.Changeset
@@ -73,6 +74,7 @@ defmodule PortalWeb.Settings.Authentication do
     schema = AuthProvider.module!(type)
     struct = struct(schema)
     attrs = %{id: Ecto.UUID.generate()}
+    socket = assign(socket, stored_provider: nil)
     changeset = changeset(struct, attrs, socket)
 
     socket =
@@ -93,6 +95,7 @@ defmodule PortalWeb.Settings.Authentication do
     schema = AuthProvider.module!(type)
     provider = Database.get_provider!(schema, id, socket.assigns.subject)
     is_legacy = Map.get(provider, :is_legacy, false)
+    socket = assign(socket, stored_provider: provider)
 
     # Legacy providers can't be verified (must be deleted and recreated)
     changeset = changeset(provider, %{is_verified: not is_legacy}, socket)
@@ -177,7 +180,8 @@ defmodule PortalWeb.Settings.Authentication do
         []
       end
 
-    with {:ok, %{config: config}} <- PortalWeb.OIDC.setup_verification(type, opts),
+    with :ok <- secret_entered(changeset),
+         {:ok, %{config: config}} <- PortalWeb.OIDC.setup_verification(type, opts),
          verifier = :crypto.strong_rand_bytes(32) |> Base.url_encode64(padding: false),
          verification_ref = Ecto.UUID.generate(),
          lv_pid_string = PortalWeb.OIDC.serialize_pid(self()),
@@ -236,16 +240,15 @@ defmodule PortalWeb.Settings.Authentication do
   end
 
   def handle_event("reset_verification", _params, socket) do
+    previous = socket.assigns.form.source
+
     changeset =
-      socket.assigns.form.source
+      previous
       |> delete_change(:is_verified)
       |> delete_change(:issuer)
       |> apply_changes()
       |> changeset(
-        %{
-          "is_verified" => false,
-          "issuer" => nil
-        },
+        carry_typed_secret(%{"is_verified" => false, "issuer" => nil}, previous),
         socket
       )
 
@@ -486,10 +489,14 @@ defmodule PortalWeb.Settings.Authentication do
   # Sent directly by the OIDC verification controller after code exchange succeeds
   def handle_info({:oidc_verify_complete, issuer, verification_ref, ack_to}, socket) do
     if socket.assigns.type != "google" and active_verification?(socket, verification_ref) do
-      attrs = %{"is_verified" => true, "is_legacy" => false, "issuer" => issuer}
+      previous = socket.assigns.form.source
+
+      attrs =
+        %{"is_verified" => true, "is_legacy" => false, "issuer" => issuer}
+        |> carry_typed_secret(previous)
 
       changeset =
-        socket.assigns.form.source
+        previous
         |> apply_changes()
         |> changeset(attrs, socket)
         |> maybe_set_okta_name(issuer, socket.assigns.live_action)
@@ -622,6 +629,9 @@ defmodule PortalWeb.Settings.Authentication do
 
   defp format_verification_error_reason(reason) when is_binary(reason), do: reason
   defp format_verification_error_reason(reason), do: inspect(reason)
+
+  defp verification_start_error_message(:client_secret_required),
+    do: "Enter the client secret again before verifying."
 
   defp verification_start_error_message(:invalid_discovery_document_uri) do
     "The Discovery Document URI is invalid. Please check your provider configuration."
@@ -989,6 +999,7 @@ defmodule PortalWeb.Settings.Authentication do
               type={@type}
               submit_event="submit_provider"
               is_legacy={assigns[:is_legacy]}
+              secret_stored?={StoredSecret.stored?(@stored_provider, :client_secret)}
             />
           </div>
           <Form.panel_footer>
@@ -1358,6 +1369,7 @@ defmodule PortalWeb.Settings.Authentication do
   attr :submit_event, :string, required: true
   attr :verification_error, :any, default: nil
   attr :is_legacy, :boolean, default: false
+  attr :secret_stored?, :boolean, default: false
 
   defp provider_form(assigns) do
     redirect_uri =
@@ -1643,10 +1655,14 @@ defmodule PortalWeb.Settings.Authentication do
                 field={@form[:client_secret]}
                 type="password"
                 autocomplete="off"
+                placeholder={client_secret_placeholder(@form, @type, @secret_stored?)}
                 phx-debounce="300"
                 data-1p-ignore
-                required
+                required={
+                  not @secret_stored? or StoredSecret.reentry_required?(@form, :client_secret)
+                }
               />
+              <StoredSecret.reentry_error field={@form[:client_secret]} />
             </div>
           </div>
 
@@ -2055,9 +2071,63 @@ defmodule PortalWeb.Settings.Authentication do
     changeset = cast(struct, attrs, Map.get(@fields, schema))
 
     changeset
+    |> StoredSecret.keep_when_blank([:client_secret])
     |> cast(verified_fields, Map.keys(verified_fields))
     |> maybe_initialize_with_parent(socket.assigns.subject.account.id)
     |> schema.changeset()
+    |> require_secret_for_new_issuer(socket.assigns[:stored_provider])
+  end
+
+  # Verification and sign-in both send the client secret to the issuer, so a
+  # stored secret is only reused while the issuer stays the one it was saved
+  # for. The comparison is against the stored provider rather than the
+  # changeset's data, which verification replaces with the applied changes.
+  defp require_secret_for_new_issuer(changeset, %Okta.AuthProvider{} = stored) do
+    StoredSecret.require_on_destination_change(
+      changeset,
+      stored,
+      :client_secret,
+      [:okta_domain],
+      "Required for the new Okta domain."
+    )
+  end
+
+  defp require_secret_for_new_issuer(changeset, %OIDC.AuthProvider{} = stored) do
+    StoredSecret.require_on_destination_change(
+      changeset,
+      stored,
+      :client_secret,
+      [:discovery_document_uri],
+      "Required for the new discovery document URI."
+    )
+  end
+
+  defp require_secret_for_new_issuer(changeset, _stored), do: changeset
+
+  defp client_secret_placeholder(_form, _type, false), do: nil
+
+  defp client_secret_placeholder(form, type, true) do
+    if StoredSecret.reentry_required?(form, :client_secret),
+      do: "Enter the secret again for the new #{issuer_label(type)}",
+      else: "Leave blank to keep the current secret"
+  end
+
+  defp issuer_label("okta"), do: "Okta domain"
+  defp issuer_label("oidc"), do: "discovery document URI"
+
+  # Applying the changes moves a typed secret into the data, where it no longer
+  # counts as typed, so the submitted value rides along with the new attrs.
+  defp carry_typed_secret(attrs, %Ecto.Changeset{params: %{"client_secret" => secret}}),
+    do: Map.put(attrs, "client_secret", secret)
+
+  defp carry_typed_secret(attrs, _changeset), do: attrs
+
+  # The Verify button is disabled while the secret must be entered again, but
+  # the event can still be pushed, and verifying sends the secret to the issuer.
+  defp secret_entered(changeset) do
+    if Keyword.has_key?(changeset.errors, :client_secret),
+      do: {:error, :client_secret_required},
+      else: :ok
   end
 
   defp extract_disable_error(changeset) do

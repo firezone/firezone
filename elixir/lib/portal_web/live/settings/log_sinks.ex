@@ -10,6 +10,7 @@ defmodule PortalWeb.Settings.LogSinks do
   alias Portal.S3
   alias Portal.Splunk
   alias PortalWeb.Settings.Components, as: SettingsComponents
+  alias PortalWeb.StoredSecret
   alias __MODULE__.Database
 
   import Ecto.Changeset
@@ -60,6 +61,19 @@ defmodule PortalWeb.Settings.LogSinks do
     QRadar.LogSink => @common_fields ++ ~w[endpoint_url auth_header]a,
     HTTP.LogSink => @common_fields ++ ~w[endpoint_url bearer_token batch_max_events]a
   }
+
+  # Each sink's secret, the fields that decide where it is sent, and how the
+  # form names them when those change while the secret box is left blank.
+  @secrets %{
+    Splunk.LogSink => {:hec_token, [:collector_url], "token", "HEC URL"},
+    Datadog.LogSink => {:api_key, [:site], "key", "site"},
+    NewRelic.LogSink => {:license_key, [:region], "key", "region"},
+    Elastic.LogSink => {:api_key, [:endpoint_url], "key", "endpoint URL"},
+    QRadar.LogSink => {:auth_header, [:endpoint_url], "header", "endpoint URL"},
+    HTTP.LogSink => {:bearer_token, [:endpoint_url], "token", "endpoint URL"}
+  }
+
+  @optional_secrets ~w[auth_header bearer_token]a
 
   @newrelic_region_options [
     {"US (log-api.newrelic.com)", "US"},
@@ -935,10 +949,12 @@ defmodule PortalWeb.Settings.LogSinks do
             field={@form[:hec_token]}
             type="password"
             autocomplete="off"
+            placeholder={secret_placeholder(@form, :hec_token)}
             phx-debounce="300"
             data-1p-ignore
-            required
+            required={secret_required?(@form, :hec_token)}
           />
+          <StoredSecret.reentry_error field={@form[:hec_token]} />
           <p class="mt-1 text-xs text-subtle">
             The HTTP Event Collector token to authenticate with.
           </p>
@@ -982,10 +998,12 @@ defmodule PortalWeb.Settings.LogSinks do
             field={@form[:api_key]}
             type="password"
             autocomplete="off"
+            placeholder={secret_placeholder(@form, :api_key)}
             phx-debounce="300"
             data-1p-ignore
-            required
+            required={secret_required?(@form, :api_key)}
           />
+          <StoredSecret.reentry_error field={@form[:api_key]} />
           <p class="mt-1 text-xs text-subtle">
             A Datadog API key with log ingestion permission.
           </p>
@@ -1031,10 +1049,12 @@ defmodule PortalWeb.Settings.LogSinks do
             field={@form[:license_key]}
             type="password"
             autocomplete="off"
+            placeholder={secret_placeholder(@form, :license_key)}
             phx-debounce="300"
             data-1p-ignore
-            required
+            required={secret_required?(@form, :license_key)}
           />
+          <StoredSecret.reentry_error field={@form[:license_key]} />
           <p class="mt-1 text-xs text-subtle">
             A New Relic license key (ingest key) to authenticate with.
           </p>
@@ -1067,10 +1087,12 @@ defmodule PortalWeb.Settings.LogSinks do
             field={@form[:api_key]}
             type="password"
             autocomplete="off"
+            placeholder={secret_placeholder(@form, :api_key)}
             phx-debounce="300"
             data-1p-ignore
-            required
+            required={secret_required?(@form, :api_key)}
           />
+          <StoredSecret.reentry_error field={@form[:api_key]} />
           <p class="mt-1 text-xs text-subtle">
             A base64-encoded Elasticsearch API key with permission to manage index
             templates and write to the data stream.
@@ -1492,9 +1514,23 @@ defmodule PortalWeb.Settings.LogSinks do
             field={@form[:auth_header]}
             type="password"
             autocomplete="off"
+            placeholder={secret_placeholder(@form, :auth_header)}
             phx-debounce="300"
             data-1p-ignore
           />
+          <StoredSecret.reentry_error field={@form[:auth_header]} />
+          <label
+            :if={stored_secret?(@form, :auth_header)}
+            class="mt-2 flex items-center gap-2 text-xs text-body"
+          >
+            <input
+              type="checkbox"
+              name="log_sink[remove_secret]"
+              value="true"
+              checked={remove_secret?(@form)}
+              class="w-4 h-4 text-brand border-border rounded"
+            /> Remove the current header
+          </label>
           <p class="mt-1 text-xs text-subtle">
             Optional. Sent as the <code class="text-xs">Authorization</code> header on
             every delivery, e.g. <code class="text-xs">Bearer my-secret-token</code>.
@@ -1529,9 +1565,23 @@ defmodule PortalWeb.Settings.LogSinks do
             field={@form[:bearer_token]}
             type="password"
             autocomplete="off"
+            placeholder={secret_placeholder(@form, :bearer_token)}
             phx-debounce="300"
             data-1p-ignore
           />
+          <StoredSecret.reentry_error field={@form[:bearer_token]} />
+          <label
+            :if={stored_secret?(@form, :bearer_token)}
+            class="mt-2 flex items-center gap-2 text-xs text-body"
+          >
+            <input
+              type="checkbox"
+              name="log_sink[remove_secret]"
+              value="true"
+              checked={remove_secret?(@form)}
+              class="w-4 h-4 text-brand border-border rounded"
+            /> Remove the current token
+          </label>
           <p class="mt-1 text-xs text-subtle">
             Optional. Sent as an <code class="text-xs">Authorization: Bearer</code>
             header on every request; leave blank for none.
@@ -1748,12 +1798,70 @@ defmodule PortalWeb.Settings.LogSinks do
     })
   end
 
+  # `struct` is always the sink as stored, so it is also the baseline the
+  # destination check compares against.
   defp changeset(struct, attrs) do
     schema = struct.__struct__
 
-    cast(struct, attrs, Map.get(@fields, schema))
+    struct
+    |> cast(attrs, Map.get(@fields, schema))
+    |> keep_stored_secret(attrs)
     |> schema.changeset()
+    |> require_secret_for_new_destination(struct)
   end
+
+  defp keep_stored_secret(changeset, attrs) do
+    case Map.fetch(@secrets, changeset.data.__struct__) do
+      {:ok, {secret, _destinations, _noun, _destination}} ->
+        changeset
+        |> StoredSecret.keep_when_blank([secret])
+        |> maybe_remove_secret(secret, attrs)
+
+      :error ->
+        changeset
+    end
+  end
+
+  # The optional secrets can't be cleared by emptying the box, since an empty
+  # box keeps the stored value, so the form offers a checkbox instead.
+  defp maybe_remove_secret(changeset, secret, %{"remove_secret" => "true"})
+       when secret in @optional_secrets,
+       do: put_change(changeset, secret, nil)
+
+  defp maybe_remove_secret(changeset, _secret, _attrs), do: changeset
+
+  defp require_secret_for_new_destination(changeset, struct) do
+    case Map.fetch(@secrets, struct.__struct__) do
+      {:ok, {secret, destinations, _noun, destination}} ->
+        message =
+          if secret in @optional_secrets,
+            do: "Enter it again, or remove it, for the new #{destination}.",
+            else: "Required for the new #{destination}."
+
+        StoredSecret.require_on_destination_change(changeset, struct, secret, destinations, message)
+
+      :error ->
+        changeset
+    end
+  end
+
+  defp stored_secret?(form, secret), do: StoredSecret.stored?(form.data, secret)
+
+  defp secret_required?(form, secret),
+    do: not stored_secret?(form, secret) or StoredSecret.reentry_required?(form, secret)
+
+  defp secret_placeholder(form, secret) do
+    {_secret, _destinations, noun, destination} = Map.fetch!(@secrets, form.data.__struct__)
+
+    cond do
+      not stored_secret?(form, secret) -> nil
+      not StoredSecret.reentry_required?(form, secret) -> "Leave blank to keep the current #{noun}"
+      secret in @optional_secrets -> "Enter the #{noun} again, or remove it"
+      true -> "Enter the #{noun} again for the new #{destination}"
+    end
+  end
+
+  defp remove_secret?(form), do: form.params["remove_secret"] == "true"
 
   # The tenant is proven by a signed Entra ID token, never typed, so the form
   # has no input for it and anything the browser posts under that name is

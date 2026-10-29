@@ -158,10 +158,10 @@ defmodule PortalWeb.Components.Form do
     |> assign(:errors, errors)
     |> assign_new(:name, fn -> if assigns.multiple, do: field.name <> "[]", else: field.name end)
     |> assign_new(:value, fn ->
-      if assigns.value_id do
-        resolve_field_value(field, assigns.value_id)
-      else
-        field.value
+      cond do
+        assigns.value_id -> resolve_field_value(field, assigns.value_id)
+        assigns.type == "password" -> submitted_value(field)
+        true -> field.value
       end
     end)
     |> input()
@@ -483,6 +483,12 @@ defmodule PortalWeb.Components.Form do
       value ->
         value_id.(value)
     end)
+  end
+
+  # A password input only echoes what the browser itself submitted, never the
+  # stored value, so an edit form cannot leak a saved secret into the page.
+  defp submitted_value(field) do
+    Map.get(field.form.params || %{}, to_string(field.field))
   end
 
   ### Dialogs ###

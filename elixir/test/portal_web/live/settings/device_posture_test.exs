@@ -772,6 +772,120 @@ defmodule PortalWeb.Settings.DevicePostureTest do
     assert Portal.Repo.aggregate(Portal.PostureProvider, :count) == 2
   end
 
+  describe "editing a provider's host" do
+    test "requires the Santa API key again before verifying a new API URL", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      provider = santa_posture_provider_fixture(account: account)
+      parent = self()
+
+      Req.Test.stub(Portal.Santa.APIClient, fn conn ->
+        send(parent, {:santa_request, conn.host})
+        Req.Test.json(conn, %{"hosts" => [], "more" => false})
+      end)
+
+      {:ok, lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/device_posture/santa/#{provider.id}/edit")
+
+      Req.Test.allow(Portal.Santa.APIClient, self(), lv.pid)
+      refute html =~ provider.api_key
+
+      # As a browser sends it: the untouched key box carries an _unused_
+      # marker, which hides its errors.
+      html =
+        render_change(lv, "validate", %{
+          "_target" => ["provider", "api_url"],
+          "provider" => %{
+            "api_url" => "https://attacker.example.com",
+            "api_key" => "",
+            "_unused_api_key" => ""
+          }
+        })
+
+      assert html =~ "Required for the new API URL."
+      assert html =~ "Enter the key again for the new API URL"
+
+      html = lv |> element("#provider-verification-button") |> render_click()
+
+      assert html =~ "Enter the API key again for the new API URL."
+      refute_received {:santa_request, _host}
+      assert reload(provider).api_url == provider.api_url
+    end
+
+    test "verifies and saves a new Santa API URL with the key entered again", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      provider = santa_posture_provider_fixture(account: account)
+      parent = self()
+
+      Req.Test.stub(Portal.Santa.APIClient, fn conn ->
+        send(parent, {:santa_request, conn.host})
+        Req.Test.json(conn, %{"hosts" => [], "more" => false})
+      end)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/device_posture/santa/#{provider.id}/edit")
+
+      Req.Test.allow(Portal.Santa.APIClient, self(), lv.pid)
+
+      attrs = %{api_url: "https://moved.workshop.cloud", api_key: provider.api_key}
+      lv |> form("#device-posture-form", provider: attrs) |> render_change()
+      lv |> element("#provider-verification-button") |> render_click()
+
+      assert_received {:santa_request, "moved.workshop.cloud"}
+      assert has_element?(lv, "#provider-verification-status", "Verified")
+      refute render(lv) =~ "Required for the new API URL"
+
+      # Submit what the page now holds, as the browser would.
+      lv |> form("#device-posture-form") |> render_submit()
+
+      updated = reload(provider)
+      assert updated.api_url == "https://moved.workshop.cloud"
+      assert updated.api_key == provider.api_key
+    end
+
+    test "requires the SentinelOne API token again before verifying a new management URL", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      provider = sentinelone_posture_provider_fixture(account: account)
+      parent = self()
+
+      Req.Test.stub(Portal.SentinelOne.APIClient, fn conn ->
+        send(parent, {:sentinelone_request, conn.host})
+        Req.Test.json(conn, %{"data" => [], "pagination" => %{"nextCursor" => nil}})
+      end)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/device_posture/sentinelone/#{provider.id}/edit")
+
+      Req.Test.allow(Portal.SentinelOne.APIClient, self(), lv.pid)
+
+      lv
+      |> form("#device-posture-form",
+        provider: %{management_url: "https://attacker.example.com", api_token: ""}
+      )
+      |> render_change()
+
+      html = lv |> element("#provider-verification-button") |> render_click()
+
+      assert html =~ "Enter the API token again for the new management URL."
+      refute_received {:sentinelone_request, _host}
+      assert reload(provider).management_url == provider.management_url
+    end
+  end
+
   describe "deleting a provider" do
     defp policy_with_postures(account, wire) do
       {:ok, postures} = Portal.Policies.Postures.cast(wire)

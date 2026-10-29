@@ -61,6 +61,17 @@ defmodule PortalWeb.Settings.LogSinksTest do
     |> length()
   end
 
+  # Changes one field the way a browser does: inputs the admin has not touched
+  # carry an _unused_ marker, which keeps their errors hidden.
+  defp change_field(lv, sink, target, params, untouched) do
+    params =
+      untouched
+      |> Enum.reduce(params, &Map.put(&2, "_unused_#{&1}", ""))
+      |> Map.put_new("enabled_streams", sink.enabled_streams)
+
+    render_change(lv, "validate", %{"_target" => ["log_sink", target], "log_sink" => params})
+  end
+
   defp submit_button_disabled?(html) do
     html
     |> Floki.parse_document!()
@@ -908,7 +919,7 @@ defmodule PortalWeb.Settings.LogSinksTest do
   end
 
   describe "edit" do
-    test "updates the sink, resubmitting the rendered token", %{
+    test "updates the sink without resubmitting the token", %{
       conn: conn,
       account: account,
       actor: actor
@@ -929,7 +940,7 @@ defmodule PortalWeb.Settings.LogSinksTest do
       assert updated.hec_token == sink.hec_token
     end
 
-    test "requires the token", %{
+    test "keeps the stored token when the box is left blank", %{
       conn: conn,
       account: account,
       actor: actor
@@ -943,13 +954,240 @@ defmodule PortalWeb.Settings.LogSinksTest do
 
       form = form(lv, "#log-sink-form", log_sink: %{name: "Renamed Sink", hec_token: ""})
       render_change(form)
-      html = render_submit(form)
-
-      assert html =~ "can&#39;t be blank"
+      render_submit(form)
 
       updated = reload_sink(sink)
-      assert updated.name == sink.name
+      assert updated.name == "Renamed Sink"
       assert updated.hec_token == sink.hec_token
+    end
+
+    for {type, fixture, secret} <- [
+          {"splunk", :splunk_log_sink_fixture, :hec_token},
+          {"datadog", :datadog_log_sink_fixture, :api_key},
+          {"newrelic", :newrelic_log_sink_fixture, :license_key},
+          {"elastic", :elastic_log_sink_fixture, :api_key},
+          {"qradar", :qradar_log_sink_fixture, :auth_header},
+          {"http", :http_log_sink_fixture, :bearer_token}
+        ] do
+      test "never renders the stored #{type} #{secret}", %{
+        conn: conn,
+        account: account,
+        actor: actor
+      } do
+        secret = unquote(secret)
+        stored = "stored-secret-#{System.unique_integer([:positive])}"
+
+        sink =
+          apply(Portal.LogSinkFixtures, unquote(fixture), [
+            %{:account => account, secret => stored}
+          ])
+
+        {:ok, lv, html} =
+          conn
+          |> authorize_conn(actor)
+          |> live(~p"/#{account}/settings/log_sinks/#{unquote(type)}/#{sink.id}/edit")
+
+        refute html =~ stored
+        assert html =~ "Leave blank to keep the current"
+
+        html =
+          lv
+          |> form("#log-sink-form", log_sink: %{name: "Renamed Sink"})
+          |> render_change()
+
+        refute html =~ stored
+      end
+    end
+
+    test "requires the token again when the HEC URL changes", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      sink = splunk_log_sink_fixture(account: account)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/log_sinks/splunk/#{sink.id}/edit")
+
+      html =
+        change_field(
+          lv,
+          sink,
+          "collector_url",
+          %{"collector_url" => "https://attacker.example", "hec_token" => ""},
+          ["hec_token"]
+        )
+
+      assert html =~ "Required for the new HEC URL."
+      assert html =~ "Enter the token again for the new HEC URL"
+      assert form_error_count(html, "hec_token") == 1
+
+      form =
+        form(lv, "#log-sink-form",
+          log_sink: %{collector_url: "https://attacker.example", hec_token: ""}
+        )
+
+      # Once the box is used, the input shows the error itself, once.
+      html = render_change(form)
+      assert form_error_count(html, "hec_token") == 1
+
+      html = render_submit(form)
+      assert html =~ "Required for the new HEC URL."
+      assert form_error_count(html, "hec_token") == 1
+
+      updated = reload_sink(sink)
+      assert updated.collector_url == sink.collector_url
+      assert updated.hec_token == sink.hec_token
+    end
+
+    test "accepts a new HEC URL when the token is entered again", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      sink = splunk_log_sink_fixture(account: account)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/log_sinks/splunk/#{sink.id}/edit")
+
+      form =
+        form(lv, "#log-sink-form",
+          log_sink: %{collector_url: "https://new-collector.example", hec_token: sink.hec_token}
+        )
+
+      render_change(form)
+      render_submit(form)
+
+      updated = reload_sink(sink)
+      assert updated.collector_url == "https://new-collector.example"
+      assert updated.hec_token == sink.hec_token
+    end
+
+    test "requires the API key again when the Datadog site changes", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      sink = datadog_log_sink_fixture(account: account, site: "datadoghq.com")
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/log_sinks/datadog/#{sink.id}/edit")
+
+      html =
+        change_field(lv, sink, "site", %{"site" => "datadoghq.eu", "api_key" => ""}, ["api_key"])
+
+      assert html =~ "Required for the new site."
+      assert html =~ "Enter the key again for the new site"
+
+      html =
+        lv
+        |> form("#log-sink-form", log_sink: %{site: "datadoghq.eu", api_key: ""})
+        |> render_submit()
+
+      assert html =~ "Required for the new site."
+
+      updated = Repo.get_by!(Portal.Datadog.LogSink, account_id: account.id, id: sink.id)
+      assert updated.site == "datadoghq.com"
+    end
+
+    test "requires the bearer token again, or its removal, when the endpoint changes", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      sink = http_log_sink_fixture(account: account)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/log_sinks/http/#{sink.id}/edit")
+
+      html =
+        change_field(
+          lv,
+          sink,
+          "endpoint_url",
+          %{"endpoint_url" => "https://attacker.example/ingest", "bearer_token" => ""},
+          ["bearer_token"]
+        )
+
+      assert html =~ "Enter it again, or remove it, for the new endpoint URL."
+      assert html =~ "Enter the token again, or remove it"
+
+      html =
+        lv
+        |> form("#log-sink-form",
+          log_sink: %{endpoint_url: "https://attacker.example/ingest", bearer_token: ""}
+        )
+        |> render_submit()
+
+      assert html =~ "Enter it again, or remove it, for the new endpoint URL."
+
+      lv
+      |> form("#log-sink-form",
+        log_sink: %{
+          endpoint_url: "https://new-endpoint.example/ingest",
+          bearer_token: "",
+          remove_secret: "true"
+        }
+      )
+      |> render_submit()
+
+      updated = Repo.get_by!(Portal.HTTP.LogSink, account_id: account.id, id: sink.id)
+      assert updated.endpoint_url == "https://new-endpoint.example/ingest"
+      assert updated.bearer_token == nil
+    end
+
+    test "removes the stored QRadar header when asked", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      sink = qradar_log_sink_fixture(account: account, auth_header: "Bearer stored")
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/log_sinks/qradar/#{sink.id}/edit")
+
+      lv
+      |> form("#log-sink-form", log_sink: %{auth_header: "", remove_secret: "true"})
+      |> render_submit()
+
+      updated = Repo.get_by!(Portal.QRadar.LogSink, account_id: account.id, id: sink.id)
+      assert updated.auth_header == nil
+      assert updated.endpoint_url == sink.endpoint_url
+    end
+
+    test "offers no removal when no header is stored", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      sink = qradar_log_sink_fixture(account: account, auth_header: nil)
+
+      {:ok, lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/log_sinks/qradar/#{sink.id}/edit")
+
+      refute html =~ "Remove the current header"
+
+      lv
+      |> form("#log-sink-form",
+        log_sink: %{endpoint_url: "https://new-qradar.example:12469", auth_header: ""}
+      )
+      |> render_submit()
+
+      updated = Repo.get_by!(Portal.QRadar.LogSink, account_id: account.id, id: sink.id)
+      assert updated.endpoint_url == "https://new-qradar.example:12469"
+      assert updated.auth_header == nil
     end
 
     test "editing an Amazon S3 sink keeps its external id", %{
