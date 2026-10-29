@@ -510,7 +510,7 @@ impl ClientOnGateway {
         self.resources.contains_key(&resource)
     }
 
-    pub(crate) fn allows_tun_dns_query(&self, query: &Query, now: Instant) -> bool {
+    pub(crate) fn allows_site_dns_query(&self, query: &Query, now: Instant) -> bool {
         if !query.is_standard_query() || !matches!(query.qtype(), RecordType::TXT | RecordType::SRV)
         {
             return false;
@@ -951,11 +951,11 @@ mod tests {
 
         let query = |name: &str, record_type| Query::new(name.parse().unwrap(), record_type);
 
-        assert!(peer.allows_tun_dns_query(&query("foo.com", RecordType::TXT), now));
-        assert!(peer.allows_tun_dns_query(&query("service.foo.com", RecordType::SRV), now));
-        assert!(!peer.allows_tun_dns_query(&query("foo.com", RecordType::A), now));
-        assert!(!peer.allows_tun_dns_query(&query("other.com", RecordType::TXT), now));
-        assert!(!peer.allows_tun_dns_query(&query("10.0.0.1", RecordType::TXT), now));
+        assert!(peer.allows_site_dns_query(&query("foo.com", RecordType::TXT), now));
+        assert!(peer.allows_site_dns_query(&query("service.foo.com", RecordType::SRV), now));
+        assert!(!peer.allows_site_dns_query(&query("foo.com", RecordType::A), now));
+        assert!(!peer.allows_site_dns_query(&query("other.com", RecordType::TXT), now));
+        assert!(!peer.allows_site_dns_query(&query("10.0.0.1", RecordType::TXT), now));
     }
 
     #[test]

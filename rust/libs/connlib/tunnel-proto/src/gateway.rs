@@ -123,7 +123,7 @@ impl GatewayState {
         let allowed = self
             .peers
             .peer_by_ip(remote.ip())
-            .is_some_and(|(_, peer)| peer.allows_tun_dns_query(&message, now));
+            .is_some_and(|(_, peer)| peer.allows_site_dns_query(&message, now));
 
         if !allowed {
             return Err(ResponseBuilder::for_query(&message, ResponseCode::REFUSED).build());
