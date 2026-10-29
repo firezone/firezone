@@ -1,5 +1,6 @@
 use anyhow::Result;
 use ip_packet::IpPacket;
+use opentelemetry::{KeyValue, metrics::Counter};
 use std::collections::VecDeque;
 use std::mem;
 use std::task::ready;
@@ -14,6 +15,7 @@ pub struct Device {
     current_batch: PacketBatch,
     /// Completed batches waiting for room in the channel, at most [`tun::CHANNEL_CAPACITY`].
     pending_batches: VecDeque<PacketBatch>,
+    dropped_packets: Counter<u64>,
 }
 
 impl Device {
@@ -23,6 +25,7 @@ impl Device {
             waker: None,
             current_batch: PacketBatch::default(),
             pending_batches: VecDeque::new(),
+            dropped_packets: otel_instruments::network_packet_dropped(),
         }
     }
 
@@ -106,6 +109,14 @@ impl Device {
 
     fn push_pending(&mut self, batch: PacketBatch) {
         if self.pending_batches.len() >= tun::CHANNEL_CAPACITY {
+            self.dropped_packets.add(
+                batch.len() as u64,
+                &[
+                    KeyValue::new("system.device", "tun"),
+                    KeyValue::new("network.io.direction", "transmit"),
+                    KeyValue::new("error.type", "QueueFull"),
+                ],
+            );
             tracing::trace!(
                 num_packets = batch.len(),
                 "TUN device is full; dropping packets"

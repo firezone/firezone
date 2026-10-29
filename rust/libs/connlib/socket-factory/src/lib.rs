@@ -285,6 +285,8 @@ pub struct PerfUdpSocket {
 
     batch_histogram: opentelemetry::metrics::Histogram<u64>,
     send_retry_histogram: opentelemetry::metrics::Histogram<u64>,
+    #[cfg(apple)]
+    dropped_packets: opentelemetry::metrics::Counter<u64>,
     send_blocked_histogram: opentelemetry::metrics::Histogram<f64>,
     source_ip_resolver:
         Option<Box<dyn Fn(IpAddr) -> std::io::Result<IpAddr> + Send + Sync + 'static>>,
@@ -328,6 +330,8 @@ impl UdpSocket {
             recv_buf_size,
             batch_histogram: otel_instruments::network_packets_batch_count(),
             send_retry_histogram: otel_instruments::network_retries(),
+            #[cfg(apple)]
+            dropped_packets: otel_instruments::network_packet_dropped(),
             send_blocked_histogram: otel_instruments::network_send_blocked_duration(),
             source_ip_resolver: self.source_ip_resolver,
             port: self.port,
@@ -624,6 +628,17 @@ impl PerfUdpSocket {
                 #[cfg(apple)]
                 Err(e) if socket.connected && is_icmp_unreachable(&e) => {
                     self.record_send_retries(attempt);
+                    self.dropped_packets.add(
+                        chunk.datagram_count() as u64,
+                        &[
+                            KeyValue::new("network.transport", "udp"),
+                            KeyValue::new("network.io.direction", "transmit"),
+                            KeyValue::new(
+                                "error.code",
+                                e.raw_os_error().unwrap_or_default() as i64,
+                            ),
+                        ],
+                    );
                     self.record_send_blocked_duration(
                         blocked_since.take(),
                         socket.connected,
