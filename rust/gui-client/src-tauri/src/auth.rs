@@ -60,9 +60,13 @@ pub struct Auth {
 }
 
 enum State {
+    /// No accepted credential or browser sign-in is active.
     SignedOut,
+    /// Waiting for the browser's sign-in callback.
     NeedResponse(Request),
+    /// A validated browser token is awaiting portal acceptance and has not been saved.
     AwaitingPortal,
+    /// An accepted or restored credential is available.
     SignedIn(Credential),
 }
 
