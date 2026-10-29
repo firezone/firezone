@@ -41,6 +41,14 @@ windows = { workspace = true, features = ["Win32_Foundation", "Win32_System_Diag
 [dev-dependencies]
 mimalloc = { workspace = true }
 
+[target.'cfg(target_os = "linux")'.dev-dependencies]
+gungraun = { workspace = true }
+seeded-rng = { workspace = true }
+
+[[bench]]
+name = "instructions"
+harness = false
+
 [[bench]]
 name = "throughput"
 harness = false

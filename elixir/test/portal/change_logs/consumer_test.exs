@@ -45,6 +45,10 @@ defmodule Portal.ChangeLogs.ConsumerTest do
       assert "trust_anchor_certificates" in tables
     end
 
+    test "includes account slugs in the audit publication", %{tables: tables} do
+      assert "account_slugs" in tables
+    end
+
     test "includes the provider log sink tables but not the delivery machinery", %{
       tables: tables
     } do
@@ -166,6 +170,19 @@ defmodule Portal.ChangeLogs.ConsumerTest do
       assert attrs.vsn == 0
       assert attrs.timestamp == @commit_timestamp
       assert attrs.log_id == LogId.build_change_log(@seq_start, 0)
+    end
+
+    test "logs a registered account slug", %{account: account, initial_state: initial_state} do
+      data = %{"slug" => "new-slug", "account_id" => account.id, "inserted_at" => "2026-10-27T00:00:00Z"}
+
+      result_state = Consumer.on_write(initial_state, 12346, :insert, "account_slugs", nil, data)
+
+      attrs = result_state.flush_buffer[12346]
+      assert attrs.object == "account_slugs"
+      assert attrs.operation == :insert
+      assert attrs.account_id == account.id
+      assert attrs.after == data
+      assert attrs.before == nil
     end
 
     test "adds insert operation to flush buffer for non-account tables", %{

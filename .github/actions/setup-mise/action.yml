@@ -29,7 +29,7 @@ runs:
       if: ${{ runner.os != 'Windows' }}
       run: echo "MISE_SCAN_PATH=$HOME/.local/share/mise/installs" >> "$GITHUB_ENV"
 
-    - uses: jdx/mise-action@fc42bcc7ddbf51124c30f95a877a0c5168a3bfde # v5.2.1
+    - uses: jdx/mise-action@8418fedb1110381a0d3ba51a7a415d7c1b884550 # v5.2.2
       id: mise-1
       continue-on-error: true
       with:
@@ -40,7 +40,7 @@ runs:
         cache_key_prefix: "mise-v2"
         monorepo: false
 
-    - uses: jdx/mise-action@fc42bcc7ddbf51124c30f95a877a0c5168a3bfde # v5.2.1
+    - uses: jdx/mise-action@8418fedb1110381a0d3ba51a7a415d7c1b884550 # v5.2.2
       if: ${{ steps.mise-1.outcome == 'failure' }}
       id: mise-2
       continue-on-error: true
@@ -52,7 +52,7 @@ runs:
         cache_key_prefix: "mise-v2"
         monorepo: false
 
-    - uses: jdx/mise-action@fc42bcc7ddbf51124c30f95a877a0c5168a3bfde # v5.2.1
+    - uses: jdx/mise-action@8418fedb1110381a0d3ba51a7a415d7c1b884550 # v5.2.2
       if: ${{ steps.mise-2.outcome == 'failure' }}
       with:
         version: ${{ inputs.version }}
@@ -102,7 +102,7 @@ runs:
 
     - name: Upload results to GitHub Security tab
       if: ${{ always() && inputs.install == 'true' }}
-      uses: github/codeql-action/upload-sarif@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
+      uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
       with:
         sarif_file: trivy-mise.sarif
         category: trivy-mise

@@ -18,7 +18,7 @@
 
 use std::{
     collections::{BTreeMap, BTreeSet},
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use connlib_model::{ClientId, ClientOrGatewayId, GatewayId, ResourceId};
@@ -142,7 +142,7 @@ pub struct Recorder {
 
 impl Recorder {
     /// Logs changes whose recovery can be demonstrated by later traffic.
-    pub fn observe(&mut self, transition: &Transition, reference: &ReferenceState) {
+    pub fn observe(&mut self, transition: &Transition, reference: &ReferenceState, now: Instant) {
         self.current_probe_on_idled_flow = None;
         self.current_dns_queries.clear();
         self.current_tcp_flow = None;
@@ -264,18 +264,50 @@ impl Recorder {
                 self.changes
                     .push((Scope::Everything, Change::DnsRecordsChanged));
             }
+            Transition::CrashClient { client_id, .. } => {
+                self.changes
+                    .push((Scope::Client(*client_id), Change::Crashed));
+            }
             Transition::UpdateSystemDnsServers { .. }
             | Transition::UpdateUpstreamDo53Servers(_)
             | Transition::UpdateUpstreamDoHServers(_) => {
                 self.changes
                     .push((Scope::Everything, Change::DnsServersChanged));
             }
+            Transition::SendIcmpPacketOnNewFlow {
+                client_id,
+                src,
+                dst,
+                identifier,
+                probe_id,
+                ..
+            } => {
+                let resumed = reference.resumed_icmp_flow(*client_id, *src, dst, *identifier, now);
+                self.observe_resumed_flow(resumed, *probe_id);
+            }
+            Transition::SendUdpPacketOnNewFlow {
+                client_id,
+                src,
+                dst,
+                sport,
+                dport,
+                probe_id,
+                ..
+            } => {
+                let resumed =
+                    reference.resumed_udp_flow(*client_id, *src, dst, (*sport, *dport), now);
+                self.observe_resumed_flow(resumed, *probe_id);
+            }
             Transition::AddResource(_)
             | Transition::RemoveResource(_)
-            | Transition::SendIcmpPacketOnNewFlow { .. }
-            | Transition::SendUdpPacketOnNewFlow { .. }
             | Transition::SendDnsResourcePtrQuery { .. }
             | Transition::UpdateUpstreamSearchDomain(_) => {}
+        }
+    }
+
+    fn observe_resumed_flow(&mut self, resumed: Option<FlowId>, probe: ProbeId) {
+        if let Some(duration) = resumed.and_then(|flow_id| self.idled_flows.remove(&flow_id)) {
+            self.current_probe_on_idled_flow = Some(IdleFlowAttempt { probe, duration });
         }
     }
 
@@ -544,9 +576,10 @@ enum Change {
     Idled,
     DnsRecordsChanged,
     DnsServersChanged,
+    Crashed,
 }
 
-const KINDS: u16 = 22;
+const KINDS: u16 = 23;
 
 #[derive(Clone, Copy)]
 enum Scope {
@@ -560,12 +593,10 @@ impl Scope {
     fn covers(self, route: RouteKey, reference: &ReferenceState) -> bool {
         match (self, route) {
             (Scope::Client(client), RouteKey::Resource(origin, _)) => client == origin,
-            (Scope::Client(client), RouteKey::Gateway(origin, _)) => client == origin,
             (Scope::Client(client), RouteKey::Peer(origin, peer)) => {
                 client == origin || client == peer
             }
             (Scope::Resource(resource), RouteKey::Resource(_, target)) => resource == target,
-            (Scope::Resource(_), RouteKey::Gateway(..)) => false,
             (Scope::Resource(pool), RouteKey::Peer(origin, peer)) => {
                 reference.clients.get(&origin).is_some_and(|client| {
                     client
@@ -575,7 +606,6 @@ impl Scope {
                 })
             }
             (Scope::Peers(..), RouteKey::Resource(..)) => false,
-            (Scope::Peers(..), RouteKey::Gateway(..)) => false,
             (Scope::Peers(client, peer), RouteKey::Peer(origin, target)) => {
                 client == origin && peer == target
             }
@@ -588,7 +618,6 @@ impl Scope {
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum RouteKey {
     Resource(ClientId, ResourceId),
-    Gateway(ClientId, GatewayId),
     Peer(ClientId, ClientId),
 }
 
@@ -596,7 +625,6 @@ impl RouteKey {
     fn new(origin: ClientId, route: Route) -> Self {
         match route {
             Route::Resource { resource, .. } => RouteKey::Resource(origin, resource),
-            Route::Gateway(gateway) => RouteKey::Gateway(origin, gateway),
             Route::Peer(peer) => RouteKey::Peer(origin, peer),
         }
     }

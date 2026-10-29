@@ -25,7 +25,6 @@ use std::{
     net::{IpAddr, SocketAddr},
     time::{Duration, Instant},
 };
-use tun::PacketBatch;
 use tunnel_proto::{
     ClientEvent, ClientState, DNS_SENTINELS_V4, DNS_SENTINELS_V6, DnsMapping, DnsResourceRecord,
     MaliciousBehaviour, MaliciousBehaviourGuard as Guard, dns,
@@ -156,6 +155,22 @@ impl SimClient {
         old.shut_down(now)
     }
 
+    /// Starts a new tunnel as if the Client's process died: nothing leaves the old tunnel and
+    /// the new one starts without the cached DNS resource records, so applications have to
+    /// resolve their domains again.
+    pub(crate) fn crash(
+        &mut self,
+        key: PrivateKey,
+        is_internet_resource_active: bool,
+        now: Instant,
+        utc_now: DateTime<Utc>,
+    ) {
+        self.dns_resource_record_cache.clear();
+        self.dns_records.clear();
+
+        let _goodbye = self.restart(key, is_internet_resource_active, now, utc_now);
+    }
+
     /// Returns the _effective_ DNS servers that connlib is using.
     pub(crate) fn effective_dns_servers(&self) -> Vec<dns::Upstream> {
         self.dns_by_sentinel.upstream_servers()
@@ -269,11 +284,7 @@ impl SimClient {
     }
 
     pub(crate) fn send(&mut self, packet: IpPacket) {
-        self.tunnel
-            .ends
-            .tun_inbound
-            .try_send(PacketBatch::new(packet))
-            .expect("TUN channel has room");
+        self.tunnel.read_from_tun(packet);
     }
 
     pub(crate) fn send_probe(&mut self, id: ProbeId, packet: IpPacket, now: Instant) {

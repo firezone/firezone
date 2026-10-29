@@ -260,7 +260,11 @@ impl StubPortal {
             Transition::SendDnsQueries(_) => {}
             Transition::SendDnsResourcePtrQuery { .. } => {}
             Transition::UpdateSystemDnsServers { .. } => {}
-            Transition::RoamClient { .. } => {}
+            Transition::RoamClient { client_id, .. } => {
+                if !self.iceless {
+                    self.forget_gateway_authorizations(*client_id);
+                }
+            }
             Transition::ReconnectPortal { .. } => {}
             Transition::RestartClient { client_id, .. } => {
                 for _ in self
@@ -269,10 +273,7 @@ impl StubPortal {
                 {}
 
                 // The Gateways drop everything they held for the Client on its `goodbye`.
-                for _ in self
-                    .gateway_policy_authorizations
-                    .extract_if(.., |(client, _), _| client == client_id)
-                {}
+                self.forget_gateway_authorizations(*client_id);
             }
             Transition::DeployNewRelays(_) => {}
             Transition::PartitionRelaysFromPortal => {}
@@ -295,6 +296,14 @@ impl StubPortal {
                 });
             }
             Transition::UpdateDnsRecords { .. } => {}
+            Transition::CrashClient { client_id, .. } => {
+                self.forget_gateway_authorizations(*client_id);
+
+                for _ in self
+                    .load_balanced_requests
+                    .extract_if(.., |(client, _), _| client == client_id)
+                {}
+            }
         }
     }
 
@@ -586,6 +595,13 @@ impl StubPortal {
                 authorization.revoked = true;
             }
         }
+    }
+
+    fn forget_gateway_authorizations(&mut self, client_id: ClientId) {
+        for _ in self
+            .gateway_policy_authorizations
+            .extract_if(.., |(client, _), _| *client == client_id)
+        {}
     }
 
     /// Revokes every authorization `resource` provided, to a peer or through a Gateway.

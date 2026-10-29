@@ -209,6 +209,28 @@ html {
   transform-origin: 110px 55px;
 }
 
+@keyframes indeterminate-bar {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(250%);
+  }
+}
+
+/* Signals ongoing work without implying how much is done. */
+.indeterminate-bar {
+  width: 40%;
+  animation: indeterminate-bar 1.4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .indeterminate-bar {
+    width: 100%;
+    animation: none;
+  }
+}
+
 :root {
   /* Brand — orange (heat-wave-500 / heat-wave-600) */
   --brand: oklch(71.74% 0.192 48.75);

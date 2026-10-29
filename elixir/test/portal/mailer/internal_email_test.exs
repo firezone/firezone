@@ -20,6 +20,26 @@ defmodule Portal.Mailer.InternalEmailTest do
     assert email.subject == "In-portal feedback submission"
   end
 
+  test "names the region in the sign-up questionnaire" do
+    account = account_fixture()
+    actor = actor_fixture(type: :account_admin_user, account: account)
+    Config.put_env_override(:portal, InternalEmail, recipient: "sales@example.com")
+    Config.put_env_override(:data_residency_region, :eu)
+
+    survey = %Portal.SignUpSurvey{
+      referral_source: "search",
+      motivation: "security",
+      use_case: "remote_access",
+      role: "it_admin",
+      switching: false
+    }
+
+    email = InternalEmail.sign_up_survey_email(account, actor, survey)
+
+    assert email.subject == "Sign-up questionnaire: #{account.name}"
+    assert email.text_body =~ "Region: EU"
+  end
+
   test "reports an Enterprise seat overage" do
     account =
       account_fixture(%{

@@ -23,7 +23,7 @@ defmodule PortalWeb.OIDCController do
 
   @spec sign_in(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def sign_in(conn, %{"account_id_or_slug" => account_id_or_slug} = params) do
-    account = Database.get_account_by_id_or_slug!(account_id_or_slug)
+    account = PortalWeb.Accounts.get_by_id_or_slug!(account_id_or_slug)
     provider = get_provider!(account, params)
     provider_redirect(conn, account, provider, params)
   end
@@ -256,7 +256,7 @@ defmodule PortalWeb.OIDCController do
       conn = put_oidc_error_context(conn, cookie)
       params = cookie.params || %{}
       context_type = context_type(params)
-      account = Database.get_account_by_id_or_slug!(cookie.account_id)
+      account = PortalWeb.Accounts.get_by_id_or_slug!(cookie.account_id)
       provider = get_provider!(account, cookie)
 
       {:ok,
@@ -561,7 +561,10 @@ defmodule PortalWeb.OIDCController do
   end
 
   # Google and Okta consistently return email_verified=true, so we enforce the claim
-  # to surface any misbehavior. Entra does not set email_verified, so we cannot check it.
+  # to surface any misbehavior. Entra does not set email_verified. A UPN can only use a
+  # domain verified in the token's tenant, which the tenant check pins to the customer,
+  # so it is trusted as is. B2B guests and their home tenants control the email and
+  # preferred_username claims, so linking by those requires proof.
   # Generic OIDC providers send it inconsistently, so we let the admin choose via
   # email_verification_method (none/claim/proof).
   # GitHub never re-checks an address after verifying it once, and the customer does
@@ -578,6 +581,8 @@ defmodule PortalWeb.OIDCController do
 
   defp email_verification_method(%Portal.GitHub.AuthProvider{}), do: :proof
   defp email_verification_method(%Portal.Okta.AuthProvider{}), do: :claim
+  defp email_verification_method(%Portal.Entra.AuthProvider{email_claim: "upn"}), do: :none
+  defp email_verification_method(%Portal.Entra.AuthProvider{}), do: :proof
 
   defp email_verification_method(%Portal.OIDC.AuthProvider{email_verification_method: method}),
     do: method
@@ -716,7 +721,7 @@ defmodule PortalWeb.OIDCController do
   defp load_pending_identity_context(conn, params) do
     with %Cookie.PendingIdentity{} = cookie <-
            Cookie.PendingIdentity.fetch(conn, params["pending_identity_id"]),
-         {:ok, account} <- Database.fetch_account_by_id_or_slug(params["account_id_or_slug"]),
+         {:ok, account} <- PortalWeb.Accounts.fetch_by_id_or_slug(params["account_id_or_slug"]),
          {:ok, provider} <-
            Database.fetch_proof_provider(account.id, params["auth_provider_id"]) do
       sign_in_params = sanitize(cookie.params)
@@ -2150,7 +2155,6 @@ defmodule PortalWeb.OIDCController do
     import Ecto.Query
     import Ecto.Changeset
     alias Portal.{Safe, AuthProvider, ExternalIdentity, PendingIdentity, OneTimePasscode}
-    alias Portal.Account
 
     @otp_expiration_seconds 15 * 60
 
@@ -2168,30 +2172,6 @@ defmodule PortalWeb.OIDCController do
     ]a
 
     @pending_identity_profile_fields @profile_fields -- [:firezone_avatar_url]
-
-    def get_account_by_id_or_slug!(id_or_slug) do
-      query =
-        if Portal.Repo.valid_uuid?(id_or_slug),
-          do: from(a in Account, where: a.id == ^id_or_slug or a.slug == ^id_or_slug),
-          else: from(a in Account, where: a.slug == ^id_or_slug)
-
-      query |> Safe.unscoped() |> Safe.one!()
-    end
-
-    def fetch_account_by_id_or_slug(id_or_slug) do
-      query =
-        if Portal.Repo.valid_uuid?(id_or_slug),
-          do: from(a in Account, where: a.id == ^id_or_slug or a.slug == ^id_or_slug),
-          else: from(a in Account, where: a.slug == ^id_or_slug)
-
-      query
-      |> Safe.unscoped()
-      |> Safe.one()
-      |> case do
-        nil -> {:error, :not_found}
-        account -> {:ok, account}
-      end
-    end
 
     def get_provider!(account_id, type, id) do
       schema = AuthProvider.module!(type)
@@ -2222,7 +2202,7 @@ defmodule PortalWeb.OIDCController do
       with {:ok, id} <- Ecto.UUID.cast(id),
            %AuthProvider{type: type} <-
              from(p in AuthProvider,
-               where: p.account_id == ^account_id and p.id == ^id and p.type in [:oidc, :github]
+               where: p.account_id == ^account_id and p.id == ^id and p.type in [:oidc, :github, :entra]
              )
              |> Safe.unscoped()
              |> Safe.one() do

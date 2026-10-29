@@ -55,6 +55,12 @@ defmodule Portal.Changes.Hooks.Accounts do
       end)
     end
 
+    # Relays apply a changed throughput limit to existing allocations.
+    if not account.is_disabled and
+         relay_throughput_mbps(old_account) != relay_throughput_mbps(account) do
+      PubSub.Changes.broadcast_account(change)
+    end
+
     PubSub.Changes.broadcast(account.id, :accounts, change)
   end
 
@@ -67,6 +73,9 @@ defmodule Portal.Changes.Hooks.Accounts do
     PubSub.Changes.broadcast(account.id, :accounts, change)
     PubSub.Changes.broadcast_account(change)
   end
+
+  defp relay_throughput_mbps(%Portal.Account{limits: %{relay_throughput_mbps: mbps}}), do: mbps
+  defp relay_throughput_mbps(%Portal.Account{}), do: nil
 
   defmodule Database do
     import Ecto.Query

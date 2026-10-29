@@ -8,7 +8,7 @@ use super::{
     sim_tunnel::SimTunnel,
     site_network::SiteNetwork,
 };
-use connlib_model::{ClientId, GatewayId, RelayId, ResourceId};
+use connlib_model::{ClientId, GatewayId, PublicKey, RelayId, ResourceId};
 use dns_types::DomainName;
 use ip_packet::IpPacket;
 use std::{
@@ -17,7 +17,6 @@ use std::{
     net::{IpAddr, SocketAddr},
     time::Instant,
 };
-use tun::PacketBatch;
 use tunnel_proto::{GatewayEvent, GatewayState};
 
 /// Simulation state for a particular client.
@@ -33,6 +32,7 @@ pub(crate) struct SimGateway {
     next_observation_order: u64,
 
     authorized_resources: BTreeMap<ClientId, BTreeSet<ResourceId>>,
+    client_keys: BTreeMap<ClientId, PublicKey>,
     clients_by_ip: BTreeMap<IpAddr, ClientId>,
 
     site_specific_dns_records: DnsRecords,
@@ -71,6 +71,7 @@ impl SimGateway {
             dns_proxy_owners: Default::default(),
             next_observation_order: 0,
             authorized_resources: Default::default(),
+            client_keys: Default::default(),
             clients_by_ip: Default::default(),
         }
     }
@@ -84,11 +85,7 @@ impl SimGateway {
     }
 
     fn read_from_tun(&mut self, packet: IpPacket) {
-        self.tunnel
-            .ends
-            .tun_inbound
-            .try_send(PacketBatch::new(packet))
-            .expect("TUN channel has room");
+        self.tunnel.read_from_tun(packet);
     }
 
     /// Hands the packets the resources and DNS servers send to the Gateway's TUN device.
@@ -253,9 +250,19 @@ impl SimGateway {
     pub(crate) fn record_authorization(
         &mut self,
         client: ClientId,
+        client_key: PublicKey,
         resource: ResourceId,
         client_ips: [IpAddr; 2],
     ) {
+        // The Gateway forgets a Client that comes back with a new key.
+        if self
+            .client_keys
+            .insert(client, client_key)
+            .is_some_and(|previous| previous != client_key)
+        {
+            self.record_client_restart(client);
+        }
+
         self.authorized_resources
             .entry(client)
             .or_default()

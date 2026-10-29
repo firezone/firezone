@@ -3216,8 +3216,9 @@ defmodule PortalWeb.OIDCControllerTest do
       {:ok, account: account, provider: provider, actor: actor}
     end
 
-    test "signs in with an ID token from the provider's tenant", ctx do
-      expect_entra_token_exchange(ctx.actor, @tenant_id)
+    test "signs in a linked identity with an ID token from the provider's tenant", ctx do
+      oid = link_entra_identity(ctx, @tenant_id)
+      expect_entra_token_exchange(ctx.actor, @tenant_id, oid)
       Mocks.OIDC.set_userinfo_response(%{})
 
       conn = perform_callback(ctx.conn, build_entra_auth_state(ctx.account, ctx.provider))
@@ -3226,14 +3227,93 @@ defmodule PortalWeb.OIDCControllerTest do
       assert conn.resp_cookies["sess_#{ctx.account.id}"]
     end
 
-    test "accepts a second allowed tenant and keeps its actual issuer on the identity", ctx do
+    test "accepts a linked identity from a second allowed tenant", ctx do
       ctx.provider |> Ecto.Changeset.change(tenant_ids: [@tenant_id, @other_tenant_id]) |> Repo.update!()
-      expect_entra_token_exchange(ctx.actor, @other_tenant_id)
+      oid = link_entra_identity(ctx, @other_tenant_id)
+      expect_entra_token_exchange(ctx.actor, @other_tenant_id, oid)
       Mocks.OIDC.set_userinfo_response(%{})
+
       conn = perform_callback(ctx.conn, build_entra_auth_state(ctx.account, ctx.provider))
+
       assert redirected_to(conn) =~ "/#{ctx.account.slug}/sites"
+      assert conn.resp_cookies["sess_#{ctx.account.id}"]
+    end
+
+    test "links a token whose UPN matches an actor without email proof", ctx do
+      oid = Ecto.UUID.generate()
+      expect_entra_token_exchange(ctx.actor, @tenant_id, oid)
+      Mocks.OIDC.set_userinfo_response(%{})
+
+      conn = perform_callback(ctx.conn, build_entra_auth_state(ctx.account, ctx.provider))
+
+      assert redirected_to(conn) =~ "/#{ctx.account.slug}/sites"
+      assert conn.resp_cookies["sess_#{ctx.account.id}"]
+      refute_received {:email, _email}
       identity = Repo.get_by!(Portal.ExternalIdentity, account_id: ctx.account.id)
-      assert identity.issuer == "https://login.microsoftonline.com/#{@other_tenant_id}/v2.0"
+      assert identity.actor_id == ctx.actor.id
+      assert identity.idp_id == oid
+    end
+
+    for email_claim <- ~w[email preferred_username] do
+      test "requires email proof before linking a token whose #{email_claim} matches an actor",
+           ctx do
+        Portal.Config.put_env_override(:outbound_email_adapter_configured?, true)
+        provider = ctx.provider |> Ecto.Changeset.change(email_claim: unquote(email_claim)) |> Repo.update!()
+        # A guest's home tenant controls these claims, so it can claim any address.
+        expect_entra_token_exchange(ctx.actor, @tenant_id, Ecto.UUID.generate())
+        Mocks.OIDC.set_userinfo_response(%{})
+
+        conn = perform_callback(ctx.conn, build_entra_auth_state(ctx.account, provider))
+
+        assert redirected_to(conn) =~
+                 "/#{ctx.account.slug}/sign_in/oidc/#{provider.id}/verify_identity"
+
+        refute conn.resp_cookies["sess_#{ctx.account.id}"]
+        refute Repo.get_by(Portal.ExternalIdentity, account_id: ctx.account.id)
+        assert_received {:email, email}
+        assert email.to == [{"", ctx.actor.email}]
+      end
+    end
+
+    test "links a guest user through the provider's sign-in tenant after email proof", ctx do
+      Portal.Config.put_env_override(:outbound_email_adapter_configured?, true)
+      # A unique tenant keeps the cached discovery document out of other tests.
+      tenant_id = Ecto.UUID.generate()
+      issuer = "https://login.microsoftonline.com/#{tenant_id}/v2.0"
+      oid = Ecto.UUID.generate()
+
+      provider =
+        ctx.provider
+        |> Ecto.Changeset.change(tenant_ids: [tenant_id], sign_in_tenant_id: tenant_id, email_claim: "email")
+        |> Repo.update!()
+
+      Mocks.OIDC.set_discovery_document_overrides(%{"issuer" => issuer})
+      expect_entra_token_exchange(ctx.actor, tenant_id, oid)
+      Mocks.OIDC.set_userinfo_response(%{})
+
+      conn = perform_callback(ctx.conn, build_entra_auth_state(ctx.account, provider))
+
+      assert redirected_to(conn) =~ "/#{ctx.account.slug}/sign_in/oidc/#{provider.id}/verify_identity"
+      discovery_path = "/#{tenant_id}/v2.0/.well-known/openid-configuration"
+      assert_received {:oidc_request, ^discovery_path, _conn}
+      pending_cookie = pending_identity_cookie_from_response(conn)
+      assert_received {:email, email}
+      [_, code] = Regex.run(~r/\n\n([a-z0-9]{6})\n/, email.text_body)
+
+      conn =
+        conn
+        |> recycle()
+        |> post(~p"/#{ctx.account}/sign_in/oidc/#{provider.id}/verify_identity", %{
+          "secret" => code,
+          "pending_identity_id" => pending_cookie.pending_identity_id
+        })
+
+      assert redirected_to(conn) =~ "/#{ctx.account.slug}/sites"
+      assert conn.resp_cookies["sess_#{ctx.account.id}"]
+      identity = Repo.get_by!(Portal.ExternalIdentity, account_id: ctx.account.id)
+      assert identity.actor_id == ctx.actor.id
+      assert identity.issuer == issuer
+      assert identity.idp_id == oid
     end
 
     test "rejects an ID token from another tenant", ctx do
@@ -4537,19 +4617,36 @@ defmodule PortalWeb.OIDCControllerTest do
     |> Enum.into(%{})
   end
 
-  defp expect_entra_token_exchange(actor, tenant_id) do
+  defp expect_entra_token_exchange(actor, tenant_id, oid \\ Ecto.UUID.generate()) do
     %{
       "iss" => "https://login.microsoftonline.com/#{tenant_id}/v2.0",
       "tid" => tenant_id,
+      "oid" => oid,
       "sub" => "entra-sub-#{System.unique_integer([:positive])}",
       "aud" => "test-entra-client-id",
       "exp" => token_exp(),
       "nonce" => PortalWeb.OIDC.nonce("test-verifier"),
       "upn" => actor.email,
+      "email" => actor.email,
+      "preferred_username" => actor.email,
       "name" => actor.name
     }
     |> Mocks.OIDC.sign_openid_connect_token()
     |> expect_token_exchange()
+  end
+
+  defp link_entra_identity(ctx, tenant_id) do
+    oid = Ecto.UUID.generate()
+
+    identity_fixture(
+      account: ctx.account,
+      actor: ctx.actor,
+      issuer: "https://login.microsoftonline.com/#{tenant_id}/v2.0",
+      idp_id: oid,
+      email: ctx.actor.email
+    )
+
+    oid
   end
 
   defp build_entra_auth_state(account, provider) do

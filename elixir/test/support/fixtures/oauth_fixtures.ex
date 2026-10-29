@@ -41,7 +41,7 @@ defmodule Portal.OAuthFixtures do
   def oauth_grant_fixture(attrs \\ %{}) do
     attrs = Enum.into(attrs, %{})
     account = Map.get_lazy(attrs, :account, &account_fixture/0)
-    actor = Map.get_lazy(attrs, :actor, fn -> actor_fixture(account: account) end)
+    actor = Map.get_lazy(attrs, :actor, fn -> admin_actor_fixture(account: account) end)
     client = Map.get_lazy(attrs, :client, &oauth_client_fixture/0)
 
     %OAuthGrant{}
@@ -61,7 +61,7 @@ defmodule Portal.OAuthFixtures do
   def oauth_token_fixture(attrs \\ %{}) do
     attrs = Enum.into(attrs, %{})
     account = Map.get_lazy(attrs, :account, &account_fixture/0)
-    actor = Map.get_lazy(attrs, :actor, fn -> actor_fixture(account: account) end)
+    actor = Map.get_lazy(attrs, :actor, fn -> admin_actor_fixture(account: account) end)
     scopes = Map.get(attrs, :scopes, ["policies:read"])
 
     grant =

@@ -14,7 +14,7 @@
       defer { app.terminate() }
 
       try openSettings(in: app, on: "settings")
-      try selectTab("Diagnostic Logs", showing: "Clear Log Directory", in: app)
+      try selectTab("Diagnostics", showing: "Clear Log Directory", in: app)
 
       let export = app.buttons["Export Logs"]
       try waitFor(export, on: "settings-logs")

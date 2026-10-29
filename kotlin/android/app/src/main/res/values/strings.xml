@@ -7,29 +7,40 @@
 
 	<!-- Settings -->
 	<string name="settings_title">Settings</string>
-	<string name="save">Save</string>
-	<string name="settings_save_warning_title">Warning</string>
-	<string name="settings_save_warning_message">
-		Some changed settings will not be applied until you sign out and sign back in.
-	</string>
-	<string name="settings_save_warning_confirm">Okay</string>
+	<string name="more_options">More options</string>
+	<string name="reset_to_defaults">Reset to defaults</string>
+	<string name="reset_to_defaults_confirm_title">Reset settings to defaults?</string>
+	<string name="reset_to_defaults_confirm">Reset</string>
+	<string name="sign_in_change_note">Sign out and sign in again after changing the account slug or control plane.</string>
 	<!-- General Settings -->
-	<string name="general_settings_title">General</string>
+	<string name="settings_section_sign_in">Sign-in</string>
+	<string name="settings_section_startup">Startup</string>
+	<string name="settings_section_about">About</string>
+	<string name="version">Version</string>
 	<string name="account_slug">Account Slug</string>
 	<string name="start_on_login">Start on Boot</string>
 	<string name="connect_on_start">Connect on Start</string>
-	<!-- Advanced Settings -->
-	<string name="advanced_settings_title">Advanced</string>
+	<string name="control_plane">Control plane</string>
+	<string name="control_plane_cloud_us">Firezone Cloud (US)</string>
+	<string name="control_plane_cloud_eu">Firezone Cloud (EU)</string>
+	<string name="control_plane_custom">Custom</string>
 	<string name="auth_url">Auth URL</string>
 	<string name="api_url">API URL</string>
-	<string name="log_filter">Log Filter</string>
-	<string name="button_reset_to_defaults">Reset to Defaults</string>
-	<!-- Diagnostic Logs Settings -->
+	<string name="auth_url_invalid">Enter a valid http:// or https:// URL</string>
+	<string name="api_url_invalid">Enter a valid ws:// or wss:// URL</string>
+	<!-- Device Trust Settings -->
 	<string name="device_trust_settings_title">Device Trust</string>
+	<!-- Diagnostic Logs Settings -->
+	<string name="diagnostics_settings_title">Diagnostics</string>
 	<string name="log_settings_title">Logs</string>
+	<string name="log_filter">Log Filter</string>
 	<string name="share_diagnostic_logs">Export Logs</string>
-	<string name="log_directory_size">Log directory size: %1$s</string>
+	<string name="log_files">Log Files</string>
+	<string name="log_filter_invalid">Invalid log filter: %1$s</string>
 	<string name="clear_log_directory">Clear Log Directory</string>
+	<string name="clear_logs_confirm_title">Clear log files?</string>
+	<string name="clear_logs_confirm_message">This deletes all log files on this device.</string>
+	<string name="clear_logs_confirm">Clear</string>
 
 	<!-- Device Trust Certificate -->
 	<string name="device_trust_certificate_title">Client certificate</string>
@@ -164,7 +175,6 @@
 		common name must be dev.firezone.device-trust.
 	</string>
 
-	<string name="managed_setting_info_description">
-		This setting is being managed by your organization.
-	</string>
+	<string name="managed_setting_locked">Locked</string>
+	<string name="managed_settings_footer">Some settings are managed by your organization.</string>
 </resources>

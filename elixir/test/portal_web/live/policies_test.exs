@@ -491,6 +491,50 @@ defmodule PortalWeb.PoliciesTest do
       refute has_element?(lv, "#policy-panel > div")
     end
 
+    test "ignores an edit click queued while the policy panel is closing", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      group = group_fixture(account: account)
+      resource = resource_fixture(account: account)
+      policy = policy_fixture(group: group, resource: resource)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/policies/#{policy.id}")
+
+      render_click(lv, "close_panel")
+      assert_patch(lv, ~p"/#{account}/policies")
+
+      render_click(lv, "open_edit_form")
+
+      refute has_element?(lv, "#policy-panel > div")
+    end
+
+    test "ignores an authorizations page change queued while the policy panel is closing", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      group = group_fixture(account: account)
+      resource = resource_fixture(account: account)
+      policy = policy_fixture(group: group, resource: resource)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/policies/#{policy.id}?tab=authorizations")
+
+      render_click(lv, "close_panel")
+      assert_patch(lv, ~p"/#{account}/policies")
+
+      render_click(lv, "change_policy_authorizations_page", %{"page" => "2"})
+
+      refute has_element?(lv, "#policy-panel > div")
+    end
+
     test "patches to policies index with flash when policy does not exist", %{
       conn: conn,
       account: account,

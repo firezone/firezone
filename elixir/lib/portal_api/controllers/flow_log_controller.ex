@@ -147,7 +147,7 @@ defmodule PortalAPI.FlowLogController do
 
   # Threads {valid, errors}: valid is a list of {index, entry} and errors a list
   # of {index, reason}. Attribution comes from the request token (claims), so a
-  # record only needs structural validation of its body.
+  # record needs body validation through the schema changeset.
   defp validate_record(record, index, _claims, _now, {valid, invalid})
        when not is_map(record) do
     {valid, [{index, :not_a_map} | invalid]}

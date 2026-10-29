@@ -46,7 +46,7 @@ pub struct MdmSettings {
     pub support_url: Option<Url>,
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize, specta::Type)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct AdvancedSettings {
     // Installs from before the "General" settings split wrote `auth_base_url` to disk.
     #[serde(alias = "auth_base_url")]
@@ -55,8 +55,33 @@ pub struct AdvancedSettings {
     pub log_filter: String,
     /// Set only through the CLI's `host-candidates`, so the settings page neither shows nor sends it.
     #[serde(default)]
-    #[specta(skip)]
     pub additional_host_candidates: Vec<IpAddr>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+pub struct AdvancedSettingsPatch {
+    pub auth_url: Option<Url>,
+    pub api_url: Option<Url>,
+    pub log_filter: Option<String>,
+}
+
+impl AdvancedSettingsPatch {
+    pub fn apply(self, mut settings: AdvancedSettings) -> AdvancedSettings {
+        if let Some(auth_url) = self.auth_url {
+            settings.auth_url = auth_url;
+        }
+        if let Some(api_url) = self.api_url {
+            settings.api_url = api_url;
+        }
+        if let Some(log_filter) = self.log_filter {
+            settings.log_filter = log_filter;
+        }
+        settings
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.auth_url.is_none() && self.api_url.is_none() && self.log_filter.is_none()
+    }
 }
 
 #[derive(Clone, Deserialize, Serialize, Default)]
@@ -73,6 +98,20 @@ pub struct GeneralSettings {
     pub connect_on_start: Option<bool>,
     #[serde(default)]
     pub account_slug: Option<String>,
+    /// The auth URL last saved with [`ControlPlane::Custom`], to prefill the field when it is picked again.
+    #[serde(default)]
+    pub custom_auth_url: Option<Url>,
+    /// The API URL last saved with [`ControlPlane::Custom`], to prefill the field when it is picked again.
+    #[serde(default)]
+    pub custom_api_url: Option<Url>,
+}
+
+/// The account slug and control-plane URLs captured when sign-in started.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SignInSettings {
+    pub account_slug: Option<String>,
+    pub auth_url: Url,
+    pub api_url: Url,
 }
 
 fn start_minimized_default() -> bool {
@@ -87,10 +126,56 @@ pub struct GeneralSettingsViewModel {
     pub connect_on_start_is_managed: bool,
     pub account_slug: String,
     pub account_slug_is_managed: bool,
+    pub control_plane: ControlPlane,
+    pub auth_url: String,
+    pub auth_url_is_managed: bool,
+    pub api_url: String,
+    pub api_url_is_managed: bool,
+    /// What the auth URL field shows when [`ControlPlane::Custom`] is picked: the last saved custom URL, or else `auth_url`.
+    pub custom_auth_url: String,
+    /// What the API URL field shows when [`ControlPlane::Custom`] is picked: the last saved custom URL, or else `api_url`.
+    pub custom_api_url: String,
+    /// The settings captured when sign-in started, [`None`] when signed out.
+    pub signed_in_with: Option<SignInSettingsViewModel>,
+}
+
+#[derive(Clone, Serialize, specta::Type)]
+pub struct SignInSettingsViewModel {
+    pub account_slug: String,
+    pub control_plane: ControlPlane,
+    pub auth_url: String,
+    pub api_url: String,
 }
 
 impl GeneralSettingsViewModel {
-    pub fn new(mdm_settings: MdmSettings, general_settings: GeneralSettings) -> Self {
+    pub fn new(
+        mdm_settings: MdmSettings,
+        general_settings: GeneralSettings,
+        advanced_settings: AdvancedSettings,
+        signed_in_with: Option<SignInSettings>,
+    ) -> Self {
+        let auth_url_is_managed = mdm_settings.auth_url.is_some();
+        let api_url_is_managed = mdm_settings.api_url.is_some();
+        let auth_url = mdm_settings.auth_url.unwrap_or(advanced_settings.auth_url);
+        let api_url = mdm_settings.api_url.unwrap_or(advanced_settings.api_url);
+
+        // With only one of the URLs managed, `Custom` keeps the other one editable.
+        let control_plane = if auth_url_is_managed == api_url_is_managed {
+            ControlPlane::from_urls(&auth_url, &api_url)
+        } else {
+            ControlPlane::Custom
+        };
+        let custom_auth_url = general_settings
+            .custom_auth_url
+            .as_ref()
+            .unwrap_or(&auth_url)
+            .to_string();
+        let custom_api_url = general_settings
+            .custom_api_url
+            .as_ref()
+            .unwrap_or(&api_url)
+            .to_string();
+
         Self {
             connect_on_start_is_managed: mdm_settings.connect_on_start.is_some(),
             account_slug_is_managed: mdm_settings.account_slug.is_some(),
@@ -104,35 +189,81 @@ impl GeneralSettingsViewModel {
                 .account_slug
                 .or(general_settings.account_slug)
                 .unwrap_or_default(),
+            control_plane,
+            auth_url: auth_url.to_string(),
+            auth_url_is_managed,
+            api_url: api_url.to_string(),
+            api_url_is_managed,
+            custom_auth_url,
+            custom_api_url,
+            signed_in_with: signed_in_with.map(|signed_in_with| SignInSettingsViewModel {
+                account_slug: signed_in_with.account_slug.unwrap_or_default(),
+                control_plane: ControlPlane::from_urls(
+                    &signed_in_with.auth_url,
+                    &signed_in_with.api_url,
+                ),
+                auth_url: signed_in_with.auth_url.to_string(),
+                api_url: signed_in_with.api_url.to_string(),
+            }),
         }
     }
 }
 
+/// The control plane a client signs in to: a Firezone Cloud deployment, or [`ControlPlane::Custom`] for any other URLs.
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize, specta::Type)]
+pub enum ControlPlane {
+    CloudUs,
+    CloudEu,
+    Custom,
+}
+
+impl ControlPlane {
+    /// Returns the control plane whose URLs are exactly `auth_url` and `api_url`, or [`ControlPlane::Custom`].
+    pub fn from_urls(auth_url: &Url, api_url: &Url) -> Self {
+        [Self::CloudUs, Self::CloudEu]
+            .into_iter()
+            .find(|control_plane| {
+                control_plane
+                    .urls()
+                    .is_some_and(|(auth, api)| &auth == auth_url && &api == api_url)
+            })
+            .unwrap_or(Self::Custom)
+    }
+
+    /// Returns the compiled-in auth and API URLs of the control plane, [`None`] for [`ControlPlane::Custom`].
+    ///
+    /// These are never taken from the control plane itself: they decide which control plane the client talks to.
+    pub fn urls(self) -> Option<(Url, Url)> {
+        let (auth_url, api_url) = match self {
+            Self::CloudUs => (control_plane::US_AUTH_URL, control_plane::US_API_URL),
+            Self::CloudEu => (control_plane::EU_AUTH_URL, control_plane::EU_API_URL),
+            Self::Custom => return None,
+        };
+
+        Some((
+            Url::parse(auth_url).expect("static URL is a valid URL"),
+            Url::parse(api_url).expect("static URL is a valid URL"),
+        ))
+    }
+}
+
+mod control_plane {
+    pub(crate) const US_AUTH_URL: &str = "https://app.firezone.dev";
+    pub(crate) const US_API_URL: &str = "wss://api.firezone.dev/";
+    pub(crate) const EU_AUTH_URL: &str = "https://eu.app.firezone.dev";
+    pub(crate) const EU_API_URL: &str = "wss://eu.api.firezone.dev/";
+}
+
 #[derive(Clone, Serialize, specta::Type)]
-pub struct AdvancedSettingsViewModel {
-    pub auth_url: String,
-    pub auth_url_is_managed: bool,
-    pub api_url: String,
-    pub api_url_is_managed: bool,
+pub struct LogFilterViewModel {
     pub log_filter: String,
     pub log_filter_is_managed: bool,
 }
 
-impl AdvancedSettingsViewModel {
+impl LogFilterViewModel {
     pub fn new(mdm_settings: MdmSettings, advanced_settings: AdvancedSettings) -> Self {
         Self {
-            auth_url_is_managed: mdm_settings.auth_url.is_some(),
-            api_url_is_managed: mdm_settings.api_url.is_some(),
             log_filter_is_managed: mdm_settings.log_filter.is_some(),
-
-            auth_url: mdm_settings
-                .auth_url
-                .unwrap_or(advanced_settings.auth_url)
-                .to_string(),
-            api_url: mdm_settings
-                .api_url
-                .unwrap_or(advanced_settings.api_url)
-                .to_string(),
             log_filter: mdm_settings
                 .log_filter
                 .unwrap_or(advanced_settings.log_filter),
@@ -300,4 +431,179 @@ const FILE_SDDL: &str = "D:P(A;;FA;;;SY)(A;;FA;;;BA)";
 #[expect(clippy::unnecessary_wraps)]
 fn set_file_permissions(_: &Path) -> Result<()> {
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn independent_patches_preserve_other_saved_settings() {
+        let candidates = vec![IpAddr::from([192, 168, 2, 1])];
+        let mut saved = AdvancedSettings {
+            additional_host_candidates: candidates.clone(),
+            ..Default::default()
+        };
+        for patch in [
+            AdvancedSettingsPatch {
+                auth_url: Some(Url::parse("https://auth.example.com").unwrap()),
+                ..Default::default()
+            },
+            AdvancedSettingsPatch {
+                api_url: Some(Url::parse("wss://api.example.com").unwrap()),
+                ..Default::default()
+            },
+            AdvancedSettingsPatch {
+                log_filter: Some("trace".to_owned()),
+                ..Default::default()
+            },
+        ] {
+            saved = patch.apply(saved);
+        }
+        assert_eq!(saved.auth_url.as_str(), "https://auth.example.com/");
+        assert_eq!(saved.api_url.as_str(), "wss://api.example.com/");
+        assert_eq!(saved.log_filter, "trace");
+        assert_eq!(saved.additional_host_candidates, candidates);
+    }
+
+    #[test]
+    fn saved_us_urls_show_firezone_cloud_us() {
+        let view_model = view_model(
+            MdmSettings::default(),
+            advanced_settings("https://app.firezone.dev", "wss://api.firezone.dev"),
+        );
+
+        assert_eq!(view_model.control_plane, ControlPlane::CloudUs);
+    }
+
+    #[test]
+    fn saved_self_hosted_urls_show_custom() {
+        let view_model = view_model(
+            MdmSettings::default(),
+            advanced_settings("https://firezone.example.com", "wss://api.example.com"),
+        );
+
+        assert_eq!(view_model.control_plane, ControlPlane::Custom);
+        assert_eq!(view_model.auth_url, "https://firezone.example.com/");
+        assert_eq!(view_model.api_url, "wss://api.example.com/");
+    }
+
+    #[test]
+    fn managed_eu_urls_override_saved_urls() {
+        let mdm_settings = MdmSettings {
+            auth_url: Some(Url::parse("https://eu.app.firezone.dev").unwrap()),
+            api_url: Some(Url::parse("wss://eu.api.firezone.dev").unwrap()),
+            ..Default::default()
+        };
+
+        let view_model = view_model(
+            mdm_settings,
+            advanced_settings("https://app.firezone.dev", "wss://api.firezone.dev"),
+        );
+
+        assert_eq!(view_model.control_plane, ControlPlane::CloudEu);
+        assert!(view_model.auth_url_is_managed);
+        assert!(view_model.api_url_is_managed);
+    }
+
+    #[test]
+    fn managed_urls_match_a_control_plane_despite_trivial_differences() {
+        let mdm_settings = MdmSettings {
+            auth_url: Some(Url::parse("HTTPS://EU.APP.FIREZONE.DEV:443/").unwrap()),
+            api_url: Some(Url::parse("wss://eu.api.firezone.dev").unwrap()),
+            ..Default::default()
+        };
+
+        let view_model = view_model(
+            mdm_settings,
+            advanced_settings("https://app.firezone.dev", "wss://api.firezone.dev"),
+        );
+
+        assert_eq!(view_model.control_plane, ControlPlane::CloudEu);
+    }
+
+    #[test]
+    fn one_managed_url_shows_custom() {
+        let mdm_settings = MdmSettings {
+            api_url: Some(Url::parse("wss://api.firezone.dev").unwrap()),
+            ..Default::default()
+        };
+
+        let view_model = view_model(
+            mdm_settings,
+            advanced_settings("https://app.firezone.dev", "wss://api.firezone.dev"),
+        );
+
+        assert_eq!(view_model.control_plane, ControlPlane::Custom);
+    }
+
+    #[test]
+    fn custom_fields_fall_back_to_the_current_urls() {
+        let view_model = view_model(
+            MdmSettings::default(),
+            advanced_settings("https://app.firezone.dev", "wss://api.firezone.dev"),
+        );
+
+        assert_eq!(view_model.custom_auth_url, "https://app.firezone.dev/");
+        assert_eq!(view_model.custom_api_url, "wss://api.firezone.dev/");
+    }
+
+    #[test]
+    fn custom_fields_show_the_last_saved_custom_urls() {
+        let general_settings = GeneralSettings {
+            custom_auth_url: Some(Url::parse("https://firezone.example.com").unwrap()),
+            custom_api_url: Some(Url::parse("wss://api.example.com").unwrap()),
+            ..Default::default()
+        };
+
+        let view_model = GeneralSettingsViewModel::new(
+            MdmSettings::default(),
+            general_settings,
+            advanced_settings("https://eu.app.firezone.dev", "wss://eu.api.firezone.dev"),
+            None,
+        );
+
+        assert_eq!(view_model.control_plane, ControlPlane::CloudEu);
+        assert_eq!(view_model.custom_auth_url, "https://firezone.example.com/");
+        assert_eq!(view_model.custom_api_url, "wss://api.example.com/");
+    }
+
+    #[test]
+    fn signed_in_with_names_the_control_plane_it_signed_in_to() {
+        let view_model = GeneralSettingsViewModel::new(
+            MdmSettings::default(),
+            GeneralSettings::default(),
+            advanced_settings("https://app.firezone.dev", "wss://api.firezone.dev"),
+            Some(SignInSettings {
+                account_slug: None,
+                auth_url: Url::parse("https://eu.app.firezone.dev").unwrap(),
+                api_url: Url::parse("wss://eu.api.firezone.dev").unwrap(),
+            }),
+        );
+
+        let signed_in_with = view_model.signed_in_with.unwrap();
+        assert_eq!(signed_in_with.control_plane, ControlPlane::CloudEu);
+        assert_eq!(signed_in_with.account_slug, "");
+    }
+
+    fn view_model(
+        mdm_settings: MdmSettings,
+        advanced_settings: AdvancedSettings,
+    ) -> GeneralSettingsViewModel {
+        GeneralSettingsViewModel::new(
+            mdm_settings,
+            GeneralSettings::default(),
+            advanced_settings,
+            None,
+        )
+    }
+
+    fn advanced_settings(auth_url: &str, api_url: &str) -> AdvancedSettings {
+        AdvancedSettings {
+            auth_url: Url::parse(auth_url).unwrap(),
+            api_url: Url::parse(api_url).unwrap(),
+            log_filter: "info".to_owned(),
+            additional_host_candidates: Vec::default(),
+        }
+    }
 }

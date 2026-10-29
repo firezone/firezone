@@ -860,47 +860,34 @@ impl TunnelTest {
                 }
             }
             Transition::RestartClient { client_id, key } => {
-                let client = self.clients.get_mut(&client_id).unwrap();
-                let ref_client = &ref_state.clients[&client_id];
-
-                // Copy current state that will be preserved.
-                let ipv4 = client.inner().sut().tunnel_ip_config().unwrap().v4;
-                let ipv6 = client.inner().sut().tunnel_ip_config().unwrap().v6;
-                let system_dns = ref_client.inner().system_dns_resolvers();
-                let all_resources = ref_client.inner().resource_descriptions();
-                let internet_resource_state = ref_client.inner().internet_resource_active;
-
                 // Cleanly shut down the client and send what it sent on the way out.
-                let transmits =
-                    client.exec_mut(|c| c.restart(key, internet_resource_state, now, utc_now));
-                for transmit in transmits {
-                    buffered_transmits.push_from(transmit, client, now);
-                }
+                self.replace_client_tunnel(
+                    client_id,
+                    ref_state,
+                    portal,
+                    &mut buffered_transmits,
+                    |c, internet_resource_state| {
+                        c.restart(key, internet_resource_state, now, utc_now)
+                    },
+                );
                 for gateway in self.gateways.values_mut() {
                     gateway.exec_mut(|gateway| gateway.record_client_restart(client_id));
                 }
-
-                let client = self.clients.get_mut(&client_id).unwrap();
-                let sockets = client.link_sockets();
-                client.exec_mut(|c| {
-                    c.sut_mut().set_additional_host_candidates(sockets, now);
-
-                    // Apply to new instance.
-                    c.sut_mut().update_interface_config(Interface {
-                        ipv4,
-                        ipv6,
-                        upstream_dns: Vec::new(),
-                        upstream_do53: portal.upstream_do53().to_vec(),
-                        upstream_doh: portal.upstream_doh().to_vec(),
-                        search_domain: portal.search_domain(),
-                    });
-                    c.tunnel.inner_mut().update_system_resolvers(system_dns);
-                    c.sut_mut().set_resources(all_resources, now);
-
-                    c.update_relays(iter::empty(), self.relays.iter(), now);
-                });
             }
             Transition::UpdateDnsRecords { .. } => {}
+            Transition::CrashClient { client_id, key } => {
+                self.replace_client_tunnel(
+                    client_id,
+                    ref_state,
+                    portal,
+                    &mut buffered_transmits,
+                    |c, internet_resource_state| {
+                        c.crash(key, internet_resource_state, now, utc_now);
+
+                        Vec::new()
+                    },
+                );
+            }
         };
 
         self.advance(ref_state, portal, &mut buffered_transmits);
@@ -910,6 +897,52 @@ impl TunnelTest {
         }
 
         self
+    }
+
+    /// Replaces the tunnel of `client_id` through `restart` and configures the new one as the
+    /// portal would, sending what the old tunnel sent on the way out.
+    fn replace_client_tunnel(
+        &mut self,
+        client_id: ClientId,
+        ref_state: &ReferenceState,
+        portal: &StubPortal,
+        buffered_transmits: &mut BufferedTransmits,
+        restart: impl FnOnce(&mut SimClient, bool) -> Vec<Transmit>,
+    ) {
+        let now = self.flux_capacitor.now();
+        let client = self.clients.get_mut(&client_id).unwrap();
+        let ref_client = &ref_state.clients[&client_id];
+
+        // Copy current state that will be preserved.
+        let ipv4 = client.inner().sut().tunnel_ip_config().unwrap().v4;
+        let ipv6 = client.inner().sut().tunnel_ip_config().unwrap().v6;
+        let system_dns = ref_client.inner().system_dns_resolvers();
+        let all_resources = ref_client.inner().resource_descriptions();
+        let internet_resource_state = ref_client.inner().internet_resource_active;
+
+        let transmits = client.exec_mut(|c| restart(c, internet_resource_state));
+        for transmit in transmits {
+            buffered_transmits.push_from(transmit, client, now);
+        }
+
+        let sockets = client.link_sockets();
+        client.exec_mut(|c| {
+            c.sut_mut().set_additional_host_candidates(sockets, now);
+
+            // Apply to new instance.
+            c.sut_mut().update_interface_config(Interface {
+                ipv4,
+                ipv6,
+                upstream_dns: Vec::new(),
+                upstream_do53: portal.upstream_do53().to_vec(),
+                upstream_doh: portal.upstream_doh().to_vec(),
+                search_domain: portal.search_domain(),
+            });
+            c.tunnel.inner_mut().update_system_resolvers(system_dns);
+            c.sut_mut().set_resources(all_resources, now);
+
+            c.update_relays(iter::empty(), self.relays.iter(), now);
+        });
     }
 
     fn send_icmp_probe(
@@ -1310,6 +1343,7 @@ impl TunnelTest {
                     );
                     g.record_authorization(
                         src,
+                        client_key,
                         resource_id,
                         [client_tun.v4.into(), client_tun.v6.into()],
                     );
@@ -1680,7 +1714,9 @@ fn on_gateway_event(
             })
         }
         GatewayEvent::ResolveDns(r) => {
-            let client = r.client();
+            let client = clients.iter().find_map(|(id, client)| {
+                (client.inner().sut().public_key() == r.client_public_key()).then_some(*id)
+            });
             let domain = r.domain().clone();
             let proxy_ips = r.proxy_ips().to_vec();
             let resolved_ips = ref_state.gateways[&src]
@@ -1693,7 +1729,9 @@ fn on_gateway_event(
                 g.sut_mut()
                     .handle_domain_resolved(r, Ok(resolved_ips.clone()), now)
                     .unwrap();
-                g.record_dns_resolution(client, domain, proxy_ips, resolved_ips, now);
+                if let Some(client) = client {
+                    g.record_dns_resolution(client, domain, proxy_ips, resolved_ips, now);
+                }
             })
         }
         GatewayEvent::NoRelays { excluded_relay_ids } => {

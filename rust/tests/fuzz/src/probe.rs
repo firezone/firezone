@@ -57,6 +57,7 @@ pub(crate) struct IcmpFlow {
     pub(crate) identifier: Identifier,
     pub(crate) next_seq: Seq,
     pub(crate) route: Route,
+    pub(crate) last_round_trip: Instant,
 }
 
 #[derive(Debug, Clone)]
@@ -67,6 +68,7 @@ pub(crate) struct UdpFlow {
     pub(crate) sport: SPort,
     pub(crate) dport: DPort,
     pub(crate) route: Route,
+    pub(crate) last_round_trip: Instant,
 }
 
 #[derive(Debug, Clone)]
@@ -85,7 +87,6 @@ pub(crate) enum Route {
         resource: ResourceId,
         gateway: GatewayId,
     },
-    Gateway(GatewayId),
     Peer(ClientId),
 }
 
@@ -93,7 +94,6 @@ impl Route {
     pub(crate) fn remote(self) -> Remote {
         match self {
             Route::Resource { gateway, .. } => Remote::Gateway(gateway),
-            Route::Gateway(gateway) => Remote::Gateway(gateway),
             Route::Peer(client) => Remote::Client(client),
         }
     }

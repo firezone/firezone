@@ -4,7 +4,7 @@ mod nat_table;
 pub(crate) use crate::gateway::client_on_gateway::ClientOnGateway;
 
 use crate::authorization_rejections::AuthorizationRejections;
-use crate::gateway::client_on_gateway::TranslateOutboundResult;
+use crate::gateway::client_on_gateway::{ProxyIpAlreadyAssigned, TranslateOutboundResult};
 use crate::messages::gateway::{Client, ResourceDescription};
 use crate::messages::{IceCredentials, IngestToken, ResolveRequest};
 use crate::peer_store::PeerStore;
@@ -13,8 +13,8 @@ use crate::unix_ts::UnixTsClock;
 use crate::unroutable_packet::UnroutablePacket;
 use crate::{FailedToDecapsulate, GatewayEvent, IpConfig, p2p_control, packet_kind};
 use anyhow::{Context, ErrorExt, Result};
-use connlib_model::{ClientId, IceCandidate, RelayId, ResourceId};
-use dns_types::DomainName;
+use connlib_model::{ClientId, IceCandidate, PublicKey, RelayId, ResourceId};
+use dns_types::{DomainName, Query, Response, ResponseBuilder, ResponseCode};
 use fast_random_state::FastRandomState;
 use ip_packet::{FzP2pControlSlice, IpPacket};
 use secrecy::ExposeSecret as _;
@@ -27,6 +27,19 @@ use std::time::{Duration, Instant};
 use zeroize::Zeroizing;
 
 pub const TUN_DNS_PORT: u16 = 53535;
+
+pub struct SiteDnsQuery {
+    local: SocketAddr,
+    remote: SocketAddr,
+    message: Query,
+    transport: crate::dns::Transport,
+}
+
+impl SiteDnsQuery {
+    pub fn into_parts(self) -> (SocketAddr, SocketAddr, Query, crate::dns::Transport) {
+        (self.local, self.remote, self.message, self.transport)
+    }
+}
 
 /// A SANS-IO implementation of a gateway's functionality.
 ///
@@ -97,6 +110,30 @@ impl GatewayState {
 
     pub fn tunnel_ip_config(&self) -> Option<IpConfig> {
         self.tun_ip_config
+    }
+
+    pub fn handle_site_dns_query(
+        &self,
+        local: SocketAddr,
+        remote: SocketAddr,
+        message: Query,
+        transport: crate::dns::Transport,
+    ) -> Result<SiteDnsQuery, Response> {
+        let allowed = self
+            .peers
+            .peer_by_ip(remote.ip())
+            .is_some_and(|(_, peer)| peer.allows_site_dns_query(&message));
+
+        if !allowed {
+            return Err(ResponseBuilder::for_query(&message, ResponseCode::REFUSED).build());
+        }
+
+        Ok(SiteDnsQuery {
+            local,
+            remote,
+            message,
+            transport,
+        })
     }
 
     pub fn public_key(&self) -> sanstun::PublicKey {
@@ -197,10 +234,13 @@ impl GatewayState {
 
         flow_tracker::record_decrypted_packet(&packet);
 
-        let peer = self
-            .peers
-            .peer_by_id_mut(&cid)
-            .with_context(|| format!("No peer for connection {cid}"))?;
+        let Some(peer) = self.peers.peer_by_id_mut(&cid) else {
+            tracing::trace!(%cid, "No peer state for connection; closing connection");
+            drop(_guard);
+            self.cleanup_connection(&cid, now);
+
+            return Ok(None);
+        };
 
         flow_tracker::record_peer(cid, flow_tracker::Role::Responder);
 
@@ -322,6 +362,16 @@ impl GatewayState {
         now: Instant,
         flow_logs_ingest_token: IngestToken,
     ) {
+        if self
+            .peers
+            .peer_by_id(&client.id)
+            .is_some_and(|peer| peer.public_key() != client.public_key)
+        {
+            tracing::debug!("Client reconnected with a new key; clearing its previous state");
+
+            self.peers.remove(&client.id);
+        }
+
         self.node.upsert_connection(
             client.id,
             client.public_key.into(),
@@ -336,11 +386,7 @@ impl GatewayState {
         );
 
         let result = self.allow_access(
-            client.id,
-            IpConfig {
-                v4: client.ipv4,
-                v6: client.ipv6,
-            },
+            &client,
             flow_logs_ingest_token,
             expires_at,
             resource,
@@ -355,8 +401,7 @@ impl GatewayState {
 
     pub fn allow_access(
         &mut self,
-        client: ClientId,
-        client_tun: IpConfig,
+        client: &Client,
         flow_logs_ingest_token: IngestToken,
         expires_at: Option<Duration>,
         resource: ResourceDescription,
@@ -369,26 +414,40 @@ impl GatewayState {
         let expires_in = expires_at.map(|e| e.saturating_duration_since(now));
 
         tracing::info!(
-            cid = %client,
+            cid = %client.id,
             rid = %resource.id(),
             expires_in = expires_in.map(tracing::field::debug),
             "Allowing access to resource",
         );
 
-        let peer = self.peers.upsert(client, || {
-            ClientOnGateway::new(client, client_tun, gateway_tun)
+        let peer = self.peers.upsert(client.id, || {
+            let client_tun = IpConfig {
+                v4: client.ipv4,
+                v6: client.ipv6,
+            };
+
+            ClientOnGateway::new(client.id, client.public_key, client_tun, gateway_tun)
         });
 
         peer.add_resource(resource.clone(), expires_at, now);
         peer.set_ingest_token(resource.id(), flow_logs_ingest_token);
 
         if let Some(entry) = dns_resource_nat {
-            peer.setup_nat(
+            match peer.setup_nat(
                 entry.domain,
                 resource.id(),
                 BTreeSet::from_iter(entry.resolved_ips),
                 BTreeSet::from_iter(entry.proxy_ips),
-            )?;
+            ) {
+                Ok(()) => {}
+                Err(e) if e.any_is::<ProxyIpAlreadyAssigned>() => {
+                    tracing::debug!("Conflicting proxy assignment; closing connection: {e:#}");
+                    self.cleanup_connection(&client.id, now);
+
+                    return Err(e);
+                }
+                Err(e) => return Err(e),
+            }
         }
 
         Ok(())
@@ -427,29 +486,44 @@ impl GatewayState {
     ) -> Result<()> {
         use p2p_control::dns_resource_nat;
 
-        let nat_status = resolve_result
-            .and_then(|addresses| {
-                self.peers
-                    .peer_by_id_mut(&req.client)
-                    .context("Unknown peer")?
-                    .setup_nat(
-                        req.domain.clone(),
-                        req.resource,
-                        BTreeSet::from_iter(addresses),
-                        BTreeSet::from_iter(req.proxy_ips),
-                    )?;
+        let Some(client) = self.node.connection_id(req.client_public_key, now) else {
+            tracing::debug!("Ignoring DNS resolution for a disconnected Client");
 
-                Ok(dns_resource_nat::NatStatus::Active)
-            })
-            .unwrap_or_else(|e| {
+            return Ok(());
+        };
+
+        let result = resolve_result.and_then(|addresses| {
+            self.peers
+                .peer_by_id_mut(&client)
+                .context("Unknown peer")?
+                .setup_nat(
+                    req.domain.clone(),
+                    req.resource,
+                    BTreeSet::from_iter(addresses),
+                    BTreeSet::from_iter(req.proxy_ips),
+                )?;
+
+            Ok(())
+        });
+
+        let nat_status = match result {
+            Ok(()) => dns_resource_nat::NatStatus::Active,
+            Err(e) if e.any_is::<ProxyIpAlreadyAssigned>() => {
+                tracing::debug!("Conflicting proxy assignment; closing connection: {e:#}");
+                self.cleanup_connection(&client, now);
+
+                return Ok(());
+            }
+            Err(e) => {
                 tracing::warn!("Failed to setup DNS resource NAT: {e:#}");
 
                 dns_resource_nat::NatStatus::Inactive
-            });
+            }
+        };
 
         let packet = dns_resource_nat::domain_status(req.resource, req.domain, nat_status)?;
 
-        if let Some(transmit) = encrypt_packet(packet, req.client, &mut self.node, now)? {
+        if let Some(transmit) = encrypt_packet(packet, client, &mut self.node, now)? {
             self.buffered_transmits.push_back(transmit);
         }
 
@@ -471,12 +545,19 @@ impl GatewayState {
         self.flow_tracker.handle_timeout(now);
         self.authorization_rejections.handle_timeout(now);
 
-        self.peers.iter_mut().for_each(|p| {
-            p.handle_timeout(now);
-        });
-        let removed_peers = self.peers.extract_if(|_, p| p.is_empty());
+        let empty = self
+            .peers
+            .due_mut(now)
+            .filter_map(|(id, peer)| {
+                peer.handle_timeout(now);
 
-        for (id, _) in removed_peers {
+                peer.is_empty().then_some(id)
+            })
+            .collect::<Vec<_>>();
+        self.peers.reindex();
+
+        for id in empty {
+            self.peers.remove(&id);
             tracing::debug!(cid = %id, "Access to last resource for Client removed");
 
             self.node.close_connection(id, p2p_control::goodbye(), now);
@@ -675,7 +756,7 @@ fn handle_assigned_ips_event(
 
     buffered_events.push_back(GatewayEvent::ResolveDns(ResolveDnsRequest {
         domain: req.domain,
-        client: peer.id(),
+        client_public_key: peer.public_key().into(),
         resource: req.resource,
         proxy_ips: req.proxy_ips,
     }));
@@ -720,7 +801,7 @@ fn encapsulate(
 #[derive(Debug)]
 pub struct ResolveDnsRequest {
     domain: DomainName,
-    client: ClientId,
+    client_public_key: PublicKey,
     resource: ResourceId,
     proxy_ips: Vec<IpAddr>,
 }
@@ -730,8 +811,8 @@ impl ResolveDnsRequest {
         &self.domain
     }
 
-    pub fn client(&self) -> ClientId {
-        self.client
+    pub fn client_public_key(&self) -> PublicKey {
+        self.client_public_key
     }
 
     pub fn proxy_ips(&self) -> &[IpAddr] {

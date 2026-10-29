@@ -219,6 +219,20 @@ defmodule PortalAPI.MCPControllerTest do
       assert json_response(conn, 401)
     end
 
+    test "rejects a token once its admin is demoted", %{conn: conn, actor: actor} do
+      {_token, encoded, _refresh} =
+        Portal.OAuthFixtures.oauth_token_fixture(account: actor.account, actor: actor)
+
+      actor |> Ecto.Changeset.change(type: :account_user) |> Portal.Repo.update!()
+
+      conn =
+        conn
+        |> put_req_header("authorization", "Bearer " <> encoded)
+        |> rpc("server/discover")
+
+      assert json_response(conn, 401)
+    end
+
     test "answers GET with 405", %{conn: conn, actor: actor} do
       conn = conn |> authorize_mcp_conn(actor) |> get("/mcp")
 
@@ -1153,7 +1167,7 @@ defmodule PortalAPI.MCPControllerTest do
   test "auth provider tools return verified tenant and domain arrays", %{conn: conn, account: account, actor: actor} do
     tenant_ids = ["12345678-1234-1234-1234-123456789012", "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"]
     domains = ["primary.example", "secondary.example"]
-    entra = entra_provider_fixture(account: account, tenant_ids: tenant_ids)
+    entra = entra_provider_fixture(account: account, tenant_ids: tenant_ids, sign_in_tenant_id: hd(tenant_ids))
     google = google_provider_fixture(account: account, workspace_domains: domains)
     for {tool, provider, field, expected} <- [
       {"get_entra_auth_provider", entra, "tenant_ids", tenant_ids},
@@ -1162,7 +1176,10 @@ defmodule PortalAPI.MCPControllerTest do
       result = conn |> authorize_mcp_conn(actor) |> call_tool(tool, %{"id" => provider.id}) |> json_response(200)
       assert %{"result" => %{"isError" => false, "structuredContent" => %{"data" => data}}} = result
       assert data[field] == expected
-      if field == "tenant_ids", do: refute(Map.has_key?(data, "issuer"))
+      if field == "tenant_ids" do
+        refute Map.has_key?(data, "issuer")
+        assert data["sign_in_tenant_id"] == hd(tenant_ids)
+      end
     end
   end
 

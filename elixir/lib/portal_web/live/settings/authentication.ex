@@ -44,7 +44,8 @@ defmodule PortalWeb.Settings.Authentication do
     Userpass.AuthProvider => @common_fields,
     Google.AuthProvider => @common_fields ++ ~w[is_verified]a,
     GitHub.AuthProvider => @common_fields ++ ~w[is_verified email_verification_method]a,
-    Entra.AuthProvider => (@common_fields -- [:issuer]) ++ ~w[is_verified email_claim]a,
+    Entra.AuthProvider =>
+      (@common_fields -- [:issuer]) ++ ~w[is_verified email_claim sign_in_tenant_id]a,
     Okta.AuthProvider => @common_fields ++ ~w[okta_domain client_id client_secret is_verified]a,
     OIDC.AuthProvider =>
       @common_fields ++
@@ -214,7 +215,14 @@ defmodule PortalWeb.Settings.Authentication do
     if value in Enum.drop(values, 1) do
       fields = Map.put(verification_fields(previous), organizations_field(socket.assigns.type),
         Enum.reject(values, &(&1 == value)))
-      changeset = changeset(previous.data, provider_attrs(previous), socket, fields)
+      attrs = provider_attrs(previous)
+
+      attrs =
+        if attrs[:sign_in_tenant_id] == value,
+          do: Map.put(attrs, :sign_in_tenant_id, nil),
+          else: attrs
+
+      changeset = changeset(previous.data, attrs, socket, fields)
 
       {:noreply, socket |> clear_verification_state() |> assign(form: to_form(changeset), verification_error: nil)}
     else
@@ -1479,6 +1487,25 @@ defmodule PortalWeb.Settings.Authentication do
             />
             <p class="mt-1 text-xs text-subtle">
               The OIDC claim to use as the user's email address during sign-in.
+            </p>
+          </div>
+          <div :if={(get_field(@form.source, :tenant_ids) || []) != []}>
+            <label
+              for={@form[:sign_in_tenant_id].id}
+              class="block text-xs font-medium text-body mb-1.5"
+            >
+              Sign-in Tenant
+            </label>
+            <Form.input
+              field={@form[:sign_in_tenant_id]}
+              type="select"
+              prompt="Each user's home tenant"
+              options={get_field(@form.source, :tenant_ids)}
+            />
+            <p class="mt-1 text-xs text-subtle">
+              Users sign in through this tenant instead of their home tenant.
+              Select a tenant to allow B2B guest users of that tenant to sign in.
+              Guest users have an external UPN, so use the Email claim for them.
             </p>
           </div>
         </div>

@@ -55,6 +55,19 @@ pub struct ResolverQuery {
 }
 
 impl ResolverQuery {
+    pub(crate) fn new_gateway(query: tunnel_proto::SiteDnsQuery, started_at: Instant) -> Self {
+        let (local, remote, message, transport) = query.into_parts();
+
+        Self {
+            server: None,
+            local,
+            remote,
+            message,
+            transport,
+            started_at,
+        }
+    }
+
     pub(crate) fn new(query: dns::RecursiveQuery, started_at: Instant) -> Self {
         Self {
             server: Some(query.server),

@@ -157,6 +157,78 @@ checksum = "sha256:b7587b89d896e2acf1095cc9c30d1b3ed3e1b10519f5fe486de1de3250f70
 url = "https://github.com/aya-rs/bpf-linker/releases/download/v0.12.0/bpf-linker-x86_64-pc-windows-gnullvm.tar.zst"
 url_api = "https://api.github.com/repos/aya-rs/bpf-linker/releases/assets/638313025"
 
+[[tools."github:bencherdev/bencher"]]
+version = "0.6.13"
+backend = "github:bencherdev/bencher"
+
+[tools."github:bencherdev/bencher".options]
+asset_pattern = "bencher-*-linux-x86-64"
+
+[tools."github:bencherdev/bencher"."platforms.linux-x64"]
+checksum = "sha256:41b172864a1cd347f75a68688100688453b02f28e1d1b831b326931b895b4b3d"
+url = "https://github.com/bencherdev/bencher/releases/download/v0.6.13/bencher-v0.6.13-linux-x86-64"
+url_api = "https://api.github.com/repos/bencherdev/bencher/releases/assets/594741337"
+
+[[tools."github:bencherdev/bencher"]]
+version = "0.6.13"
+backend = "github:bencherdev/bencher"
+
+[tools."github:bencherdev/bencher".options]
+asset_pattern = "bencher-*-windows-arm-64.exe"
+
+[tools."github:bencherdev/bencher"."platforms.windows-arm64"]
+checksum = "sha256:1cf14d554ef5aba2065d1a6f41f0e9820ef02809b29ea3403b8f774bcbc74ea4"
+url = "https://github.com/bencherdev/bencher/releases/download/v0.6.13/bencher-v0.6.13-windows-arm-64.exe"
+url_api = "https://api.github.com/repos/bencherdev/bencher/releases/assets/594741329"
+
+[[tools."github:bencherdev/bencher"]]
+version = "0.6.13"
+backend = "github:bencherdev/bencher"
+
+[tools."github:bencherdev/bencher".options]
+asset_pattern = "bencher-*-macos-arm-64"
+
+[tools."github:bencherdev/bencher"."platforms.macos-arm64"]
+checksum = "sha256:24934e555bcf39eefcabaaeea8cd8d10479aa759402e54243753359bfbb83923"
+url = "https://github.com/bencherdev/bencher/releases/download/v0.6.13/bencher-v0.6.13-macos-arm-64"
+url_api = "https://api.github.com/repos/bencherdev/bencher/releases/assets/594741338"
+
+[[tools."github:bencherdev/bencher"]]
+version = "0.6.13"
+backend = "github:bencherdev/bencher"
+
+[tools."github:bencherdev/bencher".options]
+asset_pattern = "bencher-*-macos-x86-64"
+
+[tools."github:bencherdev/bencher"."platforms.macos-x64"]
+checksum = "sha256:24f34cca9c86d338c89e58445f8f72d4b8221e78620f3994c5e9436fd4b8d25a"
+url = "https://github.com/bencherdev/bencher/releases/download/v0.6.13/bencher-v0.6.13-macos-x86-64"
+url_api = "https://api.github.com/repos/bencherdev/bencher/releases/assets/594741330"
+
+[[tools."github:bencherdev/bencher"]]
+version = "0.6.13"
+backend = "github:bencherdev/bencher"
+
+[tools."github:bencherdev/bencher".options]
+asset_pattern = "bencher-*-linux-arm-64"
+
+[tools."github:bencherdev/bencher"."platforms.linux-arm64"]
+checksum = "sha256:eefe56680908ad1772ec19a7f7e35cc64039f27be05cc5891e5cb5eca24b824c"
+url = "https://github.com/bencherdev/bencher/releases/download/v0.6.13/bencher-v0.6.13-linux-arm-64"
+url_api = "https://api.github.com/repos/bencherdev/bencher/releases/assets/594741335"
+
+[[tools."github:bencherdev/bencher"]]
+version = "0.6.13"
+backend = "github:bencherdev/bencher"
+
+[tools."github:bencherdev/bencher".options]
+asset_pattern = "bencher-*-windows-x86-64.exe"
+
+[tools."github:bencherdev/bencher"."platforms.windows-x64"]
+checksum = "sha256:478da05ad5086433046065e0c5c5b151982b5128e2b65730c3ce9e20d4eb37e6"
+url = "https://github.com/bencherdev/bencher/releases/download/v0.6.13/bencher-v0.6.13-windows-x86-64.exe"
+url_api = "https://api.github.com/repos/bencherdev/bencher/releases/assets/594741326"
+
 [[tools."github:cargo-bins/cargo-binstall"]]
 version = "1.18.1"
 backend = "github:cargo-bins/cargo-binstall"
@@ -249,6 +321,30 @@ url_api = "https://api.github.com/repos/getsentry/sentry-cli/releases/assets/486
 checksum = "sha256:5c90cb0045cef3d3c36113c2aa21a7dcae11627d2d6e3098b679dea5b6681be3"
 url = "https://github.com/getsentry/sentry-cli/releases/download/3.6.2/sentry-cli-Windows-x86_64.exe"
 url_api = "https://api.github.com/repos/getsentry/sentry-cli/releases/assets/486164038"
+
+[[tools."github:gungraun/gungraun"]]
+version = "0.20.0"
+backend = "github:gungraun/gungraun"
+
+[tools."github:gungraun/gungraun"."platforms.linux-arm64"]
+checksum = "sha256:30ddf6737e486d1d3c11746eb603d8a228afeb1614dcf84ebe9ee1442f59d2f3"
+url = "https://github.com/gungraun/gungraun/releases/download/v0.20.0/gungraun-runner-v0.20.0-aarch64-unknown-linux-gnu.tar.gz"
+url_api = "https://api.github.com/repos/gungraun/gungraun/releases/assets/591083958"
+
+[tools."github:gungraun/gungraun"."platforms.linux-arm64-musl"]
+checksum = "sha256:30ddf6737e486d1d3c11746eb603d8a228afeb1614dcf84ebe9ee1442f59d2f3"
+url = "https://github.com/gungraun/gungraun/releases/download/v0.20.0/gungraun-runner-v0.20.0-aarch64-unknown-linux-gnu.tar.gz"
+url_api = "https://api.github.com/repos/gungraun/gungraun/releases/assets/591083958"
+
+[tools."github:gungraun/gungraun"."platforms.linux-x64"]
+checksum = "sha256:b3b39d4243e43597512a1f79016a1f38cbf90e5869c0c2535fe4097c69ed91aa"
+url = "https://github.com/gungraun/gungraun/releases/download/v0.20.0/gungraun-runner-v0.20.0-x86_64-unknown-linux-gnu.tar.gz"
+url_api = "https://api.github.com/repos/gungraun/gungraun/releases/assets/591083730"
+
+[tools."github:gungraun/gungraun"."platforms.linux-x64-musl"]
+checksum = "sha256:f6dcbd5af550c199b23ba258eb69d5444af8299c0c49309aa785599f60f9ec8b"
+url = "https://github.com/gungraun/gungraun/releases/download/v0.20.0/gungraun-runner-v0.20.0-x86_64-unknown-linux-musl.tar.gz"
+url_api = "https://api.github.com/repos/gungraun/gungraun/releases/assets/591084341"
 
 [[tools."github:taiki-e/cargo-llvm-cov"]]
 version = "0.6.21"

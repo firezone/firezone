@@ -575,6 +575,14 @@ impl Allocation {
             "Method of response should match the one from our request"
         );
 
+        // `BINDING` responses skip the message integrity check, so we must not take a nonce from them.
+        if message.method() != BINDING
+            && let Some(new_nonce) = message.get_attribute::<Nonce>()
+            && let Some(credentials) = &mut self.credentials
+        {
+            credentials.nonce = Some(new_nonce.clone());
+        }
+
         match message.method() {
             BINDING => {
                 // First, see if we need to update our host candidate.
@@ -2289,6 +2297,28 @@ mod tests {
                 .unwrap()
                 .get_attribute::<Nonce>()
                 .map(|n| n.value()),
+            Some("nonce2")
+        );
+    }
+
+    #[test]
+    fn uses_nonce_from_success_response_for_next_request() {
+        let mut now = Instant::now();
+        let mut allocation = Allocation::for_test_ip4(now).with_binding_response(PEER1, now);
+
+        let allocate = allocation.next_message().unwrap();
+        let mut response = allocate_response(&allocate, &[RELAY_ADDR_IP4]);
+        response.add_attribute(Nonce::new("nonce2".to_owned()).unwrap());
+        allocation.handle_test_input_ip4(response, now);
+
+        now += ALLOCATION_LIFETIME / 2;
+        allocation.handle_timeout(now);
+
+        let refresh = iter::from_fn(|| allocation.next_message())
+            .find(|m| m.method() == REFRESH)
+            .unwrap();
+        assert_eq!(
+            refresh.get_attribute::<Nonce>().map(|n| n.value()),
             Some("nonce2")
         );
     }

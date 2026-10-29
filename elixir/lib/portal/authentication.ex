@@ -755,6 +755,10 @@ defmodule Portal.Authentication do
       |> where([tokens: tokens], tokens.resource == ^Portal.OAuth.resource_uri())
       |> where([account: account], account.is_disabled == false)
       |> where([actor: actor], actor.is_disabled == false)
+      # Only an admin can grant an MCP client access. The grant is deleted when
+      # the admin is demoted, but that happens asynchronously, so a token is
+      # also refused here as soon as its actor is no longer an admin.
+      |> where([actor: actor], actor.type == :account_admin_user)
       |> update([tokens: tokens],
         set: [
           last_seen_at: ^now,

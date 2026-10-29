@@ -51,10 +51,16 @@ pub struct Input {
     pub device: Option<tun::PacketBatch>,
     pub network: Option<ReceivedDatagrams>,
     pub decrypted: Option<DecryptedIpPackets>,
-    pub tcp_dns_queries: Vec<l4_tcp_dns_server::Query>,
-    pub udp_dns_queries: Vec<l4_udp_dns_server::Query>,
+    pub dns_queries: Vec<DnsQuery>,
     pub dns_responses: Vec<dns::RecursiveResponse>,
     pub error: TunnelError,
+}
+
+pub struct DnsQuery {
+    pub local: SocketAddr,
+    pub remote: SocketAddr,
+    pub message: dns_types::Query,
+    pub transport: dns::Transport,
 }
 
 fn poll_to_option<T>(poll: Poll<T>) -> Option<T> {
@@ -99,8 +105,7 @@ impl<'a, 'cx> PollState<'a, 'cx> {
                 device: None,
                 network: None,
                 decrypted: None,
-                tcp_dns_queries: Vec::new(),
-                udp_dns_queries: Vec::new(),
+                dns_queries: Vec::new(),
                 dns_responses: Vec::new(),
                 error: TunnelError::default(),
             },
@@ -155,14 +160,24 @@ impl<'a, 'cx> PollState<'a, 'cx> {
         for server in self.io.udp_dns_server.values_mut() {
             if let Some(query) = poll_result_to_option(server.poll(self.cx), &mut self.input.error)
             {
-                self.input.udp_dns_queries.push(query);
+                self.input.dns_queries.push(DnsQuery {
+                    local: query.local,
+                    remote: query.remote,
+                    message: query.message,
+                    transport: dns::Transport::Udp,
+                });
             }
         }
 
         for server in self.io.tcp_dns_server.values_mut() {
             if let Some(query) = poll_result_to_option(server.poll(self.cx), &mut self.input.error)
             {
-                self.input.tcp_dns_queries.push(query);
+                self.input.dns_queries.push(DnsQuery {
+                    local: query.local,
+                    remote: query.remote,
+                    message: query.message,
+                    transport: dns::Transport::Tcp,
+                });
             }
         }
     }
@@ -179,8 +194,7 @@ impl<'a, 'cx> PollState<'a, 'cx> {
         if input.device.is_none()
             && input.network.is_none()
             && input.decrypted.is_none()
-            && input.tcp_dns_queries.is_empty()
-            && input.udp_dns_queries.is_empty()
+            && input.dns_queries.is_empty()
             && input.dns_responses.is_empty()
             && input.error.is_empty()
         {

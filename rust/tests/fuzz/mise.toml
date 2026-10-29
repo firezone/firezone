@@ -6,7 +6,7 @@ includes = ["mise-tasks"]
 binstall = false
 
 [tools]
-rust = { version = "nightly-2026-06-10", profile = "minimal" }
+rust = { version = "nightly-2026-06-10", profile = "minimal", components = ["llvm-tools"] }
 "cargo:cargo-afl" = { version = "0.18.2", os = ["linux"] }
 
 [env]

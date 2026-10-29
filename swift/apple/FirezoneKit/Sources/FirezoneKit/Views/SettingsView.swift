@@ -19,27 +19,15 @@ public struct SettingsView: View {
   private let store: Store
   private let configuration: Configuration
 
-  private enum ConfirmationAlertContinueAction: Int {
-    case none
-    case saveSettings
-    case saveAllSettingsAndDismiss
-
-    func performAction(on view: SettingsView) async throws {
-      switch self {
-      case .none:
-        break
-      case .saveSettings:
-        try await view.saveSettings()
-      case .saveAllSettingsAndDismiss:
-        try await view.saveAllSettingsAndDismiss()
-      }
-    }
+  private enum Field: Hashable {
+    case accountSlug
+    case authURL
+    case apiURL
+    case logFilter
   }
 
-  @State private var isShowingConfirmationAlert = false
-  @State private var confirmationAlertContinueAction: ConfirmationAlertContinueAction = .none
-
-  @State private var selectedTab: Tab
+  @FocusState private var focusedField: Field?
+  @State private var isConfirmingReset = false
 
   #if os(iOS)
     private struct LogArchive: Identifiable {
@@ -48,6 +36,12 @@ public struct SettingsView: View {
     }
 
     @State private var exportedLogArchive: LogArchive?
+    @State private var settingsContentHeight: CGFloat?
+  #endif
+
+  #if os(macOS)
+    private static let paneWidth: CGFloat = 500
+    @State private var deviceTrustContentHeight: CGFloat?
   #endif
 
   private struct PlaceholderText {
@@ -57,323 +51,268 @@ public struct SettingsView: View {
     static let accountSlug = "Account slug or ID (optional)"
   }
 
-  private struct FootnoteText {
-    static let forAdvanced = try? AttributedString(
-      markdown: """
-        **WARNING:** These settings are intended for internal debug purposes **only**. \
-        Changing these will disrupt access to your Firezone resources.
-        """
-    )
-  }
-
   /// The tabs of the settings screen.
   public enum Tab: Hashable {
-    case general
-    case advanced
+    case settings
     case deviceTrust
     case logs
+
+    var title: String {
+      switch self {
+      case .settings: return "Settings"
+      case .deviceTrust: return "Device Trust"
+      case .logs: return "Diagnostics"
+      }
+    }
+
+    #if os(macOS)
+      var systemImage: String {
+        switch self {
+        case .settings: return "gearshape"
+        case .deviceTrust: return "checkmark.shield"
+        case .logs: return "stethoscope"
+        }
+      }
+    #endif
   }
 
-  public init(store: Store, selectedTab: Tab = .general) {
+  public init(store: Store, selectedTab: Tab = .settings) {
     self.store = store
     self.configuration = store.configuration
-    _viewModel = StateObject(wrappedValue: SettingsViewModel(store: store))
-    _selectedTab = State(initialValue: selectedTab)
+    _viewModel = StateObject(
+      wrappedValue: SettingsViewModel(store: store, selectedTab: selectedTab))
   }
 
   public var body: some View {
+    sizedContent
+      .onChange(of: focusedField) { _ in commitTextFields() }
+      .onChange(of: viewModel.controlPlane) { _ in commit(.settings) }
+      .onChange(of: viewModel.connectOnStart) { _ in commit(.settings) }
+      .onChange(of: viewModel.startOnLogin) { _ in commit(.settings) }
+      .onDisappear {
+        commitTextFields()
+        viewModel.discardInvalidDrafts()
+      }
+  }
+
+  @ViewBuilder
+  private var sizedContent: some View {
+    #if os(iOS)
+      if #available(iOS 18, *), UIDevice.current.userInterfaceIdiom == .pad {
+        content
+          .frame(idealHeight: viewModel.selectedTab == .settings ? settingsContentHeight : nil)
+          .presentationSizing(
+            .form.fitted(horizontal: false, vertical: viewModel.selectedTab == .settings))
+      } else {
+        content
+      }
+    #else
+      content
+    #endif
+  }
+
+  @ViewBuilder
+  private var content: some View {
     #if os(iOS)
       NavigationView {
         ZStack {
           Color(UIColor.systemGroupedBackground)
             .ignoresSafeArea()
 
-          VStack {
-            TabView(selection: $selectedTab) {
-              generalTab
-                .tabItem {
-                  Image(systemName: "slider.horizontal.3")
-                  Text("General")
-                }
-                .tag(Tab.general)
-              advancedTab
-                .tabItem {
-                  Image(systemName: "gearshape.2")
-                  Text("Advanced")
-                }
-                .badge(viewModel.isValid() ? nil : "!")
-                .tag(Tab.advanced)
-              if store.deviceTrustCertificateSummary != nil {
-                deviceTrustTab
-                  .tabItem {
-                    Image(systemName: "rosette")
-                    Text("Device Trust")
-                  }
-                  .tag(Tab.deviceTrust)
+          TabView(selection: $viewModel.selectedTab) {
+            settingsTab
+              .tabItem {
+                Image(systemName: "slider.horizontal.3")
+                Text(Tab.settings.title)
               }
-              logsTab
+              .badge(viewModel.areURLsValid() ? nil : "!")
+              .tag(Tab.settings)
+            if store.deviceTrustCertificateSummary != nil {
+              deviceTrustTab
                 .tabItem {
-                  Image(systemName: "doc.text")
-                  Text("Diagnostic Logs")
+                  Image(systemName: "rosette")
+                  Text(Tab.deviceTrust.title)
                 }
-                .tag(Tab.logs)
+                .tag(Tab.deviceTrust)
             }
+            logsTab
+              .tabItem {
+                Image(systemName: "doc.text")
+                Text(Tab.logs.title)
+              }
+              .badge(viewModel.isLogFilterValid() ? nil : "!")
+              .tag(Tab.logs)
           }
-          .padding(.bottom, 10)
           .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
-              Button("Save") {
-                let action = ConfirmationAlertContinueAction.saveAllSettingsAndDismiss
-                if case .connected = store.vpnStatus {
-                  self.confirmationAlertContinueAction = action
-                  self.isShowingConfirmationAlert = true
-                } else {
-                  withErrorHandler { try await action.performAction(on: self) }
-                }
-              }
-              .disabled(viewModel.shouldDisableApplyButton)
-            }
-            ToolbarItem(placement: .navigationBarLeading) {
-              Button("Cancel") { dismiss() }
+            ToolbarItem(placement: .confirmationAction) {
+              Button("Done") { commit(.settings, .logs, thenDismiss: true) }
             }
           }
-          .navigationTitle("Settings")
+          .navigationTitle(viewModel.selectedTab.title)
           .navigationBarTitleDisplayMode(.inline)
-          .alert(
-            "Some settings may not have been applied",
-            isPresented: $isShowingConfirmationAlert,
-            presenting: confirmationAlertContinueAction,
-            actions: { confirmationAlertContinueAction in
-              Button("OK") {
-                withErrorHandler {
-                  try await confirmationAlertContinueAction.performAction(on: self)
-                }
-              }
-            },
-            message: { _ in
-              Text("Some settings require signing out and in again before they take effect.")
-            }
-          )
         }
       }
     #elseif os(macOS)
-      VStack {
-        TabView(selection: $selectedTab) {
-          generalTab
-            .tabItem {
-              Text("General")
-            }
-            .tag(Tab.general)
-          advancedTab
-            .tabItem {
-              Text("Advanced")
-            }
-            .tag(Tab.advanced)
-          if store.deviceTrustCertificateSummary != nil {
-            deviceTrustTab
-              .tabItem {
-                Text("Device Trust")
-              }
-              .tag(Tab.deviceTrust)
-          }
-          logsTab
-            .tabItem {
-              Text("Diagnostic Logs")
-            }
-            .tag(Tab.logs)
+      TabView(selection: $viewModel.selectedTab) {
+        settingsTab
+          .tabItem { Label(Tab.settings.title, systemImage: Tab.settings.systemImage) }
+          .tag(Tab.settings)
+        if store.deviceTrustCertificateSummary != nil {
+          deviceTrustTab
+            .tabItem { Label(Tab.deviceTrust.title, systemImage: Tab.deviceTrust.systemImage) }
+            .tag(Tab.deviceTrust)
         }
-        .padding(20)
-        Spacer()
-        HStack(spacing: 5) {
-          BuildLabel()
-          Spacer()
-          Button(
-            "Reset to Defaults",
-            action: {
-              viewModel.reset()
-            }
-          )
-          .disabled(viewModel.shouldDisableResetButton)
-
-          Button(
-            "Apply",
-            action: {
-              let action = ConfirmationAlertContinueAction.saveSettings
-              if [.connected, .connecting, .reasserting].contains(store.vpnStatus) {
-                self.confirmationAlertContinueAction = action
-                self.isShowingConfirmationAlert = true
-              } else {
-                withErrorHandler { try await action.performAction(on: self) }
-              }
-            }
-          )
-          .disabled(viewModel.shouldDisableApplyButton)
-
-        }
-        .padding([.bottom], 20)
-        .padding([.leading, .trailing], 40)
-        Spacer()
+        logsTab
+          .tabItem { Label(Tab.logs.title, systemImage: Tab.logs.systemImage) }
+          .tag(Tab.logs)
       }
-      .alert(
-        "Some settings may not have been applied",
-        isPresented: $isShowingConfirmationAlert,
-        presenting: confirmationAlertContinueAction,
-        actions: { confirmationAlertContinueAction in
-          Button("OK", role: .destructive) {
-            withErrorHandler { try await confirmationAlertContinueAction.performAction(on: self) }
-          }
-        },
-        message: { _ in
-          Text("Some settings require signing out and in again before they take effect.")
-        }
-      )
     #else
       #error("Unsupported platform")
     #endif
   }
 
-  private var generalTab: some View {
-    #if os(macOS)
-      VStack {
-        Spacer()
-        HStack {
-          Spacer()
-          Form {
-            HStack {
-              Text("Account Slug")
-                .frame(width: 150, alignment: .trailing)
-              TextField(
-                "",
-                text: $viewModel.accountSlug,
-                prompt: Text(PlaceholderText.accountSlug)
-              )
-              .disabled(configuration.isAccountSlugForced)
-              .frame(width: 250)
-            }
-            .padding(.bottom, 10)
-
-            Toggle(isOn: $viewModel.connectOnStart) {
-              Text("Automatically connect when Firezone is launched")
-            }
-            .toggleStyle(.checkbox)
-            .disabled(configuration.isConnectOnStartForced)
-
-            Toggle(isOn: $viewModel.startOnLogin) {
-              Text("Start Firezone when you sign into your Mac")
-            }
-            .toggleStyle(.checkbox)
-            .disabled(configuration.isStartOnLoginForced)
-          }
-          .padding(10)
-          Spacer()
-        }
-        Spacer()
-      }
-    #elseif os(iOS)
-      VStack {
-        Form {
-          Section(
-            content: {
-              VStack(alignment: .leading, spacing: 2) {
-                Text("Account Slug")
-                  .foregroundStyle(.secondary)
-                  .font(.caption)
-                TextField(
-                  PlaceholderText.accountSlug,
-                  text: $viewModel.accountSlug
-                )
-                .autocorrectionDisabled()
-                .textInputAutocapitalization(.never)
-                .submitLabel(.done)
-                .disabled(configuration.isAccountSlugForced)
-                .padding(.bottom, 10)
-
-                Spacer()
-
-                Toggle(isOn: $viewModel.connectOnStart) {
-                  Text("Automatically connect when Firezone is launched")
-                }
-                .toggleStyle(.switch)
-                .disabled(configuration.isConnectOnStartForced)
-              }
-            },
-            header: { Text("General Settings") },
-          )
-        }
-      }
-    #endif
+  private var controlPlaneSelection: Binding<ControlPlane> {
+    Binding(
+      get: { viewModel.controlPlane },
+      set: { viewModel.selectControlPlane($0) }
+    )
   }
 
-  private var advancedTab: some View {
+  private var settingsTab: some View {
     #if os(macOS)
-      ScrollView {
-        VStack(spacing: 24) {
-          // Note
-          HStack {
-            Spacer()
-            Text(FootnoteText.forAdvanced ?? "")
-              .foregroundStyle(.secondary)
-              .frame(width: 400, alignment: .trailing)
-            Spacer()
+      Form {
+        Section {
+          TextField(
+            text: $viewModel.accountSlug,
+            prompt: Text(PlaceholderText.accountSlug)
+          ) {
+            managedLabel("Account Slug", isManaged: configuration.isAccountSlugForced)
           }
+          .focused($focusedField, equals: .accountSlug)
+          .onSubmit { commit(.settings) }
+          .disabled(configuration.isAccountSlugForced)
 
-          // Text fields
-          HStack {
-            Spacer()
-            Form {
-              // Auth Base URL
-              HStack {
-                Text("Auth Base URL")
-                  .frame(width: 150, alignment: .trailing)
-                TextField(
-                  "",
-                  text: $viewModel.authURL,
-                  prompt: Text(PlaceholderText.authURL)
-                )
-                .disabled(configuration.isAuthURLForced)
-                .frame(width: 250)
-              }
-
-              // API URL
-              HStack {
-                Text("API URL")
-                  .frame(width: 150, alignment: .trailing)
-                TextField(
-                  "",
-                  text: $viewModel.apiURL,
-                  prompt: Text(PlaceholderText.apiURL)
-                )
-                .disabled(configuration.isApiURLForced)
-                .frame(width: 250)
-              }
-
-              // Log Filter
-              HStack {
-                Text("Log Filter")
-                  .frame(width: 150, alignment: .trailing)
-                TextField(
-                  "",
-                  text: $viewModel.logFilter,
-                  prompt: Text(PlaceholderText.logFilter)
-                )
-                .disabled(configuration.isLogFilterForced)
-                .frame(width: 250)
-              }
+          Picker(selection: controlPlaneSelection) {
+            ForEach(ControlPlane.allCases) { controlPlane in
+              Text(controlPlane.title).tag(controlPlane)
             }
-            .frame(width: 500)
-            Spacer()
+          } label: {
+            managedLabel(ControlPlane.pickerTitle, isManaged: viewModel.isControlPlaneForced)
+          }
+          .disabled(viewModel.isControlPlaneForced)
+
+          if viewModel.controlPlane == .custom {
+            TextField(
+              text: $viewModel.authURL,
+              prompt: Text(PlaceholderText.authURL)
+            ) {
+              managedLabel("Auth URL", isManaged: configuration.isAuthURLForced)
+            }
+            .focused($focusedField, equals: .authURL)
+            .onSubmit { commit(.settings) }
+            .disabled(configuration.isAuthURLForced)
+            errorText(viewModel.authURLError)
+
+            TextField(
+              text: $viewModel.apiURL,
+              prompt: Text(PlaceholderText.apiURL)
+            ) {
+              managedLabel("API URL", isManaged: configuration.isApiURLForced)
+            }
+            .focused($focusedField, equals: .apiURL)
+            .onSubmit { commit(.settings) }
+            .disabled(configuration.isApiURLForced)
+            errorText(viewModel.apiURLError)
+          }
+        } header: {
+          Text("Sign-in")
+        } footer: {
+          signInFooter
+        }
+
+        Section {
+          Toggle(isOn: $viewModel.connectOnStart) {
+            managedLabel(
+              "Automatically connect when Firezone is launched",
+              isManaged: configuration.isConnectOnStartForced)
+          }
+          .toggleStyle(.switch)
+          .disabled(configuration.isConnectOnStartForced)
+
+          Toggle(isOn: $viewModel.startOnLogin) {
+            managedLabel(
+              "Start Firezone when you sign into your Mac",
+              isManaged: configuration.isStartOnLoginForced)
+          }
+          .toggleStyle(.switch)
+          .disabled(configuration.isStartOnLoginForced)
+        } header: {
+          Text("Startup")
+        } footer: {
+          VStack(alignment: .leading, spacing: 4) {
+            managedNote(
+              configuration.isAccountSlugForced || viewModel.isControlPlaneForced
+                || configuration.isConnectOnStartForced || configuration.isStartOnLoginForced)
+            paneFooter
           }
         }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical)
       }
+      .formStyle(.grouped)
+      .scrollDisabled(true)
+      .fixedSize(horizontal: false, vertical: true)
+      .frame(width: Self.paneWidth)
     #elseif os(iOS)
       VStack {
         Form {
-          Section(
-            content: {
+          Section {
+            VStack(alignment: .leading, spacing: 2) {
+              managedLabel("Account Slug", isManaged: configuration.isAccountSlugForced)
+                .foregroundStyle(.secondary)
+                .font(.caption)
+              TextField(
+                PlaceholderText.accountSlug,
+                text: $viewModel.accountSlug
+              )
+              .autocorrectionDisabled()
+              .textInputAutocapitalization(.never)
+              .submitLabel(.done)
+              .focused($focusedField, equals: .accountSlug)
+              .onSubmit { commit(.settings) }
+              .disabled(configuration.isAccountSlugForced)
+            }
+            .background {
+              if #available(iOS 18, *), UIDevice.current.userInterfaceIdiom == .pad {
+                SettingsFormSizeReader(height: $settingsContentHeight)
+              }
+            }
+
+            // A menu rather than a form picker, so the choice sits under its caption like
+            // the other fields instead of being pushed to a second, indented line.
+            VStack(alignment: .leading, spacing: 2) {
+              managedLabel(ControlPlane.pickerTitle, isManaged: viewModel.isControlPlaneForced)
+                .foregroundStyle(.secondary)
+                .font(.caption)
+              Menu {
+                Picker(ControlPlane.pickerTitle, selection: controlPlaneSelection) {
+                  ForEach(ControlPlane.allCases) { controlPlane in
+                    Text(controlPlane.title).tag(controlPlane)
+                  }
+                }
+              } label: {
+                HStack(spacing: 4) {
+                  Text(viewModel.controlPlane.title)
+                  Image(systemName: "chevron.up.chevron.down")
+                    .font(.footnote)
+                }
+              }
+              .accessibilityLabel(ControlPlane.pickerTitle)
+              .accessibilityValue(viewModel.controlPlane.title)
+              .disabled(viewModel.isControlPlaneForced)
+            }
+
+            if viewModel.controlPlane == .custom {
               VStack(alignment: .leading, spacing: 2) {
-                Text("Auth Base URL")
+                managedLabel("Auth URL", isManaged: configuration.isAuthURLForced)
                   .foregroundStyle(.secondary)
                   .font(.caption)
                 TextField(
@@ -383,10 +322,13 @@ public struct SettingsView: View {
                 .autocorrectionDisabled()
                 .textInputAutocapitalization(.never)
                 .submitLabel(.done)
+                .focused($focusedField, equals: .authURL)
+                .onSubmit { commit(.settings) }
                 .disabled(configuration.isAuthURLForced)
+                errorText(viewModel.authURLError)
               }
               VStack(alignment: .leading, spacing: 2) {
-                Text("API URL")
+                managedLabel("API URL", isManaged: configuration.isApiURLForced)
                   .foregroundStyle(.secondary)
                   .font(.caption)
                 TextField(
@@ -396,44 +338,41 @@ public struct SettingsView: View {
                 .autocorrectionDisabled()
                 .textInputAutocapitalization(.never)
                 .submitLabel(.done)
+                .focused($focusedField, equals: .apiURL)
+                .onSubmit { commit(.settings) }
                 .disabled(configuration.isApiURLForced)
+                errorText(viewModel.apiURLError)
               }
-              VStack(alignment: .leading, spacing: 2) {
-                Text("Log Filter")
-                  .foregroundStyle(.secondary)
-                  .font(.caption)
-                TextField(
-                  PlaceholderText.logFilter,
-                  text: $viewModel.logFilter
-                )
-                .autocorrectionDisabled()
-                .textInputAutocapitalization(.never)
-                .submitLabel(.done)
-                .disabled(configuration.isLogFilterForced)
-              }
-              HStack {
-                Spacer()
-                Button(
-                  "Reset to Defaults",
-                  action: {
-                    viewModel.reset()
-                  }
-                )
-                .disabled(viewModel.shouldDisableResetButton)
-                Spacer()
-              }
-            },
-            header: { Text("Advanced Settings") },
-            footer: { Text(FootnoteText.forAdvanced ?? "") }
-          )
+            }
+          } header: {
+            Text("Sign-in")
+          } footer: {
+            signInFooter
+          }
+          Section {
+            Toggle(isOn: $viewModel.connectOnStart) {
+              managedLabel(
+                "Automatically connect when Firezone is launched",
+                isManaged: configuration.isConnectOnStartForced)
+            }
+            .toggleStyle(.switch)
+            .disabled(configuration.isConnectOnStartForced)
+          } header: {
+            Text("Startup")
+          } footer: {
+            managedNote(
+              configuration.isAccountSlugForced || viewModel.isControlPlaneForced
+                || configuration.isConnectOnStartForced)
+          }
+          Section {
+            resetButton
+              .frame(maxWidth: .infinity)
+          } footer: {
+            Color.clear
+              .frame(height: 0)
+              .padding(.bottom)
+          }
         }
-        Spacer()
-        HStack {
-          BuildLabel()
-          Spacer()
-        }
-        .padding([.leading, .bottom], 20)
-        .background(Color(uiColor: .secondarySystemBackground))
       }
       .background(Color(uiColor: .secondarySystemBackground))
     #endif
@@ -443,96 +382,135 @@ public struct SettingsView: View {
     #if os(iOS)
       VStack {
         Form {
-          Section(header: Text("Logs")) {
-            LogDirectorySizeView(sizeText: viewModel.logDirectorySizeText)
-              .onAppear {
-                viewModel.refreshLogDirectorySize()
-              }
-              .onDisappear {
-                viewModel.cancelLogDirectorySizeRefresh()
-              }
-            HStack {
-              Spacer()
-              ButtonWithProgress(
-                systemImageName: "trash",
-                title: "Clear Log Directory",
-                isProcessing: viewModel.isClearingLogs,
-                action: {
-                  viewModel.clearLogs()
-                }
-              )
-              Spacer()
-            }
-          }
           Section {
-            HStack {
-              Spacer()
-              ButtonWithProgress(
-                systemImageName: "arrow.up.doc",
-                title: "Export Logs",
-                isProcessing: viewModel.isExportingLogs,
-                action: {
-                  viewModel.isExportingLogs = true
-                  Task {
-                    do {
-                      let archiveURL = try await store.exportLogs()
-                      self.exportedLogArchive = LogArchive(url: archiveURL)
-                    } catch {
-                      Log.error(error)
-                      viewModel.isExportingLogs = false
-                    }
+            VStack(alignment: .leading, spacing: 2) {
+              managedLabel("Log Filter", isManaged: configuration.isLogFilterForced)
+                .foregroundStyle(.secondary)
+                .font(.caption)
+              TextField(
+                PlaceholderText.logFilter,
+                text: $viewModel.logFilter
+              )
+              .autocorrectionDisabled()
+              .textInputAutocapitalization(.never)
+              .submitLabel(.done)
+              .focused($focusedField, equals: .logFilter)
+              .onSubmit { commit(.logs) }
+              .disabled(configuration.isLogFilterForced)
+              errorText(viewModel.logFilterError)
+            }
+            LogFilesView(
+              sizeText: viewModel.logDirectorySizeText,
+              isExporting: viewModel.isExportingLogs,
+              isClearing: viewModel.isClearingLogs,
+              export: {
+                viewModel.isExportingLogs = true
+                Task {
+                  do {
+                    let archiveURL = try await store.exportLogs()
+                    self.exportedLogArchive = LogArchive(url: archiveURL)
+                  } catch {
+                    Log.error(error)
+                    viewModel.isExportingLogs = false
                   }
                 }
-              )
-              .sheet(
-                item: $exportedLogArchive,
-                onDismiss: {
-                  viewModel.isExportingLogs = false
-                },
-                content: { archive in
-                  ShareSheetView(
-                    localFileURL: archive.url,
-                    completionHandler: {
-                      self.exportedLogArchive = nil
-                    }
-                  )
-                }
-              )
-              Spacer()
-            }
-          }
-        }
-      }
-    #elseif os(macOS)
-      VStack {
-        VStack(alignment: .leading, spacing: 10) {
-          LogDirectorySizeView(sizeText: viewModel.logDirectorySizeText)
+              },
+              clear: {
+                viewModel.clearLogs()
+              }
+            )
             .onAppear {
               viewModel.refreshLogDirectorySize()
             }
             .onDisappear {
               viewModel.cancelLogDirectorySizeRefresh()
             }
-          HStack(spacing: 30) {
-            ButtonWithProgress(
-              systemImageName: "trash",
-              title: "Clear Log Directory",
-              isProcessing: viewModel.isClearingLogs,
-              action: {
-                viewModel.clearLogs()
+            .sheet(
+              item: $exportedLogArchive,
+              onDismiss: {
+                viewModel.isExportingLogs = false
+              },
+              content: { archive in
+                ShareSheetView(
+                  localFileURL: archive.url,
+                  completionHandler: {
+                    self.exportedLogArchive = nil
+                  }
+                )
               }
             )
-            ButtonWithProgress(
-              systemImageName: "arrow.up.doc",
-              title: "Export Logs",
-              isProcessing: viewModel.isExportingLogs,
-              action: {
-                self.exportLogsWithSavePanelOnMac()
+          } header: {
+            Text("Logs")
+          } footer: {
+            managedNote(configuration.isLogFilterForced)
+          }
+          Section("About") {
+            HStack {
+              Text("Version")
+                .foregroundStyle(.secondary)
+              Spacer()
+              if let shortGitSha = BundleHelper.shortGitSha,
+                let commitURL = BundleHelper.commitURL
+              {
+                HStack(spacing: 0) {
+                  Text("\(BundleHelper.version) (")
+                  Link(shortGitSha, destination: commitURL)
+                  Text(")")
+                }
+              } else {
+                Text(BundleHelper.version)
               }
-            )
+            }
+            .contextMenu {
+              Button("Copy") { UIPasteboard.general.string = BundleHelper.versionDescription }
+            }
           }
         }
       }
+    #elseif os(macOS)
+      Form {
+        Section {
+          TextField(
+            text: $viewModel.logFilter,
+            prompt: Text(PlaceholderText.logFilter)
+          ) {
+            managedLabel("Log Filter", isManaged: configuration.isLogFilterForced)
+          }
+          .focused($focusedField, equals: .logFilter)
+          .onSubmit { commit(.logs) }
+          .disabled(configuration.isLogFilterForced)
+          errorText(viewModel.logFilterError)
+
+          LogFilesView(
+            sizeText: viewModel.logDirectorySizeText,
+            isExporting: viewModel.isExportingLogs,
+            isClearing: viewModel.isClearingLogs,
+            export: {
+              self.exportLogsWithSavePanelOnMac()
+            },
+            clear: {
+              viewModel.clearLogs()
+            }
+          )
+          .onAppear {
+            viewModel.refreshLogDirectorySize()
+          }
+          .onDisappear {
+            viewModel.cancelLogDirectorySizeRefresh()
+          }
+        } header: {
+          Text("Logs")
+        } footer: {
+          VStack(alignment: .leading, spacing: 4) {
+            managedNote(configuration.isLogFilterForced)
+            paneFooter
+          }
+        }
+      }
+      .formStyle(.grouped)
+      .scrollDisabled(true)
+      .fixedSize(horizontal: false, vertical: true)
+      .frame(width: Self.paneWidth)
     #else
       #error("Unsupported platform")
     #endif
@@ -541,17 +519,28 @@ public struct SettingsView: View {
   @ViewBuilder
   private var deviceTrustTab: some View {
     #if os(macOS)
-      ScrollView {
-        HStack {
-          Spacer()
-          if let summary = store.deviceTrustCertificateSummary {
-            DeviceTrustSettingsView(summary: summary)
-              .frame(maxWidth: 600)
-          }
-          Spacer()
+      if let summary = store.deviceTrustCertificateSummary {
+        ScrollView {
+          DeviceTrustSettingsView(summary: summary)
+            .padding()
+            .background {
+              GeometryReader { geometry in
+                Color.clear
+                  .task(id: geometry.size.height) {
+                    let window = NSApp.keyWindow ?? NSApp.mainWindow
+                    let chromeHeight =
+                      window.map {
+                        $0.frame.height - $0.contentLayoutRect.height
+                      } ?? 0
+                    let screenHeight =
+                      window?.screen?.visibleFrame.height ?? geometry.size.height + chromeHeight
+                    deviceTrustContentHeight = min(
+                      geometry.size.height, screenHeight - chromeHeight)
+                  }
+              }
+            }
         }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical)
+        .frame(width: Self.paneWidth, height: deviceTrustContentHeight)
       }
     #elseif os(iOS)
       if let summary = store.deviceTrustCertificateSummary {
@@ -562,12 +551,89 @@ public struct SettingsView: View {
     #endif
   }
 
-  private func saveAllSettingsAndDismiss() async throws {
-    try await saveSettings()
-    dismiss()
+  @ViewBuilder
+  private func errorText(_ error: String?) -> some View {
+    if let error {
+      Text(error)
+        .font(.caption)
+        .foregroundStyle(.red)
+    }
+  }
+
+  private var resetButton: some View {
+    Button("Reset to Defaults") { isConfirmingReset = true }
+      .disabled(viewModel.shouldDisableResetButton)
+      .alert("Reset settings to defaults?", isPresented: $isConfirmingReset) {
+        Button("Reset", role: .destructive) {
+          viewModel.reset()
+          commit(viewModel.selectedTab)
+        }
+        Button("Cancel", role: .cancel) {}
+      }
+  }
+
+  private func managedLabel(_ title: String, isManaged: Bool) -> some View {
+    HStack(alignment: .firstTextBaseline, spacing: 4) {
+      Text(LocalizedStringKey(title))
+        .accessibilityHint(isManaged ? "Managed by your organization." : "")
+      if isManaged {
+        Image(systemName: "lock.fill")
+          .font(.caption)
+          .foregroundStyle(.secondary)
+          .accessibilityHidden(true)
+      }
+    }
+  }
+
+  @ViewBuilder
+  private func managedNote(_ isManaged: Bool) -> some View {
+    if isManaged {
+      HStack(alignment: .firstTextBaseline, spacing: 4) {
+        Image(systemName: "lock.fill")
+          .font(.caption)
+          .accessibilityHidden(true)
+        Text("Some settings are managed by your organization.")
+          .multilineTextAlignment(.leading)
+      }
+      .frame(maxWidth: .infinity, alignment: .leading)
+      .foregroundStyle(Color.secondary)
+    }
+  }
+
+  @ViewBuilder
+  private var signInFooter: some View {
+    if viewModel.showsSignInChangeNote {
+      Text("Sign out and sign in again after changing the account slug or control plane.")
+        .foregroundStyle(.secondary)
+    }
+  }
+
+  /// Saves the settings of `tabs`.
+  private func commit(_ tabs: Tab..., thenDismiss: Bool = false) {
+    // Read now: the commit from `onDisappear` runs once the view is gone.
+    let viewModel = viewModel
+
+    withErrorHandler {
+      for tab in tabs {
+        try await viewModel.save(tab)
+      }
+
+      if thenDismiss { dismiss() }
+    }
+  }
+
+  private func commitTextFields() {
+    commit(.settings, .logs)
   }
 
   #if os(macOS)
+    private var paneFooter: some View {
+      HStack {
+        Spacer()
+        resetButton
+      }
+    }
+
     private func exportLogsWithSavePanelOnMac() {
       viewModel.isExportingLogs = true
 
@@ -576,11 +642,7 @@ public struct SettingsView: View {
       savePanel.nameFieldLabel = "Save log archive to:"
       savePanel.nameFieldStringValue = viewModel.logArchiveFileName()
 
-      guard
-        let window = NSApp.windows.first(where: {
-          $0.identifier?.rawValue.hasPrefix("firezone-settings") ?? false
-        })
-      else {
+      guard let window = NSApp.keyWindow else {
         viewModel.isExportingLogs = false
         Log.log("Settings window not found. Can't show save panel.")
         return
@@ -620,10 +682,6 @@ public struct SettingsView: View {
     }
   #endif
 
-  private func saveSettings() async throws {
-    try await viewModel.save()
-  }
-
   private func withErrorHandler(action: @escaping () async throws -> Void) {
     Task {
       do {
@@ -647,59 +705,116 @@ struct ButtonWithProgress: View {
   let action: () -> Void
 
   var body: some View {
-
-    VStack {
-      Button(action: action) {
-        Label(
-          title: { Text(title) },
-          icon: {
-            if isProcessing {
-              ProgressView().controlSize(.small)
-                .frame(maxWidth: 12, maxHeight: 12)
-            } else {
-              Image(systemName: systemImageName)
-                .frame(maxWidth: 12, maxHeight: 12)
-            }
-          }
-        )
-        .labelStyle(.titleAndIcon)
+    Button(action: action) {
+      if isProcessing {
+        ProgressView().controlSize(.small)
+          .frame(width: 16, height: 16)
+      } else {
+        Image(systemName: systemImageName)
+          .frame(width: 16, height: 16)
       }
-      .disabled(isProcessing)
     }
-    .frame(minHeight: 30)
+    #if os(macOS)
+      .buttonStyle(HoverHighlightButtonStyle())
+    #else
+      // Inside a Form row, any other style makes a tap anywhere on the row fire every button in it.
+      .buttonStyle(.borderless)
+      .hoverEffect(.highlight)
+    #endif
+    .disabled(isProcessing)
+    .accessibilityLabel(title)
+    .help(title)
   }
 }
 
-struct LogDirectorySizeView: View {
+#if os(macOS)
+  /// An icon button that shows a rounded highlight under the pointer, like the accessory
+  /// buttons in System Settings.
+  private struct HoverHighlightButtonStyle: ButtonStyle {
+    func makeBody(configuration: ButtonStyleConfiguration) -> some View {
+      HoverHighlightButton(configuration: configuration)
+    }
+  }
+
+  private struct HoverHighlightButton: View {
+    let configuration: ButtonStyleConfiguration
+
+    @Environment(\.isEnabled) private var isEnabled
+    @State private var isHovered = false
+
+    var body: some View {
+      configuration.label
+        .padding(4)
+        .background(
+          RoundedRectangle(cornerRadius: 5)
+            .fill(Color.primary.opacity(highlightOpacity))
+        )
+        .contentShape(Rectangle())
+        .onHover { isHovered = $0 }
+    }
+
+    private var highlightOpacity: Double {
+      guard isEnabled else { return 0 }
+
+      if configuration.isPressed { return 0.15 }
+
+      return isHovered ? 0.08 : 0
+    }
+  }
+#endif
+
+struct LogFilesView: View {
   /// nil while the size is being computed.
   let sizeText: String?
+  let isExporting: Bool
+  let isClearing: Bool
+  let export: () -> Void
+  let clear: () -> Void
+
+  @State private var isConfirmingClear = false
 
   var body: some View {
-    HStack(spacing: 10) {
-      #if os(macOS)
-        Label(
-          title: { Text("Log directory size:") },
-          icon: {}
-        )
-      #elseif os(iOS)
-        Label(
-          title: { Text("Log directory size:") },
-          icon: {}
-        )
-        .foregroundColor(.secondary)
+    #if os(macOS)
+      LabeledContent("Log Files") {
+        controls
+      }
+    #elseif os(iOS)
+      HStack {
+        Text("Log Files")
+          .foregroundStyle(.secondary)
         Spacer()
-      #endif
-      Label(
-        title: {
-          Text(sizeText ?? "")
-        },
-        icon: {
-          if sizeText == nil {
-            ProgressView().controlSize(.small)
-              .frame(maxWidth: 12, maxHeight: 12)
-          }
-        }
+        controls
+      }
+    #endif
+  }
+
+  private var controls: some View {
+    HStack(spacing: 12) {
+      if let sizeText {
+        Text(sizeText)
+          .foregroundStyle(.secondary)
+      } else {
+        ProgressView().controlSize(.small)
+          .frame(width: 16, height: 16)
+      }
+      ButtonWithProgress(
+        systemImageName: "arrow.up.doc",
+        title: "Export Logs",
+        isProcessing: isExporting,
+        action: export
       )
+      ButtonWithProgress(
+        systemImageName: "trash",
+        title: "Clear Log Directory",
+        isProcessing: isClearing,
+        action: { isConfirmingClear = true }
+      )
+      .alert("Clear log files?", isPresented: $isConfirmingClear) {
+        Button("Clear", role: .destructive) { clear() }
+        Button("Cancel", role: .cancel) {}
+      } message: {
+        Text("This deletes all log files on this device.")
+      }
     }
   }
 }
@@ -762,20 +877,3 @@ struct FormTextField: View {
     }
   }
 #endif
-
-private struct BuildLabel: View {
-  var body: some View {
-    HStack(spacing: 0) {
-      Text("Build: ")
-        .foregroundColor(.gray)
-      if let gitSha = BundleHelper.gitSha,
-        let url = URL(string: "https://github.com/firezone/firezone/commit/\(gitSha)")
-      {
-        Link(String(gitSha.prefix(8)), destination: url)
-      } else {
-        Text("unknown")
-          .foregroundColor(.gray)
-      }
-    }
-  }
-}

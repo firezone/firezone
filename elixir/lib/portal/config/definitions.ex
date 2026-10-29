@@ -128,6 +128,17 @@ defmodule Portal.Config.Definitions do
   )
 
   @doc """
+  The Firezone Cloud region this deployment keeps its customer data in, shown to
+  users on the sign in pages and in account settings. On-prem deployments keep
+  the default and show nothing.
+  """
+  defconfig(
+    :data_residency_region,
+    Ecto.ParameterizedType.init(Ecto.Enum, values: [:us, :eu, :on_prem]),
+    default: :on_prem
+  )
+
+  @doc """
   The external URL the REST API will be accessible at.
 
   Advertised as the server URL in the OpenAPI spec and SwaggerUI, and used to
@@ -456,6 +467,15 @@ defmodule Portal.Config.Definitions do
   Entra access tokens when DATABASE_ENTRA_AUTH is enabled.
   """
   defconfig(:azure_client_id, :string, default: nil)
+
+  @doc """
+  Table service endpoint of the Azure Storage account that holds the shared
+  slug registry of Firezone Cloud, for example
+  https://firezoneslugs.table.core.windows.net. When set, the portal reserves
+  every account slug there before it writes it to its own database. Unset, the
+  default for on-prem, keeps slugs in this portal's database only.
+  """
+  defconfig(:slug_registry_table_url, :string, default: nil)
 
   @doc """
   Size of the connection pool to the PostgreSQL database.

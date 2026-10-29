@@ -9,10 +9,24 @@ auto_install = false
 "github:aya-rs/bpf-linker" = { version = "0.12.0", os = ["linux"] }
 "cargo:cargo-deb" = { version = "3.7.0", os = ["linux"] }
 "github:taiki-e/cargo-llvm-cov" = "0.6.21"
+# Has to match the `gungraun` version in `Cargo.toml`.
+"github:gungraun/gungraun" = { version = "0.20.0", os = ["linux"], bin = "gungraun-runner" }
 # `matching_regex` skips the npm tarballs the release also carries, so every
 # platform gets the bare binary; `bin` gives it a name the shim can use.
 "github:getsentry/sentry-cli" = { version = "3.6.2", bin = "sentry-cli", matching_regex = "^sentry-cli-(Darwin|Linux|Windows)-" }
 "github:tauri-apps/tauri" = { version = "2.11.2", version_prefix = "tauri-cli-v" }
+
+[tools."github:bencherdev/bencher"]
+version = "0.6.13"
+bin = "bencher"
+
+[tools."github:bencherdev/bencher".platforms]
+linux-x64 = { asset_pattern = "bencher-*-linux-x86-64" }
+linux-arm64 = { asset_pattern = "bencher-*-linux-arm-64" }
+macos-x64 = { asset_pattern = "bencher-*-macos-x86-64" }
+macos-arm64 = { asset_pattern = "bencher-*-macos-arm-64" }
+windows-x64 = { asset_pattern = "bencher-*-windows-x86-64.exe" }
+windows-arm64 = { asset_pattern = "bencher-*-windows-arm-64.exe" }
 
 # The eBPF program is compiled with this exact nightly toolchain: `aya_build`
 # invokes it via `rustup run` (see `relay/server/build.rs`; keep the two pins

@@ -682,13 +682,21 @@ defmodule Portal.OAuth do
       end
     end
 
+    # Held to the same actor and account checks as using an access token, so a
+    # refresh cannot keep extending access the token itself would be refused.
     def fetch_refreshable_token(account_id, id) do
       now = DateTime.utc_now()
 
       from(tokens in OAuthToken,
+        join: account in assoc(tokens, :account),
+        join: actor in assoc(tokens, :actor),
+        on: actor.account_id == tokens.account_id,
         where: tokens.account_id == ^account_id,
         where: tokens.id == ^id,
         where: tokens.refresh_expires_at > ^now,
+        where: account.is_disabled == false,
+        where: actor.is_disabled == false,
+        where: actor.type == :account_admin_user,
         preload: [oauth_grant: :oauth_client]
       )
       |> Safe.unscoped()

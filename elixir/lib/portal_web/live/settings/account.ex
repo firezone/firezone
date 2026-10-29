@@ -4,12 +4,28 @@ defmodule PortalWeb.Settings.Account do
   alias Portal.Account
   alias Portal.Accounts.Deletion
   alias Portal.Billing
+  alias Portal.Mailer.InternalEmail
   alias PortalWeb.Settings.Components, as: SettingsComponents
   alias __MODULE__.Database
   require Logger
 
+  @slug_changes_per_window 3
+  @slug_change_window_days 30
+
+  # First path segments the router already uses.
+  # Top-level routes, static path prefixes, region names, and words that
+  # would make a sign-in URL or email look official.
+  @reserved_slugs ~w(
+    auth browser dev error find_account getting_started oauth sign_in sign_up try verification verify_sign_up
+    assets downloads fonts images
+    us eu
+    firezone admin administrator account accounts api app billing docs email help login logout mail mcp
+    official root security settings signin signup staff status support system www
+  )
+
   def mount(_params, session, socket) do
     account = socket.assigns.account
+    slug_history = Database.list_account_slugs(socket.assigns.subject)
 
     socket =
       assign(socket,
@@ -17,12 +33,16 @@ defmodule PortalWeb.Settings.Account do
         page_title: "Account",
         billing_provisioned: Billing.account_provisioned?(account),
         billing_plan_type: Billing.plan_type(account),
+        data_residency_region: Page.data_residency_region(),
+        region_transfer_enabled: region_transfer_enabled?(Page.data_residency_region()),
+        region_transfer_open: false,
         error: nil,
         slug_confirmation: "",
         confirm_delete_account: false,
         deletion_feedback_form: nil,
         edit_account_open: false,
-        name_form: to_form(Database.change_account_name(account)),
+        slug_history: slug_history,
+        account_form: to_form(account_changeset(account, %{}, slug_history)),
         usage: if(connected?(socket), do: load_usage(account, socket.assigns.subject))
       )
 
@@ -151,6 +171,10 @@ defmodule PortalWeb.Settings.Account do
             <.feature_row
               label="Device Posture"
               enabled={feature_enabled?(@account, :device_posture)}
+            />
+            <.feature_row
+              label="Account Slug Changes"
+              enabled={feature_enabled?(@account, :slug_changes)}
             />
           </div>
 
@@ -335,10 +359,109 @@ defmodule PortalWeb.Settings.Account do
               limit={effective_limit(@account, :sites_count)}
             />
           </div>
+
+          <div :if={@data_residency_region != :on_prem} id="data-residency" class="mt-8 max-w-2xl">
+            <h3 class="text-[10px] font-semibold tracking-widest uppercase text-subtle mb-4">
+              Data Residency
+            </h3>
+            <div class="rounded border border-border bg-raised p-4 space-y-3">
+              <div class="flex items-center gap-2">
+                <Page.residency_flag region={@data_residency_region} />
+                <span class="text-sm text-body font-medium">
+                  Cloud region: <strong>{Page.data_residency_name(@data_residency_region)}</strong>
+                </span>
+              </div>
+              <p class="text-xs text-subtle">Your account data is stored in:</p>
+              <ul class="text-xs text-body space-y-1">
+                <li
+                  :for={{city, country} <- Page.data_residency_locations(@data_residency_region)}
+                  class="flex items-center gap-1.5"
+                >
+                  <Core.icon name="ri-map-pin-line" class="w-3.5 h-3.5 text-subtle" />
+                  {city}, {country}
+                </li>
+              </ul>
+              <p class="text-xs text-subtle">
+                <a
+                  href="https://www.firezone.dev/kb/architecture/regional-availability"
+                  target="_blank"
+                  rel="noopener"
+                  class={Core.link_style()}
+                >
+                  Learn more about Firezone Cloud regions.
+                </a>
+              </p>
+              <div :if={@region_transfer_enabled} class="pt-3 border-t border-border">
+                <Form.button id="request-region-transfer" phx-click="open_region_transfer" size="xs">
+                  Request transfer to the {Page.data_residency_name(Page.other_region(@data_residency_region))} region
+                </Form.button>
+              </div>
+            </div>
+          </div>
+
+          <Form.modal
+            :if={@region_transfer_open}
+            id="region-transfer-modal"
+            on_close="close_region_transfer"
+            on_cancel="close_region_transfer"
+            on_confirm="request_region_transfer"
+          >
+            <:title>
+              Transfer your account to the {Page.data_residency_name(Page.other_region(@data_residency_region))} region?
+            </:title>
+            <:body>
+              <div class="space-y-3 text-sm text-body">
+                <p>
+                  This opens a support request to move your account, and all of its data, to the
+                  {Page.data_residency_name(Page.other_region(@data_residency_region))} region.
+                  Firezone support will contact <strong>{@subject.actor.email}</strong>
+                  to schedule the transfer.
+                </p>
+                <p>
+                  The transfer needs a maintenance window of up to 8 hours. During that window
+                  your account is disabled: nobody can sign in, Clients cannot connect, and
+                  Gateways are offline.
+                </p>
+                <p>
+                  After the transfer, every session, Gateway token, service account token, and
+                  API token is invalid. Users sign in again, and a sign-in on the old portal
+                  redirects to the new one.
+                </p>
+                <p>
+                  Clients at these versions or later switch to the new region on their own, so
+                  they need no configuration change: macOS and iOS 1.5.24, Android 1.5.18,
+                  Windows and Linux 1.5.20. Older Clients, headless Clients, and Gateways need
+                  the new URLs: set the auth URL to
+                  <code>{Page.portal_url(Page.other_region(@data_residency_region))}</code>
+                  and the API URL to
+                  <code>{Page.api_url(Page.other_region(@data_residency_region))}</code>.
+                  Each Gateway also needs a new token, and headless Clients need new service
+                  account tokens. Recreate every API token and reconnect your MCP clients.
+                </p>
+                <p>
+                  Logs are not moved. They are deleted from the old region when the transfer
+                  completes, and that region's database backups expire 30 days later.
+                </p>
+                <p :if={Portal.Billing.paid_plan?(@account)}>
+                  Your billing moves too. We recreate your subscription under a new billing
+                  customer in the {Page.data_residency_name(Page.other_region(@data_residency_region))} region,
+                  apply any remaining credit at the exchange rate on the day of the transfer, and
+                  bill in {billing_currency(Page.other_region(@data_residency_region))} from then on.
+                </p>
+              </div>
+            </:body>
+            <:cancel_button>Cancel</:cancel_button>
+            <:confirm_button>Send request</:confirm_button>
+          </Form.modal>
         </div>
       </div>
 
-      <.edit_account_panel open={@edit_account_open} form={@name_form} />
+      <.edit_account_panel
+        open={@edit_account_open}
+        form={@account_form}
+        account={@account}
+        slug_changes_left={slug_changes_left(@slug_history)}
+      />
     </div>
     """
   end
@@ -432,8 +555,16 @@ defmodule PortalWeb.Settings.Account do
 
   attr :open, :boolean, required: true
   attr :form, :any, required: true
+  attr :account, :any, required: true
+  attr :slug_changes_left, :integer, required: true
 
   defp edit_account_panel(assigns) do
+    assigns =
+      assign(assigns,
+        slug_changes_per_window: @slug_changes_per_window,
+        slug_change_window_days: @slug_change_window_days
+      )
+
     ~H"""
     <div class={[
       "absolute inset-y-0 right-0 z-20",
@@ -449,19 +580,57 @@ defmodule PortalWeb.Settings.Account do
       </div>
 
       <.form
-        id="account-name-form"
+        id="account-form"
         for={@form}
-        phx-change="change_account_name"
-        phx-submit="submit_account_name"
+        phx-change="change_account"
+        phx-submit="submit_account"
         as={:account}
         class="flex flex-col flex-1 overflow-hidden"
       >
-        <div class="flex-1 overflow-y-auto p-5">
+        <div class="flex-1 overflow-y-auto p-5 space-y-5">
           <Form.input
             field={@form[:name]}
             label="Account Name"
             phx-debounce="300"
           />
+          <div :if={not Account.slug_changes_enabled?(@account)}>
+            <Form.input field={@form[:slug]} type="readonly" label="Account Slug" />
+            <p id="slug-help" class="mt-2 text-xs text-subtle">
+              The slug is the first part of your portal URL and what users type to sign in.
+              Slug changes are available on the Team plan and higher.
+            </p>
+          </div>
+          <div :if={Account.slug_changes_enabled?(@account)}>
+            <Form.input
+              field={@form[:slug]}
+              label="Account Slug"
+              phx-debounce="300"
+              autocomplete="off"
+              spellcheck="false"
+            />
+            <div id="slug-help" class="mt-2 space-y-1.5 text-xs text-subtle">
+              <p>
+                The slug is the first part of your portal URL and what users type to sign in.
+                Lowercase letters, numbers, and underscores only.
+              </p>
+              <p>
+                Old slugs keep working: links that use them redirect to the new slug,
+                and no other account can claim them. Your account ID
+                <span class="font-mono text-heading">{@account.id}</span>
+                always works in place of the slug.
+              </p>
+              <p>
+                You can pick up to {@slug_changes_per_window} new slugs every {@slug_change_window_days} days.
+                Switching back to a slug you used before does not count.
+                <span :if={@slug_changes_left > 0} class="text-heading">
+                  {@slug_changes_left} left.
+                </span>
+                <span :if={@slug_changes_left == 0} class="text-warning">
+                  None left right now.
+                </span>
+              </p>
+            </div>
+          </div>
         </div>
 
         <Form.panel_footer>
@@ -513,11 +682,13 @@ defmodule PortalWeb.Settings.Account do
 
   def handle_event("open_edit_account", _params, socket) do
     account = socket.assigns.account
+    slug_history = Database.list_account_slugs(socket.assigns.subject)
 
     {:noreply,
      assign(socket,
        edit_account_open: true,
-       name_form: to_form(Database.change_account_name(account))
+       slug_history: slug_history,
+       account_form: to_form(account_changeset(account, %{}, slug_history))
      )}
   end
 
@@ -525,30 +696,81 @@ defmodule PortalWeb.Settings.Account do
     {:noreply, assign(socket, edit_account_open: false)}
   end
 
-  def handle_event("change_account_name", %{"account" => params}, socket) do
+  def handle_event("change_account", %{"account" => params}, socket) do
     changeset =
       socket.assigns.account
-      |> Database.change_account_name(params)
+      |> account_changeset(params, socket.assigns.slug_history)
       |> Map.put(:action, :validate)
 
-    {:noreply, assign(socket, name_form: to_form(changeset))}
+    {:noreply, assign(socket, account_form: to_form(changeset))}
   end
 
-  def handle_event("submit_account_name", %{"account" => params}, socket) do
+  def handle_event("submit_account", %{"account" => params}, socket) do
     account = socket.assigns.account
-    subject = socket.assigns.subject
+    slug_history = Database.list_account_slugs(socket.assigns.subject)
+    changeset = account_changeset(account, params, slug_history)
 
-    case Database.update_account_name(account, params, subject) do
+    case Database.update_account(changeset, socket.assigns.subject) do
+      {:ok, %{slug: slug} = updated_account} when slug != account.slug ->
+        {:noreply, push_navigate(socket, to: ~p"/#{updated_account}/settings/account")}
+
       {:ok, updated_account} ->
         {:noreply,
          assign(socket,
            account: updated_account,
            edit_account_open: false,
-           name_form: to_form(Database.change_account_name(updated_account))
+           slug_history: slug_history,
+           account_form: to_form(account_changeset(updated_account, %{}, slug_history))
          )}
 
       {:error, changeset} ->
-        {:noreply, assign(socket, name_form: to_form(changeset))}
+        {:noreply, assign(socket, account_form: to_form(changeset))}
+    end
+  end
+
+  def handle_event("open_region_transfer", _params, %{assigns: %{region_transfer_enabled: true}} = socket) do
+    {:noreply, assign(socket, region_transfer_open: true)}
+  end
+
+  def handle_event("open_region_transfer", _params, socket), do: {:noreply, socket}
+
+  def handle_event("close_region_transfer", _params, socket) do
+    {:noreply, assign(socket, region_transfer_open: false)}
+  end
+
+  def handle_event("request_region_transfer", _params, %{assigns: %{region_transfer_enabled: false}} = socket) do
+    {:noreply, socket}
+  end
+
+  def handle_event("request_region_transfer", _params, socket) do
+    %{account: account, subject: subject, data_residency_region: region} = socket.assigns
+    to_region = Page.other_region(region)
+
+    socket = assign(socket, region_transfer_open: false)
+
+    with {:ok, :reserved} <- Database.reserve_region_transfer_request(account.id),
+         {:ok, _email} <-
+           account
+           |> InternalEmail.region_transfer_request_email(
+             subject,
+             Page.data_residency_name(region),
+             Page.data_residency_name(to_region)
+           )
+           |> Portal.Mailer.deliver() do
+      {:noreply,
+       put_flash(
+         socket,
+         :success,
+         "Request sent. Firezone support will contact you at #{subject.actor.email} to schedule the transfer."
+       )}
+    else
+      {:error, :rate_limited} ->
+        {:noreply,
+         put_flash(socket, :error, "You already sent a request today. Firezone support will contact you.")}
+
+      {:error, reason} ->
+        Logger.error("Failed to send region transfer request", reason: inspect(reason))
+        {:noreply, put_flash(socket, :error, "Could not send the request. Please try again later.")}
     end
   end
 
@@ -669,28 +891,90 @@ defmodule PortalWeb.Settings.Account do
     end
   end
 
+  defp billing_currency(:us), do: "USD"
+  defp billing_currency(:eu), do: "EUR"
+
+  defp region_transfer_enabled?(region), do: region != :on_prem
+
+  defp account_changeset(%Account{} = account, attrs, slug_history) do
+    account
+    |> cast(attrs, [:name, :slug])
+    |> update_change(:slug, &normalize_slug/1)
+    |> Account.changeset()
+    |> validate_required([:name, :slug])
+    |> validate_format(:slug, ~r/^[a-z0-9]+(_[a-z0-9]+)*$/,
+      message: "may only contain lowercase letters, numbers, and underscores"
+    )
+    |> validate_exclusion(:slug, @reserved_slugs, message: "is reserved")
+    |> validate_change(:slug, fn :slug, slug ->
+      if Portal.Repo.valid_uuid?(slug), do: [slug: "may not look like an account ID"], else: []
+    end)
+    |> validate_slug_change(account, slug_history)
+  end
+
+  defp validate_slug_change(changeset, account, slug_history) do
+    validate_change(changeset, :slug, fn :slug, slug ->
+      cond do
+        not Account.slug_changes_enabled?(account) ->
+          [slug: "cannot be changed on your current plan"]
+
+        Account.locked?(account) ->
+          [slug: "cannot be changed while the account is locked"]
+
+        used_before?(slug_history, slug) ->
+          []
+
+        slug_changes_left(slug_history) == 0 ->
+          [
+            slug:
+              "can be changed at most #{@slug_changes_per_window} times every #{@slug_change_window_days} days"
+          ]
+
+        true ->
+          []
+      end
+    end)
+  end
+
+  defp normalize_slug(nil), do: nil
+  defp normalize_slug(slug), do: slug |> String.trim() |> String.downcase()
+
+  defp used_before?(slug_history, slug) do
+    Enum.any?(slug_history, &(String.downcase(&1.slug) == slug))
+  end
+
+  # The oldest row is the slug the account started with, so it never counts
+  # as a change.
+  defp slug_changes_left(slug_history) do
+    window_start = DateTime.add(DateTime.utc_now(), -@slug_change_window_days, :day)
+
+    recent_changes =
+      slug_history
+      |> Enum.drop(1)
+      |> Enum.count(&(DateTime.compare(&1.inserted_at, window_start) == :gt))
+
+    max(@slug_changes_per_window - recent_changes, 0)
+  end
+
   defmodule Database do
     import Ecto.Query
-    import Ecto.Changeset
     alias Portal.Safe
     alias Portal.Account
     alias Portal.Actor
 
-    @spec update_account_name(Account.t(), map(), Portal.Authentication.Subject.t()) ::
+    @spec update_account(Ecto.Changeset.t(), Portal.Authentication.Subject.t()) ::
             {:ok, Account.t()} | {:error, Ecto.Changeset.t()}
-    def update_account_name(%Account{} = account, attrs, subject) do
-      account
-      |> cast(attrs, [:name])
-      |> Account.changeset()
+    def update_account(%Ecto.Changeset{data: %Account{}} = changeset, subject) do
+      changeset
       |> Safe.scoped(subject)
       |> Safe.update()
     end
 
-    @spec change_account_name(Account.t(), map()) :: Ecto.Changeset.t()
-    def change_account_name(%Account{} = account, attrs \\ %{}) do
-      account
-      |> cast(attrs, [:name])
-      |> Account.changeset()
+    @spec list_account_slugs(Portal.Authentication.Subject.t()) :: [Portal.AccountSlug.t()]
+    def list_account_slugs(subject) do
+      from(s in Portal.AccountSlug, order_by: [asc: s.inserted_at, asc: s.slug])
+      |> Safe.scoped(subject)
+      |> Safe.all()
     end
 
     @spec count_account_admin_users_for_account(Portal.Authentication.Subject.t()) :: integer()
@@ -730,6 +1014,41 @@ defmodule PortalWeb.Settings.Account do
       )
       |> Safe.scoped(subject)
       |> Safe.aggregate(:count)
+    end
+
+    # Shares the support form's per-account budget so a stuck button cannot
+    # flood support. Serialized across nodes by the row lock.
+    def reserve_region_transfer_request(account_id) do
+      account_id = Ecto.UUID.dump!(account_id)
+
+      Safe.unscoped()
+      |> Safe.transaction(fn ->
+        query!("SELECT id FROM accounts WHERE id = $1 FOR UPDATE", [account_id])
+
+        query!(
+          "DELETE FROM feedback_submissions WHERE account_id = $1 AND inserted_at <= now() - interval '24 hours'",
+          [account_id]
+        )
+
+        %{rows: [[count]]} =
+          query!("SELECT count(*) FROM feedback_submissions WHERE account_id = $1", [account_id])
+
+        if count >= 10 do
+          {:error, :rate_limited}
+        else
+          query!(
+            "INSERT INTO feedback_submissions (account_id, inserted_at) VALUES ($1, clock_timestamp())",
+            [account_id]
+          )
+
+          {:ok, :reserved}
+        end
+      end)
+    end
+
+    defp query!(sql, params) do
+      {:ok, result} = Safe.unscoped() |> Safe.query(sql, params)
+      result
     end
   end
 end

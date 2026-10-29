@@ -11,7 +11,7 @@ import Testing
 
 @testable import FirezoneKit
 
-private final class ForcedUserDefaults: UserDefaults {
+final class ForcedUserDefaults: UserDefaults {
   let domainName: String
   private let forcedKeys: Set<String>
   private let forcedValues: [String: Any]
@@ -283,6 +283,396 @@ struct ConfigurationTests {
     let providerConfiguration = config.toProviderConfiguration()
     #expect(providerConfiguration[Configuration.Keys.authURL] == "https://provider.auth")
     #expect(providerConfiguration[Configuration.Keys.apiURL] == "wss://saved-user-change.api")
+  }
+
+  // MARK: - ControlPlane
+
+  @Test("Saved US URLs show Firezone Cloud (US)")
+  @MainActor
+  func savedUSURLsShowCloudUS() async {
+    let config = Configuration(userDefaults: UserDefaults.makeTestDefaults())
+    config.loadProviderConfiguration(
+      [
+        Configuration.Keys.authURL: "https://app.firezone.dev/",
+        Configuration.Keys.apiURL: "wss://api.firezone.dev",
+      ]
+    )
+
+    let viewModel = SettingsViewModel(configuration: config)
+
+    #expect(viewModel.controlPlane == .cloudUs)
+  }
+
+  @Test("Saved self-hosted URLs show custom and keep the URLs")
+  @MainActor
+  func savedSelfHostedURLsShowCustom() async {
+    let config = Configuration(userDefaults: UserDefaults.makeTestDefaults())
+    config.loadProviderConfiguration(
+      [
+        Configuration.Keys.authURL: "https://firezone.example.com",
+        Configuration.Keys.apiURL: "wss://api.example.com",
+      ]
+    )
+
+    let viewModel = SettingsViewModel(configuration: config)
+
+    #expect(viewModel.controlPlane == .custom)
+    #expect(viewModel.authURL == "https://firezone.example.com")
+    #expect(viewModel.apiURL == "wss://api.example.com")
+  }
+
+  @Test("Picking Firezone Cloud (EU) saves the EU URLs")
+  @MainActor
+  func pickingCloudEUSavesEUURLs() async throws {
+    let config = Configuration(userDefaults: UserDefaults.makeTestDefaults())
+    let viewModel = SettingsViewModel(configuration: config)
+
+    viewModel.selectControlPlane(.cloudEu)
+    try await viewModel.save()
+
+    #expect(config.authURL == "https://eu.app.firezone.dev")
+    #expect(config.apiURL == "wss://eu.api.firezone.dev")
+  }
+
+  @Test("Forced EU URLs show Firezone Cloud (EU), locked")
+  @MainActor
+  func forcedEUURLsShowCloudEU() async throws {
+    let defaults = try #require(
+      ForcedUserDefaults(
+        forcedKeys: [Configuration.Keys.authURL, Configuration.Keys.apiURL],
+        forcedValues: [
+          Configuration.Keys.authURL: "https://eu.app.firezone.dev",
+          Configuration.Keys.apiURL: "wss://eu.api.firezone.dev",
+        ]
+      )
+    )
+    let config = Configuration(userDefaults: defaults)
+
+    let viewModel = SettingsViewModel(configuration: config)
+
+    #expect(viewModel.controlPlane == .cloudEu)
+    #expect(viewModel.isControlPlaneForced)
+  }
+
+  @Test("One forced URL shows custom")
+  @MainActor
+  func oneForcedURLShowsCustom() async throws {
+    let defaults = try #require(
+      ForcedUserDefaults(
+        forcedKeys: [Configuration.Keys.apiURL],
+        forcedValues: [Configuration.Keys.apiURL: "wss://api.firezone.dev"]
+      )
+    )
+    let config = Configuration(userDefaults: defaults)
+    config.loadProviderConfiguration([Configuration.Keys.authURL: "https://app.firezone.dev"])
+
+    let viewModel = SettingsViewModel(configuration: config)
+
+    #expect(viewModel.controlPlane == .custom)
+  }
+
+  @Test("Control plane URLs match despite trailing slashes, case, and whitespace")
+  func controlPlaneURLsMatchLoosely() {
+    #expect(
+      ControlPlane.of(
+        authURL: " HTTPS://EU.app.firezone.dev// ", apiURL: "wss://eu.api.firezone.dev/")
+        == .cloudEu
+    )
+    #expect(
+      ControlPlane.of(authURL: "https://app.firezone.dev", apiURL: "wss://eu.api.firezone.dev")
+        == .custom
+    )
+    #expect(
+      ControlPlane.of(authURL: "https://app.firezone.dev/path", apiURL: "wss://api.firezone.dev")
+        == .custom
+    )
+  }
+
+  @Test("Picking custom keeps the URLs of the control plane picked before")
+  @MainActor
+  func pickingCustomKeepsURLs() async {
+    let config = Configuration(userDefaults: UserDefaults.makeTestDefaults())
+    let viewModel = SettingsViewModel(configuration: config)
+
+    viewModel.selectControlPlane(.cloudEu)
+    viewModel.selectControlPlane(.custom)
+
+    #expect(viewModel.authURL == "https://eu.app.firezone.dev")
+    #expect(viewModel.apiURL == "wss://eu.api.firezone.dev")
+  }
+
+  @Test("Forced US URLs with a trailing slash show Firezone Cloud (US), locked")
+  @MainActor
+  func forcedUSURLsWithTrailingSlashShowCloudUS() async throws {
+    let defaults = try #require(
+      ForcedUserDefaults(
+        forcedKeys: [Configuration.Keys.authURL, Configuration.Keys.apiURL],
+        forcedValues: [
+          Configuration.Keys.authURL: "https://app.firezone.dev/",
+          Configuration.Keys.apiURL: "wss://api.firezone.dev/",
+        ]
+      )
+    )
+    let config = Configuration(userDefaults: defaults)
+
+    let viewModel = SettingsViewModel(configuration: config)
+
+    #expect(viewModel.controlPlane == .cloudUs)
+    #expect(viewModel.isControlPlaneForced)
+  }
+
+  @Test("Forced self-hosted URLs show custom, locked, and cannot be changed by the picker")
+  @MainActor
+  func forcedSelfHostedURLsShowCustom() async throws {
+    let defaults = try #require(
+      ForcedUserDefaults(
+        forcedKeys: [Configuration.Keys.authURL, Configuration.Keys.apiURL],
+        forcedValues: [
+          Configuration.Keys.authURL: "https://firezone.example.com",
+          Configuration.Keys.apiURL: "wss://api.example.com",
+        ]
+      )
+    )
+    let config = Configuration(userDefaults: defaults)
+    let viewModel = SettingsViewModel(configuration: config)
+
+    #expect(viewModel.controlPlane == .custom)
+    #expect(viewModel.isControlPlaneForced)
+
+    viewModel.selectControlPlane(.cloudUs)
+    try await viewModel.save()
+
+    #expect(viewModel.authURL == "https://firezone.example.com")
+    #expect(viewModel.apiURL == "wss://api.example.com")
+    #expect(config.authURL == "https://firezone.example.com")
+    #expect(config.apiURL == "wss://api.example.com")
+  }
+
+  @Test("Picking custom brings back the URLs last saved with custom")
+  @MainActor
+  func pickingCustomRestoresLastCustomURLs() async throws {
+    let config = Configuration(userDefaults: UserDefaults.makeTestDefaults())
+    let viewModel = SettingsViewModel(configuration: config)
+
+    viewModel.selectControlPlane(.cloudUs)
+    viewModel.selectControlPlane(.custom)
+    viewModel.authURL = "https://firezone.example.com"
+    viewModel.apiURL = "wss://api.example.com"
+    try await viewModel.save()
+
+    viewModel.selectControlPlane(.cloudEu)
+    try await viewModel.save()
+
+    #expect(config.authURL == "https://eu.app.firezone.dev")
+    #expect(config.apiURL == "wss://eu.api.firezone.dev")
+
+    let reopened = SettingsViewModel(configuration: config)
+    #expect(reopened.controlPlane == .cloudEu)
+
+    reopened.selectControlPlane(.custom)
+
+    #expect(reopened.authURL == "https://firezone.example.com")
+    #expect(reopened.apiURL == "wss://api.example.com")
+  }
+
+  @Test("Custom URLs are only remembered once saved")
+  @MainActor
+  func unsavedCustomURLsAreNotRemembered() async throws {
+    let config = Configuration(userDefaults: UserDefaults.makeTestDefaults())
+    config.loadProviderConfiguration(
+      [
+        Configuration.Keys.authURL: "https://app.firezone.dev",
+        Configuration.Keys.apiURL: "wss://api.firezone.dev",
+      ]
+    )
+    let viewModel = SettingsViewModel(configuration: config)
+
+    viewModel.selectControlPlane(.cloudUs)
+    viewModel.selectControlPlane(.custom)
+    viewModel.authURL = "https://firezone.example.com"
+    viewModel.apiURL = "wss://api.example.com"
+    viewModel.selectControlPlane(.cloudEu)
+    try await viewModel.save()
+
+    #expect(config.lastCustomURLs == nil)
+
+    viewModel.selectControlPlane(.custom)
+
+    #expect(viewModel.authURL == "https://eu.app.firezone.dev")
+    #expect(viewModel.apiURL == "wss://eu.api.firezone.dev")
+  }
+
+  @Test("Switching to Firezone Cloud remembers existing custom URLs without saving them again")
+  @MainActor
+  func switchingToCloudRemembersExistingCustomURLs() async throws {
+    let config = Configuration(userDefaults: UserDefaults.makeTestDefaults())
+    config.loadProviderConfiguration(
+      [
+        Configuration.Keys.authURL: "https://firezone.example.com",
+        Configuration.Keys.apiURL: "wss://api.example.com",
+      ]
+    )
+    let viewModel = SettingsViewModel(configuration: config)
+    viewModel.authURL = "https://unsaved.example.com"
+
+    viewModel.selectControlPlane(.cloudEu)
+    try await viewModel.save()
+
+    let reopened = SettingsViewModel(configuration: config)
+    reopened.selectControlPlane(.custom)
+
+    #expect(reopened.authURL == "https://firezone.example.com")
+    #expect(reopened.apiURL == "wss://api.example.com")
+  }
+
+  @Test("Remembered custom URLs do not change the control plane shown")
+  @MainActor
+  func rememberedCustomURLsDoNotChangeControlPlane() async {
+    let config = Configuration(userDefaults: UserDefaults.makeTestDefaults())
+    config.lastCustomURLs = ("https://firezone.example.com", "wss://api.example.com")
+    config.loadProviderConfiguration(
+      [
+        Configuration.Keys.authURL: "https://app.firezone.dev",
+        Configuration.Keys.apiURL: "wss://api.firezone.dev",
+      ]
+    )
+
+    let viewModel = SettingsViewModel(configuration: config)
+
+    #expect(viewModel.controlPlane == .cloudUs)
+    #expect(config.toProviderConfiguration()[Configuration.Keys.lastCustomAuthURL] == nil)
+  }
+
+  @Test("Editing the account slug does not cache managed custom URLs")
+  @MainActor
+  func forcedCustomURLsAreNotRemembered() async throws {
+    let defaults = try #require(
+      ForcedUserDefaults(
+        forcedKeys: [Configuration.Keys.authURL, Configuration.Keys.apiURL],
+        forcedValues: [
+          Configuration.Keys.authURL: "https://firezone.example.com",
+          Configuration.Keys.apiURL: "wss://api.example.com",
+        ]
+      )
+    )
+    let config = Configuration(userDefaults: defaults)
+    let viewModel = SettingsViewModel(configuration: config)
+
+    viewModel.accountSlug = "example"
+    try await viewModel.save(.settings)
+
+    #expect(config.accountSlug == "example")
+    #expect(config.lastCustomURLs == nil)
+  }
+
+  @Test("An empty log filter is saved without an error")
+  @MainActor
+  func emptyLogFilterIsSaved() async throws {
+    let config = Configuration(userDefaults: UserDefaults.makeTestDefaults())
+    let viewModel = SettingsViewModel(configuration: config)
+
+    viewModel.selectControlPlane(.cloudUs)
+    viewModel.logFilter = ""
+    try await viewModel.save(.logs)
+
+    #expect(viewModel.areURLsValid())
+    #expect(viewModel.isLogFilterValid())
+    #expect(config.logFilter.isEmpty)
+    #expect(viewModel.logFilterError == nil)
+  }
+
+  @Test("A log filter outside the editable subset is not saved and says why")
+  @MainActor
+  func unsupportedLogFilterIsNotSaved() async throws {
+    let config = Configuration(userDefaults: UserDefaults.makeTestDefaults())
+    let viewModel = SettingsViewModel(configuration: config)
+    let logFilter = config.logFilter
+
+    viewModel.logFilter = "foo[bar]=debug"
+    try await viewModel.save(.logs)
+
+    #expect(config.logFilter == logFilter)
+    #expect(viewModel.logFilterError?.hasPrefix("Use a level") == true)
+  }
+
+  @Test("Closing Diagnostics does not flag a managed log filter outside the editable subset")
+  @MainActor
+  func forcedLogFilterIsNotFlagged() async throws {
+    let defaults = try #require(
+      ForcedUserDefaults(
+        forcedKeys: [Configuration.Keys.logFilter],
+        forcedValues: [Configuration.Keys.logFilter: "foo[bar]=debug"]
+      )
+    )
+    let viewModel = SettingsViewModel(
+      configuration: Configuration(userDefaults: defaults), selectedTab: .logs)
+
+    try await viewModel.save(.logs)
+
+    #expect(viewModel.logFilter == "foo[bar]=debug")
+    #expect(viewModel.isLogFilterValid())
+    #expect(viewModel.logFilterError == nil)
+  }
+
+  @Test("Saving one tab leaves the other tab's edits unsaved")
+  @MainActor
+  func savingOneTabLeavesTheOtherUnsaved() async throws {
+    let config = Configuration(userDefaults: UserDefaults.makeTestDefaults())
+    let viewModel = SettingsViewModel(configuration: config)
+    let logFilter = config.logFilter
+
+    viewModel.accountSlug = "example"
+    viewModel.logFilter = "trace"
+
+    viewModel.selectedTab = .settings
+    try await viewModel.save()
+
+    #expect(config.accountSlug == "example")
+    #expect(config.logFilter == logFilter)
+
+    viewModel.selectedTab = .logs
+    try await viewModel.save()
+
+    #expect(config.logFilter == "trace")
+  }
+
+  @Test("Saving skips invalid URLs and log filters, but not the other settings")
+  @MainActor
+  func savingSkipsInvalidValues() async throws {
+    let config = Configuration(userDefaults: UserDefaults.makeTestDefaults())
+    let viewModel = SettingsViewModel(configuration: config)
+    let authURL = config.authURL
+    let logFilter = config.logFilter
+
+    viewModel.authURL = "not a URL"
+    viewModel.accountSlug = "example"
+    viewModel.logFilter = "foo=verbose"
+    try await viewModel.save(.settings)
+    try await viewModel.save(.logs)
+
+    #expect(config.authURL == authURL)
+    #expect(config.accountSlug == "example")
+    #expect(config.logFilter == logFilter)
+  }
+
+  @Test("An invalid URL is not saved and says why")
+  @MainActor
+  func invalidURLIsNotSavedAndSaysWhy() async throws {
+    let config = Configuration(userDefaults: UserDefaults.makeTestDefaults())
+    let viewModel = SettingsViewModel(configuration: config)
+    let apiURL = config.apiURL
+
+    viewModel.apiURL = "https://api.example.com"
+    try await viewModel.save(.settings)
+
+    #expect(config.apiURL == apiURL)
+    #expect(viewModel.apiURLError == "Enter a valid ws:// or wss:// URL")
+    #expect(viewModel.authURLError == nil)
+
+    viewModel.discardInvalidDrafts()
+
+    #expect(viewModel.apiURL == apiURL)
+    #expect(viewModel.apiURLError == nil)
   }
 
   // MARK: - Published Properties Initialization
@@ -685,6 +1075,17 @@ struct ProviderMessageCodableTests {
       #expect(enabled == true)
     } else {
       Issue.record("Expected .setInternetResourceEnabled, got \(decoded)")
+    }
+  }
+
+  @Test("setLogFilter round-trips through JSON")
+  func setLogFilterRoundTrip() throws {
+    let decoded = try roundTrip(.setLogFilter("debug,connlib=trace"))
+
+    if case .setLogFilter(let logFilter) = decoded {
+      #expect(logFilter == "debug,connlib=trace")
+    } else {
+      Issue.record("Expected .setLogFilter, got \(decoded)")
     }
   }
 

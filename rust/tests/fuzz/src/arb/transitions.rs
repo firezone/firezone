@@ -1,4 +1,8 @@
-use std::{collections::BTreeMap, iter, time::Duration};
+use std::{
+    collections::BTreeMap,
+    iter,
+    time::{Duration, Instant},
+};
 
 use connlib_model::Site;
 use dns_types::DomainName;
@@ -16,7 +20,7 @@ use super::values::{
 };
 use super::{dns_queries, packets};
 use crate::dns_records::record_ip;
-use crate::probe::{FlowId, Remote};
+use crate::probe::{FlowId, IcmpFlow, Remote, UdpFlow};
 use crate::reference::ReferenceState;
 use crate::resource::{CidrResource, DevicePoolResource, DnsResource, Resource, ResourceEdit};
 use crate::sim_net::{EdgeConfig, Host};
@@ -54,6 +58,7 @@ enum TransitionKind {
     UpdateDevicePoolMembers,
     ExhaustRelayPorts,
     FreeRelayPorts,
+    CrashClient,
 }
 
 /// The transitions that open no connection.
@@ -61,7 +66,7 @@ enum TransitionKind {
 /// A node whose allocations all failed cannot open any connection until it gets a relay back,
 /// which the reference model does not predict. While every relay is exhausted or recovering, or a
 /// node may have no relay left, only these are legal.
-const LEGAL_WITHOUT_HEALTHY_RELAY: [TransitionKind; 7] = [
+const LEGAL_WITHOUT_HEALTHY_RELAY: [TransitionKind; 8] = [
     TransitionKind::RoamClient,
     TransitionKind::DeployNewRelays,
     TransitionKind::PartitionRelaysFromPortal,
@@ -69,18 +74,23 @@ const LEGAL_WITHOUT_HEALTHY_RELAY: [TransitionKind; 7] = [
     TransitionKind::RestartClient,
     TransitionKind::FreeRelayPorts,
     TransitionKind::Idle,
+    TransitionKind::CrashClient,
 ];
 
 #[derive(Clone, Copy)]
-enum ExistingFlow {
+enum ExistingFlow<'a> {
     Udp(FlowId),
     Icmp(FlowId, Seq),
+    /// Sending on an expired flow starts a new one with the same identity.
+    ExpiredUdp(&'a UdpFlow),
+    ExpiredIcmp(&'a IcmpFlow),
 }
 
 pub(super) fn generate(
     g: &mut Generator,
     state: &ReferenceState,
     portal: &StubPortal,
+    now: Instant,
 ) -> Transition {
     let addable_resources = state.resources_unknown_to_all_clients(portal);
     let editable_resources = state.editable_resources_on_any_client(portal);
@@ -102,12 +112,24 @@ pub(super) fn generate(
         return packets::generate(g, target);
     }
     let existing_flows = iter::empty()
-        .chain(state.udp_flows().into_iter().map(ExistingFlow::Udp))
+        .chain(state.udp_flows(now).into_iter().map(ExistingFlow::Udp))
         .chain(
             state
-                .icmp_flows()
+                .icmp_flows(now)
                 .into_iter()
                 .map(|(flow_id, seq)| ExistingFlow::Icmp(flow_id, seq)),
+        )
+        .chain(
+            state
+                .expired_udp_flows(now)
+                .into_iter()
+                .map(ExistingFlow::ExpiredUdp),
+        )
+        .chain(
+            state
+                .expired_icmp_flows(now)
+                .into_iter()
+                .map(ExistingFlow::ExpiredIcmp),
         )
         .collect::<Vec<_>>();
     // A connect through a Gateway that does not deliver to its name's network leaves no
@@ -186,6 +208,7 @@ pub(super) fn generate(
         (!listed_device_pools.is_empty()).then_some((K::UpdateDevicePoolMembers, 2)),
         can_exhaust_relay.then_some((K::ExhaustRelayPorts, 1)),
         (!exhausted_relays.is_empty()).then_some((K::FreeRelayPorts, 1)),
+        (!client_ids.is_empty()).then_some((K::CrashClient, 1)),
     ]
     .into_iter()
     .flatten()
@@ -323,6 +346,11 @@ pub(super) fn generate(
             let key = g.fresh_private_key();
             Transition::RestartClient { client_id, key }
         }
+        K::CrashClient => {
+            let client_id = client_ids[g.choose_index(client_ids.len())];
+            let key = g.fresh_private_key();
+            Transition::CrashClient { client_id, key }
+        }
         K::SetInternetResourceState => {
             let client_id = client_ids[g.choose_index(client_ids.len())];
             let active = g.bool();
@@ -361,6 +389,24 @@ pub(super) fn generate(
                 ExistingFlow::Icmp(flow_id, seq) => Transition::SendIcmpPacketOnExistingFlow {
                     flow_id,
                     seq,
+                    probe_id,
+                },
+                ExistingFlow::ExpiredUdp(flow) => Transition::SendUdpPacketOnNewFlow {
+                    flow_id: g.fresh_flow_id(),
+                    client_id: flow.client_id,
+                    src: flow.src,
+                    dst: flow.dst.clone(),
+                    sport: flow.sport,
+                    dport: flow.dport,
+                    probe_id,
+                },
+                ExistingFlow::ExpiredIcmp(flow) => Transition::SendIcmpPacketOnNewFlow {
+                    flow_id: g.fresh_flow_id(),
+                    client_id: flow.client_id,
+                    src: flow.src,
+                    dst: flow.dst.clone(),
+                    seq: flow.next_seq,
+                    identifier: flow.identifier,
                     probe_id,
                 },
             }

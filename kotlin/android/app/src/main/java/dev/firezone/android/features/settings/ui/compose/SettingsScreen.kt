@@ -1,22 +1,22 @@
 // Licensed under Apache 2.0 (C) 2026 Firezone, Inc.
 package dev.firezone.android.features.settings.ui.compose
 
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.CenterAlignedTopAppBar
-import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -28,29 +28,31 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
+import dev.firezone.android.BuildConfig
 import dev.firezone.android.R
 import dev.firezone.android.core.data.model.Config
+import dev.firezone.android.core.data.model.ControlPlane
 import dev.firezone.android.core.data.model.ManagedConfigStatus
+import dev.firezone.android.core.data.model.SignInSettings
+import dev.firezone.android.features.session.ui.compose.BackTopBar
 import dev.firezone.android.features.settings.ui.DeviceTrustSettingsViewModel
 import dev.firezone.android.ui.FirezoneIcons
 import kotlinx.coroutines.launch
 
-/** A settings page and how the navigation bar names it. */
+/** A settings page and how the title and navigation bar name it. */
 internal enum class SettingsPage(
     val labelRes: Int,
     val icon: ImageVector,
 ) {
-    GENERAL(R.string.general_settings_title, FirezoneIcons.DiscoverTune),
-    ADVANCED(R.string.advanced_settings_title, FirezoneIcons.Settings),
+    GENERAL(R.string.settings_title, FirezoneIcons.DiscoverTune),
     DEVICE_TRUST(R.string.device_trust_settings_title, FirezoneIcons.VerifiedUser),
-    LOGS(R.string.log_settings_title, FirezoneIcons.Description),
+    LOGS(R.string.diagnostics_settings_title, FirezoneIcons.Description),
 }
 
 /** The pages to show, in order. */
 internal fun settingsPages(showDeviceTrust: Boolean): List<SettingsPage> =
     buildList {
         add(SettingsPage.GENERAL)
-        add(SettingsPage.ADVANCED)
 
         if (showDeviceTrust) {
             add(SettingsPage.DEVICE_TRUST)
@@ -59,16 +61,16 @@ internal fun settingsPages(showDeviceTrust: Boolean): List<SettingsPage> =
         add(SettingsPage.LOGS)
     }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun SettingsScreen(
     config: Config,
+    controlPlane: ControlPlane,
     managedStatus: ManagedConfigStatus,
-    isSaveEnabled: Boolean,
     logSizeBytes: Long,
     deviceTrustState: DeviceTrustSettingsViewModel.UiState,
     showDeviceTrust: Boolean,
-    warnBeforeSaving: Boolean,
+    signedInWith: SignInSettings?,
+    onControlPlaneChange: (ControlPlane) -> Unit,
     onAuthUrlChange: (String) -> Unit,
     onApiUrlChange: (String) -> Unit,
     onLogFilterChange: (String) -> Unit,
@@ -81,15 +83,16 @@ internal fun SettingsScreen(
     onLogsShown: () -> Unit,
     onSelectCertificate: () -> Unit,
     onDeviceTrustShown: () -> Unit,
-    onSave: () -> Unit,
-    onCancel: () -> Unit,
+    onBack: () -> Unit,
     modifier: Modifier = Modifier,
+    // Parameters so the screenshot test can pin them; the build's commit changes with every push.
+    versionName: String = BuildConfig.VERSION_NAME,
     buildSha: String = stringResource(R.string.git_sha),
 ) {
     val pages = remember(showDeviceTrust) { settingsPages(showDeviceTrust) }
     val pagerState = rememberPagerState(pageCount = { pages.size })
     val scope = rememberCoroutineScope()
-    var showSaveWarning by rememberSaveable { mutableStateOf(false) }
+    var showResetConfirmation by rememberSaveable { mutableStateOf(false) }
 
     // Revoking the certificate drops a page, so the index can outrun the list for a frame.
     val currentPage = pages.getOrNull(pagerState.currentPage)
@@ -104,28 +107,12 @@ internal fun SettingsScreen(
     Scaffold(
         modifier = modifier,
         topBar = {
-            CenterAlignedTopAppBar(
-                // M3 defaults the bar to `surface`, which seams against the canvas the page is painted with.
-                colors =
-                    TopAppBarDefaults.centerAlignedTopAppBarColors(
-                        containerColor = MaterialTheme.colorScheme.background,
-                    ),
-                title = { Text(stringResource(R.string.settings_title)) },
-                navigationIcon = {
-                    // Brand orange marks the call to action, which on this bar is Save.
-                    TextButton(
-                        onClick = onCancel,
-                        colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.onSurfaceVariant),
-                    ) {
-                        Text(stringResource(android.R.string.cancel))
-                    }
-                },
+            BackTopBar(
+                title = stringResource((currentPage ?: SettingsPage.GENERAL).labelRes),
+                onBack = onBack,
                 actions = {
-                    TextButton(
-                        onClick = { if (warnBeforeSaving) showSaveWarning = true else onSave() },
-                        enabled = isSaveEnabled,
-                    ) {
-                        Text(stringResource(R.string.save))
+                    if (currentPage == SettingsPage.GENERAL) {
+                        OverflowMenu(onResetToDefaults = { showResetConfirmation = true })
                     }
                 },
             )
@@ -150,22 +137,15 @@ internal fun SettingsScreen(
                 SettingsPage.GENERAL -> {
                     GeneralSettingsPage(
                         config = config,
+                        controlPlane = controlPlane,
                         managedStatus = managedStatus,
+                        signedInWith = signedInWith,
+                        onControlPlaneChange = onControlPlaneChange,
+                        onAuthUrlChange = onAuthUrlChange,
+                        onApiUrlChange = onApiUrlChange,
                         onAccountSlugChange = onAccountSlugChange,
                         onStartOnLoginChange = onStartOnLoginChange,
                         onConnectOnStartChange = onConnectOnStartChange,
-                    )
-                }
-
-                SettingsPage.ADVANCED -> {
-                    AdvancedSettingsPage(
-                        config = config,
-                        managedStatus = managedStatus,
-                        onAuthUrlChange = onAuthUrlChange,
-                        onApiUrlChange = onApiUrlChange,
-                        onLogFilterChange = onLogFilterChange,
-                        onResetToDefaults = onResetToDefaults,
-                        buildSha = buildSha,
                     )
                 }
 
@@ -178,30 +158,59 @@ internal fun SettingsScreen(
 
                 SettingsPage.LOGS -> {
                     LogSettingsPage(
+                        config = config,
+                        managedStatus = managedStatus,
                         logSizeBytes = logSizeBytes,
+                        onLogFilterChange = onLogFilterChange,
                         onClearLogs = onClearLogs,
                         onExportLogs = onExportLogs,
+                        versionName = versionName,
+                        buildSha = buildSha,
                     )
                 }
             }
         }
     }
 
-    if (showSaveWarning) {
+    if (showResetConfirmation) {
         AlertDialog(
-            onDismissRequest = { showSaveWarning = false },
-            title = { Text(stringResource(R.string.settings_save_warning_title)) },
-            text = { Text(stringResource(R.string.settings_save_warning_message)) },
+            onDismissRequest = { showResetConfirmation = false },
+            title = { Text(stringResource(R.string.reset_to_defaults_confirm_title)) },
             confirmButton = {
                 TextButton(
                     onClick = {
-                        showSaveWarning = false
-                        onSave()
+                        showResetConfirmation = false
+                        onResetToDefaults()
                     },
                 ) {
-                    Text(stringResource(R.string.settings_save_warning_confirm))
+                    Text(stringResource(R.string.reset_to_defaults_confirm))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showResetConfirmation = false }) {
+                    Text(stringResource(android.R.string.cancel))
                 }
             },
         )
+    }
+}
+
+@Composable
+private fun OverflowMenu(onResetToDefaults: () -> Unit) {
+    var expanded by remember { mutableStateOf(false) }
+
+    Box {
+        IconButton(onClick = { expanded = true }) {
+            Icon(imageVector = FirezoneIcons.MoreVert, contentDescription = stringResource(R.string.more_options))
+        }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.reset_to_defaults)) },
+                onClick = {
+                    expanded = false
+                    onResetToDefaults()
+                },
+            )
+        }
     }
 }

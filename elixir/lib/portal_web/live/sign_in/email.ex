@@ -1,6 +1,5 @@
 defmodule PortalWeb.SignIn.Email do
   use PortalWeb, {:live_view, layout: {PortalWeb.Layouts, :auth}}
-  alias __MODULE__.Database
 
   def mount(
         %{
@@ -15,7 +14,7 @@ defmodule PortalWeb.SignIn.Email do
       |> PortalWeb.Authentication.take_sign_in_params()
       |> Map.merge(PortalWeb.Authentication.take_sign_in_params(session))
 
-    account = Database.get_account_by_id_or_slug(account_id_or_slug)
+    account = PortalWeb.Accounts.get_by_id_or_slug(account_id_or_slug)
 
     with %Portal.Account{} = account <- account,
          {:ok, email} <- fetch_email(socket.assigns.live_action, account, session) do
@@ -214,18 +213,4 @@ defmodule PortalWeb.SignIn.Email do
     """
   end
 
-  defmodule Database do
-    import Ecto.Query
-    alias Portal.Safe
-    alias Portal.Account
-
-    def get_account_by_id_or_slug(id_or_slug) do
-      query =
-        if Portal.Repo.valid_uuid?(id_or_slug),
-          do: from(a in Account, where: a.id == ^id_or_slug or a.slug == ^id_or_slug),
-          else: from(a in Account, where: a.slug == ^id_or_slug)
-
-      query |> Safe.unscoped() |> Safe.one()
-    end
-  end
 end

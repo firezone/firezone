@@ -529,11 +529,19 @@ defmodule PortalWeb.Policies do
     {:noreply, socket}
   end
 
-  def handle_event("change_policy_authorizations_page", %{"page" => page}, socket) do
+  def handle_event(
+        "change_policy_authorizations_page",
+        %{"page" => page},
+        %{assigns: %{selected_policy: %Policy{} = policy}} = socket
+      ) do
     {:noreply,
      push_patch(socket,
-       to: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/policies/#{socket.assigns.selected_policy.id}", tab: "authorizations", page: page)
+       to: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/policies/#{policy.id}", tab: "authorizations", page: page)
      )}
+  end
+
+  def handle_event("change_policy_authorizations_page", _params, %{assigns: %{selected_policy: nil}} = socket) do
+    {:noreply, socket}
   end
 
   def handle_event("toggle_policy_authorization_row", %{"id" => id}, socket) do
@@ -616,9 +624,12 @@ defmodule PortalWeb.Policies do
      |> push_patch(to: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/policies"))}
   end
 
-  def handle_event("open_edit_form", _params, socket) do
-    {:noreply,
-     push_patch(socket, to: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/policies/#{socket.assigns.selected_policy.id}/edit"))}
+  def handle_event("open_edit_form", _params, %{assigns: %{selected_policy: %Policy{} = policy}} = socket) do
+    {:noreply, push_patch(socket, to: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/policies/#{policy.id}/edit"))}
+  end
+
+  def handle_event("open_edit_form", _params, %{assigns: %{selected_policy: nil}} = socket) do
+    {:noreply, socket}
   end
 
   def handle_event("cancel_policy_form", _params, socket) do

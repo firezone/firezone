@@ -77,6 +77,60 @@ defmodule PortalWeb.SignInTest do
       refute html =~ "Send code"
     end
 
+    test "shows the data residency region below the card", %{conn: conn, account: account} do
+      Portal.Config.put_env_override(:data_residency_region, :eu)
+
+      {:ok, lv, _html} = live(conn, ~p"/#{account}/sign_in")
+
+      assert has_element?(lv, "#data-residency", "Cloud region: European Union")
+    end
+
+    test "hides the data residency region on on-prem portals", %{conn: conn, account: account} do
+      {:ok, lv, _html} = live(conn, ~p"/#{account}/sign_in")
+
+      refute has_element?(lv, "#data-residency")
+      refute has_element?(lv, "#other-region-portal")
+    end
+
+    test "links the EU portal on the US portal", %{conn: conn, account: account} do
+      Portal.Config.put_env_override(:data_residency_region, :us)
+      Portal.Config.put_env_override(:web_external_url, "https://app.firezone.dev")
+
+      {:ok, lv, _html} = live(conn, ~p"/#{account}/sign_in")
+
+      assert has_element?(
+               lv,
+               "#other-region-portal[href='https://eu.app.firezone.dev']",
+               "Go to the EU portal"
+             )
+    end
+
+    test "links the US portal on the EU portal", %{conn: conn, account: account} do
+      Portal.Config.put_env_override(:data_residency_region, :eu)
+      Portal.Config.put_env_override(:web_external_url, "https://eu.app.firezone.dev")
+
+      {:ok, lv, _html} = live(conn, ~p"/#{account}/sign_in")
+
+      assert has_element?(
+               lv,
+               "#other-region-portal[href='https://app.firezone.dev']",
+               "Go to the US portal"
+             )
+    end
+
+    test "shows the region without a portal link on other portals", %{
+      conn: conn,
+      account: account
+    } do
+      Portal.Config.put_env_override(:data_residency_region, :eu)
+      Portal.Config.put_env_override(:web_external_url, "https://eu.app.firez.one")
+
+      {:ok, lv, _html} = live(conn, ~p"/#{account}/sign_in")
+
+      assert has_element?(lv, "#data-residency", "Cloud region: European Union")
+      refute has_element?(lv, "#other-region-portal")
+    end
+
     test "renders the sign-in on a branded card for small screens", %{conn: conn, account: account} do
       {:ok, lv, _html} = live(conn, ~p"/#{account}/sign_in")
 

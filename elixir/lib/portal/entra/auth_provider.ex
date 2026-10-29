@@ -25,6 +25,7 @@ defmodule Portal.Entra.AuthProvider do
       define_field: false
 
     field :tenant_ids, {:array, Ecto.UUID}
+    field :sign_in_tenant_id, Ecto.UUID
 
     field :context, Ecto.Enum,
       values: ~w[clients_and_portal clients_only portal_only]a,
@@ -55,6 +56,11 @@ defmodule Portal.Entra.AuthProvider do
       name: :entra_auth_providers_tenant_ids_excl,
       message: "A tenant is already verified on another Entra authentication provider in this account."
     )
+    |> validate_sign_in_tenant_id()
+    |> check_constraint(:sign_in_tenant_id,
+      name: :sign_in_tenant_id_must_be_verified,
+      message: "must be a verified tenant"
+    )
     |> validate_number(:portal_session_lifetime_secs,
       greater_than_or_equal_to: @portal_session_lifetime_min,
       less_than_or_equal_to: @portal_session_lifetime_max
@@ -75,4 +81,14 @@ defmodule Portal.Entra.AuthProvider do
 
   def default_portal_session_lifetime_secs, do: @default_portal_session_lifetime_secs
   def default_client_session_lifetime_secs, do: @default_client_session_lifetime_secs
+
+  defp validate_sign_in_tenant_id(changeset) do
+    tenant_id = get_field(changeset, :sign_in_tenant_id)
+
+    if is_nil(tenant_id) or tenant_id in (get_field(changeset, :tenant_ids) || []) do
+      changeset
+    else
+      add_error(changeset, :sign_in_tenant_id, "must be a verified tenant")
+    end
+  end
 end

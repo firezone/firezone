@@ -44,6 +44,7 @@ defmodule Portal.Mailer.InternalEmail do
     Sign-up questionnaire
 
     Account: #{account.name} (#{account.id})
+    Region: #{region()}
     Actor: #{actor.name} <#{actor.email}>
 
     #{survey_answers(survey)}
@@ -64,6 +65,30 @@ defmodule Portal.Mailer.InternalEmail do
     Actor: #{subject.actor.name} <#{subject.actor.email}>
 
     #{feedback}
+    """)
+  end
+
+  def region_transfer_request_email(
+        %Portal.Account{} = account,
+        %Portal.Authentication.Subject{} = subject,
+        from_region,
+        to_region
+      ) do
+    default_email()
+    |> to("support@firezone.dev")
+    |> reply_to({subject.actor.name, subject.actor.email})
+    |> subject("Region transfer request: #{account.name}")
+    |> with_account_id(account.id)
+    |> text_body("""
+    Region transfer request
+
+    Account: #{account.name} (#{account.id})
+    Slug: #{account.slug}
+    Plan: #{Portal.Billing.plan_type(account)}
+    Requested by: #{subject.actor.name} <#{subject.actor.email}>
+
+    From region: #{from_region}
+    To region: #{to_region}
     """)
   end
 
@@ -120,5 +145,11 @@ defmodule Portal.Mailer.InternalEmail do
   end
   defp recipient do
     Portal.Config.fetch_env!(:portal, __MODULE__) |> Keyword.fetch!(:recipient)
+  end
+
+  defp region do
+    Portal.Config.fetch_env!(:portal, :data_residency_region)
+    |> Atom.to_string()
+    |> String.upcase()
   end
 end

@@ -169,6 +169,10 @@ impl<TRoleState> Tunnel<TRoleState> {
         &mut self.role_state
     }
 
+    pub fn into_state(self) -> TRoleState {
+        self.role_state
+    }
+
     pub fn set_tun(&mut self, tun: Box<dyn Tun>) {
         self.io.set_tun(tun);
     }
@@ -395,8 +399,7 @@ impl ClientTunnel {
             // Process all IO sources that are ready.
             if let Poll::Ready(io::Input {
                 dns_responses,
-                tcp_dns_queries: _,
-                udp_dns_queries: _,
+                dns_queries: _,
                 mut device,
                 network,
                 decrypted,
@@ -601,8 +604,7 @@ impl GatewayTunnel {
             // Process all IO sources that are ready.
             if let Poll::Ready(io::Input {
                 dns_responses,
-                tcp_dns_queries,
-                udp_dns_queries,
+                dns_queries,
                 mut device,
                 network,
                 decrypted,
@@ -742,28 +744,37 @@ impl GatewayTunnel {
                     tick.want_continue();
                 }
 
-                for query in udp_dns_queries {
-                    self.io.send_dns_query(ResolverQuery {
-                        server: None,
-                        local: query.local,
-                        remote: query.remote,
-                        message: query.message,
-                        transport: dns::Transport::Udp,
-                        started_at: now,
-                    });
-
-                    tick.want_continue();
-                }
-
-                for query in tcp_dns_queries {
-                    self.io.send_dns_query(ResolverQuery {
-                        server: None,
-                        local: query.local,
-                        remote: query.remote,
-                        message: query.message,
-                        transport: dns::Transport::Tcp,
-                        started_at: now,
-                    });
+                for io::DnsQuery {
+                    local,
+                    remote,
+                    message,
+                    transport,
+                } in dns_queries
+                {
+                    match self
+                        .role_state
+                        .handle_site_dns_query(local, remote, message, transport)
+                    {
+                        Ok(query) => self
+                            .io
+                            .send_dns_query(ResolverQuery::new_gateway(query, now)),
+                        Err(response) => match transport {
+                            dns::Transport::Udp => {
+                                if let Err(e) =
+                                    self.io.send_udp_dns_response(remote, local, response)
+                                {
+                                    error.push(e);
+                                }
+                            }
+                            dns::Transport::Tcp => {
+                                if let Err(e) =
+                                    self.io.send_tcp_dns_response(remote, local, response)
+                                {
+                                    error.push(e);
+                                }
+                            }
+                        },
+                    }
 
                     tick.want_continue();
                 }

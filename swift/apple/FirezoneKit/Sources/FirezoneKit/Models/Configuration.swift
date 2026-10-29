@@ -59,6 +59,11 @@ public class Configuration: ObservableObject {
     public static let disableUpdateCheck = "disableUpdateCheck"
     public static let supportURL = "supportURL"
     public static let userDefaultsMigrated = "userDefaultsMigrated"
+    static let lastCustomAuthURL = "lastCustomAuthURL"
+    static let lastCustomApiURL = "lastCustomApiURL"
+    static let signedInAccountSlug = "signedInAccountSlug"
+    static let signedInAuthURL = "signedInAuthURL"
+    static let signedInApiURL = "signedInApiURL"
   }
 
   // Each entry describes a key persisted to providerConfiguration. The getters
@@ -187,6 +192,43 @@ public class Configuration: ObservableObject {
     }
   }
 
+  /// The URLs last saved with the Custom control plane picked, so that picking Custom again brings them
+  /// back. Only this app reads them: they are not a managed setting and never reach the tunnel.
+  var lastCustomURLs: (authURL: String, apiURL: String)? {
+    get {
+      guard let authURL = defaults.string(forKey: Keys.lastCustomAuthURL),
+        let apiURL = defaults.string(forKey: Keys.lastCustomApiURL)
+      else { return nil }
+
+      return (authURL, apiURL)
+    }
+    set {
+      defaults.set(newValue?.authURL, forKey: Keys.lastCustomAuthURL)
+      defaults.set(newValue?.apiURL, forKey: Keys.lastCustomApiURL)
+    }
+  }
+
+  var signInSettings: SignInSettings {
+    SignInSettings(accountSlug: accountSlug, authURL: authURL, apiURL: apiURL)
+  }
+
+  /// What the last sign-in from this app used, until signing out. Only this app reads it.
+  var signedInWith: SignInSettings? {
+    get {
+      guard let accountSlug = defaults.string(forKey: Keys.signedInAccountSlug),
+        let authURL = defaults.string(forKey: Keys.signedInAuthURL),
+        let apiURL = defaults.string(forKey: Keys.signedInApiURL)
+      else { return nil }
+
+      return SignInSettings(accountSlug: accountSlug, authURL: authURL, apiURL: apiURL)
+    }
+    set {
+      defaults.set(newValue?.accountSlug, forKey: Keys.signedInAccountSlug)
+      defaults.set(newValue?.authURL, forKey: Keys.signedInAuthURL)
+      defaults.set(newValue?.apiURL, forKey: Keys.signedInApiURL)
+    }
+  }
+
   var hideAdminPortalMenuItem: Bool { managedBool(Keys.hideAdminPortalMenuItem) }
   var hideResourceList: Bool { managedBool(Keys.hideResourceList) }
   var disableUpdateCheck: Bool { managedBool(Keys.disableUpdateCheck) }
@@ -311,6 +353,19 @@ public class Configuration: ObservableObject {
   }
 
   nonisolated static func string(_ value: Bool) -> String { value ? "true" : "false" }
+}
+
+/// The account slug and endpoints selected for a sign-in.
+public struct SignInSettings: Codable, Equatable, Sendable {
+  public let accountSlug: String
+  public let authURL: String
+  public let apiURL: String
+
+  public init(accountSlug: String, authURL: String, apiURL: String) {
+    self.accountSlug = accountSlug
+    self.authURL = authURL
+    self.apiURL = apiURL
+  }
 }
 
 extension Dictionary where Key == String, Value == String {

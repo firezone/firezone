@@ -3,7 +3,6 @@ package dev.firezone.android.features.settings.ui
 
 import android.content.Context
 import android.content.Intent
-import android.webkit.URLUtil
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -13,7 +12,9 @@ import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.firezone.android.core.data.Repository
 import dev.firezone.android.core.data.model.Config
+import dev.firezone.android.core.data.model.ControlPlane
 import dev.firezone.android.core.data.model.ManagedConfigStatus
+import dev.firezone.android.core.data.model.SignInSettings
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -22,6 +23,8 @@ import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.launch
+import uniffi.connlib.ConnlibException
+import uniffi.connlib.validateLogFilter
 import java.io.File
 import java.io.FileOutputStream
 import java.net.URI
@@ -39,10 +42,6 @@ internal class SettingsViewModel
         private val _uiState = MutableStateFlow(UiState())
         val uiState: StateFlow<UiState> = _uiState
 
-        private val actionMutableStateFlow = MutableStateFlow<ViewAction?>(null)
-        val actionStateFlow: StateFlow<ViewAction?> = actionMutableStateFlow
-
-        // Compose state rather than a flow: a dispatcher hop between keystroke and text field drops input.
         var config by mutableStateOf(
             Config(
                 authUrl = "",
@@ -55,33 +54,25 @@ internal class SettingsViewModel
         )
             private set
 
-        // Snapshot of the persisted config as it was loaded, used to detect which
-        // fields the user actually changed when saving.
-        private var savedConfig = config
+        // Kept apart from the URLs so that picking Custom does not snap back to a control plane whose URLs match.
+        var controlPlane by mutableStateOf(ControlPlane.CUSTOM)
+            private set
+
+        // `null` while signed out.
+        val signedInWith: SignInSettings? = repo.getActiveSignInSettingsSync()
 
         private val _managedStatusStateFlow = MutableStateFlow<ManagedConfigStatus?>(null)
         val managedStatusStateFlow: StateFlow<ManagedConfigStatus?> = _managedStatusStateFlow
-
-        private var shouldResetFavoritesOnSave = false
 
         fun populateFieldsFromConfig() {
             viewModelScope.launch {
                 repo.getConfig().collect {
                     config = it
-                    savedConfig = it
                     _managedStatusStateFlow.value = repo.getManagedStatus()
-                    onFieldUpdated()
+                    controlPlane = detectControlPlane(it)
                 }
             }
         }
-
-        // The log filter is applied live, so it never requires a re-login.
-        // Changing the account or the portal endpoints invalidates the current session and only
-        // takes effect after signing out and back in.
-        fun requiresReLogin(): Boolean =
-            config.authUrl != savedConfig.authUrl ||
-                config.apiUrl != savedConfig.apiUrl ||
-                config.accountSlug != savedConfig.accountSlug
 
         fun onViewResume(context: Context) {
             val directory = File(context.cacheDir.absolutePath + "/logs")
@@ -100,51 +91,34 @@ internal class SettingsViewModel
             }
         }
 
-        fun onSaveSettingsCompleted() {
-            viewModelScope.launch {
-                repo.saveSettings(config).collect {
-                    if (shouldResetFavoritesOnSave) {
-                        repo.resetFavorites()
-                        shouldResetFavoritesOnSave = false
-                    }
-                    actionMutableStateFlow.value = ViewAction.NavigateBack
-                }
+        fun onControlPlaneChanged(newControlPlane: ControlPlane) {
+            val previousControlPlane = controlPlane
+            val managedStatus = repo.getManagedStatus()
+            if (previousControlPlane == ControlPlane.CUSTOM && !managedStatus.isAuthUrlManaged && !managedStatus.isApiUrlManaged) {
+                repo.saveLastCustomUrlsSync(config.authUrl, config.apiUrl)
+            }
+            controlPlane = newControlPlane
+
+            if (newControlPlane.authUrl != null && newControlPlane.apiUrl != null) {
+                persist(config.copy(authUrl = newControlPlane.authUrl, apiUrl = newControlPlane.apiUrl))
+            } else if (previousControlPlane != ControlPlane.CUSTOM) {
+                // Without any custom URLs saved yet, Custom starts from the cloud control plane's.
+                val (authUrl, apiUrl) = repo.getLastCustomUrlsSync() ?: (config.authUrl to config.apiUrl)
+                persist(config.copy(authUrl = authUrl, apiUrl = apiUrl))
             }
         }
 
-        fun onCancel() {
-            actionMutableStateFlow.value = ViewAction.NavigateBack
-        }
+        fun onAuthUrlChanged(authUrl: String) = persist(config.copy(authUrl = authUrl))
 
-        fun onValidateAuthUrl(authUrl: String) {
-            config = config.copy(authUrl = authUrl)
-            onFieldUpdated()
-        }
+        fun onApiUrlChanged(apiUrl: String) = persist(config.copy(apiUrl = apiUrl))
 
-        fun onValidateApiUrl(apiUrl: String) {
-            config = config.copy(apiUrl = apiUrl)
-            onFieldUpdated()
-        }
+        fun onLogFilterChanged(logFilter: String) = persist(config.copy(logFilter = logFilter))
 
-        fun onValidateLogFilter(logFilter: String) {
-            config = config.copy(logFilter = logFilter)
-            onFieldUpdated()
-        }
+        fun onAccountSlugChanged(accountSlug: String) = persist(config.copy(accountSlug = accountSlug))
 
-        fun onValidateAccountSlug(accountSlug: String) {
-            config = config.copy(accountSlug = accountSlug)
-            onFieldUpdated()
-        }
+        fun onStartOnLoginChanged(isChecked: Boolean) = persist(config.copy(startOnLogin = isChecked))
 
-        fun onStartOnLoginChanged(isChecked: Boolean) {
-            config = config.copy(startOnLogin = isChecked)
-            onFieldUpdated()
-        }
-
-        fun onConnectOnStartChanged(isChecked: Boolean) {
-            config = config.copy(connectOnStart = isChecked)
-            onFieldUpdated()
-        }
+        fun onConnectOnStartChanged(isChecked: Boolean) = persist(config.copy(connectOnStart = isChecked))
 
         fun deleteLogDirectory(context: Context) {
             viewModelScope.launch(Dispatchers.IO) {
@@ -198,14 +172,12 @@ internal class SettingsViewModel
         }
 
         fun resetSettingsToDefaults() {
-            config = repo.getDefaultConfigSync()
-            shouldResetFavoritesOnSave = true
+            // The log filter lives on the diagnostics page, so this page's reset leaves it alone.
+            val defaults = repo.getDefaultConfigSync().copy(logFilter = config.logFilter)
             _managedStatusStateFlow.value = repo.getManagedStatus()
-            onFieldUpdated()
-        }
-
-        fun clearAction() {
-            actionMutableStateFlow.value = null
+            controlPlane = detectControlPlane(defaults)
+            persist(defaults)
+            repo.resetFavorites()
         }
 
         fun deleteLogZip(context: Context) {
@@ -239,34 +211,57 @@ internal class SettingsViewModel
             emit(Result.failure(e))
         }.flowOn(Dispatchers.IO)
 
-        private fun getLogZipPath(context: Context) = "${context.cacheDir.absolutePath}/logs.zip"
-
-        private fun onFieldUpdated() {
-            _uiState.value =
-                _uiState.value.copy(
-                    isSaveButtonEnabled = areFieldsValid(),
-                )
-        }
-
-        private fun areFieldsValid(): Boolean =
-            URLUtil.isValidUrl(config.authUrl) &&
-                isUriValid(config.apiUrl) &&
-                config.logFilter.isNotBlank()
-
-        private fun isUriValid(uri: String): Boolean =
-            try {
-                URI(uri)
-                true
-            } catch (e: URISyntaxException) {
-                false
+        // With only one of the URLs managed, Custom keeps the other one editable.
+        private fun detectControlPlane(config: Config): ControlPlane {
+            val managedStatus = repo.getManagedStatus()
+            if (managedStatus.isAuthUrlManaged != managedStatus.isApiUrlManaged) {
+                return ControlPlane.CUSTOM
             }
 
+            return ControlPlane.of(config.authUrl, config.apiUrl)
+        }
+
+        private fun getLogZipPath(context: Context) = "${context.cacheDir.absolutePath}/logs.zip"
+
+        private fun persist(newConfig: Config) {
+            config = newConfig
+
+            // Only URLs the user typed are worth offering again; managed ones come back by themselves.
+            val managedStatus = repo.getManagedStatus()
+            if (controlPlane == ControlPlane.CUSTOM && !managedStatus.isAuthUrlManaged && !managedStatus.isApiUrlManaged) {
+                repo.saveLastCustomUrlsSync(newConfig.authUrl, newConfig.apiUrl)
+            }
+
+            repo.saveSettingsSync(newConfig)
+        }
+
         internal data class UiState(
-            val isSaveButtonEnabled: Boolean = false,
             val logSizeBytes: Long = 0,
         )
-
-        internal sealed class ViewAction {
-            data object NavigateBack : ViewAction()
-        }
     }
+
+// Returns why connlib would reject `logFilter`, or `null` if it accepts it.
+internal fun logFilterError(logFilter: String): String? =
+    try {
+        validateLogFilter(logFilter)
+        null
+    } catch (e: ConnlibException) {
+        e.use { it.message() }
+    }
+
+internal fun isValidAuthUrl(url: String): Boolean = isValidUrl(url, "http", "https")
+
+internal fun isValidApiUrl(url: String): Boolean = isValidUrl(url, "ws", "wss")
+
+private fun isValidUrl(
+    url: String,
+    vararg schemes: String,
+): Boolean {
+    val uri =
+        try {
+            URI(url)
+        } catch (e: URISyntaxException) {
+            return false
+        }
+    return uri.host != null && uri.scheme in schemes
+}
