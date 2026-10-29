@@ -758,20 +758,22 @@ impl GatewayTunnel {
                         Ok(query) => self
                             .io
                             .send_dns_query(ResolverQuery::new_gateway(query, now)),
-                        Err(response) => {
-                            let result = match transport {
-                                dns::Transport::Udp => {
+                        Err(response) => match transport {
+                            dns::Transport::Udp => {
+                                if let Err(e) =
                                     self.io.send_udp_dns_response(remote, local, response)
+                                {
+                                    error.push(e);
                                 }
-                                dns::Transport::Tcp => {
-                                    self.io.send_tcp_dns_response(remote, local, response)
-                                }
-                            };
-
-                            if let Err(e) = result {
-                                error.push(e);
                             }
-                        }
+                            dns::Transport::Tcp => {
+                                if let Err(e) =
+                                    self.io.send_tcp_dns_response(remote, local, response)
+                                {
+                                    error.push(e);
+                                }
+                            }
+                        },
                     }
 
                     tick.want_continue();
