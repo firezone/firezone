@@ -518,15 +518,12 @@ impl ClientOnGateway {
 
         let domain = query.domain();
 
-        self.resources.iter().any(|(id, resource)| {
-            let Some(entry) = self.resources.get(id) else {
-                return false;
-            };
+        self.resources.entries().any(|entry| {
             if entry.expires_at <= now {
                 return false;
             }
 
-            match resource {
+            match &entry.value {
                 ResourceOnGateway::Dns { address, .. } => {
                     crate::dns::is_subdomain(&domain, address)
                 }

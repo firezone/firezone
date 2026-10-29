@@ -81,6 +81,10 @@ where
         self.inner.iter().map(|(k, e)| (k, &e.value))
     }
 
+    pub fn entries(&self) -> impl Iterator<Item = &Entry<V>> {
+        self.inner.values()
+    }
+
     pub fn values(&self) -> impl Iterator<Item = &V> {
         self.inner.values().map(|e| &e.value)
     }
