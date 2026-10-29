@@ -31,8 +31,9 @@ fn fd_table_size() -> RawFd {
 fn search_for_tun_fd() -> io::Result<RawFd> {
     const CTL_NAME: &[u8] = b"com.apple.net.utun_control";
 
-    use libc::{AF_SYSTEM, CTLIOCGINFO, ctl_info, getpeername, ioctl, sockaddr_ctl, socklen_t};
+    use libc::{AF_SYSTEM, getpeername, ioctl, socklen_t};
     use std::mem::size_of;
+    use tun_apple::kern_control::{CTLIOCGINFO, ctl_info, sockaddr_ctl};
 
     let mut info = ctl_info {
         ctl_id: 0,
