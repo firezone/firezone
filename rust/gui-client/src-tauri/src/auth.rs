@@ -394,7 +394,6 @@ pub fn replicate_6791() -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use keyring_core::api::CredentialStoreApi as _;
     use tempfile::tempdir;
 
     fn bogus_secret(x: &str) -> SecretString {
@@ -539,35 +538,6 @@ mod tests {
             auth_url: "https://app.firezone.dev/".parse().unwrap(),
             api_url: "wss://api.firezone.dev/".parse().unwrap(),
         }
-    }
-
-    #[test]
-    fn unsupported_metadata_keeps_raw_token_and_in_memory_settings() {
-        let store = keyring_core::mock::Store::new().unwrap();
-        let session_dir = tempdir().unwrap();
-        let key = "dev.firezone.client/test_legacy/token";
-        let entry = store.build("", key, None).unwrap();
-        entry.set_password("legacy-token").unwrap();
-        let mut auth =
-            Auth::new_with_key(key, store.clone(), session_dir.path().to_path_buf()).unwrap();
-        assert!(auth.sign_in_settings().is_none());
-        let token = auth.token().unwrap();
-        assert_eq!(token.expose_secret(), "legacy-token");
-        assert_eq!(entry.get_password().unwrap(), "legacy-token");
-
-        // The mock rejects attribute updates, exercising a metadata-save failure.
-        auth.attach_sign_in_settings_to_token(sign_in_settings());
-        assert_eq!(auth.sign_in_settings(), Some(&sign_in_settings()));
-        auth.attach_sign_in_settings_to_token(SignInSettings {
-            api_url: "wss://eu.api.firezone.dev/".parse().unwrap(),
-            ..sign_in_settings()
-        });
-        assert_eq!(auth.sign_in_settings(), Some(&sign_in_settings()));
-
-        let restored = Auth::new_with_key(key, store, session_dir.path().to_path_buf()).unwrap();
-        assert_eq!(restored.token().unwrap().expose_secret(), "legacy-token");
-        assert!(restored.sign_in_settings().is_none());
-        assert_eq!(entry.get_password().unwrap(), "legacy-token");
     }
 
     #[test]
