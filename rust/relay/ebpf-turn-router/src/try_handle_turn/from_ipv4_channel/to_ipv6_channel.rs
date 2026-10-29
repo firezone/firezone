@@ -7,7 +7,8 @@ use network_types::{
 };
 
 use crate::try_handle_turn::{
-    Error, adjust_head, channel_data::CdHdr, checksum::ChecksumUpdate, config, ref_mut_at,
+    Error, adjust_head, channel_data::CdHdr, checksum::ChecksumUpdate, config, mac::MacAddrs,
+    ref_mut_at,
 };
 
 #[inline(always)]
@@ -23,10 +24,10 @@ pub fn to_ipv6_channel(
     // Now read the old packet data from its NEW location (shifted by 24 bytes)
     let old_data_offset = -NET_EXPANSION as usize;
 
-    let (old_eth_src, old_eth_dst) = {
+    let old_macs = {
         // SAFETY: The offset must point to the start of a valid `EthHdr`.
         let old_eth = unsafe { ref_mut_at::<EthHdr>(ctx, old_data_offset)? };
-        (old_eth.src_addr, old_eth.dst_addr)
+        MacAddrs::read(old_eth)
     };
 
     let (
@@ -86,8 +87,7 @@ pub fn to_ipv6_channel(
 
     // SAFETY: The offset must point to the start of a valid `EthHdr`.
     let eth = unsafe { ref_mut_at::<EthHdr>(ctx, 0)? };
-    eth.dst_addr = old_eth_src; // Swap source and destination
-    eth.src_addr = old_eth_dst;
+    old_macs.write_swapped(eth);
     eth.ether_type = EtherType::Ipv6.into(); // Change to IPv6
 
     //

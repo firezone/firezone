@@ -10,7 +10,9 @@ use crate::try_handle_turn::{
     Error, adjust_head,
     channel_data::CdHdr,
     checksum::{self, ChecksumUpdate},
-    config, ref_mut_at,
+    config,
+    mac::MacAddrs,
+    ref_mut_at,
 };
 
 #[inline(always)]
@@ -18,10 +20,10 @@ pub fn to_ipv4_udp(ctx: &XdpContext, port_and_peer: &PortAndPeerV4) -> Result<()
     // Shrink by 24 bytes: 20 for the IP header diff and 4 for the removed channel data header
     const NET_SHRINK: i32 = Ipv6Hdr::LEN as i32 - Ipv4Hdr::LEN as i32 + CdHdr::LEN as i32;
 
-    let (old_eth_src, old_eth_dst) = {
+    let old_macs = {
         // SAFETY: The offset must point to the start of a valid `EthHdr`.
         let old_eth = unsafe { ref_mut_at::<EthHdr>(ctx, 0)? };
-        (old_eth.src_addr, old_eth.dst_addr)
+        MacAddrs::read(old_eth)
     };
 
     let (
@@ -67,8 +69,7 @@ pub fn to_ipv4_udp(ctx: &XdpContext, port_and_peer: &PortAndPeerV4) -> Result<()
 
     // SAFETY: The offset must point to the start of a valid `EthHdr`.
     let eth = unsafe { ref_mut_at::<EthHdr>(ctx, NET_SHRINK as usize)? };
-    eth.src_addr = old_eth_dst; // Swap source and destination
-    eth.dst_addr = old_eth_src;
+    old_macs.write_swapped(eth);
     eth.ether_type = EtherType::Ipv4.into(); // Change to IPv4
 
     //

@@ -2,17 +2,19 @@ use aya_ebpf::programs::XdpContext;
 use ebpf_shared::ClientAndChannelV6;
 use network_types::{eth::EthHdr, ip::Ipv6Hdr, udp::UdpHdr};
 
-use crate::try_handle_turn::{Error, channel_data::CdHdr, checksum::ChecksumUpdate, ref_mut_at};
+use crate::try_handle_turn::{
+    Error, channel_data::CdHdr, checksum::ChecksumUpdate, mac::MacAddrs, ref_mut_at,
+};
 
 #[inline(always)]
 pub fn to_ipv6_channel(
     ctx: &XdpContext,
     client_and_channel: &ClientAndChannelV6,
 ) -> Result<(), Error> {
-    let (old_eth_src, old_eth_dst, old_eth_type) = {
+    let (old_macs, old_eth_type) = {
         // SAFETY: The offset must point to the start of a valid `EthHdr`.
         let old_eth = unsafe { ref_mut_at::<EthHdr>(ctx, 0)? };
-        (old_eth.src_addr, old_eth.dst_addr, old_eth.ether_type)
+        (MacAddrs::read(old_eth), old_eth.ether_type)
     };
 
     let (old_ipv6_src, old_ipv6_dst, ..) = {
@@ -53,8 +55,7 @@ pub fn to_ipv6_channel(
 
     // SAFETY: The offset must point to the start of a valid `EthHdr`.
     let eth = unsafe { ref_mut_at::<EthHdr>(ctx, 0)? };
-    eth.src_addr = old_eth_dst; // Swap source and destination
-    eth.dst_addr = old_eth_src;
+    old_macs.write_swapped(eth);
     eth.ether_type = old_eth_type;
 
     //

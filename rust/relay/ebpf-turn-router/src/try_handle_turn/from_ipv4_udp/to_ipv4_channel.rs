@@ -3,7 +3,7 @@ use ebpf_shared::ClientAndChannelV4;
 use network_types::{eth::EthHdr, ip::Ipv4Hdr, udp::UdpHdr};
 
 use crate::try_handle_turn::{
-    Error, adjust_head, channel_data::CdHdr, checksum::ChecksumUpdate, ref_mut_at,
+    Error, adjust_head, channel_data::CdHdr, checksum::ChecksumUpdate, mac::MacAddrs, ref_mut_at,
 };
 
 #[inline(always)]
@@ -18,10 +18,10 @@ pub fn to_ipv4_channel(
     // Now read the old packet data from its NEW location (shifted by 4 bytes)
     let old_data_offset = -NET_EXPANSION as usize;
 
-    let (old_eth_src, old_eth_dst, old_eth_type) = {
+    let (old_macs, old_eth_type) = {
         // SAFETY: The offset must point to the start of a valid `EthHdr`.
         let old_eth = unsafe { ref_mut_at::<EthHdr>(ctx, old_data_offset)? };
-        (old_eth.src_addr, old_eth.dst_addr, old_eth.ether_type)
+        (MacAddrs::read(old_eth), old_eth.ether_type)
     };
 
     let (
@@ -70,8 +70,7 @@ pub fn to_ipv4_channel(
 
     // SAFETY: The offset must point to the start of a valid `EthHdr`.
     let eth = unsafe { ref_mut_at::<EthHdr>(ctx, 0)? };
-    eth.src_addr = old_eth_dst;
-    eth.dst_addr = old_eth_src;
+    old_macs.write_swapped(eth);
     eth.ether_type = old_eth_type;
 
     //
