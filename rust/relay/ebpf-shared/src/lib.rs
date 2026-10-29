@@ -246,23 +246,51 @@ impl PortAndPeerV6 {
 pub const STATS_SAMPLING_INTERVAL: u32 = 256;
 
 /// Indices into the per-CPU array that counts relayed packets by incoming IP version and ECN codepoint.
+///
+/// | Index  | IP version | ECN codepoint  |
+/// |--------|------------|----------------|
+/// | 0..=3  | IPv4       | `index`        |
+/// | 4..=7  | IPv6       | `index - 4`    |
+///
+/// [`PacketCounter::index`] and [`PacketCounter::ip_version_and_ecn`] convert between the two
+/// and are inverses of each other.
 pub struct PacketCounter;
 
 impl PacketCounter {
     pub const NUM_ENTRIES: u32 = 8;
 
     /// The index of the counter for packets of the given IP version and ECN codepoint.
+    ///
+    /// Only the two lowest bits of `ecn` form the codepoint.
+    /// The eBPF program only relays IPv4 and IPv6, so any other version counts as IPv6.
     pub const fn index(ip_version: u8, ecn: u8) -> u32 {
-        let is_ipv6 = (ip_version == 6) as u32;
-
-        (is_ipv6 << 2) | (ecn & 0b11) as u32
+        match (ip_version, ecn & 0b11) {
+            (4, 0b00) => 0,
+            (4, 0b01) => 1,
+            (4, 0b10) => 2,
+            (4, _) => 3,
+            (_, 0b00) => 4,
+            (_, 0b01) => 5,
+            (_, 0b10) => 6,
+            (_, _) => 7,
+        }
     }
 
-    /// The IP version and ECN codepoint counted at `index`.
-    pub const fn ip_version_and_ecn(index: u32) -> (u8, u8) {
-        let ip_version = if index & 0b100 == 0 { 4 } else { 6 };
+    /// The IP version and ECN codepoint counted at `index`, or `None` if there is no such counter.
+    pub const fn ip_version_and_ecn(index: u32) -> Option<(u8, u8)> {
+        let counter = match index {
+            0 => (4, 0b00),
+            1 => (4, 0b01),
+            2 => (4, 0b10),
+            3 => (4, 0b11),
+            4 => (6, 0b00),
+            5 => (6, 0b01),
+            6 => (6, 0b10),
+            7 => (6, 0b11),
+            _ => return None,
+        };
 
-        (ip_version, (index & 0b11) as u8)
+        Some(counter)
     }
 }
 
@@ -375,9 +403,17 @@ mod stats_event_tests {
                 let index = PacketCounter::index(ip_version, ecn);
 
                 assert!(index < PacketCounter::NUM_ENTRIES);
-                assert_eq!(PacketCounter::ip_version_and_ecn(index), (ip_version, ecn));
+                assert_eq!(
+                    PacketCounter::ip_version_and_ecn(index),
+                    Some((ip_version, ecn))
+                );
             }
         }
+
+        assert_eq!(
+            PacketCounter::ip_version_and_ecn(PacketCounter::NUM_ENTRIES),
+            None
+        );
     }
 
     #[test]
