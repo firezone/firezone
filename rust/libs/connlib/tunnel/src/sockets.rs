@@ -122,6 +122,7 @@ pub(crate) struct Sockets {
     /// Bind failures, surfaced through [`Sockets::poll_error`] alongside runtime socket errors.
     bind_errors: VecDeque<anyhow::Error>,
     packet_counter: Counter<u64>,
+    dropped_packets: Counter<u64>,
 
     /// The vector to receive the next batches into, unless it is lent out to a [`ReceivedDatagrams`].
     recv_batches: Option<Vec<DatagramBatch>>,
@@ -147,6 +148,7 @@ impl Sockets {
             overflow_v6: VecDeque::new(),
             bind_errors: VecDeque::new(),
             packet_counter: otel_instruments::network_packets(),
+            dropped_packets: otel_instruments::network_packet_dropped(),
             recv_batches: Some(Vec::with_capacity(2 * UDP_RECV_BATCH_LIMIT)),
             returned_recv_batches: Arc::default(),
         }
@@ -210,6 +212,15 @@ impl Sockets {
         };
 
         if overflow.len() >= QUEUE_SIZE {
+            self.dropped_packets.add(
+                1,
+                &[
+                    otel::attr::network_transport_udp(),
+                    otel::attr::network_io_direction_transmit(),
+                    otel::attr::network_type_for_addr(transmit.dst),
+                    otel::attr::error_type("QueueFull"),
+                ],
+            );
             tracing::trace!(dst = %transmit.dst, "UDP socket is full; dropping datagram");
             return;
         }
