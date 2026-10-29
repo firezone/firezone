@@ -2610,7 +2610,7 @@ dependencies = [
 
 [[package]]
 name = "firezone-gateway"
-version = "1.6.4"
+version = "1.6.5"
 dependencies = [
  "anyhow-ext",
  "atomicfs",
