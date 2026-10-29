@@ -84,7 +84,7 @@ struct Args {
 
     /// Which OTLP collector we should connect to.
     ///
-    /// If set, we will report traces to this collector via gRPC.
+    /// If set, we will report traces and metrics to this collector via gRPC.
     #[arg(long, env, hide = true)]
     otlp_grpc_endpoint: Option<String>,
 
@@ -305,15 +305,10 @@ fn setup_tracing(args: &Args) -> Result<FilterReloadHandle> {
         &tracing_subscriber::registry().with(log_layer(args)).into(),
     );
 
-    if let Some(endpoint) = &args.azure_otlp_metrics_endpoint {
-        // Reqwest's blocking client initializes its own runtime.
-        let provider = tokio::task::block_in_place(|| {
-            azure_metrics::meter_provider(endpoint, make_otel_metadata())
-        })?;
-        global::set_meter_provider(provider);
-    }
-
     let directives = std::env::var("RUST_LOG").unwrap_or_else(|_| "info".to_string());
+    let metadata = make_otel_metadata();
+    let mut meter_provider =
+        opentelemetry_sdk::metrics::SdkMeterProvider::builder().with_resource(metadata.clone());
 
     let (dispatch, reload_handle) = match args.otlp_grpc_endpoint.clone() {
         None => {
@@ -327,14 +322,13 @@ fn setup_tracing(args: &Args) -> Result<FilterReloadHandle> {
             (dispatch, reload_handle)
         }
         Some(endpoint) => {
-            let metadata = make_otel_metadata();
             let grpc_endpoint = format!("http://{endpoint}");
 
             tracing::trace!(target: "relay", %grpc_endpoint, "Setting up OTLP exporter for collector");
 
             let exporter = opentelemetry_otlp::SpanExporter::builder()
                 .with_tonic()
-                .with_endpoint(grpc_endpoint)
+                .with_endpoint(grpc_endpoint.clone())
                 .build()
                 .context("Failed to build OTLP span exporter")?;
 
@@ -346,6 +340,14 @@ fn setup_tracing(args: &Args) -> Result<FilterReloadHandle> {
             global::set_tracer_provider(tracer_provider.clone());
 
             tracing::trace!(target: "relay", "Successfully initialized trace provider on tokio runtime");
+
+            let exporter = opentelemetry_otlp::MetricExporter::builder()
+                .with_tonic()
+                .with_endpoint(grpc_endpoint)
+                .with_temporality(opentelemetry_sdk::metrics::Temporality::LowMemory)
+                .build()
+                .context("Failed to build OTLP metric exporter")?;
+            meter_provider = meter_provider.with_periodic_exporter(exporter);
 
             let (log_filter, log_reload_handle) = logging::try_filter(&directives)?;
             let (otel_filter, otel_reload_handle) = logging::try_filter(&directives)?;
@@ -363,6 +365,13 @@ fn setup_tracing(args: &Args) -> Result<FilterReloadHandle> {
             (dispatch, log_reload_handle.merge(otel_reload_handle))
         }
     };
+
+    if let Some(endpoint) = &args.azure_otlp_metrics_endpoint {
+        // Reqwest's blocking client initializes its own runtime.
+        meter_provider =
+            tokio::task::block_in_place(|| azure_metrics::with_exporter(meter_provider, endpoint))?;
+    }
+    global::set_meter_provider(meter_provider.build());
 
     drop(temp_logger_guard); // Drop as late as possible
 

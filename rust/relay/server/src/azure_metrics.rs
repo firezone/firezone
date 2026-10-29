@@ -1,9 +1,8 @@
 use anyhow::{Context as _, Result, bail};
 use opentelemetry_http::{Bytes, HttpClient, HttpError, Request, Response};
 use opentelemetry_otlp::{Protocol, WithExportConfig as _, WithHttpConfig as _};
-use opentelemetry_sdk::Resource;
 use opentelemetry_sdk::metrics::{
-    Aggregation, Instrument, InstrumentKind, SdkMeterProvider, Stream, Temporality,
+    Aggregation, Instrument, InstrumentKind, MeterProviderBuilder, Stream, Temporality,
 };
 use reqwest::header::{AUTHORIZATION, HeaderValue};
 use serde::Deserialize;
@@ -13,7 +12,10 @@ use std::sync::Mutex;
 use std::time::{Duration, SystemTime};
 use url::Url;
 
-pub fn meter_provider(endpoint: &Url, resource: Resource) -> Result<SdkMeterProvider> {
+pub fn with_exporter(
+    builder: MeterProviderBuilder,
+    endpoint: &Url,
+) -> Result<MeterProviderBuilder> {
     if endpoint.scheme() != "https"
         || !endpoint.username().is_empty()
         || endpoint.password().is_some()
@@ -32,13 +34,11 @@ pub fn meter_provider(endpoint: &Url, resource: Resource) -> Result<SdkMeterProv
         .build()
         .context("Failed to build Azure metrics exporter")?;
 
-    let provider = SdkMeterProvider::builder()
-        .with_resource(resource)
+    let builder = builder
         .with_periodic_exporter(exporter)
-        .with_view(exponential_histograms)
-        .build();
+        .with_view(exponential_histograms);
 
-    Ok(provider)
+    Ok(builder)
 }
 
 fn exponential_histograms(instrument: &Instrument) -> Option<Stream> {
