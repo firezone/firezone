@@ -15,5 +15,7 @@ pub fn with_exporter(
         .context("Failed to build OTLP metric exporter")?;
     let builder = builder.with_periodic_exporter(exporter);
 
+    tracing::trace!(target: "relay", "Successfully initialized collector metrics exporter");
+
     Ok(builder)
 }

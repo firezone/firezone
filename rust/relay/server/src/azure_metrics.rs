@@ -38,6 +38,8 @@ pub fn with_exporter(
         .with_periodic_exporter(exporter)
         .with_view(exponential_histograms);
 
+    tracing::trace!(target: "relay", "Successfully initialized Azure metrics exporter");
+
     Ok(builder)
 }
 
