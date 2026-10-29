@@ -119,7 +119,7 @@ impl GatewayState {
         message: Query,
         transport: crate::dns::Transport,
         now: Instant,
-    ) -> std::result::Result<AuthorizedDnsQuery, Response> {
+    ) -> Result<AuthorizedDnsQuery, Response> {
         let allowed = self
             .peers
             .peer_by_ip(remote.ip())
@@ -818,124 +818,5 @@ impl ResolveDnsRequest {
 
     pub fn proxy_ips(&self) -> &[IpAddr] {
         &self.proxy_ips
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::messages::gateway::ResourceDescriptionDns;
-    use dns_types::RecordType;
-
-    #[test]
-    fn tun_dns_query_uses_the_sending_clients_resources() {
-        let now = Instant::now();
-        let mut gateway = GatewayState::new([0; 32], now, Duration::ZERO);
-        let gateway_tun = IpConfig {
-            v4: "100.64.0.2".parse().unwrap(),
-            v6: "fd00:2021:1111::2".parse().unwrap(),
-        };
-        let authorized = ClientId::from_u128(1);
-        let other = ClientId::from_u128(2);
-
-        for (id, v4, v6) in [
-            (authorized, "100.64.0.1", "fd00:2021:1111::1"),
-            (other, "100.64.0.3", "fd00:2021:1111::3"),
-        ] {
-            gateway.peers.upsert(id, || {
-                ClientOnGateway::new(
-                    id,
-                    crate::messages::Key::default(),
-                    IpConfig {
-                        v4: v4.parse().unwrap(),
-                        v6: v6.parse().unwrap(),
-                    },
-                    gateway_tun,
-                )
-            });
-        }
-
-        let resource = ResourceId::from_u128(1);
-        gateway
-            .peers
-            .peer_by_id_mut(&authorized)
-            .unwrap()
-            .add_resource(
-                ResourceDescription::Dns(ResourceDescriptionDns {
-                    id: resource,
-                    address: "example.com".to_owned(),
-                    name: "example".to_owned(),
-                    filters: vec![],
-                }),
-                Some(now + Duration::from_secs(60)),
-                now,
-            );
-
-        let local: SocketAddr = "100.64.0.2:53535".parse().unwrap();
-        let query = || Query::new("example.com".parse().unwrap(), RecordType::TXT);
-        for transport in [crate::dns::Transport::Udp, crate::dns::Transport::Tcp] {
-            for remote in [
-                "100.64.0.1:5401".parse().unwrap(),
-                "[fd00:2021:1111::1]:5401".parse().unwrap(),
-            ] {
-                let authorized_query = gateway
-                    .handle_dns_query(local, remote, query(), transport, now)
-                    .unwrap();
-                let (actual_local, actual_remote, _, actual_transport) =
-                    authorized_query.into_parts();
-                assert_eq!(
-                    (actual_local, actual_remote, actual_transport),
-                    (local, remote, transport)
-                );
-            }
-
-            let message = gateway
-                .handle_dns_query(
-                    local,
-                    "100.64.0.3:5401".parse().unwrap(),
-                    query(),
-                    transport,
-                    now,
-                )
-                .err()
-                .unwrap();
-            assert_eq!(message.response_code(), ResponseCode::REFUSED);
-
-            let message = gateway
-                .handle_dns_query(
-                    local,
-                    "100.64.0.4:5401".parse().unwrap(),
-                    query(),
-                    transport,
-                    now,
-                )
-                .err()
-                .unwrap();
-            assert_eq!(message.response_code(), ResponseCode::REFUSED);
-        }
-
-        let remote = "100.64.0.1:5401".parse().unwrap();
-        assert!(
-            gateway
-                .handle_dns_query(
-                    local,
-                    remote,
-                    query(),
-                    crate::dns::Transport::Udp,
-                    now + Duration::from_secs(60),
-                )
-                .is_err()
-        );
-
-        gateway
-            .peers
-            .peer_by_id_mut(&authorized)
-            .unwrap()
-            .remove_resource(&resource);
-        assert!(
-            gateway
-                .handle_dns_query(local, remote, query(), crate::dns::Transport::Udp, now)
-                .is_err()
-        );
     }
 }

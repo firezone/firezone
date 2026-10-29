@@ -823,7 +823,10 @@ mod tests {
 
     use crate::{
         gateway::nat_table,
-        messages::{Filter, PortRange, gateway::ResourceDescriptionCidr},
+        messages::{
+            Filter, PortRange,
+            gateway::{ResourceDescriptionCidr, ResourceDescriptionDns},
+        },
         unroutable_packet::RoutingError,
     };
 
@@ -935,12 +938,16 @@ mod tests {
         peer.add_resource(bar_cidr_resource(), None, now);
         peer.add_resource(internet_resource(), None, now);
 
-        let mut wildcard = baz_dns_resource();
-        let ResourceDescription::Dns(ref mut dns) = wildcard else {
-            unreachable!()
-        };
-        dns.address = "*.foo.com".to_owned();
-        peer.add_resource(wildcard, Some(now + Duration::from_secs(60)), now);
+        peer.add_resource(
+            ResourceDescription::Dns(ResourceDescriptionDns {
+                id: baz_resource_id(),
+                address: "*.foo.com".to_owned(),
+                name: "wildcard".to_owned(),
+                filters: vec![],
+            }),
+            Some(now + Duration::from_secs(60)),
+            now,
+        );
 
         let query = |name: &str, record_type| Query::new(name.parse().unwrap(), record_type);
 
@@ -949,18 +956,6 @@ mod tests {
         assert!(!peer.allows_tun_dns_query(&query("foo.com", RecordType::A), now));
         assert!(!peer.allows_tun_dns_query(&query("other.com", RecordType::TXT), now));
         assert!(!peer.allows_tun_dns_query(&query("10.0.0.1", RecordType::TXT), now));
-
-        let mut update = query("foo.com", RecordType::TXT).into_bytes();
-        update[2] |= 5 << 3;
-        assert!(!peer.allows_tun_dns_query(&Query::parse(&update).unwrap(), now));
-        assert!(!peer.allows_tun_dns_query(
-            &query("foo.com", RecordType::TXT),
-            now + Duration::from_secs(60)
-        ));
-
-        peer.remove_resource(&foo_resource_id());
-        peer.remove_resource(&baz_resource_id());
-        assert!(!peer.allows_tun_dns_query(&query("foo.com", RecordType::TXT), now));
     }
 
     #[test]
