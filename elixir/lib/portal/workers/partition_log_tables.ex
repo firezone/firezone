@@ -34,6 +34,11 @@ defmodule Portal.Workers.PartitionLogTables do
     @retention_days 121
     @owner "Portal.Workers.PartitionLogTables"
 
+    # Shared with flow ingestion so validation and partition coverage agree.
+    def ingestion_dates(today) do
+      Date.range(Date.add(today, -@retention_days), Date.add(today, 14))
+    end
+
     def maintain(source, today \\ Date.utc_today()) when source in @sources do
       Safe.unscoped()
       |> Safe.checkout(fn ->
@@ -70,15 +75,12 @@ defmodule Portal.Workers.PartitionLogTables do
       end
     end
 
-    # Flow ingestion needs the previous day; the other streams also accept
-    # delayed records throughout the retained window.
     defp table_config("flow_logs"),
       do: %{
         parent: "flow_logs",
         prefix: "flow_logs",
         timestamp: "flow_start",
-        retention_days: @retention_days,
-        history_days: 1
+        retention_days: @retention_days
       }
 
     defp table_config(source),
@@ -86,8 +88,7 @@ defmodule Portal.Workers.PartitionLogTables do
         parent: source,
         prefix: source <> "_partitioned",
         timestamp: if(source == "api_request_logs", do: "inserted_at", else: "timestamp"),
-        retention_days: @retention_days,
-        history_days: @retention_days
+        retention_days: @retention_days
       }
 
     defp maintain_partitions(config, today) do
@@ -120,7 +121,7 @@ defmodule Portal.Workers.PartitionLogTables do
         |> Enum.filter(& &1.attached)
         |> MapSet.new(& &1.date)
 
-      wanted = Date.range(Date.add(today, -config.history_days), Date.add(today, 14))
+      wanted = ingestion_dates(today)
       missing = Enum.reject(wanted, &MapSet.member?(attached, &1))
       Enum.each(missing, &create_partition(parent, config.prefix, config.timestamp, &1))
 
