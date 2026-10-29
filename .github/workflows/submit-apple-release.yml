@@ -59,6 +59,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          echo "Checking that $RELEASE_NAME is a draft release..."
           release=$(gh release view "$RELEASE_NAME" \
             --repo "$GITHUB_REPOSITORY" \
             --json isDraft,targetCommitish)
@@ -73,6 +74,7 @@ jobs:
           fi
           version="${RELEASE_NAME#apple-client-}"
           ipa_path="$RUNNER_TEMP/firezone-ios-client-${version}.ipa"
+          echo "Downloading the iOS app from $RELEASE_NAME to read its build number..."
           gh release download "$RELEASE_NAME" \
             --repo "$GITHUB_REPOSITORY" \
             --pattern "firezone-ios-client-${version}.ipa" \
@@ -81,6 +83,7 @@ jobs:
           # Both App Store artifacts share a build number, so either the iOS or
           # macOS artifact could be used to resolve it.
           build_number=$(asc distribute inspect --ipa "$ipa_path" --output json | jq -er '.app.buildNumber')
+          echo "Found build $build_number from $source_sha."
           {
             echo "build_number=$build_number"
             echo "source_sha=$source_sha"
@@ -132,6 +135,7 @@ jobs:
             done
           fi
 
+          echo "Staged the en-US metadata and $(wc -l < "$RUNNER_TEMP/app-store-screenshots.txt") screenshots."
           {
             echo "METADATA_DIR=$metadata_dir"
             echo "IPHONE_SCREENSHOTS=${RUNNER_TEMP}/app-store-screenshots/ios/iphone"
@@ -148,11 +152,13 @@ jobs:
           ASC_PRIVATE_KEY: ${{ secrets.APPLE_APP_STORE_CONNECT_APP_MANAGER_API_KEY }}
         run: |
           version="${RELEASE_NAME#apple-client-}"
+          echo "Finding $ASC_PLATFORM version $version..."
           target=$(asc versions list --app "$ASC_APP_ID" --version "$version" --platform "$ASC_PLATFORM" --output json)
           count=$(jq -er '.data | length' <<< "$target")
           if [[ "$count" == 0 ]]; then
             source=$(asc versions list --app "$ASC_APP_ID" --platform "$ASC_PLATFORM" --latest --output json \
               | jq -er 'if (.items | length) == 1 then .items[0].attributes.versionString else error("expected one source version") end')
+            echo "Creating $ASC_PLATFORM version $version with the metadata of $source..."
             asc versions create \
               --app "$ASC_APP_ID" \
               --version "$version" \
@@ -168,12 +174,15 @@ jobs:
         if: steps.version.outputs.phase == 'editable'
         working-directory: swift/apple
         env:
+          # One deadline covers uploading a whole screenshot set and waiting for Apple to process it.
+          ASC_UPLOAD_TIMEOUT: 60m
           ASC_KEY_ID: ${{ secrets.APPLE_APP_STORE_CONNECT_APP_MANAGER_API_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.APPLE_APP_STORE_CONNECT_ISSUER_ID }}
           ASC_PRIVATE_KEY: ${{ secrets.APPLE_APP_STORE_CONNECT_APP_MANAGER_API_KEY }}
         run: |
           version="${RELEASE_NAME#apple-client-}"
           if [[ "$ASC_PLATFORM" == IOS ]]; then
+            echo "Uploading iPhone screenshots and waiting for Apple to process them..."
             asc screenshots upload \
               --app "$ASC_APP_ID" \
               --version "$version" \
@@ -182,6 +191,7 @@ jobs:
               --device-type APP_IPHONE_67 \
               --replace \
               --confirm
+            echo "Uploading iPad screenshots and waiting for Apple to process them..."
             asc screenshots upload \
               --app "$ASC_APP_ID" \
               --version "$version" \
@@ -192,6 +202,7 @@ jobs:
               --confirm
 
             # Remove other size overrides so Apple scales the screenshots we upload.
+            echo "Removing screenshots for other iPhone and iPad sizes..."
             asc screenshots list \
               --app "$ASC_APP_ID" \
               --version "$version" \
@@ -207,6 +218,7 @@ jobs:
                   asc screenshots delete --id "$screenshot_id" --confirm
                 done
           else
+            echo "Uploading macOS screenshots and waiting for Apple to process them..."
             asc screenshots upload \
               --app "$ASC_APP_ID" \
               --version "$version" \
@@ -217,6 +229,7 @@ jobs:
               --confirm
           fi
 
+          echo "Updating the en-US metadata..."
           asc apps info edit \
             --app "$ASC_APP_ID" \
             --version "$version" \
@@ -234,6 +247,7 @@ jobs:
         run: |
           source ../../scripts/upload/apple-version.sh
           read_app_store_version
+          echo "Finding build $BUILD_NUMBER..."
           build=$(asc builds info \
             --app "$ASC_APP_ID" \
             --version "$version" \
@@ -242,6 +256,7 @@ jobs:
             --output json)
           build_id=$(jq -er '.data.id' <<< "$build")
           if [[ "$version_phase" == editable ]]; then
+            echo "Attaching build $BUILD_NUMBER with manual release..."
             asc versions update \
               --version-id "$version_id" \
               --release-type MANUAL \
@@ -274,9 +289,11 @@ jobs:
           attachments=$(asc review attachments-list --review-detail "$detail_id" --paginate --output json | jq -r '.data[].id')
 
           # Upload first so a failed upload leaves the existing attachments intact.
+          echo "Uploading the reviewer screenshot..."
           asc review attachments-upload --review-detail "$detail_id" --file "$REVIEWER_SCREENSHOT" --output json \
             | jq -er '.data | select(.attributes.assetDeliveryState.state != "FAILED") | .id'
 
+          echo "Removing $(wc -w <<< "$attachments") previous reviewer attachments..."
           for id in $attachments; do
             asc review attachments-delete --id "$id" --confirm
           done
@@ -293,6 +310,7 @@ jobs:
           VERSION_ID: ${{ steps.build.outputs.version_id }}
           BUILD_ID: ${{ steps.build.outputs.build_id }}
         run: |
+          echo "Checking the submission with a dry run..."
           asc review submit \
             --app "$ASC_APP_ID" \
             --version-id "$VERSION_ID" \
@@ -370,6 +388,7 @@ jobs:
           EXPECTED_SOURCE_SHA: ${{ needs.prepare.outputs.source_sha }}
           GH_TOKEN: ${{ github.token }}
         run: |
+          echo "Checking that $RELEASE_NAME is still a draft release of $EXPECTED_SOURCE_SHA..."
           release=$(gh release view "$RELEASE_NAME" \
             --repo "$GITHUB_REPOSITORY" \
             --json isDraft,targetCommitish)
@@ -410,6 +429,7 @@ jobs:
             echo "This build is already submitted."
             exit 0
           fi
+          echo "Submitting $ASC_PLATFORM $version for review..."
           asc review submit \
             --app "$ASC_APP_ID" \
             --version-id "$version_id" \
@@ -422,3 +442,4 @@ jobs:
             echo "Apple still reports $state. Inspect the submission in App Store Connect before rerunning." >&2
             exit 1
           fi
+          echo "Submitted $ASC_PLATFORM $version for review."
