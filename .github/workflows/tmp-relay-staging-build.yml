@@ -1,0 +1,44 @@
+name: Temporary relay build for staging
+on:
+  push:
+    branches: [tmp-relay-staging-build]
+
+permissions:
+  contents: read
+
+jobs:
+  relay-x86_64:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: rust
+    env:
+      TARGET: x86_64-unknown-linux-musl
+      STAMP_SHA: aa261cf0517d8c8f60040223766e9c53477abefd
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-musl
+        with:
+          target: x86_64-unknown-linux-musl
+      - uses: ./.github/actions/setup-rust-stable
+        with:
+          targets: x86_64-unknown-linux-musl
+      - uses: ./.github/actions/setup-mise
+        with:
+          install: true
+          install_args: --cd rust
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - run: mise run //rust:install-ebpf-toolchain
+      - run: cargo build --release -p firezone-relay --target "$TARGET"
+      - run: |
+          set -xe
+          cp "target/$TARGET/release/firezone-relay" firezone-relay
+          mise run //rust:patch-relay-release "$PWD/firezone-relay" "$STAMP_SHA"
+          sha256sum firezone-relay > firezone-relay.sha256sum.txt
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: firezone-relay-x86_64-musl
+          path: |
+            rust/firezone-relay
+            rust/firezone-relay.sha256sum.txt
