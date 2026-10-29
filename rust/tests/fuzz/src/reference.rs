@@ -560,6 +560,8 @@ impl ReferenceState {
 
                 let client = self.clients.get_mut(client_id).unwrap();
                 self.network.remove_host(client);
+                self.network.unplug_link(*client_id);
+                client.unplug_link();
                 client.ip4.clone_from(ip4);
                 client.ip6.clone_from(ip6);
                 client.migrate_nat(*nat_ip4);
@@ -723,10 +725,10 @@ impl ReferenceState {
                     c.dns_records.clear();
                 });
 
-                // Without a `goodbye`, the peers lose their connections to the crashed client, and
-                // their authorizations towards it with them.
+                // Without a `goodbye`, the peers lose their connections to the crashed client once
+                // they notice, and their authorizations towards it with them.
                 for (_, peer) in self.clients.iter_mut().filter(|(id, _)| *id != client_id) {
-                    peer.exec_mut(|c| c.forget_peer_authorizations(*client_id));
+                    peer.exec_mut(|c| c.forget_crashed_peer(*client_id, portal.iceless()));
                 }
             }
         };
@@ -1751,6 +1753,9 @@ impl ReferenceState {
                             .pool_members(pool)
                             .into_iter()
                             .filter(move |member| *member != src_id)
+                            .filter(move |member| {
+                                !src_client.inner().holds_dead_connection_to(*member)
+                            })
                             .filter_map(move |member| online_ips_by_id.get(&member).copied())
                             .flat_map(|(v4, v6)| [v4, v6])
                             .map(move |ip| (src_id, ip, filters.clone()))
