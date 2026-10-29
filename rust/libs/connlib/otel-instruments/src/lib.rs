@@ -240,6 +240,7 @@ pub fn relay_packets() -> Counter<u64> {
 /// (name, unit, buckets) stays identical; tag each measurement with
 /// `otel-attributes`' `relay_datapath_userspace` or `relay_datapath_xdp` to tell
 /// the two datapaths apart.
+/// The XDP datapath only records a random sample of packets.
 pub fn relay_packet_size() -> Histogram<u64> {
     relay_meter()
         .u64_histogram("relay.packet.size")
@@ -253,6 +254,8 @@ pub fn relay_packet_size() -> Histogram<u64> {
 }
 
 /// Histogram of the time the eBPF XDP program spent processing one relayed packet.
+///
+/// Only recorded for a random sample of packets.
 pub fn relay_xdp_processing_duration() -> Histogram<u64> {
     relay_meter()
         .u64_histogram("relay.xdp.processing.duration")
