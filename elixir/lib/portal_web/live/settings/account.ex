@@ -754,8 +754,7 @@ defmodule PortalWeb.Settings.Account do
            |> InternalEmail.region_transfer_request_email(
              subject,
              Page.data_residency_name(region),
-             Page.data_residency_name(to_region),
-             %{portal: Page.portal_url(to_region), api: Page.api_url(to_region)}
+             Page.data_residency_name(to_region)
            )
            |> Portal.Mailer.deliver() do
       {:noreply,
