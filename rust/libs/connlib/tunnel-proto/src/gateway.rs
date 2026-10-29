@@ -28,19 +28,17 @@ use zeroize::Zeroizing;
 
 pub const TUN_DNS_PORT: u16 = 53535;
 
-pub enum GatewayDnsOutput {
-    Resolve {
-        local: SocketAddr,
-        remote: SocketAddr,
-        message: Query,
-        transport: crate::dns::Transport,
-    },
-    Respond {
-        local: SocketAddr,
-        remote: SocketAddr,
-        message: Response,
-        transport: crate::dns::Transport,
-    },
+pub struct AuthorizedDnsQuery {
+    local: SocketAddr,
+    remote: SocketAddr,
+    message: Query,
+    transport: crate::dns::Transport,
+}
+
+impl AuthorizedDnsQuery {
+    pub fn into_parts(self) -> (SocketAddr, SocketAddr, Query, crate::dns::Transport) {
+        (self.local, self.remote, self.message, self.transport)
+    }
 }
 
 /// A SANS-IO implementation of a gateway's functionality.
@@ -68,7 +66,6 @@ pub struct GatewayState {
 
     buffered_events: VecDeque<GatewayEvent>,
     buffered_transmits: VecDeque<snownet::Transmit>,
-    buffered_dns_outputs: VecDeque<GatewayDnsOutput>,
 
     /// Our connection to the portal, holding back ICE candidates while it is down.
     portal: PortalConnection<ClientId>,
@@ -99,7 +96,6 @@ impl GatewayState {
             portal: Default::default(),
             buffered_events: VecDeque::default(),
             buffered_transmits: VecDeque::default(),
-            buffered_dns_outputs: VecDeque::default(),
             flow_tracker: flow_tracker::Tracker::new(now, unix_ts),
             authorization_rejections: Default::default(),
             tun_ip_config: None,
@@ -117,39 +113,28 @@ impl GatewayState {
     }
 
     pub fn handle_dns_query(
-        &mut self,
+        &self,
         local: SocketAddr,
         remote: SocketAddr,
         message: Query,
         transport: crate::dns::Transport,
         now: Instant,
-    ) {
+    ) -> std::result::Result<AuthorizedDnsQuery, Response> {
         let allowed = self
             .peers
             .peer_by_ip(remote.ip())
             .is_some_and(|(_, peer)| peer.allows_tun_dns_query(&message, now));
 
-        if allowed {
-            self.buffered_dns_outputs
-                .push_back(GatewayDnsOutput::Resolve {
-                    local,
-                    remote,
-                    message,
-                    transport,
-                });
-        } else {
-            self.buffered_dns_outputs
-                .push_back(GatewayDnsOutput::Respond {
-                    local,
-                    remote,
-                    message: ResponseBuilder::for_query(&message, ResponseCode::REFUSED).build(),
-                    transport,
-                });
+        if !allowed {
+            return Err(ResponseBuilder::for_query(&message, ResponseCode::REFUSED).build());
         }
-    }
 
-    pub fn poll_dns_output(&mut self) -> Option<GatewayDnsOutput> {
-        self.buffered_dns_outputs.pop_front()
+        Ok(AuthorizedDnsQuery {
+            local,
+            remote,
+            message,
+            transport,
+        })
     }
 
     pub fn public_key(&self) -> sanstun::PublicKey {
@@ -893,49 +878,64 @@ mod tests {
                 "100.64.0.1:5401".parse().unwrap(),
                 "[fd00:2021:1111::1]:5401".parse().unwrap(),
             ] {
-                gateway.handle_dns_query(local, remote, query(), transport, now);
-                assert!(matches!(
-                    gateway.poll_dns_output().unwrap(),
-                    GatewayDnsOutput::Resolve { .. }
-                ));
+                let authorized_query = gateway
+                    .handle_dns_query(local, remote, query(), transport, now)
+                    .unwrap();
+                let (actual_local, actual_remote, _, actual_transport) =
+                    authorized_query.into_parts();
+                assert_eq!(
+                    (actual_local, actual_remote, actual_transport),
+                    (local, remote, transport)
+                );
             }
 
-            gateway.handle_dns_query(
-                local,
-                "100.64.0.3:5401".parse().unwrap(),
-                query(),
-                transport,
-                now,
-            );
-            let GatewayDnsOutput::Respond { message, .. } = gateway.poll_dns_output().unwrap()
-            else {
-                panic!("another client's query must be refused")
-            };
+            let message = gateway
+                .handle_dns_query(
+                    local,
+                    "100.64.0.3:5401".parse().unwrap(),
+                    query(),
+                    transport,
+                    now,
+                )
+                .err()
+                .unwrap();
+            assert_eq!(message.response_code(), ResponseCode::REFUSED);
+
+            let message = gateway
+                .handle_dns_query(
+                    local,
+                    "100.64.0.4:5401".parse().unwrap(),
+                    query(),
+                    transport,
+                    now,
+                )
+                .err()
+                .unwrap();
             assert_eq!(message.response_code(), ResponseCode::REFUSED);
         }
 
         let remote = "100.64.0.1:5401".parse().unwrap();
-        gateway.handle_dns_query(
-            local,
-            remote,
-            query(),
-            crate::dns::Transport::Udp,
-            now + Duration::from_secs(60),
+        assert!(
+            gateway
+                .handle_dns_query(
+                    local,
+                    remote,
+                    query(),
+                    crate::dns::Transport::Udp,
+                    now + Duration::from_secs(60),
+                )
+                .is_err()
         );
-        assert!(matches!(
-            gateway.poll_dns_output(),
-            Some(GatewayDnsOutput::Respond { .. })
-        ));
 
         gateway
             .peers
             .peer_by_id_mut(&authorized)
             .unwrap()
             .remove_resource(&resource);
-        gateway.handle_dns_query(local, remote, query(), crate::dns::Transport::Udp, now);
-        assert!(matches!(
-            gateway.poll_dns_output(),
-            Some(GatewayDnsOutput::Respond { .. })
-        ));
+        assert!(
+            gateway
+                .handle_dns_query(local, remote, query(), crate::dns::Transport::Udp, now)
+                .is_err()
+        );
     }
 }

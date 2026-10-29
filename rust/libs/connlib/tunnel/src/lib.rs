@@ -747,65 +747,51 @@ impl GatewayTunnel {
                 }
 
                 for query in udp_dns_queries {
-                    self.role_state.handle_dns_query(
+                    match self.role_state.handle_dns_query(
                         query.local,
                         query.remote,
                         query.message,
                         dns::Transport::Udp,
                         now,
-                    );
+                    ) {
+                        Ok(query) => self
+                            .io
+                            .send_dns_query(ResolverQuery::new_gateway(query, now)),
+                        Err(response) => {
+                            if let Err(e) =
+                                self.io
+                                    .send_udp_dns_response(query.remote, query.local, response)
+                            {
+                                error.push(e);
+                            }
+                        }
+                    }
 
                     tick.want_continue();
                 }
 
                 for query in tcp_dns_queries {
-                    self.role_state.handle_dns_query(
+                    match self.role_state.handle_dns_query(
                         query.local,
                         query.remote,
                         query.message,
                         dns::Transport::Tcp,
                         now,
-                    );
-
-                    tick.want_continue();
-                }
-
-                while let Some(output) = self.role_state.poll_dns_output() {
-                    match output {
-                        GatewayDnsOutput::Resolve {
-                            local,
-                            remote,
-                            message,
-                            transport,
-                        } => self.io.send_dns_query(ResolverQuery {
-                            server: None,
-                            local,
-                            remote,
-                            message,
-                            transport,
-                            started_at: now,
-                        }),
-                        GatewayDnsOutput::Respond {
-                            local,
-                            remote,
-                            message,
-                            transport: dns::Transport::Udp,
-                        } => {
-                            if let Err(e) = self.io.send_udp_dns_response(remote, local, message) {
-                                error.push(e);
-                            }
-                        }
-                        GatewayDnsOutput::Respond {
-                            local,
-                            remote,
-                            message,
-                            transport: dns::Transport::Tcp,
-                        } => {
-                            if let Err(e) = self.io.send_tcp_dns_response(remote, local, message) {
+                    ) {
+                        Ok(query) => self
+                            .io
+                            .send_dns_query(ResolverQuery::new_gateway(query, now)),
+                        Err(response) => {
+                            if let Err(e) =
+                                self.io
+                                    .send_tcp_dns_response(query.remote, query.local, response)
+                            {
                                 error.push(e);
                             }
                         }
                     }
+
+                    tick.want_continue();
                 }
 
                 if !error.is_empty() {
