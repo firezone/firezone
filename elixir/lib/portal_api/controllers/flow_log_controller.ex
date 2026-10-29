@@ -147,7 +147,7 @@ defmodule PortalAPI.FlowLogController do
 
   # Threads {valid, errors}: valid is a list of {index, entry} and errors a list
   # of {index, reason}. Attribution comes from the request token (claims), so a
-  # record only needs structural validation of its body.
+  # record needs body validation through the schema changeset.
   defp validate_record(record, index, _claims, _now, {valid, invalid})
        when not is_map(record) do
     {valid, [{index, :not_a_map} | invalid]}
@@ -158,7 +158,6 @@ defmodule PortalAPI.FlowLogController do
       record
       |> to_attrs(claims, now)
       |> changeset()
-      |> validate_partition_window(now)
 
     if changeset.valid? do
       entry =
@@ -182,33 +181,6 @@ defmodule PortalAPI.FlowLogController do
     %FlowLog{}
     |> cast(attrs, @scalar_cast_fields)
     |> FlowLog.changeset()
-  end
-
-  # Match the UTC dates guaranteed by PartitionLogTables, including on a fresh
-  # database. A timestamp outside this window must not fail the entire batch.
-  defp validate_partition_window(changeset, now) do
-    %Date.Range{first: first, last: last} =
-      Portal.Workers.PartitionLogTables.ingestion_dates(DateTime.to_date(now))
-
-    case get_field(changeset, :flow_start) do
-      %DateTime{} = flow_start ->
-        date = DateTime.to_date(flow_start)
-
-        if Date.compare(date, first) == :lt or Date.compare(date, last) == :gt do
-          add_error(
-            changeset,
-            :flow_start,
-            "must be within the ingestion window (%{first} through %{last} UTC)",
-            first: Date.to_iso8601(first),
-            last: Date.to_iso8601(last)
-          )
-        else
-          changeset
-        end
-
-      _ ->
-        changeset
-    end
   end
 
   defp outers_for_storage(changeset) do

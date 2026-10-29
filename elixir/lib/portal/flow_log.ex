@@ -242,11 +242,11 @@ defmodule Portal.FlowLog do
     |> validate_outers_match_flow_state()
     |> validate_close_complete()
     |> validate_string_lengths()
-    # Structural, clock-independent backstops only. Flow ordering (flow_start vs
-    # authorized_at / flow_end / now) is intentionally not enforced: endpoint
-    # clocks may be skewed, and skew is surfaced downstream against the trusted
-    # authorized_at / inserted_at pair rather than rejected at ingest. These
-    # duplicate the DB CHECKs because the controller writes via insert_all, which
+    |> validate_partition_window()
+    # Flow ordering against authorized_at / flow_end is not enforced because
+    # endpoint clocks may be skewed. Only the retained partition window bounds
+    # flow_start. These constraints duplicate the DB CHECKs because the
+    # controller writes via insert_all, which
     # raises on a CHECK violation instead of returning a 422.
     |> check_constraint(:role,
       name: :flow_logs_role_chk,
@@ -256,6 +256,33 @@ defmodule Portal.FlowLog do
       name: :flow_logs_protocol_chk,
       message: "must be tcp or udp"
     )
+  end
+
+  # Match the UTC dates guaranteed by PartitionLogTables, including on a fresh
+  # database. A timestamp outside this window must not fail the entire batch.
+  defp validate_partition_window(changeset) do
+    %Date.Range{first: first, last: last} =
+      Portal.Workers.PartitionLogTables.ingestion_dates(Date.utc_today())
+
+    case get_field(changeset, :flow_start) do
+      %DateTime{} = flow_start ->
+        date = DateTime.to_date(flow_start)
+
+        if Date.compare(date, first) == :lt or Date.compare(date, last) == :gt do
+          add_error(
+            changeset,
+            :flow_start,
+            "must be within the ingestion window (%{first} through %{last} UTC)",
+            first: Date.to_iso8601(first),
+            last: Date.to_iso8601(last)
+          )
+        else
+          changeset
+        end
+
+      _ ->
+        changeset
+    end
   end
 
   defp validate_uuids(changeset) do
