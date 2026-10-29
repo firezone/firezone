@@ -70,6 +70,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
 
   defp verification_ref_from_open_url(lv) do
     assert_push_event(lv, "open_url", %{url: url})
+    send(self(), {:opened_url, url})
 
     %{"state" => state} =
       url
@@ -1080,8 +1081,47 @@ defmodule PortalWeb.Settings.AuthenticationTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/settings/authentication/google/#{provider.id}/edit")
 
-      assert html =~ "Verify another domain"
+      assert html =~ "Verify additional domains"
       refute html =~ ">Reset<"
+    end
+
+    test "verifying additional domains lets the admin choose which to add", ctx do
+      Mocks.OIDC.stub_discovery_document()
+      provider = google_provider_fixture(account: ctx.account, workspace_domains: ["primary.example"])
+      {:ok, lv, _} = ctx.conn |> authorize_conn(ctx.actor)
+        |> live(~p"/#{ctx.account}/settings/authentication/google/#{provider.id}/edit")
+      lv |> element("#verify-button") |> render_click()
+      verification_ref = verification_ref_from_open_url(lv)
+      assert_received {:opened_url, url}
+      assert url =~ "admin.directory.domain.readonly"
+      ack_ref = make_ref()
+      send(lv.pid, {:google_verify_complete, "https://accounts.google.com",
+        ["primary.example", "second.example", "third.example"], "primary.example", verification_ref,
+        {self(), ack_ref}})
+      assert_receive {:verification_ack, ^ack_ref}
+      refute has_element?(lv, "#domain-choices", "primary.example")
+      assert has_element?(lv, "#domain-choice-0", "second.example")
+      assert has_element?(lv, "#domain-choice-1", "third.example")
+
+      lv |> element("#domain-choice-1 button") |> render_click()
+      assert has_element?(lv, "#verified-organization-1", "third.example")
+      refute has_element?(lv, "#domain-choice-1")
+      render_click(lv, "add_verified_domain", %{"domain" => "forged.example"})
+      refute render(lv) =~ "forged.example"
+
+      lv |> form("#auth-provider-form") |> render_submit()
+      saved = Repo.get!(Portal.Google.AuthProvider, provider.id)
+      assert saved.workspace_domains == ["primary.example", "third.example"]
+    end
+
+    test "verify now requests only the identity scopes", ctx do
+      Mocks.OIDC.stub_discovery_document()
+      {:ok, lv, _} = ctx.conn |> authorize_conn(ctx.actor)
+        |> live(~p"/#{ctx.account}/settings/authentication/google/new")
+      lv |> element("#verify-button") |> render_click()
+      verification_ref_from_open_url(lv)
+      assert_received {:opened_url, url}
+      refute url =~ "admin.directory"
     end
 
     test "cannot clear the first verified domain with a forged reset event", %{account: account, actor: actor, conn: conn} do
@@ -3379,7 +3419,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
         [first, second, _] = @allowlist_values
         complete_allowlist_verification(lv, @allowlist_type, first)
         assert has_element?(lv, "#verified-organization-0", first)
-        assert has_element?(lv, "#verify-button", "Verify another")
+        assert has_element?(lv, "#verify-button", if(@allowlist_type == "google", do: "Verify additional", else: "Verify another"))
         complete_allowlist_verification(lv, @allowlist_type, second)
         complete_allowlist_verification(lv, @allowlist_type, second)
         assert has_element?(lv, "#verified-organization-1", second)
@@ -3609,7 +3649,13 @@ defmodule PortalWeb.Settings.AuthenticationTest do
   defp complete_allowlist_verification(lv, type, value) do
     lv |> element("#verify-button") |> render_click()
     verification_ref = verification_ref_from_open_url(lv)
-    send_allowlist_verification(lv, type, value, verification_ref)
+    html = send_allowlist_verification(lv, type, value, verification_ref)
+
+    if type == "google" and has_element?(lv, "#domain-choices") do
+      lv |> element("#domain-choices button[phx-value-domain='#{value}']") |> render_click()
+    else
+      html
+    end
   end
 
   defp send_allowlist_verification(lv, type, value, verification_ref) do

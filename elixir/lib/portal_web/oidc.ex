@@ -12,6 +12,7 @@ defmodule PortalWeb.OIDC do
 
   @client_assertion_type "urn:ietf:params:oauth:client-assertion-type:jwt-bearer"
   @google_directory_identity_scope "openid email"
+  @google_domains_scope "https://www.googleapis.com/auth/admin.directory.domain.readonly"
   @entra_organizations_discovery_document_uri "https://login.microsoftonline.com/organizations/v2.0/.well-known/openid-configuration"
   @entra_organizations_admin_consent_endpoint "https://login.microsoftonline.com/organizations/v2.0/adminconsent"
   @entra_issuer_prefix "https://login.microsoftonline.com/"
@@ -427,7 +428,7 @@ defmodule PortalWeb.OIDC do
     config =
       Portal.Config.fetch_env!(:portal, Google.AuthProvider)
       |> verification_config(opts)
-      |> Map.put(:scope, "openid email profile https://www.googleapis.com/auth/admin.directory.domain.readonly")
+      |> Map.put(:scope, google_verification_scope(opts))
 
     {:ok, %{config: config}}
   end
@@ -698,19 +699,31 @@ defmodule PortalWeb.OIDC do
   end
 
   @doc """
-  Verifies a Google account and reads verified domains for Workspace accounts.
+  Verifies a Google account and returns the Workspace domains it proves.
+  By default only the signed `hd` (hosted domain) claim is used, which needs no
+  Google API access. With `additional_domains: true` the administrator's access
+  token also lists every verified domain of the Workspace customer.
   Personal accounts have no hosted-domain claim and leave restrictions unset.
   Access tokens are used only for setup and are never returned to the browser.
   """
-  def verify_google_callback(config, code, verifier) do
+  def verify_google_callback(config, code, verifier, opts \\ []) do
     with {:ok, tokens} <- exchange_code_with_config(config, code, verifier),
          {:ok, %{"email_verified" => true} = claims} <-
            verify_token_with_config(config, tokens["id_token"], verifier) do
       case Map.fetch(claims, "hd") do
-        :error -> {:ok, %{issuer: claims["iss"], domains: nil, name: nil}}
+        :error ->
+          {:ok, %{issuer: claims["iss"], domains: nil, name: nil}}
+
         {:ok, hosted_domain} when is_binary(hosted_domain) and hosted_domain != "" ->
-          verify_google_workspace(claims, tokens, hosted_domain)
-        _ -> {:error, :google_workspace_verification_failed}
+          verify_google_workspace(
+            claims,
+            tokens,
+            hosted_domain,
+            Keyword.get(opts, :additional_domains, false)
+          )
+
+        _ ->
+          {:error, :google_workspace_verification_failed}
       end
     else
       {:error, _} = error -> error
@@ -718,7 +731,11 @@ defmodule PortalWeb.OIDC do
     end
   end
 
-  defp verify_google_workspace(claims, tokens, hosted_domain) do
+  defp verify_google_workspace(claims, _tokens, hosted_domain, false) do
+    {:ok, %{issuer: claims["iss"], domains: [String.downcase(hosted_domain)], name: hosted_domain}}
+  end
+
+  defp verify_google_workspace(claims, tokens, hosted_domain, true) do
     with access_token when is_binary(access_token) <- tokens["access_token"],
          {:ok, %Req.Response{status: 200, body: %{"domains" => domains}}} when is_list(domains) <-
            Google.APIClient.get_domains(access_token),
@@ -733,6 +750,12 @@ defmodule PortalWeb.OIDC do
       {:error, _} = error -> error
       _ -> {:error, :google_workspace_verification_failed}
     end
+  end
+
+  defp google_verification_scope(opts) do
+    if Keyword.get(opts, :additional_domains, false),
+      do: "openid email profile " <> @google_domains_scope,
+      else: "openid email profile"
   end
 
   defp google_verified_domains(domains) do

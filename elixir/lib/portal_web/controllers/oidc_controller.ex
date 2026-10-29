@@ -1244,29 +1244,42 @@ defmodule PortalWeb.OIDCController do
   end
 
   defp handle_google_auth_provider_verification(conn, code, lv_pid_string, verification_ref) do
+    pending =
+      lv_pid_string
+      |> PortalWeb.OIDC.deserialize_pid()
+      |> request_pending_verification(verification_ref)
+
+    additional_domains? =
+      match?({:ok, %{additional_domains: true}}, pending)
+
     result =
-      with {:ok, %{config: config, verifier: verifier}} <-
-             lv_pid_string
-             |> PortalWeb.OIDC.deserialize_pid()
-             |> request_pending_verification(verification_ref) do
-        PortalWeb.OIDC.verify_google_callback(config, code, verifier)
+      with {:ok, %{config: config, verifier: verifier}} <- pending do
+        PortalWeb.OIDC.verify_google_callback(config, code, verifier,
+          additional_domains: additional_domains?
+        )
       end
 
-    google_auth_provider_result(conn, lv_pid_string, verification_ref, result)
+    google_auth_provider_result(conn, lv_pid_string, verification_ref, result, additional_domains?)
   end
 
-  defp google_auth_provider_result(conn, lv_pid_string, verification_ref, result) do
+  defp google_auth_provider_result(conn, lv_pid_string, verification_ref, result, additional_domains? \\ false) do
     result = case result do
       {:ok, identity} ->
         Map.merge(identity, %{ok: true})
       {:error, _reason} ->
-        %{ok: false, error: "Could not verify this Google account. For a Workspace account, sign in as an administrator and grant read-only access to your organization's domains."}
+        %{ok: false, error: google_verification_error(additional_domains?)}
     end
     result = Map.merge(result, %{type: "google-auth-provider", lv_pid: lv_pid_string,
                                 verification_ref: verification_ref})
     token = Phoenix.Token.sign(PortalWeb.Endpoint, "oidc-verification-result", result)
     redirect(conn, to: ~p"/verification/oidc?result=#{token}")
   end
+
+  defp google_verification_error(true),
+    do:
+      "Could not list your Google Workspace domains. Sign in as a Workspace administrator and allow read-only access to your organization's domains."
+
+  defp google_verification_error(false), do: "Could not verify this Google account. Please try again."
 
   defp handle_google_directory_sync_verification(
          conn,

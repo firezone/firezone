@@ -227,10 +227,23 @@ defmodule PortalWeb.OIDCControllerTest do
   end
 
   describe "Google Workspace provider setup" do
+    test "returns the signed hd as the primary domain without calling Google APIs", %{conn: conn} do
+      verification_ref = Ecto.UUID.generate()
+      lv_pid = pending_verification_process(Map.new(oidc_config()), verification_ref)
+      state = PortalWeb.OIDC.sign_verification_state(PortalWeb.OIDC.serialize_pid(lv_pid),
+        "google-auth-provider", %{verification_ref: verification_ref})
+      token = Mocks.OIDC.default_claims() |> Map.put("hd", "example.com") |> Mocks.OIDC.sign_openid_connect_token()
+      Mocks.OIDC.set_token_response(%{"id_token" => token, "access_token" => "setup-secret"})
+      Req.Test.stub(Portal.Google.APIClient, fn _conn -> flunk("must not read domains by default") end)
+      conn = get(conn, ~p"/auth/oidc/callback", %{"state" => state, "code" => "code"})
+      assert {:ok, %{ok: true, domains: ["example.com"], name: "example.com"}} =
+        oidc_verification_result_from_redirect(redirected_to(conn))
+    end
+
     test "returns verified domains in a signed result without exposing access tokens", %{conn: conn} do
       config = oidc_config() |> Map.new()
       verification_ref = Ecto.UUID.generate()
-      lv_pid = pending_verification_process(config, verification_ref)
+      lv_pid = pending_verification_process(config, verification_ref, additional_domains: true)
       state = PortalWeb.OIDC.sign_verification_state(PortalWeb.OIDC.serialize_pid(lv_pid),
         "google-auth-provider", %{verification_ref: verification_ref})
       token = Mocks.OIDC.default_claims() |> Map.put("hd", "example.com") |> Mocks.OIDC.sign_openid_connect_token()
@@ -4239,12 +4252,16 @@ defmodule PortalWeb.OIDCControllerTest do
     }
   end
 
-  defp pending_verification_process(config, verification_ref) do
-    pending = %{
-      config: config,
-      verifier: "test-verifier",
-      verification_ref: verification_ref
-    }
+  defp pending_verification_process(config, verification_ref, extra \\ []) do
+    pending =
+      Map.merge(
+        %{
+          config: config,
+          verifier: "test-verifier",
+          verification_ref: verification_ref
+        },
+        Map.new(extra)
+      )
 
     spawn(fn -> pending_verification_loop(pending) end)
   end

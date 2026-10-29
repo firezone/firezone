@@ -30,13 +30,22 @@ defmodule PortalWeb.OIDCTest do
       %{config: config}
     end
 
-    test "only setup requests domain access; signup and sign-in keep identity scopes" do
-      assert {:ok, %{config: config}} = OIDC.setup_verification("google", [])
+    test "only additional-domain setup requests domain access; everything else keeps identity scopes" do
+      assert {:ok, %{config: primary}} = OIDC.setup_verification("google", [])
+      assert primary.scope == "openid email profile"
+      assert {:ok, %{config: config}} = OIDC.setup_verification("google", additional_domains: true)
       assert config.scope =~ "admin.directory.domain.readonly"
       assert {:ok, %{config: signup}} = OIDC.setup_verification("google_sign_up", [])
       refute signup[:scope] =~ "admin.directory"
       assert {:ok, signin} = OIDC.config_for_provider(%Portal.Google.AuthProvider{})
       refute signin[:scope] =~ "admin.directory"
+    end
+
+    test "uses the signed hd as the only domain without calling Google APIs", %{config: config} do
+      google_setup_token(%{"hd" => "Primary.Example"})
+      Req.Test.stub(Portal.Google.APIClient, fn _conn -> flunk("must not read domains by default") end)
+      assert {:ok, %{name: "Primary.Example", domains: ["primary.example"]}} =
+               OIDC.verify_google_callback(config, "code", "test-verifier")
     end
 
     test "reads verified primary, secondary, and alias domains", %{config: config} do
@@ -52,7 +61,7 @@ defmodule PortalWeb.OIDCTest do
         ]})
       end)
       assert {:ok, %{name: "PRIMARY.EXAMPLE", domains: domains}} =
-               OIDC.verify_google_callback(config, "code", "test-verifier")
+               OIDC.verify_google_callback(config, "code", "test-verifier", additional_domains: true)
       assert domains == ["primary.example", "alias.example", "secondary.example"]
     end
 
@@ -78,7 +87,7 @@ defmodule PortalWeb.OIDCTest do
     test "fails setup if the administrator cannot list domains", %{config: config} do
       google_setup_token(%{"hd" => "example.com"})
       Req.Test.expect(Portal.Google.APIClient, fn conn -> Plug.Conn.send_resp(conn, 403, "forbidden") end)
-      assert {:error, _} = OIDC.verify_google_callback(config, "code", "test-verifier")
+      assert {:error, _} = OIDC.verify_google_callback(config, "code", "test-verifier", additional_domains: true)
     end
 
     test "fails setup when the signed hd is not a verified customer domain", %{config: config} do
@@ -86,7 +95,7 @@ defmodule PortalWeb.OIDCTest do
       Req.Test.expect(Portal.Google.APIClient, fn conn ->
         Req.Test.json(conn, %{"domains" => [%{"domainName" => "example.com", "verified" => true}]})
       end)
-      assert {:error, _} = OIDC.verify_google_callback(config, "code", "test-verifier")
+      assert {:error, _} = OIDC.verify_google_callback(config, "code", "test-verifier", additional_domains: true)
     end
 
     for {hd, result} <- [{"example.com", :ok}, {"secondary.example", :ok},
