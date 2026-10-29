@@ -181,12 +181,13 @@ where
     let route = unsafe { &mut *route };
 
     // Reading the clock is comparatively expensive, so only do it for channels that are limited.
+    // The limiter's tolerances are orders of magnitude longer than a scheduler tick, so the coarse clock suffices.
     let verdict = if route.limiter.is_unlimited() {
         Verdict::Pass
     } else {
         route
             .limiter
-            .check(KernelInstant::now().as_nanos(), num_bytes)
+            .check(KernelInstant::now_coarse().as_nanos(), num_bytes)
     };
 
     Some((route.dst, verdict))
