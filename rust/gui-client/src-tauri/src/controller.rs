@@ -1808,16 +1808,20 @@ mod tests {
         test_controller
             .wait_integration(|i| (i.advanced_settings.last() == Some(&changed)).then_some(()))
             .await;
-        let stale_callback =
-            "firezone://handle_client_sign_in_callback/?fragment=stale&state=stale"
-                .parse()
-                .unwrap();
-        assert_eq!(
-            test_controller
-                .gui_ipc_request(gui_ipc::ClientMsg::Deeplink(stale_callback))
-                .await,
-            gui_ipc::ServerMsg::Ack
-        );
+        // The Windows GUI pipe server cannot accept concurrent clients.
+        #[cfg(unix)]
+        {
+            let stale_callback =
+                "firezone://handle_client_sign_in_callback/?fragment=stale&state=stale"
+                    .parse()
+                    .unwrap();
+            assert_eq!(
+                test_controller
+                    .gui_ipc_request(gui_ipc::ClientMsg::Deeplink(stale_callback))
+                    .await,
+                gui_ipc::ServerMsg::Ack
+            );
+        }
         assert_eq!(
             test_controller.integration().signed_in_with.last(),
             Some(&Some(original.clone()))
