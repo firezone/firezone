@@ -130,6 +130,42 @@ defmodule PortalAPI.Relay.ChannelTest do
       assert_push "account_added", %{account_id: ^account_id, throughput_limit_bps: nil}
     end
 
+    test "includes allocation limits of limited accounts in init" do
+      assert_push "init", %{}
+      limited = account_fixture(limits: %{relay_allocations_count: 1024})
+      unlimited = account_fixture(limits: %{relay_allocations_count: 0})
+      join_capable_relay()
+
+      assert_push "init", %{allocation_limits: allocation_limits}
+      assert allocation_limits[limited.id] == 1024
+      refute Map.has_key?(allocation_limits, unlimited.id)
+    end
+
+    test "forwards allocation limit changes to capable Relays" do
+      assert_push "init", %{}
+      join_capable_relay()
+      assert_push "init", %{account_ids: _account_ids}
+      account_id = "00000000-0000-0000-0000-000000000005"
+
+      :ok =
+        on_update(
+          1,
+          %{"id" => account_id, "is_disabled" => false, "limits" => %{}},
+          %{"id" => account_id, "is_disabled" => false, "limits" => %{"relay_allocations_count" => 2048}}
+        )
+
+      assert_push "account_added", %{account_id: ^account_id, allocation_limit: 2048}
+
+      :ok =
+        on_update(
+          2,
+          %{"id" => account_id, "is_disabled" => false, "limits" => %{"relay_allocations_count" => 2048}},
+          %{"id" => account_id, "is_disabled" => false, "limits" => %{"relay_allocations_count" => 0}}
+        )
+
+      assert_push "account_added", %{account_id: ^account_id, allocation_limit: nil}
+    end
+
     test "forwards account lifecycle changes to capable Relays" do
       assert_push "init", %{}
       relay = relay_fixture()

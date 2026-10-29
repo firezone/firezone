@@ -92,6 +92,28 @@ defmodule Portal.Changes.Hooks.AccountsTest do
       }
     end
 
+    test "broadcasts a changed Relay allocation limit to relays" do
+      account_id = "00000000-0000-0000-0000-000000000004"
+      :ok = PubSub.Changes.subscribe_to_accounts()
+
+      assert :ok ==
+               on_update(
+                 0,
+                 %{"id" => account_id, "is_disabled" => false, "limits" => %{}},
+                 %{
+                   "id" => account_id,
+                   "is_disabled" => false,
+                   "limits" => %{"relay_allocations_count" => 1024}
+                 }
+               )
+
+      assert_receive %Change{
+        op: :update,
+        struct: %Portal.Account{id: ^account_id, limits: %{relay_allocations_count: 1024}},
+        lsn: 0
+      }
+    end
+
     test "does not broadcast other account changes to relays" do
       account_id = "00000000-0000-0000-0000-000000000005"
       :ok = PubSub.Changes.subscribe_to_accounts()
@@ -119,6 +141,24 @@ defmodule Portal.Changes.Hooks.AccountsTest do
                    "id" => account_id,
                    "is_disabled" => true,
                    "limits" => %{"relay_throughput_mbps" => 25}
+                 }
+               )
+
+      refute_receive %Change{}
+    end
+
+    test "does not broadcast the Relay allocation limit of a disabled account" do
+      account_id = "00000000-0000-0000-0000-000000000006"
+      :ok = PubSub.Changes.subscribe_to_accounts()
+
+      assert :ok ==
+               on_update(
+                 0,
+                 %{"id" => account_id, "is_disabled" => true, "limits" => %{}},
+                 %{
+                   "id" => account_id,
+                   "is_disabled" => true,
+                   "limits" => %{"relay_allocations_count" => 1024}
                  }
                )
 
