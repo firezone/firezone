@@ -380,7 +380,9 @@ async fn record_packet_counters(counters: PerCpuArray<MapData, u64>) {
                 continue;
             }
 
-            let (ip_version, ecn) = PacketCounter::ip_version_and_ecn(index);
+            let Some((ip_version, ecn)) = PacketCounter::ip_version_and_ecn(index) else {
+                continue;
+            };
             packets.add(
                 delta,
                 &[
