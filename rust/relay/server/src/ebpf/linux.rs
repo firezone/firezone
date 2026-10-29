@@ -512,7 +512,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use std::net::SocketAddrV4;
+    use std::net::{SocketAddrV4, SocketAddrV6};
 
     use aya::{TestRun as _, TestRunOptions};
 
@@ -521,7 +521,11 @@ mod tests {
     const RELAY_V4: Ipv4Addr = Ipv4Addr::new(203, 0, 113, 1);
     const RELAY_V6: Ipv6Addr = Ipv6Addr::new(0x2001, 0xdb8, 0, 0, 0, 0, 0, 0x100);
     const CLIENT_V4: SocketAddrV4 = SocketAddrV4::new(Ipv4Addr::new(198, 51, 100, 1), 40000);
+    const CLIENT_V6: SocketAddrV6 =
+        SocketAddrV6::new(Ipv6Addr::new(0x2001, 0xdb8, 0, 0, 0, 0, 0, 1), 40000, 0, 0);
     const PEER_V4: SocketAddrV4 = SocketAddrV4::new(Ipv4Addr::new(192, 0, 2, 1), 50000);
+    const PEER_V6: SocketAddrV6 =
+        SocketAddrV6::new(Ipv6Addr::new(0x2001, 0xdb8, 0, 0, 0, 0, 0, 2), 50000, 0, 0);
     const ALLOCATION: u16 = 49152;
     const CHANNEL: u16 = 0x4000;
 
@@ -530,8 +534,10 @@ mod tests {
     const DST_MAC: [u8; 6] = [0x02, 0, 0, 0, 0, 1];
     const SRC_MAC: [u8; 6] = [0x02, 0, 0, 0, 0, 2];
 
+    const XDP_DROP: u32 = 1;
     const XDP_TX: u32 = 3;
 
+    const NOT_ECT: u8 = 0b00;
     const ECT0: u8 = 0b10;
 
     #[test]
@@ -545,6 +551,29 @@ mod tests {
         assert_eq!(action, XDP_TX);
         assert_eq!(frame[..6], SRC_MAC);
         assert_eq!(frame[6..12], DST_MAC);
+    }
+
+    #[test]
+    #[ignore = "Needs root to load eBPF programs"]
+    fn counts_relayed_packets_by_ip_version_and_ecn() {
+        let mut program = Program::load_detached();
+        program.bind_channel(CLIENT_V4.into(), PEER_V4.into());
+        program.bind_channel(CLIENT_V6.into(), PEER_V6.into());
+
+        for _ in 0..3 {
+            program.run(&channel_data_ipv4(ECT0));
+        }
+        program.run(&channel_data_ipv6(NOT_ECT));
+
+        assert_eq!(program.packet_count(4, ECT0), 3);
+        assert_eq!(program.packet_count(6, NOT_ECT), 1);
+        assert_eq!(program.packet_count(4, NOT_ECT), 0);
+    }
+
+    #[derive(Debug, PartialEq)]
+    enum Outcome {
+        Forwarded { ecn: u8 },
+        Dropped,
     }
 
     impl Program {
@@ -572,6 +601,29 @@ mod tests {
             .unwrap();
         }
 
+        fn packet_count(&self, ip_version: u8, ecn: u8) -> u64 {
+            let counters =
+                PerCpuArray::<_, u64>::try_from(self.ebpf.map("PACKET_COUNTERS").unwrap()).unwrap();
+
+            counters
+                .get(&PacketCounter::index(ip_version, ecn), 0)
+                .unwrap()
+                .iter()
+                .sum()
+        }
+
+        fn run(&self, packet: &[u8]) -> Outcome {
+            let (action, frame) = self.run_raw(packet);
+
+            match action {
+                XDP_TX => Outcome::Forwarded {
+                    ecn: ecn_of(&frame),
+                },
+                XDP_DROP => Outcome::Dropped,
+                other => panic!("Unexpected XDP action {other}"),
+            }
+        }
+
         fn run_raw(&self, packet: &[u8]) -> (u32, Vec<u8>) {
             let program: &Xdp = self
                 .ebpf
@@ -595,6 +647,21 @@ mod tests {
         }
     }
 
+    /// Reads the ECN codepoint of an Ethernet frame, asserting that the IPv4 header checksum is still valid.
+    fn ecn_of(frame: &[u8]) -> u8 {
+        let ip = &frame[14..];
+
+        match ip[0] >> 4 {
+            4 => {
+                assert_eq!(ones_complement_sum(&ip[..20]), 0xffff, "Bad IPv4 checksum");
+
+                ip[1] & 0b11
+            }
+            6 => (ip[1] >> 4) & 0b11,
+            v => panic!("Unexpected IP version {v}"),
+        }
+    }
+
     fn channel_data_ipv4(ecn: u8) -> Vec<u8> {
         let udp = channel_data_udp(CLIENT_V4.port());
 
@@ -609,6 +676,20 @@ mod tests {
         ip.extend_from_slice(&udp);
 
         ethernet_frame(0x0800, &ip)
+    }
+
+    fn channel_data_ipv6(ecn: u8) -> Vec<u8> {
+        let udp = channel_data_udp(CLIENT_V6.port());
+
+        let mut ip = Vec::new();
+        ip.extend_from_slice(&[0x60, ecn << 4, 0, 0]);
+        ip.extend_from_slice(&(udp.len() as u16).to_be_bytes());
+        ip.extend_from_slice(&[17, 64]);
+        ip.extend_from_slice(&CLIENT_V6.ip().octets());
+        ip.extend_from_slice(&RELAY_V6.octets());
+        ip.extend_from_slice(&udp);
+
+        ethernet_frame(0x86dd, &ip)
     }
 
     /// A UDP datagram carrying a ChannelData message; the checksum is left empty because the XDP program only updates it.
