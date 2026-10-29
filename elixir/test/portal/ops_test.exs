@@ -304,32 +304,6 @@ defmodule Portal.OpsTest do
     end
   end
 
-  describe "backfill_relay_throughput_limits/0" do
-    test "sets the plan default on accounts without a limit" do
-      starter = starter_account_fixture()
-      team = team_account_fixture()
-      business = business_account_fixture()
-
-      enterprise =
-        update_account(account_fixture(), metadata: %{stripe: %{product_name: "Enterprise (Annual)"}})
-
-      unknown = account_fixture()
-      limited = update_account(team_account_fixture(), limits: %{relay_throughput_mbps: 100})
-
-      assert {:ok, 4} = backfill_relay_throughput_limits()
-
-      assert fetch_account!(starter.id).limits.relay_throughput_mbps == 5
-      assert fetch_account!(team.id).limits.relay_throughput_mbps == 15
-      assert fetch_account!(business.id).limits.relay_throughput_mbps == 25
-      assert fetch_account!(enterprise.id).limits.relay_throughput_mbps == 50
-      assert fetch_account!(unknown.id).limits.relay_throughput_mbps == nil
-      assert fetch_account!(limited.id).limits.relay_throughput_mbps == 100
-      assert fetch_account!(team.id).limits.monthly_active_users_count == 100
-
-      assert {:ok, 0} = backfill_relay_throughput_limits()
-    end
-  end
-
   describe "set_banner/1" do
     test "creates a banner with a message" do
       assert {:ok, banner} = set_banner("System maintenance scheduled")

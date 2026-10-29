@@ -684,13 +684,11 @@ defmodule Portal.Billing.EventHandler do
     {metadata, params} = Map.split(params, metadata_fields)
     {limits, params} = Map.split(params, limit_fields)
     {features, _} = Map.split(params, feature_fields)
-    plan_type = Billing.plan_type(stripe_metadata["product_name"])
 
     limits =
       limits
       |> Map.put("users_count", users_count)
-      |> put_seat_limit(plan_type, seats)
-      |> Map.put_new("relay_throughput_mbps", Billing.default_relay_throughput_mbps(plan_type))
+      |> put_seat_limit(Billing.plan_type(stripe_metadata["product_name"]), seats)
       |> add_to_limits(add_ons)
 
     %{
