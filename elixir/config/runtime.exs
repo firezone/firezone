@@ -819,15 +819,21 @@ if config_env() == :prod do
   end
 end
 
-if azure_otlp_metrics_endpoint = System.get_env("AZURE_OTLP_METRICS_ENDPOINT") do
-  config :opentelemetry_experimental,
-    readers: [
-      %{
-        module: :otel_metric_reader,
-        config: %{
-          export_interval_ms: 30_000,
-          exporter: {Portal.Azure.MetricsExporter, %{endpoint: azure_otlp_metrics_endpoint}}
-        }
-      }
-    ]
-end
+metric_exporters = [
+  if(otlp_endpoint = System.get_env("OTLP_ENDPOINT"),
+    do: {:otel_exporter_metrics_otlp, %{endpoints: [otlp_endpoint]}}
+  ),
+  if(azure_otlp_metrics_endpoint = System.get_env("AZURE_OTLP_METRICS_ENDPOINT"),
+    do: {Portal.Azure.MetricsExporter, %{endpoint: azure_otlp_metrics_endpoint}}
+  )
+]
+
+readers =
+  for exporter <- metric_exporters, not is_nil(exporter) do
+    %{
+      module: :otel_metric_reader,
+      config: %{export_interval_ms: 30_000, exporter: exporter}
+    }
+  end
+
+config :opentelemetry_experimental, readers: readers
