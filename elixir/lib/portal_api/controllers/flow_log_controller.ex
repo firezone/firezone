@@ -188,7 +188,7 @@ defmodule PortalAPI.FlowLogController do
   # database. A timestamp outside this window must not fail the entire batch.
   defp validate_partition_window(changeset, now) do
     %Date.Range{first: first, last: last} =
-      Portal.Workers.PartitionLogTables.Database.ingestion_dates(DateTime.to_date(now))
+      Portal.Workers.PartitionLogTables.ingestion_dates(DateTime.to_date(now))
 
     case get_field(changeset, :flow_start) do
       %DateTime{} = flow_start ->

@@ -17,6 +17,8 @@ defmodule Portal.Workers.PartitionLogTables do
 
   alias __MODULE__.Database
 
+  defdelegate ingestion_dates(today), to: Database
+
   @impl Oban.Worker
   def perform(_job) do
     for source <- ~w[flow_logs session_logs api_request_logs change_logs] do
