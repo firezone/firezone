@@ -537,6 +537,7 @@ mod tests {
     const XDP_DROP: u32 = 1;
     const XDP_TX: u32 = 3;
 
+    const NOT_ECT: u8 = 0b00;
     const ECT0: u8 = 0b10;
 
     #[test]
@@ -574,6 +575,23 @@ mod tests {
         assert_eq!(outcome, Outcome::Forwarded { ecn: ECT0 });
     }
 
+    #[test]
+    #[ignore = "Needs root to load eBPF programs"]
+    fn counts_relayed_packets_by_ip_version_and_ecn() {
+        let mut program = Program::load_detached();
+        program.bind_channel(CLIENT_V4.into(), PEER_V4.into());
+        program.bind_channel(CLIENT_V6.into(), PEER_V6.into());
+
+        for _ in 0..3 {
+            program.run(&channel_data_ipv4(ECT0));
+        }
+        program.run(&channel_data_ipv6(NOT_ECT));
+
+        assert_eq!(program.packet_count(4, ECT0), 3);
+        assert_eq!(program.packet_count(6, NOT_ECT), 1);
+        assert_eq!(program.packet_count(4, NOT_ECT), 0);
+    }
+
     #[derive(Debug, PartialEq)]
     enum Outcome {
         Forwarded { ecn: u8 },
@@ -600,6 +618,17 @@ mod tests {
                 AllocationPort::new(ALLOCATION),
             )
             .unwrap();
+        }
+
+        fn packet_count(&self, ip_version: u8, ecn: u8) -> u64 {
+            let counters =
+                PerCpuArray::<_, u64>::try_from(self.ebpf.map("PACKET_COUNTERS").unwrap()).unwrap();
+
+            counters
+                .get(&PacketCounter::index(ip_version, ecn), 0)
+                .unwrap()
+                .iter()
+                .sum()
         }
 
         fn run(&self, packet: &[u8]) -> Outcome {
