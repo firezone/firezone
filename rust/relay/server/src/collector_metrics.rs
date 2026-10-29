@@ -6,7 +6,10 @@ pub fn with_exporter(
     builder: MeterProviderBuilder,
     endpoint: &str,
 ) -> Result<MeterProviderBuilder> {
-    // Delta histograms keep Azure Monitor's min/max and averages scoped to each export window.
+    // `LowMemory` ships observable counters as cumulative, but synchronous monotonic
+    // counters and histograms as delta. Without delta, Azure Monitor pins Min/Max to
+    // lifetime extremes after the first outlier and per-window averages can only be
+    // reconstructed via fragile prev()-based KQL.
     let exporter = opentelemetry_otlp::MetricExporter::builder()
         .with_tonic()
         .with_endpoint(endpoint)
