@@ -196,6 +196,22 @@ defmodule Portal.Ops do
     end)
   end
 
+  @doc """
+  Sets the Relay throughput limit of each account on a known plan that has no
+  limit yet to the value its plan has in Stripe.
+
+  Run this once after the Relay throughput limits ship, then remove it.
+  """
+  def backfill_relay_throughput_limits do
+    Database.accounts_missing_relay_throughput_limit()
+    |> Enum.group_by(&plan_relay_throughput_mbps(Billing.plan_type(&1)), & &1.id)
+    |> Map.delete(nil)
+    |> Enum.reduce({:ok, 0}, fn {mbps, account_ids}, {:ok, count} ->
+      {updated, _} = Database.set_relay_throughput_limit(account_ids, mbps)
+      {:ok, count + updated}
+    end)
+  end
+
   @doc"""
   Set a banner for all accounts. Banners can render HTML tags.
   The available colors are: :warning, :info, :error, :success, :announcement
@@ -583,6 +599,12 @@ defmodule Portal.Ops do
     end
   end
 
+  defp plan_relay_throughput_mbps(:starter), do: 5
+  defp plan_relay_throughput_mbps(:team), do: 15
+  defp plan_relay_throughput_mbps(:business), do: 25
+  defp plan_relay_throughput_mbps(:enterprise), do: 50
+  defp plan_relay_throughput_mbps(:unknown), do: nil
+
   defmodule Database do
     import Ecto.Query
     alias Portal.{Account, Actor, ExternalIdentity, Safe}
@@ -767,6 +789,31 @@ defmodule Portal.Ops do
       )
       |> Safe.unscoped()
       |> Safe.all()
+    end
+
+    def accounts_missing_relay_throughput_limit do
+      from(a in Account, where: is_nil(fragment("?->>'relay_throughput_mbps'", a.limits)))
+      |> Safe.unscoped()
+      |> Safe.all()
+    end
+
+    def set_relay_throughput_limit(account_ids, mbps) do
+      from(a in Account,
+        where: a.id in ^account_ids,
+        where: is_nil(fragment("?->>'relay_throughput_mbps'", a.limits)),
+        update: [
+          set: [
+            limits:
+              fragment(
+                "COALESCE(?, '{}'::jsonb) || jsonb_build_object('relay_throughput_mbps', ?::integer)",
+                a.limits,
+                ^mbps
+              )
+          ]
+        ]
+      )
+      |> Safe.unscoped()
+      |> Safe.update_all([])
     end
 
     defp maybe_filter_account_ids(query, :all) do
