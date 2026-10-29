@@ -14,6 +14,11 @@ impl KernelInstant {
     }
 
     #[inline]
+    pub fn as_nanos(self) -> u64 {
+        self.0
+    }
+
+    #[inline]
     pub fn duration_since(self, earlier: Self) -> Duration {
         Duration::from_nanos(self.0.saturating_sub(earlier.0))
     }

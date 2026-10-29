@@ -13,6 +13,7 @@ pub enum Error {
     BadChannelDataLength,
     NoEntry(SupportedChannel),
     XdpAdjustHeadFailed,
+    ThroughputLimitExceeded,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -45,6 +46,7 @@ impl Error {
                 SupportedChannel::Chan6ToUdp => "No entry in channel IPv6 to UDPv4 or UDPv6 map",
             },
             Error::XdpAdjustHeadFailed => "Failed to adjust tail",
+            Error::ThroughputLimitExceeded => "Channel exceeds its throughput limit",
         }
     }
 }
