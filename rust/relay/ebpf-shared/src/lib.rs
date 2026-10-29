@@ -239,6 +239,33 @@ impl PortAndPeerV6 {
     }
 }
 
+/// One in this many relayed packets is reported as a [`StatsEvent`].
+///
+/// Every event wakes up userspace and all CPUs wake it up through the same lock.
+/// Reporting every packet therefore caps the throughput of the entire relay.
+pub const STATS_SAMPLING_INTERVAL: u32 = 256;
+
+/// Indices into the per-CPU array that counts relayed packets by incoming IP version and ECN codepoint.
+pub struct PacketCounter;
+
+impl PacketCounter {
+    pub const NUM_ENTRIES: u32 = 8;
+
+    /// The index of the counter for packets of the given IP version and ECN codepoint.
+    pub const fn index(ip_version: u8, ecn: u8) -> u32 {
+        let is_ipv6 = (ip_version == 6) as u32;
+
+        (is_ipv6 << 2) | (ecn & 0b11) as u32
+    }
+
+    /// The IP version and ECN codepoint counted at `index`.
+    pub const fn ip_version_and_ecn(index: u32) -> (u8, u8) {
+        let ip_version = if index & 0b100 == 0 { 4 } else { 6 };
+
+        (ip_version, (index & 0b11) as u8)
+    }
+}
+
 /// Local perf-buffer ABI: integer fields use native endianness on the shared host.
 /// IP version and ECN are individual bytes and have no byte-order conversion.
 #[repr(C)]
@@ -340,6 +367,18 @@ fn duration_as_nanos_u64(d: core::time::Duration) -> u64 {
 mod stats_event_tests {
     use super::*;
     use network_types::ip::{Ipv4Hdr, Ipv6Hdr};
+
+    #[test]
+    fn packet_counter_index_round_trips() {
+        for ip_version in [4, 6] {
+            for ecn in 0..=3 {
+                let index = PacketCounter::index(ip_version, ecn);
+
+                assert!(index < PacketCounter::NUM_ENTRIES);
+                assert_eq!(PacketCounter::ip_version_and_ecn(index), (ip_version, ecn));
+            }
+        }
+    }
 
     #[test]
     fn extracts_ecn_from_network_order_headers() {

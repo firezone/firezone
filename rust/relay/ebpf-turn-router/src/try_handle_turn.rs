@@ -71,7 +71,7 @@ pub fn try_handle_turn(ctx: &XdpContext) -> Result<(), Error> {
         }
         _ => return Err(Error::NotIp),
     };
-    stats::emit(ctx, num_bytes, start.elapsed(), ip_version, ecn);
+    stats::record(ctx, num_bytes, start, ip_version, ecn);
 
     Ok(())
 }
