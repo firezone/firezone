@@ -503,7 +503,7 @@ impl<I: GuiIntegration> Controller<I> {
         let token = match self.auth.handle_response(auth_response) {
             Ok(token) => token,
             Err(error) => {
-                if self.auth.is_signed_out() {
+                if self.auth.is_signed_out() && self.unconfirmed_token.is_none() {
                     self.set_signed_in_with(None)?;
                 }
                 return Err(error).context("Couldn't handle auth response");
@@ -1798,6 +1798,31 @@ mod tests {
             "the reply must wait for the tunnel"
         );
 
+        let original = test_controller
+            .wait_integration(|i| i.signed_in_with.last()?.clone())
+            .await;
+        let changed = canned_advanced_settings();
+        mock_tunnel
+            .send_advanced_settings_applied(Ok(changed.clone()))
+            .await;
+        test_controller
+            .wait_integration(|i| (i.advanced_settings.last() == Some(&changed)).then_some(()))
+            .await;
+        let stale_callback =
+            "firezone://handle_client_sign_in_callback/?fragment=stale&state=stale"
+                .parse()
+                .unwrap();
+        assert_eq!(
+            test_controller
+                .gui_ipc_request(gui_ipc::ClientMsg::Deeplink(stale_callback))
+                .await,
+            gui_ipc::ServerMsg::Ack
+        );
+        assert_eq!(
+            test_controller.integration().signed_in_with.last(),
+            Some(&Some(original.clone()))
+        );
+
         mock_tunnel.send_connect_ok().await;
         mock_tunnel.send_resources(vec![dns_resource_foo()]).await;
 
@@ -1823,8 +1848,12 @@ mod tests {
         tx.send(&gui_ipc::ClientMsg::Connect { token: None })
             .await
             .unwrap();
-        let stored_token = mock_tunnel.rx_connect().await;
-        assert_eq!(stored_token.expose_secret(), "cli-token");
+        let service::ClientMsg::Connect { token, api_url, .. } = mock_tunnel.next_msg().await
+        else {
+            panic!("expected the accepted CLI token to reconnect");
+        };
+        assert_eq!(token.expose_secret(), "cli-token");
+        assert_eq!(api_url, Some(original.api_url));
     }
 
     #[tokio::test]
