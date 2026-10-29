@@ -287,6 +287,7 @@ mod tests {
     }
 
     fn test_client(endpoint: &Url) -> AzureHttpClient {
+        let _ = rustls::crypto::ring::default_provider().install_default();
         let mut client = AzureHttpClient::new(endpoint).unwrap();
         client.imds_endpoint = endpoint.join("/metadata/identity/oauth2/token").unwrap();
         client
