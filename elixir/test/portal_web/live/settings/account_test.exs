@@ -286,7 +286,9 @@ defmodule PortalWeb.Settings.AccountTest do
       assert email.text_body =~ "Account: #{account.name} (#{account.id})"
       assert email.text_body =~ "From region: United States"
       assert email.text_body =~ "To region: European Union"
-      assert email.text_body =~ "auth URL https://eu.app.firezone.dev and the API URL wss://eu.api.firezone.dev"
+      refute email.text_body =~ "Client notes for the customer"
+      refute email.text_body =~ "Clients at macOS"
+      refute email.text_body =~ "Older Clients"
     end
 
     test "renders usage section", %{conn: conn, account: account, actor: actor} do
