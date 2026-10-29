@@ -23,8 +23,8 @@ next_apple_client_version="1.5.24"
 current_android_client_version="1.5.17"
 next_android_client_version="1.5.18"
 
-current_gui_client_version="1.5.19"
-next_gui_client_version="1.5.20"
+current_gui_client_version="1.5.20"
+next_gui_client_version="1.5.21"
 
 current_headless_client_version="1.5.15"
 next_headless_client_version="1.5.16"
