@@ -11,7 +11,6 @@ use std::{
     sync::Arc,
 };
 use subtle::ConstantTimeEq;
-use url::Url;
 
 const NONCE_LENGTH: usize = 32;
 #[cfg(target_os = "windows")]
@@ -56,6 +55,8 @@ pub enum Error {
 pub struct Auth {
     token_entry: keyring_core::Entry,
     state: State,
+    // Legacy settings are captured in memory before a successful connection saves them.
+    sign_in_settings_need_saving: bool,
     session_dir: PathBuf,
 }
 
@@ -65,7 +66,7 @@ enum State {
     /// Waiting for the browser's sign-in callback.
     NeedResponse(Request),
     /// A validated browser token is awaiting portal acceptance and has not been saved.
-    AwaitingPortal,
+    AwaitingPortal(Credential),
     /// An accepted or restored credential is available.
     SignedIn(Credential),
 }
@@ -79,13 +80,14 @@ pub struct Credential {
 pub struct Request {
     nonce: SecretString,
     state: SecretString,
+    sign_in_settings: SignInSettings,
 }
 
 impl Request {
-    pub fn to_url(&self, auth_base_url: &Url, account_slug: Option<&str>) -> SecretString {
-        let mut url = auth_base_url.clone();
+    pub fn to_url(&self) -> SecretString {
+        let mut url = self.sign_in_settings.auth_url.clone();
 
-        if let Some(account_slug) = account_slug {
+        if let Some(account_slug) = self.sign_in_settings.account_slug.as_deref() {
             url.set_path(account_slug);
         }
 
@@ -153,7 +155,7 @@ impl Auth {
     }
 
     /// Creates an [`Auth`] backed by an in-memory keystore and a temp session
-    /// dir, already signed in with a fabricated response.
+    /// dir, already signed in with a fabricated token.
     #[cfg(debug_assertions)]
     fn new_fake() -> Result<Self> {
         let mut this = Self::new_with_key(
@@ -161,9 +163,8 @@ impl Auth {
             keyring_core::mock::Store::new()?,
             std::env::temp_dir().join("dev.firezone.client.skip-portal-auth"),
         )?;
-        let request = this.start_sign_in()?;
-        let response = Response::fake(request.state.clone());
-        let token = this.handle_response(response)?;
+        let token =
+            SecretString::from(format!("{}fake-fragment", generate_nonce().expose_secret()));
         this.save_token(&token, None);
 
         Ok(this)
@@ -180,11 +181,13 @@ impl Auth {
         let mut this = Self {
             token_entry: store.build("", keyring_key, None)?,
             state: State::SignedOut,
+            sign_in_settings_need_saving: false,
             session_dir,
         };
 
         match this.credential_from_keyring() {
             Some(credential) => {
+                this.sign_in_settings_need_saving = credential.sign_in_settings.is_none();
                 this.state = State::SignedIn(credential);
                 tracing::debug!("Reloaded token from keyring, starting in signed-in state.");
             }
@@ -213,18 +216,19 @@ impl Auth {
         delete_if_exists(&self.session_dir.join("actor_name.txt"))?;
         delete_if_exists(&self.session_dir.join("session_data.json"))?;
         self.state = State::SignedOut;
+        self.sign_in_settings_need_saving = false;
         Ok(())
     }
 
     /// Start a new sign-in flow, replacing any ongoing flow
     ///
     /// Returns parameters used to make a URL for the web browser to open
-    /// May return Ok(None) if we're already signed in
-    pub fn start_sign_in(&mut self) -> Result<&Request, Error> {
+    pub fn start_sign_in(&mut self, settings: SignInSettings) -> Result<&Request, Error> {
         self.sign_out()?;
         self.state = State::NeedResponse(Request {
             nonce: generate_nonce(),
             state: generate_nonce(),
+            sign_in_settings: settings,
         });
         let State::NeedResponse(request) = &self.state else {
             unreachable!("We just set `self.state`")
@@ -235,11 +239,11 @@ impl Auth {
 
     /// Complete an ongoing sign-in flow using parameters from a deep link
     ///
-    /// Returns a token to validate with the portal before saving it.
+    /// Returns the pending credential to validate with the portal before saving it.
     /// Performs I/O.
     ///
     /// Errors if the response is invalid.
-    pub(crate) fn handle_response(&mut self, resp: Response) -> Result<SecretString, Error> {
+    pub(crate) fn handle_response(&mut self, resp: Response) -> Result<&mut Credential, Error> {
         let req = self.ongoing_request().ok_or(Error::NoInflightRequest)?;
 
         if !secure_equality(&resp.state, &req.state) {
@@ -254,8 +258,15 @@ impl Auth {
         );
         let token = SecretString::from(token);
 
-        self.state = State::AwaitingPortal;
-        Ok(token)
+        let settings = req.sign_in_settings.clone();
+        self.state = State::AwaitingPortal(Credential {
+            token,
+            sign_in_settings: Some(settings),
+        });
+        let State::AwaitingPortal(credential) = &mut self.state else {
+            unreachable!("We just set `self.state`")
+        };
+        Ok(credential)
     }
 
     /// Saves an accepted token and its sign-in settings, replacing any stored credential.
@@ -265,18 +276,43 @@ impl Auth {
         self.save_token(token, Some(settings));
     }
 
-    /// Attaches missing sign-in settings to an existing token, for compatibility
-    /// with credentials saved by older clients.
-    pub fn attach_sign_in_settings_to_token(&mut self, settings: SignInSettings) {
-        let State::SignedIn(Credential {
-            token,
-            sign_in_settings: None,
-        }) = &self.state
-        else {
+    /// Saves the browser credential once the portal accepts it.
+    pub fn accept_browser_sign_in(&mut self) {
+        let State::AwaitingPortal(credential) = &self.state else {
             return;
         };
-        let token = token.clone();
-        self.save_token(&token, Some(settings));
+        let credential = credential.clone();
+        self.save_token(&credential.token, credential.sign_in_settings);
+    }
+
+    /// Captures effective settings for a restored token without saved metadata.
+    pub fn capture_legacy_sign_in_settings(&mut self, settings: SignInSettings) {
+        let State::SignedIn(credential) = &mut self.state else {
+            return;
+        };
+        credential.sign_in_settings.get_or_insert(settings);
+    }
+
+    /// Attaches missing sign-in settings to an existing token, for compatibility
+    /// with credentials saved by older clients.
+    pub fn attach_sign_in_settings_to_token(&mut self) {
+        if !self.sign_in_settings_need_saving {
+            return;
+        }
+        let Some(credential) = self.credential().cloned() else {
+            return;
+        };
+        self.save_token(&credential.token, credential.sign_in_settings);
+    }
+
+    /// Returns settings captured for the active browser flow or accepted credential.
+    pub fn captured_sign_in_settings(&self) -> Option<&SignInSettings> {
+        match &self.state {
+            State::NeedResponse(request) => Some(&request.sign_in_settings),
+            State::AwaitingPortal(credential) => credential.sign_in_settings.as_ref(),
+            State::SignedIn(credential) => credential.sign_in_settings.as_ref(),
+            State::SignedOut => None,
+        }
     }
 
     fn save_token(&mut self, token: &SecretString, sign_in_settings: Option<SignInSettings>) {
@@ -306,6 +342,7 @@ impl Auth {
         if let Err(e) = result {
             tracing::info!("{e:#}"); // Log that we couldn't save it and allow the user to continue anyway.
         }
+        self.sign_in_settings_need_saving = credential.sign_in_settings.is_none();
         self.state = State::SignedIn(credential);
     }
 
@@ -314,7 +351,7 @@ impl Auth {
         match &self.state {
             State::SignedIn(credential) => Some(credential),
             State::NeedResponse(_) => None,
-            State::AwaitingPortal => None,
+            State::AwaitingPortal(_) => None,
             State::SignedOut => None,
         }
     }
@@ -350,7 +387,7 @@ impl Auth {
         match &self.state {
             State::NeedResponse(x) => Some(x),
             State::SignedIn(_) => None,
-            State::AwaitingPortal => None,
+            State::AwaitingPortal(_) => None,
             State::SignedOut => None,
         }
     }
@@ -465,13 +502,17 @@ mod tests {
         let hex_string = hex_string.expose_secret();
         assert_eq!(hex_string.len(), NONCE_LENGTH * 2);
 
-        let auth_base_url = Url::parse("https://app.firez.one").unwrap();
         let req = Request {
             nonce: bogus_secret("some_nonce"),
             state: bogus_secret("some_state"),
+            sign_in_settings: SignInSettings {
+                account_slug: None,
+                auth_url: "https://app.firez.one".parse().unwrap(),
+                ..sign_in_settings()
+            },
         };
         assert_eq!(
-            req.to_url(&auth_base_url, None).expose_secret(),
+            req.to_url().expose_secret(),
             "https://app.firez.one/?as=gui-client&nonce=some_nonce&state=some_state"
         );
     }
@@ -496,7 +537,7 @@ mod tests {
             assert!(state.credential().is_none());
 
             // User clicks "Sign In", build a fake server response
-            let req = state.start_sign_in().unwrap();
+            let req = state.start_sign_in(sign_in_settings()).unwrap();
             let resp = Response {
                 fragment: bogus_secret("fragment"),
                 state: req.state.clone(),
@@ -508,8 +549,10 @@ mod tests {
                 state: resp.state.clone(),
                 control_plane: resp.control_plane,
             };
-            let token = state.handle_response(resp).unwrap();
-            assert!(matches!(state.state, State::AwaitingPortal));
+            assert_eq!(state.captured_sign_in_settings(), Some(&sign_in_settings()));
+            let token = state.handle_response(resp).unwrap().token.clone();
+            assert_eq!(state.captured_sign_in_settings(), Some(&sign_in_settings()));
+            assert!(matches!(state.state, State::AwaitingPortal(_)));
             assert!(!state.is_signed_out());
             assert!(state.ongoing_request().is_none());
             assert!(state.credential().is_none());
@@ -518,9 +561,10 @@ mod tests {
                 state.handle_response(replay),
                 Err(Error::NoInflightRequest)
             ));
-            assert!(matches!(state.state, State::AwaitingPortal));
+            assert!(matches!(state.state, State::AwaitingPortal(_)));
             assert!(state.token_entry.get_password().is_err());
-            state.sign_in_with_token(&token, sign_in_settings());
+            assert_eq!(state.captured_sign_in_settings(), Some(&sign_in_settings()));
+            state.accept_browser_sign_in();
             assert_eq!(
                 state.credential().unwrap().sign_in_settings,
                 Some(sign_in_settings())
@@ -539,18 +583,26 @@ mod tests {
             // Make sure we automatically got the token back
             assert!(state.credential().is_some());
             assert!(state.credential().unwrap().sign_in_settings.is_none());
+            state.capture_legacy_sign_in_settings(sign_in_settings());
+            assert_eq!(state.captured_sign_in_settings(), Some(&sign_in_settings()));
+            state.attach_sign_in_settings_to_token();
+            let mut edited = sign_in_settings();
+            edited.account_slug = Some("edited".to_owned());
+            state.capture_legacy_sign_in_settings(edited);
+            state.attach_sign_in_settings_to_token();
+            assert_eq!(state.captured_sign_in_settings(), Some(&sign_in_settings()));
 
             // Accidentally sign in again, this can happen if the user holds the systray menu open while a sign in is succeeding.
             // For now, we treat that like signing out and back in immediately, so it wipes the old token.
             // TODO: That sounds wrong.
-            let req = state.start_sign_in().unwrap();
+            let req = state.start_sign_in(sign_in_settings()).unwrap();
             let response = Response {
                 fragment: bogus_secret("another-fragment"),
                 state: req.state.clone(),
                 control_plane: None,
             };
             state.handle_response(response).unwrap();
-            assert!(matches!(state.state, State::AwaitingPortal));
+            assert!(matches!(state.state, State::AwaitingPortal(_)));
             assert!(state.credential().is_none());
 
             // Sign out again, now the token is gone
@@ -580,7 +632,7 @@ mod tests {
         )
         .unwrap();
 
-        auth.attach_sign_in_settings_to_token(sign_in_settings());
+        auth.attach_sign_in_settings_to_token();
 
         assert!(auth.credential().is_none());
         assert!(auth.token_entry.get_password().is_err());
@@ -635,7 +687,7 @@ mod tests {
         assert!(state.credential().is_none());
 
         // User clicks "Sign In", build a fake server response
-        state.start_sign_in().unwrap();
+        state.start_sign_in(sign_in_settings()).unwrap();
         let resp = Response {
             fragment: bogus_secret("fragment"),
             state: SecretString::from(
