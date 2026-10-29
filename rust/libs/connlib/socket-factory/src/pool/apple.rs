@@ -502,10 +502,9 @@ fn create_socket(
     socket.bind(&bind_addr)?;
     // NECP can scope the socket to the primary interface during bind.
     // Clear that scope so routing can select the interface for the destination.
-    if local.is_ipv4() {
-        socket.bind_device_by_index_v4(None)?;
-    } else {
-        socket.bind_device_by_index_v6(None)?;
+    match local.ip() {
+        IpAddr::V4(_) => socket.bind_device_by_index_v4(None)?,
+        IpAddr::V6(_) => socket.bind_device_by_index_v6(None)?,
     }
     if let Some(dst) = dst {
         socket.connect(&socket2::SockAddr::from(dst))?;
