@@ -1,6 +1,7 @@
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
 mod azure_metrics;
+mod collector_metrics;
 
 #[global_allocator]
 static ALLOC: mimalloc::MiMalloc = mimalloc::MiMalloc;
@@ -341,13 +342,7 @@ fn setup_tracing(args: &Args) -> Result<FilterReloadHandle> {
 
             tracing::trace!(target: "relay", "Successfully initialized trace provider on tokio runtime");
 
-            let exporter = opentelemetry_otlp::MetricExporter::builder()
-                .with_tonic()
-                .with_endpoint(grpc_endpoint)
-                .with_temporality(opentelemetry_sdk::metrics::Temporality::LowMemory)
-                .build()
-                .context("Failed to build OTLP metric exporter")?;
-            meter_provider = meter_provider.with_periodic_exporter(exporter);
+            meter_provider = collector_metrics::with_exporter(meter_provider, &grpc_endpoint)?;
 
             let (log_filter, log_reload_handle) = logging::try_filter(&directives)?;
             let (otel_filter, otel_reload_handle) = logging::try_filter(&directives)?;
