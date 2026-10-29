@@ -8,7 +8,7 @@ pub mod auth;
 pub use net_ext::IpAddrExt;
 pub use server::{
     Allocate, AllocationPort, Attribute, Binding, ChannelBind, ChannelData, ClientMessage, Command,
-    CreatePermission, Refresh, Server,
+    CreatePermission, Refresh, Server, ThroughputLimit,
 };
 use stun_codec::rfc5389::attributes::Software;
 pub use stun_codec::rfc8656::attributes::AddressFamily;

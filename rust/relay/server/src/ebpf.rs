@@ -5,7 +5,7 @@ mod platform;
 #[path = "ebpf/stub.rs"]
 mod platform;
 
-pub use platform::Program;
+pub use platform::{Program, RateLimitedPackets};
 
 #[derive(clap::ValueEnum, Debug, Clone, Copy)]
 pub enum AttachMode {
