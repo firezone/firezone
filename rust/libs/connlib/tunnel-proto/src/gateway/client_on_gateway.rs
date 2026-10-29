@@ -5,7 +5,7 @@ use std::time::Instant;
 
 use anyhow::{Context, ErrorExt, Result, bail};
 use connlib_model::{ClientId, ResourceId};
-use dns_types::DomainName;
+use dns_types::{DomainName, Query, RecordType};
 use fast_random_state::FastRandomState;
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_packet::{IpPacket, Protocol, UnsupportedProtocol};
@@ -510,6 +510,21 @@ impl ClientOnGateway {
         self.resources.contains_key(&resource)
     }
 
+    pub(crate) fn allows_site_dns_query(&self, query: &Query) -> bool {
+        if !query.is_standard_query() || !matches!(query.qtype(), RecordType::TXT | RecordType::SRV)
+        {
+            return false;
+        }
+
+        let domain = query.domain();
+
+        self.resources.values().any(|resource| match resource {
+            ResourceOnGateway::Dns { address, .. } => crate::dns::is_subdomain(&domain, address),
+            ResourceOnGateway::Cidr { .. } => false,
+            ResourceOnGateway::Internet => false,
+        })
+    }
+
     fn ensure_allowed_outbound(&mut self, packet: &IpPacket) -> Result<()> {
         self.ensure_client_ip(packet.source())?;
 
@@ -797,7 +812,10 @@ mod tests {
 
     use crate::{
         gateway::nat_table,
-        messages::{Filter, PortRange, gateway::ResourceDescriptionCidr},
+        messages::{
+            Filter, PortRange,
+            gateway::{ResourceDescriptionCidr, ResourceDescriptionDns},
+        },
         unroutable_packet::RoutingError,
     };
 
@@ -899,6 +917,34 @@ mod tests {
         peer.handle_timeout(later);
 
         assert!(!peer.resources.contains_key(&foo_resource_id()));
+    }
+
+    #[test]
+    fn tun_dns_queries_require_an_active_dns_resource_and_txt_or_srv_type() {
+        let now = Instant::now();
+        let mut peer = ClientOnGateway::new(client_id(), client_key(), client_tun(), gateway_tun());
+        peer.add_resource(foo_dns_resource(), Some(now + Duration::from_secs(60)), now);
+        peer.add_resource(bar_cidr_resource(), None, now);
+        peer.add_resource(internet_resource(), None, now);
+
+        peer.add_resource(
+            ResourceDescription::Dns(ResourceDescriptionDns {
+                id: baz_resource_id(),
+                address: "*.foo.com".to_owned(),
+                name: "wildcard".to_owned(),
+                filters: vec![],
+            }),
+            Some(now + Duration::from_secs(60)),
+            now,
+        );
+
+        let query = |name: &str, record_type| Query::new(name.parse().unwrap(), record_type);
+
+        assert!(peer.allows_site_dns_query(&query("foo.com", RecordType::TXT)));
+        assert!(peer.allows_site_dns_query(&query("service.foo.com", RecordType::SRV)));
+        assert!(!peer.allows_site_dns_query(&query("foo.com", RecordType::A)));
+        assert!(!peer.allows_site_dns_query(&query("other.com", RecordType::TXT)));
+        assert!(!peer.allows_site_dns_query(&query("10.0.0.1", RecordType::TXT)));
     }
 
     #[test]

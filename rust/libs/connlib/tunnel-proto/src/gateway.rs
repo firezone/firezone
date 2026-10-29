@@ -14,7 +14,7 @@ use crate::unroutable_packet::UnroutablePacket;
 use crate::{FailedToDecapsulate, GatewayEvent, IpConfig, p2p_control, packet_kind};
 use anyhow::{Context, ErrorExt, Result};
 use connlib_model::{ClientId, IceCandidate, PublicKey, RelayId, ResourceId};
-use dns_types::DomainName;
+use dns_types::{DomainName, Query, Response, ResponseBuilder, ResponseCode};
 use fast_random_state::FastRandomState;
 use ip_packet::{FzP2pControlSlice, IpPacket};
 use secrecy::ExposeSecret as _;
@@ -27,6 +27,19 @@ use std::time::{Duration, Instant};
 use zeroize::Zeroizing;
 
 pub const TUN_DNS_PORT: u16 = 53535;
+
+pub struct SiteDnsQuery {
+    local: SocketAddr,
+    remote: SocketAddr,
+    message: Query,
+    transport: crate::dns::Transport,
+}
+
+impl SiteDnsQuery {
+    pub fn into_parts(self) -> (SocketAddr, SocketAddr, Query, crate::dns::Transport) {
+        (self.local, self.remote, self.message, self.transport)
+    }
+}
 
 /// A SANS-IO implementation of a gateway's functionality.
 ///
@@ -97,6 +110,30 @@ impl GatewayState {
 
     pub fn tunnel_ip_config(&self) -> Option<IpConfig> {
         self.tun_ip_config
+    }
+
+    pub fn handle_site_dns_query(
+        &self,
+        local: SocketAddr,
+        remote: SocketAddr,
+        message: Query,
+        transport: crate::dns::Transport,
+    ) -> Result<SiteDnsQuery, Response> {
+        let allowed = self
+            .peers
+            .peer_by_ip(remote.ip())
+            .is_some_and(|(_, peer)| peer.allows_site_dns_query(&message));
+
+        if !allowed {
+            return Err(ResponseBuilder::for_query(&message, ResponseCode::REFUSED).build());
+        }
+
+        Ok(SiteDnsQuery {
+            local,
+            remote,
+            message,
+            transport,
+        })
     }
 
     pub fn public_key(&self) -> sanstun::PublicKey {
