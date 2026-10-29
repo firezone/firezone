@@ -62,6 +62,8 @@ pub enum ClientMsg {
         #[serde(serialize_with = "serialize_token")]
         token: SecretString,
         is_internet_resource_active: bool,
+        /// The token's API URL captured at sign-in, including any MDM override.
+        /// If absent, the service uses its current settings.
         #[serde(default)]
         api_url: Option<url::Url>,
     },

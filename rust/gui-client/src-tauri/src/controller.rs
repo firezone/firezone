@@ -1055,14 +1055,10 @@ impl<I: GuiIntegration> Controller<I> {
 
         match result {
             Ok(()) => {
-                let token = match self.unconfirmed_token.take() {
-                    Some(token) => Some(token),
-                    // Attach sign-in settings to a token saved by an older client.
-                    None if self.auth.sign_in_settings().is_none() => self.auth.token(),
-                    None => None,
-                };
-                if let Some(token) = token {
-                    self.auth.sign_in_with_token(&token, self.current_sign_in());
+                let settings = self.current_sign_in();
+                match self.unconfirmed_token.take() {
+                    Some(token) => self.auth.sign_in_with_token(&token, settings),
+                    None => self.auth.attach_sign_in_settings_to_token(settings),
                 }
                 ran_before::set().await?;
                 self.status = Status::WaitingForTunnel;

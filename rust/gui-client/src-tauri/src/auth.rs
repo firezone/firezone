@@ -259,6 +259,20 @@ impl Auth {
         self.save_token(token, Some(settings));
     }
 
+    /// Attaches missing sign-in settings to an existing token, for compatibility
+    /// with credentials saved by older clients.
+    pub fn attach_sign_in_settings_to_token(&mut self, settings: SignInSettings) {
+        let State::SignedIn(Credential {
+            token,
+            sign_in_settings: None,
+        }) = &self.state
+        else {
+            return;
+        };
+        let token = token.clone();
+        self.save_token(&token, Some(settings));
+    }
+
     fn save_token(&mut self, token: &SecretString, sign_in_settings: Option<SignInSettings>) {
         let credential = Credential {
             token: token.clone(),
@@ -319,7 +333,7 @@ impl Auth {
             .and_then(|settings| {
                 serde_json::from_str(&settings)
                     .inspect_err(|_| {
-                        tracing::warn!("Couldn't read saved sign-in settings");
+                        tracing::debug!("Couldn't read saved sign-in settings");
                     })
                     .ok()
             });
@@ -528,7 +542,7 @@ mod tests {
     }
 
     #[test]
-    fn keeps_raw_legacy_tokens_readable_without_metadata_support() {
+    fn unsupported_metadata_keeps_raw_token_and_in_memory_settings() {
         let store = keyring_core::mock::Store::new().unwrap();
         let session_dir = tempdir().unwrap();
         let key = "dev.firezone.client/test_legacy/token";
@@ -541,12 +555,36 @@ mod tests {
         assert_eq!(token.expose_secret(), "legacy-token");
         assert_eq!(entry.get_password().unwrap(), "legacy-token");
 
-        auth.sign_in_with_token(&token, sign_in_settings());
+        // The mock rejects attribute updates, exercising a metadata-save failure.
+        auth.attach_sign_in_settings_to_token(sign_in_settings());
+        assert_eq!(auth.sign_in_settings(), Some(&sign_in_settings()));
+        auth.attach_sign_in_settings_to_token(SignInSettings {
+            api_url: "wss://eu.api.firezone.dev/".parse().unwrap(),
+            ..sign_in_settings()
+        });
+        assert_eq!(auth.sign_in_settings(), Some(&sign_in_settings()));
+
         let restored = Auth::new_with_key(key, store, session_dir.path().to_path_buf()).unwrap();
         assert_eq!(restored.token().unwrap().expose_secret(), "legacy-token");
         assert!(restored.sign_in_settings().is_none());
         assert_eq!(entry.get_password().unwrap(), "legacy-token");
-        assert_eq!(auth.sign_in_settings(), Some(&sign_in_settings()));
+    }
+
+    #[test]
+    fn attaching_settings_while_signed_out_does_not_create_a_token() {
+        let session_dir = tempdir().unwrap();
+        let mut auth = Auth::new_with_key(
+            "dev.firezone.client/test_attach_signed_out/token",
+            keyring_core::mock::Store::new().unwrap(),
+            session_dir.path().to_path_buf(),
+        )
+        .unwrap();
+
+        auth.attach_sign_in_settings_to_token(sign_in_settings());
+
+        assert!(auth.token().is_none());
+        assert!(auth.sign_in_settings().is_none());
+        assert!(auth.token_entry.get_password().is_err());
     }
 
     #[test]
