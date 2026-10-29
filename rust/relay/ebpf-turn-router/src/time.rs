@@ -13,6 +13,14 @@ impl KernelInstant {
         Self(ktime_get_ns())
     }
 
+    /// Like [`KernelInstant::now`] but only as precise as the scheduler tick, which makes it much cheaper.
+    #[inline]
+    pub fn now_coarse() -> Self {
+        // SAFETY: `bpf_ktime_get_coarse_ns` is a parameterless BPF kernel helper that
+        // cannot fault and is always safe to call from any BPF program context.
+        Self(unsafe { aya_ebpf::helpers::bpf_ktime_get_coarse_ns() })
+    }
+
     #[inline]
     pub fn as_nanos(self) -> u64 {
         self.0
