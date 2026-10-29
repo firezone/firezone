@@ -752,7 +752,6 @@ impl GatewayTunnel {
                         query.remote,
                         query.message,
                         dns::Transport::Udp,
-                        now,
                     ) {
                         Ok(query) => self
                             .io
@@ -776,7 +775,6 @@ impl GatewayTunnel {
                         query.remote,
                         query.message,
                         dns::Transport::Tcp,
-                        now,
                     ) {
                         Ok(query) => self
                             .io

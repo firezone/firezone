@@ -118,12 +118,11 @@ impl GatewayState {
         remote: SocketAddr,
         message: Query,
         transport: crate::dns::Transport,
-        now: Instant,
     ) -> Result<SiteDnsQuery, Response> {
         let allowed = self
             .peers
             .peer_by_ip(remote.ip())
-            .is_some_and(|(_, peer)| peer.allows_site_dns_query(&message, now));
+            .is_some_and(|(_, peer)| peer.allows_site_dns_query(&message));
 
         if !allowed {
             return Err(ResponseBuilder::for_query(&message, ResponseCode::REFUSED).build());
