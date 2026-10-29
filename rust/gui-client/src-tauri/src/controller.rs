@@ -248,7 +248,6 @@ impl<I: GuiIntegration> Controller<I> {
         telemetry::set_firezone_id(firezone_id);
 
         let auth = auth::Auth::new()?;
-        let signed_in_with = auth.sign_in_settings().cloned();
 
         let migration_sent =
             match try_migrate_advanced_settings(&legacy_advanced_settings_path, &mut ipc_client)
@@ -267,7 +266,7 @@ impl<I: GuiIntegration> Controller<I> {
             advanced_settings,
             legacy_advanced_settings_path,
             auth,
-            signed_in_with,
+            signed_in_with: None,
             clear_logs_callback: None,
             x509,
             ipc_client,
@@ -397,16 +396,18 @@ impl<I: GuiIntegration> Controller<I> {
 
     /// Resume a browser-authenticated session at startup when connect-on-start is enabled.
     async fn maybe_start_session(&mut self) -> Result<()> {
+        let Some(credential) = self.auth.credential().cloned() else {
+            tracing::info!("No token, starting in signed-out state");
+            return Ok(());
+        };
+        self.set_signed_in_with(credential.sign_in_settings)?;
+
         // For backwards-compatibility prior to MDM-config, also connect if not configured.
         if self.connect_on_start().is_some_and(|connect| !connect) {
             return Ok(());
         }
 
-        if let Some(token) = self.auth.token() {
-            return self.start_session(token).await;
-        }
-
-        tracing::info!("No token, starting in signed-out state");
+        self.start_session(credential.token).await?;
 
         Ok(())
     }
@@ -502,7 +503,7 @@ impl<I: GuiIntegration> Controller<I> {
         let token = match self.auth.handle_response(auth_response) {
             Ok(token) => token,
             Err(error) => {
-                if self.auth.token().is_none() && self.auth.ongoing_request().is_none() {
+                if self.auth.is_signed_out() {
                     self.set_signed_in_with(None)?;
                 }
                 return Err(error).context("Couldn't handle auth response");
@@ -1029,7 +1030,7 @@ impl<I: GuiIntegration> Controller<I> {
                 token
             }
             None => {
-                let Some(token) = self.auth.token() else {
+                let Some(credential) = self.auth.credential().cloned() else {
                     return Ok(GuiIpcReply::Now(gui_ipc::ServerMsg::Error(
                         gui_ipc::ServerError::NotSignedIn {
                             sign_in_url: self.headless_sign_in_url(),
@@ -1037,7 +1038,10 @@ impl<I: GuiIntegration> Controller<I> {
                     )));
                 };
 
-                token
+                if self.signed_in_with.is_none() {
+                    self.set_signed_in_with(credential.sign_in_settings)?;
+                }
+                credential.token
             }
         };
 
@@ -1077,12 +1081,7 @@ impl<I: GuiIntegration> Controller<I> {
                 ))
                 .await;
                 match self.unconfirmed_token.take() {
-                    Some(_) => {
-                        if self.auth.token().is_none() && self.auth.ongoing_request().is_none() {
-                            self.set_signed_in_with(None)?;
-                        }
-                        self.disconnect().await?;
-                    }
+                    Some(_) => self.disconnect().await?,
                     None => self.sign_out().await?,
                 }
 
@@ -1213,8 +1212,7 @@ impl<I: GuiIntegration> Controller<I> {
         }
     }
 
-    /// Deletes the auth token, stops connlib, and refreshes the tray menu
-    /// Ends the session, leaving the stored token where it is.
+    /// Ends the session without discarding an accepted credential.
     async fn disconnect(&mut self) -> Result<()> {
         match self.status {
             Status::Quitting => return Ok(()),
@@ -1222,6 +1220,12 @@ impl<I: GuiIntegration> Controller<I> {
             | Status::TunnelReady { .. }
             | Status::WaitingForPortal
             | Status::WaitingForTunnel => {}
+        }
+        if self.auth.credential().is_none() && self.auth.ongoing_request().is_none() {
+            if !self.auth.is_signed_out() {
+                self.auth.sign_out()?;
+            }
+            self.set_signed_in_with(None)?;
         }
         self.status = Status::Disconnected;
         self.connected_as = None;

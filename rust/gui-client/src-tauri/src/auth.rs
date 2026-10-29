@@ -62,12 +62,14 @@ pub struct Auth {
 enum State {
     SignedOut,
     NeedResponse(Request),
+    AwaitingPortal,
     SignedIn(Credential),
 }
 
-struct Credential {
-    token: SecretString,
-    sign_in_settings: Option<SignInSettings>,
+#[derive(Clone)]
+pub struct Credential {
+    pub token: SecretString,
+    pub sign_in_settings: Option<SignInSettings>,
 }
 
 pub struct Request {
@@ -248,7 +250,7 @@ impl Auth {
         );
         let token = SecretString::from(token);
 
-        self.state = State::SignedOut;
+        self.state = State::AwaitingPortal;
         Ok(token)
     }
 
@@ -303,19 +305,18 @@ impl Auth {
         self.state = State::SignedIn(credential);
     }
 
-    /// Returns the token if we are signed in.
-    pub fn token(&self) -> Option<SecretString> {
+    /// Returns the accepted token and its captured sign-in settings.
+    pub fn credential(&self) -> Option<&Credential> {
         match &self.state {
-            State::SignedIn(credential) => Some(credential.token.clone()),
-            State::NeedResponse(_) | State::SignedOut => None,
+            State::SignedIn(credential) => Some(credential),
+            State::NeedResponse(_) => None,
+            State::AwaitingPortal => None,
+            State::SignedOut => None,
         }
     }
 
-    pub fn sign_in_settings(&self) -> Option<&SignInSettings> {
-        match &self.state {
-            State::SignedIn(credential) => credential.sign_in_settings.as_ref(),
-            State::NeedResponse(_) | State::SignedOut => None,
-        }
+    pub fn is_signed_out(&self) -> bool {
+        matches!(self.state, State::SignedOut)
     }
 
     /// Retrieves the credential from the keyring regardless of in-memory state.
@@ -332,9 +333,7 @@ impl Auth {
             .filter(|settings| !settings.is_empty())
             .and_then(|settings| {
                 serde_json::from_str(&settings)
-                    .inspect_err(|_| {
-                        tracing::debug!("Couldn't read saved sign-in settings");
-                    })
+                    .inspect_err(|_| tracing::debug!("Couldn't read saved sign-in settings"))
                     .ok()
             });
         Some(Credential {
@@ -346,7 +345,9 @@ impl Auth {
     pub fn ongoing_request(&self) -> Option<&Request> {
         match &self.state {
             State::NeedResponse(x) => Some(x),
-            State::SignedIn(_) | State::SignedOut => None,
+            State::SignedIn(_) => None,
+            State::AwaitingPortal => None,
+            State::SignedOut => None,
         }
     }
 }
@@ -488,7 +489,7 @@ mod tests {
 
             // Delete any token on disk from previous test runs
             state.sign_out().unwrap();
-            assert!(state.token().is_none());
+            assert!(state.credential().is_none());
 
             // User clicks "Sign In", build a fake server response
             let req = state.start_sign_in().unwrap();
@@ -498,12 +499,30 @@ mod tests {
                 control_plane: None,
             };
 
+            let replay = Response {
+                fragment: resp.fragment.clone(),
+                state: resp.state.clone(),
+                control_plane: resp.control_plane,
+            };
             let token = state.handle_response(resp).unwrap();
-            assert!(state.token().is_none());
+            assert!(matches!(state.state, State::AwaitingPortal));
+            assert!(!state.is_signed_out());
+            assert!(state.ongoing_request().is_none());
+            assert!(state.credential().is_none());
+            assert!(state.token_entry.get_password().is_err());
+            assert!(matches!(
+                state.handle_response(replay),
+                Err(Error::NoInflightRequest)
+            ));
+            assert!(matches!(state.state, State::AwaitingPortal));
             assert!(state.token_entry.get_password().is_err());
             state.sign_in_with_token(&token, sign_in_settings());
             assert_eq!(
-                state.token().unwrap().expose_secret(),
+                state.credential().unwrap().sign_in_settings,
+                Some(sign_in_settings())
+            );
+            assert_eq!(
+                state.credential().unwrap().token.expose_secret(),
                 token.expose_secret()
             );
         }
@@ -514,22 +533,29 @@ mod tests {
                 Auth::new_with_key(key, store.clone(), session_dir.path().to_path_buf()).unwrap();
 
             // Make sure we automatically got the token back
-            assert!(state.token().is_some());
-            assert!(state.sign_in_settings().is_none());
+            assert!(state.credential().is_some());
+            assert!(state.credential().unwrap().sign_in_settings.is_none());
 
             // Accidentally sign in again, this can happen if the user holds the systray menu open while a sign in is succeeding.
             // For now, we treat that like signing out and back in immediately, so it wipes the old token.
             // TODO: That sounds wrong.
-            assert!(state.start_sign_in().is_ok());
-            assert!(state.token().is_none());
+            let req = state.start_sign_in().unwrap();
+            let response = Response {
+                fragment: bogus_secret("another-fragment"),
+                state: req.state.clone(),
+                control_plane: None,
+            };
+            state.handle_response(response).unwrap();
+            assert!(matches!(state.state, State::AwaitingPortal));
+            assert!(state.credential().is_none());
 
             // Sign out again, now the token is gone
             state.sign_out().unwrap();
-            assert!(state.token().is_none());
+            assert!(state.credential().is_none());
+            assert!(state.is_signed_out());
         }
         let state = Auth::new_with_key(key, store, session_dir.path().to_path_buf()).unwrap();
-        assert!(state.token().is_none());
-        assert!(state.sign_in_settings().is_none());
+        assert!(state.credential().is_none());
     }
 
     fn sign_in_settings() -> SignInSettings {
@@ -552,8 +578,7 @@ mod tests {
 
         auth.attach_sign_in_settings_to_token(sign_in_settings());
 
-        assert!(auth.token().is_none());
-        assert!(auth.sign_in_settings().is_none());
+        assert!(auth.credential().is_none());
         assert!(auth.token_entry.get_password().is_err());
     }
 
@@ -571,7 +596,7 @@ mod tests {
 
         // Delete any token on disk from previous test runs
         state.sign_out().unwrap();
-        assert!(state.token().is_none());
+        assert!(state.credential().is_none());
 
         // If we get a deep link with no in-flight request, it's invalid
         let r = state.handle_response(Response {
@@ -603,7 +628,7 @@ mod tests {
 
         // Delete any token on disk from previous test runs
         state.sign_out().unwrap();
-        assert!(state.token().is_none());
+        assert!(state.credential().is_none());
 
         // User clicks "Sign In", build a fake server response
         state.start_sign_in().unwrap();
@@ -614,7 +639,7 @@ mod tests {
             ),
             control_plane: Some(crate::settings::ControlPlane::CloudEu),
         };
-        assert!(state.token().is_none());
+        assert!(state.credential().is_none());
 
         // Handle deep link from the server, we should get an error
         let r = state.handle_response(resp);
@@ -622,6 +647,7 @@ mod tests {
             Err(Error::StatesDontMatch) => {}
             _ => panic!("Expected StatesDontMatch error"),
         }
-        assert!(state.token().is_none());
+        assert!(state.credential().is_none());
+        assert!(state.is_signed_out());
     }
 }
