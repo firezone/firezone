@@ -212,22 +212,6 @@ defmodule Portal.Ops do
     end)
   end
 
-  @doc """
-  Sets the Relay allocation limit of each account on a known plan that has no
-  limit yet to the value its plan has in Stripe.
-
-  Run this once after the Relay allocation limits ship, then remove it.
-  """
-  def backfill_relay_allocation_limits do
-    Database.accounts_missing_relay_allocation_limit()
-    |> Enum.group_by(&plan_relay_allocations_count(Billing.plan_type(&1)), & &1.id)
-    |> Map.delete(nil)
-    |> Enum.reduce({:ok, 0}, fn {count_limit, account_ids}, {:ok, count} ->
-      {updated, _} = Database.set_relay_allocation_limit(account_ids, count_limit)
-      {:ok, count + updated}
-    end)
-  end
-
   @doc"""
   Set a banner for all accounts. Banners can render HTML tags.
   The available colors are: :warning, :info, :error, :success, :announcement
@@ -621,11 +605,6 @@ defmodule Portal.Ops do
   defp plan_relay_throughput_mbps(:enterprise), do: 50
   defp plan_relay_throughput_mbps(:unknown), do: nil
 
-  defp plan_relay_allocations_count(:starter), do: 64
-  defp plan_relay_allocations_count(:team), do: 1024
-  defp plan_relay_allocations_count(:business), do: 2048
-  defp plan_relay_allocations_count(_plan), do: nil
-
   defmodule Database do
     import Ecto.Query
     alias Portal.{Account, Actor, ExternalIdentity, Safe}
@@ -829,31 +808,6 @@ defmodule Portal.Ops do
                 "COALESCE(?, '{}'::jsonb) || jsonb_build_object('relay_throughput_mbps', ?::integer)",
                 a.limits,
                 ^mbps
-              )
-          ]
-        ]
-      )
-      |> Safe.unscoped()
-      |> Safe.update_all([])
-    end
-
-    def accounts_missing_relay_allocation_limit do
-      from(a in Account, where: is_nil(fragment("?->>'relay_allocations_count'", a.limits)))
-      |> Safe.unscoped()
-      |> Safe.all()
-    end
-
-    def set_relay_allocation_limit(account_ids, limit) do
-      from(a in Account,
-        where: a.id in ^account_ids,
-        where: is_nil(fragment("?->>'relay_allocations_count'", a.limits)),
-        update: [
-          set: [
-            limits:
-              fragment(
-                "COALESCE(?, '{}'::jsonb) || jsonb_build_object('relay_allocations_count', ?::integer)",
-                a.limits,
-                ^limit
               )
           ]
         ]

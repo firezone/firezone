@@ -92,26 +92,40 @@ defmodule Portal.Changes.Hooks.AccountsTest do
       }
     end
 
-    test "broadcasts a changed Relay allocation limit to relays" do
-      account_id = "00000000-0000-0000-0000-000000000004"
+    test "broadcasts seat and device changes that change the derived Relay quota" do
       :ok = PubSub.Changes.subscribe_to_accounts()
+      account_id = "00000000-0000-0000-0000-000000000004"
 
-      assert :ok ==
-               on_update(
-                 0,
-                 %{"id" => account_id, "is_disabled" => false, "limits" => %{}},
-                 %{
-                   "id" => account_id,
-                   "is_disabled" => false,
-                   "limits" => %{"relay_allocations_count" => 1024}
-                 }
-               )
+      for {old_limits, new_limits} <- [
+            {%{"users_count" => 9, "connected_devices_per_actor" => 5},
+             %{"users_count" => 10, "connected_devices_per_actor" => 5}},
+            {%{"monthly_active_users_count" => 100, "connected_devices_per_actor" => 10},
+             %{"monthly_active_users_count" => 200, "connected_devices_per_actor" => 10}},
+            {%{"users_count" => 100, "connected_devices_per_actor" => 5},
+             %{"users_count" => 100, "connected_devices_per_actor" => 10}},
+            {%{"users_count" => 100, "connected_devices_per_actor" => 5},
+             %{"users_count" => 100, "connected_devices_per_actor" => nil}},
+            {%{"users_count" => 100, "connected_devices_per_actor" => nil},
+             %{"users_count" => 100, "connected_devices_per_actor" => 5}}
+          ] do
+        assert :ok == on_update(0,
+          %{"id" => account_id, "is_disabled" => false, "limits" => old_limits},
+          %{"id" => account_id, "is_disabled" => false, "limits" => new_limits})
 
-      assert_receive %Change{
-        op: :update,
-        struct: %Portal.Account{id: ^account_id, limits: %{relay_allocations_count: 1024}},
-        lsn: 0
-      }
+        assert_receive %Change{op: :update, struct: %Portal.Account{id: ^account_id}, lsn: 0}
+      end
+    end
+
+    test "does not broadcast seat changes that leave the effective Relay quota unchanged" do
+      :ok = PubSub.Changes.subscribe_to_accounts()
+      account_id = "00000000-0000-0000-0000-000000000007"
+      limits = %{"monthly_active_users_count" => 10, "connected_devices_per_actor" => 5}
+
+      assert :ok == on_update(0,
+        %{"id" => account_id, "is_disabled" => false, "limits" => Map.put(limits, "users_count", 100)},
+        %{"id" => account_id, "is_disabled" => false, "limits" => Map.put(limits, "users_count", 200)})
+
+      refute_receive %Change{}
     end
 
     test "does not broadcast other account changes to relays" do
@@ -158,7 +172,7 @@ defmodule Portal.Changes.Hooks.AccountsTest do
                  %{
                    "id" => account_id,
                    "is_disabled" => true,
-                   "limits" => %{"relay_allocations_count" => 1024}
+                   "limits" => %{"users_count" => 100, "connected_devices_per_actor" => 5}
                  }
                )
 

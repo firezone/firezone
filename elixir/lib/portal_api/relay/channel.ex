@@ -1,6 +1,6 @@
 defmodule PortalAPI.Relay.Channel do
   use PortalAPI, :channel
-  alias Portal.{Changes.Change, Presence, PubSub}
+  alias Portal.{Accounts.Limits, Changes.Change, Presence, PubSub}
   alias __MODULE__.Database
   require OpenTelemetry.Tracer
   require Logger
@@ -75,7 +75,7 @@ defmodule PortalAPI.Relay.Channel do
           accounts = Database.all_enabled_accounts()
 
           %{
-            account_ids: Enum.map(accounts, fn {id, _mbps, _allocations} -> id end),
+            account_ids: Enum.map(accounts, fn {id, _limits} -> id end),
             throughput_limits_bps: throughput_limits_bps(accounts),
             allocation_limits: allocation_limits(accounts)
           }
@@ -128,14 +128,18 @@ defmodule PortalAPI.Relay.Channel do
 
   # Unlimited accounts are omitted to keep the snapshot small.
   defp throughput_limits_bps(accounts) do
-    for {id, mbps, _allocations} <- accounts, bps = mbps_to_bps(mbps), not is_nil(bps), into: %{} do
+    for {id, limits} <- accounts,
+        mbps = limits && limits.relay_throughput_mbps,
+        bps = mbps_to_bps(mbps),
+        not is_nil(bps),
+        into: %{} do
       {id, bps}
     end
   end
 
   defp allocation_limits(accounts) do
-    for {id, _mbps, count} <- accounts,
-        limit = allocation_limit(count),
+    for {id, limits} <- accounts,
+        limit = Limits.relay_allocation_limit(limits),
         not is_nil(limit),
         into: %{} do
       {id, limit}
@@ -145,17 +149,12 @@ defmodule PortalAPI.Relay.Channel do
   defp account_payload(%Portal.Account{id: id, limits: limits}) do
     mbps = if limits, do: limits.relay_throughput_mbps
 
-    count = if limits, do: limits.relay_allocations_count
-
     %{
       account_id: id,
       throughput_limit_bps: mbps_to_bps(mbps),
-      allocation_limit: allocation_limit(count)
+      allocation_limit: Limits.relay_allocation_limit(limits)
     }
   end
-
-  defp allocation_limit(count) when is_integer(count) and count > 0, do: count
-  defp allocation_limit(_count), do: nil
 
   defp mbps_to_bps(mbps) when is_integer(mbps) and mbps > 0, do: mbps * 1_000_000
   defp mbps_to_bps(_mbps), do: nil
@@ -172,9 +171,7 @@ defmodule PortalAPI.Relay.Channel do
     def all_enabled_accounts do
       from(account in Portal.Account,
         where: account.is_disabled == false,
-        select:
-          {account.id, fragment("(?->>'relay_throughput_mbps')::integer", account.limits),
-           fragment("(?->>'relay_allocations_count')::integer", account.limits)}
+        select: {account.id, account.limits}
       )
       |> Safe.unscoped()
       |> Safe.all()
