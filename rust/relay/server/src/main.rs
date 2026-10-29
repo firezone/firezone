@@ -11,7 +11,7 @@ use eventloop_budget::Budget;
 use firezone_relay::sockets::Sockets;
 use firezone_relay::{
     AddressFamily, AllocationPort, ChannelData, ClientSocket, Command, IpStack, PeerSocket, Server,
-    Sleep, VERSION, auth::AccountId, control_endpoint, ebpf, sockets,
+    Sleep, ThroughputLimit, VERSION, auth::AccountId, control_endpoint, ebpf, sockets,
 };
 use futures::{FutureExt, future};
 use logging::{FilterReloadHandle, err_with_src, sentry_layer};
@@ -20,6 +20,7 @@ use rand::rngs::StdRng;
 use rand::{RngExt, SeedableRng};
 use secrecy::{ExposeSecret, SecretString};
 use std::borrow::Cow;
+use std::collections::HashMap;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::pin::Pin;
 use std::process::ExitCode;
@@ -410,11 +411,39 @@ enum IngressMessages {
 struct Init {
     #[serde(default)]
     account_ids: Vec<AccountId>,
+    /// Throughput limits in bits per second; absent accounts are unlimited.
+    #[serde(default)]
+    throughput_limits_bps: HashMap<AccountId, u64>,
 }
 
+impl Init {
+    fn accounts(&self) -> impl Iterator<Item = (AccountId, Option<ThroughputLimit>)> + '_ {
+        self.account_ids.iter().map(|id| {
+            let limit = self
+                .throughput_limits_bps
+                .get(id)
+                .copied()
+                .and_then(ThroughputLimit::from_bits_per_second);
+
+            (*id, limit)
+        })
+    }
+}
+
+/// An account that is new or whose throughput limit changed.
 #[derive(serde::Deserialize, Debug)]
 struct Account {
     account_id: AccountId,
+    /// Throughput limit in bits per second; absent or zero means unlimited.
+    #[serde(default)]
+    throughput_limit_bps: Option<u64>,
+}
+
+impl Account {
+    fn throughput_limit(&self) -> Option<ThroughputLimit> {
+        self.throughput_limit_bps
+            .and_then(ThroughputLimit::from_bits_per_second)
+    }
 }
 
 #[derive(serde::Serialize, PartialEq, Debug, Clone)]
@@ -450,6 +479,8 @@ struct Eventloop<R> {
 
     stats_log_interval: tokio::time::Interval,
     last_num_bytes_relayed: u64,
+    last_rate_limited_packets: ebpf::RateLimitedPackets,
+    rate_limited_packets_counter: opentelemetry::metrics::Counter<u64>,
 
     buffer: [u8; MAX_UDP_SIZE],
 
@@ -504,6 +535,8 @@ where
             sleep: Sleep::default(),
             stats_log_interval: tokio::time::interval(STATS_LOG_INTERVAL),
             last_num_bytes_relayed: 0,
+            last_rate_limited_packets: ebpf::RateLimitedPackets::default(),
+            rate_limited_packets_counter: otel_instruments::relay_rate_limited_packets(),
             sockets,
             ebpf,
             buffer: [0u8; MAX_UDP_SIZE],
@@ -569,12 +602,14 @@ where
                         channel_number,
                         peer,
                         allocation_port,
+                        throughput_limit,
                     } => {
                         if let Err(e) = self.create_channel_binding_in_ebpf_map(
                             client,
                             channel_number,
                             peer,
                             allocation_port,
+                            throughput_limit,
                         ) {
                             tracing::debug!(target: "relay", %client, "Failed to create channel binding in eBPF map: {e:#}");
                         }
@@ -658,6 +693,7 @@ where
                         packet,
                         PeerSocket::new(from),
                         AllocationPort::new(port),
+                        Instant::now(),
                     ) {
                         let total_length = ChannelData::encode_header_to_slice(
                             channel,
@@ -705,12 +741,15 @@ where
                         num_accounts = init.account_ids.len(),
                         "Received TURN account list"
                     );
-                    self.server.set_accounts(init.account_ids);
+                    self.server.set_accounts(init.accounts());
                     tick.want_continue();
                 }
                 Poll::Ready(Some(Ok(IngressMessages::AccountAdded(account)))) => {
-                    tracing::info!(account_id = %account.account_id, "Added account to TURN allow list");
-                    self.server.add_account(account.account_id);
+                    let throughput_limit = account.throughput_limit();
+
+                    tracing::info!(account_id = %account.account_id, ?throughput_limit, "Added account to TURN allow list");
+                    self.server
+                        .add_account(account.account_id, throughput_limit);
                     tick.want_continue();
                 }
                 Poll::Ready(Some(Ok(IngressMessages::AccountRemoved(account)))) => {
@@ -748,6 +787,8 @@ where
 
                 tracing::info!(target: "relay", "Allocations = {num_allocations} Channels = {num_channels} Throughput = {}", fmt_human_throughput(avg_throughput as f64));
 
+                self.record_xdp_rate_limited_packets();
+
                 tick.want_continue();
             }
         }
@@ -761,14 +802,63 @@ where
         channel_number: ChannelNumber,
         peer: PeerSocket,
         allocation_port: AllocationPort,
+        throughput_limit: Option<ThroughputLimit>,
     ) -> Result<()> {
         let Some(ebpf) = self.ebpf.as_mut() else {
             return Ok(()); // ebPF program not loaded ...
         };
 
-        ebpf.add_channel_binding(client, channel_number, peer, allocation_port)?;
+        ebpf.add_channel_binding(
+            client,
+            channel_number,
+            peer,
+            allocation_port,
+            throughput_limit,
+        )?;
 
         Ok(())
+    }
+
+    /// Reports the packets the eBPF program marked or dropped since the last call.
+    fn record_xdp_rate_limited_packets(&mut self) {
+        let Some(ebpf) = self.ebpf.as_ref() else {
+            return;
+        };
+
+        let current = match ebpf.rate_limited_packets() {
+            Ok(current) => current,
+            Err(e) => {
+                tracing::debug!("Failed to read rate-limit counters from eBPF map: {e:#}");
+                return;
+            }
+        };
+
+        let marked = current
+            .marked
+            .saturating_sub(self.last_rate_limited_packets.marked);
+        let dropped = current
+            .dropped
+            .saturating_sub(self.last_rate_limited_packets.dropped);
+        self.last_rate_limited_packets = current;
+
+        self.rate_limited_packets_counter.add(
+            marked,
+            &[
+                otel_attributes::relay_datapath_xdp(),
+                otel_attributes::relay_rate_limit_action_mark(),
+            ],
+        );
+        self.rate_limited_packets_counter.add(
+            dropped,
+            &[
+                otel_attributes::relay_datapath_xdp(),
+                otel_attributes::relay_rate_limit_action_drop(),
+            ],
+        );
+
+        if marked > 0 || dropped > 0 {
+            tracing::debug!(target: "relay", %marked, %dropped, "Rate-limited packets in eBPF");
+        }
     }
 
     fn delete_channel_binding_in_ebpf_map(
@@ -916,5 +1006,57 @@ mod tests {
         .unwrap();
 
         assert_eq!(args.otlp_grpc_endpoint.unwrap(), "localhost:4317");
+    }
+
+    // Portals without throughput limits must keep working, e.g. while deploying.
+    #[test]
+    fn accounts_without_throughput_limits_are_unlimited() {
+        let account_id = "00000000-0000-0000-0000-000000000001";
+
+        let init = parse(&format!(
+            r#"{{"event":"init","payload":{{"account_ids":["{account_id}"]}}}}"#
+        ));
+        let added = parse(&format!(
+            r#"{{"event":"account_added","payload":{{"account_id":"{account_id}"}}}}"#
+        ));
+
+        let IngressMessages::Init(init) = init else {
+            panic!("expected init");
+        };
+        let IngressMessages::AccountAdded(added) = added else {
+            panic!("expected account_added");
+        };
+        assert_eq!(init.accounts().next().unwrap().1, None);
+        assert_eq!(added.throughput_limit(), None);
+    }
+
+    #[test]
+    fn parses_throughput_limits_from_portal() {
+        let limited = "00000000-0000-0000-0000-000000000001";
+        let unlimited = "00000000-0000-0000-0000-000000000002";
+
+        let init = parse(&format!(
+            r#"{{"event":"init","payload":{{"account_ids":["{limited}","{unlimited}"],"throughput_limits_bps":{{"{limited}":5000000}}}}}}"#
+        ));
+        let added = parse(&format!(
+            r#"{{"event":"account_added","payload":{{"account_id":"{unlimited}","throughput_limit_bps":null}}}}"#
+        ));
+
+        let IngressMessages::Init(init) = init else {
+            panic!("expected init");
+        };
+        let IngressMessages::AccountAdded(added) = added else {
+            panic!("expected account_added");
+        };
+        let limits = init.accounts().map(|(_, limit)| limit).collect::<Vec<_>>();
+        assert_eq!(
+            limits,
+            vec![ThroughputLimit::from_bits_per_second(5_000_000), None]
+        );
+        assert_eq!(added.throughput_limit(), None);
+    }
+
+    fn parse(json: &str) -> IngressMessages {
+        serde_json::from_str(json).unwrap()
     }
 }

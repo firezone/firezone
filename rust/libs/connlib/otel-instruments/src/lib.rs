@@ -234,6 +234,15 @@ pub fn relay_packets() -> Counter<u64> {
         .build()
 }
 
+/// Counter of packets that exceeded their channel's throughput limit, by action taken.
+pub fn relay_rate_limited_packets() -> Counter<u64> {
+    relay_meter()
+        .u64_counter("relay.rate_limited_packets")
+        .with_description("The number of packets that exceeded their channel's throughput limit")
+        .with_unit("{packet}")
+        .build()
+}
+
 /// Histogram of relayed packet sizes, recorded on both the userspace and the XDP datapath.
 ///
 /// Both call-sites build the instrument from this function so the metric definition

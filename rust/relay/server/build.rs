@@ -4,11 +4,17 @@ fn main() -> anyhow::Result<()> {
 
     let manifest_dir =
         std::env::var("CARGO_MANIFEST_DIR").context("`CARGO_MANIFEST_DIR` not set")?;
-    let root_dir = std::path::Path::new(&manifest_dir)
+    let relay_dir = std::path::Path::new(&manifest_dir)
         .parent()
-        .context("`CARGO_MANIFEST_DIR` has no parent directory")?
-        .join("ebpf-turn-router");
+        .context("`CARGO_MANIFEST_DIR` has no parent directory")?;
+    let root_dir = relay_dir.join("ebpf-turn-router");
     let root_dir = root_dir.to_str().context("path is not valid UTF-8")?;
+
+    // `aya_build` only watches the eBPF crate itself, but its code also comes from `ebpf-shared`.
+    println!(
+        "cargo::rerun-if-changed={}",
+        relay_dir.join("ebpf-shared").display()
+    );
 
     aya_build::build_ebpf(
         [aya_build::Package {
