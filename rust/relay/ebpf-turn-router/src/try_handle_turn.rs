@@ -457,10 +457,17 @@ fn try_handle_from_ipv6_channel_data(ctx: &XdpContext) -> Result<(), Error> {
 
 #[inline(always)]
 fn is_own_public_ip(ip: IpAddr) -> Result<bool, Error> {
-    let ipv4_public = config::public_ipv4_address()?;
-    let ipv6_public = config::public_ipv6_address()?;
+    let own_ip = match ip {
+        IpAddr::V4(_) => config::public_ipv4_address().map(IpAddr::V4),
+        IpAddr::V6(_) => config::public_ipv6_address().map(IpAddr::V6),
+    };
 
-    Ok(ip == ipv4_public || ip == ipv6_public)
+    match own_ip {
+        Ok(own_ip) => Ok(ip == own_ip),
+        // A relay without a public address of this family cannot be the peer.
+        Err(Error::IpAddrUnset) => Ok(false),
+        Err(e) => Err(e),
+    }
 }
 
 #[inline(always)]
