@@ -416,7 +416,7 @@ impl<I: GuiIntegration> Controller<I> {
             return Ok(());
         }
 
-        self.start_session(credential.token).await?;
+        self.start_session(credential).await?;
 
         Ok(())
     }
@@ -452,7 +452,7 @@ impl<I: GuiIntegration> Controller<I> {
         .await
     }
 
-    async fn start_session(&mut self, token: SecretString) -> Result<()> {
+    async fn start_session(&mut self, credential: auth::Credential) -> Result<()> {
         match self.status {
             Status::Disconnected => {}
             Status::Quitting => Err(anyhow!("Can't connect to Firezone, we're quitting"))?,
@@ -464,13 +464,12 @@ impl<I: GuiIntegration> Controller<I> {
             ))?,
         }
 
-        tracing::info!(api_url = %self.api_url(), "Starting connlib...");
+        tracing::debug!(api_url = %credential.sign_in_settings.api_url, "Starting connlib...");
 
-        let signed_in_with = self.effective_sign_in_settings();
         self.send_ipc(&service::ClientMsg::Connect {
-            token,
+            token: credential.token,
             is_internet_resource_active: self.general_settings.internet_resource_enabled(),
-            api_url: Some(signed_in_with.api_url.clone()),
+            api_url: Some(credential.sign_in_settings.api_url),
         })
         .await?;
 
@@ -516,7 +515,6 @@ impl<I: GuiIntegration> Controller<I> {
                 return Err(error).context("Couldn't handle auth response");
             }
         };
-        let token = credential.token.clone();
         let patch = if let Some((auth_url, api_url)) = control_plane.and_then(ControlPlane::urls) {
             let settings = &mut credential.sign_in_settings;
             settings.auth_url = self
@@ -533,12 +531,13 @@ impl<I: GuiIntegration> Controller<I> {
         } else {
             AdvancedSettingsPatch::default()
         };
+        let credential = credential.clone();
         self.notify_settings_changed()?;
         if !patch.is_empty() {
             self.send_ipc(&service::ClientMsg::PatchAdvancedSettings(patch))
                 .await?;
         }
-        self.start_session(token).await?;
+        self.start_session(credential).await?;
         self.update_telemetry_context().await?;
 
         Ok(())
@@ -1028,14 +1027,15 @@ impl<I: GuiIntegration> Controller<I> {
             Status::Quitting => {}
         }
 
-        let token = match token {
+        let credential = match token {
             Some(token) => {
-                self.unconfirmed_credential = Some(auth::Credential {
-                    token: token.clone(),
+                let credential = auth::Credential {
+                    token,
                     sign_in_settings: self.effective_sign_in_settings(),
-                });
+                };
+                self.unconfirmed_credential = Some(credential.clone());
 
-                token
+                credential
             }
             None => {
                 let Some(credential) = self.auth.credential().cloned() else {
@@ -1046,11 +1046,11 @@ impl<I: GuiIntegration> Controller<I> {
                     )));
                 };
 
-                credential.token
+                credential
             }
         };
 
-        self.start_session(token).await?;
+        self.start_session(credential).await?;
 
         Ok(GuiIpcReply::WhenConnected)
     }
