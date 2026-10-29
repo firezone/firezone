@@ -51,6 +51,19 @@ pub fn network_retries() -> Histogram<u64> {
         .build()
 }
 
+/// Records how long a UDP send waits for socket capacity before making progress or failing.
+pub fn network_send_blocked_duration() -> Histogram<f64> {
+    connlib_meter()
+        .f64_histogram("connlib.network.send.blocked.duration")
+        .with_description("Time from a blocked UDP send until progress or terminal failure.")
+        .with_unit("s")
+        .with_boundaries(vec![
+            0.000_005, 0.000_010, 0.000_025, 0.000_050, 0.000_100, 0.000_250, 0.000_500, 0.001,
+            0.0025, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0,
+        ])
+        .build()
+}
+
 /// How many packets we have processed in a single syscall.
 ///
 /// The batch is the syscall: one packet per record means the IO path is not batching at all.
