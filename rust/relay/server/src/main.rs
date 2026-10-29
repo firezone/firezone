@@ -143,21 +143,6 @@ fn main() -> ExitCode {
 
     let args = Args::parse();
 
-    // The metrics exporter's blocking HTTP client must be constructed outside Tokio.
-    if let Some(endpoint) = &args.azure_otlp_metrics_endpoint {
-        let provider = match azure_metrics::meter_provider(endpoint, make_otel_metadata()) {
-            Ok(provider) => provider,
-            Err(error) => {
-                #[expect(clippy::print_stderr, reason = "No logger has been set up yet")]
-                {
-                    eprintln!("Failed to initialize metrics: {error:#}");
-                }
-                return ExitCode::FAILURE;
-            }
-        };
-        opentelemetry::global::set_meter_provider(provider);
-    }
-
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .worker_threads(args.num_worker_threads)
         .enable_all()
@@ -319,6 +304,14 @@ fn setup_tracing(args: &Args) -> Result<FilterReloadHandle> {
     let temp_logger_guard = tracing_core::dispatcher::set_default(
         &tracing_subscriber::registry().with(log_layer(args)).into(),
     );
+
+    if let Some(endpoint) = &args.azure_otlp_metrics_endpoint {
+        // Reqwest's blocking client initializes its own runtime.
+        let provider = tokio::task::block_in_place(|| {
+            azure_metrics::meter_provider(endpoint, make_otel_metadata())
+        })?;
+        global::set_meter_provider(provider);
+    }
 
     let directives = std::env::var("RUST_LOG").unwrap_or_else(|_| "info".to_string());
 

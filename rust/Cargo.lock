@@ -2844,6 +2844,7 @@ dependencies = [
  "secrecy",
  "serde",
  "serde_json",
+ "serde_with",
  "socket-factory",
  "socket2",
  "stun_codec",

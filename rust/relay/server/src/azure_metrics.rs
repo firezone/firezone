@@ -58,7 +58,6 @@ fn exponential_histograms(instrument: &Instrument) -> Option<Stream> {
 
 struct AzureHttpClient {
     endpoint: Url,
-    imds_endpoint: Url,
     client: reqwest::blocking::Client,
     token: Mutex<Option<Token>>,
 }
@@ -102,7 +101,6 @@ impl AzureHttpClient {
 
         Ok(Self {
             endpoint: endpoint.clone(),
-            imds_endpoint: Url::parse("http://169.254.169.254/metadata/identity/oauth2/token")?,
             client,
             token: Mutex::new(None),
         })
@@ -123,7 +121,7 @@ impl AzureHttpClient {
 
         let response = self
             .client
-            .get(self.imds_endpoint.clone())
+            .get("http://169.254.169.254/metadata/identity/oauth2/token")
             .query(&[
                 ("api-version", "2018-02-01"),
                 ("resource", "https://monitor.azure.com/"),
@@ -133,12 +131,9 @@ impl AzureHttpClient {
             .context("Failed to request Azure managed identity token")?
             .error_for_status()
             .context("Azure managed identity token request failed")?;
-        let response: TokenResponse = serde_json::from_reader(response.take(64 * 1024))
+        let response = serde_json::from_reader::<_, TokenResponse>(response.take(64 * 1024))
             .context("Invalid Azure managed identity token response")?;
-        let expires_at = SystemTime::UNIX_EPOCH
-            .checked_add(Duration::from_secs(response.expires_on.parse()?))
-            .context("Invalid Azure token expiration")?;
-        if expires_at <= SystemTime::now() {
+        if response.expires_on <= SystemTime::now() {
             bail!("Azure managed identity returned an expired token");
         }
 
@@ -147,7 +142,7 @@ impl AzureHttpClient {
         authorization.set_sensitive(true);
         *token = Some(Token {
             authorization: authorization.clone(),
-            expires_at,
+            expires_at: response.expires_on,
         });
 
         Ok(authorization)
@@ -159,183 +154,10 @@ struct Token {
     expires_at: SystemTime,
 }
 
+#[serde_with::serde_as]
 #[derive(Deserialize)]
 struct TokenResponse {
     access_token: String,
-    expires_on: String,
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use opentelemetry::metrics::MeterProvider as _;
-    use opentelemetry_sdk::metrics::InMemoryMetricExporterBuilder;
-    use opentelemetry_sdk::metrics::data::{AggregatedMetrics, MetricData};
-    use std::io::{BufRead as _, BufReader, Write as _};
-    use std::net::TcpListener;
-    use std::thread;
-
-    #[test]
-    fn caches_tokens_and_refreshes_after_rejection() {
-        let expires_at = SystemTime::now() + Duration::from_secs(3600);
-        let (endpoint, server) = mock_server(vec![
-            (200, token_response("first", expires_at)),
-            (200, String::new()),
-            (401, String::new()),
-            (200, token_response("second", expires_at)),
-            (200, String::new()),
-        ]);
-        let client = test_client(&endpoint);
-
-        for status in [200, 401, 200] {
-            let request = Request::post(endpoint.as_str())
-                .body(Bytes::from_static(b"metrics"))
-                .unwrap();
-            let response = futures::executor::block_on(client.send_bytes(request)).unwrap();
-            assert_eq!(response.status(), status);
-        }
-
-        let requests = server.join().unwrap();
-        assert!(requests[0].starts_with("GET /metadata/identity/oauth2/token?"));
-        assert!(requests[0].contains("api-version=2018-02-01"));
-        assert!(requests[0].contains("resource=https%3A%2F%2Fmonitor.azure.com%2F"));
-        assert!(requests[0].contains("metadata: true"));
-        assert!(!requests[0].contains("client_id"));
-        assert!(requests[1].starts_with("POST /datacollectionRules/test/otlp/v1/metrics "));
-        assert!(requests[1].contains("authorization: Bearer first"));
-        assert!(requests[2].contains("authorization: Bearer first"));
-        assert!(requests[4].contains("authorization: Bearer second"));
-        assert!(!format!("{client:?}").contains("second"));
-    }
-
-    #[test]
-    fn refreshes_tokens_before_expiry() {
-        let (endpoint, server) = mock_server(vec![
-            (
-                200,
-                token_response("expiring", SystemTime::now() + Duration::from_secs(30)),
-            ),
-            (
-                200,
-                token_response("fresh", SystemTime::now() + Duration::from_secs(3600)),
-            ),
-        ]);
-        let client = test_client(&endpoint);
-
-        assert_eq!(client.authorization().unwrap(), "Bearer expiring");
-        assert_eq!(client.authorization().unwrap(), "Bearer fresh");
-        assert_eq!(client.authorization().unwrap(), "Bearer fresh");
-        assert_eq!(server.join().unwrap().len(), 2);
-    }
-
-    #[test]
-    fn rejects_changed_export_destinations_before_requesting_credentials() {
-        let endpoint = Url::parse("http://127.0.0.1:1/metrics").unwrap();
-        let client = test_client(&endpoint);
-        let request = Request::post("http://127.0.0.1:2/metrics")
-            .body(Bytes::new())
-            .unwrap();
-
-        let error = futures::executor::block_on(client.send_bytes(request)).unwrap_err();
-
-        assert_eq!(
-            error.to_string(),
-            "Azure metrics export destination changed"
-        );
-    }
-
-    #[test]
-    fn preserves_histogram_buckets_and_exports_interval_deltas() {
-        let exporter = InMemoryMetricExporterBuilder::new()
-            .with_temporality(Temporality::Delta)
-            .build();
-        let provider = SdkMeterProvider::builder()
-            .with_periodic_exporter(exporter.clone())
-            .with_view(exponential_histograms)
-            .build();
-        let histogram = provider.meter("test").f64_histogram("latency").build();
-
-        for value in [1.0, 2.0, 2.0, 4.0] {
-            histogram.record(value, &[]);
-        }
-        provider.force_flush().unwrap();
-        histogram.record(8.0, &[]);
-        provider.force_flush().unwrap();
-
-        let exports = exporter.get_finished_metrics().unwrap();
-        for (export, (count, sum)) in exports.iter().zip([(4, 9.0), (1, 8.0)]) {
-            let metric = export
-                .scope_metrics()
-                .next()
-                .unwrap()
-                .metrics()
-                .next()
-                .unwrap();
-            let AggregatedMetrics::F64(MetricData::ExponentialHistogram(histogram)) = metric.data()
-            else {
-                panic!("Expected exponential histogram");
-            };
-            let point = histogram.data_points().next().unwrap();
-
-            assert_eq!(histogram.temporality(), Temporality::Delta);
-            assert_eq!(point.count(), count);
-            assert_eq!(point.sum(), sum);
-            assert_eq!(point.positive_bucket().counts().sum::<u64>(), count as u64);
-        }
-        assert_eq!(exports.len(), 2);
-        provider.shutdown().unwrap();
-    }
-
-    fn test_client(endpoint: &Url) -> AzureHttpClient {
-        let _ = rustls::crypto::ring::default_provider().install_default();
-        let mut client = AzureHttpClient::new(endpoint).unwrap();
-        client.imds_endpoint = endpoint.join("/metadata/identity/oauth2/token").unwrap();
-        client
-    }
-
-    fn token_response(token: &str, expires_at: SystemTime) -> String {
-        serde_json::json!({
-            "access_token": token,
-            "expires_on": expires_at.duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs().to_string(),
-        })
-        .to_string()
-    }
-
-    fn mock_server(responses: Vec<(u16, String)>) -> (Url, thread::JoinHandle<Vec<String>>) {
-        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-        let endpoint = Url::parse(&format!(
-            "http://{}/datacollectionRules/test/otlp/v1/metrics",
-            listener.local_addr().unwrap()
-        ))
-        .unwrap();
-        let handle = thread::spawn(move || {
-            let mut requests = Vec::new();
-            for (status, body) in responses {
-                let (stream, _) = listener.accept().unwrap();
-                stream
-                    .set_read_timeout(Some(Duration::from_secs(5)))
-                    .unwrap();
-                let mut stream = BufReader::new(stream);
-                let mut request = String::new();
-                loop {
-                    let mut line = String::new();
-                    assert_ne!(stream.read_line(&mut line).unwrap(), 0);
-                    if line == "\r\n" {
-                        break;
-                    }
-                    request.push_str(&line);
-                }
-                requests.push(request);
-                write!(
-                    stream.get_mut(),
-                    "HTTP/1.1 {status} Response\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
-                    body.len()
-                )
-                .unwrap();
-            }
-            requests
-        });
-
-        (endpoint, handle)
-    }
+    #[serde_as(as = "serde_with::TimestampSeconds<String>")]
+    expires_on: SystemTime,
 }

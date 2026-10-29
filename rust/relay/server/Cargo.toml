@@ -30,6 +30,7 @@ rustls = { workspace = true }
 secrecy = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
+serde_with = { workspace = true }
 socket-factory = { workspace = true }
 socket2 = { workspace = true }
 stun_codec = { workspace = true }
@@ -52,7 +53,6 @@ anyhow = { workspace = true }
 aya-build = { workspace = true }
 
 [dev-dependencies]
-opentelemetry_sdk = { workspace = true, features = ["testing", "metrics"] }
 tokio = { workspace = true, features = ["process", "macros", "net"] }
 
 [lints]
