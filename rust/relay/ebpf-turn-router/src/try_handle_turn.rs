@@ -7,6 +7,7 @@ mod from_ipv4_channel;
 mod from_ipv4_udp;
 mod from_ipv6_channel;
 mod from_ipv6_udp;
+mod per_cpu;
 mod ref_mut_at;
 mod routing;
 mod stats;
@@ -30,8 +31,6 @@ use network_types::{
 };
 use ref_mut_at::ref_mut_at;
 
-use crate::time::KernelInstant;
-
 /// Lower bound for TURN UDP ports
 const LOWER_PORT: u16 = 49152;
 /// Upper bound for TURN UDP ports
@@ -45,7 +44,7 @@ const DNS_PORT: u16 = 53;
 
 #[inline(always)]
 pub fn try_handle_turn(ctx: &XdpContext) -> Result<(), Error> {
-    let start = KernelInstant::now();
+    let sample = stats::start_sample();
 
     // SAFETY: The offset must point to the start of a valid `EthHdr`.
     let eth = unsafe { ref_mut_at::<EthHdr>(ctx, 0)? };
@@ -71,7 +70,7 @@ pub fn try_handle_turn(ctx: &XdpContext) -> Result<(), Error> {
         }
         _ => return Err(Error::NotIp),
     };
-    stats::emit(ctx, num_bytes, start.elapsed(), ip_version, ecn);
+    stats::record(ctx, sample, num_bytes, ip_version, ecn);
 
     Ok(())
 }
