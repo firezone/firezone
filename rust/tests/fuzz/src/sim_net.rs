@@ -458,6 +458,11 @@ impl<T> Host<T> {
     pub(crate) fn poll_inbox(&mut self, now: Instant) -> Option<Transmit> {
         self.inbox.pop(now)
     }
+
+    pub(crate) fn restart_socket(&mut self) {
+        self.port = self.port.wrapping_add(1).max(1);
+        self.inbox = BufferedTransmits::default();
+    }
 }
 
 impl<T> Host<T>

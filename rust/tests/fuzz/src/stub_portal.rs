@@ -304,6 +304,13 @@ impl StubPortal {
                     .extract_if(.., |(client, _), _| client == client_id)
                 {}
             }
+            Transition::CrashGateway { gateway_id, .. } => {
+                for _ in self
+                    .gateway_policy_authorizations
+                    .extract_if(.., |_, authorization| authorization.gateway == *gateway_id)
+                {
+                }
+            }
         }
     }
 
@@ -556,7 +563,11 @@ impl StubPortal {
             .collect()
     }
 
-    fn holds_any_gateway_authorization(&self, client: ClientId, gateway: GatewayId) -> bool {
+    pub(crate) fn holds_any_gateway_authorization(
+        &self,
+        client: ClientId,
+        gateway: GatewayId,
+    ) -> bool {
         self.gateway_policy_authorizations
             .iter()
             .any(|((candidate, _), authorization)| {

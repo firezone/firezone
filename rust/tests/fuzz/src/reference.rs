@@ -26,10 +26,9 @@ use crate::resource as client;
 // TODO: Remove with classic ICE.
 const MIN_IDLE_FOR_REKEY_DROP: Duration = Duration::from_secs(180 - 10);
 
-/// Maximum time for an established iceless peer to retire a connection after its peer crashes:
+/// Maximum time for an established iceless tunnel to retire a connection after its peer crashes:
 /// the primary's next probe, the unanswered-data handshake delay, jitter, and handshake expiry.
-const ICELESS_PEER_CRASH_LOSS: Duration =
-    Duration::from_millis(25_000 + 5_000 + 2_000 + 333 + 90_000);
+const ICELESS_CRASH_LOSS: Duration = Duration::from_millis(25_000 + 5_000 + 2_000 + 333 + 90_000);
 
 /// How long after a relay frees up its ports until no node ignores it anymore: how long a node
 /// ignores a relay that failed its allocation, plus a margin.
@@ -137,6 +136,26 @@ impl ReferenceState {
     ///
     /// Here is where we implement the "expected" logic.
     pub fn apply(mut self, transition: &Transition, portal: &StubPortal, now: Instant) -> Self {
+        let after = if let Transition::Idle { duration } = transition {
+            now + *duration
+        } else {
+            now
+        };
+        for (client_id, client) in &mut self.clients {
+            client.exec_mut(|client| {
+                for _ in client.gateway_crashed_at.extract_if(.., |gateway, _| {
+                    portal.holds_any_gateway_authorization(*client_id, *gateway)
+                }) {}
+                let expired = client
+                    .gateway_crashed_at
+                    .iter()
+                    .filter(|(_, at)| after > **at + ICELESS_CRASH_LOSS)
+                    .map(|(gateway, _)| *gateway)
+                    .collect();
+                client.fail_connections_to_gateways(&expired, after);
+            });
+        }
+
         match transition {
             Transition::AddResource(resource) => {
                 for client in self.clients.values_mut() {
@@ -732,6 +751,26 @@ impl ReferenceState {
                     peer.exec_mut(|c| c.record_peer_crash(*client_id, now));
                 }
             }
+            Transition::CrashGateway { gateway_id, key } => {
+                self.node_may_lack_relays |= self.no_relay_accepts_allocations();
+
+                for client in self.clients.values_mut() {
+                    client.exec_mut(|client| {
+                        if client.connected_resources().any(|resource| {
+                            client.gateway_for_resource(resource) == Some(*gateway_id)
+                        }) {
+                            client.gateway_crashed_at.insert(*gateway_id, now);
+                        }
+                    });
+                }
+
+                self.gateways
+                    .get_mut(gateway_id)
+                    .unwrap()
+                    .exec_mut(|gateway| {
+                        gateway.key = *key;
+                    });
+            }
         };
 
         self
@@ -1120,6 +1159,18 @@ impl ReferenceState {
             .preferred_gateway(site)
             .unwrap_or_else(|| portal.load_balanced_gateway(origin, site));
 
+        if self.clients[&origin]
+            .inner()
+            .gateway_crashed_at
+            .contains_key(&gateway)
+        {
+            return Some(
+                portal
+                    .authorized_gateway(origin, resource)
+                    .unwrap_or(gateway),
+            );
+        }
+
         Some(gateway)
     }
 
@@ -1232,13 +1283,20 @@ impl ReferenceState {
                     if self.clients[&origin]
                         .inner()
                         .peer_crashed_at(peer)
-                        .is_some_and(|crashed_at| {
-                            sent_at <= crashed_at + ICELESS_PEER_CRASH_LOSS
-                        }) =>
+                        .is_some_and(|crashed_at| sent_at <= crashed_at + ICELESS_CRASH_LOSS) =>
                 {
                     TraceRequirement::ExactOrLoss(KnownLoss::PeerCrash)
                 }
                 Remote::Client(_) => TraceRequirement::Exact,
+                Remote::Gateway(gateway)
+                    if self.clients[&origin]
+                        .inner()
+                        .gateway_crashed_at
+                        .get(&gateway)
+                        .is_some_and(|crashed_at| sent_at <= *crashed_at + ICELESS_CRASH_LOSS) =>
+                {
+                    TraceRequirement::ExactOrLoss(KnownLoss::GatewayCrash)
+                }
                 Remote::Gateway(_) => TraceRequirement::Exact,
             };
         }

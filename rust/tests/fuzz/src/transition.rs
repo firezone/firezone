@@ -1,4 +1,4 @@
-use connlib_model::{ClientId, RelayId, ResourceId};
+use connlib_model::{ClientId, GatewayId, RelayId, ResourceId};
 use dns_types::{DomainName, OwnedRecordData, RecordType};
 use tunnel_proto::{
     dns::{self, is_subdomain},
@@ -149,6 +149,10 @@ pub enum Transition {
         client_id: ClientId,
         key: PrivateKey,
     },
+    CrashGateway {
+        gateway_id: GatewayId,
+        key: PrivateKey,
+    },
 }
 
 impl Transition {
@@ -188,6 +192,7 @@ impl Transition {
             Transition::RevokePeerAuthorization { .. } => true,
             Transition::UpdateDnsRecords { .. } => false,
             Transition::CrashClient { .. } => false,
+            Transition::CrashGateway { .. } => false,
         }
     }
 
@@ -255,6 +260,7 @@ impl Transition {
                 Destination::IpAddr(_) => true,
             },
             Transition::CrashClient { .. } => self.retains_flow(client_id, route, false),
+            Transition::CrashGateway { .. } => self.retains_flow(client_id, route, false),
         }
     }
 
@@ -342,6 +348,13 @@ impl Transition {
             } => match route {
                 Route::Resource { .. } => client_id != *crashed,
                 Route::Peer(peer) => client_id != *crashed && peer != *crashed,
+            },
+            Transition::CrashGateway {
+                gateway_id: crashed,
+                ..
+            } => match route {
+                Route::Resource { gateway, .. } => gateway != *crashed,
+                Route::Peer(_) => true,
             },
         }
     }

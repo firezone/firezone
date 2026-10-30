@@ -268,6 +268,10 @@ impl Recorder {
                 self.changes
                     .push((Scope::Client(*client_id), Change::Crashed));
             }
+            Transition::CrashGateway { gateway_id, .. } => {
+                self.changes
+                    .push((Scope::Gateway(*gateway_id), Change::GatewayCrashed));
+            }
             Transition::UpdateSystemDnsServers { .. }
             | Transition::UpdateUpstreamDo53Servers(_)
             | Transition::UpdateUpstreamDoHServers(_) => {
@@ -577,13 +581,15 @@ enum Change {
     DnsRecordsChanged,
     DnsServersChanged,
     Crashed,
+    GatewayCrashed,
 }
 
-const KINDS: u16 = 23;
+const KINDS: u16 = 24;
 
 #[derive(Clone, Copy)]
 enum Scope {
     Client(ClientId),
+    Gateway(GatewayId),
     Resource(ResourceId),
     Peers(ClientId, ClientId),
     Everything,
@@ -596,6 +602,12 @@ impl Scope {
             (Scope::Client(client), RouteKey::Peer(origin, peer)) => {
                 client == origin || client == peer
             }
+            (Scope::Gateway(gateway), RouteKey::Resource(origin, resource)) => {
+                reference.clients.get(&origin).is_some_and(|client| {
+                    client.inner().gateway_for_resource(resource) == Some(gateway)
+                })
+            }
+            (Scope::Gateway(_), RouteKey::Peer(..)) => false,
             (Scope::Resource(resource), RouteKey::Resource(_, target)) => resource == target,
             (Scope::Resource(pool), RouteKey::Peer(origin, peer)) => {
                 reference.clients.get(&origin).is_some_and(|client| {

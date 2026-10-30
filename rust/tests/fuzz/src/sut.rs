@@ -848,6 +848,20 @@ impl TunnelTest {
                     },
                 );
             }
+            Transition::CrashGateway { gateway_id, key } => {
+                let gateway = self.gateways.get_mut(&gateway_id).unwrap();
+                gateway.restart_socket();
+                gateway.exec_mut(|gateway| {
+                    gateway.crash(key.0, now, utc_now);
+                    gateway.update_relays(iter::empty(), self.relays.iter(), now);
+                    gateway.deploy_new_dns_servers(
+                        portal
+                            .upstream_do53()
+                            .iter()
+                            .map(|server| SocketAddr::new(server.ip, 53)),
+                    );
+                });
+            }
         };
 
         self.advance(ref_state, portal, &mut buffered_transmits);

@@ -102,6 +102,9 @@ pub struct RefClient {
     #[debug(skip)]
     gateway_send_times: BTreeMap<GatewayId, BTreeSet<Instant>>,
 
+    #[debug(skip)]
+    pub(crate) gateway_crashed_at: BTreeMap<GatewayId, Instant>,
+
     // TODO: Remove with classic ICE.
     /// Per peer Client, the instants at which this client sent a packet on that
     /// connection.
@@ -158,6 +161,7 @@ impl RefClient {
             gateways_by_site: Default::default(),
             connection_resets: Default::default(),
             gateway_send_times: Default::default(),
+            gateway_crashed_at: Default::default(),
             client_send_times: Default::default(),
             outbound_peer_authorizations: Default::default(),
             peer_crashed_at: Default::default(),
@@ -462,6 +466,9 @@ impl RefClient {
         gateways: &BTreeSet<GatewayId>,
         now: Instant,
     ) {
+        for gateway in gateways {
+            self.gateway_crashed_at.remove(gateway);
+        }
         // TODO: Remove with classic ICE.
         for gateway in gateways {
             self.gateway_send_times.remove(gateway);
@@ -538,6 +545,7 @@ impl RefClient {
         // (buffered, then sent) rather than hitting a dead WireGuard session, so the
         // idle history that drives the re-key tolerance must start fresh.
         self.gateway_send_times.clear();
+        self.gateway_crashed_at.clear();
         self.client_send_times.clear();
 
         self.authorizations.clear();
@@ -642,6 +650,24 @@ impl RefClient {
         }
 
         ResourceStatus::Unknown
+    }
+
+    pub(crate) fn status_may_be_unknown_after_gateway_crash(&self, resource: ResourceId) -> bool {
+        let Some(site) = self.site_for_resource(resource) else {
+            return false;
+        };
+        let mut gateways = self
+            .authorizations
+            .iter()
+            .filter(|(held, _)| {
+                self.site_for_resource(**held)
+                    .is_some_and(|held_site| held_site.id == site.id)
+            })
+            .map(|(_, gateway)| gateway)
+            .peekable();
+
+        gateways.peek().is_some()
+            && gateways.all(|gateway| self.gateway_crashed_at.contains_key(gateway))
     }
 
     pub(crate) fn tunnel_ip_for(&self, dst: IpAddr) -> IpAddr {

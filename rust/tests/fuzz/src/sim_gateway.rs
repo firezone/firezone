@@ -8,6 +8,7 @@ use super::{
     sim_tunnel::SimTunnel,
     site_network::SiteNetwork,
 };
+use chrono::{DateTime, Utc};
 use connlib_model::{ClientId, GatewayId, PublicKey, RelayId, ResourceId};
 use dns_types::DomainName;
 use ip_packet::IpPacket;
@@ -17,7 +18,7 @@ use std::{
     net::{IpAddr, SocketAddr},
     time::Instant,
 };
-use tunnel_proto::{GatewayEvent, GatewayState};
+use tunnel_proto::{GatewayEvent, GatewayState, IpConfig};
 
 /// Simulation state for a particular client.
 pub(crate) struct SimGateway {
@@ -82,6 +83,37 @@ impl SimGateway {
 
     pub(crate) fn sut_mut(&mut self) -> &mut GatewayState {
         self.tunnel.inner_mut().state_mut()
+    }
+
+    pub(crate) fn crash(&mut self, seed: [u8; 32], now: Instant, utc_now: DateTime<Utc>) {
+        let ip_config = self.sut().tunnel_ip_config().unwrap();
+        let mut sut = GatewayState::new(
+            seed,
+            now,
+            utc_now
+                .signed_duration_since(DateTime::UNIX_EPOCH)
+                .to_std()
+                .unwrap(),
+        );
+        sut.update_tun_device(IpConfig {
+            v4: ip_config.v4,
+            v6: ip_config.v6,
+        });
+        sut.set_flow_logs_enabled(true);
+        self.tunnel = SimTunnel::new(sut);
+
+        for client in self
+            .authorized_resources
+            .keys()
+            .copied()
+            .collect::<Vec<_>>()
+        {
+            self.record_peer_removed(client);
+        }
+        self.authorized_resources.clear();
+        self.client_keys.clear();
+        self.dns_proxy_owners.clear();
+        self.dns_servers.clear();
     }
 
     fn read_from_tun(&mut self, packet: IpPacket) {

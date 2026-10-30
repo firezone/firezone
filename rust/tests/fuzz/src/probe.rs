@@ -245,6 +245,7 @@ pub(crate) enum TraceRequirement {
 pub(crate) enum KnownLoss {
     ConnectionReset,
     PeerCrash,
+    GatewayCrash,
     WireGuardRekey,
 }
 
