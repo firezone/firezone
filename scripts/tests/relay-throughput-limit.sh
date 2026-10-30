@@ -83,4 +83,3 @@ speed=$(download_bytes 20000000)
 
 # 25 Mbps = 3125 kB/s; exceeding the previous limit shows that the new one applies.
 assert_between "$speed" 1000000 3440000
-
