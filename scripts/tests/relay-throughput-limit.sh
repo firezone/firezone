@@ -34,13 +34,13 @@ Portal.PubSub.Changes.broadcast_account(%Portal.Changes.Change{
 })
 "
 
-    # The Relay logs the limit in bytes per second once it has applied it.
+    # The Relay logs the account's new limit in bytes per second once it has received it.
     local bytes_per_second=$((mbps * 125000))
-    timeout 30 sh -c "until docker compose logs relay-1 | grep -q 'bytes_per_second: $bytes_per_second'; do sleep 1; done"
+    timeout 30 sh -c "until docker compose logs relay-1 | grep 'Added account to TURN allow list' | grep -q 'bytes_per_second: $bytes_per_second'; do sleep 1; done"
 }
 
-# Prints the average speed of a download through the tunnel in bytes per second.
-function download_speed() {
+# Downloads the given number of bytes through the tunnel and prints the average speed in bytes per second.
+function download_bytes() {
     local num_bytes="$1"
 
     client curl --fail --silent --connect-timeout 10 --max-time 120 \
@@ -75,7 +75,7 @@ client sysctl -w net.ipv4.tcp_ecn=1
 set_relay_throughput_limit 5
 
 ce_before=$(ce_marked_packets_received_by_client)
-speed=$(download_speed 5000000)
+speed=$(download_bytes 5000000)
 ce_after=$(ce_marked_packets_received_by_client)
 
 # 5 Mbps = 625 kB/s. WireGuard and TCP/IP headers count against the limit too.
@@ -85,9 +85,12 @@ assert_gteq "$((ce_after - ce_before))" 1
 
 set_relay_throughput_limit 25
 
-speed=$(download_speed 20000000)
+speed=$(download_bytes 20000000)
 
 # 25 Mbps = 3125 kB/s; exceeding the previous limit shows that the new one applies.
 assert_between "$speed" 1000000 3440000
+
+# The new limit applied to the allocation of the existing connection, instead of
+# to a new allocation after the Relay restarted.
 docker compose logs relay-1 | grep "Updated throughput limit of allocation" | grep "bytes_per_second: 3125000"
 assert_eq "$(relay_started_at)" "$relay_started_at_before"
