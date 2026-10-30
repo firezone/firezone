@@ -14,7 +14,6 @@ defmodule PortalWeb.Settings.Authentication do
   }
 
   alias PortalWeb.Settings.Components, as: SettingsComponents
-  alias PortalWeb.StoredSecret
   alias __MODULE__.Database
 
   import Ecto.Changeset
@@ -1633,13 +1632,9 @@ defmodule PortalWeb.Settings.Authentication do
                 field={@form[:client_secret]}
                 type="password"
                 autocomplete="off"
-                placeholder={
-                  if StoredSecret.present?(@form, :client_secret),
-                    do: "Leave blank to keep the current secret"
-                }
                 phx-debounce="300"
                 data-1p-ignore
-                required={not StoredSecret.present?(@form, :client_secret)}
+                required
               />
             </div>
           </div>
@@ -2049,11 +2044,11 @@ defmodule PortalWeb.Settings.Authentication do
     changeset = cast(struct, attrs, Map.get(@fields, schema))
 
     changeset
-    |> StoredSecret.keep_when_blank([:client_secret])
+    |> Form.keep_when_blank([:client_secret])
     |> cast(verified_fields, Map.keys(verified_fields))
     |> maybe_initialize_with_parent(socket.assigns.subject.account.id)
     |> schema.changeset()
-    |> StoredSecret.reset_on_change(:client_secret, issuer_fields(schema))
+    |> Form.reset_on_change(:client_secret, issuer_fields(schema))
   end
 
   # Verification and sign-in both send the client secret to the issuer.

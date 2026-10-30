@@ -1020,7 +1020,7 @@ defmodule PortalWeb.Settings.LogSinksTest do
           ["hec_token"]
         )
 
-      refute html =~ "Leave blank to keep the current token"
+      refute html =~ "Leave blank to keep the current value"
 
       lv
       |> form("#log-sink-form",

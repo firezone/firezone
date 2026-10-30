@@ -805,7 +805,7 @@ defmodule PortalWeb.Settings.DevicePostureTest do
           }
         })
 
-      refute html =~ "Leave blank to keep the current key"
+      refute html =~ "Leave blank to keep the current value"
       assert html =~ "Required for the new workshop URL."
 
       lv |> element("#provider-verification-button") |> render_click()

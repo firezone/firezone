@@ -156,6 +156,7 @@ defmodule PortalWeb.Components.Form do
     assigns
     |> assign(field: nil, id: assigns.id || field.id)
     |> assign(:errors, errors)
+    |> assign(:rest, stored_secret_rest(field, assigns.rest))
     |> assign_new(:name, fn -> if assigns.multiple, do: field.name <> "[]", else: field.name end)
     |> assign_new(:value, fn ->
       cond do
@@ -496,6 +497,76 @@ defmodule PortalWeb.Components.Form do
   defp submitted_value(field) do
     Map.get(field.form.params || %{}, to_string(field.field))
   end
+
+  # A stored secret satisfies the required check, and a blank box keeps it.
+  defp stored_secret_rest(field, rest) do
+    if redacted?(field) and not is_nil(Ecto.Changeset.get_field(field.form.source, field.field)) do
+      rest
+      |> Map.delete(:required)
+      |> Map.put_new(:placeholder, "Leave blank to keep the current value")
+    else
+      rest
+    end
+  end
+
+  ### Stored secrets ###
+
+  @doc "An empty input keeps the stored value."
+  @spec keep_when_blank(Ecto.Changeset.t(), [atom()]) :: Ecto.Changeset.t()
+  def keep_when_blank(changeset, fields) do
+    Enum.reduce(fields, changeset, fn field, changeset ->
+      case Ecto.Changeset.fetch_change(changeset, field) do
+        {:ok, nil} -> Ecto.Changeset.delete_change(changeset, field)
+        _other -> changeset
+      end
+    end)
+  end
+
+  @doc """
+  Forgets the stored secret when any of the `destinations` (`field: label`)
+  changed and the secret was not typed in this submission.
+
+  Call it after the schema changeset: `validate_required/3` drops a nil change,
+  which would put the stored value back, so the required error is added here.
+  """
+  @spec reset_on_change(Ecto.Changeset.t(), atom(), keyword(String.t())) :: Ecto.Changeset.t()
+  def reset_on_change(changeset, secret, destinations) do
+    changed =
+      Enum.find(destinations, fn {field, _label} -> Ecto.Changeset.changed?(changeset, field) end)
+
+    if changed && not submitted?(changeset, secret) do
+      {_field, label} = changed
+
+      # The error is shown although the secret input is untouched.
+      changeset = %{
+        changeset
+        | params: Map.delete(changeset.params || %{}, "_unused_#{secret}")
+      }
+
+      changeset = Ecto.Changeset.put_change(changeset, secret, nil)
+
+      if secret in changeset.required do
+        Ecto.Changeset.add_error(changeset, secret, "Required for the new #{label}.",
+          validation: :required
+        )
+      else
+        changeset
+      end
+    else
+      changeset
+    end
+  end
+
+  # Typing the stored value again leaves no change, so the submission is
+  # what shows it was entered.
+  defp submitted?(%Ecto.Changeset{params: %{} = params}, field) do
+    case Map.get(params, Atom.to_string(field)) do
+      value when is_binary(value) -> String.trim(value) != ""
+      _other -> false
+    end
+  end
+
+  defp submitted?(_changeset, _field), do: false
 
   ### Dialogs ###
 

@@ -10,7 +10,6 @@ defmodule PortalWeb.Settings.LogSinks do
   alias Portal.S3
   alias Portal.Splunk
   alias PortalWeb.Settings.Components, as: SettingsComponents
-  alias PortalWeb.StoredSecret
   alias __MODULE__.Database
 
   import Ecto.Changeset
@@ -946,13 +945,9 @@ defmodule PortalWeb.Settings.LogSinks do
             field={@form[:hec_token]}
             type="password"
             autocomplete="off"
-            placeholder={
-              if StoredSecret.present?(@form, :hec_token),
-                do: "Leave blank to keep the current token"
-            }
             phx-debounce="300"
             data-1p-ignore
-            required={not StoredSecret.present?(@form, :hec_token)}
+            required
           />
           <p class="mt-1 text-xs text-subtle">
             The HTTP Event Collector token to authenticate with.
@@ -997,13 +992,9 @@ defmodule PortalWeb.Settings.LogSinks do
             field={@form[:api_key]}
             type="password"
             autocomplete="off"
-            placeholder={
-              if StoredSecret.present?(@form, :api_key),
-                do: "Leave blank to keep the current key"
-            }
             phx-debounce="300"
             data-1p-ignore
-            required={not StoredSecret.present?(@form, :api_key)}
+            required
           />
           <p class="mt-1 text-xs text-subtle">
             A Datadog API key with log ingestion permission.
@@ -1050,13 +1041,9 @@ defmodule PortalWeb.Settings.LogSinks do
             field={@form[:license_key]}
             type="password"
             autocomplete="off"
-            placeholder={
-              if StoredSecret.present?(@form, :license_key),
-                do: "Leave blank to keep the current key"
-            }
             phx-debounce="300"
             data-1p-ignore
-            required={not StoredSecret.present?(@form, :license_key)}
+            required
           />
           <p class="mt-1 text-xs text-subtle">
             A New Relic license key (ingest key) to authenticate with.
@@ -1090,13 +1077,9 @@ defmodule PortalWeb.Settings.LogSinks do
             field={@form[:api_key]}
             type="password"
             autocomplete="off"
-            placeholder={
-              if StoredSecret.present?(@form, :api_key),
-                do: "Leave blank to keep the current key"
-            }
             phx-debounce="300"
             data-1p-ignore
-            required={not StoredSecret.present?(@form, :api_key)}
+            required
           />
           <p class="mt-1 text-xs text-subtle">
             A base64-encoded Elasticsearch API key with permission to manage index
@@ -1519,10 +1502,6 @@ defmodule PortalWeb.Settings.LogSinks do
             field={@form[:auth_header]}
             type="password"
             autocomplete="off"
-            placeholder={
-              if StoredSecret.present?(@form, :auth_header),
-                do: "Leave blank to keep the current header"
-            }
             phx-debounce="300"
             data-1p-ignore
           />
@@ -1572,10 +1551,6 @@ defmodule PortalWeb.Settings.LogSinks do
             field={@form[:bearer_token]}
             type="password"
             autocomplete="off"
-            placeholder={
-              if StoredSecret.present?(@form, :bearer_token),
-                do: "Leave blank to keep the current token"
-            }
             phx-debounce="300"
             data-1p-ignore
           />
@@ -1821,7 +1796,7 @@ defmodule PortalWeb.Settings.LogSinks do
     case Map.fetch(@secrets, changeset.data.__struct__) do
       {:ok, {secret, _destinations}} ->
         changeset
-        |> StoredSecret.keep_when_blank([secret])
+        |> Form.keep_when_blank([secret])
         |> maybe_remove_secret(secret, attrs)
 
       :error ->
@@ -1832,7 +1807,7 @@ defmodule PortalWeb.Settings.LogSinks do
   defp reset_stored_secret(changeset) do
     case Map.fetch(@secrets, changeset.data.__struct__) do
       {:ok, {secret, destinations}} ->
-        StoredSecret.reset_on_change(changeset, secret, destinations)
+        Form.reset_on_change(changeset, secret, destinations)
 
       :error ->
         changeset

@@ -1377,7 +1377,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
           |> live(~p"/#{account}/settings/authentication/#{unquote(type)}/#{provider.id}/edit")
 
         refute html =~ stored
-        assert html =~ "Leave blank to keep the current secret"
+        assert html =~ "Leave blank to keep the current value"
 
         html =
           lv
@@ -1436,7 +1436,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
           }
         })
 
-      refute html =~ "Leave blank to keep the current secret"
+      refute html =~ "Leave blank to keep the current value"
       assert html =~ "Required for the new Okta domain."
       assert has_element?(lv, "#auth_provider_client_secret[required]")
       refute has_element?(lv, "#verify-button")

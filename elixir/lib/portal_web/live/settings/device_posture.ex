@@ -6,7 +6,6 @@ defmodule PortalWeb.Settings.DevicePosture do
   alias Portal.{Changes.Change, Defender, PostureProvider, Intune, Iru, Santa, SentinelOne, Sophos, PubSub}
   alias Portal.Mailer.PostureProviderInterestEmail
   alias PortalWeb.Settings.Components, as: SettingsComponents
-  alias PortalWeb.StoredSecret
   alias __MODULE__.Database
 
   require Logger
@@ -1347,10 +1346,7 @@ defmodule PortalWeb.Settings.DevicePosture do
           autocomplete="off"
           phx-debounce="300"
           data-1p-ignore
-          placeholder={
-            if StoredSecret.present?(@form, :api_key), do: "Leave blank to keep the current key"
-          }
-          required={not StoredSecret.present?(@form, :api_key)}
+          required
         />
         <p class="mt-1 text-xs text-subtle">
           Create a read-only key in Workshop under API Keys. It must be able to call
@@ -1384,11 +1380,7 @@ defmodule PortalWeb.Settings.DevicePosture do
           autocomplete="off"
           phx-debounce="300"
           data-1p-ignore
-          placeholder={
-            if StoredSecret.present?(@form, :api_token),
-              do: "Leave blank to keep the current token"
-          }
-          required={not StoredSecret.present?(@form, :api_token)}
+          required
         />
         <p class="mt-1 text-xs text-subtle">
           Generate a token for a dedicated SentinelOne service user that can view endpoints.
@@ -1428,11 +1420,7 @@ defmodule PortalWeb.Settings.DevicePosture do
           autocomplete="off"
           phx-debounce="300"
           data-1p-ignore
-          placeholder={
-            if StoredSecret.present?(@form, :client_secret),
-              do: "Leave blank to keep the current secret"
-          }
-          required={not StoredSecret.present?(@form, :client_secret)}
+          required
         />
         <p class="mt-1 text-xs text-subtle">
           Sophos shows the secret only once, when the credentials are created.
@@ -1473,11 +1461,7 @@ defmodule PortalWeb.Settings.DevicePosture do
           autocomplete="off"
           phx-debounce="300"
           data-1p-ignore
-          placeholder={
-            if StoredSecret.present?(@form, :api_token),
-              do: "Leave blank to keep the current token"
-          }
-          required={not StoredSecret.present?(@form, :api_token)}
+          required
         />
         <p class="mt-1 text-xs text-subtle">
           Create the token in Iru under Settings > Access, then turn these endpoints on for it.
@@ -1685,7 +1669,7 @@ defmodule PortalWeb.Settings.DevicePosture do
   defp provider_changeset(provider, type, attrs) do
     provider
     |> cast(attrs, @form_fields[type] ++ @programmatic_fields[type] ++ ~w[is_disabled disabled_reason]a)
-    |> StoredSecret.keep_when_blank(@secret_fields)
+    |> Form.keep_when_blank(@secret_fields)
     |> base_changeset(type)
     |> validate_required([:name])
     |> validate_length(:name, min: 1, max: 255)
@@ -1696,10 +1680,10 @@ defmodule PortalWeb.Settings.DevicePosture do
   # Verifying sends the secret to the host in the form. Iru's host is always
   # under Iru's own domain and Sophos's is fixed.
   defp reset_secret_for_new_host(changeset, "santa"),
-    do: StoredSecret.reset_on_change(changeset, :api_key, api_url: "workshop URL")
+    do: Form.reset_on_change(changeset, :api_key, api_url: "workshop URL")
 
   defp reset_secret_for_new_host(changeset, "sentinelone"),
-    do: StoredSecret.reset_on_change(changeset, :api_token, management_url: "management URL")
+    do: Form.reset_on_change(changeset, :api_token, management_url: "management URL")
 
   defp reset_secret_for_new_host(changeset, _type), do: changeset
 
