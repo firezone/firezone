@@ -245,6 +245,14 @@ impl PortAndPeerV6 {
 /// Reporting every packet therefore caps the throughput of the entire relay.
 pub const STATS_SAMPLING_INTERVAL: u32 = 256;
 
+/// Exact totals for relayed packets, independent of perf-event sampling.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct PacketCounts {
+    pub packets: u64,
+    pub bytes: u64,
+}
+
 /// Indices into the per-CPU array that counts relayed packets by incoming IP version and ECN codepoint.
 ///
 /// | Index  | IP version | ECN codepoint  |
@@ -549,6 +557,8 @@ mod stats_event_tests {
 #[cfg(all(feature = "std", target_os = "linux"))]
 mod userspace {
     use super::*;
+
+    unsafe impl aya::Pod for PacketCounts {}
 
     unsafe impl aya::Pod for ClientAndChannelV4 {}
 
