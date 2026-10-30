@@ -2,6 +2,7 @@ defmodule PortalAPI.AccountController do
   use PortalAPI, :controller
   use OpenApiSpex.ControllerSpecs
   alias PortalAPI.Error
+  alias PortalAPI.JSON
   alias PortalAPI.Schemas.ProblemDetails
   alias __MODULE__.Database
 
@@ -21,16 +22,60 @@ defmodule PortalAPI.AccountController do
     subject = conn.assigns.subject
 
     with {:ok, account} <- Database.fetch_account(subject.account.id, subject) do
-      render(conn, :show, account: account)
+      json(conn, JSON.encode(%{account | limit_usage: build_limits(account)}))
     else
       error -> Error.handle(conn, error)
     end
+  end
+
+  defp build_limits(account) do
+    # Get current usage counts
+    users_count = Database.count_users_for_account(account)
+    monthly_active_usage = Portal.Billing.monthly_active_usage(account)
+    service_accounts_count = Database.count_service_accounts_for_account(account)
+    admin_users_count = Database.count_account_admin_users_for_account(account)
+    sites_count = Database.count_groups_for_account(account)
+
+    %{}
+    |> put_limit(:users, account.limits.users_count, users_count)
+    |> put_limit(
+      :monthly_active_users,
+      account.limits.monthly_active_users_count,
+      monthly_active_usage.seats
+    )
+    |> put_adhoc_service_accounts_limit(
+      account.limits.adhoc_service_accounts_count,
+      monthly_active_usage.adhoc_service_accounts
+    )
+    |> put_limit(:service_accounts, account.limits.service_accounts_count, service_accounts_count)
+    |> put_limit(
+      :account_admin_users,
+      account.limits.account_admin_users_count,
+      admin_users_count
+    )
+    |> put_limit(:sites, account.limits.sites_count, sites_count)
+  end
+
+  defp put_adhoc_service_accounts_limit(limits, total, used) when is_integer(total) and total > 0,
+    do: put_limit(limits, :adhoc_service_accounts, total, used)
+
+  defp put_adhoc_service_accounts_limit(limits, _total, _used), do: limits
+
+  defp put_limit(limits, _key, nil, _used), do: limits
+
+  defp put_limit(limits, key, total, used) do
+    Map.put(limits, key, %{
+      used: used,
+      available: max(0, total - used),
+      total: total
+    })
   end
 
   defmodule Database do
     import Ecto.Query
     alias Portal.Safe
     alias Portal.Account
+    alias Portal.Actor
 
     def fetch_account(id, subject) do
       result =
@@ -42,6 +87,45 @@ defmodule PortalAPI.AccountController do
         nil -> {:error, :not_found}
         %Account{} = account -> {:ok, account}
       end
+    end
+
+    def count_users_for_account(account) do
+      from(a in Actor,
+        where: a.account_id == ^account.id,
+        where: a.is_disabled == false,
+        where: a.type in [:account_admin_user, :account_user]
+      )
+      |> Safe.unscoped()
+      |> Safe.aggregate(:count)
+    end
+
+    def count_service_accounts_for_account(account) do
+      from(a in Actor,
+        where: a.account_id == ^account.id,
+        where: a.is_disabled == false,
+        where: a.type == :service_account
+      )
+      |> Safe.unscoped()
+      |> Safe.aggregate(:count)
+    end
+
+    def count_account_admin_users_for_account(account) do
+      from(a in Actor,
+        where: a.account_id == ^account.id,
+        where: a.is_disabled == false,
+        where: a.type == :account_admin_user
+      )
+      |> Safe.unscoped()
+      |> Safe.aggregate(:count)
+    end
+
+    def count_groups_for_account(account) do
+      from(g in Portal.Site,
+        where: g.account_id == ^account.id,
+        where: g.managed_by == :account
+      )
+      |> Safe.unscoped()
+      |> Safe.aggregate(:count)
     end
   end
 end

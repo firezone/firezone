@@ -1,0 +1,4 @@
+// Embeds firezone-cli.exe.manifest as the binary's RT_MANIFEST
+// resource (id 1, type 24). Compiled via `embed_resource` from
+// build.rs and linked into `firezone-cli` only.
+1 24 "firezone-cli.exe.manifest"

@@ -33,6 +33,8 @@ defmodule Portal.Config.Definitions do
 
   @entra_sync_client_id ""
   @intune_sync_client_id ""
+  @windows_updates_client_id ""
+  @defender_sync_client_id ""
   @sentinel_sync_client_id ""
   @google_oidc_client_id "689429116054-72vkp65pqrntsq3bksj9bt4pft15if4v.apps.googleusercontent.com"
   @entra_oidc_client_id "d0b74799-63b8-4c10-8255-1c03c48a3029"
@@ -126,6 +128,17 @@ defmodule Portal.Config.Definitions do
   )
 
   @doc """
+  The Firezone Cloud region this deployment keeps its customer data in, shown to
+  users on the sign in pages and in account settings. On-prem deployments keep
+  the default and show nothing.
+  """
+  defconfig(
+    :data_residency_region,
+    Ecto.ParameterizedType.init(Ecto.Enum, values: [:us, :eu, :on_prem]),
+    default: :on_prem
+  )
+
+  @doc """
   The external URL the REST API will be accessible at.
 
   Advertised as the server URL in the OpenAPI spec and SwaggerUI, and used to
@@ -172,6 +185,16 @@ defmodule Portal.Config.Definitions do
   The API rate limiter uses a token bucket algorithm. This field sets the capacity of the bucket.
   """
   defconfig(:api_capacity, :integer, default: 200)
+
+  @doc """
+  The API rate limiter keeps a separate token bucket for REST API read (GET) requests. This field sets the rate the read bucket is refilled.
+  """
+  defconfig(:api_read_refill_rate, :integer, default: 10)
+
+  @doc """
+  The API rate limiter keeps a separate token bucket for REST API read (GET) requests. This field sets the capacity of the read bucket.
+  """
+  defconfig(:api_read_capacity, :integer, default: 200)
 
   @doc """
   The API socket rate limiter uses a token bucket algorithm. This field sets the rate the bucket is refilled.
@@ -403,9 +426,17 @@ defmodule Portal.Config.Definitions do
   defconfig(:database_socket_dir, :string, default: nil)
 
   @doc """
-  PostgreSQL port.
+  Direct PostgreSQL port used by migrations, cluster discovery, and replication polling.
   """
   defconfig(:database_port, :integer, default: 5432)
+
+  @doc """
+  PgBouncer port used by the Web, API, and background job connection pools.
+
+  When unset, these pools use `DATABASE_PORT` to preserve compatibility with
+  deployments that don't run PgBouncer.
+  """
+  defconfig(:database_pgbouncer_port, :integer, default: nil)
 
   @doc """
   Name of the PostgreSQL database.
@@ -438,6 +469,15 @@ defmodule Portal.Config.Definitions do
   defconfig(:azure_client_id, :string, default: nil)
 
   @doc """
+  Table service endpoint of the Azure Storage account that holds the shared
+  slug registry of Firezone Cloud, for example
+  https://firezoneslugs.table.core.windows.net. When set, the portal reserves
+  every account slug there before it writes it to its own database. Unset, the
+  default for on-prem, keeps slugs in this portal's database only.
+  """
+  defconfig(:slug_registry_table_url, :string, default: nil)
+
+  @doc """
   Size of the connection pool to the PostgreSQL database.
   """
   defconfig(:database_pool_size, :integer,
@@ -453,6 +493,11 @@ defmodule Portal.Config.Definitions do
   Size of the connection pool for PortalAPI (REST + Sockets) queries.
   """
   defconfig(:database_pool_size_api, :integer, default: 10)
+
+  @doc """
+  Size of the connection pool for Oban and background job queries.
+  """
+  defconfig(:database_pool_size_job, :integer, default: 4)
 
   @doc """
   The target threshold for the length of time in milliseconds that a query should wait in the queue
@@ -752,14 +797,19 @@ defmodule Portal.Config.Definitions do
   defconfig(:google_sync_authz_client_secret, :string, default: nil, sensitive: true)
 
   ##############################################
-  ## Google / Entra / Okta authentication
+  ## Google / GitHub / Entra / Okta authentication
   ##############################################
 
   defconfig(:google_oidc_client_id, :string, default: @google_oidc_client_id)
   defconfig(:google_oidc_client_secret, :string, default: nil, sensitive: true)
 
+  defconfig(:github_oauth_client_id, :string, default: nil)
+  defconfig(:github_oauth_client_secret, :string, default: nil, sensitive: true)
+
   defconfig(:entra_sync_client_id, :string, default: @entra_sync_client_id)
   defconfig(:intune_sync_client_id, :string, default: @intune_sync_client_id)
+  defconfig(:windows_updates_client_id, :string, default: @windows_updates_client_id)
+  defconfig(:defender_sync_client_id, :string, default: @defender_sync_client_id)
 
   defconfig(:entra_oidc_client_id, :string, default: @entra_oidc_client_id)
   defconfig(:entra_oidc_client_secret, :string, default: nil, sensitive: true)
@@ -806,10 +856,46 @@ defmodule Portal.Config.Definitions do
     end
   )
 
+  @doc "Google Ads customer ID receiving account conversions, without hyphens."
+  defconfig(:google_ads_customer_id, :string, default: nil)
+
+  @doc "Optional Google Ads manager customer ID used to access the receiving account."
+  defconfig(:google_ads_login_customer_id, :string, default: nil)
+
+  @doc "Google Ads import conversion action ID for completed registrations."
+  defconfig(:google_ads_registration_conversion_action_id, :string, default: nil)
+
+  @doc "Google Ads import conversion action ID for active Team and Business enrollments."
+  defconfig(:google_ads_subscription_conversion_action_id, :string, default: nil)
+
+  @doc "Dedicated Google service account used for Ads conversions."
+  defconfig(:google_ads_service_account_email, :string, default: nil)
+
+  @doc "Canonical workload identity provider used for Ads conversions."
+  defconfig(:google_ads_workload_identity_provider, :string, default: nil)
+
+  @doc "Azure managed identity audience used for Ads federation."
+  defconfig(:google_ads_workload_identity_audience, :string, default: nil)
+
+  @doc "OpenAI Ads pixel receiving portal conversions."
+  defconfig(:openai_conversions_pixel_id, :string, default: nil)
+
+  @doc """
+  OpenAI Ads Conversions API key. Conversion delivery is disabled when unset or blank.
+  """
+  defconfig(:openai_conversions_api_key, :string,
+    default: nil,
+    sensitive: true,
+    dump: fn
+      value when is_binary(value) -> if String.trim(value) == "", do: nil, else: String.trim(value)
+      value -> value
+    end
+  )
+
   @doc """
   PostHog project API key used to attribute consented website visitors after authentication.
 
-  PostHog analytics are disabled when this is unset or blank.
+  PostHog analytics are disabled unless both this and `POSTHOG_HOST` are set.
   """
   defconfig(:posthog_project_api_key, :string,
     default: nil,
@@ -822,6 +908,51 @@ defmodule Portal.Config.Definitions do
 
       project_api_key ->
         project_api_key
+    end
+  )
+
+  @doc """
+  Base URL of the PostHog instance (or a reverse proxy in front of it) that receives
+  analytics events, e.g. `https://us.i.posthog.com`.
+
+  PostHog analytics are disabled unless both this and `POSTHOG_PROJECT_API_KEY` are set.
+  """
+  defconfig(:posthog_host, :string,
+    default: nil,
+    changeset: fn changeset, key ->
+      changeset
+      |> Ecto.Changeset.update_change(key, fn host ->
+        case String.trim(host) do
+          "" -> nil
+          host -> host
+        end
+      end)
+      |> Portal.Changeset.validate_uri(key, schemes: ["https"])
+    end
+  )
+
+  @doc """
+  Sender address of the founder follow-up emails sent 15 minutes and 3 days after a web sign-up.
+
+  The follow-up email is disabled when this is unset or blank. The address must be
+  allowed as a sender on the outbound email adapter.
+  """
+  defconfig(:sign_up_follow_up_from_email, :string,
+    default: nil,
+    dump: fn
+      value when is_binary(value) -> if String.trim(value) == "", do: nil, else: String.trim(value)
+      value -> value
+    end
+  )
+
+  @doc """
+  BCC address for the founder follow-up email, such as the HubSpot BCC logging address.
+  """
+  defconfig(:sign_up_follow_up_bcc_email, :string,
+    default: nil,
+    dump: fn
+      value when is_binary(value) -> if String.trim(value) == "", do: nil, else: String.trim(value)
+      value -> value
     end
   )
 
@@ -896,6 +1027,35 @@ defmodule Portal.Config.Definitions do
   ##############################################
   ## Outbound Email Settings
   ##############################################
+
+  @doc """
+  Recipient address for emails to the Firezone team: portal feedback, sign-up
+  questionnaires, account deletion feedback and Enterprise seat overage reports.
+  They are not sent when unset or blank.
+  """
+  defconfig(:feedback_email_recipient, :string,
+    default: nil,
+    changeset: fn changeset, key ->
+      changeset
+      |> Portal.Changeset.trim_change(key)
+      |> Ecto.Changeset.update_change(key, fn value -> if value == "", do: nil, else: value end)
+      |> Portal.Changeset.validate_email(key)
+    end
+  )
+
+  @doc """
+  Recipient address for posture provider interest and feedback emails.
+  Interest registration and feedback are disabled when unset or blank.
+  """
+  defconfig(:posture_provider_interest_email_recipient, :string,
+    default: nil,
+    changeset: fn changeset, key ->
+      changeset
+      |> Portal.Changeset.trim_change(key)
+      |> Ecto.Changeset.update_change(key, fn value -> if value == "", do: nil, else: value end)
+      |> Portal.Changeset.validate_email(key)
+    end
+  )
 
   @doc """
   From address to use for sending outbound emails. If not set, sending email will be disabled (default).
@@ -1023,7 +1183,6 @@ defmodule Portal.Config.Definitions do
   defconfig(:stripe_webhook_signing_secret, :string, sensitive: true, default: nil)
   defconfig(:stripe_default_price_id, :string, default: nil)
   defconfig(:stripe_plan_product_ids, {:json_array, :string}, default: [])
-  defconfig(:stripe_adhoc_device_product_id, :string, default: nil)
 
   ##############################################
   ## Local development and Staging Helpers

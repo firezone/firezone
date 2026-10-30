@@ -5,6 +5,7 @@
 //
 
 #if os(macOS)
+  import Foundation
   import NetworkExtension
   import SwiftUI
 
@@ -24,7 +25,6 @@
       // Resources (only when connected and not hidden by admin)
       if store.vpnStatus == .connected && !store.configuration.publishedHideResourceList {
         ResourcesSection()
-        ConnectedDevicesSection()
         Divider()
       }
 
@@ -34,8 +34,8 @@
       Divider()
 
       // Update notification (conditional)
-      if store.updateChecker.updateAvailable {
-        UpdateMenuItem()
+      if let downloadURL = store.updateChecker.downloadURL {
+        UpdateMenuItem(downloadURL: downloadURL)
         Divider()
       }
 
@@ -63,6 +63,12 @@
         Text("Loading VPN configurations from system settings…")
           .foregroundStyle(.secondary)
 
+      case .disconnected where store.systemExtensionStatus == .needsInstall:
+        // An MDM profile can hand us a configuration before the extension exists.
+        Button("Enable the system extension to sign in…") {
+          installSystemExtension()
+        }
+
       case .disconnected where store.systemExtensionStatus == .needsReboot:
         // Signing in would run against whichever version the system still has.
         Text("Restart your Mac to finish updating Firezone…")
@@ -79,7 +85,7 @@
 
       case .connected, .reasserting, .connecting:
         Group {
-          Text("Signed in as \(store.actorName)")
+          Text(store.sessionHeading)
             .foregroundStyle(.secondary)
 
           Button("Sign Out") {
@@ -115,6 +121,17 @@
       }
     }
 
+    func installSystemExtension() {
+      Task {
+        do {
+          try await store.installSystemExtension()
+        } catch {
+          Log.error(error)
+          MacOSAlert.show(for: error)
+        }
+      }
+    }
+
     func grantPermission() {
       Task {
         do {
@@ -139,14 +156,53 @@
     }
   }
 
+  extension NSApplication {
+    /// Brings the app forward and opens the standard About panel.
+    @MainActor
+    public func showAboutPanel() {
+      activate(ignoringOtherApps: true)
+      orderFrontStandardAboutPanel(options: Self.aboutPanelOptions())
+    }
+
+    private static func aboutPanelOptions() -> [AboutPanelOptionKey: Any] {
+      var options: [AboutPanelOptionKey: Any] = [
+        .applicationVersion: BundleHelper.version,
+        .version: "",
+      ]
+
+      guard let shortGitSha = BundleHelper.shortGitSha,
+        let commitURL = BundleHelper.commitURL
+      else { return options }
+
+      options[.applicationVersion] = ""
+
+      let paragraph = NSMutableParagraphStyle()
+      paragraph.alignment = .center
+
+      let prefix = "\(BundleHelper.version) ("
+      let credits = NSMutableAttributedString(
+        string: prefix + shortGitSha + ")",
+        attributes: [
+          .font: NSFont.systemFont(ofSize: NSFont.smallSystemFontSize),
+          .paragraphStyle: paragraph,
+        ]
+      )
+      credits.addAttribute(
+        .link, value: commitURL,
+        range: NSRange(location: prefix.utf16.count, length: shortGitSha.utf16.count))
+
+      options[.credits] = credits
+      return options
+    }
+  }
+
   /// System menu section (About, Admin Portal, Help, Settings)
   struct SystemMenuSection: View {
     @EnvironmentObject var store: Store
 
     var body: some View {
       Button("About Firezone") {
-        NSApp.activate(ignoringOtherApps: true)
-        NSApp.orderFrontStandardAboutPanel(nil)
+        NSApp.showAboutPanel()
       }
 
       if !store.configuration.publishedHideAdminPortalMenuItem {
@@ -165,8 +221,8 @@
         }
       }
 
-      Button("Settings") {
-        AppView.WindowDefinition.settings.openWindow()
+      SettingsOpener { openSettings in
+        Button("Settings") { openSettings() }
       }
     }
 
@@ -205,10 +261,12 @@
 
   /// Update notification menu item
   struct UpdateMenuItem: View {
+    let downloadURL: URL
+
     var body: some View {
       Button("Update available…") {
         Task {
-          await NSWorkspace.shared.openAsync(UpdateChecker.downloadURL())
+          await NSWorkspace.shared.openAsync(downloadURL)
         }
       }
     }

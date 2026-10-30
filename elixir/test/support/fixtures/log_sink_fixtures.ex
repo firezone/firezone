@@ -8,6 +8,19 @@ defmodule Portal.LogSinkFixtures do
 
   import Portal.AccountFixtures
 
+  # capture_log/2 includes events from concurrent async tests, so only return
+  # events emitted for this test's sink.
+  def capture_log_for_sink(%{id: log_sink_id}, opts, callback) do
+    opts = Keyword.put(opts, :metadata, [:log_sink_id])
+    log_sink_metadata = "log_sink_id=#{log_sink_id}"
+
+    opts
+    |> ExUnit.CaptureLog.capture_log(callback)
+    |> String.split("\n", trim: true)
+    |> Enum.filter(&String.contains?(&1, log_sink_metadata))
+    |> Enum.join("\n")
+  end
+
   def valid_splunk_log_sink_attrs(attrs \\ %{}) do
     unique_num = System.unique_integer([:positive, :monotonic])
 
@@ -485,5 +498,17 @@ defmodule Portal.LogSinkFixtures do
       |> Portal.Repo.insert()
 
     splunk_log_sink
+  end
+
+  @doc "Generate a Splunk sink disabled after a sync error."
+  def errored_splunk_log_sink_fixture(attrs \\ %{}) do
+    attrs
+    |> Enum.into(%{
+      is_disabled: true,
+      disabled_reason: "Sync error",
+      error_message: "Splunk HEC returned HTTP 403: Invalid token (code 4)",
+      errored_at: DateTime.utc_now()
+    })
+    |> splunk_log_sink_fixture()
   end
 end

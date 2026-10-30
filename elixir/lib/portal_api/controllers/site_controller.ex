@@ -1,6 +1,7 @@
 defmodule PortalAPI.SiteController do
   use PortalAPI, :controller
   use OpenApiSpex.ControllerSpecs
+  alias PortalAPI.JSON
   alias PortalAPI.Pagination
   alias PortalAPI.Error
   alias PortalAPI.Filters
@@ -16,7 +17,7 @@ defmodule PortalAPI.SiteController do
       limit: [
         in: :query,
         description: "Limit Sites returned",
-        type: :integer,
+        schema: PortalAPI.Pagination.limit_schema(),
         example: 10
       ],
       page_cursor: [in: :query, description: "Next/Prev page cursor", type: :string],
@@ -33,7 +34,7 @@ defmodule PortalAPI.SiteController do
     with {:ok, list_opts} <- Pagination.params_to_list_opts(params),
          list_opts = Keyword.put(list_opts, :filter, coerce_filters(params)),
          {:ok, sites, metadata} <- Database.list_sites(conn.assigns.subject, list_opts) do
-      render(conn, :index, sites: sites, metadata: metadata)
+      json(conn, JSON.encode(sites, metadata))
     else
       error -> Error.handle(conn, error)
     end
@@ -64,7 +65,7 @@ defmodule PortalAPI.SiteController do
   @spec show(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def show(conn, %{"id" => id}) do
     with {:ok, site} <- Database.fetch_site(id, conn.assigns.subject) do
-      render(conn, :show, site: site)
+      json(conn, JSON.encode(site))
     else
       error -> Error.handle(conn, error)
     end
@@ -96,7 +97,7 @@ defmodule PortalAPI.SiteController do
       conn
       |> put_status(:created)
       |> put_resp_header("location", ~p"/sites/#{site}")
-      |> render(:show, site: site)
+      |> json(JSON.encode(site))
     else
       error -> Error.handle(conn, error)
     end
@@ -149,7 +150,7 @@ defmodule PortalAPI.SiteController do
     with {:ok, site} <- Database.fetch_site(id, subject),
          :ok <- validate_not_system_managed(site),
          {:ok, site} <- Database.update_site(site, params, subject) do
-      render(conn, :show, site: site)
+      json(conn, JSON.encode(site))
     else
       error -> Error.handle(conn, error)
     end
@@ -162,6 +163,14 @@ defmodule PortalAPI.SiteController do
   # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :delete,
     summary: "Delete a Site",
+    description: """
+    Deletes a Site. Deleting is not blocked when the Site still has Gateways \
+    or Resources.
+
+    The Site's Gateways, Gateway tokens, and Resources are deleted with it. \
+    Every Policy for those Resources is deleted too, and Clients lose access \
+    to them right away. The system-managed Internet Site cannot be deleted.
+    """,
     parameters: [
       id: [
         in: :path,
@@ -189,7 +198,7 @@ defmodule PortalAPI.SiteController do
     with {:ok, site} <- Database.fetch_site(id, subject),
          :ok <- validate_not_system_managed(site),
          {:ok, site} <- Database.delete_site(site, subject) do
-      render(conn, :show, site: site)
+      json(conn, JSON.encode(site))
     else
       error -> Error.handle(conn, error)
     end

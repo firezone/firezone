@@ -14,8 +14,8 @@ use bimap::BiMap;
 use bytecodec::EncodeExt;
 use core::fmt;
 use logging::err_with_src;
-use opentelemetry::KeyValue;
-use opentelemetry::metrics::{Counter, Histogram, UpDownCounter};
+use otel_attributes::KeyValue;
+use otel_instruments::{Counter, Histogram, UpDownCounter};
 use rand::RngExt;
 use secrecy::SecretString;
 use smallvec::SmallVec;
@@ -40,7 +40,6 @@ use stun_codec::rfc8656::attributes::{
 use stun_codec::rfc8656::errors::{AddressFamilyNotSupported, PeerAddressFamilyMismatch};
 use stun_codec::{Message, MessageClass, Method, TransactionId};
 use tracing::field;
-use uuid::Uuid;
 
 /// A sans-IO STUN & TURN server.
 ///
@@ -81,12 +80,22 @@ pub struct Server<R> {
 
     auth_secret: SecretString,
 
+    /// Maps the account hash carried in a TURN credential to the raw account
+    /// UUID received from the Portal. Allocations retain the raw UUID.
+    accounts_by_hash: HashMap<auth::AccountIdHash, auth::AccountId>,
+
     nonces: Nonces,
 
     allocations_up_down_counter: UpDownCounter<i64>,
     data_relayed: u64, // Tracked separately because OTel instruments don't expose their current value :(
     relayed_packet_size_histogram: Histogram<u64>,
     responses_counter: Counter<u64>,
+}
+
+#[derive(Debug)]
+struct VerifiedUsername {
+    username: Username,
+    account: auth::AccountId,
 }
 
 /// The commands returned from a [`Server`].
@@ -180,9 +189,9 @@ where
     ) -> Self {
         // TODO: Validate that local IP isn't multicast / loopback etc.
 
-        let allocations_up_down_counter = crate::metrics::active_allocations();
-        let responses_counter = crate::metrics::responses();
-        let relayed_packet_size_histogram = crate::metrics::packet_size();
+        let allocations_up_down_counter = otel_instruments::relay_active_allocations();
+        let responses_counter = otel_instruments::relay_responses();
+        let relayed_packet_size_histogram = otel_instruments::relay_packet_size();
 
         Self {
             public_address: public_address.into(),
@@ -195,8 +204,9 @@ where
             channel_numbers_by_client_and_peer: Default::default(),
             pending_commands: Default::default(),
             auth_secret: SecretString::from(hex::encode(rng.random::<[u8; 32]>())),
+            accounts_by_hash: Default::default(),
+            nonces: Nonces::new(rng.random()),
             rng,
-            nonces: Default::default(),
             allocations_up_down_counter,
             responses_counter,
             data_relayed: 0,
@@ -207,6 +217,54 @@ where
 
     pub fn auth_secret(&self) -> &SecretString {
         &self.auth_secret
+    }
+
+    /// Enables account-bound TURN authentication with a complete snapshot.
+    /// Existing allocations that are absent from the snapshot are deleted so
+    /// their sockets and fast-path channel bindings are torn down as well.
+    pub fn set_accounts(&mut self, accounts: impl IntoIterator<Item = auth::AccountId>) {
+        let accounts_by_hash = accounts
+            .into_iter()
+            .map(|account| (auth::hash_account_id(&account), account))
+            .collect::<HashMap<_, _>>();
+
+        let revoked_allocations = self
+            .allocations
+            .values()
+            .filter_map(|allocation| {
+                (!accounts_by_hash.contains_key(&auth::hash_account_id(&allocation.account)))
+                    .then_some(allocation.port)
+            })
+            .collect::<Vec<_>>();
+
+        self.accounts_by_hash = accounts_by_hash;
+
+        for allocation in revoked_allocations {
+            self.delete_allocation(allocation);
+        }
+    }
+
+    pub fn add_account(&mut self, account: auth::AccountId) {
+        self.accounts_by_hash
+            .insert(auth::hash_account_id(&account), account);
+    }
+
+    /// Removes an account immediately, including its existing allocations and
+    /// channel bindings. Deleting the bindings emits the existing commands
+    /// that remove the Linux eBPF fast-path entries.
+    pub fn remove_account(&mut self, account: &auth::AccountId) {
+        self.accounts_by_hash
+            .remove(&auth::hash_account_id(account));
+
+        let allocations = self
+            .allocations
+            .values()
+            .filter_map(|allocation| (allocation.account == *account).then_some(allocation.port))
+            .collect::<Vec<_>>();
+
+        for allocation in allocations {
+            self.delete_allocation(allocation);
+        }
     }
 
     pub fn public_address(&self) -> IpStack {
@@ -223,11 +281,6 @@ where
 
     pub fn listen_port(&self) -> u16 {
         self.listen_port
-    }
-
-    /// Registers a new, valid nonce for the given client.
-    pub fn add_nonce(&mut self, client: ClientSocket, nonce: Uuid) {
-        self.nonces.add_new(client, nonce);
     }
 
     pub fn num_relayed_bytes(&self) -> u64 {
@@ -256,6 +309,7 @@ where
         bytes: &[u8],
         sender: ClientSocket,
         now: Instant,
+        now_utc: SystemTime,
     ) -> Option<(AllocationPort, PeerSocket)> {
         tracing::trace!(target: "wire", num_bytes = %bytes.len());
 
@@ -268,7 +322,7 @@ where
 
         match client_message::decode(bytes) {
             Ok(Ok(message)) => {
-                return self.handle_client_message(message, sender, now);
+                return self.handle_client_message(message, sender, now, now_utc);
             }
             // Could parse the bytes but message was semantically invalid (like missing attribute).
             Ok(Err(error_response)) => {
@@ -302,15 +356,20 @@ where
         message: ClientMessage,
         sender: ClientSocket,
         now: Instant,
+        now_utc: SystemTime,
     ) -> Option<(AllocationPort, PeerSocket)> {
         let result = match &message {
-            ClientMessage::Allocate(request) => self.handle_allocate_request(request, sender, now),
-            ClientMessage::Refresh(request) => self.handle_refresh_request(request, sender, now),
+            ClientMessage::Allocate(request) => {
+                self.handle_allocate_request(request, sender, now, now_utc)
+            }
+            ClientMessage::Refresh(request) => {
+                self.handle_refresh_request(request, sender, now, now_utc)
+            }
             ClientMessage::ChannelBind(request) => {
-                self.handle_channel_bind_request(request, sender, now)
+                self.handle_channel_bind_request(request, sender, now, now_utc)
             }
             ClientMessage::CreatePermission(request) => {
-                self.handle_create_permission_request(request, sender)
+                self.handle_create_permission_request(request, sender, now_utc)
             }
             ClientMessage::Binding(request) => {
                 self.handle_binding_request(request, sender);
@@ -335,7 +394,7 @@ where
         // In case of a 401 or 438 response, attach a realm and nonce.
         if is_auth_error {
             error_response.add_attribute((*FIREZONE).clone());
-            error_response.add_attribute(self.new_nonce_attribute(sender));
+            error_response.add_attribute(self.new_nonce_attribute(sender, now_utc));
         }
 
         let message = match message.username() {
@@ -349,7 +408,7 @@ where
                 }
             }
             None => {
-                tracing::warn!(target: "relay", ?message, "Unable to authenticate error response, message did not contain a `Username` attribute");
+                tracing::debug!(target: "relay", client_message = ?message, "Unable to authenticate error response, message did not contain a `Username` attribute");
 
                 AuthenticatedMessage::new_dangerous_unauthenticated(error_response)
             }
@@ -382,8 +441,10 @@ where
         };
 
         self.data_relayed += msg.len() as u64;
-        self.relayed_packet_size_histogram
-            .record(msg.len() as u64, &[crate::metrics::datapath_userspace()]);
+        self.relayed_packet_size_histogram.record(
+            msg.len() as u64,
+            &[otel_attributes::relay_datapath_userspace()],
+        );
 
         tracing::trace!(target: "wire", num_bytes = %msg.len());
 
@@ -483,8 +544,10 @@ where
         request: &Allocate,
         sender: ClientSocket,
         now: Instant,
+        now_utc: SystemTime,
     ) -> Result<(), Message<Attribute>> {
-        let username = self.verify_auth(sender, request)?;
+        let verified_username = self.verify_auth(sender, request, now_utc)?;
+        let username = verified_username.username;
 
         if let Some(allocation) = self.allocations.get(&sender) {
             let (error_response, msg) = make_error_response(AllocationMismatch, request);
@@ -540,6 +603,7 @@ where
             &effective_lifetime,
             first_relay_address,
             maybe_second_relay_addr,
+            verified_username.account,
         );
 
         let mut message = success_response(ALLOCATE, request.transaction_id());
@@ -570,7 +634,7 @@ where
                 family: second_relay_addr.family(),
             });
         }
-        self.authenticate_and_send(&username, request, message, sender);
+        self.authenticate_and_send(&username, request, message, sender, now_utc);
 
         if let Some(second_relay_addr) = maybe_second_relay_addr {
             tracing::info!(
@@ -610,8 +674,10 @@ where
         request: &Refresh,
         sender: ClientSocket,
         now: Instant,
+        now_utc: SystemTime,
     ) -> Result<(), Message<Attribute>> {
-        let username = self.verify_auth(sender, request)?;
+        let verified_username = self.verify_auth(sender, request, now_utc)?;
+        let username = verified_username.username;
 
         // TODO: Verify that this is the correct error code.
         let Some(allocation) = self.allocations.get_mut(&sender) else {
@@ -620,6 +686,13 @@ where
 
             return Err(error_response);
         };
+
+        if allocation.account != verified_username.account {
+            let (error_response, msg) = make_error_response(Unauthorized, request);
+            tracing::warn!(target: "relay", %sender, "{msg}: Credential belongs to a different account");
+
+            return Err(error_response);
+        }
 
         let effective_lifetime = request.effective_lifetime();
 
@@ -632,6 +705,7 @@ where
                 request,
                 refresh_success_response(effective_lifetime, request.transaction_id()),
                 sender,
+                now_utc,
             );
 
             return Ok(());
@@ -646,6 +720,7 @@ where
             request,
             refresh_success_response(effective_lifetime, request.transaction_id()),
             sender,
+            now_utc,
         );
 
         Ok(())
@@ -659,8 +734,10 @@ where
         request: &ChannelBind,
         sender: ClientSocket,
         now: Instant,
+        now_utc: SystemTime,
     ) -> Result<(), Message<Attribute>> {
-        let username = self.verify_auth(sender, request)?;
+        let verified_username = self.verify_auth(sender, request, now_utc)?;
+        let username = verified_username.username;
 
         let Some(allocation) = self.allocations.get_mut(&sender) else {
             let (error_response, msg) = make_error_response(AllocationMismatch, request);
@@ -669,6 +746,13 @@ where
 
             return Err(error_response);
         };
+
+        if allocation.account != verified_username.account {
+            let (error_response, msg) = make_error_response(Unauthorized, request);
+            tracing::warn!(target: "relay", %sender, "{msg}: Credential belongs to a different account");
+
+            return Err(error_response);
+        }
 
         // Note: `channel_number` is enforced to be in the correct range.
         let requested_channel = request.channel_number();
@@ -734,6 +818,7 @@ where
                 request,
                 channel_bind_success_response(request.transaction_id()),
                 sender,
+                now_utc,
             );
 
             return Ok(());
@@ -751,6 +836,7 @@ where
             request,
             channel_bind_success_response(request.transaction_id()),
             sender,
+            now_utc,
         );
 
         tracing::info!(target: "relay", %sender, allocation = %port, peer = %peer_address, channel = %requested_channel.value(), "Successfully bound channel");
@@ -768,14 +854,16 @@ where
         &mut self,
         request: &CreatePermission,
         sender: ClientSocket,
+        now_utc: SystemTime,
     ) -> Result<(), Message<Attribute>> {
-        let username = self.verify_auth(sender, request)?;
+        let username = self.verify_auth(sender, request, now_utc)?.username;
 
         self.authenticate_and_send(
             &username,
             request,
             create_permission_success_response(request.transaction_id()),
             sender,
+            now_utc,
         );
 
         Ok(())
@@ -808,8 +896,10 @@ where
         tracing::trace!(target: "wire", num_bytes = %data.len());
 
         self.data_relayed += data.len() as u64;
-        self.relayed_packet_size_histogram
-            .record(data.len() as u64, &[crate::metrics::datapath_userspace()]);
+        self.relayed_packet_size_histogram.record(
+            data.len() as u64,
+            &[otel_attributes::relay_datapath_userspace()],
+        );
 
         Some((channel.allocation, channel.peer_address))
     }
@@ -818,10 +908,11 @@ where
         &mut self,
         sender: ClientSocket,
         request: &(impl StunRequest + ProtectedRequest),
-    ) -> Result<Username, Message<Attribute>> {
+        now_utc: SystemTime,
+    ) -> Result<VerifiedUsername, Message<Attribute>> {
         let message_integrity = request.message_integrity().ok_or_else(|| {
             let (error_response, msg) = make_error_response(Unauthorized, request);
-            tracing::warn!(target: "relay", "{msg}: Missing `MessageIntegrity` attribute");
+            tracing::debug!(target: "relay", "{msg}: Missing `MessageIntegrity` attribute");
 
             error_response
         })?;
@@ -839,29 +930,22 @@ where
 
                 error_response
             })?
-            .value()
-            .parse::<Uuid>()
-            .map_err(|e| {
-                let (error_response, msg) = make_error_response(Unauthorized, request);
-                tracing::warn!(target: "relay", "{msg}: Failed to parse nonce: {e}");
+            .value();
 
-                error_response
-            })?;
-
-        self.nonces.handle_nonce_used(sender, nonce).map_err(|e| {
+        self.nonces.verify(sender, nonce, now_utc).map_err(|e| {
             let (error_response, msg) = make_error_response(StaleNonce, request);
             tracing::debug!(target: "relay", "{msg}: Nonce is invalid: {e}");
 
             error_response
         })?;
 
-        message_integrity
-            .verify(&self.auth_secret, username.name(), SystemTime::now()) // This is impure but we don't need to control this in our tests.
+        let account_hash = message_integrity
+            .verify(&self.auth_secret, username.name(), now_utc)
             .map_err(|e| {
                 let (error_response, msg) = make_error_response(Unauthorized, request);
 
                 match e {
-                    auth::Error::UnknownNonce | auth::Error::NonceUsedUp | auth::Error::Expired | auth::Error::InvalidPassword => {
+                    auth::Error::UnknownNonce | auth::Error::StaleNonce | auth::Error::Expired | auth::Error::InvalidPassword => {
                         tracing::debug!(target: "relay", "{msg}: MessageIntegrity check failed: {e}");
                     },
                     auth::Error::CannotAuthenticate(_) | auth::Error::InvalidUsername => {
@@ -872,7 +956,17 @@ where
                 error_response
             })?;
 
-        Ok(username.clone())
+        let Some(account) = self.accounts_by_hash.get(&account_hash).cloned() else {
+            let (error_response, msg) = make_error_response(Unauthorized, request);
+            tracing::debug!(target: "relay", "{msg}: Account is not enabled for TURN");
+
+            return Err(error_response);
+        };
+
+        Ok(VerifiedUsername {
+            username: username.clone(),
+            account,
+        })
     }
 
     fn create_new_allocation(
@@ -881,6 +975,7 @@ where
         lifetime: &Lifetime,
         first_relay_addr: IpAddr,
         second_relay_addr: Option<IpAddr>,
+        account: auth::AccountId,
     ) -> Allocation {
         assert!(
             self.clients_by_allocation.len() < self.max_available_ports() as usize,
@@ -900,6 +995,7 @@ where
             expires_at: now + lifetime.lifetime(),
             first_relay_addr,
             second_relay_addr,
+            account,
         }
     }
 
@@ -953,9 +1049,12 @@ where
         &mut self,
         username: &Username,
         request: &impl StunRequest,
-        message: Message<Attribute>,
+        mut message: Message<Attribute>,
         recipient: ClientSocket,
+        now_utc: SystemTime,
     ) {
+        message.add_attribute(self.new_nonce_attribute(recipient, now_utc));
+
         let authenticated_message = match AuthenticatedMessage::new(
             &self.auth_secret,
             username,
@@ -1007,7 +1106,7 @@ where
             CREATE_PERMISSION => "createpermission",
             _ => return,
         };
-        let error_code = error_code.map(|c| opentelemetry::Value::from(c as i64));
+        let error_code = error_code.map(|c| otel_attributes::Value::from(c as i64));
 
         // Use a `SmallVec` to avoid heap-allocations when collecting metrics.
         let mut attributes = SmallVec::<[KeyValue; 3]>::with_capacity(3);
@@ -1104,11 +1203,9 @@ where
         tracing::info!(target: "relay", channel = %chan.value(), %client, %peer, %allocation, "Channel binding is now deleted (and can be rebound)");
     }
 
-    fn new_nonce_attribute(&mut self, sender: ClientSocket) -> Nonce {
-        let nonce = self.nonces.issue(sender, &mut self.rng);
-
-        Nonce::new(nonce.to_string())
-            .expect("UUIDs are valid nonces because they are less than 128 characters long")
+    fn new_nonce_attribute(&self, sender: ClientSocket, now_utc: SystemTime) -> Nonce {
+        Nonce::new(self.nonces.issue(sender, now_utc))
+            .expect("our nonces are valid because they are less than 128 characters long")
     }
 }
 
@@ -1154,6 +1251,7 @@ struct Allocation {
 
     first_relay_addr: IpAddr,
     second_relay_addr: Option<IpAddr>,
+    account: auth::AccountId,
 }
 
 #[derive(Debug, Clone)]
@@ -1399,7 +1497,226 @@ fn earliest(left: Option<Instant>, right: Option<Instant>) -> Option<Instant> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use bytecodec::DecodeExt as _;
+    use rand::{SeedableRng as _, rngs::StdRng};
     use std::net::{Ipv4Addr, Ipv6Addr};
+    use stun_codec::{MessageDecoder, MessageEncoder};
+    use uuid::Uuid;
+
+    #[test]
+    fn removing_account_deletes_its_allocations_and_channel_bindings() {
+        let now = Instant::now();
+        let now_utc = SystemTime::UNIX_EPOCH;
+        let client = ClientSocket::new(SocketAddr::from(([127, 0, 0, 1], 50_000)));
+        let peer = PeerSocket::new(SocketAddr::from(([127, 0, 0, 2], 50_001)));
+        let channel = ChannelNumber::new(ChannelNumber::MIN).unwrap();
+        let account = auth::AccountId::from(Uuid::nil());
+        let mut server = Server::new(
+            Ipv4Addr::LOCALHOST,
+            StdRng::seed_from_u64(0),
+            3478,
+            49_152..=49_153,
+        );
+
+        server.set_accounts([account]);
+        let nonce = issue_nonce(&mut server, client, now, now_utc);
+        let username = Username::new(format!(
+            "2145916800:{}:credential-salt",
+            auth::hash_account_id(&account)
+        ))
+        .unwrap();
+
+        let allocate = authenticated_request(
+            &server,
+            ALLOCATE,
+            TransactionId::new([1; 12]),
+            &username,
+            &nonce,
+            [Attribute::RequestedTransport(RequestedTransport::new(
+                UDP_TRANSPORT,
+            ))],
+        );
+        server.handle_client_input(&allocate, client, now, now_utc);
+
+        let Some(Command::CreateAllocation { port, .. }) = server.next_command() else {
+            panic!("the relay creates an allocation for an authenticated request");
+        };
+        assert!(matches!(
+            server.next_command(),
+            Some(Command::SendMessage { .. })
+        ));
+
+        let channel_bind = authenticated_request(
+            &server,
+            CHANNEL_BIND,
+            TransactionId::new([2; 12]),
+            &username,
+            &nonce,
+            [
+                Attribute::ChannelNumber(channel),
+                Attribute::XorPeerAddress(XorPeerAddress::new(peer.into_socket())),
+            ],
+        );
+        server.handle_client_input(&channel_bind, client, now, now_utc);
+
+        assert_eq!(
+            server.next_command(),
+            Some(Command::CreateChannelBinding {
+                client,
+                channel_number: channel,
+                peer,
+                allocation_port: port,
+            })
+        );
+        assert!(matches!(
+            server.next_command(),
+            Some(Command::SendMessage { .. })
+        ));
+
+        server.remove_account(&account);
+
+        assert_eq!(server.num_allocations(), 0);
+        assert_eq!(server.num_active_channels(), 0);
+        assert_eq!(
+            server.next_command(),
+            Some(Command::DeleteChannelBinding {
+                client,
+                channel_number: channel,
+                peer,
+                allocation_port: port,
+            })
+        );
+        assert_eq!(
+            server.next_command(),
+            Some(Command::FreeAllocation {
+                port,
+                family: AddressFamily::V4,
+            })
+        );
+
+        server.remove_account(&account);
+
+        assert_eq!(server.num_allocations(), 0);
+        assert_eq!(server.num_active_channels(), 0);
+        assert_eq!(server.next_command(), None);
+    }
+
+    #[test]
+    fn success_responses_renew_the_nonce() {
+        let now = Instant::now();
+        let issued_at = SystemTime::UNIX_EPOCH;
+        let client = ClientSocket::new(SocketAddr::from(([127, 0, 0, 1], 50_000)));
+        let account = auth::AccountId::from(Uuid::nil());
+        let mut server = Server::new(
+            Ipv4Addr::LOCALHOST,
+            StdRng::seed_from_u64(0),
+            3478,
+            49_152..=49_153,
+        );
+
+        server.set_accounts([account]);
+        let nonce = issue_nonce(&mut server, client, now, issued_at);
+        let username = Username::new(format!(
+            "2145916800:{}:credential-salt",
+            auth::hash_account_id(&account)
+        ))
+        .unwrap();
+
+        let allocate = authenticated_request(
+            &server,
+            ALLOCATE,
+            TransactionId::new([1; 12]),
+            &username,
+            &nonce,
+            [Attribute::RequestedTransport(RequestedTransport::new(
+                UDP_TRANSPORT,
+            ))],
+        );
+        server.handle_client_input(&allocate, client, now, issued_at + Nonces::WINDOW);
+        let renewed = next_response(&mut server)
+            .get_attribute::<Nonce>()
+            .cloned()
+            .expect("a success response carries a nonce");
+
+        let refresh = authenticated_request(
+            &server,
+            REFRESH,
+            TransactionId::new([2; 12]),
+            &username,
+            &renewed,
+            [],
+        );
+        server.handle_client_input(&refresh, client, now, issued_at + Nonces::WINDOW * 2);
+
+        assert_eq!(
+            next_response(&mut server).class(),
+            MessageClass::SuccessResponse
+        );
+    }
+
+    fn issue_nonce(
+        server: &mut Server<StdRng>,
+        client: ClientSocket,
+        now: Instant,
+        now_utc: SystemTime,
+    ) -> Nonce {
+        let mut allocate =
+            Message::<Attribute>::new(MessageClass::Request, ALLOCATE, TransactionId::new([0; 12]));
+        allocate.add_attribute(RequestedTransport::new(UDP_TRANSPORT));
+
+        let bytes = MessageEncoder::new()
+            .encode_into_bytes(allocate)
+            .expect("a well-formed ALLOCATE encodes");
+        server.handle_client_input(&bytes, client, now, now_utc);
+
+        next_response(server)
+            .get_attribute::<Nonce>()
+            .cloned()
+            .expect("a `401` carries a nonce")
+    }
+
+    fn next_response(server: &mut Server<StdRng>) -> Message<Attribute> {
+        let payload = std::iter::from_fn(|| server.next_command())
+            .find_map(|command| {
+                let Command::SendMessage { payload, .. } = command else {
+                    return None;
+                };
+
+                Some(payload)
+            })
+            .expect("the relay sends a response");
+
+        MessageDecoder::<Attribute>::new()
+            .decode_from_bytes(&payload)
+            .expect("the relay's response decodes")
+            .expect("the relay's response is well-formed")
+    }
+
+    fn authenticated_request(
+        server: &Server<StdRng>,
+        method: Method,
+        transaction_id: TransactionId,
+        username: &Username,
+        nonce: &Nonce,
+        attributes: impl IntoIterator<Item = Attribute>,
+    ) -> Vec<u8> {
+        let mut message = Message::<Attribute>::new(MessageClass::Request, method, transaction_id);
+        for attribute in attributes {
+            message.add_attribute(attribute);
+        }
+        message.add_attribute(username.clone());
+        message.add_attribute(nonce.clone());
+
+        let password = auth::generate_password(server.auth_secret(), username.name());
+        let integrity =
+            MessageIntegrity::new_long_term_credential(&message, username, &FIREZONE, &password)
+                .expect("a valid request has valid message integrity");
+        message.add_attribute(integrity);
+
+        MessageEncoder::new()
+            .encode_into_bytes(message)
+            .expect("a well-formed request encodes")
+    }
 
     // Tests for requirements listed in https://www.rfc-editor.org/rfc/rfc8656#name-receiving-an-allocate-reque.
 

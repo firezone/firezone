@@ -4,7 +4,8 @@ use std::{
     time::Duration,
 };
 
-use ::sentry::transports::{RateLimiter, TokioTransportThread};
+use ::sentry::transports::{RateLimiter, TokioTransportThread, TokioTransportThreadOptions};
+use anyhow::Result;
 use bytes::Bytes;
 use http::{Method, Request, Response, StatusCode, header};
 
@@ -51,13 +52,13 @@ pub(crate) fn init_sdk_client(
             enable_logs: true,
             enable_metrics: true,
             before_send_log: Some(Arc::new(|log| {
-                let log = crate::insert_user_account_slug_into_log(log);
+                let log = crate::insert_user_attributes_into_log(log);
                 let log = crate::append_tracing_fields_to_message(log);
 
                 Some(log)
             })),
             before_send_metric: Some(Arc::new(|metric| {
-                let metric = crate::insert_user_account_slug_into_metric(metric);
+                let metric = crate::insert_user_attributes_into_metric(metric);
                 let metric = crate::insert_feature_flags_into_metric(metric);
 
                 Some(metric)
@@ -106,7 +107,7 @@ impl SentryTransport {
         let auth = dsn.to_auth(Some(&options.user_agent)).to_string();
         let url = dsn.envelope_api_url().to_string();
 
-        let thread = TokioTransportThread::new(move |envelope, mut rate_limiter| {
+        let thread = TokioTransportThreadOptions::new(move |envelope, mut rate_limiter| {
             // The request is built outside the async block so that `url` and `auth`
             // can be borrowed from the reused closure.
             let request = build_request(&url, &auth, &envelope);
@@ -122,7 +123,8 @@ impl SentryTransport {
 
                 rate_limiter
             }
-        });
+        })
+        .spawn_thread();
 
         Self { thread }
     }
@@ -142,7 +144,7 @@ impl Transport for SentryTransport {
     }
 }
 
-fn build_request(url: &str, auth: &str, envelope: &Envelope) -> anyhow::Result<Request<Bytes>> {
+fn build_request(url: &str, auth: &str, envelope: &Envelope) -> Result<Request<Bytes>> {
     let mut body = Vec::new();
     envelope.to_writer(&mut body)?;
 

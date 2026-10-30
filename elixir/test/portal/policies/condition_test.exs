@@ -176,4 +176,11 @@ defmodule Portal.Policies.ConditionTest do
       assert cs.errors[:values]
     end
   end
+
+  describe "changeset/3 with device_attested" do
+    test "is no longer a condition property" do
+      cs = changeset(%{property: :device_attested, operator: :is, values: ["true"]})
+      assert cs.errors[:property]
+    end
+  end
 end

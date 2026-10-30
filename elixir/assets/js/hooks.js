@@ -39,7 +39,9 @@ Hooks.Modal = {
     this.el.addEventListener("close", () => {
       const onClose = this.el.getAttribute("phx-on-close");
       if (onClose) {
-        this.pushEvent(onClose, {});
+        const target = this.el.getAttribute("phx-target");
+        if (target) this.pushEventTo(target, onClose, {});
+        else this.pushEvent(onClose, {});
       }
     });
   },
@@ -226,28 +228,6 @@ Hooks.OpenURL = {
 
     if (this.pendingWindow && !this.pendingWindow.closed) {
       this.pendingWindow.close();
-    }
-  },
-};
-
-Hooks.FormatJSON = {
-  mounted() {
-    this.formatJSON();
-  },
-
-  updated() {
-    this.formatJSON();
-  },
-
-  formatJSON() {
-    const code = this.el.querySelector("code");
-    if (code && code.textContent.trim()) {
-      try {
-        const json = JSON.parse(code.textContent);
-        code.textContent = JSON.stringify(json, null, 2);
-      } catch (e) {
-        // If parsing fails, leave the content as is
-      }
     }
   },
 };

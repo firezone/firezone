@@ -3,10 +3,13 @@ defmodule PortalWeb.Settings.ApiClients.Components do
 
   attr :form, :any, required: true
 
+  attr :scopes, :list, required: true
+  attr :error, :string, default: nil
+
   def api_token_creation_form(assigns) do
     ~H"""
     <div>
-      <.input
+      <Form.input
         label="Name"
         field={@form[:name]}
         placeholder="E.g. 'GitHub Actions' or 'Terraform'"
@@ -19,7 +22,7 @@ defmodule PortalWeb.Settings.ApiClients.Components do
     </div>
 
     <div class="mt-4">
-      <.input
+      <Form.input
         label="Expires At"
         type="date"
         field={@form[:expires_at]}
@@ -28,9 +31,23 @@ defmodule PortalWeb.Settings.ApiClients.Components do
         required
       />
     </div>
+
+    <.api_token_scopes scopes={@scopes} error={@error} />
     """
   end
 
+  attr :scopes, :list, required: true
+  attr :error, :string, default: nil
+
+  def api_token_scopes(assigns) do
+    ~H"""
+    <div class="mt-6">
+      <Page.scope_picker scopes={@scopes} field_name="api_token[scopes][]" error={@error} />
+    </div>
+    """
+  end
+
+  # A locked box submits nothing, which is why scopes are expanded on read-back.
   attr :encoded_token, :string, required: true
 
   def api_token_reveal(assigns) do
@@ -38,11 +55,11 @@ defmodule PortalWeb.Settings.ApiClients.Components do
     <div class="flex flex-col gap-4">
       <p class="text-sm font-semibold text-heading">Your API Token</p>
 
-      <.code_block
+      <Core.code_block
         id="code-api-token"
         class="text-xs rounded-md [&_code]:overflow-x-auto [&_code]:whitespace-pre-wrap [&_code]:break-all [&_code]:p-2"
         phx-no-format
-      ><%= @encoded_token %></.code_block>
+      ><%= @encoded_token %></Core.code_block>
 
       <div class="rounded border border-warning-light bg-warning-light px-4 py-3 text-xs text-warning">
         Store this token in a safe place. <strong>It won't be shown again.</strong>

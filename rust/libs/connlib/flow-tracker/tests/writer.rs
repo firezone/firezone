@@ -87,12 +87,10 @@ fn emitted_records_spool_via_flow_log_writer_layer() {
 /// to the Portal-generated OpenAPI schema committed at the workspace root.
 #[test]
 fn spooled_reports_conform_to_the_committed_ingest_contract() {
-    let openapi = std::fs::read(
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../../../elixir/priv/static/openapi.json"),
-    )
+    let openapi = serde_json::from_slice::<serde_json::Value>(include_bytes!(
+        "../../../../../elixir/priv/static/openapi.json"
+    ))
     .unwrap();
-    let openapi = serde_json::from_slice::<serde_json::Value>(&openapi).unwrap();
     let schema = openapi
         .pointer("/components/schemas/FlowLogIngestRecord")
         .expect("Portal OpenAPI spec contains the flow-log ingest contract");
@@ -187,7 +185,7 @@ fn tracked_packets_spool_open_and_completed_reports() {
             flow_tracker::record_decrypted_packet(&request);
             flow_tracker::record_peer(client, Role::Responder);
             flow_tracker::record_resource(resource);
-            flow_tracker::record_ingest_token(Some(token.clone()));
+            flow_tracker::record_ingest_token(Some(&token));
             drop(flow);
         }
 
@@ -446,7 +444,7 @@ fn drive_tx_from(
     );
     flow_tracker::record_decrypted_packet(packet);
     flow_tracker::record_peer(ClientId::from_u128(1), Role::Responder);
-    flow_tracker::record_ingest_token(Some(test_token(authz_id, "responder")));
+    flow_tracker::record_ingest_token(Some(&test_token(authz_id, "responder")));
 }
 
 /// Runs the responder-to-initiator return packet through the tracker's
@@ -532,7 +530,7 @@ impl SpoolObserver {
         let subscriber = tracing_subscriber::registry().with(layer);
 
         tracing::subscriber::with_default(subscriber, f);
-        drop(guard); // joins the writer thread, so the reports are on disk
+        guard.join(); // every emitted report is on disk once this returns
     }
 
     fn completed_flows(&self) -> Vec<serde_json::Value> {

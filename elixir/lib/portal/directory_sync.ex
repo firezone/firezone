@@ -1,0 +1,724 @@
+defmodule Portal.DirectorySync do
+  @moduledoc """
+  One writer per directory. A full sync and the webhook jobs of a directory
+  never run at the same time: a job snoozes while another job for its
+  directory may still be writing. Every job re-reads the provider when it
+  runs, so a change that arrived while another job was running is applied by
+  a fresh read after that job finished, and no stale response can undo a
+  newer one.
+
+  The check is safe because Oban commits a job to `executing` before
+  `perform/1` runs. If two nodes fetch two jobs for one directory, each runs
+  only if the other was not executing at its own check, and both cannot be
+  true. Both may snooze, which the jittered snooze resolves.
+
+  An executing row keeps blocking until its process certainly cannot write:
+  Oban kills a job at its timeout, so a row older than that plus a margin is
+  dead, and a node that shuts down re-queues the rows of the jobs Oban killed
+  on the way out (see `Portal.DirectorySync.Rescuer`). Leaving the cluster
+  proves nothing, a disconnected node can still reach the database.
+  """
+  alias __MODULE__.Database
+  require Logger
+
+  @workers %{
+    entra: [Portal.Entra.Sync, Portal.Entra.WebhookSync],
+    google: [Portal.Google.Sync, Portal.Google.WebhookSync],
+    okta: [Portal.Okta.Sync, Portal.Okta.WebhookSync]
+  }
+
+  @full_sync_timeout :timer.minutes(100)
+  @webhook_timeout :timer.minutes(30)
+  @dead_margin :timer.minutes(5)
+
+  def full_sync_timeout, do: @full_sync_timeout
+  def webhook_timeout, do: @webhook_timeout
+
+  @doc """
+  Runs `fun` unless another job of the provider's workers for the directory
+  may still be writing, in which case the job snoozes instead.
+  """
+  def run_alone(provider, directory_id, job, fun) do
+    if running_elsewhere?(provider, directory_id, job) do
+      {:snooze, snooze_seconds()}
+    else
+      fun.()
+    end
+  end
+
+  @doc """
+  Whether another job of the provider's workers for the directory is executing
+  and young enough that its process may still be alive.
+  """
+  def running_elsewhere?(provider, directory_id, %Oban.Job{id: job_id}) do
+    workers = workers(provider)
+    timeouts = Map.new(workers, &{inspect(&1), &1.timeout(nil)})
+    now = DateTime.utc_now()
+
+    Database.executing_jobs(workers, directory_id, job_id)
+    |> Enum.any?(fn
+      %{attempted_at: nil} ->
+        true
+
+      %{worker: worker, attempted_at: attempted_at} ->
+        DateTime.diff(now, attempted_at, :millisecond) < timeouts[worker] + @dead_margin
+    end)
+  end
+
+  @doc """
+  Whether any job of the provider's workers for the directory is executing,
+  and so may still write an object it fetched before a notification arrived.
+  A queued job fetches only once it runs, after the change.
+  """
+  def busy?(provider, directory_id) do
+    Database.executing_jobs?(workers(provider), directory_id)
+  end
+
+  def snooze_seconds, do: 15 + :rand.uniform(30)
+
+  @doc """
+  Re-queues the sync jobs `node` left executing, or discards the ones with no
+  attempts left, the way Oban's Lifeline would later.
+  """
+  def rescue_orphans(node) do
+    Database.rescue_orphans(List.flatten(Map.values(@workers)), node)
+  end
+
+  @doc """
+  Removes an identity, the memberships its actor holds in the directory's
+  groups, and the actor itself when the directory created it and no identity
+  names it any more. One transaction, so a retry after a crash cannot find
+  the identity gone and leave the memberships behind. The actor is locked
+  first, the order a plain actor deletion takes as it cascades, so the two
+  cannot deadlock.
+
+  An actor that survives because another identity names it stays disabled if
+  this directory disabled it, but the disable becomes an admin's to lift.
+  """
+  def remove_identity(directory_id, identity) do
+    Database.remove_identity(directory_id, identity)
+  end
+
+  @doc """
+  Deletes what a full sync did not see: the directory's memberships, groups,
+  and identities with no sync state at or after `synced_at`, and the actors
+  the directory created that no identity names any more. A surviving actor
+  the directory disabled stays disabled, see `remove_identity/2`.
+  """
+  def prune(account_id, directory_id, synced_at) do
+    {memberships, _} = Database.delete_unsynced_memberships(account_id, directory_id, synced_at)
+    {groups, _} = Database.delete_unsynced_groups(account_id, directory_id, synced_at)
+    {identities, _} = Database.delete_unsynced_identities(account_id, directory_id, synced_at)
+    {actors, _} = Database.delete_actors_without_identities(account_id, directory_id)
+    {_released, _} = Database.release_disables(account_id, directory_id)
+
+    Logger.debug("Pruned what the sync did not see",
+      directory_id: directory_id,
+      memberships: memberships,
+      groups: groups,
+      identities: identities,
+      actors: actors
+    )
+
+    :ok
+  end
+
+  @doc """
+  Deletes the memberships of one group with no sync state at or after
+  `synced_at` and returns how many there were.
+  """
+  def prune_group_memberships(account_id, directory_id, group_idp_id, synced_at) do
+    {deleted, _} =
+      Database.delete_unsynced_group_memberships(account_id, directory_id, group_idp_id, synced_at)
+
+    deleted
+  end
+
+  @doc """
+  Writes the identities a directory read, as `fields` name their attributes,
+  creating an actor for each user the account does not know yet and recycling
+  the identity rows it already holds. The actors the directory created follow
+  their identity's name and email. A newer write for the same identity is
+  never undone by an older one.
+
+  An identity with `disabled: true` is a user who is inactive at the IdP. It
+  only refreshes an identity the directory already holds for an actor it
+  created, and disables that actor instead of letting a prune delete it. It
+  never creates an actor or links one by email. When the user is active again,
+  the actor is re-enabled, but only if this directory was the one to disable
+  it. The last enabled admin of an account is never disabled: a batch with
+  inactive users holds `last_admin_lock_key/1` for the account while it
+  writes, so two directories cannot each disable an admin the other counted
+  on.
+  """
+  def upsert_identities(account_id, issuer, directory_id, synced_at, identities, fields) do
+    with {:ok, %{kept_admin_ids: kept_admin_ids}} = result <-
+           Database.upsert_identities(account_id, issuer, directory_id, synced_at, identities, fields) do
+      warn_kept_admins(account_id, directory_id, kept_admin_ids)
+      result
+    end
+  end
+
+  @doc """
+  The transaction-level advisory lock key that serializes the writes that may
+  disable an account's admins. It locks no row or table, only other holders
+  of the same key.
+  """
+  def last_admin_lock_key(account_id) do
+    <<key::signed-64, _::binary>> = :crypto.hash(:sha256, "last_admin:" <> account_id)
+    key
+  end
+
+  @doc """
+  Those of `idp_ids` whose identity's actor the directory created. A sync keeps
+  such a user when they turn inactive at the IdP and disables the actor, any
+  other inactive user is dropped as if deleted.
+  """
+  def owned_idp_ids(_account_id, _issuer, _directory_id, []), do: MapSet.new()
+
+  def owned_idp_ids(account_id, issuer, directory_id, idp_ids) do
+    Database.owned_idp_ids(account_id, issuer, directory_id, idp_ids) |> MapSet.new()
+  end
+
+  # The upsert keeps the last enabled admin enabled rather than lock everyone
+  # out of the account, so say why the actor survived its user's suspension.
+  defp warn_kept_admins(account_id, directory_id, kept_admin_ids) do
+    for actor_id <- kept_admin_ids do
+      Logger.warning("Kept the last enabled admin enabled although the IdP deactivated its user",
+        account_id: account_id,
+        directory_id: directory_id,
+        actor_id: actor_id
+      )
+    end
+
+    :ok
+  end
+
+  defp workers(provider), do: Map.fetch!(@workers, provider)
+
+  defmodule Database do
+    @moduledoc false
+    import Ecto.Query
+    alias Portal.Safe
+
+    def executing_jobs(workers, directory_id, except_job_id) do
+      executing(workers, directory_id)
+      |> where([j], j.id != ^except_job_id)
+      |> select([j], %{worker: j.worker, attempted_at: j.attempted_at})
+      |> Safe.unscoped()
+      |> Safe.all()
+    end
+
+    def executing_jobs?(workers, directory_id) do
+      executing(workers, directory_id)
+      |> Safe.unscoped()
+      |> Safe.exists?()
+    end
+
+    def rescue_orphans(workers, node) do
+      orphans =
+        from(j in Oban.Job,
+          where: j.worker in ^worker_names(workers),
+          where: j.state == "executing",
+          where: fragment("?[1] = ?", j.attempted_by, ^node)
+        )
+
+      {rescued, _} =
+        orphans
+        |> where([j], j.attempt < j.max_attempts)
+        |> Safe.unscoped()
+        |> Safe.update_all(set: [state: "available"])
+
+      {discarded, _} =
+        orphans
+        |> where([j], j.attempt >= j.max_attempts)
+        |> Safe.unscoped()
+        |> Safe.update_all(set: [state: "discarded", discarded_at: DateTime.utc_now()])
+
+      rescued + discarded
+    end
+
+    def remove_identity(directory_id, %{account_id: account_id, id: id, actor_id: actor_id}) do
+      Safe.unscoped()
+      |> Safe.transaction(fn ->
+        lock_actor(account_id, actor_id)
+        delete_identity(account_id, id)
+        delete_directory_memberships(account_id, directory_id, actor_id)
+        delete_actor_without_identities(account_id, directory_id, actor_id)
+        release_disables(account_id, directory_id, actor_id)
+        {:ok, :removed}
+      end)
+    end
+
+    def upsert_identities(_account_id, _issuer, _directory_id, _synced_at, [], _fields),
+      do: {:ok, %{upserted_identities: 0, kept_admin_ids: []}}
+
+    def upsert_identities(account_id, issuer, directory_id, synced_at, identities, fields) do
+      query = identity_upsert_query(length(identities), fields)
+
+      params =
+        identity_upsert_params(account_id, issuer, directory_id, synced_at, identities, fields)
+
+      lock_account_id = if Enum.any?(identities, &(Map.get(&1, :disabled) == true)), do: account_id
+
+      run_identity_upsert(query, params, lock_account_id)
+    end
+
+    def delete_unsynced_groups(account_id, directory_id, synced_at) do
+      from(g in Portal.Group,
+        where: g.account_id == ^account_id,
+        where: g.directory_id == ^directory_id,
+        where:
+          fragment(
+            "NOT EXISTS (SELECT 1 FROM group_sync_states gss WHERE gss.group_id = ? AND gss.account_id = ? AND gss.synced_at >= ?)",
+            g.id,
+            g.account_id,
+            ^synced_at
+          )
+      )
+      |> Safe.unscoped()
+      |> Safe.delete_all()
+    end
+
+    def delete_unsynced_identities(account_id, directory_id, synced_at) do
+      from(i in Portal.ExternalIdentity,
+        where: i.account_id == ^account_id,
+        where: i.directory_id == ^directory_id,
+        where:
+          fragment(
+            "NOT EXISTS (SELECT 1 FROM external_identity_sync_states iss WHERE iss.external_identity_id = ? AND iss.account_id = ? AND iss.synced_at >= ?)",
+            i.id,
+            i.account_id,
+            ^synced_at
+          )
+      )
+      |> Safe.unscoped()
+      |> Safe.delete_all()
+    end
+
+    def delete_unsynced_memberships(account_id, directory_id, synced_at) do
+      unsynced_memberships(account_id, directory_id, synced_at)
+      |> Safe.unscoped()
+      |> Safe.delete_all()
+    end
+
+    def delete_unsynced_group_memberships(account_id, directory_id, group_idp_id, synced_at) do
+      unsynced_memberships(account_id, directory_id, synced_at)
+      |> where([_m, g], g.idp_id == ^group_idp_id)
+      |> Safe.unscoped()
+      |> Safe.delete_all()
+    end
+
+    # Hands the directory's disable of an actor it no longer holds an identity
+    # for over to the admins: the actor stays disabled until one enables it.
+    def release_disables(account_id, directory_id) do
+      released_disables(account_id, directory_id)
+      |> Safe.unscoped()
+      |> Safe.update_all(set: [disabled_by_directory_id: nil, updated_at: DateTime.utc_now()])
+    end
+
+    defp release_disables(account_id, directory_id, actor_id) do
+      released_disables(account_id, directory_id)
+      |> where([a], a.id == ^actor_id)
+      |> Safe.unscoped()
+      |> Safe.update_all(set: [disabled_by_directory_id: nil, updated_at: DateTime.utc_now()])
+    end
+
+    defp released_disables(account_id, directory_id) do
+      from(a in Portal.Actor,
+        where: a.account_id == ^account_id,
+        where: a.disabled_by_directory_id == ^directory_id,
+        where:
+          fragment(
+            "NOT EXISTS (SELECT 1 FROM external_identities ei WHERE ei.account_id = ? AND ei.actor_id = ? AND ei.directory_id = ?)",
+            a.account_id,
+            a.id,
+            type(^directory_id, :binary_id)
+          )
+      )
+    end
+
+    def delete_actors_without_identities(account_id, directory_id) do
+      from(a in Portal.Actor,
+        where: a.account_id == ^account_id,
+        where: a.created_by_directory_id == ^directory_id,
+        where: fragment("NOT EXISTS (SELECT 1 FROM external_identities WHERE actor_id = ?)", a.id)
+      )
+      |> Safe.unscoped()
+      |> Safe.delete_all()
+    end
+
+    # A concurrent OIDC sign-in can insert an identity for the same
+    # (account_id, idp_id, issuer) after this statement's snapshot is taken,
+    # which the (account_id, id) conflict target does not handle. Re-running
+    # picks up the now-committed row via pre_existing_identities and recycles
+    # it, so we retry once before surfacing the error.
+    defp run_identity_upsert(query, params, lock_account_id, retry? \\ true) do
+      case execute_identity_upsert(query, params, lock_account_id) do
+        {:ok, %Postgrex.Result{rows: [[count, kept_admin_ids]]}} ->
+          {:ok, %{upserted_identities: count, kept_admin_ids: Enum.map(kept_admin_ids, &Ecto.UUID.load!/1)}}
+
+        {:error, %Postgrex.Error{postgres: %{code: :unique_violation}}} when retry? ->
+          run_identity_upsert(query, params, lock_account_id, false)
+
+        {:error, reason} ->
+          {:error, reason}
+      end
+    end
+
+    defp execute_identity_upsert(query, params, nil) do
+      Safe.unscoped() |> Safe.query(query, params)
+    end
+
+    # The statement's snapshot is taken after the lock is granted, so it sees
+    # the admins another directory's sync disabled before letting go of it. A
+    # failed statement aborts the transaction, so each attempt gets its own.
+    defp execute_identity_upsert(query, params, account_id) do
+      Safe.unscoped()
+      |> Safe.transaction(fn ->
+        {:ok, _} =
+          Safe.unscoped()
+          |> Safe.query("SELECT pg_advisory_xact_lock($1)", [Portal.DirectorySync.last_admin_lock_key(account_id)])
+
+        Safe.unscoped() |> Safe.query(query, params)
+      end)
+    end
+
+    # A candidate for removal if sync query volume becomes a concern. The
+    # identity upsert already decides ownership inline; this lookup exists only
+    # because the membership upserts do not, so it could go once they take each
+    # user's inactive flag and skip the inactive users whose actor this
+    # directory did not create.
+    def owned_idp_ids(account_id, issuer, directory_id, idp_ids) do
+      owned_identities(account_id, issuer, directory_id)
+      |> where([i], i.idp_id in ^idp_ids)
+      |> select([i], i.idp_id)
+      |> Safe.unscoped()
+      |> Safe.all()
+    end
+
+    defp owned_identities(account_id, issuer, directory_id) do
+      from(i in Portal.ExternalIdentity,
+        join: a in Portal.Actor,
+        on: a.account_id == i.account_id and a.id == i.actor_id,
+        where: i.account_id == ^account_id,
+        where: i.issuer == ^issuer,
+        where: a.created_by_directory_id == ^directory_id
+      )
+    end
+
+    defp identity_upsert_params(account_id, issuer, directory_id, synced_at, identities, fields) do
+      Enum.flat_map(identities, fn identity ->
+        Enum.map(fields, &Map.get(identity, &1)) ++ [Map.get(identity, :disabled) == true]
+      end) ++
+        [Ecto.UUID.dump!(account_id), issuer, Ecto.UUID.dump!(directory_id), synced_at]
+    end
+
+    # Each input row carries the identity `fields` followed by `disabled`, which
+    # is not an identity column: it only decides what happens to the actor.
+    defp identity_upsert_query(count, fields) do
+      width = length(fields) + 1
+
+      values_clause =
+        Enum.map_join(1..count, ", ", fn i ->
+          base = (i - 1) * width
+          columns = Enum.map(1..(width - 1), &"$#{base + &1}") ++ ["$#{base + width}::boolean"]
+          "(" <> Enum.join(columns, ", ") <> ")"
+        end)
+
+      offset = count * width
+      account_id = offset + 1
+      issuer = offset + 2
+      directory_id = offset + 3
+      synced_at = offset + 4
+
+      data = fields -- [:idp_id]
+      keyed = [:idp_id, :issuer, :directory_id | data]
+
+      """
+      WITH input_data AS (
+        SELECT * FROM (VALUES #{values_clause})
+        AS t(#{Enum.join(fields, ", ")}, disabled)
+      ),
+      pre_existing_identities AS (
+        SELECT ei.id, ei.account_id, ei.actor_id, ei.idp_id
+        FROM external_identities ei
+        WHERE ei.account_id = $#{account_id}
+          AND ei.issuer = $#{issuer}
+          AND ei.idp_id IN (SELECT idp_id FROM input_data)
+      ),
+      existing_actors_by_email AS (
+        SELECT DISTINCT ON (id.idp_id) a.id AS actor_id, id.idp_id
+        FROM input_data id
+        JOIN actors a ON a.email = id.email AND a.account_id = $#{account_id}
+        WHERE id.idp_id NOT IN (SELECT idp_id FROM pre_existing_identities)
+          AND id.email IS NOT NULL
+          AND NOT id.disabled
+        ORDER BY id.idp_id, a.inserted_at ASC
+      ),
+      -- Recycles the actor's existing identity for this directory so a changed
+      -- idp_id (issuer unchanged) or a changed issuer (directory reverified
+      -- against a new tenant or domain) updates the row in place instead of
+      -- inserting a second one and tripping the (account_id, actor_id, issuer)
+      -- unique index. Matching on issuer OR directory_id covers both: issuer
+      -- alone catches legacy rows whose directory_id is NULL or differs;
+      -- directory_id alone catches the row whose issuer just changed. DISTINCT
+      -- ON keeps one row per actor, preferring the row that already holds the
+      -- new issuer so updating it cannot collide on that index.
+      existing_directory_identities AS (
+        SELECT DISTINCT ON (ei.actor_id) ei.id, ei.actor_id
+        FROM external_identities ei
+        WHERE ei.account_id = $#{account_id}
+          AND ei.actor_id IN (SELECT actor_id FROM existing_actors_by_email)
+          AND (ei.issuer = $#{issuer} OR ei.directory_id = $#{directory_id})
+        ORDER BY ei.actor_id, (ei.issuer = $#{issuer}) DESC
+      ),
+      actors_to_create AS (
+        SELECT
+          uuid_generate_v4() AS new_actor_id,
+          id.idp_id,
+          id.name,
+          id.email
+        FROM input_data id
+        WHERE id.idp_id NOT IN (SELECT idp_id FROM pre_existing_identities)
+          AND id.idp_id NOT IN (SELECT idp_id FROM existing_actors_by_email)
+          AND NOT id.disabled
+      ),
+      new_actors AS (
+        INSERT INTO actors (id, type, account_id, name, email, created_by_directory_id, inserted_at, updated_at)
+        SELECT
+          new_actor_id,
+          'account_user',
+          $#{account_id},
+          name,
+          email,
+          $#{directory_id},
+          $#{synced_at},
+          $#{synced_at}
+        FROM actors_to_create
+        RETURNING id, name
+      ),
+      -- An inactive user only keeps an identity whose actor the directory
+      -- created. Any other is left without sync state for the prune to remove.
+      all_actor_mappings AS (
+        SELECT atc.new_actor_id AS actor_id, atc.idp_id, #{Enum.map_join(data, ", ", &"id.#{&1}")}, id.disabled
+        FROM actors_to_create atc
+        JOIN input_data id ON id.idp_id = atc.idp_id
+        UNION ALL
+        SELECT ei.actor_id, ei.idp_id, #{Enum.map_join(data, ", ", &"id.#{&1}")}, id.disabled
+        FROM pre_existing_identities ei
+        JOIN input_data id ON id.idp_id = ei.idp_id
+        WHERE NOT id.disabled
+          OR EXISTS (
+            SELECT 1 FROM actors a
+            WHERE a.account_id = ei.account_id
+              AND a.id = ei.actor_id
+              AND a.created_by_directory_id = $#{directory_id}
+          )
+        UNION ALL
+        SELECT eabe.actor_id, eabe.idp_id, #{Enum.map_join(data, ", ", &"id.#{&1}")}, id.disabled
+        FROM existing_actors_by_email eabe
+        JOIN input_data id ON id.idp_id = eabe.idp_id
+      ),
+      -- Actors the directory created whose user turned inactive. Disabling
+      -- every enabled admin of the account would lock it out, so when no
+      -- enabled admin outside this set remains, the admins in it stay enabled.
+      deactivated_actors AS (
+        SELECT a.id, a.type
+        FROM actors a
+        JOIN all_actor_mappings aam ON aam.actor_id = a.id
+        WHERE a.account_id = $#{account_id}
+          AND a.created_by_directory_id = $#{directory_id}
+          AND aam.disabled
+          AND NOT a.is_disabled
+      ),
+      kept_admins AS (
+        SELECT da.id
+        FROM deactivated_actors da
+        WHERE da.type = 'account_admin_user'
+          AND NOT EXISTS (
+            SELECT 1 FROM actors other
+            WHERE other.account_id = $#{account_id}
+              AND other.type = 'account_admin_user'
+              AND NOT other.is_disabled
+              AND other.id NOT IN (SELECT id FROM deactivated_actors)
+          )
+      ),
+      actor_targets AS (
+        SELECT
+          aam.actor_id,
+          aam.name,
+          aam.email,
+          COALESCE(ei.id, edi.id) AS identity_id,
+          CASE
+            WHEN aam.disabled AND aam.actor_id NOT IN (SELECT id FROM kept_admins) THEN true
+            WHEN NOT aam.disabled AND a.disabled_by_directory_id = $#{directory_id} THEN false
+            ELSE a.is_disabled
+          END AS is_disabled,
+          CASE
+            WHEN aam.actor_id IN (SELECT id FROM deactivated_actors)
+              AND aam.actor_id NOT IN (SELECT id FROM kept_admins) THEN $#{directory_id}
+            WHEN NOT aam.disabled AND a.disabled_by_directory_id = $#{directory_id} THEN NULL
+            ELSE a.disabled_by_directory_id
+          END AS disabled_by_directory_id
+        FROM all_actor_mappings aam
+        JOIN actors a ON a.account_id = $#{account_id} AND a.id = aam.actor_id
+        LEFT JOIN pre_existing_identities ei ON ei.idp_id = aam.idp_id
+        LEFT JOIN existing_directory_identities edi ON edi.actor_id = aam.actor_id
+        WHERE a.created_by_directory_id = $#{directory_id}
+      ),
+      upserted_identities AS (
+        INSERT INTO external_identities (
+          id, actor_id, issuer, idp_id, directory_id, #{Enum.join(data, ", ")},
+          account_id, inserted_at, updated_at
+        )
+        SELECT
+          COALESCE(ei.id, edi.id, uuid_generate_v4()),
+          aam.actor_id,
+          $#{issuer},
+          aam.idp_id,
+          $#{directory_id},
+          #{Enum.map_join(data, ", ", &"aam.#{&1}")},
+          $#{account_id},
+          $#{synced_at},
+          $#{synced_at}
+        FROM all_actor_mappings aam
+        LEFT JOIN pre_existing_identities ei ON ei.idp_id = aam.idp_id
+        LEFT JOIN existing_directory_identities edi ON edi.actor_id = aam.actor_id
+        ON CONFLICT (account_id, id)
+        DO UPDATE SET
+          #{Enum.map_join(keyed, ", ", &"#{&1} = EXCLUDED.#{&1}")},
+          updated_at = EXCLUDED.updated_at
+        WHERE (#{Enum.map_join(keyed, ", ", &"external_identities.#{&1}")})
+              IS DISTINCT FROM
+              (#{Enum.map_join(keyed, ", ", &"EXCLUDED.#{&1}")})
+          AND NOT EXISTS (
+            SELECT 1 FROM external_identity_sync_states iss
+            WHERE iss.account_id = external_identities.account_id
+              AND iss.external_identity_id = external_identities.id
+              AND iss.synced_at >= $#{synced_at}
+          )
+        RETURNING id, account_id, idp_id
+      ),
+      -- Every user in the batch, not only the ones whose identity changed, so
+      -- an actor that fell behind is caught up. Another actor may already hold
+      -- the new address; the identity records it either way, so only the name
+      -- moves then.
+      updated_actors AS (
+        UPDATE actors a
+        SET name = t.name,
+            email = CASE
+              WHEN EXISTS (
+                SELECT 1 FROM actors other
+                WHERE other.account_id = a.account_id AND other.email = t.email AND other.id <> a.id
+              ) THEN a.email
+              ELSE t.email
+            END,
+            is_disabled = t.is_disabled,
+            disabled_by_directory_id = t.disabled_by_directory_id,
+            updated_at = $#{synced_at}
+        FROM actor_targets t
+        WHERE a.account_id = $#{account_id}
+          AND a.id = t.actor_id
+          AND (a.name, a.email, a.is_disabled, a.disabled_by_directory_id)
+              IS DISTINCT FROM (t.name, t.email, t.is_disabled, t.disabled_by_directory_id)
+          AND NOT EXISTS (
+            SELECT 1 FROM external_identity_sync_states iss
+            WHERE iss.account_id = $#{account_id}
+              AND iss.external_identity_id = t.identity_id
+              AND iss.synced_at >= $#{synced_at}
+          )
+      ),
+      all_identity_ids AS (
+        SELECT id, account_id FROM upserted_identities
+        UNION
+        SELECT pei.id, pei.account_id
+        FROM pre_existing_identities pei
+        WHERE pei.idp_id NOT IN (SELECT idp_id FROM upserted_identities)
+          AND pei.idp_id IN (SELECT idp_id FROM all_actor_mappings)
+      ),
+      synced_identities AS (
+        INSERT INTO external_identity_sync_states (external_identity_id, account_id, synced_at)
+        SELECT id, account_id, $#{synced_at} FROM all_identity_ids
+        ON CONFLICT (account_id, external_identity_id) DO UPDATE SET
+          synced_at = EXCLUDED.synced_at
+        WHERE external_identity_sync_states.synced_at < EXCLUDED.synced_at
+        RETURNING 1
+      )
+      -- The kept admins come back so the caller can say why they survived
+      -- their user's suspension, without a second query.
+      SELECT
+        (SELECT count(*) FROM synced_identities)::integer,
+        ARRAY(SELECT id FROM kept_admins)
+      """
+    end
+
+    defp executing(workers, directory_id) do
+      from(j in Oban.Job,
+        where: j.worker in ^worker_names(workers),
+        where: j.state == "executing",
+        where: fragment("?->>'directory_id' = ?", j.args, ^directory_id)
+      )
+    end
+
+    defp worker_names(workers), do: Enum.map(workers, &inspect/1)
+
+    defp unsynced_memberships(account_id, directory_id, synced_at) do
+      from(m in Portal.Membership,
+        join: g in Portal.Group,
+        on: m.group_id == g.id and m.account_id == g.account_id,
+        where: g.account_id == ^account_id,
+        where: g.directory_id == ^directory_id,
+        where:
+          fragment(
+            "NOT EXISTS (SELECT 1 FROM membership_sync_states mss WHERE mss.membership_id = ? AND mss.account_id = ? AND mss.synced_at >= ?)",
+            m.id,
+            m.account_id,
+            ^synced_at
+          )
+      )
+    end
+
+    defp lock_actor(account_id, actor_id) do
+      from(a in Portal.Actor,
+        where: a.account_id == ^account_id,
+        where: a.id == ^actor_id,
+        lock: "FOR UPDATE"
+      )
+      |> Safe.unscoped()
+      |> Safe.one()
+    end
+
+    defp delete_identity(account_id, id) do
+      from(i in Portal.ExternalIdentity,
+        where: i.account_id == ^account_id,
+        where: i.id == ^id
+      )
+      |> Safe.unscoped()
+      |> Safe.delete_all()
+    end
+
+    defp delete_directory_memberships(account_id, directory_id, actor_id) do
+      from(m in Portal.Membership,
+        join: g in Portal.Group,
+        on: m.group_id == g.id and m.account_id == g.account_id,
+        where: m.account_id == ^account_id,
+        where: m.actor_id == ^actor_id,
+        where: g.directory_id == ^directory_id
+      )
+      |> Safe.unscoped()
+      |> Safe.delete_all()
+    end
+
+    defp delete_actor_without_identities(account_id, directory_id, actor_id) do
+      from(a in Portal.Actor,
+        where: a.account_id == ^account_id,
+        where: a.id == ^actor_id,
+        where: a.created_by_directory_id == ^directory_id,
+        where: fragment("NOT EXISTS (SELECT 1 FROM external_identities WHERE actor_id = ?)", a.id)
+      )
+      |> Safe.unscoped()
+      |> Safe.delete_all()
+    end
+  end
+end

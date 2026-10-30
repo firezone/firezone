@@ -18,6 +18,7 @@ pub use fz_p2p_control_slice::FzP2pControlSlice;
 pub use icmp::{IcmpEchoHeader, Icmpv4Type, Icmpv6Type, icmpv4, icmpv6};
 pub use icmp_error::{FailedPacket, IcmpError};
 pub use ingot::ip::IpProtocol;
+pub use ingot::tcp::TcpFlags;
 // TODO: Temporary alias to keep the `IpNumber` name in downstream crates and
 // minimise churn; remove once call-sites are renamed to `IpProtocol`.
 pub use ingot::ip::IpProtocol as IpNumber;
@@ -27,7 +28,7 @@ pub use slices::{
 };
 
 use anyhow::{Context as _, Result, bail};
-use bufferpool::{Buffer, BufferPool};
+use bufferpool::Bytes;
 use incremental_inet_checksum::ChecksumUpdate;
 use ingot::icmp::{ValidIcmpV4, ValidIcmpV6};
 use ingot::ip::{
@@ -38,10 +39,6 @@ use ingot::tcp::{TcpRef, ValidTcp};
 use ingot::types::{HeaderLen as _, HeaderParse as _, NetworkRepr as _, NextLayer as _};
 use ingot::udp::{UdpRef, ValidUdp};
 use std::net::IpAddr;
-use std::sync::LazyLock;
-
-static BUFFER_POOL: LazyLock<BufferPool<Vec<u8>>> =
-    LazyLock::new(|| BufferPool::new(MAX_FZ_PAYLOAD, "ip-packet"));
 
 /// The maximum size of an IP packet we can handle.
 pub const MAX_IP_SIZE: usize = 1280;
@@ -130,41 +127,30 @@ pub enum Layer4Protocol {
     Icmp { seq: u16, id: u16 },
 }
 
-/// A buffer for reading a new [`IpPacket`] from the network.
-pub struct IpPacketBuf {
-    inner: Buffer<Vec<u8>>,
-}
+/// Pulls a buffer for reading a new [`IpPacket`] from the network, exposed at its full length.
+pub fn packet_buffer() -> Bytes {
+    let mut buffer = Bytes::fitting(MAX_FZ_PAYLOAD);
+    buffer.expose(MAX_FZ_PAYLOAD);
 
-impl Default for IpPacketBuf {
-    fn default() -> Self {
-        Self {
-            inner: BUFFER_POOL.pull(),
-        }
-    }
-}
-
-impl IpPacketBuf {
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    pub fn buf(&mut self) -> &mut [u8] {
-        &mut self.inner
-    }
+    buffer
 }
 
 #[derive(PartialEq, Clone)]
 pub struct IpPacket {
-    buf: Buffer<Vec<u8>>,
-    len: usize,
+    buf: Bytes,
+    /// The packet length; `u16` keeps the struct small, which matters wherever packets are moved.
+    len: u16,
 
     /// Offset of the transport-layer header within the buffer.
     ///
     /// For IPv6, this includes any extension headers.
-    ip_header_length: usize,
+    ip_header_length: u16,
     transport: Transport,
     version: IpVersion,
 }
+
+#[cfg(target_pointer_width = "64")]
+const _: () = assert!(std::mem::size_of::<IpPacket>() == 32);
 
 /// The transport protocol of an [`IpPacket`], determined and validated on creation.
 ///
@@ -184,6 +170,12 @@ enum Transport {
 pub enum IpVersion {
     V4,
     V6,
+}
+
+impl prefetch::Prefetch for IpPacket {
+    fn prefetch(&self) {
+        prefetch::prefetch_line(self.buf.as_ptr());
+    }
 }
 
 impl std::fmt::Debug for IpPacket {
@@ -248,28 +240,37 @@ impl std::fmt::Debug for IpPacket {
 }
 
 impl IpPacket {
-    /// Parses and validates the first `len` bytes of `buf` as an IP packet.
+    fn len(&self) -> usize {
+        usize::from(self.len)
+    }
+
+    fn ip_header_length(&self) -> usize {
+        usize::from(self.ip_header_length)
+    }
+
+    /// Parses and validates the IP packet at the start of the first `len` bytes of `buf`.
     ///
-    /// All layout invariants are checked here, once: header lengths and length
-    /// fields must be consistent with `len` all the way through the transport
-    /// layer. Accessors on the returned packet rely on these invariants and
+    /// The packet's length comes from its IP header; anything after it within
+    /// `len`, such as padding added by WireGuard, is ignored. All layout
+    /// invariants are checked here, once: header lengths and length fields must
+    /// be consistent with that length all the way through the transport layer. Accessors on the returned packet rely on these invariants and
     /// don't re-validate.
-    pub fn new(buf: IpPacketBuf, len: usize) -> Result<Self> {
+    pub fn new(buf: Bytes, len: usize) -> Result<Self> {
         anyhow::ensure!(len <= MAX_IP_SIZE, "Packet too large (len: {len})");
-        anyhow::ensure!(len <= buf.inner.len(), "Length exceeds buffer size");
+        anyhow::ensure!(len <= buf.len(), "Length exceeds buffer size");
 
-        let packet = &buf.inner[..len];
+        let packet = &buf[..len];
 
-        let (version, ip_header_length, protocol) = match packet.first().map(|b| b >> 4) {
+        let (version, ip_header_length, protocol, len) = match packet.first().map(|b| b >> 4) {
             Some(4) => {
                 let (header, _, _) =
                     ValidIpv4::parse(packet).context("Failed to parse IPv4 header")?;
 
                 anyhow::ensure!(header.ihl() >= 5, "IPv4 IHL must be at least 5");
+                let total_len = header.total_len() as usize;
                 anyhow::ensure!(
-                    header.total_len() as usize == len,
-                    "IPv4 total length ({}) does not match packet length ({len})",
-                    header.total_len()
+                    total_len <= len,
+                    "IPv4 total length ({total_len}) exceeds packet length ({len})"
                 );
                 anyhow::ensure!(
                     !header.flags().contains(Ipv4Flags::MORE_FRAGMENTS)
@@ -277,15 +278,21 @@ impl IpPacket {
                     Fragmented
                 );
 
-                (IpVersion::V4, 4 * header.ihl() as usize, header.protocol())
+                (
+                    IpVersion::V4,
+                    4 * header.ihl() as usize,
+                    header.protocol(),
+                    total_len,
+                )
             }
             Some(6) => {
                 let (header, _, _) =
                     ValidIpv6::parse(packet).context("Failed to parse IPv6 header")?;
 
+                let total_len = header.payload_len() as usize + Ipv6HeaderSlice::LEN;
                 anyhow::ensure!(
-                    header.payload_len() as usize + Ipv6HeaderSlice::LEN == len,
-                    "IPv6 payload length ({}) does not match packet length ({len})",
+                    total_len <= len,
+                    "IPv6 payload length ({}) exceeds packet length ({len})",
                     header.payload_len()
                 );
                 anyhow::ensure!(!ipv6_is_fragmenting(&header), Fragmented);
@@ -294,13 +301,17 @@ impl IpPacket {
                     .next_layer()
                     .context("Failed to determine transport protocol of IPv6 packet")?;
 
-                (IpVersion::V6, header.packet_length(), protocol)
+                (IpVersion::V6, header.packet_length(), protocol, total_len)
             }
             Some(version) => bail!("Unsupported IP version: {version}"),
             None => bail!("Empty packet"),
         };
 
-        let l4 = &packet[ip_header_length..];
+        anyhow::ensure!(
+            ip_header_length <= len,
+            "IP header length ({ip_header_length}) exceeds packet length ({len})"
+        );
+        let l4 = &buf[ip_header_length..len];
 
         let transport = match (version, protocol) {
             (_, IpProtocol::UDP) => {
@@ -342,9 +353,9 @@ impl IpPacket {
         };
 
         Ok(Self {
-            buf: buf.inner,
-            len,
-            ip_header_length,
+            buf,
+            len: u16::try_from(len)?,
+            ip_header_length: u16::try_from(ip_header_length)?,
             transport,
             version,
         })
@@ -354,99 +365,115 @@ impl IpPacket {
         self.version
     }
 
+    #[inline]
     pub fn source(&self) -> IpAddr {
         match self.version {
-            IpVersion::V4 => IpAddr::V4(std::net::Ipv4Addr::from(
-                self.ipv4_header_unchecked().source(),
-            )),
-            IpVersion::V6 => IpAddr::V6(std::net::Ipv6Addr::from(
-                self.ipv6_header_unchecked().source(),
-            )),
+            IpVersion::V4 => IpAddr::V4(self.ipv4_addr_at(12)),
+            IpVersion::V6 => IpAddr::V6(self.ipv6_addr_at(8)),
         }
     }
 
+    #[inline]
     pub fn destination(&self) -> IpAddr {
         match self.version {
-            IpVersion::V4 => IpAddr::V4(std::net::Ipv4Addr::from(
-                self.ipv4_header_unchecked().destination(),
-            )),
-            IpVersion::V6 => IpAddr::V6(std::net::Ipv6Addr::from(
-                self.ipv6_header_unchecked().destination(),
-            )),
+            IpVersion::V4 => IpAddr::V4(self.ipv4_addr_at(16)),
+            IpVersion::V6 => IpAddr::V6(self.ipv6_addr_at(24)),
         }
+    }
+
+    /// Reads the address at `offset` of the IPv4 header, whose length was checked on construction.
+    fn ipv4_addr_at(&self, offset: usize) -> std::net::Ipv4Addr {
+        let octets: [u8; 4] = self.buf[offset..offset + 4]
+            .try_into()
+            .expect("slice has 4 bytes");
+
+        std::net::Ipv4Addr::from(octets)
+    }
+
+    /// Reads the address at `offset` of the IPv6 header, whose length was checked on construction.
+    fn ipv6_addr_at(&self, offset: usize) -> std::net::Ipv6Addr {
+        let octets: [u8; 16] = self.buf[offset..offset + 16]
+            .try_into()
+            .expect("slice has 16 bytes");
+
+        std::net::Ipv6Addr::from(octets)
     }
 
     pub fn source_protocol(&self) -> Result<Protocol, UnsupportedProtocol> {
-        if let Some(p) = self.as_tcp() {
-            return Ok(Protocol::Tcp(p.source_port()));
+        match self.transport {
+            Transport::Tcp => Ok(Protocol::Tcp(self.transport_u16_at(0))),
+            Transport::Udp => Ok(Protocol::Udp(self.transport_u16_at(0))),
+            Transport::Icmpv4 => Ok(Protocol::IcmpEcho(self.icmp_echo_id()?)),
+            Transport::Icmpv6 => Ok(Protocol::IcmpEcho(self.icmp_echo_id()?)),
+            Transport::Other(protocol) => Err(UnsupportedProtocol::UnsupportedIpPayload(protocol)),
         }
-
-        if let Some(p) = self.as_udp() {
-            return Ok(Protocol::Udp(p.source_port()));
-        }
-
-        if let Some(p) = self.as_icmpv4() {
-            let id = self
-                .icmpv4_echo_header()
-                .ok_or_else(|| UnsupportedProtocol::UnsupportedIcmpv4Type(p.icmp_type()))?
-                .id;
-
-            return Ok(Protocol::IcmpEcho(id));
-        }
-
-        if let Some(p) = self.as_icmpv6() {
-            let id = self
-                .icmpv6_echo_header()
-                .ok_or_else(|| UnsupportedProtocol::UnsupportedIcmpv6Type(p.icmp_type()))?
-                .id;
-
-            return Ok(Protocol::IcmpEcho(id));
-        }
-
-        Err(UnsupportedProtocol::UnsupportedIpPayload(
-            self.next_header(),
-        ))
     }
 
     pub fn destination_protocol(&self) -> Result<Protocol, UnsupportedProtocol> {
-        if let Some(p) = self.as_tcp() {
-            return Ok(Protocol::Tcp(p.destination_port()));
+        match self.transport {
+            Transport::Tcp => Ok(Protocol::Tcp(self.transport_u16_at(2))),
+            Transport::Udp => Ok(Protocol::Udp(self.transport_u16_at(2))),
+            Transport::Icmpv4 => Ok(Protocol::IcmpEcho(self.icmp_echo_id()?)),
+            Transport::Icmpv6 => Ok(Protocol::IcmpEcho(self.icmp_echo_id()?)),
+            Transport::Other(protocol) => Err(UnsupportedProtocol::UnsupportedIpPayload(protocol)),
         }
-
-        if let Some(p) = self.as_udp() {
-            return Ok(Protocol::Udp(p.destination_port()));
-        }
-
-        if let Some(p) = self.as_icmpv4() {
-            let id = self
-                .icmpv4_echo_header()
-                .ok_or_else(|| UnsupportedProtocol::UnsupportedIcmpv4Type(p.icmp_type()))?
-                .id;
-
-            return Ok(Protocol::IcmpEcho(id));
-        }
-
-        if let Some(p) = self.as_icmpv6() {
-            let id = self
-                .icmpv6_echo_header()
-                .ok_or_else(|| UnsupportedProtocol::UnsupportedIcmpv6Type(p.icmp_type()))?
-                .id;
-
-            return Ok(Protocol::IcmpEcho(id));
-        }
-
-        Err(UnsupportedProtocol::UnsupportedIpPayload(
-            self.next_header(),
-        ))
     }
 
     pub fn layer4_payload_len(&self) -> usize {
         match self.transport {
             Transport::Udp => self.payload().len() - UdpSlice::HEADER_LEN,
-            Transport::Tcp => self.as_tcp_unchecked().payload().len(),
+            Transport::Tcp => self.payload().len() - self.tcp_header_len(),
             Transport::Icmpv4 | Transport::Icmpv6 => self.payload().len() - Icmpv4Slice::HEADER_LEN,
             Transport::Other(_) => self.payload().len(),
         }
+    }
+
+    /// The flags of a TCP packet, read at the fixed offset of the header validated on construction.
+    pub fn tcp_flags(&self) -> Option<TcpFlags> {
+        if !self.is_tcp() {
+            return None;
+        }
+
+        Some(TcpFlags::from_bits_retain(self.payload()[13]))
+    }
+
+    /// The echo ID of an ICMP packet; `Err` for any other ICMP type.
+    fn icmp_echo_id(&self) -> Result<u16, UnsupportedProtocol> {
+        if let Some(p) = self.as_icmpv4() {
+            let id = self
+                .icmpv4_echo_header()
+                .ok_or_else(|| UnsupportedProtocol::UnsupportedIcmpv4Type(p.icmp_type()))?
+                .id;
+
+            return Ok(id);
+        }
+
+        if let Some(p) = self.as_icmpv6() {
+            let id = self
+                .icmpv6_echo_header()
+                .ok_or_else(|| UnsupportedProtocol::UnsupportedIcmpv6Type(p.icmp_type()))?
+                .id;
+
+            return Ok(id);
+        }
+
+        Err(UnsupportedProtocol::UnsupportedIpPayload(
+            self.next_header(),
+        ))
+    }
+
+    /// Reads the big-endian `u16` at `offset` of the TCP or UDP header, whose length was checked on construction.
+    fn transport_u16_at(&self, offset: usize) -> u16 {
+        let bytes: [u8; 2] = self.payload()[offset..offset + 2]
+            .try_into()
+            .expect("slice has 2 bytes");
+
+        u16::from_be_bytes(bytes)
+    }
+
+    /// The header length of a TCP packet, from the data offset checked on construction.
+    fn tcp_header_len(&self) -> usize {
+        4 * (self.payload()[12] >> 4) as usize
     }
 
     pub fn set_source_protocol(&mut self, v: u16) {
@@ -581,7 +608,8 @@ impl IpPacket {
     fn ipv4_header_mut_unchecked(&mut self) -> ValidIpv4<&mut [u8]> {
         debug_assert!(matches!(self.version, IpVersion::V4));
 
-        let (header, _, _) = ValidIpv4::parse(&mut self.buf[..self.len]).unwrap();
+        let len = self.len();
+        let (header, _, _) = ValidIpv4::parse(&mut self.buf[..len]).unwrap();
 
         header
     }
@@ -605,7 +633,8 @@ impl IpPacket {
     fn ipv6_header_mut_unchecked(&mut self) -> ValidIpv6<&mut [u8]> {
         debug_assert!(matches!(self.version, IpVersion::V6));
 
-        let (header, _, _) = ValidIpv6::parse(&mut self.buf[..self.len]).unwrap();
+        let len = self.len();
+        let (header, _, _) = ValidIpv6::parse(&mut self.buf[..len]).unwrap();
 
         header
     }
@@ -615,7 +644,7 @@ impl IpPacket {
             return;
         }
 
-        let checksum = checksum::ipv4_header_checksum(&self.packet()[..self.ip_header_length]);
+        let checksum = checksum::ipv4_header_checksum(&self.packet()[..self.ip_header_length()]);
 
         self.ipv4_header_mut_unchecked().set_checksum(checksum);
     }
@@ -697,7 +726,7 @@ impl IpPacket {
         }
 
         Ok(checksum::ipv4_header_checksum(
-            &self.packet()[..self.ip_header_length],
+            &self.packet()[..self.ip_header_length()],
         ))
     }
 
@@ -1097,15 +1126,17 @@ impl IpPacket {
     }
 
     pub fn packet(&self) -> &[u8] {
-        &self.buf[..self.len]
+        &self.buf[..self.len()]
     }
 
     pub fn payload(&self) -> &[u8] {
-        &self.buf[self.ip_header_length..self.len]
+        &self.buf[self.ip_header_length()..self.len()]
     }
 
     fn payload_mut(&mut self) -> &mut [u8] {
-        &mut self.buf[self.ip_header_length..self.len]
+        let (start, end) = (self.ip_header_length(), self.len());
+
+        &mut self.buf[start..end]
     }
 }
 
@@ -1303,5 +1334,54 @@ mod tests {
         p.set_dst(IpAddr::V4(Ipv4Addr::new(1, 1, 1, 1))).unwrap();
 
         assert_eq!(p.destination(), IpAddr::V4(Ipv4Addr::new(1, 1, 1, 1)));
+    }
+
+    #[test]
+    fn trailing_padding_is_ignored() {
+        for packet in [
+            crate::make::udp_packet(Ipv4Addr::LOCALHOST, Ipv4Addr::LOCALHOST, 0, 0, b"foobar"),
+            crate::make::udp_packet(Ipv6Addr::LOCALHOST, Ipv6Addr::LOCALHOST, 0, 0, b"foobar"),
+        ] {
+            let packet = packet.unwrap();
+            let mut buf = packet_buffer();
+            let len = packet.packet().len();
+            buf[..len].copy_from_slice(packet.packet());
+            buf[len..len + 13].fill(0);
+
+            let padded = IpPacket::new(buf, len + 13).unwrap();
+
+            assert_eq!(padded.packet(), packet.packet());
+        }
+    }
+
+    #[test]
+    fn transport_accessors_match_parsed_header() {
+        let packet = crate::make::tcp_packet_with_options(
+            Ipv4Addr::LOCALHOST,
+            Ipv4Addr::LOCALHOST,
+            1234,
+            443,
+            0,
+            crate::make::TcpFlags {
+                syn: true,
+                ack: true,
+                rst: false,
+            },
+            &[1, 1, 1, 1],
+            b"foobar",
+        )
+        .unwrap();
+        let tcp = packet.as_tcp().unwrap();
+
+        assert_eq!(
+            packet.source_protocol().unwrap(),
+            Protocol::Tcp(tcp.source_port())
+        );
+        assert_eq!(
+            packet.destination_protocol().unwrap(),
+            Protocol::Tcp(tcp.destination_port())
+        );
+        assert_eq!(packet.layer4_payload_len(), tcp.payload().len());
+        assert_eq!(packet.tcp_flags(), Some(TcpFlags::SYN | TcpFlags::ACK));
     }
 }

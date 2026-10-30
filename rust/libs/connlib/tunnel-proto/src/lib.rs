@@ -9,16 +9,18 @@
 #![cfg_attr(test, allow(clippy::print_stderr))]
 
 use connlib_model::{
-    ClientId, ClientOrGatewayId, GatewayId, IceCandidate, ResourceId, ResourceList,
+    ClientId, ClientOrGatewayId, GatewayId, IceCandidate, RelayId, ResourceId, ResourceView,
 };
 use dns_types::DomainName;
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use logging::DisplayBTreeSet;
 use std::{
     collections::BTreeSet,
-    net::{IpAddr, Ipv4Addr, Ipv6Addr},
+    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
 };
 
+mod authorization_rejections;
+mod cache;
 mod client;
 mod conn_track;
 pub mod dns;
@@ -30,7 +32,7 @@ mod malicious_behaviour;
 pub mod messages;
 pub mod otel;
 mod p2p_control;
-mod packet_kind;
+pub mod packet_kind;
 mod peer_store;
 mod portal_connection;
 #[cfg(test)]
@@ -53,7 +55,7 @@ pub const IPV6_TUNNEL: Ipv6Network =
 pub use client::dns_config::DnsMapping;
 pub use client::{ClientState, DNS_SENTINELS_V4, DNS_SENTINELS_V6, IPV4_RESOURCES, IPV6_RESOURCES};
 pub use dns::DnsResourceRecord;
-pub use gateway::{DnsResourceNatEntry, GatewayState, ResolveDnsRequest};
+pub use gateway::{DnsResourceNatEntry, GatewayState, ResolveDnsRequest, SiteDnsQuery};
 #[cfg(feature = "malicious-behaviour")]
 pub use malicious_behaviour::{Guard as MaliciousBehaviourGuard, MaliciousBehaviour};
 pub use unroutable_packet::UnroutablePacket;
@@ -72,28 +74,33 @@ pub enum ClientEvent {
         conn_id: ClientOrGatewayId,
         candidates: BTreeSet<IceCandidate>,
     },
-    ResourceConnectionIntent {
-        resource: ResourceId,
-        preferred_gateways: Vec<GatewayId>,
-        /// Set for connection intents to a specific device pool member;
-        /// `None` for intents to a gateway-routed resource.
+    /// Requests access through the candidate resources, most preferred first.
+    RequestAccess {
+        resource_ids: Vec<ResourceId>,
+        /// The target device's tunnel address when requesting access through device pools.
         ip: Option<IpAddr>,
+        preferred_gateways: Vec<GatewayId>,
     },
-    DevicePoolDomainQueried {
-        resource_id: ResourceId,
+    /// A DNS query for a device name asks the portal to resolve it.
+    DeviceDomainQueried {
         domain: DomainName,
     },
-    /// The list of resources or connected device peers has changed; UI clients
-    /// may have to be updated.
+    /// A PTR query in the device domain asks the portal which names it lists.
+    DeviceDomainBrowsed {
+        domain: DomainName,
+    },
+    /// The list of resources has changed and UI clients may have to be updated.
     ResourcesChanged {
-        resources: ResourceList,
+        resources: Vec<ResourceView>,
     },
     DnsRecordsChanged {
         records: BTreeSet<DnsResourceRecord>,
     },
     TunInterfaceUpdated(TunConfig),
-    /// We ran out of relays and need a new set from the portal.
-    NoRelays,
+    /// We ran out of relays and need a new set from the portal, without the excluded ones.
+    NoRelays {
+        excluded_relay_ids: Vec<RelayId>,
+    },
 }
 
 #[derive(Clone, derive_more::Debug, PartialEq, Eq, Hash)]
@@ -138,8 +145,10 @@ pub enum GatewayEvent {
         candidates: BTreeSet<IceCandidate>,
     },
     ResolveDns(ResolveDnsRequest),
-    /// We ran out of relays and need a new set from the portal.
-    NoRelays,
+    /// We ran out of relays and need a new set from the portal, without the excluded ones.
+    NoRelays {
+        excluded_relay_ids: Vec<RelayId>,
+    },
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -158,6 +167,34 @@ pub fn is_peer(dst: IpAddr) -> bool {
     match dst {
         IpAddr::V4(v4) => IPV4_TUNNEL.contains(v4),
         IpAddr::V6(v6) => IPV6_TUNNEL.contains(v6),
+    }
+}
+
+fn additional_host_candidates(sockets: Vec<SocketAddr>) -> BTreeSet<SocketAddr> {
+    sockets
+        .into_iter()
+        .filter(|socket| {
+            let ip = socket.ip();
+
+            if ip.is_unspecified() || is_routed_through_tunnel(ip) {
+                tracing::debug!(%ip, "Ignoring unusable additional host candidate");
+
+                return false;
+            }
+
+            true
+        })
+        .collect()
+}
+
+fn is_routed_through_tunnel(ip: IpAddr) -> bool {
+    match ip {
+        IpAddr::V4(v4) => {
+            IPV4_TUNNEL.contains(v4) || IPV4_RESOURCES.contains(v4) || DNS_SENTINELS_V4.contains(v4)
+        }
+        IpAddr::V6(v6) => {
+            IPV6_TUNNEL.contains(v6) || IPV6_RESOURCES.contains(v6) || DNS_SENTINELS_V6.contains(v6)
+        }
     }
 }
 

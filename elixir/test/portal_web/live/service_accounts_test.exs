@@ -1,11 +1,20 @@
 defmodule PortalWeb.ServiceAccountsTest do
   use PortalWeb.ConnCase, async: true
 
+  import Phoenix.LiveViewTest, except: [live: 2]
+
+  # The table loads in an async task, so wait for it before returning.
+  defp live(conn, path) do
+    case Phoenix.LiveViewTest.live(conn, path) do
+      {:ok, lv, _html} -> {:ok, lv, render_async(lv)}
+      other -> other
+    end
+  end
+
   alias Portal.Actor
   alias Portal.Changes.Change
   alias Portal.Repo
 
-  import ExUnit.CaptureLog
   import Portal.AccountFixtures
   import Portal.ActorFixtures
   import Portal.ClientSessionFixtures
@@ -35,6 +44,20 @@ defmodule PortalWeb.ServiceAccountsTest do
   end
 
   describe "index (default action)" do
+    test "loads the table only after the socket connects", %{conn: conn, account: account, actor: actor} do
+      service_account_fixture(account: account)
+
+      conn = authorize_conn(conn, actor)
+
+      static = conn |> get(~p"/#{account}/service_accounts") |> html_response(200) |> Floki.parse_document!()
+      assert [_] = Floki.find(static, "#actors-skeleton")
+      assert Floki.find(static, "#actors-rows tr") == []
+
+      {:ok, lv, _html} = live(conn, ~p"/#{account}/service_accounts")
+      assert has_element?(lv, "#actors-rows tr")
+      refute has_element?(lv, "#actors-skeleton")
+    end
+
     test "renders service accounts page title", %{conn: conn, account: account, actor: actor} do
       {:ok, _lv, html} =
         conn
@@ -522,6 +545,30 @@ defmodule PortalWeb.ServiceAccountsTest do
       assert html =~ "tab-token-copy-code"
     end
 
+    test "create_token tells the headless Client where this deployment is", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      Portal.Config.put_env_override(:api_url_override, nil)
+      Portal.Config.put_env_override(:api_external_url, "https://eu.api.firezone.dev/")
+      service_account = service_account_fixture(account: account)
+      expiration = Date.utc_today() |> Date.add(30) |> Date.to_iso8601()
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/service_accounts/#{service_account}")
+
+      render_click(lv, "open_add_token_form")
+
+      render_submit(element(lv, "form[phx-submit='create_token']"), %{
+        "token_expiration" => expiration
+      })
+
+      assert has_element?(lv, "#tab-token-api-url", "FIREZONE_API_URL=https://eu.api.firezone.dev/")
+    end
+
     test "dismiss_created_token hides token value", %{
       conn: conn,
       account: account,
@@ -741,10 +788,11 @@ defmodule PortalWeb.ServiceAccountsTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/service_accounts/#{service_account}/edit")
 
-      html =
-        lv
-        |> form("form[phx-submit='save']", actor: %{name: "Updated SA Name"})
-        |> render_submit()
+      lv
+      |> form("form[phx-submit='save']", actor: %{name: "Updated SA Name"})
+      |> render_submit()
+
+      html = render_async(lv)
 
       updated_service_account =
         Portal.Repo.get_by!(Portal.Actor, id: service_account.id, account_id: account.id)
@@ -1030,7 +1078,7 @@ defmodule PortalWeb.ServiceAccountsTest do
       {:ok, lv, html} =
         conn
         |> authorize_conn(actor)
-        |> live(~p"/#{account}/service_accounts")
+        |> Phoenix.LiveViewTest.live(~p"/#{account}/service_accounts")
 
       assert html =~ "Loading..."
 
@@ -1093,15 +1141,10 @@ defmodule PortalWeb.ServiceAccountsTest do
 
       render_async(lv)
 
-      log =
-        capture_log(fn ->
-          send(lv.pid, %Change{op: :insert, struct: %Actor{type: :account_user}})
-          send(lv.pid, %Change{op: :update, struct: %Actor{type: :api_client}})
-          send(lv.pid, %Change{op: :delete, old_struct: %Actor{type: :account_admin_user}})
-          render(lv)
-        end)
-
-      refute log =~ "Unhandled handle_info message in LiveView"
+      send(lv.pid, %Change{op: :insert, struct: %Actor{type: :account_user}})
+      send(lv.pid, %Change{op: :update, struct: %Actor{type: :api_client}})
+      send(lv.pid, %Change{op: :delete, old_struct: %Actor{type: :account_admin_user}})
+      render(lv)
 
       html = render(lv)
       assert html =~ "0"
@@ -1137,7 +1180,86 @@ defmodule PortalWeb.ServiceAccountsTest do
       assert has_element?(lv, "#actors-reload-btn")
 
       render_click(lv, "reload", %{"table_id" => "actors"})
-      assert render(lv) =~ "Renamed Service Account"
+      assert render_async(lv) =~ "Renamed Service Account"
+    end
+  end
+  describe "live table filters across panel operations" do
+    setup %{account: account} do
+      matching = service_account_fixture(account: account, name: "ci-runner")
+      other = service_account_fixture(account: account, name: "backup-bot")
+      filter = %{"actors_filter[name_or_email]" => "ci-"}
+      %{matching: matching, other: other, filter: filter}
+    end
+
+    test "are kept when creating a service account", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      other: other,
+      filter: filter
+    } do
+      {:ok, lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/service_accounts?#{filter}")
+
+      refute html =~ other.name
+
+      render_click(lv, "open_new_actor_panel")
+      assert_patch(lv, ~p"/#{account}/service_accounts/new?#{filter}")
+
+      render_click(lv, "close_panel")
+      assert_patch(lv, ~p"/#{account}/service_accounts?#{filter}")
+
+      render_click(lv, "open_new_actor_panel")
+
+      lv
+      |> form("form[phx-submit='create_service_account']",
+        actor: %{name: "ci-deployer"},
+        token_expiration: ""
+      )
+      |> render_submit()
+
+      created =
+        Repo.get_by!(Actor, account_id: account.id, type: :service_account, name: "ci-deployer")
+
+      assert_patch(lv, ~p"/#{account}/service_accounts/#{created.id}?#{filter}")
+
+      html = render(lv)
+      assert html =~ "ci-deployer"
+      refute html =~ other.name
+    end
+
+    test "are kept when editing a service account", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      matching: matching,
+      other: other,
+      filter: filter
+    } do
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/service_accounts/#{matching}?#{filter}")
+
+      render_click(lv, "open_actor_edit_form")
+      assert_patch(lv, ~p"/#{account}/service_accounts/#{matching}/edit?#{filter}")
+
+      render_click(lv, "cancel_actor_edit_form")
+      assert_patch(lv, ~p"/#{account}/service_accounts/#{matching}?#{filter}")
+
+      render_click(lv, "open_actor_edit_form")
+
+      lv
+      |> form("form[phx-submit='save']", actor: %{name: "ci-renamed"})
+      |> render_submit()
+
+      assert_patch(lv, ~p"/#{account}/service_accounts/#{matching}?#{filter}")
+
+      html = render_async(lv)
+      assert html =~ "ci-renamed"
+      refute html =~ other.name
     end
   end
 end

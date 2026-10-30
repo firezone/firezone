@@ -1,0 +1,80 @@
+defmodule Portal.Mailer.InternalEmailTest do
+  use Portal.DataCase, async: true
+
+  import Portal.AccountFixtures
+  import Portal.ActorFixtures
+  import Portal.SubjectFixtures
+
+  alias Portal.Config
+  alias Portal.Mailer.InternalEmail
+
+  test "uses the configured recipient" do
+    account = account_fixture()
+    actor = actor_fixture(type: :account_admin_user, account: account)
+    subject = subject_fixture(actor: actor, account: account)
+    Config.put_env_override(:portal, InternalEmail, recipient: "feedback@example.com")
+
+    email = InternalEmail.feedback_email(subject, "Feedback", "https://app.firezone.dev/")
+
+    assert email.to == [{"", "feedback@example.com"}]
+    assert email.subject == "In-portal feedback submission"
+  end
+
+  test "names the region in the sign-up questionnaire" do
+    account = account_fixture()
+    actor = actor_fixture(type: :account_admin_user, account: account)
+    Config.put_env_override(:portal, InternalEmail, recipient: "sales@example.com")
+    Config.put_env_override(:data_residency_region, :eu)
+
+    survey = %Portal.SignUpSurvey{
+      referral_source: "search",
+      motivation: "security",
+      use_case: "remote_access",
+      role: "it_admin",
+      switching: false
+    }
+
+    email = InternalEmail.sign_up_survey_email(account, actor, survey)
+
+    assert email.subject == "Sign-up questionnaire: #{account.name}"
+    assert email.text_body =~ "Region: EU"
+  end
+
+  test "reports an Enterprise seat overage" do
+    account =
+      account_fixture(%{
+        metadata: %{stripe: %{product_name: "Enterprise"}},
+        limits: %{monthly_active_users_count: 100}
+      })
+
+    Config.put_env_override(:portal, InternalEmail, recipient: "sales@example.com")
+
+    email = InternalEmail.seats_overage_email(account, 112)
+
+    assert email.to == [{"", "sales@example.com"}]
+    assert email.subject == "Enterprise seat overage: #{account.name}"
+    assert email.text_body =~ account.id
+    assert email.text_body =~ "Monthly active users: 112"
+    assert email.text_body =~ "Seats in subscription: 100"
+    assert email.text_body =~ "Seats over: 12"
+  end
+
+  for key <- [:feedback_email_recipient, :posture_provider_interest_email_recipient] do
+    test "#{key} is optional and validates configured addresses" do
+      key = unquote(key)
+      env = key |> Atom.to_string() |> String.upcase()
+      assert is_nil(Config.env_var_to_config!(Config.Definitions, key, %{}))
+
+      for value <- ["", "   "] do
+        assert is_nil(Config.env_var_to_config!(Config.Definitions, key, %{env => value}))
+      end
+
+      assert Config.env_var_to_config!(Config.Definitions, key, %{env => " feedback@example.com "}) ==
+               "feedback@example.com"
+
+      assert_raise RuntimeError, fn ->
+        Config.env_var_to_config!(Config.Definitions, key, %{env => "not-an-email"})
+      end
+    end
+  end
+end

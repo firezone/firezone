@@ -45,12 +45,14 @@ async fn main() -> ExitCode {
         .install_default()
         .expect("Failed to install default crypto provider");
 
-    telemetry::configure(std::sync::Arc::new(socket_factory::tcp));
-    telemetry::start(
-        "entrypoint",
-        firezone_gui_client::RELEASE,
-        telemetry::GUI_DSN,
-    );
+    if !firezone_gui_client::NO_TELEMETRY {
+        telemetry::configure(std::sync::Arc::new(socket_factory::tcp));
+        telemetry::start(
+            "entrypoint",
+            firezone_gui_client::RELEASE,
+            telemetry::GUI_DSN,
+        );
+    }
 
     let exit_code = run();
 
@@ -256,12 +258,12 @@ mod imp {
                 msix_uri = %uri_string(&msix_uri),
                 "calling StagePackageByUriAsync"
             );
-            Ok(pm.StagePackageByUriAsync(&msix_uri, &stage_opts)?.get()?)
+            Ok(pm.StagePackageByUriAsync(&msix_uri, &stage_opts)?.join()?)
         })?;
 
         run_deployment("provision", || {
             tracing::info!(pfn = %pfn.to_string_lossy(), "calling ProvisionPackageForAllUsersAsync");
-            Ok(pm.ProvisionPackageForAllUsersAsync(&pfn)?.get()?)
+            Ok(pm.ProvisionPackageForAllUsersAsync(&pfn)?.join()?)
         })
     }
 
@@ -287,7 +289,7 @@ mod imp {
 
         run_deployment("deprovision", || {
             tracing::info!(pfn = %pfn.to_string_lossy(), "calling DeprovisionPackageForAllUsersAsync");
-            Ok(pm.DeprovisionPackageForAllUsersAsync(&pfn)?.get()?)
+            Ok(pm.DeprovisionPackageForAllUsersAsync(&pfn)?.join()?)
         })
     }
 
@@ -332,7 +334,7 @@ mod imp {
                 );
                 Ok(pm
                     .RemovePackageWithOptionsAsync(&full_name, RemovalOptions::RemoveForAllUsers)?
-                    .get()?)
+                    .join()?)
             })?;
         }
 

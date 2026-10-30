@@ -121,7 +121,8 @@ pub enum Env {
 impl From<ApiUrl<'_>> for Env {
     fn from(value: ApiUrl) -> Self {
         match value {
-            ApiUrl::PROD => Self::Production,
+            // The EU cloud reports to the same PostHog and Sentry projects as the US one.
+            ApiUrl::PROD | ApiUrl::PROD_EU => Self::Production,
             ApiUrl::STAGING => Self::Staging,
             ApiUrl::DOCKER_COMPOSE | ApiUrl::LOCALHOST => Self::DockerCompose,
             _ => Self::OnPrem,
@@ -295,17 +296,55 @@ pub fn is_active() -> bool {
     STATE.try_read(|state| state.is_active()).unwrap_or(false)
 }
 
-pub fn set_account_slug(slug: String) {
-    let _ = STATE.try_write(|state| state.set_account_slug(slug.clone()));
+/// Stores an identity attribute in the crate state and mirrors it into the
+/// Sentry user's attribute map; `None` clears both.
+fn set_identity_attribute(
+    key: &'static str,
+    value: Option<String>,
+    store: fn(&mut state::State, Option<String>),
+) {
+    match &value {
+        Some(_) => tracing::debug!(%key, "Setting identity attribute"),
+        None => tracing::debug!(%key, "Clearing identity attribute"),
+    }
 
-    update_user(|user| {
-        user.other.insert("account_slug".to_owned(), slug.into());
+    let _ = STATE.try_write(|state| store(state, value.clone()));
+
+    update_user(|user| match value {
+        Some(value) => {
+            user.other.insert(key.to_owned(), value.into());
+        }
+        None => {
+            user.other.remove(key);
+        }
     });
+}
+
+pub fn set_account_slug(slug: impl Into<Option<String>>) {
+    set_identity_attribute("account_slug", slug.into(), state::State::set_account_slug);
+}
+
+/// Attaches the account UUID read from a managed certificate.
+pub fn set_account_id(account_id: impl Into<Option<String>>) {
+    set_identity_attribute(
+        "account_id",
+        account_id.into(),
+        state::State::set_account_id,
+    );
+}
+
+/// Attaches the actor email read from a managed certificate.
+pub fn set_actor_email(actor_email: impl Into<Option<String>>) {
+    let actor_email = actor_email.into();
+    update_user(|user| user.email.clone_from(&actor_email));
+    set_identity_attribute("actor_email", actor_email, state::State::set_actor_email);
 }
 
 /// Attaches the Firezone ID to the active Sentry session.
 pub fn set_firezone_id(firezone_id: String) {
     let new_user = compute_user(firezone_id);
+
+    tracing::debug!(user = %new_user.id.as_deref().unwrap_or("<none>"), "Setting user");
 
     let _ = STATE.try_write(|state| state.set_firezone_id(new_user.id.clone()));
 
@@ -317,6 +356,19 @@ pub fn set_firezone_id(firezone_id: String) {
     // The user (and maybe env) may now be available, so re-eval feature flags on
     // telemetry's internal ingest runtime.
     feature_flags::reevaluate_current();
+}
+
+/// Attaches the MDM's device identifier to the active Sentry session.
+///
+/// This identifier comes from the client certificate and allows an event to be
+/// correlated with the device attested by the Portal even when multiple
+/// installations share a Firezone ID.
+pub fn set_mdm_device_id(mdm_device_id: impl Into<Option<String>>) {
+    set_identity_attribute(
+        "mdm_device_id",
+        mdm_device_id.into(),
+        state::State::set_mdm_device_id,
+    );
 }
 
 #[doc(hidden)] // Only public for testing.
@@ -332,6 +384,21 @@ pub fn current_user() -> Option<String> {
 #[doc(hidden)] // Only public for testing.
 pub fn current_account_slug() -> Option<String> {
     STATE.try_read(|state| state.account_slug()).ok().flatten()
+}
+
+#[doc(hidden)] // Only public for testing.
+pub fn current_account_id() -> Option<String> {
+    STATE.try_read(|state| state.account_id()).ok().flatten()
+}
+
+#[doc(hidden)] // Only public for testing.
+pub fn current_actor_email() -> Option<String> {
+    STATE.try_read(|state| state.actor_email()).ok().flatten()
+}
+
+#[doc(hidden)] // Only public for testing.
+pub fn current_mdm_device_id() -> Option<String> {
+    STATE.try_read(|state| state.mdm_device_id()).ok().flatten()
 }
 
 /// The identity feature flags are evaluated for: the current user and environment.
@@ -406,8 +473,13 @@ fn append_tracing_fields_to_message(mut log: Log) -> Log {
     ];
 
     for (key, attribute) in mem::take(&mut log.attributes) {
-        let LogAttribute(serde_json::Value::String(attr_string)) = &attribute else {
-            continue;
+        let value = match &attribute.0 {
+            serde_json::Value::String(value) => value.clone(),
+            serde_json::Value::Number(value) => value.to_string(),
+            serde_json::Value::Bool(value) => value.to_string(),
+            serde_json::Value::Null => continue,
+            serde_json::Value::Array(_) => continue,
+            serde_json::Value::Object(_) => continue,
         };
 
         if IGNORED_ATTRS.iter().any(|attr| key.starts_with(attr)) {
@@ -425,34 +497,62 @@ fn append_tracing_fields_to_message(mut log: Log) -> Log {
             continue;
         }
 
-        log.body.push_str(&format!(" {key}={attr_string}"));
+        log.body.push_str(&format!(" {key}={value}"));
         log.attributes.insert(key.to_owned(), attribute);
     }
 
     log
 }
 
-fn insert_user_account_slug_into_log(mut log: Log) -> Log {
-    let Some(account_slug) = current_account_slug() else {
-        return log;
-    };
-
-    log.attributes.insert(
-        "user.account_slug".to_owned(),
-        LogAttribute::from(account_slug),
-    );
+fn insert_user_attributes_into_log(mut log: Log) -> Log {
+    if let Some(account_slug) = current_account_slug() {
+        log.attributes.insert(
+            "user.account_slug".to_owned(),
+            LogAttribute::from(account_slug),
+        );
+    }
+    if let Some(account_id) = current_account_id() {
+        log.attributes
+            .insert("user.account_id".to_owned(), LogAttribute::from(account_id));
+    }
+    if let Some(actor_email) = current_actor_email() {
+        log.attributes.insert(
+            "user.actor_email".to_owned(),
+            LogAttribute::from(actor_email),
+        );
+    }
+    if let Some(mdm_device_id) = current_mdm_device_id() {
+        log.attributes.insert(
+            "user.mdm_device_id".to_owned(),
+            LogAttribute::from(mdm_device_id),
+        );
+    }
 
     log
 }
 
-fn insert_user_account_slug_into_metric(mut metric: Metric) -> Metric {
-    let Some(account_slug) = current_account_slug() else {
-        return metric;
-    };
-
-    metric
-        .attributes
-        .insert("user.account_slug".into(), LogAttribute::from(account_slug));
+fn insert_user_attributes_into_metric(mut metric: Metric) -> Metric {
+    if let Some(account_slug) = current_account_slug() {
+        metric
+            .attributes
+            .insert("user.account_slug".into(), LogAttribute::from(account_slug));
+    }
+    if let Some(account_id) = current_account_id() {
+        metric
+            .attributes
+            .insert("user.account_id".into(), LogAttribute::from(account_id));
+    }
+    if let Some(actor_email) = current_actor_email() {
+        metric
+            .attributes
+            .insert("user.actor_email".into(), LogAttribute::from(actor_email));
+    }
+    if let Some(mdm_device_id) = current_mdm_device_id() {
+        metric.attributes.insert(
+            "user.mdm_device_id".into(),
+            LogAttribute::from(mdm_device_id),
+        );
+    }
 
     metric
 }
@@ -508,6 +608,7 @@ mod tests {
         assert_eq!(Env::parse("entrypoint"), Env::Entrypoint);
         assert_eq!(Env::parse("production"), Env::Production);
         assert_eq!(Env::parse("wss://api.firezone.dev"), Env::Production);
+        assert_eq!(Env::parse("wss://eu.api.firezone.dev"), Env::Production);
         assert_eq!(Env::parse("wss://api.firez.one"), Env::Staging);
         assert_eq!(Env::parse("https://example.com"), Env::OnPrem);
     }
@@ -586,6 +687,73 @@ mod tests {
                 )
             ])
         )
+    }
+
+    #[test]
+    fn preserves_and_appends_non_string_attributes() {
+        let attributes = BTreeMap::from([
+            ("enabled".to_owned(), LogAttribute(serde_json::json!(true))),
+            ("flows".to_owned(), LogAttribute(serde_json::json!(3))),
+            (
+                "inner_src_port".to_owned(),
+                LogAttribute(serde_json::json!(52625)),
+            ),
+            ("ratio".to_owned(), LogAttribute(serde_json::json!(0.5))),
+            (
+                "sentry.sample_rate".to_owned(),
+                LogAttribute(serde_json::json!(1.0)),
+            ),
+            (
+                "user.verified".to_owned(),
+                LogAttribute(serde_json::json!(false)),
+            ),
+        ]);
+        let mut log = log("Foobar", &[]);
+        log.attributes = attributes.clone();
+        let flows = log
+            .attributes
+            .remove("flows")
+            .expect("test attribute exists");
+        log.attributes
+            .insert("handle_input:flows".to_owned(), flows);
+
+        let log = append_tracing_fields_to_message(log);
+
+        assert_eq!(log.attributes, attributes);
+        assert_eq!(
+            log.body,
+            "Foobar enabled=true flows=3 inner_src_port=52625 ratio=0.5"
+        );
+    }
+
+    #[test]
+    fn ignores_null_and_compound_attributes() {
+        let mut log = log("Foobar", &[]);
+        log.attributes = BTreeMap::from([
+            ("empty".to_owned(), LogAttribute(serde_json::json!(null))),
+            ("list".to_owned(), LogAttribute(serde_json::json!([1, 2]))),
+            (
+                "object".to_owned(),
+                LogAttribute(serde_json::json!({"enabled": true})),
+            ),
+        ]);
+
+        let log = append_tracing_fields_to_message(log);
+
+        assert_eq!(log.body, "Foobar");
+        assert!(log.attributes.is_empty());
+    }
+
+    #[test]
+    fn user_attributes_carry_the_mdm_device_id() {
+        set_mdm_device_id("device-1234".to_owned());
+
+        let log = insert_user_attributes_into_log(log("Foobar", &[]));
+
+        assert_eq!(
+            log.attributes.get("user.mdm_device_id"),
+            Some(&LogAttribute::from("device-1234".to_owned()))
+        );
     }
 
     fn event(msg: &str) -> Event<'static> {

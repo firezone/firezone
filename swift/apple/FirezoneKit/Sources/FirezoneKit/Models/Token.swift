@@ -28,6 +28,7 @@ public struct Token: CustomStringConvertible, Sendable {
   }
 
   private var data: Data
+  public var signInSettings: SignInSettings?
 
   // TODO: refactor to avoid force unwrapping
   // swiftlint:disable:next force_unwrapping
@@ -41,8 +42,13 @@ public struct Token: CustomStringConvertible, Sendable {
     self.data = data
   }
 
-  public init(_ data: Data) {
+  init?(keychainAttributes: [String: Any]) throws {
+    guard let data = keychainAttributes[kSecValueData as String] as? Data else { return nil }
     self.data = data
+
+    if let encoded = keychainAttributes[kSecAttrGeneric as String] as? Data, !encoded.isEmpty {
+      signInSettings = try PropertyListDecoder().decode(SignInSettings.self, from: encoded)
+    }
   }
 
   public static func delete() throws {
@@ -54,6 +60,14 @@ public struct Token: CustomStringConvertible, Sendable {
 
   // Upsert token to Keychain
   public func save() throws {
+    let metadata = try signInSettings.map {
+      try PropertyListEncoder().encode($0)
+    }
+    let attributes: [CFString: Any] = [
+      kSecValueData: data,
+      kSecAttrGeneric: metadata ?? Data(),
+    ]
+
     if let existingRef = Keychain.search(query: Token.query) {
       let updateQuery = Token.query.merging([
         kSecClass: kSecClassGenericPassword
@@ -62,7 +76,7 @@ public struct Token: CustomStringConvertible, Sendable {
       do {
         try Keychain.update(
           query: updateQuery,
-          attributesToUpdate: [kSecValueData: data]
+          attributesToUpdate: attributes
         )
         return
       } catch let error as KeychainError {
@@ -76,10 +90,8 @@ public struct Token: CustomStringConvertible, Sendable {
       }
     }
 
-    let query = Token.query.merging([
-      kSecClass: kSecClassGenericPassword,
-      kSecValueData: data,
-    ]) { (_, new) in new }
+    let query = Token.query.merging(attributes) { (_, new) in new }
+      .merging([kSecClass: kSecClassGenericPassword]) { (_, new) in new }
 
     try Keychain.add(query: query)
   }
@@ -90,9 +102,6 @@ public struct Token: CustomStringConvertible, Sendable {
     guard let tokenRef = Keychain.search(query: query)
     else { return nil }
 
-    guard let data = Keychain.load(persistentRef: tokenRef)
-    else { return nil }
-
-    return Token(data)
+    return try Token(keychainAttributes: Keychain.loadAttributes(persistentRef: tokenRef))
   }
 }

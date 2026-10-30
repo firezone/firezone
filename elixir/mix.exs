@@ -77,11 +77,11 @@ defmodule Portal.MixProject do
       {:phoenix, "~> 1.8"},
       {:phoenix_pubsub, "~> 2.0"},
       {:phoenix_html, "~> 4.0"},
-      {:phoenix_template, "~> 1.0.4"},
+      {:phoenix_template, "~> 1.1.0"},
       {:phoenix_live_view, "~> 1.1"},
       {:phoenix_live_dashboard, "~> 0.8"},
       {:phoenix_live_reload, "~> 1.2", only: :dev},
-      {:bandit, "~> 1.0"},
+      {:bandit, "~> 1.3"},
       {:plug, "~> 1.15"},
       {:gettext, "~> 1.0"},
       {:remote_ip, "~> 1.1"},
@@ -102,7 +102,7 @@ defmodule Portal.MixProject do
 
       # Email
       {:gen_smtp, "~> 1.0"},
-      {:swoosh, "~> 1.27.0"},
+      {:swoosh, "~> 1.29.0"},
       {:phoenix_swoosh, "~> 1.0"},
 
       # IP Geolocation
@@ -112,7 +112,7 @@ defmodule Portal.MixProject do
       # API / OpenAPI
       {:open_api_spex, "~> 3.22.0"},
       {:ymlr, "~> 5.0"},
-      {:hammer, "~> 7.4.0"},
+      {:hammer, "~> 7.5.0"},
 
       # AWS request signing
       {:aws_signature, "~> 0.4"},
@@ -146,7 +146,7 @@ defmodule Portal.MixProject do
       # TODO: Remove override when this issue is resolved:
       # https://github.com/open-telemetry/opentelemetry-erlang-contrib/issues/428
       {:opentelemetry_semantic_conventions, "~> 1.27", override: true},
-      {:sentry, "~> 13.1"},
+      {:sentry, "~> 14.0"},
       {:logger_json, "~> 7.0"},
       {:req, "~> 0.7.2"},
 
@@ -200,7 +200,7 @@ defmodule Portal.MixProject do
       "assets.deploy": ["tailwind portal --minify", "esbuild portal --minify", "phx.digest"],
       "phx.server": ["ecto.create --quiet", "ecto.migrate", "phx.server"],
       "openapi.generate": [
-        "openapi.spec.json --spec PortalAPI.ApiSpec --pretty=true --vendor-extensions=false --filename priv/static/openapi.json"
+        "openapi.spec.json --spec PortalAPI.ApiSpec --pretty=true --vendor-extensions=false --filename priv/static/openapi.json --no-start-app"
       ],
       test: ["ecto.create --quiet", "ecto.migrate", "openapi.generate", "test"],
       start: ["compile --no-validate-compile-env", "phx.server", "run --no-halt"]

@@ -25,9 +25,17 @@ private final class RecordingTunnelSession: TunnelSessionProtocol, @unchecked Se
   }
 
   // swiftlint:disable:next discouraged_optional_collection
+  private(set) var startTunnelOptions: [String: Any]?
+
+  // swiftlint:disable:next discouraged_optional_collection
   func startTunnel(options: [String: Any]?) throws {
     startTunnelCallCount += 1
+    startTunnelOptions = options
     status = .connected
+  }
+
+  func statusUpdates() -> AsyncStream<NEVPNStatus> {
+    AsyncStream { $0.finish() }
   }
 
   func stopTunnel() {
@@ -48,13 +56,34 @@ private final class RecordingTunnelSession: TunnelSessionProtocol, @unchecked Se
 @Suite("IPCClient")
 @MainActor
 struct IPCClientTests {
+  @Test("A token start carries the token and optional certificate")
+  func tokenStartPayload() throws {
+    let session = RecordingTunnelSession(status: .disconnected)
+    let reference = Data([0xAA, 0xBB])
+    let signInSettings = SignInSettings(
+      accountSlug: "acme", authURL: "https://auth.example.com", apiURL: "wss://api.example.com")
+
+    try IPCClient.start(
+      session: session,
+      token: "the-token",
+      signInSettings: signInSettings,
+      identityReference: reference
+    )
+
+    #expect(session.startTunnelOptions?["authentication"] as? String == "tokenAndCertificate")
+    #expect(session.startTunnelOptions?["token"] as? String == "the-token")
+    #expect(session.startTunnelOptions?["identityReference"] as? Data == reference)
+    let settingsData = try #require(session.startTunnelOptions?["signInSettings"] as? Data)
+    #expect(
+      try PropertyListDecoder().decode(SignInSettings.self, from: settingsData) == signInSettings)
+  }
+
   @Test("Polling decodes state and notifications from one response")
   func pollUpdates() async throws {
     let previousHash = Data([0x01, 0x02])
     let stateChange = try #require(
       try ConnlibState.makeIfChanged(
         resources: nil,
-        connectedDevices: [],
         isLogStreamingActive: false,
         comparedTo: previousHash
       )
@@ -81,6 +110,40 @@ struct IPCClientTests {
       return
     }
     #expect(request.stateHash == previousHash)
+  }
+
+  @Test("status returns what the extension said")
+  func statusReturnsTheExtensionsAnswer() async throws {
+    let answer = TunnelStatus.connected(accountSlug: "acme", actorName: "Jane Doe")
+    let session = RecordingTunnelSession(
+      status: .connected,
+      responseData: try PropertyListEncoder().encode(answer)
+    )
+
+    let status = try await IPCClient.status(session: session)
+
+    #expect(status == answer)
+    #expect(session.sentMessages.count == 1)
+    guard case .getStatus = session.sentMessages[0] else {
+      Issue.record("Expected a getStatus message")
+      return
+    }
+    #expect(session.startTunnelCallCount == 0)
+  }
+
+  @Test("status wakes a stopped tunnel for its answer and stops it again")
+  func statusCycleStartsAStoppedTunnel() async throws {
+    let session = RecordingTunnelSession(
+      status: .disconnected,
+      responseData: try PropertyListEncoder().encode(TunnelStatus.disconnected)
+    )
+
+    let status = try await IPCClient.status(session: session)
+
+    #expect(status == .disconnected)
+    #expect(session.startTunnelCallCount == 1)
+    #expect(session.startTunnelOptions?["cycleStart"] as? Bool == true)
+    #expect(session.stopTunnelCallCount == 1)
   }
 
   @Test("A running tunnel is stopped and reported")

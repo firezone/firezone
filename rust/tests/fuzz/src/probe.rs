@@ -1,9 +1,18 @@
-use std::{net::IpAddr, time::Instant};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    net::IpAddr,
+    time::{Duration, Instant},
+};
 
 use connlib_model::{ClientId, GatewayId, ResourceId};
-use ip_packet::{IpPacket, Protocol};
+use ip_packet::{IpPacket, Protocol, UnsupportedProtocol};
 
+use crate::ref_client::RefClient;
+use crate::ref_gateway::RefGateway;
+use crate::site_network::{IcmpError, RouteType};
 use crate::transition::{DPort, Destination, Identifier, SPort, Seq};
+
+pub(crate) const DNS_NAT_SESSION_TTL: Duration = Duration::from_secs(2 * 60);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub(crate) struct ProbeId(u64);
@@ -24,10 +33,70 @@ impl ProbeId {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub(crate) struct FlowId(u64);
+
+impl FlowId {
+    pub(crate) fn new(value: u64) -> Self {
+        Self(value)
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) enum ProbeProtocol {
     Icmp { seq: Seq, identifier: Identifier },
     Udp { sport: SPort, dport: DPort },
+    Tcp { sport: SPort, dport: DPort },
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct IcmpFlow {
+    pub(crate) client_id: ClientId,
+    pub(crate) src: IpAddr,
+    pub(crate) dst: Destination,
+    pub(crate) identifier: Identifier,
+    pub(crate) next_seq: Seq,
+    pub(crate) route: Route,
+    pub(crate) last_round_trip: Instant,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct UdpFlow {
+    pub(crate) client_id: ClientId,
+    pub(crate) src: IpAddr,
+    pub(crate) dst: Destination,
+    pub(crate) sport: SPort,
+    pub(crate) dport: DPort,
+    pub(crate) route: Route,
+    pub(crate) last_round_trip: Instant,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct TcpFlow {
+    pub(crate) client_id: ClientId,
+    pub(crate) src: IpAddr,
+    pub(crate) dst: Destination,
+    pub(crate) sport: SPort,
+    pub(crate) dport: DPort,
+    pub(crate) route: Route,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Route {
+    Resource {
+        resource: ResourceId,
+        gateway: GatewayId,
+    },
+    Peer(ClientId),
+}
+
+impl Route {
+    pub(crate) fn remote(self) -> Remote {
+        match self {
+            Route::Resource { gateway, .. } => Remote::Gateway(gateway),
+            Route::Peer(client) => Remote::Client(client),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -44,6 +113,14 @@ pub(crate) enum ProbeRequest {
         sport: SPort,
         dport: DPort,
     },
+    Tcp {
+        src: IpAddr,
+        dst: Destination,
+        sport: SPort,
+        dport: DPort,
+        /// The `len` of a write, or `None` for a connect.
+        write_len: Option<u16>,
+    },
 }
 
 impl ProbeRequest {
@@ -51,6 +128,7 @@ impl ProbeRequest {
         match self {
             ProbeRequest::Icmp { src, .. } => *src,
             ProbeRequest::Udp { src, .. } => *src,
+            ProbeRequest::Tcp { src, .. } => *src,
         }
     }
 
@@ -58,6 +136,7 @@ impl ProbeRequest {
         match self {
             ProbeRequest::Icmp { dst, .. } => dst,
             ProbeRequest::Udp { dst, .. } => dst,
+            ProbeRequest::Tcp { dst, .. } => dst,
         }
     }
 
@@ -65,6 +144,7 @@ impl ProbeRequest {
         match self {
             ProbeRequest::Icmp { identifier, .. } => Protocol::IcmpEcho(identifier.0),
             ProbeRequest::Udp { dport, .. } => Protocol::Udp(dport.0),
+            ProbeRequest::Tcp { dport, .. } => Protocol::Tcp(dport.0),
         }
     }
 
@@ -80,29 +160,12 @@ impl ProbeRequest {
                 sport: *sport,
                 dport: *dport,
             },
+            ProbeRequest::Tcp { sport, dport, .. } => ProbeProtocol::Tcp {
+                sport: *sport,
+                dport: *dport,
+            },
         }
     }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum PacketRoute {
-    Drop,
-    Resource {
-        resource: ResourceId,
-        gateway: GatewayId,
-    },
-    RejectedByClient,
-    ResourceRejectedByGateway {
-        resource: ResourceId,
-        gateway: GatewayId,
-    },
-    ResourceUnreachableByGateway {
-        resource: ResourceId,
-        gateway: GatewayId,
-    },
-    Gateway(GatewayId),
-    Peer(ClientId),
-    PeerRejectedByPeer(ClientId),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -113,15 +176,50 @@ pub(crate) enum Remote {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ExpectedOutcome {
+    /// Nothing observes the packet.
     Dropped,
-    RoundTripCompleted {
-        remote: Remote,
-        resource: Option<ResourceId>,
-    },
+    /// The route's remote receives the request and the Client its answer.
+    RoundTripCompleted(Route, Answer),
+    /// `by` answers with an ICMP error and nothing receives the request.
     Rejected {
         by: RejectionRemote,
         response: RejectionResponse,
     },
+}
+
+/// What a request that reaches its destination is answered with.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Answer {
+    /// The reply the request asks for: an echo reply, the UDP payload or a SYN-ACK.
+    Echo,
+    /// A TCP reset to a SYN, because nothing listens on the port.
+    Reset,
+    /// All bytes of a TCP write, read back.
+    WriteEchoed,
+    /// A TCP reset to a write, because the remote does not know the connection.
+    WriteReset,
+}
+
+impl ExpectedOutcome {
+    /// The remote the packet reached, if any.
+    pub(crate) fn remote(self) -> Option<Remote> {
+        match self {
+            ExpectedOutcome::Dropped => None,
+            ExpectedOutcome::RoundTripCompleted(route, _) => Some(route.remote()),
+            ExpectedOutcome::Rejected {
+                by: RejectionRemote::Local,
+                ..
+            } => None,
+            ExpectedOutcome::Rejected {
+                by: RejectionRemote::Gateway(gateway),
+                ..
+            } => Some(Remote::Gateway(gateway)),
+            ExpectedOutcome::Rejected {
+                by: RejectionRemote::Client(client),
+                ..
+            } => Some(Remote::Client(client)),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -140,12 +238,13 @@ pub(crate) enum RejectionResponse {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum TraceRequirement {
     Exact,
-    ExactOrSubmissionOnly(KnownLoss),
+    ExactOrLoss(KnownLoss),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum KnownLoss {
     ConnectionReset,
+    PeerCrash,
     WireGuardRekey,
 }
 
@@ -159,6 +258,55 @@ pub(crate) struct ExpectedProbe {
     pub(crate) trace_requirement: TraceRequirement,
 }
 
+/// How the remote answers a request it received.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum RemoteResponse {
+    Echo,
+    /// A TCP reset.
+    Reset,
+    /// An ICMP error, of the given kind if known.
+    IcmpError(Option<IcmpError>),
+    Nothing,
+}
+
+/// Returns how the remote answers `received_request`, given that its destination answers with
+/// `answer`.
+pub(crate) fn remote_response(
+    expected: &ExpectedProbe,
+    received_request: &ReceivedRequest,
+    answer: RemoteResponse,
+    ref_clients: &BTreeMap<ClientId, &RefClient>,
+    ref_gateways: &BTreeMap<GatewayId, &RefGateway>,
+) -> RemoteResponse {
+    let peer = |client: ClientId| {
+        if ref_clients[&client]
+            .malicious_behaviour
+            .send_untracked_icmp_errors
+        {
+            return RemoteResponse::IcmpError(None);
+        }
+
+        answer
+    };
+    let network = |gateway: GatewayId| match ref_gateways[&gateway]
+        .routes
+        .route(received_request.packet.destination())
+    {
+        RouteType::Deliver => answer,
+        RouteType::Unreachable(error) => RemoteResponse::IcmpError(Some(error)),
+        RouteType::Blackhole => RemoteResponse::Nothing,
+    };
+
+    match (&expected.request, received_request.remote) {
+        (ProbeRequest::Icmp { .. }, Remote::Gateway(gateway)) => network(gateway),
+        (ProbeRequest::Icmp { .. }, Remote::Client(_)) => answer,
+        (ProbeRequest::Udp { .. }, Remote::Gateway(gateway)) => network(gateway),
+        (ProbeRequest::Udp { .. }, Remote::Client(client)) => peer(client),
+        (ProbeRequest::Tcp { .. }, Remote::Gateway(gateway)) => network(gateway),
+        (ProbeRequest::Tcp { .. }, Remote::Client(client)) => peer(client),
+    }
+}
+
 #[derive(Debug, Clone)]
 pub(crate) struct SubmittedRequest {
     pub(crate) id: ProbeId,
@@ -169,9 +317,12 @@ pub(crate) struct SubmittedRequest {
 
 #[derive(Debug, Clone)]
 pub(crate) struct ReceivedRequest {
-    pub(crate) id: ProbeId,
+    /// The probe ID in the request's payload, or `None` for a TCP SYN.
+    pub(crate) id: Option<ProbeId>,
     pub(crate) at: Instant,
     pub(crate) remote: Remote,
+    pub(crate) gateway_order: Option<u64>,
+    pub(crate) dns_nat_generation: Option<u64>,
     pub(crate) packet: IpPacket,
 }
 
@@ -183,19 +334,174 @@ pub(crate) struct ReceivedResponse {
     pub(crate) packet: IpPacket,
 }
 
+/// All of a TCP write was echoed back on its connection.
+#[derive(Debug, Clone)]
+pub(crate) struct CompletedStream {
+    pub(crate) id: ProbeId,
+    pub(crate) client: ClientId,
+}
+
 #[derive(Debug, Clone)]
 pub(crate) enum ProbeObservation {
     RequestSubmitted(SubmittedRequest),
     RequestReceived(ReceivedRequest),
     ResponseReceived(ReceivedResponse),
+    StreamCompleted(CompletedStream),
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct DnsNatObservation {
+    pub(crate) domain: dns_types::DomainName,
+    pub(crate) flow_id: FlowId,
+    pub(crate) submitted: SubmittedRequest,
+    pub(crate) received: ReceivedRequest,
+    pub(crate) response_received_at: Option<Instant>,
+    pub(crate) dns_addresses: BTreeSet<IpAddr>,
+}
+
+#[derive(Debug)]
+pub(crate) struct ProbeTrace<'a> {
+    pub(crate) observations: Vec<&'a ProbeObservation>,
+    pub(crate) submitted_requests: Vec<&'a SubmittedRequest>,
+    pub(crate) received_requests: Vec<&'a ReceivedRequest>,
+    pub(crate) received_responses: Vec<&'a ReceivedResponse>,
+    pub(crate) completed_streams: Vec<&'a CompletedStream>,
+}
+
+impl<'a> ProbeTrace<'a> {
+    pub(crate) fn new(observations: impl Iterator<Item = &'a ProbeObservation>) -> Self {
+        let observations = observations.collect::<Vec<_>>();
+        let submitted_requests = observations
+            .iter()
+            .copied()
+            .filter_map(ProbeObservation::as_submitted_request)
+            .collect();
+        let received_requests = observations
+            .iter()
+            .copied()
+            .filter_map(ProbeObservation::as_received_request)
+            .collect();
+        let received_responses = observations
+            .iter()
+            .copied()
+            .filter_map(ProbeObservation::as_received_response)
+            .collect();
+        let completed_streams = observations
+            .iter()
+            .copied()
+            .filter_map(ProbeObservation::as_completed_stream)
+            .collect();
+
+        Self {
+            observations,
+            submitted_requests,
+            received_requests,
+            received_responses,
+            completed_streams,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) struct DnsNatKey {
+    pub(crate) client: ClientId,
+    pub(crate) gateway: GatewayId,
+    pub(crate) dns_nat_generation: u64,
+    pub(crate) proxy: IpAddr,
+    pub(crate) protocol: Protocol,
+}
+
+#[derive(Debug)]
+pub(crate) enum InvalidDnsNatObservation {
+    RemoteIsClient(ClientId),
+    Tcp(u16),
+    UnsupportedProtocol(UnsupportedProtocol),
+    MissingGeneration(GatewayId),
+}
+
+pub(crate) struct DnsNatSession<'a> {
+    pub(crate) key: DnsNatKey,
+    pub(crate) observations: Vec<&'a DnsNatObservation>,
+}
+
+pub(crate) struct DnsNatSessions<'a> {
+    pub(crate) invalid: Vec<(&'a DnsNatObservation, InvalidDnsNatObservation)>,
+    pub(crate) sessions: Vec<DnsNatSession<'a>>,
+}
+
+impl<'a> DnsNatSessions<'a> {
+    pub(crate) fn new(observations: &'a [DnsNatObservation]) -> Self {
+        let mut observations_by_nat_key = BTreeMap::<DnsNatKey, Vec<_>>::new();
+        let mut invalid = Vec::new();
+
+        for observation in observations {
+            match observation.nat_key() {
+                Ok(key) => observations_by_nat_key
+                    .entry(key)
+                    .or_default()
+                    .push(observation),
+                Err(error) => invalid.push((observation, error)),
+            }
+        }
+
+        let sessions = observations_by_nat_key
+            .into_iter()
+            .flat_map(|(key, observations)| {
+                observations
+                    .chunk_by(|previous, current| {
+                        current
+                            .received
+                            .at
+                            .saturating_duration_since(previous.received.at)
+                            < DNS_NAT_SESSION_TTL
+                    })
+                    .map(move |observations| DnsNatSession {
+                        key,
+                        observations: observations.to_vec(),
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .collect();
+
+        Self { invalid, sessions }
+    }
+}
+
+impl DnsNatObservation {
+    fn nat_key(&self) -> Result<DnsNatKey, InvalidDnsNatObservation> {
+        let gateway = match self.received.remote {
+            Remote::Gateway(gateway) => gateway,
+            Remote::Client(client) => {
+                return Err(InvalidDnsNatObservation::RemoteIsClient(client));
+            }
+        };
+        let protocol = match self.submitted.packet.source_protocol() {
+            Ok(Protocol::Udp(port)) => Protocol::Udp(port),
+            Ok(Protocol::IcmpEcho(identifier)) => Protocol::IcmpEcho(identifier),
+            Ok(Protocol::Tcp(port)) => return Err(InvalidDnsNatObservation::Tcp(port)),
+            Err(error) => return Err(InvalidDnsNatObservation::UnsupportedProtocol(error)),
+        };
+        let Some(dns_nat_generation) = self.received.dns_nat_generation else {
+            return Err(InvalidDnsNatObservation::MissingGeneration(gateway));
+        };
+
+        Ok(DnsNatKey {
+            client: self.submitted.client,
+            gateway,
+            dns_nat_generation,
+            proxy: self.submitted.packet.destination(),
+            protocol,
+        })
+    }
 }
 
 impl ProbeObservation {
-    pub(crate) fn id(&self) -> ProbeId {
+    pub(crate) fn id(&self) -> Option<ProbeId> {
         match self {
-            ProbeObservation::RequestSubmitted(observation) => observation.id,
+            ProbeObservation::RequestSubmitted(observation) => Some(observation.id),
             ProbeObservation::RequestReceived(observation) => observation.id,
-            ProbeObservation::ResponseReceived(observation) => observation.id,
+            ProbeObservation::ResponseReceived(observation) => Some(observation.id),
+            ProbeObservation::StreamCompleted(observation) => Some(observation.id),
         }
     }
 
@@ -204,6 +510,7 @@ impl ProbeObservation {
             ProbeObservation::RequestSubmitted(submitted) => Some(submitted),
             ProbeObservation::RequestReceived(_) => None,
             ProbeObservation::ResponseReceived(_) => None,
+            ProbeObservation::StreamCompleted(_) => None,
         }
     }
 
@@ -212,6 +519,7 @@ impl ProbeObservation {
             ProbeObservation::RequestSubmitted(_) => None,
             ProbeObservation::RequestReceived(received) => Some(received),
             ProbeObservation::ResponseReceived(_) => None,
+            ProbeObservation::StreamCompleted(_) => None,
         }
     }
 
@@ -220,6 +528,16 @@ impl ProbeObservation {
             ProbeObservation::RequestSubmitted(_) => None,
             ProbeObservation::RequestReceived(_) => None,
             ProbeObservation::ResponseReceived(received) => Some(received),
+            ProbeObservation::StreamCompleted(_) => None,
+        }
+    }
+
+    pub(crate) fn as_completed_stream(&self) -> Option<&CompletedStream> {
+        match self {
+            ProbeObservation::RequestSubmitted(_) => None,
+            ProbeObservation::RequestReceived(_) => None,
+            ProbeObservation::ResponseReceived(_) => None,
+            ProbeObservation::StreamCompleted(completed) => Some(completed),
         }
     }
 }

@@ -14,7 +14,6 @@ defmodule PortalAPI.FlowLogController do
   import Ecto.Changeset
   alias OpenApiSpex.Schema
   alias Portal.FlowLog
-  alias Portal.FlowLogToken
   alias Portal.Types.LogId
   alias PortalAPI.ProblemDetails
   alias PortalAPI.Schemas.ProblemDetails, as: ProblemDetailsSchema
@@ -81,9 +80,9 @@ defmodule PortalAPI.FlowLogController do
   end
 
   def create(conn, %{"flow_logs" => records}) when is_list(records) do
-    with {:ok, claims} <- authenticate(conn),
-         :ok <- ensure_uploads_enabled(claims),
-         :ok <- ensure_single_authorization(records, claims) do
+    claims = conn.assigns.flow_log_claims
+
+    with :ok <- ensure_single_authorization(records, claims) do
       now = DateTime.utc_now()
 
       {valid, errors} =
@@ -100,24 +99,13 @@ defmodule PortalAPI.FlowLogController do
       if errors == [] do
         conn
         |> put_status(200)
-        |> put_view(json: PortalAPI.FlowLogJSON)
-        |> render(:ok)
+        |> json(%{data: %{status: "ok"}})
       else
         ProblemDetails.send(conn, 422, "Some flow log records failed validation", %{
           validation_errors: render_validation_errors(Enum.reverse(errors))
         })
       end
     else
-      {:error, :unauthenticated} ->
-        ProblemDetails.send(conn, 401, "Authentication credentials were missing or invalid.")
-
-      {:error, :uploads_disabled} ->
-        ProblemDetails.send(
-          conn,
-          401,
-          "Flow log uploads are not enabled for this authorization"
-        )
-
       {:error, :multiple_authorizations} ->
         ProblemDetails.send(
           conn,
@@ -130,25 +118,6 @@ defmodule PortalAPI.FlowLogController do
   def create(conn, _params) do
     ProblemDetails.send(conn, 400, "Expected a \"flow_logs\" array")
   end
-
-  # The single per-authorization ingest token authenticates the whole request.
-  # An unknown account, a bad signature, an expired or malformed token, and a
-  # missing header all collapse to the same 401 so the endpoint reveals nothing.
-  defp authenticate(conn) do
-    with ["Bearer " <> token] <- get_req_header(conn, "authorization"),
-         {:ok, claims} <- FlowLogToken.verify(token) do
-      {:ok, claims}
-    else
-      _ -> {:error, :unauthenticated}
-    end
-  end
-
-  # Tokens are minted for every authorization so devices always receive their
-  # attribution, but the `uploads_enabled` claim carries the policy's opt-in.
-  # Devices honor it client-side; this is the server-side backstop. A token
-  # without the claim fails closed.
-  defp ensure_uploads_enabled(%{"uploads_enabled" => true}), do: :ok
-  defp ensure_uploads_enabled(_claims), do: {:error, :uploads_disabled}
 
   # The token names exactly one policy authorization; a record that declares a
   # different one means the reporter mixed authorizations into one request, which
@@ -178,7 +147,7 @@ defmodule PortalAPI.FlowLogController do
 
   # Threads {valid, errors}: valid is a list of {index, entry} and errors a list
   # of {index, reason}. Attribution comes from the request token (claims), so a
-  # record only needs structural validation of its body.
+  # record needs body validation through the schema changeset.
   defp validate_record(record, index, _claims, _now, {valid, invalid})
        when not is_map(record) do
     {valid, [{index, :not_a_map} | invalid]}
@@ -346,9 +315,15 @@ defmodule PortalAPI.FlowLogController do
     # so collapse multiple reports of the same flow within a batch (e.g. an open
     # and its close) into one row, preferring the close (it carries flow_end and
     # the counters).
+    #
+    # Rows are sorted by identity because Postgres takes row locks in VALUES
+    # order. Map iteration order depends on map size (sorted up to 32 keys, hash
+    # order beyond), so unsorted overlapping batches lock shared flows in
+    # different orders and deadlock.
     defp dedup_by_identity(entries) do
       entries
       |> Enum.group_by(&identity/1)
+      |> Enum.sort_by(fn {identity, _group} -> identity end)
       |> Enum.map(fn {_identity, group} ->
         Enum.find(group, hd(group), fn e -> not is_nil(e.flow_end) end)
       end)

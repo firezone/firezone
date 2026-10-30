@@ -17,17 +17,50 @@ public enum BundleHelper {
     return false
   }
 
-  static var gitSha: String {
+  /// Whether telemetry was switched off when this bundle was built. Apple builds
+  /// default to no telemetry; official release scripts explicitly opt in.
+  static var noTelemetry: Bool {
+    Bundle.main.object(forInfoDictionaryKey: "NoTelemetry") as? String == "true"
+  }
+
+  static var gitSha: String? {
+    if MockRun.isActive { return "00000000" }
+
     guard let gitSha = Bundle.main.object(forInfoDictionaryKey: "GitSha") as? String,
       !gitSha.isEmpty
-    else { return "unknown" }
+    else { return nil }
 
-    return String(gitSha.prefix(8))
+    return gitSha
+  }
+
+  static var shortGitSha: String? {
+    gitSha.map { String($0.prefix(8)) }
+  }
+
+  static var commitURL: URL? {
+    gitSha.flatMap { URL(string: "https://github.com/firezone/firezone/commit/\($0)") }
+  }
+
+  static var version: String {
+    if MockRun.isActive { return "1.0.0" }
+
+    return Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown"
+  }
+
+  /// The marketing version and the commit it was built from, as "1.5.24 (0123abcd)".
+  static var versionDescription: String {
+    return "\(version) (\(shortGitSha ?? "unknown"))"
+  }
+
+  /// The app group the app shares with its extensions, or `nil` when the bundle's
+  /// Info.plist declares no `AppGroupIdentifier`, which is every process except the app
+  /// and its extensions (a test, most obviously).
+  static var appGroupIdIfPresent: String? {
+    Bundle.main.object(forInfoDictionaryKey: "AppGroupIdentifier") as? String
   }
 
   public static var appGroupId: String {
-    guard let appGroupId = Bundle.main.object(forInfoDictionaryKey: "AppGroupIdentifier") as? String
-    else {
+    guard let appGroupId = appGroupIdIfPresent else {
       fatalError("AppGroupIdentifier missing in app's Info.plist")
     }
     return appGroupId

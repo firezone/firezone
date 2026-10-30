@@ -2,6 +2,7 @@ defmodule PortalAPI.ActorController do
   use PortalAPI, :controller
   use OpenApiSpex.ControllerSpecs
   alias PortalAPI.Pagination
+  alias PortalAPI.JSON
   alias PortalAPI.Error
   alias PortalAPI.Filters
   alias PortalAPI.Schemas.ProblemDetails
@@ -15,7 +16,7 @@ defmodule PortalAPI.ActorController do
   operation :index,
     summary: "List Actors",
     parameters: [
-      limit: [in: :query, description: "Limit Users returned", type: :integer, example: 10],
+      limit: [in: :query, description: "Limit Users returned", schema: PortalAPI.Pagination.limit_schema(), example: 10],
       page_cursor: [in: :query, description: "Next/Prev page cursor", type: :string],
       name: [in: :query, description: "Filter to Actors with this exact name", type: :string],
       email: [in: :query, description: "Filter to Actors with this exact email", type: :string],
@@ -39,7 +40,7 @@ defmodule PortalAPI.ActorController do
     with {:ok, list_opts} <- Pagination.params_to_list_opts(params),
          list_opts = Keyword.put(list_opts, :filter, coerce_filters(params)),
          {:ok, actors, metadata} <- Database.list_actors(conn.assigns.subject, list_opts) do
-      render(conn, :index, actors: actors, metadata: metadata)
+      json(conn, JSON.encode(actors, metadata))
     else
       error -> Error.handle(conn, error)
     end
@@ -72,7 +73,7 @@ defmodule PortalAPI.ActorController do
   @spec show(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def show(conn, %{"id" => id}) do
     with {:ok, actor} <- Database.fetch_actor(id, conn.assigns.subject) do
-      render(conn, :show, actor: actor)
+      json(conn, JSON.encode(actor))
     else
       error -> Error.handle(conn, error)
     end
@@ -108,7 +109,7 @@ defmodule PortalAPI.ActorController do
       conn
       |> put_status(:created)
       |> put_resp_header("location", ~p"/actors/#{actor}")
-      |> render(:show, actor: actor)
+      |> json(JSON.encode(actor))
     else
       error -> Error.handle(conn, error)
     end
@@ -223,7 +224,7 @@ defmodule PortalAPI.ActorController do
          :ok <- ensure_not_self_disable(actor, changeset, subject),
          :ok <- check_role_promotion_limits(account, actor, changeset),
          {:ok, actor} <- Database.update_actor(changeset, subject) do
-      render(conn, :show, actor: actor)
+      json(conn, JSON.encode(actor))
     else
       error -> Error.handle(conn, error)
     end
@@ -255,7 +256,7 @@ defmodule PortalAPI.ActorController do
     subject = conn.assigns.subject
 
     with {:ok, actor} <- Database.delete_actor_by_id(id, subject) do
-      render(conn, :show, actor: actor)
+      json(conn, JSON.encode(actor))
     else
       error -> Error.handle(conn, error)
     end
@@ -289,11 +290,16 @@ defmodule PortalAPI.ActorController do
   defmodule Database do
     import Ecto.Query
     alias Portal.Actor
+    alias Portal.APIToken
+    alias Portal.Device
     alias Portal.ExternalIdentity
+    alias Portal.OAuthToken
+    alias Portal.PortalSession
     alias Portal.Safe
 
     def list_actors(subject, opts \\ []) do
       from(a in Portal.Actor, as: :actors)
+      |> select_last_seen_at()
       |> Safe.scoped(subject)
       |> Safe.list(__MODULE__, opts)
     end
@@ -365,7 +371,8 @@ defmodule PortalAPI.ActorController do
     end
 
     def fetch_actor(id, subject) do
-      from(a in Portal.Actor, where: a.id == ^id)
+      from(a in Portal.Actor, as: :actors, where: a.id == ^id)
+      |> select_last_seen_at()
       |> Safe.scoped(subject)
       |> Safe.one()
       |> case do
@@ -399,6 +406,7 @@ defmodule PortalAPI.ActorController do
         |> Safe.delete_all()
 
       case result do
+        {:error, reason} -> {:error, reason}
         {0, _} -> {:error, :not_found}
         {1, [actor]} -> {:ok, actor}
       end
@@ -417,6 +425,51 @@ defmodule PortalAPI.ActorController do
            {_count, _} <- clear_identities_for_actor(actor_id, subject) do
         {:ok, actor}
       end
+    end
+
+    defp select_last_seen_at(queryable) do
+      client_seen_at =
+        from(d in Device,
+          where: d.account_id == parent_as(:actors).account_id,
+          where: d.actor_id == parent_as(:actors).id,
+          where: d.type == :client,
+          select: max(d.last_seen_at)
+        )
+
+      portal_signed_in_at =
+        from(s in PortalSession,
+          where: s.account_id == parent_as(:actors).account_id,
+          where: s.actor_id == parent_as(:actors).id,
+          select: max(s.inserted_at)
+        )
+
+      api_token_seen_at =
+        from(t in APIToken,
+          where: t.account_id == parent_as(:actors).account_id,
+          where: t.actor_id == parent_as(:actors).id,
+          select: max(t.last_seen_at)
+        )
+
+      oauth_token_seen_at =
+        from(t in OAuthToken,
+          where: t.account_id == parent_as(:actors).account_id,
+          where: t.actor_id == parent_as(:actors).id,
+          select: max(t.last_seen_at)
+        )
+
+      select_merge(queryable, [actors: a], %{
+        last_seen_at:
+          type(
+            fragment(
+              "GREATEST(?, ?, ?, ?)",
+              subquery(client_seen_at),
+              subquery(portal_signed_in_at),
+              subquery(api_token_seen_at),
+              subquery(oauth_token_seen_at)
+            ),
+            :utc_datetime_usec
+          )
+      })
     end
 
     defp clear_identities_for_actor(actor_id, subject) do

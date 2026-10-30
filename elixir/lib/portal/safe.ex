@@ -232,7 +232,7 @@ defmodule Portal.Safe do
         queryable
         |> apply_account_filter(schema, account_id)
         |> repo.list(query_module, opts)
-      end) || {:ok, [], %{}}
+      end) || {:ok, [], Portal.Repo.Paginator.empty_metadata()}
     end
   end
 
@@ -410,7 +410,7 @@ defmodule Portal.Safe do
 
   @spec insert_all(
           Unscoped.t(),
-          atom() | Ecto.Schema.t(),
+          atom() | Ecto.Schema.t() | String.t(),
           [map() | Keyword.t()] | Ecto.Query.t(),
           Keyword.t()
         ) ::
@@ -426,9 +426,14 @@ defmodule Portal.Safe do
   end
 
   # Mutation operations
-  @spec insert(Scoped.t()) ::
+  @spec insert(Scoped.t() | Unscoped.t()) ::
           {:ok, Ecto.Schema.t()} | {:error, Ecto.Changeset.t() | :unauthorized}
-  def insert(%Scoped{subject: subject, queryable: %Ecto.Changeset{} = changeset}) do
+  def insert(%Scoped{} = scoped), do: insert(scoped, [])
+  def insert(%Unscoped{} = unscoped), do: insert(unscoped, [])
+
+  @spec insert(Scoped.t() | Unscoped.t() | Portal.Repo, Keyword.t() | Ecto.Changeset.t()) ::
+          {:ok, Ecto.Schema.t()} | {:error, Ecto.Changeset.t() | :unauthorized}
+  def insert(%Scoped{subject: subject, queryable: %Ecto.Changeset{} = changeset}, opts) do
     changeset = %{changeset | action: :insert}
     schema = get_schema_module(changeset.data)
 
@@ -439,12 +444,12 @@ defmodule Portal.Safe do
         changeset
         |> put_change(:account_id, subject.account.id)
         |> apply_schema_changeset(schema)
-        |> Repo.insert()
+        |> Repo.insert(opts)
       end)
     end
   end
 
-  def insert(%Scoped{subject: subject, queryable: struct}) when is_struct(struct) do
+  def insert(%Scoped{subject: subject, queryable: struct}, opts) when is_struct(struct) do
     schema = get_schema_module(struct)
 
     with :ok <- permit(:insert, schema, subject) do
@@ -452,28 +457,29 @@ defmodule Portal.Safe do
         emit_subject_message(subject)
 
         %{struct | account_id: subject.account.id}
-        |> Repo.insert()
+        |> Repo.insert(opts)
       end)
     end
   end
 
-  @spec insert(Unscoped.t()) :: {:ok, Ecto.Schema.t()} | {:error, Ecto.Changeset.t()}
-  def insert(%Unscoped{queryable: %Ecto.Changeset{} = changeset}) do
+  def insert(%Unscoped{queryable: %Ecto.Changeset{} = changeset}, opts) do
     schema = get_schema_module(changeset.data)
 
     changeset
     |> apply_schema_changeset(schema)
-    |> Repo.insert()
+    |> Repo.insert(opts)
   end
 
-  def insert(%Unscoped{queryable: struct}) when is_struct(struct) do
+  def insert(%Unscoped{queryable: struct}, opts) when is_struct(struct) do
     struct
-    |> Repo.insert()
+    |> Repo.insert(opts)
   end
+
+  def insert(repo, changeset_or_struct) when repo == Repo, do: insert(repo, changeset_or_struct, [])
 
   @spec insert(Portal.Repo, Ecto.Schema.t() | Ecto.Changeset.t(), Keyword.t()) ::
           {:ok, Ecto.Schema.t()} | {:error, Ecto.Changeset.t()}
-  def insert(repo, changeset_or_struct, opts \\ []) when repo == Repo do
+  def insert(repo, changeset_or_struct, opts) when repo == Repo do
     case changeset_or_struct do
       %Ecto.Changeset{} = changeset ->
         schema = get_schema_module(changeset.data)
@@ -560,7 +566,7 @@ defmodule Portal.Safe do
   end
 
   @spec delete(Scoped.t()) ::
-          {:ok, Ecto.Schema.t()} | {:error, Ecto.Changeset.t() | :unauthorized}
+          {:ok, Ecto.Schema.t()} | {:error, Ecto.Changeset.t() | :unauthorized | :not_found}
   def delete(%Scoped{
         subject: %Subject{account: %{id: account_id}} = subject,
         queryable: %Ecto.Changeset{data: %{account_id: account_id}} = changeset
@@ -577,6 +583,8 @@ defmodule Portal.Safe do
         |> Repo.delete()
       end)
     end
+  rescue
+    Ecto.StaleEntryError -> {:error, :not_found}
   end
 
   def delete(%Scoped{
@@ -593,6 +601,9 @@ defmodule Portal.Safe do
         Repo.delete(struct)
       end)
     end
+  rescue
+    # The row went away between the caller's fetch and this delete.
+    Ecto.StaleEntryError -> {:error, :not_found}
   end
 
   @spec delete(Unscoped.t()) :: {:ok, Ecto.Schema.t()} | {:error, Ecto.Changeset.t()}
@@ -847,6 +858,8 @@ defmodule Portal.Safe do
   def permit(:read, Portal.Account, :api_client), do: :ok
   def permit(:read, Portal.Account, :account_user), do: :ok
   def permit(:read, Portal.Account, :service_account), do: :ok
+  # Slug rows only ever change through the Account changeset.
+  def permit(:read, Portal.AccountSlug, :account_admin_user), do: :ok
   # Admin-only permissions (both account_admin_user and api_client)
   def permit(_action, Portal.Actor, :account_admin_user), do: :ok
   def permit(_action, Portal.Actor, :api_client), do: :ok
@@ -858,6 +871,12 @@ defmodule Portal.Safe do
   def permit(_action, Portal.ClientToken, :account_admin_user), do: :ok
   def permit(_action, Portal.ClientToken, :api_client), do: :ok
   def permit(_action, Portal.APIToken, :account_admin_user), do: :ok
+
+  # OAuth grants and codes are created by a person going through the browser
+  # consent screen, which runs on a portal session, and only an admin gets one.
+  def permit(_action, Portal.OAuthGrant, :account_admin_user), do: :ok
+  def permit(_action, Portal.OAuthAuthorizationCode, :account_admin_user), do: :ok
+  def permit(:read, Portal.OAuthToken, :account_admin_user), do: :ok
   def permit(_action, Portal.Directory, :account_admin_user), do: :ok
   def permit(:read, Portal.Directory, :api_client), do: :ok
   def permit(_action, Portal.AuthProvider, :account_admin_user), do: :ok
@@ -866,6 +885,8 @@ defmodule Portal.Safe do
   def permit(:read, Portal.Entra.AuthProvider, :api_client), do: :ok
   def permit(_action, Portal.Google.AuthProvider, :account_admin_user), do: :ok
   def permit(:read, Portal.Google.AuthProvider, :api_client), do: :ok
+  def permit(_action, Portal.GitHub.AuthProvider, :account_admin_user), do: :ok
+  def permit(:read, Portal.GitHub.AuthProvider, :api_client), do: :ok
   def permit(_action, Portal.Okta.AuthProvider, :account_admin_user), do: :ok
   def permit(:read, Portal.Okta.AuthProvider, :api_client), do: :ok
   def permit(_action, Portal.OIDC.AuthProvider, :account_admin_user), do: :ok
@@ -874,14 +895,36 @@ defmodule Portal.Safe do
   def permit(:read, Portal.EmailOTP.AuthProvider, :api_client), do: :ok
   def permit(_action, Portal.Userpass.AuthProvider, :account_admin_user), do: :ok
   def permit(:read, Portal.Userpass.AuthProvider, :api_client), do: :ok
+  def permit(_action, Portal.X509.AuthProvider, :account_admin_user), do: :ok
+  def permit(:read, Portal.X509.AuthProvider, :api_client), do: :ok
   def permit(_action, Portal.Entra.Directory, :account_admin_user), do: :ok
   def permit(:read, Portal.Entra.Directory, :api_client), do: :ok
-  def permit(_action, Portal.DeviceIntegration, :account_admin_user), do: :ok
-  def permit(:read, Portal.DeviceIntegration, :api_client), do: :ok
-  def permit(_action, Portal.Intune.Integration, :account_admin_user), do: :ok
-  def permit(:read, Portal.Intune.Integration, :api_client), do: :ok
+  def permit(_action, Portal.PostureProvider, :account_admin_user), do: :ok
+  def permit(action, Portal.PostureProvider, :api_client) when action in [:read, :update, :delete], do: :ok
+  def permit(_action, Portal.Intune.PostureProvider, :account_admin_user), do: :ok
+  def permit(action, Portal.Intune.PostureProvider, :api_client) when action in [:read, :update], do: :ok
   def permit(:read, Portal.Intune.Device, :account_admin_user), do: :ok
   def permit(:read, Portal.Intune.Device, :api_client), do: :ok
+  def permit(_action, Portal.Iru.PostureProvider, :account_admin_user), do: :ok
+  def permit(action, Portal.Iru.PostureProvider, :api_client) when action in [:read, :update], do: :ok
+  def permit(:read, Portal.Iru.Device, :account_admin_user), do: :ok
+  def permit(:read, Portal.Iru.Device, :api_client), do: :ok
+  def permit(_action, Portal.Defender.PostureProvider, :account_admin_user), do: :ok
+  def permit(action, Portal.Defender.PostureProvider, :api_client) when action in [:read, :update], do: :ok
+  def permit(:read, Portal.Defender.Device, :account_admin_user), do: :ok
+  def permit(:read, Portal.Defender.Device, :api_client), do: :ok
+  def permit(_action, Portal.Santa.PostureProvider, :account_admin_user), do: :ok
+  def permit(action, Portal.Santa.PostureProvider, :api_client) when action in [:read, :update], do: :ok
+  def permit(:read, Portal.Santa.Device, :account_admin_user), do: :ok
+  def permit(:read, Portal.Santa.Device, :api_client), do: :ok
+  def permit(_action, Portal.SentinelOne.PostureProvider, :account_admin_user), do: :ok
+  def permit(action, Portal.SentinelOne.PostureProvider, :api_client) when action in [:read, :update], do: :ok
+  def permit(:read, Portal.SentinelOne.Device, :account_admin_user), do: :ok
+  def permit(:read, Portal.SentinelOne.Device, :api_client), do: :ok
+  def permit(_action, Portal.Sophos.PostureProvider, :account_admin_user), do: :ok
+  def permit(action, Portal.Sophos.PostureProvider, :api_client) when action in [:read, :update], do: :ok
+  def permit(:read, Portal.Sophos.Device, :account_admin_user), do: :ok
+  def permit(:read, Portal.Sophos.Device, :api_client), do: :ok
   def permit(_action, Portal.Google.Directory, :account_admin_user), do: :ok
   def permit(:read, Portal.Google.Directory, :api_client), do: :ok
   def permit(_action, Portal.Okta.Directory, :account_admin_user), do: :ok
@@ -933,11 +976,6 @@ defmodule Portal.Safe do
   def permit(_action, Portal.Resource, :account_admin_user), do: :ok
   def permit(_action, Portal.Resource, :api_client), do: :ok
   def permit(:read, Portal.Resource, _), do: :ok
-
-  # StaticDevicePoolMember permissions
-  def permit(_action, Portal.StaticDevicePoolMember, :account_admin_user), do: :ok
-  def permit(_action, Portal.StaticDevicePoolMember, :api_client), do: :ok
-  def permit(:read, Portal.StaticDevicePoolMember, _), do: :ok
 
   # Policy permissions
   def permit(_action, Portal.Policy, :account_admin_user), do: :ok

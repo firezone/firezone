@@ -1,6 +1,7 @@
 defmodule Portal.Account do
   use Ecto.Schema
   import Ecto.Changeset
+  alias __MODULE__.Database
 
   @type t :: %__MODULE__{}
 
@@ -12,6 +13,8 @@ defmodule Portal.Account do
     field :name, :string
     field :slug, :string
     field :key, :string
+
+    has_many :slugs, Portal.AccountSlug
 
     field :legal_name, :string
 
@@ -45,9 +48,19 @@ defmodule Portal.Account do
     has_many :resources, Portal.Resource
 
     has_many :devices, Portal.Device
-    has_many :device_integrations, Portal.DeviceIntegration
-    has_many :intune_integrations, Portal.Intune.Integration
+    has_many :posture_providers, Portal.PostureProvider
+    has_many :intune_posture_providers, Portal.Intune.PostureProvider
     has_many :intune_devices, Portal.Intune.Device
+    has_many :iru_posture_providers, Portal.Iru.PostureProvider
+    has_many :iru_devices, Portal.Iru.Device
+    has_many :defender_posture_providers, Portal.Defender.PostureProvider
+    has_many :defender_devices, Portal.Defender.Device
+    has_many :santa_posture_providers, Portal.Santa.PostureProvider
+    has_many :santa_devices, Portal.Santa.Device
+    has_many :sentinelone_posture_providers, Portal.SentinelOne.PostureProvider
+    has_many :sentinelone_devices, Portal.SentinelOne.Device
+    has_many :sophos_posture_providers, Portal.Sophos.PostureProvider
+    has_many :sophos_devices, Portal.Sophos.Device
     has_many :clients, Portal.Device, where: [type: :client]
     has_many :gateways, Portal.Device, where: [type: :gateway]
     has_many :sites, Portal.Site
@@ -58,6 +71,7 @@ defmodule Portal.Account do
 
     has_many :google_directories, Portal.Google.Directory
     has_many :google_auth_providers, Portal.Google.AuthProvider
+    has_many :github_auth_providers, Portal.GitHub.AuthProvider
     has_many :okta_directories, Portal.Okta.Directory
     has_many :okta_auth_providers, Portal.Okta.AuthProvider
     has_many :entra_directories, Portal.Entra.Directory
@@ -66,6 +80,7 @@ defmodule Portal.Account do
     has_many :oidc_auth_providers, Portal.OIDC.AuthProvider
     has_one :email_otp_auth_provider, Portal.EmailOTP.AuthProvider
     has_one :userpass_auth_provider, Portal.Userpass.AuthProvider
+    has_one :x509_auth_provider, Portal.X509.AuthProvider
 
     # Billing limit exceeded flags - set by CheckAccountLimits worker and Stripe event processing
     field :users_limit_exceeded, :boolean, default: false
@@ -77,6 +92,12 @@ defmodule Portal.Account do
     # Tracks when the last limit exceeded email was sent (for throttling)
     field :warning_last_sent_at, :utc_datetime_usec
 
+    # Tracks the last seat warning email sent (Business plan): when, and which
+    # state it described, so a worse state is not held back by the weekly throttle
+    field :seats_warning_last_sent_at, :utc_datetime_usec
+    field :outdated_gateway_last_sent_at, :utc_datetime_usec
+    field :seats_warning_level, Ecto.Enum, values: [:approaching, :at_limit, :over]
+
     field :disabled_reason, :string
     field :is_disabled, :boolean, default: false, read_after_writes: true
 
@@ -85,18 +106,23 @@ defmodule Portal.Account do
     # Set by Ops Admins only. Prevents account admins from modifying account settings.
     field :lock_enabled_at, :utc_datetime_usec
 
+    # Usage against `limits`, computed by the REST API when it renders the account.
+    field :limit_usage, :map, virtual: true
+
     timestamps()
   end
 
   def changeset(changeset) do
     changeset
-    |> validate_length(:name, min: 3, max: 64)
+    |> validate_length(:name, min: 3, message: "too short")
+    |> validate_length(:name, max: 64, message: "too long")
     |> validate_length(:slug, min: 3, max: 100)
     |> validate_length(:key, is: 6)
     |> validate_key_format()
     |> validate_length(:legal_name, min: 1, max: 255)
     |> unique_constraint(:slug, name: :accounts_slug_index)
     |> unique_constraint(:key, name: :accounts_key_index)
+    |> prepare_changes(&register_slug/1)
   end
 
   @base36 ~c"abcdefghijklmnopqrstuvwxyz0123456789"
@@ -134,30 +160,125 @@ defmodule Portal.Account do
   def locked?(%__MODULE__{lock_enabled_at: nil}), do: false
   def locked?(%__MODULE__{}), do: true
 
-  # All plan entitlements except device posture are account-local. Device posture
-  # additionally has a deployment-wide rollout flag in the features table.
   # sobelow_skip ["DOS.BinToAtom"]
-  for feature <- Portal.Accounts.Features.__schema__(:fields), feature != :device_posture do
+  for feature <- Portal.Accounts.Features.__schema__(:fields) do
     def unquote(:"#{feature}_enabled?")(account) do
       account_feature_enabled?(account, unquote(feature))
     end
-  end
-
-  def device_posture_enabled?(account) do
-    Portal.Features.enabled?(:device_posture) and
-      account_feature_enabled?(account, :device_posture)
   end
 
   defp account_feature_enabled?(account, feature) do
     Map.fetch!(account.features || %Portal.Accounts.Features{}, feature) || false
   end
 
-  @spec rest_api_access_requested?(t()) :: boolean()
-  def rest_api_access_requested?(%__MODULE__{metadata: %{rest_api_requested_at: at}})
-      when not is_nil(at),
-      do: true
+  # Every slug an account uses is kept in account_slugs so that old slugs keep
+  # redirecting and no other account can take them. Runs inside the insert or
+  # update transaction, so a lost race on the slug rolls the whole change back.
+  defp register_slug(changeset) do
+    case fetch_change(changeset, :slug) do
+      {:ok, slug} when is_binary(slug) -> register_slug(changeset, slug)
+      _ -> changeset
+    end
+  end
 
-  def rest_api_access_requested?(%__MODULE__{}), do: false
+  defp register_slug(changeset, slug) do
+    changeset = ensure_id(changeset)
+    account_id = get_field(changeset, :id)
+
+    owners = Database.slug_owners(changeset.repo, slug)
+
+    cond do
+      slug_staged?(changeset, slug) ->
+        changeset
+
+      recorded?(owners, slug, account_id) ->
+        changeset
+
+      Enum.all?(owners, fn {_spelling, owner_id} -> owner_id == account_id end) ->
+        claim_and_insert_slug(changeset, slug, account_id)
+
+      true ->
+        add_error(changeset, :slug, "has already been taken")
+    end
+  end
+
+  defp recorded?(owners, slug, account_id) do
+    Enum.any?(owners, fn {spelling, owner_id} ->
+      owner_id == account_id and String.downcase(spelling) == String.downcase(slug)
+    end)
+  end
+
+  # The shared registry comes first: a slug another region holds never
+  # reaches the local table.
+  defp claim_and_insert_slug(changeset, slug, account_id) do
+    case Portal.SlugRegistry.claim(slug, account_id) do
+      :ok ->
+        insert_slug(changeset, slug)
+
+      {:error, :taken} ->
+        add_error(changeset, :slug, "has already been taken")
+
+      {:error, :unavailable} ->
+        add_error(changeset, :slug, "cannot be reserved right now, please try again in a few minutes")
+    end
+  end
+
+  # The registry needs the account ID before the row exists, so an insert
+  # picks its ID here instead of at write time.
+  defp ensure_id(%Ecto.Changeset{action: :insert} = changeset) do
+    if get_field(changeset, :id), do: changeset, else: put_change(changeset, :id, Ecto.UUID.generate())
+  end
+
+  defp ensure_id(changeset), do: changeset
+
+  # Safe applies the schema changeset itself, so the registration can run
+  # twice in one insert; the second run finds the child already attached.
+  defp slug_staged?(changeset, slug) do
+    changeset
+    |> get_change(:slugs, [])
+    |> Enum.any?(&(get_field(&1, :slug) == slug))
+  end
+
+  # The account row does not exist yet on insert, so the slug row goes in as a
+  # child of the account instead of ahead of it.
+  defp insert_slug(%Ecto.Changeset{action: :insert} = changeset, slug) do
+    slug_changeset =
+      %Portal.AccountSlug{}
+      |> change(%{slug: slug})
+      |> Portal.AccountSlug.changeset()
+
+    put_assoc(changeset, :slugs, [slug_changeset])
+  end
+
+  defp insert_slug(changeset, slug) do
+    case Database.insert_slug(changeset.repo, get_field(changeset, :id), slug) do
+      {:ok, _account_slug} -> changeset
+      {:error, _slug_changeset} -> add_error(changeset, :slug, "has already been taken")
+    end
+  end
+
+  defmodule Database do
+    import Ecto.Query
+    alias Portal.Safe
+
+    # "acme_corp" and "acme-corp" would read as the same account, so either
+    # spelling takes the slug for both.
+    def slug_owners(repo, slug) do
+      spellings = Portal.AccountSlug.spellings(slug)
+
+      Safe.all(
+        repo,
+        from(s in Portal.AccountSlug, where: s.slug in ^spellings, select: {s.slug, s.account_id})
+      )
+    end
+
+    def insert_slug(repo, account_id, slug) do
+      slug_changeset =
+        Ecto.Changeset.change(%Portal.AccountSlug{}, %{account_id: account_id, slug: slug})
+
+      Safe.insert(repo, slug_changeset)
+    end
+  end
 end
 
 defmodule Portal.Account.Metadata do
@@ -166,13 +287,13 @@ defmodule Portal.Account.Metadata do
 
   @primary_key false
   embedded_schema do
-    field :rest_api_requested_at, :utc_datetime_usec
+    field :marketing_attribution, :map
     embeds_one :stripe, Portal.Account.Metadata.Stripe, on_replace: :update
   end
 
   def changeset(metadata \\ %__MODULE__{}, attrs) do
     metadata
-    |> cast(attrs, [:rest_api_requested_at])
+    |> cast(attrs, [:marketing_attribution])
     |> cast_embed(:stripe, with: &Portal.Account.Metadata.Stripe.changeset/2)
   end
 end
@@ -185,10 +306,12 @@ defmodule Portal.Account.Metadata.Stripe do
   embedded_schema do
     field :customer_id, :string
     field :subscription_id, :string
+    field :subscription_status, :string
     field :product_name, :string
     field :billing_email, :string
     field :trial_ends_at, :utc_datetime_usec
     field :support_type, :string
+    embeds_many :add_ons, Portal.Account.Metadata.Stripe.AddOn, on_replace: :delete
   end
 
   def changeset(stripe \\ %__MODULE__{}, attrs) do
@@ -196,10 +319,28 @@ defmodule Portal.Account.Metadata.Stripe do
     |> cast(attrs, [
       :customer_id,
       :subscription_id,
+      :subscription_status,
       :product_name,
       :billing_email,
       :trial_ends_at,
       :support_type
     ])
+    |> cast_embed(:add_ons, with: &Portal.Account.Metadata.Stripe.AddOn.changeset/2)
+  end
+end
+
+defmodule Portal.Account.Metadata.Stripe.AddOn do
+  use Ecto.Schema
+  import Ecto.Changeset
+
+  @primary_key false
+  embedded_schema do
+    field :name, :string
+    field :quantity, :integer
+    field :limit, :string
+  end
+
+  def changeset(add_on \\ %__MODULE__{}, attrs) do
+    cast(add_on, attrs, [:name, :quantity, :limit])
   end
 end

@@ -1,8 +1,9 @@
 //! A stateful symmetric NAT table that performs conversion between a client's picked proxy ip and the actual resource's IP.
 use anyhow::{Context, Result};
-use bimap::BiMap;
+use bimap::BiHashMap;
+use fast_random_state::FastRandomState;
 use ip_packet::{FailedPacket, IcmpError, IpPacket, Protocol};
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{HashMap, HashSet};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::time::{Duration, Instant};
 
@@ -16,11 +17,11 @@ use std::time::{Duration, Instant};
 /// Thus, purely an L3 NAT would not be sufficient as it would be impossible to map back to the proxy IP.
 #[derive(Default, Debug)]
 pub(crate) struct NatTable {
-    table: BiMap<Inside, Outside>,
-    state_by_inside: BTreeMap<Inside, EntryState>,
+    table: BiHashMap<Inside, Outside, FastRandomState, FastRandomState>,
+    state_by_inside: HashMap<Inside, EntryState, FastRandomState>,
 
     // We don't bother with proactively freeing this because a single entry is only ~20 bytes and it gets cleanup once the connection to the client goes away.
-    expired: HashSet<Outside>,
+    expired: HashSet<Outside, FastRandomState>,
 }
 
 #[derive(Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Clone, Copy)]
@@ -51,8 +52,15 @@ pub(crate) const ICMP_TTL: Duration = Duration::from_secs(60 * 2);
 pub(crate) const UNCONFIRMED_TTL: Duration = Duration::from_secs(60);
 
 impl NatTable {
+    pub(crate) fn poll_timeout(&self) -> Option<Instant> {
+        self.state_by_inside
+            .iter()
+            .filter_map(|(inside, state)| state.remove_at(inside.0))
+            .min()
+    }
+
     pub(crate) fn handle_timeout(&mut self, now: Instant) {
-        let expired = self.state_by_inside.extract_if(.., |inside, state| {
+        let expired = self.state_by_inside.extract_if(|inside, state| {
             state
                 .remove_at(inside.0)
                 .is_some_and(|remove_at| now >= remove_at)
@@ -88,28 +96,14 @@ impl NatTable {
         outside_dst: IpAddr,
         now: Instant,
     ) -> Result<(Protocol, IpAddr)> {
+        if let Some(outside) = self.try_translate_outgoing_existing(packet, now)? {
+            return Ok(outside);
+        }
+
         let src = packet.source_protocol()?;
         let dst = packet.destination();
 
         let inside = Inside(src, dst);
-
-        if let Some(outside) = self.table.get_by_left(&inside).copied()
-            && let Some(state) = self.state_by_inside.get_mut(&inside)
-        {
-            tracing::trace!(?inside, ?outside, ?state, "Translating outgoing packet");
-
-            if packet.as_tcp().is_some_and(|tcp| tcp.rst()) {
-                state.outgoing_rst = true;
-            }
-
-            if packet.as_tcp().is_some_and(|tcp| tcp.fin()) {
-                state.outgoing_fin = true;
-            }
-
-            state.last_outgoing = now;
-
-            return Ok(outside.into_inner());
-        }
 
         // Find the first available public port, starting from the port of the to-be-mapped packet.
         // This will re-assign the same port in most cases, even after the mapping expires.
@@ -128,6 +122,31 @@ impl NatTable {
         Ok(outside.into_inner())
     }
 
+    pub(crate) fn try_translate_outgoing_existing(
+        &mut self,
+        packet: &IpPacket,
+        now: Instant,
+    ) -> Result<Option<(Protocol, IpAddr)>> {
+        let inside = Inside(packet.source_protocol()?, packet.destination());
+        let Some(outside) = self.table.get_by_left(&inside).copied() else {
+            return Ok(None);
+        };
+        let Some(state) = self.state_by_inside.get_mut(&inside) else {
+            return Ok(None);
+        };
+
+        tracing::trace!(?inside, ?outside, ?state, "Translating outgoing packet");
+
+        if let Some(tcp) = packet.as_tcp() {
+            state.outgoing_rst |= tcp.rst();
+            state.outgoing_fin |= tcp.fin();
+        }
+
+        state.last_outgoing = now;
+
+        Ok(Some(outside.into_inner()))
+    }
+
     pub(crate) fn translate_incoming(
         &mut self,
         packet: &IpPacket,
@@ -136,7 +155,7 @@ impl NatTable {
         if let Some((failed_packet, icmp_error)) = packet.icmp_error()? {
             let outside = Outside(failed_packet.src_proto(), failed_packet.dst());
 
-            if let Some(Inside(inside_proto, inside_dst)) =
+            if let Some((Inside(inside_proto, inside_dst), _)) =
                 self.translate_incoming_inner(&outside, now)
             {
                 return Ok(TranslateIncomingResult::IcmpError(IcmpErrorPrototype {
@@ -156,15 +175,10 @@ impl NatTable {
 
         let outside = Outside(packet.destination_protocol()?, packet.source());
 
-        if let Some(inside) = self.translate_incoming_inner(&outside, now)
-            && let Some(state) = self.state_by_inside.get_mut(&inside)
-        {
-            if packet.as_tcp().is_some_and(|tcp| tcp.rst()) {
-                state.incoming_rst = true;
-            }
-
-            if packet.as_tcp().is_some_and(|tcp| tcp.fin()) {
-                state.incoming_fin = true;
+        if let Some((inside, state)) = self.translate_incoming_inner(&outside, now) {
+            if let Some(tcp) = packet.as_tcp() {
+                state.incoming_rst |= tcp.rst();
+                state.incoming_fin |= tcp.fin();
             }
 
             let (proto, src) = inside.into_inner();
@@ -179,9 +193,13 @@ impl NatTable {
         Ok(TranslateIncomingResult::NoNatSession)
     }
 
-    fn translate_incoming_inner(&mut self, outside: &Outside, now: Instant) -> Option<Inside> {
-        let inside = self.table.get_by_right(outside)?;
-        let state = self.state_by_inside.get_mut(inside)?;
+    fn translate_incoming_inner(
+        &mut self,
+        outside: &Outside,
+        now: Instant,
+    ) -> Option<(Inside, &mut EntryState)> {
+        let inside = *self.table.get_by_right(outside)?;
+        let state = self.state_by_inside.get_mut(&inside)?;
 
         tracing::trace!(?inside, ?outside, ?state, "Translating incoming packet");
 
@@ -190,7 +208,7 @@ impl NatTable {
             tracing::debug!(?inside, ?outside, "NAT session confirmed");
         }
 
-        Some(*inside)
+        Some((inside, state))
     }
 }
 

@@ -1,5 +1,8 @@
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
+mod azure_metrics;
+mod collector_metrics;
+
 #[global_allocator]
 static ALLOC: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
@@ -11,7 +14,7 @@ use eventloop_budget::Budget;
 use firezone_relay::sockets::Sockets;
 use firezone_relay::{
     AddressFamily, AllocationPort, ChannelData, ClientSocket, Command, IpStack, PeerSocket, Server,
-    Sleep, VERSION, control_endpoint, ebpf, sockets,
+    Sleep, VERSION, auth::AccountId, control_endpoint, ebpf, sockets,
 };
 use futures::{FutureExt, future};
 use logging::{FilterReloadHandle, err_with_src, sentry_layer};
@@ -26,11 +29,12 @@ use std::process::ExitCode;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::task::{Poll, ready};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime};
 use stun_codec::rfc5766::attributes::ChannelNumber;
 use telemetry::RELAY_DSN;
 use tokio::sync::mpsc;
 use tracing::Subscriber;
+use tracing::level_filters::LevelFilter;
 use tracing_core::Dispatch;
 use tracing_subscriber::{Layer, layer::SubscriberExt, util::SubscriberInitExt};
 use url::Url;
@@ -85,6 +89,10 @@ struct Args {
     /// If set, we will report traces and metrics to this collector via gRPC.
     #[arg(long, env, hide = true)]
     otlp_grpc_endpoint: Option<String>,
+
+    /// Full Azure Monitor OTLP/HTTP metrics ingestion URL.
+    #[arg(long, env, hide = true)]
+    azure_otlp_metrics_endpoint: Option<Url>,
 
     /// Enable offloading of TURN traffic to an eBPF program.
     ///
@@ -164,7 +172,8 @@ fn main() -> ExitCode {
 }
 
 async fn try_main(args: Args) -> Result<()> {
-    let filter_reload_handle = setup_tracing(&args)?;
+    let directives = std::env::var("RUST_LOG").unwrap_or_else(|_| "info".to_string());
+    let filter_reload_handle = setup_tracing(&args, &directives)?;
 
     let ebpf = if let Some(interface) = args.ebpf_offloading.as_deref() {
         if args.ebpf_int4_addr.is_none() {
@@ -193,6 +202,7 @@ async fn try_main(args: Args) -> Result<()> {
             ebpf::Program::try_load(
                 interface,
                 args.ebpf_attach_mode,
+                ebpf_log_level(&directives)?,
                 args.ebpf_int4_addr,
                 args.ebpf_int6_addr,
                 args.public_ip4_addr,
@@ -251,6 +261,7 @@ async fn try_main(args: Args) -> Result<()> {
         "relay",
         JoinMessage {
             stamp_secret: server.auth_secret().expose_secret().to_string(),
+            turn_account_validation: true,
         },
         || {
             ExponentialBackoffBuilder::default()
@@ -281,6 +292,32 @@ async fn try_main(args: Args) -> Result<()> {
     Ok(())
 }
 
+/// The most verbose level at which our log filter enables log records of the eBPF program.
+///
+/// Some layers of our subscriber are not filtered by level, so we cannot ask the subscriber itself.
+fn ebpf_log_level(directives: &str) -> Result<LevelFilter> {
+    let (filter, _) = logging::try_filter(directives)?;
+    let dispatch = Dispatch::new(tracing_subscriber::registry().with(filter));
+
+    let level = tracing::dispatcher::with_default(&dispatch, || {
+        if tracing::enabled!(target: "eBPF", tracing::Level::TRACE) {
+            LevelFilter::TRACE
+        } else if tracing::enabled!(target: "eBPF", tracing::Level::DEBUG) {
+            LevelFilter::DEBUG
+        } else if tracing::enabled!(target: "eBPF", tracing::Level::INFO) {
+            LevelFilter::INFO
+        } else if tracing::enabled!(target: "eBPF", tracing::Level::WARN) {
+            LevelFilter::WARN
+        } else if tracing::enabled!(target: "eBPF", tracing::Level::ERROR) {
+            LevelFilter::ERROR
+        } else {
+            LevelFilter::OFF
+        }
+    });
+
+    Ok(level)
+}
+
 /// Sets up our tracing infrastructure.
 ///
 /// See [`log_layer`] for details on the base log layer.
@@ -288,7 +325,7 @@ async fn try_main(args: Args) -> Result<()> {
 /// ## Integration with OTLP
 ///
 /// If the user has specified [`TraceCollector::Otlp`], we will set up an OTLP-exporter that connects to an OTLP collector specified at `Args.otlp_grpc_endpoint`.
-fn setup_tracing(args: &Args) -> Result<FilterReloadHandle> {
+fn setup_tracing(args: &Args, directives: &str) -> Result<FilterReloadHandle> {
     use opentelemetry::{global, trace::TracerProvider as _};
     use opentelemetry_otlp::WithExportConfig;
 
@@ -298,11 +335,13 @@ fn setup_tracing(args: &Args) -> Result<FilterReloadHandle> {
         &tracing_subscriber::registry().with(log_layer(args)).into(),
     );
 
-    let directives = std::env::var("RUST_LOG").unwrap_or_else(|_| "info".to_string());
+    let metadata = make_otel_metadata();
+    let mut meter_provider =
+        opentelemetry_sdk::metrics::SdkMeterProvider::builder().with_resource(metadata.clone());
 
     let (dispatch, reload_handle) = match args.otlp_grpc_endpoint.clone() {
         None => {
-            let (filter, reload_handle) = logging::try_filter(&directives)?;
+            let (filter, reload_handle) = logging::try_filter(directives)?;
 
             let dispatch: Dispatch = tracing_subscriber::registry()
                 .with(log_layer(args).with_filter(filter))
@@ -312,7 +351,6 @@ fn setup_tracing(args: &Args) -> Result<FilterReloadHandle> {
             (dispatch, reload_handle)
         }
         Some(endpoint) => {
-            let metadata = make_otel_metadata();
             let grpc_endpoint = format!("http://{endpoint}");
 
             tracing::trace!(target: "relay", %grpc_endpoint, "Setting up OTLP exporter for collector");
@@ -324,7 +362,7 @@ fn setup_tracing(args: &Args) -> Result<FilterReloadHandle> {
                 .context("Failed to build OTLP span exporter")?;
 
             let tracer_provider = opentelemetry_sdk::trace::SdkTracerProvider::builder()
-                .with_resource(metadata.clone())
+                .with_resource(metadata)
                 .with_batch_exporter(exporter)
                 .build();
 
@@ -332,28 +370,10 @@ fn setup_tracing(args: &Args) -> Result<FilterReloadHandle> {
 
             tracing::trace!(target: "relay", "Successfully initialized trace provider on tokio runtime");
 
-            // `LowMemory` ships counters as cumulative (so rate dashboards keep working) but
-            // histograms as delta. Without delta, Azure Monitor pins Min/Max to lifetime
-            // extremes after the first outlier and per-window averages can only be
-            // reconstructed via fragile prev()-based KQL.
-            let exporter = opentelemetry_otlp::MetricExporter::builder()
-                .with_tonic()
-                .with_endpoint(grpc_endpoint)
-                .with_temporality(opentelemetry_sdk::metrics::Temporality::LowMemory)
-                .build()
-                .context("Failed to build OTLP metric exporter")?;
+            meter_provider = collector_metrics::with_exporter(meter_provider, &grpc_endpoint)?;
 
-            let meter_provider = opentelemetry_sdk::metrics::SdkMeterProvider::builder()
-                .with_resource(metadata)
-                .with_periodic_exporter(exporter)
-                .build();
-
-            global::set_meter_provider(meter_provider);
-
-            tracing::trace!(target: "relay", "Successfully initialized metric provider on tokio runtime");
-
-            let (log_filter, log_reload_handle) = logging::try_filter(&directives)?;
-            let (otel_filter, otel_reload_handle) = logging::try_filter(&directives)?;
+            let (log_filter, log_reload_handle) = logging::try_filter(directives)?;
+            let (otel_filter, otel_reload_handle) = logging::try_filter(directives)?;
 
             let dispatch: Dispatch = tracing_subscriber::registry()
                 .with(log_layer(args).with_filter(log_filter))
@@ -368,6 +388,13 @@ fn setup_tracing(args: &Args) -> Result<FilterReloadHandle> {
             (dispatch, log_reload_handle.merge(otel_reload_handle))
         }
     };
+
+    if let Some(endpoint) = &args.azure_otlp_metrics_endpoint {
+        // Reqwest's blocking client initializes its own runtime.
+        meter_provider =
+            tokio::task::block_in_place(|| azure_metrics::with_exporter(meter_provider, endpoint))?;
+    }
+    global::set_meter_provider(meter_provider.build());
 
     drop(temp_logger_guard); // Drop as late as possible
 
@@ -401,14 +428,25 @@ where
 #[serde(rename_all = "snake_case", tag = "event", content = "payload")]
 enum IngressMessages {
     Init(Init),
+    AccountAdded(Account),
+    AccountRemoved(Account),
 }
 
 #[derive(serde::Deserialize, Debug)]
-struct Init {}
+struct Init {
+    #[serde(default)]
+    account_ids: Vec<AccountId>,
+}
+
+#[derive(serde::Deserialize, Debug)]
+struct Account {
+    account_id: AccountId,
+}
 
 #[derive(serde::Serialize, PartialEq, Debug, Clone)]
 struct JoinMessage {
     stamp_secret: String,
+    turn_account_validation: bool,
 }
 
 fn make_rng(seed: Option<u64>) -> StdRng {
@@ -460,7 +498,7 @@ where
         bind_ip6: Ipv6Addr,
         is_connected: Arc<AtomicBool>,
     ) -> Result<Self> {
-        let mut sockets = Sockets::new();
+        let mut sockets = Sockets::new().context("Failed to initialize sockets")?;
 
         if public_address.as_v4().is_some() {
             sockets
@@ -524,16 +562,23 @@ where
                             AddressFamily::V4 => self.bind_ip4.into(),
                             AddressFamily::V6 => self.bind_ip6.into(),
                         };
-                        self.sockets
-                            .bind(port.value(), bind_addr)
-                            .with_context(|| {
-                                format!(
-                                    "Failed to bind to port {} on {family} interfaces",
-                                    port.value()
-                                )
-                            })?;
 
-                        tracing::info!(target: "relay", %port, %family, "Created allocation");
+                        // Failing to bind a single port must not take down the entire Relay.
+                        let bind = self
+                            .sockets
+                            .bind(port.value(), bind_addr)
+                            .context("Failed to bind port for allocation");
+
+                        match bind {
+                            Ok(()) => {
+                                tracing::info!(target: "relay", %port, %family, "Created allocation");
+                            }
+                            Err(e) => {
+                                tracing::warn!(target: "relay", %port, %family, "{e:#}");
+
+                                self.server.handle_allocation_failed(port);
+                            }
+                        }
                     }
                     Command::FreeAllocation { port, family } => {
                         self.sockets.unbind(port.value(), family).with_context(|| {
@@ -612,6 +657,7 @@ where
                         packet,
                         ClientSocket::new(from),
                         Instant::now(),
+                        SystemTime::now(),
                     ) {
                         // Re-parse as `ChannelData` if we should relay it.
                         let payload = ChannelData::parse(packet)
@@ -680,7 +726,22 @@ where
 
             // Priority 5: Handle portal messages
             match self.event_rx.poll_recv(cx) {
-                Poll::Ready(Some(Ok(IngressMessages::Init(Init {})))) => {
+                Poll::Ready(Some(Ok(IngressMessages::Init(init)))) => {
+                    tracing::info!(
+                        num_accounts = init.account_ids.len(),
+                        "Received TURN account list"
+                    );
+                    self.server.set_accounts(init.account_ids);
+                    tick.want_continue();
+                }
+                Poll::Ready(Some(Ok(IngressMessages::AccountAdded(account)))) => {
+                    tracing::info!(account_id = %account.account_id, "Added account to TURN allow list");
+                    self.server.add_account(account.account_id);
+                    tick.want_continue();
+                }
+                Poll::Ready(Some(Ok(IngressMessages::AccountRemoved(account)))) => {
+                    tracing::info!(account_id = %account.account_id, "Removed account from TURN allow list");
+                    self.server.remove_account(&account.account_id);
                     tick.want_continue();
                 }
                 Poll::Ready(Some(Err(e))) => {
@@ -843,6 +904,20 @@ fn make_otel_metadata() -> opentelemetry_sdk::Resource {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn ebpf_log_level_follows_log_filter() {
+        assert_eq!(ebpf_log_level("info").unwrap(), LevelFilter::INFO);
+        assert_eq!(
+            ebpf_log_level("debug,eBPF=warn").unwrap(),
+            LevelFilter::WARN
+        );
+        assert_eq!(
+            ebpf_log_level("warn,eBPF=trace").unwrap(),
+            LevelFilter::TRACE
+        );
+        assert_eq!(ebpf_log_level("off").unwrap(), LevelFilter::OFF);
+    }
 
     #[test]
     fn prints_humanfriendly_throughput() {

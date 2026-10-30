@@ -47,13 +47,19 @@ public final class Log {
   }
 
   nonisolated(unsafe) private static var isCLI = false
+  nonisolated(unsafe) private static var mirrorsLog = false
 
-  /// Tags logs as coming from the CLI and mirrors them to stderr.
+  /// Tags logs as coming from the CLI and, with `debug`, mirrors them to stderr.
   ///
   /// The CLI is the app's own binary under another name, so nothing about the bundle
   /// tells them apart. Call once at startup, before logging anything.
-  public static func useCLIOutput() {
+  ///
+  /// The log is the app talking to itself, and a command that fails throws, so none of
+  /// it reaches the terminal by default. `debug` mirrors all of it, which is what to
+  /// ask someone for.
+  public static func useCLIOutput(debug: Bool = false) {
     isCLI = true
+    mirrorsLog = debug
   }
 
   private static var processName: String {
@@ -143,16 +149,18 @@ public final class Log {
     writeToStderr(.error, message)
   }
 
-  public static func error(_ err: Error) {
-    error(err.localizedDescription)
+  public static func error(_ err: Error, fileID: String = #fileID, function: String = #function) {
+    error(Telemetry.fallbackDescription(of: err) ?? err.localizedDescription)
 
     if shouldCaptureError(err) {
-      Telemetry.capture(err)
+      Telemetry.capture(err, fileID: fileID, function: function)
     }
   }
 
   // Returns the size in bytes of the provided directory, calculated by summing
   // the size of its contents recursively.
+  // @concurrent: walking a large log tree must not run on the caller's actor.
+  @concurrent
   public static func size(of directory: URL) async -> Int64 {
     let fileManager = FileManager.default
     var totalSize: Int64 = 0
@@ -189,11 +197,16 @@ public final class Log {
     guard let directory = directory
     else { return }
 
-    try FileManager.default.removeItem(at: directory)
+    let fileManager = FileManager.default
+    let items = try fileManager.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)
+    for item in items {
+      try fileManager.removeItem(at: item)
+    }
   }
 
   private static func writeToStderr(_ severity: LogWriter.Severity, _ message: String) {
-    guard isCLI else { return }
+    guard mirrorsLog else { return }
+
     var line = "\(severity.rawValue) \(message)\n"
     line.withUTF8 { buffer in
       _ = fwrite(buffer.baseAddress, 1, buffer.count, stderr)
@@ -212,6 +225,48 @@ public final class Log {
     #endif
 
     return true
+  }
+}
+
+extension FileManager {
+  enum FileManagerError: LocalizedError {
+    case invalidURL(URL, Error)
+
+    var errorDescription: String? {
+      switch self {
+      case .invalidURL(_, let error):
+        return "Unable to get resource value: \(error.localizedDescription)"
+      }
+    }
+  }
+
+  func forEachFileUnder(
+    _ dirURL: URL,
+    including resourceKeys: Set<URLResourceKey>,
+    handler: (URL, URLResourceValues) -> Void
+  ) {
+    // Deep-traverses the directory at dirURL
+    guard
+      let enumerator = self.enumerator(
+        at: dirURL,
+        includingPropertiesForKeys: [URLResourceKey](resourceKeys),
+        options: [],
+        errorHandler: nil
+      )
+    else {
+      return
+    }
+
+    for item in enumerator.enumerated() {
+      if Task.isCancelled { break }
+      guard let url = item.element as? URL else { continue }
+      do {
+        let resourceValues = try url.resourceValues(forKeys: resourceKeys)
+        handler(url, resourceValues)
+      } catch {
+        Log.error(FileManagerError.invalidURL(url, error))
+      }
+    }
   }
 }
 

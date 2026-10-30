@@ -2,24 +2,9 @@
 defmodule PortalWeb.Resources do
   use PortalWeb, :live_view
 
-  import PortalWeb.Policies.Components,
-    only: [
-      map_condition_params: 2,
-      maybe_drop_unsupported_conditions: 2
-    ]
+  alias PortalWeb.Policies.Components, as: PolicyComponents
 
-  import PortalWeb.Resources.Components,
-    only: [
-      map_filters_form_attrs: 1,
-      nil_site_label: 1,
-      panel_shell: 1,
-      resource_details_panel: 1,
-      resource_form_panel: 1,
-      resource_status_badge: 1,
-      resource_type_label: 1,
-      type_badge_class: 1,
-      to_grant_form: 1
-    ]
+  alias PortalWeb.Resources.Components, as: ResourceComponents
 
   alias Portal.Changes.Change
   alias Portal.Presence
@@ -27,49 +12,58 @@ defmodule PortalWeb.Resources do
   alias Portal.Resource
   alias Phoenix.LiveView.AsyncResult
   alias __MODULE__.Database
+  alias PortalWeb.Policies.Postures
+
+  @device_search_refill_threshold 5
 
   def mount(_params, _session, socket) do
     subject = socket.assigns.subject
 
     if connected?(socket) do
       :ok = PubSub.Changes.subscribe(socket.assigns.account.id, :resources)
-      :ok = Presence.Gateways.Account.subscribe(socket.assigns.account.id)
+      :ok = Presence.Devices.Account.subscribe(socket.assigns.account.id)
     end
 
     socket =
       socket
       |> assign(stale: false)
-      |> assign(presence_tick: 0)
       |> assign(page_title: "Resources")
       |> assign_async(:resources_count, fn -> {:ok, %{resources_count: Database.count_resources(subject)}} end)
       |> assign(
         selected_resource: nil,
         selected_resource_pool_member_ids: [],
-        selected_resource_pool_clients: [],
-        clients_expanded_id: nil,
-        online_client_ids: MapSet.new(),
+        selected_resource_pool_devices: [],
+        selected_resource_pool_group_ids: nil,
+        pool_group_ids: nil,
+        devices_expanded_id: nil,
+        online_ids: MapSet.new(),
+        online_site_ids: MapSet.new(),
         selected_groups: [],
         policy_authorizations: [],
         policy_authorizations_page: 1,
         policy_authorizations_has_next: false,
         policy_authorizations_expanded_id: nil,
-        internet_resource: nil
+        internet_resource: nil,
+        resources: [],
+        resources_metadata: %Portal.Repo.OffsetPaginator.Metadata{},
+        resource_policy_counts: %{},
+        device_pool_members: %{}
       )
       |> assign(resource_state_assigns(socket))
-      |> assign_live_table("resources",
+      |> LiveTable.assign_live_table("resources",
         query_module: Database,
         sortable_fields: [
           {:resources, :name},
           {:resources, :address}
         ],
-        callback: &handle_resources_update!/2
+        loader: &load_resources/2
       )
 
     {:ok, socket}
   end
 
   def handle_params(%{"id" => id} = params, uri, %{assigns: %{live_action: :show}} = socket) do
-    socket = handle_live_tables_params(socket, params, uri)
+    socket = LiveTable.handle_live_tables_params(socket, params, uri)
 
     case Database.get_resource(id, socket.assigns.subject) do
       nil ->
@@ -86,8 +80,9 @@ defmodule PortalWeb.Resources do
 
         filter_site = filter_site_from_params(params, socket.assigns.subject)
 
-        pool_clients = Database.list_pool_members(resource, socket.assigns.subject)
-        pool_member_ids = Enum.map(pool_clients, & &1.id)
+        pool_devices = Database.list_pool_members(resource, socket.assigns.subject)
+        pool_member_ids = Enum.map(pool_devices, & &1.id)
+        pool_group_ids = Database.existing_pool_group_ids([resource], socket.assigns.subject)
 
         {:noreply,
          socket
@@ -95,8 +90,9 @@ defmodule PortalWeb.Resources do
            filter_site: filter_site,
            selected_resource: resource,
            selected_resource_pool_member_ids: pool_member_ids,
-           selected_resource_pool_clients: pool_clients,
-           clients_expanded_id: nil,
+           selected_resource_pool_devices: pool_devices,
+           selected_resource_pool_group_ids: pool_group_ids,
+           devices_expanded_id: nil,
            selected_groups: groups,
            policy_authorizations: policy_authorizations,
            policy_authorizations_page: page,
@@ -109,7 +105,7 @@ defmodule PortalWeb.Resources do
   def handle_params(params, uri, %{assigns: %{live_action: :new}} = socket) do
     sites = Database.all_sites(socket.assigns.subject)
     changeset = Database.new_resource(socket.assigns.subject)
-    socket = handle_live_tables_params(socket, params, uri)
+    socket = LiveTable.handle_live_tables_params(socket, params, uri)
 
     {:noreply,
      socket
@@ -118,7 +114,7 @@ defmodule PortalWeb.Resources do
   end
 
   def handle_params(%{"id" => id} = params, uri, %{assigns: %{live_action: :edit}} = socket) do
-    socket = handle_live_tables_params(socket, params, uri)
+    socket = LiveTable.handle_live_tables_params(socket, params, uri)
 
     case Database.get_resource(id, socket.assigns.subject) do
       nil ->
@@ -130,7 +126,7 @@ defmodule PortalWeb.Resources do
       resource ->
         sites = Database.all_sites(socket.assigns.subject)
         changeset = Database.change_resource(resource, socket.assigns.subject)
-        selected_clients = Database.list_pool_members(resource, socket.assigns.subject)
+        selected_devices = Database.list_pool_members(resource, socket.assigns.subject)
 
         {:noreply,
          socket
@@ -141,16 +137,17 @@ defmodule PortalWeb.Resources do
              to_form(changeset),
              sites,
              resource,
-             selected_clients
+             selected_devices
            )
          )}
     end
   end
 
   def handle_params(params, uri, socket) do
-    socket = handle_live_tables_params(socket, params, uri)
+    socket = LiveTable.handle_live_tables_params(socket, params, uri)
 
-    filter_site = filter_site_from_params(params, socket.assigns.subject)
+    # The site only labels the filter notice, so the static render goes without it.
+    filter_site = if connected?(socket), do: filter_site_from_params(params, socket.assigns.subject)
 
     {:noreply,
      socket
@@ -173,23 +170,34 @@ defmodule PortalWeb.Resources do
   defp new_resource_state_assigns(socket, resource_form, sites) do
     [
       resource_panel: base_resource_panel(socket, view: :new_form),
-      resource_form: base_resource_form(resource_form, sites),
+      resource_form:
+        base_resource_form(resource_form, sites,
+          pool_counts: Database.pool_counts(socket.assigns.subject, nil)
+        ),
       resource_grant: base_resource_grant(socket),
       resource_ui: base_resource_ui()
     ]
   end
 
-  defp edit_resource_state_assigns(socket, resource_form, sites, resource, selected_clients) do
+  defp edit_resource_state_assigns(socket, resource_form, sites, resource, selected_devices) do
     [
       resource_panel: base_resource_panel(socket, view: :edit_form),
       resource_form:
         base_resource_form(resource_form, sites,
           active_protocols: Enum.map(resource.filters, & &1.protocol),
-          selected_clients: selected_clients
+          selected_devices: selected_devices,
+          pool_counts: Database.pool_counts(socket.assigns.subject, stored_group_id(resource))
         ),
       resource_grant: base_resource_grant(socket),
       resource_ui: base_resource_ui()
     ]
+  end
+
+  defp stored_group_id(%{device_membership_criteria: criteria}) do
+    case Resource.DeviceMembershipCriteria.group_id(criteria) do
+      {:ok, group_id} -> group_id
+      :error -> nil
+    end
   end
 
   defp base_resource_panel(socket, overrides \\ []) do
@@ -214,9 +222,14 @@ defmodule PortalWeb.Resources do
         address_description_changed?: false,
         active_protocols: [],
         filters_dropdown_open?: false,
-        selected_clients: [],
-        client_search: "",
-        client_search_results: nil
+        selected_devices: [],
+        pool_counts: %{},
+        device_search: "",
+        device_search_results: nil,
+        device_search_online_only?: false,
+        device_search_recently_seen?: false,
+        device_search_refilling?: false,
+        device_search_loading?: false
       }
     )
   end
@@ -227,6 +240,7 @@ defmodule PortalWeb.Resources do
       %{
         available_groups: [],
         providers: [],
+        postures: Postures.for_account(socket.assigns.account),
         timezone: base_resource_panel(socket).timezone,
         grant_selected_group_ids: [],
         grant_form: nil,
@@ -294,11 +308,11 @@ defmodule PortalWeb.Resources do
   end
 
   defp parse_show_tab(params, resource) do
-    default = if device_pool?(resource), do: "clients", else: "groups"
+    default = if ResourceComponents.lists_devices?(resource), do: "devices", else: "groups"
 
     case Map.get(params, "tab", default) do
-      "clients" ->
-        if device_pool?(resource), do: :clients, else: :groups
+      "devices" ->
+        if ResourceComponents.lists_devices?(resource), do: :devices, else: :groups
 
       tab when tab in ~w[groups authorizations] ->
         String.to_existing_atom(tab)
@@ -308,24 +322,24 @@ defmodule PortalWeb.Resources do
     end
   end
 
-  defp device_pool?(%{type: :static_device_pool}), do: true
-  defp device_pool?(_), do: false
-
   defp redirect_to_resources_index(socket, message) do
     {:noreply,
      socket
      |> put_flash(:error, message)
-     |> push_patch(to: ~p"/#{socket.assigns.account}/resources?#{socket.assigns.query_params}")}
+     |> push_patch(to: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/resources"))}
   end
 
-  defp resources_index_path(socket), do: ~p"/#{socket.assigns.account}/resources"
-  defp new_resource_path(socket), do: ~p"/#{socket.assigns.account}/resources/new"
+  defp resources_index_path(socket),
+    do: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/resources")
+
+  defp new_resource_path(socket),
+    do: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/resources/new")
 
   defp resource_show_path(socket, resource_id),
-    do: ~p"/#{socket.assigns.account}/resources/#{resource_id}"
+    do: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/resources/#{resource_id}")
 
   defp edit_resource_path(socket, resource_id),
-    do: ~p"/#{socket.assigns.account}/resources/#{resource_id}/edit"
+    do: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/resources/#{resource_id}/edit")
 
   defp cancel_resource_form_path(socket) do
     case socket.assigns.resource_panel.view do
@@ -334,69 +348,70 @@ defmodule PortalWeb.Resources do
     end
   end
 
-  def handle_resources_update!(socket, list_opts) do
+  defp load_resources(subject, list_opts) do
     list_opts = Keyword.put(list_opts, :preload, [:site])
 
-    with {:ok, resources, metadata} <-
-           Database.list_resources(socket.assigns.subject, list_opts) do
+    with {:ok, resources, metadata} <- Database.list_resources(subject, list_opts) do
       internet_resource =
-        if Portal.Account.internet_resource_enabled?(socket.assigns.account) do
-          Database.get_internet_resource(socket.assigns.subject)
+        if Portal.Account.internet_resource_enabled?(subject.account) do
+          Database.get_internet_resource(subject)
         end
 
       all_resources =
         if internet_resource, do: [internet_resource | resources], else: resources
 
-      resource_policy_counts =
-        Database.count_policies_for_resources(all_resources, socket.assigns.subject)
-
-      device_pool_members =
-        Database.pool_member_ids_for_resources(all_resources, socket.assigns.subject)
+      resource_policy_counts = Database.count_policies_for_resources(all_resources, subject)
+      device_pool_members = Database.pool_member_ids_for_resources(all_resources)
+      pool_group_ids = Database.existing_pool_group_ids(all_resources, subject)
 
       {:ok,
-       assign(socket,
+       %{
          resources: resources,
          internet_resource: internet_resource,
          resource_policy_counts: resource_policy_counts,
          device_pool_members: device_pool_members,
-         online_client_ids: online_client_ids(socket.assigns.account.id),
+         pool_group_ids: pool_group_ids,
+         online_ids: online_ids(subject.account.id),
+         online_site_ids: Presence.Devices.online_site_ids(subject.account.id),
          resources_metadata: metadata
-       )}
+       }}
     end
   end
 
   def render(assigns) do
     ~H"""
     <div class="relative flex flex-col h-full overflow-hidden">
-      <.page_header>
+      <Page.page_header>
         <:icon>
-          <.icon name="ri-server-line" class="w-16 h-16 text-brand" />
+          <Core.icon name="ri-server-line" class="w-16 h-16 text-brand" />
         </:icon>
         <:title>Resources</:title>
         <:description>
           Network endpoints accessible through Firezone.
         </:description>
         <:action>
-          <.docs_action path="/deploy/resources" />
-          <.button style="primary" icon="ri-add-line" phx-click="open_new_form">
+          <Navigation.docs_action path="/deploy/resources" />
+          <Form.button style="primary" icon="ri-add-line" phx-click="open_new_form">
             New Resource
-          </.button>
+          </Form.button>
         </:action>
         <:stats>
           <.async_result :let={count} assign={@resources_count}>
-            <:loading><.badge type="primary">Loading...</.badge></:loading>
-            <.dual_badge type="primary">
+            <:loading><Core.badge type="primary">Loading...</Core.badge></:loading>
+            <Core.dual_badge type="primary">
               <:left>{count}</:left>
               <:right>Total</:right>
-            </.dual_badge>
+            </Core.dual_badge>
           </.async_result>
         </:stats>
-      </.page_header>
+      </Page.page_header>
 
       <div class="flex-1 flex flex-col min-h-0 overflow-hidden">
-        <.live_table
+        <LiveTable.live_table
           stale={@stale}
           id="resources"
+          loading={@loading_by_table_id["resources"]}
+          query_error={@query_error_by_table_id["resources"]}
           rows={@resources}
           row_id={&"resource-#{&1.id}"}
           row_click={fn r -> ~p"/#{@account}/resources/#{r.id}?#{@query_params}" end}
@@ -424,7 +439,7 @@ defmodule PortalWeb.Resources do
             >
               <td class="px-4 py-3">
                 <div class="flex items-center gap-2">
-                  <.icon name="ri-global-line" class="w-5 h-5 text-violet-500" />
+                  <Core.icon name="ri-global-line" class="w-5 h-5 text-link" />
                   <div class="font-semibold transition-colors text-heading group-hover:text-brand">
                     Internet Resource
                   </div>
@@ -437,8 +452,8 @@ defmodule PortalWeb.Resources do
                 </div>
               </td>
               <td class="px-4 py-3">
-                <span class={type_badge_class(:internet)}>
-                  {resource_type_label(:internet)}
+                <span class={ResourceType.type_badge_class(:internet)}>
+                  {ResourceType.resource_type_label(:internet)}
                 </span>
               </td>
               <td class="px-4 py-3 hidden lg:table-cell">
@@ -446,34 +461,34 @@ defmodule PortalWeb.Resources do
               </td>
               <td class="px-4 py-3">
                 <% count = Map.get(@resource_policy_counts, @internet_resource.id, 0) %>
-                <.link
+                <Navigation.link
                   :if={count > 0}
                   navigate={
                     ~p"/#{@account}/policies?policies_filter[resource_id]=#{@internet_resource.id}"
                   }
                 >
-                  <span class="inline-flex items-center justify-center w-6 h-6 rounded text-xs font-semibold tabular-nums bg-brand-subtle text-brand">
+                  <span class="inline-flex items-center justify-center w-6 h-6 rounded text-xs font-semibold tabular-nums bg-brand-wash text-heading transition-colors hover:bg-brand/40">
                     {count}
                   </span>
-                </.link>
+                </Navigation.link>
                 <span
                   :if={count == 0}
-                  class="inline-flex items-center justify-center w-6 h-6 rounded text-xs font-semibold tabular-nums bg-neutral-status-light text-subtle"
+                  class="inline-flex items-center justify-center w-6 h-6 rounded text-xs font-semibold tabular-nums bg-neutral-status-light text-body"
                 >
                   0
                 </span>
               </td>
               <td class="px-4 py-3 text-body text-xs">Internet</td>
               <td class="px-4 py-3">
-                <.resource_status_badge resource={@internet_resource} presence_tick={@presence_tick} />
+                <ResourceComponents.resource_status_badge resource={@internet_resource} online_site_ids={@online_site_ids} />
               </td>
             </tr>
           </:prepend_rows>
           <:notice :if={@filter_site} type="info">
             Viewing Resources for Site <strong>{@filter_site.name}</strong>.
-            <.link navigate={~p"/#{@account}/resources"} class={link_style()}>
+            <Navigation.link navigate={~p"/#{@account}/resources"}>
               View all resources
-            </.link>
+            </Navigation.link>
           </:notice>
           <:col :let={resource} field={{:resources, :name}} label="Name">
             <div class="font-medium text-heading group-hover:text-brand transition-colors">
@@ -483,15 +498,15 @@ defmodule PortalWeb.Resources do
               "text-xs mt-0.5 truncate max-w-xs",
               if(resource.address_description,
                 do: "text-subtle",
-                else: "text-muted italic"
+                else: "text-subtle italic"
               )
             ]}>
               {resource.address_description || "No Address Description"}
             </div>
           </:col>
           <:col :let={resource} label="Type" class="w-32">
-            <span class={type_badge_class(resource.type)}>
-              {resource_type_label(resource.type)}
+            <span class={ResourceType.type_badge_class(resource.type)}>
+              {ResourceType.resource_type_label(resource.type)}
             </span>
           </:col>
           <:col
@@ -501,7 +516,7 @@ defmodule PortalWeb.Resources do
             class="hidden lg:table-cell"
           >
             <span
-              :if={resource.type not in [:internet, :static_device_pool]}
+              :if={resource.type not in [:internet, :device_pool]}
               class="font-mono text-xs text-heading"
             >
               {resource.address}
@@ -513,7 +528,7 @@ defmodule PortalWeb.Resources do
               0.0.0.0/0, ::/0
             </span>
             <span
-              :if={resource.type == :static_device_pool}
+              :if={resource.type == :device_pool}
               class="font-mono text-xs italic text-subtle"
             >
               Multiple Addresses
@@ -521,45 +536,46 @@ defmodule PortalWeb.Resources do
           </:col>
           <:col :let={resource} label="Policies" class="w-20">
             <% count = Map.get(@resource_policy_counts, resource.id, 0) %>
-            <.link
+            <Navigation.link
               :if={count > 0}
               navigate={~p"/#{@account}/policies?policies_filter[resource_id]=#{resource.id}"}
             >
-              <span class="inline-flex items-center justify-center w-6 h-6 rounded text-xs font-semibold tabular-nums bg-brand-subtle text-brand">
+              <span class="inline-flex items-center justify-center w-6 h-6 rounded text-xs font-semibold tabular-nums bg-brand-wash text-heading transition-colors hover:bg-brand/40">
                 {count}
               </span>
-            </.link>
+            </Navigation.link>
             <span
               :if={count == 0}
-              class="inline-flex items-center justify-center w-6 h-6 rounded text-xs font-semibold tabular-nums bg-neutral-status-light text-subtle"
+              class="inline-flex items-center justify-center w-6 h-6 rounded text-xs font-semibold tabular-nums bg-neutral-status-light text-body"
             >
               0
             </span>
           </:col>
           <:col :let={resource} label="Site">
-            <.link
+            <Navigation.link
               :if={resource.site}
               navigate={~p"/#{@account}/sites/#{resource.site}"}
               class="text-xs text-body hover:text-heading transition-colors"
             >
               {resource.site.name}
-            </.link>
-            <span :if={is_nil(resource.site)} class="text-muted italic">
-              {nil_site_label(resource)}
+            </Navigation.link>
+            <span :if={is_nil(resource.site)} class="text-xs text-subtle italic">
+              {ResourceComponents.nil_site_label(resource)}
             </span>
           </:col>
           <:col :let={resource} label="Status" class="w-32">
-            <.resource_status_badge
+            <ResourceComponents.resource_status_badge
               resource={resource}
-              presence_tick={@presence_tick}
+              online_site_ids={@online_site_ids}
               pool_member_ids={Map.get(@device_pool_members, resource.id, [])}
-              online_client_ids={@online_client_ids}
+              online_ids={@online_ids}
+              pool_group_ids={@pool_group_ids}
             />
           </:col>
           <:empty>
             <div class="flex flex-col items-center gap-3 py-16">
               <div class="w-9 h-9 rounded-lg border border-border bg-raised flex items-center justify-center">
-                <.icon name="ri-server-line" class="w-5 h-5 text-subtle" />
+                <Core.icon name="ri-server-line" class="w-5 h-5 text-subtle" />
               </div>
               <div class="text-center">
                 <p class="text-sm font-medium text-heading">No resources yet</p>
@@ -567,22 +583,23 @@ defmodule PortalWeb.Resources do
                   Create a Resource to represent an asset or service.
                 </p>
               </div>
-              <.link
-                patch={~p"/#{@account}/resources/new"}
+              <Navigation.link
+                patch={LiveTable.live_table_path(assigns, ~p"/#{@account}/resources/new")}
                 class="flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
               >
-                <.icon name="ri-add-line" class="w-3 h-3" /> Add a Resource
-              </.link>
+                <Core.icon name="ri-add-line" class="w-3 h-3" /> Add a Resource
+              </Navigation.link>
             </div>
           </:empty>
-        </.live_table>
+        </LiveTable.live_table>
       </div>
-      <.panel_shell open={
+      <ResourceComponents.panel_shell open={
         not is_nil(@selected_resource) or @resource_panel.view in [:new_form, :edit_form]
       }>
         <%= if @resource_panel.view in [:new_form, :edit_form] do %>
-          <.resource_form_panel
+          <ResourceComponents.resource_form_panel
             account={@account}
+            subject={@subject}
             resource={@selected_resource}
             panel_view={@resource_panel.view}
             form_state={resource_form_panel_state(assigns)}
@@ -590,14 +607,15 @@ defmodule PortalWeb.Resources do
         <% end %>
 
         <%= if @selected_resource && @resource_panel.view not in [:new_form, :edit_form] do %>
-          <.resource_details_panel
+          <ResourceComponents.resource_details_panel
             account={@account}
             resource={@selected_resource}
             pool_member_ids={@selected_resource_pool_member_ids}
-            pool_clients={@selected_resource_pool_clients}
-            clients_expanded_id={@clients_expanded_id}
-            online_client_ids={@online_client_ids}
-            presence_tick={@presence_tick}
+            pool_devices={@selected_resource_pool_devices}
+            pool_group_ids={@selected_resource_pool_group_ids}
+            devices_expanded_id={@devices_expanded_id}
+            online_ids={@online_ids}
+            online_site_ids={@online_site_ids}
             groups={@selected_groups}
             policy_authorizations={@policy_authorizations}
             policy_authorizations_page={@policy_authorizations_page}
@@ -609,7 +627,7 @@ defmodule PortalWeb.Resources do
             ui_state={resource_panel_ui_state(assigns)}
           />
         <% end %>
-      </.panel_shell>
+      </ResourceComponents.panel_shell>
     </div>
     """
   end
@@ -623,11 +641,10 @@ defmodule PortalWeb.Resources do
              "table_row_click",
              "change_limit"
            ],
-      do: handle_live_table_event(event, params, socket)
+      do: LiveTable.handle_live_table_event(event, params, socket)
 
   def handle_event("close_panel", _params, socket) do
-    params = Map.drop(socket.assigns.query_params, ["tab"])
-    {:noreply, push_patch(socket, to: ~p"/#{socket.assigns.account}/resources?#{params}")}
+    {:noreply, push_patch(socket, to: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/resources"))}
   end
 
   def handle_event("open_new_form", _params, socket) do
@@ -642,10 +659,16 @@ defmodule PortalWeb.Resources do
     {:noreply, socket}
   end
 
-  def handle_event("open_edit_form", _params, socket) do
-    resource = socket.assigns.selected_resource
-
+  def handle_event(
+        "open_edit_form",
+        _params,
+        %{assigns: %{selected_resource: %Resource{} = resource}} = socket
+      ) do
     {:noreply, push_patch(socket, to: edit_resource_path(socket, resource.id))}
+  end
+
+  def handle_event("open_edit_form", _params, %{assigns: %{selected_resource: nil}} = socket) do
+    {:noreply, socket}
   end
 
   def handle_event("cancel_resource_form", _params, socket) do
@@ -657,15 +680,7 @@ defmodule PortalWeb.Resources do
         %{"tab" => tab},
         %{assigns: %{selected_resource: %Resource{} = resource}} = socket
       ) do
-    params =
-      socket.assigns.query_params
-      |> Map.put("tab", tab)
-      |> Map.delete("page")
-
-    {:noreply,
-     push_patch(socket,
-       to: ~p"/#{socket.assigns.account}/resources/#{resource}?#{params}"
-     )}
+    {:noreply, push_patch(socket, to: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/resources/#{resource}", tab: tab))}
   end
 
   def handle_event(
@@ -676,13 +691,23 @@ defmodule PortalWeb.Resources do
     {:noreply, socket}
   end
 
-  def handle_event("change_policy_authorizations_page", %{"page" => page}, socket) do
-    params = Map.put(socket.assigns.query_params, "page", page)
-
+  def handle_event(
+        "change_policy_authorizations_page",
+        %{"page" => page},
+        %{assigns: %{selected_resource: %Resource{} = resource}} = socket
+      ) do
     {:noreply,
      push_patch(socket,
-       to: ~p"/#{socket.assigns.account}/resources/#{socket.assigns.selected_resource.id}?#{params}"
+       to: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/resources/#{resource.id}", tab: "authorizations", page: page)
      )}
+  end
+
+  def handle_event(
+        "change_policy_authorizations_page",
+        _params,
+        %{assigns: %{selected_resource: nil}} = socket
+      ) do
+    {:noreply, socket}
   end
 
   def handle_event("toggle_policy_authorization_row", %{"id" => id}, socket) do
@@ -692,11 +717,11 @@ defmodule PortalWeb.Resources do
     {:noreply, assign(socket, policy_authorizations_expanded_id: expanded)}
   end
 
-  def handle_event("toggle_pool_client_row", %{"id" => id}, socket) do
+  def handle_event("toggle_pool_device_row", %{"id" => id}, socket) do
     expanded =
-      if socket.assigns.clients_expanded_id == id, do: nil, else: id
+      if socket.assigns.devices_expanded_id == id, do: nil, else: id
 
-    {:noreply, assign(socket, clients_expanded_id: expanded)}
+    {:noreply, assign(socket, devices_expanded_id: expanded)}
   end
 
   def handle_event("change_resource_form", %{"resource" => attrs} = payload, socket) do
@@ -704,7 +729,7 @@ defmodule PortalWeb.Resources do
       socket.assigns.resource_form.address_description_changed? ||
         payload["_target"] == ["resource", "address_description"]
 
-    attrs = map_filters_form_attrs(attrs)
+    attrs = ResourceComponents.map_filters_form_attrs(attrs)
 
     changeset =
       if socket.assigns.resource_panel.view == :new_form do
@@ -718,17 +743,18 @@ defmodule PortalWeb.Resources do
      socket
      |> merge_state(:resource_form,
        form: to_form(changeset),
-       address_description_changed?: address_description_changed?
+       address_description_changed?: address_description_changed?,
+       pool_counts: Database.pool_counts(socket.assigns.subject, attrs["group_id"])
      )}
   end
 
   def handle_event("submit_resource_form", %{"resource" => attrs}, socket) do
-    attrs = map_filters_form_attrs(attrs)
+    attrs = ResourceComponents.map_filters_form_attrs(attrs)
 
     if socket.assigns.resource_panel.view == :new_form do
       case Database.create_resource(
              attrs,
-             socket.assigns.resource_form.selected_clients,
+             socket.assigns.resource_form.selected_devices,
              socket.assigns.subject
            ) do
         {:ok, resource} ->
@@ -736,8 +762,8 @@ defmodule PortalWeb.Resources do
 
           {:noreply,
            socket
-           |> reload_live_table!("resources")
-           |> push_patch(to: ~p"/#{socket.assigns.account}/resources/#{resource.id}")}
+           |> LiveTable.reload_live_table!("resources")
+           |> push_patch(to: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/resources/#{resource.id}"))}
 
         {:error, changeset} ->
           changeset = Map.put(changeset, :action, :validate)
@@ -749,7 +775,7 @@ defmodule PortalWeb.Resources do
       case Database.update_resource(
              resource,
              attrs,
-             socket.assigns.resource_form.selected_clients,
+             socket.assigns.resource_form.selected_devices,
              socket.assigns.subject
            ) do
         {:ok, updated_resource} ->
@@ -758,8 +784,8 @@ defmodule PortalWeb.Resources do
 
           {:noreply,
            socket
-           |> reload_live_table!("resources")
-           |> push_patch(to: ~p"/#{socket.assigns.account}/resources/#{updated_resource.id}")}
+           |> LiveTable.reload_live_table!("resources")
+           |> push_patch(to: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/resources/#{updated_resource.id}"))}
 
         {:error, changeset} ->
           changeset = Map.put(changeset, :action, :validate)
@@ -775,8 +801,7 @@ defmodule PortalWeb.Resources do
 
   def handle_event("handle_keydown", %{"key" => "Escape"}, socket)
       when not is_nil(socket.assigns.selected_resource) do
-    params = Map.drop(socket.assigns.query_params, ["tab"])
-    {:noreply, push_patch(socket, to: ~p"/#{socket.assigns.account}/resources?#{params}")}
+    {:noreply, push_patch(socket, to: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/resources"))}
   end
 
   def handle_event("handle_keydown", _params, socket) do
@@ -814,67 +839,72 @@ defmodule PortalWeb.Resources do
     {:noreply, merge_state(socket, :resource_form, filters_dropdown_open?: false)}
   end
 
-  def handle_event("focus_client_search", _params, socket) do
-    results =
-      Database.search_clients(
-        socket.assigns.resource_form.client_search,
-        socket.assigns.subject,
-        socket.assigns.resource_form.selected_clients
-      )
-
-    {:noreply, merge_state(socket, :resource_form, client_search_results: results)}
+  def handle_event("focus_device_search", _params, socket) do
+    {:noreply, run_device_search(socket, page: 1)}
   end
 
-  def handle_event("blur_client_search", _params, socket) do
-    {:noreply, merge_state(socket, :resource_form, client_search_results: nil)}
-  end
-
-  def handle_event("search_client", %{"client_search" => search}, socket) do
-    results =
-      Database.search_clients(
-        search,
-        socket.assigns.subject,
-        socket.assigns.resource_form.selected_clients
-      )
-
+  def handle_event("blur_device_search", _params, socket) do
     {:noreply,
-     merge_state(socket, :resource_form, client_search: search, client_search_results: results)}
+     socket
+     |> cancel_async(:device_search)
+     |> merge_state(:resource_form, device_search_results: nil, device_search_loading?: false)}
   end
 
-  def handle_event("add_client", %{"client_id" => client_id}, socket) do
-    case Database.get_client(client_id, socket.assigns.subject) do
-      nil ->
-        {:noreply, socket}
+  def handle_event("search_device", %{"device_search" => search}, socket) do
+    socket = merge_state(socket, :resource_form, device_search: search)
+    {:noreply, run_device_search(socket, page: 1)}
+  end
 
-      client ->
-        selected =
-          Enum.uniq_by([client | socket.assigns.resource_form.selected_clients], & &1.id)
-
-        {:noreply,
-         merge_state(socket, :resource_form,
-           selected_clients: selected,
-           client_search: "",
-           client_search_results: nil
-         )}
+  def handle_event("device_search_page", %{"page" => page}, socket) do
+    case Integer.parse(page) do
+      {page, ""} -> {:noreply, run_device_search(socket, page: page)}
+      _ -> {:noreply, socket}
     end
   end
 
-  def handle_event("remove_client", %{"client_id" => client_id}, socket) do
-    selected =
-      Enum.reject(socket.assigns.resource_form.selected_clients, &(&1.id == client_id))
+  def handle_event("toggle_device_search_filter", %{"filter" => filter}, socket) do
+    case device_search_filter_key(filter) do
+      nil ->
+        {:noreply, socket}
 
-    results =
-      Database.search_clients(
-        socket.assigns.resource_form.client_search,
-        socket.assigns.subject,
-        selected
-      )
+      key ->
+        enabled? = !Map.fetch!(socket.assigns.resource_form, key)
+        socket = merge_state(socket, :resource_form, [{key, enabled?}])
+        {:noreply, run_device_search(socket, page: 1)}
+    end
+  end
 
-    {:noreply,
-     merge_state(socket, :resource_form,
-       selected_clients: selected,
-       client_search_results: results
-     )}
+  def handle_event("add_device", %{"device_id" => device_id}, socket) do
+    case Database.get_device(device_id, socket.assigns.subject) do
+      nil ->
+        {:noreply, socket}
+
+      device ->
+        form = socket.assigns.resource_form
+        selected = Enum.uniq_by([device | form.selected_devices], & &1.id)
+        socket = merge_state(socket, :resource_form, selected_devices: selected)
+
+        # Re-running the search is a full scan on large accounts, so backfill the page from the
+        # reserve fetched with it and only top the reserve up in the background once it runs out.
+        case take_device_search_result(form.device_search_results, device.id) do
+          nil ->
+            {:noreply, socket}
+
+          results ->
+            socket
+            |> merge_state(:resource_form, device_search_results: results)
+            |> maybe_refill_device_search()
+            |> then(&{:noreply, &1})
+        end
+    end
+  end
+
+  def handle_event("remove_device", %{"device_id" => device_id}, socket) do
+    form = socket.assigns.resource_form
+    selected = Enum.reject(form.selected_devices, &(&1.id == device_id))
+
+    socket = merge_state(socket, :resource_form, selected_devices: selected)
+    {:noreply, run_device_search(socket, page: current_device_search_page(form))}
   end
 
   def handle_event("open_grant_form", _params, socket) do
@@ -891,7 +921,7 @@ defmodule PortalWeb.Resources do
          base_resource_grant(socket,
            available_groups: available,
            providers: providers,
-           grant_form: to_grant_form(resource)
+           grant_form: ResourceComponents.to_grant_form(resource)
          )
      )
      |> assign(resource_ui: base_resource_ui())}
@@ -1070,6 +1100,13 @@ defmodule PortalWeb.Resources do
     {:noreply, merge_state(socket, :resource_grant, grant_selected_group_ids: updated)}
   end
 
+  def handle_event("postures_" <> _rest = event, params, socket) do
+    {:noreply,
+     update(socket, :resource_grant, fn grant ->
+       Map.update!(grant, :postures, &Postures.handle_event(event, params, &1))
+     end)}
+  end
+
   def handle_event("submit_grant", params, socket) do
     resource = socket.assigns.selected_resource
     selected_group_ids = socket.assigns.resource_grant.grant_selected_group_ids
@@ -1077,8 +1114,9 @@ defmodule PortalWeb.Resources do
 
     condition_attrs =
       policy_params
-      |> map_condition_params(empty_values: :drop)
-      |> maybe_drop_unsupported_conditions(socket)
+      |> PolicyComponents.map_condition_params(empty_values: :drop)
+      |> PolicyComponents.maybe_drop_unsupported_conditions(socket)
+      |> Postures.maybe_drop_unsupported(socket.assigns.resource_grant.postures)
 
     result =
       Enum.reduce_while(selected_group_ids, :ok, fn group_id, :ok ->
@@ -1104,7 +1142,7 @@ defmodule PortalWeb.Resources do
          |> merge_state(:resource_panel, view: :list)
          |> assign(resource_grant: base_resource_grant(socket))
          |> assign(resource_ui: base_resource_ui())
-         |> reload_live_table!("resources")}
+         |> LiveTable.reload_live_table!("resources")}
 
       {:error, changeset} ->
         {:noreply,
@@ -1171,8 +1209,8 @@ defmodule PortalWeb.Resources do
         {:noreply,
          socket
          |> put_flash(:success, "Resource \"#{resource.name}\" was deleted.")
-         |> reload_live_table!("resources")
-         |> push_patch(to: ~p"/#{socket.assigns.account}/resources")}
+         |> LiveTable.reload_live_table!("resources")
+         |> push_patch(to: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/resources"))}
 
       {:error, _} ->
         {:noreply,
@@ -1264,18 +1302,168 @@ defmodule PortalWeb.Resources do
   def handle_info(%Phoenix.Socket.Broadcast{event: event}, socket)
       when event in ["presence_diff", "presence_state"] do
     {:noreply,
-     socket
-     |> update(:presence_tick, &(&1 + 1))
-     |> assign(online_client_ids: online_client_ids(socket.assigns.account.id))}
+     assign(socket,
+       online_ids: online_ids(socket.assigns.account.id),
+       online_site_ids: Presence.Devices.online_site_ids(socket.assigns.account.id)
+     )}
   end
 
   def handle_info(_, socket) do
     {:noreply, socket}
   end
 
-  defp online_client_ids(account_id) do
+  def handle_async(:device_search, {:ok, results}, socket) do
+    selected = socket.assigns.resource_form.selected_devices
+
+    socket
+    |> merge_state(:resource_form,
+      device_search_results: without_selected_devices(results, selected),
+      device_search_loading?: false
+    )
+    |> then(&{:noreply, &1})
+  end
+
+  def handle_async(:device_search, {:exit, _reason}, socket),
+    do: {:noreply, merge_state(socket, :resource_form, device_search_loading?: false)}
+
+  def handle_async(:device_search_refill, {:ok, {key, fresh}}, socket) do
+    socket = merge_state(socket, :resource_form, device_search_refilling?: false)
+    form = socket.assigns.resource_form
+
+    if form.device_search_results && key == device_search_key(form) do
+      results = merge_device_search_refill(form.device_search_results, fresh, form.selected_devices)
+
+      # Devices added while the top-up was running may have used up the reserve again.
+      socket
+      |> merge_state(:resource_form, device_search_results: results)
+      |> maybe_refill_device_search()
+      |> then(&{:noreply, &1})
+    else
+      {:noreply, socket}
+    end
+  end
+
+  def handle_async(:device_search_refill, {:exit, _reason}, socket),
+    do: {:noreply, merge_state(socket, :resource_form, device_search_refilling?: false)}
+
+  defp device_search_filter_key("online_only"), do: :device_search_online_only?
+  defp device_search_filter_key("recently_seen"), do: :device_search_recently_seen?
+  defp device_search_filter_key(_filter), do: nil
+
+  defp take_device_search_result(%{devices: devices} = results, device_id) do
+    case Enum.split_with(devices, &(&1.id == device_id)) do
+      {[], _devices} ->
+        nil
+
+      {_taken, devices} ->
+        {fill, reserve} = Enum.split(results.reserve, 1)
+        %{results | devices: devices ++ fill, reserve: reserve, total: results.total - 1}
+    end
+  end
+
+  defp take_device_search_result(_results, _device_id), do: nil
+
+  defp maybe_refill_device_search(socket) do
+    form = socket.assigns.resource_form
+    results = form.device_search_results
+    shown_through = (results.page - 1) * results.page_size + length(results.devices)
+
+    # Top up once the reserve is running low and more devices exist past it, or when the page
+    # emptied out while earlier pages still have devices (the last one on the last page was added).
+    # A top-up already in flight is left to finish rather than restarted on every add.
+    low_reserve? =
+      length(results.reserve) <= @device_search_refill_threshold and
+        results.total > shown_through + length(results.reserve)
+
+    if not form.device_search_refilling? and (low_reserve? or (results.devices == [] and results.total > 0)) do
+      key = device_search_key(form)
+      subject = socket.assigns.subject
+
+      socket
+      |> merge_state(:resource_form, device_search_refilling?: true)
+      |> start_async(:device_search_refill, fn ->
+        {key, Database.search_devices(form.device_search, subject, form.selected_devices, device_search_opts(form))}
+      end)
+    else
+      socket
+    end
+  end
+
+  # The results were closed (or the search cleared) while the refill was running.
+  defp merge_device_search_refill(results, fresh, _selected) when is_nil(results) or is_nil(fresh),
+    do: results
+
+  # The page shifted (e.g. its last device was added), so show the fresh results as they are.
+  defp merge_device_search_refill(%{page: page}, %{page: fresh_page} = fresh, _selected)
+       when page != fresh_page,
+       do: fresh
+
+  defp merge_device_search_refill(%{devices: devices} = results, fresh, selected_devices) do
+    hidden_ids = MapSet.new(devices ++ selected_devices, & &1.id)
+    pool = Enum.reject(fresh.devices ++ fresh.reserve, &MapSet.member?(hidden_ids, &1.id))
+    {fill, reserve} = Enum.split(pool, results.page_size - length(devices))
+
+    %{results | devices: devices ++ fill, reserve: reserve, total: fresh.total}
+  end
+
+  defp device_search_key(form) do
+    page = current_device_search_page(form)
+    {form.device_search, form.device_search_online_only?, form.device_search_recently_seen?, page}
+  end
+
+  defp device_search_opts(form, opts \\ []) do
+    Keyword.merge(opts,
+      online_only: form.device_search_online_only?,
+      recently_seen: form.device_search_recently_seen?,
+      page: Keyword.get(opts, :page, current_device_search_page(form))
+    )
+  end
+
+  defp current_device_search_page(%{device_search_results: %{page: page}}), do: page
+  defp current_device_search_page(_form), do: 1
+
+  defp run_device_search(socket, opts) do
+    form = socket.assigns.resource_form
+
+    subject = socket.assigns.subject
+    socket = cancel_async(socket, :device_search_refill)
+
+    if form.device_search in [nil, ""] and not form.device_search_online_only? and
+         not form.device_search_recently_seen? do
+      socket
+      |> cancel_async(:device_search)
+      |> merge_state(:resource_form,
+        device_search_results: nil,
+        device_search_loading?: false,
+        device_search_refilling?: false
+      )
+    else
+      # The search scans every device in the account, so run it off the LiveView process and
+      # drop any search still in flight: typing then never queues up behind stale searches.
+      socket
+      |> cancel_async(:device_search)
+      |> merge_state(:resource_form, device_search_loading?: true, device_search_refilling?: false)
+      |> start_async(:device_search, fn ->
+        Database.search_devices(form.device_search, subject, form.selected_devices, device_search_opts(form, opts))
+      end)
+    end
+  end
+
+  # Devices may have been added from the previous results while this search was running.
+  defp without_selected_devices(%{devices: devices, reserve: reserve, total: total} = results, selected) do
+    selected_ids = MapSet.new(selected, & &1.id)
+    keep? = &(not MapSet.member?(selected_ids, &1.id))
+    {devices, dropped} = Enum.split_with(devices, keep?)
+    {reserve, dropped_reserve} = Enum.split_with(reserve, keep?)
+
+    %{results | devices: devices, reserve: reserve, total: total - length(dropped) - length(dropped_reserve)}
+  end
+
+  defp without_selected_devices(results, _selected), do: results
+
+  defp online_ids(account_id) do
     account_id
-    |> Presence.Clients.online_client_ids()
+    |> Presence.Devices.online_ids()
     |> MapSet.new()
   end
 
@@ -1317,9 +1505,13 @@ defmodule PortalWeb.Resources do
       resource_form_sites: assigns.resource_form.sites,
       resource_form_active_protocols: assigns.resource_form.active_protocols,
       resource_form_filters_dropdown_open: assigns.resource_form.filters_dropdown_open?,
-      resource_form_selected_clients: assigns.resource_form.selected_clients,
-      resource_form_client_search: assigns.resource_form.client_search,
-      resource_form_client_search_results: assigns.resource_form.client_search_results,
+      resource_form_selected_devices: assigns.resource_form.selected_devices,
+      resource_form_pool_counts: assigns.resource_form.pool_counts,
+      resource_form_device_search: assigns.resource_form.device_search,
+      resource_form_device_search_results: assigns.resource_form.device_search_results,
+      resource_form_device_search_online_only: assigns.resource_form.device_search_online_only?,
+      resource_form_device_search_recently_seen: assigns.resource_form.device_search_recently_seen?,
+      resource_form_device_search_loading: assigns.resource_form.device_search_loading?,
       filter_ports: resource_filter_ports(assigns.resource_form.form),
       filter_errors: resource_filter_errors(assigns.resource_form.form)
     }
@@ -1334,9 +1526,7 @@ defmodule PortalWeb.Resources do
   end
 
   defp mark_stale_if_unreflected(socket, change) do
-    if PortalWeb.LiveTable.view_reflects_change?(socket.assigns.resources, change),
-      do: socket,
-      else: assign(socket, stale: true)
+    LiveTable.mark_stale_unless_reflected(socket, "resources", socket.assigns.resources, change)
   end
 
   defp apply_group_state_change(socket, {:error, _}) do
@@ -1365,7 +1555,7 @@ defmodule PortalWeb.Resources do
       socket
       |> refresh_selected_groups()
       |> merge_state(:resource_ui, confirm_remove_group_id: nil, group_actions_open_id: nil)
-      |> reload_live_table!("resources")
+      |> LiveTable.reload_live_table!("resources")
       |> maybe_put_stale_flash(result, "Group access no longer exists.")
 
     {:noreply, socket}
@@ -1392,7 +1582,6 @@ defmodule PortalWeb.Resources do
     import Portal.Repo.Query
     alias Portal.Safe
     alias Portal.Resource
-    alias Portal.StaticDevicePoolMember
     alias Portal.Policy
     alias Portal.PolicyAuthorization
     alias Portal.ClientToken
@@ -1403,8 +1592,10 @@ defmodule PortalWeb.Resources do
     alias Portal.Directory
     alias PortalWeb.Resources.Components
 
-    defdelegate get_client(client_id, subject), to: Components.Database
-    defdelegate search_clients(search_term, subject, selected_clients), to: Components.Database
+    @update_fields ~w[address address_description name type device_membership_criteria ip_stack site_id]a
+
+    defdelegate get_device(device_id, subject), to: Components.Database
+    defdelegate search_devices(search_term, subject, selected_devices, opts), to: Components.Database
 
     def all_sites(subject) do
       from(s in Site, as: :sites)
@@ -1413,38 +1604,38 @@ defmodule PortalWeb.Resources do
       |> Safe.all()
     end
 
-    def new_resource(subject, attrs \\ %{}) do
+    def new_resource(subject, attrs \\ %{}, device_ids \\ []) do
       changeset =
         %Resource{}
-        |> cast(attrs, [:name, :address, :address_description, :type, :ip_stack, :site_id])
+        |> cast(normalize_pool_attrs(attrs, device_ids), @update_fields)
         |> put_change(:account_id, subject.account.id)
         |> Resource.changeset()
         |> Resource.validate_site_matches_type(subject)
 
-      if get_field(changeset, :type) == :static_device_pool do
-        validate_required(changeset, [:name])
-      else
-        validate_required(changeset, [:name, :address])
+      case get_field(changeset, :type) do
+        :device_pool ->
+          validate_required(changeset, [:name])
+
+        _ ->
+          validate_required(changeset, [:name, :address])
       end
     end
 
-    def create_resource(attrs, selected_clients, subject) do
+    def create_resource(attrs, selected_devices, subject) do
       changeset =
-        new_resource(subject, attrs)
+        new_resource(subject, attrs, Enum.map(selected_devices, & &1.id))
         |> maybe_validate_required_fields()
 
-      with {:ok, validated_clients} <-
-             Components.Database.validate_selected_clients(selected_clients, subject),
-           {:ok, resource} <- Safe.scoped(changeset, subject) |> Safe.insert(),
-           :ok <-
-             Components.Database.sync_static_pool_members(resource, validated_clients, subject) do
+      with {:ok, _validated_devices} <-
+             Components.Database.validate_selected_devices(selected_devices, subject),
+           {:ok, resource} <- Safe.scoped(changeset, subject) |> Safe.insert() do
         {:ok, resource}
       else
         {:error, %Ecto.Changeset{} = cs} ->
           {:error, cs}
 
-        {:error, :invalid_clients} ->
-          {:error, add_error(changeset, :name, "one or more selected clients are invalid")}
+        {:error, :invalid_devices} ->
+          {:error, add_error(changeset, :name, "one or more selected devices are invalid")}
 
         {:error, :unauthorized} ->
           {:error, add_error(changeset, :name, "you are not authorized to perform this action")}
@@ -1452,70 +1643,86 @@ defmodule PortalWeb.Resources do
     end
 
     defp maybe_validate_required_fields(changeset) do
-      if get_field(changeset, :type) == :static_device_pool do
-        validate_required(changeset, [:name])
-      else
-        validate_required(changeset, [:site_id])
+      case get_field(changeset, :type) do
+        :device_pool ->
+          validate_required(changeset, [:name])
+
+        _ ->
+          validate_required(changeset, [:site_id])
       end
     end
 
-    def change_resource(resource, subject, attrs \\ %{}) do
-      update_fields = ~w[address address_description name type ip_stack site_id]a
-
+    def change_resource(resource, subject, attrs \\ %{}, device_ids \\ []) do
       changeset =
         resource
-        |> cast(attrs, update_fields)
+        |> cast(normalize_pool_attrs(attrs, device_ids), @update_fields)
         |> Resource.changeset()
         |> Resource.validate_site_matches_type(subject)
 
-      if get_field(changeset, :type) == :static_device_pool do
-        validate_required(changeset, [:name, :type])
-      else
-        validate_required(changeset, [:name, :type, :site_id])
+      case get_field(changeset, :type) do
+        :device_pool ->
+          validate_required(changeset, [:name, :type])
+
+        _ ->
+          validate_required(changeset, [:name, :type, :site_id])
       end
     end
 
-    def update_resource(resource, attrs, selected_clients, subject) do
-      changeset = change_resource(resource, subject, attrs)
+    # The form's "Members" choice and the picked devices become the membership criteria.
+    defp normalize_pool_attrs(%{"type" => "device_pool", "members" => "own_devices"} = attrs, _ids) do
+      put_criteria(attrs, Resource.DeviceMembershipCriteria.own_devices())
+    end
 
-      with {:ok, validated_clients} <-
-             Components.Database.validate_selected_clients(selected_clients, subject),
-           {:ok, updated_resource} <- Safe.scoped(changeset, subject) |> Safe.update(),
-           :ok <-
-             Components.Database.sync_static_pool_members(
-               updated_resource,
-               validated_clients,
-               subject
-             ) do
+    defp normalize_pool_attrs(%{"type" => "device_pool", "members" => "listed"} = attrs, ids) do
+      put_criteria(attrs, Resource.DeviceMembershipCriteria.devices(ids))
+    end
+
+    defp normalize_pool_attrs(%{"type" => "device_pool", "members" => "all_devices"} = attrs, _ids) do
+      put_criteria(attrs, Resource.DeviceMembershipCriteria.all_devices())
+    end
+
+    defp normalize_pool_attrs(%{"type" => "device_pool", "members" => "actor_group"} = attrs, _ids) do
+      case Ecto.UUID.cast(attrs["group_id"]) do
+        {:ok, group_id} -> put_criteria(attrs, Resource.DeviceMembershipCriteria.actor_group(group_id))
+        :error -> Map.put(attrs, "device_membership_criteria", nil)
+      end
+    end
+
+    defp normalize_pool_attrs(attrs, _device_ids), do: attrs
+
+    defp put_criteria(attrs, criteria) do
+      Map.put(attrs, "device_membership_criteria", Resource.DeviceMembershipCriteria.to_map(criteria))
+    end
+
+    def update_resource(resource, attrs, selected_devices, subject) do
+      changeset = change_resource(resource, subject, attrs, Enum.map(selected_devices, & &1.id))
+
+      with {:ok, _validated_devices} <-
+             Components.Database.validate_selected_devices(selected_devices, subject),
+           {:ok, updated_resource} <- Safe.scoped(changeset, subject) |> Safe.update() do
         {:ok, updated_resource}
       else
         {:error, %Ecto.Changeset{} = cs} ->
           {:error, cs}
 
-        {:error, :invalid_clients} ->
-          {:error, add_error(changeset, :name, "one or more selected clients are invalid")}
+        {:error, :invalid_devices} ->
+          {:error, add_error(changeset, :name, "one or more selected devices are invalid")}
 
         {:error, :unauthorized} ->
           {:error, add_error(changeset, :name, "you are not authorized to perform this action")}
       end
     end
 
-    def list_pool_members(%Resource{type: :static_device_pool} = resource, subject) do
-      client_ids =
-        from(m in StaticDevicePoolMember,
-          where: m.resource_id == ^resource.id,
-          select: m.device_id
-        )
-        |> Safe.scoped(subject)
-        |> Safe.all()
-        |> case do
-          {:error, _} -> []
-          ids -> ids
+    def list_pool_members(%Resource{} = resource, subject) do
+      device_ids =
+        case Resource.DeviceMembershipCriteria.device_ids(resource.device_membership_criteria) do
+          {:ok, ids} -> ids
+          :error -> []
         end
 
       from(c in Device, as: :devices)
       |> where([devices: d], d.type == :client)
-      |> where([devices: d], d.id in ^client_ids)
+      |> where([devices: d], d.id in ^device_ids)
       |> preload(:actor)
       |> Safe.scoped(subject)
       |> Safe.all()
@@ -1523,12 +1730,10 @@ defmodule PortalWeb.Resources do
         {:error, _} ->
           []
 
-        clients ->
-          Portal.Presence.Clients.preload_clients_presence(clients)
+        devices ->
+          Portal.Presence.Devices.preload_presence(devices)
       end
     end
-
-    def list_pool_members(_resource, _subject), do: []
 
     def get_resource(id, subject) do
       from(r in Resource, as: :resources)
@@ -1583,27 +1788,60 @@ defmodule PortalWeb.Resources do
       end
     end
 
-    def pool_member_ids_for_resources(resources, subject) do
-      ids =
-        resources
-        |> Enum.filter(&(&1.type == :static_device_pool))
-        |> Enum.map(& &1.id)
-        |> Enum.uniq()
+    def pool_member_ids_for_resources(resources) do
+      for resource <- resources,
+          {:ok, device_ids} <-
+            [Resource.DeviceMembershipCriteria.device_ids(resource.device_membership_criteria)],
+          into: %{},
+          do: {resource.id, device_ids}
+    end
 
-      from(m in StaticDevicePoolMember, as: :members)
-      |> where([members: m], m.resource_id in ^ids)
-      |> select([members: m], {m.resource_id, m.device_id})
+    # Counts with the same rule the portal authorizes by, so the badge and the pool agree.
+    def pool_counts(subject, group_id) do
+      counts = %{
+        own_devices: count_criteria_devices(Resource.DeviceMembershipCriteria.own_devices(), subject),
+        all_devices: count_criteria_devices(Resource.DeviceMembershipCriteria.all_devices(), subject)
+      }
+
+      case Ecto.UUID.cast(group_id) do
+        {:ok, id} ->
+          Map.put(counts, :actor_group, count_criteria_devices(Resource.DeviceMembershipCriteria.actor_group(id), subject))
+
+        :error ->
+          counts
+      end
+    end
+
+    defp count_criteria_devices(criteria, subject) do
+      from(d in Portal.Device, as: :devices)
+      |> where([devices: d], d.type == :client)
+      |> Resource.DeviceMembershipCriteria.where_members(
+        criteria,
+        Resource.DeviceMembershipCriteria.scope(criteria, subject)
+      )
       |> Safe.scoped(subject)
-      |> Safe.all()
-      |> case do
-        {:error, _} ->
-          %{}
+      |> Safe.aggregate(:count)
+    end
 
-        rows ->
-          Enum.group_by(rows, fn {resource_id, _device_id} -> resource_id end, fn {_resource_id,
-                                                                                   device_id} ->
-            device_id
-          end)
+    def existing_pool_group_ids(resources, subject) do
+      group_ids =
+        for resource <- resources,
+            {:ok, group_id} <-
+              [Resource.DeviceMembershipCriteria.group_id(resource.device_membership_criteria)],
+            do: group_id
+
+      if group_ids == [] do
+        MapSet.new()
+      else
+        from(g in Group, as: :groups)
+        |> where([groups: g], g.id in ^group_ids)
+        |> select([groups: g], g.id)
+        |> Safe.scoped(subject)
+        |> Safe.all()
+        |> case do
+          {:error, _reason} -> MapSet.new()
+          ids -> MapSet.new(ids)
+        end
       end
     end
 
@@ -1714,7 +1952,7 @@ defmodule PortalWeb.Resources do
     def insert_policy(attrs, subject) do
       changeset =
         %Portal.Policy{}
-        |> cast(attrs, ~w[description group_id resource_id flow_log_uploads_enabled]a)
+        |> cast(attrs, ~w[description group_id resource_id flow_log_uploads_enabled require_attestation postures]a)
         |> validate_required(~w[group_id resource_id]a)
         |> cast_embed(:conditions, with: &Portal.Policies.Condition.changeset/3)
         |> Portal.Policy.changeset()
@@ -1756,6 +1994,7 @@ defmodule PortalWeb.Resources do
         Portal.EmailOTP.AuthProvider,
         Portal.OIDC.AuthProvider,
         Portal.Google.AuthProvider,
+        Portal.GitHub.AuthProvider,
         Portal.Entra.AuthProvider,
         Portal.Okta.AuthProvider
       ]
@@ -1811,7 +2050,7 @@ defmodule PortalWeb.Resources do
             {"DNS", "dns"},
             {"IP", "ip"},
             {"CIDR", "cidr"},
-            {"Device Pool", "static_device_pool"}
+            {"Device Pool", "device_pool"}
           ],
           fun: &filter_by_type/2
         }

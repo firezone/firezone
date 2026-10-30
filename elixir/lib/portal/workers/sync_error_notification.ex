@@ -16,9 +16,14 @@ defmodule Portal.Workers.SyncErrorNotification do
     unique: [period: :infinity, states: :incomplete]
 
   alias Portal.Billing
+  alias Portal.Defender
   alias Portal.Entra
   alias Portal.Google
   alias Portal.Intune
+  alias Portal.Iru
+  alias Portal.Santa
+  alias Portal.SentinelOne
+  alias Portal.Sophos
   alias Portal.Okta
   alias Portal.Mailer
   alias __MODULE__.Database
@@ -30,7 +35,12 @@ defmodule Portal.Workers.SyncErrorNotification do
       "entra" -> check_entra_directories(args)
       "google" -> check_google_directories(args)
       "okta" -> check_okta_directories(args)
-      "intune" -> check_intune_integrations(args)
+      "intune" -> check_intune_providers(args)
+      "iru" -> check_iru_providers(args)
+      "defender" -> check_defender_providers(args)
+      "santa" -> check_santa_providers(args)
+      "sentinelone" -> check_sentinelone_providers(args)
+      "sophos" -> check_sophos_providers(args)
       _ -> {:error, "Unknown provider: #{provider}"}
     end
   end
@@ -59,15 +69,60 @@ defmodule Portal.Workers.SyncErrorNotification do
     :ok
   end
 
-  # An Intune integration carries the same error columns as a directory, so the
-  # shared query and escalation schedule apply unchanged. An account that loses
-  # device posture stops syncing, so chasing its admins about an error they can
-  # no longer act on would be noise.
-  defp check_intune_integrations(%{"frequency" => frequency}) do
-    Intune.Integration
-    |> Database.errored_disabled_directories(frequency)
+  # A posture provider carries the same error columns as a directory, so
+  # the shared query and escalation schedule apply unchanged. An account that
+  # loses device posture stops syncing, so chasing its admins about an error they
+  # can no longer act on would be noise.
+  defp check_intune_providers(%{"frequency" => frequency}) do
+    Intune.PostureProvider
+    |> Database.errored_disabled_providers(frequency)
     |> Enum.filter(&Portal.Account.device_posture_enabled?(&1.account))
     |> Enum.each(&send_notification(:intune, &1, frequency))
+
+    :ok
+  end
+
+  defp check_iru_providers(%{"frequency" => frequency}) do
+    Iru.PostureProvider
+    |> Database.errored_disabled_providers(frequency)
+    |> Enum.filter(&Portal.Account.device_posture_enabled?(&1.account))
+    |> Enum.each(&send_notification(:iru, &1, frequency))
+
+    :ok
+  end
+
+  defp check_defender_providers(%{"frequency" => frequency}) do
+    Defender.PostureProvider
+    |> Database.errored_disabled_providers(frequency)
+    |> Enum.filter(&Portal.Account.device_posture_enabled?(&1.account))
+    |> Enum.each(&send_notification(:defender, &1, frequency))
+
+    :ok
+  end
+
+  defp check_santa_providers(%{"frequency" => frequency}) do
+    Santa.PostureProvider
+    |> Database.errored_disabled_providers(frequency)
+    |> Enum.filter(&Portal.Account.device_posture_enabled?(&1.account))
+    |> Enum.each(&send_notification(:santa, &1, frequency))
+
+    :ok
+  end
+
+  defp check_sentinelone_providers(%{"frequency" => frequency}) do
+    SentinelOne.PostureProvider
+    |> Database.errored_disabled_providers(frequency)
+    |> Enum.filter(&Portal.Account.device_posture_enabled?(&1.account))
+    |> Enum.each(&send_notification(:sentinelone, &1, frequency))
+
+    :ok
+  end
+
+  defp check_sophos_providers(%{"frequency" => frequency}) do
+    Sophos.PostureProvider
+    |> Database.errored_disabled_providers(frequency)
+    |> Enum.filter(&Portal.Account.device_posture_enabled?(&1.account))
+    |> Enum.each(&send_notification(:sophos, &1, frequency))
 
     :ok
   end
@@ -138,8 +193,9 @@ defmodule Portal.Workers.SyncErrorNotification do
     end
   end
 
-  defp error_email(:intune, integration, recipients),
-    do: sync_email_module().device_integration_error_email(integration, recipients)
+  defp error_email(provider_type, provider, recipients)
+       when provider_type in [:intune, :iru, :defender, :santa, :sentinelone, :sophos],
+    do: sync_email_module().posture_provider_error_email(provider, recipients)
 
   defp error_email(provider, directory, recipients) when provider in [:entra, :google, :okta],
     do: sync_email_module().sync_error_email(directory, recipients)
@@ -176,6 +232,17 @@ defmodule Portal.Workers.SyncErrorNotification do
       |> errored_disabled_directories_query(frequency)
       |> Safe.unscoped()
       |> Safe.all()
+    end
+
+    # A posture provider keeps its name on the shared posture_providers row, and
+    # the notification names the provider it is about.
+    def errored_disabled_providers(schema, frequency) do
+      schema
+      |> errored_disabled_directories_query(frequency)
+      |> Ecto.Query.preload(:posture_provider)
+      |> Safe.unscoped()
+      |> Safe.all()
+      |> Enum.map(&%{&1 | name: &1.posture_provider.name})
     end
 
     defp errored_disabled_directories_query(schema, "daily") do

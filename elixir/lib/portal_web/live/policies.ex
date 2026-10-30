@@ -1,20 +1,12 @@
 defmodule PortalWeb.Policies do
   use PortalWeb, :live_view
 
-  import PortalWeb.Policies.Components,
-    only: [
-      available_conditions: 1,
-      map_condition_params: 2,
-      maybe_drop_unsupported_conditions: 2,
-      policy_panel: 1,
-      policy_status_badge: 1,
-      resource_type_badge_class: 1,
-      condition_short_label: 1
-    ]
+  alias PortalWeb.Policies.Components, as: PolicyComponents
 
   alias Portal.{Changes.Change, Policy, Authentication, PubSub}
   alias Phoenix.LiveView.AsyncResult
   alias __MODULE__.Database
+  alias PortalWeb.Policies.Postures
 
   @tod_pending_empty %{"on" => "", "off" => "", "days" => []}
   import Ecto.Changeset
@@ -31,7 +23,8 @@ defmodule PortalWeb.Policies do
       |> assign(stale: false)
       |> assign(page_title: "Policies")
       |> assign_async(:policies_count, fn -> {:ok, %{policies_count: Database.count_policies(subject)}} end)
-      |> assign(selected_policy: nil, policy_providers: [])
+      |> assign(selected_policy: nil, policy_providers: [], policy_disabled_providers: [])
+      |> assign(x509_auth_assigns(socket, subject))
       |> assign(
         policy_authorizations: [],
         policy_authorizations_page: 1,
@@ -39,7 +32,8 @@ defmodule PortalWeb.Policies do
         policy_authorizations_expanded_id: nil
       )
       |> assign(base_policy_assigns(socket))
-      |> assign_live_table("policies",
+      |> assign(policies: [], policies_metadata: %Portal.Repo.OffsetPaginator.Metadata{})
+      |> LiveTable.assign_live_table("policies",
         query_module: Database,
         sortable_fields: [],
         hide_filters: [
@@ -49,14 +43,14 @@ defmodule PortalWeb.Policies do
           :resource_name,
           :site_id
         ],
-        callback: &handle_policies_update!/2
+        loader: &load_policies/2
       )
 
     {:ok, socket}
   end
 
   def handle_params(%{"id" => id} = params, uri, %{assigns: %{live_action: :show}} = socket) do
-    socket = handle_live_tables_params(socket, params, uri)
+    socket = LiveTable.handle_live_tables_params(socket, params, uri)
 
     case Database.get_policy(id, socket.assigns.subject) do
       nil ->
@@ -74,21 +68,20 @@ defmodule PortalWeb.Policies do
            socket,
            [
              selected_policy: policy,
-             policy_providers:
-               Database.all_active_providers(socket.assigns.account, socket.assigns.subject),
              return_to: uri_path(uri),
              policy_authorizations: policy_authorizations,
              policy_authorizations_page: page,
              policy_authorizations_has_next: has_next,
              policy_authorizations_expanded_id: nil
-           ] ++ policy_filter_assigns(params, socket.assigns.subject) ++
+           ] ++ provider_assigns(socket.assigns.subject) ++
+             policy_filter_assigns(params, socket.assigns.subject) ++
              show_policy_assigns(socket, tab)
          )}
     end
   end
 
   def handle_params(params, uri, %{assigns: %{live_action: :new}} = socket) do
-    socket = handle_live_tables_params(socket, params, uri)
+    socket = LiveTable.handle_live_tables_params(socket, params, uri)
     form = new_policy(%{}, socket.assigns.subject) |> to_form()
 
     {:noreply,
@@ -98,15 +91,13 @@ defmodule PortalWeb.Policies do
          filter_site: nil,
          filter_resource: nil,
          selected_policy: nil,
-         policy_providers:
-           Database.all_active_providers(socket.assigns.account, socket.assigns.subject),
          return_to: uri_path(uri)
-       ] ++ new_policy_assigns(socket, form)
+       ] ++ provider_assigns(socket.assigns.subject) ++ new_policy_assigns(socket, form)
      )}
   end
 
   def handle_params(%{"id" => id} = params, uri, %{assigns: %{live_action: :edit}} = socket) do
-    socket = handle_live_tables_params(socket, params, uri)
+    socket = LiveTable.handle_live_tables_params(socket, params, uri)
 
     case Database.get_policy(id, socket.assigns.subject) do
       nil ->
@@ -120,17 +111,23 @@ defmodule PortalWeb.Policies do
            socket,
            [
              selected_policy: policy,
-             policy_providers:
-               Database.all_active_providers(socket.assigns.account, socket.assigns.subject),
              return_to: uri_path(uri)
-           ] ++ policy_filter_assigns(params, socket.assigns.subject) ++
+           ] ++ provider_assigns(socket.assigns.subject) ++
+             policy_filter_assigns(params, socket.assigns.subject) ++
              edit_policy_assigns(socket, policy, form)
          )}
     end
   end
 
   def handle_params(params, uri, socket) do
-    socket = handle_live_tables_params(socket, params, uri)
+    socket = LiveTable.handle_live_tables_params(socket, params, uri)
+
+    # The site and resource only label the filter notice, so the static render
+    # goes without them.
+    filter_assigns =
+      if connected?(socket),
+        do: policy_filter_assigns(params, socket.assigns.subject),
+        else: [filter_site: nil, filter_resource: nil]
 
     {:noreply,
      assign(
@@ -138,9 +135,9 @@ defmodule PortalWeb.Policies do
        [
          selected_policy: nil,
          policy_providers: [],
+         policy_disabled_providers: [],
          return_to: uri_path(uri)
-       ] ++ policy_filter_assigns(params, socket.assigns.subject) ++
-         default_policy_assigns(socket)
+       ] ++ filter_assigns ++ default_policy_assigns(socket)
      )}
   end
 
@@ -148,7 +145,7 @@ defmodule PortalWeb.Policies do
     {:noreply,
      socket
      |> put_flash(:error, message)
-     |> push_patch(to: ~p"/#{socket.assigns.account}/policies?#{socket.assigns.query_params}")}
+     |> push_patch(to: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/policies"))}
   end
 
   defp parse_page(params) do
@@ -191,50 +188,48 @@ defmodule PortalWeb.Policies do
     end
   end
 
-  def handle_policies_update!(socket, list_opts) do
+  defp load_policies(subject, list_opts) do
     list_opts = Keyword.put(list_opts, :preload, group: [:directory], resource: [])
 
-    with {:ok, policies, metadata} <- Database.list_policies(socket.assigns.subject, list_opts) do
-      {:ok,
-       assign(socket,
-         policies: policies,
-         policies_metadata: metadata
-       )}
+    with {:ok, policies, metadata} <- Database.list_policies(subject, list_opts) do
+      {:ok, %{policies: policies, policies_metadata: metadata}}
     end
   end
 
   def render(assigns) do
     ~H"""
     <div class="relative flex flex-col h-full overflow-hidden">
-      <.page_header>
+      <Page.page_header>
         <:icon>
-          <.icon name="ri-shield-line" class="w-16 h-16 text-brand" />
+          <Core.icon name="ri-shield-line" class="w-16 h-16 text-brand" />
         </:icon>
         <:title>Policies</:title>
         <:description>
           Rules that grant a group access to a resource.
         </:description>
         <:action>
-          <.docs_action path="/deploy/policies" />
-          <.button style="primary" icon="ri-add-line" phx-click="open_new_policy_form">
+          <Navigation.docs_action path="/deploy/policies" />
+          <Form.button style="primary" icon="ri-add-line" phx-click="open_new_policy_form">
             New Policy
-          </.button>
+          </Form.button>
         </:action>
         <:stats>
           <.async_result :let={count} assign={@policies_count}>
-            <:loading><.badge type="primary">Loading...</.badge></:loading>
-            <.dual_badge type="primary">
+            <:loading><Core.badge type="primary">Loading...</Core.badge></:loading>
+            <Core.dual_badge type="primary">
               <:left>{count}</:left>
               <:right>Total</:right>
-            </.dual_badge>
+            </Core.dual_badge>
           </.async_result>
         </:stats>
-      </.page_header>
+      </Page.page_header>
 
       <div class="flex-1 flex flex-col min-h-0 overflow-hidden">
-        <.live_table
+        <LiveTable.live_table
           stale={@stale}
           id="policies"
+          loading={@loading_by_table_id["policies"]}
+          query_error={@query_error_by_table_id["policies"]}
           rows={@policies}
           row_id={&"policies-#{&1.id}"}
           row_click={fn policy -> ~p"/#{@account}/policies/#{policy.id}?#{@query_params}" end}
@@ -251,22 +246,22 @@ defmodule PortalWeb.Policies do
         >
           <:notice :if={@filter_site} type="info">
             Viewing Policies for Site <strong>{@filter_site.name}</strong>.
-            <.link navigate={~p"/#{@account}/policies"} class={link_style()}>
+            <Navigation.link navigate={~p"/#{@account}/policies"}>
               View all policies
-            </.link>
+            </Navigation.link>
           </:notice>
           <:notice :if={@filter_resource} type="info">
             Viewing Policies for Resource <strong>{@filter_resource.name}</strong>.
-            <.link navigate={~p"/#{@account}/policies"} class={link_style()}>
+            <Navigation.link navigate={~p"/#{@account}/policies"}>
               View all policies
-            </.link>
+            </Navigation.link>
           </:notice>
           <:col :let={policy} label="Policy">
             <div class="font-medium transition-colors text-heading group-hover:text-brand">
               <%= if policy.group do %>
                 {policy.group.name} — {policy.resource.name}
               <% else %>
-                <span class="text-amber-600">(Group deleted)</span> — {policy.resource.name}
+                <span class="text-warning">(Group deleted)</span> — {policy.resource.name}
               <% end %>
             </div>
             <div class="font-mono text-[10px] text-subtle mt-0.5">
@@ -274,56 +269,62 @@ defmodule PortalWeb.Policies do
             </div>
           </:col>
           <:col :let={policy} label="Status" class="w-32">
-            <.policy_status_badge is_disabled={policy.is_disabled} />
+            <PolicyComponents.policy_status_badge is_disabled={policy.is_disabled} />
           </:col>
           <:col :let={policy} label="Group" class="w-36 lg:w-72">
             <%= if policy.group do %>
               <div class="flex items-center gap-2">
-                <.provider_icon provider={provider_type_from_group(policy.group)} size="xs" variant="circle" />
-                <.link
+                <Core.provider_icon provider={Core.provider_type_from_group(policy.group)} size="xs" variant="circle" />
+                <Navigation.link
                   navigate={~p"/#{@account}/groups/#{policy.group}"}
                   class="text-sm text-body truncate hover:text-heading transition-colors"
                 >
                   {policy.group.name}
-                </.link>
+                </Navigation.link>
               </div>
             <% else %>
-              <span class="text-xs text-muted italic">Group deleted</span>
+              <span class="text-xs text-subtle italic">Group deleted</span>
             <% end %>
           </:col>
           <:col :let={policy} label="Resource" class="w-36 lg:w-72">
             <div class="flex items-center gap-2">
-              <span class={resource_type_badge_class(policy.resource.type)}>
-                {policy.resource.type}
+              <span class={ResourceType.type_badge_class(policy.resource.type)}>
+                {ResourceType.resource_type_label(policy.resource.type)}
               </span>
-              <.link
+              <Navigation.link
                 navigate={~p"/#{@account}/resources/#{policy.resource_id}"}
                 class="text-sm text-body truncate hover:text-heading transition-colors"
               >
                 {policy.resource.name}
-              </.link>
+              </Navigation.link>
             </div>
           </:col>
           <:col :let={policy} label="Conditions" class="w-28 lg:w-72">
-            <%= if length(policy.conditions) > 0 do %>
+            <%= if policy.conditions != [] or policy.postures do %>
               <span class="lg:hidden text-xs text-body">
                 {length(policy.conditions)} condition{if length(policy.conditions) != 1, do: "s"}
               </span>
               <div class="hidden lg:flex items-center gap-1.5 flex-wrap">
                 <%= for condition <- policy.conditions do %>
                   <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-raised text-body border border-border">
-                    {condition_short_label(condition.property)}
+                    {PolicyComponents.condition_short_label(condition.property)}
                   </span>
                 <% end %>
+                <span
+                  :if={policy.postures}
+                  class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-raised text-body border border-border"
+                >
+                  Posture
+                </span>
               </div>
             <% else %>
-              <span class="text-xs text-muted">—</span>
+              <span class="text-xs text-subtle">—</span>
             <% end %>
           </:col>
           <:empty>
             <div class="flex flex-col items-center gap-3 py-16">
               <div class="w-9 h-9 rounded-lg border border-border bg-raised flex items-center justify-center">
-                <.icon name="ri-shield-line" class="w-5 h-5 text-subtle" />
+                <Core.icon name="ri-shield-line" class="w-5 h-5 text-subtle" />
               </div>
               <div class="text-center">
                 <p class="text-sm font-medium text-heading">No policies yet</p>
@@ -331,24 +332,28 @@ defmodule PortalWeb.Policies do
                   Create a Policy to grant Groups access to Resources.
                 </p>
               </div>
-              <.link
-                patch={~p"/#{@account}/policies/new"}
+              <Navigation.link
+                patch={LiveTable.live_table_path(assigns, ~p"/#{@account}/policies/new")}
                 class="flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
               >
-                <.icon name="ri-add-line" class="w-3 h-3" /> Add a Policy
-              </.link>
+                <Core.icon name="ri-add-line" class="w-3 h-3" /> Add a Policy
+              </Navigation.link>
             </div>
           </:empty>
-        </.live_table>
+        </LiveTable.live_table>
       </div>
 
-      <.policy_panel
+      <PolicyComponents.policy_panel
         account={@account}
         policy={@selected_policy}
         providers={@policy_providers}
+        disabled_providers={@policy_disabled_providers}
+        x509_auth_provider_id={@x509_auth_provider_id}
+        has_trust_anchors?={@has_trust_anchors?}
         subject={@subject}
         panel={policy_panel_state(assigns)}
         conditions_state={policy_conditions_state(assigns)}
+        postures={@policy_postures}
         confirm_state={policy_confirm_state(assigns)}
         policy_authorizations={@policy_authorizations}
         policy_authorizations_page={@policy_authorizations_page}
@@ -357,6 +362,12 @@ defmodule PortalWeb.Policies do
       />
     </div>
     """
+  end
+
+  # Disabled providers can't be selected, but conditions may still reference them.
+  defp provider_assigns(subject) do
+    {disabled, active} = subject |> Database.list_providers() |> Enum.split_with(& &1.is_disabled)
+    [policy_providers: active, policy_disabled_providers: disabled]
   end
 
   defp policy_panel_state(assigns) do
@@ -391,7 +402,8 @@ defmodule PortalWeb.Policies do
   defp policy_confirm_state(assigns) do
     %{
       confirm_disable_policy: assigns.policy_confirm.disable?,
-      confirm_delete_policy: assigns.policy_confirm.delete?
+      confirm_delete_policy: assigns.policy_confirm.delete?,
+      confirm_breaking_change: not is_nil(assigns.policy_confirm.breaking_params)
     }
   end
 
@@ -422,8 +434,10 @@ defmodule PortalWeb.Policies do
       },
       policy_confirm: %{
         disable?: false,
-        delete?: false
-      }
+        delete?: false,
+        breaking_params: nil
+      },
+      policy_postures: Postures.for_account(socket.assigns.account)
     ]
   end
 
@@ -449,7 +463,39 @@ defmodule PortalWeb.Policies do
       form: form,
       selected_resource: policy.resource,
       tab: :overview
-    }) ++ init_condition_assigns(policy, socket)
+    }) ++
+      init_condition_assigns(policy, socket) ++
+      [policy_postures: Postures.for_account(socket.assigns.account, policy.postures, policy.require_attestation)]
+  end
+
+  defp edit_changeset(socket, params) do
+    socket.assigns.selected_policy
+    |> change_policy(params)
+    |> validate_internet_resource_allowed(socket.assigns.subject)
+    |> Policy.default_flow_log_uploads_for_internet_resource(params, socket.assigns.subject)
+  end
+
+  # The same set the policies hook treats as breaking: saving it revokes every
+  # authorization the policy granted.
+  defp breaking_change?(changeset) do
+    Enum.any?(
+      ~w[group_id resource_id conditions postures flow_log_uploads_enabled require_attestation]a,
+      &Map.has_key?(changeset.changes, &1)
+    )
+  end
+
+  defp update_policy(socket, changeset) do
+    case Database.update_policy(changeset, socket.assigns.subject) do
+      {:ok, updated} ->
+        {:noreply,
+         socket
+         |> put_flash(:success, "Policy updated successfully.")
+         |> LiveTable.reload_live_table!("policies")
+         |> push_patch(to: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/policies/#{updated.id}"))}
+
+      {:error, changeset} ->
+        {:noreply, merge_state(socket, :policy_panel, form: to_form(changeset))}
+    end
   end
 
   defp merge_state(socket, key, attrs) do
@@ -465,11 +511,10 @@ defmodule PortalWeb.Policies do
              "table_row_click",
              "change_limit"
            ],
-      do: handle_live_table_event(event, params, socket)
+      do: LiveTable.handle_live_table_event(event, params, socket)
 
   def handle_event("close_panel", _params, socket) do
-    params = Map.drop(socket.assigns.query_params, ["tab"])
-    {:noreply, push_patch(socket, to: ~p"/#{socket.assigns.account}/policies?#{params}")}
+    {:noreply, push_patch(socket, to: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/policies"))}
   end
 
   def handle_event(
@@ -477,28 +522,26 @@ defmodule PortalWeb.Policies do
         %{"tab" => tab},
         %{assigns: %{selected_policy: %Policy{} = policy}} = socket
       ) do
-    params =
-      socket.assigns.query_params
-      |> Map.put("tab", tab)
-      |> Map.delete("page")
-
-    {:noreply,
-     push_patch(socket,
-       to: ~p"/#{socket.assigns.account}/policies/#{policy}?#{params}"
-     )}
+    {:noreply, push_patch(socket, to: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/policies/#{policy}", tab: tab))}
   end
 
   def handle_event("switch_policy_tab", _params, %{assigns: %{selected_policy: nil}} = socket) do
     {:noreply, socket}
   end
 
-  def handle_event("change_policy_authorizations_page", %{"page" => page}, socket) do
-    params = Map.put(socket.assigns.query_params, "page", page)
-
+  def handle_event(
+        "change_policy_authorizations_page",
+        %{"page" => page},
+        %{assigns: %{selected_policy: %Policy{} = policy}} = socket
+      ) do
     {:noreply,
      push_patch(socket,
-       to: ~p"/#{socket.assigns.account}/policies/#{socket.assigns.selected_policy.id}?#{params}"
+       to: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/policies/#{policy.id}", tab: "authorizations", page: page)
      )}
+  end
+
+  def handle_event("change_policy_authorizations_page", _params, %{assigns: %{selected_policy: nil}} = socket) do
+    {:noreply, socket}
   end
 
   def handle_event("toggle_policy_authorization_row", %{"id" => id}, socket) do
@@ -516,13 +559,12 @@ defmodule PortalWeb.Policies do
         _ -> ~p"/#{socket.assigns.account}/policies"
       end
 
-    {:noreply, push_patch(socket, to: path)}
+    {:noreply, push_patch(socket, to: LiveTable.live_table_path(socket, path))}
   end
 
   def handle_event("handle_keydown", %{"key" => "Escape"}, socket)
       when not is_nil(socket.assigns.selected_policy) do
-    params = Map.drop(socket.assigns.query_params, ["tab"])
-    {:noreply, push_patch(socket, to: ~p"/#{socket.assigns.account}/policies?#{params}")}
+    {:noreply, push_patch(socket, to: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/policies"))}
   end
 
   def handle_event("handle_keydown", _params, socket) do
@@ -555,7 +597,7 @@ defmodule PortalWeb.Policies do
      |> put_flash(:success, "Policy disabled successfully.")
      |> assign(selected_policy: updated)
      |> merge_state(:policy_confirm, disable?: false)
-     |> reload_live_table!("policies")}
+     |> LiveTable.reload_live_table!("policies")}
   end
 
   def handle_event("enable_policy", _params, socket) do
@@ -567,7 +609,7 @@ defmodule PortalWeb.Policies do
      socket
      |> put_flash(:success, "Policy enabled successfully.")
      |> assign(selected_policy: updated)
-     |> reload_live_table!("policies")}
+     |> LiveTable.reload_live_table!("policies")}
   end
 
   def handle_event("delete_policy", _params, socket) do
@@ -578,15 +620,16 @@ defmodule PortalWeb.Policies do
      socket
      |> put_flash(:success, "Policy deleted successfully.")
      |> merge_state(:policy_confirm, delete?: false)
-     |> reload_live_table!("policies")
-     |> push_patch(to: ~p"/#{socket.assigns.account}/policies")}
+     |> LiveTable.reload_live_table!("policies")
+     |> push_patch(to: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/policies"))}
   end
 
-  def handle_event("open_edit_form", _params, socket) do
-    {:noreply,
-     push_patch(socket,
-       to: ~p"/#{socket.assigns.account}/policies/#{socket.assigns.selected_policy.id}/edit"
-     )}
+  def handle_event("open_edit_form", _params, %{assigns: %{selected_policy: %Policy{} = policy}} = socket) do
+    {:noreply, push_patch(socket, to: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/policies/#{policy.id}/edit"))}
+  end
+
+  def handle_event("open_edit_form", _params, %{assigns: %{selected_policy: nil}} = socket) do
+    {:noreply, socket}
   end
 
   def handle_event("cancel_policy_form", _params, socket) do
@@ -596,18 +639,23 @@ defmodule PortalWeb.Policies do
         _ -> ~p"/#{socket.assigns.account}/policies"
       end
 
-    {:noreply, push_patch(socket, to: path)}
+    {:noreply, push_patch(socket, to: LiveTable.live_table_path(socket, path))}
   end
 
   def handle_event("open_new_policy_form", _params, socket) do
-    {:noreply, push_patch(socket, to: ~p"/#{socket.assigns.account}/policies/new")}
+    {:noreply, push_patch(socket, to: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/policies/new"))}
+  end
+
+  def handle_event("postures_" <> _rest = event, params, socket) do
+    {:noreply, update(socket, :policy_postures, &Postures.handle_event(event, params, &1))}
   end
 
   def handle_event("change_policy_form", %{"policy" => params}, socket) do
     params =
       params
-      |> map_condition_params(empty_values: :drop)
-      |> maybe_drop_unsupported_conditions(socket)
+      |> PolicyComponents.map_condition_params(empty_values: :drop)
+      |> PolicyComponents.maybe_drop_unsupported_conditions(socket)
+      |> Postures.maybe_drop_unsupported(socket.assigns.policy_postures)
 
     changeset =
       if socket.assigns.live_action == :new do
@@ -623,8 +671,9 @@ defmodule PortalWeb.Policies do
   def handle_event("submit_policy_form", %{"policy" => params}, socket) do
     params =
       params
-      |> map_condition_params(empty_values: :drop)
-      |> maybe_drop_unsupported_conditions(socket)
+      |> PolicyComponents.map_condition_params(empty_values: :drop)
+      |> PolicyComponents.maybe_drop_unsupported_conditions(socket)
+      |> Postures.maybe_drop_unsupported(socket.assigns.policy_postures)
 
     if socket.assigns.live_action == :new do
       case create_policy(params, socket.assigns.subject) do
@@ -632,35 +681,33 @@ defmodule PortalWeb.Policies do
           {:noreply,
            socket
            |> put_flash(:success, "Policy created successfully.")
-           |> reload_live_table!("policies")
-           |> push_patch(to: ~p"/#{socket.assigns.account}/policies/#{policy.id}")}
+           |> LiveTable.reload_live_table!("policies")
+           |> push_patch(to: LiveTable.live_table_path(socket, ~p"/#{socket.assigns.account}/policies/#{policy.id}"))}
 
         {:error, changeset} ->
           {:noreply, merge_state(socket, :policy_panel, form: to_form(changeset))}
       end
     else
-      policy = socket.assigns.selected_policy
+      changeset = edit_changeset(socket, params)
 
-      changeset =
-        change_policy(policy, params)
-        |> validate_internet_resource_allowed(socket.assigns.subject)
-        |> Policy.default_flow_log_uploads_for_internet_resource(
-          params,
-          socket.assigns.subject
-        )
-
-      case Database.update_policy(changeset, socket.assigns.subject) do
-        {:ok, updated} ->
-          {:noreply,
-           socket
-           |> put_flash(:success, "Policy updated successfully.")
-           |> reload_live_table!("policies")
-           |> push_patch(to: ~p"/#{socket.assigns.account}/policies/#{updated.id}")}
-
-        {:error, changeset} ->
-          {:noreply, merge_state(socket, :policy_panel, form: to_form(changeset))}
+      if changeset.valid? and breaking_change?(changeset) do
+        {:noreply, merge_state(socket, :policy_confirm, breaking_params: params)}
+      else
+        update_policy(socket, changeset)
       end
     end
+  end
+
+  def handle_event("save_policy_breaking_change", _params, socket) do
+    params = socket.assigns.policy_confirm.breaking_params
+
+    socket
+    |> merge_state(:policy_confirm, breaking_params: nil)
+    |> update_policy(edit_changeset(socket, params))
+  end
+
+  def handle_event("cancel_policy_breaking_change", _params, socket) do
+    {:noreply, merge_state(socket, :policy_confirm, breaking_params: nil)}
   end
 
   def handle_event("toggle_conditions_dropdown", _params, socket) do
@@ -855,7 +902,7 @@ defmodule PortalWeb.Policies do
   end
 
   def handle_info({:panel_change_resource, resource}, socket) do
-    available = available_conditions(resource)
+    available = PolicyComponents.available_conditions(resource)
     filtered = Enum.filter(socket.assigns.policy_conditions.active_conditions, &(&1 in available))
 
     {:noreply,
@@ -895,7 +942,7 @@ defmodule PortalWeb.Policies do
 
   defp new_policy(attrs, %Authentication.Subject{} = subject) do
     %Policy{}
-    |> cast(attrs, ~w[description group_id resource_id flow_log_uploads_enabled]a)
+    |> cast(attrs, ~w[description group_id resource_id flow_log_uploads_enabled require_attestation postures]a)
     |> validate_required(~w[group_id resource_id]a)
     |> cast_embed(:conditions, with: &Portal.Policies.Condition.changeset/3)
     |> Policy.changeset()
@@ -912,7 +959,7 @@ defmodule PortalWeb.Policies do
 
   defp change_policy(%Policy{} = policy, attrs \\ %{}) do
     policy
-    |> cast(attrs, ~w[description group_id resource_id flow_log_uploads_enabled]a)
+    |> cast(attrs, ~w[description group_id resource_id flow_log_uploads_enabled require_attestation postures]a)
     |> validate_required(~w[group_id resource_id]a)
     |> cast_embed(:conditions, with: &Portal.Policies.Condition.changeset/3)
     |> Policy.changeset()
@@ -1085,10 +1132,21 @@ defmodule PortalWeb.Policies do
   defp cond_values(nil), do: []
   defp cond_values(cond), do: cond.values
 
+  # These only drive a warning in the policy form, so the static render goes
+  # without them rather than querying for them twice.
+  defp x509_auth_assigns(socket, subject) do
+    if connected?(socket) do
+      [
+        x509_auth_provider_id: Database.x509_auth_provider_id(subject),
+        has_trust_anchors?: Database.has_trust_anchors?(subject)
+      ]
+    else
+      [x509_auth_provider_id: nil, has_trust_anchors?: false]
+    end
+  end
+
   defp mark_stale_if_unreflected(socket, change) do
-    if PortalWeb.LiveTable.view_reflects_change?(socket.assigns.policies, change),
-      do: socket,
-      else: assign(socket, stale: true)
+    LiveTable.mark_stale_unless_reflected(socket, "policies", socket.assigns.policies, change)
   end
 
   defmodule Database do
@@ -1267,20 +1325,47 @@ defmodule PortalWeb.Policies do
       |> Safe.delete()
     end
 
-    def all_active_providers(_account, subject) do
-      [
+    def list_providers(subject) do
+      schemas = [
         Portal.Userpass.AuthProvider,
         Portal.EmailOTP.AuthProvider,
         Portal.OIDC.AuthProvider,
         Portal.Google.AuthProvider,
+        Portal.GitHub.AuthProvider,
         Portal.Entra.AuthProvider,
         Portal.Okta.AuthProvider
       ]
-      |> Enum.flat_map(fn schema ->
-        from(p in schema, where: not p.is_disabled)
+
+      schemas =
+        if Portal.Features.enabled?(:x509_auth) do
+          [Portal.X509.AuthProvider | schemas]
+        else
+          schemas
+        end
+
+      Enum.flat_map(schemas, fn schema ->
+        schema
         |> Safe.scoped(subject)
         |> Safe.all()
       end)
+    end
+
+    def x509_auth_provider_id(subject) do
+      if Portal.Features.enabled?(:x509_auth) do
+        Portal.X509.AuthProvider
+        |> Safe.scoped(subject)
+        |> Safe.one()
+        |> case do
+          %Portal.X509.AuthProvider{id: id} -> id
+          _ -> nil
+        end
+      end
+    end
+
+    def has_trust_anchors?(subject) do
+      Portal.TrustAnchorCertificate
+      |> Safe.scoped(subject)
+      |> Safe.exists?()
     end
 
     def count_policies(subject) do

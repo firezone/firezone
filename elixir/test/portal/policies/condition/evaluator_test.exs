@@ -912,6 +912,10 @@ defmodule Portal.Policies.EvaluatorTest do
   end
 
   describe "parse_time_ranges/1" do
+    test "treats a missing value as no ranges" do
+      assert parse_time_ranges(nil) == {:ok, []}
+    end
+
     test "parses time ranges" do
       assert parse_time_ranges("true") ==
                {:ok, [{~T[00:00:00], ~T[23:59:59]}]}
@@ -961,6 +965,11 @@ defmodule Portal.Policies.EvaluatorTest do
   end
 
   describe "parse_time_range/1" do
+    test "pads single-digit hours, minutes and seconds" do
+      assert parse_time_range("8-17") == {:ok, {~T[08:00:00], ~T[17:00:00]}}
+      assert parse_time_range("8:5:3-9:7") == {:ok, {~T[08:05:03], ~T[09:07:00]}}
+    end
+
     test "parses time range" do
       assert parse_time_range("08:00:00-17:00:00") ==
                {:ok, {~T[08:00:00], ~T[17:00:00]}}
@@ -991,6 +1000,75 @@ defmodule Portal.Policies.EvaluatorTest do
     test "returns error when start of the time range is greater than the end of it" do
       assert {:error, "start of the time range must be less than or equal to the end of it"} =
                parse_time_range("17:00:00-08:00:00")
+    end
+  end
+  describe "ensure_policy_conforms/3" do
+    setup do
+      {:ok, postures} =
+        Portal.Policies.Postures.cast(%{"field" => "intune.last_sync_at", "op" => "within_last", "value" => "PT1H"})
+
+      fresh = %Portal.Intune.Device{last_sync_at: DateTime.add(DateTime.utc_now(), -600)}
+      stale = %Portal.Intune.Device{last_sync_at: DateTime.add(DateTime.utc_now(), -7200)}
+      verified = %Portal.Device{type: :client, verified_at: DateTime.utc_now(), posture: %{intune: [fresh]}}
+      condition = %{property: :client_verified, operator: :is, values: ["true"]}
+      %{postures: postures, fresh: fresh, stale: stale, verified: verified, condition: condition}
+    end
+
+    test "passes when conditions and postures pass, expiring with the first", ctx do
+      policy = %{require_attestation: false, conditions: [ctx.condition], postures: ctx.postures}
+      assert {:ok, %DateTime{} = expires_at} = ensure_policy_conforms(policy, ctx.verified, nil)
+      assert DateTime.compare(expires_at, DateTime.utc_now()) == :gt
+
+      assert {:ok, nil} = ensure_policy_conforms(%{require_attestation: false, conditions: [ctx.condition], postures: nil}, ctx.verified, nil)
+    end
+
+    test "combines expiries from conditions and postures", ctx do
+      always = Enum.map(~w[M T W R F S U], &"#{&1}/00:00-23:59/UTC")
+      timed = %{property: :current_utc_datetime, operator: :is_in_day_of_week_time_ranges, values: always}
+
+      assert {:ok, %DateTime{} = from_conditions} = ensure_policy_conforms(%{require_attestation: false, conditions: [timed], postures: nil}, ctx.verified, nil)
+      assert {:ok, %DateTime{} = from_postures} = ensure_policy_conforms(%{require_attestation: false, conditions: [], postures: ctx.postures}, ctx.verified, nil)
+      assert {:ok, combined} = ensure_policy_conforms(%{require_attestation: false, conditions: [timed], postures: ctx.postures}, ctx.verified, nil)
+      assert combined == Enum.min([from_conditions, from_postures], DateTime)
+    end
+
+    test "reports condition failures", ctx do
+      policy = %{require_attestation: false, conditions: [ctx.condition], postures: ctx.postures}
+      client = %{ctx.verified | verified_at: nil}
+      assert ensure_policy_conforms(policy, client, nil) == {:error, [:client_verified]}
+    end
+
+    test "reports posture failures", ctx do
+      policy = %{require_attestation: false, conditions: [ctx.condition], postures: ctx.postures}
+      client = %{ctx.verified | posture: %{intune: [ctx.stale]}}
+      assert ensure_policy_conforms(policy, client, nil) == {:error, [:postures]}
+    end
+
+    test "reports both when both fail", ctx do
+      policy = %{require_attestation: false, conditions: [ctx.condition], postures: ctx.postures}
+      client = %{ctx.verified | verified_at: nil, posture: %{}}
+      assert ensure_policy_conforms(policy, client, nil) == {:error, [:client_verified, :postures]}
+    end
+
+    test "requires the current connection to have attested", ctx do
+      policy = %{require_attestation: true, conditions: [], postures: nil}
+
+      assert ensure_policy_conforms(policy, %{ctx.verified | attested?: true}, nil) == {:ok, nil}
+      assert ensure_policy_conforms(policy, %{ctx.verified | attested?: false}, nil) == {:error, [:device_attested]}
+    end
+
+    test "ignores past attestation of the device row", ctx do
+      policy = %{require_attestation: true, conditions: [], postures: nil}
+      client = %{ctx.verified | attested?: false, last_attested_at: DateTime.utc_now()}
+
+      assert ensure_policy_conforms(policy, client, nil) == {:error, [:device_attested]}
+    end
+
+    test "reports attestation with the other failures", ctx do
+      policy = %{require_attestation: true, conditions: [ctx.condition], postures: ctx.postures}
+      client = %{ctx.verified | attested?: false, verified_at: nil, posture: %{}}
+
+      assert ensure_policy_conforms(policy, client, nil) == {:error, [:device_attested, :client_verified, :postures]}
     end
   end
 end

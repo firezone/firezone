@@ -33,6 +33,9 @@ pub(crate) struct State {
     env: Option<Env>,
     firezone_id: Option<String>,
     account_slug: Option<String>,
+    account_id: Option<String>,
+    actor_email: Option<String>,
+    mdm_device_id: Option<String>,
     sentry_guard: Option<sentry::ClientInitGuard>,
 }
 
@@ -42,6 +45,9 @@ impl State {
             env: None,
             firezone_id: None,
             account_slug: None,
+            account_id: None,
+            actor_email: None,
+            mdm_device_id: None,
             sentry_guard: None,
         }
     }
@@ -56,6 +62,18 @@ impl State {
 
     pub(crate) fn account_slug(&self) -> Option<String> {
         self.account_slug.clone()
+    }
+
+    pub(crate) fn account_id(&self) -> Option<String> {
+        self.account_id.clone()
+    }
+
+    pub(crate) fn actor_email(&self) -> Option<String> {
+        self.actor_email.clone()
+    }
+
+    pub(crate) fn mdm_device_id(&self) -> Option<String> {
+        self.mdm_device_id.clone()
     }
 
     /// Whether a Sentry session is currently active.
@@ -76,12 +94,24 @@ impl State {
         self.env = env;
     }
 
-    pub(crate) fn set_account_slug(&mut self, slug: String) {
-        self.account_slug = Some(slug);
+    pub(crate) fn set_account_slug(&mut self, slug: Option<String>) {
+        self.account_slug = slug;
+    }
+
+    pub(crate) fn set_account_id(&mut self, account_id: Option<String>) {
+        self.account_id = account_id;
+    }
+
+    pub(crate) fn set_actor_email(&mut self, actor_email: Option<String>) {
+        self.actor_email = actor_email;
     }
 
     pub(crate) fn set_firezone_id(&mut self, firezone_id: Option<String>) {
         self.firezone_id = firezone_id;
+    }
+
+    pub(crate) fn set_mdm_device_id(&mut self, mdm_device_id: Option<String>) {
+        self.mdm_device_id = mdm_device_id;
     }
 
     pub(crate) fn set_guard(&mut self, guard: sentry::ClientInitGuard) {
@@ -97,6 +127,9 @@ impl State {
     pub(crate) fn clear_identity(&mut self) {
         self.firezone_id = None;
         self.account_slug = None;
+        self.account_id = None;
+        self.actor_email = None;
+        self.mdm_device_id = None;
     }
 }
 

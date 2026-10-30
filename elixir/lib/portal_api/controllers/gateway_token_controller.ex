@@ -3,6 +3,7 @@ defmodule PortalAPI.GatewayTokenController do
   use OpenApiSpex.ControllerSpecs
   alias Portal.Authentication
   alias PortalAPI.Error
+  alias PortalAPI.JSON
   alias PortalAPI.Schemas.ProblemDetails
   alias __MODULE__.Database
 
@@ -50,7 +51,7 @@ defmodule PortalAPI.GatewayTokenController do
          {:ok, token} <- Authentication.create_gateway_token(site, subject) do
       conn
       |> put_status(:created)
-      |> render(:show, token: token, encoded_token: Authentication.encode_fragment!(token))
+      |> json(JSON.encode(token))
     else
       error -> Error.handle(conn, error)
     end
@@ -113,7 +114,7 @@ defmodule PortalAPI.GatewayTokenController do
          {:ok, token} <- Authentication.create_gateway_token(gateway, subject) do
       conn
       |> put_status(:created)
-      |> render(:show, token: token, encoded_token: Authentication.encode_fragment!(token))
+      |> json(JSON.encode(token))
     else
       {:error, %Ecto.Changeset{errors: errors} = changeset} ->
         if unique_violation?(errors) do
@@ -176,7 +177,7 @@ defmodule PortalAPI.GatewayTokenController do
          {:ok, token} <- Authentication.rotate_gateway_token(gateway, subject) do
       conn
       |> put_status(:created)
-      |> render(:show, token: token, encoded_token: Authentication.encode_fragment!(token))
+      |> json(JSON.encode(token))
     else
       error -> Error.handle(conn, error)
     end
@@ -229,7 +230,7 @@ defmodule PortalAPI.GatewayTokenController do
 
     with {:ok, token} <- Database.fetch_token(token_id, site_id, subject),
          {:ok, deleted_token} <- Database.delete_token(token, subject) do
-      render(conn, :deleted, token: deleted_token)
+      json(conn, %{data: %{id: deleted_token.id}})
     else
       error -> Error.handle(conn, error)
     end
@@ -252,7 +253,7 @@ defmodule PortalAPI.GatewayTokenController do
           {"Deleted Tokens Response", "application/json",
            PortalAPI.Schemas.GatewayToken.DeletedAllResponse}
       ] ++
-        ProblemDetails.responses([:unauthorized, :too_many_requests])
+        ProblemDetails.responses([:unauthorized, :not_found, :too_many_requests])
 
   # coveralls-ignore-stop
 
@@ -262,7 +263,7 @@ defmodule PortalAPI.GatewayTokenController do
 
     with {:ok, site} <- Database.fetch_site(site_id, subject),
          {deleted_count, _} <- Database.delete_all_tokens(site, subject) do
-      render(conn, :deleted_all, count: deleted_count)
+      json(conn, %{data: %{deleted_count: deleted_count}})
     else
       error -> Error.handle(conn, error)
     end

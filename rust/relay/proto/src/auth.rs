@@ -12,8 +12,8 @@
 //! The portal uses this secret to generate credentials for each TURN client.
 //! The credentials take the form of:
 //!
-//! - username: `{unix_expiry_timestamp}:{salt}`
-//! - password: `sha256({unix_expiry_timestamp}:{relay_secret}:{salt})`
+//! - account-bound username: `{unix_expiry_timestamp}:{account_hash}:{salt}`
+//! - account-bound password: `sha256({username}:{relay_secret})`
 //!
 //! As such, a TURN client can never create a set of credentials themselves because they are missing the `relay_secret`.
 //! In addition, a relay can validate such a username and password combination without having to store any state other than the `relay_secret`.
@@ -37,13 +37,13 @@
 use base64::Engine;
 use base64::prelude::BASE64_STANDARD_NO_PAD;
 use bytecodec::Encode;
+use hmac::{Hmac, KeyInit as _, Mac as _};
 use once_cell::sync::Lazy;
-use rand::RngExt;
 use secrecy::{ExposeSecret, SecretString};
-use sha2::Sha256;
 use sha2::digest::FixedOutput;
-use std::collections::HashMap;
-use std::collections::hash_map::Entry;
+use sha2::{Digest, Sha256};
+use std::fmt;
+use std::net::IpAddr;
 use std::time::{Duration, SystemTime};
 use stun_codec::Message;
 use stun_codec::rfc5389::attributes::{MessageIntegrity, Realm, Username};
@@ -61,7 +61,7 @@ pub(crate) trait MessageIntegrityExt {
         relay_secret: &SecretString,
         username: &str,
         now: SystemTime,
-    ) -> Result<(), Error>;
+    ) -> Result<AccountIdHash, Error>;
 }
 
 impl MessageIntegrityExt for MessageIntegrity {
@@ -70,24 +70,25 @@ impl MessageIntegrityExt for MessageIntegrity {
         relay_secret: &SecretString,
         username: &str,
         now: SystemTime,
-    ) -> Result<(), Error> {
-        let (expiry, salt) = split_username(username)?;
-        let expired = systemtime_from_unix(expiry);
+    ) -> Result<AccountIdHash, Error> {
+        let username = parse_username(username)?;
+        let expiry = username.expiry();
+        let expires_at = systemtime_from_unix(expiry).ok_or(Error::InvalidUsername)?;
 
-        if expired < now {
+        if expires_at < now {
             return Err(Error::Expired);
         }
 
-        let password = generate_password(relay_secret, expiry, salt);
+        let password = generate_password_for_username(relay_secret, &username);
 
         self.check_long_term_credential(
-            &Username::new(format!("{expiry}:{salt}")).map_err(|_| Error::InvalidUsername)?,
+            &Username::new(username.as_str().to_owned()).map_err(|_| Error::InvalidUsername)?,
             &FIREZONE,
             &password,
         )
         .map_err(|_| Error::InvalidPassword)?;
 
-        Ok(())
+        Ok(AccountIdHash(username.account().to_owned()))
     }
 }
 
@@ -106,8 +107,8 @@ impl AuthenticatedMessage {
         username: &Username,
         mut message: Message<Attribute>,
     ) -> Result<Self, Error> {
-        let (expiry, salt) = split_username(username.name())?;
-        let password = generate_password(relay_secret, expiry, salt);
+        let parsed_username = parse_username(username.name())?;
+        let password = generate_password_for_username(relay_secret, &parsed_username);
 
         let message_integrity =
             MessageIntegrity::new_long_term_credential(&message, username, &FIREZONE, &password)?;
@@ -153,89 +154,84 @@ impl Encode for MessageEncoder {
     }
 }
 
-/// Tracks valid nonces for the TURN relay.
+/// Issues and checks nonces for the TURN relay.
 ///
-/// The semantic nature of nonces is an implementation detail of the relay in TURN.
-/// This could just as easily also be a time-based logic (i.e. nonces are valid for 10min).
+/// Nonces are stateless: each one is an HMAC of the client socket and a time window.
+/// This way, the relay does not store anything for a client before it authenticates.
 ///
-/// For simplicity reasons, we use a count-based strategy.
-/// Each nonce can be used for a certain number of requests before it is invalid.
-///
-/// We remember the nonce we last handed out to each client socket and keep
-/// reusing it for as long as it is valid, rather than minting a fresh one on
-/// every request. This bounds the stored nonces to one per client socket
-/// instead of one per request.
-#[derive(Default, Debug, Clone)]
+/// A nonce is valid in the window it was issued in and in the next one.
+#[derive(Clone)]
 pub(crate) struct Nonces {
-    inner: HashMap<ClientSocket, Nonce>,
+    key: [u8; 32],
 }
 
-#[derive(Debug, Clone, Copy)]
-struct Nonce {
-    value: Uuid,
-    remaining_requests: u64,
+impl fmt::Debug for Nonces {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Nonces").finish_non_exhaustive()
+    }
 }
 
 impl Nonces {
-    /// How many requests a client can perform with the same nonce.
-    const NUM_REQUESTS: u64 = 10_000;
+    /// How long a single time window is.
+    pub(crate) const WINDOW: Duration = Duration::from_secs(10 * 60);
+
+    pub(crate) fn new(key: [u8; 32]) -> Self {
+        Self { key }
+    }
 
     /// Returns a valid nonce for the given client.
-    ///
-    /// If we have already issued a nonce to this client that is still valid, the
-    /// same nonce is returned. Otherwise, a fresh one is minted using `rng`.
-    pub(crate) fn issue(&mut self, client: ClientSocket, rng: &mut impl RngExt) -> Uuid {
-        if let Some(nonce) = self
-            .inner
-            .get(&client)
-            .filter(|nonce| nonce.remaining_requests > 0)
-        {
-            return nonce.value;
-        }
+    pub(crate) fn issue(&self, client: ClientSocket, now: SystemTime) -> String {
+        let window = window_at(now);
+        let tag = self.mac(client, window).finalize().into_bytes();
 
-        let value = Uuid::from_u128(rng.random());
-        self.add_new(client, value);
-
-        value
+        format!("{window}:{}", hex::encode(tag))
     }
 
-    pub(crate) fn add_new(&mut self, client: ClientSocket, value: Uuid) {
-        self.inner.insert(
-            client,
-            Nonce {
-                value,
-                remaining_requests: Self::NUM_REQUESTS,
-            },
-        );
-    }
-
-    /// Record the usage of a nonce in a request.
-    pub(crate) fn handle_nonce_used(
-        &mut self,
+    /// Checks that the nonce was issued to this client and has not expired.
+    pub(crate) fn verify(
+        &self,
         client: ClientSocket,
-        value: Uuid,
+        nonce: &str,
+        now: SystemTime,
     ) -> Result<(), Error> {
-        let mut entry = match self.inner.entry(client) {
-            Entry::Vacant(_) => return Err(Error::UnknownNonce),
-            Entry::Occupied(entry) => entry,
-        };
+        let (window, tag) = nonce.split_once(':').ok_or(Error::UnknownNonce)?;
+        let window = window.parse::<u64>().map_err(|_| Error::UnknownNonce)?;
+        let tag = hex::decode(tag).map_err(|_| Error::UnknownNonce)?;
 
-        let nonce = entry.get_mut();
+        self.mac(client, window)
+            .verify_slice(&tag)
+            .map_err(|_| Error::UnknownNonce)?;
 
-        if nonce.value != value {
-            return Err(Error::UnknownNonce);
+        let current = window_at(now);
+
+        if window > current || current - window > 1 {
+            return Err(Error::StaleNonce);
         }
-
-        if nonce.remaining_requests == 0 {
-            entry.remove();
-
-            return Err(Error::NonceUsedUp);
-        }
-
-        nonce.remaining_requests -= 1;
 
         Ok(())
     }
+
+    fn mac(&self, client: ClientSocket, window: u64) -> Hmac<Sha256> {
+        let socket = client.into_socket();
+        let mut mac =
+            Hmac::<Sha256>::new_from_slice(&self.key).expect("HMAC accepts keys of any size");
+
+        match socket.ip() {
+            IpAddr::V4(ip) => mac.update(&ip.octets()),
+            IpAddr::V6(ip) => mac.update(&ip.octets()),
+        }
+        mac.update(&socket.port().to_be_bytes());
+        mac.update(&window.to_be_bytes());
+
+        mac
+    }
+}
+
+fn window_at(now: SystemTime) -> u64 {
+    now.duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
+        / Nonces::WINDOW.as_secs()
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -246,51 +242,109 @@ pub(crate) enum Error {
     InvalidPassword,
     #[error("invalid username")]
     InvalidUsername,
-    #[error("nonce has been used up")]
-    NonceUsedUp,
+    #[error("nonce has expired")]
+    StaleNonce,
     #[error("unknown nonce")]
     UnknownNonce,
     #[error("cannot authenticate message")]
     CannotAuthenticate(#[from] bytecodec::Error),
 }
 
-pub(crate) fn split_username(username: &str) -> Result<(u64, &str), Error> {
-    let [expiry, username_salt]: [&str; 2] = username
-        .split(':')
-        .collect::<Vec<&str>>()
-        .try_into()
-        .map_err(|_| Error::InvalidUsername)?;
+/// The SHA-256 account ID digest carried in an account-bound TURN credential.
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub struct AccountIdHash(String);
 
-    let expiry_unix_timestamp = expiry.parse::<u64>().map_err(|_| Error::InvalidUsername)?;
-
-    Ok((expiry_unix_timestamp, username_salt))
+impl fmt::Display for AccountIdHash {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
+    }
 }
 
-pub fn generate_password(relay_secret: &SecretString, expiry: u64, username_salt: &str) -> String {
-    use sha2::Digest as _;
+/// An account UUID received from the Portal.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, serde::Deserialize)]
+#[serde(transparent)]
+pub struct AccountId(Uuid);
 
+impl From<Uuid> for AccountId {
+    fn from(value: Uuid) -> Self {
+        Self(value)
+    }
+}
+
+impl fmt::Display for AccountId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+struct ParsedUsername<'a> {
+    raw: &'a str,
+    expiry: u64,
+    account: &'a str,
+}
+
+impl<'a> ParsedUsername<'a> {
+    fn as_str(&self) -> &'a str {
+        self.raw
+    }
+
+    fn expiry(&self) -> u64 {
+        self.expiry
+    }
+
+    fn account(&self) -> &'a str {
+        self.account
+    }
+}
+
+fn parse_username(username: &str) -> Result<ParsedUsername<'_>, Error> {
+    let parts = username.split(':').collect::<Vec<&str>>();
+
+    let (expiry, account) = match parts.as_slice() {
+        [expiry, account, salt] if !account.is_empty() && !salt.is_empty() => (*expiry, *account),
+        _ => return Err(Error::InvalidUsername),
+    };
+
+    let expiry = expiry.parse::<u64>().map_err(|_| Error::InvalidUsername)?;
+
+    Ok(ParsedUsername {
+        raw: username,
+        expiry,
+        account,
+    })
+}
+
+pub fn generate_password(relay_secret: &SecretString, username: &str) -> String {
     let mut hasher = Sha256::default();
-
-    hasher.update(format!("{expiry}"));
+    hasher.update(username);
     hasher.update(":");
     hasher.update(relay_secret.expose_secret());
-    hasher.update(":");
-    hasher.update(username_salt);
 
-    let array = hasher.finalize_fixed();
-
-    BASE64_STANDARD_NO_PAD.encode(array.as_slice())
+    BASE64_STANDARD_NO_PAD.encode(hasher.finalize_fixed().as_slice())
 }
 
-pub(crate) fn systemtime_from_unix(seconds: u64) -> SystemTime {
-    SystemTime::UNIX_EPOCH + Duration::from_secs(seconds)
+pub fn hash_account_id(account_id: &AccountId) -> AccountIdHash {
+    AccountIdHash(BASE64_STANDARD_NO_PAD.encode(Sha256::digest(account_id.to_string()).as_slice()))
+}
+
+fn generate_password_for_username(
+    relay_secret: &SecretString,
+    username: &ParsedUsername<'_>,
+) -> String {
+    generate_password(relay_secret, username.as_str())
+}
+
+/// Converts a UNIX timestamp in seconds to a [`SystemTime`].
+///
+/// Returns [`None`] if the timestamp is too far in the future to be represented as a [`SystemTime`].
+pub(crate) fn systemtime_from_unix(seconds: u64) -> Option<SystemTime> {
+    SystemTime::UNIX_EPOCH.checked_add(Duration::from_secs(seconds))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::Attribute;
-    use rand::{SeedableRng as _, rngs::StdRng};
     use std::net::SocketAddr;
     use stun_codec::rfc5389::methods::BINDING;
     use stun_codec::{Message, MessageClass, TransactionId};
@@ -302,35 +356,82 @@ mod tests {
     #[test]
     fn generate_password_test_vector() {
         let expiry = 60 * 60 * 24 * 365 * 60;
+        let username = format!("{expiry}:account:{SAMPLE_USERNAME}");
 
-        let password = generate_password(&RELAY_SECRET_1.into(), expiry, SAMPLE_USERNAME);
+        let password = generate_password(&RELAY_SECRET_1.into(), &username);
 
-        assert_eq!(password, "00hqldgk5xLeKKOB+xls9mHMVtgqzie9DulfgQwMv68")
+        assert_eq!(password, "NQjDRIWM/rciGma9AI95ZGJ+lljzOQLtXs61DOJnT1I")
     }
 
     #[test]
     fn generate_password_test_vector_elixir() {
         let expiry = 1685984278;
-        let password = generate_password(
-            &"1cab293a-4032-46f4-862a-40e5d174b0d2".into(),
-            expiry,
-            "uvdgKvS9GXYZ_vmv",
+        let account_id = AccountId::from(Uuid::nil());
+        let account_hash = hash_account_id(&account_id);
+        let username = format!("{expiry}:{account_hash}:uvdgKvS9GXYZ_vmv");
+        let password = generate_password(&"1cab293a-4032-46f4-862a-40e5d174b0d2".into(), &username);
+        assert_eq!(
+            account_hash.to_string(),
+            "Erk3fL5+XJTopw2dI5KVI9FK+pVHkxMPijlZx7hJrKg"
         );
-        assert_eq!(password, "6xUIoZ+QvxKhRasLifwfRkMXl+ETLJUsFkHlXjlHAkg")
+        assert_eq!(password, "vNbf+vO+nDVJ2fcJjghxKu6oJVLDJbm9G6kh3XTySFA")
     }
 
     #[test]
     fn smoke() {
-        let message_integrity =
-            message_integrity(&RELAY_SECRET_1.into(), 1685200000, "n23JJ2wKKtt30oXi");
+        let account = "account";
+        let message_integrity = message_integrity(
+            &RELAY_SECRET_1.into(),
+            1685200000,
+            account,
+            "n23JJ2wKKtt30oXi",
+        );
 
         let result = message_integrity.verify(
             &RELAY_SECRET_1.into(),
-            "1685200000:n23JJ2wKKtt30oXi",
-            systemtime_from_unix(1685200000 - 1000),
+            "1685200000:account:n23JJ2wKKtt30oXi",
+            systemtime_from_unix(1685200000 - 1000).unwrap(),
         );
 
-        result.expect("credentials to be valid");
+        assert_eq!(result.unwrap().to_string(), account);
+    }
+
+    #[test]
+    fn account_bound_credentials_bind_the_account_to_the_password() {
+        let expiry = 1685200000;
+        let account = "tYfHnH7PcN7e2TU4kl6hZ0w2l7s0mH85ySL0Vzjo0Fg";
+        let username = format!("{expiry}:{account}:n23JJ2wKKtt30oXi");
+        let parsed = parse_username(&username).unwrap();
+        let password = generate_password_for_username(&RELAY_SECRET_1.into(), &parsed);
+        let message_integrity = MessageIntegrity::new_long_term_credential(
+            &sample_message(),
+            &Username::new(username.clone()).unwrap(),
+            &FIREZONE,
+            &password,
+        )
+        .unwrap();
+
+        assert_eq!(
+            message_integrity
+                .verify(
+                    &RELAY_SECRET_1.into(),
+                    &username,
+                    systemtime_from_unix(expiry - 1_000).unwrap(),
+                )
+                .unwrap()
+                .to_string(),
+            account
+        );
+
+        let different_account = username.replacen(account, "other-account", 1);
+        assert!(matches!(
+            message_integrity.verify(
+                &RELAY_SECRET_1.into(),
+                &different_account,
+                systemtime_from_unix(expiry - 1_000).unwrap(),
+            ),
+            Err(Error::InvalidPassword)
+        ));
     }
 
     #[test]
@@ -338,13 +439,14 @@ mod tests {
         let message_integrity = message_integrity(
             &RELAY_SECRET_1.into(),
             1685200000 - 1000,
+            "account",
             "n23JJ2wKKtt30oXi",
         );
 
         let result = message_integrity.verify(
             &RELAY_SECRET_1.into(),
-            "1685199000:n23JJ2wKKtt30oXi",
-            systemtime_from_unix(1685200000),
+            "1685199000:account:n23JJ2wKKtt30oXi",
+            systemtime_from_unix(1685200000).unwrap(),
         );
 
         assert!(matches!(result.unwrap_err(), Error::Expired))
@@ -352,13 +454,17 @@ mod tests {
 
     #[test]
     fn different_relay_secret_makes_password_invalid() {
-        let message_integrity =
-            message_integrity(&RELAY_SECRET_2.into(), 1685200000, "n23JJ2wKKtt30oXi");
+        let message_integrity = message_integrity(
+            &RELAY_SECRET_2.into(),
+            1685200000,
+            "account",
+            "n23JJ2wKKtt30oXi",
+        );
 
         let result = message_integrity.verify(
             &RELAY_SECRET_1.into(),
-            "1685200000:n23JJ2wKKtt30oXi",
-            systemtime_from_unix(168520000 + 1000),
+            "1685200000:account:n23JJ2wKKtt30oXi",
+            systemtime_from_unix(168520000 + 1000).unwrap(),
         );
 
         assert!(matches!(result.unwrap_err(), Error::InvalidPassword))
@@ -366,109 +472,157 @@ mod tests {
 
     #[test]
     fn invalid_username_format_fails() {
-        let message_integrity =
-            message_integrity(&RELAY_SECRET_2.into(), 1685200000, "n23JJ2wKKtt30oXi");
+        let message_integrity = message_integrity(
+            &RELAY_SECRET_2.into(),
+            1685200000,
+            "account",
+            "n23JJ2wKKtt30oXi",
+        );
 
         let result = message_integrity.verify(
             &RELAY_SECRET_1.into(),
             "foobar",
-            systemtime_from_unix(168520000 + 1000),
+            systemtime_from_unix(168520000 + 1000).unwrap(),
         );
 
         assert!(matches!(result.unwrap_err(), Error::InvalidUsername))
     }
 
     #[test]
-    fn nonces_are_valid_for_a_fixed_number_of_requests() {
-        let mut nonces = Nonces::default();
-        let client = client_socket(1);
-        let nonce = Uuid::new_v4();
+    fn oversized_unix_expiry_is_invalid_username() {
+        let message_integrity =
+            message_integrity(&RELAY_SECRET_1.into(), u64::MAX, "account", SAMPLE_USERNAME);
 
-        nonces.add_new(client, nonce);
+        let result = message_integrity.verify(
+            &RELAY_SECRET_1.into(),
+            &format!("{}:account:{SAMPLE_USERNAME}", u64::MAX),
+            systemtime_from_unix(1685200000).unwrap(),
+        );
 
-        for _ in 0..Nonces::NUM_REQUESTS {
-            nonces.handle_nonce_used(client, nonce).unwrap();
-        }
-
-        assert!(matches!(
-            nonces.handle_nonce_used(client, nonce).unwrap_err(),
-            Error::NonceUsedUp
-        ));
+        assert!(matches!(result.unwrap_err(), Error::InvalidUsername))
     }
 
     #[test]
-    fn unknown_nonces_are_invalid() {
-        let mut nonces = Nonces::default();
-        let client = client_socket(1);
-        let nonce = Uuid::new_v4();
+    fn nonce_is_valid_for_the_client_it_was_issued_to() {
+        let nonces = Nonces::new([1; 32]);
+        let now = systemtime_from_unix(1685200000).unwrap();
 
-        assert!(matches!(
-            nonces.handle_nonce_used(client, nonce).unwrap_err(),
-            Error::UnknownNonce
-        ));
+        let nonce = nonces.issue(client_socket(1), now);
+
+        nonces.verify(client_socket(1), &nonce, now).unwrap();
     }
 
     #[test]
-    fn reuses_the_same_nonce_for_repeated_requests_from_one_client() {
-        let mut nonces = Nonces::default();
-        let client = client_socket(1);
-        let mut rng = StdRng::seed_from_u64(0);
+    fn issues_the_same_nonce_within_one_window() {
+        let nonces = Nonces::new([1; 32]);
+        let now = systemtime_from_unix(1685200000).unwrap();
 
-        let first = nonces.issue(client, &mut rng);
-        let second = nonces.issue(client, &mut rng);
+        let first = nonces.issue(client_socket(1), now);
+        let second = nonces.issue(client_socket(1), now + Duration::from_secs(1));
 
         assert_eq!(first, second);
     }
 
     #[test]
     fn issues_distinct_nonces_to_distinct_clients() {
-        let mut nonces = Nonces::default();
-        let mut rng = StdRng::seed_from_u64(0);
+        let nonces = Nonces::new([1; 32]);
+        let now = systemtime_from_unix(1685200000).unwrap();
 
-        let alice = nonces.issue(client_socket(1), &mut rng);
-        let bob = nonces.issue(client_socket(2), &mut rng);
+        let alice = nonces.issue(client_socket(1), now);
+        let bob = nonces.issue(client_socket(2), now);
 
         assert_ne!(alice, bob);
     }
 
     #[test]
     fn a_nonce_issued_to_one_client_is_invalid_for_another() {
-        let mut nonces = Nonces::default();
-        let mut rng = StdRng::seed_from_u64(0);
+        let nonces = Nonces::new([1; 32]);
+        let now = systemtime_from_unix(1685200000).unwrap();
 
-        let nonce = nonces.issue(client_socket(1), &mut rng);
+        let nonce = nonces.issue(client_socket(1), now);
 
         assert!(matches!(
-            nonces
-                .handle_nonce_used(client_socket(2), nonce)
+            nonces.verify(client_socket(2), &nonce, now).unwrap_err(),
+            Error::UnknownNonce
+        ));
+    }
+
+    #[test]
+    fn a_nonce_issued_with_another_key_is_invalid() {
+        let now = systemtime_from_unix(1685200000).unwrap();
+
+        let nonce = Nonces::new([1; 32]).issue(client_socket(1), now);
+
+        assert!(matches!(
+            Nonces::new([2; 32])
+                .verify(client_socket(1), &nonce, now)
                 .unwrap_err(),
             Error::UnknownNonce
         ));
     }
 
     #[test]
-    fn issues_a_fresh_nonce_once_the_previous_one_is_used_up() {
-        let mut nonces = Nonces::default();
-        let client = client_socket(1);
-        let mut rng = StdRng::seed_from_u64(0);
+    fn malformed_nonces_are_invalid() {
+        let nonces = Nonces::new([1; 32]);
+        let now = systemtime_from_unix(1685200000).unwrap();
 
-        let first = nonces.issue(client, &mut rng);
-        for _ in 0..Nonces::NUM_REQUESTS {
-            nonces.handle_nonce_used(client, first).unwrap();
+        for nonce in ["", "foo", "1:", ":00", "x:00", "2808666:zz"] {
+            assert!(matches!(
+                nonces.verify(client_socket(1), nonce, now).unwrap_err(),
+                Error::UnknownNonce
+            ));
         }
+    }
 
-        let second = nonces.issue(client, &mut rng);
+    #[test]
+    fn a_nonce_stays_valid_in_the_next_window() {
+        let nonces = Nonces::new([1; 32]);
+        let now = systemtime_from_unix(1685200000).unwrap();
 
-        assert_ne!(first, second);
+        let nonce = nonces.issue(client_socket(1), now);
+
+        nonces
+            .verify(client_socket(1), &nonce, now + Nonces::WINDOW)
+            .unwrap();
+    }
+
+    #[test]
+    fn a_nonce_expires_after_two_windows() {
+        let nonces = Nonces::new([1; 32]);
+        let now = systemtime_from_unix(1685200000).unwrap();
+
+        let nonce = nonces.issue(client_socket(1), now);
+
+        assert!(matches!(
+            nonces
+                .verify(client_socket(1), &nonce, now + Nonces::WINDOW * 2)
+                .unwrap_err(),
+            Error::StaleNonce
+        ));
+    }
+
+    #[test]
+    fn a_nonce_from_a_future_window_is_stale() {
+        let nonces = Nonces::new([1; 32]);
+        let now = systemtime_from_unix(1685200000).unwrap();
+
+        let nonce = nonces.issue(client_socket(1), now + Nonces::WINDOW);
+
+        assert!(matches!(
+            nonces.verify(client_socket(1), &nonce, now).unwrap_err(),
+            Error::StaleNonce
+        ));
     }
 
     fn message_integrity(
         relay_secret: &SecretString,
         username_expiry: u64,
+        account: &str,
         username_salt: &str,
     ) -> MessageIntegrity {
-        let username = Username::new(format!("{username_expiry}:{username_salt}")).unwrap();
-        let password = generate_password(relay_secret, username_expiry, username_salt);
+        let username =
+            Username::new(format!("{username_expiry}:{account}:{username_salt}")).unwrap();
+        let password = generate_password(relay_secret, username.name());
 
         MessageIntegrity::new_long_term_credential(
             &sample_message(),

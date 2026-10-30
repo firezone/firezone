@@ -10,6 +10,7 @@ defmodule PortalWeb.Plugs.AutoRedirectDefaultProvider do
     Account,
     OIDC,
     Google,
+    GitHub,
     Okta,
     Entra,
     Safe
@@ -30,7 +31,7 @@ defmodule PortalWeb.Plugs.AutoRedirectDefaultProvider do
         _opts
       )
       when as in ["client", "gui-client", "headless-client"] do
-    with %Account{} = account <- Database.get_account_by_id_or_slug(account_id_or_slug),
+    with %Account{} = account <- PortalWeb.Accounts.get_by_id_or_slug(account_id_or_slug),
          provider when is_struct(provider) <- Database.get_default_provider_for_account(account) do
       redirect_params = PortalWeb.Authentication.take_sign_in_redirect_params(conn.params)
 
@@ -54,6 +55,10 @@ defmodule PortalWeb.Plugs.AutoRedirectDefaultProvider do
     ~p"/#{account}/sign_in/google/#{provider}?#{params}"
   end
 
+  defp redirect_path(account, %GitHub.AuthProvider{} = provider, params) do
+    ~p"/#{account}/sign_in/github/#{provider}?#{params}"
+  end
+
   defp redirect_path(account, %Entra.AuthProvider{} = provider, params) do
     ~p"/#{account}/sign_in/entra/#{provider}?#{params}"
   end
@@ -70,18 +75,9 @@ defmodule PortalWeb.Plugs.AutoRedirectDefaultProvider do
       OIDC,
       Okta,
       Google,
+      GitHub,
       Entra
     }
-
-    def get_account_by_id_or_slug(id_or_slug) do
-      if Portal.Repo.valid_uuid?(id_or_slug) do
-        where(Account, [a], a.id == ^id_or_slug)
-      else
-        where(Account, [a], a.slug == ^id_or_slug)
-      end
-      |> Safe.unscoped()
-      |> Safe.one()
-    end
 
     def get_default_provider_for_account(account) do
       account_id = account.id
@@ -90,6 +86,7 @@ defmodule PortalWeb.Plugs.AutoRedirectDefaultProvider do
       providers = [
         {OIDC.AuthProvider, :oidc},
         {Google.AuthProvider, :google},
+        {GitHub.AuthProvider, :github},
         {Entra.AuthProvider, :entra},
         {Okta.AuthProvider, :okta}
       ]

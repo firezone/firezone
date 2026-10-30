@@ -1,6 +1,9 @@
 use std::{
-    collections::{BTreeMap, BTreeSet, HashMap, VecDeque},
+    cmp::Ordering,
+    collections::{BTreeSet, HashMap, VecDeque},
+    hash::{Hash, Hasher},
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
+    sync::Arc,
 };
 
 use connlib_model::{IpStack, ResourceId};
@@ -8,6 +11,7 @@ use dns_types::{
     DomainName, DomainNameRef, OwnedRecordData, Query, RecordType, Response, ResponseBuilder,
     ResponseCode,
 };
+use fast_random_state::FastRandomState;
 use itertools::Itertools as _;
 use logging::err_with_src;
 use smallvec::SmallVec;
@@ -35,7 +39,13 @@ const REVERSE_DNS_ADDRESS_V4: &str = "in-addr";
 const REVERSE_DNS_ADDRESS_V6: &str = "ip6";
 
 pub struct ResourceStubResolver {
-    fqdn_to_ips: BTreeMap<dns_types::DomainName, (ProxyIps, BTreeSet<(Pattern, ResourceId)>)>,
+    fqdn_to_ips: HashMap<
+        dns_types::DomainName,
+        (DnsResourceDomain, ProxyIps, BTreeSet<(Pattern, ResourceId)>),
+        FastRandomState,
+    >,
+    /// Only ever advanced so that an id is never reused for a different domain.
+    next_domain_id: DnsResourceDomainId,
     ips_to_fqdn: HashMap<IpAddr, dns_types::DomainName>,
     ip_provider: IpProvider,
     /// All DNS resources we know about, sorted by their glob pattern.
@@ -43,6 +53,75 @@ pub struct ResourceStubResolver {
     search_domain: Option<DomainName>,
 
     events: VecDeque<Event>,
+}
+
+/// A domain that the [`ResourceStubResolver`] has resolved for a DNS resource.
+///
+/// The resolver creates exactly one per name and never reuses an id,
+/// so equality, ordering and hashing only consider the id.
+#[derive(Clone, derive_more::Display, derive_more::Debug)]
+#[display("{name}")]
+#[debug("{name} (#{})", id.0)]
+pub(crate) struct DnsResourceDomain {
+    id: DnsResourceDomainId,
+    name: Arc<DomainName>,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub(crate) struct DnsResourceDomainId(u64);
+
+impl DnsResourceDomainId {
+    /// Returns this id and advances `self` to the next one.
+    fn take(&mut self) -> Self {
+        let id = *self;
+        self.0 += 1;
+
+        id
+    }
+}
+
+impl DnsResourceDomain {
+    pub(crate) fn name(&self) -> &DomainName {
+        &self.name
+    }
+
+    pub(crate) fn id(&self) -> DnsResourceDomainId {
+        self.id
+    }
+
+    #[cfg(test)]
+    pub(crate) fn for_test(id: u64, name: DomainName) -> Self {
+        Self {
+            id: DnsResourceDomainId(id),
+            name: Arc::new(name),
+        }
+    }
+}
+
+impl PartialEq for DnsResourceDomain {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id
+    }
+}
+
+impl Eq for DnsResourceDomain {}
+
+impl Hash for DnsResourceDomain {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.id.hash(state);
+    }
+}
+
+impl PartialOrd for DnsResourceDomain {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for DnsResourceDomain {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.id.cmp(&other.id)
+    }
 }
 
 /// Tells the Client how to reply to a single DNS query
@@ -56,7 +135,7 @@ pub(crate) enum ResolveStrategy {
     /// The query is for a non-Resource, forward it locally to an upstream or system resolver.
     RecurseLocal,
     /// The query is for a DNS resource but for a type that we don't intercept (i.e. SRV, TXT, ...), forward it to the site that hosts the DNS resource and resolve it there.
-    RecurseSite(ResourceId),
+    RecurseSite(Vec<ResourceId>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -74,7 +153,7 @@ pub(crate) struct AddResourceResult {
 
 #[derive(Debug)]
 pub(crate) struct DnsResourceRoute {
-    pub domain: DomainName,
+    pub domain: DnsResourceDomain,
     pub pattern: Pattern,
     pub resource_id: ResourceId,
     pub proxy_ips: SmallVec<[IpAddr; 8]>,
@@ -115,7 +194,8 @@ impl Default for ResourceStubResolver {
 impl ResourceStubResolver {
     pub(crate) fn new(records: BTreeSet<DnsResourceRecord>) -> Self {
         let mut ips_to_fqdn = HashMap::default();
-        let mut fqdn_to_ips = BTreeMap::default();
+        let mut fqdn_to_ips = HashMap::default();
+        let mut next_domain_id = DnsResourceDomainId::default();
         let mut ip_provider = IpProvider::for_resources();
 
         if !records.is_empty() {
@@ -139,7 +219,12 @@ impl ResourceStubResolver {
                     ips_to_fqdn.insert(ip, record.domain.clone());
                 }
 
-                fqdn_to_ips.insert(record.domain, (ips, record.resources));
+                let domain = DnsResourceDomain {
+                    id: next_domain_id.take(),
+                    name: Arc::new(record.domain.clone()),
+                };
+
+                fqdn_to_ips.insert(record.domain, (domain, ips, record.resources));
             }
 
             // Advance IP provider to make sure future addresses are unique.
@@ -149,6 +234,7 @@ impl ResourceStubResolver {
 
         ResourceStubResolver {
             fqdn_to_ips,
+            next_domain_id,
             ips_to_fqdn,
             ip_provider,
             dns_resources: Default::default(),
@@ -159,17 +245,22 @@ impl ResourceStubResolver {
 
     pub(crate) fn resolved_resources(
         &self,
-    ) -> impl Iterator<Item = (&dns_types::DomainName, &ResourceId, SmallVec<[IpAddr; 8]>)> + '_
-    {
+    ) -> impl Iterator<Item = (&DnsResourceDomain, &ResourceId, SmallVec<[IpAddr; 8]>)> + '_ {
         self.fqdn_to_ips
-            .iter()
-            .flat_map(move |(domain, (ips, resources))| {
+            .values()
+            .flat_map(move |(domain, ips, resources)| {
                 resources.iter().filter_map(move |(pattern, rid)| {
                     let ips = self.ips_for_resource(ips, pattern, rid)?;
 
                     Some((domain, rid, ips))
                 })
             })
+    }
+
+    pub(crate) fn resolved_domain(&self, name: &DomainName) -> Option<DnsResourceDomain> {
+        let (domain, _, _) = self.fqdn_to_ips.get(name)?;
+
+        Some(domain.clone())
     }
 
     fn ips_for_resource(
@@ -211,7 +302,7 @@ impl ResourceStubResolver {
         self.dns_resources.insert(resource.clone());
 
         let mut records_changed = false;
-        for (_, resources) in self.fqdn_to_ips.values_mut() {
+        for (_, _, resources) in self.fqdn_to_ips.values_mut() {
             for _ in resources.extract_if(.., |(pattern, rid)| {
                 *rid == id && pattern != &resource.pattern
             }) {
@@ -222,9 +313,9 @@ impl ResourceStubResolver {
         let assignment = (resource.pattern.clone(), resource.id);
         let routes = if is_new {
             self.fqdn_to_ips
-                .iter()
-                .filter(|(_, (_, resources))| resources.contains(&assignment))
-                .map(|(domain, (ips, _))| DnsResourceRoute {
+                .values()
+                .filter(|(_, _, resources)| resources.contains(&assignment))
+                .map(|(domain, ips, _)| DnsResourceRoute {
                     domain: domain.clone(),
                     pattern: resource.pattern.clone(),
                     resource_id: resource.id,
@@ -295,17 +386,23 @@ impl ResourceStubResolver {
     ) -> (Vec<IpAddr>, Vec<DnsResourceRoute>) {
         let mut records_changed = false;
 
-        let (ips, assigned_resources) = self.fqdn_to_ips.entry(fqdn.clone()).or_insert_with(|| {
-            let mut ips = Vec::with_capacity(8);
-            ips.extend(self.ip_provider.get_n_ipv4(4));
-            ips.extend(self.ip_provider.get_n_ipv6(4));
+        let (domain, ips, assigned_resources) =
+            self.fqdn_to_ips.entry(fqdn.clone()).or_insert_with(|| {
+                let domain = DnsResourceDomain {
+                    id: self.next_domain_id.take(),
+                    name: Arc::new(fqdn.clone()),
+                };
 
-            tracing::debug!(domain = %fqdn, ?ips, "Assigning proxy IPs");
+                let mut ips = Vec::with_capacity(8);
+                ips.extend(self.ip_provider.get_n_ipv4(4));
+                ips.extend(self.ip_provider.get_n_ipv6(4));
 
-            records_changed = true;
+                tracing::debug!(domain = %fqdn, ?ips, "Assigning proxy IPs");
 
-            (ProxyIps::new(ips), BTreeSet::default())
-        });
+                records_changed = true;
+
+                (domain, ProxyIps::new(ips), BTreeSet::default())
+            });
         for ip in ips.for_stack(IpStack::Dual) {
             self.ips_to_fqdn.insert(ip, fqdn.clone());
         }
@@ -316,7 +413,7 @@ impl ResourceStubResolver {
                 records_changed |= is_new;
 
                 is_new.then(|| DnsResourceRoute {
-                    domain: fqdn.clone(),
+                    domain: domain.clone(),
                     pattern: resource.pattern,
                     resource_id: resource.id,
                     proxy_ips: ips.for_stack(resource.ip_stack),
@@ -394,19 +491,18 @@ impl ResourceStubResolver {
                 self.get_or_assign_aaaa_records(domain.clone(), resources)
             }
             (RecordType::SRV | RecordType::TXT, resources) => {
-                let Some(resource) = resources.iter().max_by(|r1, r2| {
-                    let by_pattern = r1.pattern.cmp(&r2.pattern).reverse();
-                    let by_id = r1.id.cmp(&r2.id);
-
-                    by_pattern.then(by_id)
-                }) else {
+                let resource_ids = resources
+                    .iter()
+                    .sorted_by(|r1, r2| r1.pattern.cmp(&r2.pattern).then_with(|| r2.id.cmp(&r1.id)))
+                    .map(|resource| resource.id)
+                    .collect_vec();
+                if resource_ids.is_empty() {
                     return ResolveStrategy::RecurseLocal;
-                };
-                let multiple_resources = resources.len() > 1;
+                }
 
-                tracing::debug!(%qtype, rid = %resource.id, ?multiple_resources, "Forwarding query for DNS resource to corresponding site");
+                tracing::debug!(%qtype, ?resource_ids, "Forwarding query for DNS resource to corresponding site");
 
-                return ResolveStrategy::RecurseSite(resource.id);
+                return ResolveStrategy::RecurseSite(resource_ids);
             }
             (RecordType::PTR, _) => {
                 let Some(fqdn) = self.resource_address_name_by_reservse_dns(&domain) else {
@@ -453,7 +549,7 @@ impl ResourceStubResolver {
     fn records(&self) -> BTreeSet<DnsResourceRecord> {
         self.fqdn_to_ips
             .iter()
-            .map(|(name, (ips, resources))| DnsResourceRecord {
+            .map(|(name, (_, ips, resources))| DnsResourceRecord {
                 domain: name.clone(),
                 resources: resources.clone(),
                 ips: ips.for_stack(IpStack::Dual).into_vec(),
@@ -599,6 +695,9 @@ mod tests {
     #[test_case("app.example.com", "app.example.com"; "matches literal domain")]
     #[test_case("*?*.example.com", "app.example.com"; "mix of * and ?")]
     #[test_case("app.**.web.**.example.com", "app.web.example.com"; "multiple double star within domain")]
+    #[test_case("*.Example.com", "example.com"; "single star matches root domain case-insensitively")]
+    #[test_case("*.example.com", "EXAMPLE.com"; "single star matches uppercase root domain")]
+    #[test_case("**.Example.com", "foo.EXAMPLE.com"; "double star matches case-insensitively")]
 
     fn domain_pattern_matches(pattern: &str, domain: &str) {
         let pattern = Pattern::new(pattern).unwrap();

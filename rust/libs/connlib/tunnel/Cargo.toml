@@ -11,6 +11,7 @@ bufferpool = { workspace = true }
 connlib-model = { workspace = true }
 dns-types = { workspace = true }
 eventloop-budget = { workspace = true }
+fast-random-state = { workspace = true }
 futures = { workspace = true }
 futures-bounded = { workspace = true, features = ["tokio"] }
 http-client = { workspace = true }
@@ -21,20 +22,21 @@ l4-udp-dns-server = { workspace = true }
 logging = { workspace = true }
 opentelemetry = { workspace = true, features = ["metrics"] }
 otel-instruments = { workspace = true }
+prefetch = { workspace = true }
 rand = { workspace = true }
 snownet = { workspace = true }
 socket-factory = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
-tokio-util = { workspace = true }
 tracing = { workspace = true, features = ["attributes"] }
 tun = { workspace = true }
 tunnel-proto = { workspace = true, features = ["telemetry"] }
 
 [dev-dependencies]
+doh-test-server = { workspace = true }
 ip-packet = { workspace = true, features = ["proptest"] }
+quinn-udp = { workspace = true }
 rand = { workspace = true }
-rustls = { workspace = true }
 tokio = { workspace = true, features = ["macros", "process", "rt", "test-util"] }
 
 [lints]

@@ -1,15 +1,21 @@
 use std::{
-    collections::{BTreeMap, VecDeque, btree_map::Entry},
+    collections::{HashMap, VecDeque, hash_map::Entry},
     net::IpAddr,
+    ops::ControlFlow,
     time::{Duration, Instant},
 };
 
 use anyhow::Result;
 use connlib_model::{GatewayId, ResourceId};
 use dns_types::DomainName;
+use fast_random_state::FastRandomState;
 use ip_packet::IpPacket;
 
-use crate::{p2p_control, unique_packet_buffer::UniquePacketBuffer};
+use crate::{
+    dns::resource_stub_resolver::{DnsResourceDomain, DnsResourceDomainId},
+    p2p_control,
+    unique_packet_buffer::UniquePacketBuffer,
+};
 
 /// Tracks the domains for which we have set up a NAT per gateway.
 ///
@@ -18,22 +24,30 @@ use crate::{p2p_control, unique_packet_buffer::UniquePacketBuffer};
 /// Until the NAT is set up, packets sent to these resources are effectively black-holed.
 #[derive(Default)]
 pub struct DnsResourceNat {
-    inner: BTreeMap<(GatewayId, DomainName, ResourceId), (State, IpPacket)>,
+    inner: HashMap<
+        (GatewayId, DnsResourceDomainId, ResourceId),
+        (DnsResourceDomain, State, IpPacket),
+        FastRandomState,
+    >,
 
-    assigned_ips_packets: VecDeque<(GatewayId, DomainName, ResourceId, IpPacket)>,
+    assigned_ips_packets: VecDeque<(GatewayId, DnsResourceDomain, ResourceId, IpPacket)>,
 }
 
 impl DnsResourceNat {
+    /// Updates the DNS resource NAT state for a domain, buffering the given packets until the
+    /// NAT is set up.
+    ///
+    /// Returns the packets that can be sent right away because the NAT is already confirmed.
     pub fn update(
         &mut self,
-        domain: DomainName,
+        domain: DnsResourceDomain,
         gid: GatewayId,
         rid: ResourceId,
         proxy_ips: &[IpAddr],
         packets_for_domain: VecDeque<IpPacket>,
         now: Instant,
-    ) -> Result<()> {
-        match self.inner.entry((gid, domain.clone(), rid)) {
+    ) -> Result<VecDeque<IpPacket>> {
+        match self.inner.entry((gid, domain.id(), rid)) {
             Entry::Vacant(v) => {
                 tracing::trace!(%domain, %gid, %rid, "No DNS resource NAT state, creating `Pending` entry");
 
@@ -43,11 +57,12 @@ impl DnsResourceNat {
 
                 let assigned_ips = p2p_control::dns_resource_nat::assigned_ips(
                     rid,
-                    domain.clone(),
+                    domain.name().clone(),
                     proxy_ips.to_vec(),
                 )?;
 
                 v.insert((
+                    domain.clone(),
                     State::Pending {
                         sent_at: now,
                         buffered_packets,
@@ -61,14 +76,20 @@ impl DnsResourceNat {
                     .push_back((gid, domain, rid, assigned_ips));
             }
             Entry::Occupied(mut o) => {
-                let (state, assigned_ips) = o.get_mut();
+                let (_, state, assigned_ips) = o.get_mut();
 
                 match state {
                     State::Confirmed => {
                         tracing::trace!(%domain, %gid, %rid, "DNS resource NAT already confirmed");
+
+                        return Ok(packets_for_domain);
                     }
                     State::Failed => {
                         tracing::trace!(%domain, %gid, %rid, "DNS resource NAT failed");
+
+                        // Same as `handle_outgoing`: some of these might be black-holed on
+                        // the Gateway but there isn't much we can do.
+                        return Ok(packets_for_domain);
                     }
                     State::Recreating { should_buffer } => {
                         tracing::trace!(%domain, %gid, %rid, "Recreating DNS resource NAT");
@@ -115,7 +136,7 @@ impl DnsResourceNat {
             }
         }
 
-        Ok(())
+        Ok(VecDeque::default())
     }
 
     /// Recreate the DNS resource NAT state for a given domain.
@@ -131,10 +152,10 @@ impl DnsResourceNat {
     /// to continue flowing to the Gateway while the DNS resource NAT is being recreated.
     /// In most cases, the DNS records will not change and as such, performing this will not interrupt the flow of packets.
     pub fn recreate(&mut self, domain: DomainName) {
-        for (state, _) in self
+        for (_, state, _) in self
             .inner
-            .iter_mut()
-            .filter_map(|((_, candidate, _), b)| (candidate == &domain).then_some(b))
+            .values_mut()
+            .filter(|(candidate, _, _)| candidate.name() == &domain)
         {
             let should_buffer = match state {
                 State::Recreating { .. } | State::Pending { .. } => continue,
@@ -149,20 +170,20 @@ impl DnsResourceNat {
 
     /// Handles an outgoing packet for a DNS resource.
     ///
-    /// If the DNS resource NAT is still being created, the packet gets buffered.
-    /// Otherwise, it is returned again.
+    /// Continues if the packet should be sent now. If the DNS resource NAT is still being created, a
+    /// copy of the packet gets buffered instead.
     pub fn handle_outgoing(
         &mut self,
         gid: GatewayId,
-        domain: &DomainName,
+        domain: &DnsResourceDomain,
         rid: ResourceId,
-        packet: IpPacket,
+        packet: &IpPacket,
         now: Instant,
-    ) -> Option<IpPacket> {
-        let Some((state, assigned_ips)) = self.inner.get_mut(&(gid, domain.clone(), rid)) else {
-            tracing::debug!(%gid, %domain, "No DNS resource NAT entry");
+    ) -> ControlFlow<()> {
+        let Some((_, state, assigned_ips)) = self.inner.get_mut(&(gid, domain.id(), rid)) else {
+            tracing::debug!(%gid, %domain, %rid, "No DNS resource NAT entry");
 
-            return Some(packet); // Pass-through packet.
+            return ControlFlow::Continue(()); // Pass-through packet.
         };
 
         match state {
@@ -171,7 +192,7 @@ impl DnsResourceNat {
                 buffered_packets,
                 sent_at,
             } => {
-                buffered_packets.push(packet);
+                buffered_packets.push(packet.clone());
 
                 if should_send_assigned_ips_packet(now, *sent_at) {
                     *sent_at = now;
@@ -183,7 +204,7 @@ impl DnsResourceNat {
                     ));
                 }
 
-                None
+                ControlFlow::Break(())
             }
             State::Pending {
                 should_buffer: false,
@@ -200,12 +221,12 @@ impl DnsResourceNat {
                     ));
                 }
 
-                Some(packet)
+                ControlFlow::Continue(())
             }
             State::Recreating { .. } | State::Confirmed | State::Failed => {
                 // Some of these might be black-holed on the Gateway (i.e. in `Failed`).
                 // But there isn't much we can do ...
-                Some(packet)
+                ControlFlow::Continue(())
             }
         }
     }
@@ -213,30 +234,30 @@ impl DnsResourceNat {
     pub fn clear_by_gateway(&mut self, gid: &GatewayId) {
         for _ in self
             .inner
-            .extract_if(.., |(candidate, _, _), _| candidate == gid)
+            .extract_if(|(candidate, _, _), _| candidate == gid)
         {}
     }
 
     pub fn clear_by_resource(&mut self, rid: &ResourceId) {
         for _ in self
             .inner
-            .extract_if(.., |(_, _, candidate), _| candidate == rid)
+            .extract_if(|(_, _, candidate), _| candidate == rid)
         {}
     }
 
     pub(crate) fn on_domain_status(
         &mut self,
         gid: GatewayId,
+        domain: DnsResourceDomain,
         res: p2p_control::dns_resource_nat::DomainStatus,
     ) -> impl IntoIterator<Item = IpPacket> {
-        let Entry::Occupied(mut nat_entry) =
-            self.inner.entry((gid, res.domain.clone(), res.resource))
+        let Entry::Occupied(mut nat_entry) = self.inner.entry((gid, domain.id(), res.resource))
         else {
             tracing::debug!(%gid, domain = %res.domain, "No DNS resource NAT state, ignoring response");
             return into_iter(None);
         };
 
-        let (nat_state, _) = nat_entry.get_mut();
+        let (_, nat_state, _) = nat_entry.get_mut();
 
         if res.status != p2p_control::dns_resource_nat::NatStatus::Active {
             tracing::debug!(%gid, domain = %res.domain, "DNS resource NAT is not active");
@@ -249,7 +270,7 @@ impl DnsResourceNat {
         into_iter(Some(nat_state.confirm()))
     }
 
-    pub fn poll_packet(&mut self) -> Option<(GatewayId, DomainName, ResourceId, IpPacket)> {
+    pub fn poll_packet(&mut self) -> Option<(GatewayId, DnsResourceDomain, ResourceId, IpPacket)> {
         self.assigned_ips_packets.pop_front()
     }
 }
@@ -324,7 +345,7 @@ mod tests {
 
         dns_resource_nat
             .update(
-                EXAMPLE_COM.to_vec(),
+                example_com(),
                 GID,
                 RID,
                 PROXY_IPS,
@@ -336,6 +357,7 @@ mod tests {
 
         dns_resource_nat.on_domain_status(
             GID,
+            example_com(),
             p2p_control::dns_resource_nat::DomainStatus {
                 status: p2p_control::dns_resource_nat::NatStatus::Inactive,
                 resource: RID,
@@ -345,7 +367,7 @@ mod tests {
 
         dns_resource_nat
             .update(
-                EXAMPLE_COM.to_vec(),
+                example_com(),
                 GID,
                 RID,
                 PROXY_IPS,
@@ -362,7 +384,7 @@ mod tests {
 
         dns_resource_nat
             .update(
-                EXAMPLE_COM.to_vec(),
+                example_com(),
                 GID,
                 RID,
                 PROXY_IPS,
@@ -372,6 +394,7 @@ mod tests {
             .unwrap();
         dns_resource_nat.on_domain_status(
             GID,
+            example_com(),
             p2p_control::dns_resource_nat::DomainStatus {
                 status: p2p_control::dns_resource_nat::NatStatus::Inactive,
                 resource: RID,
@@ -383,7 +406,7 @@ mod tests {
 
         dns_resource_nat
             .update(
-                EXAMPLE_COM.to_vec(),
+                example_com(),
                 GID,
                 RID,
                 PROXY_IPS,
@@ -398,15 +421,10 @@ mod tests {
             ip_packet::make::udp_packet(Ipv4Addr::LOCALHOST, Ipv4Addr::LOCALHOST, 0, 0, &[])
                 .unwrap();
 
-        let maybe_packet = dns_resource_nat.handle_outgoing(
-            GID,
-            &EXAMPLE_COM.to_vec(),
-            RID,
-            packet,
-            Instant::now(),
-        );
+        let control_flow =
+            dns_resource_nat.handle_outgoing(GID, &example_com(), RID, &packet, Instant::now());
 
-        assert!(maybe_packet.is_none());
+        assert!(control_flow.is_break());
     }
 
     #[test]
@@ -415,7 +433,7 @@ mod tests {
 
         dns_resource_nat
             .update(
-                EXAMPLE_COM.to_vec(),
+                example_com(),
                 GID,
                 RID,
                 PROXY_IPS,
@@ -428,18 +446,14 @@ mod tests {
             ip_packet::make::udp_packet(Ipv4Addr::LOCALHOST, Ipv4Addr::LOCALHOST, 0, 0, &[])
                 .unwrap();
 
-        let maybe_packet = dns_resource_nat.handle_outgoing(
-            GID,
-            &EXAMPLE_COM.to_vec(),
-            RID,
-            packet.clone(),
-            Instant::now(),
-        );
+        let control_flow =
+            dns_resource_nat.handle_outgoing(GID, &example_com(), RID, &packet, Instant::now());
 
-        assert!(maybe_packet.is_none());
+        assert!(control_flow.is_break());
 
         let packets = dns_resource_nat.on_domain_status(
             GID,
+            example_com(),
             p2p_control::dns_resource_nat::DomainStatus {
                 status: p2p_control::dns_resource_nat::NatStatus::Active,
                 resource: RID,
@@ -456,7 +470,7 @@ mod tests {
 
         dns_resource_nat
             .update(
-                EXAMPLE_COM.to_vec(),
+                example_com(),
                 GID,
                 RID,
                 PROXY_IPS,
@@ -466,6 +480,7 @@ mod tests {
             .unwrap();
         dns_resource_nat.on_domain_status(
             GID,
+            example_com(),
             p2p_control::dns_resource_nat::DomainStatus {
                 status: p2p_control::dns_resource_nat::NatStatus::Active,
                 resource: RID,
@@ -476,7 +491,7 @@ mod tests {
         dns_resource_nat.recreate(EXAMPLE_COM.to_vec());
         dns_resource_nat
             .update(
-                EXAMPLE_COM.to_vec(),
+                example_com(),
                 GID,
                 RID,
                 PROXY_IPS,
@@ -489,16 +504,53 @@ mod tests {
             ip_packet::make::udp_packet(Ipv4Addr::LOCALHOST, Ipv4Addr::LOCALHOST, 0, 0, &[])
                 .unwrap();
 
-        let maybe_packet = dns_resource_nat.handle_outgoing(
+        let control_flow =
+            dns_resource_nat.handle_outgoing(GID, &example_com(), RID, &app_packet, Instant::now());
+
+        assert!(control_flow.is_continue());
+        assert!(dns_resource_nat.poll_packet().is_some());
+    }
+
+    #[test]
+    fn forwards_buffered_packets_when_nat_already_confirmed() {
+        let mut dns_resource_nat = DnsResourceNat::default();
+
+        dns_resource_nat
+            .update(
+                example_com(),
+                GID,
+                RID,
+                PROXY_IPS,
+                VecDeque::default(),
+                Instant::now(),
+            )
+            .unwrap();
+        dns_resource_nat.on_domain_status(
             GID,
-            &EXAMPLE_COM.to_vec(),
-            RID,
-            app_packet.clone(),
-            Instant::now(),
+            example_com(),
+            p2p_control::dns_resource_nat::DomainStatus {
+                status: p2p_control::dns_resource_nat::NatStatus::Active,
+                resource: RID,
+                domain: EXAMPLE_COM.to_vec(),
+            },
         );
 
-        assert!(maybe_packet.is_some_and(|p| p == app_packet));
-        assert!(dns_resource_nat.poll_packet().is_some());
+        let packet =
+            ip_packet::make::udp_packet(Ipv4Addr::LOCALHOST, Ipv4Addr::LOCALHOST, 0, 0, &[])
+                .unwrap();
+
+        let packets = dns_resource_nat
+            .update(
+                example_com(),
+                GID,
+                RID,
+                PROXY_IPS,
+                VecDeque::from([packet.clone()]),
+                Instant::now(),
+            )
+            .unwrap();
+
+        assert_eq!(packets, VecDeque::from([packet]));
     }
 
     #[test]
@@ -507,40 +559,19 @@ mod tests {
         let mut now = Instant::now();
 
         dns_resource_nat
-            .update(
-                EXAMPLE_COM.to_vec(),
-                GID,
-                RID,
-                PROXY_IPS,
-                VecDeque::default(),
-                now,
-            )
+            .update(example_com(), GID, RID, PROXY_IPS, VecDeque::default(), now)
             .unwrap();
         assert!(dns_resource_nat.poll_packet().is_some());
 
         dns_resource_nat
-            .update(
-                EXAMPLE_COM.to_vec(),
-                GID,
-                RID,
-                PROXY_IPS,
-                VecDeque::default(),
-                now,
-            )
+            .update(example_com(), GID, RID, PROXY_IPS, VecDeque::default(), now)
             .unwrap();
         assert!(dns_resource_nat.poll_packet().is_none());
 
         now += Duration::from_secs(2);
 
         dns_resource_nat
-            .update(
-                EXAMPLE_COM.to_vec(),
-                GID,
-                RID,
-                PROXY_IPS,
-                VecDeque::default(),
-                now,
-            )
+            .update(example_com(), GID, RID, PROXY_IPS, VecDeque::default(), now)
             .unwrap();
         assert!(dns_resource_nat.poll_packet().is_some());
     }
@@ -551,14 +582,7 @@ mod tests {
         let mut now = Instant::now();
 
         dns_resource_nat
-            .update(
-                EXAMPLE_COM.to_vec(),
-                GID,
-                RID,
-                PROXY_IPS,
-                VecDeque::default(),
-                now,
-            )
+            .update(example_com(), GID, RID, PROXY_IPS, VecDeque::default(), now)
             .unwrap();
         assert!(dns_resource_nat.poll_packet().is_some());
 
@@ -568,10 +592,10 @@ mod tests {
             ip_packet::make::udp_packet(Ipv4Addr::LOCALHOST, Ipv4Addr::LOCALHOST, 0, 0, &[])
                 .unwrap();
 
-        let maybe_packet =
-            dns_resource_nat.handle_outgoing(GID, &EXAMPLE_COM.to_vec(), RID, app_packet, now);
+        let control_flow =
+            dns_resource_nat.handle_outgoing(GID, &example_com(), RID, &app_packet, now);
 
-        assert!(maybe_packet.is_none());
+        assert!(control_flow.is_break());
         assert!(dns_resource_nat.poll_packet().is_some());
     }
 
@@ -581,7 +605,7 @@ mod tests {
 
         dns_resource_nat
             .update(
-                EXAMPLE_COM.to_vec(),
+                example_com(),
                 GID,
                 RID,
                 PROXY_IPS,
@@ -593,6 +617,7 @@ mod tests {
 
         dns_resource_nat.on_domain_status(
             GID,
+            example_com(),
             p2p_control::dns_resource_nat::DomainStatus {
                 status: p2p_control::dns_resource_nat::NatStatus::Active,
                 resource: RID,
@@ -602,7 +627,7 @@ mod tests {
 
         dns_resource_nat
             .update(
-                EXAMPLE_COM.to_vec(),
+                example_com(),
                 GID,
                 RID2,
                 PROXY_IPS,
@@ -618,6 +643,10 @@ mod tests {
     const GID: GatewayId = GatewayId::from_u128(1);
     const RID: ResourceId = ResourceId::from_u128(2);
     const RID2: ResourceId = ResourceId::from_u128(3);
+    fn example_com() -> DnsResourceDomain {
+        DnsResourceDomain::for_test(0, EXAMPLE_COM.to_vec())
+    }
+
     const PROXY_IPS: &[IpAddr] = &[
         IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
         IpAddr::V4(Ipv4Addr::new(127, 0, 0, 2)),

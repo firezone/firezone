@@ -55,22 +55,22 @@ version = "2.1.4"
 backend = "github:DevinR528/cargo-sort"
 
 [tools."github:DevinR528/cargo-sort"."platforms.linux-x64"]
-checksum = "sha256:c10fdf954e51221d63743884aaf6ee5d576464abdc4965b395e3ec26948072ee"
+checksum = "sha256:c35c3df1f2e512890ee2ffd6151aa265fbfe06accbea0d9226e0bb14d821845b"
 url = "https://github.com/DevinR528/cargo-sort/releases/download/v2.1.4/cargo-sort-x86_64-unknown-linux-gnu.tar.gz"
 url_api = "https://api.github.com/repos/DevinR528/cargo-sort/releases/assets/405268442"
 
 [tools."github:DevinR528/cargo-sort"."platforms.linux-x64-musl"]
-checksum = "sha256:c10fdf954e51221d63743884aaf6ee5d576464abdc4965b395e3ec26948072ee"
+checksum = "sha256:c35c3df1f2e512890ee2ffd6151aa265fbfe06accbea0d9226e0bb14d821845b"
 url = "https://github.com/DevinR528/cargo-sort/releases/download/v2.1.4/cargo-sort-x86_64-unknown-linux-gnu.tar.gz"
 url_api = "https://api.github.com/repos/DevinR528/cargo-sort/releases/assets/405268442"
 
 [tools."github:DevinR528/cargo-sort"."platforms.macos-arm64"]
-checksum = "sha256:d2091a14be8482d8771ac379ef46a9501d678cee000a5e855490009fad3a65a3"
+checksum = "sha256:8969e3ed1d66d4862beb277b2b827ee8eac624a1e41d025e53e790fa0ed23839"
 url = "https://github.com/DevinR528/cargo-sort/releases/download/v2.1.4/cargo-sort-aarch64-apple-darwin.tar.gz"
 url_api = "https://api.github.com/repos/DevinR528/cargo-sort/releases/assets/405268421"
 
 [tools."github:DevinR528/cargo-sort"."platforms.windows-x64"]
-checksum = "sha256:0c59ef2433e523e060909cdfa678969eaa81a44fdc4313cb5a1a9592e8ded2b3"
+checksum = "sha256:0c9fcce93c8436b01a486bb699d483b597f345cf6609df7d6a7309a94ba28111"
 url = "https://github.com/DevinR528/cargo-sort/releases/download/v2.1.4/cargo-sort-x86_64-pc-windows-msvc.zip"
 url_api = "https://api.github.com/repos/DevinR528/cargo-sort/releases/assets/405268766"
 
@@ -114,38 +114,120 @@ url = "https://github.com/EmbarkStudios/cargo-deny/releases/download/0.19.4/carg
 url_api = "https://api.github.com/repos/EmbarkStudios/cargo-deny/releases/assets/396997478"
 
 [[tools."github:aya-rs/bpf-linker"]]
-version = "0.10.3"
+version = "0.12.0"
 backend = "github:aya-rs/bpf-linker"
 
 [tools."github:aya-rs/bpf-linker"."platforms.linux-arm64"]
-checksum = "sha256:02f71967eddf61229fd0ae39736bfcaa00b27872df5af868b025f578371204d1"
-url = "https://github.com/aya-rs/bpf-linker/releases/download/v0.10.3/bpf-linker-aarch64-unknown-linux-musl.tar.gz"
-url_api = "https://api.github.com/repos/aya-rs/bpf-linker/releases/assets/395525950"
+checksum = "sha256:5e201e69dafac7af98f9788f1c68edd5ccc8fa0805093f899bf02bd2947b3935"
+url = "https://github.com/aya-rs/bpf-linker/releases/download/v0.12.0/bpf-linker-aarch64-unknown-linux-musl.tar.zst"
+url_api = "https://api.github.com/repos/aya-rs/bpf-linker/releases/assets/638312824"
 
 [tools."github:aya-rs/bpf-linker"."platforms.linux-arm64-musl"]
-checksum = "sha256:02f71967eddf61229fd0ae39736bfcaa00b27872df5af868b025f578371204d1"
-url = "https://github.com/aya-rs/bpf-linker/releases/download/v0.10.3/bpf-linker-aarch64-unknown-linux-musl.tar.gz"
-url_api = "https://api.github.com/repos/aya-rs/bpf-linker/releases/assets/395525950"
+checksum = "sha256:5e201e69dafac7af98f9788f1c68edd5ccc8fa0805093f899bf02bd2947b3935"
+url = "https://github.com/aya-rs/bpf-linker/releases/download/v0.12.0/bpf-linker-aarch64-unknown-linux-musl.tar.zst"
+url_api = "https://api.github.com/repos/aya-rs/bpf-linker/releases/assets/638312824"
 
 [tools."github:aya-rs/bpf-linker"."platforms.linux-x64"]
-checksum = "sha256:0fa4645d2dfbb5cafe6231b0aa9fad4f1430bd0871e3bd7319e82d827bf6262c"
-url = "https://github.com/aya-rs/bpf-linker/releases/download/v0.10.3/bpf-linker-x86_64-unknown-linux-musl.tar.gz"
-url_api = "https://api.github.com/repos/aya-rs/bpf-linker/releases/assets/395525972"
+checksum = "sha256:6789717c8cb6a2a5d920f3b6bfac2bd7efc00f6228ecd149108a99699a75c679"
+url = "https://github.com/aya-rs/bpf-linker/releases/download/v0.12.0/bpf-linker-x86_64-unknown-linux-musl.tar.zst"
+url_api = "https://api.github.com/repos/aya-rs/bpf-linker/releases/assets/638313058"
 
 [tools."github:aya-rs/bpf-linker"."platforms.linux-x64-musl"]
-checksum = "sha256:0fa4645d2dfbb5cafe6231b0aa9fad4f1430bd0871e3bd7319e82d827bf6262c"
-url = "https://github.com/aya-rs/bpf-linker/releases/download/v0.10.3/bpf-linker-x86_64-unknown-linux-musl.tar.gz"
-url_api = "https://api.github.com/repos/aya-rs/bpf-linker/releases/assets/395525972"
+checksum = "sha256:6789717c8cb6a2a5d920f3b6bfac2bd7efc00f6228ecd149108a99699a75c679"
+url = "https://github.com/aya-rs/bpf-linker/releases/download/v0.12.0/bpf-linker-x86_64-unknown-linux-musl.tar.zst"
+url_api = "https://api.github.com/repos/aya-rs/bpf-linker/releases/assets/638313058"
 
 [tools."github:aya-rs/bpf-linker"."platforms.macos-arm64"]
-checksum = "sha256:983f86e20f5353c9645e6ee314dcd897133c613315b57b00c7e75ddb507ee6a3"
-url = "https://github.com/aya-rs/bpf-linker/releases/download/v0.10.3/bpf-linker-aarch64-apple-darwin.tar.gz"
-url_api = "https://api.github.com/repos/aya-rs/bpf-linker/releases/assets/395525317"
+checksum = "sha256:08be0f9ae1e153944ec7e180d587bd9c2935d8dbdddf95e4d92205ee660867f4"
+url = "https://github.com/aya-rs/bpf-linker/releases/download/v0.12.0/bpf-linker-aarch64-apple-darwin.tar.zst"
+url_api = "https://api.github.com/repos/aya-rs/bpf-linker/releases/assets/638312769"
 
 [tools."github:aya-rs/bpf-linker"."platforms.macos-x64"]
-checksum = "sha256:8dbea75f14d96e84a5fe7ce6120627e3c3511a49c406e76c14d187dc191ca528"
-url = "https://github.com/aya-rs/bpf-linker/releases/download/v0.10.3/bpf-linker-x86_64-apple-darwin.tar.gz"
-url_api = "https://api.github.com/repos/aya-rs/bpf-linker/releases/assets/395527257"
+checksum = "sha256:93ddc50fc97ff412e4470639e7ed85107126128b98d2593b5b3388c9325d8373"
+url = "https://github.com/aya-rs/bpf-linker/releases/download/v0.12.0/bpf-linker-x86_64-apple-darwin.tar.zst"
+url_api = "https://api.github.com/repos/aya-rs/bpf-linker/releases/assets/638312979"
+
+[tools."github:aya-rs/bpf-linker"."platforms.windows-arm64"]
+checksum = "sha256:1dd8bab6db71068d3bc502e418ca8a3dc5f61ad467c3aff832e8217392f71b6a"
+url = "https://github.com/aya-rs/bpf-linker/releases/download/v0.12.0/bpf-linker-aarch64-pc-windows-gnullvm.tar.zst"
+url_api = "https://api.github.com/repos/aya-rs/bpf-linker/releases/assets/638312768"
+
+[tools."github:aya-rs/bpf-linker"."platforms.windows-x64"]
+checksum = "sha256:b7587b89d896e2acf1095cc9c30d1b3ed3e1b10519f5fe486de1de3250f70eec"
+url = "https://github.com/aya-rs/bpf-linker/releases/download/v0.12.0/bpf-linker-x86_64-pc-windows-gnullvm.tar.zst"
+url_api = "https://api.github.com/repos/aya-rs/bpf-linker/releases/assets/638313025"
+
+[[tools."github:bencherdev/bencher"]]
+version = "0.6.13"
+backend = "github:bencherdev/bencher"
+
+[tools."github:bencherdev/bencher".options]
+asset_pattern = "bencher-*-linux-x86-64"
+
+[tools."github:bencherdev/bencher"."platforms.linux-x64"]
+checksum = "sha256:41b172864a1cd347f75a68688100688453b02f28e1d1b831b326931b895b4b3d"
+url = "https://github.com/bencherdev/bencher/releases/download/v0.6.13/bencher-v0.6.13-linux-x86-64"
+url_api = "https://api.github.com/repos/bencherdev/bencher/releases/assets/594741337"
+
+[[tools."github:bencherdev/bencher"]]
+version = "0.6.13"
+backend = "github:bencherdev/bencher"
+
+[tools."github:bencherdev/bencher".options]
+asset_pattern = "bencher-*-windows-arm-64.exe"
+
+[tools."github:bencherdev/bencher"."platforms.windows-arm64"]
+checksum = "sha256:1cf14d554ef5aba2065d1a6f41f0e9820ef02809b29ea3403b8f774bcbc74ea4"
+url = "https://github.com/bencherdev/bencher/releases/download/v0.6.13/bencher-v0.6.13-windows-arm-64.exe"
+url_api = "https://api.github.com/repos/bencherdev/bencher/releases/assets/594741329"
+
+[[tools."github:bencherdev/bencher"]]
+version = "0.6.13"
+backend = "github:bencherdev/bencher"
+
+[tools."github:bencherdev/bencher".options]
+asset_pattern = "bencher-*-macos-arm-64"
+
+[tools."github:bencherdev/bencher"."platforms.macos-arm64"]
+checksum = "sha256:24934e555bcf39eefcabaaeea8cd8d10479aa759402e54243753359bfbb83923"
+url = "https://github.com/bencherdev/bencher/releases/download/v0.6.13/bencher-v0.6.13-macos-arm-64"
+url_api = "https://api.github.com/repos/bencherdev/bencher/releases/assets/594741338"
+
+[[tools."github:bencherdev/bencher"]]
+version = "0.6.13"
+backend = "github:bencherdev/bencher"
+
+[tools."github:bencherdev/bencher".options]
+asset_pattern = "bencher-*-macos-x86-64"
+
+[tools."github:bencherdev/bencher"."platforms.macos-x64"]
+checksum = "sha256:24f34cca9c86d338c89e58445f8f72d4b8221e78620f3994c5e9436fd4b8d25a"
+url = "https://github.com/bencherdev/bencher/releases/download/v0.6.13/bencher-v0.6.13-macos-x86-64"
+url_api = "https://api.github.com/repos/bencherdev/bencher/releases/assets/594741330"
+
+[[tools."github:bencherdev/bencher"]]
+version = "0.6.13"
+backend = "github:bencherdev/bencher"
+
+[tools."github:bencherdev/bencher".options]
+asset_pattern = "bencher-*-linux-arm-64"
+
+[tools."github:bencherdev/bencher"."platforms.linux-arm64"]
+checksum = "sha256:eefe56680908ad1772ec19a7f7e35cc64039f27be05cc5891e5cb5eca24b824c"
+url = "https://github.com/bencherdev/bencher/releases/download/v0.6.13/bencher-v0.6.13-linux-arm-64"
+url_api = "https://api.github.com/repos/bencherdev/bencher/releases/assets/594741335"
+
+[[tools."github:bencherdev/bencher"]]
+version = "0.6.13"
+backend = "github:bencherdev/bencher"
+
+[tools."github:bencherdev/bencher".options]
+asset_pattern = "bencher-*-windows-x86-64.exe"
+
+[tools."github:bencherdev/bencher"."platforms.windows-x64"]
+checksum = "sha256:478da05ad5086433046065e0c5c5b151982b5128e2b65730c3ce9e20d4eb37e6"
+url = "https://github.com/bencherdev/bencher/releases/download/v0.6.13/bencher-v0.6.13-windows-x86-64.exe"
+url_api = "https://api.github.com/repos/bencherdev/bencher/releases/assets/594741326"
 
 [[tools."github:cargo-bins/cargo-binstall"]]
 version = "1.18.1"
@@ -193,29 +275,76 @@ url = "https://github.com/cargo-bins/cargo-binstall/releases/download/v1.18.1/ca
 url_api = "https://api.github.com/repos/cargo-bins/cargo-binstall/releases/assets/395392416"
 provenance = "github-attestations"
 
-[[tools."github:mozilla/dump_syms"]]
-version = "2.3.7"
-backend = "github:mozilla/dump_syms"
+[[tools."github:getsentry/sentry-cli"]]
+version = "3.6.2"
+backend = "github:getsentry/sentry-cli"
 
-[tools."github:mozilla/dump_syms"."platforms.linux-x64"]
-checksum = "sha256:928f9902244f63be4b3b0acf56963ecad97b7227ecfd9ee645d73683f75a9285"
-url = "https://github.com/mozilla/dump_syms/releases/download/v2.3.7/dump_syms-x86_64-unknown-linux-gnu.tar.xz"
+[tools."github:getsentry/sentry-cli".options]
+matching_regex = "^sentry-cli-(Darwin|Linux|Windows)-"
 
-[tools."github:mozilla/dump_syms"."platforms.linux-x64-musl"]
-checksum = "sha256:928f9902244f63be4b3b0acf56963ecad97b7227ecfd9ee645d73683f75a9285"
-url = "https://github.com/mozilla/dump_syms/releases/download/v2.3.7/dump_syms-x86_64-unknown-linux-gnu.tar.xz"
+[tools."github:getsentry/sentry-cli"."platforms.linux-arm64"]
+checksum = "sha256:ff112ecf694b7d6b3629a6228ed4e3f7a0d51401bdf48a5051a79d8749dccd06"
+url = "https://github.com/getsentry/sentry-cli/releases/download/3.6.2/sentry-cli-Linux-aarch64"
+url_api = "https://api.github.com/repos/getsentry/sentry-cli/releases/assets/486164039"
 
-[tools."github:mozilla/dump_syms"."platforms.macos-arm64"]
-checksum = "sha256:a96949068ccc62d5dfe9f642e15ecc62910217c661e256eb91e2d0e6266895e7"
-url = "https://github.com/mozilla/dump_syms/releases/download/v2.3.7/dump_syms-aarch64-apple-darwin.tar.xz"
+[tools."github:getsentry/sentry-cli"."platforms.linux-arm64-musl"]
+checksum = "sha256:ff112ecf694b7d6b3629a6228ed4e3f7a0d51401bdf48a5051a79d8749dccd06"
+url = "https://github.com/getsentry/sentry-cli/releases/download/3.6.2/sentry-cli-Linux-aarch64"
+url_api = "https://api.github.com/repos/getsentry/sentry-cli/releases/assets/486164039"
 
-[tools."github:mozilla/dump_syms"."platforms.macos-x64"]
-checksum = "sha256:4aded3cddac80aed06db65bab1c3d8228c0608296d7fa4168ab0eb12f2022683"
-url = "https://github.com/mozilla/dump_syms/releases/download/v2.3.7/dump_syms-x86_64-apple-darwin.tar.xz"
+[tools."github:getsentry/sentry-cli"."platforms.linux-x64"]
+checksum = "sha256:3a4bbf2c0d06378d4e59b337647483751a0a2b1603db5fd4991847d0cfd6478c"
+url = "https://github.com/getsentry/sentry-cli/releases/download/3.6.2/sentry-cli-Linux-x86_64"
+url_api = "https://api.github.com/repos/getsentry/sentry-cli/releases/assets/486164037"
 
-[tools."github:mozilla/dump_syms"."platforms.windows-x64"]
-checksum = "sha256:bd42a87409c39be18709b788f793fcdbfe1fde79511404112358b18511bb24f8"
-url = "https://github.com/mozilla/dump_syms/releases/download/v2.3.7/dump_syms-x86_64-pc-windows-msvc.zip"
+[tools."github:getsentry/sentry-cli"."platforms.linux-x64-musl"]
+checksum = "sha256:3a4bbf2c0d06378d4e59b337647483751a0a2b1603db5fd4991847d0cfd6478c"
+url = "https://github.com/getsentry/sentry-cli/releases/download/3.6.2/sentry-cli-Linux-x86_64"
+url_api = "https://api.github.com/repos/getsentry/sentry-cli/releases/assets/486164037"
+
+[tools."github:getsentry/sentry-cli"."platforms.macos-arm64"]
+checksum = "sha256:5a497deb1e388cc6445c09ddd6d2da4fc2aae8295405d6393c2e0ee635ca3687"
+url = "https://github.com/getsentry/sentry-cli/releases/download/3.6.2/sentry-cli-Darwin-arm64"
+url_api = "https://api.github.com/repos/getsentry/sentry-cli/releases/assets/486164028"
+
+[tools."github:getsentry/sentry-cli"."platforms.macos-x64"]
+checksum = "sha256:efe0a5289cdd0ea8ff727b1228a1bea6c840f2da38152e8f9f5ced05bd6659cd"
+url = "https://github.com/getsentry/sentry-cli/releases/download/3.6.2/sentry-cli-Darwin-x86_64"
+url_api = "https://api.github.com/repos/getsentry/sentry-cli/releases/assets/486164033"
+
+[tools."github:getsentry/sentry-cli"."platforms.windows-arm64"]
+checksum = "sha256:93ee7916c05c113a35daccf107c034af96f279561c103aa832668e4eecca3fb4"
+url = "https://github.com/getsentry/sentry-cli/releases/download/3.6.2/sentry-cli-Windows-aarch64.exe"
+url_api = "https://api.github.com/repos/getsentry/sentry-cli/releases/assets/486164036"
+
+[tools."github:getsentry/sentry-cli"."platforms.windows-x64"]
+checksum = "sha256:5c90cb0045cef3d3c36113c2aa21a7dcae11627d2d6e3098b679dea5b6681be3"
+url = "https://github.com/getsentry/sentry-cli/releases/download/3.6.2/sentry-cli-Windows-x86_64.exe"
+url_api = "https://api.github.com/repos/getsentry/sentry-cli/releases/assets/486164038"
+
+[[tools."github:gungraun/gungraun"]]
+version = "0.20.0"
+backend = "github:gungraun/gungraun"
+
+[tools."github:gungraun/gungraun"."platforms.linux-arm64"]
+checksum = "sha256:30ddf6737e486d1d3c11746eb603d8a228afeb1614dcf84ebe9ee1442f59d2f3"
+url = "https://github.com/gungraun/gungraun/releases/download/v0.20.0/gungraun-runner-v0.20.0-aarch64-unknown-linux-gnu.tar.gz"
+url_api = "https://api.github.com/repos/gungraun/gungraun/releases/assets/591083958"
+
+[tools."github:gungraun/gungraun"."platforms.linux-arm64-musl"]
+checksum = "sha256:30ddf6737e486d1d3c11746eb603d8a228afeb1614dcf84ebe9ee1442f59d2f3"
+url = "https://github.com/gungraun/gungraun/releases/download/v0.20.0/gungraun-runner-v0.20.0-aarch64-unknown-linux-gnu.tar.gz"
+url_api = "https://api.github.com/repos/gungraun/gungraun/releases/assets/591083958"
+
+[tools."github:gungraun/gungraun"."platforms.linux-x64"]
+checksum = "sha256:b3b39d4243e43597512a1f79016a1f38cbf90e5869c0c2535fe4097c69ed91aa"
+url = "https://github.com/gungraun/gungraun/releases/download/v0.20.0/gungraun-runner-v0.20.0-x86_64-unknown-linux-gnu.tar.gz"
+url_api = "https://api.github.com/repos/gungraun/gungraun/releases/assets/591083730"
+
+[tools."github:gungraun/gungraun"."platforms.linux-x64-musl"]
+checksum = "sha256:f6dcbd5af550c199b23ba258eb69d5444af8299c0c49309aa785599f60f9ec8b"
+url = "https://github.com/gungraun/gungraun/releases/download/v0.20.0/gungraun-runner-v0.20.0-x86_64-unknown-linux-musl.tar.gz"
+url_api = "https://api.github.com/repos/gungraun/gungraun/releases/assets/591084341"
 
 [[tools."github:taiki-e/cargo-llvm-cov"]]
 version = "0.6.21"
@@ -299,6 +428,11 @@ url_api = "https://api.github.com/repos/tauri-apps/tauri/releases/assets/4219376
 checksum = "sha256:d19d373866765ecf17112501daa645b8be3f23d231989a7824d4ec73b1efddb2"
 url = "https://github.com/tauri-apps/tauri/releases/download/tauri-cli-v2.11.2/cargo-tauri-x86_64-apple-darwin.zip"
 url_api = "https://api.github.com/repos/tauri-apps/tauri/releases/assets/421937689"
+
+[tools."github:tauri-apps/tauri"."platforms.windows-arm64"]
+checksum = "sha256:9cfecb8e103944cf9ece6299fa625d6cc0f11b03fb94d487ae43ffdca556af9a"
+url = "https://github.com/tauri-apps/tauri/releases/download/tauri-cli-v2.11.2/cargo-tauri-aarch64-pc-windows-msvc.zip"
+url_api = "https://api.github.com/repos/tauri-apps/tauri/releases/assets/421937684"
 
 [tools."github:tauri-apps/tauri"."platforms.windows-x64"]
 checksum = "sha256:b6844470bcbf1da6e5dbf01990ae317d4d7969171628bb8badbdbff2e3d06d23"

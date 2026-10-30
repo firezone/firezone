@@ -7,12 +7,12 @@
 import AuthenticationServices
 import Foundation
 
-enum AuthClientError: Error {
+enum AuthClientError: LocalizedError {
   case invalidCallbackURL
   case randomNumberGenerationFailure(errorStatus: Int32)
   case invalidAuthURL
 
-  var description: String {
+  var errorDescription: String? {
     switch self {
     case .invalidCallbackURL:
       return """
@@ -54,24 +54,37 @@ struct AuthClient {
       .appendingQueryItem(URLQueryItem(name: "as", value: "gui-client"))
   }
 
-  func response(url: URL?) throws -> AuthResponse {
+  @MainActor
+  func completeSignIn(
+    from url: URL?, configuration: Configuration, signInSettings: SignInSettings
+  ) throws -> (token: String, signInSettings: SignInSettings) {
     guard let url = url,
       let urlComponents = URLComponents(url: url, resolvingAgainstBaseURL: false),
       let returnedState = urlComponents.sanitizedQueryParam("state"),
       areStringsEqualConstantTime(state, returnedState),
-      let fragment = urlComponents.sanitizedQueryParam("fragment"),
-      let actorName = urlComponents.sanitizedQueryParam("actor_name"),
-      let accountSlug = urlComponents.sanitizedQueryParam("account_slug")
+      let fragment = urlComponents.sanitizedQueryParam("fragment")
     else {
       throw AuthClientError.invalidCallbackURL
     }
 
-    let token = nonce + fragment
+    let controlPlane: ControlPlane?
+    switch urlComponents.sanitizedQueryParam("region") {
+    case "us": controlPlane = .cloudUs
+    case "eu": controlPlane = .cloudEu
+    default: controlPlane = nil
+    }
+    guard let urls = controlPlane?.urls else { return (nonce + fragment, signInSettings) }
 
-    return AuthResponse(
-      actorName: actorName,
-      accountSlug: accountSlug,
-      token: token
+    if !configuration.isAuthURLForced { configuration.authURL = urls.authURL }
+    if !configuration.isApiURLForced { configuration.apiURL = urls.apiURL }
+
+    return (
+      nonce + fragment,
+      SignInSettings(
+        accountSlug: signInSettings.accountSlug,
+        authURL: configuration.authURL,
+        apiURL: configuration.apiURL
+      )
     )
   }
 

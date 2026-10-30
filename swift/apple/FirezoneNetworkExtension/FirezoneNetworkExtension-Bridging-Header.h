@@ -2,7 +2,8 @@
 //  Use this file to import your target's public headers that you would like to expose to Swift.
 //
 
-// UniFFI generated header
+// UniFFI generated headers
 #include "Connlib/Generated/connlibFFI.h"
+#include "Connlib/Generated/x509claimsFFI.h"
 
 #include <resolv.h>

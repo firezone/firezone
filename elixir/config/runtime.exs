@@ -55,7 +55,6 @@ if config_env() == :prod do
     [
       {:database, env_var_to_config!(:database_name)},
       {:username, env_var_to_config!(:database_user)},
-      {:port, env_var_to_config!(:database_port)},
       {:queue_target, env_var_to_config!(:database_queue_target)},
       {:queue_interval, env_var_to_config!(:database_queue_interval)},
       {:ssl, env_var_to_config!(:database_ssl)}
@@ -70,19 +69,33 @@ if config_env() == :prod do
         else: [{:hostname, env_var_to_config!(:database_host)}]
       )
 
+  direct_pool_base_opts =
+    [{:port, env_var_to_config!(:database_port)}] ++ pool_base_opts
+
+  pgbouncer_pool_base_opts =
+    case env_var_to_config(:database_pgbouncer_port) do
+      nil ->
+        direct_pool_base_opts
+
+      port ->
+        [{:port, port}, {:prepare, :unnamed}] ++ pool_base_opts
+    end
+
   database_parameters = env_var_to_config!(:database_parameters)
 
-  # Isolated connection pools
+  # Transaction-pooled connection pools. When DATABASE_PGBOUNCER_PORT is not
+  # set they fall back to the direct PostgreSQL endpoint for compatibility.
   for {repo, pool_size_key, app_name} <- [
         {Portal.Repo.Web, :database_pool_size_web, "web"},
-        {Portal.Repo.Api, :database_pool_size_api, "api"}
+        {Portal.Repo.Api, :database_pool_size_api, "api"},
+        {Portal.Repo.Job, :database_pool_size_job, "job"}
       ] do
     config :portal,
            repo,
            [
              {:pool_size, env_var_to_config!(pool_size_key)},
              {:parameters, Keyword.merge(database_parameters, application_name: app_name)}
-           ] ++ pool_base_opts
+           ] ++ pgbouncer_pool_base_opts
   end
 
   # Isolated poller connection pool, sized for the two slot pollers: poll
@@ -93,7 +106,7 @@ if config_env() == :prod do
          [
            {:pool_size, 2},
            {:parameters, Keyword.merge(database_parameters, application_name: "poller")}
-         ] ++ pool_base_opts
+         ] ++ direct_pool_base_opts
 
   config :portal, Portal.ChangeLogs.Consumer,
     enabled: env_var_to_config!(:change_logs_replication_enabled),
@@ -120,6 +133,10 @@ if config_env() == :prod do
   config :portal, Portal.Google.AuthProvider,
     client_id: env_var_to_config!(:google_oidc_client_id),
     client_secret: env_var_to_config!(:google_oidc_client_secret)
+
+  config :portal, Portal.GitHub.AuthProvider,
+    client_id: env_var_to_config!(:github_oauth_client_id),
+    client_secret: env_var_to_config!(:github_oauth_client_secret)
 
   config :portal, Portal.Google.SyncAuthorization,
     client_id: env_var_to_config!(:google_sync_authz_client_id),
@@ -149,15 +166,31 @@ if config_env() == :prod do
     endpoint: "https://graph.microsoft.com",
     applications: [
       entra: [client_id: env_var_to_config!(:entra_sync_client_id), client_secret: nil],
-      intune: [client_id: env_var_to_config!(:intune_sync_client_id), client_secret: nil]
+      intune: [client_id: env_var_to_config!(:intune_sync_client_id), client_secret: nil],
+      windows_updates: [client_id: env_var_to_config!(:windows_updates_client_id), client_secret: nil]
     ]
+
+  # Defender for Endpoint uses its own app registration, granted Machine.Read.All
+  # on the WindowsDefenderATP API rather than on Microsoft Graph. It follows the
+  # same rules as the two above: no client secret in production, and the
+  # delegated Graph `openid` and `profile` permissions plus groupMembershipClaims
+  # set to DirectoryRole so one admin-consent grant also covers the signed user
+  # identity proof.
+  config :portal, Portal.Defender.APIClient,
+    client_id: env_var_to_config!(:defender_sync_client_id),
+    client_secret: nil,
+    token_base_url: "https://login.microsoftonline.com",
+    endpoint: "https://api.security.microsoft.com",
+    token_scope: "https://api.securitycenter.microsoft.com/.default"
 
   # No client secret: production authenticates the app with workload identity
   # federation, minting a token-exchange assertion from the portal's managed
   # identity (Portal.Azure.ManagedIdentity).
   config :portal, Portal.Sentinel.APIClient,
     client_id: env_var_to_config!(:sentinel_sync_client_id),
-    token_base_url: "https://login.microsoftonline.com"
+    token_base_url: "https://login.microsoftonline.com",
+    discovery_document_uri:
+      "https://login.microsoftonline.com/organizations/v2.0/.well-known/openid-configuration"
 
   config :portal, Portal.Billing.Stripe.APIClient, endpoint: "https://api.stripe.com"
 
@@ -171,10 +204,6 @@ if config_env() == :prod do
          ] ++
            if(env_var_to_config(:stripe_plan_product_ids) != [],
              do: [plan_product_ids: env_var_to_config!(:stripe_plan_product_ids)],
-             else: []
-           ) ++
-           if(env_var_to_config(:stripe_adhoc_device_product_id),
-             do: [adhoc_device_product_id: env_var_to_config!(:stripe_adhoc_device_product_id)],
              else: []
            )
 
@@ -193,6 +222,9 @@ if config_env() == :prod do
     outbound_email_adapter_configured?: !!env_var_to_config!(:outbound_email_adapter)
 
   config :portal, web_external_url: env_var_to_config!(:web_external_url)
+  config :portal, data_residency_region: env_var_to_config!(:data_residency_region)
+
+  config :portal, slug_registry_table_url: env_var_to_config!(:slug_registry_table_url)
 
   # Shared cookie and proxy config (used by both Web and API endpoints)
   config :portal,
@@ -222,20 +254,44 @@ if config_env() == :prod do
     # Delete expired policy_authorizations every minute
     {"* * * * *", Portal.Workers.DeleteExpiredPolicyAuthorizations},
 
+    # Delete policy_authorizations whose device postures stopped holding
+    {"*/15 * * * *", Portal.Workers.DeleteStalePostureAuthorizations},
+
     # Refresh cached certificate revocation lists hourly
     {"15 */2 * * *", Portal.Crl.Scheduler},
 
     # Refresh cached OCSP statuses hourly, for CAs that publish no list
     {"45 3 * * *", Portal.Ocsp.Scheduler},
 
-    # Schedule Entra directory sync every 2 hours
-    {"0 */2 * * *", Portal.Entra.Scheduler},
+    # Release registry slugs this region no longer holds locally: a claim whose
+    # local write rolled back, or the slugs of a deleted account
+    {"*/30 * * * *", Portal.Workers.SweepSlugRegistry},
+
+    # Schedule Entra directory sync daily; Graph change notifications cover
+    # the hours in between
+    {"0 3 * * *", Portal.Entra.Scheduler},
 
     # Schedule Intune device inventory sync every 2 hours
     {"10 */2 * * *", Portal.Intune.Scheduler},
 
-    # Schedule Google directory sync every 2 hours
-    {"20 */2 * * *", Portal.Google.Scheduler},
+    # Schedule Iru device inventory sync every 2 hours
+    {"50 */2 * * *", Portal.Iru.Scheduler},
+
+    # Schedule Defender device inventory sync every 2 hours
+    {"30 */2 * * *", Portal.Defender.Scheduler},
+
+    # Schedule Santa device inventory sync every 2 hours
+    {"40 */2 * * *", Portal.Santa.Scheduler},
+
+    # Schedule SentinelOne device inventory sync every 2 hours
+    {"35 */2 * * *", Portal.SentinelOne.Scheduler},
+
+    # Schedule Sophos device inventory sync every 2 hours
+    {"45 */2 * * *", Portal.Sophos.Scheduler},
+
+    # Group membership changes do not produce user push notifications, so run
+    # a full Google directory sync every four hours.
+    {"20 */4 * * *", Portal.Google.Scheduler},
 
     # Schedule Okta directory sync every 2 hours
     {"40 */2 * * *", Portal.Okta.Scheduler},
@@ -259,6 +315,16 @@ if config_env() == :prod do
      args: %{provider: "okta", frequency: "daily"}},
     {"0 9 * * *", Portal.Workers.SyncErrorNotification,
      args: %{provider: "intune", frequency: "daily"}},
+    {"0 9 * * *", Portal.Workers.SyncErrorNotification,
+     args: %{provider: "iru", frequency: "daily"}},
+    {"0 9 * * *", Portal.Workers.SyncErrorNotification,
+     args: %{provider: "defender", frequency: "daily"}},
+    {"0 9 * * *", Portal.Workers.SyncErrorNotification,
+     args: %{provider: "santa", frequency: "daily"}},
+    {"0 9 * * *", Portal.Workers.SyncErrorNotification,
+     args: %{provider: "sentinelone", frequency: "daily"}},
+    {"0 9 * * *", Portal.Workers.SyncErrorNotification,
+     args: %{provider: "sophos", frequency: "daily"}},
 
     # Directory sync error notifications - every 3 days for medium error count
     {"0 9 */3 * *", Portal.Workers.SyncErrorNotification,
@@ -269,6 +335,16 @@ if config_env() == :prod do
      args: %{provider: "okta", frequency: "three_days"}},
     {"0 9 */3 * *", Portal.Workers.SyncErrorNotification,
      args: %{provider: "intune", frequency: "three_days"}},
+    {"0 9 */3 * *", Portal.Workers.SyncErrorNotification,
+     args: %{provider: "iru", frequency: "three_days"}},
+    {"0 9 */3 * *", Portal.Workers.SyncErrorNotification,
+     args: %{provider: "defender", frequency: "three_days"}},
+    {"0 9 */3 * *", Portal.Workers.SyncErrorNotification,
+     args: %{provider: "santa", frequency: "three_days"}},
+    {"0 9 */3 * *", Portal.Workers.SyncErrorNotification,
+     args: %{provider: "sentinelone", frequency: "three_days"}},
+    {"0 9 */3 * *", Portal.Workers.SyncErrorNotification,
+     args: %{provider: "sophos", frequency: "three_days"}},
 
     # Directory sync error notifications - weekly for high error count
     {"0 9 * * 1", Portal.Workers.SyncErrorNotification,
@@ -279,6 +355,16 @@ if config_env() == :prod do
      args: %{provider: "okta", frequency: "weekly"}},
     {"0 9 * * 1", Portal.Workers.SyncErrorNotification,
      args: %{provider: "intune", frequency: "weekly"}},
+    {"0 9 * * 1", Portal.Workers.SyncErrorNotification,
+     args: %{provider: "iru", frequency: "weekly"}},
+    {"0 9 * * 1", Portal.Workers.SyncErrorNotification,
+     args: %{provider: "defender", frequency: "weekly"}},
+    {"0 9 * * 1", Portal.Workers.SyncErrorNotification,
+     args: %{provider: "santa", frequency: "weekly"}},
+    {"0 9 * * 1", Portal.Workers.SyncErrorNotification,
+     args: %{provider: "sentinelone", frequency: "weekly"}},
+    {"0 9 * * 1", Portal.Workers.SyncErrorNotification,
+     args: %{provider: "sophos", frequency: "weekly"}},
 
     # Log sink delivery error notifications
     {"0 9 * * *", Portal.Workers.LogSinkErrorNotification},
@@ -289,11 +375,23 @@ if config_env() == :prod do
     # Check for outdated gateways - Sundays at 9am
     {"0 9 * * 0", Portal.Workers.OutdatedGateways},
 
+    # Refresh the operating system release feeds daily
+    {"30 4 * * *", Portal.OSReleases.Sync},
+
     # Delete expired tokens every 5 minutes
     {"*/5 * * * *", Portal.Workers.DeleteExpiredClientTokens},
 
     # Delete expired API tokens every 5 minutes
     {"*/5 * * * *", Portal.Workers.DeleteExpiredAPITokens},
+
+    # Delete spent OAuth authorization codes every 5 minutes
+    {"*/5 * * * *", Portal.Workers.DeleteExpiredOAuthAuthorizationCodes},
+
+    # Delete OAuth tokens past their refresh window every 5 minutes
+    {"*/5 * * * *", Portal.Workers.DeleteExpiredOAuthTokens},
+
+    # Evict stale OAuth client metadata nothing points at, hourly
+    {"0 * * * *", Portal.Workers.DeleteExpiredOAuthClients},
 
     # Delete rotated gateway tokens past their grace period every 5 minutes
     {"*/5 * * * *", Portal.Workers.DeleteRotatedGatewayTokens},
@@ -304,23 +402,27 @@ if config_env() == :prod do
     # Delete expired portal sessions every 5 minutes
     {"*/5 * * * *", Portal.Workers.DeleteExpiredPortalSessions},
 
-    # Delete old change_logs every 5 minutes
-    {"*/5 * * * *", Portal.Workers.DeleteOldChangeLogs},
-
-    # Maintain flow_logs partitions (pre-create upcoming, drop expired) daily
-    {"30 3 * * *", Portal.Workers.PartitionFlowLogs},
-
-    # Delete old session_logs every 5 minutes
-    {"*/5 * * * *", Portal.Workers.DeleteOldSessionLogs},
-
-    # Delete old api_request_logs every 5 minutes
-    {"*/5 * * * *", Portal.Workers.DeleteOldAPIRequestLogs},
+    # Maintain daily log partitions (pre-create upcoming, drop expired)
+    {"30 3 * * *", Portal.Workers.PartitionLogTables},
 
     # Sweep accounts due for deletion every minute
     {"* * * * *", Portal.Workers.SweepAccountDeletions}
   ]
 
+  posthog_project_api_key = env_var_to_config(:posthog_project_api_key)
+  posthog_host = env_var_to_config(:posthog_host)
+  posthog_enabled? = not is_nil(posthog_project_api_key) and not is_nil(posthog_host)
+
+  oban_crontab =
+    if posthog_enabled? do
+      # Send the product analytics snapshot daily
+      oban_crontab ++ [{"0 6 * * *", Portal.Workers.ProductAnalyticsSnapshot}]
+    else
+      oban_crontab
+    end
+
   config :portal, Oban,
+    notifier: Oban.Notifiers.PG,
     peer: Oban.Peers.Database,
     plugins: [
       {Oban.Plugins.Pruner, max_age: 60 * 60 * 24 * 7},
@@ -335,12 +437,27 @@ if config_env() == :prod do
       ocsp_sync: 5,
       entra_scheduler: 1,
       entra_sync: 5,
+    entra_subscriptions: 1,
+    entra_webhook: 5,
       intune_scheduler: 1,
       intune_sync: 5,
+      iru_scheduler: 1,
+      iru_sync: 5,
+      defender_scheduler: 1,
+      defender_sync: 5,
+      santa_scheduler: 1,
+      santa_sync: 5,
+      sentinelone_scheduler: 1,
+      sentinelone_sync: 5,
+      sophos_scheduler: 1,
+      sophos_sync: 5,
       google_scheduler: 1,
       google_sync: 5,
+      google_subscriptions: 1,
+      google_webhook: 5,
       okta_scheduler: 1,
       okta_sync: 5,
+      okta_webhook: 5,
       splunk_scheduler: 1,
       splunk_sync: 5,
       datadog_scheduler: 1,
@@ -361,7 +478,7 @@ if config_env() == :prod do
       outbound_emails: 1
     ],
     engine: Oban.Engines.Basic,
-    repo: Portal.Repo
+    repo: Portal.Repo.Job
 
   ###############################
   ##### Public Endpoint #########
@@ -523,6 +640,12 @@ if config_env() == :prod do
 
     config :portal, PortalAPI.RateLimit,
       refill_rate: env_var_to_config!(:api_refill_rate),
+      capacity: env_var_to_config!(:api_capacity),
+      read_refill_rate: env_var_to_config!(:api_read_refill_rate),
+      read_capacity: env_var_to_config!(:api_read_capacity)
+
+    config :portal, PortalAPI.Plugs.MCPRateLimit,
+      refill_rate: env_var_to_config!(:api_refill_rate),
       capacity: env_var_to_config!(:api_capacity)
 
     config :portal, PortalAPI.Sockets.RateLimit,
@@ -578,7 +701,7 @@ if config_env() == :prod do
       ]
   end
 
-  if System.get_env("OTLP_ENDPOINT") do
+  if System.get_env("OTLP_ENDPOINT") || System.get_env("AZURE_OTLP_METRICS_ENDPOINT") do
     config :opentelemetry,
       resource_detectors: [:otel_resource_env_var, :otel_resource_app_env],
       resource: %{
@@ -597,7 +720,9 @@ if config_env() == :prod do
           region: System.get_env("REGION")
         }
       }
+  end
 
+  if otlp_endpoint = System.get_env("OTLP_ENDPOINT") do
     config :opentelemetry,
       span_processor: :batch,
       traces_exporter: :otlp
@@ -605,29 +730,44 @@ if config_env() == :prod do
     config :opentelemetry_exporter,
       otlp_protocol: :http_protobuf,
       otlp_traces_protocol: :http_protobuf,
-      otlp_endpoint: System.get_env("OTLP_ENDPOINT")
-
-    config :opentelemetry_experimental,
-      readers: [
-        %{
-          module: :otel_metric_reader,
-          config: %{
-            export_interval_ms: 30_000,
-            exporter:
-              {:otel_exporter_metrics_otlp, %{endpoints: [System.get_env("OTLP_ENDPOINT")]}}
-          }
-        }
-      ]
+      otlp_endpoint: otlp_endpoint
   end
 
   config :portal, Portal.Telemetry,
     metrics_reporter: env_var_to_config!(:telemetry_metrics_reporter)
 
-  posthog_project_api_key = env_var_to_config(:posthog_project_api_key)
+  config :portal, Portal.Analytics.GoogleAds,
+    customer_id: env_var_to_config(:google_ads_customer_id),
+    login_customer_id: env_var_to_config(:google_ads_login_customer_id),
+    registration_conversion_action_id: env_var_to_config(:google_ads_registration_conversion_action_id),
+    subscription_conversion_action_id: env_var_to_config(:google_ads_subscription_conversion_action_id),
+    service_account_email: env_var_to_config(:google_ads_service_account_email),
+    workload_identity_provider: env_var_to_config(:google_ads_workload_identity_provider),
+    workload_identity_audience: env_var_to_config(:google_ads_workload_identity_audience),
+    endpoint: "https://datamanager.googleapis.com/v1/events:ingest",
+    req_opts: [receive_timeout: 5_000, retry: false]
+
+  config :portal, Portal.Analytics.OpenAI,
+    api_key: env_var_to_config(:openai_conversions_api_key),
+    pixel_id: env_var_to_config(:openai_conversions_pixel_id),
+    endpoint: "https://bzr.openai.com/v1/events",
+    req_opts: [receive_timeout: 5_000, retry: false]
+
+  config :portal, Portal.Mailer.PostureProviderInterestEmail,
+    recipient: env_var_to_config!(:posture_provider_interest_email_recipient)
+
+  config :portal, Portal.Mailer.InternalEmail,
+    recipient: env_var_to_config!(:feedback_email_recipient)
+
+  config :portal, Portal.Workers.SignUpFollowUp,
+    from_email: env_var_to_config(:sign_up_follow_up_from_email),
+    bcc_email: env_var_to_config(:sign_up_follow_up_bcc_email)
 
   config :portal, Portal.Analytics.PostHog,
-    enabled: not is_nil(posthog_project_api_key),
-    project_api_key: posthog_project_api_key
+    enabled: posthog_enabled?,
+    host: posthog_host,
+    project_api_key: posthog_project_api_key,
+    web_external_url: web_external_url
 
   if telemetry_metrics_reporter = env_var_to_config!(:telemetry_metrics_reporter) do
     config :portal,
@@ -674,6 +814,26 @@ if config_env() == :prod do
           end) do
     config :sentry,
       environment_name: environment_name,
-      dsn: env_var_to_config!(:sentry_dsn)
+      dsn: env_var_to_config!(:sentry_dsn),
+      tags: %{data_residency_region: env_var_to_config!(:data_residency_region)}
   end
 end
+
+metric_exporters = [
+  if(otlp_endpoint = System.get_env("OTLP_ENDPOINT"),
+    do: {:otel_exporter_metrics_otlp, %{endpoints: [otlp_endpoint]}}
+  ),
+  if(azure_otlp_metrics_endpoint = System.get_env("AZURE_OTLP_METRICS_ENDPOINT"),
+    do: {Portal.Azure.MetricsExporter, %{endpoint: azure_otlp_metrics_endpoint}}
+  )
+]
+
+readers =
+  for exporter <- metric_exporters, not is_nil(exporter) do
+    %{
+      module: :otel_metric_reader,
+      config: %{export_interval_ms: 30_000, exporter: exporter}
+    }
+  end
+
+config :opentelemetry_experimental, readers: readers

@@ -77,18 +77,79 @@ defmodule Portal.Mailer.RateLimiterTest do
       assert rate_limit(:key, 2, 10_000, callback, ets_table_name) == {:error, :rate_limited}
     end
 
-    test "executes the callback when counter is exceeded but already expired" do
+    test "starts and records a new interval when the counter is expired" do
       ets_table_name = random_table_name()
       init(ets_table_name: ets_table_name)
 
       now = :erlang.system_time(:millisecond)
+      key = {:key, "user@example.com"}
 
       callback = fn -> :executed end
 
-      :ets.insert(ets_table_name, {:key, 1000, now - 1})
+      :ets.insert(ets_table_name, {key, 1000, now - 1})
 
-      assert rate_limit(:key, 2, 10_000, callback, ets_table_name) == {:ok, :executed}
-      assert :ets.tab2list(ets_table_name) == []
+      assert rate_limit(key, 2, 10_000, callback, ets_table_name) == {:ok, :executed}
+      assert [{^key, 1, expires_at}] = :ets.tab2list(ets_table_name)
+      assert expires_at > now
+    end
+
+    test "executes the callback at most limit times for concurrent requests to a new key" do
+      ets_table_name = random_table_name()
+      init(ets_table_name: ets_table_name)
+      parent = self()
+      limit = 3
+
+      tasks =
+        for _ <- 1..20 do
+          Task.async(fn ->
+            receive do
+              :start ->
+                rate_limit(:key, limit, 10_000, fn -> send(parent, :executed) end, ets_table_name)
+            end
+          end)
+        end
+
+      Enum.each(tasks, &send(&1.pid, :start))
+
+      results = Enum.map(tasks, &Task.await(&1, 5_000))
+
+      assert Enum.count(results, &match?({:ok, _}, &1)) == limit
+
+      for _ <- 1..limit do
+        assert_receive :executed
+      end
+
+      refute_receive :executed
+    end
+
+    test "executes the callback at most limit times for concurrent requests after expiry" do
+      ets_table_name = random_table_name()
+      init(ets_table_name: ets_table_name)
+      parent = self()
+      limit = 3
+      :ets.insert(ets_table_name, {:key, 1000, :erlang.system_time(:millisecond) - 1})
+
+      tasks =
+        for _ <- 1..20 do
+          Task.async(fn ->
+            receive do
+              :start ->
+                rate_limit(:key, limit, 10_000, fn -> send(parent, :executed) end, ets_table_name)
+            end
+          end)
+        end
+
+      Enum.each(tasks, &send(&1.pid, :start))
+
+      results = Enum.map(tasks, &Task.await(&1, 5_000))
+
+      assert Enum.count(results, &match?({:ok, _}, &1)) == limit
+
+      for _ <- 1..limit do
+        assert_receive :executed
+      end
+
+      refute_receive :executed
     end
   end
 

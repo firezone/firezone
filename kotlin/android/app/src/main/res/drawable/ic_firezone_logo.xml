@@ -1,20 +1,24 @@
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:tools="http://schemas.android.com/tools"
-    android:width="228dp"
-    android:height="184dp"
-    android:viewportWidth="228"
-    android:viewportHeight="184"
-    tools:ignore="VectorRaster">
-    <path
-        android:fillColor="#EF7A30"
-        android:fillType="evenOdd"
-        android:pathData="M145.86,0C190.96,37.56 144.27,120.82 160.74,154.43C126.89,105.85 173.02,64.1 145.86,0Z" />
-    <path
-        android:fillColor="#8D1E00"
-        android:fillType="evenOdd"
-        android:pathData="M170.87,72.3C200.35,91.46 164.96,136.34 183.8,147.82C202.88,159.46 200.72,111.11 227.06,123.51C199.63,114.18 211.01,171.75 177.02,164.09C138.13,155.32 186.5,93.46 170.87,72.3Z" />
-    <path
-        android:fillColor="#331700"
-        android:fillType="evenOdd"
-        android:pathData="M0,137.89C56.15,93.16 132.62,164.94 168.71,169.43C215.12,175.19 202.76,121.53 225.99,123.53C204.59,126.11 217.43,182.23 169.58,183.97C117.46,185.86 65.46,106.39 0,137.89H0Z" />
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <group
+        android:scaleX="0.049140"
+        android:scaleY="0.049140"
+        android:translateX="-0.579853"
+        android:translateY="-0.604423">
+        <path
+            android:pathData="M153.987 407.405C153.94 386.569 166.938 367.937 186.491 360.811L269.963 330.388L270.08 382.984C270.126 403.82 257.129 422.451 237.575 429.578L154.104 460L153.987 407.405Z"
+            android:fillColor="#FF7300"
+            android:fillType="evenOdd" />
+        <path
+            android:pathData="M126 300.067C125.954 279.231 138.951 260.599 158.505 253.473L385.883 170.603L386 223.198C386.046 244.034 373.049 262.666 353.495 269.792L126.117 352.662L126 300.067Z"
+            android:fillColor="#FF7300"
+            android:fillType="evenOdd" />
+        <path
+            android:pathData="M153.759 172.313C153.712 151.477 166.71 132.846 186.263 125.719L385.789 53L385.906 105.595C385.952 126.431 372.955 145.063 353.401 152.189L153.876 224.909L153.759 172.313Z"
+            android:fillColor="#FF7300"
+            android:fillType="evenOdd" />
+    </group>
 </vector>

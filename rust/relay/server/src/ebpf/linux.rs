@@ -1,4 +1,5 @@
 use std::{
+    ffi::CString,
     io,
     net::{Ipv4Addr, Ipv6Addr, SocketAddr},
 };
@@ -6,7 +7,10 @@ use std::{
 use anyhow::{Context as _, Result};
 use aya::{
     Pod,
-    maps::{HashMap, MapData, PerCpuArray, PerCpuValues, PerfEventArray, perf::PerfEvent},
+    maps::{
+        HashMap, MapData, PerCpuArray, PerCpuValues, PerfEventArray,
+        perf::{PerfEvent, PerfEventArrayBuffer},
+    },
     programs::{Xdp, XdpMode},
 };
 use aya_log::EbpfLogger;
@@ -15,6 +19,7 @@ use ebpf_shared::{
 };
 use stun_codec::rfc5766::attributes::ChannelNumber;
 use tokio::io::{Interest, unix::AsyncFd};
+use tracing::level_filters::LevelFilter;
 
 use crate::ebpf::AttachMode;
 
@@ -38,17 +43,22 @@ impl Program {
     pub fn try_load(
         interface: &str,
         attach_mode: AttachMode,
+        log_level: LevelFilter,
         ipv4_interface_addr: Option<Ipv4Addr>,
         ipv6_interface_addr: Option<Ipv6Addr>,
         ipv4_public_addr: Option<Ipv4Addr>,
         ipv6_public_addr: Option<Ipv6Addr>,
     ) -> Result<Self> {
-        let mut ebpf = aya::Ebpf::load(aya::include_bytes_aligned!(concat!(
-            env!("OUT_DIR"),
-            "/ebpf-turn-router-main"
-        )))?;
+        let mut ebpf = load(
+            log_level,
+            ipv4_interface_addr,
+            ipv6_interface_addr,
+            ipv4_public_addr,
+            ipv6_public_addr,
+        )?;
         let logger = EbpfLogger::init(&mut ebpf)?;
-        let mut logger = AsyncFd::with_interest(logger, Interest::READABLE)?;
+        // SAFETY: `EbpfLogger` owns its descriptor, so it stays open as long as we hold it.
+        let mut logger = unsafe { AsyncFd::register_with_interest(logger, Interest::READABLE)? };
         tokio::task::spawn(async move {
             loop {
                 let mut guard = match logger.readable_mut().await {
@@ -67,7 +77,6 @@ impl Program {
             .program_mut("handle_turn")
             .context("No program")?
             .try_into()?;
-        program.load().context("Failed to load program")?;
 
         let xdp_mode = match attach_mode {
             AttachMode::Generic => XdpMode::Skb,
@@ -75,7 +84,7 @@ impl Program {
         };
 
         program
-            .attach(interface, xdp_mode)
+            .attach(CString::new(interface)?.as_c_str(), xdp_mode)
             .with_context(|| format!("Failed to attached to interface {interface}"))?;
 
         let mut stats = PerfEventArray::try_from(
@@ -83,17 +92,20 @@ impl Program {
                 .context("`STATS` perf array not found")?,
         )?;
 
-        let packet_size = crate::metrics::packet_size();
+        let packet_size = otel_instruments::relay_packet_size();
 
-        let processing_duration = crate::metrics::xdp_processing_duration();
+        let processing_duration = otel_instruments::relay_xdp_processing_duration();
+        let packets = otel_instruments::relay_packets();
 
         for cpu_id in aya::util::online_cpus()
             .map_err(|(_, error)| error)
             .context("Failed to determine number of CPUs")?
         {
             // open a separate perf buffer for each cpu
-            let stats_array_buf = stats.open(cpu_id, Some(PAGE_COUNT))?;
-            let mut fd = AsyncFd::new(stats_array_buf)?;
+            let stats_array_buf = PerfEventArrayBuffer::open(cpu_id, PAGE_COUNT)?;
+            stats.set(cpu_id, &stats_array_buf)?;
+            // SAFETY: `PerfEventArrayBuffer` owns its descriptor, so it stays open as long as we hold it.
+            let mut fd = unsafe { AsyncFd::register(stats_array_buf)? };
 
             tracing::debug!(%cpu_id, "Subscribing to stats events from eBPF kernel");
 
@@ -101,6 +113,7 @@ impl Program {
             tokio::task::spawn({
                 let packet_size = packet_size.clone();
                 let processing_duration = processing_duration.clone();
+                let packets = packets.clone();
 
                 async move {
                     loop {
@@ -127,7 +140,17 @@ impl Program {
 
                                             packet_size.record(
                                                 stats.relayed_data(),
-                                                &[crate::metrics::datapath_xdp()],
+                                                &[otel_attributes::relay_datapath_xdp()],
+                                            );
+                                            packets.add(
+                                                1,
+                                                &[
+                                                    otel_attributes::relay_datapath_xdp(),
+                                                    otel_attributes::network_type_for_ip_version(
+                                                        stats.ip_version(),
+                                                    ),
+                                                    otel_attributes::network_ecn(stats.ecn()),
+                                                ],
                                             );
                                             processing_duration.record(
                                                 stats.processing_duration().as_nanos() as u64,
@@ -160,22 +183,6 @@ impl Program {
                     }
                 }
             });
-        }
-
-        // Set interface addresses if provided
-        if let Some(ipv4) = ipv4_interface_addr {
-            set_interface_ipv4_address(&mut ebpf, ipv4)?;
-        }
-        if let Some(ipv6) = ipv6_interface_addr {
-            set_interface_ipv6_address(&mut ebpf, ipv6)?;
-        }
-
-        // Set public addresses if provided
-        if let Some(ipv4) = ipv4_public_addr {
-            set_public_ipv4_address(&mut ebpf, ipv4)?;
-        }
-        if let Some(ipv6) = ipv6_public_addr {
-            set_public_ipv6_address(&mut ebpf, ipv6)?;
         }
 
         tracing::info!("eBPF TURN router loaded and attached to interface {interface}");
@@ -350,6 +357,45 @@ impl Program {
     }
 }
 
+/// Loads the eBPF program into the kernel and configures it, without attaching it to an interface.
+fn load(
+    log_level: LevelFilter,
+    ipv4_interface_addr: Option<Ipv4Addr>,
+    ipv6_interface_addr: Option<Ipv6Addr>,
+    ipv4_public_addr: Option<Ipv4Addr>,
+    ipv6_public_addr: Option<Ipv6Addr>,
+) -> Result<aya::Ebpf> {
+    tracing::debug!(%log_level, "Setting eBPF log level");
+
+    let mut ebpf = aya::EbpfLoader::new()
+        .override_global(aya_log::LEVEL, &aya_log_level(log_level), true)
+        .load(aya::include_bytes_aligned!(concat!(
+            env!("OUT_DIR"),
+            "/ebpf-turn-router-main"
+        )))?;
+
+    let program: &mut Xdp = ebpf
+        .program_mut("handle_turn")
+        .context("No program")?
+        .try_into()?;
+    program.load().context("Failed to load program")?;
+
+    if let Some(ipv4) = ipv4_interface_addr {
+        set_interface_ipv4_address(&mut ebpf, ipv4)?;
+    }
+    if let Some(ipv6) = ipv6_interface_addr {
+        set_interface_ipv6_address(&mut ebpf, ipv6)?;
+    }
+    if let Some(ipv4) = ipv4_public_addr {
+        set_public_ipv4_address(&mut ebpf, ipv4)?;
+    }
+    if let Some(ipv6) = ipv6_public_addr {
+        set_public_ipv6_address(&mut ebpf, ipv6)?;
+    }
+
+    Ok(ebpf)
+}
+
 fn set_interface_ipv4_address(ebpf: &mut aya::Ebpf, addr: Ipv4Addr) -> Result<()> {
     set_per_cpu_map(ebpf, "INT_ADDR_V4", addr.octets())
         .context("Failed to set IPv4 interface address")?;
@@ -382,6 +428,30 @@ fn set_public_ipv6_address(ebpf: &mut aya::Ebpf, addr: Ipv6Addr) -> Result<()> {
     Ok(())
 }
 
+/// Converts the most verbose level of log records to emit into the value of [`aya_log::LEVEL`].
+///
+/// Without this, the eBPF program emits every log record and leaves filtering to userspace.
+/// Log records go through a ring buffer that is shared by all CPUs, so emitting records for every
+/// packet serialises the entire datapath on the ring buffer's lock.
+///
+/// The level is a constant to the verifier, so it removes disabled log statements entirely.
+/// As a result, changing the log filter at runtime does not affect the eBPF program.
+fn aya_log_level(level: LevelFilter) -> u8 {
+    let Some(level) = level.into_level() else {
+        return 0;
+    };
+
+    let level = match level {
+        tracing::Level::ERROR => aya_log::Level::Error,
+        tracing::Level::WARN => aya_log::Level::Warn,
+        tracing::Level::INFO => aya_log::Level::Info,
+        tracing::Level::DEBUG => aya_log::Level::Debug,
+        tracing::Level::TRACE => aya_log::Level::Trace,
+    };
+
+    level as u8
+}
+
 fn set_per_cpu_map<T>(ebpf: &mut aya::Ebpf, map_name: &str, value: T) -> Result<()>
 where
     T: Pod + Clone,
@@ -402,4 +472,214 @@ where
 
     tracing::debug!(%map_name, %num_cpus, "Set per-CPU map with value");
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use std::net::{SocketAddrV4, SocketAddrV6};
+
+    use aya::{TestRun as _, TestRunOptions};
+
+    use super::*;
+
+    const RELAY_V4: Ipv4Addr = Ipv4Addr::new(203, 0, 113, 1);
+    const RELAY_V6: Ipv6Addr = Ipv6Addr::new(0x2001, 0xdb8, 0, 0, 0, 0, 0, 0x100);
+    const CLIENT_V4: SocketAddrV4 = SocketAddrV4::new(Ipv4Addr::new(198, 51, 100, 1), 40000);
+    const CLIENT_V6: SocketAddrV6 =
+        SocketAddrV6::new(Ipv6Addr::new(0x2001, 0xdb8, 0, 0, 0, 0, 0, 1), 40000, 0, 0);
+    const PEER_V4: SocketAddrV4 = SocketAddrV4::new(Ipv4Addr::new(192, 0, 2, 1), 50000);
+    const PEER_V6: SocketAddrV6 =
+        SocketAddrV6::new(Ipv6Addr::new(0x2001, 0xdb8, 0, 0, 0, 0, 0, 2), 50000, 0, 0);
+    const ALLOCATION: u16 = 49152;
+    const CHANNEL: u16 = 0x4000;
+
+    const PAYLOAD_LEN: usize = 1000;
+
+    const DST_MAC: [u8; 6] = [0x02, 0, 0, 0, 0, 1];
+    const SRC_MAC: [u8; 6] = [0x02, 0, 0, 0, 0, 2];
+
+    const XDP_DROP: u32 = 1;
+    const XDP_TX: u32 = 3;
+
+    const ECT0: u8 = 0b10;
+
+    #[test]
+    #[ignore = "Needs root to load eBPF programs"]
+    fn sends_packets_back_to_the_mac_address_they_came_from() {
+        let mut program = Program::load_detached();
+        program.bind_channel(CLIENT_V4.into(), PEER_V4.into());
+
+        let (action, frame) = program.run_raw(&channel_data_ipv4(ECT0));
+
+        assert_eq!(action, XDP_TX);
+        assert_eq!(frame[..6], SRC_MAC);
+        assert_eq!(frame[6..12], DST_MAC);
+    }
+
+    #[test]
+    #[ignore = "Needs root to load eBPF programs"]
+    fn relays_channel_data_without_public_ipv6_address() {
+        let mut program = Program::load_detached_with(Some(RELAY_V4), None);
+        program.bind_channel(CLIENT_V4.into(), PEER_V4.into());
+
+        let outcome = program.run(&channel_data_ipv4(ECT0));
+
+        assert_eq!(outcome, Outcome::Forwarded { ecn: ECT0 });
+    }
+
+    #[test]
+    #[ignore = "Needs root to load eBPF programs"]
+    fn relays_channel_data_without_public_ipv4_address() {
+        let mut program = Program::load_detached_with(None, Some(RELAY_V6));
+        program.bind_channel(CLIENT_V6.into(), PEER_V6.into());
+
+        let outcome = program.run(&channel_data_ipv6(ECT0));
+
+        assert_eq!(outcome, Outcome::Forwarded { ecn: ECT0 });
+    }
+
+    #[derive(Debug, PartialEq)]
+    enum Outcome {
+        Forwarded { ecn: u8 },
+        Dropped,
+    }
+
+    impl Program {
+        fn load_detached() -> Self {
+            Self::load_detached_with(Some(RELAY_V4), Some(RELAY_V6))
+        }
+
+        fn load_detached_with(ipv4: Option<Ipv4Addr>, ipv6: Option<Ipv6Addr>) -> Self {
+            let mut ebpf = load(LevelFilter::OFF, ipv4, ipv6, ipv4, ipv6).unwrap();
+            let stats = PerfEventArray::try_from(ebpf.take_map("STATS").unwrap()).unwrap();
+
+            Self { ebpf, stats }
+        }
+
+        fn bind_channel(&mut self, client: SocketAddr, peer: SocketAddr) {
+            self.add_channel_binding(
+                ClientSocket::new(client),
+                ChannelNumber::new(CHANNEL).unwrap(),
+                PeerSocket::new(peer),
+                AllocationPort::new(ALLOCATION),
+            )
+            .unwrap();
+        }
+
+        fn run(&self, packet: &[u8]) -> Outcome {
+            let (action, frame) = self.run_raw(packet);
+
+            match action {
+                XDP_TX => Outcome::Forwarded {
+                    ecn: ecn_of(&frame),
+                },
+                XDP_DROP => Outcome::Dropped,
+                other => panic!("Unexpected XDP action {other}"),
+            }
+        }
+
+        fn run_raw(&self, packet: &[u8]) -> (u32, Vec<u8>) {
+            let program: &Xdp = self
+                .ebpf
+                .program("handle_turn")
+                .unwrap()
+                .try_into()
+                .unwrap();
+            let mut data_out = vec![0; packet.len() + 64];
+
+            let result = program
+                .test_run(TestRunOptions {
+                    data_in: Some(packet),
+                    data_out: Some(&mut data_out),
+                    ..TestRunOptions::default()
+                })
+                .unwrap();
+
+            data_out.truncate(result.data_size_out as usize);
+
+            (result.return_value, data_out)
+        }
+    }
+
+    /// Reads the ECN codepoint of an Ethernet frame, asserting that the IPv4 header checksum is still valid.
+    fn ecn_of(frame: &[u8]) -> u8 {
+        let ip = &frame[14..];
+
+        match ip[0] >> 4 {
+            4 => {
+                assert_eq!(ones_complement_sum(&ip[..20]), 0xffff, "Bad IPv4 checksum");
+
+                ip[1] & 0b11
+            }
+            6 => (ip[1] >> 4) & 0b11,
+            v => panic!("Unexpected IP version {v}"),
+        }
+    }
+
+    fn channel_data_ipv4(ecn: u8) -> Vec<u8> {
+        let udp = channel_data_udp(CLIENT_V4.port());
+
+        let mut ip = Vec::new();
+        ip.extend_from_slice(&[0x45, ecn]);
+        ip.extend_from_slice(&(20 + udp.len() as u16).to_be_bytes());
+        ip.extend_from_slice(&[0, 0, 0x40, 0, 64, 17, 0, 0]);
+        ip.extend_from_slice(&CLIENT_V4.ip().octets());
+        ip.extend_from_slice(&RELAY_V4.octets());
+        let checksum = !ones_complement_sum(&ip);
+        ip[10..12].copy_from_slice(&checksum.to_be_bytes());
+        ip.extend_from_slice(&udp);
+
+        ethernet_frame(0x0800, &ip)
+    }
+
+    fn channel_data_ipv6(ecn: u8) -> Vec<u8> {
+        let udp = channel_data_udp(CLIENT_V6.port());
+
+        let mut ip = Vec::new();
+        ip.extend_from_slice(&[0x60, ecn << 4, 0, 0]);
+        ip.extend_from_slice(&(udp.len() as u16).to_be_bytes());
+        ip.extend_from_slice(&[17, 64]);
+        ip.extend_from_slice(&CLIENT_V6.ip().octets());
+        ip.extend_from_slice(&RELAY_V6.octets());
+        ip.extend_from_slice(&udp);
+
+        ethernet_frame(0x86dd, &ip)
+    }
+
+    /// A UDP datagram carrying a ChannelData message; the checksum is left empty because the XDP program only updates it.
+    fn channel_data_udp(src_port: u16) -> Vec<u8> {
+        let mut udp = Vec::new();
+        udp.extend_from_slice(&src_port.to_be_bytes());
+        udp.extend_from_slice(&3478_u16.to_be_bytes());
+        udp.extend_from_slice(&(8 + 4 + PAYLOAD_LEN as u16).to_be_bytes());
+        udp.extend_from_slice(&[0, 0]);
+        udp.extend_from_slice(&CHANNEL.to_be_bytes());
+        udp.extend_from_slice(&(PAYLOAD_LEN as u16).to_be_bytes());
+        udp.resize(udp.len() + PAYLOAD_LEN, 0xab);
+
+        udp
+    }
+
+    fn ethernet_frame(ether_type: u16, payload: &[u8]) -> Vec<u8> {
+        let mut frame = Vec::new();
+        frame.extend_from_slice(&DST_MAC);
+        frame.extend_from_slice(&SRC_MAC);
+        frame.extend_from_slice(&ether_type.to_be_bytes());
+        frame.extend_from_slice(payload);
+
+        frame
+    }
+
+    fn ones_complement_sum(bytes: &[u8]) -> u16 {
+        let mut sum = bytes
+            .chunks(2)
+            .map(|word| u32::from(u16::from_be_bytes([word[0], *word.get(1).unwrap_or(&0)])))
+            .sum::<u32>();
+
+        while sum > 0xffff {
+            sum = (sum & 0xffff) + (sum >> 16);
+        }
+
+        sum as u16
+    }
 }

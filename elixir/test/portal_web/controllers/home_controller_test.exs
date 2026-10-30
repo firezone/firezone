@@ -7,6 +7,10 @@ defmodule PortalWeb.HomeControllerTest do
   @website_distinct_id "7d2ed047-64d3-41f9-9a41-ac2c9b92e761"
 
   describe "website attribution" do
+    setup %{conn: conn} do
+      %{conn: put_req_header(conn, "x-geo-location-region", "US")}
+    end
+
     test "stores attribution and redirects sign-up links to a clean URL", %{conn: conn} do
       conn =
         get(
@@ -16,11 +20,18 @@ defmodule PortalWeb.HomeControllerTest do
 
       assert redirected_to(conn) == "/sign_up"
 
-      assert get_session(conn, "website_attribution") == %{
+      assert %{"marketing" => marketing} = attribution = get_session(conn, "website_attribution")
+
+      assert Map.delete(attribution, "marketing") == %{
                "distinct_id" => @website_distinct_id,
                "source" => "www.firezone.dev",
                "website_path" => "/pricing"
              }
+
+      assert %{"marketing_allowed" => true, "source" => "region", "captured_at" => captured_at} =
+               marketing
+
+      assert is_integer(captured_at)
     end
 
     test "preserves unrelated sign-in parameters while removing attribution", %{conn: conn} do
@@ -33,11 +44,17 @@ defmodule PortalWeb.HomeControllerTest do
       assert redirected_to(conn) == "/sign_in?as=gui-client"
     end
 
-    test "removes invalid attribution without storing it", %{conn: conn} do
+    test "removes invalid website attribution while retaining the regional marketing default", %{conn: conn} do
       conn = get(conn, "/sign_up?fz_website_id=invalid&fz_website_path=%2Fpricing")
 
       assert redirected_to(conn) == "/sign_up"
-      assert get_session(conn, "website_attribution") == nil
+      assert %{"marketing" => marketing} = attribution = get_session(conn, "website_attribution")
+      assert Map.keys(attribution) == ["marketing"]
+
+      assert %{"marketing_allowed" => true, "source" => "region", "captured_at" => captured_at} =
+               marketing
+
+      assert is_integer(captured_at)
     end
   end
 
@@ -89,8 +106,43 @@ defmodule PortalWeb.HomeControllerTest do
 
       assert html =~ "Let's get started!"
       assert html =~ "Which best describes why you're here?"
-      assert html =~ "My company uses Firezone"
+      assert html =~ "My organization uses Firezone"
       refute html =~ "Sign in to Firezone"
+    end
+
+    test "links the same page on the EU portal from the US portal", %{conn: conn} do
+      Portal.Config.put_env_override(:data_residency_region, :us)
+      Portal.Config.put_env_override(:web_external_url, "https://app.firezone.dev")
+
+      html = conn |> get(~p"/getting_started") |> response(200)
+
+      assert html =~ ~s(href="https://eu.app.firezone.dev/getting_started")
+    end
+
+    test "links the same page on the US portal from the EU portal", %{conn: conn} do
+      Portal.Config.put_env_override(:data_residency_region, :eu)
+      Portal.Config.put_env_override(:web_external_url, "https://eu.app.firezone.dev")
+
+      html = conn |> get(~p"/getting_started?client_platform=apple") |> response(200)
+
+      assert html =~ ~s(href="https://app.firezone.dev/getting_started?client_platform=apple")
+    end
+
+    test "shows no portal link on other portals", %{conn: conn} do
+      Portal.Config.put_env_override(:data_residency_region, :eu)
+      Portal.Config.put_env_override(:web_external_url, "https://eu.app.firez.one")
+
+      html = conn |> get(~p"/getting_started") |> response(200)
+
+      assert html =~ "European Union"
+      refute html =~ "other-region-portal"
+    end
+
+    test "shows no region links on on-prem portals", %{conn: conn} do
+      html = conn |> get(~p"/getting_started") |> response(200)
+
+      refute html =~ "eu-beta-banner"
+      refute html =~ "other-region-portal"
     end
 
     test "sets security headers", %{conn: conn} do

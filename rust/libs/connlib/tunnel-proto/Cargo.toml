@@ -17,13 +17,14 @@ telemetry = ["dep:telemetry", "logging/telemetry"]
 anyhow = { workspace = true }
 base64 = { workspace = true, features = ["std"] }
 bimap = { workspace = true }
-boringtun = { workspace = true }
 chrono = { workspace = true }
 connlib-model = { workspace = true }
+deadline-map = { workspace = true }
 derive_more = { workspace = true, features = ["debug", "from", "display"] }
 divan = { workspace = true, optional = true }
 dns-over-tcp = { workspace = true }
 dns-types = { workspace = true }
+fast-random-state = { workspace = true }
 flow-tracker = { workspace = true }
 glob = { workspace = true }
 ip-packet = { workspace = true }
@@ -39,6 +40,7 @@ otel-instruments = { workspace = true }
 rand = { workspace = true }
 rangemap = { workspace = true }
 ringbuffer = { workspace = true }
+sanstun = { workspace = true }
 secrecy = { workspace = true, features = ["serde"] }
 serde = { workspace = true, features = ["derive", "std"] }
 serde_json = { workspace = true }
@@ -48,6 +50,7 @@ snownet = { workspace = true }
 telemetry = { workspace = true, optional = true }
 thiserror = { workspace = true }
 tracing = { workspace = true, features = ["attributes"] }
+zeroize = { workspace = true }
 
 [dev-dependencies]
 ip-packet = { workspace = true, features = ["proptest"] }

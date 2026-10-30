@@ -1,0 +1,39 @@
+// Licensed under Apache 2.0 (C) 2026 Firezone, Inc.
+package dev.firezone.android.features.permission.certificate.ui.compose
+
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.tooling.preview.Preview
+import dev.firezone.android.R
+import dev.firezone.android.features.permission.ui.compose.PermissionScreen
+import dev.firezone.android.ui.theme.FirezoneTheme
+
+/**
+ * Explains why the device certificate needs picking and offers to start the selection.
+ *
+ * Styled and arranged like the sibling permission screens, minus the way past them: the
+ * administrator requires the certificate, so there is nothing to skip to.
+ */
+@Composable
+internal fun CertificatePermissionScreen(
+    onSelectCertificate: () -> Unit,
+    modifier: Modifier = Modifier,
+    error: String? = null,
+) {
+    PermissionScreen(
+        title = R.string.device_trust_selection_title,
+        description = R.string.device_trust_selection_description,
+        actionLabel = R.string.device_trust_select_certificate,
+        onAction = onSelectCertificate,
+        modifier = modifier,
+        error = error,
+    )
+}
+
+@Preview
+@Composable
+private fun CertificatePermissionScreenPreview() {
+    FirezoneTheme {
+        CertificatePermissionScreen(onSelectCertificate = {})
+    }
+}

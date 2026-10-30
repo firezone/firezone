@@ -10,6 +10,7 @@ path = "lib.rs"
 [dependencies]
 anyhow = { workspace = true }
 bytes = { workspace = true }
+futures = { workspace = true }
 http = { workspace = true }
 http-body-util = { workspace = true }
 hyper = { workspace = true, features = ["client", "http1", "http2"] }
@@ -25,6 +26,8 @@ tracing = { workspace = true }
 webpki-roots = { workspace = true }
 
 [dev-dependencies]
+dns-types = { workspace = true }
+doh-test-server = { workspace = true }
 futures = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt"] }
 

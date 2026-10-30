@@ -2,6 +2,7 @@ defmodule PortalAPI.ResourceController do
   use PortalAPI, :controller
   use OpenApiSpex.ControllerSpecs
   alias PortalAPI.Pagination
+  alias PortalAPI.JSON
   alias PortalAPI.Error
   alias PortalAPI.Filters
   alias PortalAPI.Schemas.ProblemDetails
@@ -9,11 +10,119 @@ defmodule PortalAPI.ResourceController do
 
   tags ["Resources"]
 
+  @site_id "0642e09d-b3a2-47e4-9cd1-c2195faeeb67"
+  @group_id "b3a1c6e2-5f4d-4e7a-9c8b-1d2e3f4a5b6c"
+  @client_ids ["7cb89288-1fb3-433e-a522-2d087e45988d", "cc9f561a-444d-4083-ab38-0abc6cf2314c"]
+
+  @listed_devices %{"device" => %{"field" => "id", "op" => "in", "value" => @client_ids}}
+  @own_devices %{"device" => %{"field" => "actor_id", "op" => "eq", "value" => %{"subject" => "actor_id"}}}
+  @all_devices %{
+    "device" => %{"field" => "account_id", "op" => "eq", "value" => %{"subject" => "account_id"}}
+  }
+  @actor_group %{"actor_group" => %{"field" => "id", "op" => "eq", "value" => @group_id}}
+
+  @ip_resource %{
+    "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
+    "name" => "Prod DB",
+    "type" => "ip",
+    "address" => "10.0.0.10",
+    "address_description" => "Production Database",
+    "site_id" => @site_id,
+    "filters" => [%{"protocol" => "tcp", "ports" => ["5432"]}]
+  }
+
+  @device_pool %{
+    "id" => "5f0d3c1a-8e2b-4b7d-9a6c-3e4f5a6b7c8d",
+    "name" => "My Devices",
+    "type" => "device_pool",
+    "address" => nil,
+    "address_description" => nil,
+    "filters" => [],
+    "device_membership_criteria" => @own_devices
+  }
+
+  @create_examples %{
+    "ip" => %OpenApiSpex.Example{
+      summary: "IP Resource",
+      value: %{"resource" => Map.drop(@ip_resource, ["id"])}
+    },
+    "listed_devices" => %OpenApiSpex.Example{
+      summary: "Device pool of the Clients named",
+      value: %{
+        "resource" => %{
+          "name" => "Build Machines",
+          "type" => "device_pool",
+          "device_membership_criteria" => @listed_devices
+        }
+      }
+    },
+    "own_devices" => %OpenApiSpex.Example{
+      summary: "Device pool of the asking Actor's own Clients",
+      value: %{
+        "resource" => %{
+          "name" => "My Devices",
+          "type" => "device_pool",
+          "device_membership_criteria" => @own_devices
+        }
+      }
+    },
+    "all_devices" => %OpenApiSpex.Example{
+      summary: "Device pool of every Client in the Account",
+      value: %{
+        "resource" => %{
+          "name" => "All Devices",
+          "type" => "device_pool",
+          "device_membership_criteria" => @all_devices
+        }
+      }
+    },
+    "actor_group" => %OpenApiSpex.Example{
+      summary: "Device pool of the Clients of every Actor in one Group",
+      value: %{
+        "resource" => %{
+          "name" => "Engineering Devices",
+          "type" => "device_pool",
+          "device_membership_criteria" => @actor_group
+        }
+      }
+    }
+  }
+
+  @update_examples %{
+    "rename" => %OpenApiSpex.Example{
+      summary: "Rename a Resource",
+      value: %{"resource" => %{"name" => "Prod DB (primary)"}}
+    },
+    "set_pool_members" => %OpenApiSpex.Example{
+      summary: "Replace the Clients a device pool names",
+      value: %{"resource" => %{"device_membership_criteria" => @listed_devices}}
+    },
+    "convert_to_device_pool" => %OpenApiSpex.Example{
+      summary: "Convert a Resource to a device pool",
+      value: %{"resource" => %{"type" => "device_pool", "device_membership_criteria" => @actor_group}}
+    }
+  }
+
+  @resource_examples %{
+    "ip" => %OpenApiSpex.Example{summary: "IP Resource", value: %{"data" => @ip_resource}},
+    "device_pool" => %OpenApiSpex.Example{summary: "Device pool", value: %{"data" => @device_pool}}
+  }
+
+  @list_examples %{
+    "resources" => %OpenApiSpex.Example{
+      summary: "An IP Resource and a device pool",
+      value: %{
+        "data" => [@ip_resource, @device_pool],
+        "metadata" => %{"limit" => 10, "count" => 2, "next_page" => nil, "prev_page" => nil}
+      }
+    }
+  }
+
   # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :index,
     summary: "List Resources",
     parameters: [
-      limit: [in: :query, description: "Limit Resources returned", type: :integer, example: 10],
+      limit: [in: :query, description: "Limit Resources returned", schema: PortalAPI.Pagination.limit_schema(), example: 10],
       page_cursor: [in: :query, description: "Next/Prev page cursor", type: :string],
       name: [
         in: :query,
@@ -22,7 +131,7 @@ defmodule PortalAPI.ResourceController do
       ],
       type: [
         in: :query,
-        description: "Filter to Resources of this type: cidr, ip, dns, or static_device_pool.",
+        description: "Filter to Resources of this type: cidr, ip, dns, or device_pool.",
         type: :string,
         example: "dns"
       ],
@@ -44,7 +153,11 @@ defmodule PortalAPI.ResourceController do
       ]
     ],
     responses:
-      [ok: {"Resource Response", "application/json", PortalAPI.Schemas.Resource.ListResponse}] ++
+      [
+        ok:
+          {"Resource Response", "application/json", PortalAPI.Schemas.Resource.ListResponse,
+           examples: @list_examples}
+      ] ++
         ProblemDetails.responses([:bad_request, :unauthorized, :too_many_requests])
 
   # coveralls-ignore-stop
@@ -55,7 +168,7 @@ defmodule PortalAPI.ResourceController do
          list_opts = Keyword.put(list_opts, :filter, coerce_filters(params)),
          {:ok, resources, metadata} <-
            Database.list_resources(conn.assigns.subject, list_opts) do
-      render(conn, :index, resources: resources, metadata: metadata)
+      json(conn, JSON.encode(resources, metadata))
     else
       error -> Error.handle(conn, error)
     end
@@ -82,7 +195,11 @@ defmodule PortalAPI.ResourceController do
       ]
     ],
     responses:
-      [ok: {"Resource Response", "application/json", PortalAPI.Schemas.Resource.Response}] ++
+      [
+        ok:
+          {"Resource Response", "application/json", PortalAPI.Schemas.Resource.Response,
+           examples: @resource_examples}
+      ] ++
         ProblemDetails.responses([:bad_request, :unauthorized, :not_found, :too_many_requests])
 
   # coveralls-ignore-stop
@@ -90,7 +207,7 @@ defmodule PortalAPI.ResourceController do
   @spec show(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def show(conn, %{"id" => id}) do
     with {:ok, resource} <- Database.fetch_resource(id, conn.assigns.subject) do
-      render(conn, :show, resource: resource)
+      json(conn, JSON.encode(resource))
     else
       error -> Error.handle(conn, error)
     end
@@ -102,9 +219,13 @@ defmodule PortalAPI.ResourceController do
     parameters: [],
     request_body:
       {"Resource Attributes", "application/json", PortalAPI.Schemas.Resource.CreateRequest,
-       required: true},
+       required: true, examples: @create_examples},
     responses:
-      [created: {"Resource Response", "application/json", PortalAPI.Schemas.Resource.Response}] ++
+      [
+        created:
+          {"Resource Response", "application/json", PortalAPI.Schemas.Resource.Response,
+           examples: @resource_examples}
+      ] ++
         ProblemDetails.responses([
           :bad_request,
           :unauthorized,
@@ -123,7 +244,7 @@ defmodule PortalAPI.ResourceController do
       conn
       |> put_status(:created)
       |> put_resp_header("location", ~p"/resources/#{resource}")
-      |> render(:show, resource: resource)
+      |> json(JSON.encode(resource))
     else
       error -> Error.handle(conn, error)
     end
@@ -146,9 +267,13 @@ defmodule PortalAPI.ResourceController do
     ],
     request_body:
       {"Resource Attributes", "application/json", PortalAPI.Schemas.Resource.UpdateRequest,
-       required: true},
+       required: true, examples: @update_examples},
     responses:
-      [ok: {"Resource Response", "application/json", PortalAPI.Schemas.Resource.Response}] ++
+      [
+        ok:
+          {"Resource Response", "application/json", PortalAPI.Schemas.Resource.Response,
+           examples: @resource_examples}
+      ] ++
         ProblemDetails.responses([
           :bad_request,
           :unauthorized,
@@ -167,7 +292,7 @@ defmodule PortalAPI.ResourceController do
     with {:ok, resource} <- Database.fetch_resource(id, subject),
          :ok <- validate_not_internet_resource(resource),
          {:ok, resource} <- Database.update_resource(resource, params, subject) do
-      render(conn, :show, resource: resource)
+      json(conn, JSON.encode(resource))
     else
       error -> Error.handle(conn, error)
     end
@@ -180,6 +305,14 @@ defmodule PortalAPI.ResourceController do
   # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :delete,
     summary: "Delete Resource",
+    description: """
+    Deletes a Resource. Deleting is not blocked when Policies still use the \
+    Resource.
+
+    Every Policy for the Resource is deleted with it, and Clients lose access \
+    to the Resource right away. Use `GET /policies?resource_id=...` first to \
+    see which Policies will be deleted. The Internet Resource cannot be deleted.
+    """,
     parameters: [
       id: [
         in: :path,
@@ -189,7 +322,11 @@ defmodule PortalAPI.ResourceController do
       ]
     ],
     responses:
-      [ok: {"Resource Response", "application/json", PortalAPI.Schemas.Resource.Response}] ++
+      [
+        ok:
+          {"Resource Response", "application/json", PortalAPI.Schemas.Resource.Response,
+           examples: @resource_examples}
+      ] ++
         ProblemDetails.responses([
           :bad_request,
           :unauthorized,
@@ -207,7 +344,7 @@ defmodule PortalAPI.ResourceController do
     with {:ok, resource} <- Database.fetch_resource(id, subject),
          :ok <- validate_not_internet_resource(resource),
          {:ok, resource} <- Database.delete_resource(resource, subject) do
-      render(conn, :show, resource: resource)
+      json(conn, JSON.encode(resource))
     else
       error -> Error.handle(conn, error)
     end
@@ -225,19 +362,18 @@ defmodule PortalAPI.ResourceController do
   defp create_changeset(attrs, subject) do
     changeset =
       %Portal.Resource{account_id: subject.account.id}
-      |> Ecto.Changeset.cast(attrs, ~w[address address_description name type ip_stack site_id]a)
+      |> Ecto.Changeset.cast(attrs, Database.writable_fields())
       |> Portal.Resource.changeset()
 
     required =
-      if Ecto.Changeset.get_field(changeset, :type) == :static_device_pool do
-        ~w[name type]a
-      else
-        ~w[name type site_id]a
+      case Ecto.Changeset.get_field(changeset, :type) do
+        :device_pool -> ~w[name type]a
+        :internet -> ~w[name type site_id]a
+        _ -> ~w[name type site_id address]a
       end
 
     changeset
     |> Ecto.Changeset.validate_required(required)
-    |> Database.reject_device_pool_type()
     |> Portal.Resource.validate_site_matches_type(subject)
   end
 
@@ -267,7 +403,7 @@ defmodule PortalAPI.ResourceController do
             {"CIDR", "cidr"},
             {"IP", "ip"},
             {"DNS", "dns"},
-            {"Static Device Pool", "static_device_pool"}
+            {"Device Pool", "device_pool"}
           ],
           fun: &filter_by_type/2
         },
@@ -317,8 +453,8 @@ defmodule PortalAPI.ResourceController do
       {queryable, dynamic}
     end
 
-    defp filter_by_type(queryable, "static_device_pool") do
-      dynamic = dynamic([resources: r], r.type == :static_device_pool)
+    defp filter_by_type(queryable, "device_pool") do
+      dynamic = dynamic([resources: r], r.type == :device_pool)
       {queryable, dynamic}
     end
 
@@ -377,63 +513,25 @@ defmodule PortalAPI.ResourceController do
       |> Safe.insert()
     end
 
-    # Device pools are not creatable through the REST API for now. They can
-    # still be created in the admin portal, and every other operation here -
-    # read, update, delete, and the /resources/:id/pool_members endpoints -
-    # works normally against a pool that already exists.
-    #
-    # What this rejects is any request that *changes* a Resource's type to
-    # static_device_pool, which is why it runs on the update path too: doing
-    # it there would be creating a pool by another name. It is not a block on
-    # updating pools.
-    #
-    # The distinction falls out of validate_exclusion/4 running through
-    # validate_change/3, which only fires when the field is actually changed,
-    # and cast/3 only recording a change when the value differs from the
-    # stored one. So renaming an existing pool passes, and so does a PUT that
-    # restates the pool's own type - only a genuine transition into
-    # static_device_pool is refused.
-    #
-    # To re-enable, in this file:
-    #
-    #   1. Delete this function and both of its call sites (create_changeset/2
-    #      and Database.changeset/3).
-    #   2. Add "static_device_pool" back to the `type` enum in
-    #      PortalAPI.Schemas.Resource's CreateParams and UpdateParams, and
-    #      restore the "site_id is required unless type is static_device_pool"
-    #      note in the CreateRequest description.
-    #
-    # Everything else already supports pools and needs no change: the
-    # required-fields branches above and in Database.changeset/3 already
-    # special-case them, Portal.Resource nulls site_id for pool types, and
-    # PortalAPI.PoolMemberController manages membership. Outside this repo,
-    # the Terraform provider's firezone_resource still advertises
-    # static_device_pool in its type validator - it will start getting 422s
-    # until it is updated to match.
-    def reject_device_pool_type(changeset) do
-      Ecto.Changeset.validate_exclusion(changeset, :type, [:static_device_pool],
-        message: "device pools cannot be created via the API"
-      )
+    def writable_fields do
+      ~w[address address_description name type ip_stack site_id device_membership_criteria]a
     end
 
     defp changeset(resource, attrs, subject) do
-      update_fields = ~w[address address_description name type ip_stack site_id]a
-
       changeset =
         resource
-        |> Ecto.Changeset.cast(attrs, update_fields)
+        |> Ecto.Changeset.cast(attrs, writable_fields())
         |> Portal.Resource.changeset()
 
       required_fields =
-        if Ecto.Changeset.get_field(changeset, :type) == :static_device_pool do
-          ~w[name type]a
-        else
-          ~w[name type site_id]a
+        case Ecto.Changeset.get_field(changeset, :type) do
+          :device_pool -> ~w[name type]a
+          :internet -> ~w[name type site_id]a
+          _ -> ~w[name type site_id address]a
         end
 
       changeset
       |> Ecto.Changeset.validate_required(required_fields)
-      |> reject_device_pool_type()
       |> Portal.Resource.validate_site_matches_type(subject)
     end
 

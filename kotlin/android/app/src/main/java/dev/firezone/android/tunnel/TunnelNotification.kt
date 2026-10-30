@@ -69,7 +69,10 @@ object TunnelNotification {
      * Shows a dismissable notification when the tunnel disconnects.
      * This notification can be dismissed by the user.
      */
-    fun showDisconnectedNotification(context: Context) {
+    fun showDisconnectedNotification(
+        context: Context,
+        message: String,
+    ) {
         ensureChannelExists(
             context,
             DISCONNECTED_CHANNEL_ID,
@@ -84,7 +87,8 @@ object TunnelNotification {
                 .setContentIntent(createMainActivityIntent(context))
                 .setSmallIcon(R.drawable.ic_firezone_logo)
                 .setContentTitle("Your Firezone session has ended")
-                .setContentText("Please sign in again to reconnect")
+                .setContentText(message)
+                .setStyle(NotificationCompat.BigTextStyle().bigText(message))
                 .setCategory(NotificationCompat.CATEGORY_STATUS)
                 .setPriority(NotificationCompat.PRIORITY_DEFAULT)
                 .setAutoCancel(true)
@@ -133,6 +137,17 @@ object TunnelNotification {
 
         val manager = context.getSystemService(NOTIFICATION_SERVICE) as NotificationManager
         manager.notify(ERROR_NOTIFICATION_ID, notification)
+    }
+
+    /**
+     * Shows the error notification for a VPN permission only the user can hand back.
+     */
+    fun showVpnPermissionRequiredNotification(context: Context) {
+        showErrorNotification(
+            context,
+            "VPN permission required",
+            "Firezone is no longer allowed to set up a VPN on this device. Open Firezone to grant the permission again.",
+        )
     }
 
     /**

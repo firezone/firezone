@@ -1,5 +1,6 @@
 defmodule Portal.AuthenticationTest do
   use Portal.DataCase, async: true
+  import ExUnit.CaptureLog
   import Portal.Authentication
   import Portal.TokenFixtures
   import Portal.SubjectFixtures
@@ -10,7 +11,9 @@ defmodule Portal.AuthenticationTest do
   import Portal.GatewaySessionFixtures
   import Portal.SiteFixtures
   alias Portal.Authentication
+  alias Portal.Authentication.Credential
   alias Portal.ClientToken
+  alias Portal.Fixture
 
   describe "create_non_interactive_client_token/3" do
     test "returns valid client token for a given service account" do
@@ -134,7 +137,7 @@ defmodule Portal.AuthenticationTest do
       assert {:ok, encoded_token} =
                create_api_token(
                  api_client,
-                 %{"name" => "test-token", "expires_at" => one_day},
+                 %{"name" => "test-token", "expires_at" => one_day, "scopes" => Portal.Scope.all()},
                  admin_subject
                )
 
@@ -158,7 +161,7 @@ defmodule Portal.AuthenticationTest do
       expires_at = DateTime.utc_now() |> DateTime.add(30, :day)
 
       assert {:ok, encoded_token} =
-               create_api_token(api_client, %{expires_at: expires_at}, admin_subject)
+               create_api_token(api_client, %{expires_at: expires_at, scopes: Portal.Scope.all()}, admin_subject)
 
       context = build_context(type: :api_client)
 
@@ -209,6 +212,19 @@ defmodule Portal.AuthenticationTest do
   end
 
   describe "authenticate/2" do
+    test "does not log malformed tokens" do
+      context = build_context(type: :client)
+
+      token = "invalid.#{Fixture.unique_integer()}"
+
+      log =
+        capture_log(fn ->
+          assert authenticate(token, context) == {:error, :invalid_token}
+        end)
+
+      refute log =~ token
+    end
+
     test "returns error when token is invalid" do
       context = build_context(type: :client)
 
@@ -582,7 +598,7 @@ defmodule Portal.AuthenticationTest do
       expires_at = DateTime.utc_now() |> DateTime.add(30, :day)
 
       assert {:ok, encoded_token} =
-               create_api_token(api_client, %{expires_at: expires_at}, admin_subject)
+               create_api_token(api_client, %{expires_at: expires_at, scopes: Portal.Scope.all()}, admin_subject)
 
       assert is_binary(encoded_token)
     end
@@ -761,6 +777,17 @@ defmodule Portal.AuthenticationTest do
   end
 
   describe "verify_gateway_token/1 with single-owner tokens" do
+    test "rejects a signed token with a nil secret fragment" do
+      gateway = gateway_fixture()
+      token = gateway_token_fixture(gateway: gateway)
+      config = Portal.Config.fetch_env!(:portal, Portal.Tokens)
+      key_base = Keyword.fetch!(config, :key_base)
+      salt = Keyword.fetch!(config, :salt) <> "gateway"
+      malformed = "." <> Plug.Crypto.sign(key_base, salt, {token.account_id, token.id, nil})
+
+      assert {:error, :invalid_token} = verify_gateway_token(malformed)
+    end
+
     test "verifies an active single-owner token" do
       gateway = gateway_fixture()
       token = gateway_token_fixture(gateway: gateway)
@@ -1361,7 +1388,7 @@ defmodule Portal.AuthenticationTest do
       context = build_context(type: :client)
 
       assert {:ok, subject} = build_subject(token, context)
-      assert subject.credential.type == :client_token
+      assert %Credential.ClientToken{} = subject.credential
       assert subject.credential.id == token.id
       assert subject.context == context
     end
@@ -1375,7 +1402,7 @@ defmodule Portal.AuthenticationTest do
       context = build_context(type: :api_client)
 
       assert {:ok, subject} = build_subject(token, context)
-      assert subject.credential.type == :api_token
+      assert %Credential.APIToken{} = subject.credential
       assert subject.credential.id == token.id
       assert subject.actor.id == actor.id
     end

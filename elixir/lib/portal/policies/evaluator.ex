@@ -1,7 +1,30 @@
 defmodule Portal.Policies.Evaluator do
   alias Portal.Device
+  alias Portal.Policies.Postures
 
   @days_of_week ~w[M T W R F S U]
+
+  @doc """
+  Checks a policy's attestation requirement, conditions and postures together.
+  All must hold, and the result expires when the first of them stops holding.
+  """
+  def ensure_policy_conforms(policy, %Device{type: :client} = client, auth_provider_id) do
+    conditions = ensure_conforms(policy.conditions, client, auth_provider_id)
+    postures = Postures.Evaluator.evaluate(policy.postures, client, current_time())
+
+    case {conditions, postures} do
+      {{:ok, left}, {:ok, right}} -> {:ok, min_expires_at(left, right)}
+      {{:error, violated}, {:ok, _expires_at}} -> {:error, violated}
+      {{:ok, _expires_at}, {:error, violated}} -> {:error, violated}
+      {{:error, left}, {:error, right}} -> {:error, left ++ right}
+    end
+    |> ensure_attested(policy.require_attestation, client)
+  end
+
+  # Reported as the property the old condition used, which Clients already know.
+  defp ensure_attested({:ok, _expires_at}, true, %Device{attested?: false}), do: {:error, [:device_attested]}
+  defp ensure_attested({:error, violated}, true, %Device{attested?: false}), do: {:error, [:device_attested | violated]}
+  defp ensure_attested(result, _require_attestation, %Device{}), do: result
 
   def ensure_conforms([], %Device{type: :client}, _auth_provider_id) do
     {:ok, nil}
@@ -39,7 +62,9 @@ defmodule Portal.Policies.Evaluator do
     end
   end
 
+  defp min_expires_at(nil, nil), do: nil
   defp min_expires_at(expires_at, nil), do: expires_at
+  defp min_expires_at(nil, min_expires_at), do: min_expires_at
 
   defp min_expires_at(expires_at, min_expires_at),
     do: Enum.min([expires_at, min_expires_at], DateTime)
@@ -363,9 +388,6 @@ defmodule Portal.Policies.Evaluator do
 
       [hours, minutes, seconds] ->
         Time.from_iso8601(pad2(hours) <> ":" <> pad2(minutes) <> ":" <> pad2(seconds))
-
-      _ ->
-        {:error, "invalid time: #{time}"}
     end
   end
 

@@ -9,16 +9,28 @@ export default function AboutPage() {
     );
   };
 
+  const openCommit = () => {
+    openUrl(
+      `https://github.com/firezone/firezone/commit/${__GIT_VERSION__}`
+    ).catch((error) => console.error("Failed to open commit URL", error));
+  };
+
   return (
     <div className="flex min-h-full items-center justify-center bg-page p-6">
       <div className="flex w-full max-w-sm flex-col items-center text-center">
         <img alt="Firezone Logo" className="mb-6 h-20 w-20" src={logo} />
         <p className="mb-1 text-body">Version</p>
-        <p className="mb-1 text-2xl font-bold text-heading">
-          <span>{__APP_VERSION__}</span>
-        </p>
-        <p className="mb-6 font-mono text-sm text-subtle">
-          (<span>{__GIT_VERSION__?.substring(0, 8)}</span>)
+        <p className="mb-6 text-lg font-bold text-heading">
+          {__APP_VERSION__} (
+          <button
+            className="font-mono text-brand underline hover:text-brand-dark"
+            onClick={openCommit}
+            role="link"
+            type="button"
+          >
+            {__GIT_VERSION__.substring(0, 8)}
+          </button>
+          )
         </p>
         <button
           className="rounded px-2 py-1.5 text-sm font-medium text-brand transition-colors hover:bg-brand-muted hover:text-brand-dark"

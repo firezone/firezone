@@ -306,25 +306,6 @@
       show(alert)
     }
 
-    /// Shows a signed-out session alert and returns whether the user clicked "Sign In".
-    ///
-    /// - Returns: `true` if the user clicked "Sign In", `false` otherwise.
-    public static func showSignedOutAlert(_ message: String?) async -> Bool {
-      let alert = NSAlert()
-      alert.messageText = "Your Firezone session has ended"
-      alert.informativeText = """
-        Please sign in again to reconnect.
-
-        \(message ?? "")
-        """
-      alert.addButton(withTitle: "Sign In")
-      alert.addButton(withTitle: "Cancel")
-      NSApp.activate(ignoringOtherApps: true)
-
-      let response = await show(alert)
-      return response == .alertFirstButtonReturn
-    }
-
     /// Tells the user that only a restart can finish the update.
     ///
     /// Returns without waiting for the user, so callers don't stall behind the alert.
@@ -337,17 +318,6 @@
       NSApp.activate(ignoringOtherApps: true)
 
       show(alert)
-    }
-
-    /// Shows a disconnected alert explaining why Firezone disconnected.
-    public static func showDisconnectedAlert(_ message: String?) async {
-      let alert = NSAlert()
-      alert.messageText = "Firezone disconnected"
-      alert.informativeText = message ?? "Firezone has been disconnected."
-      alert.addButton(withTitle: "OK")
-      NSApp.activate(ignoringOtherApps: true)
-
-      _ = await show(alert)
     }
   }
 

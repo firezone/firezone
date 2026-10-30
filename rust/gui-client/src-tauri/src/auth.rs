@@ -1,19 +1,22 @@
 //! Fulfills <https://github.com/firezone/firezone/issues/2823>
 
+use crate::settings::SignInSettings;
 use anyhow::{Context, Result};
 use keyring_core::CredentialStore;
 use logging::err_with_src;
 use rand::Rng;
 use secrecy::{ExposeSecret, SecretString};
-use serde::{Deserialize, Serialize};
 use std::{
     path::{Path, PathBuf},
     sync::Arc,
 };
 use subtle::ConstantTimeEq;
-use url::Url;
 
 const NONCE_LENGTH: usize = 32;
+#[cfg(target_os = "windows")]
+const SIGN_IN_SETTINGS_ATTRIBUTE: &str = "comment";
+#[cfg(not(target_os = "windows"))]
+const SIGN_IN_SETTINGS_ATTRIBUTE: &str = "sign-in-settings";
 
 /// Whether to skip the portal during sign-in.
 ///
@@ -39,29 +42,14 @@ pub(crate) fn portal_auth_skipped() -> bool {
 pub enum Error {
     #[error("`known_dirs` failed")]
     CantFindKnownDir,
-    #[error("`create_dir_all` failed while writing `actor_name_path`")]
-    CreateDirAll(std::io::Error),
     #[error("Couldn't delete session file from disk: {0}")]
     DeleteFile(std::io::Error),
     #[error(transparent)]
     Keyring(#[from] keyring_core::Error),
     #[error("No in-flight request")]
     NoInflightRequest,
-    #[error("session file path has no parent, this should be impossible")]
-    PathWrong,
-    #[error("Couldn't read session file: {0}")]
-    ReadFile(std::io::Error),
-    #[error("Could not serialize session data")]
-    SerializeSession(#[source] serde_json::Error),
-    #[error("Could not deserialize session data ({json})")]
-    DeserializeSession {
-        source: serde_json::Error,
-        json: String,
-    },
     #[error("State in server response doesn't match state in client request")]
     StatesDontMatch,
-    #[error("Couldn't write session file: {0}")]
-    WriteFile(std::io::Error),
 }
 
 pub struct Auth {
@@ -71,21 +59,33 @@ pub struct Auth {
 }
 
 enum State {
+    /// No accepted credential or browser sign-in is active.
     SignedOut,
+    /// Waiting for the browser's sign-in callback.
     NeedResponse(Request),
-    SignedIn(Session),
+    /// A validated browser token is awaiting portal acceptance and has not been saved.
+    AwaitingPortal(Credential),
+    /// An accepted or restored credential is available.
+    SignedIn(Credential),
+}
+
+#[derive(Clone)]
+pub struct Credential {
+    pub token: SecretString,
+    pub sign_in_settings: SignInSettings,
 }
 
 pub struct Request {
     nonce: SecretString,
     state: SecretString,
+    sign_in_settings: SignInSettings,
 }
 
 impl Request {
-    pub fn to_url(&self, auth_base_url: &Url, account_slug: Option<&str>) -> SecretString {
-        let mut url = auth_base_url.clone();
+    pub fn to_url(&self) -> SecretString {
+        let mut url = self.sign_in_settings.auth_url.clone();
 
-        if let Some(account_slug) = account_slug {
+        if let Some(account_slug) = self.sign_in_settings.account_slug.as_deref() {
             url.set_path(account_slug);
         }
 
@@ -101,10 +101,9 @@ impl Request {
 }
 
 pub(crate) struct Response {
-    pub(crate) account_slug: String,
-    pub(crate) actor_name: String,
     pub(crate) fragment: SecretString,
     pub(crate) state: SecretString,
+    pub(crate) control_plane: Option<crate::settings::ControlPlane>,
 }
 
 #[cfg(debug_assertions)]
@@ -115,33 +114,21 @@ impl Response {
     /// token's value. Debug builds only.
     pub(crate) fn fake(state: SecretString) -> Self {
         Self {
-            account_slug: "demo-co".to_owned(),
-            actor_name: "Demo User".to_owned(),
             fragment: SecretString::from("fake-fragment"),
             state,
+            control_plane: None,
         }
     }
-}
-
-#[derive(Default, Clone, Deserialize, Serialize)]
-pub struct Session {
-    pub(crate) account_slug: String,
-    pub(crate) actor_name: String,
-}
-
-struct SessionAndToken {
-    session: Session,
-    token: SecretString,
 }
 
 impl Auth {
     /// Creates a new Auth struct using the "dev.firezone.client/token" keyring key. If the token is stored on disk, the struct is automatically signed in.
     ///
     /// Performs I/O except on `cfg(test)`.
-    pub fn new() -> Result<Self> {
+    pub fn new(configured_sign_in_settings: SignInSettings) -> Result<Self> {
         #[cfg(debug_assertions)]
         if portal_auth_skipped() {
-            return Self::new_fake();
+            return Self::new_fake(configured_sign_in_settings);
         }
 
         #[cfg(all(target_os = "linux", not(test)))]
@@ -162,21 +149,23 @@ impl Auth {
             "dev.firezone.client/token",
             store,
             known_dirs::session().context("Failed to determine `session` directory")?,
+            configured_sign_in_settings,
         )
     }
 
     /// Creates an [`Auth`] backed by an in-memory keystore and a temp session
-    /// dir, already signed in with a fabricated response.
+    /// dir, already signed in with a fabricated token.
     #[cfg(debug_assertions)]
-    fn new_fake() -> Result<Self> {
+    fn new_fake(configured_sign_in_settings: SignInSettings) -> Result<Self> {
         let mut this = Self::new_with_key(
             "dev.firezone.client/token",
             keyring_core::mock::Store::new()?,
             std::env::temp_dir().join("dev.firezone.client.skip-portal-auth"),
+            configured_sign_in_settings.clone(),
         )?;
-        let request = this.start_sign_in()?;
-        let response = Response::fake(request.state.clone());
-        this.handle_response(response)?;
+        let token =
+            SecretString::from(format!("{}fake-fragment", generate_nonce().expose_secret()));
+        this.save_token(&token, configured_sign_in_settings);
 
         Ok(this)
     }
@@ -188,6 +177,7 @@ impl Auth {
         keyring_key: &'static str,
         store: Arc<CredentialStore>,
         session_dir: PathBuf,
+        configured_sign_in_settings: SignInSettings,
     ) -> Result<Self> {
         let mut this = Self {
             token_entry: store.build("", keyring_key, None)?,
@@ -195,27 +185,15 @@ impl Auth {
             session_dir,
         };
 
-        match this.get_token_from_disk() {
-            Err(error) => tracing::error!(
-                "Failed to load token from disk. Will start in signed-out state: {}",
-                err_with_src(&error)
-            ),
-            Ok(Some(SessionAndToken { session, token: _ })) => {
-                this.state = State::SignedIn(session);
-                tracing::debug!("Reloaded token from disk, starting in signed-in state.");
+        match this.credential_from_keyring(configured_sign_in_settings) {
+            Some(credential) => {
+                this.state = State::SignedIn(credential);
+                tracing::debug!("Reloaded token from keyring, starting in signed-in state.");
             }
-            Ok(None) => tracing::debug!("No token on disk, starting in signed-out state."),
+            None => tracing::debug!("No token in keyring, starting in signed-out state."),
         }
 
         Ok(this)
-    }
-
-    /// Returns the session iff we are signed in.
-    pub fn session(&self) -> Option<&Session> {
-        match &self.state {
-            State::SignedIn(x) => Some(x),
-            State::NeedResponse(_) | State::SignedOut => None,
-        }
     }
 
     /// Mark the session as signed out, or cancel an ongoing sign-in flow
@@ -231,8 +209,11 @@ impl Auth {
                 );
             }
         }
-        delete_if_exists(&actor_name_path(&self.session_dir))?;
-        delete_if_exists(&session_data_path(&self.session_dir))?;
+        // Written by versions that took the actor name from the sign-in callback, so
+        // signing out still forgets the name they left on disk.
+        // TODO: remove once all clients have migrated.
+        delete_if_exists(&self.session_dir.join("actor_name.txt"))?;
+        delete_if_exists(&self.session_dir.join("session_data.json"))?;
         self.state = State::SignedOut;
         Ok(())
     }
@@ -240,12 +221,12 @@ impl Auth {
     /// Start a new sign-in flow, replacing any ongoing flow
     ///
     /// Returns parameters used to make a URL for the web browser to open
-    /// May return Ok(None) if we're already signed in
-    pub fn start_sign_in(&mut self) -> Result<&Request, Error> {
+    pub fn start_sign_in(&mut self, settings: SignInSettings) -> Result<&Request, Error> {
         self.sign_out()?;
         self.state = State::NeedResponse(Request {
             nonce: generate_nonce(),
             state: generate_nonce(),
+            sign_in_settings: settings,
         });
         let State::NeedResponse(request) = &self.state else {
             unreachable!("We just set `self.state`")
@@ -256,11 +237,11 @@ impl Auth {
 
     /// Complete an ongoing sign-in flow using parameters from a deep link
     ///
-    /// Returns a valid token.
+    /// Returns the pending credential to validate with the portal before saving it.
     /// Performs I/O.
     ///
     /// Errors if the response is invalid.
-    pub(crate) fn handle_response(&mut self, resp: Response) -> Result<SecretString, Error> {
+    pub(crate) fn handle_response(&mut self, resp: Response) -> Result<&mut Credential, Error> {
         let req = self.ongoing_request().ok_or(Error::NoInflightRequest)?;
 
         if !secure_equality(&resp.state, &req.state) {
@@ -275,91 +256,125 @@ impl Auth {
         );
         let token = SecretString::from(token);
 
-        let session = Session {
-            account_slug: resp.account_slug,
-            actor_name: resp.actor_name,
+        let settings = req.sign_in_settings.clone();
+        self.state = State::AwaitingPortal(Credential {
+            token,
+            sign_in_settings: settings,
+        });
+        let State::AwaitingPortal(credential) = &mut self.state else {
+            unreachable!("We just set `self.state`")
         };
-
-        self.save_session(&session, &token)?;
-        self.state = State::SignedIn(session);
-        Ok(SecretString::from(token))
+        Ok(credential)
     }
 
-    fn save_session(&self, session: &Session, token: &SecretString) -> Result<(), Error> {
-        // This MUST be the only place the GUI can call `set_password`, since
-        // the actor name is also saved here.
-        if let Err(e) = self
-            .token_entry
-            .set_password(token.expose_secret())
-            .context("Failed to save token in keyring")
-        {
+    /// Saves an accepted token and its sign-in settings, replacing any stored credential.
+    ///
+    /// Performs I/O.
+    pub fn sign_in_with_token(&mut self, token: &SecretString, settings: SignInSettings) {
+        self.save_token(token, settings);
+    }
+
+    /// Saves the browser credential once the portal accepts it.
+    pub fn accept_browser_sign_in(&mut self) {
+        let State::AwaitingPortal(credential) = &self.state else {
+            return;
+        };
+        let credential = credential.clone();
+        self.save_token(&credential.token, credential.sign_in_settings);
+    }
+
+    /// Returns settings captured for the active browser flow or accepted credential.
+    pub fn captured_sign_in_settings(&self) -> Option<&SignInSettings> {
+        match &self.state {
+            State::NeedResponse(request) => Some(&request.sign_in_settings),
+            State::AwaitingPortal(credential) => Some(&credential.sign_in_settings),
+            State::SignedIn(credential) => Some(&credential.sign_in_settings),
+            State::SignedOut => None,
+        }
+    }
+
+    fn save_token(&mut self, token: &SecretString, sign_in_settings: SignInSettings) {
+        let credential = Credential {
+            token: token.clone(),
+            sign_in_settings,
+        };
+        let result = (|| -> Result<()> {
+            // This MUST be the only place the GUI can call `set_password`.
+            self.token_entry
+                .set_password(token.expose_secret())
+                .context("Failed to save token in keyring")?;
+            self.save_sign_in_settings(&credential.sign_in_settings)?;
+            Ok(())
+        })();
+        if let Err(e) = result {
             tracing::info!("{e:#}"); // Log that we couldn't save it and allow the user to continue anyway.
         }
-        save_file(
-            &actor_name_path(&self.session_dir),
-            session.actor_name.as_bytes(),
-        )?;
-        save_file(
-            &session_data_path(&self.session_dir),
-            serde_json::to_string(session)
-                .map_err(Error::SerializeSession)?
-                .as_bytes(),
-        )?;
+        self.state = State::SignedIn(credential);
+    }
+
+    fn save_sign_in_settings(&self, settings: &SignInSettings) -> Result<()> {
+        let settings = serde_json::to_string(settings)?;
+        self.token_entry
+            .update_attributes(&std::collections::HashMap::from([(
+                SIGN_IN_SETTINGS_ATTRIBUTE,
+                settings.as_str(),
+            )]))
+            .context("Failed to save sign-in settings in keyring")?;
         Ok(())
     }
 
-    /// Returns the token if we are signed in
-    ///
-    /// This will always make syscalls, but it should be fast enough for normal use.
-    pub fn token(&self) -> Result<Option<SecretString>, Error> {
-        match self.state {
-            State::SignedIn(_) => {}
-            State::NeedResponse(_) | State::SignedOut => return Ok(None),
+    /// Returns the accepted token and its captured sign-in settings.
+    pub fn credential(&self) -> Option<&Credential> {
+        match &self.state {
+            State::SignedIn(credential) => Some(credential),
+            State::NeedResponse(_) => None,
+            State::AwaitingPortal(_) => None,
+            State::SignedOut => None,
         }
-
-        Ok(self
-            .get_token_from_disk()?
-            .map(|session_and_token| session_and_token.token))
     }
 
-    /// Retrieves the token from disk regardless of in-memory state
+    pub fn is_signed_out(&self) -> bool {
+        matches!(self.state, State::SignedOut)
+    }
+
+    /// Retrieves the credential from the keyring regardless of in-memory state.
     ///
     /// Performs I/O
-    fn get_token_from_disk(&self) -> Result<Option<SessionAndToken>, Error> {
-        // Read the actor_name file, then let the session file override it if present.
-
-        let mut session = Session::default();
-        match std::fs::read_to_string(actor_name_path(&self.session_dir)) {
-            Ok(x) => session.actor_name = x,
-            // It can happen with dev systems that actor_name.txt doesn't exist
-            // even though the token is in the cred manager.
-            // In that case we just say the app is signed out
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-            Err(e) => return Err(Error::ReadFile(e)),
-        };
-        match std::fs::read_to_string(session_data_path(&self.session_dir)) {
-            Ok(json) => {
-                session = serde_json::from_str(&json)
-                    .map_err(|source| Error::DeserializeSession { source, json })?;
-            }
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-            Err(e) => return Err(Error::ReadFile(e)),
-        }
-
-        // This MUST be the only place the GUI can call `get_password`, since the
-        // actor name is also loaded here.
-        let Ok(token) = self.token_entry.get_password() else {
-            return Ok(None);
-        };
-        let token = SecretString::from(token);
-
-        Ok(Some(SessionAndToken { session, token }))
+    fn credential_from_keyring(
+        &self,
+        configured_sign_in_settings: SignInSettings,
+    ) -> Option<Credential> {
+        // This MUST be the only place the GUI can call `get_password`.
+        let token = self.token_entry.get_password().ok()?.into();
+        let sign_in_settings = self
+            .token_entry
+            .get_attributes()
+            .ok()
+            .and_then(|mut attributes| attributes.remove(SIGN_IN_SETTINGS_ATTRIBUTE))
+            .filter(|settings| !settings.is_empty())
+            .and_then(|settings| {
+                serde_json::from_str(&settings)
+                    .inspect_err(|_| tracing::debug!("Couldn't read saved sign-in settings"))
+                    .ok()
+            })
+            .unwrap_or_else(|| {
+                if let Err(e) = self.save_sign_in_settings(&configured_sign_in_settings) {
+                    tracing::info!("{e:#}");
+                }
+                configured_sign_in_settings
+            });
+        Some(Credential {
+            token,
+            sign_in_settings,
+        })
     }
 
     pub fn ongoing_request(&self) -> Option<&Request> {
         match &self.state {
             State::NeedResponse(x) => Some(x),
-            State::SignedIn(_) | State::SignedOut => None,
+            State::SignedIn(_) => None,
+            State::AwaitingPortal(_) => None,
+            State::SignedOut => None,
         }
     }
 }
@@ -372,23 +387,6 @@ fn delete_if_exists(path: &Path) -> Result<(), Error> {
         }
     }
     Ok(())
-}
-
-fn save_file(path: &Path, content: &[u8]) -> Result<(), Error> {
-    std::fs::create_dir_all(path.parent().ok_or(Error::PathWrong)?).map_err(Error::CreateDirAll)?;
-    std::fs::write(path, content).map_err(Error::WriteFile)?;
-    Ok(())
-}
-
-/// Returns a path to a file where we can save the actor name
-///
-/// Hopefully we don't need to save anything else, or there will be a migration step
-fn actor_name_path(session_dir: &Path) -> PathBuf {
-    session_dir.join("actor_name.txt")
-}
-
-fn session_data_path(session_dir: &Path) -> PathBuf {
-    session_dir.join("session_data.json")
 }
 
 /// Generates a random nonce using a CSPRNG, then returns it as hexadecimal
@@ -413,14 +411,21 @@ fn secure_equality(a: &SecretString, b: &SecretString) -> bool {
 
 pub fn replicate_6791() -> Result<()> {
     tracing::warn!("Debugging issue #6791, pretending to be signed in with a bad token");
-    let this = Auth::new()?;
-    this.save_session(
-        &Session {
-            account_slug: "firezone".to_string(),
-            actor_name: "Jane Doe".to_string(),
-        },
+    let defaults = crate::settings::AdvancedSettings::default();
+    let settings = SignInSettings {
+        account_slug: None,
+        auth_url: defaults.auth_url,
+        api_url: defaults.api_url,
+    };
+    let mut this = Auth::new(settings.clone())?;
+    let settings = this
+        .captured_sign_in_settings()
+        .cloned()
+        .unwrap_or(settings);
+    this.save_token(
         &SecretString::from("obviously invalid token for testing #6791".to_string()),
-    )?;
+        settings,
+    );
     Ok(())
 }
 
@@ -493,13 +498,17 @@ mod tests {
         let hex_string = hex_string.expose_secret();
         assert_eq!(hex_string.len(), NONCE_LENGTH * 2);
 
-        let auth_base_url = Url::parse("https://app.firez.one").unwrap();
         let req = Request {
             nonce: bogus_secret("some_nonce"),
             state: bogus_secret("some_state"),
+            sign_in_settings: SignInSettings {
+                account_slug: None,
+                auth_url: "https://app.firez.one".parse().unwrap(),
+                ..sign_in_settings()
+            },
         };
         assert_eq!(
-            req.to_url(&auth_base_url, None).expose_secret(),
+            req.to_url().expose_secret(),
             "https://app.firez.one/?as=gui-client&nonce=some_nonce&state=some_state"
         );
     }
@@ -508,7 +517,6 @@ mod tests {
     fn happy_path() {
         let _guard = logging::test("trace");
 
-        let actor_name = "Jane Doe";
         let store = keyring_core::mock::Store::new().unwrap();
         let session_dir = tempdir().unwrap();
 
@@ -517,49 +525,107 @@ mod tests {
 
         {
             // Start the program
-            let mut state =
-                Auth::new_with_key(key, store.clone(), session_dir.path().to_path_buf()).unwrap();
+            let mut state = Auth::new_with_key(
+                key,
+                store.clone(),
+                session_dir.path().to_path_buf(),
+                sign_in_settings(),
+            )
+            .unwrap();
 
             // Delete any token on disk from previous test runs
             state.sign_out().unwrap();
-            assert!(state.token().unwrap().is_none());
+            assert!(state.credential().is_none());
 
             // User clicks "Sign In", build a fake server response
-            let req = state.start_sign_in().unwrap();
+            let req = state.start_sign_in(sign_in_settings()).unwrap();
             let resp = Response {
-                account_slug: "firezone".into(),
-                actor_name: actor_name.into(),
                 fragment: bogus_secret("fragment"),
                 state: req.state.clone(),
+                control_plane: None,
             };
 
-            // Handle deep link from the server, now we are signed in and have a token
-            assert!(state.token().unwrap().is_none());
-            state.handle_response(resp).unwrap();
-            assert!(state.token().unwrap().is_some());
-
-            // Make sure we loaded the actor_name
-            assert_eq!(state.session().unwrap().actor_name, actor_name);
+            let replay = Response {
+                fragment: resp.fragment.clone(),
+                state: resp.state.clone(),
+                control_plane: resp.control_plane,
+            };
+            assert_eq!(state.captured_sign_in_settings(), Some(&sign_in_settings()));
+            let token = state.handle_response(resp).unwrap().token.clone();
+            assert_eq!(state.captured_sign_in_settings(), Some(&sign_in_settings()));
+            assert!(matches!(state.state, State::AwaitingPortal(_)));
+            assert!(!state.is_signed_out());
+            assert!(state.ongoing_request().is_none());
+            assert!(state.credential().is_none());
+            assert!(state.token_entry.get_password().is_err());
+            assert!(matches!(
+                state.handle_response(replay),
+                Err(Error::NoInflightRequest)
+            ));
+            assert!(matches!(state.state, State::AwaitingPortal(_)));
+            assert!(state.token_entry.get_password().is_err());
+            assert_eq!(state.captured_sign_in_settings(), Some(&sign_in_settings()));
+            state.accept_browser_sign_in();
+            assert_eq!(
+                state.credential().unwrap().sign_in_settings,
+                sign_in_settings()
+            );
+            assert_eq!(
+                state.credential().unwrap().token.expose_secret(),
+                token.expose_secret()
+            );
         }
 
         // Recreate the state to simulate closing and re-opening the app
         {
-            let mut state =
-                Auth::new_with_key(key, store, session_dir.path().to_path_buf()).unwrap();
+            let mut state = Auth::new_with_key(
+                key,
+                store.clone(),
+                session_dir.path().to_path_buf(),
+                sign_in_settings(),
+            )
+            .unwrap();
 
-            // Make sure we automatically got the token and actor_name back
-            assert!(state.token().unwrap().is_some());
-            assert_eq!(state.session().unwrap().actor_name, actor_name);
+            // Make sure we automatically got the token back
+            assert!(state.credential().is_some());
+            assert_eq!(
+                state.credential().unwrap().sign_in_settings,
+                sign_in_settings()
+            );
 
             // Accidentally sign in again, this can happen if the user holds the systray menu open while a sign in is succeeding.
             // For now, we treat that like signing out and back in immediately, so it wipes the old token.
             // TODO: That sounds wrong.
-            assert!(state.start_sign_in().is_ok());
-            assert!(state.token().unwrap().is_none());
+            let req = state.start_sign_in(sign_in_settings()).unwrap();
+            let response = Response {
+                fragment: bogus_secret("another-fragment"),
+                state: req.state.clone(),
+                control_plane: None,
+            };
+            state.handle_response(response).unwrap();
+            assert!(matches!(state.state, State::AwaitingPortal(_)));
+            assert!(state.credential().is_none());
 
             // Sign out again, now the token is gone
             state.sign_out().unwrap();
-            assert!(state.token().unwrap().is_none());
+            assert!(state.credential().is_none());
+            assert!(state.is_signed_out());
+        }
+        let state = Auth::new_with_key(
+            key,
+            store,
+            session_dir.path().to_path_buf(),
+            sign_in_settings(),
+        )
+        .unwrap();
+        assert!(state.credential().is_none());
+    }
+
+    fn sign_in_settings() -> SignInSettings {
+        SignInSettings {
+            account_slug: Some("example".to_owned()),
+            auth_url: "https://app.firezone.dev/".parse().unwrap(),
+            api_url: "wss://api.firezone.dev/".parse().unwrap(),
         }
     }
 
@@ -572,19 +638,19 @@ mod tests {
             "dev.firezone.client/test_DMRCZ67A_invalid_response/token",
             keyring_core::mock::Store::new().unwrap(),
             session_dir.path().to_path_buf(),
+            sign_in_settings(),
         )
         .unwrap();
 
         // Delete any token on disk from previous test runs
         state.sign_out().unwrap();
-        assert!(state.token().unwrap().is_none());
+        assert!(state.credential().is_none());
 
         // If we get a deep link with no in-flight request, it's invalid
         let r = state.handle_response(Response {
-            account_slug: "firezone".into(),
-            actor_name: "Jane Doe".into(),
             fragment: bogus_secret("fragment"),
             state: bogus_secret("state"),
+            control_plane: None,
         });
 
         match r {
@@ -605,24 +671,24 @@ mod tests {
             "dev.firezone.client/test_DMRCZ67A_states_dont_match/token",
             keyring_core::mock::Store::new().unwrap(),
             session_dir.path().to_path_buf(),
+            sign_in_settings(),
         )
         .unwrap();
 
         // Delete any token on disk from previous test runs
         state.sign_out().unwrap();
-        assert!(state.token().unwrap().is_none());
+        assert!(state.credential().is_none());
 
         // User clicks "Sign In", build a fake server response
-        state.start_sign_in().unwrap();
+        state.start_sign_in(sign_in_settings()).unwrap();
         let resp = Response {
-            account_slug: "firezone".into(),
-            actor_name: "Jane Doe".into(),
             fragment: bogus_secret("fragment"),
             state: SecretString::from(
                 "bogus state from a replay attack or browser mis-click".to_string(),
             ),
+            control_plane: Some(crate::settings::ControlPlane::CloudEu),
         };
-        assert!(state.token().unwrap().is_none());
+        assert!(state.credential().is_none());
 
         // Handle deep link from the server, we should get an error
         let r = state.handle_response(resp);
@@ -630,6 +696,7 @@ mod tests {
             Err(Error::StatesDontMatch) => {}
             _ => panic!("Expected StatesDontMatch error"),
         }
-        assert!(state.token().unwrap().is_none());
+        assert!(state.credential().is_none());
+        assert!(state.is_signed_out());
     }
 }

@@ -49,22 +49,13 @@ jobs:
         name: cargo doc
         shell: bash
       - run: cargo fmt -- --check
-      - run: cargo deny check --hide-inclusion-graph --deny unnecessary-skip
+      - run: mise run deny
         shell: bash
       # cargo-shear does not compile the workspace; it runs `cargo metadata` and
       # parses sources, so it piggy-backs on the toolchain already set up here.
       - run: cargo shear
         name: cargo shear
         shell: bash
-
-  monitor-static-analysis:
-    needs: [static-analysis]
-    if: "!cancelled() && needs.static-analysis.result == 'failure' && github.event_name == 'merge_group'"
-    runs-on: ubuntu-latest
-    steps:
-      - run: gh run cancel ${{ github.run_id }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   test:
     name: test-${{ matrix.runs-on }}
@@ -91,6 +82,13 @@ jobs:
       - run: mise run //rust:install-ebpf-toolchain
         if: runner.os == 'Linux'
       - uses: ./.github/actions/free-disk-space
+      # `x509-keystore`'s PKCS#11 tests sign with a SoftHSM token served through
+      # `p11-kit remote`. They fail rather than skip when either piece is missing, so that
+      # a run cannot report coverage it did not have.
+      - uses: ./.github/actions/apt-install
+        if: runner.os == 'Linux'
+        with:
+          packages: softhsm2 p11-kit
       - name: "cargo test"
         shell: bash
         run: cargo llvm-cov --all-features ${{ steps.setup-rust.outputs.test-packages }} --lcov --output-path lcov.info -- --include-ignored --nocapture
@@ -100,13 +98,6 @@ jobs:
           CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER: "sudo --preserve-env"
           # Needed to create utun devices in the Apple TUN integration tests
           CARGO_TARGET_AARCH64_APPLE_DARWIN_RUNNER: "sudo --preserve-env"
-          # Minimise DWARF debuginfo for the coverage build: source-based
-          # coverage data lives in __llvm_covmap, independent of debug info, so
-          # lcov.info / Coveralls are unaffected while target/ shrinks ~60%.
-          # `line-tables-only` keeps file:line in panic backtraces. eBPF BTF is
-          # unaffected (built separately under the release profile via aya_build).
-          CARGO_PROFILE_DEV_DEBUG: "line-tables-only"
-          CARGO_PROFILE_TEST_DEBUG: "line-tables-only"
 
       - uses: coverallsapp/github-action@8d6379e14d29928660c4ba802d8e85393440b329 # v2.3.8
         env:
@@ -120,6 +111,78 @@ jobs:
           flag-name: rust-test-${{ runner.os }}
           parallel: true
           fail-on-error: false
+
+  test-android:
+    name: test-android (${{ matrix.arch }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            triple: x86_64-linux-android
+            api-level: 34
+            emulator-arch: x86_64
+            target: default
+          # The API 34 x86_64 image only runs 64-bit binaries, and the newest x86 image is API 30's Google APIs one.
+          - arch: i686
+            triple: i686-linux-android
+            api-level: 30
+            emulator-arch: x86
+            target: google_apis
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-rust-stable
+        with:
+          targets: ${{ matrix.triple }}
+      - uses: ./.github/actions/setup-rust-sccache
+        with:
+          azure-connection-string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
+      - uses: ./.github/actions/setup-mise
+        with:
+          install_args: --cd rust
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build tests
+        run: mise run //rust:mobile-test-build ${{ matrix.triple }}
+      - uses: ./.github/actions/enable-kvm
+      - name: Run tests
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
+        with:
+          api-level: ${{ matrix.api-level }}
+          arch: ${{ matrix.emulator-arch }}
+          target: ${{ matrix.target }}
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          working-directory: ./rust
+          script: adb shell getprop ro.product.cpu.abilist && mise run //rust:mobile-test-run ${{ matrix.triple }}
+
+  test-ios:
+    name: test-ios
+    runs-on: macos-26
+    timeout-minutes: 30
+    env:
+      XCODE_VERSION: "26.2"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: sudo xcode-select --switch "$(find /Applications -maxdepth 1 -name "Xcode*${XCODE_VERSION}*.app" | sort -V | tail -n 1)"
+      - uses: ./.github/actions/setup-mise
+        with:
+          install_args: --cd rust
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Boot simulator
+        run: mise run //swift/apple:boot-simulator
+      - uses: ./.github/actions/setup-rust-stable
+        with:
+          targets: aarch64-apple-ios-sim
+      - uses: ./.github/actions/setup-rust-sccache
+        with:
+          azure-connection-string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
+      - name: Build tests
+        run: mise run //rust:mobile-test-build aarch64-apple-ios-sim
+      - name: Run tests
+        run: mise run //rust:mobile-test-run aarch64-apple-ios-sim
 
   fuzz-targets:
     name: fuzz-targets
@@ -149,21 +212,120 @@ jobs:
           install_args: --cd rust/tests/fuzz
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - uses: ./.github/actions/setup-afl
       - uses: ./.github/actions/free-disk-space
-      - name: Replay committed corpus
+      - name: Replay committed corpus with coverage
         run: mise run //rust/tests/fuzz:coverage ${{ matrix.fuzz-target }}
-      - name: Enforce uncovered-region ceiling
-        run: mise run -q //rust/tests/fuzz:coverage-check ${{ matrix.fuzz-target }}
-      - name: Export lcov for Coveralls
-        run: mise run -q //rust/tests/fuzz:lcov ${{ matrix.fuzz-target }} > lcov-${{ matrix.fuzz-target }}.info
       - uses: coverallsapp/github-action@8d6379e14d29928660c4ba802d8e85393440b329 # v2.3.8
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          file: rust/lcov-${{ matrix.fuzz-target }}.info
+          file: rust/tests/fuzz/coverage/${{ matrix.fuzz-target }}/lcov.info
           format: lcov
           flag-name: rust-fuzz-${{ matrix.fuzz-target }}
           parallel: true
           fail-on-error: false
+      - name: Check discovery determinism
+        run: mise run //rust/tests/fuzz:determinism ${{ matrix.fuzz-target }}
+
+  bench-instructions:
+    name: bench-instructions-${{ matrix.group }}
+    strategy:
+      fail-fast: false
+      # The idle benchmarks set up 1000 connections under Valgrind, so each gets a runner of its own.
+      matrix:
+        include:
+          - group: packets
+            filter: "instructions::packet_group::*"
+          - group: idle-ice
+            filter: "instructions::idle_group::idle::ice"
+          - group: idle-iceless
+            filter: "instructions::idle_group::idle::iceless"
+    runs-on: ubuntu-24.04
+    env:
+      # Replaces the workflow's `RUSTFLAGS`, which would drop the frame pointers from `.cargo/config.toml`.
+      RUSTFLAGS: "--deny warnings -C force-frame-pointers=yes"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-rust-stable
+      - uses: ./.github/actions/setup-rust-sccache
+        with:
+          azure-connection-string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
+      - uses: ./.github/actions/apt-install
+        with:
+          packages: valgrind
+          install-recommends: false
+      - uses: ./.github/actions/setup-mise
+        with:
+          install_args: --cd rust github:gungraun/gungraun
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Count instructions of the ${{ matrix.group }} benchmarks
+        env:
+          FILTER: ${{ matrix.filter }}
+          GROUP: ${{ matrix.group }}
+        run: |
+          set -o pipefail
+          cargo bench -p tunnel-bench --bench instructions -- "$FILTER" | tee "$RUNNER_TEMP/instructions-$GROUP.txt"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: instructions-${{ matrix.group }}
+          path: ${{ runner.temp }}/instructions-${{ matrix.group }}.txt
+          if-no-files-found: error
+
+  # One report for all groups: each `bencher run` on a PR resets its branch, which would drop the other groups' results.
+  bench-instructions-report:
+    name: bench-instructions-report
+    needs: bench-instructions
+    # Bencher tracks PRs and `main`. PRs from forks and Dependabot have no access to its API key.
+    if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]')
+    runs-on: ubuntu-24.04
+    env:
+      BENCHER_PROJECT: firezone-1l75jv1z
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: instructions-*
+          path: ${{ runner.temp }}/instructions
+          merge-multiple: true
+      - uses: bencherdev/bencher@f80847436d7157936b40525db4c2a1064124f04a # v0.6.13
+      - name: Report to Bencher
+        working-directory: ${{ runner.temp }}
+        env:
+          BENCHER_API_KEY: ${{ secrets.BENCHER_API_KEY }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+
+          cat instructions/*.txt > instructions.txt
+
+          if [ "$GITHUB_REF" = refs/heads/main ]; then
+            # Instruction counts are deterministic, so any increase beyond 1% is a regression.
+            branch=(
+              --branch main
+              --thresholds-reset
+              --threshold-measure instructions
+              --threshold-test percentage
+              --threshold-max-sample-size 64
+              --threshold-upper-boundary 0.01
+            )
+          else
+            branch=(
+              --branch "${GITHUB_HEAD_REF:-$GITHUB_REF_NAME}"
+              --start-point "${GITHUB_BASE_REF:-main}"
+              --start-point-clone-thresholds
+              --start-point-reset
+            )
+            if [ -n "$BASE_SHA" ]; then
+              branch+=(--start-point-hash "$BASE_SHA")
+            fi
+          fi
+
+          bencher run \
+            --project "$BENCHER_PROJECT" \
+            --testbed github-actions-callgrind \
+            "${branch[@]}" \
+            --adapter rust_gungraun \
+            --file instructions.txt
 
   headless-client:
     name: headless-client-${{ matrix.test }}-${{ matrix.runs-on }}

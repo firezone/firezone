@@ -16,7 +16,7 @@ fn main() -> anyhow::Result<()> {
             root_dir,
             ..Default::default()
         }],
-        aya_build::Toolchain::Custom("nightly-2025-05-30"),
+        aya_build::Toolchain::Custom("nightly-2026-10-17"),
     )?;
 
     Ok(())

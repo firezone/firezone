@@ -46,6 +46,15 @@ the following general guidelines:
 1. For any security issues, please **do not** open a Github Issue. Please follow
    responsible disclosure practices laid out in [SECURITY.md](SECURITY.md)
 
+## AI policy
+
+Using AI (LLMs) as tools for coding is welcome.
+We hold a high bar for all contributions to this project, regardless of which tools have been used to create them.
+
+AI should not be used to generate comments when communicating with maintainers.
+Comments are expected to be written by humans.
+Comments, issues or pull requests from external contributors that are believed to be written by AI may be closed without notice.
+
 ## Quick Start
 
 The goal of the quick start guide is to get an environment up and running
@@ -125,7 +134,7 @@ openssl req -x509 -newkey rsa:2048 -nodes -sha256 -days 365 \
     -keyout priv/cert/selfsigned-key.pem \
     -out priv/cert/selfsigned.pem \
     -subj "/O=Firezone Development/CN=localhost" \
-    -addext "subjectAltName=DNS:localhost,IP:127.0.0.1" \
+    -addext "subjectAltName=DNS:localhost,DNS:host.docker.internal,IP:127.0.0.1" \
     -addext "basicConstraints=critical,CA:FALSE" \
     -addext "keyUsage=critical,digitalSignature,keyEncipherment" \
     -addext "extendedKeyUsage=critical,serverAuth"

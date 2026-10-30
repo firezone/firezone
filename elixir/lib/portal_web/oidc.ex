@@ -6,12 +6,13 @@ defmodule PortalWeb.OIDC do
   Consolidates configuration building, authorization, token exchange, and logout logic.
   """
 
-  alias Portal.{Google, Okta, Entra, OIDC}
+  alias Portal.{Google, GitHub, Okta, Entra, OIDC}
 
   require Logger
 
   @client_assertion_type "urn:ietf:params:oauth:client-assertion-type:jwt-bearer"
   @google_directory_identity_scope "openid email"
+  @google_domains_scope "https://www.googleapis.com/auth/admin.directory.domain.readonly"
   @entra_organizations_discovery_document_uri "https://login.microsoftonline.com/organizations/v2.0/.well-known/openid-configuration"
   @entra_organizations_admin_consent_endpoint "https://login.microsoftonline.com/organizations/v2.0/adminconsent"
   @entra_issuer_prefix "https://login.microsoftonline.com/"
@@ -32,8 +33,13 @@ defmodule PortalWeb.OIDC do
 
   @doc """
   Builds OpenIDConnect configuration for a provider.
-  Supports Google, Okta, Entra, and generic OIDC providers.
+  Supports Google, Okta, Entra, and generic OIDC providers. GitHub is plain
+  OAuth 2.0; its configuration is handled by `PortalWeb.GitHub`.
   """
+  def config_for_provider(%GitHub.AuthProvider{}) do
+    {:ok, PortalWeb.GitHub.config(callback_url())}
+  end
+
   def config_for_provider(%Google.AuthProvider{}) do
     config = Portal.Config.fetch_env!(:portal, Portal.Google.AuthProvider)
     config = Enum.into(config, %{redirect_uri: callback_url(), req_opts: @discovery_req_opts})
@@ -63,7 +69,7 @@ defmodule PortalWeb.OIDC do
     config = Portal.Config.fetch_env!(:portal, Portal.Entra.AuthProvider)
 
     discovery_document_uri =
-      config[:discovery_document_uri] || "#{provider.issuer}/.well-known/openid-configuration"
+      config[:discovery_document_uri] || @entra_organizations_discovery_document_uri
 
     config =
       Enum.into(config, %{
@@ -72,7 +78,7 @@ defmodule PortalWeb.OIDC do
         req_opts: @discovery_req_opts
       })
 
-    {:ok, config}
+    {:ok, maybe_put_entra_sign_in_tenant(config, provider)}
   end
 
   def config_for_provider(%OIDC.AuthProvider{} = provider) do
@@ -104,7 +110,23 @@ defmodule PortalWeb.OIDC do
   - :state - Custom state parameter (default: auto-generated)
   - Other params merged into OIDC params
   """
-  def authorization_uri(provider, opts \\ []) do
+  def authorization_uri(provider, opts \\ [])
+
+  # GitHub only understands prompt=select_account. It is always sent, so a
+  # GitHub session is never reused without the user choosing the account; this
+  # is the closest GitHub gets to the prompt=login step-up other providers use.
+  def authorization_uri(%GitHub.AuthProvider{} = provider, opts) do
+    {:ok, config} = config_for_provider(provider)
+    state = Keyword.get(opts, :state, Portal.Crypto.random_token(32))
+    verifier = :crypto.strong_rand_bytes(32) |> Base.url_encode64(padding: false)
+
+    with {:ok, uri} <-
+           PortalWeb.GitHub.authorization_uri(config, state, verifier, prompt: "select_account") do
+      {:ok, uri, state, verifier}
+    end
+  end
+
+  def authorization_uri(provider, opts) do
     with {:ok, config} <- config_for_provider(provider),
          :ok <- maybe_validate_public_host(provider, config) do
       state = Keyword.get(opts, :state, Portal.Crypto.random_token(32))
@@ -189,25 +211,64 @@ defmodule PortalWeb.OIDC do
   Verifies ID token and returns claims.
   Returns {:ok, claims} or {:error, reason}.
   """
+  def verify_token(%Google.AuthProvider{} = provider, id_token, verifier) do
+    with {:ok, config} <- config_for_provider(provider),
+         {:ok, claims} <- OpenIDConnect.verify(config, id_token, nonce: nonce(verifier)),
+         :ok <- verify_google_provider_domain(claims, provider) do
+      {:ok, claims}
+    end
+  end
+
+  def verify_token(%Entra.AuthProvider{} = provider, id_token, verifier) do
+    with {:ok, config} <- config_for_provider(provider),
+         {:ok, claims} <- OpenIDConnect.verify(config, id_token, nonce: nonce(verifier)),
+         :ok <- verify_entra_provider_tenant(claims, provider) do
+      {:ok, claims}
+    end
+  end
+
   def verify_token(provider, id_token, verifier) do
     with {:ok, config} <- config_for_provider(provider) do
       OpenIDConnect.verify(config, id_token, nonce: nonce(verifier))
     end
   end
 
+  defp verify_google_provider_domain(_claims, %Google.AuthProvider{workspace_domains: nil, is_legacy_unrestricted: true}),
+    do: :ok
+
+  defp verify_google_provider_domain(claims, %Google.AuthProvider{workspace_domains: nil}) do
+    if Map.has_key?(claims, "hd"),
+      do: {:error, {:invalid_jwt, "this Google provider only accepts personal accounts"}},
+      else: :ok
+  end
+
+  defp verify_google_provider_domain(claims, %Google.AuthProvider{workspace_domains: domains}),
+    do: verify_google_workspace_domain(claims, domains)
+
+  defp verify_google_workspace_domain(%{"hd" => domain}, domains) when is_binary(domain) do
+    if String.downcase(domain) in domains,
+      do: :ok,
+      else: {:error, {:invalid_jwt, "token was issued for another Google Workspace domain"}}
+  end
+
+  defp verify_google_workspace_domain(_claims, _domains),
+    do: {:error, {:invalid_jwt, "token is missing a Google Workspace domain"}}
+
   @doc """
   Exchanges authorization code for tokens using a pre-built config.
-  Useful for legacy code paths where config is built manually.
+  Useful for legacy code paths where config is built manually. Pass
+  `:redirect_uri` for a flow whose authorization request replied somewhere
+  other than the OIDC callback; the two have to match.
   Returns {:ok, tokens} or {:error, reason}.
   """
-  def exchange_code_with_config(config, code, verifier) do
+  def exchange_code_with_config(config, code, verifier, opts \\ []) do
     with {:ok, credential} <- verification_client_credential(config) do
       params =
         %{
           grant_type: "authorization_code",
           code: code,
           code_verifier: verifier,
-          redirect_uri: callback_url()
+          redirect_uri: Keyword.get(opts, :redirect_uri, callback_url())
         }
         |> Map.merge(credential)
 
@@ -287,7 +348,9 @@ defmodule PortalWeb.OIDC do
   - "google_directory_sync" — OIDC code + PKCE identity proof for a Workspace admin probe
   - "entra" — Entra auth_provider admin consent + silent authorization code/PKCE proof
   - "entra_directory_sync" — Entra directory_sync admin consent + user-bound PKCE proof
-  - "intune_device_integration" — Intune admin consent + user-bound PKCE proof
+  - "intune_posture_provider" — Intune admin consent + user-bound PKCE proof
+  - "defender_posture_provider" — Defender admin consent + user-bound PKCE proof
+  - "sentinel_log_sink" — Sentinel log sink admin consent + user-bound PKCE proof
 
   Options:
   - :okta_domain - Required for Okta providers
@@ -312,10 +375,37 @@ defmodule PortalWeb.OIDC do
     {:ok, %{config: config}}
   end
 
-  def setup_verification("intune_device_integration", _opts) do
+  def setup_verification("intune_posture_provider", _opts) do
     config =
       Portal.Microsoft.Graph.APIClient.verification_config(:intune)
       |> entra_verification_config("openid profile", "https://graph.microsoft.com/.default")
+
+    {:ok, %{config: config}}
+  end
+
+  # The app registration is granted Machine.Read.All on WindowsDefenderATP, not
+  # on Graph, but `.default` at the admin consent endpoint covers every API the
+  # registration lists, so one Graph-scoped grant still consents to both that
+  # and the delegated openid/profile the identity proof needs.
+  def setup_verification("defender_posture_provider", _opts) do
+    config =
+      Portal.Defender.APIClient.verification_config()
+      |> entra_verification_config("openid profile", "https://graph.microsoft.com/.default")
+
+    {:ok, %{config: config}}
+  end
+
+  def setup_verification("sentinel_log_sink", _opts) do
+    sentinel_config = Portal.Config.fetch_env!(:portal, Portal.Sentinel.APIClient)
+
+    config =
+      sentinel_config
+      |> Keyword.take([:client_id, :client_secret, :req_opts])
+      |> entra_verification_config(
+        "openid profile",
+        "https://graph.microsoft.com/.default",
+        Keyword.fetch!(sentinel_config, :discovery_document_uri)
+      )
 
     {:ok, %{config: config}}
   end
@@ -326,6 +416,36 @@ defmodule PortalWeb.OIDC do
       |> Keyword.put(:response_type, "code")
       |> Keyword.put(:scope, @google_directory_identity_scope)
       |> verification_config([])
+
+    {:ok, %{config: config}}
+  end
+
+  def setup_verification(type, _opts) when type in ["github", "github_sign_up"] do
+    {:ok, %{config: PortalWeb.GitHub.config(callback_url())}}
+  end
+
+  def setup_verification("google", opts) do
+    config =
+      Portal.Config.fetch_env!(:portal, Google.AuthProvider)
+      |> verification_config(opts)
+      |> Map.put(:scope, google_verification_scope(opts))
+
+    {:ok, %{config: config}}
+  end
+
+  def setup_verification("google_sign_up", _opts) do
+    config =
+      Portal.Config.fetch_env!(:portal, Portal.Google.AuthProvider)
+      |> verification_config([])
+
+    {:ok, %{config: config}}
+  end
+
+  def setup_verification("google_sign_up_admin", _opts) do
+    config =
+      Portal.Config.fetch_env!(:portal, Portal.Google.AuthProvider)
+      |> verification_config([])
+      |> Map.put(:scope, google_verification_scope(additional_domains: true))
 
     {:ok, %{config: config}}
   end
@@ -352,8 +472,10 @@ defmodule PortalWeb.OIDC do
   Verifies a signed verification state token.
   Returns {:ok, %{type: type, lv_pid: lv_pid}} or {:error, reason}.
   """
-  def verify_verification_state(state) do
-    Phoenix.Token.verify(PortalWeb.Endpoint, "oidc-verification-state", state, max_age: 5 * 60)
+  def verify_verification_state(state, opts \\ []) do
+    max_age = Keyword.get(opts, :max_age, 5 * 60)
+
+    Phoenix.Token.verify(PortalWeb.Endpoint, "oidc-verification-state", state, max_age: max_age)
   end
 
   @doc """
@@ -363,9 +485,16 @@ defmodule PortalWeb.OIDC do
   def verification_state_type("entra"), do: "entra-auth-provider"
   def verification_state_type("entra_directory_sync"), do: "entra-directory-sync"
   def verification_state_type("google_directory_sync"), do: "google-directory-sync"
-  def verification_state_type("intune_device_integration"), do: "intune-device-integration"
+  def verification_state_type("intune_posture_provider"), do: "intune-posture-provider"
+  def verification_state_type("sentinel_log_sink"), do: "sentinel-log-sink"
 
-  def verification_state_type(type) when type in ["google", "okta", "oidc"],
+  def verification_state_type("defender_posture_provider"), do: "defender-posture-provider"
+  def verification_state_type("google"), do: "google-auth-provider"
+  def verification_state_type("google_sign_up"), do: "google-sign-up"
+  def verification_state_type("google_sign_up_admin"), do: "google-sign-up-admin"
+  def verification_state_type("github_sign_up"), do: "github-sign-up"
+
+  def verification_state_type(type) when type in ["github", "okta", "oidc"],
     do: "oidc-auth-provider"
 
   @serialized_pid_prefix "pid:"
@@ -415,26 +544,34 @@ defmodule PortalWeb.OIDC do
   proof that binds the setup to the signed-in user's immutable tenant and object IDs.
   The state_token (from sign_verification_state/2) is passed through the IdP unchanged.
   Accepts types: "google", "okta", "oidc", "entra", "entra_directory_sync",
-  and "intune_device_integration".
+  "intune_posture_provider", "defender_posture_provider", and "sentinel_log_sink".
   Returns {:ok, uri} or {:error, reason}.
   """
   def build_verification_uri(type, config, verifier, state_token)
       when type in ["google", "okta", "oidc"] do
-    challenge = :crypto.hash(:sha256, verifier) |> Base.url_encode64(padding: false)
-
-    oidc_params = %{
-      state: state_token,
-      nonce: nonce(verifier),
-      code_challenge_method: :S256,
-      code_challenge: challenge,
-      prompt: "login"
-    }
-
     discovery_document_uri = config[:discovery_document_uri] || config["discovery_document_uri"]
 
     with :ok <- validate_public_host(discovery_document_uri) do
-      OpenIDConnect.authorization_uri(config, callback_url(), oidc_params)
+      prompt = if type == "google", do: "select_account consent", else: "login"
+      code_flow_uri(config, verifier, state_token, prompt)
     end
+  end
+
+  # Sign-up has no existing session to step up, so an account picker is enough.
+  def build_verification_uri("google_sign_up", config, verifier, state_token) do
+    code_flow_uri(config, verifier, state_token, "select_account")
+  end
+
+  # Proving Workspace administration asks for the domains scope, so Google must show its consent screen.
+  def build_verification_uri("google_sign_up_admin", config, verifier, state_token) do
+    code_flow_uri(config, verifier, state_token, "select_account consent")
+  end
+
+  # GitHub does not support prompt=login, so re-verifying an existing provider
+  # shows the account picker instead.
+  def build_verification_uri(type, config, verifier, state_token)
+      when type in ["github", "github_sign_up"] do
+    PortalWeb.GitHub.authorization_uri(config, state_token, verifier, prompt: "select_account")
   end
 
   def build_verification_uri("google_directory_sync", config, verifier, state_token) do
@@ -456,10 +593,26 @@ defmodule PortalWeb.OIDC do
   end
 
   def build_verification_uri(type, config, _verifier, state_token)
-      when type in ["entra", "entra_directory_sync", "intune_device_integration"] do
+      when type in [
+             "entra",
+             "entra_directory_sync",
+             "intune_posture_provider",
+             "defender_posture_provider"
+           ] do
     params = %{
       client_id: config[:client_id],
       redirect_uri: callback_url(),
+      scope: config[:admin_consent_scope],
+      state: state_token
+    }
+
+    {:ok, @entra_organizations_admin_consent_endpoint <> "?" <> URI.encode_query(params)}
+  end
+
+  def build_verification_uri("sentinel_log_sink", config, _verifier, state_token) do
+    params = %{
+      client_id: config[:client_id],
+      redirect_uri: sentinel_consent_url(),
       scope: config[:admin_consent_scope],
       state: state_token
     }
@@ -476,7 +629,8 @@ defmodule PortalWeb.OIDC do
   Builds a tenant-specific Entra authorization-code request after admin consent.
   The initial request is silent so the Microsoft session created by admin consent
   can be reused without showing a second account picker. Set `prompt: nil` for the
-  interactive fallback when Entra reports that silent SSO is unavailable.
+  interactive fallback when Entra reports that silent SSO is unavailable, and
+  `:redirect_uri` for a flow that replies somewhere other than the OIDC callback.
   """
   def build_entra_tenant_authorization_uri(
         config,
@@ -490,7 +644,7 @@ defmodule PortalWeb.OIDC do
 
       params = %{
         client_id: config[:client_id],
-        redirect_uri: callback_url(),
+        redirect_uri: Keyword.get(opts, :redirect_uri, callback_url()),
         response_type: "code",
         response_mode: "query",
         scope: config[:scope],
@@ -509,6 +663,20 @@ defmodule PortalWeb.OIDC do
     end
   end
 
+  defp code_flow_uri(config, verifier, state_token, prompt) do
+    challenge = :crypto.hash(:sha256, verifier) |> Base.url_encode64(padding: false)
+
+    oidc_params = %{
+      state: state_token,
+      nonce: nonce(verifier),
+      code_challenge_method: :S256,
+      code_challenge: challenge,
+      prompt: prompt
+    }
+
+    OpenIDConnect.authorization_uri(config, callback_url(), oidc_params)
+  end
+
   defp maybe_put_prompt(params, nil), do: params
   defp maybe_put_prompt(params, prompt), do: Map.put(params, :prompt, prompt)
 
@@ -519,14 +687,147 @@ defmodule PortalWeb.OIDC do
   def callback_url, do: url(~p"/auth/oidc/callback")
 
   @doc """
+  Returns the Sentinel admin consent callback URL. Both legs of the Sentinel
+  verification reply here, so the application registration needs a single
+  reply address.
+  """
+  def sentinel_consent_url, do: url(~p"/auth/sentinel/consent")
+
+  @doc """
   Performs the complete OIDC verification flow: exchange code for tokens and verify ID token.
   Returns {:ok, claims, userinfo_result} or {:error, reason}.
+
+  Options:
+  - :iss - The `iss` callback parameter (RFC 9207); checked for GitHub
   """
-  def verify_callback(config, code, verifier) do
+  def verify_callback(config, code, verifier, opts \\ [])
+
+  def verify_callback(%{provider: :github} = config, code, verifier, opts) do
+    PortalWeb.GitHub.verify_callback(config, code, verifier, Keyword.get(opts, :iss))
+  end
+
+  def verify_callback(config, code, verifier, _opts) do
     with {:ok, tokens} <- exchange_code_with_config(config, code, verifier),
          {:ok, claims} <- verify_token_with_config(config, tokens["id_token"], verifier) do
       {:ok, claims, fetch_userinfo_with_config(config, tokens["access_token"])}
     end
+  end
+
+  @doc """
+  Verifies a Google account.
+
+  Without `additional_domains: true` only the signed ID token is read, so no
+  domain is trusted. A personal account returns `domains: nil`. A Workspace
+  account (one with an `hd` claim) returns `{:step_up, %{subject:, hosted_domain:}}`
+  because `hd` alone does not show that the user administers the domain.
+
+  With `additional_domains: true` the access token must also list the
+  Workspace customer's verified domains through the Admin SDK, which Google
+  only allows for administrators. The result lists those domains with `hd`
+  first. Pass `:iss` (the RFC 9207 callback parameter) to reject a mismatched issuer. Pass `:expected_subject` to require the same Google user as the first
+  step. Access tokens are used only for setup and are never returned to the browser.
+  """
+  def verify_google_callback(config, code, verifier, opts \\ []) do
+    additional_domains? = Keyword.get(opts, :additional_domains, false)
+
+    with {:ok, tokens} <- exchange_code_with_config(config, code, verifier),
+         {:ok, %{"email_verified" => true} = claims} <-
+           verify_token_with_config(config, tokens["id_token"], verifier),
+         :ok <- verify_google_issuer(claims, Keyword.get(opts, :iss)),
+         :ok <- verify_google_subject(claims, Keyword.get(opts, :expected_subject)) do
+      verify_google_hosted_domain(claims, tokens, additional_domains?)
+    else
+      {:error, _} = error -> error
+      _ -> {:error, :google_workspace_verification_failed}
+    end
+  end
+
+  defp verify_google_issuer(_claims, nil), do: :ok
+
+  defp verify_google_issuer(%{"iss" => token_issuer}, iss) when is_binary(token_issuer) do
+    if google_issuer(token_issuer) == google_issuer(iss),
+      do: :ok,
+      else: {:error, :google_issuer_mismatch}
+  end
+
+  defp verify_google_issuer(_claims, _iss), do: {:error, :google_issuer_mismatch}
+
+  defp google_issuer(issuer) when is_binary(issuer), do: String.replace_prefix(issuer, "https://", "")
+  defp google_issuer(_issuer), do: nil
+
+  defp verify_google_subject(_claims, nil), do: :ok
+
+  defp verify_google_subject(%{"sub" => subject}, expected) when is_binary(subject) do
+    if byte_size(subject) == byte_size(expected) and Plug.Crypto.secure_compare(subject, expected),
+      do: :ok,
+      else: {:error, :google_account_mismatch}
+  end
+
+  defp verify_google_subject(_claims, _expected), do: {:error, :google_account_mismatch}
+
+  defp verify_google_hosted_domain(claims, _tokens, false) do
+    case Map.fetch(claims, "hd") do
+      :error ->
+        {:ok, %{issuer: claims["iss"], domains: nil, name: nil}}
+
+      {:ok, hosted_domain} when is_binary(hosted_domain) and hosted_domain != "" ->
+        verify_google_step_up(claims, hosted_domain)
+
+      _ ->
+        {:error, :google_workspace_verification_failed}
+    end
+  end
+
+  defp verify_google_hosted_domain(claims, tokens, true) do
+    case Map.fetch(claims, "hd") do
+      {:ok, hosted_domain} when is_binary(hosted_domain) and hosted_domain != "" ->
+        verify_google_workspace(claims, tokens, hosted_domain)
+
+      _ ->
+        {:error, :google_workspace_verification_failed}
+    end
+  end
+
+  defp verify_google_step_up(%{"sub" => subject}, hosted_domain)
+       when is_binary(subject) and subject != "" do
+    {:step_up, %{subject: subject, hosted_domain: String.downcase(hosted_domain)}}
+  end
+
+  defp verify_google_step_up(_claims, _hosted_domain),
+    do: {:error, :google_workspace_verification_failed}
+
+  defp verify_google_workspace(claims, tokens, hosted_domain) do
+    with access_token when is_binary(access_token) <- tokens["access_token"],
+         {:ok, %Req.Response{status: 200, body: %{"domains" => domains}}} when is_list(domains) <-
+           Google.APIClient.get_domains(access_token),
+         verified_domains = google_verified_domains(domains),
+         :ok <- verify_google_workspace_domain(claims, verified_domains) do
+      primary_domain = Enum.find(domains, &(&1["isPrimary"] == true and &1["verified"] == true))
+      name = if(primary_domain, do: primary_domain["domainName"], else: hosted_domain)
+      first_domain = String.downcase(hosted_domain)
+      domains = [first_domain | Enum.reject(verified_domains, &(&1 == first_domain))]
+      {:ok, %{issuer: claims["iss"], domains: domains, name: name}}
+    else
+      {:error, _} = error -> error
+      _ -> {:error, :google_workspace_verification_failed}
+    end
+  end
+
+  defp google_verification_scope(opts) do
+    if Keyword.get(opts, :additional_domains, false),
+      do: "openid email profile " <> @google_domains_scope,
+      else: "openid email profile"
+  end
+
+  defp google_verified_domains(domains) do
+    domains
+    |> Enum.flat_map(fn domain -> [domain | Map.get(domain, "domainAliases", [])] end)
+    |> Enum.filter(&(&1["verified"] == true))
+    |> Enum.map(&(&1["domainName"] || &1["domainAliasName"]))
+    |> Enum.filter(&(is_binary(&1) and &1 != ""))
+    |> Enum.map(&String.downcase/1)
+    |> Enum.uniq()
+    |> Enum.sort()
   end
 
   @doc false
@@ -540,9 +841,9 @@ defmodule PortalWeb.OIDC do
   from the cryptographically verified ID token after requiring it to match the
   tenant selected by the preceding admin-consent callback.
   """
-  def verify_entra_callback(config, code, verifier, expected_tenant_id) do
+  def verify_entra_callback(config, code, verifier, expected_tenant_id, opts \\ []) do
     with {:ok, expected_tenant_id} <- normalize_entra_tenant_id(expected_tenant_id),
-         {:ok, tokens} <- exchange_code_with_config(config, code, verifier),
+         {:ok, tokens} <- exchange_code_with_config(config, code, verifier, opts),
          id_token when is_binary(id_token) <- tokens["id_token"],
          {:ok, claims} <- verify_token_with_config(config, id_token),
          {:ok, tenant_id, issuer} <- verify_entra_tenant_claims(claims),
@@ -575,6 +876,21 @@ defmodule PortalWeb.OIDC do
       :error -> {:error, :invalid_entra_tenant}
     end
   end
+
+  @doc """
+  Reads the tenant from an admin consent error saying the app's service
+  principal already exists (AADSTS650051). Entra reports that for a repeated or
+  concurrent consent, so the consent still stands and the caller can continue to
+  the tenant proof, which verifies the tenant from a signed ID token.
+  """
+  def entra_service_principal_exists_tenant("AADSTS650051" <> _ = description) do
+    case Regex.run(~r/for the tenant ([0-9a-f-]{36})/i, description, capture: :all_but_first) do
+      [tenant_id] -> {:ok, tenant_id}
+      _ -> :error
+    end
+  end
+
+  def entra_service_principal_exists_tenant(_description), do: :error
 
   @doc """
   Returns whether the verified Entra identity has a tenant-wide role authorized
@@ -627,11 +943,6 @@ defmodule PortalWeb.OIDC do
 
   # This can be refactored to reduce duplication with config_for_provider/1.
 
-  defp verification_config_for_type("google", opts) do
-    Application.fetch_env!(:portal, Portal.Google.AuthProvider)
-    |> verification_config(opts)
-  end
-
   defp verification_config_for_type("entra", opts) do
     Application.fetch_env!(:portal, Portal.Entra.AuthProvider)
     |> verification_config(opts)
@@ -653,9 +964,14 @@ defmodule PortalWeb.OIDC do
     |> Enum.into(%{redirect_uri: callback_url()})
   end
 
-  defp entra_verification_config(config, scope, admin_consent_scope) do
+  defp entra_verification_config(
+         config,
+         scope,
+         admin_consent_scope,
+         discovery_document_uri \\ @entra_organizations_discovery_document_uri
+       ) do
     config
-    |> Keyword.put(:discovery_document_uri, @entra_organizations_discovery_document_uri)
+    |> Keyword.put(:discovery_document_uri, discovery_document_uri)
     |> Keyword.put(:response_type, "code")
     |> Keyword.put(:scope, scope)
     |> Keyword.put(:admin_consent_scope, admin_consent_scope)
@@ -755,6 +1071,30 @@ defmodule PortalWeb.OIDC do
 
   defp verify_entra_tenant_claims(_claims),
     do: {:error, {:invalid_entra_id_token, :missing_tenant}}
+
+  # The multi-tenant discovery document accepts a token from any tenant.
+  # B2B guests only get a token from the inviting tenant when they sign in through
+  # that tenant's endpoint; /organizations issues it from their home tenant.
+  defp maybe_put_entra_sign_in_tenant(config, %Entra.AuthProvider{sign_in_tenant_id: nil}),
+    do: config
+
+  defp maybe_put_entra_sign_in_tenant(config, %Entra.AuthProvider{sign_in_tenant_id: tenant_id}) do
+    Map.put(
+      config,
+      :discovery_document_uri,
+      @entra_issuer_prefix <> tenant_id <> @entra_issuer_suffix <> "/.well-known/openid-configuration"
+    )
+  end
+
+  defp verify_entra_provider_tenant(claims, %Entra.AuthProvider{tenant_ids: tenant_ids}) do
+    case verify_entra_tenant_claims(claims) do
+      {:ok, tenant_id, _issuer} ->
+        if tenant_id in tenant_ids,
+          do: :ok,
+          else: {:error, {:invalid_jwt, "token was issued by another tenant"}}
+      _ -> {:error, {:invalid_jwt, "token was issued by another tenant"}}
+    end
+  end
 
   defp verify_entra_principal_claims(%{"oid" => principal_id} = claims)
        when is_binary(principal_id) do

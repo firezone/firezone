@@ -1,0 +1,330 @@
+defmodule Portal.Devices.PostureTest do
+  use Portal.DataCase, async: true
+
+  import Portal.ActorFixtures
+  import Portal.DefenderFixtures
+  import Portal.DeviceFixtures
+  import Portal.DevicePostureFixtures
+  import Portal.IntuneFixtures
+  import Portal.IruFixtures
+  import Portal.SantaFixtures
+  import Portal.SentinelOneFixtures
+  import Portal.SophosFixtures
+
+  alias Portal.Devices.Posture
+
+  setup do
+    account = device_posture_account_fixture()
+    actor = actor_fixture(type: :account_admin_user, account: account)
+    %{account: account, actor: actor}
+  end
+
+  describe "match/2" do
+    test "returns nothing for a device with no identifiers", %{account: account, actor: actor} do
+      intune_device_fixture(provider: intune_posture_provider_fixture(account: account))
+      client = client_fixture(account: account, actor: actor, device_serial: nil)
+      assert Posture.match(client) == []
+    end
+
+    test "returns nothing when the account has no providers", %{account: account, actor: actor} do
+      client = client_fixture(account: account, actor: actor, device_serial: "SER-1")
+      assert Posture.match(client) == []
+    end
+
+    test "returns nothing for a gateway", %{account: account} do
+      assert Posture.match(gateway_fixture(account: account)) == []
+    end
+
+    test "matches an MDM row on the attested device id first", %{account: account, actor: actor} do
+      provider = intune_posture_provider_fixture(account: account)
+      by_id = intune_device_fixture(provider: provider, intune_id: "mdm-1", serial_number: "OTHER")
+      by_serial = intune_device_fixture(provider: provider, serial_number: "SER-1")
+
+      client =
+        client_fixture(
+          account: account,
+          actor: actor,
+          last_attested_mdm_device_id: "mdm-1",
+          last_attested_device_serial: "SER-1"
+        )
+
+      matched = Posture.match(client)
+      assert {:intune, %{intune_id: "mdm-1"}, :mdm_device_id, nil} = Enum.find(matched, &(elem(&1, 1).intune_id == by_id.intune_id))
+      assert {:intune, %{serial_number: "SER-1"}, :attested_serial, nil} = Enum.find(matched, &(elem(&1, 1).intune_id == by_serial.intune_id))
+      assert length(matched) == 2
+    end
+
+    test "credits a self-reported serial as the weakest rung", %{account: account, actor: actor} do
+      santa_device_fixture(provider: santa_posture_provider_fixture(account: account), serial_number: "SER-1")
+      sentinelone_device_fixture(provider: sentinelone_posture_provider_fixture(account: account), serial_number: "SER-1")
+      sophos_device_fixture(provider: sophos_posture_provider_fixture(account: account), serial_number: "SER-1")
+      iru_device_fixture(provider: iru_posture_provider_fixture(account: account), serial_number: "SER-1")
+      client = client_fixture(account: account, actor: actor, device_serial: "SER-1")
+
+      matched = Posture.match(client)
+
+      assert Enum.map(matched, &{elem(&1, 0), elem(&1, 2)}) |> Enum.sort() ==
+               [iru: :device_serial, santa: :device_serial, sentinelone: :device_serial, sophos: :device_serial]
+    end
+
+    test "ignores the self-reported serial of a device that attested", %{account: account, actor: actor} do
+      provider = intune_posture_provider_fixture(account: account)
+      own = intune_device_fixture(provider: provider, serial_number: "OWN", compliance_state: "noncompliant")
+      intune_device_fixture(provider: provider, serial_number: "OTHER", compliance_state: "compliant")
+      santa_device_fixture(provider: santa_posture_provider_fixture(account: account), serial_number: "OTHER")
+
+      client = client_fixture(account: account, actor: actor, last_attested_device_serial: "OWN", device_serial: "OTHER")
+
+      assert [{:intune, row, :attested_serial, nil}] = Posture.match(client)
+      assert row.intune_id == own.intune_id
+
+      by_mdm_id = client_fixture(account: account, actor: actor, last_attested_mdm_device_id: own.intune_id, device_serial: "OTHER")
+      assert [{:intune, %{intune_id: id}, :mdm_device_id, nil}] = Posture.match(by_mdm_id)
+      assert id == own.intune_id
+    end
+
+    test "matches Sophos on the attested serial, and never an endpoint that reports none", %{account: account, actor: actor} do
+      provider = sophos_posture_provider_fixture(account: account)
+      mac = sophos_device_fixture(provider: provider, serial_number: "SER-1")
+      sophos_device_fixture(provider: provider, serial_number: nil, os_platform: "windows")
+      client = client_fixture(account: account, actor: actor, device_serial: nil, last_attested_device_serial: "SER-1")
+
+      assert [{:sophos, row, :attested_serial, nil}] = Posture.match(client)
+      assert row.sophos_id == mac.sophos_id
+    end
+
+    test "matches only the most recently seen Sophos record of a serial", %{account: account, actor: actor} do
+      provider = sophos_posture_provider_fixture(account: account)
+      now = DateTime.utc_now() |> DateTime.truncate(:microsecond)
+
+      sophos_device_fixture(provider: provider, serial_number: "SER-1", last_seen_at: DateTime.add(now, -30, :day))
+      current = sophos_device_fixture(provider: provider, serial_number: "SER-1", last_seen_at: now)
+      sophos_device_fixture(provider: provider, serial_number: "SER-1", last_seen_at: nil)
+
+      client = client_fixture(account: account, actor: actor, last_attested_device_serial: "SER-1")
+
+      assert [{:sophos, row, :attested_serial, nil}] = Posture.match(client)
+      assert row.sophos_id == current.sophos_id
+    end
+
+    test "a disabled provider's newer Sophos record does not hide an enabled one from policies", %{account: account, actor: actor} do
+      now = DateTime.utc_now() |> DateTime.truncate(:microsecond)
+      enabled = sophos_device_fixture(provider: sophos_posture_provider_fixture(account: account), serial_number: "SER-1", last_seen_at: DateTime.add(now, -1, :day))
+      disabled = sophos_posture_provider_fixture(account: account, is_disabled: true)
+      sophos_device_fixture(provider: disabled, serial_number: "SER-1", last_seen_at: now)
+
+      client = client_fixture(account: account, actor: actor, device_serial: "SER-1")
+
+      assert %{sophos: [row]} = Posture.rows_by_type(client)
+      assert row.sophos_id == enabled.sophos_id
+    end
+
+    test "matches only the most recently seen record of a serial for every provider", %{account: account, actor: actor} do
+      now = DateTime.utc_now() |> DateTime.truncate(:microsecond)
+      old = DateTime.add(now, -30, :day)
+
+      intune = intune_posture_provider_fixture(account: account)
+      intune_device_fixture(provider: intune, serial_number: "SER-1", last_sync_at: old)
+      intune_current = intune_device_fixture(provider: intune, serial_number: "SER-1", last_sync_at: now)
+
+      iru = iru_posture_provider_fixture(account: account)
+      iru_device_fixture(provider: iru, serial_number: "SER-1", last_check_in_at: old)
+      iru_current = iru_device_fixture(provider: iru, serial_number: "SER-1", last_check_in_at: now)
+
+      santa = santa_posture_provider_fixture(account: account)
+      santa_device_fixture(provider: santa, serial_number: "SER-1", last_sync_at: old)
+      santa_current = santa_device_fixture(provider: santa, serial_number: "SER-1", last_sync_at: now)
+
+      sentinelone = sentinelone_posture_provider_fixture(account: account)
+      sentinelone_device_fixture(provider: sentinelone, serial_number: "SER-1") |> touch(last_active_at: old)
+      sentinelone_current = sentinelone_device_fixture(provider: sentinelone, serial_number: "SER-1") |> touch(last_active_at: now)
+
+      client = client_fixture(account: account, actor: actor, device_serial: "SER-1")
+
+      assert client |> Posture.match() |> Enum.map(&Ecto.primary_key(elem(&1, 1))) |> Enum.sort() ==
+               Enum.sort(Enum.map([intune_current, iru_current, santa_current, sentinelone_current], &Ecto.primary_key/1))
+    end
+
+    test "keeps the record whose device id the certificate attested over a newer one with its serial", %{account: account, actor: actor} do
+      now = DateTime.utc_now() |> DateTime.truncate(:microsecond)
+      provider = intune_posture_provider_fixture(account: account)
+      attested = intune_device_fixture(provider: provider, intune_id: "mdm-1", serial_number: "SER-1", last_sync_at: DateTime.add(now, -1, :day))
+      intune_device_fixture(provider: provider, serial_number: "SER-1", last_sync_at: now)
+
+      client = client_fixture(account: account, actor: actor, last_attested_mdm_device_id: "mdm-1", last_attested_device_serial: "SER-1")
+
+      assert [{:intune, row, :mdm_device_id, nil}] = Posture.match(client)
+      assert row.intune_id == attested.intune_id
+    end
+
+    test "reaches the Defender machine Defender did not merge away, then the most recently seen", %{account: account, actor: actor} do
+      now = DateTime.utc_now() |> DateTime.truncate(:microsecond)
+      intune_device_fixture(provider: intune_posture_provider_fixture(account: account), serial_number: "SER-1", entra_device_id: "entra-1")
+      defender = defender_posture_provider_fixture(account: account)
+
+      defender_device_fixture(provider: defender, entra_device_id: "entra-1", last_seen_at: now)
+      |> touch(merged_into_machine_id: "survivor")
+
+      survivor = defender_device_fixture(provider: defender, entra_device_id: "entra-1", last_seen_at: DateTime.add(now, -2, :day))
+      defender_device_fixture(provider: defender, entra_device_id: "entra-1", last_seen_at: DateTime.add(now, -9, :day))
+
+      client = client_fixture(account: account, actor: actor, device_serial: "SER-1")
+
+      assert %{defender: [row]} = Posture.rows_by_type(client)
+      assert row.defender_id == survivor.defender_id
+    end
+
+    test "matches Iru on its device id", %{account: account, actor: actor} do
+      iru_device_fixture(provider: iru_posture_provider_fixture(account: account), iru_id: "iru-1")
+      client = client_fixture(account: account, actor: actor, last_attested_mdm_device_id: "iru-1")
+      assert [{:iru, %{iru_id: "iru-1"}, :mdm_device_id, nil}] = Posture.match(client)
+    end
+
+    test "reaches Defender through the matched Intune row and inherits its rung", %{account: account, actor: actor} do
+      intune_device_fixture(provider: intune_posture_provider_fixture(account: account), serial_number: "SER-1", entra_device_id: "entra-1")
+      defender_device_fixture(provider: defender_posture_provider_fixture(account: account), entra_device_id: "entra-1")
+      defender_device_fixture(provider: defender_posture_provider_fixture(account: account), entra_device_id: "entra-2")
+      client = client_fixture(account: account, actor: actor, device_serial: "SER-1")
+
+      matched = Posture.match(client)
+      assert [{:defender, %{entra_device_id: "entra-1"}, :device_serial, :intune}] = Enum.filter(matched, &(elem(&1, 0) == :defender))
+    end
+
+    test "does not reach Defender through non-Intune rows or an Intune row without an Entra id", %{account: account, actor: actor} do
+      santa_device_fixture(provider: santa_posture_provider_fixture(account: account), serial_number: "SER-1")
+      intune_device_fixture(provider: intune_posture_provider_fixture(account: account), serial_number: "SER-1", entra_device_id: nil)
+      defender_device_fixture(provider: defender_posture_provider_fixture(account: account), entra_device_id: "entra-1")
+      client = client_fixture(account: account, actor: actor, device_serial: "SER-1")
+
+      assert Posture.match(client) |> Enum.map(&elem(&1, 0)) |> Enum.sort() == [:intune, :santa]
+    end
+
+    test "does not reach Defender without a matched Intune row", %{account: account, actor: actor} do
+      intune_posture_provider_fixture(account: account)
+      defender_device_fixture(provider: defender_posture_provider_fixture(account: account), entra_device_id: "entra-1")
+      client = client_fixture(account: account, actor: actor, device_serial: "SER-1")
+      assert Posture.match(client) == []
+    end
+
+    test "never matches rows of another account", %{account: account, actor: actor} do
+      intune_device_fixture(serial_number: "SER-1")
+      intune_posture_provider_fixture(account: account)
+      client = client_fixture(account: account, actor: actor, device_serial: "SER-1")
+      assert Posture.match(client) == []
+    end
+  end
+
+  describe "rows_by_type/2" do
+    test "groups the matched rows by provider type", %{account: account, actor: actor} do
+      provider = intune_posture_provider_fixture(account: account)
+      intune_device_fixture(provider: provider, serial_number: "SER-1", entra_device_id: "entra-1")
+      intune_device_fixture(provider: intune_posture_provider_fixture(account: account), serial_number: "SER-1")
+      defender_device_fixture(provider: defender_posture_provider_fixture(account: account), entra_device_id: "entra-1")
+      client = client_fixture(account: account, actor: actor, device_serial: "SER-1")
+
+      rows = Posture.rows_by_type(client)
+      assert Map.keys(rows) |> Enum.sort() == [:defender, :intune]
+      assert length(rows.intune) == 2
+      assert [%Portal.Defender.Device{}] = rows.defender
+    end
+
+    test "is empty when nothing matched", %{account: account, actor: actor} do
+      client = client_fixture(account: account, actor: actor)
+      assert Posture.rows_by_type(client) == %{}
+    end
+
+    test "leaves out the rows of a disabled provider, which match/1 still returns", %{account: account, actor: actor} do
+      provider = intune_posture_provider_fixture(account: account, is_disabled: true)
+      intune_device_fixture(provider: provider, serial_number: "SER-1")
+      client = client_fixture(account: account, actor: actor, device_serial: "SER-1")
+
+      assert Posture.rows_by_type(client) == %{}
+      assert Posture.rows_by_type_all([client]) == %{client.id => %{}}
+      assert [{:intune, %Portal.Intune.Device{}, :device_serial, nil}] = Posture.match(client)
+    end
+  end
+
+  test "rung_rank/1 orders the ladder" do
+    assert Enum.map([:mdm_device_id, :attested_serial, :device_serial], &Posture.rung_rank/1) == [0, 1, 2]
+  end
+
+  test "schema/1 and rung_fields/2 cover every provider type" do
+    for type <- [:intune, :iru, :defender, :santa, :sentinelone, :sophos] do
+      assert Posture.schema(type).__schema__(:source) =~ "devices"
+      assert is_list(Posture.rung_fields(type, :mdm_device_id))
+      assert is_list(Posture.rung_fields(type, :attested_serial))
+    end
+  end
+
+  defp touch(row, changes), do: row |> Ecto.Changeset.change(changes) |> Repo.update!()
+end
+
+defmodule Portal.Devices.PostureKeysTest do
+  use ExUnit.Case, async: true
+
+  alias Portal.Devices.Posture
+
+  test "types/0 and schemas/0 list every provider that syncs rows" do
+    assert Posture.types() == [:intune, :iru, :defender, :santa, :sentinelone, :sophos]
+    assert Posture.schemas() == Enum.map(Posture.types(), &Posture.schema/1)
+
+    for type <- Posture.types() do
+      assert Posture.type(Posture.schema(type)) == type
+    end
+  end
+
+  test "row_keys/1 names the identifiers a row can be matched on" do
+    assert Posture.row_keys(%Portal.Intune.Device{intune_id: "mdm-1", serial_number: "SER-1"}) ==
+             [mdm_device_id: "mdm-1", serial: "SER-1"]
+
+    assert Posture.row_keys(%Portal.Intune.Device{intune_id: "mdm-1", serial_number: nil}) ==
+             [mdm_device_id: "mdm-1"]
+
+    assert Posture.row_keys(%Portal.Iru.Device{iru_id: "mdm-2", serial_number: "SER-2"}) ==
+             [mdm_device_id: "mdm-2", serial: "SER-2"]
+
+    assert Posture.row_keys(%Portal.Santa.Device{santa_id: "x", serial_number: "SER-3"}) == [serial: "SER-3"]
+    assert Posture.row_keys(%Portal.Santa.Device{santa_id: "x", serial_number: nil}) == []
+    assert Posture.row_keys(%Portal.SentinelOne.Device{uuid: "u", serial_number: "SER-4"}) == [serial: "SER-4"]
+    assert Posture.row_keys(%Portal.Sophos.Device{sophos_id: "s", serial_number: "SER-5"}) == [serial: "SER-5"]
+    assert Posture.row_keys(%Portal.Sophos.Device{sophos_id: "s", serial_number: nil}) == []
+  end
+
+  test "row_keys/1 keys a Defender row by its Entra device id alone" do
+    assert Posture.row_keys(%Portal.Defender.Device{defender_id: "d", entra_device_id: "entra-1"}) ==
+             [entra_device_id: "entra-1"]
+
+    assert Posture.row_keys(%Portal.Defender.Device{defender_id: "d", entra_device_id: nil}) == []
+  end
+
+  test "device_keys/1 names the identifiers a client is matched on, without repeats" do
+    device = %Portal.Device{
+      type: :client,
+      last_attested_mdm_device_id: "mdm-1",
+      last_attested_device_serial: "SER-1",
+      device_serial: "SER-1"
+    }
+
+    assert Posture.device_keys(device) == [mdm_device_id: "mdm-1", serial: "SER-1"]
+
+    assert Posture.device_keys(%{device | last_attested_device_serial: "ATTESTED", last_attested_mdm_device_id: nil}) ==
+             [serial: "ATTESTED"]
+
+    assert Posture.device_keys(%Portal.Device{type: :client, device_serial: "SER-1"}) == [serial: "SER-1"]
+    assert Posture.device_keys(%Portal.Device{type: :client}) == []
+  end
+
+  test "entra_keys/1 follows the matched Intune rows" do
+    rows = %{
+      intune: [
+        %Portal.Intune.Device{entra_device_id: "entra-1"},
+        %Portal.Intune.Device{entra_device_id: nil},
+        %Portal.Intune.Device{entra_device_id: "entra-1"}
+      ],
+      defender: [%Portal.Defender.Device{entra_device_id: "entra-2"}]
+    }
+
+    assert Posture.entra_keys(rows) == [entra_device_id: "entra-1"]
+    assert Posture.entra_keys(%{}) == []
+  end
+end

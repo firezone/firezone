@@ -83,14 +83,14 @@ jobs:
       matrix:
         include:
           # mark:next-gateway-version
-          - release_name: gateway-1.6.1
+          - release_name: gateway-1.6.5
             config_name: release-drafter-gateway.yml
           # mark:next-headless-version
-          - release_name: headless-client-1.5.12
+          - release_name: headless-client-1.5.16
             config_name: release-drafter-headless-client.yml
 
     steps:
-      - uses: release-drafter/release-drafter@34d80673e067bdc0c24568d3af899c216adcfaa9 # v7.7.0
+      - uses: release-drafter/release-drafter@978bb0b30c5ee8cdd332ced253758157150d43f0 # v7.10.0
         if: "${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}"
         id: update-release-draft
         with:
@@ -119,9 +119,9 @@ jobs:
         target: [x86_64-pc-windows-msvc]
         package: [firezone-headless-client]
         # mark:next-headless-version
-        release_name: [headless-client-1.5.12]
+        release_name: [headless-client-1.5.16]
         # mark:next-headless-version
-        version: [1.5.12]
+        version: [1.5.16]
     env:
       ARTIFACT_PATH: ${{ matrix.artifact }}_${{ matrix.version }}_${{ matrix.arch }}.exe
       RELEASE_NAME: ${{ matrix.release_name }}
@@ -224,9 +224,9 @@ jobs:
             artifact: firezone-client-headless-linux
             image_name: client
             # mark:next-headless-version
-            release_name: headless-client-1.5.12
+            release_name: headless-client-1.5.16
             # mark:next-headless-version
-            version: 1.5.12
+            version: 1.5.16
           - package: firezone-relay
             artifact: firezone-relay
             image_name: relay
@@ -234,9 +234,9 @@ jobs:
             artifact: firezone-gateway
             image_name: gateway
             # mark:next-gateway-version
-            release_name: gateway-1.6.1
+            release_name: gateway-1.6.5
             # mark:next-gateway-version
-            version: 1.6.1
+            version: 1.6.5
           - package: http-test-server
             artifact: http-test-server
             image_name: http-test-server
@@ -245,9 +245,9 @@ jobs:
       BINARY_DEST_PATH: ${{ matrix.name.artifact }}_${{ matrix.name.version }}_${{ matrix.arch.shortname }}
       SENTRY_ENVIRONMENT: "production"
       RESOLVED_SHA: ${{ inputs.sha || github.sha }}
-      # `firezone-cli` and the `.deb` are only produced for release Gateways, and
-      # only a dispatched build publishes them. On a push, the `.deb` would just
-      # expire unread as an artifact.
+      # The `.deb` is only produced for release Gateways, and only a dispatched
+      # build publishes it. On a push, the `.deb` would just expire unread as an
+      # artifact.
       BUILDS_DEB: ${{ github.event_name == 'workflow_dispatch' && inputs.profile == 'release' && inputs.stage == 'release' && matrix.name.artifact == 'firezone-gateway' }}
     outputs:
       client_image: ${{ steps.image-name.outputs.client_image }}
@@ -267,19 +267,11 @@ jobs:
         with:
           path: rust/target/${{ matrix.arch.target }}/${{ inputs.profile }}/${{ matrix.name.package }}
           key: ${{ matrix.name.package }}-${{ matrix.arch.target }}-${{ inputs.profile }}
-      # `firezone-cli` ships as an asset of the gateway's `.deb`, so it is built
-      # separately below and needs its own entry.
-      - uses: ./.github/actions/setup-rust-binary-cache
-        id: cli-binary-cache
-        if: ${{ env.BUILDS_DEB == 'true' }}
-        with:
-          path: rust/target/${{ matrix.arch.target }}/release/firezone-cli
-          key: firezone-cli-${{ matrix.arch.target }}-release
       # Restored binaries skip every `cargo build` below, so the toolchains only
       # needed to compile them are skipped too. `cargo deb` still needs cargo and
       # `cargo-deb`, and the relay still needs mise to stamp in the commit SHA.
       - uses: ./.github/actions/setup-musl
-        if: ${{ steps.binary-cache.outputs.cache-hit != 'true' || (env.BUILDS_DEB == 'true' && steps.cli-binary-cache.outputs.cache-hit != 'true') }}
+        if: steps.binary-cache.outputs.cache-hit != 'true'
         with:
           target: ${{ matrix.arch.target }}
       - uses: ./.github/actions/setup-rust-stable
@@ -310,11 +302,6 @@ jobs:
             PROFILE="--release"
           else
             PROFILE=""
-            # Build the debug images with `line-tables-only` debug info: keeps
-            # backtraces but roughly halves the binaries, so the images pull
-            # faster/more reliably from ghcr and are smaller in the test-image
-            # artifact. Local `cargo build` is unaffected (keeps full debug).
-            export CARGO_PROFILE_DEV_DEBUG=line-tables-only
           fi
 
           cargo build $PROFILE -p ${{ matrix.name.package }} --target ${{ matrix.arch.target }} --verbose
@@ -337,7 +324,7 @@ jobs:
           cp ${{ matrix.name.package }} "$BINARY_DEST_PATH"
       - name: Azure login (OIDC)
         if: ${{ inputs.profile == 'release' && matrix.stage == 'release' }}
-        uses: azure/login@f5d393ae46f8fde4be8b75f32e3fc50e654ad0ca # v3.0.1
+        uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
         with:
           client-id: ${{ secrets.AZURE_ARTIFACTS_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_ARTIFACTS_TENANT_ID }}
@@ -368,9 +355,6 @@ jobs:
             --auth-mode login \
             --account-name firezoneartifacts
 
-      - name: Build firezone-cli
-        if: ${{ env.BUILDS_DEB == 'true' && steps.cli-binary-cache.outputs.cache-hit != 'true' }}
-        run: cargo build --bin firezone-cli --release --target ${{ matrix.arch.target }}
       - name: Create Firezone Gateway .deb package
         if: ${{ env.BUILDS_DEB == 'true' }}
         run: |
@@ -398,13 +382,13 @@ jobs:
             --account-name firezoneartifacts
       - name: Upload `.deb` artifact
         if: ${{ env.BUILDS_DEB == 'true' }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ${{ env.BINARY_DEST_PATH }}.deb
           path: rust/${{ env.BINARY_DEST_PATH }}.deb
           retention-days: 1
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4.2.0
+        uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
       - name: Set up Docker Buildx
         uses: ./.github/actions/setup-buildx
       - name: Docker meta
@@ -426,7 +410,7 @@ jobs:
       - name: Build Docker images (read-only cache)
         if: ${{ github.ref != 'refs/heads/main' }}
         id: build_ro
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           platforms: ${{ matrix.arch.platform }}
           build-args: |
@@ -445,7 +429,7 @@ jobs:
       - name: Build Docker images (read/write cache)
         if: ${{ github.ref == 'refs/heads/main' }}
         id: build_rw
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           platforms: ${{ matrix.arch.platform }}
           build-args: |
@@ -467,7 +451,7 @@ jobs:
           digest="${{ github.ref == 'refs/heads/main' && steps.build_rw.outputs.digest || steps.build_ro.outputs.digest }}"
           touch "/tmp/digests/${{ matrix.name.image_name }}/${digest#sha256:}"
       - name: Upload digest artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           overwrite: true
           name: ${{ matrix.image_prefix && format('{0}-', matrix.image_prefix) || '' }}${{ matrix.name.image_name }}-${{ env.RESOLVED_SHA }}-digest-${{ matrix.arch.shortname }}
@@ -500,7 +484,7 @@ jobs:
           - name: relay
           - name: gateway
             # mark:next-gateway-version
-            version: 1.6.1
+            version: 1.6.5
           - name: client
             # mark:next-client-version
             version: 1.0.6
@@ -514,7 +498,7 @@ jobs:
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
       - name: Download digests
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: ${{ matrix.image_prefix && format('{0}-', matrix.image_prefix) || '' }}${{ matrix.image.name }}-${{ env.RESOLVED_SHA }}-digest-*
           merge-multiple: true
@@ -568,7 +552,7 @@ jobs:
           severity: CRITICAL,HIGH
       - name: Upload Trivy scan results to GitHub Security tab
         if: ${{ matrix.image.name != 'http-test-server' }}
-        uses: github/codeql-action/upload-sarif@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4.37.7
+        uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
         with:
           sarif_file: trivy-results.sarif
           category: trivy-${{ matrix.image_prefix && format('{0}-', matrix.image_prefix) || '' }}${{ matrix.image.name }}

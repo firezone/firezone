@@ -69,11 +69,6 @@ defmodule Portal.Mailer do
     end
   end
 
-  def deliver_secondary(email, config \\ []) do
-    {result, _email} = deliver_secondary_with_email(email, config)
-    result
-  end
-
   @doc """
   Delivers an email through the secondary adapter and returns the filtered email
   that was submitted to the adapter alongside the delivery result.
@@ -266,6 +261,7 @@ defmodule Portal.Mailer do
       "to" => serialize_addresses(email.to),
       "cc" => serialize_addresses(email.cc),
       "bcc" => serialize_addresses(email.bcc),
+      "reply_to" => serialize_addresses(email.reply_to),
       "from" =>
         case email.from do
           {name, addr} -> %{"name" => name, "address" => addr}

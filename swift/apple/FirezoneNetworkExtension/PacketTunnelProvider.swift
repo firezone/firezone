@@ -34,6 +34,18 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
 
     startTelemetry()
 
+    // A cycle start wakes this process only to drain flow logs, so it never
+    // reaches `connect`. Configure the logger here so that work is not silent.
+    do {
+      try configureLogger(
+        logDir: SharedAccess.connlibLogFolderURL?.path ?? "/tmp/firezone",
+        logFilter: ConfigurationDefaults.logFilter,
+        flowLogsDir: SharedAccess.flowLogsFolderURL?.path
+      )
+    } catch {
+      Log.error(error)
+    }
+
     super.init()
 
     // Log version information immediately on startup
@@ -72,15 +84,27 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     // Extract token from options before any async work
     let passedToken = options?["token"] as? String
 
-    // Load token synchronously - Keychain access is thread-safe
-    guard let token = loadToken(passedToken: passedToken)
-    else {
-      completionHandler(PacketTunnelProviderError.tokenNotFoundInKeychain)
+    // The profile's own identity reference, the fallback when the app pinned none.
+    let profileIdentityReference =
+      (protocolConfiguration as? NETunnelProviderProtocol)?.identityReference
+
+    // Keychain access is thread-safe, so the token loads synchronously. Every
+    // session requires one, including starts initiated by the system or an older app.
+    guard var token = loadToken(passedToken: passedToken) else {
+      completionHandler(PacketTunnelProviderError.credentialNotConfigured)
       return
     }
 
-    // Try to save the token back to the Keychain but continue if we can't
-    handleTokenSave(token)
+    let identityReference =
+      options?["identityReference"] as? Data ?? profileIdentityReference
+
+    Log.info(
+      "VPN client certificate "
+        + (identityReference.map { "will be presented (\($0.count) bytes)" }
+          ?? "will not be presented"))
+
+    // Save new tokens and legacy tokens without settings only after the portal accepts them.
+    let needsTokenSave = passedToken != nil || token.signInSettings == nil
 
     // The firezone id should be initialized by now
     guard let rawId = defaults.string(forKey: "firezoneId")
@@ -98,22 +122,43 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
       return
     }
 
-    let apiURL =
-      providerConfiguration.withMDMOverride(forKey: Configuration.Keys.apiURL)
-      ?? ConfigurationDefaults.apiURL
+    let signInSettings: SignInSettings
+    do {
+      if let savedSettings = token.signInSettings {
+        signInSettings = savedSettings
+      } else if passedToken != nil, let data = options?["signInSettings"] as? Data {
+        signInSettings = try PropertyListDecoder().decode(SignInSettings.self, from: data)
+      } else {
+        signInSettings = SignInSettings(
+          accountSlug: providerConfiguration.withMDMOverride(forKey: Configuration.Keys.accountSlug)
+            ?? ConfigurationDefaults.accountSlug,
+          authURL: providerConfiguration[Configuration.Keys.authURL]
+            ?? ConfigurationDefaults.authURL,
+          apiURL: providerConfiguration.withMDMOverride(forKey: Configuration.Keys.apiURL)
+            ?? ConfigurationDefaults.apiURL
+        )
+      }
+    } catch {
+      Log.error(error)
+      completionHandler(PacketTunnelProviderError.providerConfigurationIsInvalid)
+      return
+    }
+    token.signInSettings = signInSettings
+    let apiURL = signInSettings.apiURL
     let logFilter =
       providerConfiguration.withMDMOverride(forKey: Configuration.Keys.logFilter)
       ?? ConfigurationDefaults.logFilter
-    let accountSlug =
-      providerConfiguration.withMDMOverride(forKey: Configuration.Keys.accountSlug)
-      ?? ConfigurationDefaults.accountSlug
     let internetResourceEnabled = Configuration.parseBool(
       providerConfiguration[Configuration.Keys.internetResourceEnabled],
       default: ConfigurationDefaults.internetResourceEnabled
     )
+    let additionalHostCandidates =
+      (providerConfiguration[Configuration.Keys.additionalHostCandidates]
+      ?? ConfigurationDefaults.additionalHostCandidates)
+      .split(separator: ",")
+      .map(String.init)
 
     Telemetry.setEnvironmentOrClose(apiURL)
-    Telemetry.setUser(firezoneId: firezoneId.encoded, accountSlug: accountSlug)
 
     // Create command channel for Adapter -> Provider communication
     let (commandSender, commandReceiver): (Sender<ProviderCommand>, Receiver<ProviderCommand>) =
@@ -124,8 +169,9 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
       token: token,
       deviceId: firezoneId.uuid,
       logFilter: logFilter,
-      accountSlug: accountSlug,
       internetResourceEnabled: internetResourceEnabled,
+      additionalHostCandidates: additionalHostCandidates,
+      identityReference: identityReference,
       providerCommandSender: commandSender
     )
 
@@ -144,9 +190,11 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     // Start the adapter asynchronously. The Task only captures Sendable values:
     // - adapter: actor (Sendable)
     // - completionHandler: @Sendable
-    Task { @Sendable in
+    // - token: Token (Sendable)
+    Task { @Sendable [token] in
       do {
         try await adapter.start()
+        if needsTokenSave { PacketTunnelProvider.handleTokenSave(token) }
         completionHandler(nil)
       } catch {
         Log.error(error)
@@ -157,13 +205,10 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
 
   /// Loads the token from passed value or Keychain.
   private func loadToken(passedToken: String?) -> Token? {
-    // Try to load saved token from Keychain, continuing if Keychain is unavailable.
-    let keychainToken: Token? = {
-      do { return try Token.load() } catch { Log.error(error) }
-      return nil
-    }()
+    if let token = Token(passedToken) { return token }
 
-    return Token(passedToken) ?? keychainToken
+    do { return try Token.load() } catch { Log.error(error) }
+    return nil
   }
 
   private func loadProviderConfiguration() throws -> [String: String] {
@@ -177,10 +222,23 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     return typed
   }
 
+  // Overridden only to log: the system's sleep and wake callbacks are otherwise silent.
+  override func sleep(completionHandler: @escaping @Sendable () -> Void) {
+    Log.log("sleep")
+
+    completionHandler()
+  }
+
   override func wake() {
-    let adapter = self.adapter
+    Log.log("wake")
+
+    guard let adapter else {
+      Log.warning("Adapter is nil")
+      return
+    }
+
     Task { @Sendable in
-      await adapter?.reset(reason: "awoke from sleep")
+      await adapter.reset(reason: "awoke from sleep")
     }
   }
 
@@ -190,7 +248,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
   override func stopTunnel(
     with reason: NEProviderStopReason, completionHandler: @escaping @Sendable () -> Void
   ) {
-    Log.log("stopTunnel: Reason: \(reason)")
+    Log.log("stopTunnel: Reason: \(Self.describe(reason))")
 
     logCleanupTask = nil
 
@@ -205,21 +263,85 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     }
   }
 
+  /// Names a stop reason, which otherwise logs as `NEProviderStopReason(rawValue: 1)`.
+  ///
+  /// `userInitiated` is the one worth recognising on sight: it means something asked the
+  /// session to stop rather than the tunnel failing, so the cause is in the app, not here.
+  private static func describe(_ reason: NEProviderStopReason) -> String {
+    let name =
+      switch reason {
+      case .none: "none"
+      case .userInitiated: "userInitiated"
+      case .providerFailed: "providerFailed"
+      case .noNetworkAvailable: "noNetworkAvailable"
+      case .unrecoverableNetworkChange: "unrecoverableNetworkChange"
+      case .providerDisabled: "providerDisabled"
+      case .authenticationCanceled: "authenticationCanceled"
+      case .configurationFailed: "configurationFailed"
+      case .idleTimeout: "idleTimeout"
+      case .configurationDisabled: "configurationDisabled"
+      case .configurationRemoved: "configurationRemoved"
+      case .superceded: "superceded"
+      case .userLogout: "userLogout"
+      case .userSwitch: "userSwitch"
+      case .connectionFailed: "connectionFailed"
+      case .sleep: "sleep"
+      case .appUpdate: "appUpdate"
+      case .internalError: "internalError"
+      @unknown default: "unknown"
+      }
+
+    return "\(name) (\(reason.rawValue))"
+  }
+
   // It would be helpful to be able to encapsulate Errors here. To do that
   // we need to update ProviderMessage to encode/decode Result to and from Data.
   // TODO: Move to a more abstract IPC protocol
   override func handleAppMessage(
     _ message: Data, completionHandler: (@Sendable (Data?) -> Void)? = nil
   ) {
+    let providerMessage: ProviderMessage
     do {
-      let providerMessage = try PropertyListDecoder().decode(ProviderMessage.self, from: message)
+      providerMessage = try PropertyListDecoder().decode(ProviderMessage.self, from: message)
+    } catch {
+      // An app from another version can send messages this build does not know.
+      Log.debug("Ignoring app message we cannot decode: \(error)")
+      completionHandler?(nil)
+      return
+    }
 
+    do {
       switch providerMessage {
 
       case .setInternetResourceEnabled(let enabled):
         let adapter = self.adapter
         Task { @Sendable in
           await adapter?.setInternetResourceEnabled(enabled)
+        }
+        completionHandler?(nil)
+
+      case .setLogFilter(let logFilter):
+        guard let logDir = SharedAccess.connlibLogFolderURL?.path else {
+          Log.error("Cannot update log filter: log directory unavailable")
+          completionHandler?(nil)
+          return
+        }
+
+        do {
+          try configureLogger(
+            logDir: logDir,
+            logFilter: logFilter,
+            flowLogsDir: SharedAccess.flowLogsFolderURL?.path
+          )
+        } catch {
+          Log.error(error)
+        }
+        completionHandler?(nil)
+
+      case .setAdditionalHostCandidates(let ips):
+        let adapter = self.adapter
+        Task { @Sendable in
+          await adapter?.setAdditionalHostCandidates(ips)
         }
         completionHandler?(nil)
 
@@ -240,6 +362,20 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         Task { @Sendable in
           let updates = await adapter.pollUpdates(request)
           completionHandler?(updates)
+        }
+      case .getStatus:
+        let adapter = self.adapter
+        Task { @Sendable in
+          // A cycle start never sets `adapter`, and a real start sets it before it
+          // reports anything, so its absence means no tunnel rather than a young one.
+          let status = await adapter?.tunnelStatus() ?? .disconnected
+          do {
+            completionHandler?(try PropertyListEncoder().encode(status))
+          } catch {
+            // No answer beats a guessed one: the client reports the failure as such.
+            Log.error(error)
+            completionHandler?(nil)
+          }
         }
       case .getEncodedFirezoneId:
         guard let rawId = defaults.string(forKey: "firezoneId") else {
@@ -405,7 +541,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
   }
 
   #if os(macOS)
-    private func handleTokenSave(_ token: Token) {
+    private static func handleTokenSave(_ token: Token) {
       do {
         try token.save()
       } catch let error as KeychainError {
@@ -423,7 +559,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
   #endif
 
   #if os(iOS)
-    private func handleTokenSave(_ token: Token) {
+    private static func handleTokenSave(_ token: Token) {
       do { try token.save() } catch { Log.error(error) }
     }
   #endif
@@ -442,7 +578,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     switch command {
     case .cancelWithError(let sendableError):
       let error: Error =
-        sendableError.isAuthenticationError
+        sendableError.requiresSignIn
         ? FirezoneKit.ConnlibError.sessionExpired(sendableError.message)
         : FirezoneKit.ConnlibError.disconnected(sendableError.message)
       cancelTunnelWithError(error)

@@ -10,12 +10,15 @@ import Foundation
 public enum ProviderMessage: Codable {
   case pollUpdates(StatePollRequest)
   case setInternetResourceEnabled(Bool)
+  case setLogFilter(String)
+  case setAdditionalHostCandidates([String])
   case signOut
   case clearLogs
   case getLogFolderSize
   case exportLogs
   case getEncodedFirezoneId
   case drainFlowLogs
+  case getStatus
 
   enum CodingKeys: String, CodingKey {
     case type
@@ -25,12 +28,15 @@ public enum ProviderMessage: Codable {
   enum MessageType: String, Codable {
     case pollUpdates
     case setInternetResourceEnabled
+    case setLogFilter
+    case setAdditionalHostCandidates
     case signOut
     case clearLogs
     case getLogFolderSize
     case exportLogs
     case getEncodedFirezoneId
     case drainFlowLogs
+    case getStatus
   }
 
   public init(from decoder: Decoder) throws {
@@ -43,6 +49,12 @@ public enum ProviderMessage: Codable {
     case .setInternetResourceEnabled:
       let value = try container.decode(Bool.self, forKey: .value)
       self = .setInternetResourceEnabled(value)
+    case .setLogFilter:
+      let value = try container.decode(String.self, forKey: .value)
+      self = .setLogFilter(value)
+    case .setAdditionalHostCandidates:
+      let value = try container.decode([String].self, forKey: .value)
+      self = .setAdditionalHostCandidates(value)
     case .signOut:
       self = .signOut
     case .clearLogs:
@@ -55,6 +67,8 @@ public enum ProviderMessage: Codable {
       self = .getEncodedFirezoneId
     case .drainFlowLogs:
       self = .drainFlowLogs
+    case .getStatus:
+      self = .getStatus
     }
   }
 
@@ -66,6 +80,12 @@ public enum ProviderMessage: Codable {
       try container.encode(value, forKey: .value)
     case .setInternetResourceEnabled(let value):
       try container.encode(MessageType.setInternetResourceEnabled, forKey: .type)
+      try container.encode(value, forKey: .value)
+    case .setLogFilter(let value):
+      try container.encode(MessageType.setLogFilter, forKey: .type)
+      try container.encode(value, forKey: .value)
+    case .setAdditionalHostCandidates(let value):
+      try container.encode(MessageType.setAdditionalHostCandidates, forKey: .type)
       try container.encode(value, forKey: .value)
     case .signOut:
       try container.encode(MessageType.signOut, forKey: .type)
@@ -79,6 +99,8 @@ public enum ProviderMessage: Codable {
       try container.encode(MessageType.getEncodedFirezoneId, forKey: .type)
     case .drainFlowLogs:
       try container.encode(MessageType.drainFlowLogs, forKey: .type)
+    case .getStatus:
+      try container.encode(MessageType.getStatus, forKey: .type)
     }
   }
 }

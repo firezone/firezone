@@ -213,7 +213,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       join_channel(gateway, site, token)
       assert_push "init", _init_payload
 
-      presence = Portal.Presence.Gateways.Account.list(account.id)
+      presence = Portal.Presence.Devices.Account.list(account.id)
 
       assert %{metas: [%{online_at: online_at, phx_ref: _ref}]} = Map.fetch!(presence, gateway.id)
       assert is_number(online_at)
@@ -1034,7 +1034,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       socket = join_channel(gateway, site, token)
       assert_push "init", _init_payload
 
-      assert Portal.Presence.Gateways.Account.list(gateway.account_id)
+      assert Portal.Presence.Devices.Account.list(gateway.account_id)
              |> Map.has_key?(gateway.id)
 
       # Simulate a Presence shard crash by sending a :DOWN for one of the
@@ -1045,7 +1045,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       send(socket.channel_pid, {:DOWN, make_ref(), :process, shard_pid, :killed})
       :sys.get_state(socket.channel_pid)
 
-      assert Portal.Presence.Gateways.Account.list(gateway.account_id)
+      assert Portal.Presence.Devices.Account.list(gateway.account_id)
              |> Map.has_key?(gateway.id)
     end
 
@@ -1070,7 +1070,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       wait_for(fn ->
         :sys.get_state(socket.channel_pid)
 
-        assert Portal.Presence.Gateways.Account.list(gateway.account_id)
+        assert Portal.Presence.Devices.Account.list(gateway.account_id)
                |> Map.has_key?(gateway.id)
       end)
     end
@@ -1087,7 +1087,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       send(socket.channel_pid, :track_presence)
       :sys.get_state(socket.channel_pid)
 
-      assert Portal.Presence.Gateways.Account.list(gateway.account_id)
+      assert Portal.Presence.Devices.Account.list(gateway.account_id)
              |> Map.has_key?(gateway.id)
     end
   end
@@ -2759,7 +2759,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
              }
     end
 
-    test "does not send resource_updated for static_device_pool filter changes", %{
+    test "does not send resource_updated for device_pool filter changes", %{
       gateway: gateway,
       site: site,
       token: token,
@@ -2768,13 +2768,13 @@ defmodule PortalAPI.Gateway.ChannelTest do
       socket = join_channel(gateway, site, token)
       assert_push "init", _init_payload
 
-      resource = static_device_pool_resource_fixture(account: account)
+      resource = device_pool_resource_fixture(account: account)
 
       old_data = %{
         "id" => resource.id,
         "account_id" => resource.account_id,
         "name" => resource.name,
-        "type" => "static_device_pool",
+        "type" => "device_pool",
         "filters" => [],
         "ip_stack" => nil
       }
@@ -3444,6 +3444,88 @@ defmodule PortalAPI.Gateway.ChannelTest do
                     disconnected_ids: [],
                     connected: []
                   }
+    end
+
+    test "no_relays does not select excluded relays", %{
+      gateway: gateway,
+      site: site,
+      token: token
+    } do
+      relay1 = connect_relay(%{lat: 37.0, lon: -120.0})
+      relay2 = connect_relay(%{lat: 38.0, lon: -121.0})
+      relay3 = connect_relay(%{lat: 39.0, lon: -122.0})
+
+      socket = join_channel(gateway, site, token)
+      assert_push "init", %{relays: _}
+
+      push(socket, "no_relays", %{"excluded_relay_ids" => [relay1.id]})
+
+      assert_push "relays_presence", %{disconnected_ids: [], connected: relays}
+
+      relay_ids = Enum.map(relays, & &1.id) |> Enum.uniq() |> Enum.sort()
+      assert relay_ids == [relay2.id, relay3.id] |> Enum.sort()
+    end
+
+    test "no_relays sends empty connected when all relays are excluded", %{
+      gateway: gateway,
+      site: site,
+      token: token
+    } do
+      relay1 = connect_relay(%{lat: 37.0, lon: -120.0})
+      relay2 = connect_relay(%{lat: 38.0, lon: -121.0})
+
+      socket = join_channel(gateway, site, token)
+      assert_push "init", %{relays: _}
+
+      push(socket, "no_relays", %{"excluded_relay_ids" => [relay1.id, relay2.id]})
+
+      assert_push "relays_presence", %{disconnected_ids: [], connected: []}
+    end
+
+    test "no_relays excludes nothing when excluded_relay_ids is missing, null or empty", %{
+      gateway: gateway,
+      site: site,
+      token: token
+    } do
+      relay1 = connect_relay(%{lat: 37.0, lon: -120.0})
+      relay2 = connect_relay(%{lat: 38.0, lon: -121.0})
+
+      socket = join_channel(gateway, site, token)
+      assert_push "init", %{relays: _}
+
+      for payload <- [%{}, %{"excluded_relay_ids" => nil}, %{"excluded_relay_ids" => []}] do
+        push(socket, "no_relays", payload)
+
+        assert_push "relays_presence", %{disconnected_ids: [], connected: relays}
+
+        relay_ids = Enum.map(relays, & &1.id) |> Enum.uniq() |> Enum.sort()
+        assert relay_ids == [relay1.id, relay2.id] |> Enum.sort()
+      end
+    end
+
+    test "no_relays ignores invalid excluded_relay_ids", %{
+      gateway: gateway,
+      site: site,
+      token: token
+    } do
+      relay1 = connect_relay(%{lat: 37.0, lon: -120.0})
+      relay2 = connect_relay(%{lat: 38.0, lon: -121.0})
+
+      socket = join_channel(gateway, site, token)
+      assert_push "init", %{relays: _}
+
+      push(socket, "no_relays", %{"excluded_relay_ids" => relay1.id})
+
+      assert_push "relays_presence", %{disconnected_ids: [], connected: relays}
+      relay_ids = Enum.map(relays, & &1.id) |> Enum.uniq() |> Enum.sort()
+      assert relay_ids == [relay1.id, relay2.id] |> Enum.sort()
+
+      push(socket, "no_relays", %{
+        "excluded_relay_ids" => ["not-a-uuid", 42, nil, %{"id" => relay2.id}, relay1.id]
+      })
+
+      assert_push "relays_presence", %{disconnected_ids: [], connected: relays}
+      assert relays |> Enum.map(& &1.id) |> Enum.uniq() == [relay2.id]
     end
 
     test "flow_authorized forwards reply to the client channel", %{

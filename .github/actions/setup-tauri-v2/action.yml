@@ -68,13 +68,14 @@ runs:
       id: cache-webview2-installer
       with:
         path: WebView2Installer.exe
-        key: webview2-offline-installer
+        key: webview2-offline-installer-${{ runner.arch }}
     - name: Download the WebView2 standalone installer
       if: ${{ runner.os == 'Windows' && inputs.runtime == 'true' && steps.webview2.outputs.installed != 'true' && steps.cache-webview2-installer.outputs.cache-hit != 'true' }}
       # The "Evergreen" standalone installer from Microsoft
       # <https://developer.microsoft.com/en-us/microsoft-edge/webview2/?form=MA13LH#download>
       # It always serves the current version, so the installed version is not pinned.
-      run: Invoke-WebRequest -Uri https://go.microsoft.com/fwlink/?linkid=2124701 -OutFile WebView2Installer.exe
+      # The installer is per-architecture: `2135522` is ARM64, `2124701` is x64.
+      run: Invoke-WebRequest -Uri https://go.microsoft.com/fwlink/?linkid=${{ runner.arch == 'ARM64' && '2135522' || '2124701' }} -OutFile WebView2Installer.exe
       shell: pwsh
     - name: Install WebView2
       if: ${{ runner.os == 'Windows' && inputs.runtime == 'true' && steps.webview2.outputs.installed != 'true' }}

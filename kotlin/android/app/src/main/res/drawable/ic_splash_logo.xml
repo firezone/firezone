@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The system draws the splash icon into a square and shows the inner two thirds of it, so the
+     mark is inset by a quarter of its own size to land inside what is left visible. -->
+<inset xmlns:android="http://schemas.android.com/apk/res/android"
+    android:drawable="@drawable/ic_firezone_logo"
+    android:inset="6dp" />

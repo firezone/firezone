@@ -5,6 +5,7 @@ defmodule PortalWeb.Router do
     plug :accepts, ["html", "xml"]
     plug :fetch_session
     plug PortalWeb.WebsiteAttribution
+    plug PortalWeb.Cookie.SignUpBrowser
     plug :protect_from_forgery
     plug :fetch_live_flash
     plug :put_root_layout, html: {PortalWeb.Layouts, :root}
@@ -74,16 +75,52 @@ defmodule PortalWeb.Router do
     pipe_through :public
 
     live_session :public_sign_up,
+      session: {PortalWeb.Cookie.SignUpBrowser, :live_session, []},
       on_mount: [
         PortalWeb.LiveHooks.PutDynamicRepo,
-        PortalWeb.LiveHooks.AllowEctoSandbox
+        PortalWeb.LiveHooks.AllowEctoSandbox,
+        PortalWeb.LiveHooks.SetCurrentUri
       ] do
-      live "/sign_up", SignUp, :fill_form
+      live "/sign_up", SignUp, :choose
+      live "/sign_up/email", SignUp, :fill_form
+      live "/sign_up/google", SignUp, :google
+      live "/sign_up/github", SignUp, :github
       live "/verify_sign_up", SignUp, :verify
       live "/find_account", FindAccount
       # Maintained from the LaunchHN - show SignUp form
-      live "/try", SignUp, :fill_form
+      live "/try", SignUp, :choose
     end
+
+    post "/sign_up/:auth_provider_type", OIDCController, :sign_up
+    post "/verify_sign_up", SignUpController, :verify
+    post "/sign_up/:provider/complete", SignUpController, :complete_identity
+  end
+
+  # Machine to machine, so no CSRF protection and no session: the client
+  # authenticates with the code and its PKCE verifier, not with a cookie.
+  pipeline :oauth do
+    plug :accepts, ["json"]
+  end
+
+  scope "/", PortalWeb do
+    pipe_through :oauth
+
+    get "/.well-known/oauth-authorization-server", OAuthMetadataController, :show
+    post "/oauth/token", OAuthController, :token
+    post "/oauth/revoke", OAuthController, :revoke
+  end
+
+  # The authorization endpoint clients are told about. It only picks an account
+  # and hands off to the account scoped one below, which is where sign-in and
+  # consent actually happen.
+  scope "/", PortalWeb do
+    pipe_through :public
+
+    get "/oauth/authorize", OAuthController, :start
+
+    # The account chooser posts the slug back here, the same way the sign-in
+    # chooser posts to /sign_in. It only picks an account and redirects.
+    post "/oauth/authorize", OAuthController, :start
   end
 
   scope "/auth", PortalWeb do
@@ -135,6 +172,7 @@ defmodule PortalWeb.Router do
     post "/sign_in/userpass/:auth_provider_id", UserpassController, :sign_in
 
     live_session :redirect_if_user_is_authenticated,
+      session: {PortalWeb.Cookie.LastUsedProvider, :fetch_state, []},
       on_mount: [
         PortalWeb.LiveHooks.PutDynamicRepo,
         PortalWeb.LiveHooks.AllowEctoSandbox,
@@ -196,6 +234,44 @@ defmodule PortalWeb.Router do
     post "/sign_out", SignOutController, :sign_out
   end
 
+  # Reached from the link in a notification email, so it works without signing in.
+  scope "/:account_id_or_slug", PortalWeb do
+    pipe_through :public
+
+    live_session :unsubscribe,
+      on_mount: [
+        PortalWeb.LiveHooks.PutDynamicRepo,
+        PortalWeb.LiveHooks.AllowEctoSandbox,
+        PortalWeb.LiveHooks.FetchAccount
+      ] do
+      live "/unsubscribe/:token", Unsubscribe
+    end
+  end
+
+  # Approving an app runs on a session of its own, but it is still a portal
+  # session, so the same actors reach it: account admins. The token it leads to
+  # can only ever do what the person approving it can already do.
+  scope "/:account_id_or_slug", PortalWeb do
+    pipe_through [
+      :public,
+      PortalWeb.Plugs.FetchAccount,
+      {PortalWeb.Plugs.FetchSubject,
+       cookie: PortalWeb.Cookie.OAuthSession, session_key: :oauth_session_id},
+      {PortalWeb.Plugs.EnsureAuthenticated, as: "oauth"}
+    ]
+
+    live_session :oauth_consent,
+      on_mount: [
+        PortalWeb.LiveHooks.PutDynamicRepo,
+        PortalWeb.LiveHooks.AllowEctoSandbox,
+        PortalWeb.LiveHooks.FetchAccount,
+        {PortalWeb.LiveHooks.FetchSubject, :oauth},
+        {PortalWeb.LiveHooks.EnsureAuthenticated, :oauth}
+      ] do
+      live "/oauth/authorize", OAuthConsent
+    end
+  end
+
   # Authenticated admin routes
   scope "/:account_id_or_slug", PortalWeb do
     pipe_through [
@@ -234,10 +310,10 @@ defmodule PortalWeb.Router do
       live "/groups/:id/edit", Groups, :edit
       live "/groups/:id", Groups, :show
 
-      # Clients
-      live "/clients", Clients
-      live "/clients/:id/edit", Clients, :edit
-      live "/clients/:id", Clients, :show
+      # Devices
+      live "/devices", Devices
+      live "/devices/:id/edit", Devices, :edit
+      live "/devices/:id", Devices, :show
 
       # Sites
       live "/sites", Sites
@@ -273,12 +349,7 @@ defmodule PortalWeb.Router do
         live "/profile", Profile
         live "/account", Account
 
-        scope "/notifications" do
-          live "/", Notifications
-        end
-
         scope "/api_clients", ApiClients do
-          live "/beta", Beta
           live "/", Index
           live "/new", Index, :new
           live "/:id/edit", Index, :edit
@@ -298,12 +369,14 @@ defmodule PortalWeb.Router do
           live "/new", DirectorySync, :select_type
           live "/:type/new", DirectorySync, :new
           live "/:type/:id/edit", DirectorySync, :edit
+          live "/:type/:id/hook", DirectorySync, :hook
         end
 
         scope "/device_posture" do
           live "/", DevicePosture
-          live "/intune/new", DevicePosture, :new
-          live "/intune/:id/edit", DevicePosture, :edit
+          live "/new", DevicePosture, :select_type
+          live "/:type/new", DevicePosture, :new
+          live "/:type/:id/edit", DevicePosture, :edit
         end
 
         # Log Sinks

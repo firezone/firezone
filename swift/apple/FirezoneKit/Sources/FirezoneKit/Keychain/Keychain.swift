@@ -50,24 +50,20 @@ public enum Keychain {
     }
   }
 
-  public static func load(persistentRef: PersistentRef) -> Data? {
-    let query =
-      [
-        kSecClass: kSecClassGenericPassword,
-        kSecValuePersistentRef: persistentRef,
-        kSecReturnData: true,
-      ] as [CFString: Any]
+  static func loadAttributes(persistentRef: PersistentRef) -> [String: Any] {
+    let query: [CFString: Any] = [
+      kSecClass: kSecClassGenericPassword,
+      kSecValuePersistentRef: persistentRef,
+      kSecReturnData: true,
+      kSecReturnAttributes: true,
+    ]
 
     var result: CFTypeRef?
     let status = SecItemCopyMatching(query as CFDictionary, &result)
 
-    guard status == Result.success.rawValue,
-      let resultData = result as? Data
-    else {
-      return nil
-    }
+    guard status == Result.success.rawValue else { return [:] }
 
-    return resultData
+    return result as? [String: Any] ?? [:]
   }
 
   public static func search(query: [CFString: Any]) -> PersistentRef? {

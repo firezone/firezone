@@ -4,6 +4,7 @@ package dev.firezone.android.features.session.ui
 import androidx.compose.runtime.Immutable
 import dev.firezone.android.core.data.ResourceState
 import dev.firezone.android.core.data.stateSymbol
+import dev.firezone.android.tunnel.model.ConnectedDevice
 import dev.firezone.android.tunnel.model.Resource
 import dev.firezone.android.tunnel.model.ResourceType
 import dev.firezone.android.tunnel.model.Site
@@ -24,6 +25,7 @@ class ResourceUiModel(
     val name: String = resource.name
     val status: StatusEnum = resource.status
     val state: ResourceState = resourceState
+    val devices: List<ConnectedDevice> = resource.devices
 }
 
 fun displayName(
@@ -42,3 +44,5 @@ fun internetResourceDisplayName(
 ): String = "${state.stateSymbol()} ${resource.name}"
 
 fun ResourceUiModel.isInternetResource(): Boolean = this.type == ResourceType.Internet
+
+fun ResourceUiModel.isDevicePool(): Boolean = this.type == ResourceType.DevicePool

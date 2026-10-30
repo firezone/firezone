@@ -1,6 +1,6 @@
 use std::{path::PathBuf, time::Duration};
 
-use anyhow::Context as _;
+use anyhow::{Context as _, Result};
 use logging::err_with_src;
 use serde::Serialize;
 use tauri_plugin_dialog::DialogExt as _;
@@ -9,15 +9,134 @@ use crate::{
     controller::ControllerRequest,
     gui::Managed,
     logging::FileCount,
-    settings::{AdvancedSettings, AdvancedSettingsViewModel, GeneralSettingsViewModel},
+    settings::{
+        AdvancedSettings, AdvancedSettingsPatch, ControlPlane, GeneralSettings,
+        GeneralSettingsViewModel, LogFilterViewModel, MdmSettings,
+    },
 };
+use url::Url;
 
-#[derive(Clone, serde::Deserialize, specta::Type)]
-pub struct GeneralSettingsForm {
-    pub start_minimized: bool,
-    pub start_on_login: bool,
-    pub connect_on_start: bool,
-    pub account_slug: String,
+#[derive(Clone, Default, serde::Deserialize, specta::Type)]
+pub struct ClientSettingsForm {
+    #[serde(default)]
+    pub start_minimized: Option<bool>,
+    #[serde(default)]
+    pub start_on_login: Option<bool>,
+    #[serde(default)]
+    pub connect_on_start: Option<bool>,
+    #[serde(default)]
+    pub account_slug: Option<String>,
+    #[serde(default)]
+    pub control_plane: Option<ControlPlane>,
+    /// Only used for [`ControlPlane::Custom`].
+    #[serde(default)]
+    pub auth_url: Option<String>,
+    /// Only used for [`ControlPlane::Custom`].
+    #[serde(default)]
+    pub api_url: Option<String>,
+}
+
+impl ClientSettingsForm {
+    /// Returns the general settings and the requested advanced settings changes.
+    ///
+    /// A managed URL wins over the saved one, so the form leaves it alone. Saving with
+    /// [`ControlPlane::Custom`] also remembers the URLs for the next time it is picked.
+    pub fn apply(
+        self,
+        mdm_settings: &MdmSettings,
+        general_settings: GeneralSettings,
+        advanced_settings: AdvancedSettings,
+    ) -> Result<(GeneralSettings, AdvancedSettingsPatch)> {
+        let control_plane = self.control_plane.unwrap_or_else(|| {
+            ControlPlane::from_urls(&advanced_settings.auth_url, &advanced_settings.api_url)
+        });
+        let (auth_url, api_url) = self.urls(&advanced_settings)?;
+        let mut general_settings = general_settings;
+        if let Some(start_minimized) = self.start_minimized {
+            general_settings.start_minimized = start_minimized;
+        }
+        if let Some(start_on_login) = self.start_on_login {
+            general_settings.start_on_login = Some(start_on_login);
+        }
+        if let Some(connect_on_start) = self.connect_on_start {
+            general_settings.connect_on_start = Some(connect_on_start);
+        }
+        let selected_cloud = self.control_plane.and_then(ControlPlane::urls).is_some();
+        let patch = AdvancedSettingsPatch {
+            auth_url: ((self.auth_url.is_some() || selected_cloud)
+                && mdm_settings.auth_url.is_none())
+            .then_some(auth_url.clone()),
+            api_url: ((self.api_url.is_some() || selected_cloud) && mdm_settings.api_url.is_none())
+                .then_some(api_url.clone()),
+            log_filter: None,
+        };
+        if let Some(account_slug) = self.account_slug {
+            let account_slug = account_slug.trim();
+            general_settings.account_slug =
+                (!account_slug.is_empty()).then(|| account_slug.to_owned());
+        }
+        if control_plane == ControlPlane::Custom {
+            if self.auth_url.is_some() {
+                general_settings.custom_auth_url = Some(auth_url);
+            } else {
+                general_settings
+                    .custom_auth_url
+                    .get_or_insert_with(|| advanced_settings.auth_url.clone());
+            }
+            if self.api_url.is_some() {
+                general_settings.custom_api_url = Some(api_url);
+            } else {
+                general_settings
+                    .custom_api_url
+                    .get_or_insert_with(|| advanced_settings.api_url.clone());
+            }
+        } else if ControlPlane::from_urls(&advanced_settings.auth_url, &advanced_settings.api_url)
+            == ControlPlane::Custom
+        {
+            general_settings
+                .custom_auth_url
+                .get_or_insert_with(|| advanced_settings.auth_url.clone());
+            general_settings
+                .custom_api_url
+                .get_or_insert_with(|| advanced_settings.api_url.clone());
+        }
+
+        Ok((general_settings, patch))
+    }
+
+    /// Returns the auth and API URLs of the selected control plane, or the typed ones for [`ControlPlane::Custom`].
+    pub fn urls(&self, current: &AdvancedSettings) -> Result<(Url, Url)> {
+        if let Some(urls) = self.control_plane.and_then(ControlPlane::urls) {
+            return Ok(urls);
+        }
+
+        Ok((
+            parse_url(
+                self.auth_url
+                    .as_deref()
+                    .unwrap_or(current.auth_url.as_str()),
+                &["http", "https"],
+            )
+            .context("Invalid auth URL")?,
+            parse_url(
+                self.api_url.as_deref().unwrap_or(current.api_url.as_str()),
+                &["ws", "wss"],
+            )
+            .context("Invalid API URL")?,
+        ))
+    }
+}
+
+fn parse_url(value: &str, schemes: &[&str]) -> Result<Url> {
+    let url = Url::parse(value)?;
+
+    anyhow::ensure!(url.has_host(), "URL has no host");
+    anyhow::ensure!(
+        schemes.contains(&url.scheme()),
+        "URL scheme must be one of {schemes:?}"
+    );
+
+    Ok(url)
 }
 
 #[derive(Clone, Debug, serde::Serialize, specta::Type, PartialEq, Eq)]
@@ -37,14 +156,94 @@ pub struct SessionChanged(pub SessionViewModel);
 pub struct GeneralSettingsChanged(pub GeneralSettingsViewModel);
 
 #[derive(Clone, serde::Serialize, specta::Type, tauri_specta::Event)]
-pub struct AdvancedSettingsChanged(pub AdvancedSettingsViewModel);
+pub struct LogFilterChanged(pub LogFilterViewModel);
 
 #[derive(Clone, serde::Serialize, specta::Type, tauri_specta::Event)]
 pub struct LogsRecounted(pub FileCount);
 
+/// The platform keystore's certificate as the device trust page renders it.
+#[derive(Clone, serde::Serialize, specta::Type, tauri_specta::Event)]
+pub struct X509CertificateChanged(pub Option<X509Certificate>);
+
+/// A certificate the Tunnel service loaded from the platform keystore.
+#[derive(Clone, serde::Serialize, specta::Type)]
+pub struct X509Certificate {
+    pub fields: Vec<X509DetailField>,
+}
+
+/// A label-value row of the certificate, and what is wrong with it.
+#[derive(Clone, serde::Serialize, specta::Type)]
+pub struct X509DetailField {
+    pub label: String,
+    /// What the row carries, [`None`] when it carries nothing.
+    pub value: Option<String>,
+    /// Why the value is not usable as what the row names, [`None`] when it is.
+    pub problem: Option<X509ValidationError>,
+}
+
+/// Mirrors [`x509_keystore::ValidationError`].
+#[derive(Clone, serde::Serialize, specta::Type)]
+pub enum X509ValidationError {
+    Empty,
+    TooLong,
+    Ambiguous,
+    PlaceholderIdentifier,
+    UnknownAttribute,
+    NotYetValid,
+    Expired,
+    MissingClientAuthEku,
+    DigitalSignatureNotAllowed,
+}
+
+impl From<Option<&x509_keystore::ParsedCertificate>> for X509CertificateChanged {
+    fn from(certificate: Option<&x509_keystore::ParsedCertificate>) -> Self {
+        Self(certificate.map(X509Certificate::from))
+    }
+}
+
+impl From<&x509_keystore::ParsedCertificate> for X509Certificate {
+    fn from(certificate: &x509_keystore::ParsedCertificate) -> Self {
+        Self {
+            fields: certificate
+                .detail_fields()
+                .into_iter()
+                .map(X509DetailField::from)
+                .collect(),
+        }
+    }
+}
+
+impl From<x509_keystore::DetailField> for X509DetailField {
+    fn from(field: x509_keystore::DetailField) -> Self {
+        Self {
+            label: field.label,
+            value: field.value,
+            problem: field.problem.map(X509ValidationError::from),
+        }
+    }
+}
+
+impl From<x509_keystore::ValidationError> for X509ValidationError {
+    fn from(error: x509_keystore::ValidationError) -> Self {
+        match error {
+            x509_keystore::ValidationError::Empty => Self::Empty,
+            x509_keystore::ValidationError::TooLong => Self::TooLong,
+            x509_keystore::ValidationError::Ambiguous => Self::Ambiguous,
+            x509_keystore::ValidationError::PlaceholderIdentifier => Self::PlaceholderIdentifier,
+            x509_keystore::ValidationError::UnknownAttribute => Self::UnknownAttribute,
+            x509_keystore::ValidationError::NotYetValid => Self::NotYetValid,
+            x509_keystore::ValidationError::Expired => Self::Expired,
+            x509_keystore::ValidationError::MissingClientAuthEku => Self::MissingClientAuthEku,
+            x509_keystore::ValidationError::DigitalSignatureNotAllowed => {
+                Self::DigitalSignatureNotAllowed
+            }
+        }
+    }
+}
+
 #[tauri::command]
 #[specta::specta]
-pub async fn clear_logs(managed: tauri::State<'_, Managed>) -> Result<()> {
+pub async fn clear_logs(managed: tauri::State<'_, Managed>) -> Result<(), Error> {
     let (tx, rx) = tokio::sync::oneshot::channel();
 
     managed
@@ -60,7 +259,10 @@ pub async fn clear_logs(managed: tauri::State<'_, Managed>) -> Result<()> {
 
 #[tauri::command]
 #[specta::specta]
-pub async fn export_logs(app: tauri::AppHandle, managed: tauri::State<'_, Managed>) -> Result<()> {
+pub async fn export_logs(
+    app: tauri::AppHandle,
+    managed: tauri::State<'_, Managed>,
+) -> Result<(), Error> {
     show_export_dialog(&app, managed.inner().clone())?;
 
     Ok(())
@@ -68,16 +270,16 @@ pub async fn export_logs(app: tauri::AppHandle, managed: tauri::State<'_, Manage
 
 #[tauri::command]
 #[specta::specta]
-pub async fn apply_general_settings(
+pub async fn apply_client_settings(
     managed: tauri::State<'_, Managed>,
-    settings: GeneralSettingsForm,
-) -> Result<()> {
+    settings: ClientSettingsForm,
+) -> Result<(), Error> {
     if managed.inner().inject_faults {
         tokio::time::sleep(Duration::from_secs(2)).await;
     }
 
     managed
-        .send_request(ControllerRequest::ApplyGeneralSettings(Box::new(settings)))
+        .send_request(ControllerRequest::ApplyClientSettings(Box::new(settings)))
         .await?;
 
     Ok(())
@@ -85,41 +287,42 @@ pub async fn apply_general_settings(
 
 #[tauri::command]
 #[specta::specta]
-pub async fn apply_advanced_settings(
+pub async fn apply_log_filter(
     managed: tauri::State<'_, Managed>,
-    settings: AdvancedSettings,
-) -> Result<()> {
+    log_filter: String,
+) -> Result<(), Error> {
+    check_log_filter(&log_filter)?;
+
     if managed.inner().inject_faults {
         tokio::time::sleep(Duration::from_secs(2)).await;
     }
 
     managed
-        .send_request(ControllerRequest::ApplyAdvancedSettings(Box::new(settings)))
+        .send_request(ControllerRequest::ApplyLogFilter(log_filter))
         .await?;
 
     Ok(())
 }
 
-#[tauri::command]
-#[specta::specta]
-pub async fn reset_advanced_settings(managed: tauri::State<'_, Managed>) -> Result<()> {
-    apply_advanced_settings(managed, AdvancedSettings::default()).await?;
+fn check_log_filter(log_filter: &str) -> Result<(), Error> {
+    logging::try_filter::<tracing_subscriber::Registry>(log_filter)
+        .map_err(|e| Error(format!("Invalid log filter: {e}")))?;
 
     Ok(())
 }
 
 #[tauri::command]
 #[specta::specta]
-pub async fn reset_general_settings(managed: tauri::State<'_, Managed>) -> Result<()> {
+pub async fn reset_client_settings(managed: tauri::State<'_, Managed>) -> Result<(), Error> {
     managed
-        .send_request(ControllerRequest::ResetGeneralSettings)
+        .send_request(ControllerRequest::ResetClientSettings)
         .await?;
 
     Ok(())
 }
 
 /// Pops up the "Save File" dialog
-fn show_export_dialog(app: &tauri::AppHandle, managed: Managed) -> Result<()> {
+fn show_export_dialog(app: &tauri::AppHandle, managed: Managed) -> Result<(), Error> {
     let now = chrono::Local::now();
     let datetime_string = now.format("%Y_%m_%d-%H-%M");
     let stem = PathBuf::from(format!("firezone_logs_{datetime_string}"));
@@ -156,7 +359,7 @@ fn show_export_dialog(app: &tauri::AppHandle, managed: Managed) -> Result<()> {
 
 #[tauri::command]
 #[specta::specta]
-pub async fn sign_in(managed: tauri::State<'_, Managed>) -> Result<()> {
+pub async fn sign_in(managed: tauri::State<'_, Managed>) -> Result<(), Error> {
     managed.send_request(ControllerRequest::SignIn).await?;
 
     Ok(())
@@ -164,7 +367,7 @@ pub async fn sign_in(managed: tauri::State<'_, Managed>) -> Result<()> {
 
 #[tauri::command]
 #[specta::specta]
-pub async fn sign_out(managed: tauri::State<'_, Managed>) -> Result<()> {
+pub async fn sign_out(managed: tauri::State<'_, Managed>) -> Result<(), Error> {
     managed.send_request(ControllerRequest::SignOut).await?;
 
     Ok(())
@@ -172,13 +375,11 @@ pub async fn sign_out(managed: tauri::State<'_, Managed>) -> Result<()> {
 
 #[tauri::command]
 #[specta::specta]
-pub async fn update_state(managed: tauri::State<'_, Managed>) -> Result<()> {
+pub async fn update_state(managed: tauri::State<'_, Managed>) -> Result<(), Error> {
     managed.send_request(ControllerRequest::UpdateState).await?;
 
     Ok(())
 }
-
-type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Debug, specta::Type, Serialize)]
 pub struct Error(String);
@@ -186,5 +387,291 @@ pub struct Error(String);
 impl From<anyhow::Error> for Error {
     fn from(error: anyhow::Error) -> Self {
         Self(format!("{error:#}"))
+    }
+}
+
+/// The tauri-specta registry of every command and event the frontend calls.
+///
+/// One constructor serves the app and the bindings test, so the TypeScript the app exports on
+/// startup and the committed file the test pins cannot diverge.
+pub fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
+    tauri_specta::Builder::<tauri::Wry>::new()
+        .events(tauri_specta::collect_events![
+            SessionChanged,
+            GeneralSettingsChanged,
+            LogFilterChanged,
+            LogsRecounted,
+            X509CertificateChanged,
+        ])
+        .commands(tauri_specta::collect_commands![
+            clear_logs,
+            export_logs,
+            apply_client_settings,
+            reset_client_settings,
+            apply_log_filter,
+            sign_in,
+            sign_out,
+            update_state,
+        ])
+        .typ::<Error>()
+}
+
+/// How the TypeScript bindings are rendered.
+///
+/// No external formatter: the export has to produce the same bytes on every machine that runs
+/// it, including one that has no Node toolchain.
+pub fn typescript_exporter() -> specta_typescript::Typescript {
+    specta_typescript::Typescript::default()
+        .bigint(specta_typescript::BigIntExportBehavior::Number)
+        .header("/* eslint-disable */\n// @ts-nocheck\n/* tslint:disable */\n")
+}
+
+/// Where the committed bindings live.
+pub fn bindings_path() -> std::path::PathBuf {
+    std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../src-frontend/generated/bindings.ts")
+}
+
+/// Rewrites the committed bindings from the current view types.
+///
+/// The debug build runs this on startup; `cargo run -p firezone-gui-client --example
+/// export-bindings` runs it without a display server.
+pub fn export_bindings() -> Result<()> {
+    export_bindings_to(&bindings_path())
+}
+
+/// Exports the bindings to `path`, normalized so the committed file satisfies the repo's
+/// hooks: no trailing whitespace, one trailing newline, no formatter involved.
+fn export_bindings_to(path: &std::path::Path) -> Result<()> {
+    specta_builder()
+        .export(typescript_exporter(), path)
+        .context("Failed to export TypeScript bindings")?;
+
+    let exported = std::fs::read_to_string(path).context("Failed to read exported bindings")?;
+    let mut normalized = exported
+        .lines()
+        .map(str::trim_end)
+        .collect::<Vec<_>>()
+        .join("\n");
+    normalized.push('\n');
+    std::fs::write(path, normalized).context("Failed to write normalized bindings")?;
+
+    Ok(())
+}
+
+// Not on Windows: referencing the `tauri::Wry`-typed builder from a test makes the test
+// executable import WebView2Loader.dll, which is not beside it, so the process fails to
+// load before any test runs.
+#[cfg(all(test, not(target_os = "windows")))]
+mod tests {
+    use super::*;
+
+    /// The debug build re-exports the bindings on startup, so a committed file that differs
+    /// from the export dirties the tree of everyone who runs the app.
+    #[test]
+    fn the_committed_bindings_are_what_the_app_exports() {
+        let directory = tempfile::tempdir().unwrap();
+        let exported = directory.path().join("bindings.ts");
+
+        export_bindings_to(&exported).unwrap();
+
+        assert_eq!(
+            std::fs::read_to_string(exported).unwrap(),
+            std::fs::read_to_string(bindings_path()).unwrap(),
+            "the committed bindings.ts is stale: run `cargo run -p firezone-gui-client --example export-bindings`"
+        );
+    }
+
+    #[test]
+    fn a_cloud_control_plane_ignores_the_typed_urls() {
+        let form = client_settings_form(
+            ControlPlane::CloudEu,
+            "not a URL",
+            "wss://ignored.example.com",
+        );
+
+        let (auth_url, api_url) = form.urls(&AdvancedSettings::default()).unwrap();
+
+        assert_eq!(auth_url.as_str(), "https://eu.app.firezone.dev/");
+        assert_eq!(api_url.as_str(), "wss://eu.api.firezone.dev/");
+    }
+
+    #[test]
+    fn custom_uses_the_typed_urls() {
+        let form = client_settings_form(
+            ControlPlane::Custom,
+            "https://firezone.example.com",
+            "wss://api.example.com",
+        );
+
+        let (auth_url, api_url) = form.urls(&AdvancedSettings::default()).unwrap();
+
+        assert_eq!(auth_url.as_str(), "https://firezone.example.com/");
+        assert_eq!(api_url.as_str(), "wss://api.example.com/");
+    }
+
+    #[test]
+    fn custom_rejects_an_invalid_url() {
+        let form = client_settings_form(ControlPlane::Custom, "not a URL", "wss://api.example.com");
+
+        assert!(form.urls(&AdvancedSettings::default()).is_err());
+    }
+
+    #[test]
+    fn accepts_a_log_filter_connlib_can_parse() {
+        assert!(check_log_filter("info,connlib=debug").is_ok());
+        assert!(check_log_filter("").is_ok());
+    }
+
+    #[test]
+    fn rejects_a_log_filter_connlib_cannot_parse() {
+        let Error(message) = check_log_filter("info,connlib=nonsense").unwrap_err();
+
+        assert!(message.starts_with("Invalid log filter: "), "{message}");
+    }
+
+    #[test]
+    fn custom_accepts_local_urls() {
+        let form = client_settings_form(
+            ControlPlane::Custom,
+            "http://localhost:4000",
+            "ws://localhost:8081",
+        );
+
+        assert!(form.urls(&AdvancedSettings::default()).is_ok());
+    }
+
+    #[test]
+    fn custom_rejects_a_url_with_the_wrong_scheme() {
+        let form = client_settings_form(ControlPlane::Custom, "ftp://x", "wss://api.example.com");
+
+        assert!(form.urls(&AdvancedSettings::default()).is_err());
+    }
+
+    #[test]
+    fn saving_custom_remembers_the_urls() {
+        let form = client_settings_form(
+            ControlPlane::Custom,
+            "https://firezone.example.com",
+            "wss://api.example.com",
+        );
+
+        let (general_settings, advanced_settings) = form
+            .apply(
+                &MdmSettings::default(),
+                GeneralSettings::default(),
+                AdvancedSettings::default(),
+            )
+            .unwrap();
+
+        assert_eq!(
+            general_settings.custom_auth_url.unwrap().as_str(),
+            "https://firezone.example.com/"
+        );
+        assert_eq!(
+            general_settings.custom_api_url.unwrap().as_str(),
+            "wss://api.example.com/"
+        );
+        assert_eq!(
+            advanced_settings.auth_url.unwrap().as_str(),
+            "https://firezone.example.com/"
+        );
+    }
+
+    #[test]
+    fn switching_an_existing_custom_configuration_to_cloud_remembers_its_urls() {
+        let saved = AdvancedSettings {
+            auth_url: Url::parse("https://firezone.example.com").unwrap(),
+            api_url: Url::parse("wss://api.example.com").unwrap(),
+            ..AdvancedSettings::default()
+        };
+        let form = client_settings_form(ControlPlane::CloudEu, "", "");
+
+        let (general_settings, advanced_settings) = form
+            .apply(&MdmSettings::default(), GeneralSettings::default(), saved)
+            .unwrap();
+
+        assert_eq!(
+            general_settings.custom_auth_url.unwrap().as_str(),
+            "https://firezone.example.com/"
+        );
+        assert_eq!(
+            general_settings.custom_api_url.unwrap().as_str(),
+            "wss://api.example.com/"
+        );
+        assert_eq!(
+            advanced_settings.auth_url.unwrap().as_str(),
+            "https://eu.app.firezone.dev/"
+        );
+    }
+
+    #[test]
+    fn saving_a_cloud_control_plane_keeps_the_remembered_custom_urls() {
+        let remembered = GeneralSettings {
+            custom_auth_url: Some(Url::parse("https://firezone.example.com").unwrap()),
+            custom_api_url: Some(Url::parse("wss://api.example.com").unwrap()),
+            ..Default::default()
+        };
+        let form = client_settings_form(ControlPlane::CloudUs, "", "");
+
+        let (general_settings, advanced_settings) = form
+            .apply(
+                &MdmSettings::default(),
+                remembered,
+                AdvancedSettings::default(),
+            )
+            .unwrap();
+
+        assert_eq!(
+            general_settings.custom_auth_url.unwrap().as_str(),
+            "https://firezone.example.com/"
+        );
+        assert_eq!(
+            general_settings.custom_api_url.unwrap().as_str(),
+            "wss://api.example.com/"
+        );
+        assert_eq!(
+            advanced_settings.auth_url.unwrap().as_str(),
+            "https://app.firezone.dev/"
+        );
+        assert_eq!(
+            advanced_settings.api_url.unwrap().as_str(),
+            "wss://api.firezone.dev/"
+        );
+    }
+
+    #[test]
+    fn a_managed_url_keeps_the_saved_one() {
+        let mdm_settings = MdmSettings {
+            auth_url: Some(Url::parse("https://managed.example.com").unwrap()),
+            ..Default::default()
+        };
+        let saved = AdvancedSettings {
+            auth_url: Url::parse("https://saved.example.com").unwrap(),
+            ..AdvancedSettings::default()
+        };
+        let form = client_settings_form(ControlPlane::CloudEu, "", "");
+
+        let (_, advanced_settings) = form
+            .apply(&mdm_settings, GeneralSettings::default(), saved)
+            .unwrap();
+
+        assert!(advanced_settings.auth_url.is_none());
+        assert_eq!(
+            advanced_settings.api_url.unwrap().as_str(),
+            "wss://eu.api.firezone.dev/"
+        );
+    }
+
+    fn client_settings_form(
+        control_plane: ControlPlane,
+        auth_url: &str,
+        api_url: &str,
+    ) -> ClientSettingsForm {
+        ClientSettingsForm {
+            control_plane: Some(control_plane),
+            auth_url: Some(auth_url.to_owned()),
+            api_url: Some(api_url.to_owned()),
+            ..Default::default()
+        }
     }
 }

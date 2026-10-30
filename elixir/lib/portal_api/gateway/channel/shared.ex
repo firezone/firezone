@@ -54,21 +54,22 @@ defmodule PortalAPI.Gateway.Channel.Shared do
   The authz durability timer is our fail-closed guarantee: if a queue crashes
   before flushing, the cached authz on the receiver eventually triggers
   a reject so the gateway stops authorizing packets for an authz that
-  has no DB row backing it. The client recovers by tripping ICMP
-  prohibited and requesting a fresh authorization through the normal portal
-  path — closing the loop.
+  has no DB row backing it. The gateway rejects the client's packets with
+  a `no_authorization` p2p control event, upon which the client
+  requests a fresh authorization through the normal portal path, closing
+  the loop.
 
   This function is the manual version of that fail-closed signal. If the
   gateway's local cache ever desyncs from production state (a bug, a
   partial flush we didn't anticipate, an ops mistake), this lets us
-  trigger the same fail-closed → ICMP → re-authorize recovery without
-  waiting for a queue to crash or for the authz durability timer to time out.
+  trigger the same fail-closed → no-authorization → re-authorize
+  recovery without waiting for a queue to crash or for the authz
+  durability timer to time out.
 
-  Integration tests use it to exercise the
-  `icmp_error_unreachable_prohibited_create_new_flow` recovery path
-  end-to-end: the test asserts that even when the gateway is forced into
-  a fail-closed state for a pair, the client correctly recovers and
-  re-authorizes via the portal.
+  Integration tests use it to exercise that recovery path end-to-end:
+  the test asserts that even when the gateway is forced into a fail-closed
+  state for a pair, the client correctly recovers and re-authorizes via
+  the portal.
 
   Do not call from production code paths.
   """
@@ -132,7 +133,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
 
     # Return all connected relays and subscribe to global relay presence
     {:ok, relays} = select_relays(socket)
-    :ok = Presence.Relays.Global.subscribe()
+    :ok = Presence.Relays.subscribe()
 
     account = Database.get_account_by_id!(socket.assigns.gateway.account_id)
 
@@ -183,7 +184,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
   def handle_info(
         %Phoenix.Socket.Broadcast{
           event: "presence_diff",
-          topic: "presences:global_relays" <> _
+          topic: "presences:relays" <> _
         },
         socket
       ) do
@@ -261,7 +262,8 @@ defmodule PortalAPI.Gateway.Channel.Shared do
             Views.Relay.render_many(
               relays,
               socket.assigns.gateway.public_key,
-              @relay_credentials_expire_at
+              @relay_credentials_expire_at,
+              socket.assigns.gateway.account_id
             )
         })
 
@@ -704,8 +706,8 @@ defmodule PortalAPI.Gateway.Channel.Shared do
     {:noreply, assign(socket, iceless_capable: payload["iceless"] == true)}
   end
 
-  def handle_in("no_relays", _payload, socket) do
-    {:ok, relays} = select_relays(socket)
+  def handle_in("no_relays", payload, socket) do
+    {:ok, relays} = select_relays(socket, excluded_relay_ids(payload))
     socket = cache_relays(socket, relays)
 
     push(socket, "relays_presence", %{
@@ -714,7 +716,8 @@ defmodule PortalAPI.Gateway.Channel.Shared do
         Views.Relay.render_many(
           relays,
           socket.assigns.gateway.public_key,
-          @relay_credentials_expire_at
+          @relay_credentials_expire_at,
+          socket.assigns.gateway.account_id
         )
     })
 
@@ -788,6 +791,17 @@ defmodule PortalAPI.Gateway.Channel.Shared do
     assign(socket, :cached_relay_ids, cached_relay_ids)
   end
 
+  defp excluded_relay_ids(%{"excluded_relay_ids" => ids}) when is_list(ids) do
+    Enum.flat_map(ids, fn id ->
+      case Ecto.UUID.cast(id) do
+        {:ok, id} -> [id]
+        :error -> []
+      end
+    end)
+  end
+
+  defp excluded_relay_ids(_payload), do: []
+
   defp init(socket, account, relays) do
     push(socket, "init", %{
       flow_logs: flow_logs_config(),
@@ -798,7 +812,8 @@ defmodule PortalAPI.Gateway.Channel.Shared do
         Views.Relay.render_many(
           relays,
           socket.assigns.gateway.public_key,
-          @relay_credentials_expire_at
+          @relay_credentials_expire_at,
+          socket.assigns.gateway.account_id
         ),
       # These aren't used but needed for API compatibility
       config: %{
@@ -942,8 +957,8 @@ defmodule PortalAPI.Gateway.Channel.Shared do
          },
          socket
        )
-       when old_filters != filters and type != :static_device_pool and
-              old_type != :static_device_pool do
+       when old_filters != filters and type != :device_pool and
+              old_type != :device_pool do
     # Send regardless of cache state - if the Gateway has no policy_authorizations for this resource,
     # it will simply ignore the message.
     resource = Cache.Cacheable.to_cache(resource)
@@ -1146,17 +1161,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
       sup_pid ->
         gateway = socket.assigns.gateway
 
-        session_meta = %{
-          site_id: gateway.site_id,
-          public_key: gateway.public_key,
-          psk_base: gateway.psk_base,
-          version: gateway.last_seen_version,
-          remote_ip: gateway.last_seen_remote_ip,
-          remote_ip_location_lat: gateway.last_seen_remote_ip_location_lat,
-          remote_ip_location_lon: gateway.last_seen_remote_ip_location_lon
-        }
-
-        :ok = Presence.Gateways.connect(gateway, socket.assigns.token_id, session_meta)
+        :ok = Presence.Devices.connect(gateway, socket.assigns.token_id)
 
         for {_pid, ref} <- socket.assigns[:presence_monitors] || [] do
           Process.demonitor(ref, [:flush])

@@ -24,18 +24,17 @@ defmodule Portal.Mailer.SyncEmail do
     )
   end
 
-  def device_integration_error_email(integration, recipients) do
-    error_email(integration, recipients,
-      subject: "Device Integration Error - #{integration.name}",
-      settings_url: url(~p"/#{integration.account}/settings/device_posture"),
-      noun: "device integration",
-      record_label: "Integration",
-      details_heading: "Device Integration Details",
-      settings_link_text: "device integration settings",
-      settings_action: "to re-grant admin consent and enable syncing.",
-      details_rows: [{"Tenant ID", integration.tenant_id}],
-      remediation:
-        "Please verify the Firezone app registration still has admin consent in Microsoft Entra."
+  def posture_provider_error_email(provider, recipients) do
+    error_email(provider, recipients,
+      subject: "Posture Provider Error - #{provider.name}",
+      settings_url: url(~p"/#{provider.account}/settings/device_posture"),
+      noun: "posture provider",
+      record_label: "Provider",
+      details_heading: "Posture Provider Details",
+      settings_link_text: "device posture settings",
+      settings_action: "to verify the provider again and enable syncing.",
+      details_rows: provider_details_rows(provider),
+      remediation: provider_remediation(provider)
     )
   end
 
@@ -64,4 +63,40 @@ defmodule Portal.Mailer.SyncEmail do
     do: bcc_recipients(email, recipients)
 
   defp put_recipients(email, recipient), do: to(email, recipient)
+
+  defp provider_details_rows(%Portal.Intune.PostureProvider{} = provider),
+    do: [{"Tenant ID", provider.tenant_id}]
+
+  defp provider_details_rows(%Portal.Iru.PostureProvider{} = provider),
+    do: [{"Subdomain", provider.subdomain}, {"Region", String.upcase(to_string(provider.region))}]
+
+  defp provider_details_rows(%Portal.Defender.PostureProvider{} = provider),
+    do: [{"Tenant ID", provider.tenant_id}]
+
+  defp provider_details_rows(%Portal.Santa.PostureProvider{} = provider),
+    do: [{"Workshop URL", provider.api_url}]
+
+  defp provider_details_rows(%Portal.SentinelOne.PostureProvider{} = provider),
+    do: [{"Management URL", provider.management_url}]
+
+  defp provider_details_rows(%Portal.Sophos.PostureProvider{} = provider),
+    do: [{"Tenant ID", provider.tenant_id}]
+
+  defp provider_remediation(%Portal.Intune.PostureProvider{}),
+    do: "Please verify the Firezone app registration still has admin consent in Microsoft Entra."
+
+  defp provider_remediation(%Portal.Iru.PostureProvider{}),
+    do: "Please verify the Iru API token is still valid and can read devices."
+
+  defp provider_remediation(%Portal.Defender.PostureProvider{}),
+    do: "Please verify the Firezone app registration still has admin consent in Microsoft Entra."
+
+  defp provider_remediation(%Portal.Santa.PostureProvider{}),
+    do: "Please verify the Workshop API key is still valid and can read hosts."
+
+  defp provider_remediation(%Portal.SentinelOne.PostureProvider{}),
+    do: "Please verify the SentinelOne API token is still valid and can view endpoints."
+
+  defp provider_remediation(%Portal.Sophos.PostureProvider{}),
+    do: "Please verify the Sophos API credentials are still valid and can read endpoints."
 end

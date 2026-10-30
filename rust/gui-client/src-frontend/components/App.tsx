@@ -1,21 +1,21 @@
 import React, { useEffect, useState } from "react";
-import { Route, Routes } from "react-router";
+import { Navigate, Route, Routes } from "react-router";
 import About from "./AboutPage";
-import AdvancedSettingsPage from "./AdvancedSettingsPage";
 import ColorPalette from "./ColorPalettePage";
+import DeviceTrustPage from "./DeviceTrustPage";
 import Diagnostics from "./DiagnosticsPage";
 import GeneralSettingsPage from "./GeneralSettingsPage";
 import Overview from "./OverviewPage";
 import ReactRouterSidebarItem from "./ReactRouterSidebarItem";
-import RemixIcon from "./RemixIcon";
 import Titlebar from "./Titlebar";
 import {
-  AdvancedSettingsViewModel,
   commands,
   events,
   FileCount,
   GeneralSettingsViewModel,
+  LogFilterViewModel,
   SessionViewModel,
+  X509Certificate,
 } from "../generated/bindings";
 
 export default function App() {
@@ -23,40 +23,51 @@ export default function App() {
   const [logCount, setLogCount] = useState<FileCount | null>(null);
   const [generalSettings, setGeneralSettings] =
     useState<GeneralSettingsViewModel | null>(null);
-  const [advancedSettings, setAdvancedSettings] =
-    useState<AdvancedSettingsViewModel | null>(null);
-  const [settingsOpen, setSettingsOpen] = useState(true);
+  const [logFilter, setLogFilter] = useState<LogFilterViewModel | null>(null);
+  const [deviceTrustCertificate, setDeviceTrustCertificate] =
+    useState<X509Certificate | null>();
 
   useEffect(() => {
-    const sessionChangedUnlisten = events.sessionChanged.listen((event) => {
-      console.log("session_changed", { session: event.payload });
-      setSession(event.payload);
-    });
-    const generalSettingsChangedUnlisten = events.generalSettingsChanged.listen(
-      (event) => {
+    let cancelled = false;
+    let unlisten: (() => void)[] | null = null;
+
+    void Promise.all([
+      events.sessionChanged.listen((event) => {
+        console.log("session_changed", { session: event.payload });
+        setSession(event.payload);
+      }),
+      events.generalSettingsChanged.listen((event) => {
         console.log("general_settings_changed", { settings: event.payload });
         setGeneralSettings(event.payload);
+      }),
+      events.logFilterChanged.listen((event) => {
+        console.log("log_filter_changed", { log_filter: event.payload });
+        setLogFilter(event.payload);
+      }),
+      events.logsRecounted.listen((event) => {
+        console.log("logs_recounted", { file_count: event.payload });
+        setLogCount(event.payload);
+      }),
+      events.x509CertificateChanged.listen((event) => {
+        console.log("x509_certificate_changed", { certificate: event.payload });
+        setDeviceTrustCertificate(event.payload);
+      }),
+    ]).then((newUnlisten) => {
+      if (cancelled) {
+        newUnlisten.forEach((stopListening) => stopListening());
+        return;
       }
-    );
-    const advancedSettingsChangedUnlisten =
-      events.advancedSettingsChanged.listen((event) => {
-        console.log("advanced_settings_changed", {
-          settings: event.payload,
-        });
-        setAdvancedSettings(event.payload);
-      });
-    const logsRecountedUnlisten = events.logsRecounted.listen((event) => {
-      console.log("logs_recounted", { file_count: event.payload });
-      setLogCount(event.payload);
+
+      unlisten = newUnlisten;
+
+      // `listen` registers asynchronously. Requesting state any earlier can make
+      // the controller's events arrive before their listeners exist.
+      void commands.updateState();
     });
 
-    commands.updateState();
-
     return () => {
-      sessionChangedUnlisten.then((unlisten) => unlisten());
-      generalSettingsChangedUnlisten.then((unlisten) => unlisten());
-      advancedSettingsChangedUnlisten.then((unlisten) => unlisten());
-      logsRecountedUnlisten.then((unlisten) => unlisten());
+      cancelled = true;
+      unlisten?.forEach((stopListening) => stopListening());
     };
   }, []);
 
@@ -68,11 +79,13 @@ export default function App() {
         <Route path="/overview" element={<Titlebar title="Firezone" />} />
         <Route
           path="/general-settings"
-          element={<Titlebar title="General Settings" />}
+          element={<Titlebar title="Settings" />}
         />
         <Route
-          path="/advanced-settings"
-          element={<Titlebar title="Advanced Settings" />}
+          path="/device-trust"
+          element={
+            deviceTrustCertificate ? <Titlebar title="Device Trust" /> : null
+          }
         />
         <Route path="/diagnostics" element={<Titlebar title="Diagnostics" />} />
         <Route path="/about" element={<Titlebar title="About" />} />
@@ -95,42 +108,23 @@ export default function App() {
                 </ReactRouterSidebarItem>
               </li>
               <li>
-                <button
-                  aria-expanded={settingsOpen}
-                  className="nav-item w-full"
-                  onClick={() => setSettingsOpen((open) => !open)}
-                  type="button"
+                <ReactRouterSidebarItem
+                  icon="settings"
+                  href="/general-settings"
                 >
-                  <RemixIcon className="h-4 w-4" name="settings" />
-                  <span className="flex-1 text-left">Settings</span>
-                  <RemixIcon
-                    className={`h-3.5 w-3.5 transition-transform ${
-                      settingsOpen ? "rotate-180" : ""
-                    }`}
-                    name="arrow-down"
-                  />
-                </button>
-                {settingsOpen && (
-                  <ul className="mt-0.5 space-y-0.5 pl-4">
-                    <li>
-                      <ReactRouterSidebarItem
-                        icon="settings"
-                        href="/general-settings"
-                      >
-                        General
-                      </ReactRouterSidebarItem>
-                    </li>
-                    <li>
-                      <ReactRouterSidebarItem
-                        icon="equalizer"
-                        href="/advanced-settings"
-                      >
-                        Advanced
-                      </ReactRouterSidebarItem>
-                    </li>
-                  </ul>
-                )}
+                  Settings
+                </ReactRouterSidebarItem>
               </li>
+              {deviceTrustCertificate && (
+                <li>
+                  <ReactRouterSidebarItem
+                    icon="certificate"
+                    href="/device-trust"
+                  >
+                    Device Trust
+                  </ReactRouterSidebarItem>
+                </li>
+              )}
               <li>
                 <ReactRouterSidebarItem icon="database" href="/diagnostics">
                   Diagnostics
@@ -169,19 +163,19 @@ export default function App() {
               element={
                 <GeneralSettingsPage
                   settings={generalSettings}
-                  saveSettings={commands.applyGeneralSettings}
-                  resetSettings={commands.resetGeneralSettings}
+                  saveSettings={commands.applyClientSettings}
+                  resetSettings={commands.resetClientSettings}
                 />
               }
             />
             <Route
-              path="/advanced-settings"
+              path="/device-trust"
               element={
-                <AdvancedSettingsPage
-                  settings={advancedSettings}
-                  saveSettings={commands.applyAdvancedSettings}
-                  resetSettings={commands.resetAdvancedSettings}
-                />
+                deviceTrustCertificate === null ? (
+                  <Navigate replace to="/overview" />
+                ) : deviceTrustCertificate === undefined ? null : (
+                  <DeviceTrustPage certificate={deviceTrustCertificate} />
+                )
               }
             />
             <Route
@@ -189,8 +183,10 @@ export default function App() {
               element={
                 <Diagnostics
                   logCount={logCount}
+                  logFilter={logFilter}
                   exportLogs={commands.exportLogs}
                   clearLogs={commands.clearLogs}
+                  saveLogFilter={commands.applyLogFilter}
                 />
               }
             />

@@ -2,14 +2,18 @@
 
 source "./scripts/tests/lib.sh"
 
-# Download 10MB at a max rate of 1MB/s.
-# Budget: 10s for the download + 5s pre-roam wait + ~7s reconnect overhead + buffer.
+# Download 10MB at a max rate of 300KB/s, i.e. ~33s of transfer.
+# The roam has to happen while the download is still in flight, and enough of it
+# has to remain afterwards for the gateway to record the reconnected path. That
+# window has to cover a slow `docker network disconnect`, which has taken as long
+# as 14s to take effect on a loaded runner, on top of the 5s pre-roam wait, the 3s
+# outage and the reconnect.
 client sh -c \
     "curl \
         --fail \
-        --max-time 25 \
+        --max-time 60 \
         --keepalive-time 1 \
-        --limit-rate 1000000 \
+        --limit-rate 300000 \
         --output download.file \
         http://download.httpbin/bytes?num=10000000" &
 
@@ -17,9 +21,9 @@ DOWNLOAD_PID=$!
 
 sleep 5 # Download a bit
 
-docker network disconnect firezone_client-1-internal firezone-client-1-1 # Disconnect the client
+docker network disconnect firezone_primary-client-internal firezone-primary-client-1 # Disconnect the client
 sleep 3
-docker network connect firezone_client-1-internal firezone-client-1-1 --ip 172.30.0.200 --ip6 172:30::200 # Reconnect client with a different IP
+docker network connect firezone_primary-client-internal firezone-primary-client-1 --ip 172.30.0.200 --ip6 172:30::200 # Reconnect client with a different IP
 
 # Add static route to internet subnet via router; they get removed when the network interface disappears
 client ip -4 route add 203.0.113.0/24 via 172.30.0.254

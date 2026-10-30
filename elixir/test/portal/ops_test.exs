@@ -10,9 +10,11 @@ defmodule Portal.OpsTest do
   import Portal.PolicyFixtures
   import Portal.RelayFixtures
   import Portal.ResourceFixtures
-  import Portal.SessionLogFixtures
   import Portal.TokenFixtures
   import Portal.ObanJobFixtures
+  import Portal.SlugRegistryHelpers
+  import ExUnit.CaptureLog
+  import Plug.Conn
 
   alias Portal.Mocks.Stripe
   alias Portal.Workers.DeleteAccount
@@ -158,6 +160,101 @@ defmodule Portal.OpsTest do
 
       refute Repo.one(Portal.Account)
     end
+
+    test "queues the cancellation of the account's Stripe subscriptions" do
+      account =
+        update_account(account_fixture(), %{
+          is_disabled: true,
+          metadata: %{stripe: %{customer_id: "cus_deleted"}}
+        })
+
+      assert delete_disabled_account(account.id) == :ok
+
+      assert [job] =
+               jobs_for_worker_and_arg(
+                 "Portal.Workers.DeleteSubscription",
+                 "customer_id",
+                 "cus_deleted"
+               )
+
+      assert job.args == %{"customer_id" => "cus_deleted"}
+    end
+  end
+
+  describe "backfill_slug_registry/0" do
+    import ExUnit.CaptureIO
+
+    test "does nothing with the local registry" do
+      account_fixture()
+
+      output = capture_io(fn -> assert {:error, :no_registry} = backfill_slug_registry() end)
+
+      assert output =~ "SLUG_REGISTRY_TABLE_URL is not set"
+    end
+
+    test "aborts without confirmation" do
+      account_fixture(slug: "keep-local")
+      use_azure_registry(:us)
+      test_pid = self()
+
+      stub_registry(fn conn ->
+        send(test_pid, :registry_called)
+        send_resp(conn, 204, "")
+      end)
+
+      output = capture_io("n\n", fn -> assert :aborted = backfill_slug_registry() end)
+
+      assert output =~ "About to claim 1 slug(s) for region us"
+      assert output =~ "Aborted."
+      refute_received :registry_called
+    end
+
+    test "claims every local slug in the registry" do
+      account = account_fixture(slug: "backfill-me")
+      update_account(account, slug: "backfill-me-too")
+      use_azure_registry(:us)
+      test_pid = self()
+
+      stub_registry(fn
+        %{method: "POST", request_path: "/slugs"} = conn ->
+          send(test_pid, {:claimed, json_body(conn)["RowKey"]})
+          send_resp(conn, 204, "")
+      end)
+
+      output = capture_io("y\n", fn -> assert {:ok, 2} = backfill_slug_registry() end)
+
+      assert output =~ "Claimed 2 slug(s)."
+      assert_received {:claimed, "backfill_me"}
+      assert_received {:claimed, "backfill_me_too"}
+    end
+
+    test "prints a slug that another account holds and goes on" do
+      account = account_fixture(slug: "contested")
+      use_azure_registry(:us)
+
+      stub_registry(fn
+        %{method: "POST"} = conn -> send_resp(conn, 409, "")
+        %{method: "GET"} = conn -> Req.Test.json(conn, entity("contested", Ecto.UUID.generate(), "eu"))
+      end)
+
+      output = capture_io("y\n", fn -> assert {:ok, 0} = backfill_slug_registry() end)
+
+      assert output =~ "contested: another account holds this slug"
+      assert output =~ account.id
+    end
+
+    test "stops when the registry is unavailable" do
+      account_fixture()
+      use_azure_registry(:us)
+      stub_registry(fn conn -> send_resp(conn, 503, "") end)
+
+      output =
+        capture_io("y\n", fn ->
+          capture_log(fn -> assert {:error, :slug_registry_unavailable} = backfill_slug_registry() end)
+        end)
+
+      assert output =~ "The slug registry is unavailable."
+    end
   end
 
   describe "schedule_missing_account_deletion_jobs/0" do
@@ -204,6 +301,32 @@ defmodule Portal.OpsTest do
 
       assert length(jobs_for_worker_and_arg("Portal.Workers.DeleteAccount", "account_id", account.id)) ==
                1
+    end
+  end
+
+  describe "backfill_relay_throughput_limits/0" do
+    test "sets the plan default on accounts without a limit" do
+      starter = starter_account_fixture()
+      team = team_account_fixture()
+      business = business_account_fixture()
+
+      enterprise =
+        update_account(account_fixture(), metadata: %{stripe: %{product_name: "Enterprise (Annual)"}})
+
+      unknown = account_fixture()
+      limited = update_account(team_account_fixture(), limits: %{relay_throughput_mbps: 100})
+
+      assert {:ok, 4} = backfill_relay_throughput_limits()
+
+      assert fetch_account!(starter.id).limits.relay_throughput_mbps == 5
+      assert fetch_account!(team.id).limits.relay_throughput_mbps == 15
+      assert fetch_account!(business.id).limits.relay_throughput_mbps == 25
+      assert fetch_account!(enterprise.id).limits.relay_throughput_mbps == 50
+      assert fetch_account!(unknown.id).limits.relay_throughput_mbps == nil
+      assert fetch_account!(limited.id).limits.relay_throughput_mbps == 100
+      assert fetch_account!(team.id).limits.monthly_active_users_count == 100
+
+      assert {:ok, 0} = backfill_relay_throughput_limits()
     end
   end
 
@@ -371,6 +494,8 @@ defmodule Portal.OpsTest do
         )
       end)
 
+      started_at = DateTime.utc_now()
+
       output =
         capture_io("y\n", fn ->
           assert :ok =
@@ -408,8 +533,11 @@ defmodule Portal.OpsTest do
           assert length(scheduled_jobs) == 2
           assert length(Enum.uniq(Enum.map(scheduled_jobs, & &1.scheduled_at))) == 1
 
+          finished_at = DateTime.utc_now()
+
           assert Enum.all?(scheduled_jobs, fn job ->
-                   DateTime.diff(job.scheduled_at, job.inserted_at, :second) in 299..300
+                   DateTime.diff(job.scheduled_at, started_at, :second) >= 295 and
+                     DateTime.diff(job.scheduled_at, finished_at, :second) <= 305
                  end)
 
           assert Enum.all?(jobs, fn job ->
@@ -505,10 +633,131 @@ defmodule Portal.OpsTest do
     end
   end
 
-  defp active_account_fixture(attrs \\ %{}) do
-    account = account_fixture(attrs)
-    session_log_fixture(account: account)
+  describe "queue_product_announcement/4" do
+    import ExUnit.CaptureIO
 
-    account
+    test "queues one email per admin with a link to turn announcements off" do
+      account = active_account_fixture()
+      admin1 = admin_actor_fixture(account: account)
+      admin2 = admin_actor_fixture(account: account)
+      actor_fixture(account: account, type: :account_user)
+
+      capture_io("y\n", fn ->
+        assert :ok =
+                 queue_product_announcement(
+                   [account.id],
+                   "What's new",
+                   "<p>New features</p>",
+                   "New features"
+                 )
+      end)
+
+      emails = collect_queued_emails(account.id)
+
+      assert emails |> Enum.flat_map(& &1.to) |> Enum.sort() ==
+               Enum.sort([{"", admin1.email}, {"", admin2.email}])
+
+      for email <- emails do
+        assert email.subject == "What's new"
+        assert email.html_body =~ "<p>New features</p>"
+        assert email.text_body =~ "New features"
+        assert email.text_body =~ "/#{account.id}/unsubscribe/"
+      end
+
+      tokens =
+        Enum.map(emails, fn email ->
+          [token] =
+            Regex.run(~r{/#{account.id}/unsubscribe/([A-Za-z0-9_.-]+)}, email.text_body,
+              capture: :all_but_first
+            )
+
+          {:ok, payload} = Portal.UnsubscribeToken.verify(token)
+          payload
+        end)
+
+      assert Enum.sort(tokens) ==
+               Enum.sort([
+                 {account.id, admin1.id, :product_announcements},
+                 {account.id, admin2.id, :product_announcements}
+               ])
+    end
+
+    test "sends only to enabled admins" do
+      account = active_account_fixture()
+      admin = admin_actor_fixture(account: account)
+      actor_fixture(account: account, type: :account_user)
+      disabled_actor_fixture(account: account, type: :account_admin_user)
+
+      capture_io("y\n", fn ->
+        assert :ok = queue_product_announcement([account.id], "What's new", "<p>Hi</p>", "Hi")
+      end)
+
+      assert [email] = collect_queued_emails(account.id)
+      assert email.to == [{"", admin.email}]
+    end
+
+    test "skips admins who turned product announcements off" do
+      account = active_account_fixture()
+      admin = admin_actor_fixture(account: account)
+      opted_out = admin_actor_fixture(account: account)
+      actor_preferences_fixture(opted_out, notifications: %{product_announcements: []})
+
+      capture_io("y\n", fn ->
+        assert :ok = queue_product_announcement([account.id], "What's new", "<p>Hi</p>", "Hi")
+      end)
+
+      assert [email] = collect_queued_emails(account.id)
+      assert email.to == [{"", admin.email}]
+    end
+
+    test "sends once to a person who is an admin of two accounts" do
+      account1 = active_account_fixture()
+      account2 = active_account_fixture()
+      email = "shared-#{System.unique_integer([:positive])}@example.com"
+      admin_actor_fixture(account: account1, email: email)
+      admin_actor_fixture(account: account2, email: email)
+
+      output =
+        capture_io("y\n", fn ->
+          assert :ok =
+                   queue_product_announcement(
+                     [account1.id, account2.id],
+                     "What's new",
+                     "<p>Hi</p>",
+                     "Hi"
+                   )
+        end)
+
+      assert output =~ "to 1 unique admin(s)"
+
+      assert length(collect_queued_emails(account1.id) ++ collect_queued_emails(account2.id)) ==
+               1
+    end
+
+    test "aborts when user declines confirmation" do
+      account = active_account_fixture()
+      admin_actor_fixture(account: account)
+
+      capture_io("n\n", fn ->
+        assert :aborted =
+                 queue_product_announcement([account.id], "What's new", "<p>Hi</p>", "Hi")
+      end)
+
+      assert collect_queued_emails(account.id) == []
+    end
+
+    test "errors when every admin turned product announcements off" do
+      account = active_account_fixture()
+      admin = admin_actor_fixture(account: account)
+      actor_preferences_fixture(admin, notifications: %{product_announcements: []})
+
+      output =
+        capture_io(fn ->
+          assert {:error, :no_recipients} =
+                   queue_product_announcement([account.id], "What's new", "<p>Hi</p>", "Hi")
+        end)
+
+      assert output =~ "No admin recipients found."
+    end
   end
 end

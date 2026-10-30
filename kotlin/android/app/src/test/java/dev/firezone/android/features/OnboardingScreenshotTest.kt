@@ -1,0 +1,64 @@
+// Licensed under Apache 2.0 (C) 2026 Firezone, Inc.
+package dev.firezone.android.features
+
+import android.app.Application
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.res.stringResource
+import com.github.takahirom.roborazzi.ExperimentalRoborazziApi
+import com.github.takahirom.roborazzi.captureRoboImage
+import com.github.takahirom.roborazzi.roborazziSystemPropertyOutputDirectory
+import dev.firezone.android.R
+import dev.firezone.android.STORE_SCREENSHOT_QUALIFIERS
+import dev.firezone.android.features.permission.certificate.ui.compose.CertificatePermissionScreen
+import dev.firezone.android.features.permission.notification.ui.compose.NotificationPermissionScreen
+import dev.firezone.android.features.permission.vpn.ui.compose.VpnPermissionScreen
+import dev.firezone.android.features.signin.ui.compose.SignInScreen
+import dev.firezone.android.ui.theme.FirezoneTheme
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
+import org.robolectric.annotation.GraphicsMode
+
+// Renders the screens shown before a session starts to PNGs; `./gradlew recordRoborazziDebug` writes them.
+@RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+@Config(
+    sdk = [34],
+    application = Application::class,
+    qualifiers = STORE_SCREENSHOT_QUALIFIERS,
+)
+class OnboardingScreenshotTest {
+    @Test
+    fun signIn() = capture("sign-in") { SignInScreen(onSignIn = {}, onSettings = {}) }
+
+    @Test
+    fun vpnPermission() = capture("vpn-permission") { VpnPermissionScreen(onRequestPermission = {}) }
+
+    @Test
+    fun notificationPermission() =
+        capture("notification-permission") {
+            NotificationPermissionScreen(onRequestPermission = {}, onSkip = {})
+        }
+
+    @Test
+    fun certificatePermission() = capture("certificate-permission") { CertificatePermissionScreen(onSelectCertificate = {}) }
+
+    // The user picked the mail certificate the MDM installed alongside the device certificate.
+    @Test
+    fun certificatePermissionRefused() =
+        capture("certificate-permission-refused") {
+            CertificatePermissionScreen(
+                onSelectCertificate = {},
+                error = stringResource(R.string.device_trust_not_device_certificate, "corp-mail"),
+            )
+        }
+
+    @OptIn(ExperimentalRoborazziApi::class)
+    private fun capture(
+        name: String,
+        content: @Composable () -> Unit,
+    ) = captureRoboImage("${roborazziSystemPropertyOutputDirectory()}/$name.png") {
+        FirezoneTheme(content)
+    }
+}

@@ -1,0 +1,16 @@
+Hi,
+
+Firezone now requires Entra users to sign in from a verified tenant, improving
+your account's security.
+
+For <%= @notice.name %>, these additional tenants need verification:
+<%= for tenant <- @notice.tenants do %>
+- <%= tenant.id %>
+<% end %>
+Go to Settings -> Authentication:
+<%= @settings_url %>
+
+Edit your Entra provider and click Verify another tenant for each tenant above.
+Save to allow users from those tenants to sign in.
+
+Questions? Reply to this email.

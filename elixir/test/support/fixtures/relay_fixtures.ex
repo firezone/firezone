@@ -25,40 +25,6 @@ defmodule Portal.RelayFixtures do
   end
 
   @doc """
-  Generate a relay with location information.
-  """
-  def relay_with_location_fixture(attrs \\ %{}) do
-    attrs
-    |> Map.put_new(:lat, 37.7749)
-    |> Map.put_new(:lon, -122.4194)
-    |> relay_fixture()
-  end
-
-  @doc """
-  Generate an IPv6-only relay.
-  """
-  def ipv6_relay_fixture(attrs \\ %{}) do
-    unique_num = System.unique_integer([:positive, :monotonic])
-
-    attrs
-    |> Map.put(:ipv4, nil)
-    |> Map.put_new(:ipv6, "2001:db8::#{Integer.to_string(rem(unique_num, 65535), 16)}")
-    |> relay_fixture()
-  end
-
-  @doc """
-  Generate a dual-stack relay (both IPv4 and IPv6).
-  """
-  def dual_stack_relay_fixture(attrs \\ %{}) do
-    unique_num = System.unique_integer([:positive, :monotonic])
-
-    attrs
-    |> Map.put_new(:ipv4, "100.64.#{rem(unique_num, 255)}.#{rem(unique_num, 255)}")
-    |> Map.put_new(:ipv6, "2001:db8::#{Integer.to_string(rem(unique_num, 65535), 16)}")
-    |> relay_fixture()
-  end
-
-  @doc """
   Create a relay and connect it to presence.
   """
   def connect_relay(attrs \\ %{}) do

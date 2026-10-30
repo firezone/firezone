@@ -5,6 +5,13 @@ defmodule Portal.Changes.Hooks.Accounts do
   import Portal.SchemaHelpers
 
   @impl true
+  def on_insert(lsn, %{"is_disabled" => false} = data) do
+    account = struct_from_params(Portal.Account, data)
+    change = %Change{lsn: lsn, op: :insert, struct: account}
+
+    PubSub.Changes.broadcast_account(change)
+  end
+
   def on_insert(_lsn, _data), do: :ok
 
   # Account slug changed - disconnect gateways for updated init
@@ -24,6 +31,18 @@ defmodule Portal.Changes.Hooks.Accounts do
     on_delete(lsn, old_data)
   end
 
+  # Account enabled - make its TURN credentials valid again.
+  def on_update(
+        lsn,
+        %{"is_disabled" => true},
+        %{"is_disabled" => false} = data
+      ) do
+    account = struct_from_params(Portal.Account, data)
+    change = %Change{lsn: lsn, op: :insert, struct: account}
+
+    PubSub.Changes.broadcast_account(change)
+  end
+
   def on_update(lsn, old_data, data) do
     old_account = struct_from_params(Portal.Account, old_data)
     account = struct_from_params(Portal.Account, data)
@@ -36,6 +55,12 @@ defmodule Portal.Changes.Hooks.Accounts do
       end)
     end
 
+    # Relays apply a changed throughput limit to existing allocations.
+    if not account.is_disabled and
+         relay_throughput_mbps(old_account) != relay_throughput_mbps(account) do
+      PubSub.Changes.broadcast_account(change)
+    end
+
     PubSub.Changes.broadcast(account.id, :accounts, change)
   end
 
@@ -46,7 +71,11 @@ defmodule Portal.Changes.Hooks.Accounts do
     change = %Change{lsn: lsn, op: :delete, old_struct: account}
 
     PubSub.Changes.broadcast(account.id, :accounts, change)
+    PubSub.Changes.broadcast_account(change)
   end
+
+  defp relay_throughput_mbps(%Portal.Account{limits: %{relay_throughput_mbps: mbps}}), do: mbps
+  defp relay_throughput_mbps(%Portal.Account{}), do: nil
 
   defmodule Database do
     import Ecto.Query

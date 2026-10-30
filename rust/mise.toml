@@ -6,11 +6,27 @@
 auto_install = false
 
 [tools]
-"github:aya-rs/bpf-linker" = { version = "0.10.3", os = ["linux"] }
+"github:aya-rs/bpf-linker" = { version = "0.12.0", os = ["linux"] }
 "cargo:cargo-deb" = { version = "3.7.0", os = ["linux"] }
 "github:taiki-e/cargo-llvm-cov" = "0.6.21"
-"github:mozilla/dump_syms" = "2.3.7"
+# Has to match the `gungraun` version in `Cargo.toml`.
+"github:gungraun/gungraun" = { version = "0.20.0", os = ["linux"], bin = "gungraun-runner" }
+# `matching_regex` skips the npm tarballs the release also carries, so every
+# platform gets the bare binary; `bin` gives it a name the shim can use.
+"github:getsentry/sentry-cli" = { version = "3.6.2", bin = "sentry-cli", matching_regex = "^sentry-cli-(Darwin|Linux|Windows)-" }
 "github:tauri-apps/tauri" = { version = "2.11.2", version_prefix = "tauri-cli-v" }
+
+[tools."github:bencherdev/bencher"]
+version = "0.6.13"
+bin = "bencher"
+
+[tools."github:bencherdev/bencher".platforms]
+linux-x64 = { asset_pattern = "bencher-*-linux-x86-64" }
+linux-arm64 = { asset_pattern = "bencher-*-linux-arm-64" }
+macos-x64 = { asset_pattern = "bencher-*-macos-x86-64" }
+macos-arm64 = { asset_pattern = "bencher-*-macos-arm-64" }
+windows-x64 = { asset_pattern = "bencher-*-windows-x86-64.exe" }
+windows-arm64 = { asset_pattern = "bencher-*-windows-arm-64.exe" }
 
 # The eBPF program is compiled with this exact nightly toolchain: `aya_build`
 # invokes it via `rustup run` (see `relay/server/build.rs`; keep the two pins
@@ -19,7 +35,7 @@ auto_install = false
 # overriding `rust-toolchain.toml` for everything else in this directory.
 [tasks.install-ebpf-toolchain]
 description = "Install the nightly toolchain that the eBPF program is compiled with"
-run = "rustup toolchain install nightly-2025-05-30 --profile minimal --component rust-src"
+run = "rustup toolchain install nightly-2026-10-17 --profile minimal --component rust-src"
 
 # =============================================================================
 # Individual checks (matching CI)
@@ -34,6 +50,25 @@ set -euo pipefail
 
 cargo metadata --format-version=1 --no-deps |
   jq -ce '[.packages[] | {name, dir: (.manifest_path | sub("/Cargo.toml$"; "") + "/")}]'
+'''
+
+[tasks.mobile-test-packages]
+description = "Print `-p` flags for `client-ffi` and every workspace crate it depends on for the given target"
+usage = 'arg "<triple>"'
+shell = "bash -c"
+hide = true
+run = '''
+set -euo pipefail
+
+cargo metadata --format-version=1 --filter-platform "$usage_triple" |
+  jq -r '
+    (.resolve.nodes | map({key: .id, value: [.deps[] | select(any(.dep_kinds[]; .kind == null)) | .pkg]}) | from_entries) as $deps
+    | (.packages | map({key: .id, value: .name}) | from_entries) as $names
+    | .workspace_members as $members
+    | [.packages[] | select(.name == "client-ffi") | .id]
+    | until(. as $s | ($s + [$s[] | $deps[.][]] | unique) == $s; . + [.[] | $deps[.][]] | unique)
+    | map(select(IN($members[])) | "-p \($names[.])")
+    | join(" ")'
 '''
 
 [tasks.fmt]
@@ -58,29 +93,11 @@ run = "cargo shear"
 
 [tasks.deny]
 description = "Check licenses and security advisories (CI check)"
-run = "cargo deny check --hide-inclusion-graph --deny unnecessary-skip"
+run = "cargo deny check --hide-inclusion-graph --deny unnecessary-skip --deny no-license-field"
 
 [tasks.test]
 description = "Run tests (CI check)"
 run = "cargo test --all-features -- --include-ignored --nocapture"
-
-[tasks.tauri-mock]
-description = "Run the GUI client for rapid UI iteration with an in-process mock Tunnel service (--mock-tunnel) and the portal decoupled (--skip-portal-auth). Self-contained: no root, no separate process."
-dir = "gui-client"
-raw = true
-run = "cargo tauri dev -- -- --skip-portal-auth --mock-tunnel"
-
-[tasks.tauri-dev]
-description = "Run the GUI client in dev against a dev tunnel service"
-dir = "gui-client"
-raw = true
-run = "cargo tauri dev -- -- --skip-peer-verification"
-
-[tasks.tunnel]
-description = "Run the Tunnel service interactively for local GUI dev. `--skip-peer-verification` skips the peer check so it accepts a non-installed GUI build; must be run from an elevated shell (Administrator on Windows, root on Unix)."
-dir = "gui-client"
-raw = true
-run = "cargo run -p firezone-gui-client --bin firezone-client-tunnel -- run-interactive --skip-peer-verification"
 
 # =============================================================================
 # Profiling
@@ -93,7 +110,7 @@ run = """
 set -u
 
 # Capture every client/gateway process (comma-separated for `perf -p`). Idle ones (e.g. an
-# unused `client-2`) contribute ~no samples, so this avoids guessing which container ran the test.
+# unused `pool-member`) contribute ~no samples, so this avoids guessing which container ran the test.
 client=$(pgrep -x firezone-headle | paste -sd, -)
 gateway=$(pgrep -x firezone-gatewa | paste -sd, -)
 [ -n "$client" ] || { echo "firezone-headless-client is not running" >&2; exit 1; }

@@ -38,6 +38,10 @@ defmodule Portal.Changes.Hooks.Devices do
     device = struct_from_params(Portal.Device, old_data)
     change = %Change{lsn: lsn, op: :delete, old_struct: device}
 
+    if device.type == :client do
+      Database.remove_device_from_pools(device)
+    end
+
     PubSub.Changes.broadcast(device.account_id, :devices, change)
   end
 
@@ -58,6 +62,29 @@ defmodule Portal.Changes.Hooks.Devices do
       |> where([policy_authorizations: f], f.initiating_device_id == ^device.id)
       |> Safe.unscoped()
       |> Safe.delete_all()
+    end
+
+    def remove_device_from_pools(%Portal.Device{} = device) do
+      from(r in Portal.Resource, as: :resources)
+      |> where([resources: r], r.account_id == ^device.account_id and r.type == :device_pool)
+      |> where(
+        [resources: r],
+        fragment("jsonb_exists(? #> '{device,value}', ?)", r.device_membership_criteria, ^device.id)
+      )
+      |> update([resources: r],
+        set: [
+          device_membership_criteria:
+            fragment(
+              "jsonb_set(?, '{device,value}', (? #> '{device,value}') - ?)",
+              r.device_membership_criteria,
+              r.device_membership_criteria,
+              ^device.id
+            ),
+          updated_at: ^DateTime.utc_now()
+        ]
+      )
+      |> Safe.unscoped()
+      |> Safe.update_all([])
     end
   end
 end

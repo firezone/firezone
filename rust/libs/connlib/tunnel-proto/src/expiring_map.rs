@@ -1,6 +1,8 @@
 use core::fmt;
+use fast_random_state::FastRandomState;
 use std::{
-    collections::{BTreeMap, VecDeque, btree_map},
+    collections::{BTreeMap, HashMap, VecDeque, btree_map},
+    hash::Hash,
     mem,
     time::{Duration, Instant},
 };
@@ -13,7 +15,7 @@ pub const NEVER_EXPIRES_TTL: Duration = Duration::from_secs(60 * 60 * 24 * 365 *
 /// A map that automatically removes entries after a given expiration time.
 #[derive(Debug)]
 pub struct ExpiringMap<K, V> {
-    inner: BTreeMap<K, Entry<V>>,
+    inner: HashMap<K, Entry<V>, FastRandomState>,
     expiration: BTreeMap<Instant, Vec<K>>,
 
     events: VecDeque<Event<K, V>>,
@@ -22,7 +24,7 @@ pub struct ExpiringMap<K, V> {
 impl<K, V> Default for ExpiringMap<K, V> {
     fn default() -> Self {
         Self {
-            inner: BTreeMap::default(),
+            inner: HashMap::default(),
             expiration: BTreeMap::default(),
             events: VecDeque::default(),
         }
@@ -31,7 +33,7 @@ impl<K, V> Default for ExpiringMap<K, V> {
 
 impl<K, V> ExpiringMap<K, V>
 where
-    K: Ord + Clone + fmt::Debug,
+    K: Eq + Hash + Clone + fmt::Debug,
     V: fmt::Debug,
 {
     pub fn insert(
@@ -128,7 +130,7 @@ where
     {
         let expiration = &mut self.expiration;
         self.inner
-            .extract_if(.., move |k, entry| predicate(k, &entry.value))
+            .extract_if(move |k, entry| predicate(k, &entry.value))
             .map(move |(key, entry)| {
                 remove_from_expiration_bucket(expiration, &key, entry.expires_at);
                 (key, entry.value)

@@ -20,7 +20,7 @@ otel-attributes = { workspace = true }
 otel-instruments = { workspace = true }
 parking_lot = { workspace = true }
 phoenix-channel = { workspace = true }
-snownet = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
 socket-factory = { workspace = true }
 telemetry = { workspace = true }
 thiserror = { workspace = true }

@@ -1,9 +1,13 @@
-use super::sim_net::{ExecMutScope, Host};
-use bufferpool::Buffer;
+use super::{
+    buffered_transmits::BufferedTransmits,
+    sim_net::{ExecMutScope, Host},
+};
+use bufferpool::Bytes;
+use bytecodec::{DecodeExt as _, EncodeExt as _};
 use connlib_model::RelayId;
 use ip_packet::Ecn;
 use rand::{SeedableRng as _, rngs::StdRng};
-use relay_proto::{AddressFamily, AllocationPort, ClientSocket, IpStack, PeerSocket};
+use relay_proto::{AddressFamily, AllocationPort, Attribute, ClientSocket, IpStack, PeerSocket};
 use secrecy::SecretString;
 use snownet::{RelaySocket, Transmit};
 use std::{
@@ -11,10 +15,18 @@ use std::{
     net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
     time::{Duration, Instant, SystemTime},
 };
+use stun_codec::rfc5389::attributes::{ErrorCode, MessageIntegrity, Nonce, Realm, Username};
+use stun_codec::rfc5766::{errors::InsufficientCapacity, methods::ALLOCATE};
+use stun_codec::{Message, MessageClass, MessageDecoder, MessageEncoder};
+use uuid::Uuid;
 
 pub(crate) struct SimRelay {
     pub(crate) sut: relay_proto::Server<StdRng>,
     pub(crate) allocations: HashSet<(AddressFamily, AllocationPort)>,
+
+    /// Whether authenticated `ALLOCATE` requests are answered with `508 Insufficient Capacity`,
+    /// as if the relay had run out of ports. Existing allocations keep working.
+    pub(crate) out_of_capacity: bool,
 
     created_at: SystemTime,
 }
@@ -37,18 +49,25 @@ pub(crate) fn map_explode<'a>(
 }
 
 impl SimRelay {
-    pub(crate) fn new(seed: u64, ip4: Option<Ipv4Addr>, ip6: Option<Ipv6Addr>) -> Self {
-        let sut = relay_proto::Server::new(
+    pub(crate) fn new(
+        seed: u64,
+        ip4: Option<Ipv4Addr>,
+        ip6: Option<Ipv6Addr>,
+        created_at: SystemTime,
+    ) -> Self {
+        let mut sut = relay_proto::Server::new(
             IpStack::from((ip4, ip6)),
             rand::rngs::StdRng::seed_from_u64(seed),
             3478,
             49152..=65535,
         );
+        sut.set_accounts([relay_proto::auth::AccountId::from(Uuid::nil())]);
 
         Self {
             sut,
             allocations: Default::default(),
-            created_at: SystemTime::now(),
+            out_of_capacity: false,
+            created_at,
         }
     }
 
@@ -83,7 +102,12 @@ impl SimRelay {
         }
     }
 
-    pub(crate) fn receive(&mut self, transmit: Transmit, now: Instant) -> Option<Transmit> {
+    pub(crate) fn receive(
+        &mut self,
+        transmit: Transmit,
+        now: Instant,
+        now_utc: SystemTime,
+    ) -> Option<Transmit> {
         let dst = transmit.dst;
         let payload = transmit.payload;
         let sender = transmit.src.unwrap();
@@ -92,7 +116,7 @@ impl SimRelay {
             .matching_listen_socket(dst, self.sut.public_address())
             .is_some_and(|s| s == dst)
         {
-            return self.handle_client_input(payload, ClientSocket::new(sender), now);
+            return self.handle_client_input(payload, ClientSocket::new(sender), now, now_utc);
         }
 
         self.handle_peer_traffic(
@@ -104,13 +128,29 @@ impl SimRelay {
 
     fn handle_client_input(
         &mut self,
-        mut payload: Buffer<Vec<u8>>,
+        mut payload: Bytes,
         client: ClientSocket,
         now: Instant,
+        now_utc: SystemTime,
     ) -> Option<Transmit> {
-        let (port, peer) = self.sut.handle_client_input(&payload, client, now)?;
+        if self.out_of_capacity
+            && let Some(response) = self.reject_allocation(&payload)
+        {
+            payload = Bytes::copied_from(&response);
 
-        payload.shift_start_right(4);
+            return Some(Transmit {
+                src: self.matching_listen_socket(client.into_socket(), self.sut.public_address()),
+                dst: client.into_socket(),
+                payload,
+                ecn: Ecn::NonEct,
+            });
+        }
+
+        let (port, peer) = self
+            .sut
+            .handle_client_input(&payload, client, now, now_utc)?;
+
+        let payload = Bytes::copied_from(&payload[4..]);
 
         // The `dst` of the relayed packet is what TURN calls a "peer".
         let dst = peer.into_socket();
@@ -150,18 +190,55 @@ impl SimRelay {
         })
     }
 
+    /// Answers an `ALLOCATE` that already carries a nonce the way a relay without free ports does.
+    ///
+    /// Requests without a nonce still reach the server, so clients authenticate first, as they
+    /// would against a real relay.
+    fn reject_allocation(&self, payload: &[u8]) -> Option<Vec<u8>> {
+        let request = MessageDecoder::<Attribute>::new()
+            .decode_from_bytes(payload)
+            .ok()?
+            .ok()?;
+        if request.class() != MessageClass::Request || request.method() != ALLOCATE {
+            return None;
+        }
+        request.get_attribute::<Nonce>()?;
+        let username = request.get_attribute::<Username>()?;
+
+        let mut response = Message::<Attribute>::new(
+            MessageClass::ErrorResponse,
+            ALLOCATE,
+            request.transaction_id(),
+        );
+        response.add_attribute(ErrorCode::from(InsufficientCapacity));
+        let password =
+            relay_proto::auth::generate_password(self.sut.auth_secret(), username.name());
+        let realm = Realm::new("firezone".to_owned()).ok()?;
+        let integrity =
+            MessageIntegrity::new_long_term_credential(&response, username, &realm, &password)
+                .ok()?;
+        response.add_attribute(integrity);
+
+        MessageEncoder::new().encode_into_bytes(response).ok()
+    }
+
     fn handle_peer_traffic(
         &mut self,
-        mut payload: Buffer<Vec<u8>>,
+        payload: Bytes,
         peer: PeerSocket,
         port: AllocationPort,
     ) -> Option<Transmit> {
         let (client, channel) = self.sut.handle_peer_traffic(&payload, peer, port)?;
 
-        let data_len = payload.len() as u16;
-        let header = payload.shift_start_left(4);
-
-        relay_proto::ChannelData::encode_header_to_slice(channel, data_len, header);
+        let mut header = [0; 4];
+        relay_proto::ChannelData::encode_header_to_slice(
+            channel,
+            payload.len() as u16,
+            &mut header,
+        );
+        let mut channel_data = Bytes::fitting(header.len() + payload.len());
+        channel_data.extend_from_slice(&header);
+        channel_data.extend_from_slice(&payload);
 
         let receiving_socket = client.into_socket();
         let sending_socket = self
@@ -171,24 +248,77 @@ impl SimRelay {
         Some(Transmit {
             src: Some(sending_socket),
             dst: receiving_socket,
-            payload,
+            payload: channel_data,
             ecn: Ecn::NonEct,
         })
     }
 
     fn make_credentials(&self, username: &str, auth_secret: &SecretString) -> (String, String) {
-        const ONE_HOUR: Duration = Duration::from_secs(60 * 60);
+        // Deliberately out of reach: a run simulates ~2h at most, so nothing expires.
+        // Shortening it would cover the relay's expiry and re-auth paths, which nothing
+        // does today, but the reference model needs to predict that first.
+        const VALIDITY: Duration = Duration::from_secs(24 * 60 * 60);
 
-        let expiry = self.created_at + ONE_HOUR;
-
-        let secs = expiry
+        let secs = (self.created_at + VALIDITY)
             .duration_since(SystemTime::UNIX_EPOCH)
             .expect("expiry must be later than UNIX_EPOCH")
             .as_secs();
 
-        let password = relay_proto::auth::generate_password(auth_secret, secs, username);
+        let username = format!(
+            "{secs}:{}:{username}",
+            relay_proto::auth::hash_account_id(&relay_proto::auth::AccountId::from(Uuid::nil()))
+        );
+        let password = relay_proto::auth::generate_password(auth_secret, &username);
 
-        (format!("{secs}:{username}"), password)
+        (username, password)
+    }
+}
+
+impl Host<SimRelay> {
+    /// Steps the relay with what is due at `now` and puts what it sent onto the network.
+    pub(crate) fn step(
+        &mut self,
+        transmits: &mut BufferedTransmits,
+        now: Instant,
+        now_utc: SystemTime,
+    ) {
+        self.exec_mut(|r| {
+            if r.sut.poll_timeout().is_some_and(|t| t <= now) {
+                r.sut.handle_timeout(now)
+            }
+        });
+
+        while let Some(transmit) = self.poll_inbox(now) {
+            let reply = self.exec_mut(|r| r.receive(transmit, now, now_utc));
+            transmits.push_from(reply, self, now);
+        }
+
+        while let Some(command) = self.exec_mut(|r| r.sut.next_command()) {
+            match command {
+                relay_proto::Command::SendMessage { payload, recipient } => {
+                    let dst = recipient.into_socket();
+                    let src = self
+                        .sending_socket_for(dst.ip())
+                        .expect("relay to never emit packets without a matching socket");
+                    let transmit = Transmit {
+                        src: Some(src),
+                        dst,
+                        payload: Bytes::copied_from(&payload),
+                        ecn: Ecn::NonEct,
+                    };
+
+                    transmits.push_from(transmit, self, now);
+                }
+                relay_proto::Command::CreateAllocation { port, family } => {
+                    self.exec_mut(|r| r.allocations.insert((family, port)));
+                }
+                relay_proto::Command::FreeAllocation { port, family } => {
+                    self.exec_mut(|r| r.allocations.remove(&(family, port)));
+                }
+                relay_proto::Command::CreateChannelBinding { .. }
+                | relay_proto::Command::DeleteChannelBinding { .. } => {}
+            }
+        }
     }
 }
 

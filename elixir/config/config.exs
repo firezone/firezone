@@ -33,12 +33,19 @@ config :portal, generators: [binary_id: true]
 config :req,
   default_options: [plugins: [Portal.Req.SSRFProtection]]
 
+config :portal, Portal.OAuth.ClientMetadata,
+  req_opts: [],
+  ssrf_protection_opts: []
+
 config :portal, sql_sandbox: false
 
 config :portal, flow_logs_upload_batch_size: 1000
 
 # Don't run manual migrations by default
 config :portal, run_manual_migrations: false
+
+config :portal, data_residency_region: :on_prem
+config :portal, slug_registry_table_url: nil
 
 config :portal, Portal.Repo,
   hostname: "localhost",
@@ -54,10 +61,11 @@ config :portal, Portal.Repo,
   start_apps_before_migration: [:ssl, :logger_json, :req],
   parameters: [application_name: "portal"]
 
-# Isolated connection pools (web/api/poller)
+# Isolated connection pools (web/api/job/poller)
 for {repo, app_name} <- [
       {Portal.Repo.Web, "web"},
       {Portal.Repo.Api, "api"},
+      {Portal.Repo.Job, "job"},
       {Portal.Repo.Poller, "poller"}
     ] do
   config :portal, repo,
@@ -83,16 +91,19 @@ config :portal, Portal.ChangeLogs.Consumer,
   #   2. Add tests and test WAL locally
   table_subscriptions: ~w[
     accounts
+    account_slugs
     memberships
     groups
     actors
     external_identities
     google_auth_providers
+    github_auth_providers
     entra_auth_providers
     okta_auth_providers
     oidc_auth_providers
     email_otp_auth_providers
     userpass_auth_providers
+    x509_auth_providers
     entra_directories
     okta_directories
     google_directories
@@ -101,12 +112,17 @@ config :portal, Portal.ChangeLogs.Consumer,
     gateway_tokens
     policies
     resources
-    static_device_pool_members
     client_tokens
     one_time_passcodes
     api_tokens
     trust_anchors
     trust_anchor_certificates
+    intune_posture_providers
+    iru_posture_providers
+    defender_posture_providers
+    santa_posture_providers
+    sentinelone_posture_providers
+    sophos_posture_providers
     splunk_log_sinks
     datadog_log_sinks
     newrelic_log_sinks
@@ -139,6 +155,7 @@ config :portal, Portal.Changes.Consumer,
   #   3. Add tests and test WAL locally
   table_subscriptions: ~w[
     accounts
+    account_slugs
     actors
     groups
     memberships
@@ -149,17 +166,30 @@ config :portal, Portal.Changes.Consumer,
     sites
     policies
     resources
-    static_device_pool_members
     client_tokens
     google_auth_providers
+    github_auth_providers
     entra_auth_providers
     okta_auth_providers
     oidc_auth_providers
     email_otp_auth_providers
     userpass_auth_providers
+    x509_auth_providers
     entra_directories
     okta_directories
     google_directories
+    intune_posture_providers
+    iru_posture_providers
+    defender_posture_providers
+    santa_posture_providers
+    sentinelone_posture_providers
+    sophos_posture_providers
+    intune_devices
+    iru_devices
+    defender_devices
+    santa_devices
+    sentinelone_devices
+    sophos_devices
     relay_tokens
     portal_sessions
   ],
@@ -197,6 +227,21 @@ config :portal, Portal.Azure.ManagedIdentity,
     retry: :transient
   ]
 
+config :portal, Portal.Azure.MetricsExporter,
+  req_opts: [
+    connect_options: [timeout: 1_000],
+    receive_timeout: 5_000,
+    retry: :transient,
+    max_retries: 2
+  ]
+
+config :portal, Portal.SlugRegistry.AzureTable,
+  req_opts: [
+    connect_options: [timeout: 2_000],
+    receive_timeout: 5_000,
+    retry: :transient
+  ]
+
 config :portal, Portal.Microsoft.Graph.APIClient,
   endpoint: "https://graph.microsoft.com",
   token_base_url: "https://login.microsoftonline.com",
@@ -208,6 +253,10 @@ config :portal, Portal.Microsoft.Graph.APIClient,
     intune: [
       client_id: System.get_env("INTUNE_SYNC_CLIENT_ID"),
       client_secret: System.get_env("INTUNE_SYNC_CLIENT_SECRET")
+    ],
+    windows_updates: [
+      client_id: System.get_env("WINDOWS_UPDATES_CLIENT_ID"),
+      client_secret: System.get_env("WINDOWS_UPDATES_CLIENT_SECRET")
     ]
   ],
   req_opts: [
@@ -216,6 +265,55 @@ config :portal, Portal.Microsoft.Graph.APIClient,
     # Fixes `pool_not_available` errors on a cold Finch pool right after a deploy,
     # since some requests are POSTs and the default `:safe_transient` retry strategy only retries HEADS and GETs.
     retry: :transient
+  ]
+
+# Defender for Endpoint is reached at api.security.microsoft.com, but tokens
+# still have to be minted for the legacy api.securitycenter.microsoft.com
+# audience or the API answers 403.
+config :portal, Portal.Defender.APIClient,
+  endpoint: "https://api.security.microsoft.com",
+  token_base_url: "https://login.microsoftonline.com",
+  token_scope: "https://api.securitycenter.microsoft.com/.default",
+  client_id: System.get_env("DEFENDER_SYNC_CLIENT_ID"),
+  client_secret: System.get_env("DEFENDER_SYNC_CLIENT_SECRET"),
+  req_opts: [
+    # 15 minutes
+    receive_timeout: 900_000,
+    # Fixes `pool_not_available` errors on a cold Finch pool right after a deploy,
+    # since the token request is a POST and the default `:safe_transient` retry
+    # strategy only retries HEADS and GETs.
+    retry: :transient
+  ]
+
+# Iru still serves its API from the Kandji hosts it used before the rename, so
+# the domains are configuration rather than a constant.
+config :portal, Portal.Iru.APIClient,
+  api_domains: [us: "api.kandji.io", eu: "api.eu.kandji.io"],
+  req_opts: [
+    # 15 minutes
+    receive_timeout: 900_000,
+    retry: :safe_transient
+  ]
+
+config :portal, Portal.Santa.APIClient,
+  req_opts: [
+    # 15 minutes
+    receive_timeout: 900_000,
+    retry: :safe_transient
+  ]
+
+config :portal, Portal.SentinelOne.APIClient,
+  req_opts: [
+    # 15 minutes
+    receive_timeout: 900_000,
+    retry: :safe_transient
+  ]
+
+config :portal, Portal.Sophos.APIClient,
+  req_opts: [
+    # 15 minutes
+    receive_timeout: 900_000,
+    retry: :safe_transient
   ]
 
 config :portal, Portal.Google.APIClient,
@@ -243,6 +341,15 @@ config :portal, Portal.Google.AuthProvider,
   scope: "openid email profile",
   discovery_document_uri: "https://accounts.google.com/.well-known/openid-configuration"
 
+config :portal, Portal.GitHub.AuthProvider,
+  # Should match an OAuth App registered under the Firezone GitHub organization
+  client_id: System.get_env("GITHUB_OAUTH_CLIENT_ID"),
+  client_secret: System.get_env("GITHUB_OAUTH_CLIENT_SECRET"),
+  authorize_endpoint: "https://github.com/login/oauth/authorize",
+  token_endpoint: "https://github.com/login/oauth/access_token",
+  api_endpoint: "https://api.github.com",
+  req_opts: []
+
 config :portal, Portal.Google.SyncAuthorization,
   # Dedicated OAuth client used only to authorize Google Workspace directory setup
   client_id: System.get_env("GOOGLE_SYNC_AUTHZ_CLIENT_ID"),
@@ -261,9 +368,14 @@ config :portal, Portal.Okta.APIClient, req_opts: [receive_timeout: 900_000]
 
 config :portal, Portal.Analytics.PostHog,
   enabled: false,
-  endpoint: "https://e.firezone.dev/i/v0/e/",
+  host: nil,
   project_api_key: nil,
+  web_external_url: nil,
   req_opts: [receive_timeout: 5_000, retry: :transient]
+
+config :portal, Portal.Mailer.PostureProviderInterestEmail, recipient: nil
+
+config :portal, Portal.Workers.SignUpFollowUp, from_email: nil, bcc_email: nil
 
 config :portal, Portal.Splunk.APIClient, req_opts: []
 
@@ -277,6 +389,8 @@ config :portal, Portal.Sentinel.APIClient,
   client_id: System.get_env("SENTINEL_SYNC_CLIENT_ID"),
   client_secret: System.get_env("SENTINEL_SYNC_CLIENT_SECRET"),
   token_base_url: "https://login.microsoftonline.com",
+  discovery_document_uri:
+    "https://login.microsoftonline.com/organizations/v2.0/.well-known/openid-configuration",
   req_opts: []
 
 config :portal, Portal.S3.APIClient,
@@ -295,9 +409,8 @@ config :portal, Portal.Entra.AuthProvider,
   client_secret: System.get_env("ENTRA_OIDC_CLIENT_SECRET"),
   response_type: "code",
   scope: "openid email profile",
-  # Tenant-scoped endpoint for internal OAuth apps
   discovery_document_uri:
-    "https://login.microsoftonline.com/52e801b2-c10e-42e6-9c36-4cb95f3353d5/v2.0/.well-known/openid-configuration"
+    "https://login.microsoftonline.com/organizations/v2.0/.well-known/openid-configuration"
 
 config :portal, Portal.OIDC.AuthProvider,
   response_type: "code",
@@ -316,15 +429,18 @@ config :portal, Portal.Billing,
     "prod_PZdZiSBX1HdXO2",
     # Team
     "prod_PZdbLazRNU3Bdi",
+    # Business
+    "prod_VMyDXDNwtDbpYa",
     # Enterprise
     "prod_PZdb7NJhcdyjRV"
-  ],
-  # Adhoc Device
-  adhoc_device_product_id: "prod_TrPXF2LVHSJpMk"
+  ]
 
 config :portal, Portal.Crl.Sync, req_opts: []
 
 config :portal, Portal.Ocsp.Sync, req_opts: []
+
+config :portal, Portal.OSReleases, reload_every: :timer.minutes(10)
+config :portal, Portal.OSReleases.Sync, req_opts: []
 
 config :portal, Portal.ComponentVersions,
   firezone_releases_url: "https://www.firezone.dev/api/releases",
@@ -349,7 +465,7 @@ config :portal, docker_registry: "ghcr.io/firezone"
 
 config :portal, outbound_email_adapter_configured?: false
 
-config :portal, relay_presence_topic: "presences:global_relays"
+config :portal, relay_presence_topic: "presences:relays"
 
 config :portal, region: ""
 
@@ -429,8 +545,6 @@ config :portal, PortalWeb.Plugs.PutSecurityHeaders,
     "script-src 'self' 'nonce-${nonce}'",
     "object-src 'none'",
     "base-uri 'self'",
-    # Client deep link: some browsers check form-action across post-submit redirects.
-    "form-action 'self' firezone-fd0020211111:",
     "frame-ancestors 'none'"
   ]
 
@@ -487,6 +601,15 @@ config :portal, relays_presence_debounce_timeout_ms: 1_000
 
 config :portal, PortalAPI.RateLimit,
   refill_rate: 10,
+  capacity: 200,
+  read_refill_rate: 10,
+  read_capacity: 200
+
+# MCP has an additional pre-authentication IP bucket. Its cost is one token,
+# versus ten for the authenticated per-account API bucket, allowing a modest
+# connection burst without permitting unbounded token verification or parsing.
+config :portal, PortalAPI.Plugs.MCPRateLimit,
+  refill_rate: 10,
   capacity: 200
 
 config :portal, PortalAPI.Sockets.RateLimit,
@@ -531,6 +654,8 @@ config :phoenix, :json_library, JSON
 
 config :swoosh, :api_client, Swoosh.ApiClient.Req
 
+config :portal, Portal.Mailer.InternalEmail, recipient: nil
+
 config :portal, Portal.Mailer,
   adapter: Portal.Mailer.NoopAdapter,
   from_email: "test@firez.one"
@@ -562,7 +687,7 @@ config :esbuild,
 
 # Configure tailwind (the version is required)
 config :tailwind,
-  version: "4.1.12",
+  version: "4.3.3",
   portal: [
     args: [
       "--input=css/main.css",

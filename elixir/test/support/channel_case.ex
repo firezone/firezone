@@ -84,7 +84,7 @@ defmodule PortalAPI.ChannelCase do
     Portal.Config.put_env_override(
       :portal,
       :relay_presence_topic,
-      "presences:global_relays:#{inspect(make_ref())}"
+      "presences:relays:#{inspect(make_ref())}"
     )
 
     # Set debounce to 0 in tests for faster execution

@@ -1,0 +1,25 @@
+[package]
+name = "doh-test-server"
+version = "0.1.0"
+edition = { workspace = true }
+license = { workspace = true }
+
+[lib]
+path = "lib.rs"
+
+[dependencies]
+anyhow = { workspace = true }
+base64 = { workspace = true, features = ["alloc"] }
+bytes = { workspace = true }
+dns-types = { workspace = true }
+http-body-util = { workspace = true }
+hyper = { workspace = true }
+hyper-util = { workspace = true, features = ["server-auto", "tokio"] }
+rcgen = { workspace = true }
+rustls = { workspace = true }
+tokio = { workspace = true, features = ["net", "rt"] }
+tokio-rustls = { workspace = true }
+tokio-util = { workspace = true, features = ["rt"] }
+
+[lints]
+workspace = true

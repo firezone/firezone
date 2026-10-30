@@ -26,13 +26,18 @@ defmodule Portal.OutboundEmailTestHelpers do
   defp format_queued_email(job) do
     request = job.args["request"] || %{}
 
-    %{
+    email = %{
       subject: request["subject"],
       text_body: request["text_body"],
       html_body: request["html_body"],
       to: format_addresses(request["to"]),
       bcc: format_addresses(request["bcc"])
     }
+
+    case format_addresses(request["reply_to"]) do
+      [] -> email
+      reply_to -> Map.put(email, :reply_to, reply_to)
+    end
   end
 
   defp format_addresses(nil), do: []

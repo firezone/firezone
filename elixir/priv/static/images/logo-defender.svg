@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 400 400">
+<path d="M200 8 40 68v138c0 88.4 62.6 158.8 160 186 97.4-27.2 160-97.6 160-186V68L200 8Z" fill="url(#defender_shield)"/>
+<path d="M200 8 40 68v138c0 88.4 62.6 158.8 160 186V8Z" fill="url(#defender_shield_light)"/>
+<path d="M200 62 84 105v101c0 65.9 45.4 118.9 116 141V62Z" fill="#fff" fill-opacity="0.92"/>
+<defs>
+<linearGradient id="defender_shield" x1="200" y1="8" x2="200" y2="392" gradientUnits="userSpaceOnUse">
+<stop stop-color="#0F5FD1"/>
+<stop offset="1" stop-color="#062E6F"/>
+</linearGradient>
+<linearGradient id="defender_shield_light" x1="40" y1="8" x2="200" y2="392" gradientUnits="userSpaceOnUse">
+<stop stop-color="#3FA3F5"/>
+<stop offset="1" stop-color="#1B72DE"/>
+</linearGradient>
+</defs>
+</svg>

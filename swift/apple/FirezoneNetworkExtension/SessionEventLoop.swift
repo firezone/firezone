@@ -5,16 +5,31 @@ import Foundation
 enum SessionCommand {
   case disconnect
   case setInternetResourceState(Bool)
+  case setAdditionalHostCandidates([String])
   case setDns([String])
   case reset(String)
 }
 
-/// Runs the session event loop, owning the Session lifecycle.
+/// Hands a session to exactly one owner.
+actor SessionHandoff {
+  private var session: Session?
+
+  init(_ session: Session) {
+    self.session = session
+  }
+
+  func take() -> Session? {
+    defer { session = nil }
+    return session
+  }
+}
+
+/// Runs the session event loop until the command stream ends.
 ///
-/// When either task completes, both are cancelled and the function returns.
-/// This ensures the Session's Drop is called on the Rust side.
+/// The command task is the session's only owner, and dropping the session ends the event stream.
 func runSessionEventLoop(
-  session: Session,
+  handoff: SessionHandoff,
+  events: EventStream,
   commandReceiver: Receiver<SessionCommand>,
   eventSender: Sender<Event>
 ) async {
@@ -22,10 +37,12 @@ func runSessionEventLoop(
   // Multiplex between commands and events
   await withTaskGroup(of: Void.self) { group in
     group.addTask {
-      await forwardEvents(from: session, to: eventSender)
+      await forwardEvents(from: events, to: eventSender)
     }
 
     group.addTask {
+      guard let session = await handoff.take() else { return }
+
       await forwardCommands(from: commandReceiver, to: session)
     }
 
@@ -35,10 +52,12 @@ func runSessionEventLoop(
   }
 }
 
-/// Forwards events from the session to the event sender.
-private func forwardEvents(from session: Session, to eventSender: Sender<Event>) async {
+/// Forwards events from the event stream to the event sender.
+///
+/// Swift cannot cancel a pending `EventStream.next()`, so this must not hold the session.
+private func forwardEvents(from events: EventStream, to eventSender: Sender<Event>) async {
   while !Task.isCancelled {
-    guard let event = await session.nextEvent() else {
+    guard let event = await events.next() else {
       Log.log("Event stream ended")
       break
     }
@@ -57,12 +76,18 @@ private func forwardCommands(from commandReceiver: Receiver<SessionCommand>, to 
       break
     }
 
+    // Logged before the call: a command that never arrives differs from one that never returns.
+    Log.log("Forwarding \(command) to session")
+
     switch command {
     case .disconnect:
       session.disconnect()
 
     case .setInternetResourceState(let active):
       session.setInternetResourceState(active: active)
+
+    case .setAdditionalHostCandidates(let ips):
+      session.setAdditionalHostCandidates(ips: ips)
 
     case .setDns(let servers):
       session.setDns(dnsServers: servers)

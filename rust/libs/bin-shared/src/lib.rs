@@ -4,7 +4,11 @@ pub mod http_health_check;
 
 mod dns_control;
 mod network_changes;
+mod power;
 mod tun_device_manager;
+
+#[cfg(target_os = "linux")]
+mod dbus;
 
 #[cfg(target_os = "linux")]
 pub mod linux;
@@ -39,4 +43,5 @@ pub const FIREZONE_MARK: u32 = 0xfd002021;
 
 pub use dns_control::{DnsControlMethod, DnsController};
 pub use network_changes::{new_dns_notifier, new_network_notifier};
+pub use power::{ResumeNotifier, new_resume_notifier};
 pub use tun_device_manager::{TunDeviceManager, TunIpStack};

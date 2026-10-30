@@ -6,9 +6,25 @@
 #![cfg(windows)]
 
 use std::process::Command;
+use std::sync::{Mutex, MutexGuard, PoisonError};
 
 use tracing_subscriber::layer::SubscriberExt as _;
 use tracing_subscriber::util::SubscriberInitExt as _;
+
+/// Serialises the tests, which all mutate the shared `Application` event log.
+///
+/// `New-EventLog` and `Remove-EventLog` read, modify and write that log's list of sources, so
+/// running the tests concurrently can leave a source half-registered and make the subsequent
+/// `RegisterEventSourceW` fail with `ACCESS_DENIED`.
+static EVENT_LOG: Mutex<()> = Mutex::new(());
+
+/// Takes the [`EVENT_LOG`] lock for the rest of the current test.
+///
+/// Poisoning is ignored on purpose: one failing test would otherwise fail the other two rather
+/// than let them report their own result.
+fn serialize_event_log_access() -> MutexGuard<'static, ()> {
+    EVENT_LOG.lock().unwrap_or_else(PoisonError::into_inner)
+}
 
 /// Unique source name for testing to avoid conflicts.
 ///
@@ -105,6 +121,7 @@ fn debug_list_events(source: &str) -> String {
 #[ignore = "Requires Windows and may need admin privileges"]
 fn writes_event_to_event_log() {
     let source = test_source("writes");
+    let _serialized = serialize_event_log_access();
     let _cleanup = SourceGuard(source.clone());
 
     // Clean up any previous test runs
@@ -152,6 +169,7 @@ fn writes_event_to_event_log() {
 #[ignore = "Requires Windows and may need admin privileges"]
 fn maps_log_levels_correctly() {
     let source = test_source("levels");
+    let _serialized = serialize_event_log_access();
     let _cleanup = SourceGuard(source.clone());
 
     remove_source(&source);
@@ -201,6 +219,7 @@ fn maps_log_levels_correctly() {
 #[ignore = "Requires Windows and may need admin privileges"]
 fn captures_span_fields() {
     let source = test_source("spans");
+    let _serialized = serialize_event_log_access();
     let _cleanup = SourceGuard(source.clone());
 
     remove_source(&source);

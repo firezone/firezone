@@ -45,13 +45,13 @@ interface SignedOutProps {
   signIn: () => void;
 }
 
+const TOKEN_HINT =
+  "You can sign in by clicking the Firezone icon in the taskbar or by " +
+  "clicking the button below.";
 function SignedOut({ signIn }: SignedOutProps) {
   return (
     <div className="flex flex-col items-center gap-4">
-      <p className="text-sm text-body">
-        You can sign in by clicking the Firezone icon in the taskbar or by
-        clicking &quot;Sign in&quot; below.
-      </p>
+      <p className="text-sm text-body">{TOKEN_HINT}</p>
       <Button onClick={signIn} variant="primary">
         Sign in
       </Button>
@@ -74,7 +74,7 @@ function SignedIn({ actorName, accountSlug, signOut }: SignedInProps) {
   return (
     <div className="flex flex-col items-center gap-4">
       <p className="text-sm text-body">
-        You are currently signed into&nbsp;
+        You are currently signed into &nbsp;
         <span className="font-bold text-heading">{accountSlug}</span>
         &nbsp;as&nbsp;
         <span className="font-bold text-heading">{actorName}</span>

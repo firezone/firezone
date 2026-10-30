@@ -493,6 +493,43 @@ defmodule Portal.Okta.APIClientTest do
       assert Agent.get(agent, & &1) == 2
     end
 
+    test "retries on 403 for GET requests and succeeds", %{client: client} do
+      # Enable retry for this test
+      Portal.Config.put_env_override(Portal.Okta.APIClient,
+        req_opts: [
+          plug: {Req.Test, Portal.Okta.APIClient},
+          retry_delay: fn _n -> 1 end,
+          max_retries: 1
+        ]
+      )
+
+      {:ok, agent} = Agent.start_link(fn -> 0 end)
+
+      Req.Test.stub(APIClient, fn conn ->
+        call_count = Agent.get_and_update(agent, fn count -> {count, count + 1} end)
+
+        case call_count do
+          0 ->
+            # First call fails with 403
+            conn
+            |> Plug.Conn.put_status(403)
+            |> Req.Test.json(%{"errorCode" => "E0000006", "errorSummary" => "Access denied"})
+
+          _ ->
+            # Second call succeeds
+            Req.Test.json(conn, [%{"id" => "user1", "name" => "Test User"}])
+        end
+      end)
+
+      results =
+        APIClient.stream_app_users("app_123", client, "test_token")
+        |> Enum.to_list()
+
+      assert [{:ok, %{"id" => "user1"}}] = results
+      # Verify retry happened
+      assert Agent.get(agent, & &1) == 2
+    end
+
     test "retries on 429 rate limit with delay from headers", %{client: client} do
       # Enable retry for this test - no retry_delay since custom retry returns {:delay, ms}
       Portal.Config.put_env_override(Portal.Okta.APIClient,

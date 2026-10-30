@@ -9,18 +9,10 @@ defmodule PortalWeb.UserpassControllerTest do
 
   setup do
     account = account_fixture()
-    provider = userpass_provider_fixture(account: account)
+    provider = userpass_provider_fixture(account: account, context: :clients_and_portal)
     password_hash = Portal.Crypto.hash(:argon2, @password)
 
     {:ok, account: account, provider: provider, password_hash: password_hash}
-  end
-
-  defp create_actor_with_password(attrs, password_hash) do
-    actor = actor_fixture(attrs)
-
-    actor
-    |> Ecto.Changeset.change(password_hash: password_hash)
-    |> Portal.Repo.update!()
   end
 
   describe "sign_in/2" do
@@ -40,10 +32,7 @@ defmodule PortalWeb.UserpassControllerTest do
       password_hash: password_hash
     } do
       actor =
-        create_actor_with_password(
-          %{type: :account_admin_user, account: account},
-          password_hash
-        )
+        actor_fixture(type: :account_admin_user, account: account, password_hash: password_hash)
 
       conn =
         post(conn, ~p"/#{account.id}/sign_in/userpass/#{provider.id}", %{
@@ -61,10 +50,7 @@ defmodule PortalWeb.UserpassControllerTest do
       password_hash: password_hash
     } do
       actor =
-        create_actor_with_password(
-          %{type: :account_admin_user, account: account},
-          password_hash
-        )
+        actor_fixture(type: :account_admin_user, account: account, password_hash: password_hash)
 
       conn =
         post(conn, ~p"/#{account.id}/sign_in/userpass/#{provider.id}", %{
@@ -81,10 +67,7 @@ defmodule PortalWeb.UserpassControllerTest do
       password_hash: password_hash
     } do
       actor =
-        create_actor_with_password(
-          %{type: :account_admin_user, account: account},
-          password_hash
-        )
+        actor_fixture(type: :account_admin_user, account: account, password_hash: password_hash)
 
       redirect_to = ~p"/#{account}/resources"
 
@@ -97,6 +80,35 @@ defmodule PortalWeb.UserpassControllerTest do
       assert redirected_to(conn) == redirect_to
     end
 
+    test "approving an app connection does not sign you into the portal", %{
+      conn: conn,
+      account: account,
+      provider: provider,
+      password_hash: password_hash
+    } do
+      actor =
+        actor_fixture(type: :account_admin_user, account: account, password_hash: password_hash)
+
+      conn =
+        post(conn, ~p"/#{account.id}/sign_in/userpass/#{provider.id}", %{
+          "userpass" => %{"idp_id" => actor.email, "secret" => @password},
+          "as" => "oauth",
+          "redirect_to" => ~p"/#{account}/oauth/authorize"
+        })
+
+      # The approval cookie is set and the portal one is not, so getting through
+      # this flow leaves no portal session behind. The portal key can still be
+      # present as a deletion, which carries no value.
+      assert approval = conn.resp_cookies["oauth_sess_#{account.id}"]
+      assert approval.value != ""
+
+      portal_cookie = Map.get(conn.resp_cookies, "sess_#{account.id}", %{})
+      refute Map.has_key?(portal_cookie, :value)
+
+      assert approval.max_age == PortalWeb.Cookie.OAuthSession.lifetime_secs()
+      assert approval.max_age == 15 * 60
+    end
+
     test "falls back when portal redirect_to is scoped to another account", %{
       conn: conn,
       account: account,
@@ -106,10 +118,7 @@ defmodule PortalWeb.UserpassControllerTest do
       other_account = account_fixture()
 
       actor =
-        create_actor_with_password(
-          %{type: :account_admin_user, account: account},
-          password_hash
-        )
+        actor_fixture(type: :account_admin_user, account: account, password_hash: password_hash)
 
       conn =
         post(conn, ~p"/#{account.id}/sign_in/userpass/#{provider.id}", %{
@@ -129,10 +138,7 @@ defmodule PortalWeb.UserpassControllerTest do
       prefix_account = account_fixture(slug: "#{account.slug}_other")
 
       actor =
-        create_actor_with_password(
-          %{type: :account_admin_user, account: account},
-          password_hash
-        )
+        actor_fixture(type: :account_admin_user, account: account, password_hash: password_hash)
 
       conn =
         post(conn, ~p"/#{account.id}/sign_in/userpass/#{provider.id}", %{
@@ -150,10 +156,7 @@ defmodule PortalWeb.UserpassControllerTest do
       password_hash: password_hash
     } do
       actor =
-        create_actor_with_password(
-          %{type: :account_user, account: account},
-          password_hash
-        )
+        actor_fixture(type: :account_user, account: account, password_hash: password_hash)
 
       conn =
         post(conn, ~p"/#{account.id}/sign_in/userpass/#{provider.id}", %{
@@ -171,10 +174,7 @@ defmodule PortalWeb.UserpassControllerTest do
       password_hash: password_hash
     } do
       actor =
-        create_actor_with_password(
-          %{type: :account_admin_user, account: account},
-          password_hash
-        )
+        actor_fixture(type: :account_admin_user, account: account, password_hash: password_hash)
 
       conn =
         post(conn, ~p"/#{account.id}/sign_in/userpass/#{provider.id}", %{
@@ -195,10 +195,7 @@ defmodule PortalWeb.UserpassControllerTest do
       password_hash: password_hash
     } do
       actor =
-        create_actor_with_password(
-          %{type: :account_user, account: account},
-          password_hash
-        )
+        actor_fixture(type: :account_user, account: account, password_hash: password_hash)
 
       conn =
         post(conn, ~p"/#{account.id}/sign_in/userpass/#{provider.id}", %{
@@ -219,10 +216,7 @@ defmodule PortalWeb.UserpassControllerTest do
       password_hash: password_hash
     } do
       actor =
-        create_actor_with_password(
-          %{type: :account_admin_user, account: account},
-          password_hash
-        )
+        actor_fixture(type: :account_admin_user, account: account, password_hash: password_hash)
 
       conn =
         post(conn, ~p"/#{account.id}/sign_in/userpass/#{provider.id}", %{
@@ -243,10 +237,7 @@ defmodule PortalWeb.UserpassControllerTest do
       password_hash: password_hash
     } do
       actor =
-        create_actor_with_password(
-          %{type: :account_admin_user, account: account},
-          password_hash
-        )
+        actor_fixture(type: :account_admin_user, account: account, password_hash: password_hash)
 
       conn =
         post(conn, ~p"/#{account.id}/sign_in/userpass/#{provider.id}", %{
@@ -267,10 +258,7 @@ defmodule PortalWeb.UserpassControllerTest do
       password_hash: password_hash
     } do
       actor =
-        create_actor_with_password(
-          %{type: :account_user, account: account},
-          password_hash
-        )
+        actor_fixture(type: :account_user, account: account, password_hash: password_hash)
 
       conn =
         post(conn, ~p"/#{account.id}/sign_in/userpass/#{provider.id}", %{
@@ -290,10 +278,7 @@ defmodule PortalWeb.UserpassControllerTest do
       password_hash: password_hash
     } do
       actor =
-        create_actor_with_password(
-          %{type: :account_user, account: account},
-          password_hash
-        )
+        actor_fixture(type: :account_user, account: account, password_hash: password_hash)
 
       conn =
         post(conn, ~p"/#{account.id}/sign_in/userpass/#{provider.id}", %{
@@ -318,10 +303,7 @@ defmodule PortalWeb.UserpassControllerTest do
       update_account(account, %{users_limit_exceeded: true})
 
       actor =
-        create_actor_with_password(
-          %{type: :account_user, account: account},
-          password_hash
-        )
+        actor_fixture(type: :account_user, account: account, password_hash: password_hash)
 
       conn =
         post(conn, ~p"/#{account.id}/sign_in/userpass/#{provider.id}", %{
@@ -335,6 +317,50 @@ defmodule PortalWeb.UserpassControllerTest do
       assert flash(conn, :error) =~ "exceeding billing limits"
     end
 
+    test "rejects a new user on a full Business account but lets an active user sign in",
+         %{
+           conn: conn,
+           account: account,
+           provider: provider,
+           password_hash: password_hash
+         } do
+      account =
+        update_account(account, %{
+          metadata: %{stripe: %{product_name: "Business"}},
+          limits: %{monthly_active_users_count: 1}
+        })
+
+      active =
+        actor_fixture(type: :account_user, account: account, password_hash: password_hash)
+
+      client = Portal.DeviceFixtures.client_fixture(account: account, actor: active)
+
+      Portal.ClientSessionFixtures.client_session_fixture(
+        account: account,
+        actor: active,
+        client: client
+      )
+
+      new_user =
+        actor_fixture(type: :account_user, account: account, password_hash: password_hash)
+
+      params = fn actor ->
+        %{
+          "userpass" => %{"idp_id" => actor.email, "secret" => @password},
+          "as" => "client",
+          "state" => "test-state",
+          "nonce" => "test-nonce"
+        }
+      end
+
+      blocked = post(conn, ~p"/#{account.id}/sign_in/userpass/#{provider.id}", params.(new_user))
+      assert flash(blocked, :error) =~ "exceeding billing limits"
+
+      allowed = post(conn, ~p"/#{account.id}/sign_in/userpass/#{provider.id}", params.(active))
+      assert allowed.status == 200
+      assert allowed.resp_body =~ "client_redirect"
+    end
+
     test "allows gui-client sign-in when account has exceeded monthly active users limits (soft limit)",
          %{
            conn: conn,
@@ -346,10 +372,7 @@ defmodule PortalWeb.UserpassControllerTest do
       update_account(account, %{seats_limit_exceeded: true})
 
       actor =
-        create_actor_with_password(
-          %{type: :account_user, account: account},
-          password_hash
-        )
+        actor_fixture(type: :account_user, account: account, password_hash: password_hash)
 
       # Sign-in should still succeed since seats is a soft limit
       conn =
@@ -374,10 +397,7 @@ defmodule PortalWeb.UserpassControllerTest do
       update_account(account, %{users_limit_exceeded: true, sites_limit_exceeded: true})
 
       actor =
-        create_actor_with_password(
-          %{type: :account_user, account: account},
-          password_hash
-        )
+        actor_fixture(type: :account_user, account: account, password_hash: password_hash)
 
       conn =
         post(conn, ~p"/#{account.id}/sign_in/userpass/#{provider.id}", %{
@@ -400,10 +420,7 @@ defmodule PortalWeb.UserpassControllerTest do
       update_account(account, %{sites_limit_exceeded: true})
 
       actor =
-        create_actor_with_password(
-          %{type: :account_user, account: account},
-          password_hash
-        )
+        actor_fixture(type: :account_user, account: account, password_hash: password_hash)
 
       conn =
         post(conn, ~p"/#{account.id}/sign_in/userpass/#{provider.id}", %{
@@ -428,10 +445,7 @@ defmodule PortalWeb.UserpassControllerTest do
       update_account(account, %{users_limit_exceeded: true})
 
       actor =
-        create_actor_with_password(
-          %{type: :account_admin_user, account: account},
-          password_hash
-        )
+        actor_fixture(type: :account_admin_user, account: account, password_hash: password_hash)
 
       conn =
         post(conn, ~p"/#{account.id}/sign_in/userpass/#{provider.id}", %{
@@ -440,6 +454,77 @@ defmodule PortalWeb.UserpassControllerTest do
 
       # Portal sign-in should still be allowed so admins can manage billing
       assert redirected_to(conn) =~ "/sites"
+    end
+
+    test "rejects portal sign-in when provider context is clients_only", %{
+      conn: conn,
+      account: account,
+      provider: provider,
+      password_hash: password_hash
+    } do
+      provider
+      |> Ecto.Changeset.change(context: :clients_only)
+      |> Portal.Repo.update!()
+
+      actor =
+        actor_fixture(type: :account_admin_user, account: account, password_hash: password_hash)
+
+      conn =
+        post(conn, ~p"/#{account.id}/sign_in/userpass/#{provider.id}", %{
+          "userpass" => %{"idp_id" => actor.email, "secret" => @password}
+        })
+
+      assert redirected_to(conn) == ~p"/#{account.id}"
+      assert flash(conn, :error) == "This authentication method is not available for your sign-in context."
+    end
+
+    test "rejects GUI client sign-in when provider context is portal_only", %{
+      conn: conn,
+      account: account,
+      provider: provider,
+      password_hash: password_hash
+    } do
+      provider
+      |> Ecto.Changeset.change(context: :portal_only)
+      |> Portal.Repo.update!()
+
+      actor =
+        actor_fixture(type: :account_admin_user, account: account, password_hash: password_hash)
+
+      conn =
+        post(conn, ~p"/#{account.id}/sign_in/userpass/#{provider.id}", %{
+          "userpass" => %{"idp_id" => actor.email, "secret" => @password},
+          "as" => "client",
+          "state" => "test-state",
+          "nonce" => "test-nonce"
+        })
+
+      assert redirected_to(conn) == ~p"/#{account.id}"
+      assert flash(conn, :error) == "This authentication method is not available for your sign-in context."
+    end
+
+    test "rejects headless client sign-in when provider context is portal_only", %{
+      conn: conn,
+      account: account,
+      provider: provider,
+      password_hash: password_hash
+    } do
+      provider
+      |> Ecto.Changeset.change(context: :portal_only)
+      |> Portal.Repo.update!()
+
+      actor =
+        actor_fixture(type: :account_admin_user, account: account, password_hash: password_hash)
+
+      conn =
+        post(conn, ~p"/#{account.id}/sign_in/userpass/#{provider.id}", %{
+          "userpass" => %{"idp_id" => actor.email, "secret" => @password},
+          "as" => "headless-client",
+          "state" => "test-state"
+        })
+
+      assert redirected_to(conn) == ~p"/#{account.id}"
+      assert flash(conn, :error) == "This authentication method is not available for your sign-in context."
     end
   end
 end

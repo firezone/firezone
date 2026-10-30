@@ -85,11 +85,17 @@ defmodule Portal.Workers.OutboundEmail do
     |> maybe_put_recipients(:to, request["to"] || [])
     |> maybe_put_recipients(:cc, request["cc"] || [])
     |> maybe_put_recipients(:bcc, request["bcc"] || [])
+    |> maybe_put_reply_to(request["reply_to"] || [])
     |> Swoosh.Email.from({from["name"], from["address"]})
     |> Swoosh.Email.subject(subject)
     |> Swoosh.Email.html_body(html_body)
     |> Swoosh.Email.text_body(text_body)
   end
+
+  defp maybe_put_reply_to(email, []), do: email
+
+  defp maybe_put_reply_to(email, [%{"name" => name, "address" => address} | _]),
+    do: Swoosh.Email.reply_to(email, {name, address})
 
   defp maybe_put_recipients(email, _field, []), do: email
 

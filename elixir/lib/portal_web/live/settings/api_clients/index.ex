@@ -4,7 +4,8 @@ defmodule PortalWeb.Settings.ApiClients.Index do
   import Ecto.Changeset,
     only: [change: 1, put_change: 3, cast: 3, validate_required: 2, validate_length: 3]
 
-  import PortalWeb.Settings.ApiClients.Components
+  alias PortalWeb.Settings.ApiClients.Components, as: ApiClientComponents
+  alias PortalWeb.Settings.Components, as: SettingsComponents
 
   alias Portal.{Actor, APIToken, Authentication}
 
@@ -34,6 +35,34 @@ defmodule PortalWeb.Settings.ApiClients.Index do
       )
       |> Safe.scoped(subject)
       |> Safe.one!()
+    end
+
+    @spec fetch_token_for_actor(binary(), any()) :: Portal.APIToken.t() | nil
+    def fetch_token_for_actor(actor_id, subject) do
+      from(t in Portal.APIToken,
+        where: t.actor_id == ^actor_id,
+        order_by: [desc: t.inserted_at],
+        limit: 1
+      )
+      |> Safe.scoped(subject)
+      |> Safe.one()
+    end
+
+    @spec update_actor_and_token_scopes(Ecto.Changeset.t(), [String.t()], any()) ::
+            {:ok, Portal.Actor.t()} | {:error, Ecto.Changeset.t()}
+    def update_actor_and_token_scopes(actor_changeset, scopes, subject) do
+      Safe.transact(fn ->
+        with {:ok, actor} <- Safe.scoped(actor_changeset, subject) |> Safe.update(),
+             {_count, nil} <-
+               from(t in Portal.APIToken,
+                 where: t.actor_id == ^actor.id,
+                 where: t.account_id == ^actor.account_id
+               )
+               |> Safe.scoped(subject)
+               |> Safe.update_all(set: [scopes: scopes]) do
+          {:ok, actor}
+        end
+      end)
     end
 
     @spec create_api_token_with_actor(Ecto.Changeset.t(), map(), any()) ::
@@ -73,23 +102,20 @@ defmodule PortalWeb.Settings.ApiClients.Index do
   end
 
   def mount(_params, _session, socket) do
-    if Portal.Account.rest_api_enabled?(socket.assigns.account) do
-      actors_with_tokens = Database.list_actors_with_token(socket.assigns.subject)
+    # The static render shows a skeleton instead, so the tokens are only queried
+    # once, by the connected mount.
+    actors_with_tokens =
+      if connected?(socket), do: Database.list_actors_with_token(socket.assigns.subject)
 
-      socket =
-        socket
-        |> assign(page_title: "API Tokens")
-        |> assign(actors_with_tokens: actors_with_tokens)
-        |> assign(selected_actor: nil)
-        |> assign(form: nil, encoded_token: nil)
-        |> assign(pending_confirm: nil, open_actor_actions_id: nil)
-        |> assign(trust_anchors_enabled?: PortalWeb.NavigationComponents.trust_anchors_enabled?())
-        |> assign(device_posture_enabled?: PortalWeb.NavigationComponents.device_posture_enabled?())
+    socket =
+      socket
+      |> assign(page_title: "API Tokens")
+      |> assign(actors_with_tokens: actors_with_tokens)
+      |> assign(selected_actor: nil)
+      |> assign(form: nil, encoded_token: nil)
+      |> assign(pending_confirm: nil, open_actor_actions_id: nil)
 
-      {:ok, socket}
-    else
-      {:ok, push_navigate(socket, to: ~p"/#{socket.assigns.account}/settings/api_clients/beta")}
-    end
+    {:ok, socket}
   end
 
   def handle_params(_params, _uri, %{assigns: %{live_action: :new}} = socket) do
@@ -101,6 +127,7 @@ defmodule PortalWeb.Settings.ApiClients.Index do
       socket =
         socket
         |> assign(selected_actor: nil, encoded_token: nil, open_actor_actions_id: nil)
+        |> assign(selected_token: nil, scopes: [], scopes_error: nil)
         |> assign(form: to_form(changeset, as: "api_token"))
 
       {:noreply, socket}
@@ -119,11 +146,13 @@ defmodule PortalWeb.Settings.ApiClients.Index do
 
   def handle_params(%{"id" => id}, _uri, %{assigns: %{live_action: :edit}} = socket) do
     actor = Database.get_actor!(id, socket.assigns.subject)
+    token = Database.fetch_token_for_actor(actor.id, socket.assigns.subject)
     changeset = actor_name_changeset(actor, %{})
 
     socket =
       socket
       |> assign(selected_actor: actor, encoded_token: nil, open_actor_actions_id: nil)
+      |> assign(selected_token: token, scopes: (token && token.scopes) || [], scopes_error: nil)
       |> assign(form: to_form(changeset, as: "actor"))
 
     {:noreply, socket}
@@ -133,6 +162,9 @@ defmodule PortalWeb.Settings.ApiClients.Index do
     {:noreply,
      assign(socket,
        selected_actor: nil,
+       selected_token: nil,
+       scopes: [],
+       scopes_error: nil,
        form: nil,
        encoded_token: nil,
        pending_confirm: nil,
@@ -143,89 +175,90 @@ defmodule PortalWeb.Settings.ApiClients.Index do
   def render(assigns) do
     ~H"""
     <div class="flex flex-col h-full" phx-window-keydown="handle_keydown" phx-key="Escape">
-      <.settings_nav
+      <Navigation.settings_nav
         account={@account}
         current_path={@current_path}
-        trust_anchors_enabled?={@trust_anchors_enabled?}
-        device_posture_enabled?={@device_posture_enabled?}
       />
 
       <div class="flex-1 flex flex-col overflow-hidden">
         <div class="flex items-center justify-between px-6 py-3 border-b border-border shrink-0">
           <div class="flex items-center gap-2">
             <h2 class="text-xs font-semibold text-heading">API Tokens</h2>
-            <span class="text-xs text-subtle tabular-nums">
+            <span :if={@actors_with_tokens} class="text-xs text-subtle tabular-nums">
               {length(@actors_with_tokens)}
             </span>
           </div>
           <div class="flex items-center gap-2">
-            <.docs_action path="/reference/rest-api" />
-            <.link
+            <Navigation.docs_action path="/reference/rest-api" />
+            <Navigation.link
               patch={~p"/#{@account}/settings/api_clients/new"}
               class="flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
             >
-              <.icon name="ri-add-line" class="w-3 h-3" /> Add
-            </.link>
+              <Core.icon name="ri-add-line" class="w-3 h-3" /> Add
+            </Navigation.link>
           </div>
         </div>
 
         <div class="flex-1 overflow-auto">
-          <%= if Enum.empty?(@actors_with_tokens) do %>
-            <div class="flex items-center justify-center h-full">
-              <div class="flex flex-col items-center gap-3 py-16">
-                <div class="w-9 h-9 rounded-lg border border-border bg-raised flex items-center justify-center">
-                  <.icon name="ri-key-line" class="w-3 h-3" />
+          <%= cond do %>
+            <% is_nil(@actors_with_tokens) -> %>
+              <SettingsComponents.skeleton id="api-tokens-skeleton" />
+            <% Enum.empty?(@actors_with_tokens) -> %>
+              <div class="flex items-center justify-center h-full">
+                <div class="flex flex-col items-center gap-3 py-16">
+                  <div class="w-9 h-9 rounded-lg border border-border bg-raised flex items-center justify-center">
+                    <Core.icon name="ri-key-line" class="w-5 h-5 text-subtle" />
+                  </div>
+                  <div class="text-center">
+                    <p class="text-sm font-medium text-heading">No API tokens yet</p>
+                    <p class="text-xs text-subtle mt-0.5">
+                      No API tokens have been configured.
+                    </p>
+                  </div>
+                  <Navigation.link
+                    patch={~p"/#{@account}/settings/api_clients/new"}
+                    class="flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
+                  >
+                    <Core.icon name="ri-add-line" class="w-3 h-3" /> Add an API token
+                  </Navigation.link>
                 </div>
-                <div class="text-center">
-                  <p class="text-sm font-medium text-heading">No API tokens yet</p>
-                  <p class="text-xs text-subtle mt-0.5">
-                    No API tokens have been configured.
-                  </p>
-                </div>
-                <.link
-                  patch={~p"/#{@account}/settings/api_clients/new"}
-                  class="flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
-                >
-                  <.icon name="ri-add-line" class="w-3 h-3" /> Add an API token
-                </.link>
               </div>
-            </div>
-          <% else %>
-            <table class="w-full text-sm border-collapse">
-              <thead class="sticky top-0 z-10 bg-raised">
-                <tr class="border-b border-border-strong">
-                  <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-56">
-                    Name
-                  </th>
-                  <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-28">
-                    Status
-                  </th>
-                  <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-36">
-                    Created
-                  </th>
-                  <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-36">
-                    Expires
-                  </th>
-                  <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-36">
-                    Last Used
-                  </th>
-                  <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-36">
-                    Last Used IP
-                  </th>
-                  <th class="px-6 py-2.5 w-10"></th>
-                </tr>
-              </thead>
-              <tbody>
-                <.api_client_row
-                  :for={{actor, token} <- @actors_with_tokens}
-                  account={@account}
-                  actor={actor}
-                  token={token}
-                  pending_confirm={@pending_confirm}
-                  open_actor_actions_id={@open_actor_actions_id}
-                />
-              </tbody>
-            </table>
+            <% true -> %>
+              <table class="w-full text-sm border-collapse">
+                <thead class="sticky top-0 z-10 bg-raised">
+                  <tr class="border-b border-border-strong">
+                    <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-56">
+                      Name
+                    </th>
+                    <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-28">
+                      Status
+                    </th>
+                    <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-36">
+                      Created
+                    </th>
+                    <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-36">
+                      Expires
+                    </th>
+                    <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-36">
+                      Last Used
+                    </th>
+                    <th class="px-6 py-2.5 text-left text-[10px] font-semibold tracking-widest uppercase text-subtle w-36">
+                      Last Used IP
+                    </th>
+                    <th class="px-6 py-2.5 w-10"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <.api_client_row
+                    :for={{actor, token} <- @actors_with_tokens}
+                    account={@account}
+                    actor={actor}
+                    token={token}
+                    pending_confirm={@pending_confirm}
+                    open_actor_actions_id={@open_actor_actions_id}
+                  />
+                </tbody>
+              </table>
           <% end %>
         </div>
       </div>
@@ -246,7 +279,7 @@ defmodule PortalWeb.Settings.ApiClients.Index do
           <div class="shrink-0 px-5 pt-4 pb-3 border-b border-border bg-elevated">
             <div class="flex items-center justify-between gap-3">
               <h2 class="text-sm font-semibold text-heading">New API Token</h2>
-              <.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_panel" />
+              <Form.icon_button icon="ri-close-line" title="Close (Esc)" phx-click="close_panel" />
             </div>
           </div>
 
@@ -260,27 +293,27 @@ defmodule PortalWeb.Settings.ApiClients.Index do
             <!-- Panel body -->
             <div class="flex-1 overflow-y-auto px-5 py-4 space-y-4">
               <%= if is_nil(@encoded_token) do %>
-                <.api_token_creation_form form={@form} />
+                <ApiClientComponents.api_token_creation_form form={@form} scopes={@scopes} error={@scopes_error} />
               <% else %>
-                <.api_token_reveal encoded_token={@encoded_token} />
+                <ApiClientComponents.api_token_reveal encoded_token={@encoded_token} />
               <% end %>
             </div>
 
     <!-- Panel footer -->
-            <.panel_footer>
+            <Form.panel_footer>
               <%= if is_nil(@encoded_token) do %>
-                <.panel_footer_button type="button" phx-click="close_panel">
+                <Form.panel_footer_button type="button" phx-click="close_panel">
                   Cancel
-                </.panel_footer_button>
-                <.panel_footer_button type="submit" style="primary">
+                </Form.panel_footer_button>
+                <Form.panel_footer_button type="submit" style="primary">
                   Create Token
-                </.panel_footer_button>
+                </Form.panel_footer_button>
               <% else %>
-                <.panel_footer_button type="button" phx-click="close_reveal">
+                <Form.panel_footer_button type="button" phx-click="close_reveal">
                   Done
-                </.panel_footer_button>
+                </Form.panel_footer_button>
               <% end %>
-            </.panel_footer>
+            </Form.panel_footer>
           </.form>
         </div>
       </div>
@@ -300,7 +333,7 @@ defmodule PortalWeb.Settings.ApiClients.Index do
           :if={@live_action == :edit && @selected_actor && @form}
           class="flex flex-col h-full overflow-hidden"
         >
-          <.panel_header title="Edit API Token" />
+          <Form.panel_header title="Edit API Token" />
 
           <.form
             id="api-token-edit-form"
@@ -311,24 +344,26 @@ defmodule PortalWeb.Settings.ApiClients.Index do
           >
             <!-- Panel body -->
             <div class="flex-1 overflow-y-auto px-5 py-4 space-y-4">
-              <.input
+              <Form.input
                 label="Name"
                 field={@form[:name]}
                 placeholder="E.g. 'GitHub Actions' or 'Terraform'"
                 phx-debounce="300"
                 required
               />
+
+              <ApiClientComponents.api_token_scopes scopes={@scopes} error={@scopes_error} />
             </div>
 
     <!-- Panel footer -->
-            <.panel_footer>
-              <.panel_footer_button type="button" phx-click="close_panel">
+            <Form.panel_footer>
+              <Form.panel_footer_button type="button" phx-click="close_panel">
                 Cancel
-              </.panel_footer_button>
-              <.panel_footer_button type="submit" style="primary">
+              </Form.panel_footer_button>
+              <Form.panel_footer_button type="submit" style="primary">
                 Save
-              </.panel_footer_button>
-            </.panel_footer>
+              </Form.panel_footer_button>
+            </Form.panel_footer>
           </.form>
         </div>
       </div>
@@ -353,8 +388,8 @@ defmodule PortalWeb.Settings.ApiClients.Index do
     ~H"""
     <tr class={[
       "border-b transition-colors",
-      @is_pending_delete && "border-red-200 bg-red-50",
-      @is_pending_toggle && "border-amber-200 bg-amber-50",
+      @is_pending_delete && "border-danger/30 bg-danger-light",
+      @is_pending_toggle && "border-warning/30 bg-warning-light",
       !@is_pending_delete && !@is_pending_toggle &&
         "border-border hover:bg-raised"
     ]}>
@@ -369,13 +404,13 @@ defmodule PortalWeb.Settings.ApiClients.Index do
               Delete this API Token? This will remove it along with all associated credentials and cannot be undone.
             </span>
             <div class="flex items-center gap-2 ml-auto shrink-0">
-              <.button
+              <Form.button
                 phx-click="cancel_confirm"
                 size="xs"
               >
               Cancel
-              </.button>
-              <.button
+              </Form.button>
+              <Form.button
                 phx-click="delete"
                 phx-value-id={@actor.id}
                 size="xs"
@@ -383,7 +418,7 @@ defmodule PortalWeb.Settings.ApiClients.Index do
                 class="font-medium"
               >
                 Delete
-              </.button>
+              </Form.button>
             </div>
           </div>
         </td>
@@ -398,23 +433,23 @@ defmodule PortalWeb.Settings.ApiClients.Index do
               <span class="text-xs text-warning">
                 {if !@actor.is_disabled,
                   do: "Disable this API Token? It will no longer be able to authenticate.",
-                  else: "Re-enable this API Token?"}
+                  else: "Enable this API Token?"}
               </span>
               <div class="flex items-center gap-2 ml-auto shrink-0">
-                <.button
+                <Form.button
                   phx-click="cancel_confirm"
                   size="xs"
                 >
                   Cancel
-                </.button>
-                <.button
+                </Form.button>
+                <Form.button
                   phx-click={if !@actor.is_disabled, do: "disable", else: "enable"}
                   phx-value-id={@actor.id}
                   size="xs"
                   style="warning"
                 >
                   {if !@actor.is_disabled, do: "Disable", else: "Enable"}
-                </.button>
+                </Form.button>
               </div>
             </div>
           </td>
@@ -427,13 +462,13 @@ defmodule PortalWeb.Settings.ApiClients.Index do
           </td>
           <td class="px-6 py-3 w-28">
             <%= if !@actor.is_disabled do %>
-            <.badge type="success" class="text-[10px]">
+            <Core.badge type="success" class="text-[10px]">
                 Active
-            </.badge>
+            </Core.badge>
             <% else %>
-            <.badge class="text-[10px]">
+            <Core.badge class="text-[10px]">
                 Disabled
-            </.badge>
+            </Core.badge>
             <% end %>
           </td>
           <td class="px-6 py-3 w-36">
@@ -449,7 +484,7 @@ defmodule PortalWeb.Settings.ApiClients.Index do
           <td class="px-6 py-3 w-36">
             <span class="text-sm text-body">
               <%= if @token && @token.last_seen_at do %>
-                <.relative_datetime datetime={@token.last_seen_at} />
+                <Core.relative_datetime datetime={@token.last_seen_at} />
               <% else %>
                 —
               <% end %>
@@ -462,18 +497,18 @@ defmodule PortalWeb.Settings.ApiClients.Index do
           </td>
           <td class="px-6 py-3 w-10">
             <div class="flex justify-end">
-              <.actions_dropdown
+              <Core.actions_dropdown
                 open={@open_actor_actions_id == @actor.id}
                 close_event="close_actor_actions"
                 phx-click="toggle_actor_actions"
                 phx-value-id={@actor.id}
               >
-                <.link
+                <Navigation.link
                   patch={~p"/#{@account}/settings/api_clients/#{@actor}/edit"}
                   class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-raised transition-colors text-body"
                 >
-                  <.icon name="ri-pencil-line" class="w-3.5 h-3.5 shrink-0" /> Edit
-                </.link>
+                  <Core.icon name="ri-pencil-line" class="w-3.5 h-3.5 shrink-0" /> Edit
+                </Navigation.link>
                 <div class="my-1 border-t border-border"></div>
                 <button
                   phx-click="request_confirm"
@@ -481,7 +516,7 @@ defmodule PortalWeb.Settings.ApiClients.Index do
                   phx-value-action="toggle"
                   class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-raised transition-colors text-body"
                 >
-                  <.icon
+                  <Core.icon
                     name={
                       if !@actor.is_disabled,
                         do: "ri-pause-line",
@@ -498,9 +533,9 @@ defmodule PortalWeb.Settings.ApiClients.Index do
                   phx-value-action="delete"
                   class="flex items-center gap-2.5 w-full px-3 py-2 text-xs text-left hover:bg-raised transition-colors text-error"
                 >
-                  <.icon name="ri-delete-bin-line" class="w-3.5 h-3.5 shrink-0" /> Delete
+                  <Core.icon name="ri-delete-bin-line" class="w-3.5 h-3.5 shrink-0" /> Delete
                 </button>
-              </.actions_dropdown>
+              </Core.actions_dropdown>
             </div>
           </td>
         <% end %>
@@ -537,81 +572,86 @@ defmodule PortalWeb.Settings.ApiClients.Index do
     {:noreply, socket}
   end
 
-  def handle_event("validate_new", %{"api_token" => attrs}, socket) do
-    attrs = map_expires_at(attrs)
+  def handle_event("validate_new", params, socket) do
+    scopes = scopes_from(params)
+
+    attrs =
+      params
+      |> Map.get("api_token", %{})
+      |> map_expires_at()
+      |> Map.put("scopes", scopes)
 
     changeset =
       build_creation_changeset(attrs)
       |> Map.put(:action, :insert)
 
-    {:noreply, assign(socket, form: to_form(changeset, as: "api_token"))}
+    socket =
+      socket
+      |> assign(scopes: scopes, scopes_error: nil)
+      |> assign(form: to_form(changeset, as: "api_token"))
+
+    {:noreply, socket}
   end
 
-  def handle_event("create_token", %{"api_token" => attrs}, socket) do
+  def handle_event("select_scopes", %{"preset" => preset}, socket) do
+    {:noreply, assign(socket, scopes: Portal.Scope.preset(preset), scopes_error: nil)}
+  end
+
+  def handle_event("create_token", params, socket) do
     account = socket.assigns.account
+    scopes = scopes_from(params)
 
-    if Portal.Billing.can_create_api_clients?(account) do
-      attrs = map_expires_at(attrs)
-      {name, token_attrs} = Map.pop(attrs, "name")
-      actor_changeset = build_actor_changeset(%{"name" => name})
+    cond do
+      scopes == [] ->
+        {:noreply, assign(socket, scopes: scopes, scopes_error: scopes_error(scopes))}
 
-      case Database.create_api_token_with_actor(
-             actor_changeset,
-             token_attrs,
-             socket.assigns.subject
-           ) do
-        {:ok, {_actor, encoded_token}} ->
-          actors_with_tokens = Database.list_actors_with_token(socket.assigns.subject)
+      Portal.Billing.can_create_api_clients?(account) ->
+        do_create_token(params, scopes, socket)
 
-          socket =
-            socket
-            |> assign(encoded_token: encoded_token, actors_with_tokens: actors_with_tokens)
-
-          {:noreply, socket}
-
-        {:error, changeset} ->
-          {:noreply, assign(socket, form: to_form(changeset, as: "api_token"))}
-      end
-    else
-      socket =
-        socket
-        |> put_flash(
-          :error,
-          "You have reached the maximum number of API tokens allowed for your account."
-        )
-        |> push_patch(to: ~p"/#{account}/settings/api_clients")
-
-      {:noreply, socket}
+      true ->
+        {:noreply, billing_limit_reached(socket)}
     end
   end
 
-  def handle_event("validate_edit", %{"actor" => attrs}, socket) do
+  def handle_event("validate_edit", params, socket) do
     changeset =
-      actor_name_changeset(socket.assigns.selected_actor, attrs)
+      socket.assigns.selected_actor
+      |> actor_name_changeset(Map.get(params, "actor", %{}))
       |> Map.put(:action, :update)
 
-    {:noreply, assign(socket, form: to_form(changeset, as: "actor"))}
+    socket =
+      socket
+      |> assign(scopes: scopes_from(params), scopes_error: nil)
+      |> assign(form: to_form(changeset, as: "actor"))
+
+    {:noreply, socket}
   end
 
-  def handle_event("update_actor", %{"actor" => attrs}, socket) do
-    changeset = actor_name_changeset(socket.assigns.selected_actor, attrs)
+  def handle_event("update_actor", params, socket) do
+    scopes = scopes_from(params)
+    changeset = actor_name_changeset(socket.assigns.selected_actor, Map.get(params, "actor", %{}))
 
-    case Portal.Safe.scoped(changeset, socket.assigns.subject) |> Portal.Safe.update() do
-      {:ok, _actor} ->
-        actors_with_tokens = Database.list_actors_with_token(socket.assigns.subject)
+    with [_ | _] <- scopes,
+         {:ok, _actor} <-
+           Database.update_actor_and_token_scopes(changeset, scopes, socket.assigns.subject) do
+      actors_with_tokens = Database.list_actors_with_token(socket.assigns.subject)
 
-        socket =
-          socket
-          |> assign(actors_with_tokens: actors_with_tokens)
-          |> push_patch(to: ~p"/#{socket.assigns.account}/settings/api_clients")
+      socket =
+        socket
+        |> assign(actors_with_tokens: actors_with_tokens)
+        |> push_patch(to: ~p"/#{socket.assigns.account}/settings/api_clients")
 
-        {:noreply, socket}
+      {:noreply, socket}
+    else
+      [] ->
+        {:noreply, assign(socket, scopes: scopes, scopes_error: scopes_error(scopes))}
 
-      {:error, changeset} ->
-        {:noreply, assign(socket, form: to_form(changeset, as: "actor"))}
+      {:error, %Ecto.Changeset{} = changeset} ->
+        {:noreply, assign(socket, form: to_form(changeset, as: "actor"), scopes: scopes)}
     end
   end
 
+  # An api_client actor always has a token in practice; guard anyway.
   def handle_event("disable", %{"id" => id}, socket) do
     actor = get_actor_by_id(socket, id)
 
@@ -722,10 +762,49 @@ defmodule PortalWeb.Settings.ApiClients.Index do
     end
   end
 
+  defp do_create_token(params, scopes, socket) do
+    attrs =
+      params
+      |> Map.get("api_token", %{})
+      |> map_expires_at()
+      |> Map.put("scopes", scopes)
+
+    {name, token_attrs} = Map.pop(attrs, "name")
+    actor_changeset = build_actor_changeset(%{"name" => name})
+
+    case Database.create_api_token_with_actor(
+           actor_changeset,
+           token_attrs,
+           socket.assigns.subject
+         ) do
+      {:ok, {_actor, encoded_token}} ->
+        actors_with_tokens = Database.list_actors_with_token(socket.assigns.subject)
+
+        socket =
+          socket
+          |> assign(encoded_token: encoded_token, actors_with_tokens: actors_with_tokens)
+
+        {:noreply, socket}
+
+      {:error, changeset} ->
+        {:noreply, assign(socket, form: to_form(changeset, as: "api_token"))}
+    end
+  end
+
+  defp billing_limit_reached(socket) do
+    socket
+    |> put_flash(
+      :error,
+      "You have reached the maximum number of API tokens allowed for your account."
+    )
+    |> push_patch(to: ~p"/#{socket.assigns.account}/settings/api_clients")
+  end
+
   defp build_creation_changeset(attrs) do
     %APIToken{}
-    |> cast(attrs, [:name, :expires_at])
+    |> cast(attrs, [:name, :expires_at, :scopes])
     |> validate_required([:name, :expires_at])
+    |> Portal.Scope.validate(:scopes)
   end
 
   defp build_actor_changeset(attrs) do
@@ -741,6 +820,18 @@ defmodule PortalWeb.Settings.ApiClients.Index do
     |> validate_required([:name])
     |> validate_length(:name, min: 1, max: 255)
   end
+
+  # Read from the parameters rather than a changeset, since the edit panel is
+  # bound to the actor. Expanded because a locked read box submits nothing.
+  defp scopes_from(params) do
+    params
+    |> Map.get("api_token", %{})
+    |> Map.get("scopes", [])
+    |> Portal.Scope.expand()
+  end
+
+  defp scopes_error([]), do: "Select at least one permission"
+  defp scopes_error(_scopes), do: nil
 
   defp map_expires_at(attrs) do
     Map.update(attrs, "expires_at", nil, fn

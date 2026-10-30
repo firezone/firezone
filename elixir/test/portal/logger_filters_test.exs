@@ -58,6 +58,28 @@ defmodule Portal.LoggerFiltersTest do
       end
     end
 
+    test "relevels Bandit HTTP/2 protocol stream errors to info" do
+      event =
+        bandit_event(%Bandit.HTTP2.Errors.StreamError{
+          message: "Field value contains invalid characters (RFC9113§8.2.1)",
+          error_code: Bandit.HTTP2.Errors.protocol_error(),
+          stream_id: 1
+        })
+
+      assert %{level: :info} = LoggerFilters.relevel_expected_client_errors(event, nil)
+    end
+
+    test "leaves Bandit HTTP/2 internal stream errors at error" do
+      event =
+        bandit_event(%Bandit.HTTP2.Errors.StreamError{
+          message: "boom",
+          error_code: Bandit.HTTP2.Errors.internal_error(),
+          stream_id: 1
+        })
+
+      assert LoggerFilters.relevel_expected_client_errors(event, nil) == :ignore
+    end
+
     test "relevels a closed socket lookup reported by Bandit to info" do
       event =
         bandit_event(%Bandit.TransportError{message: "Unable to obtain conn_data", error: :einval})
@@ -71,6 +93,31 @@ defmodule Portal.LoggerFiltersTest do
 
       assert LoggerFilters.relevel_expected_client_errors(http_error, nil) == :ignore
       assert LoggerFilters.relevel_expected_client_errors(transport_error, nil) == :ignore
+    end
+
+    test "relevels client TLS alerts on WebSocket sockets and channels to info" do
+      for process_label <- [
+            {Phoenix.Socket, PortalAPI.Client.Socket, "socket:16365c49-6446-4de9-be3b-1840db805315"},
+            {Phoenix.Channel, PortalAPI.Client.Channel, "client"}
+          ] do
+        event =
+          termination_event(
+            process_label,
+            {:tls_alert, {:bad_record_mac, ~c"TLS server: Bad Record MAC"}}
+          )
+
+        assert %{level: :info} = LoggerFilters.relevel_expected_client_errors(event, nil)
+      end
+    end
+
+    test "leaves terminations of other labeled processes at error" do
+      event =
+        termination_event(
+          {:gen_statem, Portal.Replication.SlotPoller},
+          {:tls_alert, {:bad_record_mac, ~c"TLS server: Bad Record MAC"}}
+        )
+
+      assert LoggerFilters.relevel_expected_client_errors(event, nil) == :ignore
     end
 
     test "leaves other TLS alerts at error" do
@@ -119,14 +166,20 @@ defmodule Portal.LoggerFiltersTest do
   end
 
   defp thousand_island_termination_event(reason) do
+    termination_event(
+      {:thousand_island, :connection, {Bandit.DelegatingHandler, {{127, 0, 0, 1}, 443}}},
+      reason
+    )
+  end
+
+  defp termination_event(process_label, reason) do
     %{
       level: :error,
       msg:
         {:report,
          %{
            label: {:gen_server, :terminate},
-           process_label:
-             {:thousand_island, :connection, {Bandit.DelegatingHandler, {{127, 0, 0, 1}, 443}}},
+           process_label: process_label,
            reason: reason
          }},
       meta: %{domain: [:otp]}

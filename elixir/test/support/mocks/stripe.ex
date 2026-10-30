@@ -107,35 +107,6 @@ defmodule Portal.Mocks.Stripe do
     [{"GET", "/v1/products/#{product["id"]}", 200, product}]
   end
 
-  def mock_fetch_product_endpoint(product_id, resp \\ %{}) do
-    response =
-      Map.merge(
-        %{
-          "id" => product_id,
-          "object" => "product",
-          "active" => true,
-          "created" => 1_678_833_149,
-          "default_price" => nil,
-          "description" => nil,
-          "images" => [],
-          "features" => [],
-          "livemode" => false,
-          "metadata" => %{},
-          "name" => "Enterprise",
-          "package_dimensions" => nil,
-          "shippable" => nil,
-          "statement_descriptor" => nil,
-          "tax_code" => nil,
-          "unit_label" => nil,
-          "updated" => 1_678_833_149,
-          "url" => nil
-        },
-        resp
-      )
-
-    [{"GET", "/v1/products/#{product_id}", 200, response}]
-  end
-
   def mock_create_billing_session_endpoint(account, resp \\ %{}) do
     response =
       Map.merge(
@@ -435,6 +406,22 @@ defmodule Portal.Mocks.Stripe do
     {product, price, subscription}
   end
 
+  def build_all(:business, customer_id, seats, metadata) do
+    product =
+      build_product(id: "prod_test_business", name: "Business", metadata: business_metadata())
+
+    price = build_price(product: product["id"], amount: 800)
+
+    subscription =
+      build_subscription(
+        customer: customer_id,
+        metadata: metadata,
+        items: [[price: price, quantity: seats]]
+      )
+
+    {product, price, subscription}
+  end
+
   def build_all(:enterprise, customer_id, seats, metadata) do
     product =
       build_product(
@@ -561,6 +548,23 @@ defmodule Portal.Mocks.Stripe do
     |> Map.merge(opts)
   end
 
+  def business_metadata(opts \\ []) do
+    opts = normalize_opts(opts)
+
+    %{
+      "account_admin_users_count" => "unlimited",
+      "sites_count" => "unlimited",
+      "idp_sync" => true,
+      "internet_resource" => true,
+      "monthly_active_users_count" => "unlimited",
+      "policy_conditions" => true,
+      "service_accounts_count" => "unlimited",
+      "support_type" => "email",
+      "users_count" => "unlimited"
+    }
+    |> Map.merge(opts)
+  end
+
   def enterprise_metadata(opts \\ []) do
     opts = normalize_opts(opts)
 
@@ -571,7 +575,6 @@ defmodule Portal.Mocks.Stripe do
       "internet_resource" => true,
       "monthly_active_users_count" => "unlimited",
       "policy_conditions" => true,
-      "rest_api" => true,
       "service_accounts_count" => "unlimited",
       "support_type" => "email_and_slack",
       "users_count" => "unlimited"

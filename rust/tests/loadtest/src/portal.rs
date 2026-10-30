@@ -59,8 +59,14 @@ pub async fn fetch_relay(
     let token = load_token(token_path)?;
 
     let device_id = uuid::Uuid::new_v4().to_string();
-    let url = LoginUrl::client(portal_url.clone(), device_id, None, DeviceInfo::default())
-        .map_err(|e| anyhow!("invalid portal URL: {e:?}"))?;
+    let url = LoginUrl::client(
+        portal_url.clone(),
+        device_id,
+        None,
+        DeviceInfo::default(),
+        None,
+    )
+    .map_err(|e| anyhow!("invalid portal URL: {e:?}"))?;
 
     let socket_factory = Arc::new(socket_factory::tcp) as Arc<dyn SocketFactory<TcpSocket>>;
 

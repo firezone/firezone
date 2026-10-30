@@ -16,6 +16,7 @@ defmodule Portal.Changes.Consumer do
 
   @tables_to_hooks %{
     "accounts" => Hooks.Accounts,
+    "account_slugs" => Hooks.AccountSlugs,
     "actors" => Hooks.Actors,
     "groups" => Hooks.Groups,
     "memberships" => Hooks.Memberships,
@@ -26,19 +27,32 @@ defmodule Portal.Changes.Consumer do
     "sites" => Hooks.Sites,
     "policies" => Hooks.Policies,
     "resources" => Hooks.Resources,
-    "static_device_pool_members" => Hooks.StaticDevicePoolMembers,
     "client_tokens" => Hooks.ClientTokens,
     "portal_sessions" => Hooks.PortalSessions,
     "google_auth_providers" => Hooks.AuthProviders,
+    "github_auth_providers" => Hooks.AuthProviders,
     "okta_auth_providers" => Hooks.AuthProviders,
     "entra_auth_providers" => Hooks.AuthProviders,
     "oidc_auth_providers" => Hooks.AuthProviders,
     "email_otp_auth_providers" => Hooks.AuthProviders,
     "userpass_auth_providers" => Hooks.AuthProviders,
+    "x509_auth_providers" => Hooks.X509AuthProviders,
     "entra_directories" => Hooks.Directories,
     "okta_directories" => Hooks.Directories,
     "google_directories" => Hooks.Directories,
-    "relay_tokens" => Hooks.RelayTokens
+    "relay_tokens" => Hooks.RelayTokens,
+    "intune_posture_providers" => Hooks.IntunePostureProviders,
+    "iru_posture_providers" => Hooks.IruPostureProviders,
+    "defender_posture_providers" => Hooks.DefenderPostureProviders,
+    "santa_posture_providers" => Hooks.SantaPostureProviders,
+    "sentinelone_posture_providers" => Hooks.SentinelOnePostureProviders,
+    "sophos_posture_providers" => Hooks.SophosPostureProviders,
+    "intune_devices" => Hooks.IntuneDevices,
+    "iru_devices" => Hooks.IruDevices,
+    "defender_devices" => Hooks.DefenderDevices,
+    "santa_devices" => Hooks.SantaDevices,
+    "sentinelone_devices" => Hooks.SentinelOneDevices,
+    "sophos_devices" => Hooks.SophosDevices
   }
 
   @impl true

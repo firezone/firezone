@@ -12,11 +12,13 @@ defmodule Portal.Policy do
           id: Ecto.UUID.t(),
           description: String.t() | nil,
           conditions: [Portal.Policies.Condition.t()],
+          postures: Portal.Policies.Postures.t() | nil,
           group_id: Ecto.UUID.t() | nil,
           group_idp_id: String.t() | nil,
           resource_id: Ecto.UUID.t(),
           account_id: Ecto.UUID.t(),
           flow_log_uploads_enabled: boolean(),
+          require_attestation: boolean(),
           is_disabled: boolean(),
           inserted_at: DateTime.t(),
           updated_at: DateTime.t()
@@ -29,12 +31,14 @@ defmodule Portal.Policy do
     field :description, :string
 
     embeds_many :conditions, Portal.Policies.Condition, on_replace: :delete
+    field :postures, Portal.Policies.Postures
 
     belongs_to :group, Portal.Group, foreign_key: :group_id
     field :group_idp_id, :string
     belongs_to :resource, Portal.Resource
 
     field :flow_log_uploads_enabled, :boolean, default: true
+    field :require_attestation, :boolean, default: false
 
     field :is_disabled, :boolean, default: false, read_after_writes: true
 
@@ -45,6 +49,7 @@ defmodule Portal.Policy do
     changeset
     |> validate_length(:description, min: 1, max: 1024)
     |> validate_unique_condition_properties()
+    |> validate_trust_anchors_for_attestation()
     |> unique_constraint(
       :base,
       name: :policies_account_id_resource_id_group_id_index,
@@ -108,6 +113,18 @@ defmodule Portal.Policy do
     end
   end
 
+  # Turning it off stays allowed after the account's last trust anchor is gone.
+  defp validate_trust_anchors_for_attestation(%Ecto.Changeset{} = changeset) do
+    account_id = get_field(changeset, :account_id)
+
+    if get_change(changeset, :require_attestation) == true and not is_nil(account_id) and
+         not Database.trust_anchors?(account_id) do
+      add_error(changeset, :require_attestation, "requires at least one trust anchor")
+    else
+      changeset
+    end
+  end
+
   @spec reconnect_orphaned_policies(Ecto.UUID.t()) :: non_neg_integer()
   def reconnect_orphaned_policies(account_id) do
     Database.reconnect_orphaned_policies(account_id)
@@ -125,6 +142,13 @@ defmodule Portal.Policy do
       from(r in Portal.Resource, where: r.id == ^resource_id)
       |> Safe.scoped(subject)
       |> Safe.one()
+    end
+
+    @spec trust_anchors?(Ecto.UUID.t()) :: boolean()
+    def trust_anchors?(account_id) do
+      from(t in Portal.TrustAnchorCertificate, where: t.account_id == ^account_id)
+      |> Safe.unscoped()
+      |> Safe.exists?()
     end
 
     @spec reconnect_orphaned_policies(Ecto.UUID.t()) :: non_neg_integer()

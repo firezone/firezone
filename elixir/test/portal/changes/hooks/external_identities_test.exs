@@ -153,14 +153,38 @@ defmodule Portal.Changes.Hooks.ExternalIdentitiesTest do
       assert Repo.get_by(Portal.ClientToken, id: client_token.id) == nil
     end
 
-    test "deletes portal sessions for Entra auth provider with matching issuer" do
+    test "deletes client tokens for GitHub auth provider with matching issuer" do
+      account = account_fixture()
+      actor = actor_fixture(account: account)
+      github_provider = github_provider_fixture(account: account)
+
+      client_token =
+        client_token_fixture(
+          account: account,
+          actor: actor,
+          auth_provider: github_provider.auth_provider
+        )
+
+      identity = identity_fixture(account: account, actor: actor, issuer: "https://github.com/login/oauth")
+
+      old_data = %{
+        "account_id" => identity.account_id,
+        "actor_id" => identity.actor_id,
+        "issuer" => identity.issuer
+      }
+
+      assert :ok == on_delete(0, old_data)
+      assert Repo.get_by(Portal.ClientToken, id: client_token.id) == nil
+    end
+
+    test "deletes portal sessions for a second verified Entra tenant" do
       account = account_fixture()
       actor = actor_fixture(account: account)
 
       entra_provider =
         entra_provider_fixture(
           account: account,
-          issuer: "https://login.microsoftonline.com/tenant-id/v2.0"
+          tenant_ids: ["12345678-1234-1234-1234-123456789012", "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"]
         )
 
       portal_session =
@@ -174,7 +198,7 @@ defmodule Portal.Changes.Hooks.ExternalIdentitiesTest do
         identity_fixture(
           account: account,
           actor: actor,
-          issuer: "https://login.microsoftonline.com/tenant-id/v2.0"
+          issuer: "https://login.microsoftonline.com/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/v2.0"
         )
 
       old_data = %{

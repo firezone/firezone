@@ -8,37 +8,73 @@ defmodule Portal.Microsoft.Graph.APIClient do
   require Logger
 
   @entra_user_select_fields "id,displayName,mail,userPrincipalName,givenName,surname,accountEnabled"
-  @advanced_query_headers [{"ConsistencyLevel", "eventual"}]
-  @applications [:entra, :intune]
+  @applications [:entra, :intune, :windows_updates]
   @page_size "999"
 
   @doc """
   Gets an access token using the OAuth2 client credentials flow.
   """
-  def get_access_token(application, tenant_id) when application in @applications do
-    config = config()
+  def get_access_token(application, tenant_id) when application in @applications and is_binary(tenant_id) do
     application_config = application_config(application)
-    token_endpoint = "#{config[:token_base_url]}/#{tenant_id}/oauth2/v2.0/token"
 
     with {:ok, credential} <- client_credential(application_config) do
-      # Request access token to read what our app is set up to do (.default scope)
-      payload =
-        %{
-          "client_id" => application_config[:client_id],
-          "scope" => "https://graph.microsoft.com/.default",
-          "grant_type" => "client_credentials"
-        }
-        |> Map.merge(credential)
-        |> URI.encode_query()
-
-      Req.post(
-        token_endpoint,
-        [
-          headers: [{"Content-Type", "application/x-www-form-urlencoded"}],
-          body: payload
-        ] ++ req_opts()
-      )
+      request_token(application_config, credential, tenant_id)
     end
+  end
+
+  @doc """
+  Gets an access token for an application that lives in Firezone's own tenant.
+
+  The tenant is not configured: the federated assertion the portal's identity
+  mints names it. Environments that authenticate with a secret instead, dev and
+  test, name it as `tenant_id` on the application.
+  """
+  def get_access_token(application) when application in @applications do
+    application_config = application_config(application)
+
+    with {:ok, credential} <- client_credential(application_config),
+         {:ok, tenant_id} <- own_tenant_id(application_config, credential) do
+      request_token(application_config, credential, tenant_id)
+    end
+  end
+
+  defp request_token(application_config, credential, tenant_id) do
+    token_endpoint = "#{config()[:token_base_url]}/#{tenant_id}/oauth2/v2.0/token"
+
+    # Request access token to read what our app is set up to do (.default scope)
+    payload =
+      %{
+        "client_id" => application_config[:client_id],
+        "scope" => "https://graph.microsoft.com/.default",
+        "grant_type" => "client_credentials"
+      }
+      |> Map.merge(credential)
+      |> URI.encode_query()
+
+    Req.post(
+      token_endpoint,
+      [
+        headers: [{"Content-Type", "application/x-www-form-urlencoded"}],
+        body: payload
+      ] ++ req_opts()
+    )
+  end
+
+  defp own_tenant_id(application_config, credential) do
+    case {application_config[:tenant_id], credential} do
+      {tenant_id, _credential} when is_binary(tenant_id) and tenant_id != "" -> {:ok, tenant_id}
+      {_none, %{"client_assertion" => assertion}} -> {:ok, jwt_claim!(assertion, "tid")}
+      {_none, _secret} -> {:error, :tenant_unknown}
+    end
+  end
+
+  defp jwt_claim!(jwt, claim) do
+    [_header, payload, _signature] = String.split(jwt, ".")
+
+    payload
+    |> Base.url_decode64!(padding: false)
+    |> JSON.decode!()
+    |> Map.fetch!(claim)
   end
 
   def client_id(application) when application in @applications do
@@ -78,6 +114,14 @@ defmodule Portal.Microsoft.Graph.APIClient do
      }}
   rescue
     exception -> {:error, exception}
+  end
+
+  @doc """
+  Streams the Windows Update for Business catalog: every Windows product Microsoft
+  services, each with the revisions (builds) it has shipped.
+  """
+  def stream_windows_update_products(access_token) do
+    stream_pages("/beta/admin/windows/updates/products", "$expand=revisions", access_token)
   end
 
   @doc """
@@ -151,25 +195,15 @@ defmodule Portal.Microsoft.Graph.APIClient do
   end
 
   @doc """
-  Streams transitive members of a group.
-  Returns a stream that yields pages of members (users, groups, service principals).
-  Fetches user profile fields that map to our identity schema.
+  Streams the direct members of a group, users and nested groups alike, with
+  the user fields that map to our identity schema. Reads without a filter or
+  cast are served from the directory itself, not the eventual search index.
   """
-  def stream_group_transitive_members(access_token, group_id) do
-    # Use the user cast plus an accountEnabled filter so Graph excludes disabled
-    # users server-side before we build identities or memberships.
-    query =
-      URI.encode_query(%{
-        "$top" => @page_size,
-        "$count" => "true",
-        "$filter" => "accountEnabled eq true",
-        "$select" => @entra_user_select_fields
-      })
+  def stream_group_members(access_token, group_id) do
+    query = URI.encode_query(%{"$top" => @page_size, "$select" => @entra_user_select_fields})
+    path = "/v1.0/groups/#{group_id}/members"
 
-    path = "/v1.0/groups/#{group_id}/transitiveMembers/microsoft.graph.user"
-
-    stream_pages(path, query, access_token, @advanced_query_headers)
-    |> Stream.map(&filter_active_entra_users_result/1)
+    stream_pages(path, query, access_token)
   end
 
   @doc """
@@ -252,35 +286,10 @@ defmodule Portal.Microsoft.Graph.APIClient do
       )
     end
 
-    users =
-      successful
-      |> Enum.map(fn response -> response["body"] end)
-      |> Enum.filter(&active_entra_user?/1)
-
-    Logger.debug("Filtered users", count: length(users))
+    # Disabled users are returned too: whether to keep one is the sync's call.
+    users = Enum.map(successful, fn response -> response["body"] end)
 
     {:ok, users}
-  end
-
-  defp filter_active_entra_users_result(users) when is_list(users) do
-    Enum.filter(users, &active_entra_user?/1)
-  end
-
-  defp filter_active_entra_users_result(other), do: other
-
-  defp active_entra_user?(user) do
-    case Map.fetch(user, "accountEnabled") do
-      {:ok, enabled} ->
-        enabled != false
-
-      :error ->
-        Logger.error("Skipping Entra user with missing accountEnabled field",
-          entra_user_id: Map.get(user, "id", "unknown"),
-          entra_user_email: Map.get(user, "mail", Map.get(user, "userPrincipalName", "unknown"))
-        )
-
-        false
-    end
   end
 
   @doc """
@@ -364,6 +373,53 @@ defmodule Portal.Microsoft.Graph.APIClient do
     end
   end
 
+  @doc """
+  Fetches one user with the fields that map to our identity schema.
+  """
+  def get_user(access_token, user_id) do
+    query = URI.encode_query(%{"$select" => @entra_user_select_fields})
+    get("/v1.0/users/#{user_id}", query, access_token)
+  end
+
+  @doc """
+  Fetches one group.
+  """
+  def get_group(access_token, group_id) do
+    query = URI.encode_query(%{"$select" => "id,displayName"})
+    get("/v1.0/groups/#{group_id}", query, access_token)
+  end
+
+  @doc """
+  Creates a change notification subscription.
+  """
+  def create_subscription(access_token, attrs) when is_map(attrs) do
+    request("/v1.0/subscriptions", access_token, method: :post, json: attrs)
+  end
+
+  @doc """
+  Extends a change notification subscription. Renewing also reauthorizes it.
+  """
+  def renew_subscription(access_token, subscription_id, %DateTime{} = expires_at) do
+    request("/v1.0/subscriptions/#{subscription_id}", access_token,
+      method: :patch,
+      json: %{"expirationDateTime" => DateTime.to_iso8601(expires_at)}
+    )
+  end
+
+  @doc """
+  Deletes a change notification subscription.
+  """
+  def delete_subscription(access_token, subscription_id) do
+    request("/v1.0/subscriptions/#{subscription_id}", access_token, method: :delete)
+  end
+
+  defp request(path, access_token, opts) do
+    Req.request(
+      [url: "#{endpoint()}#{path}", headers: [{"Authorization", "Bearer #{access_token}"}]] ++
+        opts ++ req_opts()
+    )
+  end
+
   defp get(path, query, access_token, headers \\ []) do
     suffix = if query in [nil, ""], do: "", else: "?#{query}"
     url = "#{endpoint()}#{path}#{suffix}"
@@ -374,9 +430,9 @@ defmodule Portal.Microsoft.Graph.APIClient do
     )
   end
 
-  defp stream_pages(path, query, access_token, headers \\ []) do
+  defp stream_pages(path, query, access_token) do
     Stream.resource(
-      fn -> {path, query, headers} end,
+      fn -> {path, query} end,
       fn
         nil ->
           {:halt, nil}
@@ -385,17 +441,17 @@ defmodule Portal.Microsoft.Graph.APIClient do
           # Halt stream on error
           {[error], nil}
 
-        {current_path, current_query, current_headers} ->
-          fetch_page(current_path, current_query, access_token, current_headers)
+        {current_path, current_query} ->
+          fetch_page(current_path, current_query, access_token)
       end,
       fn _ -> :ok end
     )
   end
 
-  defp fetch_page(current_path, current_query, access_token, headers) do
-    case get(current_path, current_query, access_token, headers) do
+  defp fetch_page(current_path, current_query, access_token) do
+    case get(current_path, current_query, access_token) do
       {:ok, %Req.Response{status: 200, body: body}} ->
-        parse_page_response(body, headers)
+        parse_page_response(body)
 
       {:ok, %Req.Response{} = response} ->
         # Non-200 response
@@ -407,7 +463,7 @@ defmodule Portal.Microsoft.Graph.APIClient do
     end
   end
 
-  defp parse_page_response(body, headers) do
+  defp parse_page_response(body) do
     case Map.fetch(body, "value") do
       {:ok, list} when is_list(list) ->
         # Empty list is valid - it means no results for this page
@@ -421,7 +477,7 @@ defmodule Portal.Microsoft.Graph.APIClient do
               uri = URI.parse(next_link)
               next_path = uri.path
               next_query = uri.query || ""
-              {next_path, next_query, headers}
+              {next_path, next_query}
           end
 
         {[list], next_state}

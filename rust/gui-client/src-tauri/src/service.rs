@@ -1,20 +1,22 @@
 use crate::{
-    ipc::{self, SocketId},
     logging,
     settings::{
-        AdvancedSettings, MdmSettings, load_advanced_settings, load_mdm_settings, save_advanced,
+        AdvancedSettings, AdvancedSettingsPatch, MdmSettings, load_advanced_settings,
+        load_mdm_settings, save_advanced,
     },
 };
 use anyhow::{Context as _, ErrorExt as _, Result, bail};
 use backoff::ExponentialBackoffBuilder;
 use bin_shared::{
-    DnsControlMethod, DnsController, TunDeviceManager,
+    DnsControlMethod, DnsController, ResumeNotifier, TunDeviceManager,
     device_id::{self, DeviceId},
     device_info,
     platform::{UdpSocketFactory, tcp_socket_factory},
     signals,
 };
-use connlib_model::{ResourceId, ResourceList};
+use client_ipc::{self as ipc, SocketId};
+use client_shared::ConnectedAs;
+use connlib_model::{ResourceId, ResourceView};
 use futures::{
     Future as _, FutureExt, SinkExt as _, Stream, StreamExt,
     future::poll_fn,
@@ -25,7 +27,7 @@ use ip_network::IpNetwork;
 use logging::FilterReloadHandle;
 use phoenix_channel::{DeviceInfo, LoginUrl, PhoenixChannel, get_user_agent};
 use secrecy::{ExposeSecret, SecretString};
-use std::{io, mem, panic::AssertUnwindSafe, pin::pin, sync::Arc, time::Duration};
+use std::{io, mem, net::IpAddr, panic::AssertUnwindSafe, pin::pin, sync::Arc, time::Duration};
 use telemetry::analytics;
 use tokio::time::Instant;
 use tracing::Instrument as _;
@@ -52,20 +54,29 @@ pub(crate) use platform::ProcessToken;
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
 pub enum ClientMsg {
     ClearLogs,
+    /// Reload the held keystore reference; the result arrives as [`ServerMsg::X509Certificate`].
+    ///
+    /// Fire-and-forget: the GUI sends it for every shown window and never awaits it.
+    ReloadX509,
     Connect {
         #[serde(serialize_with = "serialize_token")]
         token: SecretString,
         is_internet_resource_active: bool,
+        /// The token's API URL captured at sign-in, including any MDM override.
+        api_url: url::Url,
     },
     Disconnect,
     /// Persist new advanced settings to the protected on-disk file owned by
     /// the Tunnel service and reload the log filter.
     ApplyAdvancedSettings(AdvancedSettings),
+    PatchAdvancedSettings(AdvancedSettingsPatch),
+    /// Apply new additional host candidates to the running session and persist them.
+    ///
+    /// Only a failure to persist them is reported, as [`ServerMsg::AdvancedSettingsApplied`].
+    SetAdditionalHostCandidates(Vec<IpAddr>),
     SetInternetResourceState(bool),
     StartTelemetry {
-        environment: String,
         release: String,
-        account_slug: Option<String>,
     },
     #[cfg(debug_assertions)]
     Panic,
@@ -85,14 +96,19 @@ pub enum ServerMsg {
         firezone_id: String,
         advanced_settings: AdvancedSettings,
         mdm_settings: MdmSettings,
+        x509_certificate: Result<Option<x509_keystore::ParsedCertificate>, x509_keystore::Error>,
     },
     /// The Tunnel service finished clearing its log dir.
     ClearedLogs(Result<(), String>),
     ConnectResult(Result<(), String>),
     DisconnectedGracefully,
     OnDisconnect {
-        error_msg: String,
-        is_authentication_error: bool,
+        user_msg: String,
+        log_msg: String,
+        requires_sign_in: bool,
+        /// An older Tunnel service does not send this; `false` keeps its disconnects diagnostic.
+        #[serde(default)]
+        is_user_facing: bool,
     },
     AllGatewaysOffline {
         resource_id: ResourceId,
@@ -100,10 +116,16 @@ pub enum ServerMsg {
     GatewayVersionMismatch {
         resource_id: ResourceId,
     },
-    OnUpdateResources(ResourceList),
+    OnUpdateResources(Vec<ResourceView>),
+    /// Connlib connected to the portal, which named the account and actor this session belongs to.
+    ConnectedToPortal(ConnectedAs),
     /// Result of an `ApplyAdvancedSettings` from the GUI. `Ok` echoes the
     /// persisted struct so the GUI is certain about what landed.
     AdvancedSettingsApplied(Result<AdvancedSettings, String>),
+    /// What the platform keystore holds, pushed whenever it may have changed.
+    ///
+    /// `Hello` carries the first load; this arrives for every [`ClientMsg::ReloadX509`].
+    X509Certificate(Result<Option<x509_keystore::ParsedCertificate>, x509_keystore::Error>),
     /// The Tunnel service is terminating, maybe due to a software update
     ///
     /// This is a hint that the Client should exit with a message like,
@@ -219,6 +241,8 @@ async fn ipc_listen(
 
 /// Handles one IPC client
 struct Handler<'a> {
+    /// The keystore load this GUI connection displays and presents.
+    keystore: Result<Option<x509_keystore::Identity>, x509_keystore::Error>,
     device_id: DeviceId,
     dns_controller: &'a mut DnsController,
     ipc_rx: ipc::ServerRead<ClientMsg>,
@@ -231,6 +255,7 @@ struct Handler<'a> {
     tun_device: TunDeviceManager,
     dns_notifier: BoxStream<'static, Result<()>>,
     network_notifier: BoxStream<'static, Result<()>>,
+    resume_notifier: ResumeNotifier,
 }
 
 #[derive(Default, Debug)]
@@ -240,14 +265,17 @@ enum Session {
         event_stream: client_shared::EventStream,
         connlib: client_shared::Session,
         started_at: Instant,
+        api_url: Url,
     },
     Connected {
         event_stream: client_shared::EventStream,
         connlib: client_shared::Session,
+        api_url: Url,
     },
     WaitingForNetwork {
         token: SecretString,
         is_internet_resource_active: bool,
+        api_url: Url,
     },
     #[default]
     None,
@@ -260,21 +288,25 @@ impl Session {
                 event_stream,
                 connlib,
                 started_at,
+                api_url,
             } => {
                 tracing::debug!(elapsed = ?started_at.elapsed(), "Tunnel ready");
 
                 *self = Self::Connected {
                     event_stream,
                     connlib,
+                    api_url,
                 };
             }
             Session::Connected {
                 event_stream,
                 connlib,
+                api_url,
             } => {
                 *self = Self::Connected {
                     event_stream,
                     connlib,
+                    api_url,
                 };
             }
             Session::WaitingForNetwork { .. } => {
@@ -284,6 +316,15 @@ impl Session {
         }
 
         Ok(())
+    }
+
+    fn api_url(&self) -> Option<&Url> {
+        match self {
+            Self::Creating { api_url, .. } => Some(api_url),
+            Self::Connected { api_url, .. } => Some(api_url),
+            Self::WaitingForNetwork { api_url, .. } => Some(api_url),
+            Self::None => None,
+        }
     }
 
     fn as_connlib(&self) -> Option<&client_shared::Session> {
@@ -316,6 +357,36 @@ impl Session {
     fn is_none(&self) -> bool {
         matches!(self, Self::None)
     }
+}
+
+/// Reads the keystore off the runtime, because it can block on a TPM or a smart card and the
+/// connlib eventloop shares this runtime's single worker.
+async fn load_identity() -> Result<Option<x509_keystore::Identity>, x509_keystore::Error> {
+    let identity = tokio::task::spawn_blocking(x509_keystore::identity)
+        .await
+        .map_err(|error| x509_keystore::Error::UnreadableKeystore {
+            message: format!("Failed to join the keystore task: {error}"),
+        })??;
+
+    Ok(identity)
+}
+
+/// What the GUI shows of a held keystore load.
+fn x509_of(
+    keystore: &Result<Option<x509_keystore::Identity>, x509_keystore::Error>,
+) -> Result<Option<x509_keystore::ParsedCertificate>, x509_keystore::Error> {
+    if let Err(error) = keystore {
+        tracing::debug!(%error, "Failed to read the platform keystore");
+    }
+
+    keystore
+        .as_ref()
+        .map(|identity| {
+            identity
+                .as_ref()
+                .map(|identity| identity.certificate.clone())
+        })
+        .map_err(Clone::clone)
 }
 
 /// Shuts down the session and waits until its eventloop has exited.
@@ -354,6 +425,7 @@ enum Event {
     Terminate,
     NetworkChanged(Result<()>),
     DnsChanged(Result<()>),
+    Resumed(Result<()>),
 }
 
 // Open to better names
@@ -399,6 +471,11 @@ impl<'a> Handler<'a> {
             .await
             .context("Failed to initialize network change monitor")?
             .boxed();
+        // Missing resumes only costs us a slower recovery, so don't fail the session over it.
+        let resume_notifier = bin_shared::new_resume_notifier()
+            .await
+            .inspect_err(|e| tracing::warn!("Failed to initialize resume monitor: {e:#}"))
+            .unwrap_or_default();
 
         let advanced_settings = load_advanced_settings()
             .inspect_err(|e| {
@@ -419,16 +496,29 @@ impl<'a> Handler<'a> {
             .inspect_err(|e| tracing::warn!("Failed to load MDM settings, using defaults: {e:#}"))
             .unwrap_or_default();
 
+        // One load serves this GUI connection: the greeting, the page and every connect all
+        // read the same held reference, so what is shown is what is presented. Bounded,
+        // because a keystore that answers slowly, or never, must not hold up the greeting past
+        // the deadline the GUI gives us to prove we are alive.
+        let keystore = tokio::time::timeout(Duration::from_secs(3), load_identity())
+            .await
+            .map_err(|_| x509_keystore::Error::UnreadableKeystore {
+                message: "Timed out reading the keystore after 3s".to_owned(),
+            })
+            .and_then(std::convert::identity);
+
         ipc_tx
             .send(&ServerMsg::Hello {
                 firezone_id: device_id.id.clone(),
                 advanced_settings: advanced_settings.clone(),
                 mdm_settings: mdm_settings.clone(),
+                x509_certificate: x509_of(&keystore),
             })
             .await
             .context("Failed to greet to new GUI process")?; // Greet the GUI process. If the GUI process doesn't receive this after connecting, it knows that the tunnel service isn't responding.
 
         Ok(Self {
+            keystore,
             device_id,
             dns_controller,
             ipc_rx,
@@ -441,6 +531,7 @@ impl<'a> Handler<'a> {
             tun_device,
             dns_notifier,
             network_notifier,
+            resume_notifier,
         })
     }
 
@@ -454,9 +545,21 @@ impl<'a> Handler<'a> {
         let ret = loop {
             match poll_fn(|cx| self.next_event(cx, signals)).await {
                 Event::Connlib(x) => {
-                    if let Err(error) = self.handle_connlib_event(x).await {
-                        tracing::error!("Error while handling connlib callback: {error:#}");
-                        continue;
+                    match self
+                        .handle_connlib_event(x)
+                        .await
+                        .context("Error while handling connlib callback")
+                    {
+                        Ok(()) => {}
+                        Err(error)
+                            if matches!(
+                                error.any_downcast_ref::<io::Error>().map(io::Error::kind),
+                                Some(io::ErrorKind::BrokenPipe | io::ErrorKind::ConnectionReset)
+                            ) =>
+                        {
+                            tracing::debug!("{error:#}")
+                        }
+                        Err(error) => tracing::error!("{error:#}"),
                     }
                 }
                 Event::CallbackChannelClosed => {
@@ -494,37 +597,11 @@ impl<'a> Handler<'a> {
                 Event::DnsChanged(Err(e)) => {
                     tracing::warn!("Error while listening for DNS change events: {e:#}")
                 }
-                Event::NetworkChanged(Ok(())) => match &self.session {
-                    Session::Creating { .. } => {
-                        tracing::debug!("Ignoring network change since we're still signing in");
-                    }
-                    Session::Connected { connlib, .. } => {
-                        connlib.reset("network changed".to_owned());
-                    }
-                    Session::WaitingForNetwork {
-                        token,
-                        is_internet_resource_active,
-                    } => {
-                        tracing::info!("Attempting to re-connect upon network change");
-
-                        let token = token.clone();
-                        let is_internet_resource_active = *is_internet_resource_active;
-                        let result = self.try_connect(token, is_internet_resource_active);
-
-                        if let Some(e) = result
-                            .as_ref()
-                            .err()
-                            .and_then(|e| e.any_downcast_ref::<io::Error>())
-                        {
-                            tracing::debug!("Still cannot connect to Firezone: {e}");
-
-                            continue;
-                        }
-
-                        let _ = self.handle_connect_result(result).await;
-                    }
-                    Session::None => continue,
-                },
+                Event::Resumed(Err(e)) => {
+                    tracing::warn!("Error while listening for resume events: {e:#}")
+                }
+                Event::NetworkChanged(Ok(())) => self.reset_session("network changed").await,
+                Event::Resumed(Ok(())) => self.reset_session("resumed from sleep").await,
                 Event::DnsChanged(Ok(())) => {
                     let Session::Connected { connlib, .. } = &self.session else {
                         continue;
@@ -540,6 +617,44 @@ impl<'a> Handler<'a> {
         telemetry::stop(); // Flush telemetry as the service shuts down.
 
         ret
+    }
+
+    /// Tells connlib that the network underneath it has changed, or retries the connection if we
+    /// were waiting for a network in the first place.
+    async fn reset_session(&mut self, reason: &str) {
+        match &self.session {
+            Session::Creating { .. } => {
+                tracing::debug!(%reason, "Ignoring reset since we're still signing in");
+            }
+            Session::Connected { connlib, .. } => {
+                connlib.reset(reason.to_owned());
+            }
+            Session::WaitingForNetwork {
+                token,
+                is_internet_resource_active,
+                api_url,
+            } => {
+                tracing::info!(%reason, "Attempting to re-connect");
+
+                let token = token.clone();
+                let is_internet_resource_active = *is_internet_resource_active;
+                let api_url = api_url.clone();
+                let result = self.try_connect(token, is_internet_resource_active, api_url);
+
+                if let Some(e) = result
+                    .as_ref()
+                    .err()
+                    .and_then(|e| e.any_downcast_ref::<io::Error>())
+                {
+                    tracing::debug!("Still cannot connect to Firezone: {e}");
+
+                    return;
+                }
+
+                let _ = self.handle_connect_result(result).await;
+            }
+            Session::None => {}
+        }
     }
 
     fn next_event(
@@ -558,6 +673,10 @@ impl<'a> Handler<'a> {
 
         if let Poll::Ready(Some(result)) = self.dns_notifier.poll_next_unpin(cx) {
             return Poll::Ready(Event::DnsChanged(result));
+        }
+
+        if let Poll::Ready(Some(result)) = self.resume_notifier.poll_next_unpin(cx) {
+            return Poll::Ready(Event::Resumed(result));
         }
 
         // `FramedRead::next` is cancel-safe.
@@ -581,23 +700,17 @@ impl<'a> Handler<'a> {
         Poll::Pending
     }
 
-    /// Re-points telemetry to the neutral environment so events emitted while
-    /// disconnected aren't attributed to the ended session.
-    fn reset_telemetry_environment(&mut self) {
-        if let Some(release) = &self.telemetry_release {
-            telemetry::start("entrypoint", release, telemetry::GUI_DSN);
-        }
-    }
-
     async fn handle_connlib_event(&mut self, msg: client_shared::Event) -> Result<()> {
         match msg {
             client_shared::Event::Disconnected(error) => {
                 self.session = Session::None;
-                self.reset_telemetry_environment();
+                telemetry::set_account_slug(None);
                 self.dns_controller.deactivate()?;
                 self.send_ipc(ServerMsg::OnDisconnect {
-                    error_msg: error.to_string(),
-                    is_authentication_error: error.is_authentication_error(),
+                    user_msg: error.user_message(),
+                    log_msg: error.log_message(),
+                    requires_sign_in: error.requires_sign_in(),
+                    is_user_facing: error.is_user_facing(),
                 })
                 .await?
             }
@@ -630,6 +743,16 @@ impl<'a> Handler<'a> {
                 self.send_ipc(ServerMsg::OnUpdateResources(resources))
                     .await?;
             }
+            client_shared::Event::ConnectedToPortal(connected) => {
+                telemetry::set_account_slug(connected.account_slug.clone());
+
+                if let Some(release) = self.telemetry_release.clone() {
+                    analytics::identify(release, connected.account_slug.clone(), None, None);
+                }
+
+                self.send_ipc(ServerMsg::ConnectedToPortal(connected))
+                    .await?;
+            }
         }
         Ok(())
     }
@@ -644,6 +767,7 @@ impl<'a> Handler<'a> {
             ClientMsg::Connect {
                 token,
                 is_internet_resource_active,
+                api_url,
             } => {
                 if !self.session.is_none() {
                     tracing::debug!(session = ?self.session, "Dropping existing session before connecting");
@@ -651,7 +775,12 @@ impl<'a> Handler<'a> {
                     shut_down_session(mem::take(&mut self.session)).await;
                 }
 
-                let result = self.try_connect(token.clone(), is_internet_resource_active);
+                // The portal names the account in `init`; a session that never gets
+                // there must not report the previous one's.
+                telemetry::set_account_slug(None);
+
+                let result =
+                    self.try_connect(token.clone(), is_internet_resource_active, api_url.clone());
 
                 if let Some(e) = result
                     .as_ref()
@@ -664,6 +793,7 @@ impl<'a> Handler<'a> {
                     self.session = Session::WaitingForNetwork {
                         token,
                         is_internet_resource_active,
+                        api_url,
                     };
 
                     return Ok(());
@@ -671,9 +801,14 @@ impl<'a> Handler<'a> {
 
                 self.handle_connect_result(result).await?;
             }
+            ClientMsg::ReloadX509 => {
+                self.keystore = load_identity().await;
+                self.send_ipc(ServerMsg::X509Certificate(x509_of(&self.keystore)))
+                    .await?;
+            }
             ClientMsg::Disconnect => {
                 self.session = Session::None;
-                self.reset_telemetry_environment();
+                telemetry::set_account_slug(None);
                 self.dns_controller.deactivate()?;
 
                 // Always send `DisconnectedGracefully` even if we weren't connected,
@@ -681,22 +816,22 @@ impl<'a> Handler<'a> {
                 self.send_ipc(ServerMsg::DisconnectedGracefully).await?;
             }
             ClientMsg::ApplyAdvancedSettings(new) => {
-                // Validate the log filter before persisting so we never write an
-                // unparsable value to disk or report a misleading "saved" to the GUI.
-                let response = if let Err(e) = EnvFilter::try_new(&new.log_filter) {
-                    Err(format!("Invalid log filter `{}`: {e}", new.log_filter))
-                } else {
-                    match save_advanced(&new).await {
-                        Ok(()) => {
-                            let _ = self.log_filter_reloader.reload(&new.log_filter);
-                            self.advanced_settings = new.clone();
-                            Ok(new)
-                        }
-                        Err(e) => Err(format!("{e:#}")),
-                    }
-                };
-                self.send_ipc(ServerMsg::AdvancedSettingsApplied(response))
-                    .await?;
+                self.apply_advanced_settings(new).await?;
+            }
+            ClientMsg::PatchAdvancedSettings(patch) => {
+                let new = patch.apply(self.advanced_settings.clone());
+                self.apply_advanced_settings(new).await?;
+            }
+            ClientMsg::SetAdditionalHostCandidates(ips) => {
+                if let Some(connlib) = self.session.as_connlib() {
+                    connlib.set_additional_host_candidates(ips.clone());
+                }
+                self.advanced_settings.additional_host_candidates = ips;
+
+                if let Err(e) = save_advanced(&self.advanced_settings).await {
+                    self.send_ipc(ServerMsg::AdvancedSettingsApplied(Err(format!("{e:#}"))))
+                        .await?;
+                }
             }
             ClientMsg::SetInternetResourceState(state) => {
                 let Some(connlib) = self.session.as_connlib() else {
@@ -707,34 +842,25 @@ impl<'a> Handler<'a> {
 
                 connlib.set_internet_resource_state(state);
             }
-            ClientMsg::StartTelemetry {
-                environment,
-                release,
-                account_slug,
-            } => {
+            ClientMsg::StartTelemetry { release } => {
                 // This is a bit hacky.
                 // It would be cleaner to pass it down from the `Cli` struct.
                 // However, the service can be run in many different ways and adapting all of those
                 // is cumbersome.
                 // Disabling telemetry for the service is mostly useful for our own testing and therefore
                 // doesn't need to be exposed publicly anyway.
-                let no_telemetry =
-                    std::env::var("FIREZONE_NO_TELEMETRY").is_ok_and(|s| s == "true");
+                let no_telemetry = crate::NO_TELEMETRY
+                    || std::env::var("FIREZONE_NO_TELEMETRY").is_ok_and(|s| s == "true");
 
                 if !no_telemetry {
                     self.telemetry_release = Some(release.clone());
-                    telemetry::start(&environment, &release, telemetry::GUI_DSN);
-                    telemetry::set_firezone_id(self.device_id.id.clone());
+                    self.point_telemetry_at_api_url(self.api_url());
 
                     opentelemetry::global::set_meter_provider(
                         telemetry::SentryMeterProvider::default(),
                     );
 
-                    if let Some(account_slug) = account_slug {
-                        telemetry::set_account_slug(account_slug.clone());
-
-                        analytics::identify(release, Some(account_slug));
-                    }
+                    analytics::identify(release, None, None, None);
                 }
             }
             #[cfg(debug_assertions)]
@@ -743,29 +869,80 @@ impl<'a> Handler<'a> {
         Ok(())
     }
 
-    /// Effective `api_url`: machine-scope MDM policy wins over the stored
-    /// advanced setting.
+    async fn apply_advanced_settings(&mut self, new: AdvancedSettings) -> Result<()> {
+        // Validate the log filter before persisting so we never write an
+        // unparsable value to disk or report a misleading "saved" to the GUI.
+        let response = if let Err(e) = EnvFilter::try_new(&new.log_filter) {
+            Err(format!("Invalid log filter `{}`: {e}", new.log_filter))
+        } else {
+            match save_advanced(&new).await {
+                Ok(()) => {
+                    let _ = self.log_filter_reloader.reload(&new.log_filter);
+                    self.advanced_settings = new.clone();
+                    Ok(new)
+                }
+                Err(e) => Err(format!("{e:#}")),
+            }
+        };
+        self.send_ipc(ServerMsg::AdvancedSettingsApplied(response))
+            .await?;
+
+        Ok(())
+    }
+
+    /// Returns the active session's API URL, falling back to MDM or the saved settings.
     fn api_url(&self) -> &str {
-        self.mdm_settings
-            .api_url
-            .as_ref()
+        self.session
+            .api_url()
+            .or(self.mdm_settings.api_url.as_ref())
             .map(|u| u.as_str())
             .unwrap_or_else(|| self.advanced_settings.api_url.as_str())
     }
 
+    /// Points telemetry at the API URL we would dial.
+    ///
+    /// Deriving the environment here instead of accepting one from the GUI is what keeps
+    /// telemetry off for unofficial deployments: it cannot name a portal we never talk to.
+    fn point_telemetry_at_api_url(&self, api_url: &str) {
+        let Some(release) = &self.telemetry_release else {
+            return;
+        };
+
+        telemetry::start(api_url, release, telemetry::GUI_DSN);
+        telemetry::set_firezone_id(self.device_id.id.clone()); // Re-pointing clears the identity.
+    }
+
+    /// One keystore read serves the whole attempt: the certificate presented to the portal and
+    /// the one pushed to the GUI come from the same walk, so they cannot diverge.
     fn try_connect(
         &mut self,
         token: SecretString,
         is_internet_resource_active: bool,
+        api_url: Url,
     ) -> Result<Session> {
         let started_at = Instant::now();
 
         let device_id =
             device_id::get_or_create_client().context("Failed to get-or-create device ID")?;
 
-        let api_url = self.api_url().to_string();
+        // The certificate is optional device attestation. Browser authentication always
+        // supplies the token, so a keystore or private-key failure must not become a separate
+        // login mode or keep the session from reaching the portal.
+        let certificate = match &self.keystore {
+            Ok(Some(identity)) => match identity.client_certificate() {
+                Ok(certificate) => Some(certificate),
+                Err(error) => {
+                    tracing::debug!(%error, "Failed to load the device certificate");
+                    None
+                }
+            },
+            Ok(None) | Err(_) => None,
+        };
+
+        // The settings may have moved since the GUI last asked us to start telemetry.
+        self.point_telemetry_at_api_url(api_url.as_str());
         let url = LoginUrl::client(
-            Url::parse(&api_url).context("Failed to parse URL")?,
+            api_url.clone(),
             device_id.id.clone(),
             None,
             DeviceInfo {
@@ -773,12 +950,13 @@ impl<'a> Handler<'a> {
                 device_uuid: device_info::uuid(),
                 ..Default::default()
             },
+            certificate,
         )
         .context("Failed to create `LoginUrl`")?;
 
         let portal = PhoenixChannel::disconnected(
             url,
-            token,
+            Some(token),
             get_user_agent("gui-client", env!("CARGO_PKG_VERSION")),
             "client",
             (),
@@ -798,12 +976,13 @@ impl<'a> Handler<'a> {
             portal,
             is_internet_resource_active,
             dns,
+            self.advanced_settings.additional_host_candidates.clone(),
             known_dirs::flow_logs(),
             false,
             tokio::runtime::Handle::current(),
         );
 
-        analytics::new_session(device_id.id, api_url);
+        analytics::new_session(device_id.id, api_url.to_string());
 
         let tun = self
             .tun_device
@@ -815,6 +994,7 @@ impl<'a> Handler<'a> {
             event_stream,
             connlib,
             started_at,
+            api_url,
         })
     }
 
@@ -899,9 +1079,9 @@ pub fn run_interactive(dns_control: DnsControlMethod, skip_peer_verification: bo
 /// This makes the timing neater in case the GUI starts up slowly.
 #[cfg(debug_assertions)]
 pub fn run_smoke_test() -> Result<()> {
-    use crate::ipc::{self, SocketId};
     use anyhow::{Context as _, bail};
     use bin_shared::{DnsController, device_id};
+    use client_ipc::{self as ipc, SocketId};
 
     // The smoke test runs this binary as an unprivileged subprocess of the
     // test runner — not as a Windows service under LocalSystem. Tell the IPC

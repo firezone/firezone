@@ -54,8 +54,11 @@ defmodule Portal.Changes.Hooks.ExternalIdentities do
 
     defp auth_provider_ids_for_issuer(issuer) do
       from(g in Portal.Google.AuthProvider, where: g.issuer == ^issuer, select: g.id)
+      |> union(^from(gh in Portal.GitHub.AuthProvider, where: gh.issuer == ^issuer, select: gh.id))
       |> union(^from(o in Portal.Okta.AuthProvider, where: o.issuer == ^issuer, select: o.id))
-      |> union(^from(e in Portal.Entra.AuthProvider, where: e.issuer == ^issuer, select: e.id))
+      |> union(^from(e in Portal.Entra.AuthProvider,
+        where: fragment("? = ANY(SELECT 'https://login.microsoftonline.com/' || unnest(?)::text || '/v2.0')", ^issuer, e.tenant_ids),
+        select: e.id))
       |> union(
         ^from(oidc in Portal.OIDC.AuthProvider, where: oidc.issuer == ^issuer, select: oidc.id)
       )

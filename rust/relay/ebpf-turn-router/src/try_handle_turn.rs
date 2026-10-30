@@ -50,12 +50,28 @@ pub fn try_handle_turn(ctx: &XdpContext) -> Result<(), Error> {
     // SAFETY: The offset must point to the start of a valid `EthHdr`.
     let eth = unsafe { ref_mut_at::<EthHdr>(ctx, 0)? };
 
-    let num_bytes = match eth.ether_type() {
-        Ok(EtherType::Ipv4) => try_handle_turn_ipv4(ctx)?,
-        Ok(EtherType::Ipv6) => try_handle_turn_ipv6(ctx)?,
+    let (num_bytes, ip_version) = match eth.ether_type() {
+        Ok(EtherType::Ipv4) => (try_handle_turn_ipv4(ctx)?, 4),
+        Ok(EtherType::Ipv6) => (try_handle_turn_ipv6(ctx)?, 6),
         _ => return Err(Error::NotIp),
     };
-    stats::emit(ctx, num_bytes, start.elapsed());
+
+    // Every forwarding path preserves ECN, including address-family translation.
+    // Read it after rewriting so it need not stay live across the routing hot path.
+    // SAFETY: Reacquire packet pointers because rewriting may have adjusted the head.
+    let eth = unsafe { ref_mut_at::<EthHdr>(ctx, 0)? };
+    let ecn = match eth.ether_type() {
+        Ok(EtherType::Ipv4) => {
+            // SAFETY: EtherType identifies the rewritten IPv4 header.
+            unsafe { ref_mut_at::<Ipv4Hdr>(ctx, EthHdr::LEN)? }.ecn()
+        }
+        Ok(EtherType::Ipv6) => {
+            // SAFETY: EtherType identifies the rewritten IPv6 header.
+            unsafe { ref_mut_at::<Ipv6Hdr>(ctx, EthHdr::LEN)? }.ecn()
+        }
+        _ => return Err(Error::NotIp),
+    };
+    stats::emit(ctx, num_bytes, start.elapsed(), ip_version, ecn);
 
     Ok(())
 }
@@ -149,18 +165,31 @@ fn try_handle_from_ipv4_udp(ctx: &XdpContext) -> Result<(), Error> {
 
     let cc = routing::get_client_and_channel(pp)?;
 
-    aya_log_ebpf::trace!(
-        ctx,
-        target: "eBPF",
-        "Routing to {:i}:{} on channel {}",
-        cc.client_ip(),
-        cc.client_port(),
-        cc.channel()
-    );
-
     match cc {
-        ClientAndChannel::V4(cc) => from_ipv4_udp::to_ipv4_channel(ctx, &cc)?,
-        ClientAndChannel::V6(cc) => from_ipv4_udp::to_ipv6_channel(ctx, &cc)?,
+        ClientAndChannel::V4(cc) => {
+            aya_log_ebpf::trace!(
+                ctx,
+                target: "eBPF",
+                "Routing to {:i}:{} on channel {}",
+                cc.client_ip(),
+                cc.client_port(),
+                cc.channel()
+            );
+
+            from_ipv4_udp::to_ipv4_channel(ctx, &cc)?
+        }
+        ClientAndChannel::V6(cc) => {
+            aya_log_ebpf::trace!(
+                ctx,
+                target: "eBPF",
+                "Routing to {:i}:{} on channel {}",
+                cc.client_ip(),
+                cc.client_port(),
+                cc.channel()
+            );
+
+            from_ipv4_udp::to_ipv6_channel(ctx, &cc)?
+        }
     }
 
     Ok(())
@@ -205,31 +234,58 @@ fn try_handle_from_ipv4_channel_data(ctx: &XdpContext) -> Result<(), Error> {
 
     let pp = routing::get_port_and_peer(cc)?;
 
-    aya_log_ebpf::trace!(
-        ctx,
-        target: "eBPF",
-        "Routing packet to {:i}:{} on allocation {}",
-        pp.peer_ip(),
-        pp.peer_port(),
-        pp.allocation_port(),
-    );
+    match pp {
+        PortAndPeer::V4(pp) => {
+            aya_log_ebpf::trace!(
+                ctx,
+                target: "eBPF",
+                "Routing packet to {:i}:{} on allocation {}",
+                pp.peer_ip(),
+                pp.peer_port(),
+                pp.allocation_port(),
+            );
+        }
+        PortAndPeer::V6(pp) => {
+            aya_log_ebpf::trace!(
+                ctx,
+                target: "eBPF",
+                "Routing packet to {:i}:{} on allocation {}",
+                pp.peer_ip(),
+                pp.peer_port(),
+                pp.allocation_port(),
+            );
+        }
+    }
 
     if is_own_public_ip(pp.peer_ip())? {
         let pp = pp.flip_ports();
         let cc = routing::get_client_and_channel(pp)?;
 
-        aya_log_ebpf::trace!(
-            ctx,
-            target: "eBPF",
-            "Routing packet to {:i}:{} on channel {}",
-            cc.client_ip(),
-            cc.client_port(),
-            cc.channel()
-        );
-
         match cc {
-            ClientAndChannel::V4(cc) => from_ipv4_channel::to_ipv4_channel(ctx, &cc)?,
-            ClientAndChannel::V6(cc) => from_ipv4_channel::to_ipv6_channel(ctx, &cc)?,
+            ClientAndChannel::V4(cc) => {
+                aya_log_ebpf::trace!(
+                    ctx,
+                    target: "eBPF",
+                    "Routing packet to {:i}:{} on channel {}",
+                    cc.client_ip(),
+                    cc.client_port(),
+                    cc.channel()
+                );
+
+                from_ipv4_channel::to_ipv4_channel(ctx, &cc)?
+            }
+            ClientAndChannel::V6(cc) => {
+                aya_log_ebpf::trace!(
+                    ctx,
+                    target: "eBPF",
+                    "Routing packet to {:i}:{} on channel {}",
+                    cc.client_ip(),
+                    cc.client_port(),
+                    cc.channel()
+                );
+
+                from_ipv4_channel::to_ipv6_channel(ctx, &cc)?
+            }
         }
 
         return Ok(());
@@ -265,18 +321,31 @@ fn try_handle_from_ipv6_udp(ctx: &XdpContext) -> Result<(), Error> {
 
     let cc = routing::get_client_and_channel(pp)?;
 
-    aya_log_ebpf::trace!(
-        ctx,
-        target: "eBPF",
-        "Routing packet to {:i}:{} on channel {}",
-        cc.client_ip(),
-        cc.client_port(),
-        cc.channel()
-    );
-
     match cc {
-        ClientAndChannel::V4(cc) => from_ipv6_udp::to_ipv4_channel(ctx, &cc)?,
-        ClientAndChannel::V6(cc) => from_ipv6_udp::to_ipv6_channel(ctx, &cc)?,
+        ClientAndChannel::V4(cc) => {
+            aya_log_ebpf::trace!(
+                ctx,
+                target: "eBPF",
+                "Routing packet to {:i}:{} on channel {}",
+                cc.client_ip(),
+                cc.client_port(),
+                cc.channel()
+            );
+
+            from_ipv6_udp::to_ipv4_channel(ctx, &cc)?
+        }
+        ClientAndChannel::V6(cc) => {
+            aya_log_ebpf::trace!(
+                ctx,
+                target: "eBPF",
+                "Routing packet to {:i}:{} on channel {}",
+                cc.client_ip(),
+                cc.client_port(),
+                cc.channel()
+            );
+
+            from_ipv6_udp::to_ipv6_channel(ctx, &cc)?
+        }
     }
 
     Ok(())
@@ -321,31 +390,58 @@ fn try_handle_from_ipv6_channel_data(ctx: &XdpContext) -> Result<(), Error> {
 
     let pp = routing::get_port_and_peer(cc)?;
 
-    aya_log_ebpf::trace!(
-        ctx,
-        target: "eBPF",
-        "Routing packet to {:i}:{} on allocation {}",
-        pp.peer_ip(),
-        pp.peer_port(),
-        pp.allocation_port(),
-    );
+    match pp {
+        PortAndPeer::V4(pp) => {
+            aya_log_ebpf::trace!(
+                ctx,
+                target: "eBPF",
+                "Routing packet to {:i}:{} on allocation {}",
+                pp.peer_ip(),
+                pp.peer_port(),
+                pp.allocation_port(),
+            );
+        }
+        PortAndPeer::V6(pp) => {
+            aya_log_ebpf::trace!(
+                ctx,
+                target: "eBPF",
+                "Routing packet to {:i}:{} on allocation {}",
+                pp.peer_ip(),
+                pp.peer_port(),
+                pp.allocation_port(),
+            );
+        }
+    }
 
     if is_own_public_ip(pp.peer_ip())? {
         let pp = pp.flip_ports();
         let cc = routing::get_client_and_channel(pp)?;
 
-        aya_log_ebpf::trace!(
-            ctx,
-            target: "eBPF",
-            "Routing packet to {:i}:{} on channel {}",
-            cc.client_ip(),
-            cc.client_port(),
-            cc.channel()
-        );
-
         match cc {
-            ClientAndChannel::V4(cc) => from_ipv6_channel::to_ipv4_channel(ctx, &cc)?,
-            ClientAndChannel::V6(cc) => from_ipv6_channel::to_ipv6_channel(ctx, &cc)?,
+            ClientAndChannel::V4(cc) => {
+                aya_log_ebpf::trace!(
+                    ctx,
+                    target: "eBPF",
+                    "Routing packet to {:i}:{} on channel {}",
+                    cc.client_ip(),
+                    cc.client_port(),
+                    cc.channel()
+                );
+
+                from_ipv6_channel::to_ipv4_channel(ctx, &cc)?
+            }
+            ClientAndChannel::V6(cc) => {
+                aya_log_ebpf::trace!(
+                    ctx,
+                    target: "eBPF",
+                    "Routing packet to {:i}:{} on channel {}",
+                    cc.client_ip(),
+                    cc.client_port(),
+                    cc.channel()
+                );
+
+                from_ipv6_channel::to_ipv6_channel(ctx, &cc)?
+            }
         }
 
         return Ok(());
@@ -361,10 +457,17 @@ fn try_handle_from_ipv6_channel_data(ctx: &XdpContext) -> Result<(), Error> {
 
 #[inline(always)]
 fn is_own_public_ip(ip: IpAddr) -> Result<bool, Error> {
-    let ipv4_public = config::public_ipv4_address()?;
-    let ipv6_public = config::public_ipv6_address()?;
+    let own_ip = match ip {
+        IpAddr::V4(_) => config::public_ipv4_address().map(IpAddr::V4),
+        IpAddr::V6(_) => config::public_ipv6_address().map(IpAddr::V6),
+    };
 
-    Ok(ip == ipv4_public || ip == ipv6_public)
+    match own_ip {
+        Ok(own_ip) => Ok(ip == own_ip),
+        // A relay without a public address of this family cannot be the peer.
+        Err(Error::IpAddrUnset) => Ok(false),
+        Err(e) => Err(e),
+    }
 }
 
 #[inline(always)]
