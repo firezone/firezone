@@ -107,7 +107,7 @@ pub struct GeneralSettings {
 }
 
 /// The account slug and control-plane URLs captured when sign-in started.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
 pub struct SignInSettings {
     pub account_slug: Option<String>,
     pub auth_url: Url,
