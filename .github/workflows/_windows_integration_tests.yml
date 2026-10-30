@@ -100,7 +100,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       # Built and uploaded by the `data-plane` workflow, which this job
       # depends on.
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: firezone-headless-client-x86_64-pc-windows-msvc-${{ inputs.profile }}
           path: rust/target/x86_64-pc-windows-msvc/${{ inputs.profile }}
@@ -138,7 +138,7 @@ jobs:
           # paths that depend on the docker NAT keeping a conntrack entry
           # alive, which breaks as soon as a flow idles.
           route add 192.168.223.0 mask 255.255.255.0 ${{ steps.wsl.outputs.ip }} | Out-Null
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: images-${{ inputs.id }}
       - name: Load images into the WSL2 Docker daemon
@@ -180,7 +180,7 @@ jobs:
           New-NetFirewallRule -DisplayName "firezone-headless-client" -Direction Inbound -Program $binary -Action Allow | Out-Null
       - name: "Integration test: ${{ matrix.test.script }}"
         env:
-          # Same seeded token and ID as client-1 in docker-compose.yml.
+          # Same seeded token as primary-client in docker-compose.yml.
           FIREZONE_TOKEN: "n.SFMyNTY.g2gDaANtAAAAJGM4OWJjYzhjLTkzOTItNGRhZS1hNDBkLTg4OGFlZjZkMjhlMG0AAAAkN2RhN2QxY2QtMTExYy00NGE3LWI1YWMtNDAyN2I5ZDIzMGU1bQAAACtBaUl5XzZwQmstV0xlUkFQenprQ0ZYTnFJWktXQnMyRGR3XzJ2Z0lRdkZnbgYAR_ywiZQBYgABUYA.PLNlzyqMSgZlbQb1QX5EzZgYNuY9oeOddP0qDkTwtGg"
           FIREZONE_ID: d24e46a4f96d4859bd8f7ff40100493b06b28ebfae3f8dcb0503bbe3131bfbcd
           FIREZONE_API_URL: ws://${{ steps.wsl.outputs.ip }}:8081
@@ -289,7 +289,7 @@ jobs:
         with:
           compose-args: ${{ env.COMPOSE_ARGS }}
           services: relay gateway portal postgres
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: "!success()"
         with:
           overwrite: true
