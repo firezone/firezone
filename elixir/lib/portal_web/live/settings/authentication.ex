@@ -231,7 +231,7 @@ defmodule PortalWeb.Settings.Authentication do
   def handle_event("toggle_verified_domain", %{"domain" => domain}, socket)
       when socket.assigns.type == "google" do
     previous = socket.assigns.form.source
-    verified = get_field(previous, :verified_domains) || []
+    verified = socket.assigns.verified_domains
     enabled = get_field(previous, :workspace_domains) || []
 
     if domain in Enum.drop(verified, 1) do
@@ -564,15 +564,15 @@ defmodule PortalWeb.Settings.Authentication do
     {:noreply, socket}
   end
 
-  # Google proves the full list of Workspace domains. Only the administrator's
-  # own domain is enabled at first; the rest can be toggled on afterwards.
+  # Google proves the full list of Workspace domains. The list only lives in
+  # this form: the administrator's own domain is enabled first, the rest can be
+  # toggled on, and only the enabled domains are saved.
   defp complete_google_verification(socket, issuer, domains) do
     previous = socket.assigns.form.source
-    verified = get_field(previous, :verified_domains) || []
-    enabled = get_field(previous, :workspace_domains) || []
+    existing = get_field(previous, :workspace_domains) || []
 
     cond do
-      is_nil(domains) and verified != [] ->
+      is_nil(domains) and existing != [] ->
         assign(socket,
           active_verification: nil,
           verification_error:
@@ -580,26 +580,23 @@ defmodule PortalWeb.Settings.Authentication do
         )
 
       is_nil(domains) ->
-        assign_google_verification(socket, previous, issuer, %{
+        assign_google_verification(socket, previous, issuer, [], %{
           workspace_domains: nil,
-          verified_domains: nil,
           is_legacy_unrestricted: get_field(previous, :is_legacy_unrestricted)
         })
 
-      verified == [] ->
-        assign_google_verification(socket, previous, issuer, %{
+      existing == [] ->
+        assign_google_verification(socket, previous, issuer, domains, %{
           workspace_domains: [hd(domains)],
-          verified_domains: domains,
           is_legacy_unrestricted: false
         })
 
-      hd(verified) in domains ->
-        primary = hd(verified)
+      hd(existing) in domains ->
+        primary = hd(existing)
         verified = [primary | domains -- [primary]]
 
-        assign_google_verification(socket, previous, issuer, %{
-          workspace_domains: Enum.filter(verified, &(&1 == primary or &1 in enabled)),
-          verified_domains: verified,
+        assign_google_verification(socket, previous, issuer, verified, %{
+          workspace_domains: Enum.filter(verified, &(&1 in existing)),
           is_legacy_unrestricted: false
         })
 
@@ -612,10 +609,16 @@ defmodule PortalWeb.Settings.Authentication do
     end
   end
 
-  defp assign_google_verification(socket, previous, issuer, fields) do
+  defp assign_google_verification(socket, previous, issuer, verified_domains, fields) do
     attrs = Map.merge(provider_attrs(previous), %{is_verified: true, issuer: issuer})
     changeset = changeset(previous.data, attrs, socket, fields)
-    assign(socket, active_verification: nil, verification_error: nil, form: to_form(changeset))
+
+    assign(socket,
+      active_verification: nil,
+      verification_error: nil,
+      verified_domains: verified_domains,
+      form: to_form(changeset)
+    )
   end
 
   defp verification_fields(%{data: %Entra.AuthProvider{}} = changeset),
@@ -624,7 +627,6 @@ defmodule PortalWeb.Settings.Authentication do
   defp verification_fields(%{data: %Google.AuthProvider{}} = changeset),
     do: %{
       workspace_domains: get_field(changeset, :workspace_domains),
-      verified_domains: get_field(changeset, :verified_domains),
       is_legacy_unrestricted: get_field(changeset, :is_legacy_unrestricted)
     }
 
@@ -635,7 +637,7 @@ defmodule PortalWeb.Settings.Authentication do
   end
 
   defp verified_values(changeset, "entra"), do: get_field(changeset, :tenant_ids) || []
-  defp verified_values(changeset, "google"), do: get_field(changeset, :verified_domains) || []
+  defp verified_values(changeset, "google"), do: get_field(changeset, :workspace_domains) || []
 
   defp maybe_set_okta_name(%{data: %Okta.AuthProvider{}} = changeset, issuer, :new) do
     if get_field(changeset, :name) == "Okta" do
@@ -676,7 +678,8 @@ defmodule PortalWeb.Settings.Authentication do
     assign(socket,
       pending_verification: nil,
       active_verification: nil,
-      verification_error: nil
+      verification_error: nil,
+      verified_domains: []
     )
   end
 
@@ -779,6 +782,7 @@ defmodule PortalWeb.Settings.Authentication do
           providers: nil,
           has_trust_anchors?: false,
           verification_error: nil,
+          verified_domains: [],
           pending_confirm: nil,
           open_provider_actions_id: nil
         )
@@ -796,6 +800,7 @@ defmodule PortalWeb.Settings.Authentication do
       providers: providers,
       has_trust_anchors?: Database.has_trust_anchors?(socket.assigns.subject),
       verification_error: nil,
+      verified_domains: [],
       pending_confirm: nil,
       open_provider_actions_id: nil
     )
@@ -994,6 +999,7 @@ defmodule PortalWeb.Settings.Authentication do
               <.provider_form
                 account_id={@account.id}
                 verification_error={@verification_error}
+                verified_domains={@verified_domains}
                 form={@form}
                 type={@type}
                 submit_event="submit_provider"
@@ -1045,6 +1051,7 @@ defmodule PortalWeb.Settings.Authentication do
             <.provider_form
               account_id={@account.id}
               verification_error={@verification_error}
+              verified_domains={@verified_domains}
               form={@form}
               type={@type}
               submit_event="submit_provider"
@@ -1417,6 +1424,7 @@ defmodule PortalWeb.Settings.Authentication do
   attr :type, :string, required: true
   attr :submit_event, :string, required: true
   attr :verification_error, :any, default: nil
+  attr :verified_domains, :list, default: []
   attr :is_legacy, :boolean, default: false
 
   defp provider_form(assigns) do
@@ -1832,6 +1840,7 @@ defmodule PortalWeb.Settings.Authentication do
           form={@form}
           type={@type}
           verification_error={@verification_error}
+          verified_domains={@verified_domains}
         />
         <div
           :if={@type in ["github", "okta", "oidc"] and not @is_legacy}
@@ -1880,10 +1889,14 @@ defmodule PortalWeb.Settings.Authentication do
   attr :form, :any, required: true
   attr :type, :string, required: true
   attr :verification_error, :any, default: nil
+  attr :verified_domains, :list, default: []
 
   defp verified_organizations(assigns) do
+    toggles? = assigns.type == "google" and assigns.verified_domains != []
+
     assigns = assign(assigns,
-      values: verified_values(assigns.form.source, assigns.type),
+      values: if(toggles?, do: assigns.verified_domains, else: verified_values(assigns.form.source, assigns.type)),
+      toggles?: toggles?,
       enabled: get_field(assigns.form.source, :workspace_domains) || [],
       label: if(assigns.type == "entra", do: "tenant", else: "domain"),
       verified?: verified?(assigns.form)
@@ -1896,8 +1909,9 @@ defmodule PortalWeb.Settings.Authentication do
         <span :if={@type == "entra" or not @verified?} class="text-error">*</span>
       </p>
       <p :if={@type == "google" and @values != []} class="text-xs text-subtle">
-        Only users whose Google Workspace domain is enabled below can use this provider.
-        Sign in again as a Workspace administrator to refresh the list of verified domains.
+        Only users whose Google Workspace domain is enabled can use this provider.
+        Sign in again as a Workspace administrator to see all of your organization's domains
+        and change which are enabled.
       </p>
       <p :if={@type == "google" and @values == []} class="text-xs text-subtle">
         Verifying with a Google Workspace account needs a Workspace administrator. It saves the
@@ -1926,7 +1940,7 @@ defmodule PortalWeb.Settings.Authentication do
                 {if @type == "entra", do: "Tenant ID", else: "Domain"}
               </th>
               <th scope="col" class="px-3 py-2 text-left text-xs font-medium text-subtle">
-                {if @type == "entra", do: "Status", else: "Enabled"}
+                {if @toggles?, do: "Enabled", else: "Status"}
               </th>
               <th :if={@type == "entra"} scope="col" class="w-10">
                 <span class="sr-only">Actions</span>
@@ -1941,12 +1955,12 @@ defmodule PortalWeb.Settings.Authentication do
                   (primary)
                 </span>
               </td>
-              <td :if={@type == "entra"} class="px-3 py-2">
+              <td :if={not @toggles?} class="px-3 py-2">
                 <span class="inline-flex items-center gap-1 text-xs text-success">
                   <Core.icon name="ri-checkbox-circle-line" class="w-3.5 h-3.5" /> Verified
                 </span>
               </td>
-              <td :if={@type == "google"} class="px-3 py-2">
+              <td :if={@toggles?} class="px-3 py-2">
                 <span title={if index == 0, do: "The primary verified domain cannot be disabled"}>
                   <Core.toggle
                     id={"verified-domain-toggle-#{index}"}
@@ -2058,7 +2072,7 @@ defmodule PortalWeb.Settings.Authentication do
   defp verification_errors(changeset) do
     changeset.errors
     |> Enum.filter(fn {field, _error} ->
-      field in [:issuer, :tenant_ids, :workspace_domains, :verified_domains]
+      field in [:issuer, :tenant_ids, :workspace_domains]
     end)
     |> case do
       [] -> nil
@@ -2070,7 +2084,7 @@ defmodule PortalWeb.Settings.Authentication do
     Enum.all?(form.source.errors, fn
       # We'll set these fields during verification
       {excluded, _errors}
-      when excluded in [:is_verified, :issuer, :tenant_ids, :workspace_domains, :verified_domains] ->
+      when excluded in [:is_verified, :issuer, :tenant_ids, :workspace_domains] ->
         true
 
       {_field, _errors} ->

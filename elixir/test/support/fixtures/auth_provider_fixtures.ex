@@ -274,7 +274,6 @@ defmodule Portal.AuthProviderFixtures do
 
   def google_provider_fixture(attrs \\ %{}) do
     attrs = Enum.into(attrs, valid_google_provider_attrs())
-    attrs = Map.put_new(attrs, :verified_domains, attrs[:workspace_domains])
     account = Map.get_lazy(attrs, :account, fn -> account_fixture() end)
 
     auth_provider =

@@ -1136,7 +1136,7 @@ defmodule PortalWeb.OIDCController do
       |> Cookie.SignUpState.delete()
       |> put_session(
         PortalWeb.SignUp.session_key(),
-        PortalWeb.SignUp.session_identity(profile, provider_type, domains)
+        PortalWeb.SignUp.session_identity(profile, provider_type, List.first(domains || []))
       )
       |> redirect(to: ~p"/sign_up/#{provider_type}")
     else

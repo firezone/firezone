@@ -4018,10 +4018,10 @@ defmodule PortalWeb.OIDCControllerTest do
       conn = conn |> Cookie.SignUpState.put(%Cookie.SignUpState{state: state, verifier: "test-verifier"})
         |> recycle() |> get(~p"/auth/oidc/callback", %{"state" => state, "code" => "test-code"})
       assert redirected_to(conn) == "/sign_up/google"
-      assert get_session(conn, "idp_sign_up")["verified_domains"] == nil
+      assert get_session(conn, "idp_sign_up")["workspace_domain"] == nil
     end
 
-    test "a Workspace administrator signs up with the proven domains", %{conn: conn, state: state} do
+    test "a Workspace administrator signs up with the proven hd domain", %{conn: conn, state: state} do
       conn = workspace_sign_up_callback(conn, state, %{"hd" => "WORKSPACE.EXAMPLE"}, fn conn ->
         Req.Test.json(conn, %{"domains" => [
           %{"domainName" => "workspace.example", "verified" => true, "isPrimary" => true},
@@ -4029,7 +4029,7 @@ defmodule PortalWeb.OIDCControllerTest do
       end)
       assert redirected_to(conn) == "/sign_up/google"
       identity = get_session(conn, "idp_sign_up")
-      assert identity["verified_domains"] == ["workspace.example", "other.example"]
+      assert identity["workspace_domain"] == "workspace.example"
       assert identity["email"] == "ada@example.com"
     end
 

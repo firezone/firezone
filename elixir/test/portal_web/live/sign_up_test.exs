@@ -288,8 +288,7 @@ defmodule PortalWeb.SignUpTest do
       Stripe.stub([
         {"POST", "/v1/customers", 200, Stripe.customer_object("cus_workspace", "Workspace Corp", "workspace@example.com")}
       ] ++ Stripe.mock_create_subscription_endpoint())
-      conn = with_google_identity(conn, email: "workspace@example.com",
-        verified_domains: ["workspace.example", "other.example"])
+      conn = with_google_identity(conn, email: "workspace@example.com", workspace_domain: "workspace.example")
       {:ok, lv, _} = live(conn, ~p"/sign_up/google")
       conn = submit_identity_form(lv, conn, "google", %{
         account: %{name: "Workspace Corp"}, actor: %{name: "Workspace Owner"}, sign_up_survey: @survey})
@@ -297,7 +296,6 @@ defmodule PortalWeb.SignUpTest do
       account = Portal.Repo.get_by!(Portal.Account, name: "Workspace Corp")
       provider = Portal.Repo.get_by!(Portal.Google.AuthProvider, account_id: account.id)
       assert provider.workspace_domains == ["workspace.example"]
-      assert provider.verified_domains == ["workspace.example", "other.example"]
       refute provider.is_legacy_unrestricted
       assert provider.name == "Google"
     end
@@ -1060,7 +1058,7 @@ defmodule PortalWeb.SignUpTest do
       "name" => Keyword.get(attrs, :name, "Ada Lovelace"),
       "given_name" => "Ada",
       "family_name" => "Lovelace",
-      "verified_domains" => Keyword.get(attrs, :verified_domains),
+      "workspace_domain" => Keyword.get(attrs, :workspace_domain),
       "expires_at" => Keyword.get(attrs, :expires_at, System.os_time(:second) + 900)
     }
 

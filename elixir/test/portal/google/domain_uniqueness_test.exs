@@ -43,8 +43,7 @@ defmodule Portal.Google.DomainUniquenessTest do
     account = account_fixture()
     google_provider_fixture(account: account, workspace_domains: ["first.example"])
     assert {:ok, second} = account |> new_provider(["second.example"]) |> Repo.insert()
-    assert {:error, failed} = second |> change(workspace_domains: ["second.example", "first.example"],
-      verified_domains: ["second.example", "first.example"], is_verified: true)
+    assert {:error, failed} = second |> change(workspace_domains: ["second.example", "first.example"], is_verified: true)
       |> AuthProvider.changeset() |> Repo.update(mode: :savepoint)
     assert errors_on(failed).workspace_domains != []
     assert Repo.reload!(second).workspace_domains == ["second.example"]
@@ -60,7 +59,7 @@ defmodule Portal.Google.DomainUniquenessTest do
           [domains, Ecto.UUID.dump!(provider.id)], mode: :savepoint)
     end
     assert {:error, %Postgrex.Error{postgres: %{code: :unique_violation}}} =
-      Repo.query("UPDATE google_auth_providers SET workspace_domains = NULL, verified_domains = NULL WHERE id = $1",
+      Repo.query("UPDATE google_auth_providers SET workspace_domains = NULL WHERE id = $1",
         [Ecto.UUID.dump!(provider.id)], mode: :savepoint)
     assert Repo.reload!(provider).workspace_domains == ["work.example"]
   end
@@ -77,8 +76,8 @@ defmodule Portal.Google.DomainUniquenessTest do
   defp new_provider(account, domains) do
     base = auth_provider_fixture(account: account, type: :google)
     %AuthProvider{id: base.id, account_id: account.id}
-    |> cast(%{name: "Google #{base.id}", issuer: "https://accounts.google.com", workspace_domains: domains,
-      verified_domains: domains, is_verified: true}, [:name, :issuer, :workspace_domains, :verified_domains, :is_verified])
+    |> cast(%{name: "Google #{base.id}", issuer: "https://accounts.google.com", workspace_domains: domains, is_verified: true},
+      [:name, :issuer, :workspace_domains, :is_verified])
     |> AuthProvider.changeset()
   end
 end
