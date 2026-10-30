@@ -3,7 +3,8 @@ use ebpf_shared::PortAndPeerV6;
 use network_types::{eth::EthHdr, ip::Ipv6Hdr, udp::UdpHdr};
 
 use crate::try_handle_turn::{
-    Error, adjust_head, channel_data::CdHdr, checksum::ChecksumUpdate, mac::MacAddrs, ref_mut_at,
+    Error, adjust_head, channel_data::CdHdr, checksum::ChecksumUpdate, mac::EthHdrExt as _,
+    ref_mut_at,
 };
 
 #[inline(always)]
@@ -13,7 +14,7 @@ pub fn to_ipv6_udp(ctx: &XdpContext, port_and_peer: &PortAndPeerV6) -> Result<()
     let (old_macs, old_eth_type) = {
         // SAFETY: The offset must point to the start of a valid `EthHdr`.
         let old_eth = unsafe { ref_mut_at::<EthHdr>(ctx, 0)? };
-        (MacAddrs::read(old_eth), old_eth.ether_type)
+        (old_eth.mac_addrs(), old_eth.ether_type)
     };
 
     let (
@@ -63,7 +64,7 @@ pub fn to_ipv6_udp(ctx: &XdpContext, port_and_peer: &PortAndPeerV6) -> Result<()
 
     // SAFETY: The offset must point to the start of a valid `EthHdr`.
     let eth = unsafe { ref_mut_at::<EthHdr>(ctx, NET_SHRINK as usize)? };
-    old_macs.write_swapped(eth);
+    eth.set_mac_addrs(old_macs.swapped());
     eth.ether_type = old_eth_type;
 
     //

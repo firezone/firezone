@@ -7,7 +7,7 @@ use network_types::{
 };
 
 use crate::try_handle_turn::{
-    Error, adjust_head, channel_data::CdHdr, checksum::ChecksumUpdate, config, mac::MacAddrs,
+    Error, adjust_head, channel_data::CdHdr, checksum::ChecksumUpdate, config, mac::EthHdrExt as _,
     ref_mut_at,
 };
 
@@ -23,7 +23,7 @@ pub fn to_ipv6_udp(ctx: &XdpContext, port_and_peer: &PortAndPeerV6) -> Result<()
     let old_macs = {
         // SAFETY: The offset must point to the start of a valid `EthHdr`.
         let old_eth = unsafe { ref_mut_at::<EthHdr>(ctx, old_data_offset)? };
-        MacAddrs::read(old_eth)
+        old_eth.mac_addrs()
     };
 
     let (old_ipv4_src, old_ipv4_dst, old_ipv4_dscp, old_ipv4_ecn, old_ipv4_ttl, old_ipv4_proto) = {
@@ -74,7 +74,7 @@ pub fn to_ipv6_udp(ctx: &XdpContext, port_and_peer: &PortAndPeerV6) -> Result<()
 
     // SAFETY: The offset must point to the start of a valid `EthHdr`.
     let eth = unsafe { ref_mut_at::<EthHdr>(ctx, 0)? };
-    old_macs.write_swapped(eth);
+    eth.set_mac_addrs(old_macs.swapped());
     eth.ether_type = EtherType::Ipv6.into(); // Change to IPv6
 
     //
