@@ -5,6 +5,7 @@ use aya_ebpf::{
 };
 use ebpf_shared::{PacketCounter, STATS_SAMPLING_INTERVAL, StatsEvent};
 
+use super::per_cpu;
 use crate::time::KernelInstant;
 
 #[map]
@@ -25,14 +26,11 @@ static PACKET_COUNTERS: PerCpuArray<u64> =
 /// Only a random sample of packets is reported, so we only need to read the clock for those.
 #[inline(always)]
 pub fn start_sample() -> Option<KernelInstant> {
-    let state = SAMPLING_RNG.get_ptr_mut(0)?;
-
-    // SAFETY: Per-CPU values are only ever accessed from the current CPU.
-    let random = unsafe {
+    let random = per_cpu::update(&SAMPLING_RNG, 0, |state| {
         // A linear congruential generator; its high bits are uniformly distributed.
-        *state = (*state).wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+        *state = state.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
         *state
-    };
+    })?;
 
     if random >= u32::MAX / STATS_SAMPLING_INTERVAL {
         return None;
@@ -50,10 +48,7 @@ pub fn record(
     ip_version: u8,
     ecn: u8,
 ) {
-    if let Some(counter) = PACKET_COUNTERS.get_ptr_mut(PacketCounter::index(ip_version, ecn)) {
-        // SAFETY: Per-CPU values are only ever accessed from the current CPU.
-        unsafe { *counter += 1 };
-    }
+    per_cpu::increment(&PACKET_COUNTERS, PacketCounter::index(ip_version, ecn));
 
     let Some(start) = sample else {
         return;

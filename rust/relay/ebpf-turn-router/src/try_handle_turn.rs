@@ -8,6 +8,7 @@ mod from_ipv4_udp;
 mod from_ipv6_channel;
 mod from_ipv6_udp;
 mod mac;
+mod per_cpu;
 mod ref_mut_at;
 mod routing;
 mod stats;
