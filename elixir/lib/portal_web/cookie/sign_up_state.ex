@@ -1,11 +1,14 @@
 defmodule PortalWeb.Cookie.SignUpState do
   @moduledoc """
   Cookie that binds a Google sign-up round trip to the browser that started it.
-  Holds only the OAuth state and the PKCE verifier we generated.
+  Holds the OAuth state and the PKCE verifier we generated. While a Google
+  Workspace sign-up waits for its administrator proof, it also holds the
+  identity from the first round trip; that identity is only used after the
+  second round trip proves the same user administers the domain.
   """
 
   @enforce_keys [:state, :verifier]
-  defstruct [:state, :verifier]
+  defstruct [:state, :verifier, :identity]
 
   @cookie_key "sign_up_oidc"
 
@@ -34,11 +37,15 @@ defmodule PortalWeb.Cookie.SignUpState do
   end
 
   defp to_binary(%__MODULE__{} = cookie) do
-    :erlang.term_to_binary({cookie.state, cookie.verifier})
+    :erlang.term_to_binary({cookie.state, cookie.verifier, cookie.identity})
   end
 
   defp from_binary(binary) when is_binary(binary) do
     case safe_binary_to_term(binary) do
+      {state, verifier, identity}
+      when is_binary(state) and is_binary(verifier) and (is_nil(identity) or is_map(identity)) ->
+        %__MODULE__{state: state, verifier: verifier, identity: identity}
+
       {state, verifier} when is_binary(state) and is_binary(verifier) ->
         %__MODULE__{state: state, verifier: verifier}
 

@@ -70,6 +70,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
 
   defp verification_ref_from_open_url(lv) do
     assert_push_event(lv, "open_url", %{url: url})
+    send(self(), {:opened_url, url})
 
     %{"state" => state} =
       url
@@ -1080,8 +1081,97 @@ defmodule PortalWeb.Settings.AuthenticationTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/settings/authentication/google/#{provider.id}/edit")
 
-      assert html =~ "Verify another domain"
+      assert html =~ "Verify additional domains"
       refute html =~ ">Reset<"
+    end
+
+    test "verifying additional domains lets the admin choose which to add", ctx do
+      Mocks.OIDC.stub_discovery_document()
+      provider = google_provider_fixture(account: ctx.account, workspace_domains: ["primary.example"])
+      {:ok, lv, _} = ctx.conn |> authorize_conn(ctx.actor)
+        |> live(~p"/#{ctx.account}/settings/authentication/google/#{provider.id}/edit")
+      lv |> element("#verify-button") |> render_click()
+      verification_ref = verification_ref_from_open_url(lv)
+      assert_received {:opened_url, url}
+      assert url =~ "admin.directory.domain.readonly"
+      ack_ref = make_ref()
+      send(lv.pid, {:google_verify_complete, "https://accounts.google.com",
+        ["primary.example", "second.example", "third.example"], "primary.example", verification_ref,
+        {self(), ack_ref}})
+      assert_receive {:verification_ack, ^ack_ref}
+      refute has_element?(lv, "#domain-choices", "primary.example")
+      assert has_element?(lv, "#domain-choice-0", "second.example")
+      assert has_element?(lv, "#domain-choice-1", "third.example")
+
+      lv |> element("#domain-choice-1 button") |> render_click()
+      assert has_element?(lv, "#verified-organization-1", "third.example")
+      refute has_element?(lv, "#domain-choice-1")
+      render_click(lv, "add_verified_domain", %{"domain" => "forged.example"})
+      refute render(lv) =~ "forged.example"
+
+      lv |> form("#auth-provider-form") |> render_submit()
+      saved = Repo.get!(Portal.Google.AuthProvider, provider.id)
+      assert saved.workspace_domains == ["primary.example", "third.example"]
+    end
+
+    test "an administrator of an unrelated Workspace cannot add domains", ctx do
+      Mocks.OIDC.stub_discovery_document()
+      provider = google_provider_fixture(account: ctx.account, workspace_domains: ["primary.example"])
+      {:ok, lv, _} = ctx.conn |> authorize_conn(ctx.actor)
+        |> live(~p"/#{ctx.account}/settings/authentication/google/#{provider.id}/edit")
+      lv |> element("#verify-button") |> render_click()
+      verification_ref = verification_ref_from_open_url(lv)
+      ack_ref = make_ref()
+      send(lv.pid, {:google_verify_complete, "https://accounts.google.com",
+        ["other.example", "another.example"], "other.example", verification_ref, {self(), ack_ref}})
+      assert_receive {:verification_ack, ^ack_ref}
+      refute has_element?(lv, "#domain-choices")
+      assert render(lv) =~ "administrator of the Google Workspace that this provider already uses"
+    end
+
+    test "first verification saves the administrator-proven hd and offers the other domains", ctx do
+      Mocks.OIDC.stub_discovery_document()
+      {:ok, lv, _} = ctx.conn |> authorize_conn(ctx.actor)
+        |> live(~p"/#{ctx.account}/settings/authentication/google/new")
+      lv |> element("#verify-button") |> render_click()
+      verification_ref = verification_ref_from_open_url(lv)
+
+      # The controller re-arms the same verification for the administrator step.
+      send(lv.pid, {:rearm_pending_verification, verification_ref,
+        %{config: %{}, verifier: "v", verification_ref: verification_ref, additional_domains: true,
+          expected_subject: "sub"}, self()})
+      assert_receive {:pending_rearmed, ^verification_ref}
+      send(lv.pid, {:get_pending_verification, verification_ref, self()})
+      assert_receive {:pending_verification, %{additional_domains: true}}
+
+      ack_ref = make_ref()
+      send(lv.pid, {:google_verify_complete, "https://accounts.google.com",
+        ["primary.example", "second.example"], "primary.example", verification_ref, {self(), ack_ref}})
+      assert_receive {:verification_ack, ^ack_ref}
+      assert has_element?(lv, "#verified-organization-0", "primary.example")
+      assert has_element?(lv, "#domain-choice-0", "second.example")
+
+      lv |> form("#auth-provider-form") |> render_submit()
+      saved = Repo.get_by!(Portal.Google.AuthProvider, account_id: ctx.account.id)
+      assert saved.workspace_domains == ["primary.example"]
+    end
+
+    test "re-arming is ignored for a stale verification", ctx do
+      Mocks.OIDC.stub_discovery_document()
+      {:ok, lv, _} = ctx.conn |> authorize_conn(ctx.actor)
+        |> live(~p"/#{ctx.account}/settings/authentication/google/new")
+      send(lv.pid, {:rearm_pending_verification, Ecto.UUID.generate(), %{}, self()})
+      assert_receive {:pending_rearmed, nil}
+    end
+
+    test "verify now requests only the identity scopes", ctx do
+      Mocks.OIDC.stub_discovery_document()
+      {:ok, lv, _} = ctx.conn |> authorize_conn(ctx.actor)
+        |> live(~p"/#{ctx.account}/settings/authentication/google/new")
+      lv |> element("#verify-button") |> render_click()
+      verification_ref_from_open_url(lv)
+      assert_received {:opened_url, url}
+      refute url =~ "admin.directory"
     end
 
     test "cannot clear the first verified domain with a forged reset event", %{account: account, actor: actor, conn: conn} do
@@ -3379,9 +3469,9 @@ defmodule PortalWeb.Settings.AuthenticationTest do
         [first, second, _] = @allowlist_values
         complete_allowlist_verification(lv, @allowlist_type, first)
         assert has_element?(lv, "#verified-organization-0", first)
-        assert has_element?(lv, "#verify-button", "Verify another")
-        complete_allowlist_verification(lv, @allowlist_type, second)
-        complete_allowlist_verification(lv, @allowlist_type, second)
+        assert has_element?(lv, "#verify-button", if(@allowlist_type == "google", do: "Verify additional", else: "Verify another"))
+        complete_allowlist_verification(lv, @allowlist_type, second, [first])
+        complete_allowlist_verification(lv, @allowlist_type, second, [first])
         assert has_element?(lv, "#verified-organization-1", second)
         refute has_element?(lv, "#verified-organization-2")
         lv |> form("#auth-provider-form") |> render_submit()
@@ -3397,7 +3487,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
           |> live(~p"/#{ctx.account}/settings/authentication/#{@allowlist_type}/#{provider.id}/edit")
         lv |> form("#auth-provider-form", %{auth_provider: %{name: "MSP SSO", portal_session_lifetime_secs: 3600}})
           |> render_change()
-        complete_allowlist_verification(lv, @allowlist_type, second)
+        complete_allowlist_verification(lv, @allowlist_type, second, [first])
         # An ordinary form validation must preserve server-owned verified values.
         render_change(lv, "validate", %{"auth_provider" => %{"name" => "MSP SSO",
           "portal_session_lifetime_secs" => "3600", Atom.to_string(@allowlist_field) => ["attacker.example"]}})
@@ -3606,18 +3696,24 @@ defmodule PortalWeb.Settings.AuthenticationTest do
   defp allowlist_provider_fixture("google", account, values),
     do: google_provider_fixture(account: account, workspace_domains: values)
 
-  defp complete_allowlist_verification(lv, type, value) do
+  defp complete_allowlist_verification(lv, type, value, proven \\ []) do
     lv |> element("#verify-button") |> render_click()
     verification_ref = verification_ref_from_open_url(lv)
-    send_allowlist_verification(lv, type, value, verification_ref)
+    html = send_allowlist_verification(lv, type, value, verification_ref, proven)
+
+    if type == "google" and has_element?(lv, "#domain-choices") do
+      lv |> element("#domain-choices button[phx-value-domain='#{value}']") |> render_click()
+    else
+      html
+    end
   end
 
-  defp send_allowlist_verification(lv, type, value, verification_ref) do
+  defp send_allowlist_verification(lv, type, value, verification_ref, proven \\ []) do
     ack_ref = make_ref()
     message = case type do
       "entra" -> {:entra_verify_complete, "https://login.microsoftonline.com/#{value}/v2.0",
         value, "Customer tenant", verification_ref, {self(), ack_ref}}
-      "google" -> {:google_verify_complete, "https://accounts.google.com", [value], value,
+      "google" -> {:google_verify_complete, "https://accounts.google.com", [value | proven], value,
         verification_ref, {self(), ack_ref}}
     end
     send(lv.pid, message)
