@@ -26,6 +26,7 @@ defmodule Portal.Google.AuthProvider do
 
     field :issuer, :string
     field :workspace_domains, {:array, :string}
+    field :verified_domains, {:array, :string}
     field :is_legacy_unrestricted, :boolean, default: false
 
     field :context, Ecto.Enum,
@@ -50,7 +51,10 @@ defmodule Portal.Google.AuthProvider do
     |> validate_required([:name, :context, :issuer, :is_verified])
     |> validate_acceptance(:is_verified)
     |> validate_length(:workspace_domains, min: 1)
+    |> validate_length(:verified_domains, min: 1)
+    |> validate_enabled_domains()
     |> check_constraint(:workspace_domains, name: :google_workspace_domains_must_not_be_empty)
+    |> check_constraint(:workspace_domains, name: :google_enabled_domains_must_be_verified)
     |> check_constraint(:workspace_domains, name: :google_legacy_unrestricted_requires_no_domains)
     |> exclusion_constraint(:workspace_domains,
       name: :google_auth_providers_workspace_domains_excl,
@@ -76,4 +80,23 @@ defmodule Portal.Google.AuthProvider do
 
   def default_portal_session_lifetime_secs, do: @default_portal_session_lifetime_secs
   def default_client_session_lifetime_secs, do: @default_client_session_lifetime_secs
+
+  defp validate_enabled_domains(changeset) do
+    verified = get_field(changeset, :verified_domains)
+    enabled = get_field(changeset, :workspace_domains)
+
+    cond do
+      is_nil(verified) and is_nil(enabled) ->
+        changeset
+
+      is_nil(verified) or is_nil(enabled) or not Enum.all?(enabled, &(&1 in verified)) ->
+        add_error(changeset, :workspace_domains, "must be verified domains")
+
+      hd(verified) not in enabled ->
+        add_error(changeset, :workspace_domains, "the primary verified domain cannot be disabled")
+
+      true ->
+        changeset
+    end
+  end
 end
