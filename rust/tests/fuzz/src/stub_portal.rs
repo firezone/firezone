@@ -672,6 +672,23 @@ impl StubPortal {
             .collect()
     }
 
+    /// The peers holding a peer authorization with `client`, in either direction.
+    pub(crate) fn authorized_peers_of(&self, client: ClientId) -> BTreeSet<ClientId> {
+        self.peer_policy_authorizations
+            .iter()
+            .filter_map(|authorization| {
+                if authorization.initiator == client {
+                    return Some(authorization.target);
+                }
+                if authorization.target == client {
+                    return Some(authorization.initiator);
+                }
+
+                None
+            })
+            .collect()
+    }
+
     fn set_pool_members(&mut self, pool: ResourceId, members: BTreeSet<ClientId>) {
         if !self.device_pool_resources.contains_key(&pool) {
             tracing::error!(%pool, "Unknown device pool");

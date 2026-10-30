@@ -847,6 +847,24 @@ impl TunnelTest {
                         Vec::new()
                     },
                 );
+
+                // The portal sees the Client reconnect with a new key and tells its peers.
+                let public_key = self.clients[&client_id].inner().sut().public_key();
+                for peer in portal.authorized_peers_of(client_id) {
+                    self.clients.get_mut(&peer).unwrap().exec_mut(|c| {
+                        c.sut_mut().handle_public_key_changed(
+                            ClientOrGatewayId::Client(client_id),
+                            public_key,
+                            now,
+                        )
+                    });
+                }
+                for gateway in self.gateways.values_mut() {
+                    gateway.exec_mut(|g| {
+                        g.sut_mut()
+                            .handle_public_key_changed(client_id, public_key.into(), now)
+                    });
+                }
             }
         };
 
