@@ -369,13 +369,7 @@ async fn record_packet_counters(counters: PerCpuArray<MapData, PacketCounts>) {
 
         for (index, last_count) in (0..PacketCounter::NUM_ENTRIES).zip(&mut last_counts) {
             let count = match counters.get(&index, 0) {
-                Ok(values) => values
-                    .iter()
-                    .fold(PacketCounts::default(), |mut total, counts| {
-                        total.packets += counts.packets;
-                        total.bytes += counts.bytes;
-                        total
-                    }),
+                Ok(values) => values.iter().sum::<PacketCounts>(),
                 Err(e) => {
                     tracing::debug!("Failed to read packet counter from eBPF map: {e}");
                     continue;
@@ -653,11 +647,7 @@ mod tests {
                 .get(&PacketCounter::index(ip_version, ecn), 0)
                 .unwrap()
                 .iter()
-                .fold(PacketCounts::default(), |mut total, counts| {
-                    total.packets += counts.packets;
-                    total.bytes += counts.bytes;
-                    total
-                })
+                .sum()
         }
 
         fn run(&self, packet: &[u8]) -> Outcome {

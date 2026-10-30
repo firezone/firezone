@@ -253,6 +253,15 @@ pub struct PacketCounts {
     pub bytes: u64,
 }
 
+impl<'a> core::iter::Sum<&'a PacketCounts> for PacketCounts {
+    fn sum<I: Iterator<Item = &'a PacketCounts>>(iter: I) -> Self {
+        iter.fold(Self::default(), |total, counts| Self {
+            packets: total.packets + counts.packets,
+            bytes: total.bytes + counts.bytes,
+        })
+    }
+}
+
 /// Indices into the per-CPU array that counts relayed packets by incoming IP version and ECN codepoint.
 ///
 /// | Index  | IP version | ECN codepoint  |
