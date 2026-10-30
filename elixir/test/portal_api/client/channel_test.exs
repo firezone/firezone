@@ -8044,6 +8044,22 @@ defmodule PortalAPI.Client.ChannelTest do
     end
   end
 
+  describe "handle_info/2 :pubkey_changed" do
+    test "pushes pubkey_changed with the peer id", %{
+      client: client,
+      subject: subject,
+      gateway: gateway
+    } do
+      socket = join_channel(client, subject)
+      assert_push "init", _
+
+      send(socket.channel_pid, {:pubkey_changed, gateway.id})
+
+      assert_push "pubkey_changed", %{id: id}
+      assert id == gateway.id
+    end
+  end
+
   describe "handle_info/2 :reject_access" do
     # Same eviction semantics as the gateway channel's :reject_access handler —
     # see `PortalAPI.Gateway.ChannelTest` for branch-by-branch coverage of

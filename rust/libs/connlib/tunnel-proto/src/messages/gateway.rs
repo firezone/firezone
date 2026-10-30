@@ -113,12 +113,21 @@ pub struct RejectAccess {
     pub resource_id: ResourceId,
 }
 
+/// Sent by the portal when a client we hold a tunnel to reconnected with a
+/// new WireGuard key.
+#[derive(Debug, Deserialize, Clone, Copy)]
+pub struct PubkeyChanged {
+    pub id: ClientId,
+}
+
 // These messages are the messages that can be received
 // either by a client or a gateway by the client.
 #[derive(Debug, Deserialize, Clone)]
 #[serde(rename_all = "snake_case", tag = "event", content = "payload")]
 pub enum IngressMessages {
     RejectAccess(RejectAccess),
+    /// A client reconnected with a new WireGuard key; the tunnel to it is dead.
+    PubkeyChanged(PubkeyChanged),
     IceCandidates(ClientIceCandidates),
     InvalidateIceCandidates(ClientIceCandidates),
     Init(InitGateway),
@@ -323,6 +332,18 @@ mod tests {
             message,
             IngressMessages::InvalidateIceCandidates(_)
         ));
+    }
+
+    #[test]
+    fn can_deserialize_pubkey_changed_message() {
+        let json = r#"{"event":"pubkey_changed","ref":null,"topic":"gateway","payload":{"id":"2b1524e6-239e-4570-bc73-70a188e12101"}}"#;
+
+        let message = serde_json::from_str::<IngressMessages>(json).unwrap();
+
+        let IngressMessages::PubkeyChanged(PubkeyChanged { id }) = message else {
+            panic!("unexpected message: {message:?}");
+        };
+        assert_eq!(id.to_string(), "2b1524e6-239e-4570-bc73-70a188e12101");
     }
 
     #[test]

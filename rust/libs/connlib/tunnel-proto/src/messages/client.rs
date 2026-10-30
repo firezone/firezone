@@ -5,7 +5,7 @@ use crate::messages::{
     RelaysPresence, SecretKey, SnownetCapabilities, WarnOnInvalidFilter,
 };
 use connlib_model::{
-    ClientId, GatewayId, IceCandidate, IpStack, RelayId, ResourceId, Site, SiteId,
+    ClientId, DeviceId, GatewayId, IceCandidate, IpStack, RelayId, ResourceId, Site, SiteId,
 };
 use ip_network::IpNetwork;
 use serde::{Deserialize, Serialize};
@@ -243,6 +243,14 @@ pub struct ClientRejectAccess {
     pub resource_id: ResourceId,
 }
 
+/// Sent by the portal when a peer we hold a tunnel to reconnected with a new
+/// WireGuard key. The portal does not say whether the peer is a gateway or a
+/// client; the id is unique across both.
+#[derive(Debug, Deserialize, Clone, Copy)]
+pub struct PubkeyChanged {
+    pub id: DeviceId,
+}
+
 /// OBSOLETE - safe to remove this when <https://github.com/firezone/firezone/pull/13714> is deployed to production.
 #[serde_as]
 #[derive(Debug, Deserialize, Clone)]
@@ -376,6 +384,9 @@ pub enum IngressMessages {
 
     /// A previously-authorized peer-to-peer access has been revoked.
     RejectAccess(ClientRejectAccess),
+
+    /// A peer reconnected with a new WireGuard key; every tunnel to it is dead.
+    PubkeyChanged(PubkeyChanged),
 
     /// OBSOLETE - safe to remove this when <https://github.com/firezone/firezone/pull/13714> is deployed to production.
     AccessAuthorizationExpiryUpdated(ClientAccessAuthorizationExpiryUpdated),
@@ -631,6 +642,18 @@ mod tests {
             message,
             IngressMessages::InvalidateGatewayIceCandidates(_)
         ));
+    }
+
+    #[test]
+    fn can_deserialize_pubkey_changed_message() {
+        let json = r#"{"event":"pubkey_changed","ref":null,"topic":"client","payload":{"id":"2b1524e6-239e-4570-bc73-70a188e12101"}}"#;
+
+        let message = serde_json::from_str::<IngressMessages>(json).unwrap();
+
+        let IngressMessages::PubkeyChanged(PubkeyChanged { id }) = message else {
+            panic!("unexpected message: {message:?}");
+        };
+        assert_eq!(id.to_string(), "2b1524e6-239e-4570-bc73-70a188e12101");
     }
 
     #[test]

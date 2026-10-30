@@ -9,6 +9,7 @@ defmodule Portal.Changes.Hooks.ClientsTest do
   import Portal.ResourceFixtures
   alias Portal.Changes.Change
   alias Portal.Device
+  alias Portal.PG
   alias Portal.PubSub
 
   describe "insert/1" do
@@ -128,6 +129,169 @@ defmodule Portal.Changes.Hooks.ClientsTest do
       assert :ok == on_update(0, old_data, data)
       assert Repo.get_by(Portal.PolicyAuthorization, id: inbound.id)
     end
+  end
+
+  describe "update/2 with a rotated public key" do
+    setup do
+      account = account_fixture()
+      client = client_fixture(account: account)
+      gateway = gateway_fixture(account: account)
+
+      old_data = %{
+        "id" => client.id,
+        "type" => "client",
+        "account_id" => account.id,
+        "public_key" => generate_public_key(),
+        "last_seen_at" => "2026-10-01T00:00:00Z"
+      }
+
+      %{account: account, client: client, gateway: gateway, old_data: old_data}
+    end
+
+    test "deletes the prior session's authorizations and tells the connected peers", %{
+      account: account,
+      client: client,
+      gateway: gateway,
+      old_data: old_data
+    } do
+      PG.register(gateway.id)
+      :ok = PubSub.Changes.subscribe(account.id, :devices)
+
+      authorization =
+        policy_authorization_fixture(account: account, client: client, gateway: gateway)
+
+      assert :ok == on_update(0, old_data, rotated(old_data))
+
+      assert_receive {:pubkey_changed, client_id}
+      assert client_id == client.id
+      refute Repo.get_by(Portal.PolicyAuthorization, id: authorization.id)
+      refute_receive %Change{op: :update}
+    end
+
+    test "tells a peer once however many authorizations it held", %{
+      account: account,
+      client: client,
+      gateway: gateway,
+      old_data: old_data
+    } do
+      PG.register(gateway.id)
+
+      for _ <- 1..2 do
+        policy_authorization_fixture(account: account, client: client, gateway: gateway)
+      end
+
+      assert :ok == on_update(0, old_data, rotated(old_data))
+
+      assert_receive {:pubkey_changed, _client_id}
+      refute_receive {:pubkey_changed, _client_id}
+    end
+
+    test "tells the initiating peer when the rotated client was the receiver", %{
+      account: account,
+      client: client,
+      old_data: old_data
+    } do
+      initiator = client_fixture(account: account)
+      pool = all_devices_pool_resource_fixture(account: account)
+      PG.register(initiator.id)
+
+      inbound =
+        policy_authorization_fixture(
+          account: account,
+          resource: pool,
+          client: initiator,
+          gateway: client
+        )
+
+      assert :ok == on_update(0, old_data, rotated(old_data))
+
+      assert_receive {:pubkey_changed, client_id}
+      assert client_id == client.id
+      refute Repo.get_by(Portal.PolicyAuthorization, id: inbound.id)
+    end
+
+    test "keeps the authorizations the new session created", %{
+      account: account,
+      client: client,
+      gateway: gateway,
+      old_data: old_data
+    } do
+      PG.register(gateway.id)
+
+      authorization =
+        policy_authorization_fixture(account: account, client: client, gateway: gateway)
+
+      connected_at = DateTime.add(DateTime.utc_now(), -60, :second)
+      data = rotated(old_data, connected_at)
+
+      assert :ok == on_update(0, old_data, data)
+
+      refute_receive {:pubkey_changed, _client_id}
+      assert Repo.get_by(Portal.PolicyAuthorization, id: authorization.id)
+    end
+
+    test "leaves expired authorizations to the reaper", %{
+      account: account,
+      client: client,
+      gateway: gateway,
+      old_data: old_data
+    } do
+      PG.register(gateway.id)
+
+      expired =
+        expired_policy_authorization_fixture(account: account, client: client, gateway: gateway)
+
+      assert :ok == on_update(0, old_data, rotated(old_data))
+
+      refute_receive {:pubkey_changed, _client_id}
+      assert Repo.get_by(Portal.PolicyAuthorization, id: expired.id)
+    end
+
+    test "does nothing when the key is set for the first time", %{
+      account: account,
+      client: client,
+      gateway: gateway,
+      old_data: old_data
+    } do
+      PG.register(gateway.id)
+
+      authorization =
+        policy_authorization_fixture(account: account, client: client, gateway: gateway)
+
+      old_data = Map.put(old_data, "public_key", nil)
+
+      assert :ok == on_update(0, old_data, rotated(old_data))
+
+      refute_receive {:pubkey_changed, _client_id}
+      assert Repo.get_by(Portal.PolicyAuthorization, id: authorization.id)
+    end
+
+    test "does nothing when the key stays the same", %{
+      account: account,
+      client: client,
+      gateway: gateway,
+      old_data: old_data
+    } do
+      PG.register(gateway.id)
+
+      authorization =
+        policy_authorization_fixture(account: account, client: client, gateway: gateway)
+
+      data = Map.put(rotated(old_data), "public_key", old_data["public_key"])
+
+      assert :ok == on_update(0, old_data, data)
+
+      refute_receive {:pubkey_changed, _client_id}
+      assert Repo.get_by(Portal.PolicyAuthorization, id: authorization.id)
+    end
+  end
+
+  # The flushed row of a session that connected at `connected_at` with a new key.
+  defp rotated(old_data, connected_at \\ DateTime.add(DateTime.utc_now(), 1, :second)) do
+    Map.merge(old_data, %{
+      "public_key" => generate_public_key(),
+      "last_seen_at" => DateTime.to_iso8601(connected_at)
+    })
   end
 
   describe "delete/1" do

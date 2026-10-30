@@ -3,8 +3,10 @@ defmodule Portal.Changes.Hooks.GatewaysTest do
   import Portal.Changes.Hooks.Devices
   import Portal.AccountFixtures
   import Portal.DeviceFixtures
+  import Portal.PolicyAuthorizationFixtures
   alias Portal.Changes.Change
   alias Portal.Device
+  alias Portal.PG
   alias Portal.PubSub
 
   describe "insert/1" do
@@ -31,6 +33,36 @@ defmodule Portal.Changes.Hooks.GatewaysTest do
                  %{"id" => Ecto.UUID.generate(), "type" => "gateway", "account_id" => account.id},
                  %{"id" => Ecto.UUID.generate(), "type" => "gateway", "account_id" => account.id}
                )
+    end
+
+    test "rotated public key deletes the prior authorizations and tells the clients" do
+      account = account_fixture()
+      gateway = gateway_fixture(account: account)
+      client = client_fixture(account: account)
+      PG.register(client.id)
+
+      authorization =
+        policy_authorization_fixture(account: account, client: client, gateway: gateway)
+
+      old_data = %{
+        "id" => gateway.id,
+        "type" => "gateway",
+        "account_id" => account.id,
+        "public_key" => generate_public_key(),
+        "last_seen_at" => "2026-10-01T00:00:00Z"
+      }
+
+      data =
+        Map.merge(old_data, %{
+          "public_key" => generate_public_key(),
+          "last_seen_at" => DateTime.utc_now() |> DateTime.add(1, :second) |> DateTime.to_iso8601()
+        })
+
+      assert :ok == on_update(0, old_data, data)
+
+      assert_receive {:pubkey_changed, gateway_id}
+      assert gateway_id == gateway.id
+      refute Repo.get_by(Portal.PolicyAuthorization, id: authorization.id)
     end
   end
 
