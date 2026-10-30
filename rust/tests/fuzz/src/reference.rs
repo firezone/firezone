@@ -26,6 +26,11 @@ use crate::resource as client;
 // TODO: Remove with classic ICE.
 const MIN_IDLE_FOR_REKEY_DROP: Duration = Duration::from_secs(180 - 10);
 
+/// Maximum time for an established iceless peer to retire a connection after its peer crashes:
+/// the primary's next probe, the unanswered-data handshake delay, jitter, and handshake expiry.
+const ICELESS_PEER_CRASH_LOSS: Duration =
+    Duration::from_millis(25_000 + 5_000 + 2_000 + 333 + 90_000);
+
 /// How long after a relay frees up its ports until no node ignores it anymore: how long a node
 /// ignores a relay that failed its allocation, plus a margin.
 const RELAY_RECOVERY: Duration = Duration::from_secs(60 + 5);
@@ -48,6 +53,9 @@ pub struct ReferenceState {
     pub(crate) recovering_relays: BTreeMap<RelayId, Instant>,
     /// Whether a node may have no relay left because every relay it tried rejected its allocation.
     pub(crate) node_may_lack_relays: bool,
+
+    /// The crash time of a peer with which a client still had an old connection.
+    peer_crashed_at: BTreeMap<(ClientId, ClientId), Instant>,
 
     /// All IP addresses a domain resolves to in our test.
     ///
@@ -93,6 +101,7 @@ impl ReferenceState {
             exhausted_relays: Default::default(),
             recovering_relays: Default::default(),
             node_may_lack_relays: false,
+            peer_crashed_at: Default::default(),
             global_dns_records,
             domain_tree,
             tcp_services,
@@ -701,6 +710,10 @@ impl ReferenceState {
             Transition::RestartClient { client_id, key } => {
                 self.node_may_lack_relays |= self.no_relay_accepts_allocations();
 
+                for _ in self.peer_crashed_at.extract_if(.., |(origin, peer), _| {
+                    origin == client_id || peer == client_id
+                }) {}
+
                 self.clients
                     .get_mut(client_id)
                     .unwrap()
@@ -717,14 +730,28 @@ impl ReferenceState {
             Transition::CrashClient { client_id, key } => {
                 self.node_may_lack_relays |= self.no_relay_accepts_allocations();
 
+                for _ in self
+                    .peer_crashed_at
+                    .extract_if(.., |(origin, _), _| origin == client_id)
+                {}
+
+                for (peer_id, peer) in self.clients.iter().filter(|(id, _)| *id != client_id) {
+                    if peer
+                        .inner()
+                        .authorized_pools_towards(*client_id)
+                        .next()
+                        .is_some()
+                    {
+                        self.peer_crashed_at.insert((*peer_id, *client_id), now);
+                    }
+                }
+
                 // Applications resolve their domains again once the cached records are gone.
                 self.clients.get_mut(client_id).unwrap().exec_mut(|c| {
                     c.restart(*key, now);
                     c.dns_records.clear();
                 });
 
-                // Without a `goodbye`, the peers lose their connections to the crashed client, and
-                // their authorizations towards it with them.
                 for (_, peer) in self.clients.iter_mut().filter(|(id, _)| *id != client_id) {
                     peer.exec_mut(|c| c.forget_peer_authorizations(*client_id));
                 }
@@ -1091,6 +1118,7 @@ impl ReferenceState {
                 });
             }
             Some(Authorization::Peer { peer, pool }) => {
+                self.peer_crashed_at.remove(&(peer, origin));
                 self.clients
                     .get_mut(&origin)
                     .unwrap()
@@ -1213,7 +1241,6 @@ impl ReferenceState {
         Ok(PoolTowardsPeer::Granted(pool))
     }
 
-    // TODO: Remove with classic ICE: every trace is then exact.
     fn trace_requirement(
         &self,
         portal: &StubPortal,
@@ -1221,13 +1248,26 @@ impl ReferenceState {
         outcome: ExpectedOutcome,
         sent_at: Instant,
     ) -> TraceRequirement {
-        if portal.iceless() {
-            return TraceRequirement::Exact;
-        }
-
         let Some(remote) = outcome.remote() else {
             return TraceRequirement::Exact;
         };
+        if portal.iceless() {
+            return match remote {
+                Remote::Client(peer)
+                    if self
+                        .peer_crashed_at
+                        .get(&(origin, peer))
+                        .is_some_and(|crashed_at| {
+                            sent_at <= *crashed_at + ICELESS_PEER_CRASH_LOSS
+                        }) =>
+                {
+                    TraceRequirement::ExactOrLoss(KnownLoss::PeerCrash)
+                }
+                Remote::Client(_) => TraceRequirement::Exact,
+                Remote::Gateway(_) => TraceRequirement::Exact,
+            };
+        }
+
         let known_loss = match remote {
             Remote::Client(client)
                 if self.clients[&client]
