@@ -261,7 +261,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
           connected:
             Views.Relay.render_many(
               relays,
-              socket.assigns.gateway.public_key,
+              socket.assigns.gateway,
               @relay_credentials_expire_at,
               socket.assigns.gateway.account_id
             )
@@ -715,7 +715,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
       connected:
         Views.Relay.render_many(
           relays,
-          socket.assigns.gateway.public_key,
+          socket.assigns.gateway,
           @relay_credentials_expire_at,
           socket.assigns.gateway.account_id
         )
@@ -811,7 +811,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
       relays:
         Views.Relay.render_many(
           relays,
-          socket.assigns.gateway.public_key,
+          socket.assigns.gateway,
           @relay_credentials_expire_at,
           socket.assigns.gateway.account_id
         ),
