@@ -31,7 +31,7 @@ defmodule PortalAPI.Client.SocketTest do
       info = build_connect_info(token: token)
       assert {:ok, first} = connect(Socket, attrs, connect_info: info)
       for _ <- 1..55, do: assert(:ok == Portal.Devices.RegistrationRateLimit.check(account))
-      assert {:error, :rate_limit, _} = Portal.Devices.RegistrationRateLimit.check(account)
+      assert {:error, {:rate_limit, _}} = Portal.Devices.RegistrationRateLimit.check(account)
 
       rotated = Map.put(attrs, "public_key", generate_public_key())
       assert {:ok, renewed} = connect(Socket, rotated, connect_info: info)
@@ -1500,7 +1500,7 @@ defmodule PortalAPI.Client.SocketTest do
         last_attested_cert_fingerprint: "new-fp"
     }
 
-    assert {:error, :rate_limit, _} = resolve_with_proof(changeset, new_proof, subject)
+    assert {:error, {:rate_limit, _}} = resolve_with_proof(changeset, new_proof, subject)
   end
 
   describe "resolve_client/4 device-trust proof" do

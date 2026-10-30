@@ -13,7 +13,7 @@ defmodule PortalAPI.Error do
   require Logger
 
   @spec handle(Plug.Conn.t(), term()) :: Plug.Conn.t()
-  def handle(conn, {:error, :rate_limit, retry_after_ms}) do
+  def handle(conn, {:error, {:rate_limit, retry_after_ms}}) do
     retry_after = max(ceil(retry_after_ms / 1000), 1)
 
     conn

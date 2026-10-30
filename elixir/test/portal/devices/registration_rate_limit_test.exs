@@ -12,7 +12,7 @@ defmodule Portal.Devices.RegistrationRateLimitTest do
     }
 
     for _ <- 1..56, do: assert(:ok == RegistrationRateLimit.check(account))
-    assert {:error, :rate_limit, retry_after_ms} = RegistrationRateLimit.check(account)
+    assert {:error, {:rate_limit, retry_after_ms}} = RegistrationRateLimit.check(account)
     # 28 registrations/day means about 51 minutes until the next registration.
     assert retry_after_ms in 3_000_000..3_120_000
 
@@ -20,18 +20,18 @@ defmodule Portal.Devices.RegistrationRateLimitTest do
     [{^key, remaining, updated_at}] = :ets.lookup(PortalAPI.RateLimit.Local, key)
     :ets.insert(PortalAPI.RateLimit.Local, {key, remaining, updated_at - :timer.hours(24)})
     for _ <- 1..28, do: assert(:ok == RegistrationRateLimit.check(account))
-    assert {:error, :rate_limit, _} = RegistrationRateLimit.check(account)
+    assert {:error, {:rate_limit, _}} = RegistrationRateLimit.check(account)
   end
 
   test "accounts have independent buckets and seat changes use the current allowance" do
     limits = %Limits{users_count: 1, connected_devices_per_actor: 1}
     account = %Account{id: Ecto.UUID.generate(), limits: limits}
     for _ <- 1..22, do: assert(:ok == RegistrationRateLimit.check(account))
-    assert {:error, :rate_limit, _} = RegistrationRateLimit.check(account)
+    assert {:error, {:rate_limit, _}} = RegistrationRateLimit.check(account)
     assert :ok == RegistrationRateLimit.check(%{account | id: Ecto.UUID.generate()})
 
     increased = %{account | limits: %{limits | users_count: 100}}
-    assert {:error, :rate_limit, retry_after_ms} = RegistrationRateLimit.check(increased)
+    assert {:error, {:rate_limit, retry_after_ms}} = RegistrationRateLimit.check(increased)
     assert retry_after_ms < 1_000_000
   end
 
@@ -44,7 +44,7 @@ defmodule Portal.Devices.RegistrationRateLimitTest do
 
     account = %Account{id: Ecto.UUID.generate(), limits: limits}
     for _ <- 1..220, do: assert(:ok == RegistrationRateLimit.check(account))
-    assert {:error, :rate_limit, _} = RegistrationRateLimit.check(account)
+    assert {:error, {:rate_limit, _}} = RegistrationRateLimit.check(account)
 
     assert :ok ==
              RegistrationRateLimit.check(%{

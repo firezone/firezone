@@ -28,7 +28,7 @@ defmodule Portal.Devices.RegistrationRateLimit do
   # accounts up to one registration/second.
   @cost 86_400
 
-  @spec check(Account.t()) :: :ok | {:error, :rate_limit, non_neg_integer()}
+  @spec check(Account.t()) :: :ok | {:error, {:rate_limit, non_neg_integer()}}
   def check(%Account{id: id, limits: limits}) do
     case Limits.device_allowance(limits) do
       nil ->
@@ -42,7 +42,7 @@ defmodule Portal.Devices.RegistrationRateLimit do
                @cost
              ) do
           {:allow, _remaining} -> :ok
-          {:deny, retry_after_ms} -> {:error, :rate_limit, retry_after_ms}
+          {:deny, retry_after_ms} -> {:error, {:rate_limit, retry_after_ms}}
         end
     end
   end

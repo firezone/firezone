@@ -29,7 +29,7 @@ defmodule PortalAPI.Gateway.SocketTest do
       info = build_connect_info(token: token)
       assert {:ok, first} = connect(Socket, attrs, connect_info: info)
       for _ <- 1..54, do: assert(:ok == Portal.Devices.RegistrationRateLimit.check(account))
-      assert {:error, :rate_limit, _} = Portal.Devices.RegistrationRateLimit.check(account)
+      assert {:error, {:rate_limit, _}} = Portal.Devices.RegistrationRateLimit.check(account)
 
       rotated = Map.put(attrs, "public_key", generate_public_key())
       assert {:ok, existing} = connect(Socket, rotated, connect_info: info)
@@ -46,7 +46,7 @@ defmodule PortalAPI.Gateway.SocketTest do
                )
 
       assert existing.assigns.gateway.id == provisioned.id
-      assert {:error, :rate_limit, _} = Portal.Devices.provision_gateway(site, "blocked", subject)
+      assert {:error, {:rate_limit, _}} = Portal.Devices.provision_gateway(site, "blocked", subject)
       assert Repo.aggregate(Portal.Device, :count, :id) == 2
     end
 
