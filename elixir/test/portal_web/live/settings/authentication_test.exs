@@ -1104,20 +1104,24 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       assert has_element?(lv, "#verified-organization-1", "second.example")
       refute has_element?(lv, "#verified-domain-toggle-1[checked]")
       assert has_element?(lv, "#verified-organization-2", "third.example")
-      assert render(lv) =~ "The primary verified domain cannot be disabled"
+      assert render(lv) =~ "At least one domain must be enabled"
 
       lv |> element("#verified-domain-toggle-2") |> render_click()
       assert has_element?(lv, "#verified-domain-toggle-2[checked]")
-      assert has_element?(lv, "#verified-organization-1", "second.example")
+      refute has_element?(lv, "#verified-domain-toggle-0[disabled]")
+      lv |> element("#verified-domain-toggle-0") |> render_click()
+      refute has_element?(lv, "#verified-domain-toggle-0[checked]")
+      assert has_element?(lv, "#verified-domain-toggle-2[checked][disabled]")
+      assert has_element?(lv, "#verified-organization-0", "(primary)")
       render_click(lv, "toggle_verified_domain", %{"domain" => "forged.example"})
       refute render(lv) =~ "forged.example"
 
       lv |> form("#auth-provider-form") |> render_submit()
       saved = Repo.get_by!(Portal.Google.AuthProvider, account_id: ctx.account.id)
-      assert saved.workspace_domains == ["primary.example", "third.example"]
+      assert saved.workspace_domains == ["third.example"]
     end
 
-    test "locks the primary domain and persists toggled domains", ctx do
+    test "keeps one domain enabled and persists toggled domains", ctx do
       Mocks.OIDC.stub_discovery_document()
       provider = google_provider_fixture(account: ctx.account,
         workspace_domains: ["primary.example", "second.example"])
@@ -1135,16 +1139,20 @@ defmodule PortalWeb.Settings.AuthenticationTest do
         ["primary.example", "second.example", "third.example"], "primary.example", verification_ref,
         {self(), ack_ref}})
       assert_receive {:verification_ack, ^ack_ref}
-      assert has_element?(lv, "#verified-domain-toggle-0[checked][disabled]")
+      assert has_element?(lv, "#verified-domain-toggle-0[checked]")
+      refute has_element?(lv, "#verified-domain-toggle-0[disabled]")
       assert has_element?(lv, "#verified-domain-toggle-1[checked]")
       refute has_element?(lv, "#verified-domain-toggle-2[checked]")
 
-      render_click(lv, "toggle_verified_domain", %{"domain" => "primary.example"})
-      assert has_element?(lv, "#verified-domain-toggle-0[checked]")
       lv |> element("#verified-domain-toggle-1") |> render_click()
       refute has_element?(lv, "#verified-domain-toggle-1[checked]")
+      # The last enabled domain is locked until another one is enabled.
+      assert has_element?(lv, "#verified-domain-toggle-0[checked][disabled]")
+      render_click(lv, "toggle_verified_domain", %{"domain" => "primary.example"})
+      assert has_element?(lv, "#verified-domain-toggle-0[checked]")
       lv |> element("#verified-domain-toggle-2") |> render_click()
       assert has_element?(lv, "#verified-domain-toggle-2[checked]")
+      refute has_element?(lv, "#verified-domain-toggle-0[disabled]")
       assert has_element?(lv, "#verified-organization-1", "second.example")
 
       lv |> form("#auth-provider-form") |> render_submit()
@@ -1158,7 +1166,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       refute has_element?(lv, "#verified-domain-toggle-0")
     end
 
-    test "refreshing keeps the primary domain and the enabled domains", ctx do
+    test "refreshing keeps the enabled domains", ctx do
       Mocks.OIDC.stub_discovery_document()
       provider = google_provider_fixture(account: ctx.account,
         workspace_domains: ["primary.example", "second.example"])
@@ -1171,16 +1179,18 @@ defmodule PortalWeb.Settings.AuthenticationTest do
         ["second.example", "primary.example", "fourth.example"], "primary.example", verification_ref,
         {self(), ack_ref}})
       assert_receive {:verification_ack, ^ack_ref}
-      assert has_element?(lv, "#verified-organization-0", "primary.example")
-      assert has_element?(lv, "#verified-organization-1", "second.example")
+      assert has_element?(lv, "#verified-organization-0", "second.example")
+      assert has_element?(lv, "#verified-organization-0", "(primary)")
+      assert has_element?(lv, "#verified-organization-1", "primary.example")
       assert has_element?(lv, "#verified-organization-2", "fourth.example")
       refute has_element?(lv, "#verified-organization-3")
+      assert has_element?(lv, "#verified-domain-toggle-0[checked]")
       assert has_element?(lv, "#verified-domain-toggle-1[checked]")
       refute has_element?(lv, "#verified-domain-toggle-2[checked]")
 
       lv |> form("#auth-provider-form") |> render_submit()
       assert Repo.get!(Portal.Google.AuthProvider, provider.id).workspace_domains ==
-               ["primary.example", "second.example"]
+               ["second.example", "primary.example"]
     end
 
     test "an administrator of an unrelated Workspace cannot refresh the domains", ctx do
@@ -3762,7 +3772,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
     message = case type do
       "entra" -> {:entra_verify_complete, "https://login.microsoftonline.com/#{value}/v2.0",
         value, "Customer tenant", verification_ref, {self(), ack_ref}}
-      "google" -> {:google_verify_complete, "https://accounts.google.com", [value | proven], value,
+      "google" -> {:google_verify_complete, "https://accounts.google.com", proven ++ [value], value,
         verification_ref, {self(), ack_ref}}
     end
     send(lv.pid, message)

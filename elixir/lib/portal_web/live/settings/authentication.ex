@@ -234,7 +234,7 @@ defmodule PortalWeb.Settings.Authentication do
     verified = socket.assigns.verified_domains
     enabled = get_field(previous, :workspace_domains) || []
 
-    if domain in Enum.drop(verified, 1) do
+    if domain in verified and enabled != [domain] do
       enabled =
         if domain in enabled,
           do: enabled -- [domain],
@@ -565,8 +565,8 @@ defmodule PortalWeb.Settings.Authentication do
   end
 
   # Google proves the full list of Workspace domains. The list only lives in
-  # this form: the administrator's own domain is enabled first, the rest can be
-  # toggled on, and only the enabled domains are saved.
+  # this form: the administrator's own domain is enabled first, any of them can
+  # be toggled as long as one stays enabled, and only the enabled domains are saved.
   defp complete_google_verification(socket, issuer, domains) do
     previous = socket.assigns.form.source
     existing = get_field(previous, :workspace_domains) || []
@@ -591,12 +591,9 @@ defmodule PortalWeb.Settings.Authentication do
           is_legacy_unrestricted: false
         })
 
-      hd(existing) in domains ->
-        primary = hd(existing)
-        verified = [primary | domains -- [primary]]
-
-        assign_google_verification(socket, previous, issuer, verified, %{
-          workspace_domains: Enum.filter(verified, &(&1 in existing)),
+      Enum.any?(domains, &(&1 in existing)) ->
+        assign_google_verification(socket, previous, issuer, domains, %{
+          workspace_domains: Enum.filter(domains, &(&1 in existing)),
           is_legacy_unrestricted: false
         })
 
@@ -1961,12 +1958,12 @@ defmodule PortalWeb.Settings.Authentication do
                 </span>
               </td>
               <td :if={@toggles?} class="px-3 py-2">
-                <span title={if index == 0, do: "The primary verified domain cannot be disabled"}>
+                <span title={if @enabled == [value], do: "At least one domain must be enabled"}>
                   <Core.toggle
                     id={"verified-domain-toggle-#{index}"}
                     size="sm"
                     checked={value in @enabled}
-                    disabled={index == 0}
+                    disabled={@enabled == [value]}
                     aria-label={"Enable #{value}"}
                     phx-click="toggle_verified_domain"
                     phx-value-domain={value}
