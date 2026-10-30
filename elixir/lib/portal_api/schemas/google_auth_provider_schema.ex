@@ -5,7 +5,9 @@ defmodule PortalAPI.Schemas.GoogleAuthProvider do
     require OpenApiSpex
     alias OpenApiSpex.Schema
 
-    @derive {PortalAPI.JSON.Encoder, for: Portal.Google.AuthProvider, internal: [:is_verified, :is_legacy_unrestricted]}
+    @derive {PortalAPI.JSON.Encoder,
+             for: Portal.Google.AuthProvider,
+             internal: [:is_verified, :is_legacy_unrestricted, :verified_domains]}
     OpenApiSpex.schema(%{
       title: "GoogleAuthProvider",
       description: "Google Auth Provider",

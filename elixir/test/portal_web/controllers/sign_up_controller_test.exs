@@ -397,7 +397,7 @@ defmodule PortalWeb.SignUpControllerTest do
       "name" => "Ada Lovelace",
       "given_name" => "Ada",
       "family_name" => "Lovelace",
-      "workspace_domain" => nil,
+      "verified_domains" => nil,
       "expires_at" => Keyword.get(attrs, :expires_at, System.os_time(:second) + 900)
     }
 
