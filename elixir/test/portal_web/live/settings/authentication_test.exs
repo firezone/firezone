@@ -1099,6 +1099,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
         {self(), ack_ref}})
       assert_receive {:verification_ack, ^ack_ref}
       assert has_element?(lv, "#verified-organization-0", "primary.example")
+      assert has_element?(lv, "#verified-organization-0", "(primary)")
       assert has_element?(lv, "#verified-domain-toggle-0[checked][disabled]")
       assert has_element?(lv, "#verified-organization-1", "second.example")
       refute has_element?(lv, "#verified-domain-toggle-1[checked]")
@@ -1127,6 +1128,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       conn = authorize_conn(ctx.conn, ctx.actor)
       {:ok, lv, _} = live(conn, path)
       assert has_element?(lv, "#verified-organization-1", "second.example")
+      refute has_element?(lv, "#verified-organization-0", "(primary)")
       refute has_element?(lv, "#verified-domain-toggle-0")
 
       lv |> element("#verify-button") |> render_click()
@@ -1136,6 +1138,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
         ["primary.example", "second.example", "third.example"], "primary.example", verification_ref,
         {self(), ack_ref}})
       assert_receive {:verification_ack, ^ack_ref}
+      assert has_element?(lv, "#verified-organization-0", "(primary)")
       assert has_element?(lv, "#verified-domain-toggle-0[checked]")
       refute has_element?(lv, "#verified-domain-toggle-0[disabled]")
       assert has_element?(lv, "#verified-domain-toggle-1[checked]")
@@ -1161,6 +1164,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       assert has_element?(lv, "#verified-organization-1", "third.example")
       refute has_element?(lv, "#verified-organization-2")
       refute has_element?(lv, "#verified-domain-toggle-0")
+      refute has_element?(lv, "#verified-organization-0", "(primary)")
     end
 
     test "refreshing keeps the enabled domains", ctx do
@@ -1177,6 +1181,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
         {self(), ack_ref}})
       assert_receive {:verification_ack, ^ack_ref}
       assert has_element?(lv, "#verified-organization-0", "second.example")
+      assert has_element?(lv, "#verified-organization-0", "(primary)")
       assert has_element?(lv, "#verified-organization-1", "primary.example")
       assert has_element?(lv, "#verified-organization-2", "fourth.example")
       refute has_element?(lv, "#verified-organization-3")
