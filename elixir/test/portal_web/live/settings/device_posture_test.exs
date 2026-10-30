@@ -773,7 +773,7 @@ defmodule PortalWeb.Settings.DevicePostureTest do
   end
 
   describe "editing a provider's host" do
-    test "requires the Santa API key again before verifying a new API URL", %{
+    test "resets the Santa API key when the API URL changes", %{
       conn: conn,
       account: account,
       actor: actor
@@ -782,8 +782,8 @@ defmodule PortalWeb.Settings.DevicePostureTest do
       parent = self()
 
       Req.Test.stub(Portal.Santa.APIClient, fn conn ->
-        send(parent, {:santa_request, conn.host})
-        Req.Test.json(conn, %{"hosts" => [], "more" => false})
+        send(parent, {:santa_request, conn.host, Plug.Conn.get_req_header(conn, "authorization")})
+        Plug.Conn.send_resp(conn, 401, "")
       end)
 
       {:ok, lv, html} =
@@ -794,8 +794,7 @@ defmodule PortalWeb.Settings.DevicePostureTest do
       Req.Test.allow(Portal.Santa.APIClient, self(), lv.pid)
       refute html =~ provider.api_key
 
-      # As a browser sends it: the untouched key box carries an _unused_
-      # marker, which hides its errors.
+      # As a browser sends it: the untouched key box carries an _unused_ marker.
       html =
         render_change(lv, "validate", %{
           "_target" => ["provider", "api_url"],
@@ -806,14 +805,24 @@ defmodule PortalWeb.Settings.DevicePostureTest do
           }
         })
 
-      assert html =~ "Required for the new API URL."
-      assert html =~ "Enter the key again for the new API URL"
+      refute html =~ "Leave blank to keep the current key"
 
-      html = lv |> element("#provider-verification-button") |> render_click()
+      lv |> element("#provider-verification-button") |> render_click()
 
-      assert html =~ "Enter the API key again for the new API URL."
-      refute_received {:santa_request, _host}
-      assert reload(provider).api_url == provider.api_url
+      assert_receive {:santa_request, "attacker.example.com", authorization}
+      refute provider.api_key in authorization
+
+      lv |> form("#device-posture-form") |> render_submit()
+
+      assert has_element?(
+               lv,
+               ~s([data-validation-error-for="provider[api_key]"]),
+               "can't be blank"
+             )
+
+      updated = reload(provider)
+      assert updated.api_url == provider.api_url
+      assert updated.api_key == provider.api_key
     end
 
     test "verifies and saves a new Santa API URL with the key entered again", %{
@@ -852,7 +861,7 @@ defmodule PortalWeb.Settings.DevicePostureTest do
       assert updated.api_key == provider.api_key
     end
 
-    test "requires the SentinelOne API token again before verifying a new management URL", %{
+    test "resets the SentinelOne API token when the management URL changes", %{
       conn: conn,
       account: account,
       actor: actor
@@ -861,8 +870,12 @@ defmodule PortalWeb.Settings.DevicePostureTest do
       parent = self()
 
       Req.Test.stub(Portal.SentinelOne.APIClient, fn conn ->
-        send(parent, {:sentinelone_request, conn.host})
-        Req.Test.json(conn, %{"data" => [], "pagination" => %{"nextCursor" => nil}})
+        send(
+          parent,
+          {:sentinelone_request, conn.host, Plug.Conn.get_req_header(conn, "authorization")}
+        )
+
+        Plug.Conn.send_resp(conn, 401, "")
       end)
 
       {:ok, lv, _html} =
@@ -878,11 +891,22 @@ defmodule PortalWeb.Settings.DevicePostureTest do
       )
       |> render_change()
 
-      html = lv |> element("#provider-verification-button") |> render_click()
+      lv |> element("#provider-verification-button") |> render_click()
 
-      assert html =~ "Enter the API token again for the new management URL."
-      refute_received {:sentinelone_request, _host}
-      assert reload(provider).management_url == provider.management_url
+      assert_receive {:sentinelone_request, "attacker.example.com", authorization}
+      refute Enum.any?(authorization, &String.contains?(&1, provider.api_token))
+
+      lv |> form("#device-posture-form") |> render_submit()
+
+      assert has_element?(
+               lv,
+               ~s([data-validation-error-for="provider[api_token]"]),
+               "can't be blank"
+             )
+
+      updated = reload(provider)
+      assert updated.management_url == provider.management_url
+      assert updated.api_token == provider.api_token
     end
   end
 

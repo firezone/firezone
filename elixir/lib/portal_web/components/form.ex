@@ -160,7 +160,7 @@ defmodule PortalWeb.Components.Form do
     |> assign_new(:value, fn ->
       cond do
         assigns.value_id -> resolve_field_value(field, assigns.value_id)
-        assigns.type == "password" -> submitted_value(field)
+        redacted?(field) -> submitted_value(field)
         true -> field.value
       end
     end)
@@ -485,8 +485,14 @@ defmodule PortalWeb.Components.Form do
     end)
   end
 
-  # A password input only echoes what the browser itself submitted, never the
+  # A redacted field only echoes what the browser itself submitted, never the
   # stored value, so an edit form cannot leak a saved secret into the page.
+  defp redacted?(%{form: %{source: %Ecto.Changeset{data: %schema{}}}, field: name}) do
+    function_exported?(schema, :__schema__, 1) and name in schema.__schema__(:redact_fields)
+  end
+
+  defp redacted?(_field), do: false
+
   defp submitted_value(field) do
     Map.get(field.form.params || %{}, to_string(field.field))
   end

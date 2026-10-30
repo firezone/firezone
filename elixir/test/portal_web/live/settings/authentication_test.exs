@@ -1411,7 +1411,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       assert updated.client_secret == provider.client_secret
     end
 
-    test "requires the secret again before verifying a new Okta domain", %{
+    test "resets the secret when the Okta domain changes", %{
       account: account,
       actor: actor,
       conn: conn
@@ -1425,7 +1425,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
         |> live(~p"/#{account}/settings/authentication/okta/#{provider.id}/edit")
 
       # As a browser sends it: the untouched secret box carries an _unused_
-      # marker, which hides its errors.
+      # marker.
       html =
         render_change(lv, "validate", %{
           "_target" => ["auth_provider", "okta_domain"],
@@ -1436,23 +1436,18 @@ defmodule PortalWeb.Settings.AuthenticationTest do
           }
         })
 
-      assert html =~ "Required for the new Okta domain."
-      assert html =~ "Enter the secret again for the new Okta domain"
+      refute html =~ "Leave blank to keep the current secret"
+      assert has_element?(lv, "#auth_provider_client_secret[required]")
+      refute has_element?(lv, "#verify-button")
 
-      render_hook(lv, "start_verification", %{})
-      refute_push_event(lv, "open_url", _)
+      lv |> element("#auth-provider-form") |> render_submit()
 
-      # Resetting verification applies the changes to the changeset's data,
-      # which must not make the new domain look like the stored one.
-      render_hook(lv, "reset_verification", %{})
-      render_hook(lv, "start_verification", %{})
-      refute_push_event(lv, "open_url", _)
-
-      assert Repo.get_by!(Portal.Okta.AuthProvider, id: provider.id).okta_domain ==
-               provider.okta_domain
+      updated = Repo.get_by!(Portal.Okta.AuthProvider, id: provider.id)
+      assert updated.okta_domain == provider.okta_domain
+      assert updated.client_secret == provider.client_secret
     end
 
-    test "verifies a new discovery document URI with the secret entered again", %{
+    test "saves a new discovery document URI and secret once verified", %{
       account: account,
       actor: actor,
       conn: conn
@@ -1471,17 +1466,14 @@ defmodule PortalWeb.Settings.AuthenticationTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/settings/authentication/oidc/#{provider.id}/edit")
 
-      html =
-        lv
-        |> form("#auth-provider-form", %{
-          auth_provider: %{
-            discovery_document_uri: Mocks.OIDC.discovery_document_uri(),
-            client_secret: provider.client_secret
-          }
-        })
-        |> render_change()
-
-      refute html =~ "Enter the client secret again"
+      lv
+      |> form("#auth-provider-form", %{
+        auth_provider: %{
+          discovery_document_uri: Mocks.OIDC.discovery_document_uri(),
+          client_secret: "new-secret"
+        }
+      })
+      |> render_change()
 
       lv |> element("#verify-button") |> render_click()
       verification_ref = verification_ref_from_open_url(lv)
@@ -1489,11 +1481,60 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       send(lv.pid, {:oidc_verify_complete, "https://example.com", verification_ref, {self(), ack}})
       assert_receive {:verification_ack, ^ack}
 
-      # The secret typed before verifying still counts, so verifying again is
-      # not refused.
+      lv |> element("#auth-provider-form") |> render_submit()
+
+      updated = Repo.get_by!(Portal.OIDC.AuthProvider, id: provider.id)
+      assert updated.discovery_document_uri == Mocks.OIDC.discovery_document_uri()
+      assert updated.client_secret == "new-secret"
+      assert updated.issuer == "https://example.com"
+    end
+
+    test "keeps a secret typed again unchanged through a verification reset", %{
+      account: account,
+      actor: actor,
+      conn: conn
+    } do
+      Mocks.OIDC.stub_discovery_document()
+
+      provider =
+        oidc_provider_fixture(
+          account: account,
+          discovery_document_uri: "https://old-idp.example.com/.well-known/openid-configuration",
+          email_verification_method: :none
+        )
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/authentication/oidc/#{provider.id}/edit")
+
+      lv
+      |> form("#auth-provider-form", %{
+        auth_provider: %{
+          discovery_document_uri: Mocks.OIDC.discovery_document_uri(),
+          client_secret: provider.client_secret
+        }
+      })
+      |> render_change()
+
+      assert has_element?(lv, "#verify-button")
+
+      lv |> element("#verify-button") |> render_click()
+      verification_ref_from_open_url(lv)
       render_hook(lv, "reset_verification", %{})
-      render_hook(lv, "start_verification", %{})
-      assert_push_event(lv, "open_url", %{url: _url})
+      assert has_element?(lv, "#verify-button")
+
+      lv |> element("#verify-button") |> render_click()
+      verification_ref = verification_ref_from_open_url(lv)
+      ack = make_ref()
+      send(lv.pid, {:oidc_verify_complete, "https://example.com", verification_ref, {self(), ack}})
+      assert_receive {:verification_ack, ^ack}
+
+      lv |> element("#auth-provider-form") |> render_submit()
+
+      updated = Repo.get_by!(Portal.OIDC.AuthProvider, id: provider.id)
+      assert updated.discovery_document_uri == Mocks.OIDC.discovery_document_uri()
+      assert updated.client_secret == provider.client_secret
     end
   end
 

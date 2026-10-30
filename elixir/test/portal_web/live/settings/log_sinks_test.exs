@@ -999,7 +999,7 @@ defmodule PortalWeb.Settings.LogSinksTest do
       end
     end
 
-    test "requires the token again when the HEC URL changes", %{
+    test "resets the token when the HEC URL changes", %{
       conn: conn,
       account: account,
       actor: actor
@@ -1020,22 +1020,19 @@ defmodule PortalWeb.Settings.LogSinksTest do
           ["hec_token"]
         )
 
-      assert html =~ "Required for the new HEC URL."
-      assert html =~ "Enter the token again for the new HEC URL"
-      assert form_error_count(html, "hec_token") == 1
+      refute html =~ "Leave blank to keep the current token"
 
-      form =
-        form(lv, "#log-sink-form",
-          log_sink: %{collector_url: "https://attacker.example", hec_token: ""}
-        )
+      lv
+      |> form("#log-sink-form",
+        log_sink: %{collector_url: "https://attacker.example", hec_token: ""}
+      )
+      |> render_submit()
 
-      # Once the box is used, the input shows the error itself, once.
-      html = render_change(form)
-      assert form_error_count(html, "hec_token") == 1
-
-      html = render_submit(form)
-      assert html =~ "Required for the new HEC URL."
-      assert form_error_count(html, "hec_token") == 1
+      assert has_element?(
+               lv,
+               ~s([data-validation-error-for="log_sink[hec_token]"]),
+               "can't be blank"
+             )
 
       updated = reload_sink(sink)
       assert updated.collector_url == sink.collector_url
@@ -1067,7 +1064,7 @@ defmodule PortalWeb.Settings.LogSinksTest do
       assert updated.hec_token == sink.hec_token
     end
 
-    test "requires the API key again when the Datadog site changes", %{
+    test "resets the API key when the Datadog site changes", %{
       conn: conn,
       account: account,
       actor: actor
@@ -1079,63 +1076,37 @@ defmodule PortalWeb.Settings.LogSinksTest do
         |> authorize_conn(actor)
         |> live(~p"/#{account}/settings/log_sinks/datadog/#{sink.id}/edit")
 
-      html =
-        change_field(lv, sink, "site", %{"site" => "datadoghq.eu", "api_key" => ""}, ["api_key"])
+      lv
+      |> form("#log-sink-form", log_sink: %{site: "datadoghq.eu", api_key: ""})
+      |> render_submit()
 
-      assert html =~ "Required for the new site."
-      assert html =~ "Enter the key again for the new site"
-
-      html =
-        lv
-        |> form("#log-sink-form", log_sink: %{site: "datadoghq.eu", api_key: ""})
-        |> render_submit()
-
-      assert html =~ "Required for the new site."
+      assert has_element?(
+               lv,
+               ~s([data-validation-error-for="log_sink[api_key]"]),
+               "can't be blank"
+             )
 
       updated = Repo.get_by!(Portal.Datadog.LogSink, account_id: account.id, id: sink.id)
       assert updated.site == "datadoghq.com"
+      assert updated.api_key == sink.api_key
     end
 
-    test "requires the bearer token again, or its removal, when the endpoint changes", %{
+    test "drops the bearer token when the endpoint changes", %{
       conn: conn,
       account: account,
       actor: actor
     } do
       sink = http_log_sink_fixture(account: account)
+      assert sink.bearer_token
 
       {:ok, lv, _html} =
         conn
         |> authorize_conn(actor)
         |> live(~p"/#{account}/settings/log_sinks/http/#{sink.id}/edit")
 
-      html =
-        change_field(
-          lv,
-          sink,
-          "endpoint_url",
-          %{"endpoint_url" => "https://attacker.example/ingest", "bearer_token" => ""},
-          ["bearer_token"]
-        )
-
-      assert html =~ "Enter it again, or remove it, for the new endpoint URL."
-      assert html =~ "Enter the token again, or remove it"
-
-      html =
-        lv
-        |> form("#log-sink-form",
-          log_sink: %{endpoint_url: "https://attacker.example/ingest", bearer_token: ""}
-        )
-        |> render_submit()
-
-      assert html =~ "Enter it again, or remove it, for the new endpoint URL."
-
       lv
       |> form("#log-sink-form",
-        log_sink: %{
-          endpoint_url: "https://new-endpoint.example/ingest",
-          bearer_token: "",
-          remove_secret: "true"
-        }
+        log_sink: %{endpoint_url: "https://new-endpoint.example/ingest", bearer_token: ""}
       )
       |> render_submit()
 
