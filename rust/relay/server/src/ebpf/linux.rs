@@ -16,7 +16,8 @@ use aya::{
 };
 use aya_log::EbpfLogger;
 use ebpf_shared::{
-    ClientAndChannelV4, ClientAndChannelV6, PacketCounter, PortAndPeerV4, PortAndPeerV6, StatsEvent,
+    ClientAndChannelV4, ClientAndChannelV6, PacketCounter, PacketCounts, PortAndPeerV4,
+    PortAndPeerV6, StatsEvent,
 };
 use stun_codec::rfc5766::attributes::ChannelNumber;
 use tokio::io::{Interest, unix::AsyncFd};
@@ -356,10 +357,11 @@ impl Program {
     }
 }
 
-/// Reports the packets relayed by the eBPF program as the deltas of its per-CPU counters.
-async fn record_packet_counters(counters: PerCpuArray<MapData, u64>) {
+/// Reports exact packet and byte totals as the deltas of the eBPF per-CPU counters.
+async fn record_packet_counters(counters: PerCpuArray<MapData, PacketCounts>) {
     let packets = otel_instruments::relay_packets();
-    let mut last_counts = [0_u64; PacketCounter::NUM_ENTRIES as usize];
+    let bytes = otel_instruments::relay_bytes();
+    let mut last_counts = [PacketCounts::default(); PacketCounter::NUM_ENTRIES as usize];
     let mut interval = tokio::time::interval(PACKET_COUNTERS_INTERVAL);
 
     loop {
@@ -367,16 +369,23 @@ async fn record_packet_counters(counters: PerCpuArray<MapData, u64>) {
 
         for (index, last_count) in (0..PacketCounter::NUM_ENTRIES).zip(&mut last_counts) {
             let count = match counters.get(&index, 0) {
-                Ok(values) => values.iter().sum::<u64>(),
+                Ok(values) => values
+                    .iter()
+                    .fold(PacketCounts::default(), |mut total, counts| {
+                        total.packets += counts.packets;
+                        total.bytes += counts.bytes;
+                        total
+                    }),
                 Err(e) => {
                     tracing::debug!("Failed to read packet counter from eBPF map: {e}");
                     continue;
                 }
             };
-            let delta = count.saturating_sub(*last_count);
+            let packet_delta = count.packets.saturating_sub(last_count.packets);
+            let byte_delta = count.bytes.saturating_sub(last_count.bytes);
             *last_count = count;
 
-            if delta == 0 {
+            if packet_delta == 0 && byte_delta == 0 {
                 continue;
             }
 
@@ -384,13 +393,14 @@ async fn record_packet_counters(counters: PerCpuArray<MapData, u64>) {
                 continue;
             };
             packets.add(
-                delta,
+                packet_delta,
                 &[
                     otel_attributes::relay_datapath_xdp(),
                     otel_attributes::network_type_for_ip_version(ip_version),
                     otel_attributes::network_ecn(ecn),
                 ],
             );
+            bytes.add(byte_delta, &[otel_attributes::relay_datapath_xdp()]);
         }
     }
 }
@@ -579,19 +589,31 @@ mod tests {
 
     #[test]
     #[ignore = "Needs root to load eBPF programs"]
-    fn counts_relayed_packets_by_ip_version_and_ecn() {
+    fn counts_all_relayed_packets_and_bytes_independently_of_sampling() {
         let mut program = Program::load_detached();
         program.bind_channel(CLIENT_V4.into(), PEER_V4.into());
         program.bind_channel(CLIENT_V6.into(), PEER_V6.into());
 
-        for _ in 0..3 {
+        for _ in 0..300 {
             program.run(&channel_data_ipv4(ECT0));
         }
         program.run(&channel_data_ipv6(NOT_ECT));
 
-        assert_eq!(program.packet_count(4, ECT0), 3);
-        assert_eq!(program.packet_count(6, NOT_ECT), 1);
-        assert_eq!(program.packet_count(4, NOT_ECT), 0);
+        assert_eq!(
+            program.packet_counts(4, ECT0),
+            PacketCounts {
+                packets: 300,
+                bytes: 300 * PAYLOAD_LEN as u64,
+            }
+        );
+        assert_eq!(
+            program.packet_counts(6, NOT_ECT),
+            PacketCounts {
+                packets: 1,
+                bytes: PAYLOAD_LEN as u64,
+            }
+        );
+        assert_eq!(program.packet_counts(4, NOT_ECT), PacketCounts::default());
     }
 
     #[derive(Debug, PartialEq)]
@@ -622,15 +644,20 @@ mod tests {
             .unwrap();
         }
 
-        fn packet_count(&self, ip_version: u8, ecn: u8) -> u64 {
+        fn packet_counts(&self, ip_version: u8, ecn: u8) -> PacketCounts {
             let counters =
-                PerCpuArray::<_, u64>::try_from(self.ebpf.map("PACKET_COUNTERS").unwrap()).unwrap();
+                PerCpuArray::<_, PacketCounts>::try_from(self.ebpf.map("PACKET_COUNTERS").unwrap())
+                    .unwrap();
 
             counters
                 .get(&PacketCounter::index(ip_version, ecn), 0)
                 .unwrap()
                 .iter()
-                .sum()
+                .fold(PacketCounts::default(), |mut total, counts| {
+                    total.packets += counts.packets;
+                    total.bytes += counts.bytes;
+                    total
+                })
         }
 
         fn run(&self, packet: &[u8]) -> Outcome {

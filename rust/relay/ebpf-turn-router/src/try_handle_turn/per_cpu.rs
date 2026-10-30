@@ -12,9 +12,3 @@ pub fn update<T, R>(map: &PerCpuArray<T>, index: u32, f: impl FnOnce(&mut T) -> 
     // preempted, so nothing else references the current CPU's value while we hold it.
     Some(f(unsafe { &mut *value }))
 }
-
-/// Increments the current CPU's counter at `index` of `map`.
-#[inline(always)]
-pub fn increment(map: &PerCpuArray<u64>, index: u32) {
-    update(map, index, |count| *count += 1);
-}
