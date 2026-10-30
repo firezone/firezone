@@ -8,8 +8,6 @@ defmodule PortalWeb.Components.Form do
   alias PortalWeb.Components.Core
   alias PortalWeb.Components.Navigation
 
-  require Logger
-
   @raise_on_unredacted_password Application.compile_env(:portal, :raise_on_unredacted_password, false)
 
   @doc """
@@ -522,6 +520,8 @@ defmodule PortalWeb.Components.Form do
   if @raise_on_unredacted_password do
     defp report_unredacted_password(message), do: raise(ArgumentError, message)
   else
+    require Logger
+
     defp report_unredacted_password(message), do: Logger.warning(message)
   end
 

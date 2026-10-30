@@ -20,20 +20,11 @@ defmodule PortalWeb.Components.FormTest.Fixture do
   end
 end
 
-defmodule PortalWeb.Components.FormTest.Credentials do
-  use Ecto.Schema
-
-  embedded_schema do
-    field :secret, :string, redact: true
-    field :unredacted_secret, :string
-  end
-end
-
 defmodule PortalWeb.Components.FormTest do
   use PortalWeb.ConnCase, async: true
 
+  alias Portal.Splunk
   alias PortalWeb.Components.Form
-  alias PortalWeb.Components.FormTest.Credentials
 
   test "panel footer composes consistently sized base buttons" do
     html =
@@ -59,23 +50,26 @@ defmodule PortalWeb.Components.FormTest do
 
   describe "password input" do
     test "never renders a redacted field's stored value" do
-      html = password_html(:secret, %Credentials{secret: "stored-secret"})
+      html = password_html(:hec_token, %Splunk.LogSink{hec_token: "stored-secret"})
 
       refute html =~ "stored-secret"
       assert html =~ "Leave blank to keep the current value"
     end
 
     test "echoes only what the browser submitted for a redacted field" do
-      html = password_html(:secret, %Credentials{secret: "stored-secret"}, %{"secret" => "typed"})
+      html =
+        password_html(:hec_token, %Splunk.LogSink{hec_token: "stored-secret"}, %{"hec_token" => "typed"})
 
       refute html =~ "stored-secret"
       assert html =~ ~s(value="typed")
     end
 
     test "raises when the schema field is not redacted" do
+      # Splunk's index isn't a secret; it only stands in for a field someone
+      # forgot to redact.
       assert_raise ArgumentError,
-                   ~r/FormTest.Credentials.unredacted_secret is rendered as a password input but is not redact: true/,
-                   fn -> password_html(:unredacted_secret, %Credentials{unredacted_secret: "stored"}) end
+                   ~r/Portal.Splunk.LogSink.index is rendered as a password input but is not redact: true/,
+                   fn -> password_html(:index, %Splunk.LogSink{index: "stored"}) end
     end
 
     test "renders a password input on a form without a schema" do
@@ -173,7 +167,7 @@ defmodule PortalWeb.Components.FormTest do
   defp password_html(field, data, params \\ %{}) do
     form =
       data
-      |> Ecto.Changeset.cast(params, [:secret, :unredacted_secret])
+      |> Ecto.Changeset.cast(params, [:hec_token, :index])
       |> Phoenix.Component.to_form(as: :credentials)
 
     render_component(&Form.input/1, %{field: form[field], type: "password"})
