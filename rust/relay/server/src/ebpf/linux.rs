@@ -16,7 +16,8 @@ use aya::{
 };
 use aya_log::EbpfLogger;
 use ebpf_shared::{
-    ClientAndChannelV4, ClientAndChannelV6, PacketCounter, PortAndPeerV4, PortAndPeerV6, StatsEvent,
+    ClientAndChannelV4, ClientAndChannelV6, PacketCounter, PortAndPeerV4, PortAndPeerV6,
+    RateLimitCounter, Route, StatsEvent,
 };
 use stun_codec::rfc5766::attributes::ChannelNumber;
 use tokio::io::{Interest, unix::AsyncFd};
@@ -24,7 +25,7 @@ use tracing::level_filters::LevelFilter;
 
 use crate::ebpf::AttachMode;
 
-use crate::{AllocationPort, ClientSocket, PeerSocket};
+use crate::{AllocationPort, ClientSocket, PeerSocket, ThroughputLimit};
 
 /// How many pages each per-CPU perf ring buffer spans.
 ///
@@ -189,15 +190,18 @@ impl Program {
         Ok(Self { ebpf, stats })
     }
 
+    /// Adds or replaces a channel binding, resetting its rate limiters.
     pub fn add_channel_binding(
         &mut self,
         client: ClientSocket,
         channel_number: ChannelNumber,
         peer: PeerSocket,
         allocation_port: AllocationPort,
+        throughput_limit: Option<ThroughputLimit>,
     ) -> Result<()> {
         let client = client.into_socket();
         let peer = peer.into_socket();
+        let limiter = ThroughputLimit::rate_limiter(throughput_limit);
 
         match (client, peer) {
             (SocketAddr::V4(client), SocketAddr::V4(peer)) => {
@@ -205,40 +209,64 @@ impl Program {
                     ClientAndChannelV4::from_socket(client, channel_number.value());
                 let port_and_peer = PortAndPeerV4::from_socket(peer, allocation_port.value());
 
-                self.chan_to_udp_44_map_mut()?
-                    .insert(&client_and_channel, &port_and_peer, 0)?;
-                self.udp_to_chan_44_map_mut()?
-                    .insert(&port_and_peer, &client_and_channel, 0)?;
+                self.chan_to_udp_44_map_mut()?.insert(
+                    &client_and_channel,
+                    &Route::new(port_and_peer, limiter),
+                    0,
+                )?;
+                self.udp_to_chan_44_map_mut()?.insert(
+                    &port_and_peer,
+                    &Route::new(client_and_channel, limiter),
+                    0,
+                )?;
             }
             (SocketAddr::V6(client), SocketAddr::V6(peer)) => {
                 let client_and_channel =
                     ClientAndChannelV6::from_socket(client, channel_number.value());
                 let port_and_peer = PortAndPeerV6::from_socket(peer, allocation_port.value());
 
-                self.chan_to_udp_66_map_mut()?
-                    .insert(&client_and_channel, &port_and_peer, 0)?;
-                self.udp_to_chan_66_map_mut()?
-                    .insert(&port_and_peer, &client_and_channel, 0)?;
+                self.chan_to_udp_66_map_mut()?.insert(
+                    &client_and_channel,
+                    &Route::new(port_and_peer, limiter),
+                    0,
+                )?;
+                self.udp_to_chan_66_map_mut()?.insert(
+                    &port_and_peer,
+                    &Route::new(client_and_channel, limiter),
+                    0,
+                )?;
             }
             (SocketAddr::V4(client), SocketAddr::V6(peer)) => {
                 let client_and_channel =
                     ClientAndChannelV4::from_socket(client, channel_number.value());
                 let port_and_peer = PortAndPeerV6::from_socket(peer, allocation_port.value());
 
-                self.chan_to_udp_46_map_mut()?
-                    .insert(&client_and_channel, &port_and_peer, 0)?;
-                self.udp_to_chan_64_map_mut()?
-                    .insert(&port_and_peer, &client_and_channel, 0)?;
+                self.chan_to_udp_46_map_mut()?.insert(
+                    &client_and_channel,
+                    &Route::new(port_and_peer, limiter),
+                    0,
+                )?;
+                self.udp_to_chan_64_map_mut()?.insert(
+                    &port_and_peer,
+                    &Route::new(client_and_channel, limiter),
+                    0,
+                )?;
             }
             (SocketAddr::V6(client), SocketAddr::V4(peer)) => {
                 let client_and_channel =
                     ClientAndChannelV6::from_socket(client, channel_number.value());
                 let port_and_peer = PortAndPeerV4::from_socket(peer, allocation_port.value());
 
-                self.chan_to_udp_64_map_mut()?
-                    .insert(&client_and_channel, &port_and_peer, 0)?;
-                self.udp_to_chan_46_map_mut()?
-                    .insert(&port_and_peer, &client_and_channel, 0)?;
+                self.chan_to_udp_64_map_mut()?.insert(
+                    &client_and_channel,
+                    &Route::new(port_and_peer, limiter),
+                    0,
+                )?;
+                self.udp_to_chan_46_map_mut()?.insert(
+                    &port_and_peer,
+                    &Route::new(client_and_channel, limiter),
+                    0,
+                )?;
             }
         }
 
@@ -293,51 +321,71 @@ impl Program {
         Ok(())
     }
 
+    /// Returns the total number of packets marked and dropped by rate limiting since the program was loaded.
+    pub fn rate_limited_packets(&self) -> Result<RateLimitedPackets> {
+        let map = self
+            .ebpf
+            .map("RATE_LIMIT_COUNTERS")
+            .context("Map `RATE_LIMIT_COUNTERS` not found")?;
+        let counters = PerCpuArray::<_, u64>::try_from(map)?;
+
+        let sum = |counter: RateLimitCounter| -> Result<u64> {
+            let values = counters.get(&(counter as u32), 0)?;
+
+            Ok(values.iter().sum())
+        };
+
+        Ok(RateLimitedPackets {
+            marked: sum(RateLimitCounter::Marked)?,
+            dropped: sum(RateLimitCounter::Dropped)?,
+        })
+    }
+
     fn chan_to_udp_44_map_mut(
         &mut self,
-    ) -> Result<HashMap<&mut MapData, ClientAndChannelV4, PortAndPeerV4>> {
+    ) -> Result<HashMap<&mut MapData, ClientAndChannelV4, Route<PortAndPeerV4>>> {
         self.hash_map_mut("CHAN_TO_UDP_44")
     }
 
     fn udp_to_chan_44_map_mut(
         &mut self,
-    ) -> Result<HashMap<&mut MapData, PortAndPeerV4, ClientAndChannelV4>> {
+    ) -> Result<HashMap<&mut MapData, PortAndPeerV4, Route<ClientAndChannelV4>>> {
         self.hash_map_mut("UDP_TO_CHAN_44")
     }
 
     fn chan_to_udp_66_map_mut(
         &mut self,
-    ) -> Result<HashMap<&mut MapData, ClientAndChannelV6, PortAndPeerV6>> {
+    ) -> Result<HashMap<&mut MapData, ClientAndChannelV6, Route<PortAndPeerV6>>> {
         self.hash_map_mut("CHAN_TO_UDP_66")
     }
 
     fn udp_to_chan_66_map_mut(
         &mut self,
-    ) -> Result<HashMap<&mut MapData, PortAndPeerV6, ClientAndChannelV6>> {
+    ) -> Result<HashMap<&mut MapData, PortAndPeerV6, Route<ClientAndChannelV6>>> {
         self.hash_map_mut("UDP_TO_CHAN_66")
     }
 
     fn chan_to_udp_46_map_mut(
         &mut self,
-    ) -> Result<HashMap<&mut MapData, ClientAndChannelV4, PortAndPeerV6>> {
+    ) -> Result<HashMap<&mut MapData, ClientAndChannelV4, Route<PortAndPeerV6>>> {
         self.hash_map_mut("CHAN_TO_UDP_46")
     }
 
     fn udp_to_chan_46_map_mut(
         &mut self,
-    ) -> Result<HashMap<&mut MapData, PortAndPeerV4, ClientAndChannelV6>> {
+    ) -> Result<HashMap<&mut MapData, PortAndPeerV4, Route<ClientAndChannelV6>>> {
         self.hash_map_mut("UDP_TO_CHAN_46")
     }
 
     fn chan_to_udp_64_map_mut(
         &mut self,
-    ) -> Result<HashMap<&mut MapData, ClientAndChannelV6, PortAndPeerV4>> {
+    ) -> Result<HashMap<&mut MapData, ClientAndChannelV6, Route<PortAndPeerV4>>> {
         self.hash_map_mut("CHAN_TO_UDP_64")
     }
 
     fn udp_to_chan_64_map_mut(
         &mut self,
-    ) -> Result<HashMap<&mut MapData, PortAndPeerV6, ClientAndChannelV4>> {
+    ) -> Result<HashMap<&mut MapData, PortAndPeerV6, Route<ClientAndChannelV4>>> {
         self.hash_map_mut("UDP_TO_CHAN_64")
     }
 
@@ -432,6 +480,12 @@ fn load(
     }
 
     Ok(ebpf)
+}
+
+#[derive(Debug, Default, Clone, Copy)]
+pub struct RateLimitedPackets {
+    pub marked: u64,
+    pub dropped: u64,
 }
 
 fn set_interface_ipv4_address(ebpf: &mut aya::Ebpf, addr: Ipv4Addr) -> Result<()> {
@@ -529,9 +583,18 @@ mod tests {
     const PEER_V6: SocketAddrV6 =
         SocketAddrV6::new(Ipv6Addr::new(0x2001, 0xdb8, 0, 0, 0, 0, 0, 2), 50000, 0, 0);
     const ALLOCATION: u16 = 49152;
+    const OTHER_CLIENT_V4: SocketAddrV4 = SocketAddrV4::new(Ipv4Addr::new(198, 51, 100, 2), 40000);
+    const OTHER_ALLOCATION: u16 = 49153;
     const CHANNEL: u16 = 0x4000;
 
+    /// 1 Mbit/s makes every [`PAYLOAD_LEN`] packet cost 8ms of the 250ms burst tolerance at the limit
+    /// and 10ms at the marking rate.
+    const LIMIT_BPS: u64 = 1_000_000;
     const PAYLOAD_LEN: usize = 1000;
+    /// Packets that fit into the burst tolerance: 11 pass (0 - 100ms ahead of the marking rate)
+    /// and 21 are marked (88 - 248ms ahead of the limit).
+    const PACKETS_IN_BURST: usize = 32;
+    const NUM_PACKETS: usize = 60;
 
     const DST_MAC: [u8; 6] = [0x02, 0, 0, 0, 0, 1];
     const SRC_MAC: [u8; 6] = [0x02, 0, 0, 0, 0, 2];
@@ -541,12 +604,105 @@ mod tests {
 
     const NOT_ECT: u8 = 0b00;
     const ECT0: u8 = 0b10;
+    const CE: u8 = 0b11;
+
+    #[test]
+    #[ignore = "Needs root to load eBPF programs"]
+    fn throughput_limit_marks_ecn_capable_ipv4_packets_before_dropping() {
+        let mut program = Program::load_detached();
+        program.bind_channel(CLIENT_V4.into(), PEER_V4.into(), LIMIT_BPS);
+        let packet = channel_data_ipv4(ECT0);
+
+        let outcomes = (0..NUM_PACKETS)
+            .map(|_| program.run(&packet))
+            .collect::<Vec<_>>();
+
+        assert_marks_before_dropping(&outcomes);
+        let counters = program.rate_limited_packets().unwrap();
+        assert!(counters.marked >= 1, "{counters:?}");
+        assert!(counters.dropped >= 1, "{counters:?}");
+    }
+
+    #[test]
+    #[ignore = "Needs root to load eBPF programs"]
+    fn throughput_limit_marks_ecn_capable_ipv6_packets_before_dropping() {
+        let mut program = Program::load_detached();
+        program.bind_channel(CLIENT_V6.into(), PEER_V6.into(), LIMIT_BPS);
+        let packet = channel_data_ipv6(ECT0);
+
+        let outcomes = (0..NUM_PACKETS)
+            .map(|_| program.run(&packet))
+            .collect::<Vec<_>>();
+
+        assert_marks_before_dropping(&outcomes);
+    }
+
+    #[test]
+    #[ignore = "Needs root to load eBPF programs"]
+    fn throughput_limit_never_marks_packets_that_are_not_ecn_capable() {
+        let mut program = Program::load_detached();
+        program.bind_channel(CLIENT_V4.into(), PEER_V4.into(), LIMIT_BPS);
+        let packet = channel_data_ipv4(NOT_ECT);
+
+        let outcomes = (0..NUM_PACKETS)
+            .map(|_| program.run(&packet))
+            .collect::<Vec<_>>();
+
+        assert!(outcomes.contains(&Outcome::Dropped));
+        assert!(!outcomes.contains(&Outcome::Forwarded { ecn: CE }));
+        assert_eq!(program.rate_limited_packets().unwrap().marked, 0);
+    }
+
+    #[test]
+    #[ignore = "Needs root to load eBPF programs"]
+    fn throughput_limit_applies_to_traffic_between_two_allocations() {
+        let mut program = Program::load_detached();
+        program.bind_channel(
+            CLIENT_V4.into(),
+            SocketAddrV4::new(RELAY_V4, OTHER_ALLOCATION).into(),
+            0,
+        );
+        program.bind_channel_on(
+            OTHER_ALLOCATION,
+            OTHER_CLIENT_V4.into(),
+            SocketAddrV4::new(RELAY_V4, ALLOCATION).into(),
+            LIMIT_BPS,
+        );
+        let packet = channel_data_ipv4(ECT0);
+
+        let outcomes = (0..NUM_PACKETS)
+            .map(|_| program.run(&packet))
+            .collect::<Vec<_>>();
+
+        assert_marks_before_dropping(&outcomes);
+    }
+
+    #[test]
+    #[ignore = "Needs root to load eBPF programs"]
+    fn rebinding_a_channel_applies_its_new_throughput_limit() {
+        let mut program = Program::load_detached();
+        program.bind_channel(CLIENT_V4.into(), PEER_V4.into(), LIMIT_BPS);
+        let packet = channel_data_ipv4(ECT0);
+        let limited = (0..NUM_PACKETS)
+            .map(|_| program.run(&packet))
+            .collect::<Vec<_>>();
+        assert_eq!(limited.last(), Some(&Outcome::Dropped));
+
+        program.bind_channel(CLIENT_V4.into(), PEER_V4.into(), 0);
+        let unlimited = (0..1000).map(|_| program.run(&packet)).collect::<Vec<_>>();
+
+        assert!(
+            unlimited
+                .iter()
+                .all(|o| *o == Outcome::Forwarded { ecn: ECT0 })
+        );
+    }
 
     #[test]
     #[ignore = "Needs root to load eBPF programs"]
     fn sends_packets_back_to_the_mac_address_they_came_from() {
         let mut program = Program::load_detached();
-        program.bind_channel(CLIENT_V4.into(), PEER_V4.into());
+        program.bind_channel(CLIENT_V4.into(), PEER_V4.into(), 0);
 
         let (action, frame) = program.run_raw(&channel_data_ipv4(ECT0));
 
@@ -559,7 +715,7 @@ mod tests {
     #[ignore = "Needs root to load eBPF programs"]
     fn relays_channel_data_without_public_ipv6_address() {
         let mut program = Program::load_detached_with(Some(RELAY_V4), None);
-        program.bind_channel(CLIENT_V4.into(), PEER_V4.into());
+        program.bind_channel(CLIENT_V4.into(), PEER_V4.into(), 0);
 
         let outcome = program.run(&channel_data_ipv4(ECT0));
 
@@ -570,7 +726,7 @@ mod tests {
     #[ignore = "Needs root to load eBPF programs"]
     fn relays_channel_data_without_public_ipv4_address() {
         let mut program = Program::load_detached_with(None, Some(RELAY_V6));
-        program.bind_channel(CLIENT_V6.into(), PEER_V6.into());
+        program.bind_channel(CLIENT_V6.into(), PEER_V6.into(), 0);
 
         let outcome = program.run(&channel_data_ipv6(ECT0));
 
@@ -581,8 +737,8 @@ mod tests {
     #[ignore = "Needs root to load eBPF programs"]
     fn counts_relayed_packets_by_ip_version_and_ecn() {
         let mut program = Program::load_detached();
-        program.bind_channel(CLIENT_V4.into(), PEER_V4.into());
-        program.bind_channel(CLIENT_V6.into(), PEER_V6.into());
+        program.bind_channel(CLIENT_V4.into(), PEER_V4.into(), 0);
+        program.bind_channel(CLIENT_V6.into(), PEER_V6.into(), 0);
 
         for _ in 0..3 {
             program.run(&channel_data_ipv4(ECT0));
@@ -600,6 +756,31 @@ mod tests {
         Dropped,
     }
 
+    fn assert_marks_before_dropping(outcomes: &[Outcome]) {
+        let first_mark = outcomes
+            .iter()
+            .position(|o| *o == Outcome::Forwarded { ecn: CE })
+            .expect("some packets to be marked");
+        let first_drop = outcomes
+            .iter()
+            .position(|o| *o == Outcome::Dropped)
+            .expect("some packets to be dropped");
+        let num_forwarded = outcomes.iter().filter(|o| **o != Outcome::Dropped).count();
+
+        assert!(
+            outcomes[..first_mark]
+                .iter()
+                .all(|o| *o == Outcome::Forwarded { ecn: ECT0 }),
+            "{outcomes:?}"
+        );
+        assert!(first_mark < first_drop, "{outcomes:?}");
+        // Allow a little slack for the burst allowance that refills while the test runs.
+        assert!(
+            (PACKETS_IN_BURST..PACKETS_IN_BURST + 4).contains(&num_forwarded),
+            "{outcomes:?}"
+        );
+    }
+
     impl Program {
         fn load_detached() -> Self {
             Self::load_detached_with(Some(RELAY_V4), Some(RELAY_V6))
@@ -612,12 +793,23 @@ mod tests {
             Self { ebpf, stats }
         }
 
-        fn bind_channel(&mut self, client: SocketAddr, peer: SocketAddr) {
+        fn bind_channel(&mut self, client: SocketAddr, peer: SocketAddr, limit_bps: u64) {
+            self.bind_channel_on(ALLOCATION, client, peer, limit_bps);
+        }
+
+        fn bind_channel_on(
+            &mut self,
+            allocation: u16,
+            client: SocketAddr,
+            peer: SocketAddr,
+            limit_bps: u64,
+        ) {
             self.add_channel_binding(
                 ClientSocket::new(client),
                 ChannelNumber::new(CHANNEL).unwrap(),
                 PeerSocket::new(peer),
-                AllocationPort::new(ALLOCATION),
+                AllocationPort::new(allocation),
+                ThroughputLimit::from_bits_per_second(limit_bps),
             )
             .unwrap();
         }

@@ -9,6 +9,7 @@ mod from_ipv6_channel;
 mod from_ipv6_udp;
 mod mac;
 mod per_cpu;
+mod rate_limit;
 mod ref_mut_at;
 mod routing;
 mod stats;
@@ -23,7 +24,7 @@ use aya_log_ebpf::*;
 use channel_data::CdHdr;
 use ebpf_shared::{
     ClientAndChannel, ClientAndChannelV4, ClientAndChannelV6, PortAndPeer, PortAndPeerV4,
-    PortAndPeerV6,
+    PortAndPeerV6, RateLimitCounter, Verdict,
 };
 use network_types::{
     eth::{EthHdr, EtherType},
@@ -50,24 +51,51 @@ pub fn try_handle_turn(ctx: &XdpContext) -> Result<(), Error> {
     // SAFETY: The offset must point to the start of a valid `EthHdr`.
     let eth = unsafe { ref_mut_at::<EthHdr>(ctx, 0)? };
 
-    let (num_bytes, ip_version) = match eth.ether_type() {
-        Ok(EtherType::Ipv4) => (try_handle_turn_ipv4(ctx)?, 4),
-        Ok(EtherType::Ipv6) => (try_handle_turn_ipv6(ctx)?, 6),
+    let (num_bytes, verdict, ip_version) = match eth.ether_type() {
+        Ok(EtherType::Ipv4) => {
+            let (num_bytes, verdict) = try_handle_turn_ipv4(ctx)?;
+
+            (num_bytes, verdict, 4)
+        }
+        Ok(EtherType::Ipv6) => {
+            let (num_bytes, verdict) = try_handle_turn_ipv6(ctx)?;
+
+            (num_bytes, verdict, 6)
+        }
         _ => return Err(Error::NotIp),
     };
 
+    if verdict == Verdict::Drop {
+        return Err(Error::ThroughputLimitExceeded);
+    }
+
     // Every forwarding path preserves ECN, including address-family translation.
     // Read it after rewriting so it need not stay live across the routing hot path.
+    // Marking happens here too so it covers all forwarding paths at once.
     // SAFETY: Reacquire packet pointers because rewriting may have adjusted the head.
     let eth = unsafe { ref_mut_at::<EthHdr>(ctx, 0)? };
     let ecn = match eth.ether_type() {
         Ok(EtherType::Ipv4) => {
             // SAFETY: EtherType identifies the rewritten IPv4 header.
-            unsafe { ref_mut_at::<Ipv4Hdr>(ctx, EthHdr::LEN)? }.ecn()
+            let ipv4 = unsafe { ref_mut_at::<Ipv4Hdr>(ctx, EthHdr::LEN)? };
+            let ecn = ipv4.ecn();
+
+            if verdict == Verdict::Mark {
+                rate_limit::mark_ipv4(ipv4);
+            }
+
+            ecn
         }
         Ok(EtherType::Ipv6) => {
             // SAFETY: EtherType identifies the rewritten IPv6 header.
-            unsafe { ref_mut_at::<Ipv6Hdr>(ctx, EthHdr::LEN)? }.ecn()
+            let ipv6 = unsafe { ref_mut_at::<Ipv6Hdr>(ctx, EthHdr::LEN)? };
+            let ecn = ipv6.ecn();
+
+            if verdict == Verdict::Mark {
+                rate_limit::mark_ipv6(ipv6);
+            }
+
+            ecn
         }
         _ => return Err(Error::NotIp),
     };
@@ -76,8 +104,14 @@ pub fn try_handle_turn(ctx: &XdpContext) -> Result<(), Error> {
     Ok(())
 }
 
+/// Counts a packet that was dropped for exceeding its channel's throughput limit.
 #[inline(always)]
-fn try_handle_turn_ipv4(ctx: &XdpContext) -> Result<u16, Error> {
+pub fn count_rate_limited_drop() {
+    rate_limit::count(RateLimitCounter::Dropped);
+}
+
+#[inline(always)]
+fn try_handle_turn_ipv4(ctx: &XdpContext) -> Result<(u16, Verdict), Error> {
     // SAFETY: The offset must point to the start of a valid `Ipv4Hdr`.
     let ipv4 = unsafe { ref_mut_at::<Ipv4Hdr>(ctx, EthHdr::LEN)? };
 
@@ -98,22 +132,23 @@ fn try_handle_turn_ipv4(ctx: &XdpContext) -> Result<u16, Error> {
     }
 
     if (LOWER_PORT..=UPPER_PORT).contains(&udp.dst_port()) {
-        try_handle_from_ipv4_udp(ctx)?;
+        let verdict = try_handle_from_ipv4_udp(ctx, udp_payload_len)?;
 
-        return Ok(udp_payload_len);
+        return Ok((udp_payload_len, verdict));
     }
 
     if udp.dst_port() == 3478 {
-        try_handle_from_ipv4_channel_data(ctx)?;
+        let num_bytes = udp_payload_len.saturating_sub(CdHdr::LEN as u16);
+        let verdict = try_handle_from_ipv4_channel_data(ctx, num_bytes)?;
 
-        return Ok(udp_payload_len - CdHdr::LEN as u16);
+        return Ok((num_bytes, verdict));
     }
 
     Err(Error::NotTurn)
 }
 
 #[inline(always)]
-fn try_handle_turn_ipv6(ctx: &XdpContext) -> Result<u16, Error> {
+fn try_handle_turn_ipv6(ctx: &XdpContext) -> Result<(u16, Verdict), Error> {
     // SAFETY: The offset must point to the start of a valid `Ipv6Hdr`.
     let ipv6 = unsafe { ref_mut_at::<Ipv6Hdr>(ctx, EthHdr::LEN)? };
 
@@ -129,22 +164,23 @@ fn try_handle_turn_ipv6(ctx: &XdpContext) -> Result<u16, Error> {
     }
 
     if (LOWER_PORT..=UPPER_PORT).contains(&udp.dst_port()) {
-        try_handle_from_ipv6_udp(ctx)?;
+        let verdict = try_handle_from_ipv6_udp(ctx, udp_payload_len)?;
 
-        return Ok(udp_payload_len);
+        return Ok((udp_payload_len, verdict));
     }
 
     if udp.dst_port() == 3478 {
-        try_handle_from_ipv6_channel_data(ctx)?;
+        let num_bytes = udp_payload_len.saturating_sub(CdHdr::LEN as u16);
+        let verdict = try_handle_from_ipv6_channel_data(ctx, num_bytes)?;
 
-        return Ok(udp_payload_len - CdHdr::LEN as u16);
+        return Ok((num_bytes, verdict));
     }
 
     Err(Error::NotTurn)
 }
 
 #[inline(always)]
-fn try_handle_from_ipv4_udp(ctx: &XdpContext) -> Result<(), Error> {
+fn try_handle_from_ipv4_udp(ctx: &XdpContext, num_bytes: u16) -> Result<Verdict, Error> {
     // SAFETY: The offset must point to the start of a valid `Ipv4Hdr`.
     let ipv4 = unsafe { ref_mut_at::<Ipv4Hdr>(ctx, EthHdr::LEN)? };
 
@@ -163,7 +199,7 @@ fn try_handle_from_ipv4_udp(ctx: &XdpContext) -> Result<(), Error> {
         udp.len() - UdpHdr::LEN as u16
     );
 
-    let cc = routing::get_client_and_channel(pp)?;
+    let (cc, verdict) = routing::route_from_peer(pp, num_bytes)?;
 
     match cc {
         ClientAndChannel::V4(cc) => {
@@ -192,11 +228,11 @@ fn try_handle_from_ipv4_udp(ctx: &XdpContext) -> Result<(), Error> {
         }
     }
 
-    Ok(())
+    Ok(verdict)
 }
 
 #[inline(always)]
-fn try_handle_from_ipv4_channel_data(ctx: &XdpContext) -> Result<(), Error> {
+fn try_handle_from_ipv4_channel_data(ctx: &XdpContext, num_bytes: u16) -> Result<Verdict, Error> {
     // SAFETY: The offset must point to the start of a valid `Ipv4Hdr`.
     let ipv4 = unsafe { ref_mut_at::<Ipv4Hdr>(ctx, EthHdr::LEN)? };
 
@@ -232,7 +268,7 @@ fn try_handle_from_ipv4_channel_data(ctx: &XdpContext) -> Result<(), Error> {
         udp.len() - UdpHdr::LEN as u16
     );
 
-    let pp = routing::get_port_and_peer(cc)?;
+    let (pp, verdict) = routing::route_from_client(cc, num_bytes)?;
 
     match pp {
         PortAndPeer::V4(pp) => {
@@ -258,8 +294,14 @@ fn try_handle_from_ipv4_channel_data(ctx: &XdpContext) -> Result<(), Error> {
     }
 
     if is_own_public_ip(pp.peer_ip())? {
-        let pp = pp.flip_ports();
-        let cc = routing::get_client_and_channel(pp)?;
+        // A dropped packet must not count against the limit of the allocation it would have reached.
+        if verdict == Verdict::Drop {
+            return Ok(verdict);
+        }
+
+        // The packet leaves through another allocation on this Relay, so it also counts against its limit.
+        let (cc, hairpin_verdict) = routing::route_from_peer(pp.flip_ports(), num_bytes)?;
+        let verdict = verdict.max(hairpin_verdict);
 
         match cc {
             ClientAndChannel::V4(cc) => {
@@ -288,7 +330,7 @@ fn try_handle_from_ipv4_channel_data(ctx: &XdpContext) -> Result<(), Error> {
             }
         }
 
-        return Ok(());
+        return Ok(verdict);
     }
 
     match pp {
@@ -296,11 +338,11 @@ fn try_handle_from_ipv4_channel_data(ctx: &XdpContext) -> Result<(), Error> {
         PortAndPeer::V6(pp) => from_ipv4_channel::to_ipv6_udp(ctx, &pp)?,
     }
 
-    Ok(())
+    Ok(verdict)
 }
 
 #[inline(always)]
-fn try_handle_from_ipv6_udp(ctx: &XdpContext) -> Result<(), Error> {
+fn try_handle_from_ipv6_udp(ctx: &XdpContext, num_bytes: u16) -> Result<Verdict, Error> {
     // SAFETY: The offset must point to the start of a valid `Ipv6Hdr`.
     let ipv6 = unsafe { ref_mut_at::<Ipv6Hdr>(ctx, EthHdr::LEN)? };
 
@@ -319,7 +361,7 @@ fn try_handle_from_ipv6_udp(ctx: &XdpContext) -> Result<(), Error> {
         udp.len() - UdpHdr::LEN as u16
     );
 
-    let cc = routing::get_client_and_channel(pp)?;
+    let (cc, verdict) = routing::route_from_peer(pp, num_bytes)?;
 
     match cc {
         ClientAndChannel::V4(cc) => {
@@ -348,11 +390,11 @@ fn try_handle_from_ipv6_udp(ctx: &XdpContext) -> Result<(), Error> {
         }
     }
 
-    Ok(())
+    Ok(verdict)
 }
 
 #[inline(always)]
-fn try_handle_from_ipv6_channel_data(ctx: &XdpContext) -> Result<(), Error> {
+fn try_handle_from_ipv6_channel_data(ctx: &XdpContext, num_bytes: u16) -> Result<Verdict, Error> {
     // SAFETY: The offset must point to the start of a valid `Ipv6Hdr`.
     let ipv6 = unsafe { ref_mut_at::<Ipv6Hdr>(ctx, EthHdr::LEN)? };
 
@@ -388,7 +430,7 @@ fn try_handle_from_ipv6_channel_data(ctx: &XdpContext) -> Result<(), Error> {
         udp.len() - UdpHdr::LEN as u16
     );
 
-    let pp = routing::get_port_and_peer(cc)?;
+    let (pp, verdict) = routing::route_from_client(cc, num_bytes)?;
 
     match pp {
         PortAndPeer::V4(pp) => {
@@ -414,8 +456,14 @@ fn try_handle_from_ipv6_channel_data(ctx: &XdpContext) -> Result<(), Error> {
     }
 
     if is_own_public_ip(pp.peer_ip())? {
-        let pp = pp.flip_ports();
-        let cc = routing::get_client_and_channel(pp)?;
+        // A dropped packet must not count against the limit of the allocation it would have reached.
+        if verdict == Verdict::Drop {
+            return Ok(verdict);
+        }
+
+        // The packet leaves through another allocation on this Relay, so it also counts against its limit.
+        let (cc, hairpin_verdict) = routing::route_from_peer(pp.flip_ports(), num_bytes)?;
+        let verdict = verdict.max(hairpin_verdict);
 
         match cc {
             ClientAndChannel::V4(cc) => {
@@ -444,7 +492,7 @@ fn try_handle_from_ipv6_channel_data(ctx: &XdpContext) -> Result<(), Error> {
             }
         }
 
-        return Ok(());
+        return Ok(verdict);
     }
 
     match pp {
@@ -452,7 +500,7 @@ fn try_handle_from_ipv6_channel_data(ctx: &XdpContext) -> Result<(), Error> {
         PortAndPeer::V6(pp) => from_ipv6_channel::to_ipv6_udp(ctx, &pp)?,
     }
 
-    Ok(())
+    Ok(verdict)
 }
 
 #[inline(always)]

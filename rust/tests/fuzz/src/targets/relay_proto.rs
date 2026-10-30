@@ -40,7 +40,7 @@ pub struct Input<'a> {
 
 pub fn test(input: Input<'_>) {
     let mut server = Server::new(RELAY_IP, StdRng::seed_from_u64(0), 3478, 49152..=65535);
-    server.set_accounts([AccountId::from(Uuid::nil())]);
+    server.set_accounts([(AccountId::from(Uuid::nil()), None)]);
     let client = ClientSocket::new(CLIENT);
     let now = *crate::START_TIME;
     // Fixed rather than `SystemTime::now`: the expiry checked against this is

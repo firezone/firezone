@@ -6589,6 +6589,7 @@ dependencies = [
  "bimap",
  "bytecodec",
  "derive_more",
+ "ebpf-shared",
  "hex",
  "hmac 0.13.0",
  "logging",

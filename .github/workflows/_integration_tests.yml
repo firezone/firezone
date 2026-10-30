@@ -183,6 +183,11 @@ jobs:
             single_relay: true # Force single relay
             iceless: true
             min_gateway_version: 1.4.18
+          - script: relay-throughput-limit
+            # Setting both client and gateway to random masquerade will force relay-relay candidate pair
+            client_masquerade: random
+            gateway_masquerade: random
+            single_relay: true # Force single relay
           - name: download-ipv4-only
             script: download
             gateway_disable_ipv6: 1

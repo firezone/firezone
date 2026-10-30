@@ -10,6 +10,7 @@ base64 = { workspace = true, features = ["std"] }
 bimap = { workspace = true }
 bytecodec = { workspace = true }
 derive_more = { workspace = true, features = ["from"] }
+ebpf-shared = { workspace = true }
 hex = { workspace = true }
 hmac = { workspace = true }
 logging = { workspace = true }

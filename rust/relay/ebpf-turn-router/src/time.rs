@@ -10,7 +10,22 @@ pub struct KernelInstant(u64);
 impl KernelInstant {
     #[inline]
     pub fn now() -> Self {
-        Self(ktime_get_ns())
+        // SAFETY: `bpf_ktime_get_ns` is a parameterless BPF kernel helper that
+        // cannot fault and is always safe to call from any BPF program context.
+        Self(unsafe { aya_ebpf::helpers::bpf_ktime_get_ns() })
+    }
+
+    /// Like [`KernelInstant::now`] but only as precise as the scheduler tick, which makes it much cheaper.
+    #[inline]
+    pub fn now_coarse() -> Self {
+        // SAFETY: `bpf_ktime_get_coarse_ns` is a parameterless BPF kernel helper that
+        // cannot fault and is always safe to call from any BPF program context.
+        Self(unsafe { aya_ebpf::helpers::bpf_ktime_get_coarse_ns() })
+    }
+
+    #[inline]
+    pub fn as_nanos(self) -> u64 {
+        self.0
     }
 
     #[inline]
@@ -22,11 +37,4 @@ impl KernelInstant {
     pub fn elapsed(self) -> Duration {
         Self::now().duration_since(self)
     }
-}
-
-#[inline]
-fn ktime_get_ns() -> u64 {
-    // SAFETY: `bpf_ktime_get_ns` is a parameterless BPF kernel helper that
-    // cannot fault and is always safe to call from any BPF program context.
-    unsafe { aya_ebpf::helpers::bpf_ktime_get_ns() }
 }

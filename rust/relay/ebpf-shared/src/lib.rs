@@ -5,6 +5,10 @@
 
 #![cfg_attr(not(feature = "std"), no_std)]
 
+mod rate_limit;
+
+pub use rate_limit::{RateLimitCounter, RateLimiter, Route, Verdict};
+
 use core::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
 #[repr(C)]
@@ -557,4 +561,6 @@ mod userspace {
     unsafe impl aya::Pod for ClientAndChannelV6 {}
 
     unsafe impl aya::Pod for PortAndPeerV6 {}
+
+    unsafe impl<T> aya::Pod for Route<T> where T: aya::Pod {}
 }
