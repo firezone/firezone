@@ -533,11 +533,11 @@ defmodule PortalWeb.Settings.DevicePosture do
 
     case Santa.APIClient.test_connection(client) do
       :ok ->
-        # The key just verified; a stored key typed again is not in the changes.
+        # Only what the browser typed is carried; a stored key typed again is not a change.
         attrs =
           changeset.changes
           |> Map.put(:is_verified, true)
-          |> Map.put(:api_key, get_field(changeset, :api_key))
+          |> Map.put(:api_key, Map.get(changeset.params || %{}, "api_key", ""))
 
         {:noreply,
          assign(socket,
@@ -568,7 +568,7 @@ defmodule PortalWeb.Settings.DevicePosture do
         attrs =
           changeset.changes
           |> Map.put(:is_verified, true)
-          |> Map.put(:api_token, get_field(changeset, :api_token))
+          |> Map.put(:api_token, Map.get(changeset.params || %{}, "api_token", ""))
 
         {:noreply,
          assign(socket,

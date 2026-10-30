@@ -1091,7 +1091,7 @@ defmodule PortalWeb.Settings.LogSinksTest do
       assert updated.api_key == sink.api_key
     end
 
-    test "drops the bearer token when the endpoint changes", %{
+    test "asks for the bearer token again when the endpoint changes", %{
       conn: conn,
       account: account,
       actor: actor
@@ -1107,6 +1107,40 @@ defmodule PortalWeb.Settings.LogSinksTest do
       lv
       |> form("#log-sink-form",
         log_sink: %{endpoint_url: "https://new-endpoint.example/ingest", bearer_token: ""}
+      )
+      |> render_submit()
+
+      assert has_element?(
+               lv,
+               ~s([data-validation-error-for="log_sink[bearer_token]"]),
+               "Enter it again, or remove it, for the new endpoint URL."
+             )
+
+      updated = Repo.get_by!(Portal.HTTP.LogSink, account_id: account.id, id: sink.id)
+      assert updated.endpoint_url == sink.endpoint_url
+      assert updated.bearer_token == sink.bearer_token
+    end
+
+    test "removes the bearer token with the endpoint change when asked", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      sink = http_log_sink_fixture(account: account)
+      assert sink.bearer_token
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/log_sinks/http/#{sink.id}/edit")
+
+      lv
+      |> form("#log-sink-form",
+        log_sink: %{
+          endpoint_url: "https://new-endpoint.example/ingest",
+          bearer_token: "",
+          remove_secret: "true"
+        }
       )
       |> render_submit()
 

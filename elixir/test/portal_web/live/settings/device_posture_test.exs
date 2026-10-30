@@ -862,6 +862,70 @@ defmodule PortalWeb.Settings.DevicePostureTest do
       assert updated.api_key == provider.api_key
     end
 
+    test "does not render the stored Santa key after verifying", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      provider = santa_posture_provider_fixture(account: account)
+      Req.Test.stub(Portal.Santa.APIClient, &Req.Test.json(&1, %{"hosts" => [], "more" => false}))
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/device_posture/santa/#{provider.id}/edit")
+
+      Req.Test.allow(Portal.Santa.APIClient, self(), lv.pid)
+
+      # Away and back: verification is cleared but the key is not reset.
+      for url <- ["https://other.workshop.cloud", provider.api_url] do
+        render_change(lv, "validate", %{
+          "_target" => ["provider", "api_url"],
+          "provider" => %{"api_url" => url, "api_key" => "", "_unused_api_key" => ""}
+        })
+      end
+
+      lv |> element("#provider-verification-button") |> render_click()
+
+      assert has_element?(lv, "#provider-verification-status", "Verified")
+      refute render(lv) =~ provider.api_key
+    end
+
+    test "does not render the stored SentinelOne token after verifying", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      provider = sentinelone_posture_provider_fixture(account: account)
+
+      Req.Test.stub(Portal.SentinelOne.APIClient, fn conn ->
+        Req.Test.json(conn, %{"data" => [], "pagination" => %{"nextCursor" => nil}})
+      end)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/device_posture/sentinelone/#{provider.id}/edit")
+
+      Req.Test.allow(Portal.SentinelOne.APIClient, self(), lv.pid)
+
+      for url <- ["https://other.sentinelone.net", provider.management_url] do
+        render_change(lv, "validate", %{
+          "_target" => ["provider", "management_url"],
+          "provider" => %{
+            "management_url" => url,
+            "api_token" => "",
+            "_unused_api_token" => ""
+          }
+        })
+      end
+
+      lv |> element("#provider-verification-button") |> render_click()
+
+      assert has_element?(lv, "#provider-verification-status", "Verified")
+      refute render(lv) =~ provider.api_token
+    end
+
     test "resets the SentinelOne API token when the management URL changes", %{
       conn: conn,
       account: account,

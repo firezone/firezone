@@ -523,39 +523,42 @@ defmodule PortalWeb.Components.Form do
   end
 
   @doc """
-  Forgets the stored secret when any of the `destinations` (`field: label`)
-  changed and the secret was not typed in this submission.
+  Forgets a stored secret when any of the `destinations` (`field: label`)
+  changed and the secret was not typed in this submission, and asks for it
+  again. A secret that is already being cleared is left alone.
 
   Call it after the schema changeset: `validate_required/3` drops a nil change,
-  which would put the stored value back, so the required error is added here.
+  which would put the stored value back, so the error is added here.
   """
   @spec reset_on_change(Ecto.Changeset.t(), atom(), keyword(String.t())) :: Ecto.Changeset.t()
   def reset_on_change(changeset, secret, destinations) do
     changed =
       Enum.find(destinations, fn {field, _label} -> Ecto.Changeset.changed?(changeset, field) end)
 
-    if changed && not submitted?(changeset, secret) do
+    if changed && stored?(changeset, secret) && not submitted?(changeset, secret) &&
+         not clearing?(changeset, secret) do
       {_field, label} = changed
 
+      message =
+        if secret in changeset.required do
+          "Required for the new #{label}."
+        else
+          "Enter it again, or remove it, for the new #{label}."
+        end
+
       # The error is shown although the secret input is untouched.
-      changeset = %{
-        changeset
-        | params: Map.delete(changeset.params || %{}, "_unused_#{secret}")
-      }
-
-      changeset = Ecto.Changeset.put_change(changeset, secret, nil)
-
-      if secret in changeset.required do
-        Ecto.Changeset.add_error(changeset, secret, "Required for the new #{label}.",
-          validation: :required
-        )
-      else
-        changeset
-      end
+      %{changeset | params: Map.delete(changeset.params || %{}, "_unused_#{secret}")}
+      |> Ecto.Changeset.put_change(secret, nil)
+      |> Ecto.Changeset.add_error(secret, message, validation: :required)
     else
       changeset
     end
   end
+
+  defp stored?(changeset, secret), do: not is_nil(Map.get(changeset.data, secret))
+
+  defp clearing?(changeset, secret),
+    do: Ecto.Changeset.fetch_change(changeset, secret) == {:ok, nil}
 
   # Typing the stored value again leaves no change, so the submission is
   # what shows it was entered.
