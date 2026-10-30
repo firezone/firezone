@@ -249,9 +249,6 @@ config :portal, Portal.S3.APIClient,
 
 config :portal, dev_routes: true
 
-# Fail loudly when a password input renders a schema field that is not redacted.
-config :portal, raise_on_unredacted_password: true
-
 config :portal, PortalWeb.Endpoint,
   url: [scheme: "https", host: "localhost", port: web_port],
   https: [

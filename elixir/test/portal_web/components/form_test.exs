@@ -65,12 +65,16 @@ defmodule PortalWeb.Components.FormTest do
       assert html =~ ~s(value="typed")
     end
 
-    test "raises when the schema field is not redacted" do
+    test "fails when the schema field is not redacted, naming only the field" do
       # Splunk's index isn't a secret; it only stands in for a field someone
       # forgot to redact.
-      assert_raise ArgumentError,
-                   ~r/Portal.Splunk.LogSink.index is rendered as a password input but is not redact: true/,
-                   fn -> password_html(:index, %Splunk.LogSink{index: "stored"}) end
+      error =
+        assert_raise MatchError, fn ->
+          password_html(:index, %Splunk.LogSink{index: "stored-value"})
+        end
+
+      assert error.term == {Splunk.LogSink, :index, false}
+      refute Exception.message(error) =~ "stored-value"
     end
 
     test "drops required and offers to keep a stored secret" do

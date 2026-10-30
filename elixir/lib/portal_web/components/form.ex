@@ -8,8 +8,6 @@ defmodule PortalWeb.Components.Form do
   alias PortalWeb.Components.Core
   alias PortalWeb.Components.Navigation
 
-  @raise_on_unredacted_password Application.compile_env(:portal, :raise_on_unredacted_password, false)
-
   @doc """
   Renders a themed LiveView file picker with upload progress, removal, and errors.
   The upload configuration controls accepted file types, sizes, and file count.
@@ -164,7 +162,7 @@ defmodule PortalWeb.Components.Form do
       cond do
         assigns.value_id -> resolve_field_value(field, assigns.value_id)
         redacted?(field) -> submitted_value(field)
-        assigns.type == "password" -> unredacted_password(field)
+        assigns.type == "password" -> password_value(field)
         true -> field.value
       end
     end)
@@ -501,29 +499,18 @@ defmodule PortalWeb.Components.Form do
     Map.get(field.form.params || %{}, to_string(field.field))
   end
 
-  # A password input means the field holds a secret, so its stored value stays
-  # out of the page either way. A schema field that isn't redacted still shows
-  # up in logs and misses the stored-secret handling above, so dev and test
-  # raise to get it marked rather than quietly covering for it.
-  defp unredacted_password(%{form: %{source: %Ecto.Changeset{data: %schema{}}}, field: name} = field) do
+  # A password input holds a secret, so a schema field behind one must be
+  # redacted, which keeps it out of logs and gives it the stored-secret handling
+  # above. The match names only the schema and field, never the value.
+  defp password_value(%{form: %{source: %Ecto.Changeset{data: %schema{}}}, field: name} = field) do
     if function_exported?(schema, :__schema__, 1) do
-      report_unredacted_password(
-        "#{inspect(schema)}.#{name} is rendered as a password input but is not redact: true"
-      )
+      {_schema, _field, true} = {schema, name, name in schema.__schema__(:redact_fields)}
     end
 
     submitted_value(field)
   end
 
-  defp unredacted_password(field), do: submitted_value(field)
-
-  if @raise_on_unredacted_password do
-    defp report_unredacted_password(message), do: raise(ArgumentError, message)
-  else
-    require Logger
-
-    defp report_unredacted_password(message), do: Logger.warning(message)
-  end
+  defp password_value(field), do: submitted_value(field)
 
   # A stored secret satisfies the required check, and a blank box keeps it.
   defp stored_secret_rest(field, rest) do
