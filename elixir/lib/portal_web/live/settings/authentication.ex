@@ -497,6 +497,22 @@ defmodule PortalWeb.Settings.Authentication do
           {:noreply, assign(socket, active_verification: nil,
             verification_error: "Use a Google Workspace administrator to verify another domain. Existing domain restrictions have been kept.")}
 
+        additional_domains? and is_list(domains) and existing_domains in [nil, []] ->
+          [first | rest] = domains
+          attrs = Map.merge(provider_attrs(previous), %{is_verified: true, issuer: issuer})
+
+          changeset =
+            changeset(previous.data, attrs, socket, %{workspace_domains: [first],
+              is_legacy_unrestricted: false})
+
+          {:noreply,
+           assign(socket,
+             active_verification: nil,
+             verification_error: nil,
+             domain_choices: rest,
+             form: to_form(changeset)
+           )}
+
         additional_domains? and is_list(domains) ->
           {:noreply, assign_domain_choices(socket, domains, existing_domains)}
 
@@ -512,6 +528,18 @@ defmodule PortalWeb.Settings.Authentication do
       end
     else
       maybe_send_verification_ack(ack_to)
+      {:noreply, socket}
+    end
+  end
+
+  # Sent by the OIDC controller once the first Google round trip saw a Workspace
+  # account; the same verification continues with the administrator proof.
+  def handle_info({:rearm_pending_verification, verification_ref, pending, from}, socket) do
+    if socket.assigns.type == "google" and active_verification?(socket, verification_ref) do
+      send(from, {:pending_rearmed, verification_ref})
+      {:noreply, assign(socket, active_verification: nil, pending_verification: pending)}
+    else
+      send(from, {:pending_rearmed, nil})
       {:noreply, socket}
     end
   end

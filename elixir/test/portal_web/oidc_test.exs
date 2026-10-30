@@ -41,11 +41,19 @@ defmodule PortalWeb.OIDCTest do
       refute signin[:scope] =~ "admin.directory"
     end
 
-    test "uses the signed hd as the only domain without calling Google APIs", %{config: config} do
+    test "the identity step never trusts hd and asks for the administrator step", %{config: config} do
       google_setup_token(%{"hd" => "Primary.Example"})
       Req.Test.stub(Portal.Google.APIClient, fn _conn -> flunk("must not read domains by default") end)
-      assert {:ok, %{name: "Primary.Example", domains: ["primary.example"]}} =
+      assert {:step_up, %{hosted_domain: "primary.example", subject: "353690423699814251281"}} =
                OIDC.verify_google_callback(config, "code", "test-verifier")
+    end
+
+    test "the administrator step requires the same Google user", %{config: config} do
+      google_setup_token(%{"hd" => "example.com"})
+      Req.Test.stub(Portal.Google.APIClient, fn _conn -> flunk("must not read domains for another user") end)
+      assert {:error, :google_account_mismatch} =
+               OIDC.verify_google_callback(config, "code", "test-verifier",
+                 additional_domains: true, expected_subject: "someone-else")
     end
 
     test "reads verified primary, secondary, and alias domains", %{config: config} do
@@ -62,7 +70,7 @@ defmodule PortalWeb.OIDCTest do
       end)
       assert {:ok, %{name: "PRIMARY.EXAMPLE", domains: domains}} =
                OIDC.verify_google_callback(config, "code", "test-verifier", additional_domains: true)
-      assert domains == ["primary.example", "alias.example", "secondary.example"]
+      assert domains == ["secondary.example", "alias.example", "primary.example"]
     end
 
     for overrides <- [%{"hd" => nil}, %{"hd" => ""}, %{"email_verified" => false}, %{"hd" => "example.com", "email_verified" => false}] do

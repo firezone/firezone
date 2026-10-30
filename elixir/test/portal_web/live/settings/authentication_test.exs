@@ -1114,6 +1114,41 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       assert saved.workspace_domains == ["primary.example", "third.example"]
     end
 
+    test "first verification saves the administrator-proven hd and offers the other domains", ctx do
+      Mocks.OIDC.stub_discovery_document()
+      {:ok, lv, _} = ctx.conn |> authorize_conn(ctx.actor)
+        |> live(~p"/#{ctx.account}/settings/authentication/google/new")
+      lv |> element("#verify-button") |> render_click()
+      verification_ref = verification_ref_from_open_url(lv)
+
+      # The controller re-arms the same verification for the administrator step.
+      send(lv.pid, {:rearm_pending_verification, verification_ref,
+        %{config: %{}, verifier: "v", verification_ref: verification_ref, additional_domains: true,
+          expected_subject: "sub"}, self()})
+      assert_receive {:pending_rearmed, ^verification_ref}
+      send(lv.pid, {:get_pending_verification, verification_ref, self()})
+      assert_receive {:pending_verification, %{additional_domains: true}}
+
+      ack_ref = make_ref()
+      send(lv.pid, {:google_verify_complete, "https://accounts.google.com",
+        ["primary.example", "second.example"], "primary.example", verification_ref, {self(), ack_ref}})
+      assert_receive {:verification_ack, ^ack_ref}
+      assert has_element?(lv, "#verified-organization-0", "primary.example")
+      assert has_element?(lv, "#domain-choice-0", "second.example")
+
+      lv |> form("#auth-provider-form") |> render_submit()
+      saved = Repo.get_by!(Portal.Google.AuthProvider, account_id: ctx.account.id)
+      assert saved.workspace_domains == ["primary.example"]
+    end
+
+    test "re-arming is ignored for a stale verification", ctx do
+      Mocks.OIDC.stub_discovery_document()
+      {:ok, lv, _} = ctx.conn |> authorize_conn(ctx.actor)
+        |> live(~p"/#{ctx.account}/settings/authentication/google/new")
+      send(lv.pid, {:rearm_pending_verification, Ecto.UUID.generate(), %{}, self()})
+      assert_receive {:pending_rearmed, nil}
+    end
+
     test "verify now requests only the identity scopes", ctx do
       Mocks.OIDC.stub_discovery_document()
       {:ok, lv, _} = ctx.conn |> authorize_conn(ctx.actor)
