@@ -1946,12 +1946,7 @@ defmodule PortalWeb.Settings.Authentication do
           </thead>
           <tbody class="divide-y divide-border bg-surface">
             <tr :for={{value, index} <- Enum.with_index(@values)} id={"verified-organization-#{index}"}>
-              <td class="px-3 py-2 font-mono text-xs text-body break-all">
-                {value}
-                <span :if={@type == "google" and index == 0} class="ml-1 font-sans text-subtle">
-                  (primary)
-                </span>
-              </td>
+              <td class="px-3 py-2 font-mono text-xs text-body break-all">{value}</td>
               <td :if={not @toggles?} class="px-3 py-2">
                 <span class="inline-flex items-center gap-1 text-xs text-success">
                   <Core.icon name="ri-checkbox-circle-line" class="w-3.5 h-3.5" /> Verified

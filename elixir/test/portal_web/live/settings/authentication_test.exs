@@ -1099,7 +1099,6 @@ defmodule PortalWeb.Settings.AuthenticationTest do
         {self(), ack_ref}})
       assert_receive {:verification_ack, ^ack_ref}
       assert has_element?(lv, "#verified-organization-0", "primary.example")
-      assert has_element?(lv, "#verified-organization-0", "(primary)")
       assert has_element?(lv, "#verified-domain-toggle-0[checked][disabled]")
       assert has_element?(lv, "#verified-organization-1", "second.example")
       refute has_element?(lv, "#verified-domain-toggle-1[checked]")
@@ -1112,7 +1111,6 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       lv |> element("#verified-domain-toggle-0") |> render_click()
       refute has_element?(lv, "#verified-domain-toggle-0[checked]")
       assert has_element?(lv, "#verified-domain-toggle-2[checked][disabled]")
-      assert has_element?(lv, "#verified-organization-0", "(primary)")
       render_click(lv, "toggle_verified_domain", %{"domain" => "forged.example"})
       refute render(lv) =~ "forged.example"
 
@@ -1128,7 +1126,6 @@ defmodule PortalWeb.Settings.AuthenticationTest do
       path = ~p"/#{ctx.account}/settings/authentication/google/#{provider.id}/edit"
       conn = authorize_conn(ctx.conn, ctx.actor)
       {:ok, lv, _} = live(conn, path)
-      assert has_element?(lv, "#verified-organization-0", "(primary)")
       assert has_element?(lv, "#verified-organization-1", "second.example")
       refute has_element?(lv, "#verified-domain-toggle-0")
 
@@ -1180,7 +1177,6 @@ defmodule PortalWeb.Settings.AuthenticationTest do
         {self(), ack_ref}})
       assert_receive {:verification_ack, ^ack_ref}
       assert has_element?(lv, "#verified-organization-0", "second.example")
-      assert has_element?(lv, "#verified-organization-0", "(primary)")
       assert has_element?(lv, "#verified-organization-1", "primary.example")
       assert has_element?(lv, "#verified-organization-2", "fourth.example")
       refute has_element?(lv, "#verified-organization-3")
