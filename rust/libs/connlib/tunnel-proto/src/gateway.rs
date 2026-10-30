@@ -308,6 +308,16 @@ impl GatewayState {
         self.node.close_connection(*id, p2p_control::goodbye(), now);
     }
 
+    /// Drops a client that reconnected to the portal with a new WireGuard key.
+    ///
+    /// The old key can no longer read a `goodbye`, so the connection is only forgotten.
+    #[tracing::instrument(level = "debug", skip_all, fields(%cid))]
+    pub fn handle_peer_pubkey_changed(&mut self, cid: ClientId, now: Instant) {
+        self.peers.remove(&cid);
+        self.node
+            .remove_connection(cid, "peer public key changed", now);
+    }
+
     pub fn add_ice_candidate(
         &mut self,
         conn_id: ClientId,

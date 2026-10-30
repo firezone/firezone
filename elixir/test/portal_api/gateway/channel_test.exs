@@ -566,6 +566,23 @@ defmodule PortalAPI.Gateway.ChannelTest do
     end
   end
 
+  describe "handle_info/2 :pubkey_changed" do
+    test "pushes pubkey_changed with the client id", %{
+      gateway: gateway,
+      site: site,
+      token: token,
+      client: client
+    } do
+      socket = join_channel(gateway, site, token)
+      assert_push "init", _
+
+      send(socket.channel_pid, {:pubkey_changed, client.id})
+
+      assert_push "pubkey_changed", %{id: id}
+      assert id == client.id
+    end
+  end
+
   describe "handle_info/2 :reject_access" do
     # The internal `:reject_access` message carries a synthetic
     # `%Portal.PolicyAuthorization{}` so the handler can evict the cached

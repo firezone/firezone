@@ -42,7 +42,7 @@ use crate::{ClientEvent, FailedToDecapsulate, otel, packet_kind};
 use crate::{IPV4_TUNNEL, IPV6_TUNNEL, IpConfig, TunConfig, dns, p2p_control};
 use anyhow::{Context, ErrorExt, Result};
 use connlib_model::{
-    ClientId, ClientOrGatewayId, ConnectedDeviceView, DevicePoolResourceView, GatewayId,
+    ClientId, ClientOrGatewayId, ConnectedDeviceView, DeviceId, DevicePoolResourceView, GatewayId,
     IceCandidate, PublicKey, RelayId, ResourceId, ResourceStatus, ResourceView,
 };
 use connlib_model::{Site, SiteId};
@@ -1270,6 +1270,33 @@ impl ClientState {
     ) {
         for peer in self.clients.iter_mut() {
             peer.update_resource(resource_id, filters.clone());
+        }
+    }
+
+    /// Drops a peer that reconnected to the portal with a new WireGuard key.
+    ///
+    /// The tunnel to it is dead and the portal deleted the authorizations it carried, so the
+    /// next flow towards the peer asks the portal again.
+    pub fn handle_peer_pubkey_changed(&mut self, id: DeviceId, now: Instant) {
+        let gid = GatewayId::from(id);
+        let cid = ClientId::from(id);
+
+        if self.gateways.peer_by_id(&gid).is_some() {
+            self.node.remove_connection(
+                ClientOrGatewayId::Gateway(gid),
+                "peer public key changed",
+                now,
+            );
+            self.cleanup_connected_gateway(&gid, now);
+        }
+
+        if self.clients.peer_by_id(&cid).is_some() {
+            self.node.remove_connection(
+                ClientOrGatewayId::Client(cid),
+                "peer public key changed",
+                now,
+            );
+            self.cleanup_connected_client(&cid);
         }
     }
 

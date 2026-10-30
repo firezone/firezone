@@ -1,6 +1,6 @@
 defmodule Portal.Changes.Hooks.Devices do
   @behaviour Portal.Changes.Hooks
-  alias Portal.{Changes.Change, PubSub}
+  alias Portal.{Changes.Change, PG, PubSub}
   alias __MODULE__.Database
   import Portal.SchemaHelpers
 
@@ -14,13 +14,18 @@ defmodule Portal.Changes.Hooks.Devices do
 
   @impl true
   def on_update(lsn, old_data, data) do
+    old_device = struct_from_params(Portal.Device, old_data)
+    device = struct_from_params(Portal.Device, data)
+
+    if public_key_rotated?(old_device, device) do
+      disconnect_peers_of_rotated_device(device)
+    end
+
     # Connect flushes rewrite only the latest-session columns; broadcasting
     # them would fan every connect out to all subscribers in the account.
     if latest_session_only_change?(old_data, data) do
       :ok
     else
-      old_device = struct_from_params(Portal.Device, old_data)
-      device = struct_from_params(Portal.Device, data)
       change = %Change{lsn: lsn, op: :update, old_struct: old_device, struct: device}
 
       # Unverifying a client device - delete associated policy_authorizations
@@ -52,9 +57,54 @@ defmodule Portal.Changes.Hooks.Devices do
 
   defp latest_session_only_change?(_old_data, _data), do: false
 
+  defp public_key_rotated?(%Portal.Device{public_key: old_key}, %Portal.Device{
+         public_key: new_key,
+         last_seen_at: %DateTime{}
+       }) do
+    not is_nil(old_key) and not is_nil(new_key) and old_key != new_key
+  end
+
+  defp public_key_rotated?(_old_device, _device), do: false
+
+  defp disconnect_peers_of_rotated_device(%Portal.Device{} = device) do
+    {_count, authorizations} = Database.delete_prior_session_policy_authorizations(device)
+
+    authorizations
+    |> Enum.map(fn
+      %{initiating_device_id: initiating_device_id, receiving_device_id: peer_id}
+      when initiating_device_id == device.id ->
+        peer_id
+
+      %{initiating_device_id: peer_id} ->
+        peer_id
+    end)
+    |> Enum.uniq()
+    |> Enum.each(&PG.deliver(&1, {:pubkey_changed, device.id}))
+  end
+
   defmodule Database do
     import Ecto.Query
     alias Portal.{Safe, PolicyAuthorization}
+
+    # Authorizations the new session already created (inserted after it connected) stay.
+    def delete_prior_session_policy_authorizations(%Portal.Device{} = device) do
+      now = DateTime.utc_now()
+
+      from(f in PolicyAuthorization, as: :policy_authorizations)
+      |> where([policy_authorizations: f], f.account_id == ^device.account_id)
+      |> where(
+        [policy_authorizations: f],
+        f.initiating_device_id == ^device.id or f.receiving_device_id == ^device.id
+      )
+      |> where([policy_authorizations: f], f.expires_at > ^now)
+      |> where([policy_authorizations: f], f.inserted_at < ^device.last_seen_at)
+      |> select([policy_authorizations: f], %{
+        initiating_device_id: f.initiating_device_id,
+        receiving_device_id: f.receiving_device_id
+      })
+      |> Safe.unscoped()
+      |> Safe.delete_all()
+    end
 
     def delete_policy_authorizations_for_device(%Portal.Device{} = device) do
       from(f in PolicyAuthorization, as: :policy_authorizations)

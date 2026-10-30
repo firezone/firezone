@@ -686,6 +686,12 @@ defmodule PortalAPI.Client.Channel.Shared do
     push_device_access_denied(socket, payload, reason)
   end
 
+  # The inbound cache follows through the CDC deletes of the peer's authorizations.
+  def handle_info({:pubkey_changed, device_id}, socket) do
+    push(socket, "pubkey_changed", %{id: device_id})
+    {:noreply, socket}
+  end
+
   # Catch-all for messages we don't handle
   def handle_info(_message, socket), do: {:noreply, socket}
 

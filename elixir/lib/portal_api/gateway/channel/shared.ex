@@ -547,6 +547,12 @@ defmodule PortalAPI.Gateway.Channel.Shared do
     {:noreply, assign(socket, cache: cache)}
   end
 
+  # The cache follows through the CDC deletes of the client's authorizations.
+  def handle_info({:pubkey_changed, client_id}, socket) do
+    push(socket, "pubkey_changed", %{id: client_id})
+    {:noreply, socket}
+  end
+
   def handle_info(:disconnect, socket) do
     # Important: We push disconnect before closing the socket to prevent the gateway from
     # attempting to immediately reconnect

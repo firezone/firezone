@@ -24,6 +24,19 @@ make_id!(ResourceId);
 make_id!(RelayId);
 make_id!(ClientId);
 make_id!(SiteId);
+make_id!(DeviceId);
+
+impl From<DeviceId> for ClientId {
+    fn from(DeviceId(id): DeviceId) -> Self {
+        Self(id)
+    }
+}
+
+impl From<DeviceId> for GatewayId {
+    fn from(DeviceId(id): DeviceId) -> Self {
+        Self(id)
+    }
+}
 
 #[derive(
     Hash, Deserialize, Serialize, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, derive_more::From,
