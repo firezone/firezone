@@ -179,10 +179,10 @@ defmodule Portal.Scope do
     do: "List an actor's linked identities, and unlink them."
 
   def description(:gateway_tokens),
-    do: "Mint, rotate and revoke the tokens gateways join a site with."
+    do: "Mint, rotate and revoke the tokens gateways join a site with, including when creating a gateway."
 
   def description(:gateways),
-    do: "List, create, edit and delete the gateways serving a site."
+    do: "List, create, edit and delete the gateways serving a site. Creating one with its token also needs gateway tokens."
 
   def description(:groups),
     do: "List, create, edit and delete groups, and change who belongs to them."

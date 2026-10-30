@@ -163,6 +163,88 @@ defmodule PortalAPI.GatewayControllerTest do
       assert %{"type" => "about:blank", "status" => 404, "title" => "Not Found"} =
                json_response(conn, 404)
     end
+
+    test "refuses to return a token without the gateway_tokens:write scope", %{
+      conn: conn,
+      actor: actor,
+      site: site
+    } do
+      conn =
+        conn
+        |> authorize_conn(actor, ["gateways:write"])
+        |> put_req_header("content-type", "application/json")
+        |> post("/sites/#{site.id}/gateways", gateway: %{name: "edge-nyc-1"})
+
+      assert %{"status" => 403, "detail" => detail} = json_response(conn, 403)
+      assert detail =~ "gateway_tokens:write"
+      assert detail =~ "issue_token"
+
+      assert Repo.aggregate(
+               from(d in Device, where: d.site_id == ^site.id and d.type == :gateway),
+               :count
+             ) == 0
+    end
+
+    test "creates a gateway without a token when issue_token is false", %{
+      conn: conn,
+      actor: actor,
+      site: site
+    } do
+      conn =
+        conn
+        |> authorize_conn(actor, ["gateways:write"])
+        |> put_req_header("content-type", "application/json")
+        |> post("/sites/#{site.id}/gateways", issue_token: false, gateway: %{name: "edge-nyc-1"})
+
+      assert %{"data" => %{"id" => id, "name" => "edge-nyc-1"} = data} = json_response(conn, 201)
+      refute Map.has_key?(data, "token")
+
+      assert Repo.get_by(Device, id: id, site_id: site.id, type: :gateway)
+      refute Repo.exists?(from(t in Portal.GatewayToken, where: t.device_id == ^id))
+
+      # Whoever deploys the gateway mints its token separately.
+      token_conn =
+        conn
+        |> recycle()
+        |> authorize_conn(actor, ["gateway_tokens:write"])
+        |> put_req_header("content-type", "application/json")
+        |> post("/sites/#{site.id}/gateways/#{id}/token")
+
+      assert json_response(token_conn, 201)
+      assert Repo.exists?(from(t in Portal.GatewayToken, where: t.device_id == ^id))
+    end
+
+    test "issue_token false skips the token even when the scope is granted", %{
+      conn: conn,
+      actor: actor,
+      site: site
+    } do
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> post("/sites/#{site.id}/gateways", issue_token: false)
+
+      assert %{"data" => %{"id" => id} = data} = json_response(conn, 201)
+      refute Map.has_key?(data, "token")
+      refute Repo.exists?(from(t in Portal.GatewayToken, where: t.device_id == ^id))
+    end
+
+    test "rejects an issue_token that is not a boolean", %{conn: conn, actor: actor, site: site} do
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> post("/sites/#{site.id}/gateways", issue_token: "no")
+
+      assert %{"detail" => detail} = json_response(conn, 400)
+      assert detail =~ "issue_token"
+
+      assert Repo.aggregate(
+               from(d in Device, where: d.site_id == ^site.id and d.type == :gateway),
+               :count
+             ) == 0
+    end
   end
 
   describe "index/2" do
