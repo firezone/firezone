@@ -1,25 +1,25 @@
 defmodule PortalAPI.Client.Views.Relay do
   alias Portal.Relay
 
-  def render_many(relays, salt, expires_at, account_id) do
+  def render_many(relays, %Portal.Device{} = device, expires_at, account_id) do
     relays
     |> Enum.map(fn relay ->
       [
-        render_addr(relay, salt, expires_at, account_id, relay.ipv4),
-        render_addr(relay, salt, expires_at, account_id, relay.ipv6)
+        render_addr(relay, device, expires_at, account_id, relay.ipv4),
+        render_addr(relay, device, expires_at, account_id, relay.ipv6)
       ]
     end)
     |> List.flatten()
   end
 
-  defp render_addr(_relay, _salt, _expires_at, _account_id, nil), do: []
+  defp render_addr(_relay, _device, _expires_at, _account_id, nil), do: []
 
-  defp render_addr(%Relay{} = relay, salt, expires_at, account_id, address) do
+  defp render_addr(%Relay{} = relay, device, expires_at, account_id, address) do
     %{
       username: username,
       password: password,
       expires_at: expires_at
-    } = generate_username_and_password(relay, salt, expires_at, account_id)
+    } = generate_username_and_password(relay, device, expires_at, account_id)
 
     %{
       id: relay.id,
@@ -38,12 +38,16 @@ defmodule PortalAPI.Client.Views.Relay do
 
   defp generate_username_and_password(
          %Relay{stamp_secret: stamp_secret, turn_account_validation: true},
-         public_key,
+         %Portal.Device{id: device_id},
          expires_at,
          account_id
        )
        when is_binary(stamp_secret) do
-    salt = generate_hash(public_key)
+    # Only the portal-assigned device ID identifies the allocation owner.
+    # Credentials still authenticate the full username, including expiry.
+    # Relays deduplicate by account and device, excluding expiry, so renewal
+    # and public-key rotation do not consume another allocation.
+    salt = generate_hash(device_id)
     account = hash_account_id(account_id)
     expires_at = DateTime.to_unix(expires_at, :second)
     username = "#{expires_at}:#{account}:#{salt}"
@@ -52,7 +56,12 @@ defmodule PortalAPI.Client.Views.Relay do
     %{username: username, password: password, expires_at: expires_at}
   end
 
-  defp generate_username_and_password(%Relay{stamp_secret: stamp_secret}, public_key, expires_at, _account_id)
+  defp generate_username_and_password(
+         %Relay{stamp_secret: stamp_secret},
+         %Portal.Device{public_key: public_key},
+         expires_at,
+         _account_id
+       )
        when is_binary(stamp_secret) do
     salt = generate_hash(public_key)
     expires_at = DateTime.to_unix(expires_at, :second)

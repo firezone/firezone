@@ -23,6 +23,24 @@ defmodule PortalAPI.GatewayControllerTest do
   end
 
   describe "create/2" do
+    test "returns 429 and Retry-After when new device registration is exhausted", %{conn: conn} do
+      account = account_fixture(limits: %{users_count: 6, connected_devices_per_actor: 3})
+      actor = api_client_fixture(account: account)
+      site = site_fixture(account: account)
+      for _ <- 1..56, do: assert(:ok == Portal.Devices.RegistrationRateLimit.check(account))
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> post("/sites/#{site.id}/gateways", gateway: %{name: "blocked"})
+
+      assert %{"status" => 429} = json_response(conn, 429)
+      assert [retry_after] = get_resp_header(conn, "retry-after")
+      assert String.to_integer(retry_after) > 0
+      assert Repo.aggregate(Portal.Device, :count, :id) == 0
+    end
+
     test "returns error when not authorized", %{conn: conn, site: site} do
       conn = post(conn, "/sites/#{site.id}/gateways")
       assert %{"type" => "about:blank", "status" => 401, "title" => "Unauthorized"} =

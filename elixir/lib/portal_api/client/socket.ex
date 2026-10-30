@@ -150,6 +150,10 @@ defmodule PortalAPI.Client.Socket do
         OpenTelemetry.Tracer.set_status(:error, "connected_devices_limit_reached")
         {:error, :connected_devices_limit_reached}
 
+      {:error, :rate_limit, retry_after_ms} ->
+        OpenTelemetry.Tracer.set_status(:error, "device_registration_rate_limit")
+        {:error, {:rate_limit, retry_after_ms}}
+
       {:error, :device_untrusted} ->
         OpenTelemetry.Tracer.set_status(:error, "device_untrusted")
         {:error, :device_untrusted}
@@ -598,19 +602,19 @@ defmodule PortalAPI.Client.Socket do
       if client = find_by_firezone_id(actor_id, firezone_id, subject) do
         {:ok, merge_hardware_ids(client, changeset), false}
       else
-        with {:ok, client} <- insert_with_slug(changeset, subject) do
+        with :ok <- Portal.Devices.RegistrationRateLimit.check(subject.account),
+             {:ok, client} <- insert_with_slug(changeset, subject) do
           {:ok, client, false}
         end
       end
     end
 
     defp insert_attested(changeset, subject) do
-      result =
-        changeset
-        |> Ecto.Changeset.put_change(:firezone_id, nil)
-        |> insert_with_slug(subject)
-
-      with {:ok, client} <- result do
+      with :ok <- Portal.Devices.RegistrationRateLimit.check(subject.account),
+           {:ok, client} <-
+             changeset
+             |> Ecto.Changeset.put_change(:firezone_id, nil)
+             |> insert_with_slug(subject) do
         {:ok, client, true}
       end
     end

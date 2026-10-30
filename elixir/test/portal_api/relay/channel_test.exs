@@ -137,7 +137,7 @@ defmodule PortalAPI.Relay.ChannelTest do
       join_capable_relay()
 
       assert_push "init", %{allocation_limits: allocation_limits}
-      assert allocation_limits[limited.id] == 520
+      assert allocation_limits[limited.id] == 1040
       refute Map.has_key?(allocation_limits, unlimited.id)
     end
 
@@ -148,7 +148,7 @@ defmodule PortalAPI.Relay.ChannelTest do
       join_capable_relay()
 
       assert_push "init", %{allocation_limits: allocation_limits}
-      assert allocation_limits[account.id] == 11_020
+      assert allocation_limits[account.id] == 22_040
     end
 
     test "forwards recalculated quotas when the add-on changes" do
@@ -162,8 +162,8 @@ defmodule PortalAPI.Relay.ChannelTest do
       unlimited = %{limits | "adhoc_service_accounts_count" => nil}
 
       for {lsn, old_limits, new_limits, expected} <- [
-            {1, limits, added, 11_020},
-            {2, added, limits, 1020},
+            {1, limits, added, 22_040},
+            {2, added, limits, 2040},
             {3, limits, unlimited, nil}
           ] do
         assert :ok == on_update(lsn,
@@ -184,10 +184,10 @@ defmodule PortalAPI.Relay.ChannelTest do
       unlimited = %{initial | "connected_devices_per_actor" => nil}
 
       for {lsn, old_limits, new_limits, expected} <- [
-            {1, initial, increased, 2030},
-            {2, increased, initial, 1020},
+            {1, initial, increased, 4060},
+            {2, increased, initial, 2040},
             {3, initial, unlimited, nil},
-            {4, unlimited, initial, 1020}
+            {4, unlimited, initial, 2040}
           ] do
         assert :ok == on_update(lsn,
           %{"id" => account_id, "is_disabled" => false, "limits" => old_limits},
