@@ -40,6 +40,19 @@ defmodule Portal.Accounts.LimitsTest do
       assert Limits.relay_allocation_limit(%{limits | monthly_active_users_count: 0}) == 10
     end
 
+    test "adds one device per seat-exempt service account without multiplying or adding Gateways" do
+      limits = %Limits{
+        monthly_active_users_count: 100,
+        connected_devices_per_actor: 10,
+        adhoc_service_accounts_count: 10_000
+      }
+
+      assert Limits.relay_allocation_limit(limits) == 11_020
+      assert Limits.relay_allocation_limit(%{limits | adhoc_service_accounts_count: 0}) == 1020
+      assert Limits.relay_allocation_limit(%{limits | monthly_active_users_count: 0}) == 10_010
+      assert Limits.relay_allocation_limit(%{limits | adhoc_service_accounts_count: nil}) == nil
+    end
+
     test "unlimited or missing seat and device allowances remain unlimited" do
       assert Limits.relay_allocation_limit(nil) == nil
       assert Limits.relay_allocation_limit(%Limits{}) == nil
