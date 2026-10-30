@@ -48,6 +48,13 @@ By default, the relay listens on port `udp/3478`. This is the standard port for
 STUN/TURN. Additionally, the relay needs to have access to the port range
 `49152` - `65535` for the allocations.
 
+### Allocation limits
+
+The portal can limit the number of allocations per account. Each device has at
+most one allocation, which a new allocation from the same device replaces. When
+an account is at its limit, the relay rejects allocations for new devices with
+TURN 486 (Allocation Quota Reached).
+
 ### Portal Connection
 
 When given a `token`, the relay will connect to the Firezone portal and wait for
