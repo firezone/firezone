@@ -17,7 +17,7 @@ defmodule PortalAPI.MCP.Safety do
   def warning(method, path) do
     case category(method, path) do
       :identity_management ->
-        "Security-sensitive: can change administrator access, sign-in settings, or device trust."
+        "Security-sensitive: can change user access, sign-in settings, or device trust."
 
       :credential_issuance ->
         "Security-sensitive: returns a live credential to the MCP client. " <>
