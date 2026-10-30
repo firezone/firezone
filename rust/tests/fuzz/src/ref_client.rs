@@ -112,6 +112,10 @@ pub struct RefClient {
     #[debug(skip)]
     outbound_peer_authorizations: BTreeMap<ClientId, BTreeSet<ResourceId>>,
 
+    /// When a peer with an established connection crashed without saying goodbye.
+    #[debug(skip)]
+    peer_crashed_at: BTreeMap<ClientId, Instant>,
+
     /// Per peer, the pools through which the portal authorised it to reach us.
     #[debug(skip)]
     inbound_peer_authorizations: BTreeMap<ClientId, BTreeSet<ResourceId>>,
@@ -156,6 +160,7 @@ impl RefClient {
             gateway_send_times: Default::default(),
             client_send_times: Default::default(),
             outbound_peer_authorizations: Default::default(),
+            peer_crashed_at: Default::default(),
             inbound_peer_authorizations: Default::default(),
             rejected_inbound_peer_authorizations: Default::default(),
         }
@@ -338,6 +343,24 @@ impl RefClient {
         self.outbound_peer_authorizations.remove(&peer);
         self.inbound_peer_authorizations.remove(&peer);
         self.rejected_inbound_peer_authorizations.remove(&peer);
+        self.peer_crashed_at.remove(&peer);
+    }
+
+    pub(crate) fn record_peer_crash(&mut self, peer: ClientId, now: Instant) {
+        let had_connection = self.authorized_pools_towards(peer).next().is_some();
+        self.forget_peer_authorizations(peer);
+
+        if had_connection {
+            self.peer_crashed_at.insert(peer, now);
+        }
+    }
+
+    pub(crate) fn peer_crashed_at(&self, peer: ClientId) -> Option<Instant> {
+        self.peer_crashed_at.get(&peer).copied()
+    }
+
+    pub(crate) fn clear_peer_crash(&mut self, peer: ClientId) {
+        self.peer_crashed_at.remove(&peer);
     }
 
     /// Checks whether any active inbound authorization from `peer` permits `protocol`.
@@ -523,6 +546,7 @@ impl RefClient {
         self.outbound_peer_authorizations.clear();
         self.inbound_peer_authorizations.clear();
         self.rejected_inbound_peer_authorizations.clear();
+        self.peer_crashed_at.clear();
     }
 
     pub(crate) fn add_internet_resource(&mut self, resource: InternetResource) {

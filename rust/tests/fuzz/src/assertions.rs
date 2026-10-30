@@ -97,7 +97,6 @@ fn assert_probes(
 
         assert_submitted_request(expected, submitted_request);
 
-        // TODO: Remove with classic ICE.
         match (
             expected.trace_requirement,
             trace.received_requests.as_slice(),
