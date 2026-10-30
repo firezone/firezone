@@ -527,13 +527,21 @@ defmodule PortalWeb.Components.Form do
 
   # A stored secret satisfies the required check, and a blank box keeps it.
   defp stored_secret_rest(field, rest) do
-    if redacted?(field) and not is_nil(Ecto.Changeset.get_field(field.form.source, field.field)) do
+    if redacted?(field) and stored_value?(field) do
       rest
       |> Map.delete(:required)
       |> Map.put_new(:placeholder, "Leave blank to keep the current value")
     else
       rest
     end
+  end
+
+  # Only a saved value counts, so a virtual field such as a password
+  # confirmation stays required however much is typed into it, and a secret
+  # reset by a destination change asks for a new one.
+  defp stored_value?(%{form: %{source: changeset}, field: name}) do
+    not is_nil(Map.get(changeset.data, name)) and
+      Ecto.Changeset.fetch_change(changeset, name) != {:ok, nil}
   end
 
   ### Stored secrets ###
