@@ -54,9 +54,6 @@ pub struct ReferenceState {
     /// Whether a node may have no relay left because every relay it tried rejected its allocation.
     pub(crate) node_may_lack_relays: bool,
 
-    /// The crash time of a peer with which a client still had an old connection.
-    peer_crashed_at: BTreeMap<(ClientId, ClientId), Instant>,
-
     /// All IP addresses a domain resolves to in our test.
     ///
     /// This is used to e.g. mock DNS resolution on the gateway.
@@ -101,7 +98,6 @@ impl ReferenceState {
             exhausted_relays: Default::default(),
             recovering_relays: Default::default(),
             node_may_lack_relays: false,
-            peer_crashed_at: Default::default(),
             global_dns_records,
             domain_tree,
             tcp_services,
@@ -710,10 +706,6 @@ impl ReferenceState {
             Transition::RestartClient { client_id, key } => {
                 self.node_may_lack_relays |= self.no_relay_accepts_allocations();
 
-                for _ in self.peer_crashed_at.extract_if(.., |(origin, peer), _| {
-                    origin == client_id || peer == client_id
-                }) {}
-
                 self.clients
                     .get_mut(client_id)
                     .unwrap()
@@ -730,22 +722,6 @@ impl ReferenceState {
             Transition::CrashClient { client_id, key } => {
                 self.node_may_lack_relays |= self.no_relay_accepts_allocations();
 
-                for _ in self
-                    .peer_crashed_at
-                    .extract_if(.., |(origin, _), _| origin == client_id)
-                {}
-
-                for (peer_id, peer) in self.clients.iter().filter(|(id, _)| *id != client_id) {
-                    if peer
-                        .inner()
-                        .authorized_pools_towards(*client_id)
-                        .next()
-                        .is_some()
-                    {
-                        self.peer_crashed_at.insert((*peer_id, *client_id), now);
-                    }
-                }
-
                 // Applications resolve their domains again once the cached records are gone.
                 self.clients.get_mut(client_id).unwrap().exec_mut(|c| {
                     c.restart(*key, now);
@@ -753,7 +729,7 @@ impl ReferenceState {
                 });
 
                 for (_, peer) in self.clients.iter_mut().filter(|(id, _)| *id != client_id) {
-                    peer.exec_mut(|c| c.forget_peer_authorizations(*client_id));
+                    peer.exec_mut(|c| c.record_peer_crash(*client_id, now));
                 }
             }
         };
@@ -1118,15 +1094,14 @@ impl ReferenceState {
                 });
             }
             Some(Authorization::Peer { peer, pool }) => {
-                self.peer_crashed_at.remove(&(peer, origin));
                 self.clients
                     .get_mut(&origin)
                     .unwrap()
                     .exec_mut(|client| client.record_outbound_peer_authorization(peer, pool));
-                self.clients
-                    .get_mut(&peer)
-                    .unwrap()
-                    .exec_mut(|receiver| receiver.add_inbound_peer_pool(origin, pool));
+                self.clients.get_mut(&peer).unwrap().exec_mut(|receiver| {
+                    receiver.clear_peer_crash(origin);
+                    receiver.add_inbound_peer_pool(origin, pool);
+                });
             }
             None => {}
         }
@@ -1254,11 +1229,11 @@ impl ReferenceState {
         if portal.iceless() {
             return match remote {
                 Remote::Client(peer)
-                    if self
-                        .peer_crashed_at
-                        .get(&(origin, peer))
+                    if self.clients[&origin]
+                        .inner()
+                        .peer_crashed_at(peer)
                         .is_some_and(|crashed_at| {
-                            sent_at <= *crashed_at + ICELESS_PEER_CRASH_LOSS
+                            sent_at <= crashed_at + ICELESS_PEER_CRASH_LOSS
                         }) =>
                 {
                     TraceRequirement::ExactOrLoss(KnownLoss::PeerCrash)
