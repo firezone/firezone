@@ -1,30 +1,48 @@
 use network_types::eth::EthHdr;
 
-/// The source and destination MAC addresses of an Ethernet header.
+/// Reads and writes the MAC addresses of an Ethernet header as a single [`MacAddrs`].
 ///
-/// Copying the address arrays from one header to another compiles to calls to `memmove`, which
-/// are comparatively expensive, especially with mitigations against speculative execution.
-/// Instead, we copy them through registers.
-#[derive(Clone, Copy)]
-pub struct MacAddrs {
-    src: u64,
-    dst: u64,
+/// This is the API we would like [`EthHdr`] itself to have, so it can move to `network-types`.
+pub trait EthHdrExt {
+    fn mac_addrs(&self) -> MacAddrs;
+    fn set_mac_addrs(&mut self, addrs: MacAddrs);
 }
 
-impl MacAddrs {
+impl EthHdrExt for EthHdr {
     #[inline(always)]
-    pub fn read(eth: &EthHdr) -> Self {
-        Self {
-            src: to_u64(&eth.src_addr),
-            dst: to_u64(&eth.dst_addr),
+    fn mac_addrs(&self) -> MacAddrs {
+        MacAddrs {
+            dst: to_u64(&self.dst_addr),
+            src: to_u64(&self.src_addr),
         }
     }
 
-    /// Writes the addresses swapped, i.e. sends the packet back to where it came from.
     #[inline(always)]
-    pub fn write_swapped(self, eth: &mut EthHdr) {
-        write(&mut eth.src_addr, self.dst);
-        write(&mut eth.dst_addr, self.src);
+    fn set_mac_addrs(&mut self, addrs: MacAddrs) {
+        write(&mut self.dst_addr, addrs.dst);
+        write(&mut self.src_addr, addrs.src);
+    }
+}
+
+/// The destination and source MAC addresses of an Ethernet header.
+///
+/// Copying the address arrays from one header to another compiles to calls to `memmove`, which
+/// are comparatively expensive, especially with mitigations against speculative execution.
+/// Instead, we hold each address in an integer that fits into a register.
+#[derive(Clone, Copy)]
+pub struct MacAddrs {
+    dst: u64,
+    src: u64,
+}
+
+impl MacAddrs {
+    /// The addresses of a frame that goes back to where this one came from.
+    #[inline(always)]
+    pub fn swapped(self) -> Self {
+        Self {
+            dst: self.src,
+            src: self.dst,
+        }
     }
 }
 

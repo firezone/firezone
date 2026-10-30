@@ -11,7 +11,7 @@ use crate::try_handle_turn::{
     channel_data::CdHdr,
     checksum::{self, ChecksumUpdate},
     config,
-    mac::MacAddrs,
+    mac::EthHdrExt as _,
     ref_mut_at,
 };
 
@@ -26,7 +26,7 @@ pub fn to_ipv4_channel(
     let old_macs = {
         // SAFETY: The offset must point to the start of a valid `EthHdr`.
         let old_eth = unsafe { ref_mut_at::<EthHdr>(ctx, 0)? };
-        MacAddrs::read(old_eth)
+        old_eth.mac_addrs()
     };
 
     let (
@@ -66,7 +66,7 @@ pub fn to_ipv4_channel(
 
     // SAFETY: The offset must point to the start of a valid `EthHdr`.
     let eth = unsafe { ref_mut_at::<EthHdr>(ctx, NET_SHRINK as usize)? };
-    old_macs.write_swapped(eth);
+    eth.set_mac_addrs(old_macs.swapped());
     eth.ether_type = EtherType::Ipv4.into(); // Change to IPv4
 
     //
