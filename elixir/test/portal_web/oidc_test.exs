@@ -48,6 +48,12 @@ defmodule PortalWeb.OIDCTest do
                OIDC.verify_google_callback(config, "code", "test-verifier")
     end
 
+    test "a Workspace token without a subject cannot start the administrator step", %{config: config} do
+      google_setup_token(%{"hd" => "primary.example", "sub" => nil})
+      assert {:error, :google_workspace_verification_failed} =
+               OIDC.verify_google_callback(config, "code", "test-verifier")
+    end
+
     test "the administrator step requires the same Google user", %{config: config} do
       google_setup_token(%{"hd" => "example.com"})
       Req.Test.stub(Portal.Google.APIClient, fn _conn -> flunk("must not read domains for another user") end)

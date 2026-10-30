@@ -487,45 +487,8 @@ defmodule PortalWeb.Settings.Authentication do
 
   def handle_info({:google_verify_complete, issuer, domains, _name, verification_ref, ack_to}, socket) do
     if socket.assigns.type == "google" and active_verification?(socket, verification_ref) do
-      previous = socket.assigns.form.source
-      existing_domains = get_field(previous, :workspace_domains)
-      additional_domains? = socket.assigns.active_verification[:additional_domains] == true
       maybe_send_verification_ack(ack_to)
-
-      cond do
-        is_nil(domains) and not is_nil(existing_domains) ->
-          {:noreply, assign(socket, active_verification: nil,
-            verification_error: "Use a Google Workspace administrator to verify another domain. Existing domain restrictions have been kept.")}
-
-        additional_domains? and is_list(domains) and existing_domains in [nil, []] ->
-          [first | rest] = domains
-          attrs = Map.merge(provider_attrs(previous), %{is_verified: true, issuer: issuer})
-
-          changeset =
-            changeset(previous.data, attrs, socket, %{workspace_domains: [first],
-              is_legacy_unrestricted: false})
-
-          {:noreply,
-           assign(socket,
-             active_verification: nil,
-             verification_error: nil,
-             domain_choices: rest,
-             form: to_form(changeset)
-           )}
-
-        additional_domains? and is_list(domains) ->
-          {:noreply, assign_domain_choices(socket, domains, existing_domains)}
-
-        true ->
-          domains = append_verified_domains(existing_domains, domains)
-          attrs = Map.merge(provider_attrs(previous), %{is_verified: true, issuer: issuer})
-
-          changeset =
-            changeset(previous.data, attrs, socket, %{workspace_domains: domains,
-              is_legacy_unrestricted: is_nil(domains) and get_field(previous, :is_legacy_unrestricted)})
-
-          {:noreply, assign(socket, active_verification: nil, verification_error: nil, form: to_form(changeset))}
-      end
+      {:noreply, complete_google_verification(socket, issuer, domains)}
     else
       maybe_send_verification_ack(ack_to)
       {:noreply, socket}
@@ -620,6 +583,70 @@ defmodule PortalWeb.Settings.Authentication do
   def handle_info(_message, socket) do
     {:noreply, socket}
   end
+
+  defp complete_google_verification(socket, issuer, domains) do
+    previous = socket.assigns.form.source
+    existing_domains = get_field(previous, :workspace_domains)
+    additional_domains? = socket.assigns.active_verification[:additional_domains] == true
+
+    cond do
+      is_nil(domains) and not is_nil(existing_domains) ->
+        assign(socket,
+          active_verification: nil,
+          verification_error:
+            "Use a Google Workspace administrator to verify another domain. Existing domain restrictions have been kept."
+        )
+
+      additional_domains? and is_list(domains) and existing_domains in [nil, []] ->
+        assign_first_verified_domain(socket, previous, issuer, domains)
+
+      additional_domains? and unrelated_workspace?(domains, existing_domains) ->
+        assign(socket,
+          active_verification: nil,
+          verification_error:
+            "Sign in as an administrator of the Google Workspace that this provider already uses."
+        )
+
+      additional_domains? and is_list(domains) ->
+        assign_domain_choices(socket, domains, existing_domains)
+
+      true ->
+        domains = append_verified_domains(existing_domains, domains)
+        attrs = Map.merge(provider_attrs(previous), %{is_verified: true, issuer: issuer})
+
+        changeset =
+          changeset(previous.data, attrs, socket, %{
+            workspace_domains: domains,
+            is_legacy_unrestricted:
+              is_nil(domains) and get_field(previous, :is_legacy_unrestricted)
+          })
+
+        assign(socket, active_verification: nil, verification_error: nil, form: to_form(changeset))
+    end
+  end
+
+  defp assign_first_verified_domain(socket, previous, issuer, [first | rest]) do
+    attrs = Map.merge(provider_attrs(previous), %{is_verified: true, issuer: issuer})
+
+    changeset =
+      changeset(previous.data, attrs, socket, %{
+        workspace_domains: [first],
+        is_legacy_unrestricted: false
+      })
+
+    assign(socket,
+      active_verification: nil,
+      verification_error: nil,
+      domain_choices: rest,
+      form: to_form(changeset)
+    )
+  end
+
+  defp unrelated_workspace?(domains, existing_domains) when is_list(domains) do
+    Enum.all?(domains, &(&1 not in existing_domains))
+  end
+
+  defp unrelated_workspace?(_domains, _existing_domains), do: false
 
   defp assign_domain_choices(socket, domains, existing_domains) do
     choices = domains -- (existing_domains || [])

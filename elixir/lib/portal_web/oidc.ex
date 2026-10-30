@@ -757,7 +757,7 @@ defmodule PortalWeb.OIDC do
         {:ok, %{issuer: claims["iss"], domains: nil, name: nil}}
 
       {:ok, hosted_domain} when is_binary(hosted_domain) and hosted_domain != "" ->
-        {:step_up, %{subject: claims["sub"], hosted_domain: String.downcase(hosted_domain)}}
+        verify_google_step_up(claims, hosted_domain)
 
       _ ->
         {:error, :google_workspace_verification_failed}
@@ -773,6 +773,14 @@ defmodule PortalWeb.OIDC do
         {:error, :google_workspace_verification_failed}
     end
   end
+
+  defp verify_google_step_up(%{"sub" => subject}, hosted_domain)
+       when is_binary(subject) and subject != "" do
+    {:step_up, %{subject: subject, hosted_domain: String.downcase(hosted_domain)}}
+  end
+
+  defp verify_google_step_up(_claims, _hosted_domain),
+    do: {:error, :google_workspace_verification_failed}
 
   defp verify_google_workspace(claims, tokens, hosted_domain) do
     with access_token when is_binary(access_token) <- tokens["access_token"],
