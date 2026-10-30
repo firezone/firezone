@@ -19,6 +19,7 @@ use ebpf_shared::{
 };
 use stun_codec::rfc5766::attributes::ChannelNumber;
 use tokio::io::{Interest, unix::AsyncFd};
+use tracing::level_filters::LevelFilter;
 
 use crate::ebpf::AttachMode;
 
@@ -42,12 +43,14 @@ impl Program {
     pub fn try_load(
         interface: &str,
         attach_mode: AttachMode,
+        log_level: LevelFilter,
         ipv4_interface_addr: Option<Ipv4Addr>,
         ipv6_interface_addr: Option<Ipv6Addr>,
         ipv4_public_addr: Option<Ipv4Addr>,
         ipv6_public_addr: Option<Ipv6Addr>,
     ) -> Result<Self> {
         let mut ebpf = load(
+            log_level,
             ipv4_interface_addr,
             ipv6_interface_addr,
             ipv4_public_addr,
@@ -356,15 +359,20 @@ impl Program {
 
 /// Loads the eBPF program into the kernel and configures it, without attaching it to an interface.
 fn load(
+    log_level: LevelFilter,
     ipv4_interface_addr: Option<Ipv4Addr>,
     ipv6_interface_addr: Option<Ipv6Addr>,
     ipv4_public_addr: Option<Ipv4Addr>,
     ipv6_public_addr: Option<Ipv6Addr>,
 ) -> Result<aya::Ebpf> {
-    let mut ebpf = aya::Ebpf::load(aya::include_bytes_aligned!(concat!(
-        env!("OUT_DIR"),
-        "/ebpf-turn-router-main"
-    )))?;
+    tracing::debug!(%log_level, "Setting eBPF log level");
+
+    let mut ebpf = aya::EbpfLoader::new()
+        .override_global(aya_log::LEVEL, &aya_log_level(log_level), true)
+        .load(aya::include_bytes_aligned!(concat!(
+            env!("OUT_DIR"),
+            "/ebpf-turn-router-main"
+        )))?;
 
     let program: &mut Xdp = ebpf
         .program_mut("handle_turn")
@@ -418,6 +426,30 @@ fn set_public_ipv6_address(ebpf: &mut aya::Ebpf, addr: Ipv6Addr) -> Result<()> {
 
     tracing::info!(%addr, "Set eBPF public IPv6 address");
     Ok(())
+}
+
+/// Converts the most verbose level of log records to emit into the value of [`aya_log::LEVEL`].
+///
+/// Without this, the eBPF program emits every log record and leaves filtering to userspace.
+/// Log records go through a ring buffer that is shared by all CPUs, so emitting records for every
+/// packet serialises the entire datapath on the ring buffer's lock.
+///
+/// The level is a constant to the verifier, so it removes disabled log statements entirely.
+/// As a result, changing the log filter at runtime does not affect the eBPF program.
+fn aya_log_level(level: LevelFilter) -> u8 {
+    let Some(level) = level.into_level() else {
+        return 0;
+    };
+
+    let level = match level {
+        tracing::Level::ERROR => aya_log::Level::Error,
+        tracing::Level::WARN => aya_log::Level::Warn,
+        tracing::Level::INFO => aya_log::Level::Info,
+        tracing::Level::DEBUG => aya_log::Level::Debug,
+        tracing::Level::TRACE => aya_log::Level::Trace,
+    };
+
+    level as u8
 }
 
 fn set_per_cpu_map<T>(ebpf: &mut aya::Ebpf, map_name: &str, value: T) -> Result<()>
@@ -518,7 +550,7 @@ mod tests {
         }
 
         fn load_detached_with(ipv4: Option<Ipv4Addr>, ipv6: Option<Ipv6Addr>) -> Self {
-            let mut ebpf = load(ipv4, ipv6, ipv4, ipv6).unwrap();
+            let mut ebpf = load(LevelFilter::OFF, ipv4, ipv6, ipv4, ipv6).unwrap();
             let stats = PerfEventArray::try_from(ebpf.take_map("STATS").unwrap()).unwrap();
 
             Self { ebpf, stats }
