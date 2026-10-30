@@ -15,6 +15,7 @@
 //! All forwarded packets count against the limit, so senders that ignore ECN are still limited.
 
 use core::num::NonZeroU64;
+use core::ptr::{read_volatile, write_volatile};
 use core::time::Duration;
 
 /// How far a channel may run ahead of a rate before its packets exceed it.
@@ -39,7 +40,9 @@ const MARK_BURST_TOLERANCE_NS: u64 = MARK_BURST_TOLERANCE.as_nanos() as u64;
 const NS_PER_BYTE_FRAC_BITS: u32 = 8;
 
 /// What to do with a packet that has been checked against a [`RateLimiter`].
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+///
+/// Ordered by severity, so the verdict for a packet checked against several limiters is the maximum.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Verdict {
     Pass,
     /// Forward the packet but set ECN CE if the packet is ECN-capable.
@@ -77,34 +80,64 @@ impl RateLimiter {
         }
     }
 
-    pub const fn is_unlimited(&self) -> bool {
-        self.ns_per_byte == 0
-    }
-
     /// Charges a packet of `num_bytes` against the limit at time `now_ns`.
     #[inline(always)]
     pub fn check(&mut self, now_ns: u64, num_bytes: u16) -> Verdict {
-        if self.is_unlimited() {
+        // SAFETY: A mutable reference is valid for reads and writes and aligned.
+        unsafe { Self::check_shared(self, || now_ns, num_bytes) }
+    }
+
+    /// Like [`RateLimiter::check`], but for a limiter that other threads may charge at the same time.
+    ///
+    /// Concurrent charges can overwrite each other's updates, which lets a packet through without
+    /// being charged. The current time is only read if the limiter is limited.
+    ///
+    /// # Safety
+    ///
+    /// `limiter` must be valid for reads and writes and properly aligned.
+    #[inline(always)]
+    pub unsafe fn check_shared(
+        limiter: *mut Self,
+        now_ns: impl FnOnce() -> u64,
+        num_bytes: u16,
+    ) -> Verdict {
+        // eBPF cannot load atomically, so like the kernel's `READ_ONCE` and `WRITE_ONCE`, we use volatile accesses
+        // through raw pointers, which the compiler won't tear, merge or repeat.
+        // SAFETY: The caller guarantees that the limiter is valid for reads and writes and aligned.
+        let (drop_tat_ns, mark_tat_ns, ns_per_byte) = unsafe {
+            (
+                &raw mut (*limiter).drop_tat_ns,
+                &raw mut (*limiter).mark_tat_ns,
+                read_volatile(&raw const (*limiter).ns_per_byte),
+            )
+        };
+
+        if ns_per_byte == 0 {
             return Verdict::Pass;
         }
 
-        let drop_tat_ns = max(self.drop_tat_ns, now_ns);
+        let now_ns = now_ns();
+        // SAFETY: See above.
+        let drop_tat = max(unsafe { read_volatile(drop_tat_ns) }, now_ns);
 
         // Dropped packets are not charged, so a sender exceeding the limit still gets its fair share.
-        if drop_tat_ns - now_ns > BURST_TOLERANCE_NS {
+        if drop_tat - now_ns > BURST_TOLERANCE_NS {
             return Verdict::Drop;
         }
 
-        let cost_ns = (num_bytes as u64 * self.ns_per_byte) >> NS_PER_BYTE_FRAC_BITS;
-        self.drop_tat_ns = drop_tat_ns + cost_ns;
+        let cost_ns = (num_bytes as u64 * ns_per_byte) >> NS_PER_BYTE_FRAC_BITS;
+        // SAFETY: See above.
+        unsafe { write_volatile(drop_tat_ns, drop_tat + cost_ns) };
 
-        let mark_tat_ns = max(self.mark_tat_ns, now_ns);
+        // SAFETY: See above.
+        let mark_tat = max(unsafe { read_volatile(mark_tat_ns) }, now_ns);
 
-        if mark_tat_ns - now_ns > MARK_BURST_TOLERANCE_NS {
+        if mark_tat - now_ns > MARK_BURST_TOLERANCE_NS {
             return Verdict::Mark;
         }
 
-        self.mark_tat_ns = mark_tat_ns + cost_ns * 100 / MARK_RATE_PERCENT;
+        // SAFETY: See above.
+        unsafe { write_volatile(mark_tat_ns, mark_tat + cost_ns * 100 / MARK_RATE_PERCENT) };
 
         Verdict::Pass
     }
