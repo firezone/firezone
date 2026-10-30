@@ -22,6 +22,7 @@ use smallvec::SmallVec;
 use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::hash::Hash;
 use std::net::{IpAddr, SocketAddr};
+use std::num::NonZeroUsize;
 use std::ops::RangeInclusive;
 use std::time::{Duration, Instant, SystemTime};
 use stun_codec::rfc5389::attributes::{
@@ -32,7 +33,9 @@ use stun_codec::rfc5389::methods::BINDING;
 use stun_codec::rfc5766::attributes::{
     ChannelNumber, Lifetime, RequestedTransport, XorPeerAddress, XorRelayAddress,
 };
-use stun_codec::rfc5766::errors::{AllocationMismatch, InsufficientCapacity};
+use stun_codec::rfc5766::errors::{
+    AllocationMismatch, AllocationQuotaReached, InsufficientCapacity,
+};
 use stun_codec::rfc5766::methods::{ALLOCATE, CHANNEL_BIND, CREATE_PERMISSION, REFRESH};
 use stun_codec::rfc8656::attributes::{
     AdditionalAddressFamily, AddressFamily, RequestedAddressFamily,
@@ -55,12 +58,15 @@ pub struct Server<R> {
     /// All client allocations, indexed by client's socket address.
     allocations: BTreeMap<ClientSocket, Allocation>,
 
-    /// Bi-directional mapping between allocations and usernames.
+    /// Bi-directional mapping between allocations and authenticated device owners.
     ///
-    /// We only allow a single allocation per user in order to clean up lingering allocations in case the sender roams.
-    allocations_by_username: BiMap<Username, AllocationPort>,
+    /// One allocation per account/device, independent of credential expiry.
+    /// Reconnecting or roaming replaces the previous allocation.
+    allocations_by_device: BiMap<auth::AllocationKey, AllocationPort>,
 
     clients_by_allocation: HashMap<AllocationPort, ClientSocket>,
+    allocation_counts_by_account: HashMap<auth::AccountId, usize>,
+    allocation_limits: HashMap<auth::AccountId, NonZeroUsize>,
     /// Redundant mapping so we can look route data with a single lookup.
     channel_and_client_by_port_and_peer:
         HashMap<(AllocationPort, PeerSocket), (ClientSocket, ChannelNumber)>,
@@ -96,6 +102,7 @@ pub struct Server<R> {
 struct VerifiedUsername {
     username: Username,
     account: auth::AccountId,
+    allocation_key: auth::AllocationKey,
 }
 
 /// The commands returned from a [`Server`].
@@ -196,8 +203,10 @@ where
         Self {
             public_address: public_address.into(),
             allocations: Default::default(),
-            allocations_by_username: Default::default(),
+            allocations_by_device: Default::default(),
             clients_by_allocation: Default::default(),
+            allocation_counts_by_account: Default::default(),
+            allocation_limits: Default::default(),
             listen_port,
             ports,
             channels_by_client_and_number: Default::default(),
@@ -212,6 +221,39 @@ where
             data_relayed: 0,
             relayed_packet_size_histogram,
             channel_and_client_by_port_and_peer: Default::default(),
+        }
+    }
+
+    /// Replaces the allocation limits received from the Portal. Absent accounts
+    /// are unlimited. Existing allocations survive a lower limit.
+    pub fn set_allocation_limits(
+        &mut self,
+        limits: impl IntoIterator<Item = (auth::AccountId, NonZeroUsize)>,
+    ) {
+        self.allocation_limits = limits
+            .into_iter()
+            .filter(|(account, _)| {
+                self.accounts_by_hash
+                    .contains_key(&auth::hash_account_id(account))
+            })
+            .collect();
+    }
+
+    /// Applies an account's allocation limit without interrupting existing allocations.
+    pub fn set_allocation_limit(&mut self, account: auth::AccountId, limit: Option<NonZeroUsize>) {
+        if !self
+            .accounts_by_hash
+            .contains_key(&auth::hash_account_id(&account))
+        {
+            return;
+        }
+        match limit {
+            Some(limit) => {
+                self.allocation_limits.insert(account, limit);
+            }
+            None => {
+                self.allocation_limits.remove(&account);
+            }
         }
     }
 
@@ -238,6 +280,10 @@ where
             .collect::<Vec<_>>();
 
         self.accounts_by_hash = accounts_by_hash;
+        self.allocation_limits.retain(|account, _| {
+            self.accounts_by_hash
+                .contains_key(&auth::hash_account_id(account))
+        });
 
         for allocation in revoked_allocations {
             self.delete_allocation(allocation);
@@ -253,6 +299,7 @@ where
     /// channel bindings. Deleting the bindings emits the existing commands
     /// that remove the Linux eBPF fast-path entries.
     pub fn remove_account(&mut self, account: &auth::AccountId) {
+        self.allocation_limits.remove(account);
         self.accounts_by_hash
             .remove(&auth::hash_account_id(account));
 
@@ -557,15 +604,6 @@ where
             return Err(error_response);
         }
 
-        let max_available_ports = self.max_available_ports() as usize;
-        if self.clients_by_allocation.len() == max_available_ports {
-            let (error_response, msg) = make_error_response(InsufficientCapacity, request);
-
-            tracing::warn!(target: "relay", %max_available_ports, %sender, "{msg}: No more ports available");
-
-            return Err(error_response);
-        }
-
         let requested_protocol = request.requested_transport().protocol();
         if requested_protocol != UDP_TRANSPORT {
             let (error_response, msg) = make_error_response(BadRequest, request);
@@ -587,11 +625,18 @@ where
             error_response
         })?;
 
-        if let Some((_, previous_allocation)) =
-            self.allocations_by_username.remove_by_left(&username)
+        match self
+            .allocations_by_device
+            .get_by_left(&verified_username.allocation_key)
+            .copied()
         {
-            tracing::info!(target: "relay", %previous_allocation, %sender, "Username already has an allocation");
-            self.delete_allocation(previous_allocation);
+            Some(previous_allocation) => {
+                tracing::info!(target: "relay", %previous_allocation, %sender, "Device already has an allocation");
+                self.delete_allocation(previous_allocation);
+            }
+            None => {
+                self.ensure_capacity_for_new_allocation(verified_username.account, request, sender)?
+            }
         }
 
         // TODO: Do we need to handle DONT-FRAGMENT?
@@ -658,8 +703,12 @@ where
         }
 
         self.clients_by_allocation.insert(allocation.port, sender);
-        self.allocations_by_username
-            .insert(username, allocation.port);
+        self.allocations_by_device
+            .insert(verified_username.allocation_key, allocation.port);
+        *self
+            .allocation_counts_by_account
+            .entry(allocation.account)
+            .or_default() += 1;
         self.allocations.insert(sender, allocation);
         self.allocations_up_down_counter.add(1, &[]);
 
@@ -939,7 +988,7 @@ where
             error_response
         })?;
 
-        let account_hash = message_integrity
+        let allocation_key = message_integrity
             .verify(&self.auth_secret, username.name(), now_utc)
             .map_err(|e| {
                 let (error_response, msg) = make_error_response(Unauthorized, request);
@@ -956,7 +1005,7 @@ where
                 error_response
             })?;
 
-        let Some(account) = self.accounts_by_hash.get(&account_hash).cloned() else {
+        let Some(account) = self.accounts_by_hash.get(&allocation_key.account).cloned() else {
             let (error_response, msg) = make_error_response(Unauthorized, request);
             tracing::debug!(target: "relay", "{msg}: Account is not enabled for TURN");
 
@@ -966,6 +1015,7 @@ where
         Ok(VerifiedUsername {
             username: username.clone(),
             account,
+            allocation_key,
         })
     }
 
@@ -978,7 +1028,7 @@ where
         account: auth::AccountId,
     ) -> Allocation {
         assert!(
-            self.clients_by_allocation.len() < self.max_available_ports() as usize,
+            self.clients_by_allocation.len() < self.max_available_ports(),
             "No more ports available; this would loop forever"
         );
 
@@ -999,8 +1049,39 @@ where
         }
     }
 
-    fn max_available_ports(&self) -> u16 {
-        self.ports.clone().count() as u16
+    /// Replacing an existing allocation never needs new capacity, so only genuinely new ones are checked.
+    fn ensure_capacity_for_new_allocation(
+        &self,
+        account: auth::AccountId,
+        request: &Allocate,
+        sender: ClientSocket,
+    ) -> Result<(), Message<Attribute>> {
+        if let Some(limit) = self.allocation_limits.get(&account) {
+            let count = self
+                .allocation_counts_by_account
+                .get(&account)
+                .copied()
+                .unwrap_or_default();
+
+            if count >= limit.get() {
+                let (error_response, msg) = make_error_response(AllocationQuotaReached, request);
+                tracing::debug!(target: "relay", %sender, %limit, "{msg}: Account allocation limit reached");
+                return Err(error_response);
+            }
+        }
+
+        let max_available_ports = self.max_available_ports();
+        if self.clients_by_allocation.len() >= max_available_ports {
+            let (error_response, msg) = make_error_response(InsufficientCapacity, request);
+            tracing::warn!(target: "relay", %max_available_ports, %sender, "{msg}: No more ports available");
+            return Err(error_response);
+        }
+
+        Ok(())
+    }
+
+    fn max_available_ports(&self) -> usize {
+        self.ports.clone().count()
     }
 
     fn create_channel_binding(
@@ -1130,7 +1211,16 @@ where
             .allocations
             .remove(&client)
             .expect("internal state mismatch");
-        self.allocations_by_username.remove_by_right(&port);
+        self.allocations_by_device.remove_by_right(&port);
+        let count = self
+            .allocation_counts_by_account
+            .get_mut(&allocation.account)
+            .expect("internal state mismatch");
+        *count -= 1;
+        if *count == 0 {
+            self.allocation_counts_by_account
+                .remove(&allocation.account);
+        }
 
         let port = allocation.port;
 
@@ -1502,6 +1592,421 @@ mod tests {
     use std::net::{Ipv4Addr, Ipv6Addr};
     use stun_codec::{MessageDecoder, MessageEncoder};
     use uuid::Uuid;
+
+    #[test]
+    fn allocation_quota_is_shared_by_usernames_but_not_accounts() {
+        let now = Instant::now();
+        let mut server = quota_server(2, 8);
+        let account = auth::AccountId::from(Uuid::nil());
+        let other = auth::AccountId::from(Uuid::from_u128(1));
+
+        for salt in 0..2 {
+            assert_eq!(
+                allocate_for(&mut server, account, salt, socket(salt), now).class(),
+                MessageClass::SuccessResponse
+            );
+        }
+        let rejected = allocate_for(&mut server, account, 2, socket(2), now);
+        assert_eq!(
+            rejected.get_attribute::<ErrorCode>().unwrap().code(),
+            AllocationQuotaReached::CODEPOINT
+        );
+        assert_eq!(server.num_allocations(), 2);
+        assert_eq!(
+            allocate_for(&mut server, other, 2, socket(2), now).class(),
+            MessageClass::SuccessResponse
+        );
+        assert_counts(&server);
+    }
+
+    #[test]
+    fn account_without_a_limit_can_use_the_full_pool() {
+        let now = Instant::now();
+        let mut server = quota_server(1, 8);
+        let account = auth::AccountId::from(Uuid::nil());
+        server.set_allocation_limit(account, None);
+        for salt in 0..8 {
+            assert_eq!(
+                allocate_for(&mut server, account, salt, socket(salt), now).class(),
+                MessageClass::SuccessResponse
+            );
+        }
+        assert_eq!(
+            allocate_for(&mut server, account, 8, socket(8), now)
+                .get_attribute::<ErrorCode>()
+                .unwrap()
+                .code(),
+            InsufficientCapacity::CODEPOINT
+        );
+        assert_counts(&server);
+    }
+
+    #[test]
+    fn allocation_limits_can_change_without_evicting_allocations() {
+        let now = Instant::now();
+        let mut server = quota_server(2, 8);
+        let account = auth::AccountId::from(Uuid::nil());
+        allocate_for(&mut server, account, 0, socket(0), now);
+        allocate_for(&mut server, account, 1, socket(1), now);
+        server.set_allocation_limit(account, NonZeroUsize::new(1));
+        assert_eq!(server.num_allocations(), 2);
+        assert_eq!(
+            allocate_for(&mut server, account, 2, socket(2), now)
+                .get_attribute::<ErrorCode>()
+                .unwrap()
+                .code(),
+            AllocationQuotaReached::CODEPOINT
+        );
+        // Replacing an allocation remains possible even above the lowered limit.
+        assert_eq!(
+            allocate_for(&mut server, account, 0, socket(3), now).class(),
+            MessageClass::SuccessResponse
+        );
+        server.set_allocation_limit(account, NonZeroUsize::new(3));
+        assert_eq!(
+            allocate_for(&mut server, account, 2, socket(2), now).class(),
+            MessageClass::SuccessResponse
+        );
+        assert_counts(&server);
+    }
+
+    #[test]
+    fn allocation_limit_snapshots_replace_limits_and_ignore_disabled_accounts() {
+        let mut server = quota_server(1, 8);
+        let account = auth::AccountId::from(Uuid::nil());
+        let other = auth::AccountId::from(Uuid::from_u128(1));
+        let disabled = auth::AccountId::from(Uuid::from_u128(2));
+        let limit = NonZeroUsize::new(2).unwrap();
+        server.set_allocation_limits([(other, limit), (disabled, limit)]);
+        assert_eq!(server.allocation_limits, HashMap::from([(other, limit)]));
+        server.set_allocation_limit(disabled, Some(limit));
+        assert!(!server.allocation_limits.contains_key(&disabled));
+        server.set_allocation_limit(account, Some(limit));
+        server.set_accounts([other]);
+        assert!(!server.allocation_limits.contains_key(&account));
+        server.remove_account(&other);
+        assert!(server.allocation_limits.is_empty());
+    }
+
+    #[test]
+    fn refresh_and_roaming_work_at_capacity() {
+        let now = Instant::now();
+        let now_utc = SystemTime::UNIX_EPOCH;
+        let account = auth::AccountId::from(Uuid::nil());
+        let other = auth::AccountId::from(Uuid::from_u128(1));
+        let mut server = quota_server(1, 2);
+        allocate_for(&mut server, account, 0, socket(0), now);
+        allocate_for(&mut server, other, 1, socket(1), now);
+        assert_eq!(server.num_allocations(), 2);
+
+        let nonce = issue_nonce(&mut server, socket(0), now, now_utc);
+        let refresh = authenticated_request(
+            &server,
+            REFRESH,
+            TransactionId::new([1; 12]),
+            &quota_username(account, 0),
+            &nonce,
+            [],
+        );
+        server.handle_client_input(&refresh, socket(0), now, now_utc);
+        assert_eq!(
+            next_response(&mut server).class(),
+            MessageClass::SuccessResponse
+        );
+        assert_eq!(server.num_allocations(), 2);
+
+        assert_eq!(
+            allocate_for(&mut server, account, 0, socket(2), now).class(),
+            MessageClass::SuccessResponse
+        );
+        assert!(!server.allocations.contains_key(&socket(0)));
+        assert!(server.allocations.contains_key(&socket(2)));
+        assert_eq!(server.num_allocations(), 2);
+        assert_counts(&server);
+    }
+
+    #[test]
+    fn renewed_credentials_replace_the_same_device_at_full_capacity() {
+        let now = Instant::now();
+        let now_utc = SystemTime::UNIX_EPOCH;
+        let account = auth::AccountId::from(Uuid::nil());
+        let mut server = quota_server(1, 1);
+        allocate_for(&mut server, account, 0, socket(0), now);
+
+        // Both the per-account quota and physical pool are full. A later expiry
+        // still identifies the same device and replaces its old allocation.
+        let renewed =
+            Username::new(format!("2145920400:{}:0", auth::hash_account_id(&account))).unwrap();
+        let nonce = issue_nonce(&mut server, socket(1), now, now_utc);
+        let request = authenticated_request(
+            &server,
+            ALLOCATE,
+            TransactionId::new([6; 12]),
+            &renewed,
+            &nonce,
+            [Attribute::RequestedTransport(RequestedTransport::new(
+                UDP_TRANSPORT,
+            ))],
+        );
+        server.handle_client_input(&request, socket(1), now, now_utc);
+        let response = next_response(&mut server);
+        assert_eq!(response.class(), MessageClass::SuccessResponse);
+        // Responses must use the full renewed credential, not the stable key.
+        let password = auth::generate_password(server.auth_secret(), renewed.name());
+        response
+            .get_attribute::<MessageIntegrity>()
+            .unwrap()
+            .check_long_term_credential(&renewed, &FIREZONE, &password)
+            .unwrap();
+        assert!(!server.allocations.contains_key(&socket(0)));
+        assert!(server.allocations.contains_key(&socket(1)));
+        assert_eq!(server.num_allocations(), 1);
+        assert_counts(&server);
+    }
+
+    #[test]
+    fn matching_device_ids_in_different_accounts_do_not_replace_each_other() {
+        let now = Instant::now();
+        let account = auth::AccountId::from(Uuid::nil());
+        let other = auth::AccountId::from(Uuid::from_u128(1));
+        let mut server = quota_server(1, 2);
+        assert_eq!(
+            allocate_for(&mut server, account, 0, socket(0), now).class(),
+            MessageClass::SuccessResponse
+        );
+        assert_eq!(
+            allocate_for(&mut server, other, 0, socket(1), now).class(),
+            MessageClass::SuccessResponse
+        );
+        assert_eq!(server.num_allocations(), 2);
+        assert_counts(&server);
+    }
+
+    #[test]
+    fn expired_or_forged_credentials_cannot_replace_a_device_allocation() {
+        let now = Instant::now();
+        let account = auth::AccountId::from(Uuid::nil());
+        let mut server = quota_server(1, 1);
+        allocate_for(&mut server, account, 0, socket(0), now);
+        let now_utc = SystemTime::UNIX_EPOCH + Duration::from_secs(2);
+        let nonce = issue_nonce(&mut server, socket(1), now, now_utc);
+
+        for expired in [true, false] {
+            let username = Username::new(format!(
+                "{}:{}:0",
+                if expired { 1 } else { 2145920400u64 },
+                auth::hash_account_id(&account)
+            ))
+            .unwrap();
+            let mut request = authenticated_request(
+                &server,
+                ALLOCATE,
+                TransactionId::new([7; 12]),
+                &username,
+                &nonce,
+                [Attribute::RequestedTransport(RequestedTransport::new(
+                    UDP_TRANSPORT,
+                ))],
+            );
+            if !expired {
+                // A validly encoded request with a corrupted integrity tag.
+                *request.last_mut().unwrap() ^= 1;
+            }
+            server.handle_client_input(&request, socket(1), now, now_utc);
+            assert_eq!(
+                next_response(&mut server)
+                    .get_attribute::<ErrorCode>()
+                    .unwrap()
+                    .code(),
+                Unauthorized::CODEPOINT
+            );
+            assert!(server.allocations.contains_key(&socket(0)));
+            assert!(!server.allocations.contains_key(&socket(1)));
+            assert_counts(&server);
+        }
+    }
+
+    #[test]
+    fn allocation_slots_are_released_on_every_removal_path() {
+        for removal in 0..5 {
+            let now = Instant::now();
+            let now_utc = SystemTime::UNIX_EPOCH;
+            let account = auth::AccountId::from(Uuid::nil());
+            let other = auth::AccountId::from(Uuid::from_u128(1));
+            let mut server = quota_server(1, 8);
+            allocate_for(&mut server, account, 0, socket(0), now);
+            allocate_for(&mut server, other, 1, socket(1), now);
+            let port = server.allocations[&socket(0)].port;
+            match removal {
+                0 => server.handle_allocation_failed(port),
+                1 => {
+                    server.allocations.get_mut(&socket(0)).unwrap().expires_at = now;
+                    server.handle_timeout(now);
+                }
+                2 => {
+                    let nonce = issue_nonce(&mut server, socket(0), now, now_utc);
+                    let refresh = authenticated_request(
+                        &server,
+                        REFRESH,
+                        TransactionId::new([2; 12]),
+                        &quota_username(account, 0),
+                        &nonce,
+                        [Attribute::Lifetime(Lifetime::new(Duration::ZERO).unwrap())],
+                    );
+                    server.handle_client_input(&refresh, socket(0), now, now_utc);
+                }
+                3 => server.remove_account(&account),
+                4 => server.set_accounts([other]),
+                _ => unreachable!(),
+            }
+            while server.next_command().is_some() {}
+            assert_eq!(server.num_allocations(), 1, "removal path {removal}");
+            assert!(!server.allocation_counts_by_account.contains_key(&account));
+            assert_counts(&server);
+            server.add_account(account);
+            assert_eq!(
+                allocate_for(&mut server, account, 2, socket(2), now).class(),
+                MessageClass::SuccessResponse
+            );
+            assert_counts(&server);
+        }
+    }
+
+    #[test]
+    fn gateway_allocation_can_bind_one_thousand_peers_at_quota() {
+        let now = Instant::now();
+        let now_utc = SystemTime::UNIX_EPOCH;
+        let account = auth::AccountId::from(Uuid::nil());
+        let client = socket(0);
+        let mut server = quota_server(1, 8);
+        allocate_for(&mut server, account, 0, client, now);
+        let nonce = issue_nonce(&mut server, client, now, now_utc);
+        for index in 0..1000 {
+            let request = authenticated_request(
+                &server,
+                CHANNEL_BIND,
+                TransactionId::new([3; 12]),
+                &quota_username(account, 0),
+                &nonce,
+                [
+                    Attribute::ChannelNumber(
+                        ChannelNumber::new(ChannelNumber::MIN + index).unwrap(),
+                    ),
+                    Attribute::XorPeerAddress(XorPeerAddress::new(SocketAddr::from((
+                        [127, 0, 0, 2],
+                        10_000 + index,
+                    )))),
+                ],
+            );
+            server.handle_client_input(&request, client, now, now_utc);
+            assert_eq!(
+                next_response(&mut server).class(),
+                MessageClass::SuccessResponse
+            );
+        }
+        assert_eq!(server.num_active_channels(), 1000);
+        assert_eq!(server.num_allocations(), 1);
+        assert_counts(&server);
+    }
+
+    #[test]
+    fn invalid_replacement_preserves_existing_allocation() {
+        let now = Instant::now();
+        let now_utc = SystemTime::UNIX_EPOCH;
+        let account = auth::AccountId::from(Uuid::nil());
+        let mut server = quota_server(1, 8);
+        allocate_for(&mut server, account, 0, socket(0), now);
+        let nonce = issue_nonce(&mut server, socket(1), now, now_utc);
+        let request = authenticated_request(
+            &server,
+            ALLOCATE,
+            TransactionId::new([4; 12]),
+            &quota_username(account, 0),
+            &nonce,
+            [Attribute::RequestedTransport(RequestedTransport::new(6))],
+        );
+        server.handle_client_input(&request, socket(1), now, now_utc);
+        assert_eq!(
+            next_response(&mut server)
+                .get_attribute::<ErrorCode>()
+                .unwrap()
+                .code(),
+            BadRequest::CODEPOINT
+        );
+        assert!(server.allocations.contains_key(&socket(0)));
+        assert_counts(&server);
+    }
+
+    fn quota_server(limit: usize, ports: u16) -> Server<StdRng> {
+        let mut server = Server::new(
+            Ipv4Addr::LOCALHOST,
+            StdRng::seed_from_u64(0),
+            3478,
+            49_152..=(49_151 + ports),
+        );
+        server.set_accounts([
+            auth::AccountId::from(Uuid::nil()),
+            auth::AccountId::from(Uuid::from_u128(1)),
+        ]);
+        server.set_allocation_limits([
+            (
+                auth::AccountId::from(Uuid::nil()),
+                NonZeroUsize::new(limit).unwrap(),
+            ),
+            (
+                auth::AccountId::from(Uuid::from_u128(1)),
+                NonZeroUsize::new(limit).unwrap(),
+            ),
+        ]);
+        server
+    }
+
+    fn socket(index: u16) -> ClientSocket {
+        ClientSocket::new(SocketAddr::from(([127, 0, 0, 1], 50_000 + index)))
+    }
+
+    fn quota_username(account: auth::AccountId, salt: u16) -> Username {
+        Username::new(format!(
+            "2145916800:{}:{salt}",
+            auth::hash_account_id(&account)
+        ))
+        .unwrap()
+    }
+
+    fn allocate_for(
+        server: &mut Server<StdRng>,
+        account: auth::AccountId,
+        salt: u16,
+        client: ClientSocket,
+        now: Instant,
+    ) -> Message<Attribute> {
+        let now_utc = SystemTime::UNIX_EPOCH;
+        let nonce = issue_nonce(server, client, now, now_utc);
+        let request = authenticated_request(
+            server,
+            ALLOCATE,
+            TransactionId::new([5; 12]),
+            &quota_username(account, salt),
+            &nonce,
+            [Attribute::RequestedTransport(RequestedTransport::new(
+                UDP_TRANSPORT,
+            ))],
+        );
+        server.handle_client_input(&request, client, now, now_utc);
+        let response = next_response(server);
+        assert!(server.next_command().is_none());
+        response
+    }
+
+    fn assert_counts(server: &Server<StdRng>) {
+        let mut counts = HashMap::new();
+        for allocation in server.allocations.values() {
+            *counts.entry(allocation.account).or_default() += 1usize;
+        }
+        assert_eq!(server.allocation_counts_by_account, counts);
+        assert_eq!(server.clients_by_allocation.len(), server.num_allocations());
+        assert_eq!(server.allocations_by_device.len(), server.num_allocations());
+    }
 
     #[test]
     fn removing_account_deletes_its_allocations_and_channel_bindings() {

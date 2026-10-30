@@ -23,7 +23,9 @@ use rand::rngs::StdRng;
 use rand::{RngExt, SeedableRng};
 use secrecy::{ExposeSecret, SecretString};
 use std::borrow::Cow;
+use std::collections::HashMap;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
+use std::num::NonZeroUsize;
 use std::pin::Pin;
 use std::process::ExitCode;
 use std::sync::Arc;
@@ -408,11 +410,31 @@ enum IngressMessages {
 struct Init {
     #[serde(default)]
     account_ids: Vec<AccountId>,
+    /// Per-account allocation limits; absent accounts are unlimited.
+    #[serde(default)]
+    allocation_limits: HashMap<AccountId, usize>,
+}
+
+impl Init {
+    fn allocation_limits(&self) -> impl Iterator<Item = (AccountId, NonZeroUsize)> + '_ {
+        self.allocation_limits
+            .iter()
+            .filter_map(|(id, count)| NonZeroUsize::new(*count).map(|limit| (*id, limit)))
+    }
 }
 
 #[derive(serde::Deserialize, Debug)]
 struct Account {
     account_id: AccountId,
+    /// Absent, null, or zero means unlimited.
+    #[serde(default)]
+    allocation_limit: Option<usize>,
+}
+
+impl Account {
+    fn allocation_limit(&self) -> Option<NonZeroUsize> {
+        self.allocation_limit.and_then(NonZeroUsize::new)
+    }
 }
 
 #[derive(serde::Serialize, PartialEq, Debug, Clone)]
@@ -703,12 +725,15 @@ where
                         num_accounts = init.account_ids.len(),
                         "Received TURN account list"
                     );
-                    self.server.set_accounts(init.account_ids);
+                    self.server.set_accounts(init.account_ids.iter().copied());
+                    self.server.set_allocation_limits(init.allocation_limits());
                     tick.want_continue();
                 }
                 Poll::Ready(Some(Ok(IngressMessages::AccountAdded(account)))) => {
                     tracing::info!(account_id = %account.account_id, "Added account to TURN allow list");
                     self.server.add_account(account.account_id);
+                    self.server
+                        .set_allocation_limit(account.account_id, account.allocation_limit());
                     tick.want_continue();
                 }
                 Poll::Ready(Some(Ok(IngressMessages::AccountRemoved(account)))) => {
@@ -876,6 +901,51 @@ fn make_otel_metadata() -> opentelemetry_sdk::Resource {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn portal_init_allocation_limits_are_optional_and_zero_means_unlimited() {
+        let IngressMessages::Init(old) = serde_json::from_value(serde_json::json!({
+            "event": "init", "payload": {"account_ids": []}
+        }))
+        .unwrap() else {
+            panic!("expected init")
+        };
+        assert_eq!(old.allocation_limits().count(), 0);
+        let IngressMessages::Init(init) = serde_json::from_value(serde_json::json!({
+            "event": "init",
+            "payload": {
+                "account_ids": [],
+                "allocation_limits": {
+                    "00000000-0000-0000-0000-000000000000": 64,
+                    "00000000-0000-0000-0000-000000000001": 0
+                }
+            }
+        }))
+        .unwrap() else {
+            panic!("expected init")
+        };
+        assert_eq!(
+            init.allocation_limits()
+                .map(|(_, limit)| limit.get())
+                .collect::<Vec<_>>(),
+            [64]
+        );
+    }
+
+    #[test]
+    fn portal_account_updates_accept_limits_and_unlimited_values() {
+        for (value, expected) in [(Some(64), Some(64)), (Some(0), None), (None, None)] {
+            let IngressMessages::AccountAdded(account) = serde_json::from_value(serde_json::json!({
+                "event": "account_added",
+                "payload": {"account_id": "00000000-0000-0000-0000-000000000000", "allocation_limit": value}
+            })).unwrap() else { panic!("expected account update") };
+            assert_eq!(account.allocation_limit().map(NonZeroUsize::get), expected);
+        }
+        let IngressMessages::AccountAdded(old) = serde_json::from_value(serde_json::json!({
+            "event": "account_added", "payload": {"account_id": "00000000-0000-0000-0000-000000000000"}
+        })).unwrap() else { panic!("expected account update") };
+        assert_eq!(old.allocation_limit(), None);
+    }
 
     #[test]
     fn prints_humanfriendly_throughput() {
