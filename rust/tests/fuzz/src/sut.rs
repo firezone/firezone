@@ -848,7 +848,7 @@ impl TunnelTest {
                     },
                 );
 
-                // The portal sees the Client reconnect with a new key and tells its peers.
+                // The portal sees the Client reconnect with a new key and tells its peers and Gateways.
                 let public_key = self.clients[&client_id].inner().sut().public_key();
                 for peer in portal.authorized_peers_of(client_id) {
                     self.clients.get_mut(&peer).unwrap().exec_mut(|c| {
