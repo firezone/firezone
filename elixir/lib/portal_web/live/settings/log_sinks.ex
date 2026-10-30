@@ -64,12 +64,12 @@ defmodule PortalWeb.Settings.LogSinks do
 
   # Each sink's secret and the fields that decide where it is sent.
   @secrets %{
-    Splunk.LogSink => {:hec_token, [:collector_url]},
-    Datadog.LogSink => {:api_key, [:site]},
-    NewRelic.LogSink => {:license_key, [:region]},
-    Elastic.LogSink => {:api_key, [:endpoint_url]},
-    QRadar.LogSink => {:auth_header, [:endpoint_url]},
-    HTTP.LogSink => {:bearer_token, [:endpoint_url]}
+    Splunk.LogSink => {:hec_token, collector_url: "HEC URL"},
+    Datadog.LogSink => {:api_key, site: "site"},
+    NewRelic.LogSink => {:license_key, region: "region"},
+    Elastic.LogSink => {:api_key, endpoint_url: "endpoint URL"},
+    QRadar.LogSink => {:auth_header, endpoint_url: "endpoint URL"},
+    HTTP.LogSink => {:bearer_token, endpoint_url: "endpoint URL"}
   }
 
   @newrelic_region_options [

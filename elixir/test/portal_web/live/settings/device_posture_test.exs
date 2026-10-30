@@ -806,6 +806,7 @@ defmodule PortalWeb.Settings.DevicePostureTest do
         })
 
       refute html =~ "Leave blank to keep the current key"
+      assert html =~ "Required for the new workshop URL."
 
       lv |> element("#provider-verification-button") |> render_click()
 
@@ -817,7 +818,7 @@ defmodule PortalWeb.Settings.DevicePostureTest do
       assert has_element?(
                lv,
                ~s([data-validation-error-for="provider[api_key]"]),
-               "can't be blank"
+               "Required for the new workshop URL."
              )
 
       updated = reload(provider)
@@ -901,7 +902,7 @@ defmodule PortalWeb.Settings.DevicePostureTest do
       assert has_element?(
                lv,
                ~s([data-validation-error-for="provider[api_token]"]),
-               "can't be blank"
+               "Required for the new management URL."
              )
 
       updated = reload(provider)

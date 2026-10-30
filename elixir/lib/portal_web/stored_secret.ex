@@ -22,19 +22,29 @@ defmodule PortalWeb.StoredSecret do
   end
 
   @doc """
-  Forgets the stored secret when any of `destinations` changed and the secret
-  was not typed in this submission.
+  Forgets the stored secret when any of the `destinations` (`field: label`)
+  changed and the secret was not typed in this submission.
 
   Call it after the schema changeset: `validate_required/3` drops a nil change,
   which would put the stored value back, so the required error is added here.
   """
-  @spec reset_on_change(Ecto.Changeset.t(), atom(), [atom()]) :: Ecto.Changeset.t()
+  @spec reset_on_change(Ecto.Changeset.t(), atom(), keyword(String.t())) :: Ecto.Changeset.t()
   def reset_on_change(changeset, secret, destinations) do
-    if Enum.any?(destinations, &changed?(changeset, &1)) and not submitted?(changeset, secret) do
+    changed = Enum.find(destinations, fn {field, _label} -> changed?(changeset, field) end)
+
+    if changed && not submitted?(changeset, secret) do
+      {_field, label} = changed
+
+      # The error is shown although the secret input is untouched.
+      changeset = %{
+        changeset
+        | params: Map.delete(changeset.params || %{}, "_unused_#{secret}")
+      }
+
       changeset = put_change(changeset, secret, nil)
 
       if secret in changeset.required do
-        add_error(changeset, secret, "can't be blank", validation: :required)
+        add_error(changeset, secret, "Required for the new #{label}.", validation: :required)
       else
         changeset
       end

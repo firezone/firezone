@@ -1696,10 +1696,10 @@ defmodule PortalWeb.Settings.DevicePosture do
   # Verifying sends the secret to the host in the form. Iru's host is always
   # under Iru's own domain and Sophos's is fixed.
   defp reset_secret_for_new_host(changeset, "santa"),
-    do: StoredSecret.reset_on_change(changeset, :api_key, [:api_url])
+    do: StoredSecret.reset_on_change(changeset, :api_key, api_url: "workshop URL")
 
   defp reset_secret_for_new_host(changeset, "sentinelone"),
-    do: StoredSecret.reset_on_change(changeset, :api_token, [:management_url])
+    do: StoredSecret.reset_on_change(changeset, :api_token, management_url: "management URL")
 
   defp reset_secret_for_new_host(changeset, _type), do: changeset
 

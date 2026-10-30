@@ -2057,8 +2057,8 @@ defmodule PortalWeb.Settings.Authentication do
   end
 
   # Verification and sign-in both send the client secret to the issuer.
-  defp issuer_fields(Okta.AuthProvider), do: [:okta_domain]
-  defp issuer_fields(OIDC.AuthProvider), do: [:discovery_document_uri]
+  defp issuer_fields(Okta.AuthProvider), do: [okta_domain: "Okta domain"]
+  defp issuer_fields(OIDC.AuthProvider), do: [discovery_document_uri: "discovery document URI"]
   defp issuer_fields(_schema), do: []
 
   # Rebuilt from the stored record so the typed changes stay changes and reach

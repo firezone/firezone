@@ -1031,7 +1031,7 @@ defmodule PortalWeb.Settings.LogSinksTest do
       assert has_element?(
                lv,
                ~s([data-validation-error-for="log_sink[hec_token]"]),
-               "can't be blank"
+               "Required for the new HEC URL."
              )
 
       updated = reload_sink(sink)
@@ -1083,7 +1083,7 @@ defmodule PortalWeb.Settings.LogSinksTest do
       assert has_element?(
                lv,
                ~s([data-validation-error-for="log_sink[api_key]"]),
-               "can't be blank"
+               "Required for the new site."
              )
 
       updated = Repo.get_by!(Portal.Datadog.LogSink, account_id: account.id, id: sink.id)

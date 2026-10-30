@@ -1437,6 +1437,7 @@ defmodule PortalWeb.Settings.AuthenticationTest do
         })
 
       refute html =~ "Leave blank to keep the current secret"
+      assert html =~ "Required for the new Okta domain."
       assert has_element?(lv, "#auth_provider_client_secret[required]")
       refute has_element?(lv, "#verify-button")
 
