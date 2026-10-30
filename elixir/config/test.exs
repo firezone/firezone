@@ -17,6 +17,9 @@ database = "#{System.get_env("DATABASE_NAME", "firezone")}_test#{partition_suffi
 
 config :portal, sql_sandbox: true
 
+# Fail loudly when a password input renders a schema field that is not redacted.
+config :portal, raise_on_unredacted_password: true
+
 config :portal, run_manual_migrations: true
 
 config :portal, Portal.Repo,

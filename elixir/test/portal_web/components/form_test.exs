@@ -20,8 +20,20 @@ defmodule PortalWeb.Components.FormTest.Fixture do
   end
 end
 
+defmodule PortalWeb.Components.FormTest.Credentials do
+  use Ecto.Schema
+
+  embedded_schema do
+    field :secret, :string, redact: true
+    field :unredacted_secret, :string
+  end
+end
+
 defmodule PortalWeb.Components.FormTest do
   use PortalWeb.ConnCase, async: true
+
+  alias PortalWeb.Components.Form
+  alias PortalWeb.Components.FormTest.Credentials
 
   test "panel footer composes consistently sized base buttons" do
     html =
@@ -43,6 +55,36 @@ defmodule PortalWeb.Components.FormTest do
     assert Floki.attribute(cancel, "phx-click") == ["close_panel"]
     assert Floki.attribute(save, "disabled") == ["disabled"]
     assert Floki.attribute(back, "href") == ["/groups"]
+  end
+
+  describe "password input" do
+    test "never renders a redacted field's stored value" do
+      html = password_html(:secret, %Credentials{secret: "stored-secret"})
+
+      refute html =~ "stored-secret"
+      assert html =~ "Leave blank to keep the current value"
+    end
+
+    test "echoes only what the browser submitted for a redacted field" do
+      html = password_html(:secret, %Credentials{secret: "stored-secret"}, %{"secret" => "typed"})
+
+      refute html =~ "stored-secret"
+      assert html =~ ~s(value="typed")
+    end
+
+    test "raises when the schema field is not redacted" do
+      assert_raise ArgumentError,
+                   ~r/FormTest.Credentials.unredacted_secret is rendered as a password input but is not redact: true/,
+                   fn -> password_html(:unredacted_secret, %Credentials{unredacted_secret: "stored"}) end
+    end
+
+    test "renders a password input on a form without a schema" do
+      form = Phoenix.Component.to_form(%{"password" => "typed"}, as: :login)
+
+      html = render_component(&Form.input/1, %{field: form[:password], type: "password"})
+
+      assert html =~ ~s(value="typed")
+    end
   end
 
   describe "select" do
@@ -126,6 +168,15 @@ defmodule PortalWeb.Components.FormTest do
 
   defp selected_options(html) do
     html |> Floki.parse_fragment!() |> Floki.find("option[selected]")
+  end
+
+  defp password_html(field, data, params \\ %{}) do
+    form =
+      data
+      |> Ecto.Changeset.cast(params, [:secret, :unredacted_secret])
+      |> Phoenix.Component.to_form(as: :credentials)
+
+    render_component(&Form.input/1, %{field: form[field], type: "password"})
   end
 
   defp classes(element) do
