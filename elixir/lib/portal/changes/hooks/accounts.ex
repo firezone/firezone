@@ -1,6 +1,6 @@
 defmodule Portal.Changes.Hooks.Accounts do
   @behaviour Portal.Changes.Hooks
-  alias Portal.{Billing, Changes.Change, PubSub}
+  alias Portal.{Accounts.Limits, Billing, Changes.Change, PubSub}
   alias __MODULE__.Database
   import Portal.SchemaHelpers
 
@@ -55,9 +55,11 @@ defmodule Portal.Changes.Hooks.Accounts do
       end)
     end
 
-    # Relays apply a changed throughput limit to existing allocations.
+    # Relays apply changed account limits without reconnecting.
     if not account.is_disabled and
-         relay_throughput_mbps(old_account) != relay_throughput_mbps(account) do
+         (relay_throughput_mbps(old_account) != relay_throughput_mbps(account) or
+            Limits.relay_allocation_limit(old_account.limits) !=
+              Limits.relay_allocation_limit(account.limits)) do
       PubSub.Changes.broadcast_account(change)
     end
 

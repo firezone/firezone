@@ -13,6 +13,14 @@ defmodule PortalAPI.Error do
   require Logger
 
   @spec handle(Plug.Conn.t(), term()) :: Plug.Conn.t()
+  def handle(conn, {:error, {:rate_limit, retry_after_ms}}) do
+    retry_after = max(ceil(retry_after_ms / 1000), 1)
+
+    conn
+    |> Plug.Conn.put_resp_header("retry-after", Integer.to_string(retry_after))
+    |> ProblemDetails.send(429, "Too many devices registered. Retry after #{retry_after} seconds.")
+  end
+
   def handle(conn, {:error, :not_found}) do
     ProblemDetails.send(conn, 404, "The requested resource could not be found.")
   end

@@ -304,7 +304,7 @@ defmodule PortalAPI.Client.Channel.Shared do
           connected:
             Views.Relay.render_many(
               relays,
-              socket.assigns.client.public_key,
+              socket.assigns.client,
               socket.assigns.subject.expires_at,
               socket.assigns.client.account_id
             )
@@ -1219,7 +1219,7 @@ defmodule PortalAPI.Client.Channel.Shared do
       connected:
         Views.Relay.render_many(
           relays,
-          socket.assigns.client.public_key,
+          socket.assigns.client,
           socket.assigns.subject.expires_at,
           socket.assigns.client.account_id
         )
@@ -2115,7 +2115,7 @@ defmodule PortalAPI.Client.Channel.Shared do
       relays:
         Views.Relay.render_many(
           relays,
-          socket.assigns.client.public_key,
+          socket.assigns.client,
           socket.assigns.subject.expires_at,
           socket.assigns.client.account_id
         ),

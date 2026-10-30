@@ -84,6 +84,9 @@ defmodule PortalAPI.Gateway.Socket do
 
       {:ok, socket}
     else
+      {:error, {:rate_limit, retry_after_ms}} ->
+        {:error, {:rate_limit, retry_after_ms}}
+
       {:error, %Ecto.Changeset{} = changeset} ->
         changeset = public_socket_changeset(changeset)
         trace = Process.info(self(), :current_stacktrace)
@@ -444,9 +447,16 @@ defmodule PortalAPI.Gateway.Socket do
       if existing do
         {:ok, existing}
       else
-        changeset
-        |> Safe.unscoped()
-        |> Safe.insert()
+        account =
+          from(a in Portal.Account, where: a.id == ^account_id)
+          |> Safe.unscoped()
+          |> Safe.one!()
+
+        with :ok <- Portal.Devices.RegistrationRateLimit.check(account) do
+          changeset
+          |> Safe.unscoped()
+          |> Safe.insert()
+        end
       end
     end
   end

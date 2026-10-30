@@ -222,6 +222,13 @@ defmodule PortalAPI.SocketsTest do
       assert Enum.uniq(details) == details
     end
 
+    test "registration throttling keeps the retryable socket response and rounds Retry-After up" do
+      result = Sockets.handle_error(Plug.Test.conn(:get, "/"), {:rate_limit, 3_085_715})
+      assert result.status == 503
+      assert Plug.Conn.get_resp_header(result, "retry-after") == ["3086"]
+      assert_problem_json(result, "rate_limit")
+    end
+
     test "returns 503 with retry-after header for rate_limit" do
       conn = Plug.Test.conn(:get, "/")
 
