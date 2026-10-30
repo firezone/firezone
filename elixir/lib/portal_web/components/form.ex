@@ -8,6 +8,10 @@ defmodule PortalWeb.Components.Form do
   alias PortalWeb.Components.Core
   alias PortalWeb.Components.Navigation
 
+  require Logger
+
+  @raise_on_unredacted_password Application.compile_env(:portal, :raise_on_unredacted_password, false)
+
   @doc """
   Renders a themed LiveView file picker with upload progress, removal, and errors.
   The upload configuration controls accepted file types, sizes, and file count.
@@ -156,11 +160,13 @@ defmodule PortalWeb.Components.Form do
     assigns
     |> assign(field: nil, id: assigns.id || field.id)
     |> assign(:errors, errors)
+    |> assign(:rest, stored_secret_rest(field, assigns.rest))
     |> assign_new(:name, fn -> if assigns.multiple, do: field.name <> "[]", else: field.name end)
     |> assign_new(:value, fn ->
       cond do
         assigns.value_id -> resolve_field_value(field, assigns.value_id)
-        assigns.type == "password" -> submitted_value(field)
+        redacted?(field) -> submitted_value(field)
+        assigns.type == "password" -> unredacted_password(field)
         true -> field.value
       end
     end)
@@ -485,11 +491,112 @@ defmodule PortalWeb.Components.Form do
     end)
   end
 
-  # A password input only echoes what the browser itself submitted, never the
+  # A redacted field only echoes what the browser itself submitted, never the
   # stored value, so an edit form cannot leak a saved secret into the page.
+  defp redacted?(%{form: %{source: %Ecto.Changeset{data: %schema{}}}, field: name}) do
+    function_exported?(schema, :__schema__, 1) and name in schema.__schema__(:redact_fields)
+  end
+
+  defp redacted?(_field), do: false
+
   defp submitted_value(field) do
     Map.get(field.form.params || %{}, to_string(field.field))
   end
+
+  # A password input means the field holds a secret, so its stored value stays
+  # out of the page either way. A schema field that isn't redacted still shows
+  # up in logs and misses the stored-secret handling above, so dev and test
+  # raise to get it marked rather than quietly covering for it.
+  defp unredacted_password(%{form: %{source: %Ecto.Changeset{data: %schema{}}}, field: name} = field) do
+    if function_exported?(schema, :__schema__, 1) do
+      report_unredacted_password(
+        "#{inspect(schema)}.#{name} is rendered as a password input but is not redact: true"
+      )
+    end
+
+    submitted_value(field)
+  end
+
+  defp unredacted_password(field), do: submitted_value(field)
+
+  if @raise_on_unredacted_password do
+    defp report_unredacted_password(message), do: raise(ArgumentError, message)
+  else
+    defp report_unredacted_password(message), do: Logger.warning(message)
+  end
+
+  # A stored secret satisfies the required check, and a blank box keeps it.
+  defp stored_secret_rest(field, rest) do
+    if redacted?(field) and not is_nil(Ecto.Changeset.get_field(field.form.source, field.field)) do
+      rest
+      |> Map.delete(:required)
+      |> Map.put_new(:placeholder, "Leave blank to keep the current value")
+    else
+      rest
+    end
+  end
+
+  ### Stored secrets ###
+
+  @doc "An empty input keeps the stored value."
+  @spec keep_when_blank(Ecto.Changeset.t(), [atom()]) :: Ecto.Changeset.t()
+  def keep_when_blank(changeset, fields) do
+    Enum.reduce(fields, changeset, fn field, changeset ->
+      case Ecto.Changeset.fetch_change(changeset, field) do
+        {:ok, nil} -> Ecto.Changeset.delete_change(changeset, field)
+        _other -> changeset
+      end
+    end)
+  end
+
+  @doc """
+  Forgets a stored secret when any of the `destinations` (`field: label`)
+  changed and the secret was not typed in this submission, and asks for it
+  again. A secret that is already being cleared is left alone.
+
+  Call it after the schema changeset: `validate_required/3` drops a nil change,
+  which would put the stored value back, so the error is added here.
+  """
+  @spec reset_on_change(Ecto.Changeset.t(), atom(), keyword(String.t())) :: Ecto.Changeset.t()
+  def reset_on_change(changeset, secret, destinations) do
+    changed =
+      Enum.find(destinations, fn {field, _label} -> Ecto.Changeset.changed?(changeset, field) end)
+
+    if changed && stored?(changeset, secret) && not submitted?(changeset, secret) &&
+         not clearing?(changeset, secret) do
+      {_field, label} = changed
+
+      message =
+        if secret in changeset.required do
+          "Required for the new #{label}."
+        else
+          "Enter it again, or remove it, for the new #{label}."
+        end
+
+      # The error is shown although the secret input is untouched.
+      %{changeset | params: Map.delete(changeset.params || %{}, "_unused_#{secret}")}
+      |> Ecto.Changeset.put_change(secret, nil)
+      |> Ecto.Changeset.add_error(secret, message, validation: :required)
+    else
+      changeset
+    end
+  end
+
+  defp stored?(changeset, secret), do: not is_nil(Map.get(changeset.data, secret))
+
+  defp clearing?(changeset, secret),
+    do: Ecto.Changeset.fetch_change(changeset, secret) == {:ok, nil}
+
+  # Typing the stored value again leaves no change, so the submission is
+  # what shows it was entered.
+  defp submitted?(%Ecto.Changeset{params: %{} = params}, field) do
+    case Map.get(params, Atom.to_string(field)) do
+      value when is_binary(value) -> String.trim(value) != ""
+      _other -> false
+    end
+  end
+
+  defp submitted?(_changeset, _field), do: false
 
   ### Dialogs ###
 
