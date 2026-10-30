@@ -11,6 +11,45 @@ defmodule PortalAPI.Gateway.SocketTest do
   @connlib_version "1.3.0"
 
   describe "connect/3" do
+    test "new legacy Gateways share the registration bucket with provisioned Gateways" do
+      Portal.Config.put_env_override(:portal, PortalAPI.Sockets.RateLimit,
+        refill_rate: 100_000,
+        capacity: 100_000
+      )
+
+      account = account_fixture(limits: %{users_count: 6, connected_devices_per_actor: 3})
+      site = site_fixture(account: account)
+      subject = subject_fixture(account: account, actor: %{type: :api_client, account: account})
+
+      assert {:ok, provisioned, _single_owner, single_token} =
+               Portal.Devices.provision_gateway(site, "precreated", subject)
+
+      token = gateway_token_fixture(account: account, site: site) |> encode_gateway_token()
+      attrs = connect_attrs(token: token)
+      info = build_connect_info(token: token)
+      assert {:ok, first} = connect(Socket, attrs, connect_info: info)
+      for _ <- 1..54, do: assert(:ok == Portal.Devices.RegistrationRateLimit.check(account))
+      assert {:error, :rate_limit, _} = Portal.Devices.RegistrationRateLimit.check(account)
+
+      rotated = Map.put(attrs, "public_key", generate_public_key())
+      assert {:ok, existing} = connect(Socket, rotated, connect_info: info)
+      assert existing.assigns.gateway.id == first.assigns.gateway.id
+
+      assert {:error, {:rate_limit, _}} =
+               connect(Socket, Map.put(attrs, "external_id", Ecto.UUID.generate()),
+                 connect_info: info
+               )
+
+      assert {:ok, existing} =
+               connect(Socket, connect_attrs(token: single_token),
+                 connect_info: build_connect_info(token: single_token)
+               )
+
+      assert existing.assigns.gateway.id == provisioned.id
+      assert {:error, :rate_limit, _} = Portal.Devices.provision_gateway(site, "blocked", subject)
+      assert Repo.aggregate(Portal.Device, :count, :id) == 2
+    end
+
     test "returns error when token is missing" do
       connect_info = build_connect_info()
       assert connect(Socket, %{}, connect_info: connect_info) == {:error, :missing_token}
