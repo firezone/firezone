@@ -234,7 +234,7 @@ pub fn relay_packets() -> Counter<u64> {
         .build()
 }
 
-/// Counter of relayed payload bytes, recorded for every packet on both datapaths.
+/// Counter of relayed payload bytes.
 pub fn relay_bytes() -> Counter<u64> {
     relay_meter()
         .u64_counter("relay.bytes")
@@ -244,8 +244,6 @@ pub fn relay_bytes() -> Counter<u64> {
 }
 
 /// Histogram of relayed packet sizes, recorded on both the userspace and the XDP datapath.
-///
-/// XDP measurements are sampled; use [`relay_bytes`] for total bytes and throughput.
 ///
 /// Both call-sites build the instrument from this function so the metric definition
 /// (name, unit, buckets) stays identical; tag each measurement with
@@ -263,9 +261,7 @@ pub fn relay_packet_size() -> Histogram<u64> {
         .build()
 }
 
-/// Histogram of the time the eBPF XDP program spent processing sampled relayed packets.
-///
-/// Its count is the number of samples; use [`relay_packets`] for packet rates.
+/// Histogram of the time the eBPF XDP program spent processing one relayed packet.
 pub fn relay_xdp_processing_duration() -> Histogram<u64> {
     relay_meter()
         .u64_histogram("relay.xdp.processing.duration")
