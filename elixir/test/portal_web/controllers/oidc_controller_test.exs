@@ -4103,6 +4103,30 @@ defmodule PortalWeb.OIDCControllerTest do
       assert flash(conn, :error) =~ "needs a Workspace administrator"
     end
 
+    test "a cancelled administrator step clears only its own sign-up cookie", %{conn: conn} do
+      state = PortalWeb.OIDC.sign_verification_state(nil, "google-sign-up-admin")
+      cookie = %Cookie.SignUpState{state: state, verifier: "test-verifier"}
+
+      matching =
+        conn
+        |> Cookie.SignUpState.put(cookie)
+        |> recycle()
+        |> get(~p"/auth/oidc/callback", %{"state" => state, "error" => "access_denied"})
+
+      assert matching.resp_cookies["sign_up_oidc"][:max_age] == 0
+
+      other_state = PortalWeb.OIDC.sign_verification_state("other", "google-sign-up-admin")
+
+      other =
+        conn
+        |> Cookie.SignUpState.put(cookie)
+        |> recycle()
+        |> get(~p"/auth/oidc/callback", %{"state" => other_state, "error" => "access_denied"})
+
+      assert redirected_to(other) == "/sign_up"
+      refute Map.has_key?(other.resp_cookies, "sign_up_oidc")
+    end
+
     test "redirects to sign-up with an error when the cookie is missing", %{
       conn: conn,
       state: state

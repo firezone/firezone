@@ -1215,10 +1215,15 @@ defmodule PortalWeb.OIDCController do
     end
   end
 
-  defp handle_sign_up_admin_authorization_error(conn, _state) do
-    conn
-    |> Cookie.SignUpState.delete()
-    |> redirect_to_sign_up_with_error(@sign_up_admin_error)
+  defp handle_sign_up_admin_authorization_error(conn, state) do
+    with {:ok, cookie} <- fetch_sign_up_cookie(conn),
+         :ok <- verify_state(cookie.state, state) do
+      conn
+      |> Cookie.SignUpState.delete()
+      |> redirect_to_sign_up_with_error(@sign_up_admin_error)
+    else
+      _ -> redirect_to_sign_up_with_error(conn, @sign_up_admin_error)
+    end
   end
 
   # Domain policy comes from the signed ID token, never from userinfo or the signup form.
