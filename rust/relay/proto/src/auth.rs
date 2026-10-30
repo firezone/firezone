@@ -12,11 +12,15 @@
 //! The portal uses this secret to generate credentials for each TURN client.
 //! The credentials take the form of:
 //!
-//! - account-bound username: `{unix_expiry_timestamp}:{account_hash}:{salt}`
+//! - account-bound username: `{unix_expiry_timestamp}:{account_hash}:{device_hash}`
 //! - account-bound password: `sha256({username}:{relay_secret})`
 //!
 //! As such, a TURN client can never create a set of credentials themselves because they are missing the `relay_secret`.
 //! In addition, a relay can validate such a username and password combination without having to store any state other than the `relay_secret`.
+//!
+//! Allocation ownership is `(account_hash, device_hash)`. Expiry remains part of
+//! the authenticated username and is checked on every authenticated request,
+//! but credential renewal does not create a different allocation owner.
 //!
 //! All STUN messages other than `BINDING` requests MUST be authenticated by the client.
 //!
@@ -61,7 +65,7 @@ pub(crate) trait MessageIntegrityExt {
         relay_secret: &SecretString,
         username: &str,
         now: SystemTime,
-    ) -> Result<AccountIdHash, Error>;
+    ) -> Result<AllocationKey, Error>;
 }
 
 impl MessageIntegrityExt for MessageIntegrity {
@@ -70,7 +74,7 @@ impl MessageIntegrityExt for MessageIntegrity {
         relay_secret: &SecretString,
         username: &str,
         now: SystemTime,
-    ) -> Result<AccountIdHash, Error> {
+    ) -> Result<AllocationKey, Error> {
         let username = parse_username(username)?;
         let expiry = username.expiry();
         let expires_at = systemtime_from_unix(expiry).ok_or(Error::InvalidUsername)?;
@@ -88,7 +92,10 @@ impl MessageIntegrityExt for MessageIntegrity {
         )
         .map_err(|_| Error::InvalidPassword)?;
 
-        Ok(AccountIdHash(username.account().to_owned()))
+        Ok(AllocationKey {
+            account: AccountIdHash(username.account().to_owned()),
+            device: username.device.to_owned(),
+        })
     }
 }
 
@@ -254,6 +261,17 @@ pub(crate) enum Error {
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct AccountIdHash(String);
 
+/// The authenticated allocation owner, stable across credential renewals.
+///
+/// The account scopes the device identity. Only construct this after validating
+/// the full username's expiry and message integrity; omitting expiry here does
+/// not relax credential authentication.
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub(crate) struct AllocationKey {
+    pub(crate) account: AccountIdHash,
+    device: String,
+}
+
 impl fmt::Display for AccountIdHash {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.0.fmt(f)
@@ -281,6 +299,7 @@ struct ParsedUsername<'a> {
     raw: &'a str,
     expiry: u64,
     account: &'a str,
+    device: &'a str,
 }
 
 impl<'a> ParsedUsername<'a> {
@@ -300,8 +319,10 @@ impl<'a> ParsedUsername<'a> {
 fn parse_username(username: &str) -> Result<ParsedUsername<'_>, Error> {
     let parts = username.split(':').collect::<Vec<&str>>();
 
-    let (expiry, account) = match parts.as_slice() {
-        [expiry, account, salt] if !account.is_empty() && !salt.is_empty() => (*expiry, *account),
+    let (expiry, account, device) = match parts.as_slice() {
+        [expiry, account, device] if !account.is_empty() && !device.is_empty() => {
+            (*expiry, *account, *device)
+        }
         _ => return Err(Error::InvalidUsername),
     };
 
@@ -311,6 +332,7 @@ fn parse_username(username: &str) -> Result<ParsedUsername<'_>, Error> {
         raw: username,
         expiry,
         account,
+        device,
     })
 }
 
@@ -393,7 +415,7 @@ mod tests {
             systemtime_from_unix(1685200000 - 1000).unwrap(),
         );
 
-        assert_eq!(result.unwrap().to_string(), account);
+        assert_eq!(result.unwrap().account.to_string(), account);
     }
 
     #[test]
@@ -419,6 +441,7 @@ mod tests {
                     systemtime_from_unix(expiry - 1_000).unwrap(),
                 )
                 .unwrap()
+                .account
                 .to_string(),
             account
         );

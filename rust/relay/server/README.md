@@ -48,6 +48,24 @@ By default, the relay listens on port `udp/3478`. This is the standard port for
 STUN/TURN. Additionally, the relay needs to have access to the port range
 `49152` - `65535` for the allocations.
 
+### Allocation limits
+
+The portal supplies a per-account allocation limit for each relay. Accounts
+without a limit are unlimited, subject to the relay's available ports. An
+endpoint shares its allocation across peers, so Gateway peer counts do not
+consume additional allocations. Limit changes apply to new allocations;
+existing allocations can still refresh or move to a new client address.
+
+Allocation ownership uses the account and device hashes in the TURN username.
+The full username, including expiry, is authenticated on every protected request,
+but expiry is excluded from allocation identity. Renewing credentials therefore
+replaces the same device's allocation. Additional allocations at the account
+limit receive TURN 486; exhausting the physical port pool returns TURN 508.
+
+Deploy the Portal changes before upgrading Relays so new credentials use the
+portal-assigned device ID. The credential wire format is unchanged and requires
+no endpoint update.
+
 ### Portal Connection
 
 When given a `token`, the relay will connect to the Firezone portal and wait for
