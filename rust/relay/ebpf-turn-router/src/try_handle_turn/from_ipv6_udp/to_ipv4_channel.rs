@@ -10,7 +10,9 @@ use crate::try_handle_turn::{
     Error, adjust_head,
     channel_data::CdHdr,
     checksum::{self, ChecksumUpdate},
-    config, ref_mut_at,
+    config,
+    mac::EthHdrExt as _,
+    ref_mut_at,
 };
 
 #[inline(always)]
@@ -21,10 +23,10 @@ pub fn to_ipv4_channel(
     // 40 - 20 - 4 = 16 bytes shrink
     const NET_SHRINK: i32 = Ipv6Hdr::LEN as i32 - Ipv4Hdr::LEN as i32 - CdHdr::LEN as i32;
 
-    let (old_eth_src, old_eth_dst) = {
+    let old_macs = {
         // SAFETY: The offset must point to the start of a valid `EthHdr`.
         let old_eth = unsafe { ref_mut_at::<EthHdr>(ctx, 0)? };
-        (old_eth.src_addr, old_eth.dst_addr)
+        old_eth.mac_addrs()
     };
 
     let (
@@ -64,8 +66,7 @@ pub fn to_ipv4_channel(
 
     // SAFETY: The offset must point to the start of a valid `EthHdr`.
     let eth = unsafe { ref_mut_at::<EthHdr>(ctx, NET_SHRINK as usize)? };
-    eth.src_addr = old_eth_dst; // Swap source and destination
-    eth.dst_addr = old_eth_src;
+    eth.set_mac_addrs(old_macs.swapped());
     eth.ether_type = EtherType::Ipv4.into(); // Change to IPv4
 
     //
