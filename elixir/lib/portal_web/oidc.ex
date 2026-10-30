@@ -13,6 +13,7 @@ defmodule PortalWeb.OIDC do
   @client_assertion_type "urn:ietf:params:oauth:client-assertion-type:jwt-bearer"
   @google_directory_identity_scope "openid email"
   @google_domains_scope "https://www.googleapis.com/auth/admin.directory.domain.readonly"
+  @google_verification_scope "openid email profile " <> @google_domains_scope
   @entra_organizations_discovery_document_uri "https://login.microsoftonline.com/organizations/v2.0/.well-known/openid-configuration"
   @entra_organizations_admin_consent_endpoint "https://login.microsoftonline.com/organizations/v2.0/adminconsent"
   @entra_issuer_prefix "https://login.microsoftonline.com/"
@@ -424,28 +425,13 @@ defmodule PortalWeb.OIDC do
     {:ok, %{config: PortalWeb.GitHub.config(callback_url())}}
   end
 
-  def setup_verification("google", opts) do
+  # Listing the Workspace domains is how a Google administrator proves the
+  # domain, so sign-up and provider verification both ask for that scope.
+  def setup_verification(type, opts) when type in ["google", "google_sign_up"] do
     config =
       Portal.Config.fetch_env!(:portal, Google.AuthProvider)
       |> verification_config(opts)
-      |> Map.put(:scope, google_verification_scope(opts))
-
-    {:ok, %{config: config}}
-  end
-
-  def setup_verification("google_sign_up", _opts) do
-    config =
-      Portal.Config.fetch_env!(:portal, Portal.Google.AuthProvider)
-      |> verification_config([])
-
-    {:ok, %{config: config}}
-  end
-
-  def setup_verification("google_sign_up_admin", _opts) do
-    config =
-      Portal.Config.fetch_env!(:portal, Portal.Google.AuthProvider)
-      |> verification_config([])
-      |> Map.put(:scope, google_verification_scope(additional_domains: true))
+      |> Map.put(:scope, @google_verification_scope)
 
     {:ok, %{config: config}}
   end
@@ -491,7 +477,6 @@ defmodule PortalWeb.OIDC do
   def verification_state_type("defender_posture_provider"), do: "defender-posture-provider"
   def verification_state_type("google"), do: "google-auth-provider"
   def verification_state_type("google_sign_up"), do: "google-sign-up"
-  def verification_state_type("google_sign_up_admin"), do: "google-sign-up-admin"
   def verification_state_type("github_sign_up"), do: "github-sign-up"
 
   def verification_state_type(type) when type in ["github", "okta", "oidc"],
@@ -560,11 +545,6 @@ defmodule PortalWeb.OIDC do
   # Sign-up has no existing session to step up, so an account picker is enough.
   def build_verification_uri("google_sign_up", config, verifier, state_token) do
     code_flow_uri(config, verifier, state_token, "select_account")
-  end
-
-  # Proving Workspace administration asks for the domains scope, so Google must show its consent screen.
-  def build_verification_uri("google_sign_up_admin", config, verifier, state_token) do
-    code_flow_uri(config, verifier, state_token, "select_account consent")
   end
 
   # GitHub does not support prompt=login, so re-verifying an existing provider
@@ -698,7 +678,7 @@ defmodule PortalWeb.OIDC do
   Returns {:ok, claims, userinfo_result} or {:error, reason}.
 
   Options:
-  - :iss - The `iss` callback parameter (RFC 9207); checked for GitHub
+  - :iss - The `iss` callback parameter (RFC 9207); checked for GitHub and Google
   """
   def verify_callback(config, code, verifier, opts \\ [])
 
@@ -714,31 +694,43 @@ defmodule PortalWeb.OIDC do
   end
 
   @doc """
-  Verifies a Google account.
+  Verifies a Google account for an auth provider.
 
-  Without `additional_domains: true` only the signed ID token is read, so no
-  domain is trusted. A personal account returns `domains: nil`. A Workspace
-  account (one with an `hd` claim) returns `{:step_up, %{subject:, hosted_domain:}}`
-  because `hd` alone does not show that the user administers the domain.
-
-  With `additional_domains: true` the access token must also list the
-  Workspace customer's verified domains through the Admin SDK, which Google
-  only allows for administrators. The result lists those domains with `hd`
-  first. Pass `:iss` (the RFC 9207 callback parameter) to reject a mismatched issuer. Pass `:expected_subject` to require the same Google user as the first
-  step. Access tokens are used only for setup and are never returned to the browser.
+  A personal account returns `domains: nil`. A Workspace account (one with an
+  `hd` claim) must also list the Workspace customer's verified domains through
+  the Admin SDK, which Google only allows for administrators. The result lists
+  those domains with `hd` first. Pass `:iss` (the RFC 9207 callback parameter)
+  to reject a mismatched issuer. Access tokens are used only for setup and are
+  never returned to the browser.
   """
   def verify_google_callback(config, code, verifier, opts \\ []) do
-    additional_domains? = Keyword.get(opts, :additional_domains, false)
-
-    with {:ok, tokens} <- exchange_code_with_config(config, code, verifier),
-         {:ok, %{"email_verified" => true} = claims} <-
-           verify_token_with_config(config, tokens["id_token"], verifier),
-         :ok <- verify_google_issuer(claims, Keyword.get(opts, :iss)),
-         :ok <- verify_google_subject(claims, Keyword.get(opts, :expected_subject)) do
-      verify_google_hosted_domain(claims, tokens, additional_domains?)
+    with {:ok, %{"email_verified" => true} = claims, tokens} <-
+           verify_google_tokens(config, code, verifier, opts) do
+      verify_google_hosted_domain(claims, tokens)
     else
       {:error, _} = error -> error
       _ -> {:error, :google_workspace_verification_failed}
+    end
+  end
+
+  @doc """
+  Verifies a Google account for sign-up. Applies the same Workspace rule as
+  `verify_google_callback/4` and also returns the claims and userinfo that the
+  sign-up identity is built from.
+  """
+  def verify_google_sign_up_callback(config, code, verifier, opts \\ []) do
+    with {:ok, claims, tokens} <- verify_google_tokens(config, code, verifier, opts),
+         {:ok, %{domains: domains}} <- verify_google_hosted_domain(claims, tokens) do
+      userinfo = fetch_userinfo_with_config(config, tokens["access_token"])
+      {:ok, %{claims: claims, userinfo: userinfo, domains: domains}}
+    end
+  end
+
+  defp verify_google_tokens(config, code, verifier, opts) do
+    with {:ok, tokens} <- exchange_code_with_config(config, code, verifier),
+         {:ok, claims} <- verify_token_with_config(config, tokens["id_token"], verifier),
+         :ok <- verify_google_issuer(claims, Keyword.get(opts, :iss)) do
+      {:ok, claims, tokens}
     end
   end
 
@@ -755,31 +747,11 @@ defmodule PortalWeb.OIDC do
   defp google_issuer(issuer) when is_binary(issuer), do: String.replace_prefix(issuer, "https://", "")
   defp google_issuer(_issuer), do: nil
 
-  defp verify_google_subject(_claims, nil), do: :ok
-
-  defp verify_google_subject(%{"sub" => subject}, expected) when is_binary(subject) do
-    if byte_size(subject) == byte_size(expected) and Plug.Crypto.secure_compare(subject, expected),
-      do: :ok,
-      else: {:error, :google_account_mismatch}
-  end
-
-  defp verify_google_subject(_claims, _expected), do: {:error, :google_account_mismatch}
-
-  defp verify_google_hosted_domain(claims, _tokens, false) do
+  defp verify_google_hosted_domain(claims, tokens) do
     case Map.fetch(claims, "hd") do
       :error ->
         {:ok, %{issuer: claims["iss"], domains: nil, name: nil}}
 
-      {:ok, hosted_domain} when is_binary(hosted_domain) and hosted_domain != "" ->
-        verify_google_step_up(claims, hosted_domain)
-
-      _ ->
-        {:error, :google_workspace_verification_failed}
-    end
-  end
-
-  defp verify_google_hosted_domain(claims, tokens, true) do
-    case Map.fetch(claims, "hd") do
       {:ok, hosted_domain} when is_binary(hosted_domain) and hosted_domain != "" ->
         verify_google_workspace(claims, tokens, hosted_domain)
 
@@ -787,14 +759,6 @@ defmodule PortalWeb.OIDC do
         {:error, :google_workspace_verification_failed}
     end
   end
-
-  defp verify_google_step_up(%{"sub" => subject}, hosted_domain)
-       when is_binary(subject) and subject != "" do
-    {:step_up, %{subject: subject, hosted_domain: String.downcase(hosted_domain)}}
-  end
-
-  defp verify_google_step_up(_claims, _hosted_domain),
-    do: {:error, :google_workspace_verification_failed}
 
   defp verify_google_workspace(claims, tokens, hosted_domain) do
     with access_token when is_binary(access_token) <- tokens["access_token"],
@@ -811,12 +775,6 @@ defmodule PortalWeb.OIDC do
       {:error, _} = error -> error
       _ -> {:error, :google_workspace_verification_failed}
     end
-  end
-
-  defp google_verification_scope(opts) do
-    if Keyword.get(opts, :additional_domains, false),
-      do: "openid email profile " <> @google_domains_scope,
-      else: "openid email profile"
   end
 
   defp google_verified_domains(domains) do
