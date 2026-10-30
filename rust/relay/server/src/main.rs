@@ -1,5 +1,8 @@
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
+mod azure_metrics;
+mod collector_metrics;
+
 #[global_allocator]
 static ALLOC: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
@@ -85,6 +88,10 @@ struct Args {
     /// If set, we will report traces and metrics to this collector via gRPC.
     #[arg(long, env, hide = true)]
     otlp_grpc_endpoint: Option<String>,
+
+    /// Full Azure Monitor OTLP/HTTP metrics ingestion URL.
+    #[arg(long, env, hide = true)]
+    azure_otlp_metrics_endpoint: Option<Url>,
 
     /// Enable offloading of TURN traffic to an eBPF program.
     ///
@@ -300,6 +307,9 @@ fn setup_tracing(args: &Args) -> Result<FilterReloadHandle> {
     );
 
     let directives = std::env::var("RUST_LOG").unwrap_or_else(|_| "info".to_string());
+    let metadata = make_otel_metadata();
+    let mut meter_provider =
+        opentelemetry_sdk::metrics::SdkMeterProvider::builder().with_resource(metadata.clone());
 
     let (dispatch, reload_handle) = match args.otlp_grpc_endpoint.clone() {
         None => {
@@ -313,7 +323,6 @@ fn setup_tracing(args: &Args) -> Result<FilterReloadHandle> {
             (dispatch, reload_handle)
         }
         Some(endpoint) => {
-            let metadata = make_otel_metadata();
             let grpc_endpoint = format!("http://{endpoint}");
 
             tracing::trace!(target: "relay", %grpc_endpoint, "Setting up OTLP exporter for collector");
@@ -325,7 +334,7 @@ fn setup_tracing(args: &Args) -> Result<FilterReloadHandle> {
                 .context("Failed to build OTLP span exporter")?;
 
             let tracer_provider = opentelemetry_sdk::trace::SdkTracerProvider::builder()
-                .with_resource(metadata.clone())
+                .with_resource(metadata)
                 .with_batch_exporter(exporter)
                 .build();
 
@@ -333,25 +342,7 @@ fn setup_tracing(args: &Args) -> Result<FilterReloadHandle> {
 
             tracing::trace!(target: "relay", "Successfully initialized trace provider on tokio runtime");
 
-            // `LowMemory` ships counters as cumulative (so rate dashboards keep working) but
-            // histograms as delta. Without delta, Azure Monitor pins Min/Max to lifetime
-            // extremes after the first outlier and per-window averages can only be
-            // reconstructed via fragile prev()-based KQL.
-            let exporter = opentelemetry_otlp::MetricExporter::builder()
-                .with_tonic()
-                .with_endpoint(grpc_endpoint)
-                .with_temporality(opentelemetry_sdk::metrics::Temporality::LowMemory)
-                .build()
-                .context("Failed to build OTLP metric exporter")?;
-
-            let meter_provider = opentelemetry_sdk::metrics::SdkMeterProvider::builder()
-                .with_resource(metadata)
-                .with_periodic_exporter(exporter)
-                .build();
-
-            global::set_meter_provider(meter_provider);
-
-            tracing::trace!(target: "relay", "Successfully initialized metric provider on tokio runtime");
+            meter_provider = collector_metrics::with_exporter(meter_provider, &grpc_endpoint)?;
 
             let (log_filter, log_reload_handle) = logging::try_filter(&directives)?;
             let (otel_filter, otel_reload_handle) = logging::try_filter(&directives)?;
@@ -369,6 +360,13 @@ fn setup_tracing(args: &Args) -> Result<FilterReloadHandle> {
             (dispatch, log_reload_handle.merge(otel_reload_handle))
         }
     };
+
+    if let Some(endpoint) = &args.azure_otlp_metrics_endpoint {
+        // Reqwest's blocking client initializes its own runtime.
+        meter_provider =
+            tokio::task::block_in_place(|| azure_metrics::with_exporter(meter_provider, endpoint))?;
+    }
+    global::set_meter_provider(meter_provider.build());
 
     drop(temp_logger_guard); // Drop as late as possible
 
