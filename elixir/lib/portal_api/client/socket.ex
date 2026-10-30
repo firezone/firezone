@@ -144,7 +144,7 @@ defmodule PortalAPI.Client.Socket do
         OpenTelemetry.Tracer.set_status(:error, "connected_devices_limit_reached")
         {:error, :connected_devices_limit_reached}
 
-      {:error, :rate_limit, retry_after_ms} ->
+      {:error, {:rate_limit, retry_after_ms}} ->
         OpenTelemetry.Tracer.set_status(:error, "device_registration_rate_limit")
         {:error, {:rate_limit, retry_after_ms}}
 

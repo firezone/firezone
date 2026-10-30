@@ -84,7 +84,7 @@ defmodule PortalAPI.Gateway.Socket do
 
       {:ok, socket}
     else
-      {:error, :rate_limit, retry_after_ms} ->
+      {:error, {:rate_limit, retry_after_ms}} ->
         {:error, {:rate_limit, retry_after_ms}}
 
       {:error, %Ecto.Changeset{} = changeset} ->
