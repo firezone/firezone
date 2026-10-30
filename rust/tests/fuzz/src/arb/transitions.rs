@@ -59,6 +59,7 @@ enum TransitionKind {
     ExhaustRelayPorts,
     FreeRelayPorts,
     CrashClient,
+    CrashGateway,
 }
 
 /// The transitions that open no connection.
@@ -104,6 +105,18 @@ pub(super) fn generate(
         .cloned()
         .collect::<Vec<_>>();
     let client_ids = state.all_client_ids();
+    let connected_gateways = state
+        .gateways
+        .keys()
+        .filter(|gateway| {
+            state.clients.values().any(|client| {
+                client.inner().connected_resources().any(|resource| {
+                    client.inner().gateway_for_resource(resource) == Some(**gateway)
+                })
+            })
+        })
+        .copied()
+        .collect::<Vec<_>>();
     let dns_record_domains = state.dns_resource_domains();
     let packet_targets = packets::targets(state, portal);
     let revoked_peer_targets = packets::revoked_peer_targets(state);
@@ -209,6 +222,7 @@ pub(super) fn generate(
         can_exhaust_relay.then_some((K::ExhaustRelayPorts, 1)),
         (!exhausted_relays.is_empty()).then_some((K::FreeRelayPorts, 1)),
         (!client_ids.is_empty()).then_some((K::CrashClient, 1)),
+        (portal.iceless() && !connected_gateways.is_empty()).then_some((K::CrashGateway, 1)),
     ]
     .into_iter()
     .flatten()
@@ -350,6 +364,11 @@ pub(super) fn generate(
             let client_id = client_ids[g.choose_index(client_ids.len())];
             let key = g.fresh_private_key();
             Transition::CrashClient { client_id, key }
+        }
+        K::CrashGateway => {
+            let gateway_id = connected_gateways[g.choose_index(connected_gateways.len())];
+            let key = g.fresh_private_key();
+            Transition::CrashGateway { gateway_id, key }
         }
         K::SetInternetResourceState => {
             let client_id = client_ids[g.choose_index(client_ids.len())];

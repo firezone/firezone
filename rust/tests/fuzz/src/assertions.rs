@@ -817,6 +817,12 @@ fn assert_resource_list(ref_client: &RefClient, sim_client: &SimClient) {
         };
 
         assert_resource_definition(expected, actual);
+        if expected.status() == ResourceStatus::Online
+            && actual.status() == ResourceStatus::Unknown
+            && ref_client.status_may_be_unknown_after_gateway_crash(resource)
+        {
+            continue;
+        }
         assert_resource_status(resource, expected.status(), actual.status());
     }
 
