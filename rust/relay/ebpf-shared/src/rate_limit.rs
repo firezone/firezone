@@ -162,18 +162,18 @@ mod tests {
 
     #[test]
     fn traffic_below_marking_rate_is_untouched() {
-        let mut limiter = limiter();
+        let mut limiter = limiter(LIMIT);
 
-        let verdicts = offer(&mut limiter, 0, 10 * SECOND_NS, LIMIT * 75 / 100);
+        let verdicts = offer(&mut limiter, 0, 10, LIMIT * 75 / 100);
 
         assert!(verdicts.iter().all(|v| *v == Verdict::Pass));
     }
 
     #[test]
     fn traffic_between_marking_rate_and_limit_is_marked_but_not_dropped() {
-        let mut limiter = limiter();
+        let mut limiter = limiter(LIMIT);
 
-        let verdicts = offer(&mut limiter, 0, 10 * SECOND_NS, LIMIT * 95 / 100);
+        let verdicts = offer(&mut limiter, 0, 10, LIMIT * 95 / 100);
 
         assert!(verdicts.contains(&Verdict::Mark));
         assert!(!verdicts.contains(&Verdict::Drop));
@@ -181,9 +181,9 @@ mod tests {
 
     #[test]
     fn forwarded_throughput_converges_to_limit_even_if_sender_ignores_marks() {
-        let mut limiter = limiter();
+        let mut limiter = limiter(LIMIT);
 
-        let verdicts = offer(&mut limiter, 0, 10 * SECOND_NS, 4 * LIMIT);
+        let verdicts = offer(&mut limiter, 0, 10, 4 * LIMIT);
 
         let forwarded_bytes =
             verdicts.iter().filter(|v| **v != Verdict::Drop).count() as u64 * PACKET_SIZE as u64;
@@ -196,9 +196,9 @@ mod tests {
 
     #[test]
     fn marks_before_dropping() {
-        let mut limiter = limiter();
+        let mut limiter = limiter(LIMIT);
 
-        let verdicts = offer(&mut limiter, 0, SECOND_NS, 2 * LIMIT);
+        let verdicts = offer(&mut limiter, 0, 1, 2 * LIMIT);
 
         let first_mark = verdicts.iter().position(|v| *v == Verdict::Mark).unwrap();
         let first_drop = verdicts.iter().position(|v| *v == Verdict::Drop).unwrap();
@@ -208,11 +208,11 @@ mod tests {
 
     #[test]
     fn stops_marking_as_soon_as_sender_slows_down() {
-        let mut limiter = limiter();
-        let marked = offer(&mut limiter, 0, 2 * SECOND_NS, LIMIT * 95 / 100);
+        let mut limiter = limiter(LIMIT);
+        let marked = offer(&mut limiter, 0, 2, LIMIT * 95 / 100);
         assert_eq!(marked.last(), Some(&Verdict::Mark));
 
-        let verdicts = offer(&mut limiter, 2 * SECOND_NS, 3 * SECOND_NS, LIMIT * 70 / 100);
+        let verdicts = offer(&mut limiter, 2, 3, LIMIT * 70 / 100);
 
         // Only the packet straddling the change in rate may still be marked.
         assert!(verdicts[1..].iter().all(|v| *v == Verdict::Pass));
@@ -220,8 +220,8 @@ mod tests {
 
     #[test]
     fn recovers_burst_allowance_when_idle() {
-        let mut limiter = limiter();
-        let exhausted = offer(&mut limiter, 0, SECOND_NS, 4 * LIMIT);
+        let mut limiter = limiter(LIMIT);
+        let exhausted = offer(&mut limiter, 0, 1, 4 * LIMIT);
         assert_eq!(exhausted.last(), Some(&Verdict::Drop));
 
         let verdict = limiter.check(2 * SECOND_NS, PACKET_SIZE);
@@ -236,20 +236,20 @@ mod tests {
         assert_eq!(core::mem::size_of::<Route<crate::ClientAndChannelV6>>(), 48);
     }
 
-    fn limiter() -> RateLimiter {
-        RateLimiter::new(NonZeroU64::new(LIMIT).unwrap())
+    fn limiter(bytes_per_second: u64) -> RateLimiter {
+        RateLimiter::new(NonZeroU64::new(bytes_per_second).unwrap())
     }
 
-    /// Offers `PACKET_SIZE` packets at a constant `bytes_per_second` between `start_ns` and `end_ns`.
+    /// Offers `PACKET_SIZE` packets at a constant `bytes_per_second` from second `start` until second `end`.
     fn offer(
         limiter: &mut RateLimiter,
-        start_ns: u64,
-        end_ns: u64,
+        start: u64,
+        end: u64,
         bytes_per_second: u64,
     ) -> Vec<Verdict> {
         let interval_ns = PACKET_SIZE as u64 * SECOND_NS / bytes_per_second;
 
-        (start_ns..end_ns)
+        (start * SECOND_NS..end * SECOND_NS)
             .step_by(interval_ns as usize)
             .map(|now_ns| limiter.check(now_ns, PACKET_SIZE))
             .collect()
