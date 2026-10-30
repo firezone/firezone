@@ -23,7 +23,9 @@ use rand::rngs::StdRng;
 use rand::{RngExt, SeedableRng};
 use secrecy::{ExposeSecret, SecretString};
 use std::borrow::Cow;
+use std::collections::HashMap;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
+use std::num::NonZeroUsize;
 use std::pin::Pin;
 use std::process::ExitCode;
 use std::sync::Arc;
@@ -436,11 +438,15 @@ enum IngressMessages {
 struct Init {
     #[serde(default)]
     account_ids: Vec<AccountId>,
+    #[serde(default)]
+    allocation_limits: HashMap<AccountId, NonZeroUsize>,
 }
 
 #[derive(serde::Deserialize, Debug)]
 struct Account {
     account_id: AccountId,
+    #[serde(default)]
+    allocation_limit: Option<NonZeroUsize>,
 }
 
 #[derive(serde::Serialize, PartialEq, Debug, Clone)]
@@ -732,11 +738,14 @@ where
                         "Received TURN account list"
                     );
                     self.server.set_accounts(init.account_ids);
+                    self.server.set_allocation_limits(init.allocation_limits);
                     tick.want_continue();
                 }
                 Poll::Ready(Some(Ok(IngressMessages::AccountAdded(account)))) => {
                     tracing::info!(account_id = %account.account_id, "Added account to TURN allow list");
                     self.server.add_account(account.account_id);
+                    self.server
+                        .set_allocation_limit(account.account_id, account.allocation_limit);
                     tick.want_continue();
                 }
                 Poll::Ready(Some(Ok(IngressMessages::AccountRemoved(account)))) => {
