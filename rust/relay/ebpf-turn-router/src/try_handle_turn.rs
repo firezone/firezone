@@ -65,6 +65,10 @@ pub fn try_handle_turn(ctx: &XdpContext) -> Result<(), Error> {
         _ => return Err(Error::NotIp),
     };
 
+    if verdict == Verdict::Drop {
+        return Err(Error::ThroughputLimitExceeded);
+    }
+
     // Every forwarding path preserves ECN, including address-family translation.
     // Read it after rewriting so it need not stay live across the routing hot path.
     // Marking happens here too so it covers all forwarding paths at once.
@@ -196,7 +200,6 @@ fn try_handle_from_ipv4_udp(ctx: &XdpContext, num_bytes: u16) -> Result<Verdict,
     );
 
     let (cc, verdict) = routing::route_from_peer(pp, num_bytes)?;
-    let verdict = rate_limit::ensure_not_dropped(verdict)?;
 
     match cc {
         ClientAndChannel::V4(cc) => {
@@ -266,7 +269,6 @@ fn try_handle_from_ipv4_channel_data(ctx: &XdpContext, num_bytes: u16) -> Result
     );
 
     let (pp, verdict) = routing::route_from_client(cc, num_bytes)?;
-    let verdict = rate_limit::ensure_not_dropped(verdict)?;
 
     match pp {
         PortAndPeer::V4(pp) => {
@@ -292,8 +294,14 @@ fn try_handle_from_ipv4_channel_data(ctx: &XdpContext, num_bytes: u16) -> Result
     }
 
     if is_own_public_ip(pp.peer_ip())? {
-        let pp = pp.flip_ports();
-        let cc = routing::get_client_and_channel(pp)?;
+        // A dropped packet must not count against the limit of the allocation it would have reached.
+        if verdict == Verdict::Drop {
+            return Ok(verdict);
+        }
+
+        // The packet leaves through another allocation on this Relay, so it also counts against its limit.
+        let (cc, hairpin_verdict) = routing::route_from_peer(pp.flip_ports(), num_bytes)?;
+        let verdict = verdict.max(hairpin_verdict);
 
         match cc {
             ClientAndChannel::V4(cc) => {
@@ -354,7 +362,6 @@ fn try_handle_from_ipv6_udp(ctx: &XdpContext, num_bytes: u16) -> Result<Verdict,
     );
 
     let (cc, verdict) = routing::route_from_peer(pp, num_bytes)?;
-    let verdict = rate_limit::ensure_not_dropped(verdict)?;
 
     match cc {
         ClientAndChannel::V4(cc) => {
@@ -424,7 +431,6 @@ fn try_handle_from_ipv6_channel_data(ctx: &XdpContext, num_bytes: u16) -> Result
     );
 
     let (pp, verdict) = routing::route_from_client(cc, num_bytes)?;
-    let verdict = rate_limit::ensure_not_dropped(verdict)?;
 
     match pp {
         PortAndPeer::V4(pp) => {
@@ -450,8 +456,14 @@ fn try_handle_from_ipv6_channel_data(ctx: &XdpContext, num_bytes: u16) -> Result
     }
 
     if is_own_public_ip(pp.peer_ip())? {
-        let pp = pp.flip_ports();
-        let cc = routing::get_client_and_channel(pp)?;
+        // A dropped packet must not count against the limit of the allocation it would have reached.
+        if verdict == Verdict::Drop {
+            return Ok(verdict);
+        }
+
+        // The packet leaves through another allocation on this Relay, so it also counts against its limit.
+        let (cc, hairpin_verdict) = routing::route_from_peer(pp.flip_ports(), num_bytes)?;
+        let verdict = verdict.max(hairpin_verdict);
 
         match cc {
             ClientAndChannel::V4(cc) => {

@@ -8,7 +8,7 @@
 use aya_ebpf::{macros::map, maps::HashMap};
 use ebpf_shared::{
     ClientAndChannel, ClientAndChannelV4, ClientAndChannelV6, PortAndPeer, PortAndPeerV4,
-    PortAndPeerV6, Route, Verdict,
+    PortAndPeerV6, RateLimiter, Route, Verdict,
 };
 
 use crate::{time::KernelInstant, try_handle_turn::Error};
@@ -76,44 +76,6 @@ pub fn route_from_client(
     Ok((PortAndPeer::V6(pp), verdict))
 }
 
-/// Looks up where to send traffic from a peer without charging it.
-///
-/// Used when relaying between two allocations on this relay: the traffic has already been charged
-/// to the channel it arrived on.
-#[inline(always)]
-pub fn get_client_and_channel(key: impl Into<PortAndPeer>) -> Result<ClientAndChannel, Error> {
-    let key = key.into();
-
-    let maybe_v4 = get_client_and_channel_v4(key).map(ClientAndChannel::V4);
-    let maybe_v6 = get_client_and_channel_v6(key).map(ClientAndChannel::V6);
-
-    maybe_v4.or(maybe_v6)
-}
-
-#[inline(always)]
-fn get_client_and_channel_v4(key: impl Into<PortAndPeer>) -> Result<ClientAndChannelV4, Error> {
-    match key.into() {
-        PortAndPeer::V4(pp) => unsafe { UDP_TO_CHAN_44.get(&pp) }
-            .map(|route| route.dst)
-            .ok_or(Error::NoEntry(SupportedChannel::Udp4ToChan)),
-        PortAndPeer::V6(pp) => unsafe { UDP_TO_CHAN_64.get(&pp) }
-            .map(|route| route.dst)
-            .ok_or(Error::NoEntry(SupportedChannel::Udp6ToChan)),
-    }
-}
-
-#[inline(always)]
-fn get_client_and_channel_v6(key: impl Into<PortAndPeer>) -> Result<ClientAndChannelV6, Error> {
-    match key.into() {
-        PortAndPeer::V4(pp) => unsafe { UDP_TO_CHAN_46.get(&pp) }
-            .map(|route| route.dst)
-            .ok_or(Error::NoEntry(SupportedChannel::Udp4ToChan)),
-        PortAndPeer::V6(pp) => unsafe { UDP_TO_CHAN_66.get(&pp) }
-            .map(|route| route.dst)
-            .ok_or(Error::NoEntry(SupportedChannel::Udp6ToChan)),
-    }
-}
-
 #[inline(always)]
 fn charge_client_and_channel_v4(
     key: PortAndPeer,
@@ -167,30 +129,28 @@ fn charge_port_and_peer_v6(
 }
 
 /// Charges a packet against the rate limiter stored in the map entry.
-///
-/// The limiter is updated in place without synchronisation.
-/// RSS steers all packets of a channel to the same CPU, so concurrent updates of the same
-/// entry are rare; a lost update merely lets a packet through for free.
 #[inline(always)]
 fn charge<K, V>(map: &HashMap<K, Route<V>>, key: &K, num_bytes: u16) -> Option<(V, Verdict)>
 where
     V: Copy,
 {
     let route = map.get_ptr_mut(key)?;
-    // SAFETY: The pointer comes from a successful lookup and map values are never freed while the program runs.
-    let route = unsafe { &mut *route };
 
-    // Reading the clock is comparatively expensive, so only do it for channels that are limited.
+    // SAFETY: The pointer comes from a successful lookup and map values are never freed while the program runs.
+    // Other CPUs may charge the same limiter concurrently, e.g. when relaying between two allocations on this Relay,
+    // so we never create a reference to it.
     // The limiter's tolerances are orders of magnitude longer than a scheduler tick, so the coarse clock suffices.
-    let verdict = if route.limiter.is_unlimited() {
-        Verdict::Pass
-    } else {
-        route
-            .limiter
-            .check(KernelInstant::now_coarse().as_nanos(), num_bytes)
+    let (dst, verdict) = unsafe {
+        let verdict = RateLimiter::check_shared(
+            &raw mut (*route).limiter,
+            || KernelInstant::now_coarse().as_nanos(),
+            num_bytes,
+        );
+
+        ((*route).dst, verdict)
     };
 
-    Some((route.dst, verdict))
+    Some((dst, verdict))
 }
 
 #[cfg(test)]

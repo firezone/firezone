@@ -583,6 +583,8 @@ mod tests {
     const PEER_V6: SocketAddrV6 =
         SocketAddrV6::new(Ipv6Addr::new(0x2001, 0xdb8, 0, 0, 0, 0, 0, 2), 50000, 0, 0);
     const ALLOCATION: u16 = 49152;
+    const OTHER_CLIENT_V4: SocketAddrV4 = SocketAddrV4::new(Ipv4Addr::new(198, 51, 100, 2), 40000);
+    const OTHER_ALLOCATION: u16 = 49153;
     const CHANNEL: u16 = 0x4000;
 
     /// 1 Mbit/s makes every [`PAYLOAD_LEN`] packet cost 8ms of the 250ms burst tolerance at the limit
@@ -649,6 +651,30 @@ mod tests {
         assert!(outcomes.contains(&Outcome::Dropped));
         assert!(!outcomes.contains(&Outcome::Forwarded { ecn: CE }));
         assert_eq!(program.rate_limited_packets().unwrap().marked, 0);
+    }
+
+    #[test]
+    #[ignore = "Needs root to load eBPF programs"]
+    fn throughput_limit_applies_to_traffic_between_two_allocations() {
+        let mut program = Program::load_detached();
+        program.bind_channel(
+            CLIENT_V4.into(),
+            SocketAddrV4::new(RELAY_V4, OTHER_ALLOCATION).into(),
+            0,
+        );
+        program.bind_channel_on(
+            OTHER_ALLOCATION,
+            OTHER_CLIENT_V4.into(),
+            SocketAddrV4::new(RELAY_V4, ALLOCATION).into(),
+            LIMIT_BPS,
+        );
+        let packet = channel_data_ipv4(ECT0);
+
+        let outcomes = (0..NUM_PACKETS)
+            .map(|_| program.run(&packet))
+            .collect::<Vec<_>>();
+
+        assert_marks_before_dropping(&outcomes);
     }
 
     #[test]
@@ -768,11 +794,21 @@ mod tests {
         }
 
         fn bind_channel(&mut self, client: SocketAddr, peer: SocketAddr, limit_bps: u64) {
+            self.bind_channel_on(ALLOCATION, client, peer, limit_bps);
+        }
+
+        fn bind_channel_on(
+            &mut self,
+            allocation: u16,
+            client: SocketAddr,
+            peer: SocketAddr,
+            limit_bps: u64,
+        ) {
             self.add_channel_binding(
                 ClientSocket::new(client),
                 ChannelNumber::new(CHANNEL).unwrap(),
                 PeerSocket::new(peer),
-                AllocationPort::new(ALLOCATION),
+                AllocationPort::new(allocation),
                 ThroughputLimit::from_bits_per_second(limit_bps),
             )
             .unwrap();

@@ -1,10 +1,10 @@
 //! Enforces the verdicts of the per-channel rate limiters stored in the routing maps.
 
 use aya_ebpf::{macros::map, maps::PerCpuArray};
-use ebpf_shared::{RateLimitCounter, Verdict};
+use ebpf_shared::RateLimitCounter;
 use network_types::ip::{Ipv4Hdr, Ipv6Hdr};
 
-use crate::try_handle_turn::{Error, checksum::ChecksumUpdate, per_cpu};
+use crate::try_handle_turn::{checksum::ChecksumUpdate, per_cpu};
 
 const ECN_ECT1: u8 = 0b01;
 const ECN_ECT0: u8 = 0b10;
@@ -13,16 +13,6 @@ const ECN_CE: u8 = 0b11;
 #[map]
 static RATE_LIMIT_COUNTERS: PerCpuArray<u64> =
     PerCpuArray::with_max_entries(RateLimitCounter::NUM_ENTRIES, 0);
-
-/// Fails with [`Error::ThroughputLimitExceeded`] if the packet must be dropped.
-#[inline(always)]
-pub fn ensure_not_dropped(verdict: Verdict) -> Result<Verdict, Error> {
-    if verdict == Verdict::Drop {
-        return Err(Error::ThroughputLimitExceeded);
-    }
-
-    Ok(verdict)
-}
 
 /// Sets ECN Congestion Experienced on an ECN-capable IPv4 packet.
 #[inline(always)]
