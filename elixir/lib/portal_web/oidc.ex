@@ -724,7 +724,7 @@ defmodule PortalWeb.OIDC do
   With `additional_domains: true` the access token must also list the
   Workspace customer's verified domains through the Admin SDK, which Google
   only allows for administrators. The result lists those domains with `hd`
-  first. Pass `:expected_subject` to require the same Google user as the first
+  first. Pass `:iss` (the RFC 9207 callback parameter) to reject a mismatched issuer. Pass `:expected_subject` to require the same Google user as the first
   step. Access tokens are used only for setup and are never returned to the browser.
   """
   def verify_google_callback(config, code, verifier, opts \\ []) do
@@ -733,6 +733,7 @@ defmodule PortalWeb.OIDC do
     with {:ok, tokens} <- exchange_code_with_config(config, code, verifier),
          {:ok, %{"email_verified" => true} = claims} <-
            verify_token_with_config(config, tokens["id_token"], verifier),
+         :ok <- verify_google_issuer(claims, Keyword.get(opts, :iss)),
          :ok <- verify_google_subject(claims, Keyword.get(opts, :expected_subject)) do
       verify_google_hosted_domain(claims, tokens, additional_domains?)
     else
@@ -740,6 +741,19 @@ defmodule PortalWeb.OIDC do
       _ -> {:error, :google_workspace_verification_failed}
     end
   end
+
+  defp verify_google_issuer(_claims, nil), do: :ok
+
+  defp verify_google_issuer(%{"iss" => token_issuer}, iss) when is_binary(token_issuer) do
+    if google_issuer(token_issuer) == google_issuer(iss),
+      do: :ok,
+      else: {:error, :google_issuer_mismatch}
+  end
+
+  defp verify_google_issuer(_claims, _iss), do: {:error, :google_issuer_mismatch}
+
+  defp google_issuer(issuer) when is_binary(issuer), do: String.replace_prefix(issuer, "https://", "")
+  defp google_issuer(_issuer), do: nil
 
   defp verify_google_subject(_claims, nil), do: :ok
 

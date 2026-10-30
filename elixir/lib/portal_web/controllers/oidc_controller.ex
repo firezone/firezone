@@ -60,7 +60,7 @@ defmodule PortalWeb.OIDCController do
 
   @spec callback(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def callback(conn, %{"state" => state, "code" => code} = params) do
-    # RFC 9207 issuer of the authorization response; only GitHub flows check it.
+    # RFC 9207 issuer of the authorization response; checked for GitHub and Google verification.
     iss = params["iss"]
 
     case parse_callback_state(state) do
@@ -83,7 +83,7 @@ defmodule PortalWeb.OIDCController do
         )
 
       {:google_auth_provider, lv_pid_string, verification_ref} ->
-        handle_google_auth_provider_verification(conn, code, lv_pid_string, verification_ref)
+        handle_google_auth_provider_verification(conn, code, iss, lv_pid_string, verification_ref)
 
       {:google_directory_sync, lv_pid_string, verification_ref} ->
         handle_google_directory_sync_verification(
@@ -97,7 +97,7 @@ defmodule PortalWeb.OIDCController do
         handle_sign_up_callback(conn, code, iss, state, provider_type)
 
       {:sign_up_admin, "google"} ->
-        handle_sign_up_admin_callback(conn, code, state)
+        handle_sign_up_admin_callback(conn, code, iss, state)
 
       _ ->
         handle_authentication_callback(conn, state, code, iss)
@@ -1187,7 +1187,7 @@ defmodule PortalWeb.OIDCController do
     end
   end
 
-  defp handle_sign_up_admin_callback(conn, code, state) do
+  defp handle_sign_up_admin_callback(conn, code, iss, state) do
     with {:ok, %{identity: %{identity: identity, subject: subject, hosted_domain: hosted_domain}} = cookie} <-
            fetch_sign_up_cookie(conn),
          :ok <- verify_state(cookie.state, state),
@@ -1195,7 +1195,8 @@ defmodule PortalWeb.OIDCController do
          {:ok, %{domains: [^hosted_domain | _]}} <-
            PortalWeb.OIDC.verify_google_callback(config, code, cookie.verifier,
              additional_domains: true,
-             expected_subject: subject
+             expected_subject: subject,
+             iss: iss
            ) do
       conn
       |> Cookie.SignUpState.delete()
@@ -1320,7 +1321,7 @@ defmodule PortalWeb.OIDCController do
     redirect(conn, to: ~p"/verification/oidc?result=#{token}")
   end
 
-  defp handle_google_auth_provider_verification(conn, code, lv_pid_string, verification_ref) do
+  defp handle_google_auth_provider_verification(conn, code, iss, lv_pid_string, verification_ref) do
     pending =
       lv_pid_string
       |> PortalWeb.OIDC.deserialize_pid()
@@ -1333,7 +1334,8 @@ defmodule PortalWeb.OIDCController do
       with {:ok, %{config: config, verifier: verifier} = pending} <- pending do
         PortalWeb.OIDC.verify_google_callback(config, code, verifier,
           additional_domains: additional_domains?,
-          expected_subject: Map.get(pending, :expected_subject)
+          expected_subject: Map.get(pending, :expected_subject),
+          iss: iss
         )
       end
 

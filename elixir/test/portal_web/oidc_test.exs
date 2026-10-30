@@ -54,6 +54,28 @@ defmodule PortalWeb.OIDCTest do
                OIDC.verify_google_callback(config, "code", "test-verifier")
     end
 
+    test "rejects a callback issuer that differs from the token issuer", %{config: config} do
+      google_setup_token(%{"hd" => "primary.example"})
+      token_issuer = Mocks.OIDC.default_claims()["iss"]
+
+      assert {:error, :google_issuer_mismatch} =
+               OIDC.verify_google_callback(config, "code", "test-verifier",
+                 iss: "https://evil.example"
+               )
+
+      google_setup_token(%{"hd" => "primary.example"})
+
+      assert {:step_up, _} =
+               OIDC.verify_google_callback(config, "code", "test-verifier", iss: token_issuer)
+
+      google_setup_token(%{"hd" => "primary.example"})
+
+      assert {:step_up, _} =
+               OIDC.verify_google_callback(config, "code", "test-verifier",
+                 iss: String.replace_prefix(token_issuer, "https://", "")
+               )
+    end
+
     test "the administrator step requires the same Google user", %{config: config} do
       google_setup_token(%{"hd" => "example.com"})
       Req.Test.stub(Portal.Google.APIClient, fn _conn -> flunk("must not read domains for another user") end)
