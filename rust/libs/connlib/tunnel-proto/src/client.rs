@@ -1283,6 +1283,17 @@ impl ClientState {
         peer.remove_resource(&resource_id);
     }
 
+    /// Forgets the connection to a peer that reconnected to the portal with a different key.
+    pub fn handle_public_key_changed(
+        &mut self,
+        peer: ClientOrGatewayId,
+        public_key: PublicKey,
+        now: Instant,
+    ) {
+        self.node.handle_remote_key_changed(peer, public_key, now);
+        self.drain_node_events(now);
+    }
+
     /// Resyncs inbound client-to-client authorizations from the portal's `init`.
     pub fn retain_authorizations(
         &mut self,

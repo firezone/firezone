@@ -448,6 +448,35 @@ where
         tracing::info!("Connection removed ({reason})");
     }
 
+    /// Fails the ICE-less connection to `cid` unless the remote still uses the `remote` key.
+    ///
+    /// A remote that restarted comes back with a new key and has lost the WireGuard session of
+    /// the existing connection. This reports [`Event::ConnectionFailed`] just like a connection
+    /// whose handshakes time out, without waiting for that to happen.
+    /// Connections using ICE are left alone.
+    #[tracing::instrument(level = "info", skip_all, fields(%cid))]
+    pub fn handle_remote_key_changed(
+        &mut self,
+        cid: TId,
+        remote: sanstun::PublicKey,
+        now: Instant,
+    ) {
+        self.last_now = now;
+
+        if self
+            .connections
+            .get_established(&cid)
+            .is_none_or(|c| !c.agent.is_iceless() || c.remote_pub_key == remote)
+        {
+            return;
+        }
+
+        self.connections.remove_established(&cid, now);
+        self.pending_events.push_back(Event::ConnectionFailed(cid));
+
+        tracing::info!("Connection failed (remote has a new key)");
+    }
+
     /// Closes a connection to the provided peer.
     ///
     /// Reports [`Event::ConnectionClosed`] right away but keeps the connection's WireGuard session
