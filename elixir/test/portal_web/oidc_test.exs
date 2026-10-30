@@ -30,13 +30,65 @@ defmodule PortalWeb.OIDCTest do
       %{config: config}
     end
 
-    test "only setup requests domain access; signup and sign-in keep identity scopes" do
+    test "setup and sign-up request the domains scope; sign-in keeps identity scopes" do
       assert {:ok, %{config: config}} = OIDC.setup_verification("google", [])
-      assert config.scope =~ "admin.directory.domain.readonly"
+      assert config.scope == "openid email profile https://www.googleapis.com/auth/admin.directory.domain.readonly"
       assert {:ok, %{config: signup}} = OIDC.setup_verification("google_sign_up", [])
-      refute signup[:scope] =~ "admin.directory"
+      assert signup.scope == config.scope
       assert {:ok, signin} = OIDC.config_for_provider(%Portal.Google.AuthProvider{})
       refute signin[:scope] =~ "admin.directory"
+    end
+
+    test "a Workspace account is verified through its domain list, never hd alone", %{config: config} do
+      google_setup_token(%{"hd" => "Primary.Example"})
+      Req.Test.expect(Portal.Google.APIClient, fn conn ->
+        Req.Test.json(conn, %{"domains" => [%{"domainName" => "primary.example", "verified" => true, "isPrimary" => true}]})
+      end)
+      assert {:ok, %{domains: ["primary.example"], name: "primary.example"}} =
+               OIDC.verify_google_callback(config, "code", "test-verifier")
+    end
+
+    test "rejects a callback issuer that differs from the token issuer", %{config: config} do
+      google_setup_token(%{})
+      token_issuer = Mocks.OIDC.default_claims()["iss"]
+
+      assert {:error, :google_issuer_mismatch} =
+               OIDC.verify_google_callback(config, "code", "test-verifier",
+                 iss: "https://evil.example"
+               )
+
+      google_setup_token(%{})
+
+      assert {:ok, %{domains: nil}} =
+               OIDC.verify_google_callback(config, "code", "test-verifier", iss: token_issuer)
+
+      google_setup_token(%{})
+
+      assert {:ok, %{domains: nil}} =
+               OIDC.verify_google_callback(config, "code", "test-verifier",
+                 iss: String.replace_prefix(token_issuer, "https://", "")
+               )
+    end
+
+    test "sign-up returns the claims, userinfo and the proven domains", %{config: config} do
+      google_setup_token(%{"hd" => "workspace.example"})
+      Req.Test.expect(Portal.Google.APIClient, fn conn ->
+        Req.Test.json(conn, %{"domains" => [
+          %{"domainName" => "workspace.example", "verified" => true, "isPrimary" => true},
+          %{"domainName" => "other.example", "verified" => true}]})
+      end)
+      assert {:ok, %{claims: %{"sub" => "353690423699814251281"}, userinfo: {:ok, _}, domains: domains}} =
+               OIDC.verify_google_sign_up_callback(config, "code", "test-verifier")
+      assert domains == ["workspace.example", "other.example"]
+
+      google_setup_token(%{})
+      Req.Test.stub(Portal.Google.APIClient, fn _conn -> flunk("personal accounts must not read Workspace domains") end)
+      assert {:ok, %{domains: nil}} = OIDC.verify_google_sign_up_callback(config, "code", "test-verifier")
+
+      google_setup_token(%{"hd" => "workspace.example"})
+      Req.Test.expect(Portal.Google.APIClient, fn conn -> Plug.Conn.send_resp(conn, 403, "forbidden") end)
+      assert {:error, :google_workspace_verification_failed} =
+               OIDC.verify_google_sign_up_callback(config, "code", "test-verifier")
     end
 
     test "reads verified primary, secondary, and alias domains", %{config: config} do
@@ -53,7 +105,7 @@ defmodule PortalWeb.OIDCTest do
       end)
       assert {:ok, %{name: "PRIMARY.EXAMPLE", domains: domains}} =
                OIDC.verify_google_callback(config, "code", "test-verifier")
-      assert domains == ["primary.example", "alias.example", "secondary.example"]
+      assert domains == ["secondary.example", "alias.example", "primary.example"]
     end
 
     for overrides <- [%{"hd" => nil}, %{"hd" => ""}, %{"email_verified" => false}, %{"hd" => "example.com", "email_verified" => false}] do

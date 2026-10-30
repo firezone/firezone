@@ -12,6 +12,8 @@ defmodule PortalWeb.OIDC do
 
   @client_assertion_type "urn:ietf:params:oauth:client-assertion-type:jwt-bearer"
   @google_directory_identity_scope "openid email"
+  @google_domains_scope "https://www.googleapis.com/auth/admin.directory.domain.readonly"
+  @google_verification_scope "openid email profile " <> @google_domains_scope
   @entra_organizations_discovery_document_uri "https://login.microsoftonline.com/organizations/v2.0/.well-known/openid-configuration"
   @entra_organizations_admin_consent_endpoint "https://login.microsoftonline.com/organizations/v2.0/adminconsent"
   @entra_issuer_prefix "https://login.microsoftonline.com/"
@@ -423,19 +425,13 @@ defmodule PortalWeb.OIDC do
     {:ok, %{config: PortalWeb.GitHub.config(callback_url())}}
   end
 
-  def setup_verification("google", opts) do
+  # Listing the Workspace domains is how a Google administrator proves the
+  # domain, so sign-up and provider verification both ask for that scope.
+  def setup_verification(type, opts) when type in ["google", "google_sign_up"] do
     config =
       Portal.Config.fetch_env!(:portal, Google.AuthProvider)
       |> verification_config(opts)
-      |> Map.put(:scope, "openid email profile https://www.googleapis.com/auth/admin.directory.domain.readonly")
-
-    {:ok, %{config: config}}
-  end
-
-  def setup_verification("google_sign_up", _opts) do
-    config =
-      Portal.Config.fetch_env!(:portal, Portal.Google.AuthProvider)
-      |> verification_config([])
+      |> Map.put(:scope, @google_verification_scope)
 
     {:ok, %{config: config}}
   end
@@ -682,7 +678,7 @@ defmodule PortalWeb.OIDC do
   Returns {:ok, claims, userinfo_result} or {:error, reason}.
 
   Options:
-  - :iss - The `iss` callback parameter (RFC 9207); checked for GitHub
+  - :iss - The `iss` callback parameter (RFC 9207); checked for GitHub and Google
   """
   def verify_callback(config, code, verifier, opts \\ [])
 
@@ -698,23 +694,69 @@ defmodule PortalWeb.OIDC do
   end
 
   @doc """
-  Verifies a Google account and reads verified domains for Workspace accounts.
-  Personal accounts have no hosted-domain claim and leave restrictions unset.
-  Access tokens are used only for setup and are never returned to the browser.
+  Verifies a Google account for an auth provider.
+
+  A personal account returns `domains: nil`. A Workspace account (one with an
+  `hd` claim) must also list the Workspace customer's verified domains through
+  the Admin SDK, which Google only allows for administrators. The result lists
+  those domains with `hd` first. Pass `:iss` (the RFC 9207 callback parameter)
+  to reject a mismatched issuer. Access tokens are used only for setup and are
+  never returned to the browser.
   """
-  def verify_google_callback(config, code, verifier) do
-    with {:ok, tokens} <- exchange_code_with_config(config, code, verifier),
-         {:ok, %{"email_verified" => true} = claims} <-
-           verify_token_with_config(config, tokens["id_token"], verifier) do
-      case Map.fetch(claims, "hd") do
-        :error -> {:ok, %{issuer: claims["iss"], domains: nil, name: nil}}
-        {:ok, hosted_domain} when is_binary(hosted_domain) and hosted_domain != "" ->
-          verify_google_workspace(claims, tokens, hosted_domain)
-        _ -> {:error, :google_workspace_verification_failed}
-      end
+  def verify_google_callback(config, code, verifier, opts \\ []) do
+    with {:ok, %{"email_verified" => true} = claims, tokens} <-
+           verify_google_tokens(config, code, verifier, opts) do
+      verify_google_hosted_domain(claims, tokens)
     else
       {:error, _} = error -> error
       _ -> {:error, :google_workspace_verification_failed}
+    end
+  end
+
+  @doc """
+  Verifies a Google account for sign-up. Applies the same Workspace rule as
+  `verify_google_callback/4` and also returns the claims and userinfo that the
+  sign-up identity is built from.
+  """
+  def verify_google_sign_up_callback(config, code, verifier, opts \\ []) do
+    with {:ok, claims, tokens} <- verify_google_tokens(config, code, verifier, opts),
+         {:ok, %{domains: domains}} <- verify_google_hosted_domain(claims, tokens) do
+      userinfo = fetch_userinfo_with_config(config, tokens["access_token"])
+      {:ok, %{claims: claims, userinfo: userinfo, domains: domains}}
+    end
+  end
+
+  defp verify_google_tokens(config, code, verifier, opts) do
+    with {:ok, tokens} <- exchange_code_with_config(config, code, verifier),
+         {:ok, claims} <- verify_token_with_config(config, tokens["id_token"], verifier),
+         :ok <- verify_google_issuer(claims, Keyword.get(opts, :iss)) do
+      {:ok, claims, tokens}
+    end
+  end
+
+  defp verify_google_issuer(_claims, nil), do: :ok
+
+  defp verify_google_issuer(%{"iss" => token_issuer}, iss) when is_binary(token_issuer) do
+    if google_issuer(token_issuer) == google_issuer(iss),
+      do: :ok,
+      else: {:error, :google_issuer_mismatch}
+  end
+
+  defp verify_google_issuer(_claims, _iss), do: {:error, :google_issuer_mismatch}
+
+  defp google_issuer(issuer) when is_binary(issuer), do: String.replace_prefix(issuer, "https://", "")
+  defp google_issuer(_issuer), do: nil
+
+  defp verify_google_hosted_domain(claims, tokens) do
+    case Map.fetch(claims, "hd") do
+      :error ->
+        {:ok, %{issuer: claims["iss"], domains: nil, name: nil}}
+
+      {:ok, hosted_domain} when is_binary(hosted_domain) and hosted_domain != "" ->
+        verify_google_workspace(claims, tokens, hosted_domain)
+
+      _ ->
+        {:error, :google_workspace_verification_failed}
     end
   end
 
@@ -726,7 +768,7 @@ defmodule PortalWeb.OIDC do
          :ok <- verify_google_workspace_domain(claims, verified_domains) do
       primary_domain = Enum.find(domains, &(&1["isPrimary"] == true and &1["verified"] == true))
       name = if(primary_domain, do: primary_domain["domainName"], else: hosted_domain)
-      first_domain = String.downcase(name)
+      first_domain = String.downcase(hosted_domain)
       domains = [first_domain | Enum.reject(verified_domains, &(&1 == first_domain))]
       {:ok, %{issuer: claims["iss"], domains: domains, name: name}}
     else

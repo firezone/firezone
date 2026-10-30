@@ -20,6 +20,8 @@ defmodule PortalWeb.OIDCController do
                                   5_000
                                 )
   @sign_up_provider_types ~w[google github]
+  @sign_up_workspace_error "Signing up with a Google Workspace account needs a Workspace administrator. Sign in as an administrator and allow read-only access to your organization's domains."
+  @google_verification_error "Could not verify this Google account. For a Workspace account, sign in as an administrator and allow read-only access to your organization's domains."
 
   @spec sign_in(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def sign_in(conn, %{"account_id_or_slug" => account_id_or_slug} = params) do
@@ -59,7 +61,7 @@ defmodule PortalWeb.OIDCController do
 
   @spec callback(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def callback(conn, %{"state" => state, "code" => code} = params) do
-    # RFC 9207 issuer of the authorization response; only GitHub flows check it.
+    # RFC 9207 issuer of the authorization response; checked for GitHub and Google verification.
     iss = params["iss"]
 
     case parse_callback_state(state) do
@@ -82,7 +84,7 @@ defmodule PortalWeb.OIDCController do
         )
 
       {:google_auth_provider, lv_pid_string, verification_ref} ->
-        handle_google_auth_provider_verification(conn, code, lv_pid_string, verification_ref)
+        handle_google_auth_provider_verification(conn, code, iss, lv_pid_string, verification_ref)
 
       {:google_directory_sync, lv_pid_string, verification_ref} ->
         handle_google_directory_sync_verification(
@@ -1126,16 +1128,15 @@ defmodule PortalWeb.OIDCController do
     with {:ok, cookie} <- fetch_sign_up_cookie(conn),
          :ok <- verify_state(cookie.state, state),
          {:ok, %{config: config}} <- PortalWeb.OIDC.setup_verification(verification_type, []),
-         {:ok, claims, userinfo_result} <-
-           PortalWeb.OIDC.verify_callback(config, code, cookie.verifier, iss: iss),
+         {:ok, %{claims: claims, userinfo: userinfo_result, domains: domains}} <-
+           verify_sign_up_callback(provider_type, config, code, cookie.verifier, iss),
          {:ok, profile} <- IdentityProfile.build(claims, userinfo(userinfo_result), nil),
-         :ok <- enforce_verified_email(profile),
-         {:ok, workspace_domain} <- sign_up_workspace_domain(provider_type, claims) do
+         :ok <- enforce_verified_email(profile) do
       conn
       |> Cookie.SignUpState.delete()
       |> put_session(
         PortalWeb.SignUp.session_key(),
-        PortalWeb.SignUp.session_identity(profile, provider_type, workspace_domain)
+        PortalWeb.SignUp.session_identity(profile, provider_type, List.first(domains || []))
       )
       |> redirect(to: ~p"/sign_up/#{provider_type}")
     else
@@ -1148,16 +1149,17 @@ defmodule PortalWeb.OIDCController do
     end
   end
 
-  # Domain policy comes from the signed ID token, never from userinfo or the signup form.
-  defp sign_up_workspace_domain("google", claims) do
-    case Map.fetch(claims, "hd") do
-      :error -> {:ok, nil}
-      {:ok, domain} when is_binary(domain) and domain != "" -> {:ok, String.downcase(domain)}
-      _ -> {:error, {:invalid_jwt, "invalid Google Workspace domain"}}
+  # Domain policy comes from the signed ID token and the Admin SDK, never from
+  # userinfo or the sign-up form.
+  defp verify_sign_up_callback("google", config, code, verifier, iss),
+    do: PortalWeb.OIDC.verify_google_sign_up_callback(config, code, verifier, iss: iss)
+
+  defp verify_sign_up_callback(_provider_type, config, code, verifier, iss) do
+    with {:ok, claims, userinfo_result} <-
+           PortalWeb.OIDC.verify_callback(config, code, verifier, iss: iss) do
+      {:ok, %{claims: claims, userinfo: userinfo_result, domains: nil}}
     end
   end
-
-  defp sign_up_workspace_domain(_provider, _claims), do: {:ok, nil}
 
   defp sign_up_verification_type(provider_type), do: "#{provider_type}_sign_up"
 
@@ -1225,6 +1227,9 @@ defmodule PortalWeb.OIDCController do
     "#{name} did not confirm your email address. Please verify it with #{name} and try again."
   end
 
+  defp sign_up_error_message("google", :google_workspace_verification_failed),
+    do: @sign_up_workspace_error
+
   defp sign_up_error_message(provider_type, %Ecto.Changeset{}) do
     "#{sign_up_provider_name(provider_type)} returned invalid profile data. " <>
       "Please try again or sign up with email."
@@ -1243,27 +1248,32 @@ defmodule PortalWeb.OIDCController do
     redirect(conn, to: ~p"/verification/oidc?result=#{token}")
   end
 
-  defp handle_google_auth_provider_verification(conn, code, lv_pid_string, verification_ref) do
+  defp handle_google_auth_provider_verification(conn, code, iss, lv_pid_string, verification_ref) do
     result =
       with {:ok, %{config: config, verifier: verifier}} <-
              lv_pid_string
              |> PortalWeb.OIDC.deserialize_pid()
              |> request_pending_verification(verification_ref) do
-        PortalWeb.OIDC.verify_google_callback(config, code, verifier)
+        PortalWeb.OIDC.verify_google_callback(config, code, verifier, iss: iss)
       end
 
     google_auth_provider_result(conn, lv_pid_string, verification_ref, result)
   end
 
   defp google_auth_provider_result(conn, lv_pid_string, verification_ref, result) do
-    result = case result do
-      {:ok, identity} ->
-        Map.merge(identity, %{ok: true})
-      {:error, _reason} ->
-        %{ok: false, error: "Could not verify this Google account. For a Workspace account, sign in as an administrator and grant read-only access to your organization's domains."}
-    end
-    result = Map.merge(result, %{type: "google-auth-provider", lv_pid: lv_pid_string,
-                                verification_ref: verification_ref})
+    result =
+      case result do
+        {:ok, identity} -> Map.put(identity, :ok, true)
+        {:error, _reason} -> %{ok: false, error: @google_verification_error}
+      end
+
+    result =
+      Map.merge(result, %{
+        type: "google-auth-provider",
+        lv_pid: lv_pid_string,
+        verification_ref: verification_ref
+      })
+
     token = Phoenix.Token.sign(PortalWeb.Endpoint, "oidc-verification-result", result)
     redirect(conn, to: ~p"/verification/oidc?result=#{token}")
   end

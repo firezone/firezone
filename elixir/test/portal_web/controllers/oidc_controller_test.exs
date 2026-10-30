@@ -227,6 +227,19 @@ defmodule PortalWeb.OIDCControllerTest do
   end
 
   describe "Google Workspace provider setup" do
+    test "a Workspace account that cannot list its domains fails verification", %{conn: conn} do
+      verification_ref = Ecto.UUID.generate()
+      lv_pid = pending_verification_process(Map.new(oidc_config()), verification_ref)
+      state = PortalWeb.OIDC.sign_verification_state(PortalWeb.OIDC.serialize_pid(lv_pid),
+        "google-auth-provider", %{verification_ref: verification_ref})
+      token = Mocks.OIDC.default_claims() |> Map.put("hd", "example.com") |> Mocks.OIDC.sign_openid_connect_token()
+      Mocks.OIDC.set_token_response(%{"id_token" => token, "access_token" => "setup-secret"})
+      Req.Test.expect(Portal.Google.APIClient, fn conn -> Plug.Conn.send_resp(conn, 403, "forbidden") end)
+      conn = get(conn, ~p"/auth/oidc/callback", %{"state" => state, "code" => "code"})
+      assert {:ok, %{ok: false, error: error}} = oidc_verification_result_from_redirect(redirected_to(conn))
+      assert error =~ "sign in as an administrator"
+    end
+
     test "returns verified domains in a signed result without exposing access tokens", %{conn: conn} do
       config = oidc_config() |> Map.new()
       verification_ref = Ecto.UUID.generate()
@@ -3998,20 +4011,44 @@ defmodule PortalWeb.OIDCControllerTest do
       assert conn.resp_cookies["sign_up_oidc"].max_age == 0
     end
 
-    for hd <- [nil, "WORKSPACE.EXAMPLE"] do
-      @signup_hd hd
-      test "sign-up domain policy comes from the signed token: #{inspect(hd)}", %{conn: conn, state: state} do
-        claims = Mocks.OIDC.default_claims()
-        claims = if @signup_hd, do: Map.put(claims, "hd", @signup_hd), else: claims
-        token = Mocks.OIDC.sign_openid_connect_token(claims)
-        Mocks.OIDC.set_token_response(%{"id_token" => token, "access_token" => "signup-access-token"})
-        Mocks.OIDC.set_userinfo_response(Map.put(Mocks.OIDC.default_userinfo(), "hd", "untrusted-userinfo.example"))
-        conn = conn |> Cookie.SignUpState.put(%Cookie.SignUpState{state: state, verifier: "test-verifier"})
-          |> recycle() |> get(~p"/auth/oidc/callback", %{"state" => state, "code" => "test-code"})
-        assert redirected_to(conn) == "/sign_up/google"
-        expected = unquote(if hd, do: String.downcase(hd), else: nil)
-        assert get_session(conn, "idp_sign_up")["workspace_domain"] == expected
-      end
+    test "a personal account has no verified domains", %{conn: conn, state: state} do
+      token = Mocks.OIDC.sign_openid_connect_token(Mocks.OIDC.default_claims())
+      Mocks.OIDC.set_token_response(%{"id_token" => token, "access_token" => "signup-access-token"})
+      Req.Test.stub(Portal.Google.APIClient, fn _conn -> flunk("personal accounts must not read domains") end)
+      conn = conn |> Cookie.SignUpState.put(%Cookie.SignUpState{state: state, verifier: "test-verifier"})
+        |> recycle() |> get(~p"/auth/oidc/callback", %{"state" => state, "code" => "test-code"})
+      assert redirected_to(conn) == "/sign_up/google"
+      assert get_session(conn, "idp_sign_up")["workspace_domain"] == nil
+    end
+
+    test "a Workspace administrator signs up with the proven hd domain", %{conn: conn, state: state} do
+      conn = workspace_sign_up_callback(conn, state, %{"hd" => "WORKSPACE.EXAMPLE"}, fn conn ->
+        Req.Test.json(conn, %{"domains" => [
+          %{"domainName" => "workspace.example", "verified" => true, "isPrimary" => true},
+          %{"domainName" => "other.example", "verified" => true}]})
+      end)
+      assert redirected_to(conn) == "/sign_up/google"
+      identity = get_session(conn, "idp_sign_up")
+      assert identity["workspace_domain"] == "workspace.example"
+      assert identity["email"] == "ada@example.com"
+    end
+
+    test "a Workspace account that cannot list its domains cannot sign up", %{conn: conn, state: state} do
+      conn = workspace_sign_up_callback(conn, state, %{"hd" => "workspace.example"}, fn conn ->
+        Plug.Conn.send_resp(conn, 403, "forbidden")
+      end)
+      assert redirected_to(conn) == "/sign_up"
+      assert flash(conn, :error) =~ "needs a Workspace administrator"
+      assert get_session(conn, "idp_sign_up") == nil
+      assert conn.resp_cookies["sign_up_oidc"].max_age == 0
+    end
+
+    test "the signed hd must be one of the listed domains", %{conn: conn, state: state} do
+      conn = workspace_sign_up_callback(conn, state, %{"hd" => "different.example"}, fn conn ->
+        Req.Test.json(conn, %{"domains" => [%{"domainName" => "workspace.example", "verified" => true}]})
+      end)
+      assert redirected_to(conn) == "/sign_up"
+      assert get_session(conn, "idp_sign_up") == nil
     end
 
     test "redirects to sign-up with an error when the cookie is missing", %{
@@ -4239,12 +4276,16 @@ defmodule PortalWeb.OIDCControllerTest do
     }
   end
 
-  defp pending_verification_process(config, verification_ref) do
-    pending = %{
-      config: config,
-      verifier: "test-verifier",
-      verification_ref: verification_ref
-    }
+  defp pending_verification_process(config, verification_ref, extra \\ []) do
+    pending =
+      Map.merge(
+        %{
+          config: config,
+          verifier: "test-verifier",
+          verification_ref: verification_ref
+        },
+        Map.new(extra)
+      )
 
     spawn(fn -> pending_verification_loop(pending) end)
   end
@@ -4352,6 +4393,18 @@ defmodule PortalWeb.OIDCControllerTest do
     PortalWeb.OIDC.sign_verification_state(lv_pid_string, "google-directory-sync", %{
       verification_ref: verification_ref
     })
+  end
+
+  defp workspace_sign_up_callback(conn, state, claim_overrides, domains_stub) do
+    claims = Map.merge(Mocks.OIDC.default_claims(), claim_overrides)
+    token = Mocks.OIDC.sign_openid_connect_token(claims)
+    Mocks.OIDC.set_token_response(%{"id_token" => token, "access_token" => "signup-access-token"})
+    Req.Test.stub(Portal.Google.APIClient, domains_stub)
+
+    conn
+    |> Cookie.SignUpState.put(%Cookie.SignUpState{state: state, verifier: "test-verifier"})
+    |> recycle()
+    |> get(~p"/auth/oidc/callback", %{"state" => state, "code" => "test-code"})
   end
 
   defp pending_verification_loop(pending) do

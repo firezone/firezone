@@ -7,6 +7,8 @@ mod from_ipv4_channel;
 mod from_ipv4_udp;
 mod from_ipv6_channel;
 mod from_ipv6_udp;
+mod mac;
+mod per_cpu;
 mod ref_mut_at;
 mod routing;
 mod stats;
@@ -30,8 +32,6 @@ use network_types::{
 };
 use ref_mut_at::ref_mut_at;
 
-use crate::time::KernelInstant;
-
 /// Lower bound for TURN UDP ports
 const LOWER_PORT: u16 = 49152;
 /// Upper bound for TURN UDP ports
@@ -45,7 +45,7 @@ const DNS_PORT: u16 = 53;
 
 #[inline(always)]
 pub fn try_handle_turn(ctx: &XdpContext) -> Result<(), Error> {
-    let start = KernelInstant::now();
+    let sample = stats::start_sample();
 
     // SAFETY: The offset must point to the start of a valid `EthHdr`.
     let eth = unsafe { ref_mut_at::<EthHdr>(ctx, 0)? };
@@ -71,7 +71,7 @@ pub fn try_handle_turn(ctx: &XdpContext) -> Result<(), Error> {
         }
         _ => return Err(Error::NotIp),
     };
-    stats::emit(ctx, num_bytes, start.elapsed(), ip_version, ecn);
+    stats::record(ctx, sample, num_bytes, ip_version, ecn);
 
     Ok(())
 }
@@ -457,10 +457,17 @@ fn try_handle_from_ipv6_channel_data(ctx: &XdpContext) -> Result<(), Error> {
 
 #[inline(always)]
 fn is_own_public_ip(ip: IpAddr) -> Result<bool, Error> {
-    let ipv4_public = config::public_ipv4_address()?;
-    let ipv6_public = config::public_ipv6_address()?;
+    let own_ip = match ip {
+        IpAddr::V4(_) => config::public_ipv4_address().map(IpAddr::V4),
+        IpAddr::V6(_) => config::public_ipv6_address().map(IpAddr::V6),
+    };
 
-    Ok(ip == ipv4_public || ip == ipv6_public)
+    match own_ip {
+        Ok(own_ip) => Ok(ip == own_ip),
+        // A relay without a public address of this family cannot be the peer.
+        Err(Error::IpAddrUnset) => Ok(false),
+        Err(e) => Err(e),
+    }
 }
 
 #[inline(always)]

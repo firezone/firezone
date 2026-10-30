@@ -34,4 +34,5 @@ verify_app_store_build() {
         echo "$ASC_PLATFORM $version must have the selected build attached and manual release enabled; inspect it in App Store Connect." >&2
         return 1
     fi
+    echo "$ASC_PLATFORM $version has the selected build attached with manual release."
 }
