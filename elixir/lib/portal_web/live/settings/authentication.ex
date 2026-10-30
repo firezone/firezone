@@ -256,17 +256,7 @@ defmodule PortalWeb.Settings.Authentication do
 
   def handle_event("reset_verification", _params, socket) do
     changeset =
-      socket.assigns.form.source
-      |> delete_change(:is_verified)
-      |> delete_change(:issuer)
-      |> apply_changes()
-      |> changeset(
-        %{
-          "is_verified" => false,
-          "issuer" => nil
-        },
-        socket
-      )
+      resubmit(socket.assigns.form.source, %{"is_verified" => false, "issuer" => nil}, socket)
 
     {:noreply,
      socket
@@ -494,8 +484,7 @@ defmodule PortalWeb.Settings.Authentication do
 
       changeset =
         socket.assigns.form.source
-        |> apply_changes()
-        |> changeset(attrs, socket)
+        |> resubmit(attrs, socket)
         |> maybe_set_okta_name(issuer, socket.assigns.live_action)
 
       maybe_send_verification_ack(ack_to)
@@ -2157,9 +2146,22 @@ defmodule PortalWeb.Settings.Authentication do
     changeset = cast(struct, attrs, Map.get(@fields, schema))
 
     changeset
+    |> Form.keep_when_blank([:client_secret])
     |> cast(verified_fields, Map.keys(verified_fields))
     |> maybe_initialize_with_parent(socket.assigns.subject.account.id)
     |> schema.changeset()
+    |> Form.reset_on_change(:client_secret, issuer_fields(schema))
+  end
+
+  # Verification and sign-in both send the client secret to the issuer.
+  defp issuer_fields(Okta.AuthProvider), do: [okta_domain: "Okta domain"]
+  defp issuer_fields(OIDC.AuthProvider), do: [discovery_document_uri: "discovery document URI"]
+  defp issuer_fields(_schema), do: []
+
+  # Rebuilt from the stored record so the typed changes stay changes and reach
+  # the update; applying them first would leave them out of the save.
+  defp resubmit(previous, attrs, socket) do
+    changeset(previous.data, Map.merge(previous.params, attrs), socket)
   end
 
   defp extract_disable_error(changeset) do

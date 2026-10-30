@@ -78,6 +78,8 @@ defmodule PortalWeb.Settings.DevicePosture do
   @sentinelone_verification_fields ~w[management_url api_token]a
   @sophos_verification_fields ~w[client_id client_secret]a
 
+  @secret_fields ~w[api_token api_key client_secret]a
+
   def mount(_params, _session, socket) do
     if connected?(socket) do
       :ok = PubSub.Changes.subscribe(socket.assigns.subject.account.id, :posture_providers)
@@ -531,7 +533,11 @@ defmodule PortalWeb.Settings.DevicePosture do
 
     case Santa.APIClient.test_connection(client) do
       :ok ->
-        attrs = Map.put(changeset.changes, :is_verified, true)
+        # Only what the browser typed is carried; a stored key typed again is not a change.
+        attrs =
+          changeset.changes
+          |> Map.put(:is_verified, true)
+          |> Map.put(:api_key, Map.get(changeset.params || %{}, "api_key", ""))
 
         {:noreply,
          assign(socket,
@@ -559,7 +565,10 @@ defmodule PortalWeb.Settings.DevicePosture do
 
     case SentinelOne.APIClient.test_connection(client) do
       :ok ->
-        attrs = Map.put(changeset.changes, :is_verified, true)
+        attrs =
+          changeset.changes
+          |> Map.put(:is_verified, true)
+          |> Map.put(:api_token, Map.get(changeset.params || %{}, "api_token", ""))
 
         {:noreply,
          assign(socket,
@@ -984,7 +993,6 @@ defmodule PortalWeb.Settings.DevicePosture do
             <.provider_form
               form={@form}
               type={@type}
-              editing?={@live_action == :edit}
               verification_error={@verification_error}
               verifying={@verifying}
             />
@@ -1285,7 +1293,6 @@ defmodule PortalWeb.Settings.DevicePosture do
 
   attr :form, :map, required: true
   attr :type, :string, required: true
-  attr :editing?, :boolean, default: false
   attr :verification_error, :string, default: nil
   attr :verifying, :boolean, default: false
 
@@ -1335,13 +1342,11 @@ defmodule PortalWeb.Settings.DevicePosture do
         </label>
         <Form.input
           field={@form[:api_key]}
-          value={typed_api_key(@form)}
           type="password"
           autocomplete="off"
           phx-debounce="300"
           data-1p-ignore
-          placeholder={if @editing?, do: "Leave blank to keep the current key"}
-          required={not @editing?}
+          required
         />
         <p class="mt-1 text-xs text-subtle">
           Create a read-only key in Workshop under API Keys. It must be able to call
@@ -1371,13 +1376,11 @@ defmodule PortalWeb.Settings.DevicePosture do
         </label>
         <Form.input
           field={@form[:api_token]}
-          value={typed_api_token(@form)}
           type="password"
           autocomplete="off"
           phx-debounce="300"
           data-1p-ignore
-          placeholder={if @editing?, do: "Leave blank to keep the current token"}
-          required={not @editing?}
+          required
         />
         <p class="mt-1 text-xs text-subtle">
           Generate a token for a dedicated SentinelOne service user that can view endpoints.
@@ -1413,13 +1416,11 @@ defmodule PortalWeb.Settings.DevicePosture do
         </label>
         <Form.input
           field={@form[:client_secret]}
-          value={typed_client_secret(@form)}
           type="password"
           autocomplete="off"
           phx-debounce="300"
           data-1p-ignore
-          placeholder={if @editing?, do: "Leave blank to keep the current secret"}
-          required={not @editing?}
+          required
         />
         <p class="mt-1 text-xs text-subtle">
           Sophos shows the secret only once, when the credentials are created.
@@ -1456,13 +1457,11 @@ defmodule PortalWeb.Settings.DevicePosture do
         </label>
         <Form.input
           field={@form[:api_token]}
-          value={typed_api_token(@form)}
           type="password"
           autocomplete="off"
           phx-debounce="300"
           data-1p-ignore
-          placeholder={if @editing?, do: "Leave blank to keep the current token"}
-          required={not @editing?}
+          required
         />
         <p class="mt-1 text-xs text-subtle">
           Create the token in Iru under Settings > Access, then turn these endpoints on for it.
@@ -1615,13 +1614,6 @@ defmodule PortalWeb.Settings.DevicePosture do
     end
   end
 
-  # The stored token never goes back to the browser, so the box starts empty on
-  # an edit. Leaving it that way submits an empty string, which cast/3 reads as
-  # no change and the stored token stays.
-  defp typed_api_token(form), do: get_change(form.source, :api_token) || ""
-  defp typed_api_key(form), do: get_change(form.source, :api_key) || ""
-  defp typed_client_secret(form), do: get_change(form.source, :client_secret) || ""
-
   defp pending_delete?(%{id: id}, %{id: id, action: "delete"}), do: true
   defp pending_delete?(_provider, _pending_confirm), do: false
 
@@ -1676,28 +1668,24 @@ defmodule PortalWeb.Settings.DevicePosture do
   # out of the base changeset.
   defp provider_changeset(provider, type, attrs) do
     provider
-    |> cast(
-      drop_blank_secret(attrs),
-      @form_fields[type] ++ @programmatic_fields[type] ++ ~w[is_disabled disabled_reason]a
-    )
+    |> cast(attrs, @form_fields[type] ++ @programmatic_fields[type] ++ ~w[is_disabled disabled_reason]a)
+    |> Form.keep_when_blank(@secret_fields)
     |> base_changeset(type)
     |> validate_required([:name])
     |> validate_length(:name, min: 1, max: 255)
     |> validate_acceptance(:is_verified)
+    |> reset_secret_for_new_host(type)
   end
 
-  # An untouched token box submits an empty string, and cast/3 reads that as
-  # "put the field back to its default", which would blank a working token.
-  # Dropping it means the stored one stays; a new provider still has none and
-  # still fails the required check.
-  defp drop_blank_secret(attrs) do
-    Enum.reduce(["api_token", "api_key", "client_secret"], attrs, fn field, attrs ->
-      if blank_secret?(attrs[field]), do: Map.delete(attrs, field), else: attrs
-    end)
-  end
+  # Verifying sends the secret to the host in the form. Iru's host is always
+  # under Iru's own domain and Sophos's is fixed.
+  defp reset_secret_for_new_host(changeset, "santa"),
+    do: Form.reset_on_change(changeset, :api_key, api_url: "workshop URL")
 
-  defp blank_secret?(value) when is_binary(value), do: String.trim(value) == ""
-  defp blank_secret?(_value), do: false
+  defp reset_secret_for_new_host(changeset, "sentinelone"),
+    do: Form.reset_on_change(changeset, :api_token, management_url: "management URL")
+
+  defp reset_secret_for_new_host(changeset, _type), do: changeset
 
   # Debounced inputs are not always included when a different input triggers
   # validation. Keep values already received from the browser until that input

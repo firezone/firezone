@@ -1497,6 +1497,188 @@ defmodule PortalWeb.Settings.AuthenticationTest do
     end
   end
 
+  describe "stored client secret" do
+    for {type, fixture} <- [{"okta", :okta_provider_fixture}, {"oidc", :oidc_provider_fixture}] do
+      test "never renders the stored #{type} client secret", %{
+        account: account,
+        actor: actor,
+        conn: conn
+      } do
+        stored = "stored-secret-#{System.unique_integer([:positive])}"
+
+        provider =
+          apply(Portal.AuthProviderFixtures, unquote(fixture), [
+            %{account: account, client_secret: stored}
+          ])
+
+        {:ok, lv, html} =
+          conn
+          |> authorize_conn(actor)
+          |> live(~p"/#{account}/settings/authentication/#{unquote(type)}/#{provider.id}/edit")
+
+        refute html =~ stored
+        assert html =~ "Leave blank to keep the current value"
+
+        html =
+          lv
+          |> form("#auth-provider-form", %{auth_provider: %{name: "Renamed"}})
+          |> render_change()
+
+        refute html =~ stored
+      end
+    end
+
+    test "keeps the stored secret when the box is left blank", %{
+      account: account,
+      actor: actor,
+      conn: conn
+    } do
+      provider = okta_provider_fixture(account: account)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/authentication/okta/#{provider.id}/edit")
+
+      lv
+      |> form("#auth-provider-form", %{auth_provider: %{name: "Renamed Okta", client_secret: ""}})
+      |> render_change()
+
+      lv |> element("#auth-provider-form") |> render_submit()
+
+      updated = Repo.get_by!(Portal.Okta.AuthProvider, id: provider.id)
+      assert updated.name == "Renamed Okta"
+      assert updated.client_secret == provider.client_secret
+    end
+
+    test "resets the secret when the Okta domain changes", %{
+      account: account,
+      actor: actor,
+      conn: conn
+    } do
+      Mocks.OIDC.stub_discovery_document()
+      provider = okta_provider_fixture(account: account)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/authentication/okta/#{provider.id}/edit")
+
+      # As a browser sends it: the untouched secret box carries an _unused_
+      # marker.
+      html =
+        render_change(lv, "validate", %{
+          "_target" => ["auth_provider", "okta_domain"],
+          "auth_provider" => %{
+            "okta_domain" => "attacker.example.com",
+            "client_secret" => "",
+            "_unused_client_secret" => ""
+          }
+        })
+
+      refute html =~ "Leave blank to keep the current value"
+      assert html =~ "Required for the new Okta domain."
+      assert has_element?(lv, "#auth_provider_client_secret[required]")
+      refute has_element?(lv, "#verify-button")
+
+      lv |> element("#auth-provider-form") |> render_submit()
+
+      updated = Repo.get_by!(Portal.Okta.AuthProvider, id: provider.id)
+      assert updated.okta_domain == provider.okta_domain
+      assert updated.client_secret == provider.client_secret
+    end
+
+    test "saves a new discovery document URI and secret once verified", %{
+      account: account,
+      actor: actor,
+      conn: conn
+    } do
+      Mocks.OIDC.stub_discovery_document()
+
+      provider =
+        oidc_provider_fixture(
+          account: account,
+          discovery_document_uri: "https://old-idp.example.com/.well-known/openid-configuration",
+          email_verification_method: :none
+        )
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/authentication/oidc/#{provider.id}/edit")
+
+      lv
+      |> form("#auth-provider-form", %{
+        auth_provider: %{
+          discovery_document_uri: Mocks.OIDC.discovery_document_uri(),
+          client_secret: "new-secret"
+        }
+      })
+      |> render_change()
+
+      lv |> element("#verify-button") |> render_click()
+      verification_ref = verification_ref_from_open_url(lv)
+      ack = make_ref()
+      send(lv.pid, {:oidc_verify_complete, "https://example.com", verification_ref, {self(), ack}})
+      assert_receive {:verification_ack, ^ack}
+
+      lv |> element("#auth-provider-form") |> render_submit()
+
+      updated = Repo.get_by!(Portal.OIDC.AuthProvider, id: provider.id)
+      assert updated.discovery_document_uri == Mocks.OIDC.discovery_document_uri()
+      assert updated.client_secret == "new-secret"
+      assert updated.issuer == "https://example.com"
+    end
+
+    test "keeps a secret typed again unchanged through a verification reset", %{
+      account: account,
+      actor: actor,
+      conn: conn
+    } do
+      Mocks.OIDC.stub_discovery_document()
+
+      provider =
+        oidc_provider_fixture(
+          account: account,
+          discovery_document_uri: "https://old-idp.example.com/.well-known/openid-configuration",
+          email_verification_method: :none
+        )
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/authentication/oidc/#{provider.id}/edit")
+
+      lv
+      |> form("#auth-provider-form", %{
+        auth_provider: %{
+          discovery_document_uri: Mocks.OIDC.discovery_document_uri(),
+          client_secret: provider.client_secret
+        }
+      })
+      |> render_change()
+
+      assert has_element?(lv, "#verify-button")
+
+      lv |> element("#verify-button") |> render_click()
+      verification_ref_from_open_url(lv)
+      render_hook(lv, "reset_verification", %{})
+      assert has_element?(lv, "#verify-button")
+
+      lv |> element("#verify-button") |> render_click()
+      verification_ref = verification_ref_from_open_url(lv)
+      ack = make_ref()
+      send(lv.pid, {:oidc_verify_complete, "https://example.com", verification_ref, {self(), ack}})
+      assert_receive {:verification_ack, ^ack}
+
+      lv |> element("#auth-provider-form") |> render_submit()
+
+      updated = Repo.get_by!(Portal.OIDC.AuthProvider, id: provider.id)
+      assert updated.discovery_document_uri == Mocks.OIDC.discovery_document_uri()
+      assert updated.client_secret == provider.client_secret
+    end
+  end
+
   describe "edit oidc provider" do
     test "renders edit form with all fields", %{account: account, actor: actor, conn: conn} do
       provider = oidc_provider_fixture(account: account, name: "Test OIDC")
