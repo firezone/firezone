@@ -37,6 +37,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
         token_id: token.id,
         gateway: device,
         site: site,
+        previous_public_key: Keyword.get(opts, :previous_public_key),
         session_ref: Keyword.get_lazy(opts, :session_ref, fn -> make_ref() end),
         opentelemetry_ctx: OpenTelemetry.Ctx.new(),
         opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test")
@@ -201,6 +202,59 @@ defmodule PortalAPI.Gateway.ChannelTest do
       global_relay: global_relay,
       token: token
     }
+  end
+
+  describe "public_key_changed" do
+    test "tells the clients of a gateway that joins with a new key", %{
+      account: account,
+      client: client,
+      gateway: gateway,
+      site: site,
+      token: token
+    } do
+      policy_authorization_fixture(account: account, client: client, gateway: gateway)
+      :ok = PG.join(client.id)
+
+      join_channel(gateway, site, token, previous_public_key: generate_public_key())
+      assert_push "init", _init_payload
+
+      gateway_id = gateway.id
+      public_key = gateway.public_key
+      assert_receive {:public_key_changed, :gateway, ^gateway_id, ^public_key}
+    end
+
+    test "pushes the new key of a client", %{
+      client: client,
+      gateway: gateway,
+      site: site,
+      token: token
+    } do
+      socket = join_channel(gateway, site, token, version: "1.6.5")
+      assert_push "init", _init_payload
+      public_key = generate_public_key()
+
+      send(socket.channel_pid, {:public_key_changed, :client, client.id, public_key})
+
+      assert_push "public_key_changed", payload
+      assert payload == %{client_id: client.id, public_key: public_key}
+    end
+
+    test "pushes nothing to gateways that do not understand it", %{
+      client: client,
+      gateway: gateway,
+      site: site,
+      token: token
+    } do
+      socket = join_channel(gateway, site, token, version: "1.6.4")
+      assert_push "init", _init_payload
+
+      send(
+        socket.channel_pid,
+        {:public_key_changed, :client, client.id, generate_public_key()}
+      )
+
+      refute_push "public_key_changed", _payload
+    end
   end
 
   describe "join/3" do

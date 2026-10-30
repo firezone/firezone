@@ -131,10 +131,16 @@ defmodule PortalAPI.Client.Socket do
       {context, version} = PortalAPI.Sockets.truncate_session_fields(subject.context, version)
       subject = %{subject | context: context}
 
+      previous_public_key = client.public_key
       client = apply_session(client, token_id, public_key, subject, version)
       set_connect_attributes(token_id, client, subject, version)
 
-      {:ok, assign_connect(socket, subject, client, version, attested?, proof)}
+      socket =
+        socket
+        |> assign_connect(subject, client, version, attested?, proof)
+        |> assign(:previous_public_key, previous_public_key)
+
+      {:ok, socket}
     else
       true ->
         OpenTelemetry.Tracer.set_status(:error, "limits_exceeded")

@@ -143,6 +143,12 @@ defmodule PortalAPI.Client.Channel.Shared do
 
     init(socket, resources, relays)
 
+    :ok =
+      PortalAPI.Sockets.notify_public_key_changed(
+        socket.assigns.client,
+        socket.assigns[:previous_public_key]
+      )
+
     {:noreply, socket}
   end
 
@@ -523,6 +529,20 @@ defmodule PortalAPI.Client.Channel.Shared do
       socket
       |> assign(authorizations_cache: authorizations_cache)
       |> maybe_arm_authz_durability_timer(policy_authorization)
+
+    {:noreply, socket}
+  end
+
+  def handle_info({:public_key_changed, type, device_id, public_key}, socket) do
+    if Portal.Version.supports_public_key_changed?(socket.assigns.client) do
+      payload =
+        case type do
+          :client -> %{client_id: device_id, public_key: public_key}
+          :gateway -> %{gateway_id: device_id, public_key: public_key}
+        end
+
+      push(socket, "public_key_changed", payload)
+    end
 
     {:noreply, socket}
   end
