@@ -469,7 +469,7 @@ impl<I: GuiIntegration> Controller<I> {
         self.send_ipc(&service::ClientMsg::Connect {
             token: credential.token,
             is_internet_resource_active: self.general_settings.internet_resource_enabled(),
-            api_url: Some(credential.sign_in_settings.api_url),
+            api_url: credential.sign_in_settings.api_url,
         })
         .await?;
 
@@ -1877,7 +1877,7 @@ mod tests {
             panic!("expected the accepted CLI token to reconnect");
         };
         assert_eq!(token.expose_secret(), "cli-token");
-        assert_eq!(api_url, Some(original.api_url));
+        assert_eq!(api_url, original.api_url);
     }
 
     #[tokio::test]
@@ -1959,7 +1959,7 @@ mod tests {
             panic!("expected a reconnect with the original token");
         };
         assert_eq!(stored_token.expose_secret(), browser_token.expose_secret());
-        assert_eq!(api_url, Some(browser_settings.api_url.clone()));
+        assert_eq!(api_url, browser_settings.api_url.clone());
         assert_eq!(
             test_controller.integration().signed_in_with.last(),
             Some(&Some(browser_settings))
@@ -2010,7 +2010,7 @@ mod tests {
         let service::ClientMsg::Connect { api_url, .. } = mock_tunnel.next_msg().await else {
             panic!("expected the original browser flow to connect");
         };
-        assert_eq!(api_url, Some(original.api_url));
+        assert_eq!(api_url, original.api_url);
     }
 
     #[tokio::test]
@@ -2445,7 +2445,7 @@ mod tests {
         let service::ClientMsg::Connect { api_url, .. } = mock_tunnel.next_msg().await else {
             panic!("expected connect after migration");
         };
-        assert_eq!(api_url, Some(canned.api_url));
+        assert_eq!(api_url, canned.api_url);
     }
 
     #[tokio::test]
@@ -2603,7 +2603,7 @@ mod tests {
                 panic!("expected a connection after saving the region");
             };
             let effective_api = mdm_settings.api_url.unwrap_or(api_url);
-            assert_eq!(connected_api, Some(effective_api.clone()));
+            assert_eq!(connected_api, effective_api.clone());
             let integration = test_controller.integration();
             assert_eq!(
                 integration.signed_in_with.last(),
@@ -2663,7 +2663,7 @@ mod tests {
         let service::ClientMsg::Connect { api_url, .. } = mock_tunnel.next_msg().await else {
             panic!("expected the browser flow to connect");
         };
-        assert_eq!(api_url, Some(original.api_url));
+        assert_eq!(api_url, original.api_url);
         assert!(test_controller.integration().notifications.is_empty());
 
         let _ = test_controller
@@ -2677,7 +2677,7 @@ mod tests {
         let service::ClientMsg::Connect { api_url, .. } = mock_tunnel.next_msg().await else {
             panic!("expected a new sign-in after sign-out");
         };
-        assert_eq!(api_url, Some(changed.api_url));
+        assert_eq!(api_url, changed.api_url);
         let integration = test_controller.integration();
         let latest = integration.signed_in_with.last().unwrap().as_ref().unwrap();
         assert_eq!(latest.account_slug.as_deref(), Some("other"));

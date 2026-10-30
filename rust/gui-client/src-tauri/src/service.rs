@@ -63,9 +63,7 @@ pub enum ClientMsg {
         token: SecretString,
         is_internet_resource_active: bool,
         /// The token's API URL captured at sign-in, including any MDM override.
-        /// If absent, the service uses its current settings.
-        #[serde(default)]
-        api_url: Option<url::Url>,
+        api_url: url::Url,
     },
     Disconnect,
     /// Persist new advanced settings to the protected on-disk file owned by
@@ -771,10 +769,6 @@ impl<'a> Handler<'a> {
                 is_internet_resource_active,
                 api_url,
             } => {
-                let api_url = api_url
-                    .or_else(|| self.mdm_settings.api_url.clone())
-                    .unwrap_or_else(|| self.advanced_settings.api_url.clone());
-
                 if !self.session.is_none() {
                     tracing::debug!(session = ?self.session, "Dropping existing session before connecting");
 
