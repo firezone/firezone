@@ -3,7 +3,7 @@ use aya_ebpf::{
     maps::{PerCpuArray, PerfEventArray},
     programs::XdpContext,
 };
-use ebpf_shared::{PacketCounter, STATS_SAMPLING_INTERVAL, StatsEvent};
+use ebpf_shared::{PacketCounter, PacketCounts, STATS_SAMPLING_INTERVAL, StatsEvent};
 
 use super::per_cpu;
 use crate::time::KernelInstant;
@@ -18,7 +18,7 @@ static STATS: PerfEventArray<StatsEvent> = PerfEventArray::new(0);
 static SAMPLING_RNG: PerCpuArray<u32> = PerCpuArray::with_max_entries(1, 0);
 
 #[map]
-static PACKET_COUNTERS: PerCpuArray<u64> =
+static PACKET_COUNTERS: PerCpuArray<PacketCounts> =
     PerCpuArray::with_max_entries(PacketCounter::NUM_ENTRIES, 0);
 
 /// Decides whether to report the current packet in detail and if so, starts timing its processing.
@@ -48,7 +48,14 @@ pub fn record(
     ip_version: u8,
     ecn: u8,
 ) {
-    per_cpu::increment(&PACKET_COUNTERS, PacketCounter::index(ip_version, ecn));
+    per_cpu::update(
+        &PACKET_COUNTERS,
+        PacketCounter::index(ip_version, ecn),
+        |counts| {
+            counts.packets += 1;
+            counts.bytes += u64::from(bytes);
+        },
+    );
 
     let Some(start) = sample else {
         return;
