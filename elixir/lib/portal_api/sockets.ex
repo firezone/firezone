@@ -266,19 +266,18 @@ defmodule PortalAPI.Sockets do
     def authorized_peer_ids(%Portal.Device{account_id: account_id, id: device_id}) do
       now = DateTime.utc_now()
 
-      from(pa in Portal.PolicyAuthorization,
-        where: pa.account_id == ^account_id,
-        where: pa.initiating_device_id == ^device_id or pa.receiving_device_id == ^device_id,
-        where: pa.expires_at > ^now,
-        select: {pa.initiating_device_id, pa.receiving_device_id}
+      active =
+        from(pa in Portal.PolicyAuthorization,
+          where: pa.account_id == ^account_id,
+          where: pa.expires_at > ^now
+        )
+
+      from(pa in active, where: pa.initiating_device_id == ^device_id, select: pa.receiving_device_id)
+      |> union(
+        ^from(pa in active, where: pa.receiving_device_id == ^device_id, select: pa.initiating_device_id)
       )
       |> Portal.Safe.unscoped()
       |> Portal.Safe.all()
-      |> Enum.map(fn
-        {^device_id, receiving_device_id} -> receiving_device_id
-        {initiating_device_id, ^device_id} -> initiating_device_id
-      end)
-      |> Enum.uniq()
     end
   end
 end
