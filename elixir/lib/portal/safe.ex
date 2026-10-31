@@ -951,10 +951,8 @@ defmodule Portal.Safe do
   def permit(_action, Portal.Device, :account_admin_user), do: :ok
   def permit(_action, Portal.Device, :api_client), do: :ok
   def permit(:read, Portal.Device, :account_user), do: :ok
-  def permit(:update, Portal.Device, :account_user), do: :ok
   def permit(:insert, Portal.Device, :account_user), do: :ok
   def permit(:read, Portal.Device, :service_account), do: :ok
-  def permit(:update, Portal.Device, :service_account), do: :ok
   def permit(:insert, Portal.Device, :service_account), do: :ok
 
   # PolicyAuthorization permissions - all actor types can read and create policy_authorizations

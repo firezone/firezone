@@ -122,13 +122,18 @@ defmodule Portal.SafeTest do
       assert Safe.permit(:read, Oban.Job, :account_admin_user) == :ok
     end
 
-    test "Device: admin and api_client all actions, account_user/service_account read+update" do
+    test "Device: admin and api_client all actions, account_user/service_account read+insert" do
       assert Safe.permit(:delete, Portal.Device, :account_admin_user) == :ok
+      assert Safe.permit(:update, Portal.Device, :account_admin_user) == :ok
       assert Safe.permit(:delete, Portal.Device, :api_client) == :ok
-      assert Safe.permit(:read, Portal.Device, :account_user) == :ok
-      assert Safe.permit(:update, Portal.Device, :account_user) == :ok
-      assert Safe.permit(:read, Portal.Device, :service_account) == :ok
-      assert Safe.permit(:update, Portal.Device, :service_account) == :ok
+      assert Safe.permit(:update, Portal.Device, :api_client) == :ok
+
+      for type <- [:account_user, :service_account] do
+        assert Safe.permit(:read, Portal.Device, type) == :ok
+        assert Safe.permit(:insert, Portal.Device, type) == :ok
+        assert Safe.permit(:update, Portal.Device, type) == {:error, :unauthorized}
+        assert Safe.permit(:delete, Portal.Device, type) == {:error, :unauthorized}
+      end
     end
 
     test "PolicyAuthorization: any type may read and insert, only admin may delete" do
