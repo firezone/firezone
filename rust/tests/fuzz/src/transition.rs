@@ -1,4 +1,4 @@
-use connlib_model::{ClientId, RelayId, ResourceId};
+use connlib_model::{ClientId, ClientOrGatewayId, RelayId, ResourceId};
 use dns_types::{DomainName, OwnedRecordData, RecordType};
 use tunnel_proto::{
     dns::{self, is_subdomain},
@@ -149,6 +149,12 @@ pub enum Transition {
         client_id: ClientId,
         key: PrivateKey,
     },
+    /// A buggy portal tells `recipient` that `remote` reconnected with `key`, although it did not.
+    SpuriousPublicKeyChanged {
+        recipient: ClientOrGatewayId,
+        remote: ClientOrGatewayId,
+        key: PrivateKey,
+    },
 }
 
 impl Transition {
@@ -188,6 +194,7 @@ impl Transition {
             Transition::RevokePeerAuthorization { .. } => true,
             Transition::UpdateDnsRecords { .. } => false,
             Transition::CrashClient { .. } => false,
+            Transition::SpuriousPublicKeyChanged { .. } => false,
         }
     }
 
@@ -255,6 +262,7 @@ impl Transition {
                 Destination::IpAddr(_) => true,
             },
             Transition::CrashClient { .. } => self.retains_flow(client_id, route, false),
+            Transition::SpuriousPublicKeyChanged { .. } => true,
         }
     }
 
@@ -343,6 +351,7 @@ impl Transition {
                 Route::Resource { .. } => client_id != *crashed,
                 Route::Peer(peer) => client_id != *crashed && peer != *crashed,
             },
+            Transition::SpuriousPublicKeyChanged { .. } => true,
         }
     }
 }

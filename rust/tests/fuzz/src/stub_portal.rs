@@ -304,6 +304,7 @@ impl StubPortal {
                     .extract_if(.., |(client, _), _| client == client_id)
                 {}
             }
+            Transition::SpuriousPublicKeyChanged { .. } => {}
         }
     }
 

@@ -729,6 +729,8 @@ impl ReferenceState {
                     peer.exec_mut(|c| c.forget_peer_authorizations(*client_id));
                 }
             }
+            // The remote still answers, so the connection survives.
+            Transition::SpuriousPublicKeyChanged { .. } => {}
         };
 
         self
