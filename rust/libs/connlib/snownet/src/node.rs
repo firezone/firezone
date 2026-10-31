@@ -53,6 +53,12 @@ const DISCONNECT_TIMEOUT: Duration = Duration::from_secs(2);
 /// For how long we will at most try to re-key a WireGuard tunnel.
 const WG_REKEY_ATTEMPT_TIME: Duration = Duration::from_secs(20);
 
+/// For how long an ICE-less connection tries to re-key: WireGuard's default.
+const ICELESS_REKEY_ATTEMPT_TIME: Duration = Duration::from_secs(90);
+
+/// For how long an ICE-less connection tries to re-key once its remote may have restarted.
+const SUSPECTED_REKEY_ATTEMPT_TIME: Duration = Duration::from_secs(10);
+
 /// How often we record the number of connections per network path; metrics are exported every minute.
 const CONNECTION_COUNT_INTERVAL: Duration = Duration::from_secs(10);
 
@@ -448,12 +454,12 @@ where
         tracing::info!("Connection removed ({reason})");
     }
 
-    /// Fails the ICE-less connection to `cid` unless the remote still uses the `remote` key.
+    /// Handles a hint that the remote of the ICE-less connection to `cid` restarted with the `remote` key.
     ///
-    /// A remote that restarted comes back with a new key and has lost the WireGuard session of
-    /// the existing connection. This reports [`Event::ConnectionFailed`] just like a connection
-    /// whose handshakes time out, without waiting for that to happen.
-    /// Connections using ICE are left alone.
+    /// A remote that restarted has lost the WireGuard session of the existing connection. This
+    /// starts a handshake and shortens how long the tunnel retries it, so the connection fails
+    /// soon unless the remote still answers. Further hints are ignored until it does.
+    /// Connections using ICE or already using `remote` are left alone.
     #[tracing::instrument(level = "info", skip_all, fields(%cid))]
     pub fn handle_remote_key_changed(
         &mut self,
@@ -463,18 +469,25 @@ where
     ) {
         self.last_now = now;
 
-        if self
-            .connections
-            .get_established(&cid)
-            .is_none_or(|c| !c.agent.is_iceless() || c.remote_pub_key == remote)
-        {
+        let Ok(c) = self.connections.get_mut(&cid, now) else {
+            return;
+        };
+        let Agent::Path(agent) = &mut c.agent else {
+            return;
+        };
+        if c.remote_pub_key == remote || c.rekey_attempt_shortened {
             return;
         }
 
-        self.connections.remove_established(&cid, now);
-        self.pending_events.push_back(Event::ConnectionFailed(cid));
+        tracing::debug!("Remote may have restarted; checking connection");
 
-        tracing::info!("Connection failed (remote has a new key)");
+        c.rekey_attempt_shortened = true;
+        c.tunnel
+            .set_rekey_attempt_time(SUSPECTED_REKEY_ATTEMPT_TIME);
+
+        if let Some(init) = c.tunnel.restart_handshake(now) {
+            agent.send_handshake_initiation(init, now);
+        }
     }
 
     /// Closes a connection to the provided peer.
@@ -941,7 +954,7 @@ where
         // Iceless has no such gap — probes ride the session, so a stuck
         // handshake means the path is genuinely down, and probe loss must not
         // retire a connection (WireGuard is the sole liveness authority). We
-        // keep the 90s rekey-attempt default so a transient outage (a
+        // keep WireGuard's 90s rekey-attempt default so a transient outage (a
         // relay partition, a roam) doesn't discard session state before the path
         // can be probed back to life. We do tighten two timers: a 5s
         // keepalive-timeout, so WireGuard sends a passive keepalive when 5s pass
@@ -952,6 +965,7 @@ where
         if !agent.is_iceless() {
             tunnel.set_rekey_attempt_time(WG_REKEY_ATTEMPT_TIME);
         } else {
+            tunnel.set_rekey_attempt_time(ICELESS_REKEY_ATTEMPT_TIME);
             tunnel.set_keepalive_timeout(Duration::from_secs(5));
             tunnel.set_rekey_timeout(Duration::from_secs(2));
         }
@@ -968,6 +982,7 @@ where
             },
             disconnected_at: None,
             last_proactive_handshake_sent_at: None,
+            rekey_attempt_shortened: false,
             first_handshake_completed_at: None,
             default_ice_config,
             idle_ice_config,
@@ -1475,6 +1490,8 @@ struct Connection<RId> {
     remote_pub_key: sanstun::PublicKey,
 
     last_proactive_handshake_sent_at: Option<Instant>,
+    /// Whether the tunnel uses [`SUSPECTED_REKEY_ATTEMPT_TIME`] until the next handshake response.
+    rekey_attempt_shortened: bool,
 
     /// The relay we have selected for this connection.
     ///
@@ -2000,6 +2017,9 @@ where
                         .handle_handshake_response(response, now)
                         .map(|reply| self.buffer_or_send(&cid, reply, allocations, transmits, now)),
                 };
+                if result.is_ok() {
+                    self.restore_rekey_attempt_time();
+                }
 
                 ControlFlow::Break(result.context("handshake packet"))
             }
@@ -2053,6 +2073,15 @@ where
         self.agent
             .handle_inbound_tun(packet, path, now)
             .map_break(Ok)
+    }
+
+    fn restore_rekey_attempt_time(&mut self) {
+        if !mem::take(&mut self.rekey_attempt_shortened) {
+            return;
+        }
+
+        self.tunnel
+            .set_rekey_attempt_time(ICELESS_REKEY_ATTEMPT_TIME);
     }
 
     fn buffer_or_send<TId>(

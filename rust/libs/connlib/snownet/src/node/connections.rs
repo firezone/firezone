@@ -813,6 +813,7 @@ mod tests {
             preshared_key: sanstun::StaticSecret::from(Zeroizing::new([0; 32])),
             remote_pub_key: sanstun::PublicKey::from(rand::random::<[u8; 32]>()),
             last_proactive_handshake_sent_at: None,
+            rekey_attempt_shortened: false,
             relay,
             state: crate::node::ConnectionState::Connecting {
                 wg_buffer: AllocRingBuffer::new(1),

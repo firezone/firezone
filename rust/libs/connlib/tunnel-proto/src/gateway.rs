@@ -328,13 +328,12 @@ impl GatewayState {
             .remove_remote_candidate(conn_id, ice_candidate.into(), now);
     }
 
-    /// Fails the connection to a Client that reconnected to the portal with a different key.
+    /// Checks the connection to a Client that reconnected to the portal with a different key.
     ///
     /// Its previous state is forgotten once it authorizes with the new key.
     pub fn handle_public_key_changed(&mut self, cid: ClientId, public_key: Key, now: Instant) {
         self.node
             .handle_remote_key_changed(cid, public_key.into(), now);
-        self.drain_node_events();
     }
 
     #[tracing::instrument(level = "debug", skip_all, fields(%rid, %cid))]
