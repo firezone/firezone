@@ -6,7 +6,7 @@ pub(crate) use crate::gateway::client_on_gateway::ClientOnGateway;
 use crate::authorization_rejections::AuthorizationRejections;
 use crate::gateway::client_on_gateway::{ProxyIpAlreadyAssigned, TranslateOutboundResult};
 use crate::messages::gateway::{Client, ResourceDescription};
-use crate::messages::{IceCredentials, IngestToken, ResolveRequest};
+use crate::messages::{IceCredentials, IngestToken, Key, ResolveRequest};
 use crate::peer_store::PeerStore;
 use crate::portal_connection::PortalConnection;
 use crate::unix_ts::UnixTsClock;
@@ -326,6 +326,14 @@ impl GatewayState {
     ) {
         self.node
             .remove_remote_candidate(conn_id, ice_candidate.into(), now);
+    }
+
+    /// Checks the connection to a Client that reconnected to the portal with a different key.
+    ///
+    /// Its previous state is forgotten once it authorizes with the new key.
+    pub fn handle_public_key_changed(&mut self, cid: ClientId, public_key: Key, now: Instant) {
+        self.node
+            .handle_remote_key_changed(cid, public_key.into(), now);
     }
 
     #[tracing::instrument(level = "debug", skip_all, fields(%rid, %cid))]

@@ -304,6 +304,7 @@ impl StubPortal {
                     .extract_if(.., |(client, _), _| client == client_id)
                 {}
             }
+            Transition::SpuriousPublicKeyChanged { .. } => {}
         }
     }
 
@@ -669,6 +670,23 @@ impl StubPortal {
                 authorization.pool == pool && !members.contains(&authorization.target)
             })
             .copied()
+            .collect()
+    }
+
+    /// The peers holding a peer authorization with `client`, in either direction.
+    pub(crate) fn authorized_peers_of(&self, client: ClientId) -> BTreeSet<ClientId> {
+        self.peer_policy_authorizations
+            .iter()
+            .filter_map(|authorization| {
+                if authorization.initiator == client {
+                    return Some(authorization.target);
+                }
+                if authorization.target == client {
+                    return Some(authorization.initiator);
+                }
+
+                None
+            })
             .collect()
     }
 

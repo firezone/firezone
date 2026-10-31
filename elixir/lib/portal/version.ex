@@ -118,6 +118,28 @@ defmodule Portal.Version do
     end
   end
 
+  # Receiving `public_key_changed` requires:
+  #   apple    >= 1.5.24
+  #   gui      >= 1.5.21 (windows / linux gui)
+  #   headless >= 1.5.16 (windows / linux headless)
+  #   android  >= 1.5.18
+  #   gateway  >= 1.6.5
+  def supports_public_key_changed?(%Device{last_seen_version: nil}), do: false
+
+  def supports_public_key_changed?(%Device{type: :gateway, last_seen_version: version}),
+    do: Version.compare(version, "1.6.5") != :lt
+
+  def supports_public_key_changed?(%Device{type: :client, last_seen_user_agent: nil}), do: false
+
+  def supports_public_key_changed?(%Device{type: :client} = client) do
+    case ComponentVersions.get_component_type_from_user_agent(client.last_seen_user_agent) do
+      :apple -> Version.compare(client.last_seen_version, "1.5.24") != :lt
+      :gui -> Version.compare(client.last_seen_version, "1.5.21") != :lt
+      :headless -> Version.compare(client.last_seen_version, "1.5.16") != :lt
+      :android -> Version.compare(client.last_seen_version, "1.5.18") != :lt
+    end
+  end
+
   # Two clients can only establish a peer-to-peer connection if they share the
   # same major.minor — this lets us evolve snownet's wire format on a minor cadence
   # without breaking running deployments mid-rollout.
