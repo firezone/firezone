@@ -11,7 +11,7 @@ use std::{
 use futures::{StreamExt as _, stream::FuturesOrdered};
 use ip_packet::{Ecn, IpPacket, IpVersion};
 use opentelemetry::metrics::Counter;
-use snownet::{DecryptedIpPacket, PendingDecapsulate, PendingEncapsulate};
+use snownet::{DecryptedBatch, PendingDecapsulate, PendingEncapsulate};
 use socket_factory::{DatagramIn, DatagramOut, Segment};
 use tokio::sync::oneshot;
 
@@ -40,17 +40,17 @@ const MAX_JOBS_IN_FLIGHT: usize = cfg_select! {
 pub(crate) const MAX_DECRYPT_BACKLOG_MEMORY: usize =
     (MAX_JOBS_IN_FLIGHT - 1) * DECRYPT_BATCH_SIZE * socket_factory::MAX_RECV_BUFFER_MEMORY;
 
-/// A datagram from the network with its WireGuard data message decrypted.
+/// A datagram from the network with its WireGuard data messages decrypted.
 pub struct DecryptedDatagram {
     pub local: SocketAddr,
     pub from: SocketAddr,
     pub ecn: Ecn,
-    pub packet: DecryptedIpPacket,
+    pub packets: DecryptedBatch,
 }
 
 impl Prefetch for DecryptedDatagram {
     fn prefetch(&self) {
-        self.packet.prefetch();
+        self.packets.prefetch();
     }
 }
 
@@ -165,13 +165,14 @@ pub struct EncryptBatch<'a> {
 }
 
 impl EncryptBatch<'_> {
-    /// Adds `packet` to the open train to its destination, handing that train to a worker first if
-    /// `packet` starts a new one.
-    pub fn encrypt(&mut self, encapsulation: PendingEncapsulate, packet: IpPacket) {
+    /// Adds a batch of `packets` to the open train to its destination, handing that train to a
+    /// worker first if the batch starts a new one.
+    ///
+    /// A batch is never split, so it must fit a train of its own.
+    pub fn encrypt(&mut self, encapsulation: PendingEncapsulate, packets: Vec<IpPacket>) {
         let src = encapsulation.src();
         let dst = encapsulation.dst();
-        let remaining = self.remaining;
-        self.remaining = remaining.saturating_sub(1);
+        self.remaining = self.remaining.saturating_sub(packets.len());
 
         let Some(open) = self
             .crypto
@@ -181,19 +182,22 @@ impl EncryptBatch<'_> {
         else {
             self.crypto
                 .open_trains
-                .push(EncryptJob::new(encapsulation, packet, remaining));
+                .push(EncryptJob::new(encapsulation, packets));
             return;
         };
 
-        if open
-            .train
-            .try_append(src, dst, packet.ecn(), encapsulation.datagram_len(&packet))
-        {
-            open.packets.push((encapsulation, packet));
+        if open.train.try_append_batch(
+            src,
+            dst,
+            packets
+                .iter()
+                .map(|packet| (packet.ecn(), encapsulation.datagram_len(packet))),
+        ) {
+            open.batches.push((encapsulation, packets));
             return;
         }
 
-        let closed = mem::replace(open, EncryptJob::new(encapsulation, packet, remaining));
+        let closed = mem::replace(open, EncryptJob::new(encapsulation, packets));
         self.dispatch(closed);
     }
 
@@ -232,25 +236,36 @@ impl Drop for EncryptBatch<'_> {
     }
 }
 
-/// Packets to encrypt into one [`UdpGsoTrain`].
+/// Batches of packets to encrypt into one [`UdpGsoTrain`].
 struct EncryptJob {
     train: UdpGsoTrain,
-    packets: Vec<(PendingEncapsulate, IpPacket)>,
+    batches: Vec<(PendingEncapsulate, Vec<IpPacket>)>,
 }
 
 impl EncryptJob {
-    /// Starts a train with `packet`, sized for at most `max_packets`.
-    fn new(encapsulation: PendingEncapsulate, packet: IpPacket, max_packets: usize) -> Self {
-        let train = UdpGsoTrain::new(
+    /// Starts a train with a batch of `packets`.
+    fn new(encapsulation: PendingEncapsulate, packets: Vec<IpPacket>) -> Self {
+        let Some((first, rest)) = packets.split_first() else {
+            unreachable!("a batch holds at least one packet")
+        };
+        let mut train = UdpGsoTrain::new(
             encapsulation.src(),
             encapsulation.dst(),
-            packet.ecn(),
-            encapsulation.datagram_len(&packet),
+            first.ecn(),
+            encapsulation.datagram_len(first),
         );
-        let mut packets = Vec::with_capacity(train.max_segments().min(max_packets));
-        packets.push((encapsulation, packet));
+        let appended = train.try_append_batch(
+            encapsulation.src(),
+            encapsulation.dst(),
+            rest.iter()
+                .map(|packet| (packet.ecn(), encapsulation.datagram_len(packet))),
+        );
+        debug_assert!(appended, "a batch fits a train of its own");
 
-        Self { train, packets }
+        Self {
+            train,
+            batches: vec![(encapsulation, packets)],
+        }
     }
 }
 
@@ -266,7 +281,7 @@ pub struct DecryptBatch<'a> {
 impl<'a> DecryptBatch<'a> {
     /// Adds a received datagram, to mark which of its segments to decrypt.
     pub fn add(&mut self, datagram: DatagramIn) -> DatagramToDecrypt<'_, 'a> {
-        if self.job.messages.len() + datagram.num_segments() > DECRYPT_BATCH_SIZE {
+        if self.job.len + datagram.num_segments() > DECRYPT_BATCH_SIZE {
             self.submit();
         }
 
@@ -313,10 +328,12 @@ pub struct DatagramToDecrypt<'b, 'a> {
 }
 
 impl DatagramToDecrypt<'_, '_> {
-    pub fn decrypt(&mut self, segment: Segment, decapsulation: PendingDecapsulate) {
+    /// Marks `segments`, those of `decapsulation` in order, for decryption.
+    pub fn decrypt(&mut self, segments: Vec<Segment>, decapsulation: PendingDecapsulate) {
+        self.batch.job.len += segments.len();
         self.batch.job.messages.push(Message {
             buffer: self.index,
-            segment,
+            segments,
             decapsulation,
         });
     }
@@ -338,7 +355,7 @@ impl Drop for DatagramToDecrypt<'_, '_> {
             job.buffers.pop();
         }
 
-        if job.messages.len() == DECRYPT_BATCH_SIZE {
+        if job.len >= DECRYPT_BATCH_SIZE {
             self.batch.submit();
         }
     }
@@ -385,11 +402,14 @@ impl Decrypting {
 struct DecryptJob {
     buffers: Vec<DatagramIn>,
     messages: Vec<Message>,
+    /// How many segments the messages hold in total.
+    len: usize,
 }
 
+/// The data messages of one [`PendingDecapsulate`]: segments of one buffer.
 struct Message {
     buffer: usize,
-    segment: Segment,
+    segments: Vec<Segment>,
     decapsulation: PendingDecapsulate,
 }
 
@@ -398,6 +418,7 @@ impl DecryptJob {
         Self {
             buffers: Vec::new(),
             messages: Vec::new(),
+            len: 0,
         }
     }
 }
@@ -439,12 +460,11 @@ fn run(job: Job, packet_counter: &Counter<u64>) {
 }
 
 fn encrypt(
-    EncryptJob { train, mut packets }: EncryptJob,
+    EncryptJob { train, mut batches }: EncryptJob,
     encrypted: oneshot::Sender<DatagramOut>,
     packet_counter: &Counter<u64>,
 ) {
-    let Some(datagram) = train.encrypt(packets.drain(..).prefetching_with(|(_, packet)| packet))
-    else {
+    let Some(datagram) = train.encrypt(batches.drain(..)) else {
         return;
     };
 
@@ -459,21 +479,26 @@ fn encrypt(
 }
 
 fn decrypt(job: DecryptJob, decrypted: oneshot::Sender<DecryptedIpPackets>) {
-    let DecryptJob { buffers, messages } = job;
+    let DecryptJob {
+        buffers,
+        messages,
+        len: _,
+    } = job;
 
     let packets = messages
         .into_iter()
-        .map(|message| {
-            let buffer = &buffers[message.buffer];
-
-            (message.decapsulation, buffer, &buffer[message.segment])
+        .map(|message| (&buffers[message.buffer], message))
+        .prefetching_with(|(buffer, message)| match message.segments.first() {
+            Some(segment) => &buffer[*segment],
+            None => &[],
         })
-        .prefetching_with(|(_, _, ciphertext)| *ciphertext)
-        .map(|(decapsulation, buffer, ciphertext)| DecryptedDatagram {
+        .map(|(buffer, message)| DecryptedDatagram {
             local: buffer.local(),
             from: buffer.from(),
             ecn: buffer.ecn(),
-            packet: decapsulation.decrypt(ciphertext),
+            packets: message
+                .decapsulation
+                .decrypt(message.segments.iter().map(|segment| &buffer[*segment])),
         })
         .collect();
 

@@ -6910,8 +6910,7 @@ dependencies = [
 [[package]]
 name = "sanstun"
 version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6a1304a2b4f3c6160d42065a68acc0e4dc949ab49e96f67d3f6369655d5771c4"
+source = "git+https://github.com/firezone/sanstun?branch=batched-crypto#30c31df48ed87cfd51c9deb499e80a608d73f070"
 dependencies = [
  "blake2",
  "chacha20",
@@ -9155,6 +9154,7 @@ dependencies = [
  "doh-test-server",
  "eventloop-budget",
  "fast-random-state",
+ "flow-tracker",
  "futures",
  "futures-bounded",
  "http-client",
@@ -9247,6 +9247,7 @@ dependencies = [
  "opentelemetry",
  "otel-attributes",
  "otel-instruments",
+ "prefetch",
  "proptest",
  "rand 0.10.3",
  "rangemap",

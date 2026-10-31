@@ -410,6 +410,37 @@ fn data_packet_creates_flow_without_syn() {
     assert_eq!(packet_counts(&spool.completed_flows()), vec![(1, 0)]);
 }
 
+#[test]
+fn batch_counts_its_packets_towards_one_flow() {
+    let authz_id = "77777777-7777-7777-7777-777777777777";
+    let spool = SpoolObserver::new(authz_id);
+    let t0 = Instant::now();
+    let mut tracker = enabled_tracker(t0);
+
+    spool.observe(|| {
+        drive_tx(&mut tracker, &tcp_packet(syn(), &[]), authz_id, t0);
+
+        let flow = tracker.begin_network_packet(
+            "198.51.100.1:51820".parse().unwrap(),
+            "203.0.113.7:51820".parse().unwrap(),
+            t0,
+        );
+        flow_tracker::record_decrypted_packet(&tcp_packet(ack(), &[0; 100]));
+        flow_tracker::record_peer(ClientId::from_u128(1), Role::Responder);
+        flow_tracker::record_ingest_token(Some(&test_token(authz_id, "responder")));
+        let (mut batch, tracker) = flow.into_batch();
+        batch.add(&tcp_packet(ack(), &[0; 200]));
+        batch.add(&tcp_packet(ack(), &[0; 50]));
+        tracker.insert_batch(batch);
+
+        tracker.close_all(t0 + Duration::from_secs(1));
+    });
+
+    let flows = spool.completed_flows();
+    assert_eq!(packet_counts(&flows), vec![(4, 0)]);
+    assert_eq!(flows[0]["tx_bytes"], 350);
+}
+
 /// A tracker whose UTC clock reads exactly 1_700_000_000 at `now`.
 fn enabled_tracker<S>(now: Instant) -> Tracker<S> {
     let mut tracker = Tracker::new(now, Duration::from_secs(1_700_000_000));
