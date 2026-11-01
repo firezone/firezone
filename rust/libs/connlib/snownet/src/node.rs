@@ -475,13 +475,14 @@ where
         let Agent::Path(agent) = &mut c.agent else {
             return;
         };
-        if c.remote_pub_key == remote || c.rekey_attempt_shortened {
+        if c.remote_pub_key == remote
+            || c.tunnel.rekey_attempt_time() == SUSPECTED_REKEY_ATTEMPT_TIME
+        {
             return;
         }
 
         tracing::debug!("Remote may have restarted; checking connection");
 
-        c.rekey_attempt_shortened = true;
         c.tunnel
             .set_rekey_attempt_time(SUSPECTED_REKEY_ATTEMPT_TIME);
 
@@ -982,7 +983,6 @@ where
             },
             disconnected_at: None,
             last_proactive_handshake_sent_at: None,
-            rekey_attempt_shortened: false,
             first_handshake_completed_at: None,
             default_ice_config,
             idle_ice_config,
@@ -1490,8 +1490,6 @@ struct Connection<RId> {
     remote_pub_key: sanstun::PublicKey,
 
     last_proactive_handshake_sent_at: Option<Instant>,
-    /// Whether the tunnel uses [`SUSPECTED_REKEY_ATTEMPT_TIME`] until the next handshake response.
-    rekey_attempt_shortened: bool,
 
     /// The relay we have selected for this connection.
     ///
@@ -2076,7 +2074,7 @@ where
     }
 
     fn restore_rekey_attempt_time(&mut self) {
-        if !mem::take(&mut self.rekey_attempt_shortened) {
+        if self.tunnel.rekey_attempt_time() != SUSPECTED_REKEY_ATTEMPT_TIME {
             return;
         }
 
