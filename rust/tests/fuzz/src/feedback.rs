@@ -268,6 +268,14 @@ impl Recorder {
                 self.changes
                     .push((Scope::Client(*client_id), Change::Crashed));
             }
+            Transition::CrashGateway { .. } => {
+                self.changes
+                    .push((Scope::Everything, Change::GatewayCrashed));
+            }
+            Transition::SpuriousPublicKeyChanged { .. } => {
+                self.changes
+                    .push((Scope::Everything, Change::SpuriousPublicKeyChanged));
+            }
             Transition::UpdateSystemDnsServers { .. }
             | Transition::UpdateUpstreamDo53Servers(_)
             | Transition::UpdateUpstreamDoHServers(_) => {
@@ -577,9 +585,11 @@ enum Change {
     DnsRecordsChanged,
     DnsServersChanged,
     Crashed,
+    GatewayCrashed,
+    SpuriousPublicKeyChanged,
 }
 
-const KINDS: u16 = 23;
+const KINDS: u16 = 25;
 
 #[derive(Clone, Copy)]
 enum Scope {

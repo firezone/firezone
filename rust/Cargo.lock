@@ -6910,8 +6910,7 @@ dependencies = [
 [[package]]
 name = "sanstun"
 version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6a1304a2b4f3c6160d42065a68acc0e4dc949ab49e96f67d3f6369655d5771c4"
+source = "git+https://github.com/firezone/sanstun?branch=main#7c3e56270f14683238e86a2f671ec1072e8c027b"
 dependencies = [
  "blake2",
  "chacha20",

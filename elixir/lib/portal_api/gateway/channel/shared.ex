@@ -141,6 +141,12 @@ defmodule PortalAPI.Gateway.Channel.Shared do
 
     init(socket, account, relays)
 
+    :ok =
+      PortalAPI.Sockets.notify_public_key_changed(
+        socket.assigns.gateway,
+        socket.assigns[:previous_public_key]
+      )
+
     # Cache relay IDs and stamp secrets for tracking
     socket = cache_relays(socket, relays)
 
@@ -277,6 +283,14 @@ defmodule PortalAPI.Gateway.Channel.Shared do
   ###########################
   #### Connection setup #####
   ###########################
+
+  def handle_info({:public_key_changed, :client, client_id, public_key}, socket) do
+    if Portal.Version.supports_public_key_changed?(socket.assigns.gateway) do
+      push(socket, "public_key_changed", %{client_id: client_id, public_key: public_key})
+    end
+
+    {:noreply, socket}
+  end
 
   def handle_info({:ice_candidates, client_id, candidates}, socket) do
     push(socket, "ice_candidates", %{

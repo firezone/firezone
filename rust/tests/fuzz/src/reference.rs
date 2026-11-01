@@ -26,11 +26,6 @@ use crate::resource as client;
 // TODO: Remove with classic ICE.
 const MIN_IDLE_FOR_REKEY_DROP: Duration = Duration::from_secs(180 - 10);
 
-/// Maximum time for an established iceless peer to retire a connection after its peer crashes:
-/// the primary's next probe, the unanswered-data handshake delay, jitter, and handshake expiry.
-const ICELESS_PEER_CRASH_LOSS: Duration =
-    Duration::from_millis(25_000 + 5_000 + 2_000 + 333 + 90_000);
-
 /// How long after a relay frees up its ports until no node ignores it anymore: how long a node
 /// ignores a relay that failed its allocation, plus a margin.
 const RELAY_RECOVERY: Duration = Duration::from_secs(60 + 5);
@@ -728,10 +723,22 @@ impl ReferenceState {
                     c.dns_records.clear();
                 });
 
+                // Without a `goodbye`, the peers lose their connections to the crashed client, and
+                // their authorizations towards it with them.
                 for (_, peer) in self.clients.iter_mut().filter(|(id, _)| *id != client_id) {
-                    peer.exec_mut(|c| c.record_peer_crash(*client_id, now));
+                    peer.exec_mut(|c| c.forget_peer_authorizations(*client_id));
                 }
             }
+            Transition::CrashGateway { gateway_id, .. } => {
+                self.node_may_lack_relays |= self.no_relay_accepts_allocations();
+
+                let crashed = BTreeSet::from([*gateway_id]);
+                for client in self.clients.values_mut() {
+                    client.exec_mut(|c| c.fail_connections_to_gateways(&crashed, now));
+                }
+            }
+            // The remote still answers, so the connection survives.
+            Transition::SpuriousPublicKeyChanged { .. } => {}
         };
 
         self
@@ -1098,10 +1105,10 @@ impl ReferenceState {
                     .get_mut(&origin)
                     .unwrap()
                     .exec_mut(|client| client.record_outbound_peer_authorization(peer, pool));
-                self.clients.get_mut(&peer).unwrap().exec_mut(|receiver| {
-                    receiver.clear_peer_crash(origin);
-                    receiver.add_inbound_peer_pool(origin, pool);
-                });
+                self.clients
+                    .get_mut(&peer)
+                    .unwrap()
+                    .exec_mut(|receiver| receiver.add_inbound_peer_pool(origin, pool));
             }
             None => {}
         }
@@ -1216,6 +1223,7 @@ impl ReferenceState {
         Ok(PoolTowardsPeer::Granted(pool))
     }
 
+    // TODO: Remove with classic ICE: every trace is then exact.
     fn trace_requirement(
         &self,
         portal: &StubPortal,
@@ -1223,26 +1231,13 @@ impl ReferenceState {
         outcome: ExpectedOutcome,
         sent_at: Instant,
     ) -> TraceRequirement {
+        if portal.iceless() {
+            return TraceRequirement::Exact;
+        }
+
         let Some(remote) = outcome.remote() else {
             return TraceRequirement::Exact;
         };
-        if portal.iceless() {
-            return match remote {
-                Remote::Client(peer)
-                    if self.clients[&origin]
-                        .inner()
-                        .peer_crashed_at(peer)
-                        .is_some_and(|crashed_at| {
-                            sent_at <= crashed_at + ICELESS_PEER_CRASH_LOSS
-                        }) =>
-                {
-                    TraceRequirement::ExactOrLoss(KnownLoss::PeerCrash)
-                }
-                Remote::Client(_) => TraceRequirement::Exact,
-                Remote::Gateway(_) => TraceRequirement::Exact,
-            };
-        }
-
         let known_loss = match remote {
             Remote::Client(client)
                 if self.clients[&client]

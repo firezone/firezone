@@ -327,6 +327,7 @@ private-intra-doc-links = "allow" # We don't publish any of our docs but want to
 ip_network = { git = "https://github.com/JakubOnderka/ip_network", branch = "master" } # Waiting for release.
 ip_network_table = { git = "https://github.com/edmonds/ip_network_table", branch = "some-useful-traits" } # For `Debug` and `Clone`
 quinn-udp = { git = "https://github.com/firezone/quinn", version = "0.6.0", branch = "main" } # Waiting for https://github.com/quinn-rs/quinn/pull/2748.
+sanstun = { git = "https://github.com/firezone/sanstun", branch = "main" } # Waiting for a release with https://github.com/firezone/sanstun/pull/144.
 
 # Enforce `tracing-macros` to have released `tracing` version.
 [patch.'https://github.com/tokio-rs/tracing']

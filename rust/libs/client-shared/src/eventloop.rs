@@ -24,7 +24,7 @@ use tunnel::messages::client::{
     ClientDeviceAccessDenied, ClientIceCandidateError, ClientIceCandidates, ClientRejectAccess,
     DeviceDomainBrowseFailed, DeviceDomainBrowsed, DeviceDomainResolutionFailed,
     DeviceDomainResolved, EgressMessages, FailReason, GatewayIceCandidates, IngressMessages,
-    InitClient, ResourceAuthorization, ResourceFiltersUpdated,
+    InitClient, Peer, PublicKeyChanged, ResourceAuthorization, ResourceFiltersUpdated,
 };
 use tunnel::messages::{IngestToken, RelaysPresence, SnownetCapabilities};
 use tunnel::{ClientEvent, ClientTunnel, DnsResourceRecord, IpConfig, TunConfig, TunnelError};
@@ -800,6 +800,18 @@ impl Eventloop {
                 tunnel
                     .state_mut()
                     .handle_reject_client_device_access(client_id, resource_id);
+            }
+            IngressMessages::PublicKeyChanged(PublicKeyChanged { peer, public_key }) => {
+                let peer = match peer {
+                    Peer::Client { client_id } => ClientOrGatewayId::Client(client_id),
+                    Peer::Gateway { gateway_id } => ClientOrGatewayId::Gateway(gateway_id),
+                };
+
+                tunnel.state_mut().handle_public_key_changed(
+                    peer,
+                    PublicKey::from(public_key.0),
+                    now,
+                );
             }
             // OBSOLETE - safe to remove this when https://github.com/firezone/firezone/pull/13714 is deployed to production.
             IngressMessages::AccessAuthorizationExpiryUpdated(_) => {}

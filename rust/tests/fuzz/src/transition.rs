@@ -1,4 +1,4 @@
-use connlib_model::{ClientId, RelayId, ResourceId};
+use connlib_model::{ClientId, ClientOrGatewayId, GatewayId, RelayId, ResourceId};
 use dns_types::{DomainName, OwnedRecordData, RecordType};
 use tunnel_proto::{
     dns::{self, is_subdomain},
@@ -149,6 +149,18 @@ pub enum Transition {
         client_id: ClientId,
         key: PrivateKey,
     },
+    /// Restarts a Gateway whose process died: it sends no `goodbye`. `clients` are the Clients
+    /// the portal tells about its new key.
+    CrashGateway {
+        gateway_id: GatewayId,
+        key: PrivateKey,
+        clients: BTreeSet<ClientId>,
+    },
+    SpuriousPublicKeyChanged {
+        recipient: ClientOrGatewayId,
+        remote: ClientOrGatewayId,
+        key: PrivateKey,
+    },
 }
 
 impl Transition {
@@ -188,6 +200,8 @@ impl Transition {
             Transition::RevokePeerAuthorization { .. } => true,
             Transition::UpdateDnsRecords { .. } => false,
             Transition::CrashClient { .. } => false,
+            Transition::CrashGateway { .. } => false,
+            Transition::SpuriousPublicKeyChanged { .. } => false,
         }
     }
 
@@ -255,6 +269,8 @@ impl Transition {
                 Destination::IpAddr(_) => true,
             },
             Transition::CrashClient { .. } => self.retains_flow(client_id, route, false),
+            Transition::CrashGateway { .. } => self.retains_flow(client_id, route, false),
+            Transition::SpuriousPublicKeyChanged { .. } => true,
         }
     }
 
@@ -343,6 +359,14 @@ impl Transition {
                 Route::Resource { .. } => client_id != *crashed,
                 Route::Peer(peer) => client_id != *crashed && peer != *crashed,
             },
+            Transition::CrashGateway {
+                gateway_id: crashed,
+                ..
+            } => match route {
+                Route::Resource { gateway, .. } => gateway != *crashed,
+                Route::Peer(_) => true,
+            },
+            Transition::SpuriousPublicKeyChanged { .. } => true,
         }
     }
 }
