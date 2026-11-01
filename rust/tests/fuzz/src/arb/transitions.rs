@@ -60,6 +60,7 @@ enum TransitionKind {
     ExhaustRelayPorts,
     FreeRelayPorts,
     CrashClient,
+    CrashGateway,
     SpuriousPublicKeyChanged,
 }
 
@@ -68,7 +69,7 @@ enum TransitionKind {
 /// A node whose allocations all failed cannot open any connection until it gets a relay back,
 /// which the reference model does not predict. While every relay is exhausted or recovering, or a
 /// node may have no relay left, only these are legal.
-const LEGAL_WITHOUT_HEALTHY_RELAY: [TransitionKind; 8] = [
+const LEGAL_WITHOUT_HEALTHY_RELAY: [TransitionKind; 9] = [
     TransitionKind::RoamClient,
     TransitionKind::DeployNewRelays,
     TransitionKind::PartitionRelaysFromPortal,
@@ -77,6 +78,7 @@ const LEGAL_WITHOUT_HEALTHY_RELAY: [TransitionKind; 8] = [
     TransitionKind::FreeRelayPorts,
     TransitionKind::Idle,
     TransitionKind::CrashClient,
+    TransitionKind::CrashGateway,
 ];
 
 #[derive(Clone, Copy)]
@@ -212,6 +214,9 @@ pub(super) fn generate(
         can_exhaust_relay.then_some((K::ExhaustRelayPorts, 1)),
         (!exhausted_relays.is_empty()).then_some((K::FreeRelayPorts, 1)),
         (!client_ids.is_empty()).then_some((K::CrashClient, 1)),
+        // Classic ICE ignores `public_key_changed`, so its connections would only fail on
+        // WireGuard's handshake timeout.
+        (portal.iceless() && !state.gateways.is_empty()).then_some((K::CrashGateway, 1)),
         (!key_change_recipients.is_empty()).then_some((K::SpuriousPublicKeyChanged, 1)),
     ]
     .into_iter()
@@ -220,7 +225,7 @@ pub(super) fn generate(
         (healthy_relays > 0 && !state.node_may_lack_relays)
             || LEGAL_WITHOUT_HEALTHY_RELAY.contains(kind)
     })
-    .collect::<SmallVec<[_; 23]>>();
+    .collect::<SmallVec<[_; 24]>>();
 
     // Weighted pick over the legal list.
     let kind = weighted_choose(g, &legal);
@@ -354,6 +359,18 @@ pub(super) fn generate(
             let client_id = client_ids[g.choose_index(client_ids.len())];
             let key = g.fresh_private_key();
             Transition::CrashClient { client_id, key }
+        }
+        K::CrashGateway => {
+            let gateway_ids = state.gateways.keys().copied().collect::<Vec<_>>();
+            let gateway_id = gateway_ids[g.choose_index(gateway_ids.len())];
+            let key = g.fresh_private_key();
+            let clients = portal.clients_authorized_through(gateway_id);
+
+            Transition::CrashGateway {
+                gateway_id,
+                key,
+                clients,
+            }
         }
         K::SpuriousPublicKeyChanged => {
             let (recipient, remote) =

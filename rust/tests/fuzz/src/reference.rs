@@ -729,6 +729,14 @@ impl ReferenceState {
                     peer.exec_mut(|c| c.forget_peer_authorizations(*client_id));
                 }
             }
+            Transition::CrashGateway { gateway_id, .. } => {
+                self.node_may_lack_relays |= self.no_relay_accepts_allocations();
+
+                let crashed = BTreeSet::from([*gateway_id]);
+                for client in self.clients.values_mut() {
+                    client.exec_mut(|c| c.fail_connections_to_gateways(&crashed, now));
+                }
+            }
             // The remote still answers, so the connection survives.
             Transition::SpuriousPublicKeyChanged { .. } => {}
         };

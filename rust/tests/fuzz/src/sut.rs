@@ -866,6 +866,27 @@ impl TunnelTest {
                     });
                 }
             }
+            Transition::CrashGateway {
+                gateway_id,
+                key,
+                clients,
+            } => {
+                self.gateways.get_mut(&gateway_id).unwrap().exec_mut(|g| {
+                    g.crash(key, now, utc_now);
+                    g.update_relays(iter::empty(), self.relays.iter(), now);
+                });
+
+                let public_key = self.gateways[&gateway_id].inner().sut().public_key();
+                for client_id in clients {
+                    self.clients.get_mut(&client_id).unwrap().exec_mut(|c| {
+                        c.sut_mut().handle_public_key_changed(
+                            ClientOrGatewayId::Gateway(gateway_id),
+                            public_key,
+                            now,
+                        )
+                    });
+                }
+            }
             Transition::SpuriousPublicKeyChanged {
                 recipient,
                 remote,
