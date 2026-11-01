@@ -149,7 +149,6 @@ pub enum Transition {
         client_id: ClientId,
         key: PrivateKey,
     },
-    /// A buggy portal tells `recipient` that `remote` reconnected with `key`, although it did not.
     SpuriousPublicKeyChanged {
         recipient: ClientOrGatewayId,
         remote: ClientOrGatewayId,
