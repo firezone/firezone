@@ -6910,7 +6910,7 @@ dependencies = [
 [[package]]
 name = "sanstun"
 version = "0.1.0"
-source = "git+https://github.com/firezone/sanstun?branch=expose-rekey-attempt-time#d84d5f964db42a9803387c5be9395be08efaca5c"
+source = "git+https://github.com/firezone/sanstun?branch=main#7c3e56270f14683238e86a2f671ec1072e8c027b"
 dependencies = [
  "blake2",
  "chacha20",
