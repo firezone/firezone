@@ -1,4 +1,4 @@
-name: Bencher attach
+name: Bencher results
 run-name: Triggered by Bencher job ${{ github.event.client_payload.bencher.job }}
 # Bencher dispatches this once a Bare Metal job submitted with `--detach` has run.
 # GitHub only runs `repository_dispatch` workflows from the default branch.
@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 jobs:
-  attach:
+  results:
     runs-on: ubuntu-24.04
     permissions:
       checks: write

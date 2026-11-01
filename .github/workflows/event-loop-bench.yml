@@ -118,7 +118,7 @@ jobs:
           fi
 
           # Bare Metal jobs can queue for hours, so only submit the job and start its GitHub Check.
-          # Once the job has run, Bencher dispatches `bencher_run` to `bencher-attach.yml`, which posts the results.
+          # Once the job has run, Bencher dispatches `bencher_run` to `bencher-results.yml`, which posts the results.
           bencher run \
             --project "$BENCHER_PROJECT" \
             --testbed "bare-metal-$BENCHER_SPEC" \
