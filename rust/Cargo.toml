@@ -301,7 +301,7 @@ x509-claims-ffi = { path = "libs/x509-claims-ffi" }
 x509-credential = { path = "libs/x509-credential" }
 x509-keystore = { path = "libs/x509-keystore" }
 x509-parser = "0.18.0"
-zbus = "5.15.0"
+zbus = "6.0.0"
 zeroize = "1.8.1"
 zip = { version = "9.0.1", default-features = false }
 
