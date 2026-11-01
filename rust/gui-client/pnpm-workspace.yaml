@@ -2,5 +2,6 @@ allowBuilds:
   esbuild: true
 overrides:
   "brace-expansion@<5.0.12": 5.0.12
+  "minimatch@>=10 <11.0.1": 11.0.3
 patchedDependencies:
   minimatch@3.1.5: patches/minimatch@3.1.5.patch
