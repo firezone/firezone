@@ -97,6 +97,11 @@ defmodule PortalAPI.GatewayController do
     it via `POST /sites/{site_id}/gateways/{gateway_id}/token/rotate` once \
     the Gateway has connected, or delete and re-provision it.
 
+    Returning the token requires the `gateway_tokens:write` scope in \
+    addition to `gateways:write`. Set `issue_token` to `false` to create \
+    the Gateway without a token, which needs only `gateways:write`; mint \
+    its token later via `POST /sites/{site_id}/gateways/{gateway_id}/token`.
+
     `name` is optional; a random name is generated when omitted. `ipv4` \
     and `ipv6` are the Gateway's tunnel addresses, allocated from the \
     account's pool when the Gateway row is created - they are always \
@@ -133,9 +138,11 @@ defmodule PortalAPI.GatewayController do
   def create(conn, %{"site_id" => site_id} = params) do
     subject = conn.assigns.subject
     name = get_in(params, ["gateway", "name"])
+    issue_token? = Map.get(params, "issue_token", true)
 
-    with {:ok, site} <- Database.fetch_site(site_id, subject),
-         {:ok, gateway, _token, encoded_token} <- Database.provision_gateway(site, name, subject) do
+    with :ok <- permit_token_issuance(issue_token?, subject),
+         {:ok, site} <- Database.fetch_site(site_id, subject),
+         {:ok, gateway, encoded_token} <- create_gateway(site, name, issue_token?, subject) do
       gateway = Presence.Devices.preload_presence([gateway]) |> List.first()
 
       conn
@@ -148,6 +155,37 @@ defmodule PortalAPI.GatewayController do
       )
     else
       error -> Error.handle(conn, error)
+    end
+  end
+
+  # The scope plug has already checked gateways:write. Returning the new
+  # Gateway's token hands out the credential that lets it join the Site, so it
+  # also needs gateway_tokens:write, the same as minting one through
+  # GatewayTokenController.
+  defp permit_token_issuance(false, _subject), do: :ok
+
+  defp permit_token_issuance(true, subject) do
+    case Portal.Scope.permit(:gateway_tokens, :post, subject) do
+      :ok ->
+        :ok
+
+      {:error, {:unauthorized, required_scope: required}} ->
+        {:error, :forbidden,
+         reason:
+           "This request requires the #{required} scope. " <>
+             "Set issue_token to false to create the Gateway without a token."}
+    end
+  end
+
+  defp create_gateway(site, name, true, subject) do
+    with {:ok, gateway, _token, encoded_token} <- Database.provision_gateway(site, name, subject) do
+      {:ok, gateway, encoded_token}
+    end
+  end
+
+  defp create_gateway(site, name, false, subject) do
+    with {:ok, gateway} <- Database.create_gateway(site, name, subject) do
+      {:ok, gateway, nil}
     end
   end
 
@@ -262,6 +300,10 @@ defmodule PortalAPI.GatewayController do
 
     def provision_gateway(site, name, subject) do
       Devices.provision_gateway(site, name, subject)
+    end
+
+    def create_gateway(site, name, subject) do
+      Devices.create_gateway(site, name, subject)
     end
 
     def list_gateways(subject, opts \\ []) do
