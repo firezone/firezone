@@ -173,7 +173,7 @@ l4-tcp-dns-server = { path = "libs/connlib/l4-tcp-dns-server" }
 l4-udp-dns-server = { path = "libs/connlib/l4-udp-dns-server" }
 libc = "0.2.186"
 logging = { path = "libs/logging" }
-lru = "0.18.0"
+lru = "0.19.0"
 memchr = "2.7.4"
 mimalloc = { version = "0.1.52" }
 mio = "1.2.1"
