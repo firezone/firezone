@@ -33,6 +33,7 @@ jobs:
     runs-on: ${{ matrix.runs-on }}
     permissions:
       contents: read
+      checks: write
     env:
       BENCHER_PROJECT: firezone-1l75jv1z
       BENCHER_SPEC: intel-v1
@@ -47,7 +48,7 @@ jobs:
       # Runs each benchmark once, so a broken one fails here instead of on Bencher.
       - name: Test bench
         run: cargo bench -p tunnel-bench --bench throughput -- --test
-      - uses: bencherdev/bencher@f80847436d7157936b40525db4c2a1064124f04a # v0.6.13
+      - uses: bencherdev/bencher@7de3c69a85380826613050826b4bce062be2f07d # v0.6.16
         if: env.BENCHER == 'true'
       - name: Push image to the Bencher registry
         if: env.BENCHER == 'true'
@@ -88,6 +89,7 @@ jobs:
         env:
           BENCHER_API_KEY: ${{ secrets.BENCHER_API_KEY }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
 
@@ -115,8 +117,8 @@ jobs:
             done
           fi
 
-          # Bare Metal jobs can queue for hours, so only submit the job. Its results and
-          # alerts show up on Bencher once it has run.
+          # Bare Metal jobs can queue for hours, so only submit the job and start its GitHub Check.
+          # Once the job has run, Bencher dispatches `bencher_run` to `bencher-attach.yml`, which posts the results.
           bencher run \
             --project "$BENCHER_PROJECT" \
             --testbed "bare-metal-$BENCHER_SPEC" \
@@ -126,4 +128,6 @@ jobs:
             "${branch[@]}" \
             --adapter json \
             --file /tmp/tunnel-bench.json \
+            --github-actions "$GH_TOKEN" \
+            --ci-id event-loop \
             --detach
