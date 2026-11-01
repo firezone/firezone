@@ -20,11 +20,10 @@ jobs:
       - name: Post the results
         env:
           BENCHER_API_KEY: ${{ secrets.BENCHER_API_KEY }}
-          BENCHER_PROJECT: ${{ github.event.client_payload.bencher.project }}
           JOB: ${{ github.event.client_payload.bencher.job }}
           GH_TOKEN: ${{ github.token }}
         run: |
           bencher run \
-            --project "$BENCHER_PROJECT" \
+            --project firezone-1l75jv1z \
             --job "$JOB" \
             --github-actions "$GH_TOKEN"
