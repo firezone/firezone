@@ -1,3 +1,4 @@
+use std::fmt;
 use std::net::SocketAddr;
 use std::num::NonZeroUsize;
 use std::time::Instant;
@@ -5,6 +6,7 @@ use std::time::Instant;
 use anyhow::Result;
 use bufferpool::Bytes;
 use ip_packet::IpPacket;
+use prefetch::{IteratorExt as _, Prefetching};
 
 use crate::node::Transmit;
 
@@ -280,11 +282,15 @@ impl PendingDecapsulate {
             .into_iter()
             .map(|segment| (&segment[header_len..], ip_packet::packet_buffer()));
 
+        let mut data = self.pending.decrypt(messages).map(IpPacket::new);
+        let probes = data.extract_if(|packet| packet.as_ref().is_ok_and(path_agent::is_probe));
+
         DecryptedBatch {
             tunnel: self.tunnel,
             src: self.src,
             dst: self.dst,
-            decrypted: self.pending.decrypt(messages).map(IpPacket::new),
+            data,
+            probes,
         }
     }
 }
@@ -295,34 +301,68 @@ pub struct DecryptedBatch {
     pub(crate) tunnel: sanstun::TunnelId,
     pub(crate) src: SocketAddr,
     pub(crate) dst: SocketAddr,
-    pub(crate) decrypted: sanstun::DecryptedBatch<Result<IpPacket>>,
+    pub(crate) data: sanstun::DecryptedBatch<Result<IpPacket>>,
+    /// The path agent's probes, which never reach the TUN device.
+    pub(crate) probes: sanstun::DecryptedBatch<Result<IpPacket>>,
 }
+
+type Committed = std::result::Result<sanstun::Committed<Result<IpPacket>>, sanstun::Error>;
 
 /// The packets of a [`DecryptedBatch`] committed to their connection, in order.
 ///
 /// Yields `Ok(None)` for a packet that was handled internally, for example, a keepalive.
-pub struct CommittedBatch(std::vec::IntoIter<Result<Option<IpPacket>>>);
+pub struct CommittedBatch<TId> {
+    cid: TId,
+    packets: Prefetching<sanstun::CommittedBatch<Result<IpPacket>>, fn(&Committed) -> &[u8]>,
+}
 
-impl CommittedBatch {
-    pub(crate) fn new(packets: Vec<Result<Option<IpPacket>>>) -> Self {
-        Self(packets.into_iter())
+impl<TId: Copy> CommittedBatch<TId> {
+    /// Returns the connection the packets were received on.
+    pub fn cid(&self) -> TId {
+        self.cid
     }
 
-    pub(crate) fn empty() -> Self {
-        Self(Vec::new().into_iter())
+    pub(crate) fn new(cid: TId, packets: sanstun::CommittedBatch<Result<IpPacket>>) -> Self {
+        // The worker thread wrote the packets, so fetch the next one while handling this one.
+        Self {
+            cid,
+            packets: packets.prefetching_with(packet_bytes),
+        }
     }
 }
 
-impl Iterator for CommittedBatch {
+impl<TId: fmt::Display> Iterator for CommittedBatch<TId> {
     type Item = Result<Option<IpPacket>>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.0.next()
+        let packet = match self.packets.next()? {
+            Ok(sanstun::Committed::Data {
+                buffer: Ok(packet), ..
+            }) => Ok(Some(packet)),
+            Ok(sanstun::Committed::Data { buffer: Err(e), .. }) => Err(e
+                .context("Failed to parse IP packet")
+                .context(format!("cid={}", self.cid))),
+            Ok(sanstun::Committed::Keepalive) => Ok(None),
+            Err(e) => Err(anyhow::Error::new(e)
+                .context("data packet")
+                .context(format!("cid={}", self.cid))),
+        };
+
+        Some(packet)
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
-        self.0.size_hint()
+        self.packets.size_hint()
     }
 }
 
-impl ExactSizeIterator for CommittedBatch {}
+impl<TId: fmt::Display> ExactSizeIterator for CommittedBatch<TId> {}
+
+fn packet_bytes(committed: &Committed) -> &[u8] {
+    match committed {
+        Ok(sanstun::Committed::Data {
+            buffer: Ok(packet), ..
+        }) => packet.packet(),
+        _ => &[],
+    }
+}

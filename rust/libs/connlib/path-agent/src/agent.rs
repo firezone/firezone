@@ -622,15 +622,20 @@ impl PathAgent {
         self.events.pop_front()
     }
 
+    /// Records that data from the peer decrypted, other than a probe.
+    pub fn handle_inbound_data(&mut self, now: Instant) {
+        self.last_now = Some(now);
+        // Decrypted peer data proves the peer is hearing us: not in distress.
+        self.peer_rekeys = 0;
+    }
+
     pub fn handle_inbound_tun(
         &mut self,
         packet: ip_packet::IpPacket,
         pair: (SocketAddr, SocketAddr),
         now: Instant,
     ) -> ControlFlow<(), ip_packet::IpPacket> {
-        self.last_now = Some(now);
-        // Decrypted peer data proves the peer is hearing us: not in distress.
-        self.peer_rekeys = 0;
+        self.handle_inbound_data(now);
 
         let Some(probe) = crate::icmpv6::Probe::try_parse(&packet) else {
             return ControlFlow::Continue(packet);

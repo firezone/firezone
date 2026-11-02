@@ -28,7 +28,6 @@ use is::{Candidate, CandidateKind, IceConnectionState};
 use is::{IceAgent, IceAgentEvent};
 use itertools::Itertools;
 use opentelemetry::metrics::Gauge;
-use prefetch::IteratorExt as _;
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use ringbuffer::{AllocRingBuffer, RingBuffer};
@@ -643,26 +642,27 @@ where
 
     /// Commits the packets decrypted from a [`DecapsulateBatch`].
     ///
-    /// Returns the connection they were received on and the result of each packet.
+    /// Returns the result of each packet.
     pub fn commit_decrypted(
         &mut self,
         batch: DecryptedBatch,
         now: Instant,
-    ) -> Result<(TId, CommittedBatch)> {
+    ) -> Result<CommittedBatch<TId>> {
         self.last_now = now;
 
         let DecryptedBatch {
             tunnel,
             src,
             dst,
-            decrypted,
+            data,
+            probes,
         } = batch;
 
         let (cid, conn) = self
             .connections
             .get_established_mut_by_tunnel_id(tunnel, now)?;
 
-        let packets = conn.commit_decrypted(cid, (dst, src), decrypted, now);
+        let packets = conn.commit_decrypted(cid, (dst, src), data, probes, now);
         conn.handle_tunnel_events(
             cid,
             &mut self.allocations,
@@ -670,13 +670,14 @@ where
             &mut self.pending_events,
             now,
         );
-        let packets = packets?;
+        let mut packets = packets?;
 
         if self.connections.is_closing(&cid) {
-            return Ok((cid, CommittedBatch::empty()));
+            // A closing connection drops what it receives.
+            for _ in packets.by_ref() {}
         }
 
-        Ok((cid, CommittedBatch::new(packets)))
+        Ok(CommittedBatch::new(cid, packets))
     }
 
     /// Starts a batch of outgoing IP packets to `cid`, beginning with `packet`.
@@ -2054,61 +2055,58 @@ where
         ControlFlow::Break(result)
     }
 
-    /// Returns `Ok(None)` for a packet that was handled internally, for example, a keepalive.
+    /// Hands the probes to the agent and returns the data packets.
     fn commit_decrypted<TId>(
         &mut self,
         cid: TId,
         path: (SocketAddr, SocketAddr),
-        decrypted: sanstun::DecryptedBatch<Result<IpPacket>>,
+        data: sanstun::DecryptedBatch<Result<IpPacket>>,
+        probes: sanstun::DecryptedBatch<Result<IpPacket>>,
         now: Instant,
-    ) -> Result<Vec<Result<Option<IpPacket>>>>
+    ) -> Result<sanstun::CommittedBatch<Result<IpPacket>>>
     where
         TId: fmt::Display + Copy,
         RId: Ord + fmt::Display + Copy,
     {
-        let committed = self
-            .tunnel
-            .commit_decapsulate(decrypted, now)
-            .context("data packet")
-            .with_context(|| format!("cid={cid}"))?;
+        if !probes.is_empty() {
+            let probes = self
+                .tunnel
+                .commit_decapsulate(probes, now)
+                .context("data packet")
+                .with_context(|| format!("cid={cid}"))?;
 
-        // The worker thread wrote the packets, so fetch the next one while handling this one.
-        let packets = committed
-            .prefetching_with(|committed| match committed {
-                Ok(sanstun::Committed::Data {
-                    buffer: Ok(packet), ..
-                }) => packet.packet(),
-                _ => &[],
-            })
-            .map(|committed| {
-                let packet = match committed {
+            for probe in probes {
+                let probe = match probe {
                     Ok(sanstun::Committed::Data {
-                        buffer: Ok(packet), ..
-                    }) => packet,
-                    Ok(sanstun::Committed::Data { buffer: Err(e), .. }) => {
-                        return Err(e
-                            .context("Failed to parse IP packet")
-                            .context(format!("cid={cid}")));
-                    }
-                    Ok(sanstun::Committed::Keepalive) => return Ok(None),
+                        buffer: Ok(probe), ..
+                    }) => probe,
+                    Ok(sanstun::Committed::Data { buffer: Err(_), .. }) => continue,
+                    Ok(sanstun::Committed::Keepalive) => continue,
                     Err(e) => {
-                        return Err(anyhow::Error::new(e)
-                            .context("data packet")
-                            .context(format!("cid={cid}")));
+                        tracing::debug!(%cid, "Failed to commit probe: {e}");
+                        continue;
                     }
                 };
 
                 self.state
-                    .on_incoming(cid, &mut self.agent, self.default_ice_config, &packet, now);
+                    .on_incoming(cid, &mut self.agent, self.default_ice_config, &probe, now);
+                self.agent.handle_inbound_probe(probe, path, now);
+            }
+        }
 
-                match self.agent.handle_inbound_tun(packet, path, now) {
-                    ControlFlow::Continue(packet) => Ok(Some(packet)),
-                    ControlFlow::Break(()) => Ok(None),
-                }
-            })
-            .collect();
+        let committed = self
+            .tunnel
+            .commit_decapsulate(data, now)
+            .context("data packet")
+            .with_context(|| format!("cid={cid}"))?;
 
-        Ok(packets)
+        if let Some(packet) = committed.data().find_map(|packet| packet.as_ref().ok()) {
+            self.state
+                .on_incoming(cid, &mut self.agent, self.default_ice_config, packet, now);
+            self.agent.handle_inbound_data(now);
+        }
+
+        Ok(committed)
     }
 
     fn restore_rekey_attempt_time(&mut self) {

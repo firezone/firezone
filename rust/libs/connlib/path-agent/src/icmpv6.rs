@@ -43,6 +43,11 @@ impl Probe {
     }
 }
 
+/// Returns whether `packet` is a probe, which [`PathAgent::handle_inbound_tun`](crate::PathAgent::handle_inbound_tun) consumes.
+pub fn is_probe(packet: &IpPacket) -> bool {
+    Probe::try_parse(packet).is_some()
+}
+
 pub(crate) fn build_echo_request(id: u16, seq: u16) -> IpPacket {
     ip_packet::make::icmp_request_packet(IpAddr::V6(PROBE_SRC), IpAddr::V6(PROBE_DST), seq, id, &[])
         .expect("magic addresses and empty payload always fit")

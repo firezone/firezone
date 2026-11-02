@@ -2932,7 +2932,7 @@ type InboundDecisions = smallvec::SmallVec<[InboundDecision; 2]>;
 pub struct PeerBatch<'a> {
     state: &'a mut ClientState,
     /// The committed packets, or the error that failed the batch as a whole until it is yielded.
-    committed: Result<(ClientOrGatewayId, snownet::CommittedBatch), Option<anyhow::Error>>,
+    committed: Result<snownet::CommittedBatch<ClientOrGatewayId>, Option<anyhow::Error>>,
     local: SocketAddr,
     from: SocketAddr,
     now: Instant,
@@ -2944,14 +2944,14 @@ impl Iterator for PeerBatch<'_> {
     type Item = Result<Option<IpPacket>>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let (pid, packets) = match &mut self.committed {
-            Ok(committed) => committed,
+        let packets = match &mut self.committed {
+            Ok(packets) => packets,
             Err(e) => return e.take().map(Err),
         };
         let packet = packets.next()?;
 
         Some(self.state.handle_peer_message(
-            *pid,
+            packets.cid(),
             packet,
             &mut self.decisions,
             self.local,
@@ -2962,7 +2962,7 @@ impl Iterator for PeerBatch<'_> {
 
     fn size_hint(&self) -> (usize, Option<usize>) {
         match &self.committed {
-            Ok((_, packets)) => packets.size_hint(),
+            Ok(packets) => packets.size_hint(),
             Err(e) => {
                 let len = usize::from(e.is_some());
 
