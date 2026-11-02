@@ -134,6 +134,21 @@ where
         }
     }
 
+    /// Removes the entries for exactly `network` that match `predicate`.
+    pub(crate) fn remove_where(&mut self, network: IpNetwork, predicate: impl Fn(&T) -> bool) {
+        self.match_cache.clear();
+
+        let Some(entries) = self.inner.exact_match_mut(network) else {
+            return;
+        };
+
+        entries.retain(|entry| !predicate(entry));
+
+        if entries.is_empty() {
+            self.inner.remove(network);
+        }
+    }
+
     #[cfg(test)]
     pub(crate) fn entries(&self) -> Vec<(IpNetwork, BTreeSet<T>)> {
         self.inner
