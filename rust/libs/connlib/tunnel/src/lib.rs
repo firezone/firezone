@@ -414,11 +414,11 @@ impl ClientTunnel {
                 }
 
                 if let Some(packets) = device.as_mut().map(|packets| packets.drain()) {
-                    let mut batch = self.io.start_encrypt_batch(packets.len());
+                    let mut jobs = self.io.new_encrypt_jobs(packets.len());
 
                     for mut packet in packets.prefetching().inspect(|p| tun_received.record(p)) {
                         match self.role_state.handle_tun_input(&mut packet, now) {
-                            Ok(Some(encapsulation)) => batch.encrypt(encapsulation, packet),
+                            Ok(Some(encapsulation)) => jobs.encrypt(encapsulation, packet),
                             Ok(None) => {}
                             Err(e) => {
                                 error.push(e.context("Failed to handle packet from TUN device"))
@@ -440,10 +440,10 @@ impl ClientTunnel {
                 }
 
                 if let Some(mut datagrams) = network {
-                    let mut decrypts = self.io.start_decrypt_batch(datagrams.len());
+                    let mut jobs = self.io.new_decrypt_jobs(datagrams.len());
 
                     for datagram in datagrams.drain() {
-                        let mut datagram = decrypts.add(datagram);
+                        let mut datagram = jobs.add(datagram);
 
                         for segment in datagram.segments() {
                             let packet = &datagram[segment];
@@ -643,11 +643,11 @@ impl GatewayTunnel {
                 }
 
                 if let Some(packets) = device.as_mut().map(|packets| packets.drain()) {
-                    let mut batch = self.io.start_encrypt_batch(packets.len());
+                    let mut jobs = self.io.new_encrypt_jobs(packets.len());
 
                     for mut packet in packets.prefetching().inspect(|p| tun_received.record(p)) {
                         match self.role_state.handle_tun_input(&mut packet, now) {
-                            Ok(Some(encapsulation)) => batch.encrypt(encapsulation, packet),
+                            Ok(Some(encapsulation)) => jobs.encrypt(encapsulation, packet),
                             Ok(None) => {}
                             Err(e) => {
                                 let routing_error = e
@@ -683,10 +683,10 @@ impl GatewayTunnel {
                 }
 
                 if let Some(mut datagrams) = network {
-                    let mut decrypts = self.io.start_decrypt_batch(datagrams.len());
+                    let mut jobs = self.io.new_decrypt_jobs(datagrams.len());
 
                     for datagram in datagrams.drain() {
-                        let mut datagram = decrypts.add(datagram);
+                        let mut datagram = jobs.add(datagram);
 
                         for segment in datagram.segments() {
                             let packet = &datagram[segment];

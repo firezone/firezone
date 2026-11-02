@@ -3,7 +3,7 @@ mod device;
 mod udp_gso_train;
 
 pub(crate) use crypto::MAX_DECRYPT_BACKLOG_MEMORY;
-pub use crypto::{CryptoWorkers, DecryptBatch, DecryptedJobs, EncryptBatch};
+pub use crypto::{CryptoWorkers, DecryptJobs, DecryptedJobs, EncryptJobs};
 pub use device::{Device, TunChannelClosed};
 pub(crate) use udp_gso_train::UdpGsoTrain;
 
@@ -327,21 +327,20 @@ impl Io {
         self.resolver.send_control(ResolverControl::Reset);
     }
 
-    /// Starts a batch of encapsulated packets to encrypt off the main thread.
+    /// Creates the jobs that encrypt encapsulated packets off the main thread.
     ///
-    /// Its datagrams go to the UDP sockets when it is dropped. Start one only for the packets
+    /// Their datagrams go to the UDP sockets when dropped. Create them only for the packets
     /// [`Io::poll`] read from the TUN device, which it does only while nothing waits for room in the
     /// UDP sockets.
-    pub fn start_encrypt_batch(&mut self, num_packets: usize) -> EncryptBatch<'_> {
-        self.crypto
-            .start_encrypt_batch(&mut self.sockets, num_packets)
+    pub fn new_encrypt_jobs(&mut self, num_packets: usize) -> EncryptJobs<'_> {
+        self.crypto.new_encrypt_jobs(&mut self.sockets, num_packets)
     }
 
-    /// Starts a batch of received data messages to decrypt off the main thread, yielding them via
+    /// Creates the jobs that decrypt received data messages off the main thread, yielding them via
     /// [`Input::decrypted`].
-    pub fn start_decrypt_batch(&mut self, num_packets: usize) -> DecryptBatch<'_> {
+    pub fn new_decrypt_jobs(&mut self, num_packets: usize) -> DecryptJobs<'_> {
         self.crypto
-            .start_decrypt_batch(&mut self.decrypting, num_packets)
+            .new_decrypt_jobs(&mut self.decrypting, num_packets)
     }
 
     pub fn send_network(&mut self, transmit: snownet::Transmit) {
