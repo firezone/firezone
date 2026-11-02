@@ -34,9 +34,6 @@ function update_gateway_checksums() {
     "$path_to_bump_versions" update_gateway_checksums "$version" "$x86_64_checksum" "$aarch64_checksum" "$armv7_checksum"
 }
 
-# Create branch
-git checkout -b "chore/publish-$component-$version"
-
 # Update version variables in script
 "$path_to_bump_versions" update_version_variables "$component" "$version"
 
@@ -46,15 +43,3 @@ fi
 
 # Bump versions across the monorepo (product version markers + Cargo.lock)
 "$path_to_bump_versions"
-
-git add -A
-if git diff --staged --quiet; then
-    echo "No changes for $component $version; skipping PR."
-else
-    git commit -m "chore: bump versions for $component to $version"
-    git push -u origin HEAD --force
-    gh pr create \
-        --title "chore: publish $component $version" \
-        --body "" \
-        --reviewer firezone/engineering
-fi
