@@ -78,7 +78,6 @@ fn main() -> ExitCode {
     telemetry::configure(Arc::new(tcp_socket_factory));
 
     let runtime = tokio::runtime::Builder::new_current_thread()
-        .thread_name("fz-blocking")
         .enable_all()
         .build()
         .expect("Failed to create tokio runtime");
