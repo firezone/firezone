@@ -20,7 +20,6 @@ use connlib_model::{ClientId, IceCandidate, PublicKey, RelayId, ResourceId};
 use dns_types::{DomainName, Query, Response, ResponseBuilder, ResponseCode};
 use fast_random_state::FastRandomState;
 use ip_packet::{FzP2pControlSlice, IpPacket, Protocol};
-use prefetch::Prefetch as _;
 use secrecy::ExposeSecret as _;
 use snownet::{IceConfig, IceRole, Node, RelaySocket};
 use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
@@ -898,7 +897,6 @@ impl Iterator for PeerBatch<'_> {
             Err(e) => return e.take().map(Err),
         };
         let packet = packets.next()?;
-        packets.prefetch();
 
         Some(
             self.state

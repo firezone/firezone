@@ -18,7 +18,7 @@ use tokio::sync::oneshot;
 use super::UdpGsoTrain;
 use crate::packet_counts::UdpPacketCounts;
 use crate::sockets::{PendingDatagrams, Sockets};
-use prefetch::{IteratorExt as _, Prefetch};
+use prefetch::IteratorExt as _;
 
 /// How many received packets go to a worker in one decrypt job at most.
 ///
@@ -46,12 +46,6 @@ pub struct DecryptedDatagram {
     pub from: SocketAddr,
     pub ecn: Ecn,
     pub packets: DecryptedBatch,
-}
-
-impl Prefetch for DecryptedDatagram {
-    fn prefetch(&self) {
-        self.packets.prefetch();
-    }
 }
 
 /// Encrypts and decrypts WireGuard data messages on worker threads.

@@ -495,7 +495,7 @@ impl ClientTunnel {
                 }
 
                 if let Some(mut decrypted) = decrypted {
-                    for received in decrypted.drain().prefetching() {
+                    for received in decrypted.drain() {
                         let io::DecryptedDatagram {
                             local,
                             from,
@@ -761,7 +761,7 @@ impl GatewayTunnel {
                 }
 
                 if let Some(mut decrypted) = decrypted {
-                    for received in decrypted.drain().prefetching() {
+                    for received in decrypted.drain() {
                         let io::DecryptedDatagram {
                             local,
                             from,

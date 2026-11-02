@@ -54,7 +54,6 @@ use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_packet::{IpPacket, MAX_UDP_PAYLOAD, Protocol};
 use itertools::Itertools;
 use logging::{unwrap_or_debug, unwrap_or_warn};
-use prefetch::Prefetch as _;
 use secrecy::ExposeSecret as _;
 use snownet::{Node, RelaySocket};
 use std::cmp::Ordering;
@@ -2960,7 +2959,6 @@ impl Iterator for PeerBatch<'_> {
             Err(e) => return e.take().map(Err),
         };
         let packet = packets.next()?;
-        packets.prefetch();
 
         Some(
             self.state

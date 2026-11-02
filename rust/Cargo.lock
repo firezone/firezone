@@ -6910,7 +6910,7 @@ dependencies = [
 [[package]]
 name = "sanstun"
 version = "0.2.0"
-source = "git+https://github.com/firezone/sanstun?branch=batched-crypto#a212cb07642fe50510058efb523dda6727839421"
+source = "git+https://github.com/firezone/sanstun?branch=batched-crypto#7c77fc8f89b90f5bcacfa14cba2d6e1b945879a3"
 dependencies = [
  "blake2",
  "chacha20",
@@ -9247,7 +9247,6 @@ dependencies = [
  "opentelemetry",
  "otel-attributes",
  "otel-instruments",
- "prefetch",
  "proptest",
  "rand 0.10.3",
  "rangemap",
