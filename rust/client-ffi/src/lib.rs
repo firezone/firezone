@@ -591,8 +591,6 @@ impl Drop for Session {
             let _ = tokio::time::timeout(Duration::from_secs(1), self.inner.closed()).await;
         });
 
-        runtime.shutdown_timeout(Duration::from_secs(1)); // Ensure we don't block forever on a task in the blocking pool.
-
         // The event loop spooled its open flows on the way out; flush them.
         if let Some(uploader) = self.uploader.take() {
             // The app process outlives the session; don't delay the disconnect.
@@ -632,8 +630,7 @@ fn connect(
         .ok_or_else(|| anyhow!("Cannot authenticate without a token"))?;
 
     let runtime = tokio::runtime::Builder::new_current_thread()
-        .thread_name("fz-blocking")
-        .enable_all()
+        .enable_time()
         .build()
         .context("Failed to create tokio runtime")?;
 
