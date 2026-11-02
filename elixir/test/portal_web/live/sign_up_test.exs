@@ -86,11 +86,12 @@ defmodule PortalWeb.SignUpTest do
 
       {:ok, lv, _html} = live(conn, ~p"/sign_up/email")
 
-      assert has_element?(lv, "#region-option-us[aria-checked='true']", "United States")
+      assert has_element?(lv, "input#region-option-us[checked]")
+      assert has_element?(lv, "label[for='region-option-us']", "United States")
 
       assert has_element?(
                lv,
-               "a#region-option-eu[aria-checked='false'][href='https://eu.app.firezone.dev/sign_up/email']",
+               "a#region-option-eu[href='https://eu.app.firezone.dev/sign_up/email']",
                "European Union"
              )
 
@@ -104,7 +105,7 @@ defmodule PortalWeb.SignUpTest do
 
       {:ok, lv, _html} = live(conn, ~p"/sign_up")
 
-      assert has_element?(lv, "#region-option-eu[aria-checked='true']")
+      assert has_element?(lv, "input#region-option-eu[checked]")
       assert has_element?(lv, "a#region-option-us[href='https://app.firezone.dev/sign_up']")
     end
 
@@ -113,8 +114,8 @@ defmodule PortalWeb.SignUpTest do
 
       {:ok, lv, _html} = live(conn, ~p"/sign_up")
 
-      assert has_element?(lv, "#region-option-us[aria-checked='true']")
-      assert has_element?(lv, "div#region-option-eu[aria-disabled='true']")
+      assert has_element?(lv, "input#region-option-us[checked]")
+      assert has_element?(lv, "input#region-option-eu[disabled]")
       refute has_element?(lv, "a#region-option-eu")
     end
 

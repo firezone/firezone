@@ -687,23 +687,42 @@ defmodule PortalWeb.SignUp do
 
     ~H"""
     <div :if={@region != :on_prem} id="region-picker" class="mb-6">
-      <p id="region-picker-label" class="text-sm font-medium text-heading mb-1">Cloud Region</p>
-      <div
+      <span id="region-picker-label" class="block text-xs font-medium text-body mb-1.5">
+        Cloud Region
+      </span>
+      <ul
         role="radiogroup"
         aria-labelledby="region-picker-label"
         aria-describedby="region-picker-help"
-        class="grid grid-cols-2 gap-2"
+        class="grid w-full gap-3 grid-cols-2"
       >
-        <.region_option
-          :for={option <- [:us, :eu]}
-          region={option}
-          selected?={option == @region}
-          href={
-            if option != @region and @switchable?,
-              do: Page.portal_url(option) <> @path
-          }
-        />
-      </div>
+        <li :for={option <- [:us, :eu]}>
+          <a
+            :if={option != @region and @switchable?}
+            id={"region-option-#{option}"}
+            href={Page.portal_url(option) <> @path}
+            class={region_option_class()}
+          >
+            <.region_option_content region={option} />
+          </a>
+          <Form.input
+            :if={option == @region or not @switchable?}
+            id={"region-option-#{option}"}
+            type="radio_button_group"
+            name="region"
+            value={option}
+            checked={option == @region}
+            disabled={option != @region}
+          />
+          <label
+            :if={option == @region or not @switchable?}
+            for={"region-option-#{option}"}
+            class={[region_option_class(), "peer-disabled:cursor-default"]}
+          >
+            <.region_option_content region={option} />
+          </label>
+        </li>
+      </ul>
       <p id="region-picker-help" class="mt-1.5 text-xs text-subtle">
         The region where your account data is stored. Changing it later requires downtime.
       </p>
@@ -712,34 +731,24 @@ defmodule PortalWeb.SignUp do
   end
 
   attr :region, :atom, required: true
-  attr :selected?, :boolean, required: true
-  attr :href, :string, default: nil
 
-  defp region_option(assigns) do
+  defp region_option_content(assigns) do
     ~H"""
-    <.dynamic_tag
-      tag_name={if @href, do: "a", else: "div"}
-      id={"region-option-#{@region}"}
-      {if @href, do: [href: @href], else: []}
-      role="radio"
-      aria-checked={to_string(@selected?)}
-      aria-disabled={if !@selected? and !@href, do: "true"}
-      class={[
-        "flex items-center gap-3 px-3 py-2.5 rounded border-2 text-sm font-medium text-heading transition-colors",
-        if(@selected?, do: "border-brand bg-brand/5", else: "border-border bg-surface"),
-        @href && "hover:border-brand"
-      ]}
-    >
-      <Page.residency_flag region={@region} class="w-9 h-auto shadow-sm" />
-      <span class="flex-1 min-w-0 truncate">{Page.data_residency_name(@region)}</span>
-      <span class={[
-        "shrink-0 w-4 h-4 rounded-full border-2 flex items-center justify-center",
-        if(@selected?, do: "border-brand", else: "border-border")
-      ]}>
-        <span :if={@selected?} class="w-2 h-2 rounded-full bg-brand"></span>
-      </span>
-    </.dynamic_tag>
+    <div class="flex items-center gap-3">
+      <Page.residency_flag region={@region} class="w-8 h-auto shadow-sm" />
+      <div class="block">
+        <div class="w-full font-semibold mb-1 text-xs">{Page.data_residency_name(@region)}</div>
+        <div class="w-full text-[10px]">{region_option_description(@region)}</div>
+      </div>
+    </div>
     """
+  end
+
+  defp region_option_description(:us), do: "Data stored in the United States"
+  defp region_option_description(:eu), do: "Data stored in Sweden and France"
+
+  defp region_option_class do
+    "inline-flex items-center justify-between w-full p-3 text-body bg-surface border border-border rounded cursor-pointer peer-checked:border-brand peer-checked:text-brand hover:text-heading hover:bg-raised transition-colors"
   end
 
   attr :title, :string, required: true
