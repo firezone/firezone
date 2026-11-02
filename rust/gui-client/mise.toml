@@ -4,7 +4,7 @@
 
 [tools]
 # Generates the winget manifests in `_winget.yml`.
-"github:russellbanks/Komac" = { version = "2.17.1", os = ["windows"] }
+"github:russellbanks/Komac" = { version = "2.17.1", bin = "komac", os = ["windows"] }
 
 [tasks.dev]
 description = "Run the GUI client in dev against a dev Tunnel service"
