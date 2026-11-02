@@ -1216,7 +1216,6 @@ where
                 tunnel,
                 from,
                 destination,
-                offset,
                 channel,
                 batch,
             )),

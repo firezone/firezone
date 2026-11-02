@@ -170,8 +170,7 @@ pub struct DecapsulateBatch<'n> {
     tunnel: sanstun::TunnelId,
     src: SocketAddr,
     dst: SocketAddr,
-    /// Where the WireGuard message starts in each segment; it takes up the rest of it.
-    offset: usize,
+    /// The TURN channel the segments are relayed through, if any.
     channel: Option<u16>,
     batch: sanstun::DecapsulateBatch<'n>,
 }
@@ -182,7 +181,6 @@ impl<'n> DecapsulateBatch<'n> {
         tunnel: sanstun::TunnelId,
         src: SocketAddr,
         dst: SocketAddr,
-        offset: usize,
         channel: Option<u16>,
         batch: sanstun::DecapsulateBatch<'n>,
     ) -> Self {
@@ -191,7 +189,6 @@ impl<'n> DecapsulateBatch<'n> {
             tunnel,
             src,
             dst,
-            offset,
             channel,
             batch,
         }
@@ -203,14 +200,13 @@ impl<'n> DecapsulateBatch<'n> {
     /// Returns `false` without changing the batch otherwise; finish the batch and pass the
     /// segment to [`Node::begin_decapsulate`](crate::Node::begin_decapsulate) then.
     pub fn push(&mut self, segment: &[u8], now: Instant) -> bool {
-        if let Some(channel) = self.channel
-            && !crate::channel_data::decode(segment).is_ok_and(|cd| cd.channel() == channel)
-        {
-            return false;
-        }
-
-        // Strip the channel data header if present.
-        let message = segment.get(self.offset..).unwrap_or_default();
+        let message = match self.channel {
+            Some(channel) => match crate::channel_data::decode(segment) {
+                Ok(cd) if cd.channel() == channel => cd.payload(),
+                _ => return false,
+            },
+            None => segment,
+        };
 
         // Parsing anything but a data message has side effects, such as rate limiting.
         if message.first() != Some(&4) {
@@ -236,7 +232,7 @@ impl<'n> DecapsulateBatch<'n> {
             tunnel: self.tunnel,
             src: self.src,
             dst: self.dst,
-            offset: self.offset,
+            channel: self.channel,
             pending: self.batch.finish(),
         }
     }
@@ -250,8 +246,8 @@ pub struct PendingDecapsulate {
     tunnel: sanstun::TunnelId,
     src: SocketAddr,
     dst: SocketAddr,
-    /// Where the WireGuard message starts in each segment; it takes up the rest of it.
-    offset: usize,
+    /// The TURN channel the segments are relayed through, if any.
+    channel: Option<u16>,
     pending: sanstun::PendingDecapsulate,
 }
 
@@ -268,13 +264,14 @@ impl PendingDecapsulate {
     ///
     /// Commit the result with [`Node::commit_decrypted`](crate::Node::commit_decrypted).
     pub fn decrypt<'a>(self, segments: impl IntoIterator<Item = &'a [u8]>) -> DecryptedBatch {
-        let offset = self.offset;
-        let messages = segments.into_iter().map(|segment| {
-            (
-                segment.get(offset..).unwrap_or_default(),
-                ip_packet::packet_buffer(),
-            )
-        });
+        let header_len = match self.channel {
+            Some(_) => crate::channel_data::HEADER_LEN,
+            None => 0,
+        };
+        // Each relayed segment was decoded as channel data before it joined the batch.
+        let messages = segments
+            .into_iter()
+            .map(|segment| (&segment[header_len..], ip_packet::packet_buffer()));
 
         DecryptedBatch {
             tunnel: self.tunnel,
