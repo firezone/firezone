@@ -1,7 +1,7 @@
 name: Prepare winget manifests
-# Prepares the winget manifests on a branch of the firezone/winget-pkgs fork.
-# Apps cannot open pull requests in microsoft/winget-pkgs, so the job summary
-# links to the pull request for a maintainer to open.
+# Prepares the winget manifests on a branch of the firezone/winget-pkgs fork and
+# opens the pull request to microsoft/winget-pkgs. Apps cannot open pull requests
+# there, so that takes the token of an account outside the organisation.
 on:
   workflow_call:
     inputs:
@@ -19,6 +19,8 @@ on:
         type: string
     secrets:
       BOT_PRIVATE_KEY:
+        required: true
+      WINGET_PR_TOKEN:
         required: true
 
 permissions:
@@ -159,12 +161,22 @@ jobs:
           base: master
           message: ${{ needs.generate.outputs.title }}
           paths: manifests
-      - name: Link to the pull request
+      - name: Open the pull request
         env:
+          GH_TOKEN: ${{ secrets.WINGET_PR_TOKEN }}
           BRANCH: ${{ needs.generate.outputs.branch }}
           TITLE: ${{ needs.generate.outputs.title }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           set -euo pipefail
 
-          url="https://github.com/microsoft/winget-pkgs/compare/master...firezone:winget-pkgs:$BRANCH?expand=1&title=$(jq -rn --arg title "$TITLE" '$title | @uri')"
-          echo "Open the winget pull request for $TITLE: $url" >> "$GITHUB_STEP_SUMMARY"
+          url=$(gh api "repos/microsoft/winget-pkgs/pulls?head=firezone:$BRANCH&state=open" --jq '.[0].html_url // empty')
+          if [ -z "$url" ]; then
+            url=$(gh api repos/microsoft/winget-pkgs/pulls \
+              -f title="$TITLE" \
+              -f head="firezone:$BRANCH" \
+              -f base=master \
+              -f body="Created by [Firezone's release workflow]($RUN_URL) with [Komac](https://github.com/russellbanks/Komac)." \
+              --jq .html_url)
+          fi
+          echo "winget pull request for $TITLE: $url" >> "$GITHUB_STEP_SUMMARY"
