@@ -25,24 +25,3 @@ jobs:
           for branch in Firezone.Client.GUI-1.5.20 Firezone.Client.Headless-1.5.15; do
             gh api -X DELETE "repos/firezone/winget-pkgs/git/refs/heads/$branch" || true
           done
-
-  winget:
-    needs: delete-test-branches
-    permissions:
-      contents: read
-      security-events: write
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - identifier: Firezone.Client.GUI
-            release: gui-client-1.5.20
-          - identifier: Firezone.Client.Headless
-            release: headless-client-1.5.15
-    uses: ./.github/workflows/_winget.yml
-    secrets:
-      BOT_PRIVATE_KEY: ${{ secrets.BOT_PRIVATE_KEY }}
-    with:
-      identifier: ${{ matrix.identifier }}
-      release_name: ${{ matrix.release }}
-      release_tag: ${{ matrix.release }}
