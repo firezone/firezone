@@ -177,7 +177,7 @@ jobs:
       - name: Build the OpenAPI changelog
         id: changelog
         if: github.base_ref != '' && inputs.check_openapi_breaking_changes
-        uses: oasdiff/oasdiff-action/changelog@9ce3a29eb0e6478dd0140932a678c7fb59d08f22 # v0.1.20
+        uses: oasdiff/oasdiff-action/changelog@9e56cf8b3aff7edb326d5767d3d23f96127e20c3 # v0.1.21
         with:
           base: base-openapi.json
           revision: elixir/priv/static/openapi.json
