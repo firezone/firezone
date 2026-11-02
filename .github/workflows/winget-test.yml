@@ -26,17 +26,3 @@ jobs:
             gh api -X DELETE "repos/firezone/winget-pkgs/git/refs/heads/$branch" || true
           done
 
-  winget:
-    needs: delete-test-branches
-    strategy:
-      fail-fast: false
-      matrix:
-        release:
-          - gui-client-1.5.20
-          - headless-client-1.5.15
-    uses: ./.github/workflows/_winget.yml
-    secrets:
-      BOT_PRIVATE_KEY: ${{ secrets.BOT_PRIVATE_KEY }}
-    with:
-      release_name: ${{ matrix.release }}
-      release_tag: ${{ matrix.release }}
