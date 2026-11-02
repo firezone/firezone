@@ -19,6 +19,7 @@ use smallvec::SmallVec;
 use crate::{
     client::IpProvider,
     dns::pattern::{Candidate, Pattern},
+    p2p_control::dns_resource_nat::PROXY_IPS_PER_FAMILY,
 };
 
 /// The DNS over HTTPS canary domain used by Firefox to check whether DoH can be enabled by default.
@@ -393,9 +394,9 @@ impl ResourceStubResolver {
                     name: Arc::new(fqdn.clone()),
                 };
 
-                let mut ips = Vec::with_capacity(8);
-                ips.extend(self.ip_provider.get_n_ipv4(4));
-                ips.extend(self.ip_provider.get_n_ipv6(4));
+                let mut ips = Vec::with_capacity(2 * PROXY_IPS_PER_FAMILY);
+                ips.extend(self.ip_provider.get_n_ipv4(PROXY_IPS_PER_FAMILY));
+                ips.extend(self.ip_provider.get_n_ipv6(PROXY_IPS_PER_FAMILY));
 
                 tracing::debug!(domain = %fqdn, ?ips, "Assigning proxy IPs");
 

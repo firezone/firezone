@@ -17,6 +17,7 @@ use crate::filter_engine::FilterEngine;
 use crate::gateway::nat_table::{NatTable, TranslateIncomingResult};
 use crate::messages::gateway::ResourceDescription;
 use crate::messages::{Filter, IngestToken, Key};
+use crate::p2p_control::dns_resource_nat::PROXY_IPS_PER_FAMILY;
 use crate::routing_table::{self, RoutingTable};
 use crate::unroutable_packet::UnroutablePacket;
 use crate::{IpConfig, NotAllowedResource, NotClientIp, p2p_control};
@@ -94,6 +95,13 @@ impl ClientOnGateway {
         proxy_ips: BTreeSet<IpAddr>,
     ) -> Result<()> {
         // Proxy IPs are chosen by the Client; anything we accept here ends up in our routing table.
+        let num_ipv4 = proxy_ips.iter().filter(|ip| ip.is_ipv4()).count();
+        let num_ipv6 = proxy_ips.len() - num_ipv4;
+        anyhow::ensure!(
+            num_ipv4 <= PROXY_IPS_PER_FAMILY && num_ipv6 <= PROXY_IPS_PER_FAMILY,
+            "Too many proxy IPs: {num_ipv4} IPv4 and {num_ipv6} IPv6, at most {PROXY_IPS_PER_FAMILY} each"
+        );
+
         for proxy_ip in &proxy_ips {
             anyhow::ensure!(
                 is_dns_addr(*proxy_ip),
@@ -1410,6 +1418,49 @@ mod tests {
         assert!(peer.permanent_translations.contains_key(&proxy_ip4_2()));
         assert!(peer.permanent_translations.contains_key(&proxy_ip6_1()));
         assert!(peer.permanent_translations.contains_key(&proxy_ip6_2()));
+    }
+
+    #[test]
+    fn setup_nat_rejects_too_many_proxy_ips() {
+        let _guard = logging::test("trace");
+
+        let mut peer = ClientOnGateway::new(client_id(), client_key(), client_tun(), gateway_tun());
+        peer.add_resource(foo_dns_resource(), None, Instant::now());
+
+        let max_ipv4 = (1..=4).map(|i| IpAddr::from(Ipv4Addr::new(100, 96, 0, i)));
+        let max_ipv6 =
+            (0..4).map(|i| IpAddr::from(Ipv6Addr::new(0xfd00, 0x2021, 0x1111, 0x8000, 0, 0, 0, i)));
+
+        let too_many_ipv4 = BTreeSet::from_iter(
+            max_ipv4
+                .clone()
+                .chain([IpAddr::from(Ipv4Addr::new(100, 96, 0, 5))]),
+        );
+        let too_many_ipv6 = BTreeSet::from_iter(max_ipv6.clone().chain([IpAddr::from(
+            Ipv6Addr::new(0xfd00, 0x2021, 0x1111, 0x8000, 0, 0, 0, 4),
+        )]));
+
+        for proxy_ips in [too_many_ipv4, too_many_ipv6] {
+            let result = peer.setup_nat(
+                foo_name().parse().unwrap(),
+                foo_resource_id(),
+                BTreeSet::from([foo_real_ip1().into()]),
+                proxy_ips,
+            );
+
+            assert!(result.is_err());
+            assert!(peer.permanent_translations.is_empty());
+        }
+
+        peer.setup_nat(
+            foo_name().parse().unwrap(),
+            foo_resource_id(),
+            BTreeSet::from([foo_real_ip1().into()]),
+            BTreeSet::from_iter(max_ipv4.chain(max_ipv6)),
+        )
+        .unwrap();
+
+        assert_eq!(peer.permanent_translations.len(), 8);
     }
 
     // Two distinct DNS resources both using "foo.com" as their address:

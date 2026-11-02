@@ -25,6 +25,9 @@ pub mod dns_resource_nat {
     use ip_packet::{FzP2pControlSlice, IpPacket};
     use std::net::IpAddr;
 
+    /// How many proxy IPs a Client assigns to a domain for each IP version.
+    pub const PROXY_IPS_PER_FAMILY: usize = 4;
+
     /// Construct a new [`AssignedIps`] event.
     pub fn assigned_ips(
         resource: ResourceId,
