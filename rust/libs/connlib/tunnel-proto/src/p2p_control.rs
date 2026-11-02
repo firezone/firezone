@@ -26,6 +26,8 @@ pub mod dns_resource_nat {
     use std::net::IpAddr;
 
     /// How many proxy IPs a Client assigns to a domain for each IP version.
+    ///
+    /// The Gateway answers an [`AssignedIps`] event with more proxy IPs than this with [`NatStatus::Inactive`].
     pub const PROXY_IPS_PER_FAMILY: usize = 4;
 
     /// Construct a new [`AssignedIps`] event.
