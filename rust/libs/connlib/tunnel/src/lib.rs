@@ -421,7 +421,7 @@ impl ClientTunnel {
                         .peekable();
 
                     while let Some(packet) = packets.next() {
-                        let mut tun_batch = match self.role_state.begin_tun_batch(packet, now) {
+                        let tun_batch = match self.role_state.begin_tun_batch(packet, now) {
                             Ok(Some(tun_batch)) => tun_batch,
                             Ok(None) => continue,
                             Err(e) => {
@@ -431,28 +431,9 @@ impl ClientTunnel {
                             }
                         };
 
-                        // A batch is encrypted into one GSO train, so it ends where the train would.
-                        let first = tun_batch.first();
-                        let mut train = jobs.train_for(
-                            tun_batch.src(),
-                            tun_batch.dst(),
-                            first.ecn(),
-                            tun_batch.datagram_len(first),
-                        );
-
-                        while let Some(packet) = packets.next_if(|p| {
-                            tun_batch.accepts(p)
-                                && train.try_append(p.ecn(), tun_batch.datagram_len(p))
-                        }) {
-                            tun_batch.push(packet);
-                        }
-
-                        match tun_batch.finish() {
-                            Ok((encapsulation, packets)) => train.push(encapsulation, packets),
-                            Err(e) => {
-                                self.dropped_packets.record(&e);
-                                error.push(e.context("Failed to handle packet from TUN device"));
-                            }
+                        if let Err(e) = jobs.add(tun_batch, &mut packets) {
+                            self.dropped_packets.record(&e);
+                            error.push(e.context("Failed to handle packet from TUN device"));
                         }
                     }
 
@@ -700,7 +681,7 @@ impl GatewayTunnel {
                         .peekable();
 
                     while let Some(packet) = packets.next() {
-                        let mut tun_batch = match self.role_state.begin_tun_batch(packet, now) {
+                        let tun_batch = match self.role_state.begin_tun_batch(packet, now) {
                             Ok(Some(tun_batch)) => tun_batch,
                             Ok(None) => continue,
                             Err(e) => {
@@ -710,28 +691,9 @@ impl GatewayTunnel {
                             }
                         };
 
-                        // A batch is encrypted into one GSO train, so it ends where the train would.
-                        let first = tun_batch.first();
-                        let mut train = jobs.train_for(
-                            tun_batch.src(),
-                            tun_batch.dst(),
-                            first.ecn(),
-                            tun_batch.datagram_len(first),
-                        );
-
-                        while let Some(packet) = packets.next_if(|p| {
-                            tun_batch.accepts(p)
-                                && train.try_append(p.ecn(), tun_batch.datagram_len(p))
-                        }) {
-                            tun_batch.push(packet);
-                        }
-
-                        match tun_batch.finish() {
-                            Ok((encapsulation, packets)) => train.push(encapsulation, packets),
-                            Err(e) => {
-                                self.dropped_packets.record(&e);
-                                error.push(e.context("Failed to handle packet from TUN device"));
-                            }
+                        if let Err(e) = jobs.add(tun_batch, &mut packets) {
+                            self.dropped_packets.record(&e);
+                            error.push(e.context("Failed to handle packet from TUN device"));
                         }
                     }
 

@@ -1,4 +1,5 @@
 use std::{
+    iter::Peekable,
     mem,
     net::SocketAddr,
     num::NonZeroUsize,
@@ -8,12 +9,14 @@ use std::{
     thread,
 };
 
+use anyhow::Result;
 use futures::{StreamExt as _, stream::FuturesOrdered};
 use ip_packet::{Ecn, IpPacket, IpVersion};
 use opentelemetry::metrics::Counter;
 use snownet::{PendingDecapsulate, PendingEncapsulate};
 use socket_factory::{DatagramIn, DatagramOut, Segment};
 use tokio::sync::oneshot;
+use tunnel_proto::TunBatch;
 
 use super::UdpGsoTrain;
 use crate::packet_counts::UdpPacketCounts;
@@ -159,11 +162,40 @@ pub struct EncryptJobs<'a> {
 }
 
 impl<'a> EncryptJobs<'a> {
+    /// Adds `batch`, extended by the `packets` that follow it in its flow, to the train to its
+    /// destination.
+    ///
+    /// A batch is encrypted into one GSO train, so it ends where the train would.
+    pub fn add<S: flow_tracker::Scope>(
+        &mut self,
+        mut batch: TunBatch<'_, S>,
+        packets: &mut Peekable<impl Iterator<Item = IpPacket>>,
+    ) -> Result<()> {
+        let first = batch.first();
+        let mut train = self.train_for(
+            batch.src(),
+            batch.dst(),
+            first.ecn(),
+            batch.datagram_len(first),
+        );
+
+        while let Some(packet) = packets
+            .next_if(|p| batch.accepts(p) && train.try_append(p.ecn(), batch.datagram_len(p)))
+        {
+            batch.push(packet);
+        }
+
+        let (encapsulation, packets) = batch.finish()?;
+        train.push(encapsulation, packets);
+
+        Ok(())
+    }
+
     /// Returns the train to `dst` for a batch, starting with a datagram of `len` bytes.
     ///
     /// Joins the train already open to `dst` if the datagram fits it, handing that train to a
     /// worker otherwise.
-    pub fn train_for(
+    fn train_for(
         &mut self,
         src: Option<SocketAddr>,
         dst: SocketAddr,
@@ -250,7 +282,7 @@ impl EncryptJob {
 }
 
 /// The open train of an [`EncryptJobs`] that a batch is being added to.
-pub struct TrainToEncrypt<'b, 'a> {
+struct TrainToEncrypt<'b, 'a> {
     jobs: &'b mut EncryptJobs<'a>,
     index: usize,
     src: Option<SocketAddr>,
@@ -259,7 +291,7 @@ pub struct TrainToEncrypt<'b, 'a> {
 
 impl TrainToEncrypt<'_, '_> {
     /// Appends a further datagram of the batch, unless the batch has to end.
-    pub fn try_append(&mut self, ecn: Ecn, len: usize) -> bool {
+    fn try_append(&mut self, ecn: Ecn, len: usize) -> bool {
         let (src, dst) = (self.src, self.dst);
 
         self.jobs.crypto.open_trains[self.index]
@@ -268,7 +300,7 @@ impl TrainToEncrypt<'_, '_> {
     }
 
     /// Adds the batch, whose datagrams were appended to the train.
-    pub fn push(self, encapsulation: PendingEncapsulate, packets: Vec<IpPacket>) {
+    fn push(self, encapsulation: PendingEncapsulate, packets: Vec<IpPacket>) {
         self.jobs.remaining = self.jobs.remaining.saturating_sub(packets.len());
         self.jobs.crypto.open_trains[self.index]
             .batches
