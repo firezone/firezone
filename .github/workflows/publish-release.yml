@@ -183,7 +183,7 @@ jobs:
           repositories: ${{ github.repository }}
           permission-contents: write
           permission-pull-requests: write
-      - uses: firezone/actions/create-pull-request@c6744372ddab79d436c780909fd3f2a285ab3a06 # main
+      - uses: firezone/actions/create-pull-request@9330ff2651240b57aa6c300a3ab86bb210c4c5b5 # main
         if: ${{ startsWith(inputs.release_name || github.event.release.name, matrix.component) }}
         with:
           token: ${{ steps.app-token.outputs.token }}

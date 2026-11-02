@@ -21,7 +21,7 @@ runs:
   steps:
     - name: Commit corpus update to the dispatching branch
       if: ${{ github.ref_name != github.event.repository.default_branch }}
-      uses: firezone/actions/commit@c6744372ddab79d436c780909fd3f2a285ab3a06 # main
+      uses: firezone/actions/commit@9330ff2651240b57aa6c300a3ab86bb210c4c5b5 # main
       with:
         token: ${{ inputs.token }}
         branch: ${{ github.ref_name }}
@@ -31,7 +31,7 @@ runs:
     # holds up its own review.
     - name: Propose corpus update
       if: ${{ github.ref_name == github.event.repository.default_branch }}
-      uses: firezone/actions/create-pull-request@c6744372ddab79d436c780909fd3f2a285ab3a06 # main
+      uses: firezone/actions/create-pull-request@9330ff2651240b57aa6c300a3ab86bb210c4c5b5 # main
       with:
         token: ${{ inputs.token }}
         branch: ${{ inputs.branch-prefix }}${{ inputs.target }}
