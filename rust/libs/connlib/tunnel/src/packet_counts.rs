@@ -1,8 +1,37 @@
+use anyhow::ErrorExt as _;
 use ip_packet::{IpPacket, IpVersion};
 use opentelemetry::{KeyValue, metrics::Counter};
+use tunnel_proto::UnroutablePacket;
 use tunnel_proto::packet_kind::{self, Kind};
+use tunnel_proto::unroutable_packet::RoutingError;
 
 use crate::otel;
+
+/// Counts the packets read from the TUN device that could not be routed.
+pub(crate) struct DroppedPackets(Counter<u64>);
+
+impl DroppedPackets {
+    pub(crate) fn new(counter: Counter<u64>) -> Self {
+        Self(counter)
+    }
+
+    /// Counts the packet that failed with `error`, by the reason it was unroutable.
+    pub(crate) fn record(&self, error: &anyhow::Error) {
+        let routing_error = error
+            .any_downcast_ref::<UnroutablePacket>()
+            .map(|e| e.reason())
+            .unwrap_or(RoutingError::Other);
+
+        // TODO: Include more attributes here like IPv4/IPv6?
+        self.0.add(
+            1,
+            &[
+                otel::attr::error_type(routing_error),
+                otel::attr::network_io_direction_receive(),
+            ],
+        );
+    }
+}
 
 /// Counts UDP packets by their [`Kind`] and adds them to `counter` when dropped.
 pub(crate) struct UdpPacketCounts<'a> {
