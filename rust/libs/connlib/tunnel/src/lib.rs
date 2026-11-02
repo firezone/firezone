@@ -475,7 +475,8 @@ impl ClientTunnel {
                                 }
                             };
 
-                            let mut group = vec![segment];
+                            let mut group = Vec::with_capacity(datagram.num_segments());
+                            group.push(segment);
 
                             for segment in segments.by_ref() {
                                 if !batch.push(&datagram[segment], now) {
@@ -741,7 +742,8 @@ impl GatewayTunnel {
                                 }
                             };
 
-                            let mut group = vec![segment];
+                            let mut group = Vec::with_capacity(datagram.num_segments());
+                            group.push(segment);
 
                             for segment in segments.by_ref() {
                                 if !batch.push(&datagram[segment], now) {
