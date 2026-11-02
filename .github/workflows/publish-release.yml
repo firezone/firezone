@@ -115,12 +115,8 @@ jobs:
       sha: ${{ needs.resolve-nix-cache-sha.outputs.sha }}
       push_to_cache: true
 
-  prepare-winget-manifests:
-    if: >-
-      ${{
-        startsWith(inputs.release_name || github.event.release.name, 'gui-client') ||
-        startsWith(inputs.release_name || github.event.release.name, 'headless-client')
-      }}
+  prepare-winget-gui-client:
+    if: ${{ startsWith(inputs.release_name || github.event.release.name, 'gui-client-') }}
     uses: ./.github/workflows/_winget.yml
     permissions:
       contents: read # the release's assets
@@ -128,6 +124,20 @@ jobs:
     secrets:
       BOT_PRIVATE_KEY: ${{ secrets.BOT_PRIVATE_KEY }}
     with:
+      identifier: Firezone.Client.GUI
+      release_name: ${{ inputs.release_name || github.event.release.name }}
+      release_tag: ${{ inputs.release_name || github.event.release.tag_name || github.ref_name }}
+
+  prepare-winget-headless-client:
+    if: ${{ startsWith(inputs.release_name || github.event.release.name, 'headless-client-') }}
+    uses: ./.github/workflows/_winget.yml
+    permissions:
+      contents: read # the release's assets
+      security-events: write # trivy SARIF upload from setup-mise
+    secrets:
+      BOT_PRIVATE_KEY: ${{ secrets.BOT_PRIVATE_KEY }}
+    with:
+      identifier: Firezone.Client.Headless
       release_name: ${{ inputs.release_name || github.event.release.name }}
       release_tag: ${{ inputs.release_name || github.event.release.tag_name || github.ref_name }}
 

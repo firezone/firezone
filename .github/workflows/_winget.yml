@@ -5,6 +5,10 @@ name: Prepare winget manifests
 on:
   workflow_call:
     inputs:
+      identifier:
+        description: "The winget package, e.g. Firezone.Client.GUI"
+        required: true
+        type: string
       release_name:
         description: "The release, e.g. gui-client-1.5.20"
         required: true
@@ -44,19 +48,11 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
       - id: package
         env:
+          identifier: ${{ inputs.identifier }}
           release_name: ${{ inputs.release_name }}
         run: |
-          set -euo pipefail
-
-          if [[ "$release_name" == gui-client-* ]]; then
-            identifier=Firezone.Client.GUI
-            version=${release_name#gui-client-}
-          else
-            identifier=Firezone.Client.Headless
-            version=${release_name#headless-client-}
-          fi
+          version=${release_name##*-}
           {
-            echo "identifier=$identifier"
             echo "version=$version"
             echo "branch=$identifier-$version"
           } >> "$GITHUB_OUTPUT"
@@ -66,7 +62,7 @@ jobs:
           # komac only reads: the release, and the package's manifests in microsoft/winget-pkgs.
           GITHUB_TOKEN: ${{ github.token }}
           GH_TOKEN: ${{ github.token }}
-          IDENTIFIER: ${{ steps.package.outputs.identifier }}
+          IDENTIFIER: ${{ inputs.identifier }}
           VERSION: ${{ steps.package.outputs.version }}
           RELEASE_TAG: ${{ inputs.release_tag }}
           NO_COLOR: "1"
