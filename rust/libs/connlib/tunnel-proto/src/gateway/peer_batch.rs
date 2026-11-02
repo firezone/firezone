@@ -6,37 +6,6 @@ use connlib_model::ClientId;
 use ip_packet::IpPacket;
 
 use super::{GatewayState, InboundDecisions, OutboundRewrite};
-use crate::{FailedToDecapsulate, packet_kind};
-
-impl GatewayState {
-    /// Handles the WireGuard data messages decrypted from one [`snownet::PendingDecapsulate`].
-    ///
-    /// `local` and `from` are the addresses the datagram was received on and from. Packets of
-    /// one flow reuse the routing decision of the flow's first packet in the batch.
-    ///
-    /// In case an item is `None`, you should call [`GatewayState::handle_timeout`] next to fully advance the internal state.
-    pub fn handle_peer_batch(
-        &mut self,
-        decrypted: snownet::DecryptedBatch,
-        local: SocketAddr,
-        from: SocketAddr,
-        now: Instant,
-    ) -> Result<PeerBatch<'_>> {
-        let packets = self
-            .node
-            .commit_decrypted(decrypted, now)
-            .context(FailedToDecapsulate(packet_kind::Kind::Wireguard))?;
-
-        Ok(PeerBatch {
-            state: self,
-            packets,
-            local,
-            from,
-            now,
-            decisions: InboundDecisions::new(),
-        })
-    }
-}
 
 /// The data messages of one received datagram being handled, in order.
 ///
@@ -50,6 +19,25 @@ pub struct PeerBatch<'a> {
     now: Instant,
     /// The routing decisions of the flows seen so far.
     decisions: InboundDecisions,
+}
+
+impl<'a> PeerBatch<'a> {
+    pub(super) fn new(
+        state: &'a mut GatewayState,
+        packets: snownet::CommittedBatch<ClientId>,
+        local: SocketAddr,
+        from: SocketAddr,
+        now: Instant,
+    ) -> Self {
+        Self {
+            state,
+            packets,
+            local,
+            from,
+            now,
+            decisions: InboundDecisions::new(),
+        }
+    }
 }
 
 impl Iterator for PeerBatch<'_> {

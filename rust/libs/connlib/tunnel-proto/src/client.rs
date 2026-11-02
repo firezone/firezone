@@ -766,6 +766,26 @@ impl ClientState {
         }
     }
 
+    /// Handles the WireGuard data messages decrypted from one [`snownet::PendingDecapsulate`].
+    ///
+    /// `local` and `from` are the addresses the datagram was received on and from. Packets of
+    /// one flow reuse the routing decision of the flow's first packet in the batch.
+    ///
+    /// In case an item is `None`, you should call [`ClientState::handle_timeout`] next to fully advance the internal state.
+    pub fn handle_peer_batch(
+        &mut self,
+        decrypted: snownet::DecryptedBatch,
+        local: SocketAddr,
+        from: SocketAddr,
+        now: Instant,
+    ) -> Result<PeerBatch<'_>> {
+        let packets = self
+            .node
+            .commit_decrypted(decrypted, now)
+            .context(FailedToDecapsulate(packet_kind::Kind::Wireguard))?;
+
+        Ok(PeerBatch::new(self, packets, local, from, now))
+    }
     fn handle_peer_message(
         &mut self,
         pid: ClientOrGatewayId,
