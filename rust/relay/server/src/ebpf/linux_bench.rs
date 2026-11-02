@@ -46,6 +46,7 @@ struct Counts {
 struct Instruments {
     packet_size: Histogram<u64>,
     processing_duration: Histogram<u64>,
+    record: bool,
 }
 
 #[test]
@@ -67,6 +68,7 @@ fn perf_wakeups() {
     let instruments = Instruments {
         packet_size: otel_instruments::relay_packet_size(),
         processing_duration: otel_instruments::relay_xdp_processing_duration(),
+        record: env_or("BENCH_RECORD", 1_u8) != 0,
     };
 
     let mut ebpf = load(
@@ -85,6 +87,7 @@ fn perf_wakeups() {
         (per_packet == 2).then(|| RingBuf::try_from(ebpf.take_map("SIZES_RB").unwrap()).unwrap());
 
     let cpus = aya::util::online_cpus().unwrap();
+    let bench_cpus = env_or("BENCH_THREADS", cpus.len());
     let mut buffers = Vec::new();
     for &cpu in &cpus {
         let buf = open_buffer(cpu, PAGE_COUNT, 1);
@@ -198,7 +201,7 @@ fn perf_wakeups() {
     let deadline = Duration::from_secs(secs);
 
     let per_cpu = std::thread::scope(|s| {
-        let threads = cpus
+        let threads = cpus[..bench_cpus]
             .iter()
             .map(|&cpu| {
                 let program = &program;
@@ -268,7 +271,7 @@ fn perf_wakeups() {
             _ => format!("ringbuf-{ring_mib}MiB"),
         },
         drain_interval.as_millis(),
-        cpus.len(),
+        bench_cpus,
         runs as f64 / elapsed.as_secs_f64(),
         counts.sizes_read.load(Ordering::Relaxed),
         counts.sizes_lost.load(Ordering::Relaxed),
@@ -306,7 +309,9 @@ fn drain(buf: &mut PerfEventArrayBuffer, kind: Kind, counts: &Counts, instrument
                 }
                 Kind::Sizes => {
                     let size = SizeEvent::from_chunks(head, tail).unwrap();
-                    instruments.packet_size.record(size.relayed_data(), &attrs);
+                    if instruments.record {
+                        instruments.packet_size.record(size.relayed_data(), &attrs);
+                    }
                 }
             }
 
@@ -330,7 +335,9 @@ fn drain_ring(ring: &mut RingBuf<MapData>, counts: &Counts, instruments: &Instru
     let mut read = 0;
     while let Some(item) = ring.next() {
         let size = SizeEvent::from_chunks(&item, &[]).unwrap();
-        instruments.packet_size.record(size.relayed_data(), &attrs);
+        if instruments.record {
+            instruments.packet_size.record(size.relayed_data(), &attrs);
+        }
         read += 1;
     }
 
