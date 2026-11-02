@@ -1,4 +1,4 @@
-use std::net::{IpAddr, SocketAddr};
+use std::net::IpAddr;
 use std::num::NonZeroUsize;
 
 use anyhow::{Context as _, Result};
@@ -42,9 +42,6 @@ impl Flow {
     }
 }
 
-/// The most packets of a [`TunBatch`]: one GSO send carries at most 64 datagrams.
-const MAX_LEN: usize = 64;
-
 /// A batch of packets received on the TUN device that share one flow and thus one routing decision.
 ///
 /// Holds the state borrowed until [`TunBatch::finish`] reserves the batch's WireGuard counters,
@@ -69,7 +66,7 @@ impl<'a, S: flow_tracker::Scope> TunBatch<'a, S> {
         flows: flow_tracker::FlowBatch<'a, S>,
         packet: IpPacket,
     ) -> Self {
-        let mut packets = Vec::with_capacity(MAX_LEN);
+        let mut packets = Vec::with_capacity(tun::MAX_BATCH_SIZE);
         packets.push(packet);
 
         Self {
@@ -79,24 +76,6 @@ impl<'a, S: flow_tracker::Scope> TunBatch<'a, S> {
             flows,
             packets,
         }
-    }
-
-    /// Returns the packet the batch started with.
-    pub fn first(&self) -> &IpPacket {
-        &self.packets[0]
-    }
-
-    pub fn src(&self) -> Option<SocketAddr> {
-        self.tunnel.src()
-    }
-
-    pub fn dst(&self) -> SocketAddr {
-        self.tunnel.dst()
-    }
-
-    /// Returns the length of the datagram `packet` encrypts to.
-    pub fn datagram_len(&self, packet: &IpPacket) -> usize {
-        self.tunnel.datagram_len(packet)
     }
 
     /// Returns whether `packet` belongs to the batch's flow.

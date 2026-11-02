@@ -50,6 +50,7 @@ snownet = { workspace = true }
 telemetry = { workspace = true, optional = true }
 thiserror = { workspace = true }
 tracing = { workspace = true, features = ["attributes"] }
+tun = { workspace = true }
 zeroize = { workspace = true }
 
 [dev-dependencies]

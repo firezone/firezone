@@ -41,11 +41,6 @@ impl<'n> EncapsulateBatch<'n> {
         self.dst
     }
 
-    /// Returns the length of the datagram `packet` encrypts to.
-    pub fn datagram_len(&self, packet: &IpPacket) -> usize {
-        datagram_len(self.channel, packet)
-    }
-
     /// Reserves `len` consecutive counters and releases the [`Node`](crate::Node).
     pub fn finish(self, len: NonZeroUsize) -> Result<PendingEncapsulate, sanstun::Error> {
         let pending = self.batch.finish(len)?;
@@ -83,6 +78,18 @@ impl PendingEncapsulate {
     /// Returns the number of reserved counters.
     pub fn len(&self) -> usize {
         self.pending.len()
+    }
+
+    /// Splits off the counters from `at` onwards into a new pending encapsulation.
+    ///
+    /// Returns [`None`] and keeps all counters if `at` is not less than [`len`](Self::len).
+    pub fn split_off(&mut self, at: NonZeroUsize) -> Option<PendingEncapsulate> {
+        Some(PendingEncapsulate {
+            src: self.src,
+            dst: self.dst,
+            channel: self.channel,
+            pending: self.pending.split_off(at)?,
+        })
     }
 
     /// Returns the length of the datagram written for `packet` by [`PendingEncapsulate::encrypt_into`].
