@@ -291,7 +291,7 @@ impl<'a> DecryptBatch<'a> {
     fn submit(&mut self) {
         let job = mem::replace(&mut self.job, DecryptJob::new());
 
-        // A stopped worker drops the sender, so `Decrypting::poll_next` skips the job.
+        // A stopped worker drops the sender, so `Decrypting::poll_job` skips the job.
         let tx = self.decrypting.add_job();
         self.crypto.send(Job::Decrypt(job, tx));
     }
@@ -364,8 +364,21 @@ impl Decrypting {
         self.jobs.len() < MAX_JOBS_IN_FLIGHT
     }
 
-    /// Returns the next batch of decrypted packets, in the order they were received.
+    /// Returns the packets of every job decrypted so far, in the order they were received.
+    ///
+    /// Handing them over together lets the event loop pass them to the TUN device in one go,
+    /// which wakes its writer once rather than once per job.
     pub fn poll_next(&mut self, cx: &mut Context<'_>) -> Poll<DecryptedIpPackets> {
+        let mut decrypted = ready!(self.poll_job(cx));
+
+        while let Poll::Ready(mut next) = self.poll_job(cx) {
+            decrypted.0.append(&mut next.0);
+        }
+
+        Poll::Ready(decrypted)
+    }
+
+    fn poll_job(&mut self, cx: &mut Context<'_>) -> Poll<DecryptedIpPackets> {
         loop {
             let Some(result) = ready!(self.jobs.poll_next_unpin(cx)) else {
                 return Poll::Pending;
