@@ -167,11 +167,11 @@ async fn try_main(cli: Cli) -> Result<()> {
         let recv_buf_size = socket_factory::RECV_BUFFER_SIZE;
         let send_buf_size = socket_factory::SEND_BUFFER_SIZE;
 
-        match tokio::fs::write("/proc/sys/net/core/rmem_max", recv_buf_size.to_string()).await {
+        match std::fs::write("/proc/sys/net/core/rmem_max", recv_buf_size.to_string()) {
             Ok(()) => tracing::info!("Set `core.rmem_max` to {recv_buf_size}",),
             Err(e) => tracing::info!("Failed to increase `core.rmem_max`: {e}"),
         };
-        match tokio::fs::write("/proc/sys/net/core/wmem_max", send_buf_size.to_string()).await {
+        match std::fs::write("/proc/sys/net/core/wmem_max", send_buf_size.to_string()) {
             Ok(()) => tracing::info!("Set `core.wmem_max` to {send_buf_size}",),
             Err(e) => tracing::info!("Failed to increase `core.wmem_max`: {e}"),
         };
@@ -183,7 +183,6 @@ async fn try_main(cli: Cli) -> Result<()> {
     let token = match cli.token.clone() {
         Some(token) => token,
         None => read_systemd_credential("FIREZONE_TOKEN")
-            .await
             .context("Failed to read `FIREZONE_TOKEN` systemd credential")?,
     };
 
@@ -352,12 +351,12 @@ fn get_firezone_id(env_id: Option<String>) -> Result<String> {
     Ok(device_id.id)
 }
 
-async fn read_systemd_credential(name: &str) -> Result<SecretString> {
+fn read_systemd_credential(name: &str) -> Result<SecretString> {
     let Ok(creds_dir) = std::env::var("CREDENTIALS_DIRECTORY") else {
         bail!("`CREDENTIALS_DIRECTORY` not provided")
     };
     let path = PathBuf::from(creds_dir).join(name);
-    let content = tokio::fs::read_to_string(&path).await?;
+    let content = std::fs::read_to_string(&path)?;
 
     // Immediately wrap in `SecretString` to ensure it will be zeroized.
     let untrimmed_token = SecretString::from(content);
@@ -529,8 +528,8 @@ mod tests {
         }
     }
 
-    #[tokio::test]
-    async fn get_firezone_token_from_systemd_credential_with_credentials_directory() {
+    #[test]
+    fn get_firezone_token_from_systemd_credential_with_credentials_directory() {
         // Create a temporary directory to simulate CREDENTIALS_DIRECTORY
         let temp_dir = TempDir::new().unwrap();
         let cred_path = temp_dir.path().join("FIREZONE_TOKEN");
@@ -543,7 +542,7 @@ mod tests {
             std::env::set_var("CREDENTIALS_DIRECTORY", temp_dir.path());
         }
 
-        let result = read_systemd_credential("FIREZONE_TOKEN").await.unwrap();
+        let result = read_systemd_credential("FIREZONE_TOKEN").unwrap();
         assert_eq!(result.expose_secret(), "systemd-token");
 
         // Clean up
