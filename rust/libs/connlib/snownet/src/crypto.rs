@@ -209,7 +209,8 @@ impl<'n> DecapsulateBatch<'n> {
             return false;
         }
 
-        let message = &segment[self.offset.min(segment.len())..];
+        // Strip the channel data header if present.
+        let message = segment.get(self.offset..).unwrap_or_default();
 
         // Parsing anything but a data message has side effects, such as rate limiting.
         if message.first() != Some(&4) {
