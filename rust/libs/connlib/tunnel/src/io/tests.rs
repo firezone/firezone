@@ -12,6 +12,7 @@ use ip_packet::{Ecn, IpVersion};
 use socket_factory::DatagramBatch;
 use tokio::sync::oneshot;
 
+use super::crypto::DecryptedIpPackets;
 use super::*;
 use crate::sockets::{QUEUE_SIZE, SocketThreadEnds};
 

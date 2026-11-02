@@ -19,6 +19,7 @@ use super::UdpGsoTrain;
 use crate::packet_counts::UdpPacketCounts;
 use crate::sockets::{PendingDatagrams, Sockets};
 use prefetch::{IteratorExt as _, Prefetch};
+use smallvec::SmallVec;
 
 /// How many received packets go to a worker in one decrypt job at most.
 ///
@@ -79,6 +80,17 @@ impl DecryptedIpPackets {
     /// Moves out every decrypted packet, in the order it was received.
     pub fn drain(&mut self) -> impl Iterator<Item = DecryptedDatagram> + '_ {
         self.0.drain(..)
+    }
+}
+
+/// The decrypt jobs that were done by the time [`Decrypting::poll_next`] looked.
+#[derive(Default)]
+pub struct DecryptedJobs(SmallVec<[DecryptedIpPackets; MAX_JOBS_IN_FLIGHT]>);
+
+impl DecryptedJobs {
+    /// Moves out every decrypted packet, in the order it was received.
+    pub fn drain(&mut self) -> impl Iterator<Item = DecryptedDatagram> + '_ {
+        self.0.iter_mut().flat_map(DecryptedIpPackets::drain)
     }
 }
 
@@ -368,11 +380,12 @@ impl Decrypting {
     ///
     /// Handing them over together lets the event loop pass them to the TUN device in one go,
     /// which wakes its writer once rather than once per job.
-    pub fn poll_next(&mut self, cx: &mut Context<'_>) -> Poll<DecryptedIpPackets> {
-        let mut decrypted = ready!(self.poll_job(cx));
+    pub fn poll_next(&mut self, cx: &mut Context<'_>) -> Poll<DecryptedJobs> {
+        let mut decrypted = DecryptedJobs::default();
+        decrypted.0.push(ready!(self.poll_job(cx)));
 
-        while let Poll::Ready(mut next) = self.poll_job(cx) {
-            decrypted.0.append(&mut next.0);
+        while let Poll::Ready(next) = self.poll_job(cx) {
+            decrypted.0.push(next);
         }
 
         Poll::Ready(decrypted)
