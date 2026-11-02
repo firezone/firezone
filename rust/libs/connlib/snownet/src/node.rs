@@ -28,6 +28,7 @@ use is::{Candidate, CandidateKind, IceConnectionState};
 use is::{IceAgent, IceAgentEvent};
 use itertools::Itertools;
 use opentelemetry::metrics::Gauge;
+use prefetch::IteratorExt as _;
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use ringbuffer::{AllocRingBuffer, RingBuffer};
@@ -2065,7 +2066,14 @@ where
             .context("data packet")
             .with_context(|| format!("cid={cid}"))?;
 
+        // The worker thread wrote the packets, so fetch the next one while handling this one.
         let packets = committed
+            .prefetching_with(|committed| match committed {
+                Ok(sanstun::Committed::Data {
+                    buffer: Ok(packet), ..
+                }) => packet.packet(),
+                _ => &[],
+            })
             .map(|committed| {
                 let packet = match committed {
                     Ok(sanstun::Committed::Data {

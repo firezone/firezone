@@ -5,7 +5,6 @@ use std::time::Instant;
 use anyhow::Result;
 use bufferpool::Bytes;
 use ip_packet::IpPacket;
-use prefetch::{IteratorExt as _, Prefetching};
 
 use crate::node::Transmit;
 
@@ -296,21 +295,12 @@ pub struct DecryptedBatch {
 
 /// The packets of a [`DecryptedBatch`] committed to their connection, in order.
 ///
-/// Yields `Ok(None)` for a packet that was handled internally, for example, a keepalive. Each
-/// packet is prefetched as the one before it is yielded.
-pub struct CommittedBatch(
-    Prefetching<
-        std::vec::IntoIter<Result<Option<IpPacket>>>,
-        fn(&Result<Option<IpPacket>>) -> &[u8],
-    >,
-);
+/// Yields `Ok(None)` for a packet that was handled internally, for example, a keepalive.
+pub struct CommittedBatch(std::vec::IntoIter<Result<Option<IpPacket>>>);
 
 impl CommittedBatch {
     pub(crate) fn new(packets: Vec<Result<Option<IpPacket>>>) -> Self {
-        Self(packets.into_iter().prefetching_with(|packet| match packet {
-            Ok(Some(packet)) => packet.packet(),
-            Ok(None) | Err(_) => &[],
-        }))
+        Self(packets.into_iter())
     }
 }
 
