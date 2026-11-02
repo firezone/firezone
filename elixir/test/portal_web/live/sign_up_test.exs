@@ -97,7 +97,19 @@ defmodule PortalWeb.SignUpTest do
                "European Union"
              )
 
-      assert has_element?(lv, "#region-picker-help", "Changing this later requires scheduled downtime")
+      assert has_element?(lv, "#region-picker-help", "The region where your account data is stored.")
+
+      assert has_element?(
+               lv,
+               "#region-picker-downtime",
+               "Changing this later requires scheduled downtime."
+             )
+
+      assert has_element?(
+               lv,
+               "#region-picker-downtime a[href='https://www.firezone.dev/kb/architecture/regional-availability']",
+               "Learn more"
+             )
       refute has_element?(lv, "#data-residency")
     end
 
@@ -108,7 +120,7 @@ defmodule PortalWeb.SignUpTest do
       {:ok, lv, _html} = live(conn, ~p"/sign_up/email")
 
       assert has_element?(lv, "#selected-region", "European Union")
-      assert has_element?(lv, "#selected-region", "Changing this later requires scheduled downtime.")
+      refute has_element?(lv, "#selected-region", "Changing this later")
       refute has_element?(lv, "#selected-region", "Data is stored in")
       refute has_element?(lv, "#selected-region", "The region where")
       refute has_element?(lv, "#region-picker")

@@ -706,7 +706,7 @@ defmodule PortalWeb.SignUp do
       )
 
     ~H"""
-    <div :if={@region != :on_prem} id="region-picker" class="mb-6">
+    <div :if={@region != :on_prem} id="region-picker">
       <span id="region-picker-label" class="block text-xs font-medium text-body mb-1.5">
         Cloud Region
       </span>
@@ -744,8 +744,19 @@ defmodule PortalWeb.SignUp do
         </li>
       </ul>
       <p id="region-picker-help" class="mt-1.5 text-xs text-subtle">
-        The region where your account data is stored. Changing this later requires scheduled downtime.
+        The region where your account data is stored.
       </p>
+      <Core.flash id="region-picker-downtime" kind={:warning} class="mt-3">
+        Changing this later requires scheduled downtime.
+        <a
+          href="https://www.firezone.dev/kb/architecture/regional-availability"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="font-medium underline"
+        >
+          Learn more
+        </a>
+      </Core.flash>
     </div>
     """
   end
@@ -761,9 +772,6 @@ defmodule PortalWeb.SignUp do
         <Page.residency_flag region={@region} class="w-6 h-auto shadow-sm" />
         <span class="text-sm font-semibold text-heading">{Page.data_residency_name(@region)}</span>
       </div>
-      <p class="mt-1.5 text-xs text-subtle">
-        Changing this later requires scheduled downtime.
-      </p>
     </div>
     """
   end
@@ -772,12 +780,14 @@ defmodule PortalWeb.SignUp do
 
   defp region_option_content(assigns) do
     ~H"""
-    <div class="flex flex-col items-center gap-1.5 w-full min-w-0 text-center">
-      <span class="h-7 flex items-center">
-        <Page.residency_flag region={@region} class="w-10 h-auto shadow-sm" />
-      </span>
-      <div class="font-semibold text-xs">{Page.data_residency_name(@region)}</div>
-      <div class="text-[10px] whitespace-nowrap">{region_option_description(@region)}</div>
+    <div class="block min-w-0">
+      <div class="w-full font-semibold mb-1 text-xs flex items-center gap-2 whitespace-nowrap">
+        <span class="shrink-0 w-8 h-[22px] flex items-center">
+          <Page.residency_flag region={@region} class="w-8 h-auto shadow-sm" />
+        </span>
+        {Page.data_residency_name(@region)}
+      </div>
+      <div class="w-full text-[10px] whitespace-nowrap">{region_option_description(@region)}</div>
     </div>
     """
   end
@@ -786,7 +796,7 @@ defmodule PortalWeb.SignUp do
   defp region_option_description(:eu), do: "Data is stored in Sweden and France"
 
   defp region_option_class do
-    "flex items-center justify-center w-full h-full px-3 py-4 text-body bg-surface border border-border rounded cursor-pointer peer-checked:border-brand peer-checked:text-brand hover:text-heading hover:bg-raised transition-colors"
+    "inline-flex items-center justify-between w-full h-full p-3 text-body bg-surface border border-border rounded cursor-pointer peer-checked:border-brand peer-checked:text-brand hover:text-heading hover:bg-raised transition-colors"
   end
 
   attr :title, :string, required: true
