@@ -177,7 +177,7 @@ in
         CapabilityBoundingSet = [ "CAP_NET_ADMIN" ];
         DeviceAllow = [ "/dev/net/tun" ];
 
-        LimitNOFILE = 4096;
+        LimitNOFILE = 65536;
         LimitNPROC = 512;
         LimitCORE = 0;
 

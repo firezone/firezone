@@ -130,6 +130,27 @@ fn has_necessary_permissions() -> bool {
     is_root || has_net_admin
 }
 
+/// Raises the soft limit of open file descriptors to the hard limit.
+///
+/// Container runtimes often start processes with a soft limit of 1024, which is too low for a Gateway with many Clients.
+#[cfg(target_os = "linux")]
+fn raise_file_descriptor_limit() {
+    use nix::sys::resource::{Resource, getrlimit, setrlimit};
+
+    let result = getrlimit(Resource::RLIMIT_NOFILE).and_then(|(soft, hard)| {
+        setrlimit(Resource::RLIMIT_NOFILE, hard, hard)?;
+
+        Ok((soft, hard))
+    });
+
+    match result {
+        Ok((soft, hard)) => {
+            tracing::info!(from = %soft, to = %hard, "Raised file descriptor limit")
+        }
+        Err(e) => tracing::info!("Failed to raise file descriptor limit: {e}"),
+    }
+}
+
 async fn try_main(cli: Cli) -> Result<()> {
     let flow_logs_dir = PathBuf::from(FLOW_LOGS_DIR);
 
@@ -176,6 +197,9 @@ async fn try_main(cli: Cli) -> Result<()> {
             Err(e) => tracing::info!("Failed to increase `core.wmem_max`: {e}"),
         };
     }
+
+    #[cfg(target_os = "linux")]
+    raise_file_descriptor_limit();
 
     let firezone_id = get_firezone_id(cli.firezone_id.clone())
         .context("Couldn't read FIREZONE_ID or write it to disk: Please provide it through the env variable or provide rw access to /var/lib/firezone/")?;
