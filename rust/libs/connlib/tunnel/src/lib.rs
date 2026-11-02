@@ -518,7 +518,18 @@ impl ClientTunnel {
                             packets,
                         } = received;
 
-                        for result in self.role_state.handle_peer_batch(packets, local, from, now) {
+                        let batch = match self
+                            .role_state
+                            .handle_peer_batch(packets, local, from, now)
+                        {
+                            Ok(batch) => batch,
+                            Err(e) => {
+                                error.push(e.context(FailedToHandleNetworkPacket { local, from }));
+                                continue;
+                            }
+                        };
+
+                        for result in batch {
                             match result {
                                 Ok(Some(packet)) => {
                                     let packet = packet.with_ecn_from_transport(ecn);
@@ -785,7 +796,18 @@ impl GatewayTunnel {
                             packets,
                         } = received;
 
-                        for result in self.role_state.handle_peer_batch(packets, local, from, now) {
+                        let batch = match self
+                            .role_state
+                            .handle_peer_batch(packets, local, from, now)
+                        {
+                            Ok(batch) => batch,
+                            Err(e) => {
+                                error.push(e.context(FailedToHandleNetworkPacket { local, from }));
+                                continue;
+                            }
+                        };
+
+                        for result in batch {
                             match result {
                                 Ok(Some(packet)) => {
                                     let packet = packet.with_ecn_from_transport(ecn);
