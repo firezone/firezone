@@ -9168,6 +9168,7 @@ dependencies = [
  "prefetch",
  "quinn-udp",
  "rand 0.10.3",
+ "smallvec",
  "snownet",
  "socket-factory",
  "thiserror 2.0.21",
