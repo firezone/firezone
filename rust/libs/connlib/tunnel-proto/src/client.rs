@@ -2938,8 +2938,7 @@ impl Iterator for PeerBatch<'_> {
         let item = packets.next()?;
 
         if let Ok(Some(packet)) = &item
-            && let Some(flow) = Flow::of(packet)
-            && let Some(decision) = self.decisions.iter_mut().find(|d| d.flow == flow)
+            && let Some(decision) = self.decisions.iter_mut().find(|d| d.flow.matches(packet))
         {
             decision.flows.add(packet);
 

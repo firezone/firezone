@@ -2,15 +2,22 @@ use std::net::IpAddr;
 use std::num::NonZeroUsize;
 
 use anyhow::{Context as _, Result};
-use ip_packet::{IpPacket, Protocol, TcpFlags};
+use ip_packet::{IpPacket, IpProtocol, IpVersion, Protocol};
 
 /// The 5-tuple of a packet whose routing decision later packets of the same flow can reuse.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+///
+/// Holds the bytes of the addresses and ports as they appear in the packet.
+#[derive(Debug, Clone, Copy)]
 pub(crate) struct Flow {
-    src: IpAddr,
-    dst: IpAddr,
-    src_proto: Protocol,
-    dst_proto: Protocol,
+    protocol: IpProtocol,
+    ports: [u8; 4],
+    addresses: Addresses,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum Addresses {
+    V4([u8; 8]),
+    V6([u8; 32]),
 }
 
 impl Flow {
@@ -20,26 +27,41 @@ impl Flow {
     /// So does ICMP: an echo request and the echo reply going the same way share addresses and
     /// identifier, yet are routed and authorized differently.
     pub(crate) fn of(packet: &IpPacket) -> Option<Self> {
-        if packet
-            .tcp_flags()
-            .is_some_and(|flags| flags.intersects(TcpFlags::SYN | TcpFlags::FIN | TcpFlags::RST))
-        {
+        if !packet.is_batchable() {
             return None;
         }
 
-        let src_proto = packet.source_protocol().ok()?;
-        let dst_proto = packet.destination_protocol().ok()?;
-        if matches!(src_proto, Protocol::IcmpEcho(_)) {
-            return None;
-        }
+        let addresses = match packet.version() {
+            IpVersion::V4 => Addresses::V4(packet.address_bytes().try_into().ok()?),
+            IpVersion::V6 => Addresses::V6(packet.address_bytes().try_into().ok()?),
+        };
 
         Some(Self {
-            src: packet.source(),
-            dst: packet.destination(),
-            src_proto,
-            dst_proto,
+            protocol: packet.next_header(),
+            ports: ports(packet)?,
+            addresses,
         })
     }
+
+    /// Returns whether `packet` belongs to this flow.
+    pub(crate) fn matches(&self, packet: &IpPacket) -> bool {
+        if !packet.is_batchable()
+            || packet.next_header() != self.protocol
+            || ports(packet) != Some(self.ports)
+        {
+            return false;
+        }
+
+        match &self.addresses {
+            Addresses::V4(addresses) => packet.address_bytes() == addresses,
+            Addresses::V6(addresses) => packet.address_bytes() == addresses,
+        }
+    }
+}
+
+/// Reads the source and destination port at the start of a TCP or UDP header.
+fn ports(packet: &IpPacket) -> Option<[u8; 4]> {
+    packet.payload().get(..4)?.try_into().ok()
 }
 
 /// A batch of packets received on the TUN device that share one flow and thus one routing decision.
@@ -80,7 +102,7 @@ impl<'a, S: flow_tracker::Scope> TunBatch<'a, S> {
 
     /// Returns whether `packet` belongs to the batch's flow.
     pub fn accepts(&self, packet: &IpPacket) -> bool {
-        self.flow.is_some() && Flow::of(packet) == self.flow
+        self.flow.as_ref().is_some_and(|flow| flow.matches(packet))
     }
 
     /// Adds `packet`, which the batch [accepts](Self::accepts), translating it like the first one.
@@ -111,5 +133,91 @@ impl<'a, S: flow_tracker::Scope> TunBatch<'a, S> {
         self.flows.finish();
 
         Ok((encapsulation, self.packets))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::net::Ipv4Addr;
+
+    use ip_packet::make;
+
+    use super::*;
+
+    const SRC: Ipv4Addr = Ipv4Addr::new(10, 0, 0, 1);
+    const DST: Ipv4Addr = Ipv4Addr::new(10, 0, 0, 2);
+    const OTHER: Ipv4Addr = Ipv4Addr::new(10, 0, 0, 3);
+
+    #[test]
+    fn matches_packets_of_the_same_flow() {
+        let flow = Flow::of(&udp(SRC, DST, 1000, 53, b"foo")).unwrap();
+
+        assert!(flow.matches(&udp(SRC, DST, 1000, 53, b"foobar")));
+    }
+
+    #[test]
+    fn does_not_match_packets_of_other_flows() {
+        let flow = Flow::of(&udp(SRC, DST, 1000, 53, b"")).unwrap();
+
+        for packet in [
+            udp(OTHER, DST, 1000, 53, b""),
+            udp(SRC, OTHER, 1000, 53, b""),
+            udp(SRC, DST, 1001, 53, b""),
+            udp(SRC, DST, 1000, 54, b""),
+            tcp(SRC, DST, 1000, 53, make::TcpFlags::default()),
+            udp(SRC.to_ipv6_mapped(), DST.to_ipv6_mapped(), 1000, 53, b""),
+        ] {
+            assert!(!flow.matches(&packet), "{packet:?}");
+        }
+    }
+
+    #[test]
+    fn ipv6_flow_does_not_match_ipv4_packet() {
+        let flow = Flow::of(&udp(
+            SRC.to_ipv6_mapped(),
+            DST.to_ipv6_mapped(),
+            1000,
+            53,
+            b"",
+        ))
+        .unwrap();
+
+        assert!(!flow.matches(&udp(SRC, DST, 1000, 53, b"")));
+    }
+
+    #[test]
+    fn does_not_match_control_segments_of_its_flow() {
+        let ack = make::TcpFlags {
+            ack: true,
+            ..Default::default()
+        };
+        let rst = make::TcpFlags {
+            rst: true,
+            ..Default::default()
+        };
+        let flow = Flow::of(&tcp(SRC, DST, 1000, 443, ack)).unwrap();
+
+        assert!(flow.matches(&tcp(SRC, DST, 1000, 443, ack)));
+        assert!(!flow.matches(&tcp(SRC, DST, 1000, 443, rst)));
+    }
+
+    fn udp(
+        src: impl Into<IpAddr>,
+        dst: impl Into<IpAddr>,
+        sport: u16,
+        dport: u16,
+        payload: &[u8],
+    ) -> IpPacket {
+        make::udp_packet(src, dst, sport, dport, payload).unwrap()
+    }
+
+    fn tcp(
+        src: Ipv4Addr,
+        dst: Ipv4Addr,
+        sport: u16,
+        dport: u16,
+        flags: make::TcpFlags,
+    ) -> IpPacket {
+        make::tcp_packet(src, dst, sport, dport, flags, &[]).unwrap()
     }
 }

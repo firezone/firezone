@@ -77,7 +77,6 @@ pub struct GatewayState {
 
 /// The decision taken for the first packet of a flow in a [`PeerBatch`], reused for the rest.
 struct InboundDecision {
-    cid: ClientId,
     flow: Flow,
     rewrite: Option<(Protocol, IpAddr)>,
     flows: flow_tracker::DetachedFlowBatch,
@@ -348,7 +347,6 @@ impl GatewayState {
                     && let Some(rewrite) = rewrite
                 {
                     decisions.push(InboundDecision {
-                        cid,
                         flow,
                         rewrite,
                         flows: flows.detach(),
@@ -872,11 +870,7 @@ impl Iterator for PeerBatch<'_> {
         let mut item = packets.next()?;
 
         if let Ok(Some(packet)) = &mut item
-            && let Some(flow) = Flow::of(packet)
-            && let Some(decision) = self
-                .decisions
-                .iter_mut()
-                .find(|d| d.cid == cid && d.flow == flow)
+            && let Some(decision) = self.decisions.iter_mut().find(|d| d.flow.matches(packet))
         {
             if let Some((proto, ip)) = decision.rewrite
                 && let Err(e) = packet
