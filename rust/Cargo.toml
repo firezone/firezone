@@ -54,6 +54,7 @@ members = [
     "libs/logging",
     "libs/otel-attributes",
     "libs/prefetch",
+    "libs/runtime-thread",
     "libs/telemetry",
     "libs/tunnel-bypass-resolver",
     "libs/windows-security",
@@ -213,6 +214,7 @@ ring = "0.17.14"
 ringbuffer = "0.16.0"
 roxmltree = "0.21.1"
 rpassword = "7.5.3"
+runtime-thread = { path = "libs/runtime-thread" }
 rtnetlink = { version = "0.23.0", default-features = false, features = ["tokio_socket"] }
 rustls = { version = "0.23.40", default-features = false, features = ["ring"] }
 rustls-native-certs = "0.8.1"

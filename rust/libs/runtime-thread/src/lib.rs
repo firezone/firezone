@@ -12,8 +12,8 @@ use futures::{FutureExt as _, channel::oneshot};
 
 /// Runs the future made by `make_future` on a new thread named `name`, on a single-threaded Tokio runtime of its own.
 ///
-/// The thread is detached: it runs until the future completes, whether or not the returned [`ThreadOutput`] is polled.
-pub fn spawn_thread<F, Fut>(name: &str, make_future: F) -> io::Result<ThreadOutput<Fut::Output>>
+/// The thread is detached: it runs until the future completes, whether or not the returned [`Output`] is polled.
+pub fn spawn<F, Fut>(name: &str, make_future: F) -> io::Result<Output<Fut::Output>>
 where
     F: FnOnce() -> Fut + Send + 'static,
     Fut: Future,
@@ -36,20 +36,20 @@ where
             let _ = output_tx.send(output);
         })?;
 
-    Ok(ThreadOutput {
+    Ok(Output {
         name: name.to_owned(),
         output_rx,
     })
 }
 
-/// Resolves to the output of the future run by [`spawn_thread`], or to an error if it panicked.
+/// Resolves to the output of the future run by [`spawn`], or to an error if it panicked.
 #[derive(Debug)]
-pub struct ThreadOutput<T> {
+pub struct Output<T> {
     name: String,
     output_rx: oneshot::Receiver<Result<T, String>>,
 }
 
-impl<T> Future for ThreadOutput<T> {
+impl<T> Future for Output<T> {
     type Output = Result<T>;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {

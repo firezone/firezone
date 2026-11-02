@@ -193,7 +193,7 @@ impl Eventloop {
         let resolver_bypass = tunnel_bypass_resolver::Bypass::with_servers(dns_servers.clone());
 
         let public_key = PublicKeyParam(tunnel.public_key().to_bytes());
-        tunnel::spawn_thread("fz-portal", move || {
+        runtime_thread::spawn("fz-portal", move || {
             phoenix_channel_event_loop(
                 portal,
                 public_key,

@@ -94,7 +94,7 @@ impl Eventloop {
 
         let public_key = PublicKeyParam(tunnel.public_key().to_bytes());
         let portal_resolver = dns_resolver()?;
-        tunnel::spawn_thread("fz-portal", move || {
+        runtime_thread::spawn("fz-portal", move || {
             phoenix_channel_event_loop(
                 portal,
                 public_key,

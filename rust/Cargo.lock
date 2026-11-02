@@ -1421,6 +1421,7 @@ dependencies = [
  "otel-instruments",
  "parking_lot",
  "phoenix-channel",
+ "runtime-thread",
  "serde",
  "socket-factory",
  "telemetry",
@@ -2639,6 +2640,7 @@ dependencies = [
  "phoenix-channel",
  "resolv-conf",
  "rpassword",
+ "runtime-thread",
  "rustls",
  "secrecy",
  "serde",
@@ -6747,6 +6749,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "runtime-thread"
+version = "0.1.0"
+dependencies = [
+ "anyhow-ext",
+ "futures",
+ "tokio",
+]
+
+[[package]]
 name = "rustc-demangle"
 version = "0.1.24"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -9164,6 +9175,7 @@ dependencies = [
  "prefetch",
  "quinn-udp",
  "rand 0.10.3",
+ "runtime-thread",
  "smallvec",
  "snownet",
  "socket-factory",
