@@ -743,20 +743,17 @@ defmodule PortalWeb.SignUp do
           </label>
         </li>
       </ul>
-      <p id="region-picker-help" class="mt-1.5 text-xs text-subtle">
+      <p id="region-picker-help" class="mt-1.5 mb-6 text-xs text-subtle">
         The region where your account data is stored.
-      </p>
-      <Core.flash id="region-picker-downtime" kind={:warning} class="mt-3">
-        Changing this later requires scheduled downtime.
-        <a
+        <strong class="font-medium text-body">Requires downtime to change later.</strong>
+        <Navigation.link
           href="https://www.firezone.dev/kb/architecture/regional-availability"
           target="_blank"
           rel="noopener noreferrer"
-          class="font-medium underline"
         >
           Learn more
-        </a>
-      </Core.flash>
+        </Navigation.link>
+      </p>
     </div>
     """
   end

@@ -98,16 +98,11 @@ defmodule PortalWeb.SignUpTest do
              )
 
       assert has_element?(lv, "#region-picker-help", "The region where your account data is stored.")
+      assert has_element?(lv, "#region-picker-help strong", "Requires downtime to change later.")
 
       assert has_element?(
                lv,
-               "#region-picker-downtime",
-               "Changing this later requires scheduled downtime."
-             )
-
-      assert has_element?(
-               lv,
-               "#region-picker-downtime a[href='https://www.firezone.dev/kb/architecture/regional-availability']",
+               "#region-picker-help a[href='https://www.firezone.dev/kb/architecture/regional-availability']",
                "Learn more"
              )
       refute has_element?(lv, "#data-residency")
