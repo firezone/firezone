@@ -76,7 +76,7 @@ pub struct TunBatch<'a, S: flow_tracker::Scope> {
     /// The source rewrite of the first packet, applied to every further one.
     nat: Option<(Protocol, IpAddr)>,
     tunnel: snownet::EncapsulateBatch<'a>,
-    flows: flow_tracker::FlowBatch<'a, S>,
+    flows: flow_tracker::CurrentFlowGuard<'a, S>,
     /// The packets of the batch, starting with the one that routed it.
     packets: Vec<IpPacket>,
 }
@@ -86,7 +86,7 @@ impl<'a, S: flow_tracker::Scope> TunBatch<'a, S> {
         key: Option<BatchingKey>,
         nat: Option<(Protocol, IpAddr)>,
         tunnel: snownet::EncapsulateBatch<'a>,
-        flows: flow_tracker::FlowBatch<'a, S>,
+        flows: flow_tracker::CurrentFlowGuard<'a, S>,
         packet: IpPacket,
     ) -> Self {
         let mut packets = Vec::with_capacity(tun::MAX_BATCH_SIZE);
@@ -131,7 +131,7 @@ impl<'a, S: flow_tracker::Scope> TunBatch<'a, S> {
             }
         };
 
-        self.flows.finish();
+        drop(self.flows);
 
         Ok((encapsulation, self.packets))
     }

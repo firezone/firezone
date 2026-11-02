@@ -580,7 +580,7 @@ impl ClientState {
         };
 
         let internet_resource = self.active_internet_resource().map(|resource| resource.id);
-        let mut flows = self.flow_tracker.begin_tun_batch(&packet, now);
+        let mut flows = self.flow_tracker.begin_tun_packet(&packet, now);
 
         // Recursive DNS queries we tunnel to upstream resolvers are internal
         // traffic and never become flows either; discarding the flow data
@@ -807,7 +807,7 @@ impl ClientState {
         };
 
         let key = BatchingKey::of(&packet);
-        let flows = self.flow_tracker.begin_network_batch(local, from, now);
+        let flows = self.flow_tracker.begin_network_packet(local, from, now);
 
         flow_tracker::record_decrypted_packet(&packet);
 
@@ -869,7 +869,7 @@ impl ClientState {
 
                     // Later packets of the batch find no peer, so they must not reuse a decision.
                     for decision in decisions.drain(..) {
-                        self.flow_tracker.insert_batch(decision.flows);
+                        self.flow_tracker.insert_detached(decision.flows);
                     }
                 }
                 (code, pid) => {
@@ -2895,7 +2895,7 @@ fn client_for_icmp_error(
 /// The decision taken for the first packet of a flow in a [`PeerBatch`], reused for the rest.
 struct InboundDecision {
     key: BatchingKey,
-    flows: flow_tracker::DetachedFlowBatch,
+    flows: flow_tracker::DetachedFlow,
 }
 
 type InboundDecisions = smallvec::SmallVec<[InboundDecision; 2]>;
@@ -2948,7 +2948,7 @@ impl Iterator for PeerBatch<'_> {
 impl Drop for PeerBatch<'_> {
     fn drop(&mut self) {
         for decision in self.decisions.drain(..) {
-            self.state.flow_tracker.insert_batch(decision.flows);
+            self.state.flow_tracker.insert_detached(decision.flows);
         }
     }
 }

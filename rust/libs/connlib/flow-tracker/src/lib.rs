@@ -14,15 +14,15 @@
 //! device observes the packet, so the initiator and responder label the same
 //! direction identically.
 //!
-//! Packets are recorded in [`FlowBatch`]es of one flow. [`Tracker::begin_tun_batch`] /
-//! [`Tracker::begin_network_batch`] begin a batch with its first packet, whose
-//! facts the call sites processing it fill into the thread-local [`FlowData`]
-//! via the `record_*` functions. [`FlowBatch::add`] counts further packets of
-//! the same flow. Finishing or dropping the batch records it, so every exit
-//! path of packet processing records it; incomplete data (e.g. because packet
+//! Processing a packet begins with [`Tracker::begin_tun_packet`] /
+//! [`Tracker::begin_network_packet`], which marks the thread-local [`FlowData`]
+//! as gathering a packet that the call sites processing it fill in via the
+//! `record_*` functions. [`CurrentFlowGuard::add`] counts further packets of the
+//! same flow. Dropping the returned [`CurrentFlowGuard`] inserts
+//! the gathered data on every exit path; incomplete data (e.g. because packet
 //! processing bailed early or the packet was internal traffic) is discarded.
-//! A batch that has to outlive its borrow of the tracker is
-//! [detached](FlowBatch::detach) and recorded with [`Tracker::insert_batch`].
+//! A guard that has to outlive its borrow of the tracker is
+//! [detached](CurrentFlowGuard::detach) and inserted with [`Tracker::insert_detached`].
 
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
@@ -180,8 +180,10 @@ impl<S> Tracker<S>
 where
     S: Scope,
 {
-    /// Begins a batch of packets read from the TUN device with `packet`.
-    pub fn begin_tun_batch(&mut self, packet: &IpPacket, now: Instant) -> FlowBatch<'_, S> {
+    /// Begins gathering flow data for one packet read from the TUN device.
+    ///
+    /// Dropping the returned guard inserts the gathered flow data.
+    pub fn begin_tun_packet(&mut self, packet: &IpPacket, now: Instant) -> CurrentFlowGuard<'_, S> {
         if self.enabled {
             set_current_flow(
                 Entry::Tun,
@@ -191,17 +193,18 @@ where
             );
         }
 
-        FlowBatch { tracker: self }
+        CurrentFlowGuard { tracker: self }
     }
 
-    /// Begins a batch of packets received on the network interface with the next
-    /// one decrypted, see [`record_decrypted_packet`].
-    pub fn begin_network_batch(
+    /// Begins gathering flow data for one packet received on the network interface.
+    ///
+    /// Dropping the returned guard inserts the gathered flow data.
+    pub fn begin_network_packet(
         &mut self,
         local: SocketAddr,
         remote: SocketAddr,
         now: Instant,
-    ) -> FlowBatch<'_, S> {
+    ) -> CurrentFlowGuard<'_, S> {
         if self.enabled {
             set_current_flow(
                 Entry::Network { local, remote },
@@ -211,16 +214,16 @@ where
             );
         }
 
-        FlowBatch { tracker: self }
+        CurrentFlowGuard { tracker: self }
     }
 
-    /// Records a [detached](FlowBatch::detach) batch.
-    pub fn insert_batch(&mut self, mut batch: DetachedFlowBatch) {
-        self.finish_batch(&mut batch.data);
+    /// Inserts the flow data of a [detached](CurrentFlowGuard::detach) guard.
+    pub fn insert_detached(&mut self, mut flow: DetachedFlow) {
+        self.finish_flow(&mut flow.data);
     }
 
-    /// Records a batch's flow data and keeps its ingest token for the next batch.
-    fn finish_batch(&mut self, data: &mut FlowData) {
+    /// Inserts the gathered flow data and keeps its ingest token for the next packet.
+    fn finish_flow(&mut self, data: &mut FlowData) {
         let Some(packet) = data.packet else {
             return;
         };
@@ -752,26 +755,25 @@ impl Clock {
     }
 }
 
-/// A batch of packets of one flow, begun with its first packet.
+/// Inserts the current packet's flow data into the tracker when dropped.
 ///
-/// While the batch borrows the tracker, the `record_*` functions fill in the
-/// first packet's facts; the borrow also guarantees that at most one packet is
-/// gathered at a time. Dropping the batch records it, like [`FlowBatch::finish`].
-#[must_use = "dropping the batch records it right away"]
-pub struct FlowBatch<'a, S: Scope> {
+/// Holding the tracker's `&mut` also guarantees at most one packet is
+/// gathered at a time.
+#[must_use]
+pub struct CurrentFlowGuard<'a, S: Scope> {
     tracker: &'a mut Tracker<S>,
 }
 
-impl<S: Scope> FlowBatch<'_, S> {
-    /// Counts `packet` towards the batch's flow.
+impl<S: Scope> CurrentFlowGuard<'_, S> {
+    /// Counts `packet` towards the current packet's flow.
     ///
     /// A packet that opens, closes or resets a TCP connection changes the flow, so it must
-    /// begin a batch of its own.
+    /// begin a guard of its own.
     pub fn add(&mut self, packet: &IpPacket) {
         CURRENT_FLOW.with_borrow_mut(|data| data.add(packet));
     }
 
-    /// Drops the gathered flow data, so the batch is not recorded.
+    /// Drops the gathered flow data, so nothing is inserted.
     pub fn discard(&mut self) {
         CURRENT_FLOW.with_borrow_mut(|data| {
             self.tracker.mru_ingest_token = data
@@ -783,31 +785,28 @@ impl<S: Scope> FlowBatch<'_, S> {
         });
     }
 
-    /// Records the batch.
-    pub fn finish(self) {}
-
-    /// Releases the tracker; the batch is recorded with [`Tracker::insert_batch`].
-    pub fn detach(self) -> DetachedFlowBatch {
-        DetachedFlowBatch {
+    /// Releases the tracker; the flow data is inserted with [`Tracker::insert_detached`].
+    pub fn detach(self) -> DetachedFlow {
+        DetachedFlow {
             data: CURRENT_FLOW.with_borrow_mut(|data| mem::replace(data, FlowData::EMPTY)),
         }
     }
 }
 
-impl<S: Scope> Drop for FlowBatch<'_, S> {
+impl<S: Scope> Drop for CurrentFlowGuard<'_, S> {
     fn drop(&mut self) {
-        CURRENT_FLOW.with_borrow_mut(|data| self.tracker.finish_batch(data));
+        CURRENT_FLOW.with_borrow_mut(|data| self.tracker.finish_flow(data));
     }
 }
 
-/// A [`FlowBatch`] that no longer borrows the tracker.
-#[must_use = "the batch is only recorded once it is inserted into the tracker"]
-pub struct DetachedFlowBatch {
+/// Flow data gathered by a [`CurrentFlowGuard`] that no longer borrows the tracker.
+#[must_use = "the flow data is only recorded once it is inserted into the tracker"]
+pub struct DetachedFlow {
     data: FlowData,
 }
 
-impl DetachedFlowBatch {
-    /// Counts `packet` towards the batch's flow, see [`FlowBatch::add`].
+impl DetachedFlow {
+    /// Counts `packet` towards the flow, see [`CurrentFlowGuard::add`].
     pub fn add(&mut self, packet: &IpPacket) {
         self.data.add(packet);
     }
@@ -910,7 +909,7 @@ impl FlowData {
                 .tcp_flags()
                 .unwrap_or_default()
                 .intersects(TcpFlags::SYN | TcpFlags::FIN | TcpFlags::RST),
-            "a packet that changes the TCP state begins its own batch"
+            "a packet that changes the TCP state is gathered on its own"
         );
 
         inner.packets += 1;
