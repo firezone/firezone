@@ -2061,7 +2061,7 @@ where
         cid: TId,
         path: (SocketAddr, SocketAddr),
         data: sanstun::DecryptedBatch<Result<IpPacket>>,
-        probes: sanstun::DecryptedBatch<Result<IpPacket>>,
+        probes: sanstun::DecryptedBatch<path_agent::Probe>,
         now: Instant,
     ) -> Result<sanstun::CommittedBatch<Result<IpPacket>>>
     where
@@ -2077,10 +2077,7 @@ where
 
             for probe in probes {
                 let probe = match probe {
-                    Ok(sanstun::Committed::Data {
-                        buffer: Ok(probe), ..
-                    }) => probe,
-                    Ok(sanstun::Committed::Data { buffer: Err(_), .. }) => continue,
+                    Ok(sanstun::Committed::Data { buffer: probe, .. }) => probe,
                     Ok(sanstun::Committed::Keepalive) => continue,
                     Err(e) => {
                         tracing::debug!(%cid, "Failed to commit probe: {e}");
@@ -2090,7 +2087,7 @@ where
 
                 self.state
                     .on_incoming(cid, &mut self.agent, self.default_ice_config, &probe, now);
-                self.agent.handle_inbound_probe(probe, path, now);
+                self.agent.handle_probe(probe, path, now);
             }
         }
 

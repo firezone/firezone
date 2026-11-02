@@ -185,17 +185,15 @@ impl Agent {
         }
     }
 
-    pub(crate) fn handle_inbound_probe(
+    pub(crate) fn handle_probe(
         &mut self,
-        probe: ip_packet::IpPacket,
+        probe: path_agent::Probe,
         path: (std::net::SocketAddr, std::net::SocketAddr),
         now: Instant,
     ) {
         match self {
             Self::Ice(_) => {}
-            Self::Path(agent) => {
-                let _ = agent.handle_inbound_tun(probe, path, now);
-            }
+            Self::Path(agent) => agent.handle_probe(probe, path, now),
         }
     }
 

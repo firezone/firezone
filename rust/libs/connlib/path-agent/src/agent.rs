@@ -1,11 +1,11 @@
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::iter;
 use std::net::SocketAddr;
-use std::ops::ControlFlow;
 use std::time::{Duration, Instant};
 
 use crate::candidate::{Candidate, CandidateKind};
 use crate::event::{Event, Payload, Transmit};
+use crate::icmpv6::Probe;
 use crate::retransmit::PairRetransmit;
 use crate::score::pair_score;
 
@@ -622,24 +622,16 @@ impl PathAgent {
         self.events.pop_front()
     }
 
-    /// Records that data from the peer decrypted, other than a probe.
+    /// Records that data from the peer decrypted.
     pub fn handle_inbound_data(&mut self, now: Instant) {
         self.last_now = Some(now);
         // Decrypted peer data proves the peer is hearing us: not in distress.
         self.peer_rekeys = 0;
     }
 
-    pub fn handle_inbound_tun(
-        &mut self,
-        packet: ip_packet::IpPacket,
-        pair: (SocketAddr, SocketAddr),
-        now: Instant,
-    ) -> ControlFlow<(), ip_packet::IpPacket> {
+    /// Answers a probe request or measures the pair a probe reply arrived on.
+    pub fn handle_probe(&mut self, probe: Probe, pair: (SocketAddr, SocketAddr), now: Instant) {
         self.handle_inbound_data(now);
-
-        let Some(probe) = crate::icmpv6::Probe::try_parse(&packet) else {
-            return ControlFlow::Continue(packet);
-        };
 
         match probe.kind {
             crate::icmpv6::Echo::Request => {
@@ -668,15 +660,15 @@ impl PathAgent {
             }
             crate::icmpv6::Echo::Reply => {
                 let Some(state) = self.pairs.get_mut(&pair) else {
-                    return ControlFlow::Break(());
+                    return;
                 };
                 // The id is scoped to the pair: a reply carrying a stale id
                 // (a pair recreated at the same address) is not ours.
                 if probe.id != state.id {
-                    return ControlFlow::Break(());
+                    return;
                 }
                 let Some(i) = state.inflight.iter().position(|p| p.seq == probe.seq) else {
-                    return ControlFlow::Break(());
+                    return;
                 };
 
                 let inflight = state.inflight.remove(i);
@@ -695,7 +687,6 @@ impl PathAgent {
                 self.select_primary();
             }
         }
-        ControlFlow::Break(())
     }
 
     /// Records that the session is confirmed, which starts probing and ends the

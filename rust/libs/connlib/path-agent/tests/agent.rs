@@ -11,7 +11,7 @@ use std::time::{Duration, Instant};
 use ip_packet::{Icmpv6Type, IpPacket};
 use path_agent::{
     Candidate, CandidateKind, Event, PROBE_BUDGET, PROBE_BURST_GAPS, PROBE_DST, PROBE_SRC,
-    PathAgent, Payload, REKEY_DISTRESS_ATTEMPTS, RESPONDER_DEDUP_TTL, Transmit,
+    PathAgent, Payload, Probe, REKEY_DISTRESS_ATTEMPTS, RESPONDER_DEDUP_TTL, Transmit,
 };
 use zeroize::Zeroizing;
 
@@ -414,8 +414,8 @@ fn a_reply_with_a_stale_pair_id_is_ignored() {
 
     // Reply carrying a different id than the pair was probed with.
     let stale_id = probe.id.wrapping_add(1);
-    let _ = a.handle_inbound_tun(
-        build_echo_reply(stale_id, probe.seq),
+    a.handle_probe(
+        echo_reply(stale_id, probe.seq),
         (addr(1), addr(3)),
         t0 + ms(30),
     );
@@ -556,7 +556,7 @@ fn peer_data_resets_the_peer_rekey_count() {
             (addr(2), addr(4)),
             t,
         );
-        let _ = a.handle_inbound_tun(decrypted_data_packet(), (addr(2), addr(4)), t);
+        a.handle_inbound_data(t);
     }
     a.drain_events();
     let _ = a.transmits();
@@ -643,8 +643,8 @@ fn roam_recovers_the_data_path_via_probes_without_a_handshake() {
     let probes = recovery.probes_for((addr(5), addr(9)));
     assert!(!probes.is_empty(), "roamed pair probes without a handshake");
 
-    let _ = a.handle_inbound_tun(
-        build_echo_reply(probes[0].id, probes[0].seq),
+    a.handle_probe(
+        echo_reply(probes[0].id, probes[0].seq),
         (addr(5), addr(9)),
         t1 + ms(50),
     );
@@ -711,8 +711,8 @@ fn invalidated_relay_primary_fails_over_to_remote_relay_and_back() {
     // The remote's relay answers: pathless selection adopts it, keeping the
     // connection alive without our own relay.
     let probe = &recovery.probes_for(via_remote_relay)[0];
-    let _ = a.handle_inbound_tun(
-        build_echo_reply(probe.id, probe.seq),
+    a.handle_probe(
+        echo_reply(probe.id, probe.seq),
         via_remote_relay,
         t1 + ms(50),
     );
@@ -729,19 +729,15 @@ fn invalidated_relay_primary_fails_over_to_remote_relay_and_back() {
     let rediscovery = a.advance(t2, t2 + secs(1));
 
     let probe = &rediscovery.probes_for(via_remote_relay)[0];
-    let _ = a.handle_inbound_tun(
-        build_echo_reply(probe.id, probe.seq),
+    a.handle_probe(
+        echo_reply(probe.id, probe.seq),
         via_remote_relay,
         t2 + secs(1),
     );
     assert_eq!(a.primary(), Some(via_remote_relay));
 
     let probe = &rediscovery.probes_for(via_new_relay)[0];
-    let _ = a.handle_inbound_tun(
-        build_echo_reply(probe.id, probe.seq),
-        via_new_relay,
-        t2 + secs(1),
-    );
+    a.handle_probe(echo_reply(probe.id, probe.seq), via_new_relay, t2 + secs(1));
     assert_eq!(
         a.primary(),
         Some(via_new_relay),
@@ -977,7 +973,7 @@ impl AgentExt for PathAgent {
 
     fn ack_probe(&mut self, transmits: &[Transmit], pair: Pair, reply_at: Instant) {
         let probe = extract_probe_for(transmits, pair);
-        let _ = self.handle_inbound_tun(build_echo_reply(probe.id, probe.seq), pair, reply_at);
+        self.handle_probe(echo_reply(probe.id, probe.seq), pair, reply_at);
     }
 
     fn advance(&mut self, start: Instant, end: Instant) -> Activity {
@@ -1037,12 +1033,12 @@ fn direct_primary_with_relay_fallback() -> (PathAgent, Instant) {
 /// Simulate the peer probing us on `pair` and us measuring it: the inbound
 /// request triggers a probe back, which we then answer.
 fn prove_pair_alive(a: &mut PathAgent, pair: Pair, now: Instant) {
-    let _ = a.handle_inbound_tun(build_echo_request(0, 999), pair, now);
+    a.handle_probe(echo_request(0, 999), pair, now);
     let _ = a.transmits();
 
     let probes = a.tick(now);
     let probe = extract_probe_for(&probes, pair);
-    let _ = a.handle_inbound_tun(build_echo_reply(probe.id, probe.seq), pair, now + ms(20));
+    a.handle_probe(echo_reply(probe.id, probe.seq), pair, now + ms(20));
 }
 
 fn handshake_init_bytes() -> sanstun::Datagram {
@@ -1055,10 +1051,6 @@ fn data_packet_bytes() -> Vec<u8> {
     let mut bytes = vec![0u8; 32];
     bytes[0] = 4;
     bytes
-}
-
-fn decrypted_data_packet() -> IpPacket {
-    ip_packet::make::udp_packet(addr(9).ip(), addr(10).ip(), 1, 2, &[]).expect("same IP version")
 }
 
 fn bootstrap_primary(a: &mut PathAgent, recv_path: Pair, now: Instant) {
@@ -1154,12 +1146,28 @@ fn reject_all() -> sanstun::Tunnel {
         .unwrap()
 }
 
-fn build_echo_request(id: u16, seq: u16) -> IpPacket {
-    ip_packet::make::icmp_request_packet(IpAddr::V6(PROBE_SRC), IpAddr::V6(PROBE_DST), seq, id, &[])
-        .expect("magic addresses always fit")
+fn echo_request(id: u16, seq: u16) -> Probe {
+    let packet = ip_packet::make::icmp_request_packet(
+        IpAddr::V6(PROBE_SRC),
+        IpAddr::V6(PROBE_DST),
+        seq,
+        id,
+        &[],
+    )
+    .expect("magic addresses always fit");
+
+    Probe::try_parse(&packet).expect("is a probe")
 }
 
-fn build_echo_reply(id: u16, seq: u16) -> IpPacket {
-    ip_packet::make::icmp_reply_packet(IpAddr::V6(PROBE_SRC), IpAddr::V6(PROBE_DST), seq, id, &[])
-        .expect("magic addresses always fit")
+fn echo_reply(id: u16, seq: u16) -> Probe {
+    let packet = ip_packet::make::icmp_reply_packet(
+        IpAddr::V6(PROBE_SRC),
+        IpAddr::V6(PROBE_DST),
+        seq,
+        id,
+        &[],
+    )
+    .expect("magic addresses always fit");
+
+    Probe::try_parse(&packet).expect("is a probe")
 }

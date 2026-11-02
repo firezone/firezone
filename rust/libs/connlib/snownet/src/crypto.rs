@@ -6,6 +6,7 @@ use std::time::Instant;
 use anyhow::Result;
 use bufferpool::Bytes;
 use ip_packet::IpPacket;
+use path_agent::Probe;
 use prefetch::{IteratorExt as _, Prefetching};
 
 use crate::node::Transmit;
@@ -283,7 +284,7 @@ impl PendingDecapsulate {
             .map(|segment| (&segment[header_len..], ip_packet::packet_buffer()));
 
         let mut data = self.pending.decrypt(messages).map(IpPacket::new);
-        let probes = data.extract_if(|packet| packet.as_ref().is_ok_and(path_agent::is_probe));
+        let probes = data.extract_map(|packet| packet.as_ref().ok().and_then(Probe::try_parse));
 
         DecryptedBatch {
             tunnel: self.tunnel,
@@ -303,7 +304,7 @@ pub struct DecryptedBatch {
     pub(crate) dst: SocketAddr,
     pub(crate) data: sanstun::DecryptedBatch<Result<IpPacket>>,
     /// The path agent's probes, which never reach the TUN device.
-    pub(crate) probes: sanstun::DecryptedBatch<Result<IpPacket>>,
+    pub(crate) probes: sanstun::DecryptedBatch<Probe>,
 }
 
 type Committed = std::result::Result<sanstun::Committed<Result<IpPacket>>, sanstun::Error>;
