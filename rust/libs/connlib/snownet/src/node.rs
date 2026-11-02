@@ -1107,6 +1107,12 @@ where
         packet: &[u8],
         now: Instant,
     ) -> ControlFlow<Result<()>> {
+        // Every STUN message carries the magic cookie (RFC 8489, section 5). `StunMessage::parse`
+        // rejects packets without it too, but allocates its error.
+        if packet.get(4..8) != Some([0x21, 0x12, 0xA4, 0x42].as_slice()) {
+            return ControlFlow::Continue(());
+        }
+
         let Ok(message) = StunMessage::parse(packet) else {
             return ControlFlow::Continue(());
         };
