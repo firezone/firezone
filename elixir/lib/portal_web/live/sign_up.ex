@@ -744,7 +744,7 @@ defmodule PortalWeb.SignUp do
         </li>
       </ul>
       <p id="region-picker-help" class="mt-1.5 text-xs text-subtle">
-        The region where your account data is stored. Changing it later requires downtime.
+        The region where your account data is stored. Changing this later requires scheduled downtime.
       </p>
     </div>
     """
@@ -760,10 +760,9 @@ defmodule PortalWeb.SignUp do
         <Core.icon name="ri-checkbox-circle-fill" class="w-4 h-4 text-brand shrink-0" />
         <Page.residency_flag region={@region} class="w-6 h-auto shadow-sm" />
         <span class="text-sm font-semibold text-heading">{Page.data_residency_name(@region)}</span>
-        <span class="text-xs text-subtle">{region_option_description(@region)}</span>
       </div>
       <p class="mt-1.5 text-xs text-subtle">
-        The region where your account data is stored. Changing it later requires downtime.
+        Changing this later requires scheduled downtime.
       </p>
       <p class="mt-1 text-xs text-subtle">
         <Navigation.link id="choose-other-region" patch={~p"/sign_up"}>
