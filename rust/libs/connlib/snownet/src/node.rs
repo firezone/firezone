@@ -62,6 +62,9 @@ const SUSPECTED_REKEY_ATTEMPT_TIME: Duration = Duration::from_secs(10);
 /// How often we record the number of connections per network path; metrics are exported every minute.
 const CONNECTION_COUNT_INTERVAL: Duration = Duration::from_secs(10);
 
+/// Bytes 4 to 8 of every STUN message ([RFC 8489, section 5](https://www.rfc-editor.org/rfc/rfc8489#section-5)).
+const STUN_MAGIC_COOKIE: [u8; 4] = [0x21, 0x12, 0xA4, 0x42];
+
 /// A node within a `snownet` network maintains connections to several other nodes.
 ///
 /// [`Node`] is built in a SANS-IO fashion, meaning it neither advances time nor network state on its own.
@@ -1107,6 +1110,11 @@ where
         packet: &[u8],
         now: Instant,
     ) -> ControlFlow<Result<()>> {
+        // `StunMessage::parse` rejects packets without the cookie too, but allocates its error.
+        if packet.get(4..8) != Some(STUN_MAGIC_COOKIE.as_slice()) {
+            return ControlFlow::Continue(());
+        }
+
         let Ok(message) = StunMessage::parse(packet) else {
             return ControlFlow::Continue(());
         };
