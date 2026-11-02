@@ -415,10 +415,6 @@ impl ClientTunnel {
                 if let Some(packets) = device.as_mut().map(|packets| packets.drain()) {
                     let mut batch = self.io.start_encrypt_batch(packets.len());
 
-                    let mut on_error = |e: anyhow::Error| {
-                        error.push(e.context("Failed to handle packet from TUN device"))
-                    };
-
                     let mut packets = packets
                         .prefetching()
                         .inspect(|p| tun_received.record(p))
@@ -430,7 +426,8 @@ impl ClientTunnel {
                             Ok(Some(tun_batch)) => tun_batch,
                             Ok(None) => continue,
                             Err(e) => {
-                                on_error(e);
+                                self.dropped_packets.record(&e);
+                                error.push(e.context("Failed to handle packet from TUN device"));
                                 continue;
                             }
                         };
@@ -457,7 +454,10 @@ impl ClientTunnel {
 
                         match tun_batch.finish() {
                             Ok(encapsulation) => batch.encrypt(encapsulation, group, train),
-                            Err(e) => on_error(e),
+                            Err(e) => {
+                                self.dropped_packets.record(&e);
+                                error.push(e.context("Failed to handle packet from TUN device"));
+                            }
                         }
                     }
 
@@ -699,11 +699,6 @@ impl GatewayTunnel {
                 if let Some(packets) = device.as_mut().map(|packets| packets.drain()) {
                     let mut batch = self.io.start_encrypt_batch(packets.len());
 
-                    let mut on_error = |e: anyhow::Error| {
-                        self.dropped_packets.record(&e);
-                        error.push(e.context("Failed to handle packet from TUN device"));
-                    };
-
                     let mut packets = packets
                         .prefetching()
                         .inspect(|p| tun_received.record(p))
@@ -715,7 +710,8 @@ impl GatewayTunnel {
                             Ok(Some(tun_batch)) => tun_batch,
                             Ok(None) => continue,
                             Err(e) => {
-                                on_error(e);
+                                self.dropped_packets.record(&e);
+                                error.push(e.context("Failed to handle packet from TUN device"));
                                 continue;
                             }
                         };
@@ -742,7 +738,10 @@ impl GatewayTunnel {
 
                         match tun_batch.finish() {
                             Ok(encapsulation) => batch.encrypt(encapsulation, group, train),
-                            Err(e) => on_error(e),
+                            Err(e) => {
+                                self.dropped_packets.record(&e);
+                                error.push(e.context("Failed to handle packet from TUN device"));
+                            }
                         }
                     }
 
