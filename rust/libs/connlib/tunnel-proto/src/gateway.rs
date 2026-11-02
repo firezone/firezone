@@ -277,30 +277,13 @@ impl GatewayState {
         from: SocketAddr,
         now: Instant,
     ) -> Result<Option<IpPacket>> {
-        let mut packet = match packet {
+        let packet = match packet {
             Ok(Some(packet)) => packet,
             Ok(None) => return Ok(None),
             Err(e) => return Err(e.context(FailedToDecapsulate(packet_kind::Kind::Wireguard))),
         };
 
         let flow = Flow::of(&packet);
-
-        if let Some(flow) = flow
-            && let Some(decision) = decisions
-                .iter_mut()
-                .find(|decision| decision.cid == cid && decision.flow == flow)
-        {
-            if let Some((proto, ip)) = decision.rewrite {
-                packet
-                    .translate_destination(proto, ip)
-                    .context("Failed to translate packet to new destination")?;
-            }
-
-            decision.flows.add(&packet);
-
-            return Ok(Some(packet));
-        }
-
         let flows = self.flow_tracker.begin_network_batch(local, from, now);
 
         if packet.destination().is_multicast() {
@@ -889,11 +872,32 @@ impl Iterator for PeerBatch<'_> {
             Ok(packets) => packets,
             Err(e) => return e.take().map(Err),
         };
-        let packet = packets.next()?;
+        let cid = packets.cid();
+        let mut item = packets.next()?;
+
+        if let Ok(Some(packet)) = &mut item
+            && let Some(flow) = Flow::of(packet)
+            && let Some(decision) = self
+                .decisions
+                .iter_mut()
+                .find(|d| d.cid == cid && d.flow == flow)
+        {
+            if let Some((proto, ip)) = decision.rewrite
+                && let Err(e) = packet
+                    .translate_destination(proto, ip)
+                    .context("Failed to translate packet to new destination")
+            {
+                return Some(Err(e));
+            }
+
+            decision.flows.add(packet);
+
+            return Some(item);
+        }
 
         Some(self.state.handle_peer_message(
-            packets.cid(),
-            packet,
+            cid,
+            item,
             &mut self.decisions,
             self.local,
             self.from,

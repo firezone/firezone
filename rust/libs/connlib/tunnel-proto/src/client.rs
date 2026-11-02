@@ -823,15 +823,6 @@ impl ClientState {
         };
 
         let flow = Flow::of(&packet);
-
-        if let Some(flow) = flow
-            && let Some(decision) = decisions.iter_mut().find(|decision| decision.flow == flow)
-        {
-            decision.flows.add(&packet);
-
-            return Ok(Some(packet));
-        }
-
         let flows = self.flow_tracker.begin_network_batch(local, from, now);
 
         flow_tracker::record_decrypted_packet(&packet);
@@ -2948,11 +2939,20 @@ impl Iterator for PeerBatch<'_> {
             Ok(packets) => packets,
             Err(e) => return e.take().map(Err),
         };
-        let packet = packets.next()?;
+        let item = packets.next()?;
+
+        if let Ok(Some(packet)) = &item
+            && let Some(flow) = Flow::of(packet)
+            && let Some(decision) = self.decisions.iter_mut().find(|d| d.flow == flow)
+        {
+            decision.flows.add(packet);
+
+            return Some(item);
+        }
 
         Some(self.state.handle_peer_message(
             packets.cid(),
-            packet,
+            item,
             &mut self.decisions,
             self.local,
             self.from,
