@@ -542,30 +542,11 @@ impl ClientState {
         }
     }
 
-    /// Handles an IP packet through the TUN input path as a batch of its own.
-    ///
-    /// Most packets originate from the TUN device, but internally-produced and previously-buffered
-    /// packets also re-enter through this path. Sentinel DNS queries may be consumed locally; all
-    /// other packets are routed and either returned encrypted or buffered here.
-    pub fn handle_tun_input(
-        &mut self,
-        packet: IpPacket,
-        now: Instant,
-    ) -> Result<Option<snownet::Transmit>> {
-        let Some(batch) = self.begin_tun_batch(packet, now)? else {
-            return Ok(None);
-        };
-        let (encapsulation, packets) = batch.finish()?;
-        let transmit = encapsulation.encrypt(&packets[0])?;
-
-        Ok(Some(transmit))
-    }
-
-    /// Starts a batch of packets received on the TUN device with `packet`.
+    /// Handles a packet received on the TUN device, starting a batch for its flow.
     ///
     /// `packet` is routed and its flow recorded; further packets of the same flow reuse that
     /// decision through [`TunBatch::push`].
-    pub fn begin_tun_batch(
+    pub fn handle_tun_input(
         &mut self,
         packet: IpPacket,
         now: Instant,
@@ -752,9 +733,12 @@ impl ClientState {
     /// Feed an internally-produced or previously-buffered IP packet through normal TUN routing
     /// and flow tracking, queueing the resulting datagram.
     fn handle_out_of_band_ip_packet(&mut self, packet: IpPacket, now: Instant) -> Result<()> {
-        if let Some(transmit) = self.handle_tun_input(packet, now)? {
-            self.buffered_transmits.push_back(transmit);
-        }
+        let Some(batch) = self.handle_tun_input(packet, now)? else {
+            return Ok(());
+        };
+        let (encapsulation, packets) = batch.finish()?;
+        self.buffered_transmits
+            .push_back(encapsulation.encrypt(&packets[0])?);
 
         Ok(())
     }
@@ -3143,7 +3127,7 @@ mod tests {
 
         assert_eq!(
             state
-                .handle_tun_input(packet, Instant::now())
+                .handle_out_of_band_ip_packet(packet, Instant::now())
                 .unwrap_err()
                 .to_string(),
             "Unroutable packet: Packet destination IP is TUN device"
@@ -3161,7 +3145,7 @@ mod tests {
 
         assert_eq!(
             state
-                .handle_tun_input(packet, Instant::now())
+                .handle_out_of_band_ip_packet(packet, Instant::now())
                 .unwrap_err()
                 .to_string(),
             "Unroutable packet: Packet destination IP is TUN device"
@@ -3184,7 +3168,7 @@ mod tests {
 
         let packet =
             ip_packet::make::udp_packet(own_tun_ipv4(), device_tun_ipv4(), 1234, 53, &[1]).unwrap();
-        state.handle_tun_input(packet, now).unwrap();
+        state.handle_out_of_band_ip_packet(packet, now).unwrap();
 
         let request = iter::from_fn(|| state.poll_event()).find_map(|event| {
             if let ClientEvent::RequestAccess {
@@ -3217,7 +3201,7 @@ mod tests {
 
         let packet =
             ip_packet::make::udp_packet(own_tun_ipv4(), device_tun_ipv4(), 1234, 53, &[1]).unwrap();
-        state.handle_tun_input(packet, now).unwrap();
+        state.handle_out_of_band_ip_packet(packet, now).unwrap();
 
         assert_no_device_connection_intent(&mut state);
         assert!(
@@ -3239,7 +3223,7 @@ mod tests {
             ip_packet::make::udp_packet(own_tun_ipv4(), device_tun_ipv4(), 1234, 53, &[1]).unwrap()
         };
 
-        state.handle_tun_input(packet(), now).unwrap();
+        state.handle_out_of_band_ip_packet(packet(), now).unwrap();
         while state.poll_event().is_some() {}
 
         state.handle_client_device_access_denied(
@@ -3252,7 +3236,7 @@ mod tests {
             "expected an ICMP error for the buffered packet"
         );
 
-        state.handle_tun_input(packet(), now).unwrap();
+        state.handle_out_of_band_ip_packet(packet(), now).unwrap();
         assert!(
             state.poll_packets().is_none(),
             "expected the packet to be buffered for a new request"

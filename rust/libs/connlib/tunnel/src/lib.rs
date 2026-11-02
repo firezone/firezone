@@ -421,7 +421,7 @@ impl ClientTunnel {
                         .peekable();
 
                     while let Some(packet) = packets.next() {
-                        let mut tun_batch = match self.role_state.begin_tun_batch(packet, now) {
+                        let mut tun_batch = match self.role_state.handle_tun_input(packet, now) {
                             Ok(Some(tun_batch)) => tun_batch,
                             Ok(None) => continue,
                             Err(e) => {
@@ -699,7 +699,7 @@ impl GatewayTunnel {
                         .peekable();
 
                     while let Some(packet) = packets.next() {
-                        let mut tun_batch = match self.role_state.begin_tun_batch(packet, now) {
+                        let mut tun_batch = match self.role_state.handle_tun_input(packet, now) {
                             Ok(Some(tun_batch)) => tun_batch,
                             Ok(None) => continue,
                             Err(e) => {

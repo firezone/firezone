@@ -161,26 +161,11 @@ impl GatewayState {
         self.node.close_all(p2p_control::goodbye(), now);
     }
 
-    /// Handles a packet received on the TUN device as a batch of its own and encrypts it.
-    pub fn handle_tun_input(
-        &mut self,
-        packet: IpPacket,
-        now: Instant,
-    ) -> Result<Option<snownet::Transmit>> {
-        let Some(batch) = self.begin_tun_batch(packet, now)? else {
-            return Ok(None);
-        };
-        let (encapsulation, packets) = batch.finish()?;
-        let transmit = encapsulation.encrypt(&packets[0])?;
-
-        Ok(Some(transmit))
-    }
-
-    /// Starts a batch of packets received on the TUN device with `packet`.
+    /// Handles a packet received on the TUN device, starting a batch for its flow.
     ///
     /// `packet` is routed, translated and its flow recorded; further packets of the same flow
     /// reuse that decision through [`TunBatch::push`].
-    pub fn begin_tun_batch(
+    pub fn handle_tun_input(
         &mut self,
         mut packet: IpPacket,
         now: Instant,
