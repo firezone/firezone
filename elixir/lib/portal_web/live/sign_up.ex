@@ -716,7 +716,7 @@ defmodule PortalWeb.SignUp do
         aria-describedby="region-picker-help"
         class="grid w-full gap-3 grid-cols-1 sm:grid-cols-2"
       >
-        <li :for={option <- [:us, :eu]}>
+        <li :for={option <- [:us, :eu]} class="flex flex-col">
           <a
             :if={option != @region and @switchable?}
             id={"region-option-#{option}"}
@@ -756,14 +756,11 @@ defmodule PortalWeb.SignUp do
     ~H"""
     <div :if={@region != :on_prem} id="selected-region" class="mb-6">
       <span class="block text-xs font-medium text-body mb-1.5">Cloud Region</span>
-      <div class="relative flex w-full p-3 bg-brand/5 border border-brand rounded text-brand">
-        <span
-          class="absolute -top-2 -left-2 w-5 h-5 rounded-full bg-brand text-white flex items-center justify-center"
-          aria-hidden="true"
-        >
-          <Core.icon name="ri-check-line" class="w-3.5 h-3.5" />
-        </span>
-        <.region_option_content region={@region} />
+      <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
+        <Core.icon name="ri-checkbox-circle-fill" class="w-4 h-4 text-brand shrink-0" />
+        <Page.residency_flag region={@region} class="w-6 h-auto shadow-sm" />
+        <span class="text-sm font-semibold text-heading">{Page.data_residency_name(@region)}</span>
+        <span class="text-xs text-subtle">{region_option_description(@region)}</span>
       </div>
       <p class="mt-1.5 text-xs text-subtle">
         The region where your account data is stored. Changing it later requires downtime.
@@ -781,12 +778,12 @@ defmodule PortalWeb.SignUp do
 
   defp region_option_content(assigns) do
     ~H"""
-    <div class="block min-w-0">
-      <div class="w-full font-semibold mb-1 text-xs flex items-center gap-2 whitespace-nowrap">
-        <Page.residency_flag region={@region} class="w-8 h-auto shadow-sm" />
-        {Page.data_residency_name(@region)}
-      </div>
-      <div class="w-full text-[10px] whitespace-nowrap">{region_option_description(@region)}</div>
+    <div class="flex flex-col items-center gap-1.5 w-full min-w-0 text-center">
+      <span class="h-7 flex items-center">
+        <Page.residency_flag region={@region} class="w-10 h-auto shadow-sm" />
+      </span>
+      <div class="font-semibold text-xs">{Page.data_residency_name(@region)}</div>
+      <div class="text-[10px] whitespace-nowrap">{region_option_description(@region)}</div>
     </div>
     """
   end
@@ -795,7 +792,7 @@ defmodule PortalWeb.SignUp do
   defp region_option_description(:eu), do: "Data is stored in Sweden and France"
 
   defp region_option_class do
-    "inline-flex items-center justify-between w-full p-3 text-body bg-surface border border-border rounded cursor-pointer peer-checked:border-brand peer-checked:text-brand hover:text-heading hover:bg-raised transition-colors"
+    "flex items-center justify-center w-full h-full px-3 py-4 text-body bg-surface border border-border rounded cursor-pointer peer-checked:border-brand peer-checked:text-brand hover:text-heading hover:bg-raised transition-colors"
   end
 
   attr :title, :string, required: true
