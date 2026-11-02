@@ -143,7 +143,7 @@ impl<TRoleState> Tunnel<TRoleState> {
                 udp,
             ),
             packet_counter: otel_instruments::network_packets(),
-            dropped_packets: DroppedPackets::new(otel_instruments::network_packet_dropped()),
+            dropped_packets: DroppedPackets::new(),
             needs_timeout: false,
         };
 
@@ -291,7 +291,7 @@ impl ClientTunnel {
                     .expect("Should be able to compute UNIX timestamp"),
             ),
             packet_counter: otel_instruments::network_packets(),
-            dropped_packets: DroppedPackets::new(otel_instruments::network_packet_dropped()),
+            dropped_packets: DroppedPackets::new(),
             needs_timeout: false,
         }
     }
@@ -538,7 +538,7 @@ impl GatewayTunnel {
                     .expect("Should be able to compute UNIX timestamp"),
             ),
             packet_counter: otel_instruments::network_packets(),
-            dropped_packets: DroppedPackets::new(otel_instruments::network_packet_dropped()),
+            dropped_packets: DroppedPackets::new(),
             needs_timeout: false,
         }
     }
