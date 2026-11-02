@@ -89,6 +89,7 @@ pub struct Server<R> {
     allocations_up_down_counter: UpDownCounter<i64>,
     data_relayed: u64, // Tracked separately because OTel instruments don't expose their current value :(
     relayed_packet_size_histogram: Histogram<u64>,
+    relayed_bytes_counter: Counter<u64>,
     responses_counter: Counter<u64>,
 }
 
@@ -211,6 +212,7 @@ where
             responses_counter,
             data_relayed: 0,
             relayed_packet_size_histogram,
+            relayed_bytes_counter: otel_instruments::relay_bytes(),
             channel_and_client_by_port_and_peer: Default::default(),
         }
     }
@@ -441,6 +443,10 @@ where
         };
 
         self.data_relayed += msg.len() as u64;
+        self.relayed_bytes_counter.add(
+            msg.len() as u64,
+            &[otel_attributes::relay_datapath_userspace()],
+        );
         self.relayed_packet_size_histogram.record(
             msg.len() as u64,
             &[otel_attributes::relay_datapath_userspace()],
@@ -896,6 +902,10 @@ where
         tracing::trace!(target: "wire", num_bytes = %data.len());
 
         self.data_relayed += data.len() as u64;
+        self.relayed_bytes_counter.add(
+            data.len() as u64,
+            &[otel_attributes::relay_datapath_userspace()],
+        );
         self.relayed_packet_size_histogram.record(
             data.len() as u64,
             &[otel_attributes::relay_datapath_userspace()],
