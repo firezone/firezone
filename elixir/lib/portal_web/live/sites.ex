@@ -912,6 +912,9 @@ defmodule PortalWeb.Sites do
            connected?: false
          })}
 
+      {:error, {:rate_limit, _retry_after_ms}} ->
+        {:noreply, put_flash(socket, :error, "Too many devices registered. Try again later.")}
+
       {:error, _} ->
         {:noreply, put_flash(socket, :error, "Failed to create gateway.")}
     end

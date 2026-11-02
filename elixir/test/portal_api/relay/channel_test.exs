@@ -130,6 +130,73 @@ defmodule PortalAPI.Relay.ChannelTest do
       assert_push "account_added", %{account_id: ^account_id, throughput_limit_bps: nil}
     end
 
+    test "includes derived allocation limits of limited accounts in init" do
+      assert_push "init", %{}
+      limited = account_fixture(limits: %{users_count: 100, monthly_active_users_count: nil, connected_devices_per_actor: 5})
+      unlimited = account_fixture(limits: %{connected_devices_per_actor: nil})
+      join_capable_relay()
+
+      assert_push "init", %{allocation_limits: allocation_limits}
+      assert allocation_limits[limited.id] == 1040
+      refute Map.has_key?(allocation_limits, unlimited.id)
+    end
+
+    test "includes one allocation per add-on service account in init" do
+      assert_push "init", %{}
+      account = account_fixture(limits: %{monthly_active_users_count: 100,
+        connected_devices_per_actor: 10, adhoc_service_accounts_count: 10_000})
+      join_capable_relay()
+
+      assert_push "init", %{allocation_limits: allocation_limits}
+      assert allocation_limits[account.id] == 22_040
+    end
+
+    test "forwards recalculated quotas when the add-on changes" do
+      assert_push "init", %{}
+      join_capable_relay()
+      assert_push "init", %{account_ids: _account_ids}
+      account_id = "00000000-0000-0000-0000-000000000008"
+      limits = %{"monthly_active_users_count" => 100, "connected_devices_per_actor" => 10,
+        "adhoc_service_accounts_count" => 0}
+      added = %{limits | "adhoc_service_accounts_count" => 10_000}
+      unlimited = %{limits | "adhoc_service_accounts_count" => nil}
+
+      for {lsn, old_limits, new_limits, expected} <- [
+            {1, limits, added, 22_040},
+            {2, added, limits, 2040},
+            {3, limits, unlimited, nil}
+          ] do
+        assert :ok == on_update(lsn,
+          %{"id" => account_id, "is_disabled" => false, "limits" => old_limits},
+          %{"id" => account_id, "is_disabled" => false, "limits" => new_limits})
+
+        assert_push "account_added", %{account_id: ^account_id, allocation_limit: ^expected}
+      end
+    end
+
+    test "forwards recalculated quotas on seat increases, decreases, and unlimited changes" do
+      assert_push "init", %{}
+      join_capable_relay()
+      assert_push "init", %{account_ids: _account_ids}
+      account_id = "00000000-0000-0000-0000-000000000005"
+      initial = %{"users_count" => 1000, "monthly_active_users_count" => 100, "connected_devices_per_actor" => 10}
+      increased = %{initial | "monthly_active_users_count" => 200}
+      unlimited = %{initial | "connected_devices_per_actor" => nil}
+
+      for {lsn, old_limits, new_limits, expected} <- [
+            {1, initial, increased, 4060},
+            {2, increased, initial, 2040},
+            {3, initial, unlimited, nil},
+            {4, unlimited, initial, 2040}
+          ] do
+        assert :ok == on_update(lsn,
+          %{"id" => account_id, "is_disabled" => false, "limits" => old_limits},
+          %{"id" => account_id, "is_disabled" => false, "limits" => new_limits})
+
+        assert_push "account_added", %{account_id: ^account_id, allocation_limit: ^expected}
+      end
+    end
+
     test "forwards account lifecycle changes to capable Relays" do
       assert_push "init", %{}
       relay = relay_fixture()
