@@ -314,8 +314,7 @@ type Committed = std::result::Result<sanstun::Committed<Result<IpPacket>>, sanst
 /// Yields `Ok(None)` for a packet that was handled internally, for example, a keepalive.
 pub struct CommittedBatch<TId> {
     cid: TId,
-    packets:
-        Option<Prefetching<sanstun::CommittedBatch<Result<IpPacket>>, fn(&Committed) -> &[u8]>>,
+    packets: Prefetching<sanstun::CommittedBatch<Result<IpPacket>>, fn(&Committed) -> &[u8]>,
 }
 
 impl<TId: Copy> CommittedBatch<TId> {
@@ -328,12 +327,8 @@ impl<TId: Copy> CommittedBatch<TId> {
         // The worker thread wrote the packets, so fetch the next one while handling this one.
         Self {
             cid,
-            packets: Some(packets.prefetching_with(packet_bytes)),
+            packets: packets.prefetching_with(packet_bytes),
         }
-    }
-
-    pub(crate) fn empty(cid: TId) -> Self {
-        Self { cid, packets: None }
     }
 }
 
@@ -341,7 +336,7 @@ impl<TId: fmt::Display> Iterator for CommittedBatch<TId> {
     type Item = Result<Option<IpPacket>>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let packet = match self.packets.as_mut()?.next()? {
+        let packet = match self.packets.next()? {
             Ok(sanstun::Committed::Data {
                 buffer: Ok(packet), ..
             }) => Ok(Some(packet)),
@@ -358,9 +353,7 @@ impl<TId: fmt::Display> Iterator for CommittedBatch<TId> {
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
-        self.packets
-            .as_ref()
-            .map_or((0, Some(0)), Iterator::size_hint)
+        self.packets.size_hint()
     }
 }
 

@@ -6910,7 +6910,7 @@ dependencies = [
 [[package]]
 name = "sanstun"
 version = "0.2.0"
-source = "git+https://github.com/firezone/sanstun?branch=batched-crypto#710eb93e923f6723c9ef461465f144c583320de5"
+source = "git+https://github.com/firezone/sanstun?branch=batched-crypto#766df9f38713f0f811950585776020645eb2b9e6"
 dependencies = [
  "blake2",
  "chacha20",

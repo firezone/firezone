@@ -674,7 +674,7 @@ where
 
         if self.connections.is_closing(&cid) {
             // A closing connection drops what it receives.
-            return Ok(CommittedBatch::empty(cid));
+            return Ok(CommittedBatch::new(cid, sanstun::CommittedBatch::default()));
         }
 
         Ok(CommittedBatch::new(cid, packets))
