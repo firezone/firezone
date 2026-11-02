@@ -124,19 +124,19 @@ pub(crate) fn channels() -> (EventLoopEnds, ResolverTaskEnds) {
     (event_loop, task)
 }
 
-/// Spawns the resolver task and returns the event loop's ends of its channels.
-///
-/// Must be called within a Tokio runtime context.
+/// Spawns the resolver on its own thread and returns the event loop's ends of its channels.
 pub(crate) fn spawn(
     tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
     udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
     nameservers: BTreeSet<IpAddr>,
-) -> EventLoopEnds {
+) -> io::Result<EventLoopEnds> {
     let (event_loop, task) = channels();
 
-    tokio::spawn(Resolver::new(task, tcp_socket_factory, udp_socket_factory, nameservers).run());
+    crate::spawn_thread("fz-dns", move || {
+        Resolver::new(task, tcp_socket_factory, udp_socket_factory, nameservers).run()
+    })?;
 
-    event_loop
+    Ok(event_loop)
 }
 
 impl EventLoopEnds {

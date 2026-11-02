@@ -12,7 +12,6 @@ use bin_shared::{
 };
 use clap::Parser;
 
-use hickory_resolver::config::ResolveHosts;
 use opentelemetry_otlp::WithExportConfig;
 use opentelemetry_sdk::metrics::SdkMeterProvider;
 use phoenix_channel::LoginUrl;
@@ -305,7 +304,8 @@ async fn try_main(cli: Cli) -> Result<()> {
             Arc::new(UdpSocketFactory::default()),
             nameservers,
             clock.now(),
-        );
+        )
+        .context("Failed to create tunnel")?;
         tunnel.set_additional_host_candidates(additional_host_candidates, clock.now());
 
         let mut tun_device_manager = TunDeviceManager::new(ip_packet::MAX_IP_SIZE)
@@ -316,20 +316,11 @@ async fn try_main(cli: Cli) -> Result<()> {
 
         tunnel.set_tun(tun);
 
-        let mut resolver_builder = hickory_resolver::TokioResolver::builder_tokio()?;
-        resolver_builder.options_mut().cache_size = 512;
-        resolver_builder.options_mut().use_hosts_file = ResolveHosts::Always;
-
-        let resolver = resolver_builder
-            .build()
-            .context("Failed to build DNS resolver")?;
-
         Eventloop::new(
             clock,
             tunnel,
             portal,
             tun_device_manager,
-            resolver,
             flow_logs_dir,
             local_flow_logs,
             account_slug,

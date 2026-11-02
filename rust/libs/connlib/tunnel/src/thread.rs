@@ -20,6 +20,7 @@ where
     Fut::Output: Send + 'static,
 {
     let runtime = tokio::runtime::Builder::new_current_thread()
+        .thread_name(name)
         .enable_all()
         .build()?;
     let (output_tx, output_rx) = oneshot::channel();

@@ -270,8 +270,8 @@ impl ClientTunnel {
         records: BTreeSet<DnsResourceRecord>,
         is_internet_resource_active: bool,
         now: Instant,
-    ) -> Self {
-        Self {
+    ) -> std::io::Result<Self> {
+        Ok(Self {
             io: Io::new(
                 Sockets::new(udp_socket_factory.clone()),
                 CryptoWorkers::default(),
@@ -279,7 +279,7 @@ impl ClientTunnel {
                     tcp_socket_factory.clone(),
                     udp_socket_factory.clone(),
                     BTreeSet::default(),
-                ),
+                )?,
                 tcp_socket_factory,
                 udp_socket_factory,
             ),
@@ -290,12 +290,12 @@ impl ClientTunnel {
                 now,
                 SystemTime::now()
                     .duration_since(SystemTime::UNIX_EPOCH)
-                    .expect("Should be able to compute UNIX timestamp"),
+                    .map_err(std::io::Error::other)?,
             ),
             packet_counter: otel_instruments::network_packets(),
             dropped_tun_packets: DroppedTunPackets::new(),
             needs_timeout: false,
-        }
+        })
     }
 
     pub fn public_key(&self) -> PublicKey {
@@ -519,8 +519,8 @@ impl GatewayTunnel {
         udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
         nameservers: BTreeSet<IpAddr>,
         now: Instant,
-    ) -> Self {
-        Self {
+    ) -> std::io::Result<Self> {
+        Ok(Self {
             io: Io::new(
                 Sockets::new(udp_socket_factory.clone()),
                 CryptoWorkers::default(),
@@ -528,7 +528,7 @@ impl GatewayTunnel {
                     tcp_socket_factory.clone(),
                     udp_socket_factory.clone(),
                     nameservers,
-                ),
+                )?,
                 tcp_socket_factory,
                 udp_socket_factory,
             ),
@@ -537,12 +537,12 @@ impl GatewayTunnel {
                 now,
                 SystemTime::now()
                     .duration_since(SystemTime::UNIX_EPOCH)
-                    .expect("Should be able to compute UNIX timestamp"),
+                    .map_err(std::io::Error::other)?,
             ),
             packet_counter: otel_instruments::network_packets(),
             dropped_tun_packets: DroppedTunPackets::new(),
             needs_timeout: false,
-        }
+        })
     }
 
     pub fn public_key(&self) -> PublicKey {
