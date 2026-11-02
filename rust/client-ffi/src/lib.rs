@@ -42,7 +42,6 @@ uniffi::setup_scaffolding!();
 #[derive(uniffi::Object)]
 pub struct Session {
     inner: client_shared::Session,
-    runtime: Option<tokio::runtime::Runtime>,
     uploader: Option<flow_log_upload::Uploader>,
 }
 
@@ -580,16 +579,18 @@ impl EventStream {
 
 impl Drop for Session {
     fn drop(&mut self) {
-        let Some(runtime) = self.runtime.take() else {
-            return;
-        };
-
         self.inner.stop(); // Instruct the event-loop to shut down.
 
         // Give the event-loop a moment to gracefully close its connections.
-        runtime.block_on(async {
-            let _ = tokio::time::timeout(Duration::from_secs(1), self.inner.closed()).await;
-        });
+        match tokio::runtime::Builder::new_current_thread()
+            .enable_time()
+            .build()
+        {
+            Ok(runtime) => runtime.block_on(async {
+                let _ = tokio::time::timeout(Duration::from_secs(1), self.inner.closed()).await;
+            }),
+            Err(e) => tracing::debug!("Failed to create runtime to await shutdown: {e}"),
+        }
 
         // The event loop spooled its open flows on the way out; flush them.
         if let Some(uploader) = self.uploader.take() {
@@ -628,11 +629,6 @@ fn connect(
     let token = token
         .map(SecretString::from)
         .ok_or_else(|| anyhow!("Cannot authenticate without a token"))?;
-
-    let runtime = tokio::runtime::Builder::new_current_thread()
-        .enable_time()
-        .build()
-        .context("Failed to create tokio runtime")?;
 
     install_rustls_crypto_provider();
 
@@ -707,7 +703,6 @@ fn connect(
     Ok(Connection {
         session: Arc::new(Session {
             inner: session,
-            runtime: Some(runtime),
             uploader,
         }),
         events: Arc::new(EventStream(Mutex::new(events))),
