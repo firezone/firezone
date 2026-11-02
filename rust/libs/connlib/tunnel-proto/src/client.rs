@@ -564,8 +564,7 @@ impl ClientState {
     /// Starts a batch of packets received on the TUN device with `packet`.
     ///
     /// `packet` is routed and its flow recorded; further packets of the same flow reuse that
-    /// decision through [`TunBatch::push`]. Flows to other clients take the slow path for
-    /// every packet, because connection tracking inspects each of them.
+    /// decision through [`TunBatch::push`].
     pub fn begin_tun_batch(
         &mut self,
         packet: IpPacket,
@@ -783,7 +782,7 @@ impl ClientState {
     /// Handles the WireGuard data messages decrypted from one [`snownet::PendingDecapsulate`].
     ///
     /// `local` and `from` are the addresses the datagram was received on and from. Packets of
-    /// one flow from a Gateway reuse the routing decision of the flow's first packet in the batch.
+    /// one flow reuse the routing decision of the flow's first packet in the batch.
     ///
     /// In case an item is `None`, you should call [`ClientState::handle_timeout`] next to fully advance the internal state.
     pub fn handle_peer_batch(
@@ -825,11 +824,8 @@ impl ClientState {
 
         let flow = Flow::of(&packet);
 
-        if let ClientOrGatewayId::Gateway(gid) = pid
-            && let Some(flow) = flow
-            && let Some(decision) = decisions
-                .iter_mut()
-                .find(|decision| decision.gid == gid && decision.flow == flow)
+        if let Some(flow) = flow
+            && let Some(decision) = decisions.iter_mut().find(|decision| decision.flow == flow)
         {
             decision.flows.add(&packet);
 
@@ -895,6 +891,11 @@ impl ClientState {
                             self.cleanup_connected_gateway(&gid, now)
                         }
                     }
+
+                    // Later packets of the batch find no peer, so they must not reuse a decision.
+                    for decision in decisions.drain(..) {
+                        self.flow_tracker.insert_batch(decision.flows);
+                    }
                 }
                 (code, pid) => {
                     tracing::debug!(code = %code.into_u8(), %pid, "Unknown / unsupported control protocol");
@@ -904,7 +905,7 @@ impl ClientState {
             return Ok(None);
         }
 
-        match pid {
+        let packet = match pid {
             ClientOrGatewayId::Client(cid) => {
                 let Some(peer) = self.clients.peer_by_id_mut(&cid) else {
                     tracing::error!(%cid, "Couldn't find connection by ID");
@@ -912,7 +913,7 @@ impl ClientState {
                     return Ok(None);
                 };
 
-                let packet = match peer.ensure_allowed_inbound(packet, now)? {
+                match peer.ensure_allowed_inbound(packet, now)? {
                     InboundResult::Send(p) => p,
                     InboundResult::Filtered {
                         reply,
@@ -941,9 +942,7 @@ impl ClientState {
                         }
                         return Ok(None);
                     }
-                };
-
-                return Ok(Some(packet));
+                }
             }
             ClientOrGatewayId::Gateway(gid) => {
                 let Some(peer) = self.gateways.peer_by_id_mut(&gid) else {
@@ -958,14 +957,15 @@ impl ClientState {
                 // this packet is a reply.
                 flow_tracker::record_peer(gid, flow_tracker::Role::Initiator);
 
-                if let Some(flow) = flow {
-                    decisions.push(InboundDecision {
-                        gid,
-                        flow,
-                        flows: flows.detach(),
-                    });
-                }
+                packet
             }
+        };
+
+        if let Some(flow) = flow {
+            decisions.push(InboundDecision {
+                flow,
+                flows: flows.detach(),
+            });
         }
 
         Ok(Some(packet))
@@ -2919,7 +2919,6 @@ fn client_for_icmp_error(
 
 /// The decision taken for the first packet of a flow in a [`PeerBatch`], reused for the rest.
 struct InboundDecision {
-    gid: GatewayId,
     flow: Flow,
     flows: flow_tracker::DetachedFlowBatch,
 }
