@@ -243,6 +243,24 @@ pub fn relay_bytes() -> Counter<u64> {
         .build()
 }
 
+/// Histogram of relayed packet sizes, recorded on both the userspace and the XDP datapath.
+///
+/// Both call-sites build the instrument from this function so the metric definition
+/// (name, unit, buckets) stays identical; tag each measurement with
+/// `otel-attributes`' `relay_datapath_userspace` or `relay_datapath_xdp` to tell
+/// the two datapaths apart.
+pub fn relay_packet_size() -> Histogram<u64> {
+    relay_meter()
+        .u64_histogram("relay.packet.size")
+        .with_description("Size of relayed packets")
+        .with_unit("By")
+        .with_boundaries(vec![
+            100.0, 200.0, 300.0, 400.0, 500.0, 600.0, 700.0, 800.0, 900.0, 1000.0, 1100.0, 1200.0,
+            1300.0, 1400.0, 1500.0,
+        ])
+        .build()
+}
+
 /// Histogram of the time the eBPF XDP program spent processing one relayed packet.
 pub fn relay_xdp_processing_duration() -> Histogram<u64> {
     relay_meter()

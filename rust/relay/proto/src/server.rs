@@ -15,7 +15,7 @@ use bytecodec::EncodeExt;
 use core::fmt;
 use logging::err_with_src;
 use otel_attributes::KeyValue;
-use otel_instruments::{Counter, UpDownCounter};
+use otel_instruments::{Counter, Histogram, UpDownCounter};
 use rand::RngExt;
 use secrecy::SecretString;
 use smallvec::SmallVec;
@@ -88,7 +88,7 @@ pub struct Server<R> {
 
     allocations_up_down_counter: UpDownCounter<i64>,
     data_relayed: u64, // Tracked separately because OTel instruments don't expose their current value :(
-    relayed_packets_counter: Counter<u64>,
+    relayed_packet_size_histogram: Histogram<u64>,
     relayed_bytes_counter: Counter<u64>,
     responses_counter: Counter<u64>,
 }
@@ -192,6 +192,7 @@ where
 
         let allocations_up_down_counter = otel_instruments::relay_active_allocations();
         let responses_counter = otel_instruments::relay_responses();
+        let relayed_packet_size_histogram = otel_instruments::relay_packet_size();
 
         Self {
             public_address: public_address.into(),
@@ -210,7 +211,7 @@ where
             allocations_up_down_counter,
             responses_counter,
             data_relayed: 0,
-            relayed_packets_counter: otel_instruments::relay_packets(),
+            relayed_packet_size_histogram,
             relayed_bytes_counter: otel_instruments::relay_bytes(),
             channel_and_client_by_port_and_peer: Default::default(),
         }
@@ -442,9 +443,11 @@ where
         };
 
         self.data_relayed += msg.len() as u64;
-        self.relayed_packets_counter
-            .add(1, &[otel_attributes::relay_datapath_userspace()]);
         self.relayed_bytes_counter.add(
+            msg.len() as u64,
+            &[otel_attributes::relay_datapath_userspace()],
+        );
+        self.relayed_packet_size_histogram.record(
             msg.len() as u64,
             &[otel_attributes::relay_datapath_userspace()],
         );
@@ -899,9 +902,11 @@ where
         tracing::trace!(target: "wire", num_bytes = %data.len());
 
         self.data_relayed += data.len() as u64;
-        self.relayed_packets_counter
-            .add(1, &[otel_attributes::relay_datapath_userspace()]);
         self.relayed_bytes_counter.add(
+            data.len() as u64,
+            &[otel_attributes::relay_datapath_userspace()],
+        );
+        self.relayed_packet_size_histogram.record(
             data.len() as u64,
             &[otel_attributes::relay_datapath_userspace()],
         );

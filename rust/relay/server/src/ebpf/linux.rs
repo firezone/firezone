@@ -98,6 +98,8 @@ impl Program {
                 .context("`STATS` perf array not found")?,
         )?;
 
+        let packet_size = otel_instruments::relay_packet_size();
+
         let processing_duration = otel_instruments::relay_xdp_processing_duration();
 
         let packet_counters = PerCpuArray::try_from(
@@ -120,6 +122,7 @@ impl Program {
 
             // process each perf buffer in a separate task
             tokio::task::spawn({
+                let packet_size = packet_size.clone();
                 let processing_duration = processing_duration.clone();
 
                 async move {
@@ -145,6 +148,10 @@ impl Program {
                                                 return (num_read + 1, num_lost);
                                             };
 
+                                            packet_size.record(
+                                                stats.relayed_data(),
+                                                &[otel_attributes::relay_datapath_xdp()],
+                                            );
                                             processing_duration.record(
                                                 stats.processing_duration().as_nanos() as u64,
                                                 &[],
