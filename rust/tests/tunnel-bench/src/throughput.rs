@@ -300,7 +300,7 @@ where
     R: Role + Send + 'static,
 {
     std::thread::Builder::new()
-        .name("event-loop".to_owned())
+        .name("fz-eventloop".to_owned())
         .spawn(move || {
             // Errors other than the TUN device closing, like the IPv6 socket failing to bind,
             // are irrelevant here: a lost packet fails the benchmark.

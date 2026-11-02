@@ -495,8 +495,8 @@ impl ThreadedUdpSocket {
         let (startup_tx, startup_rx) = std::sync::mpsc::sync_channel(0);
 
         let thread_name = match preferred_addr {
-            SocketAddr::V4(_) => "UDP IPv4".to_owned(),
-            SocketAddr::V6(_) => "UDP IPv6".to_owned(),
+            SocketAddr::V4(_) => "fz-udp-v4".to_owned(),
+            SocketAddr::V6(_) => "fz-udp-v6".to_owned(),
         };
         let join_handle = std::thread::Builder::new()
             .name(thread_name.clone())

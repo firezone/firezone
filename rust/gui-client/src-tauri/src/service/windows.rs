@@ -268,7 +268,7 @@ fn run_service(arguments: Vec<OsString>) {
 
     let rt = tokio::runtime::Builder::new_multi_thread()
         .worker_threads(1)
-        .thread_name("connlib")
+        .thread_name("fz-eventloop")
         .enable_all()
         .build()
         .expect("Failed to create tokio runtime");

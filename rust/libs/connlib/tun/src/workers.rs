@@ -29,9 +29,9 @@ impl Workers {
             recv_thread: None,
         };
 
-        let send_thread = spawn_worker("send", move || send(outbound_rx))?;
+        let send_thread = spawn_worker("tx", move || send(outbound_rx))?;
         workers.send_thread = Some(send_thread);
-        let recv_thread = spawn_worker("recv", move || recv(inbound_tx))?;
+        let recv_thread = spawn_worker("rx", move || recv(inbound_tx))?;
         workers.recv_thread = Some(recv_thread);
 
         Ok(workers)
@@ -61,8 +61,8 @@ impl Drop for Workers {
         const SHUTDOWN_WAIT: Duration = Duration::from_secs(10);
 
         let threads = [
-            ("recv", self.recv_thread.take()),
-            ("send", self.send_thread.take()),
+            ("rx", self.recv_thread.take()),
+            ("tx", self.send_thread.take()),
         ];
         drop(self.state.take());
         let start = Instant::now();
@@ -102,7 +102,7 @@ fn spawn_worker(
     worker: impl FnOnce() -> Result<()> + Send + 'static,
 ) -> std::io::Result<JoinHandle<()>> {
     let thread = std::thread::Builder::new()
-        .name(format!("TUN {direction}"))
+        .name(format!("fz-tun-{direction}"))
         .spawn(move || {
             logging::unwrap_or_warn!(worker(), "TUN {direction} worker failed: {}");
         })?;

@@ -440,7 +440,7 @@ fn spawn_workers(num_workers: usize, packet_counter: Counter<u64>) -> Vec<mpsc::
         .filter_map(|i| {
             let (tx, rx) = mpsc::channel();
             let packet_counter = packet_counter.clone();
-            let name = format!("wg-crypto-{i}");
+            let name = format!("fz-crypto-{i}");
 
             thread::Builder::new()
                 .name(name.clone())

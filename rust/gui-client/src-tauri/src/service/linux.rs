@@ -16,7 +16,7 @@ pub fn run(log_dir: Option<PathBuf>, dns_control: DnsControlMethod) -> Result<()
     }
     let rt = tokio::runtime::Builder::new_multi_thread()
         .worker_threads(1)
-        .thread_name("connlib")
+        .thread_name("fz-eventloop")
         .enable_all()
         .build()
         .context("Failed to create tokio runtime")?;
