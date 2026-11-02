@@ -16,6 +16,8 @@ impl DroppedPackets {
     }
 
     /// Counts the packet that failed with `error`, by the reason it was unroutable.
+    #[cold]
+    #[inline(never)]
     pub(crate) fn record(&self, error: &anyhow::Error) {
         let routing_error = error
             .any_downcast_ref::<UnroutablePacket>()
