@@ -2917,8 +2917,6 @@ fn client_for_icmp_error(
     None
 }
 
-/// Like [`encapsulate_or_buffer`], but encrypts the packet into `buffered_transmits` and drops
-/// (with a log) any error instead of returning it.
 /// The decision taken for the first packet of a flow in a [`PeerBatch`], reused for the rest.
 struct InboundDecision {
     gid: GatewayId,
@@ -2983,6 +2981,8 @@ impl Drop for PeerBatch<'_> {
     }
 }
 
+/// Like [`encapsulate_or_buffer`], but encrypts the packet into `buffered_transmits` and drops
+/// (with a log) any error instead of returning it.
 fn encapsulate_and_queue(
     packet: IpPacket,
     pid: ClientOrGatewayId,
