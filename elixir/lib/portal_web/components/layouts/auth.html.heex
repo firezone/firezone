@@ -52,7 +52,9 @@
         </div>
         {@inner_content}
       </div>
-      <Page.data_residency_footer path={
+      <Page.data_residency_footer
+        :if={!assigns[:hide_data_residency_footer]}
+        path={
         assigns[:return_to] || (assigns[:conn] && Phoenix.Controller.current_path(assigns[:conn]))
       } />
       <div

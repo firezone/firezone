@@ -108,6 +108,7 @@ defmodule PortalWeb.SignUp do
         socket =
           assign(socket,
             page_title: "Sign Up",
+            hide_data_residency_footer: true,
             step: :choose,
             form: registration_form(%{}),
             trigger_submit: false,
@@ -277,6 +278,8 @@ defmodule PortalWeb.SignUp do
       <:icon><Core.icon name="ri-building-line" class="w-6 h-6 text-brand" /></:icon>
     </.step_header>
 
+    <.region_picker path={~p"/sign_up/email"} />
+
     <.form id="sign-up-form" for={@form} phx-submit="submit" phx-change="validate" class="flex flex-col gap-3">
       <Form.input
         field={@form[:email]}
@@ -355,6 +358,8 @@ defmodule PortalWeb.SignUp do
       <:icon><Core.icon name="ri-building-line" class="w-6 h-6 text-brand" /></:icon>
     </.step_header>
 
+    <.region_picker path={~p"/sign_up"} />
+
     <div class="flex flex-col gap-2">
       <.form for={%{}} id="google-sign-up" action={~p"/sign_up/google"} method="post">
         <button type="submit" class={method_button_style()}>
@@ -399,6 +404,8 @@ defmodule PortalWeb.SignUp do
     <.step_header title="Almost there" subtitle="Tell us about your organization to finish signing up.">
       <:icon><Core.provider_icon provider={@provider} size="md" /></:icon>
     </.step_header>
+
+    <.region_picker path={~p"/sign_up"} />
 
     <div
       id={"#{@provider}-sign-up"}
@@ -667,6 +674,71 @@ defmodule PortalWeb.SignUp do
         <Navigation.link patch={~p"/sign_up"}>Sign up with a different email.</Navigation.link>
       </p>
     </.footer>
+    """
+  end
+
+  attr :path, :string, required: true, doc: "The sign-up page to open on the other region's portal"
+
+  defp region_picker(assigns) do
+    region = Page.data_residency_region()
+
+    assigns =
+      assign(assigns, region: region, switchable?: Page.firezone_cloud?(region))
+
+    ~H"""
+    <div :if={@region != :on_prem} id="region-picker" class="mb-6">
+      <p id="region-picker-label" class="text-sm font-medium text-heading mb-1">Cloud Region</p>
+      <div
+        role="radiogroup"
+        aria-labelledby="region-picker-label"
+        aria-describedby="region-picker-help"
+        class="grid grid-cols-2 gap-2"
+      >
+        <.region_option
+          :for={option <- [:us, :eu]}
+          region={option}
+          selected?={option == @region}
+          href={
+            if option != @region and @switchable?,
+              do: Page.portal_url(option) <> @path
+          }
+        />
+      </div>
+      <p id="region-picker-help" class="mt-1.5 text-xs text-subtle">
+        The region where your account data is stored. Changing it later requires downtime.
+      </p>
+    </div>
+    """
+  end
+
+  attr :region, :atom, required: true
+  attr :selected?, :boolean, required: true
+  attr :href, :string, default: nil
+
+  defp region_option(assigns) do
+    ~H"""
+    <.dynamic_tag
+      tag_name={if @href, do: "a", else: "div"}
+      id={"region-option-#{@region}"}
+      href={@href}
+      role="radio"
+      aria-checked={to_string(@selected?)}
+      aria-disabled={if !@selected? and !@href, do: "true"}
+      class={[
+        "flex items-center gap-3 px-3 py-2.5 rounded border-2 text-sm font-medium text-heading transition-colors",
+        if(@selected?, do: "border-brand bg-brand/5", else: "border-border bg-surface"),
+        @href && "hover:border-brand"
+      ]}
+    >
+      <Page.residency_flag region={@region} class="w-9 h-auto shadow-sm" />
+      <span class="flex-1 min-w-0 truncate">{Page.data_residency_name(@region)}</span>
+      <span class={[
+        "shrink-0 w-4 h-4 rounded-full border-2 flex items-center justify-center",
+        if(@selected?, do: "border-brand", else: "border-border")
+      ]}>
+        <span :if={@selected?} class="w-2 h-2 rounded-full bg-brand"></span>
+      </span>
+    </.dynamic_tag>
     """
   end
 

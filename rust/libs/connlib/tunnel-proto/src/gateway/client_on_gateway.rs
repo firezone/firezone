@@ -95,12 +95,16 @@ impl ClientOnGateway {
         proxy_ips: BTreeSet<IpAddr>,
     ) -> Result<()> {
         // Proxy IPs are chosen by the Client; anything we accept here ends up in our routing table.
-        let num_ipv4 = proxy_ips.iter().filter(|ip| ip.is_ipv4()).count();
-        let num_ipv6 = proxy_ips.len() - num_ipv4;
-        anyhow::ensure!(
-            num_ipv4 <= PROXY_IPS_PER_FAMILY && num_ipv6 <= PROXY_IPS_PER_FAMILY,
-            "Too many proxy IPs: {num_ipv4} IPv4 and {num_ipv6} IPv6, at most {PROXY_IPS_PER_FAMILY} each"
-        );
+        let num_proxy_ips = proxy_ips.len();
+        let proxy_ips = first_proxy_ips(proxy_ips);
+
+        if proxy_ips.len() < num_proxy_ips {
+            tracing::warn!(
+                domain = %name,
+                ignored = num_proxy_ips - proxy_ips.len(),
+                "Too many proxy IPs; using the first {PROXY_IPS_PER_FAMILY} of each IP version"
+            );
+        }
 
         for proxy_ip in &proxy_ips {
             anyhow::ensure!(
@@ -757,6 +761,25 @@ impl TranslationState {
             domain,
         }
     }
+}
+
+/// Keeps the first [`PROXY_IPS_PER_FAMILY`] IPv4 and IPv6 addresses of `ips`.
+fn first_proxy_ips(ips: impl IntoIterator<Item = IpAddr>) -> BTreeSet<IpAddr> {
+    let mut num_ipv4 = 0;
+    let mut num_ipv6 = 0;
+
+    ips.into_iter()
+        .filter(|ip| {
+            let num = if ip.is_ipv4() {
+                &mut num_ipv4
+            } else {
+                &mut num_ipv6
+            };
+            *num += 1;
+
+            *num <= PROXY_IPS_PER_FAMILY
+        })
+        .collect()
 }
 
 fn is_dns_addr(addr: IpAddr) -> bool {
@@ -1421,7 +1444,7 @@ mod tests {
     }
 
     #[test]
-    fn setup_nat_rejects_too_many_proxy_ips() {
+    fn setup_nat_ignores_extra_proxy_ips() {
         let _guard = logging::test("trace");
 
         let mut peer = ClientOnGateway::new(client_id(), client_key(), client_tun(), gateway_tun());
@@ -1440,27 +1463,21 @@ mod tests {
             Ipv6Addr::new(0xfd00, 0x2021, 0x1111, 0x8000, 0, 0, 0, 4),
         )]));
 
-        for proxy_ips in [too_many_ipv4, too_many_ipv6] {
-            let result = peer.setup_nat(
-                foo_name().parse().unwrap(),
-                foo_resource_id(),
-                BTreeSet::from([foo_real_ip1().into()]),
-                proxy_ips,
-            );
-
-            assert!(result.is_err());
-            assert!(peer.permanent_translations.is_empty());
-        }
-
         peer.setup_nat(
             foo_name().parse().unwrap(),
             foo_resource_id(),
             BTreeSet::from([foo_real_ip1().into()]),
-            BTreeSet::from_iter(max_ipv4.chain(max_ipv6)),
+            too_many_ipv4.union(&too_many_ipv6).copied().collect(),
         )
         .unwrap();
 
-        assert_eq!(peer.permanent_translations.len(), 8);
+        assert_eq!(
+            peer.permanent_translations
+                .keys()
+                .copied()
+                .collect::<BTreeSet<_>>(),
+            BTreeSet::from_iter(max_ipv4.chain(max_ipv6))
+        );
     }
 
     // Two distinct DNS resources both using "foo.com" as their address:
