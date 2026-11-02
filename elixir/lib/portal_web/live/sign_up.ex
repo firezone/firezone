@@ -783,8 +783,8 @@ defmodule PortalWeb.SignUp do
     """
   end
 
-  defp region_option_description(:us), do: "Data stored in the United States"
-  defp region_option_description(:eu), do: "Data stored in Sweden and France"
+  defp region_option_description(:us), do: "Data is stored in Iowa and Arizona"
+  defp region_option_description(:eu), do: "Data is stored in Sweden and France"
 
   defp region_option_class do
     "inline-flex items-center justify-between w-full p-3 text-body bg-surface border border-border rounded cursor-pointer peer-checked:border-brand peer-checked:text-brand hover:text-heading hover:bg-raised transition-colors"

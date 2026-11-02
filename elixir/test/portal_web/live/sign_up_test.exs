@@ -88,6 +88,8 @@ defmodule PortalWeb.SignUpTest do
 
       assert has_element?(lv, "input#region-option-us[checked]")
       assert has_element?(lv, "label[for='region-option-us']", "United States")
+      assert has_element?(lv, "label[for='region-option-us']", "Data is stored in Iowa and Arizona")
+      assert has_element?(lv, "a#region-option-eu", "Data is stored in Sweden and France")
 
       assert has_element?(
                lv,
