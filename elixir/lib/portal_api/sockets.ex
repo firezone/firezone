@@ -6,6 +6,7 @@ defmodule PortalAPI.Sockets do
   require Logger
 
   alias PortalAPI.ProblemDetails
+  alias __MODULE__.Database
 
   @x509_rejection_details %{
     invalid_certificate:
@@ -217,6 +218,24 @@ defmodule PortalAPI.Sockets do
     {context, version}
   end
 
+  @doc """
+  Tells every device holding an active policy authorization with `device` that it
+  reconnected with a public key other than `previous_public_key`, so they drop a
+  connection that still uses the old one.
+  """
+  def notify_public_key_changed(%Portal.Device{public_key: public_key}, public_key), do: :ok
+  def notify_public_key_changed(%Portal.Device{}, nil), do: :ok
+
+  def notify_public_key_changed(%Portal.Device{} = device, _previous_public_key) do
+    message = {:public_key_changed, device.type, device.id, device.public_key}
+
+    for peer_id <- Database.authorized_peer_ids(device) do
+      Portal.PG.deliver(peer_id, message)
+    end
+
+    :ok
+  end
+
   defp changeset_error_detail(%Ecto.Changeset{} = changeset) do
     changeset
     |> Ecto.Changeset.traverse_errors(fn {msg, opts} ->
@@ -240,4 +259,25 @@ defmodule PortalAPI.Sockets do
 
   defp extract_token_from_params(%{"token" => token}) when is_binary(token), do: {:ok, token}
   defp extract_token_from_params(_params), do: {:error, :missing_token}
+
+  defmodule Database do
+    import Ecto.Query
+
+    def authorized_peer_ids(%Portal.Device{account_id: account_id, id: device_id}) do
+      now = DateTime.utc_now()
+
+      active =
+        from(pa in Portal.PolicyAuthorization,
+          where: pa.account_id == ^account_id,
+          where: pa.expires_at > ^now
+        )
+
+      from(pa in active, where: pa.initiating_device_id == ^device_id, select: pa.receiving_device_id)
+      |> union(
+        ^from(pa in active, where: pa.receiving_device_id == ^device_id, select: pa.initiating_device_id)
+      )
+      |> Portal.Safe.unscoped()
+      |> Portal.Safe.all()
+    end
+  end
 end

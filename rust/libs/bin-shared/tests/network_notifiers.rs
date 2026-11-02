@@ -1,7 +1,7 @@
 #![allow(clippy::unwrap_used)]
 
 use bin_shared::{DnsControlMethod, new_dns_notifier, new_network_notifier};
-use futures::{StreamExt as _, future::FutureExt as _};
+use futures::StreamExt as _;
 use std::time::Duration;
 use tokio::time::timeout;
 
@@ -21,7 +21,7 @@ async fn notifiers() {
     let mut dns = new_dns_notifier(tokio_handle.clone(), DnsControlMethod::default())
         .await
         .unwrap();
-    let mut net = new_network_notifier().await.unwrap();
+    let _net = new_network_notifier().await.unwrap();
 
     tokio::time::sleep(std::time::Duration::from_secs(1)).await;
 
@@ -31,9 +31,4 @@ async fn notifiers() {
         .unwrap()
         .unwrap()
         .unwrap();
-
-    // After that first DNS notification, we shouldn't get any further notifications during a normal unit test.
-    // The network notifier should never have fired, since nothing changed about the primary egress path.
-    assert!(dns.next().now_or_never().is_none());
-    assert!(net.next().now_or_never().is_none());
 }

@@ -9,7 +9,7 @@ run-name: Triggered from ${{ github.event_name }} on ${{ github.ref_name }}
 # rewrite. A dispatch can also narrow the run to a single target.
 "on":
   schedule:
-    - cron: "0 8 1 * *" # monthly, 08:00 UTC on the 1st
+    - cron: "0 8 * * 0" # weekly, 08:00 UTC on Sundays
   workflow_dispatch:
     inputs:
       target:
@@ -120,6 +120,6 @@ jobs:
           target: ${{ matrix.fuzz-target }}
           branch-prefix: chore/fuzz-cmin-
           title: "chore(fuzz): minimize the ${{ matrix.fuzz-target }} corpus"
-          body: "The monthly fuzz job minimized the `${{ matrix.fuzz-target }}` corpus by AFL++ edge coverage and feedback."
+          body: "The weekly fuzz job minimized the `${{ matrix.fuzz-target }}` corpus by AFL++ edge coverage and feedback."
           gpg-key: ${{ secrets.RELEASE_PR_BOT_GPG_KEY }}
           token: ${{ secrets.RELEASE_PR_BOT_GITHUB_TOKEN }}

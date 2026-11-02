@@ -23,6 +23,10 @@ end
 defmodule PortalWeb.Components.FormTest do
   use PortalWeb.ConnCase, async: true
 
+  alias Portal.APIToken
+  alias Portal.Splunk
+  alias PortalWeb.Components.Form
+
   test "panel footer composes consistently sized base buttons" do
     html =
       render_component(&PortalWeb.Components.FormTest.Fixture.render/1, %{})
@@ -43,6 +47,74 @@ defmodule PortalWeb.Components.FormTest do
     assert Floki.attribute(cancel, "phx-click") == ["close_panel"]
     assert Floki.attribute(save, "disabled") == ["disabled"]
     assert Floki.attribute(back, "href") == ["/groups"]
+  end
+
+  describe "password input" do
+    test "never renders a redacted field's stored value" do
+      html = password_html(:hec_token, %Splunk.LogSink{hec_token: "stored-secret"})
+
+      refute html =~ "stored-secret"
+      assert html =~ "Leave blank to keep the current value"
+    end
+
+    test "echoes only what the browser submitted for a redacted field" do
+      html =
+        password_html(:hec_token, %Splunk.LogSink{hec_token: "stored-secret"}, %{"hec_token" => "typed"})
+
+      refute html =~ "stored-secret"
+      assert html =~ ~s(value="typed")
+    end
+
+    test "fails when the schema field is not redacted, naming only the field" do
+      # Splunk's index isn't a secret; it only stands in for a field someone
+      # forgot to redact.
+      error =
+        assert_raise MatchError, fn ->
+          password_html(:index, %Splunk.LogSink{index: "stored-value"})
+        end
+
+      assert error.term == {Splunk.LogSink, :index, false}
+      refute Exception.message(error) =~ "stored-value"
+    end
+
+    test "drops required and offers to keep a stored secret" do
+      input = password_input(:hec_token, Ecto.Changeset.change(%Splunk.LogSink{hec_token: "stored-secret"}))
+
+      assert Floki.attribute(input, "required") == []
+      assert Floki.attribute(input, "placeholder") == ["Leave blank to keep the current value"]
+    end
+
+    test "keeps a reset secret required" do
+      changeset =
+        %Splunk.LogSink{hec_token: "stored-secret"}
+        |> Ecto.Changeset.change()
+        |> Ecto.Changeset.put_change(:hec_token, nil)
+
+      input = password_input(:hec_token, changeset)
+
+      assert Floki.attribute(input, "required") == ["required"]
+      assert Floki.attribute(input, "placeholder") == []
+    end
+
+    test "keeps a typed virtual field required" do
+      # A virtual, redacted field like a password confirmation never has a
+      # saved value, however much is typed into it.
+      changeset = Ecto.Changeset.cast(%APIToken{}, %{"secret_fragment" => "typed"}, [:secret_fragment])
+
+      input = password_input(:secret_fragment, changeset)
+
+      assert Floki.attribute(input, "required") == ["required"]
+      assert Floki.attribute(input, "placeholder") == []
+      assert Floki.attribute(input, "value") == ["typed"]
+    end
+
+    test "renders a password input on a form without a schema" do
+      form = Phoenix.Component.to_form(%{"password" => "typed"}, as: :login)
+
+      html = render_component(&Form.input/1, %{field: form[:password], type: "password"})
+
+      assert html =~ ~s(value="typed")
+    end
   end
 
   describe "select" do
@@ -126,6 +198,23 @@ defmodule PortalWeb.Components.FormTest do
 
   defp selected_options(html) do
     html |> Floki.parse_fragment!() |> Floki.find("option[selected]")
+  end
+
+  defp password_html(field, data, params \\ %{}) do
+    form =
+      data
+      |> Ecto.Changeset.cast(params, [:hec_token, :index])
+      |> Phoenix.Component.to_form(as: :credentials)
+
+    render_component(&Form.input/1, %{field: form[field], type: "password"})
+  end
+
+  defp password_input(field, changeset) do
+    form = Phoenix.Component.to_form(changeset, as: :credentials)
+
+    render_component(&Form.input/1, %{field: form[field], type: "password", required: true})
+    |> Floki.parse_fragment!()
+    |> Floki.find("input[type=password]")
   end
 
   defp classes(element) do

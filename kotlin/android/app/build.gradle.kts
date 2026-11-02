@@ -325,7 +325,7 @@ dependencies {
     implementation("com.squareup.moshi:moshi:1.15.2")
 
     // Gson
-    implementation("com.google.code.gson:gson:2.14.0")
+    implementation("com.google.code.gson:gson:2.15.0")
 
     // Security
     implementation("androidx.security:security-crypto:1.1.0")
@@ -377,8 +377,8 @@ dependencies {
     // `createComposeRule` launches `androidx.activity.ComponentActivity`, and Robolectric
     // resolves activities against the debug manifest, which this artifact declares it in.
     debugImplementation("androidx.compose.ui:ui-test-manifest")
-    testImplementation("io.github.takahirom.roborazzi:roborazzi:1.76.0")
-    testImplementation("io.github.takahirom.roborazzi:roborazzi-compose:1.76.0")
+    testImplementation("io.github.takahirom.roborazzi:roborazzi:1.77.0")
+    testImplementation("io.github.takahirom.roborazzi:roborazzi-compose:1.77.0")
     testImplementation("org.robolectric:robolectric:4.17")
 }
 

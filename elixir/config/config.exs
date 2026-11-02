@@ -227,6 +227,14 @@ config :portal, Portal.Azure.ManagedIdentity,
     retry: :transient
   ]
 
+config :portal, Portal.Azure.MetricsExporter,
+  req_opts: [
+    connect_options: [timeout: 1_000],
+    receive_timeout: 5_000,
+    retry: :transient,
+    max_retries: 2
+  ]
+
 config :portal, Portal.SlugRegistry.AzureTable,
   req_opts: [
     connect_options: [timeout: 2_000],

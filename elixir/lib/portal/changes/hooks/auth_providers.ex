@@ -18,6 +18,22 @@ defmodule Portal.Changes.Hooks.AuthProviders do
     :ok
   end
 
+  def on_update(
+        _lsn,
+        %{"workspace_domains" => old_domains},
+        %{"workspace_domains" => new_domains, "account_id" => account_id, "id" => provider_id}
+      )
+      when is_list(old_domains) do
+    if Enum.all?(old_domains, &(&1 in (new_domains || []))) do
+      :ok
+    else
+      Database.delete_client_tokens_for_provider(account_id, provider_id)
+      Database.delete_portal_sessions_for_provider(account_id, provider_id)
+
+      :ok
+    end
+  end
+
   def on_update(_lsn, _old_data, _new_data), do: :ok
 
   @impl true

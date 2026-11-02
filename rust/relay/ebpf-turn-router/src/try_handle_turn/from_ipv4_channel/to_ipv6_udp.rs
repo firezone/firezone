@@ -7,7 +7,8 @@ use network_types::{
 };
 
 use crate::try_handle_turn::{
-    Error, adjust_head, channel_data::CdHdr, checksum::ChecksumUpdate, config, ref_mut_at,
+    Error, adjust_head, channel_data::CdHdr, checksum::ChecksumUpdate, config, mac::EthHdrExt as _,
+    ref_mut_at,
 };
 
 #[inline(always)]
@@ -19,10 +20,10 @@ pub fn to_ipv6_udp(ctx: &XdpContext, port_and_peer: &PortAndPeerV6) -> Result<()
     // Now read the old packet data from its NEW location
     let old_data_offset = (-NET_EXPANSION) as usize;
 
-    let (old_src_mac, old_dst_mac) = {
+    let old_macs = {
         // SAFETY: The offset must point to the start of a valid `EthHdr`.
         let old_eth = unsafe { ref_mut_at::<EthHdr>(ctx, old_data_offset)? };
-        (old_eth.src_addr, old_eth.dst_addr)
+        old_eth.mac_addrs()
     };
 
     let (old_ipv4_src, old_ipv4_dst, old_ipv4_dscp, old_ipv4_ecn, old_ipv4_ttl, old_ipv4_proto) = {
@@ -73,8 +74,7 @@ pub fn to_ipv6_udp(ctx: &XdpContext, port_and_peer: &PortAndPeerV6) -> Result<()
 
     // SAFETY: The offset must point to the start of a valid `EthHdr`.
     let eth = unsafe { ref_mut_at::<EthHdr>(ctx, 0)? };
-    eth.dst_addr = old_src_mac; // Swap MACs
-    eth.src_addr = old_dst_mac;
+    eth.set_mac_addrs(old_macs.swapped());
     eth.ether_type = EtherType::Ipv6.into(); // Change to IPv6
 
     //

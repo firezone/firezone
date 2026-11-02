@@ -118,10 +118,11 @@ jobs:
       - name: Configure crash reporting for AFL++
         run: sudo sysctl -w kernel.core_pattern=core
       - name: Fuzz for new coverage
-        # AFL's time budget excludes corpus calibration. tunnel-proto's slow
-        # executions stop its workers within their first queue cycle, so it
-        # gets a longer budget.
-        timeout-minutes: ${{ matrix.fuzz-target == 'tunnel-proto' && 150 || 60 }}
+        # AFL's time budget excludes corpus calibration, which grows with the
+        # corpus until the next minimization. tunnel-proto's slow executions
+        # stop its workers within their first queue cycle, so it gets a longer
+        # budget and a timeout that leaves calibration plenty of room.
+        timeout-minutes: ${{ matrix.fuzz-target == 'tunnel-proto' && 300 || 60 }}
         env:
           FUZZ_SECONDS: ${{ matrix.fuzz-target == 'tunnel-proto' && 7200 || 1800 }}
         run: mise run //rust/tests/fuzz:fuzz ${{ matrix.fuzz-target }} --workers "$(nproc)" --seconds "$FUZZ_SECONDS"

@@ -34,6 +34,7 @@ use stun_codec::rfc5766::attributes::ChannelNumber;
 use telemetry::RELAY_DSN;
 use tokio::sync::mpsc;
 use tracing::Subscriber;
+use tracing::level_filters::LevelFilter;
 use tracing_core::Dispatch;
 use tracing_subscriber::{Layer, layer::SubscriberExt, util::SubscriberInitExt};
 use url::Url;
@@ -171,7 +172,8 @@ fn main() -> ExitCode {
 }
 
 async fn try_main(args: Args) -> Result<()> {
-    let filter_reload_handle = setup_tracing(&args)?;
+    let directives = std::env::var("RUST_LOG").unwrap_or_else(|_| "info".to_string());
+    let filter_reload_handle = setup_tracing(&args, &directives)?;
 
     let ebpf = if let Some(interface) = args.ebpf_offloading.as_deref() {
         if args.ebpf_int4_addr.is_none() {
@@ -200,6 +202,7 @@ async fn try_main(args: Args) -> Result<()> {
             ebpf::Program::try_load(
                 interface,
                 args.ebpf_attach_mode,
+                ebpf_log_level(&directives)?,
                 args.ebpf_int4_addr,
                 args.ebpf_int6_addr,
                 args.public_ip4_addr,
@@ -289,6 +292,32 @@ async fn try_main(args: Args) -> Result<()> {
     Ok(())
 }
 
+/// The most verbose level at which our log filter enables log records of the eBPF program.
+///
+/// Some layers of our subscriber are not filtered by level, so we cannot ask the subscriber itself.
+fn ebpf_log_level(directives: &str) -> Result<LevelFilter> {
+    let (filter, _) = logging::try_filter(directives)?;
+    let dispatch = Dispatch::new(tracing_subscriber::registry().with(filter));
+
+    let level = tracing::dispatcher::with_default(&dispatch, || {
+        if tracing::enabled!(target: "eBPF", tracing::Level::TRACE) {
+            LevelFilter::TRACE
+        } else if tracing::enabled!(target: "eBPF", tracing::Level::DEBUG) {
+            LevelFilter::DEBUG
+        } else if tracing::enabled!(target: "eBPF", tracing::Level::INFO) {
+            LevelFilter::INFO
+        } else if tracing::enabled!(target: "eBPF", tracing::Level::WARN) {
+            LevelFilter::WARN
+        } else if tracing::enabled!(target: "eBPF", tracing::Level::ERROR) {
+            LevelFilter::ERROR
+        } else {
+            LevelFilter::OFF
+        }
+    });
+
+    Ok(level)
+}
+
 /// Sets up our tracing infrastructure.
 ///
 /// See [`log_layer`] for details on the base log layer.
@@ -296,7 +325,7 @@ async fn try_main(args: Args) -> Result<()> {
 /// ## Integration with OTLP
 ///
 /// If the user has specified [`TraceCollector::Otlp`], we will set up an OTLP-exporter that connects to an OTLP collector specified at `Args.otlp_grpc_endpoint`.
-fn setup_tracing(args: &Args) -> Result<FilterReloadHandle> {
+fn setup_tracing(args: &Args, directives: &str) -> Result<FilterReloadHandle> {
     use opentelemetry::{global, trace::TracerProvider as _};
     use opentelemetry_otlp::WithExportConfig;
 
@@ -306,14 +335,13 @@ fn setup_tracing(args: &Args) -> Result<FilterReloadHandle> {
         &tracing_subscriber::registry().with(log_layer(args)).into(),
     );
 
-    let directives = std::env::var("RUST_LOG").unwrap_or_else(|_| "info".to_string());
     let metadata = make_otel_metadata();
     let mut meter_provider =
         opentelemetry_sdk::metrics::SdkMeterProvider::builder().with_resource(metadata.clone());
 
     let (dispatch, reload_handle) = match args.otlp_grpc_endpoint.clone() {
         None => {
-            let (filter, reload_handle) = logging::try_filter(&directives)?;
+            let (filter, reload_handle) = logging::try_filter(directives)?;
 
             let dispatch: Dispatch = tracing_subscriber::registry()
                 .with(log_layer(args).with_filter(filter))
@@ -344,8 +372,8 @@ fn setup_tracing(args: &Args) -> Result<FilterReloadHandle> {
 
             meter_provider = collector_metrics::with_exporter(meter_provider, &grpc_endpoint)?;
 
-            let (log_filter, log_reload_handle) = logging::try_filter(&directives)?;
-            let (otel_filter, otel_reload_handle) = logging::try_filter(&directives)?;
+            let (log_filter, log_reload_handle) = logging::try_filter(directives)?;
+            let (otel_filter, otel_reload_handle) = logging::try_filter(directives)?;
 
             let dispatch: Dispatch = tracing_subscriber::registry()
                 .with(log_layer(args).with_filter(log_filter))
@@ -876,6 +904,20 @@ fn make_otel_metadata() -> opentelemetry_sdk::Resource {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn ebpf_log_level_follows_log_filter() {
+        assert_eq!(ebpf_log_level("info").unwrap(), LevelFilter::INFO);
+        assert_eq!(
+            ebpf_log_level("debug,eBPF=warn").unwrap(),
+            LevelFilter::WARN
+        );
+        assert_eq!(
+            ebpf_log_level("warn,eBPF=trace").unwrap(),
+            LevelFilter::TRACE
+        );
+        assert_eq!(ebpf_log_level("off").unwrap(), LevelFilter::OFF);
+    }
 
     #[test]
     fn prints_humanfriendly_throughput() {

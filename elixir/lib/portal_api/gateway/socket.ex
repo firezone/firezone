@@ -64,6 +64,7 @@ defmodule PortalAPI.Gateway.Socket do
          {:ok, gateway} <- maybe_put_firezone_id(gateway, attrs) do
       version = derive_version(context.user_agent)
       {context, version} = PortalAPI.Sockets.truncate_session_fields(context, version)
+      previous_public_key = gateway.public_key
       gateway = apply_session(gateway, gateway_token.id, public_key, context, version)
 
       OpenTelemetry.Tracer.set_attributes(%{
@@ -78,6 +79,7 @@ defmodule PortalAPI.Gateway.Socket do
         |> assign(:token_id, gateway_token.id)
         |> assign(:site, site)
         |> assign(:gateway, gateway)
+        |> assign(:previous_public_key, previous_public_key)
         |> assign(:session_ref, make_ref())
         |> assign(:opentelemetry_span_ctx, OpenTelemetry.Tracer.current_span_ctx())
         |> assign(:opentelemetry_ctx, OpenTelemetry.Ctx.get_current())

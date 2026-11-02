@@ -3,11 +3,13 @@ use super::{
     dns_records::DnsRecords,
     dns_server_resource::DnsServers,
     probe::{ProbeId, ProbeObservation, ReceivedRequest, Remote},
+    reference::PrivateKey,
     sim_net::{ExecMutScope, Host},
     sim_relay::{SimRelay, map_explode},
     sim_tunnel::SimTunnel,
     site_network::SiteNetwork,
 };
+use chrono::{DateTime, Utc};
 use connlib_model::{ClientId, GatewayId, PublicKey, RelayId, ResourceId};
 use dns_types::DomainName;
 use ip_packet::IpPacket;
@@ -73,6 +75,35 @@ impl SimGateway {
             authorized_resources: Default::default(),
             client_keys: Default::default(),
             clients_by_ip: Default::default(),
+        }
+    }
+
+    /// Starts a new tunnel as if the Gateway's process died: nothing leaves the old tunnel.
+    pub(crate) fn crash(&mut self, key: PrivateKey, now: Instant, utc_now: DateTime<Utc>) {
+        let ip_config = self
+            .sut()
+            .tunnel_ip_config()
+            .expect("Gateway to have a tunnel IP configuration");
+
+        let mut sut = GatewayState::new(
+            key.0,
+            now,
+            utc_now
+                .signed_duration_since(DateTime::UNIX_EPOCH)
+                .to_std()
+                .unwrap(),
+        );
+        sut.update_tun_device(ip_config);
+        sut.set_flow_logs_enabled(true);
+        self.tunnel = SimTunnel::new(sut);
+
+        for client in self
+            .authorized_resources
+            .keys()
+            .copied()
+            .collect::<Vec<_>>()
+        {
+            self.record_client_restart(client);
         }
     }
 

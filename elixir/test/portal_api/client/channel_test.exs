@@ -69,7 +69,8 @@ defmodule PortalAPI.Client.ChannelTest do
         session_ref: session_ref,
         subject: subject,
         client_version: client_version,
-        attestation: Keyword.get(opts, :attestation)
+        attestation: Keyword.get(opts, :attestation),
+        previous_public_key: Keyword.get(opts, :previous_public_key)
       })
       |> subscribe_and_join(channel, "client")
 
@@ -3067,6 +3068,99 @@ defmodule PortalAPI.Client.ChannelTest do
                candidates: candidates,
                gateway_id: gateway.id
              }
+    end
+  end
+
+  describe "public_key_changed" do
+    test "tells the peers of a client that joins with a new key", %{
+      account: account,
+      client: client,
+      gateway: gateway,
+      subject: subject
+    } do
+      initiator = client_fixture(account: account)
+      expired = client_fixture(account: account)
+
+      Portal.PolicyAuthorizationFixtures.policy_authorization_fixture(
+        account: account,
+        client: initiator,
+        gateway: client
+      )
+
+      Portal.PolicyAuthorizationFixtures.policy_authorization_fixture(
+        account: account,
+        client: client,
+        gateway: gateway
+      )
+
+      Portal.PolicyAuthorizationFixtures.expired_policy_authorization_fixture(
+        account: account,
+        client: client,
+        gateway: expired
+      )
+
+      for peer <- [initiator, gateway, expired], do: :ok = Portal.PG.join(peer.id)
+
+      socket = join_channel(client, subject, previous_public_key: generate_public_key())
+      assert_push "init", _init_payload
+
+      public_key = socket.assigns.client.public_key
+      client_id = client.id
+      assert_receive {:public_key_changed, :client, ^client_id, ^public_key}
+      assert_receive {:public_key_changed, :client, ^client_id, ^public_key}
+      refute_received {:public_key_changed, _, _, _}
+    end
+
+    test "tells no one when the client has no previous key", %{
+      account: account,
+      client: client,
+      subject: subject
+    } do
+      peer = client_fixture(account: account)
+
+      Portal.PolicyAuthorizationFixtures.policy_authorization_fixture(
+        account: account,
+        client: client,
+        gateway: peer
+      )
+
+      :ok = Portal.PG.join(peer.id)
+
+      join_channel(client, subject)
+      assert_push "init", _init_payload
+
+      refute_received {:public_key_changed, _, _, _}
+    end
+
+    test "pushes the new key of a gateway", %{
+      client: client,
+      gateway: gateway,
+      subject: subject
+    } do
+      socket = join_channel(client, subject, client_version: "1.5.21")
+      assert_push "init", _init_payload
+      public_key = generate_public_key()
+
+      send(socket.channel_pid, {:public_key_changed, :gateway, gateway.id, public_key})
+
+      assert_push "public_key_changed", payload
+      assert payload == %{gateway_id: gateway.id, public_key: public_key}
+    end
+
+    test "pushes nothing to clients that do not understand it", %{
+      client: client,
+      gateway: gateway,
+      subject: subject
+    } do
+      socket = join_channel(client, subject, client_version: "1.5.20")
+      assert_push "init", _init_payload
+
+      send(
+        socket.channel_pid,
+        {:public_key_changed, :gateway, gateway.id, generate_public_key()}
+      )
+
+      refute_push "public_key_changed", _payload
     end
   end
 

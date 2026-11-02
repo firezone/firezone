@@ -165,6 +165,12 @@ config :portal, Portal.Azure.ManagedIdentity,
     retry: false
   ]
 
+config :portal, Portal.Azure.MetricsExporter,
+  req_opts: [
+    plug: {Req.Test, Portal.Azure.MetricsExporter},
+    retry: false
+  ]
+
 config :portal, Portal.SlugRegistry.AzureTable,
   req_opts: [
     plug: {Req.Test, Portal.SlugRegistry.AzureTable},

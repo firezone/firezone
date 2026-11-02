@@ -304,6 +304,14 @@ impl StubPortal {
                     .extract_if(.., |(client, _), _| client == client_id)
                 {}
             }
+            Transition::CrashGateway { gateway_id, .. } => {
+                for _ in self
+                    .gateway_policy_authorizations
+                    .extract_if(.., |_, authorization| authorization.gateway == *gateway_id)
+                {
+                }
+            }
+            Transition::SpuriousPublicKeyChanged { .. } => {}
         }
     }
 
@@ -672,6 +680,23 @@ impl StubPortal {
             .collect()
     }
 
+    /// The peers holding a peer authorization with `client`, in either direction.
+    pub(crate) fn authorized_peers_of(&self, client: ClientId) -> BTreeSet<ClientId> {
+        self.peer_policy_authorizations
+            .iter()
+            .filter_map(|authorization| {
+                if authorization.initiator == client {
+                    return Some(authorization.target);
+                }
+                if authorization.target == client {
+                    return Some(authorization.initiator);
+                }
+
+                None
+            })
+            .collect()
+    }
+
     fn set_pool_members(&mut self, pool: ResourceId, members: BTreeSet<ClientId>) {
         if !self.device_pool_resources.contains_key(&pool) {
             tracing::error!(%pool, "Unknown device pool");
@@ -865,6 +890,15 @@ impl StubPortal {
         self.gateway_policy_authorizations
             .get(&(client, resource))
             .map(|authorization| authorization.gateway)
+    }
+
+    /// The Clients holding an authorization through `gateway`.
+    pub(crate) fn clients_authorized_through(&self, gateway: GatewayId) -> BTreeSet<ClientId> {
+        self.gateway_policy_authorizations
+            .iter()
+            .filter(|(_, authorization)| authorization.gateway == gateway && !authorization.revoked)
+            .map(|((client, _), _)| *client)
+            .collect()
     }
 
     /// The Gateways that any Client was authorized to reach `resource` through.

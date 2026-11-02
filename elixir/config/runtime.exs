@@ -701,7 +701,7 @@ if config_env() == :prod do
       ]
   end
 
-  if System.get_env("OTLP_ENDPOINT") do
+  if System.get_env("OTLP_ENDPOINT") || System.get_env("AZURE_OTLP_METRICS_ENDPOINT") do
     config :opentelemetry,
       resource_detectors: [:otel_resource_env_var, :otel_resource_app_env],
       resource: %{
@@ -720,7 +720,9 @@ if config_env() == :prod do
           region: System.get_env("REGION")
         }
       }
+  end
 
+  if otlp_endpoint = System.get_env("OTLP_ENDPOINT") do
     config :opentelemetry,
       span_processor: :batch,
       traces_exporter: :otlp
@@ -728,19 +730,7 @@ if config_env() == :prod do
     config :opentelemetry_exporter,
       otlp_protocol: :http_protobuf,
       otlp_traces_protocol: :http_protobuf,
-      otlp_endpoint: System.get_env("OTLP_ENDPOINT")
-
-    config :opentelemetry_experimental,
-      readers: [
-        %{
-          module: :otel_metric_reader,
-          config: %{
-            export_interval_ms: 30_000,
-            exporter:
-              {:otel_exporter_metrics_otlp, %{endpoints: [System.get_env("OTLP_ENDPOINT")]}}
-          }
-        }
-      ]
+      otlp_endpoint: otlp_endpoint
   end
 
   config :portal, Portal.Telemetry,
@@ -828,3 +818,22 @@ if config_env() == :prod do
       tags: %{data_residency_region: env_var_to_config!(:data_residency_region)}
   end
 end
+
+metric_exporters = [
+  if(otlp_endpoint = System.get_env("OTLP_ENDPOINT"),
+    do: {:otel_exporter_metrics_otlp, %{endpoints: [otlp_endpoint]}}
+  ),
+  if(azure_otlp_metrics_endpoint = System.get_env("AZURE_OTLP_METRICS_ENDPOINT"),
+    do: {Portal.Azure.MetricsExporter, %{endpoint: azure_otlp_metrics_endpoint}}
+  )
+]
+
+readers =
+  for exporter <- metric_exporters, not is_nil(exporter) do
+    %{
+      module: :otel_metric_reader,
+      config: %{export_interval_ms: 30_000, exporter: exporter}
+    }
+  end
+
+config :opentelemetry_experimental, readers: readers

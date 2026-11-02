@@ -11,7 +11,7 @@ use crate::flux_capacitor::FluxCapacitor;
 use crate::probe::{DnsNatObservation, FlowId, ProbeId, ProbeObservation, ProbeTrace, Remote};
 use crate::resource as client;
 use crate::transition::Transition;
-use connlib_model::{ClientId, ClientOrGatewayId, GatewayId, PublicKey, RelayId};
+use connlib_model::{ClientId, ClientOrGatewayId, GatewayId, PublicKey, RelayId, StaticSecret};
 use ip_packet::IpPacket;
 use rand::SeedableRng;
 use rand::distr::SampleString;
@@ -847,6 +847,71 @@ impl TunnelTest {
                         Vec::new()
                     },
                 );
+
+                // The portal sees the Client reconnect with a new key and tells its peers and Gateways.
+                let public_key = self.clients[&client_id].inner().sut().public_key();
+                for peer in portal.authorized_peers_of(client_id) {
+                    self.clients.get_mut(&peer).unwrap().exec_mut(|c| {
+                        c.sut_mut().handle_public_key_changed(
+                            ClientOrGatewayId::Client(client_id),
+                            public_key,
+                            now,
+                        )
+                    });
+                }
+                for gateway in self.gateways.values_mut() {
+                    gateway.exec_mut(|g| {
+                        g.sut_mut()
+                            .handle_public_key_changed(client_id, public_key.into(), now)
+                    });
+                }
+            }
+            Transition::CrashGateway {
+                gateway_id,
+                key,
+                clients,
+            } => {
+                self.gateways.get_mut(&gateway_id).unwrap().exec_mut(|g| {
+                    g.crash(key, now, utc_now);
+                    g.update_relays(iter::empty(), self.relays.iter(), now);
+                });
+
+                let public_key = self.gateways[&gateway_id].inner().sut().public_key();
+                for client_id in clients {
+                    self.clients.get_mut(&client_id).unwrap().exec_mut(|c| {
+                        c.sut_mut().handle_public_key_changed(
+                            ClientOrGatewayId::Gateway(gateway_id),
+                            public_key,
+                            now,
+                        )
+                    });
+                }
+            }
+            Transition::SpuriousPublicKeyChanged {
+                recipient,
+                remote,
+                key,
+            } => {
+                let public_key = PublicKey::from(&StaticSecret::from(key));
+
+                match (recipient, remote) {
+                    (ClientOrGatewayId::Client(client_id), remote) => {
+                        self.clients.get_mut(&client_id).unwrap().exec_mut(|c| {
+                            c.sut_mut()
+                                .handle_public_key_changed(remote, public_key, now)
+                        });
+                    }
+                    (
+                        ClientOrGatewayId::Gateway(gateway_id),
+                        ClientOrGatewayId::Client(client_id),
+                    ) => {
+                        self.gateways.get_mut(&gateway_id).unwrap().exec_mut(|g| {
+                            g.sut_mut()
+                                .handle_public_key_changed(client_id, public_key.into(), now)
+                        });
+                    }
+                    (ClientOrGatewayId::Gateway(_), ClientOrGatewayId::Gateway(_)) => {}
+                }
             }
         };
 

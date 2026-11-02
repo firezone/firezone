@@ -6,6 +6,7 @@
 use anyhow::Result;
 use std::net::{Ipv4Addr, Ipv6Addr};
 use stun_codec::rfc5766::attributes::ChannelNumber;
+use tracing::level_filters::LevelFilter;
 
 use crate::ebpf::AttachMode;
 use crate::{AllocationPort, ClientSocket, PeerSocket};
@@ -16,6 +17,7 @@ impl Program {
     pub fn try_load(
         _: &str,
         _: AttachMode,
+        _: LevelFilter,
         _: Option<Ipv4Addr>,
         _: Option<Ipv6Addr>,
         _: Option<Ipv4Addr>,

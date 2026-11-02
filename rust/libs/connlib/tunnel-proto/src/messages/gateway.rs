@@ -113,6 +113,14 @@ pub struct RejectAccess {
     pub resource_id: ResourceId,
 }
 
+/// Sent by the portal when a Client we hold an authorization for reconnected with a new public
+/// key, e.g. after a crash that sent no `goodbye`.
+#[derive(Debug, Deserialize, Clone)]
+pub struct PublicKeyChanged {
+    pub client_id: ClientId,
+    pub public_key: Key,
+}
+
 // These messages are the messages that can be received
 // either by a client or a gateway by the client.
 #[derive(Debug, Deserialize, Clone)]
@@ -125,6 +133,7 @@ pub enum IngressMessages {
     RelaysPresence(RelaysPresence),
     ResourceUpdated(ResourceDescription),
     CreateAuthorization(CreateAuthorization),
+    PublicKeyChanged(PublicKeyChanged),
     /// OBSOLETE - safe to remove this when <https://github.com/firezone/firezone/pull/13714> is deployed to production.
     AccessAuthorizationExpiryUpdated(AccessAuthorizationExpiryUpdated),
 }

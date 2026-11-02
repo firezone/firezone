@@ -61,6 +61,16 @@ defmodule PortalWeb.Settings.LogSinks do
     HTTP.LogSink => @common_fields ++ ~w[endpoint_url bearer_token batch_max_events]a
   }
 
+  # Each sink's secret and the fields that decide where it is sent.
+  @secrets %{
+    Splunk.LogSink => {:hec_token, collector_url: "HEC URL"},
+    Datadog.LogSink => {:api_key, site: "site"},
+    NewRelic.LogSink => {:license_key, region: "region"},
+    Elastic.LogSink => {:api_key, endpoint_url: "endpoint URL"},
+    QRadar.LogSink => {:auth_header, endpoint_url: "endpoint URL"},
+    HTTP.LogSink => {:bearer_token, endpoint_url: "endpoint URL"}
+  }
+
   @newrelic_region_options [
     {"US (log-api.newrelic.com)", "US"},
     {"EU (log-api.eu.newrelic.com)", "EU"},
@@ -1495,6 +1505,18 @@ defmodule PortalWeb.Settings.LogSinks do
             phx-debounce="300"
             data-1p-ignore
           />
+          <label
+            :if={not is_nil(@form.data.auth_header)}
+            class="mt-2 flex items-center gap-2 text-xs text-body"
+          >
+            <input
+              type="checkbox"
+              name="log_sink[remove_secret]"
+              value="true"
+              checked={remove_secret?(@form)}
+              class="w-4 h-4 text-brand border-border rounded"
+            /> Remove the current header
+          </label>
           <p class="mt-1 text-xs text-subtle">
             Optional. Sent as the <code class="text-xs">Authorization</code> header on
             every delivery, e.g. <code class="text-xs">Bearer my-secret-token</code>.
@@ -1532,6 +1554,18 @@ defmodule PortalWeb.Settings.LogSinks do
             phx-debounce="300"
             data-1p-ignore
           />
+          <label
+            :if={not is_nil(@form.data.bearer_token)}
+            class="mt-2 flex items-center gap-2 text-xs text-body"
+          >
+            <input
+              type="checkbox"
+              name="log_sink[remove_secret]"
+              value="true"
+              checked={remove_secret?(@form)}
+              class="w-4 h-4 text-brand border-border rounded"
+            /> Remove the current token
+          </label>
           <p class="mt-1 text-xs text-subtle">
             Optional. Sent as an <code class="text-xs">Authorization: Bearer</code>
             header on every request; leave blank for none.
@@ -1751,9 +1785,44 @@ defmodule PortalWeb.Settings.LogSinks do
   defp changeset(struct, attrs) do
     schema = struct.__struct__
 
-    cast(struct, attrs, Map.get(@fields, schema))
+    struct
+    |> cast(attrs, Map.get(@fields, schema))
+    |> keep_stored_secret(attrs)
     |> schema.changeset()
+    |> reset_stored_secret()
   end
+
+  defp keep_stored_secret(changeset, attrs) do
+    case Map.fetch(@secrets, changeset.data.__struct__) do
+      {:ok, {secret, _destinations}} ->
+        changeset
+        |> Form.keep_when_blank([secret])
+        |> maybe_remove_secret(secret, attrs)
+
+      :error ->
+        changeset
+    end
+  end
+
+  defp reset_stored_secret(changeset) do
+    case Map.fetch(@secrets, changeset.data.__struct__) do
+      {:ok, {secret, destinations}} ->
+        Form.reset_on_change(changeset, secret, destinations)
+
+      :error ->
+        changeset
+    end
+  end
+
+  # An empty box keeps the stored value, so the optional secrets offer a
+  # checkbox to remove it instead.
+  defp maybe_remove_secret(changeset, secret, %{"remove_secret" => "true"})
+       when secret in ~w[auth_header bearer_token]a,
+       do: put_change(changeset, secret, nil)
+
+  defp maybe_remove_secret(changeset, _secret, _attrs), do: changeset
+
+  defp remove_secret?(form), do: form.params["remove_secret"] == "true"
 
   # The tenant is proven by a signed Entra ID token, never typed, so the form
   # has no input for it and anything the browser posts under that name is

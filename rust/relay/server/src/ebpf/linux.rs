@@ -2,6 +2,7 @@ use std::{
     ffi::CString,
     io,
     net::{Ipv4Addr, Ipv6Addr, SocketAddr},
+    time::Duration,
 };
 
 use anyhow::{Context as _, Result};
@@ -15,10 +16,12 @@ use aya::{
 };
 use aya_log::EbpfLogger;
 use ebpf_shared::{
-    ClientAndChannelV4, ClientAndChannelV6, PortAndPeerV4, PortAndPeerV6, StatsEvent,
+    ClientAndChannelV4, ClientAndChannelV6, PacketCounter, PacketCounts, PortAndPeerV4,
+    PortAndPeerV6, StatsEvent,
 };
 use stun_codec::rfc5766::attributes::ChannelNumber;
 use tokio::io::{Interest, unix::AsyncFd};
+use tracing::level_filters::LevelFilter;
 
 use crate::ebpf::AttachMode;
 
@@ -29,7 +32,11 @@ use crate::{AllocationPort, ClientSocket, PeerSocket};
 /// Must be a power of two, hence it is defined as a hex value.
 /// Must be sufficiently large to buffer large batches of [`StatsEvent`]s until we get scheduled.
 /// Otherwise the kernel has to drop some and we skew our metrics.
-const PAGE_COUNT: usize = 0x1000;
+/// Only a sample of packets is reported, so this buffers well over a second of events even at line rate.
+const PAGE_COUNT: usize = 0x40;
+
+/// How often we read the per-CPU packet counters of the eBPF program.
+const PACKET_COUNTERS_INTERVAL: Duration = Duration::from_secs(1);
 
 pub struct Program {
     ebpf: aya::Ebpf,
@@ -42,12 +49,14 @@ impl Program {
     pub fn try_load(
         interface: &str,
         attach_mode: AttachMode,
+        log_level: LevelFilter,
         ipv4_interface_addr: Option<Ipv4Addr>,
         ipv6_interface_addr: Option<Ipv6Addr>,
         ipv4_public_addr: Option<Ipv4Addr>,
         ipv6_public_addr: Option<Ipv6Addr>,
     ) -> Result<Self> {
         let mut ebpf = load(
+            log_level,
             ipv4_interface_addr,
             ipv6_interface_addr,
             ipv4_public_addr,
@@ -92,7 +101,12 @@ impl Program {
         let packet_size = otel_instruments::relay_packet_size();
 
         let processing_duration = otel_instruments::relay_xdp_processing_duration();
-        let packets = otel_instruments::relay_packets();
+
+        let packet_counters = PerCpuArray::try_from(
+            ebpf.take_map("PACKET_COUNTERS")
+                .context("`PACKET_COUNTERS` array not found")?,
+        )?;
+        tokio::task::spawn(record_packet_counters(packet_counters));
 
         for cpu_id in aya::util::online_cpus()
             .map_err(|(_, error)| error)
@@ -110,7 +124,6 @@ impl Program {
             tokio::task::spawn({
                 let packet_size = packet_size.clone();
                 let processing_duration = processing_duration.clone();
-                let packets = packets.clone();
 
                 async move {
                     loop {
@@ -138,16 +151,6 @@ impl Program {
                                             packet_size.record(
                                                 stats.relayed_data(),
                                                 &[otel_attributes::relay_datapath_xdp()],
-                                            );
-                                            packets.add(
-                                                1,
-                                                &[
-                                                    otel_attributes::relay_datapath_xdp(),
-                                                    otel_attributes::network_type_for_ip_version(
-                                                        stats.ip_version(),
-                                                    ),
-                                                    otel_attributes::network_ecn(stats.ecn()),
-                                                ],
                                             );
                                             processing_duration.record(
                                                 stats.processing_duration().as_nanos() as u64,
@@ -354,17 +357,64 @@ impl Program {
     }
 }
 
+/// Reports exact packet and byte totals as the deltas of the eBPF per-CPU counters.
+async fn record_packet_counters(counters: PerCpuArray<MapData, PacketCounts>) {
+    let packets = otel_instruments::relay_packets();
+    let bytes = otel_instruments::relay_bytes();
+    let mut last_counts = [PacketCounts::default(); PacketCounter::NUM_ENTRIES as usize];
+    let mut interval = tokio::time::interval(PACKET_COUNTERS_INTERVAL);
+
+    loop {
+        interval.tick().await;
+
+        for (index, last_count) in (0..PacketCounter::NUM_ENTRIES).zip(&mut last_counts) {
+            let count = match counters.get(&index, 0) {
+                Ok(values) => values.iter().sum::<PacketCounts>(),
+                Err(e) => {
+                    tracing::debug!("Failed to read packet counter from eBPF map: {e}");
+                    continue;
+                }
+            };
+            let packet_delta = count.packets.saturating_sub(last_count.packets);
+            let byte_delta = count.bytes.saturating_sub(last_count.bytes);
+            *last_count = count;
+
+            if packet_delta == 0 && byte_delta == 0 {
+                continue;
+            }
+
+            let Some((ip_version, ecn)) = PacketCounter::ip_version_and_ecn(index) else {
+                continue;
+            };
+            packets.add(
+                packet_delta,
+                &[
+                    otel_attributes::relay_datapath_xdp(),
+                    otel_attributes::network_type_for_ip_version(ip_version),
+                    otel_attributes::network_ecn(ecn),
+                ],
+            );
+            bytes.add(byte_delta, &[otel_attributes::relay_datapath_xdp()]);
+        }
+    }
+}
+
 /// Loads the eBPF program into the kernel and configures it, without attaching it to an interface.
 fn load(
+    log_level: LevelFilter,
     ipv4_interface_addr: Option<Ipv4Addr>,
     ipv6_interface_addr: Option<Ipv6Addr>,
     ipv4_public_addr: Option<Ipv4Addr>,
     ipv6_public_addr: Option<Ipv6Addr>,
 ) -> Result<aya::Ebpf> {
-    let mut ebpf = aya::Ebpf::load(aya::include_bytes_aligned!(concat!(
-        env!("OUT_DIR"),
-        "/ebpf-turn-router-main"
-    )))?;
+    tracing::debug!(%log_level, "Setting eBPF log level");
+
+    let mut ebpf = aya::EbpfLoader::new()
+        .override_global(aya_log::LEVEL, &aya_log_level(log_level), true)
+        .load(aya::include_bytes_aligned!(concat!(
+            env!("OUT_DIR"),
+            "/ebpf-turn-router-main"
+        )))?;
 
     let program: &mut Xdp = ebpf
         .program_mut("handle_turn")
@@ -420,6 +470,30 @@ fn set_public_ipv6_address(ebpf: &mut aya::Ebpf, addr: Ipv6Addr) -> Result<()> {
     Ok(())
 }
 
+/// Converts the most verbose level of log records to emit into the value of [`aya_log::LEVEL`].
+///
+/// Without this, the eBPF program emits every log record and leaves filtering to userspace.
+/// Log records go through a ring buffer that is shared by all CPUs, so emitting records for every
+/// packet serialises the entire datapath on the ring buffer's lock.
+///
+/// The level is a constant to the verifier, so it removes disabled log statements entirely.
+/// As a result, changing the log filter at runtime does not affect the eBPF program.
+fn aya_log_level(level: LevelFilter) -> u8 {
+    let Some(level) = level.into_level() else {
+        return 0;
+    };
+
+    let level = match level {
+        tracing::Level::ERROR => aya_log::Level::Error,
+        tracing::Level::WARN => aya_log::Level::Warn,
+        tracing::Level::INFO => aya_log::Level::Info,
+        tracing::Level::DEBUG => aya_log::Level::Debug,
+        tracing::Level::TRACE => aya_log::Level::Trace,
+    };
+
+    level as u8
+}
+
 fn set_per_cpu_map<T>(ebpf: &mut aya::Ebpf, map_name: &str, value: T) -> Result<()>
 where
     T: Pod + Clone,
@@ -469,6 +543,7 @@ mod tests {
     const XDP_DROP: u32 = 1;
     const XDP_TX: u32 = 3;
 
+    const NOT_ECT: u8 = 0b00;
     const ECT0: u8 = 0b10;
 
     #[test]
@@ -506,6 +581,35 @@ mod tests {
         assert_eq!(outcome, Outcome::Forwarded { ecn: ECT0 });
     }
 
+    #[test]
+    #[ignore = "Needs root to load eBPF programs"]
+    fn counts_all_relayed_packets_and_bytes_independently_of_sampling() {
+        let mut program = Program::load_detached();
+        program.bind_channel(CLIENT_V4.into(), PEER_V4.into());
+        program.bind_channel(CLIENT_V6.into(), PEER_V6.into());
+
+        for _ in 0..300 {
+            program.run(&channel_data_ipv4(ECT0));
+        }
+        program.run(&channel_data_ipv6(NOT_ECT));
+
+        assert_eq!(
+            program.packet_counts(4, ECT0),
+            PacketCounts {
+                packets: 300,
+                bytes: 300 * PAYLOAD_LEN as u64,
+            }
+        );
+        assert_eq!(
+            program.packet_counts(6, NOT_ECT),
+            PacketCounts {
+                packets: 1,
+                bytes: PAYLOAD_LEN as u64,
+            }
+        );
+        assert_eq!(program.packet_counts(4, NOT_ECT), PacketCounts::default());
+    }
+
     #[derive(Debug, PartialEq)]
     enum Outcome {
         Forwarded { ecn: u8 },
@@ -518,7 +622,7 @@ mod tests {
         }
 
         fn load_detached_with(ipv4: Option<Ipv4Addr>, ipv6: Option<Ipv6Addr>) -> Self {
-            let mut ebpf = load(ipv4, ipv6, ipv4, ipv6).unwrap();
+            let mut ebpf = load(LevelFilter::OFF, ipv4, ipv6, ipv4, ipv6).unwrap();
             let stats = PerfEventArray::try_from(ebpf.take_map("STATS").unwrap()).unwrap();
 
             Self { ebpf, stats }
@@ -532,6 +636,18 @@ mod tests {
                 AllocationPort::new(ALLOCATION),
             )
             .unwrap();
+        }
+
+        fn packet_counts(&self, ip_version: u8, ecn: u8) -> PacketCounts {
+            let counters =
+                PerCpuArray::<_, PacketCounts>::try_from(self.ebpf.map("PACKET_COUNTERS").unwrap())
+                    .unwrap();
+
+            counters
+                .get(&PacketCounter::index(ip_version, ecn), 0)
+                .unwrap()
+                .iter()
+                .sum()
         }
 
         fn run(&self, packet: &[u8]) -> Outcome {

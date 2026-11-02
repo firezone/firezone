@@ -20,7 +20,7 @@ use std::{io, mem};
 use tokio::sync::mpsc;
 use tunnel::messages::gateway::{
     Authorization, ClientIceCandidates, ClientsIceCandidates, EgressMessages, IngressMessages,
-    InitGateway, RejectAccess,
+    InitGateway, PublicKeyChanged, RejectAccess,
 };
 use tunnel::messages::{self, RelaysPresence, SnownetCapabilities};
 use tunnel::{
@@ -428,6 +428,14 @@ impl Eventloop {
                 tunnel
                     .state_mut()
                     .remove_access(&client_id, &resource_id, now);
+            }
+            IngressMessages::PublicKeyChanged(PublicKeyChanged {
+                client_id,
+                public_key,
+            }) => {
+                tunnel
+                    .state_mut()
+                    .handle_public_key_changed(client_id, public_key, now);
             }
             IngressMessages::RelaysPresence(RelaysPresence {
                 disconnected_ids,

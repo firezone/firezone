@@ -243,6 +243,22 @@ pub struct ClientRejectAccess {
     pub resource_id: ResourceId,
 }
 
+/// Sent by the portal when a peer we hold an authorization with reconnected with a new
+/// public key, e.g. after a crash that sent no `goodbye`.
+#[derive(Debug, Deserialize, Clone)]
+pub struct PublicKeyChanged {
+    #[serde(flatten)]
+    pub peer: Peer,
+    pub public_key: Key,
+}
+
+#[derive(Debug, Deserialize, Clone, Copy, PartialEq, Eq)]
+#[serde(untagged)]
+pub enum Peer {
+    Client { client_id: ClientId },
+    Gateway { gateway_id: GatewayId },
+}
+
 /// OBSOLETE - safe to remove this when <https://github.com/firezone/firezone/pull/13714> is deployed to production.
 #[serde_as]
 #[derive(Debug, Deserialize, Clone)]
@@ -376,6 +392,8 @@ pub enum IngressMessages {
 
     /// A previously-authorized peer-to-peer access has been revoked.
     RejectAccess(ClientRejectAccess),
+
+    PublicKeyChanged(PublicKeyChanged),
 
     /// OBSOLETE - safe to remove this when <https://github.com/firezone/firezone/pull/13714> is deployed to production.
     AccessAuthorizationExpiryUpdated(ClientAccessAuthorizationExpiryUpdated),
@@ -1047,6 +1065,50 @@ mod tests {
             panic!("expected ClientIceCandidateError")
         };
         assert!(matches!(error.reason, FailReason::Offline));
+    }
+
+    #[test]
+    fn can_deserialize_public_key_changed_of_client() {
+        let json = serde_json::json!({
+            "event": "public_key_changed",
+            "payload": {
+                "client_id": "a3632404-4b03-4468-9fc0-4a4c82415ade",
+                "public_key": "uMBCkAxTewfSgypIyxdQ18uCi84HLtKmQJy0wvQrYWY="
+            }
+        });
+
+        let msg: IngressMessages = serde_json::from_value(json).unwrap();
+        let IngressMessages::PublicKeyChanged(changed) = msg else {
+            panic!("expected PublicKeyChanged")
+        };
+        assert_eq!(
+            changed.peer,
+            Peer::Client {
+                client_id: "a3632404-4b03-4468-9fc0-4a4c82415ade".parse().unwrap()
+            }
+        );
+    }
+
+    #[test]
+    fn can_deserialize_public_key_changed_of_gateway() {
+        let json = serde_json::json!({
+            "event": "public_key_changed",
+            "payload": {
+                "gateway_id": "a3632404-4b03-4468-9fc0-4a4c82415ade",
+                "public_key": "uMBCkAxTewfSgypIyxdQ18uCi84HLtKmQJy0wvQrYWY="
+            }
+        });
+
+        let msg: IngressMessages = serde_json::from_value(json).unwrap();
+        let IngressMessages::PublicKeyChanged(changed) = msg else {
+            panic!("expected PublicKeyChanged")
+        };
+        assert_eq!(
+            changed.peer,
+            Peer::Gateway {
+                gateway_id: "a3632404-4b03-4468-9fc0-4a4c82415ade".parse().unwrap()
+            }
+        );
     }
 
     #[test]

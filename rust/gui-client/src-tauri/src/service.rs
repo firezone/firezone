@@ -62,8 +62,8 @@ pub enum ClientMsg {
         #[serde(serialize_with = "serialize_token")]
         token: SecretString,
         is_internet_resource_active: bool,
-        #[serde(default)]
-        api_url: Option<url::Url>,
+        /// The token's API URL captured at sign-in, including any MDM override.
+        api_url: url::Url,
     },
     Disconnect,
     /// Persist new advanced settings to the protected on-disk file owned by
@@ -769,13 +769,6 @@ impl<'a> Handler<'a> {
                 is_internet_resource_active,
                 api_url,
             } => {
-                let api_url = self
-                    .mdm_settings
-                    .api_url
-                    .clone()
-                    .or(api_url)
-                    .unwrap_or_else(|| self.advanced_settings.api_url.clone());
-
                 if !self.session.is_none() {
                     tracing::debug!(session = ?self.session, "Dropping existing session before connecting");
 
@@ -897,12 +890,11 @@ impl<'a> Handler<'a> {
         Ok(())
     }
 
-    /// Returns the API URL selected by MDM, the active session, or the saved settings, in that order.
+    /// Returns the active session's API URL, falling back to MDM or the saved settings.
     fn api_url(&self) -> &str {
-        self.mdm_settings
-            .api_url
-            .as_ref()
-            .or_else(|| self.session.api_url())
+        self.session
+            .api_url()
+            .or(self.mdm_settings.api_url.as_ref())
             .map(|u| u.as_str())
             .unwrap_or_else(|| self.advanced_settings.api_url.as_str())
     }
