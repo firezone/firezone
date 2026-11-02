@@ -124,6 +124,7 @@ impl ClientOnGateway {
             .resources
             .get_mut(&resource_id)
             .context("Unknown resource")?;
+        let filter = FilterEngine::new(resource.filters());
 
         let ResourceOnGateway::Dns {
             address, domains, ..
@@ -158,10 +159,17 @@ impl ClientOnGateway {
 
             state.resources.insert(resource_id);
             state.resolved_ip = maybe_real_ip.copied();
+
+            self.routing_table.upsert(
+                IpNetwork::from(proxy_ip),
+                RouteEntry {
+                    filter: filter.clone(),
+                    resource_id,
+                },
+            );
         }
 
         domains.insert(name, resolved_ips);
-        self.recalculate_filters();
 
         Ok(())
     }
@@ -1402,6 +1410,43 @@ mod tests {
         };
 
         assert_eq!(packet.destination(), foo_real_ip1());
+    }
+
+    #[test]
+    fn setup_nat_routes_match_full_recalculation() {
+        let _guard = logging::test("trace");
+
+        let now = Instant::now();
+
+        let mut peer = ClientOnGateway::new(client_id(), client_key(), client_tun(), gateway_tun());
+        peer.add_resource(foo_dns_resource(), None, now);
+        peer.add_resource(foo_dns_resource2(), None, now);
+        peer.add_resource(baz_dns_resource(), None, now);
+        peer.add_resource(bar_cidr_resource(), None, now);
+
+        let foo_proxy_ips = BTreeSet::from([proxy_ip4_1(), proxy_ip4_2(), proxy_ip6_1()]);
+
+        for resource_id in [foo_resource_id(), foo_resource2_id(), foo_resource_id()] {
+            peer.setup_nat(
+                foo_name().parse().unwrap(),
+                resource_id,
+                BTreeSet::from([foo_real_ip1().into()]),
+                foo_proxy_ips.clone(),
+            )
+            .unwrap();
+        }
+        peer.setup_nat(
+            baz_name().parse().unwrap(),
+            baz_resource_id(),
+            BTreeSet::from([baz_real_ip1().into()]),
+            BTreeSet::from([proxy_ip6_2(), "100.96.0.3".parse().unwrap()]),
+        )
+        .unwrap();
+
+        let incremental = peer.routing_table.entries();
+        peer.recalculate_filters();
+
+        assert_eq!(incremental, peer.routing_table.entries());
     }
 
     #[test]
