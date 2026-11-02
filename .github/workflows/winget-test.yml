@@ -26,40 +26,6 @@ jobs:
             gh api -X DELETE "repos/firezone/winget-pkgs/git/refs/heads/$branch" || true
           done
 
-  output-probe:
-    runs-on: windows-latest
-    permissions:
-      contents: read
-      security-events: write
-    defaults:
-      run:
-        shell: bash
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: ./.github/actions/setup-mise
-        with:
-          install_args: --cd rust/gui-client github:russellbanks/Komac
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-      - env:
-          GITHUB_TOKEN: ${{ github.token }}
-          NO_COLOR: "1"
-        run: |
-          set -x
-          mise --cd rust/gui-client exec -- komac --version
-          mise --cd rust/gui-client exec -- komac update Firezone.Client.GUI --version 1.5.20 \
-            --urls https://github.com/firezone/firezone/releases/download/gui-client-1.5.20/firezone-client-gui-windows_1.5.20_x86_64.msi \
-            --dry-run --output "$RUNNER_TEMP/out" > "$RUNNER_TEMP/stdout.txt" || echo "exit $?"
-          grep -n "Latest version\|Successfully\|written" "$RUNNER_TEMP/stdout.txt" || true
-          ls -laR "$RUNNER_TEMP/out" || echo "nothing written to --output"
-          mise --cd rust/gui-client exec -- komac update Firezone.Client.GUI --version 1.5.20 \
-            --urls https://github.com/firezone/firezone/releases/download/gui-client-1.5.20/firezone-client-gui-windows_1.5.20_x86_64.msi \
-            --skip-pr-check --output "$RUNNER_TEMP/out2" < /dev/null > "$RUNNER_TEMP/stdout2.txt" || echo "exit $?"
-          grep -n "Latest version\|Successfully\|written\|What would" "$RUNNER_TEMP/stdout2.txt" || true
-          ls -laR "$RUNNER_TEMP/out2" || echo "nothing written to --output without --dry-run"
-
   winget:
     needs: delete-test-branches
     permissions:
@@ -68,12 +34,15 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        release:
-          - gui-client-1.5.20
-          - headless-client-1.5.15
+        include:
+          - identifier: Firezone.Client.GUI
+            release: gui-client-1.5.20
+          - identifier: Firezone.Client.Headless
+            release: headless-client-1.5.15
     uses: ./.github/workflows/_winget.yml
     secrets:
       BOT_PRIVATE_KEY: ${{ secrets.BOT_PRIVATE_KEY }}
     with:
+      identifier: ${{ matrix.identifier }}
       release_name: ${{ matrix.release }}
       release_tag: ${{ matrix.release }}
