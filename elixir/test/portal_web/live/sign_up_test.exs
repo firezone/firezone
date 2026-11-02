@@ -108,6 +108,7 @@ defmodule PortalWeb.SignUpTest do
       {:ok, lv, _html} = live(conn, ~p"/sign_up/email")
 
       assert has_element?(lv, "#selected-region", "European Union")
+      assert has_element?(lv, "#choose-other-region", "Go back to signup to select a different region.")
       refute has_element?(lv, "#region-picker")
       refute has_element?(lv, "#data-residency")
 

@@ -714,7 +714,7 @@ defmodule PortalWeb.SignUp do
         role="radiogroup"
         aria-labelledby="region-picker-label"
         aria-describedby="region-picker-help"
-        class="grid w-full gap-3 grid-cols-2"
+        class="grid w-full gap-3 grid-cols-1 sm:grid-cols-2"
       >
         <li :for={option <- [:us, :eu]}>
           <a
@@ -756,13 +756,21 @@ defmodule PortalWeb.SignUp do
     ~H"""
     <div :if={@region != :on_prem} id="selected-region" class="mb-6">
       <span class="block text-xs font-medium text-body mb-1.5">Cloud Region</span>
-      <div class="flex w-full p-3 bg-surface border border-brand rounded text-brand">
+      <div class="relative flex w-full p-3 bg-brand/5 border border-brand rounded text-brand">
+        <span
+          class="absolute -top-2 -left-2 w-5 h-5 rounded-full bg-brand text-white flex items-center justify-center"
+          aria-hidden="true"
+        >
+          <Core.icon name="ri-check-line" class="w-3.5 h-3.5" />
+        </span>
         <.region_option_content region={@region} />
       </div>
       <p class="mt-1.5 text-xs text-subtle">
         The region where your account data is stored. Changing it later requires downtime.
+      </p>
+      <p class="mt-1 text-xs text-subtle">
         <Navigation.link id="choose-other-region" patch={~p"/sign_up"}>
-          Go back to choose a different region.
+          Go back to signup to select a different region.
         </Navigation.link>
       </p>
     </div>
@@ -773,12 +781,12 @@ defmodule PortalWeb.SignUp do
 
   defp region_option_content(assigns) do
     ~H"""
-    <div class="flex items-center gap-3">
-      <Page.residency_flag region={@region} class="w-8 h-auto shadow-sm" />
-      <div class="block">
-        <div class="w-full font-semibold mb-1 text-xs">{Page.data_residency_name(@region)}</div>
-        <div class="w-full text-[10px]">{region_option_description(@region)}</div>
+    <div class="block min-w-0">
+      <div class="w-full font-semibold mb-1 text-xs flex items-center gap-2 whitespace-nowrap">
+        <Page.residency_flag region={@region} class="w-8 h-auto shadow-sm" />
+        {Page.data_residency_name(@region)}
       </div>
+      <div class="w-full text-[10px] whitespace-nowrap">{region_option_description(@region)}</div>
     </div>
     """
   end
