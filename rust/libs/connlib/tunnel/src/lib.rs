@@ -413,7 +413,7 @@ impl ClientTunnel {
                 }
 
                 if let Some(packets) = device.as_mut().map(|packets| packets.drain()) {
-                    let mut encrypt_jobs = self.io.new_encrypt_jobs(packets.len());
+                    let mut jobs = self.io.new_encrypt_jobs(packets.len());
 
                     let mut packets = packets
                         .prefetching()
@@ -433,7 +433,7 @@ impl ClientTunnel {
 
                         // A batch is encrypted into one GSO train, so it ends where the train would.
                         let first = tun_batch.first();
-                        let mut train = encrypt_jobs.open_train(
+                        let mut train = jobs.open_train(
                             tun_batch.src(),
                             tun_batch.dst(),
                             first.ecn(),
@@ -471,10 +471,10 @@ impl ClientTunnel {
                 }
 
                 if let Some(mut datagrams) = network {
-                    let mut decrypt_jobs = self.io.new_decrypt_jobs(datagrams.len());
+                    let mut jobs = self.io.new_decrypt_jobs(datagrams.len());
 
                     for datagram in datagrams.drain() {
-                        let mut datagram = decrypt_jobs.add(datagram);
+                        let mut datagram = jobs.add(datagram);
                         let mut segments = datagram.segments().peekable();
 
                         while let Some(segment) = segments.next() {
@@ -693,7 +693,7 @@ impl GatewayTunnel {
                 }
 
                 if let Some(packets) = device.as_mut().map(|packets| packets.drain()) {
-                    let mut encrypt_jobs = self.io.new_encrypt_jobs(packets.len());
+                    let mut jobs = self.io.new_encrypt_jobs(packets.len());
 
                     let mut packets = packets
                         .prefetching()
@@ -713,7 +713,7 @@ impl GatewayTunnel {
 
                         // A batch is encrypted into one GSO train, so it ends where the train would.
                         let first = tun_batch.first();
-                        let mut train = encrypt_jobs.open_train(
+                        let mut train = jobs.open_train(
                             tun_batch.src(),
                             tun_batch.dst(),
                             first.ecn(),
@@ -751,10 +751,10 @@ impl GatewayTunnel {
                 }
 
                 if let Some(mut datagrams) = network {
-                    let mut decrypt_jobs = self.io.new_decrypt_jobs(datagrams.len());
+                    let mut jobs = self.io.new_decrypt_jobs(datagrams.len());
 
                     for datagram in datagrams.drain() {
-                        let mut datagram = decrypt_jobs.add(datagram);
+                        let mut datagram = jobs.add(datagram);
                         let mut segments = datagram.segments().peekable();
 
                         while let Some(segment) = segments.next() {
