@@ -359,8 +359,8 @@ impl Session {
     }
 }
 
-/// Reads the keystore off the runtime, because it can block on a TPM or a smart card and the
-/// connlib eventloop shares this runtime's single worker.
+/// Reads the keystore off the runtime, because it can block on a TPM or a smart card and stall the
+/// IPC server.
 async fn load_identity() -> Result<Option<x509_keystore::Identity>, x509_keystore::Error> {
     let identity = tokio::task::spawn_blocking(x509_keystore::identity)
         .await
