@@ -27,13 +27,21 @@ jobs:
     defaults:
       run:
         shell: bash
-    env:
-      KOMAC_VERSION: 2.17.1
-      KOMAC_SHA256: a97c002c5ffa15f232af117efac6774e755d27acc47eba00f1661033267d7438
+    permissions:
+      contents: read
+      security-events: write # trivy SARIF upload from setup-mise
     outputs:
       branch: ${{ steps.package.outputs.branch }}
       title: ${{ steps.manifests.outputs.title }}
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-mise
+        with:
+          install_args: --cd rust/gui-client github:russellbanks/Komac
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
       - id: package
         env:
           release_name: ${{ inputs.release_name }}
@@ -65,17 +73,12 @@ jobs:
         run: |
           set -euo pipefail
 
-          komac="$RUNNER_TEMP/komac.exe"
-          curl -fsSL -o "$komac" \
-            "https://github.com/russellbanks/Komac/releases/download/v$KOMAC_VERSION/komac-$KOMAC_VERSION-x86_64-pc-windows-msvc.exe"
-          test "$(sha256sum < "$komac" | cut -d' ' -f1)" = "$KOMAC_SHA256"
-
           mapfile -t urls < <(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" \
             --jq '.assets[] | select(.name | test("\\.(exe|msi|msix|appx)(bundle)?$")) | .browser_download_url')
 
           # komac only writes the manifests to disk on its way to submitting them, so
           # take them from what a dry run prints instead.
-          "$komac" update "$IDENTIFIER" --version "$VERSION" --urls "${urls[@]}" \
+          mise --cd rust/gui-client exec -- komac update "$IDENTIFIER" --version "$VERSION" --urls "${urls[@]}" \
             --release-notes-url https://www.firezone.dev/changelog --dry-run > "$RUNNER_TEMP/komac.out"
 
           python - "$RUNNER_TEMP/komac.out" "$IDENTIFIER" "$VERSION" <<'PYTHON'

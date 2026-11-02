@@ -124,6 +124,7 @@ jobs:
     uses: ./.github/workflows/_winget.yml
     permissions:
       contents: read # the release's assets
+      security-events: write # trivy SARIF upload from setup-mise
     secrets:
       BOT_PRIVATE_KEY: ${{ secrets.BOT_PRIVATE_KEY }}
     with:
