@@ -41,6 +41,9 @@ defmodule Portal.Req.SSRFProtectionTest do
   test "blocks literal private and reserved IPv4 and IPv6 addresses before the adapter runs" do
     urls = [
       "https://169.254.169.254/latest/meta-data",
+      "http://168.63.129.16/machine?comp=goalstate",
+      "http://[::ffff:168.63.129.16]/machine?comp=goalstate",
+      "http://[fd00:ec2::254]/latest/meta-data",
       "http://[fe80::1]/latest/meta-data",
       "http://[::1]/metadata",
       "http://[::ffff:127.0.0.1]/metadata",
