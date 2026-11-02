@@ -10,6 +10,7 @@ permissions:
 jobs:
   winget:
     strategy:
+      fail-fast: false
       matrix:
         release:
           - gui-client-1.5.20
