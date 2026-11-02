@@ -1,6 +1,7 @@
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::iter;
 use std::net::{IpAddr, Ipv4Addr};
+use std::num::NonZeroUsize;
 use std::time::Instant;
 
 use anyhow::{Context, ErrorExt, Result, bail};
@@ -9,6 +10,7 @@ use dns_types::{DomainName, Query, RecordType};
 use fast_random_state::FastRandomState;
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_packet::{IpPacket, Protocol, UnsupportedProtocol};
+use lru::LruCache;
 
 use crate::client::{IPV4_RESOURCES, IPV6_RESOURCES};
 use crate::expiring_map;
@@ -21,6 +23,12 @@ use crate::p2p_control::dns_resource_nat::PROXY_IPS_PER_FAMILY;
 use crate::routing_table::{self, RoutingTable};
 use crate::unroutable_packet::UnroutablePacket;
 use crate::{IpConfig, NotAllowedResource, NotClientIp, p2p_control};
+
+/// How many domains of DNS resources we translate at most for one client.
+///
+/// When a client goes over this, we forget the least recently set up domain.
+/// The client sets the NAT up again with its next DNS query for that domain.
+const MAX_DNS_DOMAINS: NonZeroUsize = NonZeroUsize::new(1024).expect("1024 > 0");
 
 /// The state of one client on a gateway.
 pub struct ClientOnGateway {
@@ -41,6 +49,8 @@ pub struct ClientOnGateway {
     internet_resource_enabled: Option<ResourceId>,
     routing_table: RoutingTable<RouteEntry>,
     permanent_translations: HashMap<IpAddr, TranslationState, FastRandomState>,
+    /// The proxy IPs of each domain in `permanent_translations`, least recently set up first.
+    dns_domains: LruCache<DomainName, BTreeSet<IpAddr>, FastRandomState>,
     nat_table: NatTable,
 }
 
@@ -70,6 +80,7 @@ impl ClientOnGateway {
             resources: ExpiringMap::default(),
             routing_table: RoutingTable::new(),
             permanent_translations: Default::default(),
+            dns_domains: LruCache::with_hasher(MAX_DNS_DOMAINS, FastRandomState::default()),
             nat_table: Default::default(),
             internet_resource_enabled: None,
         }
@@ -95,8 +106,19 @@ impl ClientOnGateway {
         proxy_ips: BTreeSet<IpAddr>,
     ) -> Result<()> {
         // Proxy IPs are chosen by the Client; anything we accept here ends up in our routing table.
+        let existing_proxy_ips = self.dns_domains.peek(&name).cloned().unwrap_or_default();
+        let domain_proxy_ips = first_proxy_ips(
+            existing_proxy_ips
+                .iter()
+                .chain(proxy_ips.difference(&existing_proxy_ips))
+                .copied(),
+        );
+
         let num_proxy_ips = proxy_ips.len();
-        let proxy_ips = first_proxy_ips(proxy_ips);
+        let proxy_ips = proxy_ips
+            .intersection(&domain_proxy_ips)
+            .copied()
+            .collect::<BTreeSet<_>>();
 
         if proxy_ips.len() < num_proxy_ips {
             tracing::warn!(
@@ -169,9 +191,40 @@ impl ClientOnGateway {
             );
         }
 
-        domains.insert(name, resolved_ips);
+        domains.insert(name.clone(), resolved_ips);
+
+        if let Some((evicted, evicted_proxy_ips)) =
+            self.dns_domains.push(name.clone(), domain_proxy_ips)
+            && evicted != name
+        {
+            self.evict_dns_domain(evicted, evicted_proxy_ips);
+        }
 
         Ok(())
+    }
+
+    fn evict_dns_domain(&mut self, domain: DomainName, proxy_ips: BTreeSet<IpAddr>) {
+        tracing::debug!(%domain, "Evicting DNS resource NAT");
+
+        let mut resources = HashSet::<ResourceId, FastRandomState>::default();
+
+        for proxy_ip in proxy_ips {
+            let Some(state) = self.permanent_translations.remove(&proxy_ip) else {
+                continue;
+            };
+
+            self.routing_table
+                .remove_where(IpNetwork::from(proxy_ip), |entry| {
+                    state.resources.contains(&entry.resource_id)
+                });
+            resources.extend(state.resources);
+        }
+
+        for rid in resources {
+            if let Some(ResourceOnGateway::Dns { domains, .. }) = self.resources.get_mut(&rid) {
+                domains.remove(&domain);
+            }
+        }
     }
 
     pub(crate) fn is_empty(&self) -> bool {
@@ -258,10 +311,20 @@ impl ClientOnGateway {
             }
         }
 
-        for _ in self
+        for (proxy_ip, state) in self
             .permanent_translations
             .extract_if(|_, state| state.resources.is_empty())
-        {}
+        {
+            let Some(domain_proxy_ips) = self.dns_domains.peek_mut(&state.domain) else {
+                continue;
+            };
+
+            domain_proxy_ips.remove(&proxy_ip);
+
+            if domain_proxy_ips.is_empty() {
+                self.dns_domains.pop(&state.domain);
+            }
+        }
     }
 
     /// Records the portal's per-flow ingest token for an authorized resource.
@@ -1410,6 +1473,120 @@ mod tests {
         };
 
         assert_eq!(packet.destination(), foo_real_ip1());
+    }
+
+    #[test]
+    fn setup_nat_evicts_least_recently_set_up_domain() {
+        let _guard = logging::test("debug");
+
+        let mut peer = ClientOnGateway::new(client_id(), client_key(), client_tun(), gateway_tun());
+        peer.add_resource(wildcard_foo_dns_resource(), None, Instant::now());
+
+        for i in 0..MAX_DNS_DOMAINS.get() {
+            setup_wildcard_foo_nat(&mut peer, i);
+        }
+        setup_wildcard_foo_nat(&mut peer, 0);
+        setup_wildcard_foo_nat(&mut peer, MAX_DNS_DOMAINS.get());
+
+        assert_eq!(peer.dns_domains.len(), MAX_DNS_DOMAINS.get());
+        assert_eq!(peer.permanent_translations.len(), MAX_DNS_DOMAINS.get());
+        assert!(peer.permanent_translations.contains_key(&nth_proxy_ip(0)));
+        assert!(!peer.permanent_translations.contains_key(&nth_proxy_ip(1)));
+        assert!(
+            peer.routing_table
+                .entries()
+                .iter()
+                .all(|(network, _)| *network != IpNetwork::from(nth_proxy_ip(1)))
+        );
+
+        peer.recalculate_filters();
+        assert_eq!(peer.routing_table.entries().len(), MAX_DNS_DOMAINS.get());
+    }
+
+    #[test]
+    fn evicted_proxy_ip_can_be_assigned_to_new_domain() {
+        let _guard = logging::test("debug");
+
+        let mut peer = ClientOnGateway::new(client_id(), client_key(), client_tun(), gateway_tun());
+        peer.add_resource(wildcard_foo_dns_resource(), None, Instant::now());
+
+        for i in 0..=MAX_DNS_DOMAINS.get() {
+            setup_wildcard_foo_nat(&mut peer, i);
+        }
+
+        peer.setup_nat(
+            "new.foo.com".parse().unwrap(),
+            wildcard_foo_resource_id(),
+            BTreeSet::from([foo_real_ip1().into()]),
+            BTreeSet::from([nth_proxy_ip(0)]),
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn setup_nat_ignores_extra_proxy_ips_across_messages_for_one_domain() {
+        let _guard = logging::test("debug");
+
+        let mut peer = ClientOnGateway::new(client_id(), client_key(), client_tun(), gateway_tun());
+        peer.add_resource(wildcard_foo_dns_resource(), None, Instant::now());
+
+        for i in 0..PROXY_IPS_PER_FAMILY {
+            peer.setup_nat(
+                "a.foo.com".parse().unwrap(),
+                wildcard_foo_resource_id(),
+                BTreeSet::from([foo_real_ip1().into()]),
+                BTreeSet::from([nth_proxy_ip(i)]),
+            )
+            .unwrap();
+        }
+
+        peer.setup_nat(
+            "a.foo.com".parse().unwrap(),
+            wildcard_foo_resource_id(),
+            BTreeSet::from([foo_real_ip1().into()]),
+            BTreeSet::from([nth_proxy_ip(PROXY_IPS_PER_FAMILY)]),
+        )
+        .unwrap();
+
+        assert_eq!(peer.permanent_translations.len(), PROXY_IPS_PER_FAMILY);
+        assert!(
+            !peer
+                .permanent_translations
+                .contains_key(&nth_proxy_ip(PROXY_IPS_PER_FAMILY))
+        );
+    }
+
+    fn setup_wildcard_foo_nat(peer: &mut ClientOnGateway, n: usize) {
+        peer.setup_nat(
+            format!("d{n}.foo.com").parse().unwrap(),
+            wildcard_foo_resource_id(),
+            BTreeSet::from([foo_real_ip1().into()]),
+            BTreeSet::from([nth_proxy_ip(n)]),
+        )
+        .unwrap();
+    }
+
+    fn nth_proxy_ip(n: usize) -> IpAddr {
+        let offset = u32::try_from(n).unwrap() + 1;
+
+        IpAddr::from(Ipv4Addr::from(
+            u32::from(IPV4_RESOURCES.network_address()) + offset,
+        ))
+    }
+
+    fn wildcard_foo_dns_resource() -> crate::messages::gateway::ResourceDescription {
+        crate::messages::gateway::ResourceDescription::Dns(
+            crate::messages::gateway::ResourceDescriptionDns {
+                id: wildcard_foo_resource_id(),
+                address: "*.foo.com".to_string(),
+                name: "wildcard foo".to_string(),
+                filters: vec![],
+            },
+        )
+    }
+
+    fn wildcard_foo_resource_id() -> ResourceId {
+        "0f3e0a4c-58a4-4d7e-9a8f-3a4c4e2b9d11".parse().unwrap()
     }
 
     #[test]
