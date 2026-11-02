@@ -668,12 +668,10 @@ where
             &mut self.pending_events,
             now,
         );
-        let mut packets = packets?;
+        let packets = packets?;
 
         if self.connections.is_closing(&cid) {
-            for packet in packets.iter_mut().flatten() {
-                *packet = None;
-            }
+            return Ok((cid, CommittedBatch::empty()));
         }
 
         Ok((cid, CommittedBatch::new(packets)))

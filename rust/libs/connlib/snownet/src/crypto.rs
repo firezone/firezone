@@ -300,6 +300,10 @@ impl CommittedBatch {
     pub(crate) fn new(packets: Vec<Result<Option<IpPacket>>>) -> Self {
         Self(packets.into_iter())
     }
+
+    pub(crate) fn empty() -> Self {
+        Self(Vec::new().into_iter())
+    }
 }
 
 impl Iterator for CommittedBatch {
