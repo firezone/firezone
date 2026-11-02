@@ -645,8 +645,7 @@ impl ClientState {
             .routing_tables
             .resolve(dst, dst_proto, internet_resource);
 
-        // Whether later packets of the flow may reuse this packet's routing decision.
-        let (peer, reusable) = match (direct_gateway, peer_originated_client_flow, routes) {
+        let peer = match (direct_gateway, peer_originated_client_flow, routes) {
             (None, None, Err(routing::Denied)) => {
                 reply_with_icmp_prohibited(&mut self.buffered_packets, packet);
                 return Ok(None);
@@ -658,14 +657,14 @@ impl ClientState {
                 // A Gateway's TUN IP takes precedence over resource matches.
                 flow_tracker::record_peer(gid, flow_tracker::Role::Initiator);
 
-                (gid.into(), true)
+                gid.into()
             }
             (None, Some(cid), _) => {
                 // A reply follows its peer-originated flow even if we have no outbound route to
                 // that peer.
                 flow_tracker::record_peer(cid, flow_tracker::Role::Responder);
 
-                (cid.into(), false)
+                cid.into()
             }
             (None, None, Ok(MatchedRoutes::DevicePools(pools))) => {
                 let Some((cid, _)) = self.clients.peer_by_ip(dst) else {
@@ -696,7 +695,7 @@ impl ClientState {
                     .with_context(|| UnroutablePacket::no_peer_state(packet))?
                     .record_outbound_as_originator(packet, now);
 
-                (cid.into(), false)
+                cid.into()
             }
             (None, None, Ok(MatchedRoutes::Gateways(routes))) => {
                 // Traffic only takes the most-preferred route, even if a less-preferred one is authorized.
@@ -716,25 +715,22 @@ impl ClientState {
                 flow_tracker::record_peer(authorization.gateway_id, flow_tracker::Role::Initiator);
                 flow_tracker::record_ingest_token(Some(&authorization.ingest_token));
 
-                let reusable = match &route.domain {
-                    Some(domain) => {
-                        flow_tracker::record_domain(domain.name().clone());
+                if let Some(domain) = &route.domain {
+                    flow_tracker::record_domain(domain.name().clone());
 
-                        match self.dns_resource_nat.handle_outgoing(
-                            authorization.gateway_id,
-                            domain,
-                            route.resource_id,
-                            packet,
-                            now,
-                        ) {
-                            ControlFlow::Continue(reusable) => reusable,
-                            ControlFlow::Break(()) => return Ok(None),
-                        }
+                    match self.dns_resource_nat.handle_outgoing(
+                        authorization.gateway_id,
+                        domain,
+                        route.resource_id,
+                        packet,
+                        now,
+                    ) {
+                        ControlFlow::Continue(()) => {}
+                        ControlFlow::Break(()) => return Ok(None),
                     }
-                    None => true,
-                };
+                }
 
-                (authorization.gateway_id.into(), reusable)
+                authorization.gateway_id.into()
             }
         };
 
@@ -749,12 +745,7 @@ impl ClientState {
             return Ok(None);
         };
 
-        Ok(Some(TunBatch::new(
-            flow.filter(|_| reusable),
-            None,
-            tunnel,
-            flows,
-        )))
+        Ok(Some(TunBatch::new(flow, None, tunnel, flows)))
     }
 
     /// Feed an internally-produced or previously-buffered IP packet through normal TUN routing

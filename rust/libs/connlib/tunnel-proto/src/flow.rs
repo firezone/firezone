@@ -14,10 +14,11 @@ pub(crate) struct Flow {
 }
 
 impl Flow {
-    /// Returns the flow of `packet`, unless it changes the state of its flow.
+    /// Returns the flow of a TCP or UDP `packet`, unless it changes the state of its flow.
     ///
-    /// ICMP errors belong to the flow of the packet that failed and a TCP SYN, FIN or RST changes
-    /// connection-tracking and NAT state, so they take the slow path.
+    /// A TCP SYN, FIN or RST changes connection-tracking and NAT state, so it takes the slow path.
+    /// So does ICMP: an echo request and the echo reply going the same way share addresses and
+    /// identifier, yet are routed and authorized differently.
     pub(crate) fn of(packet: &IpPacket) -> Option<Self> {
         if packet
             .tcp_flags()
@@ -26,11 +27,17 @@ impl Flow {
             return None;
         }
 
+        let src_proto = packet.source_protocol().ok()?;
+        let dst_proto = packet.destination_protocol().ok()?;
+        if matches!(src_proto, Protocol::IcmpEcho(_)) {
+            return None;
+        }
+
         Some(Self {
             src: packet.source(),
             dst: packet.destination(),
-            src_proto: packet.source_protocol().ok()?,
-            dst_proto: packet.destination_protocol().ok()?,
+            src_proto,
+            dst_proto,
         })
     }
 }
