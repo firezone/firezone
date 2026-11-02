@@ -1,6 +1,5 @@
 use std::{
     collections::{HashMap, VecDeque, hash_map::Entry},
-    net::IpAddr,
     ops::ControlFlow,
     time::{Duration, Instant},
 };
@@ -13,7 +12,7 @@ use ip_packet::IpPacket;
 
 use crate::{
     dns::resource_stub_resolver::{DnsResourceDomain, DnsResourceDomainId},
-    p2p_control,
+    p2p_control::{self, dns_resource_nat::ProxyIps},
     unique_packet_buffer::UniquePacketBuffer,
 };
 
@@ -43,7 +42,7 @@ impl DnsResourceNat {
         domain: DnsResourceDomain,
         gid: GatewayId,
         rid: ResourceId,
-        proxy_ips: &[IpAddr],
+        proxy_ips: ProxyIps,
         packets_for_domain: VecDeque<IpPacket>,
         now: Instant,
     ) -> Result<VecDeque<IpPacket>> {
@@ -58,7 +57,7 @@ impl DnsResourceNat {
                 let assigned_ips = p2p_control::dns_resource_nat::assigned_ips(
                     rid,
                     domain.name().clone(),
-                    proxy_ips.to_vec(),
+                    proxy_ips,
                 )?;
 
                 v.insert((
@@ -348,7 +347,7 @@ mod tests {
                 example_com(),
                 GID,
                 RID,
-                PROXY_IPS,
+                ProxyIps::for_test(),
                 VecDeque::default(),
                 Instant::now(),
             )
@@ -370,7 +369,7 @@ mod tests {
                 example_com(),
                 GID,
                 RID,
-                PROXY_IPS,
+                ProxyIps::for_test(),
                 VecDeque::default(),
                 Instant::now(),
             )
@@ -387,7 +386,7 @@ mod tests {
                 example_com(),
                 GID,
                 RID,
-                PROXY_IPS,
+                ProxyIps::for_test(),
                 VecDeque::default(),
                 Instant::now(),
             )
@@ -409,7 +408,7 @@ mod tests {
                 example_com(),
                 GID,
                 RID,
-                PROXY_IPS,
+                ProxyIps::for_test(),
                 VecDeque::default(),
                 Instant::now(),
             )
@@ -436,7 +435,7 @@ mod tests {
                 example_com(),
                 GID,
                 RID,
-                PROXY_IPS,
+                ProxyIps::for_test(),
                 VecDeque::default(),
                 Instant::now(),
             )
@@ -473,7 +472,7 @@ mod tests {
                 example_com(),
                 GID,
                 RID,
-                PROXY_IPS,
+                ProxyIps::for_test(),
                 VecDeque::default(),
                 Instant::now(),
             )
@@ -494,7 +493,7 @@ mod tests {
                 example_com(),
                 GID,
                 RID,
-                PROXY_IPS,
+                ProxyIps::for_test(),
                 VecDeque::default(),
                 Instant::now(),
             )
@@ -520,7 +519,7 @@ mod tests {
                 example_com(),
                 GID,
                 RID,
-                PROXY_IPS,
+                ProxyIps::for_test(),
                 VecDeque::default(),
                 Instant::now(),
             )
@@ -544,7 +543,7 @@ mod tests {
                 example_com(),
                 GID,
                 RID,
-                PROXY_IPS,
+                ProxyIps::for_test(),
                 VecDeque::from([packet.clone()]),
                 Instant::now(),
             )
@@ -559,19 +558,40 @@ mod tests {
         let mut now = Instant::now();
 
         dns_resource_nat
-            .update(example_com(), GID, RID, PROXY_IPS, VecDeque::default(), now)
+            .update(
+                example_com(),
+                GID,
+                RID,
+                ProxyIps::for_test(),
+                VecDeque::default(),
+                now,
+            )
             .unwrap();
         assert!(dns_resource_nat.poll_packet().is_some());
 
         dns_resource_nat
-            .update(example_com(), GID, RID, PROXY_IPS, VecDeque::default(), now)
+            .update(
+                example_com(),
+                GID,
+                RID,
+                ProxyIps::for_test(),
+                VecDeque::default(),
+                now,
+            )
             .unwrap();
         assert!(dns_resource_nat.poll_packet().is_none());
 
         now += Duration::from_secs(2);
 
         dns_resource_nat
-            .update(example_com(), GID, RID, PROXY_IPS, VecDeque::default(), now)
+            .update(
+                example_com(),
+                GID,
+                RID,
+                ProxyIps::for_test(),
+                VecDeque::default(),
+                now,
+            )
             .unwrap();
         assert!(dns_resource_nat.poll_packet().is_some());
     }
@@ -582,7 +602,14 @@ mod tests {
         let mut now = Instant::now();
 
         dns_resource_nat
-            .update(example_com(), GID, RID, PROXY_IPS, VecDeque::default(), now)
+            .update(
+                example_com(),
+                GID,
+                RID,
+                ProxyIps::for_test(),
+                VecDeque::default(),
+                now,
+            )
             .unwrap();
         assert!(dns_resource_nat.poll_packet().is_some());
 
@@ -608,7 +635,7 @@ mod tests {
                 example_com(),
                 GID,
                 RID,
-                PROXY_IPS,
+                ProxyIps::for_test(),
                 VecDeque::default(),
                 Instant::now(),
             )
@@ -630,7 +657,7 @@ mod tests {
                 example_com(),
                 GID,
                 RID2,
-                PROXY_IPS,
+                ProxyIps::for_test(),
                 VecDeque::default(),
                 Instant::now(),
             )
@@ -646,15 +673,4 @@ mod tests {
     fn example_com() -> DnsResourceDomain {
         DnsResourceDomain::for_test(0, EXAMPLE_COM.to_vec())
     }
-
-    const PROXY_IPS: &[IpAddr] = &[
-        IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
-        IpAddr::V4(Ipv4Addr::new(127, 0, 0, 2)),
-        IpAddr::V4(Ipv4Addr::new(127, 0, 0, 3)),
-        IpAddr::V4(Ipv4Addr::new(127, 0, 0, 4)),
-        IpAddr::V4(Ipv4Addr::new(127, 0, 0, 5)),
-        IpAddr::V4(Ipv4Addr::new(127, 0, 0, 6)),
-        IpAddr::V4(Ipv4Addr::new(127, 0, 0, 7)),
-        IpAddr::V4(Ipv4Addr::new(127, 0, 0, 8)),
-    ];
 }

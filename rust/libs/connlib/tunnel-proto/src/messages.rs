@@ -13,6 +13,8 @@ use serde_with::{DurationSeconds, serde_as};
 use std::fmt;
 use std::ops::RangeInclusive;
 
+use crate::p2p_control::dns_resource_nat::ProxyIps;
+
 pub mod client;
 pub mod gateway;
 mod key;
@@ -82,7 +84,7 @@ impl PartialEq for Peer {
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
 pub struct ResolveRequest {
     pub name: DomainName,
-    pub proxy_ips: Vec<IpAddr>,
+    pub proxy_ips: ProxyIps,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, Hash, PartialEq, Eq)]

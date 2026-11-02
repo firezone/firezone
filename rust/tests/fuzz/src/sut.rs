@@ -1705,7 +1705,7 @@ fn on_gateway_event(
                 (client.inner().sut().public_key() == r.client_public_key()).then_some(*id)
             });
             let domain = r.domain().clone();
-            let proxy_ips = r.proxy_ips().to_vec();
+            let proxy_ips = r.proxy_ips().iter().collect();
             let resolved_ips = ref_state.gateways[&src]
                 .inner()
                 .resolve(&domain, &ref_state.global_dns_records)

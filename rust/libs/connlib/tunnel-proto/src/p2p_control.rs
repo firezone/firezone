@@ -19,28 +19,21 @@ pub const NO_AUTHORIZATION_EVENT: FzP2pEventType = FzP2pEventType::new(3);
 
 pub mod dns_resource_nat {
     use super::*;
+    use crate::client::{IPV4_RESOURCES, IPV6_RESOURCES};
     use anyhow::{Context as _, Result};
-    use connlib_model::ResourceId;
+    use connlib_model::{IpStack, ResourceId};
     use dns_types::DomainName;
     use ip_packet::{FzP2pControlSlice, IpPacket};
-    use std::net::IpAddr;
-
-    /// How many proxy IPs a Client assigns to a domain for each IP version.
-    ///
-    /// The Gateway uses only the first proxy IPs of an [`AssignedIps`] event up to this limit and ignores the rest.
-    pub const PROXY_IPS_PER_FAMILY: usize = 4;
+    use serde::de::{Error as _, SeqAccess, Visitor};
+    use std::fmt;
+    use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
     /// Construct a new [`AssignedIps`] event.
     pub fn assigned_ips(
         resource: ResourceId,
         domain: DomainName,
-        proxy_ips: Vec<IpAddr>,
+        proxy_ips: ProxyIps,
     ) -> Result<IpPacket> {
-        anyhow::ensure!(
-            proxy_ips.len() == 4 || proxy_ips.len() == 8,
-            "Expected 4 or 8 proxy IPs"
-        );
-
         let payload = serde_json::to_vec(&AssignedIps {
             resource,
             domain,
@@ -79,7 +72,7 @@ pub mod dns_resource_nat {
         Ok(ip_packet)
     }
 
-    pub fn decode_assigned_ips(packet: FzP2pControlSlice) -> Result<AssignedIps> {
+    pub fn decode_assigned_ips(packet: &FzP2pControlSlice) -> Result<AssignedIps> {
         anyhow::ensure!(
             packet.event_type() == ASSIGNED_IPS_EVENT,
             "Control protocol packet is not a `dns_resource_nat::AssignedIp`s event"
@@ -87,6 +80,17 @@ pub mod dns_resource_nat {
 
         serde_json::from_slice::<AssignedIps>(packet.payload())
             .context("Failed to deserialize `dns_resource_nat::AssignedIps`")
+    }
+
+    /// Decodes only the resource and domain of an [`AssignedIps`] event, ignoring its proxy IPs.
+    pub fn decode_assigned_ips_domain(packet: &FzP2pControlSlice) -> Result<AssignedIpsDomain> {
+        anyhow::ensure!(
+            packet.event_type() == ASSIGNED_IPS_EVENT,
+            "Control protocol packet is not a `dns_resource_nat::AssignedIp`s event"
+        );
+
+        serde_json::from_slice::<AssignedIpsDomain>(packet.payload())
+            .context("Failed to deserialize `dns_resource_nat::AssignedIpsDomain`")
     }
 
     pub fn decode_domain_status(packet: FzP2pControlSlice) -> Result<DomainStatus> {
@@ -103,7 +107,156 @@ pub mod dns_resource_nat {
     pub struct AssignedIps {
         pub resource: ResourceId,
         pub domain: DomainName,
-        pub proxy_ips: Vec<IpAddr>,
+        pub proxy_ips: ProxyIps,
+    }
+
+    #[derive(serde::Deserialize)]
+    pub struct AssignedIpsDomain {
+        pub resource: ResourceId,
+        pub domain: DomainName,
+    }
+
+    /// The proxy IPs a Client assigns to a domain.
+    ///
+    /// Holds 4 addresses from [`IPV4_RESOURCES`] and / or 4 addresses from [`IPV6_RESOURCES`].
+    /// On the wire, this is a list of all addresses.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+    pub struct ProxyIps {
+        ipv4: Option<[Ipv4Addr; 4]>,
+        ipv6: Option<[Ipv6Addr; 4]>,
+    }
+
+    impl ProxyIps {
+        /// Creates dual-stack proxy IPs.
+        ///
+        /// # Errors
+        ///
+        /// Fails if an address is not within [`IPV4_RESOURCES`] or [`IPV6_RESOURCES`].
+        pub fn new(ipv4: [Ipv4Addr; 4], ipv6: [Ipv6Addr; 4]) -> Result<Self> {
+            let proxy_ips = Self {
+                ipv4: Some(ipv4),
+                ipv6: Some(ipv6),
+            }
+            .ensure_within_resource_ranges()?;
+
+            Ok(proxy_ips)
+        }
+
+        /// Returns only the proxy IPs of the IP versions that `ip_stack` supports.
+        pub fn for_stack(self, ip_stack: IpStack) -> Self {
+            Self {
+                ipv4: self.ipv4.filter(|_| ip_stack.supports_ipv4()),
+                ipv6: self.ipv6.filter(|_| ip_stack.supports_ipv6()),
+            }
+        }
+
+        /// Returns all proxy IPs, IPv4 first.
+        pub fn iter(&self) -> impl Iterator<Item = IpAddr> + use<> {
+            let ipv4 = self.ipv4.into_iter().flatten().map(IpAddr::V4);
+            let ipv6 = self.ipv6.into_iter().flatten().map(IpAddr::V6);
+
+            ipv4.chain(ipv6)
+        }
+
+        fn ensure_within_resource_ranges(self) -> Result<Self> {
+            let outside = self.iter().find(|ip| match ip {
+                IpAddr::V4(ip) => !IPV4_RESOURCES.contains(*ip),
+                IpAddr::V6(ip) => !IPV6_RESOURCES.contains(*ip),
+            });
+
+            if let Some(ip) = outside {
+                anyhow::bail!("Proxy IP {ip} is not within {IPV4_RESOURCES} or {IPV6_RESOURCES}")
+            }
+
+            Ok(self)
+        }
+    }
+
+    #[cfg(test)]
+    impl ProxyIps {
+        pub(crate) fn for_test() -> Self {
+            let ipv4 = [1, 2, 3, 4].map(|i| Ipv4Addr::new(100, 96, 0, i));
+            let ipv6 =
+                [0, 1, 2, 3].map(|i| Ipv6Addr::new(0xfd00, 0x2021, 0x1111, 0x8000, 0, 0, 0, i));
+
+            Self::new(ipv4, ipv6).expect("addresses are within the resource ranges")
+        }
+    }
+
+    impl serde::Serialize for ProxyIps {
+        fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+        where
+            S: serde::Serializer,
+        {
+            serializer.collect_seq(self.iter())
+        }
+    }
+
+    impl<'de> serde::Deserialize<'de> for ProxyIps {
+        fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+        where
+            D: serde::Deserializer<'de>,
+        {
+            deserializer.deserialize_seq(ProxyIpsVisitor)
+        }
+    }
+
+    struct ProxyIpsVisitor;
+
+    impl<'de> Visitor<'de> for ProxyIpsVisitor {
+        type Value = ProxyIps;
+
+        fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+            f.write_str("4 IPv4 and / or 4 IPv6 proxy IPs")
+        }
+
+        fn visit_seq<A>(self, mut seq: A) -> Result<ProxyIps, A::Error>
+        where
+            A: SeqAccess<'de>,
+        {
+            let mut ipv4 = [Ipv4Addr::UNSPECIFIED; 4];
+            let mut ipv6 = [Ipv6Addr::UNSPECIFIED; 4];
+            let mut num_ipv4 = 0;
+            let mut num_ipv6 = 0;
+
+            while let Some(ip) = seq.next_element::<IpAddr>()? {
+                match ip {
+                    IpAddr::V4(ip) => {
+                        *ipv4
+                            .get_mut(num_ipv4)
+                            .ok_or_else(|| A::Error::custom("More than 4 IPv4 proxy IPs"))? = ip;
+                        num_ipv4 += 1;
+                    }
+                    IpAddr::V6(ip) => {
+                        *ipv6
+                            .get_mut(num_ipv6)
+                            .ok_or_else(|| A::Error::custom("More than 4 IPv6 proxy IPs"))? = ip;
+                        num_ipv6 += 1;
+                    }
+                }
+            }
+
+            let ipv4 = match num_ipv4 {
+                0 => None,
+                4 => Some(ipv4),
+                n => return Err(A::Error::invalid_length(n, &"0 or 4 IPv4 proxy IPs")),
+            };
+            let ipv6 = match num_ipv6 {
+                0 => None,
+                4 => Some(ipv6),
+                n => return Err(A::Error::invalid_length(n, &"0 or 4 IPv6 proxy IPs")),
+            };
+
+            if ipv4.is_none() && ipv6.is_none() {
+                return Err(A::Error::invalid_length(0, &self));
+            }
+
+            let proxy_ips = ProxyIps { ipv4, ipv6 }
+                .ensure_within_resource_ranges()
+                .map_err(A::Error::custom)?;
+
+            Ok(proxy_ips)
+        }
     }
 
     #[derive(serde::Serialize, serde::Deserialize)]
@@ -133,7 +286,10 @@ pub mod dns_resource_nat {
             let assigned_ips = AssignedIps {
                 resource: ResourceId::from_u128(100),
                 domain: longest_domain_possible(),
-                proxy_ips: eight_proxy_ips(),
+                proxy_ips: ProxyIps {
+                    ipv4: Some([Ipv4Addr::LOCALHOST; 4]),
+                    ipv6: Some([Ipv6Addr::LOCALHOST; 4]),
+                },
             };
 
             let serialized = serde_json::to_vec(&assigned_ips).unwrap();
@@ -147,16 +303,88 @@ pub mod dns_resource_nat {
             let packet = assigned_ips(
                 ResourceId::from_u128(101),
                 domain("example.com"),
-                eight_proxy_ips(),
+                ProxyIps::for_test(),
             )
             .unwrap();
 
             let slice = packet.as_fz_p2p_control().unwrap();
-            let assigned_ips = decode_assigned_ips(slice).unwrap();
+            let assigned_ips = decode_assigned_ips(&slice).unwrap();
 
             assert_eq!(assigned_ips.resource, ResourceId::from_u128(101));
             assert_eq!(assigned_ips.domain, domain("example.com"));
-            assert_eq!(assigned_ips.proxy_ips, eight_proxy_ips())
+            assert_eq!(assigned_ips.proxy_ips, ProxyIps::for_test())
+        }
+
+        #[test]
+        fn proxy_ips_accepts_4_ips_per_ip_version() {
+            for ips in [ipv4(4), ipv6(4), [ipv4(4), ipv6(4)].concat()] {
+                let proxy_ips = serde_json::from_value::<ProxyIps>(serde_json::json!(ips)).unwrap();
+
+                assert_eq!(proxy_ips.iter().collect::<Vec<_>>(), ips);
+            }
+        }
+
+        #[test]
+        fn proxy_ips_rejects_other_number_of_ips() {
+            for ips in [
+                ipv4(3),
+                ipv4(5),
+                ipv6(5),
+                [ipv4(4), ipv6(3)].concat(),
+                vec![],
+            ] {
+                let result = serde_json::from_value::<ProxyIps>(serde_json::json!(ips));
+
+                assert!(result.is_err(), "{ips:?} should be rejected");
+            }
+        }
+
+        #[test]
+        fn proxy_ips_rejects_ips_outside_reserved_ranges() {
+            let bad_ips = [
+                "1.1.1.1",              // Public internet.
+                "100.64.0.1",           // CG-NAT but reserved for Client tunnel IPs.
+                "2606:4700:4700::1111", // Public internet.
+                "fd00:2021:1111::1",    // Reserved for Client tunnel IPs.
+            ];
+
+            for bad_ip in bad_ips {
+                let bad_ip = bad_ip.parse::<IpAddr>().unwrap();
+                let mut ips = [ipv4(4), ipv6(4)].concat();
+                let i = ips
+                    .iter()
+                    .position(|ip| ip.is_ipv4() == bad_ip.is_ipv4())
+                    .unwrap();
+                ips[i] = bad_ip;
+
+                let result = serde_json::from_value::<ProxyIps>(serde_json::json!(ips));
+
+                assert!(result.is_err(), "{bad_ip} should be rejected as proxy IP");
+            }
+
+            assert!(ProxyIps::new([Ipv4Addr::LOCALHOST; 4], [Ipv6Addr::LOCALHOST; 4]).is_err());
+        }
+
+        #[test]
+        fn assigned_ips_domain_decodes_event_with_invalid_proxy_ips() {
+            let payload = serde_json::json!({
+                "resource": ResourceId::from_u128(101),
+                "domain": "example.com",
+                "proxy_ips": ipv4(3),
+            });
+            let packet = ip_packet::make::fz_p2p_control(
+                [ASSIGNED_IPS_EVENT.into_u8(), 0, 0, 0, 0, 0, 0, 0],
+                &serde_json::to_vec(&payload).unwrap(),
+            )
+            .unwrap();
+            let slice = packet.as_fz_p2p_control().unwrap();
+
+            assert!(decode_assigned_ips(&slice).is_err());
+
+            let assigned_ips_domain = decode_assigned_ips_domain(&slice).unwrap();
+
+            assert_eq!(assigned_ips_domain.resource, ResourceId::from_u128(101));
+            assert_eq!(assigned_ips_domain.domain, domain("example.com"));
         }
 
         #[test]
@@ -207,17 +435,16 @@ pub mod dns_resource_nat {
             domain
         }
 
-        fn eight_proxy_ips() -> Vec<IpAddr> {
-            vec![
-                IpAddr::V4(Ipv4Addr::LOCALHOST),
-                IpAddr::V4(Ipv4Addr::LOCALHOST),
-                IpAddr::V4(Ipv4Addr::LOCALHOST),
-                IpAddr::V4(Ipv4Addr::LOCALHOST),
-                IpAddr::V6(Ipv6Addr::LOCALHOST),
-                IpAddr::V6(Ipv6Addr::LOCALHOST),
-                IpAddr::V6(Ipv6Addr::LOCALHOST),
-                IpAddr::V6(Ipv6Addr::LOCALHOST),
-            ]
+        fn ipv4(n: u8) -> Vec<IpAddr> {
+            (1..=n)
+                .map(|i| IpAddr::from(Ipv4Addr::new(100, 96, 0, i)))
+                .collect()
+        }
+
+        fn ipv6(n: u16) -> Vec<IpAddr> {
+            (0..n)
+                .map(|i| IpAddr::from(Ipv6Addr::new(0xfd00, 0x2021, 0x1111, 0x8000, 0, 0, 0, i)))
+                .collect()
         }
     }
 }

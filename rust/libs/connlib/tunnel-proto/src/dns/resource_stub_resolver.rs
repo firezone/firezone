@@ -1,6 +1,6 @@
 use std::{
     cmp::Ordering,
-    collections::{BTreeSet, HashMap, VecDeque},
+    collections::{BTreeSet, HashMap, VecDeque, hash_map::Entry},
     hash::{Hash, Hasher},
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
     sync::Arc,
@@ -14,12 +14,11 @@ use dns_types::{
 use fast_random_state::FastRandomState;
 use itertools::Itertools as _;
 use logging::err_with_src;
-use smallvec::SmallVec;
 
 use crate::{
     client::IpProvider,
     dns::pattern::{Candidate, Pattern},
-    p2p_control::dns_resource_nat::PROXY_IPS_PER_FAMILY,
+    p2p_control::dns_resource_nat::ProxyIps,
 };
 
 /// The DNS over HTTPS canary domain used by Firefox to check whether DoH can be enabled by default.
@@ -157,33 +156,7 @@ pub(crate) struct DnsResourceRoute {
     pub domain: DnsResourceDomain,
     pub pattern: Pattern,
     pub resource_id: ResourceId,
-    pub proxy_ips: SmallVec<[IpAddr; 8]>,
-}
-
-struct ProxyIps {
-    ipv4: SmallVec<[IpAddr; 4]>,
-    ipv6: SmallVec<[IpAddr; 4]>,
-}
-
-impl ProxyIps {
-    fn new(ips: Vec<IpAddr>) -> Self {
-        let (ipv4, ipv6): (SmallVec<_>, SmallVec<_>) = ips.into_iter().partition(IpAddr::is_ipv4);
-
-        Self { ipv4, ipv6 }
-    }
-
-    fn for_stack(&self, ip_stack: IpStack) -> SmallVec<[IpAddr; 8]> {
-        let mut ips = SmallVec::<[IpAddr; 8]>::new();
-
-        if ip_stack.supports_ipv4() {
-            ips.extend_from_slice(&self.ipv4);
-        }
-        if ip_stack.supports_ipv6() {
-            ips.extend_from_slice(&self.ipv6);
-        }
-
-        ips
-    }
+    pub proxy_ips: ProxyIps,
 }
 
 impl Default for ResourceStubResolver {
@@ -202,21 +175,15 @@ impl ResourceStubResolver {
         if !records.is_empty() {
             tracing::info!(count = %records.len(), "Re-seeding records for DNS resources");
 
-            let num_ip4_records = records
-                .iter()
-                .flat_map(|r| &r.ips)
-                .filter(|ip| ip.is_ipv4())
-                .count();
-            let num_ip6_records = records
-                .iter()
-                .flat_map(|r| &r.ips)
-                .filter(|ip| ip.is_ipv6())
-                .count();
+            // Advance IP provider to make sure future addresses are unique.
+            for _ in &records {
+                let _ = ip_provider.get_proxy_ips();
+            }
 
             for record in records {
-                let ips = ProxyIps::new(record.ips);
+                let ips = record.ips;
 
-                for ip in ips.for_stack(IpStack::Dual) {
+                for ip in ips.iter() {
                     ips_to_fqdn.insert(ip, record.domain.clone());
                 }
 
@@ -227,10 +194,6 @@ impl ResourceStubResolver {
 
                 fqdn_to_ips.insert(record.domain, (domain, ips, record.resources));
             }
-
-            // Advance IP provider to make sure future addresses are unique.
-            let _ = ip_provider.get_n_ipv4(num_ip4_records);
-            let _ = ip_provider.get_n_ipv6(num_ip6_records);
         }
 
         ResourceStubResolver {
@@ -246,7 +209,7 @@ impl ResourceStubResolver {
 
     pub(crate) fn resolved_resources(
         &self,
-    ) -> impl Iterator<Item = (&DnsResourceDomain, &ResourceId, SmallVec<[IpAddr; 8]>)> + '_ {
+    ) -> impl Iterator<Item = (&DnsResourceDomain, &ResourceId, ProxyIps)> + '_ {
         self.fqdn_to_ips
             .values()
             .flat_map(move |(domain, ips, resources)| {
@@ -269,7 +232,7 @@ impl ResourceStubResolver {
         ips: &ProxyIps,
         pattern: &Pattern,
         rid: &ResourceId,
-    ) -> Option<SmallVec<[IpAddr; 8]>> {
+    ) -> Option<ProxyIps> {
         let resource = self
             .dns_resources
             .iter()
@@ -387,24 +350,26 @@ impl ResourceStubResolver {
     ) -> (Vec<IpAddr>, Vec<DnsResourceRoute>) {
         let mut records_changed = false;
 
-        let (domain, ips, assigned_resources) =
-            self.fqdn_to_ips.entry(fqdn.clone()).or_insert_with(|| {
+        let (domain, ips, assigned_resources) = match self.fqdn_to_ips.entry(fqdn.clone()) {
+            Entry::Occupied(o) => o.into_mut(),
+            Entry::Vacant(v) => {
+                let Some(ips) = self.ip_provider.get_proxy_ips() else {
+                    return (Vec::new(), Vec::new());
+                };
+
                 let domain = DnsResourceDomain {
                     id: self.next_domain_id.take(),
                     name: Arc::new(fqdn.clone()),
                 };
 
-                let mut ips = Vec::with_capacity(2 * PROXY_IPS_PER_FAMILY);
-                ips.extend(self.ip_provider.get_n_ipv4(PROXY_IPS_PER_FAMILY));
-                ips.extend(self.ip_provider.get_n_ipv6(PROXY_IPS_PER_FAMILY));
-
                 tracing::debug!(domain = %fqdn, ?ips, "Assigning proxy IPs");
 
                 records_changed = true;
 
-                (domain, ProxyIps::new(ips), BTreeSet::default())
-            });
-        for ip in ips.for_stack(IpStack::Dual) {
+                v.insert((domain, ips, BTreeSet::default()))
+            }
+        };
+        for ip in ips.iter() {
             self.ips_to_fqdn.insert(ip, fqdn.clone());
         }
         let routes = resources
@@ -422,7 +387,7 @@ impl ResourceStubResolver {
             })
             .collect();
 
-        let ips = ips.for_stack(IpStack::Dual).into_vec();
+        let ips = ips.iter().collect();
 
         if records_changed {
             self.events.push_back(Event::RecordsChanged(self.records()));
@@ -553,7 +518,7 @@ impl ResourceStubResolver {
             .map(|(name, (_, ips, resources))| DnsResourceRecord {
                 domain: name.clone(),
                 resources: resources.clone(),
-                ips: ips.for_stack(IpStack::Dual).into_vec(),
+                ips: *ips,
             })
             .collect()
     }
@@ -568,7 +533,7 @@ pub enum Event {
 pub struct DnsResourceRecord {
     pub domain: DomainName,
     pub resources: BTreeSet<(Pattern, ResourceId)>,
-    pub ips: Vec<IpAddr>,
+    pub ips: ProxyIps,
 }
 
 pub(crate) fn reverse_dns_addr(name: &str) -> Option<IpAddr> {
@@ -846,16 +811,7 @@ mod tests {
                 Pattern::new("example.com").unwrap(),
                 ResourceId::from_u128(1),
             )]),
-            ips: vec![
-                IpAddr::from(Ipv4Addr::new(100, 96, 0, 1)),
-                IpAddr::from(Ipv4Addr::new(100, 96, 0, 2)),
-                IpAddr::from(Ipv4Addr::new(100, 96, 0, 3)),
-                IpAddr::from(Ipv4Addr::new(100, 96, 0, 4)),
-                IpAddr::from(Ipv6Addr::new(0xfd00, 0x2021, 0x1111, 0x8000, 0, 0, 0, 0)),
-                IpAddr::from(Ipv6Addr::new(0xfd00, 0x2021, 0x1111, 0x8000, 0, 0, 0, 1)),
-                IpAddr::from(Ipv6Addr::new(0xfd00, 0x2021, 0x1111, 0x8000, 0, 0, 0, 2)),
-                IpAddr::from(Ipv6Addr::new(0xfd00, 0x2021, 0x1111, 0x8000, 0, 0, 0, 3)),
-            ],
+            ips: ProxyIps::for_test(),
         }]));
 
         resolver.add_resource(
@@ -881,11 +837,10 @@ mod tests {
     fn reconciles_stale_cached_assignment_with_current_resource_address() {
         let domain = "db.example.com".parse::<DomainName>().unwrap();
         let resource_id = ResourceId::from_u128(1);
-        let proxy_ip = IpAddr::from(Ipv4Addr::new(100, 96, 0, 1));
         let mut resolver = ResourceStubResolver::new(BTreeSet::from([DnsResourceRecord {
             domain: domain.clone(),
             resources: BTreeSet::from([(Pattern::new("db.example.com").unwrap(), resource_id)]),
-            ips: vec![proxy_ip],
+            ips: ProxyIps::for_test(),
         }]));
 
         resolver.add_resource(resource_id, "other.example.com".to_owned(), IpStack::Dual);
@@ -896,7 +851,7 @@ mod tests {
             BTreeSet::from([DnsResourceRecord {
                 domain,
                 resources: BTreeSet::new(),
-                ips: vec![proxy_ip],
+                ips: ProxyIps::for_test(),
             }])
         );
     }
@@ -928,16 +883,7 @@ mod tests {
                     Pattern::new("example.com").unwrap(),
                     ResourceId::from_u128(1),
                 )]),
-                ips: vec![
-                    IpAddr::from(Ipv4Addr::new(100, 96, 0, 1)),
-                    IpAddr::from(Ipv4Addr::new(100, 96, 0, 2)),
-                    IpAddr::from(Ipv4Addr::new(100, 96, 0, 3)),
-                    IpAddr::from(Ipv4Addr::new(100, 96, 0, 4)),
-                    IpAddr::from(Ipv6Addr::new(0xfd00, 0x2021, 0x1111, 0x8000, 0, 0, 0, 0)),
-                    IpAddr::from(Ipv6Addr::new(0xfd00, 0x2021, 0x1111, 0x8000, 0, 0, 0, 1)),
-                    IpAddr::from(Ipv6Addr::new(0xfd00, 0x2021, 0x1111, 0x8000, 0, 0, 0, 2)),
-                    IpAddr::from(Ipv6Addr::new(0xfd00, 0x2021, 0x1111, 0x8000, 0, 0, 0, 3)),
-                ]
+                ips: ProxyIps::for_test()
             }])
         )
     }

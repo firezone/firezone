@@ -17,7 +17,7 @@ use crate::filter_engine::FilterEngine;
 use crate::gateway::nat_table::{NatTable, TranslateIncomingResult};
 use crate::messages::gateway::ResourceDescription;
 use crate::messages::{Filter, IngestToken, Key};
-use crate::p2p_control::dns_resource_nat::PROXY_IPS_PER_FAMILY;
+use crate::p2p_control::dns_resource_nat::ProxyIps;
 use crate::routing_table::{self, RoutingTable};
 use crate::unroutable_packet::UnroutablePacket;
 use crate::{IpConfig, NotAllowedResource, NotClientIp, p2p_control};
@@ -92,31 +92,15 @@ impl ClientOnGateway {
         name: DomainName,
         resource_id: ResourceId,
         resolved_ips: BTreeSet<IpAddr>,
-        proxy_ips: BTreeSet<IpAddr>,
+        proxy_ips: ProxyIps,
     ) -> Result<()> {
-        // Proxy IPs are chosen by the Client; anything we accept here ends up in our routing table.
-        let num_proxy_ips = proxy_ips.len();
-        let proxy_ips = first_proxy_ips(proxy_ips);
-
-        if proxy_ips.len() < num_proxy_ips {
-            tracing::warn!(
-                domain = %name,
-                ignored = num_proxy_ips - proxy_ips.len(),
-                "Too many proxy IPs; using the first {PROXY_IPS_PER_FAMILY} of each IP version"
-            );
-        }
-
-        for proxy_ip in &proxy_ips {
-            anyhow::ensure!(
-                is_dns_addr(*proxy_ip),
-                "Proxy IP {proxy_ip} is not within {IPV4_RESOURCES} or {IPV6_RESOURCES}"
-            );
+        for proxy_ip in proxy_ips.iter() {
             // A Client only re-assigns proxy IPs with a new key, which resets its state.
             anyhow::ensure!(
                 self.permanent_translations
-                    .get(proxy_ip)
+                    .get(&proxy_ip)
                     .is_none_or(|state| state.domain == name),
-                ProxyIpAlreadyAssigned(*proxy_ip)
+                ProxyIpAlreadyAssigned(proxy_ip)
             );
         }
 
@@ -143,7 +127,7 @@ impl ClientOnGateway {
 
         tracing::debug!(domain = %name, ?resolved_ips, ?proxy_ips, "Setting up DNS resource NAT");
 
-        for proxy_ip in proxy_ips {
+        for proxy_ip in proxy_ips.iter() {
             let maybe_real_ip = match proxy_ip {
                 IpAddr::V4(_) => resolved_ipv4.next(),
                 IpAddr::V6(_) => resolved_ipv6.next(),
@@ -763,25 +747,6 @@ impl TranslationState {
     }
 }
 
-/// Keeps the first [`PROXY_IPS_PER_FAMILY`] IPv4 and IPv6 addresses of `ips`.
-fn first_proxy_ips(ips: impl IntoIterator<Item = IpAddr>) -> BTreeSet<IpAddr> {
-    let mut num_ipv4 = 0;
-    let mut num_ipv6 = 0;
-
-    ips.into_iter()
-        .filter(|ip| {
-            let num = if ip.is_ipv4() {
-                &mut num_ipv4
-            } else {
-                &mut num_ipv6
-            };
-            *num += 1;
-
-            *num <= PROXY_IPS_PER_FAMILY
-        })
-        .collect()
-}
-
 fn is_dns_addr(addr: IpAddr) -> bool {
     IpNetwork::from(IPV4_RESOURCES).contains(addr) || IpNetwork::from(IPV6_RESOURCES).contains(addr)
 }
@@ -1046,7 +1011,7 @@ mod tests {
             foo_name().parse().unwrap(),
             foo_resource_id(),
             BTreeSet::from([foo_real_ip1().into()]),
-            BTreeSet::from([proxy_ip4_1()]),
+            ProxyIps::for_test(),
         )
         .unwrap();
 
@@ -1112,7 +1077,7 @@ mod tests {
             foo_name().parse().unwrap(),
             foo_resource_id(),
             BTreeSet::from([foo_real_ip1().into()]),
-            BTreeSet::from([proxy_ip4_1()]),
+            ProxyIps::for_test(),
         )
         .unwrap();
 
@@ -1208,7 +1173,7 @@ mod tests {
             foo_name().parse().unwrap(),
             foo_resource_id(),
             BTreeSet::from([foo_real_ip1().into()]),
-            BTreeSet::from([proxy_ip4_1()]),
+            ProxyIps::for_test(),
         )
         .unwrap();
 
@@ -1276,7 +1241,7 @@ mod tests {
             foo_name().parse().unwrap(),
             foo_resource_id(),
             BTreeSet::from([foo_real_ip1().into()]),
-            BTreeSet::from([proxy_ip4_1(), proxy_ip4_2()]),
+            ProxyIps::for_test(),
         )
         .unwrap();
 
@@ -1298,7 +1263,7 @@ mod tests {
                 foo_name().parse().unwrap(),
                 foo_resource_id(),
                 BTreeSet::from([foo_real_ip2().into()]), // Setting up with a new IP!
-                BTreeSet::from([proxy_ip4_1(), proxy_ip4_2()]),
+                ProxyIps::for_test(),
             )
             .unwrap();
 
@@ -1366,7 +1331,7 @@ mod tests {
             foo_name().parse().unwrap(),
             foo_resource_id(),
             BTreeSet::from([foo_real_ip1().into()]),
-            BTreeSet::from([proxy_ip4_1(), proxy_ip4_2()]),
+            ProxyIps::for_test(),
         )
         .unwrap();
 
@@ -1391,7 +1356,7 @@ mod tests {
             baz_name().parse().unwrap(),
             baz_resource_id(),
             BTreeSet::from([baz_real_ip1().into()]),
-            BTreeSet::from([proxy_ip4_1(), proxy_ip4_2()]),
+            ProxyIps::for_test(),
         );
 
         assert!(result.unwrap_err().any_is::<ProxyIpAlreadyAssigned>());
@@ -1416,7 +1381,7 @@ mod tests {
             foo_name().parse().unwrap(),
             foo_resource_id(),
             BTreeSet::from([foo_real_ip1().into()]),
-            BTreeSet::from([proxy_ip4_1(), proxy_ip4_2(), proxy_ip6_1(), proxy_ip6_2()]),
+            ProxyIps::for_test(),
         )
         .unwrap();
 
@@ -1443,43 +1408,6 @@ mod tests {
         assert!(peer.permanent_translations.contains_key(&proxy_ip6_2()));
     }
 
-    #[test]
-    fn setup_nat_ignores_extra_proxy_ips() {
-        let _guard = logging::test("trace");
-
-        let mut peer = ClientOnGateway::new(client_id(), client_key(), client_tun(), gateway_tun());
-        peer.add_resource(foo_dns_resource(), None, Instant::now());
-
-        let max_ipv4 = (1..=4).map(|i| IpAddr::from(Ipv4Addr::new(100, 96, 0, i)));
-        let max_ipv6 =
-            (0..4).map(|i| IpAddr::from(Ipv6Addr::new(0xfd00, 0x2021, 0x1111, 0x8000, 0, 0, 0, i)));
-
-        let too_many_ipv4 = BTreeSet::from_iter(
-            max_ipv4
-                .clone()
-                .chain([IpAddr::from(Ipv4Addr::new(100, 96, 0, 5))]),
-        );
-        let too_many_ipv6 = BTreeSet::from_iter(max_ipv6.clone().chain([IpAddr::from(
-            Ipv6Addr::new(0xfd00, 0x2021, 0x1111, 0x8000, 0, 0, 0, 4),
-        )]));
-
-        peer.setup_nat(
-            foo_name().parse().unwrap(),
-            foo_resource_id(),
-            BTreeSet::from([foo_real_ip1().into()]),
-            too_many_ipv4.union(&too_many_ipv6).copied().collect(),
-        )
-        .unwrap();
-
-        assert_eq!(
-            peer.permanent_translations
-                .keys()
-                .copied()
-                .collect::<BTreeSet<_>>(),
-            BTreeSet::from_iter(max_ipv4.chain(max_ipv6))
-        );
-    }
-
     // Two distinct DNS resources both using "foo.com" as their address:
     //   - foo_dns_resource:  allows UDP/80
     //   - foo_dns_resource2: allows TCP/443
@@ -1503,14 +1431,14 @@ mod tests {
             foo_name().parse().unwrap(),
             foo_resource_id(),
             BTreeSet::from([foo_real_ip1().into()]),
-            BTreeSet::from([proxy_ip4_1()]),
+            ProxyIps::for_test(),
         )
         .unwrap();
         peer.setup_nat(
             foo_name().parse().unwrap(),
             foo_resource2_id(),
             BTreeSet::from([foo_real_ip1().into()]),
-            BTreeSet::from([proxy_ip4_1()]),
+            ProxyIps::for_test(),
         )
         .unwrap();
 
@@ -1555,32 +1483,6 @@ mod tests {
             "TCP/{} packet to shared proxy IP should be forwarded",
             foo_allowed_port2(),
         );
-    }
-
-    #[test]
-    fn rejects_proxy_ips_outside_reserved_ranges() {
-        let mut peer = ClientOnGateway::new(client_id(), client_key(), client_tun(), gateway_tun());
-        peer.add_resource(foo_dns_resource(), None, Instant::now());
-
-        let bad_ips = [
-            "1.1.1.1",              // Public internet.
-            "100.64.0.1",           // CG-NAT but reserved for Client tunnel IPs.
-            "2606:4700:4700::1111", // Public internet.
-            "fd00:2021:1111::1",    // Reserved for Client tunnel IPs.
-        ];
-
-        for bad_ip in bad_ips {
-            let result = peer.setup_nat(
-                foo_name().parse().unwrap(),
-                foo_resource_id(),
-                BTreeSet::from([foo_real_ip1().into()]),
-                BTreeSet::from([proxy_ip4_1(), bad_ip.parse().unwrap()]),
-            );
-
-            assert!(result.is_err(), "{bad_ip} should be rejected as proxy IP");
-        }
-
-        assert!(peer.permanent_translations.is_empty());
     }
 
     #[test]
