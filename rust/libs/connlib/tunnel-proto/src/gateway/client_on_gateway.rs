@@ -57,11 +57,8 @@ pub enum InboundRewrite {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum OutboundRewrite {
     None,
-    /// The destination was translated from the client's proxy IP to the resource's IP through
-    /// an existing NAT session.
+    /// The destination was translated from the client's proxy IP to the resource's IP.
     Destination(Protocol, IpAddr),
-    /// The destination was translated through a NAT session created for this packet.
-    NewNatSession,
 }
 
 #[derive(Debug, PartialEq)]
@@ -465,11 +462,8 @@ impl ClientOnGateway {
         let existing = self
             .nat_table
             .try_translate_outgoing_existing(&packet, now)?;
-        let ((source_protocol, real_ip), rewrite) = match existing {
-            Some(existing) => (
-                existing,
-                OutboundRewrite::Destination(existing.0, existing.1),
-            ),
+        let (source_protocol, real_ip) = match existing {
+            Some(existing) => existing,
             None => {
                 let Some(resolved_ip) = state.resolved_ip else {
                     return Ok(TranslateOutboundResult::IcmpError {
@@ -491,11 +485,8 @@ impl ClientOnGateway {
                     });
                 }
 
-                let outside = self
-                    .nat_table
-                    .translate_outgoing(&packet, resolved_ip, now)?;
-
-                (outside, OutboundRewrite::NewNatSession)
+                self.nat_table
+                    .translate_outgoing(&packet, resolved_ip, now)?
             }
         };
 
@@ -505,7 +496,10 @@ impl ClientOnGateway {
 
         flow_tracker::record_translated_destination(source_protocol, real_ip);
 
-        Ok(TranslateOutboundResult::Send(packet, rewrite))
+        Ok(TranslateOutboundResult::Send(
+            packet,
+            OutboundRewrite::Destination(source_protocol, real_ip),
+        ))
     }
 
     fn transform_tun_to_network(

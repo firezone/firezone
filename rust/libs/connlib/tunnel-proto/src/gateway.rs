@@ -19,7 +19,7 @@ use anyhow::{Context, ErrorExt, Result};
 use connlib_model::{ClientId, IceCandidate, PublicKey, RelayId, ResourceId};
 use dns_types::{DomainName, Query, Response, ResponseBuilder, ResponseCode};
 use fast_random_state::FastRandomState;
-use ip_packet::{FzP2pControlSlice, IpPacket, Protocol};
+use ip_packet::{FzP2pControlSlice, IpPacket};
 use secrecy::ExposeSecret as _;
 use snownet::{IceConfig, IceRole, Node, RelaySocket};
 use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
@@ -78,7 +78,7 @@ pub struct GatewayState {
 /// The decision taken for the first packet of a flow in a [`PeerBatch`], reused for the rest.
 struct InboundDecision {
     key: BatchingKey,
-    rewrite: Option<(Protocol, IpAddr)>,
+    rewrite: OutboundRewrite,
     flows: flow_tracker::DetachedFlow,
 }
 
@@ -326,29 +326,17 @@ impl GatewayState {
             Err(e) => return Err(e.context("Failed to translate outbound packet")),
         };
 
-        let reuse_decision = |key, rewrite| {
-            decisions.push(InboundDecision {
-                key,
-                rewrite,
-                flows: flows.detach(),
-            });
-        };
-
         match (translated, key) {
-            (TranslateOutboundResult::Send(packet, OutboundRewrite::None), Some(key)) => {
-                reuse_decision(key, None);
+            (TranslateOutboundResult::Send(packet, rewrite), Some(key)) => {
+                decisions.push(InboundDecision {
+                    key,
+                    rewrite,
+                    flows: flows.detach(),
+                });
 
                 Ok(Some(packet))
             }
-            (
-                TranslateOutboundResult::Send(packet, OutboundRewrite::Destination(proto, ip)),
-                Some(key),
-            ) => {
-                reuse_decision(key, Some((proto, ip)));
-
-                Ok(Some(packet))
-            }
-            (TranslateOutboundResult::Send(packet, _), _) => Ok(Some(packet)),
+            (TranslateOutboundResult::Send(packet, _), None) => Ok(Some(packet)),
             (
                 TranslateOutboundResult::IcmpError {
                     reply,
@@ -881,7 +869,7 @@ impl Iterator for PeerBatch<'_> {
             ));
         };
 
-        if let Some((proto, ip)) = decision.rewrite
+        if let OutboundRewrite::Destination(proto, ip) = decision.rewrite
             && let Err(e) = packet
                 .translate_destination(proto, ip)
                 .context("Failed to translate packet to new destination")
