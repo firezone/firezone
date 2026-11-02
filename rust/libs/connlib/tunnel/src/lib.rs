@@ -444,10 +444,9 @@ impl ClientTunnel {
 
                     for datagram in datagrams.drain() {
                         let mut datagram = decrypts.add(datagram);
-                        let mut segments = datagram.segments();
-                        let mut pending = None;
+                        let mut segments = datagram.segments().peekable();
 
-                        while let Some(segment) = pending.take().or_else(|| segments.next()) {
+                        while let Some(segment) = segments.next() {
                             let packet = &datagram[segment];
 
                             udp_received.record(packet);
@@ -478,12 +477,9 @@ impl ClientTunnel {
                             let mut group = Vec::with_capacity(datagram.num_segments());
                             group.push(segment);
 
-                            for segment in segments.by_ref() {
-                                if !batch.push(&datagram[segment], now) {
-                                    pending = Some(segment);
-                                    break;
-                                }
-
+                            while let Some(segment) =
+                                segments.next_if(|&s| batch.push(&datagram[s], now))
+                            {
                                 udp_received.record(&datagram[segment]);
                                 group.push(segment);
                             }
@@ -711,10 +707,9 @@ impl GatewayTunnel {
 
                     for datagram in datagrams.drain() {
                         let mut datagram = decrypts.add(datagram);
-                        let mut segments = datagram.segments();
-                        let mut pending = None;
+                        let mut segments = datagram.segments().peekable();
 
-                        while let Some(segment) = pending.take().or_else(|| segments.next()) {
+                        while let Some(segment) = segments.next() {
                             let packet = &datagram[segment];
 
                             udp_received.record(packet);
@@ -745,12 +740,9 @@ impl GatewayTunnel {
                             let mut group = Vec::with_capacity(datagram.num_segments());
                             group.push(segment);
 
-                            for segment in segments.by_ref() {
-                                if !batch.push(&datagram[segment], now) {
-                                    pending = Some(segment);
-                                    break;
-                                }
-
+                            while let Some(segment) =
+                                segments.next_if(|&s| batch.push(&datagram[s], now))
+                            {
                                 udp_received.record(&datagram[segment]);
                                 group.push(segment);
                             }
