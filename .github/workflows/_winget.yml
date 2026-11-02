@@ -1,7 +1,8 @@
-name: Prepare winget manifests
-# Prepares the winget manifests on a branch of the firezone/winget-pkgs fork and
-# opens the pull request to microsoft/winget-pkgs. Apps cannot open pull requests
-# there, so that takes the token of an account outside the organisation.
+name: Publish to winget
+# Submits the release's installers to microsoft/winget-pkgs. komac pushes the
+# manifests to a branch of the firezone/winget-pkgs fork and opens the pull
+# request as `firezone-bot`, an account outside the organisation: apps cannot
+# open pull requests there.
 on:
   workflow_call:
     inputs:
@@ -28,7 +29,7 @@ permissions:
 
 jobs:
   # komac analyses the installers like Windows would, e.g. for their install location.
-  generate:
+  submit:
     runs-on: windows-latest
     defaults:
       run:
@@ -36,9 +37,6 @@ jobs:
     permissions:
       contents: read
       security-events: write # trivy SARIF upload from setup-mise
-    outputs:
-      branch: ${{ steps.package.outputs.branch }}
-      title: ${{ steps.manifests.outputs.title }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -48,92 +46,6 @@ jobs:
           install_args: --cd rust/gui-client github:russellbanks/Komac
         env:
           GITHUB_TOKEN: ${{ github.token }}
-      - id: package
-        env:
-          identifier: ${{ inputs.identifier }}
-          release_name: ${{ inputs.release_name }}
-        run: |
-          version=${release_name##*-}
-          {
-            echo "version=$version"
-            echo "branch=$identifier-$version"
-          } >> "$GITHUB_OUTPUT"
-      - name: Generate the manifests
-        id: manifests
-        env:
-          # komac only reads: the release, and the package's manifests in microsoft/winget-pkgs.
-          GITHUB_TOKEN: ${{ github.token }}
-          GH_TOKEN: ${{ github.token }}
-          IDENTIFIER: ${{ inputs.identifier }}
-          VERSION: ${{ steps.package.outputs.version }}
-          RELEASE_TAG: ${{ inputs.release_tag }}
-          NO_COLOR: "1"
-        run: |
-          set -euo pipefail
-
-          mapfile -t urls < <(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" \
-            --jq '.assets[] | select(.name | test("\\.(exe|msi|msix|appx)(bundle)?$")) | .browser_download_url')
-
-          # komac only writes the manifests to disk on its way to submitting them, so
-          # take them from what a dry run prints instead.
-          # TODO: Replace the Python below with `--exit --output .` once a komac release has
-          # `--exit`: https://github.com/russellbanks/Komac/blob/main/src/commands/update_version.rs
-          mise --cd rust/gui-client exec -- komac update "$IDENTIFIER" --version "$VERSION" --urls "${urls[@]}" \
-            --release-notes-url https://www.firezone.dev/changelog --dry-run > "$RUNNER_TEMP/komac.out"
-
-          python - "$RUNNER_TEMP/komac.out" "$IDENTIFIER" "$VERSION" <<'PYTHON'
-          import os, re, sys
-
-          output, identifier, version = sys.argv[1:]
-          data = open(output, "rb").read()
-          directory = os.path.join("manifests", identifier[0].lower(), *identifier.split("."), version)
-          os.makedirs(directory)
-
-          starts = [m.start() for m in re.finditer(rb"^# Created with ", data, re.M)]
-          for start, end in zip(starts, starts[1:] + [len(data)]):
-              # komac prints a newline after each manifest, whose own lines end in CRLF.
-              manifest = data[start:end]
-              assert manifest.endswith(b"\r\n\n"), manifest
-              manifest = manifest[:-1]
-              kind = re.search(rb"^ManifestType: (\S+)", manifest, re.M).group(1).decode()
-              if kind == "version":
-                  name = f"{identifier}.yaml"
-              elif kind == "installer":
-                  name = f"{identifier}.installer.yaml"
-              else:
-                  locale = re.search(rb"^PackageLocale: (\S+)", manifest, re.M).group(1).decode()
-                  name = f"{identifier}.locale.{locale}.yaml"
-              with open(os.path.join(directory, name), "xb") as f:
-                  f.write(manifest)
-
-          assert len(starts) >= 3, data
-          PYTHON
-
-          # The pull request title komac would give it.
-          latest=$(sed -n "s/^Latest version of $IDENTIFIER: //p" "$RUNNER_TEMP/komac.out")
-          if [ "$latest" = "$VERSION" ]; then
-            state="Update version"
-          elif [ "$(printf '%s\n' "$latest" "$VERSION" | sort -V | tail -n1)" = "$VERSION" ]; then
-            state="New version"
-          else
-            state="Add version"
-          fi
-          echo "title=$state: $IDENTIFIER version $VERSION" >> "$GITHUB_OUTPUT"
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: winget-manifests-${{ inputs.release_name }}
-          path: manifests/
-          if-no-files-found: error
-
-  commit:
-    needs: generate
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          name: winget-manifests-${{ inputs.release_name }}
-          path: manifests
-      - run: git init -q .
       - uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         id: app-token
         with:
@@ -153,30 +65,20 @@ jobs:
             exit 1
           fi
           echo "$response"
-      - uses: firezone/actions/commit@f92afb7395591f2205bdcfd42b975c8dcf51bb6b # main
-        with:
-          token: ${{ steps.app-token.outputs.token }}
-          repository: firezone/winget-pkgs
-          branch: ${{ needs.generate.outputs.branch }}
-          base: master
-          message: ${{ needs.generate.outputs.title }}
-          paths: manifests
-      - name: Open the pull request
+      - name: Submit the manifests
         env:
-          GH_TOKEN: ${{ secrets.WINGET_TOKEN }}
-          BRANCH: ${{ needs.generate.outputs.branch }}
-          TITLE: ${{ needs.generate.outputs.title }}
-          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ secrets.WINGET_TOKEN }}
+          KOMAC_FORK_OWNER: firezone
+          IDENTIFIER: ${{ inputs.identifier }}
+          RELEASE_NAME: ${{ inputs.release_name }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          NO_COLOR: "1"
         run: |
           set -euo pipefail
 
-          url=$(gh api "repos/microsoft/winget-pkgs/pulls?head=firezone:$BRANCH&state=open" --jq '.[0].html_url // empty')
-          if [ -z "$url" ]; then
-            url=$(gh api repos/microsoft/winget-pkgs/pulls \
-              -f title="$TITLE" \
-              -f head="firezone:$BRANCH" \
-              -f base=master \
-              -f body="Created by [Firezone's release workflow]($RUN_URL) with [Komac](https://github.com/russellbanks/Komac)." \
-              --jq .html_url)
-          fi
-          echo "winget pull request for $TITLE: $url" >> "$GITHUB_STEP_SUMMARY"
+          mapfile -t urls < <(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" \
+            --jq '.assets[] | select(.name | test("\\.(exe|msi|msix|appx)(bundle)?$")) | .browser_download_url')
+
+          mise --cd rust/gui-client exec -- komac update "$IDENTIFIER" --version "${RELEASE_NAME##*-}" --urls "${urls[@]}" \
+            --release-notes-url https://www.firezone.dev/changelog --submit

@@ -115,7 +115,7 @@ jobs:
       sha: ${{ needs.resolve-nix-cache-sha.outputs.sha }}
       push_to_cache: true
 
-  prepare-winget-gui-client:
+  publish-winget-gui-client:
     if: ${{ startsWith(inputs.release_name || github.event.release.name, 'gui-client-') }}
     uses: ./.github/workflows/_winget.yml
     permissions:
@@ -129,7 +129,7 @@ jobs:
       release_name: ${{ inputs.release_name || github.event.release.name }}
       release_tag: ${{ inputs.release_name || github.event.release.tag_name || github.ref_name }}
 
-  prepare-winget-headless-client:
+  publish-winget-headless-client:
     if: ${{ startsWith(inputs.release_name || github.event.release.name, 'headless-client-') }}
     uses: ./.github/workflows/_winget.yml
     permissions:

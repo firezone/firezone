@@ -3,7 +3,7 @@
 # Usage: mise run <task> (from this directory) or mise run //rust/gui-client:<task> (from repo root)
 
 [tools]
-# Generates the winget manifests in `_winget.yml`.
+# Submits the winget manifests in `_winget.yml`.
 "github:russellbanks/Komac" = { version = "2.17.1", bin = "komac", os = ["windows"] }
 
 [tasks.dev]
