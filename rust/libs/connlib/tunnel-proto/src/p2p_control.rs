@@ -132,7 +132,10 @@ pub mod dns_resource_nat {
         /// # Errors
         ///
         /// Fails if an address is not within [`IPV4_RESOURCES`] or [`IPV6_RESOURCES`].
-        pub fn new(ipv4: [Ipv4Addr; 4], ipv6: [Ipv6Addr; 4]) -> Result<Self> {
+        pub fn new(mut ipv4: [Ipv4Addr; 4], mut ipv6: [Ipv6Addr; 4]) -> Result<Self> {
+            ipv4.sort();
+            ipv6.sort();
+
             let proxy_ips = Self {
                 ipv4: Some(ipv4),
                 ipv6: Some(ipv6),
@@ -238,12 +241,18 @@ pub mod dns_resource_nat {
 
             let ipv4 = match num_ipv4 {
                 0 => None,
-                4 => Some(ipv4),
+                4 => {
+                    ipv4.sort();
+                    Some(ipv4)
+                }
                 n => return Err(A::Error::invalid_length(n, &"0 or 4 IPv4 proxy IPs")),
             };
             let ipv6 = match num_ipv6 {
                 0 => None,
-                4 => Some(ipv6),
+                4 => {
+                    ipv6.sort();
+                    Some(ipv6)
+                }
                 n => return Err(A::Error::invalid_length(n, &"0 or 4 IPv6 proxy IPs")),
             };
 
@@ -322,6 +331,19 @@ pub mod dns_resource_nat {
 
                 assert_eq!(proxy_ips.iter().collect::<Vec<_>>(), ips);
             }
+
+            let unordered = [ipv6(4), ipv4(4)]
+                .concat()
+                .into_iter()
+                .rev()
+                .collect::<Vec<_>>();
+            let proxy_ips =
+                serde_json::from_value::<ProxyIps>(serde_json::json!(unordered)).unwrap();
+
+            assert_eq!(
+                proxy_ips.iter().collect::<Vec<_>>(),
+                [ipv4(4), ipv6(4)].concat()
+            );
         }
 
         #[test]
