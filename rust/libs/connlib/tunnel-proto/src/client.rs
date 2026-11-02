@@ -603,13 +603,13 @@ impl ClientState {
         }
 
         let internet_resource = self.active_internet_resource().map(|resource| resource.id);
-        let mut guard = self.flow_tracker.begin_tun_packet(packet, now);
+        let mut flows = self.flow_tracker.begin_tun_batch(packet, now);
 
         // Recursive DNS queries we tunnel to upstream resolvers are internal
         // traffic and never become flows either; discarding the flow data
         // before any fact is recorded keeps it that way.
         if self.udp_dns_client.owns_outbound(packet) || self.tcp_dns_client.owns_outbound(packet) {
-            guard.discard();
+            flows.discard();
         }
 
         let mut flow = Flow::of(packet);
@@ -638,7 +638,7 @@ impl ClientState {
                     return Ok(None);
                 };
 
-                return Ok(Some(TunBatch::new(None, None, tunnel, guard)));
+                return Ok(Some(TunBatch::new(None, None, tunnel, flows)));
             }
         };
         let direct_gateway = self.gateways.peer_by_ip(dst).map(|(gid, _)| gid);
@@ -752,7 +752,7 @@ impl ClientState {
             return Ok(None);
         };
 
-        Ok(Some(TunBatch::new(flow, None, tunnel, guard)))
+        Ok(Some(TunBatch::new(flow, None, tunnel, flows)))
     }
 
     /// Feed an internally-produced or previously-buffered IP packet through normal TUN routing
@@ -837,7 +837,7 @@ impl ClientState {
             return Ok(Some(packet));
         }
 
-        let guard = self.flow_tracker.begin_network_packet(local, from, now);
+        let flows = self.flow_tracker.begin_network_batch(local, from, now);
 
         flow_tracker::record_decrypted_packet(&packet);
 
@@ -854,7 +854,7 @@ impl ClientState {
         if let Some(fz_p2p_control) = packet.as_fz_p2p_control() {
             // Control traffic is not a flow; release the tracker borrow for
             // the `&mut self` calls below.
-            drop(guard);
+            drop(flows);
 
             match (fz_p2p_control.event_type(), pid) {
                 (p2p_control::DOMAIN_STATUS_EVENT, ClientOrGatewayId::Gateway(gid)) => {
@@ -963,7 +963,7 @@ impl ClientState {
                     self.inbound_decisions.push(InboundDecision {
                         gid,
                         flow,
-                        flows: guard.into_batch().0,
+                        flows: flows.detach(),
                     });
                 }
             }
@@ -2931,7 +2931,7 @@ fn client_for_icmp_error(
 struct InboundDecision {
     gid: GatewayId,
     flow: Flow,
-    flows: flow_tracker::FlowBatch,
+    flows: flow_tracker::DetachedFlowBatch,
 }
 
 /// The data messages of one received datagram being handled, in order.

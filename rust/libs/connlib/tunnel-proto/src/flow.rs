@@ -46,8 +46,7 @@ pub struct TunBatch<'a, S: flow_tracker::Scope> {
     /// The source rewrite of the first packet, applied to every further one.
     nat: Option<(Protocol, IpAddr)>,
     tunnel: snownet::EncapsulateBatch<'a>,
-    flows: flow_tracker::FlowBatch,
-    flow_tracker: &'a mut flow_tracker::Tracker<S>,
+    flows: flow_tracker::FlowBatch<'a, S>,
     len: NonZeroUsize,
 }
 
@@ -56,16 +55,13 @@ impl<'a, S: flow_tracker::Scope> TunBatch<'a, S> {
         flow: Option<Flow>,
         nat: Option<(Protocol, IpAddr)>,
         tunnel: snownet::EncapsulateBatch<'a>,
-        guard: flow_tracker::CurrentFlowGuard<'a, S>,
+        flows: flow_tracker::FlowBatch<'a, S>,
     ) -> Self {
-        let (flows, flow_tracker) = guard.into_batch();
-
         Self {
             flow,
             nat,
             tunnel,
             flows,
-            flow_tracker,
             len: NonZeroUsize::MIN,
         }
     }
@@ -105,13 +101,17 @@ impl<'a, S: flow_tracker::Scope> TunBatch<'a, S> {
     }
 
     /// Reserves the batch's counters and records its flow.
-    pub fn finish(self) -> Result<snownet::PendingEncapsulate> {
-        let encapsulation = self
-            .tunnel
-            .finish(self.len)
-            .context("Failed to encapsulate")?;
+    pub fn finish(mut self) -> Result<snownet::PendingEncapsulate> {
+        let encapsulation = match self.tunnel.finish(self.len) {
+            Ok(encapsulation) => encapsulation,
+            Err(e) => {
+                self.flows.discard();
 
-        self.flow_tracker.insert_batch(self.flows);
+                return Err(e).context("Failed to encapsulate");
+            }
+        };
+
+        self.flows.finish();
 
         Ok(encapsulation)
     }

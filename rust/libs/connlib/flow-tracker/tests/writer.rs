@@ -181,20 +181,20 @@ fn tracked_packets_spool_open_and_completed_reports() {
 
     spool.observe(|| {
         {
-            let flow = tracker.begin_network_packet(local, remote, now);
+            let flows = tracker.begin_network_batch(local, remote, now);
             flow_tracker::record_decrypted_packet(&request);
             flow_tracker::record_peer(client, Role::Responder);
             flow_tracker::record_resource(resource);
             flow_tracker::record_ingest_token(Some(&token));
-            drop(flow);
+            flows.finish();
         }
 
         {
-            let flow = tracker.begin_tun_packet(&reply, now);
+            let flows = tracker.begin_tun_batch(&reply, now);
             flow_tracker::record_peer(client, Role::Responder);
             flow_tracker::record_resource(resource);
             flow_tracker::record_transmit(Some(local), remote);
-            drop(flow);
+            flows.finish();
         }
 
         tracker.close_all(now);
@@ -420,7 +420,7 @@ fn batch_counts_its_packets_towards_one_flow() {
     spool.observe(|| {
         drive_tx(&mut tracker, &tcp_packet(syn(), &[]), authz_id, t0);
 
-        let flow = tracker.begin_network_packet(
+        let mut flows = tracker.begin_network_batch(
             "198.51.100.1:51820".parse().unwrap(),
             "203.0.113.7:51820".parse().unwrap(),
             t0,
@@ -428,10 +428,9 @@ fn batch_counts_its_packets_towards_one_flow() {
         flow_tracker::record_decrypted_packet(&tcp_packet(ack(), &[0; 100]));
         flow_tracker::record_peer(ClientId::from_u128(1), Role::Responder);
         flow_tracker::record_ingest_token(Some(&test_token(authz_id, "responder")));
-        let (mut batch, tracker) = flow.into_batch();
-        batch.add(&tcp_packet(ack(), &[0; 200]));
-        batch.add(&tcp_packet(ack(), &[0; 50]));
-        tracker.insert_batch(batch);
+        flows.add(&tcp_packet(ack(), &[0; 200]));
+        flows.add(&tcp_packet(ack(), &[0; 50]));
+        flows.finish();
 
         tracker.close_all(t0 + Duration::from_secs(1));
     });
@@ -468,7 +467,7 @@ fn drive_tx_from(
     authz_id: &str,
     now: Instant,
 ) {
-    let _flow = tracker.begin_network_packet(
+    let flows = tracker.begin_network_batch(
         "198.51.100.1:51820".parse().unwrap(),
         remote.parse().unwrap(),
         now,
@@ -476,17 +475,19 @@ fn drive_tx_from(
     flow_tracker::record_decrypted_packet(packet);
     flow_tracker::record_peer(ClientId::from_u128(1), Role::Responder);
     flow_tracker::record_ingest_token(Some(&test_token(authz_id, "responder")));
+    flows.finish();
 }
 
 /// Runs the responder-to-initiator return packet through the tracker's
 /// public entry points, as the gateway does for a packet read from TUN.
 fn drive_rx(tracker: &mut Tracker<ClientOrGatewayId>, packet: &IpPacket, now: Instant) {
-    let _flow = tracker.begin_tun_packet(packet, now);
+    let flows = tracker.begin_tun_batch(packet, now);
     flow_tracker::record_peer(ClientId::from_u128(1), Role::Responder);
     flow_tracker::record_transmit(
         Some("198.51.100.1:51820".parse().unwrap()),
         "203.0.113.7:51820".parse().unwrap(),
     );
+    flows.finish();
 }
 
 fn syn() -> ip_packet::make::TcpFlags {

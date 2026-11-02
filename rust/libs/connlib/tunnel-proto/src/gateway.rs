@@ -84,7 +84,7 @@ struct InboundDecision {
     cid: ClientId,
     flow: Flow,
     rewrite: Option<(Protocol, IpAddr)>,
-    flows: flow_tracker::FlowBatch,
+    flows: flow_tracker::DetachedFlowBatch,
 }
 
 #[derive(Debug)]
@@ -190,7 +190,7 @@ impl GatewayState {
         packet: &mut IpPacket,
         now: Instant,
     ) -> Result<Option<TunBatch<'_, (ClientId, ResourceId)>>> {
-        let guard = self.flow_tracker.begin_tun_packet(packet, now);
+        let flows = self.flow_tracker.begin_tun_batch(packet, now);
 
         if packet.is_fz_p2p_control() {
             tracing::warn!("Packet matches heuristics of FZ p2p control protocol");
@@ -221,7 +221,7 @@ impl GatewayState {
 
         flow_tracker::record_transmit(tunnel.src(), tunnel.dst());
 
-        Ok(Some(TunBatch::new(flow, nat, tunnel, guard)))
+        Ok(Some(TunBatch::new(flow, nat, tunnel, flows)))
     }
 
     /// Handles UDP packets received on the network interface.
@@ -300,7 +300,7 @@ impl GatewayState {
             return Ok(Some(packet));
         }
 
-        let guard = self.flow_tracker.begin_network_packet(local, from, now);
+        let flows = self.flow_tracker.begin_network_batch(local, from, now);
 
         if packet.destination().is_multicast() {
             return Ok(None);
@@ -310,7 +310,7 @@ impl GatewayState {
 
         let Some(peer) = self.peers.peer_by_id_mut(&cid) else {
             tracing::trace!(%cid, "No peer state for connection; closing connection");
-            drop(guard);
+            drop(flows);
             self.cleanup_connection(&cid, now);
 
             return Ok(None);
@@ -367,7 +367,7 @@ impl GatewayState {
                         cid,
                         flow,
                         rewrite,
-                        flows: guard.into_batch().0,
+                        flows: flows.detach(),
                     });
                 }
 

@@ -14,15 +14,15 @@
 //! device observes the packet, so the initiator and responder label the same
 //! direction identically.
 //!
-//! Processing a packet begins with [`Tracker::begin_tun_packet`] /
-//! [`Tracker::begin_network_packet`], which marks the thread-local [`FlowData`]
-//! as gathering a packet that the call sites processing it fill in via the
-//! `record_*` functions. Dropping the returned [`CurrentFlowGuard`] inserts
-//! the gathered data on every exit path; incomplete data (e.g. because packet
+//! Packets are recorded in [`FlowBatch`]es of one flow. [`Tracker::begin_tun_batch`] /
+//! [`Tracker::begin_network_batch`] begin a batch with its first packet, whose
+//! facts the call sites processing it fill into the thread-local [`FlowData`]
+//! via the `record_*` functions. [`FlowBatch::add`] counts further packets of
+//! the same flow. Finishing or dropping the batch records it, so every exit
+//! path of packet processing records it; incomplete data (e.g. because packet
 //! processing bailed early or the packet was internal traffic) is discarded.
-//! [`CurrentFlowGuard::into_batch`] instead moves the gathered data into a
-//! [`FlowBatch`], which counts further packets of the same flow until it is
-//! inserted with [`Tracker::insert_batch`].
+//! A batch that has to outlive its borrow of the tracker is
+//! [detached](FlowBatch::detach) and recorded with [`Tracker::insert_batch`].
 
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
@@ -180,10 +180,8 @@ impl<S> Tracker<S>
 where
     S: Scope,
 {
-    /// Begins gathering flow data for one packet read from the TUN device.
-    ///
-    /// Dropping the returned guard inserts the gathered flow data.
-    pub fn begin_tun_packet(&mut self, packet: &IpPacket, now: Instant) -> CurrentFlowGuard<'_, S> {
+    /// Begins a batch of packets read from the TUN device with `packet`.
+    pub fn begin_tun_batch(&mut self, packet: &IpPacket, now: Instant) -> FlowBatch<'_, S> {
         if self.enabled {
             set_current_flow(
                 Entry::Tun,
@@ -193,21 +191,17 @@ where
             );
         }
 
-        CurrentFlowGuard {
-            tracker: Some(self),
-            now,
-        }
+        FlowBatch { tracker: self }
     }
 
-    /// Begins gathering flow data for one packet received on the network interface.
-    ///
-    /// Dropping the returned guard inserts the gathered flow data.
-    pub fn begin_network_packet(
+    /// Begins a batch of packets received on the network interface with the next
+    /// one decrypted, see [`record_decrypted_packet`].
+    pub fn begin_network_batch(
         &mut self,
         local: SocketAddr,
         remote: SocketAddr,
         now: Instant,
-    ) -> CurrentFlowGuard<'_, S> {
+    ) -> FlowBatch<'_, S> {
         if self.enabled {
             set_current_flow(
                 Entry::Network { local, remote },
@@ -217,24 +211,21 @@ where
             );
         }
 
-        CurrentFlowGuard {
-            tracker: Some(self),
-            now,
-        }
+        FlowBatch { tracker: self }
     }
 
-    /// Inserts the flow data of a batch of packets.
-    pub fn insert_batch(&mut self, mut batch: FlowBatch) {
-        self.finish_packet(&mut batch.data, batch.now);
+    /// Records a [detached](FlowBatch::detach) batch.
+    pub fn insert_batch(&mut self, mut batch: DetachedFlowBatch) {
+        self.finish_batch(&mut batch.data);
     }
 
-    /// Inserts the gathered flow data and keeps its ingest token for the next packet.
-    fn finish_packet(&mut self, data: &mut FlowData, now: Instant) {
-        if data.packet.is_none() {
+    /// Records a batch's flow data and keeps its ingest token for the next batch.
+    fn finish_batch(&mut self, data: &mut FlowData) {
+        let Some(packet) = data.packet else {
             return;
-        }
+        };
 
-        self.insert_flow(data, now);
+        self.insert_flow(data, packet.now);
         self.mru_ingest_token = data
             .ingest_token
             .take()
@@ -761,40 +752,29 @@ impl Clock {
     }
 }
 
-/// Inserts the current packet's flow data into the tracker when dropped.
+/// A batch of packets of one flow, begun with its first packet.
 ///
-/// Holding the tracker's `&mut` also guarantees at most one packet is
-/// gathered at a time.
-#[must_use]
-pub struct CurrentFlowGuard<'a, S: Scope> {
-    /// Taken by [`CurrentFlowGuard::into_batch`], which hands it back to the caller.
-    tracker: Option<&'a mut Tracker<S>>,
-    now: Instant,
+/// While the batch borrows the tracker, the `record_*` functions fill in the
+/// first packet's facts; the borrow also guarantees that at most one packet is
+/// gathered at a time. Dropping the batch records it, like [`FlowBatch::finish`].
+#[must_use = "dropping the batch records it right away"]
+pub struct FlowBatch<'a, S: Scope> {
+    tracker: &'a mut Tracker<S>,
 }
 
-impl<'a, S: Scope> CurrentFlowGuard<'a, S> {
-    /// Moves the gathered flow data into a batch, releasing the tracker.
+impl<S: Scope> FlowBatch<'_, S> {
+    /// Counts `packet` towards the batch's flow.
     ///
-    /// Further packets of the same flow are counted with [`FlowBatch::add`]; the batch is
-    /// inserted with [`Tracker::insert_batch`].
-    pub fn into_batch(mut self) -> (FlowBatch, &'a mut Tracker<S>) {
-        let batch = FlowBatch {
-            data: CURRENT_FLOW.with_borrow_mut(|data| mem::replace(data, FlowData::EMPTY)),
-            now: self.now,
-        };
-        let tracker = self.tracker.take().expect("the tracker is only taken here");
-
-        (batch, tracker)
+    /// A packet that opens, closes or resets a TCP connection changes the flow, so it must
+    /// begin a batch of its own.
+    pub fn add(&mut self, packet: &IpPacket) {
+        CURRENT_FLOW.with_borrow_mut(|data| data.add(packet));
     }
 
-    /// Drops the gathered flow data, so the packet is not recorded.
+    /// Drops the gathered flow data, so the batch is not recorded.
     pub fn discard(&mut self) {
-        let Some(tracker) = self.tracker.as_deref_mut() else {
-            return;
-        };
-
         CURRENT_FLOW.with_borrow_mut(|data| {
-            tracker.mru_ingest_token = data
+            self.tracker.mru_ingest_token = data
                 .ingest_token
                 .take()
                 .or_else(|| data.mru_ingest_token.take());
@@ -802,46 +782,34 @@ impl<'a, S: Scope> CurrentFlowGuard<'a, S> {
             data.clear();
         });
     }
-}
 
-impl<S: Scope> Drop for CurrentFlowGuard<'_, S> {
-    fn drop(&mut self) {
-        let now = self.now;
-        let Some(tracker) = self.tracker.as_deref_mut() else {
-            return;
-        };
+    /// Records the batch.
+    pub fn finish(self) {}
 
-        CURRENT_FLOW.with_borrow_mut(|data| tracker.finish_packet(data, now));
+    /// Releases the tracker; the batch is recorded with [`Tracker::insert_batch`].
+    pub fn detach(self) -> DetachedFlowBatch {
+        DetachedFlowBatch {
+            data: CURRENT_FLOW.with_borrow_mut(|data| mem::replace(data, FlowData::EMPTY)),
+        }
     }
 }
 
-/// The flow data of one packet, counting further packets of the same flow.
-#[must_use = "the flow data is only recorded once the batch is inserted into the tracker"]
-pub struct FlowBatch {
-    data: FlowData,
-    now: Instant,
+impl<S: Scope> Drop for FlowBatch<'_, S> {
+    fn drop(&mut self) {
+        CURRENT_FLOW.with_borrow_mut(|data| self.tracker.finish_batch(data));
+    }
 }
 
-impl FlowBatch {
-    /// Counts `packet` towards the batch's flow.
-    ///
-    /// A packet that opens, closes or resets a TCP connection changes the flow, so it must
-    /// begin a batch of its own.
+/// A [`FlowBatch`] that no longer borrows the tracker.
+#[must_use = "the batch is only recorded once it is inserted into the tracker"]
+pub struct DetachedFlowBatch {
+    data: FlowData,
+}
+
+impl DetachedFlowBatch {
+    /// Counts `packet` towards the batch's flow, see [`FlowBatch::add`].
     pub fn add(&mut self, packet: &IpPacket) {
-        let Some(inner) = self.data.inner.as_mut() else {
-            return;
-        };
-
-        debug_assert!(
-            !packet
-                .tcp_flags()
-                .unwrap_or_default()
-                .intersects(TcpFlags::SYN | TcpFlags::FIN | TcpFlags::RST),
-            "a packet that changes the TCP state begins its own batch"
-        );
-
-        inner.packets += 1;
-        inner.bytes += packet.layer4_payload_len() as u64;
+        self.data.add(packet);
     }
 }
 
@@ -930,6 +898,24 @@ impl FlowData {
         domain: None,
         icmp_error: None,
     };
+
+    /// Counts `packet` towards the flow of the first packet.
+    fn add(&mut self, packet: &IpPacket) {
+        let Some(inner) = self.inner.as_mut() else {
+            return;
+        };
+
+        debug_assert!(
+            !packet
+                .tcp_flags()
+                .unwrap_or_default()
+                .intersects(TcpFlags::SYN | TcpFlags::FIN | TcpFlags::RST),
+            "a packet that changes the TCP state begins its own batch"
+        );
+
+        inner.packets += 1;
+        inner.bytes += packet.layer4_payload_len() as u64;
+    }
 
     /// Releases the current packet and drops everything gathered about it.
     fn clear(&mut self) {
