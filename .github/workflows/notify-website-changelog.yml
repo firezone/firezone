@@ -12,11 +12,19 @@ jobs:
   notify-website:
     runs-on: ubuntu-24.04
     steps:
+      - uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        id: app-token
+        with:
+          client-id: ${{ vars.BOT_CLIENT_ID }}
+          private-key: ${{ secrets.BOT_PRIVATE_KEY }}
+          owner: firezone
+          repositories: website
+          # repository_dispatch requires Contents: write.
+          permission-contents: write
       - name: Dispatch changelog evaluation to firezone/website
         env:
-          # repository_dispatch on firezone/website requires this token to have
-          # Contents: write there.
-          GH_TOKEN: ${{ secrets.RELEASE_PR_BOT_GITHUB_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
+          WEBSITE_TOKEN: ${{ steps.app-token.outputs.token }}
           HEAD_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
@@ -36,7 +44,7 @@ jobs:
             exit 0
           fi
 
-          gh api \
+          GH_TOKEN=$WEBSITE_TOKEN gh api \
             --method POST \
             --header "Accept: application/vnd.github+json" \
             --header "X-GitHub-Api-Version: 2022-11-28" \

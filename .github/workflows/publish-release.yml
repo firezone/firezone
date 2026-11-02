@@ -115,61 +115,20 @@ jobs:
       sha: ${{ needs.resolve-nix-cache-sha.outputs.sha }}
       push_to_cache: true
 
-  # WINGET_TOKEN requirements (read this before debugging auth failures):
-  #
-  # Must be a **classic** PAT owned by `firezone-bot` with the `public_repo`
-  # scope, and `firezone-bot` must be a write collaborator on the fork
-  # `firezone/winget-pkgs`.
-  #
-  # We deliberately do NOT grant the `workflow` scope: it would give the bot
-  # write access to workflow files in every repo where it is a collaborator,
-  # which we consider too broad. The cost is that the bot cannot sync the
-  # fork whenever upstream microsoft/winget-pkgs has new commits touching
-  # `.github/workflows/*`, so this job does not sync it at all. The
-  # `winget-pkgs` environment below covers that: its required reviewers
-  # hold this job and get notified, which is the prompt to hit "Sync fork"
-  # on firezone/winget-pkgs and then approve.
-  # GitHub creates a referenced-but-missing environment with no protection
-  # rules, so that hold only exists while the environment has reviewers.
-  #
-  # Do NOT switch to a fine-grained PAT: komac opens the winget PR from
-  # `firezone/winget-pkgs` into `microsoft/winget-pkgs`, and fine-grained PATs
-  # cannot create PRs into repos outside their resource owner — the push
-  # succeeds but `komac update --submit` fails with "Resource not accessible
-  # by personal access token / failed to create pull request".
-  publish-clients-to-winget:
+  prepare-winget-manifests:
     if: >-
       ${{
         startsWith(inputs.release_name || github.event.release.name, 'gui-client') ||
         startsWith(inputs.release_name || github.event.release.name, 'headless-client')
       }}
-    runs-on: windows-latest
-    environment:
-      name: winget-pkgs
-      url: https://github.com/firezone/winget-pkgs
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - id: package
-        env:
-          release_name: ${{ inputs.release_name || github.event.release.name }}
-        run: |
-          set -euo pipefail
-
-          if [[ "$release_name" == gui-client-* ]]; then
-            echo "identifier=Firezone.Client.GUI" >> "$GITHUB_OUTPUT"
-            echo "version=${release_name#gui-client-}" >> "$GITHUB_OUTPUT"
-          else
-            echo "identifier=Firezone.Client.Headless" >> "$GITHUB_OUTPUT"
-            echo "version=${release_name#headless-client-}" >> "$GITHUB_OUTPUT"
-          fi
-        shell: bash
-      - uses: ./.github/actions/winget-releaser
-        with:
-          identifier: ${{ steps.package.outputs.identifier }}
-          version: ${{ steps.package.outputs.version }}
-          token: ${{ secrets.WINGET_TOKEN }}
-          release-notes-url: https://www.firezone.dev/changelog
-          release-tag: ${{ inputs.release_name || github.event.release.tag_name || github.ref_name }}
+    uses: ./.github/workflows/_winget.yml
+    permissions:
+      contents: read # the release's assets
+    secrets:
+      BOT_PRIVATE_KEY: ${{ secrets.BOT_PRIVATE_KEY }}
+    with:
+      release_name: ${{ inputs.release_name || github.event.release.name }}
+      release_tag: ${{ inputs.release_name || github.event.release.tag_name || github.ref_name }}
 
   open-version-bump-pr:
     runs-on: ubuntu-latest
@@ -184,17 +143,11 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          token: ${{ secrets.RELEASE_PR_BOT_GITHUB_TOKEN }}
-      - uses: ./.github/actions/setup-gpg
-        id: setup-gpg
-        if: ${{ startsWith(inputs.release_name || github.event.release.name, matrix.component) }}
-        with:
-          key: ${{ secrets.RELEASE_PR_BOT_GPG_KEY }}
-          email: github-bot@firezone.dev
+          ref: ${{ github.event.repository.default_branch }}
       - name: Export gateway checksums
         if: ${{ startsWith(inputs.release_name || github.event.release.name, 'gateway') && matrix.component == 'gateway' }}
         env:
-          GH_TOKEN: ${{ secrets.RELEASE_PR_BOT_GITHUB_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
           release_name: ${{ inputs.release_name || github.event.release.name }}
         run: |
           set -euo pipefail
@@ -224,26 +177,36 @@ jobs:
 
             echo "$env_name=$checksum" >> "$GITHUB_ENV"
           done
-      - if: ${{ startsWith(inputs.release_name || github.event.release.name, matrix.component) }}
-        run: |
-          set -x
-
-          # Extract version from release name
-          version=${{ inputs.release_name || github.event.release.name }}
-          version=${version#${{ matrix.component }}-}
-
-          # Configure git
-          git config --local user.email "github-bot@firezone.dev"
-          git config --local user.name "Firezone Bot"
-          git config --local user.signingkey "${{ steps.setup-gpg.outputs.key_id }}"
-          git config --local commit.gpgsign true
-
-          # Create the PR
-          scripts/open-version-bump-pr.sh ${{ matrix.component }} "$version"
-        shell: bash
+      - name: Bump versions
+        id: bump
+        if: ${{ startsWith(inputs.release_name || github.event.release.name, matrix.component) }}
         env:
-          GITHUB_TOKEN: ${{ secrets.RELEASE_PR_BOT_GITHUB_TOKEN }}
-          RELEASE_PR_BOT_GPG_KEY: "${{ secrets.RELEASE_PR_BOT_GPG_KEY }}"
+          COMPONENT: ${{ matrix.component }}
+          release_name: ${{ inputs.release_name || github.event.release.name }}
+        run: |
+          set -euo pipefail
+
+          version=${release_name#"$COMPONENT"-}
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          scripts/open-version-bump-pr.sh "$COMPONENT" "$version"
+      - uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        id: app-token
+        if: ${{ startsWith(inputs.release_name || github.event.release.name, matrix.component) }}
+        with:
+          client-id: ${{ vars.BOT_CLIENT_ID }}
+          private-key: ${{ secrets.BOT_PRIVATE_KEY }}
+          repositories: ${{ github.repository }}
+          permission-contents: write
+          permission-pull-requests: write
+      - uses: firezone/actions/create-pull-request@f92afb7395591f2205bdcfd42b975c8dcf51bb6b # main
+        if: ${{ startsWith(inputs.release_name || github.event.release.name, matrix.component) }}
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          branch: chore/publish-${{ matrix.component }}-${{ steps.bump.outputs.version }}
+          title: "chore: publish ${{ matrix.component }} ${{ steps.bump.outputs.version }}"
+          commit-message: "chore: bump versions for ${{ matrix.component }} to ${{ steps.bump.outputs.version }}"
+          paths: .
+          reviewers: firezone/engineering
 
   # The website half of the version bump (changelog entry + displayed version
   # markers) lives in firezone/website. Notify it of the publish; its
@@ -260,11 +223,19 @@ jobs:
           - apple-client
           - android-client
     steps:
+      - uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        id: app-token
+        if: ${{ startsWith(inputs.release_name || github.event.release.name, matrix.component) }}
+        with:
+          client-id: ${{ vars.BOT_CLIENT_ID }}
+          private-key: ${{ secrets.BOT_PRIVATE_KEY }}
+          owner: firezone
+          repositories: website
+          # repository_dispatch requires Contents: write.
+          permission-contents: write
       - if: ${{ startsWith(inputs.release_name || github.event.release.name, matrix.component) }}
         env:
-          # repository_dispatch on firezone/website requires this token to
-          # have Contents: write there.
-          GH_TOKEN: ${{ secrets.RELEASE_PR_BOT_GITHUB_TOKEN }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
           release_name: ${{ inputs.release_name || github.event.release.name }}
         run: |
           set -xeuo pipefail

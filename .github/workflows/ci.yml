@@ -280,60 +280,35 @@ jobs:
           mise exec -- uv run scripts/settle-screenshots.py \
             --baseline "$GITHUB_SHA" --merge-target "$GITHUB_SHA^1" \
             rust/gui-client/screenshots kotlin/android/screenshots swift/apple/screenshots
-      - name: Set up GnuPG for the screenshot commit
-        uses: ./.github/actions/setup-gpg
-        id: setup-gpg
-        with:
-          key: ${{ secrets.RELEASE_PR_BOT_GPG_KEY }}
-          email: github-bot@firezone.dev
+      # The images only: an artifact holds everything that sits in the directory
+      # it was uploaded from, as the merge commit has it, and the Play Store
+      # listing beside the Android screens is kept by hand on the branch.
+      # Committed with GITHUB_TOKEN deliberately: GitHub starts no workflows for its
+      # own commits, so a re-render does not chain into the next one.
       - name: Push the re-rendered screenshots
         id: push
-        env:
-          HEAD_REF: ${{ github.head_ref }}
-        run: |
-          set -euo pipefail
-
-          git config --local user.email "github-bot@firezone.dev"
-          git config --local user.name "Firezone Bot"
-          git config --local user.signingkey "${{ steps.setup-gpg.outputs.key_id }}"
-          git config --local commit.gpgsign true
-
-          # The images only: an artifact holds everything that sits in the directory
-          # it was uploaded from, as the merge commit has it, and the Play Store
-          # listing beside the Android screens is kept by hand on the branch.
-          git add -A -- 'rust/gui-client/screenshots/*.png' \
-            'kotlin/android/screenshots/*.png' 'swift/apple/screenshots/*.png'
-          if git diff --cached --quiet; then
-            echo "The screenshots are unchanged; nothing to push."
-            exit 0
-          fi
-          git commit -m "chore(ci): re-render the screenshots"
-
-          # Pushed with GITHUB_TOKEN deliberately: GitHub starts no workflows for its
-          # own pushes, so a re-render does not chain into the next one. The branch may
-          # have moved while the clients were building.
-          for _ in 1 2 3; do
-            git fetch origin "$HEAD_REF"
-            git rebase "origin/$HEAD_REF"
-            if git push origin "HEAD:$HEAD_REF"; then
-              echo "pushed=true" >> "$GITHUB_OUTPUT"
-              exit 0
-            fi
-          done
-
-          echo "Could not push the screenshots after three attempts." >&2
-          exit 1
+        uses: firezone/actions/commit@f92afb7395591f2205bdcfd42b975c8dcf51bb6b # main
+        with:
+          token: ${{ github.token }}
+          branch: ${{ github.head_ref }}
+          message: "chore(ci): re-render the screenshots"
+          paths: |
+            rust/gui-client/screenshots/*.png
+            kotlin/android/screenshots/*.png
+            swift/apple/screenshots/*.png
       - name: Report what the re-render adds to the repository
-        if: steps.push.outputs.pushed == 'true'
+        if: steps.push.outputs.sha != ''
         env:
           PR_NUMBER: ${{ github.event.pull_request.number }}
+          SHA: ${{ steps.push.outputs.sha }}
         run: |
           set -euo pipefail
 
-          count=$(git diff --name-only HEAD~1 HEAD | wc -l)
-          on_disk=$(git diff --name-only HEAD~1 HEAD | xargs git ls-tree -r -l HEAD -- | awk '{ sum += $4 } END { print sum }')
-          # What the push carried: the new objects, delta-compressed against the parent.
-          stored=$( (echo HEAD; echo ^HEAD~1) | git pack-objects --thin --revs --stdout | wc -c )
+          git fetch -q origin "$SHA"
+          count=$(git diff --name-only HEAD "$SHA" | wc -l)
+          on_disk=$(git diff --name-only HEAD "$SHA" | xargs git ls-tree -r -l "$SHA" -- | awk '{ sum += $4 } END { print sum }')
+          # What the commit carried: the new objects, delta-compressed against the branch.
+          stored=$( (echo "$SHA"; echo ^HEAD) | git pack-objects --thin --revs --stdout | wc -c )
 
           gh pr comment "$PR_NUMBER" --body "Re-rendered $count screenshots: $(numfmt --to=iec-i --suffix=B "$on_disk") of PNGs, stored in git as $(numfmt --to=iec-i --suffix=B "$stored")."
 
