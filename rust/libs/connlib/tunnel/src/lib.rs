@@ -529,7 +529,7 @@ impl ClientTunnel {
 
                 if let Some(mut decrypted) = decrypted {
                     for received in decrypted.drain() {
-                        let io::DecryptedDatagram {
+                        let io::DecryptedBatch {
                             local,
                             from,
                             ecn,
@@ -827,7 +827,7 @@ impl GatewayTunnel {
 
                 if let Some(mut decrypted) = decrypted {
                     for received in decrypted.drain() {
-                        let io::DecryptedDatagram {
+                        let io::DecryptedBatch {
                             local,
                             from,
                             ecn,

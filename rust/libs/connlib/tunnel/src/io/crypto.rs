@@ -11,7 +11,7 @@ use std::{
 use futures::{StreamExt as _, stream::FuturesOrdered};
 use ip_packet::{Ecn, IpPacket, IpVersion};
 use opentelemetry::metrics::Counter;
-use snownet::{DecryptedBatch, PendingDecapsulate, PendingEncapsulate};
+use snownet::{PendingDecapsulate, PendingEncapsulate};
 use socket_factory::{DatagramIn, DatagramOut, Segment};
 use tokio::sync::oneshot;
 
@@ -40,12 +40,12 @@ const MAX_JOBS_IN_FLIGHT: usize = cfg_select! {
 pub(crate) const MAX_DECRYPT_BACKLOG_MEMORY: usize =
     (MAX_JOBS_IN_FLIGHT - 1) * DECRYPT_BATCH_SIZE * socket_factory::MAX_RECV_BUFFER_MEMORY;
 
-/// A datagram from the network with its WireGuard data messages decrypted.
-pub struct DecryptedDatagram {
+/// A batch of WireGuard data messages from one datagram of the network, decrypted.
+pub struct DecryptedBatch {
     pub local: SocketAddr,
     pub from: SocketAddr,
     pub ecn: Ecn,
-    pub packets: DecryptedBatch,
+    pub packets: snownet::DecryptedBatch,
 }
 
 /// Encrypts and decrypts WireGuard data messages on worker threads.
@@ -67,11 +67,11 @@ enum Job {
 
 /// Packets decrypted from the jobs of an [`Io::start_decrypt_batch`](super::Io::start_decrypt_batch).
 #[derive(Default)]
-pub struct DecryptedIpPackets(Vec<DecryptedDatagram>);
+pub struct DecryptedIpPackets(Vec<DecryptedBatch>);
 
 impl DecryptedIpPackets {
     /// Moves out every decrypted packet, in the order it was received.
-    pub fn drain(&mut self) -> impl Iterator<Item = DecryptedDatagram> + '_ {
+    pub fn drain(&mut self) -> impl Iterator<Item = DecryptedBatch> + '_ {
         self.0.drain(..)
     }
 }
@@ -474,7 +474,7 @@ fn decrypt(job: DecryptJob, decrypted: oneshot::Sender<DecryptedIpPackets>) {
             Some(segment) => &buffer[*segment],
             None => &[],
         })
-        .map(|(buffer, message)| DecryptedDatagram {
+        .map(|(buffer, message)| DecryptedBatch {
             local: buffer.local(),
             from: buffer.from(),
             ecn: buffer.ecn(),
