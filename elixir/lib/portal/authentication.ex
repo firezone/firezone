@@ -35,14 +35,13 @@ defmodule Portal.Authentication do
   end
 
   # Non-interactive client token - issued directly by an admin (no sign-in flow,
-  # no auth_provider_id). Available for service accounts and regular users alike.
-  # api_client actors must use create_api_token/3 instead.
+  # no auth_provider_id). Only for service accounts: minting one for a user would
+  # let an admin act as that user. api_client actors must use create_api_token/3.
   def create_non_interactive_client_token(
-        %Portal.Actor{type: type, account_id: account_id} = actor,
+        %Portal.Actor{type: :service_account, account_id: account_id} = actor,
         attrs,
         %Subject{account: %{id: account_id}} = subject
-      )
-      when type in [:service_account, :account_user, :account_admin_user] do
+      ) do
     {secret_fragment, secret_salt, secret_hash} = generate_token_secrets()
 
     %ClientToken{
