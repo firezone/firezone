@@ -42,6 +42,42 @@ defmodule PortalWeb.WebsiteAttribution do
   @spec fetch(map()) :: PostHog.attribution() | nil
   def fetch(session), do: Map.get(session, @session_key)
 
+  @doc """
+  The query params that hand the stored attribution to another portal, which
+  stores it again with `call/2`. Regional marketing defaults are left out, so
+  the other portal applies its own.
+  """
+  @spec query_params(PostHog.attribution() | nil) :: map()
+  def query_params(attribution) when is_map(attribution) do
+    website =
+      case attribution do
+        %{"distinct_id" => distinct_id, "website_path" => website_path} ->
+          %{@distinct_id_param => distinct_id, @pathname_param => website_path}
+
+        _ ->
+          %{}
+      end
+
+    marketing =
+      case attribution["marketing"] do
+        %{"source" => "region"} ->
+          %{}
+
+        %{"marketing_allowed" => allowed} = marketing ->
+          for key <- @click_params,
+              is_binary(marketing[key]),
+              into: %{"fz_mktg" => to_string(allowed)},
+              do: {"fz_" <> key, marketing[key]}
+
+        _ ->
+          %{}
+      end
+
+    Map.merge(website, marketing)
+  end
+
+  def query_params(_attribution), do: %{}
+
   @spec pop(Plug.Conn.t()) :: {Plug.Conn.t(), PostHog.attribution() | nil}
   def pop(conn) do
     attribution = get_session(conn, @session_key)
