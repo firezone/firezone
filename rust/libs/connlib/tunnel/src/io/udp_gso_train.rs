@@ -11,7 +11,6 @@ const MAX_SEGMENT_SIZE: usize =
 
 /// Datagrams to one connection that one GSO send can carry: all of the same size, except for a
 /// shorter last one.
-#[derive(Clone)]
 pub struct UdpGsoTrain {
     connection: Connection,
     /// The GSO segment size: the length of the first datagram.
@@ -74,25 +73,6 @@ impl UdpGsoTrain {
         true
     }
 
-    /// Appends the datagrams of a batch, all of them or none.
-    pub fn try_append_batch(
-        &mut self,
-        src: Option<SocketAddr>,
-        dst: SocketAddr,
-        datagrams: impl Iterator<Item = (Ecn, usize)>,
-    ) -> bool {
-        let mut train = self.clone();
-
-        for (ecn, len) in datagrams {
-            if !train.try_append(src, dst, ecn, len) {
-                return false;
-            }
-        }
-        *self = train;
-
-        true
-    }
-
     /// Encrypts `batches`, the ones this train was built from, back-to-back into one datagram.
     ///
     /// Encryption stops at the first packet that fails; returns `None` if none made it.
@@ -145,7 +125,7 @@ impl UdpGsoTrain {
     }
 }
 
-#[derive(Clone, PartialEq, Eq)]
+#[derive(PartialEq, Eq)]
 struct Connection {
     src: Option<SocketAddr>,
     dst: SocketAddr,

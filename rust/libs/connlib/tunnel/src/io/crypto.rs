@@ -158,46 +158,45 @@ pub struct EncryptJobs<'a> {
     pending_v6: Option<PendingDatagrams>,
 }
 
-impl EncryptJobs<'_> {
-    /// Adds a batch of `packets` to the open train to its destination, handing that train to a
-    /// worker first if the batch starts a new one.
+impl<'a> EncryptJobs<'a> {
+    /// Opens the train to `dst` for a batch, starting with a datagram of `len` bytes.
     ///
-    /// A batch is never split, so `train` must hold exactly its datagrams.
-    pub fn encrypt(
+    /// Joins the train already open to `dst` if the datagram fits it, handing that train to a
+    /// worker otherwise.
+    pub fn open_train(
         &mut self,
-        encapsulation: PendingEncapsulate,
-        packets: Vec<IpPacket>,
-        train: UdpGsoTrain,
-    ) {
-        let src = encapsulation.src();
-        let dst = encapsulation.dst();
-        self.remaining = self.remaining.saturating_sub(packets.len());
+        src: Option<SocketAddr>,
+        dst: SocketAddr,
+        ecn: Ecn,
+        len: usize,
+    ) -> TrainToEncrypt<'_, 'a> {
+        let open_trains = &mut self.crypto.open_trains;
 
-        let Some(open) = self
-            .crypto
-            .open_trains
-            .iter_mut()
-            .find(|open| open.train.is_between(src, dst))
-        else {
-            self.crypto
-                .open_trains
-                .push(EncryptJob::new(encapsulation, packets, train));
-            return;
+        let index = match open_trains
+            .iter()
+            .position(|open| open.train.is_between(src, dst))
+        {
+            Some(index) if open_trains[index].train.try_append(src, dst, ecn, len) => index,
+            Some(index) => {
+                let new = EncryptJob::new(UdpGsoTrain::new(src, dst, ecn, len));
+                let closed = mem::replace(&mut open_trains[index], new);
+                self.dispatch(closed);
+
+                index
+            }
+            None => {
+                open_trains.push(EncryptJob::new(UdpGsoTrain::new(src, dst, ecn, len)));
+
+                open_trains.len() - 1
+            }
         };
 
-        if open.train.try_append_batch(
+        TrainToEncrypt {
+            jobs: self,
+            index,
             src,
             dst,
-            packets
-                .iter()
-                .map(|packet| (packet.ecn(), encapsulation.datagram_len(packet))),
-        ) {
-            open.batches.push((encapsulation, packets));
-            return;
         }
-
-        let closed = mem::replace(open, EncryptJob::new(encapsulation, packets, train));
-        self.dispatch(closed);
     }
 
     fn dispatch(&mut self, job: EncryptJob) {
@@ -242,12 +241,45 @@ struct EncryptJob {
 }
 
 impl EncryptJob {
-    /// Starts a train with a batch of `packets`.
-    fn new(encapsulation: PendingEncapsulate, packets: Vec<IpPacket>, train: UdpGsoTrain) -> Self {
+    fn new(train: UdpGsoTrain) -> Self {
         Self {
             train,
-            batches: vec![(encapsulation, packets)],
+            batches: Vec::new(),
         }
+    }
+}
+
+/// The open train of an [`EncryptJobs`] that a batch is being added to.
+pub struct TrainToEncrypt<'b, 'a> {
+    jobs: &'b mut EncryptJobs<'a>,
+    index: usize,
+    src: Option<SocketAddr>,
+    dst: SocketAddr,
+}
+
+impl TrainToEncrypt<'_, '_> {
+    /// The most datagrams the train can hold.
+    pub fn max_segments(&self) -> usize {
+        self.jobs.crypto.open_trains[self.index]
+            .train
+            .max_segments()
+    }
+
+    /// Appends a further datagram of the batch, unless the batch has to end.
+    pub fn try_append(&mut self, ecn: Ecn, len: usize) -> bool {
+        let (src, dst) = (self.src, self.dst);
+
+        self.jobs.crypto.open_trains[self.index]
+            .train
+            .try_append(src, dst, ecn, len)
+    }
+
+    /// Adds the batch, whose datagrams were appended to the train.
+    pub fn push(self, encapsulation: PendingEncapsulate, packets: Vec<IpPacket>) {
+        self.jobs.remaining = self.jobs.remaining.saturating_sub(packets.len());
+        self.jobs.crypto.open_trains[self.index]
+            .batches
+            .push((encapsulation, packets));
     }
 }
 

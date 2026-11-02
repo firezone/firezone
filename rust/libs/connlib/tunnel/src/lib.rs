@@ -432,11 +432,10 @@ impl ClientTunnel {
                         };
 
                         // A batch is encrypted into one GSO train, so it ends where the train would.
-                        let (src, dst) = (tun_batch.src(), tun_batch.dst());
                         let first = tun_batch.first();
-                        let mut train = io::UdpGsoTrain::new(
-                            src,
-                            dst,
+                        let mut train = encrypt_jobs.open_train(
+                            tun_batch.src(),
+                            tun_batch.dst(),
                             first.ecn(),
                             tun_batch.datagram_len(first),
                         );
@@ -444,15 +443,13 @@ impl ClientTunnel {
 
                         while let Some(packet) = packets.next_if(|p| {
                             tun_batch.accepts(p)
-                                && train.try_append(src, dst, p.ecn(), tun_batch.datagram_len(p))
+                                && train.try_append(p.ecn(), tun_batch.datagram_len(p))
                         }) {
                             tun_batch.push(packet);
                         }
 
                         match tun_batch.finish() {
-                            Ok((encapsulation, packets)) => {
-                                encrypt_jobs.encrypt(encapsulation, packets, train)
-                            }
+                            Ok((encapsulation, packets)) => train.push(encapsulation, packets),
                             Err(e) => {
                                 self.dropped_packets.record(&e);
                                 error.push(e.context("Failed to handle packet from TUN device"));
@@ -715,11 +712,10 @@ impl GatewayTunnel {
                         };
 
                         // A batch is encrypted into one GSO train, so it ends where the train would.
-                        let (src, dst) = (tun_batch.src(), tun_batch.dst());
                         let first = tun_batch.first();
-                        let mut train = io::UdpGsoTrain::new(
-                            src,
-                            dst,
+                        let mut train = encrypt_jobs.open_train(
+                            tun_batch.src(),
+                            tun_batch.dst(),
                             first.ecn(),
                             tun_batch.datagram_len(first),
                         );
@@ -727,15 +723,13 @@ impl GatewayTunnel {
 
                         while let Some(packet) = packets.next_if(|p| {
                             tun_batch.accepts(p)
-                                && train.try_append(src, dst, p.ecn(), tun_batch.datagram_len(p))
+                                && train.try_append(p.ecn(), tun_batch.datagram_len(p))
                         }) {
                             tun_batch.push(packet);
                         }
 
                         match tun_batch.finish() {
-                            Ok((encapsulation, packets)) => {
-                                encrypt_jobs.encrypt(encapsulation, packets, train)
-                            }
+                            Ok((encapsulation, packets)) => train.push(encapsulation, packets),
                             Err(e) => {
                                 self.dropped_packets.record(&e);
                                 error.push(e.context("Failed to handle packet from TUN device"));
