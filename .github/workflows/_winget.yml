@@ -74,6 +74,8 @@ jobs:
 
           # komac only writes the manifests to disk on its way to submitting them, so
           # take them from what a dry run prints instead.
+          # TODO: Replace the Python below with `--exit --output .` once a komac release has
+          # `--exit`: https://github.com/russellbanks/Komac/blob/main/src/commands/update_version.rs
           mise --cd rust/gui-client exec -- komac update "$IDENTIFIER" --version "$VERSION" --urls "${urls[@]}" \
             --release-notes-url https://www.firezone.dev/changelog --dry-run > "$RUNNER_TEMP/komac.out"
 
