@@ -77,10 +77,7 @@ fn main() -> ExitCode {
 
     telemetry::configure(Arc::new(tcp_socket_factory));
 
-    let runtime = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .expect("Failed to create tokio runtime");
+    let runtime = async_runtime::current_thread().expect("Failed to create tokio runtime");
 
     match runtime.block_on(try_main(cli)) {
         Ok(()) => {
@@ -296,7 +293,7 @@ async fn try_main(cli: Cli) -> Result<()> {
     let additional_host_candidates = cli.additional_host_candidates;
     let local_flow_logs = cli.flow_logs;
 
-    let eventloop = runtime_thread::spawn("fz-eventloop", move || async move {
+    let eventloop = async_runtime::spawn_thread("fz-eventloop", move || async move {
         let mut clock = Clock::new();
         let mut tunnel = GatewayTunnel::new(
             Arc::new(tcp_socket_factory),

@@ -132,7 +132,7 @@ pub(crate) fn spawn(
 ) -> io::Result<EventLoopEnds> {
     let (event_loop, task) = channels();
 
-    runtime_thread::spawn("fz-dns", move || {
+    async_runtime::spawn_thread("fz-dns", move || {
         Resolver::new(task, tcp_socket_factory, udp_socket_factory, nameservers).run()
     })?;
 

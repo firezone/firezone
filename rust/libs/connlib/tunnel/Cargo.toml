@@ -6,6 +6,7 @@ license = { workspace = true }
 
 [dependencies]
 anyhow = { workspace = true }
+async-runtime = { workspace = true }
 bootstrap-dns-client = { workspace = true }
 bufferpool = { workspace = true }
 connlib-model = { workspace = true }
@@ -24,7 +25,6 @@ opentelemetry = { workspace = true, features = ["metrics"] }
 otel-instruments = { workspace = true }
 prefetch = { workspace = true }
 rand = { workspace = true }
-runtime-thread = { workspace = true }
 smallvec = { workspace = true }
 snownet = { workspace = true }
 socket-factory = { workspace = true }

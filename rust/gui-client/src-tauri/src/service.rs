@@ -1058,10 +1058,7 @@ pub fn run_interactive(dns_control: DnsControlMethod, skip_peer_verification: bo
     if !elevation_check()? {
         bail!("Tunnel service failed its elevation check, try running as admin / root");
     }
-    let rt = tokio::runtime::Builder::new_current_thread()
-        .thread_name("fz-blocking")
-        .enable_all()
-        .build()?;
+    let rt = async_runtime::current_thread()?;
     let _guard = rt.enter();
     let mut signals = signals::Terminate::new()?;
 
@@ -1098,9 +1095,7 @@ pub fn run_smoke_test() -> Result<()> {
     if !elevation_check()? {
         bail!("Tunnel service failed its elevation check, try running as admin / root");
     }
-    let rt = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()?;
+    let rt = async_runtime::current_thread()?;
     let _guard = rt.enter();
     let mut dns_controller = DnsController {
         dns_control_method: Default::default(),

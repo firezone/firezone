@@ -44,7 +44,7 @@ pub struct Session {
 
 #[derive(Debug)]
 pub struct EventStream {
-    eventloop: Fuse<runtime_thread::Output<Result<(), DisconnectError>>>,
+    eventloop: Fuse<async_runtime::ThreadOutput<Result<(), DisconnectError>>>,
     resource_list_receiver: WatchStream<Vec<ResourceView>>,
     tun_config_receiver: WatchStream<Option<TunConfig>>,
     connected_as_receiver: WatchStream<Option<ConnectedAs>>,
@@ -258,7 +258,7 @@ impl EventStream {
         let (connected_as_sender, connected_as_receiver) = watch::channel(None);
         let (user_notification_sender, user_notification_receiver) = mpsc::channel(128);
 
-        let eventloop = runtime_thread::spawn("fz-eventloop", move || {
+        let eventloop = async_runtime::spawn_thread("fz-eventloop", move || {
             make_event_loop(
                 resource_list_sender,
                 tun_config_sender,

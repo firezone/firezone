@@ -266,11 +266,7 @@ fn run_service(arguments: Vec<OsString>) {
         return;
     }
 
-    let rt = tokio::runtime::Builder::new_current_thread()
-        .thread_name("fz-blocking")
-        .enable_all()
-        .build()
-        .expect("Failed to create tokio runtime");
+    let rt = async_runtime::current_thread().expect("Failed to create tokio runtime");
 
     let (mut shutdown_tx, shutdown_rx) = mpsc::channel(1);
 

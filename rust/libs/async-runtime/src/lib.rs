@@ -9,20 +9,29 @@ use std::{
 
 use anyhow::{Result, anyhow};
 use futures::{FutureExt as _, channel::oneshot};
+use tokio::runtime::Runtime;
 
-/// Runs the future made by `make_future` on a new thread named `name`, on a single-threaded Tokio runtime of its own.
+/// Builds a single-threaded runtime for the calling thread to drive with [`Runtime::block_on`].
 ///
-/// The thread is detached: it runs until the future completes, whether or not the returned [`Output`] is polled.
-pub fn spawn<F, Fut>(name: &str, make_future: F) -> io::Result<Output<Fut::Output>>
+/// Its tasks run on whichever thread calls `block_on`; it starts no thread of its own.
+/// Only the threads it starts for blocking work (`spawn_blocking`, `tokio::fs`) are named `fz-blocking`.
+pub fn current_thread() -> io::Result<Runtime> {
+    tokio::runtime::Builder::new_current_thread()
+        .thread_name("fz-blocking")
+        .enable_all()
+        .build()
+}
+
+/// Runs the future made by `make_future` on a new thread named `name`, on a runtime of its own from [`current_thread`].
+///
+/// The thread is detached: it runs until the future completes, whether or not the returned [`ThreadOutput`] is polled.
+pub fn spawn_thread<F, Fut>(name: &str, make_future: F) -> io::Result<ThreadOutput<Fut::Output>>
 where
     F: FnOnce() -> Fut + Send + 'static,
     Fut: Future,
     Fut::Output: Send + 'static,
 {
-    let runtime = tokio::runtime::Builder::new_current_thread()
-        .thread_name(name)
-        .enable_all()
-        .build()?;
+    let runtime = current_thread()?;
     let (output_tx, output_rx) = oneshot::channel();
 
     std::thread::Builder::new()
@@ -36,20 +45,20 @@ where
             let _ = output_tx.send(output);
         })?;
 
-    Ok(Output {
+    Ok(ThreadOutput {
         name: name.to_owned(),
         output_rx,
     })
 }
 
-/// Resolves to the output of the future run by [`spawn`], or to an error if it panicked.
+/// Resolves to the output of the future run by [`spawn_thread`], or to an error if it panicked.
 #[derive(Debug)]
-pub struct Output<T> {
+pub struct ThreadOutput<T> {
     name: String,
     output_rx: oneshot::Receiver<Result<T, String>>,
 }
 
-impl<T> Future for Output<T> {
+impl<T> Future for ThreadOutput<T> {
     type Output = Result<T>;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {

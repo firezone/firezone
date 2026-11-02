@@ -10,6 +10,7 @@ members = [
     "gui-client/src-tauri",
     "headless-client",
     "libs/anyhow-ext",
+    "libs/async-runtime",
     "libs/atomicfs",
     "libs/backoff",
     "libs/bin-shared",
@@ -54,7 +55,6 @@ members = [
     "libs/logging",
     "libs/otel-attributes",
     "libs/prefetch",
-    "libs/runtime-thread",
     "libs/telemetry",
     "libs/tunnel-bypass-resolver",
     "libs/windows-security",
@@ -89,6 +89,7 @@ afl = "0.18.2"
 anyhow = { package = "anyhow-ext", path = "libs/anyhow-ext" }
 arbitrary = "1.4.2"
 arboard = { version = "3.6.1", default-features = false }
+async-runtime = { path = "libs/async-runtime" }
 async-trait = "0.1.89"
 atomicfs = { path = "libs/atomicfs" }
 axum = { version = "0.8.8", default-features = false }
@@ -215,7 +216,6 @@ ringbuffer = "0.16.0"
 roxmltree = "0.21.1"
 rpassword = "7.5.3"
 rtnetlink = { version = "0.23.0", default-features = false, features = ["tokio_socket"] }
-runtime-thread = { path = "libs/runtime-thread" }
 rustls = { version = "0.23.40", default-features = false, features = ["ring"] }
 rustls-native-certs = "0.8.1"
 rustls-pki-types = "1.14.1"

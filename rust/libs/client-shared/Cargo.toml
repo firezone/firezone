@@ -6,6 +6,7 @@ license = { workspace = true }
 
 [dependencies]
 anyhow = { workspace = true }
+async-runtime = { workspace = true }
 bootstrap-dns-client = { workspace = true }
 clock = { workspace = true }
 connlib-model = { workspace = true }
@@ -20,7 +21,6 @@ otel-attributes = { workspace = true }
 otel-instruments = { workspace = true }
 parking_lot = { workspace = true }
 phoenix-channel = { workspace = true }
-runtime-thread = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 socket-factory = { workspace = true }
 telemetry = { workspace = true }
