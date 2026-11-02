@@ -234,6 +234,15 @@ pub fn relay_packets() -> Counter<u64> {
         .build()
 }
 
+/// Counter of relayed payload bytes.
+pub fn relay_bytes() -> Counter<u64> {
+    relay_meter()
+        .u64_counter("relay.bytes")
+        .with_description("The number of relayed payload bytes")
+        .with_unit("By")
+        .build()
+}
+
 /// Histogram of relayed packet sizes, recorded on both the userspace and the XDP datapath.
 ///
 /// Both call-sites build the instrument from this function so the metric definition
