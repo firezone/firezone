@@ -11,8 +11,8 @@ use crate::otel;
 pub(crate) struct DroppedPackets(Counter<u64>);
 
 impl DroppedPackets {
-    pub(crate) fn new(counter: Counter<u64>) -> Self {
-        Self(counter)
+    pub(crate) fn new() -> Self {
+        Self(otel_instruments::network_packet_dropped())
     }
 
     /// Counts the packet that failed with `error`, by the reason it was unroutable.
