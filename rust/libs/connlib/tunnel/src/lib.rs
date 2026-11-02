@@ -413,7 +413,7 @@ impl ClientTunnel {
                 }
 
                 if let Some(packets) = device.as_mut().map(|packets| packets.drain()) {
-                    let mut encrypt_jobs = self.io.open_encrypt_jobs(packets.len());
+                    let mut encrypt_jobs = self.io.new_encrypt_jobs(packets.len());
 
                     let mut packets = packets
                         .prefetching()
@@ -471,7 +471,7 @@ impl ClientTunnel {
                 }
 
                 if let Some(mut datagrams) = network {
-                    let mut decrypt_jobs = self.io.open_decrypt_jobs(datagrams.len());
+                    let mut decrypt_jobs = self.io.new_decrypt_jobs(datagrams.len());
 
                     for datagram in datagrams.drain() {
                         let mut datagram = decrypt_jobs.add(datagram);
@@ -693,7 +693,7 @@ impl GatewayTunnel {
                 }
 
                 if let Some(packets) = device.as_mut().map(|packets| packets.drain()) {
-                    let mut encrypt_jobs = self.io.open_encrypt_jobs(packets.len());
+                    let mut encrypt_jobs = self.io.new_encrypt_jobs(packets.len());
 
                     let mut packets = packets
                         .prefetching()
@@ -751,7 +751,7 @@ impl GatewayTunnel {
                 }
 
                 if let Some(mut datagrams) = network {
-                    let mut decrypt_jobs = self.io.open_decrypt_jobs(datagrams.len());
+                    let mut decrypt_jobs = self.io.new_decrypt_jobs(datagrams.len());
 
                     for datagram in datagrams.drain() {
                         let mut datagram = decrypt_jobs.add(datagram);
