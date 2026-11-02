@@ -106,7 +106,7 @@ defmodule PortalWeb.SignUpTest do
       assert has_element?(
                lv,
                "#region-picker-help a[href='https://www.firezone.dev/kb/architecture/regional-availability']",
-               "Learn more"
+               "Learn about regional availability"
              )
       refute has_element?(lv, "#data-residency")
     end

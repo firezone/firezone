@@ -750,7 +750,7 @@ defmodule PortalWeb.SignUp do
           target="_blank"
           rel="noopener noreferrer"
         >
-          Learn more
+          Learn about regional availability
         </Navigation.link>
       </p>
     </div>
