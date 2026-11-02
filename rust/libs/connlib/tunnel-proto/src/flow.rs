@@ -54,7 +54,8 @@ pub struct TunBatch<'a, S: flow_tracker::Scope> {
     nat: Option<(Protocol, IpAddr)>,
     tunnel: snownet::EncapsulateBatch<'a>,
     flows: flow_tracker::FlowBatch<'a, S>,
-    len: NonZeroUsize,
+    /// The packets of the batch, starting with the one that routed it.
+    packets: Vec<IpPacket>,
 }
 
 impl<'a, S: flow_tracker::Scope> TunBatch<'a, S> {
@@ -63,14 +64,20 @@ impl<'a, S: flow_tracker::Scope> TunBatch<'a, S> {
         nat: Option<(Protocol, IpAddr)>,
         tunnel: snownet::EncapsulateBatch<'a>,
         flows: flow_tracker::FlowBatch<'a, S>,
+        packet: IpPacket,
     ) -> Self {
         Self {
             flow,
             nat,
             tunnel,
             flows,
-            len: NonZeroUsize::MIN,
+            packets: vec![packet],
         }
+    }
+
+    /// Returns the packet the batch started with.
+    pub fn first(&self) -> &IpPacket {
+        &self.packets[0]
     }
 
     pub fn src(&self) -> Option<SocketAddr> {
@@ -91,8 +98,13 @@ impl<'a, S: flow_tracker::Scope> TunBatch<'a, S> {
         self.flow.is_some() && Flow::of(packet) == self.flow
     }
 
+    /// Reserves capacity for at least `additional` more packets.
+    pub fn reserve(&mut self, additional: usize) {
+        self.packets.reserve(additional);
+    }
+
     /// Adds `packet`, which the batch [accepts](Self::accepts), translating it like the first one.
-    pub fn push(&mut self, packet: &mut IpPacket) {
+    pub fn push(&mut self, mut packet: IpPacket) {
         if let Some((proto, ip)) = self.nat {
             let translated = packet.translate_source(proto, ip);
 
@@ -100,13 +112,14 @@ impl<'a, S: flow_tracker::Scope> TunBatch<'a, S> {
             debug_assert!(translated.is_ok(), "{translated:?}");
         }
 
-        self.flows.add(packet);
-        self.len = self.len.saturating_add(1);
+        self.flows.add(&packet);
+        self.packets.push(packet);
     }
 
     /// Reserves the batch's counters and records its flow.
-    pub fn finish(mut self) -> Result<snownet::PendingEncapsulate> {
-        let encapsulation = match self.tunnel.finish(self.len) {
+    pub fn finish(mut self) -> Result<(snownet::PendingEncapsulate, Vec<IpPacket>)> {
+        let len = NonZeroUsize::new(self.packets.len()).expect("A batch starts with a packet");
+        let encapsulation = match self.tunnel.finish(len) {
             Ok(encapsulation) => encapsulation,
             Err(e) => {
                 self.flows.discard();
@@ -117,6 +130,6 @@ impl<'a, S: flow_tracker::Scope> TunBatch<'a, S> {
 
         self.flows.finish();
 
-        Ok(encapsulation)
+        Ok((encapsulation, self.packets))
     }
 }

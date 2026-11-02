@@ -162,20 +162,19 @@ impl GatewayState {
         self.node.close_all(p2p_control::goodbye(), now);
     }
 
-    /// Handles a packet received on the TUN device as a batch of its own.
-    ///
-    /// The returned [`snownet::PendingEncapsulate`] is for `packet` as this call leaves it.
+    /// Handles a packet received on the TUN device as a batch of its own and encrypts it.
     pub fn handle_tun_input(
         &mut self,
-        packet: &mut IpPacket,
+        packet: IpPacket,
         now: Instant,
-    ) -> Result<Option<snownet::PendingEncapsulate>> {
+    ) -> Result<Option<snownet::Transmit>> {
         let Some(batch) = self.begin_tun_batch(packet, now)? else {
             return Ok(None);
         };
-        let encapsulation = batch.finish()?;
+        let (encapsulation, packets) = batch.finish()?;
+        let transmit = encapsulation.encrypt(&packets[0])?;
 
-        Ok(Some(encapsulation))
+        Ok(Some(transmit))
     }
 
     /// Starts a batch of packets received on the TUN device with `packet`.
@@ -184,41 +183,41 @@ impl GatewayState {
     /// reuse that decision through [`TunBatch::push`].
     pub fn begin_tun_batch(
         &mut self,
-        packet: &mut IpPacket,
+        mut packet: IpPacket,
         now: Instant,
     ) -> Result<Option<TunBatch<'_, (ClientId, ResourceId)>>> {
-        let flows = self.flow_tracker.begin_tun_batch(packet, now);
+        let flows = self.flow_tracker.begin_tun_batch(&packet, now);
 
         if packet.is_fz_p2p_control() {
             tracing::warn!("Packet matches heuristics of FZ p2p control protocol");
         }
 
-        let flow = Flow::of(packet);
+        let flow = Flow::of(&packet);
         let dst = packet.destination();
 
-        anyhow::ensure!(crate::is_peer(dst), UnroutablePacket::not_a_peer(packet));
+        anyhow::ensure!(crate::is_peer(dst), UnroutablePacket::not_a_peer(&packet));
 
         let (cid, peer) = self
             .peers
             .peer_by_ip_mut(dst)
-            .with_context(|| UnroutablePacket::no_peer_state(packet))?;
+            .with_context(|| UnroutablePacket::no_peer_state(&packet))?;
 
         flow_tracker::record_peer(cid, flow_tracker::Role::Responder);
 
-        let (flow, nat) = match peer.translate_inbound(packet, now) {
+        let (flow, nat) = match peer.translate_inbound(&mut packet, now) {
             Ok(InboundRewrite::None) => (flow, None),
             Ok(InboundRewrite::Source(proto, ip)) => (flow, Some((proto, ip))),
             Ok(InboundRewrite::IcmpError) => (None, None),
             Err(e) => return Err(e.context("Failed to translate inbound packet")),
         };
 
-        let Some(tunnel) = encapsulate(packet, cid, &mut self.node, now)? else {
+        let Some(tunnel) = encapsulate(&packet, cid, &mut self.node, now)? else {
             return Ok(None);
         };
 
         flow_tracker::record_transmit(tunnel.src(), tunnel.dst());
 
-        Ok(Some(TunBatch::new(flow, nat, tunnel, flows)))
+        Ok(Some(TunBatch::new(flow, nat, tunnel, flows, packet)))
     }
 
     /// Handles UDP packets received on the network interface.

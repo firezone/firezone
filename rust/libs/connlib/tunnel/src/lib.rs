@@ -420,9 +420,8 @@ impl ClientTunnel {
                         .inspect(|p| tun_received.record(p))
                         .peekable();
 
-                    while let Some(mut packet) = packets.next() {
-                        let mut tun_batch = match self.role_state.begin_tun_batch(&mut packet, now)
-                        {
+                    while let Some(packet) = packets.next() {
+                        let mut tun_batch = match self.role_state.begin_tun_batch(packet, now) {
                             Ok(Some(tun_batch)) => tun_batch,
                             Ok(None) => continue,
                             Err(e) => {
@@ -434,26 +433,26 @@ impl ClientTunnel {
 
                         // A batch is encrypted into one GSO train, so it ends where the train would.
                         let (src, dst) = (tun_batch.src(), tun_batch.dst());
+                        let first = tun_batch.first();
                         let mut train = io::UdpGsoTrain::new(
                             src,
                             dst,
-                            packet.ecn(),
-                            tun_batch.datagram_len(&packet),
+                            first.ecn(),
+                            tun_batch.datagram_len(first),
                         );
-                        let mut group =
-                            Vec::with_capacity(train.max_segments().min(packets.size_hint().0 + 1));
-                        group.push(packet);
+                        tun_batch.reserve((train.max_segments() - 1).min(packets.size_hint().0));
 
-                        while let Some(mut packet) = packets.next_if(|p| {
+                        while let Some(packet) = packets.next_if(|p| {
                             tun_batch.accepts(p)
                                 && train.try_append(src, dst, p.ecn(), tun_batch.datagram_len(p))
                         }) {
-                            tun_batch.push(&mut packet);
-                            group.push(packet);
+                            tun_batch.push(packet);
                         }
 
                         match tun_batch.finish() {
-                            Ok(encapsulation) => batch.encrypt(encapsulation, group, train),
+                            Ok((encapsulation, packets)) => {
+                                batch.encrypt(encapsulation, packets, train)
+                            }
                             Err(e) => {
                                 self.dropped_packets.record(&e);
                                 error.push(e.context("Failed to handle packet from TUN device"));
@@ -704,9 +703,8 @@ impl GatewayTunnel {
                         .inspect(|p| tun_received.record(p))
                         .peekable();
 
-                    while let Some(mut packet) = packets.next() {
-                        let mut tun_batch = match self.role_state.begin_tun_batch(&mut packet, now)
-                        {
+                    while let Some(packet) = packets.next() {
+                        let mut tun_batch = match self.role_state.begin_tun_batch(packet, now) {
                             Ok(Some(tun_batch)) => tun_batch,
                             Ok(None) => continue,
                             Err(e) => {
@@ -718,26 +716,26 @@ impl GatewayTunnel {
 
                         // A batch is encrypted into one GSO train, so it ends where the train would.
                         let (src, dst) = (tun_batch.src(), tun_batch.dst());
+                        let first = tun_batch.first();
                         let mut train = io::UdpGsoTrain::new(
                             src,
                             dst,
-                            packet.ecn(),
-                            tun_batch.datagram_len(&packet),
+                            first.ecn(),
+                            tun_batch.datagram_len(first),
                         );
-                        let mut group =
-                            Vec::with_capacity(train.max_segments().min(packets.size_hint().0 + 1));
-                        group.push(packet);
+                        tun_batch.reserve((train.max_segments() - 1).min(packets.size_hint().0));
 
-                        while let Some(mut packet) = packets.next_if(|p| {
+                        while let Some(packet) = packets.next_if(|p| {
                             tun_batch.accepts(p)
                                 && train.try_append(src, dst, p.ecn(), tun_batch.datagram_len(p))
                         }) {
-                            tun_batch.push(&mut packet);
-                            group.push(packet);
+                            tun_batch.push(packet);
                         }
 
                         match tun_batch.finish() {
-                            Ok(encapsulation) => batch.encrypt(encapsulation, group, train),
+                            Ok((encapsulation, packets)) => {
+                                batch.encrypt(encapsulation, packets, train)
+                            }
                             Err(e) => {
                                 self.dropped_packets.record(&e);
                                 error.push(e.context("Failed to handle packet from TUN device"));
