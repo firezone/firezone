@@ -433,7 +433,7 @@ impl ClientTunnel {
 
                         // A batch is encrypted into one GSO train, so it ends where the train would.
                         let first = tun_batch.first();
-                        let mut train = jobs.open_train(
+                        let mut train = jobs.train_for(
                             tun_batch.src(),
                             tun_batch.dst(),
                             first.ecn(),
@@ -713,7 +713,7 @@ impl GatewayTunnel {
 
                         // A batch is encrypted into one GSO train, so it ends where the train would.
                         let first = tun_batch.first();
-                        let mut train = jobs.open_train(
+                        let mut train = jobs.train_for(
                             tun_batch.src(),
                             tun_batch.dst(),
                             first.ecn(),

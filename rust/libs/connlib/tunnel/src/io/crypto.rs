@@ -159,11 +159,11 @@ pub struct EncryptJobs<'a> {
 }
 
 impl<'a> EncryptJobs<'a> {
-    /// Opens the train to `dst` for a batch, starting with a datagram of `len` bytes.
+    /// Returns the train to `dst` for a batch, starting with a datagram of `len` bytes.
     ///
     /// Joins the train already open to `dst` if the datagram fits it, handing that train to a
     /// worker otherwise.
-    pub fn open_train(
+    pub fn train_for(
         &mut self,
         src: Option<SocketAddr>,
         dst: SocketAddr,
