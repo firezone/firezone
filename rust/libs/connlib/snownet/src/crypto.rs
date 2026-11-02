@@ -202,7 +202,7 @@ impl<'n> DecapsulateBatch<'n> {
     ///
     /// Returns `false` without changing the batch otherwise; finish the batch and pass the
     /// segment to [`Node::begin_decapsulate`](crate::Node::begin_decapsulate) then.
-    pub fn increment(&mut self, segment: &[u8], now: Instant) -> bool {
+    pub fn push(&mut self, segment: &[u8], now: Instant) -> bool {
         if let Some(channel) = self.channel
             && !crate::channel_data::decode(segment).is_ok_and(|cd| cd.channel() == channel)
         {
@@ -226,7 +226,7 @@ impl<'n> DecapsulateBatch<'n> {
             return false;
         }
 
-        self.batch.increment(data).is_ok()
+        self.batch.push(data).is_ok()
     }
 
     /// Releases the [`Node`](crate::Node).
@@ -263,7 +263,7 @@ impl PendingDecapsulate {
 
     /// Decrypts the messages from `segments`, those passed to
     /// [`Node::begin_decapsulate`](crate::Node::begin_decapsulate) and
-    /// [`DecapsulateBatch::increment`] in order.
+    /// [`DecapsulateBatch::push`] in order.
     ///
     /// Commit each result with [`Node::commit_decrypted`](crate::Node::commit_decrypted).
     pub fn decrypt<'a>(self, segments: impl IntoIterator<Item = &'a [u8]>) -> DecryptedBatch {

@@ -478,7 +478,7 @@ impl ClientTunnel {
                             let mut group = vec![segment];
 
                             for segment in segments.by_ref() {
-                                if !batch.increment(&datagram[segment], now) {
+                                if !batch.push(&datagram[segment], now) {
                                     pending = Some(segment);
                                     break;
                                 }
@@ -744,7 +744,7 @@ impl GatewayTunnel {
                             let mut group = vec![segment];
 
                             for segment in segments.by_ref() {
-                                if !batch.increment(&datagram[segment], now) {
+                                if !batch.push(&datagram[segment], now) {
                                     pending = Some(segment);
                                     break;
                                 }
