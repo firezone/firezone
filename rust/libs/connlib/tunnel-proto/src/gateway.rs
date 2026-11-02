@@ -257,9 +257,14 @@ impl GatewayState {
         from: SocketAddr,
         now: Instant,
     ) -> PeerBatch<'_> {
+        let committed = self
+            .node
+            .commit_decrypted(decrypted, now)
+            .map_err(|e| Some(e.context(FailedToDecapsulate(packet_kind::Kind::Wireguard))));
+
         PeerBatch {
             state: self,
-            decrypted,
+            committed,
             local,
             from,
             now,
@@ -268,17 +273,16 @@ impl GatewayState {
 
     fn handle_peer_message(
         &mut self,
-        packet: snownet::DecryptedIpPacket,
+        cid: ClientId,
+        packet: Result<Option<IpPacket>>,
         local: SocketAddr,
         from: SocketAddr,
         now: Instant,
     ) -> Result<Option<IpPacket>> {
-        let decrypted = match self.node.commit_decrypted(packet, now) {
-            Ok(decrypted) => decrypted,
+        let mut packet = match packet {
+            Ok(Some(packet)) => packet,
+            Ok(None) => return Ok(None),
             Err(e) => return Err(e.context(FailedToDecapsulate(packet_kind::Kind::Wireguard))),
-        };
-        let Some((cid, mut packet)) = decrypted else {
-            return Ok(None);
         };
 
         let flow = Flow::of(&packet);
@@ -878,7 +882,8 @@ fn handle_assigned_ips_event(
 #[must_use = "iterators are lazy and do nothing unless consumed"]
 pub struct PeerBatch<'a> {
     state: &'a mut GatewayState,
-    decrypted: snownet::DecryptedBatch,
+    /// The committed packets, or the error that failed the batch as a whole until it is yielded.
+    committed: Result<(ClientId, snownet::CommittedBatch), Option<anyhow::Error>>,
     local: SocketAddr,
     from: SocketAddr,
     now: Instant,
@@ -888,17 +893,28 @@ impl Iterator for PeerBatch<'_> {
     type Item = Result<Option<IpPacket>>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let packet = self.decrypted.next()?;
-        self.decrypted.prefetch();
+        let (cid, packets) = match &mut self.committed {
+            Ok(committed) => committed,
+            Err(e) => return e.take().map(Err),
+        };
+        let packet = packets.next()?;
+        packets.prefetch();
 
         Some(
             self.state
-                .handle_peer_message(packet, self.local, self.from, self.now),
+                .handle_peer_message(*cid, packet, self.local, self.from, self.now),
         )
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
-        self.decrypted.size_hint()
+        match &self.committed {
+            Ok((_, packets)) => packets.size_hint(),
+            Err(e) => {
+                let len = usize::from(e.is_some());
+
+                (len, Some(len))
+            }
+        }
     }
 }
 

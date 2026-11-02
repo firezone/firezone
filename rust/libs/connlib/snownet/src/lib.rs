@@ -14,7 +14,7 @@ mod utils;
 
 pub use allocation::RelaySocket;
 pub use crypto::{
-    DecapsulateBatch, DecryptedBatch, DecryptedIpPacket, EncapsulateBatch, PendingDecapsulate,
+    CommittedBatch, DecapsulateBatch, DecryptedBatch, EncapsulateBatch, PendingDecapsulate,
     PendingEncapsulate,
 };
 pub use node::{

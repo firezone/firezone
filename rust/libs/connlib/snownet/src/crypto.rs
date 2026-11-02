@@ -265,7 +265,7 @@ impl PendingDecapsulate {
     /// [`Node::begin_decapsulate`](crate::Node::begin_decapsulate) and
     /// [`DecapsulateBatch::push`] in order.
     ///
-    /// Commit each result with [`Node::commit_decrypted`](crate::Node::commit_decrypted).
+    /// Commit the result with [`Node::commit_decrypted`](crate::Node::commit_decrypted).
     pub fn decrypt<'a>(self, segments: impl IntoIterator<Item = &'a [u8]>) -> DecryptedBatch {
         let offset = self.offset;
         let messages = segments.into_iter().map(|segment| {
@@ -275,26 +275,46 @@ impl PendingDecapsulate {
             )
         });
 
-        let decrypted = self
-            .pending
-            .decrypt(messages)
-            .map(|decrypted| DecryptedIpPacket {
-                tunnel: self.tunnel,
-                src: self.src,
-                dst: self.dst,
-                decrypted: decrypted.map(IpPacket::new),
-            })
-            .collect::<Vec<_>>();
-
-        DecryptedBatch(decrypted.into_iter())
+        DecryptedBatch {
+            tunnel: self.tunnel,
+            src: self.src,
+            dst: self.dst,
+            decrypted: self.pending.decrypt(messages).map(IpPacket::new),
+        }
     }
 }
 
-/// The outcome of a [`PendingDecapsulate`], yielding one [`DecryptedIpPacket`] per message.
-pub struct DecryptedBatch(std::vec::IntoIter<DecryptedIpPacket>);
+/// The outcome of a [`PendingDecapsulate`], awaiting
+/// [`Node::commit_decrypted`](crate::Node::commit_decrypted).
+pub struct DecryptedBatch {
+    pub(crate) tunnel: sanstun::TunnelId,
+    pub(crate) src: SocketAddr,
+    pub(crate) dst: SocketAddr,
+    pub(crate) decrypted: sanstun::DecryptedBatch<Result<IpPacket>>,
+}
 
-impl Iterator for DecryptedBatch {
-    type Item = DecryptedIpPacket;
+/// Prefetches the first packet of the batch.
+impl prefetch::Prefetch for DecryptedBatch {
+    fn prefetch(&self) {
+        if let Some(Ok(packet)) = self.decrypted.plaintexts().next() {
+            packet.prefetch();
+        }
+    }
+}
+
+/// The packets of a [`DecryptedBatch`] committed to their connection, in order.
+///
+/// Yields `Ok(None)` for a packet that was handled internally, for example, a keepalive.
+pub struct CommittedBatch(std::vec::IntoIter<Result<Option<IpPacket>>>);
+
+impl CommittedBatch {
+    pub(crate) fn new(packets: Vec<Result<Option<IpPacket>>>) -> Self {
+        Self(packets.into_iter())
+    }
+}
+
+impl Iterator for CommittedBatch {
+    type Item = Result<Option<IpPacket>>;
 
     fn next(&mut self) -> Option<Self::Item> {
         self.0.next()
@@ -305,28 +325,12 @@ impl Iterator for DecryptedBatch {
     }
 }
 
-impl ExactSizeIterator for DecryptedBatch {}
+impl ExactSizeIterator for CommittedBatch {}
 
 /// Prefetches the next packet of the batch.
-impl prefetch::Prefetch for DecryptedBatch {
+impl prefetch::Prefetch for CommittedBatch {
     fn prefetch(&self) {
-        if let Some(packet) = self.0.as_slice().first() {
-            packet.prefetch();
-        }
-    }
-}
-
-/// One decrypted message of a [`DecryptedBatch`].
-pub struct DecryptedIpPacket {
-    pub(crate) tunnel: sanstun::TunnelId,
-    pub(crate) src: SocketAddr,
-    pub(crate) dst: SocketAddr,
-    pub(crate) decrypted: sanstun::Decrypted<Result<IpPacket>>,
-}
-
-impl prefetch::Prefetch for DecryptedIpPacket {
-    fn prefetch(&self) {
-        if let Some(Ok(packet)) = self.decrypted.plaintext() {
+        if let Some(Ok(Some(packet))) = self.0.as_slice().first() {
             packet.prefetch();
         }
     }

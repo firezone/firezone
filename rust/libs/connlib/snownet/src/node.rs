@@ -10,7 +10,7 @@ pub use connections::UnknownConnection;
 
 use crate::agent::Agent;
 use crate::allocation::{self, Allocation, RelaySocket, Socket};
-use crate::crypto::{DecapsulateBatch, DecryptedIpPacket, EncapsulateBatch};
+use crate::crypto::{CommittedBatch, DecapsulateBatch, DecryptedBatch, EncapsulateBatch};
 use crate::node::allocations::Allocations;
 use crate::node::buffered_candidates::BufferedCandidates;
 use crate::node::connection_state::{ConnectionState, PeerSocket};
@@ -604,7 +604,7 @@ where
     ///   Call [`Node::handle_timeout`] before suspending to send any replies.
     /// - `Ok(Some)` if the packet was an encrypted WireGuard data message from a peer.
     ///   Add further segments of the same datagram with [`DecapsulateBatch::push`], finish the
-    ///   batch, decrypt it and pass each result to [`Node::commit_decrypted`].
+    ///   batch, decrypt it and pass the result to [`Node::commit_decrypted`].
     pub fn begin_decapsulate(
         &mut self,
         local: SocketAddr,
@@ -638,31 +638,28 @@ where
         Ok(Some(pending))
     }
 
-    /// Commits a packet decrypted from a [`DecapsulateBatch`].
+    /// Commits the packets decrypted from a [`DecapsulateBatch`].
     ///
-    /// # Returns
-    ///
-    /// - `Ok(None)` if the packet was handled internally, for example, a keepalive.
-    /// - `Ok(Some)` with the decrypted IP packet and the connection it was received on.
+    /// Returns the connection they were received on and the result of each packet.
     pub fn commit_decrypted(
         &mut self,
-        packet: DecryptedIpPacket,
+        batch: DecryptedBatch,
         now: Instant,
-    ) -> Result<Option<(TId, IpPacket)>> {
+    ) -> Result<(TId, CommittedBatch)> {
         self.last_now = now;
 
-        let DecryptedIpPacket {
+        let DecryptedBatch {
             tunnel,
             src,
             dst,
             decrypted,
-        } = packet;
+        } = batch;
 
         let (cid, conn) = self
             .connections
             .get_established_mut_by_tunnel_id(tunnel, now)?;
 
-        let control_flow = conn.commit_decrypted(cid, (dst, src), decrypted, now);
+        let packets = conn.commit_decrypted(cid, (dst, src), decrypted, now);
         conn.handle_tunnel_events(
             cid,
             &mut self.allocations,
@@ -670,16 +667,15 @@ where
             &mut self.pending_events,
             now,
         );
-        let is_closing = self.connections.is_closing(&cid);
+        let mut packets = packets?;
 
-        let packet = match control_flow {
-            ControlFlow::Continue(_) if is_closing => return Ok(None),
-            ControlFlow::Continue(packet) => packet,
-            ControlFlow::Break(Ok(())) => return Ok(None),
-            ControlFlow::Break(Err(e)) => return Err(e.context(format!("cid={cid}"))),
-        };
+        if self.connections.is_closing(&cid) {
+            for packet in packets.iter_mut().flatten() {
+                *packet = None;
+            }
+        }
 
-        Ok(Some((cid, packet)))
+        Ok((cid, CommittedBatch::new(packets)))
     }
 
     /// Starts a batch of outgoing IP packets to `cid`, beginning with `packet`.
@@ -2051,36 +2047,54 @@ where
         ControlFlow::Break(result)
     }
 
+    /// Returns `Ok(None)` for a packet that was handled internally, for example, a keepalive.
     fn commit_decrypted<TId>(
         &mut self,
         cid: TId,
         path: (SocketAddr, SocketAddr),
-        decrypted: sanstun::Decrypted<Result<IpPacket>>,
+        decrypted: sanstun::DecryptedBatch<Result<IpPacket>>,
         now: Instant,
-    ) -> ControlFlow<Result<()>, IpPacket>
+    ) -> Result<Vec<Result<Option<IpPacket>>>>
     where
-        TId: fmt::Display,
+        TId: fmt::Display + Copy,
         RId: Ord + fmt::Display + Copy,
     {
-        let packet = match self.tunnel.commit_decapsulate(decrypted, now) {
-            Ok(sanstun::Committed::Data {
-                buffer: Ok(packet), ..
-            }) => packet,
-            Ok(sanstun::Committed::Data { buffer: Err(e), .. }) => {
-                return ControlFlow::Break(Err(e.context("Failed to parse IP packet")));
-            }
-            Ok(sanstun::Committed::Keepalive) => return ControlFlow::Break(Ok(())),
-            Err(e) => {
-                return ControlFlow::Break(Err(anyhow::Error::new(e).context("data packet")));
-            }
-        };
+        let committed = self
+            .tunnel
+            .commit_decapsulate(decrypted, now)
+            .context("data packet")
+            .with_context(|| format!("cid={cid}"))?;
 
-        self.state
-            .on_incoming(cid, &mut self.agent, self.default_ice_config, &packet, now);
+        let packets = committed
+            .map(|committed| {
+                let packet = match committed {
+                    Ok(sanstun::Committed::Data {
+                        buffer: Ok(packet), ..
+                    }) => packet,
+                    Ok(sanstun::Committed::Data { buffer: Err(e), .. }) => {
+                        return Err(e
+                            .context("Failed to parse IP packet")
+                            .context(format!("cid={cid}")));
+                    }
+                    Ok(sanstun::Committed::Keepalive) => return Ok(None),
+                    Err(e) => {
+                        return Err(anyhow::Error::new(e)
+                            .context("data packet")
+                            .context(format!("cid={cid}")));
+                    }
+                };
 
-        self.agent
-            .handle_inbound_tun(packet, path, now)
-            .map_break(Ok)
+                self.state
+                    .on_incoming(cid, &mut self.agent, self.default_ice_config, &packet, now);
+
+                match self.agent.handle_inbound_tun(packet, path, now) {
+                    ControlFlow::Continue(packet) => Ok(Some(packet)),
+                    ControlFlow::Break(()) => Ok(None),
+                }
+            })
+            .collect();
+
+        Ok(packets)
     }
 
     fn restore_rekey_attempt_time(&mut self) {
