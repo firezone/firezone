@@ -4750,6 +4750,7 @@ dependencies = [
  "anyhow-ext",
  "dns-types",
  "futures",
+ "parking_lot",
  "tokio",
  "tracing",
 ]
