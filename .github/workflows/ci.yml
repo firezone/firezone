@@ -287,7 +287,7 @@ jobs:
       # own commits, so a re-render does not chain into the next one.
       - name: Push the re-rendered screenshots
         id: push
-        uses: firezone/actions/commit@e55cd3726765e5dddda81e13875223310fda80fc # main
+        uses: firezone/actions/commit@c4ae91b67c5abc541234daba15abd8cdf3087830 # main
         with:
           token: ${{ github.token }}
           branch: ${{ github.head_ref }}

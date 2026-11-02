@@ -233,7 +233,7 @@ jobs:
             exit 1
           fi
           echo "$response"
-      - uses: firezone/actions/commit@e55cd3726765e5dddda81e13875223310fda80fc # main
+      - uses: firezone/actions/commit@c4ae91b67c5abc541234daba15abd8cdf3087830 # main
         with:
           token: ${{ steps.app-token.outputs.token }}
           repository: firezone/winget-pkgs
@@ -319,7 +319,7 @@ jobs:
           repositories: ${{ github.repository }}
           permission-contents: write
           permission-pull-requests: write
-      - uses: firezone/actions/create-pull-request@e55cd3726765e5dddda81e13875223310fda80fc # main
+      - uses: firezone/actions/create-pull-request@c4ae91b67c5abc541234daba15abd8cdf3087830 # main
         if: ${{ startsWith(inputs.release_name || github.event.release.name, matrix.component) }}
         with:
           token: ${{ steps.app-token.outputs.token }}
