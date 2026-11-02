@@ -80,16 +80,48 @@ defmodule PortalWeb.SignUpTest do
       refute html =~ ~s(name="registration[phone]")
     end
 
-    test "links the same page on the EU portal from the US portal", %{conn: conn} do
+    test "shows the cloud region picker first, instead of the footer line", %{conn: conn} do
       Portal.Config.put_env_override(:data_residency_region, :us)
       Portal.Config.put_env_override(:web_external_url, "https://app.firezone.dev")
 
       {:ok, lv, _html} = live(conn, ~p"/sign_up/email")
 
+      assert has_element?(lv, "#region-option-us[aria-checked='true']", "United States")
+
       assert has_element?(
                lv,
-               "#other-region-portal[href='https://eu.app.firezone.dev/sign_up/email']"
+               "a#region-option-eu[aria-checked='false'][href='https://eu.app.firezone.dev/sign_up/email']",
+               "European Union"
              )
+
+      assert has_element?(lv, "#region-picker-help", "Changing it later requires downtime")
+      refute has_element?(lv, "#data-residency")
+    end
+
+    test "links the US sign-up chooser from the EU portal", %{conn: conn} do
+      Portal.Config.put_env_override(:data_residency_region, :eu)
+      Portal.Config.put_env_override(:web_external_url, "https://eu.app.firezone.dev")
+
+      {:ok, lv, _html} = live(conn, ~p"/sign_up")
+
+      assert has_element?(lv, "#region-option-eu[aria-checked='true']")
+      assert has_element?(lv, "a#region-option-us[href='https://app.firezone.dev/sign_up']")
+    end
+
+    test "does not link another region's portal outside Firezone Cloud", %{conn: conn} do
+      Portal.Config.put_env_override(:data_residency_region, :us)
+
+      {:ok, lv, _html} = live(conn, ~p"/sign_up")
+
+      assert has_element?(lv, "#region-option-us[aria-checked='true']")
+      assert has_element?(lv, "div#region-option-eu[aria-disabled='true']")
+      refute has_element?(lv, "a#region-option-eu")
+    end
+
+    test "hides the cloud region picker on-prem", %{conn: conn} do
+      {:ok, lv, _html} = live(conn, ~p"/sign_up")
+
+      refute has_element?(lv, "#region-picker")
     end
 
     test "renders the sign-up on a branded card for small screens", %{conn: conn} do
