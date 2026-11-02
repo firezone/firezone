@@ -123,7 +123,7 @@ jobs:
       security-events: write # trivy SARIF upload from setup-mise
     secrets:
       BOT_PRIVATE_KEY: ${{ secrets.BOT_PRIVATE_KEY }}
-      WINGET_PR_TOKEN: ${{ secrets.WINGET_PR_TOKEN }}
+      WINGET_TOKEN: ${{ secrets.WINGET_TOKEN }}
     with:
       identifier: Firezone.Client.GUI
       release_name: ${{ inputs.release_name || github.event.release.name }}
@@ -137,7 +137,7 @@ jobs:
       security-events: write # trivy SARIF upload from setup-mise
     secrets:
       BOT_PRIVATE_KEY: ${{ secrets.BOT_PRIVATE_KEY }}
-      WINGET_PR_TOKEN: ${{ secrets.WINGET_PR_TOKEN }}
+      WINGET_TOKEN: ${{ secrets.WINGET_TOKEN }}
     with:
       identifier: Firezone.Client.Headless
       release_name: ${{ inputs.release_name || github.event.release.name }}

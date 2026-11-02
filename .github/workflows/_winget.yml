@@ -20,7 +20,7 @@ on:
     secrets:
       BOT_PRIVATE_KEY:
         required: true
-      WINGET_PR_TOKEN:
+      WINGET_TOKEN:
         required: true
 
 permissions:
@@ -163,7 +163,7 @@ jobs:
           paths: manifests
       - name: Open the pull request
         env:
-          GH_TOKEN: ${{ secrets.WINGET_PR_TOKEN }}
+          GH_TOKEN: ${{ secrets.WINGET_TOKEN }}
           BRANCH: ${{ needs.generate.outputs.branch }}
           TITLE: ${{ needs.generate.outputs.title }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
