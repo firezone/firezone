@@ -73,9 +73,6 @@ pub struct GatewayState {
 
     /// Our connection to the portal, holding back ICE candidates while it is down.
     portal: PortalConnection<ClientId>,
-
-    /// The routing decisions of the flows seen in the [`PeerBatch`] being handled.
-    inbound_decisions: Vec<InboundDecision>,
 }
 
 /// The decision taken for the first packet of a flow in a [`PeerBatch`], reused for the rest.
@@ -85,6 +82,8 @@ struct InboundDecision {
     rewrite: Option<(Protocol, IpAddr)>,
     flows: flow_tracker::DetachedFlowBatch,
 }
+
+type InboundDecisions = smallvec::SmallVec<[InboundDecision; 2]>;
 
 #[derive(Debug)]
 pub struct DnsResourceNatEntry {
@@ -111,7 +110,6 @@ impl GatewayState {
             portal: Default::default(),
             buffered_events: VecDeque::default(),
             buffered_transmits: VecDeque::default(),
-            inbound_decisions: Vec::new(),
             flow_tracker: flow_tracker::Tracker::new(now, unix_ts),
             authorization_rejections: Default::default(),
             tun_ip_config: None,
@@ -267,6 +265,7 @@ impl GatewayState {
             local,
             from,
             now,
+            decisions: InboundDecisions::new(),
         }
     }
 
@@ -274,6 +273,7 @@ impl GatewayState {
         &mut self,
         cid: ClientId,
         packet: Result<Option<IpPacket>>,
+        decisions: &mut InboundDecisions,
         local: SocketAddr,
         from: SocketAddr,
         now: Instant,
@@ -287,8 +287,7 @@ impl GatewayState {
         let flow = Flow::of(&packet);
 
         if let Some(flow) = flow
-            && let Some(decision) = self
-                .inbound_decisions
+            && let Some(decision) = decisions
                 .iter_mut()
                 .find(|decision| decision.cid == cid && decision.flow == flow)
         {
@@ -366,7 +365,7 @@ impl GatewayState {
                 if let Some(flow) = flow
                     && let Some(rewrite) = rewrite
                 {
-                    self.inbound_decisions.push(InboundDecision {
+                    decisions.push(InboundDecision {
                         cid,
                         flow,
                         rewrite,
@@ -396,13 +395,6 @@ impl GatewayState {
 
                 Ok(None)
             }
-        }
-    }
-
-    /// Records the flows of the [`PeerBatch`] that ended.
-    fn insert_inbound_flows(&mut self) {
-        for decision in self.inbound_decisions.drain(..) {
-            self.flow_tracker.insert_batch(decision.flows);
         }
     }
 
@@ -886,6 +878,8 @@ pub struct PeerBatch<'a> {
     local: SocketAddr,
     from: SocketAddr,
     now: Instant,
+    /// The routing decisions of the flows seen so far.
+    decisions: InboundDecisions,
 }
 
 impl Iterator for PeerBatch<'_> {
@@ -898,10 +892,14 @@ impl Iterator for PeerBatch<'_> {
         };
         let packet = packets.next()?;
 
-        Some(
-            self.state
-                .handle_peer_message(*cid, packet, self.local, self.from, self.now),
-        )
+        Some(self.state.handle_peer_message(
+            *cid,
+            packet,
+            &mut self.decisions,
+            self.local,
+            self.from,
+            self.now,
+        ))
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
@@ -918,7 +916,9 @@ impl Iterator for PeerBatch<'_> {
 
 impl Drop for PeerBatch<'_> {
     fn drop(&mut self) {
-        self.state.insert_inbound_flows();
+        for decision in self.decisions.drain(..) {
+            self.state.flow_tracker.insert_batch(decision.flows);
+        }
     }
 }
 

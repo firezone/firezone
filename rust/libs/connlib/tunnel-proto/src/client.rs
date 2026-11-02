@@ -133,8 +133,6 @@ pub struct ClientState {
 
     /// Tracks the flows tunneled through this Client.
     flow_tracker: flow_tracker::Tracker<ClientOrGatewayId>,
-    /// The routing decisions of the flows seen in the [`PeerBatch`] being handled.
-    inbound_decisions: Vec<InboundDecision>,
     authorization_rejections: AuthorizationRejections,
     /// Tracks the authorizations we have requested but not yet been granted.
     pending_authorizations: PendingAuthorizations,
@@ -225,7 +223,6 @@ impl ClientState {
             buffered_packets: Default::default(),
             node: Node::new(seed, now, unix_ts),
             flow_tracker: flow_tracker::Tracker::new(now, unix_ts),
-            inbound_decisions: Vec::new(),
             authorization_rejections: Default::default(),
             portal: Default::default(),
             sites_status: Default::default(),
@@ -815,6 +812,7 @@ impl ClientState {
             local,
             from,
             now,
+            decisions: InboundDecisions::new(),
         }
     }
 
@@ -822,6 +820,7 @@ impl ClientState {
         &mut self,
         pid: ClientOrGatewayId,
         packet: Result<Option<IpPacket>>,
+        decisions: &mut InboundDecisions,
         local: SocketAddr,
         from: SocketAddr,
         now: Instant,
@@ -836,8 +835,7 @@ impl ClientState {
 
         if let ClientOrGatewayId::Gateway(gid) = pid
             && let Some(flow) = flow
-            && let Some(decision) = self
-                .inbound_decisions
+            && let Some(decision) = decisions
                 .iter_mut()
                 .find(|decision| decision.gid == gid && decision.flow == flow)
         {
@@ -969,7 +967,7 @@ impl ClientState {
                 flow_tracker::record_peer(gid, flow_tracker::Role::Initiator);
 
                 if let Some(flow) = flow {
-                    self.inbound_decisions.push(InboundDecision {
+                    decisions.push(InboundDecision {
                         gid,
                         flow,
                         flows: flows.detach(),
@@ -979,13 +977,6 @@ impl ClientState {
         }
 
         Ok(Some(packet))
-    }
-
-    /// Records the flows of the [`PeerBatch`] that ended.
-    fn insert_inbound_flows(&mut self) {
-        for decision in self.inbound_decisions.drain(..) {
-            self.flow_tracker.insert_batch(decision.flows);
-        }
     }
 
     pub fn handle_dns_response(&mut self, response: dns::RecursiveResponse, now: Instant) {
@@ -2943,6 +2934,8 @@ struct InboundDecision {
     flows: flow_tracker::DetachedFlowBatch,
 }
 
+type InboundDecisions = smallvec::SmallVec<[InboundDecision; 2]>;
+
 /// The data messages of one received datagram being handled, in order.
 ///
 /// Dropping it records the flows of the batch.
@@ -2954,6 +2947,8 @@ pub struct PeerBatch<'a> {
     local: SocketAddr,
     from: SocketAddr,
     now: Instant,
+    /// The routing decisions of the flows seen so far.
+    decisions: InboundDecisions,
 }
 
 impl Iterator for PeerBatch<'_> {
@@ -2966,10 +2961,14 @@ impl Iterator for PeerBatch<'_> {
         };
         let packet = packets.next()?;
 
-        Some(
-            self.state
-                .handle_peer_message(*pid, packet, self.local, self.from, self.now),
-        )
+        Some(self.state.handle_peer_message(
+            *pid,
+            packet,
+            &mut self.decisions,
+            self.local,
+            self.from,
+            self.now,
+        ))
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
@@ -2986,7 +2985,9 @@ impl Iterator for PeerBatch<'_> {
 
 impl Drop for PeerBatch<'_> {
     fn drop(&mut self) {
-        self.state.insert_inbound_flows();
+        for decision in self.decisions.drain(..) {
+            self.state.flow_tracker.insert_batch(decision.flows);
+        }
     }
 }
 
