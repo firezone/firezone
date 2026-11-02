@@ -11,11 +11,15 @@ use std::{
     io,
     net::SocketAddr,
     task::{Context, Poll},
+    time::Duration,
 };
 use tokio::{
     io::{AsyncReadExt as _, AsyncWriteExt as _},
     net::{TcpListener, TcpStream},
 };
+
+/// How long we wait for a client to send a query or to accept a response before we close the connection.
+const TIMEOUT: Duration = Duration::from_secs(10);
 
 #[derive(Default)]
 pub struct Server {
@@ -68,14 +72,20 @@ impl Server {
                 let len = response.len() as u16;
                 let len = len.to_be_bytes();
 
-                stream
-                    .write_all(&len)
-                    .await
-                    .context("Failed to write TCP DNS header")?;
-                stream
-                    .write_all(&response)
-                    .await
-                    .context("Failed to write TCP DNS message")?;
+                tokio::time::timeout(TIMEOUT, async {
+                    stream
+                        .write_all(&len)
+                        .await
+                        .context("Failed to write TCP DNS header")?;
+                    stream
+                        .write_all(&response)
+                        .await
+                        .context("Failed to write TCP DNS message")?;
+
+                    anyhow::Ok(())
+                })
+                .await
+                .context("Timed out writing TCP DNS response")??;
 
                 Ok((stream, to))
             }
@@ -143,6 +153,16 @@ async fn read_tcp_query(
     mut stream: TcpStream,
     from: SocketAddr,
 ) -> Result<Option<(SocketAddr, dns_types::Query, TcpStream)>> {
+    let Ok(message) = tokio::time::timeout(TIMEOUT, read_message(&mut stream)).await else {
+        tracing::debug!(%from, "Closing idle TCP DNS connection");
+
+        return Ok(None);
+    };
+
+    Ok(message?.map(|message| (from, message, stream)))
+}
+
+async fn read_message(stream: &mut TcpStream) -> Result<Option<dns_types::Query>> {
     let mut buf = [0; 2];
     match stream.read_exact(&mut buf).await {
         Ok(2) => {}
@@ -161,7 +181,7 @@ async fn read_tcp_query(
 
     let message = dns_types::Query::parse(&buf).context("Failed to parse DNS message")?;
 
-    Ok(Some((from, message, stream)))
+    Ok(Some(message))
 }
 
 pub struct Query {
@@ -256,6 +276,24 @@ mod tests {
         assert!(!server_task.is_finished());
 
         server_task.abort();
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn idle_connection_times_out() {
+        let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).await.unwrap();
+        let _client = TcpStream::connect(listener.local_addr().unwrap())
+            .await
+            .unwrap();
+        let (stream, from) = listener.accept().await.unwrap();
+
+        let start = tokio::time::Instant::now();
+        let query = tokio::time::timeout(TIMEOUT * 2, read_tcp_query(stream, from))
+            .await
+            .expect("Reading from an idle connection should time out")
+            .unwrap();
+
+        assert!(query.is_none());
+        assert!(start.elapsed() >= TIMEOUT);
     }
 
     async fn dig(server: SocketAddr) -> ExitStatus {
