@@ -79,7 +79,7 @@ pub struct GatewayState {
 struct InboundDecision {
     key: BatchingKey,
     rewrite: Option<(Protocol, IpAddr)>,
-    flows: flow_tracker::DetachedFlowBatch,
+    flows: flow_tracker::DetachedFlow,
 }
 
 type InboundDecisions = smallvec::SmallVec<[InboundDecision; 2]>;
@@ -170,7 +170,7 @@ impl GatewayState {
         mut packet: IpPacket,
         now: Instant,
     ) -> Result<Option<TunBatch<'_, (ClientId, ResourceId)>>> {
-        let flows = self.flow_tracker.begin_tun_batch(&packet, now);
+        let flows = self.flow_tracker.begin_tun_packet(&packet, now);
 
         if packet.is_fz_p2p_control() {
             tracing::warn!("Packet matches heuristics of FZ p2p control protocol");
@@ -268,7 +268,7 @@ impl GatewayState {
         };
 
         let key = BatchingKey::of(&packet);
-        let flows = self.flow_tracker.begin_network_batch(local, from, now);
+        let flows = self.flow_tracker.begin_network_packet(local, from, now);
 
         if packet.destination().is_multicast() {
             return Ok(None);
@@ -294,6 +294,12 @@ impl GatewayState {
                 p2p_control::GOODBYE_EVENT => {
                     self.peers.remove(&cid);
                     self.node.remove_connection(cid, "received `goodbye`", now);
+
+                    // Later packets of the batch find no peer, so they must not reuse a decision.
+                    drop(flows);
+                    for decision in decisions.drain(..) {
+                        self.flow_tracker.insert_detached(decision.flows);
+                    }
 
                     None
                 }
@@ -896,7 +902,7 @@ impl Iterator for PeerBatch<'_> {
 impl Drop for PeerBatch<'_> {
     fn drop(&mut self) {
         for decision in self.decisions.drain(..) {
-            self.state.flow_tracker.insert_batch(decision.flows);
+            self.state.flow_tracker.insert_detached(decision.flows);
         }
     }
 }
