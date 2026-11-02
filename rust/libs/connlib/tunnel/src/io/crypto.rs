@@ -65,7 +65,7 @@ enum Job {
     Decrypt(DecryptJob, oneshot::Sender<DecryptedIpPackets>),
 }
 
-/// Packets decrypted from the jobs of an [`Io::start_decrypt_jobs`](super::Io::start_decrypt_jobs).
+/// Packets decrypted from the jobs of an [`Io::open_decrypt_jobs`](super::Io::open_decrypt_jobs).
 #[derive(Default)]
 pub struct DecryptedIpPackets(Vec<DecryptedBatch>);
 
@@ -94,8 +94,8 @@ impl CryptoWorkers {
         }
     }
 
-    /// Starts encrypting `num_packets` packets, whose datagrams go to `sockets` when dropped.
-    pub fn start_encrypt_jobs<'a>(
+    /// Opens the jobs that encrypt `num_packets` packets, whose datagrams go to `sockets`.
+    pub fn open_encrypt_jobs<'a>(
         &'a mut self,
         sockets: &'a mut Sockets,
         num_packets: usize,
@@ -109,10 +109,10 @@ impl CryptoWorkers {
         }
     }
 
-    /// Starts decrypting received buffers, which go to the workers when dropped.
+    /// Opens the jobs that decrypt received buffers, which go to the workers when dropped.
     ///
     /// The results of its jobs are queued in `decrypting`.
-    pub fn start_decrypt_jobs<'a>(
+    pub fn open_decrypt_jobs<'a>(
         &'a mut self,
         decrypting: &'a mut Decrypting,
         num_packets: usize,

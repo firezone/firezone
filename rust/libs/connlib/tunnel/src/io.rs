@@ -327,21 +327,21 @@ impl Io {
         self.resolver.send_control(ResolverControl::Reset);
     }
 
-    /// Starts the jobs that encrypt encapsulated packets off the main thread.
+    /// Opens the jobs that encrypt encapsulated packets off the main thread.
     ///
-    /// Its datagrams go to the UDP sockets when it is dropped. Start one only for the packets
+    /// Their datagrams go to the UDP sockets when dropped. Open them only for the packets
     /// [`Io::poll`] read from the TUN device, which it does only while nothing waits for room in the
     /// UDP sockets.
-    pub fn start_encrypt_jobs(&mut self, num_packets: usize) -> EncryptJobs<'_> {
+    pub fn open_encrypt_jobs(&mut self, num_packets: usize) -> EncryptJobs<'_> {
         self.crypto
-            .start_encrypt_jobs(&mut self.sockets, num_packets)
+            .open_encrypt_jobs(&mut self.sockets, num_packets)
     }
 
-    /// Starts the jobs that decrypt received data messages off the main thread, yielding them via
+    /// Opens the jobs that decrypt received data messages off the main thread, yielding them via
     /// [`Input::decrypted`].
-    pub fn start_decrypt_jobs(&mut self, num_packets: usize) -> DecryptJobs<'_> {
+    pub fn open_decrypt_jobs(&mut self, num_packets: usize) -> DecryptJobs<'_> {
         self.crypto
-            .start_decrypt_jobs(&mut self.decrypting, num_packets)
+            .open_decrypt_jobs(&mut self.decrypting, num_packets)
     }
 
     pub fn send_network(&mut self, transmit: snownet::Transmit) {
