@@ -239,12 +239,6 @@ impl PortAndPeerV6 {
     }
 }
 
-/// One in this many relayed packets is reported as a [`StatsEvent`].
-///
-/// Every event wakes up userspace and all CPUs wake it up through the same lock.
-/// Reporting every packet therefore caps the throughput of the entire relay.
-pub const STATS_SAMPLING_INTERVAL: u32 = 256;
-
 /// Indices into the per-CPU array that counts relayed packets by incoming IP version and ECN codepoint.
 ///
 /// | Index  | IP version | ECN codepoint  |

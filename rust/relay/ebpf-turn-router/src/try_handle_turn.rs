@@ -18,6 +18,7 @@ use core::net::IpAddr;
 pub use adjust_head::adjust_head;
 pub use error::Error;
 
+use crate::time::KernelInstant;
 use aya_ebpf::programs::XdpContext;
 use aya_log_ebpf::*;
 use channel_data::CdHdr;
@@ -45,7 +46,7 @@ const DNS_PORT: u16 = 53;
 
 #[inline(always)]
 pub fn try_handle_turn(ctx: &XdpContext) -> Result<(), Error> {
-    let sample = stats::start_sample();
+    let start = KernelInstant::now();
 
     // SAFETY: The offset must point to the start of a valid `EthHdr`.
     let eth = unsafe { ref_mut_at::<EthHdr>(ctx, 0)? };
@@ -71,7 +72,7 @@ pub fn try_handle_turn(ctx: &XdpContext) -> Result<(), Error> {
         }
         _ => return Err(Error::NotIp),
     };
-    stats::record(ctx, sample, num_bytes, ip_version, ecn);
+    stats::record(ctx, start, num_bytes, ip_version, ecn);
 
     Ok(())
 }

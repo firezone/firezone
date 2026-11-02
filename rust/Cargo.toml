@@ -329,6 +329,13 @@ ip_network_table = { git = "https://github.com/edmonds/ip_network_table", branch
 quinn-udp = { git = "https://github.com/firezone/quinn", version = "0.6.0", branch = "main" } # Waiting for https://github.com/quinn-rs/quinn/pull/2748.
 sanstun = { git = "https://github.com/firezone/sanstun", branch = "main" } # Waiting for a release with https://github.com/firezone/sanstun/pull/144.
 
+[patch.'https://github.com/aya-rs/aya']
+aya = { git = "https://github.com/firezone/aya", branch = "perf-buffer-wakeup-256" } # Wake perf buffer readers every 256 events.
+aya-build = { git = "https://github.com/firezone/aya", branch = "perf-buffer-wakeup-256" }
+aya-ebpf = { git = "https://github.com/firezone/aya", branch = "perf-buffer-wakeup-256" }
+aya-log = { git = "https://github.com/firezone/aya", branch = "perf-buffer-wakeup-256" }
+aya-log-ebpf = { git = "https://github.com/firezone/aya", branch = "perf-buffer-wakeup-256" }
+
 # Enforce `tracing-macros` to have released `tracing` version.
 [patch.'https://github.com/tokio-rs/tracing']
 tracing = "0.1.41"

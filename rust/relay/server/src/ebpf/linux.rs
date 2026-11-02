@@ -1,6 +1,5 @@
 use std::{
     ffi::CString,
-    io,
     net::{Ipv4Addr, Ipv6Addr, SocketAddr},
     time::Duration,
 };
@@ -18,6 +17,7 @@ use aya_log::EbpfLogger;
 use ebpf_shared::{
     ClientAndChannelV4, ClientAndChannelV6, PacketCounter, PortAndPeerV4, PortAndPeerV6, StatsEvent,
 };
+use otel_instruments::Histogram;
 use stun_codec::rfc5766::attributes::ChannelNumber;
 use tokio::io::{Interest, unix::AsyncFd};
 use tracing::level_filters::LevelFilter;
@@ -31,8 +31,13 @@ use crate::{AllocationPort, ClientSocket, PeerSocket};
 /// Must be a power of two, hence it is defined as a hex value.
 /// Must be sufficiently large to buffer large batches of [`StatsEvent`]s until we get scheduled.
 /// Otherwise the kernel has to drop some and we skew our metrics.
-/// Only a sample of packets is reported, so this buffers well over a second of events even at line rate.
-const PAGE_COUNT: usize = 0x40;
+/// Every relayed packet is reported, so each CPU's buffer holds about half a million events.
+const PAGE_COUNT: usize = 0x1000;
+
+/// How often we read the perf buffers regardless of wakeups.
+///
+/// The kernel only wakes us up every 256 events, so this picks up the remainder.
+const STATS_DRAIN_INTERVAL: Duration = Duration::from_secs(1);
 
 /// How often we read the per-CPU packet counters of the eBPF program.
 const PACKET_COUNTERS_INTERVAL: Duration = Duration::from_secs(1);
@@ -126,53 +131,28 @@ impl Program {
 
                 async move {
                     loop {
-                        let events = fd
-                            .async_io_mut(Interest::READABLE, |fd| {
-                                if !fd.readable() {
-                                    return Err(io::Error::from(io::ErrorKind::WouldBlock));
+                        let (num_read, num_lost) =
+                            match tokio::time::timeout(STATS_DRAIN_INTERVAL, fd.readable_mut())
+                                .await
+                            {
+                                Ok(Ok(mut guard)) => {
+                                    let events = drain_stats(
+                                        guard.get_inner_mut(),
+                                        &packet_size,
+                                        &processing_duration,
+                                    );
+                                    guard.clear_ready();
+
+                                    events
                                 }
-
-                                let events = fd.fold(
-                                    (0_u64, 0_u64),
-                                    |(num_read, num_lost), event| match event {
-                                        PerfEvent::Sample { head, tail } => {
-                                            let Some(stats) = StatsEvent::from_chunks(head, tail)
-                                            else {
-                                                tracing::warn!(
-                                                    ?head,
-                                                    ?tail,
-                                                    "Failed to create stats event from byte buffer"
-                                                );
-
-                                                return (num_read + 1, num_lost);
-                                            };
-
-                                            packet_size.record(
-                                                stats.relayed_data(),
-                                                &[otel_attributes::relay_datapath_xdp()],
-                                            );
-                                            processing_duration.record(
-                                                stats.processing_duration().as_nanos() as u64,
-                                                &[],
-                                            );
-
-                                            (num_read + 1, num_lost)
-                                        }
-                                        PerfEvent::Lost { count } => (num_read, num_lost + count),
-                                    },
-                                );
-
-                                Ok(events)
-                            })
-                            .await;
-
-                        let (num_read, num_lost) = match events {
-                            Ok(events) => events,
-                            Err(e) => {
-                                tracing::warn!("Failed to read perf events: {e}");
-                                break;
-                            }
-                        };
+                                Ok(Err(e)) => {
+                                    tracing::warn!("Failed to read perf events: {e}");
+                                    break;
+                                }
+                                Err(_) => {
+                                    drain_stats(fd.get_mut(), &packet_size, &processing_duration)
+                                }
+                            };
 
                         if num_lost > 0 {
                             tracing::warn!(%cpu_id, %num_lost, "Lost perf events");
@@ -354,6 +334,36 @@ impl Program {
 
         Ok(map)
     }
+}
+
+/// Reads all buffered [`StatsEvent`]s and returns how many were read and lost.
+fn drain_stats(
+    buf: &mut PerfEventArrayBuffer,
+    packet_size: &Histogram<u64>,
+    processing_duration: &Histogram<u64>,
+) -> (u64, u64) {
+    buf.fold((0, 0), |(num_read, num_lost), event| match event {
+        PerfEvent::Sample { head, tail } => {
+            let Some(stats) = StatsEvent::from_chunks(head, tail) else {
+                tracing::warn!(
+                    ?head,
+                    ?tail,
+                    "Failed to create stats event from byte buffer"
+                );
+
+                return (num_read + 1, num_lost);
+            };
+
+            packet_size.record(
+                stats.relayed_data(),
+                &[otel_attributes::relay_datapath_xdp()],
+            );
+            processing_duration.record(stats.processing_duration().as_nanos() as u64, &[]);
+
+            (num_read + 1, num_lost)
+        }
+        PerfEvent::Lost { count } => (num_read, num_lost + count),
+    })
 }
 
 /// Reports the packets relayed by the eBPF program as the deltas of its per-CPU counters.
