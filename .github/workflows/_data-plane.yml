@@ -102,6 +102,31 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+  benchmark-linux:
+    needs: update-release-draft
+    if: >-
+      github.event_name == 'workflow_dispatch' && github.ref_name == 'main' &&
+      inputs.profile == 'release' && inputs.stage == 'release' && inputs.image_prefix == ''
+    runs-on: ubuntu-24.04
+    permissions: {}
+    strategy:
+      fail-fast: false
+      matrix:
+        protocol: [tcp, quic]
+    steps:
+      - name: Dispatch Linux-to-Linux benchmarks
+        env:
+          GH_TOKEN: ${{ secrets.INFRA_REPOSITORY_TOKEN }}
+          FIREZONE_SHA: ${{ inputs.sha || github.sha }}
+          BENCHMARK_PROTOCOL: ${{ matrix.protocol }}
+        run: |
+          gh api --method POST /repos/firezone/infra/dispatches \
+            --raw-field event_type=benchmark-release \
+            --raw-field "client_payload[git_sha]=$FIREZONE_SHA" \
+            --raw-field 'client_payload[device_pair]=Intel <> AMD' \
+            --raw-field "client_payload[protocol]=$BENCHMARK_PROTOCOL" \
+            --field 'client_payload[publish]=true'
+
   data-plane-windows:
     name: client-windows-${{ matrix.target }}
     if: ${{ inputs.image_prefix != 'perf' }} # Perf testing happens only on Linux
