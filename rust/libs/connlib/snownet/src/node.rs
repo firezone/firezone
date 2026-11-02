@@ -670,11 +670,11 @@ where
             &mut self.pending_events,
             now,
         );
-        let mut packets = packets?;
+        let packets = packets?;
 
         if self.connections.is_closing(&cid) {
             // A closing connection drops what it receives.
-            for _ in packets.by_ref() {}
+            return Ok(CommittedBatch::empty(cid));
         }
 
         Ok(CommittedBatch::new(cid, packets))
