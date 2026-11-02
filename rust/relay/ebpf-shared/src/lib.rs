@@ -385,6 +385,44 @@ impl StatsEvent {
     }
 }
 
+#[repr(C)]
+#[derive(Clone, Copy)]
+#[cfg_attr(feature = "std", derive(Debug))]
+pub struct SizeEvent {
+    relayed_data: u16,
+    ip_version: u8,
+    ecn: u8,
+}
+
+impl SizeEvent {
+    pub fn new(relayed_data: u16, ip_version: u8, ecn: u8) -> Self {
+        Self {
+            relayed_data,
+            ip_version,
+            ecn,
+        }
+    }
+
+    pub fn relayed_data(&self) -> u64 {
+        u64::from(self.relayed_data)
+    }
+
+    #[cfg(feature = "std")]
+    pub fn from_chunks(head: &[u8], tail: &[u8]) -> Option<Self> {
+        let mut bytes = [0_u8; 4];
+        let mut iter = head.iter().chain(tail);
+        for b in &mut bytes {
+            *b = *iter.next()?;
+        }
+
+        Some(Self {
+            relayed_data: u16::from_ne_bytes([bytes[0], bytes[1]]),
+            ip_version: bytes[2],
+            ecn: bytes[3],
+        })
+    }
+}
+
 #[inline]
 fn duration_as_nanos_u64(d: core::time::Duration) -> u64 {
     // Stays in u64; avoids `Duration::as_nanos`'s u128 path for the BPF target.

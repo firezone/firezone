@@ -1,0 +1,30 @@
+From 5c79cc1a63e1246c67ca9e87d4ae56dfded7d3f4 Mon Sep 17 00:00:00 2001
+From: bench <bench@localhost>
+Date: Sun, 1 Nov 2026 23:49:27 +0000
+Subject: [PATCH] Read perf wakeup_events from AYA_PERF_WAKEUP_EVENTS
+
+---
+ aya/src/maps/perf/perf_buffer.rs | 7 ++++++-
+ 1 file changed, 6 insertions(+), 1 deletion(-)
+
+diff --git a/aya/src/maps/perf/perf_buffer.rs b/aya/src/maps/perf/perf_buffer.rs
+index 70508eb..e607310 100644
+--- a/aya/src/maps/perf/perf_buffer.rs
++++ b/aya/src/maps/perf/perf_buffer.rs
+@@ -122,7 +122,12 @@ impl PerfEventArrayBuffer {
+             PerfEventConfig::Software(SoftwareEvent::BpfOutput),
+             PerfEventScope::AllProcessesOneCpu { cpu },
+             SamplePolicy::Period(1),
+-            WakeupPolicy::Events(1),
++            WakeupPolicy::Events(
++                std::env::var("AYA_PERF_WAKEUP_EVENTS")
++                    .ok()
++                    .and_then(|v| v.parse().ok())
++                    .unwrap_or(1),
++            ),
+             false,
+             PERF_FLAG_FD_CLOEXEC,
+         )
+-- 
+2.43.0
+

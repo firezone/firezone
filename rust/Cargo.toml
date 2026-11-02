@@ -349,3 +349,10 @@ codegen-units = 1
 
 [profile.release.package.ebpf-turn-router]
 debug = 2
+
+[patch."https://github.com/aya-rs/aya"]
+aya = { path = "../../aya/aya" }
+aya-build = { path = "../../aya/aya-build" }
+aya-ebpf = { path = "../../aya/ebpf/aya-ebpf" }
+aya-log = { path = "../../aya/aya-log" }
+aya-log-ebpf = { path = "../../aya/ebpf/aya-log-ebpf" }

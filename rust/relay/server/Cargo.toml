@@ -55,5 +55,9 @@ aya-build = { workspace = true }
 [dev-dependencies]
 tokio = { workspace = true, features = ["process", "macros", "net"] }
 
+[target.'cfg(target_os = "linux")'.dev-dependencies]
+libc = { workspace = true }
+opentelemetry_sdk = { workspace = true, features = ["experimental_metrics_custom_reader"] }
+
 [lints]
 workspace = true

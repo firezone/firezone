@@ -56,6 +56,8 @@ impl Program {
     ) -> Result<Self> {
         let mut ebpf = load(
             log_level,
+            0,
+            None,
             ipv4_interface_addr,
             ipv6_interface_addr,
             ipv4_public_addr,
@@ -398,6 +400,8 @@ async fn record_packet_counters(counters: PerCpuArray<MapData, u64>) {
 /// Loads the eBPF program into the kernel and configures it, without attaching it to an interface.
 fn load(
     log_level: LevelFilter,
+    per_packet_events: u8,
+    sizes_ring_bytes: Option<u32>,
     ipv4_interface_addr: Option<Ipv4Addr>,
     ipv6_interface_addr: Option<Ipv6Addr>,
     ipv4_public_addr: Option<Ipv4Addr>,
@@ -405,8 +409,13 @@ fn load(
 ) -> Result<aya::Ebpf> {
     tracing::debug!(%log_level, "Setting eBPF log level");
 
-    let mut ebpf = aya::EbpfLoader::new()
+    let mut loader = aya::EbpfLoader::new();
+    if let Some(bytes) = sizes_ring_bytes {
+        loader.map_max_entries("SIZES_RB", bytes);
+    }
+    let mut ebpf = loader
         .override_global(aya_log::LEVEL, &aya_log_level(log_level), true)
+        .override_global("PER_PACKET_EVENTS", &per_packet_events, true)
         .load(aya::include_bytes_aligned!(concat!(
             env!("OUT_DIR"),
             "/ebpf-turn-router-main"
@@ -513,6 +522,10 @@ where
 }
 
 #[cfg(test)]
+#[path = "linux_bench.rs"]
+mod bench;
+
+#[cfg(test)]
 mod tests {
     use std::net::{SocketAddrV4, SocketAddrV6};
 
@@ -520,16 +533,17 @@ mod tests {
 
     use super::*;
 
-    const RELAY_V4: Ipv4Addr = Ipv4Addr::new(203, 0, 113, 1);
+    pub(super) const RELAY_V4: Ipv4Addr = Ipv4Addr::new(203, 0, 113, 1);
     const RELAY_V6: Ipv6Addr = Ipv6Addr::new(0x2001, 0xdb8, 0, 0, 0, 0, 0, 0x100);
-    const CLIENT_V4: SocketAddrV4 = SocketAddrV4::new(Ipv4Addr::new(198, 51, 100, 1), 40000);
+    pub(super) const CLIENT_V4: SocketAddrV4 =
+        SocketAddrV4::new(Ipv4Addr::new(198, 51, 100, 1), 40000);
     const CLIENT_V6: SocketAddrV6 =
         SocketAddrV6::new(Ipv6Addr::new(0x2001, 0xdb8, 0, 0, 0, 0, 0, 1), 40000, 0, 0);
-    const PEER_V4: SocketAddrV4 = SocketAddrV4::new(Ipv4Addr::new(192, 0, 2, 1), 50000);
+    pub(super) const PEER_V4: SocketAddrV4 = SocketAddrV4::new(Ipv4Addr::new(192, 0, 2, 1), 50000);
     const PEER_V6: SocketAddrV6 =
         SocketAddrV6::new(Ipv6Addr::new(0x2001, 0xdb8, 0, 0, 0, 0, 0, 2), 50000, 0, 0);
-    const ALLOCATION: u16 = 49152;
-    const CHANNEL: u16 = 0x4000;
+    pub(super) const ALLOCATION: u16 = 49152;
+    pub(super) const CHANNEL: u16 = 0x4000;
 
     const PAYLOAD_LEN: usize = 1000;
 
@@ -537,7 +551,7 @@ mod tests {
     const SRC_MAC: [u8; 6] = [0x02, 0, 0, 0, 0, 2];
 
     const XDP_DROP: u32 = 1;
-    const XDP_TX: u32 = 3;
+    pub(super) const XDP_TX: u32 = 3;
 
     const NOT_ECT: u8 = 0b00;
     const ECT0: u8 = 0b10;
@@ -606,10 +620,25 @@ mod tests {
         }
 
         fn load_detached_with(ipv4: Option<Ipv4Addr>, ipv6: Option<Ipv6Addr>) -> Self {
-            let mut ebpf = load(LevelFilter::OFF, ipv4, ipv6, ipv4, ipv6).unwrap();
+            let mut ebpf = load(LevelFilter::OFF, 0, None, ipv4, ipv6, ipv4, ipv6).unwrap();
             let stats = PerfEventArray::try_from(ebpf.take_map("STATS").unwrap()).unwrap();
 
             Self { ebpf, stats }
+        }
+
+        pub(super) fn bind_channel_with(
+            &mut self,
+            client: SocketAddr,
+            peer: SocketAddr,
+            allocation: u16,
+        ) {
+            self.add_channel_binding(
+                ClientSocket::new(client),
+                ChannelNumber::new(CHANNEL).unwrap(),
+                PeerSocket::new(peer),
+                AllocationPort::new(allocation),
+            )
+            .unwrap();
         }
 
         fn bind_channel(&mut self, client: SocketAddr, peer: SocketAddr) {
@@ -684,14 +713,18 @@ mod tests {
     }
 
     fn channel_data_ipv4(ecn: u8) -> Vec<u8> {
-        let udp = channel_data_udp(CLIENT_V4.port());
+        channel_data_ipv4_from(CLIENT_V4, RELAY_V4, ecn)
+    }
+
+    pub(super) fn channel_data_ipv4_from(src: SocketAddrV4, dst: Ipv4Addr, ecn: u8) -> Vec<u8> {
+        let udp = channel_data_udp(src.port());
 
         let mut ip = Vec::new();
         ip.extend_from_slice(&[0x45, ecn]);
         ip.extend_from_slice(&(20 + udp.len() as u16).to_be_bytes());
         ip.extend_from_slice(&[0, 0, 0x40, 0, 64, 17, 0, 0]);
-        ip.extend_from_slice(&CLIENT_V4.ip().octets());
-        ip.extend_from_slice(&RELAY_V4.octets());
+        ip.extend_from_slice(&src.ip().octets());
+        ip.extend_from_slice(&dst.octets());
         let checksum = !ones_complement_sum(&ip);
         ip[10..12].copy_from_slice(&checksum.to_be_bytes());
         ip.extend_from_slice(&udp);

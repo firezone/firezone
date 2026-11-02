@@ -1,15 +1,25 @@
 use aya_ebpf::{
+    Global,
     macros::map,
-    maps::{PerCpuArray, PerfEventArray},
+    maps::{PerCpuArray, PerfEventArray, RingBuf},
     programs::XdpContext,
 };
-use ebpf_shared::{PacketCounter, STATS_SAMPLING_INTERVAL, StatsEvent};
+use ebpf_shared::{PacketCounter, STATS_SAMPLING_INTERVAL, SizeEvent, StatsEvent};
 
 use super::per_cpu;
 use crate::time::KernelInstant;
 
 #[map]
 static STATS: PerfEventArray<StatsEvent> = PerfEventArray::new(0);
+
+#[map]
+static SIZES: PerfEventArray<SizeEvent> = PerfEventArray::new(0);
+
+#[map]
+static SIZES_RB: RingBuf = RingBuf::with_byte_size(1 << 22, 0);
+
+#[unsafe(no_mangle)]
+static PER_PACKET_EVENTS: Global<u8> = Global::new(0);
 
 /// State of a per-CPU pseudo-random number generator that decides which packets to sample.
 ///
@@ -49,6 +59,14 @@ pub fn record(
     ecn: u8,
 ) {
     per_cpu::increment(&PACKET_COUNTERS, PacketCounter::index(ip_version, ecn));
+
+    match PER_PACKET_EVENTS.load() {
+        1 => SIZES.output(ctx, &SizeEvent::new(bytes, ip_version, ecn), 0),
+        2 => {
+            let _ = SIZES_RB.output(&SizeEvent::new(bytes, ip_version, ecn), 0);
+        }
+        _ => {}
+    }
 
     let Some(start) = sample else {
         return;
