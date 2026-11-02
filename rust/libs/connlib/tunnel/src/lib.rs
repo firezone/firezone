@@ -439,7 +439,6 @@ impl ClientTunnel {
                             first.ecn(),
                             tun_batch.datagram_len(first),
                         );
-                        tun_batch.reserve((train.max_segments() - 1).min(packets.size_hint().0));
 
                         while let Some(packet) = packets.next_if(|p| {
                             tun_batch.accepts(p)
@@ -719,7 +718,6 @@ impl GatewayTunnel {
                             first.ecn(),
                             tun_batch.datagram_len(first),
                         );
-                        tun_batch.reserve((train.max_segments() - 1).min(packets.size_hint().0));
 
                         while let Some(packet) = packets.next_if(|p| {
                             tun_batch.accepts(p)

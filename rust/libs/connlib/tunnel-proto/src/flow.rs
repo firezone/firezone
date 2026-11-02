@@ -42,6 +42,9 @@ impl Flow {
     }
 }
 
+/// The most packets of a [`TunBatch`]: one GSO send carries at most 64 datagrams.
+const MAX_LEN: usize = 64;
+
 /// A batch of packets received on the TUN device that share one flow and thus one routing decision.
 ///
 /// Holds the state borrowed until [`TunBatch::finish`] reserves the batch's WireGuard counters,
@@ -66,12 +69,15 @@ impl<'a, S: flow_tracker::Scope> TunBatch<'a, S> {
         flows: flow_tracker::FlowBatch<'a, S>,
         packet: IpPacket,
     ) -> Self {
+        let mut packets = Vec::with_capacity(MAX_LEN);
+        packets.push(packet);
+
         Self {
             flow,
             nat,
             tunnel,
             flows,
-            packets: vec![packet],
+            packets,
         }
     }
 
@@ -96,11 +102,6 @@ impl<'a, S: flow_tracker::Scope> TunBatch<'a, S> {
     /// Returns whether `packet` belongs to the batch's flow.
     pub fn accepts(&self, packet: &IpPacket) -> bool {
         self.flow.is_some() && Flow::of(packet) == self.flow
-    }
-
-    /// Reserves capacity for at least `additional` more packets.
-    pub fn reserve(&mut self, additional: usize) {
-        self.packets.reserve(additional);
     }
 
     /// Adds `packet`, which the batch [accepts](Self::accepts), translating it like the first one.

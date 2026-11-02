@@ -258,13 +258,6 @@ pub struct TrainToEncrypt<'b, 'a> {
 }
 
 impl TrainToEncrypt<'_, '_> {
-    /// The most datagrams the train can hold.
-    pub fn max_segments(&self) -> usize {
-        self.jobs.crypto.open_trains[self.index]
-            .train
-            .max_segments()
-    }
-
     /// Appends a further datagram of the batch, unless the batch has to end.
     pub fn try_append(&mut self, ecn: Ecn, len: usize) -> bool {
         let (src, dst) = (self.src, self.dst);
