@@ -54,6 +54,9 @@ pub(crate) const UNCONFIRMED_TTL: Duration = Duration::from_secs(60);
 /// How many NAT entries we keep at most for one client.
 ///
 /// This is well below the 65535 ports of one protocol and IP, so the search for a free port always ends quickly.
+///
+/// When this limit is hit, we drop the packets of new flows until old entries expire.
+/// Packets of existing flows are not affected.
 const MAX_ENTRIES: usize = 8192;
 
 impl NatTable {
