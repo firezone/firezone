@@ -48,6 +48,7 @@ jobs:
           NO_COLOR: "1"
         run: |
           set -x
+          ls -laR /c/.mise-installs/github-russellbanks-komac || true
           mise --cd rust/gui-client which komac
           mise --cd rust/gui-client exec -- komac --version
           mise --cd rust/gui-client exec -- komac update Firezone.Client.GUI --version 1.5.20 \
