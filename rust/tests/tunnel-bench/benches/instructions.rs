@@ -1,5 +1,9 @@
 //! Instructions the event loop of a Client or Gateway executes, counted by Callgrind.
 
+/// The Client's and the Gateway's allocator, so the counts include what it costs.
+#[global_allocator]
+static ALLOC: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 #[cfg(target_os = "linux")]
 mod benches {
     use std::hint::black_box;
