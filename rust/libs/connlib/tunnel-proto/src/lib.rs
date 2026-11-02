@@ -20,13 +20,13 @@ use std::{
 };
 
 mod authorization_rejections;
+mod batch;
 mod cache;
 mod client;
 mod conn_track;
 pub mod dns;
 mod expiring_map;
 mod filter_engine;
-mod flow;
 mod gateway;
 #[cfg(any(test, feature = "malicious-behaviour"))]
 mod malicious_behaviour;
@@ -53,13 +53,13 @@ pub const IPV6_TUNNEL: Ipv6Network =
         Err(_) => unreachable!(),
     };
 
+pub use batch::TunBatch;
 pub use client::dns_config::DnsMapping;
 pub use client::{
     ClientState, DNS_SENTINELS_V4, DNS_SENTINELS_V6, IPV4_RESOURCES, IPV6_RESOURCES,
     PeerBatch as ClientPeerBatch,
 };
 pub use dns::DnsResourceRecord;
-pub use flow::TunBatch;
 pub use gateway::{
     DnsResourceNatEntry, GatewayState, PeerBatch as GatewayPeerBatch, ResolveDnsRequest,
     SiteDnsQuery,

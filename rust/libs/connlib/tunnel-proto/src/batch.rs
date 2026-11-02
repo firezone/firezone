@@ -4,11 +4,12 @@ use std::num::NonZeroUsize;
 use anyhow::{Context as _, Result};
 use ip_packet::{IpPacket, IpProtocol, IpVersion, Protocol};
 
-/// The 5-tuple of a packet whose routing decision later packets of the same flow can reuse.
+/// The 5-tuple packets are batched by, letting later packets of a flow reuse the routing decision
+/// of the first.
 ///
 /// Holds the bytes of the addresses and ports as they appear in the packet.
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct Flow {
+pub(crate) struct BatchingKey {
     protocol: IpProtocol,
     ports: [u8; 4],
     addresses: Addresses,
@@ -20,8 +21,8 @@ enum Addresses {
     V6([u8; 32]),
 }
 
-impl Flow {
-    /// Returns the flow of a TCP or UDP `packet`, unless it changes the state of its flow.
+impl BatchingKey {
+    /// Returns the key of a TCP or UDP `packet`, unless it changes the state of its flow.
     ///
     /// A TCP SYN, FIN or RST changes connection-tracking and NAT state, so it takes the slow path.
     /// So does ICMP: an echo request and the echo reply going the same way share addresses and
@@ -43,7 +44,7 @@ impl Flow {
         })
     }
 
-    /// Returns whether `packet` belongs to this flow.
+    /// Returns whether `packet` has this key.
     pub(crate) fn matches(&self, packet: &IpPacket) -> bool {
         if !packet.is_batchable()
             || packet.next_header() != self.protocol
@@ -70,8 +71,8 @@ fn ports(packet: &IpPacket) -> Option<[u8; 4]> {
 /// so no other packet or event can change the decision in between.
 #[must_use = "no counters are reserved until the batch is finished"]
 pub struct TunBatch<'a, S: flow_tracker::Scope> {
-    /// The flow further packets must belong to; `None` admits no further packets.
-    flow: Option<Flow>,
+    /// The key further packets must have; `None` admits no further packets.
+    key: Option<BatchingKey>,
     /// The source rewrite of the first packet, applied to every further one.
     nat: Option<(Protocol, IpAddr)>,
     tunnel: snownet::EncapsulateBatch<'a>,
@@ -82,7 +83,7 @@ pub struct TunBatch<'a, S: flow_tracker::Scope> {
 
 impl<'a, S: flow_tracker::Scope> TunBatch<'a, S> {
     pub(crate) fn new(
-        flow: Option<Flow>,
+        key: Option<BatchingKey>,
         nat: Option<(Protocol, IpAddr)>,
         tunnel: snownet::EncapsulateBatch<'a>,
         flows: flow_tracker::FlowBatch<'a, S>,
@@ -92,7 +93,7 @@ impl<'a, S: flow_tracker::Scope> TunBatch<'a, S> {
         packets.push(packet);
 
         Self {
-            flow,
+            key,
             nat,
             tunnel,
             flows,
@@ -100,9 +101,9 @@ impl<'a, S: flow_tracker::Scope> TunBatch<'a, S> {
         }
     }
 
-    /// Returns whether `packet` belongs to the batch's flow.
+    /// Returns whether `packet` has the batch's key.
     pub fn accepts(&self, packet: &IpPacket) -> bool {
-        self.flow.as_ref().is_some_and(|flow| flow.matches(packet))
+        self.key.as_ref().is_some_and(|key| key.matches(packet))
     }
 
     /// Adds `packet`, which the batch [accepts](Self::accepts), translating it like the first one.
@@ -150,14 +151,14 @@ mod tests {
 
     #[test]
     fn matches_packets_of_the_same_flow() {
-        let flow = Flow::of(&udp(SRC, DST, 1000, 53, b"foo")).unwrap();
+        let key = BatchingKey::of(&udp(SRC, DST, 1000, 53, b"foo")).unwrap();
 
-        assert!(flow.matches(&udp(SRC, DST, 1000, 53, b"foobar")));
+        assert!(key.matches(&udp(SRC, DST, 1000, 53, b"foobar")));
     }
 
     #[test]
     fn does_not_match_packets_of_other_flows() {
-        let flow = Flow::of(&udp(SRC, DST, 1000, 53, b"")).unwrap();
+        let key = BatchingKey::of(&udp(SRC, DST, 1000, 53, b"")).unwrap();
 
         for packet in [
             udp(OTHER, DST, 1000, 53, b""),
@@ -167,13 +168,13 @@ mod tests {
             tcp(SRC, DST, 1000, 53, make::TcpFlags::default()),
             udp(SRC.to_ipv6_mapped(), DST.to_ipv6_mapped(), 1000, 53, b""),
         ] {
-            assert!(!flow.matches(&packet), "{packet:?}");
+            assert!(!key.matches(&packet), "{packet:?}");
         }
     }
 
     #[test]
     fn ipv6_flow_does_not_match_ipv4_packet() {
-        let flow = Flow::of(&udp(
+        let key = BatchingKey::of(&udp(
             SRC.to_ipv6_mapped(),
             DST.to_ipv6_mapped(),
             1000,
@@ -182,7 +183,7 @@ mod tests {
         ))
         .unwrap();
 
-        assert!(!flow.matches(&udp(SRC, DST, 1000, 53, b"")));
+        assert!(!key.matches(&udp(SRC, DST, 1000, 53, b"")));
     }
 
     #[test]
@@ -195,10 +196,10 @@ mod tests {
             rst: true,
             ..Default::default()
         };
-        let flow = Flow::of(&tcp(SRC, DST, 1000, 443, ack)).unwrap();
+        let key = BatchingKey::of(&tcp(SRC, DST, 1000, 443, ack)).unwrap();
 
-        assert!(flow.matches(&tcp(SRC, DST, 1000, 443, ack)));
-        assert!(!flow.matches(&tcp(SRC, DST, 1000, 443, rst)));
+        assert!(key.matches(&tcp(SRC, DST, 1000, 443, ack)));
+        assert!(!key.matches(&tcp(SRC, DST, 1000, 443, rst)));
     }
 
     fn udp(

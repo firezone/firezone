@@ -4,7 +4,7 @@ mod nat_table;
 pub(crate) use crate::gateway::client_on_gateway::ClientOnGateway;
 
 use crate::authorization_rejections::AuthorizationRejections;
-use crate::flow::{Flow, TunBatch};
+use crate::batch::{BatchingKey, TunBatch};
 use crate::gateway::client_on_gateway::{
     InboundRewrite, OutboundRewrite, ProxyIpAlreadyAssigned, TranslateOutboundResult,
 };
@@ -77,7 +77,7 @@ pub struct GatewayState {
 
 /// The decision taken for the first packet of a flow in a [`PeerBatch`], reused for the rest.
 struct InboundDecision {
-    flow: Flow,
+    key: BatchingKey,
     rewrite: Option<(Protocol, IpAddr)>,
     flows: flow_tracker::DetachedFlowBatch,
 }
@@ -191,7 +191,7 @@ impl GatewayState {
             tracing::warn!("Packet matches heuristics of FZ p2p control protocol");
         }
 
-        let flow = Flow::of(&packet);
+        let key = BatchingKey::of(&packet);
         let dst = packet.destination();
 
         anyhow::ensure!(crate::is_peer(dst), UnroutablePacket::not_a_peer(&packet));
@@ -203,9 +203,9 @@ impl GatewayState {
 
         flow_tracker::record_peer(cid, flow_tracker::Role::Responder);
 
-        let (flow, nat) = match peer.translate_inbound(&mut packet, now) {
-            Ok(InboundRewrite::None) => (flow, None),
-            Ok(InboundRewrite::Source(proto, ip)) => (flow, Some((proto, ip))),
+        let (key, nat) = match peer.translate_inbound(&mut packet, now) {
+            Ok(InboundRewrite::None) => (key, None),
+            Ok(InboundRewrite::Source(proto, ip)) => (key, Some((proto, ip))),
             Ok(InboundRewrite::IcmpError) => (None, None),
             Err(e) => return Err(e.context("Failed to translate inbound packet")),
         };
@@ -216,7 +216,7 @@ impl GatewayState {
 
         flow_tracker::record_transmit(tunnel.src(), tunnel.dst());
 
-        Ok(Some(TunBatch::new(flow, nat, tunnel, flows, packet)))
+        Ok(Some(TunBatch::new(key, nat, tunnel, flows, packet)))
     }
 
     /// Handles UDP packets received on the network interface.
@@ -282,7 +282,7 @@ impl GatewayState {
             Err(e) => return Err(e.context(FailedToDecapsulate(packet_kind::Kind::Wireguard))),
         };
 
-        let flow = Flow::of(&packet);
+        let key = BatchingKey::of(&packet);
         let flows = self.flow_tracker.begin_network_batch(local, from, now);
 
         if packet.destination().is_multicast() {
@@ -335,30 +335,36 @@ impl GatewayState {
             Err(e) => return Err(e.context("Failed to translate outbound packet")),
         };
 
-        match translated {
-            TranslateOutboundResult::Send(packet, rewrite) => {
-                let rewrite = match rewrite {
-                    OutboundRewrite::None => Some(None),
-                    OutboundRewrite::Destination(proto, ip) => Some(Some((proto, ip))),
-                    OutboundRewrite::NewNatSession => None,
-                };
+        let reuse_decision = |key, rewrite| {
+            decisions.push(InboundDecision {
+                key,
+                rewrite,
+                flows: flows.detach(),
+            });
+        };
 
-                if let Some(flow) = flow
-                    && let Some(rewrite) = rewrite
-                {
-                    decisions.push(InboundDecision {
-                        flow,
-                        rewrite,
-                        flows: flows.detach(),
-                    });
-                }
+        match (translated, key) {
+            (TranslateOutboundResult::Send(packet, OutboundRewrite::None), Some(key)) => {
+                reuse_decision(key, None);
 
                 Ok(Some(packet))
             }
-            TranslateOutboundResult::IcmpError {
-                reply,
-                no_authorization,
-            } => {
+            (
+                TranslateOutboundResult::Send(packet, OutboundRewrite::Destination(proto, ip)),
+                Some(key),
+            ) => {
+                reuse_decision(key, Some((proto, ip)));
+
+                Ok(Some(packet))
+            }
+            (TranslateOutboundResult::Send(packet, _), _) => Ok(Some(packet)),
+            (
+                TranslateOutboundResult::IcmpError {
+                    reply,
+                    no_authorization,
+                },
+                _,
+            ) => {
                 flow_tracker::record_icmp_error(&reply);
 
                 if let Some(transmit) = encrypt_packet(reply, cid, &mut self.node, now)? {
@@ -869,30 +875,32 @@ impl Iterator for PeerBatch<'_> {
         let cid = packets.cid();
         let mut item = packets.next()?;
 
-        if let Ok(Some(packet)) = &mut item
-            && let Some(decision) = self.decisions.iter_mut().find(|d| d.flow.matches(packet))
+        let packet = item.as_mut().ok().and_then(Option::as_mut);
+        let decision = packet
+            .as_deref()
+            .and_then(|packet| self.decisions.iter_mut().find(|d| d.key.matches(packet)));
+        let Some((packet, decision)) = packet.zip(decision) else {
+            return Some(self.state.handle_peer_message(
+                cid,
+                item,
+                &mut self.decisions,
+                self.local,
+                self.from,
+                self.now,
+            ));
+        };
+
+        if let Some((proto, ip)) = decision.rewrite
+            && let Err(e) = packet
+                .translate_destination(proto, ip)
+                .context("Failed to translate packet to new destination")
         {
-            if let Some((proto, ip)) = decision.rewrite
-                && let Err(e) = packet
-                    .translate_destination(proto, ip)
-                    .context("Failed to translate packet to new destination")
-            {
-                return Some(Err(e));
-            }
-
-            decision.flows.add(packet);
-
-            return Some(item);
+            return Some(Err(e));
         }
 
-        Some(self.state.handle_peer_message(
-            cid,
-            item,
-            &mut self.decisions,
-            self.local,
-            self.from,
-            self.now,
-        ))
+        decision.flows.add(packet);
+
+        Some(item)
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {

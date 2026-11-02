@@ -15,6 +15,7 @@ pub(crate) use crate::client::gateway_on_client::GatewayOnClient;
 use crate::authorization_rejections::AuthorizationRejections;
 use resource::{DevicePoolResource, InternetResource, Resource};
 
+use crate::batch::{BatchingKey, TunBatch};
 use crate::client::client_on_client::InboundResult;
 use crate::client::dns_cache::DnsCache;
 use crate::client::dns_config::DnsConfig;
@@ -29,7 +30,6 @@ use crate::dns::{
     resource_stub_resolver,
 };
 use crate::filter_engine::FilterEngine;
-use crate::flow::{Flow, TunBatch};
 use crate::messages::IngestToken;
 use crate::messages::{
     Filter, IceCredentials, IceRole, Interface as InterfaceConfig, SecretKey, client::FailReason,
@@ -609,7 +609,7 @@ impl ClientState {
             flows.discard();
         }
 
-        let flow = Flow::of(&packet);
+        let key = BatchingKey::of(&packet);
         let dst = packet.destination();
         let dst_proto = match packet.destination_protocol() {
             Ok(dst_proto) => dst_proto,
@@ -746,7 +746,7 @@ impl ClientState {
             return Ok(None);
         };
 
-        Ok(Some(TunBatch::new(flow, None, tunnel, flows, packet)))
+        Ok(Some(TunBatch::new(key, None, tunnel, flows, packet)))
     }
 
     /// Feed an internally-produced or previously-buffered IP packet through normal TUN routing
@@ -822,7 +822,7 @@ impl ClientState {
             Err(e) => return Err(e.context(FailedToDecapsulate(packet_kind::Kind::Wireguard))),
         };
 
-        let flow = Flow::of(&packet);
+        let key = BatchingKey::of(&packet);
         let flows = self.flow_tracker.begin_network_batch(local, from, now);
 
         flow_tracker::record_decrypted_packet(&packet);
@@ -952,9 +952,9 @@ impl ClientState {
             }
         };
 
-        if let Some(flow) = flow {
+        if let Some(key) = key {
             decisions.push(InboundDecision {
-                flow,
+                key,
                 flows: flows.detach(),
             });
         }
@@ -2910,7 +2910,7 @@ fn client_for_icmp_error(
 
 /// The decision taken for the first packet of a flow in a [`PeerBatch`], reused for the rest.
 struct InboundDecision {
-    flow: Flow,
+    key: BatchingKey,
     flows: flow_tracker::DetachedFlowBatch,
 }
 
@@ -2937,22 +2937,23 @@ impl Iterator for PeerBatch<'_> {
         let packets = &mut self.packets;
         let item = packets.next()?;
 
-        if let Ok(Some(packet)) = &item
-            && let Some(decision) = self.decisions.iter_mut().find(|d| d.flow.matches(packet))
-        {
-            decision.flows.add(packet);
+        let packet = item.as_ref().ok().and_then(Option::as_ref);
+        let decision =
+            packet.and_then(|packet| self.decisions.iter_mut().find(|d| d.key.matches(packet)));
+        let Some((packet, decision)) = packet.zip(decision) else {
+            return Some(self.state.handle_peer_message(
+                packets.cid(),
+                item,
+                &mut self.decisions,
+                self.local,
+                self.from,
+                self.now,
+            ));
+        };
 
-            return Some(item);
-        }
+        decision.flows.add(packet);
 
-        Some(self.state.handle_peer_message(
-            packets.cid(),
-            item,
-            &mut self.decisions,
-            self.local,
-            self.from,
-            self.now,
-        ))
+        Some(item)
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
