@@ -162,8 +162,13 @@ impl EncryptBatch<'_> {
     /// Adds a batch of `packets` to the open train to its destination, handing that train to a
     /// worker first if the batch starts a new one.
     ///
-    /// A batch is never split, so it must fit a train of its own.
-    pub fn encrypt(&mut self, encapsulation: PendingEncapsulate, packets: Vec<IpPacket>) {
+    /// A batch is never split, so `train` must hold exactly its datagrams.
+    pub fn encrypt(
+        &mut self,
+        encapsulation: PendingEncapsulate,
+        packets: Vec<IpPacket>,
+        train: UdpGsoTrain,
+    ) {
         let src = encapsulation.src();
         let dst = encapsulation.dst();
         self.remaining = self.remaining.saturating_sub(packets.len());
@@ -176,7 +181,7 @@ impl EncryptBatch<'_> {
         else {
             self.crypto
                 .open_trains
-                .push(EncryptJob::new(encapsulation, packets));
+                .push(EncryptJob::new(encapsulation, packets, train));
             return;
         };
 
@@ -191,7 +196,7 @@ impl EncryptBatch<'_> {
             return;
         }
 
-        let closed = mem::replace(open, EncryptJob::new(encapsulation, packets));
+        let closed = mem::replace(open, EncryptJob::new(encapsulation, packets, train));
         self.dispatch(closed);
     }
 
@@ -238,24 +243,7 @@ struct EncryptJob {
 
 impl EncryptJob {
     /// Starts a train with a batch of `packets`.
-    fn new(encapsulation: PendingEncapsulate, packets: Vec<IpPacket>) -> Self {
-        let Some((first, rest)) = packets.split_first() else {
-            unreachable!("a batch holds at least one packet")
-        };
-        let mut train = UdpGsoTrain::new(
-            encapsulation.src(),
-            encapsulation.dst(),
-            first.ecn(),
-            encapsulation.datagram_len(first),
-        );
-        let appended = train.try_append_batch(
-            encapsulation.src(),
-            encapsulation.dst(),
-            rest.iter()
-                .map(|packet| (packet.ecn(), encapsulation.datagram_len(packet))),
-        );
-        debug_assert!(appended, "a batch fits a train of its own");
-
+    fn new(encapsulation: PendingEncapsulate, packets: Vec<IpPacket>, train: UdpGsoTrain) -> Self {
         Self {
             train,
             batches: vec![(encapsulation, packets)],

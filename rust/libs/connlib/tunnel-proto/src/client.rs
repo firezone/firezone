@@ -563,7 +563,7 @@ impl ClientState {
     /// Starts a batch of packets received on the TUN device with `packet`.
     ///
     /// `packet` is routed and its flow recorded; further packets of the same flow reuse that
-    /// decision through [`TunBatch::try_push`]. Flows to other clients take the slow path for
+    /// decision through [`TunBatch::push`]. Flows to other clients take the slow path for
     /// every packet, because connection tracking inspects each of them.
     pub fn begin_tun_batch(
         &mut self,

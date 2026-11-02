@@ -181,7 +181,7 @@ impl GatewayState {
     /// Starts a batch of packets received on the TUN device with `packet`.
     ///
     /// `packet` is routed, translated and its flow recorded; further packets of the same flow
-    /// reuse that decision through [`TunBatch::try_push`].
+    /// reuse that decision through [`TunBatch::push`].
     pub fn begin_tun_batch(
         &mut self,
         packet: &mut IpPacket,

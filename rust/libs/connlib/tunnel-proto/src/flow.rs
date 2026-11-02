@@ -86,25 +86,22 @@ impl<'a, S: flow_tracker::Scope> TunBatch<'a, S> {
         self.tunnel.datagram_len(packet)
     }
 
-    /// Adds `packet` to the batch if it belongs to the batch's flow, translating it like the first one.
-    ///
-    /// Returns `false` and leaves `packet` untouched otherwise; finish the batch and begin a new
-    /// one with the packet then.
-    pub fn try_push(&mut self, packet: &mut IpPacket) -> bool {
-        if self.flow.is_none() || Flow::of(packet) != self.flow {
-            return false;
-        }
+    /// Returns whether `packet` belongs to the batch's flow.
+    pub fn accepts(&self, packet: &IpPacket) -> bool {
+        self.flow.is_some() && Flow::of(packet) == self.flow
+    }
 
-        if let Some((proto, ip)) = self.nat
-            && packet.translate_source(proto, ip).is_err()
-        {
-            return false;
+    /// Adds `packet`, which the batch [accepts](Self::accepts), translating it like the first one.
+    pub fn push(&mut self, packet: &mut IpPacket) {
+        if let Some((proto, ip)) = self.nat {
+            let translated = packet.translate_source(proto, ip);
+
+            // The first packet translated fine and this one shares its flow, thus its IP version.
+            debug_assert!(translated.is_ok(), "{translated:?}");
         }
 
         self.flows.add(packet);
         self.len = self.len.saturating_add(1);
-
-        true
     }
 
     /// Reserves the batch's counters and records its flow.
