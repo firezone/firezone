@@ -399,6 +399,7 @@ impl IpPacket {
         std::net::Ipv6Addr::from(octets)
     }
 
+    #[inline]
     pub fn source_protocol(&self) -> Result<Protocol, UnsupportedProtocol> {
         match self.transport {
             Transport::Tcp => Ok(Protocol::Tcp(self.transport_u16_at(0))),
@@ -409,6 +410,7 @@ impl IpPacket {
         }
     }
 
+    #[inline]
     pub fn destination_protocol(&self) -> Result<Protocol, UnsupportedProtocol> {
         match self.transport {
             Transport::Tcp => Ok(Protocol::Tcp(self.transport_u16_at(2))),
@@ -429,6 +431,7 @@ impl IpPacket {
     }
 
     /// The flags of a TCP packet, read at the fixed offset of the header validated on construction.
+    #[inline]
     pub fn tcp_flags(&self) -> Option<TcpFlags> {
         if !self.is_tcp() {
             return None;
@@ -463,6 +466,7 @@ impl IpPacket {
     }
 
     /// Reads the big-endian `u16` at `offset` of the TCP or UDP header, whose length was checked on construction.
+    #[inline]
     fn transport_u16_at(&self, offset: usize) -> u16 {
         let bytes: [u8; 2] = self.payload()[offset..offset + 2]
             .try_into()
@@ -1106,6 +1110,7 @@ impl IpPacket {
         matches!(self.transport, Transport::Udp)
     }
 
+    #[inline]
     pub fn is_tcp(&self) -> bool {
         matches!(self.transport, Transport::Tcp)
     }
@@ -1129,6 +1134,7 @@ impl IpPacket {
         &self.buf[..self.len()]
     }
 
+    #[inline]
     pub fn payload(&self) -> &[u8] {
         &self.buf[self.ip_header_length()..self.len()]
     }
