@@ -744,8 +744,7 @@ defmodule PortalWeb.SignUp do
         </li>
       </ul>
       <p id="region-picker-help" class="mt-1.5 mb-6 text-xs text-subtle">
-        The region where your account data is stored.
-        <strong class="font-medium text-body">Requires downtime to change later.</strong>
+        Changing regions later requires scheduled downtime.
         <Navigation.link
           href="https://www.firezone.dev/kb/architecture/regional-availability"
           target="_blank"
