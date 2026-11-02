@@ -741,15 +741,10 @@ fn handle_assigned_ips_event(
 ) -> Option<IpPacket> {
     use p2p_control::dns_resource_nat;
 
-    let req = match dns_resource_nat::decode_assigned_ips(&fz_p2p_control) {
-        Ok(req) => req,
-        Err(e) => {
-            tracing::debug!("{e:#}");
-
-            let req = dns_resource_nat::decode_assigned_ips_domain(&fz_p2p_control).ok()?;
-
-            return inactive_domain_status(req.resource, req.domain);
-        }
+    let Ok(req) = dns_resource_nat::decode_assigned_ips(fz_p2p_control)
+        .inspect_err(|e| tracing::debug!("{e:#}"))
+    else {
+        return None;
     };
 
     if !peer.is_allowed(req.resource) {
@@ -758,13 +753,19 @@ fn handle_assigned_ips_event(
         return inactive_domain_status(req.resource, req.domain);
     }
 
+    let Some(proxy_ips) = req.proxy_ips else {
+        tracing::debug!(cid = %peer.id(), rid = %req.resource, domain = %req.domain, "Received `AssignedIpsEvent` with invalid proxy IPs");
+
+        return inactive_domain_status(req.resource, req.domain);
+    };
+
     // TODO: Should we throttle concurrent events for the same domain?
 
     buffered_events.push_back(GatewayEvent::ResolveDns(ResolveDnsRequest {
         domain: req.domain,
         client_public_key: peer.public_key().into(),
         resource: req.resource,
-        proxy_ips: req.proxy_ips,
+        proxy_ips,
     }));
 
     None

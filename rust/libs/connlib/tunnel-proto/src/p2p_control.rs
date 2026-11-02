@@ -37,7 +37,7 @@ pub mod dns_resource_nat {
         let payload = serde_json::to_vec(&AssignedIps {
             resource,
             domain,
-            proxy_ips,
+            proxy_ips: Some(proxy_ips),
         })
         .context("Failed to serialize `AssignedIps` event")?;
 
@@ -72,7 +72,7 @@ pub mod dns_resource_nat {
         Ok(ip_packet)
     }
 
-    pub fn decode_assigned_ips(packet: &FzP2pControlSlice) -> Result<AssignedIps> {
+    pub fn decode_assigned_ips(packet: FzP2pControlSlice) -> Result<AssignedIps> {
         anyhow::ensure!(
             packet.event_type() == ASSIGNED_IPS_EVENT,
             "Control protocol packet is not a `dns_resource_nat::AssignedIp`s event"
@@ -80,17 +80,6 @@ pub mod dns_resource_nat {
 
         serde_json::from_slice::<AssignedIps>(packet.payload())
             .context("Failed to deserialize `dns_resource_nat::AssignedIps`")
-    }
-
-    /// Decodes only the resource and domain of an [`AssignedIps`] event, ignoring its proxy IPs.
-    pub fn decode_assigned_ips_domain(packet: &FzP2pControlSlice) -> Result<AssignedIpsDomain> {
-        anyhow::ensure!(
-            packet.event_type() == ASSIGNED_IPS_EVENT,
-            "Control protocol packet is not a `dns_resource_nat::AssignedIp`s event"
-        );
-
-        serde_json::from_slice::<AssignedIpsDomain>(packet.payload())
-            .context("Failed to deserialize `dns_resource_nat::AssignedIpsDomain`")
     }
 
     pub fn decode_domain_status(packet: FzP2pControlSlice) -> Result<DomainStatus> {
@@ -103,17 +92,14 @@ pub mod dns_resource_nat {
             .context("Failed to deserialize `dns_resource_nat::DomainStatus`")
     }
 
+    #[serde_with::serde_as]
     #[derive(serde::Serialize, serde::Deserialize)]
     pub struct AssignedIps {
         pub resource: ResourceId,
         pub domain: DomainName,
-        pub proxy_ips: ProxyIps,
-    }
-
-    #[derive(serde::Deserialize)]
-    pub struct AssignedIpsDomain {
-        pub resource: ResourceId,
-        pub domain: DomainName,
+        /// `None` if the proxy IPs are invalid.
+        #[serde_as(as = "serde_with::DefaultOnError")]
+        pub proxy_ips: Option<ProxyIps>,
     }
 
     /// The proxy IPs a Client assigns to a domain.
@@ -295,10 +281,10 @@ pub mod dns_resource_nat {
             let assigned_ips = AssignedIps {
                 resource: ResourceId::from_u128(100),
                 domain: longest_domain_possible(),
-                proxy_ips: ProxyIps {
+                proxy_ips: Some(ProxyIps {
                     ipv4: Some([Ipv4Addr::LOCALHOST; 4]),
                     ipv6: Some([Ipv6Addr::LOCALHOST; 4]),
-                },
+                }),
             };
 
             let serialized = serde_json::to_vec(&assigned_ips).unwrap();
@@ -317,11 +303,11 @@ pub mod dns_resource_nat {
             .unwrap();
 
             let slice = packet.as_fz_p2p_control().unwrap();
-            let assigned_ips = decode_assigned_ips(&slice).unwrap();
+            let assigned_ips = decode_assigned_ips(slice).unwrap();
 
             assert_eq!(assigned_ips.resource, ResourceId::from_u128(101));
             assert_eq!(assigned_ips.domain, domain("example.com"));
-            assert_eq!(assigned_ips.proxy_ips, ProxyIps::for_test())
+            assert_eq!(assigned_ips.proxy_ips, Some(ProxyIps::for_test()))
         }
 
         #[test]
@@ -388,7 +374,7 @@ pub mod dns_resource_nat {
         }
 
         #[test]
-        fn assigned_ips_domain_decodes_event_with_invalid_proxy_ips() {
+        fn assigned_ips_decodes_event_with_invalid_proxy_ips() {
             let payload = serde_json::json!({
                 "resource": ResourceId::from_u128(101),
                 "domain": "example.com",
@@ -401,12 +387,11 @@ pub mod dns_resource_nat {
             .unwrap();
             let slice = packet.as_fz_p2p_control().unwrap();
 
-            assert!(decode_assigned_ips(&slice).is_err());
+            let assigned_ips = decode_assigned_ips(slice).unwrap();
 
-            let assigned_ips_domain = decode_assigned_ips_domain(&slice).unwrap();
-
-            assert_eq!(assigned_ips_domain.resource, ResourceId::from_u128(101));
-            assert_eq!(assigned_ips_domain.domain, domain("example.com"));
+            assert_eq!(assigned_ips.resource, ResourceId::from_u128(101));
+            assert_eq!(assigned_ips.domain, domain("example.com"));
+            assert_eq!(assigned_ips.proxy_ips, None);
         }
 
         #[test]
