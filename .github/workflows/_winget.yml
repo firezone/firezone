@@ -21,13 +21,18 @@ permissions:
   contents: read
 
 jobs:
-  prepare-winget-manifests:
-    runs-on: ubuntu-24.04
-    permissions:
-      contents: read # the release's assets
+  # komac analyses the installers like Windows would, e.g. for their install location.
+  generate:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
     env:
       KOMAC_VERSION: 2.17.1
-      KOMAC_SHA256: e694e79cd451afabf47bead66ed34586fef4814f7b94e4b61a098f419978d5d7
+      KOMAC_SHA256: a97c002c5ffa15f232af117efac6774e755d27acc47eba00f1661033267d7438
+    outputs:
+      branch: ${{ steps.package.outputs.branch }}
+      title: ${{ steps.manifests.outputs.title }}
     steps:
       - id: package
         env:
@@ -60,21 +65,20 @@ jobs:
         run: |
           set -euo pipefail
 
-          curl -fsSL -o "$RUNNER_TEMP/komac.tar.gz" \
-            "https://github.com/russellbanks/Komac/releases/download/v$KOMAC_VERSION/komac-$KOMAC_VERSION-x86_64-unknown-linux-gnu.tar.gz"
-          echo "$KOMAC_SHA256  $RUNNER_TEMP/komac.tar.gz" | sha256sum --check --quiet
-          tar -xzf "$RUNNER_TEMP/komac.tar.gz" -C "$RUNNER_TEMP" komac
+          komac="$RUNNER_TEMP/komac.exe"
+          curl -fsSL -o "$komac" \
+            "https://github.com/russellbanks/Komac/releases/download/v$KOMAC_VERSION/komac-$KOMAC_VERSION-x86_64-pc-windows-msvc.exe"
+          test "$(sha256sum < "$komac" | cut -d' ' -f1)" = "$KOMAC_SHA256"
 
           mapfile -t urls < <(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" \
             --jq '.assets[] | select(.name | test("\\.(exe|msi|msix|appx)(bundle)?$")) | .browser_download_url')
 
           # komac only writes the manifests to disk on its way to submitting them, so
           # take them from what a dry run prints instead.
-          "$RUNNER_TEMP/komac" update "$IDENTIFIER" --version "$VERSION" --urls "${urls[@]}" \
+          "$komac" update "$IDENTIFIER" --version "$VERSION" --urls "${urls[@]}" \
             --release-notes-url https://www.firezone.dev/changelog --dry-run > "$RUNNER_TEMP/komac.out"
 
-          git init -q .
-          python3 - "$RUNNER_TEMP/komac.out" "$IDENTIFIER" "$VERSION" <<'PYTHON'
+          python - "$RUNNER_TEMP/komac.out" "$IDENTIFIER" "$VERSION" <<'PYTHON'
           import os, re, sys
 
           output, identifier, version = sys.argv[1:]
@@ -112,6 +116,21 @@ jobs:
             state="Add version"
           fi
           echo "title=$state: $IDENTIFIER version $VERSION" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: winget-manifests
+          path: manifests/
+          if-no-files-found: error
+
+  commit:
+    needs: generate
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: winget-manifests
+          path: manifests
+      - run: git init -q .
       - uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         id: app-token
         with:
@@ -135,14 +154,14 @@ jobs:
         with:
           token: ${{ steps.app-token.outputs.token }}
           repository: firezone/winget-pkgs
-          branch: ${{ steps.package.outputs.branch }}
+          branch: ${{ needs.generate.outputs.branch }}
           base: master
-          message: ${{ steps.manifests.outputs.title }}
+          message: ${{ needs.generate.outputs.title }}
           paths: manifests
       - name: Link to the pull request
         env:
-          BRANCH: ${{ steps.package.outputs.branch }}
-          TITLE: ${{ steps.manifests.outputs.title }}
+          BRANCH: ${{ needs.generate.outputs.branch }}
+          TITLE: ${{ needs.generate.outputs.title }}
         run: |
           set -euo pipefail
 
