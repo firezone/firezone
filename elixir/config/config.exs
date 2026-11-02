@@ -123,6 +123,7 @@ config :portal, Portal.ChangeLogs.Consumer,
     santa_posture_providers
     sentinelone_posture_providers
     sophos_posture_providers
+    google_endpoint_posture_providers
     splunk_log_sinks
     datadog_log_sinks
     newrelic_log_sinks
@@ -184,12 +185,14 @@ config :portal, Portal.Changes.Consumer,
     santa_posture_providers
     sentinelone_posture_providers
     sophos_posture_providers
+    google_endpoint_posture_providers
     intune_devices
     iru_devices
     defender_devices
     santa_devices
     sentinelone_devices
     sophos_devices
+    google_endpoint_devices
     relay_tokens
     portal_sessions
   ],
@@ -310,6 +313,19 @@ config :portal, Portal.SentinelOne.APIClient,
   ]
 
 config :portal, Portal.Sophos.APIClient,
+  req_opts: [
+    # 15 minutes
+    receive_timeout: 900_000,
+    retry: :safe_transient
+  ]
+
+config :portal, Portal.GoogleEndpoint.APIClient,
+  endpoint: "https://cloudidentity.googleapis.com",
+  # Federates through the Portal.Google.APIClient workload identity pool.
+  service_account_email: System.get_env("GOOGLE_ENDPOINT_SERVICE_ACCOUNT_EMAIL"),
+  service_account_key: System.get_env("GOOGLE_ENDPOINT_SERVICE_ACCOUNT_KEY"),
+  # Shown to customers, who enter it in domain-wide delegation.
+  client_id: System.get_env("GOOGLE_ENDPOINT_SERVICE_ACCOUNT_CLIENT_ID"),
   req_opts: [
     # 15 minutes
     receive_timeout: 900_000,

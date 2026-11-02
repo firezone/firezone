@@ -64,7 +64,7 @@ defmodule Portal.Policies.Postures.Fields do
 
   alias Portal.Policies.Postures.Fields.Classifier
 
-  @providers ~w[firezone intune iru defender santa sentinelone sophos]a
+  @providers ~w[firezone intune iru defender santa sentinelone sophos google_endpoint]a
 
   @types ~w[string enum_string boolean integer float version datetime ip ipv4 ipv6 string_array json]a
 
@@ -166,6 +166,12 @@ defmodule Portal.Policies.Postures.Fields do
      enum_string: ~w[
        type health_overall health_threats_status health_services_status os_platform
        encryption_overall_status lockdown_status cloud_provider isolation_status
+     ]a},
+    {:google_endpoint, Portal.GoogleEndpoint.Device,
+     excluded: [],
+     enum_string: ~w[
+       device_type owner_type management_state compromised_state encryption_state
+       android_ownership_privilege
      ]a}
   ]
 
@@ -185,7 +191,8 @@ defmodule Portal.Policies.Postures.Fields do
     defender: ~w[windows macos linux]a,
     santa: ~w[macos]a,
     sentinelone: ~w[windows macos linux]a,
-    sophos: ~w[windows macos linux]a
+    sophos: ~w[windows macos linux]a,
+    google_endpoint: @platforms
   }
 
   # Fields narrower than their provider. Intune's attestation_* columns are
@@ -211,7 +218,22 @@ defmodule Portal.Policies.Postures.Fields do
     },
     defender: %{os_up_to_date: ~w[macos]a},
     sentinelone: %{os_up_to_date: ~w[windows macos]a},
-    sophos: %{os_up_to_date: ~w[macos]a}
+    sophos: %{os_up_to_date: ~w[macos]a},
+    google_endpoint: %{
+      os_up_to_date: ~w[macos ios android]a,
+      compromised_state: ~w[android]a,
+      security_patch_at: ~w[android]a,
+      enabled_developer_options: ~w[android]a,
+      enabled_usb_debugging: ~w[android]a,
+      android_enabled_unknown_sources: ~w[android]a,
+      android_supports_work_profile: ~w[android]a,
+      android_owner_profile_account: ~w[android]a,
+      android_ownership_privilege: ~w[android]a,
+      android_verified_boot: ~w[android]a,
+      android_cts_profile_match: ~w[android]a,
+      android_verify_apps_enabled: ~w[android]a,
+      android_has_potentially_harmful_apps: ~w[android]a
+    }
   }
 
   @provider_names Map.new(@providers, &{Atom.to_string(&1), &1})

@@ -160,7 +160,8 @@ defmodule Portal.Telemetry.Reporter.ObanTest do
           {Portal.Iru, Portal.IruFixtures, :iru_posture_provider_fixture},
           {Portal.Santa, Portal.SantaFixtures, :santa_posture_provider_fixture},
           {Portal.SentinelOne, Portal.SentinelOneFixtures, :sentinelone_posture_provider_fixture},
-          {Portal.Sophos, Portal.SophosFixtures, :sophos_posture_provider_fixture}
+          {Portal.Sophos, Portal.SophosFixtures, :sophos_posture_provider_fixture},
+          {Portal.GoogleEndpoint, Portal.GoogleEndpointFixtures, :google_endpoint_posture_provider_fixture}
         ] do
       @adapter adapter
       @fixtures fixtures

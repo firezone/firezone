@@ -94,7 +94,8 @@ posture_sync_dev_crontab =
         {schedule, Portal.Defender.Scheduler},
         {schedule, Portal.Santa.Scheduler},
         {schedule, Portal.SentinelOne.Scheduler},
-        {schedule, Portal.Sophos.Scheduler}
+        {schedule, Portal.Sophos.Scheduler},
+        {schedule, Portal.GoogleEndpoint.Scheduler}
       ]
   end
 
@@ -196,6 +197,8 @@ config :portal, Oban,
     sentinelone_sync: 5,
     sophos_scheduler: 1,
     sophos_sync: 5,
+    google_endpoint_scheduler: 1,
+    google_endpoint_sync: 5,
     google_scheduler: 1,
     google_sync: 5,
     google_subscriptions: 1,

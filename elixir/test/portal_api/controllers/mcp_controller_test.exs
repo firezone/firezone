@@ -1018,7 +1018,7 @@ defmodule PortalAPI.MCPControllerTest do
     test "returns a tool error for a missing or unknown type", %{conn: conn, actor: actor} do
       for {arguments, expected} <- [
             {%{}, "missing required argument(s): type"},
-            {%{"type" => "kolide"}, "`type` must be one of: defender, intune, iru, santa, sentinelone, sophos"}
+            {%{"type" => "kolide"}, "`type` must be one of: defender, google_endpoint, intune, iru, santa, sentinelone, sophos"}
           ] do
         response =
           conn

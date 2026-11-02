@@ -35,6 +35,7 @@ defmodule Portal.Repo.Seeds do
     SentinelOne,
     SessionLog,
     Sophos,
+    GoogleEndpoint,
     Site,
     ClientToken,
     Userpass,
@@ -1143,6 +1144,14 @@ defmodule Portal.Repo.Seeds do
         synced_at: DateTime.add(now, -6, :minute)
       })
 
+    google_endpoint =
+      create_posture_provider(account, :google_endpoint, "Google Workspace", GoogleEndpoint.PostureProvider, %{
+        impersonation_email: "admin@#{@posture_domain}",
+        domain: @posture_domain,
+        is_verified: true,
+        synced_at: DateTime.add(now, -7, :minute)
+      })
+
     # The identifiers the seeded certificates attest. Each is also written into
     # the provider row that should match on it, so the Posture tab of a seeded
     # Client demonstrates one rung of the matching ladder. The Surface also
@@ -1201,7 +1210,7 @@ defmodule Portal.Repo.Seeds do
     seed_sentinelone_devices(account, sentinelone, now, admin, rendering)
 
     IO.puts("Device posture providers created")
-    IO.puts("  Contoso Intune, Iru Apple Fleet, Defender for Endpoint, Santa Workshop, SentinelOne Production, Sophos Central")
+    IO.puts("  Contoso Intune, Iru Apple Fleet, Defender for Endpoint, Santa Workshop, SentinelOne Production, Sophos Central, Google Workspace")
     IO.puts("  #{admin.name}: attested, matched by MDM device id")
     IO.puts("  #{surface.name}: attested, matched by MDM device id and linked into Defender")
     IO.puts("  #{iphone.name}: attested with a revoked certificate")
@@ -1210,7 +1219,15 @@ defmodule Portal.Repo.Seeds do
     IO.puts("  #{macbook_air.name}: attested a device id only, serial comes from Iru")
     IO.puts("")
 
-    %{intune: intune, iru: iru, defender: defender, santa: santa, sentinelone: sentinelone, sophos: sophos}
+    %{
+      intune: intune,
+      iru: iru,
+      defender: defender,
+      santa: santa,
+      sentinelone: sentinelone,
+      sophos: sophos,
+      google_endpoint: google_endpoint
+    }
   end
 
   # A disabled provider's rows count as absent, so seeded providers stay
@@ -1892,6 +1909,12 @@ defmodule Portal.Repo.Seeds do
       santa: insert_fleet_rows(Santa.Device, members, &fleet_santa_row(&1, account, providers.santa, now)),
       sentinelone: insert_fleet_rows(SentinelOne.Device, members, &fleet_sentinelone_row(&1, account, providers.sentinelone, now)),
       sophos: insert_fleet_rows(Sophos.Device, members, &fleet_sophos_row(&1, account, providers.sophos, now)),
+      google_endpoint:
+        insert_fleet_rows(
+          GoogleEndpoint.Device,
+          members,
+          &fleet_google_endpoint_row(&1, account, providers.google_endpoint, now)
+        ),
       clients: members |> Enum.map(&fleet_client(&1, account, now)) |> Enum.count(& &1)
     }
   end
@@ -1970,6 +1993,7 @@ defmodule Portal.Repo.Seeds do
       santa?: profile == :mac_laptop and chance(60),
       sentinelone?: fleet_in_sentinelone?(profile),
       sophos?: fleet_in_sophos?(profile),
+      google_endpoint?: fleet_in_google_endpoint?(profile),
       client: fleet_client_kind(profile, mdm),
       last_active_at: DateTime.add(now, -minutes_ago, :minute),
       enrolled_at: DateTime.add(now, -(20 + :rand.uniform(700)), :day),
@@ -1995,6 +2019,10 @@ defmodule Portal.Repo.Seeds do
   defp fleet_in_sophos?(:linux_server), do: chance(30)
   defp fleet_in_sophos?(:windows_server), do: chance(30)
   defp fleet_in_sophos?(_profile), do: false
+
+  defp fleet_in_google_endpoint?(profile) when profile in [:windows_laptop, :mac_laptop], do: chance(20)
+  defp fleet_in_google_endpoint?(profile) when profile in [:iphone, :ipad, :android], do: chance(50)
+  defp fleet_in_google_endpoint?(_profile), do: false
 
   defp fleet_client_kind(profile, _mdm) when profile in [:linux_server, :windows_server], do: :none
 
@@ -2480,6 +2508,47 @@ defmodule Portal.Repo.Seeds do
   end
 
   defp fleet_sophos_row(_member, _account, _provider, _now), do: []
+
+  # Personal phones report no serial to Google, so only company ones match a Client.
+  defp fleet_google_endpoint_row(%{google_endpoint?: true} = member, account, provider, now) do
+    device_type = fleet_google_device_type(member)
+    company? = not member.mobile? or chance(40)
+
+    [
+      %{
+        account_id: account.id,
+        posture_provider_id: provider.id,
+        google_id: Base.url_encode64("google-device-#{member.index}", padding: false),
+        device_id: Ecto.UUID.generate(),
+        device_type: device_type,
+        owner_type: if(company?, do: "COMPANY", else: "BYOD"),
+        management_state: weighted([{"APPROVED", 95}, {"PENDING", 3}, {"BLOCKED", 2}]),
+        compromised_state:
+          if(device_type == "ANDROID", do: if(member.compromised?, do: "COMPROMISED", else: "UNCOMPROMISED")),
+        encryption_state: if(member.encrypted?, do: "ENCRYPTED", else: "NOT_ENCRYPTED"),
+        model: member.model,
+        manufacturer: member.manufacturer,
+        hostname: if(member.mobile?, do: nil, else: member.hostname),
+        os_version: "#{member.os_name} #{member.os_version}",
+        security_patch_at:
+          if(device_type == "ANDROID", do: DateTime.add(now, -:rand.uniform(90), :day)),
+        serial_number: if(company?, do: member.serial),
+        other_accounts: ["#{member.person.login}@#{@posture_domain}"],
+        registered_at: if(company?, do: member.enrolled_at),
+        last_sync_at: member.last_active_at,
+        synced_at: provider.synced_at,
+        inserted_at: now,
+        updated_at: now
+      }
+    ]
+  end
+
+  defp fleet_google_endpoint_row(_member, _account, _provider, _now), do: []
+
+  defp fleet_google_device_type(%{profile: :windows_laptop}), do: "WINDOWS"
+  defp fleet_google_device_type(%{profile: :mac_laptop}), do: "MAC_OS"
+  defp fleet_google_device_type(%{profile: :android}), do: "ANDROID"
+  defp fleet_google_device_type(_member), do: "IOS"
 
   defp fleet_sophos_os(%{profile: :mac_laptop}), do: {"macOS", "macOS"}
   defp fleet_sophos_os(%{profile: :linux_server}), do: {"linux", "Ubuntu"}
@@ -4212,7 +4281,7 @@ defmodule Portal.Repo.Seeds do
     fleet = seed_posture_fleet(account, posture_providers, DateTime.utc_now() |> DateTime.truncate(:microsecond))
 
     IO.puts("Device posture fleet seeded (#{fleet.members} devices, SEED_FLEET_SIZE to change)")
-    IO.puts("  Intune #{fleet.intune}, Iru #{fleet.iru}, Defender #{fleet.defender}, Santa #{fleet.santa}, SentinelOne #{fleet.sentinelone}, Sophos #{fleet.sophos}")
+    IO.puts("  Intune #{fleet.intune}, Iru #{fleet.iru}, Defender #{fleet.defender}, Santa #{fleet.santa}, SentinelOne #{fleet.sentinelone}, Sophos #{fleet.sophos}, Google Endpoint #{fleet.google_endpoint}")
     IO.puts("  #{fleet.clients} Firezone Clients across #{fleet.people} people")
   end
 end

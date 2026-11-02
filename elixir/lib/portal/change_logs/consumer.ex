@@ -59,7 +59,8 @@ defmodule Portal.ChangeLogs.Consumer do
     "defender_posture_providers" => Portal.Defender.PostureProvider,
     "santa_posture_providers" => Portal.Santa.PostureProvider,
     "sentinelone_posture_providers" => Portal.SentinelOne.PostureProvider,
-    "sophos_posture_providers" => Portal.Sophos.PostureProvider
+    "sophos_posture_providers" => Portal.Sophos.PostureProvider,
+    "google_endpoint_posture_providers" => Portal.GoogleEndpoint.PostureProvider
   }
 
   @impl true

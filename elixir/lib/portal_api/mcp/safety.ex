@@ -12,6 +12,7 @@ defmodule PortalAPI.MCP.Safety do
     /santa_posture_providers/{id}
     /sentinelone_posture_providers/{id}
     /sophos_posture_providers/{id}
+    /google_endpoint_posture_providers/{id}
   ]
 
   def warning(method, path) do

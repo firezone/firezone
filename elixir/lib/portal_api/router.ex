@@ -202,6 +202,13 @@ defmodule PortalAPI.Router do
       only: [:index, :show, :update, :delete]
 
     resources "/sophos_devices", SophosDeviceController, only: [:index, :show]
+
+    resources "/google_endpoint_posture_providers", GoogleEndpointPostureProviderController,
+      only: [:index, :show, :update, :delete]
+
+    resources "/google_endpoint_devices", GoogleEndpointDeviceController, only: [:index]
+
+    get "/google_endpoint_devices/:google_endpoint_device", GoogleEndpointDeviceController, :show
   end
 
   scope "/integrations", PortalAPI.Integrations do

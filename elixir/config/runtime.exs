@@ -130,6 +130,11 @@ if config_env() == :prod do
     workload_identity_audience: env_var_to_config!(:google_workload_identity_audience),
     endpoint: "https://www.googleapis.com"
 
+  config :portal, Portal.GoogleEndpoint.APIClient,
+    service_account_email: env_var_to_config!(:google_endpoint_service_account_email),
+    service_account_key: env_var_to_config!(:google_endpoint_service_account_key),
+    client_id: env_var_to_config!(:google_endpoint_service_account_client_id)
+
   config :portal, Portal.Google.AuthProvider,
     client_id: env_var_to_config!(:google_oidc_client_id),
     client_secret: env_var_to_config!(:google_oidc_client_secret)
@@ -289,6 +294,9 @@ if config_env() == :prod do
     # Schedule Sophos device inventory sync every 2 hours
     {"45 */2 * * *", Portal.Sophos.Scheduler},
 
+    # Schedule Google Endpoint Management device inventory sync every 2 hours
+    {"50 */2 * * *", Portal.GoogleEndpoint.Scheduler},
+
     # Group membership changes do not produce user push notifications, so run
     # a full Google directory sync every four hours.
     {"20 */4 * * *", Portal.Google.Scheduler},
@@ -325,6 +333,8 @@ if config_env() == :prod do
      args: %{provider: "sentinelone", frequency: "daily"}},
     {"0 9 * * *", Portal.Workers.SyncErrorNotification,
      args: %{provider: "sophos", frequency: "daily"}},
+    {"0 9 * * *", Portal.Workers.SyncErrorNotification,
+     args: %{provider: "google_endpoint", frequency: "daily"}},
 
     # Directory sync error notifications - every 3 days for medium error count
     {"0 9 */3 * *", Portal.Workers.SyncErrorNotification,
@@ -345,6 +355,8 @@ if config_env() == :prod do
      args: %{provider: "sentinelone", frequency: "three_days"}},
     {"0 9 */3 * *", Portal.Workers.SyncErrorNotification,
      args: %{provider: "sophos", frequency: "three_days"}},
+    {"0 9 */3 * *", Portal.Workers.SyncErrorNotification,
+     args: %{provider: "google_endpoint", frequency: "three_days"}},
 
     # Directory sync error notifications - weekly for high error count
     {"0 9 * * 1", Portal.Workers.SyncErrorNotification,
@@ -365,6 +377,8 @@ if config_env() == :prod do
      args: %{provider: "sentinelone", frequency: "weekly"}},
     {"0 9 * * 1", Portal.Workers.SyncErrorNotification,
      args: %{provider: "sophos", frequency: "weekly"}},
+    {"0 9 * * 1", Portal.Workers.SyncErrorNotification,
+     args: %{provider: "google_endpoint", frequency: "weekly"}},
 
     # Log sink delivery error notifications
     {"0 9 * * *", Portal.Workers.LogSinkErrorNotification},
@@ -451,6 +465,8 @@ if config_env() == :prod do
       sentinelone_sync: 5,
       sophos_scheduler: 1,
       sophos_sync: 5,
+      google_endpoint_scheduler: 1,
+      google_endpoint_sync: 5,
       google_scheduler: 1,
       google_sync: 5,
       google_subscriptions: 1,

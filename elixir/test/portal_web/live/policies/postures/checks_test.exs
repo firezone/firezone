@@ -23,7 +23,7 @@ defmodule PortalWeb.Policies.Postures.ChecksTest do
       not_jailbroken: ~w[ios android]a,
       recently_seen: ~w[windows macos linux ios android]a,
       secure_boot: ~w[windows macos]a,
-      corporate_owned: ~w[windows macos ios android]a,
+      corporate_owned: ~w[windows macos linux ios android]a,
       supervised: ~w[macos ios]a,
       app_allowlisting: ~w[macos]a,
       agent_up_to_date: ~w[windows macos linux]a,
@@ -35,10 +35,18 @@ defmodule PortalWeb.Policies.Postures.ChecksTest do
     assert Map.new(Checks.all(), &{&1.name, &1.platforms}) == expected
   end
 
-  test "a check keeps its tree from before Sophos joined it" do
+  test "a check keeps its trees from before Google Endpoint and Sophos joined it" do
     {:ok, check} = Checks.fetch(:disk_encryption)
 
     assert check.previous == [
+             %{
+               "or" => [
+                 %{"field" => "intune.is_encrypted", "op" => "is", "value" => true},
+                 %{"field" => "intune.attestation_bit_locker_enabled", "op" => "is", "value" => true},
+                 %{"field" => "iru.filevault_enabled", "op" => "is", "value" => true},
+                 %{"field" => "sophos.encryption_overall_status", "op" => "is", "value" => "encrypted"}
+               ]
+             },
              %{
                "or" => [
                  %{"field" => "intune.is_encrypted", "op" => "is", "value" => true},
@@ -47,6 +55,9 @@ defmodule PortalWeb.Policies.Postures.ChecksTest do
                ]
              }
            ]
+
+    {:ok, not_jailbroken} = Checks.fetch(:not_jailbroken)
+    assert not_jailbroken.previous == [%{"field" => "intune.jail_broken", "op" => "is", "value" => false}]
 
     {:ok, compliant} = Checks.fetch(:compliant)
     assert compliant.previous == []

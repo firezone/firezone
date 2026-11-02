@@ -1159,6 +1159,7 @@ defmodule PortalWeb.Devices do
     defp provider_type_rank(:santa), do: 3
     defp provider_type_rank(:sentinelone), do: 4
     defp provider_type_rank(:sophos), do: 5
+    defp provider_type_rank(:google_endpoint), do: 6
 
   end
 end

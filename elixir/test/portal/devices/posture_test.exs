@@ -10,6 +10,7 @@ defmodule Portal.Devices.PostureTest do
   import Portal.SantaFixtures
   import Portal.SentinelOneFixtures
   import Portal.SophosFixtures
+  import Portal.GoogleEndpointFixtures
 
   alias Portal.Devices.Posture
 
@@ -58,13 +59,20 @@ defmodule Portal.Devices.PostureTest do
       santa_device_fixture(provider: santa_posture_provider_fixture(account: account), serial_number: "SER-1")
       sentinelone_device_fixture(provider: sentinelone_posture_provider_fixture(account: account), serial_number: "SER-1")
       sophos_device_fixture(provider: sophos_posture_provider_fixture(account: account), serial_number: "SER-1")
+      google_endpoint_device_fixture(provider: google_endpoint_posture_provider_fixture(account: account), serial_number: "SER-1")
       iru_device_fixture(provider: iru_posture_provider_fixture(account: account), serial_number: "SER-1")
       client = client_fixture(account: account, actor: actor, device_serial: "SER-1")
 
       matched = Posture.match(client)
 
       assert Enum.map(matched, &{elem(&1, 0), elem(&1, 2)}) |> Enum.sort() ==
-               [iru: :device_serial, santa: :device_serial, sentinelone: :device_serial, sophos: :device_serial]
+               [
+                 google_endpoint: :device_serial,
+                 iru: :device_serial,
+                 santa: :device_serial,
+                 sentinelone: :device_serial,
+                 sophos: :device_serial
+               ]
     end
 
     test "ignores the self-reported serial of a device that attested", %{account: account, actor: actor} do
@@ -105,6 +113,23 @@ defmodule Portal.Devices.PostureTest do
 
       assert [{:sophos, row, :attested_serial, nil}] = Posture.match(client)
       assert row.sophos_id == current.sophos_id
+    end
+
+    test "matches only the most recently synced Google Endpoint record of a serial, never one without a serial", %{
+      account: account,
+      actor: actor
+    } do
+      provider = google_endpoint_posture_provider_fixture(account: account)
+      now = DateTime.utc_now() |> DateTime.truncate(:microsecond)
+
+      google_endpoint_device_fixture(provider: provider, serial_number: "SER-1", last_sync_at: DateTime.add(now, -30, :day))
+      current = google_endpoint_device_fixture(provider: provider, serial_number: "SER-1", last_sync_at: now)
+      google_endpoint_device_fixture(provider: provider, serial_number: nil, device_type: "IOS")
+
+      client = client_fixture(account: account, actor: actor, last_attested_device_serial: "SER-1")
+
+      assert [{:google_endpoint, row, :attested_serial, nil}] = Posture.match(client)
+      assert row.google_id == current.google_id
     end
 
     test "a disabled provider's newer Sophos record does not hide an enabled one from policies", %{account: account, actor: actor} do
@@ -249,7 +274,7 @@ defmodule Portal.Devices.PostureTest do
   end
 
   test "schema/1 and rung_fields/2 cover every provider type" do
-    for type <- [:intune, :iru, :defender, :santa, :sentinelone, :sophos] do
+    for type <- [:intune, :iru, :defender, :santa, :sentinelone, :sophos, :google_endpoint] do
       assert Posture.schema(type).__schema__(:source) =~ "devices"
       assert is_list(Posture.rung_fields(type, :mdm_device_id))
       assert is_list(Posture.rung_fields(type, :attested_serial))
@@ -265,7 +290,7 @@ defmodule Portal.Devices.PostureKeysTest do
   alias Portal.Devices.Posture
 
   test "types/0 and schemas/0 list every provider that syncs rows" do
-    assert Posture.types() == [:intune, :iru, :defender, :santa, :sentinelone, :sophos]
+    assert Posture.types() == [:intune, :iru, :defender, :santa, :sentinelone, :sophos, :google_endpoint]
     assert Posture.schemas() == Enum.map(Posture.types(), &Posture.schema/1)
 
     for type <- Posture.types() do
@@ -288,6 +313,7 @@ defmodule Portal.Devices.PostureKeysTest do
     assert Posture.row_keys(%Portal.SentinelOne.Device{uuid: "u", serial_number: "SER-4"}) == [serial: "SER-4"]
     assert Posture.row_keys(%Portal.Sophos.Device{sophos_id: "s", serial_number: "SER-5"}) == [serial: "SER-5"]
     assert Posture.row_keys(%Portal.Sophos.Device{sophos_id: "s", serial_number: nil}) == []
+    assert Posture.row_keys(%Portal.GoogleEndpoint.Device{google_id: "g", serial_number: "SER-6"}) == [serial: "SER-6"]
   end
 
   test "row_keys/1 keys a Defender row by its Entra device id alone" do

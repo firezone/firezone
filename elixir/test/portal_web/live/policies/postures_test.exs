@@ -24,15 +24,17 @@ defmodule PortalWeb.Policies.PosturesTest do
     assert state.trust_anchors?
   end
 
-  test "a check saved before Sophos joined it is still recognised and upgraded on toggle" do
+  test "a check saved before a provider joined it is still recognised and upgraded on toggle" do
     {:ok, check} = Checks.fetch(:disk_encryption)
-    [previous] = check.previous
-    state = Postures.new(:enabled, cast(%{"and" => [expansion(:compliant), previous]}))
 
-    assert Postures.checks(state) == {:ok, [:compliant, :disk_encryption]}
+    for previous <- check.previous do
+      state = Postures.new(:enabled, cast(%{"and" => [expansion(:compliant), previous]}))
 
-    state = event(state, "postures_toggle_check", %{"name" => "firewall"})
-    assert state.wire == %{"and" => [expansion(:compliant), expansion(:disk_encryption), expansion(:firewall)]}
+      assert Postures.checks(state) == {:ok, [:compliant, :disk_encryption]}
+
+      state = event(state, "postures_toggle_check", %{"name" => "firewall"})
+      assert state.wire == %{"and" => [expansion(:compliant), expansion(:disk_encryption), expansion(:firewall)]}
+    end
   end
 
   test "toggling checks writes their expansions and reads them back" do

@@ -263,6 +263,15 @@ config :portal, Portal.ComponentVersions,
     headless: "1.0.0"
   ]
 
+config :portal, Portal.GoogleEndpoint.APIClient,
+  service_account_email: nil,
+  service_account_key: nil,
+  client_id: "123456789012345678901",
+  req_opts: [
+    plug: {Req.Test, Portal.GoogleEndpoint.APIClient},
+    retry: false
+  ]
+
 config :portal, Portal.Google.APIClient,
   # Never inherit a developer's real Google credentials from the shell
   # config/config.exs reads these from env, and tests must control them
