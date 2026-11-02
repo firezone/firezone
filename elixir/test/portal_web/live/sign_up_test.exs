@@ -111,13 +111,8 @@ defmodule PortalWeb.SignUpTest do
       assert has_element?(lv, "#selected-region", "Changing this later requires scheduled downtime.")
       refute has_element?(lv, "#selected-region", "Data is stored in")
       refute has_element?(lv, "#selected-region", "The region where")
-      assert has_element?(lv, "#choose-other-region", "Go back to signup to select a different region.")
       refute has_element?(lv, "#region-picker")
       refute has_element?(lv, "#data-residency")
-
-      lv |> element("#choose-other-region") |> render_click()
-      assert_patch(lv, ~p"/sign_up")
-      assert has_element?(lv, "#region-picker")
     end
 
     test "hands the website attribution and query to the other region's portal", %{conn: conn} do
@@ -251,7 +246,6 @@ defmodule PortalWeb.SignUpTest do
       {:ok, lv, _html} = live(conn, ~p"/sign_up/google")
 
       assert has_element?(lv, "#selected-region", "United States")
-      assert has_element?(lv, "#choose-other-region[href='/sign_up']")
       refute has_element?(lv, "#region-picker")
       refute has_element?(lv, "a[href^='https://eu.app.firezone.dev']")
     end

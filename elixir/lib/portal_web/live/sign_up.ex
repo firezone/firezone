@@ -764,11 +764,6 @@ defmodule PortalWeb.SignUp do
       <p class="mt-1.5 text-xs text-subtle">
         Changing this later requires scheduled downtime.
       </p>
-      <p class="mt-1 text-xs text-subtle">
-        <Navigation.link id="choose-other-region" patch={~p"/sign_up"}>
-          Go back to signup to select a different region.
-        </Navigation.link>
-      </p>
     </div>
     """
   end
