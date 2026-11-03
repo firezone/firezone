@@ -51,6 +51,7 @@ pub struct EventStream {
     user_notification_receiver: mpsc::Receiver<UserNotification>,
 
     seen_notifications: HashSet<UserNotification>,
+    disconnected: Option<Event>,
 }
 
 /// Events the Client application should use to update the state of the operating system / app.
@@ -200,25 +201,25 @@ impl EventStream {
                 Poll::Ready(None) | Poll::Pending => {}
             }
 
-            match self.eventloop.poll_unpin(cx) {
-                Poll::Ready(Ok(Ok(()))) => return Poll::Ready(None),
-                Poll::Ready(Ok(Err(e))) => return Poll::Ready(Some(Event::Disconnected(e))),
-                Poll::Ready(Err(e)) => {
-                    return Poll::Ready(Some(Event::Disconnected(DisconnectError::from(
-                        e.context("connlib crashed"),
-                    ))));
-                }
-                Poll::Pending => {}
-            }
-
-            // A resolved `Fuse` parks forever and the senders above died with the
-            // event-loop, so nothing is left that could wake us: whatever we just
-            // yielded was the last event.
+            // The event-loop has exited and we drained all receivers above,
+            // so nothing is left that could wake us.
             if self.eventloop.is_terminated() {
-                return Poll::Ready(None);
+                return Poll::Ready(self.disconnected.take());
             }
 
-            return Poll::Pending;
+            let Poll::Ready(result) = self.eventloop.poll_unpin(cx) else {
+                return Poll::Pending;
+            };
+
+            self.disconnected = match result {
+                Ok(Ok(())) => None,
+                Ok(Err(e)) => Some(Event::Disconnected(e)),
+                Err(e) => Some(Event::Disconnected(DisconnectError::from(
+                    e.context("connlib crashed"),
+                ))),
+            };
+
+            // The event-loop may have sent more events after we polled the receivers above.
         }
     }
 
@@ -274,6 +275,7 @@ impl EventStream {
             connected_as_receiver: WatchStream::from_changes(connected_as_receiver),
             user_notification_receiver,
             seen_notifications: Default::default(),
+            disconnected: None,
         })
     }
 }
