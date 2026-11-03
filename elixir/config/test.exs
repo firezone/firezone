@@ -165,9 +165,9 @@ config :portal, Portal.Azure.ManagedIdentity,
     retry: false
   ]
 
-config :portal, Portal.Azure.MetricsExporter,
+config :portal, Portal.OTLP.MetricsExporter,
   req_opts: [
-    plug: {Req.Test, Portal.Azure.MetricsExporter},
+    plug: {Req.Test, Portal.OTLP.MetricsExporter},
     retry: false
   ]
 
