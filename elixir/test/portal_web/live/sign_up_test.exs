@@ -204,6 +204,14 @@ defmodule PortalWeb.SignUpTest do
       assert has_element?(lv, "#auth-trust-mobile", "WireGuard encrypted")
     end
 
+    # The email field's errors overflow to the right of the form on wide screens.
+    test "lets field errors overflow the card on wide screens", %{conn: conn} do
+      {:ok, _lv, html} = live(conn, ~p"/sign_up/email")
+
+      assert [card] = html |> Floki.parse_document!() |> Floki.find("#auth-card")
+      assert card |> Floki.attribute("class") |> hd() |> String.split() |> Enum.member?("lg:overflow-visible")
+    end
+
     test "choosing email shows the sign-up form", %{conn: conn} do
       {:ok, lv, _html} = live(conn, ~p"/sign_up")
 
