@@ -2072,7 +2072,7 @@ where
             let probes = self
                 .tunnel
                 .commit_decapsulate(probes, now)
-                .context("data packet")
+                .context("Failed to commit path probes")
                 .with_context(|| format!("cid={cid}"))?;
 
             for probe in probes {
@@ -2094,7 +2094,7 @@ where
         let committed = self
             .tunnel
             .commit_decapsulate(data, now)
-            .context("data packet")
+            .context("Failed to commit data packets")
             .with_context(|| format!("cid={cid}"))?;
 
         if let Some(packet) = committed.data().find_map(|packet| packet.as_ref().ok()) {

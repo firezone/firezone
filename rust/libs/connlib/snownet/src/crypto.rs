@@ -345,7 +345,7 @@ impl<TId: fmt::Display> Iterator for CommittedBatch<TId> {
                 .context(format!("cid={}", self.cid))),
             Ok(sanstun::Committed::Keepalive) => Ok(None),
             Err(e) => Err(anyhow::Error::new(e)
-                .context("data packet")
+                .context("Failed to commit data packet")
                 .context(format!("cid={}", self.cid))),
         };
 
