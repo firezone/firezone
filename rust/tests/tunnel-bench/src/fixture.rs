@@ -830,6 +830,7 @@ impl Relay {
             ALLOCATION_PORTS,
         );
         server.set_accounts([AccountId::from(Uuid::nil())]);
+        server.allow_non_public_peers();
 
         Self {
             server,
