@@ -74,7 +74,8 @@ defmodule PortalAPI.Plugs.RequestLog do
     case Plug.Conn.get_req_header(conn, "content-length") do
       [value | _rest] ->
         case Integer.parse(value) do
-          {length, ""} when length >= 0 -> length
+          # The column is a bigint.
+          {length, ""} when length >= 0 and length <= 9_223_372_036_854_775_807 -> length
           _other -> nil
         end
 

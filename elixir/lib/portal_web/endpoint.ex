@@ -31,8 +31,6 @@ defmodule PortalWeb.Endpoint do
   plug PortalWeb.Plugs.PutSTSHeader
   plug PortalWeb.Plugs.PutSecurityHeaders
 
-  plug Portal.Plugs.CountryCodeBlocklist
-
   plug Plug.RequestId
   plug PortalWeb.Plugs.PutDynamicRepo
   plug Plug.Telemetry, event_prefix: [:phoenix, :endpoint]

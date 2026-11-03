@@ -192,10 +192,13 @@ defmodule PortalWeb.WebsiteAttribution do
       |> Enum.reject(fn {key, _value} -> key in [@distinct_id_param, @pathname_param] ++ @marketing_params end)
       |> URI.encode_query()
 
+    # request_path keeps a leading "//", which Phoenix refuses to redirect to.
+    path = "/" <> Enum.join(conn.path_info, "/")
+
     if query_string == "" do
-      conn.request_path
+      path
     else
-      conn.request_path <> "?" <> query_string
+      path <> "?" <> query_string
     end
   end
 end

@@ -1235,4 +1235,40 @@ defmodule PortalWeb.EmailOTPControllerTest do
       _ -> raise "Could not extract code from email: #{email.text_body}"
     end
   end
+
+  describe "malformed input" do
+    test "rejects a verification code that is not a string", %{
+      conn: conn,
+      account: account,
+      provider: provider
+    } do
+      conn = get(conn, "/#{account.id}/sign_in/email_otp/#{provider.id}/verify?secret[]=1")
+
+      assert redirected_to(conn) =~ account.id
+    end
+
+    test "sends the code without a User-Agent header", %{
+      conn: conn,
+      account: account,
+      provider: provider
+    } do
+      actor = actor_fixture(type: :account_admin_user, account: account)
+
+      conn =
+        conn
+        |> delete_req_header("user-agent")
+        |> post(~p"/#{account.id}/sign_in/email_otp/#{provider.id}", %{
+          "email" => %{"email" => actor.email}
+        })
+
+      assert redirected_to(conn) =~ account.id
+    end
+
+    test "ignores sign-in parameters that are not strings", %{conn: conn, account: account} do
+      conn = get(conn, "/#{account.id}/sign_in?state[a]=1&redirect_to[]=x")
+
+      html = html_response(conn, 200)
+      refute html =~ ~s(name="state")
+    end
+  end
 end

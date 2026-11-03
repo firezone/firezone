@@ -12,6 +12,25 @@ defmodule PortalAPI.Integrations.Stripe.WebhookControllerTest do
       assert response(conn, 400) == "Bad Request: missing signature header"
     end
 
+    test "returns error when the signature header occurs more than once", %{conn: conn} do
+      conn =
+        %{conn | req_headers: [{"stripe-signature", "t=1,v1=a"}, {"stripe-signature", "t=1,v1=b"}]}
+        |> put_req_header("content-type", "application/json")
+        |> post("/integrations/stripe/webhooks", "{}")
+
+      assert response(conn, 400) == "Bad Request: multiple signature headers"
+    end
+
+    test "returns error when the timestamp is not an integer", %{conn: conn} do
+      conn =
+        conn
+        |> put_req_header("content-type", "application/json")
+        |> put_req_header("stripe-signature", "t=abc,v1=deadbeef")
+        |> post("/integrations/stripe/webhooks", "bar")
+
+      assert response(conn, 400) == "Bad Request: missing timestamp"
+    end
+
     test "returns error when timestamp is missing from the signature header", %{conn: conn} do
       conn =
         conn

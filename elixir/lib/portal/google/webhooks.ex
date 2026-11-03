@@ -26,7 +26,7 @@ defmodule Portal.Google.Webhooks do
         :ok
 
       _ ->
-        Logger.warning("Dropping Google notification for unknown directory",
+        Logger.info("Dropping Google notification for unknown directory",
           google_directory_id: directory_id
         )
 

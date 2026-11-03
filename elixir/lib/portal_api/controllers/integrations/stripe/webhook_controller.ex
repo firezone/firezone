@@ -23,6 +23,9 @@ defmodule PortalAPI.Integrations.Stripe.WebhookController do
 
       [] ->
         send_resp(conn, 400, "Bad Request: missing signature header")
+
+      _multiple ->
+        send_resp(conn, 400, "Bad Request: multiple signature headers")
     end
   end
 
@@ -59,7 +62,10 @@ defmodule PortalAPI.Integrations.Stripe.WebhookController do
     |> Enum.map(&String.split(&1, "="))
     |> Enum.reduce({nil, []}, fn
       ["t", timestamp], {nil, signatures} ->
-        {String.to_integer(timestamp), signatures}
+        case Integer.parse(timestamp) do
+          {timestamp, ""} -> {timestamp, signatures}
+          _other -> {nil, signatures}
+        end
 
       [@scheme, signature], {timestamp, signatures} ->
         {timestamp, [signature | signatures]}

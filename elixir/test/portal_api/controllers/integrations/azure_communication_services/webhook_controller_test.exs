@@ -97,6 +97,21 @@ defmodule PortalAPI.Integrations.AzureCommunicationServices.WebhookControllerTes
       assert response(conn, 400) == "Bad Request: missing aeg-event-type header"
     end
 
+    test "returns 400 when the aeg-event-type header occurs more than once", %{conn: conn} do
+      conn =
+        %{
+          conn
+          | req_headers: [{"aeg-event-type", "Notification"}, {"aeg-event-type", "Unsubscribe"}]
+        }
+        |> put_req_header("content-type", "application/json")
+        |> post(
+          "/integrations/azure_communication_services/webhooks",
+          notification_payload()
+        )
+
+      assert response(conn, 400) == "Bad Request: multiple aeg-event-type headers"
+    end
+
     test "returns 400 for invalid JSON", %{conn: conn} do
       conn =
         conn

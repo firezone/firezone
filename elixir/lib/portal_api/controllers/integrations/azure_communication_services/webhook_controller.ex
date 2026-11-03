@@ -11,6 +11,9 @@ defmodule PortalAPI.Integrations.AzureCommunicationServices.WebhookController do
 
       [] ->
         send_resp(conn, 400, "Bad Request: missing aeg-event-type header")
+
+      _multiple ->
+        send_resp(conn, 400, "Bad Request: multiple aeg-event-type headers")
     end
   end
 

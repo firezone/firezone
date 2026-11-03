@@ -114,7 +114,7 @@ defmodule Portal.Okta.Webhooks do
         {:error, :unauthorized}
 
       _ ->
-        Logger.warning("Refusing Okta events for an unknown directory",
+        Logger.info("Refusing Okta events for an unknown directory",
           okta_directory_id: directory_id
         )
 
