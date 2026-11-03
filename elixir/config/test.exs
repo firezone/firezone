@@ -395,7 +395,9 @@ config :portal, PortalWeb.Plugs.PutSecurityHeaders,
     "default-src 'self' https://firezone.statuspage.io",
     "img-src 'self' data: https://www.gravatar.com https://firezone.statuspage.io",
     "style-src 'self'",
-    "script-src 'self' 'nonce-${nonce}'",
+    "script-src 'self' 'nonce-${nonce}' https://challenges.cloudflare.com",
+    "connect-src 'self' https://firezone.statuspage.io https://challenges.cloudflare.com",
+    "frame-src 'self' https://firezone.statuspage.io https://challenges.cloudflare.com",
     "object-src 'none'",
     "base-uri 'self'",
     "frame-ancestors 'none'"
@@ -473,4 +475,10 @@ config :portal, Portal.Analytics.OpenAI,
 
 config :portal, Portal.Analytics.GoogleAds,
   endpoint: "https://datamanager.googleapis.com/v1/events:ingest",
+  req_opts: [retry: false]
+
+config :portal, Portal.Turnstile,
+  site_key: nil,
+  secret_key: nil,
+  endpoint: "https://challenges.cloudflare.com/turnstile/v0/siteverify",
   req_opts: [retry: false]

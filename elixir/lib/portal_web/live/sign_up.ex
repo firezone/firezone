@@ -337,6 +337,9 @@ defmodule PortalWeb.SignUp do
         />
       </div>
 
+      <.turnstile_widget />
+      <.turnstile_token_input id="email-turnstile-token" />
+
       <button
         type="submit"
         phx-disable-with="Sending..."
@@ -369,8 +372,11 @@ defmodule PortalWeb.SignUp do
 
     <.region_picker query_params={@query_params} website_attribution={@website_attribution} />
 
+    <.turnstile_widget />
+
     <div class="flex flex-col gap-2">
       <.form for={%{}} id="google-sign-up" action={~p"/sign_up/google"} method="post">
+        <.turnstile_token_input id="google-turnstile-token" />
         <button type="submit" class={method_button_style()}>
           <Core.provider_icon provider="google" size="md" />
           <span class="flex-1 text-left">Sign up with <strong>Google</strong></span>
@@ -379,6 +385,7 @@ defmodule PortalWeb.SignUp do
       </.form>
 
       <.form for={%{}} id="github-sign-up" action={~p"/sign_up/github"} method="post">
+        <.turnstile_token_input id="github-turnstile-token" />
         <button type="submit" class={method_button_style()}>
           <Core.provider_icon provider="github" size="md" />
           <span class="flex-1 text-left">Sign up with <strong>GitHub</strong></span>
@@ -1073,6 +1080,30 @@ defmodule PortalWeb.SignUp do
     """
   end
 
+  defp turnstile_widget(assigns) do
+    ~H"""
+    <div
+      :if={Portal.Turnstile.enabled?()}
+      id="turnstile-widget"
+      phx-hook="Turnstile"
+      phx-update="ignore"
+      data-sitekey={Portal.Turnstile.site_key()}
+      class="my-1"
+    >
+    </div>
+    """
+  end
+
+  attr :id, :string, required: true
+
+  defp turnstile_token_input(assigns) do
+    ~H"""
+    <div :if={Portal.Turnstile.enabled?()} id={@id} phx-update="ignore">
+      <input type="hidden" name="cf-turnstile-response" data-turnstile-token />
+    </div>
+    """
+  end
+
   # ── Event handlers ────────────────────────────────────────────────────────────
 
   def handle_event("validate", %{"registration" => attrs}, socket) do
@@ -1080,7 +1111,7 @@ defmodule PortalWeb.SignUp do
     {:noreply, assign(socket, form: to_form(changeset, as: :registration))}
   end
 
-  def handle_event("submit", %{"registration" => attrs}, socket) do
+  def handle_event("submit", %{"registration" => attrs} = params, socket) do
     attrs = normalize_registration_attrs(attrs)
 
     if honeypot_filled?(attrs) do
@@ -1088,7 +1119,15 @@ defmodule PortalWeb.SignUp do
       {:noreply, assign(socket, step: :email_sent)}
     else
       changeset = socket |> registration_changeset(attrs) |> Map.put(:action, :insert)
-      {:noreply, apply_registration(socket, changeset)}
+
+      case Portal.Turnstile.verify(params["cf-turnstile-response"], socket.assigns.real_ip) do
+        :ok ->
+          {:noreply, socket |> apply_registration(changeset) |> reset_turnstile()}
+
+        {:error, reason} ->
+          changeset = Ecto.Changeset.add_error(changeset, :email, turnstile_error_message(reason))
+          {:noreply, socket |> assign(form: to_form(changeset, as: :registration)) |> reset_turnstile()}
+      end
     end
   end
 
@@ -1236,6 +1275,22 @@ defmodule PortalWeb.SignUp do
   end
 
   defp honeypot_filled?(attrs), do: Map.get(attrs, "phone", "") != ""
+
+  @doc false
+  def turnstile_error_message(:unavailable),
+    do: "We couldn't verify your request right now. Please try again in a moment."
+
+  def turnstile_error_message(_reason),
+    do: "Please complete the verification and try again."
+
+  # Turnstile tokens are single use, so the widget must issue a new one after every attempt.
+  defp reset_turnstile(%{assigns: %{step: :email_sent}} = socket), do: socket
+
+  defp reset_turnstile(socket) do
+    if Portal.Turnstile.enabled?(),
+      do: Phoenix.LiveView.push_event(socket, "turnstile:reset", %{}),
+      else: socket
+  end
 
   defp survey_attrs(%Portal.SignUpSurvey{} = survey), do: Map.from_struct(survey)
 

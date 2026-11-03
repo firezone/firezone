@@ -3935,6 +3935,27 @@ defmodule PortalWeb.OIDCControllerTest do
   defp pending_identity_cookie_key(pending_identity_id), do: "pending_identity_#{pending_identity_id}"
 
   # Sets the secret_key_base from the endpoint so signed cookies can be read/written.
+  defp turnstile_enabled(result) do
+    Portal.Config.put_env_override(:portal, Portal.Turnstile,
+      site_key: "test-site-key",
+      secret_key: "test-secret-key",
+      req_opts: [retry: false, plug: {Req.Test, __MODULE__}]
+    )
+
+    test_pid = self()
+
+    Req.Test.stub(__MODULE__, fn conn ->
+      {:ok, body, conn} = Plug.Conn.read_body(conn)
+      send(test_pid, {:cloudflare_request, URI.decode_query(body)})
+
+      case result do
+        :approve -> Req.Test.json(conn, %{"success" => true})
+        :refuse -> Req.Test.json(conn, %{"success" => false, "error-codes" => ["invalid-input-response"]})
+        :down -> Plug.Conn.send_resp(conn, 503, "unavailable")
+      end
+    end)
+  end
+
   describe "sign_up/2" do
     test "redirects to Google with an account picker and binds the state to a cookie", %{
       conn: conn
@@ -3960,6 +3981,94 @@ defmodule PortalWeb.OIDCControllerTest do
                conn |> recycle() |> with_endpoint_key_base() |> Cookie.SignUpState.fetch()
 
       assert nonce == PortalWeb.OIDC.nonce(verifier)
+    end
+
+    test "starts the Google round trip once Cloudflare approves the token", %{conn: conn} do
+      mock_endpoint = Mocks.OIDC.mock_endpoint()
+      Mocks.OIDC.override_google_auth_provider_config()
+      turnstile_enabled(:approve)
+
+      conn = post(conn, ~p"/sign_up/google", %{"cf-turnstile-response" => "good-token"})
+
+      assert redirected_to(conn) =~ "#{mock_endpoint}/authorize"
+      assert %Cookie.SignUpState{} = conn |> recycle() |> with_endpoint_key_base() |> Cookie.SignUpState.fetch()
+      assert_receive {:cloudflare_request, form}
+      assert form["response"] == "good-token"
+      assert form["secret"] == "test-secret-key"
+      assert form["remoteip"] == "127.0.0.1"
+    end
+
+    test "turns away a Google sign-up without a token and never calls Cloudflare", %{conn: conn} do
+      Mocks.OIDC.mock_endpoint()
+      Mocks.OIDC.override_google_auth_provider_config()
+      turnstile_enabled(:approve)
+
+      for params <- [%{}, %{"cf-turnstile-response" => ""}] do
+        conn = post(conn, ~p"/sign_up/google", params)
+
+        assert redirected_to(conn) == "/sign_up"
+        assert flash(conn, :error) =~ "Please complete the verification"
+        refute Map.has_key?(conn.resp_cookies, "sign_up_oidc")
+      end
+
+      refute_receive {:cloudflare_request, _}
+    end
+
+    test "turns away a Google sign-up when Cloudflare refuses the token", %{conn: conn} do
+      Mocks.OIDC.mock_endpoint()
+      Mocks.OIDC.override_google_auth_provider_config()
+      turnstile_enabled(:refuse)
+
+      conn = post(conn, ~p"/sign_up/google", %{"cf-turnstile-response" => "bad-token"})
+
+      assert redirected_to(conn) == "/sign_up"
+      assert flash(conn, :error) =~ "Please complete the verification"
+      refute Map.has_key?(conn.resp_cookies, "sign_up_oidc")
+      assert_receive {:cloudflare_request, %{"response" => "bad-token"}}
+    end
+
+    test "turns away a Google sign-up while Cloudflare is unavailable", %{conn: conn} do
+      Mocks.OIDC.mock_endpoint()
+      Mocks.OIDC.override_google_auth_provider_config()
+      turnstile_enabled(:down)
+
+      conn = post(conn, ~p"/sign_up/google", %{"cf-turnstile-response" => "good-token"})
+
+      assert redirected_to(conn) == "/sign_up"
+      assert flash(conn, :error) =~ "couldn't verify your request"
+      refute Map.has_key?(conn.resp_cookies, "sign_up_oidc")
+    end
+
+    test "still reports an unavailable Google after Cloudflare approves the token", %{conn: conn} do
+      Mocks.OIDC.stub_connection_refused()
+      Mocks.OIDC.override_google_auth_provider_config()
+      turnstile_enabled(:approve)
+
+      conn = post(conn, ~p"/sign_up/google", %{"cf-turnstile-response" => "good-token"})
+
+      assert redirected_to(conn) == "/sign_up"
+      assert flash(conn, :error) =~ "Google sign-in is unavailable right now"
+    end
+
+    test "an unsupported provider is a 404 and never reaches Cloudflare", %{conn: conn} do
+      turnstile_enabled(:approve)
+
+      conn = post(conn, ~p"/sign_up/linkedin", %{"cf-turnstile-response" => "good-token"})
+
+      assert conn.status == 404
+      refute_receive {:cloudflare_request, _}
+    end
+
+    test "does not challenge Google sign-up when no keys are configured", %{conn: conn} do
+      mock_endpoint = Mocks.OIDC.mock_endpoint()
+      Mocks.OIDC.override_google_auth_provider_config()
+      turnstile_enabled(:refuse)
+      Portal.Config.put_env_override(:portal, Portal.Turnstile, site_key: nil, secret_key: nil)
+
+      conn = post(conn, ~p"/sign_up/google")
+
+      assert redirected_to(conn) =~ "#{mock_endpoint}/authorize"
+      refute_receive {:cloudflare_request, _}
     end
 
     test "redirects back to sign-up with an error when Google discovery fails", %{conn: conn} do

@@ -877,6 +877,19 @@ defmodule Portal.Config.Definitions do
   @doc "Azure managed identity audience used for Ads federation."
   defconfig(:google_ads_workload_identity_audience, :string, default: nil)
 
+  @doc "Cloudflare Turnstile site key rendered on the sign-up forms. Challenges are disabled unless the secret key is also set."
+  defconfig(:turnstile_site_key, :string, default: nil)
+
+  @doc "Cloudflare Turnstile secret key used to verify sign-up challenges."
+  defconfig(:turnstile_secret_key, :string,
+    default: nil,
+    sensitive: true,
+    dump: fn
+      value when is_binary(value) -> if String.trim(value) == "", do: nil, else: String.trim(value)
+      value -> value
+    end
+  )
+
   @doc "OpenAI Ads pixel receiving portal conversions."
   defconfig(:openai_conversions_pixel_id, :string, default: nil)
 

@@ -33,8 +33,20 @@ defmodule PortalWeb.OIDCController do
   # Starts a sign-up round trip with an identity provider. The verified identity
   # is handed to the sign-up LiveView through the session; see PortalWeb.SignUp.
   @spec sign_up(Plug.Conn.t(), map()) :: Plug.Conn.t()
-  def sign_up(conn, %{"auth_provider_type" => provider_type})
+  def sign_up(conn, %{"auth_provider_type" => provider_type} = params)
       when provider_type in @sign_up_provider_types do
+    case Portal.Turnstile.verify(params["cf-turnstile-response"], conn.remote_ip) do
+      :ok ->
+        start_sign_up(conn, provider_type)
+
+      {:error, reason} ->
+        redirect_to_sign_up_with_error(conn, PortalWeb.SignUp.turnstile_error_message(reason))
+    end
+  end
+
+  def sign_up(conn, _params), do: PortalWeb.Error.handle(conn, {:error, :not_found})
+
+  defp start_sign_up(conn, provider_type) do
     verification_type = sign_up_verification_type(provider_type)
     state_type = PortalWeb.OIDC.verification_state_type(verification_type)
 
@@ -56,8 +68,6 @@ defmodule PortalWeb.OIDCController do
         redirect_to_sign_up_with_error(conn, sign_up_unavailable_error(provider_type))
     end
   end
-
-  def sign_up(conn, _params), do: PortalWeb.Error.handle(conn, {:error, :not_found})
 
   @spec callback(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def callback(conn, %{"state" => state, "code" => code} = params) do

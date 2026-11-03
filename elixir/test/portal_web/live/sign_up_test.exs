@@ -830,6 +830,256 @@ defmodule PortalWeb.SignUpTest do
 
   end
 
+  describe "turnstile" do
+    setup do
+      Portal.Config.put_env_override(:portal, Portal.Turnstile,
+        site_key: "test-site-key",
+        secret_key: "test-secret-key",
+        req_opts: [retry: false, plug: {Req.Test, __MODULE__}]
+      )
+
+      :ok
+    end
+
+    # Cloudflare answers with `result` and reports every request it receives to the test.
+    defp stub_turnstile(result) do
+      test_pid = self()
+
+      Req.Test.stub(__MODULE__, fn conn ->
+        {:ok, body, conn} = Plug.Conn.read_body(conn)
+        send(test_pid, {:cloudflare_request, URI.decode_query(body)})
+
+        case result do
+          :approve -> Req.Test.json(conn, %{"success" => true})
+          :refuse -> Req.Test.json(conn, %{"success" => false, "error-codes" => ["invalid-input-response"]})
+          :down -> Plug.Conn.send_resp(conn, 503, "unavailable")
+        end
+      end)
+    end
+
+    defp email_registration(email \\ "newuser@example.com") do
+      [
+        registration: %{
+          email: email,
+          phone: "",
+          account: %{name: "Test Corp"},
+          actor: %{name: "Test User"},
+          sign_up_survey: @survey
+        }
+      ]
+    end
+
+    defp submit_email_form(lv, extra \\ %{}, email \\ "newuser@example.com") do
+      lv |> form("form", email_registration(email)) |> render_submit(extra)
+    end
+
+    test "the email page renders the widget and a token field inside the form", %{conn: conn} do
+      {:ok, lv, html} = live(conn, ~p"/sign_up/email")
+
+      assert html =~ ~s(id="turnstile-widget")
+      assert html =~ ~s(data-sitekey="test-site-key")
+      assert has_element?(lv, "#sign-up-form input[name=cf-turnstile-response][data-turnstile-token]")
+    end
+
+    test "the method chooser renders one widget and a token field in each provider form", %{conn: conn} do
+      {:ok, lv, html} = live(conn, ~p"/sign_up")
+
+      assert length(Regex.scan(~r/id="turnstile-widget"/, html)) == 1
+      assert has_element?(lv, "#google-sign-up input[name=cf-turnstile-response][data-turnstile-token]")
+      assert has_element?(lv, "#github-sign-up input[name=cf-turnstile-response][data-turnstile-token]")
+    end
+
+    test "the identity step renders no widget because the identity is already verified", %{conn: conn} do
+      for {provider, conn} <- [
+            {"google", with_google_identity(conn)},
+            {"github", with_github_identity(conn)}
+          ] do
+        {:ok, _lv, html} = live(conn, ~p"/sign_up/#{provider}")
+        refute html =~ "turnstile"
+      end
+    end
+
+    test "no page renders a widget when no keys are configured", %{conn: conn} do
+      Portal.Config.put_env_override(:portal, Portal.Turnstile, site_key: nil, secret_key: nil)
+
+      for path <- [~p"/sign_up", ~p"/sign_up/email"] do
+        {:ok, _lv, html} = live(conn, path)
+        refute html =~ "turnstile"
+      end
+    end
+
+    test "no widget renders when only the site key is configured", %{conn: conn} do
+      Portal.Config.put_env_override(:portal, Portal.Turnstile, secret_key: nil)
+
+      {:ok, _lv, html} = live(conn, ~p"/sign_up/email")
+      refute html =~ "turnstile"
+    end
+
+    test "email: sends the verification email and gives Cloudflare the token", %{conn: conn} do
+      stub_turnstile(:approve)
+      {:ok, lv, _html} = live(conn, ~p"/sign_up/email")
+
+      html = submit_email_form(lv, %{"cf-turnstile-response" => "good-token"})
+
+      assert html =~ "Check your email"
+      assert_email_sent()
+      assert_receive {:cloudflare_request, form}
+      assert form["response"] == "good-token"
+      assert form["secret"] == "test-secret-key"
+      assert form["remoteip"] =~ ~r/^\d+\.\d+\.\d+\.\d+$/
+    end
+
+    test "email: rejects a submission without a token and never calls Cloudflare", %{conn: conn} do
+      stub_turnstile(:approve)
+      {:ok, lv, _html} = live(conn, ~p"/sign_up/email")
+
+      html = submit_email_form(lv)
+
+      assert html =~ "Please complete the verification and try again."
+      assert html =~ "newuser@example.com"
+      refute html =~ "Check your email"
+      refute_receive {:cloudflare_request, _}
+      refute_email_sent()
+    end
+
+    test "email: rejects an empty token", %{conn: conn} do
+      stub_turnstile(:approve)
+      {:ok, lv, _html} = live(conn, ~p"/sign_up/email")
+
+      html = submit_email_form(lv, %{"cf-turnstile-response" => ""})
+
+      assert html =~ "Please complete the verification and try again."
+      refute_receive {:cloudflare_request, _}
+      refute_email_sent()
+    end
+
+    test "email: rejects a token Cloudflare refuses and asks the widget for a new one", %{conn: conn} do
+      stub_turnstile(:refuse)
+      {:ok, lv, _html} = live(conn, ~p"/sign_up/email")
+
+      html = submit_email_form(lv, %{"cf-turnstile-response" => "bad-token"})
+
+      assert html =~ "Please complete the verification and try again."
+      assert html =~ "newuser@example.com"
+      assert_push_event(lv, "turnstile:reset", %{})
+      refute_email_sent()
+    end
+
+    test "email: signs nobody up while Cloudflare is unavailable", %{conn: conn} do
+      stub_turnstile(:down)
+      {:ok, lv, _html} = live(conn, ~p"/sign_up/email")
+
+      html = submit_email_form(lv, %{"cf-turnstile-response" => "good-token"})
+
+      assert html =~ "We couldn&#39;t verify your request right now."
+      assert_push_event(lv, "turnstile:reset", %{})
+      refute_email_sent()
+    end
+
+    test "email: accepts a fresh token after a refused one", %{conn: conn} do
+      stub_turnstile(:refuse)
+      {:ok, lv, _html} = live(conn, ~p"/sign_up/email")
+      assert submit_email_form(lv, %{"cf-turnstile-response" => "stale-token"}) =~ "Please complete the verification"
+      refute_email_sent()
+
+      stub_turnstile(:approve)
+      html = submit_email_form(lv, %{"cf-turnstile-response" => "fresh-token"})
+
+      assert html =~ "Check your email"
+      assert_email_sent()
+    end
+
+    test "email: an existing owner email also needs a valid token", %{conn: conn} do
+      email = "owner@example.com"
+      account_fixture(metadata: %{stripe: %{billing_email: email}})
+      stub_turnstile(:approve)
+      {:ok, lv, _html} = live(conn, ~p"/sign_up/email")
+
+      assert submit_email_form(lv, %{}, email) =~ "Please complete the verification"
+      refute_email_sent()
+
+      html = submit_email_form(lv, %{"cf-turnstile-response" => "good-token"}, email)
+      assert html =~ "Check your email"
+      assert_email_sent()
+    end
+
+    test "email: the honeypot answers without calling Cloudflare", %{conn: conn} do
+      stub_turnstile(:approve)
+      {:ok, lv, _html} = live(conn, ~p"/sign_up/email")
+
+      html =
+        lv
+        |> form("form", registration: %{email: "bot@example.com", phone: "555-0100", account: %{name: "Bot Corp"}, actor: %{name: "Bot User"}, sign_up_survey: @survey})
+        |> render_submit(%{"cf-turnstile-response" => "good-token"})
+
+      assert html =~ "Check your email"
+      refute_receive {:cloudflare_request, _}
+      refute_email_sent()
+    end
+
+    test "email: validating the form never calls Cloudflare", %{conn: conn} do
+      stub_turnstile(:approve)
+      {:ok, lv, _html} = live(conn, ~p"/sign_up/email")
+
+      lv |> form("form", email_registration()) |> render_change()
+
+      refute_receive {:cloudflare_request, _}
+    end
+
+    for provider <- ["google", "github"] do
+      @provider provider
+
+      test "#{provider}: completing the identity step needs no token", %{conn: conn} do
+        email = "identity-#{@provider}@example.com"
+        stub_turnstile(:refuse)
+
+        Stripe.stub(
+          [{"POST", "/v1/customers", 200, Stripe.customer_object("cus_identity", "Identity Corp", email)}] ++
+            Stripe.mock_create_subscription_endpoint()
+        )
+
+        conn =
+          if @provider == "google",
+            do: with_google_identity(conn, email: email),
+            else: with_github_identity(conn, email: email)
+
+        conn = get(conn, ~p"/sign_up/#{@provider}")
+        {:ok, lv, _html} = live(conn)
+
+        conn =
+          submit_identity_form(lv, recycle(conn), @provider, %{
+            account: %{name: "Identity Corp"},
+            actor: %{name: "Identity User"},
+            sign_up_survey: @survey
+          })
+
+        assert redirected_to(conn) =~ "/sites"
+        assert Portal.Repo.get_by!(Portal.Account, name: "Identity Corp")
+        refute_receive {:cloudflare_request, _}
+      end
+    end
+
+    test "verify link: completing the sign-up needs no token", %{conn: conn} do
+      email = "verify-link@example.com"
+      stub_turnstile(:refuse)
+
+      Stripe.stub(
+        [{"POST", "/v1/customers", 200, Stripe.customer_object("cus_verify", "Test Corp", email)}] ++
+          Stripe.mock_create_subscription_endpoint()
+      )
+
+      {conn, browser_id} = sign_up_browser(conn)
+      token = sign_up_token(email, browser_id)
+
+      {:ok, lv, _html} = live(conn, ~p"/verify_sign_up?token=#{token}")
+      conn = follow_trigger_action(form(lv, "#verify-sign-up-form"), recycle(conn))
+
+      assert redirected_to(conn) =~ "/sites"
+      assert Portal.Repo.get_by!(Portal.Account, name: "Test Corp")
+      refute_receive {:cloudflare_request, _}
+    end
+  end
+
   describe "sign-up survey" do
     setup do
       Portal.Config.put_env_override(:portal, Portal.Mailer.InternalEmail, recipient: "feedback@example.com")
