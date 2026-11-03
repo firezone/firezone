@@ -484,17 +484,17 @@ impl ClientTunnel {
                                 }
                             };
 
-                            let mut group = Vec::with_capacity(datagram.num_segments());
-                            group.push(segment);
+                            let mut batch_segments = Vec::with_capacity(datagram.num_segments());
+                            batch_segments.push(segment);
 
                             while let Some(segment) =
                                 segments.next_if(|&s| batch.push(&datagram[s], now))
                             {
                                 udp_received.record(&datagram[segment]);
-                                group.push(segment);
+                                batch_segments.push(segment);
                             }
 
-                            datagram.decrypt(group, batch.finish());
+                            datagram.decrypt(batch_segments, batch.finish());
                         }
                     }
 
@@ -754,17 +754,17 @@ impl GatewayTunnel {
                                 }
                             };
 
-                            let mut group = Vec::with_capacity(datagram.num_segments());
-                            group.push(segment);
+                            let mut batch_segments = Vec::with_capacity(datagram.num_segments());
+                            batch_segments.push(segment);
 
                             while let Some(segment) =
                                 segments.next_if(|&s| batch.push(&datagram[s], now))
                             {
                                 udp_received.record(&datagram[segment]);
-                                group.push(segment);
+                                batch_segments.push(segment);
                             }
 
-                            datagram.decrypt(group, batch.finish());
+                            datagram.decrypt(batch_segments, batch.finish());
                         }
                     }
 
