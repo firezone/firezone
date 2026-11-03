@@ -1,12 +1,13 @@
 defmodule Portal.Turnstile do
   @moduledoc """
-  Verifies Cloudflare Turnstile tokens submitted with the sign-up forms.
+  Verifies Cloudflare Turnstile tokens submitted with the public sign-up and
+  find account forms.
 
   https://developers.cloudflare.com/turnstile/get-started/server-side-validation/
 
   The check is skipped when no keys are configured, so development and self-hosted
   deployments keep working. When keys are configured, anything other than a
-  successful verification rejects the sign-up, including Cloudflare being unreachable.
+  successful verification rejects the submission, including Cloudflare being unreachable.
   """
 
   require Logger
