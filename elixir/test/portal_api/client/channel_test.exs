@@ -4430,11 +4430,12 @@ defmodule PortalAPI.Client.ChannelTest do
       end
 
       push(socket, "create_flow", %{"resource_id" => resource.id, "connected_gateway_ids" => []})
-      assert_receive {:create_authorization, {channel_pid, _socket_ref1}, _payload1}
+      assert_receive {:create_authorization, {channel_pid, _socket_ref1}, payload1}
       stale_generation = gateway_authorization_generation(channel_pid, resource.id)
 
       push(socket, "create_flow", %{"resource_id" => resource.id, "connected_gateway_ids" => []})
       assert_receive {:create_authorization, {^channel_pid, socket_ref2}, payload2}
+      assert payload2.ice_credentials == payload1.ice_credentials
       refute gateway_authorization_generation(channel_pid, resource.id) == stale_generation
 
       send(channel_pid, {:authorization_creation_timeout, resource.id, stale_generation})
