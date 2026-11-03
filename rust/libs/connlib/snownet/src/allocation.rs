@@ -32,7 +32,7 @@ use stun_codec::{
         attributes::{
             ChannelNumber, Lifetime, RequestedTransport, XorPeerAddress, XorRelayAddress,
         },
-        errors::AllocationMismatch,
+        errors::{AllocationMismatch, AllocationQuotaReached},
         methods::{ALLOCATE, CHANNEL_BIND, REFRESH},
     },
     rfc8656::attributes::AdditionalAddressFamily,
@@ -225,6 +225,8 @@ pub enum FreeReason {
     ProtocolFailure,
     #[error("unhandled response")]
     UnhandledResponse,
+    #[error("allocation quota reached")]
+    AllocationQuotaReached,
 }
 
 impl Allocation {
@@ -521,6 +523,13 @@ impl Allocation {
                     "Server did not understand one or more attributes in our request"
                 );
                 self.explicit_failure = Some(FreeReason::ProtocolFailure);
+
+                return true;
+            }
+
+            if error.code() == AllocationQuotaReached::CODEPOINT && message.method() == ALLOCATE {
+                self.buffered_channel_bindings.clear();
+                self.explicit_failure = Some(FreeReason::AllocationQuotaReached);
 
                 return true;
             }
@@ -2800,7 +2809,7 @@ mod tests {
     }
 
     #[test_case::test_case(server_error, FreeReason::UnhandledResponse; "unhandled error")]
-    #[test_case::test_case(allocation_quota_reached, FreeReason::UnhandledResponse; "allocation quota reached")]
+    #[test_case::test_case(allocation_quota_reached, FreeReason::AllocationQuotaReached; "allocation quota reached")]
     #[test_case::test_case(allocate_success_without_lifetime, FreeReason::UnhandledResponse; "success without lifetime")]
     #[test_case::test_case(allocate_success_without_relay_addresses, FreeReason::UnhandledResponse; "success without relay addresses")]
     #[test_case::test_case(realm_mismatch, FreeReason::AuthenticationError; "realm mismatch")]
@@ -3147,9 +3156,7 @@ mod tests {
             request.method(),
             request.transaction_id(),
         );
-        message.add_attribute(ErrorCode::from(
-            stun_codec::rfc5766::errors::AllocationQuotaReached,
-        ));
+        message.add_attribute(ErrorCode::from(AllocationQuotaReached));
 
         message
     }

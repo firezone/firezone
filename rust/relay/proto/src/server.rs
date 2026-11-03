@@ -1843,7 +1843,8 @@ mod tests {
 
     #[test]
     fn allocation_limit_applies_per_account() {
-        let mut server = server_with_limit(1, 8);
+        let mut server = test_server(8);
+        set_allocation_limit(&mut server, 1);
 
         let first = allocate(&mut server, &username(account(0), EXPIRY, "a"), socket(0));
         let second = allocate(&mut server, &username(account(0), EXPIRY, "b"), socket(1));
@@ -1859,7 +1860,8 @@ mod tests {
 
     #[test]
     fn renewed_credentials_replace_device_allocation_at_limit() {
-        let mut server = server_with_limit(1, 1);
+        let mut server = test_server(1);
+        set_allocation_limit(&mut server, 1);
         allocate(&mut server, &username(account(0), EXPIRY, "a"), socket(0));
 
         let response = allocate(
@@ -1875,7 +1877,8 @@ mod tests {
 
     #[test]
     fn lowering_allocation_limit_keeps_existing_allocations() {
-        let mut server = server_with_limit(2, 8);
+        let mut server = test_server(8);
+        set_allocation_limit(&mut server, 2);
         allocate(&mut server, &username(account(0), EXPIRY, "a"), socket(0));
         allocate(&mut server, &username(account(0), EXPIRY, "b"), socket(1));
 
@@ -1896,15 +1899,9 @@ mod tests {
         let client = ClientSocket::new(SocketAddr::from(([127, 0, 0, 1], 50_000)));
         let peer = PeerSocket::new(SocketAddr::from(([198, 51, 100, 2], 50_001)));
         let channel = ChannelNumber::new(ChannelNumber::MIN).unwrap();
-        let account = auth::AccountId::from(Uuid::nil());
-        let mut server = Server::new(
-            Ipv4Addr::LOCALHOST,
-            StdRng::seed_from_u64(0),
-            3478,
-            49_152..=49_153,
-        );
+        let account = account(0);
+        let mut server = test_server(2);
 
-        server.set_accounts([(account, None)]);
         let nonce = issue_nonce(&mut server, client, now, now_utc);
         let username = Username::new(format!(
             "2145916800:{}:credential-salt",
@@ -2072,15 +2069,9 @@ mod tests {
         let now = Instant::now();
         let issued_at = SystemTime::UNIX_EPOCH;
         let client = ClientSocket::new(SocketAddr::from(([127, 0, 0, 1], 50_000)));
-        let account = auth::AccountId::from(Uuid::nil());
-        let mut server = Server::new(
-            Ipv4Addr::LOCALHOST,
-            StdRng::seed_from_u64(0),
-            3478,
-            49_152..=49_153,
-        );
+        let account = account(0);
+        let mut server = test_server(2);
 
-        server.set_accounts([(account, None)]);
         let nonce = issue_nonce(&mut server, client, now, issued_at);
         let username = Username::new(format!(
             "2145916800:{}:credential-salt",
@@ -2223,7 +2214,7 @@ mod tests {
     fn channel_bindings_adopt_a_changed_throughput_limit() {
         let now = Instant::now();
         let account = auth::AccountId::from(Uuid::nil());
-        let mut server = test_server();
+        let mut server = test_server(2);
         server.set_accounts([(account, None)]);
         let port = allocate_and_bind_channel(&mut server, account, now);
 
@@ -2260,7 +2251,7 @@ mod tests {
     fn unchanged_throughput_limit_does_not_touch_channel_bindings() {
         let now = Instant::now();
         let account = auth::AccountId::from(Uuid::nil());
-        let mut server = test_server();
+        let mut server = test_server(2);
         server.set_accounts([(account, Some(limit_5_mbps()))]);
         allocate_and_bind_channel(&mut server, account, now);
 
@@ -2275,7 +2266,7 @@ mod tests {
         let now = Instant::now();
         let now_utc = SystemTime::UNIX_EPOCH;
         let account = auth::AccountId::from(Uuid::nil());
-        let mut server = test_server();
+        let mut server = test_server(2);
         server.set_accounts([(account, Some(limit_5_mbps()))]);
         let port = allocate_and_bind_channel(&mut server, account, now);
         let mut payload = [0u8; 1250]; // A WireGuard data message, 2ms at 5 Mbps.
@@ -2306,6 +2297,62 @@ mod tests {
                 .handle_client_input(&channel_data, CLIENT, later, now_utc)
                 .is_some()
         );
+    }
+
+    // Tests for requirements listed in https://www.rfc-editor.org/rfc/rfc8656#name-receiving-an-allocate-reque.
+
+    // 6. The server checks if the request contains both REQUESTED-ADDRESS-FAMILY and ADDITIONAL-ADDRESS-FAMILY attributes. If yes, then the server rejects the request with a 400 (Bad Request) error.
+    #[test]
+    fn requested_and_additional_is_bad_request() {
+        let error_code = derive_relay_addresses(
+            IpStack::Ip4(Ipv4Addr::LOCALHOST),
+            Some(&RequestedAddressFamily::new(AddressFamily::V4)),
+            Some(&AdditionalAddressFamily::new(AddressFamily::V6)),
+        )
+        .unwrap_err();
+
+        assert_eq!(error_code.code(), BadRequest::CODEPOINT)
+    }
+
+    // 7. If the server does not support the address family requested by the client in REQUESTED-ADDRESS-FAMILY, or if the allocation of the requested address family is disabled by local policy, it MUST generate an Allocate error response, and it MUST include an ERROR-CODE attribute with the 440 (Address Family not Supported) response code.
+    // If the REQUESTED-ADDRESS-FAMILY attribute is absent and the server does not support the IPv4 address family, the server MUST include an ERROR-CODE attribute with the 440 (Address Family not Supported) response code.
+    #[test]
+    fn requested_address_family_not_available_is_not_supported() {
+        let error_code = derive_relay_addresses(
+            IpStack::Ip4(Ipv4Addr::LOCALHOST),
+            Some(&RequestedAddressFamily::new(AddressFamily::V6)),
+            None,
+        )
+        .unwrap_err();
+
+        assert_eq!(error_code.code(), AddressFamilyNotSupported::CODEPOINT);
+
+        let error_code = derive_relay_addresses(
+            IpStack::Ip6(Ipv6Addr::LOCALHOST),
+            Some(&RequestedAddressFamily::new(AddressFamily::V4)),
+            None,
+        )
+        .unwrap_err();
+
+        assert_eq!(error_code.code(), AddressFamilyNotSupported::CODEPOINT);
+
+        let error_code =
+            derive_relay_addresses(IpStack::Ip6(Ipv6Addr::LOCALHOST), None, None).unwrap_err();
+
+        assert_eq!(error_code.code(), AddressFamilyNotSupported::CODEPOINT)
+    }
+
+    //9. The server checks if the request contains an ADDITIONAL-ADDRESS-FAMILY attribute. If yes, and the attribute value is 0x01 (IPv4 address family), then the server rejects the request with a 400 (Bad Request) error.
+    #[test]
+    fn additional_address_family_ip4_is_bad_request() {
+        let error_code = derive_relay_addresses(
+            IpStack::Ip4(Ipv4Addr::LOCALHOST),
+            None,
+            Some(&AdditionalAddressFamily::new(AddressFamily::V4)),
+        )
+        .unwrap_err();
+
+        assert_eq!(error_code.code(), BadRequest::CODEPOINT)
     }
 
     const RELAY_IP: Ipv4Addr = Ipv4Addr::new(203, 0, 113, 1);
@@ -2478,18 +2525,22 @@ mod tests {
 
     const EXPIRY: u64 = 2145916800;
 
-    fn server_with_limit(limit: usize, ports: u16) -> Server<StdRng> {
+    fn test_server(ports: u16) -> Server<StdRng> {
         let mut server = Server::new(
             Ipv4Addr::LOCALHOST,
             StdRng::seed_from_u64(0),
             3478,
             49_152..=(49_151 + ports),
         );
-        let limit = NonZeroUsize::new(limit).unwrap();
         server.set_accounts([(account(0), None), (account(1), None)]);
-        server.set_allocation_limits(HashMap::from([(account(0), limit), (account(1), limit)]));
 
         server
+    }
+
+    fn set_allocation_limit(server: &mut Server<StdRng>, limit: usize) {
+        let limit = NonZeroUsize::new(limit).unwrap();
+
+        server.set_allocation_limits(HashMap::from([(account(0), limit), (account(1), limit)]));
     }
 
     fn account(id: u128) -> auth::AccountId {
@@ -2531,62 +2582,6 @@ mod tests {
         next_response(server)
     }
 
-    // Tests for requirements listed in https://www.rfc-editor.org/rfc/rfc8656#name-receiving-an-allocate-reque.
-
-    // 6. The server checks if the request contains both REQUESTED-ADDRESS-FAMILY and ADDITIONAL-ADDRESS-FAMILY attributes. If yes, then the server rejects the request with a 400 (Bad Request) error.
-    #[test]
-    fn requested_and_additional_is_bad_request() {
-        let error_code = derive_relay_addresses(
-            IpStack::Ip4(Ipv4Addr::LOCALHOST),
-            Some(&RequestedAddressFamily::new(AddressFamily::V4)),
-            Some(&AdditionalAddressFamily::new(AddressFamily::V6)),
-        )
-        .unwrap_err();
-
-        assert_eq!(error_code.code(), BadRequest::CODEPOINT)
-    }
-
-    // 7. If the server does not support the address family requested by the client in REQUESTED-ADDRESS-FAMILY, or if the allocation of the requested address family is disabled by local policy, it MUST generate an Allocate error response, and it MUST include an ERROR-CODE attribute with the 440 (Address Family not Supported) response code.
-    // If the REQUESTED-ADDRESS-FAMILY attribute is absent and the server does not support the IPv4 address family, the server MUST include an ERROR-CODE attribute with the 440 (Address Family not Supported) response code.
-    #[test]
-    fn requested_address_family_not_available_is_not_supported() {
-        let error_code = derive_relay_addresses(
-            IpStack::Ip4(Ipv4Addr::LOCALHOST),
-            Some(&RequestedAddressFamily::new(AddressFamily::V6)),
-            None,
-        )
-        .unwrap_err();
-
-        assert_eq!(error_code.code(), AddressFamilyNotSupported::CODEPOINT);
-
-        let error_code = derive_relay_addresses(
-            IpStack::Ip6(Ipv6Addr::LOCALHOST),
-            Some(&RequestedAddressFamily::new(AddressFamily::V4)),
-            None,
-        )
-        .unwrap_err();
-
-        assert_eq!(error_code.code(), AddressFamilyNotSupported::CODEPOINT);
-
-        let error_code =
-            derive_relay_addresses(IpStack::Ip6(Ipv6Addr::LOCALHOST), None, None).unwrap_err();
-
-        assert_eq!(error_code.code(), AddressFamilyNotSupported::CODEPOINT)
-    }
-
-    //9. The server checks if the request contains an ADDITIONAL-ADDRESS-FAMILY attribute. If yes, and the attribute value is 0x01 (IPv4 address family), then the server rejects the request with a 400 (Bad Request) error.
-    #[test]
-    fn additional_address_family_ip4_is_bad_request() {
-        let error_code = derive_relay_addresses(
-            IpStack::Ip4(Ipv4Addr::LOCALHOST),
-            None,
-            Some(&AdditionalAddressFamily::new(AddressFamily::V4)),
-        )
-        .unwrap_err();
-
-        assert_eq!(error_code.code(), BadRequest::CODEPOINT)
-    }
-
     const CLIENT: ClientSocket = ClientSocket(SocketAddr::new(
         IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
         50_000,
@@ -2602,15 +2597,6 @@ mod tests {
 
     fn limit_5_mbps() -> ThroughputLimit {
         ThroughputLimit::from_bits_per_second(5_000_000).unwrap()
-    }
-
-    fn test_server() -> Server<StdRng> {
-        Server::new(
-            Ipv4Addr::LOCALHOST,
-            StdRng::seed_from_u64(0),
-            3478,
-            49_152..=49_153,
-        )
     }
 
     /// Allocates a port for [`CLIENT`] and binds [`channel`] to [`PEER`], discarding the resulting commands.
