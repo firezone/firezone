@@ -61,6 +61,26 @@ defmodule PortalWeb.FindAccountTest do
       end)
     end
 
+    test "limits emails from one client IP across addresses", %{conn: conn} do
+      Portal.Config.put_env_override(:portal, PortalWeb.PublicEmailRateLimit, per_ip_per_hour: 1)
+      conn = Plug.Test.put_peer_data(conn, %{address: unique_ip(), port: 443, ssl_cert: nil})
+
+      {:ok, lv, _html} = live(conn, ~p"/find_account")
+      lv |> form("form", email_form: %{email: "first@example.com"}) |> render_submit()
+      assert_email_sent(to: "first@example.com")
+
+      {:ok, lv, _html} = live(conn, ~p"/find_account")
+
+      html =
+        lv
+        |> form("form", email_form: %{email: "second@example.com"})
+        |> render_submit()
+
+      assert html =~ "Too many attempts"
+      refute html =~ "Check your inbox"
+      refute_email_sent()
+    end
+
     test "invalid email stays on form with error", %{conn: conn} do
       {:ok, lv, _html} = live(conn, ~p"/find_account")
 
@@ -71,5 +91,9 @@ defmodule PortalWeb.FindAccountTest do
 
       refute html =~ "Check your inbox"
     end
+  end
+
+  defp unique_ip do
+    {10, :rand.uniform(255), :rand.uniform(255), :rand.uniform(255)}
   end
 end

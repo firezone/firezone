@@ -2,6 +2,7 @@ defmodule PortalWeb.SignUp do
   use PortalWeb, {:live_view, layout: {PortalWeb.Layouts, :auth}}
   import Ecto.Changeset
   alias __MODULE__.Database
+  alias PortalWeb.PublicEmailRateLimit
   require Logger
 
   @sign_up_token_salt "sign_up_email_v1"
@@ -1238,20 +1239,23 @@ defmodule PortalWeb.SignUp do
 
   defp apply_registration(socket, %{valid?: true} = changeset) do
     registration = Ecto.Changeset.apply_changes(changeset)
-    existing_accounts = Database.find_accounts_by_owner_email(registration.email)
 
     result =
-      if existing_accounts == [] do
-        send_verification_email(
-          registration.email,
-          registration.account.name,
-          registration.actor.name,
-          survey_attrs(registration.sign_up_survey),
-          socket.assigns.website_attribution,
-          socket.assigns.sign_up_browser_id
-        )
-      else
-        send_existing_accounts_email(registration.email, existing_accounts)
+      with :ok <- PublicEmailRateLimit.check(:sign_up, socket.assigns.real_ip) do
+        case Database.find_accounts_by_owner_email(registration.email) do
+          [] ->
+            send_verification_email(
+              registration.email,
+              registration.account.name,
+              registration.actor.name,
+              survey_attrs(registration.sign_up_survey),
+              socket.assigns.website_attribution,
+              socket.assigns.sign_up_browser_id
+            )
+
+          existing_accounts ->
+            send_existing_accounts_email(registration.email, existing_accounts)
+        end
       end
 
     case result do

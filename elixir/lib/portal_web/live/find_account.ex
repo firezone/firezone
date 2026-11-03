@@ -1,6 +1,7 @@
 defmodule PortalWeb.FindAccount do
   use PortalWeb, {:live_view, layout: {PortalWeb.Layouts, :auth}}
   alias __MODULE__.Database
+  alias PortalWeb.PublicEmailRateLimit
 
   # ── Email form schema ─────────────────────────────────────────────────────────
 
@@ -54,6 +55,7 @@ defmodule PortalWeb.FindAccount do
        page_title: "Find your organization",
        step: :enter_email,
        submitted_email: nil,
+       real_ip: PortalWeb.Authentication.real_ip(socket),
        form: to_form(EmailForm.changeset(), as: :email_form)
      ), temporary_assigns: [form: %Phoenix.HTML.Form{}]}
   end
@@ -190,7 +192,8 @@ defmodule PortalWeb.FindAccount do
   def handle_event("submit_email", %{"email_form" => attrs}, socket) do
     changeset = EmailForm.changeset(attrs) |> Map.put(:action, :insert)
 
-    if changeset.valid? do
+    with true <- changeset.valid?,
+         :ok <- PublicEmailRateLimit.check(:find_account, socket.assigns.real_ip) do
       email = Ecto.Changeset.get_field(changeset, :email)
       accounts = Database.find_accounts_by_actor_email(email)
 
@@ -212,7 +215,12 @@ defmodule PortalWeb.FindAccount do
 
       {:noreply, assign(socket, step: :email_sent, submitted_email: email)}
     else
-      {:noreply, assign(socket, form: to_form(changeset, as: :email_form))}
+      false ->
+        {:noreply, assign(socket, form: to_form(changeset, as: :email_form))}
+
+      {:error, :rate_limited} ->
+        changeset = Ecto.Changeset.add_error(changeset, :email, "Too many attempts. Please try again later.")
+        {:noreply, assign(socket, form: to_form(changeset, as: :email_form))}
     end
   end
 

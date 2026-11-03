@@ -376,6 +376,12 @@ config :portal, PortalWeb.RateLimit,
   refill_rate: 100_000,
   capacity: 1_000_000
 
+# The find account and sign up tests share the loopback address. Dedicated tests
+# override these values for their own process.
+config :portal, PortalWeb.PublicEmailRateLimit,
+  per_ip_per_hour: 100_000,
+  global_per_hour: 100_000
+
 # MCP controller tests share the loopback source IP, so dedicated limiter tests
 # pass strict values directly while the general suite uses a practically
 # unbounded bucket.
