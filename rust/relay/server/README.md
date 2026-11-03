@@ -55,8 +55,7 @@ an `init` message before commencing relay operations.
 
 ### Metrics
 
-The relay parses the `OTLP_GRPC_ENDPOINT` env variable.
-Traces and metrics will be sent to an OTLP collector listening on that endpoint.
+When `AZURE_OTLP_METRICS_ENDPOINT` is set, the relay exports metrics to that Azure Monitor OTLP/HTTP ingestion URL, authenticating with the VM's managed identity.
 
 It is recommended to set additional environment variables to scope your metrics:
 

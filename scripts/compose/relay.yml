@@ -5,7 +5,6 @@ services:
       RUST_LOG: ${RUST_LOG:-debug}
       RUST_BACKTRACE: 1
       FIREZONE_API_URL: ws://portal:8081
-      OTLP_GRPC_ENDPOINT: otel:4317
       EBPF_OFFLOADING: eth0
     privileged: true
     init: true
