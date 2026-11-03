@@ -14,9 +14,8 @@ pub fn run(log_dir: Option<PathBuf>, dns_control: DnsControlMethod) -> Result<()
     if !elevation_check()? {
         bail!("Tunnel service failed its elevation check, try running as admin / root");
     }
-    let rt = tokio::runtime::Builder::new_multi_thread()
-        .worker_threads(1)
-        .thread_name("fz-eventloop")
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .thread_name("fz-blocking")
         .enable_all()
         .build()
         .context("Failed to create tokio runtime")?;

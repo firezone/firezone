@@ -586,7 +586,7 @@ impl Drop for Session {
 
         self.inner.stop(); // Instruct the event-loop to shut down.
 
-        // Keep the runtime alive so the event-loop can gracefully close its connections.
+        // Give the event-loop a moment to gracefully close its connections.
         runtime.block_on(async {
             let _ = tokio::time::timeout(Duration::from_secs(1), self.inner.closed()).await;
         });
@@ -631,9 +631,8 @@ fn connect(
         .map(SecretString::from)
         .ok_or_else(|| anyhow!("Cannot authenticate without a token"))?;
 
-    let runtime = tokio::runtime::Builder::new_multi_thread()
-        .worker_threads(1)
-        .thread_name("fz-eventloop")
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .thread_name("fz-blocking")
         .enable_all()
         .build()
         .context("Failed to create tokio runtime")?;
@@ -671,8 +670,6 @@ fn connect(
     )
     .context("Failed to create login URL")?;
 
-    let _guard = runtime.enter(); // Constructing `PhoenixChannel` requires a runtime context.
-
     let portal = PhoenixChannel::disconnected(
         url,
         Some(token),
@@ -705,8 +702,8 @@ fn connect(
         additional_host_candidates,
         flow_logs_dir,
         false,
-        runtime.handle().clone(),
-    );
+    )
+    .context("Failed to start connlib")?;
 
     analytics::new_session(device_id, api_url);
 

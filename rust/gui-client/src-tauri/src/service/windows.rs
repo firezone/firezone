@@ -266,9 +266,8 @@ fn run_service(arguments: Vec<OsString>) {
         return;
     }
 
-    let rt = tokio::runtime::Builder::new_multi_thread()
-        .worker_threads(1)
-        .thread_name("fz-eventloop")
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .thread_name("fz-blocking")
         .enable_all()
         .build()
         .expect("Failed to create tokio runtime");

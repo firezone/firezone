@@ -979,8 +979,8 @@ impl<'a> Handler<'a> {
             self.advanced_settings.additional_host_candidates.clone(),
             known_dirs::flow_logs(),
             false,
-            tokio::runtime::Handle::current(),
-        );
+        )
+        .context("Failed to start connlib")?;
 
         analytics::new_session(device_id.id, api_url.to_string());
 
@@ -1058,9 +1058,8 @@ pub fn run_interactive(dns_control: DnsControlMethod, skip_peer_verification: bo
     if !elevation_check()? {
         bail!("Tunnel service failed its elevation check, try running as admin / root");
     }
-    let rt = tokio::runtime::Builder::new_multi_thread()
-        .worker_threads(1)
-        .thread_name("fz-eventloop")
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .thread_name("fz-blocking")
         .enable_all()
         .build()?;
     let _guard = rt.enter();

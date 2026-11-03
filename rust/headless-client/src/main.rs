@@ -336,9 +336,8 @@ fn try_main() -> Result<()> {
     // and we need to recover. <https://github.com/firezone/firezone/issues/4899>
     dns_controller.deactivate()?;
 
-    let rt = tokio::runtime::Builder::new_multi_thread()
-        .worker_threads(1)
-        .thread_name("fz-eventloop")
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .thread_name("fz-blocking")
         .enable_all()
         .build()
         .context("Failed to create tokio runtime")?;
@@ -486,8 +485,8 @@ fn try_main() -> Result<()> {
             cli.additional_host_candidates.clone(),
             flow_logs_dir.clone(),
             cli.flow_logs,
-            rt.handle().clone(),
-        );
+        )
+        .context("Failed to start connlib")?;
 
         analytics::new_session(firezone_id.clone(), cli.api_url.to_string());
 

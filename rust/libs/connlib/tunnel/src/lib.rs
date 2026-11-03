@@ -34,6 +34,7 @@ mod io;
 mod packet_counts;
 mod resolver;
 mod sockets;
+mod thread;
 mod utils;
 
 pub use tunnel_proto::*;
@@ -41,6 +42,7 @@ pub use tunnel_proto::*;
 pub use io::TunChannelClosed;
 pub use resolver::{ResolverControl, ResolverQuery, ResolverTaskEnds};
 pub use sockets::{SocketThreadEnds, UdpSocketThreadStopped};
+pub use thread::{ThreadOutput, spawn_thread};
 pub use utils::turn;
 
 /// How many times we will at most loop before force-yielding from [`Tunnel::poll_next_event`].
