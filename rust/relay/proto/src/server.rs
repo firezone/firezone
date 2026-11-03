@@ -72,8 +72,6 @@ pub struct Server<R> {
 
     /// Whether clients may bind channels to peers in private networks, see [`Server::allow_private_peers`].
     allow_private_peers: bool,
-    /// Whether clients may bind channels to peers that are not on the public internet, see [`Server::allow_non_public_peers`].
-    allow_non_public_peers: bool,
 
     /// Channel numbers are unique by client, thus indexed by both.
     channels_by_client_and_number: BTreeMap<(ClientSocket, ChannelNumber), Channel>,
@@ -208,7 +206,6 @@ where
             listen_port,
             ports,
             allow_private_peers: false,
-            allow_non_public_peers: false,
             channels_by_client_and_number: Default::default(),
             channel_numbers_by_client_and_peer: Default::default(),
             pending_commands: Default::default(),
@@ -227,14 +224,6 @@ where
 
     pub fn auth_secret(&self) -> &SecretString {
         &self.auth_secret
-    }
-
-    /// Allows clients to bind channels to peers that are not on the public internet, such as loopback or private addresses.
-    ///
-    /// Only for tests and benchmarks that run all hosts on one machine.
-    /// A production relay must never allow this, see [`peer_policy::is_public`].
-    pub fn allow_non_public_peers(&mut self) {
-        self.allow_non_public_peers = true;
     }
 
     /// Allows clients to bind channels to peers in private IPv4 networks (RFC 1918).
@@ -935,9 +924,7 @@ where
             return self.ports.contains(&addr.port());
         }
 
-        self.allow_non_public_peers
-            || peer_policy::is_public(ip)
-            || (self.allow_private_peers && peer_policy::is_private(ip))
+        peer_policy::is_public(ip) || (self.allow_private_peers && peer_policy::is_private(ip))
     }
 
     fn handle_channel_data_message(
@@ -1766,16 +1753,6 @@ mod tests {
             assert_eq!(response.class(), MessageClass::SuccessResponse, "{peer}");
             assert_eq!(relay.server.num_active_channels(), 1);
         }
-    }
-
-    #[test]
-    fn channel_bind_to_non_public_peer_succeeds_if_allowed() {
-        let mut relay = TestRelay::with_allocation();
-        relay.server.allow_non_public_peers();
-
-        let response = relay.channel_bind(SocketAddr::from(([127, 0, 0, 1], 53)));
-
-        assert_eq!(response.class(), MessageClass::SuccessResponse);
     }
 
     #[test]
