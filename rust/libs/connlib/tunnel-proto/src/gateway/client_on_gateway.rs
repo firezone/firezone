@@ -28,7 +28,7 @@ use crate::{IpConfig, NotAllowedResource, NotClientIp, p2p_control};
 ///
 /// When a client goes over this, we forget the least recently set up domain.
 /// The client sets the NAT up again with its next DNS query for that domain.
-const MAX_DNS_DOMAINS: NonZeroUsize = NonZeroUsize::new(1024).expect("1024 > 0");
+pub(crate) const MAX_DNS_DOMAINS: NonZeroUsize = NonZeroUsize::new(1024).expect("1024 > 0");
 
 /// The state of one client on a gateway.
 pub struct ClientOnGateway {
@@ -229,6 +229,10 @@ impl ClientOnGateway {
 
     pub(crate) fn is_empty(&self) -> bool {
         self.resources.is_empty()
+    }
+
+    pub(crate) fn num_dns_domains(&self) -> usize {
+        self.dns_domains.len()
     }
 
     pub(crate) fn poll_timeout(&self) -> Option<Instant> {

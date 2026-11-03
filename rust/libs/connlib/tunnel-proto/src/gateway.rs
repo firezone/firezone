@@ -4,7 +4,9 @@ mod nat_table;
 pub(crate) use crate::gateway::client_on_gateway::ClientOnGateway;
 
 use crate::authorization_rejections::AuthorizationRejections;
-use crate::gateway::client_on_gateway::{ProxyIpAlreadyAssigned, TranslateOutboundResult};
+use crate::gateway::client_on_gateway::{
+    MAX_DNS_DOMAINS, ProxyIpAlreadyAssigned, TranslateOutboundResult,
+};
 use crate::messages::gateway::{Client, ResourceDescription};
 use crate::messages::{IceCredentials, IngestToken, Key, ResolveRequest};
 use crate::peer_store::PeerStore;
@@ -17,6 +19,7 @@ use connlib_model::{ClientId, IceCandidate, PublicKey, RelayId, ResourceId};
 use dns_types::{DomainName, Query, Response, ResponseBuilder, ResponseCode};
 use fast_random_state::FastRandomState;
 use ip_packet::{FzP2pControlSlice, IpPacket};
+use otel_instruments::Histogram;
 use secrecy::ExposeSecret as _;
 use snownet::{IceConfig, IceRole, Node, RelaySocket};
 use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
@@ -27,6 +30,8 @@ use std::time::{Duration, Instant};
 use zeroize::Zeroizing;
 
 pub const TUN_DNS_PORT: u16 = 53535;
+
+const DNS_RESOURCE_DOMAINS_INTERVAL: Duration = Duration::from_secs(10);
 
 pub struct SiteDnsQuery {
     local: SocketAddr,
@@ -63,6 +68,9 @@ pub struct GatewayState {
     /// (NAT/flow tracking eviction etc.) at a regular cadence. Lazily
     /// initialised on the first `handle_timeout` call.
     next_periodic_tick: Option<Instant>,
+
+    dns_resource_domains: Histogram<u64>,
+    next_dns_resource_domains: Instant,
 
     buffered_events: VecDeque<GatewayEvent>,
     buffered_transmits: VecDeque<snownet::Transmit>,
@@ -101,6 +109,10 @@ impl GatewayState {
             tun_ip_config: None,
             unix_ts_clock: UnixTsClock::new(now, unix_ts),
             next_periodic_tick: None,
+            dns_resource_domains: otel_instruments::dns_resource_domains(
+                MAX_DNS_DOMAINS.get() as u64
+            ),
+            next_dns_resource_domains: now,
         }
     }
 
@@ -569,6 +581,15 @@ impl GatewayState {
             tracing::debug!(cid = %id, "Access to last resource for Client removed");
 
             self.node.close_connection(id, p2p_control::goodbye(), now);
+        }
+
+        if now >= self.next_dns_resource_domains {
+            self.next_dns_resource_domains = now + DNS_RESOURCE_DOMAINS_INTERVAL;
+
+            for peer in self.peers.iter() {
+                self.dns_resource_domains
+                    .record(peer.num_dns_domains() as u64, &[]);
+            }
         }
 
         self.next_periodic_tick = Some(now + Duration::from_secs(1));

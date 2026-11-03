@@ -128,6 +128,31 @@ pub fn connection_count() -> Gauge<u64> {
         .build()
 }
 
+/// Number of DNS resource domains a Gateway has NAT set up for, per Client.
+///
+/// The bucket `(max - 1, max]` holds the Clients at `max`, the most domains the Gateway keeps for one Client.
+pub fn dns_resource_domains(max: u64) -> Histogram<u64> {
+    let max = max as f64;
+
+    connlib_meter()
+        .u64_histogram("gateway.client.dns_resource.domains")
+        .with_description(
+            "Number of DNS resource domains a Gateway has NAT set up for, per Client.",
+        )
+        .with_unit("{domain}")
+        .with_boundaries(vec![
+            0.0,
+            max / 64.0,
+            max / 16.0,
+            max / 4.0,
+            max / 2.0,
+            max * 0.75,
+            max - 1.0,
+            max,
+        ])
+        .build()
+}
+
 /// Measures how long connlib takes to recursively resolve a DNS query against an upstream resolver.
 pub fn dns_lookup_duration() -> Histogram<f64> {
     connlib_meter()
