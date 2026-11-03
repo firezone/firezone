@@ -3842,6 +3842,14 @@ defmodule PortalAPI.Client.ChannelTest do
       assert String.length(gateway_ice_password) == 22
       assert client_ice_username != gateway_ice_username
       assert client_ice_password != gateway_ice_password
+
+      public_only_hash =
+        [client.id, socket.assigns.client.public_key, gateway.id, gateway.public_key]
+        |> Enum.join(":")
+        |> then(&:crypto.hash(:sha256, &1))
+        |> Base.encode32(case: :lower, padding: false)
+
+      refute String.starts_with?(public_only_hash, client_ice_username <> client_ice_password)
     end
 
     test "ingest tokens carry uploads_enabled=true when the policy opts in", %{
