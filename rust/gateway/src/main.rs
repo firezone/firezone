@@ -12,7 +12,6 @@ use bin_shared::{
 };
 use clap::Parser;
 
-use hickory_resolver::config::ResolveHosts;
 use opentelemetry_otlp::WithExportConfig;
 use opentelemetry_sdk::metrics::SdkMeterProvider;
 use phoenix_channel::LoginUrl;
@@ -78,10 +77,14 @@ fn main() -> ExitCode {
 
     telemetry::configure(Arc::new(tcp_socket_factory));
 
-    let runtime = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .expect("Failed to create tokio runtime");
+    let runtime = match async_runtime::current_thread() {
+        Ok(runtime) => runtime,
+        #[expect(clippy::print_stderr, reason = "No logger has been set up yet")]
+        Err(e) => {
+            eprintln!("Error: {e:#}");
+            return ExitCode::FAILURE;
+        }
+    };
 
     match runtime.block_on(try_main(cli)) {
         Ok(()) => {
@@ -272,15 +275,6 @@ async fn try_main(cli: Cli) -> Result<()> {
         .map(|ip| ip.into())
         .collect::<BTreeSet<_>>();
 
-    let mut clock = Clock::new();
-    let mut tunnel = GatewayTunnel::new(
-        Arc::new(tcp_socket_factory),
-        Arc::new(UdpSocketFactory::default()),
-        nameservers,
-        clock.now(),
-    );
-    tunnel.set_additional_host_candidates(cli.additional_host_candidates, clock.now());
-
     flow_log_upload::spawn(flow_logs_dir.clone(), Arc::new(tcp_socket_factory));
 
     let max_partition_time = cli
@@ -303,40 +297,49 @@ async fn try_main(cli: Cli) -> Result<()> {
         Arc::new(tcp_socket_factory),
     );
 
-    let mut tun_device_manager = TunDeviceManager::new(ip_packet::MAX_IP_SIZE)
-        .context("Failed to create TUN device manager")?;
-    let tun = tun_device_manager
-        .make_tun()
-        .context("Failed to create TUN device")?;
+    let additional_host_candidates = cli.additional_host_candidates;
+    let local_flow_logs = cli.flow_logs;
 
-    tunnel.set_tun(tun);
+    let eventloop = async_runtime::spawn_thread("fz-eventloop", move || async move {
+        let mut clock = Clock::new();
+        let mut tunnel = GatewayTunnel::new(
+            Arc::new(tcp_socket_factory),
+            Arc::new(UdpSocketFactory::default()),
+            nameservers,
+            clock.now(),
+        )
+        .context("Failed to create tunnel")?;
+        tunnel.set_additional_host_candidates(additional_host_candidates, clock.now());
+
+        let mut tun_device_manager = TunDeviceManager::new(ip_packet::MAX_IP_SIZE)
+            .context("Failed to create TUN device manager")?;
+        let tun = tun_device_manager
+            .make_tun()
+            .context("Failed to create TUN device")?;
+
+        tunnel.set_tun(tun);
+
+        Eventloop::new(
+            clock,
+            tunnel,
+            portal,
+            tun_device_manager,
+            flow_logs_dir,
+            local_flow_logs,
+            account_slug,
+        )?
+        .run()
+        .await
+        .context(EventloopFailed)
+    })
+    .context("Failed to spawn event-loop thread")?;
 
     tokio::spawn(http_health_check::serve(
         cli.health_check.health_check_addr,
         || true,
     ));
 
-    let mut resolver_builder = hickory_resolver::TokioResolver::builder_tokio()?;
-    resolver_builder.options_mut().cache_size = 512;
-    resolver_builder.options_mut().use_hosts_file = ResolveHosts::Always;
-
-    let resolver = resolver_builder
-        .build()
-        .context("Failed to build DNS resolver")?;
-
-    Eventloop::new(
-        clock,
-        tunnel,
-        portal,
-        tun_device_manager,
-        resolver,
-        flow_logs_dir,
-        cli.flow_logs,
-        account_slug,
-    )?
-    .run()
-    .await
-    .context(EventloopFailed)?;
+    eventloop.await??;
 
     Ok(())
 }

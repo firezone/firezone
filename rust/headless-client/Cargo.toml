@@ -9,6 +9,7 @@ license = { workspace = true }
 
 [dependencies]
 anyhow = { workspace = true }
+async-runtime = { workspace = true }
 backoff = { workspace = true }
 bin-shared = { workspace = true }
 clap = { workspace = true, features = ["derive", "env", "string"] }

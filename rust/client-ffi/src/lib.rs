@@ -42,7 +42,6 @@ uniffi::setup_scaffolding!();
 #[derive(uniffi::Object)]
 pub struct Session {
     inner: client_shared::Session,
-    runtime: Option<tokio::runtime::Runtime>,
     uploader: Option<flow_log_upload::Uploader>,
 }
 
@@ -580,18 +579,18 @@ impl EventStream {
 
 impl Drop for Session {
     fn drop(&mut self) {
-        let Some(runtime) = self.runtime.take() else {
-            return;
-        };
-
         self.inner.stop(); // Instruct the event-loop to shut down.
 
-        // Keep the runtime alive so the event-loop can gracefully close its connections.
-        runtime.block_on(async {
-            let _ = tokio::time::timeout(Duration::from_secs(1), self.inner.closed()).await;
-        });
-
-        runtime.shutdown_timeout(Duration::from_secs(1)); // Ensure we don't block forever on a task in the blocking pool.
+        // Give the event-loop a moment to gracefully close its connections.
+        match tokio::runtime::Builder::new_current_thread()
+            .enable_time()
+            .build()
+        {
+            Ok(runtime) => runtime.block_on(async {
+                let _ = tokio::time::timeout(Duration::from_secs(1), self.inner.closed()).await;
+            }),
+            Err(e) => tracing::debug!("Failed to create runtime to await shutdown: {e}"),
+        }
 
         // The event loop spooled its open flows on the way out; flush them.
         if let Some(uploader) = self.uploader.take() {
@@ -631,13 +630,6 @@ fn connect(
         .map(SecretString::from)
         .ok_or_else(|| anyhow!("Cannot authenticate without a token"))?;
 
-    let runtime = tokio::runtime::Builder::new_multi_thread()
-        .worker_threads(1)
-        .thread_name("connlib")
-        .enable_all()
-        .build()
-        .context("Failed to create tokio runtime")?;
-
     install_rustls_crypto_provider();
 
     // Fail loudly rather than run a session with no logs and no flow-log spool.
@@ -671,8 +663,6 @@ fn connect(
     )
     .context("Failed to create login URL")?;
 
-    let _guard = runtime.enter(); // Constructing `PhoenixChannel` requires a runtime context.
-
     let portal = PhoenixChannel::disconnected(
         url,
         Some(token),
@@ -705,15 +695,14 @@ fn connect(
         additional_host_candidates,
         flow_logs_dir,
         false,
-        runtime.handle().clone(),
-    );
+    )
+    .context("Failed to start connlib")?;
 
     analytics::new_session(device_id, api_url);
 
     Ok(Connection {
         session: Arc::new(Session {
             inner: session,
-            runtime: Some(runtime),
             uploader,
         }),
         events: Arc::new(EventStream(Mutex::new(events))),

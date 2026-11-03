@@ -10,6 +10,7 @@ members = [
     "gui-client/src-tauri",
     "headless-client",
     "libs/anyhow-ext",
+    "libs/async-runtime",
     "libs/atomicfs",
     "libs/backoff",
     "libs/bin-shared",
@@ -88,6 +89,7 @@ afl = "0.18.2"
 anyhow = { package = "anyhow-ext", path = "libs/anyhow-ext" }
 arbitrary = "1.4.2"
 arboard = { version = "3.6.1", default-features = false }
+async-runtime = { path = "libs/async-runtime" }
 async-trait = "0.1.89"
 atomicfs = { path = "libs/atomicfs" }
 axum = { version = "0.8.8", default-features = false }

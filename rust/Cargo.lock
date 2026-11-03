@@ -438,6 +438,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "async-runtime"
+version = "0.1.0"
+dependencies = [
+ "anyhow-ext",
+ "futures",
+ "tokio",
+]
+
+[[package]]
 name = "async-signal"
 version = "0.2.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1407,6 +1416,7 @@ name = "client-shared"
 version = "0.1.0"
 dependencies = [
  "anyhow-ext",
+ "async-runtime",
  "bootstrap-dns-client",
  "clock",
  "connlib-model",
@@ -2612,6 +2622,7 @@ name = "firezone-gateway"
 version = "1.6.5"
 dependencies = [
  "anyhow-ext",
+ "async-runtime",
  "atomicfs",
  "backoff",
  "bin-shared",
@@ -2662,6 +2673,7 @@ dependencies = [
  "admx-macro",
  "anyhow-ext",
  "arboard",
+ "async-runtime",
  "backoff",
  "bin-shared",
  "chrono",
@@ -2744,6 +2756,7 @@ name = "firezone-headless-client"
 version = "1.5.16"
 dependencies = [
  "anyhow-ext",
+ "async-runtime",
  "backoff",
  "bin-shared",
  "clap",
@@ -9144,6 +9157,7 @@ name = "tunnel"
 version = "0.1.0"
 dependencies = [
  "anyhow-ext",
+ "async-runtime",
  "bootstrap-dns-client",
  "bufferpool",
  "connlib-model",
