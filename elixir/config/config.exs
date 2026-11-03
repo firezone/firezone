@@ -626,8 +626,6 @@ config :portal, PortalWeb.RateLimit,
   refill_rate: 10,
   capacity: 200
 
-# Emails that the find account and sign up forms send to an address the visitor
-# types. Each limit is also the burst size.
 config :portal, PortalWeb.PublicEmailRateLimit,
   per_ip_per_hour: 10,
   global_per_hour: 500

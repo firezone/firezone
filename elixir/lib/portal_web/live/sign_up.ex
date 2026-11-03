@@ -2,6 +2,7 @@ defmodule PortalWeb.SignUp do
   use PortalWeb, {:live_view, layout: {PortalWeb.Layouts, :auth}}
   import Ecto.Changeset
   alias __MODULE__.Database
+  alias PortalWeb.Components.Turnstile
   alias PortalWeb.PublicEmailRateLimit
   require Logger
 
@@ -339,8 +340,8 @@ defmodule PortalWeb.SignUp do
         />
       </div>
 
-      <.turnstile_widget id="email-turnstile-widget" />
-      <.turnstile_token_input id="email-turnstile-token" />
+      <Turnstile.widget id="email-turnstile-widget" />
+      <Turnstile.token_input id="email-turnstile-token" />
       <p :if={@turnstile_error} id="turnstile-form-error" role="alert" class="text-sm text-error">
         {@turnstile_error}
       </p>
@@ -377,11 +378,11 @@ defmodule PortalWeb.SignUp do
 
     <.region_picker query_params={@query_params} website_attribution={@website_attribution} />
 
-    <.turnstile_widget id="choose-turnstile-widget" />
+    <Turnstile.widget id="choose-turnstile-widget" />
 
     <div class="flex flex-col gap-2">
       <.form for={%{}} id="google-sign-up" action={~p"/sign_up/google"} method="post">
-        <.turnstile_token_input id="google-turnstile-token" />
+        <Turnstile.token_input id="google-turnstile-token" />
         <button type="submit" class={method_button_style()}>
           <Core.provider_icon provider="google" size="md" />
           <span class="flex-1 text-left">Sign up with <strong>Google</strong></span>
@@ -390,7 +391,7 @@ defmodule PortalWeb.SignUp do
       </.form>
 
       <.form for={%{}} id="github-sign-up" action={~p"/sign_up/github"} method="post">
-        <.turnstile_token_input id="github-turnstile-token" />
+        <Turnstile.token_input id="github-turnstile-token" />
         <button type="submit" class={method_button_style()}>
           <Core.provider_icon provider="github" size="md" />
           <span class="flex-1 text-left">Sign up with <strong>GitHub</strong></span>
@@ -1085,38 +1086,6 @@ defmodule PortalWeb.SignUp do
     """
   end
 
-  # Each step needs its own id. A shared id would carry the widget, and its spent token,
-  # from one step into the next without running the hook again.
-  attr :id, :string, required: true
-
-  defp turnstile_widget(assigns) do
-    ~H"""
-    <div
-      :if={Portal.Turnstile.enabled?()}
-      id={@id}
-      phx-hook="Turnstile"
-      phx-update="ignore"
-      data-sitekey={Portal.Turnstile.site_key()}
-      class="my-1"
-    >
-      <div data-turnstile-widget></div>
-      <p data-turnstile-error role="alert" hidden class="text-sm text-error mt-1">
-        We couldn't load the verification check. If a blocker is on, allow challenges.cloudflare.com and reload this page.
-      </p>
-    </div>
-    """
-  end
-
-  attr :id, :string, required: true
-
-  defp turnstile_token_input(assigns) do
-    ~H"""
-    <div :if={Portal.Turnstile.enabled?()} id={@id} phx-update="ignore">
-      <input type="hidden" name="cf-turnstile-response" data-turnstile-token />
-    </div>
-    """
-  end
-
   # ── Event handlers ────────────────────────────────────────────────────────────
 
   def handle_event("validate", %{"registration" => attrs}, socket) do
@@ -1232,7 +1201,7 @@ defmodule PortalWeb.SignUp do
 
       {:error, reason} ->
         socket
-        |> assign(form: to_form(changeset, as: :registration), turnstile_error: turnstile_error_message(reason))
+        |> assign(form: to_form(changeset, as: :registration), turnstile_error: Turnstile.error_message(reason))
         |> reset_turnstile()
     end
   end
@@ -1302,21 +1271,8 @@ defmodule PortalWeb.SignUp do
 
   defp honeypot_filled?(attrs), do: Map.get(attrs, "phone", "") != ""
 
-  @doc false
-  def turnstile_error_message(:unavailable),
-    do: "We couldn't verify your request right now. Please try again in a moment."
-
-  def turnstile_error_message(_reason),
-    do: "Please complete the verification and try again."
-
-  # Turnstile tokens are single use, so the widget must issue a new one after every attempt.
   defp reset_turnstile(%{assigns: %{step: :email_sent}} = socket), do: socket
-
-  defp reset_turnstile(socket) do
-    if Portal.Turnstile.enabled?(),
-      do: Phoenix.LiveView.push_event(socket, "turnstile:reset", %{}),
-      else: socket
-  end
+  defp reset_turnstile(socket), do: Turnstile.reset(socket)
 
   defp survey_attrs(%Portal.SignUpSurvey{} = survey), do: Map.from_struct(survey)
 

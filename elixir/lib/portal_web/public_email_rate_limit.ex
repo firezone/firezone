@@ -1,21 +1,10 @@
 defmodule PortalWeb.PublicEmailRateLimit do
   @moduledoc """
-  Limits the emails that visitors without a session can make the portal send,
-  for example from the find account and sign up forms.
-
-  These forms submit LiveView events over the WebSocket, so
-  `PortalWeb.Plugs.RateLimit` does not see them. The per-address limit in
-  `Portal.Mailer.deliver_with_rate_limit/2` does not help when each request uses
-  a different address. Call `check/2` before such an email is sent.
-
-  Each scope has one bucket per client address and one global bucket. IPv6
-  clients share a bucket per /64 prefix, because one host can usually use all
-  addresses in its /64. The buckets replicate through `PortalWeb.RateLimit`, so
-  they are eventually consistent across nodes.
+  Per-IP and global limits for emails that public forms send to an address the
+  visitor types. LiveView events bypass `PortalWeb.Plugs.RateLimit`.
   """
 
-  # Hammer refills whole tokens per second. When one email costs one hour of
-  # tokens, a refill rate of N gives N emails per hour.
+  # Hammer refills whole tokens per second, so one email costs an hour of tokens.
   @cost 3_600
 
   @spec check(atom(), :inet.ip_address()) :: :ok | {:error, :rate_limited}
@@ -36,6 +25,7 @@ defmodule PortalWeb.PublicEmailRateLimit do
 
   defp ip_key({_, _, _, _} = ip), do: ip |> :inet.ntoa() |> to_string()
 
+  # One host usually controls its whole IPv6 /64.
   defp ip_key({a, b, c, d, _, _, _, _}),
     do: ({a, b, c, d, 0, 0, 0, 0} |> :inet.ntoa() |> to_string()) <> "/64"
 end

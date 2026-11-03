@@ -1,6 +1,7 @@
 defmodule PortalWeb.FindAccount do
   use PortalWeb, {:live_view, layout: {PortalWeb.Layouts, :auth}}
   alias __MODULE__.Database
+  alias PortalWeb.Components.Turnstile
   alias PortalWeb.PublicEmailRateLimit
 
   # ── Email form schema ─────────────────────────────────────────────────────────
@@ -56,6 +57,7 @@ defmodule PortalWeb.FindAccount do
        step: :enter_email,
        submitted_email: nil,
        real_ip: PortalWeb.Authentication.real_ip(socket),
+       turnstile_error: nil,
        form: to_form(EmailForm.changeset(), as: :email_form)
      ), temporary_assigns: [form: %Phoenix.HTML.Form{}]}
   end
@@ -69,12 +71,15 @@ defmodule PortalWeb.FindAccount do
     <Core.flash flash={@flash} kind={:error} />
     <Core.flash flash={@flash} kind={:info} />
 
-    <.email_form :if={@step == :enter_email} form={@form} />
+    <.email_form :if={@step == :enter_email} form={@form} turnstile_error={@turnstile_error} />
     <.email_sent :if={@step == :email_sent} email={@submitted_email} />
     """
   end
 
   # ── Components ────────────────────────────────────────────────────────────────
+
+  attr :form, :any, required: true
+  attr :turnstile_error, :string, default: nil
 
   defp email_form(assigns) do
     ~H"""
@@ -115,6 +120,12 @@ defmodule PortalWeb.FindAccount do
           Find →
         </button>
       </div>
+
+      <Turnstile.widget id="find-account-turnstile-widget" />
+      <Turnstile.token_input id="find-account-turnstile-token" />
+      <p :if={@turnstile_error} id="turnstile-form-error" role="alert" class="text-sm text-error">
+        {@turnstile_error}
+      </p>
     </.form>
 
     <div class="mt-8 pt-6 border-t border-border text-center space-y-1.5">
@@ -186,43 +197,68 @@ defmodule PortalWeb.FindAccount do
 
   def handle_event("validate_email", %{"email_form" => attrs}, socket) do
     changeset = EmailForm.changeset(attrs) |> Map.put(:action, :validate)
-    {:noreply, assign(socket, form: to_form(changeset, as: :email_form))}
+    {:noreply, assign(socket, form: to_form(changeset, as: :email_form), turnstile_error: nil)}
   end
 
-  def handle_event("submit_email", %{"email_form" => attrs}, socket) do
+  def handle_event("submit_email", %{"email_form" => attrs} = params, socket) do
     changeset = EmailForm.changeset(attrs) |> Map.put(:action, :insert)
+    {:noreply, submit_email(socket, changeset, params["cf-turnstile-response"])}
+  end
 
-    with true <- changeset.valid?,
-         :ok <- PublicEmailRateLimit.check(:find_account, socket.assigns.real_ip) do
-      email = Ecto.Changeset.get_field(changeset, :email)
-      accounts = Database.find_accounts_by_actor_email(email)
+  # An invalid form is sent back before the challenge is checked, so a typo does not spend
+  # the single-use token.
+  defp submit_email(socket, %{valid?: false} = changeset, _token) do
+    assign(socket, form: to_form(changeset, as: :email_form))
+  end
 
-      rate_limit_opts = [
-        rate_limit_key: {:find_account, String.downcase(email)},
-        rate_limit: 3,
-        rate_limit_interval: :timer.minutes(30)
-      ]
+  defp submit_email(socket, changeset, token) do
+    case Portal.Turnstile.verify(token, socket.assigns.real_ip) do
+      :ok ->
+        socket |> assign(turnstile_error: nil) |> send_email(changeset) |> reset_turnstile()
 
-      if accounts != [] do
+      {:error, reason} ->
+        socket
+        |> assign(form: to_form(changeset, as: :email_form), turnstile_error: Turnstile.error_message(reason))
+        |> Turnstile.reset()
+    end
+  end
+
+  defp send_email(socket, changeset) do
+    email = Ecto.Changeset.get_field(changeset, :email)
+
+    case PublicEmailRateLimit.check(:find_account, socket.assigns.real_ip) do
+      :ok ->
+        deliver_accounts_email(email)
+        assign(socket, step: :email_sent, submitted_email: email)
+
+      {:error, :rate_limited} ->
+        changeset = Ecto.Changeset.add_error(changeset, :email, "Too many attempts. Please try again later.")
+        assign(socket, form: to_form(changeset, as: :email_form))
+    end
+  end
+
+  defp deliver_accounts_email(email) do
+    rate_limit_opts = [
+      rate_limit_key: {:find_account, String.downcase(email)},
+      rate_limit: 3,
+      rate_limit_interval: :timer.minutes(30)
+    ]
+
+    case Database.find_accounts_by_actor_email(email) do
+      [] ->
+        Portal.Mailer.AuthEmail.no_accounts_found_email(email, url(~p"/sign_up"))
+        |> Portal.Mailer.deliver_with_rate_limit(rate_limit_opts)
+
+      accounts ->
         accounts_with_urls = Enum.map(accounts, &{&1, url(~p"/#{&1.slug}/sign_in")})
 
         Portal.Mailer.AuthEmail.existing_accounts_email(email, accounts_with_urls)
         |> Portal.Mailer.deliver_with_rate_limit(rate_limit_opts)
-      else
-        Portal.Mailer.AuthEmail.no_accounts_found_email(email, url(~p"/sign_up"))
-        |> Portal.Mailer.deliver_with_rate_limit(rate_limit_opts)
-      end
-
-      {:noreply, assign(socket, step: :email_sent, submitted_email: email)}
-    else
-      false ->
-        {:noreply, assign(socket, form: to_form(changeset, as: :email_form))}
-
-      {:error, :rate_limited} ->
-        changeset = Ecto.Changeset.add_error(changeset, :email, "Too many attempts. Please try again later.")
-        {:noreply, assign(socket, form: to_form(changeset, as: :email_form))}
     end
   end
+
+  defp reset_turnstile(%{assigns: %{step: :email_sent}} = socket), do: socket
+  defp reset_turnstile(socket), do: Turnstile.reset(socket)
 
   # ── Database ──────────────────────────────────────────────────────────────────
 

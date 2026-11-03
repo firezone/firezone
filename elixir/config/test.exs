@@ -376,8 +376,7 @@ config :portal, PortalWeb.RateLimit,
   refill_rate: 100_000,
   capacity: 1_000_000
 
-# The find account and sign up tests share the loopback address. Dedicated tests
-# override these values for their own process.
+# Tests share the loopback address, so dedicated tests override these per process.
 config :portal, PortalWeb.PublicEmailRateLimit,
   per_ip_per_hour: 100_000,
   global_per_hour: 100_000

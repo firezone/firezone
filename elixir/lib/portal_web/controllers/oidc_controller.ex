@@ -44,7 +44,7 @@ defmodule PortalWeb.OIDCController do
         start_sign_up(conn, provider_type)
 
       {:error, reason} ->
-        redirect_to_sign_up_with_error(conn, PortalWeb.SignUp.turnstile_error_message(reason))
+        redirect_to_sign_up_with_error(conn, PortalWeb.Components.Turnstile.error_message(reason))
     end
   end
 
