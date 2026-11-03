@@ -34,7 +34,6 @@ pub fn handle_turn(ctx: aya_ebpf::programs::XdpContext) -> u32 {
             | Error::DnsPacket
             | Error::NotTurn
             | Error::NotAChannelDataMessage
-            | Error::NotWireGuard
             | Error::UdpChecksumMissing
             | Error::Ipv4PacketWithOptions),
         ) => {
@@ -43,7 +42,7 @@ pub fn handle_turn(ctx: aya_ebpf::programs::XdpContext) -> u32 {
             xdp_action::XDP_PASS
         }
         // In a double symmetric NAT setup, it is easily possible for packets to arrive from IPs that don't have channel bindings.
-        Err(e @ Error::NoEntry(_)) => {
+        Err(e @ (Error::NoEntry(_) | Error::NotRelayable)) => {
             debug!(&ctx,target: "eBPF", "XXX drop packet: {}", e.as_str());
 
             xdp_action::XDP_DROP

@@ -14,6 +14,7 @@ const STUN_MAGIC_COOKIE: u32 = 0x2112_A442;
 /// Whether the relay may forward this payload between a client and a peer.
 ///
 /// We only relay WireGuard messages and STUN messages (used for ICE connectivity checks).
+/// The eBPF data path applies the same check in `ebpf-turn-router`.
 pub(crate) fn is_relayable(payload: &[u8]) -> bool {
     is_wireguard(payload) || is_stun(payload)
 }

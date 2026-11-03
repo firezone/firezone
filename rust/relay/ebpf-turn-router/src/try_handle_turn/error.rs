@@ -11,7 +11,7 @@ pub enum Error {
     Ipv4PacketWithOptions,
     NotAChannelDataMessage,
     BadChannelDataLength,
-    NotWireGuard,
+    NotRelayable,
     NoEntry(SupportedChannel),
     XdpAdjustHeadFailed,
 }
@@ -39,7 +39,7 @@ impl Error {
             Error::Ipv4PacketWithOptions => "IPv4 packet has options",
             Error::NotAChannelDataMessage => "Not a channel data message",
             Error::BadChannelDataLength => "Channel data length does not match packet length",
-            Error::NotWireGuard => "Not a WireGuard message",
+            Error::NotRelayable => "Payload is neither WireGuard nor STUN",
             Error::NoEntry(ch) => match ch {
                 SupportedChannel::Udp4ToChan => "No entry in UDPv4 to channel IPv4 or IPv6 map",
                 SupportedChannel::Chan4ToUdp => "No entry in channel IPv4 to UDPv4 or UDPv6 map",

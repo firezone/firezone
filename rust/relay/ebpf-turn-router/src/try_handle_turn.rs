@@ -8,11 +8,11 @@ mod from_ipv4_udp;
 mod from_ipv6_channel;
 mod from_ipv6_udp;
 mod mac;
+mod payload;
 mod per_cpu;
 mod ref_mut_at;
 mod routing;
 mod stats;
-mod wireguard;
 
 use core::net::IpAddr;
 
@@ -31,8 +31,8 @@ use network_types::{
     ip::{IpError, IpProto, Ipv4Hdr, Ipv6Hdr},
     udp::UdpHdr,
 };
+use payload::ensure_relayable;
 use ref_mut_at::ref_mut_at;
-use wireguard::ensure_wireguard;
 
 /// Lower bound for TURN UDP ports
 const LOWER_PORT: u16 = 49152;
@@ -153,7 +153,7 @@ fn try_handle_from_ipv4_udp(ctx: &XdpContext) -> Result<(), Error> {
     // SAFETY: The offset must point to the start of a valid `UdpHdr`.
     let udp = unsafe { ref_mut_at::<UdpHdr>(ctx, EthHdr::LEN + Ipv4Hdr::LEN)? };
 
-    ensure_wireguard(
+    ensure_relayable(
         ctx,
         EthHdr::LEN + Ipv4Hdr::LEN + UdpHdr::LEN,
         udp.len() - UdpHdr::LEN as u16,
@@ -228,7 +228,7 @@ fn try_handle_from_ipv4_channel_data(ctx: &XdpContext) -> Result<(), Error> {
         return Err(Error::BadChannelDataLength);
     }
 
-    ensure_wireguard(
+    ensure_relayable(
         ctx,
         EthHdr::LEN + Ipv4Hdr::LEN + UdpHdr::LEN + CdHdr::LEN,
         channel_data_len,
@@ -321,7 +321,7 @@ fn try_handle_from_ipv6_udp(ctx: &XdpContext) -> Result<(), Error> {
     // SAFETY: The offset must point to the start of a valid `UdpHdr`.
     let udp = unsafe { ref_mut_at::<UdpHdr>(ctx, EthHdr::LEN + Ipv6Hdr::LEN)? };
 
-    ensure_wireguard(
+    ensure_relayable(
         ctx,
         EthHdr::LEN + Ipv6Hdr::LEN + UdpHdr::LEN,
         udp.len() - UdpHdr::LEN as u16,
@@ -396,7 +396,7 @@ fn try_handle_from_ipv6_channel_data(ctx: &XdpContext) -> Result<(), Error> {
         return Err(Error::BadChannelDataLength);
     }
 
-    ensure_wireguard(
+    ensure_relayable(
         ctx,
         EthHdr::LEN + Ipv6Hdr::LEN + UdpHdr::LEN + CdHdr::LEN,
         channel_data_len,
