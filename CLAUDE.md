@@ -19,13 +19,14 @@ The entry-point for the data plane is [`Tunnel`](../rust/libs/connlib/tunnel) wh
 Packets from IO sources (TUN device and UDP socket) are passed to the state component, resulting in a UDP or IP packet.
 The state component also manages ICE through the [`snownet`](../rust/libs/connlib/snownet) library, so some UDP traffic is handled internally and does not yield an IP packet.
 
-These three components are split into multiple threads and connected via bounded channels:
+connlib spawns these components and its other IO on threads named `fz-*`, connected via bounded channels:
 
-- 1 thread for reading from the TUN device
-- 1 thread for writing to the TUN device
-- 1 thread for handling IPv4 UDP traffic with 1 task each for sending / receiving
-- 1 thread for handling IPv6 UDP traffic with 1 task each for sending / receiving
-- 1 task on the "main" thread that holds the state and reads / writes from and to the channels connecting to the IO threads
+- `fz-eventloop`: holds the state and reads / writes from and to the channels connecting to the other threads
+- `fz-tun-rx` / `fz-tun-tx`: reading from / writing to the TUN device
+- `fz-udp-v4` / `fz-udp-v6`: IPv4 / IPv6 UDP traffic, with 1 task each for sending / receiving
+- `fz-crypto-{i}`: WireGuard encryption and decryption, one per two cores (at least 2)
+- `fz-portal`: the WebSocket connection to the portal
+- `fz-dns`: forwarding DNS queries to upstream resolvers
 
 ## Coding guidelines
 

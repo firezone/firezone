@@ -1,27 +1,16 @@
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
-use std::{borrow::Cow, net::IpAddr};
+use std::net::IpAddr;
 
 use anyhow::Result;
 
 #[cfg(unix)]
-pub fn resolve<H>(host: H) -> impl Future<Output = Result<Vec<IpAddr>>> + use<H>
-where
-    H: Into<Cow<'static, str>>,
-{
+pub fn resolve(host: &str) -> Result<Vec<IpAddr>> {
     use anyhow::Context as _;
 
-    let host = host.into();
+    let content = std::fs::read_to_string("/etc/hosts").context("Failed to read `/etc/hosts`")?;
 
-    async move {
-        let content = tokio::fs::read_to_string("/etc/hosts")
-            .await
-            .context("Failed to read `/etc/hosts`")?;
-
-        let ips = parse(&content, &host);
-
-        Ok(ips)
-    }
+    Ok(parse(&content, host))
 }
 
 #[cfg(any(unix, test))]
@@ -54,11 +43,8 @@ fn parse(content: &str, host: &str) -> Vec<IpAddr> {
 }
 
 #[cfg(not(unix))]
-#[expect(clippy::unused_async, reason = "Must match unix API.")]
-pub async fn resolve<H>(_: H) -> Result<Vec<IpAddr>>
-where
-    H: Into<Cow<'static, str>>,
-{
+#[expect(clippy::unnecessary_wraps, reason = "Must match unix API.")]
+pub fn resolve(_: &str) -> Result<Vec<IpAddr>> {
     Ok(Vec::default())
 }
 
@@ -69,27 +55,27 @@ mod tests {
     use super::*;
 
     #[cfg(unix)]
-    #[tokio::test]
-    async fn can_resolve_localhost() {
+    #[test]
+    fn can_resolve_localhost() {
         use std::net::Ipv4Addr;
 
-        let ips = resolve("localhost").await.unwrap();
+        let ips = resolve("localhost").unwrap();
 
         assert!(ips.contains(&IpAddr::V4(Ipv4Addr::LOCALHOST)));
     }
 
     #[cfg(unix)]
-    #[tokio::test]
-    async fn returns_no_ips_for_unknown_host() {
-        let ips = resolve("example.com").await.unwrap();
+    #[test]
+    fn returns_no_ips_for_unknown_host() {
+        let ips = resolve("example.com").unwrap();
 
         assert_eq!(ips, Vec::<IpAddr>::default());
     }
 
     #[cfg(not(unix))]
-    #[tokio::test]
-    async fn does_not_fail_on_non_unix() {
-        let ips = resolve("localhost").await.unwrap();
+    #[test]
+    fn does_not_fail_on_non_unix() {
+        let ips = resolve("localhost").unwrap();
 
         assert_eq!(ips, Vec::<IpAddr>::default());
     }

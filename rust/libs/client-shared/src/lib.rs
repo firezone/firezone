@@ -17,13 +17,13 @@ use serde::{Deserialize, Serialize};
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 use std::collections::HashSet;
 use std::future;
+use std::io;
 use std::net::IpAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::task::{Context, Poll};
 use tokio::sync::mpsc;
 use tokio::sync::watch;
-use tokio::task::JoinHandle;
 use tokio_stream::wrappers::WatchStream;
 use tun::Tun;
 
@@ -44,7 +44,7 @@ pub struct Session {
 
 #[derive(Debug)]
 pub struct EventStream {
-    eventloop: Fuse<JoinHandle<Result<(), DisconnectError>>>,
+    eventloop: Fuse<async_runtime::ThreadOutput<Result<(), DisconnectError>>>,
     resource_list_receiver: WatchStream<Vec<ResourceView>>,
     tun_config_receiver: WatchStream<Option<TunConfig>>,
     connected_as_receiver: WatchStream<Option<ConnectedAs>>,
@@ -87,14 +87,13 @@ impl Session {
         additional_host_candidates: Vec<IpAddr>,
         flow_logs_dir: Option<PathBuf>,
         local_flow_logs: bool,
-        handle: tokio::runtime::Handle,
-    ) -> (Self, EventStream) {
+    ) -> io::Result<(Self, EventStream)> {
         let (cmd_tx, cmd_rx) = mpsc::unbounded_channel();
         let event_stream = EventStream::new(
-            |resource_list_sender,
-             tun_config_sender,
-             connected_as_sender,
-             user_notification_sender| {
+            move |resource_list_sender,
+                  tun_config_sender,
+                  connected_as_sender,
+                  user_notification_sender| async move {
                 Eventloop::new(
                     tcp_socket_factory,
                     udp_socket_factory,
@@ -109,13 +108,13 @@ impl Session {
                     tun_config_sender,
                     connected_as_sender,
                     user_notification_sender,
-                )
+                )?
                 .run()
+                .await
             },
-            handle,
-        );
+        )?;
 
-        (Self { channel: cmd_tx }, event_stream)
+        Ok((Self { channel: cmd_tx }, event_stream))
     }
 
     /// Reset a [`Session`].
@@ -206,7 +205,7 @@ impl EventStream {
                 Poll::Ready(Ok(Err(e))) => return Poll::Ready(Some(Event::Disconnected(e))),
                 Poll::Ready(Err(e)) => {
                     return Poll::Ready(Some(Event::Disconnected(DisconnectError::from(
-                        anyhow::Error::new(e).context("connlib crashed"),
+                        e.context("connlib crashed"),
                     ))));
                 }
                 Poll::Pending => {}
@@ -247,34 +246,35 @@ impl EventStream {
             watch::Sender<Option<TunConfig>>,
             watch::Sender<Option<ConnectedAs>>,
             mpsc::Sender<UserNotification>,
-        ) -> E,
-        handle: tokio::runtime::Handle,
-    ) -> Self
+        ) -> E
+        + Send
+        + 'static,
+    ) -> io::Result<Self>
     where
-        E: Future<Output = Result<(), DisconnectError>> + Send + 'static,
+        E: Future<Output = Result<(), DisconnectError>>,
     {
         let (tun_config_sender, tun_config_receiver) = watch::channel(None);
         let (resource_list_sender, resource_list_receiver) = watch::channel(Vec::default());
         let (connected_as_sender, connected_as_receiver) = watch::channel(None);
         let (user_notification_sender, user_notification_receiver) = mpsc::channel(128);
 
-        let event_loop = make_event_loop(
-            resource_list_sender,
-            tun_config_sender,
-            connected_as_sender,
-            user_notification_sender,
-        );
+        let eventloop = async_runtime::spawn_thread("fz-eventloop", move || {
+            make_event_loop(
+                resource_list_sender,
+                tun_config_sender,
+                connected_as_sender,
+                user_notification_sender,
+            )
+        })?;
 
-        let eventloop = handle.spawn(event_loop);
-
-        Self {
+        Ok(Self {
             eventloop: eventloop.fuse(),
             resource_list_receiver: WatchStream::from_changes(resource_list_receiver),
             tun_config_receiver: WatchStream::from_changes(tun_config_receiver),
             connected_as_receiver: WatchStream::from_changes(connected_as_receiver),
             user_notification_receiver,
             seen_notifications: Default::default(),
-        }
+        })
     }
 }
 
@@ -284,10 +284,7 @@ mod tests {
 
     #[tokio::test]
     async fn event_stream_turn_panic_into_disconnected() {
-        let mut stream = EventStream::new(
-            |_, _, _, _| async move { panic!("Boom!") },
-            tokio::runtime::Handle::current(),
-        );
+        let mut stream = EventStream::new(|_, _, _, _| async move { panic!("Boom!") }).unwrap();
 
         let Event::Disconnected(error) = stream.next().await.unwrap() else {
             panic!("Unexpected event!");
@@ -298,10 +295,7 @@ mod tests {
 
     #[tokio::test]
     async fn repeated_polls_dont_panic() {
-        let mut stream = EventStream::new(
-            |_, _, _, _| async move { panic!("Boom!") },
-            tokio::runtime::Handle::current(),
-        );
+        let mut stream = EventStream::new(|_, _, _, _| async move { panic!("Boom!") }).unwrap();
 
         let _next = stream.next().await.unwrap();
         let poll = stream.poll_next(&mut Context::from_waker(futures::task::noop_waker_ref()));
@@ -311,10 +305,10 @@ mod tests {
 
     #[tokio::test]
     async fn stream_ends_after_disconnect() {
-        let mut stream = EventStream::new(
-            |_, _, _, _| async move { Err(DisconnectError::from(anyhow::anyhow!("Boom!"))) },
-            tokio::runtime::Handle::current(),
-        );
+        let mut stream = EventStream::new(|_, _, _, _| async move {
+            Err(DisconnectError::from(anyhow::anyhow!("Boom!")))
+        })
+        .unwrap();
 
         let Event::Disconnected(_) = stream.next().await.unwrap() else {
             panic!("Unexpected event!");
@@ -328,20 +322,18 @@ mod tests {
 
     #[tokio::test]
     async fn connected_to_portal_precedes_resources_from_the_same_init() {
-        let mut stream = EventStream::new(
-            |resource_list, _, connected_as, _| async move {
-                connected_as
-                    .send(Some(ConnectedAs {
-                        account_slug: "acme".to_owned(),
-                        actor_name: "Jane Doe".to_owned(),
-                    }))
-                    .unwrap();
-                resource_list.send(Vec::default()).unwrap();
+        let mut stream = EventStream::new(|resource_list, _, connected_as, _| async move {
+            connected_as
+                .send(Some(ConnectedAs {
+                    account_slug: "acme".to_owned(),
+                    actor_name: "Jane Doe".to_owned(),
+                }))
+                .unwrap();
+            resource_list.send(Vec::default()).unwrap();
 
-                Ok(())
-            },
-            tokio::runtime::Handle::current(),
-        );
+            Ok(())
+        })
+        .unwrap();
 
         let Event::ConnectedToPortal(connected) = stream.next().await.unwrap() else {
             panic!("Unexpected event")
@@ -353,25 +345,23 @@ mod tests {
 
     #[tokio::test]
     async fn deduplicates_offline_notifications() {
-        let mut stream = EventStream::new(
-            |_, _, _, sender| async move {
-                sender
-                    .send(UserNotification::AllGatewaysOffline {
-                        resource_id: ResourceId::from_u128(1),
-                    })
-                    .await
-                    .unwrap();
-                sender
-                    .send(UserNotification::AllGatewaysOffline {
-                        resource_id: ResourceId::from_u128(1),
-                    })
-                    .await
-                    .unwrap();
+        let mut stream = EventStream::new(|_, _, _, sender| async move {
+            sender
+                .send(UserNotification::AllGatewaysOffline {
+                    resource_id: ResourceId::from_u128(1),
+                })
+                .await
+                .unwrap();
+            sender
+                .send(UserNotification::AllGatewaysOffline {
+                    resource_id: ResourceId::from_u128(1),
+                })
+                .await
+                .unwrap();
 
-                Ok(())
-            },
-            tokio::runtime::Handle::current(),
-        );
+            Ok(())
+        })
+        .unwrap();
 
         let Event::AllGatewaysOffline { resource_id } = stream.next().await.unwrap() else {
             panic!("Unexpected event")
@@ -386,25 +376,23 @@ mod tests {
 
     #[tokio::test]
     async fn deduplicates_version_mismatch_notifications() {
-        let mut stream = EventStream::new(
-            |_, _, _, sender| async move {
-                sender
-                    .send(UserNotification::GatewayVersionMismatch {
-                        resource_id: ResourceId::from_u128(1),
-                    })
-                    .await
-                    .unwrap();
-                sender
-                    .send(UserNotification::GatewayVersionMismatch {
-                        resource_id: ResourceId::from_u128(1),
-                    })
-                    .await
-                    .unwrap();
+        let mut stream = EventStream::new(|_, _, _, sender| async move {
+            sender
+                .send(UserNotification::GatewayVersionMismatch {
+                    resource_id: ResourceId::from_u128(1),
+                })
+                .await
+                .unwrap();
+            sender
+                .send(UserNotification::GatewayVersionMismatch {
+                    resource_id: ResourceId::from_u128(1),
+                })
+                .await
+                .unwrap();
 
-                Ok(())
-            },
-            tokio::runtime::Handle::current(),
-        );
+            Ok(())
+        })
+        .unwrap();
 
         let Event::GatewayVersionMismatch { resource_id } = stream.next().await.unwrap() else {
             panic!("Unexpected event")

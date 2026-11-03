@@ -160,7 +160,7 @@ pub fn spawn(spool_root: PathBuf, socket_factory: Arc<dyn SocketFactory<TcpSocke
     uploader.nudge();
 
     std::thread::Builder::new()
-        .name("flow-log-uploader".to_owned())
+        .name("fz-flowlog-up".to_owned())
         .spawn({
             // The thread holds a sender too, so dropping the handle detaches
             // rather than stops it (gateway and desktop drop it right away).
