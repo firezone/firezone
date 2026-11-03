@@ -174,7 +174,7 @@ CapabilityBoundingSet=CAP_NET_ADMIN
 InaccessiblePaths=/root /home
 
 # Set resource limits
-LimitNOFILE=4096
+LimitNOFILE=65536
 LimitNPROC=512
 LimitCORE=0
 
