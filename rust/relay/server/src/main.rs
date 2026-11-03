@@ -1,7 +1,6 @@
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
 mod azure_metrics;
-mod collector_metrics;
 
 #[global_allocator]
 static ALLOC: mimalloc::MiMalloc = mimalloc::MiMalloc;
@@ -86,7 +85,7 @@ struct Args {
 
     /// Which OTLP collector we should connect to.
     ///
-    /// If set, we will report traces and metrics to this collector via gRPC.
+    /// If set, we will report traces to this collector via gRPC.
     #[arg(long, env, hide = true)]
     otlp_grpc_endpoint: Option<String>,
 
@@ -357,7 +356,7 @@ fn setup_tracing(args: &Args, directives: &str) -> Result<FilterReloadHandle> {
 
             let exporter = opentelemetry_otlp::SpanExporter::builder()
                 .with_tonic()
-                .with_endpoint(grpc_endpoint.clone())
+                .with_endpoint(grpc_endpoint)
                 .build()
                 .context("Failed to build OTLP span exporter")?;
 
@@ -369,8 +368,6 @@ fn setup_tracing(args: &Args, directives: &str) -> Result<FilterReloadHandle> {
             global::set_tracer_provider(tracer_provider.clone());
 
             tracing::trace!(target: "relay", "Successfully initialized trace provider on tokio runtime");
-
-            meter_provider = collector_metrics::with_exporter(meter_provider, &grpc_endpoint)?;
 
             let (log_filter, log_reload_handle) = logging::try_filter(directives)?;
             let (otel_filter, otel_reload_handle) = logging::try_filter(directives)?;
