@@ -1,7 +1,6 @@
 use anyhow::Result;
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
-use tokio::sync::mpsc;
 
 use crate::{InboundRx, InboundTx, OutboundRx, OutboundTx};
 
@@ -21,21 +20,18 @@ impl Workers {
         send: impl FnOnce(OutboundRx) -> Result<()> + Send + 'static,
         recv: impl FnOnce(InboundTx) -> Result<()> + Send + 'static,
     ) -> std::io::Result<Self> {
-        let (outbound_tx, outbound_rx) = mpsc::channel(crate::CHANNEL_CAPACITY);
-        let (inbound_tx, inbound_rx) = mpsc::channel(crate::CHANNEL_CAPACITY);
+        let (outbound_tx, outbound_rx) = crate::outbound_channel();
+        let (inbound_tx, inbound_rx) = crate::inbound_channel();
 
         let mut workers = Self {
-            state: Some((
-                OutboundTx(tokio_util::sync::PollSender::new(outbound_tx)),
-                InboundRx(inbound_rx),
-            )),
+            state: Some((outbound_tx, inbound_rx)),
             send_thread: None,
             recv_thread: None,
         };
 
-        let send_thread = spawn_worker("send", move || send(OutboundRx(outbound_rx)))?;
+        let send_thread = spawn_worker("send", move || send(outbound_rx))?;
         workers.send_thread = Some(send_thread);
-        let recv_thread = spawn_worker("recv", move || recv(InboundTx(inbound_tx)))?;
+        let recv_thread = spawn_worker("recv", move || recv(inbound_tx))?;
         workers.recv_thread = Some(recv_thread);
 
         Ok(workers)

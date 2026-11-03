@@ -4,10 +4,6 @@
 //! All call sites recording to the same instrument must use a single, consistent definition.
 //! Individual data points are differentiated through attributes instead.
 
-use std::ops::ControlFlow;
-use std::time::Duration;
-
-use opentelemetry::KeyValue;
 pub use opentelemetry::metrics::{Counter, Gauge, Histogram, Meter, UpDownCounter};
 
 /// How many packets we have processed.
@@ -140,11 +136,15 @@ pub fn dns_lookup_duration() -> Histogram<f64> {
         .build()
 }
 
-/// The length of a queue.
-pub fn queue_length() -> Gauge<u64> {
+/// How many items a queue already held when another one was enqueued.
+///
+/// Recorded by the producer, once per item.
+pub fn queue_depth() -> Histogram<u64> {
     connlib_meter()
-        .u64_gauge("connlib.queue.length")
-        .with_description("The length of a queue.")
+        .u64_histogram("connlib.queue.depth")
+        .with_description("How many items were already queued when an item was enqueued.")
+        .with_unit("{item}")
+        .with_boundaries(vec![0.0, 1.0, 2.0, 4.0, 8.0, 16.0, 32.0, 64.0, 100.0])
         .build()
 }
 
@@ -182,28 +182,6 @@ pub fn eventloop_poll_duration() -> Histogram<f64> {
             0.010_000, // 10ms
         ])
         .build()
-}
-
-/// Periodically records the length of a queue to the [`queue_length`] gauge until the queue is gone.
-pub async fn periodic_queue_length<const N: usize>(
-    queue: impl QueueLength,
-    attributes: [KeyValue; N],
-) {
-    periodic_gauge(
-        queue_length(),
-        |gauge| {
-            let len = match queue.queue_length() {
-                Some(len) => len,
-                None => return ControlFlow::Break(()),
-            };
-
-            gauge.record(len, &attributes);
-
-            ControlFlow::Continue(())
-        },
-        Duration::from_secs(1),
-    )
-    .await;
 }
 
 /// Up/down counter of currently active relay allocations.
@@ -272,34 +250,6 @@ pub fn relay_xdp_processing_duration() -> Histogram<u64> {
             100_000.0,
         ])
         .build()
-}
-
-/// Invokes `callback` to record to `gauge` every `interval` until it signals completion.
-pub async fn periodic_gauge<T>(
-    gauge: Gauge<T>,
-    callback: impl Fn(&Gauge<T>) -> ControlFlow<(), ()>,
-    interval: Duration,
-) {
-    while callback(&gauge).is_continue() {
-        tokio::time::sleep(interval).await;
-    }
-}
-
-/// Something whose current queue length can be sampled.
-pub trait QueueLength: Send + Sync + 'static {
-    fn queue_length(&self) -> Option<u64>;
-}
-
-impl<T> QueueLength for tokio::sync::mpsc::WeakSender<T>
-where
-    T: Send + Sync + 'static,
-{
-    fn queue_length(&self) -> Option<u64> {
-        let sender = self.upgrade()?;
-        let len = sender.max_capacity() - sender.capacity();
-
-        Some(len as u64)
-    }
 }
 
 fn connlib_meter() -> Meter {

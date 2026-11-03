@@ -4,6 +4,8 @@ mod workers;
 pub use workers::Workers;
 
 use ip_packet::IpPacket;
+use otel_attributes::KeyValue;
+use otel_instruments::Histogram;
 use std::task::{Context, Poll};
 use tokio::sync::mpsc;
 use tokio_util::sync::PollSender;
@@ -122,14 +124,14 @@ pub trait Tun: Send + Sync + 'static {
 pub fn outbound_channel() -> (OutboundTx, OutboundRx) {
     let (tx, rx) = mpsc::channel(CHANNEL_CAPACITY);
 
-    (OutboundTx(PollSender::new(tx)), OutboundRx(rx))
+    (OutboundTx::new(tx), OutboundRx(rx))
 }
 
 /// Creates the channel connecting the thread reading from the TUN device to the main thread.
 pub fn inbound_channel() -> (InboundTx, InboundRx) {
     let (tx, rx) = mpsc::channel(CHANNEL_CAPACITY);
 
-    (InboundTx(tx), InboundRx(rx))
+    (InboundTx::new(tx), InboundRx(rx))
 }
 
 /// Creates a TUN device that is not backed by a real one; its outbound channel holds `capacity` batches.
@@ -141,7 +143,7 @@ pub fn fake(capacity: usize) -> (Box<dyn Tun>, InboundTx, OutboundRx) {
     let (inbound_tx, inbound_rx) = inbound_channel();
 
     let device = FakeDevice {
-        outbound_tx: OutboundTx(PollSender::new(outbound_tx)),
+        outbound_tx: OutboundTx::new(outbound_tx),
         inbound_rx,
     };
 
@@ -171,24 +173,32 @@ impl Tun for FakeDevice {
 ///
 /// Each item is one batch of packets; the end of a batch marks the boundary
 /// up to which the TUN thread may coalesce packets before writing them out.
-pub struct OutboundTx(PollSender<PacketBatch>);
+pub struct OutboundTx {
+    tx: PollSender<PacketBatch>,
+    queue_depth: QueueDepth,
+}
 
 impl OutboundTx {
+    fn new(tx: mpsc::Sender<PacketBatch>) -> Self {
+        Self {
+            tx: PollSender::new(tx),
+            queue_depth: QueueDepth::new(otel_attributes::network_io_direction_transmit()),
+        }
+    }
+
     pub fn try_send(
         &self,
         batch: PacketBatch,
     ) -> Result<(), mpsc::error::TrySendError<PacketBatch>> {
-        match self.0.get_ref() {
-            Some(tx) => tx.try_send(batch),
-            None => Err(mpsc::error::TrySendError::Closed(batch)),
-        }
-    }
+        let Some(tx) = self.tx.get_ref() else {
+            return Err(mpsc::error::TrySendError::Closed(batch));
+        };
 
-    /// Returns the number of batches in the channel, including reserved slots.
-    pub fn queue_length(&self) -> usize {
-        self.0
-            .get_ref()
-            .map_or(0, |tx| tx.max_capacity() - tx.capacity())
+        let depth = len(tx);
+        tx.try_send(batch)?;
+        self.queue_depth.record(depth);
+
+        Ok(())
     }
 
     /// Reserves a slot in the channel for one batch.
@@ -198,8 +208,8 @@ impl OutboundTx {
         &mut self,
         cx: &mut Context<'_>,
     ) -> Poll<Result<Reservation<'_>, mpsc::error::SendError<()>>> {
-        match self.0.poll_reserve(cx) {
-            Poll::Ready(Ok(())) => Poll::Ready(Ok(Reservation(&mut self.0))),
+        match self.tx.poll_reserve(cx) {
+            Poll::Ready(Ok(())) => Poll::Ready(Ok(Reservation(self))),
             Poll::Ready(Err(_)) => Poll::Ready(Err(mpsc::error::SendError(()))),
             Poll::Pending => Poll::Pending,
         }
@@ -207,13 +217,17 @@ impl OutboundTx {
 }
 
 /// A slot reserved in the channel to the thread writing to the TUN device.
-pub struct Reservation<'a>(&'a mut PollSender<PacketBatch>);
+pub struct Reservation<'a>(&'a mut OutboundTx);
 
 impl Reservation<'_> {
     pub fn send(self, batch: PacketBatch) {
-        self.0
-            .send_item(batch)
+        let OutboundTx { tx, queue_depth } = self.0;
+
+        // The reserved slot already counts towards the channel's length.
+        let depth = tx.get_ref().map_or(0, |tx| len(tx) - 1);
+        tx.send_item(batch)
             .expect("a reservation always holds a slot");
+        queue_depth.record(depth);
     }
 }
 
@@ -236,33 +250,55 @@ impl OutboundRx {
 
 /// The sending half of the channel of packet batches read from the TUN device.
 #[derive(Clone)]
-pub struct InboundTx(mpsc::Sender<PacketBatch>);
+pub struct InboundTx {
+    tx: mpsc::Sender<PacketBatch>,
+    queue_depth: QueueDepth,
+}
 
 impl InboundTx {
+    fn new(tx: mpsc::Sender<PacketBatch>) -> Self {
+        Self {
+            tx,
+            queue_depth: QueueDepth::new(otel_attributes::network_io_direction_receive()),
+        }
+    }
+
     pub async fn send(
         &self,
         batch: PacketBatch,
     ) -> Result<(), mpsc::error::SendError<PacketBatch>> {
-        self.0.send(batch).await
+        let depth = len(&self.tx);
+        self.tx.send(batch).await?;
+        self.queue_depth.record(depth);
+
+        Ok(())
     }
 
     pub fn blocking_send(
         &self,
         batch: PacketBatch,
     ) -> Result<(), mpsc::error::SendError<PacketBatch>> {
-        self.0.blocking_send(batch)
+        let depth = len(&self.tx);
+        self.tx.blocking_send(batch)?;
+        self.queue_depth.record(depth);
+
+        Ok(())
     }
 
     pub fn try_send(
         &self,
         batch: PacketBatch,
     ) -> Result<(), mpsc::error::TrySendError<PacketBatch>> {
-        self.0.try_send(batch)
+        let depth = len(&self.tx);
+        self.tx.try_send(batch)?;
+        self.queue_depth.record(depth);
+
+        Ok(())
     }
 
     /// Completes when the receiving half of the channel is gone.
     pub async fn closed(&self) {
-        self.0.closed().await
+        self.tx.closed().await
     }
 }
 
@@ -284,9 +320,29 @@ impl InboundRx {
     pub fn try_recv(&mut self) -> Result<PacketBatch, mpsc::error::TryRecvError> {
         self.0.try_recv()
     }
+}
 
-    /// Returns the number of batches in the channel.
-    pub fn queue_length(&self) -> usize {
-        self.0.len()
+/// Records how many batches a channel held when another one was enqueued.
+#[derive(Clone)]
+struct QueueDepth {
+    histogram: Histogram<u64>,
+    attributes: [KeyValue; 2],
+}
+
+impl QueueDepth {
+    fn new(direction: KeyValue) -> Self {
+        Self {
+            histogram: otel_instruments::queue_depth(),
+            attributes: [otel_attributes::queue_item_ip_packet_batch(), direction],
+        }
     }
+
+    fn record(&self, depth: usize) {
+        self.histogram.record(depth as u64, &self.attributes);
+    }
+}
+
+/// Returns the number of batches in the channel, including reserved slots.
+fn len(tx: &mpsc::Sender<PacketBatch>) -> usize {
+    tx.max_capacity() - tx.capacity()
 }

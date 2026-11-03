@@ -6,7 +6,6 @@ license = { workspace = true }
 
 [dependencies]
 opentelemetry = { workspace = true, features = ["metrics"] }
-tokio = { workspace = true, features = ["time", "sync"] }
 
 [lints]
 workspace = true

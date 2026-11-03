@@ -5820,7 +5820,6 @@ name = "otel-instruments"
 version = "0.1.0"
 dependencies = [
  "opentelemetry",
- "tokio",
 ]
 
 [[package]]
@@ -9032,6 +9031,8 @@ dependencies = [
  "anyhow-ext",
  "ip-packet",
  "logging",
+ "otel-attributes",
+ "otel-instruments",
  "tokio",
  "tokio-util",
  "tracing",
