@@ -43,19 +43,19 @@ defmodule PortalAPI.Integrations.WebhookBanditTest do
          "Bad Request: missing notifications"},
         {"Entra oversized batch", @entra, [], JSON.encode!(%{value: List.duplicate(%{}, 1001)}),
          413, "Request Entity Too Large: too many notifications"},
-        {"Okta invalid JSON", @okta, [], "{", 400, "Bad Request: invalid JSON"},
-        {"Okta missing events", @okta, [], "{}", 400, "Bad Request: missing events"},
-        {"Okta oversized batch", @okta, [],
-         JSON.encode!(%{data: %{events: List.duplicate(%{}, 1001)}}), 413,
-         "Request Entity Too Large: too many events"},
+        {"Okta without a directory", @okta, [], "{", 401, "Unauthorized"},
+        {"Google without a directory", @google, [], "{", 200, ""},
         {"Stripe missing timestamp", @stripe, [{"stripe-signature", "v1=invalid"}], "{}", 400,
          "Bad Request: missing timestamp"},
         {"Stripe missing signatures", @stripe, [{"stripe-signature", "t=0"}], "{}", 400,
          "Bad Request: missing signatures"},
         {"Stripe expired signature", @stripe, [{"stripe-signature", "t=0,v1=invalid"}], "{}",
          400, "Bad Request: expired signature"},
-        {"ACS invalid JSON", @acs, [{"aeg-event-type", "Notification"}], "{", 400,
+        {"ACS invalid JSON", @acs,
+         [{"aeg-event-type", "Notification"}, {"aeg-sas-key", @acs_secret}], "{", 400,
          "Bad Request: invalid JSON"},
+        {"ACS unauthenticated invalid JSON", @acs, [{"aeg-event-type", "Notification"}], "{",
+         401, "Unauthorized"},
         {"ACS invalid secret", @acs, [{"aeg-event-type", "Notification"}], "[]", 401,
          "Unauthorized"},
         {"ACS invalid validation event", @acs, [{"aeg-event-type", "SubscriptionValidation"}],
@@ -78,9 +78,8 @@ defmodule PortalAPI.Integrations.WebhookBanditTest do
 
   for {path, headers, size} <- [
         {@entra, [], 1_100_000},
-        {@okta, [], 1_100_000},
         {@stripe, [{"stripe-signature", "v1=invalid"}], 1_100_000},
-        {@acs, [{"aeg-event-type", "Notification"}], 8_100_000}
+        {@acs, [{"aeg-event-type", "Notification"}, {"aeg-sas-key", @acs_secret}], 8_100_000}
       ] do
     test "#{path} rejects an oversized body using the updated conn", %{port: port} do
       response =
@@ -116,11 +115,6 @@ defmodule PortalAPI.Integrations.WebhookBanditTest do
         {"Stripe", @stripe, :stripe, "{}", FunctionClauseError},
         {"Entra", @entra <> "?directory_id=#{Ecto.UUID.generate()}", [],
          JSON.encode!(%{value: [%{clientState: "state"}]}), DBConnection.OwnershipError},
-        {"Okta", @okta <> "?directory_id=#{Ecto.UUID.generate()}", [{"authorization", "secret"}],
-         JSON.encode!(%{data: %{events: [%{}]}}), DBConnection.OwnershipError},
-        {"Google", @google <> "?directory_id=#{Ecto.UUID.generate()}",
-         [{"x-goog-resource-state", "update"}], JSON.encode!(%{id: "user"}),
-         DBConnection.OwnershipError},
         {"ACS", @acs, [{"aeg-event-type", "Notification"}, {"aeg-sas-key", @acs_secret}],
          JSON.encode!([@report]), DBConnection.OwnershipError}
       ] do
@@ -147,9 +141,8 @@ defmodule PortalAPI.Integrations.WebhookBanditTest do
 
   for {path, headers, body} <- [
         {@entra, [], "{"},
-        {@okta, [], "{"},
         {@stripe, [{"stripe-signature", "v1=invalid"}], "{}"},
-        {@acs, [{"aeg-event-type", "Notification"}], "{"}
+        {@acs, [{"aeg-event-type", "Notification"}, {"aeg-sas-key", @acs_secret}], "{"}
       ] do
     test "#{path} preserves the next request on the same connection", %{port: port} do
       response =

@@ -76,7 +76,8 @@ defmodule PortalWeb.OAuthController do
     end
   end
 
-  defp choose_account(conn, %{"account_id_or_slug" => slug} = params, client) when slug != "" do
+  defp choose_account(conn, %{"account_id_or_slug" => slug} = params, client)
+       when is_binary(slug) and slug != "" do
     # Typed into the chooser. Checked here rather than redirected blindly: an
     # account that does not exist would otherwise surface as a crash on a
     # sign-in page the person never asked for.

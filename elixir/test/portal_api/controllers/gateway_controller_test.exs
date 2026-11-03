@@ -29,6 +29,20 @@ defmodule PortalAPI.GatewayControllerTest do
                json_response(conn, 401)
     end
 
+    test "ignores a gateway query parameter that is not an object", %{
+      conn: conn,
+      actor: actor,
+      site: site
+    } do
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> post("/sites/#{site.id}/gateways?gateway=x")
+
+      assert %{"data" => %{"name" => name}} = json_response(conn, 201)
+      assert is_binary(name)
+    end
+
     test "provisions a gateway with an explicit name", %{
       conn: conn,
       actor: actor,

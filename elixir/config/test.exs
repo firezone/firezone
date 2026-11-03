@@ -474,3 +474,9 @@ config :portal, Portal.Analytics.OpenAI,
 config :portal, Portal.Analytics.GoogleAds,
   endpoint: "https://datamanager.googleapis.com/v1/events:ingest",
   req_opts: [retry: false]
+
+config :portal, Portal.Turnstile,
+  site_key: nil,
+  secret_key: nil,
+  endpoint: "https://challenges.cloudflare.com/turnstile/v0/siteverify",
+  req_opts: [retry: false]

@@ -25,7 +25,8 @@ defmodule PortalWeb.Session.Redirector do
 
   def sanitize_redirect_to(%Portal.Account{} = account, redirect_to, actor)
       when is_binary(redirect_to) do
-    if account_scoped_path?(redirect_to, account) do
+    if account_scoped_path?(redirect_to, account) and
+         Phoenix.URL.classify_local_path(redirect_to) == :ok do
       redirect_to
     else
       default_portal_path(account, actor)

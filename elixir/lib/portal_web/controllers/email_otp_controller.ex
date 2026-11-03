@@ -47,7 +47,7 @@ defmodule PortalWeb.EmailOTPController do
   end
 
   @spec verify(Plug.Conn.t(), map()) :: Plug.Conn.t()
-  def verify(conn, %{"secret" => entered_code} = params) do
+  def verify(conn, %{"secret" => entered_code} = params) when is_binary(entered_code) do
     result =
       Portal.Timing.execute_with_constant_time(
         fn -> do_verify(conn, params, String.downcase(entered_code)) end,
@@ -197,7 +197,7 @@ defmodule PortalWeb.EmailOTPController do
       DateTime.utc_now(),
       auth_provider_id,
       code,
-      conn.assigns.user_agent,
+      conn.assigns[:user_agent],
       conn.remote_ip,
       sanitize(params)
     )

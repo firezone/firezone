@@ -20,21 +20,37 @@ defmodule PortalWeb.OIDCController do
                                   5_000
                                 )
   @sign_up_provider_types ~w[google github]
+  @sign_in_provider_types ~w[google github okta entra oidc]
   @sign_up_workspace_error "Signing up with a Google Workspace account needs a Workspace administrator. Sign in as an administrator and allow read-only access to your organization's domains."
   @google_verification_error "Could not verify this Google account. For a Workspace account, sign in as an administrator and allow read-only access to your organization's domains."
 
   @spec sign_in(Plug.Conn.t(), map()) :: Plug.Conn.t()
-  def sign_in(conn, %{"account_id_or_slug" => account_id_or_slug} = params) do
+  def sign_in(conn, %{"account_id_or_slug" => account_id_or_slug, "auth_provider_type" => type} = params)
+      when type in @sign_in_provider_types do
     account = PortalWeb.Accounts.get_by_id_or_slug!(account_id_or_slug)
     provider = get_provider!(account, params)
     provider_redirect(conn, account, provider, params)
   end
 
+  def sign_in(conn, _params), do: PortalWeb.Error.handle(conn, {:error, :not_found})
+
   # Starts a sign-up round trip with an identity provider. The verified identity
   # is handed to the sign-up LiveView through the session; see PortalWeb.SignUp.
   @spec sign_up(Plug.Conn.t(), map()) :: Plug.Conn.t()
-  def sign_up(conn, %{"auth_provider_type" => provider_type})
+  def sign_up(conn, %{"auth_provider_type" => provider_type} = params)
       when provider_type in @sign_up_provider_types do
+    case Portal.Turnstile.verify(params["cf-turnstile-response"], conn.remote_ip) do
+      :ok ->
+        start_sign_up(conn, provider_type)
+
+      {:error, reason} ->
+        redirect_to_sign_up_with_error(conn, PortalWeb.SignUp.turnstile_error_message(reason))
+    end
+  end
+
+  def sign_up(conn, _params), do: PortalWeb.Error.handle(conn, {:error, :not_found})
+
+  defp start_sign_up(conn, provider_type) do
     verification_type = sign_up_verification_type(provider_type)
     state_type = PortalWeb.OIDC.verification_state_type(verification_type)
 
@@ -56,8 +72,6 @@ defmodule PortalWeb.OIDCController do
         redirect_to_sign_up_with_error(conn, sign_up_unavailable_error(provider_type))
     end
   end
-
-  def sign_up(conn, _params), do: PortalWeb.Error.handle(conn, {:error, :not_found})
 
   @spec callback(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def callback(conn, %{"state" => state, "code" => code} = params) do
@@ -226,7 +240,7 @@ defmodule PortalWeb.OIDCController do
   end
 
   @spec verify_identity(Plug.Conn.t(), map()) :: Plug.Conn.t()
-  def verify_identity(conn, %{"secret" => entered_code} = params) do
+  def verify_identity(conn, %{"secret" => entered_code} = params) when is_binary(entered_code) do
     result =
       Portal.Timing.execute_with_constant_time(
         fn -> do_verify_identity(conn, params, String.downcase(entered_code)) end,

@@ -359,13 +359,47 @@ defmodule PortalAPI.Integrations.Okta.WebhookControllerTest do
     end
 
     test "refuses a delivery with the wrong secret", %{conn: conn, directory: directory} do
-      conn =
-        post_events(conn, directory, [event("application.user_membership.add", [user("user-1")])],
-          secret: "nope"
-        )
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          conn =
+            post_events(
+              conn,
+              directory,
+              [event("application.user_membership.add", [user("user-1")])],
+              secret: "nope"
+            )
 
-      assert response(conn, 401)
+          assert response(conn, 401)
+        end)
+
+      assert log =~ "Refusing Okta events with a missing or invalid Authorization header"
+      assert log =~ "remote_ip=127.0.0.1"
       assert all_enqueued(worker: Okta.WebhookSync) == []
+    end
+
+    test "clears the remote_ip logger metadata after the response", %{
+      conn: conn,
+      directory: directory
+    } do
+      ExUnit.CaptureLog.capture_log(fn ->
+        conn = post_events(conn, directory, [], secret: "nope")
+        assert response(conn, 401)
+      end)
+
+      refute Keyword.has_key?(Logger.metadata(), :remote_ip)
+    end
+
+    test "refuses an unauthenticated delivery before parsing its body", %{
+      conn: conn,
+      directory: directory
+    } do
+      conn =
+        conn
+        |> put_req_header("authorization", "nope")
+        |> put_req_header("content-type", "application/json")
+        |> post("/integrations/okta/webhooks?directory_id=#{directory.id}", "{not json")
+
+      assert response(conn, 401) == "Unauthorized"
     end
 
     test "refuses a delivery without an authorization header", %{conn: conn, directory: directory} do
