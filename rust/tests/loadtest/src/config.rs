@@ -5,7 +5,7 @@
 //! and picks parameters from its config.
 
 use crate::cli::parse_bitrate;
-use crate::turn::{MAX_FLOWS, TURN_HEADER_SIZE};
+use crate::turn::{MAX_FLOWS, MIN_TURN_PAYLOAD_SIZE};
 use anyhow::{Context as _, Result, bail};
 use rand::distr::uniform::SampleRange;
 use rand::prelude::*;
@@ -247,9 +247,9 @@ impl TurnConfig {
         if self.password.is_empty() {
             bail!("[turn] password is empty");
         }
-        if self.payload_size < TURN_HEADER_SIZE {
+        if self.payload_size < MIN_TURN_PAYLOAD_SIZE {
             bail!(
-                "[turn] payload_size ({}) must be at least {TURN_HEADER_SIZE} bytes (WireGuard data message)",
+                "[turn] payload_size ({}) must be at least {MIN_TURN_PAYLOAD_SIZE} bytes (WireGuard data message)",
                 self.payload_size
             );
         }

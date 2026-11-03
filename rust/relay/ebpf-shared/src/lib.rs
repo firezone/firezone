@@ -5,6 +5,10 @@
 
 #![cfg_attr(not(feature = "std"), no_std)]
 
+mod payload;
+
+pub use payload::{RELAYABLE_HEADER_LEN, is_relayable};
+
 use core::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
 #[repr(C)]

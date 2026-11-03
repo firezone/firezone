@@ -42,7 +42,13 @@ pub fn handle_turn(ctx: aya_ebpf::programs::XdpContext) -> u32 {
             xdp_action::XDP_PASS
         }
         // In a double symmetric NAT setup, it is easily possible for packets to arrive from IPs that don't have channel bindings.
-        Err(e @ (Error::NoEntry(_) | Error::NotRelayable)) => {
+        Err(e @ Error::NoEntry(_)) => {
+            debug!(&ctx,target: "eBPF", "XXX drop packet: {}", e.as_str());
+
+            xdp_action::XDP_DROP
+        }
+        // We only relay WireGuard and STUN; anything else comes from a misbehaving or malicious client or peer.
+        Err(e @ Error::NotRelayable) => {
             debug!(&ctx,target: "eBPF", "XXX drop packet: {}", e.as_str());
 
             xdp_action::XDP_DROP

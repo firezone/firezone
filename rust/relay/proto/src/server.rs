@@ -1,6 +1,5 @@
 mod channel_data;
 mod client_message;
-mod payload;
 
 pub use crate::server::channel_data::ChannelData;
 pub use crate::server::client_message::{
@@ -443,7 +442,7 @@ where
             return None;
         };
 
-        if !payload::is_relayable(msg) {
+        if !is_relayable(msg) {
             tracing::trace!(target: "relay", %sender, %allocation, "Refusing to relay payload that is neither WireGuard nor STUN");
             return None;
         }
@@ -905,7 +904,7 @@ where
             return None;
         }
 
-        if !payload::is_relayable(data) {
+        if !is_relayable(data) {
             tracing::trace!(target: "relay", channel = %channel_number.value(), "Refusing to relay payload that is neither WireGuard nor STUN");
             return None;
         }
@@ -1333,6 +1332,18 @@ impl Allocation {
     fn is_expired(&self, now: Instant) -> bool {
         self.expires_at <= now
     }
+}
+
+/// Whether the relay may forward this payload between a client and a peer.
+fn is_relayable(payload: &[u8]) -> bool {
+    let Some(header) = payload.first_chunk() else {
+        return false;
+    };
+    let Ok(len) = u16::try_from(payload.len()) else {
+        return false;
+    };
+
+    ebpf_shared::is_relayable(*header, len)
 }
 
 /// Derive the relay address for the client based on the request and the supported IP stack of the relay server.

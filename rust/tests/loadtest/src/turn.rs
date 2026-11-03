@@ -49,7 +49,7 @@ use url::Url;
 /// Smallest datagram payload: the relay only forwards WireGuard and STUN, so every payload is a
 /// WireGuard data message (8-byte header + 8-byte sequence number + 8-byte send timestamp, padded
 /// to the 32-byte minimum of a real data message).
-pub const TURN_HEADER_SIZE: usize = 32;
+pub const MIN_TURN_PAYLOAD_SIZE: usize = 32;
 
 /// WireGuard data message header: message type 4 and a zero receiver index.
 const WIREGUARD_DATA_HEADER: [u8; 8] = [4, 0, 0, 0, 0, 0, 0, 0];
@@ -1211,9 +1211,9 @@ fn parse_payload_size(s: &str) -> Result<usize, String> {
         .parse()
         .map_err(|e| format!("invalid payload size: {e}"))?;
 
-    if size < TURN_HEADER_SIZE {
+    if size < MIN_TURN_PAYLOAD_SIZE {
         return Err(format!(
-            "payload size must be at least {TURN_HEADER_SIZE} bytes (WireGuard data message)"
+            "payload size must be at least {MIN_TURN_PAYLOAD_SIZE} bytes (WireGuard data message)"
         ));
     }
     if size > MAX_TURN_PAYLOAD_SIZE {
