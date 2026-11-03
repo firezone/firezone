@@ -16,7 +16,7 @@ use connlib_model::PublicKey;
 use eventloop_budget::Budget;
 use futures::{FutureExt, future::BoxFuture};
 use io::{CryptoWorkers, Io};
-use packet_counts::{DroppedPackets, TunPacketCounts, UdpPacketCounts};
+use packet_counts::{DroppedTunPackets, TunPacketCounts, UdpPacketCounts};
 use prefetch::IteratorExt as _;
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 use sockets::Sockets;
@@ -110,7 +110,7 @@ pub struct Tunnel<TRoleState> {
     io: Io,
 
     packet_counter: opentelemetry::metrics::Counter<u64>,
-    dropped_packets: DroppedPackets,
+    dropped_tun_packets: DroppedTunPackets,
 
     /// Set when the last poll handled IO whose effects only `handle_timeout` completes.
     ///
@@ -143,7 +143,7 @@ impl<TRoleState> Tunnel<TRoleState> {
                 udp,
             ),
             packet_counter: otel_instruments::network_packets(),
-            dropped_packets: DroppedPackets::new(),
+            dropped_tun_packets: DroppedTunPackets::new(),
             needs_timeout: false,
         };
 
@@ -291,7 +291,7 @@ impl ClientTunnel {
                     .expect("Should be able to compute UNIX timestamp"),
             ),
             packet_counter: otel_instruments::network_packets(),
-            dropped_packets: DroppedPackets::new(),
+            dropped_tun_packets: DroppedTunPackets::new(),
             needs_timeout: false,
         }
     }
@@ -425,7 +425,7 @@ impl ClientTunnel {
                             Ok(Some(tun_batch)) => tun_batch,
                             Ok(None) => continue,
                             Err(e) => {
-                                self.dropped_packets.record(&e);
+                                self.dropped_tun_packets.record(&e);
                                 error.push(e.context("Failed to handle packet from TUN device"));
                                 continue;
                             }
@@ -438,7 +438,7 @@ impl ClientTunnel {
                         match tun_batch.finish() {
                             Ok((encapsulation, packets)) => jobs.add(encapsulation, packets),
                             Err(e) => {
-                                self.dropped_packets.record(&e);
+                                self.dropped_tun_packets.record(&e);
                                 error.push(e.context("Failed to handle packet from TUN device"));
                             }
                         }
@@ -586,7 +586,7 @@ impl GatewayTunnel {
                     .expect("Should be able to compute UNIX timestamp"),
             ),
             packet_counter: otel_instruments::network_packets(),
-            dropped_packets: DroppedPackets::new(),
+            dropped_tun_packets: DroppedTunPackets::new(),
             needs_timeout: false,
         }
     }
@@ -703,7 +703,7 @@ impl GatewayTunnel {
                             Ok(Some(tun_batch)) => tun_batch,
                             Ok(None) => continue,
                             Err(e) => {
-                                self.dropped_packets.record(&e);
+                                self.dropped_tun_packets.record(&e);
                                 error.push(e.context("Failed to handle packet from TUN device"));
                                 continue;
                             }
@@ -716,7 +716,7 @@ impl GatewayTunnel {
                         match tun_batch.finish() {
                             Ok((encapsulation, packets)) => jobs.add(encapsulation, packets),
                             Err(e) => {
-                                self.dropped_packets.record(&e);
+                                self.dropped_tun_packets.record(&e);
                                 error.push(e.context("Failed to handle packet from TUN device"));
                             }
                         }

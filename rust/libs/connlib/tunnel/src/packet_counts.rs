@@ -8,9 +8,9 @@ use tunnel_proto::unroutable_packet::RoutingError;
 use crate::otel;
 
 /// Counts the packets read from the TUN device that could not be routed.
-pub(crate) struct DroppedPackets(Counter<u64>);
+pub(crate) struct DroppedTunPackets(Counter<u64>);
 
-impl DroppedPackets {
+impl DroppedTunPackets {
     pub(crate) fn new() -> Self {
         Self(otel_instruments::network_packet_dropped())
     }
