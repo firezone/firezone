@@ -37,6 +37,8 @@ defmodule PortalAPI.Client.Channel.Shared do
   # The interval at which the inbound policy_authorizations cache is pruned.
   @prune_authorizations_cache_every :timer.minutes(1)
 
+  @refresh_metrics_token_every :timer.seconds(div(Portal.MetricsToken.ttl_seconds(), 2))
+
   @session_durability_timeout :timer.seconds(15)
 
   # A device lookup that the asking client may not have answers after this long, whether or
@@ -103,6 +105,8 @@ defmodule PortalAPI.Client.Channel.Shared do
       :prune_authorizations_cache,
       @prune_authorizations_cache_every
     )
+
+    Process.send_after(self(), :refresh_metrics_token, @refresh_metrics_token_every)
 
     schedule_session_expiry(socket.assigns.subject.expires_at)
 
@@ -206,6 +210,16 @@ defmodule PortalAPI.Client.Channel.Shared do
     end
 
     {:noreply, assign(socket, cache: cache)}
+  end
+
+  def handle_info(:refresh_metrics_token, socket) do
+    Process.send_after(self(), :refresh_metrics_token, @refresh_metrics_token_every)
+
+    if metrics = metrics_config(socket.assigns.subject.account) do
+      push(socket, "metrics_config", metrics)
+    end
+
+    {:noreply, socket}
   end
 
   def handle_info(:prune_authorizations_cache, socket) do
@@ -2128,6 +2142,7 @@ defmodule PortalAPI.Client.Channel.Shared do
   defp init(socket, resources, relays) do
     push(socket, "init", %{
       flow_logs: flow_logs_config(),
+      metrics: metrics_config(socket.assigns.subject.account),
       account_slug: socket.assigns.subject.account.slug,
       actor_name: socket.assigns.subject.actor.name,
       resources: Views.Resource.render_many(resources, socket.assigns.client, protocol_version(socket)),
@@ -2161,6 +2176,15 @@ defmodule PortalAPI.Client.Channel.Shared do
       upload_interval_secs: Portal.Config.fetch_env!(:portal, :flow_logs_upload_interval_secs),
       upload_batch_size: Portal.Config.fetch_env!(:portal, :flow_logs_upload_batch_size)
     }
+  end
+
+  defp metrics_config(account) do
+    if Portal.Config.get_env(:portal, :azure_otlp_metrics_endpoint) do
+      %{
+        api_url: Portal.Config.fetch_env!(:portal, :otlp_metrics_api_url),
+        token: Portal.MetricsToken.mint(account)
+      }
+    end
   end
 
   defp generate_preshared_key(client, client_public_key, gateway, gateway_public_key) do

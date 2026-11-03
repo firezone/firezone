@@ -534,6 +534,34 @@ defmodule PortalAPI.Client.ChannelTest do
       assert account_slug == account.slug
     end
 
+    test "sends a metrics token in init and refreshes it", %{
+      account: account,
+      client: client,
+      subject: subject
+    } do
+      socket = join_channel(client, subject)
+
+      assert_push "init", %{metrics: %{api_url: "https://otlp.firezone.dev/", token: token}}
+      assert {:ok, %{"account_id" => account_id}} = Portal.MetricsToken.verify(token)
+      assert account_id == account.id
+
+      send(socket.channel_pid, :refresh_metrics_token)
+
+      assert_push "metrics_config", %{token: token}
+      assert {:ok, _claims} = Portal.MetricsToken.verify(token)
+    end
+
+    test "omits the metrics token when forwarding is not configured", %{
+      client: client,
+      subject: subject
+    } do
+      Portal.Config.put_env_override(:azure_otlp_metrics_endpoint, false)
+
+      join_channel(client, subject)
+
+      assert_push "init", %{metrics: nil}
+    end
+
     test "sends actor name in init message", %{
       actor: actor,
       client: client,

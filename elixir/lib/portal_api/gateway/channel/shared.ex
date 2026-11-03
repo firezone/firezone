@@ -21,6 +21,8 @@ defmodule PortalAPI.Gateway.Channel.Shared do
   # The interval at which the policy authorization cache is pruned.
   @prune_cache_every :timer.minutes(1)
 
+  @refresh_metrics_token_every :timer.seconds(div(Portal.MetricsToken.ttl_seconds(), 2))
+
   @session_durability_timeout :timer.seconds(15)
 
   # Relay credentials must be stable across reconnects so that gateways
@@ -113,6 +115,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
       )
 
     Process.send_after(self(), :prune_cache, @prune_cache_every)
+    Process.send_after(self(), :refresh_metrics_token, @refresh_metrics_token_every)
 
     # Track gateway's presence
     gateway = socket.assigns.gateway
@@ -156,6 +159,16 @@ defmodule PortalAPI.Gateway.Channel.Shared do
   def handle_info(:prune_cache, socket) do
     Process.send_after(self(), :prune_cache, @prune_cache_every)
     {:noreply, assign(socket, cache: Cache.Gateway.prune(socket.assigns.cache))}
+  end
+
+  def handle_info(:refresh_metrics_token, socket) do
+    Process.send_after(self(), :refresh_metrics_token, @refresh_metrics_token_every)
+
+    if metrics = metrics_config(socket.assigns.account) do
+      push(socket, "metrics_config", metrics)
+    end
+
+    {:noreply, socket}
   end
 
   ####################################
@@ -819,6 +832,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
   defp init(socket, account, relays) do
     push(socket, "init", %{
       flow_logs: flow_logs_config(),
+      metrics: metrics_config(account),
       authorizations: Views.PolicyAuthorization.render_many(socket.assigns.cache),
       account_slug: account.slug,
       interface: Views.Interface.render(socket.assigns.gateway),
@@ -843,6 +857,15 @@ defmodule PortalAPI.Gateway.Channel.Shared do
       upload_interval_secs: Portal.Config.fetch_env!(:portal, :flow_logs_upload_interval_secs),
       upload_batch_size: Portal.Config.fetch_env!(:portal, :flow_logs_upload_batch_size)
     }
+  end
+
+  defp metrics_config(account) do
+    if Portal.Config.get_env(:portal, :azure_otlp_metrics_endpoint) do
+      %{
+        api_url: Portal.Config.fetch_env!(:portal, :otlp_metrics_api_url),
+        token: Portal.MetricsToken.mint(account)
+      }
+    end
   end
 
   defp reinitialize_gateway(socket) do
