@@ -60,10 +60,7 @@ pub use client::{
     PeerBatch as ClientPeerBatch,
 };
 pub use dns::DnsResourceRecord;
-pub use gateway::{
-    DnsResourceNatEntry, GatewayState, PeerBatch as GatewayPeerBatch, ResolveDnsRequest,
-    SiteDnsQuery,
-};
+pub use gateway::{GatewayState, PeerBatch as GatewayPeerBatch, ResolveDnsRequest, SiteDnsQuery};
 #[cfg(feature = "malicious-behaviour")]
 pub use malicious_behaviour::{Guard as MaliciousBehaviourGuard, MaliciousBehaviour};
 pub use unroutable_packet::UnroutablePacket;

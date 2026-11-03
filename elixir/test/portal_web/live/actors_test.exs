@@ -778,6 +778,30 @@ defmodule PortalWeb.ActorsTest do
       refute html =~ "Token Created"
     end
 
+    test "does not create token for a user actor", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      user = actor_fixture(account: account, type: :account_user)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/actors/#{user}")
+
+      expiration =
+        Date.utc_today()
+        |> Date.add(30)
+        |> Date.to_iso8601()
+
+      html = render_click(lv, "create_token", %{"token_expiration" => expiration})
+
+      assert html =~ "Tokens can only be created for service accounts"
+      refute html =~ "Token Created"
+      refute Portal.Repo.get_by(Portal.ClientToken, actor_id: user.id)
+    end
+
     test "redirects to actor list when actor does not exist", %{
       conn: conn,
       account: account,

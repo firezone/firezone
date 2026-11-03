@@ -32,6 +32,37 @@ defmodule Portal.ChangesetTest do
       end
     end
 
+    test "blocks cloud metadata and host agent addresses" do
+      ips = [
+        # Azure WireServer
+        "168.63.129.16",
+        "::ffff:168.63.129.16",
+        "64:ff9b::168.63.129.16",
+        # AWS, Azure, GCP and Oracle instance metadata
+        "169.254.169.254",
+        # AWS DNS and time sync
+        "169.254.169.253",
+        "169.254.169.123",
+        # AWS IMDS, DNS and time sync over IPv6
+        "fd00:ec2::254",
+        "fd00:ec2::253",
+        "fd00:ec2::123",
+        # GCP metadata over IPv6
+        "fd20:ce::254",
+        # Alibaba Cloud metadata
+        "100.100.100.200"
+      ]
+
+      for ip <- ips do
+        assert Changeset.private_ip?(parse_ip!(ip)), "Expected #{ip} to be blocked"
+      end
+    end
+
+    test "allows addresses adjacent to the Azure WireServer" do
+      refute Changeset.private_ip?(parse_ip!("168.63.129.15"))
+      refute Changeset.private_ip?(parse_ip!("168.63.129.17"))
+    end
+
     test "blocks site-local addresses" do
       assert Changeset.private_ip?(parse_ip!("fec0::1"))
       assert Changeset.private_ip?(parse_ip!("feff::1"))

@@ -52,9 +52,13 @@
         </div>
         {@inner_content}
       </div>
-      <Page.data_residency_footer path={
-        assigns[:return_to] || (assigns[:conn] && Phoenix.Controller.current_path(assigns[:conn]))
-      } />
+      <Page.data_residency_footer
+        :if={!assigns[:hide_data_residency_footer]}
+        path={
+          assigns[:return_to] ||
+            (assigns[:conn] && Phoenix.Controller.current_path(assigns[:conn]))
+        }
+      />
       <div
         id="auth-trust-mobile"
         class="flex lg:hidden flex-wrap justify-center gap-x-4 gap-y-2 mt-6 text-xs text-showcase-text/70"

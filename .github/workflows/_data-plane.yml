@@ -114,9 +114,18 @@ jobs:
       matrix:
         protocol: [tcp, quic]
     steps:
+      - uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        id: app-token
+        with:
+          client-id: ${{ vars.BOT_CLIENT_ID }}
+          private-key: ${{ secrets.BOT_PRIVATE_KEY }}
+          owner: firezone
+          repositories: infra
+          # repository_dispatch requires Contents: write.
+          permission-contents: write
       - name: Dispatch Linux-to-Linux benchmarks
         env:
-          GH_TOKEN: ${{ secrets.INFRA_REPOSITORY_TOKEN }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
           FIREZONE_SHA: ${{ inputs.sha || github.sha }}
           BENCHMARK_PROTOCOL: ${{ matrix.protocol }}
         run: |

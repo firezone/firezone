@@ -122,10 +122,10 @@ defmodule PortalAPI.Schemas.Actor do
               description: "Actor Name"
             },
             type: %Schema{
-              example: "account_admin_user",
+              example: "account_user",
               type: :string,
-              description: "Actor Type",
-              enum: ["account_user", "account_admin_user", "service_account"]
+              description: "Actor Type. Admins can only be created in the portal.",
+              enum: ["account_user", "service_account"]
             },
             email: %Schema{
               example: "joe.user@example.com",
@@ -167,10 +167,10 @@ defmodule PortalAPI.Schemas.Actor do
               description: "Actor Name"
             },
             type: %Schema{
-              example: "account_admin_user",
+              example: "account_user",
               type: :string,
-              description: "Actor Type",
-              enum: ["account_user", "account_admin_user", "service_account"]
+              description: "Actor Type. Users can only be promoted to admin in the portal.",
+              enum: ["account_user", "service_account"]
             },
             email: %Schema{
               example: "joe.user@example.com",

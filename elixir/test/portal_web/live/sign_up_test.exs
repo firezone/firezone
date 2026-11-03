@@ -80,16 +80,118 @@ defmodule PortalWeb.SignUpTest do
       refute html =~ ~s(name="registration[phone]")
     end
 
-    test "links the same page on the EU portal from the US portal", %{conn: conn} do
+    test "shows the cloud region picker first, instead of the footer line", %{conn: conn} do
       Portal.Config.put_env_override(:data_residency_region, :us)
       Portal.Config.put_env_override(:web_external_url, "https://app.firezone.dev")
 
-      {:ok, lv, _html} = live(conn, ~p"/sign_up/email")
+      {:ok, lv, _html} = live(conn, ~p"/sign_up")
+
+      assert has_element?(lv, "input#region-option-us[checked]")
+      assert has_element?(lv, "label[for='region-option-us']", "United States")
+      assert has_element?(lv, "label[for='region-option-us']", "Data is stored in Iowa and Arizona")
+      assert has_element?(lv, "a#region-option-eu", "Data is stored in Sweden and France")
 
       assert has_element?(
                lv,
-               "#other-region-portal[href='https://eu.app.firezone.dev/sign_up/email']"
+               "a#region-option-eu[href='https://eu.app.firezone.dev/sign_up']",
+               "European Union"
              )
+
+      assert has_element?(
+               lv,
+               "#region-picker-help",
+               "Changing regions later requires scheduled downtime."
+             )
+
+      assert has_element?(
+               lv,
+               "#region-picker-help a[href='https://www.firezone.dev/kb/architecture/regional-availability']",
+               "Learn about regional availability"
+             )
+      refute has_element?(lv, "#data-residency")
+    end
+
+    test "shows the chosen region without a picker on the email form", %{conn: conn} do
+      Portal.Config.put_env_override(:data_residency_region, :eu)
+      Portal.Config.put_env_override(:web_external_url, "https://eu.app.firezone.dev")
+
+      {:ok, lv, _html} = live(conn, ~p"/sign_up/email")
+
+      assert has_element?(lv, "#selected-region", "European Union")
+      refute has_element?(lv, "#selected-region", "scheduled downtime")
+      refute has_element?(lv, "#selected-region", "Data is stored in")
+      refute has_element?(lv, "#region-picker")
+      refute has_element?(lv, "#data-residency")
+    end
+
+    test "hands the website attribution and query to the other region's portal", %{conn: conn} do
+      Portal.Config.put_env_override(:data_residency_region, :us)
+      Portal.Config.put_env_override(:web_external_url, "https://app.firezone.dev")
+      distinct_id = "7d2ed047-64d3-41f9-9a41-ac2c9b92e761"
+
+      conn =
+        get(
+          conn,
+          "/sign_up?fz_website_id=#{distinct_id}&fz_website_path=%2Fpricing" <>
+            "&fz_mktg=true&fz_gclid=google-click&utm_source=openai"
+        )
+
+      assert redirected_to(conn) == "/sign_up?utm_source=openai"
+      {:ok, lv, _html} = live(recycle(conn), "/sign_up?utm_source=openai")
+
+      href =
+        lv
+        |> element("a#region-option-eu")
+        |> render()
+        |> Floki.parse_fragment!()
+        |> Floki.attribute("href")
+        |> List.first()
+
+      uri = URI.parse(href)
+      assert "#{uri.scheme}://#{uri.host}#{uri.path}" == "https://eu.app.firezone.dev/sign_up"
+
+      assert URI.decode_query(uri.query) == %{
+               "fz_website_id" => distinct_id,
+               "fz_website_path" => "/pricing",
+               "fz_mktg" => "true",
+               "fz_gclid" => "google-click",
+               "utm_source" => "openai"
+             }
+    end
+
+    test "leaves the regional marketing default to the other region's portal", %{conn: conn} do
+      Portal.Config.put_env_override(:data_residency_region, :us)
+      Portal.Config.put_env_override(:web_external_url, "https://app.firezone.dev")
+
+      {:ok, lv, _html} = live(conn, ~p"/sign_up")
+
+      assert has_element?(lv, "a#region-option-eu[href='https://eu.app.firezone.dev/sign_up']")
+    end
+
+    test "links the US sign-up chooser from the EU portal", %{conn: conn} do
+      Portal.Config.put_env_override(:data_residency_region, :eu)
+      Portal.Config.put_env_override(:web_external_url, "https://eu.app.firezone.dev")
+
+      {:ok, lv, _html} = live(conn, ~p"/sign_up")
+
+      assert has_element?(lv, "input#region-option-eu[checked]")
+      assert has_element?(lv, "a#region-option-us[href='https://app.firezone.dev/sign_up']")
+    end
+
+    test "does not link another region's portal outside Firezone Cloud", %{conn: conn} do
+      Portal.Config.put_env_override(:data_residency_region, :us)
+
+      {:ok, lv, _html} = live(conn, ~p"/sign_up")
+
+      assert has_element?(lv, "input#region-option-us[checked]")
+      assert has_element?(lv, "input#region-option-eu[disabled]")
+      refute has_element?(lv, "a#region-option-eu")
+    end
+
+    test "hides the cloud region picker on-prem", %{conn: conn} do
+      {:ok, lv, _html} = live(conn, ~p"/sign_up")
+
+      refute has_element?(lv, "#region-picker")
     end
 
     test "renders the sign-up on a branded card for small screens", %{conn: conn} do
@@ -143,6 +245,18 @@ defmodule PortalWeb.SignUpTest do
 
       assert html =~ "Something went wrong"
       assert html =~ "Google sign-up session is invalid or has expired"
+    end
+
+    test "shows the chosen region without a link to the other portal", %{conn: conn} do
+      Portal.Config.put_env_override(:data_residency_region, :us)
+      Portal.Config.put_env_override(:web_external_url, "https://app.firezone.dev")
+      conn = with_google_identity(conn, email: "ada@example.com", name: "Ada Lovelace")
+
+      {:ok, lv, _html} = live(conn, ~p"/sign_up/google")
+
+      assert has_element?(lv, "#selected-region", "United States")
+      refute has_element?(lv, "#region-picker")
+      refute has_element?(lv, "a[href^='https://eu.app.firezone.dev']")
     end
 
     test "valid token shows the form with the verified email and prefilled name", %{conn: conn} do

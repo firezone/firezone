@@ -170,7 +170,7 @@ pub struct EncryptJobs<'a> {
     pending_v6: Option<PendingDatagrams>,
 }
 
-impl<'a> EncryptJobs<'a> {
+impl EncryptJobs<'_> {
     /// Adds the `packets` of `encapsulation` to the train to its destination, continuing on a new
     /// train where one is full.
     pub fn add(&mut self, mut encapsulation: PendingEncapsulate, mut packets: Vec<IpPacket>) {
