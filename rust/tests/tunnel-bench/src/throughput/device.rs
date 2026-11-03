@@ -48,16 +48,16 @@ impl Device {
     }
 
     /// Starts the platform's TUN workers on this device.
-    pub fn io(&self, runtime: &tokio::runtime::Handle) -> Box<dyn tun::Tun> {
+    pub fn io(&self) -> Box<dyn tun::Tun> {
         cfg_select! {
             target_os = "linux" => {
-                Box::new(tun_linux::Io::with_device("bench", self.clone(), true, runtime).unwrap())
+                Box::new(tun_linux::Io::with_device("bench", self.clone(), true).unwrap())
             }
             any(target_os = "macos", target_os = "ios") => {
-                Box::new(tun_apple::Io::with_device("bench", self.clone(), None, runtime).unwrap())
+                Box::new(tun_apple::Io::with_device("bench", self.clone(), None).unwrap())
             }
             windows => {
-                Box::new(tun_windows::Io::with_device("bench", self.clone(), || true, runtime).unwrap())
+                Box::new(tun_windows::Io::with_device("bench", self.clone(), || true).unwrap())
             }
         }
     }

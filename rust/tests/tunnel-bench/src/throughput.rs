@@ -257,7 +257,7 @@ impl EventLoop {
             .unwrap();
         let handle = runtime.handle().clone();
         let _guard = handle.enter();
-        let tun = device.io(&handle);
+        let tun = device.io();
         let thread = match host {
             AnyHost::Client(client) => {
                 let mut tunnel = ClientTunnel::new(tcp, udp, BTreeSet::new(), false, now);

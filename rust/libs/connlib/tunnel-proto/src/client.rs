@@ -37,6 +37,7 @@ use crate::messages::IngestToken;
 use crate::messages::{
     Filter, IceCredentials, IceRole, Interface as InterfaceConfig, SecretKey, client::FailReason,
 };
+use crate::p2p_control::dns_resource_nat::ProxyIps;
 use crate::peer_store::{Peer, PeerStore};
 use crate::portal_connection::PortalConnection;
 use crate::unique_packet_buffer::UniquePacketBuffer;
@@ -519,7 +520,7 @@ impl ClientState {
                 domain.clone(),
                 *gid,
                 *rid,
-                &proxy_ips,
+                proxy_ips,
                 packets_for_domain,
                 now,
             ) {
@@ -531,7 +532,7 @@ impl ClientState {
             }
 
             if let Some(peer) = self.gateways.peer_by_id_mut(gid) {
-                for ip in proxy_ips {
+                for ip in proxy_ips.iter() {
                     peer.allow_ip_for_resource(ip, *rid);
                 }
             }
@@ -2340,7 +2341,7 @@ impl ClientState {
                 continue;
             };
 
-            for ip in route.proxy_ips {
+            for ip in route.proxy_ips.iter() {
                 self.routing_tables.upsert_dns(
                     ip.into(),
                     route.resource_id,
@@ -3040,12 +3041,15 @@ impl IpProvider {
         proxy_ip
     }
 
-    pub fn get_n_ipv4(&mut self, n: usize) -> Vec<IpAddr> {
-        self.ipv4.by_ref().take(n).map_into().collect_vec()
-    }
+    pub fn get_proxy_ips(&mut self) -> Option<ProxyIps> {
+        let (Some(ipv4), Some(ipv6)) = (self.ipv4.next_array(), self.ipv6.next_array()) else {
+            tracing::error!("IP exhaustion: Please reset your client");
+            return None;
+        };
 
-    pub fn get_n_ipv6(&mut self, n: usize) -> Vec<IpAddr> {
-        self.ipv6.by_ref().take(n).map_into().collect_vec()
+        ProxyIps::new(ipv4, ipv6)
+            .inspect_err(|e| tracing::error!("{e:#}"))
+            .ok()
     }
 }
 
