@@ -876,15 +876,36 @@ defmodule PortalWeb.SignUpTest do
     test "the email page renders the widget and a token field inside the form", %{conn: conn} do
       {:ok, lv, html} = live(conn, ~p"/sign_up/email")
 
-      assert html =~ ~s(id="turnstile-widget")
+      assert html =~ ~s(id="email-turnstile-widget")
       assert html =~ ~s(data-sitekey="test-site-key")
       assert has_element?(lv, "#sign-up-form input[name=cf-turnstile-response][data-turnstile-token]")
+    end
+
+    test "the widget hides a script-blocked message until the hook shows it", %{conn: conn} do
+      {:ok, lv, _html} = live(conn, ~p"/sign_up/email")
+      assert has_element?(lv, "#email-turnstile-widget [data-turnstile-error][hidden]", "allow challenges.cloudflare.com")
+
+      {:ok, lv, _html} = live(conn, ~p"/sign_up")
+      assert has_element?(lv, "#choose-turnstile-widget [data-turnstile-error][hidden]")
+    end
+
+    test "each step has its own widget so patching between them remounts it", %{conn: conn} do
+      {:ok, lv, html} = live(conn, ~p"/sign_up")
+      assert html =~ ~s(id="choose-turnstile-widget")
+      refute html =~ "email-turnstile-widget"
+
+      html = lv |> element(~s(a[href="/sign_up/email"])) |> render_click()
+
+      assert_patch(lv, ~p"/sign_up/email")
+      assert html =~ ~s(id="email-turnstile-widget")
+      refute html =~ "choose-turnstile-widget"
     end
 
     test "the method chooser renders one widget and a token field in each provider form", %{conn: conn} do
       {:ok, lv, html} = live(conn, ~p"/sign_up")
 
-      assert length(Regex.scan(~r/id="turnstile-widget"/, html)) == 1
+      assert length(Regex.scan(~r/phx-hook="Turnstile"/, html)) == 1
+      assert html =~ ~s(id="choose-turnstile-widget")
       assert has_element?(lv, "#google-sign-up input[name=cf-turnstile-response][data-turnstile-token]")
       assert has_element?(lv, "#github-sign-up input[name=cf-turnstile-response][data-turnstile-token]")
     end
@@ -937,6 +958,7 @@ defmodule PortalWeb.SignUpTest do
 
       assert html =~ "Please complete the verification and try again."
       assert html =~ "newuser@example.com"
+      assert has_element?(lv, "#sign-up-form #turnstile-form-error", "Please complete the verification and try again.")
       refute html =~ "Check your email"
       refute_receive {:cloudflare_request, _}
       refute_email_sent()
@@ -972,7 +994,31 @@ defmodule PortalWeb.SignUpTest do
       html = submit_email_form(lv, %{"cf-turnstile-response" => "good-token"})
 
       assert html =~ "We couldn&#39;t verify your request right now."
+      assert has_element?(lv, "#sign-up-form #turnstile-form-error", "We couldn't verify your request right now.")
       assert_push_event(lv, "turnstile:reset", %{})
+      refute_email_sent()
+    end
+
+    test "email: the form-level error goes away once the form changes", %{conn: conn} do
+      stub_turnstile(:refuse)
+      {:ok, lv, _html} = live(conn, ~p"/sign_up/email")
+      submit_email_form(lv, %{"cf-turnstile-response" => "bad-token"})
+      assert has_element?(lv, "#turnstile-form-error")
+
+      lv |> form("form", email_registration()) |> render_change()
+
+      refute has_element?(lv, "#turnstile-form-error")
+    end
+
+    test "email: an invalid form is sent back without calling Cloudflare", %{conn: conn} do
+      stub_turnstile(:approve)
+      {:ok, lv, _html} = live(conn, ~p"/sign_up/email")
+
+      html = submit_email_form(lv, %{"cf-turnstile-response" => "good-token"}, "not-an-email")
+
+      refute html =~ "Check your email"
+      refute has_element?(lv, "#turnstile-form-error")
+      refute_receive {:cloudflare_request, _}
       refute_email_sent()
     end
 

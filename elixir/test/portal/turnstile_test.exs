@@ -27,6 +27,22 @@ defmodule Portal.TurnstileTest do
       assert Turnstile.site_key() == "site-key"
     end
 
+    test "trims whitespace around both keys" do
+      Portal.Config.merge_env_override(:portal, Turnstile, site_key: " site-key\n", secret_key: "\tsecret-key ")
+      test_pid = self()
+
+      Req.Test.expect(__MODULE__, fn conn ->
+        {:ok, body, conn} = Plug.Conn.read_body(conn)
+        send(test_pid, {:form, URI.decode_query(body)})
+        Req.Test.json(conn, %{"success" => true})
+      end)
+
+      assert Turnstile.enabled?()
+      assert Turnstile.site_key() == "site-key"
+      assert :ok = Turnstile.verify("token-1", nil)
+      assert_receive {:form, %{"secret" => "secret-key"}}
+    end
+
     test "is disabled when only one key is set" do
       Portal.Config.put_env_override(:portal, Turnstile, secret_key: " ")
       refute Turnstile.enabled?()

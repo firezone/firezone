@@ -13,14 +13,18 @@ defmodule Portal.Turnstile do
 
   @max_token_length 2048
 
-  def enabled? do
-    Enum.all?([:site_key, :secret_key], fn key ->
-      value = config()[key]
-      is_binary(value) and String.trim(value) != ""
-    end)
-  end
+  def enabled?, do: not is_nil(site_key()) and not is_nil(secret_key())
 
-  def site_key, do: config()[:site_key]
+  def site_key, do: key(:site_key)
+
+  defp secret_key, do: key(:secret_key)
+
+  defp key(name) do
+    case config()[name] do
+      value when is_binary(value) -> if String.trim(value) == "", do: nil, else: String.trim(value)
+      _other -> nil
+    end
+  end
 
   @spec verify(term(), :inet.ip_address() | nil) ::
           :ok | {:error, :missing_token | :invalid_token | :unavailable}
@@ -37,7 +41,7 @@ defmodule Portal.Turnstile do
     config = config()
 
     form =
-      [secret: Keyword.fetch!(config, :secret_key), response: token]
+      [secret: secret_key(), response: token]
       |> put_remote_ip(remote_ip)
 
     case Req.post(Keyword.fetch!(config, :endpoint), [form: form] ++ config[:req_opts]) do

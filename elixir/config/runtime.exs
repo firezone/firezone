@@ -757,7 +757,7 @@ if config_env() == :prod do
     site_key: env_var_to_config(:turnstile_site_key),
     secret_key: env_var_to_config(:turnstile_secret_key),
     endpoint: "https://challenges.cloudflare.com/turnstile/v0/siteverify",
-    req_opts: [receive_timeout: 5_000, retry: false]
+    req_opts: [receive_timeout: 5_000, connect_options: [timeout: 3_000], retry: false]
 
   config :portal, Portal.Mailer.PostureProviderInterestEmail,
     recipient: env_var_to_config!(:posture_provider_interest_email_recipient)

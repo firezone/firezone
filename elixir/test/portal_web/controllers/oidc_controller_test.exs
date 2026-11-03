@@ -3934,7 +3934,6 @@ defmodule PortalWeb.OIDCControllerTest do
 
   defp pending_identity_cookie_key(pending_identity_id), do: "pending_identity_#{pending_identity_id}"
 
-  # Sets the secret_key_base from the endpoint so signed cookies can be read/written.
   defp turnstile_enabled(result) do
     Portal.Config.put_env_override(:portal, Portal.Turnstile,
       site_key: "test-site-key",
@@ -3956,6 +3955,7 @@ defmodule PortalWeb.OIDCControllerTest do
     end)
   end
 
+  # Sets the secret_key_base from the endpoint so signed cookies can be read/written.
   describe "sign_up/2" do
     test "redirects to Google with an account picker and binds the state to a cookie", %{
       conn: conn
