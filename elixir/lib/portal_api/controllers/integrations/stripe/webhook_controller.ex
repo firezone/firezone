@@ -22,10 +22,14 @@ defmodule PortalAPI.Integrations.Stripe.WebhookController do
         end
 
       [] ->
-        reject(conn, :missing_signature_header, "Bad Request: missing signature header")
+        conn
+        |> log_rejection(:missing_signature_header)
+        |> send_resp(400, "Bad Request: missing signature header")
 
       [_ | _] ->
-        reject(conn, :multiple_signature_headers, "Bad Request: invalid signature header")
+        conn
+        |> log_rejection(:multiple_signature_headers)
+        |> send_resp(400, "Bad Request: invalid signature header")
     end
   end
 
@@ -39,16 +43,24 @@ defmodule PortalAPI.Integrations.Stripe.WebhookController do
       send_resp(conn, 200, "")
     else
       {:error, :missing_timestamp} ->
-        reject(conn, :missing_timestamp, "Bad Request: missing timestamp")
+        conn
+        |> log_rejection(:missing_timestamp)
+        |> send_resp(400, "Bad Request: missing timestamp")
 
       {:error, :missing_signatures} ->
-        reject(conn, :missing_signatures, "Bad Request: missing signatures")
+        conn
+        |> log_rejection(:missing_signatures)
+        |> send_resp(400, "Bad Request: missing signatures")
 
       {:error, :stale_event} ->
-        reject(conn, :stale_event, "Bad Request: expired signature")
+        conn
+        |> log_rejection(:stale_event)
+        |> send_resp(400, "Bad Request: expired signature")
 
       {:error, :invalid_signature} ->
-        reject(conn, :invalid_signature, "Bad Request: invalid signature")
+        conn
+        |> log_rejection(:invalid_signature)
+        |> send_resp(400, "Bad Request: invalid signature")
 
       reason ->
         :ok = Logger.error("Stripe webhook failed", reason: inspect(reason))
@@ -56,9 +68,9 @@ defmodule PortalAPI.Integrations.Stripe.WebhookController do
     end
   end
 
-  defp reject(conn, reason, message) do
+  defp log_rejection(conn, reason) do
     Logger.warning("Stripe webhook failed authentication", reason: reason)
-    send_resp(conn, 400, message)
+    conn
   end
 
   defp fetch_timestamp_and_signatures(signature_header) do
