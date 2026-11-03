@@ -1018,6 +1018,7 @@ impl IpPacket {
     /// Essentially, the only time we need to update the ECN flags is:
     /// - if the IP packet signalled an ECN-capable transport (i.e. the originating network stack is ECN-capable)
     /// - and we have experienced congestion along the way (i.e. the provided ECN value is [`Ecn::Ce`]).
+    #[inline]
     pub fn with_ecn_from_transport(self, ecn: Ecn) -> Self {
         use Ecn::*;
 
@@ -1080,6 +1081,7 @@ impl IpPacket {
         self
     }
 
+    #[inline]
     pub fn ecn(&self) -> Ecn {
         // Read the bits straight from the header: this is called for every packet and
         // parsing the header to reach them would, for IPv6, also walk the extension
