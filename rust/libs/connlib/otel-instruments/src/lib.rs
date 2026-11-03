@@ -144,7 +144,7 @@ pub fn queue_depth() -> Histogram<u64> {
         .u64_histogram("connlib.queue.depth")
         .with_description("How many items were already queued when an item was enqueued.")
         .with_unit("{item}")
-        .with_boundaries(vec![0.0, 1.0, 2.0, 4.0, 8.0, 16.0, 32.0, 64.0, 100.0])
+        .with_boundaries((0..=100_u32).step_by(10).map(f64::from).collect())
         .build()
 }
 
