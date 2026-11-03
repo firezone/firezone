@@ -6,6 +6,9 @@
 
 pub use opentelemetry::metrics::{Counter, Gauge, Histogram, Meter, UpDownCounter};
 
+use opentelemetry::KeyValue;
+use std::sync::atomic::{AtomicU32, Ordering};
+
 /// How many packets we have processed.
 pub fn network_packets() -> Counter<u64> {
     connlib_meter()
@@ -136,22 +139,60 @@ pub fn dns_lookup_duration() -> Histogram<f64> {
         .build()
 }
 
-/// How many items a queue already held when another one was enqueued.
+/// Records how many items a queue already held when another one was enqueued.
 ///
-/// Recorded by the producer, once per item.
-pub fn queue_depth() -> Histogram<u64> {
-    connlib_meter()
-        .u64_histogram("connlib.queue.depth")
-        .with_description("How many items were already queued when an item was enqueued.")
-        .with_unit("{item}")
-        .with_boundaries(
-            (0..10_u32)
-                .step_by(2)
-                .chain((10..=100).step_by(10))
-                .map(f64::from)
-                .collect(),
-        )
-        .build()
+/// Recorded by the producer, for one in every [`QueueDepth::SAMPLE_EVERY`] items.
+pub struct QueueDepth<const N: usize> {
+    histogram: Histogram<u64>,
+    attributes: [KeyValue; N],
+    enqueued: AtomicU32,
+}
+
+impl<const N: usize> QueueDepth<N> {
+    const SAMPLE_EVERY: u32 = 32;
+
+    pub fn new(attributes: [KeyValue; N]) -> Self {
+        let histogram = connlib_meter()
+            .u64_histogram("connlib.queue.depth")
+            .with_description("How many items were already queued when an item was enqueued.")
+            .with_unit("{item}")
+            .with_boundaries(
+                (0..10_u32)
+                    .step_by(2)
+                    .chain((10..=100).step_by(10))
+                    .map(f64::from)
+                    .collect(),
+            )
+            .build();
+
+        Self {
+            histogram,
+            attributes,
+            enqueued: AtomicU32::new(0),
+        }
+    }
+
+    pub fn record(&self, depth: usize) {
+        if !self
+            .enqueued
+            .fetch_add(1, Ordering::Relaxed)
+            .is_multiple_of(Self::SAMPLE_EVERY)
+        {
+            return;
+        }
+
+        self.histogram.record(depth as u64, &self.attributes);
+    }
+}
+
+impl<const N: usize> Clone for QueueDepth<N> {
+    fn clone(&self) -> Self {
+        Self {
+            histogram: self.histogram.clone(),
+            attributes: self.attributes.clone(),
+            enqueued: AtomicU32::new(0),
+        }
+    }
 }
 
 /// The number of buffers allocated in a buffer pool.

@@ -5,7 +5,6 @@ pub use workers::Workers;
 
 use ip_packet::IpPacket;
 use otel_attributes::KeyValue;
-use otel_instruments::Histogram;
 use std::task::{Context, Poll};
 use tokio::sync::mpsc;
 use tokio_util::sync::PollSender;
@@ -182,7 +181,7 @@ impl OutboundTx {
     fn new(tx: mpsc::Sender<PacketBatch>) -> Self {
         Self {
             tx: PollSender::new(tx),
-            queue_depth: QueueDepth::new(otel_attributes::network_io_direction_transmit()),
+            queue_depth: queue_depth(otel_attributes::network_io_direction_transmit()),
         }
     }
 
@@ -259,7 +258,7 @@ impl InboundTx {
     fn new(tx: mpsc::Sender<PacketBatch>) -> Self {
         Self {
             tx,
-            queue_depth: QueueDepth::new(otel_attributes::network_io_direction_receive()),
+            queue_depth: queue_depth(otel_attributes::network_io_direction_receive()),
         }
     }
 
@@ -323,23 +322,10 @@ impl InboundRx {
 }
 
 /// Records how many batches a channel held when another one was enqueued.
-#[derive(Clone)]
-struct QueueDepth {
-    histogram: Histogram<u64>,
-    attributes: [KeyValue; 2],
-}
+type QueueDepth = otel_instruments::QueueDepth<2>;
 
-impl QueueDepth {
-    fn new(direction: KeyValue) -> Self {
-        Self {
-            histogram: otel_instruments::queue_depth(),
-            attributes: [otel_attributes::queue_item_ip_packet_batch(), direction],
-        }
-    }
-
-    fn record(&self, depth: usize) {
-        self.histogram.record(depth as u64, &self.attributes);
-    }
+fn queue_depth(direction: KeyValue) -> QueueDepth {
+    QueueDepth::new([otel_attributes::queue_item_ip_packet_batch(), direction])
 }
 
 /// Returns the number of batches in the channel, including reserved slots.

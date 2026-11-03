@@ -3,8 +3,7 @@ use crate::packet_counts::UdpPacketCounts;
 use anyhow::{Context as _, ErrorExt as _, Result};
 use futures::{FutureExt as _, future::BoxFuture, ready};
 use ip_packet::IpVersion;
-use opentelemetry::KeyValue;
-use opentelemetry::metrics::{Counter, Histogram};
+use opentelemetry::metrics::Counter;
 use snownet::Transmit;
 use socket_factory::{
     DatagramBatch, DatagramIn, DatagramOut, PerfUdpSocket, SocketFactory, UdpSocket,
@@ -439,8 +438,7 @@ struct MainThreadEnds {
     inbound_rx: mpsc::Receiver<DatagramBatch>,
     /// Send/receive errors, plus a final [`UdpSocketThreadStopped`] when a thread dies.
     error_rx: mpsc::Receiver<anyhow::Error>,
-    queue_depth: Histogram<u64>,
-    queue_depth_attributes: [KeyValue; 3],
+    queue_depth: otel_instruments::QueueDepth<3>,
 }
 
 impl MainThreadEnds {
@@ -448,8 +446,7 @@ impl MainThreadEnds {
     fn record_queue_depth(&self) {
         let depth = self.outbound_tx.max_capacity() - self.outbound_tx.capacity() - 1;
 
-        self.queue_depth
-            .record(depth as u64, &self.queue_depth_attributes);
+        self.queue_depth.record(depth);
     }
 }
 
@@ -470,12 +467,11 @@ fn channels(addr: SocketAddr) -> (MainThreadEnds, SocketThreadEnds) {
         waiting_for_room: None,
         inbound_rx,
         error_rx,
-        queue_depth: otel_instruments::queue_depth(),
-        queue_depth_attributes: [
+        queue_depth: otel_instruments::QueueDepth::new([
             otel::attr::queue_item_gso_batch(),
             otel::attr::network_type_for_addr(addr),
             otel::attr::network_io_direction_transmit(),
-        ],
+        ]),
     };
     let socket_thread_ends = SocketThreadEnds {
         outbound_rx,
@@ -620,12 +616,11 @@ impl ThreadedUdpSocket {
                 });
                 let receive = runtime.spawn({
                     let error_tx = error_tx.clone();
-                    let queue_depth = otel_instruments::queue_depth();
-                    let queue_depth_attributes = [
+                    let queue_depth = otel_instruments::QueueDepth::new([
                         otel::attr::queue_item_gro_batch(),
                         otel::attr::network_type_for_addr(preferred_addr),
                         otel::attr::network_io_direction_receive(),
-                    ];
+                    ]);
 
                     async move {
                         loop {
@@ -664,7 +659,7 @@ impl ThreadedUdpSocket {
                                 return;
                             }
 
-                            queue_depth.record(depth as u64, &queue_depth_attributes);
+                            queue_depth.record(depth);
                         }
                     }
                 });
