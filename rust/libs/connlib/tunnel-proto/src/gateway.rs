@@ -7,6 +7,7 @@ use crate::authorization_rejections::AuthorizationRejections;
 use crate::gateway::client_on_gateway::{ProxyIpAlreadyAssigned, TranslateOutboundResult};
 use crate::messages::gateway::{Client, ResourceDescription};
 use crate::messages::{IceCredentials, IngestToken, Key};
+use crate::p2p_control::dns_resource_nat::ProxyIps;
 use crate::peer_store::PeerStore;
 use crate::portal_connection::PortalConnection;
 use crate::unix_ts::UnixTsClock;
@@ -462,7 +463,7 @@ impl GatewayState {
                     req.domain.clone(),
                     req.resource,
                     BTreeSet::from_iter(addresses),
-                    BTreeSet::from_iter(req.proxy_ips),
+                    req.proxy_ips,
                 )?;
 
             Ok(())
@@ -703,16 +704,14 @@ fn handle_assigned_ips_event(
     if !peer.is_allowed(req.resource) {
         tracing::warn!(cid = %peer.id(), rid = %req.resource, domain = %req.domain, "Received `AssignedIpsEvent` for resource that is not allowed");
 
-        let packet = dns_resource_nat::domain_status(
-            req.resource,
-            req.domain,
-            dns_resource_nat::NatStatus::Inactive,
-        )
-        .inspect_err(|e| tracing::warn!("Failed to create `DomainStatus` packet: {e:#}"))
-        .ok()?;
-
-        return Some(packet);
+        return inactive_domain_status(req.resource, req.domain);
     }
+
+    let Some(proxy_ips) = req.proxy_ips else {
+        tracing::debug!(cid = %peer.id(), rid = %req.resource, domain = %req.domain, "Received `AssignedIpsEvent` with invalid proxy IPs");
+
+        return inactive_domain_status(req.resource, req.domain);
+    };
 
     // TODO: Should we throttle concurrent events for the same domain?
 
@@ -720,10 +719,20 @@ fn handle_assigned_ips_event(
         domain: req.domain,
         client_public_key: peer.public_key().into(),
         resource: req.resource,
-        proxy_ips: req.proxy_ips,
+        proxy_ips,
     }));
 
     None
+}
+
+fn inactive_domain_status(resource: ResourceId, domain: DomainName) -> Option<IpPacket> {
+    p2p_control::dns_resource_nat::domain_status(
+        resource,
+        domain,
+        p2p_control::dns_resource_nat::NatStatus::Inactive,
+    )
+    .inspect_err(|e| tracing::warn!("Failed to create `DomainStatus` packet: {e:#}"))
+    .ok()
 }
 
 fn encrypt_packet(
@@ -765,7 +774,7 @@ pub struct ResolveDnsRequest {
     domain: DomainName,
     client_public_key: PublicKey,
     resource: ResourceId,
-    proxy_ips: Vec<IpAddr>,
+    proxy_ips: ProxyIps,
 }
 
 impl ResolveDnsRequest {
@@ -777,7 +786,7 @@ impl ResolveDnsRequest {
         self.client_public_key
     }
 
-    pub fn proxy_ips(&self) -> &[IpAddr] {
+    pub fn proxy_ips(&self) -> &ProxyIps {
         &self.proxy_ips
     }
 }
