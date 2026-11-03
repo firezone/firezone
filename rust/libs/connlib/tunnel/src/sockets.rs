@@ -294,6 +294,15 @@ impl Sockets {
         })
     }
 
+    /// Whether received datagrams are waiting, without registering a waker.
+    pub fn has_received(&self) -> bool {
+        [self.socket_v4.as_ref(), self.socket_v6.as_ref()]
+            .into_iter()
+            .flatten()
+            .filter_map(|socket| socket.main_thread_ends.as_ref())
+            .any(|ends| !ends.inbound_rx.is_empty())
+    }
+
     pub fn poll_error(&mut self, cx: &mut Context<'_>) -> Poll<anyhow::Error> {
         if let Some(error) = self.bind_errors.pop_front() {
             return Poll::Ready(error);

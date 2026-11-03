@@ -22,9 +22,17 @@ use std::{
     io,
     net::SocketAddr,
     sync::Arc,
-    task::{Context, Poll},
+    task::{Context, Poll, Waker},
+    time::{Duration, Instant},
 };
 use tun::Tun;
+
+/// How long [`Io::poll`] waits for more packets without registering wakers, after a poll that
+/// yielded some.
+///
+/// Packets the TUN and UDP threads send within it reach the event loop without them paying for
+/// waking it up.
+const SPIN_BUDGET: Duration = Duration::from_micros(20);
 
 /// Bundles together all side-effects that connlib needs to have access to.
 pub struct Io {
@@ -41,6 +49,10 @@ pub struct Io {
     udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
 
     tun: Device,
+
+    spin_budget: Duration,
+    /// Whether the last poll yielded packets, making more likely to follow shortly.
+    spin_before_park: bool,
 }
 
 /// Represents all IO sources that may be ready during a single event-loop tick.
@@ -89,6 +101,7 @@ where
 struct PollState<'a, 'cx> {
     io: &'a mut Io,
     cx: &'a mut Context<'cx>,
+    noop: Context<'cx>,
     udp_has_room: bool,
     tun_has_room: bool,
     input: Input,
@@ -99,6 +112,7 @@ impl<'a, 'cx> PollState<'a, 'cx> {
         Self {
             io,
             cx,
+            noop: Context::from_waker(Waker::noop()),
             udp_has_room: false,
             tun_has_room: false,
             input: Input {
@@ -124,20 +138,60 @@ impl<'a, 'cx> PollState<'a, 'cx> {
         self.tun_has_room = poll_result_to_option(poll, &mut self.input.error).is_some();
     }
 
-    fn poll_decrypted(&mut self) {
+    /// Polls the inputs that carry packets, registering wakers only if `register` is set.
+    ///
+    /// Call it only while none of them yielded anything.
+    fn poll_packets(&mut self, register: bool) {
+        self.poll_decrypted(register);
+        self.poll_network(register);
+        self.poll_device(register);
+    }
+
+    /// Polls the inputs that carry packets without registering wakers, until one yields
+    /// something or the spin budget runs out.
+    fn spin(&mut self) {
+        let started = Instant::now();
+
+        while !self.has_packets() && started.elapsed() < self.io.spin_budget {
+            std::hint::spin_loop();
+
+            // Polling an empty channel spends tokio's coop budget, so check it first.
+            self.poll_decrypted(false);
+            if self.io.sockets.has_received() {
+                self.poll_network(false);
+            }
+            if self.io.tun.has_received() {
+                self.poll_device(false);
+            }
+        }
+    }
+
+    fn poll_decrypted(&mut self, register: bool) {
         if !self.tun_has_room {
             return;
         }
 
-        self.input.decrypted = poll_to_option(self.io.decrypting.poll_next(self.cx));
+        let cx = if register {
+            &mut *self.cx
+        } else {
+            &mut self.noop
+        };
+
+        self.input.decrypted = poll_to_option(self.io.decrypting.poll_next(cx));
     }
 
-    fn poll_network(&mut self) {
+    fn poll_network(&mut self, register: bool) {
         if !self.io.decrypting.has_room() {
             return;
         }
 
-        self.input.network = poll_to_option(self.io.sockets.poll_recv_from(self.cx));
+        let cx = if register {
+            &mut *self.cx
+        } else {
+            &mut self.noop
+        };
+
+        self.input.network = poll_to_option(self.io.sockets.poll_recv_from(cx));
     }
 
     fn poll_socket_errors(&mut self) {
@@ -146,12 +200,17 @@ impl<'a, 'cx> PollState<'a, 'cx> {
         }
     }
 
-    fn poll_device(&mut self) {
+    fn poll_device(&mut self, register: bool) {
         if !self.udp_has_room {
             return;
         }
 
-        let poll = self.io.tun.poll_read(self.cx);
+        let cx = if register {
+            &mut *self.cx
+        } else {
+            &mut self.noop
+        };
+        let poll = self.io.tun.poll_read(cx);
 
         self.input.device = poll_result_to_option(poll, &mut self.input.error);
     }
@@ -188,20 +247,25 @@ impl<'a, 'cx> PollState<'a, 'cx> {
             .poll_responses(self.cx, &mut self.input.dns_responses);
     }
 
-    fn into_input(self) -> Poll<Input> {
-        let input = self.input;
+    fn has_packets(&self) -> bool {
+        self.input.device.is_some()
+            || self.input.network.is_some()
+            || self.input.decrypted.is_some()
+    }
 
-        if input.device.is_none()
-            && input.network.is_none()
-            && input.decrypted.is_none()
-            && input.dns_queries.is_empty()
-            && input.dns_responses.is_empty()
-            && input.error.is_empty()
-        {
+    fn is_empty(&self) -> bool {
+        !self.has_packets()
+            && self.input.dns_queries.is_empty()
+            && self.input.dns_responses.is_empty()
+            && self.input.error.is_empty()
+    }
+
+    fn into_input(self) -> Poll<Input> {
+        if self.is_empty() {
             return Poll::Pending;
         }
 
-        Poll::Ready(input)
+        Poll::Ready(self.input)
     }
 }
 
@@ -223,7 +287,16 @@ impl Io {
             tcp_socket_factory,
             udp_socket_factory,
             tun: Device::new(),
+            spin_budget: SPIN_BUDGET,
+            spin_before_park: false,
         }
+    }
+
+    /// Never waits for more packets before suspending, as nothing but the caller produces them.
+    pub(crate) fn without_spinning(mut self) -> Self {
+        self.spin_budget = Duration::ZERO;
+
+        self
     }
 
     pub fn rebind_dns(&mut self, sockets: Vec<SocketAddr>) -> Result<(), TunnelError> {
@@ -274,17 +347,30 @@ impl Io {
     ///
     /// The TUN device is only read while nothing waits for room in the UDP sockets, and decrypted
     /// packets are only accepted while the TUN device has room.
+    ///
+    /// Wakers for the inputs that carry packets are only registered once none of them is ready:
+    /// a registered waker stays until woken, so the producer would pay for waking the event loop
+    /// even if a later poll had picked up its packets anyway.
     pub fn poll(&mut self, cx: &mut Context<'_>) -> Poll<Input> {
+        let spin = std::mem::take(&mut self.spin_before_park);
         let mut state = PollState::new(self, cx);
 
         state.flush_udp();
         state.flush_tun();
-        state.poll_decrypted();
-        state.poll_network();
         state.poll_socket_errors();
-        state.poll_device();
         state.poll_dns_queries();
         state.poll_dns_responses();
+        state.poll_packets(false);
+
+        if spin && state.is_empty() {
+            state.spin();
+        }
+
+        if !state.has_packets() {
+            state.poll_packets(true);
+        }
+
+        state.io.spin_before_park = state.has_packets();
 
         state.into_input()
     }

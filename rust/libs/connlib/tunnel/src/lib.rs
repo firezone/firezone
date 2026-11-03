@@ -141,7 +141,8 @@ impl<TRoleState> Tunnel<TRoleState> {
                 resolver,
                 tcp,
                 udp,
-            ),
+            )
+            .without_spinning(),
             packet_counter: otel_instruments::network_packets(),
             dropped_tun_packets: DroppedTunPackets::new(),
             needs_timeout: false,

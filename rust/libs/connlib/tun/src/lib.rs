@@ -312,6 +312,11 @@ impl InboundRx {
         self.0.poll_recv(cx)
     }
 
+    /// Whether the channel holds no batches, without registering a waker.
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
     pub async fn recv(&mut self) -> Option<PacketBatch> {
         self.0.recv().await
     }

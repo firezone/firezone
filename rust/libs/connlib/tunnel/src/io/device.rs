@@ -52,6 +52,13 @@ impl Device {
         Poll::Ready(Ok(batch))
     }
 
+    /// Whether packets read from the TUN device are waiting, without registering a waker.
+    pub(crate) fn has_received(&mut self) -> bool {
+        self.tun
+            .as_mut()
+            .is_some_and(|tun| !tun.receiver().is_empty())
+    }
+
     /// Sends all pending batches into the channel.
     ///
     /// Resolves once all pending batches are in the channel and it has room for another one.
