@@ -70,7 +70,9 @@ pub struct Server<R> {
 
     ports: RangeInclusive<u16>,
 
-    /// Whether clients may bind channels to peers that are not on the public internet.
+    /// Whether clients may bind channels to peers in private networks, see [`Server::allow_private_peers`].
+    allow_private_peers: bool,
+    /// Whether clients may bind channels to peers that are not on the public internet, see [`Server::allow_non_public_peers`].
     allow_non_public_peers: bool,
 
     /// Channel numbers are unique by client, thus indexed by both.
@@ -205,6 +207,7 @@ where
             clients_by_allocation: Default::default(),
             listen_port,
             ports,
+            allow_private_peers: false,
             allow_non_public_peers: false,
             channels_by_client_and_number: Default::default(),
             channel_numbers_by_client_and_peer: Default::default(),
@@ -232,6 +235,14 @@ where
     /// A production relay must never allow this, see [`peer_policy::is_public`].
     pub fn allow_non_public_peers(&mut self) {
         self.allow_non_public_peers = true;
+    }
+
+    /// Allows clients to bind channels to peers in private IPv4 networks (RFC 1918).
+    ///
+    /// For test networks where the Clients and Gateways have private addresses.
+    /// All other non-public addresses stay forbidden.
+    pub fn allow_private_peers(&mut self) {
+        self.allow_private_peers = true;
     }
 
     /// Enables account-bound TURN authentication with a complete snapshot.
@@ -789,7 +800,7 @@ where
         if !self.may_relay_to(peer_address) {
             let (error_response, msg) = make_error_response(Forbidden, request);
 
-            tracing::info!(target: "relay", %sender, allocation = %allocation.port, peer = %peer_address, channel = %requested_channel.value(), "{msg}: Peer address is not allowed");
+            tracing::debug!(target: "relay", %sender, allocation = %allocation.port, peer = %peer_address, channel = %requested_channel.value(), "{msg}: Peer address is not allowed");
 
             return Err(error_response);
         }
@@ -891,7 +902,7 @@ where
         {
             let (error_response, msg) = make_error_response(Forbidden, request);
 
-            tracing::info!(target: "relay", %sender, %peer, "{msg}: Peer address is not allowed");
+            tracing::debug!(target: "relay", %sender, %peer, "{msg}: Peer address is not allowed");
 
             return Err(error_response);
         }
@@ -924,7 +935,9 @@ where
             return self.ports.contains(&addr.port());
         }
 
-        self.allow_non_public_peers || peer_policy::is_public(ip)
+        self.allow_non_public_peers
+            || peer_policy::is_public(ip)
+            || (self.allow_private_peers && peer_policy::is_private(ip))
     }
 
     fn handle_channel_data_message(
@@ -1763,6 +1776,42 @@ mod tests {
         let response = relay.channel_bind(SocketAddr::from(([127, 0, 0, 1], 53)));
 
         assert_eq!(response.class(), MessageClass::SuccessResponse);
+    }
+
+    #[test]
+    fn channel_bind_to_private_peer_succeeds_if_allowed() {
+        for peer in [
+            SocketAddr::from(([10, 0, 0, 1], 53)),
+            SocketAddr::from(([172, 31, 0, 1], 53)),
+            SocketAddr::from(([192, 168, 1, 1], 53)),
+        ] {
+            let mut relay = TestRelay::with_allocation();
+            relay.server.allow_private_peers();
+
+            let response = relay.channel_bind(peer);
+
+            assert_eq!(response.class(), MessageClass::SuccessResponse, "{peer}");
+        }
+    }
+
+    #[test]
+    fn channel_bind_to_other_non_public_peer_is_forbidden_if_private_peers_are_allowed() {
+        for peer in [
+            SocketAddr::from(([127, 0, 0, 1], 53)),
+            SocketAddr::from(([169, 254, 169, 254], 53)),
+            SocketAddr::from(([100, 64, 0, 1], 53)),
+        ] {
+            let mut relay = TestRelay::with_allocation();
+            relay.server.allow_private_peers();
+
+            let response = relay.channel_bind(peer);
+
+            assert_eq!(
+                response.get_attribute::<ErrorCode>().map(|e| e.code()),
+                Some(Forbidden::CODEPOINT),
+                "{peer} is forbidden"
+            );
+        }
     }
 
     #[test]

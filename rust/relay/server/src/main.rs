@@ -127,6 +127,12 @@ struct Args {
     #[arg(long, env, hide = true, default_value = "2")]
     num_worker_threads: usize,
 
+    /// Allow clients to relay to peers in private IPv4 networks (RFC 1918).
+    ///
+    /// Only for test networks. All other non-public peers stay forbidden.
+    #[arg(long, env, hide = true, default_value_t = false)]
+    allow_private_peers: bool,
+
     /// Enable sentry.io crash-reporting agent.
     #[arg(long, env = "TELEMETRY", default_value_t = false)]
     telemetry: bool,
@@ -223,12 +229,18 @@ async fn try_main(args: Args) -> Result<()> {
         }
     };
 
-    let server = Server::new(
+    let mut server = Server::new(
         public_addr,
         make_rng(args.rng_seed),
         args.listen_port,
         args.lowest_port..=args.highest_port,
     );
+
+    if args.allow_private_peers {
+        tracing::info!("Relaying to peers in private networks is allowed");
+
+        server.allow_private_peers();
+    }
 
     let is_connected = Arc::new(AtomicBool::new(false));
 
