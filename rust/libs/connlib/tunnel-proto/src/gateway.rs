@@ -284,6 +284,13 @@ impl GatewayState {
 
                 Ok(None)
             }
+            TranslateOutboundResult::UnknownProxyIp(event) => {
+                if let Some(transmit) = encrypt_packet(event, cid, &mut self.node, now)? {
+                    self.buffered_transmits.push_back(transmit);
+                }
+
+                Ok(None)
+            }
         }
     }
 

@@ -811,6 +811,13 @@ impl ClientState {
                         }
                     }
                 }
+                (p2p_control::UNKNOWN_PROXY_IP_EVENT, ClientOrGatewayId::Gateway(gid)) => {
+                    let event =
+                        p2p_control::dns_resource_nat::decode_unknown_proxy_ip(fz_p2p_control)
+                            .context("Failed to decode `UnknownProxyIp`")?;
+
+                    self.handle_unknown_proxy_ip(gid, event, now);
+                }
                 (p2p_control::NO_AUTHORIZATION_EVENT, pid) => {
                     let event = p2p_control::no_authorization::decode(fz_p2p_control)
                         .context("Failed to decode `NoAuthorization`")?;
@@ -1378,6 +1385,27 @@ impl ClientState {
         self.handle_udp_dns_query(upstream, packet, now);
 
         ControlFlow::Break(())
+    }
+
+    /// Sets up the DNS resource NAT again for the domain of a proxy IP that the Gateway does not know.
+    fn handle_unknown_proxy_ip(
+        &mut self,
+        gid: GatewayId,
+        event: p2p_control::dns_resource_nat::UnknownProxyIp,
+        now: Instant,
+    ) {
+        for (rid, domain) in self
+            .routing_tables
+            .dns_resources(event.proxy_ip, Ok(event.protocol.into()))
+        {
+            if self.outbound_authorizations.gateway_by_resource(rid) != Some(&gid) {
+                continue;
+            }
+
+            self.dns_resource_nat.reset(gid, &domain, rid);
+        }
+
+        self.update_dns_resource_nat(now, iter::empty());
     }
 
     /// Requests fresh access for matching grants held by the peer reporting a missing authorization.

@@ -16,6 +16,7 @@ pub const ASSIGNED_IPS_EVENT: FzP2pEventType = FzP2pEventType::new(0);
 pub const DOMAIN_STATUS_EVENT: FzP2pEventType = FzP2pEventType::new(1);
 pub const GOODBYE_EVENT: FzP2pEventType = FzP2pEventType::new(2);
 pub const NO_AUTHORIZATION_EVENT: FzP2pEventType = FzP2pEventType::new(3);
+pub const UNKNOWN_PROXY_IP_EVENT: FzP2pEventType = FzP2pEventType::new(4);
 
 pub mod dns_resource_nat {
     use super::*;
@@ -72,6 +73,23 @@ pub mod dns_resource_nat {
         Ok(ip_packet)
     }
 
+    /// Construct a new [`UnknownProxyIp`] event.
+    pub fn unknown_proxy_ip(
+        proxy_ip: IpAddr,
+        protocol: super::no_authorization::Protocol,
+    ) -> Result<IpPacket> {
+        let payload = serde_json::to_vec(&UnknownProxyIp { proxy_ip, protocol })
+            .context("Failed to serialize `UnknownProxyIp` event")?;
+
+        let ip_packet = ip_packet::make::fz_p2p_control(
+            [UNKNOWN_PROXY_IP_EVENT.into_u8(), 0, 0, 0, 0, 0, 0, 0],
+            &payload,
+        )
+        .context("Failed to create p2p control protocol packet")?;
+
+        Ok(ip_packet)
+    }
+
     pub fn decode_assigned_ips(packet: FzP2pControlSlice) -> Result<AssignedIps> {
         anyhow::ensure!(
             packet.event_type() == ASSIGNED_IPS_EVENT,
@@ -90,6 +108,16 @@ pub mod dns_resource_nat {
 
         serde_json::from_slice::<DomainStatus>(packet.payload())
             .context("Failed to deserialize `dns_resource_nat::DomainStatus`")
+    }
+
+    pub fn decode_unknown_proxy_ip(packet: FzP2pControlSlice) -> Result<UnknownProxyIp> {
+        anyhow::ensure!(
+            packet.event_type() == UNKNOWN_PROXY_IP_EVENT,
+            "Control protocol packet is not a `dns_resource_nat::UnknownProxyIp` event"
+        );
+
+        serde_json::from_slice::<UnknownProxyIp>(packet.payload())
+            .context("Failed to deserialize `dns_resource_nat::UnknownProxyIp`")
     }
 
     #[serde_with::serde_as]
@@ -261,6 +289,16 @@ pub mod dns_resource_nat {
         pub status: NatStatus,
     }
 
+    /// Sent by the Gateway when it gets a packet for a proxy IP that has no NAT.
+    ///
+    /// The Gateway drops such packets.
+    /// The Client then sends a new [`AssignedIps`] event for the domain of this proxy IP.
+    #[derive(serde::Serialize, serde::Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
+    pub struct UnknownProxyIp {
+        pub proxy_ip: IpAddr,
+        pub protocol: super::no_authorization::Protocol,
+    }
+
     #[derive(serde::Serialize, serde::Deserialize, PartialEq, Eq, Debug)]
     pub enum NatStatus {
         /// The NAT is active and traffic will be routed.
@@ -409,6 +447,19 @@ pub mod dns_resource_nat {
             assert_eq!(domain_status.resource, ResourceId::from_u128(101));
             assert_eq!(domain_status.domain, domain("example.com"));
             assert_eq!(domain_status.status, NatStatus::Active)
+        }
+
+        #[test]
+        fn unknown_proxy_ip_serde_roundtrip() {
+            let event = UnknownProxyIp {
+                proxy_ip: IpAddr::V4(Ipv4Addr::new(100, 96, 0, 1)),
+                protocol: super::super::no_authorization::Protocol::Tcp { dst_port: 443 },
+            };
+            let packet = unknown_proxy_ip(event.proxy_ip, event.protocol).unwrap();
+
+            let slice = packet.as_fz_p2p_control().unwrap();
+
+            assert_eq!(decode_unknown_proxy_ip(slice).unwrap(), event);
         }
 
         #[test]

@@ -1,7 +1,6 @@
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::iter;
 use std::net::{IpAddr, Ipv4Addr};
-use std::num::NonZeroUsize;
 use std::time::Instant;
 
 use anyhow::{Context, ErrorExt, Result, bail};
@@ -27,8 +26,15 @@ use crate::{IpConfig, NotAllowedResource, NotClientIp, p2p_control};
 /// How many domains of DNS resources we translate at most for one client.
 ///
 /// When a client goes over this, we forget the least recently set up domain.
-/// The client sets the NAT up again with its next DNS query for that domain.
-const MAX_DNS_DOMAINS: NonZeroUsize = NonZeroUsize::new(1024).expect("1024 > 0");
+/// We drop packets for its proxy IPs and send an [`UnknownProxyIp`](p2p_control::dns_resource_nat::UnknownProxyIp) event instead.
+/// The client then sets up the NAT for that domain again.
+const MAX_DNS_DOMAINS: usize = 4096;
+
+/// How many evicted proxy IPs we remember at most for one client.
+///
+/// When a client goes over this, we forget the least recently evicted proxy IP.
+/// Packets for it then get the same ICMP error as packets for any other proxy IP without a route.
+const MAX_EVICTED_PROXY_IPS: usize = 4096;
 
 /// The state of one client on a gateway.
 pub struct ClientOnGateway {
@@ -51,6 +57,8 @@ pub struct ClientOnGateway {
     permanent_translations: HashMap<IpAddr, TranslationState, FastRandomState>,
     /// The proxy IPs of each domain in `permanent_translations`, least recently set up first.
     dns_domains: LruCache<DomainName, ProxyIps, FastRandomState>,
+    /// The resources of each proxy IP we evicted from `permanent_translations`, least recently evicted first.
+    evicted_proxy_ips: LruCache<IpAddr, HashSet<ResourceId, FastRandomState>, FastRandomState>,
     nat_table: NatTable,
 }
 
@@ -62,6 +70,8 @@ pub enum TranslateOutboundResult {
         /// Identifies traffic rejected by the access policy.
         no_authorization: Option<p2p_control::no_authorization::NoAuthorization>,
     },
+    /// The packet was for a proxy IP we evicted; send this event back instead.
+    UnknownProxyIp(IpPacket),
 }
 
 impl ClientOnGateway {
@@ -80,7 +90,8 @@ impl ClientOnGateway {
             resources: ExpiringMap::default(),
             routing_table: RoutingTable::new(),
             permanent_translations: Default::default(),
-            dns_domains: LruCache::with_hasher(MAX_DNS_DOMAINS, FastRandomState::default()),
+            dns_domains: LruCache::unbounded_with_hasher(FastRandomState::default()),
+            evicted_proxy_ips: LruCache::unbounded_with_hasher(FastRandomState::default()),
             nat_table: Default::default(),
             internet_resource_enabled: None,
         }
@@ -155,6 +166,8 @@ impl ClientOnGateway {
             state.resources.insert(resource_id);
             state.resolved_ip = maybe_real_ip.copied();
 
+            self.evicted_proxy_ips.pop(&proxy_ip);
+
             self.routing_table.upsert(
                 IpNetwork::from(proxy_ip),
                 RouteEntry {
@@ -166,19 +179,19 @@ impl ClientOnGateway {
 
         domains.insert(name.clone(), resolved_ips);
 
-        match self.dns_domains.push(name.clone(), proxy_ips) {
-            // A Client only assigns new proxy IPs to a domain with a new key, which resets its state.
-            Some((domain, old_proxy_ips)) if domain == name => {
-                self.remove_translations(
-                    old_proxy_ips
-                        .iter()
-                        .filter(|ip| proxy_ips.iter().all(|new| new != *ip)),
-                );
-            }
-            Some((evicted, evicted_proxy_ips)) => {
-                self.evict_dns_domain(evicted, evicted_proxy_ips);
-            }
-            None => {}
+        // A Client only assigns new proxy IPs to a domain with a new key, which resets its state.
+        if let Some((_, old_proxy_ips)) = self.dns_domains.push(name, proxy_ips) {
+            self.remove_translations(
+                old_proxy_ips
+                    .iter()
+                    .filter(|ip| proxy_ips.iter().all(|new| new != *ip)),
+            );
+        }
+
+        if self.dns_domains.len() > MAX_DNS_DOMAINS
+            && let Some((evicted, evicted_proxy_ips)) = self.dns_domains.pop_lru()
+        {
+            self.evict_dns_domain(evicted, evicted_proxy_ips);
         }
 
         Ok(())
@@ -186,6 +199,18 @@ impl ClientOnGateway {
 
     fn evict_dns_domain(&mut self, domain: DomainName, proxy_ips: ProxyIps) {
         tracing::debug!(%domain, "Evicting DNS resource NAT");
+
+        for proxy_ip in proxy_ips.iter() {
+            let Some(state) = self.permanent_translations.get(&proxy_ip) else {
+                continue;
+            };
+
+            self.evicted_proxy_ips
+                .push(proxy_ip, state.resources.clone());
+            if self.evicted_proxy_ips.len() > MAX_EVICTED_PROXY_IPS {
+                self.evicted_proxy_ips.pop_lru();
+            }
+        }
 
         for rid in self.remove_translations(proxy_ips.iter()) {
             if let Some(ResourceOnGateway::Dns { domains, .. }) = self.resources.get_mut(&rid) {
@@ -427,6 +452,10 @@ impl ClientOnGateway {
             bail!(UnroutablePacket::outbound_icmp_error(&packet))
         }
 
+        if let Some(event) = self.unknown_proxy_ip(&packet)? {
+            return Ok(TranslateOutboundResult::UnknownProxyIp(event));
+        }
+
         if let Err(error) = self.ensure_allowed_outbound(&packet) {
             tracing::debug!(filtered_packet = ?packet, "{error:#}");
 
@@ -599,6 +628,34 @@ impl ClientOnGateway {
             ResourceOnGateway::Cidr { .. } => false,
             ResourceOnGateway::Internet => false,
         })
+    }
+
+    /// Makes an [`UnknownProxyIp`](p2p_control::dns_resource_nat::UnknownProxyIp) event if the packet is for a proxy IP we evicted.
+    ///
+    /// We check this before the routes because an evicted proxy IP has no route either.
+    /// If none of its resources is authorized anymore, the route check rejects the packet as usual.
+    fn unknown_proxy_ip(&self, packet: &IpPacket) -> Result<Option<IpPacket>> {
+        let dst = packet.destination();
+
+        let Some(resources) = self.evicted_proxy_ips.peek(&dst) else {
+            return Ok(None);
+        };
+
+        if !resources.iter().any(|rid| self.resources.contains_key(rid))
+            || self.ensure_client_ip(packet.source()).is_err()
+        {
+            return Ok(None);
+        }
+
+        let Ok(protocol) = packet.destination_protocol() else {
+            return Ok(None);
+        };
+
+        tracing::debug!(%dst, "Proxy IP was evicted");
+
+        let event = p2p_control::dns_resource_nat::unknown_proxy_ip(dst, protocol.into())?;
+
+        Ok(Some(event))
     }
 
     fn ensure_allowed_outbound(&mut self, packet: &IpPacket) -> Result<()> {
@@ -1456,16 +1513,16 @@ mod tests {
         let mut peer = ClientOnGateway::new(client_id(), client_key(), client_tun(), gateway_tun());
         peer.add_resource(wildcard_foo_dns_resource(), None, Instant::now());
 
-        for i in 0..MAX_DNS_DOMAINS.get() {
+        for i in 0..MAX_DNS_DOMAINS {
             setup_wildcard_foo_nat(&mut peer, i);
         }
         setup_wildcard_foo_nat(&mut peer, 0);
-        setup_wildcard_foo_nat(&mut peer, MAX_DNS_DOMAINS.get());
+        setup_wildcard_foo_nat(&mut peer, MAX_DNS_DOMAINS);
 
-        assert_eq!(peer.dns_domains.len(), MAX_DNS_DOMAINS.get());
+        assert_eq!(peer.dns_domains.len(), MAX_DNS_DOMAINS);
         assert_eq!(
             peer.permanent_translations.len(),
-            MAX_DNS_DOMAINS.get() * PROXY_IPS_PER_DOMAIN
+            MAX_DNS_DOMAINS * PROXY_IPS_PER_DOMAIN
         );
         assert!(
             nth_proxy_ips(0)
@@ -1486,8 +1543,122 @@ mod tests {
         peer.recalculate_filters();
         assert_eq!(
             peer.routing_table.entries().len(),
-            MAX_DNS_DOMAINS.get() * PROXY_IPS_PER_DOMAIN
+            MAX_DNS_DOMAINS * PROXY_IPS_PER_DOMAIN
         );
+    }
+
+    #[test]
+    fn packet_for_evicted_proxy_ip_returns_unknown_proxy_ip_event() {
+        let _guard = logging::test("debug");
+
+        let mut peer = ClientOnGateway::new(client_id(), client_key(), client_tun(), gateway_tun());
+        peer.add_resource(wildcard_foo_dns_resource(), None, Instant::now());
+
+        for i in 0..=MAX_DNS_DOMAINS {
+            setup_wildcard_foo_nat(&mut peer, i);
+        }
+
+        let packet = ip_packet::make::tcp_packet(
+            IpAddr::from(client_tun_ipv4()),
+            nth_proxy_ip(0),
+            5401,
+            443,
+            TcpFlags::default(),
+            &[],
+        )
+        .unwrap();
+
+        let TranslateOutboundResult::UnknownProxyIp(event) =
+            peer.translate_outbound(packet, Instant::now()).unwrap()
+        else {
+            panic!("Expected `UnknownProxyIp`");
+        };
+        let event = p2p_control::dns_resource_nat::decode_unknown_proxy_ip(
+            event.as_fz_p2p_control().unwrap(),
+        )
+        .unwrap();
+        assert_eq!(event.proxy_ip, nth_proxy_ip(0));
+        assert_eq!(
+            event.protocol,
+            p2p_control::no_authorization::Protocol::Tcp { dst_port: 443 }
+        );
+    }
+
+    #[test]
+    fn packet_for_evicted_proxy_ip_of_removed_resource_returns_icmp_error() {
+        let _guard = logging::test("debug");
+
+        let mut peer = ClientOnGateway::new(client_id(), client_key(), client_tun(), gateway_tun());
+        peer.add_resource(wildcard_foo_dns_resource(), None, Instant::now());
+
+        for i in 0..=MAX_DNS_DOMAINS {
+            setup_wildcard_foo_nat(&mut peer, i);
+        }
+        peer.remove_resource(&wildcard_foo_resource_id());
+
+        let packet = ip_packet::make::tcp_packet(
+            IpAddr::from(client_tun_ipv4()),
+            nth_proxy_ip(0),
+            5401,
+            443,
+            TcpFlags::default(),
+            &[],
+        )
+        .unwrap();
+
+        assert!(matches!(
+            peer.translate_outbound(packet, Instant::now()).unwrap(),
+            TranslateOutboundResult::IcmpError {
+                no_authorization: Some(_),
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn evicted_proxy_ips_are_bounded() {
+        let _guard = logging::test("debug");
+
+        let mut peer = ClientOnGateway::new(client_id(), client_key(), client_tun(), gateway_tun());
+        peer.add_resource(wildcard_foo_dns_resource(), None, Instant::now());
+
+        // Evicts one domain more than `evicted_proxy_ips` holds.
+        for i in 0..MAX_DNS_DOMAINS + MAX_EVICTED_PROXY_IPS / PROXY_IPS_PER_DOMAIN + 1 {
+            setup_wildcard_foo_nat(&mut peer, i);
+        }
+
+        assert_eq!(peer.evicted_proxy_ips.len(), MAX_EVICTED_PROXY_IPS);
+        assert!(!peer.evicted_proxy_ips.contains(&nth_proxy_ip(0)));
+        assert!(peer.evicted_proxy_ips.contains(&nth_proxy_ip(1)));
+    }
+
+    #[test]
+    fn packet_for_proxy_ip_without_resolved_ip_returns_icmp_error() {
+        let _guard = logging::test("debug");
+
+        let mut peer = ClientOnGateway::new(client_id(), client_key(), client_tun(), gateway_tun());
+        peer.add_resource(foo_dns_resource(), None, Instant::now());
+        peer.setup_nat(
+            foo_name().parse().unwrap(),
+            foo_resource_id(),
+            BTreeSet::from([foo_real_ip1().into()]),
+            ProxyIps::for_test(),
+        )
+        .unwrap();
+
+        let packet = ip_packet::make::udp_packet(
+            client_tun_ipv6(),
+            proxy_ip6_1(),
+            5401,
+            foo_allowed_port(),
+            &[],
+        )
+        .unwrap();
+
+        assert!(matches!(
+            peer.translate_outbound(packet, Instant::now()).unwrap(),
+            TranslateOutboundResult::IcmpError { .. }
+        ));
     }
 
     #[test]
@@ -1497,7 +1668,7 @@ mod tests {
         let mut peer = ClientOnGateway::new(client_id(), client_key(), client_tun(), gateway_tun());
         peer.add_resource(wildcard_foo_dns_resource(), None, Instant::now());
 
-        for i in 0..=MAX_DNS_DOMAINS.get() {
+        for i in 0..=MAX_DNS_DOMAINS {
             setup_wildcard_foo_nat(&mut peer, i);
         }
 
@@ -1547,6 +1718,11 @@ mod tests {
     }
 
     const PROXY_IPS_PER_DOMAIN: usize = 8;
+
+    /// The first proxy IP of [`nth_proxy_ips`].
+    fn nth_proxy_ip(n: usize) -> IpAddr {
+        nth_proxy_ips(n).iter().next().unwrap()
+    }
 
     /// Different proxy IPs for each `n`.
     fn nth_proxy_ips(n: usize) -> ProxyIps {
