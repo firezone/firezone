@@ -438,6 +438,16 @@ struct MainThreadEnds {
     inbound_rx: mpsc::Receiver<DatagramBatch>,
     /// Send/receive errors, plus a final [`UdpSocketThreadStopped`] when a thread dies.
     error_rx: mpsc::Receiver<anyhow::Error>,
+    queue_depth: otel_instruments::QueueDepth<3>,
+}
+
+impl MainThreadEnds {
+    /// Records how many items the outbound channel held besides the one just reserved.
+    fn record_queue_depth(&self) {
+        let depth = self.outbound_tx.max_capacity() - self.outbound_tx.capacity() - 1;
+
+        self.queue_depth.record(depth);
+    }
 }
 
 /// The ends of a socket's channels that its thread holds.
@@ -447,7 +457,7 @@ pub struct SocketThreadEnds {
     pub(crate) error_tx: mpsc::Sender<anyhow::Error>,
 }
 
-fn channels() -> (MainThreadEnds, SocketThreadEnds) {
+fn channels(addr: SocketAddr) -> (MainThreadEnds, SocketThreadEnds) {
     let (outbound_tx, outbound_rx) = mpsc::channel(QUEUE_SIZE);
     let (inbound_tx, inbound_rx) = mpsc::channel(INBOUND_QUEUE_SIZE);
     let (error_tx, error_rx) = mpsc::channel(QUEUE_SIZE);
@@ -457,6 +467,11 @@ fn channels() -> (MainThreadEnds, SocketThreadEnds) {
         waiting_for_room: None,
         inbound_rx,
         error_rx,
+        queue_depth: otel_instruments::QueueDepth::new([
+            otel::attr::queue_item_gso_batch(),
+            otel::attr::network_type_for_addr(addr),
+            otel::attr::network_io_direction_transmit(),
+        ]),
     };
     let socket_thread_ends = SocketThreadEnds {
         outbound_rx,
@@ -476,23 +491,8 @@ impl ThreadedUdpSocket {
                 inbound_tx,
                 error_tx,
             },
-        ) = channels();
+        ) = channels(preferred_addr);
         let (startup_tx, startup_rx) = std::sync::mpsc::sync_channel(0);
-
-        tokio::spawn(otel_instruments::periodic_queue_length(
-            main_thread_ends.outbound_tx.downgrade(),
-            [
-                otel::attr::queue_item_gso_batch(),
-                otel::attr::network_type_for_addr(preferred_addr),
-            ],
-        ));
-        tokio::spawn(otel_instruments::periodic_queue_length(
-            inbound_tx.downgrade(),
-            [
-                otel::attr::queue_item_gro_batch(),
-                otel::attr::network_type_for_addr(preferred_addr),
-            ],
-        ));
 
         let thread_name = match preferred_addr {
             SocketAddr::V4(_) => "UDP IPv4".to_owned(),
@@ -616,6 +616,11 @@ impl ThreadedUdpSocket {
                 });
                 let receive = runtime.spawn({
                     let error_tx = error_tx.clone();
+                    let queue_depth = otel_instruments::QueueDepth::new([
+                        otel::attr::queue_item_gro_batch(),
+                        otel::attr::network_type_for_addr(preferred_addr),
+                        otel::attr::network_io_direction_receive(),
+                    ]);
 
                     async move {
                         loop {
@@ -645,12 +650,16 @@ impl ThreadedUdpSocket {
                                 }
                             };
 
+                            let depth = inbound_tx.max_capacity() - inbound_tx.capacity();
+
                             if inbound_tx.send(batch).await.is_err() {
                                 tracing::debug!(
                                     "Channel for inbound datagrams closed; exiting UDP recv task"
                                 );
                                 return;
                             }
+
+                            queue_depth.record(depth);
                         }
                     }
                 });
@@ -681,7 +690,11 @@ impl ThreadedUdpSocket {
         if ends.waiting_for_room.is_none() {
             // Fast path without registering a waker.
             match ends.outbound_tx.try_reserve() {
-                Ok(permit) => return Poll::Ready(Ok(Reserved::Borrowed(permit))),
+                Ok(permit) => {
+                    ends.record_queue_depth();
+
+                    return Poll::Ready(Ok(Reserved::Borrowed(permit)));
+                }
                 Err(TrySendError::Full(())) => {}
                 Err(TrySendError::Closed(())) => {
                     return Poll::Ready(Err(UdpSocketThreadStopped.into()));
@@ -698,6 +711,7 @@ impl ThreadedUdpSocket {
         let result = ready!(waiting_for_room.poll_unpin(cx));
         ends.waiting_for_room = None;
         let permit = result.map_err(|_| UdpSocketThreadStopped)?;
+        ends.record_queue_depth();
 
         Poll::Ready(Ok(Reserved::Owned(permit)))
     }
@@ -706,6 +720,7 @@ impl ThreadedUdpSocket {
     fn try_reserve(&self) -> Option<Reserved<'_>> {
         let ends = self.main_thread_ends.as_ref()?;
         let permit = ends.outbound_tx.try_reserve().ok()?;
+        ends.record_queue_depth();
 
         Some(Reserved::Borrowed(permit))
     }
@@ -771,8 +786,8 @@ impl Drop for ThreadedUdpSocket {
 impl Sockets {
     /// Creates sockets for both families without threads; the returned ends play their part.
     pub(crate) fn fake() -> (Self, SocketThreadEnds, SocketThreadEnds) {
-        let fake_socket = || {
-            let (main_thread_ends, socket_thread_ends) = channels();
+        let fake_socket = |addr: SocketAddr| {
+            let (main_thread_ends, socket_thread_ends) = channels(addr);
             let socket = ThreadedUdpSocket {
                 thread_name: "fake".to_owned(),
                 join_handle: None,
@@ -781,8 +796,8 @@ impl Sockets {
 
             (socket, socket_thread_ends)
         };
-        let (socket_v4, ends_v4) = fake_socket();
-        let (socket_v6, ends_v6) = fake_socket();
+        let (socket_v4, ends_v4) = fake_socket(SocketAddr::V4(UNSPECIFIED_V4_SOCKET));
+        let (socket_v6, ends_v6) = fake_socket(SocketAddr::V6(UNSPECIFIED_V6_SOCKET));
 
         let sockets = Self {
             socket_v4: Some(socket_v4),

@@ -1,7 +1,6 @@
 use anyhow::Result;
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
-use tokio::sync::mpsc;
 
 use crate::{InboundRx, InboundTx, OutboundRx, OutboundTx};
 
@@ -16,42 +15,23 @@ pub struct Workers {
 }
 
 impl Workers {
-    /// Starts one worker per IO direction, with packet channels and queue metrics.
+    /// Starts one worker per IO direction, with packet channels.
     pub fn spawn(
-        runtime: &tokio::runtime::Handle,
         send: impl FnOnce(OutboundRx) -> Result<()> + Send + 'static,
         recv: impl FnOnce(InboundTx) -> Result<()> + Send + 'static,
     ) -> std::io::Result<Self> {
-        let (outbound_tx, outbound_rx) = mpsc::channel(crate::CHANNEL_CAPACITY);
-        let (inbound_tx, inbound_rx) = mpsc::channel(crate::CHANNEL_CAPACITY);
-
-        runtime.spawn(otel_instruments::periodic_queue_length(
-            outbound_tx.downgrade(),
-            [
-                otel_attributes::queue_item_ip_packet_batch(),
-                otel_attributes::network_io_direction_transmit(),
-            ],
-        ));
-        runtime.spawn(otel_instruments::periodic_queue_length(
-            inbound_tx.downgrade(),
-            [
-                otel_attributes::queue_item_ip_packet_batch(),
-                otel_attributes::network_io_direction_receive(),
-            ],
-        ));
+        let (outbound_tx, outbound_rx) = crate::outbound_channel();
+        let (inbound_tx, inbound_rx) = crate::inbound_channel();
 
         let mut workers = Self {
-            state: Some((
-                OutboundTx(tokio_util::sync::PollSender::new(outbound_tx)),
-                InboundRx(inbound_rx),
-            )),
+            state: Some((outbound_tx, inbound_rx)),
             send_thread: None,
             recv_thread: None,
         };
 
-        let send_thread = spawn_worker("send", move || send(OutboundRx(outbound_rx)))?;
+        let send_thread = spawn_worker("send", move || send(outbound_rx))?;
         workers.send_thread = Some(send_thread);
-        let recv_thread = spawn_worker("recv", move || recv(InboundTx(inbound_tx)))?;
+        let recv_thread = spawn_worker("recv", move || recv(inbound_tx))?;
         workers.recv_thread = Some(recv_thread);
 
         Ok(workers)
@@ -140,13 +120,9 @@ mod tests {
 
     #[test]
     fn drop_closes_channels_and_joins_both_workers() {
-        let runtime = tokio::runtime::Builder::new_current_thread()
-            .build()
-            .unwrap();
         let started = Arc::new(Barrier::new(3));
         let stopped = Arc::new(AtomicUsize::new(0));
         let workers = Workers::spawn(
-            runtime.handle(),
             {
                 let started = started.clone();
                 let stopped = stopped.clone();

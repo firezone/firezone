@@ -10,7 +10,6 @@ bufferpool = { workspace = true }
 ip-packet = { workspace = true }
 opentelemetry = { workspace = true, features = ["metrics"] }
 otel-instruments = { workspace = true }
-tokio = { workspace = true, features = ["net", "rt", "sync"] }
 tracing = { workspace = true }
 tun = { workspace = true }
 tun-offload = { workspace = true }

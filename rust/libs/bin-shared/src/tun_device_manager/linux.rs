@@ -153,7 +153,7 @@ impl TunDeviceManager {
     pub fn make_tun(&mut self) -> Result<Box<dyn tun::Tun>> {
         create_tun_device()?;
         let fd = open_tun()?;
-        let io = tun_linux::Io::new(Self::IFACE_NAME, fd, &tokio::runtime::Handle::current())?;
+        let io = tun_linux::Io::new(Self::IFACE_NAME, fd)?;
         let tun = Box::new(io);
 
         // Do this in a separate task because:
