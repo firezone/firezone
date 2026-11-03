@@ -44,9 +44,8 @@ defmodule Portal.MetricsTokenTest do
       assert {:error, :invalid} = MetricsToken.verify(forged)
     end
 
-    test "rejects a token for a disabled account", %{account: account} do
-      token = MetricsToken.mint(account)
-      disable_account(account)
+    test "rejects a token for a disabled account" do
+      token = MetricsToken.mint(disabled_account_fixture())
 
       assert {:error, :invalid} = MetricsToken.verify(token)
     end
@@ -115,10 +114,4 @@ defmodule Portal.MetricsTokenTest do
   end
 
   defp unix_now, do: DateTime.utc_now() |> DateTime.to_unix()
-
-  defp disable_account(account) do
-    account
-    |> Ecto.Changeset.change(is_disabled: true)
-    |> Portal.Repo.update!()
-  end
 end
