@@ -20604,6 +20604,7 @@
     "/actors/{actor_id}/external_identities/{id}": {
       "delete": {
         "callbacks": {},
+        "description": "Deletes an External Identity. Identities of admins can only be deleted in the portal.",
         "operationId": "PortalAPI.ExternalIdentityController.delete",
         "parameters": [
           {
