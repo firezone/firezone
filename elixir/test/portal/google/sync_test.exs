@@ -77,7 +77,6 @@ defmodule Portal.Google.SyncTest do
       # Set up test configuration for API client. Use a process-scoped override
       # (via Portal.Config.put_env_override) instead of Application.put_env so
       # that concurrent async tests don't clobber each other's global config.
-      original_log_level = Logger.level()
 
       test_config = [
         endpoint: "https://test.googleapis.com",
@@ -99,15 +98,11 @@ defmodule Portal.Google.SyncTest do
       ]
 
       Portal.Config.put_env_override(:portal, APIClient, test_config)
-      Logger.configure(level: :debug)
+      Logger.put_process_level(self(), :debug)
 
       # Set up default stub
       Req.Test.stub(APIClient, fn conn ->
         Req.Test.json(conn, %{"error" => "not mocked"})
-      end)
-
-      on_exit(fn ->
-        Logger.configure(level: original_log_level)
       end)
 
       :ok
