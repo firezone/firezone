@@ -195,10 +195,10 @@ impl OutboundTx {
         };
 
         let depth = len(tx);
-        tx.try_send(batch)?;
-        self.queue_depth.record(depth);
+        let result = tx.try_send(batch);
+        record_try_send(&self.queue_depth, tx, depth, &result);
 
-        Ok(())
+        result
     }
 
     /// Reserves a slot in the channel for one batch.
@@ -290,10 +290,10 @@ impl InboundTx {
         batch: PacketBatch,
     ) -> Result<(), mpsc::error::TrySendError<PacketBatch>> {
         let depth = len(&self.tx);
-        self.tx.try_send(batch)?;
-        self.queue_depth.record(depth);
+        let result = self.tx.try_send(batch);
+        record_try_send(&self.queue_depth, &self.tx, depth, &result);
 
-        Ok(())
+        result
     }
 
     /// Completes when the receiving half of the channel is gone.
@@ -345,4 +345,18 @@ impl QueueDepth {
 /// Returns the number of batches in the channel, including reserved slots.
 fn len(tx: &mpsc::Sender<PacketBatch>) -> usize {
     tx.max_capacity() - tx.capacity()
+}
+
+/// Records the depth a `try_send` saw: the capacity if the channel was full, nothing if it was closed.
+fn record_try_send(
+    queue_depth: &QueueDepth,
+    tx: &mpsc::Sender<PacketBatch>,
+    depth: usize,
+    result: &Result<(), mpsc::error::TrySendError<PacketBatch>>,
+) {
+    match result {
+        Ok(()) => queue_depth.record(depth),
+        Err(mpsc::error::TrySendError::Full(_)) => queue_depth.record(tx.max_capacity()),
+        Err(mpsc::error::TrySendError::Closed(_)) => {}
+    }
 }
