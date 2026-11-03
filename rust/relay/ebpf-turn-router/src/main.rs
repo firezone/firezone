@@ -34,6 +34,7 @@ pub fn handle_turn(ctx: aya_ebpf::programs::XdpContext) -> u32 {
             | Error::DnsPacket
             | Error::NotTurn
             | Error::NotAChannelDataMessage
+            | Error::NotWireGuard
             | Error::UdpChecksumMissing
             | Error::Ipv4PacketWithOptions),
         ) => {

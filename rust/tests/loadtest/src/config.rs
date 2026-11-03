@@ -249,7 +249,7 @@ impl TurnConfig {
         }
         if self.payload_size < TURN_HEADER_SIZE {
             bail!(
-                "[turn] payload_size ({}) must be at least {TURN_HEADER_SIZE} bytes (sequence header)",
+                "[turn] payload_size ({}) must be at least {TURN_HEADER_SIZE} bytes (WireGuard data message)",
                 self.payload_size
             );
         }
@@ -600,7 +600,7 @@ mod tests {
         let result = LoadTestConfig::load(&path);
         assert_eq!(
             format!("{:#}", result.unwrap_err()),
-            "[turn] payload_size (8) must be at least 16 bytes (sequence header)"
+            "[turn] payload_size (8) must be at least 32 bytes (WireGuard data message)"
         );
 
         std::fs::remove_file(&path).ok();

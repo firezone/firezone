@@ -46,8 +46,13 @@ use stun_codec::{Message, MessageClass, MessageDecoder, MessageEncoder, Transact
 use tokio::time::Instant;
 use url::Url;
 
-/// Size of the per-datagram header: an 8-byte sequence number + 8-byte send timestamp.
-pub const TURN_HEADER_SIZE: usize = 16;
+/// Smallest datagram payload: the relay only forwards WireGuard and STUN, so every payload is a
+/// WireGuard data message (8-byte header + 8-byte sequence number + 8-byte send timestamp, padded
+/// to the 32-byte minimum of a real data message).
+pub const TURN_HEADER_SIZE: usize = 32;
+
+/// WireGuard data message header: message type 4 and a zero receiver index.
+const WIREGUARD_DATA_HEADER: [u8; 8] = [4, 0, 0, 0, 0, 0, 0, 0];
 
 /// Size of a `ChannelData` header (channel number + length), prepended to every datagram.
 const CHANNEL_DATA_HEADER_SIZE: usize = 4;
@@ -750,6 +755,7 @@ fn write_frame(batch: &mut Vec<u8>, channel: u16, sequence: u64, payload_size: u
     batch.extend_from_slice(&(payload_size as u16).to_be_bytes());
 
     let payload_start = batch.len();
+    batch.extend_from_slice(&WIREGUARD_DATA_HEADER);
     batch.extend_from_slice(&sequence.to_be_bytes());
     batch.extend_from_slice(&unix_nanos().to_be_bytes());
     batch.resize(payload_start + payload_size, 0); // Pad to the configured payload size.
@@ -757,8 +763,11 @@ fn write_frame(batch: &mut Vec<u8>, channel: u16, sequence: u64, payload_size: u
 
 /// Parse the sequence number and send timestamp from a received payload.
 fn parse_payload(packet: &[u8]) -> Option<(u64, u64)> {
-    let sequence = u64::from_be_bytes(packet.get(0..8)?.try_into().ok()?);
-    let sent_nanos = u64::from_be_bytes(packet.get(8..16)?.try_into().ok()?);
+    if packet.get(0..8)? != WIREGUARD_DATA_HEADER {
+        return None;
+    }
+    let sequence = u64::from_be_bytes(packet.get(8..16)?.try_into().ok()?);
+    let sent_nanos = u64::from_be_bytes(packet.get(16..24)?.try_into().ok()?);
 
     Some((sequence, sent_nanos))
 }
@@ -1204,7 +1213,7 @@ fn parse_payload_size(s: &str) -> Result<usize, String> {
 
     if size < TURN_HEADER_SIZE {
         return Err(format!(
-            "payload size must be at least {TURN_HEADER_SIZE} bytes (sequence header)"
+            "payload size must be at least {TURN_HEADER_SIZE} bytes (WireGuard data message)"
         ));
     }
     if size > MAX_TURN_PAYLOAD_SIZE {
@@ -1317,7 +1326,7 @@ mod tests {
 
     #[test]
     fn parse_payload_rejects_short_input() {
-        assert!(parse_payload(&[0u8; 8]).is_none());
+        assert!(parse_payload(&WIREGUARD_DATA_HEADER).is_none());
     }
 
     #[test]
