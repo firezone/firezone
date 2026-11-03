@@ -153,10 +153,14 @@ defmodule PortalAPI.Sockets do
   # We use 503 instead of 429 because connlib treats 429 as fatal until
   # https://github.com/firezone/firezone/pull/11594 is widely distributed.
   def handle_error(conn, :rate_limit) do
+    handle_error(conn, {:rate_limit, PortalAPI.Sockets.RateLimit.retry_after_seconds() * 1000})
+  end
+
+  def handle_error(conn, {:rate_limit, retry_after_ms}) do
     conn
     |> Plug.Conn.put_resp_header(
       "retry-after",
-      Integer.to_string(PortalAPI.Sockets.RateLimit.retry_after_seconds())
+      Integer.to_string(max(ceil(retry_after_ms / 1000), 1))
     )
     |> ProblemDetails.send_with_code(503, :rate_limit, "Service Unavailable")
   end
