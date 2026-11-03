@@ -63,7 +63,7 @@ pub struct CryptoWorkers {
     workers: Vec<mpsc::Sender<Job>>,
     next_worker: usize,
     packet_counter: Counter<u64>,
-    /// The open train to each destination of the current [`EncryptBatch`], kept for its capacity.
+    /// The open train to each destination of the current [`EncryptJobs`], kept for its capacity.
     open_trains: Vec<EncryptJob>,
 }
 
@@ -72,7 +72,7 @@ enum Job {
     Decrypt(DecryptJob, oneshot::Sender<DecryptedIpPackets>),
 }
 
-/// Packets decrypted from the jobs of an [`Io::start_decrypt_batch`](super::Io::start_decrypt_batch).
+/// Packets decrypted from the jobs of an [`Io::new_decrypt_jobs`](super::Io::new_decrypt_jobs).
 #[derive(Default)]
 pub struct DecryptedIpPackets(Vec<DecryptedDatagram>);
 
@@ -112,13 +112,13 @@ impl CryptoWorkers {
         }
     }
 
-    /// Starts a batch of packets to encrypt, whose datagrams go to `sockets` when it is dropped.
-    pub fn start_encrypt_batch<'a>(
+    /// Creates the jobs that encrypt `num_packets` packets, whose datagrams go to `sockets`.
+    pub fn new_encrypt_jobs<'a>(
         &'a mut self,
         sockets: &'a mut Sockets,
         num_packets: usize,
-    ) -> EncryptBatch<'a> {
-        EncryptBatch {
+    ) -> EncryptJobs<'a> {
+        EncryptJobs {
             crypto: self,
             sockets,
             remaining: num_packets,
@@ -127,15 +127,15 @@ impl CryptoWorkers {
         }
     }
 
-    /// Starts a batch of received buffers to decrypt, handed to the workers when it is dropped.
+    /// Creates the jobs that decrypt received buffers, which go to the workers when dropped.
     ///
     /// The results of its jobs are queued in `decrypting`.
-    pub fn start_decrypt_batch<'a>(
+    pub fn new_decrypt_jobs<'a>(
         &'a mut self,
         decrypting: &'a mut Decrypting,
         num_packets: usize,
-    ) -> DecryptBatch<'a> {
-        DecryptBatch {
+    ) -> DecryptJobs<'a> {
+        DecryptJobs {
             crypto: self,
             decrypting,
             remaining: num_packets,
@@ -167,16 +167,16 @@ impl CryptoWorkers {
 }
 
 /// Packets to encrypt, sent to the UDP sockets when dropped.
-pub struct EncryptBatch<'a> {
+pub struct EncryptJobs<'a> {
     crypto: &'a mut CryptoWorkers,
     sockets: &'a mut Sockets,
-    /// How many of the batch's packets have yet to be encrypted, at most.
+    /// How many of the packets have yet to be encrypted, at most.
     remaining: usize,
     pending_v4: Option<PendingDatagrams>,
     pending_v6: Option<PendingDatagrams>,
 }
 
-impl EncryptBatch<'_> {
+impl EncryptJobs<'_> {
     /// Adds `packet` to the open train to its destination, handing that train to a worker first if
     /// `packet` starts a new one.
     pub fn encrypt(&mut self, encapsulation: PendingEncapsulate, packet: IpPacket) {
@@ -226,7 +226,7 @@ impl EncryptBatch<'_> {
     }
 }
 
-impl Drop for EncryptBatch<'_> {
+impl Drop for EncryptJobs<'_> {
     fn drop(&mut self) {
         // In the order they were opened, so a flow whose destination changed mid-batch stays in order.
         self.crypto.open_trains.reverse();
@@ -267,15 +267,15 @@ impl EncryptJob {
 }
 
 /// Received buffers to decrypt, handed to the workers when dropped.
-pub struct DecryptBatch<'a> {
+pub struct DecryptJobs<'a> {
     crypto: &'a mut CryptoWorkers,
     decrypting: &'a mut Decrypting,
-    /// How many of the batch's packets have yet to be added, at most.
+    /// How many of the packets have yet to be added, at most.
     remaining: usize,
     job: DecryptJob,
 }
 
-impl<'a> DecryptBatch<'a> {
+impl<'a> DecryptJobs<'a> {
     /// Adds a received datagram, to mark which of its segments to decrypt.
     pub fn add(&mut self, datagram: DatagramIn) -> DatagramToDecrypt<'_, 'a> {
         if self.job.messages.len() + datagram.num_segments() > DECRYPT_BATCH_SIZE {
@@ -294,7 +294,7 @@ impl<'a> DecryptBatch<'a> {
         self.job.buffers.push(datagram);
 
         DatagramToDecrypt {
-            batch: self,
+            jobs: self,
             index,
             num_messages,
         }
@@ -309,7 +309,7 @@ impl<'a> DecryptBatch<'a> {
     }
 }
 
-impl Drop for DecryptBatch<'_> {
+impl Drop for DecryptJobs<'_> {
     fn drop(&mut self) {
         if !self.job.messages.is_empty() {
             self.submit();
@@ -317,16 +317,16 @@ impl Drop for DecryptBatch<'_> {
     }
 }
 
-/// A datagram of a [`DecryptBatch`], kept in its job only if a segment of it is to be decrypted.
+/// A datagram of a [`DecryptJobs`], kept in its job only if a segment of it is to be decrypted.
 pub struct DatagramToDecrypt<'b, 'a> {
-    batch: &'b mut DecryptBatch<'a>,
+    jobs: &'b mut DecryptJobs<'a>,
     index: usize,
     num_messages: usize,
 }
 
 impl DatagramToDecrypt<'_, '_> {
     pub fn decrypt(&mut self, segment: Segment, decapsulation: PendingDecapsulate) {
-        self.batch.job.messages.push(Message {
+        self.jobs.job.messages.push(Message {
             buffer: self.index,
             segment,
             decapsulation,
@@ -338,20 +338,20 @@ impl Deref for DatagramToDecrypt<'_, '_> {
     type Target = DatagramIn;
 
     fn deref(&self) -> &DatagramIn {
-        &self.batch.job.buffers[self.index]
+        &self.jobs.job.buffers[self.index]
     }
 }
 
 impl Drop for DatagramToDecrypt<'_, '_> {
     fn drop(&mut self) {
-        let job = &mut self.batch.job;
+        let job = &mut self.jobs.job;
 
         if job.messages.len() == self.num_messages {
             job.buffers.pop();
         }
 
         if job.messages.len() == DECRYPT_BATCH_SIZE {
-            self.batch.submit();
+            self.jobs.submit();
         }
     }
 }
