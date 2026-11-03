@@ -11,12 +11,12 @@
 #![cfg_attr(test, allow(clippy::print_stdout))]
 #![cfg_attr(test, allow(clippy::print_stderr))]
 
-use anyhow::{Context as _, ErrorExt as _, Result};
+use anyhow::{Context as _, Result};
 use connlib_model::PublicKey;
 use eventloop_budget::Budget;
 use futures::{FutureExt, future::BoxFuture};
 use io::{CryptoWorkers, Io};
-use packet_counts::{TunPacketCounts, UdpPacketCounts};
+use packet_counts::{DroppedTunPackets, TunPacketCounts, UdpPacketCounts};
 use prefetch::IteratorExt as _;
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 use sockets::Sockets;
@@ -29,7 +29,6 @@ use std::{
     time::{Duration, Instant, SystemTime},
 };
 use tun::Tun;
-use tunnel_proto::unroutable_packet::RoutingError;
 
 mod io;
 mod packet_counts;
@@ -111,7 +110,7 @@ pub struct Tunnel<TRoleState> {
     io: Io,
 
     packet_counter: opentelemetry::metrics::Counter<u64>,
-    dropped_packets: opentelemetry::metrics::Counter<u64>,
+    dropped_tun_packets: DroppedTunPackets,
 
     /// Set when the last poll handled IO whose effects only `handle_timeout` completes.
     ///
@@ -144,7 +143,7 @@ impl<TRoleState> Tunnel<TRoleState> {
                 udp,
             ),
             packet_counter: otel_instruments::network_packets(),
-            dropped_packets: otel_instruments::network_packet_dropped(),
+            dropped_tun_packets: DroppedTunPackets::new(),
             needs_timeout: false,
         };
 
@@ -292,7 +291,7 @@ impl ClientTunnel {
                     .expect("Should be able to compute UNIX timestamp"),
             ),
             packet_counter: otel_instruments::network_packets(),
-            dropped_packets: otel_instruments::network_packet_dropped(),
+            dropped_tun_packets: DroppedTunPackets::new(),
             needs_timeout: false,
         }
     }
@@ -421,7 +420,8 @@ impl ClientTunnel {
                             Ok(Some(encapsulation)) => jobs.encrypt(encapsulation, packet),
                             Ok(None) => {}
                             Err(e) => {
-                                error.push(e.context("Failed to handle packet from TUN device"))
+                                self.dropped_tun_packets.record(&e);
+                                error.push(e.context("Failed to handle packet from TUN device"));
                             }
                         }
                     }
@@ -538,7 +538,7 @@ impl GatewayTunnel {
                     .expect("Should be able to compute UNIX timestamp"),
             ),
             packet_counter: otel_instruments::network_packets(),
-            dropped_packets: otel_instruments::network_packet_dropped(),
+            dropped_tun_packets: DroppedTunPackets::new(),
             needs_timeout: false,
         }
     }
@@ -650,20 +650,7 @@ impl GatewayTunnel {
                             Ok(Some(encapsulation)) => jobs.encrypt(encapsulation, packet),
                             Ok(None) => {}
                             Err(e) => {
-                                let routing_error = e
-                                    .any_downcast_ref::<UnroutablePacket>()
-                                    .map(|e| e.reason())
-                                    .unwrap_or(RoutingError::Other);
-
-                                // TODO: Include more attributes here like IPv4/IPv6?
-                                self.dropped_packets.add(
-                                    1,
-                                    &[
-                                        otel::attr::error_type(routing_error),
-                                        otel::attr::network_io_direction_receive(),
-                                    ],
-                                );
-
+                                self.dropped_tun_packets.record(&e);
                                 error.push(e.context("Failed to handle packet from TUN device"));
                             }
                         }
