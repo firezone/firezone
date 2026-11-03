@@ -1171,10 +1171,14 @@ defmodule PortalWeb.SignUp do
 
   defp start_idp_sign_up(socket, identity) do
     changeset =
-      registration_changeset(%{
-        "email" => identity.email,
-        "actor" => %{"name" => identity.profile_attrs["name"]}
-      })
+      %{"email" => identity.email, "actor" => %{"name" => identity.profile_attrs["name"]}}
+      |> registration_changeset()
+      |> then(fn changeset ->
+        # Screened once connected, so each attempt is looked up and logged once.
+        if connected?(socket),
+          do: screen_disposable_email(changeset, identity.provider, socket.assigns.real_ip),
+          else: changeset
+      end)
 
     if Keyword.has_key?(changeset.errors, :email) do
       sign_up_error(socket, @email_domain_error)
@@ -1219,7 +1223,8 @@ defmodule PortalWeb.SignUp do
   defp registration_form(attrs), do: to_form(registration_changeset(attrs), as: :registration)
 
   # An invalid form is sent back before the challenge is checked, so a typo does not spend
-  # the single-use token.
+  # the single-use token. The email is screened only after the challenge passes, so bots
+  # never trigger an MX lookup or a log entry.
   defp submit_registration(socket, %{valid?: false} = changeset, _token) do
     apply_registration(socket, changeset)
   end
@@ -1227,6 +1232,7 @@ defmodule PortalWeb.SignUp do
   defp submit_registration(socket, changeset, token) do
     case Portal.Turnstile.verify(token, socket.assigns.real_ip) do
       :ok ->
+        changeset = screen_disposable_email(changeset, "email", socket.assigns.real_ip)
         socket |> assign(turnstile_error: nil) |> apply_registration(changeset) |> reset_turnstile()
 
       {:error, reason} ->
@@ -1323,6 +1329,34 @@ defmodule PortalWeb.SignUp do
       real_ip: inspect(real_ip)
     )
   end
+
+  # Screened on submit rather than in the changeset: the MX check is a DNS lookup, and each
+  # attempt should be logged once rather than on every change to the form.
+  defp screen_disposable_email(changeset, provider, real_ip, opts \\ []) do
+    with false <- Keyword.has_key?(changeset.errors, :email),
+         domain when is_binary(domain) <-
+           changeset |> Ecto.Changeset.get_field(:email) |> Portal.DisposableEmail.email_domain() do
+      metadata = [email_domain: domain, provider: provider, real_ip: inspect(real_ip)]
+
+      domain
+      |> Portal.DisposableEmail.screen()
+      |> apply_disposable_email_verdict(changeset, metadata, Keyword.get(opts, :log_suspected, true))
+    else
+      _other -> changeset
+    end
+  end
+
+  defp apply_disposable_email_verdict({:block, source}, changeset, metadata, _log_suspected?) do
+    Logger.info("Sign-up blocked for confirmed disposable email", [source: source] ++ metadata)
+    Ecto.Changeset.add_error(changeset, :email, "domain not allowed")
+  end
+
+  defp apply_disposable_email_verdict({:warn, source}, changeset, metadata, true) do
+    Logger.warning("Sign-up from suspected disposable email", [source: source] ++ metadata)
+    changeset
+  end
+
+  defp apply_disposable_email_verdict(_verdict, changeset, _metadata, _log_suspected?), do: changeset
 
   defp normalize_log_value(nil), do: nil
   defp normalize_log_value(value) when is_binary(value), do: String.trim(value)
@@ -1557,7 +1591,14 @@ defmodule PortalWeb.SignUp do
           | {:error, Ecto.Changeset.t()}
           | {:error, String.t()}
   def complete_identity_sign_up(identity, attrs, website_attribution, user_agent, real_ip) do
-    case identity_registration_changeset(identity, attrs) do
+    # Screened again in case the lists changed since the form was shown. The warning for a
+    # suspected email was already logged then.
+    changeset =
+      identity
+      |> identity_registration_changeset(attrs)
+      |> screen_disposable_email(identity.provider, real_ip, log_suspected: false)
+
+    case changeset do
       %{valid?: true} = changeset ->
         registration = Ecto.Changeset.apply_changes(changeset)
 

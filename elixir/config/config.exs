@@ -460,6 +460,15 @@ config :portal, Portal.Cluster,
   adapter_config: []
 
 config :portal, sign_up_whitelisted_domains: []
+config :portal, sign_up_disposable_mx_check_enabled: false
+config :portal, Portal.DisposableEmail, mx_lookup: &Portal.DisposableEmail.Resolver.lookup_mx/1
+
+config :portal, Portal.DisposableEmail.Lists,
+  confirmed_url: nil,
+  suspected_url: nil,
+  azure_managed_identity: false,
+  refresh_interval: :timer.minutes(5),
+  req_opts: []
 
 config :portal, docker_registry: "ghcr.io/firezone"
 
