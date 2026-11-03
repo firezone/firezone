@@ -5841,6 +5841,61 @@ defmodule PortalAPI.Client.ChannelTest do
       assert is_integer(target_expires_at)
     end
 
+    test "sends matching ICE credentials that are keyed with a server secret", %{
+      client: client,
+      subject: subject,
+      target_client: target_client,
+      target_subject: target_subject,
+      pool_resource: pool_resource
+    } do
+      initiating_socket = join_channel(client, subject)
+      assert_push "init", _
+
+      target_socket = join_channel(target_client, target_subject)
+      assert_push "init", _
+
+      push(initiating_socket, "create_flow", %{
+        "resource_id" => pool_resource.id,
+        "ipv4" => Portal.Types.INET.to_string(target_client.ipv4)
+      })
+
+      assert_push "client_device_access_authorized",
+                  %{
+                    ice_role: :controlling,
+                    local_ice_credentials: initiator_credentials,
+                    remote_ice_credentials: receiver_credentials
+                  }
+
+      assert_push "client_device_access_authorized",
+                  %{
+                    ice_role: :controlled,
+                    local_ice_credentials: ^receiver_credentials,
+                    remote_ice_credentials: ^initiator_credentials
+                  }
+
+      assert String.length(initiator_credentials.username) == 4
+      assert String.length(initiator_credentials.password) == 22
+      assert String.length(receiver_credentials.username) == 4
+      assert String.length(receiver_credentials.password) == 22
+      assert initiator_credentials != receiver_credentials
+
+      public_only_hash =
+        [
+          client.id,
+          initiating_socket.assigns.client.public_key,
+          target_client.id,
+          target_socket.assigns.client.public_key
+        ]
+        |> Enum.join(":")
+        |> then(&:crypto.hash(:sha256, &1))
+        |> Base.encode32(case: :lower, padding: false)
+
+      refute String.starts_with?(
+               public_only_hash,
+               initiator_credentials.username <> initiator_credentials.password
+             )
+    end
+
     test "reports iceless inputs separately via telemetry", %{
       client: client,
       subject: subject,
