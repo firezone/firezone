@@ -44,6 +44,8 @@ export const Turnstile = {
         this.widgetId = turnstile.render(this.target, {
           sitekey: this.el.dataset.sitekey,
           theme: "auto",
+          // Show the widget only when the visitor has to do something.
+          appearance: "interaction-only",
           // The hidden inputs rendered by the server carry the token.
           "response-field": false,
           callback: (token) => this.fill(token),
