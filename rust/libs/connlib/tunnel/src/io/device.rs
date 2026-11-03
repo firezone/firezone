@@ -1,11 +1,19 @@
 use anyhow::Result;
 use ip_packet::IpPacket;
-use opentelemetry::{KeyValue, metrics::Counter};
+use opentelemetry::{
+    KeyValue,
+    metrics::{Counter, Gauge},
+};
 use std::collections::VecDeque;
 use std::mem;
 use std::task::ready;
 use std::task::{Context, Poll, Waker};
+use std::time::{Duration, Instant};
 use tun::{PacketBatch, Tun};
+
+use crate::otel;
+
+const QUEUE_LENGTH_SAMPLE_INTERVAL: Duration = Duration::from_secs(1);
 
 pub struct Device {
     tun: Option<Box<dyn Tun>>,
@@ -16,6 +24,8 @@ pub struct Device {
     /// Completed batches waiting for room in the channel, at most [`tun::CHANNEL_CAPACITY`].
     pending_batches: VecDeque<PacketBatch>,
     dropped_packets: Counter<u64>,
+    queue_length: Gauge<u64>,
+    next_queue_length_sample: Instant,
 }
 
 impl Device {
@@ -26,6 +36,8 @@ impl Device {
             current_batch: PacketBatch::default(),
             pending_batches: VecDeque::new(),
             dropped_packets: otel_instruments::network_packet_dropped(),
+            queue_length: otel_instruments::queue_length(),
+            next_queue_length_sample: Instant::now(),
         }
     }
 
@@ -56,6 +68,8 @@ impl Device {
     ///
     /// Resolves once all pending batches are in the channel and it has room for another one.
     pub fn poll_flush(&mut self, cx: &mut Context<'_>) -> Poll<Result<()>> {
+        self.record_queue_lengths();
+
         let Some(tun) = self.tun.as_mut() else {
             return Poll::Ready(Ok(()));
         };
@@ -105,6 +119,33 @@ impl Device {
         let batch = mem::take(&mut self.current_batch);
 
         self.push_pending(batch);
+    }
+
+    fn record_queue_lengths(&mut self) {
+        let Some(tun) = self.tun.as_mut() else {
+            return;
+        };
+
+        let now = Instant::now();
+        if now < self.next_queue_length_sample {
+            return;
+        }
+        self.next_queue_length_sample = now + QUEUE_LENGTH_SAMPLE_INTERVAL;
+
+        self.queue_length.record(
+            tun.sender().queue_length() as u64,
+            &[
+                otel::attr::queue_item_ip_packet_batch(),
+                otel::attr::network_io_direction_transmit(),
+            ],
+        );
+        self.queue_length.record(
+            tun.receiver().queue_length() as u64,
+            &[
+                otel::attr::queue_item_ip_packet_batch(),
+                otel::attr::network_io_direction_receive(),
+            ],
+        );
     }
 
     fn push_pending(&mut self, batch: PacketBatch) {

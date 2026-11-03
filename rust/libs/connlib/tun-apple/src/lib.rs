@@ -59,7 +59,7 @@ impl Io {
     /// # Safety
     ///
     /// The descriptor must remain open until this IO and its workers have stopped.
-    pub unsafe fn from_fd(fd: RawFd, runtime: &tokio::runtime::Handle) -> io::Result<Self> {
+    pub unsafe fn from_fd(fd: RawFd) -> io::Result<Self> {
         let name = name(fd)?;
         set_non_blocking(fd)?;
         raise_recv_buffer(fd);
@@ -67,7 +67,6 @@ impl Io {
         let max_coalesced_len = max_coalesced_len(fd);
         let workers = match sys::batch_syscalls() {
             Some(syscalls) => tun::Workers::spawn(
-                runtime,
                 move |outbound_rx| {
                     let open = move || bulk::Fd::open(fd, Interest::WRITABLE, syscalls);
 
@@ -80,7 +79,6 @@ impl Io {
                 },
             )?,
             None => tun::Workers::spawn(
-                runtime,
                 move |outbound_rx| per_packet_io::tun_send(fd, outbound_rx, per_packet::write),
                 move |inbound_tx| per_packet_io::tun_recv(fd, inbound_tx, per_packet::read),
             )?,
@@ -95,14 +93,12 @@ impl Io {
         name: impl Into<String>,
         device: D,
         max_coalesced_len: Option<usize>,
-        runtime: &tokio::runtime::Handle,
     ) -> io::Result<Self>
     where
         D: Device + Clone + Send + 'static,
     {
         let send_device = device.clone();
         let workers = tun::Workers::spawn(
-            runtime,
             move |outbound_rx| bulk::send(move || Ok(send_device), outbound_rx, max_coalesced_len),
             move |inbound_tx| bulk::recv(move || Ok(device), inbound_tx),
         )?;

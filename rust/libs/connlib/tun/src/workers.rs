@@ -16,29 +16,13 @@ pub struct Workers {
 }
 
 impl Workers {
-    /// Starts one worker per IO direction, with packet channels and queue metrics.
+    /// Starts one worker per IO direction, with packet channels.
     pub fn spawn(
-        runtime: &tokio::runtime::Handle,
         send: impl FnOnce(OutboundRx) -> Result<()> + Send + 'static,
         recv: impl FnOnce(InboundTx) -> Result<()> + Send + 'static,
     ) -> std::io::Result<Self> {
         let (outbound_tx, outbound_rx) = mpsc::channel(crate::CHANNEL_CAPACITY);
         let (inbound_tx, inbound_rx) = mpsc::channel(crate::CHANNEL_CAPACITY);
-
-        runtime.spawn(otel_instruments::periodic_queue_length(
-            outbound_tx.downgrade(),
-            [
-                otel_attributes::queue_item_ip_packet_batch(),
-                otel_attributes::network_io_direction_transmit(),
-            ],
-        ));
-        runtime.spawn(otel_instruments::periodic_queue_length(
-            inbound_tx.downgrade(),
-            [
-                otel_attributes::queue_item_ip_packet_batch(),
-                otel_attributes::network_io_direction_receive(),
-            ],
-        ));
 
         let mut workers = Self {
             state: Some((
@@ -140,13 +124,9 @@ mod tests {
 
     #[test]
     fn drop_closes_channels_and_joins_both_workers() {
-        let runtime = tokio::runtime::Builder::new_current_thread()
-            .build()
-            .unwrap();
         let started = Arc::new(Barrier::new(3));
         let stopped = Arc::new(AtomicUsize::new(0));
         let workers = Workers::spawn(
-            runtime.handle(),
             {
                 let started = started.clone();
                 let stopped = stopped.clone();

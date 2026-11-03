@@ -19,7 +19,6 @@ impl Io {
         name: impl Into<String>,
         adapter: &Arc<wintun::Adapter>,
         should_coalesce_tcp: fn() -> bool,
-        runtime: &tokio::runtime::Handle,
     ) -> Result<Self> {
         let capacity = ring_capacity_override()
             .inspect_err(|e| {
@@ -34,12 +33,7 @@ impl Io {
             .start_session(capacity)
             .with_context(|| format!("Failed to start session with capacity {capacity}"))?;
 
-        Self::with_device(
-            name,
-            Session(Arc::new(session)),
-            should_coalesce_tcp,
-            runtime,
-        )
+        Self::with_device(name, Session(Arc::new(session)), should_coalesce_tcp)
     }
 
     /// Starts the worker threads on a device other than a Wintun session, such as an in-memory
@@ -48,7 +42,6 @@ impl Io {
         name: impl Into<String>,
         device: D,
         should_coalesce_tcp: fn() -> bool,
-        runtime: &tokio::runtime::Handle,
     ) -> Result<Self>
     where
         D: Device + Clone,
@@ -57,7 +50,6 @@ impl Io {
         let recv_device = device.clone();
 
         let workers = tun::Workers::spawn(
-            runtime,
             move |outbound_rx| {
                 send_worker(outbound_rx, send_device, should_coalesce_tcp);
 
@@ -516,13 +508,10 @@ mod tests {
         // SAFETY: the bundled library is Wintun.
         let wintun = unsafe { wintun::load_from_path(WINTUN_DLL) }.unwrap();
         let adapter = wintun::Adapter::create(&wintun, "Firezone Test", "Firezone", None).unwrap();
-        let runtime = tokio::runtime::Builder::new_current_thread()
-            .build()
-            .unwrap();
 
         // Twice, so a session that did not end would fail the second start.
         for _ in 0..2 {
-            let mut io = Io::new("test", &adapter, || true, runtime.handle()).unwrap();
+            let mut io = Io::new("test", &adapter, || true).unwrap();
             let packet = ip_packet::make::udp_packet(
                 std::net::Ipv4Addr::new(100, 64, 0, 1),
                 std::net::Ipv4Addr::new(100, 64, 0, 2),

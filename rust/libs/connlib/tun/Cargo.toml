@@ -9,9 +9,7 @@ license = { workspace = true }
 anyhow = { workspace = true }
 ip-packet = { workspace = true }
 logging = { workspace = true }
-otel-attributes = { workspace = true }
-otel-instruments = { workspace = true }
-tokio = { workspace = true, features = ["rt", "sync"] }
+tokio = { workspace = true, features = ["sync"] }
 tokio-util = { workspace = true }
 tracing = { workspace = true }
 

@@ -40,18 +40,13 @@ pub struct Io {
 }
 
 impl Io {
-    pub fn new(
-        name: impl Into<String>,
-        fd: TunFd<Arc<OwnedFd>>,
-        runtime: &tokio::runtime::Handle,
-    ) -> Result<Self> {
+    pub fn new(name: impl Into<String>, fd: TunFd<Arc<OwnedFd>>) -> Result<Self> {
         let TunFd { fd, offloads } = fd;
         let send_fd = fd.clone();
 
         Self::spawn(
             name,
             offloads,
-            runtime,
             // SAFETY: Each `AsyncFd` holds a clone of the `OwnedFd`, keeping it open.
             move || {
                 unsafe { AsyncFd::register_with_interest(send_fd, Interest::WRITABLE) }
@@ -69,24 +64,13 @@ impl Io {
 
     /// Starts the worker threads on a device other than a TUN file descriptor, such as an
     /// in-memory one for benchmarks.
-    pub fn with_device<D>(
-        name: impl Into<String>,
-        device: D,
-        offloads: bool,
-        runtime: &tokio::runtime::Handle,
-    ) -> Result<Self>
+    pub fn with_device<D>(name: impl Into<String>, device: D, offloads: bool) -> Result<Self>
     where
         D: Device + Clone + Send + 'static,
     {
         let send_device = device.clone();
 
-        Self::spawn(
-            name,
-            offloads,
-            runtime,
-            move || Ok(send_device),
-            move || Ok(device),
-        )
+        Self::spawn(name, offloads, move || Ok(send_device), move || Ok(device))
     }
 
     /// Spawns the workers, each opening its device on its own thread.
@@ -95,7 +79,6 @@ impl Io {
     fn spawn<S, R>(
         name: impl Into<String>,
         offloads: bool,
-        runtime: &tokio::runtime::Handle,
         open_send: impl FnOnce() -> io::Result<S> + Send + 'static,
         open_recv: impl FnOnce() -> io::Result<R> + Send + 'static,
     ) -> Result<Self>
@@ -104,7 +87,6 @@ impl Io {
         R: Device,
     {
         let workers = tun::Workers::spawn(
-            runtime,
             move |outbound_rx| tun_send(open_send, offloads, outbound_rx),
             move |inbound_tx| tun_recv(open_recv, inbound_tx),
         )?;

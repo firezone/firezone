@@ -184,6 +184,13 @@ impl OutboundTx {
         }
     }
 
+    /// Returns the number of batches in the channel, including reserved slots.
+    pub fn queue_length(&self) -> usize {
+        self.0
+            .get_ref()
+            .map_or(0, |tx| tx.max_capacity() - tx.capacity())
+    }
+
     /// Reserves a slot in the channel for one batch.
     ///
     /// Dropping the [`Reservation`] keeps the slot for the next one.
@@ -253,10 +260,6 @@ impl InboundTx {
         self.0.try_send(batch)
     }
 
-    pub fn downgrade(&self) -> mpsc::WeakSender<PacketBatch> {
-        self.0.downgrade()
-    }
-
     /// Completes when the receiving half of the channel is gone.
     pub async fn closed(&self) {
         self.0.closed().await
@@ -280,5 +283,10 @@ impl InboundRx {
 
     pub fn try_recv(&mut self) -> Result<PacketBatch, mpsc::error::TryRecvError> {
         self.0.try_recv()
+    }
+
+    /// Returns the number of batches in the channel.
+    pub fn queue_length(&self) -> usize {
+        self.0.len()
     }
 }
