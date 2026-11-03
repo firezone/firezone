@@ -113,6 +113,7 @@ defmodule PortalWeb.SignUp do
             form: registration_form(%{}),
             trigger_submit: false,
             error_message: nil,
+            turnstile_error: nil,
             idp_identity: identity_from_session(session),
             existing_accounts: [],
             query_params: %{},
@@ -258,7 +259,7 @@ defmodule PortalWeb.SignUp do
       query_params={@query_params}
       website_attribution={@website_attribution}
     />
-    <.sign_up_form :if={@step == :fill_form} form={@form} />
+    <.sign_up_form :if={@step == :fill_form} form={@form} turnstile_error={@turnstile_error} />
     <.idp_sign_up_form
       :if={@step == :idp_form}
       form={@form}
@@ -337,6 +338,12 @@ defmodule PortalWeb.SignUp do
         />
       </div>
 
+      <.turnstile_widget id="email-turnstile-widget" />
+      <.turnstile_token_input id="email-turnstile-token" />
+      <p :if={@turnstile_error} id="turnstile-form-error" role="alert" class="text-sm text-error">
+        {@turnstile_error}
+      </p>
+
       <button
         type="submit"
         phx-disable-with="Sending..."
@@ -369,8 +376,11 @@ defmodule PortalWeb.SignUp do
 
     <.region_picker query_params={@query_params} website_attribution={@website_attribution} />
 
+    <.turnstile_widget id="choose-turnstile-widget" />
+
     <div class="flex flex-col gap-2">
       <.form for={%{}} id="google-sign-up" action={~p"/sign_up/google"} method="post">
+        <.turnstile_token_input id="google-turnstile-token" />
         <button type="submit" class={method_button_style()}>
           <Core.provider_icon provider="google" size="md" />
           <span class="flex-1 text-left">Sign up with <strong>Google</strong></span>
@@ -379,6 +389,7 @@ defmodule PortalWeb.SignUp do
       </.form>
 
       <.form for={%{}} id="github-sign-up" action={~p"/sign_up/github"} method="post">
+        <.turnstile_token_input id="github-turnstile-token" />
         <button type="submit" class={method_button_style()}>
           <Core.provider_icon provider="github" size="md" />
           <span class="flex-1 text-left">Sign up with <strong>GitHub</strong></span>
@@ -1073,14 +1084,46 @@ defmodule PortalWeb.SignUp do
     """
   end
 
+  # Each step needs its own id. A shared id would carry the widget, and its spent token,
+  # from one step into the next without running the hook again.
+  attr :id, :string, required: true
+
+  defp turnstile_widget(assigns) do
+    ~H"""
+    <div
+      :if={Portal.Turnstile.enabled?()}
+      id={@id}
+      phx-hook="Turnstile"
+      phx-update="ignore"
+      data-sitekey={Portal.Turnstile.site_key()}
+      class="my-1"
+    >
+      <div data-turnstile-widget></div>
+      <p data-turnstile-error role="alert" hidden class="text-sm text-error mt-1">
+        We couldn't load the verification check. If a blocker is on, allow challenges.cloudflare.com and reload this page.
+      </p>
+    </div>
+    """
+  end
+
+  attr :id, :string, required: true
+
+  defp turnstile_token_input(assigns) do
+    ~H"""
+    <div :if={Portal.Turnstile.enabled?()} id={@id} phx-update="ignore">
+      <input type="hidden" name="cf-turnstile-response" data-turnstile-token />
+    </div>
+    """
+  end
+
   # ── Event handlers ────────────────────────────────────────────────────────────
 
   def handle_event("validate", %{"registration" => attrs}, socket) do
     changeset = socket |> registration_changeset(attrs) |> Map.put(:action, :validate)
-    {:noreply, assign(socket, form: to_form(changeset, as: :registration))}
+    {:noreply, assign(socket, form: to_form(changeset, as: :registration), turnstile_error: nil)}
   end
 
-  def handle_event("submit", %{"registration" => attrs}, socket) do
+  def handle_event("submit", %{"registration" => attrs} = params, socket) do
     attrs = normalize_registration_attrs(attrs)
 
     if honeypot_filled?(attrs) do
@@ -1088,7 +1131,7 @@ defmodule PortalWeb.SignUp do
       {:noreply, assign(socket, step: :email_sent)}
     else
       changeset = socket |> registration_changeset(attrs) |> Map.put(:action, :insert)
-      {:noreply, apply_registration(socket, changeset)}
+      {:noreply, submit_registration(socket, changeset, params["cf-turnstile-response"])}
     end
   end
 
@@ -1175,6 +1218,24 @@ defmodule PortalWeb.SignUp do
 
   defp registration_form(attrs), do: to_form(registration_changeset(attrs), as: :registration)
 
+  # An invalid form is sent back before the challenge is checked, so a typo does not spend
+  # the single-use token.
+  defp submit_registration(socket, %{valid?: false} = changeset, _token) do
+    apply_registration(socket, changeset)
+  end
+
+  defp submit_registration(socket, changeset, token) do
+    case Portal.Turnstile.verify(token, socket.assigns.real_ip) do
+      :ok ->
+        socket |> assign(turnstile_error: nil) |> apply_registration(changeset) |> reset_turnstile()
+
+      {:error, reason} ->
+        socket
+        |> assign(form: to_form(changeset, as: :registration), turnstile_error: turnstile_error_message(reason))
+        |> reset_turnstile()
+    end
+  end
+
   defp apply_registration(socket, %{valid?: true} = changeset) do
     registration = Ecto.Changeset.apply_changes(changeset)
     existing_accounts = Database.find_accounts_by_owner_email(registration.email)
@@ -1236,6 +1297,22 @@ defmodule PortalWeb.SignUp do
   end
 
   defp honeypot_filled?(attrs), do: Map.get(attrs, "phone", "") != ""
+
+  @doc false
+  def turnstile_error_message(:unavailable),
+    do: "We couldn't verify your request right now. Please try again in a moment."
+
+  def turnstile_error_message(_reason),
+    do: "Please complete the verification and try again."
+
+  # Turnstile tokens are single use, so the widget must issue a new one after every attempt.
+  defp reset_turnstile(%{assigns: %{step: :email_sent}} = socket), do: socket
+
+  defp reset_turnstile(socket) do
+    if Portal.Turnstile.enabled?(),
+      do: Phoenix.LiveView.push_event(socket, "turnstile:reset", %{}),
+      else: socket
+  end
 
   defp survey_attrs(%Portal.SignUpSurvey{} = survey), do: Map.from_struct(survey)
 
