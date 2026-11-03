@@ -12,7 +12,16 @@ services:
       POSTGRES_PASSWORD: ${DATABASE_PASSWORD:-postgres}
       POSTGRES_DB: ${DATABASE_NAME:-firezone_dev}
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -d $${POSTGRES_DB} -U $${POSTGRES_USER}"]
+      # `pg_isready` reports ready as soon as the server accepts connections,
+      # which includes the entrypoint's temporary init server: that one only
+      # listens on the Unix socket and runs before `POSTGRES_DB` is created.
+      # Connecting to the database over TCP only succeeds once the final
+      # server serves it.
+      test:
+        [
+          "CMD-SHELL",
+          "PGPASSWORD=$${POSTGRES_PASSWORD} psql -h 127.0.0.1 -U $${POSTGRES_USER} -d $${POSTGRES_DB} -c 'SELECT 1'",
+        ]
       start_period: 20s
       interval: 30s
       retries: 5
