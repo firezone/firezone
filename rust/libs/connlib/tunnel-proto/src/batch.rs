@@ -76,7 +76,7 @@ pub struct TunBatch<'a, S: flow_tracker::Scope> {
     /// The source rewrite of the first packet, applied to every further one.
     nat: Option<(Protocol, IpAddr)>,
     tunnel: snownet::EncapsulateBatch<'a>,
-    flows: flow_tracker::CurrentFlowGuard<'a, S>,
+    flow: flow_tracker::CurrentFlowGuard<'a, S>,
     /// The packets of the batch, starting with the one that routed it.
     packets: Vec<IpPacket>,
 }
@@ -86,7 +86,7 @@ impl<'a, S: flow_tracker::Scope> TunBatch<'a, S> {
         key: Option<BatchingKey>,
         nat: Option<(Protocol, IpAddr)>,
         tunnel: snownet::EncapsulateBatch<'a>,
-        flows: flow_tracker::CurrentFlowGuard<'a, S>,
+        flow: flow_tracker::CurrentFlowGuard<'a, S>,
         packet: IpPacket,
     ) -> Self {
         let mut packets = Vec::with_capacity(tun::MAX_BATCH_SIZE);
@@ -96,7 +96,7 @@ impl<'a, S: flow_tracker::Scope> TunBatch<'a, S> {
             key,
             nat,
             tunnel,
-            flows,
+            flow,
             packets,
         }
     }
@@ -108,7 +108,7 @@ impl<'a, S: flow_tracker::Scope> TunBatch<'a, S> {
 
     /// Adds `packet`, which the batch [accepts](Self::accepts), translating it like the first one.
     pub fn push(&mut self, mut packet: IpPacket) {
-        self.flows.count_packet(&packet);
+        self.flow.count_packet(&packet);
 
         if let Some((proto, ip)) = self.nat {
             let translated = packet.translate_source(proto, ip);
@@ -126,13 +126,13 @@ impl<'a, S: flow_tracker::Scope> TunBatch<'a, S> {
         let encapsulation = match self.tunnel.finish(len) {
             Ok(encapsulation) => encapsulation,
             Err(e) => {
-                self.flows.discard();
+                self.flow.discard();
 
                 return Err(e).context("Failed to encapsulate");
             }
         };
 
-        drop(self.flows);
+        drop(self.flow);
 
         Ok((encapsulation, self.packets))
     }

@@ -7,14 +7,13 @@ use ip_packet::IpPacket;
 
 use super::ClientState;
 use crate::batch::BatchingKey;
+use smallvec::SmallVec;
 
 /// The decision taken for the first packet of a flow in a [`PeerBatch`], reused for the rest.
 pub(super) struct InboundDecision {
     pub(super) key: BatchingKey,
-    pub(super) flows: flow_tracker::DetachedFlow,
+    pub(super) flow: flow_tracker::DetachedFlow,
 }
-
-pub(super) type InboundDecisions = smallvec::SmallVec<[InboundDecision; 2]>;
 
 /// The data messages of one received datagram being handled, in order.
 ///
@@ -27,7 +26,7 @@ pub struct PeerBatch<'a> {
     from: SocketAddr,
     now: Instant,
     /// The routing decisions of the flows seen so far.
-    decisions: InboundDecisions,
+    decisions: SmallVec<[InboundDecision; 2]>,
 }
 
 impl<'a> PeerBatch<'a> {
@@ -44,7 +43,7 @@ impl<'a> PeerBatch<'a> {
             local,
             from,
             now,
-            decisions: InboundDecisions::new(),
+            decisions: SmallVec::new(),
         }
     }
 }
@@ -70,7 +69,7 @@ impl Iterator for PeerBatch<'_> {
             ));
         };
 
-        decision.flows.count_packet(packet);
+        decision.flow.count_packet(packet);
 
         Some(item)
     }
@@ -83,7 +82,7 @@ impl Iterator for PeerBatch<'_> {
 impl Drop for PeerBatch<'_> {
     fn drop(&mut self) {
         for decision in self.decisions.drain(..) {
-            self.state.flow_tracker.insert_detached(decision.flows);
+            self.state.flow_tracker.insert_detached(decision.flow);
         }
     }
 }

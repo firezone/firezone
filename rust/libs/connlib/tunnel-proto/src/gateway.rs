@@ -2,8 +2,8 @@ mod client_on_gateway;
 mod nat_table;
 mod peer_batch;
 
+use peer_batch::InboundDecision;
 pub use peer_batch::PeerBatch;
-use peer_batch::{InboundDecision, InboundDecisions};
 
 pub(crate) use crate::gateway::client_on_gateway::ClientOnGateway;
 
@@ -149,7 +149,7 @@ impl GatewayState {
         mut packet: IpPacket,
         now: Instant,
     ) -> Result<Option<TunBatch<'_, (ClientId, ResourceId)>>> {
-        let flows = self.flow_tracker.begin_tun_packet(&packet, now);
+        let flow = self.flow_tracker.begin_tun_packet(&packet, now);
 
         if packet.is_fz_p2p_control() {
             tracing::warn!("Packet matches heuristics of FZ p2p control protocol");
@@ -180,7 +180,7 @@ impl GatewayState {
 
         flow_tracker::record_transmit(tunnel.src(), tunnel.dst());
 
-        Ok(Some(TunBatch::new(key, nat, tunnel, flows, packet)))
+        Ok(Some(TunBatch::new(key, nat, tunnel, flow, packet)))
     }
 
     /// Handles UDP packets received on the network interface.
@@ -227,7 +227,7 @@ impl GatewayState {
         &mut self,
         cid: ClientId,
         packet: Result<Option<IpPacket>>,
-        decisions: &mut InboundDecisions,
+        decisions: &mut smallvec::SmallVec<[InboundDecision; 2]>,
         local: SocketAddr,
         from: SocketAddr,
         now: Instant,
@@ -239,7 +239,7 @@ impl GatewayState {
         };
 
         let key = BatchingKey::of(&packet);
-        let flows = self.flow_tracker.begin_network_packet(local, from, now);
+        let flow = self.flow_tracker.begin_network_packet(local, from, now);
 
         if packet.destination().is_multicast() {
             return Ok(None);
@@ -249,7 +249,7 @@ impl GatewayState {
 
         let Some(peer) = self.peers.peer_by_id_mut(&cid) else {
             tracing::trace!(%cid, "No peer state for connection; closing connection");
-            drop(flows);
+            drop(flow);
             self.cleanup_connection(&cid, now);
 
             return Ok(None);
@@ -267,9 +267,9 @@ impl GatewayState {
                     self.node.remove_connection(cid, "received `goodbye`", now);
 
                     // Later packets of the batch find no peer, so they must not reuse a decision.
-                    drop(flows);
+                    drop(flow);
                     for decision in decisions.drain(..) {
-                        self.flow_tracker.insert_detached(decision.flows);
+                        self.flow_tracker.insert_detached(decision.flow);
                     }
 
                     None
@@ -302,7 +302,7 @@ impl GatewayState {
                 decisions.push(InboundDecision {
                     key,
                     rewrite,
-                    flows: flows.detach(),
+                    flow: flow.detach(),
                 });
 
                 Ok(Some(packet))

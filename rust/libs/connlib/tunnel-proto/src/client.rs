@@ -10,8 +10,8 @@ pub(crate) mod resource;
 mod routing;
 mod tracked_state;
 
+use peer_batch::InboundDecision;
 pub use peer_batch::PeerBatch;
-use peer_batch::{InboundDecision, InboundDecisions};
 
 pub(crate) use crate::client::client_on_client::ClientOnClient;
 pub(crate) use crate::client::gateway_on_client::GatewayOnClient;
@@ -585,14 +585,14 @@ impl ClientState {
         };
 
         let internet_resource = self.active_internet_resource().map(|resource| resource.id);
-        let mut flows = self.flow_tracker.begin_tun_packet(&packet, now);
+        let mut flow = self.flow_tracker.begin_tun_packet(&packet, now);
 
         // Recursive DNS queries we tunnel to upstream resolvers are internal
         // traffic and never become flows either; discarding the flow data
         // before any fact is recorded keeps it that way.
         if self.udp_dns_client.owns_outbound(&packet) || self.tcp_dns_client.owns_outbound(&packet)
         {
-            flows.discard();
+            flow.discard();
         }
 
         let key = BatchingKey::of(&packet);
@@ -621,7 +621,7 @@ impl ClientState {
                     return Ok(None);
                 };
 
-                return Ok(Some(TunBatch::new(None, None, tunnel, flows, packet)));
+                return Ok(Some(TunBatch::new(None, None, tunnel, flow, packet)));
             }
         };
         let direct_gateway = self.gateways.peer_by_ip(dst).map(|(gid, _)| gid);
@@ -732,7 +732,7 @@ impl ClientState {
             return Ok(None);
         };
 
-        Ok(Some(TunBatch::new(key, None, tunnel, flows, packet)))
+        Ok(Some(TunBatch::new(key, None, tunnel, flow, packet)))
     }
 
     /// Feed an internally-produced or previously-buffered IP packet through normal TUN routing
@@ -792,7 +792,7 @@ impl ClientState {
         &mut self,
         pid: ClientOrGatewayId,
         packet: Result<Option<IpPacket>>,
-        decisions: &mut InboundDecisions,
+        decisions: &mut smallvec::SmallVec<[InboundDecision; 2]>,
         local: SocketAddr,
         from: SocketAddr,
         now: Instant,
@@ -804,7 +804,7 @@ impl ClientState {
         };
 
         let key = BatchingKey::of(&packet);
-        let flows = self.flow_tracker.begin_network_packet(local, from, now);
+        let flow = self.flow_tracker.begin_network_packet(local, from, now);
 
         flow_tracker::record_decrypted_packet(&packet);
 
@@ -821,7 +821,7 @@ impl ClientState {
         if let Some(fz_p2p_control) = packet.as_fz_p2p_control() {
             // Control traffic is not a flow; release the tracker borrow for
             // the `&mut self` calls below.
-            drop(flows);
+            drop(flow);
 
             match (fz_p2p_control.event_type(), pid) {
                 (p2p_control::DOMAIN_STATUS_EVENT, ClientOrGatewayId::Gateway(gid)) => {
@@ -866,7 +866,7 @@ impl ClientState {
 
                     // Later packets of the batch find no peer, so they must not reuse a decision.
                     for decision in decisions.drain(..) {
-                        self.flow_tracker.insert_detached(decision.flows);
+                        self.flow_tracker.insert_detached(decision.flow);
                     }
                 }
                 (code, pid) => {
@@ -936,7 +936,7 @@ impl ClientState {
         if let Some(key) = key {
             decisions.push(InboundDecision {
                 key,
-                flows: flows.detach(),
+                flow: flow.detach(),
             });
         }
 
