@@ -555,5 +555,24 @@ defmodule PortalWeb.UserpassControllerTest do
 
       assert redirected_to(conn) =~ account.id
     end
+
+    test "does not log the password of a malformed request", %{
+      conn: conn,
+      account: account,
+      provider: provider
+    } do
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          conn =
+            post(conn, ~p"/#{account.id}/sign_in/userpass/#{provider.id}", %{
+              "userpass" => %{"idp_id" => ["a@example.com"], "secret" => @password}
+            })
+
+          assert redirected_to(conn) =~ account.id
+        end)
+
+      assert log =~ "Invalid request parameters"
+      refute log =~ @password
+    end
   end
 end

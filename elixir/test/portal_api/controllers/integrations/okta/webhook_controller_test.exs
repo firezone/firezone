@@ -377,6 +377,18 @@ defmodule PortalAPI.Integrations.Okta.WebhookControllerTest do
       assert all_enqueued(worker: Okta.WebhookSync) == []
     end
 
+    test "clears the remote_ip logger metadata after the response", %{
+      conn: conn,
+      directory: directory
+    } do
+      ExUnit.CaptureLog.capture_log(fn ->
+        conn = post_events(conn, directory, [], secret: "nope")
+        assert response(conn, 401)
+      end)
+
+      refute Keyword.has_key?(Logger.metadata(), :remote_ip)
+    end
+
     test "refuses an unauthenticated delivery before parsing its body", %{
       conn: conn,
       directory: directory

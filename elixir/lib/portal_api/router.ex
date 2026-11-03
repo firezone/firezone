@@ -207,7 +207,6 @@ defmodule PortalAPI.Router do
 
   pipeline :integrations do
     plug :put_remote_ip_metadata
-    plug PortalAPI.Plugs.IntegrationsRateLimit
   end
 
   scope "/integrations", PortalAPI.Integrations do
@@ -236,10 +235,15 @@ defmodule PortalAPI.Router do
   end
 
   # Webhook auth failures log a warning from code that has no conn, so the
-  # client IP rides along as logger metadata.
+  # client IP rides along as logger metadata. Bandit serves every request of a
+  # keep-alive connection from one process, so the metadata is cleared again.
   def put_remote_ip_metadata(%Plug.Conn{} = conn, _opts) do
     Logger.metadata(remote_ip: conn.remote_ip |> :inet.ntoa() |> to_string())
-    conn
+
+    register_before_send(conn, fn conn ->
+      Logger.metadata(remote_ip: nil)
+      conn
+    end)
   end
 
   # Ingestion has its own configured hostname and is not part of the REST API.

@@ -40,7 +40,7 @@ defmodule PortalWeb.UserpassController do
   end
 
   def sign_in(conn, params) do
-    Logger.warning("Invalid request parameters", params: params)
+    Logger.warning("Invalid request parameters", params: Map.drop(params, ["userpass"]))
     handle_error(conn, :invalid_params, params)
   end
 
