@@ -63,7 +63,7 @@ defmodule Portal.OTLP.MetricsExporterTest do
 
   test "sends static headers and fetches no token without auth" do
     test_pid = self()
-    auth = Portal.OTLP.auth!(nil, "authorization=Basic%20abc")
+    auth = {:headers, [{"authorization", "Basic abc"}]}
     {:ok, state} = MetricsExporter.init(%{endpoint: @endpoint, auth: auth})
 
     Req.Test.expect(MetricsExporter, fn conn ->

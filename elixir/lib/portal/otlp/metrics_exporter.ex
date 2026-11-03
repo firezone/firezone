@@ -5,9 +5,7 @@ defmodule Portal.OTLP.MetricsExporter do
   require Logger
 
   @impl true
-  def init(%{endpoint: endpoint, auth: auth}) do
-    {:ok, %{endpoint: Portal.OTLP.validate_endpoint!(endpoint, "OTLP_METRICS_ENDPOINT"), auth: auth}}
-  end
+  def init(%{endpoint: _, auth: _} = state), do: {:ok, state}
 
   @impl true
   def export([], _resource, _state), do: :ok

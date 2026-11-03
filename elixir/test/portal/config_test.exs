@@ -241,6 +241,59 @@ defmodule Portal.ConfigTest do
       end
     end
 
+    test "returns the configured OTLP metrics endpoint" do
+      endpoint = "https://otlp.example.com/v1/metrics"
+
+      assert env_var_to_config!(Portal.Config.Definitions, :otlp_metrics_endpoint, %{}) == nil
+
+      assert env_var_to_config!(Portal.Config.Definitions, :otlp_metrics_endpoint, %{
+               "OTLP_METRICS_ENDPOINT" => endpoint
+             }) == endpoint
+    end
+
+    test "rejects an OTLP metrics endpoint that is not a full HTTPS URL" do
+      for endpoint <- ["http://otlp.example.com/v1/metrics", "https:///v1/metrics", "otlp.example.com"] do
+        assert_raise RuntimeError, ~r/OTLP_METRICS_ENDPOINT/, fn ->
+          env_var_to_config!(Portal.Config.Definitions, :otlp_metrics_endpoint, %{
+            "OTLP_METRICS_ENDPOINT" => endpoint
+          })
+        end
+      end
+    end
+
+    test "accepts azure-managed-identity as the only OTLP auth" do
+      assert env_var_to_config!(Portal.Config.Definitions, :otlp_auth, %{}) == nil
+
+      assert env_var_to_config!(Portal.Config.Definitions, :otlp_auth, %{
+               "OTLP_AUTH" => "azure-managed-identity"
+             }) == :azure_managed_identity
+
+      assert_raise RuntimeError, ~r/OTLP_AUTH/, fn ->
+        env_var_to_config!(Portal.Config.Definitions, :otlp_auth, %{"OTLP_AUTH" => "bearer"})
+      end
+    end
+
+    test "parses and percent-decodes the OTLP headers" do
+      assert env_var_to_config!(Portal.Config.Definitions, :otel_exporter_otlp_headers, %{}) == []
+
+      assert env_var_to_config!(Portal.Config.Definitions, :otel_exporter_otlp_headers, %{
+               "OTEL_EXPORTER_OTLP_HEADERS" => " api-key = a%2Cb%3Dc , x-tenant=1"
+             }) == [{"api-key", "a,b=c"}, {"x-tenant", "1"}]
+    end
+
+    test "rejects malformed OTLP headers without leaking their values" do
+      for headers <- ["api-key", "=s3cr3t", "api-key=a,s3cr3t", "api-key=s3cr3t%zz"] do
+        error =
+          assert_raise RuntimeError, ~r/OTEL_EXPORTER_OTLP_HEADERS/, fn ->
+            env_var_to_config!(Portal.Config.Definitions, :otel_exporter_otlp_headers, %{
+              "OTEL_EXPORTER_OTLP_HEADERS" => headers
+            })
+          end
+
+        refute error.message =~ "s3cr3t"
+      end
+    end
+
     test "returns config value" do
       assert env_var_to_config!(Test, :optional_generated) ==
                %Postgrex.INET{address: {1, 1, 1, 1}, netmask: nil}
