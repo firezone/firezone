@@ -17,7 +17,7 @@
 //! Processing a packet begins with [`Tracker::begin_tun_packet`] /
 //! [`Tracker::begin_network_packet`], which marks the thread-local [`FlowData`]
 //! as gathering a packet that the call sites processing it fill in via the
-//! `record_*` functions. [`CurrentFlowGuard::add`] counts further packets of the
+//! `record_*` functions. [`CurrentFlowGuard::count_packet`] counts further packets of the
 //! same flow. Dropping the returned [`CurrentFlowGuard`] inserts
 //! the gathered data on every exit path; incomplete data (e.g. because packet
 //! processing bailed early or the packet was internal traffic) is discarded.
@@ -769,8 +769,8 @@ impl<S: Scope> CurrentFlowGuard<'_, S> {
     ///
     /// A packet that opens, closes or resets a TCP connection changes the flow, so it must
     /// begin a guard of its own.
-    pub fn add(&mut self, packet: &IpPacket) {
-        CURRENT_FLOW.with_borrow_mut(|data| data.add(packet));
+    pub fn count_packet(&mut self, packet: &IpPacket) {
+        CURRENT_FLOW.with_borrow_mut(|data| data.count_packet(packet));
     }
 
     /// Drops the gathered flow data, so nothing is inserted.
@@ -806,9 +806,9 @@ pub struct DetachedFlow {
 }
 
 impl DetachedFlow {
-    /// Counts `packet` towards the flow, see [`CurrentFlowGuard::add`].
-    pub fn add(&mut self, packet: &IpPacket) {
-        self.data.add(packet);
+    /// Counts `packet` towards the flow, see [`CurrentFlowGuard::count_packet`].
+    pub fn count_packet(&mut self, packet: &IpPacket) {
+        self.data.count_packet(packet);
     }
 }
 
@@ -899,7 +899,7 @@ impl FlowData {
     };
 
     /// Counts `packet` towards the flow of the first packet.
-    fn add(&mut self, packet: &IpPacket) {
+    fn count_packet(&mut self, packet: &IpPacket) {
         let Some(inner) = self.inner.as_mut() else {
             return;
         };

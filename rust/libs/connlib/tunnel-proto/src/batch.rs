@@ -108,7 +108,7 @@ impl<'a, S: flow_tracker::Scope> TunBatch<'a, S> {
 
     /// Adds `packet`, which the batch [accepts](Self::accepts), translating it like the first one.
     pub fn push(&mut self, mut packet: IpPacket) {
-        self.flows.add(&packet);
+        self.flows.count_packet(&packet);
 
         if let Some((proto, ip)) = self.nat {
             let translated = packet.translate_source(proto, ip);

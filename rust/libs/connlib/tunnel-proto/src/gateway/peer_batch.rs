@@ -71,7 +71,7 @@ impl Iterator for PeerBatch<'_> {
             return Some(Err(e));
         }
 
-        decision.flows.add(packet);
+        decision.flows.count_packet(packet);
 
         Some(item)
     }
