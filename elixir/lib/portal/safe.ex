@@ -567,6 +567,13 @@ defmodule Portal.Safe do
 
   @spec delete(Scoped.t()) ::
           {:ok, Ecto.Schema.t()} | {:error, Ecto.Changeset.t() | :unauthorized | :not_found}
+  # System-managed actors are provisioned by the portal and are not an admin's
+  # to delete, whatever their own type permits.
+  def delete(%Scoped{queryable: %Portal.Actor{managed_by: :system}}), do: {:error, :unauthorized}
+
+  def delete(%Scoped{queryable: %Ecto.Changeset{data: %Portal.Actor{managed_by: :system}}}),
+    do: {:error, :unauthorized}
+
   def delete(%Scoped{
         subject: %Subject{account: %{id: account_id}} = subject,
         queryable: %Ecto.Changeset{data: %{account_id: account_id}} = changeset
