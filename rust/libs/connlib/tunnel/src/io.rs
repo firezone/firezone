@@ -31,12 +31,8 @@ use tun::Tun;
 /// yielded some.
 ///
 /// Packets the TUN and UDP threads send within it reach the event loop without them paying for
-/// waking it up. Mobile devices don't spin to save battery.
-const SPIN_BUDGET: Duration = if cfg!(any(target_os = "ios", target_os = "android")) {
-    Duration::ZERO
-} else {
-    Duration::from_micros(5)
-};
+/// waking it up.
+const SPIN_BUDGET: Duration = Duration::from_micros(20);
 
 /// Bundles together all side-effects that connlib needs to have access to.
 pub struct Io {
