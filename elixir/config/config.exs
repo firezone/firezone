@@ -622,6 +622,12 @@ config :portal, PortalAPI.Plugs.IngestionRateLimit,
   refill_rate: 1,
   capacity: 1
 
+# Webhooks from Stripe, Okta, Microsoft, Google and Event Grid arrive on shared
+# provider addresses, so the per-IP limit stays well above their delivery rate.
+config :portal, PortalAPI.Plugs.IntegrationsRateLimit,
+  refill_rate: 10,
+  capacity: 100
+
 config :portal, PortalWeb.RateLimit,
   refill_rate: 10,
   capacity: 200

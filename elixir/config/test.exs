@@ -390,6 +390,10 @@ config :portal, PortalAPI.Plugs.IngestionRateLimit,
   refill_rate: 100_000,
   capacity: 1_000_000
 
+config :portal, PortalAPI.Plugs.IntegrationsRateLimit,
+  refill_rate: 100_000,
+  capacity: 1_000_000
+
 config :portal, PortalWeb.Plugs.PutSecurityHeaders,
   csp_policy: [
     "default-src 'self' https://firezone.statuspage.io",

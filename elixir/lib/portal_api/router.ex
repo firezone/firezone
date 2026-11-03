@@ -1,5 +1,6 @@
 defmodule PortalAPI.Router do
   use PortalAPI, :router
+  require Logger
 
   # Router pipelines run only after a route matches; sockets are handled by the endpoint.
   pipeline :canonical_host do
@@ -204,7 +205,14 @@ defmodule PortalAPI.Router do
     resources "/sophos_devices", SophosDeviceController, only: [:index, :show]
   end
 
+  pipeline :integrations do
+    plug :put_remote_ip_metadata
+    plug PortalAPI.Plugs.IntegrationsRateLimit
+  end
+
   scope "/integrations", PortalAPI.Integrations do
+    pipe_through :integrations
+
     scope "/azure_communication_services", AzureCommunicationServices do
       post "/webhooks", WebhookController, :handle_webhook
     end
@@ -225,6 +233,13 @@ defmodule PortalAPI.Router do
     scope "/stripe", Stripe do
       post "/webhooks", WebhookController, :handle_webhook
     end
+  end
+
+  # Webhook auth failures log a warning from code that has no conn, so the
+  # client IP rides along as logger metadata.
+  def put_remote_ip_metadata(%Plug.Conn{} = conn, _opts) do
+    Logger.metadata(remote_ip: conn.remote_ip |> :inet.ntoa() |> to_string())
+    conn
   end
 
   # Ingestion has its own configured hostname and is not part of the REST API.

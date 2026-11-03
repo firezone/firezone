@@ -7,13 +7,22 @@ defmodule PortalAPI.Integrations.AzureCommunicationServices.WebhookController do
   def handle_webhook(conn, _params) do
     case get_req_header(conn, "aeg-event-type") do
       [event_type] ->
-        handle_body(conn, event_type)
+        case authenticate(conn, event_type) do
+          :ok ->
+            handle_body(conn, event_type)
+
+          {:error, :invalid_secret} ->
+            Logger.warning("ACS Event Grid webhook failed authentication")
+            send_resp(conn, 401, "Unauthorized")
+        end
 
       [] ->
+        Logger.warning("ACS Event Grid webhook rejected", reason: :missing_event_type)
         send_resp(conn, 400, "Bad Request: missing aeg-event-type header")
 
-      _multiple ->
-        send_resp(conn, 400, "Bad Request: multiple aeg-event-type headers")
+      [_ | _] ->
+        Logger.warning("ACS Event Grid webhook rejected", reason: :multiple_event_types)
+        send_resp(conn, 400, "Bad Request: invalid aeg-event-type header")
     end
   end
 
@@ -34,9 +43,6 @@ defmodule PortalAPI.Integrations.AzureCommunicationServices.WebhookController do
   defp dispatch_body(conn, event_type, body) do
     with {:ok, events} <- decode_events(body) do
       case dispatch_event_type(conn, event_type, events) do
-        {:error, :invalid_secret} ->
-          send_resp(conn, 401, "Unauthorized")
-
         {:error, :invalid_validation_event} ->
           send_resp(conn, 400, "Bad Request: invalid validation event")
 
@@ -61,8 +67,7 @@ defmodule PortalAPI.Integrations.AzureCommunicationServices.WebhookController do
   end
 
   defp dispatch_event_type(conn, "Notification", events) do
-    with :ok <- verify_secret(conn),
-         :ok <- AzureCommunicationServices.handle_event_grid_events(events) do
+    with :ok <- AzureCommunicationServices.handle_event_grid_events(events) do
       send_resp(conn, 200, "")
     end
   end
@@ -74,6 +79,11 @@ defmodule PortalAPI.Integrations.AzureCommunicationServices.WebhookController do
   defp dispatch_event_type(conn, _event_type, _events) do
     send_resp(conn, 400, "Bad Request: unsupported aeg-event-type")
   end
+
+  # Only Notification events carry the shared secret. Event Grid's validation
+  # handshake and unsubscribe notice do not.
+  defp authenticate(conn, "Notification"), do: verify_secret(conn)
+  defp authenticate(_conn, _event_type), do: :ok
 
   defp verify_secret(conn) do
     with secret when is_binary(secret) <-
