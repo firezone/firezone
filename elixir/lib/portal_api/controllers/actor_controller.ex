@@ -167,8 +167,8 @@ defmodule PortalAPI.ActorController do
     **Setting `is_disabled` to `true` immediately revokes all of the Actor's
     active Client tokens and portal sessions.** An Actor cannot disable itself.
 
-    Admins can only be changed in the portal, and users can only be promoted to
-    admin there.
+    Admins and API clients can only be changed in the portal, and users can only
+    be promoted to admin there.
     """,
     parameters: [
       id: [
@@ -199,7 +199,7 @@ defmodule PortalAPI.ActorController do
     subject = conn.assigns.subject
 
     with {:ok, actor} <- Database.fetch_actor(id, subject),
-         :ok <- ensure_not_admin(actor),
+         :ok <- ensure_manageable(actor),
          changeset <- actor_changeset(actor, params),
          :ok <- ensure_not_self_disable(actor, changeset, subject),
          {:ok, actor} <- Database.update_actor(changeset, subject) do
@@ -216,7 +216,7 @@ defmodule PortalAPI.ActorController do
   # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :delete,
     summary: "Delete an Actor",
-    description: "Deletes an Actor. Admins can only be deleted in the portal.",
+    description: "Deletes an Actor. Admins and API clients can only be deleted in the portal.",
     parameters: [
       id: [
         in: :path,
@@ -236,7 +236,7 @@ defmodule PortalAPI.ActorController do
     subject = conn.assigns.subject
 
     with {:ok, actor} <- Database.fetch_actor(id, subject),
-         :ok <- ensure_not_admin(actor),
+         :ok <- ensure_manageable(actor),
          {:ok, actor} <- Database.delete_actor_by_id(actor.id, subject) do
       json(conn, JSON.encode(actor))
     else
@@ -247,11 +247,17 @@ defmodule PortalAPI.ActorController do
   # A token's scopes must not reach past the actors it is allowed to manage.
   # Admins can only be created or changed in the portal, otherwise a token with
   # actors:write could mint a portal admin for itself and bypass every scope.
-  defp ensure_not_admin(%Portal.Actor{type: :account_admin_user}) do
+  # API clients are portal-managed too, otherwise a narrow token could revoke
+  # the tokens of an API client that has more scopes than itself.
+  defp ensure_manageable(%Portal.Actor{type: :account_admin_user}) do
     {:error, :forbidden, reason: "Admins can only be managed in the portal"}
   end
 
-  defp ensure_not_admin(_actor), do: :ok
+  defp ensure_manageable(%Portal.Actor{type: :api_client}) do
+    {:error, :forbidden, reason: "API clients can only be managed in the portal"}
+  end
+
+  defp ensure_manageable(_actor), do: :ok
 
   # Disabling an Actor revokes its own credentials, so letting a caller disable
   # the Actor behind the current request would lock it out mid-request.
