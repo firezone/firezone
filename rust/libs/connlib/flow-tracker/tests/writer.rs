@@ -428,8 +428,8 @@ fn added_packets_count_towards_one_flow() {
         flow_tracker::record_decrypted_packet(&tcp_packet(ack(), &[0; 100]));
         flow_tracker::record_peer(ClientId::from_u128(1), Role::Responder);
         flow_tracker::record_ingest_token(Some(&test_token(authz_id, "responder")));
-        flow.add(&tcp_packet(ack(), &[0; 200]));
-        flow.add(&tcp_packet(ack(), &[0; 50]));
+        flow.count_packet(&tcp_packet(ack(), &[0; 200]));
+        flow.count_packet(&tcp_packet(ack(), &[0; 50]));
         drop(flow);
 
         tracker.close_all(t0 + Duration::from_secs(1));
