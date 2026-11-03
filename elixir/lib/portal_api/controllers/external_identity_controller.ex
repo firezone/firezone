@@ -88,6 +88,7 @@ defmodule PortalAPI.ExternalIdentityController do
   # coveralls-ignore-start - OpenApiSpex operation specs are compile-time, not executable
   operation :delete,
     summary: "Delete an External Identity",
+    description: "Deletes an External Identity. Identities of admins can only be deleted in the portal.",
     parameters: [
       actor_id: [
         in: :path,
@@ -111,6 +112,7 @@ defmodule PortalAPI.ExternalIdentityController do
         ProblemDetails.responses([
           :bad_request,
           :unauthorized,
+          :forbidden,
           :not_found,
           :too_many_requests
         ])
@@ -121,6 +123,7 @@ defmodule PortalAPI.ExternalIdentityController do
   def delete(conn, %{"actor_id" => actor_id, "id" => id}) do
     with {:ok, external_identity} <-
            Database.fetch_external_identity(actor_id, id, conn.assigns.subject),
+         :ok <- ensure_not_admin(external_identity),
          {:ok, deleted_external_identity} <-
            Database.delete_external_identity(external_identity, conn.assigns.subject) do
       json(conn, JSON.encode(deleted_external_identity))
@@ -128,6 +131,13 @@ defmodule PortalAPI.ExternalIdentityController do
       error -> Error.handle(conn, error)
     end
   end
+
+  # Same rule as PortalAPI.ActorController, else a token could lock admins out of the portal.
+  defp ensure_not_admin(%Portal.ExternalIdentity{actor: %Portal.Actor{type: :account_admin_user}}) do
+    {:error, :forbidden, reason: "Admins can only be managed in the portal"}
+  end
+
+  defp ensure_not_admin(_external_identity), do: :ok
 
   defmodule Database do
     import Ecto.Query
@@ -162,11 +172,15 @@ defmodule PortalAPI.ExternalIdentityController do
           as: :external_identities,
           where: ei.id == ^id and ei.actor_id == ^actor_id and ei.account_id == ^subject.account.id
         )
+        |> join(:inner, [external_identities: ei], a in Portal.Actor,
+          on: a.id == ei.actor_id and a.account_id == ei.account_id,
+          as: :actor
+        )
         |> join(:left, [external_identities: ei], iss in Portal.ExternalIdentitySyncState,
           on: iss.external_identity_id == ei.id and iss.account_id == ei.account_id,
           as: :sync_state
         )
-        |> preload([sync_state: iss], sync_state: iss)
+        |> preload([actor: a, sync_state: iss], actor: a, sync_state: iss)
         |> Safe.scoped(subject)
         |> Safe.one()
 
