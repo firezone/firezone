@@ -3,6 +3,7 @@ mod nat_table;
 mod peer_batch;
 
 pub use peer_batch::PeerBatch;
+use peer_batch::{InboundDecision, InboundDecisions};
 
 pub(crate) use crate::gateway::client_on_gateway::ClientOnGateway;
 
@@ -78,15 +79,6 @@ pub struct GatewayState {
     /// Our connection to the portal, holding back ICE candidates while it is down.
     portal: PortalConnection<ClientId>,
 }
-
-/// The decision taken for the first packet of a flow in a [`PeerBatch`], reused for the rest.
-struct InboundDecision {
-    key: BatchingKey,
-    rewrite: OutboundRewrite,
-    flows: flow_tracker::DetachedFlow,
-}
-
-type InboundDecisions = smallvec::SmallVec<[InboundDecision; 2]>;
 
 impl GatewayState {
     pub fn new(seed: [u8; 32], now: Instant, unix_ts: Duration) -> Self {

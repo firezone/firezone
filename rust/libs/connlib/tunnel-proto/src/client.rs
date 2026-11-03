@@ -11,6 +11,7 @@ mod routing;
 mod tracked_state;
 
 pub use peer_batch::PeerBatch;
+use peer_batch::{InboundDecision, InboundDecisions};
 
 pub(crate) use crate::client::client_on_client::ClientOnClient;
 pub(crate) use crate::client::gateway_on_client::GatewayOnClient;
@@ -2881,14 +2882,6 @@ fn client_for_icmp_error(
 
     None
 }
-
-/// The decision taken for the first packet of a flow in a [`PeerBatch`], reused for the rest.
-struct InboundDecision {
-    key: BatchingKey,
-    flows: flow_tracker::DetachedFlow,
-}
-
-type InboundDecisions = smallvec::SmallVec<[InboundDecision; 2]>;
 
 /// Like [`encapsulate_or_buffer`], but encrypts the packet into `buffered_transmits` and drops
 /// (with a log) any error instead of returning it.

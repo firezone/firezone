@@ -5,7 +5,17 @@ use anyhow::{Context as _, Result};
 use connlib_model::ClientId;
 use ip_packet::IpPacket;
 
-use super::{GatewayState, InboundDecisions, OutboundRewrite};
+use super::{GatewayState, OutboundRewrite};
+use crate::batch::BatchingKey;
+
+/// The decision taken for the first packet of a flow in a [`PeerBatch`], reused for the rest.
+pub(super) struct InboundDecision {
+    pub(super) key: BatchingKey,
+    pub(super) rewrite: OutboundRewrite,
+    pub(super) flows: flow_tracker::DetachedFlow,
+}
+
+pub(super) type InboundDecisions = smallvec::SmallVec<[InboundDecision; 2]>;
 
 /// The data messages of one received datagram being handled, in order.
 ///
