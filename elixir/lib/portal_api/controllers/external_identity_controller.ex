@@ -132,7 +132,6 @@ defmodule PortalAPI.ExternalIdentityController do
     end
   end
 
-  # Matches PortalAPI.ActorController: a token must not lock admins out of the portal.
   defp ensure_not_admin(%Portal.Actor{type: :account_admin_user}) do
     {:error, :forbidden, reason: "Admins can only be managed in the portal"}
   end
