@@ -1389,14 +1389,12 @@ mod tests {
         peer.add_resource(baz_dns_resource(), None, now);
         peer.add_resource(bar_cidr_resource(), None, now);
 
-        let foo_proxy_ips = BTreeSet::from([proxy_ip4_1(), proxy_ip4_2(), proxy_ip6_1()]);
-
         for resource_id in [foo_resource_id(), foo_resource2_id(), foo_resource_id()] {
             peer.setup_nat(
                 foo_name().parse().unwrap(),
                 resource_id,
                 BTreeSet::from([foo_real_ip1().into()]),
-                foo_proxy_ips.clone(),
+                ProxyIps::for_test(),
             )
             .unwrap();
         }
@@ -1404,7 +1402,11 @@ mod tests {
             baz_name().parse().unwrap(),
             baz_resource_id(),
             BTreeSet::from([baz_real_ip1().into()]),
-            BTreeSet::from([proxy_ip6_2(), "100.96.0.3".parse().unwrap()]),
+            ProxyIps::new(
+                [5, 6, 7, 8].map(|i| Ipv4Addr::new(100, 96, 0, i)),
+                [4, 5, 6, 7].map(|i| Ipv6Addr::new(0xfd00, 0x2021, 0x1111, 0x8000, 0, 0, 0, i)),
+            )
+            .unwrap(),
         )
         .unwrap();
 
