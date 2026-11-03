@@ -79,12 +79,6 @@ impl PartialEq for Peer {
     }
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
-pub struct ResolveRequest {
-    pub name: DomainName,
-    pub proxy_ips: Vec<IpAddr>,
-}
-
 #[derive(Debug, Deserialize, Serialize, Clone, Hash, PartialEq, Eq)]
 pub struct DomainResponse {
     pub domain: DomainName,

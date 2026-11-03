@@ -6,7 +6,7 @@ pub(crate) use crate::gateway::client_on_gateway::ClientOnGateway;
 use crate::authorization_rejections::AuthorizationRejections;
 use crate::gateway::client_on_gateway::{ProxyIpAlreadyAssigned, TranslateOutboundResult};
 use crate::messages::gateway::{Client, ResourceDescription};
-use crate::messages::{IceCredentials, IngestToken, Key, ResolveRequest};
+use crate::messages::{IceCredentials, IngestToken, Key};
 use crate::peer_store::PeerStore;
 use crate::portal_connection::PortalConnection;
 use crate::unix_ts::UnixTsClock;
@@ -69,23 +69,6 @@ pub struct GatewayState {
 
     /// Our connection to the portal, holding back ICE candidates while it is down.
     portal: PortalConnection<ClientId>,
-}
-
-#[derive(Debug)]
-pub struct DnsResourceNatEntry {
-    domain: DomainName,
-    proxy_ips: Vec<IpAddr>,
-    resolved_ips: Vec<IpAddr>,
-}
-
-impl DnsResourceNatEntry {
-    pub fn new(request: ResolveRequest, resolved_ips: Vec<IpAddr>) -> Self {
-        Self {
-            domain: request.name,
-            proxy_ips: request.proxy_ips,
-            resolved_ips,
-        }
-    }
 }
 
 impl GatewayState {
@@ -393,18 +376,8 @@ impl GatewayState {
             now,
         );
 
-        let result = self.allow_access(
-            &client,
-            flow_logs_ingest_token,
-            expires_at,
-            resource,
-            None,
-            now,
-        );
-        debug_assert!(
-            result.is_ok(),
-            "`allow_access` should never fail without a `DnsResourceEntry`"
-        );
+        let result = self.allow_access(&client, flow_logs_ingest_token, expires_at, resource, now);
+        debug_assert!(result.is_ok(), "`allow_access` should never fail");
     }
 
     pub fn allow_access(
@@ -413,7 +386,6 @@ impl GatewayState {
         flow_logs_ingest_token: IngestToken,
         expires_at: Option<Duration>,
         resource: ResourceDescription,
-        dns_resource_nat: Option<DnsResourceNatEntry>,
         now: Instant,
     ) -> Result<()> {
         let gateway_tun = self.tun_ip_config.context("TUN device not configured")?;
@@ -439,24 +411,6 @@ impl GatewayState {
 
         peer.add_resource(resource.clone(), expires_at, now);
         peer.set_ingest_token(resource.id(), flow_logs_ingest_token);
-
-        if let Some(entry) = dns_resource_nat {
-            match peer.setup_nat(
-                entry.domain,
-                resource.id(),
-                BTreeSet::from_iter(entry.resolved_ips),
-                BTreeSet::from_iter(entry.proxy_ips),
-            ) {
-                Ok(()) => {}
-                Err(e) if e.any_is::<ProxyIpAlreadyAssigned>() => {
-                    tracing::debug!("Conflicting proxy assignment; closing connection: {e:#}");
-                    self.cleanup_connection(&client.id, now);
-
-                    return Err(e);
-                }
-                Err(e) => return Err(e),
-            }
-        }
 
         Ok(())
     }
