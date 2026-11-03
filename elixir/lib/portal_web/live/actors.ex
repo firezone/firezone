@@ -564,8 +564,11 @@ defmodule PortalWeb.Actors do
     {:noreply, merge_state(socket, :actor_token, token_expiration: token_expiration)}
   end
 
-  def handle_event("create_token", params, socket) do
-    actor = socket.assigns.selected_actor
+  def handle_event(
+        "create_token",
+        params,
+        %{assigns: %{selected_actor: %Actor{type: :service_account} = actor}} = socket
+      ) do
     token_expiration = Map.get(params, "token_expiration")
 
     case create_actor_token(actor, token_expiration, socket.assigns.subject) do
@@ -580,6 +583,10 @@ defmodule PortalWeb.Actors do
       _ ->
         {:noreply, put_flash(socket, :error, "Failed to create token")}
     end
+  end
+
+  def handle_event("create_token", _params, socket) do
+    {:noreply, put_flash(socket, :error, "Tokens can only be created for service accounts")}
   end
 
   def handle_event("confirm_delete_token", %{"id" => token_id}, socket) do

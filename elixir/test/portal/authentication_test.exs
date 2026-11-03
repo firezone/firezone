@@ -79,40 +79,30 @@ defmodule Portal.AuthenticationTest do
       end
     end
 
-    test "creates a token for a regular account_user" do
+    test "raises for account_user actor type" do
       account = account_fixture()
       regular_user = actor_fixture(account: account, type: :account_user)
       admin_subject = admin_subject_fixture(account: account)
       expires_at = DateTime.add(DateTime.utc_now(), 1, :day)
 
-      assert {:ok, token} =
-               create_non_interactive_client_token(
-                 regular_user,
-                 %{expires_at: expires_at},
-                 admin_subject
-               )
+      assert_raise FunctionClauseError, fn ->
+        create_non_interactive_client_token(regular_user, %{expires_at: expires_at}, admin_subject)
+      end
 
-      assert token.actor_id == regular_user.id
-      assert token.account_id == account.id
-      assert is_nil(token.auth_provider_id)
+      refute Repo.get_by(ClientToken, actor_id: regular_user.id)
     end
 
-    test "creates a token for an account_admin_user" do
+    test "raises for account_admin_user actor type" do
       account = account_fixture()
       admin_user = actor_fixture(account: account, type: :account_admin_user)
       admin_subject = admin_subject_fixture(account: account)
       expires_at = DateTime.add(DateTime.utc_now(), 1, :day)
 
-      assert {:ok, token} =
-               create_non_interactive_client_token(
-                 admin_user,
-                 %{expires_at: expires_at},
-                 admin_subject
-               )
+      assert_raise FunctionClauseError, fn ->
+        create_non_interactive_client_token(admin_user, %{expires_at: expires_at}, admin_subject)
+      end
 
-      assert token.actor_id == admin_user.id
-      assert token.account_id == account.id
-      assert is_nil(token.auth_provider_id)
+      refute Repo.get_by(ClientToken, actor_id: admin_user.id)
     end
 
     test "raises for api_client actor type" do

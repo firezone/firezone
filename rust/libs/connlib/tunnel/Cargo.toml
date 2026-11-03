@@ -24,6 +24,7 @@ opentelemetry = { workspace = true, features = ["metrics"] }
 otel-instruments = { workspace = true }
 prefetch = { workspace = true }
 rand = { workspace = true }
+smallvec = { workspace = true }
 snownet = { workspace = true }
 socket-factory = { workspace = true }
 thiserror = { workspace = true }

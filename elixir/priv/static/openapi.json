@@ -8135,13 +8135,12 @@
                 "type": "string"
               },
               "type": {
-                "description": "Actor Type",
+                "description": "Actor Type. Users can only be promoted to admin in the portal.",
                 "enum": [
                   "account_user",
-                  "account_admin_user",
                   "service_account"
                 ],
-                "example": "account_admin_user",
+                "example": "account_user",
                 "type": "string"
               }
             },
@@ -10991,13 +10990,12 @@
                 "type": "string"
               },
               "type": {
-                "description": "Actor Type",
+                "description": "Actor Type. Admins can only be created in the portal.",
                 "enum": [
                   "account_user",
-                  "account_admin_user",
                   "service_account"
                 ],
-                "example": "account_admin_user",
+                "example": "account_user",
                 "type": "string"
               }
             },
@@ -16131,6 +16129,7 @@
     "/actors/{id}": {
       "delete": {
         "callbacks": {},
+        "description": "Deletes an Actor. Admins can only be deleted in the portal.",
         "operationId": "PortalAPI.ActorController.delete",
         "parameters": [
           {
@@ -16355,7 +16354,7 @@
       },
       "patch": {
         "callbacks": {},
-        "description": "Updates an Actor.\n\n**Warning: changing an Actor's email signs them out and unlinks their identity providers.**\n\nIf the `email` field is changed to a different address, Firezone will:\n\n- Unlink every identity provider (Google, Okta, Entra, etc.) connected to this Actor.\n- End all active sessions for this Actor, both in the admin portal and on\n  connected Client devices. The user will be signed out immediately.\n\nThe Actor will need to sign in again through their identity provider, which\nre-links it under the new email.\n\nEmail comparison ignores case and surrounding whitespace, so changes like\n`User@Example.com` → `user@example.com` are not treated as a real change\nand will not unlink identities.\n\n**Setting `is_disabled` to `true` immediately revokes all of the Actor's\nactive Client tokens and portal sessions.** An Actor cannot disable itself.\n",
+        "description": "Updates an Actor.\n\n**Warning: changing an Actor's email signs them out and unlinks their identity providers.**\n\nIf the `email` field is changed to a different address, Firezone will:\n\n- Unlink every identity provider (Google, Okta, Entra, etc.) connected to this Actor.\n- End all active sessions for this Actor, both in the admin portal and on\n  connected Client devices. The user will be signed out immediately.\n\nThe Actor will need to sign in again through their identity provider, which\nre-links it under the new email.\n\nEmail comparison ignores case and surrounding whitespace, so changes like\n`User@Example.com` → `user@example.com` are not treated as a real change\nand will not unlink identities.\n\n**Setting `is_disabled` to `true` immediately revokes all of the Actor's\nactive Client tokens and portal sessions.** An Actor cannot disable itself.\n\nAdmins can only be changed in the portal, and users can only be promoted to\nadmin there.\n",
         "operationId": "PortalAPI.ActorController.update (2)",
         "parameters": [
           {
@@ -16500,7 +16499,7 @@
       },
       "put": {
         "callbacks": {},
-        "description": "Updates an Actor.\n\n**Warning: changing an Actor's email signs them out and unlinks their identity providers.**\n\nIf the `email` field is changed to a different address, Firezone will:\n\n- Unlink every identity provider (Google, Okta, Entra, etc.) connected to this Actor.\n- End all active sessions for this Actor, both in the admin portal and on\n  connected Client devices. The user will be signed out immediately.\n\nThe Actor will need to sign in again through their identity provider, which\nre-links it under the new email.\n\nEmail comparison ignores case and surrounding whitespace, so changes like\n`User@Example.com` → `user@example.com` are not treated as a real change\nand will not unlink identities.\n\n**Setting `is_disabled` to `true` immediately revokes all of the Actor's\nactive Client tokens and portal sessions.** An Actor cannot disable itself.\n",
+        "description": "Updates an Actor.\n\n**Warning: changing an Actor's email signs them out and unlinks their identity providers.**\n\nIf the `email` field is changed to a different address, Firezone will:\n\n- Unlink every identity provider (Google, Okta, Entra, etc.) connected to this Actor.\n- End all active sessions for this Actor, both in the admin portal and on\n  connected Client devices. The user will be signed out immediately.\n\nThe Actor will need to sign in again through their identity provider, which\nre-links it under the new email.\n\nEmail comparison ignores case and surrounding whitespace, so changes like\n`User@Example.com` → `user@example.com` are not treated as a real change\nand will not unlink identities.\n\n**Setting `is_disabled` to `true` immediately revokes all of the Actor's\nactive Client tokens and portal sessions.** An Actor cannot disable itself.\n\nAdmins can only be changed in the portal, and users can only be promoted to\nadmin there.\n",
         "operationId": "PortalAPI.ActorController.update",
         "parameters": [
           {
@@ -28714,6 +28713,7 @@
       },
       "post": {
         "callbacks": {},
+        "description": "Creates an Actor. Admins can only be created in the portal.",
         "operationId": "PortalAPI.ActorController.create",
         "parameters": [],
         "requestBody": {

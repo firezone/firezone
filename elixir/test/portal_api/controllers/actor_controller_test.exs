@@ -431,20 +431,12 @@ defmodule PortalAPI.ActorControllerTest do
                json_response(conn, 403)
     end
 
-    test "returns error when users limit hit for admin user", %{
-      conn: conn,
-      account: account,
-      actor: api_actor
-    } do
-      Ecto.Changeset.change(account, limits: %Portal.Accounts.Limits{users_count: 1})
-      |> Repo.update!()
-
-      actor_with_email_fixture(type: :account_user, account: account)
-
+    test "does not allow creating admins", %{conn: conn, account: account, actor: api_actor} do
       attrs = %{
         "name" => "Test Admin",
         "email" => "admin@example.com",
-        "type" => "account_admin_user"
+        "type" => "account_admin_user",
+        "allow_email_otp_sign_in" => true
       }
 
       conn =
@@ -453,8 +445,8 @@ defmodule PortalAPI.ActorControllerTest do
         |> put_req_header("content-type", "application/json")
         |> post("/actors", actor: attrs)
 
-      assert %{"type" => "about:blank", "status" => 403, "detail" => "Users limit reached"} =
-               json_response(conn, 403)
+      assert %{"status" => 422, "validation_errors" => %{"type" => ["is invalid"]}} = json_response(conn, 422)
+      refute Repo.get_by(Actor, account_id: account.id, email: "admin@example.com")
     end
 
     test "returns error when service accounts limit hit", %{
@@ -560,10 +552,9 @@ defmodule PortalAPI.ActorControllerTest do
     end
 
     test "updates an actor", %{conn: conn, account: account, actor: api_actor} do
-      actor = actor_fixture(account: account, type: :account_admin_user)
-      _other_admin = actor_fixture(account: account, type: :account_admin_user)
+      actor = actor_fixture(account: account, type: :account_user)
 
-      attrs = %{"type" => "account_user"}
+      attrs = %{"name" => "Renamed"}
 
       conn =
         conn
@@ -574,172 +565,46 @@ defmodule PortalAPI.ActorControllerTest do
       assert resp = json_response(conn, 200)
 
       assert resp["data"]["id"] == actor.id
-      assert resp["data"]["name"] == actor.name
-      assert resp["data"]["type"] == attrs["type"]
+      assert resp["data"]["name"] == attrs["name"]
+      assert resp["data"]["type"] == "account_user"
     end
 
-    test "returns error when promoting to admin and admin limit reached", %{
-      conn: conn,
-      account: account,
-      actor: api_actor
-    } do
+    test "does not allow promoting a user to admin", %{conn: conn, account: account, actor: api_actor} do
       actor = actor_fixture(account: account, type: :account_user)
 
-      # Create an admin to fill the limit
-      actor_fixture(account: account, type: :account_admin_user)
-
-      # Set admin limit to 1 (the existing admin already fills it)
-      Ecto.Changeset.change(account,
-        limits: %Portal.Accounts.Limits{account_admin_users_count: 1}
-      )
-      |> Repo.update!()
-
-      attrs = %{"type" => "account_admin_user"}
-
       conn =
         conn
         |> authorize_conn(api_actor)
         |> put_req_header("content-type", "application/json")
-        |> put("/actors/#{actor.id}", actor: attrs)
+        |> put("/actors/#{actor.id}", actor: %{"type" => "account_admin_user"})
 
-      assert %{"type" => "about:blank", "status" => 403, "detail" => "Admins limit reached"} =
-               json_response(conn, 403)
+      assert %{"status" => 422, "validation_errors" => %{"type" => ["is invalid"]}} = json_response(conn, 422)
+      assert Repo.get_by!(Actor, account_id: account.id, id: actor.id).type == :account_user
     end
 
-    test "allows promoting to admin when under the limit", %{
-      conn: conn,
-      account: account,
-      actor: api_actor
-    } do
-      actor = actor_fixture(account: account, type: :account_user)
+    test "does not allow changing an admin", %{conn: conn, account: account, actor: api_actor} do
+      admin = actor_with_email_fixture(account: account, type: :account_admin_user)
 
-      # Set admin limit to 5 (plenty of room)
-      Ecto.Changeset.change(account,
-        limits: %Portal.Accounts.Limits{account_admin_users_count: 5}
-      )
-      |> Repo.update!()
+      for attrs <- [
+            %{"email" => "attacker@example.com"},
+            %{"allow_email_otp_sign_in" => true},
+            %{"name" => "Renamed"},
+            %{"type" => "account_user"},
+            %{"is_disabled" => true}
+          ] do
+        request_conn =
+          conn
+          |> recycle()
+          |> authorize_conn(api_actor)
+          |> put_req_header("content-type", "application/json")
+          |> put("/actors/#{admin.id}", actor: attrs)
 
-      attrs = %{"type" => "account_admin_user"}
+        assert %{"status" => 403, "detail" => "Admins can only be managed in the portal"} =
+                 json_response(request_conn, 403)
+      end
 
-      conn =
-        conn
-        |> authorize_conn(api_actor)
-        |> put_req_header("content-type", "application/json")
-        |> put("/actors/#{actor.id}", actor: attrs)
-
-      assert json_response(conn, 200)
-
-      assert Repo.get_by!(Portal.Actor, account_id: account.id, id: actor.id).type ==
-               :account_admin_user
-    end
-
-    test "allows promoting to admin when limit is nil", %{
-      conn: conn,
-      account: account,
-      actor: api_actor
-    } do
-      actor = actor_fixture(account: account, type: :account_user)
-
-      Ecto.Changeset.change(account,
-        limits: %Portal.Accounts.Limits{account_admin_users_count: nil}
-      )
-      |> Repo.update!()
-
-      attrs = %{"type" => "account_admin_user"}
-
-      conn =
-        conn
-        |> authorize_conn(api_actor)
-        |> put_req_header("content-type", "application/json")
-        |> put("/actors/#{actor.id}", actor: attrs)
-
-      assert json_response(conn, 200)
-
-      assert Repo.get_by!(Portal.Actor, account_id: account.id, id: actor.id).type ==
-               :account_admin_user
-    end
-
-    test "allows demoting admin to user even when admin limit is reached", %{
-      conn: conn,
-      account: account,
-      actor: api_actor
-    } do
-      admin = actor_fixture(account: account, type: :account_admin_user)
-
-      # Create a second admin so the first can be demoted
-      actor_fixture(account: account, type: :account_admin_user)
-
-      Ecto.Changeset.change(account,
-        limits: %Portal.Accounts.Limits{account_admin_users_count: 1}
-      )
-      |> Repo.update!()
-
-      attrs = %{"type" => "account_user"}
-
-      conn =
-        conn
-        |> authorize_conn(api_actor)
-        |> put_req_header("content-type", "application/json")
-        |> put("/actors/#{admin.id}", actor: attrs)
-
-      assert json_response(conn, 200)
-
-      assert Repo.get_by!(Portal.Actor, account_id: account.id, id: admin.id).type ==
-               :account_user
-    end
-
-    test "returns error when creating admin user and admin limit reached", %{
-      conn: conn,
-      account: account,
-      actor: api_actor
-    } do
-      # Create an admin to fill the limit
-      actor_fixture(account: account, type: :account_admin_user)
-
-      Ecto.Changeset.change(account,
-        limits: %Portal.Accounts.Limits{account_admin_users_count: 1}
-      )
-      |> Repo.update!()
-
-      attrs = %{
-        "name" => "New Admin",
-        "email" => "new-admin@example.com",
-        "type" => "account_admin_user"
-      }
-
-      conn =
-        conn
-        |> authorize_conn(api_actor)
-        |> put_req_header("content-type", "application/json")
-        |> post("/actors", actor: attrs)
-
-      assert %{"type" => "about:blank", "status" => 403, "detail" => "Admins limit reached"} =
-               json_response(conn, 403)
-    end
-
-    test "allows creating admin user when under the limit", %{
-      conn: conn,
-      account: account,
-      actor: api_actor
-    } do
-      Ecto.Changeset.change(account,
-        limits: %Portal.Accounts.Limits{account_admin_users_count: 5}
-      )
-      |> Repo.update!()
-
-      attrs = %{
-        "name" => "New Admin",
-        "email" => "new-admin@example.com",
-        "type" => "account_admin_user"
-      }
-
-      conn =
-        conn
-        |> authorize_conn(api_actor)
-        |> put_req_header("content-type", "application/json")
-        |> post("/actors", actor: attrs)
-
-      assert json_response(conn, 201)
+      fields = ~w[type email allow_email_otp_sign_in name is_disabled updated_at]a
+      assert Map.take(Repo.get_by!(Actor, account_id: account.id, id: admin.id), fields) == Map.take(admin, fields)
     end
 
     test "rejects changing account_user to service_account", %{
@@ -788,54 +653,6 @@ defmodule PortalAPI.ActorControllerTest do
                :account_user
     end
 
-    test "rejects changing account_admin_user to service_account", %{
-      conn: conn,
-      account: account,
-      actor: api_actor
-    } do
-      actor = actor_fixture(account: account, type: :account_admin_user)
-      _other_admin = actor_fixture(account: account, type: :account_admin_user)
-
-      attrs = %{"type" => "service_account"}
-
-      conn =
-        conn
-        |> authorize_conn(api_actor)
-        |> put_req_header("content-type", "application/json")
-        |> put("/actors/#{actor.id}", actor: attrs)
-
-      assert resp = json_response(conn, 422)
-      assert resp["validation_errors"]["type"] ==
-               ["cannot change a user to a service account or API client"]
-
-      assert Repo.get_by!(Portal.Actor, account_id: account.id, id: actor.id).type ==
-               :account_admin_user
-    end
-
-    test "rejects changing account_admin_user to api_client", %{
-      conn: conn,
-      account: account,
-      actor: api_actor
-    } do
-      actor = actor_fixture(account: account, type: :account_admin_user)
-      _other_admin = actor_fixture(account: account, type: :account_admin_user)
-
-      attrs = %{"type" => "api_client"}
-
-      conn =
-        conn
-        |> authorize_conn(api_actor)
-        |> put_req_header("content-type", "application/json")
-        |> put("/actors/#{actor.id}", actor: attrs)
-
-      assert resp = json_response(conn, 422)
-      assert resp["validation_errors"]["type"] ==
-               ["is invalid"]
-
-      assert Repo.get_by!(Portal.Actor, account_id: account.id, id: actor.id).type ==
-               :account_admin_user
-    end
-
     test "rejects changing api_client to any other type", %{
       conn: conn,
       account: account,
@@ -843,7 +660,7 @@ defmodule PortalAPI.ActorControllerTest do
     } do
       target = actor_fixture(account: account, type: :api_client)
 
-      for type <- ["account_user", "account_admin_user", "service_account"] do
+      for type <- ["account_user", "service_account"] do
         request_conn =
           conn
           |> recycle()
@@ -867,7 +684,7 @@ defmodule PortalAPI.ActorControllerTest do
     } do
       target = actor_fixture(account: account, type: :service_account)
 
-      for type <- ["account_user", "account_admin_user", "api_client"] do
+      for type <- ["account_user", "api_client"] do
         request_conn =
           conn
           |> recycle()
@@ -999,6 +816,18 @@ defmodule PortalAPI.ActorControllerTest do
              }
 
       refute Repo.get_by(Actor, id: actor.id, account_id: actor.account_id)
+    end
+    test "does not delete admins", %{conn: conn, account: account, actor: api_actor} do
+      admin = actor_fixture(account: account, type: :account_admin_user)
+
+      conn =
+        conn
+        |> authorize_conn(api_actor)
+        |> put_req_header("content-type", "application/json")
+        |> delete("/actors/#{admin.id}")
+
+      assert %{"status" => 403, "detail" => "Admins can only be managed in the portal"} = json_response(conn, 403)
+      assert Repo.get_by(Actor, id: admin.id, account_id: account.id)
     end
   end
 

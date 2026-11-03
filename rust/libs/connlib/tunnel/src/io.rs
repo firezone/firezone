@@ -3,7 +3,7 @@ mod device;
 mod udp_gso_train;
 
 pub(crate) use crypto::MAX_DECRYPT_BACKLOG_MEMORY;
-pub use crypto::{CryptoWorkers, DecryptBatch, DecryptedIpPackets, EncryptBatch};
+pub use crypto::{CryptoWorkers, DecryptBatch, DecryptedJobs, EncryptBatch};
 pub use device::{Device, TunChannelClosed};
 pub(crate) use udp_gso_train::UdpGsoTrain;
 
@@ -50,7 +50,7 @@ pub struct Io {
 pub struct Input {
     pub device: Option<tun::PacketBatch>,
     pub network: Option<ReceivedDatagrams>,
-    pub decrypted: Option<DecryptedIpPackets>,
+    pub decrypted: Option<DecryptedJobs>,
     pub dns_queries: Vec<DnsQuery>,
     pub dns_responses: Vec<dns::RecursiveResponse>,
     pub error: TunnelError,

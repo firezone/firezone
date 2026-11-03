@@ -63,7 +63,7 @@ defmodule PortalAPI.MCPSecurityTest do
   end
 
   test "identity management requires the OAuth write scope", %{conn: conn, actor: actor} do
-    attrs = %{"name" => "Delegated admin", "type" => "account_admin_user", "email" => "delegated@example.com", "allow_email_otp_sign_in" => true}
+    attrs = %{"name" => "Delegated user", "type" => "account_user", "email" => "delegated@example.com"}
     result = conn |> authorize_mcp_conn(actor, ["actors:read"]) |> call_tool("create_actor", %{"actor" => attrs})
     assert result.status == 403
 
@@ -72,6 +72,30 @@ defmodule PortalAPI.MCPSecurityTest do
     result = call_tool(conn, "create_actor", %{"actor" => attrs})
     assert %{"result" => %{"isError" => false}} = json_response(result, 200)
     assert result.assigns.api_request_log.mcp["rest_status"] == 201
+  end
+
+  test "actors:write cannot create, change, or delete admins", %{conn: conn, account: account, actor: actor} do
+    conn = authorize_mcp_conn(conn, actor, ["actors:write"])
+    admin = actor_fixture(account: account, type: :account_admin_user)
+    user = actor_fixture(account: account, type: :account_user)
+
+    attrs = %{"name" => "Delegated admin", "type" => "account_admin_user", "email" => "delegated@example.com", "allow_email_otp_sign_in" => true}
+
+    for {tool, args} <- [
+          {"create_actor", %{"actor" => attrs}},
+          {"update_actor", %{"id" => user.id, "actor" => %{"type" => "account_admin_user"}}},
+          {"update_actor", %{"id" => admin.id, "actor" => %{"allow_email_otp_sign_in" => true}}},
+          {"delete_actor", %{"id" => admin.id}}
+        ] do
+      result = call_tool(conn, tool, args)
+      refute match?(%{"result" => %{"isError" => false}}, json_response(result, result.status))
+      assert result.assigns.api_request_log.mcp["outcome"] in ["failed", "rejected"]
+    end
+
+    assert Map.take(Repo.get_by!(Portal.Actor, account_id: account.id, id: admin.id), ~w[type email allow_email_otp_sign_in name is_disabled updated_at]a) ==
+             Map.take(admin, ~w[type email allow_email_otp_sign_in name is_disabled updated_at]a)
+    assert Repo.get_by!(Portal.Actor, account_id: account.id, id: user.id).type == :account_user
+    refute Repo.get_by(Portal.Actor, account_id: account.id, email: "delegated@example.com")
   end
 
   test "credential issuance does not log its secret", %{conn: conn, actor: actor, account: account} do

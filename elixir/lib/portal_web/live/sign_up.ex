@@ -108,12 +108,14 @@ defmodule PortalWeb.SignUp do
         socket =
           assign(socket,
             page_title: "Sign Up",
+            hide_data_residency_footer: true,
             step: :choose,
             form: registration_form(%{}),
             trigger_submit: false,
             error_message: nil,
             idp_identity: identity_from_session(session),
             existing_accounts: [],
+            query_params: %{},
             website_attribution: website_attribution,
             sign_up_browser_id: sign_up_browser_id,
             user_agent: user_agent,
@@ -159,7 +161,8 @@ defmodule PortalWeb.SignUp do
     {:noreply, assign(socket, step: :fill_form, form: registration_form(%{}))}
   end
 
-  def handle_params(_params, _uri, socket), do: {:noreply, assign(socket, step: :choose)}
+  def handle_params(params, _uri, socket),
+    do: {:noreply, assign(socket, step: :choose, query_params: params)}
 
   # ── Identity provider session ────────────────────────────────────────────────
 
@@ -250,7 +253,11 @@ defmodule PortalWeb.SignUp do
     <Core.flash flash={@flash} kind={:error} />
     <Core.flash flash={@flash} kind={:info} />
 
-    <.method_chooser :if={@step == :choose} />
+    <.method_chooser
+      :if={@step == :choose}
+      query_params={@query_params}
+      website_attribution={@website_attribution}
+    />
     <.sign_up_form :if={@step == :fill_form} form={@form} />
     <.idp_sign_up_form
       :if={@step == :idp_form}
@@ -276,6 +283,8 @@ defmodule PortalWeb.SignUp do
     <.step_header title="Create your organization" subtitle="Set up Firezone and become the admin for your team.">
       <:icon><Core.icon name="ri-building-line" class="w-6 h-6 text-brand" /></:icon>
     </.step_header>
+
+    <.selected_region />
 
     <.form id="sign-up-form" for={@form} phx-submit="submit" phx-change="validate" class="flex flex-col gap-3">
       <Form.input
@@ -349,11 +358,16 @@ defmodule PortalWeb.SignUp do
     """
   end
 
+  attr :query_params, :map, required: true
+  attr :website_attribution, :map, default: nil
+
   defp method_chooser(assigns) do
     ~H"""
     <.step_header title="Create your organization" subtitle="Set up Firezone and become the admin for your team.">
       <:icon><Core.icon name="ri-building-line" class="w-6 h-6 text-brand" /></:icon>
     </.step_header>
+
+    <.region_picker query_params={@query_params} website_attribution={@website_attribution} />
 
     <div class="flex flex-col gap-2">
       <.form for={%{}} id="google-sign-up" action={~p"/sign_up/google"} method="post">
@@ -399,6 +413,8 @@ defmodule PortalWeb.SignUp do
     <.step_header title="Almost there" subtitle="Tell us about your organization to finish signing up.">
       <:icon><Core.provider_icon provider={@provider} size="md" /></:icon>
     </.step_header>
+
+    <.selected_region />
 
     <div
       id={"#{@provider}-sign-up"}
@@ -668,6 +684,115 @@ defmodule PortalWeb.SignUp do
       </p>
     </.footer>
     """
+  end
+
+  attr :query_params, :map, required: true
+  attr :website_attribution, :map, default: nil
+
+  defp region_picker(assigns) do
+    region = Page.data_residency_region()
+
+    query =
+      assigns.website_attribution
+      |> PortalWeb.WebsiteAttribution.query_params()
+      |> Enum.into(assigns.query_params)
+      |> Plug.Conn.Query.encode()
+
+    assigns =
+      assign(assigns,
+        region: region,
+        switchable?: Page.firezone_cloud?(region),
+        other_region_path: if(query == "", do: "/sign_up", else: "/sign_up?" <> query)
+      )
+
+    ~H"""
+    <div :if={@region != :on_prem} id="region-picker">
+      <span id="region-picker-label" class="block text-xs font-medium text-body mb-1.5">
+        Cloud Region
+      </span>
+      <ul
+        role="radiogroup"
+        aria-labelledby="region-picker-label"
+        aria-describedby="region-picker-help"
+        class="grid w-full gap-3 grid-cols-1 sm:grid-cols-2"
+      >
+        <li :for={option <- [:us, :eu]} class="flex flex-col">
+          <a
+            :if={option != @region and @switchable?}
+            id={"region-option-#{option}"}
+            href={Page.portal_url(option) <> @other_region_path}
+            class={region_option_class()}
+          >
+            <.region_option_content region={option} />
+          </a>
+          <Form.input
+            :if={option == @region or not @switchable?}
+            id={"region-option-#{option}"}
+            type="radio_button_group"
+            name="region"
+            value={option}
+            checked={option == @region}
+            disabled={option != @region}
+          />
+          <label
+            :if={option == @region or not @switchable?}
+            for={"region-option-#{option}"}
+            class={[region_option_class(), "peer-disabled:cursor-default"]}
+          >
+            <.region_option_content region={option} />
+          </label>
+        </li>
+      </ul>
+      <p id="region-picker-help" class="mt-1.5 mb-6 text-xs text-subtle">
+        Changing regions later requires scheduled downtime.
+        <Navigation.link
+          href="https://www.firezone.dev/kb/architecture/regional-availability"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          Learn about regional availability
+        </Navigation.link>
+      </p>
+    </div>
+    """
+  end
+
+  defp selected_region(assigns) do
+    assigns = assign(assigns, :region, Page.data_residency_region())
+
+    ~H"""
+    <div :if={@region != :on_prem} id="selected-region" class="mb-6">
+      <span class="block text-xs font-medium text-body mb-1.5">Cloud Region</span>
+      <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
+        <Core.icon name="ri-checkbox-circle-fill" class="w-4 h-4 text-brand shrink-0" />
+        <Page.residency_flag region={@region} class="w-6 h-auto shadow-sm" />
+        <span class="text-sm font-semibold text-heading">{Page.data_residency_name(@region)}</span>
+      </div>
+    </div>
+    """
+  end
+
+  attr :region, :atom, required: true
+
+  defp region_option_content(assigns) do
+    ~H"""
+    <div class="block min-w-0">
+      <div class="w-full font-semibold mb-1 text-xs flex items-center gap-2 whitespace-nowrap">
+        <span class="shrink-0 w-8 h-[22px] flex items-center">
+          <Page.residency_flag region={@region} class="w-8 h-auto shadow-sm" />
+        </span>
+        {Page.data_residency_name(@region)}
+      </div>
+      <div class="w-full text-[10px] whitespace-nowrap">{region_option_description(@region)}</div>
+    </div>
+    """
+  end
+
+  defp region_option_description(:us), do: "Data is stored in Iowa and Arizona"
+  defp region_option_description(:eu), do: "Data is stored in Sweden and France"
+
+  defp region_option_class do
+    "inline-flex items-center justify-between w-full h-full p-3 text-body bg-surface border border-border rounded cursor-pointer peer-checked:border-brand peer-checked:text-brand hover:text-heading hover:bg-raised transition-colors"
   end
 
   attr :title, :string, required: true
