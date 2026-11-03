@@ -160,6 +160,17 @@ defmodule PortalAPI.OTLPMetricsControllerTest do
       assert response(conn, 400)
     end
 
+    test "returns 400 for a body with invalid UTF-8 strings", %{conn: conn, account: account} do
+      body =
+        [sum("a")]
+        |> export_request([attribute("service.name", "placeholder")])
+        |> :binary.replace("placeholder", :binary.copy(<<0xFF>>, 11))
+
+      conn = conn |> authorize(account) |> post_metrics(body)
+
+      assert response(conn, 400)
+    end
+
     test "returns 413 for an oversized body", %{conn: conn, account: account} do
       conn = conn |> authorize(account) |> post_metrics(:binary.copy(<<0>>, 1_000_001))
 

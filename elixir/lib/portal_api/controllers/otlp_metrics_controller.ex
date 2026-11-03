@@ -23,10 +23,9 @@ defmodule PortalAPI.OTLPMetricsController do
 
     with :ok <- ensure_protobuf(conn),
          {:ok, body, conn} <- read_body_within_limit(conn),
-         {:ok, request} <- decode(body) do
-      request
-      |> sanitize(claims)
-      |> forward(conn)
+         {:ok, request} <- decode(body),
+         {:ok, body} <- encode(sanitize(request, claims)) do
+      forward(conn, body)
     else
       {:error, :unsupported_media_type} ->
         ProblemDetails.send(conn, 415, "Expected an uncompressed application/x-protobuf body")
@@ -59,6 +58,13 @@ defmodule PortalAPI.OTLPMetricsController do
 
   defp decode(body) do
     {:ok, @pb.decode_msg(body, :export_metrics_service_request)}
+  rescue
+    _ -> {:error, :undecodable}
+  end
+
+  # Decoding does not validate UTF-8 in strings, encoding does.
+  defp encode(request) do
+    {:ok, @pb.encode_msg(request, :export_metrics_service_request)}
   rescue
     _ -> {:error, :undecodable}
   end
@@ -119,11 +125,10 @@ defmodule PortalAPI.OTLPMetricsController do
     |> Map.replace(:exemplars, [])
   end
 
-  defp forward(%{resource_metrics: []}, conn), do: send_export_response(conn)
+  defp forward(conn, <<>>), do: send_export_response(conn)
 
-  defp forward(request, conn) do
+  defp forward(conn, body) do
     endpoint = Portal.Config.fetch_env!(:portal, :azure_otlp_metrics_endpoint)
-    body = @pb.encode_msg(request, :export_metrics_service_request)
 
     case MetricsExporter.post(endpoint, body) do
       :ok -> send_export_response(conn)
