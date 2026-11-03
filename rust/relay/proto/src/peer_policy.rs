@@ -2,7 +2,7 @@ use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
 /// Special-use IPv4 ranges the relay never sends to.
 ///
-/// Matches `@special_use_ipv4_cidrs` in the portal's `Portal.Changeset`, except for the documentation ranges.
+/// We allow the documentation ranges.
 /// Those are not routed on the internet, and our test networks use them as public addresses.
 const SPECIAL_USE_IPV4: &[(Ipv4Addr, u8)] = &[
     (Ipv4Addr::new(0, 0, 0, 0), 8),
@@ -26,8 +26,7 @@ const SPECIAL_USE_IPV4: &[(Ipv4Addr, u8)] = &[
 
 /// Special-use IPv6 ranges the relay never sends to.
 ///
-/// Matches `@special_use_ipv6_cidrs` in the portal's `Portal.Changeset`, except for the documentation range.
-/// Unlike the portal, we also refuse all IPv4-mapped addresses: an IPv6 allocation must not send IPv4 traffic.
+/// We refuse all IPv4-mapped addresses: an IPv6 allocation must not send IPv4 traffic.
 const SPECIAL_USE_IPV6: &[(Ipv6Addr, u8)] = &[
     (Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 0), 96),
     (Ipv6Addr::new(0, 0, 0, 0, 0, 0xffff, 0, 0), 96),
