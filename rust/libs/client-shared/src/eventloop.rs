@@ -1094,8 +1094,7 @@ async fn resolve_portal_host_ips(
         .inspect_err(|e| tracing::debug!(%host, "{e:#}"))
         .unwrap_or_default();
 
-    let etc_hosts_ips = etc_hosts_dns_client::resolve(host.clone())
-        .await
+    let etc_hosts_ips = etc_hosts_dns_client::resolve(&host)
         .context("Failed to lookup portal host from `/etc/hosts`")
         .inspect_err(|e| tracing::debug!(%host, "{e:#}"))
         .unwrap_or_default();

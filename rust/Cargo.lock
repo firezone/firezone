@@ -2481,7 +2481,6 @@ name = "etc-hosts-dns-client"
 version = "0.1.0"
 dependencies = [
  "anyhow-ext",
- "tokio",
  "tracing",
 ]
 
