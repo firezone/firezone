@@ -7,7 +7,7 @@ use std::{
     task::{Context, Poll, ready},
 };
 
-use anyhow::{Result, anyhow};
+use anyhow::{Context as _, Result, anyhow};
 use futures::{FutureExt as _, channel::oneshot};
 use tokio::runtime::Runtime;
 
@@ -15,11 +15,8 @@ use tokio::runtime::Runtime;
 ///
 /// Its tasks run on whichever thread calls `block_on`; it starts no thread of its own.
 /// Only the threads it starts for blocking work (`spawn_blocking`, `tokio::fs`) are named `fz-blocking`.
-pub fn current_thread() -> io::Result<Runtime> {
-    tokio::runtime::Builder::new_current_thread()
-        .thread_name("fz-blocking")
-        .enable_all()
-        .build()
+pub fn current_thread() -> Result<Runtime> {
+    build_runtime().context("Failed to create Tokio runtime")
 }
 
 /// Runs the future made by `make_future` on a new thread named `name`, on a runtime of its own from [`current_thread`].
@@ -31,7 +28,7 @@ where
     Fut: Future,
     Fut::Output: Send + 'static,
 {
-    let runtime = current_thread()?;
+    let runtime = build_runtime()?;
     let (output_tx, output_rx) = oneshot::channel();
 
     std::thread::Builder::new()
@@ -70,6 +67,13 @@ impl<T> Future for ThreadOutput<T> {
 
         Poll::Ready(output)
     }
+}
+
+fn build_runtime() -> io::Result<Runtime> {
+    tokio::runtime::Builder::new_current_thread()
+        .thread_name("fz-blocking")
+        .enable_all()
+        .build()
 }
 
 fn panic_message(panic: Box<dyn Any + Send>) -> String {

@@ -1,6 +1,6 @@
 use std::{path::PathBuf, time::Duration};
 
-use anyhow::{Context as _, Result, bail};
+use anyhow::{Result, bail};
 use bin_shared::{DnsControlMethod, signals};
 
 use client_ipc::SocketId;
@@ -14,7 +14,7 @@ pub fn run(log_dir: Option<PathBuf>, dns_control: DnsControlMethod) -> Result<()
     if !elevation_check()? {
         bail!("Tunnel service failed its elevation check, try running as admin / root");
     }
-    let rt = async_runtime::current_thread().context("Failed to create tokio runtime")?;
+    let rt = async_runtime::current_thread()?;
     let _guard = rt.enter();
     let mut signals = signals::Terminate::new()?;
 
