@@ -27,6 +27,18 @@ defmodule Portal.Azure.MetricsExporter do
       |> :otel_otlp_metrics.to_proto(resource)
       |> :opentelemetry_exporter_metrics_service_pb.encode_msg(:export_metrics_service_request)
 
+    post(endpoint, body)
+  rescue
+    _exception ->
+      Logger.warning("Azure metrics export failed")
+      :failed_retryable
+  end
+
+  @doc """
+  Posts an encoded `ExportMetricsServiceRequest` to the Azure Monitor OTLP endpoint.
+  """
+  @spec post(String.t(), binary()) :: :ok | :failed_retryable | :failed_not_retryable
+  def post(endpoint, body) do
     token = Portal.Azure.ManagedIdentity.access_token!(@resource)
     config = Portal.Config.fetch_env!(:portal, __MODULE__)
 
