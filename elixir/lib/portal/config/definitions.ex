@@ -244,6 +244,18 @@ defmodule Portal.Config.Definitions do
   )
 
   @doc """
+  The base URL clients and gateways POST OTLP metrics to (at `v1/metrics`).
+  """
+  defconfig(:otlp_metrics_api_url, :string,
+    default: "https://otlp.firezone.dev/",
+    changeset: fn changeset, key ->
+      changeset
+      |> Portal.Changeset.validate_uri(key, require_trailing_slash: true)
+      |> Portal.Changeset.normalize_url(key)
+    end
+  )
+
+  @doc """
   Access key ID for Firezone's AWS account, used to assume customer IAM roles
   for Amazon S3 log sinks.
   """

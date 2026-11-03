@@ -535,6 +535,10 @@ config :portal,
   flow_logs_api_url: "https://flow-api.firezone.dev/",
   flow_logs_upload_interval_secs: 60
 
+config :portal,
+  otlp_metrics_api_url: "https://otlp.firezone.dev/",
+  azure_otlp_metrics_endpoint: nil
+
 config :portal, country_code_blocklist: []
 
 config :portal, PortalWeb.Plugs.PutSecurityHeaders,
@@ -621,6 +625,12 @@ config :portal, PortalAPI.Sockets.RateLimit,
 config :portal, PortalAPI.Plugs.IngestionRateLimit,
   refill_rate: 1,
   capacity: 1
+
+# OTLP metrics ingestion. Connlib exports once a minute, so the IP bucket
+# admits several hundred devices behind one NAT.
+config :portal, PortalAPI.Plugs.MetricsRateLimit,
+  ip: [refill_rate: 10, capacity: 100],
+  account: [refill_rate: 200, capacity: 2_000]
 
 config :portal, PortalWeb.RateLimit,
   refill_rate: 10,

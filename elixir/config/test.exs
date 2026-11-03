@@ -390,6 +390,12 @@ config :portal, PortalAPI.Plugs.IngestionRateLimit,
   refill_rate: 100_000,
   capacity: 1_000_000
 
+config :portal, PortalAPI.Plugs.MetricsRateLimit,
+  ip: [refill_rate: 100_000, capacity: 1_000_000],
+  account: [refill_rate: 100_000, capacity: 1_000_000]
+
+config :portal, azure_otlp_metrics_endpoint: "https://azure-monitor.example.com/otlp/v1/metrics"
+
 config :portal, PortalWeb.Plugs.PutSecurityHeaders,
   csp_policy: [
     "default-src 'self' https://firezone.statuspage.io",
