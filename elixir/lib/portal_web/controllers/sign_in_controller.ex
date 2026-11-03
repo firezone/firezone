@@ -3,6 +3,8 @@ defmodule PortalWeb.SignInController do
 
   @default_client_auth_error "Please close this window and start the sign in process again."
 
+  plug :require_account
+
   def client_redirect(conn, _params) do
     account = conn.assigns.account
 
@@ -79,4 +81,13 @@ defmodule PortalWeb.SignInController do
 
   defp retry_path(account, params) when map_size(params) == 0, do: ~p"/#{account}/sign_in"
   defp retry_path(account, params), do: ~p"/#{account}/sign_in?#{params}"
+
+  # FetchAccount does not halt when the account is missing.
+  defp require_account(%{assigns: %{account: %Portal.Account{}}} = conn, _opts), do: conn
+
+  defp require_account(conn, _opts) do
+    conn
+    |> PortalWeb.Error.handle({:error, :not_found})
+    |> halt()
+  end
 end

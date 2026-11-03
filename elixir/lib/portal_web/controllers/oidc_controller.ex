@@ -20,15 +20,19 @@ defmodule PortalWeb.OIDCController do
                                   5_000
                                 )
   @sign_up_provider_types ~w[google github]
+  @sign_in_provider_types ~w[google github okta entra oidc]
   @sign_up_workspace_error "Signing up with a Google Workspace account needs a Workspace administrator. Sign in as an administrator and allow read-only access to your organization's domains."
   @google_verification_error "Could not verify this Google account. For a Workspace account, sign in as an administrator and allow read-only access to your organization's domains."
 
   @spec sign_in(Plug.Conn.t(), map()) :: Plug.Conn.t()
-  def sign_in(conn, %{"account_id_or_slug" => account_id_or_slug} = params) do
+  def sign_in(conn, %{"account_id_or_slug" => account_id_or_slug, "auth_provider_type" => type} = params)
+      when type in @sign_in_provider_types do
     account = PortalWeb.Accounts.get_by_id_or_slug!(account_id_or_slug)
     provider = get_provider!(account, params)
     provider_redirect(conn, account, provider, params)
   end
+
+  def sign_in(conn, _params), do: PortalWeb.Error.handle(conn, {:error, :not_found})
 
   # Starts a sign-up round trip with an identity provider. The verified identity
   # is handed to the sign-up LiveView through the session; see PortalWeb.SignUp.
@@ -236,7 +240,7 @@ defmodule PortalWeb.OIDCController do
   end
 
   @spec verify_identity(Plug.Conn.t(), map()) :: Plug.Conn.t()
-  def verify_identity(conn, %{"secret" => entered_code} = params) do
+  def verify_identity(conn, %{"secret" => entered_code} = params) when is_binary(entered_code) do
     result =
       Portal.Timing.execute_with_constant_time(
         fn -> do_verify_identity(conn, params, String.downcase(entered_code)) end,

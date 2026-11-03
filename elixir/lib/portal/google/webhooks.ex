@@ -12,26 +12,34 @@ defmodule Portal.Google.Webhooks do
   alias __MODULE__.Database
   require Logger
 
-  def handle_notification(directory_id, %{token: token, state: state}, body) do
+  @doc """
+  Authenticates a notification from its channel token header alone, so the body
+  is neither read nor parsed for a caller that does not hold the secret.
+  """
+  def authenticate(directory_id, token) do
     with {:ok, id} <- Ecto.UUID.cast(directory_id || ""),
          %Google.Directory{} = directory <- Database.get_directory(id),
          true <- authentic?(directory, token) do
-      handle_state(directory, state, body)
+      {:ok, directory}
     else
       false ->
         Logger.warning("Dropping Google notification with a missing or invalid channel token",
           google_directory_id: directory_id
         )
 
-        :ok
+        {:error, :unauthorized}
 
       _ ->
-        Logger.warning("Dropping Google notification for unknown directory",
+        Logger.info("Dropping Google notification for unknown directory",
           google_directory_id: directory_id
         )
 
-        :ok
+        {:error, :unauthorized}
     end
+  end
+
+  def handle_notification(%Google.Directory{} = directory, state, body) do
+    handle_state(directory, state, body)
   end
 
   defp authentic?(directory, token) when is_binary(token) do

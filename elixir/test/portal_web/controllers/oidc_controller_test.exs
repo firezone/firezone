@@ -26,6 +26,14 @@ defmodule PortalWeb.OIDCControllerTest do
   end
 
   describe "sign_in/2" do
+    test "returns 404 for an unknown provider type", %{conn: conn} do
+      account = account_fixture()
+
+      conn = get(conn, "/#{account.id}/sign_in/foo/#{Ecto.UUID.generate()}")
+
+      assert response(conn, 404)
+    end
+
     test "returns 404 when account not found", %{conn: conn} do
       assert_raise Ecto.NoResultsError, fn ->
         get(conn, "/non-existent-account/sign_in/oidc/#{Ecto.UUID.generate()}")

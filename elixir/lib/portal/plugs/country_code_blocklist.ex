@@ -6,26 +6,25 @@ defmodule Portal.Plugs.CountryCodeBlocklist do
   @forbidden_body "Forbidden"
 
   @impl true
-  def init(opts) do
+  def init(opts), do: opts
+
+  # Endpoint plugs are initialized at compile time in releases, before
+  # runtime.exs sets the blocklist, so it is read on every request.
+  @impl true
+  def call(conn, _opts) do
     blocked_country_codes =
       Portal.Config.get_env(:portal, :country_code_blocklist, [])
       |> normalize_country_codes()
-      |> MapSet.new()
-
-    Keyword.put(opts, :blocked_country_codes, blocked_country_codes)
-  end
-
-  @impl true
-  def call(conn, opts) do
-    blocked_country_codes = Keyword.fetch!(opts, :blocked_country_codes)
 
     if blocked_country_code?(conn, blocked_country_codes), do: deny(conn), else: conn
   end
 
+  defp blocked_country_code?(_conn, []), do: false
+
   defp blocked_country_code?(conn, blocked_country_codes) do
     case resolved_country_code(conn) do
       nil -> false
-      country_code -> MapSet.member?(blocked_country_codes, country_code)
+      country_code -> country_code in blocked_country_codes
     end
   end
 

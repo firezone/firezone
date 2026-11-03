@@ -13,10 +13,15 @@ defmodule PortalAPI.Integrations.WebhookBodyErrorTest do
         {PortalAPI.Integrations.Stripe.WebhookController, [{"stripe-signature", "v1=invalid"}],
          500, "Internal Error"},
         {PortalAPI.Integrations.AzureCommunicationServices.WebhookController,
-         [{"aeg-event-type", "Notification"}], 500, "Internal Error"}
+         [{"aeg-event-type", "Notification"}, {"aeg-sas-key", "acs-secret"}], 500,
+         "Internal Error"}
       ],
       reason <- [:timeout, :closed] do
     test "#{inspect(controller)} handles #{reason} while reading the body" do
+      Portal.Config.put_env_override(:portal, Portal.AzureCommunicationServices,
+        event_grid_webhook_signing_secret: "acs-secret"
+      )
+
       conn = Plug.Test.conn(:post, "/", "{}")
       {Plug.Adapters.Test.Conn, state} = conn.adapter
 
