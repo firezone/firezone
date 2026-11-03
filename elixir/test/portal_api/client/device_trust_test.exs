@@ -407,8 +407,7 @@ defmodule PortalAPI.Client.DeviceTrustTest do
 
     for {name, fields} <- [
           disabled: [
-            is_disabled: true,
-            disabled_reason: "Fetch error",
+            crl_is_disabled: true,
             crl_next_update: {:days, 1}
           ],
           never_fetched: [crl_next_update: nil],
@@ -453,6 +452,27 @@ defmodule PortalAPI.Client.DeviceTrustTest do
                           {:error, :certificate_revoked}
                end) =~ "revoked by its CA"
       end
+    end
+
+    test "asks the responder when the list was turned off", %{
+      account: account,
+      pki: pki,
+      subject: subject
+    } do
+      leaf = leaf(pki, :with_crl)
+
+      revocation_endpoint_fixture(
+        account: account,
+        issuer: X509.issuer(leaf),
+        ocsp_urls: ["http://ocsp.example.test"],
+        crl_is_disabled: true,
+        crl_errored_at: DateTime.utc_now()
+      )
+
+      assert {:ok, _verified} = DeviceTrust.attest(connect_info(leaf), subject)
+
+      assert [job] = all_enqueued(worker: Portal.Ocsp.Sync)
+      assert job.args["serial"] == cert_serial_hex(leaf)
     end
 
     test "asks the responder when one of the issuer's lists has expired", %{

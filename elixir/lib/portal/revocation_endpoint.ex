@@ -47,9 +47,10 @@ defmodule Portal.RevocationEndpoint do
           delta_next_update: DateTime.t() | nil,
           delta_fetched_at: DateTime.t() | nil,
           delta_error: String.t() | nil,
-          errored_at: DateTime.t() | nil,
-          is_disabled: boolean(),
-          disabled_reason: String.t() | nil,
+          crl_errored_at: DateTime.t() | nil,
+          crl_is_disabled: boolean(),
+          ocsp_errored_at: DateTime.t() | nil,
+          ocsp_is_disabled: boolean(),
           inserted_at: DateTime.t(),
           updated_at: DateTime.t()
         }
@@ -82,14 +83,58 @@ defmodule Portal.RevocationEndpoint do
     field :delta_fetched_at, :utc_datetime_usec
     field :delta_error, :string
 
-    # Shared by the list and the responder: what gets reported is whether
-    # revocation works for this CA at all, so a streak ends only once both are
-    # healthy.
-    field :errored_at, :utc_datetime_usec
-    field :is_disabled, :boolean, default: false
-    field :disabled_reason, :string
+    # Kept apart for the list and the responder. Each is what the other falls
+    # back on, so a fault in one must never stop the other.
+    field :crl_errored_at, :utc_datetime_usec
+    field :crl_is_disabled, :boolean, default: false
+    field :ocsp_errored_at, :utc_datetime_usec
+    field :ocsp_is_disabled, :boolean, default: false
 
     timestamps()
+  end
+
+  @doc """
+  True when the issuer's revocation lists can stand in for its responder.
+
+  Every partition must be enabled and hold a list that has not expired. One
+  partition that is off or stale leaves the certificates bound to it uncovered,
+  and the query cannot tell which partition a certificate is bound to, so any
+  gap counts as no coverage. A list that is not served over HTTP is never
+  fetched, so it neither covers nor blocks.
+  """
+  defmacro crl_covered?(account_id, issuer, now) do
+    quote do
+      fragment(
+        """
+        EXISTS (
+          SELECT 1 FROM revocation_endpoints e
+          WHERE e.account_id = ? AND e.issuer = ?
+          AND EXISTS (
+            SELECT 1 FROM unnest(e.crl_urls) AS u
+            WHERE u LIKE 'http://%' OR u LIKE 'https://%'
+          )
+        )
+        AND NOT EXISTS (
+          SELECT 1 FROM revocation_endpoints e
+          WHERE e.account_id = ? AND e.issuer = ?
+          AND EXISTS (
+            SELECT 1 FROM unnest(e.crl_urls) AS u
+            WHERE u LIKE 'http://%' OR u LIKE 'https://%'
+          )
+          AND (
+            e.crl_is_disabled
+            OR e.crl_next_update IS NULL
+            OR e.crl_next_update <= ?
+          )
+        )
+        """,
+        unquote(account_id),
+        unquote(issuer),
+        unquote(account_id),
+        unquote(issuer),
+        unquote(now)
+      )
+    end
   end
 
   def changeset(%Ecto.Changeset{} = changeset) do
@@ -102,7 +147,6 @@ defmodule Portal.RevocationEndpoint do
     |> validate_length(:crl_error, max: 255)
     |> validate_length(:ocsp_error, max: 255)
     |> validate_length(:delta_error, max: 255)
-    |> validate_length(:disabled_reason, max: 255)
     |> assoc_constraint(:account)
   end
 

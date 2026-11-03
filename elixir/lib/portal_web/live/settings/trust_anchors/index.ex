@@ -82,8 +82,22 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
         select: {
           e.issuer,
           %{
-            disabled: fragment("bool_or(?)", e.is_disabled),
-            errored: fragment("bool_or(? IS NOT NULL)", e.errored_at),
+            disabled:
+              fragment(
+                "bool_or((cardinality(?) = 0 OR ?) AND (cardinality(?) = 0 OR ?))",
+                e.crl_urls,
+                e.crl_is_disabled,
+                e.ocsp_urls,
+                e.ocsp_is_disabled
+              ),
+            errored:
+              fragment(
+                "bool_or(? OR ? OR ? IS NOT NULL OR ? IS NOT NULL)",
+                e.crl_is_disabled,
+                e.ocsp_is_disabled,
+                e.crl_errored_at,
+                e.ocsp_errored_at
+              ),
             error_message: fragment("max(coalesce(?, ?))", e.crl_error, e.ocsp_error)
           }
         }
@@ -101,9 +115,10 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
       from(e in Portal.RevocationEndpoint, where: e.issuer in ^issuers)
       |> update(
         set: [
-          errored_at: nil,
-          is_disabled: false,
-          disabled_reason: nil,
+          crl_errored_at: nil,
+          crl_is_disabled: false,
+          ocsp_errored_at: nil,
+          ocsp_is_disabled: false,
           crl_error: nil,
           delta_error: nil,
           ocsp_error: nil,
@@ -491,9 +506,9 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
   defp endpoint_status_badge(assigns) do
     ~H"""
     <%= cond do %>
-      <% @endpoint.is_disabled -> %>
+      <% stopped?(@endpoint) -> %>
         <Core.status_badge style={:danger} dot={false}>Not checked</Core.status_badge>
-      <% @endpoint.errored_at -> %>
+      <% failing?(@endpoint) -> %>
         <Core.status_badge style={:warning} dot={false}>Failing</Core.status_badge>
       <% checked_at(@endpoint) -> %>
         <Core.status_badge style={:success} dot={false}>OK</Core.status_badge>
@@ -509,7 +524,7 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
     ~H"""
     <div class="space-y-3">
       <p
-        :if={@entry.endpoint.is_disabled}
+        :if={stopped?(@entry.endpoint)}
         class="flex items-start gap-1.5 text-xs text-danger"
       >
         <Core.icon name="ri-forbid-line" class="w-3.5 h-3.5 shrink-0 mt-0.5" />
@@ -521,7 +536,19 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
       </p>
 
       <p
-        :if={!@entry.endpoint.is_disabled && @entry.endpoint.errored_at}
+        :if={!stopped?(@entry.endpoint) && stopped_mechanism(@entry.endpoint)}
+        class="flex items-start gap-1.5 text-xs text-warning"
+      >
+        <Core.icon name="ri-error-warning-line" class="w-3.5 h-3.5 shrink-0 mt-0.5" />
+        <span>
+          Firezone has stopped using the {stopped_mechanism(@entry.endpoint)} at this
+          address after repeated errors. Edit and Save this trust anchor to start
+          using it again.
+        </span>
+      </p>
+
+      <p
+        :if={!stopped_mechanism(@entry.endpoint) && failing?(@entry.endpoint)}
         class="flex items-start gap-1.5 text-xs text-warning"
       >
         <Core.icon name="ri-error-warning-line" class="w-3.5 h-3.5 shrink-0 mt-0.5" />
@@ -1257,7 +1284,21 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
     |> Base.url_encode64(padding: false)
   end
 
-  defp failing?(endpoint), do: endpoint.is_disabled or not is_nil(endpoint.errored_at)
+  defp failing?(endpoint) do
+    endpoint.crl_is_disabled or endpoint.ocsp_is_disabled or
+      not is_nil(endpoint.crl_errored_at) or not is_nil(endpoint.ocsp_errored_at)
+  end
+
+  # Every mechanism this address offers has been turned off, so nothing here
+  # checks revocation any more.
+  defp stopped?(endpoint) do
+    (endpoint.crl_urls == [] or endpoint.crl_is_disabled) and
+      (endpoint.ocsp_urls == [] or endpoint.ocsp_is_disabled)
+  end
+
+  defp stopped_mechanism(%{crl_is_disabled: true}), do: "revocation list"
+  defp stopped_mechanism(%{ocsp_is_disabled: true}), do: "responder"
+  defp stopped_mechanism(_endpoint), do: nil
 
   defp checked_at(endpoint), do: endpoint.crl_fetched_at || endpoint.ocsp_checked_at
 
@@ -1283,8 +1324,6 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
       {"Revoked certificates", to_string(revoked_count)},
       {"List addresses", format_urls(endpoint.crl_urls)},
       {"Responder addresses", format_urls(endpoint.ocsp_urls)},
-      {"Failing since", endpoint.errored_at},
-      {"Stopped because", endpoint.is_disabled && endpoint.disabled_reason},
       {"First seen", endpoint.inserted_at}
     ]
     |> drop_blanks()
@@ -1299,7 +1338,9 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
         {"Published", endpoint.crl_this_update},
         {"Expires", endpoint.crl_next_update},
         {"CRL number", endpoint.crl_number && to_string(endpoint.crl_number)},
-        {"Error", endpoint.crl_error}
+        {"Error", endpoint.crl_error},
+        {"Failing since", endpoint.crl_errored_at},
+        {"Status", endpoint.crl_is_disabled && "Stopped after repeated errors"}
       ]
       |> drop_blanks()
     end
@@ -1322,7 +1363,9 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
     else
       [
         {"Last checked", endpoint.ocsp_checked_at || "Never"},
-        {"Error", endpoint.ocsp_error}
+        {"Error", endpoint.ocsp_error},
+        {"Failing since", endpoint.ocsp_errored_at},
+        {"Status", endpoint.ocsp_is_disabled && "Stopped after repeated errors"}
       ]
       |> drop_blanks()
     end

@@ -340,7 +340,7 @@ defmodule PortalWeb.Settings.TrustAnchors.IndexTest do
     } do
       timestamps = %{
         inserted_at: ~U[2026-01-02 03:04:05.100001Z],
-        errored_at: ~U[2026-01-03 03:04:05.100002Z],
+        crl_errored_at: ~U[2026-01-03 03:04:05.100002Z],
         crl_fetched_at: ~U[2026-01-04 03:04:05.100003Z],
         crl_this_update: ~U[2026-01-05 03:04:05Z],
         crl_next_update: ~U[2026-01-06 03:04:05Z],
@@ -458,7 +458,7 @@ defmodule PortalWeb.Settings.TrustAnchors.IndexTest do
         crl_urls: ["http://crl.test.invalid/ec-ca.crl"],
         crl_error: "connection refused"
       )
-      |> Ecto.Changeset.change(errored_at: DateTime.utc_now())
+      |> Ecto.Changeset.change(crl_errored_at: DateTime.utc_now())
       |> Repo.update!()
 
       {:ok, _lv, html} =
@@ -484,9 +484,8 @@ defmodule PortalWeb.Settings.TrustAnchors.IndexTest do
         crl_error: "connection refused"
       )
       |> Ecto.Changeset.change(
-        errored_at: DateTime.utc_now(),
-        is_disabled: true,
-        disabled_reason: Portal.Revocation.Failure.disabled_reason()
+        crl_errored_at: DateTime.utc_now(),
+        crl_is_disabled: true
       )
       |> Repo.update!()
 
@@ -520,6 +519,38 @@ defmodule PortalWeb.Settings.TrustAnchors.IndexTest do
       refute html =~ "ri-error-warning-fill"
     end
 
+    test "an address whose list stopped still says its responder is checked", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      trust_anchor: trust_anchor,
+      issuer: issuer
+    } do
+      revocation_endpoint_fixture(
+        account: account,
+        issuer: issuer,
+        distribution_point: "http://crl.test.invalid/ec-ca.crl",
+        crl_urls: ["http://crl.test.invalid/ec-ca.crl"],
+        ocsp_urls: ["http://ocsp.test.invalid"],
+        crl_error: "connection refused",
+        crl_errored_at: DateTime.utc_now(),
+        crl_is_disabled: true
+      )
+
+      {:ok, lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/trust_anchors/#{trust_anchor.id}")
+
+      assert html =~ "having trouble reaching"
+      refute html =~ "not being checked"
+
+      open_revocation_tab(lv)
+      details = expand_first_endpoint(lv)
+      assert details =~ "stopped using the revocation list"
+      refute details =~ "revoked are still let on"
+    end
+
     test "saving the trust anchor starts the checking again", %{
       conn: conn,
       account: account,
@@ -535,9 +566,8 @@ defmodule PortalWeb.Settings.TrustAnchors.IndexTest do
         crl_error: "connection refused"
       )
       |> Ecto.Changeset.change(
-        errored_at: DateTime.utc_now(),
-        is_disabled: true,
-        disabled_reason: Portal.Revocation.Failure.disabled_reason()
+        crl_errored_at: DateTime.utc_now(),
+        crl_is_disabled: true
       )
       |> Repo.update!()
 
@@ -553,9 +583,10 @@ defmodule PortalWeb.Settings.TrustAnchors.IndexTest do
       |> render_submit()
 
       endpoint = Repo.one!(Portal.RevocationEndpoint)
-      refute endpoint.is_disabled
-      assert is_nil(endpoint.disabled_reason)
-      assert is_nil(endpoint.errored_at)
+      refute endpoint.crl_is_disabled
+      refute endpoint.ocsp_is_disabled
+      assert is_nil(endpoint.crl_errored_at)
+      assert is_nil(endpoint.ocsp_errored_at)
       assert is_nil(endpoint.crl_error)
     end
   end

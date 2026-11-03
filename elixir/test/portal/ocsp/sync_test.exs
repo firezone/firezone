@@ -223,6 +223,46 @@ defmodule Portal.Ocsp.SyncTest do
       assert log =~ "does not know a certificate"
     end
 
+    test "a responder that stops leaves the list fetching", %{account: account, pki: pki} do
+      attested_client_fixture(account: account, issuer_der: pki.ca_der, certificate: leaf(pki, :rsa))
+
+      endpoint =
+        revocation_endpoint_fixture(
+          account: account,
+          issuer_der: pki.ca_der,
+          ocsp_urls: ["ldap://ocsp.example.test"]
+        )
+
+      capture_log(fn -> assert perform(endpoint) == {:ok, :failed} end)
+
+      endpoint = Repo.one!(Portal.RevocationEndpoint)
+      assert endpoint.ocsp_is_disabled
+      assert endpoint.ocsp_errored_at
+      refute endpoint.crl_is_disabled
+      assert is_nil(endpoint.crl_errored_at)
+    end
+
+    test "a responder that comes back clears only its own streak", %{account: account, pki: pki} do
+      leaf = leaf(pki, :rsa)
+      attested_client_fixture(account: account, issuer_der: pki.ca_der, certificate: leaf)
+      endpoint = ocsp_endpoint_fixture(account: account, issuer_der: pki.ca_der)
+      started = DateTime.add(DateTime.utc_now(), -3, :hour)
+
+      Repo.update_all(Portal.RevocationEndpoint,
+        set: [crl_errored_at: started, ocsp_errored_at: started, crl_error: "timeout"]
+      )
+
+      Req.Test.stub(Sync, fn conn ->
+        Plug.Conn.send_resp(conn, 200, ocsp_response(pki.ca, leaf, status: :good))
+      end)
+
+      assert perform(endpoint) == {:ok, :refreshed}
+
+      endpoint = Repo.one!(Portal.RevocationEndpoint)
+      assert is_nil(endpoint.ocsp_errored_at)
+      assert endpoint.crl_errored_at == started
+    end
+
     test "does nothing when the endpoint is gone", %{account: account, pki: pki} do
       endpoint = ocsp_endpoint_fixture(account: account, issuer_der: pki.ca_der)
       Repo.delete_all(Portal.RevocationEndpoint)

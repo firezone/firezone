@@ -286,7 +286,7 @@ defmodule Portal.Ocsp.Sync do
         where: e.account_id == ^account_id,
         where: e.issuer == ^issuer,
         where: e.ocsp_urls != [],
-        where: e.is_disabled == false,
+        where: e.ocsp_is_disabled == false,
         select: e.distribution_point
       )
       |> Safe.unscoped()
@@ -373,7 +373,7 @@ defmodule Portal.Ocsp.Sync do
       now = DateTime.utc_now()
 
       fields =
-        [ocsp_checked_at: now, ocsp_error: nil] ++ Failure.success_fields(endpoint, :ocsp)
+        [ocsp_checked_at: now, ocsp_error: nil] ++ Failure.success_fields(:ocsp)
 
       endpoint
       |> endpoint_query()
@@ -387,7 +387,7 @@ defmodule Portal.Ocsp.Sync do
 
       fields =
         [ocsp_checked_at: now, ocsp_error: to_message(reason)] ++
-          Failure.error_fields(endpoint, reason, now)
+          Failure.error_fields(endpoint, :ocsp, reason, now)
 
       endpoint
       |> endpoint_query()

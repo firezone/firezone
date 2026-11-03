@@ -491,7 +491,7 @@ defmodule PortalAPI.Client.DeviceTrust do
   # Asked about after the connect is already decided, so the answer lands for the
   # next one rather than holding this device at the door waiting on a responder.
   #
-  # Skipped where the CA publishes a list, which covers the whole fleet in one
+  # Skipped where the CA publishes a current list, which covers the whole fleet in one
   # fetch and already answers for this certificate, and skipped again where the
   # cached answer is still current. What is left is the gap the scheduled run
   # cannot close on its own: a certificate nobody has asked about yet, because
@@ -933,7 +933,9 @@ defmodule PortalAPI.Client.DeviceTrust do
     @moduledoc false
     import Ecto.Query
     alias Portal.Crypto.X509
+    alias Portal.RevocationEndpoint
     alias Portal.Safe
+    require RevocationEndpoint
 
     def fetch_x509_account(account_id) do
       query =
@@ -1042,36 +1044,7 @@ defmodule PortalAPI.Client.DeviceTrust do
         select: %{
           revoked?: not is_nil(r.serial),
           crl_published?:
-            fragment(
-              """
-              EXISTS (
-                SELECT 1 FROM revocation_endpoints e
-                WHERE e.account_id = ? AND e.issuer = ?
-                AND EXISTS (
-                  SELECT 1 FROM unnest(e.crl_urls) AS u
-                  WHERE u LIKE 'http://%' OR u LIKE 'https://%'
-                )
-              )
-              AND NOT EXISTS (
-                SELECT 1 FROM revocation_endpoints e
-                WHERE e.account_id = ? AND e.issuer = ?
-                AND EXISTS (
-                  SELECT 1 FROM unnest(e.crl_urls) AS u
-                  WHERE u LIKE 'http://%' OR u LIKE 'https://%'
-                )
-                AND (
-                  e.is_disabled
-                  OR e.crl_next_update IS NULL
-                  OR e.crl_next_update <= ?
-                )
-              )
-              """,
-              a.id,
-              ^issuer,
-              a.id,
-              ^issuer,
-              type(^now, :utc_datetime)
-            ),
+            RevocationEndpoint.crl_covered?(a.id, ^issuer, ^now),
           known_points:
             fragment(
               """
