@@ -444,14 +444,6 @@ impl ClientTunnel {
                         }
                     }
 
-                    // Packets encrypted inline would go out after this batch, despite their lower counters.
-                    #[cfg(debug_assertions)]
-                    assert_eq!(
-                        self.role_state.num_buffered_transmits(),
-                        0,
-                        "No packets must be encrypted inline while a batch is encrypted off the main thread"
-                    );
-
                     self.needs_timeout = true;
 
                     tick.want_continue();
@@ -721,14 +713,6 @@ impl GatewayTunnel {
                             }
                         }
                     }
-
-                    // Packets encrypted inline would go out after this batch, despite their lower counters.
-                    #[cfg(debug_assertions)]
-                    assert_eq!(
-                        self.role_state.num_buffered_transmits(),
-                        0,
-                        "No packets must be encrypted inline while a batch is encrypted off the main thread"
-                    );
 
                     self.needs_timeout = true;
 

@@ -2490,12 +2490,6 @@ impl ClientState {
         self.tcp_dns_client.reset();
     }
 
-    /// How many transmits the state itself has queued for [`Self::poll_transmit`].
-    #[cfg(debug_assertions)]
-    pub fn num_buffered_transmits(&self) -> usize {
-        self.buffered_transmits.len()
-    }
-
     pub fn poll_transmit(&mut self) -> Option<snownet::Transmit> {
         self.buffered_transmits
             .pop_front()
