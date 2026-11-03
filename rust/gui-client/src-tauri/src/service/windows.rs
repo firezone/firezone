@@ -266,7 +266,14 @@ fn run_service(arguments: Vec<OsString>) {
         return;
     }
 
-    let rt = async_runtime::current_thread().expect("Failed to create tokio runtime");
+    let rt = match async_runtime::current_thread() {
+        Ok(rt) => rt,
+        Err(e) => {
+            tracing::error!("{e:#}");
+
+            return;
+        }
+    };
 
     let (mut shutdown_tx, shutdown_rx) = mpsc::channel(1);
 

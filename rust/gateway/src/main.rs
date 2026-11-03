@@ -77,7 +77,14 @@ fn main() -> ExitCode {
 
     telemetry::configure(Arc::new(tcp_socket_factory));
 
-    let runtime = async_runtime::current_thread().expect("Failed to create tokio runtime");
+    let runtime = match async_runtime::current_thread() {
+        Ok(runtime) => runtime,
+        #[expect(clippy::print_stderr, reason = "No logger has been set up yet")]
+        Err(e) => {
+            eprintln!("Error: {e:#}");
+            return ExitCode::FAILURE;
+        }
+    };
 
     match runtime.block_on(try_main(cli)) {
         Ok(()) => {
