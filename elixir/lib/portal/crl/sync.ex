@@ -32,10 +32,11 @@ defmodule Portal.Crl.Sync do
         }
       }) do
     with {:ok, issuer} <- Base.decode64(encoded_issuer),
-         endpoint when not is_nil(endpoint) <-
+         %{crl_is_disabled: false} = endpoint <-
            Database.fetch_endpoint(account_id, issuer, distribution_point) do
       refresh(endpoint)
     else
+      %Portal.RevocationEndpoint{} -> {:ok, :disabled}
       _other -> {:ok, :deleted}
     end
   end

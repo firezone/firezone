@@ -517,6 +517,15 @@ defmodule Portal.Crl.SyncTest do
       assert Repo.all(Portal.CrlRevocation) == []
     end
 
+    test "does nothing once the list was turned off", %{account: account, pki: pki} do
+      endpoint =
+        revocation_endpoint_fixture(account: account, issuer_der: pki.ca_der, crl_is_disabled: true)
+
+      Req.Test.stub(Sync, fn _conn -> flunk("a turned-off list must not be fetched") end)
+
+      assert perform(endpoint) == {:ok, :disabled}
+    end
+
     test "does nothing when the endpoint is gone", %{account: account, pki: pki} do
       endpoint = revocation_endpoint_fixture(account: account, issuer_der: pki.ca_der)
       Repo.delete_all(Portal.RevocationEndpoint)

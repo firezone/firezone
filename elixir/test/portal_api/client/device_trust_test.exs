@@ -475,34 +475,95 @@ defmodule PortalAPI.Client.DeviceTrustTest do
       assert job.args["serial"] == cert_serial_hex(leaf)
     end
 
-    test "asks the responder when one of the issuer's lists has expired", %{
+    test "a stale list for another partition does not send this leaf to the responder", %{
       account: account,
       pki: pki,
       subject: subject
     } do
       leaf = leaf(pki, :with_crl)
       issuer = X509.issuer(leaf)
-      tomorrow = DateTime.utc_now() |> DateTime.add(1, :day) |> DateTime.truncate(:second)
-      yesterday = DateTime.utc_now() |> DateTime.add(-1, :day) |> DateTime.truncate(:second)
 
       revocation_endpoint_fixture(
         account: account,
         issuer: issuer,
         ocsp_urls: ["http://ocsp.example.test"],
-        crl_next_update: tomorrow
+        crl_next_update: in_days(1)
       )
 
       revocation_endpoint_fixture(
         account: account,
         issuer: issuer,
         crl_urls: ["http://crl.example.test/b.crl"],
-        crl_next_update: yesterday
+        crl_next_update: in_days(-1)
+      )
+
+      assert {:ok, _verified} = DeviceTrust.attest(connect_info(leaf), subject)
+
+      assert all_enqueued(worker: Portal.Ocsp.Sync) == []
+    end
+
+    test "asks the responder when the leaf's own partition has not been fetched yet", %{
+      account: account,
+      pki: pki,
+      subject: subject
+    } do
+      leaf = leaf(pki, :two_partitions)
+
+      revocation_endpoint_fixture(
+        account: account,
+        issuer: X509.issuer(leaf),
+        crl_urls: ["http://crl.example.test/a.crl"],
+        ocsp_urls: ["http://ocsp.example.test"],
+        crl_next_update: in_days(1)
       )
 
       assert {:ok, _verified} = DeviceTrust.attest(connect_info(leaf), subject)
 
       assert [job] = all_enqueued(worker: Portal.Ocsp.Sync)
       assert job.args["serial"] == cert_serial_hex(leaf)
+    end
+
+    test "asks the responder when the list's delta has expired", %{
+      account: account,
+      pki: pki,
+      subject: subject
+    } do
+      leaf = leaf(pki, :with_crl)
+
+      revocation_endpoint_fixture(
+        account: account,
+        issuer: X509.issuer(leaf),
+        ocsp_urls: ["http://ocsp.example.test"],
+        crl_next_update: in_days(7),
+        delta_fetched_at: DateTime.utc_now(),
+        delta_next_update: in_days(-1),
+        delta_error: "timeout"
+      )
+
+      assert {:ok, _verified} = DeviceTrust.attest(connect_info(leaf), subject)
+
+      assert [_job] = all_enqueued(worker: Portal.Ocsp.Sync)
+    end
+
+    test "a list whose delta is current is not asked about through its responder", %{
+      account: account,
+      pki: pki,
+      subject: subject
+    } do
+      leaf = leaf(pki, :with_crl)
+
+      revocation_endpoint_fixture(
+        account: account,
+        issuer: X509.issuer(leaf),
+        ocsp_urls: ["http://ocsp.example.test"],
+        crl_next_update: in_days(7),
+        delta_fetched_at: DateTime.utc_now(),
+        delta_next_update: in_days(1)
+      )
+
+      assert {:ok, _verified} = DeviceTrust.attest(connect_info(leaf), subject)
+
+      assert all_enqueued(worker: Portal.Ocsp.Sync) == []
     end
 
     test "a certificate with a current answer is not asked about again", %{
@@ -775,5 +836,9 @@ defmodule PortalAPI.Client.DeviceTrustTest do
          flush_on_terminate: false
        )}
     )
+  end
+
+  defp in_days(days) do
+    DateTime.utc_now() |> DateTime.add(days, :day) |> DateTime.truncate(:second)
   end
 end

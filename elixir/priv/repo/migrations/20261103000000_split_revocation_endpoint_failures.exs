@@ -23,6 +23,13 @@ defmodule Portal.Repo.Migrations.SplitRevocationEndpointFailures do
   end
 
   def down do
+    execute("""
+    UPDATE revocation_endpoints
+    SET errored_at = LEAST(crl_errored_at, ocsp_errored_at),
+        is_disabled = crl_is_disabled OR ocsp_is_disabled,
+        disabled_reason = CASE WHEN crl_is_disabled OR ocsp_is_disabled THEN 'Fetch error' END
+    """)
+
     alter table(:revocation_endpoints) do
       remove_if_exists(:crl_errored_at, :timestamptz)
       remove_if_exists(:crl_is_disabled, :boolean)

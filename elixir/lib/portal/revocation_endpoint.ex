@@ -93,45 +93,86 @@ defmodule Portal.RevocationEndpoint do
     timestamps()
   end
 
-  @doc """
-  True when the issuer's revocation lists can stand in for its responder.
-
-  Every partition must be enabled and hold a list that has not expired. One
-  partition that is off or stale leaves the certificates bound to it uncovered,
-  and the query cannot tell which partition a certificate is bound to, so any
-  gap counts as no coverage. A list that is not served over HTTP is never
-  fetched, so it neither covers nor blocks.
+  @http_list_sql """
+  EXISTS (
+    SELECT 1 FROM unnest(e.crl_urls) AS u
+    WHERE u LIKE 'http://%' OR u LIKE 'https://%'
+  )
   """
-  defmacro crl_covered?(account_id, issuer, now) do
+
+  # A cached list can answer for its certificates only while it is enabled,
+  # unexpired, and so is any delta it names. A delta that was never read leaves
+  # delta_fetched_at set with no delta_next_update, so it fails the check too.
+  @current_list_sql """
+  NOT e.crl_is_disabled
+  AND e.crl_next_update > ?
+  AND (e.delta_fetched_at IS NULL OR e.delta_next_update > ?)
+  """
+
+  @doc """
+  True when every distribution point the certificate names has a current list.
+
+  A point we have no row for yet has never been fetched, so it covers nothing.
+  The caller passes only the points served over HTTP, since no other list is
+  ever fetched, and no such points means no coverage.
+  """
+  defmacro crl_covers_points?(account_id, issuer, points, now) do
+    sql = """
+    cardinality(?::text[]) > 0
+    AND NOT EXISTS (
+      SELECT 1 FROM unnest(?::text[]) AS p(point)
+      WHERE NOT EXISTS (
+        SELECT 1 FROM revocation_endpoints e
+        WHERE e.account_id = ? AND e.issuer = ? AND e.distribution_point = p.point
+        AND #{@current_list_sql}
+      )
+    )
+    """
+
     quote do
       fragment(
-        """
-        EXISTS (
-          SELECT 1 FROM revocation_endpoints e
-          WHERE e.account_id = ? AND e.issuer = ?
-          AND EXISTS (
-            SELECT 1 FROM unnest(e.crl_urls) AS u
-            WHERE u LIKE 'http://%' OR u LIKE 'https://%'
-          )
-        )
-        AND NOT EXISTS (
-          SELECT 1 FROM revocation_endpoints e
-          WHERE e.account_id = ? AND e.issuer = ?
-          AND EXISTS (
-            SELECT 1 FROM unnest(e.crl_urls) AS u
-            WHERE u LIKE 'http://%' OR u LIKE 'https://%'
-          )
-          AND (
-            e.crl_is_disabled
-            OR e.crl_next_update IS NULL
-            OR e.crl_next_update <= ?
-          )
-        )
-        """,
+        unquote(sql),
+        unquote(points),
+        unquote(points),
+        unquote(account_id),
+        unquote(issuer),
+        unquote(now),
+        unquote(now)
+      )
+    end
+  end
+
+  @doc """
+  True when every list the issuer publishes over HTTP is current.
+
+  For work that is not about one certificate, such as the scheduled responder
+  run, which asks about every device of the issuer. One partition that is off or
+  stale leaves the certificates bound to it uncovered, so any gap counts as no
+  coverage.
+  """
+  defmacro crl_covered?(account_id, issuer, now) do
+    sql = """
+    EXISTS (
+      SELECT 1 FROM revocation_endpoints e
+      WHERE e.account_id = ? AND e.issuer = ?
+      AND #{@http_list_sql}
+    )
+    AND NOT EXISTS (
+      SELECT 1 FROM revocation_endpoints e
+      WHERE e.account_id = ? AND e.issuer = ?
+      AND #{@http_list_sql}
+      AND NOT COALESCE((#{@current_list_sql}), false)
+    )
+    """
+
+    quote do
+      fragment(
+        unquote(sql),
         unquote(account_id),
         unquote(issuer),
         unquote(account_id),
         unquote(issuer),
+        unquote(now),
         unquote(now)
       )
     end

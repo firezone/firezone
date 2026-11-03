@@ -263,6 +263,15 @@ defmodule Portal.Ocsp.SyncTest do
       assert endpoint.crl_errored_at == started
     end
 
+    test "does nothing once the responder was turned off", %{account: account, pki: pki} do
+      attested_client_fixture(account: account, issuer_der: pki.ca_der, certificate: leaf(pki, :rsa))
+      endpoint = ocsp_endpoint_fixture(account: account, issuer_der: pki.ca_der, ocsp_is_disabled: true)
+
+      Req.Test.stub(Sync, fn _conn -> flunk("a turned-off responder must not be asked") end)
+
+      assert perform(endpoint) == {:ok, :disabled}
+    end
+
     test "does nothing when the endpoint is gone", %{account: account, pki: pki} do
       endpoint = ocsp_endpoint_fixture(account: account, issuer_der: pki.ca_der)
       Repo.delete_all(Portal.RevocationEndpoint)

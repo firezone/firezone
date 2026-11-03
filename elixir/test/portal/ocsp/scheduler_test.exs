@@ -63,6 +63,17 @@ defmodule Portal.Ocsp.SchedulerTest do
       assert [_job] = all_sync_jobs()
     end
 
+    test "queues an issuer whose list's delta has expired", %{account: account, pki: pki} do
+      list_with_responder(account, pki,
+        crl_next_update: in_days(7),
+        delta_fetched_at: DateTime.utc_now(),
+        delta_next_update: in_days(-1)
+      )
+
+      assert Scheduler.perform(%Oban.Job{}) == {:ok, :scheduled}
+      assert [_job] = all_sync_jobs()
+    end
+
     test "skips a responder that was turned off", %{account: account, pki: pki} do
       ocsp_endpoint_fixture(account: account, issuer_der: pki.ca_der, ocsp_is_disabled: true)
 

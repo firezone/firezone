@@ -82,13 +82,19 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
         select: {
           e.issuer,
           %{
+            # Matches stopped?/1 below, over the issuer's rows at once.
             disabled:
               fragment(
-                "bool_or((cardinality(?) = 0 OR ?) AND (cardinality(?) = 0 OR ?))",
-                e.crl_urls,
-                e.crl_is_disabled,
+                """
+                NOT bool_or(cardinality(?) > 0 AND NOT ?)
+                AND bool_or(? OR NOT EXISTS (
+                  SELECT 1 FROM unnest(?) AS u WHERE u LIKE 'http://%' OR u LIKE 'https://%'
+                ))
+                """,
                 e.ocsp_urls,
-                e.ocsp_is_disabled
+                e.ocsp_is_disabled,
+                e.crl_is_disabled,
+                e.crl_urls
               ),
             errored:
               fragment(
@@ -501,16 +507,16 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
     """
   end
 
-  attr :endpoint, :any, required: true
+  attr :entry, :any, required: true
 
   defp endpoint_status_badge(assigns) do
     ~H"""
     <%= cond do %>
-      <% stopped?(@endpoint) -> %>
+      <% stopped?(@entry) -> %>
         <Core.status_badge style={:danger} dot={false}>Not checked</Core.status_badge>
-      <% failing?(@endpoint) -> %>
+      <% failing?(@entry.endpoint) -> %>
         <Core.status_badge style={:warning} dot={false}>Failing</Core.status_badge>
-      <% checked_at(@endpoint) -> %>
+      <% checked_at(@entry.endpoint) -> %>
         <Core.status_badge style={:success} dot={false}>OK</Core.status_badge>
       <% true -> %>
         <Core.status_badge style={:neutral} dot={false}>Pending</Core.status_badge>
@@ -524,7 +530,7 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
     ~H"""
     <div class="space-y-3">
       <p
-        :if={stopped?(@entry.endpoint)}
+        :if={stopped?(@entry)}
         class="flex items-start gap-1.5 text-xs text-danger"
       >
         <Core.icon name="ri-forbid-line" class="w-3.5 h-3.5 shrink-0 mt-0.5" />
@@ -536,7 +542,7 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
       </p>
 
       <p
-        :if={!stopped?(@entry.endpoint) && stopped_mechanism(@entry.endpoint)}
+        :if={!stopped?(@entry) && stopped_mechanism(@entry.endpoint)}
         class="flex items-start gap-1.5 text-xs text-warning"
       >
         <Core.icon name="ri-error-warning-line" class="w-3.5 h-3.5 shrink-0 mt-0.5" />
@@ -695,7 +701,7 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
                   </td>
                   <td class="px-2 py-2 text-body">{checked_via(entry.endpoint)}</td>
                   <td class="px-2 py-2">
-                    <.endpoint_status_badge endpoint={entry.endpoint} />
+                    <.endpoint_status_badge entry={entry} />
                   </td>
                   <td class="px-2 py-2 text-subtle">
                     <Core.icon
@@ -1252,9 +1258,12 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
           ocsp: Database.count_revoked_statuses(issuers, subject)
         }
 
-        issuers
-        |> Database.list_revocation_endpoints(subject)
+        rows = Database.list_revocation_endpoints(issuers, subject)
+        responders = rows |> Enum.filter(&live_responder?/1) |> MapSet.new(& &1.issuer)
+
+        rows
         |> Enum.map(&with_revoked_count(&1, counts))
+        |> Enum.map(&Map.put(&1, :responder?, MapSet.member?(responders, &1.endpoint.issuer)))
         |> Enum.sort_by(&X509.describe_name(&1.endpoint.issuer))
       end
 
@@ -1289,12 +1298,15 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
       not is_nil(endpoint.crl_errored_at) or not is_nil(endpoint.ocsp_errored_at)
   end
 
-  # Every mechanism this address offers has been turned off, so nothing here
-  # checks revocation any more.
-  defp stopped?(endpoint) do
-    (endpoint.crl_urls == [] or endpoint.crl_is_disabled) and
-      (endpoint.ocsp_urls == [] or endpoint.ocsp_is_disabled)
+  # Nothing checks the certificates bound to this address any more: its list is
+  # off or cannot be fetched, and the issuer has no responder left to fall back
+  # on. The responder is asked per issuer and rides only one of its rows, so a
+  # row without one of its own is still covered by it.
+  defp stopped?(%{endpoint: endpoint, responder?: responder?}) do
+    not responder? and (not checks_via_list?(endpoint) or endpoint.crl_is_disabled)
   end
+
+  defp live_responder?(endpoint), do: endpoint.ocsp_urls != [] and not endpoint.ocsp_is_disabled
 
   defp stopped_mechanism(%{crl_is_disabled: true}), do: "revocation list"
   defp stopped_mechanism(%{ocsp_is_disabled: true}), do: "responder"

@@ -551,6 +551,42 @@ defmodule PortalWeb.Settings.TrustAnchors.IndexTest do
       refute details =~ "revoked are still let on"
     end
 
+    test "a partition whose list stopped is still checked by the issuer's responder", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      trust_anchor: trust_anchor,
+      issuer: issuer
+    } do
+      revocation_endpoint_fixture(
+        account: account,
+        issuer: issuer,
+        distribution_point: "http://crl.test.invalid/a.crl",
+        crl_urls: ["http://crl.test.invalid/a.crl"],
+        ocsp_urls: ["http://ocsp.test.invalid"]
+      )
+
+      revocation_endpoint_fixture(
+        account: account,
+        issuer: issuer,
+        distribution_point: "http://crl.test.invalid/b.crl",
+        crl_urls: ["http://crl.test.invalid/b.crl"],
+        crl_error: "connection refused",
+        crl_errored_at: DateTime.utc_now(),
+        crl_is_disabled: true
+      )
+
+      {:ok, lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/trust_anchors/#{trust_anchor.id}")
+
+      assert html =~ "having trouble reaching"
+      refute html =~ "not being checked"
+
+      refute open_revocation_tab(lv) =~ "Not checked"
+    end
+
     test "saving the trust anchor starts the checking again", %{
       conn: conn,
       account: account,
