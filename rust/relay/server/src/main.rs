@@ -1,6 +1,6 @@
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
-mod azure_metrics;
+mod otlp_metrics;
 
 #[global_allocator]
 static ALLOC: mimalloc::MiMalloc = mimalloc::MiMalloc;
@@ -83,9 +83,13 @@ struct Args {
     #[arg(long, env, default_value = "human", hide = true)]
     log_format: LogFormat,
 
-    /// Full Azure Monitor OTLP/HTTP metrics ingestion URL.
+    /// Full OTLP/HTTP metrics ingestion URL, used verbatim.
     #[arg(long, env, hide = true)]
-    azure_otlp_metrics_endpoint: Option<Url>,
+    otlp_metrics_endpoint: Option<Url>,
+
+    /// How to authenticate requests to `otlp_metrics_endpoint`.
+    #[arg(long, env, hide = true)]
+    otlp_auth: Option<otlp_metrics::OtlpAuth>,
 
     /// Enable offloading of TURN traffic to an eBPF program.
     ///
@@ -333,10 +337,11 @@ fn setup_tracing(args: &Args, directives: &str) -> Result<FilterReloadHandle> {
         .with(sentry_layer())
         .into();
 
-    if let Some(endpoint) = &args.azure_otlp_metrics_endpoint {
+    if let Some(endpoint) = &args.otlp_metrics_endpoint {
         // Reqwest's blocking client initializes its own runtime.
-        meter_provider =
-            tokio::task::block_in_place(|| azure_metrics::with_exporter(meter_provider, endpoint))?;
+        meter_provider = tokio::task::block_in_place(|| {
+            otlp_metrics::with_exporter(meter_provider, endpoint, args.otlp_auth)
+        })?;
     }
     global::set_meter_provider(meter_provider.build());
 
@@ -869,5 +874,35 @@ mod tests {
         assert_eq!(fmt_human_throughput(1_234.0), "1.23 kB/s");
         assert_eq!(fmt_human_throughput(955_333_999.0), "955.33 MB/s");
         assert_eq!(fmt_human_throughput(100_000_000_000.0), "100.00 GB/s");
+    }
+
+    #[test]
+    fn args_parse_otlp_auth() {
+        let unset =
+            Args::try_parse_from(["relay", "--api-url", "localhost:1234", "TOKEN"]).unwrap();
+        let azure = Args::try_parse_from([
+            "relay",
+            "--otlp-auth",
+            "azure-managed-identity",
+            "--api-url",
+            "localhost:1234",
+            "TOKEN",
+        ])
+        .unwrap();
+        let invalid = Args::try_parse_from([
+            "relay",
+            "--otlp-auth",
+            "bearer",
+            "--api-url",
+            "localhost:1234",
+            "TOKEN",
+        ]);
+
+        assert_eq!(unset.otlp_auth, None);
+        assert_eq!(
+            azure.otlp_auth,
+            Some(otlp_metrics::OtlpAuth::AzureManagedIdentity)
+        );
+        assert!(invalid.is_err());
     }
 }
