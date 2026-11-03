@@ -49,7 +49,7 @@ pub fn mark_ipv6(ipv6: &mut Ipv6Hdr) {
 
 #[inline(always)]
 pub fn count(counter: RateLimitCounter) {
-    per_cpu::increment(&RATE_LIMIT_COUNTERS, counter as u32);
+    per_cpu::update(&RATE_LIMIT_COUNTERS, counter as u32, |count| *count += 1);
 }
 
 #[inline(always)]
