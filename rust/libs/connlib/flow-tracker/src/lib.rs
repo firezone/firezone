@@ -911,6 +911,13 @@ impl FlowData {
                 .intersects(TcpFlags::SYN | TcpFlags::FIN | TcpFlags::RST),
             "a packet that changes the TCP state is gathered on its own"
         );
+        debug_assert!(
+            inner.src_ip == packet.source()
+                && inner.dst_ip == packet.destination()
+                && inner.src_proto.as_ref().ok() == packet.source_protocol().ok().as_ref()
+                && inner.dst_proto.as_ref().ok() == packet.destination_protocol().ok().as_ref(),
+            "only packets of the first packet's flow are counted towards it"
+        );
 
         inner.packets += 1;
         inner.bytes += packet.layer4_payload_len() as u64;
