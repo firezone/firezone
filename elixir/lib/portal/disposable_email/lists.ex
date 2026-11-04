@@ -175,7 +175,9 @@ defmodule Portal.DisposableEmail.Lists do
     state
   end
 
+  # sobelow_skip ["Traversal.FileModule"]
   defp read_file(path) do
+    # `path` comes from an operator-configured `file://` list URL, never from a request.
     with {:ok, %File.Stat{size: size}} <- File.stat(path),
          :ok <- if(size > @max_bytes, do: {:error, :too_large}, else: :ok),
          {:ok, body} <- File.read(path) do
