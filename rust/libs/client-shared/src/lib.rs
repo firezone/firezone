@@ -10,8 +10,8 @@ pub use tunnel::messages::client::{IngressMessages, ResourceDescription};
 use anyhow::Result;
 use connlib_model::{ResourceId, ResourceView};
 use eventloop::{Command, Eventloop};
-use futures::future::{Fuse, FusedFuture as _};
-use futures::{FutureExt, StreamExt};
+use futures::StreamExt;
+use futures::future::{MaybeDone, maybe_done};
 use phoenix_channel::{PhoenixChannel, PublicKeyParam};
 use serde::{Deserialize, Serialize};
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
@@ -20,6 +20,7 @@ use std::future;
 use std::io;
 use std::net::IpAddr;
 use std::path::PathBuf;
+use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
 use tokio::sync::mpsc;
@@ -44,7 +45,7 @@ pub struct Session {
 
 #[derive(Debug)]
 pub struct EventStream {
-    eventloop: Fuse<async_runtime::ThreadOutput<Result<(), DisconnectError>>>,
+    eventloop: MaybeDone<async_runtime::ThreadOutput<Result<(), DisconnectError>>>,
     resource_list_receiver: WatchStream<Vec<ResourceView>>,
     tun_config_receiver: WatchStream<Option<TunConfig>>,
     connected_as_receiver: WatchStream<Option<ConnectedAs>>,
@@ -163,6 +164,13 @@ impl Session {
 
 impl EventStream {
     pub fn poll_next(&mut self, cx: &mut Context) -> Poll<Option<Event>> {
+        // Polled before the channels: the event-loop sends its events before it finishes, so
+        // once it has finished, the channels already hold all of them.
+        if matches!(self.eventloop, MaybeDone::Gone) {
+            return Poll::Ready(None);
+        }
+        let finished = Pin::new(&mut self.eventloop).poll(cx).is_ready();
+
         loop {
             // Polled first so the account and actor are known before anything else the
             // same `init` produced.
@@ -200,25 +208,19 @@ impl EventStream {
                 Poll::Ready(None) | Poll::Pending => {}
             }
 
-            match self.eventloop.poll_unpin(cx) {
-                Poll::Ready(Ok(Ok(()))) => return Poll::Ready(None),
-                Poll::Ready(Ok(Err(e))) => return Poll::Ready(Some(Event::Disconnected(e))),
-                Poll::Ready(Err(e)) => {
-                    return Poll::Ready(Some(Event::Disconnected(DisconnectError::from(
-                        e.context("connlib crashed"),
-                    ))));
-                }
-                Poll::Pending => {}
-            }
+            break;
+        }
 
-            // A resolved `Fuse` parks forever and the senders above died with the
-            // event-loop, so nothing is left that could wake us: whatever we just
-            // yielded was the last event.
-            if self.eventloop.is_terminated() {
-                return Poll::Ready(None);
-            }
-
+        if !finished {
             return Poll::Pending;
+        }
+
+        match Pin::new(&mut self.eventloop).take_output() {
+            Some(Ok(Ok(()))) | None => Poll::Ready(None),
+            Some(Ok(Err(e))) => Poll::Ready(Some(Event::Disconnected(e))),
+            Some(Err(e)) => Poll::Ready(Some(Event::Disconnected(DisconnectError::from(
+                e.context("connlib crashed"),
+            )))),
         }
     }
 
@@ -268,7 +270,7 @@ impl EventStream {
         })?;
 
         Ok(Self {
-            eventloop: eventloop.fuse(),
+            eventloop: maybe_done(eventloop),
             resource_list_receiver: WatchStream::from_changes(resource_list_receiver),
             tun_config_receiver: WatchStream::from_changes(tun_config_receiver),
             connected_as_receiver: WatchStream::from_changes(connected_as_receiver),

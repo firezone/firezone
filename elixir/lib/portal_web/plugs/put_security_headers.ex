@@ -51,7 +51,7 @@ defmodule PortalWeb.Plugs.PutSecurityHeaders do
   defp csp_policy_for(conn) do
     policy = base_csp_policy_for(conn)
 
-    if sign_up_path?(conn.request_path), do: allow_turnstile(policy), else: policy
+    if turnstile_path?(conn.request_path), do: allow_turnstile(policy), else: policy
   end
 
   if @live_reload_frame_csp_policy do
@@ -66,7 +66,8 @@ defmodule PortalWeb.Plugs.PutSecurityHeaders do
     defp base_csp_policy_for(_conn), do: @default_csp_policy
   end
 
-  defp sign_up_path?(path), do: path == "/sign_up" or String.starts_with?(path, "/sign_up/")
+  defp turnstile_path?(path),
+    do: path in ["/sign_up", "/try", "/find_account"] or String.starts_with?(path, "/sign_up/")
 
   # A directive that is absent falls back to default-src, so a new one starts from its sources.
   defp allow_turnstile(policy) do

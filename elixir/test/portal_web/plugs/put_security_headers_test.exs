@@ -21,8 +21,8 @@ defmodule PortalWeb.Plugs.PutSecurityHeadersTest do
     end)
   end
 
-  describe "Turnstile on the sign-up pages" do
-    for path <- ["/sign_up", "/sign_up/email", "/sign_up/google", "/sign_up/github"] do
+  describe "Turnstile on the public form pages" do
+    for path <- ["/sign_up", "/sign_up/email", "/sign_up/google", "/sign_up/github", "/try", "/find_account"] do
       @path path
 
       test "#{path} may load, connect to and frame Cloudflare" do
@@ -51,7 +51,7 @@ defmodule PortalWeb.Plugs.PutSecurityHeadersTest do
   end
 
   describe "every other page" do
-    for path <- ["/", "/sign_in", "/verify_sign_up", "/sign_upfoo", "/acme/sites", "/acme/settings/account"] do
+    for path <- ["/", "/sign_in", "/verify_sign_up", "/sign_upfoo", "/find_accounts", "/acme/sites", "/acme/settings/account"] do
       @path path
 
       test "#{path} does not allow Cloudflare" do

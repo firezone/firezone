@@ -737,6 +737,35 @@ defmodule PortalWeb.SignUpTest do
     end
   end
 
+  describe "per IP email limit" do
+    test "limits emails from one client IP across addresses", %{conn: conn} do
+      Portal.Config.put_env_override(:portal, PortalWeb.PublicEmailRateLimit, per_ip_per_hour: 1)
+      ip = {10, :rand.uniform(255), :rand.uniform(255), :rand.uniform(255)}
+      conn = Plug.Test.put_peer_data(conn, %{address: ip, port: 443, ssl_cert: nil})
+
+      attrs = fn email ->
+        %{
+          registration: %{
+            email: email,
+            account: %{name: "Test Corp"},
+            actor: %{name: "Test User"},
+            sign_up_survey: @survey
+          }
+        }
+      end
+
+      {:ok, lv, _} = live(conn, ~p"/sign_up/email")
+      lv |> form("form", attrs.("ip-limit-1@example.com")) |> render_submit()
+      assert_email_sent(to: "ip-limit-1@example.com")
+
+      {:ok, lv, _} = live(conn, ~p"/sign_up/email")
+      html = lv |> form("form", attrs.("ip-limit-2@example.com")) |> render_submit()
+
+      assert html =~ "Too many attempts"
+      refute_email_sent()
+    end
+  end
+
   describe "form validation" do
     test "shows email validation error on change", %{conn: conn} do
       {:ok, lv, _html} = live(conn, ~p"/sign_up/email")
