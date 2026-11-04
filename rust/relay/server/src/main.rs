@@ -559,14 +559,14 @@ where
         })
     }
 
-    /// Unknown peers are refused from the portal's first report of known ones until the connection drops.
+    /// Channel bindings to unknown peers are deferred from the portal's first report of known ones until the connection drops.
     fn sync_known_peer_enforcement(&mut self, portal_reported_peers: bool) {
         let connected = self.is_connected.load(Ordering::Relaxed);
 
         match (self.enforce_known_peers, connected, portal_reported_peers) {
             (false, true, true) => {
                 tracing::info!(
-                    "Portal reports known peers, refusing channel bindings to unknown peers"
+                    "Portal reports known peers, deferring channel bindings to unknown peers"
                 );
                 self.server.set_enforce_known_peers(true);
                 self.enforce_known_peers = true;
@@ -790,8 +790,11 @@ where
                 }
                 Poll::Ready(Some(Ok(IngressMessages::IceCandidateIps(candidates)))) => {
                     tracing::debug!(account_id = %candidates.account_id, num_ips = candidates.ips.len(), "Received ICE candidate IPs");
-                    self.server
-                        .add_known_peers(candidates.account_id, candidates.ips);
+                    self.server.add_known_peers(
+                        candidates.account_id,
+                        candidates.ips,
+                        Instant::now(),
+                    );
                     self.sync_known_peer_enforcement(true);
                     tick.want_continue();
                 }

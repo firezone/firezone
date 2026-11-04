@@ -55,8 +55,9 @@ an `init` message before commencing relay operations.
 
 The portal streams the IP addresses of ICE candidates exchanged within each
 account to the relay via `ice_candidate_ips` messages. From the first such
-message on, the relay only creates new channel bindings to peers whose IP is
-known for the allocation's account.
+message on, a new channel binding to a peer whose IP is not known for the
+allocation's account relays nothing until a later message reports the IP, and
+is removed if none does within 15 seconds.
 
 ### Metrics
 

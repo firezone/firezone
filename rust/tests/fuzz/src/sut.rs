@@ -1801,7 +1801,7 @@ impl KnownPeerReports {
                 .iter_mut()
                 .filter(|(id, _)| report.relays.contains(id))
             {
-                relay.exec_mut(|r| r.add_known_peers(report.ips.iter().copied()));
+                relay.exec_mut(|r| r.add_known_peers(report.ips.iter().copied(), now));
             }
         }
     }

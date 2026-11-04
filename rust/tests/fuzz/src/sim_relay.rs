@@ -72,9 +72,9 @@ impl SimRelay {
         }
     }
 
-    pub(crate) fn add_known_peers(&mut self, ips: impl IntoIterator<Item = IpAddr>) {
+    pub(crate) fn add_known_peers(&mut self, ips: impl IntoIterator<Item = IpAddr>, now: Instant) {
         self.sut
-            .add_known_peers(relay_proto::auth::AccountId::from(Uuid::nil()), ips);
+            .add_known_peers(relay_proto::auth::AccountId::from(Uuid::nil()), ips, now);
     }
 
     fn explode(

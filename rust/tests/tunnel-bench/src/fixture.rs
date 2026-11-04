@@ -610,7 +610,7 @@ impl Network {
                     conn_id,
                     candidates,
                 } => {
-                    self.relay.add_known_peers(&candidates);
+                    self.relay.add_known_peers(&candidates, now);
 
                     let client = self
                         .clients
@@ -648,7 +648,7 @@ impl Network {
             match event {
                 ClientEvent::RequestAccess { .. } => self.authorize(index),
                 ClientEvent::AddedIceCandidates { candidates, .. } => {
-                    self.relay.add_known_peers(&candidates);
+                    self.relay.add_known_peers(&candidates, now);
 
                     for candidate in candidates {
                         self.gateway.state_mut(now).add_ice_candidate(
@@ -867,7 +867,7 @@ impl Relay {
     }
 
     /// Reports the IPs of forwarded candidates, as the portal does before delivering them.
-    fn add_known_peers(&mut self, candidates: &BTreeSet<IceCandidate>) {
+    fn add_known_peers(&mut self, candidates: &BTreeSet<IceCandidate>, now: Instant) {
         let ips = candidates.iter().filter_map(|candidate| {
             String::from(candidate.clone())
                 .split_ascii_whitespace()
@@ -877,7 +877,7 @@ impl Relay {
         });
 
         self.server
-            .add_known_peers(AccountId::from(Uuid::nil()), ips);
+            .add_known_peers(AccountId::from(Uuid::nil()), ips, now);
     }
 
     /// Whether `socket` is the relay's own or one of its allocations.
