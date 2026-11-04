@@ -6,7 +6,6 @@ defmodule PortalAPI.Relay.ChannelTest do
   import Portal.Changes.Hooks.Accounts
   import Portal.RelayFixtures
   import Portal.TokenFixtures
-  alias Portal.Relay.ICECandidateIPs
 
   setup do
     Portal.Config.put_env_override(
@@ -296,18 +295,13 @@ defmodule PortalAPI.Relay.ChannelTest do
   end
 
   describe "ice_candidate_ips" do
-    @candidates [
-      "candidate:1 1 udp 1694498815 203.0.113.5 51000 typ srflx raddr 10.0.0.2 rport 51000",
-      "candidate:2 1 udp 2130706431 2001:db8::1 51000 typ host"
-    ]
-
     test "forwards ICE candidate IPs reported for this Relay", %{relay: relay} do
       assert_push "init", %{}
       account_id = "00000000-0000-0000-0000-000000000009"
 
-      :ok = ICECandidateIPs.broadcast([relay.id], account_id, @candidates)
-
       ips = ["203.0.113.5", "2001:db8::1"]
+      :ok = Portal.PubSub.Relays.broadcast_ice_candidate_ips([relay.id], account_id, ips)
+
       assert_push "ice_candidate_ips", %{account_id: ^account_id, ips: ^ips}
     end
 
@@ -315,10 +309,10 @@ defmodule PortalAPI.Relay.ChannelTest do
       assert_push "init", %{}
 
       :ok =
-        ICECandidateIPs.broadcast(
+        Portal.PubSub.Relays.broadcast_ice_candidate_ips(
           [Ecto.UUID.generate()],
           "00000000-0000-0000-0000-000000000009",
-          @candidates
+          ["203.0.113.5"]
         )
 
       refute_push "ice_candidate_ips", %{}

@@ -295,11 +295,17 @@ defmodule PortalAPI.Gateway.Channel.Shared do
 
   def handle_info({:ice_candidates, client_id, candidates}, socket) do
     # The gateway binds channels on its own relays towards these candidates.
-    ICECandidateIPs.broadcast(
-      socket.assigns[:cached_relay_ids] || MapSet.new(),
-      socket.assigns.gateway.account_id,
-      candidates
-    )
+    case ICECandidateIPs.extract(candidates) do
+      [] ->
+        :ok
+
+      ips ->
+        PubSub.Relays.broadcast_ice_candidate_ips(
+          socket.assigns[:cached_relay_ids] || MapSet.new(),
+          socket.assigns.gateway.account_id,
+          ips
+        )
+    end
 
     push(socket, "ice_candidates", %{
       client_id: client_id,

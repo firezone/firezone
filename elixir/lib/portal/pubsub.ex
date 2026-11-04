@@ -128,4 +128,25 @@ defmodule Portal.PubSub do
       [Node.self() | nodes]
     end
   end
+
+  defmodule Relays do
+    @spec subscribe(String.t()) :: :ok | {:error, term()}
+    def subscribe(relay_id) do
+      relay_id
+      |> ice_candidate_ips_topic()
+      |> Portal.PubSub.subscribe()
+    end
+
+    @spec broadcast_ice_candidate_ips(Enumerable.t(), String.t(), [String.t()]) :: :ok
+    def broadcast_ice_candidate_ips(relay_ids, account_id, ips) do
+      Enum.each(relay_ids, fn relay_id ->
+        Portal.PubSub.broadcast(
+          ice_candidate_ips_topic(relay_id),
+          {:ice_candidate_ips, account_id, ips}
+        )
+      end)
+    end
+
+    defp ice_candidate_ips_topic(relay_id), do: "relays:#{relay_id}:ice_candidate_ips"
+  end
 end

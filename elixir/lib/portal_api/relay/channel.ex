@@ -1,6 +1,6 @@
 defmodule PortalAPI.Relay.Channel do
   use PortalAPI, :channel
-  alias Portal.{Accounts.Limits, Changes.Change, Presence, PubSub, Relay.ICECandidateIPs}
+  alias Portal.{Accounts.Limits, Changes.Change, Presence, PubSub}
   alias __MODULE__.Database
   require OpenTelemetry.Tracer
   require Logger
@@ -65,7 +65,7 @@ defmodule PortalAPI.Relay.Channel do
           turn_account_validation: turn_account_validation
       }
 
-      :ok = ICECandidateIPs.subscribe(relay.id)
+      :ok = PubSub.Relays.subscribe(relay.id)
 
       # Old Relay binaries ignore unknown fields on `init`, but fail their
       # Portal connection on unknown events. Account updates therefore remain

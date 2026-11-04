@@ -8,7 +8,6 @@ defmodule PortalAPI.Client.ChannelTest do
   alias Portal.Fixture
   alias Portal.Presence
   alias Portal.{PG, PubSub}
-  alias Portal.Relay.ICECandidateIPs
 
   import Portal.AccountFixtures
   import Portal.ActorFixtures
@@ -3099,7 +3098,7 @@ defmodule PortalAPI.Client.ChannelTest do
       :ok = Portal.Presence.Relays.connect(global_relay)
       socket = join_channel(client, subject)
       assert_push "init", _
-      :ok = ICECandidateIPs.subscribe(global_relay.id)
+      :ok = Portal.PubSub.Relays.subscribe(global_relay.id)
       account_id = account.id
 
       send(
@@ -3128,8 +3127,8 @@ defmodule PortalAPI.Client.ChannelTest do
       push(socket, "no_relays", %{"excluded_relay_ids" => [first_relay.id]})
       assert_push "relays_presence", _
 
-      :ok = ICECandidateIPs.subscribe(first_relay.id)
-      :ok = ICECandidateIPs.subscribe(second_relay.id)
+      :ok = Portal.PubSub.Relays.subscribe(first_relay.id)
+      :ok = Portal.PubSub.Relays.subscribe(second_relay.id)
       account_id = account.id
 
       send(
@@ -3152,7 +3151,7 @@ defmodule PortalAPI.Client.ChannelTest do
       :ok = Portal.Presence.Relays.connect(global_relay)
       socket = join_channel(client, subject)
       assert_push "init", _
-      :ok = ICECandidateIPs.subscribe(global_relay.id)
+      :ok = Portal.PubSub.Relays.subscribe(global_relay.id)
       account_id = account.id
 
       send(socket.channel_pid, {:ice_candidates, gateway.id, ["foo", "bar"]})
@@ -3305,7 +3304,7 @@ defmodule PortalAPI.Client.ChannelTest do
       :ok = Portal.Presence.Relays.connect(global_relay)
       socket = join_channel(client, subject)
       assert_push "init", _
-      :ok = ICECandidateIPs.subscribe(global_relay.id)
+      :ok = Portal.PubSub.Relays.subscribe(global_relay.id)
       account_id = account.id
 
       send(
