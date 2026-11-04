@@ -65,40 +65,29 @@ pub fn try_handle_turn(ctx: &XdpContext) -> Result<(), Error> {
         _ => return Err(Error::NotIp),
     };
 
-    if verdict == Verdict::Drop {
-        return Err(Error::ThroughputLimitExceeded);
-    }
-
     // Every forwarding path preserves ECN, including address-family translation.
     // Read it after rewriting so it need not stay live across the routing hot path.
-    // Marking happens here too so it covers all forwarding paths at once.
     // SAFETY: Reacquire packet pointers because rewriting may have adjusted the head.
     let eth = unsafe { ref_mut_at::<EthHdr>(ctx, 0)? };
     let ecn = match eth.ether_type() {
         Ok(EtherType::Ipv4) => {
             // SAFETY: EtherType identifies the rewritten IPv4 header.
-            let ipv4 = unsafe { ref_mut_at::<Ipv4Hdr>(ctx, EthHdr::LEN)? };
-            let ecn = ipv4.ecn();
-
-            if verdict == Verdict::Mark {
-                rate_limit::mark_ipv4(ipv4);
-            }
-
-            ecn
+            unsafe { ref_mut_at::<Ipv4Hdr>(ctx, EthHdr::LEN)? }.ecn()
         }
         Ok(EtherType::Ipv6) => {
             // SAFETY: EtherType identifies the rewritten IPv6 header.
-            let ipv6 = unsafe { ref_mut_at::<Ipv6Hdr>(ctx, EthHdr::LEN)? };
-            let ecn = ipv6.ecn();
-
-            if verdict == Verdict::Mark {
-                rate_limit::mark_ipv6(ipv6);
-            }
-
-            ecn
+            unsafe { ref_mut_at::<Ipv6Hdr>(ctx, EthHdr::LEN)? }.ecn()
         }
         _ => return Err(Error::NotIp),
     };
+
+    // Acting on the verdict here covers all forwarding paths at once.
+    match verdict {
+        Verdict::Drop => return Err(Error::ThroughputLimitExceeded),
+        Verdict::Mark => rate_limit::mark(ctx)?,
+        Verdict::Pass => {}
+    }
+
     stats::record(ctx, sample, num_bytes, ip_version, ecn);
 
     Ok(())

@@ -1,10 +1,13 @@
 //! Enforces the verdicts of the per-channel rate limiters stored in the routing maps.
 
-use aya_ebpf::{macros::map, maps::PerCpuArray};
+use aya_ebpf::{macros::map, maps::PerCpuArray, programs::XdpContext};
 use ebpf_shared::RateLimitCounter;
-use network_types::ip::{Ipv4Hdr, Ipv6Hdr};
+use network_types::{
+    eth::{EthHdr, EtherType},
+    ip::{Ipv4Hdr, Ipv6Hdr},
+};
 
-use crate::try_handle_turn::{checksum::ChecksumUpdate, per_cpu};
+use crate::try_handle_turn::{Error, checksum::ChecksumUpdate, per_cpu, ref_mut_at::ref_mut_at};
 
 const ECN_ECT1: u8 = 0b01;
 const ECN_ECT0: u8 = 0b10;
@@ -14,9 +17,30 @@ const ECN_CE: u8 = 0b11;
 static RATE_LIMIT_COUNTERS: PerCpuArray<u64> =
     PerCpuArray::with_max_entries(RateLimitCounter::NUM_ENTRIES, 0);
 
+/// Sets ECN Congestion Experienced on the packet if it is ECN-capable.
+#[inline(always)]
+pub fn mark(ctx: &XdpContext) -> Result<(), Error> {
+    // SAFETY: The offset must point to the start of a valid `EthHdr`.
+    let eth = unsafe { ref_mut_at::<EthHdr>(ctx, 0)? };
+
+    match eth.ether_type() {
+        Ok(EtherType::Ipv4) => {
+            // SAFETY: EtherType identifies the IPv4 header.
+            mark_ipv4(unsafe { ref_mut_at::<Ipv4Hdr>(ctx, EthHdr::LEN)? });
+        }
+        Ok(EtherType::Ipv6) => {
+            // SAFETY: EtherType identifies the IPv6 header.
+            mark_ipv6(unsafe { ref_mut_at::<Ipv6Hdr>(ctx, EthHdr::LEN)? });
+        }
+        _ => return Err(Error::NotIp),
+    }
+
+    Ok(())
+}
+
 /// Sets ECN Congestion Experienced on an ECN-capable IPv4 packet.
 #[inline(always)]
-pub fn mark_ipv4(ipv4: &mut Ipv4Hdr) {
+fn mark_ipv4(ipv4: &mut Ipv4Hdr) {
     if !is_ect(ipv4.ecn()) {
         return;
     }
@@ -37,7 +61,7 @@ pub fn mark_ipv4(ipv4: &mut Ipv4Hdr) {
 
 /// Sets ECN Congestion Experienced on an ECN-capable IPv6 packet.
 #[inline(always)]
-pub fn mark_ipv6(ipv6: &mut Ipv6Hdr) {
+fn mark_ipv6(ipv6: &mut Ipv6Hdr) {
     if !is_ect(ipv6.ecn()) {
         return;
     }
