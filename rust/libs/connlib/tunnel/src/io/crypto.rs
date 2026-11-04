@@ -18,7 +18,6 @@ use tokio::sync::oneshot;
 use super::{UdpGroTrain, UdpGsoTrain};
 use crate::packet_counts::UdpPacketCounts;
 use crate::sockets::{PendingDatagrams, Sockets};
-use prefetch::IteratorExt as _;
 use smallvec::SmallVec;
 
 /// How many received packets go to a worker in one decrypt job at most.
@@ -471,7 +470,7 @@ fn decrypt(
     }: DecryptJob,
 ) {
     let mut packets = Vec::with_capacity(trains.iter().map(UdpGroTrain::num_batches).sum());
-    for train in trains.iter_mut().prefetching_with(|train| &**train) {
+    for train in &mut trains {
         train.decrypt_into(&mut packets);
     }
 
