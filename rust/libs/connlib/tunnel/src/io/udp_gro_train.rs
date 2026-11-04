@@ -1,6 +1,9 @@
+use prefetch::Prefetch;
 use smallvec::SmallVec;
 use snownet::PendingDecapsulate;
 use socket_factory::{DatagramIn, Segment};
+
+use super::DecryptedBatch;
 
 /// The receive-side twin of [`UdpGsoTrain`](super::UdpGsoTrain): the datagrams of one GRO receive.
 ///
@@ -25,8 +28,8 @@ impl UdpGroTrain {
         &self.datagram
     }
 
-    /// Appends `segments`, those of `decapsulation` in order, as a batch to decrypt.
-    pub fn push(&mut self, segments: Vec<Segment>, decapsulation: PendingDecapsulate) {
+    /// Appends `segments`, a run of the datagram in order, to decrypt with `decapsulation`.
+    pub fn push(&mut self, decapsulation: PendingDecapsulate, segments: Vec<Segment>) {
         self.len += segments.len();
         self.batches.push((segments, decapsulation));
     }
@@ -44,17 +47,34 @@ impl UdpGroTrain {
         self.batches.len()
     }
 
-    /// Moves out the batches of the train, in order, each with the datagram it is in.
-    pub fn drain(
-        &mut self,
-    ) -> impl Iterator<Item = (&DatagramIn, Vec<Segment>, PendingDecapsulate)> + '_ {
-        let Self {
-            datagram, batches, ..
-        } = self;
-        let datagram = &*datagram;
+    /// Decrypts the batches, in order, into `decrypted`.
+    pub fn decrypt_into(&mut self, decrypted: &mut Vec<DecryptedBatch>) {
+        let datagram = &self.datagram;
 
-        batches
-            .drain(..)
-            .map(move |(segments, decapsulation)| (datagram, segments, decapsulation))
+        decrypted.extend(
+            self.batches
+                .drain(..)
+                .map(|(segments, decapsulation)| DecryptedBatch {
+                    local: datagram.local(),
+                    from: datagram.from(),
+                    ecn: datagram.ecn(),
+                    packets: decapsulation
+                        .decrypt(segments.iter().map(|segment| &datagram[*segment])),
+                }),
+        );
+    }
+}
+
+impl Prefetch for UdpGroTrain {
+    fn prefetch(&self) {
+        let Some(segment) = self
+            .batches
+            .first()
+            .and_then(|(segments, _)| segments.first())
+        else {
+            return;
+        };
+
+        self.datagram[*segment].prefetch();
     }
 }

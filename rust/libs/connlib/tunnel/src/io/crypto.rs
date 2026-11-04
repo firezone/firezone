@@ -56,7 +56,7 @@ pub struct DecryptedBatch {
 pub struct CryptoWorkers {
     workers: Workers,
     /// The open train to each destination of the current [`EncryptJobs`], kept for its capacity.
-    open_trains: Vec<UdpGsoTrain>,
+    open_gso_trains: Vec<UdpGsoTrain>,
 }
 
 struct Workers {
@@ -66,8 +66,8 @@ struct Workers {
 }
 
 enum Job {
-    Encrypt(UdpGsoTrain, oneshot::Sender<DatagramOut>),
-    Decrypt(DecryptJob, oneshot::Sender<DecryptedIpPackets>),
+    Encrypt(EncryptJob),
+    Decrypt(DecryptJob),
 }
 
 /// Packets decrypted from the jobs of an [`Io::new_decrypt_jobs`](super::Io::new_decrypt_jobs).
@@ -108,7 +108,7 @@ impl CryptoWorkers {
                 next: 0,
                 packet_counter,
             },
-            open_trains: Vec::new(),
+            open_gso_trains: Vec::new(),
         }
     }
 
@@ -120,7 +120,7 @@ impl CryptoWorkers {
     ) -> EncryptJobs<'a> {
         EncryptJobs {
             workers: &mut self.workers,
-            trains: &mut self.open_trains,
+            gso_trains: &mut self.open_gso_trains,
             sockets,
             remaining: num_packets,
             pending_v4: None,
@@ -140,7 +140,8 @@ impl CryptoWorkers {
             workers: &mut self.workers,
             decrypting,
             remaining: num_packets,
-            job: DecryptJob::default(),
+            gro_trains: Vec::new(),
+            len: 0,
         }
     }
 }
@@ -173,7 +174,7 @@ impl Workers {
 pub struct EncryptJobs<'a> {
     workers: &'a mut Workers,
     /// The open train to each destination.
-    trains: &'a mut Vec<UdpGsoTrain>,
+    gso_trains: &'a mut Vec<UdpGsoTrain>,
     sockets: &'a mut Sockets,
     /// How many of the packets have yet to be encrypted, at most.
     remaining: usize,
@@ -186,11 +187,11 @@ impl EncryptJobs<'_> {
     /// train where one is full.
     pub fn add(&mut self, mut encapsulation: PendingEncapsulate, mut packets: Vec<IpPacket>) {
         let (src, dst) = (encapsulation.src(), encapsulation.dst());
+        let index = self.train_for(src, dst);
 
         loop {
-            let index = self.train_for(src, dst);
             let num_packets = packets.len();
-            let rest = self.trains[index].extend(encapsulation, packets);
+            let rest = self.gso_trains[index].extend(encapsulation, packets);
 
             let num_rest = rest.as_ref().map_or(0, |(_, rest)| rest.len());
             self.remaining = self.remaining.saturating_sub(num_packets - num_rest);
@@ -198,7 +199,7 @@ impl EncryptJobs<'_> {
             let Some(rest) = rest else {
                 return;
             };
-            let full = mem::replace(&mut self.trains[index], UdpGsoTrain::new(src, dst));
+            let full = mem::replace(&mut self.gso_trains[index], UdpGsoTrain::new(src, dst));
             self.dispatch(full);
 
             (encapsulation, packets) = rest;
@@ -208,15 +209,15 @@ impl EncryptJobs<'_> {
     /// Returns the index of the open train from `src` to `dst`, opening one if there is none.
     fn train_for(&mut self, src: Option<SocketAddr>, dst: SocketAddr) -> usize {
         match self
-            .trains
+            .gso_trains
             .iter()
             .position(|open| open.is_between(src, dst))
         {
             Some(index) => index,
             None => {
-                self.trains.push(UdpGsoTrain::new(src, dst));
+                self.gso_trains.push(UdpGsoTrain::new(src, dst));
 
-                self.trains.len() - 1
+                self.gso_trains.len() - 1
             }
         }
     }
@@ -228,21 +229,24 @@ impl EncryptJobs<'_> {
             SocketAddr::V6(_) => &mut self.pending_v6,
         };
         // Every train still open and every packet still to come may need a receiver.
-        let max_trains = self.trains.len() + self.remaining + 1;
+        let max_trains = self.gso_trains.len() + self.remaining + 1;
         pending
             .get_or_insert_with(|| Vec::with_capacity(max_trains))
             .push(rx);
 
         // A stopped worker drops the sender, so the socket skips the train.
-        self.workers.send(Job::Encrypt(train, tx));
+        self.workers.send(Job::Encrypt(EncryptJob {
+            train,
+            encrypted: tx,
+        }));
     }
 }
 
 impl Drop for EncryptJobs<'_> {
     fn drop(&mut self) {
         // In the order they were opened, so a flow whose destination changed mid-batch stays in order.
-        self.trains.reverse();
-        while let Some(open) = self.trains.pop() {
+        self.gso_trains.reverse();
+        while let Some(open) = self.gso_trains.pop() {
             self.dispatch(open);
         }
 
@@ -262,81 +266,87 @@ pub struct DecryptJobs<'a> {
     decrypting: &'a mut Decrypting,
     /// How many of the packets have yet to be added, at most.
     remaining: usize,
-    job: DecryptJob,
+    /// The trains of the job not yet handed to a worker.
+    gro_trains: Vec<UdpGroTrain>,
+    /// How many segments the trains decrypt in total.
+    len: usize,
 }
 
 impl<'a> DecryptJobs<'a> {
-    /// Adds a received datagram, to mark which of its segments to decrypt.
-    pub fn add(&mut self, datagram: DatagramIn) -> DatagramToDecrypt<'_, 'a> {
-        if self.job.len + datagram.num_segments() > DECRYPT_BATCH_SIZE {
+    /// Opens a train for a received datagram, to add the runs of its segments to decrypt.
+    pub fn open(&mut self, datagram: DatagramIn) -> OpenGroTrain<'_, 'a> {
+        if self.len + datagram.num_segments() > DECRYPT_BATCH_SIZE {
             self.submit();
         }
 
-        if self.job.trains.is_empty() {
+        if self.gro_trains.is_empty() {
             // Assumes that the datagrams to come are coalesced like this one.
             let max_trains = DECRYPT_BATCH_SIZE
                 .min(self.remaining)
                 .div_ceil(datagram.num_segments());
-            self.job.trains.reserve(max_trains);
+            self.gro_trains.reserve(max_trains);
         }
         self.remaining = self.remaining.saturating_sub(datagram.num_segments());
 
-        let index = self.job.trains.len();
-        self.job.trains.push(UdpGroTrain::new(datagram));
+        let index = self.gro_trains.len();
+        self.gro_trains.push(UdpGroTrain::new(datagram));
 
-        DatagramToDecrypt { jobs: self, index }
+        OpenGroTrain { jobs: self, index }
     }
 
     fn submit(&mut self) {
-        let job = mem::take(&mut self.job);
+        self.len = 0;
 
         // A stopped worker drops the sender, so `Decrypting::poll_job` skips the job.
-        let tx = self.decrypting.add_job();
-        self.workers.send(Job::Decrypt(job, tx));
+        let job = DecryptJob {
+            trains: mem::take(&mut self.gro_trains),
+            decrypted: self.decrypting.add_job(),
+        };
+        self.workers.send(Job::Decrypt(job));
     }
 }
 
 impl Drop for DecryptJobs<'_> {
     fn drop(&mut self) {
-        if !self.job.trains.is_empty() {
+        if !self.gro_trains.is_empty() {
             self.submit();
         }
     }
 }
 
-/// A datagram of a [`DecryptJobs`], kept in its job only if a segment of it is to be decrypted.
-pub struct DatagramToDecrypt<'b, 'a> {
+/// A [`UdpGroTrain`] of a [`DecryptJobs`], kept in its job only if a run of segments is added to it.
+pub struct OpenGroTrain<'b, 'a> {
     jobs: &'b mut DecryptJobs<'a>,
     index: usize,
 }
 
-impl DatagramToDecrypt<'_, '_> {
-    /// Marks `segments`, those of `decapsulation` in order, for decryption.
-    pub fn decrypt(&mut self, segments: Vec<Segment>, decapsulation: PendingDecapsulate) {
-        self.jobs.job.trains[self.index].push(segments, decapsulation);
+impl OpenGroTrain<'_, '_> {
+    /// Adds `segments`, a run of the datagram in order, to be decrypted with `decapsulation`.
+    pub fn add(&mut self, decapsulation: PendingDecapsulate, segments: Vec<Segment>) {
+        self.jobs.gro_trains[self.index].push(decapsulation, segments);
     }
 }
 
-impl Deref for DatagramToDecrypt<'_, '_> {
+impl Deref for OpenGroTrain<'_, '_> {
     type Target = DatagramIn;
 
     fn deref(&self) -> &DatagramIn {
-        self.jobs.job.trains[self.index].datagram()
+        self.jobs.gro_trains[self.index].datagram()
     }
 }
 
-impl Drop for DatagramToDecrypt<'_, '_> {
+impl Drop for OpenGroTrain<'_, '_> {
     fn drop(&mut self) {
-        let job = &mut self.jobs.job;
-        let train = &job.trains[self.index];
+        let jobs = &mut *self.jobs;
+        let train = &jobs.gro_trains[self.index];
 
         if train.is_empty() {
-            job.trains.pop();
+            jobs.gro_trains.pop();
         } else {
-            job.len += train.len();
+            jobs.len += train.len();
         }
 
-        if job.len >= DECRYPT_BATCH_SIZE {
+        if jobs.len >= DECRYPT_BATCH_SIZE {
             self.jobs.submit();
         }
     }
@@ -391,12 +401,16 @@ impl Decrypting {
     }
 }
 
-/// The trains one worker decrypts, each with at least one batch.
-#[derive(Default)]
+/// The batches of one GSO send, and where to hand the encrypted datagram.
+struct EncryptJob {
+    train: UdpGsoTrain,
+    encrypted: oneshot::Sender<DatagramOut>,
+}
+
+/// The trains one worker decrypts, each with at least one batch, and where to hand the packets.
 struct DecryptJob {
     trains: Vec<UdpGroTrain>,
-    /// How many segments the trains decrypt in total.
-    len: usize,
+    decrypted: oneshot::Sender<DecryptedIpPackets>,
 }
 
 /// How many crypto workers to spawn: up to half of the cores.
@@ -430,16 +444,12 @@ fn spawn_workers(num_workers: usize, packet_counter: Counter<u64>) -> Vec<mpsc::
 
 fn run(job: Job, packet_counter: &Counter<u64>) {
     match job {
-        Job::Encrypt(train, encrypted) => encrypt(train, encrypted, packet_counter),
-        Job::Decrypt(job, decrypted) => decrypt(job, decrypted),
+        Job::Encrypt(job) => encrypt(job, packet_counter),
+        Job::Decrypt(job) => decrypt(job),
     }
 }
 
-fn encrypt(
-    train: UdpGsoTrain,
-    encrypted: oneshot::Sender<DatagramOut>,
-    packet_counter: &Counter<u64>,
-) {
+fn encrypt(EncryptJob { train, encrypted }: EncryptJob, packet_counter: &Counter<u64>) {
     let Some(datagram) = train.encrypt() else {
         return;
     };
@@ -454,23 +464,16 @@ fn encrypt(
     let _ = encrypted.send(datagram);
 }
 
-fn decrypt(mut job: DecryptJob, decrypted: oneshot::Sender<DecryptedIpPackets>) {
-    let mut packets = Vec::with_capacity(job.trains.iter().map(UdpGroTrain::num_batches).sum());
-    packets.extend(
-        job.trains
-            .iter_mut()
-            .flat_map(UdpGroTrain::drain)
-            .prefetching_with(|(datagram, segments, _)| match segments.first() {
-                Some(segment) => &datagram[*segment],
-                None => &[],
-            })
-            .map(|(datagram, segments, decapsulation)| DecryptedBatch {
-                local: datagram.local(),
-                from: datagram.from(),
-                ecn: datagram.ecn(),
-                packets: decapsulation.decrypt(segments.iter().map(|segment| &datagram[*segment])),
-            }),
-    );
+fn decrypt(
+    DecryptJob {
+        mut trains,
+        decrypted,
+    }: DecryptJob,
+) {
+    let mut packets = Vec::with_capacity(trains.iter().map(UdpGroTrain::num_batches).sum());
+    for train in trains.iter_mut().prefetching_with(|train| &**train) {
+        train.decrypt_into(&mut packets);
+    }
 
     // We stopped if the receiver is gone; the channel for the next job is closed too.
     let _ = decrypted.send(DecryptedIpPackets(packets));

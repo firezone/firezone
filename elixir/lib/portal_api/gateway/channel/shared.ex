@@ -260,7 +260,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
         }
 
         relays = load_balance_relays(location, all_online_relays)
-        socket = cache_relays(socket, relays)
+        socket = cache_relays(socket, relays, disconnected_ids)
 
         push(socket, "relays_presence", %{
           disconnected_ids: disconnected_ids,
@@ -800,8 +800,14 @@ defmodule PortalAPI.Gateway.Channel.Shared do
     {:ok, relays}
   end
 
-  defp cache_relays(socket, relays) do
-    cached_relay_ids = MapSet.new(relays, fn relay -> relay.id end)
+  # Every relay we handed out and did not report disconnected: connlib may still
+  # hold an allocation on any of them.
+  defp cache_relays(socket, relays, removed_ids \\ []) do
+    cached_relay_ids =
+      (socket.assigns[:cached_relay_ids] || MapSet.new())
+      |> MapSet.difference(MapSet.new(removed_ids))
+      |> MapSet.union(MapSet.new(relays, fn relay -> relay.id end))
+
     assign(socket, :cached_relay_ids, cached_relay_ids)
   end
 

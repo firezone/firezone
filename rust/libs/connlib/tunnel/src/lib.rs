@@ -453,25 +453,20 @@ impl ClientTunnel {
                     let mut jobs = self.io.new_decrypt_jobs(datagrams.len());
 
                     for datagram in datagrams.drain() {
-                        let mut datagram = jobs.add(datagram);
-                        let mut segments = datagram.segments().peekable();
+                        let mut train = jobs.open(datagram);
+                        let mut segments = train.segments().peekable();
 
                         while let Some(segment) = segments.next() {
-                            let packet = &datagram[segment];
+                            let packet = &train[segment];
 
                             udp_received.record(packet);
 
                             let mut batch = match self
                                 .role_state
-                                .handle_network_input(
-                                    datagram.local(),
-                                    datagram.from(),
-                                    packet,
-                                    now,
-                                )
+                                .handle_network_input(train.local(), train.from(), packet, now)
                                 .with_context(|| FailedToHandleNetworkPacket {
-                                    local: datagram.local(),
-                                    from: datagram.from(),
+                                    local: train.local(),
+                                    from: train.from(),
                                 }) {
                                 Ok(Some(batch)) => batch,
                                 Ok(None) => {
@@ -484,17 +479,17 @@ impl ClientTunnel {
                                 }
                             };
 
-                            let mut batch_segments = Vec::with_capacity(datagram.num_segments());
+                            let mut batch_segments = Vec::with_capacity(train.num_segments());
                             batch_segments.push(segment);
 
                             while let Some(segment) =
-                                segments.next_if(|&s| batch.push(&datagram[s], now))
+                                segments.next_if(|&s| batch.push(&train[s], now))
                             {
-                                udp_received.record(&datagram[segment]);
+                                udp_received.record(&train[segment]);
                                 batch_segments.push(segment);
                             }
 
-                            datagram.decrypt(batch_segments, batch.finish());
+                            train.add(batch.finish(), batch_segments);
                         }
                     }
 
@@ -723,25 +718,20 @@ impl GatewayTunnel {
                     let mut jobs = self.io.new_decrypt_jobs(datagrams.len());
 
                     for datagram in datagrams.drain() {
-                        let mut datagram = jobs.add(datagram);
-                        let mut segments = datagram.segments().peekable();
+                        let mut train = jobs.open(datagram);
+                        let mut segments = train.segments().peekable();
 
                         while let Some(segment) = segments.next() {
-                            let packet = &datagram[segment];
+                            let packet = &train[segment];
 
                             udp_received.record(packet);
 
                             let mut batch = match self
                                 .role_state
-                                .handle_network_input(
-                                    datagram.local(),
-                                    datagram.from(),
-                                    packet,
-                                    now,
-                                )
+                                .handle_network_input(train.local(), train.from(), packet, now)
                                 .with_context(|| FailedToHandleNetworkPacket {
-                                    local: datagram.local(),
-                                    from: datagram.from(),
+                                    local: train.local(),
+                                    from: train.from(),
                                 }) {
                                 Ok(Some(batch)) => batch,
                                 Ok(None) => {
@@ -754,17 +744,17 @@ impl GatewayTunnel {
                                 }
                             };
 
-                            let mut batch_segments = Vec::with_capacity(datagram.num_segments());
+                            let mut batch_segments = Vec::with_capacity(train.num_segments());
                             batch_segments.push(segment);
 
                             while let Some(segment) =
-                                segments.next_if(|&s| batch.push(&datagram[s], now))
+                                segments.next_if(|&s| batch.push(&train[s], now))
                             {
-                                udp_received.record(&datagram[segment]);
+                                udp_received.record(&train[segment]);
                                 batch_segments.push(segment);
                             }
 
-                            datagram.decrypt(batch_segments, batch.finish());
+                            train.add(batch.finish(), batch_segments);
                         }
                     }
 
