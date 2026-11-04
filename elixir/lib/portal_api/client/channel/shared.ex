@@ -132,7 +132,7 @@ defmodule PortalAPI.Client.Channel.Shared do
         cache: cache,
         authorizations_cache: authorizations_cache,
         pending_authorizations: %{},
-        frostlink_capable: false
+        iceless_capable: false
       )
       # Track client's presence and monitor tracker shard processes for crash recovery
       |> track_presence()
@@ -367,7 +367,7 @@ defmodule PortalAPI.Client.Channel.Shared do
   end
 
   # Backwards-compat: tolerate the pre-snownet-capabilities tuple from older
-  # gateway nodes during a rolling deploy. Default `use_frostlink` to `false`.
+  # gateway nodes during a rolling deploy. Default `use_iceless` to `false`.
   def handle_info(
         {:connect, socket_ref, rid_bytes, site_id, gateway_id, gateway_public_key, gateway_ipv4,
          gateway_ipv6, preshared_key, ice_credentials},
@@ -382,7 +382,7 @@ defmodule PortalAPI.Client.Channel.Shared do
 
   def handle_info(
         {:connect, _socket_ref, rid_bytes, site_id, gateway_id, gateway_public_key, gateway_ipv4,
-         gateway_ipv6, preshared_key, ice_credentials, use_frostlink},
+         gateway_ipv6, preshared_key, ice_credentials, use_iceless},
         socket
       ) do
     resource_id = Ecto.UUID.load!(rid_bytes)
@@ -405,7 +405,7 @@ defmodule PortalAPI.Client.Channel.Shared do
             gateway_ipv4: gateway_ipv4,
             gateway_ipv6: gateway_ipv6,
             gateway_ice_credentials: ice_credentials.receiver,
-            use_iceless: use_frostlink,
+            use_iceless: use_iceless,
             flow_logs_ingest_token: initiator_token
           }
           |> put_site_id(site_id, socket.assigns.client)
@@ -453,10 +453,10 @@ defmodule PortalAPI.Client.Channel.Shared do
   # the initiator, because the target's data plane is guaranteed to receive
   # (and process) the authorization before any relayed ICE candidate, which
   # travels the same socket behind it. See `deliver_pool_target_authorized/8`.
-  # The target already resolved `use_frostlink` (reading the flag once, with both
+  # The target already resolved `use_iceless` (reading the flag once, with both
   # peers' capabilities), so we apply it as-is rather than reading the flag a
   # second time — a second read could race a mid-flow toggle and disagree.
-  def handle_info({:device_access_acked, ref, use_frostlink, client_name, client_slug}, socket) do
+  def handle_info({:device_access_acked, ref, use_iceless, client_name, client_slug}, socket) do
     case Map.pop(socket.assigns.pending_authorizations, ref) do
       {nil, _} ->
         {:noreply, socket}
@@ -466,7 +466,7 @@ defmodule PortalAPI.Client.Channel.Shared do
 
         initiator_payload =
           initiator_payload
-          |> Map.put(:use_iceless, use_frostlink)
+          |> Map.put(:use_iceless, use_iceless)
           |> Map.put(:client_name, client_name)
           |> Map.put(:client_slug, client_slug)
 
@@ -479,21 +479,21 @@ defmodule PortalAPI.Client.Channel.Shared do
     {policy_authorization_id, payload} = Map.pop(payload, :policy_authorization_id)
     {authorization_expires_at, payload} = Map.pop(payload, :authorization_expires_at)
     {policy_authorization, payload} = Map.pop(payload, :policy_authorization)
-    {initiator_frostlink_capable, payload} = Map.pop(payload, :initiator_frostlink_capable, false)
+    {initiator_iceless_capable, payload} = Map.pop(payload, :initiator_iceless_capable, false)
 
-    frostlink_feature_enabled = Portal.Account.frostlink_enabled?(socket.assigns.subject.account)
-    initiator_capable = initiator_frostlink_capable == true
-    receiver_capable = socket.assigns.frostlink_capable == true
+    iceless_feature_enabled = Portal.Account.iceless_enabled?(socket.assigns.subject.account)
+    initiator_capable = initiator_iceless_capable == true
+    receiver_capable = socket.assigns.iceless_capable == true
 
-    use_frostlink = frostlink_feature_enabled and initiator_capable and receiver_capable
+    use_iceless = iceless_feature_enabled and initiator_capable and receiver_capable
 
     Portal.Telemetry.authorization_granted(:client,
-      frostlink_feature_enabled: frostlink_feature_enabled,
-      initiator_frostlink_capable: initiator_capable,
-      receiver_frostlink_capable: receiver_capable
+      iceless_feature_enabled: iceless_feature_enabled,
+      initiator_iceless_capable: initiator_capable,
+      receiver_iceless_capable: receiver_capable
     )
 
-    payload = Map.put(payload, :use_iceless, use_frostlink)
+    payload = Map.put(payload, :use_iceless, use_iceless)
 
     authorizations_cache =
       maybe_put_authorization(
@@ -517,11 +517,11 @@ defmodule PortalAPI.Client.Channel.Shared do
     # target's websocket. The initiator is released only after this, so the
     # initiator's ICE candidates (which traverse the same socket) can never
     # overtake the authorization at the target's data plane. We send the
-    # resolved `use_frostlink` (not our capability) so the initiator applies the
+    # resolved `use_iceless` (not our capability) so the initiator applies the
     # same decision without reading the flag again.
     send(
       ack_to,
-      {:device_access_acked, ref, use_frostlink, socket.assigns.client.name,
+      {:device_access_acked, ref, use_iceless, socket.assigns.client.name,
        socket.assigns.client.slug}
     )
 
@@ -1227,7 +1227,7 @@ defmodule PortalAPI.Client.Channel.Shared do
   end
 
   def handle_in("set_snownet_capabilities", payload, socket) when is_map(payload) do
-    {:noreply, assign(socket, frostlink_capable: payload["iceless"] == true)}
+    {:noreply, assign(socket, iceless_capable: payload["iceless"] == true)}
   end
 
   def handle_in("no_relays", payload, socket) do
@@ -1527,7 +1527,7 @@ defmodule PortalAPI.Client.Channel.Shared do
              authorization_expires_at: expires_at,
              ice_credentials: ice_credentials,
              preshared_key: preshared_key,
-             initiator_frostlink_capable: socket.assigns.frostlink_capable,
+             initiator_iceless_capable: socket.assigns.iceless_capable,
              flow_logs_ingest_token: responder_token
            }}
 
@@ -2076,7 +2076,7 @@ defmodule PortalAPI.Client.Channel.Shared do
          subject: rendered_subject,
          policy_authorization_id: policy_authorization_id,
          authorization_expires_at: expires_at,
-         initiator_frostlink_capable: socket.assigns.frostlink_capable,
+         initiator_iceless_capable: socket.assigns.iceless_capable,
          flow_logs_ingest_token: responder_token
        }}
 

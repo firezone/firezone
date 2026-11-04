@@ -7,7 +7,7 @@ defmodule Portal.Accounts.Features do
     field :policy_conditions, :boolean
     field :idp_sync, :boolean
     field :internet_resource, :boolean
-    field :frostlink, :boolean
+    field :iceless, :boolean
     field :log_sinks, :boolean
     field :device_posture, :boolean
     field :slug_changes, :boolean
@@ -18,7 +18,7 @@ defmodule Portal.Accounts.Features do
       policy_conditions
       idp_sync
       internet_resource
-      frostlink
+      iceless
       log_sinks
       device_posture
       slug_changes

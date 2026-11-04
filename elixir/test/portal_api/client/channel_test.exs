@@ -203,7 +203,7 @@ defmodule PortalAPI.Client.ChannelTest do
         },
         features: %{
           internet_resource: true,
-          frostlink: true
+          iceless: true
         }
       )
 
@@ -5914,7 +5914,7 @@ defmodule PortalAPI.Client.ChannelTest do
              )
     end
 
-    test "reports frostlink inputs separately via telemetry", %{
+    test "reports iceless inputs separately via telemetry", %{
       client: client,
       subject: subject,
       target_client: target_client,
@@ -5942,7 +5942,7 @@ defmodule PortalAPI.Client.ChannelTest do
       assert_push "init", _
 
       # The account fixture has the feature on, so both peers advertising the
-      # capability is the case where the connection actually uses Frostlink.
+      # capability is the case where the connection actually goes ICE-less.
       push(initiating_socket, "set_snownet_capabilities", %{"iceless" => true})
       push(target_socket, "set_snownet_capabilities", %{"iceless" => true})
 
@@ -5965,9 +5965,9 @@ defmodule PortalAPI.Client.ChannelTest do
 
       assert metadata == %{
                receiver: :client,
-               frostlink_feature_enabled: true,
-               initiator_frostlink_capable: true,
-               receiver_frostlink_capable: true
+               iceless_feature_enabled: true,
+               initiator_iceless_capable: true,
+               receiver_iceless_capable: true
              }
     end
 

@@ -475,9 +475,9 @@ defmodule Portal.TelemetryTest do
     test "emits the event with a count of one", %{test_pid: test_pid} do
       assert :ok =
                Portal.Telemetry.authorization_granted(:gateway,
-                 frostlink_feature_enabled: true,
-                 initiator_frostlink_capable: true,
-                 receiver_frostlink_capable: true
+                 iceless_feature_enabled: true,
+                 initiator_iceless_capable: true,
+                 receiver_iceless_capable: true
                )
 
       assert_receive {:authorization_granted, ^test_pid, measurements, metadata}
@@ -486,66 +486,66 @@ defmodule Portal.TelemetryTest do
 
       assert metadata == %{
                receiver: :gateway,
-               frostlink_feature_enabled: true,
-               initiator_frostlink_capable: true,
-               receiver_frostlink_capable: true
+               iceless_feature_enabled: true,
+               initiator_iceless_capable: true,
+               receiver_iceless_capable: true
              }
     end
 
-    test "keeps the three frostlink inputs apart", %{test_pid: test_pid} do
+    test "keeps the three iceless inputs apart", %{test_pid: test_pid} do
       assert :ok =
                Portal.Telemetry.authorization_granted(:client,
-                 frostlink_feature_enabled: false,
-                 initiator_frostlink_capable: true,
-                 receiver_frostlink_capable: false
+                 iceless_feature_enabled: false,
+                 initiator_iceless_capable: true,
+                 receiver_iceless_capable: false
                )
 
       assert_receive {:authorization_granted, ^test_pid, _measurements, metadata}
 
       assert metadata == %{
                receiver: :client,
-               frostlink_feature_enabled: false,
-               initiator_frostlink_capable: true,
-               receiver_frostlink_capable: false
+               iceless_feature_enabled: false,
+               initiator_iceless_capable: true,
+               receiver_iceless_capable: false
              }
     end
 
     test "coerces non-boolean inputs so callers can pass assigns as-is", %{test_pid: test_pid} do
       assert :ok =
                Portal.Telemetry.authorization_granted(:gateway,
-                 frostlink_feature_enabled: nil,
-                 initiator_frostlink_capable: "yes",
-                 receiver_frostlink_capable: true
+                 iceless_feature_enabled: nil,
+                 initiator_iceless_capable: "yes",
+                 receiver_iceless_capable: true
                )
 
       assert_receive {:authorization_granted, ^test_pid, _measurements, metadata}
 
-      assert metadata.frostlink_feature_enabled == false
-      assert metadata.initiator_frostlink_capable == false
-      assert metadata.receiver_frostlink_capable == true
+      assert metadata.iceless_feature_enabled == false
+      assert metadata.initiator_iceless_capable == false
+      assert metadata.receiver_iceless_capable == true
     end
 
-    test "raises when a frostlink input is missing" do
+    test "raises when an iceless input is missing" do
       assert_raise KeyError, fn ->
         Portal.Telemetry.authorization_granted(:gateway,
-          frostlink_feature_enabled: true,
-          initiator_frostlink_capable: true
+          iceless_feature_enabled: true,
+          initiator_iceless_capable: true
         )
       end
     end
   end
 
   describe "handle_authorization_metric/4" do
-    test "returns :ok for a Frostlink authorization" do
+    test "returns :ok for an ICE-less authorization" do
       assert :ok =
                Portal.Telemetry.handle_authorization_metric(
                  [:portal, :authorization, :granted],
                  %{count: 1},
                  %{
                    receiver: :gateway,
-                   frostlink_feature_enabled: true,
-                   initiator_frostlink_capable: true,
-                   receiver_frostlink_capable: true
+                   iceless_feature_enabled: true,
+                   initiator_iceless_capable: true,
+                   receiver_iceless_capable: true
                  },
                  @config
                )
@@ -558,9 +558,9 @@ defmodule Portal.TelemetryTest do
                  %{count: 1},
                  %{
                    receiver: :client,
-                   frostlink_feature_enabled: false,
-                   initiator_frostlink_capable: true,
-                   receiver_frostlink_capable: true
+                   iceless_feature_enabled: false,
+                   initiator_iceless_capable: true,
+                   receiver_iceless_capable: true
                  },
                  @config
                )
