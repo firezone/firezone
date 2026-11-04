@@ -1690,7 +1690,7 @@ mod tests {
         let now = Instant::now();
         let now_utc = SystemTime::UNIX_EPOCH;
         let client = ClientSocket::new(SocketAddr::from(([127, 0, 0, 1], 50_000)));
-        let peer = PeerSocket::new(SocketAddr::from(([127, 0, 0, 2], 50_001)));
+        let peer = PeerSocket::new(SocketAddr::from(([198, 51, 100, 2], 50_001)));
         let channel = ChannelNumber::new(ChannelNumber::MIN).unwrap();
         let account = auth::AccountId::from(Uuid::nil());
         let mut server = Server::new(
