@@ -2169,19 +2169,20 @@ defmodule PortalAPI.Client.Channel.Shared do
 
   # ICE credentials must stay the same for all connections between an initiator and a receiver as long
   # as they do not lose their state, so we can leverage their public keys, which are reset on each
-  # restart of an initiator or a receiver.
-  defp generate_ice_credentials(initiator_pubkey, initiator, receiver, receiver_pubkey) do
+  # restart of an initiator or a receiver. The secret psk_base keys the HMAC so nobody can compute them.
+  defp generate_ice_credentials(
+         initiator_pubkey,
+         %Device{psk_base: initiator_psk_base} = initiator,
+         %Device{psk_base: receiver_psk_base} = receiver,
+         receiver_pubkey
+       )
+       when is_binary(initiator_psk_base) and is_binary(receiver_psk_base) do
     ice_credential_seed =
-      [
-        initiator.id,
-        initiator_pubkey,
-        receiver.id,
-        receiver_pubkey
-      ]
+      ["ICE_CREDS", initiator.id, initiator_pubkey, receiver.id, receiver_pubkey]
       |> Enum.join(":")
 
     ice_credential_seed_hash =
-      :crypto.hash(:sha256, ice_credential_seed)
+      :crypto.mac(:hmac, :sha256, initiator_psk_base <> receiver_psk_base, ice_credential_seed)
       |> Base.encode32(case: :lower, padding: false)
 
     [
