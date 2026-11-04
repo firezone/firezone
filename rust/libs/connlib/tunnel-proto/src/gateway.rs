@@ -284,13 +284,6 @@ impl GatewayState {
 
                 Ok(None)
             }
-            TranslateOutboundResult::UnknownProxyIp(event) => {
-                if let Some(transmit) = encrypt_packet(event, cid, &mut self.node, now)? {
-                    self.buffered_transmits.push_back(transmit);
-                }
-
-                Ok(None)
-            }
         }
     }
 
@@ -463,7 +456,8 @@ impl GatewayState {
         };
 
         let result = resolve_result.and_then(|addresses| {
-            self.peers
+            let evicted = self
+                .peers
                 .peer_by_id_mut(&client)
                 .context("Unknown peer")?
                 .setup_nat(
@@ -473,11 +467,11 @@ impl GatewayState {
                     req.proxy_ips,
                 )?;
 
-            Ok(())
+            Ok(evicted)
         });
 
-        let nat_status = match result {
-            Ok(()) => dns_resource_nat::NatStatus::Active,
+        let (nat_status, evicted) = match result {
+            Ok(evicted) => (dns_resource_nat::NatStatus::Active, evicted),
             Err(e) if e.any_is::<ProxyIpAlreadyAssigned>() => {
                 tracing::debug!("Conflicting proxy assignment; closing connection: {e:#}");
                 self.cleanup_connection(&client, now);
@@ -487,14 +481,28 @@ impl GatewayState {
             Err(e) => {
                 tracing::warn!("Failed to setup DNS resource NAT: {e:#}");
 
-                dns_resource_nat::NatStatus::Inactive
+                (dns_resource_nat::NatStatus::Inactive, None)
             }
         };
 
-        let packet = dns_resource_nat::domain_status(req.resource, req.domain, nat_status)?;
+        let evicted_statuses = evicted.into_iter().flat_map(|evicted| {
+            evicted.resources.into_iter().map(move |rid| {
+                (
+                    rid,
+                    evicted.domain.clone(),
+                    dns_resource_nat::NatStatus::Evicted,
+                )
+            })
+        });
 
-        if let Some(transmit) = encrypt_packet(packet, client, &mut self.node, now)? {
-            self.buffered_transmits.push_back(transmit);
+        for (rid, domain, status) in
+            iter::once((req.resource, req.domain, nat_status)).chain(evicted_statuses)
+        {
+            let packet = dns_resource_nat::domain_status(rid, domain, status)?;
+
+            if let Some(transmit) = encrypt_packet(packet, client, &mut self.node, now)? {
+                self.buffered_transmits.push_back(transmit);
+            }
         }
 
         Ok(())
