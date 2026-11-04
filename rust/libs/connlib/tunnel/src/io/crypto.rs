@@ -62,7 +62,7 @@ impl Prefetch for DecryptedDatagram {
 pub struct CryptoWorkers {
     workers: Workers,
     /// The open train to each destination of the current [`EncryptJobs`], kept for its capacity.
-    open_trains: Vec<UdpGsoTrain>,
+    open_gso_trains: Vec<UdpGsoTrain>,
 }
 
 struct Workers {
@@ -114,7 +114,7 @@ impl CryptoWorkers {
                 next: 0,
                 packet_counter,
             },
-            open_trains: Vec::new(),
+            open_gso_trains: Vec::new(),
         }
     }
 
@@ -126,7 +126,7 @@ impl CryptoWorkers {
     ) -> EncryptJobs<'a> {
         EncryptJobs {
             workers: &mut self.workers,
-            trains: &mut self.open_trains,
+            gso_trains: &mut self.open_gso_trains,
             sockets,
             remaining: num_packets,
             pending_v4: None,
@@ -146,7 +146,7 @@ impl CryptoWorkers {
             workers: &mut self.workers,
             decrypting,
             remaining: num_packets,
-            trains: Vec::new(),
+            gro_trains: Vec::new(),
             len: 0,
         }
     }
@@ -180,7 +180,7 @@ impl Workers {
 pub struct EncryptJobs<'a> {
     workers: &'a mut Workers,
     /// The open train to each destination.
-    trains: &'a mut Vec<UdpGsoTrain>,
+    gso_trains: &'a mut Vec<UdpGsoTrain>,
     sockets: &'a mut Sockets,
     /// How many of the packets have yet to be encrypted, at most.
     remaining: usize,
@@ -199,8 +199,8 @@ impl EncryptJobs<'_> {
         let (ecn, len) = (packet.ecn(), encapsulation.datagram_len(&packet));
         let index = self.train_for(src, dst);
 
-        if self.trains[index].try_reserve(ecn, len, max_packets) {
-            self.trains[index].push(encapsulation, packet);
+        if self.gso_trains[index].try_reserve(ecn, len, max_packets) {
+            self.gso_trains[index].push(encapsulation, packet);
             return;
         }
 
@@ -209,22 +209,22 @@ impl EncryptJobs<'_> {
         debug_assert!(reserved, "An empty train takes any packet");
         next.push(encapsulation, packet);
 
-        let full = mem::replace(&mut self.trains[index], next);
+        let full = mem::replace(&mut self.gso_trains[index], next);
         self.dispatch(full);
     }
 
     /// Returns the index of the open train from `src` to `dst`, opening one if there is none.
     fn train_for(&mut self, src: Option<SocketAddr>, dst: SocketAddr) -> usize {
         match self
-            .trains
+            .gso_trains
             .iter()
             .position(|open| open.is_between(src, dst))
         {
             Some(index) => index,
             None => {
-                self.trains.push(UdpGsoTrain::new(src, dst));
+                self.gso_trains.push(UdpGsoTrain::new(src, dst));
 
-                self.trains.len() - 1
+                self.gso_trains.len() - 1
             }
         }
     }
@@ -236,7 +236,7 @@ impl EncryptJobs<'_> {
             SocketAddr::V6(_) => &mut self.pending_v6,
         };
         // Every train still open and every packet still to come may need a receiver.
-        let max_trains = self.trains.len() + self.remaining + 1;
+        let max_trains = self.gso_trains.len() + self.remaining + 1;
         pending
             .get_or_insert_with(|| Vec::with_capacity(max_trains))
             .push(rx);
@@ -252,8 +252,8 @@ impl EncryptJobs<'_> {
 impl Drop for EncryptJobs<'_> {
     fn drop(&mut self) {
         // In the order they were opened, so a flow whose destination changed mid-batch stays in order.
-        self.trains.reverse();
-        while let Some(open) = self.trains.pop() {
+        self.gso_trains.reverse();
+        while let Some(open) = self.gso_trains.pop() {
             self.dispatch(open);
         }
 
@@ -274,7 +274,7 @@ pub struct DecryptJobs<'a> {
     /// How many of the packets have yet to be added, at most.
     remaining: usize,
     /// The trains of the job not yet handed to a worker.
-    trains: Vec<UdpGroTrain>,
+    gro_trains: Vec<UdpGroTrain>,
     /// How many segments the trains decrypt in total.
     len: usize,
 }
@@ -286,13 +286,14 @@ impl<'a> DecryptJobs<'a> {
             self.submit();
         }
 
-        if self.trains.is_empty() {
-            self.trains.reserve(DECRYPT_BATCH_SIZE.min(self.remaining));
+        if self.gro_trains.is_empty() {
+            self.gro_trains
+                .reserve(DECRYPT_BATCH_SIZE.min(self.remaining));
         }
         self.remaining = self.remaining.saturating_sub(datagram.num_segments());
 
-        let index = self.trains.len();
-        self.trains.push(UdpGroTrain::new(datagram));
+        let index = self.gro_trains.len();
+        self.gro_trains.push(UdpGroTrain::new(datagram));
 
         OpenGroTrain { jobs: self, index }
     }
@@ -300,7 +301,7 @@ impl<'a> DecryptJobs<'a> {
     fn submit(&mut self) {
         // A stopped worker drops the sender, so `Decrypting::poll_job` skips the job.
         let job = DecryptJob {
-            trains: mem::take(&mut self.trains),
+            trains: mem::take(&mut self.gro_trains),
             len: mem::take(&mut self.len),
             decrypted: self.decrypting.add_job(),
         };
@@ -310,7 +311,7 @@ impl<'a> DecryptJobs<'a> {
 
 impl Drop for DecryptJobs<'_> {
     fn drop(&mut self) {
-        if !self.trains.is_empty() {
+        if !self.gro_trains.is_empty() {
             self.submit();
         }
     }
@@ -325,7 +326,7 @@ pub struct OpenGroTrain<'b, 'a> {
 impl OpenGroTrain<'_, '_> {
     /// Adds `segment` of the datagram, to be decrypted with `decapsulation`.
     pub fn add(&mut self, decapsulation: PendingDecapsulate, segment: Segment) {
-        self.jobs.trains[self.index].push(decapsulation, segment);
+        self.jobs.gro_trains[self.index].push(decapsulation, segment);
     }
 }
 
@@ -333,17 +334,17 @@ impl Deref for OpenGroTrain<'_, '_> {
     type Target = DatagramIn;
 
     fn deref(&self) -> &DatagramIn {
-        self.jobs.trains[self.index].datagram()
+        self.jobs.gro_trains[self.index].datagram()
     }
 }
 
 impl Drop for OpenGroTrain<'_, '_> {
     fn drop(&mut self) {
         let jobs = &mut *self.jobs;
-        let train = &jobs.trains[self.index];
+        let train = &jobs.gro_trains[self.index];
 
         if train.is_empty() {
-            jobs.trains.pop();
+            jobs.gro_trains.pop();
         } else {
             jobs.len += train.len();
         }
