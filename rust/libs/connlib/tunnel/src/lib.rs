@@ -417,7 +417,7 @@ impl ClientTunnel {
 
                     for mut packet in packets.prefetching().inspect(|p| tun_received.record(p)) {
                         match self.role_state.handle_tun_input(&mut packet, now) {
-                            Ok(Some(encapsulation)) => jobs.encrypt(encapsulation, packet),
+                            Ok(Some(encapsulation)) => jobs.add(encapsulation, packet),
                             Ok(None) => {}
                             Err(e) => {
                                 self.dropped_tun_packets.record(&e);
@@ -647,7 +647,7 @@ impl GatewayTunnel {
 
                     for mut packet in packets.prefetching().inspect(|p| tun_received.record(p)) {
                         match self.role_state.handle_tun_input(&mut packet, now) {
-                            Ok(Some(encapsulation)) => jobs.encrypt(encapsulation, packet),
+                            Ok(Some(encapsulation)) => jobs.add(encapsulation, packet),
                             Ok(None) => {}
                             Err(e) => {
                                 self.dropped_tun_packets.record(&e);

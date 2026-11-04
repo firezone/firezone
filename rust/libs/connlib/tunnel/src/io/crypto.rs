@@ -190,7 +190,7 @@ pub struct EncryptJobs<'a> {
 impl EncryptJobs<'_> {
     /// Adds `packet` to the open train to its destination, handing that train to a worker first if
     /// `packet` starts a new one.
-    pub fn encrypt(&mut self, encapsulation: PendingEncapsulate, packet: IpPacket) {
+    pub fn add(&mut self, encapsulation: PendingEncapsulate, packet: IpPacket) {
         let (src, dst) = (encapsulation.src(), encapsulation.dst());
         let max_packets = self.remaining;
         self.remaining = self.remaining.saturating_sub(1);
