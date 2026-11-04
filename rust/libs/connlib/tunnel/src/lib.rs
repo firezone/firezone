@@ -454,7 +454,7 @@ impl ClientTunnel {
 
                     let mut datagrams = datagrams.drain().peekable();
 
-                    while let Some(mut train) = jobs.open(&mut datagrams) {
+                    while let Some(mut train) = jobs.new_train(&mut datagrams) {
                         let mut segments = train.segments().peekable();
 
                         while let Some(segment) = segments.next() {
@@ -720,7 +720,7 @@ impl GatewayTunnel {
 
                     let mut datagrams = datagrams.drain().peekable();
 
-                    while let Some(mut train) = jobs.open(&mut datagrams) {
+                    while let Some(mut train) = jobs.new_train(&mut datagrams) {
                         let mut segments = train.segments().peekable();
 
                         while let Some(segment) = segments.next() {

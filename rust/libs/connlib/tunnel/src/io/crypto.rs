@@ -277,7 +277,7 @@ impl<'a> DecryptJobs<'a> {
     /// the same ECN, while their segments fit into the job, to add the runs of its segments to decrypt.
     ///
     /// Returns `None` once `datagrams` are exhausted.
-    pub fn open(
+    pub fn new_train(
         &mut self,
         datagrams: &mut Peekable<impl Iterator<Item = DatagramIn>>,
     ) -> Option<OpenGroTrain<'_, 'a>> {
