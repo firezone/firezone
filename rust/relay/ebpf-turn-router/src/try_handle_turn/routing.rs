@@ -5,7 +5,7 @@
 //! from the single-threaded eventloop in userspace, we are ok.
 //! See <https://github.com/firezone/firezone/issues/10138#issuecomment-3186074350>.
 //!
-//! The eBPF program writes to the [`RateLimiter`] inside an entry on every packet it routes.
+//! The eBPF program writes to the [`RateLimiter`] inside an entry for every packet it charges.
 //! See [`RateLimiter::check_shared`] for what happens if two CPUs charge the same one.
 
 use aya_ebpf::{macros::map, maps::HashMap};
@@ -79,6 +79,44 @@ pub fn route_from_client(
     Ok((PortAndPeer::V6(pp), verdict))
 }
 
+/// Looks up where to send traffic from a peer without charging it.
+///
+/// Used when relaying between two allocations on this relay: the traffic has already been charged
+/// to the channel it arrived on.
+#[inline(always)]
+pub fn get_client_and_channel(key: impl Into<PortAndPeer>) -> Result<ClientAndChannel, Error> {
+    let key = key.into();
+
+    let maybe_v4 = get_client_and_channel_v4(key).map(ClientAndChannel::V4);
+    let maybe_v6 = get_client_and_channel_v6(key).map(ClientAndChannel::V6);
+
+    maybe_v4.or(maybe_v6)
+}
+
+#[inline(always)]
+fn get_client_and_channel_v4(key: impl Into<PortAndPeer>) -> Result<ClientAndChannelV4, Error> {
+    match key.into() {
+        PortAndPeer::V4(pp) => unsafe { UDP_TO_CHAN_44.get(&pp) }
+            .map(|route| route.dst)
+            .ok_or(Error::NoEntry(SupportedChannel::Udp4ToChan)),
+        PortAndPeer::V6(pp) => unsafe { UDP_TO_CHAN_64.get(&pp) }
+            .map(|route| route.dst)
+            .ok_or(Error::NoEntry(SupportedChannel::Udp6ToChan)),
+    }
+}
+
+#[inline(always)]
+fn get_client_and_channel_v6(key: impl Into<PortAndPeer>) -> Result<ClientAndChannelV6, Error> {
+    match key.into() {
+        PortAndPeer::V4(pp) => unsafe { UDP_TO_CHAN_46.get(&pp) }
+            .map(|route| route.dst)
+            .ok_or(Error::NoEntry(SupportedChannel::Udp4ToChan)),
+        PortAndPeer::V6(pp) => unsafe { UDP_TO_CHAN_66.get(&pp) }
+            .map(|route| route.dst)
+            .ok_or(Error::NoEntry(SupportedChannel::Udp6ToChan)),
+    }
+}
+
 #[inline(always)]
 fn charge_client_and_channel_v4(
     key: PortAndPeer,
@@ -140,8 +178,7 @@ where
     let route = map.get_ptr_mut(key)?;
 
     // SAFETY: The pointer comes from a successful lookup and map values are never freed while the program runs.
-    // Other CPUs may charge the same limiter concurrently, e.g. when relaying between two allocations on this Relay,
-    // so we never create a reference to it.
+    // Other CPUs may charge the same limiter concurrently, so we never create a reference to it.
     // The limiter's tolerances are orders of magnitude longer than a scheduler tick, so the coarse clock suffices.
     let (dst, verdict) = unsafe {
         let verdict = RateLimiter::check_shared(
