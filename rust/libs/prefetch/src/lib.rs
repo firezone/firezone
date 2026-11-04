@@ -6,9 +6,15 @@
 
 use std::iter::Peekable;
 
-/// Something whose memory another thread may have written.
+/// One buffer whose bytes another thread may have written.
+///
+/// Implement it only for a type that is a single buffer, such as `[u8]` or an IP packet, by
+/// fetching its first cache line. Never implement it for a collection, job or batch that holds
+/// buffers: it could only fetch one of them and the rest would be read cold. To prefetch the
+/// buffers of a collection, wrap the iterator that yields them, where they are read, with
+/// [`IteratorExt::prefetching`] or [`IteratorExt::prefetching_with`].
 pub trait Prefetch {
-    /// Hints the CPU to fetch the memory read first when this is processed.
+    /// Hints the CPU to fetch the first cache line of the buffer.
     fn prefetch(&self);
 }
 
@@ -56,6 +62,9 @@ pub trait IteratorExt: Iterator + Sized {
     }
 
     /// Prefetches the part of each item that `project` selects, one item ahead of yielding it.
+    ///
+    /// `project` selects the buffer that the caller reads first from each item. Wrap the
+    /// innermost iterator, whose buffers are read back to back, not an iterator over containers.
     fn prefetching_with<F, P>(self, mut project: F) -> Prefetching<Self, F>
     where
         F: FnMut(&Self::Item) -> &P,
