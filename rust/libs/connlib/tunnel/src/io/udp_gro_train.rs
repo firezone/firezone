@@ -1,9 +1,6 @@
-use prefetch::Prefetch;
 use smallvec::SmallVec;
 use snownet::PendingDecapsulate;
 use socket_factory::{DatagramIn, Segment};
-
-use super::DecryptedBatch;
 
 /// The receive-side twin of [`UdpGsoTrain`](super::UdpGsoTrain): the datagrams of one GRO receive.
 ///
@@ -47,38 +44,17 @@ impl UdpGroTrain {
         self.batches.len()
     }
 
-    /// Decrypts the batches of the train, in order.
-    pub fn decrypt(self) -> impl Iterator<Item = DecryptedBatch> {
+    /// Moves out the batches of the train, in order, each with the datagram it is in.
+    pub fn drain(
+        &mut self,
+    ) -> impl Iterator<Item = (&DatagramIn, Vec<Segment>, PendingDecapsulate)> + '_ {
         let Self {
             datagram, batches, ..
         } = self;
-        let mut batches = batches.into_iter().peekable();
+        let datagram = &*datagram;
 
-        std::iter::from_fn(move || {
-            let (segments, decapsulation) = batches.next()?;
-
-            if let Some(next) = batches.peek().and_then(|(segments, _)| segments.first()) {
-                datagram[*next].prefetch();
-            }
-
-            Some(DecryptedBatch {
-                local: datagram.local(),
-                from: datagram.from(),
-                ecn: datagram.ecn(),
-                packets: decapsulation.decrypt(segments.iter().map(|segment| &datagram[*segment])),
-            })
-        })
-    }
-}
-
-impl Prefetch for UdpGroTrain {
-    fn prefetch(&self) {
-        if let Some(first) = self
-            .batches
-            .first()
-            .and_then(|(segments, _)| segments.first())
-        {
-            self.datagram[*first].prefetch();
-        }
+        batches
+            .drain(..)
+            .map(move |(segments, decapsulation)| (datagram, segments, decapsulation))
     }
 }

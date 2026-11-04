@@ -454,13 +454,22 @@ fn encrypt(
     let _ = encrypted.send(datagram);
 }
 
-fn decrypt(job: DecryptJob, decrypted: oneshot::Sender<DecryptedIpPackets>) {
+fn decrypt(mut job: DecryptJob, decrypted: oneshot::Sender<DecryptedIpPackets>) {
     let mut packets = Vec::with_capacity(job.trains.iter().map(UdpGroTrain::num_batches).sum());
     packets.extend(
         job.trains
-            .into_iter()
-            .prefetching()
-            .flat_map(UdpGroTrain::decrypt),
+            .iter_mut()
+            .flat_map(UdpGroTrain::drain)
+            .prefetching_with(|(datagram, segments, _)| match segments.first() {
+                Some(segment) => &datagram[*segment],
+                None => &[],
+            })
+            .map(|(datagram, segments, decapsulation)| DecryptedBatch {
+                local: datagram.local(),
+                from: datagram.from(),
+                ecn: datagram.ecn(),
+                packets: decapsulation.decrypt(segments.iter().map(|segment| &datagram[*segment])),
+            }),
     );
 
     // We stopped if the receiver is gone; the channel for the next job is closed too.
