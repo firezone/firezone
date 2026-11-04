@@ -177,7 +177,7 @@ defmodule Portal.Billing.EventHandlerTest do
 
       assert {:ok, _event} = result
       assert log =~ "[warning] Skipping stripe event for an account that does not exist"
-      refute Fixture.logged_lines(log, "pid=#{:erlang.pid_to_list(self())} ") =~ "[error]"
+      refute Fixture.logged_lines(log) =~ "[error]"
     end
 
     test "acknowledges customer.subscription.created with a warning", %{
@@ -195,7 +195,7 @@ defmodule Portal.Billing.EventHandlerTest do
 
       assert {:ok, _event} = result
       assert log =~ "[warning] Skipping stripe event for an account that does not exist"
-      refute Fixture.logged_lines(log, "pid=#{:erlang.pid_to_list(self())} ") =~ "[error]"
+      refute Fixture.logged_lines(log) =~ "[error]"
     end
 
     test "acknowledges customer.updated with a warning", %{customer: customer} do
@@ -207,7 +207,7 @@ defmodule Portal.Billing.EventHandlerTest do
 
       assert {:ok, _event} = result
       assert log =~ "[warning] Skipping stripe event for an account that does not exist"
-      refute Fixture.logged_lines(log, "pid=#{:erlang.pid_to_list(self())} ") =~ "[error]"
+      refute Fixture.logged_lines(log) =~ "[error]"
     end
   end
 
