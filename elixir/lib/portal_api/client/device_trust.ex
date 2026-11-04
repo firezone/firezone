@@ -459,14 +459,8 @@ defmodule PortalAPI.Client.DeviceTrust do
   # reliably say who issued it, and a serial means nothing without that.
   defp ensure_not_revoked(%{revoked?: true}, issuer, serial), do: refuse(issuer, serial)
 
-  # Nothing for a responder to add where the issuer publishes a list we hold a
-  # current copy of: absence from that list already means not revoked. A list
-  # that is disabled, never fetched, or expired says nothing, so the responder
-  # is asked instead.
-  defp ensure_not_revoked(%{crl_published?: true}, _issuer, _serial), do: :ok
-
-  # Only consulted where the CA publishes no list, since a list covers every
-  # device in one fetch and a responder is one request per certificate.
+  # Checked even when the leaf's own list is current. That list can predate a
+  # revocation the responder already reported.
   defp ensure_not_revoked(%{ocsp_status: "revoked"}, issuer, serial), do: refuse(issuer, serial)
 
   # An answer we do not hold is not a refusal. The device proved possession of a

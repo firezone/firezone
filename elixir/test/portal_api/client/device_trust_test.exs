@@ -502,6 +502,37 @@ defmodule PortalAPI.Client.DeviceTrustTest do
       assert all_enqueued(worker: Portal.Ocsp.Sync) == []
     end
 
+    test "refuses a responder revocation even when the leaf's own list is current", %{
+      account: account,
+      pki: pki,
+      subject: subject
+    } do
+      leaf = leaf(pki, :with_crl)
+      issuer = X509.issuer(leaf)
+
+      revocation_endpoint_fixture(
+        account: account,
+        issuer: issuer,
+        ocsp_urls: ["http://ocsp.example.test"],
+        crl_next_update: in_days(1)
+      )
+
+      Repo.insert!(%Portal.OcspStatus{
+        account_id: account.id,
+        issuer: issuer,
+        serial: cert_serial_hex(leaf),
+        status: "revoked",
+        revoked_at: DateTime.utc_now() |> DateTime.truncate(:second),
+        next_update: in_days(1),
+        updated_at: DateTime.utc_now()
+      })
+
+      assert ExUnit.CaptureLog.capture_log(fn ->
+               assert DeviceTrust.attest(connect_info(leaf), subject) ==
+                        {:error, :certificate_revoked}
+             end) =~ "revoked by its CA"
+    end
+
     test "asks the responder when the leaf's own partition has not been fetched yet", %{
       account: account,
       pki: pki,
