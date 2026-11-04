@@ -11,7 +11,9 @@ use crate::flux_capacitor::FluxCapacitor;
 use crate::probe::{DnsNatObservation, FlowId, ProbeId, ProbeObservation, ProbeTrace, Remote};
 use crate::resource as client;
 use crate::transition::Transition;
-use connlib_model::{ClientId, ClientOrGatewayId, GatewayId, PublicKey, RelayId, StaticSecret};
+use connlib_model::{
+    ClientId, ClientOrGatewayId, GatewayId, IceCandidate, PublicKey, RelayId, StaticSecret,
+};
 use ip_packet::IpPacket;
 use rand::SeedableRng;
 use rand::distr::SampleString;
@@ -1120,7 +1122,7 @@ impl TunnelTest {
                     event,
                     &mut self.clients,
                     gateway,
-                    &self.relays,
+                    &mut self.relays,
                     portal,
                     ref_state,
                     now,
@@ -1246,6 +1248,8 @@ impl TunnelTest {
                 candidates,
                 conn_id: ClientOrGatewayId::Gateway(conn_id),
             } => {
+                add_known_peers(&mut self.relays, &candidates);
+
                 let gateway = self.gateways.get_mut(&conn_id).expect("unknown gateway");
 
                 gateway.exec_mut(|g| {
@@ -1270,6 +1274,8 @@ impl TunnelTest {
                 conn_id: ClientOrGatewayId::Client(conn_id),
                 candidates,
             } => {
+                add_known_peers(&mut self.relays, &candidates);
+
                 let client = self.clients.get_mut(&conn_id).expect("unknown client");
 
                 client.exec_mut(|c| {
@@ -1345,7 +1351,7 @@ impl TunnelTest {
                         event,
                         &mut self.clients,
                         gateway,
-                        &self.relays,
+                        &mut self.relays,
                         portal,
                         ref_state,
                         now,
@@ -1672,7 +1678,7 @@ fn on_gateway_event(
     event: GatewayEvent,
     clients: &mut BTreeMap<ClientId, Host<SimClient>>,
     gateway: &mut Host<SimGateway>,
-    relays: &BTreeMap<RelayId, Host<SimRelay>>,
+    relays: &mut BTreeMap<RelayId, Host<SimRelay>>,
     portal: &mut StubPortal,
     ref_state: &ReferenceState,
     now: Instant,
@@ -1682,6 +1688,8 @@ fn on_gateway_event(
             conn_id,
             candidates,
         } => {
+            add_known_peers(relays, &candidates);
+
             let client = clients.get_mut(&conn_id).unwrap();
             client.exec_mut(|c| {
                 for candidate in candidates {
@@ -1730,6 +1738,27 @@ fn on_gateway_event(
             );
             gateway.exec_mut(|g| g.update_relays(iter::empty(), relays.into_iter(), now));
         }
+    }
+}
+
+/// Reports forwarded candidates' IPs to every relay, as the portal does before delivering them.
+fn add_known_peers(
+    relays: &mut BTreeMap<RelayId, Host<SimRelay>>,
+    candidates: &BTreeSet<IceCandidate>,
+) {
+    let ips = candidates
+        .iter()
+        .filter_map(|candidate| {
+            String::from(candidate.clone())
+                .split_ascii_whitespace()
+                .nth(4)?
+                .parse::<IpAddr>()
+                .ok()
+        })
+        .collect::<BTreeSet<_>>();
+
+    for relay in relays.values_mut() {
+        relay.exec_mut(|r| r.add_known_peers(ips.iter().copied()));
     }
 }
 
