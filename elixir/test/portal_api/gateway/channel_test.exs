@@ -3,6 +3,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
   alias Portal.Cache
   alias Portal.Changes
   alias Portal.PG
+  alias Portal.Relay.ICECandidateIPs
   import Portal.Cache.Cacheable, only: [to_cache: 1]
   import Portal.SchemaHelpers, only: [struct_from_params: 2]
   import ExUnit.CaptureLog
@@ -3023,6 +3024,81 @@ defmodule PortalAPI.Gateway.ChannelTest do
                candidates: candidates,
                client_id: client.id
              }
+    end
+
+    test "reports the candidate IPs to the gateway's relays", %{
+      account: account,
+      client: client,
+      gateway: gateway,
+      global_relay: global_relay,
+      site: site,
+      token: token
+    } do
+      :ok = Portal.Presence.Relays.connect(global_relay)
+      socket = join_channel(gateway, site, token)
+      assert_push "init", _
+      :ok = ICECandidateIPs.subscribe(global_relay.id)
+      account_id = account.id
+
+      send(
+        socket.channel_pid,
+        {:ice_candidates, client.id,
+         ["candidate:1 1 udp 1694498815 203.0.113.5 51000 typ srflx raddr 10.0.0.2 rport 51000"]}
+      )
+
+      assert_receive {:ice_candidate_ips, ^account_id, ["203.0.113.5"]}, 200
+      assert_push "ice_candidates", _
+    end
+
+    test "reports the candidate IPs to every relay the gateway was given", %{
+      account: account,
+      client: client,
+      gateway: gateway,
+      global_relay: first_relay,
+      site: site,
+      token: token
+    } do
+      :ok = Portal.Presence.Relays.connect(first_relay)
+      socket = join_channel(gateway, site, token)
+      assert_push "init", _
+
+      second_relay = relay_fixture()
+      :ok = Portal.Presence.Relays.connect(second_relay)
+      push(socket, "no_relays", %{"excluded_relay_ids" => [first_relay.id]})
+      assert_push "relays_presence", _
+
+      :ok = ICECandidateIPs.subscribe(first_relay.id)
+      :ok = ICECandidateIPs.subscribe(second_relay.id)
+      account_id = account.id
+
+      send(
+        socket.channel_pid,
+        {:ice_candidates, client.id,
+         ["candidate:1 1 udp 2130706431 203.0.113.5 51000 typ host"]}
+      )
+
+      assert_receive {:ice_candidate_ips, ^account_id, ["203.0.113.5"]}, 200
+      assert_receive {:ice_candidate_ips, ^account_id, ["203.0.113.5"]}, 200
+    end
+
+    test "does not report IPs of unparsable candidates", %{
+      account: account,
+      client: client,
+      gateway: gateway,
+      global_relay: global_relay,
+      site: site,
+      token: token
+    } do
+      :ok = Portal.Presence.Relays.connect(global_relay)
+      socket = join_channel(gateway, site, token)
+      assert_push "init", _
+      :ok = ICECandidateIPs.subscribe(global_relay.id)
+      account_id = account.id
+
+      send(socket.channel_pid, {:ice_candidates, client.id, ["foo", "bar"]})
+
+      assert_push "ice_candidates", _
+      refute_receive {:ice_candidate_ips, ^account_id, _ips}
     end
 
     test "pushes invalidate_ice_candidates message", %{

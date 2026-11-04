@@ -12,6 +12,7 @@ defmodule PortalAPI.Client.Channel.Shared do
     Changes.Change,
     PubSub,
     Presence,
+    Relay.ICECandidateIPs,
     SchemaHelpers,
     Authentication
   }
@@ -329,6 +330,8 @@ defmodule PortalAPI.Client.Channel.Shared do
 
   # This the list of ICE candidates gathered by the gateway and relayed to the client
   def handle_info({:ice_candidates, gateway_id, candidates}, socket) do
+    report_ice_candidate_ips(socket, candidates)
+
     push(socket, "ice_candidates", %{
       gateway_id: gateway_id,
       candidates: candidates
@@ -548,6 +551,7 @@ defmodule PortalAPI.Client.Channel.Shared do
   end
 
   def handle_info({:client_ice_candidates, client_id, candidates}, socket) do
+    report_ice_candidate_ips(socket, candidates)
     push(socket, "client_ice_candidates", %{client_id: client_id, candidates: candidates})
     {:noreply, socket}
   end
@@ -2118,6 +2122,15 @@ defmodule PortalAPI.Client.Channel.Shared do
       |> MapSet.union(MapSet.new(relays, fn relay -> relay.id end))
 
     assign(socket, :cached_relay_ids, cached_relay_ids)
+  end
+
+  # The client binds channels on its own relays towards these candidates.
+  defp report_ice_candidate_ips(socket, candidates) do
+    ICECandidateIPs.broadcast(
+      socket.assigns[:cached_relay_ids] || MapSet.new(),
+      socket.assigns.client.account_id,
+      candidates
+    )
   end
 
   defp excluded_relay_ids(%{"excluded_relay_ids" => ids}) when is_list(ids) do
