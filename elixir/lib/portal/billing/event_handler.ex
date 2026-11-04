@@ -53,6 +53,16 @@ defmodule Portal.Billing.EventHandler do
         Logger.info("Skipping stripe event", reason: inspect(reason))
         {:ok, event}
 
+      # Retrying cannot help, so the event is acknowledged to stop Stripe redelivering it.
+      {:error, :account_not_found} ->
+        Logger.warning("Skipping stripe event for an account that does not exist",
+          event_id: event["id"],
+          event_type: event["type"],
+          customer_id: customer_id
+        )
+
+        {:ok, event}
+
       {:error, reason} ->
         Logger.error("Failed to process stripe event",
           customer_id: customer_id,
@@ -202,6 +212,9 @@ defmodule Portal.Billing.EventHandler do
       {:error, :customer_not_provisioned} ->
         create_account_from_stripe_customer(customer_data)
 
+      {:error, :account_not_found} ->
+        {:error, :account_not_found}
+
       {:error, reason} ->
         Logger.error("Failed to sync account from Stripe",
           customer_id: customer_id,
@@ -266,6 +279,9 @@ defmodule Portal.Billing.EventHandler do
          {:ok, _account} <- Billing.evaluate_account_limits(account) do
       :ok
     else
+      {:error, :account_not_found} ->
+        {:error, :account_not_found}
+
       {:error, reason} ->
         Logger.error("Failed to build subscription update attrs",
           customer_id: customer_id,
@@ -381,6 +397,9 @@ defmodule Portal.Billing.EventHandler do
       {:ok, _account} ->
         :ok
 
+      {:error, :account_not_found} ->
+        {:error, :account_not_found}
+
       {:error, reason} ->
         Logger.error("Failed to update account on Stripe subscription event",
           customer_id: customer_id,
@@ -395,6 +414,9 @@ defmodule Portal.Billing.EventHandler do
     case update_account_by_stripe_customer_id(customer_id, attrs) do
       {:ok, account} ->
         {:ok, account}
+
+      {:error, :account_not_found} ->
+        {:error, :account_not_found}
 
       {:error, reason} ->
         Logger.error("Failed to update account on Stripe subscription event",
@@ -886,7 +908,7 @@ defmodule Portal.Billing.EventHandler do
     def update_account_by_id(id, attrs) do
       from(a in Account, where: a.id == ^id)
       |> Safe.unscoped()
-      |> Safe.one!()
+      |> Safe.one()
       |> case do
         %Account{} = account ->
           account
@@ -896,6 +918,9 @@ defmodule Portal.Billing.EventHandler do
           |> cast_embed(:metadata)
           |> Safe.unscoped()
           |> Safe.update()
+
+        nil ->
+          {:error, :account_not_found}
       end
     end
 
