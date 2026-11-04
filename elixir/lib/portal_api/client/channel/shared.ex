@@ -2126,17 +2126,11 @@ defmodule PortalAPI.Client.Channel.Shared do
 
   # The client binds channels on its own relays towards these candidates.
   defp report_ice_candidate_ips(socket, candidates) do
-    case ICECandidateIPs.extract(candidates) do
-      [] ->
-        :ok
-
-      ips ->
-        PubSub.Relays.broadcast_ice_candidate_ips(
-          socket.assigns[:cached_relay_ids] || MapSet.new(),
-          socket.assigns.client.account_id,
-          ips
-        )
-    end
+    ICECandidateIPs.report(
+      socket.assigns[:cached_relay_ids] || MapSet.new(),
+      socket.assigns.client.account_id,
+      candidates
+    )
   end
 
   defp excluded_relay_ids(%{"excluded_relay_ids" => ids}) when is_list(ids) do

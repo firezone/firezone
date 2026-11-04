@@ -298,22 +298,21 @@ defmodule PortalAPI.Relay.ChannelTest do
     test "forwards ICE candidate IPs reported for this Relay", %{relay: relay} do
       assert_push "init", %{}
       account_id = "00000000-0000-0000-0000-000000000009"
-
       ips = ["203.0.113.5", "2001:db8::1"]
-      :ok = Portal.PubSub.Relays.broadcast_ice_candidate_ips([relay.id], account_id, ips)
+
+      :ok = Portal.PG.deliver(relay.id, {:ice_candidate_ips, account_id, ips})
 
       assert_push "ice_candidate_ips", %{account_id: ^account_id, ips: ^ips}
     end
 
-    test "ignores ICE candidate IPs reported for other Relays" do
+    test "is not addressable under another Relay's ID" do
       assert_push "init", %{}
 
-      :ok =
-        Portal.PubSub.Relays.broadcast_ice_candidate_ips(
-          [Ecto.UUID.generate()],
-          "00000000-0000-0000-0000-000000000009",
-          ["203.0.113.5"]
-        )
+      assert {:error, :not_found} =
+               Portal.PG.deliver(
+                 Ecto.UUID.generate(),
+                 {:ice_candidate_ips, "00000000-0000-0000-0000-000000000009", ["203.0.113.5"]}
+               )
 
       refute_push "ice_candidate_ips", %{}
     end

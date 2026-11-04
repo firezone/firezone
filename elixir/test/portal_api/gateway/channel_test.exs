@@ -3036,7 +3036,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       :ok = Portal.Presence.Relays.connect(global_relay)
       socket = join_channel(gateway, site, token)
       assert_push "init", _
-      :ok = Portal.PubSub.Relays.subscribe(global_relay.id)
+      :ok = PG.register(global_relay.id)
       account_id = account.id
 
       send(
@@ -3066,8 +3066,8 @@ defmodule PortalAPI.Gateway.ChannelTest do
       push(socket, "no_relays", %{"excluded_relay_ids" => [first_relay.id]})
       assert_push "relays_presence", _
 
-      :ok = Portal.PubSub.Relays.subscribe(first_relay.id)
-      :ok = Portal.PubSub.Relays.subscribe(second_relay.id)
+      :ok = PG.register(first_relay.id)
+      :ok = PG.register(second_relay.id)
       account_id = account.id
 
       send(
@@ -3091,7 +3091,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       :ok = Portal.Presence.Relays.connect(global_relay)
       socket = join_channel(gateway, site, token)
       assert_push "init", _
-      :ok = Portal.PubSub.Relays.subscribe(global_relay.id)
+      :ok = PG.register(global_relay.id)
       account_id = account.id
 
       send(socket.channel_pid, {:ice_candidates, client.id, ["foo", "bar"]})
