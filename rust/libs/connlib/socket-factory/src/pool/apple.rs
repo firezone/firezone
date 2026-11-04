@@ -83,7 +83,10 @@ pub(crate) struct SocketPool {
     wildcard: Arc<OwnedSocket>,
     /// The local address flow sockets bind to; they share the wildcard socket's port.
     local: SocketAddr,
-    inner: Mutex<Inner>,
+    /// Shared with the [`SocketPool::try_clone`]s of this pool.
+    inner: Arc<Mutex<Inner>>,
+    /// The runtime the pool was created in, which flow and source sockets register with.
+    runtime: Option<tokio::runtime::Handle>,
     evictions: opentelemetry::metrics::Counter<u64>,
 }
 
@@ -121,7 +124,7 @@ impl SocketPool {
         Self {
             wildcard: Arc::new(wildcard),
             local,
-            inner: Mutex::new(Inner {
+            inner: Arc::new(Mutex::new(Inner {
                 flows: BTreeMap::new(),
                 sources: BTreeMap::new(),
                 rates: RateGate::default(),
@@ -130,9 +133,21 @@ impl SocketPool {
                 drained: VecDeque::new(),
                 recv_waker: None,
                 round_robin: 0,
-            }),
+            })),
+            runtime: tokio::runtime::Handle::try_current().ok(),
             evictions: otel_instruments::flow_socket_evictions(),
         }
+    }
+
+    /// Creates a pool on a clone of the wildcard socket that shares the flow and source sockets.
+    pub(crate) fn try_clone(&self) -> io::Result<Self> {
+        Ok(Self {
+            wildcard: Arc::new(self.wildcard.try_clone()?),
+            local: self.local,
+            inner: self.inner.clone(),
+            runtime: self.runtime.clone(),
+            evictions: self.evictions.clone(),
+        })
     }
 
     /// Picks the socket to send a transmit of `datagrams` datagrams for `(src, dst)` on.
@@ -145,6 +160,8 @@ impl SocketPool {
         datagrams: usize,
         recv_buf_size: usize,
     ) -> Arc<OwnedSocket> {
+        let _runtime = self.runtime.as_ref().map(tokio::runtime::Handle::enter);
+
         self.get_or_connect(src, dst, datagrams, recv_buf_size)
             .or_else(|| src.and_then(|src| self.get_or_bind_source(src, recv_buf_size)))
             .unwrap_or_else(|| self.wildcard.clone())

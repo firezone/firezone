@@ -57,6 +57,65 @@ async fn sends_and_receives_a_datagram() {
     assert_eq!(datagram.from(), peer_addr);
 }
 
+/// A clone registered with another runtime sends from the original's address, and replies
+/// arrive on the original, including via a flow socket the clone promoted on Apple.
+#[tokio::test]
+async fn clone_on_another_runtime_sends_for_the_original() {
+    const DATAGRAMS: usize = 16;
+
+    let peer = tokio::net::UdpSocket::bind("127.0.0.1:0").await.unwrap();
+    let peer_addr = peer.local_addr().unwrap();
+
+    let socket = udp("127.0.0.1:0".parse().unwrap())
+        .unwrap()
+        .into_perf()
+        .unwrap();
+
+    std::thread::scope(|s| {
+        s.spawn(|| {
+            let runtime = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap();
+
+            runtime.block_on(async {
+                socket
+                    .try_clone()
+                    .unwrap()
+                    .send(DatagramOut {
+                        src: None,
+                        dst: peer_addr,
+                        packet: bufferpool::Bytes::copied_from(&b"hello".repeat(DATAGRAMS)),
+                        segment_size: 5,
+                        ecn: Ecn::NonEct,
+                    })
+                    .await
+                    .unwrap();
+            });
+        });
+    });
+
+    #[cfg(apple)]
+    assert_eq!(socket.flow_socket_count(), 1);
+
+    let mut buf = [0u8; 16];
+    let mut from = peer_addr;
+    for _ in 0..DATAGRAMS {
+        let (len, sender) = peer.recv_from(&mut buf).await.unwrap();
+        assert_eq!(&buf[..len], b"hello");
+        from = sender;
+    }
+
+    peer.send_to(b"world", from).await.unwrap();
+
+    let mut batch = socket.recv_from().await.unwrap();
+    let datagram = batch.drain().next().unwrap();
+    let segment = datagram.segments().next().unwrap();
+
+    assert_eq!(&datagram[segment], b"world");
+    assert_eq!(datagram.from(), peer_addr);
+}
+
 #[cfg(apple)]
 #[tokio::test]
 async fn explicit_source_round_trips_before_and_after_promotion() {
