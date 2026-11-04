@@ -176,7 +176,7 @@ defmodule Portal.Billing.EventHandlerTest do
 
       assert {:ok, _event} = result
       assert log =~ "[warning] Skipping stripe event for an account that does not exist"
-      refute log =~ "[error]"
+      refute own_lines(log) =~ "[error]"
     end
 
     test "acknowledges customer.subscription.created with a warning", %{
@@ -194,7 +194,7 @@ defmodule Portal.Billing.EventHandlerTest do
 
       assert {:ok, _event} = result
       assert log =~ "[warning] Skipping stripe event for an account that does not exist"
-      refute log =~ "[error]"
+      refute own_lines(log) =~ "[error]"
     end
 
     test "acknowledges customer.updated with a warning", %{customer: customer} do
@@ -206,7 +206,7 @@ defmodule Portal.Billing.EventHandlerTest do
 
       assert {:ok, _event} = result
       assert log =~ "[warning] Skipping stripe event for an account that does not exist"
-      refute log =~ "[error]"
+      refute own_lines(log) =~ "[error]"
     end
   end
 
@@ -1580,5 +1580,15 @@ defmodule Portal.Billing.EventHandlerTest do
       end
 
     update_in(subscription, ["items", "data"], &(items ++ &1))
+  end
+
+  # with_log/1 also captures logs from tests running at the same time in other processes.
+  defp own_lines(log) do
+    pid = "pid=#{:erlang.pid_to_list(self())} "
+
+    log
+    |> String.split("\n")
+    |> Enum.filter(&String.contains?(&1, pid))
+    |> Enum.join("\n")
   end
 end
