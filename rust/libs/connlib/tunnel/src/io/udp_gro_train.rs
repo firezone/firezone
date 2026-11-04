@@ -1,4 +1,4 @@
-use prefetch::Prefetch;
+use prefetch::IteratorExt as _;
 use smallvec::SmallVec;
 use snownet::PendingDecapsulate;
 use socket_factory::{DatagramIn, Segment};
@@ -43,23 +43,17 @@ impl UdpGroTrain {
     pub fn decrypt_into(&mut self, decrypted: &mut Vec<DecryptedDatagram>) {
         let datagram = &self.datagram;
 
-        decrypted.extend(self.segments.drain(..).map(|(segment, decapsulation)| {
-            DecryptedDatagram {
-                local: datagram.local(),
-                from: datagram.from(),
-                ecn: datagram.ecn(),
-                packet: decapsulation.decrypt(&datagram[segment]),
-            }
-        }));
-    }
-}
-
-impl Prefetch for UdpGroTrain {
-    fn prefetch(&self) {
-        let Some((segment, _)) = self.segments.first() else {
-            return;
-        };
-
-        self.datagram[*segment].prefetch();
+        decrypted.extend(
+            self.segments
+                .drain(..)
+                .map(|(segment, decapsulation)| (&datagram[segment], decapsulation))
+                .prefetching_with(|(segment, _)| *segment)
+                .map(|(segment, decapsulation)| DecryptedDatagram {
+                    local: datagram.local(),
+                    from: datagram.from(),
+                    ecn: datagram.ecn(),
+                    packet: decapsulation.decrypt(segment),
+                }),
+        );
     }
 }
