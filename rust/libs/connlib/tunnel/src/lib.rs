@@ -452,15 +452,20 @@ impl ClientTunnel {
                 if let Some(mut datagrams) = network {
                     let mut jobs = self.io.new_decrypt_jobs(datagrams.len());
 
-                    let mut datagrams = datagrams.drain().peekable();
+                    let mut datagrams = datagrams
+                        .drain()
+                        .inspect(|datagram| {
+                            for segment in datagram.segments() {
+                                udp_received.record(&datagram[segment]);
+                            }
+                        })
+                        .peekable();
 
                     while let Some(mut train) = jobs.new_train(&mut datagrams) {
                         let mut segments = train.segments().peekable();
 
                         while let Some(segment) = segments.next() {
                             let packet = &train[segment];
-
-                            udp_received.record(packet);
 
                             let mut batch = match self
                                 .role_state
@@ -486,7 +491,6 @@ impl ClientTunnel {
                             while let Some(segment) =
                                 segments.next_if(|&s| batch.push(&train[s], now))
                             {
-                                udp_received.record(&train[segment]);
                                 batch_segments.push(segment);
                             }
 
@@ -718,15 +722,20 @@ impl GatewayTunnel {
                 if let Some(mut datagrams) = network {
                     let mut jobs = self.io.new_decrypt_jobs(datagrams.len());
 
-                    let mut datagrams = datagrams.drain().peekable();
+                    let mut datagrams = datagrams
+                        .drain()
+                        .inspect(|datagram| {
+                            for segment in datagram.segments() {
+                                udp_received.record(&datagram[segment]);
+                            }
+                        })
+                        .peekable();
 
                     while let Some(mut train) = jobs.new_train(&mut datagrams) {
                         let mut segments = train.segments().peekable();
 
                         while let Some(segment) = segments.next() {
                             let packet = &train[segment];
-
-                            udp_received.record(packet);
 
                             let mut batch = match self
                                 .role_state
@@ -752,7 +761,6 @@ impl GatewayTunnel {
                             while let Some(segment) =
                                 segments.next_if(|&s| batch.push(&train[s], now))
                             {
-                                udp_received.record(&train[segment]);
                                 batch_segments.push(segment);
                             }
 
