@@ -22,7 +22,7 @@ use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 use sockets::Sockets;
 use std::{
     collections::BTreeSet,
-    future, iter, mem,
+    future, mem,
     net::{IpAddr, SocketAddr},
     sync::Arc,
     task::{Context, Poll},
@@ -481,12 +481,14 @@ impl ClientTunnel {
                             };
 
                             let mut batch_segments = Vec::with_capacity(train.num_segments());
-                            batch_segments.extend(iter::successors(Some(segment), |_| {
-                                let next = segments.next_if(|&s| batch.push(&train[s], now))?;
-                                udp_received.record(&train[next]);
+                            batch_segments.push(segment);
 
-                                Some(next)
-                            }));
+                            while let Some(segment) =
+                                segments.next_if(|&s| batch.push(&train[s], now))
+                            {
+                                udp_received.record(&train[segment]);
+                                batch_segments.push(segment);
+                            }
 
                             train.add(batch.finish(), batch_segments);
                         }
@@ -745,12 +747,14 @@ impl GatewayTunnel {
                             };
 
                             let mut batch_segments = Vec::with_capacity(train.num_segments());
-                            batch_segments.extend(iter::successors(Some(segment), |_| {
-                                let next = segments.next_if(|&s| batch.push(&train[s], now))?;
-                                udp_received.record(&train[next]);
+                            batch_segments.push(segment);
 
-                                Some(next)
-                            }));
+                            while let Some(segment) =
+                                segments.next_if(|&s| batch.push(&train[s], now))
+                            {
+                                udp_received.record(&train[segment]);
+                                batch_segments.push(segment);
+                            }
 
                             train.add(batch.finish(), batch_segments);
                         }
