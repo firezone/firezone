@@ -10,7 +10,6 @@ pub(crate) mod resource;
 mod routing;
 mod tracked_state;
 
-use peer_batch::InboundDecision;
 pub use peer_batch::PeerBatch;
 
 pub(crate) use crate::client::client_on_client::ClientOnClient;
@@ -23,6 +22,7 @@ use crate::batch::{BatchingKey, TunBatch};
 use crate::client::client_on_client::InboundResult;
 use crate::client::dns_cache::DnsCache;
 use crate::client::dns_config::DnsConfig;
+use crate::client::peer_batch::InboundDecision;
 use crate::client::pending_authorizations::{
     AuthorizationRequest, DnsQueryForSite, PendingAuthorizations,
 };
