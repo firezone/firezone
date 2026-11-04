@@ -227,7 +227,7 @@ config :portal, Portal.Azure.ManagedIdentity,
     retry: :transient
   ]
 
-config :portal, Portal.Azure.MetricsExporter,
+config :portal, Portal.OTLP.MetricsExporter,
   req_opts: [
     connect_options: [timeout: 1_000],
     receive_timeout: 5_000,

@@ -1,5 +1,11 @@
 import Config
 
+otlp_metrics_endpoint = Portal.Config.env_var_to_config!(:otlp_metrics_endpoint)
+
+otlp_auth =
+  Portal.Config.env_var_to_config!(:otlp_auth) ||
+    {:headers, Portal.Config.env_var_to_config!(:otel_exporter_otlp_headers)}
+
 if config_env() == :prod do
   import Portal.Config, only: [env_var_to_config!: 1, env_var_to_config: 1]
 
@@ -701,7 +707,7 @@ if config_env() == :prod do
       ]
   end
 
-  if System.get_env("OTLP_ENDPOINT") || System.get_env("AZURE_OTLP_METRICS_ENDPOINT") do
+  if System.get_env("OTLP_ENDPOINT") || otlp_metrics_endpoint do
     config :opentelemetry,
       resource_detectors: [:otel_resource_env_var, :otel_resource_app_env],
       resource: %{
@@ -829,8 +835,8 @@ metric_exporters = [
   if(otlp_endpoint = System.get_env("OTLP_ENDPOINT"),
     do: {:otel_exporter_metrics_otlp, %{endpoints: [otlp_endpoint]}}
   ),
-  if(azure_otlp_metrics_endpoint = System.get_env("AZURE_OTLP_METRICS_ENDPOINT"),
-    do: {Portal.Azure.MetricsExporter, %{endpoint: azure_otlp_metrics_endpoint}}
+  if(otlp_metrics_endpoint,
+    do: {Portal.OTLP.MetricsExporter, %{endpoint: otlp_metrics_endpoint, auth: otlp_auth}}
   )
 ]
 
