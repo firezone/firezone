@@ -488,10 +488,16 @@ impl ClientTunnel {
                             let mut batch_segments = Vec::with_capacity(train.num_segments());
                             batch_segments.push(segment);
 
-                            while let Some(segment) =
-                                segments.next_if(|&s| batch.push(&train[s], now))
-                            {
-                                batch_segments.push(segment);
+                            while let Some(&next) = segments.peek() {
+                                let Some(message) = batch.data_message(&train[next], now) else {
+                                    break;
+                                };
+                                if !batch.push(message) {
+                                    break;
+                                }
+
+                                segments.next();
+                                batch_segments.push(next);
                             }
 
                             train.add(batch.finish(), batch_segments);
@@ -758,10 +764,16 @@ impl GatewayTunnel {
                             let mut batch_segments = Vec::with_capacity(train.num_segments());
                             batch_segments.push(segment);
 
-                            while let Some(segment) =
-                                segments.next_if(|&s| batch.push(&train[s], now))
-                            {
-                                batch_segments.push(segment);
+                            while let Some(&next) = segments.peek() {
+                                let Some(message) = batch.data_message(&train[next], now) else {
+                                    break;
+                                };
+                                if !batch.push(message) {
+                                    break;
+                                }
+
+                                segments.next();
+                                batch_segments.push(next);
                             }
 
                             train.add(batch.finish(), batch_segments);

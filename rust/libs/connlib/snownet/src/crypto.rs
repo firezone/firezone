@@ -175,6 +175,10 @@ fn channel_data_overhead(channel: Option<u16>) -> usize {
 /// The WireGuard data messages of one received datagram that passed the replay check, with the
 /// [`Node`](crate::Node) borrowed until [`DecapsulateBatch::finish`].
 #[must_use = "the data messages are not decrypted until the batch is finished"]
+/// A data message of a [`DecapsulateBatch`]'s session, to add to it with
+/// [`DecapsulateBatch::push`].
+pub struct DataMessage(sanstun::TransportData);
+
 pub struct DecapsulateBatch<'n> {
     interface: &'n mut sanstun::Interface,
     tunnel: sanstun::TunnelId,
@@ -204,35 +208,39 @@ impl<'n> DecapsulateBatch<'n> {
         }
     }
 
-    /// Adds `segment`, received on the same path, if it is a data message of the same session.
+    /// Parses `segment`, received on the same path, as a data message of the batch's session.
     ///
-    /// Returns `false` without changing the batch otherwise; finish the batch and pass the
-    /// segment to [`Node::begin_decapsulate`](crate::Node::begin_decapsulate) then.
-    pub fn push(&mut self, segment: &[u8], now: Instant) -> bool {
+    /// Returns `None` for anything else; finish the batch and pass the segment to
+    /// [`Node::begin_decapsulate`](crate::Node::begin_decapsulate) then.
+    pub fn data_message(&mut self, segment: &[u8], now: Instant) -> Option<DataMessage> {
         let message = match self.channel {
             Some(channel) => match crate::channel_data::decode(segment) {
                 Ok(cd) if cd.channel() == channel => cd.payload(),
-                _ => return false,
+                _ => return None,
             },
             None => segment,
         };
 
         // Parsing anything but a data message has side effects, such as rate limiting.
         if message.first() != Some(&4) {
-            return false;
+            return None;
         }
 
         let Ok(sanstun::Received::Message(sanstun::ReceivedMessage::TransportData(data))) =
             self.interface.receive(self.src, message, now)
         else {
-            return false;
+            return None;
         };
 
-        if data.tunnel_id() != self.tunnel {
-            return false;
-        }
+        (data.tunnel_id() == self.tunnel).then_some(DataMessage(data))
+    }
 
-        self.batch.push(data).is_ok()
+    /// Adds `message` to the batch.
+    ///
+    /// Returns `false` without changing the batch if the replay window rejects it; finish the batch
+    /// and pass its segment to [`Node::begin_decapsulate`](crate::Node::begin_decapsulate) then.
+    pub fn push(&mut self, message: DataMessage) -> bool {
+        self.batch.push(message.0).is_ok()
     }
 
     /// Releases the [`Node`](crate::Node).
