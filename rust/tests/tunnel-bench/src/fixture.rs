@@ -834,6 +834,7 @@ impl Relay {
             ALLOCATION_PORTS,
         );
         server.set_accounts([AccountId::from(Uuid::nil())]);
+        server.set_enforce_known_peers(true);
 
         Self {
             server,

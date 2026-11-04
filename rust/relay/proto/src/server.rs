@@ -213,7 +213,7 @@ where
             auth_secret: SecretString::from(hex::encode(rng.random::<[u8; 32]>())),
             accounts_by_hash: Default::default(),
             known_peers: Default::default(),
-            enforce_known_peers: true,
+            enforce_known_peers: false,
             nonces: Nonces::new(rng.random()),
             rng,
             allocations_up_down_counter,
@@ -329,7 +329,7 @@ where
 
     /// Sets whether new channel bindings are limited to known peers.
     ///
-    /// Without a portal connection, the relay cannot learn new peers and must not refuse them.
+    /// Unknown peers may only be refused while the portal reports known ones, otherwise every peer is unknown.
     pub fn set_enforce_known_peers(&mut self, enforce: bool) {
         self.enforce_known_peers = enforce;
     }
@@ -1598,6 +1598,7 @@ mod tests {
         );
 
         server.set_accounts([account]);
+        server.set_enforce_known_peers(true);
         server.add_known_peers(account, [peer.into_socket().ip()]);
         let nonce = issue_nonce(&mut server, client, now, now_utc);
         let username = Username::new(format!(
@@ -1823,6 +1824,7 @@ mod tests {
             );
 
             server.set_accounts([account]);
+            server.set_enforce_known_peers(true);
             let nonce = issue_nonce(&mut server, client, now, now_utc);
             let username = Username::new(format!(
                 "2145916800:{}:credential-salt",

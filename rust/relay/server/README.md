@@ -54,8 +54,9 @@ When given a `token`, the relay will connect to the Firezone portal and wait for
 an `init` message before commencing relay operations.
 
 The portal streams the IP addresses of ICE candidates exchanged within each
-account to the relay via `ice_candidate_ips` messages. The relay only creates
-new channel bindings to peers whose IP is known for the allocation's account.
+account to the relay via `ice_candidate_ips` messages. From the first such
+message on, the relay only creates new channel bindings to peers whose IP is
+known for the allocation's account.
 
 ### Metrics
 

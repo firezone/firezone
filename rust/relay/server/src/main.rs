@@ -481,7 +481,7 @@ struct Eventloop<R> {
     server: Server<R>,
     event_rx: mpsc::Receiver<Result<IngressMessages, phoenix_channel::Error>>,
     is_connected: Arc<AtomicBool>,
-    portal_was_connected: bool,
+    enforce_known_peers: bool,
     sleep: Sleep,
 
     ebpf: Option<ebpf::Program>,
@@ -546,7 +546,7 @@ where
             server,
             event_rx,
             is_connected,
-            portal_was_connected: false,
+            enforce_known_peers: false,
             sleep: Sleep::default(),
             stats_log_interval: tokio::time::interval(STATS_LOG_INTERVAL),
             last_num_bytes_relayed: 0,
@@ -559,22 +559,25 @@ where
         })
     }
 
-    /// Only refuses unknown peers while the portal can tell us about new ones.
-    fn sync_known_peer_enforcement(&mut self) {
+    /// Unknown peers are refused from the portal's first report of known ones until the connection drops.
+    fn sync_known_peer_enforcement(&mut self, portal_reported_peers: bool) {
         let connected = self.is_connected.load(Ordering::Relaxed);
 
-        if connected == self.portal_was_connected {
-            return;
+        match (self.enforce_known_peers, connected, portal_reported_peers) {
+            (false, true, true) => {
+                tracing::info!(
+                    "Portal reports known peers, refusing channel bindings to unknown peers"
+                );
+                self.server.set_enforce_known_peers(true);
+                self.enforce_known_peers = true;
+            }
+            (true, false, _) => {
+                tracing::warn!("Portal disconnected, accepting channel bindings to unknown peers");
+                self.server.set_enforce_known_peers(false);
+                self.enforce_known_peers = false;
+            }
+            _ => {}
         }
-
-        if connected {
-            tracing::info!("Portal connected, refusing channel bindings to unknown peers");
-        } else {
-            tracing::warn!("Portal disconnected, accepting channel bindings to unknown peers");
-        }
-
-        self.server.set_enforce_known_peers(connected);
-        self.portal_was_connected = connected;
     }
 
     fn poll(&mut self, cx: &mut std::task::Context<'_>) -> Poll<Result<()>> {
@@ -583,7 +586,7 @@ where
         while let Some(mut tick) = budget.next() {
             ready!(self.sockets.flush(cx))?;
 
-            self.sync_known_peer_enforcement();
+            self.sync_known_peer_enforcement(false);
 
             // Priority 1: Execute the pending commands of the server.
             if let Some(next_command) = self.server.next_command() {
@@ -789,6 +792,7 @@ where
                     tracing::debug!(account_id = %candidates.account_id, num_ips = candidates.ips.len(), "Received ICE candidate IPs");
                     self.server
                         .add_known_peers(candidates.account_id, candidates.ips);
+                    self.sync_known_peer_enforcement(true);
                     tick.want_continue();
                 }
                 Poll::Ready(Some(Err(e))) => {
