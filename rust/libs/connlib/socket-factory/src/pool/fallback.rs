@@ -27,6 +27,12 @@ impl SocketPool {
         }
     }
 
+    pub(crate) fn try_clone(&self) -> io::Result<Self> {
+        Ok(Self {
+            wildcard: Arc::new(self.wildcard.try_clone()?),
+        })
+    }
+
     pub(crate) fn get_send_socket(
         &self,
         _src: Option<IpAddr>,

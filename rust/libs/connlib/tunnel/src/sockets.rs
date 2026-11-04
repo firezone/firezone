@@ -424,8 +424,7 @@ const _: () = {
 };
 
 struct ThreadedUdpSocket {
-    thread_name: String,
-    join_handle: Option<std::thread::JoinHandle<()>>,
+    join_handles: Vec<std::thread::JoinHandle<()>>,
     main_thread_ends: Option<MainThreadEnds>,
 }
 
@@ -487,24 +486,26 @@ impl ThreadedUdpSocket {
         let (
             main_thread_ends,
             SocketThreadEnds {
-                mut outbound_rx,
+                outbound_rx,
                 inbound_tx,
                 error_tx,
             },
         ) = channels(preferred_addr);
         let (startup_tx, startup_rx) = std::sync::mpsc::sync_channel(0);
 
-        let thread_name = match preferred_addr {
-            SocketAddr::V4(_) => "fz-udp-v4".to_owned(),
-            SocketAddr::V6(_) => "fz-udp-v6".to_owned(),
+        let (send_thread_name, recv_thread_name) = match preferred_addr {
+            SocketAddr::V4(_) => ("fz-udp-v4-send", "fz-udp-v4-recv"),
+            SocketAddr::V6(_) => ("fz-udp-v6-send", "fz-udp-v6-recv"),
         };
-        let join_handle = std::thread::Builder::new()
-            .name(thread_name.clone())
+        let recv_join_handle = std::thread::Builder::new()
+            .name(recv_thread_name.to_owned())
             .spawn(move || {
-                let runtime = match tokio::runtime::Builder::new_current_thread()
-                    .enable_all()
-                    .build()
-                {
+                let new_runtime = || {
+                    tokio::runtime::Builder::new_current_thread()
+                        .enable_all()
+                        .build()
+                };
+                let runtime = match new_runtime() {
                     Ok(r) => r,
                     Err(e) => {
                         let _ = startup_tx.send(Err(e));
@@ -544,141 +545,54 @@ impl ThreadedUdpSocket {
 
                 socket.set_buffer_sizes(send_buffer_size, recv_buffer_size);
 
-                let socket = Arc::new(socket);
+                let send_join_handle = new_runtime().and_then(|send_runtime| {
+                    let send_socket = {
+                        let _guard = send_runtime.enter();
 
-                let send = runtime.spawn({
+                        socket.try_clone()?
+                    };
                     let io_error_counter = io_error_counter.clone();
                     let error_tx = error_tx.clone();
-                    let socket = socket.clone();
 
-                    let mut outbound = Vec::with_capacity(UDP_SEND_BATCH_LIMIT);
+                    std::thread::Builder::new()
+                        .name(send_thread_name.to_owned())
+                        .spawn(move || {
+                            send_runtime.block_on(async move {
+                                send_datagrams(
+                                    &send_socket,
+                                    outbound_rx,
+                                    &error_tx,
+                                    &io_error_counter,
+                                    preferred_addr,
+                                )
+                                .await;
 
-                    async move {
-                        let send = async |datagram| {
-                            let Err(e) = socket.send(datagram).await else {
-                                return Ok(());
-                            };
-
-                            if let Some(io) = e.any_downcast_ref::<io::Error>() {
-                                io_error_counter.add(
-                                    1,
-                                    &[
-                                        otel::attr::network_io_direction_transmit(),
-                                        otel::attr::network_type_for_addr(preferred_addr),
-                                        otel::attr::io_error_type(io),
-                                        otel::attr::io_error_code(io),
-                                    ],
-                                );
-                            }
-
-                            // Dedicated channel so errors can't hold up received datagrams, dropped
-                            // when full so they can't hold up the datagrams to send either.
-                            match error_tx.try_send(e) {
-                                Ok(()) => Ok(()),
-                                Err(TrySendError::Full(_)) => Ok(()),
-                                Err(TrySendError::Closed(_)) => Err(()),
-                            }
-                        };
-
-                        let reason = 'send: loop {
-                            if outbound_rx
-                                .recv_many(&mut outbound, UDP_SEND_BATCH_LIMIT)
-                                .await
-                                == 0
-                            {
-                                break "Channel for outbound datagrams closed";
-                            }
-
-                            for item in outbound.drain(..) {
-                                match item {
-                                    Outbound::Ready(datagram) => {
-                                        if send(datagram).await.is_err() {
-                                            break 'send "Channel for errors closed";
-                                        }
-                                    }
-                                    Outbound::Pending(mut datagrams) => {
-                                        for datagram in datagrams.drain(..) {
-                                            let Ok(datagram) = datagram.await else {
-                                                continue;
-                                            };
-
-                                            if send(datagram).await.is_err() {
-                                                break 'send "Channel for errors closed";
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        };
-
-                        tracing::debug!("{reason}; exiting UDP send task");
-                    }
+                                let _ = error_tx.send(UdpSocketThreadStopped.into()).await;
+                            })
+                        })
                 });
-                let receive = runtime.spawn({
-                    let error_tx = error_tx.clone();
-                    let queue_depth = otel_instruments::QueueDepth::new([
-                        otel::attr::queue_item_gro_batch(),
-                        otel::attr::network_type_for_addr(preferred_addr),
-                        otel::attr::network_io_direction_receive(),
-                    ]);
-
-                    async move {
-                        loop {
-                            let batch = match socket.recv_from().await {
-                                Ok(batch) => batch,
-                                Err(e) => {
-                                    if let Some(io) = e.any_downcast_ref::<io::Error>() {
-                                        io_error_counter.add(
-                                            1,
-                                            &[
-                                                otel::attr::network_io_direction_receive(),
-                                                otel::attr::network_type_for_addr(preferred_addr),
-                                                otel::attr::io_error_type(io),
-                                                otel::attr::io_error_code(io),
-                                            ],
-                                        );
-                                    }
-
-                                    if let Err(TrySendError::Closed(_)) = error_tx.try_send(e) {
-                                        tracing::debug!(
-                                            "Channel for errors closed; exiting UDP recv task"
-                                        );
-                                        return;
-                                    }
-
-                                    continue;
-                                }
-                            };
-
-                            let depth = inbound_tx.max_capacity() - inbound_tx.capacity();
-
-                            if inbound_tx.send(batch).await.is_err() {
-                                tracing::debug!(
-                                    "Channel for inbound datagrams closed; exiting UDP recv task"
-                                );
-                                return;
-                            }
-
-                            queue_depth.record(depth);
-                        }
-                    }
-                });
-
-                let _ = startup_tx.send(Ok(()));
+                let _ = startup_tx.send(send_join_handle);
 
                 runtime.block_on(async move {
-                    futures::future::select(send, receive).await;
+                    let receive = std::pin::pin!(receive_datagrams(
+                        &socket,
+                        &inbound_tx,
+                        &error_tx,
+                        &io_error_counter,
+                        preferred_addr,
+                    ));
 
-                    // A stopped task tears down the runtime; report it so `Io` shuts down.
+                    // Stop once the main thread drops its ends, even if nothing arrives.
+                    futures::future::select(receive, std::pin::pin!(inbound_tx.closed())).await;
+
                     let _ = error_tx.send(UdpSocketThreadStopped.into()).await;
                 });
             })?;
 
-        startup_rx.recv().map_err(io::Error::other)??;
+        let send_join_handle = startup_rx.recv().map_err(io::Error::other)??;
 
         Ok(Self {
-            thread_name,
-            join_handle: Some(join_handle),
+            join_handles: vec![send_join_handle, recv_join_handle],
             main_thread_ends: Some(main_thread_ends),
         })
     }
@@ -764,22 +678,22 @@ impl Drop for ThreadedUdpSocket {
 
         let _ = self.main_thread_ends.take();
 
-        let Some(join_handle) = self.join_handle.as_ref() else {
-            return;
-        };
-
         const TIMEOUT: Duration = Duration::from_millis(500);
 
-        while !join_handle.is_finished() {
-            let elapsed = start.elapsed();
+        for join_handle in &self.join_handles {
+            let name = join_handle.thread().name();
 
-            if elapsed > TIMEOUT {
-                tracing::debug!(name = %self.thread_name, "Thread did not stop within {TIMEOUT:?}");
-                return;
+            while !join_handle.is_finished() {
+                let elapsed = start.elapsed();
+
+                if elapsed > TIMEOUT {
+                    tracing::debug!(?name, "Thread did not stop within {TIMEOUT:?}");
+                    return;
+                }
             }
-        }
 
-        tracing::debug!(name = %self.thread_name, duration = ?start.elapsed(), "Background thread stopped");
+            tracing::debug!(?name, duration = ?start.elapsed(), "Background thread stopped");
+        }
     }
 }
 
@@ -789,8 +703,7 @@ impl Sockets {
         let fake_socket = |addr: SocketAddr| {
             let (main_thread_ends, socket_thread_ends) = channels(addr);
             let socket = ThreadedUdpSocket {
-                thread_name: "fake".to_owned(),
-                join_handle: None,
+                join_handles: Vec::new(),
                 main_thread_ends: Some(main_thread_ends),
             };
 
@@ -870,6 +783,124 @@ impl SocketThreadEnds {
                     .collect::<Vec<_>>()
             })
             .collect()
+    }
+}
+
+async fn send_datagrams(
+    socket: &PerfUdpSocket,
+    mut outbound_rx: mpsc::Receiver<Outbound>,
+    error_tx: &mpsc::Sender<anyhow::Error>,
+    io_error_counter: &Counter<u64>,
+    preferred_addr: SocketAddr,
+) {
+    let mut outbound = Vec::with_capacity(UDP_SEND_BATCH_LIMIT);
+
+    let send = async |datagram| {
+        let Err(e) = socket.send(datagram).await else {
+            return Ok(());
+        };
+
+        if let Some(io) = e.any_downcast_ref::<io::Error>() {
+            io_error_counter.add(
+                1,
+                &[
+                    otel::attr::network_io_direction_transmit(),
+                    otel::attr::network_type_for_addr(preferred_addr),
+                    otel::attr::io_error_type(io),
+                    otel::attr::io_error_code(io),
+                ],
+            );
+        }
+
+        // Dedicated channel so errors can't hold up received datagrams, dropped
+        // when full so they can't hold up the datagrams to send either.
+        match error_tx.try_send(e) {
+            Ok(()) => Ok(()),
+            Err(TrySendError::Full(_)) => Ok(()),
+            Err(TrySendError::Closed(_)) => Err(()),
+        }
+    };
+
+    let reason = 'send: loop {
+        if outbound_rx
+            .recv_many(&mut outbound, UDP_SEND_BATCH_LIMIT)
+            .await
+            == 0
+        {
+            break "Channel for outbound datagrams closed";
+        }
+
+        for item in outbound.drain(..) {
+            match item {
+                Outbound::Ready(datagram) => {
+                    if send(datagram).await.is_err() {
+                        break 'send "Channel for errors closed";
+                    }
+                }
+                Outbound::Pending(mut datagrams) => {
+                    for datagram in datagrams.drain(..) {
+                        let Ok(datagram) = datagram.await else {
+                            continue;
+                        };
+
+                        if send(datagram).await.is_err() {
+                            break 'send "Channel for errors closed";
+                        }
+                    }
+                }
+            }
+        }
+    };
+
+    tracing::debug!("{reason}; exiting UDP send task");
+}
+
+async fn receive_datagrams(
+    socket: &PerfUdpSocket,
+    inbound_tx: &mpsc::Sender<DatagramBatch>,
+    error_tx: &mpsc::Sender<anyhow::Error>,
+    io_error_counter: &Counter<u64>,
+    preferred_addr: SocketAddr,
+) {
+    let queue_depth = otel_instruments::QueueDepth::new([
+        otel::attr::queue_item_gro_batch(),
+        otel::attr::network_type_for_addr(preferred_addr),
+        otel::attr::network_io_direction_receive(),
+    ]);
+
+    loop {
+        let batch = match socket.recv_from().await {
+            Ok(batch) => batch,
+            Err(e) => {
+                if let Some(io) = e.any_downcast_ref::<io::Error>() {
+                    io_error_counter.add(
+                        1,
+                        &[
+                            otel::attr::network_io_direction_receive(),
+                            otel::attr::network_type_for_addr(preferred_addr),
+                            otel::attr::io_error_type(io),
+                            otel::attr::io_error_code(io),
+                        ],
+                    );
+                }
+
+                if let Err(TrySendError::Closed(_)) = error_tx.try_send(e) {
+                    tracing::debug!("Channel for errors closed; exiting UDP recv task");
+                    return;
+                }
+
+                continue;
+            }
+        };
+
+        let depth = inbound_tx.max_capacity() - inbound_tx.capacity();
+
+        if inbound_tx.send(batch).await.is_err() {
+            tracing::debug!("Channel for inbound datagrams closed; exiting UDP recv task");
+            return;
+        }
+
+        queue_depth.record(depth);
     }
 }
 

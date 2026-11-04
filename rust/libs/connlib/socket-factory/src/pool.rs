@@ -19,6 +19,7 @@ pub(crate) use fallback::SocketPool;
 
 use std::{
     io::{self, IoSliceMut},
+    sync::Arc,
     task::{Context, Poll},
 };
 
@@ -59,7 +60,8 @@ impl Socket<'_> {
 /// A UDP socket and its quinn state, owned. The unit a [`SocketPool`] is made of.
 pub(crate) struct OwnedSocket {
     socket: tokio::net::UdpSocket,
-    state: quinn_udp::UdpSocketState,
+    /// Shared with the [`OwnedSocket::try_clone`]s of this socket.
+    state: Arc<quinn_udp::UdpSocketState>,
     connected: bool,
 }
 
@@ -74,9 +76,24 @@ impl OwnedSocket {
 
         Self {
             socket,
-            state,
+            state: Arc::new(state),
             connected,
         }
+    }
+
+    /// Duplicates the socket's file descriptor and registers it with the current tokio runtime.
+    ///
+    /// Both descriptors refer to the same socket, so they share its binding, socket options
+    /// and quinn state.
+    pub(crate) fn try_clone(&self) -> io::Result<Self> {
+        let socket = socket2::SockRef::from(&self.socket).try_clone()?;
+        socket.set_nonblocking(true)?;
+
+        Ok(Self {
+            socket: tokio::net::UdpSocket::from_std(socket.into())?,
+            state: self.state.clone(),
+            connected: self.connected,
+        })
     }
 
     pub(crate) fn as_socket(&self) -> Socket<'_> {

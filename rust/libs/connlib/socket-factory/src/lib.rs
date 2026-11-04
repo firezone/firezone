@@ -289,7 +289,7 @@ pub struct PerfUdpSocket {
     dropped_packets: opentelemetry::metrics::Counter<u64>,
     send_blocked_histogram: opentelemetry::metrics::Histogram<f64>,
     source_ip_resolver:
-        Option<Box<dyn Fn(IpAddr) -> std::io::Result<IpAddr> + Send + Sync + 'static>>,
+        Option<std::sync::Arc<dyn Fn(IpAddr) -> std::io::Result<IpAddr> + Send + Sync + 'static>>,
     port: u16,
 }
 
@@ -333,7 +333,7 @@ impl UdpSocket {
             #[cfg(apple)]
             dropped_packets: otel_instruments::network_packet_dropped(),
             send_blocked_histogram: otel_instruments::network_send_blocked_duration(),
-            source_ip_resolver: self.source_ip_resolver,
+            source_ip_resolver: self.source_ip_resolver.map(Into::into),
             port: self.port,
         })
     }
@@ -420,6 +420,25 @@ impl DatagramOut {
 }
 
 impl PerfUdpSocket {
+    /// Creates another handle to this socket, registered with the current tokio runtime.
+    ///
+    /// The handle sends from the same local address and shares socket options and, on Apple,
+    /// the flow and source sockets. Those stay registered with the runtime this socket was
+    /// created in, so receive only on the original.
+    pub fn try_clone(&self) -> io::Result<Self> {
+        Ok(Self {
+            pool: self.pool.try_clone()?,
+            recv_buf_size: self.recv_buf_size,
+            batch_histogram: self.batch_histogram.clone(),
+            send_retry_histogram: self.send_retry_histogram.clone(),
+            #[cfg(apple)]
+            dropped_packets: self.dropped_packets.clone(),
+            send_blocked_histogram: self.send_blocked_histogram.clone(),
+            source_ip_resolver: self.source_ip_resolver.clone(),
+            port: self.port,
+        })
+    }
+
     /// Receives a batch of datagrams from whichever of our sockets becomes ready first.
     pub async fn recv_from(&self) -> Result<DatagramBatch> {
         std::future::poll_fn(|cx| {
