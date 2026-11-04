@@ -2,8 +2,8 @@ use super::{
     probe::{
         Answer, DnsNatObservation, DnsNatSessions, ExpectedOutcome, ExpectedProbe,
         InvalidDnsNatObservation, KnownLoss, ProbeId, ProbeProtocol, ProbeRequest, ProbeTrace,
-        ReceivedRequest, ReceivedResponse, RejectionResponse, Remote, RemoteResponse,
-        SubmittedRequest, TraceRequirement, remote_response,
+        ReceivedRequest, ReceivedResponse, RejectionRemote, RejectionResponse, Remote,
+        RemoteResponse, Route, SubmittedRequest, TraceRequirement, remote_response,
     },
     ref_client::RefClient,
     ref_gateway::RefGateway,
@@ -112,6 +112,11 @@ fn assert_probes(
             (TraceRequirement::ExactOrLoss(_), _, _, _) => {}
         }
 
+        if is_limited_by_dns_nat(expected, &trace, state) {
+            tracing::debug!(target: "assertions", id = ?expected.id, "Probe lost or rejected because the Gateway limits DNS resource NATs");
+            continue;
+        }
+
         match expected.outcome {
             ExpectedOutcome::Dropped => assert_dropped(expected, &trace),
             ExpectedOutcome::RoundTripCompleted(route, Answer::Echo) => assert_round_trip(
@@ -142,6 +147,42 @@ fn assert_probes(
                 assert_rejected(expected, &trace, submitted_request, response)
             }
         }
+    }
+}
+
+/// Whether the probe got lost or rejected as prohibited because the Gateway refused or evicted
+/// the NAT of its domain.
+fn is_limited_by_dns_nat(expected: &ExpectedProbe, trace: &ProbeTrace, state: &TunnelTest) -> bool {
+    let Destination::DomainName { name, .. } = expected.request.destination() else {
+        return false;
+    };
+    let gateway = match expected.outcome {
+        ExpectedOutcome::RoundTripCompleted(Route::Resource { gateway, .. }, _) => gateway,
+        ExpectedOutcome::Rejected {
+            by: RejectionRemote::Gateway(gateway),
+            ..
+        } => gateway,
+        ExpectedOutcome::Dropped
+        | ExpectedOutcome::RoundTripCompleted(Route::Peer(_), _)
+        | ExpectedOutcome::Rejected { .. } => return false,
+    };
+    if !state
+        .gateway(gateway)
+        .is_some_and(|gateway| gateway.dns_nat_may_be_limited(expected.origin, name))
+    {
+        return false;
+    }
+
+    match (
+        trace.received_requests.as_slice(),
+        trace.received_responses.as_slice(),
+        trace.completed_streams.as_slice(),
+    ) {
+        ([], [], []) => true,
+        ([], [response], []) => {
+            rejection_response(&response.packet) == Some(RejectionResponse::Prohibited)
+        }
+        _ => false,
     }
 }
 

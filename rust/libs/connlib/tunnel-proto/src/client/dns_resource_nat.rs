@@ -732,59 +732,34 @@ mod tests {
     }
 
     #[test]
-    fn evicted_nat_is_set_up_again_with_next_packet() {
+    fn evicted_nat_is_set_up_again_with_next_packets() {
         let mut dns_resource_nat = confirmed_nat();
         dns_resource_nat.on_domain_status(GID, example_com(), domain_status(NatStatus::Evicted));
 
-        dns_resource_nat
-            .update(
-                example_com(),
-                GID,
-                RID,
-                ProxyIps::for_test(),
-                VecDeque::default(),
-                Instant::now(),
-            )
-            .unwrap();
-        assert!(dns_resource_nat.poll_packet().is_none());
-
-        let packet = app_packet();
-        let control_flow =
-            dns_resource_nat.handle_outgoing(GID, &example_com(), RID, &packet, Instant::now());
-        assert!(control_flow.is_break());
-        assert!(dns_resource_nat.poll_packet().is_some());
-
-        let buffered_packets = dns_resource_nat
-            .on_domain_status(GID, example_com(), domain_status(NatStatus::Active))
-            .into_iter()
-            .collect::<Vec<_>>();
-        assert_eq!(buffered_packets, vec![packet]);
-    }
-
-    #[test]
-    fn evicted_nat_is_set_up_again_with_buffered_packets() {
-        let mut dns_resource_nat = confirmed_nat();
-        dns_resource_nat.on_domain_status(GID, example_com(), domain_status(NatStatus::Evicted));
-
-        let packet = app_packet();
+        let packet1 = app_packet(1);
         let sendable = dns_resource_nat
             .update(
                 example_com(),
                 GID,
                 RID,
                 ProxyIps::for_test(),
-                VecDeque::from([packet.clone()]),
+                VecDeque::from([packet1.clone()]),
                 Instant::now(),
             )
             .unwrap();
         assert!(sendable.is_empty());
         assert!(dns_resource_nat.poll_packet().is_some());
 
+        let packet2 = app_packet(2);
+        let control_flow =
+            dns_resource_nat.handle_outgoing(GID, &example_com(), RID, &packet2, Instant::now());
+        assert!(control_flow.is_break());
+
         let buffered_packets = dns_resource_nat
             .on_domain_status(GID, example_com(), domain_status(NatStatus::Active))
             .into_iter()
             .collect::<Vec<_>>();
-        assert_eq!(buffered_packets, vec![packet]);
+        assert_eq!(buffered_packets, vec![packet1, packet2]);
     }
 
     #[test]
@@ -809,7 +784,7 @@ mod tests {
             GID,
             &example_com(),
             RID,
-            &app_packet(),
+            &app_packet(1),
             Instant::now(),
         );
         assert!(control_flow.is_break());
@@ -828,7 +803,7 @@ mod tests {
                 Instant::now(),
             )
             .unwrap();
-        let packet = app_packet();
+        let packet = app_packet(1);
         let control_flow =
             dns_resource_nat.handle_outgoing(GID, &example_com(), RID, &packet, Instant::now());
         assert!(control_flow.is_break());
@@ -868,8 +843,9 @@ mod tests {
         }
     }
 
-    fn app_packet() -> IpPacket {
-        ip_packet::make::udp_packet(Ipv4Addr::LOCALHOST, Ipv4Addr::LOCALHOST, 0, 0, &[]).unwrap()
+    fn app_packet(src_port: u16) -> IpPacket {
+        ip_packet::make::udp_packet(Ipv4Addr::LOCALHOST, Ipv4Addr::LOCALHOST, src_port, 0, &[])
+            .unwrap()
     }
 
     const EXAMPLE_COM: DomainNameRef =

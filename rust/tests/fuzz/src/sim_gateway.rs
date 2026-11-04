@@ -3,6 +3,7 @@ use super::{
     dns_records::DnsRecords,
     dns_server_resource::DnsServers,
     probe::{ProbeId, ProbeObservation, ReceivedRequest, Remote},
+    ref_gateway::MAX_DNS_DOMAINS_PER_CLIENT,
     reference::PrivateKey,
     sim_net::{ExecMutScope, Host},
     sim_relay::{SimRelay, map_explode},
@@ -19,7 +20,7 @@ use std::{
     net::{IpAddr, SocketAddr},
     time::Instant,
 };
-use tunnel_proto::{GatewayEvent, GatewayState};
+use tunnel_proto::{GatewayEvent, GatewayState, MIN_DNS_DOMAIN_AGE};
 
 /// Simulation state for a particular client.
 pub(crate) struct SimGateway {
@@ -31,6 +32,10 @@ pub(crate) struct SimGateway {
     dns_resolutions: BTreeMap<(ClientId, DomainName), Vec<DnsResolution>>,
     dns_nat_generations: BTreeMap<ClientId, u64>,
     dns_proxy_owners: BTreeMap<(ClientId, IpAddr), DomainName>,
+    /// When the Gateway last set up each domain for a client in its current DNS NAT generation.
+    dns_nat_set_up_at: BTreeMap<ClientId, BTreeMap<DomainName, Instant>>,
+    /// The domains whose NAT the Gateway may have refused or evicted for a client.
+    dns_nat_limited: BTreeSet<(ClientId, DomainName)>,
     next_observation_order: u64,
 
     authorized_resources: BTreeMap<ClientId, BTreeSet<ResourceId>>,
@@ -71,6 +76,8 @@ impl SimGateway {
             dns_resolutions: Default::default(),
             dns_nat_generations: Default::default(),
             dns_proxy_owners: Default::default(),
+            dns_nat_set_up_at: Default::default(),
+            dns_nat_limited: Default::default(),
             next_observation_order: 0,
             authorized_resources: Default::default(),
             client_keys: Default::default(),
@@ -95,6 +102,7 @@ impl SimGateway {
         );
         sut.update_tun_device(ip_config);
         sut.set_flow_logs_enabled(true);
+        sut.set_max_dns_domains_per_client(MAX_DNS_DOMAINS_PER_CLIENT);
         self.tunnel = SimTunnel::new(sut);
 
         for client in self
@@ -233,6 +241,8 @@ impl SimGateway {
             self.dns_proxy_owners
                 .insert((client, *proxy_ip), domain.clone());
         }
+
+        self.record_dns_nat_limit(client, &domain, at);
 
         let dns_nat_generation = self.dns_nat_generation(client);
         let resolution = DnsResolution {
@@ -397,6 +407,46 @@ impl SimGateway {
             }));
     }
 
+    /// Whether the Gateway may have refused or evicted the NAT of `domain` for `client`.
+    ///
+    /// Packets to that domain then get lost or rejected as prohibited.
+    pub(crate) fn dns_nat_may_be_limited(&self, client: ClientId, domain: &DomainName) -> bool {
+        self.dns_nat_limited.contains(&(client, domain.clone()))
+    }
+
+    /// Marks the domains the Gateway may refuse or evict as it sets up `domain` for `client`.
+    ///
+    /// The Gateway holds the NAT of at most [`MAX_DNS_DOMAINS_PER_CLIENT`] domains per client.
+    /// For a new domain over that, it evicts the least recently set up domain if that is at least
+    /// [`MIN_DNS_DOMAIN_AGE`] old, and refuses the new domain if not.
+    ///
+    /// The Gateway also forgets domains when the client loses access, so it can hold fewer domains
+    /// than we record here. We therefore mark every domain that it may refuse or evict.
+    fn record_dns_nat_limit(&mut self, client: ClientId, domain: &DomainName, now: Instant) {
+        let set_up_at = self.dns_nat_set_up_at.entry(client).or_default();
+        let others = set_up_at
+            .iter()
+            .filter(|(other, _)| *other != domain)
+            .map(|(other, at)| (other, now.duration_since(*at) >= MIN_DNS_DOMAIN_AGE))
+            .collect::<Vec<_>>();
+
+        if others.len() >= MAX_DNS_DOMAINS_PER_CLIENT {
+            let num_young = others.iter().filter(|(_, old)| !old).count();
+            if num_young >= MAX_DNS_DOMAINS_PER_CLIENT {
+                self.dns_nat_limited.insert((client, domain.clone()));
+            }
+
+            self.dns_nat_limited.extend(
+                others
+                    .iter()
+                    .filter(|(_, old)| *old)
+                    .map(|(other, _)| (client, (*other).clone())),
+            );
+        }
+
+        set_up_at.insert(domain.clone(), now);
+    }
+
     pub(crate) fn dns_nat_generation(&self, client: ClientId) -> u64 {
         self.dns_nat_generations
             .get(&client)
@@ -407,6 +457,7 @@ impl SimGateway {
     fn start_new_dns_nat_generation(&mut self, client: ClientId) {
         let generation = self.dns_nat_generation(client) + 1;
         self.dns_nat_generations.insert(client, generation);
+        self.dns_nat_set_up_at.remove(&client);
         for _ in self
             .dns_proxy_owners
             .extract_if(.., |(owner, _), _| *owner == client)

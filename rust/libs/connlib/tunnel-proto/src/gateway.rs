@@ -1,10 +1,14 @@
 mod client_on_gateway;
 mod nat_table;
 
+pub use client_on_gateway::MIN_DNS_DOMAIN_AGE;
+
 pub(crate) use crate::gateway::client_on_gateway::ClientOnGateway;
 
 use crate::authorization_rejections::AuthorizationRejections;
-use crate::gateway::client_on_gateway::{ProxyIpAlreadyAssigned, TranslateOutboundResult};
+use crate::gateway::client_on_gateway::{
+    ProxyIpAlreadyAssigned, TooManyDnsDomains, TranslateOutboundResult,
+};
 use crate::messages::gateway::{Client, ResourceDescription};
 use crate::messages::{IceCredentials, IngestToken, Key};
 use crate::p2p_control::dns_resource_nat::ProxyIps;
@@ -70,6 +74,8 @@ pub struct GatewayState {
 
     /// Our connection to the portal, holding back ICE candidates while it is down.
     portal: PortalConnection<ClientId>,
+
+    max_dns_domains_per_client: usize,
 }
 
 impl GatewayState {
@@ -85,7 +91,13 @@ impl GatewayState {
             tun_ip_config: None,
             unix_ts_clock: UnixTsClock::new(now, unix_ts),
             next_periodic_tick: None,
+            max_dns_domains_per_client: client_on_gateway::DEFAULT_MAX_DNS_DOMAINS,
         }
+    }
+
+    /// Sets how many domains of DNS resources we translate at most for each new client.
+    pub fn set_max_dns_domains_per_client(&mut self, max: usize) {
+        self.max_dns_domains_per_client = max;
     }
 
     pub fn set_flow_logs_enabled(&mut self, enabled: bool) {
@@ -407,7 +419,13 @@ impl GatewayState {
                 v6: client.ipv6,
             };
 
-            ClientOnGateway::new(client.id, client.public_key, client_tun, gateway_tun)
+            ClientOnGateway::new(
+                client.id,
+                client.public_key,
+                client_tun,
+                gateway_tun,
+                self.max_dns_domains_per_client,
+            )
         });
 
         peer.add_resource(resource.clone(), expires_at, now);
@@ -465,6 +483,7 @@ impl GatewayState {
                     req.resource,
                     BTreeSet::from_iter(addresses),
                     req.proxy_ips,
+                    now,
                 )?;
 
             Ok(evicted)
@@ -477,6 +496,11 @@ impl GatewayState {
                 self.cleanup_connection(&client, now);
 
                 return Ok(());
+            }
+            Err(e) if e.any_is::<TooManyDnsDomains>() => {
+                tracing::debug!(domain = %req.domain, "Not setting up DNS resource NAT: {e:#}");
+
+                (dns_resource_nat::NatStatus::Inactive, None)
             }
             Err(e) => {
                 tracing::warn!("Failed to setup DNS resource NAT: {e:#}");

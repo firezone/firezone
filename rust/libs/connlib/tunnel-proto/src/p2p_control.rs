@@ -266,8 +266,6 @@ pub mod dns_resource_nat {
         /// The NAT is active and traffic will be routed.
         Active,
         /// The Gateway removed the NAT to make space for other domains.
-        ///
-        /// Older Clients read this as [`NatStatus::Inactive`].
         Evicted,
         /// The NAT is inactive and traffic won't be routed.
         #[serde(other)] // For forwards-compatibility with future versions of this enum.

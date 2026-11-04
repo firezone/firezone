@@ -15,6 +15,9 @@ use std::{
 };
 use tunnel_proto::{GatewayState, IpConfig};
 
+/// Low enough that the Gateway refuses and evicts the NAT of DNS resource domains.
+pub(crate) const MAX_DNS_DOMAINS_PER_CLIENT: usize = 2;
+
 /// Reference state for a particular gateway.
 #[derive(Debug, Clone)]
 pub struct RefGateway {
@@ -67,6 +70,7 @@ impl RefGateway {
                 .to_std()
                 .unwrap(),
         ); // Cheating a bit here by reusing the key as seed.
+        sut.set_max_dns_domains_per_client(MAX_DNS_DOMAINS_PER_CLIENT);
         sut.update_tun_device(IpConfig {
             v4: self.tunnel_ip4,
             v6: self.tunnel_ip6,
