@@ -26,7 +26,7 @@ impl UdpGroTrain {
     }
 
     /// Appends `segment` to decrypt with `decapsulation`.
-    pub fn push(&mut self, segment: Segment, decapsulation: PendingDecapsulate) {
+    pub fn push(&mut self, decapsulation: PendingDecapsulate, segment: Segment) {
         self.segments.push((segment, decapsulation));
     }
 

@@ -273,8 +273,8 @@ pub struct DecryptJobs<'a> {
 }
 
 impl<'a> DecryptJobs<'a> {
-    /// Adds a received datagram, to mark which of its segments to decrypt.
-    pub fn add(&mut self, datagram: DatagramIn) -> DatagramToDecrypt<'_, 'a> {
+    /// Opens a train for a received datagram, to add the segments of it to decrypt.
+    pub fn open(&mut self, datagram: DatagramIn) -> OpenGroTrain<'_, 'a> {
         if self.job.len + datagram.num_segments() > DECRYPT_BATCH_SIZE {
             self.submit();
         }
@@ -289,7 +289,7 @@ impl<'a> DecryptJobs<'a> {
         let index = self.job.trains.len();
         self.job.trains.push(UdpGroTrain::new(datagram));
 
-        DatagramToDecrypt { jobs: self, index }
+        OpenGroTrain { jobs: self, index }
     }
 
     fn submit(&mut self) {
@@ -309,19 +309,20 @@ impl Drop for DecryptJobs<'_> {
     }
 }
 
-/// A datagram of a [`DecryptJobs`], kept in its job only if a segment of it is to be decrypted.
-pub struct DatagramToDecrypt<'b, 'a> {
+/// A [`UdpGroTrain`] of a [`DecryptJobs`], kept in its job only if a segment is added to it.
+pub struct OpenGroTrain<'b, 'a> {
     jobs: &'b mut DecryptJobs<'a>,
     index: usize,
 }
 
-impl DatagramToDecrypt<'_, '_> {
-    pub fn decrypt(&mut self, segment: Segment, decapsulation: PendingDecapsulate) {
-        self.jobs.job.trains[self.index].push(segment, decapsulation);
+impl OpenGroTrain<'_, '_> {
+    /// Adds `segment` of the datagram, to be decrypted with `decapsulation`.
+    pub fn add(&mut self, decapsulation: PendingDecapsulate, segment: Segment) {
+        self.jobs.job.trains[self.index].push(decapsulation, segment);
     }
 }
 
-impl Deref for DatagramToDecrypt<'_, '_> {
+impl Deref for OpenGroTrain<'_, '_> {
     type Target = DatagramIn;
 
     fn deref(&self) -> &DatagramIn {
@@ -329,7 +330,7 @@ impl Deref for DatagramToDecrypt<'_, '_> {
     }
 }
 
-impl Drop for DatagramToDecrypt<'_, '_> {
+impl Drop for OpenGroTrain<'_, '_> {
     fn drop(&mut self) {
         let job = &mut self.jobs.job;
         let train = &job.trains[self.index];
