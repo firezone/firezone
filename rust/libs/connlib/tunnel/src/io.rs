@@ -6,7 +6,7 @@ mod udp_gso_train;
 pub(crate) use crypto::MAX_DECRYPT_BACKLOG_MEMORY;
 pub use crypto::{CryptoWorkers, DecryptJobs, DecryptedBatch, DecryptedJobs, EncryptJobs};
 pub use device::{Device, TunChannelClosed};
-pub(crate) use udp_gro_train::UdpGroTrain;
+pub(crate) use udp_gro_train::{TrainSegment, UdpGroTrain};
 pub(crate) use udp_gso_train::UdpGsoTrain;
 
 use crate::{

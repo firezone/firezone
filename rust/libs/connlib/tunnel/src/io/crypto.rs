@@ -12,10 +12,10 @@ use futures::{StreamExt as _, stream::FuturesOrdered};
 use ip_packet::{Ecn, IpPacket, IpVersion};
 use opentelemetry::metrics::Counter;
 use snownet::{PendingDecapsulate, PendingEncapsulate};
-use socket_factory::{DatagramIn, DatagramOut, Segment};
+use socket_factory::{DatagramIn, DatagramOut};
 use tokio::sync::oneshot;
 
-use super::{UdpGroTrain, UdpGsoTrain};
+use super::{TrainSegment, UdpGroTrain, UdpGsoTrain};
 use crate::packet_counts::UdpPacketCounts;
 use crate::sockets::{PendingDatagrams, Sockets};
 use smallvec::SmallVec;
@@ -40,7 +40,7 @@ const MAX_JOBS_IN_FLIGHT: usize = cfg_select! {
 pub(crate) const MAX_DECRYPT_BACKLOG_MEMORY: usize =
     (MAX_JOBS_IN_FLIGHT - 1) * DECRYPT_BATCH_SIZE * socket_factory::MAX_RECV_BUFFER_MEMORY;
 
-/// A batch of WireGuard data messages from one datagram of the network, decrypted.
+/// A batch of WireGuard data messages from one [`UdpGroTrain`], decrypted.
 pub struct DecryptedBatch {
     pub local: SocketAddr,
     pub from: SocketAddr,
@@ -272,7 +272,8 @@ pub struct DecryptJobs<'a> {
 }
 
 impl<'a> DecryptJobs<'a> {
-    /// Opens a train for a received datagram, to add the runs of its segments to decrypt.
+    /// Opens a train for a received datagram, to append the datagrams it accepts and add the runs of
+    /// its segments to decrypt.
     pub fn open(&mut self, datagram: DatagramIn) -> OpenGroTrain<'_, 'a> {
         if self.len + datagram.num_segments() > DECRYPT_BATCH_SIZE {
             self.submit();
@@ -320,17 +321,31 @@ pub struct OpenGroTrain<'b, 'a> {
 }
 
 impl OpenGroTrain<'_, '_> {
-    /// Adds `segments`, a run of the datagram in order, to be decrypted with `decapsulation`.
-    pub fn add(&mut self, decapsulation: PendingDecapsulate, segments: Vec<Segment>) {
+    /// Whether `datagram` may continue the train: it comes from the same remote with the same ECN,
+    /// and its segments still fit into the job.
+    pub fn accepts(&self, datagram: &DatagramIn) -> bool {
+        (datagram.local(), datagram.from(), datagram.ecn())
+            == (self.local(), self.from(), self.ecn())
+            && self.jobs.len + self.num_segments() + datagram.num_segments() <= DECRYPT_BATCH_SIZE
+    }
+
+    /// Appends `datagram`, which the train [accepts](Self::accepts).
+    pub fn append(&mut self, datagram: DatagramIn) {
+        self.jobs.remaining = self.jobs.remaining.saturating_sub(datagram.num_segments());
+        self.jobs.gro_trains[self.index].append(datagram);
+    }
+
+    /// Adds `segments`, a run of the train in order, to be decrypted with `decapsulation`.
+    pub fn add(&mut self, decapsulation: PendingDecapsulate, segments: Vec<TrainSegment>) {
         self.jobs.gro_trains[self.index].push(decapsulation, segments);
     }
 }
 
 impl Deref for OpenGroTrain<'_, '_> {
-    type Target = DatagramIn;
+    type Target = UdpGroTrain;
 
-    fn deref(&self) -> &DatagramIn {
-        self.jobs.gro_trains[self.index].datagram()
+    fn deref(&self) -> &UdpGroTrain {
+        &self.jobs.gro_trains[self.index]
     }
 }
 
