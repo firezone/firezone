@@ -1,6 +1,9 @@
+use prefetch::Prefetch;
 use smallvec::SmallVec;
 use snownet::PendingDecapsulate;
 use socket_factory::{DatagramIn, Segment};
+
+use super::crypto::DecryptedDatagram;
 
 /// The receive-side twin of [`UdpGsoTrain`](super::UdpGsoTrain): the datagrams of one GRO receive.
 ///
@@ -13,8 +16,8 @@ pub struct UdpGroTrain {
 impl UdpGroTrain {
     pub fn new(datagram: DatagramIn) -> Self {
         Self {
+            segments: SmallVec::with_capacity(datagram.num_segments()),
             datagram,
-            segments: SmallVec::new(),
         }
     }
 
@@ -36,15 +39,27 @@ impl UdpGroTrain {
         self.segments.is_empty()
     }
 
-    /// Moves out the segments to decrypt, in order, along with their datagram.
-    pub fn drain(
-        &mut self,
-    ) -> impl Iterator<Item = (&DatagramIn, Segment, PendingDecapsulate)> + '_ {
-        let Self { datagram, segments } = self;
-        let datagram = &*datagram;
+    /// Decrypts the segments, in order, into `decrypted`.
+    pub fn decrypt_into(&mut self, decrypted: &mut Vec<DecryptedDatagram>) {
+        let datagram = &self.datagram;
 
-        segments
-            .drain(..)
-            .map(move |(segment, decapsulation)| (datagram, segment, decapsulation))
+        decrypted.extend(self.segments.drain(..).map(|(segment, decapsulation)| {
+            DecryptedDatagram {
+                local: datagram.local(),
+                from: datagram.from(),
+                ecn: datagram.ecn(),
+                packet: decapsulation.decrypt(&datagram[segment]),
+            }
+        }));
+    }
+}
+
+impl Prefetch for UdpGroTrain {
+    fn prefetch(&self) {
+        let Some((segment, _)) = self.segments.first() else {
+            return;
+        };
+
+        self.datagram[*segment].prefetch();
     }
 }

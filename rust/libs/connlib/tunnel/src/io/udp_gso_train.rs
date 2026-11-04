@@ -47,22 +47,28 @@ impl UdpGsoTrain {
         self.src == src && self.dst == dst
     }
 
-    /// Appends `packet` of `encapsulation`, returning it if it has to go on a new train.
+    /// Makes room for a datagram of `len` bytes, unless it has to go on a new train.
     ///
-    /// An empty train takes any packet.
-    pub fn try_push(
-        &mut self,
-        encapsulation: PendingEncapsulate,
-        packet: IpPacket,
-    ) -> Option<(PendingEncapsulate, IpPacket)> {
+    /// An empty train takes any datagram and sizes itself for at most `max_packets`.
+    #[inline]
+    pub fn try_reserve(&mut self, ecn: Ecn, len: usize, max_packets: usize) -> bool {
+        if !self.try_append(ecn, len) {
+            return false;
+        }
+
+        if self.packets.is_empty() {
+            self.packets
+                .reserve_exact((self.max_len / self.segment_size).min(max_packets));
+        }
+
+        true
+    }
+
+    /// Appends `packet` of `encapsulation`, which [`Self::try_reserve`] made room for.
+    pub fn push(&mut self, encapsulation: PendingEncapsulate, packet: IpPacket) {
         debug_assert!(self.is_between(encapsulation.src(), encapsulation.dst()));
 
-        if !self.try_append(packet.ecn(), encapsulation.datagram_len(&packet)) {
-            return Some((encapsulation, packet));
-        }
         self.packets.push((encapsulation, packet));
-
-        None
     }
 
     /// Encrypts the packets of the train back-to-back into one datagram.
@@ -140,19 +146,19 @@ mod tests {
     fn shorter_segment_seals_train() {
         let mut train = UdpGsoTrain::new(None, DST);
 
-        assert!(train.try_append(Ecn::NonEct, 6));
-        assert!(train.try_append(Ecn::NonEct, 6));
-        assert!(train.try_append(Ecn::NonEct, 3));
-        assert!(!train.try_append(Ecn::NonEct, 3));
+        assert!(train.try_reserve(Ecn::NonEct, 6, 1));
+        assert!(train.try_reserve(Ecn::NonEct, 6, 1));
+        assert!(train.try_reserve(Ecn::NonEct, 3, 1));
+        assert!(!train.try_reserve(Ecn::NonEct, 3, 1));
     }
 
     #[test]
     fn rejects_other_ecn_and_longer_segment() {
         let mut train = UdpGsoTrain::new(None, DST);
 
-        assert!(train.try_append(Ecn::NonEct, 6));
-        assert!(!train.try_append(Ecn::Ect0, 6));
-        assert!(!train.try_append(Ecn::NonEct, 7));
+        assert!(train.try_reserve(Ecn::NonEct, 6, 1));
+        assert!(!train.try_reserve(Ecn::Ect0, 6, 1));
+        assert!(!train.try_reserve(Ecn::NonEct, 7, 1));
     }
 
     #[test]
@@ -169,9 +175,9 @@ mod tests {
         let mut train = UdpGsoTrain::new(None, DST);
 
         for _ in 0..segments_per_send {
-            assert!(train.try_append(Ecn::NonEct, segment_size));
+            assert!(train.try_reserve(Ecn::NonEct, segment_size, 1));
         }
-        assert!(!train.try_append(Ecn::NonEct, segment_size));
+        assert!(!train.try_reserve(Ecn::NonEct, segment_size, 1));
     }
 
     const DST: SocketAddr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 1111));

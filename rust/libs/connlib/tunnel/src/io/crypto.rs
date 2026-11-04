@@ -190,21 +190,26 @@ pub struct EncryptJobs<'a> {
 impl EncryptJobs<'_> {
     /// Adds `packet` to the open train to its destination, handing that train to a worker first if
     /// `packet` starts a new one.
-    pub fn encrypt(&mut self, mut encapsulation: PendingEncapsulate, mut packet: IpPacket) {
+    pub fn encrypt(&mut self, encapsulation: PendingEncapsulate, packet: IpPacket) {
         let (src, dst) = (encapsulation.src(), encapsulation.dst());
+        let max_packets = self.remaining;
         self.remaining = self.remaining.saturating_sub(1);
 
-        loop {
-            let index = self.train_for(src, dst);
+        let (ecn, len) = (packet.ecn(), encapsulation.datagram_len(&packet));
+        let index = self.train_for(src, dst);
 
-            let Some(rejected) = self.trains[index].try_push(encapsulation, packet) else {
-                return;
-            };
-            let full = mem::replace(&mut self.trains[index], UdpGsoTrain::new(src, dst));
-            self.dispatch(full);
-
-            (encapsulation, packet) = rejected;
+        if self.trains[index].try_reserve(ecn, len, max_packets) {
+            self.trains[index].push(encapsulation, packet);
+            return;
         }
+
+        let mut next = UdpGsoTrain::new(src, dst);
+        let reserved = next.try_reserve(ecn, len, max_packets);
+        debug_assert!(reserved, "An empty train takes any packet");
+        next.push(encapsulation, packet);
+
+        let full = mem::replace(&mut self.trains[index], next);
+        self.dispatch(full);
     }
 
     /// Returns the index of the open train from `src` to `dst`, opening one if there is none.
@@ -455,18 +460,9 @@ fn encrypt(
 
 fn decrypt(mut job: DecryptJob, decrypted: oneshot::Sender<DecryptedIpPackets>) {
     let mut packets = Vec::with_capacity(job.len);
-    packets.extend(
-        job.trains
-            .iter_mut()
-            .flat_map(UdpGroTrain::drain)
-            .prefetching_with(|(datagram, segment, _)| &datagram[*segment])
-            .map(|(datagram, segment, decapsulation)| DecryptedDatagram {
-                local: datagram.local(),
-                from: datagram.from(),
-                ecn: datagram.ecn(),
-                packet: decapsulation.decrypt(&datagram[segment]),
-            }),
-    );
+    for train in job.trains.iter_mut().prefetching_with(|train| &**train) {
+        train.decrypt_into(&mut packets);
+    }
 
     // We stopped if the receiver is gone; the channel for the next job is closed too.
     let _ = decrypted.send(DecryptedIpPackets(packets));
