@@ -171,7 +171,7 @@ defmodule PortalWeb.Settings.AccountTest do
 
       assert html =~ "Plan Features"
       assert html =~ "Device Posture"
-      refute html =~ "ICE-less"
+      refute html =~ "Frostlink"
     end
 
     test "hides data residency on on-prem portals", %{conn: conn, account: account, actor: actor} do

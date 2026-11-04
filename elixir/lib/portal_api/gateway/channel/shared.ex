@@ -109,7 +109,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
     socket =
       assign(socket,
         cache: Cache.Gateway.hydrate(socket.assigns.gateway),
-        iceless_capable: false
+        frostlink_capable: false
       )
 
     Process.send_after(self(), :prune_cache, @prune_cache_every)
@@ -321,16 +321,16 @@ defmodule PortalAPI.Gateway.Channel.Shared do
       preshared_key: preshared_key
     } = payload
 
-    initiator_iceless_capable = Map.get(payload, :initiator_iceless_capable, false)
+    initiator_frostlink_capable = Map.get(payload, :initiator_frostlink_capable, false)
     flow_logs_ingest_token = Map.get(payload, :flow_logs_ingest_token)
 
     rid_bytes = Ecto.UUID.dump!(resource.id)
 
-    use_iceless =
-      socket.assigns.iceless_capable == true and initiator_iceless_capable == true and
-        Account.iceless_enabled?(socket.assigns.account)
+    use_frostlink =
+      socket.assigns.frostlink_capable == true and initiator_frostlink_capable == true and
+        Account.frostlink_enabled?(socket.assigns.account)
 
-    record_authorization_granted(socket, initiator_iceless_capable)
+    record_authorization_granted(socket, initiator_frostlink_capable)
 
     ref =
       encode_ref(socket, {
@@ -339,7 +339,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
         rid_bytes,
         preshared_key,
         ice_credentials,
-        use_iceless
+        use_frostlink
       })
 
     event = socket.assigns.channel_protocol.create_authorization_event()
@@ -352,7 +352,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
       client_ice_credentials: ice_credentials.initiator,
       expires_at: DateTime.to_unix(authorization_expires_at, :second),
       subject: subject,
-      use_iceless: use_iceless,
+      use_iceless: use_frostlink,
       flow_logs_ingest_token: flow_logs_ingest_token
     })
 
@@ -629,7 +629,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
   def handle_in("authorization_created", %{"ref" => signed_ref}, socket) do
     case decode_ref(socket, signed_ref) do
       {:ok, ref_tuple} ->
-        {channel_pid, socket_ref, resource_id, preshared_key, ice_credentials, use_iceless} =
+        {channel_pid, socket_ref, resource_id, preshared_key, ice_credentials, use_frostlink} =
           ref_tuple
 
         send(
@@ -645,7 +645,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
             socket.assigns.gateway.ipv6,
             preshared_key,
             ice_credentials,
-            use_iceless
+            use_frostlink
           }
         )
 
@@ -717,7 +717,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
   end
 
   def handle_in("set_snownet_capabilities", payload, socket) when is_map(payload) do
-    {:noreply, assign(socket, iceless_capable: payload["iceless"] == true)}
+    {:noreply, assign(socket, frostlink_capable: payload["iceless"] == true)}
   end
 
   def handle_in("no_relays", payload, socket) do
@@ -750,13 +750,13 @@ defmodule PortalAPI.Gateway.Channel.Shared do
     {:reply, {:error, %{reason: :unknown_message}}, socket}
   end
 
-  # `initiator_iceless_capable` is always false on the deprecated 1.4 paths:
-  # those clients predate the capability handshake, so they can never go ICE-less.
-  defp record_authorization_granted(socket, initiator_iceless_capable) do
+  # `initiator_frostlink_capable` is always false on the deprecated 1.4 paths:
+  # those clients predate the capability handshake, so they can never use Frostlink.
+  defp record_authorization_granted(socket, initiator_frostlink_capable) do
     Telemetry.authorization_granted(:gateway,
-      iceless_feature_enabled: Account.iceless_enabled?(socket.assigns.account),
-      initiator_iceless_capable: initiator_iceless_capable,
-      receiver_iceless_capable: socket.assigns.iceless_capable
+      frostlink_feature_enabled: Account.frostlink_enabled?(socket.assigns.account),
+      initiator_frostlink_capable: initiator_frostlink_capable,
+      receiver_frostlink_capable: socket.assigns.frostlink_capable
     )
   end
 

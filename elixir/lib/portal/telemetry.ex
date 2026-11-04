@@ -320,8 +320,8 @@ defmodule Portal.Telemetry do
   `receiver` is `:gateway` for client-to-gateway authorizations and `:client` for
   client-to-client device access. The initiator is always the requesting client.
 
-  The three inputs the ICE-less decision is derived from are reported separately, so
-  an authorization that did not go ICE-less can be attributed to the account's
+  The three inputs the Frostlink decision is derived from are reported separately, so
+  an authorization that did not use Frostlink can be attributed to the account's
   feature flag rather than to a peer that never advertised the capability (or the
   other way around).
   """
@@ -329,9 +329,9 @@ defmodule Portal.Telemetry do
   def authorization_granted(receiver, opts) when receiver in [:client, :gateway] do
     :telemetry.execute([:portal, :authorization, :granted], %{count: 1}, %{
       receiver: receiver,
-      iceless_feature_enabled: Keyword.fetch!(opts, :iceless_feature_enabled) == true,
-      initiator_iceless_capable: Keyword.fetch!(opts, :initiator_iceless_capable) == true,
-      receiver_iceless_capable: Keyword.fetch!(opts, :receiver_iceless_capable) == true
+      frostlink_feature_enabled: Keyword.fetch!(opts, :frostlink_feature_enabled) == true,
+      initiator_frostlink_capable: Keyword.fetch!(opts, :initiator_frostlink_capable) == true,
+      receiver_frostlink_capable: Keyword.fetch!(opts, :receiver_frostlink_capable) == true
     })
   end
 
@@ -583,7 +583,7 @@ defmodule Portal.Telemetry do
       meter,
       :"portal.authorizations.granted",
       %{
-        description: "Total policy authorizations granted, split by ICE-less eligibility",
+        description: "Total policy authorizations granted, split by Frostlink eligibility",
         unit: :"1"
       }
     )
@@ -791,17 +791,17 @@ defmodule Portal.Telemetry do
       ) do
     %{
       receiver: receiver,
-      iceless_feature_enabled: feature_enabled,
-      initiator_iceless_capable: initiator_capable,
-      receiver_iceless_capable: receiver_capable
+      frostlink_feature_enabled: feature_enabled,
+      initiator_frostlink_capable: initiator_capable,
+      receiver_frostlink_capable: receiver_capable
     } = metadata
 
     attrs = %{
       "authorization.receiver" => to_string(receiver),
-      "iceless.used" => feature_enabled and initiator_capable and receiver_capable,
-      "iceless.feature_enabled" => feature_enabled,
-      "iceless.initiator_capable" => initiator_capable,
-      "iceless.receiver_capable" => receiver_capable,
+      "frostlink.used" => feature_enabled and initiator_capable and receiver_capable,
+      "frostlink.feature_enabled" => feature_enabled,
+      "frostlink.initiator_capable" => initiator_capable,
+      "frostlink.receiver_capable" => receiver_capable,
       "node_name" => config.node_name
     }
 

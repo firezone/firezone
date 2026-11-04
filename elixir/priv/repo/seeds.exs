@@ -2617,7 +2617,7 @@ defmodule Portal.Repo.Seeds do
         policy_conditions: true,
         idp_sync: true,
         internet_resource: true,
-        iceless: System.get_env("FEATURE_ICELESS_ENABLED") == "true",
+        frostlink: System.get_env("FEATURE_FROSTLINK_ENABLED") == "true",
         log_sinks: true,
         device_posture: true,
         slug_changes: true

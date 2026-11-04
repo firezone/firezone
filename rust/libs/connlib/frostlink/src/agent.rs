@@ -9,7 +9,7 @@ use crate::event::{Event, Payload, Transmit};
 use crate::retransmit::PairRetransmit;
 use crate::score::pair_score;
 
-/// Iceless path selection for a single WireGuard connection.
+/// Frostlink path selection for a single WireGuard connection.
 #[derive(Default)]
 pub struct PathAgent {
     locals: Vec<Candidate>,
@@ -206,7 +206,7 @@ pub const PROBE_INTERVAL: Duration = Duration::from_secs(1);
 pub const PROBE_BUDGET: u32 = 12;
 
 /// Cadence the primary keeps probing at once its discovery budget is spent.
-/// Iceless runs no WireGuard persistent keepalive, so this lone probe is what
+/// Frostlink runs no WireGuard persistent keepalive, so this lone probe is what
 /// keeps an idle primary's NAT bindings and tunnel warm. On a busy connection a
 /// single probe every 25s is negligible.
 pub const PRIMARY_KEEPALIVE: Duration = Duration::from_secs(25);
@@ -1001,7 +1001,7 @@ impl PathAgent {
         self.unanswered_rekeys = 0;
         self.peer_rekeys = 0;
 
-        tracing::debug!(?from, local = %path.0, remote = %path.1, "Iceless primary changed");
+        tracing::debug!(?from, local = %path.0, remote = %path.1, "Frostlink primary changed");
 
         self.events.push_back(Event::PrimaryChanged {
             local: path.0,

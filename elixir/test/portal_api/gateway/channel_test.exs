@@ -3659,7 +3659,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
         ^gateway_ipv6,
         ^preshared_key,
         ^ice_credentials,
-        _use_iceless
+        _use_frostlink
       }
     end
 
@@ -3674,12 +3674,12 @@ defmodule PortalAPI.Gateway.ChannelTest do
       subject: subject,
       group: group
     } do
-      update_account(account, %{features: %{iceless: true}})
+      update_account(account, %{features: %{frostlink: true}})
 
       socket = join_channel(gateway, site, token)
       assert_push "init", %{relays: _}
 
-      # Gateway advertises iceless capability via the dedicated channel message.
+      # Gateway advertises frostlink capability via the dedicated channel message.
       push(socket, "set_snownet_capabilities", %{"iceless" => true})
 
       policy_authorization =
@@ -3702,7 +3702,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
         receiver: %{username: "C", password: "D"}
       }
 
-      # Both sides advertise iceless → negotiated set is iceless: true.
+      # Both sides advertise frostlink → negotiated set is frostlink: true.
       send(
         socket.channel_pid,
         {:create_authorization, {channel_pid, socket_ref},
@@ -3721,7 +3721,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
            authorization_expires_at: expires_at,
            ice_credentials: ice_credentials,
            preshared_key: preshared_key,
-           initiator_iceless_capable: true
+           initiator_frostlink_capable: true
          }}
       )
 
@@ -3733,11 +3733,11 @@ defmodule PortalAPI.Gateway.ChannelTest do
       push_ref = push(socket, "flow_authorized", %{"ref" => ref})
       assert_reply push_ref, :ok
 
-      assert_receive {:connect, ^socket_ref, _, _, _, _, _, _, _, _, use_iceless}
-      assert use_iceless == true
+      assert_receive {:connect, ^socket_ref, _, _, _, _, _, _, _, _, use_frostlink}
+      assert use_frostlink == true
     end
 
-    test "create_authorization with mismatched iceless flag intersects to false", %{
+    test "create_authorization with mismatched frostlink flag intersects to false", %{
       client: client,
       account: account,
       actor: actor,
@@ -3751,7 +3751,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       socket = join_channel(gateway, site, token)
       assert_push "init", %{relays: _}
 
-      # Gateway is iceless-capable; client isn't.
+      # Gateway is frostlink-capable; client isn't.
       push(socket, "set_snownet_capabilities", %{"iceless" => true})
 
       policy_authorization =
@@ -3792,7 +3792,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
            authorization_expires_at: expires_at,
            ice_credentials: ice_credentials,
            preshared_key: preshared_key,
-           initiator_iceless_capable: false
+           initiator_frostlink_capable: false
          }}
       )
 
@@ -3802,7 +3802,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       }
     end
 
-    test "create_authorization without initiator_iceless_capable defaults to false", %{
+    test "create_authorization without initiator_frostlink_capable defaults to false", %{
       client: client,
       account: account,
       actor: actor,
@@ -3816,7 +3816,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       socket = join_channel(gateway, site, token)
       assert_push "init", %{relays: _}
 
-      # Even with iceless-capable gateway, missing client caps → false.
+      # Even with frostlink-capable gateway, missing client caps → false.
       push(socket, "set_snownet_capabilities", %{"iceless" => true})
 
       policy_authorization =
@@ -3866,7 +3866,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       }
     end
 
-    test "create_authorization does not use iceless when account feature flag is disabled", %{
+    test "create_authorization does not use frostlink when account feature flag is disabled", %{
       client: client,
       account: account,
       actor: actor,
@@ -3877,12 +3877,12 @@ defmodule PortalAPI.Gateway.ChannelTest do
       subject: subject,
       group: group
     } do
-      update_account(account, %{features: %{iceless: false}})
+      update_account(account, %{features: %{frostlink: false}})
 
       socket = join_channel(gateway, site, token)
       assert_push "init", %{relays: _}
 
-      # Both peers are iceless-capable, but the account flag is off → no iceless.
+      # Both peers are frostlink-capable, but the account flag is off → no frostlink.
       push(socket, "set_snownet_capabilities", %{"iceless" => true})
 
       policy_authorization =
@@ -3923,7 +3923,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
            authorization_expires_at: expires_at,
            ice_credentials: ice_credentials,
            preshared_key: preshared_key,
-           initiator_iceless_capable: true
+           initiator_frostlink_capable: true
          }}
       )
 
@@ -3933,7 +3933,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       }
     end
 
-    test "create_authorization reports iceless inputs separately via telemetry", %{
+    test "create_authorization reports frostlink inputs separately via telemetry", %{
       client: client,
       account: account,
       actor: actor,
@@ -3944,7 +3944,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       subject: subject,
       group: group
     } do
-      update_account(account, %{features: %{iceless: false}})
+      update_account(account, %{features: %{frostlink: false}})
 
       test_pid = self()
       handler_id = "test-authorization-granted-#{System.unique_integer([:positive])}"
@@ -3963,7 +3963,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       socket = join_channel(gateway, site, token)
       assert_push "init", %{relays: _}
 
-      # Both peers are iceless-capable, only the account flag holds them back.
+      # Both peers are frostlink-capable, only the account flag holds them back.
       push(socket, "set_snownet_capabilities", %{"iceless" => true})
 
       policy_authorization =
@@ -4002,7 +4002,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
            authorization_expires_at: expires_at,
            ice_credentials: ice_credentials,
            preshared_key: preshared_key,
-           initiator_iceless_capable: true
+           initiator_frostlink_capable: true
          }}
       )
 
@@ -4015,13 +4015,13 @@ defmodule PortalAPI.Gateway.ChannelTest do
 
       assert metadata == %{
                receiver: :gateway,
-               iceless_feature_enabled: false,
-               initiator_iceless_capable: true,
-               receiver_iceless_capable: true
+               frostlink_feature_enabled: false,
+               initiator_frostlink_capable: true,
+               receiver_frostlink_capable: true
              }
     end
 
-    test "use_iceless picks up an account flag toggled on after join", %{
+    test "use_frostlink picks up an account flag toggled on after join", %{
       client: client,
       account: account,
       actor: actor,
@@ -4037,7 +4037,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
 
       push(socket, "set_snownet_capabilities", %{"iceless" => true})
 
-      updated_account = %{account | features: %{account.features | iceless: true}}
+      updated_account = %{account | features: %{account.features | frostlink: true}}
 
       send(socket.channel_pid, %Changes.Change{
         lsn: System.unique_integer([:positive, :monotonic]),
@@ -4086,7 +4086,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
            authorization_expires_at: expires_at,
            ice_credentials: ice_credentials,
            preshared_key: preshared_key,
-           initiator_iceless_capable: true
+           initiator_frostlink_capable: true
          }}
       )
 

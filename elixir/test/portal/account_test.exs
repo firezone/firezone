@@ -233,25 +233,25 @@ defmodule Portal.AccountTest do
     end
   end
 
-  describe "iceless_enabled?/1" do
+  describe "frostlink_enabled?/1" do
     test "returns true when the account feature flag is set" do
-      account = %Account{features: %Portal.Accounts.Features{iceless: true}}
-      assert Account.iceless_enabled?(account)
+      account = %Account{features: %Portal.Accounts.Features{frostlink: true}}
+      assert Account.frostlink_enabled?(account)
     end
 
     test "returns false when the account feature flag is disabled" do
-      account = %Account{features: %Portal.Accounts.Features{iceless: false}}
-      refute Account.iceless_enabled?(account)
+      account = %Account{features: %Portal.Accounts.Features{frostlink: false}}
+      refute Account.frostlink_enabled?(account)
     end
 
     test "returns false when the account feature flag is unset" do
       account = %Account{features: %Portal.Accounts.Features{}}
-      refute Account.iceless_enabled?(account)
+      refute Account.frostlink_enabled?(account)
     end
 
     test "returns false when the account has no features" do
       account = %Account{features: nil}
-      refute Account.iceless_enabled?(account)
+      refute Account.frostlink_enabled?(account)
     end
   end
 

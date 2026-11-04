@@ -1309,7 +1309,7 @@ impl TunnelTest {
                 let gateway_key = gateway.inner().sut().public_key();
                 let (preshared_key, client_ice, gateway_ice) =
                     make_preshared_key_and_ice(client_key, gateway_key);
-                let use_iceless = portal.iceless();
+                let use_frostlink = portal.frostlink();
 
                 gateway.exec_mut(|g| {
                     g.sut_mut().create_authorization(
@@ -1324,7 +1324,7 @@ impl TunnelTest {
                         gateway_ice.clone(),
                         None,
                         resource,
-                        use_iceless,
+                        use_frostlink,
                         now,
                         test_ingest_token(),
                     );
@@ -1363,7 +1363,7 @@ impl TunnelTest {
                         preshared_key,
                         client_ice,
                         gateway_ice,
-                        use_iceless,
+                        use_frostlink,
                         test_ingest_token(),
                         now,
                     )
@@ -1421,7 +1421,7 @@ impl TunnelTest {
 
                 let (preshared_key, local_client_ice, remote_client_ice) =
                     make_preshared_key_and_ice(src_key, remote_key);
-                let use_iceless = portal.iceless();
+                let use_frostlink = portal.frostlink();
 
                 let remote_authorization = ResourceAuthorization {
                     resource_id: pool,
@@ -1437,7 +1437,7 @@ impl TunnelTest {
                         remote_client_ice.clone(),
                         local_client_ice.clone(),
                         tunnel_proto::messages::IceRole::Controlled,
-                        use_iceless,
+                        use_frostlink,
                         "initiating client".to_owned(),
                         portal.device_label(src),
                         None,
@@ -1458,7 +1458,7 @@ impl TunnelTest {
                         local_client_ice,
                         remote_client_ice,
                         tunnel_proto::messages::IceRole::Controlling,
-                        use_iceless,
+                        use_frostlink,
                         "target client".to_owned(),
                         portal.device_label(remote_id),
                         Some(pool),

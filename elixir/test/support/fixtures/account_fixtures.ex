@@ -30,7 +30,7 @@ defmodule Portal.AccountFixtures do
       features: %{
         policy_conditions: true,
         idp_sync: true,
-        iceless: false
+        frostlink: false
       },
       limits: %{
         monthly_active_users_count: 100
