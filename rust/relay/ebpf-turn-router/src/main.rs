@@ -42,7 +42,6 @@ pub fn handle_turn(ctx: aya_ebpf::programs::XdpContext) -> u32 {
             xdp_action::XDP_PASS
         }
         Err(e @ Error::ThroughputLimitExceeded) => {
-            try_handle_turn::count_rate_limited_drop();
             trace!(&ctx, target: "eBPF", "XXX drop packet: {}", e.as_str());
 
             xdp_action::XDP_DROP

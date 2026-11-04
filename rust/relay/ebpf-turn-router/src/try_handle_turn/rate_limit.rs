@@ -1,7 +1,7 @@
 //! Enforces the verdicts of the per-channel rate limiters stored in the routing maps.
 
 use aya_ebpf::{macros::map, maps::PerCpuArray, programs::XdpContext};
-use ebpf_shared::RateLimitCounter;
+use ebpf_shared::{RateLimitCounter, Verdict};
 use network_types::{
     eth::{EthHdr, EtherType},
     ip::{Ipv4Hdr, Ipv6Hdr},
@@ -17,9 +17,23 @@ const ECN_CE: u8 = 0b11;
 static RATE_LIMIT_COUNTERS: PerCpuArray<u64> =
     PerCpuArray::with_max_entries(RateLimitCounter::NUM_ENTRIES, 0);
 
+/// Drops, marks or passes the packet according to its rate limiter's verdict.
+#[inline(always)]
+pub fn enforce(ctx: &XdpContext, verdict: Verdict) -> Result<(), Error> {
+    match verdict {
+        Verdict::Drop => {
+            count(RateLimitCounter::Dropped);
+
+            Err(Error::ThroughputLimitExceeded)
+        }
+        Verdict::Mark => mark(ctx),
+        Verdict::Pass => Ok(()),
+    }
+}
+
 /// Sets ECN Congestion Experienced on the packet if it is ECN-capable.
 #[inline(always)]
-pub fn mark(ctx: &XdpContext) -> Result<(), Error> {
+fn mark(ctx: &XdpContext) -> Result<(), Error> {
     // SAFETY: The offset must point to the start of a valid `EthHdr`.
     let eth = unsafe { ref_mut_at::<EthHdr>(ctx, 0)? };
 
@@ -72,7 +86,7 @@ fn mark_ipv6(ipv6: &mut Ipv6Hdr) {
 }
 
 #[inline(always)]
-pub fn count(counter: RateLimitCounter) {
+fn count(counter: RateLimitCounter) {
     per_cpu::update(&RATE_LIMIT_COUNTERS, counter as u32, |count| *count += 1);
 }
 

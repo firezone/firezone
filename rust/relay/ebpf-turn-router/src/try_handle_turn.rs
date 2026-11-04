@@ -24,7 +24,7 @@ use aya_log_ebpf::*;
 use channel_data::CdHdr;
 use ebpf_shared::{
     ClientAndChannel, ClientAndChannelV4, ClientAndChannelV6, PortAndPeer, PortAndPeerV4,
-    PortAndPeerV6, RateLimitCounter, Verdict,
+    PortAndPeerV6, Verdict,
 };
 use network_types::{
     eth::{EthHdr, EtherType},
@@ -81,22 +81,12 @@ pub fn try_handle_turn(ctx: &XdpContext) -> Result<(), Error> {
         _ => return Err(Error::NotIp),
     };
 
-    // Acting on the verdict here covers all forwarding paths at once.
-    match verdict {
-        Verdict::Drop => return Err(Error::ThroughputLimitExceeded),
-        Verdict::Mark => rate_limit::mark(ctx)?,
-        Verdict::Pass => {}
-    }
+    // Enforcing the verdict here covers all forwarding paths at once.
+    rate_limit::enforce(ctx, verdict)?;
 
     stats::record(ctx, sample, num_bytes, ip_version, ecn);
 
     Ok(())
-}
-
-/// Counts a packet that was dropped for exceeding its channel's throughput limit.
-#[inline(always)]
-pub fn count_rate_limited_drop() {
-    rate_limit::count(RateLimitCounter::Dropped);
 }
 
 #[inline(always)]
