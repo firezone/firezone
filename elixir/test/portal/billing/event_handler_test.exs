@@ -153,6 +153,63 @@ defmodule Portal.Billing.EventHandlerTest do
     end
   end
 
+  describe "handle_event/1 for an account that does not exist" do
+    setup do
+      customer_id = "cus_" <> Stripe.random_id()
+
+      customer =
+        Stripe.build_customer(id: customer_id, metadata: %{"account_id" => Ecto.UUID.generate()})
+
+      %{customer_id: customer_id, customer: customer}
+    end
+
+    test "acknowledges customer.subscription.deleted with a warning", %{
+      customer_id: customer_id,
+      customer: customer
+    } do
+      subscription = Stripe.subscription_object(customer_id, %{}, %{}, 1)
+      event = Stripe.build_event("customer.subscription.deleted", subscription)
+
+      Stripe.stub(Stripe.fetch_customer_endpoint(customer))
+
+      {result, log} = with_log(fn -> EventHandler.handle_event(event) end)
+
+      assert {:ok, _event} = result
+      assert log =~ "[warning] Skipping stripe event for an account that does not exist"
+      refute log =~ "[error]"
+    end
+
+    test "acknowledges customer.subscription.created with a warning", %{
+      customer_id: customer_id,
+      customer: customer
+    } do
+      {product, _price, subscription} = Stripe.build_all(:team, customer_id, 10)
+      event = Stripe.build_event("customer.subscription.created", subscription)
+
+      Stripe.stub(
+        Stripe.fetch_customer_endpoint(customer) ++ Stripe.fetch_product_endpoint(product)
+      )
+
+      {result, log} = with_log(fn -> EventHandler.handle_event(event) end)
+
+      assert {:ok, _event} = result
+      assert log =~ "[warning] Skipping stripe event for an account that does not exist"
+      refute log =~ "[error]"
+    end
+
+    test "acknowledges customer.updated with a warning", %{customer: customer} do
+      event = Stripe.build_event("customer.updated", customer)
+
+      Stripe.stub(Stripe.fetch_customer_endpoint(customer))
+
+      {result, log} = with_log(fn -> EventHandler.handle_event(event) end)
+
+      assert {:ok, _event} = result
+      assert log =~ "[warning] Skipping stripe event for an account that does not exist"
+      refute log =~ "[error]"
+    end
+  end
+
   describe "handle_event/1 with customer.created" do
     test "returns error when required metadata is missing" do
       customer_id = "cus_" <> Stripe.random_id()
