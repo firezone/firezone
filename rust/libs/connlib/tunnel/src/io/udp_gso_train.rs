@@ -2,7 +2,7 @@ use std::{mem, net::SocketAddr, num::NonZeroUsize};
 
 use bufferpool::Bytes;
 use ip_packet::{Ecn, IpPacket};
-use prefetch::{IteratorExt as _, Prefetch as _};
+use prefetch::IteratorExt as _;
 use snownet::PendingEncapsulate;
 use socket_factory::DatagramOut;
 
@@ -50,10 +50,6 @@ impl UdpGsoTrain {
     /// Appends as many of the `packets` of `encapsulation` as fit, returning the rest.
     ///
     /// An empty train takes at least one packet.
-    #[expect(
-        clippy::unwrap_in_result,
-        reason = "`None` means that every packet fit"
-    )]
     pub fn extend(
         &mut self,
         mut encapsulation: PendingEncapsulate,
@@ -73,6 +69,10 @@ impl UdpGsoTrain {
             return Some((encapsulation, packets));
         };
 
+        #[expect(
+            clippy::unwrap_in_result,
+            reason = "`None` means that every packet fit"
+        )]
         let rest = encapsulation
             .split_off(full_at)
             .expect("one counter is reserved per packet");
@@ -89,13 +89,8 @@ impl UdpGsoTrain {
         let mut buffer = Bytes::fitting(self.len);
         let datagram = buffer.expose(self.len);
         let mut len = 0;
-        let mut batches = mem::take(&mut self.batches).into_iter().peekable();
 
-        'batches: while let Some((encapsulation, packets)) = batches.next() {
-            if let Some(next) = batches.peek().and_then(|(_, packets)| packets.first()) {
-                next.prefetch();
-            }
-
+        'batches: for (encapsulation, packets) in mem::take(&mut self.batches) {
             for result in encapsulation.encrypt_into(
                 packets.iter().prefetching_with(|packet| *packet),
                 &mut datagram[len..],
