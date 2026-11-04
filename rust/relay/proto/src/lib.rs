@@ -1,6 +1,7 @@
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
 mod net_ext;
+mod peer_policy;
 mod server;
 
 pub mod auth;

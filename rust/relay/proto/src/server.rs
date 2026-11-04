@@ -8,6 +8,7 @@ pub use crate::server::client_message::{
 
 use crate::auth::{self, AuthenticatedMessage, FIREZONE, MessageIntegrityExt, Nonces};
 use crate::net_ext::IpAddrExt;
+use crate::peer_policy;
 use crate::{ClientSocket, IpStack, PeerSocket, SOFTWARE};
 use anyhow::Result;
 use bimap::BiMap;
@@ -32,7 +33,7 @@ use stun_codec::rfc5389::methods::BINDING;
 use stun_codec::rfc5766::attributes::{
     ChannelNumber, Lifetime, RequestedTransport, XorPeerAddress, XorRelayAddress,
 };
-use stun_codec::rfc5766::errors::{AllocationMismatch, InsufficientCapacity};
+use stun_codec::rfc5766::errors::{AllocationMismatch, Forbidden, InsufficientCapacity};
 use stun_codec::rfc5766::methods::{ALLOCATE, CHANNEL_BIND, CREATE_PERMISSION, REFRESH};
 use stun_codec::rfc8656::attributes::{
     AdditionalAddressFamily, AddressFamily, RequestedAddressFamily,
@@ -68,6 +69,9 @@ pub struct Server<R> {
     listen_port: u16,
 
     ports: RangeInclusive<u16>,
+
+    /// Whether clients may bind channels to peers in private networks, see [`Server::allow_private_peers`].
+    allow_private_peers: bool,
 
     /// Channel numbers are unique by client, thus indexed by both.
     channels_by_client_and_number: BTreeMap<(ClientSocket, ChannelNumber), Channel>,
@@ -201,6 +205,7 @@ where
             clients_by_allocation: Default::default(),
             listen_port,
             ports,
+            allow_private_peers: false,
             channels_by_client_and_number: Default::default(),
             channel_numbers_by_client_and_peer: Default::default(),
             pending_commands: Default::default(),
@@ -219,6 +224,14 @@ where
 
     pub fn auth_secret(&self) -> &SecretString {
         &self.auth_secret
+    }
+
+    /// Allows clients to bind channels to peers in private IPv4 networks (RFC 1918).
+    ///
+    /// For test networks where the Clients and Gateways have private addresses.
+    /// All other non-public addresses stay forbidden.
+    pub fn allow_private_peers(&mut self) {
+        self.allow_private_peers = true;
     }
 
     /// Enables account-bound TURN authentication with a complete snapshot.
@@ -745,7 +758,7 @@ where
         let verified_username = self.verify_auth(sender, request, now_utc)?;
         let username = verified_username.username;
 
-        let Some(allocation) = self.allocations.get_mut(&sender) else {
+        let Some(allocation) = self.allocations.get(&sender) else {
             let (error_response, msg) = make_error_response(AllocationMismatch, request);
 
             tracing::info!(target: "relay", %sender, "{msg}: Sender doesn't have an allocation");
@@ -769,6 +782,14 @@ where
             let (error_response, msg) = make_error_response(PeerAddressFamilyMismatch, request);
 
             tracing::warn!(target: "relay", %sender, allocation = %allocation.port, peer = %peer_address, channel = %requested_channel.value(), "{msg}: Allocation cannot relay to peer");
+
+            return Err(error_response);
+        }
+
+        if !self.may_relay_to(peer_address) {
+            let (error_response, msg) = make_error_response(Forbidden, request);
+
+            tracing::debug!(target: "relay", %sender, allocation = %allocation.port, peer = %peer_address, channel = %requested_channel.value(), "{msg}: Peer address is not allowed");
 
             return Err(error_response);
         }
@@ -832,7 +853,6 @@ where
 
         // Channel binding does not exist yet, create it.
 
-        // TODO: Any additional validations would go here.
         // TODO: Capacity checking would go here.
 
         let port = allocation.port;
@@ -855,7 +875,7 @@ where
     /// See <https://www.rfc-editor.org/rfc/rfc8656#name-receiving-a-createpermissio> for details.
     ///
     /// This TURN server implementation does not support relaying data other than through channels.
-    /// Thus, creating a permission is a no-op that always succeeds.
+    /// Thus, creating a permission is a no-op that succeeds for all peers we may relay to.
     fn handle_create_permission_request(
         &mut self,
         request: &CreatePermission,
@@ -863,6 +883,18 @@ where
         now_utc: SystemTime,
     ) -> Result<(), Message<Attribute>> {
         let username = self.verify_auth(sender, request, now_utc)?.username;
+
+        if let Some(peer) = request
+            .peer_addresses()
+            .map(PeerSocket)
+            .find(|peer| !self.may_relay_to(*peer))
+        {
+            let (error_response, msg) = make_error_response(Forbidden, request);
+
+            tracing::debug!(target: "relay", %sender, %peer, "{msg}: Peer address is not allowed");
+
+            return Err(error_response);
+        }
 
         self.authenticate_and_send(
             &username,
@@ -873,6 +905,26 @@ where
         );
 
         Ok(())
+    }
+
+    /// Whether we may send traffic to `peer` on behalf of a client.
+    ///
+    /// We never send to our own address, except to another allocation on this relay.
+    /// The peer can be a relay candidate on the same relay as the client's.
+    fn may_relay_to(&self, peer: PeerSocket) -> bool {
+        let addr = peer.into_socket();
+        let ip = addr.ip();
+
+        let is_own_address = match ip {
+            IpAddr::V4(ip) => self.public_address.as_v4() == Some(&ip),
+            IpAddr::V6(ip) => self.public_address.as_v6() == Some(&ip),
+        };
+
+        if is_own_address {
+            return self.ports.contains(&addr.port());
+        }
+
+        peer_policy::is_public(ip) || (self.allow_private_peers && peer_policy::is_private(ip))
     }
 
     fn handle_channel_data_message(
@@ -1518,7 +1570,7 @@ mod tests {
         let now = Instant::now();
         let now_utc = SystemTime::UNIX_EPOCH;
         let client = ClientSocket::new(SocketAddr::from(([127, 0, 0, 1], 50_000)));
-        let peer = PeerSocket::new(SocketAddr::from(([127, 0, 0, 2], 50_001)));
+        let peer = PeerSocket::new(SocketAddr::from(([198, 51, 100, 2], 50_001)));
         let channel = ChannelNumber::new(ChannelNumber::MIN).unwrap();
         let account = auth::AccountId::from(Uuid::nil());
         let mut server = Server::new(
@@ -1662,6 +1714,201 @@ mod tests {
             next_response(&mut server).class(),
             MessageClass::SuccessResponse
         );
+    }
+
+    #[test]
+    fn channel_bind_to_non_public_peer_is_forbidden() {
+        for peer in [
+            SocketAddr::from(([127, 0, 0, 1], 53)),
+            SocketAddr::from(([169, 254, 169, 254], 53)),
+            SocketAddr::from(([10, 0, 0, 1], 53)),
+            SocketAddr::from(([100, 64, 0, 1], 53)),
+            SocketAddr::from((RELAY_IP, 3478)),
+            SocketAddr::from((RELAY_IP, 49_151)),
+        ] {
+            let mut relay = TestRelay::with_allocation();
+
+            let response = relay.channel_bind(peer);
+
+            assert_eq!(
+                response.get_attribute::<ErrorCode>().map(|e| e.code()),
+                Some(Forbidden::CODEPOINT),
+                "{peer} is forbidden"
+            );
+            assert_eq!(relay.server.num_active_channels(), 0);
+            assert_eq!(relay.server.next_command(), None);
+        }
+    }
+
+    #[test]
+    fn channel_bind_to_public_peer_succeeds() {
+        for peer in [
+            SocketAddr::from(([198, 51, 100, 2], 50_001)),
+            SocketAddr::from((RELAY_IP, 49_153)),
+        ] {
+            let mut relay = TestRelay::with_allocation();
+
+            let response = relay.channel_bind(peer);
+
+            assert_eq!(response.class(), MessageClass::SuccessResponse, "{peer}");
+            assert_eq!(relay.server.num_active_channels(), 1);
+        }
+    }
+
+    #[test]
+    fn channel_bind_to_private_peer_succeeds_if_allowed() {
+        for peer in [
+            SocketAddr::from(([10, 0, 0, 1], 53)),
+            SocketAddr::from(([172, 31, 0, 1], 53)),
+            SocketAddr::from(([192, 168, 1, 1], 53)),
+        ] {
+            let mut relay = TestRelay::with_allocation();
+            relay.server.allow_private_peers();
+
+            let response = relay.channel_bind(peer);
+
+            assert_eq!(response.class(), MessageClass::SuccessResponse, "{peer}");
+        }
+    }
+
+    #[test]
+    fn channel_bind_to_other_non_public_peer_is_forbidden_if_private_peers_are_allowed() {
+        for peer in [
+            SocketAddr::from(([127, 0, 0, 1], 53)),
+            SocketAddr::from(([169, 254, 169, 254], 53)),
+            SocketAddr::from(([100, 64, 0, 1], 53)),
+        ] {
+            let mut relay = TestRelay::with_allocation();
+            relay.server.allow_private_peers();
+
+            let response = relay.channel_bind(peer);
+
+            assert_eq!(
+                response.get_attribute::<ErrorCode>().map(|e| e.code()),
+                Some(Forbidden::CODEPOINT),
+                "{peer} is forbidden"
+            );
+        }
+    }
+
+    #[test]
+    fn create_permission_for_non_public_peer_is_forbidden() {
+        let mut relay = TestRelay::with_allocation();
+
+        let response = relay.create_permission([
+            SocketAddr::from(([198, 51, 100, 2], 50_001)),
+            SocketAddr::from(([169, 254, 169, 254], 80)),
+        ]);
+
+        assert_eq!(
+            response.get_attribute::<ErrorCode>().map(|e| e.code()),
+            Some(Forbidden::CODEPOINT)
+        );
+    }
+
+    #[test]
+    fn create_permission_for_public_peer_succeeds() {
+        let mut relay = TestRelay::with_allocation();
+
+        let response = relay.create_permission([SocketAddr::from(([198, 51, 100, 2], 50_001))]);
+
+        assert_eq!(response.class(), MessageClass::SuccessResponse);
+    }
+
+    const RELAY_IP: Ipv4Addr = Ipv4Addr::new(203, 0, 113, 1);
+
+    struct TestRelay {
+        server: Server<StdRng>,
+        client: ClientSocket,
+        username: Username,
+        nonce: Nonce,
+        now: Instant,
+        now_utc: SystemTime,
+    }
+
+    impl TestRelay {
+        fn with_allocation() -> Self {
+            let now = Instant::now();
+            let now_utc = SystemTime::UNIX_EPOCH;
+            let client = ClientSocket::new(SocketAddr::from(([198, 51, 100, 1], 50_000)));
+            let account = auth::AccountId::from(Uuid::nil());
+            let mut server = Server::new(RELAY_IP, StdRng::seed_from_u64(0), 3478, 49_152..=49_153);
+
+            server.set_accounts([account]);
+            let nonce = issue_nonce(&mut server, client, now, now_utc);
+            let username = Username::new(format!(
+                "2145916800:{}:credential-salt",
+                auth::hash_account_id(&account)
+            ))
+            .unwrap();
+
+            let allocate = authenticated_request(
+                &server,
+                ALLOCATE,
+                TransactionId::new([1; 12]),
+                &username,
+                &nonce,
+                [Attribute::RequestedTransport(RequestedTransport::new(
+                    UDP_TRANSPORT,
+                ))],
+            );
+            server.handle_client_input(&allocate, client, now, now_utc);
+            assert_eq!(
+                next_response(&mut server).class(),
+                MessageClass::SuccessResponse
+            );
+            assert_eq!(server.next_command(), None);
+
+            Self {
+                server,
+                client,
+                username,
+                nonce,
+                now,
+                now_utc,
+            }
+        }
+
+        fn channel_bind(&mut self, peer: SocketAddr) -> Message<Attribute> {
+            let request = authenticated_request(
+                &self.server,
+                CHANNEL_BIND,
+                TransactionId::new([2; 12]),
+                &self.username,
+                &self.nonce,
+                [
+                    Attribute::ChannelNumber(ChannelNumber::new(ChannelNumber::MIN).unwrap()),
+                    Attribute::XorPeerAddress(XorPeerAddress::new(peer)),
+                ],
+            );
+
+            self.send(&request)
+        }
+
+        fn create_permission(
+            &mut self,
+            peers: impl IntoIterator<Item = SocketAddr>,
+        ) -> Message<Attribute> {
+            let request = authenticated_request(
+                &self.server,
+                CREATE_PERMISSION,
+                TransactionId::new([3; 12]),
+                &self.username,
+                &self.nonce,
+                peers
+                    .into_iter()
+                    .map(|peer| Attribute::XorPeerAddress(XorPeerAddress::new(peer))),
+            );
+
+            self.send(&request)
+        }
+
+        fn send(&mut self, request: &[u8]) -> Message<Attribute> {
+            self.server
+                .handle_client_input(request, self.client, self.now, self.now_utc);
+
+            next_response(&mut self.server)
+        }
     }
 
     fn issue_nonce(
