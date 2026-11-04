@@ -2009,6 +2009,95 @@ mod tests {
         assert_eq!(response.class(), MessageClass::SuccessResponse);
     }
 
+    #[test]
+    fn channel_bindings_adopt_a_changed_throughput_limit() {
+        let now = Instant::now();
+        let account = auth::AccountId::from(Uuid::nil());
+        let mut server = test_server();
+        server.set_accounts([(account, None)]);
+        let port = allocate_and_bind_channel(&mut server, account, now);
+
+        server.add_account(account, Some(limit_5_mbps()));
+
+        assert_eq!(
+            server.next_command(),
+            Some(Command::CreateChannelBinding {
+                client: CLIENT,
+                channel_number: channel(),
+                peer: PEER,
+                allocation_port: port,
+                throughput_limit: Some(limit_5_mbps()),
+            })
+        );
+        assert_eq!(server.next_command(), None);
+
+        server.set_accounts([(account, None)]);
+
+        assert_eq!(
+            server.next_command(),
+            Some(Command::CreateChannelBinding {
+                client: CLIENT,
+                channel_number: channel(),
+                peer: PEER,
+                allocation_port: port,
+                throughput_limit: None,
+            })
+        );
+        assert_eq!(server.next_command(), None);
+    }
+
+    #[test]
+    fn unchanged_throughput_limit_does_not_touch_channel_bindings() {
+        let now = Instant::now();
+        let account = auth::AccountId::from(Uuid::nil());
+        let mut server = test_server();
+        server.set_accounts([(account, Some(limit_5_mbps()))]);
+        allocate_and_bind_channel(&mut server, account, now);
+
+        server.add_account(account, Some(limit_5_mbps()));
+        server.set_accounts([(account, Some(limit_5_mbps()))]);
+
+        assert_eq!(server.next_command(), None);
+    }
+
+    #[test]
+    fn userspace_datapath_drops_traffic_above_throughput_limit() {
+        let now = Instant::now();
+        let now_utc = SystemTime::UNIX_EPOCH;
+        let account = auth::AccountId::from(Uuid::nil());
+        let mut server = test_server();
+        server.set_accounts([(account, Some(limit_5_mbps()))]);
+        let port = allocate_and_bind_channel(&mut server, account, now);
+        let payload = [0u8; 1250]; // 2ms at 5 Mbps.
+        let mut channel_data = [0u8; 1254];
+        ChannelData::encode_header_to_slice(channel(), 1250, &mut channel_data[..4]);
+
+        let to_peer = (0..200)
+            .filter(|_| {
+                server
+                    .handle_client_input(&channel_data, CLIENT, now, now_utc)
+                    .is_some()
+            })
+            .count();
+        let to_client = (0..200)
+            .filter(|_| {
+                server
+                    .handle_peer_traffic(&payload, PEER, port, now)
+                    .is_some()
+            })
+            .count();
+
+        // The 250ms burst tolerance admits 126 packets (0 - 250ms ahead) per direction.
+        assert_eq!(to_peer, 126);
+        assert_eq!(to_client, 126);
+        let later = now + Duration::from_millis(20);
+        assert!(
+            server
+                .handle_client_input(&channel_data, CLIENT, later, now_utc)
+                .is_some()
+        );
+    }
+
     const RELAY_IP: Ipv4Addr = Ipv4Addr::new(203, 0, 113, 1);
 
     struct TestRelay {
@@ -2103,95 +2192,6 @@ mod tests {
 
             next_response(&mut self.server)
         }
-    }
-
-    #[test]
-    fn channel_bindings_adopt_a_changed_throughput_limit() {
-        let now = Instant::now();
-        let account = auth::AccountId::from(Uuid::nil());
-        let mut server = test_server();
-        server.set_accounts([(account, None)]);
-        let port = allocate_and_bind_channel(&mut server, account, now);
-
-        server.add_account(account, Some(limit_5_mbps()));
-
-        assert_eq!(
-            server.next_command(),
-            Some(Command::CreateChannelBinding {
-                client: CLIENT,
-                channel_number: channel(),
-                peer: PEER,
-                allocation_port: port,
-                throughput_limit: Some(limit_5_mbps()),
-            })
-        );
-        assert_eq!(server.next_command(), None);
-
-        server.set_accounts([(account, None)]);
-
-        assert_eq!(
-            server.next_command(),
-            Some(Command::CreateChannelBinding {
-                client: CLIENT,
-                channel_number: channel(),
-                peer: PEER,
-                allocation_port: port,
-                throughput_limit: None,
-            })
-        );
-        assert_eq!(server.next_command(), None);
-    }
-
-    #[test]
-    fn unchanged_throughput_limit_does_not_touch_channel_bindings() {
-        let now = Instant::now();
-        let account = auth::AccountId::from(Uuid::nil());
-        let mut server = test_server();
-        server.set_accounts([(account, Some(limit_5_mbps()))]);
-        allocate_and_bind_channel(&mut server, account, now);
-
-        server.add_account(account, Some(limit_5_mbps()));
-        server.set_accounts([(account, Some(limit_5_mbps()))]);
-
-        assert_eq!(server.next_command(), None);
-    }
-
-    #[test]
-    fn userspace_datapath_drops_traffic_above_throughput_limit() {
-        let now = Instant::now();
-        let now_utc = SystemTime::UNIX_EPOCH;
-        let account = auth::AccountId::from(Uuid::nil());
-        let mut server = test_server();
-        server.set_accounts([(account, Some(limit_5_mbps()))]);
-        let port = allocate_and_bind_channel(&mut server, account, now);
-        let payload = [0u8; 1250]; // 2ms at 5 Mbps.
-        let mut channel_data = [0u8; 1254];
-        ChannelData::encode_header_to_slice(channel(), 1250, &mut channel_data[..4]);
-
-        let to_peer = (0..200)
-            .filter(|_| {
-                server
-                    .handle_client_input(&channel_data, CLIENT, now, now_utc)
-                    .is_some()
-            })
-            .count();
-        let to_client = (0..200)
-            .filter(|_| {
-                server
-                    .handle_peer_traffic(&payload, PEER, port, now)
-                    .is_some()
-            })
-            .count();
-
-        // The 250ms burst tolerance admits 126 packets (0 - 250ms ahead) per direction.
-        assert_eq!(to_peer, 126);
-        assert_eq!(to_client, 126);
-        let later = now + Duration::from_millis(20);
-        assert!(
-            server
-                .handle_client_input(&channel_data, CLIENT, later, now_utc)
-                .is_some()
-        );
     }
 
     fn issue_nonce(
