@@ -480,6 +480,8 @@ struct Eventloop<R> {
 
     server: Server<R>,
     event_rx: mpsc::Receiver<Result<IngressMessages, phoenix_channel::Error>>,
+    is_connected: Arc<AtomicBool>,
+    portal_was_connected: bool,
     sleep: Sleep,
 
     ebpf: Option<ebpf::Program>,
@@ -534,11 +536,17 @@ where
         }
 
         let (event_tx, event_rx) = mpsc::channel(128);
-        tokio::spawn(phoenix_channel_event_loop(portal, event_tx, is_connected));
+        tokio::spawn(phoenix_channel_event_loop(
+            portal,
+            event_tx,
+            is_connected.clone(),
+        ));
 
         Ok(Self {
             server,
             event_rx,
+            is_connected,
+            portal_was_connected: false,
             sleep: Sleep::default(),
             stats_log_interval: tokio::time::interval(STATS_LOG_INTERVAL),
             last_num_bytes_relayed: 0,
@@ -551,11 +559,31 @@ where
         })
     }
 
+    /// Only refuses unknown peers while the portal can tell us about new ones.
+    fn sync_known_peer_enforcement(&mut self) {
+        let connected = self.is_connected.load(Ordering::Relaxed);
+
+        if connected == self.portal_was_connected {
+            return;
+        }
+
+        if connected {
+            tracing::info!("Portal connected, refusing channel bindings to unknown peers");
+        } else {
+            tracing::warn!("Portal disconnected, accepting channel bindings to unknown peers");
+        }
+
+        self.server.set_enforce_known_peers(connected);
+        self.portal_was_connected = connected;
+    }
+
     fn poll(&mut self, cx: &mut std::task::Context<'_>) -> Poll<Result<()>> {
         let mut budget = Budget::new(cx.waker(), MAX_EVENTLOOP_ITERS, "relay");
 
         while let Some(mut tick) = budget.next() {
             ready!(self.sockets.flush(cx))?;
+
+            self.sync_known_peer_enforcement();
 
             // Priority 1: Execute the pending commands of the server.
             if let Some(next_command) = self.server.next_command() {
