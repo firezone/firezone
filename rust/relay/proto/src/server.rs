@@ -1894,148 +1894,65 @@ mod tests {
 
     #[test]
     fn removing_account_deletes_its_allocations_and_channel_bindings() {
-        let now = Instant::now();
-        let now_utc = SystemTime::UNIX_EPOCH;
-        let client = ClientSocket::new(SocketAddr::from(([127, 0, 0, 1], 50_000)));
         let peer = PeerSocket::new(SocketAddr::from(([198, 51, 100, 2], 50_001)));
         let channel = ChannelNumber::new(ChannelNumber::MIN).unwrap();
-        let account = account(0);
-        let mut server = test_server(2);
+        let mut relay = TestRelay::new();
 
-        let nonce = issue_nonce(&mut server, client, now, now_utc);
-        let username = Username::new(format!(
-            "2145916800:{}:credential-salt",
-            auth::hash_account_id(&account)
-        ))
-        .unwrap();
-
-        let allocate = authenticated_request(
-            &server,
-            ALLOCATE,
-            TransactionId::new([1; 12]),
-            &username,
-            &nonce,
-            [Attribute::RequestedTransport(RequestedTransport::new(
-                UDP_TRANSPORT,
-            ))],
-        );
-        server.handle_client_input(&allocate, client, now, now_utc);
-
-        let Some(Command::CreateAllocation { port, .. }) = server.next_command() else {
+        relay.allocate();
+        let Some(Command::CreateAllocation { port, .. }) = relay.next_command() else {
             panic!("the relay creates an allocation for an authenticated request");
         };
-        assert!(matches!(
-            server.next_command(),
-            Some(Command::SendMessage { .. })
-        ));
-
-        let channel_bind = authenticated_request(
-            &server,
-            CHANNEL_BIND,
-            TransactionId::new([2; 12]),
-            &username,
-            &nonce,
-            [
-                Attribute::ChannelNumber(channel),
-                Attribute::XorPeerAddress(XorPeerAddress::new(peer.into_socket())),
-            ],
-        );
-        server.handle_client_input(&channel_bind, client, now, now_utc);
+        relay.channel_bind(peer.into_socket());
 
         assert_eq!(
-            server.next_command(),
+            relay.next_command(),
             Some(Command::CreateChannelBinding {
-                client,
+                client: relay.client,
                 channel_number: channel,
                 peer,
                 allocation_port: port,
                 throughput_limit: None,
             })
         );
-        assert!(matches!(
-            server.next_command(),
-            Some(Command::SendMessage { .. })
-        ));
 
-        server.remove_account(&account);
+        relay.server.remove_account(&relay.account);
 
-        assert_eq!(server.num_allocations(), 0);
-        assert_eq!(server.num_active_channels(), 0);
+        assert_eq!(relay.server.num_allocations(), 0);
+        assert_eq!(relay.server.num_active_channels(), 0);
         assert_eq!(
-            server.next_command(),
+            relay.next_command(),
             Some(Command::DeleteChannelBinding {
-                client,
+                client: relay.client,
                 channel_number: channel,
                 peer,
                 allocation_port: port,
             })
         );
         assert_eq!(
-            server.next_command(),
+            relay.next_command(),
             Some(Command::FreeAllocation {
                 port,
                 family: AddressFamily::V4,
             })
         );
 
-        server.remove_account(&account);
+        relay.server.remove_account(&relay.account);
 
-        assert_eq!(server.num_allocations(), 0);
-        assert_eq!(server.num_active_channels(), 0);
-        assert_eq!(server.next_command(), None);
+        assert_eq!(relay.server.num_allocations(), 0);
+        assert_eq!(relay.server.num_active_channels(), 0);
+        assert_eq!(relay.next_command(), None);
     }
 
     #[test]
     fn refuses_to_relay_unknown_payloads() {
-        let now = Instant::now();
-        let now_utc = SystemTime::UNIX_EPOCH;
-        let client = ClientSocket::new(SocketAddr::from(([127, 0, 0, 1], 50_000)));
         let peer = PeerSocket::new(SocketAddr::from(([198, 51, 100, 2], 50_001)));
         let channel = ChannelNumber::new(ChannelNumber::MIN).unwrap();
-        let account = auth::AccountId::from(Uuid::nil());
-        let mut server = Server::new(
-            Ipv4Addr::LOCALHOST,
-            StdRng::seed_from_u64(0),
-            3478,
-            49_152..=49_153,
-        );
+        let mut relay = TestRelay::with_allocation();
 
-        server.set_accounts([(account, None)]);
-        let nonce = issue_nonce(&mut server, client, now, now_utc);
-        let username = Username::new(format!(
-            "2145916800:{}:credential-salt",
-            auth::hash_account_id(&account)
-        ))
-        .unwrap();
-
-        let allocate = authenticated_request(
-            &server,
-            ALLOCATE,
-            TransactionId::new([1; 12]),
-            &username,
-            &nonce,
-            [Attribute::RequestedTransport(RequestedTransport::new(
-                UDP_TRANSPORT,
-            ))],
-        );
-        server.handle_client_input(&allocate, client, now, now_utc);
-        let channel_bind = authenticated_request(
-            &server,
-            CHANNEL_BIND,
-            TransactionId::new([2; 12]),
-            &username,
-            &nonce,
-            [
-                Attribute::ChannelNumber(channel),
-                Attribute::XorPeerAddress(XorPeerAddress::new(peer.into_socket())),
-            ],
-        );
-        server.handle_client_input(&channel_bind, client, now, now_utc);
-
+        relay.channel_bind(peer.into_socket());
         let Some(Command::CreateChannelBinding {
             allocation_port, ..
-        }) = std::iter::from_fn(|| server.next_command())
-            .find(|c| matches!(c, Command::CreateChannelBinding { .. }))
+        }) = relay.next_command()
         else {
             panic!("the relay binds the channel");
         };
@@ -2047,66 +1964,38 @@ mod tests {
         ];
 
         assert_eq!(
-            server.handle_client_input(&channel_data(channel, &wireguard), client, now, now_utc),
+            relay.send_channel_data(channel, &wireguard),
             Some((allocation_port, peer))
         );
+        assert_eq!(relay.send_channel_data(channel, &dns_query), None);
         assert_eq!(
-            server.handle_client_input(&channel_data(channel, &dns_query), client, now, now_utc),
-            None
+            relay
+                .server
+                .handle_peer_traffic(&wireguard, peer, allocation_port, relay.now),
+            Some((relay.client, channel))
         );
         assert_eq!(
-            server.handle_peer_traffic(&wireguard, peer, allocation_port, now),
-            Some((client, channel))
-        );
-        assert_eq!(
-            server.handle_peer_traffic(&dns_query, peer, allocation_port, now),
+            relay
+                .server
+                .handle_peer_traffic(&dns_query, peer, allocation_port, relay.now),
             None
         );
     }
 
     #[test]
     fn success_responses_renew_the_nonce() {
-        let now = Instant::now();
-        let issued_at = SystemTime::UNIX_EPOCH;
-        let client = ClientSocket::new(SocketAddr::from(([127, 0, 0, 1], 50_000)));
-        let account = account(0);
-        let mut server = test_server(2);
+        let mut relay = TestRelay::new();
 
-        let nonce = issue_nonce(&mut server, client, now, issued_at);
-        let username = Username::new(format!(
-            "2145916800:{}:credential-salt",
-            auth::hash_account_id(&account)
-        ))
-        .unwrap();
-
-        let allocate = authenticated_request(
-            &server,
-            ALLOCATE,
-            TransactionId::new([1; 12]),
-            &username,
-            &nonce,
-            [Attribute::RequestedTransport(RequestedTransport::new(
-                UDP_TRANSPORT,
-            ))],
-        );
-        server.handle_client_input(&allocate, client, now, issued_at + Nonces::WINDOW);
-        let renewed = next_response(&mut server)
+        relay.now_utc += Nonces::WINDOW;
+        relay.nonce = relay
+            .allocate()
             .get_attribute::<Nonce>()
             .cloned()
             .expect("a success response carries a nonce");
-
-        let refresh = authenticated_request(
-            &server,
-            REFRESH,
-            TransactionId::new([2; 12]),
-            &username,
-            &renewed,
-            [],
-        );
-        server.handle_client_input(&refresh, client, now, issued_at + Nonces::WINDOW * 2);
+        relay.now_utc += Nonces::WINDOW;
 
         assert_eq!(
-            next_response(&mut server).class(),
+            relay.send(REFRESH, []).class(),
             MessageClass::SuccessResponse
         );
     }
@@ -2131,7 +2020,7 @@ mod tests {
                 "{peer} is forbidden"
             );
             assert_eq!(relay.server.num_active_channels(), 0);
-            assert_eq!(relay.server.next_command(), None);
+            assert_eq!(relay.next_command(), None);
         }
     }
 
@@ -2359,15 +2248,17 @@ mod tests {
 
     struct TestRelay {
         server: Server<StdRng>,
+        account: auth::AccountId,
         client: ClientSocket,
         username: Username,
         nonce: Nonce,
         now: Instant,
         now_utc: SystemTime,
+        commands: VecDeque<Command>,
     }
 
     impl TestRelay {
-        fn with_allocation() -> Self {
+        fn new() -> Self {
             let now = Instant::now();
             let now_utc = SystemTime::UNIX_EPOCH;
             let client = ClientSocket::new(SocketAddr::from(([198, 51, 100, 1], 50_000)));
@@ -2382,72 +2273,122 @@ mod tests {
             ))
             .unwrap();
 
-            let allocate = authenticated_request(
-                &server,
-                ALLOCATE,
-                TransactionId::new([1; 12]),
-                &username,
-                &nonce,
-                [Attribute::RequestedTransport(RequestedTransport::new(
-                    UDP_TRANSPORT,
-                ))],
-            );
-            server.handle_client_input(&allocate, client, now, now_utc);
-            assert_eq!(
-                next_response(&mut server).class(),
-                MessageClass::SuccessResponse
-            );
-            assert_eq!(server.next_command(), None);
-
             Self {
                 server,
+                account,
                 client,
                 username,
                 nonce,
                 now,
                 now_utc,
+                commands: VecDeque::new(),
             }
         }
 
+        fn with_allocation() -> Self {
+            let mut relay = Self::new();
+
+            assert_eq!(relay.allocate().class(), MessageClass::SuccessResponse);
+            assert!(matches!(
+                relay.next_command(),
+                Some(Command::CreateAllocation { .. })
+            ));
+            assert_eq!(relay.next_command(), None);
+
+            relay
+        }
+
+        fn allocate(&mut self) -> Message<Attribute> {
+            self.send(
+                ALLOCATE,
+                [Attribute::RequestedTransport(RequestedTransport::new(
+                    UDP_TRANSPORT,
+                ))],
+            )
+        }
+
         fn channel_bind(&mut self, peer: SocketAddr) -> Message<Attribute> {
-            let request = authenticated_request(
-                &self.server,
+            self.send(
                 CHANNEL_BIND,
-                TransactionId::new([2; 12]),
-                &self.username,
-                &self.nonce,
                 [
                     Attribute::ChannelNumber(ChannelNumber::new(ChannelNumber::MIN).unwrap()),
                     Attribute::XorPeerAddress(XorPeerAddress::new(peer)),
                 ],
-            );
-
-            self.send(&request)
+            )
         }
 
         fn create_permission(
             &mut self,
             peers: impl IntoIterator<Item = SocketAddr>,
         ) -> Message<Attribute> {
-            let request = authenticated_request(
-                &self.server,
+            self.send(
                 CREATE_PERMISSION,
-                TransactionId::new([3; 12]),
-                &self.username,
-                &self.nonce,
                 peers
                     .into_iter()
                     .map(|peer| Attribute::XorPeerAddress(XorPeerAddress::new(peer))),
-            );
-
-            self.send(&request)
+            )
         }
 
-        fn send(&mut self, request: &[u8]) -> Message<Attribute> {
-            self.server
-                .handle_client_input(request, self.client, self.now, self.now_utc);
+        fn send_channel_data(
+            &mut self,
+            channel: ChannelNumber,
+            payload: &[u8],
+        ) -> Option<(AllocationPort, PeerSocket)> {
+            let mut message = vec![0; 4 + payload.len()];
+            ChannelData::encode_header_to_slice(channel, payload.len() as u16, &mut message[..4]);
+            message[4..].copy_from_slice(payload);
 
-            next_response(&mut self.server)
+            self.server
+                .handle_client_input(&message, self.client, self.now, self.now_utc)
+        }
+
+        /// Sends an authenticated request and returns the relay's response.
+        fn send(
+            &mut self,
+            method: Method,
+            attributes: impl IntoIterator<Item = Attribute>,
+        ) -> Message<Attribute> {
+            let mut message = Message::<Attribute>::new(
+                MessageClass::Request,
+                method,
+                TransactionId::new(rand::random()),
+            );
+            for attribute in attributes {
+                message.add_attribute(attribute);
+            }
+            message.add_attribute(self.username.clone());
+            message.add_attribute(self.nonce.clone());
+
+            let password = auth::generate_password(self.server.auth_secret(), self.username.name());
+            let integrity = MessageIntegrity::new_long_term_credential(
+                &message,
+                &self.username,
+                &FIREZONE,
+                &password,
+            )
+            .expect("a valid request has valid message integrity");
+            message.add_attribute(integrity);
+
+            let request = MessageEncoder::new()
+                .encode_into_bytes(message)
+                .expect("a well-formed request encodes");
+            self.server
+                .handle_client_input(&request, self.client, self.now, self.now_utc);
+
+            loop {
+                match self.server.next_command() {
+                    Some(Command::SendMessage { payload, .. }) => return decode(&payload),
+                    Some(command) => self.commands.push_back(command),
+                    None => panic!("the relay sends a response"),
+                }
+            }
+        }
+
+        /// The relay's next command, starting with those it emitted ahead of earlier responses.
+        fn next_command(&mut self) -> Option<Command> {
+            self.commands
+                .pop_front()
+                .or_else(|| self.server.next_command())
         }
     }
 
@@ -2466,10 +2407,21 @@ mod tests {
             .expect("a well-formed ALLOCATE encodes");
         server.handle_client_input(&bytes, client, now, now_utc);
 
-        next_response(server)
+        let Some(Command::SendMessage { payload, .. }) = server.next_command() else {
+            panic!("the relay responds to an unauthenticated ALLOCATE");
+        };
+
+        decode(&payload)
             .get_attribute::<Nonce>()
             .cloned()
             .expect("a `401` carries a nonce")
+    }
+
+    fn decode(payload: &[u8]) -> Message<Attribute> {
+        MessageDecoder::<Attribute>::new()
+            .decode_from_bytes(payload)
+            .expect("the relay's response decodes")
+            .expect("the relay's response is well-formed")
     }
 
     fn next_response(server: &mut Server<StdRng>) -> Message<Attribute> {
@@ -2483,10 +2435,7 @@ mod tests {
             })
             .expect("the relay sends a response");
 
-        MessageDecoder::<Attribute>::new()
-            .decode_from_bytes(&payload)
-            .expect("the relay's response decodes")
-            .expect("the relay's response is well-formed")
+        decode(&payload)
     }
 
     fn channel_data(channel: ChannelNumber, payload: &[u8]) -> Vec<u8> {
