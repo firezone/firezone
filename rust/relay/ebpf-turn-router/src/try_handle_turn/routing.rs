@@ -1,9 +1,12 @@
 //! Houses all combinations of IPv4 <> IPv6 and Channel <> UDP mappings.
 //!
 //! Testing has shown that these maps are safe to use as long as we aren't
-//! writing to them from multiple threads at the same time. Since we only update these
+//! inserting or removing entries from multiple threads at the same time. Since we only do that
 //! from the single-threaded eventloop in userspace, we are ok.
 //! See <https://github.com/firezone/firezone/issues/10138#issuecomment-3186074350>.
+//!
+//! The eBPF program writes to the [`RateLimiter`] inside an entry on every packet it routes.
+//! See [`RateLimiter::check_shared`] for what happens if two CPUs charge the same one.
 
 use aya_ebpf::{macros::map, maps::HashMap};
 use ebpf_shared::{
