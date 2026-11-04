@@ -81,7 +81,6 @@ pub fn try_handle_turn(ctx: &XdpContext) -> Result<(), Error> {
         _ => return Err(Error::NotIp),
     };
 
-    // Enforcing the verdict here covers all forwarding paths at once.
     rate_limit::enforce(ctx, verdict)?;
 
     stats::record(ctx, sample, num_bytes, ip_version, ecn);
