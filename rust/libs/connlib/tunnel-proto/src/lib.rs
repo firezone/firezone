@@ -22,12 +22,12 @@ use std::{
 mod authorization_rejections;
 mod batch;
 mod cache;
-pub mod client;
+mod client;
 mod conn_track;
 pub mod dns;
 mod expiring_map;
 mod filter_engine;
-pub mod gateway;
+mod gateway;
 #[cfg(any(test, feature = "malicious-behaviour"))]
 mod malicious_behaviour;
 pub mod messages;
