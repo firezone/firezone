@@ -303,7 +303,7 @@ defmodule PortalAPI.Client.Channel.Shared do
         }
 
         relays = load_balance_relays(location, all_online_relays)
-        socket = cache_relays(socket, relays)
+        socket = cache_relays(socket, relays, disconnected_ids)
 
         push(socket, "relays_presence", %{
           disconnected_ids: disconnected_ids,
@@ -2109,8 +2109,14 @@ defmodule PortalAPI.Client.Channel.Shared do
     {:ok, relays}
   end
 
-  defp cache_relays(socket, relays) do
-    cached_relay_ids = MapSet.new(relays, fn relay -> relay.id end)
+  # Every relay we handed out and did not report disconnected: connlib may still
+  # hold an allocation on any of them.
+  defp cache_relays(socket, relays, removed_ids \\ []) do
+    cached_relay_ids =
+      (socket.assigns[:cached_relay_ids] || MapSet.new())
+      |> MapSet.difference(MapSet.new(removed_ids))
+      |> MapSet.union(MapSet.new(relays, fn relay -> relay.id end))
+
     assign(socket, :cached_relay_ids, cached_relay_ids)
   end
 
@@ -2169,19 +2175,20 @@ defmodule PortalAPI.Client.Channel.Shared do
 
   # ICE credentials must stay the same for all connections between an initiator and a receiver as long
   # as they do not lose their state, so we can leverage their public keys, which are reset on each
-  # restart of an initiator or a receiver.
-  defp generate_ice_credentials(initiator_pubkey, initiator, receiver, receiver_pubkey) do
+  # restart of an initiator or a receiver. The secret psk_base keys the HMAC so nobody can compute them.
+  defp generate_ice_credentials(
+         initiator_pubkey,
+         %Device{psk_base: initiator_psk_base} = initiator,
+         %Device{psk_base: receiver_psk_base} = receiver,
+         receiver_pubkey
+       )
+       when is_binary(initiator_psk_base) and is_binary(receiver_psk_base) do
     ice_credential_seed =
-      [
-        initiator.id,
-        initiator_pubkey,
-        receiver.id,
-        receiver_pubkey
-      ]
+      ["ICE_CREDS", initiator.id, initiator_pubkey, receiver.id, receiver_pubkey]
       |> Enum.join(":")
 
     ice_credential_seed_hash =
-      :crypto.hash(:sha256, ice_credential_seed)
+      :crypto.mac(:hmac, :sha256, initiator_psk_base <> receiver_psk_base, ice_credential_seed)
       |> Base.encode32(case: :lower, padding: false)
 
     [

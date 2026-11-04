@@ -227,6 +227,38 @@ defmodule PortalAPI.Integrations.Stripe.WebhookControllerTest do
 
       assert response(conn, 500) == "Internal Error"
     end
+
+    test "returns 200 OK for an account that does not exist so Stripe stops retrying", %{
+      conn: conn
+    } do
+      customer_id = "cus_" <> Stripe.random_id()
+
+      customer =
+        Stripe.build_customer(id: customer_id, metadata: %{"account_id" => Ecto.UUID.generate()})
+
+      Stripe.stub(Stripe.fetch_customer_endpoint(customer))
+
+      payload =
+        Stripe.build_event(
+          "customer.subscription.deleted",
+          Stripe.subscription_object(customer_id, %{}, %{}, 1)
+        )
+        |> JSON.encode!()
+
+      signed_at = System.system_time(:second) - 15
+      signature = generate_signature(signed_at, payload)
+
+      {conn, log} =
+        ExUnit.CaptureLog.with_log(fn ->
+          conn
+          |> put_req_header("content-type", "application/json")
+          |> put_req_header("stripe-signature", create_signature_header(signed_at, signature))
+          |> post("/integrations/stripe/webhooks", payload)
+        end)
+
+      assert response(conn, 200) == ""
+      assert log =~ "Skipping stripe event for an account that does not exist"
+    end
   end
 
   defp generate_signature(timestamp, payload) do

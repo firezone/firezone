@@ -653,28 +653,28 @@ defmodule PortalAPI.ActorControllerTest do
                :account_user
     end
 
-    test "rejects changing api_client to any other type", %{
-      conn: conn,
-      account: account,
-      actor: api_actor
-    } do
+    test "does not allow changing an API client", %{conn: conn, account: account, actor: api_actor} do
       target = actor_fixture(account: account, type: :api_client)
 
-      for type <- ["account_user", "service_account"] do
+      for attrs <- [
+            %{"name" => "Renamed"},
+            %{"is_disabled" => true},
+            %{"type" => "account_user"},
+            %{"type" => "service_account"}
+          ] do
         request_conn =
           conn
           |> recycle()
           |> authorize_conn(api_actor)
           |> put_req_header("content-type", "application/json")
-          |> put("/actors/#{target.id}", actor: %{"type" => type})
+          |> put("/actors/#{target.id}", actor: attrs)
 
-        assert resp = json_response(request_conn, 422)
-        assert resp["validation_errors"]["type"] ==
-                 ["cannot change the type of an API client"]
+        assert %{"status" => 403, "detail" => "API clients can only be managed in the portal"} =
+                 json_response(request_conn, 403)
       end
 
-      assert Repo.get_by!(Portal.Actor, account_id: account.id, id: target.id).type ==
-               :api_client
+      fields = ~w[type name is_disabled updated_at]a
+      assert Map.take(Repo.get_by!(Actor, account_id: account.id, id: target.id), fields) == Map.take(target, fields)
     end
 
     test "rejects changing service_account to any other type", %{
@@ -829,6 +829,21 @@ defmodule PortalAPI.ActorControllerTest do
       assert %{"status" => 403, "detail" => "Admins can only be managed in the portal"} = json_response(conn, 403)
       assert Repo.get_by(Actor, id: admin.id, account_id: account.id)
     end
+
+    test "does not delete API clients", %{conn: conn, account: account, actor: api_actor} do
+      target = actor_fixture(account: account, type: :api_client)
+
+      conn =
+        conn
+        |> authorize_conn(api_actor)
+        |> put_req_header("content-type", "application/json")
+        |> delete("/actors/#{target.id}")
+
+      assert %{"status" => 403, "detail" => "API clients can only be managed in the portal"} =
+               json_response(conn, 403)
+
+      assert Repo.get_by(Actor, id: target.id, account_id: account.id)
+    end
   end
 
   describe "Database.delete_actor_by_id/2" do
@@ -965,17 +980,21 @@ defmodule PortalAPI.ActorControllerTest do
       refute Repo.get_by!(Actor, account_id: account.id, id: api_actor.id).is_disabled
     end
 
-    test "allows an actor to update itself without changing is_disabled", %{
+    test "returns forbidden when an API client attempts to change itself", %{
       conn: conn,
+      account: account,
       actor: api_actor
     } do
       conn =
         conn
         |> authorize_conn(api_actor)
         |> put_req_header("content-type", "application/json")
-        |> put("/actors/#{api_actor.id}", actor: %{"is_disabled" => false})
+        |> put("/actors/#{api_actor.id}", actor: %{"name" => "Renamed"})
 
-      assert %{"data" => %{"is_disabled" => false}} = json_response(conn, 200)
+      assert %{"status" => 403, "detail" => "API clients can only be managed in the portal"} =
+               json_response(conn, 403)
+
+      assert Repo.get_by!(Actor, account_id: account.id, id: api_actor.id).name == api_actor.name
     end
   end
 

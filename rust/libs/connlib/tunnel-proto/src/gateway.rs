@@ -263,7 +263,7 @@ impl GatewayState {
         };
 
         match translated {
-            TranslateOutboundResult::Send(packet) => Ok(Some(packet)),
+            TranslateOutboundResult::Send(packet, _) => Ok(Some(packet)),
             TranslateOutboundResult::IcmpError {
                 reply,
                 no_authorization,
