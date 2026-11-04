@@ -18,7 +18,7 @@ mimalloc = { workspace = true }
 mio = { workspace = true, features = ["net"] }
 opentelemetry = { workspace = true, features = ["metrics"] }
 opentelemetry-http = { workspace = true, features = ["reqwest-blocking"] }
-opentelemetry-otlp = { workspace = true, features = ["metrics"] }
+opentelemetry-otlp = { workspace = true, features = ["metrics", "grpc-tonic"] }
 opentelemetry_sdk = { workspace = true }
 otel-attributes = { workspace = true }
 otel-instruments = { workspace = true }
@@ -38,6 +38,7 @@ telemetry = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "net", "time", "signal"] }
 tracing = { workspace = true, features = ["log"] }
 tracing-core = { workspace = true }
+tracing-opentelemetry = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["env-filter", "json", "fmt"] }
 url = { workspace = true }
 

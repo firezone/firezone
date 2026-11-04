@@ -55,7 +55,10 @@ an `init` message before commencing relay operations.
 
 ### Metrics
 
-To export metrics to an OTLP/HTTP receiver, set `OTLP_METRICS_ENDPOINT` to its full HTTPS metrics URL (used verbatim).
+The relay parses the `OTLP_GRPC_ENDPOINT` env variable.
+Traces and metrics will be sent to an OTLP collector listening on that endpoint.
+
+To also export metrics directly to an OTLP/HTTP receiver, set `OTLP_METRICS_ENDPOINT` to its full HTTPS metrics URL (used verbatim).
 Static headers such as API tokens can be passed via `OTEL_EXPORTER_OTLP_HEADERS`.
 Set `OTLP_AUTH=azure-managed-identity` to authenticate to Azure Monitor with the VM's managed identity.
 

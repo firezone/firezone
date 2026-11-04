@@ -1,5 +1,6 @@
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
+mod collector_metrics;
 mod otlp_metrics;
 
 #[global_allocator]
@@ -82,6 +83,12 @@ struct Args {
     /// How to format the logs.
     #[arg(long, env, default_value = "human", hide = true)]
     log_format: LogFormat,
+
+    /// Which OTLP collector we should connect to.
+    ///
+    /// If set, we will report traces and metrics to this collector via gRPC.
+    #[arg(long, env, hide = true)]
+    otlp_grpc_endpoint: Option<String>,
 
     /// Full OTLP/HTTP metrics ingestion URL, used verbatim.
     #[arg(long, env, hide = true)]
@@ -318,8 +325,13 @@ fn ebpf_log_level(directives: &str) -> Result<LevelFilter> {
 /// Sets up our tracing infrastructure.
 ///
 /// See [`log_layer`] for details on the base log layer.
+///
+/// ## Integration with OTLP
+///
+/// If the user has specified [`TraceCollector::Otlp`], we will set up an OTLP-exporter that connects to an OTLP collector specified at `Args.otlp_grpc_endpoint`.
 fn setup_tracing(args: &Args, directives: &str) -> Result<FilterReloadHandle> {
-    use opentelemetry::global;
+    use opentelemetry::{global, trace::TracerProvider as _};
+    use opentelemetry_otlp::WithExportConfig;
 
     // Use `tracing_core` directly for the temp logger because that one does not initialize a `log` logger.
     // A `log` Logger cannot be unset once set, so we can't use that for our temp logger during the setup.
@@ -327,15 +339,59 @@ fn setup_tracing(args: &Args, directives: &str) -> Result<FilterReloadHandle> {
         &tracing_subscriber::registry().with(log_layer(args)).into(),
     );
 
+    let metadata = make_otel_metadata();
     let mut meter_provider =
-        opentelemetry_sdk::metrics::SdkMeterProvider::builder().with_resource(make_otel_metadata());
+        opentelemetry_sdk::metrics::SdkMeterProvider::builder().with_resource(metadata.clone());
 
-    let (filter, reload_handle) = logging::try_filter(directives)?;
+    let (dispatch, reload_handle) = match args.otlp_grpc_endpoint.clone() {
+        None => {
+            let (filter, reload_handle) = logging::try_filter(directives)?;
 
-    let dispatch: Dispatch = tracing_subscriber::registry()
-        .with(log_layer(args).with_filter(filter))
-        .with(sentry_layer())
-        .into();
+            let dispatch: Dispatch = tracing_subscriber::registry()
+                .with(log_layer(args).with_filter(filter))
+                .with(sentry_layer())
+                .into();
+
+            (dispatch, reload_handle)
+        }
+        Some(endpoint) => {
+            let grpc_endpoint = format!("http://{endpoint}");
+
+            tracing::trace!(target: "relay", %grpc_endpoint, "Setting up OTLP exporter for collector");
+
+            let exporter = opentelemetry_otlp::SpanExporter::builder()
+                .with_tonic()
+                .with_endpoint(grpc_endpoint.clone())
+                .build()
+                .context("Failed to build OTLP span exporter")?;
+
+            let tracer_provider = opentelemetry_sdk::trace::SdkTracerProvider::builder()
+                .with_resource(metadata)
+                .with_batch_exporter(exporter)
+                .build();
+
+            global::set_tracer_provider(tracer_provider.clone());
+
+            tracing::trace!(target: "relay", "Successfully initialized trace provider on tokio runtime");
+
+            meter_provider = collector_metrics::with_exporter(meter_provider, &grpc_endpoint)?;
+
+            let (log_filter, log_reload_handle) = logging::try_filter(directives)?;
+            let (otel_filter, otel_reload_handle) = logging::try_filter(directives)?;
+
+            let dispatch: Dispatch = tracing_subscriber::registry()
+                .with(log_layer(args).with_filter(log_filter))
+                .with(
+                    tracing_opentelemetry::layer()
+                        .with_tracer(tracer_provider.tracer("relay"))
+                        .with_filter(otel_filter),
+                )
+                .with(sentry_layer())
+                .into();
+
+            (dispatch, log_reload_handle.merge(otel_reload_handle))
+        }
+    };
 
     if let Some(endpoint) = &args.otlp_metrics_endpoint {
         // Reqwest's blocking client initializes its own runtime.
@@ -874,6 +930,37 @@ mod tests {
         assert_eq!(fmt_human_throughput(1_234.0), "1.23 kB/s");
         assert_eq!(fmt_human_throughput(955_333_999.0), "955.33 MB/s");
         assert_eq!(fmt_human_throughput(100_000_000_000.0), "100.00 GB/s");
+    }
+
+    // Regression tests to ensure we can parse sockets as well as domains for the otlp-grpc endpoint.
+    #[test]
+    fn args_can_parse_otlp_endpoint_from_socket() {
+        let args = Args::try_parse_from([
+            "relay",
+            "--otlp-grpc-endpoint",
+            "127.0.0.1:4317",
+            "--api-url",
+            "localhost:1234",
+            "TOKEN",
+        ])
+        .unwrap();
+
+        assert_eq!(args.otlp_grpc_endpoint.unwrap(), "127.0.0.1:4317");
+    }
+
+    #[test]
+    fn args_can_parse_otlp_endpoint_from_domain() {
+        let args = Args::try_parse_from([
+            "relay",
+            "--otlp-grpc-endpoint",
+            "localhost:4317",
+            "--api-url",
+            "localhost:1234",
+            "TOKEN",
+        ])
+        .unwrap();
+
+        assert_eq!(args.otlp_grpc_endpoint.unwrap(), "localhost:4317");
     }
 
     #[test]
