@@ -1495,6 +1495,24 @@ defmodule PortalAPI.Client.ChannelTest do
   end
 
   describe "handle_info/2 for presence events" do
+    test "reports a relay disconnected after a later selection replaced it", %{
+      client: client,
+      subject: subject
+    } do
+      Portal.Config.put_env_override(:portal, :relay_presence_debounce_ms, 10)
+      relay1 = connect_relay(%{lat: 37.0, lon: -120.0})
+      socket = join_channel(client, subject)
+      assert_push "init", %{relays: [_, _]}
+
+      relay2 = connect_relay(%{lat: 37.0, lon: -120.0})
+      push(socket, "no_relays", %{"excluded_relay_ids" => [relay1.id]})
+      Portal.Presence.Relays.disconnect(relay1)
+
+      relay1_id = relay1.id
+      assert_push "relays_presence", %{disconnected_ids: [^relay1_id], connected: [relay_view | _]}
+      assert relay_view.id == relay2.id
+    end
+
     test "does not send disconnect if relay reconnects with same id", %{
       client: client,
       subject: subject
