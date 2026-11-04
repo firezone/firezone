@@ -1,4 +1,5 @@
 use std::{
+    iter::Peekable,
     mem,
     net::SocketAddr,
     num::NonZeroUsize,
@@ -272,9 +273,16 @@ pub struct DecryptJobs<'a> {
 }
 
 impl<'a> DecryptJobs<'a> {
-    /// Opens a train for a received datagram, to append the datagrams it accepts and add the runs of
-    /// its segments to decrypt.
-    pub fn open(&mut self, datagram: DatagramIn) -> OpenGroTrain<'_, 'a> {
+    /// Opens a train for the next of `datagrams` and the ones following it from the same remote with
+    /// the same ECN, while their segments fit into the job, to add the runs of its segments to decrypt.
+    ///
+    /// Returns `None` once `datagrams` are exhausted.
+    pub fn open(
+        &mut self,
+        datagrams: &mut Peekable<impl Iterator<Item = DatagramIn>>,
+    ) -> Option<OpenGroTrain<'_, 'a>> {
+        let datagram = datagrams.next()?;
+
         if self.len + datagram.num_segments() > DECRYPT_BATCH_SIZE {
             self.submit();
         }
@@ -288,10 +296,20 @@ impl<'a> DecryptJobs<'a> {
         }
         self.remaining = self.remaining.saturating_sub(datagram.num_segments());
 
-        let index = self.gro_trains.len();
-        self.gro_trains.push(UdpGroTrain::new(datagram));
+        let mut train = UdpGroTrain::new(datagram);
 
-        OpenGroTrain { jobs: self, index }
+        while let Some(datagram) = datagrams.next_if(|next| {
+            train.continues_with(next)
+                && self.len + train.num_segments() + next.num_segments() <= DECRYPT_BATCH_SIZE
+        }) {
+            self.remaining = self.remaining.saturating_sub(datagram.num_segments());
+            train.append(datagram);
+        }
+
+        let index = self.gro_trains.len();
+        self.gro_trains.push(train);
+
+        Some(OpenGroTrain { jobs: self, index })
     }
 
     fn submit(&mut self) {
@@ -321,20 +339,6 @@ pub struct OpenGroTrain<'b, 'a> {
 }
 
 impl OpenGroTrain<'_, '_> {
-    /// Whether `datagram` may continue the train: it comes from the same remote with the same ECN,
-    /// and its segments still fit into the job.
-    pub fn accepts(&self, datagram: &DatagramIn) -> bool {
-        (datagram.local(), datagram.from(), datagram.ecn())
-            == (self.local(), self.from(), self.ecn())
-            && self.jobs.len + self.num_segments() + datagram.num_segments() <= DECRYPT_BATCH_SIZE
-    }
-
-    /// Appends `datagram`, which the train [accepts](Self::accepts).
-    pub fn append(&mut self, datagram: DatagramIn) {
-        self.jobs.remaining = self.jobs.remaining.saturating_sub(datagram.num_segments());
-        self.jobs.gro_trains[self.index].append(datagram);
-    }
-
     /// Adds `segments`, a run of the train in order, to be decrypted with `decapsulation`.
     pub fn add(&mut self, decapsulation: PendingDecapsulate, segments: Vec<TrainSegment>) {
         self.jobs.gro_trains[self.index].push(decapsulation, segments);

@@ -37,7 +37,13 @@ impl UdpGroTrain {
         }
     }
 
-    /// Appends `datagram`, which comes from the same remote with the same ECN as the train.
+    /// Whether `datagram` comes from the same remote with the same ECN as the train.
+    pub fn continues_with(&self, datagram: &DatagramIn) -> bool {
+        (datagram.local(), datagram.from(), datagram.ecn())
+            == (self.local(), self.from(), self.ecn())
+    }
+
+    /// Appends `datagram`, which the train [continues with](Self::continues_with).
     pub fn append(&mut self, datagram: DatagramIn) {
         self.num_segments += datagram.num_segments();
         self.datagrams.push(datagram);
