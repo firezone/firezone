@@ -87,6 +87,8 @@ pub struct Server<R> {
 
     /// The peer addresses the portal reported per account.
     known_peers: HashMap<auth::AccountId, KnownPeers>,
+    /// Whether new channel bindings are limited to known peers, see [`Server::set_enforce_known_peers`].
+    enforce_known_peers: bool,
 
     nonces: Nonces,
 
@@ -211,6 +213,7 @@ where
             auth_secret: SecretString::from(hex::encode(rng.random::<[u8; 32]>())),
             accounts_by_hash: Default::default(),
             known_peers: Default::default(),
+            enforce_known_peers: true,
             nonces: Nonces::new(rng.random()),
             rng,
             allocations_up_down_counter,
@@ -322,6 +325,13 @@ where
         for ip in ips {
             known_peers.insert(ip);
         }
+    }
+
+    /// Sets whether new channel bindings are limited to known peers.
+    ///
+    /// Without a portal connection, the relay cannot learn new peers and must not refuse them.
+    pub fn set_enforce_known_peers(&mut self, enforce: bool) {
+        self.enforce_known_peers = enforce;
     }
 
     pub fn num_allocations(&self) -> usize {
@@ -874,7 +884,7 @@ where
             .get(&allocation.account)
             .is_some_and(|known_peers| known_peers.contains(peer_address.into_socket().ip()));
 
-        if !is_known_peer {
+        if self.enforce_known_peers && !is_known_peer {
             let (error_response, msg) = make_error_response(Forbidden, request);
 
             tracing::debug!(target: "relay", %sender, allocation = %allocation.port, peer = %peer_address, channel = %requested_channel.value(), "{msg}: Peer is not known for account");
@@ -1742,6 +1752,17 @@ mod tests {
         relay
             .server
             .add_known_peers(account(0), [PEER.into_socket().ip()]);
+        let (_, response) = relay.channel_bind(PEER);
+
+        assert_eq!(response.class(), MessageClass::SuccessResponse);
+        assert_eq!(relay.server.num_active_channels(), 1);
+    }
+
+    #[test]
+    fn unknown_peer_binds_while_not_enforcing() {
+        let mut relay = TestRelay::with_allocation(account(0));
+        relay.server.set_enforce_known_peers(false);
+
         let (_, response) = relay.channel_bind(PEER);
 
         assert_eq!(response.class(), MessageClass::SuccessResponse);
