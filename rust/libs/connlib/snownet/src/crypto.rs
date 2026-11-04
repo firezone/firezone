@@ -204,8 +204,7 @@ impl<'n> DecapsulateBatch<'n> {
         }
     }
 
-    /// Adds `segment`, a further segment of the same datagram, if it is a data message of the
-    /// same session on the same path.
+    /// Adds `segment`, received on the same path, if it is a data message of the same session.
     ///
     /// Returns `false` without changing the batch otherwise; finish the batch and pass the
     /// segment to [`Node::begin_decapsulate`](crate::Node::begin_decapsulate) then.
