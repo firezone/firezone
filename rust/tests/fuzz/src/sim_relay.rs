@@ -62,6 +62,7 @@ impl SimRelay {
             49152..=65535,
         );
         sut.set_accounts([relay_proto::auth::AccountId::from(Uuid::nil())]);
+        sut.set_enforce_known_peers(true);
 
         Self {
             sut,
