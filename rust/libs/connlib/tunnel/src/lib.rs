@@ -417,7 +417,7 @@ impl ClientTunnel {
 
                     for mut packet in packets.prefetching().inspect(|p| tun_received.record(p)) {
                         match self.role_state.handle_tun_input(&mut packet, now) {
-                            Ok(Some(encapsulation)) => jobs.encrypt(encapsulation, packet),
+                            Ok(Some(encapsulation)) => jobs.add(encapsulation, packet),
                             Ok(None) => {}
                             Err(e) => {
                                 self.dropped_tun_packets.record(&e);
@@ -443,26 +443,21 @@ impl ClientTunnel {
                     let mut jobs = self.io.new_decrypt_jobs(datagrams.len());
 
                     for datagram in datagrams.drain() {
-                        let mut datagram = jobs.add(datagram);
+                        let mut train = jobs.open(datagram);
 
-                        for segment in datagram.segments() {
-                            let packet = &datagram[segment];
+                        for segment in train.segments() {
+                            let packet = &train[segment];
 
                             udp_received.record(packet);
 
                             match self
                                 .role_state
-                                .handle_network_input(
-                                    datagram.local(),
-                                    datagram.from(),
-                                    packet,
-                                    now,
-                                )
+                                .handle_network_input(train.local(), train.from(), packet, now)
                                 .with_context(|| FailedToHandleNetworkPacket {
-                                    local: datagram.local(),
-                                    from: datagram.from(),
+                                    local: train.local(),
+                                    from: train.from(),
                                 }) {
-                                Ok(Some(decapsulation)) => datagram.decrypt(segment, decapsulation),
+                                Ok(Some(decapsulation)) => train.add(decapsulation, segment),
                                 Ok(None) => self.needs_timeout = true,
                                 Err(e) => error.push(e),
                             };
@@ -647,7 +642,7 @@ impl GatewayTunnel {
 
                     for mut packet in packets.prefetching().inspect(|p| tun_received.record(p)) {
                         match self.role_state.handle_tun_input(&mut packet, now) {
-                            Ok(Some(encapsulation)) => jobs.encrypt(encapsulation, packet),
+                            Ok(Some(encapsulation)) => jobs.add(encapsulation, packet),
                             Ok(None) => {}
                             Err(e) => {
                                 self.dropped_tun_packets.record(&e);
@@ -673,26 +668,21 @@ impl GatewayTunnel {
                     let mut jobs = self.io.new_decrypt_jobs(datagrams.len());
 
                     for datagram in datagrams.drain() {
-                        let mut datagram = jobs.add(datagram);
+                        let mut train = jobs.open(datagram);
 
-                        for segment in datagram.segments() {
-                            let packet = &datagram[segment];
+                        for segment in train.segments() {
+                            let packet = &train[segment];
 
                             udp_received.record(packet);
 
                             match self
                                 .role_state
-                                .handle_network_input(
-                                    datagram.local(),
-                                    datagram.from(),
-                                    packet,
-                                    now,
-                                )
+                                .handle_network_input(train.local(), train.from(), packet, now)
                                 .with_context(|| FailedToHandleNetworkPacket {
-                                    local: datagram.local(),
-                                    from: datagram.from(),
+                                    local: train.local(),
+                                    from: train.from(),
                                 }) {
-                                Ok(Some(decapsulation)) => datagram.decrypt(segment, decapsulation),
+                                Ok(Some(decapsulation)) => train.add(decapsulation, segment),
                                 Ok(None) => self.needs_timeout = true,
                                 Err(e) => error.push(e),
                             };
