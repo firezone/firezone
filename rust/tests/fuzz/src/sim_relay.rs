@@ -12,7 +12,7 @@ use secrecy::SecretString;
 use snownet::{RelaySocket, Transmit};
 use std::{
     collections::HashSet,
-    net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
+    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
     time::{Duration, Instant, SystemTime},
 };
 use stun_codec::rfc5389::attributes::{ErrorCode, MessageIntegrity, Nonce, Realm, Username};
@@ -69,6 +69,11 @@ impl SimRelay {
             out_of_capacity: false,
             created_at,
         }
+    }
+
+    pub(crate) fn add_known_peers(&mut self, ips: impl IntoIterator<Item = IpAddr>) {
+        self.sut
+            .add_known_peers(relay_proto::auth::AccountId::from(Uuid::nil()), ips);
     }
 
     fn explode(

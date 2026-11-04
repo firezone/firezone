@@ -7,6 +7,7 @@ pub use crate::server::client_message::{
 };
 
 use crate::auth::{self, AuthenticatedMessage, FIREZONE, MessageIntegrityExt, Nonces};
+use crate::known_peers::KnownPeers;
 use crate::net_ext::IpAddrExt;
 use crate::{ClientSocket, IpStack, PeerSocket, SOFTWARE};
 use anyhow::Result;
@@ -32,7 +33,7 @@ use stun_codec::rfc5389::methods::BINDING;
 use stun_codec::rfc5766::attributes::{
     ChannelNumber, Lifetime, RequestedTransport, XorPeerAddress, XorRelayAddress,
 };
-use stun_codec::rfc5766::errors::{AllocationMismatch, InsufficientCapacity};
+use stun_codec::rfc5766::errors::{AllocationMismatch, Forbidden, InsufficientCapacity};
 use stun_codec::rfc5766::methods::{ALLOCATE, CHANNEL_BIND, CREATE_PERMISSION, REFRESH};
 use stun_codec::rfc8656::attributes::{
     AdditionalAddressFamily, AddressFamily, RequestedAddressFamily,
@@ -83,6 +84,9 @@ pub struct Server<R> {
     /// Maps the account hash carried in a TURN credential to the raw account
     /// UUID received from the Portal. Allocations retain the raw UUID.
     accounts_by_hash: HashMap<auth::AccountIdHash, auth::AccountId>,
+
+    /// The peer addresses the portal reported per account.
+    known_peers: HashMap<auth::AccountId, KnownPeers>,
 
     nonces: Nonces,
 
@@ -206,6 +210,7 @@ where
             pending_commands: Default::default(),
             auth_secret: SecretString::from(hex::encode(rng.random::<[u8; 32]>())),
             accounts_by_hash: Default::default(),
+            known_peers: Default::default(),
             nonces: Nonces::new(rng.random()),
             rng,
             allocations_up_down_counter,
@@ -244,6 +249,12 @@ where
         for allocation in revoked_allocations {
             self.delete_allocation(allocation);
         }
+
+        for _ in self.known_peers.extract_if(|account, _| {
+            !self
+                .accounts_by_hash
+                .contains_key(&auth::hash_account_id(account))
+        }) {}
     }
 
     pub fn add_account(&mut self, account: auth::AccountId) {
@@ -257,6 +268,7 @@ where
     pub fn remove_account(&mut self, account: &auth::AccountId) {
         self.accounts_by_hash
             .remove(&auth::hash_account_id(account));
+        self.known_peers.remove(account);
 
         let allocations = self
             .allocations
@@ -287,6 +299,29 @@ where
 
     pub fn num_relayed_bytes(&self) -> u64 {
         self.data_relayed
+    }
+
+    /// Records peer addresses the portal reported for an account.
+    ///
+    /// Addresses for accounts the relay does not serve are dropped.
+    pub fn add_known_peers(
+        &mut self,
+        account: auth::AccountId,
+        ips: impl IntoIterator<Item = IpAddr>,
+    ) {
+        if !self
+            .accounts_by_hash
+            .contains_key(&auth::hash_account_id(&account))
+        {
+            tracing::debug!(target: "relay", %account, "Ignoring known peers of unknown account");
+            return;
+        }
+
+        let known_peers = self.known_peers.entry(account).or_default();
+
+        for ip in ips {
+            known_peers.insert(ip);
+        }
     }
 
     pub fn num_allocations(&self) -> usize {
@@ -819,6 +854,8 @@ where
 
             tracing::info!(target: "relay", %sender, allocation = %allocation.port, peer = %peer_address, channel = %requested_channel.value(), "Refreshed channel binding");
 
+            let account = allocation.account;
+            self.refresh_known_peer(account, peer_address);
             self.authenticate_and_send(
                 &username,
                 request,
@@ -832,11 +869,25 @@ where
 
         // Channel binding does not exist yet, create it.
 
-        // TODO: Any additional validations would go here.
+        let is_known_peer = self
+            .known_peers
+            .get(&allocation.account)
+            .is_some_and(|known_peers| known_peers.contains(peer_address.into_socket().ip()));
+
+        if !is_known_peer {
+            let (error_response, msg) = make_error_response(Forbidden, request);
+
+            tracing::debug!(target: "relay", %sender, allocation = %allocation.port, peer = %peer_address, channel = %requested_channel.value(), "{msg}: Peer is not known for account");
+
+            return Err(error_response);
+        }
+
         // TODO: Capacity checking would go here.
 
         let port = allocation.port;
+        let account = allocation.account;
         self.create_channel_binding(sender, requested_channel, peer_address, port, now);
+        self.refresh_known_peer(account, peer_address);
         self.authenticate_and_send(
             &username,
             request,
@@ -1053,6 +1104,14 @@ where
             .insert((id, peer), (client, requested_channel));
 
         debug_assert!(existing.is_none());
+    }
+
+    /// Keeps an actively relayed peer in the account's known peers so rotation never forgets it.
+    fn refresh_known_peer(&mut self, account: auth::AccountId, peer: PeerSocket) {
+        self.known_peers
+            .entry(account)
+            .or_default()
+            .insert(peer.into_socket().ip());
     }
 
     fn authenticate_and_send(
@@ -1529,6 +1588,7 @@ mod tests {
         );
 
         server.set_accounts([account]);
+        server.add_known_peers(account, [peer.into_socket().ip()]);
         let nonce = issue_nonce(&mut server, client, now, now_utc);
         let username = Username::new(format!(
             "2145916800:{}:credential-salt",
@@ -1662,6 +1722,162 @@ mod tests {
             next_response(&mut server).class(),
             MessageClass::SuccessResponse
         );
+    }
+
+    #[test]
+    fn unknown_peer_is_forbidden() {
+        let mut relay = TestRelay::with_allocation(account(0));
+
+        let (commands, response) = relay.channel_bind(PEER);
+
+        assert_eq!(error_code(&response), Some(Forbidden::CODEPOINT));
+        assert!(commands.is_empty());
+        assert_eq!(relay.server.num_active_channels(), 0);
+    }
+
+    #[test]
+    fn known_peer_binds() {
+        let mut relay = TestRelay::with_allocation(account(0));
+
+        relay
+            .server
+            .add_known_peers(account(0), [PEER.into_socket().ip()]);
+        let (_, response) = relay.channel_bind(PEER);
+
+        assert_eq!(response.class(), MessageClass::SuccessResponse);
+        assert_eq!(relay.server.num_active_channels(), 1);
+    }
+
+    #[test]
+    fn peer_known_for_other_account_is_forbidden() {
+        let other_account = account(1);
+        let mut relay = TestRelay::with_allocation(account(0));
+        relay.server.add_account(other_account);
+
+        relay
+            .server
+            .add_known_peers(other_account, [PEER.into_socket().ip()]);
+        let (_, response) = relay.channel_bind(PEER);
+
+        assert_eq!(error_code(&response), Some(Forbidden::CODEPOINT));
+    }
+
+    #[test]
+    fn known_peers_of_unknown_account_are_dropped() {
+        let unknown_account = account(1);
+        let mut relay = TestRelay::with_allocation(account(0));
+
+        relay
+            .server
+            .add_known_peers(unknown_account, [PEER.into_socket().ip()]);
+
+        assert!(!relay.server.known_peers.contains_key(&unknown_account));
+    }
+
+    const PEER: PeerSocket = PeerSocket(SocketAddr::new(
+        IpAddr::V4(Ipv4Addr::new(198, 51, 100, 2)),
+        50_001,
+    ));
+
+    /// A relay serving one account with an allocation for a single client.
+    struct TestRelay {
+        server: Server<StdRng>,
+        client: ClientSocket,
+        username: Username,
+        nonce: Nonce,
+        now: Instant,
+        now_utc: SystemTime,
+    }
+
+    impl TestRelay {
+        fn with_allocation(account: auth::AccountId) -> Self {
+            let now = Instant::now();
+            let now_utc = SystemTime::UNIX_EPOCH;
+            let client = ClientSocket::new(SocketAddr::from(([127, 0, 0, 1], 50_000)));
+            let mut server = Server::new(
+                Ipv4Addr::LOCALHOST,
+                StdRng::seed_from_u64(0),
+                3478,
+                49_152..=49_153,
+            );
+
+            server.set_accounts([account]);
+            let nonce = issue_nonce(&mut server, client, now, now_utc);
+            let username = Username::new(format!(
+                "2145916800:{}:credential-salt",
+                auth::hash_account_id(&account)
+            ))
+            .unwrap();
+
+            let allocate = authenticated_request(
+                &server,
+                ALLOCATE,
+                TransactionId::new([1; 12]),
+                &username,
+                &nonce,
+                [Attribute::RequestedTransport(RequestedTransport::new(
+                    UDP_TRANSPORT,
+                ))],
+            );
+            server.handle_client_input(&allocate, client, now, now_utc);
+            assert_eq!(
+                next_response(&mut server).class(),
+                MessageClass::SuccessResponse
+            );
+
+            Self {
+                server,
+                client,
+                username,
+                nonce,
+                now,
+                now_utc,
+            }
+        }
+
+        /// Binds `peer` to a channel and returns the non-response commands and the response.
+        fn channel_bind(&mut self, peer: PeerSocket) -> (Vec<Command>, Message<Attribute>) {
+            let channel_bind = authenticated_request(
+                &self.server,
+                CHANNEL_BIND,
+                TransactionId::new([2; 12]),
+                &self.username,
+                &self.nonce,
+                [
+                    Attribute::ChannelNumber(ChannelNumber::new(ChannelNumber::MIN).unwrap()),
+                    Attribute::XorPeerAddress(XorPeerAddress::new(peer.into_socket())),
+                ],
+            );
+            self.server
+                .handle_client_input(&channel_bind, self.client, self.now, self.now_utc);
+
+            let mut commands = Vec::new();
+            let mut response = None;
+
+            while let Some(command) = self.server.next_command() {
+                let Command::SendMessage { payload, .. } = command else {
+                    commands.push(command);
+                    continue;
+                };
+
+                response = Some(
+                    MessageDecoder::<Attribute>::new()
+                        .decode_from_bytes(&payload)
+                        .unwrap()
+                        .unwrap(),
+                );
+            }
+
+            (commands, response.expect("the relay sends a response"))
+        }
+    }
+
+    fn account(id: u128) -> auth::AccountId {
+        auth::AccountId::from(Uuid::from_u128(id))
+    }
+
+    fn error_code(response: &Message<Attribute>) -> Option<u16> {
+        response.get_attribute::<ErrorCode>().map(|e| e.code())
     }
 
     fn issue_nonce(

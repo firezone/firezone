@@ -53,6 +53,10 @@ STUN/TURN. Additionally, the relay needs to have access to the port range
 When given a `token`, the relay will connect to the Firezone portal and wait for
 an `init` message before commencing relay operations.
 
+The portal streams the IP addresses of ICE candidates exchanged within each
+account to the relay via `ice_candidate_ips` messages. The relay only creates
+new channel bindings to peers whose IP is known for the allocation's account.
+
 ### Metrics
 
 The relay parses the `OTLP_GRPC_ENDPOINT` env variable.

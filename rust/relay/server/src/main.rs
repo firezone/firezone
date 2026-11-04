@@ -435,6 +435,7 @@ enum IngressMessages {
     Init(Init),
     AccountAdded(Account),
     AccountRemoved(Account),
+    IceCandidateIps(IceCandidateIps),
 }
 
 #[derive(serde::Deserialize, Debug)]
@@ -446,6 +447,12 @@ struct Init {
 #[derive(serde::Deserialize, Debug)]
 struct Account {
     account_id: AccountId,
+}
+
+#[derive(serde::Deserialize, Debug)]
+struct IceCandidateIps {
+    account_id: AccountId,
+    ips: Vec<IpAddr>,
 }
 
 #[derive(serde::Serialize, PartialEq, Debug, Clone)]
@@ -737,6 +744,7 @@ where
                         "Received TURN account list"
                     );
                     self.server.set_accounts(init.account_ids);
+
                     tick.want_continue();
                 }
                 Poll::Ready(Some(Ok(IngressMessages::AccountAdded(account)))) => {
@@ -747,6 +755,12 @@ where
                 Poll::Ready(Some(Ok(IngressMessages::AccountRemoved(account)))) => {
                     tracing::info!(account_id = %account.account_id, "Removed account from TURN allow list");
                     self.server.remove_account(&account.account_id);
+                    tick.want_continue();
+                }
+                Poll::Ready(Some(Ok(IngressMessages::IceCandidateIps(candidates)))) => {
+                    tracing::debug!(account_id = %candidates.account_id, num_ips = candidates.ips.len(), "Received ICE candidate IPs");
+                    self.server
+                        .add_known_peers(candidates.account_id, candidates.ips);
                     tick.want_continue();
                 }
                 Poll::Ready(Some(Err(e))) => {
