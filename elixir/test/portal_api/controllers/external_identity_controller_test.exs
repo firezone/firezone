@@ -239,6 +239,22 @@ defmodule PortalAPI.IdentityControllerTest do
       refute Repo.get_by(Portal.ExternalIdentity, id: identity.id)
     end
 
+    test "does not delete identities of admins", %{conn: conn, account: account, actor: actor} do
+      admin = actor_fixture(account: account, type: :account_admin_user)
+      identity = synced_identity_fixture(account: account, actor: admin)
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> delete("/actors/#{admin.id}/external_identities/#{identity.id}")
+
+      assert %{"status" => 403, "detail" => "Admins can only be managed in the portal"} =
+               json_response(conn, 403)
+
+      assert Repo.get_by(Portal.ExternalIdentity, id: identity.id)
+    end
+
     test "returns not found for non-existent identity", %{conn: conn, actor: actor} do
       conn =
         conn
