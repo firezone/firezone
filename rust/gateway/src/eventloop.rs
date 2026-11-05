@@ -50,7 +50,7 @@ pub struct Eventloop {
 
     account_slug: account_slug::Cache,
 
-    metrics_exporter: metrics_export::Exporter,
+    metrics_exporter: otel_metrics_export::Exporter,
 
     resolve_tasks: futures_bounded::FuturesTupleSet<
         Result<Vec<IpAddr>, Arc<anyhow::Error>>,
@@ -90,7 +90,7 @@ impl Eventloop {
         flow_logs_dir: std::path::PathBuf,
         local_flow_logs: bool,
         account_slug: account_slug::Cache,
-        metrics_exporter: metrics_export::Exporter,
+        metrics_exporter: otel_metrics_export::Exporter,
     ) -> Result<Self> {
         let (portal_event_tx, portal_event_rx) = mpsc::channel(128);
         let (portal_cmd_tx, portal_cmd_rx) = mpsc::channel(128);

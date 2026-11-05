@@ -228,14 +228,20 @@ async fn try_main(cli: Cli) -> Result<()> {
         telemetry::otel::service_instance_id(firezone_id.clone()),
     ]);
 
-    let meter_provider = metrics_export::meter_provider_builder().with_resource(resource);
-    let meter_provider = match cli.otlp_grpc_endpoint {
-        Some(endpoint) => meter_provider.with_periodic_exporter(tonic_otlp_exporter(endpoint)?),
-        None => meter_provider,
-    };
-    opentelemetry::global::set_meter_provider(meter_provider.build());
+    let otlp_exporter = cli
+        .otlp_grpc_endpoint
+        .map(tonic_otlp_exporter)
+        .transpose()?;
+    otel_metrics_export::install_meter_provider(|builder| {
+        let builder = builder.with_resource(resource);
 
-    let metrics_exporter = metrics_export::Exporter::spawn(Arc::new(tcp_socket_factory))
+        match otlp_exporter {
+            Some(exporter) => builder.with_periodic_exporter(exporter),
+            None => builder,
+        }
+    });
+
+    let metrics_exporter = otel_metrics_export::Exporter::spawn(Arc::new(tcp_socket_factory))
         .context("Failed to spawn metrics exporter")?;
 
     let login = LoginUrl::gateway(

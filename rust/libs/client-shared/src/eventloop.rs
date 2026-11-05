@@ -63,7 +63,7 @@ pub struct Eventloop {
     /// uploads disabled.
     local_flow_logs: bool,
 
-    metrics_exporter: metrics_export::Exporter,
+    metrics_exporter: otel_metrics_export::Exporter,
 
     cmd_rx: mpsc::UnboundedReceiver<Command>,
     resource_list_sender: watch::Sender<Vec<ResourceView>>,
@@ -171,7 +171,7 @@ impl Eventloop {
         additional_host_candidates: Vec<IpAddr>,
         flow_logs_dir: Option<std::path::PathBuf>,
         local_flow_logs: bool,
-        metrics_exporter: metrics_export::Exporter,
+        metrics_exporter: otel_metrics_export::Exporter,
         portal: PhoenixChannel<(), EgressMessages, IngressMessages, PublicKeyParam>,
         cmd_rx: mpsc::UnboundedReceiver<Command>,
         resource_list_sender: watch::Sender<Vec<ResourceView>>,

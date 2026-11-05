@@ -10,7 +10,7 @@ use tunnel_bench::measure::{Measure, StageCpu, Wall};
 
 fn main() {
     // Record metrics like the binaries do, so their cost shows up in the results.
-    opentelemetry::global::set_meter_provider(metrics_export::meter_provider_builder().build());
+    otel_metrics_export::install_meter_provider(|builder| builder);
 
     match Measure::from_env() {
         measure @ Measure::Wall => run(Wall, measure),

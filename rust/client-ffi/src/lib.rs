@@ -20,7 +20,7 @@ use std::{
     fmt,
     net::IpAddr,
     path::PathBuf,
-    sync::{Arc, Once, OnceLock},
+    sync::{Arc, OnceLock},
     time::Duration,
 };
 
@@ -633,16 +633,11 @@ fn connect(
 
     install_rustls_crypto_provider();
 
-    static METER_PROVIDER: Once = Once::new();
-    METER_PROVIDER.call_once(|| {
-        opentelemetry::global::set_meter_provider(
-            metrics_export::meter_provider_builder()
-                .with_resource(telemetry::otel::default_resource_with([
-                    KeyValue::new("service.name", platform::COMPONENT),
-                    KeyValue::new("service.version", platform::VERSION),
-                ]))
-                .build(),
-        )
+    otel_metrics_export::install_meter_provider(|builder| {
+        builder.with_resource(telemetry::otel::default_resource_with([
+            KeyValue::new("service.name", platform::COMPONENT),
+            KeyValue::new("service.version", platform::VERSION),
+        ]))
     });
 
     // Fail loudly rather than run a session with no logs and no flow-log spool.
@@ -699,7 +694,7 @@ fn connect(
         uploader
     });
 
-    let metrics_exporter = metrics_export::Exporter::spawn(tcp_socket_factory.clone())
+    let metrics_exporter = otel_metrics_export::Exporter::spawn(tcp_socket_factory.clone())
         .context("Failed to spawn metrics exporter")?;
 
     let (session, events) = client_shared::Session::connect(

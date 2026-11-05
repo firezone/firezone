@@ -41,12 +41,12 @@ hickory-resolver = { workspace = true }
 humantime = { workspace = true }
 ip-packet = { workspace = true }
 logging = { workspace = true }
-metrics-export = { workspace = true }
 mimalloc = { workspace = true }
 opentelemetry = { workspace = true, features = ["metrics"] }
 opentelemetry-otlp = { workspace = true, features = ["metrics", "grpc-tonic"] }
 otel-attributes = { workspace = true }
 otel-instruments = { workspace = true }
+otel-metrics-export = { workspace = true }
 phoenix-channel = { workspace = true }
 resolv-conf = { workspace = true }
 rpassword = { workspace = true }

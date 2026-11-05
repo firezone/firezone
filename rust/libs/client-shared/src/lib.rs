@@ -88,7 +88,7 @@ impl Session {
         additional_host_candidates: Vec<IpAddr>,
         flow_logs_dir: Option<PathBuf>,
         local_flow_logs: bool,
-        metrics_exporter: metrics_export::Exporter,
+        metrics_exporter: otel_metrics_export::Exporter,
     ) -> io::Result<(Self, EventStream)> {
         let (cmd_tx, cmd_rx) = mpsc::unbounded_channel();
         let event_stream = EventStream::new(

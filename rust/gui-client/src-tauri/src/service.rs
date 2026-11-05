@@ -176,14 +176,12 @@ async fn ipc_listen(
             .with_context(|| format!("Failed to change ownership of '{}'", dir.display()))?;
     }
 
-    opentelemetry::global::set_meter_provider(
-        metrics_export::meter_provider_builder()
-            .with_resource(telemetry::otel::default_resource_with([
-                otel_attributes::service_name!(),
-                otel_attributes::service_version!(),
-            ]))
-            .build(),
-    );
+    otel_metrics_export::install_meter_provider(|builder| {
+        builder.with_resource(telemetry::otel::default_resource_with([
+            otel_attributes::service_name!(),
+            otel_attributes::service_version!(),
+        ]))
+    });
 
     if let Ok(stored) = load_advanced_settings()
         && let Err(e) = log_filter_reloader.reload(&stored.log_filter)
@@ -973,7 +971,7 @@ impl<'a> Handler<'a> {
             Arc::new(tcp_socket_factory),
         );
 
-        let metrics_exporter = metrics_export::Exporter::spawn(Arc::new(tcp_socket_factory))
+        let metrics_exporter = otel_metrics_export::Exporter::spawn(Arc::new(tcp_socket_factory))
             .context("Failed to spawn metrics exporter")?;
 
         // Read the resolvers before starting connlib, in case connlib's startup interferes.

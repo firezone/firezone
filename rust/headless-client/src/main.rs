@@ -420,16 +420,22 @@ fn try_main() -> Result<()> {
             otel_attributes::service_version!(),
         ]);
 
-        let meter_provider = metrics_export::meter_provider_builder().with_resource(resource);
-        let meter_provider = match (cli.metrics, cli.otlp_grpc_endpoint) {
-            (Some(MetricsExporter::Stdout), _) => meter_provider
-                .with_periodic_exporter(opentelemetry_stdout::MetricExporter::default()),
+        let otlp_exporter = match (cli.metrics, cli.otlp_grpc_endpoint) {
             (Some(MetricsExporter::OtelCollector), Some(endpoint)) => {
-                meter_provider.with_periodic_exporter(tonic_otlp_exporter(endpoint)?)
+                Some(tonic_otlp_exporter(endpoint)?)
             }
-            (Some(MetricsExporter::OtelCollector), None) | (None, _) => meter_provider,
+            _ => None,
         };
-        opentelemetry::global::set_meter_provider(meter_provider.build());
+        otel_metrics_export::install_meter_provider(|builder| {
+            let builder = builder.with_resource(resource);
+
+            match (cli.metrics, otlp_exporter) {
+                (Some(MetricsExporter::Stdout), _) => builder
+                    .with_periodic_exporter(opentelemetry_stdout::MetricExporter::default()),
+                (_, Some(exporter)) => builder.with_periodic_exporter(exporter),
+                (_, None) => builder,
+            }
+        });
 
         // The Headless Client will bail out here if there's no Internet, because `PhoenixChannel` will try to
         // resolve the portal host and fail. This is intentional behavior. The Headless Client should always be running under a manager like `systemd` or Windows' Service Controller,
@@ -454,7 +460,7 @@ fn try_main() -> Result<()> {
         }
 
         let metrics_exporter =
-            metrics_export::Exporter::spawn(Arc::new(tcp_socket_factory))
+            otel_metrics_export::Exporter::spawn(Arc::new(tcp_socket_factory))
                 .context("Failed to spawn metrics exporter")?;
 
         let (session, mut event_stream) = client_shared::Session::connect(

@@ -1369,10 +1369,10 @@ dependencies = [
  "itertools 0.15.0",
  "libc",
  "logging",
- "metrics-export",
  "mimalloc",
  "opentelemetry",
  "oslog",
+ "otel-metrics-export",
  "parking_lot",
  "phoenix-channel",
  "rustls",
@@ -1427,10 +1427,10 @@ dependencies = [
  "flow-log-writer",
  "futures",
  "logging",
- "metrics-export",
  "opentelemetry",
  "otel-attributes",
  "otel-instruments",
+ "otel-metrics-export",
  "parking_lot",
  "phoenix-channel",
  "serde",
@@ -2641,13 +2641,13 @@ dependencies = [
  "humantime",
  "ip-packet",
  "logging",
- "metrics-export",
  "mimalloc",
  "nix 0.31.3",
  "opentelemetry",
  "opentelemetry-otlp",
  "otel-attributes",
  "otel-instruments",
+ "otel-metrics-export",
  "phoenix-channel",
  "resolv-conf",
  "rpassword",
@@ -2699,12 +2699,12 @@ dependencies = [
  "known-dirs",
  "ksni",
  "logging",
- "metrics-export",
  "mimalloc",
  "native-dialog",
  "nix 0.31.3",
  "opentelemetry",
  "otel-attributes",
+ "otel-metrics-export",
  "output_vt100",
  "parking_lot",
  "phoenix-channel",
@@ -2772,13 +2772,13 @@ dependencies = [
  "ip_network",
  "known-dirs",
  "logging",
- "metrics-export",
  "mimalloc",
  "nix 0.31.3",
  "opentelemetry",
  "opentelemetry-otlp",
  "opentelemetry-stdout",
  "otel-attributes",
+ "otel-metrics-export",
  "phoenix-channel",
  "rpassword",
  "rustls",
@@ -5011,28 +5011,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "metrics-export"
-version = "0.1.0"
-dependencies = [
- "anyhow-ext",
- "async-runtime",
- "bytes",
- "futures",
- "http",
- "http-client",
- "opentelemetry",
- "opentelemetry-proto",
- "opentelemetry_sdk",
- "prost",
- "secrecy",
- "socket-factory",
- "tokio",
- "tracing",
- "tunnel-bypass-resolver",
- "url",
-]
-
-[[package]]
 name = "micromap"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5866,6 +5844,28 @@ name = "otel-instruments"
 version = "0.1.0"
 dependencies = [
  "opentelemetry",
+]
+
+[[package]]
+name = "otel-metrics-export"
+version = "0.1.0"
+dependencies = [
+ "anyhow-ext",
+ "async-runtime",
+ "bytes",
+ "futures",
+ "http",
+ "http-client",
+ "opentelemetry",
+ "opentelemetry-proto",
+ "opentelemetry_sdk",
+ "prost",
+ "secrecy",
+ "socket-factory",
+ "tokio",
+ "tracing",
+ "tunnel-bypass-resolver",
+ "url",
 ]
 
 [[package]]
@@ -9225,9 +9225,8 @@ dependencies = [
  "gungraun",
  "ip-packet",
  "libc",
- "metrics-export",
  "mimalloc",
- "opentelemetry",
+ "otel-metrics-export",
  "rand 0.10.3",
  "relay-proto",
  "seeded-rng",

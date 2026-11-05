@@ -1,6 +1,6 @@
 //! Exports OpenTelemetry metrics to the portal's OTLP/HTTP endpoint.
 //!
-//! Binaries install a meter provider built from [`meter_provider_builder`]. An
+//! Binaries install the meter provider with [`install_meter_provider`]. An
 //! [`Exporter`] collects from its reader on the portal's interval and POSTs the
 //! result with the portal's token, on its own thread.
 
@@ -25,7 +25,7 @@ use socket_factory::{SocketFactory, TcpSocket};
 use tokio::sync::watch;
 use url::{Origin, Url};
 
-pub use pipeline::meter_provider_builder;
+pub use pipeline::install_meter_provider;
 
 const MIN_EXPORT_INTERVAL: Duration = Duration::from_secs(10);
 const EXPORT_TIMEOUT: Duration = Duration::from_secs(10);

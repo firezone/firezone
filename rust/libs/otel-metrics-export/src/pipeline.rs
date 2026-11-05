@@ -1,5 +1,5 @@
 use std::{
-    sync::{Arc, LazyLock, Weak},
+    sync::{Arc, LazyLock, Once, Weak},
     time::Duration,
 };
 
@@ -23,10 +23,21 @@ static READER: LazyLock<Arc<ManualReader>> = LazyLock::new(|| {
     )
 });
 
-/// Starts building the process-wide meter provider, with the reader that the [`Exporter`](crate::Exporter) collects from.
+/// Installs the global meter provider, with the reader that the [`Exporter`](crate::Exporter) collects from.
 ///
-/// Build at most one provider from this per process.
-pub fn meter_provider_builder() -> MeterProviderBuilder {
+/// `configure` can add a resource and further readers. Only the first call per process installs a
+/// provider: the reader can only belong to one, so later calls do nothing.
+pub fn install_meter_provider(
+    configure: impl FnOnce(MeterProviderBuilder) -> MeterProviderBuilder,
+) {
+    static INSTALLED: Once = Once::new();
+
+    INSTALLED.call_once(|| {
+        opentelemetry::global::set_meter_provider(configure(meter_provider_builder()).build());
+    });
+}
+
+fn meter_provider_builder() -> MeterProviderBuilder {
     SdkMeterProvider::builder().with_reader(SharedReader(READER.clone()))
 }
 
