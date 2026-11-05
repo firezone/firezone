@@ -701,7 +701,7 @@ mod tests {
         let now = Instant::now();
 
         let mut conn = new_connection(Some(1), [1u8; 32]);
-        conn.agent = crate::agent::Agent::path();
+        conn.agent = crate::agent::Agent::frostlink();
         connections.insert_established(1, conn);
 
         connections.reset_for_roam(now);
