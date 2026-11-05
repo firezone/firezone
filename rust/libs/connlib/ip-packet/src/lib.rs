@@ -1468,23 +1468,6 @@ mod tests {
         }
     }
 
-    /// Inserts `options` after the fixed IPv4 header of `packet`.
-    fn with_ipv4_options(packet: &IpPacket, options: &[u8]) -> IpPacket {
-        let header_len = Ipv4HeaderSlice::MIN_LEN + options.len();
-        let len = packet.packet().len() + options.len();
-
-        let mut buf = packet_buffer();
-        buf[..20].copy_from_slice(&packet.packet()[..20]);
-        buf[20..header_len].copy_from_slice(options);
-        buf[header_len..len].copy_from_slice(packet.payload());
-        buf[0] = 0x40 | (header_len / 4) as u8;
-        buf[2..4].copy_from_slice(&(len as u16).to_be_bytes());
-        let checksum = checksum::ipv4_header_checksum(&buf[..header_len]);
-        buf[10..12].copy_from_slice(&checksum.to_be_bytes());
-
-        IpPacket::new(buf, len).unwrap()
-    }
-
     #[test]
     fn transport_accessors_match_parsed_header() {
         let packet = crate::make::tcp_packet_with_options(
@@ -1574,6 +1557,23 @@ mod tests {
         let mut buf = packet_buffer();
         buf[..len].copy_from_slice(packet.packet());
         buf[packet.ip_header_length() + 13] = flags.bits();
+
+        IpPacket::new(buf, len).unwrap()
+    }
+
+    /// Inserts `options` after the fixed IPv4 header of `packet`.
+    fn with_ipv4_options(packet: &IpPacket, options: &[u8]) -> IpPacket {
+        let header_len = Ipv4HeaderSlice::MIN_LEN + options.len();
+        let len = packet.packet().len() + options.len();
+
+        let mut buf = packet_buffer();
+        buf[..20].copy_from_slice(&packet.packet()[..20]);
+        buf[20..header_len].copy_from_slice(options);
+        buf[header_len..len].copy_from_slice(packet.payload());
+        buf[0] = 0x40 | (header_len / 4) as u8;
+        buf[2..4].copy_from_slice(&(len as u16).to_be_bytes());
+        let checksum = checksum::ipv4_header_checksum(&buf[..header_len]);
+        buf[10..12].copy_from_slice(&checksum.to_be_bytes());
 
         IpPacket::new(buf, len).unwrap()
     }
