@@ -116,6 +116,51 @@ defmodule Portal.Cache.Client.AuthorizationsTest do
     end
   end
 
+  describe "hydrate_outbound/1" do
+    test "loads an authorization to another client keyed by {receiving client, resource}" do
+      account = account_fixture()
+      initiating_client = client_fixture(account: account)
+      target_client = client_fixture(account: account)
+
+      policy_authorization =
+        policy_authorization_fixture(
+          account: account,
+          client: initiating_client,
+          gateway: target_client
+        )
+
+      cache = Authorizations.hydrate_outbound(initiating_client)
+
+      key = {dump!(target_client.id), dump!(policy_authorization.resource_id)}
+
+      assert cache == %{
+               key =>
+                 {dump!(policy_authorization.id),
+                  DateTime.to_unix(policy_authorization.expires_at, :second)}
+             }
+    end
+
+    test "ignores authorizations to gateways" do
+      account = account_fixture()
+      initiating_client = client_fixture(account: account)
+
+      policy_authorization_fixture(account: account, client: initiating_client)
+
+      assert Authorizations.hydrate_outbound(initiating_client) == %{}
+    end
+
+    test "ignores expired authorizations and inbound authorizations" do
+      account = account_fixture()
+      client = client_fixture(account: account)
+      peer_client = client_fixture(account: account)
+
+      expired_policy_authorization_fixture(account: account, client: client, gateway: peer_client)
+      policy_authorization_fixture(account: account, client: peer_client, gateway: client)
+
+      assert Authorizations.hydrate_outbound(client) == %{}
+    end
+  end
+
   describe "put/5" do
     test "inserts an entry keyed by {client, resource}" do
       client_id = Ecto.UUID.generate()

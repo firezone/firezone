@@ -9,6 +9,10 @@ defmodule Portal.Cache.Client.Authorizations do
     pushes `reject_access` when it targets the authorization currently granting access. A delete for
     a superseded authorization is ignored.
 
+    The initiating client's channel keeps a second instance, from `hydrate_outbound/1`, for the
+    client-to-client authorizations it holds as the `initiating_device_id`. There the key holds the
+    receiving client.
+
     Data structure:
 
       %{{client_id:uuidv4:16, resource_id:uuidv4:16} =>
@@ -42,6 +46,22 @@ defmodule Portal.Cache.Client.Authorizations do
         account_id: client.account_id
       } do
       Database.all_client_policy_authorizations_for_cache!(client)
+      |> Enum.reduce(%{}, &put_hydrated/2)
+    end
+  end
+
+  @doc """
+    Like `hydrate/1`, but for outbound policy_authorizations: entries where the client is the
+    `initiating_device_id` and the receiving device is another client.
+  """
+  @spec hydrate_outbound(Device.t()) :: t()
+  def hydrate_outbound(client) do
+    OpenTelemetry.Tracer.with_span "Portal.Cache.Client.Authorizations.hydrate_outbound",
+      attributes: %{
+        client_id: client.id,
+        account_id: client.account_id
+      } do
+      Database.all_outbound_client_policy_authorizations_for_cache!(client)
       |> Enum.reduce(%{}, &put_hydrated/2)
     end
   end
@@ -169,6 +189,27 @@ defmodule Portal.Cache.Client.Authorizations do
       |> select(
         [policy_authorizations: pa],
         {pa.id, pa.initiating_device_id, pa.resource_id, pa.expires_at}
+      )
+      |> Safe.unscoped()
+      |> Safe.all()
+    end
+
+    def all_outbound_client_policy_authorizations_for_cache!(%{account_id: _, id: _} = client) do
+      now = DateTime.utc_now()
+
+      from(pa in Portal.PolicyAuthorization, as: :policy_authorizations)
+      |> join(:inner, [policy_authorizations: pa], d in Portal.Device,
+        on: d.account_id == pa.account_id and d.id == pa.receiving_device_id,
+        as: :receiving_device
+      )
+      |> where([policy_authorizations: pa], pa.account_id == ^client.account_id)
+      |> where([policy_authorizations: pa], pa.initiating_device_id == ^client.id)
+      |> where([policy_authorizations: pa], pa.expires_at > ^now)
+      |> where([receiving_device: d], d.type == :client)
+      |> order_by([policy_authorizations: pa], desc: pa.expires_at)
+      |> select(
+        [policy_authorizations: pa],
+        {pa.id, pa.receiving_device_id, pa.resource_id, pa.expires_at}
       )
       |> Safe.unscoped()
       |> Safe.all()

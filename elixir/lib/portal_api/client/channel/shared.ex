@@ -119,6 +119,7 @@ defmodule PortalAPI.Client.Channel.Shared do
     # changes and policy_authorization deletions for resources another client has been
     # authorized to access via this one.
     authorizations_cache = Cache.Client.Authorizations.hydrate(socket.assigns.client)
+    outbound_authorizations_cache = Cache.Client.Authorizations.hydrate_outbound(socket.assigns.client)
 
     # Initialize relays and subscribe to global relay presence
     {:ok, relays} = select_relays(socket)
@@ -131,7 +132,7 @@ defmodule PortalAPI.Client.Channel.Shared do
       |> assign(
         cache: cache,
         authorizations_cache: authorizations_cache,
-        outbound_client_peers: %{},
+        outbound_authorizations_cache: outbound_authorizations_cache,
         pending_authorizations: %{},
         iceless_capable: false
       )
@@ -216,15 +217,13 @@ defmodule PortalAPI.Client.Channel.Shared do
       @prune_authorizations_cache_every
     )
 
-    now_unix = DateTime.to_unix(DateTime.utc_now(), :second)
-
     {:noreply,
      assign(
        socket,
        authorizations_cache:
          Cache.Client.Authorizations.prune(socket.assigns.authorizations_cache),
-       outbound_client_peers:
-         Map.filter(socket.assigns.outbound_client_peers, fn {_id, exp} -> exp >= now_unix end)
+       outbound_authorizations_cache:
+         Cache.Client.Authorizations.prune(socket.assigns.outbound_authorizations_cache)
      )}
   end
 
@@ -480,7 +479,7 @@ defmodule PortalAPI.Client.Channel.Shared do
         {:noreply,
          socket
          |> assign(:pending_authorizations, remaining)
-         |> put_outbound_client_peer(pending)}
+         |> put_outbound_authorization(pending)}
     end
   end
 
@@ -578,6 +577,11 @@ defmodule PortalAPI.Client.Channel.Shared do
   def handle_info({:reject_access, %Portal.PolicyAuthorization{} = policy_authorization}, socket) do
     socket = cancel_authz_durability_timer(socket, policy_authorization.id)
     revoke_policy_authorization(socket, policy_authorization)
+  end
+
+  # Sent to the initiator when its policy_authorization failed to persist, so no CDC delete comes.
+  def handle_info({:outbound_authorization_failed, %Portal.PolicyAuthorization{} = pa}, socket) do
+    {:noreply, delete_outbound_authorization(socket, pa)}
   end
 
   # Queue confirms a c2c policy_authorization was durably persisted; cancel
@@ -756,6 +760,11 @@ defmodule PortalAPI.Client.Channel.Shared do
         PG.deliver(
           attrs.receiving_device_id,
           {:reject_access, policy_authorization}
+        )
+
+        PG.deliver(
+          attrs.initiating_device_id,
+          {:outbound_authorization_failed, policy_authorization}
         )
       end)
     end
@@ -1961,7 +1970,9 @@ defmodule PortalAPI.Client.Channel.Shared do
           Map.put(socket.assigns.pending_authorizations, ref, %{
             timer_ref: timer_ref,
             initiator_payload: initiator_payload,
+            policy_authorization_id: policy_authorization_id,
             target_client_id: target_client_id,
+            resource_id: resource_id,
             expires_at: expires_at,
             deny_payload: %{
               client_id: target_client_id,
@@ -2536,6 +2547,8 @@ defmodule PortalAPI.Client.Channel.Shared do
          },
          %{assigns: %{client: %{id: client_id}}} = socket
        ) do
+    socket = delete_outbound_authorization(socket, policy_authorization)
+
     if protocol_version(socket) >= 3 and
          not expired?(policy_authorization) do
       push(socket, "reject_access", %{
@@ -3240,24 +3253,41 @@ defmodule PortalAPI.Client.Channel.Shared do
   end
 
   defp client_peer?(socket, client_id) do
-    outbound_client_peer?(socket, client_id) or
+    Cache.Client.Authorizations.has_client?(socket.assigns.outbound_authorizations_cache, client_id) or
       Cache.Client.Authorizations.has_client?(socket.assigns.authorizations_cache, client_id)
   end
 
-  defp outbound_client_peer?(socket, client_id) do
-    case Map.fetch(socket.assigns.outbound_client_peers, client_id) do
-      {:ok, expires_at_unix} -> expires_at_unix >= DateTime.to_unix(DateTime.utc_now(), :second)
-      :error -> false
+  defp put_outbound_authorization(socket, %{
+         policy_authorization_id: policy_authorization_id,
+         target_client_id: target_client_id,
+         resource_id: resource_id,
+         expires_at: %DateTime{} = expires_at
+       }) do
+    cache =
+      Cache.Client.Authorizations.put(
+        socket.assigns.outbound_authorizations_cache,
+        policy_authorization_id,
+        target_client_id,
+        resource_id,
+        expires_at
+      )
+
+    assign(socket, :outbound_authorizations_cache, cache)
+  end
+
+  defp put_outbound_authorization(socket, _pending), do: socket
+
+  defp delete_outbound_authorization(socket, %Portal.PolicyAuthorization{} = pa) do
+    case Cache.Client.Authorizations.delete(
+           socket.assigns.outbound_authorizations_cache,
+           pa.id,
+           pa.receiving_device_id,
+           pa.resource_id
+         ) do
+      {:ok, _expires_at_unix, cache} -> assign(socket, :outbound_authorizations_cache, cache)
+      :error -> socket
     end
   end
-
-  # Last-one-wins, like the receiver's authorization cache.
-  defp put_outbound_client_peer(socket, %{target_client_id: client_id, expires_at: %DateTime{} = exp}) do
-    peers = Map.put(socket.assigns.outbound_client_peers, client_id, DateTime.to_unix(exp, :second))
-    assign(socket, :outbound_client_peers, peers)
-  end
-
-  defp put_outbound_client_peer(socket, _pending), do: socket
 
   defmodule Database do
     import Ecto.Query, only: [from: 2, dynamic: 1]

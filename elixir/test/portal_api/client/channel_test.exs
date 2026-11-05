@@ -3435,7 +3435,7 @@ defmodule PortalAPI.Client.ChannelTest do
       target_actor = actor_fixture(account: account)
       target_client = client_fixture(account: account, actor: target_actor) |> fetch_device!()
       :ok = PG.register(target_client.id)
-      put_outbound_client_peer(socket, target_client.id)
+      put_outbound_authorization(socket, outbound_policy_authorization(account, client, target_client.id))
 
       push(socket, "invalidate_client_ice_candidates", %{
         "candidates" => candidates,
@@ -3493,6 +3493,102 @@ defmodule PortalAPI.Client.ChannelTest do
       }
 
       refute_receive {:invalidate_client_ice_candidates, _, _}
+    end
+
+    test "stops forwarding after the outbound authorization is deleted", %{
+      account: account,
+      client: client,
+      subject: subject
+    } do
+      socket = join_channel(client, subject)
+      assert_push "init", _
+
+      target_client = client_fixture(account: account) |> fetch_device!()
+      :ok = PG.register(target_client.id)
+      pa = outbound_policy_authorization(account, client, target_client.id)
+      put_outbound_authorization(socket, pa)
+
+      send(socket.channel_pid, %Changes.Change{lsn: 100, op: :delete, old_struct: pa})
+
+      push(socket, "new_client_ice_candidates", %{
+        "candidates" => ["cand1"],
+        "client_id" => target_client.id
+      })
+
+      refute_receive {:client_ice_candidates, _, _}
+    end
+
+    test "keeps forwarding when a superseded outbound authorization is deleted", %{
+      account: account,
+      client: client,
+      subject: subject
+    } do
+      socket = join_channel(client, subject)
+      assert_push "init", _
+
+      target_client = client_fixture(account: account) |> fetch_device!()
+      :ok = PG.register(target_client.id)
+      old_pa = outbound_policy_authorization(account, client, target_client.id)
+      put_outbound_authorization(socket, old_pa)
+      put_outbound_authorization(socket, %{old_pa | id: Ecto.UUID.generate()})
+
+      send(socket.channel_pid, %Changes.Change{lsn: 100, op: :delete, old_struct: old_pa})
+
+      push(socket, "new_client_ice_candidates", %{
+        "candidates" => ["cand1"],
+        "client_id" => target_client.id
+      })
+
+      client_id = client.id
+      assert_receive {:client_ice_candidates, ^client_id, ["cand1"]}, 500
+    end
+
+    test "stops forwarding after the outbound authorization fails to persist", %{
+      account: account,
+      client: client,
+      subject: subject
+    } do
+      socket = join_channel(client, subject)
+      assert_push "init", _
+
+      target_client = client_fixture(account: account) |> fetch_device!()
+      :ok = PG.register(target_client.id)
+      pa = outbound_policy_authorization(account, client, target_client.id)
+      put_outbound_authorization(socket, pa)
+
+      send(socket.channel_pid, {:outbound_authorization_failed, pa})
+
+      push(socket, "new_client_ice_candidates", %{
+        "candidates" => ["cand1"],
+        "client_id" => target_client.id
+      })
+
+      refute_receive {:client_ice_candidates, _, _}
+    end
+
+    test "forwards to a client with an outbound authorization hydrated on join", %{
+      account: account,
+      client: client,
+      subject: subject
+    } do
+      target_client = client_fixture(account: account) |> fetch_device!()
+      Portal.PolicyAuthorizationFixtures.policy_authorization_fixture(
+        account: account,
+        client: client,
+        gateway: target_client
+      )
+      :ok = PG.register(target_client.id)
+
+      socket = join_channel(client, subject)
+      assert_push "init", _
+
+      push(socket, "new_client_ice_candidates", %{
+        "candidates" => ["cand1"],
+        "client_id" => target_client.id
+      })
+
+      client_id = client.id
+      assert_receive {:client_ice_candidates, ^client_id, ["cand1"]}, 500
     end
   end
 
@@ -9429,11 +9525,29 @@ defmodule PortalAPI.Client.ChannelTest do
     end)
   end
 
-  defp put_outbound_client_peer(socket, target_client_id) do
-    expires_at_unix = DateTime.to_unix(DateTime.utc_now(), :second) + 3600
-
+  defp put_outbound_authorization(socket, %Portal.PolicyAuthorization{} = pa) do
     :sys.replace_state(socket.channel_pid, fn state ->
-      put_in(state.assigns.outbound_client_peers[target_client_id], expires_at_unix)
+      cache =
+        Portal.Cache.Client.Authorizations.put(
+          state.assigns.outbound_authorizations_cache,
+          pa.id,
+          pa.receiving_device_id,
+          pa.resource_id,
+          pa.expires_at
+        )
+
+      put_in(state.assigns.outbound_authorizations_cache, cache)
     end)
+  end
+
+  defp outbound_policy_authorization(account, client, target_client_id) do
+    %Portal.PolicyAuthorization{
+      id: Ecto.UUID.generate(),
+      account_id: account.id,
+      initiating_device_id: client.id,
+      receiving_device_id: target_client_id,
+      resource_id: Ecto.UUID.generate(),
+      expires_at: DateTime.add(DateTime.utc_now(), 3600, :second)
+    }
   end
 end
