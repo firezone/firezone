@@ -3590,6 +3590,71 @@ defmodule PortalAPI.Client.ChannelTest do
       client_id = client.id
       assert_receive {:client_ice_candidates, ^client_id, ["cand1"]}, 500
     end
+
+    test "stops forwarding after the outbound authorization expires and is pruned", %{
+      account: account,
+      client: client,
+      subject: subject
+    } do
+      socket = join_channel(client, subject)
+      assert_push "init", _
+
+      target_client = client_fixture(account: account) |> fetch_device!()
+      :ok = PG.register(target_client.id)
+      pa = outbound_policy_authorization(account, client, target_client.id)
+      put_outbound_authorization(socket, %{pa | expires_at: DateTime.add(DateTime.utc_now(), -1, :second)})
+
+      send(socket.channel_pid, :prune_authorizations_cache)
+
+      push(socket, "new_client_ice_candidates", %{
+        "candidates" => ["cand1"],
+        "client_id" => target_client.id
+      })
+
+      refute_receive {:client_ice_candidates, _, _}
+    end
+
+    test "stops forwarding to the initiator after the inbound authorization is deleted", %{
+      account: account,
+      client: client,
+      subject: subject
+    } do
+      socket = join_channel(client, subject)
+      assert_push "init", _
+
+      initiating_client = client_fixture(account: account) |> fetch_device!()
+      initiating_client_id = initiating_client.id
+      :ok = PG.register(initiating_client_id)
+
+      pa = %Portal.PolicyAuthorization{
+        id: Ecto.UUID.generate(),
+        account_id: account.id,
+        initiating_device_id: initiating_client_id,
+        receiving_device_id: client.id,
+        resource_id: Ecto.UUID.generate(),
+        expires_at: DateTime.add(DateTime.utc_now(), 3600, :second)
+      }
+
+      put_inbound_authorization(socket, pa)
+
+      push(socket, "new_client_ice_candidates", %{
+        "candidates" => ["before-delete"],
+        "client_id" => initiating_client_id
+      })
+
+      client_id = client.id
+      assert_receive {:client_ice_candidates, ^client_id, ["before-delete"]}, 500
+
+      send(socket.channel_pid, %Changes.Change{lsn: 100, op: :delete, old_struct: pa})
+      assert_push "reject_access", %{client_id: ^initiating_client_id}
+
+      push(socket, "new_client_ice_candidates", %{
+        "candidates" => ["after-delete"],
+        "client_id" => initiating_client_id
+      })
+
+      refute_receive {:client_ice_candidates, _, _}
+    end
   end
 
   describe "handle_in/3 create_flow" do
@@ -7141,6 +7206,70 @@ defmodule PortalAPI.Client.ChannelTest do
       assert_receive {:client_ice_candidates, ^client_id, ["after-ack"]}, 500
     end
 
+    test "stops forwarding the initiator's ICE candidates when the authorization fails to persist",
+         %{
+           client: client,
+           subject: subject,
+           target_client: target_client,
+           target_subject: target_subject,
+           pool_resource: pool_resource
+         } do
+      target_client_id = target_client.id
+
+      session_meta = %{
+        ipv4: target_client.ipv4.address,
+        ipv6: target_client.ipv6.address,
+        name: target_client.name,
+        public_key: Portal.DeviceFixtures.generate_public_key(),
+        psk_base: target_client.psk_base,
+        remote_ip: %Postgrex.INET{address: {100, 64, 0, 99}},
+        version: "1.5.16",
+        user_agent: "Mac OS/14 apple-client/1.5.16",
+        group_ids: []
+      }
+
+      :ok = Presence.Devices.connect(target_client, target_subject.credential.id, session_meta)
+      :ok = PG.register(target_client_id)
+
+      initiating_socket = join_channel(client, subject, channel: PortalAPI.Client.V3.Channel)
+      assert_push "init", _
+
+      target_ip = Portal.Types.INET.to_string(target_client.ipv4)
+
+      push(initiating_socket, "request_access", %{
+        "resource_ids" => [pool_resource.id],
+        "ipv4" => target_ip
+      })
+
+      assert_receive {:client_device_access_authorized, {ack_to, ref}, _payload}, 500
+      send(ack_to, {:device_access_acked, ref, false, target_client.name, target_client.slug})
+      assert_push "client_device_access_authorized", %{client_id: ^target_client_id}
+
+      push(initiating_socket, "new_client_ice_candidates", %{
+        "candidates" => ["before-failure"],
+        "client_id" => target_client_id
+      })
+
+      client_id = client.id
+      assert_receive {:client_ice_candidates, ^client_id, ["before-failure"]}, 500
+
+      policy =
+        Portal.Repo.one!(from(p in Portal.Policy, where: p.resource_id == ^pool_resource.id))
+
+      Portal.Repo.delete!(policy)
+      Portal.Queue.flush(:policy_authorization_queue)
+
+      assert_receive {:reject_access, %Portal.PolicyAuthorization{initiating_device_id: ^client_id}},
+                     500
+
+      push(initiating_socket, "new_client_ice_candidates", %{
+        "candidates" => ["after-failure"],
+        "client_id" => target_client_id
+      })
+
+      refute_receive {:client_ice_candidates, _, _}
+    end
+
     test "denies the initiator with :offline when the target never acks", %{
       client: client,
       subject: subject,
@@ -9510,19 +9639,28 @@ defmodule PortalAPI.Client.ChannelTest do
     System.monotonic_time(:millisecond) - started_at
   end
 
-  defp put_inbound_authorization(socket, initiating_client_id) do
+  defp put_inbound_authorization(socket, %Portal.PolicyAuthorization{} = pa) do
     :sys.replace_state(socket.channel_pid, fn state ->
       cache =
         Portal.Cache.Client.Authorizations.put(
           state.assigns.authorizations_cache,
-          Ecto.UUID.generate(),
-          initiating_client_id,
-          Ecto.UUID.generate(),
-          DateTime.add(DateTime.utc_now(), 3600, :second)
+          pa.id,
+          pa.initiating_device_id,
+          pa.resource_id,
+          pa.expires_at
         )
 
       put_in(state.assigns.authorizations_cache, cache)
     end)
+  end
+
+  defp put_inbound_authorization(socket, initiating_client_id) do
+    put_inbound_authorization(socket, %Portal.PolicyAuthorization{
+      id: Ecto.UUID.generate(),
+      initiating_device_id: initiating_client_id,
+      resource_id: Ecto.UUID.generate(),
+      expires_at: DateTime.add(DateTime.utc_now(), 3600, :second)
+    })
   end
 
   defp put_outbound_authorization(socket, %Portal.PolicyAuthorization{} = pa) do
