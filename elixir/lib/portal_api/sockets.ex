@@ -222,6 +222,33 @@ defmodule PortalAPI.Sockets do
     {context, version}
   end
 
+  @max_ice_candidates 64
+  @max_ice_candidate_bytes 512
+
+  @doc """
+  Keeps at most #{@max_ice_candidates} ICE candidates that are strings of at most
+  #{@max_ice_candidate_bytes} bytes. Returns an empty list for any other input.
+
+  Records the number of candidates and the dropped candidates as telemetry for the
+  `:client` or `:gateway` `device` that sent them.
+  """
+  def limit_ice_candidates(candidates, %Portal.Device{type: sender})
+      when is_list(candidates) do
+    Portal.Telemetry.ice_candidates_received(sender, length(candidates))
+
+    {strings, invalid} = Enum.split_with(candidates, &is_binary/1)
+    {valid, oversized} = Enum.split_with(strings, &(byte_size(&1) <= @max_ice_candidate_bytes))
+    {kept, over_limit} = Enum.split(valid, @max_ice_candidates)
+
+    Portal.Telemetry.ice_candidates_dropped(sender, :invalid, length(invalid))
+    Portal.Telemetry.ice_candidates_dropped(sender, :oversized, length(oversized))
+    Portal.Telemetry.ice_candidates_dropped(sender, :over_limit, length(over_limit))
+
+    kept
+  end
+
+  def limit_ice_candidates(_candidates, %Portal.Device{}), do: []
+
   @doc """
   Tells every device holding an active policy authorization with `device` that it
   reconnected with a public key other than `previous_public_key`, so they drop a

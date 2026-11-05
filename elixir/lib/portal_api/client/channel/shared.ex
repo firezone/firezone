@@ -115,10 +115,11 @@ defmodule PortalAPI.Client.Channel.Shared do
         protocol_version: protocol_version(socket)
       )
 
-    # Hydrate inbound policy_authorizations cache so the channel can react to filter
+    # Hydrate the policy_authorizations caches so the channel can react to filter
     # changes and policy_authorization deletions for resources another client has been
     # authorized to access via this one.
-    authorizations_cache = Cache.Client.Authorizations.hydrate(socket.assigns.client)
+    {authorizations_cache, outbound_authorizations_cache} =
+      Cache.Client.Authorizations.hydrate(socket.assigns.client)
 
     # Initialize relays and subscribe to global relay presence
     {:ok, relays} = select_relays(socket)
@@ -131,6 +132,7 @@ defmodule PortalAPI.Client.Channel.Shared do
       |> assign(
         cache: cache,
         authorizations_cache: authorizations_cache,
+        outbound_authorizations_cache: outbound_authorizations_cache,
         pending_authorizations: %{},
         iceless_capable: false
       )
@@ -219,7 +221,9 @@ defmodule PortalAPI.Client.Channel.Shared do
      assign(
        socket,
        authorizations_cache:
-         Cache.Client.Authorizations.prune(socket.assigns.authorizations_cache)
+         Cache.Client.Authorizations.prune(socket.assigns.authorizations_cache),
+       outbound_authorizations_cache:
+         Cache.Client.Authorizations.prune(socket.assigns.outbound_authorizations_cache)
      )}
   end
 
@@ -461,7 +465,7 @@ defmodule PortalAPI.Client.Channel.Shared do
       {nil, _} ->
         {:noreply, socket}
 
-      {%{timer_ref: timer_ref, initiator_payload: initiator_payload}, remaining} ->
+      {%{timer_ref: timer_ref, initiator_payload: initiator_payload} = pending, remaining} ->
         Process.cancel_timer(timer_ref)
 
         initiator_payload =
@@ -471,7 +475,11 @@ defmodule PortalAPI.Client.Channel.Shared do
           |> Map.put(:client_slug, client_slug)
 
         push(socket, "client_device_access_authorized", initiator_payload)
-        {:noreply, assign(socket, :pending_authorizations, remaining)}
+
+        {:noreply,
+         socket
+         |> assign(:pending_authorizations, remaining)
+         |> put_outbound_authorization(pending)}
     end
   end
 
@@ -569,6 +577,11 @@ defmodule PortalAPI.Client.Channel.Shared do
   def handle_info({:reject_access, %Portal.PolicyAuthorization{} = policy_authorization}, socket) do
     socket = cancel_authz_durability_timer(socket, policy_authorization.id)
     revoke_policy_authorization(socket, policy_authorization)
+  end
+
+  # Sent to the initiator when its policy_authorization failed to persist, so no CDC delete comes.
+  def handle_info({:outbound_authorization_failed, %Portal.PolicyAuthorization{} = pa}, socket) do
+    {:noreply, delete_outbound_authorization(socket, pa)}
   end
 
   # Queue confirms a c2c policy_authorization was durably persisted; cancel
@@ -747,6 +760,11 @@ defmodule PortalAPI.Client.Channel.Shared do
         PG.deliver(
           attrs.receiving_device_id,
           {:reject_access, policy_authorization}
+        )
+
+        PG.deliver(
+          attrs.initiating_device_id,
+          {:outbound_authorization_failed, policy_authorization}
         )
       end)
     end
@@ -1142,8 +1160,7 @@ defmodule PortalAPI.Client.Channel.Shared do
         %{"candidates" => candidates, "gateway_id" => gateway_id},
         socket
       ) do
-    PG.deliver(gateway_id, {:ice_candidates, socket.assigns.client.id, candidates})
-    {:noreply, socket}
+    deliver_to_gateways(socket, [gateway_id], :ice_candidates_from_client, candidates)
   end
 
   def handle_in(
@@ -1151,12 +1168,7 @@ defmodule PortalAPI.Client.Channel.Shared do
         %{"candidates" => candidates, "gateway_id" => gateway_id},
         socket
       ) do
-    PG.deliver(
-      gateway_id,
-      {:invalidate_ice_candidates, socket.assigns.client.id, candidates}
-    )
-
-    {:noreply, socket}
+    deliver_to_gateways(socket, [gateway_id], :invalidate_ice_candidates_from_client, candidates)
   end
 
   def handle_in(
@@ -1164,13 +1176,8 @@ defmodule PortalAPI.Client.Channel.Shared do
         %{"candidates" => candidates, "client_id" => target_client_id},
         socket
       ) do
-    case PG.deliver(
-           target_client_id,
-           {:client_ice_candidates, socket.assigns.client.id, candidates}
-         ) do
-      :ok -> {:noreply, socket}
-      {:error, :not_found} -> {:noreply, socket}
-    end
+    deliver_to_client(socket, target_client_id, :client_ice_candidates, candidates)
+    {:noreply, socket}
   end
 
   def handle_in(
@@ -1178,9 +1185,11 @@ defmodule PortalAPI.Client.Channel.Shared do
         %{"candidates" => candidates, "client_id" => target_client_id},
         socket
       ) do
-    case PG.deliver(
+    case deliver_to_client(
+           socket,
            target_client_id,
-           {:invalidate_client_ice_candidates, socket.assigns.client.id, candidates}
+           :invalidate_client_ice_candidates,
+           candidates
          ) do
       :ok ->
         {:noreply, socket}
@@ -1201,14 +1210,7 @@ defmodule PortalAPI.Client.Channel.Shared do
         %{"candidates" => candidates, "gateway_ids" => gateway_ids},
         socket
       ) do
-    Enum.each(gateway_ids, fn gateway_id ->
-      PG.deliver(
-        gateway_id,
-        {:ice_candidates, socket.assigns.client.id, candidates}
-      )
-    end)
-
-    {:noreply, socket}
+    deliver_to_gateways(socket, gateway_ids, :ice_candidates_from_client, candidates)
   end
 
   def handle_in(
@@ -1216,14 +1218,7 @@ defmodule PortalAPI.Client.Channel.Shared do
         %{"candidates" => candidates, "gateway_ids" => gateway_ids},
         socket
       ) do
-    Enum.each(gateway_ids, fn gateway_id ->
-      PG.deliver(
-        gateway_id,
-        {:invalidate_ice_candidates, socket.assigns.client.id, candidates}
-      )
-    end)
-
-    {:noreply, socket}
+    deliver_to_gateways(socket, gateway_ids, :invalidate_ice_candidates_from_client, candidates)
   end
 
   def handle_in("set_snownet_capabilities", payload, socket) when is_map(payload) do
@@ -1975,6 +1970,10 @@ defmodule PortalAPI.Client.Channel.Shared do
           Map.put(socket.assigns.pending_authorizations, ref, %{
             timer_ref: timer_ref,
             initiator_payload: initiator_payload,
+            policy_authorization_id: policy_authorization_id,
+            target_client_id: target_client_id,
+            resource_id: resource_id,
+            expires_at: expires_at,
             deny_payload: %{
               client_id: target_client_id,
               ipv4: payload["ipv4"],
@@ -2548,6 +2547,8 @@ defmodule PortalAPI.Client.Channel.Shared do
          },
          %{assigns: %{client: %{id: client_id}}} = socket
        ) do
+    socket = delete_outbound_authorization(socket, policy_authorization)
+
     if protocol_version(socket) >= 3 and
          not expired?(policy_authorization) do
       push(socket, "reject_access", %{
@@ -3218,6 +3219,75 @@ defmodule PortalAPI.Client.Channel.Shared do
   defp abnormal_exit?(:shutdown), do: false
   defp abnormal_exit?({:shutdown, _reason}), do: false
   defp abnormal_exit?(_reason), do: true
+
+  # The receiving gateway checks its authorization cache before it forwards the candidates.
+  defp deliver_to_gateways(socket, gateway_ids, tag, candidates) when is_list(gateway_ids) do
+    candidates = PortalAPI.Sockets.limit_ice_candidates(candidates, socket.assigns.client)
+
+    if candidates != [] do
+      for gateway_id <- Enum.uniq(gateway_ids), is_binary(gateway_id) do
+        PG.deliver(gateway_id, {tag, socket.assigns.client.id, candidates})
+      end
+    end
+
+    {:noreply, socket}
+  end
+
+  defp deliver_to_gateways(socket, _gateway_ids, _tag, _candidates), do: {:noreply, socket}
+
+  # Unauthorized targets look offline so the reply does not reveal presence.
+  defp deliver_to_client(socket, target_client_id, tag, candidates) do
+    candidates = PortalAPI.Sockets.limit_ice_candidates(candidates, socket.assigns.client)
+
+    cond do
+      not client_peer?(socket, target_client_id) ->
+        Portal.Telemetry.ice_candidates_dropped(:client, :unauthorized, length(candidates))
+        {:error, :not_found}
+
+      candidates == [] ->
+        :ok
+
+      true ->
+        PG.deliver(target_client_id, {tag, socket.assigns.client.id, candidates})
+    end
+  end
+
+  defp client_peer?(socket, client_id) do
+    Cache.Client.Authorizations.has_client?(socket.assigns.outbound_authorizations_cache, client_id) or
+      Cache.Client.Authorizations.has_client?(socket.assigns.authorizations_cache, client_id)
+  end
+
+  defp put_outbound_authorization(socket, %{
+         policy_authorization_id: policy_authorization_id,
+         target_client_id: target_client_id,
+         resource_id: resource_id,
+         expires_at: %DateTime{} = expires_at
+       }) do
+    cache =
+      Cache.Client.Authorizations.put(
+        socket.assigns.outbound_authorizations_cache,
+        policy_authorization_id,
+        target_client_id,
+        resource_id,
+        expires_at
+      )
+
+    assign(socket, :outbound_authorizations_cache, cache)
+  end
+
+  defp put_outbound_authorization(socket, _pending), do: socket
+
+  defp delete_outbound_authorization(socket, %Portal.PolicyAuthorization{} = pa) do
+    case Cache.Client.Authorizations.delete(
+           socket.assigns.outbound_authorizations_cache,
+           pa.id,
+           pa.receiving_device_id,
+           pa.resource_id
+         ) do
+      {:ok, _expires_at_unix, cache} -> assign(socket, :outbound_authorizations_cache, cache)
+      :error -> socket
+    end
+  end
 
   defmodule Database do
     import Ecto.Query, only: [from: 2, dynamic: 1]
