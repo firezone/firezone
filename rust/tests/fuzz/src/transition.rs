@@ -230,7 +230,7 @@ impl Transition {
             Transition::EditResource(edit) => {
                 self.retains_flow(client_id, route, false)
                     && classify(&edit.old, &edit.new)
-                        .forgets_dns_records_under()
+                        .forgets_dns_records_matching()
                         .is_none_or(|address| match &flow.dst {
                             Destination::DomainName { name, .. } => !is_subdomain(name, address),
                             Destination::IpAddr(_) => true,
@@ -425,19 +425,19 @@ impl EditEffect<'_> {
         }
     }
 
-    fn forgets_dns_records_under(&self) -> Option<&str> {
+    fn forgets_dns_records_matching(&self) -> Option<&str> {
         match self {
             EditEffect::Metadata => None,
             EditEffect::Filters { .. } => None,
             EditEffect::Access {
-                forgets_dns_records_under,
+                forgets_dns_records_matching,
                 ..
-            } => *forgets_dns_records_under,
+            } => *forgets_dns_records_matching,
             EditEffect::DevicePoolRouting => None,
             EditEffect::Type {
-                forgets_dns_records_under,
+                forgets_dns_records_matching,
                 ..
-            } => *forgets_dns_records_under,
+            } => *forgets_dns_records_matching,
         }
     }
 }

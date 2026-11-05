@@ -144,7 +144,7 @@ pub(crate) enum EditEffect<'a> {
     Access {
         resource_id: ResourceId,
         affects_tcp: bool,
-        forgets_dns_records_under: Option<&'a str>,
+        forgets_dns_records_matching: Option<&'a str>,
     },
     /// The pool's filters change the client's routes but keep its peer authorizations.
     DevicePoolRouting,
@@ -152,7 +152,7 @@ pub(crate) enum EditEffect<'a> {
     Type {
         old: &'a Resource,
         new: &'a Resource,
-        forgets_dns_records_under: Option<&'a str>,
+        forgets_dns_records_matching: Option<&'a str>,
     },
 }
 
@@ -184,7 +184,7 @@ pub(crate) fn classify<'a>(old: &'a Resource, new: &'a Resource) -> EditEffect<'
                 return EditEffect::Access {
                     resource_id: *id,
                     affects_tcp: true,
-                    forgets_dns_records_under: (address != new_address).then_some(new_address),
+                    forgets_dns_records_matching: (address != new_address).then_some(new_address),
                 };
             }
 
@@ -219,7 +219,7 @@ pub(crate) fn classify<'a>(old: &'a Resource, new: &'a Resource) -> EditEffect<'
                 return EditEffect::Access {
                     resource_id: *id,
                     affects_tcp: false,
-                    forgets_dns_records_under: None,
+                    forgets_dns_records_matching: None,
                 };
             }
 
@@ -244,7 +244,7 @@ pub(crate) fn classify<'a>(old: &'a Resource, new: &'a Resource) -> EditEffect<'
                 return EditEffect::Access {
                     resource_id: *id,
                     affects_tcp: false,
-                    forgets_dns_records_under: None,
+                    forgets_dns_records_matching: None,
                 };
             }
 
@@ -271,7 +271,7 @@ pub(crate) fn classify<'a>(old: &'a Resource, new: &'a Resource) -> EditEffect<'
         _ => EditEffect::Type {
             old,
             new,
-            forgets_dns_records_under: match new {
+            forgets_dns_records_matching: match new {
                 Resource::Dns(new) => Some(&new.address),
                 Resource::Cidr(_) => None,
                 Resource::Internet(_) => None,
