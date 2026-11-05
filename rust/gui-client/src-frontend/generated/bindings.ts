@@ -113,7 +113,7 @@ export type ControlPlane = "CloudUs" | "CloudEu" | "Custom"
 export type Error = string
 export type FileCount = { bytes: number; files: number }
 export type GeneralSettingsChanged = GeneralSettingsViewModel
-export type GeneralSettingsViewModel = { start_minimized: boolean; start_on_login: boolean; connect_on_start: boolean; connect_on_start_is_managed: boolean; account_slug: string; account_slug_is_managed: boolean; control_plane: ControlPlane; auth_url: string; auth_url_is_managed: boolean; api_url: string; api_url_is_managed: boolean;
+export type GeneralSettingsViewModel = { start_minimized: boolean; start_on_login: boolean; start_on_login_is_managed: boolean; connect_on_start: boolean; connect_on_start_is_managed: boolean; account_slug: string; account_slug_is_managed: boolean; control_plane: ControlPlane; auth_url: string; auth_url_is_managed: boolean; api_url: string; api_url_is_managed: boolean;
 /**
  * What the auth URL field shows when [`ControlPlane::Custom`] is picked: the last saved custom URL, or else `auth_url`.
  */

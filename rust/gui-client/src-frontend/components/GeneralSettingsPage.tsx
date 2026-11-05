@@ -26,6 +26,7 @@ const defaultSettings: GeneralSettingsViewModel = {
   account_slug: "",
   connect_on_start: false,
   start_on_login: false,
+  start_on_login_is_managed: false,
   account_slug_is_managed: false,
   connect_on_start_is_managed: false,
   control_plane: "Custom",
@@ -197,11 +198,12 @@ export default function GeneralSettingsPage({
               field
               inputId={startOnLoginInputId}
               label="Start on login"
+              managed={saved.start_on_login_is_managed}
             >
               <ManagedToggleSwitch
                 checked={saved.start_on_login}
                 id={startOnLoginInputId}
-                managed={false}
+                managed={saved.start_on_login_is_managed}
                 name="start_on_login"
                 onChange={(start_on_login) => save({ start_on_login })}
               />
@@ -225,6 +227,7 @@ export default function GeneralSettingsPage({
           {(saved.account_slug_is_managed ||
             saved.auth_url_is_managed ||
             saved.api_url_is_managed ||
+            saved.start_on_login_is_managed ||
             saved.connect_on_start_is_managed) && <ManagedSettingsNotice />}
         </section>
 
