@@ -266,7 +266,7 @@ pub struct DecryptJobs<'a> {
 }
 
 impl DecryptJobs<'_> {
-    /// Returns where to add the batches and the received segments to make them of, in order.
+    /// Returns where to add the batches, and the segments of the trains to make them of, in order.
     pub fn split(
         &mut self,
     ) -> (

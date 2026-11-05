@@ -267,9 +267,9 @@ impl PendingDecapsulate {
         self.pending.len()
     }
 
-    /// Decrypts the messages from `segments`, those passed to
-    /// [`Node::begin_decapsulate`](crate::Node::begin_decapsulate) and
-    /// [`DecapsulateBatch::push`] in order.
+    /// Decrypts the messages from `segments`: the one passed to
+    /// [`Node::begin_decapsulate`](crate::Node::begin_decapsulate) and those
+    /// [`DecapsulateBatch::push`] accepted, in order.
     ///
     /// Commit the result with [`Node::commit_decrypted`](crate::Node::commit_decrypted).
     pub fn decrypt<'a>(self, segments: impl IntoIterator<Item = &'a [u8]>) -> DecryptedBatch {
