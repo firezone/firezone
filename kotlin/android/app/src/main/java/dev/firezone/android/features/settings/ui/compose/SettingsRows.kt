@@ -90,7 +90,7 @@ fun ManagedSettingsNote(modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun IconNote(
+fun IconNote(
     icon: ImageVector,
     text: String,
     modifier: Modifier = Modifier,
