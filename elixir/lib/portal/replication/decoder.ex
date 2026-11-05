@@ -181,15 +181,6 @@ defmodule Portal.Replication.Decoder do
     {column.name, decoded_list}
   end
 
-  def decode_value({value, %{type: type} = column})
-      when type in ["_text", "_varchar"] and is_binary(value) do
-    {column.name, parse_postgres_text_array(value)}
-  rescue
-    _ ->
-      Logger.warning("Failed to decode text array, using as-is", column: column.name)
-      {column.name, value}
-  end
-
   def decode_value({"t", %{type: "bool"} = column}), do: {column.name, true}
   def decode_value({"f", %{type: "bool"} = column}), do: {column.name, false}
 
@@ -230,32 +221,6 @@ defmodule Portal.Replication.Decoder do
   def decode_value({value, column}) do
     {column.name, value}
   end
-
-  # One-dimensional `text[]` output: elements are comma-separated, quoted (with
-  # backslash escapes) when they contain special characters, and `NULL` unquoted.
-  defp parse_postgres_text_array("{" <> rest), do: parse_text_elements(rest, [])
-
-  defp parse_text_elements("}", acc), do: Enum.reverse(acc)
-  defp parse_text_elements("," <> rest, acc), do: parse_text_elements(rest, acc)
-
-  defp parse_text_elements("\"" <> rest, acc) do
-    {element, rest} = parse_quoted_text(rest, "")
-    parse_text_elements(rest, [element | acc])
-  end
-
-  defp parse_text_elements(rest, acc) do
-    {length, _} = :binary.match(rest, [",", "}"])
-    <<element::binary-size(^length), rest::binary>> = rest
-    parse_text_elements(rest, [if(element == "NULL", do: nil, else: element) | acc])
-  end
-
-  defp parse_quoted_text("\\" <> <<char::utf8, rest::binary>>, acc),
-    do: parse_quoted_text(rest, acc <> <<char::utf8>>)
-
-  defp parse_quoted_text("\"" <> rest, acc), do: {acc, rest}
-
-  defp parse_quoted_text(<<char::utf8, rest::binary>>, acc),
-    do: parse_quoted_text(rest, acc <> <<char::utf8>>)
 
   defp parse_postgres_jsonb_array("{}"), do: []
 

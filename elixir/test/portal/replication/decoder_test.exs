@@ -512,25 +512,6 @@ defmodule Portal.Replication.DecoderTest do
       assert Decoder.decode_value({~s({"a":1}), column}) == {"config", %{"a" => 1}}
     end
 
-    test "decodes a text array into a list" do
-      column = %{type: "_text", name: "metrics_allowlist"}
-
-      assert Decoder.decode_value({"{}", column}) == {"metrics_allowlist", []}
-
-      assert Decoder.decode_value({"{connlib.network.packets,b}", column}) ==
-               {"metrics_allowlist", ["connlib.network.packets", "b"]}
-
-      assert Decoder.decode_value({~S({"a,b","say \"hi\"","back\\slash",NULL,"NULL"}), column}) ==
-               {"metrics_allowlist", ["a,b", ~S(say "hi"), ~S(back\slash), nil, "NULL"]}
-    end
-
-    test "passes a malformed text array through as-is" do
-      column = %{type: "_text", name: "metrics_allowlist"}
-
-      assert Decoder.decode_value({"{a,b", column}) == {"metrics_allowlist", "{a,b"}
-      assert Decoder.decode_value({nil, column}) == {"metrics_allowlist", nil}
-    end
-
     test "decodes bool t/f into booleans" do
       column = %{type: "bool", name: "flow_log_uploads_enabled"}
 

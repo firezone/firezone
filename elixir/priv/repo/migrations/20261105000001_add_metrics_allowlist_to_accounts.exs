@@ -3,7 +3,7 @@ defmodule Portal.Repo.Migrations.AddMetricsAllowlistToAccounts do
 
   def change do
     alter table(:accounts) do
-      add :metrics_allowlist, {:array, :text}
+      add :metrics_allowlist, :jsonb
     end
   end
 end
