@@ -229,11 +229,9 @@ async fn try_main(cli: Cli) -> Result<()> {
     ]);
 
     let meter_provider = metrics_export::meter_provider_builder().with_resource(resource);
-    let meter_provider = match (cli.metrics, cli.otlp_grpc_endpoint) {
-        (Some(MetricsExporter::OtelCollector), Some(endpoint)) => {
-            meter_provider.with_periodic_exporter(tonic_otlp_exporter(endpoint)?)
-        }
-        (Some(MetricsExporter::OtelCollector), None) | (None, _) => meter_provider,
+    let meter_provider = match cli.otlp_grpc_endpoint {
+        Some(endpoint) => meter_provider.with_periodic_exporter(tonic_otlp_exporter(endpoint)?),
+        None => meter_provider,
     };
     opentelemetry::global::set_meter_provider(meter_provider.build());
 
@@ -424,16 +422,7 @@ struct Cli {
     #[arg(long, env = "FIREZONE_FLOW_LOGS", default_value_t = false)]
     flow_logs: bool,
 
-    /// Where to export metrics to.
-    ///
-    /// This configuration option is private API and has no stability guarantees.
-    /// It may be removed / changed anytime.
-    #[arg(long, hide = true, env = "FIREZONE_METRICS")]
-    metrics: Option<MetricsExporter>,
-
-    /// Send metrics to a custom OTLP collector.
-    ///
-    /// By default, Firezone's hosted OTLP collector is used.
+    /// Also send metrics to an OTLP collector over gRPC.
     ///
     /// This configuration option is private API and has no stability guarantees.
     /// It may be removed / changed anytime.
@@ -477,11 +466,6 @@ impl fmt::Display for LogFormat {
             LogFormat::Human => write!(f, "human"),
         }
     }
-}
-
-#[derive(Debug, Clone, Copy, clap::ValueEnum)]
-enum MetricsExporter {
-    OtelCollector,
 }
 
 impl Cli {
