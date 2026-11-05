@@ -19,7 +19,7 @@ public struct SettingsView: View {
   private let store: Store
   private let configuration: Configuration
 
-  private enum Field: Hashable {
+  enum Field: Hashable {
     case accountSlug
     case authURL
     case apiURL
@@ -187,7 +187,9 @@ public struct SettingsView: View {
             text: $viewModel.accountSlug,
             prompt: Text(PlaceholderText.accountSlug)
           ) {
-            managedLabel("Account Slug", isManaged: configuration.isAccountSlugForced)
+            managedLabel(
+              "Account Slug", isManaged: configuration.isAccountSlugForced,
+              savedField: .accountSlug)
           }
           .focused($focusedField, equals: .accountSlug)
           .onSubmit { commit(.settings) }
@@ -207,7 +209,8 @@ public struct SettingsView: View {
               text: $viewModel.authURL,
               prompt: Text(PlaceholderText.authURL)
             ) {
-              managedLabel("Auth URL", isManaged: configuration.isAuthURLForced)
+              managedLabel(
+                "Auth URL", isManaged: configuration.isAuthURLForced, savedField: .authURL)
             }
             .focused($focusedField, equals: .authURL)
             .onSubmit { commit(.settings) }
@@ -218,7 +221,7 @@ public struct SettingsView: View {
               text: $viewModel.apiURL,
               prompt: Text(PlaceholderText.apiURL)
             ) {
-              managedLabel("API URL", isManaged: configuration.isApiURLForced)
+              managedLabel("API URL", isManaged: configuration.isApiURLForced, savedField: .apiURL)
             }
             .focused($focusedField, equals: .apiURL)
             .onSubmit { commit(.settings) }
@@ -268,7 +271,9 @@ public struct SettingsView: View {
         Form {
           Section {
             VStack(alignment: .leading, spacing: 2) {
-              managedLabel("Account Slug", isManaged: configuration.isAccountSlugForced)
+              managedLabel(
+                "Account Slug", isManaged: configuration.isAccountSlugForced,
+                savedField: .accountSlug)
                 .foregroundStyle(.secondary)
                 .font(.caption)
               TextField(
@@ -314,7 +319,8 @@ public struct SettingsView: View {
 
             if viewModel.controlPlane == .custom {
               VStack(alignment: .leading, spacing: 2) {
-                managedLabel("Auth URL", isManaged: configuration.isAuthURLForced)
+                managedLabel(
+                  "Auth URL", isManaged: configuration.isAuthURLForced, savedField: .authURL)
                   .foregroundStyle(.secondary)
                   .font(.caption)
                 TextField(
@@ -330,7 +336,8 @@ public struct SettingsView: View {
                 errorText(viewModel.authURLError)
               }
               VStack(alignment: .leading, spacing: 2) {
-                managedLabel("API URL", isManaged: configuration.isApiURLForced)
+                managedLabel(
+                  "API URL", isManaged: configuration.isApiURLForced, savedField: .apiURL)
                   .foregroundStyle(.secondary)
                   .font(.caption)
                 TextField(
@@ -387,7 +394,8 @@ public struct SettingsView: View {
         Form {
           Section {
             VStack(alignment: .leading, spacing: 2) {
-              managedLabel("Log Filter", isManaged: configuration.isLogFilterForced)
+              managedLabel(
+                "Log Filter", isManaged: configuration.isLogFilterForced, savedField: .logFilter)
                 .foregroundStyle(.secondary)
                 .font(.caption)
               TextField(
@@ -478,7 +486,8 @@ public struct SettingsView: View {
             text: $viewModel.logFilter,
             prompt: Text(PlaceholderText.logFilter)
           ) {
-            managedLabel("Log Filter", isManaged: configuration.isLogFilterForced)
+            managedLabel(
+              "Log Filter", isManaged: configuration.isLogFilterForced, savedField: .logFilter)
           }
           .focused($focusedField, equals: .logFilter)
           .onSubmit { commit(.logs) }
@@ -577,7 +586,9 @@ public struct SettingsView: View {
       }
   }
 
-  private func managedLabel(_ title: String, isManaged: Bool) -> some View {
+  private func managedLabel(
+    _ title: String, isManaged: Bool, savedField: Field? = nil
+  ) -> some View {
     HStack(alignment: .firstTextBaseline, spacing: 4) {
       Text(LocalizedStringKey(title))
         .accessibilityHint(isManaged ? "Managed by your organization." : "")
@@ -587,7 +598,20 @@ public struct SettingsView: View {
           .foregroundStyle(.secondary)
           .accessibilityHidden(true)
       }
+      if let savedField, viewModel.recentlySavedFields.contains(savedField) {
+        Image(systemName: "checkmark.circle.fill")
+          .font(.caption)
+          .foregroundStyle(.green)
+          .transition(.opacity)
+          .accessibilityLabel("Saved")
+          .onAppear {
+            if #available(iOS 17, macOS 14, *) {
+              AccessibilityNotification.Announcement("Saved").post()
+            }
+          }
+      }
     }
+    .animation(.easeInOut, value: viewModel.recentlySavedFields)
   }
 
   @ViewBuilder
