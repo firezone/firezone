@@ -51,6 +51,10 @@ pub struct CryptoWorkers {
     workers: Workers,
     /// The open train to each destination of the current [`EncryptJobs`], kept for its capacity.
     open_gso_trains: Vec<UdpGsoTrain>,
+    /// The trains of the current [`DecryptJobs`], kept for its capacity.
+    gro_trains: Vec<UdpGroTrain>,
+    /// The batches of the current [`DecryptJobs`], kept for its capacity.
+    decrypt_batches: Vec<(PendingDecapsulate, SegmentIndex)>,
 }
 
 struct Workers {
@@ -103,6 +107,8 @@ impl CryptoWorkers {
                 packet_counter,
             },
             open_gso_trains: Vec::new(),
+            gro_trains: Vec::new(),
+            decrypt_batches: Vec::new(),
         }
     }
 
@@ -124,20 +130,18 @@ impl CryptoWorkers {
         decrypting: &'a mut Decrypting,
         mut received: ReceivedDatagrams,
     ) -> DecryptJobs<'a> {
-        let mut trains = Vec::<UdpGroTrain>::new();
-
         for datagram in received.drain() {
-            match trains.last_mut() {
+            match self.gro_trains.last_mut() {
                 Some(train) if train.accepts(&datagram) => train.push(datagram),
-                Some(_) | None => trains.push(UdpGroTrain::new(datagram)),
+                Some(_) | None => self.gro_trains.push(UdpGroTrain::new(datagram)),
             }
         }
 
         DecryptJobs {
             workers: &mut self.workers,
             decrypting,
-            trains,
-            batches: Vec::new(),
+            trains: &mut self.gro_trains,
+            batches: &mut self.decrypt_batches,
         }
     }
 }
@@ -260,9 +264,9 @@ impl Drop for EncryptJobs<'_> {
 pub struct DecryptJobs<'a> {
     workers: &'a mut Workers,
     decrypting: &'a mut Decrypting,
-    trains: Vec<UdpGroTrain>,
+    trains: &'a mut Vec<UdpGroTrain>,
     /// Each batch with the index of the segment it begins with.
-    batches: Vec<(PendingDecapsulate, SegmentIndex)>,
+    batches: &'a mut Vec<(PendingDecapsulate, SegmentIndex)>,
 }
 
 impl DecryptJobs<'_> {
@@ -279,7 +283,7 @@ impl DecryptJobs<'_> {
             .enumerate()
             .flat_map(|(index, train)| train.segments(index));
 
-        (DecryptBatches(&mut self.batches), segments)
+        (DecryptBatches(self.batches), segments)
     }
 }
 
