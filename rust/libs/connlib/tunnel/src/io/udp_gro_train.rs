@@ -12,12 +12,6 @@ use super::DecryptedBatch;
 /// A receive buffer holds at most this many segments, so every buffer fits into a single job.
 pub const DECRYPT_BATCH_SIZE: usize = 64;
 
-/// The datagrams of one receive, split into the [`UdpGroTrain`]s of their decrypt jobs.
-#[derive(Default)]
-pub struct Received {
-    trains: Vec<UdpGroTrain>,
-}
-
 /// One decrypt job: consecutive datagrams of one receive with at most [`DECRYPT_BATCH_SIZE`]
 /// segments, and the batches of data messages among them.
 ///
@@ -32,75 +26,59 @@ pub struct UdpGroTrain {
     batches: Vec<(PendingDecapsulate, usize)>,
 }
 
-/// A segment of a [`Received`], i.e. one datagram as its remote sent it.
+/// A segment of a [`UdpGroTrain`], i.e. one datagram as its remote sent it.
 pub struct ReceivedSegment<'a> {
     datagram: &'a DatagramIn,
     segment: &'a [u8],
     index: SegmentIndex,
 }
 
-/// Where a [`ReceivedSegment`] lies within its [`Received`].
+/// Where a [`ReceivedSegment`] lies among the trains of one receive.
 #[derive(Debug, Clone, Copy)]
 pub struct SegmentIndex {
     train: usize,
     segment: usize,
 }
 
-impl Received {
-    pub fn new(datagrams: impl Iterator<Item = DatagramIn>) -> Self {
-        let mut trains = Vec::<UdpGroTrain>::new();
-
-        for datagram in datagrams {
-            let num_segments = datagram.num_segments();
-
-            match trains.last_mut() {
-                Some(train) if train.num_segments + num_segments <= DECRYPT_BATCH_SIZE => {
-                    train.num_segments += num_segments;
-                    train.datagrams.push(datagram);
-                }
-                Some(_) | None => trains.push(UdpGroTrain {
-                    datagrams: SmallVec::from_buf([datagram]),
-                    num_segments,
-                    batches: Vec::new(),
-                }),
-            }
-        }
-
-        Self { trains }
-    }
-
-    /// Iterates over the segments of the datagrams, in order.
-    pub fn segments(&self) -> impl Iterator<Item = ReceivedSegment<'_>> {
-        self.trains.iter().enumerate().flat_map(|(train, t)| {
-            segments(&t.datagrams)
-                .enumerate()
-                .map(move |(segment, (datagram, bytes))| ReceivedSegment {
-                    datagram,
-                    segment: bytes,
-                    index: SegmentIndex { train, segment },
-                })
-        })
-    }
-
-    /// Adds each of `batches` to the train of the segment it begins with, returning the trains
-    /// that have any.
-    pub fn into_trains(
-        mut self,
-        batches: Vec<(PendingDecapsulate, SegmentIndex)>,
-    ) -> impl Iterator<Item = UdpGroTrain> {
-        for (decapsulation, index) in batches {
-            self.trains[index.train]
-                .batches
-                .push((decapsulation, index.segment));
-        }
-
-        self.trains
-            .into_iter()
-            .filter(|train| !train.batches.is_empty())
-    }
-}
-
 impl UdpGroTrain {
+    pub fn new(datagram: DatagramIn) -> Self {
+        Self {
+            num_segments: datagram.num_segments(),
+            datagrams: SmallVec::from_buf([datagram]),
+            batches: Vec::new(),
+        }
+    }
+
+    /// Whether `datagram` fits into the train.
+    pub fn accepts(&self, datagram: &DatagramIn) -> bool {
+        self.num_segments + datagram.num_segments() <= DECRYPT_BATCH_SIZE
+    }
+
+    pub fn push(&mut self, datagram: DatagramIn) {
+        self.num_segments += datagram.num_segments();
+        self.datagrams.push(datagram);
+    }
+
+    /// Iterates over the segments of the datagrams, in order, as the train at `train`.
+    pub fn segments(&self, train: usize) -> impl Iterator<Item = ReceivedSegment<'_>> {
+        segments(&self.datagrams)
+            .enumerate()
+            .map(move |(segment, (datagram, bytes))| ReceivedSegment {
+                datagram,
+                segment: bytes,
+                index: SegmentIndex { train, segment },
+            })
+    }
+
+    /// Adds the batch decrypted with `decapsulation` that begins with the segment at `first`.
+    pub fn add_batch(&mut self, decapsulation: PendingDecapsulate, first: SegmentIndex) {
+        self.batches.push((decapsulation, first.segment));
+    }
+
+    pub fn has_batches(&self) -> bool {
+        !self.batches.is_empty()
+    }
+
     /// Decrypts the batches, in order.
     pub fn decrypt(self) -> Vec<DecryptedBatch> {
         let mut segments = segments(&self.datagrams).peekable();
@@ -154,6 +132,13 @@ impl ReceivedSegment<'_> {
 
         self.index.train == next.index.train
             && (std::ptr::eq(self.datagram, next.datagram) || path(self) == path(next))
+    }
+}
+
+impl SegmentIndex {
+    /// The index of the segment's train.
+    pub fn train(&self) -> usize {
+        self.train
     }
 }
 

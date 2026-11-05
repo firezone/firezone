@@ -15,11 +15,10 @@ use socket_factory::DatagramOut;
 use tokio::sync::oneshot;
 
 use super::{
-    Received, ReceivedSegment, SegmentIndex, UdpGroTrain, UdpGsoTrain,
-    udp_gro_train::DECRYPT_BATCH_SIZE,
+    ReceivedSegment, SegmentIndex, UdpGroTrain, UdpGsoTrain, udp_gro_train::DECRYPT_BATCH_SIZE,
 };
 use crate::packet_counts::UdpPacketCounts;
-use crate::sockets::{PendingDatagrams, Sockets};
+use crate::sockets::{PendingDatagrams, ReceivedDatagrams, Sockets};
 use smallvec::SmallVec;
 
 /// How many jobs may await decryption before we stop reading from the network.
@@ -129,12 +128,21 @@ impl CryptoWorkers {
     pub fn new_decrypt_jobs<'a>(
         &'a mut self,
         decrypting: &'a mut Decrypting,
-        received: Received,
+        mut received: ReceivedDatagrams,
     ) -> DecryptJobs<'a> {
+        let mut trains = Vec::<UdpGroTrain>::new();
+
+        for datagram in received.drain() {
+            match trains.last_mut() {
+                Some(train) if train.accepts(&datagram) => train.push(datagram),
+                Some(_) | None => trains.push(UdpGroTrain::new(datagram)),
+            }
+        }
+
         DecryptJobs {
             workers: &mut self.workers,
             decrypting,
-            received,
+            trains,
             batches: Vec::new(),
         }
     }
@@ -254,12 +262,12 @@ impl Drop for EncryptJobs<'_> {
     }
 }
 
-/// The segments of one receive and the batches of them to decrypt, handed to the workers when
-/// dropped.
+/// The trains of one receive and the batches of their segments to decrypt, handed to the workers
+/// when dropped.
 pub struct DecryptJobs<'a> {
     workers: &'a mut Workers,
     decrypting: &'a mut Decrypting,
-    received: Received,
+    trains: Vec<UdpGroTrain>,
     /// Each batch with the index of the segment it begins with.
     batches: Vec<(PendingDecapsulate, SegmentIndex)>,
 }
@@ -272,15 +280,23 @@ impl DecryptJobs<'_> {
         impl Iterator<Item = ReceivedSegment<'_>>,
         DecryptBatches<'_>,
     ) {
-        (self.received.segments(), DecryptBatches(&mut self.batches))
+        let segments = self
+            .trains
+            .iter()
+            .enumerate()
+            .flat_map(|(index, train)| train.segments(index));
+
+        (segments, DecryptBatches(&mut self.batches))
     }
 }
 
 impl Drop for DecryptJobs<'_> {
     fn drop(&mut self) {
-        let batches = mem::take(&mut self.batches);
+        for (decapsulation, first) in self.batches.drain(..) {
+            self.trains[first.train()].add_batch(decapsulation, first);
+        }
 
-        for train in mem::take(&mut self.received).into_trains(batches) {
+        for train in self.trains.drain(..).filter(UdpGroTrain::has_batches) {
             // A stopped worker drops the sender, so `Decrypting::poll_job` skips the job.
             self.workers.send(Job::Decrypt(DecryptJob {
                 train,

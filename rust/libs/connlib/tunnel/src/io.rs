@@ -6,13 +6,13 @@ mod udp_gso_train;
 pub(crate) use crypto::MAX_DECRYPT_BACKLOG_MEMORY;
 pub use crypto::{CryptoWorkers, DecryptJobs, DecryptedBatch, DecryptedJobs, EncryptJobs};
 pub use device::{Device, TunChannelClosed};
-pub(crate) use udp_gro_train::{Received, ReceivedSegment, SegmentIndex, UdpGroTrain};
+pub(crate) use udp_gro_train::{ReceivedSegment, SegmentIndex, UdpGroTrain};
 pub(crate) use udp_gso_train::UdpGsoTrain;
 
 use crate::{
     TunnelError, dns,
     resolver::{self, ResolverControl, ResolverQuery},
-    sockets::Sockets,
+    sockets::{ReceivedDatagrams, Sockets},
 };
 use anyhow::Result;
 use crypto::Decrypting;
@@ -51,7 +51,7 @@ pub struct Io {
 /// handling them one at a time, improving fairness and preventing starvation.
 pub struct Input {
     pub device: Option<tun::PacketBatch>,
-    pub network: Option<Received>,
+    pub network: Option<ReceivedDatagrams>,
     pub decrypted: Option<DecryptedJobs>,
     pub dns_queries: Vec<DnsQuery>,
     pub dns_responses: Vec<dns::RecursiveResponse>,
@@ -139,8 +139,7 @@ impl<'a, 'cx> PollState<'a, 'cx> {
             return;
         }
 
-        self.input.network = poll_to_option(self.io.sockets.poll_recv_from(self.cx))
-            .map(|mut datagrams| Received::new(datagrams.drain()));
+        self.input.network = poll_to_option(self.io.sockets.poll_recv_from(self.cx));
     }
 
     fn poll_socket_errors(&mut self) {
@@ -341,7 +340,7 @@ impl Io {
 
     /// Creates the jobs that decrypt the batches of `received` off the main thread, yielding them
     /// via [`Input::decrypted`] once dropped.
-    pub fn new_decrypt_jobs(&mut self, received: Received) -> DecryptJobs<'_> {
+    pub fn new_decrypt_jobs(&mut self, received: ReceivedDatagrams) -> DecryptJobs<'_> {
         self.crypto.new_decrypt_jobs(&mut self.decrypting, received)
     }
 

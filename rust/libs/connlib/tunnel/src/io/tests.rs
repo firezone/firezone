@@ -147,9 +147,9 @@ async fn network_is_read_from_both_families_each_poll() {
     ends.v4.inbound_tx.try_send(datagram_from(V4_PEER)).unwrap();
     ends.v6.inbound_tx.try_send(datagram_from(V6_PEER)).unwrap();
 
-    let network = io.poll_unwrap(&mut cx).network.unwrap();
+    let mut network = io.poll_unwrap(&mut cx).network.unwrap();
 
-    let senders = network.segments().map(|s| s.from()).collect::<Vec<_>>();
+    let senders = network.drain().map(|d| d.from()).collect::<Vec<_>>();
     assert_eq!(senders, vec![V4_PEER, V6_PEER]);
 }
 
