@@ -461,7 +461,6 @@ impl Eventloop {
                 relays,
                 authorizations,
                 flow_logs,
-                metrics,
             }) => {
                 if let Some(account_slug) = account_slug {
                     telemetry::set_account_slug(account_slug.clone());
@@ -471,16 +470,6 @@ impl Eventloop {
                     }
 
                     analytics::identify(RELEASE.to_owned(), account_slug, None, None)
-                }
-
-                match metrics {
-                    Some(metrics) => self.metrics_exporter.configure(
-                        &metrics.endpoint,
-                        metrics.export_interval_secs,
-                        metrics.token,
-                        metrics.patterns,
-                    ),
-                    None => self.metrics_exporter.disable(),
                 }
 
                 tunnel

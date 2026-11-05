@@ -585,7 +585,6 @@ impl Eventloop {
                 relays,
                 authorizations,
                 flow_logs,
-                metrics,
                 account_slug,
                 actor_name,
             }) => {
@@ -595,16 +594,6 @@ impl Eventloop {
                         actor_name,
                     }))
                     .context("Failed to emit event")?;
-
-                match metrics {
-                    Some(metrics) => self.metrics_exporter.configure(
-                        &metrics.endpoint,
-                        metrics.export_interval_secs,
-                        metrics.token,
-                        metrics.patterns,
-                    ),
-                    None => self.metrics_exporter.disable(),
-                }
 
                 tracing::info!(
                     upload_enabled = flow_logs.upload_enabled(),

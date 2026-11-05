@@ -119,8 +119,6 @@ pub struct InitClient {
     #[serde(default)]
     pub authorizations: Vec<Authorization>,
     pub flow_logs: FlowLogsConfig,
-    #[serde(default)]
-    pub metrics: Option<MetricsConfig>,
     pub account_slug: String,
     pub actor_name: String,
 }
@@ -463,8 +461,6 @@ pub enum EgressMessages {
 
 #[cfg(test)]
 mod tests {
-    use secrecy::ExposeSecret as _;
-
     use super::*;
 
     #[test]
@@ -486,52 +482,6 @@ mod tests {
         assert_eq!(init.flow_logs.upload_interval_secs, 60);
         assert_eq!(init.flow_logs.upload_batch_size, 1000);
         assert!(init.flow_logs.upload_enabled());
-    }
-
-    #[test]
-    fn can_deserialize_init_with_metrics_config() {
-        let init = r#"{
-            "interface": { "ipv4": "100.64.0.1", "ipv6": "fd00:2021:1111::1" },
-            "account_slug": "acme",
-            "actor_name": "Jane Doe",
-            "flow_logs": {
-                "api_url": "https://flow-api.firezone.dev",
-                "upload_interval_secs": 60,
-                "upload_batch_size": 1000
-            },
-            "metrics": {
-                "endpoint": "https://otlp.firezone.dev/v1/metrics",
-                "export_interval_secs": 60,
-                "token": "metrics-token",
-                "patterns": ["*"]
-            }
-        }"#;
-
-        let init = serde_json::from_str::<InitClient>(init).unwrap();
-
-        let metrics = init.metrics.unwrap();
-        assert_eq!(metrics.endpoint, "https://otlp.firezone.dev/v1/metrics");
-        assert_eq!(metrics.export_interval_secs, 60);
-        assert_eq!(metrics.token.unwrap().expose_secret(), "metrics-token");
-        assert_eq!(metrics.patterns, ["*"]);
-    }
-
-    #[test]
-    fn init_without_metrics_config_has_none() {
-        let init = r#"{
-            "interface": { "ipv4": "100.64.0.1", "ipv6": "fd00:2021:1111::1" },
-            "account_slug": "acme",
-            "actor_name": "Jane Doe",
-            "flow_logs": {
-                "api_url": "https://flow-api.firezone.dev",
-                "upload_interval_secs": 60,
-                "upload_batch_size": 1000
-            }
-        }"#;
-
-        let init = serde_json::from_str::<InitClient>(init).unwrap();
-
-        assert!(init.metrics.is_none());
     }
 
     #[test]

@@ -71,11 +71,6 @@ impl Exporter {
 
         self.config.send_replace(config);
     }
-
-    /// Stops exporting until the next [`Exporter::configure`] with a token.
-    pub fn disable(&self) {
-        self.config.send_replace(None);
-    }
 }
 
 #[derive(Clone)]
