@@ -4,7 +4,9 @@ mod nat_table;
 pub(crate) use crate::gateway::client_on_gateway::ClientOnGateway;
 
 use crate::authorization_rejections::AuthorizationRejections;
-use crate::gateway::client_on_gateway::{ProxyIpAlreadyAssigned, TranslateOutboundResult};
+use crate::gateway::client_on_gateway::{
+    DomainHasOtherProxyIps, ProxyIpAlreadyAssigned, TranslateOutboundResult,
+};
 use crate::messages::gateway::{Client, ResourceDescription};
 use crate::messages::{IceCredentials, IngestToken, Key};
 use crate::p2p_control::dns_resource_nat::ProxyIps;
@@ -471,7 +473,9 @@ impl GatewayState {
 
         let nat_status = match result {
             Ok(()) => dns_resource_nat::NatStatus::Active,
-            Err(e) if e.any_is::<ProxyIpAlreadyAssigned>() => {
+            Err(e)
+                if e.any_is::<ProxyIpAlreadyAssigned>() || e.any_is::<DomainHasOtherProxyIps>() =>
+            {
                 tracing::debug!("Conflicting proxy assignment; closing connection: {e:#}");
                 self.cleanup_connection(&client, now);
 

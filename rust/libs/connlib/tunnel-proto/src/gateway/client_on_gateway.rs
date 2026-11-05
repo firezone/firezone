@@ -122,6 +122,13 @@ impl ClientOnGateway {
                 ProxyIpAlreadyAssigned(proxy_ip)
             );
         }
+        anyhow::ensure!(
+            self.permanent_translations
+                .iter()
+                .all(|(proxy_ip, state)| state.domain != name
+                    || proxy_ips.iter().any(|new| new == *proxy_ip)),
+            DomainHasOtherProxyIps(name)
+        );
 
         let resource = &self
             .resources
@@ -651,6 +658,10 @@ impl ClientOnGateway {
 #[derive(Debug, thiserror::Error)]
 #[error("Proxy IP {0} is assigned to a different domain")]
 pub(super) struct ProxyIpAlreadyAssigned(IpAddr);
+
+#[derive(Debug, thiserror::Error)]
+#[error("Domain {0} is assigned to different proxy IPs")]
+pub(super) struct DomainHasOtherProxyIps(DomainName);
 
 #[derive(Debug, thiserror::Error)]
 #[error("Internet resource rejects IP: {0}")]
@@ -1383,6 +1394,38 @@ mod tests {
         };
 
         assert_eq!(packet.destination(), foo_real_ip1());
+    }
+
+    #[test]
+    fn setting_up_dns_resource_nat_rejects_other_proxy_ips_for_same_domain() {
+        let _guard = logging::test("trace");
+
+        let mut peer = ClientOnGateway::new(client_id(), client_key(), client_tun(), gateway_tun());
+        peer.add_resource(foo_dns_resource(), None, Instant::now());
+        peer.setup_nat(
+            foo_name().parse().unwrap(),
+            foo_resource_id(),
+            BTreeSet::from([foo_real_ip1().into()]),
+            ProxyIps::for_test(),
+        )
+        .unwrap();
+
+        let result = peer.setup_nat(
+            foo_name().parse().unwrap(),
+            foo_resource_id(),
+            BTreeSet::from([foo_real_ip1().into()]),
+            ProxyIps::new(
+                [5, 6, 7, 8].map(|i| Ipv4Addr::new(100, 96, 0, i)),
+                [4, 5, 6, 7].map(|i| Ipv6Addr::new(0xfd00, 0x2021, 0x1111, 0x8000, 0, 0, 0, i)),
+            )
+            .unwrap(),
+        );
+
+        assert!(result.unwrap_err().any_is::<DomainHasOtherProxyIps>());
+        assert_eq!(
+            peer.permanent_translations.len(),
+            ProxyIps::for_test().iter().count()
+        );
     }
 
     #[test]
