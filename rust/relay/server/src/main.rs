@@ -435,7 +435,7 @@ enum IngressMessages {
     Init(Init),
     AccountAdded(Account),
     AccountRemoved(Account),
-    IceCandidateIps(IceCandidateIps),
+    CandidateIps(CandidateIps),
 }
 
 #[derive(serde::Deserialize, Debug)]
@@ -450,7 +450,7 @@ struct Account {
 }
 
 #[derive(serde::Deserialize, Debug)]
-struct IceCandidateIps {
+struct CandidateIps {
     account_id: AccountId,
     ips: Vec<IpAddr>,
 }
@@ -559,25 +559,22 @@ where
         })
     }
 
-    /// Channel bindings to unknown peers are deferred from the portal's first report of known ones until the connection drops.
-    fn sync_known_peer_enforcement(&mut self, portal_reported_peers: bool) {
+    /// Peers are only treated as unknown while the portal connection can report known ones.
+    fn sync_known_peer_enforcement(&mut self) {
         let connected = self.is_connected.load(Ordering::Relaxed);
 
-        match (self.enforce_known_peers, connected, portal_reported_peers) {
-            (false, true, true) => {
-                tracing::info!(
-                    "Portal reports known peers, deferring channel bindings to unknown peers"
-                );
-                self.server.set_enforce_known_peers(true);
-                self.enforce_known_peers = true;
-            }
-            (true, false, _) => {
-                tracing::warn!("Portal disconnected, accepting channel bindings to unknown peers");
-                self.server.set_enforce_known_peers(false);
-                self.enforce_known_peers = false;
-            }
-            _ => {}
+        if connected == self.enforce_known_peers {
+            return;
         }
+
+        if connected {
+            tracing::info!("Portal connected, deferring channel bindings to unknown peers");
+        } else {
+            tracing::warn!("Portal disconnected, binding channels to unknown peers");
+        }
+
+        self.server.set_enforce_known_peers(connected);
+        self.enforce_known_peers = connected;
     }
 
     fn poll(&mut self, cx: &mut std::task::Context<'_>) -> Poll<Result<()>> {
@@ -586,7 +583,7 @@ where
         while let Some(mut tick) = budget.next() {
             ready!(self.sockets.flush(cx))?;
 
-            self.sync_known_peer_enforcement(false);
+            self.sync_known_peer_enforcement();
 
             // Priority 1: Execute the pending commands of the server.
             if let Some(next_command) = self.server.next_command() {
@@ -788,14 +785,13 @@ where
                     self.server.remove_account(&account.account_id);
                     tick.want_continue();
                 }
-                Poll::Ready(Some(Ok(IngressMessages::IceCandidateIps(candidates)))) => {
-                    tracing::debug!(account_id = %candidates.account_id, num_ips = candidates.ips.len(), "Received ICE candidate IPs");
+                Poll::Ready(Some(Ok(IngressMessages::CandidateIps(candidates)))) => {
+                    tracing::debug!(account_id = %candidates.account_id, num_ips = candidates.ips.len(), "Received candidate IPs");
                     self.server.add_known_peers(
                         candidates.account_id,
                         candidates.ips,
                         Instant::now(),
                     );
-                    self.sync_known_peer_enforcement(true);
                     tick.want_continue();
                 }
                 Poll::Ready(Some(Err(e))) => {

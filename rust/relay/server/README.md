@@ -53,9 +53,9 @@ STUN/TURN. Additionally, the relay needs to have access to the port range
 When given a `token`, the relay will connect to the Firezone portal and wait for
 an `init` message before commencing relay operations.
 
-The portal streams the IP addresses of ICE candidates exchanged within each
-account to the relay via `ice_candidate_ips` messages. From the first such
-message on, a new channel binding to a peer whose IP is not known for the
+The portal streams the IP addresses of the candidates exchanged within each
+account to the relay via `candidate_ips` messages. While connected to the
+portal, a new channel binding to a peer whose IP is not known for the
 allocation's account relays nothing until a later message reports the IP, and
 is removed if none does within 15 seconds.
 

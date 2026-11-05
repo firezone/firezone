@@ -356,7 +356,7 @@ where
 
     /// Sets whether channel bindings to unknown peers are deferred until the portal reports the peer.
     ///
-    /// Peers may only be treated as unknown while the portal reports known ones, otherwise every peer is unknown.
+    /// Peers may only be treated as unknown while the portal can report known ones, otherwise every peer is unknown.
     pub fn set_enforce_known_peers(&mut self, enforce: bool) {
         self.enforce_known_peers = enforce;
     }
