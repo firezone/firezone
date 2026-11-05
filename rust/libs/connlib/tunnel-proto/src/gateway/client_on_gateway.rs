@@ -9,7 +9,6 @@ use dns_types::{DomainName, Query, RecordType};
 use fast_random_state::FastRandomState;
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_packet::{IpPacket, Protocol, UnsupportedProtocol};
-use lru::LruCache;
 
 use crate::client::{IPV4_RESOURCES, IPV6_RESOURCES};
 use crate::expiring_map;
@@ -44,12 +43,6 @@ pub(crate) struct EvictedDomain {
     pub(crate) resources: HashSet<ResourceId, FastRandomState>,
 }
 
-#[derive(Debug, Clone, Copy)]
-struct DnsDomain {
-    proxy_ips: ProxyIps,
-    set_up_at: Instant,
-}
-
 /// The state of one client on a gateway.
 pub struct ClientOnGateway {
     id: ClientId,
@@ -69,8 +62,6 @@ pub struct ClientOnGateway {
     internet_resource_enabled: Option<ResourceId>,
     routing_table: RoutingTable<RouteEntry>,
     permanent_translations: HashMap<IpAddr, TranslationState, FastRandomState>,
-    /// The domains in `permanent_translations`, least recently set up first.
-    dns_domains: LruCache<DomainName, DnsDomain, FastRandomState>,
     max_dns_domains: usize,
     nat_table: NatTable,
 }
@@ -102,7 +93,6 @@ impl ClientOnGateway {
             resources: ExpiringMap::default(),
             routing_table: RoutingTable::new(),
             permanent_translations: Default::default(),
-            dns_domains: LruCache::unbounded_with_hasher(FastRandomState::default()),
             max_dns_domains,
             nat_table: Default::default(),
             internet_resource_enabled: None,
@@ -177,10 +167,11 @@ impl ClientOnGateway {
             let state = self
                 .permanent_translations
                 .entry(proxy_ip)
-                .or_insert_with(|| TranslationState::new(name.clone()));
+                .or_insert_with(|| TranslationState::new(name.clone(), now));
 
             state.resources.insert(resource_id);
             state.resolved_ip = maybe_real_ip.copied();
+            state.set_up_at = now;
 
             self.routing_table.upsert(
                 IpNetwork::from(proxy_ip),
@@ -195,19 +186,10 @@ impl ClientOnGateway {
             domains.insert(name.clone(), resolved_ips);
         }
 
-        let domain = DnsDomain {
-            proxy_ips,
-            set_up_at: now,
-        };
-
         // A Client only assigns new proxy IPs to a domain with a new key, which resets its state.
-        if let Some((_, old)) = self.dns_domains.push(name, domain) {
-            self.remove_translations(
-                old.proxy_ips
-                    .iter()
-                    .filter(|ip| proxy_ips.iter().all(|new| new != *ip)),
-            );
-        }
+        self.remove_translations(|proxy_ip, state| {
+            state.domain == name && proxy_ips.iter().all(|new| new != *proxy_ip)
+        });
 
         Ok(evicted)
     }
@@ -220,29 +202,43 @@ impl ClientOnGateway {
         name: &DomainName,
         now: Instant,
     ) -> Result<Option<EvictedDomain>> {
-        if self.dns_domains.contains(name) || self.dns_domains.len() < self.max_dns_domains {
+        // Every domain has at least one translation.
+        if self.permanent_translations.len() < self.max_dns_domains {
             return Ok(None);
         }
 
-        let oldest_set_up_at = self
-            .dns_domains
-            .peek_lru()
-            .map(|(_, domain)| domain.set_up_at)
+        let domains = self.dns_domains();
+
+        if domains.contains_key(name) || domains.len() < self.max_dns_domains {
+            return Ok(None);
+        }
+
+        let (oldest, oldest_set_up_at) = domains
+            .into_iter()
+            .min_by_key(|(domain, set_up_at)| (*set_up_at, *domain))
             .ok_or(TooManyDnsDomains)?;
         anyhow::ensure!(
             now.duration_since(oldest_set_up_at) >= MIN_DNS_DOMAIN_AGE,
             TooManyDnsDomains
         );
 
-        let (evicted, domain) = self.dns_domains.pop_lru().ok_or(TooManyDnsDomains)?;
+        let oldest = oldest.clone();
 
-        Ok(Some(self.evict_dns_domain(evicted, domain.proxy_ips)))
+        Ok(Some(self.evict_dns_domain(oldest)))
     }
 
-    fn evict_dns_domain(&mut self, domain: DomainName, proxy_ips: ProxyIps) -> EvictedDomain {
+    /// The domains we translate, with when we last set up their NAT.
+    fn dns_domains(&self) -> HashMap<&DomainName, Instant, FastRandomState> {
+        self.permanent_translations
+            .values()
+            .map(|state| (&state.domain, state.set_up_at))
+            .collect()
+    }
+
+    fn evict_dns_domain(&mut self, domain: DomainName) -> EvictedDomain {
         tracing::debug!(%domain, "Evicting DNS resource NAT");
 
-        let resources = self.remove_translations(proxy_ips.iter());
+        let resources = self.remove_translations(|_, state| state.domain == domain);
 
         for rid in &resources {
             if let Some(ResourceOnGateway::Dns { domains, .. }) = self.resources.get_mut(rid) {
@@ -253,18 +249,18 @@ impl ClientOnGateway {
         EvictedDomain { domain, resources }
     }
 
-    /// Removes the translations and routes of the given proxy IPs and returns their resources.
+    /// Removes the matching translations and their routes and returns their resources.
     fn remove_translations(
         &mut self,
-        proxy_ips: impl IntoIterator<Item = IpAddr>,
+        mut predicate: impl FnMut(&IpAddr, &TranslationState) -> bool,
     ) -> HashSet<ResourceId, FastRandomState> {
+        let removed = self
+            .permanent_translations
+            .extract_if(|proxy_ip, state| predicate(proxy_ip, state))
+            .collect::<Vec<_>>();
         let mut resources = HashSet::<ResourceId, FastRandomState>::default();
 
-        for proxy_ip in proxy_ips {
-            let Some(state) = self.permanent_translations.remove(&proxy_ip) else {
-                continue;
-            };
-
+        for (proxy_ip, state) in removed {
             self.routing_table
                 .remove_where(IpNetwork::from(proxy_ip), |entry| {
                     state.resources.contains(&entry.resource_id)
@@ -359,25 +355,10 @@ impl ClientOnGateway {
             }
         }
 
-        let removed_domains = self
+        for _ in self
             .permanent_translations
             .extract_if(|_, state| state.resources.is_empty())
-            .map(|(_, state)| state.domain)
-            .collect::<BTreeSet<_>>();
-
-        for domain in removed_domains {
-            let Some(dns_domain) = self.dns_domains.peek(&domain) else {
-                continue;
-            };
-
-            if dns_domain
-                .proxy_ips
-                .iter()
-                .all(|ip| !self.permanent_translations.contains_key(&ip))
-            {
-                self.dns_domains.pop(&domain);
-            }
-        }
+        {}
     }
 
     /// Records the portal's per-flow ingest token for an authorized resource.
@@ -879,14 +860,17 @@ struct TranslationState {
     resolved_ip: Option<IpAddr>,
     /// The domain we have resolved.
     domain: DomainName,
+    /// When we last set up the NAT for the domain.
+    set_up_at: Instant,
 }
 
 impl TranslationState {
-    fn new(domain: DomainName) -> Self {
+    fn new(domain: DomainName, set_up_at: Instant) -> Self {
         Self {
             resources: HashSet::default(),
             resolved_ip: None,
             domain,
+            set_up_at,
         }
     }
 }
@@ -1596,10 +1580,10 @@ mod tests {
         for i in 0..MAX_DNS_DOMAINS {
             setup_wildcard_foo_nat(&mut peer, i, now).unwrap();
         }
-        setup_wildcard_foo_nat(&mut peer, 0, now).unwrap();
+        setup_wildcard_foo_nat(&mut peer, 0, now + Duration::from_secs(1)).unwrap();
         setup_wildcard_foo_nat(&mut peer, MAX_DNS_DOMAINS, now + MIN_DNS_DOMAIN_AGE).unwrap();
 
-        assert_eq!(peer.dns_domains.len(), MAX_DNS_DOMAINS);
+        assert_eq!(peer.dns_domains().len(), MAX_DNS_DOMAINS);
         assert_eq!(
             peer.permanent_translations.len(),
             MAX_DNS_DOMAINS * PROXY_IPS_PER_DOMAIN
@@ -1645,7 +1629,7 @@ mod tests {
         );
 
         assert!(result.unwrap_err().any_is::<TooManyDnsDomains>());
-        assert_eq!(peer.dns_domains.len(), MAX_DNS_DOMAINS);
+        assert_eq!(peer.dns_domains().len(), MAX_DNS_DOMAINS);
         assert_eq!(
             peer.permanent_translations.len(),
             MAX_DNS_DOMAINS * PROXY_IPS_PER_DOMAIN
