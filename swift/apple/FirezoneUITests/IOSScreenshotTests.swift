@@ -26,6 +26,9 @@
     /// told from the one that was showing before it.
     private static let certificateAnchor = "Signing Algorithm"
 
+    private static let signInChangeNote =
+      "Changes to account slug and control plane only take effect on the next sign-in."
+
     /// The scenarios describing the states of the certificate tab. Each image
     /// carries the name of the scenario it was taken from.
     private static let certificateScenarios = [
@@ -189,6 +192,17 @@
       try waitFor(form, on: "settings-general-custom")
       form.swipeUp()
       deliver(app, as: "settings-general-custom", in: appearance)
+    }
+
+    /// The Settings tab while the running session signed in with other settings.
+    func testSettingsPendingSignIn() throws {
+      let appearance = try currentAppearance()
+      let app = launchApp(scenario: "pending-sign-in")
+      defer { app.terminate() }
+
+      try openSettings(in: app, on: "settings-general-pending-sign-in")
+      try selectTab("Settings", showing: Self.signInChangeNote, in: app)
+      deliver(app, as: "settings-general-pending-sign-in", in: appearance)
     }
 
     /// The certificate tab, in each of the states a scenario describes.
