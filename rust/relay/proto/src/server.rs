@@ -1842,6 +1842,20 @@ mod tests {
     use uuid::Uuid;
 
     #[test]
+    fn authenticated_allocate_creates_an_allocation() {
+        let mut relay = TestRelay::new();
+
+        let response = relay.allocate();
+
+        assert_eq!(response.class(), MessageClass::SuccessResponse);
+        assert!(matches!(
+            relay.next_command(),
+            Some(Command::CreateAllocation { .. })
+        ));
+        assert_eq!(relay.next_command(), None);
+    }
+
+    #[test]
     fn allocation_limit_applies_per_account() {
         let mut server = test_server(8);
         set_allocation_limit(&mut server, 1);
@@ -2302,12 +2316,8 @@ mod tests {
         fn with_allocation() -> Self {
             let mut relay = Self::new();
 
-            assert_eq!(relay.allocate().class(), MessageClass::SuccessResponse);
-            assert!(matches!(
-                relay.next_command(),
-                Some(Command::CreateAllocation { .. })
-            ));
-            assert_eq!(relay.next_command(), None);
+            relay.allocate();
+            for _ in std::iter::from_fn(|| relay.next_command()) {}
 
             relay
         }
