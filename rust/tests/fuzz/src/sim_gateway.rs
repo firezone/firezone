@@ -31,6 +31,7 @@ pub(crate) struct SimGateway {
     dns_resolutions: BTreeMap<(ClientId, DomainName), Vec<DnsResolution>>,
     dns_nat_generations: BTreeMap<ClientId, u64>,
     dns_proxy_owners: BTreeMap<(ClientId, IpAddr), DomainName>,
+    max_dns_domains_per_client: Option<usize>,
     next_observation_order: u64,
 
     authorized_resources: BTreeMap<ClientId, BTreeSet<ResourceId>>,
@@ -58,6 +59,7 @@ impl SimGateway {
         mut sut: GatewayState,
         network: SiteNetwork,
         site_specific_dns_records: DnsRecords,
+        max_dns_domains_per_client: Option<usize>,
     ) -> Self {
         sut.set_flow_logs_enabled(true);
 
@@ -71,6 +73,7 @@ impl SimGateway {
             dns_resolutions: Default::default(),
             dns_nat_generations: Default::default(),
             dns_proxy_owners: Default::default(),
+            max_dns_domains_per_client,
             next_observation_order: 0,
             authorized_resources: Default::default(),
             client_keys: Default::default(),
@@ -95,6 +98,9 @@ impl SimGateway {
         );
         sut.update_tun_device(ip_config);
         sut.set_flow_logs_enabled(true);
+        if let Some(max) = self.max_dns_domains_per_client {
+            sut.set_max_dns_domains_per_client(max);
+        }
         self.tunnel = SimTunnel::new(sut);
 
         for client in self
@@ -395,6 +401,29 @@ impl SimGateway {
                 dns_nat_generation,
                 packet,
             }));
+    }
+
+    /// Whether the Gateway may have evicted or refused the NAT of a domain for `client`.
+    ///
+    /// Packets to the domains of that client may then get lost or rejected as prohibited.
+    pub(crate) fn dns_nat_may_be_limited(&self, client: ClientId) -> bool {
+        let Some(max) = self.max_dns_domains_per_client else {
+            return false;
+        };
+        let generation = self.dns_nat_generation(client);
+
+        let num_domains = self
+            .dns_resolutions
+            .iter()
+            .filter(|((owner, _), resolutions)| {
+                *owner == client
+                    && resolutions
+                        .iter()
+                        .any(|resolution| resolution.dns_nat_generation == generation)
+            })
+            .count();
+
+        num_domains > max
     }
 
     pub(crate) fn dns_nat_generation(&self, client: ClientId) -> u64 {

@@ -9,7 +9,8 @@ pub(crate) use crate::gateway::client_on_gateway::ClientOnGateway;
 use crate::authorization_rejections::AuthorizationRejections;
 use crate::batch::{BatchingKey, TunBatch};
 use crate::gateway::client_on_gateway::{
-    InboundRewrite, OutboundRewrite, ProxyIpAlreadyAssigned, TranslateOutboundResult,
+    InboundRewrite, OutboundRewrite, ProxyIpAlreadyAssigned, TooManyDnsDomains,
+    TranslateOutboundResult,
 };
 use crate::messages::gateway::{Client, ResourceDescription};
 use crate::messages::{IceCredentials, IngestToken, Key};
@@ -76,6 +77,8 @@ pub struct GatewayState {
 
     /// Our connection to the portal, holding back ICE candidates while it is down.
     portal: PortalConnection<ClientId>,
+
+    max_dns_domains_per_client: usize,
 }
 
 impl GatewayState {
@@ -91,7 +94,13 @@ impl GatewayState {
             tun_ip_config: None,
             unix_ts_clock: UnixTsClock::new(now, unix_ts),
             next_periodic_tick: None,
+            max_dns_domains_per_client: client_on_gateway::DEFAULT_MAX_DNS_DOMAINS,
         }
+    }
+
+    /// Sets how many domains of DNS resources we translate at most for each new client.
+    pub fn set_max_dns_domains_per_client(&mut self, max: usize) {
+        self.max_dns_domains_per_client = max;
     }
 
     pub fn set_flow_logs_enabled(&mut self, enabled: bool) {
@@ -444,7 +453,13 @@ impl GatewayState {
                 v6: client.ipv6,
             };
 
-            ClientOnGateway::new(client.id, client.public_key, client_tun, gateway_tun)
+            ClientOnGateway::new(
+                client.id,
+                client.public_key,
+                client_tun,
+                gateway_tun,
+                self.max_dns_domains_per_client,
+            )
         });
 
         peer.add_resource(resource.clone(), expires_at, now);
@@ -493,7 +508,8 @@ impl GatewayState {
         };
 
         let result = resolve_result.and_then(|addresses| {
-            self.peers
+            let evicted = self
+                .peers
                 .peer_by_id_mut(&client)
                 .context("Unknown peer")?
                 .setup_nat(
@@ -501,30 +517,50 @@ impl GatewayState {
                     req.resource,
                     BTreeSet::from_iter(addresses),
                     req.proxy_ips,
+                    now,
                 )?;
 
-            Ok(())
+            Ok(evicted)
         });
 
-        let nat_status = match result {
-            Ok(()) => dns_resource_nat::NatStatus::Active,
+        let (nat_status, evicted) = match result {
+            Ok(evicted) => (dns_resource_nat::NatStatus::Active, evicted),
             Err(e) if e.any_is::<ProxyIpAlreadyAssigned>() => {
                 tracing::debug!("Conflicting proxy assignment; closing connection: {e:#}");
                 self.cleanup_connection(&client, now);
 
                 return Ok(());
             }
+            Err(e) if e.any_is::<TooManyDnsDomains>() => {
+                tracing::debug!(domain = %req.domain, "Not setting up DNS resource NAT: {e:#}");
+
+                (dns_resource_nat::NatStatus::Inactive, None)
+            }
             Err(e) => {
                 tracing::warn!("Failed to setup DNS resource NAT: {e:#}");
 
-                dns_resource_nat::NatStatus::Inactive
+                (dns_resource_nat::NatStatus::Inactive, None)
             }
         };
 
-        let packet = dns_resource_nat::domain_status(req.resource, req.domain, nat_status)?;
+        let evicted_statuses = evicted.into_iter().flat_map(|evicted| {
+            evicted.resources.into_iter().map(move |rid| {
+                (
+                    rid,
+                    evicted.domain.clone(),
+                    dns_resource_nat::NatStatus::Evicted,
+                )
+            })
+        });
 
-        if let Some(transmit) = encrypt_packet(packet, client, &mut self.node, now)? {
-            self.buffered_transmits.push_back(transmit);
+        for (rid, domain, status) in
+            iter::once((req.resource, req.domain, nat_status)).chain(evicted_statuses)
+        {
+            let packet = dns_resource_nat::domain_status(rid, domain, status)?;
+
+            if let Some(transmit) = encrypt_packet(packet, client, &mut self.node, now)? {
+                self.buffered_transmits.push_back(transmit);
+            }
         }
 
         Ok(())

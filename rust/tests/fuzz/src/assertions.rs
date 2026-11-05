@@ -2,8 +2,8 @@ use super::{
     probe::{
         Answer, DnsNatObservation, DnsNatSessions, ExpectedOutcome, ExpectedProbe,
         InvalidDnsNatObservation, KnownLoss, ProbeId, ProbeProtocol, ProbeRequest, ProbeTrace,
-        ReceivedRequest, ReceivedResponse, RejectionResponse, Remote, RemoteResponse,
-        SubmittedRequest, TraceRequirement, remote_response,
+        ReceivedRequest, ReceivedResponse, RejectionRemote, RejectionResponse, Remote,
+        RemoteResponse, Route, SubmittedRequest, TraceRequirement, remote_response,
     },
     ref_client::RefClient,
     ref_gateway::RefGateway,
@@ -97,15 +97,29 @@ fn assert_probes(
 
         assert_submitted_request(expected, submitted_request);
 
-        // TODO: Remove with classic ICE.
+        let dns_nat_limited = gateway_may_limit_dns_nat(expected, state);
+
         match (
             expected.trace_requirement,
             trace.received_requests.as_slice(),
             trace.received_responses.as_slice(),
             trace.completed_streams.as_slice(),
         ) {
+            // TODO: Remove with classic ICE.
             (TraceRequirement::ExactOrLoss(reason), [], [], []) => {
                 tracing::debug!(target: "assertions", id = ?expected.id, ?reason, "Probe has only its request submission where loss is allowed");
+                continue;
+            }
+            (_, [], [], []) if dns_nat_limited => {
+                tracing::debug!(target: "assertions", id = ?expected.id, "Probe lost because the Gateway limits DNS resource NATs");
+                continue;
+            }
+            (_, [], [response], [])
+                if dns_nat_limited
+                    && rejection_response(&response.packet)
+                        == Some(RejectionResponse::Prohibited) =>
+            {
+                tracing::debug!(target: "assertions", id = ?expected.id, "Probe rejected because the Gateway limits DNS resource NATs");
                 continue;
             }
             (TraceRequirement::Exact, _, _, _) => {}
@@ -143,6 +157,27 @@ fn assert_probes(
             }
         }
     }
+}
+
+/// Whether the Gateway of the probe may have evicted or refused the NAT of a domain for the probe's Client.
+fn gateway_may_limit_dns_nat(expected: &ExpectedProbe, state: &TunnelTest) -> bool {
+    let Destination::DomainName { .. } = expected.request.destination() else {
+        return false;
+    };
+    let gateway = match expected.outcome {
+        ExpectedOutcome::RoundTripCompleted(Route::Resource { gateway, .. }, _) => gateway,
+        ExpectedOutcome::Rejected {
+            by: RejectionRemote::Gateway(gateway),
+            ..
+        } => gateway,
+        ExpectedOutcome::Dropped
+        | ExpectedOutcome::RoundTripCompleted(Route::Peer(_), _)
+        | ExpectedOutcome::Rejected { .. } => return false,
+    };
+
+    state
+        .gateway(gateway)
+        .is_some_and(|gateway| gateway.dns_nat_may_be_limited(expected.origin))
 }
 
 /// Checks that nothing but the Client's own submission observed the probe.

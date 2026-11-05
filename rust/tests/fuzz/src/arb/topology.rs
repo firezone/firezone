@@ -423,6 +423,7 @@ fn arb_gateways(
                 site.routes,
                 site_specific,
                 site.unresolvable_names,
+                arb_max_dns_domains_per_client(g),
             );
             let latency = g.latency(200);
             let edge = arb_edge_config(g);
@@ -431,6 +432,14 @@ fn arb_gateways(
             (id, host)
         })
         .collect::<BTreeMap<_, _>>()
+}
+
+fn arb_max_dns_domains_per_client(g: &mut Generator) -> Option<usize> {
+    if !g.flip(20) {
+        return None;
+    }
+
+    Some(g.count(1, 4))
 }
 
 fn arb_simulated_os(g: &mut Generator) -> SimulatedOs {
