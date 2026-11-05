@@ -183,25 +183,15 @@ public struct SettingsView: View {
     #if os(macOS)
       Form {
         Section {
-          LabeledContent {
-            HStack {
-              TextField(
-                text: $viewModel.accountSlug,
-                prompt: Text(PlaceholderText.accountSlug)
-              ) {
-                managedLabel("Account Slug", isManaged: configuration.isAccountSlugForced)
-              }
-              .labelsHidden()
-              .multilineTextAlignment(.trailing)
-              .focused($focusedField, equals: .accountSlug)
-              .onSubmit { commit(.settings) }
-              .disabled(configuration.isAccountSlugForced)
-              saveStateSlot(.accountSlug, isManaged: configuration.isAccountSlugForced)
-            }
-          } label: {
+          TextField(
+            text: $viewModel.accountSlug,
+            prompt: Text(PlaceholderText.accountSlug)
+          ) {
             managedLabel("Account Slug", isManaged: configuration.isAccountSlugForced)
-              .accessibilityHidden(true)
           }
+          .focused($focusedField, equals: .accountSlug)
+          .onSubmit { commit(.settings) }
+          .disabled(configuration.isAccountSlugForced)
 
           Picker(selection: controlPlaneSelection) {
             ForEach(ControlPlane.allCases) { controlPlane in
@@ -213,46 +203,26 @@ public struct SettingsView: View {
           .disabled(viewModel.isControlPlaneForced)
 
           if viewModel.controlPlane == .custom {
-            LabeledContent {
-              HStack {
-                TextField(
-                  text: $viewModel.authURL,
-                  prompt: Text(PlaceholderText.authURL)
-                ) {
-                  managedLabel("Auth URL", isManaged: configuration.isAuthURLForced)
-                }
-                .labelsHidden()
-                .multilineTextAlignment(.trailing)
-                .focused($focusedField, equals: .authURL)
-                .onSubmit { commit(.settings) }
-                .disabled(configuration.isAuthURLForced)
-                saveStateSlot(.authURL, isManaged: configuration.isAuthURLForced)
-              }
-            } label: {
+            TextField(
+              text: $viewModel.authURL,
+              prompt: Text(PlaceholderText.authURL)
+            ) {
               managedLabel("Auth URL", isManaged: configuration.isAuthURLForced)
-                .accessibilityHidden(true)
             }
+            .focused($focusedField, equals: .authURL)
+            .onSubmit { commit(.settings) }
+            .disabled(configuration.isAuthURLForced)
             errorText(viewModel.authURLError)
 
-            LabeledContent {
-              HStack {
-                TextField(
-                  text: $viewModel.apiURL,
-                  prompt: Text(PlaceholderText.apiURL)
-                ) {
-                  managedLabel("API URL", isManaged: configuration.isApiURLForced)
-                }
-                .labelsHidden()
-                .multilineTextAlignment(.trailing)
-                .focused($focusedField, equals: .apiURL)
-                .onSubmit { commit(.settings) }
-                .disabled(configuration.isApiURLForced)
-                saveStateSlot(.apiURL, isManaged: configuration.isApiURLForced)
-              }
-            } label: {
+            TextField(
+              text: $viewModel.apiURL,
+              prompt: Text(PlaceholderText.apiURL)
+            ) {
               managedLabel("API URL", isManaged: configuration.isApiURLForced)
-                .accessibilityHidden(true)
             }
+            .focused($focusedField, equals: .apiURL)
+            .onSubmit { commit(.settings) }
+            .disabled(configuration.isApiURLForced)
             errorText(viewModel.apiURLError)
           }
         } header: {
@@ -516,25 +486,15 @@ public struct SettingsView: View {
     #elseif os(macOS)
       Form {
         Section {
-          LabeledContent {
-            HStack {
-              TextField(
-                text: $viewModel.logFilter,
-                prompt: Text(PlaceholderText.logFilter)
-              ) {
-                managedLabel("Log Filter", isManaged: configuration.isLogFilterForced)
-              }
-              .labelsHidden()
-              .multilineTextAlignment(.trailing)
-              .focused($focusedField, equals: .logFilter)
-              .onSubmit { commit(.logs) }
-              .disabled(configuration.isLogFilterForced)
-              saveStateSlot(.logFilter, isManaged: configuration.isLogFilterForced)
-            }
-          } label: {
+          TextField(
+            text: $viewModel.logFilter,
+            prompt: Text(PlaceholderText.logFilter)
+          ) {
             managedLabel("Log Filter", isManaged: configuration.isLogFilterForced)
-              .accessibilityHidden(true)
           }
+          .focused($focusedField, equals: .logFilter)
+          .onSubmit { commit(.logs) }
+          .disabled(configuration.isLogFilterForced)
           errorText(viewModel.logFilterError)
 
           LogFilesView(
@@ -642,35 +602,37 @@ public struct SettingsView: View {
     }
   }
 
-  /// Always takes up the same room, so that the text field does not shift when an icon appears.
-  private func saveStateSlot(_ field: Field, isManaged: Bool) -> some View {
-    let isDraft = !isManaged && viewModel.isDraft(field)
-    let isSaved = !isManaged && !isDraft && viewModel.recentlySavedFields.contains(field)
+  #if os(iOS)
+    /// Always takes up the same room, so that the text field does not shift when an icon appears.
+    private func saveStateSlot(_ field: Field, isManaged: Bool) -> some View {
+      let isDraft = !isManaged && viewModel.isDraft(field)
+      let isSaved = !isManaged && !isDraft && viewModel.recentlySavedFields.contains(field)
 
-    return Image(systemName: "checkmark.circle.fill")
-      .hidden()
-      .overlay {
-        if isDraft {
-          Circle()
-            .fill(.orange)
-            .frame(width: 7, height: 7)
-            .transition(.opacity)
-            .accessibilityHidden(true)
-        } else if isSaved {
-          Image(systemName: "checkmark.circle.fill")
-            .foregroundStyle(.green)
-            .transition(.opacity)
-            .accessibilityLabel("Saved")
-            .onAppear {
-              if #available(iOS 17, macOS 14, *) {
-                AccessibilityNotification.Announcement("Saved").post()
+      return Image(systemName: "checkmark.circle.fill")
+        .hidden()
+        .overlay {
+          if isDraft {
+            Circle()
+              .fill(.orange)
+              .frame(width: 7, height: 7)
+              .transition(.opacity)
+              .accessibilityHidden(true)
+          } else if isSaved {
+            Image(systemName: "checkmark.circle.fill")
+              .foregroundStyle(.green)
+              .transition(.opacity)
+              .accessibilityLabel("Saved")
+              .onAppear {
+                if #available(iOS 17, *) {
+                  AccessibilityNotification.Announcement("Saved").post()
+                }
               }
-            }
+          }
         }
-      }
-      .animation(.easeInOut, value: isDraft)
-      .animation(.easeInOut, value: isSaved)
-  }
+        .animation(.easeInOut, value: isDraft)
+        .animation(.easeInOut, value: isSaved)
+    }
+  #endif
 
   @ViewBuilder
   private func managedNote(_ isManaged: Bool) -> some View {
