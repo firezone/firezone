@@ -7,7 +7,7 @@ use anyhow::{Context, ErrorExt, Result, bail};
 use connlib_model::{ClientId, ResourceId};
 use dns_types::{DomainName, Query, RecordType};
 use fast_random_state::FastRandomState;
-use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
+use ip_network::IpNetwork;
 use ip_packet::{IpPacket, Protocol, UnsupportedProtocol};
 
 use crate::client::{IPV4_RESOURCES, IPV6_RESOURCES};
@@ -46,7 +46,6 @@ pub struct ClientOnGateway {
 
 /// How [`ClientOnGateway::translate_inbound`] rewrote a packet.
 #[derive(Debug, Clone, Copy)]
-#[expect(dead_code, reason = "Nothing reads the translated source yet")]
 pub enum InboundRewrite {
     None,
     /// The source was translated from the resource's IP to the client's proxy IP.
@@ -123,16 +122,14 @@ impl ClientOnGateway {
             );
         }
 
-        let resource = self
+        let resource = &self
             .resources
-            .get_mut(&resource_id)
-            .context("Unknown resource")?;
+            .get(&resource_id)
+            .context("Unknown resource")?
+            .value;
         let filter = FilterEngine::new(resource.filters());
 
-        let ResourceOnGateway::Dns {
-            address, domains, ..
-        } = resource
-        else {
+        let ResourceOnGateway::Dns { address, .. } = resource else {
             bail!("Cannot setup NAT for non-DNS resource")
         };
 
@@ -171,8 +168,6 @@ impl ClientOnGateway {
                 },
             );
         }
-
-        domains.insert(name, resolved_ips);
 
         Ok(())
     }
@@ -328,18 +323,20 @@ impl ClientOnGateway {
     }
 
     fn recalculate_cidr_filters(&mut self) {
-        for (id, resource) in self.resources.iter().filter(|(_, r)| r.is_cidr()) {
-            for ip in &resource.ips() {
-                let filter = FilterEngine::new(resource.filters());
-                tracing::trace!(%ip, filters = ?filter, "Installing new filters");
-                self.routing_table.upsert(
-                    *ip,
-                    RouteEntry {
-                        filter,
-                        resource_id: *id,
-                    },
-                );
-            }
+        for (id, resource) in self.resources.iter() {
+            let ResourceOnGateway::Cidr { network, filters } = resource else {
+                continue;
+            };
+
+            let filter = FilterEngine::new(filters);
+            tracing::trace!(ip = %network, filters = ?filter, "Installing new filters");
+            self.routing_table.upsert(
+                *network,
+                RouteEntry {
+                    filter,
+                    resource_id: *id,
+                },
+            );
         }
     }
 
@@ -666,7 +663,6 @@ enum ResourceOnGateway {
     },
     Dns {
         address: String,
-        domains: HashMap<DomainName, BTreeSet<IpAddr>, FastRandomState>,
         filters: Vec<Filter>,
     },
     Internet,
@@ -676,7 +672,6 @@ impl ResourceOnGateway {
     fn new(resource: ResourceDescription) -> Self {
         match resource {
             ResourceDescription::Dns(r) => ResourceOnGateway::Dns {
-                domains: HashMap::default(),
                 filters: r.filters,
                 address: r.address,
             },
@@ -711,32 +706,12 @@ impl ResourceOnGateway {
         }
     }
 
-    fn ips(&self) -> Vec<IpNetwork> {
-        match self {
-            ResourceOnGateway::Cidr { network, .. } => vec![*network],
-            ResourceOnGateway::Dns { domains, .. } => domains
-                .values()
-                .flatten()
-                .copied()
-                .map(IpNetwork::from)
-                .collect(),
-            ResourceOnGateway::Internet => vec![
-                Ipv4Network::DEFAULT_ROUTE.into(),
-                Ipv6Network::DEFAULT_ROUTE.into(),
-            ],
-        }
-    }
-
     fn filters(&self) -> &[Filter] {
         match self {
             ResourceOnGateway::Cidr { filters, .. } => filters,
             ResourceOnGateway::Dns { filters, .. } => filters,
             ResourceOnGateway::Internet => &[],
         }
-    }
-
-    fn is_cidr(&self) -> bool {
-        matches!(self, ResourceOnGateway::Cidr { .. })
     }
 
     fn is_dns(&self) -> bool {
@@ -842,6 +817,7 @@ mod tests {
     };
 
     use anyhow::ErrorExt;
+    use ip_network::Ipv4Network;
     use ip_packet::make::TcpFlags;
 
     use crate::{

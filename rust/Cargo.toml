@@ -220,7 +220,7 @@ rustls = { version = "0.23.40", default-features = false, features = ["ring"] }
 rustls-native-certs = "0.8.1"
 rustls-pki-types = "1.14.1"
 sadness-generator = "0.7.0"
-sanstun = "0.1.0"
+sanstun = "0.2.0"
 sd-notify = "0.5.0" # This is a pure Rust re-implementation, so it isn't vulnerable to CVE-2024-3094
 secrecy = "0.10.3"
 seeded-rng = { path = "tests/seeded-rng" }
@@ -329,7 +329,7 @@ private-intra-doc-links = "allow" # We don't publish any of our docs but want to
 ip_network = { git = "https://github.com/JakubOnderka/ip_network", branch = "master" } # Waiting for release.
 ip_network_table = { git = "https://github.com/edmonds/ip_network_table", branch = "some-useful-traits" } # For `Debug` and `Clone`
 quinn-udp = { git = "https://github.com/firezone/quinn", version = "0.6.0", branch = "main" } # Waiting for https://github.com/quinn-rs/quinn/pull/2748.
-sanstun = { git = "https://github.com/firezone/sanstun", branch = "main" } # Waiting for a release with https://github.com/firezone/sanstun/pull/144.
+sanstun = { git = "https://github.com/firezone/sanstun", branch = "main" }
 
 # Enforce `tracing-macros` to have released `tracing` version.
 [patch.'https://github.com/tokio-rs/tracing']
