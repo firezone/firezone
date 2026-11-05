@@ -2101,78 +2101,96 @@ mod tests {
 
     #[test]
     fn channel_bindings_adopt_a_changed_throughput_limit() {
-        let now = Instant::now();
-        let account = auth::AccountId::from(Uuid::nil());
-        let mut server = test_server(2);
-        server.set_accounts([(account, None)]);
-        let port = allocate_and_bind_channel(&mut server, account, now);
+        let peer = PeerSocket::new(SocketAddr::from(([198, 51, 100, 2], 50_001)));
+        let channel = ChannelNumber::new(ChannelNumber::MIN).unwrap();
+        let mut relay = TestRelay::with_allocation();
+        relay.channel_bind(peer.into_socket());
+        let Some(Command::CreateChannelBinding {
+            allocation_port, ..
+        }) = relay.next_command()
+        else {
+            panic!("the relay binds the channel");
+        };
 
-        server.add_account(account, Some(limit_5_mbps()));
+        relay
+            .server
+            .add_account(relay.account, Some(limit_5_mbps()));
 
         assert_eq!(
-            server.next_command(),
+            relay.next_command(),
             Some(Command::CreateChannelBinding {
-                client: CLIENT,
-                channel_number: channel(),
-                peer: PEER,
-                allocation_port: port,
+                client: relay.client,
+                channel_number: channel,
+                peer,
+                allocation_port,
                 throughput_limit: Some(limit_5_mbps()),
             })
         );
-        assert_eq!(server.next_command(), None);
+        assert_eq!(relay.next_command(), None);
 
-        server.set_accounts([(account, None)]);
+        relay.server.set_accounts([(relay.account, None)]);
 
         assert_eq!(
-            server.next_command(),
+            relay.next_command(),
             Some(Command::CreateChannelBinding {
-                client: CLIENT,
-                channel_number: channel(),
-                peer: PEER,
-                allocation_port: port,
+                client: relay.client,
+                channel_number: channel,
+                peer,
+                allocation_port,
                 throughput_limit: None,
             })
         );
-        assert_eq!(server.next_command(), None);
+        assert_eq!(relay.next_command(), None);
     }
 
     #[test]
     fn unchanged_throughput_limit_does_not_touch_channel_bindings() {
-        let now = Instant::now();
-        let account = auth::AccountId::from(Uuid::nil());
-        let mut server = test_server(2);
-        server.set_accounts([(account, Some(limit_5_mbps()))]);
-        allocate_and_bind_channel(&mut server, account, now);
+        let mut relay = TestRelay::with_allocation();
+        relay
+            .server
+            .set_accounts([(relay.account, Some(limit_5_mbps()))]);
+        relay.channel_bind(SocketAddr::from(([198, 51, 100, 2], 50_001)));
+        assert!(matches!(
+            relay.next_command(),
+            Some(Command::CreateChannelBinding { .. })
+        ));
 
-        server.add_account(account, Some(limit_5_mbps()));
-        server.set_accounts([(account, Some(limit_5_mbps()))]);
+        relay
+            .server
+            .add_account(relay.account, Some(limit_5_mbps()));
+        relay
+            .server
+            .set_accounts([(relay.account, Some(limit_5_mbps()))]);
 
-        assert_eq!(server.next_command(), None);
+        assert_eq!(relay.next_command(), None);
     }
 
     #[test]
     fn userspace_datapath_drops_traffic_above_throughput_limit() {
-        let now = Instant::now();
-        let now_utc = SystemTime::UNIX_EPOCH;
-        let account = auth::AccountId::from(Uuid::nil());
-        let mut server = test_server(2);
-        server.set_accounts([(account, Some(limit_5_mbps()))]);
-        let port = allocate_and_bind_channel(&mut server, account, now);
+        let peer = PeerSocket::new(SocketAddr::from(([198, 51, 100, 2], 50_001)));
+        let channel = ChannelNumber::new(ChannelNumber::MIN).unwrap();
+        let mut relay = TestRelay::with_allocation();
+        relay
+            .server
+            .set_accounts([(relay.account, Some(limit_5_mbps()))]);
+        relay.channel_bind(peer.into_socket());
+        let Some(Command::CreateChannelBinding {
+            allocation_port, ..
+        }) = relay.next_command()
+        else {
+            panic!("the relay binds the channel");
+        };
         let mut payload = [0u8; 1250]; // A WireGuard data message, 2ms at 5 Mbps.
         payload[0] = 4;
-        let channel_data = channel_data(channel(), &payload);
 
         let to_peer = (0..200)
-            .filter(|_| {
-                server
-                    .handle_client_input(&channel_data, CLIENT, now, now_utc)
-                    .is_some()
-            })
+            .filter(|_| relay.send_channel_data(channel, &payload).is_some())
             .count();
         let to_client = (0..200)
             .filter(|_| {
-                server
-                    .handle_peer_traffic(&payload, PEER, port, now)
+                relay
+                    .server
+                    .handle_peer_traffic(&payload, peer, allocation_port, relay.now)
                     .is_some()
             })
             .count();
@@ -2180,12 +2198,8 @@ mod tests {
         // The 250ms burst tolerance admits 126 packets (0 - 250ms ahead) per direction.
         assert_eq!(to_peer, 126);
         assert_eq!(to_client, 126);
-        let later = now + Duration::from_millis(20);
-        assert!(
-            server
-                .handle_client_input(&channel_data, CLIENT, later, now_utc)
-                .is_some()
-        );
+        relay.now += Duration::from_millis(20);
+        assert!(relay.send_channel_data(channel, &payload).is_some());
     }
 
     // Tests for requirements listed in https://www.rfc-editor.org/rfc/rfc8656#name-receiving-an-allocate-reque.
@@ -2438,14 +2452,6 @@ mod tests {
         decode(&payload)
     }
 
-    fn channel_data(channel: ChannelNumber, payload: &[u8]) -> Vec<u8> {
-        let mut message = vec![0; 4 + payload.len()];
-        ChannelData::encode_header_to_slice(channel, payload.len() as u16, &mut message[..4]);
-        message[4..].copy_from_slice(payload);
-
-        message
-    }
-
     fn authenticated_request(
         server: &Server<StdRng>,
         method: Method,
@@ -2531,68 +2537,7 @@ mod tests {
         next_response(server)
     }
 
-    const CLIENT: ClientSocket = ClientSocket(SocketAddr::new(
-        IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
-        50_000,
-    ));
-    const PEER: PeerSocket = PeerSocket(SocketAddr::new(
-        IpAddr::V4(Ipv4Addr::new(198, 51, 100, 2)),
-        50_001,
-    ));
-
-    fn channel() -> ChannelNumber {
-        ChannelNumber::new(ChannelNumber::MIN).unwrap()
-    }
-
     fn limit_5_mbps() -> ThroughputLimit {
         ThroughputLimit::from_bits_per_second(5_000_000).unwrap()
-    }
-
-    /// Allocates a port for [`CLIENT`] and binds [`channel`] to [`PEER`], discarding the resulting commands.
-    fn allocate_and_bind_channel(
-        server: &mut Server<StdRng>,
-        account: auth::AccountId,
-        now: Instant,
-    ) -> AllocationPort {
-        let now_utc = SystemTime::UNIX_EPOCH;
-        let nonce = issue_nonce(server, CLIENT, now, now_utc);
-        let username = Username::new(format!(
-            "2145916800:{}:credential-salt",
-            auth::hash_account_id(&account)
-        ))
-        .unwrap();
-
-        let allocate = authenticated_request(
-            server,
-            ALLOCATE,
-            TransactionId::new([1; 12]),
-            &username,
-            &nonce,
-            [Attribute::RequestedTransport(RequestedTransport::new(
-                UDP_TRANSPORT,
-            ))],
-        );
-        server.handle_client_input(&allocate, CLIENT, now, now_utc);
-        let channel_bind = authenticated_request(
-            server,
-            CHANNEL_BIND,
-            TransactionId::new([2; 12]),
-            &username,
-            &nonce,
-            [
-                Attribute::ChannelNumber(channel()),
-                Attribute::XorPeerAddress(XorPeerAddress::new(PEER.into_socket())),
-            ],
-        );
-        server.handle_client_input(&channel_bind, CLIENT, now, now_utc);
-
-        let mut port = None;
-        while let Some(command) = server.next_command() {
-            if let Command::CreateAllocation { port: p, .. } = command {
-                port = Some(p);
-            }
-        }
-
-        port.expect("allocation to be created")
     }
 }
