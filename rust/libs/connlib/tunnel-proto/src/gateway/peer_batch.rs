@@ -81,11 +81,11 @@ impl Iterator for PeerBatch<'_> {
         };
 
         let Some(decision) = self.decisions.iter_mut().find(|d| d.key.matches(&packet)) else {
-            let handled = self
+            let outcome = self
                 .state
                 .handle_peer_message(cid, packet, self.local, self.from, self.now);
 
-            return Some(handled.map(|handled| match handled {
+            return Some(outcome.map(|outcome| match outcome {
                 Outcome::Deliver(packet, decision) => {
                     self.decisions.extend(decision);
                     Some(packet)
