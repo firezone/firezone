@@ -2,7 +2,7 @@ mod client_on_gateway;
 mod nat_table;
 mod peer_batch;
 
-pub use peer_batch::PeerBatch;
+use peer_batch::{InboundDecision, PeerBatch};
 
 pub(crate) use crate::gateway::client_on_gateway::ClientOnGateway;
 
@@ -11,7 +11,6 @@ use crate::batch::{BatchingKey, TunBatch};
 use crate::gateway::client_on_gateway::{
     InboundRewrite, OutboundRewrite, ProxyIpAlreadyAssigned, TranslateOutboundResult,
 };
-use crate::gateway::peer_batch::InboundDecision;
 use crate::messages::gateway::{Client, ResourceDescription};
 use crate::messages::{IceCredentials, IngestToken, Key};
 use crate::p2p_control::dns_resource_nat::ProxyIps;

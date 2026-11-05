@@ -53,7 +53,6 @@ pub const IPV6_TUNNEL: Ipv6Network =
         Err(_) => unreachable!(),
     };
 
-pub use batch::TunBatch;
 pub use client::dns_config::DnsMapping;
 pub use client::{ClientState, DNS_SENTINELS_V4, DNS_SENTINELS_V6, IPV4_RESOURCES, IPV6_RESOURCES};
 pub use dns::DnsResourceRecord;
