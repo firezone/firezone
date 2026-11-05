@@ -37,8 +37,6 @@ defmodule PortalAPI.Client.Channel.Shared do
   # The interval at which the inbound policy_authorizations cache is pruned.
   @prune_authorizations_cache_every :timer.minutes(1)
 
-  @refresh_metrics_token_every :timer.seconds(div(Portal.MetricsToken.ttl_seconds(), 2))
-
   @session_durability_timeout :timer.seconds(15)
 
   # A device lookup that the asking client may not have answers after this long, whether or
@@ -2134,7 +2132,7 @@ defmodule PortalAPI.Client.Channel.Shared do
   defp excluded_relay_ids(_payload), do: []
 
   defp init(socket, resources, relays) do
-    payload = %{
+    push(socket, "init", %{
       flow_logs: flow_logs_config(),
       account_slug: socket.assigns.subject.account.slug,
       actor_name: socket.assigns.subject.actor.name,
@@ -2152,9 +2150,7 @@ defmodule PortalAPI.Client.Channel.Shared do
           socket.assigns.client
           | account: socket.assigns.subject.account
         })
-    }
-
-    push(socket, "init", payload)
+    })
   end
 
   defp reinitialize_client(socket) do
@@ -2171,35 +2167,6 @@ defmodule PortalAPI.Client.Channel.Shared do
       upload_interval_secs: Portal.Config.fetch_env!(:portal, :flow_logs_upload_interval_secs),
       upload_batch_size: Portal.Config.fetch_env!(:portal, :flow_logs_upload_batch_size)
     }
-  end
-
-  @doc false
-  def refresh_metrics_token_every, do: @refresh_metrics_token_every
-
-  @doc false
-  def metrics_export?(socket), do: socket.assigns.subject.account.metrics_export != nil
-
-  @doc false
-  def push_metrics_config(socket) do
-    account = socket.assigns.subject.account
-    push(socket, "metrics_config", metrics_config(account, socket.assigns.client))
-  end
-
-  # A `nil` token means metrics export is off.
-  defp metrics_config(account, client) do
-    %{
-      endpoint: Portal.Config.fetch_env!(:portal, :otlp_metrics_ingest_url),
-      export_interval_secs: account.metrics_export_interval_secs,
-      patterns: account.metrics_export || [],
-      token:
-        if(account.metrics_export, do: Portal.MetricsToken.mint(account, client, account.metrics_export))
-    }
-  end
-
-  @doc false
-  def metrics_config_changed?(old_account, account) do
-    old_account.metrics_export != account.metrics_export or
-      old_account.metrics_export_interval_secs != account.metrics_export_interval_secs
   end
 
   defp generate_preshared_key(client, client_public_key, gateway, gateway_public_key) do

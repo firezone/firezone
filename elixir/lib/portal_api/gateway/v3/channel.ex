@@ -7,6 +7,7 @@ defmodule PortalAPI.Gateway.V3.Channel do
   """
   use PortalAPI, :channel
   alias Portal.{Account, Changes.Change}
+  alias PortalAPI.MetricsConfig
   alias PortalAPI.Gateway.Channel.Shared
 
   @impl true
@@ -23,23 +24,22 @@ defmodule PortalAPI.Gateway.V3.Channel do
   def handle_info(:after_join, socket) do
     with {:noreply, socket} <- Shared.handle_info(:after_join, socket) do
       :ok = Portal.MetricsToken.subscribe_to_key_rotations()
-      Process.send_after(self(), :refresh_metrics_token, Shared.refresh_metrics_token_every())
-      Shared.push_metrics_config(socket)
+      Process.send_after(self(), :refresh_metrics_token, MetricsConfig.refresh_every())
+      push_metrics_config(socket)
 
       {:noreply, socket}
     end
   end
 
   def handle_info(:refresh_metrics_token, socket) do
-    Process.send_after(self(), :refresh_metrics_token, Shared.refresh_metrics_token_every())
-
-    if Shared.metrics_export?(socket), do: Shared.push_metrics_config(socket)
+    Process.send_after(self(), :refresh_metrics_token, MetricsConfig.refresh_every())
+    if socket.assigns.account.metrics_export, do: push_metrics_config(socket)
 
     {:noreply, socket}
   end
 
   def handle_info(:metrics_token_key_rotated, socket) do
-    if Shared.metrics_export?(socket), do: Shared.push_metrics_config(socket)
+    if socket.assigns.account.metrics_export, do: push_metrics_config(socket)
 
     {:noreply, socket}
   end
@@ -50,8 +50,7 @@ defmodule PortalAPI.Gateway.V3.Channel do
         socket
       ) do
     with {:noreply, socket} <- Shared.handle_info(change, socket) do
-      if Shared.metrics_config_changed?(old_account, account),
-        do: Shared.push_metrics_config(socket)
+      if MetricsConfig.changed?(old_account, account), do: push_metrics_config(socket)
 
       {:noreply, socket}
     end
@@ -61,6 +60,10 @@ defmodule PortalAPI.Gateway.V3.Channel do
 
   @impl true
   defdelegate handle_in(message, payload, socket), to: Shared
+
+  defp push_metrics_config(socket) do
+    push(socket, "metrics_config", MetricsConfig.render(socket.assigns.account, socket.assigns.gateway))
+  end
 
   @doc false
   def create_authorization_event, do: "create_authorization"

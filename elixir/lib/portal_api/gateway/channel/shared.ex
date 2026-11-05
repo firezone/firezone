@@ -21,8 +21,6 @@ defmodule PortalAPI.Gateway.Channel.Shared do
   # The interval at which the policy authorization cache is pruned.
   @prune_cache_every :timer.minutes(1)
 
-  @refresh_metrics_token_every :timer.seconds(div(Portal.MetricsToken.ttl_seconds(), 2))
-
   @session_durability_timeout :timer.seconds(15)
 
   # Relay credentials must be stable across reconnects so that gateways
@@ -825,7 +823,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
   defp excluded_relay_ids(_payload), do: []
 
   defp init(socket, account, relays) do
-    payload = %{
+    push(socket, "init", %{
       flow_logs: flow_logs_config(),
       authorizations: Views.PolicyAuthorization.render_many(socket.assigns.cache),
       account_slug: account.slug,
@@ -842,9 +840,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
         ipv4_masquerade_enabled: true,
         ipv6_masquerade_enabled: true
       }
-    }
-
-    push(socket, "init", payload)
+    })
   end
 
   defp flow_logs_config do
@@ -853,35 +849,6 @@ defmodule PortalAPI.Gateway.Channel.Shared do
       upload_interval_secs: Portal.Config.fetch_env!(:portal, :flow_logs_upload_interval_secs),
       upload_batch_size: Portal.Config.fetch_env!(:portal, :flow_logs_upload_batch_size)
     }
-  end
-
-  @doc false
-  def refresh_metrics_token_every, do: @refresh_metrics_token_every
-
-  @doc false
-  def metrics_export?(socket), do: socket.assigns.account.metrics_export != nil
-
-  @doc false
-  def push_metrics_config(socket) do
-    account = socket.assigns.account
-    push(socket, "metrics_config", metrics_config(account, socket.assigns.gateway))
-  end
-
-  # A `nil` token means metrics export is off.
-  defp metrics_config(account, gateway) do
-    %{
-      endpoint: Portal.Config.fetch_env!(:portal, :otlp_metrics_ingest_url),
-      export_interval_secs: account.metrics_export_interval_secs,
-      patterns: account.metrics_export || [],
-      token:
-        if(account.metrics_export, do: Portal.MetricsToken.mint(account, gateway, account.metrics_export))
-    }
-  end
-
-  @doc false
-  def metrics_config_changed?(old_account, account) do
-    old_account.metrics_export != account.metrics_export or
-      old_account.metrics_export_interval_secs != account.metrics_export_interval_secs
   end
 
   defp reinitialize_gateway(socket) do
