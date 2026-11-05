@@ -17,7 +17,7 @@ pub(super) struct Decision {
 }
 
 /// The outcome of handling a message on the slow path.
-pub(super) enum PeerMessageOutcome {
+pub(super) enum Outcome {
     /// The packet to deliver, with the decision to reuse for the rest of its flow.
     Deliver(IpPacket, Option<Decision>),
     Consumed,
@@ -85,12 +85,12 @@ impl Iterator for PeerBatch<'_> {
                 .handle_peer_message(cid, packet, self.local, self.from, self.now);
 
             return Some(handled.map(|handled| match handled {
-                PeerMessageOutcome::Deliver(packet, decision) => {
+                Outcome::Deliver(packet, decision) => {
                     self.decisions.extend(decision);
                     Some(packet)
                 }
-                PeerMessageOutcome::Consumed => None,
-                PeerMessageOutcome::Goodbye => {
+                Outcome::Consumed => None,
+                Outcome::Goodbye => {
                     self.closed = true;
                     None
                 }

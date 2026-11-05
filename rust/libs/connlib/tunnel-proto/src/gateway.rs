@@ -2,7 +2,7 @@ mod client_on_gateway;
 mod nat_table;
 mod peer_batch;
 
-use peer_batch::{Decision, PeerBatch, PeerMessageOutcome};
+use peer_batch::{Decision, PeerBatch};
 
 pub(crate) use crate::gateway::client_on_gateway::ClientOnGateway;
 
@@ -228,12 +228,12 @@ impl GatewayState {
         local: SocketAddr,
         from: SocketAddr,
         now: Instant,
-    ) -> Result<PeerMessageOutcome> {
+    ) -> Result<peer_batch::Outcome> {
         let key = BatchingKey::of(&packet);
         let flow = self.flow_tracker.begin_network_packet(local, from, now);
 
         if packet.destination().is_multicast() {
-            return Ok(PeerMessageOutcome::Consumed);
+            return Ok(peer_batch::Outcome::Consumed);
         }
 
         flow_tracker::record_decrypted_packet(&packet);
@@ -243,7 +243,7 @@ impl GatewayState {
             drop(flow);
             self.cleanup_connection(&cid, now);
 
-            return Ok(PeerMessageOutcome::Consumed);
+            return Ok(peer_batch::Outcome::Consumed);
         };
 
         flow_tracker::record_peer(cid, flow_tracker::Role::Responder);
@@ -257,7 +257,7 @@ impl GatewayState {
                     self.peers.remove(&cid);
                     self.node.remove_connection(cid, "received `goodbye`", now);
 
-                    return Ok(PeerMessageOutcome::Goodbye);
+                    return Ok(peer_batch::Outcome::Goodbye);
                 }
                 code => {
                     tracing::debug!(code = %code.into_u8(), "Unknown control protocol event");
@@ -267,14 +267,14 @@ impl GatewayState {
             };
 
             let Some(immediate_response) = immediate_response else {
-                return Ok(PeerMessageOutcome::Consumed);
+                return Ok(peer_batch::Outcome::Consumed);
             };
 
             if let Some(transmit) = encrypt_packet(immediate_response, cid, &mut self.node, now)? {
                 self.buffered_transmits.push_back(transmit);
             }
 
-            return Ok(PeerMessageOutcome::Consumed);
+            return Ok(peer_batch::Outcome::Consumed);
         }
 
         let translated = match peer.translate_outbound(packet, now) {
@@ -284,7 +284,7 @@ impl GatewayState {
 
         match (translated, key) {
             (TranslateOutboundResult::Send(packet, rewrite), Some(key)) => {
-                Ok(PeerMessageOutcome::Deliver(
+                Ok(peer_batch::Outcome::Deliver(
                     packet,
                     Some(Decision {
                         key,
@@ -294,7 +294,7 @@ impl GatewayState {
                 ))
             }
             (TranslateOutboundResult::Send(packet, _), None) => {
-                Ok(PeerMessageOutcome::Deliver(packet, None))
+                Ok(peer_batch::Outcome::Deliver(packet, None))
             }
             (
                 TranslateOutboundResult::IcmpError {
@@ -317,7 +317,7 @@ impl GatewayState {
                     self.buffered_transmits.push_back(transmit);
                 }
 
-                Ok(PeerMessageOutcome::Consumed)
+                Ok(peer_batch::Outcome::Consumed)
             }
         }
     }
