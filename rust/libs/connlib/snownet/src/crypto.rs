@@ -273,7 +273,7 @@ impl PendingDecapsulate {
         // Each relayed segment was decoded as channel data before it joined the batch.
         let messages = segments
             .into_iter()
-            .map(|segment| (&segment[header_len..], ip_packet::packet_buffer()));
+            .map(|segment| (segment.get(header_len..).unwrap_or_default(), ip_packet::packet_buffer()));
 
         let mut data = self.pending.decrypt(messages).map(IpPacket::new);
         let probes = data.extract_map(|packet| packet.as_ref().ok().and_then(Probe::try_parse));
