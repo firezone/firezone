@@ -39,7 +39,9 @@ tun-windows = { workspace = true }
 windows = { workspace = true, features = ["Win32_Foundation", "Win32_System_Diagnostics_ToolHelp", "Win32_System_Threading"] }
 
 [dev-dependencies]
+metrics-export = { workspace = true }
 mimalloc = { workspace = true }
+opentelemetry = { workspace = true }
 
 [target.'cfg(target_os = "linux")'.dev-dependencies]
 gungraun = { workspace = true }

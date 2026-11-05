@@ -9,6 +9,9 @@ use criterion::measurement::Measurement;
 use tunnel_bench::measure::{Measure, StageCpu, Wall};
 
 fn main() {
+    // Record metrics like the binaries do, so their cost shows up in the results.
+    opentelemetry::global::set_meter_provider(metrics_export::meter_provider_builder().build());
+
     match Measure::from_env() {
         measure @ Measure::Wall => run(Wall, measure),
         measure @ Measure::Cpu(stage) => run(StageCpu(stage), measure),
