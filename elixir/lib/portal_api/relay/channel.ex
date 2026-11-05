@@ -1,6 +1,6 @@
 defmodule PortalAPI.Relay.Channel do
   use PortalAPI, :channel
-  alias Portal.{Accounts.Limits, Changes.Change, Presence, PubSub}
+  alias Portal.{Accounts.Limits, Changes.Change, PG, Presence, PubSub}
   alias __MODULE__.Database
   require OpenTelemetry.Tracer
   require Logger
@@ -86,8 +86,22 @@ defmodule PortalAPI.Relay.Channel do
       push(socket, "init", init_payload)
       :ok = Presence.Relays.connect(relay)
 
-      {:noreply, assign(socket, :relay, relay)}
+      socket |> assign(:relay, relay) |> register()
     end
+  end
+
+  @impl true
+  def handle_info({:DOWN, _ref, :process, pid, _reason}, socket) do
+    if pid == socket.assigns[:pg_scope_pid] do
+      register(socket)
+    else
+      {:noreply, socket}
+    end
+  end
+
+  @impl true
+  def handle_info(:register, socket) do
+    register(socket)
   end
 
   @impl true
@@ -118,12 +132,39 @@ defmodule PortalAPI.Relay.Channel do
     end
   end
 
+  @impl true
+  def handle_info({:candidate_ips, account_id, ips}, socket) do
+    push(socket, "candidate_ips", %{account_id: account_id, ips: ips})
+    {:noreply, socket}
+  end
+
   # Catch-all for unknown messages
   @impl true
   def handle_in(message, payload, socket) do
     Logger.error("Unknown relay message", message: message, payload: payload)
 
     {:reply, {:error, %{reason: :unknown_message}}, socket}
+  end
+
+  # Registers under the relay ID so channels can address this relay through `Portal.PG`.
+  # Memberships die with the PG scope, so a scope crash re-registers.
+  defp register(socket) do
+    current_pid = socket.assigns[:pg_scope_pid]
+
+    case PG.scope_pid() do
+      nil ->
+        Logger.error("Portal.PG scope is not running, retrying registration shortly")
+        Process.send_after(self(), :register, 50)
+        {:noreply, socket}
+
+      ^current_pid ->
+        {:noreply, socket}
+
+      new_pid ->
+        Process.monitor(new_pid)
+        :ok = PG.join(socket.assigns.relay.id)
+        {:noreply, assign(socket, :pg_scope_pid, new_pid)}
+    end
   end
 
   # Unlimited accounts are omitted to keep the snapshot small.

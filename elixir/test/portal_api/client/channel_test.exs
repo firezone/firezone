@@ -3087,6 +3087,78 @@ defmodule PortalAPI.Client.ChannelTest do
                gateway_id: gateway.id
              }
     end
+
+    test "reports the candidate IPs to the client's relays", %{
+      account: account,
+      client: client,
+      gateway: gateway,
+      global_relay: global_relay,
+      subject: subject
+    } do
+      :ok = Portal.Presence.Relays.connect(global_relay)
+      socket = join_channel(client, subject)
+      assert_push "init", _
+      :ok = PG.register(global_relay.id)
+      account_id = account.id
+
+      send(
+        socket.channel_pid,
+        {:ice_candidates, gateway.id,
+         ["candidate:1 1 udp 1694498815 203.0.113.5 51000 typ srflx raddr 10.0.0.2 rport 51000"]}
+      )
+
+      assert_receive {:candidate_ips, ^account_id, ["203.0.113.5"]}, 200
+      assert_push "ice_candidates", _
+    end
+
+    test "reports the candidate IPs to every relay the client was given", %{
+      account: account,
+      client: client,
+      gateway: gateway,
+      global_relay: first_relay,
+      subject: subject
+    } do
+      :ok = Portal.Presence.Relays.connect(first_relay)
+      socket = join_channel(client, subject)
+      assert_push "init", _
+
+      second_relay = relay_fixture()
+      :ok = Portal.Presence.Relays.connect(second_relay)
+      push(socket, "no_relays", %{"excluded_relay_ids" => [first_relay.id]})
+      assert_push "relays_presence", _
+
+      :ok = PG.register(first_relay.id)
+      :ok = PG.register(second_relay.id)
+      account_id = account.id
+
+      send(
+        socket.channel_pid,
+        {:ice_candidates, gateway.id,
+         ["candidate:1 1 udp 2130706431 203.0.113.5 51000 typ host"]}
+      )
+
+      assert_receive {:candidate_ips, ^account_id, ["203.0.113.5"]}, 200
+      assert_receive {:candidate_ips, ^account_id, ["203.0.113.5"]}, 200
+    end
+
+    test "does not report IPs of unparsable candidates", %{
+      account: account,
+      client: client,
+      gateway: gateway,
+      global_relay: global_relay,
+      subject: subject
+    } do
+      :ok = Portal.Presence.Relays.connect(global_relay)
+      socket = join_channel(client, subject)
+      assert_push "init", _
+      :ok = PG.register(global_relay.id)
+      account_id = account.id
+
+      send(socket.channel_pid, {:ice_candidates, gateway.id, ["foo", "bar"]})
+
+      assert_push "ice_candidates", _
+      refute_receive {:candidate_ips, ^account_id, _ips}
+    end
   end
 
   describe "public_key_changed" do
@@ -3221,6 +3293,28 @@ defmodule PortalAPI.Client.ChannelTest do
 
       assert_push "client_ice_candidates", payload
       assert payload == %{client_id: source_client_id, candidates: candidates}
+    end
+
+    test "reports the candidate IPs to the client's relays", %{
+      account: account,
+      client: client,
+      global_relay: global_relay,
+      subject: subject
+    } do
+      :ok = Portal.Presence.Relays.connect(global_relay)
+      socket = join_channel(client, subject)
+      assert_push "init", _
+      :ok = PG.register(global_relay.id)
+      account_id = account.id
+
+      send(
+        socket.channel_pid,
+        {:client_ice_candidates, Ecto.UUID.generate(),
+         ["candidate:1 1 udp 2130706431 203.0.113.5 51000 typ host"]}
+      )
+
+      assert_receive {:candidate_ips, ^account_id, ["203.0.113.5"]}, 200
+      assert_push "client_ice_candidates", _
     end
   end
 

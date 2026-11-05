@@ -10,6 +10,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
     PG,
     Changes.Change,
     PubSub,
+    Relay.CandidateIPs,
     Resource,
     Presence,
     SchemaHelpers,
@@ -293,6 +294,13 @@ defmodule PortalAPI.Gateway.Channel.Shared do
   end
 
   def handle_info({:ice_candidates, client_id, candidates}, socket) do
+    # The gateway binds channels on its own relays towards these candidates.
+    CandidateIPs.report(
+      socket.assigns[:cached_relay_ids] || MapSet.new(),
+      socket.assigns.gateway.account_id,
+      candidates
+    )
+
     push(socket, "ice_candidates", %{
       client_id: client_id,
       candidates: candidates
