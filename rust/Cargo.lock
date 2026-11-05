@@ -9274,7 +9274,6 @@ dependencies = [
  "test-strategy",
  "thiserror 2.0.21",
  "tracing",
- "tun",
  "zeroize",
 ]
 

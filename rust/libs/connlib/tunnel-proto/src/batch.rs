@@ -89,15 +89,12 @@ impl<'a, S: flow_tracker::Scope> TunBatch<'a, S> {
         flow: flow_tracker::CurrentFlowGuard<'a, S>,
         packet: IpPacket,
     ) -> Self {
-        let mut packets = Vec::with_capacity(tun::MAX_BATCH_SIZE);
-        packets.push(packet);
-
         Self {
             key,
             nat,
             tunnel,
             flow,
-            packets,
+            packets: vec![packet],
         }
     }
 
@@ -108,6 +105,8 @@ impl<'a, S: flow_tracker::Scope> TunBatch<'a, S> {
 
     /// Adds `packet`, which the batch [accepts](Self::accepts), translating it like the first one.
     pub fn push(&mut self, mut packet: IpPacket) {
+        debug_assert!(self.accepts(&packet));
+
         self.flow.count_packet(&packet);
 
         if let Some((proto, ip)) = self.nat {
