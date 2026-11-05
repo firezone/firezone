@@ -785,6 +785,8 @@ impl ClientState {
 
         Ok(PeerBatch::new(self, packets, local, from, now))
     }
+
+    /// Handles one decrypted packet on the slow path, for when no decision of its flow is cached.
     fn handle_peer_message(
         &mut self,
         pid: ClientOrGatewayId,
