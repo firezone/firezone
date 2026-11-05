@@ -46,6 +46,12 @@ defmodule Portal.Telemetry do
       events: [
         [:portal, :authorization, :granted]
       ]
+    },
+    otlp_ingest: %{
+      handler_id: "portal-otlp-ingest-metrics",
+      events: [
+        [:portal, :otlp_ingest, :data_points]
+      ]
     }
   }
 
@@ -335,6 +341,17 @@ defmodule Portal.Telemetry do
     })
   end
 
+  @doc """
+  Records `count` OTLP metric data points received on `POST /v1/metrics`.
+
+  `outcome` is `:forwarded`, `:filtered` (not allowed by the token) or `:failed`
+  (the upstream rejected them).
+  """
+  @spec otlp_ingest_data_points(:forwarded | :filtered | :failed, non_neg_integer()) :: :ok
+  def otlp_ingest_data_points(outcome, count) when outcome in [:forwarded, :filtered, :failed] do
+    :telemetry.execute([:portal, :otlp_ingest, :data_points], %{count: count}, %{outcome: outcome})
+  end
+
   defp register_otel_instruments do
     meter = :opentelemetry_experimental.get_meter()
     node_attrs = %{"node_name" => System.get_env("NODE_NAME", to_string(node()))}
@@ -588,6 +605,12 @@ defmodule Portal.Telemetry do
       }
     )
 
+    :otel_meter.create_counter(
+      meter,
+      :"portal.otlp_ingest.data_points",
+      %{description: "OTLP metric data points received from Clients and Gateways", unit: :"1"}
+    )
+
     :ok
   rescue
     error ->
@@ -818,6 +841,22 @@ defmodule Portal.Telemetry do
     :ok
   end
 
+  @doc false
+  @spec handle_otlp_ingest_metric(list(), map(), map(), map()) :: :ok
+  def handle_otlp_ingest_metric([:portal, :otlp_ingest, :data_points], measurements, metadata, config) do
+    attrs = %{"outcome" => to_string(metadata.outcome), "node_name" => config.node_name}
+
+    :otel_counter.add(
+      :otel_ctx.get_current(),
+      :opentelemetry_experimental.get_meter(),
+      :"portal.otlp_ingest.data_points",
+      measurements.count,
+      attrs
+    )
+
+    :ok
+  end
+
   @spec enable_metrics(atom()) :: :ok | {:error, :already_enabled} | {:error, :unknown_group}
   def enable_metrics(group) do
     case Map.fetch(@metric_groups, group) do
@@ -869,6 +908,7 @@ defmodule Portal.Telemetry do
   defp metric_group_handler(:liveview_events), do: &__MODULE__.handle_liveview_event_metric/4
   defp metric_group_handler(:channels), do: &__MODULE__.handle_channel_metric/4
   defp metric_group_handler(:authorizations), do: &__MODULE__.handle_authorization_metric/4
+  defp metric_group_handler(:otlp_ingest), do: &__MODULE__.handle_otlp_ingest_metric/4
 
   @doc false
   @spec endpoint_name(Plug.Conn.t()) :: String.t()

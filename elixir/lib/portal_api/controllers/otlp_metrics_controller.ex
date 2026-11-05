@@ -23,8 +23,12 @@ defmodule PortalAPI.OTLPMetricsController do
     with :ok <- ensure_protobuf(conn),
          {:ok, body, conn} <- read_body_within_limit(conn),
          {:ok, request} <- decode(body),
-         {:ok, body} <- encode(sanitize(request, claims)) do
-      forward(conn, body)
+         sanitized = sanitize(request, claims),
+         {:ok, body} <- encode(sanitized) do
+      forwarded = count_data_points(sanitized)
+      Portal.Telemetry.otlp_ingest_data_points(:filtered, count_data_points(request) - forwarded)
+
+      forward(conn, body, forwarded)
     else
       {:error, :unsupported_media_type} ->
         ProblemDetails.send(conn, 415, "Expected an uncompressed application/x-protobuf body")
@@ -124,17 +128,34 @@ defmodule PortalAPI.OTLPMetricsController do
     |> Map.replace(:exemplars, [])
   end
 
-  defp forward(conn, <<>>), do: send_export_response(conn)
+  defp count_data_points(request) do
+    for resource_metrics <- Map.get(request, :resource_metrics, []),
+        scope_metrics <- Map.get(resource_metrics, :scope_metrics, []),
+        %{data: {_kind, data}} <- Map.get(scope_metrics, :metrics, []),
+        reduce: 0 do
+      count -> count + length(Map.get(data, :data_points, []))
+    end
+  end
 
-  defp forward(conn, body) do
+  defp forward(conn, <<>>, _data_points), do: send_export_response(conn)
+
+  defp forward(conn, body, data_points) do
     endpoint = Portal.Config.fetch_env!(:portal, :otlp_metrics_endpoint)
     auth = Portal.Config.fetch_env!(:portal, :otlp_auth)
     req_opts = Portal.Config.fetch_env!(:portal, Portal.OTLP.MetricsExporter)[:req_opts]
 
     case Portal.OTLP.post(endpoint, body, auth, req_opts) do
-      :ok -> send_export_response(conn)
-      :failed_retryable -> ProblemDetails.send(conn, 503, "Metrics could not be forwarded")
-      :failed_not_retryable -> ProblemDetails.send(conn, 500, "Metrics could not be forwarded")
+      :ok ->
+        Portal.Telemetry.otlp_ingest_data_points(:forwarded, data_points)
+        send_export_response(conn)
+
+      :failed_retryable ->
+        Portal.Telemetry.otlp_ingest_data_points(:failed, data_points)
+        ProblemDetails.send(conn, 503, "Metrics could not be forwarded")
+
+      :failed_not_retryable ->
+        Portal.Telemetry.otlp_ingest_data_points(:failed, data_points)
+        ProblemDetails.send(conn, 500, "Metrics could not be forwarded")
     end
   end
 
