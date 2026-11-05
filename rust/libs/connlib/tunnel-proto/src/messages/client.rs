@@ -502,7 +502,8 @@ mod tests {
             "metrics": {
                 "api_url": "https://otlp.firezone.dev/",
                 "export_interval_secs": 60,
-                "token": "metrics-token"
+                "token": "metrics-token",
+                "patterns": ["*"]
             }
         }"#;
 
@@ -512,6 +513,7 @@ mod tests {
         assert_eq!(metrics.api_url, "https://otlp.firezone.dev/");
         assert_eq!(metrics.export_interval_secs, 60);
         assert_eq!(metrics.token.unwrap().expose_secret(), "metrics-token");
+        assert_eq!(metrics.patterns, ["*"]);
     }
 
     #[test]
@@ -534,7 +536,7 @@ mod tests {
 
     #[test]
     fn can_deserialize_metrics_config_message_without_token() {
-        let json = r#"{"event":"metrics_config","ref":null,"topic":"client","payload":{"api_url":"https://otlp.firezone.dev/","export_interval_secs":60,"token":null}}"#;
+        let json = r#"{"event":"metrics_config","ref":null,"topic":"client","payload":{"api_url":"https://otlp.firezone.dev/","export_interval_secs":60,"token":null,"patterns":[]}}"#;
 
         let message = serde_json::from_str::<IngressMessages>(json).unwrap();
 
@@ -543,6 +545,7 @@ mod tests {
         };
         assert_eq!(config.api_url, "https://otlp.firezone.dev/");
         assert!(config.token.is_none());
+        assert!(config.patterns.is_empty());
     }
 
     #[test]

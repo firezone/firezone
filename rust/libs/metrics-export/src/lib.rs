@@ -49,9 +49,17 @@ impl Exporter {
     }
 
     /// Applies the portal's metrics config; a `None` token stops exporting.
-    pub fn configure(&self, api_url: &str, export_interval_secs: u64, token: Option<SecretString>) {
+    ///
+    /// Only metrics whose name matches one of `patterns` are exported.
+    pub fn configure(
+        &self,
+        api_url: &str,
+        export_interval_secs: u64,
+        token: Option<SecretString>,
+        patterns: Vec<String>,
+    ) {
         let config = match token
-            .map(|token| Config::new(api_url, export_interval_secs, token))
+            .map(|token| Config::new(api_url, export_interval_secs, token, patterns))
             .transpose()
         {
             Ok(config) => config,
@@ -76,10 +84,16 @@ struct Config {
     endpoint: Url,
     interval: Duration,
     token: SecretString,
+    patterns: Vec<String>,
 }
 
 impl Config {
-    fn new(api_url: &str, export_interval_secs: u64, token: SecretString) -> Result<Self> {
+    fn new(
+        api_url: &str,
+        export_interval_secs: u64,
+        token: SecretString,
+        patterns: Vec<String>,
+    ) -> Result<Self> {
         let endpoint = Url::parse(api_url)
             .and_then(|url| url.join(EXPORT_PATH))
             .with_context(|| format!("Invalid metrics API URL `{api_url}`"))?;
@@ -92,6 +106,7 @@ impl Config {
             endpoint,
             interval: Duration::from_secs(export_interval_secs).max(MIN_EXPORT_INTERVAL),
             token,
+            patterns,
         })
     }
 }
@@ -178,14 +193,14 @@ async fn wait_until(deadline: Instant, config: &mut watch::Receiver<Option<Confi
     }
 }
 
-/// POSTs everything recorded since the last export.
+/// POSTs everything recorded since the last export that the config's patterns allow.
 ///
-/// Returns `None` if nothing was recorded.
+/// Returns `None` if nothing is left to export.
 async fn export(
     config: &Config,
     connection: &mut Connection,
 ) -> Result<Option<http::Response<Bytes>>> {
-    let Some(body) = pipeline::collect()? else {
+    let Some(body) = pipeline::collect(&config.patterns)? else {
         return Ok(None);
     };
 
@@ -301,7 +316,7 @@ mod tests {
 
     #[test]
     fn config_appends_the_export_path() {
-        let config = Config::new("https://otlp.firezone.dev/", 60, token()).unwrap();
+        let config = Config::new("https://otlp.firezone.dev/", 60, token(), vec![]).unwrap();
 
         assert_eq!(
             config.endpoint.as_str(),
@@ -312,9 +327,9 @@ mod tests {
 
     #[test]
     fn config_rejects_plain_http_and_clamps_the_interval() {
-        assert!(Config::new("http://otlp.firezone.dev/", 60, token()).is_err());
+        assert!(Config::new("http://otlp.firezone.dev/", 60, token(), vec![]).is_err());
         assert_eq!(
-            Config::new("https://otlp.firezone.dev/", 0, token())
+            Config::new("https://otlp.firezone.dev/", 0, token(), vec![])
                 .unwrap()
                 .interval,
             MIN_EXPORT_INTERVAL

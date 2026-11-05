@@ -35,22 +35,73 @@ pub(crate) fn discard() {
     let _ = READER.collect(&mut ResourceMetrics::default());
 }
 
-/// Collects everything recorded since the last collection as an encoded `ExportMetricsServiceRequest`.
+/// Collects everything recorded since the last collection as an encoded `ExportMetricsServiceRequest`,
+/// keeping only the metrics whose name matches one of `patterns`.
 ///
-/// Returns `None` if nothing was recorded.
-pub(crate) fn collect() -> Result<Option<Bytes>> {
+/// Returns `None` if nothing is left.
+pub(crate) fn collect(patterns: &[String]) -> Result<Option<Bytes>> {
     let mut metrics = ResourceMetrics::default();
     READER
         .collect(&mut metrics)
         .context("Failed to collect metrics")?;
 
-    if metrics.scope_metrics().next().is_none() {
+    let Some(request) = filter(ExportMetricsServiceRequest::from(&metrics), patterns) else {
         return Ok(None);
-    }
-
-    let request = ExportMetricsServiceRequest::from(&metrics);
+    };
 
     Ok(Some(Bytes::from(request.encode_to_vec())))
+}
+
+fn filter(
+    mut request: ExportMetricsServiceRequest,
+    patterns: &[String],
+) -> Option<ExportMetricsServiceRequest> {
+    for resource_metrics in &mut request.resource_metrics {
+        for scope_metrics in &mut resource_metrics.scope_metrics {
+            for _ in scope_metrics
+                .metrics
+                .extract_if(.., |metric| !is_allowed(&metric.name, patterns))
+            {}
+        }
+
+        for _ in resource_metrics
+            .scope_metrics
+            .extract_if(.., |scope_metrics| scope_metrics.metrics.is_empty())
+        {}
+    }
+
+    for _ in request.resource_metrics.extract_if(.., |resource_metrics| {
+        resource_metrics.scope_metrics.is_empty()
+    }) {}
+
+    (!request.resource_metrics.is_empty()).then_some(request)
+}
+
+fn is_allowed(name: &str, patterns: &[String]) -> bool {
+    patterns.iter().any(|pattern| matches(pattern, name))
+}
+
+/// Matches `name` against `pattern`, in which `*` stands for any run of characters.
+fn matches(pattern: &str, name: &str) -> bool {
+    let mut parts = pattern.split('*');
+    let first = parts.next().unwrap_or_default();
+
+    let Some(mut rest) = name.strip_prefix(first) else {
+        return false;
+    };
+    let Some(last) = parts.next_back() else {
+        return rest.is_empty();
+    };
+
+    for part in parts {
+        let Some(start) = rest.find(part) else {
+            return false;
+        };
+
+        rest = &rest[start + part.len()..];
+    }
+
+    rest.ends_with(last)
 }
 
 /// Lets us collect from the [`ManualReader`] that the [`SdkMeterProvider`] owns.
@@ -82,7 +133,10 @@ impl MetricReader for SharedReader {
 #[cfg(test)]
 mod tests {
     use opentelemetry::{KeyValue, metrics::MeterProvider as _};
-    use opentelemetry_proto::tonic::metrics::v1::{metric::Data, number_data_point::Value};
+    use opentelemetry_proto::tonic::metrics::v1::{
+        Metric, ResourceMetrics as ProtoResourceMetrics, ScopeMetrics, metric::Data,
+        number_data_point::Value,
+    };
     use opentelemetry_sdk::Resource;
 
     use super::*;
@@ -102,7 +156,9 @@ mod tests {
         discard();
         counter.add(2, &[]);
 
-        let request = ExportMetricsServiceRequest::decode(collect().unwrap().unwrap()).unwrap();
+        let request =
+            ExportMetricsServiceRequest::decode(collect(&patterns(&["test.*"])).unwrap().unwrap())
+                .unwrap();
         let resource_metrics = &request.resource_metrics[0];
         let metric = &resource_metrics.scope_metrics[0].metrics[0];
         let Some(Data::Sum(sum)) = &metric.data else {
@@ -115,5 +171,71 @@ mod tests {
         assert_eq!(metric.name, "test.counter");
         assert_eq!(sum.data_points.len(), 1);
         assert_eq!(sum.data_points[0].value, Some(Value::AsInt(2)));
+    }
+
+    #[test]
+    fn matches_like_the_portal() {
+        let allowed = patterns(&["connlib.*", "tunnel.error", "*.duration", "a*b*c"]);
+
+        for name in [
+            "connlib.network.packets",
+            "connlib.",
+            "tunnel.error",
+            "dns.duration",
+            "abc",
+            "aXbYc",
+        ] {
+            assert!(is_allowed(name, &allowed), "{name} should be allowed");
+        }
+        for name in ["tunnel.errors", "connlib", "duration", "acb", "abcd"] {
+            assert!(!is_allowed(name, &allowed), "{name} should be rejected");
+        }
+        assert!(is_allowed("anything", &patterns(&["*"])));
+        assert!(!is_allowed("anything", &[]));
+    }
+
+    #[test]
+    fn filter_drops_disallowed_metrics_and_empty_scopes() {
+        let request = request(&[&["connlib.a", "tunnel.b"], &["tunnel.c"]]);
+
+        let filtered = filter(request, &patterns(&["connlib.*"])).unwrap();
+
+        let scopes = &filtered.resource_metrics[0].scope_metrics;
+        assert_eq!(scopes.len(), 1);
+        assert_eq!(scopes[0].metrics.len(), 1);
+        assert_eq!(scopes[0].metrics[0].name, "connlib.a");
+    }
+
+    #[test]
+    fn filter_returns_none_if_nothing_is_allowed() {
+        let request = request(&[&["connlib.a"]]);
+
+        assert!(filter(request.clone(), &patterns(&["tunnel.*"])).is_none());
+        assert!(filter(request, &[]).is_none());
+    }
+
+    fn patterns(patterns: &[&str]) -> Vec<String> {
+        patterns.iter().map(|p| (*p).to_owned()).collect()
+    }
+
+    fn request(scopes: &[&[&str]]) -> ExportMetricsServiceRequest {
+        ExportMetricsServiceRequest {
+            resource_metrics: vec![ProtoResourceMetrics {
+                scope_metrics: scopes
+                    .iter()
+                    .map(|names| ScopeMetrics {
+                        metrics: names
+                            .iter()
+                            .map(|name| Metric {
+                                name: (*name).to_owned(),
+                                ..Default::default()
+                            })
+                            .collect(),
+                        ..Default::default()
+                    })
+                    .collect(),
+                ..Default::default()
+            }],
+        }
     }
 }

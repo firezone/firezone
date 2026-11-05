@@ -557,6 +557,7 @@ impl Eventloop {
                 &metrics.api_url,
                 metrics.export_interval_secs,
                 metrics.token,
+                metrics.patterns,
             ),
             IngressMessages::GatewayIceCandidates(GatewayIceCandidates {
                 gateway_id,
@@ -600,6 +601,7 @@ impl Eventloop {
                         &metrics.api_url,
                         metrics.export_interval_secs,
                         metrics.token,
+                        metrics.patterns,
                     ),
                     None => self.metrics_exporter.disable(),
                 }

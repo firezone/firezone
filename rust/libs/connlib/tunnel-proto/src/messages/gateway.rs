@@ -367,11 +367,12 @@ mod tests {
         assert_eq!(metrics.api_url, "https://otlp.firezone.dev/");
         assert_eq!(metrics.export_interval_secs, 60);
         assert!(metrics.token.is_none());
+        assert!(metrics.patterns.is_empty());
     }
 
     #[test]
     fn can_deserialize_metrics_config_message() {
-        let json = r#"{"event":"metrics_config","ref":null,"topic":"gateway","payload":{"api_url":"https://otlp.firezone.dev/","export_interval_secs":30,"token":"metrics-token"}}"#;
+        let json = r#"{"event":"metrics_config","ref":null,"topic":"gateway","payload":{"api_url":"https://otlp.firezone.dev/","export_interval_secs":30,"token":"metrics-token","patterns":["connlib.*","tunnel.error"]}}"#;
 
         let message = serde_json::from_str::<IngressMessages>(json).unwrap();
 
@@ -380,6 +381,7 @@ mod tests {
         };
         assert_eq!(config.export_interval_secs, 30);
         assert_eq!(config.token.unwrap().expose_secret(), "metrics-token");
+        assert_eq!(config.patterns, ["connlib.*", "tunnel.error"]);
     }
 
     #[test]

@@ -478,6 +478,7 @@ impl Eventloop {
                         &metrics.api_url,
                         metrics.export_interval_secs,
                         metrics.token,
+                        metrics.patterns,
                     ),
                     None => self.metrics_exporter.disable(),
                 }
@@ -586,6 +587,7 @@ impl Eventloop {
                 &metrics.api_url,
                 metrics.export_interval_secs,
                 metrics.token,
+                metrics.patterns,
             ),
             // OBSOLETE - safe to remove this when https://github.com/firezone/firezone/pull/13714 is deployed to production.
             IngressMessages::AccessAuthorizationExpiryUpdated(_) => {}

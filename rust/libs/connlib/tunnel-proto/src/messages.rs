@@ -261,6 +261,9 @@ pub struct MetricsConfig {
     pub export_interval_secs: u64,
     /// Authorizes the export; `None` means exporting is off.
     pub token: Option<SecretString>,
+    /// Name patterns of the metrics the token allows, where `*` matches any run of characters.
+    #[serde(default)]
+    pub patterns: Vec<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
