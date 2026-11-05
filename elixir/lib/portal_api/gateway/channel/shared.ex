@@ -866,14 +866,19 @@ defmodule PortalAPI.Gateway.Channel.Shared do
   end
 
   defp push_metrics_config(socket) do
-    push(socket, "metrics_config", metrics_config(socket.assigns.account))
+    if metrics = metrics_config(socket.assigns.account) do
+      push(socket, "metrics_config", %{metrics: metrics})
+    end
+
     {:noreply, socket}
   end
+
+  defp metrics_config(%Portal.Account{metrics_export: :off}), do: nil
 
   defp metrics_config(account) do
     %{
       api_url: Portal.Config.fetch_env!(:portal, :otlp_metrics_api_url),
-      token: Portal.MetricsToken.mint(account, account.metrics_allowlist || :all)
+      token: Portal.MetricsToken.mint(account, account.metrics_export)
     }
   end
 
@@ -909,8 +914,8 @@ defmodule PortalAPI.Gateway.Channel.Shared do
         {:ok, relays} = select_relays(socket)
         init(socket, account, relays)
 
-      old_account.metrics_allowlist != account.metrics_allowlist ->
-        push(socket, "metrics_config", metrics_config(account))
+      old_account.metrics_export != account.metrics_export ->
+        push(socket, "metrics_config", %{metrics: metrics_config(account)})
 
       true ->
         :ok

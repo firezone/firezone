@@ -53,7 +53,7 @@ defmodule PortalAPI.Schemas.Account do
                :limit_usage,
                :lock_enabled_at,
                :metadata,
-               :metrics_allowlist,
+               :metrics_export,
                :outdated_gateway_last_sent_at,
                :scheduled_deletion_at,
                :seats_limit_exceeded,

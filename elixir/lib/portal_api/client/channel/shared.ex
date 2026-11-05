@@ -2185,14 +2185,19 @@ defmodule PortalAPI.Client.Channel.Shared do
   end
 
   defp push_metrics_config(socket) do
-    push(socket, "metrics_config", metrics_config(socket.assigns.subject.account))
+    if metrics = metrics_config(socket.assigns.subject.account) do
+      push(socket, "metrics_config", %{metrics: metrics})
+    end
+
     {:noreply, socket}
   end
+
+  defp metrics_config(%Portal.Account{metrics_export: :off}), do: nil
 
   defp metrics_config(account) do
     %{
       api_url: Portal.Config.fetch_env!(:portal, :otlp_metrics_api_url),
-      token: Portal.MetricsToken.mint(account, account.metrics_allowlist || :all)
+      token: Portal.MetricsToken.mint(account, account.metrics_export)
     }
   end
 
@@ -2345,8 +2350,8 @@ defmodule PortalAPI.Client.Channel.Shared do
     subject = %{socket.assigns.subject | account: account}
     socket = assign(socket, subject: subject)
 
-    if old_account.metrics_allowlist != account.metrics_allowlist do
-      push(socket, "metrics_config", metrics_config(account))
+    if old_account.metrics_export != account.metrics_export do
+      push(socket, "metrics_config", %{metrics: metrics_config(account)})
     end
 
     if old_account.config != account.config do

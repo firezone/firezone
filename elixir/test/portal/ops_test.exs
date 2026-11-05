@@ -330,15 +330,25 @@ defmodule Portal.OpsTest do
     end
   end
 
-  describe "set_metrics_allowlist/2" do
-    test "stores the allowlist" do
+  describe "set_metrics_export/2" do
+    test "stores the metrics export setting, off by default" do
+      account = account_fixture()
+      assert fetch_account!(account.id).metrics_export == :off
+
+      assert :ok = set_metrics_export(account.id, ["a", "b"])
+      assert fetch_account!(account.id).metrics_export == ["a", "b"]
+
+      assert :ok = set_metrics_export(account.id, :all)
+      assert fetch_account!(account.id).metrics_export == :all
+
+      assert :ok = set_metrics_export(account.id, :off)
+      assert fetch_account!(account.id).metrics_export == :off
+    end
+
+    test "rejects an empty list" do
       account = account_fixture()
 
-      assert :ok = set_metrics_allowlist(account.id, ["a", "b"])
-      assert fetch_account!(account.id).metrics_allowlist == ["a", "b"]
-
-      assert :ok = set_metrics_allowlist(account.id, :all)
-      assert fetch_account!(account.id).metrics_allowlist == nil
+      assert_raise MatchError, fn -> set_metrics_export(account.id, []) end
     end
   end
 

@@ -29,9 +29,8 @@ defmodule Portal.Account do
 
     embeds_one :metadata, Portal.Account.Metadata, on_replace: :update
 
-    # The metrics Clients and Gateways may forward, `nil` meaning all of them.
-    # Set by Firezone staff via `Portal.Ops.set_metrics_allowlist/2`.
-    field :metrics_allowlist, {:array, :string}, redact: true
+    # Set by Firezone staff via `Portal.Ops.set_metrics_export/2`.
+    field :metrics_export, Portal.Types.MetricsExport, default: :off, redact: true
 
     # We mention all schemas here to leverage Ecto compile-time reference checks,
     # because later we will have to shard data by account_id.

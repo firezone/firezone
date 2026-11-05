@@ -235,13 +235,13 @@ defmodule Portal.Ops do
   end
 
   @doc """
-  Restricts the metrics the account's Clients and Gateways may forward to
-  `names`, or allows all of them with `:all`. Their channels push a fresh token
-  once the change arrives through replication.
+  Sets which metrics the account's Clients and Gateways export: `:off`, `:all`,
+  or a non-empty list of metric names. Their channels push the new
+  `metrics_config` once the change arrives through replication.
   """
-  def set_metrics_allowlist(account_id, names) when names == :all or is_list(names) do
-    allowlist = if names == :all, do: nil, else: names
-    {1, _} = Database.set_metrics_allowlist(account_id, allowlist)
+  def set_metrics_export(account_id, export) do
+    {:ok, export} = Portal.Types.MetricsExport.cast(export)
+    {1, _} = Database.set_metrics_export(account_id, export)
     :ok
   end
 
@@ -859,10 +859,10 @@ defmodule Portal.Ops do
       key
     end
 
-    def set_metrics_allowlist(account_id, allowlist) do
+    def set_metrics_export(account_id, export) do
       from(a in Account, where: a.id == ^account_id)
       |> Safe.unscoped()
-      |> Safe.update_all(set: [metrics_allowlist: allowlist])
+      |> Safe.update_all(set: [metrics_export: export])
     end
 
     defp maybe_filter_account_ids(query, :all) do

@@ -416,12 +416,27 @@ defmodule PortalAPI.Gateway.ChannelTest do
              }
     end
 
+    test "sends no metrics config while metrics export is off", %{
+      gateway: gateway,
+      site: site,
+      token: token
+    } do
+      socket = join_channel(gateway, site, token)
+      assert_push "init", %{metrics: nil}
+
+      send(socket.channel_pid, :refresh_metrics_token)
+      send(socket.channel_pid, :metrics_token_key_rotated)
+
+      refute_push "metrics_config", _payload
+    end
+
     test "sends a metrics token in init and refreshes it", %{
       account: account,
       gateway: gateway,
       site: site,
       token: token
     } do
+      :ok = Portal.Ops.set_metrics_export(account.id, :all)
       socket = join_channel(gateway, site, token)
 
       assert_push "init", %{metrics: %{api_url: "https://otlp.firezone.dev/", token: metrics_token}}
@@ -429,26 +444,15 @@ defmodule PortalAPI.Gateway.ChannelTest do
       assert account_id == account.id
 
       send(socket.channel_pid, :refresh_metrics_token)
-
-      assert_push "metrics_config", %{token: metrics_token}
+      assert_push "metrics_config", %{metrics: %{token: metrics_token}}
       assert {:ok, _claims} = Portal.MetricsToken.verify(metrics_token)
-    end
-
-    test "pushes a fresh metrics config when the signing key rotates", %{
-      gateway: gateway,
-      site: site,
-      token: token
-    } do
-      socket = join_channel(gateway, site, token)
-      assert_push "init", _init_payload
 
       send(socket.channel_pid, :metrics_token_key_rotated)
-
-      assert_push "metrics_config", %{token: metrics_token}
+      assert_push "metrics_config", %{metrics: %{token: metrics_token}}
       assert {:ok, _claims} = Portal.MetricsToken.verify(metrics_token)
     end
 
-    test "applies the account's metrics allowlist", %{
+    test "pushes the metrics config when the account's metrics export changes", %{
       account: account,
       gateway: gateway,
       site: site,
@@ -456,23 +460,27 @@ defmodule PortalAPI.Gateway.ChannelTest do
     } do
       socket = join_channel(gateway, site, token)
       assert_push "init", _init_payload
+      some = %{account | metrics_export: ["a"]}
 
       send(socket.channel_pid, %Changes.Change{
         lsn: System.unique_integer([:positive, :monotonic]),
         op: :update,
         old_struct: account,
-        struct: %{account | metrics_allowlist: ["a"]}
+        struct: some
       })
 
-      assert_push "metrics_config", %{token: metrics_token}
+      assert_push "metrics_config", %{metrics: %{token: metrics_token}}
       assert {:ok, %{"metrics" => %{"names" => ["a"]}}} = Portal.MetricsToken.verify(metrics_token)
 
-      send(socket.channel_pid, :refresh_metrics_token)
+      send(socket.channel_pid, %Changes.Change{
+        lsn: System.unique_integer([:positive, :monotonic]),
+        op: :update,
+        old_struct: some,
+        struct: account
+      })
 
-      assert_push "metrics_config", %{token: metrics_token}
-      assert {:ok, %{"metrics" => %{"names" => ["a"]}}} = Portal.MetricsToken.verify(metrics_token)
+      assert_push "metrics_config", %{metrics: nil}
     end
-
 
     test "init includes inbound authorizations from the hydrated cache", %{
       account: account,
