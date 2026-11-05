@@ -3107,7 +3107,7 @@ defmodule PortalAPI.Client.ChannelTest do
          ["candidate:1 1 udp 1694498815 203.0.113.5 51000 typ srflx raddr 10.0.0.2 rport 51000"]}
       )
 
-      assert_receive {:ice_candidate_ips, ^account_id, ["203.0.113.5"]}, 200
+      assert_receive {:candidate_ips, ^account_id, ["203.0.113.5"]}, 200
       assert_push "ice_candidates", _
     end
 
@@ -3137,8 +3137,8 @@ defmodule PortalAPI.Client.ChannelTest do
          ["candidate:1 1 udp 2130706431 203.0.113.5 51000 typ host"]}
       )
 
-      assert_receive {:ice_candidate_ips, ^account_id, ["203.0.113.5"]}, 200
-      assert_receive {:ice_candidate_ips, ^account_id, ["203.0.113.5"]}, 200
+      assert_receive {:candidate_ips, ^account_id, ["203.0.113.5"]}, 200
+      assert_receive {:candidate_ips, ^account_id, ["203.0.113.5"]}, 200
     end
 
     test "does not report IPs of unparsable candidates", %{
@@ -3157,7 +3157,7 @@ defmodule PortalAPI.Client.ChannelTest do
       send(socket.channel_pid, {:ice_candidates, gateway.id, ["foo", "bar"]})
 
       assert_push "ice_candidates", _
-      refute_receive {:ice_candidate_ips, ^account_id, _ips}
+      refute_receive {:candidate_ips, ^account_id, _ips}
     end
   end
 
@@ -3313,7 +3313,7 @@ defmodule PortalAPI.Client.ChannelTest do
          ["candidate:1 1 udp 2130706431 203.0.113.5 51000 typ host"]}
       )
 
-      assert_receive {:ice_candidate_ips, ^account_id, ["203.0.113.5"]}, 200
+      assert_receive {:candidate_ips, ^account_id, ["203.0.113.5"]}, 200
       assert_push "client_ice_candidates", _
     end
   end

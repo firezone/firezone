@@ -294,15 +294,15 @@ defmodule PortalAPI.Relay.ChannelTest do
     socket
   end
 
-  describe "ice_candidate_ips" do
-    test "forwards ICE candidate IPs reported for this Relay", %{relay: relay} do
+  describe "candidate_ips" do
+    test "forwards candidate IPs reported for this Relay", %{relay: relay} do
       assert_push "init", %{}
       account_id = "00000000-0000-0000-0000-000000000009"
       ips = ["203.0.113.5", "2001:db8::1"]
 
-      :ok = Portal.PG.deliver(relay.id, {:ice_candidate_ips, account_id, ips})
+      :ok = Portal.PG.deliver(relay.id, {:candidate_ips, account_id, ips})
 
-      assert_push "ice_candidate_ips", %{account_id: ^account_id, ips: ^ips}
+      assert_push "candidate_ips", %{account_id: ^account_id, ips: ^ips}
     end
 
     test "is not addressable under another Relay's ID" do
@@ -311,10 +311,10 @@ defmodule PortalAPI.Relay.ChannelTest do
       assert {:error, :not_found} =
                Portal.PG.deliver(
                  Ecto.UUID.generate(),
-                 {:ice_candidate_ips, "00000000-0000-0000-0000-000000000009", ["203.0.113.5"]}
+                 {:candidate_ips, "00000000-0000-0000-0000-000000000009", ["203.0.113.5"]}
                )
 
-      refute_push "ice_candidate_ips", %{}
+      refute_push "candidate_ips", %{}
     end
   end
 

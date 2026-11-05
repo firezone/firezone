@@ -1,7 +1,7 @@
-defmodule Portal.Relay.ICECandidateIPsTest do
+defmodule Portal.Relay.CandidateIPsTest do
   use ExUnit.Case, async: true
 
-  alias Portal.Relay.ICECandidateIPs
+  alias Portal.Relay.CandidateIPs
 
   describe "extract/1" do
     test "takes the connection address of every candidate type" do
@@ -12,7 +12,7 @@ defmodule Portal.Relay.ICECandidateIPsTest do
         "candidate:4 1 udp 1845501695 2001:db8::1 51000 typ prflx"
       ]
 
-      assert ICECandidateIPs.extract(candidates) == [
+      assert CandidateIPs.extract(candidates) == [
                "192.168.1.10",
                "203.0.113.5",
                "198.51.100.7",
@@ -27,7 +27,7 @@ defmodule Portal.Relay.ICECandidateIPsTest do
         ""
       ]
 
-      assert ICECandidateIPs.extract(candidates) == []
+      assert CandidateIPs.extract(candidates) == []
     end
 
     test "collapses duplicate IPs" do
@@ -36,7 +36,7 @@ defmodule Portal.Relay.ICECandidateIPsTest do
         "candidate:2 1 udp 2130706431 192.168.1.10 51001 typ host"
       ]
 
-      assert ICECandidateIPs.extract(candidates) == ["192.168.1.10"]
+      assert CandidateIPs.extract(candidates) == ["192.168.1.10"]
     end
 
     test "normalises IPv6 spelling" do
@@ -45,7 +45,7 @@ defmodule Portal.Relay.ICECandidateIPsTest do
         "candidate:2 1 udp 2130706431 2001:db8::1 51000 typ host"
       ]
 
-      assert ICECandidateIPs.extract(candidates) == ["2001:db8::1"]
+      assert CandidateIPs.extract(candidates) == ["2001:db8::1"]
     end
   end
 end

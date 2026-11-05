@@ -133,8 +133,8 @@ defmodule PortalAPI.Relay.Channel do
   end
 
   @impl true
-  def handle_info({:ice_candidate_ips, account_id, ips}, socket) do
-    push(socket, "ice_candidate_ips", %{account_id: account_id, ips: ips})
+  def handle_info({:candidate_ips, account_id, ips}, socket) do
+    push(socket, "candidate_ips", %{account_id: account_id, ips: ips})
     {:noreply, socket}
   end
 

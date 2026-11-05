@@ -1,4 +1,4 @@
-defmodule Portal.Relay.ICECandidateIPs do
+defmodule Portal.Relay.CandidateIPs do
   @moduledoc """
   Reports the IPs seen in ICE candidates to the Relays of the peer that receives
   them, which only bind channels to peers the Portal has reported for the same
@@ -15,7 +15,7 @@ defmodule Portal.Relay.ICECandidateIPs do
 
       ips ->
         Enum.each(relay_ids, fn relay_id ->
-          PG.deliver(relay_id, {:ice_candidate_ips, account_id, ips})
+          PG.deliver(relay_id, {:candidate_ips, account_id, ips})
         end)
     end
   end
