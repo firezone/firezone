@@ -5,8 +5,10 @@
 
 #![cfg_attr(not(feature = "std"), no_std)]
 
+mod payload;
 mod rate_limit;
 
+pub use payload::{RELAYABLE_HEADER_LEN, is_relayable};
 pub use rate_limit::{RateLimitCounter, RateLimiter, Route, Verdict};
 
 use core::net::{IpAddr, Ipv4Addr, Ipv6Addr};

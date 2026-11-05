@@ -405,8 +405,8 @@ where
         self.established.keys()
     }
 
-    pub(crate) fn all_iceless(&self) -> bool {
-        !self.established.is_empty() && self.established.values().all(|c| c.agent.is_iceless())
+    pub(crate) fn all_frostlink(&self) -> bool {
+        !self.established.is_empty() && self.established.values().all(|c| c.agent.is_frostlink())
     }
 
     pub(crate) fn poll_timeout(&mut self) -> Option<Instant> {

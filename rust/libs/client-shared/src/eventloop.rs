@@ -686,7 +686,7 @@ impl Eventloop {
                 preshared_key,
                 client_ice_credentials,
                 gateway_ice_credentials,
-                use_iceless,
+                use_frostlink,
                 flow_logs_ingest_token,
             }) => {
                 persist_ingest_token(self.flow_logs_dir.as_deref(), &flow_logs_ingest_token);
@@ -703,7 +703,7 @@ impl Eventloop {
                     preshared_key,
                     client_ice_credentials,
                     gateway_ice_credentials,
-                    use_iceless,
+                    use_frostlink,
                     flow_logs_ingest_token,
                     now,
                 ) {
@@ -756,7 +756,7 @@ impl Eventloop {
                 local_ice_credentials,
                 remote_ice_credentials,
                 ice_role,
-                use_iceless,
+                use_frostlink,
                 resource_id,
                 resource,
                 expires_at,
@@ -784,7 +784,7 @@ impl Eventloop {
                     local_ice_credentials,
                     remote_ice_credentials,
                     ice_role,
-                    use_iceless,
+                    use_frostlink,
                     client_name,
                     client_slug,
                     resource_id,

@@ -8,6 +8,7 @@ mod from_ipv4_udp;
 mod from_ipv6_channel;
 mod from_ipv6_udp;
 mod mac;
+mod payload;
 mod per_cpu;
 mod rate_limit;
 mod ref_mut_at;
@@ -31,6 +32,7 @@ use network_types::{
     ip::{IpError, IpProto, Ipv4Hdr, Ipv6Hdr},
     udp::UdpHdr,
 };
+use payload::ensure_relayable;
 use ref_mut_at::ref_mut_at;
 
 /// Lower bound for TURN UDP ports
@@ -165,6 +167,12 @@ fn try_handle_from_ipv4_udp(ctx: &XdpContext, num_bytes: u16) -> Result<Verdict,
     // SAFETY: The offset must point to the start of a valid `UdpHdr`.
     let udp = unsafe { ref_mut_at::<UdpHdr>(ctx, EthHdr::LEN + Ipv4Hdr::LEN)? };
 
+    ensure_relayable(
+        ctx,
+        EthHdr::LEN + Ipv4Hdr::LEN + UdpHdr::LEN,
+        udp.len() - UdpHdr::LEN as u16,
+    )?;
+
     let pp = PortAndPeerV4::new(ipv4.src_addr(), udp.dst_port(), udp.src_port());
 
     trace!(
@@ -233,6 +241,12 @@ fn try_handle_from_ipv4_channel_data(ctx: &XdpContext, num_bytes: u16) -> Result
     if channel_data_len != expected_channel_data_len {
         return Err(Error::BadChannelDataLength);
     }
+
+    ensure_relayable(
+        ctx,
+        EthHdr::LEN + Ipv4Hdr::LEN + UdpHdr::LEN + CdHdr::LEN,
+        channel_data_len,
+    )?;
 
     let cc = ClientAndChannelV4::new(ipv4.src_addr(), udp.src_port(), channel_number);
 
@@ -321,6 +335,12 @@ fn try_handle_from_ipv6_udp(ctx: &XdpContext, num_bytes: u16) -> Result<Verdict,
     // SAFETY: The offset must point to the start of a valid `UdpHdr`.
     let udp = unsafe { ref_mut_at::<UdpHdr>(ctx, EthHdr::LEN + Ipv6Hdr::LEN)? };
 
+    ensure_relayable(
+        ctx,
+        EthHdr::LEN + Ipv6Hdr::LEN + UdpHdr::LEN,
+        udp.len() - UdpHdr::LEN as u16,
+    )?;
+
     let pp = PortAndPeerV6::new(ipv6.src_addr(), udp.dst_port(), udp.src_port());
 
     trace!(
@@ -389,6 +409,12 @@ fn try_handle_from_ipv6_channel_data(ctx: &XdpContext, num_bytes: u16) -> Result
     if channel_data_len != expected_channel_data_len {
         return Err(Error::BadChannelDataLength);
     }
+
+    ensure_relayable(
+        ctx,
+        EthHdr::LEN + Ipv6Hdr::LEN + UdpHdr::LEN + CdHdr::LEN,
+        channel_data_len,
+    )?;
 
     let cc = ClientAndChannelV6::new(ipv6.src_addr(), udp.src_port(), cd.number());
 

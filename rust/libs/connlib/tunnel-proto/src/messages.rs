@@ -129,12 +129,13 @@ impl From<IceRole> for snownet::IceRole {
 #[serde(default)]
 pub struct SnownetCapabilities {
     /// The implementation can negotiate connections without ICE.
-    pub iceless: bool,
+    #[serde(rename = "iceless")]
+    pub frostlink: bool,
 }
 
 impl SnownetCapabilities {
     /// Capabilities of the local snownet implementation, hard-coded at compile time.
-    pub const LOCAL: Self = Self { iceless: true };
+    pub const LOCAL: Self = Self { frostlink: true };
 }
 
 #[derive(Deserialize, Serialize, Clone, Copy, PartialEq, Eq, Hash)]
@@ -474,13 +475,13 @@ mod tests {
     fn snownet_capabilities_default_is_all_false() {
         assert_eq!(
             SnownetCapabilities::default(),
-            SnownetCapabilities { iceless: false }
+            SnownetCapabilities { frostlink: false }
         );
     }
 
     // Compile-time guard so future edits to `LOCAL` don't accidentally turn
-    // off iceless support without us noticing.
-    const _: () = assert!(SnownetCapabilities::LOCAL.iceless);
+    // off frostlink support without us noticing.
+    const _: () = assert!(SnownetCapabilities::LOCAL.frostlink);
 
     #[test]
     fn snownet_capabilities_deserialize_empty_object_is_default() {
@@ -492,6 +493,6 @@ mod tests {
     fn snownet_capabilities_ignores_unknown_fields() {
         let json = r#"{ "iceless": true, "future_feature": true }"#;
         let caps: SnownetCapabilities = serde_json::from_str(json).unwrap();
-        assert!(caps.iceless);
+        assert!(caps.frostlink);
     }
 }

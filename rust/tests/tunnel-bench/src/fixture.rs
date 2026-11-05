@@ -41,10 +41,10 @@ pub const RESOURCES: [Resource; 2] = [Resource::Cidr, Resource::Dns];
 #[derive(Debug, Clone, Copy)]
 pub enum Connectivity {
     Ice,
-    Iceless,
+    Frostlink,
 }
 
-pub const CONNECTIVITIES: [Connectivity; 2] = [Connectivity::Ice, Connectivity::Iceless];
+pub const CONNECTIVITIES: [Connectivity; 2] = [Connectivity::Ice, Connectivity::Frostlink];
 
 /// How often the set-up lets time pass, which is also the round-trip time.
 const STEP: Duration = Duration::from_millis(100);
@@ -156,16 +156,16 @@ impl std::fmt::Display for Connectivity {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Connectivity::Ice => f.write_str("ice"),
-            Connectivity::Iceless => f.write_str("iceless"),
+            Connectivity::Frostlink => f.write_str("frostlink"),
         }
     }
 }
 
 impl Connectivity {
-    fn iceless(self) -> bool {
+    fn frostlink(self) -> bool {
         match self {
             Connectivity::Ice => false,
-            Connectivity::Iceless => true,
+            Connectivity::Frostlink => true,
         }
     }
 }
@@ -696,7 +696,7 @@ impl Network {
             gateway_ice.clone(),
             None,
             serde_json::from_value(self.resource.description()).unwrap(),
-            self.connectivity.iceless(),
+            self.connectivity.frostlink(),
             now,
             ingest_token(),
         );
@@ -710,7 +710,7 @@ impl Network {
                 preshared_key(),
                 client_ice,
                 gateway_ice,
-                self.connectivity.iceless(),
+                self.connectivity.frostlink(),
                 ingest_token(),
                 now,
             )

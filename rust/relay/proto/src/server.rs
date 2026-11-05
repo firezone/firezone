@@ -546,6 +546,11 @@ where
             return None;
         };
 
+        if !is_relayable(msg) {
+            tracing::trace!(target: "relay", %sender, %allocation, "Refusing to relay payload that is neither WireGuard nor STUN");
+            return None;
+        }
+
         let verdict = self
             .channels_by_client_and_number
             .get_mut(&(client, channel_number))
@@ -1065,6 +1070,11 @@ where
             return None;
         }
 
+        if !is_relayable(data) {
+            tracing::trace!(target: "relay", channel = %channel_number.value(), "Refusing to relay payload that is neither WireGuard nor STUN");
+            return None;
+        }
+
         if channel.client_to_peer.check(now_ns, packet_len(data)) == Verdict::Drop {
             tracing::trace!(target: "relay", channel = %channel_number.value(), "Channel exceeds its throughput limit");
             self.count_rate_limited_drop();
@@ -1569,6 +1579,18 @@ impl Allocation {
     }
 }
 
+/// Whether the relay may forward this payload between a client and a peer.
+fn is_relayable(payload: &[u8]) -> bool {
+    let Some(header) = payload.first_chunk() else {
+        return false;
+    };
+    let Ok(len) = u16::try_from(payload.len()) else {
+        return false;
+    };
+
+    ebpf_shared::is_relayable(*header, len)
+}
+
 /// Derive the relay address for the client based on the request and the supported IP stack of the relay server.
 ///
 /// By default, a client gets an IPv4 address.
@@ -1858,6 +1880,85 @@ mod tests {
     }
 
     #[test]
+    fn refuses_to_relay_unknown_payloads() {
+        let now = Instant::now();
+        let now_utc = SystemTime::UNIX_EPOCH;
+        let client = ClientSocket::new(SocketAddr::from(([127, 0, 0, 1], 50_000)));
+        let peer = PeerSocket::new(SocketAddr::from(([198, 51, 100, 2], 50_001)));
+        let channel = ChannelNumber::new(ChannelNumber::MIN).unwrap();
+        let account = auth::AccountId::from(Uuid::nil());
+        let mut server = Server::new(
+            Ipv4Addr::LOCALHOST,
+            StdRng::seed_from_u64(0),
+            3478,
+            49_152..=49_153,
+        );
+
+        server.set_accounts([(account, None)]);
+        let nonce = issue_nonce(&mut server, client, now, now_utc);
+        let username = Username::new(format!(
+            "2145916800:{}:credential-salt",
+            auth::hash_account_id(&account)
+        ))
+        .unwrap();
+
+        let allocate = authenticated_request(
+            &server,
+            ALLOCATE,
+            TransactionId::new([1; 12]),
+            &username,
+            &nonce,
+            [Attribute::RequestedTransport(RequestedTransport::new(
+                UDP_TRANSPORT,
+            ))],
+        );
+        server.handle_client_input(&allocate, client, now, now_utc);
+        let channel_bind = authenticated_request(
+            &server,
+            CHANNEL_BIND,
+            TransactionId::new([2; 12]),
+            &username,
+            &nonce,
+            [
+                Attribute::ChannelNumber(channel),
+                Attribute::XorPeerAddress(XorPeerAddress::new(peer.into_socket())),
+            ],
+        );
+        server.handle_client_input(&channel_bind, client, now, now_utc);
+
+        let Some(Command::CreateChannelBinding {
+            allocation_port, ..
+        }) = std::iter::from_fn(|| server.next_command())
+            .find(|c| matches!(c, Command::CreateChannelBinding { .. }))
+        else {
+            panic!("the relay binds the channel");
+        };
+
+        let mut wireguard = [0u8; 32];
+        wireguard[0] = 4;
+        let dns_query = [
+            0x12, 0x34, 0x01, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        ];
+
+        assert_eq!(
+            server.handle_client_input(&channel_data(channel, &wireguard), client, now, now_utc),
+            Some((allocation_port, peer))
+        );
+        assert_eq!(
+            server.handle_client_input(&channel_data(channel, &dns_query), client, now, now_utc),
+            None
+        );
+        assert_eq!(
+            server.handle_peer_traffic(&wireguard, peer, allocation_port, now),
+            Some((client, channel))
+        );
+        assert_eq!(
+            server.handle_peer_traffic(&dns_query, peer, allocation_port, now),
+            None
+        );
+    }
+
+    #[test]
     fn success_responses_renew_the_nonce() {
         let now = Instant::now();
         let issued_at = SystemTime::UNIX_EPOCH;
@@ -2068,9 +2169,9 @@ mod tests {
         let mut server = test_server();
         server.set_accounts([(account, Some(limit_5_mbps()))]);
         let port = allocate_and_bind_channel(&mut server, account, now);
-        let payload = [0u8; 1250]; // 2ms at 5 Mbps.
-        let mut channel_data = [0u8; 1254];
-        ChannelData::encode_header_to_slice(channel(), 1250, &mut channel_data[..4]);
+        let mut payload = [0u8; 1250]; // A WireGuard data message, 2ms at 5 Mbps.
+        payload[0] = 4;
+        let channel_data = channel_data(channel(), &payload);
 
         let to_peer = (0..200)
             .filter(|_| {
@@ -2230,6 +2331,14 @@ mod tests {
             .decode_from_bytes(&payload)
             .expect("the relay's response decodes")
             .expect("the relay's response is well-formed")
+    }
+
+    fn channel_data(channel: ChannelNumber, payload: &[u8]) -> Vec<u8> {
+        let mut message = vec![0; 4 + payload.len()];
+        ChannelData::encode_header_to_slice(channel, payload.len() as u16, &mut message[..4]);
+        message[4..].copy_from_slice(payload);
+
+        message
     }
 
     fn authenticated_request(

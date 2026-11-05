@@ -174,12 +174,12 @@ jobs:
             rust_log: debug,flow_logs=trace
             single_relay: true # Force single relay
             min_gateway_version: 1.4.18
-          - name: download-double-symmetric-nat-iceless
+          - name: download-double-symmetric-nat-frostlink
             script: download
             # Setting both client and gateway to random masquerade will force relay-relay candidate pair
             client_masquerade: random
             gateway_masquerade: random
-            rust_log: debug,flow_logs=trace,path_agent=trace
+            rust_log: debug,flow_logs=trace,frostlink=trace
             single_relay: true # Force single relay
             iceless: true
             min_gateway_version: 1.4.18
@@ -194,22 +194,22 @@ jobs:
             min_gateway_version: 1.4.19
           - script: download-packet-loss
             rust_log: debug
-          - name: download-packet-loss-iceless
+          - name: download-packet-loss-frostlink
             script: download-packet-loss
-            rust_log: debug,path_agent=trace
+            rust_log: debug,frostlink=trace
             iceless: true
           - script: download-roaming-network
             # The flow-log assertions require a gateway that accumulates outer
             # tuples instead of splitting the flow on a roam.
             min_gateway_version: 1.6.0
             rust_log: debug,flow_logs=trace # Too noisy can cause flaky tests due to the amount of data
-          - name: download-roaming-network-iceless
+          - name: download-roaming-network-frostlink
             script: download-roaming-network
             # The flow-log assertions require a gateway that accumulates outer
             # tuples instead of splitting the flow on a roam.
             min_gateway_version: 1.6.0
             iceless: true
-            rust_log: debug,path_agent=trace,flow_logs=trace # Too noisy can cause flaky tests due to the amount of data
+            rust_log: debug,frostlink=trace,flow_logs=trace # Too noisy can cause flaky tests due to the amount of data
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-docker

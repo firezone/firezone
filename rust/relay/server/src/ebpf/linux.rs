@@ -712,6 +712,28 @@ mod tests {
 
     #[test]
     #[ignore = "Needs root to load eBPF programs"]
+    fn relays_stun_channel_data() {
+        let mut program = Program::load_detached();
+        program.bind_channel(CLIENT_V4.into(), PEER_V4.into(), 0);
+
+        let outcome = program.run(&channel_data_ipv4_with(ECT0, &stun_binding_request()));
+
+        assert_eq!(outcome, Outcome::Forwarded { ecn: ECT0 });
+    }
+
+    #[test]
+    #[ignore = "Needs root to load eBPF programs"]
+    fn drops_channel_data_that_is_neither_wireguard_nor_stun() {
+        let mut program = Program::load_detached();
+        program.bind_channel(CLIENT_V4.into(), PEER_V4.into(), 0);
+
+        let outcome = program.run(&channel_data_ipv4_with(ECT0, &[0xab; PAYLOAD_LEN]));
+
+        assert_eq!(outcome, Outcome::Dropped);
+    }
+
+    #[test]
+    #[ignore = "Needs root to load eBPF programs"]
     fn counts_all_relayed_packets_and_bytes_independently_of_sampling() {
         let mut program = Program::load_detached();
         program.bind_channel(CLIENT_V4.into(), PEER_V4.into(), 0);
@@ -856,7 +878,11 @@ mod tests {
     }
 
     fn channel_data_ipv4(ecn: u8) -> Vec<u8> {
-        let udp = channel_data_udp(CLIENT_V4.port());
+        channel_data_ipv4_with(ecn, &wireguard_data())
+    }
+
+    fn channel_data_ipv4_with(ecn: u8, payload: &[u8]) -> Vec<u8> {
+        let udp = channel_data_udp(CLIENT_V4.port(), payload);
 
         let mut ip = Vec::new();
         ip.extend_from_slice(&[0x45, ecn]);
@@ -872,7 +898,7 @@ mod tests {
     }
 
     fn channel_data_ipv6(ecn: u8) -> Vec<u8> {
-        let udp = channel_data_udp(CLIENT_V6.port());
+        let udp = channel_data_udp(CLIENT_V6.port(), &wireguard_data());
 
         let mut ip = Vec::new();
         ip.extend_from_slice(&[0x60, ecn << 4, 0, 0]);
@@ -886,17 +912,33 @@ mod tests {
     }
 
     /// A UDP datagram carrying a ChannelData message; the checksum is left empty because the XDP program only updates it.
-    fn channel_data_udp(src_port: u16) -> Vec<u8> {
+    fn channel_data_udp(src_port: u16, payload: &[u8]) -> Vec<u8> {
         let mut udp = Vec::new();
         udp.extend_from_slice(&src_port.to_be_bytes());
         udp.extend_from_slice(&3478_u16.to_be_bytes());
-        udp.extend_from_slice(&(8 + 4 + PAYLOAD_LEN as u16).to_be_bytes());
+        udp.extend_from_slice(&(8 + 4 + payload.len() as u16).to_be_bytes());
         udp.extend_from_slice(&[0, 0]);
         udp.extend_from_slice(&CHANNEL.to_be_bytes());
-        udp.extend_from_slice(&(PAYLOAD_LEN as u16).to_be_bytes());
-        udp.resize(udp.len() + PAYLOAD_LEN, 0xab);
+        udp.extend_from_slice(&(payload.len() as u16).to_be_bytes());
+        udp.extend_from_slice(payload);
 
         udp
+    }
+
+    fn wireguard_data() -> Vec<u8> {
+        let mut payload = vec![0xab; PAYLOAD_LEN];
+        payload[..4].copy_from_slice(&[4, 0, 0, 0]);
+
+        payload
+    }
+
+    fn stun_binding_request() -> Vec<u8> {
+        let mut payload = vec![0xab; 28];
+        payload[..2].copy_from_slice(&[0x00, 0x01]);
+        payload[2..4].copy_from_slice(&8_u16.to_be_bytes());
+        payload[4..8].copy_from_slice(&0x2112_A442_u32.to_be_bytes());
+
+        payload
     }
 
     fn ethernet_frame(ether_type: u16, payload: &[u8]) -> Vec<u8> {

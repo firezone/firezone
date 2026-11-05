@@ -115,16 +115,16 @@ impl ReferenceState {
         }
 
         // TODO: Remove with classic ICE.
-        let iceless = portal.iceless();
+        let frostlink = portal.frostlink();
         for _ in self.icmp_flows.extract_if(.., |_, flow| {
-            !transition.retains_flow(flow.client_id, flow.route, iceless)
+            !transition.retains_flow(flow.client_id, flow.route, frostlink)
         }) {}
         for _ in self.udp_flows.extract_if(.., |_, flow| {
-            !transition.retains_flow(flow.client_id, flow.route, iceless)
+            !transition.retains_flow(flow.client_id, flow.route, frostlink)
         }) {}
         for _ in self
             .tcp_flows
-            .extract_if(.., |_, flow| !transition.retains_tcp_flow(flow, iceless))
+            .extract_if(.., |_, flow| !transition.retains_tcp_flow(flow, frostlink))
         {}
     }
 
@@ -553,10 +553,10 @@ impl ReferenceState {
                 self.node_may_lack_relays |= self.no_relay_accepts_allocations();
 
                 // TODO: Remove with classic ICE: a roam then never resets connections.
-                // With ICE-less connections, a roam re-keys in place and keeps
+                // With Frostlink connections, a roam re-keys in place and keeps
                 // the connection alive, so we only reset when the portal hands
                 // out classic ICE flows.
-                let all_iceless = portal.iceless();
+                let all_frostlink = portal.frostlink();
 
                 let client = self.clients.get_mut(client_id).unwrap();
                 self.network.remove_host(client);
@@ -569,7 +569,7 @@ impl ReferenceState {
                 // When roaming, we are not connected to any resource and wait for the next packet to re-establish a connection.
                 client.exec_mut(|client| {
                     // TODO: Remove with classic ICE; the instant only anchors the loss window.
-                    if !all_iceless {
+                    if !all_frostlink {
                         // Reconnecting needs the portal, so recovery can only
                         // start once the portal connection is back.
                         client.reset_connections(now + *dead_window + *portal_window);
@@ -579,7 +579,7 @@ impl ReferenceState {
 
                 // The peers lose their connections to the roaming client, and their authorizations
                 // towards it with them.
-                if !all_iceless {
+                if !all_frostlink {
                     for (id, peer) in &mut self.clients {
                         if id != client_id {
                             peer.exec_mut(|peer| peer.forget_peer_authorizations(*client_id));
@@ -616,11 +616,11 @@ impl ReferenceState {
                 self.node_may_lack_relays = !self.has_healthy_relay();
 
                 // TODO: Remove with classic ICE.
-                // With ICE-less connections, losing all relays does not fail
+                // With Frostlink connections, losing all relays does not fail
                 // the connection: the WG session idles until the relays return
                 // and probes revive the path. Classic ICE flows disconnect for
                 // every pairing that cannot fall back to a direct path.
-                if !portal.iceless() {
+                if !portal.frostlink() {
                     let gateway_edges = self
                         .gateways
                         .iter()
@@ -1231,7 +1231,7 @@ impl ReferenceState {
         outcome: ExpectedOutcome,
         sent_at: Instant,
     ) -> TraceRequirement {
-        if portal.iceless() {
+        if portal.frostlink() {
             return TraceRequirement::Exact;
         }
 

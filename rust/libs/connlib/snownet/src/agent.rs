@@ -1,5 +1,5 @@
 //! Connection-level agent dispatch over `Agent::Ice` (str0m) or
-//! `Agent::Path` (iceless). Mode-irrelevant operations are no-ops on
+//! `Agent::Path` (frostlink). Mode-irrelevant operations are no-ops on
 //! the wrong variant.
 
 use std::ops::ControlFlow;
@@ -13,7 +13,7 @@ use crate::{IceConfig, IceRole};
 #[derive(derive_more::Debug)]
 pub(crate) enum Agent {
     Ice(IceAgent),
-    Path(#[debug(skip)] path_agent::PathAgent),
+    Path(#[debug(skip)] frostlink::PathAgent),
 }
 
 impl Agent {
@@ -22,10 +22,10 @@ impl Agent {
     }
 
     pub(crate) fn path() -> Self {
-        Self::Path(path_agent::PathAgent::new())
+        Self::Path(frostlink::PathAgent::new())
     }
 
-    pub(crate) fn is_iceless(&self) -> bool {
+    pub(crate) fn is_frostlink(&self) -> bool {
         matches!(self, Self::Path(_))
     }
 
@@ -33,7 +33,7 @@ impl Agent {
     /// `should_drop_local` and preserving every remote. No-op on `Self::Ice`.
     pub(crate) fn rebuild_path(
         &mut self,
-        should_drop_local: impl FnMut(&path_agent::Candidate) -> bool,
+        should_drop_local: impl FnMut(&frostlink::Candidate) -> bool,
         now: Instant,
     ) {
         if let Self::Path(path) = self {
@@ -56,16 +56,16 @@ impl Agent {
         }
     }
 
-    /// A mismatched `want_iceless` forces replacement so a flag flip
+    /// A mismatched `want_frostlink` forces replacement so a flag flip
     /// between upserts actually takes effect.
     pub(crate) fn matches_existing_connection(
         &self,
         local_creds: &IceCreds,
         remote_creds: &IceCreds,
         ice_role: IceRole,
-        want_iceless: bool,
+        want_frostlink: bool,
     ) -> bool {
-        if self.is_iceless() != want_iceless {
+        if self.is_frostlink() != want_frostlink {
             return false;
         }
         match self {
@@ -78,7 +78,7 @@ impl Agent {
         }
     }
 
-    /// Iceless fans the init out from `upsert_connection` instead.
+    /// Frostlink fans the init out from `upsert_connection` instead.
     pub(crate) fn send_wg_handshake_after_nomination(&self) -> bool {
         match self {
             Self::Ice(a) => a.controlling(),
@@ -111,7 +111,7 @@ impl Agent {
         match self {
             Self::Ice(a) => a.add_local_candidate(c).cloned(),
             Self::Path(path) => path
-                .add_local_candidate(crate::candidate::to_path_agent(&c), now)
+                .add_local_candidate(crate::candidate::to_frostlink(&c), now)
                 .then_some(c),
         }
     }
@@ -119,7 +119,7 @@ impl Agent {
     pub(crate) fn add_remote_candidate(&mut self, c: Candidate, now: Instant) {
         match self {
             Self::Ice(a) => a.add_remote_candidate(c),
-            Self::Path(path) => path.add_remote_candidate(crate::candidate::to_path_agent(&c), now),
+            Self::Path(path) => path.add_remote_candidate(crate::candidate::to_frostlink(&c), now),
         }
     }
 
@@ -127,7 +127,7 @@ impl Agent {
         match self {
             Self::Ice(a) => a.invalidate_candidate(c),
             Self::Path(path) => {
-                let candidate = crate::candidate::to_path_agent(c);
+                let candidate = crate::candidate::to_frostlink(c);
                 let removed_local = path.remove_local_candidate(&candidate, now);
                 let removed_remote = path.remove_remote_candidate(&candidate, now);
 
@@ -141,7 +141,7 @@ impl Agent {
             Self::Ice(a) => Box::new(a.local_candidates()),
             Self::Path(path) => Box::new(
                 path.local_candidates()
-                    .filter_map(|c| crate::candidate::from_path_agent(&c)),
+                    .filter_map(|c| crate::candidate::from_frostlink(&c)),
             ),
         }
     }
@@ -151,7 +151,7 @@ impl Agent {
             Self::Ice(a) => Box::new(a.remote_candidates()),
             Self::Path(path) => Box::new(
                 path.remote_candidates()
-                    .filter_map(|c| crate::candidate::from_path_agent(&c)),
+                    .filter_map(|c| crate::candidate::from_frostlink(&c)),
             ),
         }
     }
@@ -159,7 +159,7 @@ impl Agent {
     pub(crate) fn contains_remote_candidate(&self, c: &Candidate) -> bool {
         match self {
             Self::Ice(a) => a.remote_candidates().any(|x| &x == c),
-            Self::Path(path) => path.contains_remote_candidate(&crate::candidate::to_path_agent(c)),
+            Self::Path(path) => path.contains_remote_candidate(&crate::candidate::to_frostlink(c)),
         }
     }
 
@@ -219,7 +219,7 @@ impl Agent {
         }
     }
 
-    pub(crate) fn poll_path_event(&mut self) -> Option<path_agent::Event> {
+    pub(crate) fn poll_path_event(&mut self) -> Option<frostlink::Event> {
         match self {
             Self::Ice(_) => None,
             Self::Path(path) => path.poll_event(),
@@ -232,7 +232,7 @@ impl Agent {
         }
     }
 
-    pub(crate) fn poll_path_transmit(&mut self) -> Option<path_agent::Transmit> {
+    pub(crate) fn poll_path_transmit(&mut self) -> Option<frostlink::Transmit> {
         match self {
             Self::Ice(_) => None,
             Self::Path(path) => path.poll_transmit(),
