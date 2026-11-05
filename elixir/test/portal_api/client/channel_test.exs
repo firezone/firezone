@@ -3435,7 +3435,7 @@ defmodule PortalAPI.Client.ChannelTest do
       target_actor = actor_fixture(account: account)
       target_client = client_fixture(account: account, actor: target_actor) |> fetch_device!()
       :ok = PG.register(target_client.id)
-      put_pool_member(socket, target_client.id)
+      put_outbound_client_peer(socket, target_client.id)
 
       push(socket, "invalidate_client_ice_candidates", %{
         "candidates" => candidates,
@@ -6993,6 +6993,58 @@ defmodule PortalAPI.Client.ChannelTest do
       }
     end
 
+    test "forwards the initiator's ICE candidates to the target only after the ack", %{
+      client: client,
+      subject: subject,
+      target_client: target_client,
+      target_subject: target_subject,
+      pool_resource: pool_resource
+    } do
+      target_client_id = target_client.id
+
+      session_meta = %{
+        ipv4: target_client.ipv4.address,
+        ipv6: target_client.ipv6.address,
+        name: target_client.name,
+        public_key: Portal.DeviceFixtures.generate_public_key(),
+        psk_base: target_client.psk_base,
+        remote_ip: %Postgrex.INET{address: {100, 64, 0, 99}},
+        version: "1.5.16",
+        user_agent: "Mac OS/14 apple-client/1.5.16",
+        group_ids: []
+      }
+
+      :ok = Presence.Devices.connect(target_client, target_subject.credential.id, session_meta)
+      :ok = PG.register(target_client_id)
+
+      initiating_socket = join_channel(client, subject, channel: PortalAPI.Client.V3.Channel)
+      assert_push "init", _
+
+      target_ip = Portal.Types.INET.to_string(target_client.ipv4)
+
+      push(initiating_socket, "request_access", %{"resource_ids" => [pool_resource.id], "ipv4" => target_ip})
+
+      assert_receive {:client_device_access_authorized, {ack_to, ref}, _payload}, 500
+
+      push(initiating_socket, "new_client_ice_candidates", %{
+        "candidates" => ["before-ack"],
+        "client_id" => target_client_id
+      })
+
+      refute_receive {:client_ice_candidates, _, _}, 200
+
+      send(ack_to, {:device_access_acked, ref, false, target_client.name, target_client.slug})
+      assert_push "client_device_access_authorized", %{client_id: ^target_client_id}
+
+      push(initiating_socket, "new_client_ice_candidates", %{
+        "candidates" => ["after-ack"],
+        "client_id" => target_client_id
+      })
+
+      client_id = client.id
+      assert_receive {:client_ice_candidates, ^client_id, ["after-ack"]}, 500
+    end
+
     test "denies the initiator with :offline when the target never acks", %{
       client: client,
       subject: subject,
@@ -9377,13 +9429,11 @@ defmodule PortalAPI.Client.ChannelTest do
     end)
   end
 
-  defp put_pool_member(socket, device_id) do
-    :sys.replace_state(socket.channel_pid, fn state ->
-      pool_members = %{
-        Ecto.UUID.dump!(Ecto.UUID.generate()) => MapSet.new([Ecto.UUID.dump!(device_id)])
-      }
+  defp put_outbound_client_peer(socket, target_client_id) do
+    expires_at_unix = DateTime.to_unix(DateTime.utc_now(), :second) + 3600
 
-      put_in(state.assigns.cache.pool_members, pool_members)
+    :sys.replace_state(socket.channel_pid, fn state ->
+      put_in(state.assigns.outbound_client_peers[target_client_id], expires_at_unix)
     end)
   end
 end

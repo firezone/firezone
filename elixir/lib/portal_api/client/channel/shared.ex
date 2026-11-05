@@ -131,6 +131,7 @@ defmodule PortalAPI.Client.Channel.Shared do
       |> assign(
         cache: cache,
         authorizations_cache: authorizations_cache,
+        outbound_client_peers: %{},
         pending_authorizations: %{},
         iceless_capable: false
       )
@@ -215,11 +216,15 @@ defmodule PortalAPI.Client.Channel.Shared do
       @prune_authorizations_cache_every
     )
 
+    now_unix = DateTime.to_unix(DateTime.utc_now(), :second)
+
     {:noreply,
      assign(
        socket,
        authorizations_cache:
-         Cache.Client.Authorizations.prune(socket.assigns.authorizations_cache)
+         Cache.Client.Authorizations.prune(socket.assigns.authorizations_cache),
+       outbound_client_peers:
+         Map.filter(socket.assigns.outbound_client_peers, fn {_id, exp} -> exp >= now_unix end)
      )}
   end
 
@@ -461,7 +466,7 @@ defmodule PortalAPI.Client.Channel.Shared do
       {nil, _} ->
         {:noreply, socket}
 
-      {%{timer_ref: timer_ref, initiator_payload: initiator_payload}, remaining} ->
+      {%{timer_ref: timer_ref, initiator_payload: initiator_payload} = pending, remaining} ->
         Process.cancel_timer(timer_ref)
 
         initiator_payload =
@@ -471,7 +476,11 @@ defmodule PortalAPI.Client.Channel.Shared do
           |> Map.put(:client_slug, client_slug)
 
         push(socket, "client_device_access_authorized", initiator_payload)
-        {:noreply, assign(socket, :pending_authorizations, remaining)}
+
+        {:noreply,
+         socket
+         |> assign(:pending_authorizations, remaining)
+         |> put_outbound_client_peer(pending)}
     end
   end
 
@@ -1952,6 +1961,8 @@ defmodule PortalAPI.Client.Channel.Shared do
           Map.put(socket.assigns.pending_authorizations, ref, %{
             timer_ref: timer_ref,
             initiator_payload: initiator_payload,
+            target_client_id: target_client_id,
+            expires_at: expires_at,
             deny_payload: %{
               client_id: target_client_id,
               ipv4: payload["ipv4"],
@@ -3229,9 +3240,24 @@ defmodule PortalAPI.Client.Channel.Shared do
   end
 
   defp client_peer?(socket, client_id) do
-    Cache.Client.connectable_device?(socket.assigns.cache, client_id) or
+    outbound_client_peer?(socket, client_id) or
       Cache.Client.Authorizations.has_client?(socket.assigns.authorizations_cache, client_id)
   end
+
+  defp outbound_client_peer?(socket, client_id) do
+    case Map.fetch(socket.assigns.outbound_client_peers, client_id) do
+      {:ok, expires_at_unix} -> expires_at_unix >= DateTime.to_unix(DateTime.utc_now(), :second)
+      :error -> false
+    end
+  end
+
+  # Last-one-wins, like the receiver's authorization cache.
+  defp put_outbound_client_peer(socket, %{target_client_id: client_id, expires_at: %DateTime{} = exp}) do
+    peers = Map.put(socket.assigns.outbound_client_peers, client_id, DateTime.to_unix(exp, :second))
+    assign(socket, :outbound_client_peers, peers)
+  end
+
+  defp put_outbound_client_peer(socket, _pending), do: socket
 
   defmodule Database do
     import Ecto.Query, only: [from: 2, dynamic: 1]

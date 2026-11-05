@@ -217,19 +217,6 @@ defmodule Portal.Cache.Client do
   end
 
   @doc """
-    Returns true when `device_id` is a member of a device pool this client can connect to.
-  """
-  @spec connectable_device?(t(), String.t()) :: boolean()
-  def connectable_device?(cache, device_id) when is_binary(device_id) do
-    case Ecto.UUID.dump(device_id) do
-      {:ok, did_bytes} -> device_in_any_pool?(cache, did_bytes)
-      :error -> false
-    end
-  end
-
-  def connectable_device?(_cache, _device_id), do: false
-
-  @doc """
     The addresses of the devices that were in a connectable pool of `old_cache` and are in
     no connectable pool of `cache`, so the channel can deny access to them.
   """
