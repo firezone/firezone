@@ -181,7 +181,6 @@ async fn ipc_listen(
             .with_resource(telemetry::otel::default_resource_with([
                 otel_attributes::service_name!(),
                 otel_attributes::service_version!(),
-                telemetry::otel::service_instance_id(device_id.id.clone()),
             ]))
             .build(),
     );

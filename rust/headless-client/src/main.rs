@@ -418,7 +418,6 @@ fn try_main() -> Result<()> {
         let resource = otel::default_resource_with([
             otel_attributes::service_name!(),
             otel_attributes::service_version!(),
-            otel::service_instance_id(firezone_id.clone()),
         ]);
 
         let meter_provider = metrics_export::meter_provider_builder().with_resource(resource);

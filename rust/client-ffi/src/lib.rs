@@ -640,7 +640,6 @@ fn connect(
                 .with_resource(telemetry::otel::default_resource_with([
                     KeyValue::new("service.name", platform::COMPONENT),
                     KeyValue::new("service.version", platform::VERSION),
-                    telemetry::otel::service_instance_id(device_id.clone()),
                 ]))
                 .build(),
         )
