@@ -10,9 +10,9 @@ use super::DecryptedBatch;
 /// How many segments go to a worker in one decrypt job at most, counted over its datagrams.
 ///
 /// A receive buffer holds at most this many segments, so every buffer fits into a single job.
-pub const DECRYPT_BATCH_SIZE: usize = 64;
+pub const MAX_TRAIN_SEGMENTS: usize = 64;
 
-/// One decrypt job: consecutive datagrams of one receive with at most [`DECRYPT_BATCH_SIZE`]
+/// One decrypt job: consecutive datagrams of one receive with at most [`MAX_TRAIN_SEGMENTS`]
 /// segments, and the batches of data messages among them.
 ///
 /// A datagram can hold segments of several batches, such as the channel data of several peers
@@ -51,7 +51,7 @@ impl UdpGroTrain {
 
     /// Whether `datagram` fits into the train.
     pub fn accepts(&self, datagram: &DatagramIn) -> bool {
-        self.num_segments + datagram.num_segments() <= DECRYPT_BATCH_SIZE
+        self.num_segments + datagram.num_segments() <= MAX_TRAIN_SEGMENTS
     }
 
     pub fn push(&mut self, datagram: DatagramIn) {
@@ -81,7 +81,7 @@ impl UdpGroTrain {
 
     /// Decrypts the batches, in order.
     pub fn decrypt(self) -> Vec<DecryptedBatch> {
-        let segments = segments(&self.datagrams).collect::<SmallVec<[_; DECRYPT_BATCH_SIZE]>>();
+        let segments = segments(&self.datagrams).collect::<SmallVec<[_; MAX_TRAIN_SEGMENTS]>>();
 
         self.batches
             .into_iter()

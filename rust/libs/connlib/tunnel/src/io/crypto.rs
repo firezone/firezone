@@ -14,7 +14,7 @@ use snownet::{PendingDecapsulate, PendingEncapsulate};
 use socket_factory::DatagramOut;
 use tokio::sync::oneshot;
 
-use super::udp_gro_train::{DECRYPT_BATCH_SIZE, ReceivedSegment, SegmentIndex, UdpGroTrain};
+use super::udp_gro_train::{MAX_TRAIN_SEGMENTS, ReceivedSegment, SegmentIndex, UdpGroTrain};
 use super::udp_gso_train::UdpGsoTrain;
 use crate::packet_counts::UdpPacketCounts;
 use crate::sockets::{PendingDatagrams, ReceivedDatagrams, Sockets};
@@ -33,7 +33,7 @@ const MAX_JOBS_IN_FLIGHT: usize = cfg_select! {
 ///
 /// A job holds at most one receive buffer per segment.
 pub(crate) const MAX_DECRYPT_BACKLOG_MEMORY: usize =
-    (MAX_JOBS_IN_FLIGHT - 1) * DECRYPT_BATCH_SIZE * socket_factory::MAX_RECV_BUFFER_MEMORY;
+    (MAX_JOBS_IN_FLIGHT - 1) * MAX_TRAIN_SEGMENTS * socket_factory::MAX_RECV_BUFFER_MEMORY;
 
 /// A batch of WireGuard data messages from one [`UdpGroTrain`], decrypted.
 pub struct DecryptedBatch {
