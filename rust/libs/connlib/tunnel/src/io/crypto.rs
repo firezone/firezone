@@ -37,7 +37,7 @@ const MAX_JOBS_IN_FLIGHT: usize = cfg_select! {
 
 /// Worst-case memory pinned by the jobs still awaiting decryption when we read from the network.
 ///
-/// A job holds at most one receive buffer per data message.
+/// A job holds at most one receive buffer per segment.
 pub(crate) const MAX_DECRYPT_BACKLOG_MEMORY: usize =
     (MAX_JOBS_IN_FLIGHT - 1) * DECRYPT_BATCH_SIZE * socket_factory::MAX_RECV_BUFFER_MEMORY;
 
@@ -361,7 +361,7 @@ impl Drop for OpenGroTrain<'_, '_> {
         if train.is_empty() {
             jobs.gro_trains.pop();
         } else {
-            jobs.len += train.len();
+            jobs.len += train.num_segments();
         }
 
         if jobs.len >= DECRYPT_BATCH_SIZE {

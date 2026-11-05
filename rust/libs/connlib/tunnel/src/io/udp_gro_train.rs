@@ -15,8 +15,6 @@ use super::DecryptedBatch;
 pub struct UdpGroTrain {
     datagrams: SmallVec<[DatagramIn; 1]>,
     num_segments: usize,
-    /// How many segments the batches hold in total.
-    len: usize,
     batches: SmallVec<[(Vec<TrainSegment>, PendingDecapsulate); 1]>,
 }
 
@@ -32,7 +30,6 @@ impl UdpGroTrain {
         Self {
             num_segments: datagram.num_segments(),
             datagrams: SmallVec::from_buf([datagram]),
-            len: 0,
             batches: SmallVec::new(),
         }
     }
@@ -84,13 +81,7 @@ impl UdpGroTrain {
 
     /// Appends `segments`, a run of the train in order, to decrypt with `decapsulation`.
     pub fn push(&mut self, decapsulation: PendingDecapsulate, segments: Vec<TrainSegment>) {
-        self.len += segments.len();
         self.batches.push((segments, decapsulation));
-    }
-
-    /// How many segments are to be decrypted.
-    pub fn len(&self) -> usize {
-        self.len
     }
 
     pub fn is_empty(&self) -> bool {
