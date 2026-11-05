@@ -67,7 +67,7 @@ pub mod tunnel_proto {
     /// trace to stderr when reproducing a saved crash.
     pub fn init_fuzz_subscriber() -> tracing::subscriber::DefaultGuard {
         const DEFAULT_FILTER: &str =
-            "debug,tunnel_proto=trace,fuzz=debug,ip_packet=trace,path_agent=trace";
+            "debug,tunnel_proto=trace,fuzz=debug,ip_packet=trace,frostlink=trace";
 
         let log_layer = std::env::var("RUST_LOG").ok().map(|filter| {
             tracing_subscriber::fmt::layer()

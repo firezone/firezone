@@ -293,7 +293,7 @@ impl Reservoir {
 
 fn spawn_flush_thread(registry: Weak<Registry>) {
     let result = std::thread::Builder::new()
-        .name("sentry-metrics-flush".to_owned())
+        .name("fz-sentry-flush".to_owned())
         .spawn(move || {
             loop {
                 std::thread::sleep(FLUSH_INTERVAL);

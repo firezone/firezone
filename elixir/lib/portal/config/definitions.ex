@@ -889,6 +889,19 @@ defmodule Portal.Config.Definitions do
   @doc "Azure managed identity audience used for Ads federation."
   defconfig(:google_ads_workload_identity_audience, :string, default: nil)
 
+  @doc "Cloudflare Turnstile site key rendered on the sign-up forms. Challenges are disabled unless the secret key is also set."
+  defconfig(:turnstile_site_key, :string, default: nil)
+
+  @doc "Cloudflare Turnstile secret key used to verify sign-up challenges."
+  defconfig(:turnstile_secret_key, :string,
+    default: nil,
+    sensitive: true,
+    dump: fn
+      value when is_binary(value) -> if String.trim(value) == "", do: nil, else: String.trim(value)
+      value -> value
+    end
+  )
+
   @doc "OpenAI Ads pixel receiving portal conversions."
   defconfig(:openai_conversions_pixel_id, :string, default: nil)
 
@@ -997,6 +1010,69 @@ defmodule Portal.Config.Definitions do
   defconfig(:telemetry_metrics_reporter_opts, :map,
     default: %{},
     dump: &Dumper.keyword/1
+  )
+
+  @doc """
+  Base URL of an OpenTelemetry Collector receiving the portal's traces and metrics over
+  OTLP/HTTP, e.g. `http://10.0.0.1:4318`.
+  """
+  defconfig(:otlp_endpoint, :string,
+    default: nil,
+    changeset: &Portal.Changeset.validate_uri/2
+  )
+
+  @doc """
+  OTLP/HTTP endpoint receiving the portal's metrics, e.g. `https://otlp.example.com/v1/metrics`.
+  """
+  defconfig(:otlp_metrics_endpoint, :string,
+    default: nil,
+    changeset: fn changeset, key ->
+      Portal.Changeset.validate_uri(changeset, key, schemes: ["https"])
+    end
+  )
+
+  @doc """
+  OTLP/HTTP endpoint receiving the portal's traces, e.g. `https://otlp.example.com/v1/traces`.
+  """
+  defconfig(:otlp_traces_endpoint, :string,
+    default: nil,
+    changeset: fn changeset, key ->
+      Portal.Changeset.validate_uri(changeset, key, schemes: ["https"])
+    end
+  )
+
+  @doc """
+  How the OTLP/HTTP exporters authenticate. When unset, requests carry the
+  `OTEL_EXPORTER_OTLP_HEADERS`.
+
+  Set to `azure-managed-identity` to send a managed identity token for Azure Monitor instead.
+  """
+  defconfig(
+    :otlp_auth,
+    Ecto.ParameterizedType.init(Ecto.Enum,
+      values: [azure_managed_identity: "azure-managed-identity"]
+    ),
+    default: nil
+  )
+
+  @doc """
+  Headers the OTLP/HTTP exporters send when `OTLP_AUTH` is unset, as a comma-separated list
+  of `key=value` pairs with percent-encoded values, e.g. `api-key=secret,x-tenant=1`.
+  """
+  defconfig(:otel_exporter_otlp_headers, {:array, ",", :string},
+    default: [],
+    sensitive: true,
+    changeset: fn changeset, key ->
+      Ecto.Changeset.validate_format(changeset, key, ~r/^[^=]*[^=\s][^=]*=([^%]|%[[:xdigit:]]{2})*$/,
+        message: "must be a key=value pair with a percent-encoded value"
+      )
+    end,
+    dump: fn headers ->
+      for header <- headers do
+        [key, value] = String.split(header, "=", parts: 2)
+        {String.trim(key), value |> String.trim() |> URI.decode()}
+      end
+    end
   )
 
   ##############################################

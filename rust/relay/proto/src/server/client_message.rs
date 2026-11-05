@@ -3,7 +3,9 @@ use crate::server::channel_data::ChannelData;
 use crate::server::error_response;
 use bytecodec::DecodeExt;
 use std::io;
+use std::net::SocketAddr;
 use std::time::Duration;
+use stun_codec::convert::TryAsRef;
 use stun_codec::rfc5389::attributes::{ErrorCode, MessageIntegrity, Nonce, Software, Username};
 use stun_codec::rfc5389::errors::BadRequest;
 use stun_codec::rfc5389::methods::BINDING;
@@ -331,6 +333,7 @@ impl ChannelBind {
 #[derive(Debug)]
 pub struct CreatePermission {
     transaction_id: TransactionId,
+    peer_addresses: Vec<SocketAddr>,
     message_integrity: Option<MessageIntegrity>,
     username: Option<Username>,
     nonce: Option<Nonce>,
@@ -340,6 +343,11 @@ pub struct CreatePermission {
 impl CreatePermission {
     pub fn parse(message: &Message<Attribute>) -> Self {
         let transaction_id = message.transaction_id();
+        let peer_addresses = message
+            .attributes()
+            .filter_map(TryAsRef::<XorPeerAddress>::try_as_ref)
+            .map(XorPeerAddress::address)
+            .collect();
         let message_integrity = message.get_attribute::<MessageIntegrity>().cloned();
         let username = message.get_attribute::<Username>().cloned();
         let nonce = message.get_attribute::<Nonce>().cloned();
@@ -347,6 +355,7 @@ impl CreatePermission {
 
         CreatePermission {
             transaction_id,
+            peer_addresses,
             message_integrity,
             username,
             nonce,
@@ -356,6 +365,10 @@ impl CreatePermission {
 
     pub fn transaction_id(&self) -> TransactionId {
         self.transaction_id
+    }
+
+    pub fn peer_addresses(&self) -> impl Iterator<Item = SocketAddr> + '_ {
+        self.peer_addresses.iter().copied()
     }
 
     pub fn message_integrity(&self) -> Option<&MessageIntegrity> {

@@ -260,14 +260,14 @@ impl EventLoop {
         let tun = device.io();
         let thread = match host {
             AnyHost::Client(client) => {
-                let mut tunnel = ClientTunnel::new(tcp, udp, BTreeSet::new(), false, now);
+                let mut tunnel = ClientTunnel::new(tcp, udp, BTreeSet::new(), false, now).unwrap();
                 *tunnel.state_mut() = client.into_state();
                 tunnel.set_tun(tun);
 
                 run(tunnel, runtime, now)
             }
             AnyHost::Gateway(gateway) => {
-                let mut tunnel = GatewayTunnel::new(tcp, udp, BTreeSet::new(), now);
+                let mut tunnel = GatewayTunnel::new(tcp, udp, BTreeSet::new(), now).unwrap();
                 *tunnel.state_mut() = gateway.into_state();
                 tunnel.set_tun(tun);
 
@@ -300,7 +300,7 @@ where
     R: Role + Send + 'static,
 {
     std::thread::Builder::new()
-        .name("event-loop".to_owned())
+        .name("fz-eventloop".to_owned())
         .spawn(move || {
             // Errors other than the TUN device closing, like the IPv6 socket failing to bind,
             // are irrelevant here: a lost packet fails the benchmark.

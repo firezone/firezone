@@ -12,7 +12,9 @@ defmodule Portal.Splunk.SyncTest do
 
   alias Portal.FlowLog
   alias Portal.LogSinkCursor
+  alias Portal.SessionLog
   alias Portal.Splunk
+  alias Portal.Types.LogId
 
   setup do
     test_pid = self()
@@ -291,6 +293,34 @@ defmodule Portal.Splunk.SyncTest do
 
       cursor = get_cursor(sink, :session, :live)
       assert cursor.synced_count == 2
+    end
+
+    test "drains the whole backlog in one run", %{account: account} do
+      sink = splunk_log_sink_fixture(account: account, enabled_streams: [:session])
+      assert :ok = perform_job(Splunk.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
+
+      %{subject: subject} = session_log_fixture(account: account)
+      now = DateTime.utc_now()
+
+      rows =
+        for _ <- 1..10_500 do
+          %{
+            log_id: LogId.build_session_log(),
+            account_id: account.id,
+            timestamp: now,
+            context: :client,
+            subject: subject
+          }
+        end
+
+      for chunk <- Enum.chunk_every(rows, 1_000) do
+        Repo.insert_all(SessionLog, chunk)
+      end
+
+      assert :ok = perform_job(Splunk.Sync, %{account_id: sink.account_id, log_sink_id: sink.id})
+
+      cursor = get_cursor(sink, :session, :live)
+      assert cursor.synced_count == 10_501
     end
 
     test "bisects a rejected batch until events deliver individually", %{account: account} do

@@ -388,16 +388,101 @@ defmodule PortalAPI.Client.DeviceTrustTest do
       assert job.args["issuer"] == Base.encode64(X509.issuer(leaf))
     end
 
-    test "a CA that publishes a list is not asked through its responder", %{
+    test "a CA whose list is current is not asked through its responder", %{
       pki: pki,
       subject: subject
     } do
       leaf = leaf(pki, :with_crl)
       assert {:ok, _verified} = DeviceTrust.attest(connect_info(leaf), subject)
       Portal.Queue.flush(:revocation_endpoint_queue)
+
+      Repo.update_all(Portal.RevocationEndpoint,
+        set: [crl_next_update: DateTime.utc_now() |> DateTime.add(1, :day)]
+      )
+
       assert {:ok, _verified} = DeviceTrust.attest(connect_info(leaf), subject)
 
       assert all_enqueued(worker: Portal.Ocsp.Sync) == []
+    end
+
+    for {name, fields} <- [
+          disabled: [
+            is_disabled: true,
+            disabled_reason: "Fetch error",
+            crl_next_update: {:days, 1}
+          ],
+          never_fetched: [crl_next_update: nil],
+          expired: [crl_next_update: {:days, -1}]
+        ] do
+      test "refuses a leaf a responder reports as revoked when the list is #{name}", %{
+        account: account,
+        pki: pki,
+        subject: subject
+      } do
+        leaf = leaf(pki, :with_crl)
+
+        fields =
+          Enum.map(unquote(fields), fn
+            {key, {:days, days}} ->
+              {key, DateTime.utc_now() |> DateTime.add(days, :day) |> DateTime.truncate(:second)}
+
+            field ->
+              field
+          end)
+
+        revocation_endpoint_fixture(
+          [
+            account: account,
+            issuer: X509.issuer(leaf),
+            ocsp_urls: ["http://ocsp.example.test"]
+          ] ++ fields
+        )
+
+        Repo.insert!(%Portal.OcspStatus{
+          account_id: account.id,
+          issuer: X509.issuer(leaf),
+          serial: cert_serial_hex(leaf),
+          status: "revoked",
+          revoked_at: DateTime.utc_now() |> DateTime.truncate(:second),
+          next_update: DateTime.utc_now() |> DateTime.add(1, :day) |> DateTime.truncate(:second),
+          updated_at: DateTime.utc_now()
+        })
+
+        assert ExUnit.CaptureLog.capture_log(fn ->
+                 assert DeviceTrust.attest(connect_info(leaf), subject) ==
+                          {:error, :certificate_revoked}
+               end) =~ "revoked by its CA"
+      end
+    end
+
+    test "asks the responder when one of the issuer's lists has expired", %{
+      account: account,
+      pki: pki,
+      subject: subject
+    } do
+      leaf = leaf(pki, :with_crl)
+      issuer = X509.issuer(leaf)
+      tomorrow = DateTime.utc_now() |> DateTime.add(1, :day) |> DateTime.truncate(:second)
+      yesterday = DateTime.utc_now() |> DateTime.add(-1, :day) |> DateTime.truncate(:second)
+
+      revocation_endpoint_fixture(
+        account: account,
+        issuer: issuer,
+        ocsp_urls: ["http://ocsp.example.test"],
+        crl_next_update: tomorrow
+      )
+
+      revocation_endpoint_fixture(
+        account: account,
+        issuer: issuer,
+        crl_urls: ["http://crl.example.test/b.crl"],
+        crl_next_update: yesterday
+      )
+
+      assert {:ok, _verified} = DeviceTrust.attest(connect_info(leaf), subject)
+
+      assert [job] = all_enqueued(worker: Portal.Ocsp.Sync)
+      assert job.args["serial"] == cert_serial_hex(leaf)
     end
 
     test "a certificate with a current answer is not asked about again", %{

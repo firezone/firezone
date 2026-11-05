@@ -53,7 +53,7 @@ pub fn start_log_cleanup_thread(
     let (stop_tx, stop_rx) = mpsc::channel::<Infallible>();
 
     let result = thread::Builder::new()
-        .name("log-cleanup".into())
+        .name("fz-log-cleanup".into())
         .spawn(move || {
             let dirs: Vec<&Path> = log_dirs.iter().map(|p| p.as_path()).collect();
             loop {

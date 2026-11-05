@@ -1523,6 +1523,24 @@ defmodule PortalAPI.Client.ChannelTest do
   end
 
   describe "handle_info/2 for presence events" do
+    test "reports a relay disconnected after a later selection replaced it", %{
+      client: client,
+      subject: subject
+    } do
+      Portal.Config.put_env_override(:portal, :relay_presence_debounce_ms, 10)
+      relay1 = connect_relay(%{lat: 37.0, lon: -120.0})
+      socket = join_channel(client, subject)
+      assert_push "init", %{relays: [_, _]}
+
+      relay2 = connect_relay(%{lat: 37.0, lon: -120.0})
+      push(socket, "no_relays", %{"excluded_relay_ids" => [relay1.id]})
+      Portal.Presence.Relays.disconnect(relay1)
+
+      relay1_id = relay1.id
+      assert_push "relays_presence", %{disconnected_ids: [^relay1_id], connected: [relay_view | _]}
+      assert relay_view.id == relay2.id
+    end
+
     test "does not send disconnect if relay reconnects with same id", %{
       client: client,
       subject: subject
@@ -3870,6 +3888,14 @@ defmodule PortalAPI.Client.ChannelTest do
       assert String.length(gateway_ice_password) == 22
       assert client_ice_username != gateway_ice_username
       assert client_ice_password != gateway_ice_password
+
+      public_only_hash =
+        [client.id, socket.assigns.client.public_key, gateway.id, gateway.public_key]
+        |> Enum.join(":")
+        |> then(&:crypto.hash(:sha256, &1))
+        |> Base.encode32(case: :lower, padding: false)
+
+      refute String.starts_with?(public_only_hash, client_ice_username <> client_ice_password)
     end
 
     test "ingest tokens carry uploads_enabled=true when the policy opts in", %{
@@ -4450,11 +4476,12 @@ defmodule PortalAPI.Client.ChannelTest do
       end
 
       push(socket, "create_flow", %{"resource_id" => resource.id, "connected_gateway_ids" => []})
-      assert_receive {:create_authorization, {channel_pid, _socket_ref1}, _payload1}
+      assert_receive {:create_authorization, {channel_pid, _socket_ref1}, payload1}
       stale_generation = gateway_authorization_generation(channel_pid, resource.id)
 
       push(socket, "create_flow", %{"resource_id" => resource.id, "connected_gateway_ids" => []})
       assert_receive {:create_authorization, {^channel_pid, socket_ref2}, payload2}
+      assert payload2.ice_credentials == payload1.ice_credentials
       refute gateway_authorization_generation(channel_pid, resource.id) == stale_generation
 
       send(channel_pid, {:authorization_creation_timeout, resource.id, stale_generation})
@@ -5858,6 +5885,61 @@ defmodule PortalAPI.Client.ChannelTest do
 
       refute Map.has_key?(target_payload, :client_fqdns)
       assert is_integer(target_expires_at)
+    end
+
+    test "sends matching ICE credentials that are keyed with a server secret", %{
+      client: client,
+      subject: subject,
+      target_client: target_client,
+      target_subject: target_subject,
+      pool_resource: pool_resource
+    } do
+      initiating_socket = join_channel(client, subject)
+      assert_push "init", _
+
+      target_socket = join_channel(target_client, target_subject)
+      assert_push "init", _
+
+      push(initiating_socket, "create_flow", %{
+        "resource_id" => pool_resource.id,
+        "ipv4" => Portal.Types.INET.to_string(target_client.ipv4)
+      })
+
+      assert_push "client_device_access_authorized",
+                  %{
+                    ice_role: :controlling,
+                    local_ice_credentials: initiator_credentials,
+                    remote_ice_credentials: receiver_credentials
+                  }
+
+      assert_push "client_device_access_authorized",
+                  %{
+                    ice_role: :controlled,
+                    local_ice_credentials: ^receiver_credentials,
+                    remote_ice_credentials: ^initiator_credentials
+                  }
+
+      assert String.length(initiator_credentials.username) == 4
+      assert String.length(initiator_credentials.password) == 22
+      assert String.length(receiver_credentials.username) == 4
+      assert String.length(receiver_credentials.password) == 22
+      assert initiator_credentials != receiver_credentials
+
+      public_only_hash =
+        [
+          client.id,
+          initiating_socket.assigns.client.public_key,
+          target_client.id,
+          target_socket.assigns.client.public_key
+        ]
+        |> Enum.join(":")
+        |> then(&:crypto.hash(:sha256, &1))
+        |> Base.encode32(case: :lower, padding: false)
+
+      refute String.starts_with?(
+               public_only_hash,
+               initiator_credentials.username <> initiator_credentials.password
+             )
     end
 
     test "reports iceless inputs separately via telemetry", %{
@@ -7508,6 +7590,30 @@ defmodule PortalAPI.Client.ChannelTest do
 
       relay_ids = Enum.map(relays, & &1.id) |> Enum.uniq() |> Enum.sort()
       assert relay_ids == [relay1.id, relay2.id] |> Enum.sort()
+    end
+
+    test "randomizes relays with the same location", %{client: client, subject: subject} do
+      subject = %{
+        subject
+        | context: %{
+            subject.context
+            | remote_ip_location_lat: 37.0,
+              remote_ip_location_lon: -120.0
+          }
+      }
+
+      for _ <- 1..4, do: connect_relay(%{lat: 37.0, lon: -120.0})
+      socket = join_channel(client, subject)
+      assert_push "init", %{relays: _}
+
+      selected_ids =
+        Enum.reduce(1..20, MapSet.new(), fn _, selected_ids ->
+          push(socket, "no_relays", %{})
+          assert_push "relays_presence", %{connected: connected}
+          MapSet.union(selected_ids, MapSet.new(connected, & &1.id))
+        end)
+
+      assert MapSet.size(selected_ids) > 2
     end
 
     test "sends relays_presence with empty connected when no relays are online", %{

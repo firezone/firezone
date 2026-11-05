@@ -134,6 +134,14 @@ where
         }
     }
 
+    #[cfg(test)]
+    pub(crate) fn entries(&self) -> Vec<(IpNetwork, BTreeSet<T>)> {
+        self.inner
+            .iter()
+            .map(|(network, entries)| (network, entries.clone()))
+            .collect()
+    }
+
     /// Removes all entries for a given resource ID.
     pub(crate) fn remove_by_id(&mut self, id: ResourceId) {
         self.match_cache.clear();

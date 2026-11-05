@@ -175,7 +175,7 @@ impl Eventloop {
         tun_config_sender: watch::Sender<Option<TunConfig>>,
         connected_as_sender: watch::Sender<Option<ConnectedAs>>,
         user_notification_sender: mpsc::Sender<UserNotification>,
-    ) -> Self {
+    ) -> Result<Self> {
         let (portal_event_tx, portal_event_rx) = mpsc::channel(128);
         let (portal_cmd_tx, portal_cmd_rx) = mpsc::channel(128);
         let mut clock = Clock::new();
@@ -186,22 +186,27 @@ impl Eventloop {
             DNS_RESOURCE_RECORDS_CACHE.lock().clone(),
             is_internet_resource_active,
             clock.now(),
-        );
+        )
+        .context("Failed to create tunnel")?;
         tunnel.update_system_resolvers(dns_servers.clone());
         tunnel.set_additional_host_candidates(additional_host_candidates, clock.now());
         let resolver_bypass = tunnel_bypass_resolver::Bypass::with_servers(dns_servers.clone());
 
-        tokio::spawn(phoenix_channel_event_loop(
-            portal,
-            PublicKeyParam(tunnel.public_key().to_bytes()),
-            portal_event_tx,
-            portal_cmd_rx,
-            udp_socket_factory.clone(),
-            tcp_socket_factory,
-            dns_servers,
-        ));
+        let public_key = PublicKeyParam(tunnel.public_key().to_bytes());
+        async_runtime::spawn_thread("fz-portal", move || {
+            phoenix_channel_event_loop(
+                portal,
+                public_key,
+                portal_event_tx,
+                portal_cmd_rx,
+                udp_socket_factory,
+                tcp_socket_factory,
+                dns_servers,
+            )
+        })
+        .context("Failed to spawn portal thread")?;
 
-        Self {
+        Ok(Self {
             clock,
             tunnel: Some(tunnel),
             resolver_bypass,
@@ -216,7 +221,7 @@ impl Eventloop {
             tun_config_sender,
             connected_as_sender,
             user_notification_sender,
-        }
+        })
     }
 }
 
@@ -681,7 +686,7 @@ impl Eventloop {
                 preshared_key,
                 client_ice_credentials,
                 gateway_ice_credentials,
-                use_iceless,
+                use_frostlink,
                 flow_logs_ingest_token,
             }) => {
                 persist_ingest_token(self.flow_logs_dir.as_deref(), &flow_logs_ingest_token);
@@ -698,7 +703,7 @@ impl Eventloop {
                     preshared_key,
                     client_ice_credentials,
                     gateway_ice_credentials,
-                    use_iceless,
+                    use_frostlink,
                     flow_logs_ingest_token,
                     now,
                 ) {
@@ -751,7 +756,7 @@ impl Eventloop {
                 local_ice_credentials,
                 remote_ice_credentials,
                 ice_role,
-                use_iceless,
+                use_frostlink,
                 resource_id,
                 resource,
                 expires_at,
@@ -779,7 +784,7 @@ impl Eventloop {
                     local_ice_credentials,
                     remote_ice_credentials,
                     ice_role,
-                    use_iceless,
+                    use_frostlink,
                     client_name,
                     client_slug,
                     resource_id,
@@ -1094,8 +1099,7 @@ async fn resolve_portal_host_ips(
         .inspect_err(|e| tracing::debug!(%host, "{e:#}"))
         .unwrap_or_default();
 
-    let etc_hosts_ips = etc_hosts_dns_client::resolve(host.clone())
-        .await
+    let etc_hosts_ips = etc_hosts_dns_client::resolve(&host)
         .context("Failed to lookup portal host from `/etc/hosts`")
         .inspect_err(|e| tracing::debug!(%host, "{e:#}"))
         .unwrap_or_default();

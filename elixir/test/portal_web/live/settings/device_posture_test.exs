@@ -850,7 +850,7 @@ defmodule PortalWeb.Settings.DevicePostureTest do
       lv |> form("#device-posture-form", provider: attrs) |> render_change()
       lv |> element("#provider-verification-button") |> render_click()
 
-      assert_received {:santa_request, "moved.workshop.cloud"}
+      assert_receive {:santa_request, "moved.workshop.cloud"}
       assert has_element?(lv, "#provider-verification-status", "Verified")
       refute render(lv) =~ "Required for the new API URL"
 

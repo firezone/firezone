@@ -100,7 +100,7 @@ impl IpStack {
 
 /// A signalling candidate on the wire: an SDP `candidate:` string.
 ///
-/// A thin wrapper — the codec (ICE vs ICE-less) lives in `snownet`. `priority`
+/// A thin wrapper; the codec (ICE vs Frostlink) lives in `snownet`. `priority`
 /// is extracted once to preserve the `host > srflx > relay` signalling order.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct IceCandidate {
@@ -131,7 +131,7 @@ impl PartialOrd for IceCandidate {
 impl Ord for IceCandidate {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         // Higher priority first; the tie-break keeps distinct candidates that
-        // share a priority (ICE-less priority is per-kind, so same-kind collide).
+        // share a priority (Frostlink priority is per-kind, so same-kind collide).
         self.priority
             .cmp(&other.priority)
             .reverse()

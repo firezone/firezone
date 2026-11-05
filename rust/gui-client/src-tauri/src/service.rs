@@ -359,8 +359,8 @@ impl Session {
     }
 }
 
-/// Reads the keystore off the runtime, because it can block on a TPM or a smart card and the
-/// connlib eventloop shares this runtime's single worker.
+/// Reads the keystore off the runtime, because it can block on a TPM or a smart card and stall the
+/// IPC server.
 async fn load_identity() -> Result<Option<x509_keystore::Identity>, x509_keystore::Error> {
     let identity = tokio::task::spawn_blocking(x509_keystore::identity)
         .await
@@ -979,8 +979,8 @@ impl<'a> Handler<'a> {
             self.advanced_settings.additional_host_candidates.clone(),
             known_dirs::flow_logs(),
             false,
-            tokio::runtime::Handle::current(),
-        );
+        )
+        .context("Failed to start connlib")?;
 
         analytics::new_session(device_id.id, api_url.to_string());
 
@@ -1058,11 +1058,7 @@ pub fn run_interactive(dns_control: DnsControlMethod, skip_peer_verification: bo
     if !elevation_check()? {
         bail!("Tunnel service failed its elevation check, try running as admin / root");
     }
-    let rt = tokio::runtime::Builder::new_multi_thread()
-        .worker_threads(1)
-        .thread_name("connlib")
-        .enable_all()
-        .build()?;
+    let rt = async_runtime::current_thread()?;
     let _guard = rt.enter();
     let mut signals = signals::Terminate::new()?;
 
@@ -1099,9 +1095,7 @@ pub fn run_smoke_test() -> Result<()> {
     if !elevation_check()? {
         bail!("Tunnel service failed its elevation check, try running as admin / root");
     }
-    let rt = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()?;
+    let rt = async_runtime::current_thread()?;
     let _guard = rt.enter();
     let mut dns_controller = DnsController {
         dns_control_method: Default::default(),

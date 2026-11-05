@@ -336,12 +336,7 @@ fn try_main() -> Result<()> {
     // and we need to recover. <https://github.com/firezone/firezone/issues/4899>
     dns_controller.deactivate()?;
 
-    let rt = tokio::runtime::Builder::new_multi_thread()
-        .worker_threads(1)
-        .thread_name("connlib")
-        .enable_all()
-        .build()
-        .context("Failed to create tokio runtime")?;
+    let rt = async_runtime::current_thread()?;
 
     if cfg!(target_os = "linux") && cli.is_inc_buf_allowed() {
         let recv_buf_size = socket_factory::RECV_BUFFER_SIZE;
@@ -486,8 +481,8 @@ fn try_main() -> Result<()> {
             cli.additional_host_candidates.clone(),
             flow_logs_dir.clone(),
             cli.flow_logs,
-            rt.handle().clone(),
-        );
+        )
+        .context("Failed to start connlib")?;
 
         analytics::new_session(firezone_id.clone(), cli.api_url.to_string());
 

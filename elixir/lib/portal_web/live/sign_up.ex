@@ -2,6 +2,8 @@ defmodule PortalWeb.SignUp do
   use PortalWeb, {:live_view, layout: {PortalWeb.Layouts, :auth}}
   import Ecto.Changeset
   alias __MODULE__.Database
+  alias PortalWeb.Components.Turnstile
+  alias PortalWeb.PublicEmailRateLimit
   require Logger
 
   @sign_up_token_salt "sign_up_email_v1"
@@ -113,6 +115,7 @@ defmodule PortalWeb.SignUp do
             form: registration_form(%{}),
             trigger_submit: false,
             error_message: nil,
+            turnstile_error: nil,
             idp_identity: identity_from_session(session),
             existing_accounts: [],
             query_params: %{},
@@ -258,7 +261,7 @@ defmodule PortalWeb.SignUp do
       query_params={@query_params}
       website_attribution={@website_attribution}
     />
-    <.sign_up_form :if={@step == :fill_form} form={@form} />
+    <.sign_up_form :if={@step == :fill_form} form={@form} turnstile_error={@turnstile_error} />
     <.idp_sign_up_form
       :if={@step == :idp_form}
       form={@form}
@@ -337,6 +340,12 @@ defmodule PortalWeb.SignUp do
         />
       </div>
 
+      <Turnstile.widget id="email-turnstile-widget" />
+      <Turnstile.token_input id="email-turnstile-token" />
+      <p :if={@turnstile_error} id="turnstile-form-error" role="alert" class="text-sm text-error">
+        {@turnstile_error}
+      </p>
+
       <button
         type="submit"
         phx-disable-with="Sending..."
@@ -369,8 +378,11 @@ defmodule PortalWeb.SignUp do
 
     <.region_picker query_params={@query_params} website_attribution={@website_attribution} />
 
+    <Turnstile.widget id="choose-turnstile-widget" />
+
     <div class="flex flex-col gap-2">
       <.form for={%{}} id="google-sign-up" action={~p"/sign_up/google"} method="post">
+        <Turnstile.token_input id="google-turnstile-token" />
         <button type="submit" class={method_button_style()}>
           <Core.provider_icon provider="google" size="md" />
           <span class="flex-1 text-left">Sign up with <strong>Google</strong></span>
@@ -379,6 +391,7 @@ defmodule PortalWeb.SignUp do
       </.form>
 
       <.form for={%{}} id="github-sign-up" action={~p"/sign_up/github"} method="post">
+        <Turnstile.token_input id="github-turnstile-token" />
         <button type="submit" class={method_button_style()}>
           <Core.provider_icon provider="github" size="md" />
           <span class="flex-1 text-left">Sign up with <strong>GitHub</strong></span>
@@ -1077,10 +1090,10 @@ defmodule PortalWeb.SignUp do
 
   def handle_event("validate", %{"registration" => attrs}, socket) do
     changeset = socket |> registration_changeset(attrs) |> Map.put(:action, :validate)
-    {:noreply, assign(socket, form: to_form(changeset, as: :registration))}
+    {:noreply, assign(socket, form: to_form(changeset, as: :registration), turnstile_error: nil)}
   end
 
-  def handle_event("submit", %{"registration" => attrs}, socket) do
+  def handle_event("submit", %{"registration" => attrs} = params, socket) do
     attrs = normalize_registration_attrs(attrs)
 
     if honeypot_filled?(attrs) do
@@ -1088,7 +1101,7 @@ defmodule PortalWeb.SignUp do
       {:noreply, assign(socket, step: :email_sent)}
     else
       changeset = socket |> registration_changeset(attrs) |> Map.put(:action, :insert)
-      {:noreply, apply_registration(socket, changeset)}
+      {:noreply, submit_registration(socket, changeset, params["cf-turnstile-response"])}
     end
   end
 
@@ -1175,22 +1188,43 @@ defmodule PortalWeb.SignUp do
 
   defp registration_form(attrs), do: to_form(registration_changeset(attrs), as: :registration)
 
+  # An invalid form is sent back before the challenge is checked, so a typo does not spend
+  # the single-use token.
+  defp submit_registration(socket, %{valid?: false} = changeset, _token) do
+    apply_registration(socket, changeset)
+  end
+
+  defp submit_registration(socket, changeset, token) do
+    case Portal.Turnstile.verify(token, socket.assigns.real_ip) do
+      :ok ->
+        socket |> assign(turnstile_error: nil) |> apply_registration(changeset) |> reset_turnstile()
+
+      {:error, reason} ->
+        socket
+        |> assign(form: to_form(changeset, as: :registration), turnstile_error: Turnstile.error_message(reason))
+        |> reset_turnstile()
+    end
+  end
+
   defp apply_registration(socket, %{valid?: true} = changeset) do
     registration = Ecto.Changeset.apply_changes(changeset)
-    existing_accounts = Database.find_accounts_by_owner_email(registration.email)
 
     result =
-      if existing_accounts == [] do
-        send_verification_email(
-          registration.email,
-          registration.account.name,
-          registration.actor.name,
-          survey_attrs(registration.sign_up_survey),
-          socket.assigns.website_attribution,
-          socket.assigns.sign_up_browser_id
-        )
-      else
-        send_existing_accounts_email(registration.email, existing_accounts)
+      with :ok <- PublicEmailRateLimit.check(:sign_up, socket.assigns.real_ip) do
+        case Database.find_accounts_by_owner_email(registration.email) do
+          [] ->
+            send_verification_email(
+              registration.email,
+              registration.account.name,
+              registration.actor.name,
+              survey_attrs(registration.sign_up_survey),
+              socket.assigns.website_attribution,
+              socket.assigns.sign_up_browser_id
+            )
+
+          existing_accounts ->
+            send_existing_accounts_email(registration.email, existing_accounts)
+        end
       end
 
     case result do
@@ -1236,6 +1270,9 @@ defmodule PortalWeb.SignUp do
   end
 
   defp honeypot_filled?(attrs), do: Map.get(attrs, "phone", "") != ""
+
+  defp reset_turnstile(%{assigns: %{step: :email_sent}} = socket), do: socket
+  defp reset_turnstile(socket), do: Turnstile.reset(socket)
 
   defp survey_attrs(%Portal.SignUpSurvey{} = survey), do: Map.from_struct(survey)
 

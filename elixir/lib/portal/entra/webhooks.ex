@@ -40,7 +40,7 @@ defmodule Portal.Entra.Webhooks do
       :ok
     else
       _ ->
-        Logger.warning("Dropping Entra notifications for unknown directory",
+        Logger.info("Dropping Entra notifications for unknown directory",
           entra_directory_id: directory_id
         )
 

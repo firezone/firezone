@@ -3513,6 +3513,40 @@ defmodule PortalAPI.Gateway.ChannelTest do
       assert relay_ids == [relay1.id, relay2.id] |> Enum.sort()
     end
 
+    test "no_relays randomizes relays with the same location", %{
+      account: account,
+      site: site,
+      token: token
+    } do
+      gateway =
+        gateway_fixture(
+          account: account,
+          site: site,
+          last_seen_remote_ip_location_lat: 37.0,
+          last_seen_remote_ip_location_lon: -120.0
+        )
+
+      relays =
+        for _ <- 1..4 do
+          relay = relay_fixture(%{lat: 37.0, lon: -120.0})
+          :ok = Portal.Presence.Relays.connect(relay)
+          relay
+        end
+
+      socket = join_channel(gateway, site, token)
+      assert_push "init", %{relays: _}
+
+      selected_ids =
+        Enum.reduce(1..20, MapSet.new(), fn _, selected_ids ->
+          push(socket, "no_relays", %{})
+          assert_push "relays_presence", %{connected: connected}
+          MapSet.union(selected_ids, MapSet.new(connected, & &1.id))
+        end)
+
+      assert MapSet.size(selected_ids) > 2
+      assert Enum.any?(relays, &MapSet.member?(selected_ids, &1.id))
+    end
+
     test "no_relays sends relays_presence with empty connected when no relays are online", %{
       gateway: gateway,
       site: site,
@@ -4346,6 +4380,25 @@ defmodule PortalAPI.Gateway.ChannelTest do
 
   # Relay presence tests (CRDT-based, no debouncing)
   describe "handle_info/3 for presence events" do
+    test "reports a relay disconnected after a later selection replaced it", %{
+      gateway: gateway,
+      site: site,
+      token: token
+    } do
+      Portal.Config.put_env_override(:portal, :relay_presence_debounce_ms, 10)
+      relay1 = connect_relay(%{lat: 37.0, lon: -120.0})
+      socket = join_channel(gateway, site, token)
+      assert_push "init", %{relays: [_, _]}
+
+      relay2 = connect_relay(%{lat: 37.0, lon: -120.0})
+      push(socket, "no_relays", %{"excluded_relay_ids" => [relay1.id]})
+      Portal.Presence.Relays.disconnect(relay1)
+
+      relay1_id = relay1.id
+      assert_push "relays_presence", %{disconnected_ids: [^relay1_id], connected: [relay_view | _]}
+      assert relay_view.id == relay2.id
+    end
+
     test "does not send disconnect when relay reconnects with same stamp secret", %{
       gateway: gateway,
       site: site,

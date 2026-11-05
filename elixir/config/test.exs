@@ -165,9 +165,15 @@ config :portal, Portal.Azure.ManagedIdentity,
     retry: false
   ]
 
-config :portal, Portal.Azure.MetricsExporter,
+config :portal, Portal.OTLP.MetricsExporter,
   req_opts: [
-    plug: {Req.Test, Portal.Azure.MetricsExporter},
+    plug: {Req.Test, Portal.OTLP.MetricsExporter},
+    retry: false
+  ]
+
+config :portal, Portal.OTLP.TracesExporter,
+  req_opts: [
+    plug: {Req.Test, Portal.OTLP.TracesExporter},
     retry: false
   ]
 
@@ -376,6 +382,11 @@ config :portal, PortalWeb.RateLimit,
   refill_rate: 100_000,
   capacity: 1_000_000
 
+# Tests share the loopback address, so dedicated tests override these per process.
+config :portal, PortalWeb.PublicEmailRateLimit,
+  per_ip_per_hour: 100_000,
+  global_per_hour: 100_000
+
 # MCP controller tests share the loopback source IP, so dedicated limiter tests
 # pass strict values directly while the general suite uses a practically
 # unbounded bucket.
@@ -479,4 +490,10 @@ config :portal, Portal.Analytics.OpenAI,
 
 config :portal, Portal.Analytics.GoogleAds,
   endpoint: "https://datamanager.googleapis.com/v1/events:ingest",
+  req_opts: [retry: false]
+
+config :portal, Portal.Turnstile,
+  site_key: nil,
+  secret_key: nil,
+  endpoint: "https://challenges.cloudflare.com/turnstile/v0/siteverify",
   req_opts: [retry: false]

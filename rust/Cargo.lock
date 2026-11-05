@@ -438,6 +438,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "async-runtime"
+version = "0.1.0"
+dependencies = [
+ "anyhow-ext",
+ "futures",
+ "tokio",
+]
+
+[[package]]
 name = "async-signal"
 version = "0.2.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1407,6 +1416,7 @@ name = "client-shared"
 version = "0.1.0"
 dependencies = [
  "anyhow-ext",
+ "async-runtime",
  "bootstrap-dns-client",
  "clock",
  "connlib-model",
@@ -2481,7 +2491,6 @@ name = "etc-hosts-dns-client"
 version = "0.1.0"
 dependencies = [
  "anyhow-ext",
- "tokio",
  "tracing",
 ]
 
@@ -2613,6 +2622,7 @@ name = "firezone-gateway"
 version = "1.6.5"
 dependencies = [
  "anyhow-ext",
+ "async-runtime",
  "atomicfs",
  "backoff",
  "bin-shared",
@@ -2663,6 +2673,7 @@ dependencies = [
  "admx-macro",
  "anyhow-ext",
  "arboard",
+ "async-runtime",
  "backoff",
  "bin-shared",
  "chrono",
@@ -2745,6 +2756,7 @@ name = "firezone-headless-client"
 version = "1.5.16"
 dependencies = [
  "anyhow-ext",
+ "async-runtime",
  "backoff",
  "bin-shared",
  "clap",
@@ -3023,6 +3035,16 @@ checksum = "e246562084dde8ebbcc943b261c406ce4f68e5032ec28029a251a47d6a295500"
 dependencies = [
  "num",
  "num-bigint",
+]
+
+[[package]]
+name = "frostlink"
+version = "0.1.0"
+dependencies = [
+ "ip-packet",
+ "sanstun",
+ "tracing",
+ "zeroize",
 ]
 
 [[package]]
@@ -5914,16 +5936,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2ee67f1008b1ba2321834326597b8e186293b049a023cdef258527550b9935b4"
 
 [[package]]
-name = "path-agent"
-version = "0.1.0"
-dependencies = [
- "ip-packet",
- "sanstun",
- "tracing",
- "zeroize",
-]
-
-[[package]]
 name = "pathdiff"
 version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6588,6 +6600,7 @@ dependencies = [
  "bimap",
  "bytecodec",
  "derive_more",
+ "ebpf-shared",
  "hex",
  "hmac 0.13.0",
  "logging",
@@ -7545,6 +7558,7 @@ dependencies = [
  "deadline-map",
  "derive_more",
  "fast-random-state",
+ "frostlink",
  "hex",
  "hex-display",
  "ip-packet",
@@ -7554,7 +7568,6 @@ dependencies = [
  "opentelemetry",
  "otel-attributes",
  "otel-instruments",
- "path-agent",
  "prefetch",
  "rand 0.10.3",
  "ringbuffer",
@@ -9145,6 +9158,7 @@ name = "tunnel"
 version = "0.1.0"
 dependencies = [
  "anyhow-ext",
+ "async-runtime",
  "bootstrap-dns-client",
  "bufferpool",
  "connlib-model",
