@@ -766,28 +766,28 @@ impl ReferenceState {
 
         for client in self.clients.values_mut() {
             client.exec_mut(|client| {
-                let forgets_dns_records_under = match effect {
+                let forgets_dns_records_matching = match effect {
                     client::EditEffect::Metadata => {
                         client.update_resource_metadata(updated.clone());
                         return;
                     }
                     client::EditEffect::Filters { .. } => None,
                     client::EditEffect::Access {
-                        forgets_dns_records_under,
+                        forgets_dns_records_matching,
                         ..
-                    } => forgets_dns_records_under,
+                    } => forgets_dns_records_matching,
                     client::EditEffect::DevicePoolRouting => None,
                     client::EditEffect::Type {
-                        forgets_dns_records_under,
+                        forgets_dns_records_matching,
                         ..
                     } => {
                         client.remove_resource(&updated.id());
 
-                        forgets_dns_records_under
+                        forgets_dns_records_matching
                     }
                 };
 
-                if let Some(address) = forgets_dns_records_under {
+                if let Some(address) = forgets_dns_records_matching {
                     for _ in client
                         .dns_records
                         .extract_if(.., |domain, _| is_subdomain(domain, address))
