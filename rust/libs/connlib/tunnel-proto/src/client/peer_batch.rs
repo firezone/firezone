@@ -11,7 +11,7 @@ use crate::{FailedToDecapsulate, packet_kind};
 use smallvec::SmallVec;
 
 /// The decision taken for the first packet of a flow in a [`PeerBatch`], reused for the rest.
-pub(super) struct InboundDecision {
+pub(super) struct Decision {
     pub(super) key: BatchingKey,
     pub(super) flow: flow_tracker::DetachedFlow,
 }
@@ -19,7 +19,7 @@ pub(super) struct InboundDecision {
 /// The outcome of handling a message on the slow path.
 pub(super) enum Handled {
     /// The packet to deliver, with the decision to reuse for the rest of its flow.
-    Deliver(IpPacket, Option<InboundDecision>),
+    Deliver(IpPacket, Option<Decision>),
     Consumed,
     /// The peer said goodbye; the rest of the batch is dropped.
     Goodbye,
@@ -36,7 +36,7 @@ pub struct PeerBatch<'a> {
     from: SocketAddr,
     now: Instant,
     /// The routing decisions of the flows seen so far.
-    decisions: SmallVec<[InboundDecision; 2]>,
+    decisions: SmallVec<[Decision; 2]>,
     closed: bool,
 }
 

@@ -2,7 +2,7 @@ mod client_on_gateway;
 mod nat_table;
 mod peer_batch;
 
-use peer_batch::{Handled, InboundDecision, PeerBatch};
+use peer_batch::{Decision, Handled, PeerBatch};
 
 pub(crate) use crate::gateway::client_on_gateway::ClientOnGateway;
 
@@ -286,7 +286,7 @@ impl GatewayState {
         match (translated, key) {
             (TranslateOutboundResult::Send(packet, rewrite), Some(key)) => Ok(Handled::Deliver(
                 packet,
-                Some(InboundDecision {
+                Some(Decision {
                     key,
                     rewrite,
                     flow: flow.detach(),

@@ -14,7 +14,7 @@ pub(crate) use crate::client::client_on_client::ClientOnClient;
 pub(crate) use crate::client::gateway_on_client::GatewayOnClient;
 
 use crate::authorization_rejections::AuthorizationRejections;
-use peer_batch::{Handled, InboundDecision, PeerBatch};
+use peer_batch::{Decision, Handled, PeerBatch};
 use resource::{DevicePoolResource, InternetResource, Resource};
 
 use crate::batch::{BatchingKey, TunBatch};
@@ -921,7 +921,7 @@ impl ClientState {
             }
         };
 
-        let decision = key.map(|key| InboundDecision {
+        let decision = key.map(|key| Decision {
             key,
             flow: flow.detach(),
         });
