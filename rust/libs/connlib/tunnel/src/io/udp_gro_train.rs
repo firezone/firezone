@@ -121,7 +121,7 @@ impl ReceivedSegment<'_> {
         self.datagram.from()
     }
 
-    pub fn index(&self) -> SegmentIndex {
+    pub(super) fn index(&self) -> SegmentIndex {
         self.index
     }
 

@@ -482,7 +482,7 @@ impl ClientTunnel {
                             .is_some()
                         {}
 
-                        batches.add(batch.finish(), segment.index());
+                        batches.add(batch.finish(), &segment);
                     }
 
                     tick.want_continue();
@@ -739,7 +739,7 @@ impl GatewayTunnel {
                             .is_some()
                         {}
 
-                        batches.add(batch.finish(), segment.index());
+                        batches.add(batch.finish(), &segment);
                     }
 
                     tick.want_continue();

@@ -303,9 +303,9 @@ impl Drop for DecryptJobs<'_> {
 pub struct DecryptBatches<'a>(&'a mut Vec<(PendingDecapsulate, SegmentIndex)>);
 
 impl DecryptBatches<'_> {
-    /// Adds the batch decrypted with `decapsulation` that begins with the segment at `first`.
-    pub fn add(&mut self, decapsulation: PendingDecapsulate, first: SegmentIndex) {
-        self.0.push((decapsulation, first));
+    /// Adds the batch decrypted with `decapsulation` that begins with `first`.
+    pub fn add(&mut self, decapsulation: PendingDecapsulate, first: &ReceivedSegment<'_>) {
+        self.0.push((decapsulation, first.index()));
     }
 }
 
