@@ -201,11 +201,6 @@ impl ClientOnGateway {
             );
         }
 
-        // A Client only assigns new proxy IPs to a domain with a new key, which resets its state.
-        self.remove_translations(|proxy_ip, state| {
-            state.domain == name && proxy_ips.iter().all(|new| new != *proxy_ip)
-        });
-
         Ok(evicted)
     }
 
@@ -238,7 +233,19 @@ impl ClientOnGateway {
 
         tracing::debug!(%domain, "Evicting DNS resource NAT");
 
-        let resources = self.remove_translations(|_, state| state.domain == domain);
+        let evicted = self
+            .permanent_translations
+            .extract_if(|_, state| state.domain == domain)
+            .collect::<Vec<_>>();
+        let mut resources = HashSet::<ResourceId, FastRandomState>::default();
+
+        for (proxy_ip, state) in evicted {
+            self.routing_table
+                .remove_where(IpNetwork::from(proxy_ip), |entry| {
+                    state.resources.contains(&entry.resource_id)
+                });
+            resources.extend(state.resources);
+        }
 
         Ok(Some(EvictedDomain { domain, resources }))
     }
@@ -255,28 +262,6 @@ impl ClientOnGateway {
         }
 
         domains
-    }
-
-    /// Removes the matching translations and their routes and returns their resources.
-    fn remove_translations(
-        &mut self,
-        mut predicate: impl FnMut(&IpAddr, &TranslationState) -> bool,
-    ) -> HashSet<ResourceId, FastRandomState> {
-        let removed = self
-            .permanent_translations
-            .extract_if(|proxy_ip, state| predicate(proxy_ip, state))
-            .collect::<Vec<_>>();
-        let mut resources = HashSet::<ResourceId, FastRandomState>::default();
-
-        for (proxy_ip, state) in removed {
-            self.routing_table
-                .remove_where(IpNetwork::from(proxy_ip), |entry| {
-                    state.resources.contains(&entry.resource_id)
-                });
-            resources.extend(state.resources);
-        }
-
-        resources
     }
 
     pub(crate) fn is_empty(&self) -> bool {
@@ -1648,39 +1633,6 @@ mod tests {
                 .iter()
                 .all(|ip| !peer.permanent_translations.contains_key(&ip))
         );
-    }
-
-    #[test]
-    fn setup_nat_replaces_proxy_ips_of_domain() {
-        let _guard = logging::test("debug");
-
-        let mut peer = ClientOnGateway::new(
-            client_id(),
-            client_key(),
-            client_tun(),
-            gateway_tun(),
-            MAX_DNS_DOMAINS,
-        );
-        peer.add_resource(wildcard_foo_dns_resource(), None, Instant::now());
-
-        for n in [0, 1] {
-            peer.setup_nat(
-                "a.foo.com".parse().unwrap(),
-                wildcard_foo_resource_id(),
-                BTreeSet::from([foo_real_ip1().into()]),
-                nth_proxy_ips(n),
-                Instant::now(),
-            )
-            .unwrap();
-        }
-
-        assert_eq!(peer.permanent_translations.len(), PROXY_IPS_PER_DOMAIN);
-        assert!(
-            nth_proxy_ips(1)
-                .iter()
-                .all(|ip| peer.permanent_translations.contains_key(&ip))
-        );
-        assert_eq!(peer.routing_table.entries().len(), PROXY_IPS_PER_DOMAIN);
     }
 
     fn wildcard_foo_peer() -> ClientOnGateway {
