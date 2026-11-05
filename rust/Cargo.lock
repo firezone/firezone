@@ -2646,7 +2646,6 @@ dependencies = [
  "nix 0.31.3",
  "opentelemetry",
  "opentelemetry-otlp",
- "opentelemetry-stdout",
  "otel-attributes",
  "otel-instruments",
  "phoenix-channel",

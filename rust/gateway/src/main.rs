@@ -230,9 +230,6 @@ async fn try_main(cli: Cli) -> Result<()> {
 
     let meter_provider = metrics_export::meter_provider_builder().with_resource(resource);
     let meter_provider = match (cli.metrics, cli.otlp_grpc_endpoint) {
-        (Some(MetricsExporter::Stdout), _) => {
-            meter_provider.with_periodic_exporter(opentelemetry_stdout::MetricExporter::default())
-        }
         (Some(MetricsExporter::OtelCollector), Some(endpoint)) => {
             meter_provider.with_periodic_exporter(tonic_otlp_exporter(endpoint)?)
         }
@@ -484,7 +481,6 @@ impl fmt::Display for LogFormat {
 
 #[derive(Debug, Clone, Copy, clap::ValueEnum)]
 enum MetricsExporter {
-    Stdout,
     OtelCollector,
 }
 
