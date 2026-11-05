@@ -29,7 +29,6 @@ use snownet::{IceConfig, IceRole, Node, RelaySocket};
 use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 use std::iter;
 use std::net::{IpAddr, SocketAddr};
-use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use zeroize::Zeroizing;
@@ -771,7 +770,7 @@ fn encrypt_packet(
         return Ok(None);
     };
 
-    Ok(Some(batch.finish(NonZeroUsize::MIN)?.encrypt(&packet)?))
+    Ok(Some(batch.encrypt_single(&packet)?))
 }
 
 fn encapsulate<'n>(

@@ -3,7 +3,6 @@ use std::{
     fmt,
     hash::Hash,
     iter, mem,
-    num::NonZeroUsize,
     time::{Duration, Instant},
 };
 
@@ -189,7 +188,7 @@ where
                         return Ok(None);
                     };
 
-                    let transmit = batch.finish(NonZeroUsize::MIN)?.encrypt(&goodbye.packet)?;
+                    let transmit = batch.encrypt_single(&goodbye.packet)?;
 
                     Ok(Some(transmit))
                 });

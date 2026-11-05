@@ -62,7 +62,6 @@ use snownet::{Node, RelaySocket};
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
-use std::num::NonZeroUsize;
 use std::ops::ControlFlow;
 use std::time::{Duration, Instant};
 use std::{io, iter};
@@ -2885,7 +2884,7 @@ fn encapsulate_and_queue(
                 return Ok(None);
             };
 
-            Ok(Some(batch.finish(NonZeroUsize::MIN)?.encrypt(&packet)?))
+            Ok(Some(batch.encrypt_single(&packet)?))
         });
 
     match encrypted {

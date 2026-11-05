@@ -34,7 +34,6 @@ use ringbuffer::{AllocRingBuffer, RingBuffer};
 use smallvec::SmallVec;
 use std::collections::{BTreeSet, HashSet};
 use std::hash::Hash;
-use std::num::NonZeroUsize;
 use std::ops::ControlFlow;
 use std::time::{Duration, Instant};
 use std::{collections::VecDeque, net::SocketAddr};
@@ -1776,8 +1775,7 @@ where
                 path_agent::Payload::Plaintext(ref ip) => {
                     if let Ok(Some(batch)) =
                         self.encapsulate(cid, peer_socket, ip, now, allocations)
-                        && let Ok(encapsulation) = batch.finish(NonZeroUsize::MIN)
-                        && let Ok(transmit) = encapsulation.encrypt(ip)
+                        && let Ok(transmit) = batch.encrypt_single(ip)
                     {
                         transmits.push_back(transmit);
                     }

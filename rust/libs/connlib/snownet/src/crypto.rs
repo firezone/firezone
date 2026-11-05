@@ -55,6 +55,11 @@ impl<'n> EncapsulateBatch<'n> {
             pending,
         })
     }
+
+    /// Encrypts `packet` as the only one of the batch into a standalone [`Transmit`].
+    pub fn encrypt_single(self, packet: &IpPacket) -> Result<Transmit, sanstun::Error> {
+        self.finish(NonZeroUsize::MIN)?.encrypt(packet)
+    }
 }
 
 /// Where to send a batch of outgoing packets, with their WireGuard counters reserved.
@@ -271,9 +276,12 @@ impl PendingDecapsulate {
     pub fn decrypt<'a>(self, segments: impl IntoIterator<Item = &'a [u8]>) -> DecryptedBatch {
         let header_len = channel_data_overhead(self.channel);
         // Each relayed segment was decoded as channel data before it joined the batch.
-        let messages = segments
-            .into_iter()
-            .map(|segment| (segment.get(header_len..).unwrap_or_default(), ip_packet::packet_buffer()));
+        let messages = segments.into_iter().map(|segment| {
+            (
+                segment.get(header_len..).unwrap_or_default(),
+                ip_packet::packet_buffer(),
+            )
+        });
 
         let mut data = self.pending.decrypt(messages).map(IpPacket::new);
         let probes = data.extract_map(|packet| packet.as_ref().ok().and_then(Probe::try_parse));
