@@ -18,6 +18,9 @@
       <string id="SUPPORTED_FZ_GUI_1_5_0">
         Firezone GUI Client 1.5.0 or later
       </string>
+      <string id="SUPPORTED_FZ_GUI_1_5_21">
+        Firezone GUI Client 1.5.21 or later
+      </string>
 
       <string id="authURL_explain">
         The base URL to open when users sign in. The accountSlug will be appended to this. In most cases you shouldn't change this. By default, the Client will use "https://app.firezone.dev".
