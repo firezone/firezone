@@ -273,9 +273,10 @@ public struct SettingsView: View {
             VStack(alignment: .leading, spacing: 2) {
               managedLabel(
                 "Account Slug", isManaged: configuration.isAccountSlugForced,
-                savedField: .accountSlug)
-                .foregroundStyle(.secondary)
-                .font(.caption)
+                savedField: .accountSlug
+              )
+              .foregroundStyle(.secondary)
+              .font(.caption)
               TextField(
                 PlaceholderText.accountSlug,
                 text: $viewModel.accountSlug
@@ -320,9 +321,10 @@ public struct SettingsView: View {
             if viewModel.controlPlane == .custom {
               VStack(alignment: .leading, spacing: 2) {
                 managedLabel(
-                  "Auth URL", isManaged: configuration.isAuthURLForced, savedField: .authURL)
-                  .foregroundStyle(.secondary)
-                  .font(.caption)
+                  "Auth URL", isManaged: configuration.isAuthURLForced, savedField: .authURL
+                )
+                .foregroundStyle(.secondary)
+                .font(.caption)
                 TextField(
                   PlaceholderText.authURL,
                   text: $viewModel.authURL
@@ -337,9 +339,10 @@ public struct SettingsView: View {
               }
               VStack(alignment: .leading, spacing: 2) {
                 managedLabel(
-                  "API URL", isManaged: configuration.isApiURLForced, savedField: .apiURL)
-                  .foregroundStyle(.secondary)
-                  .font(.caption)
+                  "API URL", isManaged: configuration.isApiURLForced, savedField: .apiURL
+                )
+                .foregroundStyle(.secondary)
+                .font(.caption)
                 TextField(
                   PlaceholderText.apiURL,
                   text: $viewModel.apiURL
@@ -395,9 +398,10 @@ public struct SettingsView: View {
           Section {
             VStack(alignment: .leading, spacing: 2) {
               managedLabel(
-                "Log Filter", isManaged: configuration.isLogFilterForced, savedField: .logFilter)
-                .foregroundStyle(.secondary)
-                .font(.caption)
+                "Log Filter", isManaged: configuration.isLogFilterForced, savedField: .logFilter
+              )
+              .foregroundStyle(.secondary)
+              .font(.caption)
               TextField(
                 PlaceholderText.logFilter,
                 text: $viewModel.logFilter
