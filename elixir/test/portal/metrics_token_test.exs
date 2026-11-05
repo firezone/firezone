@@ -44,7 +44,7 @@ defmodule Portal.MetricsTokenTest do
     end
 
     test "rejects a malformed token" do
-      assert {:error, :malformed} = MetricsToken.verify("not-a-jwt")
+      assert {:error, :invalid} = MetricsToken.verify("not-a-jwt")
       assert {:error, :malformed} = MetricsToken.verify(nil)
     end
   end

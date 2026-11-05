@@ -69,8 +69,7 @@ defmodule Portal.MetricsToken do
   defp verify_signature(token) do
     case JOSE.JWT.verify_strict(jwk(), ["HS256"], token) do
       {true, %JOSE.JWT{fields: claims}, _jws} -> {:ok, claims}
-      {false, _jwt, _jws} -> {:error, :invalid}
-      {:error, _reason} -> {:error, :malformed}
+      _ -> {:error, :invalid}
     end
   rescue
     _ -> {:error, :malformed}
