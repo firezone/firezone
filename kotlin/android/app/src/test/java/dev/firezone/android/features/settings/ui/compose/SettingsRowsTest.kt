@@ -6,6 +6,7 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextReplacement
@@ -35,6 +36,15 @@ class SettingsRowsTest {
         composeRule.onNodeWithText("OK").performClick()
 
         assertEquals("new", staged)
+    }
+
+    @Test
+    fun `a saved row says so`() {
+        composeRule.setContent {
+            TextPreferenceRow(title = "Account Slug", value = "new", isManaged = false, onValueChange = {}, isSaved = true)
+        }
+
+        composeRule.onNodeWithContentDescription("Saved", useUnmergedTree = true).assertIsDisplayed()
     }
 
     @Test

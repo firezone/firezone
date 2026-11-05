@@ -20,6 +20,17 @@ object FirezoneIcons {
         )
     }
 
+    val CheckCircle: ImageVector by lazy {
+        materialSymbol(
+            name = "CheckCircle",
+            pathData =
+                "M424,552L338,466Q327,455 310,455T282,466Q271,477 271,494T282,522L396,636Q408,648 424,648T452,636L678,410" +
+                    "Q689,399 689,382T678,354Q667,343 650,343T622,354L424,552ZM480,880Q397,880 324,848.5T197,763Q143,709 111.5,636" +
+                    "T80,480Q80,397 111.5,324T197,197Q251,143 324,111.5T480,80Q563,80 636,111.5T763,197Q817,251 848.5,324T880,480" +
+                    "Q880,563 848.5,636T763,763Q709,817 636,848.5T480,880Z",
+        )
+    }
+
     val ChevronRight: ImageVector by lazy {
         materialSymbol(
             name = "ChevronRight",
