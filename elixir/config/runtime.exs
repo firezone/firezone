@@ -253,7 +253,8 @@ if config_env() == :prod do
 
   config :portal,
     otlp_metrics_api_url: env_var_to_config!(:otlp_metrics_api_url),
-    azure_otlp_metrics_endpoint: System.get_env("AZURE_OTLP_METRICS_ENDPOINT")
+    otlp_metrics_endpoint: otlp_metrics_endpoint,
+    otlp_auth: otlp_auth
 
   config :portal, Portal.S3.APIClient,
     access_key_id: env_var_to_config!(:log_sinks_aws_access_key_id),

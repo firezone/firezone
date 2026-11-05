@@ -439,7 +439,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       site: site,
       token: token
     } do
-      Portal.Config.put_env_override(:azure_otlp_metrics_endpoint, false)
+      Portal.Config.put_env_override(:otlp_metrics_endpoint, false)
 
       join_channel(gateway, site, token)
 

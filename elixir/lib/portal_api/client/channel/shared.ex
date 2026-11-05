@@ -2185,7 +2185,7 @@ defmodule PortalAPI.Client.Channel.Shared do
   end
 
   defp metrics_config(account) do
-    if Portal.Config.get_env(:portal, :azure_otlp_metrics_endpoint) do
+    if Portal.Config.get_env(:portal, :otlp_metrics_endpoint) do
       %{
         api_url: Portal.Config.fetch_env!(:portal, :otlp_metrics_api_url),
         token: Portal.MetricsToken.mint(account)

@@ -250,7 +250,7 @@ defmodule PortalAPI.Router do
   end
 
   def require_otlp_metrics_forwarding(%Plug.Conn{} = conn, _opts) do
-    if Portal.Config.get_env(:portal, :azure_otlp_metrics_endpoint) do
+    if Portal.Config.get_env(:portal, :otlp_metrics_endpoint) do
       conn
     else
       PortalAPI.ProblemDetails.send(conn, 404, "Not Found")

@@ -548,7 +548,7 @@ config :portal,
 
 config :portal,
   otlp_metrics_api_url: "https://otlp.firezone.dev/",
-  azure_otlp_metrics_endpoint: nil
+  otlp_metrics_endpoint: nil
 
 config :portal, country_code_blocklist: []
 

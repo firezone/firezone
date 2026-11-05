@@ -3,7 +3,8 @@ defmodule PortalAPI.OTLPMetricsControllerTest do
 
   import Portal.AccountFixtures
 
-  alias Portal.Azure.{ManagedIdentity, MetricsExporter}
+  alias Portal.Azure.ManagedIdentity
+  alias Portal.OTLP.MetricsExporter
   alias Portal.MetricsToken
 
   @moduletag capture_log: true
@@ -102,7 +103,7 @@ defmodule PortalAPI.OTLPMetricsControllerTest do
       assert response(conn, 200)
     end
 
-    test "returns 503 when Azure Monitor fails transiently", %{conn: conn, account: account} do
+    test "returns 503 when the upstream fails transiently", %{conn: conn, account: account} do
       Req.Test.expect(MetricsExporter, &Plug.Conn.send_resp(&1, 503, ""))
 
       conn = conn |> authorize(account) |> post_metrics(export_request([sum("tunnel.error")]))
@@ -110,7 +111,7 @@ defmodule PortalAPI.OTLPMetricsControllerTest do
       assert response(conn, 503)
     end
 
-    test "returns 500 when Azure Monitor rejects the request", %{conn: conn, account: account} do
+    test "returns 500 when the upstream rejects the request", %{conn: conn, account: account} do
       Req.Test.expect(MetricsExporter, &Plug.Conn.send_resp(&1, 400, ""))
 
       conn = conn |> authorize(account) |> post_metrics(export_request([sum("tunnel.error")]))
@@ -178,7 +179,7 @@ defmodule PortalAPI.OTLPMetricsControllerTest do
     end
 
     test "returns 404 when forwarding is not configured", %{conn: conn, account: account} do
-      Portal.Config.put_env_override(:azure_otlp_metrics_endpoint, false)
+      Portal.Config.put_env_override(:otlp_metrics_endpoint, false)
 
       conn = conn |> authorize(account) |> post_metrics(export_request([]))
 

@@ -1,6 +1,6 @@
 defmodule PortalAPI.OTLPMetricsController do
   @moduledoc """
-  OTLP/HTTP metrics receiver for Clients and Gateways, forwarding to Azure Monitor.
+  OTLP/HTTP metrics receiver for Clients and Gateways, forwarding to the configured OTLP endpoint.
 
   The forwarded request is rebuilt from the decoded body, keeping only the
   metrics the token allows and a fixed set of resource attributes. Attributes
@@ -9,7 +9,6 @@ defmodule PortalAPI.OTLPMetricsController do
   """
   use PortalAPI, :controller
 
-  alias Portal.Azure.MetricsExporter
   alias Portal.MetricsToken
   alias PortalAPI.ProblemDetails
 
@@ -128,9 +127,11 @@ defmodule PortalAPI.OTLPMetricsController do
   defp forward(conn, <<>>), do: send_export_response(conn)
 
   defp forward(conn, body) do
-    endpoint = Portal.Config.fetch_env!(:portal, :azure_otlp_metrics_endpoint)
+    endpoint = Portal.Config.fetch_env!(:portal, :otlp_metrics_endpoint)
+    auth = Portal.Config.fetch_env!(:portal, :otlp_auth)
+    req_opts = Portal.Config.fetch_env!(:portal, Portal.OTLP.MetricsExporter)[:req_opts]
 
-    case MetricsExporter.post(endpoint, body) do
+    case Portal.OTLP.post(endpoint, body, auth, req_opts) do
       :ok -> send_export_response(conn)
       :failed_retryable -> ProblemDetails.send(conn, 503, "Metrics could not be forwarded")
       :failed_not_retryable -> ProblemDetails.send(conn, 500, "Metrics could not be forwarded")

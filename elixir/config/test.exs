@@ -405,7 +405,9 @@ config :portal, PortalAPI.Plugs.MetricsRateLimit,
   ip: [refill_rate: 100_000, capacity: 1_000_000],
   account: [refill_rate: 100_000, capacity: 1_000_000]
 
-config :portal, azure_otlp_metrics_endpoint: "https://azure-monitor.example.com/otlp/v1/metrics"
+config :portal,
+  otlp_metrics_endpoint: "https://otlp.example.com/v1/metrics",
+  otlp_auth: :azure_managed_identity
 
 config :portal, PortalWeb.Plugs.PutSecurityHeaders,
   csp_policy: [
