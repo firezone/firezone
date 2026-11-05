@@ -29,6 +29,7 @@ use backoff::ExponentialBackoffBuilder;
 use ip_network::IpNetwork;
 use itertools::Itertools as _;
 use logging::sentry_layer;
+use opentelemetry::KeyValue;
 use phoenix_channel::{LoginUrl, PhoenixChannel, get_user_agent};
 use platform::RELEASE;
 use secrecy::SecretString;
@@ -686,6 +687,16 @@ fn connect(
         uploader
     });
 
+    let metrics_exporter = metrics_export::Exporter::spawn(
+        telemetry::otel::default_resource_with([
+            KeyValue::new("service.name", platform::COMPONENT),
+            KeyValue::new("service.version", platform::VERSION),
+            telemetry::otel::service_instance_id(device_id.clone()),
+        ]),
+        tcp_socket_factory.clone(),
+    )
+    .context("Failed to spawn metrics exporter")?;
+
     let (session, events) = client_shared::Session::connect(
         tcp_socket_factory,
         udp_socket_factory,
@@ -695,6 +706,7 @@ fn connect(
         additional_host_candidates,
         flow_logs_dir,
         false,
+        metrics_exporter,
     )
     .context("Failed to start connlib")?;
 
@@ -715,7 +727,9 @@ fn start_telemetry_inner(tcp: Arc<dyn SocketFactory<TcpSocket>>) {
     telemetry::configure(tcp);
     telemetry::start("entrypoint", RELEASE, platform::DSN);
 
-    opentelemetry::global::set_meter_provider(telemetry::SentryMeterProvider::default());
+    opentelemetry::global::set_meter_provider(metrics_export::meter_provider(
+        telemetry::SentryMeterProvider::default(),
+    ));
 }
 
 #[uniffi::export]

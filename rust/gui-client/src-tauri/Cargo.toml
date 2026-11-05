@@ -35,8 +35,10 @@ ip_network = { workspace = true }
 keyring-core = { workspace = true }
 known-dirs = { workspace = true }
 logging = { workspace = true }
+metrics-export = { workspace = true }
 native-dialog = { workspace = true }
 opentelemetry = { workspace = true }
+otel-attributes = { workspace = true }
 output_vt100 = { workspace = true }
 parking_lot = { workspace = true }
 phoenix-channel = { workspace = true }

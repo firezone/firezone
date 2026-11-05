@@ -1,8 +1,8 @@
 //! Gateway related messages that are needed within connlib
 
 use crate::messages::{
-    Filter, FlowLogsConfig, IceCredentials, IngestToken, Interface, Key, Relay, RelaysPresence,
-    SecretKey, SnownetCapabilities, WarnOnInvalidFilter,
+    Filter, FlowLogsConfig, IceCredentials, IngestToken, Interface, Key, MetricsConfig, Relay,
+    RelaysPresence, SecretKey, SnownetCapabilities, WarnOnInvalidFilter,
 };
 use connlib_model::{ClientId, IceCandidate, RelayId, ResourceId};
 use ip_network::IpNetwork;
@@ -94,6 +94,8 @@ pub struct InitGateway {
     #[serde(default)]
     pub authorizations: Vec<Authorization>,
     pub flow_logs: FlowLogsConfig,
+    #[serde(default)]
+    pub metrics: Option<MetricsConfig>,
 }
 
 #[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
@@ -134,6 +136,7 @@ pub enum IngressMessages {
     ResourceUpdated(ResourceDescription),
     CreateAuthorization(CreateAuthorization),
     PublicKeyChanged(PublicKeyChanged),
+    MetricsConfig(MetricsConfig),
     /// OBSOLETE - safe to remove this when <https://github.com/firezone/firezone/pull/13714> is deployed to production.
     AccessAuthorizationExpiryUpdated(AccessAuthorizationExpiryUpdated),
 }
@@ -217,6 +220,8 @@ pub enum EgressMessages {
 
 #[cfg(test)]
 mod tests {
+    use secrecy::ExposeSecret as _;
+
     use crate::messages::PortRange;
 
     use super::*;
@@ -346,6 +351,35 @@ mod tests {
         assert_eq!(init.flow_logs.api_url, "https://flow-api.firezone.dev");
         assert_eq!(init.flow_logs.upload_interval_secs, 60);
         assert_eq!(init.flow_logs.upload_batch_size, 1000);
+        assert!(init.metrics.is_none());
+    }
+
+    #[test]
+    fn can_deserialize_init_message_with_metrics_config() {
+        let json = r#"{"event":"init","ref":null,"topic":"gateway","payload":{"interface":{"ipv6":"fd00:2021:1111::2c:f6ab","ipv4":"100.115.164.78"},"config":{"ipv4_masquerade_enabled":true,"ipv6_masquerade_enabled":true},"flow_logs":{"api_url":"https://flow-api.firezone.dev","upload_interval_secs":60,"upload_batch_size":1000},"metrics":{"api_url":"https://otlp.firezone.dev/","export_interval_secs":60,"token":null}}}"#;
+
+        let message = serde_json::from_str::<IngressMessages>(json).unwrap();
+
+        let IngressMessages::Init(init) = message else {
+            panic!("expected Init");
+        };
+        let metrics = init.metrics.unwrap();
+        assert_eq!(metrics.api_url, "https://otlp.firezone.dev/");
+        assert_eq!(metrics.export_interval_secs, 60);
+        assert!(metrics.token.is_none());
+    }
+
+    #[test]
+    fn can_deserialize_metrics_config_message() {
+        let json = r#"{"event":"metrics_config","ref":null,"topic":"gateway","payload":{"api_url":"https://otlp.firezone.dev/","export_interval_secs":30,"token":"metrics-token"}}"#;
+
+        let message = serde_json::from_str::<IngressMessages>(json).unwrap();
+
+        let IngressMessages::MetricsConfig(config) = message else {
+            panic!("expected MetricsConfig");
+        };
+        assert_eq!(config.export_interval_secs, 30);
+        assert_eq!(config.token.unwrap().expose_secret(), "metrics-token");
     }
 
     #[test]

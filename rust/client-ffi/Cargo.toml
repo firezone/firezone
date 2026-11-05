@@ -20,6 +20,7 @@ ip_network = { workspace = true }
 itertools = { workspace = true }
 libc = { workspace = true }
 logging = { workspace = true, features = ["telemetry"] }
+metrics-export = { workspace = true }
 opentelemetry = { workspace = true }
 parking_lot = { workspace = true }
 phoenix-channel = { workspace = true }

@@ -1369,6 +1369,7 @@ dependencies = [
  "itertools 0.15.0",
  "libc",
  "logging",
+ "metrics-export",
  "mimalloc",
  "opentelemetry",
  "oslog",
@@ -1426,6 +1427,7 @@ dependencies = [
  "flow-log-writer",
  "futures",
  "logging",
+ "metrics-export",
  "opentelemetry",
  "otel-attributes",
  "otel-instruments",
@@ -2639,6 +2641,7 @@ dependencies = [
  "humantime",
  "ip-packet",
  "logging",
+ "metrics-export",
  "mimalloc",
  "nix 0.31.3",
  "opentelemetry",
@@ -2698,10 +2701,12 @@ dependencies = [
  "known-dirs",
  "ksni",
  "logging",
+ "metrics-export",
  "mimalloc",
  "native-dialog",
  "nix 0.31.3",
  "opentelemetry",
+ "otel-attributes",
  "output_vt100",
  "parking_lot",
  "phoenix-channel",
@@ -2769,6 +2774,7 @@ dependencies = [
  "ip_network",
  "known-dirs",
  "logging",
+ "metrics-export",
  "mimalloc",
  "nix 0.31.3",
  "opentelemetry",
@@ -5005,6 +5011,27 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "488016bfae457b036d996092f6cb448677611ce4449e970ceaf42695203f218a"
 dependencies = [
  "autocfg",
+]
+
+[[package]]
+name = "metrics-export"
+version = "0.1.0"
+dependencies = [
+ "anyhow-ext",
+ "bytes",
+ "futures",
+ "http",
+ "http-client",
+ "opentelemetry",
+ "opentelemetry-proto",
+ "opentelemetry_sdk",
+ "prost",
+ "secrecy",
+ "socket-factory",
+ "tokio",
+ "tracing",
+ "tunnel-bypass-resolver",
+ "url",
 ]
 
 [[package]]

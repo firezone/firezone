@@ -22,6 +22,7 @@ ip-packet = { workspace = true }
 ip_network = { workspace = true }
 known-dirs = { workspace = true }
 logging = { workspace = true }
+metrics-export = { workspace = true }
 mimalloc = { workspace = true }
 opentelemetry = { workspace = true, features = ["metrics"] }
 opentelemetry-otlp = { workspace = true, features = ["metrics", "grpc-tonic"] }

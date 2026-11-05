@@ -47,6 +47,7 @@ opentelemetry-otlp = { workspace = true, features = ["metrics", "grpc-tonic"] }
 opentelemetry-stdout = { workspace = true, features = ["metrics"] }
 opentelemetry_sdk = { workspace = true, features = ["rt-tokio"] }
 otel-attributes = { workspace = true }
+metrics-export = { workspace = true }
 otel-instruments = { workspace = true }
 phoenix-channel = { workspace = true }
 resolv-conf = { workspace = true }

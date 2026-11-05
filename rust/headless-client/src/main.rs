@@ -417,35 +417,41 @@ fn try_main() -> Result<()> {
     let mut last_connlib_start_instant = Some(Instant::now());
 
     rt.block_on(async {
-        if let Some(backend) = cli.metrics {
-            let resource = otel::default_resource_with([
-                otel_attributes::service_name!(),
-                otel_attributes::service_version!(),
-                otel::service_instance_id(firezone_id.clone()),
-            ]);
+        let resource = otel::default_resource_with([
+            otel_attributes::service_name!(),
+            otel_attributes::service_version!(),
+            otel::service_instance_id(firezone_id.clone()),
+        ]);
 
+        if let Some(backend) = cli.metrics {
             match (backend, cli.otlp_grpc_endpoint) {
                 (MetricsExporter::Sentry, _) => {
-                    opentelemetry::global::set_meter_provider(SentryMeterProvider::default());
+                    opentelemetry::global::set_meter_provider(metrics_export::meter_provider(
+                        SentryMeterProvider::default(),
+                    ));
                 }
-                (MetricsExporter::Stdout, _) => opentelemetry::global::set_meter_provider(
-                    SdkMeterProvider::builder()
-                        .with_periodic_exporter(opentelemetry_stdout::MetricExporter::default())
-                        .with_resource(resource)
-                        .build(),
-                ),
+                (MetricsExporter::Stdout, _) => {
+                    opentelemetry::global::set_meter_provider(metrics_export::meter_provider(
+                        SdkMeterProvider::builder()
+                            .with_periodic_exporter(opentelemetry_stdout::MetricExporter::default())
+                            .with_resource(resource.clone())
+                            .build(),
+                    ))
+                }
                 (MetricsExporter::OtelCollector, Some(endpoint)) => {
-                    opentelemetry::global::set_meter_provider(
+                    opentelemetry::global::set_meter_provider(metrics_export::meter_provider(
                         SdkMeterProvider::builder()
                             .with_periodic_exporter(tonic_otlp_exporter(endpoint)?)
-                            .with_resource(resource)
+                            .with_resource(resource.clone())
                             .build(),
-                    )
+                    ))
                 }
                 (MetricsExporter::OtelCollector, None) => {
-                    opentelemetry::global::set_meter_provider(
-                        SdkMeterProvider::builder().with_resource(resource).build(),
-                    )
+                    opentelemetry::global::set_meter_provider(metrics_export::meter_provider(
+                        SdkMeterProvider::builder()
+                            .with_resource(resource.clone())
+                            .build(),
+                    ))
                 }
             }
         }
@@ -472,6 +478,10 @@ fn try_main() -> Result<()> {
             flow_log_upload::spawn(dir, Arc::new(tcp_socket_factory));
         }
 
+        let metrics_exporter =
+            metrics_export::Exporter::spawn(resource, Arc::new(tcp_socket_factory))
+                .context("Failed to spawn metrics exporter")?;
+
         let (session, mut event_stream) = client_shared::Session::connect(
             Arc::new(tcp_socket_factory),
             Arc::new(UdpSocketFactory::default()),
@@ -481,6 +491,7 @@ fn try_main() -> Result<()> {
             cli.additional_host_candidates.clone(),
             flow_logs_dir.clone(),
             cli.flow_logs,
+            metrics_exporter,
         )
         .context("Failed to start connlib")?;
 

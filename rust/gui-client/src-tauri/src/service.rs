@@ -856,9 +856,9 @@ impl<'a> Handler<'a> {
                     self.telemetry_release = Some(release.clone());
                     self.point_telemetry_at_api_url(self.api_url());
 
-                    opentelemetry::global::set_meter_provider(
+                    opentelemetry::global::set_meter_provider(metrics_export::meter_provider(
                         telemetry::SentryMeterProvider::default(),
-                    );
+                    ));
 
                     analytics::identify(release, None, None, None);
                 }
@@ -968,6 +968,16 @@ impl<'a> Handler<'a> {
             Arc::new(tcp_socket_factory),
         );
 
+        let metrics_exporter = metrics_export::Exporter::spawn(
+            telemetry::otel::default_resource_with([
+                otel_attributes::service_name!(),
+                otel_attributes::service_version!(),
+                telemetry::otel::service_instance_id(device_id.id.clone()),
+            ]),
+            Arc::new(tcp_socket_factory),
+        )
+        .context("Failed to spawn metrics exporter")?;
+
         // Read the resolvers before starting connlib, in case connlib's startup interferes.
         let dns = self.dns_controller.system_resolvers();
         let (connlib, event_stream) = client_shared::Session::connect(
@@ -979,6 +989,7 @@ impl<'a> Handler<'a> {
             self.advanced_settings.additional_host_candidates.clone(),
             known_dirs::flow_logs(),
             false,
+            metrics_exporter,
         )
         .context("Failed to start connlib")?;
 

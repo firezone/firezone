@@ -63,6 +63,8 @@ pub struct Eventloop {
     /// uploads disabled.
     local_flow_logs: bool,
 
+    metrics_exporter: metrics_export::Exporter,
+
     cmd_rx: mpsc::UnboundedReceiver<Command>,
     resource_list_sender: watch::Sender<Vec<ResourceView>>,
     tun_config_sender: watch::Sender<Option<TunConfig>>,
@@ -169,6 +171,7 @@ impl Eventloop {
         additional_host_candidates: Vec<IpAddr>,
         flow_logs_dir: Option<std::path::PathBuf>,
         local_flow_logs: bool,
+        metrics_exporter: metrics_export::Exporter,
         portal: PhoenixChannel<(), EgressMessages, IngressMessages, PublicKeyParam>,
         cmd_rx: mpsc::UnboundedReceiver<Command>,
         resource_list_sender: watch::Sender<Vec<ResourceView>>,
@@ -212,6 +215,7 @@ impl Eventloop {
             resolver_bypass,
             flow_logs_dir,
             local_flow_logs,
+            metrics_exporter,
             cmd_rx,
             logged_permission_denied: false,
             tunnel_errors: otel_instruments::tunnel_errors(),
@@ -549,6 +553,11 @@ impl Eventloop {
             IngressMessages::ConfigChanged(config) => {
                 tunnel.state_mut().update_interface_config(config.interface)
             }
+            IngressMessages::MetricsConfig(metrics) => self.metrics_exporter.configure(
+                &metrics.api_url,
+                metrics.export_interval_secs,
+                metrics.token,
+            ),
             IngressMessages::GatewayIceCandidates(GatewayIceCandidates {
                 gateway_id,
                 candidates,
@@ -575,6 +584,7 @@ impl Eventloop {
                 relays,
                 authorizations,
                 flow_logs,
+                metrics,
                 account_slug,
                 actor_name,
             }) => {
@@ -584,6 +594,15 @@ impl Eventloop {
                         actor_name,
                     }))
                     .context("Failed to emit event")?;
+
+                match metrics {
+                    Some(metrics) => self.metrics_exporter.configure(
+                        &metrics.api_url,
+                        metrics.export_interval_secs,
+                        metrics.token,
+                    ),
+                    None => self.metrics_exporter.disable(),
+                }
 
                 tracing::info!(
                     upload_enabled = flow_logs.upload_enabled(),

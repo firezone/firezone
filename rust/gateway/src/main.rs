@@ -224,38 +224,49 @@ async fn try_main(cli: Cli) -> Result<()> {
         }
     }
 
-    if let Some(backend) = cli.metrics {
-        let resource = telemetry::otel::default_resource_with([
-            otel_attributes::service_name!(),
-            otel_attributes::service_version!(),
-            telemetry::otel::service_instance_id(firezone_id.clone()),
-        ]);
+    let resource = telemetry::otel::default_resource_with([
+        otel_attributes::service_name!(),
+        otel_attributes::service_version!(),
+        telemetry::otel::service_instance_id(firezone_id.clone()),
+    ]);
 
+    if let Some(backend) = cli.metrics {
         match (backend, cli.otlp_grpc_endpoint) {
             (MetricsExporter::Sentry, _) => {
                 // Sentry has name and version already configured via the global SDK parameters.
 
-                opentelemetry::global::set_meter_provider(SentryMeterProvider::default());
+                opentelemetry::global::set_meter_provider(metrics_export::meter_provider(
+                    SentryMeterProvider::default(),
+                ));
             }
-            (MetricsExporter::Stdout, _) => opentelemetry::global::set_meter_provider(
-                SdkMeterProvider::builder()
-                    .with_periodic_exporter(opentelemetry_stdout::MetricExporter::default())
-                    .with_resource(resource)
-                    .build(),
-            ),
+            (MetricsExporter::Stdout, _) => {
+                opentelemetry::global::set_meter_provider(metrics_export::meter_provider(
+                    SdkMeterProvider::builder()
+                        .with_periodic_exporter(opentelemetry_stdout::MetricExporter::default())
+                        .with_resource(resource.clone())
+                        .build(),
+                ))
+            }
             (MetricsExporter::OtelCollector, Some(endpoint)) => {
-                opentelemetry::global::set_meter_provider(
+                opentelemetry::global::set_meter_provider(metrics_export::meter_provider(
                     SdkMeterProvider::builder()
                         .with_periodic_exporter(tonic_otlp_exporter(endpoint)?)
-                        .with_resource(resource)
+                        .with_resource(resource.clone())
                         .build(),
-                )
+                ))
             }
-            (MetricsExporter::OtelCollector, None) => opentelemetry::global::set_meter_provider(
-                SdkMeterProvider::builder().with_resource(resource).build(),
-            ),
+            (MetricsExporter::OtelCollector, None) => {
+                opentelemetry::global::set_meter_provider(metrics_export::meter_provider(
+                    SdkMeterProvider::builder()
+                        .with_resource(resource.clone())
+                        .build(),
+                ))
+            }
         }
     }
+
+    let metrics_exporter = metrics_export::Exporter::spawn(resource, Arc::new(tcp_socket_factory))
+        .context("Failed to spawn metrics exporter")?;
 
     let login = LoginUrl::gateway(
         cli.api_url,
@@ -327,6 +338,7 @@ async fn try_main(cli: Cli) -> Result<()> {
             flow_logs_dir,
             local_flow_logs,
             account_slug,
+            metrics_exporter,
         )?
         .run()
         .await
