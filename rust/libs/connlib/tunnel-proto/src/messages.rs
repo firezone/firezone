@@ -256,8 +256,8 @@ impl FlowLogsConfig {
 /// Where and how often to export OTLP metrics, sent by the portal in `init` and as `metrics_config`.
 #[derive(Debug, Deserialize, Clone)]
 pub struct MetricsConfig {
-    /// Base URL the metrics are POSTed to, ending in `/`.
-    pub api_url: String,
+    /// URL the metrics are POSTed to.
+    pub endpoint: String,
     pub export_interval_secs: u64,
     /// Authorizes the export; `None` means exporting is off.
     pub token: Option<SecretString>,

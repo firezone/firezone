@@ -500,7 +500,7 @@ mod tests {
                 "upload_batch_size": 1000
             },
             "metrics": {
-                "api_url": "https://otlp.firezone.dev/",
+                "endpoint": "https://otlp.firezone.dev/v1/metrics",
                 "export_interval_secs": 60,
                 "token": "metrics-token",
                 "patterns": ["*"]
@@ -510,7 +510,7 @@ mod tests {
         let init = serde_json::from_str::<InitClient>(init).unwrap();
 
         let metrics = init.metrics.unwrap();
-        assert_eq!(metrics.api_url, "https://otlp.firezone.dev/");
+        assert_eq!(metrics.endpoint, "https://otlp.firezone.dev/v1/metrics");
         assert_eq!(metrics.export_interval_secs, 60);
         assert_eq!(metrics.token.unwrap().expose_secret(), "metrics-token");
         assert_eq!(metrics.patterns, ["*"]);
@@ -536,14 +536,14 @@ mod tests {
 
     #[test]
     fn can_deserialize_metrics_config_message_without_token() {
-        let json = r#"{"event":"metrics_config","ref":null,"topic":"client","payload":{"api_url":"https://otlp.firezone.dev/","export_interval_secs":60,"token":null,"patterns":[]}}"#;
+        let json = r#"{"event":"metrics_config","ref":null,"topic":"client","payload":{"endpoint":"https://otlp.firezone.dev/v1/metrics","export_interval_secs":60,"token":null,"patterns":[]}}"#;
 
         let message = serde_json::from_str::<IngressMessages>(json).unwrap();
 
         let IngressMessages::MetricsConfig(config) = message else {
             panic!("expected MetricsConfig");
         };
-        assert_eq!(config.api_url, "https://otlp.firezone.dev/");
+        assert_eq!(config.endpoint, "https://otlp.firezone.dev/v1/metrics");
         assert!(config.token.is_none());
         assert!(config.patterns.is_empty());
     }

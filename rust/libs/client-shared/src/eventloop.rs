@@ -554,7 +554,7 @@ impl Eventloop {
                 tunnel.state_mut().update_interface_config(config.interface)
             }
             IngressMessages::MetricsConfig(metrics) => self.metrics_exporter.configure(
-                &metrics.api_url,
+                &metrics.endpoint,
                 metrics.export_interval_secs,
                 metrics.token,
                 metrics.patterns,
@@ -598,7 +598,7 @@ impl Eventloop {
 
                 match metrics {
                     Some(metrics) => self.metrics_exporter.configure(
-                        &metrics.api_url,
+                        &metrics.endpoint,
                         metrics.export_interval_secs,
                         metrics.token,
                         metrics.patterns,

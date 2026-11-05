@@ -27,7 +27,6 @@ use url::{Origin, Url};
 
 pub use pipeline::meter_provider_builder;
 
-const EXPORT_PATH: &str = "v1/metrics";
 const MIN_EXPORT_INTERVAL: Duration = Duration::from_secs(10);
 const EXPORT_TIMEOUT: Duration = Duration::from_secs(10);
 
@@ -53,13 +52,13 @@ impl Exporter {
     /// Only metrics whose name matches one of `patterns` are exported.
     pub fn configure(
         &self,
-        api_url: &str,
+        endpoint: &str,
         export_interval_secs: u64,
         token: Option<SecretString>,
         patterns: Vec<String>,
     ) {
         let config = match token
-            .map(|token| Config::new(api_url, export_interval_secs, token, patterns))
+            .map(|token| Config::new(endpoint, export_interval_secs, token, patterns))
             .transpose()
         {
             Ok(config) => config,
@@ -89,17 +88,16 @@ struct Config {
 
 impl Config {
     fn new(
-        api_url: &str,
+        endpoint: &str,
         export_interval_secs: u64,
         token: SecretString,
         patterns: Vec<String>,
     ) -> Result<Self> {
-        let endpoint = Url::parse(api_url)
-            .and_then(|url| url.join(EXPORT_PATH))
-            .with_context(|| format!("Invalid metrics API URL `{api_url}`"))?;
+        let endpoint = Url::parse(endpoint)
+            .with_context(|| format!("Invalid metrics endpoint `{endpoint}`"))?;
         anyhow::ensure!(
             endpoint.scheme() == "https",
-            "Metrics API URL must use HTTPS"
+            "Metrics endpoint must use HTTPS"
         );
 
         Ok(Self {
@@ -315,21 +313,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn config_appends_the_export_path() {
-        let config = Config::new("https://otlp.firezone.dev/", 60, token(), vec![]).unwrap();
-
-        assert_eq!(
-            config.endpoint.as_str(),
-            "https://otlp.firezone.dev/v1/metrics"
-        );
-        assert_eq!(config.interval, Duration::from_secs(60));
-    }
-
-    #[test]
     fn config_rejects_plain_http_and_clamps_the_interval() {
-        assert!(Config::new("http://otlp.firezone.dev/", 60, token(), vec![]).is_err());
+        assert!(Config::new("http://otlp.firezone.dev/v1/metrics", 60, token(), vec![]).is_err());
         assert_eq!(
-            Config::new("https://otlp.firezone.dev/", 0, token(), vec![])
+            Config::new("https://otlp.firezone.dev/v1/metrics", 0, token(), vec![])
                 .unwrap()
                 .interval,
             MIN_EXPORT_INTERVAL

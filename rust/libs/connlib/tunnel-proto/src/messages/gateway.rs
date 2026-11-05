@@ -356,7 +356,7 @@ mod tests {
 
     #[test]
     fn can_deserialize_init_message_with_metrics_config() {
-        let json = r#"{"event":"init","ref":null,"topic":"gateway","payload":{"interface":{"ipv6":"fd00:2021:1111::2c:f6ab","ipv4":"100.115.164.78"},"config":{"ipv4_masquerade_enabled":true,"ipv6_masquerade_enabled":true},"flow_logs":{"api_url":"https://flow-api.firezone.dev","upload_interval_secs":60,"upload_batch_size":1000},"metrics":{"api_url":"https://otlp.firezone.dev/","export_interval_secs":60,"token":null}}}"#;
+        let json = r#"{"event":"init","ref":null,"topic":"gateway","payload":{"interface":{"ipv6":"fd00:2021:1111::2c:f6ab","ipv4":"100.115.164.78"},"config":{"ipv4_masquerade_enabled":true,"ipv6_masquerade_enabled":true},"flow_logs":{"api_url":"https://flow-api.firezone.dev","upload_interval_secs":60,"upload_batch_size":1000},"metrics":{"endpoint":"https://otlp.firezone.dev/v1/metrics","export_interval_secs":60,"token":null}}}"#;
 
         let message = serde_json::from_str::<IngressMessages>(json).unwrap();
 
@@ -364,7 +364,7 @@ mod tests {
             panic!("expected Init");
         };
         let metrics = init.metrics.unwrap();
-        assert_eq!(metrics.api_url, "https://otlp.firezone.dev/");
+        assert_eq!(metrics.endpoint, "https://otlp.firezone.dev/v1/metrics");
         assert_eq!(metrics.export_interval_secs, 60);
         assert!(metrics.token.is_none());
         assert!(metrics.patterns.is_empty());
@@ -372,7 +372,7 @@ mod tests {
 
     #[test]
     fn can_deserialize_metrics_config_message() {
-        let json = r#"{"event":"metrics_config","ref":null,"topic":"gateway","payload":{"api_url":"https://otlp.firezone.dev/","export_interval_secs":30,"token":"metrics-token","patterns":["connlib.*","tunnel.error"]}}"#;
+        let json = r#"{"event":"metrics_config","ref":null,"topic":"gateway","payload":{"endpoint":"https://otlp.firezone.dev/v1/metrics","export_interval_secs":30,"token":"metrics-token","patterns":["connlib.*","tunnel.error"]}}"#;
 
         let message = serde_json::from_str::<IngressMessages>(json).unwrap();
 
