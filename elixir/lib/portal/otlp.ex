@@ -37,7 +37,7 @@ defmodule Portal.OTLP do
       )
 
     case Req.post(endpoint, opts) do
-      {:ok, %{status: status}} when status in 200..202 ->
+      {:ok, %{status: status}} when status in 200..299 ->
         :ok
 
       {:ok, %{status: status}} ->

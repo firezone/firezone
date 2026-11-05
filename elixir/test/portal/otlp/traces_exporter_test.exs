@@ -74,6 +74,7 @@ defmodule Portal.OTLP.TracesExporterTest do
       for {status, result} <- [
             {200, :ok},
             {202, :ok},
+            {204, :ok},
             {302, :failed_not_retryable},
             {400, :failed_not_retryable},
             {401, :failed_not_retryable},
