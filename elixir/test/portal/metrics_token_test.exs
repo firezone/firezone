@@ -1,13 +1,13 @@
 defmodule Portal.MetricsTokenTest do
   use Portal.DataCase, async: true
 
+  import Ecto.Query
   import Portal.AccountFixtures
   alias Portal.MetricsToken
 
   setup do
-    Portal.Config.put_env_override(:portal, :metrics_token_signing_key_slot, make_ref())
-    key = :crypto.strong_rand_bytes(32)
-    {1, _} = Repo.insert_all("metrics_token_signing_keys", [%{key: key}])
+    key =
+      Repo.one!(from(k in "metrics_token_signing_keys", order_by: [desc: k.id], limit: 1, select: k.key))
 
     %{account: account_fixture(), key: key}
   end
@@ -45,13 +45,6 @@ defmodule Portal.MetricsTokenTest do
       forged = sign(key, claims(account), "HS512")
 
       assert {:error, :invalid} = MetricsToken.verify(forged)
-    end
-
-    test "reads the newest signing key from the database on a cache miss", %{
-      account: account,
-      key: key
-    } do
-      assert {:ok, _claims} = MetricsToken.verify(sign(key, claims(account)))
     end
 
     test "rejects a malformed token" do

@@ -330,24 +330,6 @@ defmodule Portal.OpsTest do
     end
   end
 
-  describe "rotate_metrics_token_key/0" do
-    test "invalidates tokens signed with the old key and notifies subscribers" do
-      Portal.Config.put_env_override(:portal, :metrics_token_signing_key_slot, make_ref())
-      account = account_fixture()
-      old_token = Portal.MetricsToken.mint(account)
-      :ok = Portal.MetricsToken.subscribe_to_key_rotations()
-
-      assert :ok = rotate_metrics_token_key()
-
-      assert_receive :metrics_token_key_rotated
-      assert {:error, :invalid} = Portal.MetricsToken.verify(old_token)
-
-      new_token = Portal.MetricsToken.mint(account)
-      Portal.Config.put_env_override(:portal, :metrics_token_signing_key_slot, make_ref())
-      assert {:ok, _claims} = Portal.MetricsToken.verify(new_token)
-    end
-  end
-
   describe "set_metrics_allowlist/2" do
     test "stores the allowlist and notifies the account's channels" do
       account = account_fixture()

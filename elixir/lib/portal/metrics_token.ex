@@ -33,7 +33,7 @@ defmodule Portal.MetricsToken do
 
   @doc false
   def activate_signing_key(key) when is_binary(key) do
-    :persistent_term.put(signing_key_slot(), JOSE.JWK.from_oct(key))
+    :persistent_term.put(@signing_key_slot, JOSE.JWK.from_oct(key))
     Phoenix.PubSub.local_broadcast(Portal.PubSub, @key_rotations_topic, :metrics_token_key_rotated)
   end
 
@@ -92,21 +92,15 @@ defmodule Portal.MetricsToken do
   end
 
   defp jwk do
-    slot = signing_key_slot()
-
-    case :persistent_term.get(slot, nil) do
+    case :persistent_term.get(@signing_key_slot, nil) do
       nil ->
         jwk = JOSE.JWK.from_oct(Database.fetch_active_key!())
-        :persistent_term.put(slot, jwk)
+        :persistent_term.put(@signing_key_slot, jwk)
         jwk
 
       jwk ->
         jwk
     end
-  end
-
-  defp signing_key_slot do
-    Portal.Config.get_env(:portal, :metrics_token_signing_key_slot, @signing_key_slot)
   end
 
   defp verify_exp(%{"exp" => exp}) when is_integer(exp) do
