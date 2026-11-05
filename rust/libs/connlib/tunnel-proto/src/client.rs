@@ -14,7 +14,7 @@ pub(crate) use crate::client::client_on_client::ClientOnClient;
 pub(crate) use crate::client::gateway_on_client::GatewayOnClient;
 
 use crate::authorization_rejections::AuthorizationRejections;
-use peer_batch::{Decision, Handled, PeerBatch};
+use peer_batch::{Decision, PeerBatch, PeerMessageOutcome};
 use resource::{DevicePoolResource, InternetResource, Resource};
 
 use crate::batch::{BatchingKey, TunBatch};
@@ -792,7 +792,7 @@ impl ClientState {
         local: SocketAddr,
         from: SocketAddr,
         now: Instant,
-    ) -> Result<Handled> {
+    ) -> Result<PeerMessageOutcome> {
         let key = BatchingKey::of(&packet);
         let flow = self.flow_tracker.begin_network_packet(local, from, now);
 
@@ -800,12 +800,12 @@ impl ClientState {
 
         if matches!(pid, ClientOrGatewayId::Gateway(_)) && self.udp_dns_client.accepts(&packet) {
             self.udp_dns_client.handle_inbound(packet);
-            return Ok(Handled::Consumed);
+            return Ok(PeerMessageOutcome::Consumed);
         }
 
         if matches!(pid, ClientOrGatewayId::Gateway(_)) && self.tcp_dns_client.accepts(&packet) {
             self.tcp_dns_client.handle_inbound(packet);
-            return Ok(Handled::Consumed);
+            return Ok(PeerMessageOutcome::Consumed);
         }
 
         if let Some(fz_p2p_control) = packet.as_fz_p2p_control() {
@@ -821,7 +821,7 @@ impl ClientState {
                     let Some(domain) = self.resource_stub_resolver.resolved_domain(&res.domain)
                     else {
                         tracing::debug!(%gid, domain = %res.domain, "Unknown domain, ignoring DNS resource NAT status");
-                        return Ok(Handled::Consumed);
+                        return Ok(PeerMessageOutcome::Consumed);
                     };
 
                     let buffered_packets = self
@@ -854,14 +854,14 @@ impl ClientState {
                         }
                     }
 
-                    return Ok(Handled::Goodbye);
+                    return Ok(PeerMessageOutcome::Goodbye);
                 }
                 (code, pid) => {
                     tracing::debug!(code = %code.into_u8(), %pid, "Unknown / unsupported control protocol");
                 }
             };
 
-            return Ok(Handled::Consumed);
+            return Ok(PeerMessageOutcome::Consumed);
         }
 
         let packet = match pid {
@@ -869,7 +869,7 @@ impl ClientState {
                 let Some(peer) = self.clients.peer_by_id_mut(&cid) else {
                     tracing::error!(%cid, "Couldn't find connection by ID");
 
-                    return Ok(Handled::Consumed);
+                    return Ok(PeerMessageOutcome::Consumed);
                 };
 
                 match peer.ensure_allowed_inbound(packet, now)? {
@@ -899,7 +899,7 @@ impl ClientState {
                                 &mut self.pending_peer_packets,
                             );
                         }
-                        return Ok(Handled::Consumed);
+                        return Ok(PeerMessageOutcome::Consumed);
                     }
                 }
             }
@@ -907,7 +907,7 @@ impl ClientState {
                 let Some(peer) = self.gateways.peer_by_id_mut(&gid) else {
                     tracing::error!(%gid, "Couldn't find connection by ID");
 
-                    return Ok(Handled::Consumed);
+                    return Ok(PeerMessageOutcome::Consumed);
                 };
 
                 peer.ensure_allowed_src(&packet)?;
@@ -925,7 +925,7 @@ impl ClientState {
             flow: flow.detach(),
         });
 
-        Ok(Handled::Deliver(packet, decision))
+        Ok(PeerMessageOutcome::Deliver(packet, decision))
     }
 
     pub fn handle_dns_response(&mut self, response: dns::RecursiveResponse, now: Instant) {
