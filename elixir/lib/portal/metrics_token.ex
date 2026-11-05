@@ -2,9 +2,10 @@ defmodule Portal.MetricsToken do
   @moduledoc """
   Mints and verifies the tokens Clients and Gateways present to `POST /v1/metrics`.
 
-  A token is an HS256 JWT signed with the account's `ingest_signing_key`. It
-  names the account (id and slug) the metrics are attributed to and which
-  metrics may be forwarded. The `metrics` claim is either `%{"all" => true}` or
+  A token is an HS256 JWT signed with a portal-wide key derived from
+  `secret_key_base`, so verifying it needs no database lookup. It names the
+  account (id and slug) the metrics are attributed to and which metrics may be
+  forwarded. The `metrics` claim is either `%{"all" => true}` or
   `%{"names" => [...]}`; any other shape is rejected, so an empty or missing
   list never widens to "all".
 
@@ -12,9 +13,9 @@ defmodule Portal.MetricsToken do
   token presenting another `alg` (including `none`) is rejected.
   """
   alias Portal.Account
-  alias __MODULE__.Database
 
-  @ttl_seconds 6 * 3600
+  @ttl_seconds 3600
+  @signing_salt "otlp metrics token"
 
   @type claims :: %{optional(String.t()) => term()}
 
@@ -35,8 +36,7 @@ defmodule Portal.MetricsToken do
       "exp" => now + @ttl_seconds
     }
 
-    account.ingest_signing_key
-    |> jwk()
+    jwk()
     |> JOSE.JWT.sign(%{"alg" => "HS256"}, claims)
     |> JOSE.JWS.compact()
     |> elem(1)
@@ -44,23 +44,13 @@ defmodule Portal.MetricsToken do
 
   @doc """
   Verifies a token and returns its claims.
-
-  An unknown or disabled account and a bad signature all collapse to `:invalid`
-  so the endpoint is not an oracle for which account ids exist.
   """
   @spec verify(term()) :: {:ok, claims()} | {:error, :malformed | :invalid | :expired}
   def verify(token) when is_binary(token) do
-    with {:ok, account_id} <- peek_account_id(token),
-         %Account{ingest_signing_key: key} = account <- fetch_account(account_id),
-         true <- Account.active?(account),
-         {true, %JOSE.JWT{fields: claims}, _jws} <-
-           JOSE.JWT.verify_strict(jwk(key), ["HS256"], token),
+    with {:ok, claims} <- verify_signature(token),
          :ok <- verify_exp(claims),
          :ok <- verify_metrics_claim(claims) do
       {:ok, claims}
-    else
-      {:error, reason} when reason in [:malformed, :expired] -> {:error, reason}
-      _ -> {:error, :invalid}
     end
   end
 
@@ -76,19 +66,24 @@ defmodule Portal.MetricsToken do
   defp metrics_claim(:all), do: %{"all" => true}
   defp metrics_claim(names) when is_list(names), do: %{"names" => names}
 
-  defp jwk(key), do: JOSE.JWK.from_oct(key)
-
-  defp peek_account_id(token) do
-    %JOSE.JWT{fields: %{"account_id" => account_id}} = JOSE.JWT.peek_payload(token)
-    {:ok, account_id}
+  defp verify_signature(token) do
+    case JOSE.JWT.verify_strict(jwk(), ["HS256"], token) do
+      {true, %JOSE.JWT{fields: claims}, _jws} -> {:ok, claims}
+      {false, _jwt, _jws} -> {:error, :invalid}
+      {:error, _reason} -> {:error, :malformed}
+    end
   rescue
     _ -> {:error, :malformed}
   end
 
-  defp fetch_account(account_id) do
-    with {:ok, account_id} <- Ecto.UUID.cast(account_id) do
-      Database.fetch_account(account_id)
-    end
+  defp jwk do
+    secret_key_base =
+      Application.fetch_env!(:portal, PortalWeb.Endpoint)
+      |> Keyword.fetch!(:secret_key_base)
+
+    :hmac
+    |> :crypto.mac(:sha256, secret_key_base, @signing_salt)
+    |> JOSE.JWK.from_oct()
   end
 
   defp verify_exp(%{"exp" => exp}) when is_integer(exp) do
@@ -111,16 +106,4 @@ defmodule Portal.MetricsToken do
   end
 
   defp verify_metrics_claim(_claims), do: {:error, :malformed}
-
-  defmodule Database do
-    import Ecto.Query
-    alias Portal.Account
-    alias Portal.Safe
-
-    def fetch_account(account_id) do
-      from(a in Account, where: a.id == ^account_id)
-      |> Safe.unscoped()
-      |> Safe.one()
-    end
-  end
 end

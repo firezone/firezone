@@ -103,6 +103,35 @@ defmodule PortalAPI.OTLPMetricsControllerTest do
       assert response(conn, 200)
     end
 
+    test "records ingested data points by outcome", %{conn: conn, account: account} do
+      test_pid = self()
+      handler_id = "test-otlp-ingest-#{System.unique_integer([:positive])}"
+
+      :telemetry.attach(
+        handler_id,
+        [:portal, :otlp_ingest, :data_points],
+        fn _event, %{count: count}, %{outcome: outcome}, _config ->
+          send(test_pid, {:data_points, self(), outcome, count})
+        end,
+        nil
+      )
+
+      on_exit(fn -> :telemetry.detach(handler_id) end)
+
+      Req.Test.expect(MetricsExporter, &Plug.Conn.send_resp(&1, 200, ""))
+      Req.Test.expect(MetricsExporter, &Plug.Conn.send_resp(&1, 400, ""))
+
+      body = export_request([sum("a"), sum("b"), sum("c")])
+
+      assert conn |> authorize(account, ["a", "b"]) |> post_metrics(body) |> response(200)
+      assert_receive {:data_points, ^test_pid, :filtered, 1}
+      assert_receive {:data_points, ^test_pid, :forwarded, 2}
+
+      assert conn |> recycle() |> authorize(account) |> post_metrics(body) |> response(500)
+      assert_receive {:data_points, ^test_pid, :filtered, 0}
+      assert_receive {:data_points, ^test_pid, :failed, 3}
+    end
+
     test "returns 503 when the upstream fails transiently", %{conn: conn, account: account} do
       Req.Test.expect(MetricsExporter, &Plug.Conn.send_resp(&1, 503, ""))
 
@@ -127,10 +156,11 @@ defmodule PortalAPI.OTLPMetricsControllerTest do
       assert response(conn, 401)
     end
 
-    test "returns 401 for an invalid token", %{conn: conn, account: account} do
-      impostor = %{account | ingest_signing_key: :crypto.strong_rand_bytes(32)}
-
-      conn = conn |> authorize(impostor) |> post_metrics(export_request([]))
+    test "returns 401 for an invalid token", %{conn: conn} do
+      conn =
+        conn
+        |> put_req_header("authorization", "Bearer not-a-jwt")
+        |> post_metrics(export_request([]))
 
       assert response(conn, 401)
     end

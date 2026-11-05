@@ -26,27 +26,21 @@ defmodule Portal.MetricsTokenTest do
     end
 
     test "rejects an expired token", %{account: account} do
-      token = sign(account.ingest_signing_key, claims(account, %{"exp" => unix_now() - 1}))
+      token = sign(signing_key(), claims(account, %{"exp" => unix_now() - 1}))
 
       assert {:error, :expired} = MetricsToken.verify(token)
     end
 
-    test "rejects a token signed with another account's key", %{account: account} do
-      impostor = %{account | ingest_signing_key: :crypto.strong_rand_bytes(32)}
-
-      assert {:error, :invalid} = impostor |> MetricsToken.mint() |> MetricsToken.verify()
-    end
-
-    test "rejects a token presenting a different algorithm", %{account: account} do
-      forged = sign(account.ingest_signing_key, claims(account), "HS512")
+    test "rejects a token signed with another key", %{account: account} do
+      forged = sign(:crypto.strong_rand_bytes(32), claims(account))
 
       assert {:error, :invalid} = MetricsToken.verify(forged)
     end
 
-    test "rejects a token for a disabled account" do
-      token = MetricsToken.mint(disabled_account_fixture())
+    test "rejects a token presenting a different algorithm", %{account: account} do
+      forged = sign(signing_key(), claims(account), "HS512")
 
-      assert {:error, :invalid} = MetricsToken.verify(token)
+      assert {:error, :invalid} = MetricsToken.verify(forged)
     end
 
     test "rejects a malformed token" do
@@ -82,12 +76,12 @@ defmodule Portal.MetricsTokenTest do
             %{"names" => [1]},
             %{"all" => true, "names" => []}
           ] do
-        token = sign(account.ingest_signing_key, claims(account, %{"metrics" => metrics}))
+        token = sign(signing_key(), claims(account, %{"metrics" => metrics}))
 
         assert {:error, :malformed} = MetricsToken.verify(token), inspect(metrics)
       end
 
-      token = sign(account.ingest_signing_key, Map.delete(claims(account), "metrics"))
+      token = sign(signing_key(), Map.delete(claims(account), "metrics"))
       assert {:error, :malformed} = MetricsToken.verify(token)
     end
   end
@@ -110,6 +104,13 @@ defmodule Portal.MetricsTokenTest do
     |> JOSE.JWT.sign(%{"alg" => alg}, claims)
     |> JOSE.JWS.compact()
     |> elem(1)
+  end
+
+  defp signing_key do
+    secret_key_base =
+      Application.fetch_env!(:portal, PortalWeb.Endpoint) |> Keyword.fetch!(:secret_key_base)
+
+    :crypto.mac(:hmac, :sha256, secret_key_base, "otlp metrics token")
   end
 
   defp unix_now, do: DateTime.utc_now() |> DateTime.to_unix()
