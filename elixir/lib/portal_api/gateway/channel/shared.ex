@@ -891,6 +891,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
     %{
       api_url: Portal.Config.fetch_env!(:portal, :otlp_metrics_api_url),
       export_interval_secs: account.metrics_export_interval_secs,
+      patterns: account.metrics_export || [],
       token:
         if(account.metrics_export, do: Portal.MetricsToken.mint(account, gateway, account.metrics_export))
     }

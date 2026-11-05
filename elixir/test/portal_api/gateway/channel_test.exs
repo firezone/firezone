@@ -440,7 +440,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       token: token
     } do
       socket = join_channel(gateway, site, token, channel: PortalAPI.Gateway.V3.Channel)
-      assert_push "init", %{metrics: %{token: nil, export_interval_secs: 60}}
+      assert_push "init", %{metrics: %{token: nil, export_interval_secs: 60, patterns: []}}
 
       send(socket.channel_pid, :refresh_metrics_token)
       send(socket.channel_pid, :metrics_token_key_rotated)
@@ -457,7 +457,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       :ok = Portal.Ops.set_metrics_export(account.id, ["*"])
       socket = join_channel(gateway, site, token, channel: PortalAPI.Gateway.V3.Channel)
 
-      assert_push "init", %{metrics: %{api_url: "https://otlp.firezone.dev/", token: metrics_token}}
+      assert_push "init", %{metrics: %{api_url: "https://otlp.firezone.dev/", patterns: ["*"], token: metrics_token}}
       assert {:ok, %{"account_id" => account_id, "device_type" => "gateway", "device_version" => version}} =
                Portal.MetricsToken.verify(metrics_token)
 
@@ -490,7 +490,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
         struct: some
       })
 
-      assert_push "metrics_config", %{token: metrics_token}
+      assert_push "metrics_config", %{token: metrics_token, patterns: ["a"]}
       assert {:ok, %{"metrics" => ["a"]}} = Portal.MetricsToken.verify(metrics_token)
 
       send(socket.channel_pid, %Changes.Change{
