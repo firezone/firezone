@@ -2148,7 +2148,7 @@ defmodule PortalAPI.Client.Channel.Shared do
   defp init(socket, resources, relays) do
     push(socket, "init", %{
       flow_logs: flow_logs_config(),
-      metrics: metrics_config(socket.assigns.subject.account),
+      metrics: metrics_config(socket.assigns.subject.account, socket.assigns.client),
       account_slug: socket.assigns.subject.account.slug,
       actor_name: socket.assigns.subject.actor.name,
       resources: Views.Resource.render_many(resources, socket.assigns.client, protocol_version(socket)),
@@ -2188,19 +2188,19 @@ defmodule PortalAPI.Client.Channel.Shared do
     account = socket.assigns.subject.account
 
     if account.metrics_export do
-      push(socket, "metrics_config", metrics_config(account))
+      push(socket, "metrics_config", metrics_config(account, socket.assigns.client))
     end
 
     {:noreply, socket}
   end
 
   # A `nil` token means metrics export is off.
-  defp metrics_config(account) do
+  defp metrics_config(account, client) do
     %{
       api_url: Portal.Config.fetch_env!(:portal, :otlp_metrics_api_url),
       export_interval_secs: account.metrics_export_interval_secs,
       token:
-        if(account.metrics_export, do: Portal.MetricsToken.mint(account, :client, account.metrics_export))
+        if(account.metrics_export, do: Portal.MetricsToken.mint(account, client, account.metrics_export))
     }
   end
 
@@ -2359,7 +2359,7 @@ defmodule PortalAPI.Client.Channel.Shared do
     socket = assign(socket, subject: subject)
 
     if metrics_config_changed?(old_account, account) do
-      push(socket, "metrics_config", metrics_config(account))
+      push(socket, "metrics_config", metrics_config(account, socket.assigns.client))
     end
 
     if old_account.config != account.config do

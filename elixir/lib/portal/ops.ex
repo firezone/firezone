@@ -220,12 +220,12 @@ defmodule Portal.Ops do
   Returns `{:error, nodes}` naming the nodes that kept the old key.
   """
   def rotate_metrics_token_key do
-    key = Database.insert_metrics_token_signing_key()
-    :ok = MetricsToken.activate_signing_key(key)
+    salt = Database.insert_metrics_token_signing_salt()
+    :ok = MetricsToken.activate_signing_salt(salt)
     remote_nodes = Node.list()
 
     remote_nodes
-    |> :erpc.multicall(MetricsToken, :activate_signing_key, [key], 5_000)
+    |> :erpc.multicall(MetricsToken, :activate_signing_salt, [salt], 5_000)
     |> Enum.zip(remote_nodes)
     |> Enum.reject(&match?({{:ok, :ok}, _node}, &1))
     |> case do
@@ -864,14 +864,14 @@ defmodule Portal.Ops do
       |> Safe.update_all([])
     end
 
-    def insert_metrics_token_signing_key do
-      key = :crypto.strong_rand_bytes(32)
+    def insert_metrics_token_signing_salt do
+      salt = :crypto.strong_rand_bytes(32)
 
       {1, _} =
         Safe.unscoped()
-        |> Safe.insert_all("metrics_token_signing_keys", [%{key: key}])
+        |> Safe.insert_all("metrics_token_signing_salts", [%{salt: salt}])
 
-      key
+      salt
     end
 
     def update_account(account_id, changes) do

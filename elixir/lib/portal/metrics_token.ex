@@ -3,8 +3,8 @@ defmodule Portal.MetricsToken do
   Mints and verifies the tokens Clients and Gateways present to `POST /v1/metrics`.
 
   A token is an HS256 JWT. It names the account (id and slug) the metrics are
-  attributed to, the type of device it was minted for (`"client"` or
-  `"gateway"`) and which metrics may be forwarded. The `metrics` claim is a
+  attributed to, the type (`"client"` or `"gateway"`) and version of the device
+  it was minted for, and which metrics may be forwarded. The `metrics` claim is a
   list of metric name patterns in which `*` matches any run of characters, so
   `["*"]` allows every metric. A claim of any other shape is rejected, and an
   empty list allows nothing.
@@ -12,12 +12,14 @@ defmodule Portal.MetricsToken do
   The accepted algorithm is pinned to HS256 on verify (`verify_strict`), so a
   token presenting another `alg` (including `none`) is rejected.
 
-  Tokens are signed with the newest key in `metrics_token_signing_keys`. Each
-  node caches it in `:persistent_term` and reads the database only when that
-  cache is empty, so verifying a token needs no database lookup.
-  `Portal.Ops.rotate_metrics_token_key/0` replaces the key on every node.
+  Tokens are signed with a key derived from the portal's `secret_key_base` and
+  the newest salt in `metrics_token_signing_salts`, so the database alone is not
+  enough to mint tokens. Each node caches the key in `:persistent_term` and reads
+  the database only when that cache is empty, so verifying a token needs no
+  database lookup. `Portal.Ops.rotate_metrics_token_key/0` replaces the key on
+  every node.
   """
-  alias Portal.Account
+  alias Portal.{Account, Device}
   alias __MODULE__.Database
 
   @ttl_seconds 3600
@@ -34,27 +36,29 @@ defmodule Portal.MetricsToken do
   def subscribe_to_key_rotations, do: Portal.PubSub.subscribe(@key_rotations_topic)
 
   @doc false
-  def activate_signing_key(key) when is_binary(key) do
-    :persistent_term.put(@signing_key_slot, JOSE.JWK.from_oct(key))
+  def activate_signing_salt(salt) when is_binary(salt) do
+    :persistent_term.put(@signing_key_slot, derive_jwk(salt))
     Phoenix.PubSub.local_broadcast(Portal.PubSub, @key_rotations_topic, :metrics_token_key_rotated)
   end
 
   @doc """
-  Mints a token for a `device_type` device of `account` allowing the metrics matching `patterns`.
+  Mints a token for `device` of `account` allowing the metrics matching `patterns`.
   """
-  @spec mint(Account.t(), :client | :gateway, [String.t()]) :: String.t()
-  def mint(%Account{} = account, device_type, patterns)
-      when device_type in [:client, :gateway] and is_list(patterns) do
+  @spec mint(Account.t(), Device.t(), [String.t()]) :: String.t()
+  def mint(%Account{} = account, %Device{} = device, patterns) when is_list(patterns) do
     now = DateTime.utc_now() |> DateTime.to_unix()
 
-    claims = %{
-      "account_id" => account.id,
-      "account_slug" => account.slug,
-      "device_type" => Atom.to_string(device_type),
-      "metrics" => patterns,
-      "iat" => now,
-      "exp" => now + @ttl_seconds
-    }
+    claims =
+      %{
+        "account_id" => account.id,
+        "account_slug" => account.slug,
+        "device_type" => Atom.to_string(device.type),
+        "device_version" => device.last_seen_version,
+        "metrics" => patterns,
+        "iat" => now,
+        "exp" => now + @ttl_seconds
+      }
+      |> Map.reject(fn {_claim, value} -> is_nil(value) end)
 
     jwk()
     |> JOSE.JWT.sign(%{"alg" => "HS256"}, claims)
@@ -69,7 +73,7 @@ defmodule Portal.MetricsToken do
   def verify(token) when is_binary(token) do
     with {:ok, claims} <- verify_signature(jwk(), token),
          :ok <- verify_exp(claims),
-         :ok <- verify_device_type(claims),
+         :ok <- verify_device(claims),
          :ok <- verify_metrics_claim(claims) do
       {:ok, claims}
     end
@@ -115,13 +119,23 @@ defmodule Portal.MetricsToken do
   defp jwk do
     case :persistent_term.get(@signing_key_slot, nil) do
       nil ->
-        jwk = JOSE.JWK.from_oct(Database.fetch_active_key!())
+        jwk = derive_jwk(Database.fetch_active_salt!())
         :persistent_term.put(@signing_key_slot, jwk)
         jwk
 
       jwk ->
         jwk
     end
+  end
+
+  defp derive_jwk(salt) do
+    secret_key_base =
+      Application.fetch_env!(:portal, PortalWeb.Endpoint)
+      |> Keyword.fetch!(:secret_key_base)
+
+    :hmac
+    |> :crypto.mac(:sha256, secret_key_base, salt)
+    |> JOSE.JWK.from_oct()
   end
 
   defp verify_exp(%{"exp" => exp}) when is_integer(exp) do
@@ -134,8 +148,11 @@ defmodule Portal.MetricsToken do
 
   defp verify_exp(_claims), do: {:error, :expired}
 
-  defp verify_device_type(%{"device_type" => type}) when type in ["client", "gateway"], do: :ok
-  defp verify_device_type(_claims), do: {:error, :malformed}
+  defp verify_device(%{"device_type" => type} = claims) when type in ["client", "gateway"] do
+    if is_binary(Map.get(claims, "device_version", "")), do: :ok, else: {:error, :malformed}
+  end
+
+  defp verify_device(_claims), do: {:error, :malformed}
 
   defp verify_metrics_claim(%{"metrics" => patterns}) when is_list(patterns) do
     if Enum.all?(patterns, &is_binary/1), do: :ok, else: {:error, :malformed}
@@ -147,8 +164,8 @@ defmodule Portal.MetricsToken do
     import Ecto.Query
     alias Portal.Safe
 
-    def fetch_active_key! do
-      from(k in "metrics_token_signing_keys", order_by: [desc: k.id], limit: 1, select: k.key)
+    def fetch_active_salt! do
+      from(s in "metrics_token_signing_salts", order_by: [desc: s.id], limit: 1, select: s.salt)
       |> Safe.unscoped()
       |> Safe.one!()
     end

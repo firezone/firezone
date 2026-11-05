@@ -252,7 +252,7 @@ defmodule PortalAPI.OTLPMetricsControllerTest do
   end
 
   defp authorize(conn, account, metrics \\ ["*"]) do
-    put_req_header(conn, "authorization", "Bearer " <> MetricsToken.mint(account, :gateway, metrics))
+    put_req_header(conn, "authorization", "Bearer " <> MetricsToken.mint(account, %Portal.Device{type: :gateway}, metrics))
   end
 
   defp post_metrics(conn, body) do
