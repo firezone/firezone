@@ -124,6 +124,7 @@ impl ClientOnGateway {
         }
 
         // Changing the IP stack of a resource changes which of the 4 IPv4 and 4 IPv6 proxy IPs of a domain a Client assigns.
+        // A well-behaved client never changes these IPs so we can enforce that there must never be more than 4 per IP version.
         let domain_proxy_ips = self
             .permanent_translations
             .iter()
