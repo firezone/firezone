@@ -25,10 +25,12 @@ defmodule PortalAPI.OTLPMetricsController do
          {:ok, request} <- decode(body),
          sanitized = sanitize(request, claims),
          {:ok, body} <- encode(sanitized) do
+      device_type = claims["device_type"]
       forwarded = count_data_points(sanitized)
-      Portal.Telemetry.otlp_ingest_data_points(:filtered, count_data_points(request) - forwarded)
+      filtered = count_data_points(request) - forwarded
+      Portal.Telemetry.otlp_ingest_data_points(:filtered, device_type, filtered)
 
-      forward(conn, body, forwarded)
+      forward(conn, body, device_type, forwarded)
     else
       {:error, :unsupported_media_type} ->
         ProblemDetails.send(conn, 415, "Expected an uncompressed application/x-protobuf body")
@@ -137,24 +139,24 @@ defmodule PortalAPI.OTLPMetricsController do
     end
   end
 
-  defp forward(conn, <<>>, _data_points), do: send_export_response(conn)
+  defp forward(conn, <<>>, _device_type, _data_points), do: send_export_response(conn)
 
-  defp forward(conn, body, data_points) do
+  defp forward(conn, body, device_type, data_points) do
     endpoint = Portal.Config.fetch_env!(:portal, :otlp_metrics_endpoint)
     auth = Portal.Config.fetch_env!(:portal, :otlp_auth)
     req_opts = Portal.Config.fetch_env!(:portal, Portal.OTLP.MetricsExporter)[:req_opts]
 
     case Portal.OTLP.post(endpoint, body, auth, req_opts) do
       :ok ->
-        Portal.Telemetry.otlp_ingest_data_points(:forwarded, data_points)
+        Portal.Telemetry.otlp_ingest_data_points(:forwarded, device_type, data_points)
         send_export_response(conn)
 
       :failed_retryable ->
-        Portal.Telemetry.otlp_ingest_data_points(:failed, data_points)
+        Portal.Telemetry.otlp_ingest_data_points(:failed, device_type, data_points)
         ProblemDetails.send(conn, 503, "Metrics could not be forwarded")
 
       :failed_not_retryable ->
-        Portal.Telemetry.otlp_ingest_data_points(:failed, data_points)
+        Portal.Telemetry.otlp_ingest_data_points(:failed, device_type, data_points)
         ProblemDetails.send(conn, 500, "Metrics could not be forwarded")
     end
   end

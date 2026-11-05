@@ -342,14 +342,20 @@ defmodule Portal.Telemetry do
   end
 
   @doc """
-  Records `count` OTLP metric data points received on `POST /v1/metrics`.
+  Records `count` OTLP metric data points received on `POST /v1/metrics` from a
+  `device_type` (`"client"` or `"gateway"`).
 
   `outcome` is `:forwarded`, `:filtered` (not allowed by the token) or `:failed`
   (the upstream rejected them).
   """
-  @spec otlp_ingest_data_points(:forwarded | :filtered | :failed, non_neg_integer()) :: :ok
-  def otlp_ingest_data_points(outcome, count) when outcome in [:forwarded, :filtered, :failed] do
-    :telemetry.execute([:portal, :otlp_ingest, :data_points], %{count: count}, %{outcome: outcome})
+  @spec otlp_ingest_data_points(:forwarded | :filtered | :failed, String.t(), non_neg_integer()) ::
+          :ok
+  def otlp_ingest_data_points(outcome, device_type, count)
+      when outcome in [:forwarded, :filtered, :failed] do
+    :telemetry.execute([:portal, :otlp_ingest, :data_points], %{count: count}, %{
+      outcome: outcome,
+      device_type: device_type
+    })
   end
 
   defp register_otel_instruments do
@@ -844,7 +850,11 @@ defmodule Portal.Telemetry do
   @doc false
   @spec handle_otlp_ingest_metric(list(), map(), map(), map()) :: :ok
   def handle_otlp_ingest_metric([:portal, :otlp_ingest, :data_points], measurements, metadata, config) do
-    attrs = %{"outcome" => to_string(metadata.outcome), "node_name" => config.node_name}
+    attrs = %{
+      "outcome" => to_string(metadata.outcome),
+      "device.type" => metadata.device_type,
+      "node_name" => config.node_name
+    }
 
     :otel_counter.add(
       :otel_ctx.get_current(),

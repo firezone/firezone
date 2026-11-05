@@ -14,11 +14,12 @@ defmodule Portal.MetricsTokenTest do
 
   describe "mint/2 and verify/1" do
     test "round-trips the account identity and allowed metrics", %{account: account} do
-      token = MetricsToken.mint(account, ["a", "b"])
+      token = MetricsToken.mint(account, :client, ["a", "b"])
 
       assert {:ok, claims} = MetricsToken.verify(token)
       assert claims["account_id"] == account.id
       assert claims["account_slug"] == account.slug
+      assert claims["device_type"] == "client"
       assert claims["metrics"] == ["a", "b"]
       assert claims["exp"] - claims["iat"] == MetricsToken.ttl_seconds()
     end
@@ -51,7 +52,7 @@ defmodule Portal.MetricsTokenTest do
     test "matches metric names against patterns", %{account: account} do
       {:ok, claims} =
         account
-        |> MetricsToken.mint(["connlib.*", "tunnel.error", "*.duration", "a*b*c"])
+        |> MetricsToken.mint(:gateway, ["connlib.*", "tunnel.error", "*.duration", "a*b*c"])
         |> MetricsToken.verify()
 
       for name <- ["connlib.network.packets", "connlib.", "tunnel.error", "dns.duration", "abc", "aXbYc"] do
@@ -64,13 +65,13 @@ defmodule Portal.MetricsTokenTest do
     end
 
     test "* allows every metric", %{account: account} do
-      {:ok, claims} = account |> MetricsToken.mint(["*"]) |> MetricsToken.verify()
+      {:ok, claims} = account |> MetricsToken.mint(:gateway, ["*"]) |> MetricsToken.verify()
 
       assert MetricsToken.allows?(claims, "anything")
     end
 
     test "an empty list allows nothing", %{account: account} do
-      {:ok, claims} = account |> MetricsToken.mint([]) |> MetricsToken.verify()
+      {:ok, claims} = account |> MetricsToken.mint(:gateway, []) |> MetricsToken.verify()
 
       refute MetricsToken.allows?(claims, "connlib.network.packets")
     end
@@ -85,6 +86,14 @@ defmodule Portal.MetricsTokenTest do
       token = sign(key, Map.delete(claims(account), "metrics"))
       assert {:error, :malformed} = MetricsToken.verify(token)
     end
+
+    test "rejects an unknown or missing device type", %{account: account, key: key} do
+      token = sign(key, claims(account, %{"device_type" => "relay"}))
+      assert {:error, :malformed} = MetricsToken.verify(token)
+
+      token = sign(key, Map.delete(claims(account), "device_type"))
+      assert {:error, :malformed} = MetricsToken.verify(token)
+    end
   end
 
   defp claims(account, overrides \\ %{}) do
@@ -92,6 +101,7 @@ defmodule Portal.MetricsTokenTest do
       %{
         "account_id" => account.id,
         "account_slug" => account.slug,
+        "device_type" => "client",
         "metrics" => ["*"],
         "exp" => unix_now() + 60
       },

@@ -3,7 +3,8 @@ defmodule Portal.MetricsToken do
   Mints and verifies the tokens Clients and Gateways present to `POST /v1/metrics`.
 
   A token is an HS256 JWT. It names the account (id and slug) the metrics are
-  attributed to and which metrics may be forwarded. The `metrics` claim is a
+  attributed to, the type of device it was minted for (`"client"` or
+  `"gateway"`) and which metrics may be forwarded. The `metrics` claim is a
   list of metric name patterns in which `*` matches any run of characters, so
   `["*"]` allows every metric. A claim of any other shape is rejected, and an
   empty list allows nothing.
@@ -39,15 +40,17 @@ defmodule Portal.MetricsToken do
   end
 
   @doc """
-  Mints a token for `account` allowing the metrics matching `patterns`.
+  Mints a token for a `device_type` device of `account` allowing the metrics matching `patterns`.
   """
-  @spec mint(Account.t(), [String.t()]) :: String.t()
-  def mint(%Account{} = account, patterns) when is_list(patterns) do
+  @spec mint(Account.t(), :client | :gateway, [String.t()]) :: String.t()
+  def mint(%Account{} = account, device_type, patterns)
+      when device_type in [:client, :gateway] and is_list(patterns) do
     now = DateTime.utc_now() |> DateTime.to_unix()
 
     claims = %{
       "account_id" => account.id,
       "account_slug" => account.slug,
+      "device_type" => Atom.to_string(device_type),
       "metrics" => patterns,
       "iat" => now,
       "exp" => now + @ttl_seconds
@@ -66,6 +69,7 @@ defmodule Portal.MetricsToken do
   def verify(token) when is_binary(token) do
     with {:ok, claims} <- verify_signature(jwk(), token),
          :ok <- verify_exp(claims),
+         :ok <- verify_device_type(claims),
          :ok <- verify_metrics_claim(claims) do
       {:ok, claims}
     end
@@ -129,6 +133,9 @@ defmodule Portal.MetricsToken do
   end
 
   defp verify_exp(_claims), do: {:error, :expired}
+
+  defp verify_device_type(%{"device_type" => type}) when type in ["client", "gateway"], do: :ok
+  defp verify_device_type(_claims), do: {:error, :malformed}
 
   defp verify_metrics_claim(%{"metrics" => patterns}) when is_list(patterns) do
     if Enum.all?(patterns, &is_binary/1), do: :ok, else: {:error, :malformed}

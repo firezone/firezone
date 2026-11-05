@@ -110,7 +110,7 @@ defmodule PortalAPI.OTLPMetricsControllerTest do
       :telemetry.attach(
         handler_id,
         [:portal, :otlp_ingest, :data_points],
-        fn _event, %{count: count}, %{outcome: outcome}, _config ->
+        fn _event, %{count: count}, %{outcome: outcome, device_type: "gateway"}, _config ->
           send(test_pid, {:data_points, self(), outcome, count})
         end,
         nil
@@ -252,7 +252,7 @@ defmodule PortalAPI.OTLPMetricsControllerTest do
   end
 
   defp authorize(conn, account, metrics \\ ["*"]) do
-    put_req_header(conn, "authorization", "Bearer " <> MetricsToken.mint(account, metrics))
+    put_req_header(conn, "authorization", "Bearer " <> MetricsToken.mint(account, :gateway, metrics))
   end
 
   defp post_metrics(conn, body) do
