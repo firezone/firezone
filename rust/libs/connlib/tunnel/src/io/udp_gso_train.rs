@@ -1,4 +1,4 @@
-use std::{mem, net::SocketAddr};
+use std::{mem, net::SocketAddr, num::NonZeroUsize};
 
 use bufferpool::Bytes;
 use ip_packet::{Ecn, IpPacket};
@@ -11,7 +11,7 @@ const MAX_SEGMENT_SIZE: usize =
 
 /// One encrypt job: the datagrams of one GSO send.
 ///
-/// They go to one connection and are all of the same size, except for a shorter last one.
+/// They go to one destination and are all of the same size, except for a shorter last one.
 pub struct UdpGsoTrain {
     src: Option<SocketAddr>,
     dst: SocketAddr,
@@ -21,7 +21,7 @@ pub struct UdpGsoTrain {
     /// As many whole segments as one GSO send can carry to this destination.
     max_len: usize,
     len: usize,
-    packets: Vec<(PendingEncapsulate, IpPacket)>,
+    batches: Vec<(PendingEncapsulate, Vec<IpPacket>)>,
 }
 
 impl UdpGsoTrain {
@@ -34,7 +34,7 @@ impl UdpGsoTrain {
             segment_size: 0,
             max_len: 0,
             len: 0,
-            packets: Vec::new(),
+            batches: Vec::new(),
         }
     }
 
@@ -47,45 +47,62 @@ impl UdpGsoTrain {
         self.src == src && self.dst == dst
     }
 
-    /// Makes room for a datagram of `len` bytes, unless it has to go on a new train.
+    /// Appends as many of the `packets` of `encapsulation` as fit, returning the rest.
     ///
-    /// An empty train takes any datagram and sizes itself for at most `max_packets`.
-    #[inline]
-    pub fn try_reserve(&mut self, ecn: Ecn, len: usize, max_packets: usize) -> bool {
-        if !self.try_append(ecn, len) {
-            return false;
-        }
-
-        if self.packets.is_empty() {
-            self.packets
-                .reserve_exact((self.max_len / self.segment_size).min(max_packets));
-        }
-
-        true
-    }
-
-    /// Appends `packet` of `encapsulation`, which [`Self::try_reserve`] made room for.
-    pub fn push(&mut self, encapsulation: PendingEncapsulate, packet: IpPacket) {
+    /// An empty train takes at least one packet.
+    pub fn extend(
+        &mut self,
+        mut encapsulation: PendingEncapsulate,
+        mut packets: Vec<IpPacket>,
+    ) -> Option<(PendingEncapsulate, Vec<IpPacket>)> {
         debug_assert!(self.is_between(encapsulation.src(), encapsulation.dst()));
 
-        self.packets.push((encapsulation, packet));
+        let Some(full_at) = packets
+            .iter()
+            .position(|p| !self.try_append(p.ecn(), encapsulation.datagram_len(p)))
+        else {
+            self.batches.push((encapsulation, packets));
+
+            return None;
+        };
+        let Some(full_at) = NonZeroUsize::new(full_at) else {
+            return Some((encapsulation, packets));
+        };
+
+        #[expect(
+            clippy::unwrap_in_result,
+            reason = "`None` means that every packet fit"
+        )]
+        let rest = encapsulation
+            .split_off(full_at)
+            .expect("one counter is reserved per packet");
+        let rest = (rest, packets.split_off(full_at.get()));
+        self.batches.push((encapsulation, packets));
+
+        Some(rest)
     }
 
     /// Encrypts the packets of the train back-to-back into one datagram.
     ///
-    /// Packets that fail to encrypt are skipped; returns `None` if none are left.
+    /// Encryption stops at the first packet that fails; returns `None` if none made it.
     pub fn encrypt(mut self) -> Option<DatagramOut> {
         let mut buffer = Bytes::fitting(self.len);
         let datagram = buffer.expose(self.len);
         let mut len = 0;
-        let packets = mem::take(&mut self.packets);
 
-        for (encapsulation, packet) in packets.into_iter().prefetching_with(|(_, packet)| packet) {
-            let end = len + encapsulation.datagram_len(&packet);
+        'batches: for (encapsulation, packets) in mem::take(&mut self.batches) {
+            for result in encapsulation.encrypt_into(
+                packets.iter().prefetching_with(|packet| *packet),
+                &mut datagram[len..],
+            ) {
+                match result {
+                    Ok(datagram_len) => len += datagram_len,
+                    Err(e) => {
+                        tracing::debug!("Failed to encrypt packet: {e}");
 
-            match encapsulation.encrypt_into(&packet, &mut datagram[len..end]) {
-                Ok(()) => len = end,
-                Err(e) => tracing::debug!("Failed to encrypt packet: {e}"),
+                        break 'batches;
+                    }
+                }
             }
         }
         buffer.truncate(len);
@@ -128,8 +145,7 @@ impl UdpGsoTrain {
         DatagramOut {
             src: self.src,
             dst: self.dst,
-            // Skipped packets may leave only the shorter last segment.
-            segment_size: self.segment_size.min(packet.len()),
+            segment_size: self.segment_size,
             packet,
             ecn: self.ecn,
         }
@@ -146,19 +162,19 @@ mod tests {
     fn shorter_segment_seals_train() {
         let mut train = UdpGsoTrain::new(None, DST);
 
-        assert!(train.try_reserve(Ecn::NonEct, 6, 1));
-        assert!(train.try_reserve(Ecn::NonEct, 6, 1));
-        assert!(train.try_reserve(Ecn::NonEct, 3, 1));
-        assert!(!train.try_reserve(Ecn::NonEct, 3, 1));
+        assert!(train.try_append(Ecn::NonEct, 6));
+        assert!(train.try_append(Ecn::NonEct, 6));
+        assert!(train.try_append(Ecn::NonEct, 3));
+        assert!(!train.try_append(Ecn::NonEct, 3));
     }
 
     #[test]
     fn rejects_other_ecn_and_longer_segment() {
         let mut train = UdpGsoTrain::new(None, DST);
 
-        assert!(train.try_reserve(Ecn::NonEct, 6, 1));
-        assert!(!train.try_reserve(Ecn::Ect0, 6, 1));
-        assert!(!train.try_reserve(Ecn::NonEct, 7, 1));
+        assert!(train.try_append(Ecn::NonEct, 6));
+        assert!(!train.try_append(Ecn::Ect0, 6));
+        assert!(!train.try_append(Ecn::NonEct, 7));
     }
 
     #[test]
@@ -175,9 +191,9 @@ mod tests {
         let mut train = UdpGsoTrain::new(None, DST);
 
         for _ in 0..segments_per_send {
-            assert!(train.try_reserve(Ecn::NonEct, segment_size, 1));
+            assert!(train.try_append(Ecn::NonEct, segment_size));
         }
-        assert!(!train.try_reserve(Ecn::NonEct, segment_size, 1));
+        assert!(!train.try_append(Ecn::NonEct, segment_size));
     }
 
     const DST: SocketAddr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 1111));
