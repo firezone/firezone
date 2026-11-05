@@ -307,14 +307,14 @@ pub struct DecryptedBatch {
     pub(crate) probes: sanstun::DecryptedBatch<Probe>,
 }
 
-type Committed = std::result::Result<sanstun::Committed<Result<IpPacket>>, sanstun::Error>;
+type CommittedPacket = std::result::Result<sanstun::Committed<Result<IpPacket>>, sanstun::Error>;
 
 /// The packets of a [`DecryptedBatch`] committed to their connection, in order.
 ///
 /// Yields `Ok(None)` for a packet that was handled internally, for example, a keepalive.
 pub struct CommittedBatch<TId> {
     cid: TId,
-    packets: Prefetching<sanstun::CommittedBatch<Result<IpPacket>>, fn(&Committed) -> &[u8]>,
+    packets: Prefetching<sanstun::CommittedBatch<Result<IpPacket>>, fn(&CommittedPacket) -> &[u8]>,
 }
 
 impl<TId: Copy> CommittedBatch<TId> {
@@ -359,7 +359,7 @@ impl<TId: fmt::Display> Iterator for CommittedBatch<TId> {
 
 impl<TId: fmt::Display> ExactSizeIterator for CommittedBatch<TId> {}
 
-fn packet_bytes(committed: &Committed) -> &[u8] {
+fn packet_bytes(committed: &CommittedPacket) -> &[u8] {
     match committed {
         Ok(sanstun::Committed::Data {
             buffer: Ok(packet), ..

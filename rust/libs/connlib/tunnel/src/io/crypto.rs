@@ -64,12 +64,12 @@ enum Job {
     Decrypt(DecryptJob),
 }
 
-/// Packets decrypted by one decrypt job.
+/// The batches decrypted by one decrypt job.
 #[derive(Default)]
-pub struct DecryptedIpPackets(Vec<DecryptedBatch>);
+pub struct DecryptedJob(Vec<DecryptedBatch>);
 
-impl DecryptedIpPackets {
-    /// Moves out every decrypted packet, in the order it was received.
+impl DecryptedJob {
+    /// Moves out every decrypted batch, in the order it was received.
     pub fn drain(&mut self) -> impl Iterator<Item = DecryptedBatch> + '_ {
         self.0.drain(..)
     }
@@ -77,12 +77,12 @@ impl DecryptedIpPackets {
 
 /// The decrypt jobs that were done by the time [`Decrypting::poll_next`] looked.
 #[derive(Default)]
-pub struct DecryptedJobs(SmallVec<[DecryptedIpPackets; MAX_JOBS_IN_FLIGHT]>);
+pub struct DecryptedJobs(SmallVec<[DecryptedJob; MAX_JOBS_IN_FLIGHT]>);
 
 impl DecryptedJobs {
-    /// Moves out every decrypted packet, in the order it was received.
+    /// Moves out every decrypted batch, in the order it was received.
     pub fn drain(&mut self) -> impl Iterator<Item = DecryptedBatch> + '_ {
-        self.0.iter_mut().flat_map(DecryptedIpPackets::drain)
+        self.0.iter_mut().flat_map(DecryptedJob::drain)
     }
 }
 
@@ -312,12 +312,12 @@ impl DecryptBatches<'_> {
 /// The decrypt jobs handed to the workers, in submission order.
 #[derive(Default)]
 pub struct Decrypting {
-    jobs: FuturesOrdered<oneshot::Receiver<DecryptedIpPackets>>,
+    jobs: FuturesOrdered<oneshot::Receiver<DecryptedJob>>,
 }
 
 impl Decrypting {
     /// Queues a job that completes once the returned sender sends its packets.
-    pub(crate) fn add_job(&mut self) -> oneshot::Sender<DecryptedIpPackets> {
+    pub(crate) fn add_job(&mut self) -> oneshot::Sender<DecryptedJob> {
         let (tx, rx) = oneshot::channel();
         self.jobs.push_back(rx);
 
@@ -344,7 +344,7 @@ impl Decrypting {
         Poll::Ready(decrypted)
     }
 
-    fn poll_job(&mut self, cx: &mut Context<'_>) -> Poll<DecryptedIpPackets> {
+    fn poll_job(&mut self, cx: &mut Context<'_>) -> Poll<DecryptedJob> {
         loop {
             let Some(result) = ready!(self.jobs.poll_next_unpin(cx)) else {
                 return Poll::Pending;
@@ -367,7 +367,7 @@ struct EncryptJob {
 /// The batches of one train, and where to hand the decrypted packets.
 struct DecryptJob {
     train: UdpGroTrain,
-    decrypted: oneshot::Sender<DecryptedIpPackets>,
+    decrypted: oneshot::Sender<DecryptedJob>,
 }
 
 /// How many crypto workers to spawn: up to half of the cores.
@@ -423,5 +423,5 @@ fn encrypt(EncryptJob { train, encrypted }: EncryptJob, packet_counter: &Counter
 
 fn decrypt(DecryptJob { train, decrypted }: DecryptJob) {
     // We stopped if the receiver is gone; the channel for the next job is closed too.
-    let _ = decrypted.send(DecryptedIpPackets(train.decrypt()));
+    let _ = decrypted.send(DecryptedJob(train.decrypt()));
 }
