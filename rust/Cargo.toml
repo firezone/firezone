@@ -193,7 +193,6 @@ opentelemetry = "0.33.1"
 opentelemetry-http = "0.33.1"
 opentelemetry-otlp = "0.33.1"
 opentelemetry-proto = { version = "0.33.1", default-features = false }
-opentelemetry-stdout = "0.33.1"
 opentelemetry_sdk = "0.33.1"
 os_info = { version = "3.15.0", default-features = false }
 otel-attributes = { path = "libs/otel-attributes" }

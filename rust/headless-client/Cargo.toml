@@ -24,7 +24,6 @@ known-dirs = { workspace = true }
 logging = { workspace = true }
 mimalloc = { workspace = true }
 opentelemetry-otlp = { workspace = true, features = ["metrics", "grpc-tonic"] }
-opentelemetry-stdout = { workspace = true, features = ["metrics"] }
 otel-attributes = { workspace = true }
 otel-metrics-export = { workspace = true }
 phoenix-channel = { workspace = true }

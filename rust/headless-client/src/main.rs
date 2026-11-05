@@ -119,16 +119,7 @@ struct Cli {
     #[arg(long, env = "FIREZONE_NO_TELEMETRY", default_value_t = false)]
     no_telemetry: bool,
 
-    /// Dump internal metrics to stdout every 60s.
-    ///
-    /// This configuration option is private API and has no stability guarantees.
-    /// It may be removed / changed anytime.
-    #[arg(long, hide = true, env = "FIREZONE_METRICS")]
-    metrics: Option<MetricsExporter>,
-
-    /// Send metrics to a custom OTLP collector.
-    ///
-    /// By default, Firezone's hosted OTLP collector is used.
+    /// Also send metrics to an OTLP collector over gRPC.
     ///
     /// This configuration option is private API and has no stability guarantees.
     /// It may be removed / changed anytime.
@@ -168,12 +159,6 @@ struct Cli {
     /// spooling and uploading them is always controlled by the portal.
     #[arg(long, env = "FIREZONE_FLOW_LOGS", default_value_t = false)]
     flow_logs: bool,
-}
-
-#[derive(Debug, Clone, Copy, clap::ValueEnum)]
-enum MetricsExporter {
-    Stdout,
-    OtelCollector,
 }
 
 impl Cli {
@@ -420,20 +405,13 @@ fn try_main() -> Result<()> {
             otel_attributes::service_version!(),
         ]);
 
-        let otlp_exporter = match (cli.metrics, cli.otlp_grpc_endpoint) {
-            (Some(MetricsExporter::OtelCollector), Some(endpoint)) => {
-                Some(tonic_otlp_exporter(endpoint)?)
-            }
-            _ => None,
-        };
+        let otlp_exporter = cli.otlp_grpc_endpoint.map(tonic_otlp_exporter).transpose()?;
         otel_metrics_export::install_meter_provider(|builder| {
             let builder = builder.with_resource(resource);
 
-            match (cli.metrics, otlp_exporter) {
-                (Some(MetricsExporter::Stdout), _) => builder
-                    .with_periodic_exporter(opentelemetry_stdout::MetricExporter::default()),
-                (_, Some(exporter)) => builder.with_periodic_exporter(exporter),
-                (_, None) => builder,
+            match otlp_exporter {
+                Some(exporter) => builder.with_periodic_exporter(exporter),
+                None => builder,
             }
         });
 
