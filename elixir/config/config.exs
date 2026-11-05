@@ -235,6 +235,15 @@ config :portal, Portal.OTLP.MetricsExporter,
     max_retries: 2
   ]
 
+config :portal, Portal.OTLP.TracesExporter,
+  sample_ratio: 0.01,
+  req_opts: [
+    connect_options: [timeout: 1_000],
+    receive_timeout: 5_000,
+    retry: :transient,
+    max_retries: 2
+  ]
+
 config :portal, Portal.SlugRegistry.AzureTable,
   req_opts: [
     connect_options: [timeout: 2_000],
@@ -645,9 +654,7 @@ config :mime, :types, %{
   "application/x-x509-ca-cert" => ["crt", "cer", "der"]
 }
 
-config :opentelemetry,
-  span_processor: :batch,
-  traces_exporter: :none
+config :opentelemetry, processors: []
 
 config :logger,
   level: System.get_env("LOG_LEVEL", "info") |> parse_log_level.()
