@@ -244,14 +244,12 @@ defmodule Portal.Config.Definitions do
   )
 
   @doc """
-  The base URL clients and gateways POST OTLP metrics to (at `v1/metrics`).
+  The URL Clients and Gateways POST OTLP metrics to, e.g. `https://otlp.firezone.dev/v1/metrics`.
   """
-  defconfig(:otlp_metrics_api_url, :string,
-    default: "https://otlp.firezone.dev/",
+  defconfig(:otlp_metrics_ingest_url, :string,
+    default: "https://otlp.firezone.dev/v1/metrics",
     changeset: fn changeset, key ->
-      changeset
-      |> Portal.Changeset.validate_uri(key, require_trailing_slash: true)
-      |> Portal.Changeset.normalize_url(key)
+      Portal.Changeset.validate_uri(changeset, key, schemes: ["https"])
     end
   )
 

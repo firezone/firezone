@@ -889,7 +889,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
   # A `nil` token means metrics export is off.
   defp metrics_config(account, gateway) do
     %{
-      api_url: Portal.Config.fetch_env!(:portal, :otlp_metrics_api_url),
+      endpoint: Portal.Config.fetch_env!(:portal, :otlp_metrics_ingest_url),
       export_interval_secs: account.metrics_export_interval_secs,
       patterns: account.metrics_export || [],
       token:

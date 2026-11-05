@@ -547,7 +547,7 @@ config :portal,
   flow_logs_upload_interval_secs: 60
 
 config :portal,
-  otlp_metrics_api_url: "https://otlp.firezone.dev/",
+  otlp_metrics_ingest_url: "https://otlp.firezone.dev/v1/metrics",
   otlp_metrics_endpoint: nil
 
 config :portal, country_code_blocklist: []

@@ -252,7 +252,7 @@ if config_env() == :prod do
     flow_logs_upload_interval_secs: env_var_to_config!(:flow_logs_upload_interval_secs)
 
   config :portal,
-    otlp_metrics_api_url: env_var_to_config!(:otlp_metrics_api_url),
+    otlp_metrics_ingest_url: env_var_to_config!(:otlp_metrics_ingest_url),
     otlp_metrics_endpoint: otlp_metrics_endpoint,
     otlp_auth: otlp_auth
 
