@@ -115,11 +115,11 @@ defmodule PortalAPI.Client.Channel.Shared do
         protocol_version: protocol_version(socket)
       )
 
-    # Hydrate inbound policy_authorizations cache so the channel can react to filter
+    # Hydrate the policy_authorizations caches so the channel can react to filter
     # changes and policy_authorization deletions for resources another client has been
     # authorized to access via this one.
-    authorizations_cache = Cache.Client.Authorizations.hydrate(socket.assigns.client)
-    outbound_authorizations_cache = Cache.Client.Authorizations.hydrate_outbound(socket.assigns.client)
+    {authorizations_cache, outbound_authorizations_cache} =
+      Cache.Client.Authorizations.hydrate(socket.assigns.client)
 
     # Initialize relays and subscribe to global relay presence
     {:ok, relays} = select_relays(socket)

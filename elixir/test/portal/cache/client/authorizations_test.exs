@@ -16,7 +16,7 @@ defmodule Portal.Cache.Client.AuthorizationsTest do
       actor = actor_fixture(account: account)
       client = client_fixture(account: account, actor: actor)
 
-      assert Authorizations.hydrate(client) == %{}
+      assert Authorizations.hydrate(client) == {%{}, %{}}
     end
 
     test "loads a policy_authorization keyed by {client, resource}" do
@@ -34,7 +34,7 @@ defmodule Portal.Cache.Client.AuthorizationsTest do
           gateway: target_client
         )
 
-      cache = Authorizations.hydrate(target_client)
+      {cache, _outbound} = Authorizations.hydrate(target_client)
 
       key = {dump!(initiating_client.id), dump!(policy_authorization.resource_id)}
 
@@ -75,7 +75,7 @@ defmodule Portal.Cache.Client.AuthorizationsTest do
           expires_at: DateTime.add(now, 7200, :second)
         )
 
-      cache = Authorizations.hydrate(target_client)
+      {cache, _outbound} = Authorizations.hydrate(target_client)
 
       key = {dump!(initiating_client.id), dump!(longer.resource_id)}
 
@@ -98,7 +98,8 @@ defmodule Portal.Cache.Client.AuthorizationsTest do
         gateway: target_client
       )
 
-      assert Authorizations.hydrate(target_client) == %{}
+      {inbound, _outbound} = Authorizations.hydrate(target_client)
+      assert inbound == %{}
     end
 
     test "ignores policy_authorizations targeting other devices" do
@@ -112,11 +113,10 @@ defmodule Portal.Cache.Client.AuthorizationsTest do
       # Default fixture targets a gateway, not target_client
       policy_authorization_fixture(account: account, client: initiating_client)
 
-      assert Authorizations.hydrate(target_client) == %{}
+      {inbound, _outbound} = Authorizations.hydrate(target_client)
+      assert inbound == %{}
     end
-  end
 
-  describe "hydrate_outbound/1" do
     test "loads an authorization to another client keyed by {receiving client, resource}" do
       account = account_fixture()
       initiating_client = client_fixture(account: account)
@@ -129,7 +129,9 @@ defmodule Portal.Cache.Client.AuthorizationsTest do
           gateway: target_client
         )
 
-      cache = Authorizations.hydrate_outbound(initiating_client)
+      {inbound, cache} = Authorizations.hydrate(initiating_client)
+
+      assert inbound == %{}
 
       key = {dump!(target_client.id), dump!(policy_authorization.resource_id)}
 
@@ -140,16 +142,16 @@ defmodule Portal.Cache.Client.AuthorizationsTest do
              }
     end
 
-    test "ignores authorizations to gateways" do
+    test "ignores outbound authorizations to gateways" do
       account = account_fixture()
       initiating_client = client_fixture(account: account)
 
       policy_authorization_fixture(account: account, client: initiating_client)
 
-      assert Authorizations.hydrate_outbound(initiating_client) == %{}
+      assert Authorizations.hydrate(initiating_client) == {%{}, %{}}
     end
 
-    test "ignores expired authorizations and inbound authorizations" do
+    test "keeps inbound authorizations out of the outbound cache" do
       account = account_fixture()
       client = client_fixture(account: account)
       peer_client = client_fixture(account: account)
@@ -157,7 +159,9 @@ defmodule Portal.Cache.Client.AuthorizationsTest do
       expired_policy_authorization_fixture(account: account, client: client, gateway: peer_client)
       policy_authorization_fixture(account: account, client: peer_client, gateway: client)
 
-      assert Authorizations.hydrate_outbound(client) == %{}
+      {inbound, outbound} = Authorizations.hydrate(client)
+      assert map_size(inbound) == 1
+      assert outbound == %{}
     end
   end
 
