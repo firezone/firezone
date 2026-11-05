@@ -13,10 +13,8 @@ use bin_shared::{
 use clap::Parser;
 
 use opentelemetry_otlp::WithExportConfig;
-use opentelemetry_sdk::metrics::SdkMeterProvider;
 use phoenix_channel::LoginUrl;
 use phoenix_channel::get_user_agent;
-use telemetry::SentryMeterProvider;
 use tunnel::GatewayTunnel;
 
 use clock::Clock;
@@ -230,42 +228,19 @@ async fn try_main(cli: Cli) -> Result<()> {
         telemetry::otel::service_instance_id(firezone_id.clone()),
     ]);
 
-    if let Some(backend) = cli.metrics {
-        match (backend, cli.otlp_grpc_endpoint) {
-            (MetricsExporter::Sentry, _) => {
-                // Sentry has name and version already configured via the global SDK parameters.
-
-                opentelemetry::global::set_meter_provider(metrics_export::meter_provider(
-                    SentryMeterProvider::default(),
-                ));
-            }
-            (MetricsExporter::Stdout, _) => {
-                opentelemetry::global::set_meter_provider(metrics_export::meter_provider(
-                    SdkMeterProvider::builder()
-                        .with_periodic_exporter(opentelemetry_stdout::MetricExporter::default())
-                        .with_resource(resource.clone())
-                        .build(),
-                ))
-            }
-            (MetricsExporter::OtelCollector, Some(endpoint)) => {
-                opentelemetry::global::set_meter_provider(metrics_export::meter_provider(
-                    SdkMeterProvider::builder()
-                        .with_periodic_exporter(tonic_otlp_exporter(endpoint)?)
-                        .with_resource(resource.clone())
-                        .build(),
-                ))
-            }
-            (MetricsExporter::OtelCollector, None) => {
-                opentelemetry::global::set_meter_provider(metrics_export::meter_provider(
-                    SdkMeterProvider::builder()
-                        .with_resource(resource.clone())
-                        .build(),
-                ))
-            }
+    let meter_provider = metrics_export::meter_provider_builder().with_resource(resource);
+    let meter_provider = match (cli.metrics, cli.otlp_grpc_endpoint) {
+        (Some(MetricsExporter::Stdout), _) => {
+            meter_provider.with_periodic_exporter(opentelemetry_stdout::MetricExporter::default())
         }
-    }
+        (Some(MetricsExporter::OtelCollector), Some(endpoint)) => {
+            meter_provider.with_periodic_exporter(tonic_otlp_exporter(endpoint)?)
+        }
+        (Some(MetricsExporter::OtelCollector), None) | (None, _) => meter_provider,
+    };
+    opentelemetry::global::set_meter_provider(meter_provider.build());
 
-    let metrics_exporter = metrics_export::Exporter::spawn(resource, Arc::new(tcp_socket_factory))
+    let metrics_exporter = metrics_export::Exporter::spawn(Arc::new(tcp_socket_factory))
         .context("Failed to spawn metrics exporter")?;
 
     let login = LoginUrl::gateway(
@@ -456,7 +431,7 @@ struct Cli {
     ///
     /// This configuration option is private API and has no stability guarantees.
     /// It may be removed / changed anytime.
-    #[arg(long, hide = true, env = "FIREZONE_METRICS", default_value = "sentry")]
+    #[arg(long, hide = true, env = "FIREZONE_METRICS")]
     metrics: Option<MetricsExporter>,
 
     /// Send metrics to a custom OTLP collector.
@@ -511,7 +486,6 @@ impl fmt::Display for LogFormat {
 enum MetricsExporter {
     Stdout,
     OtelCollector,
-    Sentry,
 }
 
 impl Cli {

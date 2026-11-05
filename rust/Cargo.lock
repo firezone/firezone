@@ -2647,7 +2647,6 @@ dependencies = [
  "opentelemetry",
  "opentelemetry-otlp",
  "opentelemetry-stdout",
- "opentelemetry_sdk",
  "otel-attributes",
  "otel-instruments",
  "phoenix-channel",
@@ -2780,7 +2779,6 @@ dependencies = [
  "opentelemetry",
  "opentelemetry-otlp",
  "opentelemetry-stdout",
- "opentelemetry_sdk",
  "otel-attributes",
  "phoenix-channel",
  "rpassword",
@@ -5808,7 +5806,6 @@ dependencies = [
  "rand 0.9.4",
  "thiserror 2.0.21",
  "tokio",
- "tokio-stream",
 ]
 
 [[package]]
@@ -8384,7 +8381,6 @@ dependencies = [
  "opentelemetry",
  "opentelemetry_sdk",
  "parking_lot",
- "rand 0.10.3",
  "sentry",
  "serde",
  "serde_json",

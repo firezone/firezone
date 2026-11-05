@@ -1,9 +1,8 @@
 //! Exports OpenTelemetry metrics to the portal's OTLP/HTTP endpoint.
 //!
-//! [`meter_provider`] wraps the provider a binary installs globally so that its
-//! instruments also record into an SDK pipeline owned by this crate. An
-//! [`Exporter`] collects from that pipeline on the portal's interval and POSTs
-//! the result with the portal's token, on its own thread.
+//! Binaries install a meter provider built from [`meter_provider_builder`]. An
+//! [`Exporter`] collects from its reader on the portal's interval and POSTs the
+//! result with the portal's token, on its own thread.
 
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
@@ -21,13 +20,12 @@ use bytes::Bytes;
 use futures::future::{Either, select};
 use http::{StatusCode, header};
 use http_client::{HttpClient, TlsConfig};
-use opentelemetry_sdk::Resource;
 use secrecy::{ExposeSecret as _, SecretString};
 use socket_factory::{SocketFactory, TcpSocket};
 use tokio::sync::watch;
 use url::{Origin, Url};
 
-pub use pipeline::{TeeMeterProvider, meter_provider};
+pub use pipeline::meter_provider_builder;
 
 const EXPORT_PATH: &str = "v1/metrics";
 const MIN_EXPORT_INTERVAL: Duration = Duration::from_secs(10);
@@ -42,12 +40,7 @@ pub struct Exporter {
 
 impl Exporter {
     /// Spawns the export thread, which stays idle until [`Exporter::configure`] provides a token.
-    ///
-    /// `resource` describes this device in every export.
-    pub fn spawn(
-        resource: Resource,
-        socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
-    ) -> io::Result<Self> {
+    pub fn spawn(socket_factory: Arc<dyn SocketFactory<TcpSocket>>) -> io::Result<Self> {
         let (config, rx) = watch::channel(None);
 
         std::thread::Builder::new()
@@ -64,8 +57,7 @@ impl Exporter {
                     }
                 };
 
-                runtime.block_on(run(rx, resource, socket_factory));
-                pipeline::set_recording(false);
+                runtime.block_on(run(rx, socket_factory));
             })?;
 
         Ok(Self { config })
@@ -121,7 +113,6 @@ impl Config {
 
 async fn run(
     mut config: watch::Receiver<Option<Config>>,
-    resource: Resource,
     socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
 ) {
     let mut connection = Connection {
@@ -133,7 +124,6 @@ async fn run(
 
     loop {
         let Some(current) = config.borrow_and_update().clone() else {
-            pipeline::set_recording(false);
             pipeline::discard();
 
             if config.changed().await.is_err() {
@@ -143,8 +133,6 @@ async fn run(
             last_export = Instant::now();
             continue;
         };
-
-        pipeline::set_recording(true);
 
         let deadline = (last_export + current.interval).max(retry_at);
 
@@ -156,7 +144,7 @@ async fn run(
 
         last_export = Instant::now();
 
-        let response = match export(&current, &resource, &mut connection).await {
+        let response = match export(&current, &mut connection).await {
             Ok(Some(response)) => response,
             Ok(None) => continue,
             Err(e) => {
@@ -210,10 +198,9 @@ async fn wait_until(deadline: Instant, config: &mut watch::Receiver<Option<Confi
 /// Returns `None` if nothing was recorded.
 async fn export(
     config: &Config,
-    resource: &Resource,
     connection: &mut Connection,
 ) -> Result<Option<http::Response<Bytes>>> {
-    let Some(body) = pipeline::collect(resource)? else {
+    let Some(body) = pipeline::collect()? else {
         return Ok(None);
     };
 

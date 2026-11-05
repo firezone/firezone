@@ -20,7 +20,7 @@ use std::{
     fmt,
     net::IpAddr,
     path::PathBuf,
-    sync::{Arc, OnceLock},
+    sync::{Arc, Once, OnceLock},
     time::Duration,
 };
 
@@ -633,6 +633,19 @@ fn connect(
 
     install_rustls_crypto_provider();
 
+    static METER_PROVIDER: Once = Once::new();
+    METER_PROVIDER.call_once(|| {
+        opentelemetry::global::set_meter_provider(
+            metrics_export::meter_provider_builder()
+                .with_resource(telemetry::otel::default_resource_with([
+                    KeyValue::new("service.name", platform::COMPONENT),
+                    KeyValue::new("service.version", platform::VERSION),
+                    telemetry::otel::service_instance_id(device_id.clone()),
+                ]))
+                .build(),
+        )
+    });
+
     // Fail loudly rather than run a session with no logs and no flow-log spool.
     let flow_logs_dir = LOGGER
         .get()
@@ -687,15 +700,8 @@ fn connect(
         uploader
     });
 
-    let metrics_exporter = metrics_export::Exporter::spawn(
-        telemetry::otel::default_resource_with([
-            KeyValue::new("service.name", platform::COMPONENT),
-            KeyValue::new("service.version", platform::VERSION),
-            telemetry::otel::service_instance_id(device_id.clone()),
-        ]),
-        tcp_socket_factory.clone(),
-    )
-    .context("Failed to spawn metrics exporter")?;
+    let metrics_exporter = metrics_export::Exporter::spawn(tcp_socket_factory.clone())
+        .context("Failed to spawn metrics exporter")?;
 
     let (session, events) = client_shared::Session::connect(
         tcp_socket_factory,
@@ -726,10 +732,6 @@ fn start_telemetry_inner(tcp: Arc<dyn SocketFactory<TcpSocket>>) {
 
     telemetry::configure(tcp);
     telemetry::start("entrypoint", RELEASE, platform::DSN);
-
-    opentelemetry::global::set_meter_provider(metrics_export::meter_provider(
-        telemetry::SentryMeterProvider::default(),
-    ));
 }
 
 #[uniffi::export]

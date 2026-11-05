@@ -17,7 +17,6 @@ use clap::Parser;
 use futures::StreamExt as _;
 use ip_network::IpNetwork;
 use opentelemetry_otlp::WithExportConfig as _;
-use opentelemetry_sdk::metrics::SdkMeterProvider;
 use phoenix_channel::PhoenixChannel;
 use phoenix_channel::get_user_agent;
 use phoenix_channel::{DeviceInfo, LoginUrl};
@@ -28,7 +27,7 @@ use std::{
     sync::Arc,
     time::Duration,
 };
-use telemetry::{SentryMeterProvider, analytics, otel};
+use telemetry::{analytics, otel};
 use tokio::time::Instant;
 use x509_keystore::ValidationError;
 
@@ -124,7 +123,7 @@ struct Cli {
     ///
     /// This configuration option is private API and has no stability guarantees.
     /// It may be removed / changed anytime.
-    #[arg(long, hide = true, env = "FIREZONE_METRICS", default_value = "sentry")]
+    #[arg(long, hide = true, env = "FIREZONE_METRICS")]
     metrics: Option<MetricsExporter>,
 
     /// Send metrics to a custom OTLP collector.
@@ -175,7 +174,6 @@ struct Cli {
 enum MetricsExporter {
     Stdout,
     OtelCollector,
-    Sentry,
 }
 
 impl Cli {
@@ -423,38 +421,16 @@ fn try_main() -> Result<()> {
             otel::service_instance_id(firezone_id.clone()),
         ]);
 
-        if let Some(backend) = cli.metrics {
-            match (backend, cli.otlp_grpc_endpoint) {
-                (MetricsExporter::Sentry, _) => {
-                    opentelemetry::global::set_meter_provider(metrics_export::meter_provider(
-                        SentryMeterProvider::default(),
-                    ));
-                }
-                (MetricsExporter::Stdout, _) => {
-                    opentelemetry::global::set_meter_provider(metrics_export::meter_provider(
-                        SdkMeterProvider::builder()
-                            .with_periodic_exporter(opentelemetry_stdout::MetricExporter::default())
-                            .with_resource(resource.clone())
-                            .build(),
-                    ))
-                }
-                (MetricsExporter::OtelCollector, Some(endpoint)) => {
-                    opentelemetry::global::set_meter_provider(metrics_export::meter_provider(
-                        SdkMeterProvider::builder()
-                            .with_periodic_exporter(tonic_otlp_exporter(endpoint)?)
-                            .with_resource(resource.clone())
-                            .build(),
-                    ))
-                }
-                (MetricsExporter::OtelCollector, None) => {
-                    opentelemetry::global::set_meter_provider(metrics_export::meter_provider(
-                        SdkMeterProvider::builder()
-                            .with_resource(resource.clone())
-                            .build(),
-                    ))
-                }
+        let meter_provider = metrics_export::meter_provider_builder().with_resource(resource);
+        let meter_provider = match (cli.metrics, cli.otlp_grpc_endpoint) {
+            (Some(MetricsExporter::Stdout), _) => meter_provider
+                .with_periodic_exporter(opentelemetry_stdout::MetricExporter::default()),
+            (Some(MetricsExporter::OtelCollector), Some(endpoint)) => {
+                meter_provider.with_periodic_exporter(tonic_otlp_exporter(endpoint)?)
             }
-        }
+            (Some(MetricsExporter::OtelCollector), None) | (None, _) => meter_provider,
+        };
+        opentelemetry::global::set_meter_provider(meter_provider.build());
 
         // The Headless Client will bail out here if there's no Internet, because `PhoenixChannel` will try to
         // resolve the portal host and fail. This is intentional behavior. The Headless Client should always be running under a manager like `systemd` or Windows' Service Controller,
@@ -479,7 +455,7 @@ fn try_main() -> Result<()> {
         }
 
         let metrics_exporter =
-            metrics_export::Exporter::spawn(resource, Arc::new(tcp_socket_factory))
+            metrics_export::Exporter::spawn(Arc::new(tcp_socket_factory))
                 .context("Failed to spawn metrics exporter")?;
 
         let (session, mut event_stream) = client_shared::Session::connect(
