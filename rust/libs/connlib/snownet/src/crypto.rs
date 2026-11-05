@@ -228,10 +228,6 @@ impl<'n> DecapsulateBatch<'n> {
             return false;
         };
 
-        if data.tunnel_id() != self.tunnel {
-            return false;
-        }
-
         self.batch.push(data).is_ok()
     }
 
@@ -273,10 +269,7 @@ impl PendingDecapsulate {
     ///
     /// Commit the result with [`Node::commit_decrypted`](crate::Node::commit_decrypted).
     pub fn decrypt<'a>(self, segments: impl IntoIterator<Item = &'a [u8]>) -> DecryptedBatch {
-        let header_len = match self.channel {
-            Some(_) => crate::channel_data::HEADER_LEN,
-            None => 0,
-        };
+        let header_len = channel_data_overhead(self.channel);
         // Each relayed segment was decoded as channel data before it joined the batch.
         let messages = segments
             .into_iter()
