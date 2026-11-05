@@ -32,6 +32,7 @@ export default function TextSetting({
   const [draft, setDraft] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const lastSaved = useRef<string | null>(null);
+  const [savedAt, setSavedAt] = useState<number | null>(null);
 
   const updateDraft = (draft: string | null) => {
     setDraft(draft);
@@ -40,10 +41,22 @@ export default function TextSetting({
 
   // The saved value comes back after a save, possibly normalised, and replaces the draft.
   useEffect(() => {
+    if (lastSaved.current !== null) {
+      setSavedAt(Date.now());
+    }
     updateDraft(null);
     setError(null);
     lastSaved.current = null;
   }, [value]);
+
+  useEffect(() => {
+    if (savedAt === null) {
+      return;
+    }
+
+    const timeout = setTimeout(() => setSavedAt(null), 2000);
+    return () => clearTimeout(timeout);
+  }, [savedAt]);
 
   const commit = () => {
     if (draft === null || draft === value || draft === lastSaved.current) {
@@ -73,6 +86,7 @@ export default function TextSetting({
       inputId={inputId}
       label={label}
       managed={managed}
+      saved={savedAt !== null}
     >
       <ManagedTextInput
         aria-describedby={error ? errorId : undefined}
