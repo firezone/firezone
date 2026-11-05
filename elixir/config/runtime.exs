@@ -1,6 +1,5 @@
 import Config
 
-otlp_endpoint = Portal.Config.env_var_to_config!(:otlp_endpoint)
 otlp_metrics_endpoint = Portal.Config.env_var_to_config!(:otlp_metrics_endpoint)
 otlp_traces_endpoint = Portal.Config.env_var_to_config!(:otlp_traces_endpoint)
 
@@ -709,7 +708,7 @@ if config_env() == :prod do
       ]
   end
 
-  if otlp_endpoint || otlp_metrics_endpoint || otlp_traces_endpoint do
+  if otlp_metrics_endpoint || otlp_traces_endpoint do
     config :opentelemetry,
       resource_detectors: [:otel_resource_env_var, :otel_resource_app_env],
       resource: %{
@@ -730,15 +729,13 @@ if config_env() == :prod do
       }
   end
 
-  if otlp_endpoint do
-    config :opentelemetry_exporter,
-      otlp_protocol: :http_protobuf,
-      otlp_traces_protocol: :http_protobuf,
-      otlp_endpoint: otlp_endpoint
+  if otlp_traces_endpoint do
+    config :opentelemetry,
+      processors: [
+        {:otel_batch_processor,
+         %{exporter: {Portal.OTLP.TracesExporter, %{endpoint: otlp_traces_endpoint, auth: otlp_auth}}}}
+      ]
   end
-
-  config :opentelemetry,
-    processors: Portal.OTLP.trace_processors(otlp_endpoint, otlp_traces_endpoint, otlp_auth)
 
   config :portal, Portal.Telemetry,
     metrics_reporter: env_var_to_config!(:telemetry_metrics_reporter)
