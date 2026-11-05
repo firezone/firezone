@@ -3404,18 +3404,13 @@ defmodule PortalAPI.Client.ChannelTest do
 
       on_exit(fn -> :telemetry.detach(handler_id) end)
 
-      log =
-        capture_log(fn ->
-          push(socket, "new_client_ice_candidates", %{
-            "candidates" => [oversized, 1 | valid],
-            "client_id" => target_client.id
-          })
+      push(socket, "new_client_ice_candidates", %{
+        "candidates" => [oversized, 1 | valid],
+        "client_id" => target_client.id
+      })
 
-          assert_receive {:client_ice_candidates, _sending_client_id, candidates}, 200
-          assert candidates == Enum.take(valid, 64)
-        end)
-
-      assert log =~ "Dropped oversized ICE candidates"
+      assert_receive {:client_ice_candidates, _sending_client_id, candidates}, 200
+      assert candidates == Enum.take(valid, 64)
 
       assert_receive {:ice_candidates_dropped, %{count: 1},
                       %{sender: :client, reason: :oversized}}

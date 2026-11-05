@@ -232,24 +232,13 @@ defmodule PortalAPI.Sockets do
   Records the number of candidates and the dropped candidates as telemetry for the
   `:client` or `:gateway` `device` that sent them.
   """
-  def limit_ice_candidates(candidates, %Portal.Device{type: sender} = device)
+  def limit_ice_candidates(candidates, %Portal.Device{type: sender})
       when is_list(candidates) do
     Portal.Telemetry.ice_candidates_received(sender, length(candidates))
 
     {strings, invalid} = Enum.split_with(candidates, &is_binary/1)
     {valid, oversized} = Enum.split_with(strings, &(byte_size(&1) <= @max_ice_candidate_bytes))
     {kept, over_limit} = Enum.split(valid, @max_ice_candidates)
-
-    if oversized != [] do
-      Logger.warning("Dropped oversized ICE candidates",
-        account_id: device.account_id,
-        device_id: device.id,
-        device_type: sender,
-        dropped_count: length(oversized),
-        max_bytes: @max_ice_candidate_bytes,
-        largest_bytes: oversized |> Enum.map(&byte_size/1) |> Enum.max()
-      )
-    end
 
     Portal.Telemetry.ice_candidates_dropped(sender, :invalid, length(invalid))
     Portal.Telemetry.ice_candidates_dropped(sender, :oversized, length(oversized))
