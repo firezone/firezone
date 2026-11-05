@@ -81,29 +81,22 @@ impl UdpGroTrain {
 
     /// Decrypts the batches, in order.
     pub fn decrypt(self) -> Vec<DecryptedBatch> {
-        let mut segments = segments(&self.datagrams).peekable();
-        let mut position = 0;
+        let segments = segments(&self.datagrams).collect::<SmallVec<[_; DECRYPT_BATCH_SIZE]>>();
 
         self.batches
             .into_iter()
             .map(|(decapsulation, start)| {
-                for _ in segments.by_ref().take(start - position) {}
-                let len = decapsulation.len();
-                position = start + len;
-
-                let (datagram, _) = *segments
-                    .peek()
-                    .expect("a batch begins with a segment of its train");
+                let batch = &segments[start..][..decapsulation.len()];
+                let (datagram, _) = batch[0];
 
                 DecryptedBatch {
                     local: datagram.local(),
                     from: datagram.from(),
                     ecn: datagram.ecn(),
                     packets: decapsulation.decrypt(
-                        segments
-                            .by_ref()
-                            .take(len)
-                            .map(|(_, segment)| segment)
+                        batch
+                            .iter()
+                            .map(|(_, segment)| *segment)
                             .prefetching_with(|segment| *segment),
                     ),
                 }
