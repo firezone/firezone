@@ -3001,12 +3001,14 @@ defmodule PortalAPI.Gateway.ChannelTest do
       assert relays1 == relays2
     end
 
-    test "pushes ice_candidates message", %{
+    test "pushes ice_candidates message from an authorized client", %{
+      account: account,
       client: client,
       gateway: gateway,
       site: site,
       token: token
     } do
+      policy_authorization_fixture(account: account, client: client, gateway: gateway)
       socket = join_channel(gateway, site, token)
       assert_push "init", _init_payload
 
@@ -3025,12 +3027,29 @@ defmodule PortalAPI.Gateway.ChannelTest do
              }
     end
 
-    test "pushes invalidate_ice_candidates message", %{
+    test "does not push ice_candidates from a client without an authorization", %{
       client: client,
       gateway: gateway,
       site: site,
       token: token
     } do
+      socket = join_channel(gateway, site, token)
+      assert_push "init", _init_payload
+
+      send(socket.channel_pid, {:ice_candidates, client.id, ["foo"]})
+      :sys.get_state(socket.channel_pid)
+
+      refute_push "ice_candidates", _payload
+    end
+
+    test "pushes invalidate_ice_candidates message from an authorized client", %{
+      account: account,
+      client: client,
+      gateway: gateway,
+      site: site,
+      token: token
+    } do
+      policy_authorization_fixture(account: account, client: client, gateway: gateway)
       socket = join_channel(gateway, site, token)
       assert_push "init", _init_payload
 
@@ -3047,6 +3066,21 @@ defmodule PortalAPI.Gateway.ChannelTest do
                candidates: candidates,
                client_id: client.id
              }
+    end
+
+    test "does not push invalidate_ice_candidates from a client without an authorization", %{
+      client: client,
+      gateway: gateway,
+      site: site,
+      token: token
+    } do
+      socket = join_channel(gateway, site, token)
+      assert_push "init", _init_payload
+
+      send(socket.channel_pid, {:invalidate_ice_candidates, client.id, ["foo"]})
+      :sys.get_state(socket.channel_pid)
+
+      refute_push "invalidate_ice_candidates", _payload
     end
 
     test "pushes request_connection message", %{
@@ -4242,7 +4276,31 @@ defmodule PortalAPI.Gateway.ChannelTest do
       refute_receive {:ice_candidates, _client_id, _candidates}
     end
 
-    test "broadcasts :ice_candidates message to the target gateway", %{
+    test "broadcast_ice_candidates delivers to authorized clients", %{
+      account: account,
+      client: client,
+      gateway: gateway,
+      site: site,
+      token: token
+    } do
+      policy_authorization_fixture(account: account, client: client, gateway: gateway)
+      socket = join_channel(gateway, site, token)
+      assert_push "init", %{relays: _}
+
+      candidates = ["foo", "bar"]
+      :ok = PG.join(PG.account_device_key(account.id, client.id))
+
+      push(socket, "broadcast_ice_candidates", %{
+        "candidates" => candidates,
+        "client_ids" => [client.id]
+      })
+
+      assert_receive {:ice_candidates, gateway_id, ^candidates}, 200
+      assert gateway.id == gateway_id
+    end
+
+    test "broadcast_ice_candidates skips clients without an authorization", %{
+      account: account,
       client: client,
       gateway: gateway,
       site: site,
@@ -4251,21 +4309,16 @@ defmodule PortalAPI.Gateway.ChannelTest do
       socket = join_channel(gateway, site, token)
       assert_push "init", %{relays: _}
 
-      candidates = ["foo", "bar"]
-
-      attrs = %{
-        "candidates" => candidates,
-        "client_ids" => [client.id]
-      }
-
+      :ok = PG.join(PG.account_device_key(account.id, client.id))
       :ok = PG.register(client.id)
 
-      push(socket, "broadcast_ice_candidates", attrs)
+      push(socket, "broadcast_ice_candidates", %{
+        "candidates" => ["foo"],
+        "client_ids" => [client.id, "not-a-uuid"]
+      })
 
-      assert_receive {:ice_candidates, gateway_id, ^candidates},
-                     200
-
-      assert gateway.id == gateway_id
+      :sys.get_state(socket.channel_pid)
+      refute_receive {:ice_candidates, _gateway_id, _candidates}
     end
 
     test "broadcast_invalidated_ice_candidates does nothing when gateways list is empty", %{
@@ -4287,7 +4340,55 @@ defmodule PortalAPI.Gateway.ChannelTest do
       refute_receive {:invalidate_ice_candidates, _gateway_id, _candidates}
     end
 
-    test "broadcasts :invalidate_ice_candidates message to all gateways", %{
+    test "broadcast_ice_candidates drops too many or too large candidates", %{
+      account: account,
+      client: client,
+      gateway: gateway,
+      site: site,
+      token: token
+    } do
+      policy_authorization_fixture(account: account, client: client, gateway: gateway)
+      socket = join_channel(gateway, site, token)
+      assert_push "init", %{relays: _}
+
+      :ok = PG.join(PG.account_device_key(account.id, client.id))
+
+      for candidates <- [List.duplicate("foo", 129), [String.duplicate("a", 513)], [1]] do
+        push(socket, "broadcast_ice_candidates", %{
+          "candidates" => candidates,
+          "client_ids" => [client.id]
+        })
+      end
+
+      :sys.get_state(socket.channel_pid)
+      refute_receive {:ice_candidates, _gateway_id, _candidates}
+    end
+
+    test "broadcast_invalidated_ice_candidates delivers to authorized clients", %{
+      account: account,
+      client: client,
+      gateway: gateway,
+      site: site,
+      token: token
+    } do
+      policy_authorization_fixture(account: account, client: client, gateway: gateway)
+      socket = join_channel(gateway, site, token)
+      assert_push "init", %{relays: _}
+
+      candidates = ["foo", "bar"]
+      :ok = PG.join(PG.account_device_key(account.id, client.id))
+
+      push(socket, "broadcast_invalidated_ice_candidates", %{
+        "candidates" => candidates,
+        "client_ids" => [client.id]
+      })
+
+      assert_receive {:invalidate_ice_candidates, gateway_id, ^candidates}, 200
+      assert gateway.id == gateway_id
+    end
+
+    test "broadcast_invalidated_ice_candidates skips clients without an authorization", %{
+      account: account,
       client: client,
       gateway: gateway,
       site: site,
@@ -4296,21 +4397,16 @@ defmodule PortalAPI.Gateway.ChannelTest do
       socket = join_channel(gateway, site, token)
       assert_push "init", %{relays: _}
 
-      candidates = ["foo", "bar"]
-
-      attrs = %{
-        "candidates" => candidates,
-        "client_ids" => [client.id]
-      }
-
+      :ok = PG.join(PG.account_device_key(account.id, client.id))
       :ok = PG.register(client.id)
 
-      push(socket, "broadcast_invalidated_ice_candidates", attrs)
+      push(socket, "broadcast_invalidated_ice_candidates", %{
+        "candidates" => ["foo"],
+        "client_ids" => [client.id, "not-a-uuid"]
+      })
 
-      assert_receive {:invalidate_ice_candidates, gateway_id, ^candidates},
-                     200
-
-      assert gateway.id == gateway_id
+      :sys.get_state(socket.channel_pid)
+      refute_receive {:invalidate_ice_candidates, _gateway_id, _candidates}
     end
   end
 

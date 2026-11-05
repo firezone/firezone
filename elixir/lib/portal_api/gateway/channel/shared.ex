@@ -21,6 +21,9 @@ defmodule PortalAPI.Gateway.Channel.Shared do
   # The interval at which the policy authorization cache is pruned.
   @prune_cache_every :timer.minutes(1)
 
+  @max_ice_candidates 128
+  @max_ice_candidate_bytes 512
+
   @session_durability_timeout :timer.seconds(15)
 
   # Relay credentials must be stable across reconnects so that gateways
@@ -293,19 +296,23 @@ defmodule PortalAPI.Gateway.Channel.Shared do
   end
 
   def handle_info({:ice_candidates, client_id, candidates}, socket) do
-    push(socket, "ice_candidates", %{
-      client_id: client_id,
-      candidates: candidates
-    })
+    if Cache.Gateway.has_client?(socket.assigns.cache, client_id) do
+      push(socket, "ice_candidates", %{
+        client_id: client_id,
+        candidates: candidates
+      })
+    end
 
     {:noreply, socket}
   end
 
   def handle_info({:invalidate_ice_candidates, client_id, candidates}, socket) do
-    push(socket, "invalidate_ice_candidates", %{
-      client_id: client_id,
-      candidates: candidates
-    })
+    if Cache.Gateway.has_client?(socket.assigns.cache, client_id) do
+      push(socket, "invalidate_ice_candidates", %{
+        client_id: client_id,
+        candidates: candidates
+      })
+    end
 
     {:noreply, socket}
   end
@@ -691,13 +698,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
         %{"candidates" => candidates, "client_ids" => client_ids},
         socket
       ) do
-    Enum.each(client_ids, fn client_id ->
-      PG.deliver(
-        client_id,
-        {:ice_candidates, socket.assigns.gateway.id, candidates}
-      )
-    end)
-
+    deliver_ice_candidates(socket, client_ids, :ice_candidates, candidates)
     {:noreply, socket}
   end
 
@@ -706,13 +707,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
         %{"candidates" => candidates, "client_ids" => client_ids},
         socket
       ) do
-    Enum.each(client_ids, fn client_id ->
-      PG.deliver(
-        client_id,
-        {:invalidate_ice_candidates, socket.assigns.gateway.id, candidates}
-      )
-    end)
-
+    deliver_ice_candidates(socket, client_ids, :invalidate_ice_candidates, candidates)
     {:noreply, socket}
   end
 
@@ -1144,6 +1139,12 @@ defmodule PortalAPI.Gateway.Channel.Shared do
       new_pid ->
         Process.monitor(new_pid)
         :ok = PG.join(socket.assigns.gateway.id)
+
+        :ok =
+          PG.join(
+            PG.account_device_key(socket.assigns.gateway.account_id, socket.assigns.gateway.id)
+          )
+
         :ok = PG.join(socket.assigns.token_id)
 
         # Duplicate-connection resolution: watch our gateway id group and
@@ -1217,6 +1218,25 @@ defmodule PortalAPI.Gateway.Channel.Shared do
   defp abnormal_exit?(:shutdown), do: false
   defp abnormal_exit?({:shutdown, _reason}), do: false
   defp abnormal_exit?(_reason), do: true
+
+  defp deliver_ice_candidates(socket, client_ids, tag, candidates) when is_list(client_ids) do
+    if valid_ice_candidates?(candidates) do
+      %{account_id: account_id, id: gateway_id} = socket.assigns.gateway
+
+      for client_id <- client_ids, Cache.Gateway.has_client?(socket.assigns.cache, client_id) do
+        PG.deliver(PG.account_device_key(account_id, client_id), {tag, gateway_id, candidates})
+      end
+    end
+
+    :ok
+  end
+
+  defp valid_ice_candidates?(candidates) when is_list(candidates) do
+    length(candidates) <= @max_ice_candidates and
+      Enum.all?(candidates, &(is_binary(&1) and byte_size(&1) <= @max_ice_candidate_bytes))
+  end
+
+  defp valid_ice_candidates?(_candidates), do: false
 
   defmodule Database do
     import Ecto.Query

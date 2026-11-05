@@ -37,6 +37,11 @@ defmodule Portal.PG do
   end
 
   @doc """
+  Returns the key a device channel joins so that only devices of the same account can reach it.
+  """
+  def account_device_key(account_id, device_id), do: {:account_device, account_id, device_id}
+
+  @doc """
   Returns the pids registered under `key`.
   """
   def members(key) do

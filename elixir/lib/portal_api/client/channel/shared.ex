@@ -37,6 +37,9 @@ defmodule PortalAPI.Client.Channel.Shared do
   # The interval at which the inbound policy_authorizations cache is pruned.
   @prune_authorizations_cache_every :timer.minutes(1)
 
+  @max_ice_candidates 128
+  @max_ice_candidate_bytes 512
+
   @session_durability_timeout :timer.seconds(15)
 
   # A device lookup that the asking client may not have answers after this long, whether or
@@ -547,16 +550,23 @@ defmodule PortalAPI.Client.Channel.Shared do
     {:noreply, socket}
   end
 
-  def handle_info({:client_ice_candidates, client_id, candidates}, socket) do
-    push(socket, "client_ice_candidates", %{client_id: client_id, candidates: candidates})
+  def handle_info({:client_ice_candidates, client_id, candidates, authorized?}, socket) do
+    if authorized? or
+         Cache.Client.Authorizations.has_client?(socket.assigns.authorizations_cache, client_id) do
+      push(socket, "client_ice_candidates", %{client_id: client_id, candidates: candidates})
+    end
+
     {:noreply, socket}
   end
 
-  def handle_info({:invalidate_client_ice_candidates, client_id, candidates}, socket) do
-    push(socket, "invalidate_client_ice_candidates", %{
-      client_id: client_id,
-      candidates: candidates
-    })
+  def handle_info({:invalidate_client_ice_candidates, client_id, candidates, authorized?}, socket) do
+    if authorized? or
+         Cache.Client.Authorizations.has_client?(socket.assigns.authorizations_cache, client_id) do
+      push(socket, "invalidate_client_ice_candidates", %{
+        client_id: client_id,
+        candidates: candidates
+      })
+    end
 
     {:noreply, socket}
   end
@@ -1142,7 +1152,7 @@ defmodule PortalAPI.Client.Channel.Shared do
         %{"candidates" => candidates, "gateway_id" => gateway_id},
         socket
       ) do
-    PG.deliver(gateway_id, {:ice_candidates, socket.assigns.client.id, candidates})
+    deliver_ice_candidates(socket, [gateway_id], :ice_candidates, candidates)
     {:noreply, socket}
   end
 
@@ -1151,11 +1161,7 @@ defmodule PortalAPI.Client.Channel.Shared do
         %{"candidates" => candidates, "gateway_id" => gateway_id},
         socket
       ) do
-    PG.deliver(
-      gateway_id,
-      {:invalidate_ice_candidates, socket.assigns.client.id, candidates}
-    )
-
+    deliver_ice_candidates(socket, [gateway_id], :invalidate_ice_candidates, candidates)
     {:noreply, socket}
   end
 
@@ -1164,13 +1170,8 @@ defmodule PortalAPI.Client.Channel.Shared do
         %{"candidates" => candidates, "client_id" => target_client_id},
         socket
       ) do
-    case PG.deliver(
-           target_client_id,
-           {:client_ice_candidates, socket.assigns.client.id, candidates}
-         ) do
-      :ok -> {:noreply, socket}
-      {:error, :not_found} -> {:noreply, socket}
-    end
+    deliver_client_ice_candidates(socket, target_client_id, :client_ice_candidates, candidates)
+    {:noreply, socket}
   end
 
   def handle_in(
@@ -1178,9 +1179,11 @@ defmodule PortalAPI.Client.Channel.Shared do
         %{"candidates" => candidates, "client_id" => target_client_id},
         socket
       ) do
-    case PG.deliver(
+    case deliver_client_ice_candidates(
+           socket,
            target_client_id,
-           {:invalidate_client_ice_candidates, socket.assigns.client.id, candidates}
+           :invalidate_client_ice_candidates,
+           candidates
          ) do
       :ok ->
         {:noreply, socket}
@@ -1201,13 +1204,7 @@ defmodule PortalAPI.Client.Channel.Shared do
         %{"candidates" => candidates, "gateway_ids" => gateway_ids},
         socket
       ) do
-    Enum.each(gateway_ids, fn gateway_id ->
-      PG.deliver(
-        gateway_id,
-        {:ice_candidates, socket.assigns.client.id, candidates}
-      )
-    end)
-
+    deliver_ice_candidates(socket, gateway_ids, :ice_candidates, candidates)
     {:noreply, socket}
   end
 
@@ -1216,13 +1213,7 @@ defmodule PortalAPI.Client.Channel.Shared do
         %{"candidates" => candidates, "gateway_ids" => gateway_ids},
         socket
       ) do
-    Enum.each(gateway_ids, fn gateway_id ->
-      PG.deliver(
-        gateway_id,
-        {:invalidate_ice_candidates, socket.assigns.client.id, candidates}
-      )
-    end)
-
+    deliver_ice_candidates(socket, gateway_ids, :invalidate_ice_candidates, candidates)
     {:noreply, socket}
   end
 
@@ -3077,6 +3068,10 @@ defmodule PortalAPI.Client.Channel.Shared do
       new_pid ->
         Process.monitor(new_pid)
         :ok = PG.register(socket.assigns.client.id)
+
+        :ok =
+          PG.join(PG.account_device_key(socket.assigns.client.account_id, socket.assigns.client.id))
+
         :ok = PG.join(socket.assigns.subject.credential.id)
         socket = assign(socket, :pg_scope_pid, new_pid)
 
@@ -3217,6 +3212,45 @@ defmodule PortalAPI.Client.Channel.Shared do
   defp abnormal_exit?(:shutdown), do: false
   defp abnormal_exit?({:shutdown, _reason}), do: false
   defp abnormal_exit?(_reason), do: true
+
+  defp deliver_ice_candidates(socket, gateway_ids, tag, candidates) when is_list(gateway_ids) do
+    if valid_ice_candidates?(candidates) do
+      %{account_id: account_id, id: client_id} = socket.assigns.client
+
+      Enum.each(gateway_ids, fn gateway_id ->
+        PG.deliver(PG.account_device_key(account_id, gateway_id), {tag, client_id, candidates})
+      end)
+    end
+
+    :ok
+  end
+
+  # Only the receiving client of a flow caches its authorization, so it vouches for the pair.
+  defp deliver_client_ice_candidates(socket, target_client_id, tag, candidates) do
+    if valid_ice_candidates?(candidates) do
+      %{account_id: account_id, id: client_id} = socket.assigns.client
+
+      authorized? =
+        Cache.Client.Authorizations.has_client?(
+          socket.assigns.authorizations_cache,
+          target_client_id
+        )
+
+      PG.deliver(
+        PG.account_device_key(account_id, target_client_id),
+        {tag, client_id, candidates, authorized?}
+      )
+    else
+      :ok
+    end
+  end
+
+  defp valid_ice_candidates?(candidates) when is_list(candidates) do
+    length(candidates) <= @max_ice_candidates and
+      Enum.all?(candidates, &(is_binary(&1) and byte_size(&1) <= @max_ice_candidate_bytes))
+  end
+
+  defp valid_ice_candidates?(_candidates), do: false
 
   defmodule Database do
     import Ecto.Query, only: [from: 2, dynamic: 1]

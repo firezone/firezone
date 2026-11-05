@@ -114,6 +114,17 @@ defmodule Portal.Cache.Client.Authorizations do
   end
 
   @doc """
+    Check if the cache has an entry for the given initiating client ID, for any resource.
+  """
+  @spec has_client?(t(), Ecto.UUID.t()) :: boolean()
+  def has_client?(%{} = cache, client_id) do
+    case Ecto.UUID.dump(client_id) do
+      {:ok, cid_bytes} -> Enum.any?(cache, fn {{cid, _rid}, _entry} -> cid == cid_bytes end)
+      :error -> false
+    end
+  end
+
+  @doc """
     Check if the cache has an entry for the given resource_id.
   """
   @spec has_resource?(t(), Ecto.UUID.t()) :: boolean()
