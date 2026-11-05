@@ -125,13 +125,13 @@ impl ReceivedSegment<'_> {
         self.index
     }
 
-    /// Whether `next` may join a batch that begins with this segment: it arrived on the same path
+    /// Whether this segment may join a batch that begins with `first`: it arrived on the same path
     /// with the same ECN, in the same train.
-    pub fn may_batch_with(&self, next: &Self) -> bool {
+    pub fn may_join(&self, first: &Self) -> bool {
         let path = |s: &Self| (s.datagram.local(), s.datagram.from(), s.datagram.ecn());
 
-        self.index.train == next.index.train
-            && (std::ptr::eq(self.datagram, next.datagram) || path(self) == path(next))
+        self.index.train == first.index.train
+            && (std::ptr::eq(self.datagram, first.datagram) || path(self) == path(first))
     }
 }
 

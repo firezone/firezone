@@ -478,7 +478,7 @@ impl ClientTunnel {
                         };
 
                         while segments
-                            .next_if(|next| segment.may_batch_with(next) && batch.push(next, now))
+                            .next_if(|next| next.may_join(&segment) && batch.push(next, now))
                             .is_some()
                         {}
 
@@ -735,7 +735,7 @@ impl GatewayTunnel {
                         };
 
                         while segments
-                            .next_if(|next| segment.may_batch_with(next) && batch.push(next, now))
+                            .next_if(|next| next.may_join(&segment) && batch.push(next, now))
                             .is_some()
                         {}
 
