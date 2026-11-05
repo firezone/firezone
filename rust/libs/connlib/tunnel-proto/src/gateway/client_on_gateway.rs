@@ -1635,67 +1635,6 @@ mod tests {
         );
     }
 
-    fn wildcard_foo_peer() -> ClientOnGateway {
-        let mut peer = ClientOnGateway::new(
-            client_id(),
-            client_key(),
-            client_tun(),
-            gateway_tun(),
-            MAX_DNS_DOMAINS,
-        );
-        peer.add_resource(wildcard_foo_dns_resource(), None, Instant::now());
-
-        peer
-    }
-
-    fn setup_wildcard_foo_nat(
-        peer: &mut ClientOnGateway,
-        n: usize,
-        now: Instant,
-    ) -> Result<Option<EvictedDomain>> {
-        peer.setup_nat(
-            format!("d{n}.foo.com").parse()?,
-            wildcard_foo_resource_id(),
-            BTreeSet::from([foo_real_ip1().into()]),
-            nth_proxy_ips(n),
-            now,
-        )
-    }
-
-    const PROXY_IPS_PER_DOMAIN: usize = 8;
-    const MAX_DNS_DOMAINS: usize = 4;
-
-    /// Different proxy IPs for each `n`.
-    fn nth_proxy_ips(n: usize) -> ProxyIps {
-        let offset = u32::try_from(n).unwrap() * 4;
-
-        ProxyIps::new(
-            [1, 2, 3, 4]
-                .map(|i| Ipv4Addr::from(u32::from(IPV4_RESOURCES.network_address()) + offset + i)),
-            [0, 1, 2, 3].map(|i| {
-                Ipv6Addr::from(
-                    u128::from(IPV6_RESOURCES.network_address()) + u128::from(offset + i),
-                )
-            }),
-        )
-        .unwrap()
-    }
-
-    fn wildcard_foo_dns_resource() -> crate::messages::gateway::ResourceDescription {
-        crate::messages::gateway::ResourceDescription::Dns(
-            crate::messages::gateway::ResourceDescriptionDns {
-                id: wildcard_foo_resource_id(),
-                address: "*.foo.com".to_string(),
-                name: "wildcard foo".to_string(),
-                filters: vec![],
-            },
-        )
-    }
-
-    fn wildcard_foo_resource_id() -> ResourceId {
-        "0f3e0a4c-58a4-4d7e-9a8f-3a4c4e2b9d11".parse().unwrap()
-    }
-
     #[test]
     fn setup_nat_routes_match_full_recalculation() {
         let _guard = logging::test("trace");
@@ -1901,6 +1840,67 @@ mod tests {
         assert_eq!(error.source().to_string(), "100.64.0.1");
         assert_eq!(error.destination().to_string(), "100.96.0.1");
         assert_eq!(error.proto().to_string(), "ICMP");
+    }
+
+    fn wildcard_foo_peer() -> ClientOnGateway {
+        let mut peer = ClientOnGateway::new(
+            client_id(),
+            client_key(),
+            client_tun(),
+            gateway_tun(),
+            MAX_DNS_DOMAINS,
+        );
+        peer.add_resource(wildcard_foo_dns_resource(), None, Instant::now());
+
+        peer
+    }
+
+    fn setup_wildcard_foo_nat(
+        peer: &mut ClientOnGateway,
+        n: usize,
+        now: Instant,
+    ) -> Result<Option<EvictedDomain>> {
+        peer.setup_nat(
+            format!("d{n}.foo.com").parse()?,
+            wildcard_foo_resource_id(),
+            BTreeSet::from([foo_real_ip1().into()]),
+            nth_proxy_ips(n),
+            now,
+        )
+    }
+
+    const PROXY_IPS_PER_DOMAIN: usize = 8;
+    const MAX_DNS_DOMAINS: usize = 4;
+
+    /// Different proxy IPs for each `n`.
+    fn nth_proxy_ips(n: usize) -> ProxyIps {
+        let offset = u32::try_from(n).unwrap() * 4;
+
+        ProxyIps::new(
+            [1, 2, 3, 4]
+                .map(|i| Ipv4Addr::from(u32::from(IPV4_RESOURCES.network_address()) + offset + i)),
+            [0, 1, 2, 3].map(|i| {
+                Ipv6Addr::from(
+                    u128::from(IPV6_RESOURCES.network_address()) + u128::from(offset + i),
+                )
+            }),
+        )
+        .unwrap()
+    }
+
+    fn wildcard_foo_dns_resource() -> crate::messages::gateway::ResourceDescription {
+        crate::messages::gateway::ResourceDescription::Dns(
+            crate::messages::gateway::ResourceDescriptionDns {
+                id: wildcard_foo_resource_id(),
+                address: "*.foo.com".to_string(),
+                name: "wildcard foo".to_string(),
+                filters: vec![],
+            },
+        )
+    }
+
+    fn wildcard_foo_resource_id() -> ResourceId {
+        "0f3e0a4c-58a4-4d7e-9a8f-3a4c4e2b9d11".parse().unwrap()
     }
 
     fn foo_dns_resource() -> crate::messages::gateway::ResourceDescription {
