@@ -122,12 +122,19 @@ impl ClientOnGateway {
                 ProxyIpAlreadyAssigned(proxy_ip)
             );
         }
+
+        // Changing the IP stack of a resource changes which of the 4 IPv4 and 4 IPv6 proxy IPs of a domain a Client assigns.
+        let domain_proxy_ips = self
+            .permanent_translations
+            .iter()
+            .filter(|(_, state)| state.domain == name)
+            .map(|(proxy_ip, _)| *proxy_ip)
+            .chain(proxy_ips.iter())
+            .collect::<BTreeSet<_>>();
         anyhow::ensure!(
-            self.permanent_translations
-                .iter()
-                .all(|(proxy_ip, state)| state.domain != name
-                    || proxy_ips.iter().any(|new| new == *proxy_ip)),
-            DomainHasOtherProxyIps(name)
+            domain_proxy_ips.iter().filter(|ip| ip.is_ipv4()).count() <= 4
+                && domain_proxy_ips.iter().filter(|ip| ip.is_ipv6()).count() <= 4,
+            TooManyProxyIpsForDomain(name)
         );
 
         let resource = &self
@@ -660,8 +667,8 @@ impl ClientOnGateway {
 pub(super) struct ProxyIpAlreadyAssigned(IpAddr);
 
 #[derive(Debug, thiserror::Error)]
-#[error("Domain {0} is assigned to different proxy IPs")]
-pub(super) struct DomainHasOtherProxyIps(DomainName);
+#[error("Domain {0} has more than 4 IPv4 or IPv6 proxy IPs")]
+pub(super) struct TooManyProxyIpsForDomain(DomainName);
 
 #[derive(Debug, thiserror::Error)]
 #[error("Internet resource rejects IP: {0}")]
@@ -829,6 +836,7 @@ mod tests {
     };
 
     use anyhow::ErrorExt;
+    use connlib_model::IpStack;
     use ip_network::Ipv4Network;
     use ip_packet::make::TcpFlags;
 
@@ -1421,11 +1429,29 @@ mod tests {
             .unwrap(),
         );
 
-        assert!(result.unwrap_err().any_is::<DomainHasOtherProxyIps>());
+        assert!(result.unwrap_err().any_is::<TooManyProxyIpsForDomain>());
         assert_eq!(
             peer.permanent_translations.len(),
             ProxyIps::for_test().iter().count()
         );
+    }
+
+    #[test]
+    fn setting_up_dns_resource_nat_accepts_proxy_ips_of_other_ip_stack() {
+        let _guard = logging::test("trace");
+
+        let mut peer = ClientOnGateway::new(client_id(), client_key(), client_tun(), gateway_tun());
+        peer.add_resource(foo_dns_resource(), None, Instant::now());
+
+        for ip_stack in [IpStack::Ipv4Only, IpStack::Ipv6Only, IpStack::Dual] {
+            peer.setup_nat(
+                foo_name().parse().unwrap(),
+                foo_resource_id(),
+                BTreeSet::from([foo_real_ip1().into()]),
+                ProxyIps::for_test().for_stack(ip_stack),
+            )
+            .unwrap();
+        }
     }
 
     #[test]
