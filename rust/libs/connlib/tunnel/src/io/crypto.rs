@@ -14,9 +14,8 @@ use snownet::{PendingDecapsulate, PendingEncapsulate};
 use socket_factory::DatagramOut;
 use tokio::sync::oneshot;
 
-use super::{
-    ReceivedSegment, SegmentIndex, UdpGroTrain, UdpGsoTrain, udp_gro_train::DECRYPT_BATCH_SIZE,
-};
+use super::udp_gro_train::{DECRYPT_BATCH_SIZE, ReceivedSegment, SegmentIndex, UdpGroTrain};
+use super::udp_gso_train::UdpGsoTrain;
 use crate::packet_counts::UdpPacketCounts;
 use crate::sockets::{PendingDatagrams, ReceivedDatagrams, Sockets};
 use smallvec::SmallVec;

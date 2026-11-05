@@ -4,10 +4,8 @@ mod udp_gro_train;
 mod udp_gso_train;
 
 pub(crate) use crypto::MAX_DECRYPT_BACKLOG_MEMORY;
-pub use crypto::{CryptoWorkers, DecryptJobs, DecryptedBatch, DecryptedJobs, EncryptJobs};
+pub use crypto::{CryptoWorkers, DecryptedBatch};
 pub use device::{Device, TunChannelClosed};
-pub(crate) use udp_gro_train::{ReceivedSegment, SegmentIndex, UdpGroTrain};
-pub(crate) use udp_gso_train::UdpGsoTrain;
 
 use crate::{
     TunnelError, dns,
@@ -15,7 +13,7 @@ use crate::{
     sockets::{ReceivedDatagrams, Sockets},
 };
 use anyhow::Result;
-use crypto::Decrypting;
+use crypto::{DecryptJobs, DecryptedJobs, Decrypting, EncryptJobs};
 use fast_random_state::FastRandomState;
 use ip_packet::IpPacket;
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
