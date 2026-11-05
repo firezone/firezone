@@ -267,12 +267,12 @@ pub struct DecryptJobs<'a> {
 }
 
 impl DecryptJobs<'_> {
-    /// Returns the received segments, in order, and where to add the batches made of them.
+    /// Returns where to add the batches and the received segments to make them of, in order.
     pub fn split(
         &mut self,
     ) -> (
-        impl Iterator<Item = ReceivedSegment<'_>>,
         DecryptBatches<'_>,
+        impl Iterator<Item = ReceivedSegment<'_>>,
     ) {
         let segments = self
             .trains
@@ -280,7 +280,7 @@ impl DecryptJobs<'_> {
             .enumerate()
             .flat_map(|(index, train)| train.segments(index));
 
-        (segments, DecryptBatches(&mut self.batches))
+        (DecryptBatches(&mut self.batches), segments)
     }
 }
 

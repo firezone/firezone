@@ -453,7 +453,7 @@ impl ClientTunnel {
 
                 if let Some(received) = network {
                     let mut jobs = self.io.new_decrypt_jobs(received);
-                    let (segments, mut batches) = jobs.split();
+                    let (mut batches, segments) = jobs.split();
                     let mut segments = segments
                         .inspect(|segment| udp_received.record(segment))
                         .peekable();
@@ -710,7 +710,7 @@ impl GatewayTunnel {
 
                 if let Some(received) = network {
                     let mut jobs = self.io.new_decrypt_jobs(received);
-                    let (segments, mut batches) = jobs.split();
+                    let (mut batches, segments) = jobs.split();
                     let mut segments = segments
                         .inspect(|segment| udp_received.record(segment))
                         .peekable();
