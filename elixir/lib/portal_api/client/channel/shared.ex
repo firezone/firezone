@@ -215,9 +215,7 @@ defmodule PortalAPI.Client.Channel.Shared do
   def handle_info(:refresh_metrics_token, socket) do
     Process.send_after(self(), :refresh_metrics_token, @refresh_metrics_token_every)
 
-    if metrics = metrics_config(socket.assigns.subject.account) do
-      push(socket, "metrics_config", metrics)
-    end
+    push(socket, "metrics_config", metrics_config(socket.assigns.subject.account))
 
     {:noreply, socket}
   end
@@ -2185,12 +2183,10 @@ defmodule PortalAPI.Client.Channel.Shared do
   end
 
   defp metrics_config(account) do
-    if Portal.Config.get_env(:portal, :otlp_metrics_endpoint) do
-      %{
-        api_url: Portal.Config.fetch_env!(:portal, :otlp_metrics_api_url),
-        token: Portal.MetricsToken.mint(account)
-      }
-    end
+    %{
+      api_url: Portal.Config.fetch_env!(:portal, :otlp_metrics_api_url),
+      token: Portal.MetricsToken.mint(account)
+    }
   end
 
   defp generate_preshared_key(client, client_public_key, gateway, gateway_public_key) do

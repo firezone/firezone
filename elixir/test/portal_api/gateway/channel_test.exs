@@ -434,17 +434,6 @@ defmodule PortalAPI.Gateway.ChannelTest do
       assert {:ok, _claims} = Portal.MetricsToken.verify(metrics_token)
     end
 
-    test "omits the metrics token when forwarding is not configured", %{
-      gateway: gateway,
-      site: site,
-      token: token
-    } do
-      Portal.Config.put_env_override(:otlp_metrics_endpoint, false)
-
-      join_channel(gateway, site, token)
-
-      assert_push "init", %{metrics: nil}
-    end
 
     test "init includes inbound authorizations from the hydrated cache", %{
       account: account,

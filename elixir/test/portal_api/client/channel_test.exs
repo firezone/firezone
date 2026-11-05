@@ -551,16 +551,6 @@ defmodule PortalAPI.Client.ChannelTest do
       assert {:ok, _claims} = Portal.MetricsToken.verify(token)
     end
 
-    test "omits the metrics token when forwarding is not configured", %{
-      client: client,
-      subject: subject
-    } do
-      Portal.Config.put_env_override(:otlp_metrics_endpoint, false)
-
-      join_channel(client, subject)
-
-      assert_push "init", %{metrics: nil}
-    end
 
     test "sends actor name in init message", %{
       actor: actor,
