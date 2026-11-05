@@ -228,14 +228,11 @@ impl ClientOnGateway {
             return Ok(None);
         }
 
-        let (oldest, oldest_set_up_at) = domains
+        let (oldest, _) = domains
             .into_iter()
+            .filter(|(_, set_up_at)| now.duration_since(*set_up_at) >= MIN_DNS_DOMAIN_AGE)
             .min_by_key(|(domain, set_up_at)| (*set_up_at, *domain))
             .ok_or(TooManyDnsDomains)?;
-        anyhow::ensure!(
-            now.duration_since(oldest_set_up_at) >= MIN_DNS_DOMAIN_AGE,
-            TooManyDnsDomains
-        );
 
         let domain = oldest.clone();
 
