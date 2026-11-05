@@ -1,6 +1,6 @@
 # These are used for the dev environment.
 # This should match the versions used in the built product.
 nodejs 22.20.0
-pnpm 10.33.0
+pnpm 12.16.1
 elixir 1.20.3-otp-29
 erlang 29.0.5
