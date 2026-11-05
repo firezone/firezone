@@ -24,7 +24,7 @@ use smallvec::SmallVec;
 use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::hash::Hash;
 use std::net::{IpAddr, SocketAddr};
-use std::num::NonZeroU64;
+use std::num::{NonZeroU64, NonZeroUsize};
 use std::ops::RangeInclusive;
 use std::time::{Duration, Instant, SystemTime};
 use stun_codec::rfc5389::attributes::{
@@ -35,7 +35,9 @@ use stun_codec::rfc5389::methods::BINDING;
 use stun_codec::rfc5766::attributes::{
     ChannelNumber, Lifetime, RequestedTransport, XorPeerAddress, XorRelayAddress,
 };
-use stun_codec::rfc5766::errors::{AllocationMismatch, Forbidden, InsufficientCapacity};
+use stun_codec::rfc5766::errors::{
+    AllocationMismatch, AllocationQuotaReached, Forbidden, InsufficientCapacity,
+};
 use stun_codec::rfc5766::methods::{ALLOCATE, CHANNEL_BIND, CREATE_PERMISSION, REFRESH};
 use stun_codec::rfc8656::attributes::{
     AdditionalAddressFamily, AddressFamily, RequestedAddressFamily,
@@ -58,12 +60,14 @@ pub struct Server<R> {
     /// All client allocations, indexed by client's socket address.
     allocations: BTreeMap<ClientSocket, Allocation>,
 
-    /// Bi-directional mapping between allocations and usernames.
+    /// Bi-directional mapping between allocations and devices.
     ///
-    /// We only allow a single allocation per user in order to clean up lingering allocations in case the sender roams.
-    allocations_by_username: BiMap<Username, AllocationPort>,
+    /// We only allow a single allocation per device in order to clean up lingering allocations in case the sender roams.
+    allocations_by_device: BiMap<auth::AllocationKey, AllocationPort>,
 
     clients_by_allocation: HashMap<AllocationPort, ClientSocket>,
+    /// Maximum number of allocations per account; accounts without an entry are unlimited.
+    allocation_limits: HashMap<auth::AccountId, NonZeroUsize>,
     /// Redundant mapping so we can look route data with a single lookup.
     channel_and_client_by_port_and_peer:
         HashMap<(AllocationPort, PeerSocket), (ClientSocket, ChannelNumber)>,
@@ -113,6 +117,7 @@ struct Account {
 struct VerifiedUsername {
     username: Username,
     account: Account,
+    allocation_key: auth::AllocationKey,
 }
 
 /// The commands returned from a [`Server`].
@@ -244,8 +249,9 @@ where
         Self {
             public_address: public_address.into(),
             allocations: Default::default(),
-            allocations_by_username: Default::default(),
+            allocations_by_device: Default::default(),
             clients_by_allocation: Default::default(),
+            allocation_limits: Default::default(),
             listen_port,
             ports,
             allow_private_peers: false,
@@ -264,6 +270,27 @@ where
             relayed_bytes_counter: otel_instruments::relay_bytes(),
             rate_limited_packets_counter,
             channel_and_client_by_port_and_peer: Default::default(),
+        }
+    }
+
+    /// Replaces all allocation limits.
+    ///
+    /// Lowering a limit only affects new allocations.
+    pub fn set_allocation_limits(&mut self, limits: HashMap<auth::AccountId, NonZeroUsize>) {
+        self.allocation_limits = limits;
+    }
+
+    /// Sets or clears the allocation limit of a single account.
+    ///
+    /// Lowering a limit only affects new allocations.
+    pub fn set_allocation_limit(&mut self, account: auth::AccountId, limit: Option<NonZeroUsize>) {
+        match limit {
+            Some(limit) => {
+                self.allocation_limits.insert(account, limit);
+            }
+            None => {
+                self.allocation_limits.remove(&account);
+            }
         }
     }
 
@@ -355,6 +382,7 @@ where
     /// channel bindings. Deleting the bindings emits the existing commands
     /// that remove the Linux eBPF fast-path entries.
     pub fn remove_account(&mut self, account: &auth::AccountId) {
+        self.allocation_limits.remove(account);
         self.accounts_by_hash
             .remove(&auth::hash_account_id(account));
 
@@ -684,15 +712,6 @@ where
             return Err(error_response);
         }
 
-        let max_available_ports = self.max_available_ports() as usize;
-        if self.clients_by_allocation.len() == max_available_ports {
-            let (error_response, msg) = make_error_response(InsufficientCapacity, request);
-
-            tracing::warn!(target: "relay", %max_available_ports, %sender, "{msg}: No more ports available");
-
-            return Err(error_response);
-        }
-
         let requested_protocol = request.requested_transport().protocol();
         if requested_protocol != UDP_TRANSPORT {
             let (error_response, msg) = make_error_response(BadRequest, request);
@@ -714,11 +733,17 @@ where
             error_response
         })?;
 
-        if let Some((_, previous_allocation)) =
-            self.allocations_by_username.remove_by_left(&username)
+        match self
+            .allocations_by_device
+            .remove_by_left(&verified_username.allocation_key)
         {
-            tracing::info!(target: "relay", %previous_allocation, %sender, "Username already has an allocation");
-            self.delete_allocation(previous_allocation);
+            Some((_, previous_allocation)) => {
+                tracing::info!(target: "relay", %previous_allocation, %sender, "Device already has an allocation");
+                self.delete_allocation(previous_allocation);
+            }
+            None => {
+                self.ensure_capacity(verified_username.account.id, request, sender)?;
+            }
         }
 
         // TODO: Do we need to handle DONT-FRAGMENT?
@@ -785,8 +810,8 @@ where
         }
 
         self.clients_by_allocation.insert(allocation.port, sender);
-        self.allocations_by_username
-            .insert(username, allocation.port);
+        self.allocations_by_device
+            .insert(verified_username.allocation_key, allocation.port);
         self.allocations.insert(sender, allocation);
         self.allocations_up_down_counter.add(1, &[]);
 
@@ -1132,7 +1157,7 @@ where
             error_response
         })?;
 
-        let account_hash = message_integrity
+        let allocation_key = message_integrity
             .verify(&self.auth_secret, username.name(), now_utc)
             .map_err(|e| {
                 let (error_response, msg) = make_error_response(Unauthorized, request);
@@ -1149,7 +1174,7 @@ where
                 error_response
             })?;
 
-        let Some(account) = self.accounts_by_hash.get(&account_hash).copied() else {
+        let Some(account) = self.accounts_by_hash.get(&allocation_key.account).copied() else {
             let (error_response, msg) = make_error_response(Unauthorized, request);
             tracing::debug!(target: "relay", "{msg}: Account is not enabled for TURN");
 
@@ -1159,6 +1184,7 @@ where
         Ok(VerifiedUsername {
             username: username.clone(),
             account,
+            allocation_key,
         })
     }
 
@@ -1171,7 +1197,7 @@ where
         account: Account,
     ) -> Allocation {
         assert!(
-            self.clients_by_allocation.len() < self.max_available_ports() as usize,
+            self.clients_by_allocation.len() < self.max_available_ports(),
             "No more ports available; this would loop forever"
         );
 
@@ -1193,8 +1219,43 @@ where
         }
     }
 
-    fn max_available_ports(&self) -> u16 {
-        self.ports.clone().count() as u16
+    fn ensure_capacity(
+        &self,
+        account: auth::AccountId,
+        request: &Allocate,
+        sender: ClientSocket,
+    ) -> Result<(), Message<Attribute>> {
+        let max_available_ports = self.max_available_ports();
+        if self.clients_by_allocation.len() >= max_available_ports {
+            let (error_response, msg) = make_error_response(InsufficientCapacity, request);
+
+            tracing::warn!(target: "relay", %max_available_ports, %sender, "{msg}: No more ports available");
+
+            return Err(error_response);
+        }
+
+        let Some(limit) = self.allocation_limits.get(&account) else {
+            return Ok(());
+        };
+
+        let num_allocations = self
+            .allocations
+            .values()
+            .filter(|allocation| allocation.account == account)
+            .count();
+        if num_allocations >= limit.get() {
+            let (error_response, msg) = make_error_response(AllocationQuotaReached, request);
+
+            tracing::debug!(target: "relay", %limit, %sender, "{msg}: Account allocation limit reached");
+
+            return Err(error_response);
+        }
+
+        Ok(())
+    }
+
+    fn max_available_ports(&self) -> usize {
+        self.ports.clone().count()
     }
 
     fn create_channel_binding(
@@ -1387,7 +1448,7 @@ where
             .allocations
             .remove(&client)
             .expect("internal state mismatch");
-        self.allocations_by_username.remove_by_right(&port);
+        self.allocations_by_device.remove_by_right(&port);
 
         let port = allocation.port;
 
@@ -1781,21 +1842,66 @@ mod tests {
     use uuid::Uuid;
 
     #[test]
+    fn allocation_limit_applies_per_account() {
+        let mut server = test_server(8);
+        set_allocation_limit(&mut server, 1);
+
+        let first = allocate(&mut server, &username(account(0), EXPIRY, "a"), socket(0));
+        let second = allocate(&mut server, &username(account(0), EXPIRY, "b"), socket(1));
+        let other = allocate(&mut server, &username(account(1), EXPIRY, "a"), socket(2));
+
+        assert_eq!(first.class(), MessageClass::SuccessResponse);
+        assert_eq!(
+            second.get_attribute::<ErrorCode>().unwrap().code(),
+            AllocationQuotaReached::CODEPOINT
+        );
+        assert_eq!(other.class(), MessageClass::SuccessResponse);
+    }
+
+    #[test]
+    fn renewed_credentials_replace_device_allocation_at_limit() {
+        let mut server = test_server(1);
+        set_allocation_limit(&mut server, 1);
+        allocate(&mut server, &username(account(0), EXPIRY, "a"), socket(0));
+
+        let response = allocate(
+            &mut server,
+            &username(account(0), EXPIRY + 1, "a"),
+            socket(1),
+        );
+
+        assert_eq!(response.class(), MessageClass::SuccessResponse);
+        assert!(!server.allocations.contains_key(&socket(0)));
+        assert!(server.allocations.contains_key(&socket(1)));
+    }
+
+    #[test]
+    fn lowering_allocation_limit_keeps_existing_allocations() {
+        let mut server = test_server(8);
+        set_allocation_limit(&mut server, 2);
+        allocate(&mut server, &username(account(0), EXPIRY, "a"), socket(0));
+        allocate(&mut server, &username(account(0), EXPIRY, "b"), socket(1));
+
+        server.set_allocation_limit(account(0), NonZeroUsize::new(1));
+        let response = allocate(&mut server, &username(account(0), EXPIRY, "c"), socket(2));
+
+        assert_eq!(server.num_allocations(), 2);
+        assert_eq!(
+            response.get_attribute::<ErrorCode>().unwrap().code(),
+            AllocationQuotaReached::CODEPOINT
+        );
+    }
+
+    #[test]
     fn removing_account_deletes_its_allocations_and_channel_bindings() {
         let now = Instant::now();
         let now_utc = SystemTime::UNIX_EPOCH;
         let client = ClientSocket::new(SocketAddr::from(([127, 0, 0, 1], 50_000)));
         let peer = PeerSocket::new(SocketAddr::from(([198, 51, 100, 2], 50_001)));
         let channel = ChannelNumber::new(ChannelNumber::MIN).unwrap();
-        let account = auth::AccountId::from(Uuid::nil());
-        let mut server = Server::new(
-            Ipv4Addr::LOCALHOST,
-            StdRng::seed_from_u64(0),
-            3478,
-            49_152..=49_153,
-        );
+        let account = account(0);
+        let mut server = test_server(2);
 
-        server.set_accounts([(account, None)]);
         let nonce = issue_nonce(&mut server, client, now, now_utc);
         let username = Username::new(format!(
             "2145916800:{}:credential-salt",
@@ -1963,15 +2069,9 @@ mod tests {
         let now = Instant::now();
         let issued_at = SystemTime::UNIX_EPOCH;
         let client = ClientSocket::new(SocketAddr::from(([127, 0, 0, 1], 50_000)));
-        let account = auth::AccountId::from(Uuid::nil());
-        let mut server = Server::new(
-            Ipv4Addr::LOCALHOST,
-            StdRng::seed_from_u64(0),
-            3478,
-            49_152..=49_153,
-        );
+        let account = account(0);
+        let mut server = test_server(2);
 
-        server.set_accounts([(account, None)]);
         let nonce = issue_nonce(&mut server, client, now, issued_at);
         let username = Username::new(format!(
             "2145916800:{}:credential-salt",
@@ -2114,7 +2214,7 @@ mod tests {
     fn channel_bindings_adopt_a_changed_throughput_limit() {
         let now = Instant::now();
         let account = auth::AccountId::from(Uuid::nil());
-        let mut server = test_server();
+        let mut server = test_server(2);
         server.set_accounts([(account, None)]);
         let port = allocate_and_bind_channel(&mut server, account, now);
 
@@ -2151,7 +2251,7 @@ mod tests {
     fn unchanged_throughput_limit_does_not_touch_channel_bindings() {
         let now = Instant::now();
         let account = auth::AccountId::from(Uuid::nil());
-        let mut server = test_server();
+        let mut server = test_server(2);
         server.set_accounts([(account, Some(limit_5_mbps()))]);
         allocate_and_bind_channel(&mut server, account, now);
 
@@ -2166,7 +2266,7 @@ mod tests {
         let now = Instant::now();
         let now_utc = SystemTime::UNIX_EPOCH;
         let account = auth::AccountId::from(Uuid::nil());
-        let mut server = test_server();
+        let mut server = test_server(2);
         server.set_accounts([(account, Some(limit_5_mbps()))]);
         let port = allocate_and_bind_channel(&mut server, account, now);
         let mut payload = [0u8; 1250]; // A WireGuard data message, 2ms at 5 Mbps.
@@ -2197,6 +2297,62 @@ mod tests {
                 .handle_client_input(&channel_data, CLIENT, later, now_utc)
                 .is_some()
         );
+    }
+
+    // Tests for requirements listed in https://www.rfc-editor.org/rfc/rfc8656#name-receiving-an-allocate-reque.
+
+    // 6. The server checks if the request contains both REQUESTED-ADDRESS-FAMILY and ADDITIONAL-ADDRESS-FAMILY attributes. If yes, then the server rejects the request with a 400 (Bad Request) error.
+    #[test]
+    fn requested_and_additional_is_bad_request() {
+        let error_code = derive_relay_addresses(
+            IpStack::Ip4(Ipv4Addr::LOCALHOST),
+            Some(&RequestedAddressFamily::new(AddressFamily::V4)),
+            Some(&AdditionalAddressFamily::new(AddressFamily::V6)),
+        )
+        .unwrap_err();
+
+        assert_eq!(error_code.code(), BadRequest::CODEPOINT)
+    }
+
+    // 7. If the server does not support the address family requested by the client in REQUESTED-ADDRESS-FAMILY, or if the allocation of the requested address family is disabled by local policy, it MUST generate an Allocate error response, and it MUST include an ERROR-CODE attribute with the 440 (Address Family not Supported) response code.
+    // If the REQUESTED-ADDRESS-FAMILY attribute is absent and the server does not support the IPv4 address family, the server MUST include an ERROR-CODE attribute with the 440 (Address Family not Supported) response code.
+    #[test]
+    fn requested_address_family_not_available_is_not_supported() {
+        let error_code = derive_relay_addresses(
+            IpStack::Ip4(Ipv4Addr::LOCALHOST),
+            Some(&RequestedAddressFamily::new(AddressFamily::V6)),
+            None,
+        )
+        .unwrap_err();
+
+        assert_eq!(error_code.code(), AddressFamilyNotSupported::CODEPOINT);
+
+        let error_code = derive_relay_addresses(
+            IpStack::Ip6(Ipv6Addr::LOCALHOST),
+            Some(&RequestedAddressFamily::new(AddressFamily::V4)),
+            None,
+        )
+        .unwrap_err();
+
+        assert_eq!(error_code.code(), AddressFamilyNotSupported::CODEPOINT);
+
+        let error_code =
+            derive_relay_addresses(IpStack::Ip6(Ipv6Addr::LOCALHOST), None, None).unwrap_err();
+
+        assert_eq!(error_code.code(), AddressFamilyNotSupported::CODEPOINT)
+    }
+
+    //9. The server checks if the request contains an ADDITIONAL-ADDRESS-FAMILY attribute. If yes, and the attribute value is 0x01 (IPv4 address family), then the server rejects the request with a 400 (Bad Request) error.
+    #[test]
+    fn additional_address_family_ip4_is_bad_request() {
+        let error_code = derive_relay_addresses(
+            IpStack::Ip4(Ipv4Addr::LOCALHOST),
+            None,
+            Some(&AdditionalAddressFamily::new(AddressFamily::V4)),
+        )
+        .unwrap_err();
+
+        assert_eq!(error_code.code(), BadRequest::CODEPOINT)
     }
 
     const RELAY_IP: Ipv4Addr = Ipv4Addr::new(203, 0, 113, 1);
@@ -2367,60 +2523,63 @@ mod tests {
             .expect("a well-formed request encodes")
     }
 
-    // Tests for requirements listed in https://www.rfc-editor.org/rfc/rfc8656#name-receiving-an-allocate-reque.
+    const EXPIRY: u64 = 2145916800;
 
-    // 6. The server checks if the request contains both REQUESTED-ADDRESS-FAMILY and ADDITIONAL-ADDRESS-FAMILY attributes. If yes, then the server rejects the request with a 400 (Bad Request) error.
-    #[test]
-    fn requested_and_additional_is_bad_request() {
-        let error_code = derive_relay_addresses(
-            IpStack::Ip4(Ipv4Addr::LOCALHOST),
-            Some(&RequestedAddressFamily::new(AddressFamily::V4)),
-            Some(&AdditionalAddressFamily::new(AddressFamily::V6)),
-        )
-        .unwrap_err();
+    fn test_server(ports: u16) -> Server<StdRng> {
+        let mut server = Server::new(
+            Ipv4Addr::LOCALHOST,
+            StdRng::seed_from_u64(0),
+            3478,
+            49_152..=(49_151 + ports),
+        );
+        server.set_accounts([(account(0), None), (account(1), None)]);
 
-        assert_eq!(error_code.code(), BadRequest::CODEPOINT)
+        server
     }
 
-    // 7. If the server does not support the address family requested by the client in REQUESTED-ADDRESS-FAMILY, or if the allocation of the requested address family is disabled by local policy, it MUST generate an Allocate error response, and it MUST include an ERROR-CODE attribute with the 440 (Address Family not Supported) response code.
-    // If the REQUESTED-ADDRESS-FAMILY attribute is absent and the server does not support the IPv4 address family, the server MUST include an ERROR-CODE attribute with the 440 (Address Family not Supported) response code.
-    #[test]
-    fn requested_address_family_not_available_is_not_supported() {
-        let error_code = derive_relay_addresses(
-            IpStack::Ip4(Ipv4Addr::LOCALHOST),
-            Some(&RequestedAddressFamily::new(AddressFamily::V6)),
-            None,
-        )
-        .unwrap_err();
+    fn set_allocation_limit(server: &mut Server<StdRng>, limit: usize) {
+        let limit = NonZeroUsize::new(limit).unwrap();
 
-        assert_eq!(error_code.code(), AddressFamilyNotSupported::CODEPOINT);
-
-        let error_code = derive_relay_addresses(
-            IpStack::Ip6(Ipv6Addr::LOCALHOST),
-            Some(&RequestedAddressFamily::new(AddressFamily::V4)),
-            None,
-        )
-        .unwrap_err();
-
-        assert_eq!(error_code.code(), AddressFamilyNotSupported::CODEPOINT);
-
-        let error_code =
-            derive_relay_addresses(IpStack::Ip6(Ipv6Addr::LOCALHOST), None, None).unwrap_err();
-
-        assert_eq!(error_code.code(), AddressFamilyNotSupported::CODEPOINT)
+        server.set_allocation_limits(HashMap::from([(account(0), limit), (account(1), limit)]));
     }
 
-    //9. The server checks if the request contains an ADDITIONAL-ADDRESS-FAMILY attribute. If yes, and the attribute value is 0x01 (IPv4 address family), then the server rejects the request with a 400 (Bad Request) error.
-    #[test]
-    fn additional_address_family_ip4_is_bad_request() {
-        let error_code = derive_relay_addresses(
-            IpStack::Ip4(Ipv4Addr::LOCALHOST),
-            None,
-            Some(&AdditionalAddressFamily::new(AddressFamily::V4)),
-        )
-        .unwrap_err();
+    fn account(id: u128) -> auth::AccountId {
+        auth::AccountId::from(Uuid::from_u128(id))
+    }
 
-        assert_eq!(error_code.code(), BadRequest::CODEPOINT)
+    fn username(account: auth::AccountId, expiry: u64, device: &str) -> Username {
+        Username::new(format!(
+            "{expiry}:{}:{device}",
+            auth::hash_account_id(&account)
+        ))
+        .unwrap()
+    }
+
+    fn socket(index: u16) -> ClientSocket {
+        ClientSocket::new(SocketAddr::from(([127, 0, 0, 1], 50_000 + index)))
+    }
+
+    fn allocate(
+        server: &mut Server<StdRng>,
+        username: &Username,
+        client: ClientSocket,
+    ) -> Message<Attribute> {
+        let now = Instant::now();
+        let now_utc = SystemTime::UNIX_EPOCH;
+        let nonce = issue_nonce(server, client, now, now_utc);
+        let request = authenticated_request(
+            server,
+            ALLOCATE,
+            TransactionId::new([1; 12]),
+            username,
+            &nonce,
+            [Attribute::RequestedTransport(RequestedTransport::new(
+                UDP_TRANSPORT,
+            ))],
+        );
+        server.handle_client_input(&request, client, now, now_utc);
+
+        next_response(server)
     }
 
     const CLIENT: ClientSocket = ClientSocket(SocketAddr::new(
@@ -2438,15 +2597,6 @@ mod tests {
 
     fn limit_5_mbps() -> ThroughputLimit {
         ThroughputLimit::from_bits_per_second(5_000_000).unwrap()
-    }
-
-    fn test_server() -> Server<StdRng> {
-        Server::new(
-            Ipv4Addr::LOCALHOST,
-            StdRng::seed_from_u64(0),
-            3478,
-            49_152..=49_153,
-        )
     }
 
     /// Allocates a port for [`CLIENT`] and binds [`channel`] to [`PEER`], discarding the resulting commands.

@@ -261,7 +261,8 @@ where
                     match e {
                         FreeReason::AuthenticationError
                         | FreeReason::ProtocolFailure
-                        | FreeReason::UnhandledResponse => {
+                        | FreeReason::UnhandledResponse
+                        | FreeReason::AllocationQuotaReached => {
                             self.blocked.insert(*rid, now + BLOCK_DURATION);
                         }
                         FreeReason::NoResponseReceived => {}

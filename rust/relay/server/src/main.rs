@@ -25,6 +25,7 @@ use secrecy::{ExposeSecret, SecretString};
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
+use std::num::NonZeroUsize;
 use std::pin::Pin;
 use std::process::ExitCode;
 use std::sync::Arc;
@@ -457,6 +458,8 @@ struct Init {
     /// Throughput limits in bits per second; absent accounts are unlimited.
     #[serde(default)]
     throughput_limits_bps: HashMap<AccountId, u64>,
+    #[serde(default)]
+    allocation_limits: HashMap<AccountId, NonZeroUsize>,
 }
 
 impl Init {
@@ -480,6 +483,8 @@ struct Account {
     /// Throughput limit in bits per second; absent or zero means unlimited.
     #[serde(default)]
     throughput_limit_bps: Option<u64>,
+    #[serde(default)]
+    allocation_limit: Option<NonZeroUsize>,
 }
 
 impl Account {
@@ -785,6 +790,7 @@ where
                         "Received TURN account list"
                     );
                     self.server.set_accounts(init.accounts());
+                    self.server.set_allocation_limits(init.allocation_limits);
                     tick.want_continue();
                 }
                 Poll::Ready(Some(Ok(IngressMessages::AccountAdded(account)))) => {
@@ -793,6 +799,8 @@ where
                     tracing::info!(account_id = %account.account_id, ?throughput_limit, "Added account to TURN allow list");
                     self.server
                         .add_account(account.account_id, throughput_limit);
+                    self.server
+                        .set_allocation_limit(account.account_id, account.allocation_limit);
                     tick.want_continue();
                 }
                 Poll::Ready(Some(Ok(IngressMessages::AccountRemoved(account)))) => {
