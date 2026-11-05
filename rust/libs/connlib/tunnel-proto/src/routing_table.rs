@@ -142,7 +142,7 @@ where
             return;
         };
 
-        entries.retain(|entry| !predicate(entry));
+        for _ in entries.extract_if(.., |entry| predicate(entry)) {}
 
         if entries.is_empty() {
             self.inner.remove(network);
@@ -428,6 +428,37 @@ mod tests {
         assert!(
             t.matches(ip("10.1.2.3"), tcp(80), FilterMode::Apply)
                 .is_none()
+        );
+    }
+
+    #[test]
+    fn remove_where() {
+        let mut t = RoutingTable::new();
+        t.upsert(net("10.0.0.0/8"), entry(1, R1, permit_all()));
+        t.upsert(net("10.0.0.0/8"), entry(1, R2, permit_all()));
+        t.upsert(net("172.16.0.0/12"), entry(1, R1, permit_all()));
+
+        t.remove_where(net("10.0.0.0/8"), |e| e.id == R1);
+        assert_eq!(
+            t.matches(ip("10.1.2.3"), tcp(80), FilterMode::Apply)
+                .unwrap()
+                .iter()
+                .map(|e| e.id)
+                .collect::<Vec<_>>(),
+            vec![R2]
+        );
+
+        t.remove_where(net("10.0.0.0/8"), |e| e.id == R2);
+        assert!(
+            t.matches(ip("10.1.2.3"), tcp(80), FilterMode::Apply)
+                .is_none()
+        );
+        assert_eq!(
+            t.entries(),
+            vec![(
+                net("172.16.0.0/12"),
+                BTreeSet::from([entry(1, R1, permit_all())])
+            )]
         );
     }
 
