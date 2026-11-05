@@ -1857,12 +1857,18 @@ mod tests {
 
     #[test]
     fn allocation_limit_applies_per_account() {
-        let mut server = test_server(8);
-        set_allocation_limit(&mut server, 1);
+        let mut relay = TestRelay::with_ports(8);
+        let other_account = auth::AccountId::from(Uuid::from_u128(1));
+        let limit = NonZeroUsize::new(1).unwrap();
+        relay.server.add_account(other_account, None);
+        relay.server.set_allocation_limits(HashMap::from([
+            (relay.account, limit),
+            (other_account, limit),
+        ]));
 
-        let first = allocate(&mut server, &username(account(0), EXPIRY, "a"), socket(0));
-        let second = allocate(&mut server, &username(account(0), EXPIRY, "b"), socket(1));
-        let other = allocate(&mut server, &username(account(1), EXPIRY, "a"), socket(2));
+        let first = relay.allocate();
+        let second = relay.allocate_as(socket(1), username(relay.account, EXPIRY, "b"));
+        let other = relay.allocate_as(socket(2), username(other_account, EXPIRY, "a"));
 
         assert_eq!(first.class(), MessageClass::SuccessResponse);
         assert_eq!(
@@ -1874,32 +1880,34 @@ mod tests {
 
     #[test]
     fn renewed_credentials_replace_device_allocation_at_limit() {
-        let mut server = test_server(1);
-        set_allocation_limit(&mut server, 1);
-        allocate(&mut server, &username(account(0), EXPIRY, "a"), socket(0));
+        let mut relay = TestRelay::with_ports(1);
+        relay
+            .server
+            .set_allocation_limit(relay.account, NonZeroUsize::new(1));
+        relay.allocate();
 
-        let response = allocate(
-            &mut server,
-            &username(account(0), EXPIRY + 1, "a"),
-            socket(1),
-        );
+        let response = relay.allocate_as(socket(1), username(relay.account, EXPIRY + 1, DEVICE));
 
         assert_eq!(response.class(), MessageClass::SuccessResponse);
-        assert!(!server.allocations.contains_key(&socket(0)));
-        assert!(server.allocations.contains_key(&socket(1)));
+        assert!(!relay.server.allocations.contains_key(&socket(0)));
+        assert!(relay.server.allocations.contains_key(&socket(1)));
     }
 
     #[test]
     fn lowering_allocation_limit_keeps_existing_allocations() {
-        let mut server = test_server(8);
-        set_allocation_limit(&mut server, 2);
-        allocate(&mut server, &username(account(0), EXPIRY, "a"), socket(0));
-        allocate(&mut server, &username(account(0), EXPIRY, "b"), socket(1));
+        let mut relay = TestRelay::with_ports(8);
+        relay
+            .server
+            .set_allocation_limit(relay.account, NonZeroUsize::new(2));
+        relay.allocate();
+        relay.allocate_as(socket(1), username(relay.account, EXPIRY, "b"));
 
-        server.set_allocation_limit(account(0), NonZeroUsize::new(1));
-        let response = allocate(&mut server, &username(account(0), EXPIRY, "c"), socket(2));
+        relay
+            .server
+            .set_allocation_limit(relay.account, NonZeroUsize::new(1));
+        let response = relay.allocate_as(socket(2), username(relay.account, EXPIRY, "c"));
 
-        assert_eq!(server.num_allocations(), 2);
+        assert_eq!(relay.server.num_allocations(), 2);
         assert_eq!(
             response.get_attribute::<ErrorCode>().unwrap().code(),
             AllocationQuotaReached::CODEPOINT
@@ -2287,19 +2295,24 @@ mod tests {
 
     impl TestRelay {
         fn new() -> Self {
+            Self::with_ports(2)
+        }
+
+        fn with_ports(ports: u16) -> Self {
             let now = Instant::now();
             let now_utc = SystemTime::UNIX_EPOCH;
-            let client = ClientSocket::new(SocketAddr::from(([198, 51, 100, 1], 50_000)));
+            let client = socket(0);
             let account = auth::AccountId::from(Uuid::nil());
-            let mut server = Server::new(RELAY_IP, StdRng::seed_from_u64(0), 3478, 49_152..=49_153);
+            let mut server = Server::new(
+                RELAY_IP,
+                StdRng::seed_from_u64(0),
+                3478,
+                49_152..=(49_151 + ports),
+            );
 
             server.set_accounts([(account, None)]);
             let nonce = issue_nonce(&mut server, client, now, now_utc);
-            let username = Username::new(format!(
-                "2145916800:{}:credential-salt",
-                auth::hash_account_id(&account)
-            ))
-            .unwrap();
+            let username = username(account, EXPIRY, DEVICE);
 
             Self {
                 server,
@@ -2329,6 +2342,15 @@ mod tests {
                     UDP_TRANSPORT,
                 ))],
             )
+        }
+
+        /// Switches to `client` and `username` and allocates with them.
+        fn allocate_as(&mut self, client: ClientSocket, username: Username) -> Message<Attribute> {
+            self.client = client;
+            self.username = username;
+            self.nonce = issue_nonce(&mut self.server, client, self.now, self.now_utc);
+
+            self.allocate()
         }
 
         fn channel_bind(&mut self, peer: SocketAddr) -> Message<Attribute> {
@@ -2448,69 +2470,8 @@ mod tests {
             .expect("the relay's response is well-formed")
     }
 
-    fn next_response(server: &mut Server<StdRng>) -> Message<Attribute> {
-        let payload = std::iter::from_fn(|| server.next_command())
-            .find_map(|command| {
-                let Command::SendMessage { payload, .. } = command else {
-                    return None;
-                };
-
-                Some(payload)
-            })
-            .expect("the relay sends a response");
-
-        decode(&payload)
-    }
-
-    fn authenticated_request(
-        server: &Server<StdRng>,
-        method: Method,
-        transaction_id: TransactionId,
-        username: &Username,
-        nonce: &Nonce,
-        attributes: impl IntoIterator<Item = Attribute>,
-    ) -> Vec<u8> {
-        let mut message = Message::<Attribute>::new(MessageClass::Request, method, transaction_id);
-        for attribute in attributes {
-            message.add_attribute(attribute);
-        }
-        message.add_attribute(username.clone());
-        message.add_attribute(nonce.clone());
-
-        let password = auth::generate_password(server.auth_secret(), username.name());
-        let integrity =
-            MessageIntegrity::new_long_term_credential(&message, username, &FIREZONE, &password)
-                .expect("a valid request has valid message integrity");
-        message.add_attribute(integrity);
-
-        MessageEncoder::new()
-            .encode_into_bytes(message)
-            .expect("a well-formed request encodes")
-    }
-
     const EXPIRY: u64 = 2145916800;
-
-    fn test_server(ports: u16) -> Server<StdRng> {
-        let mut server = Server::new(
-            Ipv4Addr::LOCALHOST,
-            StdRng::seed_from_u64(0),
-            3478,
-            49_152..=(49_151 + ports),
-        );
-        server.set_accounts([(account(0), None), (account(1), None)]);
-
-        server
-    }
-
-    fn set_allocation_limit(server: &mut Server<StdRng>, limit: usize) {
-        let limit = NonZeroUsize::new(limit).unwrap();
-
-        server.set_allocation_limits(HashMap::from([(account(0), limit), (account(1), limit)]));
-    }
-
-    fn account(id: u128) -> auth::AccountId {
-        auth::AccountId::from(Uuid::from_u128(id))
-    }
+    const DEVICE: &str = "credential-salt";
 
     fn username(account: auth::AccountId, expiry: u64, device: &str) -> Username {
         Username::new(format!(
@@ -2521,30 +2482,7 @@ mod tests {
     }
 
     fn socket(index: u16) -> ClientSocket {
-        ClientSocket::new(SocketAddr::from(([127, 0, 0, 1], 50_000 + index)))
-    }
-
-    fn allocate(
-        server: &mut Server<StdRng>,
-        username: &Username,
-        client: ClientSocket,
-    ) -> Message<Attribute> {
-        let now = Instant::now();
-        let now_utc = SystemTime::UNIX_EPOCH;
-        let nonce = issue_nonce(server, client, now, now_utc);
-        let request = authenticated_request(
-            server,
-            ALLOCATE,
-            TransactionId::new([1; 12]),
-            username,
-            &nonce,
-            [Attribute::RequestedTransport(RequestedTransport::new(
-                UDP_TRANSPORT,
-            ))],
-        );
-        server.handle_client_input(&request, client, now, now_utc);
-
-        next_response(server)
+        ClientSocket::new(SocketAddr::from(([198, 51, 100, 1], 50_000 + index)))
     }
 
     fn limit_5_mbps() -> ThroughputLimit {
