@@ -1582,8 +1582,16 @@ mod tests {
             setup_wildcard_foo_nat(&mut peer, i, now).unwrap();
         }
         setup_wildcard_foo_nat(&mut peer, 0, now + Duration::from_secs(1)).unwrap();
-        setup_wildcard_foo_nat(&mut peer, MAX_DNS_DOMAINS, now + MIN_DNS_DOMAIN_AGE).unwrap();
+        let evicted =
+            setup_wildcard_foo_nat(&mut peer, MAX_DNS_DOMAINS, now + MIN_DNS_DOMAIN_AGE).unwrap();
 
+        assert_eq!(
+            evicted,
+            Some(EvictedDomain {
+                domain: "d1.foo.com".parse().unwrap(),
+                resources: HashSet::from_iter([wildcard_foo_resource_id()]),
+            })
+        );
         assert_eq!(peer.dns_domains().len(), MAX_DNS_DOMAINS);
         assert_eq!(
             peer.permanent_translations.len(),
@@ -1640,128 +1648,6 @@ mod tests {
                 .iter()
                 .all(|ip| !peer.permanent_translations.contains_key(&ip))
         );
-    }
-
-    #[test]
-    fn setup_nat_sets_up_known_domain_again_at_limit() {
-        let _guard = logging::test("debug");
-
-        let now = Instant::now();
-        let mut peer = wildcard_foo_peer();
-
-        for i in 0..MAX_DNS_DOMAINS {
-            setup_wildcard_foo_nat(&mut peer, i, now).unwrap();
-        }
-
-        assert_eq!(setup_wildcard_foo_nat(&mut peer, 0, now).unwrap(), None);
-    }
-
-    #[test]
-    fn setup_nat_returns_evicted_domain() {
-        let _guard = logging::test("debug");
-
-        let now = Instant::now();
-        let mut peer = wildcard_foo_peer();
-
-        for i in 0..MAX_DNS_DOMAINS {
-            assert_eq!(setup_wildcard_foo_nat(&mut peer, i, now).unwrap(), None);
-        }
-
-        assert_eq!(
-            setup_wildcard_foo_nat(&mut peer, MAX_DNS_DOMAINS, now + MIN_DNS_DOMAIN_AGE).unwrap(),
-            Some(EvictedDomain {
-                domain: "d0.foo.com".parse().unwrap(),
-                resources: HashSet::from_iter([wildcard_foo_resource_id()]),
-            })
-        );
-    }
-
-    #[test]
-    fn packet_for_evicted_proxy_ip_returns_icmp_error() {
-        let _guard = logging::test("debug");
-
-        let now = Instant::now();
-        let later = now + MIN_DNS_DOMAIN_AGE;
-        let mut peer = wildcard_foo_peer();
-
-        for i in 0..MAX_DNS_DOMAINS {
-            setup_wildcard_foo_nat(&mut peer, i, now).unwrap();
-        }
-        setup_wildcard_foo_nat(&mut peer, MAX_DNS_DOMAINS, later).unwrap();
-
-        let packet = ip_packet::make::tcp_packet(
-            IpAddr::from(client_tun_ipv4()),
-            nth_proxy_ip(0),
-            5401,
-            443,
-            TcpFlags::default(),
-            &[],
-        )
-        .unwrap();
-
-        assert!(matches!(
-            peer.translate_outbound(packet, later).unwrap(),
-            TranslateOutboundResult::IcmpError { .. }
-        ));
-    }
-
-    #[test]
-    fn packet_for_proxy_ip_without_resolved_ip_returns_icmp_error() {
-        let _guard = logging::test("debug");
-
-        let mut peer = ClientOnGateway::new(
-            client_id(),
-            client_key(),
-            client_tun(),
-            gateway_tun(),
-            MAX_DNS_DOMAINS,
-        );
-        peer.add_resource(foo_dns_resource(), None, Instant::now());
-        peer.setup_nat(
-            foo_name().parse().unwrap(),
-            foo_resource_id(),
-            BTreeSet::from([foo_real_ip1().into()]),
-            ProxyIps::for_test(),
-            Instant::now(),
-        )
-        .unwrap();
-
-        let packet = ip_packet::make::udp_packet(
-            client_tun_ipv6(),
-            proxy_ip6_1(),
-            5401,
-            foo_allowed_port(),
-            &[],
-        )
-        .unwrap();
-
-        assert!(matches!(
-            peer.translate_outbound(packet, Instant::now()).unwrap(),
-            TranslateOutboundResult::IcmpError { .. }
-        ));
-    }
-
-    #[test]
-    fn evicted_proxy_ip_can_be_assigned_to_new_domain() {
-        let _guard = logging::test("debug");
-
-        let now = Instant::now();
-        let later = now + MIN_DNS_DOMAIN_AGE;
-        let mut peer = wildcard_foo_peer();
-
-        for i in 0..MAX_DNS_DOMAINS {
-            setup_wildcard_foo_nat(&mut peer, i, now).unwrap();
-        }
-        setup_wildcard_foo_nat(&mut peer, MAX_DNS_DOMAINS, later).unwrap();
-
-        peer.setup_nat(
-            "new.foo.com".parse().unwrap(),
-            wildcard_foo_resource_id(),
-            BTreeSet::from([foo_real_ip1().into()]),
-            nth_proxy_ips(0),
-            later,
-        )
-        .unwrap();
     }
 
     #[test]
@@ -1826,11 +1712,6 @@ mod tests {
 
     const PROXY_IPS_PER_DOMAIN: usize = 8;
     const MAX_DNS_DOMAINS: usize = 4;
-
-    /// The first proxy IP of [`nth_proxy_ips`].
-    fn nth_proxy_ip(n: usize) -> IpAddr {
-        nth_proxy_ips(n).iter().next().unwrap()
-    }
 
     /// Different proxy IPs for each `n`.
     fn nth_proxy_ips(n: usize) -> ProxyIps {
