@@ -14,7 +14,7 @@ pub(crate) use crate::client::client_on_client::ClientOnClient;
 pub(crate) use crate::client::gateway_on_client::GatewayOnClient;
 
 use crate::authorization_rejections::AuthorizationRejections;
-use peer_batch::{InboundDecision, PeerBatch};
+use peer_batch::{Handled, InboundDecision, PeerBatch};
 use resource::{DevicePoolResource, InternetResource, Resource};
 
 use crate::batch::{BatchingKey, TunBatch};
@@ -790,14 +790,13 @@ impl ClientState {
         &mut self,
         pid: ClientOrGatewayId,
         packet: Result<Option<IpPacket>>,
-        decisions: &mut smallvec::SmallVec<[InboundDecision; 2]>,
         local: SocketAddr,
         from: SocketAddr,
         now: Instant,
-    ) -> Result<Option<IpPacket>> {
+    ) -> Result<Handled> {
         let packet = match packet {
             Ok(Some(packet)) => packet,
-            Ok(None) => return Ok(None),
+            Ok(None) => return Ok(Handled::Consumed),
             Err(e) => return Err(e.context(FailedToDecapsulate(packet_kind::Kind::Wireguard))),
         };
 
@@ -808,12 +807,12 @@ impl ClientState {
 
         if matches!(pid, ClientOrGatewayId::Gateway(_)) && self.udp_dns_client.accepts(&packet) {
             self.udp_dns_client.handle_inbound(packet);
-            return Ok(None);
+            return Ok(Handled::Consumed);
         }
 
         if matches!(pid, ClientOrGatewayId::Gateway(_)) && self.tcp_dns_client.accepts(&packet) {
             self.tcp_dns_client.handle_inbound(packet);
-            return Ok(None);
+            return Ok(Handled::Consumed);
         }
 
         if let Some(fz_p2p_control) = packet.as_fz_p2p_control() {
@@ -829,7 +828,7 @@ impl ClientState {
                     let Some(domain) = self.resource_stub_resolver.resolved_domain(&res.domain)
                     else {
                         tracing::debug!(%gid, domain = %res.domain, "Unknown domain, ignoring DNS resource NAT status");
-                        return Ok(None);
+                        return Ok(Handled::Consumed);
                     };
 
                     let buffered_packets = self
@@ -862,17 +861,14 @@ impl ClientState {
                         }
                     }
 
-                    // Later packets of the batch find no peer, so they must not reuse a decision.
-                    for decision in decisions.drain(..) {
-                        self.flow_tracker.insert_detached(decision.flow);
-                    }
+                    return Ok(Handled::Goodbye);
                 }
                 (code, pid) => {
                     tracing::debug!(code = %code.into_u8(), %pid, "Unknown / unsupported control protocol");
                 }
             };
 
-            return Ok(None);
+            return Ok(Handled::Consumed);
         }
 
         let packet = match pid {
@@ -880,7 +876,7 @@ impl ClientState {
                 let Some(peer) = self.clients.peer_by_id_mut(&cid) else {
                     tracing::error!(%cid, "Couldn't find connection by ID");
 
-                    return Ok(None);
+                    return Ok(Handled::Consumed);
                 };
 
                 match peer.ensure_allowed_inbound(packet, now)? {
@@ -910,7 +906,7 @@ impl ClientState {
                                 &mut self.pending_peer_packets,
                             );
                         }
-                        return Ok(None);
+                        return Ok(Handled::Consumed);
                     }
                 }
             }
@@ -918,7 +914,7 @@ impl ClientState {
                 let Some(peer) = self.gateways.peer_by_id_mut(&gid) else {
                     tracing::error!(%gid, "Couldn't find connection by ID");
 
-                    return Ok(None);
+                    return Ok(Handled::Consumed);
                 };
 
                 peer.ensure_allowed_src(&packet)?;
@@ -931,14 +927,12 @@ impl ClientState {
             }
         };
 
-        if let Some(key) = key {
-            decisions.push(InboundDecision {
-                key,
-                flow: flow.detach(),
-            });
-        }
+        let decision = key.map(|key| InboundDecision {
+            key,
+            flow: flow.detach(),
+        });
 
-        Ok(Some(packet))
+        Ok(Handled::Deliver(packet, decision))
     }
 
     pub fn handle_dns_response(&mut self, response: dns::RecursiveResponse, now: Instant) {

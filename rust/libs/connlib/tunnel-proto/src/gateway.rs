@@ -2,7 +2,7 @@ mod client_on_gateway;
 mod nat_table;
 mod peer_batch;
 
-use peer_batch::{InboundDecision, PeerBatch};
+use peer_batch::{Handled, InboundDecision, PeerBatch};
 
 pub(crate) use crate::gateway::client_on_gateway::ClientOnGateway;
 
@@ -226,14 +226,13 @@ impl GatewayState {
         &mut self,
         cid: ClientId,
         packet: Result<Option<IpPacket>>,
-        decisions: &mut smallvec::SmallVec<[InboundDecision; 2]>,
         local: SocketAddr,
         from: SocketAddr,
         now: Instant,
-    ) -> Result<Option<IpPacket>> {
+    ) -> Result<Handled> {
         let packet = match packet {
             Ok(Some(packet)) => packet,
-            Ok(None) => return Ok(None),
+            Ok(None) => return Ok(Handled::Consumed),
             Err(e) => return Err(e.context(FailedToDecapsulate(packet_kind::Kind::Wireguard))),
         };
 
@@ -241,7 +240,7 @@ impl GatewayState {
         let flow = self.flow_tracker.begin_network_packet(local, from, now);
 
         if packet.destination().is_multicast() {
-            return Ok(None);
+            return Ok(Handled::Consumed);
         }
 
         flow_tracker::record_decrypted_packet(&packet);
@@ -251,7 +250,7 @@ impl GatewayState {
             drop(flow);
             self.cleanup_connection(&cid, now);
 
-            return Ok(None);
+            return Ok(Handled::Consumed);
         };
 
         flow_tracker::record_peer(cid, flow_tracker::Role::Responder);
@@ -265,13 +264,7 @@ impl GatewayState {
                     self.peers.remove(&cid);
                     self.node.remove_connection(cid, "received `goodbye`", now);
 
-                    // Later packets of the batch find no peer, so they must not reuse a decision.
-                    drop(flow);
-                    for decision in decisions.drain(..) {
-                        self.flow_tracker.insert_detached(decision.flow);
-                    }
-
-                    None
+                    return Ok(Handled::Goodbye);
                 }
                 code => {
                     tracing::debug!(code = %code.into_u8(), "Unknown control protocol event");
@@ -281,14 +274,14 @@ impl GatewayState {
             };
 
             let Some(immediate_response) = immediate_response else {
-                return Ok(None);
+                return Ok(Handled::Consumed);
             };
 
             if let Some(transmit) = encrypt_packet(immediate_response, cid, &mut self.node, now)? {
                 self.buffered_transmits.push_back(transmit);
             }
 
-            return Ok(None);
+            return Ok(Handled::Consumed);
         }
 
         let translated = match peer.translate_outbound(packet, now) {
@@ -297,16 +290,15 @@ impl GatewayState {
         };
 
         match (translated, key) {
-            (TranslateOutboundResult::Send(packet, rewrite), Some(key)) => {
-                decisions.push(InboundDecision {
+            (TranslateOutboundResult::Send(packet, rewrite), Some(key)) => Ok(Handled::Deliver(
+                packet,
+                Some(InboundDecision {
                     key,
                     rewrite,
                     flow: flow.detach(),
-                });
-
-                Ok(Some(packet))
-            }
-            (TranslateOutboundResult::Send(packet, _), None) => Ok(Some(packet)),
+                }),
+            )),
+            (TranslateOutboundResult::Send(packet, _), None) => Ok(Handled::Deliver(packet, None)),
             (
                 TranslateOutboundResult::IcmpError {
                     reply,
@@ -328,7 +320,7 @@ impl GatewayState {
                     self.buffered_transmits.push_back(transmit);
                 }
 
-                Ok(None)
+                Ok(Handled::Consumed)
             }
         }
     }
