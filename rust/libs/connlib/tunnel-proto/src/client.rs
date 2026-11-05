@@ -789,17 +789,11 @@ impl ClientState {
     fn handle_peer_message(
         &mut self,
         pid: ClientOrGatewayId,
-        packet: Result<Option<IpPacket>>,
+        packet: IpPacket,
         local: SocketAddr,
         from: SocketAddr,
         now: Instant,
     ) -> Result<Handled> {
-        let packet = match packet {
-            Ok(Some(packet)) => packet,
-            Ok(None) => return Ok(Handled::Consumed),
-            Err(e) => return Err(e.context(FailedToDecapsulate(packet_kind::Kind::Wireguard))),
-        };
-
         let key = BatchingKey::of(&packet);
         let flow = self.flow_tracker.begin_network_packet(local, from, now);
 

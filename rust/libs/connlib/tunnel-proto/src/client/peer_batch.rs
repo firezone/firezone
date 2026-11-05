@@ -7,6 +7,7 @@ use ip_packet::IpPacket;
 
 use super::ClientState;
 use crate::batch::BatchingKey;
+use crate::{FailedToDecapsulate, packet_kind};
 use smallvec::SmallVec;
 
 /// The decision taken for the first packet of a flow in a [`PeerBatch`], reused for the rest.
@@ -67,20 +68,21 @@ impl Iterator for PeerBatch<'_> {
             return None;
         }
 
-        let packets = &mut self.packets;
-        let item = packets.next()?;
+        let cid = self.packets.cid();
+        let packet = match self.packets.next()? {
+            Ok(Some(packet)) => packet,
+            Ok(None) => return Some(Ok(None)),
+            Err(e) => {
+                return Some(Err(
+                    e.context(FailedToDecapsulate(packet_kind::Kind::Wireguard))
+                ));
+            }
+        };
 
-        let packet = item.as_ref().ok().and_then(Option::as_ref);
-        let decision =
-            packet.and_then(|packet| self.decisions.iter_mut().find(|d| d.key.matches(packet)));
-        let Some((packet, decision)) = packet.zip(decision) else {
-            let handled = self.state.handle_peer_message(
-                packets.cid(),
-                item,
-                self.local,
-                self.from,
-                self.now,
-            );
+        let Some(decision) = self.decisions.iter_mut().find(|d| d.key.matches(&packet)) else {
+            let handled = self
+                .state
+                .handle_peer_message(cid, packet, self.local, self.from, self.now);
 
             return Some(handled.map(|handled| match handled {
                 Handled::Deliver(packet, decision) => {
@@ -95,9 +97,9 @@ impl Iterator for PeerBatch<'_> {
             }));
         };
 
-        decision.flow.count_packet(packet);
+        decision.flow.count_packet(&packet);
 
-        Some(item)
+        Some(Ok(Some(packet)))
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {

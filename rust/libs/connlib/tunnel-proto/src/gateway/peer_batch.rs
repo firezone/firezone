@@ -1,12 +1,13 @@
 use std::net::SocketAddr;
 use std::time::Instant;
 
-use anyhow::{Context as _, Result};
+use anyhow::Result;
 use connlib_model::ClientId;
 use ip_packet::IpPacket;
 
 use super::{GatewayState, OutboundRewrite};
 use crate::batch::BatchingKey;
+use crate::{FailedToDecapsulate, packet_kind};
 use smallvec::SmallVec;
 
 /// The decision taken for the first packet of a flow in a [`PeerBatch`], reused for the rest.
@@ -68,18 +69,21 @@ impl Iterator for PeerBatch<'_> {
             return None;
         }
 
-        let packets = &mut self.packets;
-        let cid = packets.cid();
-        let mut item = packets.next()?;
+        let cid = self.packets.cid();
+        let mut packet = match self.packets.next()? {
+            Ok(Some(packet)) => packet,
+            Ok(None) => return Some(Ok(None)),
+            Err(e) => {
+                return Some(Err(
+                    e.context(FailedToDecapsulate(packet_kind::Kind::Wireguard))
+                ));
+            }
+        };
 
-        let packet = item.as_mut().ok().and_then(Option::as_mut);
-        let decision = packet
-            .as_deref()
-            .and_then(|packet| self.decisions.iter_mut().find(|d| d.key.matches(packet)));
-        let Some((packet, decision)) = packet.zip(decision) else {
+        let Some(decision) = self.decisions.iter_mut().find(|d| d.key.matches(&packet)) else {
             let handled = self
                 .state
-                .handle_peer_message(cid, item, self.local, self.from, self.now);
+                .handle_peer_message(cid, packet, self.local, self.from, self.now);
 
             return Some(handled.map(|handled| match handled {
                 Handled::Deliver(packet, decision) => {
@@ -94,17 +98,16 @@ impl Iterator for PeerBatch<'_> {
             }));
         };
 
-        if let OutboundRewrite::Destination(proto, ip) = decision.rewrite
-            && let Err(e) = packet
-                .translate_destination(proto, ip)
-                .context("Failed to translate packet to new destination")
-        {
-            return Some(Err(e));
+        if let OutboundRewrite::Destination(proto, ip) = decision.rewrite {
+            let translated = packet.translate_destination(proto, ip);
+
+            // The first packet translated fine and this one shares its flow, thus its IP version.
+            debug_assert!(translated.is_ok(), "{translated:?}");
         }
 
-        decision.flow.count_packet(packet);
+        decision.flow.count_packet(&packet);
 
-        Some(item)
+        Some(Ok(Some(packet)))
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
