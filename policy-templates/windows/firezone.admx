@@ -113,6 +113,24 @@
     </policy>
 
     <policy
+      name="startOnLogin"
+      class="Machine"
+      displayName="$(string.startOnLogin)"
+      explainText="$(string.startOnLogin_explain)"
+      key="Software\Policies\Firezone"
+      valueName="startOnLogin"
+    >
+      <parentCategory ref="firezone" />
+      <supportedOn ref="SUPPORTED_FZ_GUI_1_5_0" />
+      <enabledValue>
+        <decimal value="1" />
+      </enabledValue>
+      <disabledValue>
+        <decimal value="0" />
+      </disabledValue>
+    </policy>
+
+    <policy
       name="checkForUpdates"
       class="Machine"
       displayName="$(string.checkForUpdates)"
