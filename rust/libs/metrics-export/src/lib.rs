@@ -43,22 +43,7 @@ impl Exporter {
     pub fn spawn(socket_factory: Arc<dyn SocketFactory<TcpSocket>>) -> io::Result<Self> {
         let (config, rx) = watch::channel(None);
 
-        std::thread::Builder::new()
-            .name("fz-metrics".to_owned())
-            .spawn(move || {
-                let runtime = match tokio::runtime::Builder::new_current_thread()
-                    .enable_all()
-                    .build()
-                {
-                    Ok(runtime) => runtime,
-                    Err(e) => {
-                        tracing::error!("Failed to build metrics export runtime: {e}");
-                        return;
-                    }
-                };
-
-                runtime.block_on(run(rx, socket_factory));
-            })?;
+        async_runtime::spawn_thread("fz-metrics", move || run(rx, socket_factory))?;
 
         Ok(Self { config })
     }

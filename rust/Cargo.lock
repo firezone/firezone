@@ -5015,6 +5015,7 @@ name = "metrics-export"
 version = "0.1.0"
 dependencies = [
  "anyhow-ext",
+ "async-runtime",
  "bytes",
  "futures",
  "http",

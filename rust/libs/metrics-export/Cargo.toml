@@ -6,6 +6,7 @@ license = { workspace = true }
 
 [dependencies]
 anyhow = { workspace = true }
+async-runtime = { workspace = true }
 bytes = { workspace = true }
 futures = { workspace = true }
 http = { workspace = true }
@@ -16,7 +17,7 @@ opentelemetry_sdk = { workspace = true, features = ["metrics", "experimental_met
 prost = { workspace = true, features = ["std"] }
 secrecy = { workspace = true }
 socket-factory = { workspace = true }
-tokio = { workspace = true, features = ["rt", "sync", "time"] }
+tokio = { workspace = true, features = ["sync", "time"] }
 tracing = { workspace = true }
 tunnel-bypass-resolver = { workspace = true }
 url = { workspace = true }
