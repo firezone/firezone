@@ -39,6 +39,7 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
@@ -81,19 +82,32 @@ fun SettingsGroup(
 
 @Composable
 fun ManagedSettingsNote(modifier: Modifier = Modifier) {
+    IconNote(
+        icon = FirezoneIcons.Lock,
+        text = stringResource(R.string.managed_settings_footer),
+        modifier = modifier.padding(horizontal = 16.dp),
+    )
+}
+
+@Composable
+private fun IconNote(
+    icon: ImageVector,
+    text: String,
+    modifier: Modifier = Modifier,
+) {
     Row(
-        modifier.padding(horizontal = 16.dp).semantics(mergeDescendants = true) {},
+        modifier.semantics(mergeDescendants = true) {},
         verticalAlignment = Alignment.Top,
         horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         Icon(
-            imageVector = FirezoneIcons.Lock,
+            imageVector = icon,
             contentDescription = null,
             tint = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.size(16.dp),
         )
         Text(
-            text = stringResource(R.string.managed_settings_footer),
+            text = text,
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.weight(1f),
@@ -209,7 +223,9 @@ fun TextPreferenceRow(
                     onValueChange = { draft = it },
                     singleLine = true,
                     isError = !isDraftValid,
-                    supportingText = (draftError ?: note(draft.text))?.let { { Text(it) } },
+                    supportingText =
+                        draftError?.let { { Text(it) } }
+                            ?: note(draft.text)?.let { { IconNote(FirezoneIcons.Info, it) } },
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
                     keyboardActions = KeyboardActions(onDone = { if (isDraftValid) confirm() }),
                     modifier = Modifier.fillMaxWidth().focusRequester(focusRequester),
@@ -275,12 +291,7 @@ fun <T> ChoicePreferenceRow(
                         }
                     }
                     if (note != null) {
-                        Text(
-                            note,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(top = 8.dp),
-                        )
+                        IconNote(FirezoneIcons.Info, note, Modifier.padding(top = 8.dp))
                     }
                 }
             },
