@@ -31,8 +31,6 @@ pub(crate) struct SimGateway {
     dns_resolutions: BTreeMap<(ClientId, DomainName), Vec<DnsResolution>>,
     dns_nat_generations: BTreeMap<ClientId, u64>,
     dns_proxy_owners: BTreeMap<(ClientId, IpAddr), DomainName>,
-    /// The domains the Gateway set up for each client in its current DNS NAT generation.
-    dns_nat_domains: BTreeMap<ClientId, BTreeSet<DomainName>>,
     max_dns_domains_per_client: Option<usize>,
     next_observation_order: u64,
 
@@ -75,7 +73,6 @@ impl SimGateway {
             dns_resolutions: Default::default(),
             dns_nat_generations: Default::default(),
             dns_proxy_owners: Default::default(),
-            dns_nat_domains: Default::default(),
             max_dns_domains_per_client,
             next_observation_order: 0,
             authorized_resources: Default::default(),
@@ -242,11 +239,6 @@ impl SimGateway {
             self.dns_proxy_owners
                 .insert((client, *proxy_ip), domain.clone());
         }
-
-        self.dns_nat_domains
-            .entry(client)
-            .or_default()
-            .insert(domain.clone());
 
         let dns_nat_generation = self.dns_nat_generation(client);
         let resolution = DnsResolution {
@@ -415,11 +407,23 @@ impl SimGateway {
     ///
     /// Packets to the domains of that client may then get lost or rejected as prohibited.
     pub(crate) fn dns_nat_may_be_limited(&self, client: ClientId) -> bool {
-        self.max_dns_domains_per_client.is_some_and(|max| {
-            self.dns_nat_domains
-                .get(&client)
-                .is_some_and(|domains| domains.len() > max)
-        })
+        let Some(max) = self.max_dns_domains_per_client else {
+            return false;
+        };
+        let generation = self.dns_nat_generation(client);
+
+        let num_domains = self
+            .dns_resolutions
+            .iter()
+            .filter(|((owner, _), resolutions)| {
+                *owner == client
+                    && resolutions
+                        .iter()
+                        .any(|resolution| resolution.dns_nat_generation == generation)
+            })
+            .count();
+
+        num_domains > max
     }
 
     pub(crate) fn dns_nat_generation(&self, client: ClientId) -> u64 {
@@ -432,7 +436,6 @@ impl SimGateway {
     fn start_new_dns_nat_generation(&mut self, client: ClientId) {
         let generation = self.dns_nat_generation(client) + 1;
         self.dns_nat_generations.insert(client, generation);
-        self.dns_nat_domains.remove(&client);
         for _ in self
             .dns_proxy_owners
             .extract_if(.., |(owner, _), _| *owner == client)
