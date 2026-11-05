@@ -451,54 +451,42 @@ impl ClientTunnel {
                     tick.want_continue();
                 }
 
-                if let Some(mut datagrams) = network {
-                    let mut jobs = self.io.new_decrypt_jobs(datagrams.len());
-
-                    let mut datagrams = datagrams
-                        .drain()
-                        .inspect(|datagram| {
-                            for segment in datagram.segments() {
-                                udp_received.record(&datagram[segment]);
-                            }
-                        })
+                if let Some(received) = network {
+                    let mut batches = Vec::new();
+                    let mut segments = received
+                        .segments()
+                        .inspect(|segment| udp_received.record(segment))
                         .peekable();
 
-                    while let Some(mut train) = jobs.new_train(&mut datagrams) {
-                        let mut segments = train.segments().peekable();
+                    while let Some(segment) = segments.next() {
+                        let (local, from) = (segment.local(), segment.from());
 
-                        while let Some(segment) = segments.next() {
-                            let packet = &train[segment];
-
-                            let mut batch = match self
-                                .role_state
-                                .handle_network_input(train.local(), train.from(), packet, now)
-                                .with_context(|| FailedToHandleNetworkPacket {
-                                    local: train.local(),
-                                    from: train.from(),
-                                }) {
-                                Ok(Some(batch)) => batch,
-                                Ok(None) => {
-                                    self.needs_timeout = true;
-                                    continue;
-                                }
-                                Err(e) => {
-                                    error.push(e);
-                                    continue;
-                                }
-                            };
-
-                            let mut batch_segments = Vec::with_capacity(train.num_segments());
-                            batch_segments.push(segment);
-
-                            while let Some(segment) =
-                                segments.next_if(|&s| batch.push(&train[s], now))
-                            {
-                                batch_segments.push(segment);
+                        let mut batch = match self
+                            .role_state
+                            .handle_network_input(local, from, &segment, now)
+                            .with_context(|| FailedToHandleNetworkPacket { local, from })
+                        {
+                            Ok(Some(batch)) => batch,
+                            Ok(None) => {
+                                self.needs_timeout = true;
+                                continue;
                             }
+                            Err(e) => {
+                                error.push(e);
+                                continue;
+                            }
+                        };
 
-                            train.add(batch.finish(), batch_segments);
-                        }
+                        while segments
+                            .next_if(|next| segment.may_batch_with(next) && batch.push(next, now))
+                            .is_some()
+                        {}
+
+                        batches.push((batch.finish(), segment.index()));
                     }
+                    drop(segments);
+
+                    self.io.decrypt(received, batches);
 
                     tick.want_continue();
                 }
@@ -723,54 +711,42 @@ impl GatewayTunnel {
                     tick.want_continue();
                 }
 
-                if let Some(mut datagrams) = network {
-                    let mut jobs = self.io.new_decrypt_jobs(datagrams.len());
-
-                    let mut datagrams = datagrams
-                        .drain()
-                        .inspect(|datagram| {
-                            for segment in datagram.segments() {
-                                udp_received.record(&datagram[segment]);
-                            }
-                        })
+                if let Some(received) = network {
+                    let mut batches = Vec::new();
+                    let mut segments = received
+                        .segments()
+                        .inspect(|segment| udp_received.record(segment))
                         .peekable();
 
-                    while let Some(mut train) = jobs.new_train(&mut datagrams) {
-                        let mut segments = train.segments().peekable();
+                    while let Some(segment) = segments.next() {
+                        let (local, from) = (segment.local(), segment.from());
 
-                        while let Some(segment) = segments.next() {
-                            let packet = &train[segment];
-
-                            let mut batch = match self
-                                .role_state
-                                .handle_network_input(train.local(), train.from(), packet, now)
-                                .with_context(|| FailedToHandleNetworkPacket {
-                                    local: train.local(),
-                                    from: train.from(),
-                                }) {
-                                Ok(Some(batch)) => batch,
-                                Ok(None) => {
-                                    self.needs_timeout = true;
-                                    continue;
-                                }
-                                Err(e) => {
-                                    error.push(e);
-                                    continue;
-                                }
-                            };
-
-                            let mut batch_segments = Vec::with_capacity(train.num_segments());
-                            batch_segments.push(segment);
-
-                            while let Some(segment) =
-                                segments.next_if(|&s| batch.push(&train[s], now))
-                            {
-                                batch_segments.push(segment);
+                        let mut batch = match self
+                            .role_state
+                            .handle_network_input(local, from, &segment, now)
+                            .with_context(|| FailedToHandleNetworkPacket { local, from })
+                        {
+                            Ok(Some(batch)) => batch,
+                            Ok(None) => {
+                                self.needs_timeout = true;
+                                continue;
                             }
+                            Err(e) => {
+                                error.push(e);
+                                continue;
+                            }
+                        };
 
-                            train.add(batch.finish(), batch_segments);
-                        }
+                        while segments
+                            .next_if(|next| segment.may_batch_with(next) && batch.push(next, now))
+                            .is_some()
+                        {}
+
+                        batches.push((batch.finish(), segment.index()));
                     }
+                    drop(segments);
+
+                    self.io.decrypt(received, batches);
 
                     tick.want_continue();
                 }

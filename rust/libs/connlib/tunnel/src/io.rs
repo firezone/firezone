@@ -4,20 +4,21 @@ mod udp_gro_train;
 mod udp_gso_train;
 
 pub(crate) use crypto::MAX_DECRYPT_BACKLOG_MEMORY;
-pub use crypto::{CryptoWorkers, DecryptJobs, DecryptedBatch, DecryptedJobs, EncryptJobs};
+pub use crypto::{CryptoWorkers, DecryptedBatch, DecryptedJobs, EncryptJobs};
 pub use device::{Device, TunChannelClosed};
-pub(crate) use udp_gro_train::{TrainSegment, UdpGroTrain};
+pub(crate) use udp_gro_train::{Received, SegmentIndex, UdpGroTrain};
 pub(crate) use udp_gso_train::UdpGsoTrain;
 
 use crate::{
     TunnelError, dns,
     resolver::{self, ResolverControl, ResolverQuery},
-    sockets::{ReceivedDatagrams, Sockets},
+    sockets::Sockets,
 };
 use anyhow::Result;
 use crypto::Decrypting;
 use fast_random_state::FastRandomState;
 use ip_packet::IpPacket;
+use snownet::PendingDecapsulate;
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 use std::{
     collections::HashMap,
@@ -51,7 +52,7 @@ pub struct Io {
 /// handling them one at a time, improving fairness and preventing starvation.
 pub struct Input {
     pub device: Option<tun::PacketBatch>,
-    pub network: Option<ReceivedDatagrams>,
+    pub network: Option<Received>,
     pub decrypted: Option<DecryptedJobs>,
     pub dns_queries: Vec<DnsQuery>,
     pub dns_responses: Vec<dns::RecursiveResponse>,
@@ -139,7 +140,8 @@ impl<'a, 'cx> PollState<'a, 'cx> {
             return;
         }
 
-        self.input.network = poll_to_option(self.io.sockets.poll_recv_from(self.cx));
+        self.input.network = poll_to_option(self.io.sockets.poll_recv_from(self.cx))
+            .map(|mut datagrams| Received::new(datagrams.drain()));
     }
 
     fn poll_socket_errors(&mut self) {
@@ -338,11 +340,16 @@ impl Io {
         self.crypto.new_encrypt_jobs(&mut self.sockets, num_packets)
     }
 
-    /// Creates the jobs that decrypt received data messages off the main thread, yielding them via
+    /// Decrypts `batches` of the segments of `received` off the main thread, yielding them via
     /// [`Input::decrypted`].
-    pub fn new_decrypt_jobs(&mut self, num_packets: usize) -> DecryptJobs<'_> {
-        self.crypto
-            .new_decrypt_jobs(&mut self.decrypting, num_packets)
+    ///
+    /// Each batch comes with the index of the segment it begins with.
+    pub fn decrypt(
+        &mut self,
+        received: Received,
+        batches: Vec<(PendingDecapsulate, SegmentIndex)>,
+    ) {
+        self.crypto.decrypt(&mut self.decrypting, received, batches);
     }
 
     pub fn send_network(&mut self, transmit: snownet::Transmit) {
