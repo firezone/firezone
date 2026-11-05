@@ -79,6 +79,9 @@ export default function TextSetting({
     });
   };
 
+  const isDraft = draft !== null && draft !== value;
+  const isSaved = savedAt !== null && !isDraft;
+
   return (
     <SettingRow
       error={error ?? undefined}
@@ -112,13 +115,19 @@ export default function TextSetting({
           value={draft ?? value}
         />
         <RemixIcon
+          className={`pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-subtle transition-opacity duration-300 ${
+            isDraft ? "opacity-100" : "opacity-0"
+          }`}
+          name="edit-circle"
+        />
+        <RemixIcon
           className={`pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-success transition-opacity duration-300 ${
-            savedAt !== null ? "opacity-100" : "opacity-0"
+            isSaved ? "opacity-100" : "opacity-0"
           }`}
           name="check"
         />
         <span aria-live="polite" className="sr-only">
-          {savedAt !== null ? "Saved" : ""}
+          {isSaved ? "Saved" : ""}
         </span>
       </span>
     </SettingRow>
