@@ -43,6 +43,7 @@ interface Screen {
 const generalSettings: GeneralSettingsViewModel = {
   start_minimized: true,
   start_on_login: true,
+  start_on_login_is_managed: false,
   connect_on_start: false,
   connect_on_start_is_managed: false,
   account_slug: "example-corp",
@@ -183,6 +184,7 @@ const screens: Record<string, Screen> = {
     generalSettings: {
       ...generalSettings,
       account_slug_is_managed: true,
+      start_on_login_is_managed: true,
       connect_on_start_is_managed: true,
       control_plane: "CloudEu",
       auth_url: "https://eu.app.firezone.dev/",

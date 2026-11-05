@@ -7,6 +7,7 @@ import {
 } from "../generated/bindings";
 import Button from "./Button";
 import ConfirmationDialog from "./ConfirmationDialog";
+import RemixIcon from "./RemixIcon";
 import SettingRow from "./SettingRow";
 import TextSetting from "./TextSetting";
 import {
@@ -26,6 +27,7 @@ const defaultSettings: GeneralSettingsViewModel = {
   account_slug: "",
   connect_on_start: false,
   start_on_login: false,
+  start_on_login_is_managed: false,
   account_slug_is_managed: false,
   connect_on_start_is_managed: false,
   control_plane: "Custom",
@@ -169,9 +171,12 @@ export default function GeneralSettingsPage({
             )}
           </div>
           {signInPending && (
-            <p className="mt-1.5 text-xs text-subtle">
-              Sign out and sign in again after changing the account slug or
-              control plane.
+            <p className="mt-1.5 flex items-start gap-1.5 px-2 text-xs text-subtle">
+              <RemixIcon className="mt-px h-3.5 w-3.5" name="information" />
+              <span>
+                Changes to account slug and control plane only take effect on
+                the next sign-in.
+              </span>
             </p>
           )}
         </section>
@@ -197,11 +202,12 @@ export default function GeneralSettingsPage({
               field
               inputId={startOnLoginInputId}
               label="Start on login"
+              managed={saved.start_on_login_is_managed}
             >
               <ManagedToggleSwitch
                 checked={saved.start_on_login}
                 id={startOnLoginInputId}
-                managed={false}
+                managed={saved.start_on_login_is_managed}
                 name="start_on_login"
                 onChange={(start_on_login) => save({ start_on_login })}
               />
@@ -225,6 +231,7 @@ export default function GeneralSettingsPage({
           {(saved.account_slug_is_managed ||
             saved.auth_url_is_managed ||
             saved.api_url_is_managed ||
+            saved.start_on_login_is_managed ||
             saved.connect_on_start_is_managed) && <ManagedSettingsNotice />}
         </section>
 

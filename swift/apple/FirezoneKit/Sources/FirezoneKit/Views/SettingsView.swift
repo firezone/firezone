@@ -652,8 +652,15 @@ public struct SettingsView: View {
   @ViewBuilder
   private var signInFooter: some View {
     if viewModel.showsSignInChangeNote {
-      Text("Sign out and sign in again after changing the account slug or control plane.")
-        .foregroundStyle(.secondary)
+      HStack(alignment: .firstTextBaseline, spacing: 4) {
+        Image(systemName: "info.circle")
+          .font(.caption)
+          .accessibilityHidden(true)
+        Text("Changes to account slug and control plane only take effect on the next sign-in.")
+          .multilineTextAlignment(.leading)
+      }
+      .frame(maxWidth: .infinity, alignment: .leading)
+      .foregroundStyle(Color.secondary)
     }
   }
 

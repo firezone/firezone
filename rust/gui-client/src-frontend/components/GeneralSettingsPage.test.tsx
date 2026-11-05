@@ -8,6 +8,7 @@ import GeneralSettingsPage from "./GeneralSettingsPage";
 const usSettings: GeneralSettingsViewModel = {
   start_minimized: true,
   start_on_login: false,
+  start_on_login_is_managed: false,
   connect_on_start: false,
   connect_on_start_is_managed: false,
   account_slug: "",
@@ -227,7 +228,7 @@ test("leaving an https:// API URL shows an error and saves nothing", async () =>
 });
 
 const pendingNote =
-  "Sign out and sign in again after changing the account slug or control plane.";
+  "Changes to account slug and control plane only take effect on the next sign-in.";
 
 const signedIn: GeneralSettingsViewModel = {
   ...usSettings,

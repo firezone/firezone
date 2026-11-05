@@ -90,6 +90,33 @@ impl DnsResourceNat {
                         // the Gateway but there isn't much we can do.
                         return Ok(packets_for_domain);
                     }
+                    State::Evicted if packets_for_domain.is_empty() => {
+                        tracing::trace!(%domain, %gid, %rid, "DNS resource NAT evicted");
+
+                        return Ok(packets_for_domain);
+                    }
+                    State::Evicted => {
+                        tracing::debug!(%domain, %gid, %rid, "Setting up evicted DNS resource NAT again");
+
+                        let mut buffered_packets = UniquePacketBuffer::with_capacity_power_of_2(
+                            5, // 2^5 = 32
+                            "dns-resource-nat-evicted",
+                        );
+                        buffered_packets.extend(packets_for_domain);
+
+                        *state = State::Pending {
+                            sent_at: now,
+                            buffered_packets,
+                            should_buffer: true,
+                        };
+
+                        self.assigned_ips_packets.push_back((
+                            gid,
+                            domain,
+                            rid,
+                            assigned_ips.clone(),
+                        ));
+                    }
                     State::Recreating { should_buffer } => {
                         tracing::trace!(%domain, %gid, %rid, "Recreating DNS resource NAT");
 
@@ -159,7 +186,7 @@ impl DnsResourceNat {
             let should_buffer = match state {
                 State::Recreating { .. } | State::Pending { .. } => continue,
                 State::Confirmed => false, // Don't buffer packets if already confirmed.
-                State::Failed => true,     // No NAT yet, buffer packets until confirmed.
+                State::Failed | State::Evicted => true, // No NAT, buffer packets until confirmed.
             };
 
             tracing::debug!(%domain, "Re-creating DNS resource NAT");
@@ -222,6 +249,29 @@ impl DnsResourceNat {
 
                 ControlFlow::Continue(packet)
             }
+            State::Evicted => {
+                tracing::debug!(%gid, %domain, %rid, "Setting up evicted DNS resource NAT again");
+
+                let mut buffered_packets = UniquePacketBuffer::with_capacity_power_of_2(
+                    5, // 2^5 = 32
+                    "dns-resource-nat-evicted",
+                );
+                buffered_packets.push(packet);
+
+                *state = State::Pending {
+                    sent_at: now,
+                    buffered_packets,
+                    should_buffer: true,
+                };
+                self.assigned_ips_packets.push_back((
+                    gid,
+                    domain.clone(),
+                    rid,
+                    assigned_ips.clone(),
+                ));
+
+                ControlFlow::Break(())
+            }
             State::Recreating { .. } | State::Confirmed | State::Failed => {
                 // Some of these might be black-holed on the Gateway (i.e. in `Failed`).
                 // But there isn't much we can do ...
@@ -257,6 +307,16 @@ impl DnsResourceNat {
         };
 
         let (_, nat_state, _) = nat_entry.get_mut();
+
+        if res.status == p2p_control::dns_resource_nat::NatStatus::Evicted {
+            // A `Pending` NAT gets set up again by the `AssignedIps` we already sent.
+            if !matches!(nat_state, State::Pending { .. }) {
+                tracing::debug!(%gid, domain = %res.domain, "DNS resource NAT got evicted");
+                *nat_state = State::Evicted;
+            }
+
+            return into_iter(None);
+        }
 
         if res.status != p2p_control::dns_resource_nat::NatStatus::Active {
             tracing::debug!(%gid, domain = %res.domain, "DNS resource NAT is not active");
@@ -297,6 +357,8 @@ enum State {
     },
     Confirmed,
     Failed,
+    /// The Gateway removed the NAT; we set it up again with the next packet for it.
+    Evicted,
 }
 
 impl State {
@@ -308,6 +370,7 @@ impl State {
             State::Confirmed => 0,
             State::Recreating { .. } => 0,
             State::Failed => 0,
+            State::Evicted => 0,
         }
     }
 
@@ -319,6 +382,7 @@ impl State {
             State::Recreating { .. } => None,
             State::Confirmed => None,
             State::Failed => None,
+            State::Evicted => None,
         };
 
         buffered_packets.into_iter().flatten()
@@ -332,6 +396,8 @@ impl State {
 #[cfg(test)]
 mod tests {
     use std::net::Ipv4Addr;
+
+    use crate::p2p_control::dns_resource_nat::NatStatus;
 
     use dns_types::DomainNameRef;
     use dns_types::prelude::*;
@@ -668,6 +734,133 @@ mod tests {
             )
             .unwrap();
         assert!(dns_resource_nat.poll_packet().is_some());
+    }
+
+    #[test]
+    fn evicted_nat_is_set_up_again_with_next_packets() {
+        let mut dns_resource_nat = confirmed_nat();
+        dns_resource_nat.on_domain_status(GID, example_com(), domain_status(NatStatus::Evicted));
+
+        let packet1 = app_packet(1);
+        let sendable = dns_resource_nat
+            .update(
+                example_com(),
+                GID,
+                RID,
+                ProxyIps::for_test(),
+                VecDeque::from([packet1.clone()]),
+                Instant::now(),
+            )
+            .unwrap();
+        assert!(sendable.is_empty());
+        assert!(dns_resource_nat.poll_packet().is_some());
+
+        let packet2 = app_packet(2);
+        let control_flow = dns_resource_nat.handle_outgoing(
+            GID,
+            &example_com(),
+            RID,
+            packet2.clone(),
+            Instant::now(),
+        );
+        assert!(control_flow.is_break());
+
+        let buffered_packets = dns_resource_nat
+            .on_domain_status(GID, example_com(), domain_status(NatStatus::Active))
+            .into_iter()
+            .collect::<Vec<_>>();
+        assert_eq!(buffered_packets, vec![packet1, packet2]);
+    }
+
+    #[test]
+    fn evicted_nat_is_set_up_again_with_dns_query() {
+        let mut dns_resource_nat = confirmed_nat();
+        dns_resource_nat.on_domain_status(GID, example_com(), domain_status(NatStatus::Evicted));
+
+        dns_resource_nat.recreate(example_com().name().clone());
+        dns_resource_nat
+            .update(
+                example_com(),
+                GID,
+                RID,
+                ProxyIps::for_test(),
+                VecDeque::default(),
+                Instant::now(),
+            )
+            .unwrap();
+        assert!(dns_resource_nat.poll_packet().is_some());
+
+        let control_flow = dns_resource_nat.handle_outgoing(
+            GID,
+            &example_com(),
+            RID,
+            app_packet(1),
+            Instant::now(),
+        );
+        assert!(control_flow.is_break());
+    }
+
+    #[test]
+    fn evicted_status_does_not_interrupt_pending_nat() {
+        let mut dns_resource_nat = DnsResourceNat::default();
+        dns_resource_nat
+            .update(
+                example_com(),
+                GID,
+                RID,
+                ProxyIps::for_test(),
+                VecDeque::default(),
+                Instant::now(),
+            )
+            .unwrap();
+        let packet = app_packet(1);
+        let control_flow = dns_resource_nat.handle_outgoing(
+            GID,
+            &example_com(),
+            RID,
+            packet.clone(),
+            Instant::now(),
+        );
+        assert!(control_flow.is_break());
+
+        dns_resource_nat.on_domain_status(GID, example_com(), domain_status(NatStatus::Evicted));
+
+        let buffered_packets = dns_resource_nat
+            .on_domain_status(GID, example_com(), domain_status(NatStatus::Active))
+            .into_iter()
+            .collect::<Vec<_>>();
+        assert_eq!(buffered_packets, vec![packet]);
+    }
+
+    fn confirmed_nat() -> DnsResourceNat {
+        let mut dns_resource_nat = DnsResourceNat::default();
+        dns_resource_nat
+            .update(
+                example_com(),
+                GID,
+                RID,
+                ProxyIps::for_test(),
+                VecDeque::default(),
+                Instant::now(),
+            )
+            .unwrap();
+        dns_resource_nat.on_domain_status(GID, example_com(), domain_status(NatStatus::Active));
+        while dns_resource_nat.poll_packet().is_some() {}
+
+        dns_resource_nat
+    }
+
+    fn domain_status(status: NatStatus) -> p2p_control::dns_resource_nat::DomainStatus {
+        p2p_control::dns_resource_nat::DomainStatus {
+            status,
+            resource: RID,
+            domain: EXAMPLE_COM.to_vec(),
+        }
+    }
+
+    fn app_packet(src_port: u16) -> IpPacket {
+        ip_packet::make::udp_packet(Ipv4Addr::LOCALHOST, Ipv4Addr::LOCALHOST, src_port, 0, &[])
+            .unwrap()
     }
 
     const EXAMPLE_COM: DomainNameRef =
