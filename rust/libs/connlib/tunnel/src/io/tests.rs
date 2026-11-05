@@ -12,7 +12,7 @@ use ip_packet::{Ecn, IpVersion};
 use socket_factory::DatagramBatch;
 use tokio::sync::oneshot;
 
-use super::crypto::DecryptedIpPackets;
+use super::crypto::DecryptedJob;
 use super::*;
 use crate::sockets::{QUEUE_SIZE, SocketThreadEnds};
 
@@ -404,7 +404,7 @@ fn stall_tun(io: &mut Io) {
 fn add_finished_decrypt_job(io: &mut Io) {
     let job = io.decrypting.add_job();
 
-    assert!(job.send(DecryptedIpPackets::default()).is_ok());
+    assert!(job.send(DecryptedJob::default()).is_ok());
 }
 
 fn fill_decrypt_backlog(io: &mut Io, ends: &mut FakeEnds) {
@@ -421,14 +421,14 @@ struct FakeEnds {
     v6: SocketThreadEnds,
     tun_tx: tun::InboundTx,
     tun_rx: tun::OutboundRx,
-    decrypt_jobs: Vec<oneshot::Sender<DecryptedIpPackets>>,
+    decrypt_jobs: Vec<oneshot::Sender<DecryptedJob>>,
 }
 
 impl FakeEnds {
     fn finish_decrypt_job(&mut self) {
         let job = self.decrypt_jobs.remove(0);
 
-        assert!(job.send(DecryptedIpPackets::default()).is_ok());
+        assert!(job.send(DecryptedJob::default()).is_ok());
     }
 }
 

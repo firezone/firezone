@@ -20,6 +20,7 @@ use std::{
 };
 
 mod authorization_rejections;
+mod batch;
 mod cache;
 mod client;
 mod conn_track;

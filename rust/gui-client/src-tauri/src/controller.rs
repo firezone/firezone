@@ -237,6 +237,12 @@ impl<I: GuiIntegration> Controller<I> {
             tracing::debug!("Failed to apply log filter after `Hello`: {e:#}");
         }
 
+        if let Some(start_on_login) = mdm_settings.start_on_login
+            && let Err(e) = gui::set_autostart(start_on_login).await
+        {
+            tracing::warn!("Failed to apply start-on-login policy: {e:#}");
+        }
+
         let updates_rx = match mdm_settings.check_for_updates {
             Some(true) | None => Some(ReceiverStream::new(updates_rx)),
             Some(false) => None,
@@ -755,7 +761,7 @@ impl<I: GuiIntegration> Controller<I> {
             .save_general_settings(&self.general_settings)
             .await?;
 
-        gui::set_autostart(self.general_settings.start_on_login.is_some_and(|v| v)).await?;
+        gui::set_autostart(self.start_on_login()).await?;
 
         self.notify_settings_changed()?;
 
@@ -1395,6 +1401,13 @@ impl<I: GuiIntegration> Controller<I> {
         url.query_pairs_mut().append_pair("as", "headless-client");
 
         url.to_string()
+    }
+
+    fn start_on_login(&self) -> bool {
+        self.mdm_settings
+            .start_on_login
+            .or(self.general_settings.start_on_login)
+            .is_some_and(|v| v)
     }
 
     fn connect_on_start(&self) -> Option<bool> {

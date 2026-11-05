@@ -8,6 +8,7 @@ import GeneralSettingsPage from "./GeneralSettingsPage";
 const usSettings: GeneralSettingsViewModel = {
   start_minimized: true,
   start_on_login: false,
+  start_on_login_is_managed: false,
   connect_on_start: false,
   connect_on_start_is_managed: false,
   account_slug: "",

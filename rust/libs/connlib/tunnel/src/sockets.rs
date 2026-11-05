@@ -69,11 +69,6 @@ pub(crate) struct ReceivedDatagrams {
 }
 
 impl ReceivedDatagrams {
-    /// How many datagrams were received, counting every segment of a coalesced one.
-    pub fn len(&self) -> usize {
-        self.batches.iter().map(DatagramBatch::len).sum()
-    }
-
     /// Moves out every received datagram, in the order the sockets received them.
     pub fn drain(&mut self) -> impl Iterator<Item = DatagramIn> + '_ {
         self.batches.iter_mut().flat_map(|batch| batch.drain())

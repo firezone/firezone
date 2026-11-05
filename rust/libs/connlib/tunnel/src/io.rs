@@ -4,10 +4,8 @@ mod udp_gro_train;
 mod udp_gso_train;
 
 pub(crate) use crypto::MAX_DECRYPT_BACKLOG_MEMORY;
-pub use crypto::{CryptoWorkers, DecryptJobs, DecryptedJobs, EncryptJobs};
+pub use crypto::{CryptoWorkers, DecryptedBatch};
 pub use device::{Device, TunChannelClosed};
-pub(crate) use udp_gro_train::UdpGroTrain;
-pub(crate) use udp_gso_train::UdpGsoTrain;
 
 use crate::{
     TunnelError, dns,
@@ -15,7 +13,7 @@ use crate::{
     sockets::{ReceivedDatagrams, Sockets},
 };
 use anyhow::Result;
-use crypto::Decrypting;
+use crypto::{DecryptJobs, DecryptedJobs, Decrypting, EncryptJobs};
 use fast_random_state::FastRandomState;
 use ip_packet::IpPacket;
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
@@ -334,15 +332,14 @@ impl Io {
     /// Their datagrams go to the UDP sockets when dropped. Create them only for the packets
     /// [`Io::poll`] read from the TUN device, which it does only while nothing waits for room in the
     /// UDP sockets.
-    pub fn new_encrypt_jobs(&mut self, num_packets: usize) -> EncryptJobs<'_> {
-        self.crypto.new_encrypt_jobs(&mut self.sockets, num_packets)
+    pub fn new_encrypt_jobs(&mut self) -> EncryptJobs<'_> {
+        self.crypto.new_encrypt_jobs(&mut self.sockets)
     }
 
-    /// Creates the jobs that decrypt received data messages off the main thread, yielding them via
-    /// [`Input::decrypted`].
-    pub fn new_decrypt_jobs(&mut self, num_packets: usize) -> DecryptJobs<'_> {
-        self.crypto
-            .new_decrypt_jobs(&mut self.decrypting, num_packets)
+    /// Creates the jobs that decrypt the batches of `received` off the main thread, yielding them
+    /// via [`Input::decrypted`] once dropped.
+    pub fn new_decrypt_jobs(&mut self, received: ReceivedDatagrams) -> DecryptJobs<'_> {
+        self.crypto.new_decrypt_jobs(&mut self.decrypting, received)
     }
 
     pub fn send_network(&mut self, transmit: snownet::Transmit) {
