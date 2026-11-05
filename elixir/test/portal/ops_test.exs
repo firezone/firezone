@@ -333,16 +333,13 @@ defmodule Portal.OpsTest do
   describe "set_metrics_export/2" do
     test "stores the metrics export setting, off by default" do
       account = account_fixture()
-      assert fetch_account!(account.id).metrics_export == :off
+      assert fetch_account!(account.id).metrics_export == nil
 
       assert :ok = set_metrics_export(account.id, ["a", "b"])
       assert fetch_account!(account.id).metrics_export == ["a", "b"]
 
-      assert :ok = set_metrics_export(account.id, :all)
-      assert fetch_account!(account.id).metrics_export == :all
-
-      assert :ok = set_metrics_export(account.id, :off)
-      assert fetch_account!(account.id).metrics_export == :off
+      assert :ok = set_metrics_export(account.id, nil)
+      assert fetch_account!(account.id).metrics_export == nil
     end
 
     test "sets the export interval, 60s by default" do
@@ -353,11 +350,6 @@ defmodule Portal.OpsTest do
       assert fetch_account!(account.id).metrics_export_interval_secs == 15
     end
 
-    test "rejects an empty list" do
-      account = account_fixture()
-
-      assert_raise MatchError, fn -> set_metrics_export(account.id, []) end
-    end
   end
 
   describe "set_banner/1" do

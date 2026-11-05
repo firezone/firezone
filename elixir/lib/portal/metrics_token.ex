@@ -3,9 +3,10 @@ defmodule Portal.MetricsToken do
   Mints and verifies the tokens Clients and Gateways present to `POST /v1/metrics`.
 
   A token is an HS256 JWT. It names the account (id and slug) the metrics are
-  attributed to and which metrics may be forwarded. The `metrics` claim is
-  either `%{"all" => true}` or `%{"names" => [...]}`; any other shape is
-  rejected, so an empty or missing list never widens to "all".
+  attributed to and which metrics may be forwarded. The `metrics` claim is a
+  list of metric name patterns in which `*` matches any run of characters, so
+  `["*"]` allows every metric. A claim of any other shape is rejected, and an
+  empty list allows nothing.
 
   The accepted algorithm is pinned to HS256 on verify (`verify_strict`), so a
   token presenting another `alg` (including `none`) is rejected.
@@ -38,16 +39,16 @@ defmodule Portal.MetricsToken do
   end
 
   @doc """
-  Mints a token for `account` allowing `metrics`: `:all` or a list of metric names.
+  Mints a token for `account` allowing the metrics matching `patterns`.
   """
-  @spec mint(Account.t(), :all | [String.t()]) :: String.t()
-  def mint(%Account{} = account, metrics \\ :all) do
+  @spec mint(Account.t(), [String.t()]) :: String.t()
+  def mint(%Account{} = account, patterns) when is_list(patterns) do
     now = DateTime.utc_now() |> DateTime.to_unix()
 
     claims = %{
       "account_id" => account.id,
       "account_slug" => account.slug,
-      "metrics" => metrics_claim(metrics),
+      "metrics" => patterns,
       "iat" => now,
       "exp" => now + @ttl_seconds
     }
@@ -76,11 +77,27 @@ defmodule Portal.MetricsToken do
   Returns whether verified `claims` allow forwarding the metric `name`.
   """
   @spec allows?(claims(), String.t()) :: boolean()
-  def allows?(%{"metrics" => %{"all" => true}}, _name), do: true
-  def allows?(%{"metrics" => %{"names" => names}}, name), do: name in names
+  def allows?(%{"metrics" => patterns}, name), do: Enum.any?(patterns, &matches?(&1, name))
 
-  defp metrics_claim(:all), do: %{"all" => true}
-  defp metrics_claim(names) when is_list(names), do: %{"names" => names}
+  defp matches?(pattern, name) do
+    case String.split(pattern, "*") do
+      [exact] -> exact == name
+      [prefix | parts] -> String.starts_with?(name, prefix) and matches_parts?(skip(name, prefix), parts)
+    end
+  end
+
+  defp matches_parts?(rest, [suffix]), do: String.ends_with?(rest, suffix)
+  defp matches_parts?(rest, ["" | parts]), do: matches_parts?(rest, parts)
+
+  defp matches_parts?(rest, [part | parts]) do
+    case :binary.match(rest, part) do
+      {start, length} -> matches_parts?(skip(rest, start + length), parts)
+      :nomatch -> false
+    end
+  end
+
+  defp skip(binary, bytes) when is_integer(bytes), do: binary_part(binary, bytes, byte_size(binary) - bytes)
+  defp skip(binary, prefix), do: skip(binary, byte_size(prefix))
 
   defp verify_signature(jwk, token) do
     case JOSE.JWT.verify_strict(jwk, ["HS256"], token) do
@@ -113,13 +130,8 @@ defmodule Portal.MetricsToken do
 
   defp verify_exp(_claims), do: {:error, :expired}
 
-  defp verify_metrics_claim(%{"metrics" => %{"all" => true} = metrics})
-       when map_size(metrics) == 1,
-       do: :ok
-
-  defp verify_metrics_claim(%{"metrics" => %{"names" => names} = metrics})
-       when map_size(metrics) == 1 and is_list(names) do
-    if Enum.all?(names, &is_binary/1), do: :ok, else: {:error, :malformed}
+  defp verify_metrics_claim(%{"metrics" => patterns}) when is_list(patterns) do
+    if Enum.all?(patterns, &is_binary/1), do: :ok, else: {:error, :malformed}
   end
 
   defp verify_metrics_claim(_claims), do: {:error, :malformed}

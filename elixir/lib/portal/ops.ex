@@ -235,13 +235,20 @@ defmodule Portal.Ops do
   end
 
   @doc """
-  Sets which metrics the account's Clients and Gateways export: `:off`, `:all`,
-  or a non-empty list of metric names. Their channels push the new
-  `metrics_config` once the change arrives through replication.
+  Sets which metrics the account's Clients and Gateways export: `nil` for none,
+  or a non-empty list of metric name patterns in which `*` matches any run of
+  characters (`["*"]` for all). Their channels push the new `metrics_config`
+  once the change arrives through replication.
   """
-  def set_metrics_export(account_id, export) do
-    {:ok, export} = Portal.Types.MetricsExport.cast(export)
-    {1, _} = Database.update_account(account_id, metrics_export: export)
+  def set_metrics_export(account_id, nil), do: update_metrics_export(account_id, nil)
+
+  def set_metrics_export(account_id, [_ | _] = patterns) do
+    true = Enum.all?(patterns, &is_binary/1)
+    update_metrics_export(account_id, patterns)
+  end
+
+  defp update_metrics_export(account_id, patterns) do
+    {1, _} = Database.update_account(account_id, metrics_export: patterns)
     :ok
   end
 

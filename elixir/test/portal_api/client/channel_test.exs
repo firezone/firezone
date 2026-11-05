@@ -552,7 +552,7 @@ defmodule PortalAPI.Client.ChannelTest do
       client: client,
       subject: subject
     } do
-      subject = %{subject | account: %{subject.account | metrics_export: :all}}
+      subject = %{subject | account: %{subject.account | metrics_export: ["*"]}}
       socket = join_channel(client, subject)
 
       assert_push "init", %{metrics: %{api_url: "https://otlp.firezone.dev/", token: token}}
@@ -585,7 +585,7 @@ defmodule PortalAPI.Client.ChannelTest do
       })
 
       assert_push "metrics_config", %{token: token}
-      assert {:ok, %{"metrics" => %{"names" => ["a"]}}} = Portal.MetricsToken.verify(token)
+      assert {:ok, %{"metrics" => ["a"]}} = Portal.MetricsToken.verify(token)
 
       send(socket.channel_pid, %Changes.Change{
         lsn: 101,

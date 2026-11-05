@@ -19,14 +19,8 @@ defmodule Portal.MetricsTokenTest do
       assert {:ok, claims} = MetricsToken.verify(token)
       assert claims["account_id"] == account.id
       assert claims["account_slug"] == account.slug
-      assert claims["metrics"] == %{"names" => ["a", "b"]}
+      assert claims["metrics"] == ["a", "b"]
       assert claims["exp"] - claims["iat"] == MetricsToken.ttl_seconds()
-    end
-
-    test "defaults to all metrics", %{account: account} do
-      {:ok, claims} = account |> MetricsToken.mint() |> MetricsToken.verify()
-
-      assert claims["metrics"] == %{"all" => true}
     end
 
     test "rejects an expired token", %{account: account, key: key} do
@@ -54,10 +48,24 @@ defmodule Portal.MetricsTokenTest do
   end
 
   describe "metrics claim" do
-    test "all allows every metric", %{account: account} do
-      {:ok, claims} = account |> MetricsToken.mint(:all) |> MetricsToken.verify()
+    test "matches metric names against patterns", %{account: account} do
+      {:ok, claims} =
+        account
+        |> MetricsToken.mint(["connlib.*", "tunnel.error", "*.duration", "a*b*c"])
+        |> MetricsToken.verify()
 
-      assert claims["metrics"] == %{"all" => true}
+      for name <- ["connlib.network.packets", "connlib.", "tunnel.error", "dns.duration", "abc", "aXbYc"] do
+        assert MetricsToken.allows?(claims, name), name
+      end
+
+      for name <- ["tunnel.errors", "connlib", "duration", "acb", "abcd"] do
+        refute MetricsToken.allows?(claims, name), name
+      end
+    end
+
+    test "* allows every metric", %{account: account} do
+      {:ok, claims} = account |> MetricsToken.mint(["*"]) |> MetricsToken.verify()
+
       assert MetricsToken.allows?(claims, "anything")
     end
 
@@ -68,18 +76,7 @@ defmodule Portal.MetricsTokenTest do
     end
 
     test "rejects any other shape", %{account: account, key: key} do
-      for metrics <- [
-            nil,
-            [],
-            ["connlib.network.packets"],
-            "*",
-            %{},
-            %{"all" => false},
-            %{"all" => "true"},
-            %{"names" => "connlib.network.packets"},
-            %{"names" => [1]},
-            %{"all" => true, "names" => []}
-          ] do
+      for metrics <- [nil, "*", %{}, %{"all" => true}, [1], ["a", nil]] do
         token = sign(key, claims(account, %{"metrics" => metrics}))
 
         assert {:error, :malformed} = MetricsToken.verify(token), inspect(metrics)
@@ -95,7 +92,7 @@ defmodule Portal.MetricsTokenTest do
       %{
         "account_id" => account.id,
         "account_slug" => account.slug,
-        "metrics" => %{"all" => true},
+        "metrics" => ["*"],
         "exp" => unix_now() + 60
       },
       overrides

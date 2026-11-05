@@ -84,7 +84,7 @@ defmodule PortalAPI.OTLPMetricsControllerTest do
 
       body = export_request([sum("a"), sum("b")])
 
-      conn = conn |> authorize(account, :all) |> post_metrics(body)
+      conn = conn |> authorize(account, ["*"]) |> post_metrics(body)
 
       assert response(conn, 200)
       assert_receive {:forwarded, forwarded}
@@ -251,7 +251,7 @@ defmodule PortalAPI.OTLPMetricsControllerTest do
     end
   end
 
-  defp authorize(conn, account, metrics \\ :all) do
+  defp authorize(conn, account, metrics \\ ["*"]) do
     put_req_header(conn, "authorization", "Bearer " <> MetricsToken.mint(account, metrics))
   end
 

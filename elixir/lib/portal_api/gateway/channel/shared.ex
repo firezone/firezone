@@ -868,7 +868,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
   defp push_metrics_config(socket) do
     account = socket.assigns.account
 
-    if account.metrics_export != :off do
+    if account.metrics_export do
       push(socket, "metrics_config", metrics_config(account))
     end
 
@@ -881,9 +881,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
       api_url: Portal.Config.fetch_env!(:portal, :otlp_metrics_api_url),
       export_interval_secs: account.metrics_export_interval_secs,
       token:
-        if(account.metrics_export != :off,
-          do: Portal.MetricsToken.mint(account, account.metrics_export)
-        )
+        if(account.metrics_export, do: Portal.MetricsToken.mint(account, account.metrics_export))
     }
   end
 
