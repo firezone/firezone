@@ -544,6 +544,7 @@ defmodule PortalAPI.Client.ChannelTest do
 
       assert_push "init", init
       refute Map.has_key?(init, :metrics)
+      refute_push "metrics_config", _payload
 
       send(socket.channel_pid, :refresh_metrics_token)
       refute_push "metrics_config", _payload
@@ -554,7 +555,9 @@ defmodule PortalAPI.Client.ChannelTest do
       subject: subject
     } do
       socket = join_channel(client, subject, channel: PortalAPI.Client.V4.Channel)
-      assert_push "init", %{metrics: %{token: nil, export_interval_secs: 60, patterns: []}}
+      assert_push "init", init
+      refute Map.has_key?(init, :metrics)
+      assert_push "metrics_config", %{token: nil, export_interval_secs: 60, patterns: []}
 
       send(socket.channel_pid, :refresh_metrics_token)
       send(socket.channel_pid, :metrics_token_key_rotated)
@@ -562,7 +565,7 @@ defmodule PortalAPI.Client.ChannelTest do
       refute_push "metrics_config", _payload
     end
 
-    test "sends a metrics token in init and refreshes it", %{
+    test "sends a metrics token after init and refreshes it", %{
       account: account,
       client: client,
       subject: subject
@@ -570,7 +573,14 @@ defmodule PortalAPI.Client.ChannelTest do
       subject = %{subject | account: %{subject.account | metrics_export: ["*"]}}
       socket = join_channel(client, subject, channel: PortalAPI.Client.V4.Channel)
 
-      assert_push "init", %{metrics: %{endpoint: "https://otlp.firezone.dev/v1/metrics", patterns: ["*"], token: token}}
+      assert_push "init", _init_payload
+
+      assert_push "metrics_config", %{
+        endpoint: "https://otlp.firezone.dev/v1/metrics",
+        patterns: ["*"],
+        token: token
+      }
+
       assert {:ok, %{"account_id" => account_id, "device_type" => "client", "device_version" => version}} =
                Portal.MetricsToken.verify(token)
 
@@ -593,6 +603,7 @@ defmodule PortalAPI.Client.ChannelTest do
     } do
       socket = join_channel(client, subject, channel: PortalAPI.Client.V4.Channel)
       assert_push "init", _init_payload
+      assert_push "metrics_config", %{token: nil}
       some = %{account | metrics_export: ["a"]}
 
       send(socket.channel_pid, %Changes.Change{

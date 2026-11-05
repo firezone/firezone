@@ -2166,7 +2166,8 @@ defmodule PortalAPI.Client.Channel.Shared do
         })
     }
 
-    push(socket, "init", put_metrics_config(payload, socket))
+    :ok = push(socket, "init", payload)
+    push_initial_metrics_config(socket)
   end
 
   defp reinitialize_client(socket) do
@@ -2185,12 +2186,12 @@ defmodule PortalAPI.Client.Channel.Shared do
     }
   end
 
-  defp put_metrics_config(payload, socket) do
+  defp push_initial_metrics_config(socket) do
     if metrics_supported?(socket) do
-      Map.put(payload, :metrics, metrics_config(socket.assigns.subject.account, socket.assigns.client))
-    else
-      payload
+      push(socket, "metrics_config", metrics_config(socket.assigns.subject.account, socket.assigns.client))
     end
+
+    :ok
   end
 
   defp metrics_supported?(socket), do: socket.assigns.channel_protocol.protocol_version() >= 4

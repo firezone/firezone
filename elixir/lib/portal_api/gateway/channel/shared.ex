@@ -855,7 +855,8 @@ defmodule PortalAPI.Gateway.Channel.Shared do
       }
     }
 
-    push(socket, "init", put_metrics_config(payload, socket, account))
+    :ok = push(socket, "init", payload)
+    push_initial_metrics_config(socket, account)
   end
 
   defp flow_logs_config do
@@ -866,12 +867,12 @@ defmodule PortalAPI.Gateway.Channel.Shared do
     }
   end
 
-  defp put_metrics_config(payload, socket, account) do
+  defp push_initial_metrics_config(socket, account) do
     if metrics_supported?(socket) do
-      Map.put(payload, :metrics, metrics_config(account, socket.assigns.gateway))
-    else
-      payload
+      push(socket, "metrics_config", metrics_config(account, socket.assigns.gateway))
     end
+
+    :ok
   end
 
   defp metrics_supported?(socket), do: socket.assigns.channel_protocol.protocol_version() >= 3
