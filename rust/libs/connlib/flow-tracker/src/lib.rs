@@ -97,10 +97,6 @@ pub struct Tracker<S> {
     active_tcp_flows: HashMap<TcpFlowKey<S>, TcpFlowValue, FastRandomState>,
     active_udp_flows: HashMap<UdpFlowKey<S>, UdpFlowValue, FastRandomState>,
 
-    /// The most recently recorded ingest token, lent to each packet's
-    /// [`FlowData`] so that recording it again needs no refcount update.
-    mru_ingest_token: Option<IngestToken>,
-
     enabled: bool,
     clock: Clock,
 }
@@ -155,7 +151,6 @@ impl<S> Tracker<S> {
         Self {
             active_tcp_flows: HashMap::default(),
             active_udp_flows: HashMap::default(),
-            mru_ingest_token: None,
             enabled: false,
             clock: Clock {
                 created_at: now,
@@ -185,12 +180,7 @@ where
     /// Dropping the returned guard inserts the gathered flow data.
     pub fn begin_tun_packet(&mut self, packet: &IpPacket, now: Instant) -> CurrentFlowGuard<'_, S> {
         if self.enabled {
-            set_current_flow(
-                Entry::Tun,
-                Some(InnerFlow::from(packet)),
-                now,
-                self.mru_ingest_token.take(),
-            );
+            set_current_flow(Entry::Tun, Some(InnerFlow::from(packet)), now);
         }
 
         CurrentFlowGuard { tracker: self }
@@ -206,12 +196,7 @@ where
         now: Instant,
     ) -> CurrentFlowGuard<'_, S> {
         if self.enabled {
-            set_current_flow(
-                Entry::Network { local, remote },
-                None,
-                now,
-                self.mru_ingest_token.take(),
-            );
+            set_current_flow(Entry::Network { local, remote }, None, now);
         }
 
         CurrentFlowGuard { tracker: self }
@@ -222,18 +207,13 @@ where
         self.finish_flow(&mut flow.data);
     }
 
-    /// Inserts the gathered flow data and keeps its ingest token for the next packet.
+    /// Inserts the gathered flow data.
     fn finish_flow(&mut self, data: &mut FlowData) {
         let Some(packet) = data.packet else {
             return;
         };
 
         self.insert_flow(data, packet.now);
-        self.mru_ingest_token = data
-            .ingest_token
-            .take()
-            .or_else(|| data.mru_ingest_token.take());
-
         data.clear();
     }
 
@@ -258,7 +238,6 @@ where
             peer: Some((peer, role)),
             resource,
             ref ingest_token,
-            mru_ingest_token: _,
             ref mut domain,
             icmp_error: _, // TODO: What to do with ICMP errors?
         } = *data
@@ -775,14 +754,7 @@ impl<S: Scope> CurrentFlowGuard<'_, S> {
 
     /// Drops the gathered flow data, so nothing is inserted.
     pub fn discard(&mut self) {
-        CURRENT_FLOW.with_borrow_mut(|data| {
-            self.tracker.mru_ingest_token = data
-                .ingest_token
-                .take()
-                .or_else(|| data.mru_ingest_token.take());
-
-            data.clear();
-        });
+        CURRENT_FLOW.with_borrow_mut(FlowData::clear);
     }
 
     /// Releases the tracker; the flow data is inserted with [`Tracker::insert_detached`].
@@ -857,9 +829,6 @@ struct FlowData {
     resource: Option<ResourceId>,
     /// The portal's per-authorization ingest token (carries the attribution).
     ingest_token: Option<IngestToken>,
-    /// The token the [`Tracker`] kept from the previous packet, reused instead
-    /// of cloning if this packet records the same one.
-    mru_ingest_token: Option<IngestToken>,
     /// The domain name in case this packet is for a DNS resource.
     domain: Option<DomainName>,
     icmp_error: Option<IcmpError>,
@@ -893,7 +862,6 @@ impl FlowData {
         peer: None,
         resource: None,
         ingest_token: None,
-        mru_ingest_token: None,
         domain: None,
         icmp_error: None,
     };
@@ -925,22 +893,11 @@ impl FlowData {
 
     /// Releases the current packet and drops everything gathered about it.
     fn clear(&mut self) {
-        self.packet = None;
-        self.inner = None;
-        self.outer_tx = None;
-        self.peer = None;
-        self.resource = None;
-        self.domain = None;
-        self.icmp_error = None;
+        *self = Self::EMPTY;
     }
 }
 
-fn set_current_flow(
-    entry: Entry,
-    inner: Option<InnerFlow>,
-    now: Instant,
-    mru_ingest_token: Option<IngestToken>,
-) {
+fn set_current_flow(entry: Entry, inner: Option<InnerFlow>, now: Instant) {
     CURRENT_FLOW.with_borrow_mut(|data| {
         debug_assert!(
             data.packet.is_none(),
@@ -949,7 +906,6 @@ fn set_current_flow(
 
         data.packet = Some(CurrentPacket { entry, now });
         data.inner = inner;
-        data.mru_ingest_token = mru_ingest_token;
     });
 }
 
@@ -981,15 +937,9 @@ pub fn record_resource(resource: ResourceId) {
 }
 
 /// Records the ingest token attributing the current packet's flow.
-///
-/// Only clones `token` if it differs from the previously recorded one.
 pub fn record_ingest_token(token: Option<&IngestToken>) {
     update_current_flow(|data| {
-        data.ingest_token = token.map(|token| {
-            data.mru_ingest_token
-                .take_if(|previous| previous.ptr_eq(token))
-                .unwrap_or_else(|| token.clone())
-        });
+        data.ingest_token = token.cloned();
     });
 }
 

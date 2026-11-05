@@ -60,4 +60,4 @@ pub use agent::{
 };
 pub use candidate::{Candidate, CandidateKind, ParseCandidateError};
 pub use event::{Event, Payload, Transmit};
-pub use icmpv6::{PROBE_DST, PROBE_SRC};
+pub use icmpv6::{PROBE_DST, PROBE_SRC, Probe};

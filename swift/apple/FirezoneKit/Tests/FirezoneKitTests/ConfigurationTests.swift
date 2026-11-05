@@ -285,6 +285,40 @@ struct ConfigurationTests {
     #expect(providerConfiguration[Configuration.Keys.apiURL] == "wss://saved-user-change.api")
   }
 
+  @Test("Settings save marks only the text fields it changed as recently saved")
+  @MainActor
+  func settingsSaveMarksChangedFields() async throws {
+    let config = Configuration(userDefaults: UserDefaults.makeTestDefaults())
+    let viewModel = SettingsViewModel(configuration: config)
+
+    try await viewModel.save(.settings)
+    try await viewModel.save(.logs)
+
+    #expect(viewModel.recentlySavedFields.isEmpty)
+
+    viewModel.accountSlug = "example-corp"
+    try await viewModel.save(.settings)
+
+    #expect(viewModel.recentlySavedFields == [.accountSlug])
+  }
+
+  @Test("Editing a text field makes it a draft until it is saved")
+  @MainActor
+  func editingMakesDraftUntilSaved() async throws {
+    let config = Configuration(userDefaults: UserDefaults.makeTestDefaults())
+    let viewModel = SettingsViewModel(configuration: config)
+
+    #expect(!viewModel.isDraft(.accountSlug))
+
+    viewModel.accountSlug = "example-corp"
+
+    #expect(viewModel.isDraft(.accountSlug))
+
+    try await viewModel.save(.settings)
+
+    #expect(!viewModel.isDraft(.accountSlug))
+  }
+
   // MARK: - ControlPlane
 
   @Test("Saved US URLs show Firezone Cloud (US)")

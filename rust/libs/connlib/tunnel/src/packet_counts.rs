@@ -15,10 +15,10 @@ impl DroppedTunPackets {
         Self(otel_instruments::network_packet_dropped())
     }
 
-    /// Counts the packet that failed with `error`, by the reason it was unroutable.
+    /// Counts `num_packets` that failed with `error`, by the reason they were unroutable.
     #[cold]
     #[inline(never)]
-    pub(crate) fn record(&self, error: &anyhow::Error) {
+    pub(crate) fn record(&self, error: &anyhow::Error, num_packets: usize) {
         let routing_error = error
             .any_downcast_ref::<UnroutablePacket>()
             .map(|e| e.reason())
@@ -26,7 +26,7 @@ impl DroppedTunPackets {
 
         // TODO: Include more attributes here like IPv4/IPv6?
         self.0.add(
-            1,
+            num_packets as u64,
             &[
                 otel::attr::error_type(routing_error),
                 otel::attr::network_io_direction_receive(),

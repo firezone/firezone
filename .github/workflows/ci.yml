@@ -296,9 +296,19 @@ jobs:
             rust/gui-client/screenshots/*.png
             kotlin/android/screenshots/*.png
             swift/apple/screenshots/*.png
+      # Dependabot's runs cannot read Actions secrets, so they comment as GitHub Actions.
+      - uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        id: app-token
+        if: steps.push.outputs.sha != '' && github.actor != 'dependabot[bot]'
+        with:
+          client-id: ${{ vars.BOT_CLIENT_ID }}
+          private-key: ${{ secrets.BOT_PRIVATE_KEY }}
+          repositories: ${{ github.repository }}
+          permission-pull-requests: write
       - name: Report what the re-render adds to the repository
         if: steps.push.outputs.sha != ''
         env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token || github.token }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           SHA: ${{ steps.push.outputs.sha }}
         run: |
