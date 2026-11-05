@@ -1,6 +1,6 @@
 defmodule Portal.Ops do
   alias __MODULE__.Database
-  alias Portal.{Banner, Billing, EmailSuppression, Mailer, SlugRegistry}
+  alias Portal.{Banner, Billing, EmailSuppression, Mailer, MetricsToken, PubSub, SlugRegistry}
   alias Portal.Workers.DeleteAccount
   alias Portal.Ops.AuthProviderNotices
 
@@ -210,6 +210,39 @@ defmodule Portal.Ops do
       {updated, _} = Database.set_relay_throughput_limit(account_ids, mbps)
       {:ok, count + updated}
     end)
+  end
+
+  @doc """
+  Signs OTLP metrics tokens with a new key on every node of this region, then
+  has each Client and Gateway channel push a fresh `metrics_config`. Tokens
+  signed with the old key stop verifying at once.
+
+  Returns `{:error, nodes}` naming the nodes that kept the old key.
+  """
+  def rotate_metrics_token_key do
+    key = Database.insert_metrics_token_signing_key()
+    :ok = MetricsToken.activate_signing_key(key)
+    remote_nodes = PubSub.regional_nodes() -- [node()]
+
+    remote_nodes
+    |> :erpc.multicall(MetricsToken, :activate_signing_key, [key], 5_000)
+    |> Enum.zip(remote_nodes)
+    |> Enum.reject(&match?({{:ok, :ok}, _node}, &1))
+    |> case do
+      [] -> :ok
+      failed -> {:error, Enum.map(failed, fn {_result, node} -> node end)}
+    end
+  end
+
+  @doc """
+  Restricts the metrics the account's Clients and Gateways may forward to
+  `names`, or allows all of them with `:all`.
+  """
+  def set_metrics_allowlist(account_id, names) when names == :all or is_list(names) do
+    allowlist = if names == :all, do: nil, else: names
+    {1, _} = Database.set_metrics_allowlist(account_id, allowlist)
+
+    PubSub.Changes.broadcast(account_id, :accounts, {:metrics_allowlist_changed, allowlist})
   end
 
   @doc"""
@@ -814,6 +847,22 @@ defmodule Portal.Ops do
       )
       |> Safe.unscoped()
       |> Safe.update_all([])
+    end
+
+    def insert_metrics_token_signing_key do
+      key = :crypto.strong_rand_bytes(32)
+
+      {1, _} =
+        Safe.unscoped()
+        |> Safe.insert_all("metrics_token_signing_keys", [%{key: key}])
+
+      key
+    end
+
+    def set_metrics_allowlist(account_id, allowlist) do
+      from(a in Account, where: a.id == ^account_id)
+      |> Safe.unscoped()
+      |> Safe.update_all(set: [metrics_allowlist: allowlist])
     end
 
     defp maybe_filter_account_ids(query, :all) do

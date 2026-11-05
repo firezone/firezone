@@ -5,7 +5,11 @@ defmodule Portal.MetricsTokenTest do
   alias Portal.MetricsToken
 
   setup do
-    %{account: account_fixture()}
+    Portal.Config.put_env_override(:portal, :metrics_token_signing_key_slot, make_ref())
+    key = :crypto.strong_rand_bytes(32)
+    {1, _} = Repo.insert_all("metrics_token_signing_keys", [%{key: key}])
+
+    %{account: account_fixture(), key: key}
   end
 
   describe "mint/2 and verify/1" do
@@ -25,8 +29,8 @@ defmodule Portal.MetricsTokenTest do
       assert claims["metrics"] == %{"all" => true}
     end
 
-    test "rejects an expired token", %{account: account} do
-      token = sign(signing_key(), claims(account, %{"exp" => unix_now() - 1}))
+    test "rejects an expired token", %{account: account, key: key} do
+      token = sign(key, claims(account, %{"exp" => unix_now() - 1}))
 
       assert {:error, :expired} = MetricsToken.verify(token)
     end
@@ -37,10 +41,17 @@ defmodule Portal.MetricsTokenTest do
       assert {:error, :invalid} = MetricsToken.verify(forged)
     end
 
-    test "rejects a token presenting a different algorithm", %{account: account} do
-      forged = sign(signing_key(), claims(account), "HS512")
+    test "rejects a token presenting a different algorithm", %{account: account, key: key} do
+      forged = sign(key, claims(account), "HS512")
 
       assert {:error, :invalid} = MetricsToken.verify(forged)
+    end
+
+    test "reads the newest signing key from the database on a cache miss", %{
+      account: account,
+      key: key
+    } do
+      assert {:ok, _claims} = MetricsToken.verify(sign(key, claims(account)))
     end
 
     test "rejects a malformed token" do
@@ -63,7 +74,7 @@ defmodule Portal.MetricsTokenTest do
       refute MetricsToken.allows?(claims, "connlib.network.packets")
     end
 
-    test "rejects any other shape", %{account: account} do
+    test "rejects any other shape", %{account: account, key: key} do
       for metrics <- [
             nil,
             [],
@@ -76,12 +87,12 @@ defmodule Portal.MetricsTokenTest do
             %{"names" => [1]},
             %{"all" => true, "names" => []}
           ] do
-        token = sign(signing_key(), claims(account, %{"metrics" => metrics}))
+        token = sign(key, claims(account, %{"metrics" => metrics}))
 
         assert {:error, :malformed} = MetricsToken.verify(token), inspect(metrics)
       end
 
-      token = sign(signing_key(), Map.delete(claims(account), "metrics"))
+      token = sign(key, Map.delete(claims(account), "metrics"))
       assert {:error, :malformed} = MetricsToken.verify(token)
     end
   end
@@ -104,13 +115,6 @@ defmodule Portal.MetricsTokenTest do
     |> JOSE.JWT.sign(%{"alg" => alg}, claims)
     |> JOSE.JWS.compact()
     |> elem(1)
-  end
-
-  defp signing_key do
-    secret_key_base =
-      Application.fetch_env!(:portal, PortalWeb.Endpoint) |> Keyword.fetch!(:secret_key_base)
-
-    :crypto.mac(:hmac, :sha256, secret_key_base, "otlp metrics token")
   end
 
   defp unix_now, do: DateTime.utc_now() |> DateTime.to_unix()

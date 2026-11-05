@@ -137,6 +137,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
     # Return all connected relays and subscribe to global relay presence
     {:ok, relays} = select_relays(socket)
     :ok = Presence.Relays.subscribe()
+    :ok = Portal.MetricsToken.subscribe_to_key_rotations()
 
     account = Database.get_account_by_id!(socket.assigns.gateway.account_id)
 
@@ -163,10 +164,17 @@ defmodule PortalAPI.Gateway.Channel.Shared do
 
   def handle_info(:refresh_metrics_token, socket) do
     Process.send_after(self(), :refresh_metrics_token, @refresh_metrics_token_every)
+    push_metrics_config(socket)
+  end
 
-    push(socket, "metrics_config", metrics_config(socket.assigns.account))
+  def handle_info(:metrics_token_key_rotated, socket) do
+    push_metrics_config(socket)
+  end
 
-    {:noreply, socket}
+  def handle_info({:metrics_allowlist_changed, allowlist}, socket) do
+    socket
+    |> assign(:account, %{socket.assigns.account | metrics_allowlist: allowlist})
+    |> push_metrics_config()
   end
 
   ####################################
@@ -863,10 +871,15 @@ defmodule PortalAPI.Gateway.Channel.Shared do
     }
   end
 
+  defp push_metrics_config(socket) do
+    push(socket, "metrics_config", metrics_config(socket.assigns.account))
+    {:noreply, socket}
+  end
+
   defp metrics_config(account) do
     %{
       api_url: Portal.Config.fetch_env!(:portal, :otlp_metrics_api_url),
-      token: Portal.MetricsToken.mint(account)
+      token: Portal.MetricsToken.mint(account, account.metrics_allowlist || :all)
     }
   end
 
@@ -894,7 +907,9 @@ defmodule PortalAPI.Gateway.Channel.Shared do
          },
          socket
        ) do
-    account = SchemaHelpers.merge_broadcast(socket.assigns.account, account)
+    # The WAL decoder leaves text[] columns undecoded, so `metrics_allowlist`
+    # only arrives via `:metrics_allowlist_changed`.
+    account = SchemaHelpers.merge_broadcast(socket.assigns.account, account, [:metrics_allowlist])
     socket = assign(socket, :account, account)
 
     if old_slug != slug do

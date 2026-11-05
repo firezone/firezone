@@ -127,6 +127,7 @@ defmodule PortalAPI.Client.Channel.Shared do
     # Initialize relays and subscribe to global relay presence
     {:ok, relays} = select_relays(socket)
     :ok = Presence.Relays.subscribe()
+    :ok = Portal.MetricsToken.subscribe_to_key_rotations()
 
     socket =
       socket
@@ -214,10 +215,19 @@ defmodule PortalAPI.Client.Channel.Shared do
 
   def handle_info(:refresh_metrics_token, socket) do
     Process.send_after(self(), :refresh_metrics_token, @refresh_metrics_token_every)
+    push_metrics_config(socket)
+  end
 
-    push(socket, "metrics_config", metrics_config(socket.assigns.subject.account))
+  def handle_info(:metrics_token_key_rotated, socket) do
+    push_metrics_config(socket)
+  end
 
-    {:noreply, socket}
+  def handle_info({:metrics_allowlist_changed, allowlist}, socket) do
+    account = %{socket.assigns.subject.account | metrics_allowlist: allowlist}
+
+    socket
+    |> assign(subject: %{socket.assigns.subject | account: account})
+    |> push_metrics_config()
   end
 
   def handle_info(:prune_authorizations_cache, socket) do
@@ -2182,10 +2192,15 @@ defmodule PortalAPI.Client.Channel.Shared do
     }
   end
 
+  defp push_metrics_config(socket) do
+    push(socket, "metrics_config", metrics_config(socket.assigns.subject.account))
+    {:noreply, socket}
+  end
+
   defp metrics_config(account) do
     %{
       api_url: Portal.Config.fetch_env!(:portal, :otlp_metrics_api_url),
-      token: Portal.MetricsToken.mint(account)
+      token: Portal.MetricsToken.mint(account, account.metrics_allowlist || :all)
     }
   end
 
@@ -2333,8 +2348,10 @@ defmodule PortalAPI.Client.Channel.Shared do
          },
          socket
        ) do
-    # Update our subject's account
-    account = SchemaHelpers.merge_broadcast(socket.assigns.subject.account, account)
+    # Update our subject's account. The WAL decoder leaves text[] columns
+    # undecoded, so `metrics_allowlist` only arrives via `:metrics_allowlist_changed`.
+    account =
+      SchemaHelpers.merge_broadcast(socket.assigns.subject.account, account, [:metrics_allowlist])
     subject = %{socket.assigns.subject | account: account}
     socket = assign(socket, subject: subject)
 

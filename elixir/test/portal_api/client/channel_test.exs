@@ -551,6 +551,45 @@ defmodule PortalAPI.Client.ChannelTest do
       assert {:ok, _claims} = Portal.MetricsToken.verify(token)
     end
 
+    test "pushes a fresh metrics config when the signing key rotates", %{
+      client: client,
+      subject: subject
+    } do
+      socket = join_channel(client, subject)
+      assert_push "init", _init_payload
+
+      send(socket.channel_pid, :metrics_token_key_rotated)
+
+      assert_push "metrics_config", %{token: token}
+      assert {:ok, _claims} = Portal.MetricsToken.verify(token)
+    end
+
+    test "applies the account's metrics allowlist", %{
+      account: account,
+      client: client,
+      subject: subject
+    } do
+      socket = join_channel(client, subject)
+      assert_push "init", _init_payload
+
+      :ok = Portal.Ops.set_metrics_allowlist(account.id, ["a"])
+
+      assert_push "metrics_config", %{token: token}
+      assert {:ok, %{"metrics" => %{"names" => ["a"]}}} = Portal.MetricsToken.verify(token)
+
+      send(socket.channel_pid, %Changes.Change{
+        lsn: 100,
+        op: :update,
+        old_struct: account,
+        struct: %{account | name: "New Name"}
+      })
+
+      send(socket.channel_pid, :refresh_metrics_token)
+
+      assert_push "metrics_config", %{token: token}
+      assert {:ok, %{"metrics" => %{"names" => ["a"]}}} = Portal.MetricsToken.verify(token)
+    end
+
 
     test "sends actor name in init message", %{
       actor: actor,

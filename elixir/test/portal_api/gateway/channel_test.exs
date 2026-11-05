@@ -434,6 +434,47 @@ defmodule PortalAPI.Gateway.ChannelTest do
       assert {:ok, _claims} = Portal.MetricsToken.verify(metrics_token)
     end
 
+    test "pushes a fresh metrics config when the signing key rotates", %{
+      gateway: gateway,
+      site: site,
+      token: token
+    } do
+      socket = join_channel(gateway, site, token)
+      assert_push "init", _init_payload
+
+      send(socket.channel_pid, :metrics_token_key_rotated)
+
+      assert_push "metrics_config", %{token: metrics_token}
+      assert {:ok, _claims} = Portal.MetricsToken.verify(metrics_token)
+    end
+
+    test "applies the account's metrics allowlist", %{
+      account: account,
+      gateway: gateway,
+      site: site,
+      token: token
+    } do
+      socket = join_channel(gateway, site, token)
+      assert_push "init", _init_payload
+
+      :ok = Portal.Ops.set_metrics_allowlist(account.id, ["a"])
+
+      assert_push "metrics_config", %{token: metrics_token}
+      assert {:ok, %{"metrics" => %{"names" => ["a"]}}} = Portal.MetricsToken.verify(metrics_token)
+
+      send(socket.channel_pid, %Changes.Change{
+        lsn: System.unique_integer([:positive, :monotonic]),
+        op: :update,
+        old_struct: account,
+        struct: %{account | name: "New Name"}
+      })
+
+      send(socket.channel_pid, :refresh_metrics_token)
+
+      assert_push "metrics_config", %{token: metrics_token}
+      assert {:ok, %{"metrics" => %{"names" => ["a"]}}} = Portal.MetricsToken.verify(metrics_token)
+    end
+
 
     test "init includes inbound authorizations from the hydrated cache", %{
       account: account,
