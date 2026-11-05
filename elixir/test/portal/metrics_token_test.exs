@@ -19,11 +19,10 @@ defmodule Portal.MetricsTokenTest do
       assert claims["exp"] - claims["iat"] == MetricsToken.ttl_seconds()
     end
 
-    test "defaults to the connlib metrics", %{account: account} do
+    test "defaults to all metrics", %{account: account} do
       {:ok, claims} = account |> MetricsToken.mint() |> MetricsToken.verify()
 
-      assert MetricsToken.allows?(claims, "connlib.network.packets")
-      refute MetricsToken.allows?(claims, "relay.bytes")
+      assert claims["metrics"] == %{"all" => true}
     end
 
     test "rejects an expired token", %{account: account} do

@@ -16,34 +16,15 @@ defmodule Portal.MetricsToken do
 
   @ttl_seconds 6 * 3600
 
-  @connlib_metrics ~w[
-    connlib.buffer.count
-    connlib.flow_sockets.evicted
-    connlib.network.dropped
-    connlib.network.errors
-    connlib.network.packets
-    connlib.network.packets.batch_count
-    connlib.network.retries
-    connlib.network.send.blocked.duration
-    connlib.queue.depth
-    dns.lookup.duration
-    eventloop.poll.duration
-    portal.connection.hiccup
-    tunnel.connection.count
-    tunnel.error
-  ]
-
   @type claims :: %{optional(String.t()) => term()}
 
   def ttl_seconds, do: @ttl_seconds
 
   @doc """
   Mints a token for `account` allowing `metrics`: `:all` or a list of metric names.
-
-  Defaults to the metrics connlib records.
   """
   @spec mint(Account.t(), :all | [String.t()]) :: String.t()
-  def mint(%Account{} = account, metrics \\ @connlib_metrics) do
+  def mint(%Account{} = account, metrics \\ :all) do
     now = DateTime.utc_now() |> DateTime.to_unix()
 
     claims = %{
