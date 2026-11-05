@@ -170,7 +170,7 @@ export default function GeneralSettingsPage({
             )}
           </div>
           {signInPending && (
-            <p className="mt-1.5 flex items-start gap-1.5 px-4 text-xs text-subtle">
+            <p className="mt-1.5 flex items-start gap-1.5 px-2 text-xs text-subtle">
               <RemixIcon className="mt-px h-3.5 w-3.5" name="information" />
               <span>
                 Changes to account slug and control plane only take effect on
