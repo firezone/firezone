@@ -577,8 +577,8 @@ dependencies = [
 
 [[package]]
 name = "aya"
-version = "0.15.0"
-source = "git+https://github.com/aya-rs/aya#79d24564b8c60cae11a485c5eb84d06aa5fcb49f"
+version = "0.16.0"
+source = "git+https://github.com/aya-rs/aya#324af2db4cc3b8cbf310b57baa17979085c62b60"
 dependencies = [
  "assert_matches",
  "aya-obj",
@@ -595,7 +595,7 @@ dependencies = [
 [[package]]
 name = "aya-build"
 version = "0.2.1"
-source = "git+https://github.com/aya-rs/aya#79d24564b8c60cae11a485c5eb84d06aa5fcb49f"
+source = "git+https://github.com/aya-rs/aya#324af2db4cc3b8cbf310b57baa17979085c62b60"
 dependencies = [
  "anyhow",
  "cargo_metadata 0.23.0",
@@ -605,8 +605,8 @@ dependencies = [
 
 [[package]]
 name = "aya-ebpf"
-version = "0.2.1"
-source = "git+https://github.com/aya-rs/aya#79d24564b8c60cae11a485c5eb84d06aa5fcb49f"
+version = "0.3.0"
+source = "git+https://github.com/aya-rs/aya#324af2db4cc3b8cbf310b57baa17979085c62b60"
 dependencies = [
  "aya-build",
  "aya-ebpf-bindings",
@@ -617,8 +617,8 @@ dependencies = [
 
 [[package]]
 name = "aya-ebpf-bindings"
-version = "0.2.0"
-source = "git+https://github.com/aya-rs/aya#79d24564b8c60cae11a485c5eb84d06aa5fcb49f"
+version = "0.3.0"
+source = "git+https://github.com/aya-rs/aya#324af2db4cc3b8cbf310b57baa17979085c62b60"
 dependencies = [
  "aya-build",
  "aya-ebpf-cty",
@@ -627,15 +627,15 @@ dependencies = [
 [[package]]
 name = "aya-ebpf-cty"
 version = "0.4.0"
-source = "git+https://github.com/aya-rs/aya#79d24564b8c60cae11a485c5eb84d06aa5fcb49f"
+source = "git+https://github.com/aya-rs/aya#324af2db4cc3b8cbf310b57baa17979085c62b60"
 dependencies = [
  "aya-build",
 ]
 
 [[package]]
 name = "aya-ebpf-macros"
-version = "0.3.0"
-source = "git+https://github.com/aya-rs/aya#79d24564b8c60cae11a485c5eb84d06aa5fcb49f"
+version = "0.4.0"
+source = "git+https://github.com/aya-rs/aya#324af2db4cc3b8cbf310b57baa17979085c62b60"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -644,8 +644,8 @@ dependencies = [
 
 [[package]]
 name = "aya-log"
-version = "0.3.0"
-source = "git+https://github.com/aya-rs/aya#79d24564b8c60cae11a485c5eb84d06aa5fcb49f"
+version = "0.4.0"
+source = "git+https://github.com/aya-rs/aya#324af2db4cc3b8cbf310b57baa17979085c62b60"
 dependencies = [
  "aya",
  "aya-log-common",
@@ -656,15 +656,15 @@ dependencies = [
 [[package]]
 name = "aya-log-common"
 version = "0.3.0"
-source = "git+https://github.com/aya-rs/aya#79d24564b8c60cae11a485c5eb84d06aa5fcb49f"
+source = "git+https://github.com/aya-rs/aya#324af2db4cc3b8cbf310b57baa17979085c62b60"
 dependencies = [
  "num_enum",
 ]
 
 [[package]]
 name = "aya-log-ebpf"
-version = "0.2.0"
-source = "git+https://github.com/aya-rs/aya#79d24564b8c60cae11a485c5eb84d06aa5fcb49f"
+version = "0.3.0"
+source = "git+https://github.com/aya-rs/aya#324af2db4cc3b8cbf310b57baa17979085c62b60"
 dependencies = [
  "aya-ebpf",
  "aya-log-common",
@@ -673,8 +673,8 @@ dependencies = [
 
 [[package]]
 name = "aya-log-ebpf-macros"
-version = "0.2.0"
-source = "git+https://github.com/aya-rs/aya#79d24564b8c60cae11a485c5eb84d06aa5fcb49f"
+version = "0.3.0"
+source = "git+https://github.com/aya-rs/aya#324af2db4cc3b8cbf310b57baa17979085c62b60"
 dependencies = [
  "aya-log-common",
  "aya-log-parser",
@@ -686,15 +686,15 @@ dependencies = [
 [[package]]
 name = "aya-log-parser"
 version = "0.3.0"
-source = "git+https://github.com/aya-rs/aya#79d24564b8c60cae11a485c5eb84d06aa5fcb49f"
+source = "git+https://github.com/aya-rs/aya#324af2db4cc3b8cbf310b57baa17979085c62b60"
 dependencies = [
  "aya-log-common",
 ]
 
 [[package]]
 name = "aya-obj"
-version = "0.5.0"
-source = "git+https://github.com/aya-rs/aya#79d24564b8c60cae11a485c5eb84d06aa5fcb49f"
+version = "0.6.0"
+source = "git+https://github.com/aya-rs/aya#324af2db4cc3b8cbf310b57baa17979085c62b60"
 dependencies = [
  "bytes",
  "log",
@@ -5375,7 +5375,7 @@ version = "0.7.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "af1844ef2428cc3e1cb900be36181049ef3d3193c63e43026cfe202983b27a56"
 dependencies = [
- "proc-macro-crate 3.3.0",
+ "proc-macro-crate 1.3.1",
  "proc-macro2",
  "quote",
  "syn 2.0.119",
