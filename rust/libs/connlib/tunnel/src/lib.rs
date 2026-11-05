@@ -452,9 +452,9 @@ impl ClientTunnel {
                 }
 
                 if let Some(received) = network {
-                    let mut batches = Vec::new();
-                    let mut segments = received
-                        .segments()
+                    let mut jobs = self.io.new_decrypt_jobs(received);
+                    let (segments, mut batches) = jobs.split();
+                    let mut segments = segments
                         .inspect(|segment| udp_received.record(segment))
                         .peekable();
 
@@ -482,11 +482,8 @@ impl ClientTunnel {
                             .is_some()
                         {}
 
-                        batches.push((batch.finish(), segment.index()));
+                        batches.add(batch.finish(), segment.index());
                     }
-                    drop(segments);
-
-                    self.io.decrypt(received, batches);
 
                     tick.want_continue();
                 }
@@ -712,9 +709,9 @@ impl GatewayTunnel {
                 }
 
                 if let Some(received) = network {
-                    let mut batches = Vec::new();
-                    let mut segments = received
-                        .segments()
+                    let mut jobs = self.io.new_decrypt_jobs(received);
+                    let (segments, mut batches) = jobs.split();
+                    let mut segments = segments
                         .inspect(|segment| udp_received.record(segment))
                         .peekable();
 
@@ -742,11 +739,8 @@ impl GatewayTunnel {
                             .is_some()
                         {}
 
-                        batches.push((batch.finish(), segment.index()));
+                        batches.add(batch.finish(), segment.index());
                     }
-                    drop(segments);
-
-                    self.io.decrypt(received, batches);
 
                     tick.want_continue();
                 }

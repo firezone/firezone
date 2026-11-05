@@ -14,7 +14,10 @@ use snownet::{PendingDecapsulate, PendingEncapsulate};
 use socket_factory::DatagramOut;
 use tokio::sync::oneshot;
 
-use super::{Received, SegmentIndex, UdpGroTrain, UdpGsoTrain, udp_gro_train::DECRYPT_BATCH_SIZE};
+use super::{
+    Received, ReceivedSegment, SegmentIndex, UdpGroTrain, UdpGsoTrain,
+    udp_gro_train::DECRYPT_BATCH_SIZE,
+};
 use crate::packet_counts::UdpPacketCounts;
 use crate::sockets::{PendingDatagrams, Sockets};
 use smallvec::SmallVec;
@@ -121,20 +124,18 @@ impl CryptoWorkers {
         }
     }
 
-    /// Hands each train of `received` that has any of `batches` to a worker, queueing its
-    /// result in `decrypting`.
-    pub fn decrypt(
-        &mut self,
-        decrypting: &mut Decrypting,
+    /// Creates the jobs that decrypt the batches of `received`, queueing their results in
+    /// `decrypting`.
+    pub fn new_decrypt_jobs<'a>(
+        &'a mut self,
+        decrypting: &'a mut Decrypting,
         received: Received,
-        batches: Vec<(PendingDecapsulate, SegmentIndex)>,
-    ) {
-        for train in received.into_trains(batches) {
-            // A stopped worker drops the sender, so `Decrypting::poll_job` skips the job.
-            self.workers.send(Job::Decrypt(DecryptJob {
-                train,
-                decrypted: decrypting.add_job(),
-            }));
+    ) -> DecryptJobs<'a> {
+        DecryptJobs {
+            workers: &mut self.workers,
+            decrypting,
+            received,
+            batches: Vec::new(),
         }
     }
 }
@@ -250,6 +251,52 @@ impl Drop for EncryptJobs<'_> {
         if let Some(pending) = self.pending_v6.take() {
             self.sockets.send_pending(IpVersion::V6, pending);
         }
+    }
+}
+
+/// The segments of one receive and the batches of them to decrypt, handed to the workers when
+/// dropped.
+pub struct DecryptJobs<'a> {
+    workers: &'a mut Workers,
+    decrypting: &'a mut Decrypting,
+    received: Received,
+    /// Each batch with the index of the segment it begins with.
+    batches: Vec<(PendingDecapsulate, SegmentIndex)>,
+}
+
+impl DecryptJobs<'_> {
+    /// Returns the received segments, in order, and where to add the batches made of them.
+    pub fn split(
+        &mut self,
+    ) -> (
+        impl Iterator<Item = ReceivedSegment<'_>>,
+        DecryptBatches<'_>,
+    ) {
+        (self.received.segments(), DecryptBatches(&mut self.batches))
+    }
+}
+
+impl Drop for DecryptJobs<'_> {
+    fn drop(&mut self) {
+        let batches = mem::take(&mut self.batches);
+
+        for train in mem::take(&mut self.received).into_trains(batches) {
+            // A stopped worker drops the sender, so `Decrypting::poll_job` skips the job.
+            self.workers.send(Job::Decrypt(DecryptJob {
+                train,
+                decrypted: self.decrypting.add_job(),
+            }));
+        }
+    }
+}
+
+/// Where to add the batches of a [`DecryptJobs`].
+pub struct DecryptBatches<'a>(&'a mut Vec<(PendingDecapsulate, SegmentIndex)>);
+
+impl DecryptBatches<'_> {
+    /// Adds the batch decrypted with `decapsulation` that begins with the segment at `first`.
+    pub fn add(&mut self, decapsulation: PendingDecapsulate, first: SegmentIndex) {
+        self.0.push((decapsulation, first));
     }
 }
 

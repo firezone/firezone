@@ -4,9 +4,9 @@ mod udp_gro_train;
 mod udp_gso_train;
 
 pub(crate) use crypto::MAX_DECRYPT_BACKLOG_MEMORY;
-pub use crypto::{CryptoWorkers, DecryptedBatch, DecryptedJobs, EncryptJobs};
+pub use crypto::{CryptoWorkers, DecryptJobs, DecryptedBatch, DecryptedJobs, EncryptJobs};
 pub use device::{Device, TunChannelClosed};
-pub(crate) use udp_gro_train::{Received, SegmentIndex, UdpGroTrain};
+pub(crate) use udp_gro_train::{Received, ReceivedSegment, SegmentIndex, UdpGroTrain};
 pub(crate) use udp_gso_train::UdpGsoTrain;
 
 use crate::{
@@ -18,7 +18,6 @@ use anyhow::Result;
 use crypto::Decrypting;
 use fast_random_state::FastRandomState;
 use ip_packet::IpPacket;
-use snownet::PendingDecapsulate;
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 use std::{
     collections::HashMap,
@@ -340,16 +339,10 @@ impl Io {
         self.crypto.new_encrypt_jobs(&mut self.sockets, num_packets)
     }
 
-    /// Decrypts `batches` of the segments of `received` off the main thread, yielding them via
-    /// [`Input::decrypted`].
-    ///
-    /// Each batch comes with the index of the segment it begins with.
-    pub fn decrypt(
-        &mut self,
-        received: Received,
-        batches: Vec<(PendingDecapsulate, SegmentIndex)>,
-    ) {
-        self.crypto.decrypt(&mut self.decrypting, received, batches);
+    /// Creates the jobs that decrypt the batches of `received` off the main thread, yielding them
+    /// via [`Input::decrypted`] once dropped.
+    pub fn new_decrypt_jobs(&mut self, received: Received) -> DecryptJobs<'_> {
+        self.crypto.new_decrypt_jobs(&mut self.decrypting, received)
     }
 
     pub fn send_network(&mut self, transmit: snownet::Transmit) {

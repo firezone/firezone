@@ -13,6 +13,7 @@ use super::DecryptedBatch;
 pub const DECRYPT_BATCH_SIZE: usize = 64;
 
 /// The datagrams of one receive, split into the [`UdpGroTrain`]s of their decrypt jobs.
+#[derive(Default)]
 pub struct Received {
     trains: Vec<UdpGroTrain>,
 }
