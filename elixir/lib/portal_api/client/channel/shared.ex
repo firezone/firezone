@@ -1142,8 +1142,7 @@ defmodule PortalAPI.Client.Channel.Shared do
         %{"candidates" => candidates, "gateway_id" => gateway_id},
         socket
       ) do
-    PG.deliver(gateway_id, {:ice_candidates, socket.assigns.client.id, candidates})
-    {:noreply, socket}
+    deliver_to_gateways(socket, [gateway_id], :ice_candidates_from_client, candidates)
   end
 
   def handle_in(
@@ -1151,12 +1150,7 @@ defmodule PortalAPI.Client.Channel.Shared do
         %{"candidates" => candidates, "gateway_id" => gateway_id},
         socket
       ) do
-    PG.deliver(
-      gateway_id,
-      {:invalidate_ice_candidates, socket.assigns.client.id, candidates}
-    )
-
-    {:noreply, socket}
+    deliver_to_gateways(socket, [gateway_id], :invalidate_ice_candidates_from_client, candidates)
   end
 
   def handle_in(
@@ -1164,13 +1158,8 @@ defmodule PortalAPI.Client.Channel.Shared do
         %{"candidates" => candidates, "client_id" => target_client_id},
         socket
       ) do
-    case PG.deliver(
-           target_client_id,
-           {:client_ice_candidates, socket.assigns.client.id, candidates}
-         ) do
-      :ok -> {:noreply, socket}
-      {:error, :not_found} -> {:noreply, socket}
-    end
+    deliver_to_client(socket, target_client_id, :client_ice_candidates, candidates)
+    {:noreply, socket}
   end
 
   def handle_in(
@@ -1178,9 +1167,11 @@ defmodule PortalAPI.Client.Channel.Shared do
         %{"candidates" => candidates, "client_id" => target_client_id},
         socket
       ) do
-    case PG.deliver(
+    case deliver_to_client(
+           socket,
            target_client_id,
-           {:invalidate_client_ice_candidates, socket.assigns.client.id, candidates}
+           :invalidate_client_ice_candidates,
+           candidates
          ) do
       :ok ->
         {:noreply, socket}
@@ -1201,14 +1192,7 @@ defmodule PortalAPI.Client.Channel.Shared do
         %{"candidates" => candidates, "gateway_ids" => gateway_ids},
         socket
       ) do
-    Enum.each(gateway_ids, fn gateway_id ->
-      PG.deliver(
-        gateway_id,
-        {:ice_candidates, socket.assigns.client.id, candidates}
-      )
-    end)
-
-    {:noreply, socket}
+    deliver_to_gateways(socket, gateway_ids, :ice_candidates_from_client, candidates)
   end
 
   def handle_in(
@@ -1216,14 +1200,7 @@ defmodule PortalAPI.Client.Channel.Shared do
         %{"candidates" => candidates, "gateway_ids" => gateway_ids},
         socket
       ) do
-    Enum.each(gateway_ids, fn gateway_id ->
-      PG.deliver(
-        gateway_id,
-        {:invalidate_ice_candidates, socket.assigns.client.id, candidates}
-      )
-    end)
-
-    {:noreply, socket}
+    deliver_to_gateways(socket, gateway_ids, :invalidate_ice_candidates_from_client, candidates)
   end
 
   def handle_in("set_snownet_capabilities", payload, socket) when is_map(payload) do
@@ -3218,6 +3195,42 @@ defmodule PortalAPI.Client.Channel.Shared do
   defp abnormal_exit?(:shutdown), do: false
   defp abnormal_exit?({:shutdown, _reason}), do: false
   defp abnormal_exit?(_reason), do: true
+
+  # The receiving gateway checks its authorization cache before it forwards the candidates.
+  defp deliver_to_gateways(socket, gateway_ids, tag, candidates) when is_list(gateway_ids) do
+    candidates = PortalAPI.Sockets.limit_ice_candidates(candidates)
+
+    if candidates != [] do
+      for gateway_id <- Enum.uniq(gateway_ids), is_binary(gateway_id) do
+        PG.deliver(gateway_id, {tag, socket.assigns.client.id, candidates})
+      end
+    end
+
+    {:noreply, socket}
+  end
+
+  defp deliver_to_gateways(socket, _gateway_ids, _tag, _candidates), do: {:noreply, socket}
+
+  # Unauthorized targets look offline so the reply does not reveal presence.
+  defp deliver_to_client(socket, target_client_id, tag, candidates) do
+    candidates = PortalAPI.Sockets.limit_ice_candidates(candidates)
+
+    cond do
+      not client_peer?(socket, target_client_id) ->
+        {:error, :not_found}
+
+      candidates == [] ->
+        :ok
+
+      true ->
+        PG.deliver(target_client_id, {tag, socket.assigns.client.id, candidates})
+    end
+  end
+
+  defp client_peer?(socket, client_id) do
+    Cache.Client.connectable_device?(socket.assigns.cache, client_id) or
+      Cache.Client.Authorizations.has_client?(socket.assigns.authorizations_cache, client_id)
+  end
 
   defmodule Database do
     import Ecto.Query, only: [from: 2, dynamic: 1]

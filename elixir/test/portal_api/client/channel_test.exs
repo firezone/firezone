@@ -3263,7 +3263,7 @@ defmodule PortalAPI.Client.ChannelTest do
         "gateway_id" => gateway.id
       })
 
-      assert_receive {:ice_candidates, client_id, ^candidates}, 200
+      assert_receive {:ice_candidates_from_client, client_id, ^candidates}, 200
       assert client_id == client.id
     end
   end
@@ -3289,7 +3289,7 @@ defmodule PortalAPI.Client.ChannelTest do
         "gateway_id" => gateway.id
       })
 
-      assert_receive {:invalidate_ice_candidates, client_id, ^candidates}, 200
+      assert_receive {:invalidate_ice_candidates_from_client, client_id, ^candidates}, 200
       assert client_id == client.id
     end
   end
@@ -3308,6 +3308,7 @@ defmodule PortalAPI.Client.ChannelTest do
       target_client = client_fixture(account: account, actor: target_actor) |> fetch_device!()
 
       :ok = PG.register(target_client.id)
+      put_inbound_authorization(socket, target_client.id)
 
       push(socket, "new_client_ice_candidates", %{
         "candidates" => candidates,
@@ -3337,6 +3338,67 @@ defmodule PortalAPI.Client.ChannelTest do
 
       refute_receive {:client_ice_candidates, _, _}
     end
+
+    test "does not forward to an online client without an authorization", %{
+      account: account,
+      client: client,
+      subject: subject
+    } do
+      socket = join_channel(client, subject)
+      assert_push "init", _
+
+      target_client = client_fixture(account: account) |> fetch_device!()
+      :ok = PG.register(target_client.id)
+
+      push(socket, "new_client_ice_candidates", %{
+        "candidates" => ["cand1"],
+        "client_id" => target_client.id
+      })
+
+      refute_receive {:client_ice_candidates, _, _}
+    end
+
+    test "does not forward to a client in another account", %{
+      client: client,
+      subject: subject
+    } do
+      socket = join_channel(client, subject)
+      assert_push "init", _
+
+      other_client = client_fixture() |> fetch_device!()
+      :ok = PG.register(other_client.id)
+
+      push(socket, "new_client_ice_candidates", %{
+        "candidates" => ["cand1"],
+        "client_id" => other_client.id
+      })
+
+      refute_receive {:client_ice_candidates, _, _}
+    end
+
+    test "drops oversized candidates and caps the count", %{
+      account: account,
+      client: client,
+      subject: subject
+    } do
+      socket = join_channel(client, subject)
+      assert_push "init", _
+
+      target_client = client_fixture(account: account) |> fetch_device!()
+      :ok = PG.register(target_client.id)
+      put_inbound_authorization(socket, target_client.id)
+
+      valid = for i <- 1..70, do: "cand#{i}"
+      oversized = String.duplicate("a", 513)
+
+      push(socket, "new_client_ice_candidates", %{
+        "candidates" => [oversized, 1 | valid],
+        "client_id" => target_client.id
+      })
+
+      assert_receive {:client_ice_candidates, _sending_client_id, candidates}, 200
+      assert candidates == Enum.take(valid, 64)
+    end
   end
 
   describe "handle_in/3 invalidate_client_ice_candidates" do
@@ -3352,6 +3414,7 @@ defmodule PortalAPI.Client.ChannelTest do
       target_actor = actor_fixture(account: account)
       target_client = client_fixture(account: account, actor: target_actor) |> fetch_device!()
       :ok = PG.register(target_client.id)
+      put_pool_member(socket, target_client.id)
 
       push(socket, "invalidate_client_ice_candidates", %{
         "candidates" => candidates,
@@ -3374,6 +3437,7 @@ defmodule PortalAPI.Client.ChannelTest do
       target_client = client_fixture(account: account, actor: target_actor) |> fetch_device!()
       # Do NOT PG.register target_client.id
       target_client_id = target_client.id
+      put_inbound_authorization(socket, target_client_id)
 
       push(socket, "invalidate_client_ice_candidates", %{
         "candidates" => ["cand1"],
@@ -3384,6 +3448,30 @@ defmodule PortalAPI.Client.ChannelTest do
         client_id: ^target_client_id,
         reason: :offline
       }
+    end
+
+    test "reports an online client in another account as offline", %{
+      client: client,
+      subject: subject
+    } do
+      socket = join_channel(client, subject)
+      assert_push "init", _
+
+      other_client = client_fixture() |> fetch_device!()
+      other_client_id = other_client.id
+      :ok = PG.register(other_client_id)
+
+      push(socket, "invalidate_client_ice_candidates", %{
+        "candidates" => ["cand1"],
+        "client_id" => other_client_id
+      })
+
+      assert_push "client_ice_candidate_error", %{
+        client_id: ^other_client_id,
+        reason: :offline
+      }
+
+      refute_receive {:invalidate_client_ice_candidates, _, _}
     end
   end
 
@@ -5667,7 +5755,7 @@ defmodule PortalAPI.Client.ChannelTest do
       }
 
       push(socket, "broadcast_ice_candidates", attrs)
-      refute_receive {:ice_candidates, _client_id, _candidates}
+      refute_receive {:ice_candidates_from_client, _client_id, _candidates}
     end
 
     test "broadcasts :ice_candidates message to all gateways", %{
@@ -5694,7 +5782,7 @@ defmodule PortalAPI.Client.ChannelTest do
 
       push(socket, "broadcast_ice_candidates", attrs)
 
-      assert_receive {:ice_candidates, client_id, ^candidates}, 200
+      assert_receive {:ice_candidates_from_client, client_id, ^candidates}, 200
       assert client.id == client_id
     end
   end
@@ -5714,7 +5802,7 @@ defmodule PortalAPI.Client.ChannelTest do
       }
 
       push(socket, "broadcast_invalidated_ice_candidates", attrs)
-      refute_receive {:invalidate_ice_candidates, _client_id, _candidates}
+      refute_receive {:invalidate_ice_candidates_from_client, _client_id, _candidates}
     end
 
     test "broadcasts :invalidate_ice_candidates message to all gateways", %{
@@ -5740,7 +5828,7 @@ defmodule PortalAPI.Client.ChannelTest do
 
       push(socket, "broadcast_invalidated_ice_candidates", attrs)
 
-      assert_receive {:invalidate_ice_candidates, client_id, ^candidates}, 200
+      assert_receive {:invalidate_ice_candidates_from_client, client_id, ^candidates}, 200
       assert client.id == client_id
     end
   end
@@ -9251,5 +9339,30 @@ defmodule PortalAPI.Client.ChannelTest do
     push(socket, "browse_device_domain", %{"domain" => domain})
     assert_push ^event, %{domain: ^domain}
     System.monotonic_time(:millisecond) - started_at
+  end
+
+  defp put_inbound_authorization(socket, initiating_client_id) do
+    :sys.replace_state(socket.channel_pid, fn state ->
+      cache =
+        Portal.Cache.Client.Authorizations.put(
+          state.assigns.authorizations_cache,
+          Ecto.UUID.generate(),
+          initiating_client_id,
+          Ecto.UUID.generate(),
+          DateTime.add(DateTime.utc_now(), 3600, :second)
+        )
+
+      put_in(state.assigns.authorizations_cache, cache)
+    end)
+  end
+
+  defp put_pool_member(socket, device_id) do
+    :sys.replace_state(socket.channel_pid, fn state ->
+      pool_members = %{
+        Ecto.UUID.dump!(Ecto.UUID.generate()) => MapSet.new([Ecto.UUID.dump!(device_id)])
+      }
+
+      put_in(state.assigns.cache.pool_members, pool_members)
+    end)
   end
 end

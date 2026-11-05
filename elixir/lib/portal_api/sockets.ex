@@ -222,6 +222,21 @@ defmodule PortalAPI.Sockets do
     {context, version}
   end
 
+  @max_ice_candidates 64
+  @max_ice_candidate_bytes 512
+
+  @doc """
+  Keeps at most #{@max_ice_candidates} ICE candidates that are strings of at most
+  #{@max_ice_candidate_bytes} bytes. Returns an empty list for any other input.
+  """
+  def limit_ice_candidates(candidates) when is_list(candidates) do
+    candidates
+    |> Enum.filter(&(is_binary(&1) and byte_size(&1) <= @max_ice_candidate_bytes))
+    |> Enum.take(@max_ice_candidates)
+  end
+
+  def limit_ice_candidates(_candidates), do: []
+
   @doc """
   Tells every device holding an active policy authorization with `device` that it
   reconnected with a public key other than `previous_public_key`, so they drop a
