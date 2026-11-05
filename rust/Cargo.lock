@@ -2864,7 +2864,6 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-core",
- "tracing-opentelemetry",
  "tracing-subscriber",
  "url",
 ]
@@ -8940,22 +8939,6 @@ version = "0.1.0"
 source = "git+https://github.com/tokio-rs/tracing?branch=main#79b80a9095944cef1006ec2893510325e157639d"
 dependencies = [
  "tracing",
-]
-
-[[package]]
-name = "tracing-opentelemetry"
-version = "0.34.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0a904802a1b902f43638b677ff2a650847e3b4404101b6c586d648e8c1e3e8fe"
-dependencies = [
- "js-sys",
- "opentelemetry",
- "smallvec",
- "tracing",
- "tracing-core",
- "tracing-log",
- "tracing-subscriber",
- "web-time",
 ]
 
 [[package]]
