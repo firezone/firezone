@@ -9,8 +9,6 @@ interface SettingRowProps extends React.PropsWithChildren {
   field?: boolean;
   error?: string;
   errorId?: string;
-  // Rows that pass it show and announce a checkmark while it is true.
-  saved?: boolean;
 }
 
 export default function SettingRow({
@@ -21,7 +19,6 @@ export default function SettingRow({
   managed = false,
   error,
   errorId,
-  saved,
 }: SettingRowProps) {
   return (
     <div className="flex min-h-10 flex-col justify-center pl-4 pr-2 py-2">
@@ -34,20 +31,7 @@ export default function SettingRow({
           {managed && (
             <RemixIcon className="h-3.5 w-3.5 text-subtle" name="lock" />
           )}
-          {saved !== undefined && (
-            <RemixIcon
-              className={`h-3.5 w-3.5 text-success transition-opacity duration-300 ${
-                saved ? "opacity-100" : "opacity-0"
-              }`}
-              name="check"
-            />
-          )}
         </label>
-        {saved !== undefined && (
-          <span aria-live="polite" className="sr-only">
-            {saved ? "Saved" : ""}
-          </span>
-        )}
         {field ? (
           <div className="flex h-9 w-64 shrink-0 items-center justify-end">
             {children}

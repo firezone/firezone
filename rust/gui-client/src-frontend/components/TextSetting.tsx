@@ -1,5 +1,6 @@
 import React, { useEffect, useId, useRef, useState } from "react";
 import { ManagedTextInput } from "./ManagedInput";
+import RemixIcon from "./RemixIcon";
 import SettingRow from "./SettingRow";
 
 interface TextSettingProps {
@@ -86,30 +87,40 @@ export default function TextSetting({
       inputId={inputId}
       label={label}
       managed={managed}
-      saved={savedAt !== null}
     >
-      <ManagedTextInput
-        aria-describedby={error ? errorId : undefined}
-        aria-invalid={error ? true : undefined}
-        className={className}
-        id={inputId}
-        managed={managed}
-        name={name}
-        onBlur={commit}
-        onChange={(event) => {
-          updateDraft(event.target.value);
-          setError(null);
-        }}
-        onKeyDown={(event) => {
-          if (event.key === "Enter") {
-            commit();
-          } else if (event.key === "Escape") {
-            updateDraft(null);
+      <span className="relative flex w-full">
+        <ManagedTextInput
+          aria-describedby={error ? errorId : undefined}
+          aria-invalid={error ? true : undefined}
+          className={`pr-9 ${className}`}
+          id={inputId}
+          managed={managed}
+          name={name}
+          onBlur={commit}
+          onChange={(event) => {
+            updateDraft(event.target.value);
             setError(null);
-          }
-        }}
-        value={draft ?? value}
-      />
+          }}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              commit();
+            } else if (event.key === "Escape") {
+              updateDraft(null);
+              setError(null);
+            }
+          }}
+          value={draft ?? value}
+        />
+        <RemixIcon
+          className={`pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-success transition-opacity duration-300 ${
+            savedAt !== null ? "opacity-100" : "opacity-0"
+          }`}
+          name="check"
+        />
+        <span aria-live="polite" className="sr-only">
+          {savedAt !== null ? "Saved" : ""}
+        </span>
+      </span>
     </SettingRow>
   );
 }
