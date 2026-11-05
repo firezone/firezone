@@ -893,14 +893,7 @@ impl FlowData {
 
     /// Releases the current packet and drops everything gathered about it.
     fn clear(&mut self) {
-        self.packet = None;
-        self.inner = None;
-        self.outer_tx = None;
-        self.peer = None;
-        self.resource = None;
-        self.ingest_token = None;
-        self.domain = None;
-        self.icmp_error = None;
+        *self = Self::EMPTY;
     }
 }
 
