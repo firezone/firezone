@@ -59,14 +59,19 @@ impl UdpGroTrain {
         self.datagrams.push(datagram);
     }
 
-    /// Iterates over the segments of the datagrams, in order, as the train at `train`.
-    pub fn segments(&self, train: usize) -> impl Iterator<Item = ReceivedSegment<'_>> {
+    /// Iterates over the segments of the datagrams, in order.
+    ///
+    /// `index` is the train's position among the trains of its receive.
+    pub fn segments(&self, index: usize) -> impl Iterator<Item = ReceivedSegment<'_>> {
         segments(&self.datagrams)
             .enumerate()
             .map(move |(segment, (datagram, bytes))| ReceivedSegment {
                 datagram,
                 segment: bytes,
-                index: SegmentIndex { train, segment },
+                index: SegmentIndex {
+                    train: index,
+                    segment,
+                },
             })
     }
 
