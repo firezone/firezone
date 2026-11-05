@@ -425,7 +425,7 @@ impl ClientTunnel {
                             Ok(Some(tun_batch)) => tun_batch,
                             Ok(None) => continue,
                             Err(e) => {
-                                self.dropped_tun_packets.record(&e);
+                                self.dropped_tun_packets.record(&e, 1);
                                 error.push(e.context("Failed to handle packet from TUN device"));
                                 continue;
                             }
@@ -435,10 +435,12 @@ impl ClientTunnel {
                             tun_batch.push(packet);
                         }
 
+                        let num_packets = tun_batch.num_packets();
+
                         match tun_batch.finish() {
                             Ok((encapsulation, packets)) => jobs.add(encapsulation, packets),
                             Err(e) => {
-                                self.dropped_tun_packets.record(&e);
+                                self.dropped_tun_packets.record(&e, num_packets);
                                 error.push(e.context("Failed to handle packet from TUN device"));
                             }
                         }
@@ -695,7 +697,7 @@ impl GatewayTunnel {
                             Ok(Some(tun_batch)) => tun_batch,
                             Ok(None) => continue,
                             Err(e) => {
-                                self.dropped_tun_packets.record(&e);
+                                self.dropped_tun_packets.record(&e, 1);
                                 error.push(e.context("Failed to handle packet from TUN device"));
                                 continue;
                             }
@@ -705,10 +707,12 @@ impl GatewayTunnel {
                             tun_batch.push(packet);
                         }
 
+                        let num_packets = tun_batch.num_packets();
+
                         match tun_batch.finish() {
                             Ok((encapsulation, packets)) => jobs.add(encapsulation, packets),
                             Err(e) => {
-                                self.dropped_tun_packets.record(&e);
+                                self.dropped_tun_packets.record(&e, num_packets);
                                 error.push(e.context("Failed to handle packet from TUN device"));
                             }
                         }

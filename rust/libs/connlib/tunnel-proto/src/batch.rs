@@ -120,6 +120,11 @@ impl<'a, S: flow_tracker::Scope> TunBatch<'a, S> {
         self.packets.push(packet);
     }
 
+    /// How many packets the batch holds.
+    pub fn num_packets(&self) -> usize {
+        self.packets.len()
+    }
+
     /// Reserves the batch's counters and records its flow.
     pub fn finish(mut self) -> Result<(snownet::PendingEncapsulate, Vec<IpPacket>)> {
         let len = NonZeroUsize::new(self.packets.len()).expect("A batch starts with a packet");
