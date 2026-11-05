@@ -1,6 +1,5 @@
 import React from "react";
 import home from "remixicon/icons/Buildings/home-line.svg";
-import editCircle from "remixicon/icons/Design/edit-circle-line.svg";
 import palette from "remixicon/icons/Design/palette-line.svg";
 import database from "remixicon/icons/Device/database-2-line.svg";
 import certificate from "remixicon/icons/Document/certificate-line.svg";
@@ -22,7 +21,6 @@ const icons = {
   close,
   database,
   "delete-bin": deleteBin,
-  "edit-circle": editCircle,
   home,
   information,
   lock,

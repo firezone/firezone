@@ -114,11 +114,11 @@ export default function TextSetting({
           }}
           value={draft ?? value}
         />
-        <RemixIcon
-          className={`pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-subtle transition-opacity duration-300 ${
+        <span
+          aria-hidden="true"
+          className={`pointer-events-none absolute right-4 top-1/2 h-2 w-2 -translate-y-1/2 rounded-full bg-brand transition-opacity duration-300 ${
             isDraft ? "opacity-100" : "opacity-0"
           }`}
-          name="edit-circle"
         />
         <RemixIcon
           className={`pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-success transition-opacity duration-300 ${

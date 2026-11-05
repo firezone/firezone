@@ -651,8 +651,9 @@ public struct SettingsView: View {
       .hidden()
       .overlay {
         if isDraft {
-          Image(systemName: "pencil.circle")
-            .foregroundStyle(.secondary)
+          Circle()
+            .fill(.orange)
+            .frame(width: 7, height: 7)
             .transition(.opacity)
             .accessibilityHidden(true)
         } else if isSaved {
