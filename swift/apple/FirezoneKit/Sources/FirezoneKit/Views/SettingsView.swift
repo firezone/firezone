@@ -656,7 +656,7 @@ public struct SettingsView: View {
         Image(systemName: "info.circle")
           .font(.caption)
           .accessibilityHidden(true)
-        Text("Sign out and sign in again after changing the account slug or control plane.")
+        Text("Changes to account slug and control plane only take effect on the next sign-in.")
           .multilineTextAlignment(.leading)
       }
       .frame(maxWidth: .infinity, alignment: .leading)

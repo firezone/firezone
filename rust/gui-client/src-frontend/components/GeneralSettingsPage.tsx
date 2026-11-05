@@ -173,8 +173,8 @@ export default function GeneralSettingsPage({
             <p className="mt-1.5 flex items-start gap-1.5 text-xs text-subtle">
               <RemixIcon className="mt-px h-3.5 w-3.5" name="information" />
               <span>
-                Sign out and sign in again after changing the account slug or
-                control plane.
+                Changes to account slug and control plane only take effect on
+                the next sign-in.
               </span>
             </p>
           )}
