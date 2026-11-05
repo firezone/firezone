@@ -42,6 +42,12 @@ defmodule Portal.ResourceTest do
     "*.xn--fssq61j.com",
     "**.xn--fssq61j.com",
     "sub.**.xn--fssq61j.com",
+    # Underscores
+    "_acme-challenge.example.com",
+    "_sip._tcp.example.com",
+    "stack_network",
+    "web.stack_network",
+    "*.stack_network.internal",
     # Many subdomains
     "a.b.c.d.e.f.g.h.i.j.k.l.m.n.o.p.q.r.s.t.u.v.w.x.y.z.com"
   ]
@@ -83,7 +89,6 @@ defmodule Portal.ResourceTest do
     "**.com.",
     # Special characters
     "exa&mple.com",
-    "example_com",
     "example.com?",
     "example.com*",
     # URLs (not bare hostnames)

@@ -1,4 +1,4 @@
-//! Scenario coverage for the iceless path model.
+//! Scenario coverage for the frostlink path model.
 //!
 //! Layout follows the model's life-cycle: bootstrap via handshake fan-out,
 //! session establishment, probing and (promote-only) selection, and failure
@@ -8,11 +8,11 @@
 use std::net::{IpAddr, SocketAddr};
 use std::time::{Duration, Instant};
 
-use ip_packet::{Icmpv6Type, IpPacket};
-use path_agent::{
-    Candidate, CandidateKind, Event, PROBE_BUDGET, PROBE_BURST_GAPS, PROBE_DST, PROBE_SRC,
-    PathAgent, Payload, Probe, REKEY_DISTRESS_ATTEMPTS, RESPONDER_DEDUP_TTL, Transmit,
+use frostlink::{
+    Agent, Candidate, CandidateKind, Event, PROBE_BUDGET, PROBE_BURST_GAPS, PROBE_DST, PROBE_SRC,
+    Payload, Probe, REKEY_DISTRESS_ATTEMPTS, RESPONDER_DEDUP_TTL, Transmit,
 };
+use ip_packet::{Icmpv6Type, IpPacket};
 use zeroize::Zeroizing;
 
 // --- bootstrap: handshake fan-out ---
@@ -624,7 +624,7 @@ fn a_new_candidate_clears_the_primary_and_reprobes() {
 
 #[test]
 fn roam_recovers_the_data_path_via_probes_without_a_handshake() {
-    let mut a = PathAgent::new();
+    let mut a = Agent::new();
     let t0 = Instant::now();
     a.add_local_candidate(Candidate::host(addr(1)), t0);
     a.add_remote_candidate(Candidate::host(addr(9)), t0);
@@ -666,7 +666,7 @@ fn roam_recovers_the_data_path_via_probes_without_a_handshake() {
 
 #[test]
 fn invalidated_relay_primary_fails_over_to_remote_relay_and_back() {
-    let mut a = PathAgent::new();
+    let mut a = Agent::new();
     let t0 = Instant::now();
 
     let local_relay = Candidate::relayed(addr(2), addr(2));
@@ -752,7 +752,7 @@ fn signaled_candidate_promotes_a_peer_reflexive_remote_in_place() {
     // the peer's real candidate for that same address, it must promote the
     // existing pair in place — keeping its primary/RTT/schedule — not treat it
     // as new, which would overwrite the pair's `PairState` and re-probe.
-    let mut a = PathAgent::new();
+    let mut a = Agent::new();
     let t0 = Instant::now();
     a.add_local_candidate(Candidate::host(addr(1)), t0);
 
@@ -793,7 +793,7 @@ fn signaled_candidate_promotes_a_peer_reflexive_remote_in_place() {
 
 #[test]
 fn a_peer_reflexive_remote_stays_peer_reflexive_until_signaled() {
-    let mut a = PathAgent::new();
+    let mut a = Agent::new();
     let t0 = Instant::now();
     a.add_local_candidate(Candidate::host(addr(1)), t0);
 
@@ -838,7 +838,7 @@ fn secs(n: u64) -> Duration {
     Duration::from_secs(n)
 }
 
-fn remote_kind(a: &PathAgent, remote: SocketAddr) -> Option<CandidateKind> {
+fn remote_kind(a: &Agent, remote: SocketAddr) -> Option<CandidateKind> {
     a.remote_candidates()
         .find(|c| c.addr() == remote)
         .map(|c| c.kind())
@@ -932,7 +932,7 @@ trait AgentExt {
     fn advance(&mut self, start: Instant, end: Instant) -> Activity;
 }
 
-impl AgentExt for PathAgent {
+impl AgentExt for Agent {
     fn receive(
         &mut self,
         tunnel: &mut sanstun::Tunnel,
@@ -1004,8 +1004,8 @@ impl AgentExt for PathAgent {
 
 // --- shared fixtures ---
 
-fn agent_with_relay_pairs() -> PathAgent {
-    let mut a = PathAgent::new();
+fn agent_with_relay_pairs() -> Agent {
+    let mut a = Agent::new();
     let now = Instant::now();
     a.add_local_candidate(Candidate::host(addr(1)), now);
     a.add_local_candidate(Candidate::relayed(addr(2), addr(2)), now);
@@ -1016,7 +1016,7 @@ fn agent_with_relay_pairs() -> PathAgent {
 
 /// A host↔host primary at `(1, 3)` (promoted over a relay preliminary) with a
 /// relay pair `(2, 4)` as the fail-over target.
-fn direct_primary_with_relay_fallback() -> (PathAgent, Instant) {
+fn direct_primary_with_relay_fallback() -> (Agent, Instant) {
     let mut a = agent_with_relay_pairs();
     let t0 = Instant::now();
     bootstrap_primary(&mut a, (addr(2), addr(4)), t0);
@@ -1032,7 +1032,7 @@ fn direct_primary_with_relay_fallback() -> (PathAgent, Instant) {
 
 /// Simulate the peer probing us on `pair` and us measuring it: the inbound
 /// request triggers a probe back, which we then answer.
-fn prove_pair_alive(a: &mut PathAgent, pair: Pair, now: Instant) {
+fn prove_pair_alive(a: &mut Agent, pair: Pair, now: Instant) {
     a.handle_probe(echo_request(0, 999), pair, now);
     let _ = a.transmits();
 
@@ -1053,7 +1053,7 @@ fn data_packet_bytes() -> Vec<u8> {
     bytes
 }
 
-fn bootstrap_primary(a: &mut PathAgent, recv_path: Pair, now: Instant) {
+fn bootstrap_primary(a: &mut Agent, recv_path: Pair, now: Instant) {
     let mut hs = Handshake::new(now).with_response(now);
     let _ = a.receive(
         &mut hs.initiator,

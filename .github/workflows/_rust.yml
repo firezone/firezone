@@ -238,8 +238,8 @@ jobs:
             filter: "instructions::packet_group::*"
           - group: idle-ice
             filter: "instructions::idle_group::idle::ice"
-          - group: idle-iceless
-            filter: "instructions::idle_group::idle::iceless"
+          - group: idle-frostlink
+            filter: "instructions::idle_group::idle::frostlink"
     runs-on: ubuntu-24.04
     env:
       # Replaces the workflow's `RUSTFLAGS`, which would drop the frame pointers from `.cargo/config.toml`.

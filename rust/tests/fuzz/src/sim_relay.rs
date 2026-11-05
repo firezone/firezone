@@ -61,7 +61,7 @@ impl SimRelay {
             3478,
             49152..=65535,
         );
-        sut.set_accounts([relay_proto::auth::AccountId::from(Uuid::nil())]);
+        sut.set_accounts([(relay_proto::auth::AccountId::from(Uuid::nil()), None)]);
 
         Self {
             sut,
@@ -123,6 +123,7 @@ impl SimRelay {
             payload,
             PeerSocket::new(sender),
             AllocationPort::new(dst.port()),
+            now,
         )
     }
 
@@ -227,8 +228,9 @@ impl SimRelay {
         payload: Bytes,
         peer: PeerSocket,
         port: AllocationPort,
+        now: Instant,
     ) -> Option<Transmit> {
-        let (client, channel) = self.sut.handle_peer_traffic(&payload, peer, port)?;
+        let (client, channel) = self.sut.handle_peer_traffic(&payload, peer, port, now)?;
 
         let mut header = [0; 4];
         relay_proto::ChannelData::encode_header_to_slice(

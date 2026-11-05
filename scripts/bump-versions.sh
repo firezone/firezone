@@ -17,11 +17,11 @@ fi
 # (invoked from scripts/open-version-bump-pr.sh during a release) and consumed by
 # the bump (`version`).
 # Keep blank lines between components so concurrent release bumps merge cleanly.
-current_apple_client_version="1.5.23"
-next_apple_client_version="1.5.24"
+current_apple_client_version="1.5.24"
+next_apple_client_version="1.5.25"
 
-current_android_client_version="1.5.17"
-next_android_client_version="1.5.18"
+current_android_client_version="1.5.18"
+next_android_client_version="1.5.19"
 
 current_gui_client_version="1.5.20"
 next_gui_client_version="1.5.21"

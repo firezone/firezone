@@ -1112,6 +1112,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
 
   defp load_balance_relays({lat, lon}, relays) do
     relays
+    |> Enum.shuffle()
     |> Enum.map(fn relay ->
       case {relay.lat, relay.lon} do
         {nil, _} -> {nil, relay}

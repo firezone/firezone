@@ -405,8 +405,8 @@ where
         self.established.keys()
     }
 
-    pub(crate) fn all_iceless(&self) -> bool {
-        !self.established.is_empty() && self.established.values().all(|c| c.agent.is_iceless())
+    pub(crate) fn all_frostlink(&self) -> bool {
+        !self.established.is_empty() && self.established.values().all(|c| c.agent.is_frostlink())
     }
 
     pub(crate) fn poll_timeout(&mut self) -> Option<Instant> {
@@ -701,7 +701,7 @@ mod tests {
         let now = Instant::now();
 
         let mut conn = new_connection(Some(1), [1u8; 32]);
-        conn.agent = crate::agent::Agent::path();
+        conn.agent = crate::agent::Agent::frostlink();
         connections.insert_established(1, conn);
 
         connections.reset_for_roam(now);

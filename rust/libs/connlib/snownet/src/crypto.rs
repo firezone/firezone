@@ -5,8 +5,8 @@ use std::time::Instant;
 
 use anyhow::Result;
 use bufferpool::Bytes;
+use frostlink::Probe;
 use ip_packet::IpPacket;
-use path_agent::Probe;
 use prefetch::{IteratorExt as _, Prefetching};
 
 use crate::node::Transmit;

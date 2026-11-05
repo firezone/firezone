@@ -7564,6 +7564,30 @@ defmodule PortalAPI.Client.ChannelTest do
       assert relay_ids == [relay1.id, relay2.id] |> Enum.sort()
     end
 
+    test "randomizes relays with the same location", %{client: client, subject: subject} do
+      subject = %{
+        subject
+        | context: %{
+            subject.context
+            | remote_ip_location_lat: 37.0,
+              remote_ip_location_lon: -120.0
+          }
+      }
+
+      for _ <- 1..4, do: connect_relay(%{lat: 37.0, lon: -120.0})
+      socket = join_channel(client, subject)
+      assert_push "init", %{relays: _}
+
+      selected_ids =
+        Enum.reduce(1..20, MapSet.new(), fn _, selected_ids ->
+          push(socket, "no_relays", %{})
+          assert_push "relays_presence", %{connected: connected}
+          MapSet.union(selected_ids, MapSet.new(connected, & &1.id))
+        end)
+
+      assert MapSet.size(selected_ids) > 2
+    end
+
     test "sends relays_presence with empty connected when no relays are online", %{
       client: client,
       subject: subject

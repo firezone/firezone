@@ -3483,6 +3483,40 @@ defmodule PortalAPI.Gateway.ChannelTest do
       assert relay_ids == [relay1.id, relay2.id] |> Enum.sort()
     end
 
+    test "no_relays randomizes relays with the same location", %{
+      account: account,
+      site: site,
+      token: token
+    } do
+      gateway =
+        gateway_fixture(
+          account: account,
+          site: site,
+          last_seen_remote_ip_location_lat: 37.0,
+          last_seen_remote_ip_location_lon: -120.0
+        )
+
+      relays =
+        for _ <- 1..4 do
+          relay = relay_fixture(%{lat: 37.0, lon: -120.0})
+          :ok = Portal.Presence.Relays.connect(relay)
+          relay
+        end
+
+      socket = join_channel(gateway, site, token)
+      assert_push "init", %{relays: _}
+
+      selected_ids =
+        Enum.reduce(1..20, MapSet.new(), fn _, selected_ids ->
+          push(socket, "no_relays", %{})
+          assert_push "relays_presence", %{connected: connected}
+          MapSet.union(selected_ids, MapSet.new(connected, & &1.id))
+        end)
+
+      assert MapSet.size(selected_ids) > 2
+      assert Enum.any?(relays, &MapSet.member?(selected_ids, &1.id))
+    end
+
     test "no_relays sends relays_presence with empty connected when no relays are online", %{
       gateway: gateway,
       site: site,

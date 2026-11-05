@@ -1068,7 +1068,7 @@ impl ClientState {
         preshared_key: SecretKey,
         client_ice: IceCredentials,
         gateway_ice: IceCredentials,
-        use_iceless: bool,
+        use_frostlink: bool,
         flow_logs_ingest_token: IngestToken,
         now: Instant,
     ) -> Result<()> {
@@ -1098,7 +1098,7 @@ impl ClientState {
             snownet::IceRole::Controlling,
             snownet::IceConfig::client_default(),
             snownet::IceConfig::client_idle(),
-            use_iceless,
+            use_frostlink,
             now,
         );
         self.outbound_authorizations
@@ -1184,7 +1184,7 @@ impl ClientState {
         local_client_ice: IceCredentials,
         remote_client_ice: IceCredentials,
         ice_role: IceRole,
-        use_iceless: bool,
+        use_frostlink: bool,
         client_name: String,
         client_slug: String,
         resource_id: Option<ResourceId>,
@@ -1219,7 +1219,7 @@ impl ClientState {
             ice_role.into(),
             snownet::IceConfig::client_default(),
             snownet::IceConfig::client_default(),
-            use_iceless,
+            use_frostlink,
             now,
         );
 

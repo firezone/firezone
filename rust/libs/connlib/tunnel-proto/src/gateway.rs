@@ -381,7 +381,7 @@ impl GatewayState {
         gateway_ice: IceCredentials,
         expires_at: Option<Duration>,
         resource: ResourceDescription,
-        use_iceless: bool,
+        use_frostlink: bool,
         now: Instant,
         flow_logs_ingest_token: IngestToken,
     ) {
@@ -404,7 +404,7 @@ impl GatewayState {
             IceRole::Controlled,
             IceConfig::server_default(),
             IceConfig::server_idle(),
-            use_iceless,
+            use_frostlink,
             now,
         );
 
