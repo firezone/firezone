@@ -50,7 +50,8 @@ defmodule Portal.Telemetry do
     otlp_ingest: %{
       handler_id: "portal-otlp-ingest-metrics",
       events: [
-        [:portal, :otlp_ingest, :data_points]
+        [:portal, :otlp_ingest, :data_points],
+        [:portal, :otlp_ingest, :request]
       ]
     }
   }
@@ -358,6 +359,17 @@ defmodule Portal.Telemetry do
     })
   end
 
+  @doc """
+  Records that one `POST /v1/metrics` request from a `device_type` carried
+  `data_points` OTLP metric data points, before any were filtered out.
+  """
+  @spec otlp_ingest_request(String.t(), non_neg_integer()) :: :ok
+  def otlp_ingest_request(device_type, data_points) do
+    :telemetry.execute([:portal, :otlp_ingest, :request], %{data_points: data_points}, %{
+      device_type: device_type
+    })
+  end
+
   defp register_otel_instruments do
     meter = :opentelemetry_experimental.get_meter()
     node_attrs = %{"node_name" => System.get_env("NODE_NAME", to_string(node()))}
@@ -617,6 +629,12 @@ defmodule Portal.Telemetry do
       %{description: "OTLP metric data points received from Clients and Gateways", unit: :"1"}
     )
 
+    :otel_meter.create_histogram(
+      meter,
+      :"portal.otlp_ingest.request.data_points",
+      %{description: "OTLP metric data points per request from Clients and Gateways", unit: :"1"}
+    )
+
     :ok
   rescue
     error ->
@@ -862,6 +880,18 @@ defmodule Portal.Telemetry do
       :"portal.otlp_ingest.data_points",
       measurements.count,
       attrs
+    )
+
+    :ok
+  end
+
+  def handle_otlp_ingest_metric([:portal, :otlp_ingest, :request], measurements, metadata, config) do
+    :otel_histogram.record(
+      :otel_ctx.get_current(),
+      :opentelemetry_experimental.get_meter(),
+      :"portal.otlp_ingest.request.data_points",
+      measurements.data_points,
+      %{"device.type" => metadata.device_type, "node_name" => config.node_name}
     )
 
     :ok

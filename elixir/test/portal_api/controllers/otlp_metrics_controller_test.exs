@@ -107,11 +107,15 @@ defmodule PortalAPI.OTLPMetricsControllerTest do
       test_pid = self()
       handler_id = "test-otlp-ingest-#{System.unique_integer([:positive])}"
 
-      :telemetry.attach(
+      :telemetry.attach_many(
         handler_id,
-        [:portal, :otlp_ingest, :data_points],
-        fn _event, %{count: count}, %{outcome: outcome, device_type: "gateway"}, _config ->
-          send(test_pid, {:data_points, self(), outcome, count})
+        [[:portal, :otlp_ingest, :data_points], [:portal, :otlp_ingest, :request]],
+        fn
+          [:portal, :otlp_ingest, :data_points], %{count: count}, %{outcome: outcome, device_type: "gateway"}, _ ->
+            send(test_pid, {:data_points, self(), outcome, count})
+
+          [:portal, :otlp_ingest, :request], %{data_points: count}, %{device_type: "gateway"}, _ ->
+            send(test_pid, {:request, self(), count})
         end,
         nil
       )
@@ -124,6 +128,7 @@ defmodule PortalAPI.OTLPMetricsControllerTest do
       body = export_request([sum("a"), sum("b"), sum("c")])
 
       assert conn |> authorize(account, ["a", "b"]) |> post_metrics(body) |> response(200)
+      assert_receive {:request, ^test_pid, 3}
       assert_receive {:data_points, ^test_pid, :filtered, 1}
       assert_receive {:data_points, ^test_pid, :forwarded, 2}
 

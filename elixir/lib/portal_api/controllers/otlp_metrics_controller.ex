@@ -26,8 +26,10 @@ defmodule PortalAPI.OTLPMetricsController do
          sanitized = sanitize(request, claims),
          {:ok, body} <- encode(sanitized) do
       device_type = claims["device_type"]
+      received = count_data_points(request)
       forwarded = count_data_points(sanitized)
-      filtered = count_data_points(request) - forwarded
+      filtered = received - forwarded
+      Portal.Telemetry.otlp_ingest_request(device_type, received)
       Portal.Telemetry.otlp_ingest_data_points(:filtered, device_type, filtered)
 
       forward(conn, body, device_type, forwarded)
