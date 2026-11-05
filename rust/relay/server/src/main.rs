@@ -435,6 +435,7 @@ enum IngressMessages {
     Init(Init),
     AccountAdded(Account),
     AccountRemoved(Account),
+    CandidateIps(CandidateIps),
 }
 
 #[derive(serde::Deserialize, Debug)]
@@ -446,6 +447,12 @@ struct Init {
 #[derive(serde::Deserialize, Debug)]
 struct Account {
     account_id: AccountId,
+}
+
+#[derive(serde::Deserialize, Debug)]
+struct CandidateIps {
+    account_id: AccountId,
+    ips: Vec<IpAddr>,
 }
 
 #[derive(serde::Serialize, PartialEq, Debug, Clone)]
@@ -473,6 +480,8 @@ struct Eventloop<R> {
 
     server: Server<R>,
     event_rx: mpsc::Receiver<Result<IngressMessages, phoenix_channel::Error>>,
+    is_connected: Arc<AtomicBool>,
+    enforce_known_peers: bool,
     sleep: Sleep,
 
     ebpf: Option<ebpf::Program>,
@@ -527,11 +536,17 @@ where
         }
 
         let (event_tx, event_rx) = mpsc::channel(128);
-        tokio::spawn(phoenix_channel_event_loop(portal, event_tx, is_connected));
+        tokio::spawn(phoenix_channel_event_loop(
+            portal,
+            event_tx,
+            is_connected.clone(),
+        ));
 
         Ok(Self {
             server,
             event_rx,
+            is_connected,
+            enforce_known_peers: false,
             sleep: Sleep::default(),
             stats_log_interval: tokio::time::interval(STATS_LOG_INTERVAL),
             last_num_bytes_relayed: 0,
@@ -544,11 +559,31 @@ where
         })
     }
 
+    /// Peers are only treated as unknown while the portal connection can report known ones.
+    fn sync_known_peer_enforcement(&mut self) {
+        let connected = self.is_connected.load(Ordering::Relaxed);
+
+        if connected == self.enforce_known_peers {
+            return;
+        }
+
+        if connected {
+            tracing::info!("Portal connected, deferring channel bindings to unknown peers");
+        } else {
+            tracing::warn!("Portal disconnected, binding channels to unknown peers");
+        }
+
+        self.server.set_enforce_known_peers(connected);
+        self.enforce_known_peers = connected;
+    }
+
     fn poll(&mut self, cx: &mut std::task::Context<'_>) -> Poll<Result<()>> {
         let mut budget = Budget::new(cx.waker(), MAX_EVENTLOOP_ITERS, "relay");
 
         while let Some(mut tick) = budget.next() {
             ready!(self.sockets.flush(cx))?;
+
+            self.sync_known_peer_enforcement();
 
             // Priority 1: Execute the pending commands of the server.
             if let Some(next_command) = self.server.next_command() {
@@ -737,6 +772,7 @@ where
                         "Received TURN account list"
                     );
                     self.server.set_accounts(init.account_ids);
+
                     tick.want_continue();
                 }
                 Poll::Ready(Some(Ok(IngressMessages::AccountAdded(account)))) => {
@@ -747,6 +783,15 @@ where
                 Poll::Ready(Some(Ok(IngressMessages::AccountRemoved(account)))) => {
                     tracing::info!(account_id = %account.account_id, "Removed account from TURN allow list");
                     self.server.remove_account(&account.account_id);
+                    tick.want_continue();
+                }
+                Poll::Ready(Some(Ok(IngressMessages::CandidateIps(candidates)))) => {
+                    tracing::debug!(account_id = %candidates.account_id, num_ips = candidates.ips.len(), "Received candidate IPs");
+                    self.server.add_known_peers(
+                        candidates.account_id,
+                        candidates.ips,
+                        Instant::now(),
+                    );
                     tick.want_continue();
                 }
                 Poll::Ready(Some(Err(e))) => {

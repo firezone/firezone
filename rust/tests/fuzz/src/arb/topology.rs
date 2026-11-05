@@ -40,6 +40,7 @@ pub(super) fn generate(
     let tcp_services = arb_tcp_services(g, &dns_resource_records, &sites);
     let gateways = arb_gateways(g, portal, &domain_tree, &sites);
     let relays = arb_relays(g);
+    let known_peer_report_delay = Duration::from_millis(g.u64_in(0..=1000));
 
     let global_dns_records = merge_dns_records(
         arb_global_dns_records(g, &domain_tree),
@@ -68,6 +69,7 @@ pub(super) fn generate(
         clients,
         gateways,
         relays,
+        known_peer_report_delay,
         global_dns_records,
         domain_tree,
         tcp_services,

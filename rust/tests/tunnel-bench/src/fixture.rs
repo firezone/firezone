@@ -10,7 +10,7 @@ use std::sync::LazyLock;
 use std::task::{Context, Poll, Waker};
 use std::time::{Duration, Instant, SystemTime};
 
-use connlib_model::{ClientId, GatewayId, RelayId, ResourceId, SiteId};
+use connlib_model::{ClientId, GatewayId, IceCandidate, RelayId, ResourceId, SiteId};
 use dns_types::{Query, RecordType, Response};
 use ip_packet::{Ecn, IpPacket};
 use rand::{SeedableRng as _, rngs::StdRng};
@@ -610,6 +610,8 @@ impl Network {
                     conn_id,
                     candidates,
                 } => {
+                    self.relay.add_known_peers(&candidates, now);
+
                     let client = self
                         .clients
                         .iter_mut()
@@ -646,6 +648,8 @@ impl Network {
             match event {
                 ClientEvent::RequestAccess { .. } => self.authorize(index),
                 ClientEvent::AddedIceCandidates { candidates, .. } => {
+                    self.relay.add_known_peers(&candidates, now);
+
                     for candidate in candidates {
                         self.gateway.state_mut(now).add_ice_candidate(
                             client_id(index),
@@ -830,6 +834,7 @@ impl Relay {
             ALLOCATION_PORTS,
         );
         server.set_accounts([AccountId::from(Uuid::nil())]);
+        server.set_enforce_known_peers(true);
 
         Self {
             server,
@@ -859,6 +864,20 @@ impl Relay {
             password,
             "firezone".to_owned(),
         )])
+    }
+
+    /// Reports the IPs of forwarded candidates, as the portal does before delivering them.
+    fn add_known_peers(&mut self, candidates: &BTreeSet<IceCandidate>, now: Instant) {
+        let ips = candidates.iter().filter_map(|candidate| {
+            String::from(candidate.clone())
+                .split_ascii_whitespace()
+                .nth(4)?
+                .parse::<IpAddr>()
+                .ok()
+        });
+
+        self.server
+            .add_known_peers(AccountId::from(Uuid::nil()), ips, now);
     }
 
     /// Whether `socket` is the relay's own or one of its allocations.

@@ -42,6 +42,8 @@ pub struct ReferenceState {
     pub(crate) clients: BTreeMap<ClientId, Host<RefClient>>,
     pub(crate) gateways: BTreeMap<GatewayId, Host<RefGateway>>,
     pub(crate) relays: BTreeMap<RelayId, Host<u64>>,
+    /// How long the portal's reports of forwarded candidates' IPs take to reach the relays.
+    pub(crate) known_peer_report_delay: Duration,
     /// Relays that answer new allocations with `508 Insufficient Capacity`.
     pub(crate) exhausted_relays: BTreeSet<RelayId>,
     /// Relays that accept allocations again while nodes may still ignore them, and since when.
@@ -81,6 +83,7 @@ impl ReferenceState {
         clients: BTreeMap<ClientId, Host<RefClient>>,
         gateways: BTreeMap<GatewayId, Host<RefGateway>>,
         relays: BTreeMap<RelayId, Host<u64>>,
+        known_peer_report_delay: Duration,
         global_dns_records: DnsRecords,
         domain_tree: Vec<DomainName>,
         tcp_services: BTreeMap<DomainName, BTreeSet<u16>>,
@@ -90,6 +93,7 @@ impl ReferenceState {
             clients,
             gateways,
             relays,
+            known_peer_report_delay,
             exhausted_relays: Default::default(),
             recovering_relays: Default::default(),
             node_may_lack_relays: false,

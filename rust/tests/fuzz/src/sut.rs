@@ -11,7 +11,9 @@ use crate::flux_capacitor::FluxCapacitor;
 use crate::probe::{DnsNatObservation, FlowId, ProbeId, ProbeObservation, ProbeTrace, Remote};
 use crate::resource as client;
 use crate::transition::Transition;
-use connlib_model::{ClientId, ClientOrGatewayId, GatewayId, PublicKey, RelayId, StaticSecret};
+use connlib_model::{
+    ClientId, ClientOrGatewayId, GatewayId, IceCandidate, PublicKey, RelayId, StaticSecret,
+};
 use ip_packet::IpPacket;
 use rand::SeedableRng;
 use rand::distr::SampleString;
@@ -20,7 +22,7 @@ use snownet::Transmit;
 use std::iter;
 use std::net::SocketAddr;
 use std::{
-    collections::{BTreeMap, BTreeSet},
+    collections::{BTreeMap, BTreeSet, VecDeque},
     net::IpAddr,
     time::{Duration, Instant, SystemTime},
 };
@@ -40,6 +42,7 @@ pub struct TunnelTest {
     pub(crate) clients: BTreeMap<ClientId, Host<SimClient>>,
     pub(crate) gateways: BTreeMap<GatewayId, Host<SimGateway>>,
     relays: BTreeMap<RelayId, Host<SimRelay>>,
+    known_peer_reports: KnownPeerReports,
 
     /// While set and `now` is before the deadline, this client's messages to the
     /// portal are dropped, simulating a client that has not yet reconnected to
@@ -166,6 +169,7 @@ impl TunnelTest {
             clients,
             gateways,
             relays,
+            known_peer_reports: KnownPeerReports::new(ref_state.known_peer_report_delay),
             icmp_flows: Default::default(),
             udp_flows: Default::default(),
             tcp_flows: Default::default(),
@@ -1086,6 +1090,7 @@ impl TunnelTest {
             while let Some(transmit) = buffered_transmits.pop(now) {
                 self.dispatch_transmit(transmit, now);
             }
+            self.known_peer_reports.deliver(&mut self.relays, now);
 
             let mut busy = false;
             let gateway_events = self
@@ -1121,6 +1126,7 @@ impl TunnelTest {
                     &mut self.clients,
                     gateway,
                     &self.relays,
+                    &mut self.known_peer_reports,
                     portal,
                     ref_state,
                     now,
@@ -1157,6 +1163,7 @@ impl TunnelTest {
             .chain(self.clients.values_mut().flat_map(|c| c.poll_timeout()))
             .chain(self.gateways.values_mut().flat_map(|g| g.poll_timeout()))
             .chain(self.relays.values_mut().flat_map(|r| r.poll_timeout()))
+            .chain(self.known_peer_reports.poll_timeout())
             .min()
     }
 
@@ -1246,6 +1253,9 @@ impl TunnelTest {
                 candidates,
                 conn_id: ClientOrGatewayId::Gateway(conn_id),
             } => {
+                self.known_peer_reports
+                    .report(&self.relays, &candidates, now);
+
                 let gateway = self.gateways.get_mut(&conn_id).expect("unknown gateway");
 
                 gateway.exec_mut(|g| {
@@ -1270,6 +1280,9 @@ impl TunnelTest {
                 conn_id: ClientOrGatewayId::Client(conn_id),
                 candidates,
             } => {
+                self.known_peer_reports
+                    .report(&self.relays, &candidates, now);
+
                 let client = self.clients.get_mut(&conn_id).expect("unknown client");
 
                 client.exec_mut(|c| {
@@ -1346,6 +1359,7 @@ impl TunnelTest {
                         &mut self.clients,
                         gateway,
                         &self.relays,
+                        &mut self.known_peer_reports,
                         portal,
                         ref_state,
                         now,
@@ -1673,6 +1687,7 @@ fn on_gateway_event(
     clients: &mut BTreeMap<ClientId, Host<SimClient>>,
     gateway: &mut Host<SimGateway>,
     relays: &BTreeMap<RelayId, Host<SimRelay>>,
+    known_peer_reports: &mut KnownPeerReports,
     portal: &mut StubPortal,
     ref_state: &ReferenceState,
     now: Instant,
@@ -1682,6 +1697,8 @@ fn on_gateway_event(
             conn_id,
             candidates,
         } => {
+            known_peer_reports.report(relays, &candidates, now);
+
             let client = clients.get_mut(&conn_id).unwrap();
             client.exec_mut(|c| {
                 for candidate in candidates {
@@ -1730,6 +1747,67 @@ fn on_gateway_event(
             );
             gateway.exec_mut(|g| g.update_relays(iter::empty(), relays.into_iter(), now));
         }
+    }
+}
+
+/// The portal's reports of forwarded candidates' IPs, on their way to the relays.
+struct KnownPeerReports {
+    delay: Duration,
+    pending: VecDeque<KnownPeerReport>,
+}
+
+struct KnownPeerReport {
+    due: Instant,
+    relays: BTreeSet<RelayId>,
+    ips: BTreeSet<IpAddr>,
+}
+
+impl KnownPeerReports {
+    fn new(delay: Duration) -> Self {
+        Self {
+            delay,
+            pending: VecDeque::new(),
+        }
+    }
+
+    /// Reports the IPs of forwarded candidates to the relays `delay` after `now`.
+    fn report(
+        &mut self,
+        relays: &BTreeMap<RelayId, Host<SimRelay>>,
+        candidates: &BTreeSet<IceCandidate>,
+        now: Instant,
+    ) {
+        let ips = candidates
+            .iter()
+            .filter_map(|candidate| {
+                String::from(candidate.clone())
+                    .split_ascii_whitespace()
+                    .nth(4)?
+                    .parse::<IpAddr>()
+                    .ok()
+            })
+            .collect::<BTreeSet<_>>();
+
+        self.pending.push_back(KnownPeerReport {
+            due: now + self.delay,
+            relays: relays.keys().copied().collect(),
+            ips,
+        });
+    }
+
+    fn deliver(&mut self, relays: &mut BTreeMap<RelayId, Host<SimRelay>>, now: Instant) {
+        while let Some(report) = self.pending.pop_front_if(|report| report.due <= now) {
+            for (_, relay) in relays
+                .iter_mut()
+                .filter(|(id, _)| report.relays.contains(id))
+            {
+                relay.exec_mut(|r| r.add_known_peers(report.ips.iter().copied(), now));
+            }
+        }
+    }
+
+    fn poll_timeout(&self) -> Option<Instant> {
+        self.pending.front().map(|report| report.due)
     }
 }
 
