@@ -66,7 +66,6 @@ internal class SettingsActivity : AppCompatActivity() {
                     onSelectCertificate = ::chooseCertificate,
                     onDeviceTrustShown = deviceTrustViewModel::loadDetails,
                     onBack = ::finish,
-                    recentlySaved = viewModel.recentlySaved,
                 )
             }
         }

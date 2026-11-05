@@ -32,11 +32,8 @@ import dev.firezone.android.R
 import dev.firezone.android.core.data.model.Config
 import dev.firezone.android.core.data.model.ManagedConfigStatus
 import dev.firezone.android.core.utils.ClipboardUtils
-import dev.firezone.android.features.settings.ui.TextSetting
 import dev.firezone.android.features.settings.ui.logFilterError
 import dev.firezone.android.ui.FirezoneIcons
-import kotlinx.collections.immutable.ImmutableSet
-import kotlinx.collections.immutable.persistentSetOf
 
 @Composable
 fun LogSettingsPage(
@@ -50,7 +47,6 @@ fun LogSettingsPage(
     buildSha: String,
     modifier: Modifier = Modifier,
     validateLogFilter: (String) -> String? = ::logFilterError,
-    recentlySaved: ImmutableSet<TextSetting> = persistentSetOf(),
 ) {
     val context = LocalContext.current
     val uriHandler = LocalUriHandler.current
@@ -74,7 +70,6 @@ fun LogSettingsPage(
                 isManaged = managedStatus.isLogFilterManaged,
                 onValueChange = onLogFilterChange,
                 errorMessage = { filter -> validateLogFilter(filter)?.let { stringResource(R.string.log_filter_invalid, it) } },
-                isSaved = TextSetting.LOG_FILTER in recentlySaved,
             )
             SettingsRow(
                 title = stringResource(R.string.log_files),

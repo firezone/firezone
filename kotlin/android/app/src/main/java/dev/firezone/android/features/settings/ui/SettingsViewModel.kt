@@ -15,10 +15,7 @@ import dev.firezone.android.core.data.model.Config
 import dev.firezone.android.core.data.model.ControlPlane
 import dev.firezone.android.core.data.model.ManagedConfigStatus
 import dev.firezone.android.core.data.model.SignInSettings
-import kotlinx.collections.immutable.persistentSetOf
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.catch
@@ -35,7 +32,6 @@ import java.net.URISyntaxException
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 import javax.inject.Inject
-import kotlin.time.Duration.Companion.seconds
 
 @HiltViewModel
 internal class SettingsViewModel
@@ -61,11 +57,6 @@ internal class SettingsViewModel
         // Kept apart from the URLs so that picking Custom does not snap back to a control plane whose URLs match.
         var controlPlane by mutableStateOf(ControlPlane.CUSTOM)
             private set
-
-        // Text settings whose saved value just changed; each drops out after `RECENTLY_SAVED_DURATION`.
-        var recentlySaved by mutableStateOf(persistentSetOf<TextSetting>())
-            private set
-        private val recentlySavedJobs = mutableMapOf<TextSetting, Job>()
 
         // `null` while signed out.
         val signedInWith: SignInSettings? = repo.getActiveSignInSettingsSync()
@@ -117,13 +108,13 @@ internal class SettingsViewModel
             }
         }
 
-        fun onAuthUrlChanged(authUrl: String) = persistText(TextSetting.AUTH_URL, config.copy(authUrl = authUrl))
+        fun onAuthUrlChanged(authUrl: String) = persist(config.copy(authUrl = authUrl))
 
-        fun onApiUrlChanged(apiUrl: String) = persistText(TextSetting.API_URL, config.copy(apiUrl = apiUrl))
+        fun onApiUrlChanged(apiUrl: String) = persist(config.copy(apiUrl = apiUrl))
 
-        fun onLogFilterChanged(logFilter: String) = persistText(TextSetting.LOG_FILTER, config.copy(logFilter = logFilter))
+        fun onLogFilterChanged(logFilter: String) = persist(config.copy(logFilter = logFilter))
 
-        fun onAccountSlugChanged(accountSlug: String) = persistText(TextSetting.ACCOUNT_SLUG, config.copy(accountSlug = accountSlug))
+        fun onAccountSlugChanged(accountSlug: String) = persist(config.copy(accountSlug = accountSlug))
 
         fun onStartOnLoginChanged(isChecked: Boolean) = persist(config.copy(startOnLogin = isChecked))
 
@@ -244,36 +235,10 @@ internal class SettingsViewModel
             repo.saveSettingsSync(newConfig)
         }
 
-        private fun persistText(
-            setting: TextSetting,
-            newConfig: Config,
-        ) {
-            val saved = repo.getConfigSync()
-            persist(newConfig)
-            if (repo.getConfigSync() == saved) return
-
-            recentlySaved = recentlySaved.add(setting)
-            recentlySavedJobs[setting]?.cancel()
-            recentlySavedJobs[setting] =
-                viewModelScope.launch {
-                    delay(RECENTLY_SAVED_DURATION)
-                    recentlySaved = recentlySaved.remove(setting)
-                }
-        }
-
         internal data class UiState(
             val logSizeBytes: Long = 0,
         )
     }
-
-enum class TextSetting {
-    ACCOUNT_SLUG,
-    AUTH_URL,
-    API_URL,
-    LOG_FILTER,
-}
-
-internal val RECENTLY_SAVED_DURATION = 2.seconds
 
 // Returns why connlib would reject `logFilter`, or `null` if it accepts it.
 internal fun logFilterError(logFilter: String): String? =

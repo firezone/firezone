@@ -36,10 +36,7 @@ import dev.firezone.android.core.data.model.ManagedConfigStatus
 import dev.firezone.android.core.data.model.SignInSettings
 import dev.firezone.android.features.session.ui.compose.BackTopBar
 import dev.firezone.android.features.settings.ui.DeviceTrustSettingsViewModel
-import dev.firezone.android.features.settings.ui.TextSetting
 import dev.firezone.android.ui.FirezoneIcons
-import kotlinx.collections.immutable.ImmutableSet
-import kotlinx.collections.immutable.persistentSetOf
 import kotlinx.coroutines.launch
 
 /** A settings page and how the title and navigation bar name it. */
@@ -88,7 +85,6 @@ internal fun SettingsScreen(
     onDeviceTrustShown: () -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
-    recentlySaved: ImmutableSet<TextSetting> = persistentSetOf(),
     // Parameters so the screenshot test can pin them; the build's commit changes with every push.
     versionName: String = BuildConfig.VERSION_NAME,
     buildSha: String = stringResource(R.string.git_sha),
@@ -150,7 +146,6 @@ internal fun SettingsScreen(
                         onAccountSlugChange = onAccountSlugChange,
                         onStartOnLoginChange = onStartOnLoginChange,
                         onConnectOnStartChange = onConnectOnStartChange,
-                        recentlySaved = recentlySaved,
                     )
                 }
 
@@ -171,7 +166,6 @@ internal fun SettingsScreen(
                         onExportLogs = onExportLogs,
                         versionName = versionName,
                         buildSha = buildSha,
-                        recentlySaved = recentlySaved,
                     )
                 }
             }

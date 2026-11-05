@@ -1,9 +1,6 @@
 // Licensed under Apache 2.0 (C) 2026 Firezone, Inc.
 package dev.firezone.android.features.settings.ui.compose
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -43,10 +40,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
-import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.ImeAction
@@ -134,7 +129,6 @@ fun SettingsRow(
     action: Modifier = Modifier,
     summary: String? = null,
     isManaged: Boolean = false,
-    isSaved: Boolean = false,
     trailing: @Composable RowScope.() -> Unit = {},
 ) {
     SettingsRowContainer(modifier, action) {
@@ -154,14 +148,6 @@ fun SettingsRow(
                         contentDescription = stringResource(R.string.managed_setting_locked),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.size(16.dp),
-                    )
-                }
-                AnimatedVisibility(visible = isSaved, enter = fadeIn(), exit = fadeOut()) {
-                    Icon(
-                        imageVector = FirezoneIcons.CheckCircle,
-                        contentDescription = stringResource(R.string.setting_saved),
-                        tint = MaterialTheme.colorScheme.tertiary,
-                        modifier = Modifier.size(16.dp).semantics { liveRegion = LiveRegionMode.Polite },
                     )
                 }
             }
@@ -191,7 +177,6 @@ fun TextPreferenceRow(
     isValid: (String) -> Boolean = { true },
     errorMessage: @Composable (String) -> String? = { null },
     note: (String) -> String? = { null },
-    isSaved: Boolean = false,
 ) {
     var isEditing by rememberSaveable { mutableStateOf(false) }
 
@@ -199,7 +184,6 @@ fun TextPreferenceRow(
         title = title,
         summary = value,
         isManaged = isManaged,
-        isSaved = isSaved,
         modifier = modifier,
         action = Modifier.clickable(enabled = !isManaged) { isEditing = true },
     )

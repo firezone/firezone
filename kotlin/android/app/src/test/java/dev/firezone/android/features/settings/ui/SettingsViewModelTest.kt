@@ -24,7 +24,6 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
-import kotlin.time.toJavaDuration
 
 @RunWith(RobolectricTestRunner::class)
 @Config(application = Application::class)
@@ -167,50 +166,6 @@ class SettingsViewModelTest {
         viewModel.onAccountSlugChanged("example-corp")
 
         assertEquals("example-corp", repository.getConfigSync().accountSlug)
-    }
-
-    @Test
-    fun `a changed text setting shows as saved until the timeout`() {
-        populateFields()
-
-        viewModel.onAccountSlugChanged("example-corp")
-
-        assertEquals(setOf(TextSetting.ACCOUNT_SLUG), viewModel.recentlySaved)
-
-        shadowOf(Looper.getMainLooper()).idleFor(RECENTLY_SAVED_DURATION.toJavaDuration())
-
-        assertTrue(viewModel.recentlySaved.isEmpty())
-    }
-
-    @Test
-    fun `an unchanged text setting does not show as saved`() {
-        populateFields()
-
-        viewModel.onLogFilterChanged(viewModel.config.logFilter)
-
-        assertTrue(viewModel.recentlySaved.isEmpty())
-    }
-
-    @Test
-    fun `a managed text setting does not show as saved`() =
-        runBlocking {
-            repository.saveManagedConfiguration(Bundle().apply { putString("accountSlug", "managed-corp") }).first()
-            populateFields()
-
-            viewModel.onAccountSlugChanged("example-corp")
-
-            assertTrue(viewModel.recentlySaved.isEmpty())
-        }
-
-    @Test
-    fun `URLs a control plane fills in do not show as saved`() {
-        saveUrls("https://app.firezone.dev", "wss://api.firezone.dev")
-        populateFields()
-
-        viewModel.onControlPlaneChanged(ControlPlane.CLOUD_EU)
-        settle()
-
-        assertTrue(viewModel.recentlySaved.isEmpty())
     }
 
     @Test

@@ -19,11 +19,8 @@ import dev.firezone.android.core.data.model.ControlPlane
 import dev.firezone.android.core.data.model.ManagedConfigStatus
 import dev.firezone.android.core.data.model.SignInSettings
 import dev.firezone.android.core.data.model.signInSettings
-import dev.firezone.android.features.settings.ui.TextSetting
 import dev.firezone.android.features.settings.ui.isValidApiUrl
 import dev.firezone.android.features.settings.ui.isValidAuthUrl
-import kotlinx.collections.immutable.ImmutableSet
-import kotlinx.collections.immutable.persistentSetOf
 import kotlinx.collections.immutable.toImmutableList
 
 @Composable
@@ -39,7 +36,6 @@ fun GeneralSettingsPage(
     onStartOnLoginChange: (Boolean) -> Unit,
     onConnectOnStartChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
-    recentlySaved: ImmutableSet<TextSetting> = persistentSetOf(),
 ) {
     Column(
         modifier
@@ -61,7 +57,6 @@ fun GeneralSettingsPage(
                     isManaged = managedStatus.isAccountSlugManaged,
                     onValueChange = onAccountSlugChange,
                     note = { slug -> signInChangeNote?.takeIf { slug != signedInWith?.accountSlug } },
-                    isSaved = TextSetting.ACCOUNT_SLUG in recentlySaved,
                 )
                 // There are no managed keys for the control plane: managed URLs decide it.
                 ChoicePreferenceRow(
@@ -81,7 +76,6 @@ fun GeneralSettingsPage(
                         onValueChange = onAuthUrlChange,
                         errorMessage = { if (isValidAuthUrl(it)) null else stringResource(R.string.auth_url_invalid) },
                         note = { url -> signInChangeNote?.takeIf { url != signedInWith?.authUrl } },
-                        isSaved = TextSetting.AUTH_URL in recentlySaved,
                     )
                     TextPreferenceRow(
                         title = stringResource(R.string.api_url),
@@ -90,7 +84,6 @@ fun GeneralSettingsPage(
                         onValueChange = onApiUrlChange,
                         errorMessage = { if (isValidApiUrl(it)) null else stringResource(R.string.api_url_invalid) },
                         note = { url -> signInChangeNote?.takeIf { url != signedInWith?.apiUrl } },
-                        isSaved = TextSetting.API_URL in recentlySaved,
                     )
                 }
             }
