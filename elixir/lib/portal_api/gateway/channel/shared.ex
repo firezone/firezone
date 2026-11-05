@@ -836,9 +836,8 @@ defmodule PortalAPI.Gateway.Channel.Shared do
   defp excluded_relay_ids(_payload), do: []
 
   defp init(socket, account, relays) do
-    push(socket, "init", %{
+    payload = %{
       flow_logs: flow_logs_config(),
-      metrics: metrics_config(account, socket.assigns.gateway),
       authorizations: Views.PolicyAuthorization.render_many(socket.assigns.cache),
       account_slug: account.slug,
       interface: Views.Interface.render(socket.assigns.gateway),
@@ -854,7 +853,9 @@ defmodule PortalAPI.Gateway.Channel.Shared do
         ipv4_masquerade_enabled: true,
         ipv6_masquerade_enabled: true
       }
-    })
+    }
+
+    push(socket, "init", put_metrics_config(payload, socket, account))
   end
 
   defp flow_logs_config do
@@ -865,10 +866,20 @@ defmodule PortalAPI.Gateway.Channel.Shared do
     }
   end
 
+  defp put_metrics_config(payload, socket, account) do
+    if metrics_supported?(socket) do
+      Map.put(payload, :metrics, metrics_config(account, socket.assigns.gateway))
+    else
+      payload
+    end
+  end
+
+  defp metrics_supported?(socket), do: socket.assigns.channel_protocol.protocol_version() >= 3
+
   defp push_metrics_config(socket) do
     account = socket.assigns.account
 
-    if account.metrics_export do
+    if metrics_supported?(socket) and account.metrics_export != nil do
       push(socket, "metrics_config", metrics_config(account, socket.assigns.gateway))
     end
 
@@ -922,7 +933,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
         {:ok, relays} = select_relays(socket)
         init(socket, account, relays)
 
-      metrics_config_changed?(old_account, account) ->
+      metrics_supported?(socket) and metrics_config_changed?(old_account, account) ->
         push(socket, "metrics_config", metrics_config(account, socket.assigns.gateway))
 
       true ->

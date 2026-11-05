@@ -30,6 +30,7 @@ defmodule PortalAPI.Client.ChannelTest do
     socket_module =
       case channel do
         PortalAPI.Client.V2.Channel -> PortalAPI.Client.V2.Socket
+        PortalAPI.Client.V4.Channel -> PortalAPI.Client.V4.Socket
         PortalAPI.Client.V3.Channel -> PortalAPI.Client.V3.Socket
         PortalAPI.Client.Channel -> PortalAPI.Client.Socket
       end
@@ -534,11 +535,25 @@ defmodule PortalAPI.Client.ChannelTest do
       assert account_slug == account.slug
     end
 
+    test "sends no metrics config on older channels", %{
+      client: client,
+      subject: subject
+    } do
+      subject = %{subject | account: %{subject.account | metrics_export: ["*"]}}
+      socket = join_channel(client, subject, channel: PortalAPI.Client.V3.Channel)
+
+      assert_push "init", init
+      refute Map.has_key?(init, :metrics)
+
+      send(socket.channel_pid, :refresh_metrics_token)
+      refute_push "metrics_config", _payload
+    end
+
     test "sends no metrics config while metrics export is off", %{
       client: client,
       subject: subject
     } do
-      socket = join_channel(client, subject)
+      socket = join_channel(client, subject, channel: PortalAPI.Client.V4.Channel)
       assert_push "init", %{metrics: %{token: nil, export_interval_secs: 60}}
 
       send(socket.channel_pid, :refresh_metrics_token)
@@ -553,7 +568,7 @@ defmodule PortalAPI.Client.ChannelTest do
       subject: subject
     } do
       subject = %{subject | account: %{subject.account | metrics_export: ["*"]}}
-      socket = join_channel(client, subject)
+      socket = join_channel(client, subject, channel: PortalAPI.Client.V4.Channel)
 
       assert_push "init", %{metrics: %{api_url: "https://otlp.firezone.dev/", token: token}}
       assert {:ok, %{"account_id" => account_id, "device_type" => "client", "device_version" => version}} =
@@ -576,7 +591,7 @@ defmodule PortalAPI.Client.ChannelTest do
       client: client,
       subject: subject
     } do
-      socket = join_channel(client, subject)
+      socket = join_channel(client, subject, channel: PortalAPI.Client.V4.Channel)
       assert_push "init", _init_payload
       some = %{account | metrics_export: ["a"]}
 

@@ -27,9 +27,11 @@ defmodule PortalAPI.Gateway.ChannelTest do
     channel = Keyword.get(opts, :channel, PortalAPI.Gateway.Channel)
 
     socket_module =
-      if channel == PortalAPI.Gateway.V2.Channel,
-        do: PortalAPI.Gateway.V2.Socket,
-        else: PortalAPI.Gateway.Socket
+      case channel do
+        PortalAPI.Gateway.V3.Channel -> PortalAPI.Gateway.V3.Socket
+        PortalAPI.Gateway.V2.Channel -> PortalAPI.Gateway.V2.Socket
+        PortalAPI.Gateway.Channel -> PortalAPI.Gateway.Socket
+      end
 
     {:ok, _reply, socket} =
       socket_module
@@ -416,12 +418,28 @@ defmodule PortalAPI.Gateway.ChannelTest do
              }
     end
 
+    test "sends no metrics config on older channels", %{
+      account: account,
+      gateway: gateway,
+      site: site,
+      token: token
+    } do
+      :ok = Portal.Ops.set_metrics_export(account.id, ["*"])
+      socket = join_channel(gateway, site, token, channel: PortalAPI.Gateway.V2.Channel)
+
+      assert_push "init", init
+      refute Map.has_key?(init, :metrics)
+
+      send(socket.channel_pid, :refresh_metrics_token)
+      refute_push "metrics_config", _payload
+    end
+
     test "sends no metrics config while metrics export is off", %{
       gateway: gateway,
       site: site,
       token: token
     } do
-      socket = join_channel(gateway, site, token)
+      socket = join_channel(gateway, site, token, channel: PortalAPI.Gateway.V3.Channel)
       assert_push "init", %{metrics: %{token: nil, export_interval_secs: 60}}
 
       send(socket.channel_pid, :refresh_metrics_token)
@@ -437,7 +455,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       token: token
     } do
       :ok = Portal.Ops.set_metrics_export(account.id, ["*"])
-      socket = join_channel(gateway, site, token)
+      socket = join_channel(gateway, site, token, channel: PortalAPI.Gateway.V3.Channel)
 
       assert_push "init", %{metrics: %{api_url: "https://otlp.firezone.dev/", token: metrics_token}}
       assert {:ok, %{"account_id" => account_id, "device_type" => "gateway", "device_version" => version}} =
@@ -461,7 +479,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       site: site,
       token: token
     } do
-      socket = join_channel(gateway, site, token)
+      socket = join_channel(gateway, site, token, channel: PortalAPI.Gateway.V3.Channel)
       assert_push "init", _init_payload
       some = %{account | metrics_export: ["a"]}
 

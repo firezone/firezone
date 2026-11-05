@@ -19,5 +19,8 @@ defmodule PortalAPI.Gateway.V2.Channel do
   defdelegate handle_in(message, payload, socket), to: Shared
 
   @doc false
+  def protocol_version, do: 2
+
+  @doc false
   def create_authorization_event, do: "create_authorization"
 end

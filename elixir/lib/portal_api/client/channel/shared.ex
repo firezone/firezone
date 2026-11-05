@@ -2146,9 +2146,8 @@ defmodule PortalAPI.Client.Channel.Shared do
   defp excluded_relay_ids(_payload), do: []
 
   defp init(socket, resources, relays) do
-    push(socket, "init", %{
+    payload = %{
       flow_logs: flow_logs_config(),
-      metrics: metrics_config(socket.assigns.subject.account, socket.assigns.client),
       account_slug: socket.assigns.subject.account.slug,
       actor_name: socket.assigns.subject.actor.name,
       resources: Views.Resource.render_many(resources, socket.assigns.client, protocol_version(socket)),
@@ -2165,7 +2164,9 @@ defmodule PortalAPI.Client.Channel.Shared do
           socket.assigns.client
           | account: socket.assigns.subject.account
         })
-    })
+    }
+
+    push(socket, "init", put_metrics_config(payload, socket))
   end
 
   defp reinitialize_client(socket) do
@@ -2184,10 +2185,20 @@ defmodule PortalAPI.Client.Channel.Shared do
     }
   end
 
+  defp put_metrics_config(payload, socket) do
+    if metrics_supported?(socket) do
+      Map.put(payload, :metrics, metrics_config(socket.assigns.subject.account, socket.assigns.client))
+    else
+      payload
+    end
+  end
+
+  defp metrics_supported?(socket), do: socket.assigns.channel_protocol.protocol_version() >= 4
+
   defp push_metrics_config(socket) do
     account = socket.assigns.subject.account
 
-    if account.metrics_export do
+    if metrics_supported?(socket) and account.metrics_export != nil do
       push(socket, "metrics_config", metrics_config(account, socket.assigns.client))
     end
 
@@ -2358,7 +2369,7 @@ defmodule PortalAPI.Client.Channel.Shared do
     subject = %{socket.assigns.subject | account: account}
     socket = assign(socket, subject: subject)
 
-    if metrics_config_changed?(old_account, account) do
+    if metrics_supported?(socket) and metrics_config_changed?(old_account, account) do
       push(socket, "metrics_config", metrics_config(account, socket.assigns.client))
     end
 
