@@ -14,7 +14,7 @@ defmodule PortalAPI.OTLPMetricsController do
 
   @pb :opentelemetry_exporter_metrics_service_pb
   @max_body_bytes 1_000_000
-  @resource_attributes ~w[service.name service.version service.instance.id os.type]
+  @resource_attributes ~w[service.name service.version os.type]
   @reserved_attribute_prefix "firezone."
 
   def create(conn, _params) do

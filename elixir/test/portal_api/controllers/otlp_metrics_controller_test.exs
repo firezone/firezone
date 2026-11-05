@@ -47,7 +47,8 @@ defmodule PortalAPI.OTLPMetricsControllerTest do
             attribute("service.name", "firezone-gateway"),
             attribute("firezone.account.id", "spoofed"),
             attribute("firezone.account.slug", "spoofed"),
-            attribute("host.name", "laptop")
+            attribute("host.name", "laptop"),
+            attribute("service.instance.id", "device-id")
           ]
         )
 
