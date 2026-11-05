@@ -13,7 +13,7 @@ defmodule PortalWeb.Plugs.RateLimit do
 
     key = "web:#{ip_to_string(conn.remote_ip)}"
 
-    case PortalWeb.RateLimit.hit(key, refill_rate, capacity, cost) do
+    case PortalWeb.RateLimit.hit(:web, key, refill_rate, capacity, cost) do
       {:allow, _count} ->
         conn
 

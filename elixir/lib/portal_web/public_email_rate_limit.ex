@@ -17,7 +17,7 @@ defmodule PortalWeb.PublicEmailRateLimit do
   end
 
   defp hit(key, per_hour) do
-    case PortalWeb.RateLimit.hit(key, per_hour, per_hour * @cost, @cost) do
+    case PortalWeb.RateLimit.hit(:public_email, key, per_hour, per_hour * @cost, @cost) do
       {:allow, _remaining} -> :ok
       {:deny, _retry_after_ms} -> {:error, :rate_limited}
     end

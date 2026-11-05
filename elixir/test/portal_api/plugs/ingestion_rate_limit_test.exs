@@ -30,6 +30,30 @@ defmodule PortalAPI.Plugs.IngestionRateLimitTest do
       assert String.to_integer(retry_after) > 0
     end
 
+    test "reports each decision under the ingestion limiter", %{unique_ip: unique_ip} do
+      test_pid = self()
+      handler_id = "test-ingestion-rate-limit-#{System.unique_integer([:positive])}"
+
+      :telemetry.attach(
+        handler_id,
+        [:portal, :rate_limit, :decision],
+        fn _event, _measurements, metadata, _config ->
+          send(test_pid, {:rate_limit_decision, self(), metadata})
+        end,
+        nil
+      )
+
+      on_exit(fn -> :telemetry.detach(handler_id) end)
+
+      opts = IngestionRateLimit.init(refill_rate: 1, capacity: 1)
+
+      build_conn() |> Map.put(:remote_ip, unique_ip) |> IngestionRateLimit.call(opts)
+      assert_receive {:rate_limit_decision, ^test_pid, %{limiter: :ingestion, decision: :allow}}
+
+      build_conn() |> Map.put(:remote_ip, unique_ip) |> IngestionRateLimit.call(opts)
+      assert_receive {:rate_limit_decision, ^test_pid, %{limiter: :ingestion, decision: :deny}}
+    end
+
     test "different IPs have independent buckets", %{unique_ip: unique_ip} do
       opts = IngestionRateLimit.init(refill_rate: 1, capacity: 1)
       other_ip = put_elem(unique_ip, 0, 11)

@@ -46,6 +46,12 @@ defmodule Portal.Telemetry do
       events: [
         [:portal, :authorization, :granted]
       ]
+    },
+    rate_limits: %{
+      handler_id: "portal-rate-limit-metrics",
+      events: [
+        [:portal, :rate_limit, :decision]
+      ]
     }
   }
 
@@ -335,6 +341,17 @@ defmodule Portal.Telemetry do
     })
   end
 
+  @doc """
+  Records whether a rate limiter allowed or denied a request.
+  """
+  @spec rate_limit_decided(atom(), :allow | :deny) :: :ok
+  def rate_limit_decided(limiter, decision) when is_atom(limiter) and decision in [:allow, :deny] do
+    :telemetry.execute([:portal, :rate_limit, :decision], %{count: 1}, %{
+      limiter: limiter,
+      decision: decision
+    })
+  end
+
   defp register_otel_instruments do
     meter = :opentelemetry_experimental.get_meter()
     node_attrs = %{"node_name" => System.get_env("NODE_NAME", to_string(node()))}
@@ -588,6 +605,12 @@ defmodule Portal.Telemetry do
       }
     )
 
+    :otel_meter.create_counter(
+      meter,
+      :"portal.rate_limit.decisions",
+      %{description: "Total rate limiter decisions by limiter and outcome", unit: :"1"}
+    )
+
     :ok
   rescue
     error ->
@@ -818,6 +841,28 @@ defmodule Portal.Telemetry do
     :ok
   end
 
+  @doc false
+  @spec handle_rate_limit_metric(list(), map(), map(), map()) :: :ok
+  def handle_rate_limit_metric([:portal, :rate_limit, :decision], measurements, metadata, config) do
+    attrs = %{
+      "rate_limit.limiter" => to_string(metadata.limiter),
+      "rate_limit.decision" => to_string(metadata.decision),
+      "node_name" => config.node_name
+    }
+
+    meter = :opentelemetry_experimental.get_meter()
+
+    :otel_counter.add(
+      :otel_ctx.get_current(),
+      meter,
+      :"portal.rate_limit.decisions",
+      measurements.count,
+      attrs
+    )
+
+    :ok
+  end
+
   @spec enable_metrics(atom()) :: :ok | {:error, :already_enabled} | {:error, :unknown_group}
   def enable_metrics(group) do
     case Map.fetch(@metric_groups, group) do
@@ -869,6 +914,7 @@ defmodule Portal.Telemetry do
   defp metric_group_handler(:liveview_events), do: &__MODULE__.handle_liveview_event_metric/4
   defp metric_group_handler(:channels), do: &__MODULE__.handle_channel_metric/4
   defp metric_group_handler(:authorizations), do: &__MODULE__.handle_authorization_metric/4
+  defp metric_group_handler(:rate_limits), do: &__MODULE__.handle_rate_limit_metric/4
 
   @doc false
   @spec endpoint_name(Plug.Conn.t()) :: String.t()

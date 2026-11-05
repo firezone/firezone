@@ -11,7 +11,7 @@ defmodule PortalAPI.Plugs.IngestionRateLimit do
     capacity = Keyword.get(opts, :capacity, Keyword.fetch!(config, :capacity))
     ip_key = "ingestion:ip:#{ip_to_string(conn.remote_ip)}"
 
-    case PortalAPI.RateLimit.hit(ip_key, refill_rate, capacity, @cost) do
+    case PortalAPI.RateLimit.hit(:ingestion, ip_key, refill_rate, capacity, @cost) do
       {:allow, _} ->
         conn
 

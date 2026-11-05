@@ -13,9 +13,17 @@ defmodule PortalAPI.RateLimit do
     @default_cost
   end
 
-  def hit(key, refill_rate, capacity, cost \\ @default_cost) do
+  @doc """
+  Charges `cost` tokens to the bucket under `key`.
+
+  `limiter` names the caller in the `portal.rate_limit.decisions` metric, so it
+  must come from a small fixed set and never contain the key.
+  """
+  def hit(limiter, key, refill_rate, capacity, cost \\ @default_cost) when is_atom(limiter) do
     :ok = broadcast({:hit, key, refill_rate, capacity, cost, Node.self()})
-    PortalAPI.RateLimit.Local.hit(key, refill_rate, capacity, cost)
+    {decision, _} = result = PortalAPI.RateLimit.Local.hit(key, refill_rate, capacity, cost)
+    :ok = Portal.Telemetry.rate_limit_decided(limiter, decision)
+    result
   end
 
   defmodule Local do

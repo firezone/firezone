@@ -28,7 +28,7 @@ defmodule PortalAPI.Plugs.RateLimit do
     account = conn.assigns.subject.account
     {key, refill_rate, capacity} = bucket(conn, account, opts)
 
-    case PortalAPI.RateLimit.hit(key, refill_rate, capacity, @cost_default) do
+    case PortalAPI.RateLimit.hit(:api, key, refill_rate, capacity, @cost_default) do
       {:allow, _count} ->
         conn
 

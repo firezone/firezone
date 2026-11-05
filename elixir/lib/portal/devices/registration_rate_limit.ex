@@ -36,6 +36,7 @@ defmodule Portal.Devices.RegistrationRateLimit do
 
       allowance ->
         case PortalAPI.RateLimit.hit(
+               :device_registration,
                "device_registration:#{id}",
                allowance,
                2 * allowance * @cost,

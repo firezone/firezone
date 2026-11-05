@@ -17,7 +17,7 @@ defmodule PortalAPI.Plugs.MCPRateLimit do
     capacity = Keyword.get(opts, :capacity, Keyword.fetch!(config, :capacity))
     key = "mcp:ip:#{ip_to_string(conn.remote_ip)}"
 
-    case PortalAPI.RateLimit.hit(key, refill_rate, capacity, @cost) do
+    case PortalAPI.RateLimit.hit(:mcp, key, refill_rate, capacity, @cost) do
       {:allow, _count} ->
         conn
 

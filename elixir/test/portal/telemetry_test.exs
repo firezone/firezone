@@ -567,6 +567,46 @@ defmodule Portal.TelemetryTest do
     end
   end
 
+  describe "rate_limit_decided/2" do
+    setup do
+      test_pid = self()
+      handler_id = "test-rate-limit-decision-#{System.unique_integer([:positive])}"
+
+      :telemetry.attach(
+        handler_id,
+        [:portal, :rate_limit, :decision],
+        fn _event, measurements, metadata, _config ->
+          send(test_pid, {:rate_limit_decision, self(), measurements, metadata})
+        end,
+        nil
+      )
+
+      on_exit(fn -> :telemetry.detach(handler_id) end)
+
+      %{test_pid: test_pid}
+    end
+
+    test "emits the limiter and decision with a count of one", %{test_pid: test_pid} do
+      assert :ok = Portal.Telemetry.rate_limit_decided(:api, :deny)
+
+      assert_receive {:rate_limit_decision, ^test_pid, measurements, metadata}
+      assert measurements == %{count: 1}
+      assert metadata == %{limiter: :api, decision: :deny}
+    end
+  end
+
+  describe "handle_rate_limit_metric/4" do
+    test "returns :ok for a decision" do
+      assert :ok =
+               Portal.Telemetry.handle_rate_limit_metric(
+                 [:portal, :rate_limit, :decision],
+                 %{count: 1},
+                 %{limiter: :ingestion, decision: :allow},
+                 @config
+               )
+    end
+  end
+
   defp metric_names do
     Enum.map(Portal.Telemetry.metrics(), & &1.name)
   end

@@ -27,7 +27,7 @@ defmodule PortalAPI.Sockets.RateLimit do
     refill_rate = Keyword.fetch!(config, :refill_rate)
     capacity = Keyword.fetch!(config, :capacity)
 
-    case PortalAPI.RateLimit.hit(key, refill_rate, capacity, @cost) do
+    case PortalAPI.RateLimit.hit(:socket, key, refill_rate, capacity, @cost) do
       {:allow, _count} -> :ok
       {:deny, _refill_time} -> {:error, :rate_limit}
     end
