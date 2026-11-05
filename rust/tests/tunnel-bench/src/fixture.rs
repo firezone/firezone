@@ -829,7 +829,7 @@ impl Relay {
             RELAY_SOCKET.port(),
             ALLOCATION_PORTS,
         );
-        server.set_accounts([AccountId::from(Uuid::nil())]);
+        server.set_accounts([(AccountId::from(Uuid::nil()), None)]);
 
         Self {
             server,
@@ -891,6 +891,7 @@ impl Relay {
             payload,
             PeerSocket::new(from),
             AllocationPort::new(to.port()),
+            now,
         ) {
             let mut message = vec![0; 4];
             let len = u16::try_from(payload.len()).unwrap();
