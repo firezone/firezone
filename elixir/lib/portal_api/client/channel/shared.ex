@@ -106,8 +106,6 @@ defmodule PortalAPI.Client.Channel.Shared do
       @prune_authorizations_cache_every
     )
 
-    Process.send_after(self(), :refresh_metrics_token, @refresh_metrics_token_every)
-
     schedule_session_expiry(socket.assigns.subject.expires_at)
 
     # Get initial list of authorized resources, hydrating the cache
@@ -127,7 +125,6 @@ defmodule PortalAPI.Client.Channel.Shared do
     # Initialize relays and subscribe to global relay presence
     {:ok, relays} = select_relays(socket)
     :ok = Presence.Relays.subscribe()
-    :ok = Portal.MetricsToken.subscribe_to_key_rotations()
 
     socket =
       socket
@@ -211,15 +208,6 @@ defmodule PortalAPI.Client.Channel.Shared do
     end
 
     {:noreply, assign(socket, cache: cache)}
-  end
-
-  def handle_info(:refresh_metrics_token, socket) do
-    Process.send_after(self(), :refresh_metrics_token, @refresh_metrics_token_every)
-    push_metrics_config(socket)
-  end
-
-  def handle_info(:metrics_token_key_rotated, socket) do
-    push_metrics_config(socket)
   end
 
   def handle_info(:prune_authorizations_cache, socket) do
@@ -2166,8 +2154,7 @@ defmodule PortalAPI.Client.Channel.Shared do
         })
     }
 
-    :ok = push(socket, "init", payload)
-    push_initial_metrics_config(socket)
+    push(socket, "init", payload)
   end
 
   defp reinitialize_client(socket) do
@@ -2186,24 +2173,16 @@ defmodule PortalAPI.Client.Channel.Shared do
     }
   end
 
-  defp push_initial_metrics_config(socket) do
-    if metrics_supported?(socket) do
-      push(socket, "metrics_config", metrics_config(socket.assigns.subject.account, socket.assigns.client))
-    end
+  @doc false
+  def refresh_metrics_token_every, do: @refresh_metrics_token_every
 
-    :ok
-  end
+  @doc false
+  def metrics_export?(socket), do: socket.assigns.subject.account.metrics_export != nil
 
-  defp metrics_supported?(socket), do: socket.assigns.channel_protocol.protocol_version() >= 4
-
-  defp push_metrics_config(socket) do
+  @doc false
+  def push_metrics_config(socket) do
     account = socket.assigns.subject.account
-
-    if metrics_supported?(socket) and account.metrics_export != nil do
-      push(socket, "metrics_config", metrics_config(account, socket.assigns.client))
-    end
-
-    {:noreply, socket}
+    push(socket, "metrics_config", metrics_config(account, socket.assigns.client))
   end
 
   # A `nil` token means metrics export is off.
@@ -2217,7 +2196,8 @@ defmodule PortalAPI.Client.Channel.Shared do
     }
   end
 
-  defp metrics_config_changed?(old_account, account) do
+  @doc false
+  def metrics_config_changed?(old_account, account) do
     old_account.metrics_export != account.metrics_export or
       old_account.metrics_export_interval_secs != account.metrics_export_interval_secs
   end
@@ -2370,10 +2350,6 @@ defmodule PortalAPI.Client.Channel.Shared do
     account = SchemaHelpers.merge_broadcast(socket.assigns.subject.account, account)
     subject = %{socket.assigns.subject | account: account}
     socket = assign(socket, subject: subject)
-
-    if metrics_supported?(socket) and metrics_config_changed?(old_account, account) do
-      push(socket, "metrics_config", metrics_config(account, socket.assigns.client))
-    end
 
     if old_account.config != account.config do
       client = %{socket.assigns.client | account: account}

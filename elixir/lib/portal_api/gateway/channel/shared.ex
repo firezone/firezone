@@ -115,7 +115,6 @@ defmodule PortalAPI.Gateway.Channel.Shared do
       )
 
     Process.send_after(self(), :prune_cache, @prune_cache_every)
-    Process.send_after(self(), :refresh_metrics_token, @refresh_metrics_token_every)
 
     # Track gateway's presence
     gateway = socket.assigns.gateway
@@ -137,7 +136,6 @@ defmodule PortalAPI.Gateway.Channel.Shared do
     # Return all connected relays and subscribe to global relay presence
     {:ok, relays} = select_relays(socket)
     :ok = Presence.Relays.subscribe()
-    :ok = Portal.MetricsToken.subscribe_to_key_rotations()
 
     account = Database.get_account_by_id!(socket.assigns.gateway.account_id)
 
@@ -160,15 +158,6 @@ defmodule PortalAPI.Gateway.Channel.Shared do
   def handle_info(:prune_cache, socket) do
     Process.send_after(self(), :prune_cache, @prune_cache_every)
     {:noreply, assign(socket, cache: Cache.Gateway.prune(socket.assigns.cache))}
-  end
-
-  def handle_info(:refresh_metrics_token, socket) do
-    Process.send_after(self(), :refresh_metrics_token, @refresh_metrics_token_every)
-    push_metrics_config(socket)
-  end
-
-  def handle_info(:metrics_token_key_rotated, socket) do
-    push_metrics_config(socket)
   end
 
   ####################################
@@ -855,8 +844,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
       }
     }
 
-    :ok = push(socket, "init", payload)
-    push_initial_metrics_config(socket, account)
+    push(socket, "init", payload)
   end
 
   defp flow_logs_config do
@@ -867,24 +855,16 @@ defmodule PortalAPI.Gateway.Channel.Shared do
     }
   end
 
-  defp push_initial_metrics_config(socket, account) do
-    if metrics_supported?(socket) do
-      push(socket, "metrics_config", metrics_config(account, socket.assigns.gateway))
-    end
+  @doc false
+  def refresh_metrics_token_every, do: @refresh_metrics_token_every
 
-    :ok
-  end
+  @doc false
+  def metrics_export?(socket), do: socket.assigns.account.metrics_export != nil
 
-  defp metrics_supported?(socket), do: socket.assigns.channel_protocol.protocol_version() >= 3
-
-  defp push_metrics_config(socket) do
+  @doc false
+  def push_metrics_config(socket) do
     account = socket.assigns.account
-
-    if metrics_supported?(socket) and account.metrics_export != nil do
-      push(socket, "metrics_config", metrics_config(account, socket.assigns.gateway))
-    end
-
-    {:noreply, socket}
+    push(socket, "metrics_config", metrics_config(account, socket.assigns.gateway))
   end
 
   # A `nil` token means metrics export is off.
@@ -898,7 +878,8 @@ defmodule PortalAPI.Gateway.Channel.Shared do
     }
   end
 
-  defp metrics_config_changed?(old_account, account) do
+  @doc false
+  def metrics_config_changed?(old_account, account) do
     old_account.metrics_export != account.metrics_export or
       old_account.metrics_export_interval_secs != account.metrics_export_interval_secs
   end
@@ -922,7 +903,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
   defp handle_change(
          %Change{
            op: :update,
-           old_struct: %Portal.Account{slug: old_slug} = old_account,
+           old_struct: %Portal.Account{slug: old_slug},
            struct: %Portal.Account{slug: slug} = account
          },
          socket
@@ -930,16 +911,9 @@ defmodule PortalAPI.Gateway.Channel.Shared do
     account = SchemaHelpers.merge_broadcast(socket.assigns.account, account)
     socket = assign(socket, :account, account)
 
-    cond do
-      old_slug != slug ->
-        {:ok, relays} = select_relays(socket)
-        init(socket, account, relays)
-
-      metrics_supported?(socket) and metrics_config_changed?(old_account, account) ->
-        push(socket, "metrics_config", metrics_config(account, socket.assigns.gateway))
-
-      true ->
-        :ok
+    if old_slug != slug do
+      {:ok, relays} = select_relays(socket)
+      init(socket, account, relays)
     end
 
     {:noreply, socket}
