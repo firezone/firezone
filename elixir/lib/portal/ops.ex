@@ -213,7 +213,7 @@ defmodule Portal.Ops do
   end
 
   @doc """
-  Signs OTLP metrics tokens with a new key on every node of this region, then
+  Signs OTLP metrics tokens with a new key on every connected node, then
   has each Client and Gateway channel push a fresh `metrics_config`. Tokens
   signed with the old key stop verifying at once.
 
@@ -222,7 +222,7 @@ defmodule Portal.Ops do
   def rotate_metrics_token_key do
     key = Database.insert_metrics_token_signing_key()
     :ok = MetricsToken.activate_signing_key(key)
-    remote_nodes = PubSub.regional_nodes() -- [node()]
+    remote_nodes = Node.list()
 
     remote_nodes
     |> :erpc.multicall(MetricsToken, :activate_signing_key, [key], 5_000)
@@ -242,7 +242,7 @@ defmodule Portal.Ops do
     allowlist = if names == :all, do: nil, else: names
     {1, _} = Database.set_metrics_allowlist(account_id, allowlist)
 
-    PubSub.Changes.broadcast(account_id, :accounts, {:metrics_allowlist_changed, allowlist})
+    PubSub.Changes.broadcast_to_cluster(account_id, {:metrics_allowlist_changed, allowlist})
   end
 
   @doc"""

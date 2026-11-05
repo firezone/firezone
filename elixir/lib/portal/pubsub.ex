@@ -42,26 +42,6 @@ defmodule Portal.PubSub do
     Phoenix.PubSub.unsubscribe(__MODULE__, topic)
   end
 
-  @doc """
-  This node and the connected nodes of its region.
-  """
-  def regional_nodes do
-    case Portal.Config.get_env(:portal, :region, "") do
-      # In dev / test we don't have a cluster / region
-      "" ->
-        [Node.self()]
-
-      region ->
-        nodes =
-          Node.list()
-          |> Enum.filter(fn node ->
-            node |> Atom.to_string() |> String.contains?(region)
-          end)
-
-        [Node.self() | nodes]
-    end
-  end
-
   defmodule Changes do
     @type entity ::
             :accounts
@@ -107,17 +87,32 @@ defmodule Portal.PubSub do
 
     @spec broadcast(String.t(), entity(), term()) :: :ok
     def broadcast(account_id, entity, payload) do
+      region = Portal.Config.get_env(:portal, :region, "")
+
       for topic <- [account_topic(account_id), entity_topic(account_id, entity)],
-          node <- Portal.PubSub.regional_nodes() do
+          node <- target_nodes(region) do
         Phoenix.PubSub.direct_broadcast!(node, Portal.PubSub, topic, payload)
       end
 
       :ok
     end
 
+    @doc """
+    Broadcasts to the account's subscribers on every node, for changes that do
+    not arrive through the regional replication streams.
+    """
+    @spec broadcast_to_cluster(String.t(), term()) :: :ok | {:error, term()}
+    def broadcast_to_cluster(account_id, payload) do
+      account_id
+      |> account_topic()
+      |> Portal.PubSub.broadcast(payload)
+    end
+
     @spec broadcast_account(term()) :: :ok
     def broadcast_account(payload) do
-      for node <- Portal.PubSub.regional_nodes() do
+      region = Portal.Config.get_env(:portal, :region, "")
+
+      for node <- target_nodes(region) do
         Phoenix.PubSub.direct_broadcast!(node, Portal.PubSub, accounts_topic(), payload)
       end
 
@@ -129,6 +124,19 @@ defmodule Portal.PubSub do
 
     defp accounts_topic do
       Portal.Config.get_env(:portal, :account_changes_topic, "accounts")
+    end
+
+    # In dev / test region we don't have a cluster / region; send to self
+    defp target_nodes(""), do: [Node.self()]
+
+    defp target_nodes(region) do
+      nodes =
+        Node.list()
+        |> Enum.filter(fn node ->
+          node |> Atom.to_string() |> String.contains?(region)
+        end)
+
+      [Node.self() | nodes]
     end
   end
 end
