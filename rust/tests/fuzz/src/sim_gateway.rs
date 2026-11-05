@@ -28,7 +28,7 @@ pub(crate) struct SimGateway {
 
     pub(crate) probe_observations: Vec<ProbeObservation>,
 
-    dns_resolutions: BTreeMap<(ClientId, DomainName), Vec<DnsResolution>>,
+    pub(crate) dns_resolutions: BTreeMap<(ClientId, DomainName), Vec<DnsResolution>>,
     dns_nat_generations: BTreeMap<ClientId, u64>,
     dns_proxy_owners: BTreeMap<(ClientId, IpAddr), DomainName>,
     next_observation_order: u64,
@@ -48,7 +48,7 @@ pub(crate) struct DnsResolution {
     pub(crate) at: Instant,
     pub(crate) order: u64,
     pub(crate) dns_nat_generation: u64,
-    proxy_ips: Vec<IpAddr>,
+    pub(crate) proxy_ips: Vec<IpAddr>,
     pub(crate) addresses: Vec<IpAddr>,
 }
 
