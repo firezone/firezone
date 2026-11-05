@@ -1207,7 +1207,6 @@ where
             packet,
             &mut self.allocations,
             &mut self.buffered_transmits,
-            &mut self.pending_events,
             now,
         );
 
@@ -1995,16 +1994,15 @@ where
         message: &[u8],
         allocations: &mut Allocations<RId>,
         transmits: &mut VecDeque<Transmit>,
-        pending_events: &mut VecDeque<Event<TId, RId>>,
         now: Instant,
     ) -> ControlFlow<Result<()>, sanstun::DecapsulateBatch<'_>>
     where
-        TId: Copy + fmt::Display,
+        TId: fmt::Display,
         RId: Ord + Hash + fmt::Display + Copy,
     {
         let path = (destination, from);
 
-        let result = match packet {
+        match packet {
             sanstun::ReceivedMessage::HandshakeInitiation(init) => {
                 let result = match &mut self.agent {
                     Agent::Path(agent) => {
@@ -2016,7 +2014,7 @@ where
                         .map(|reply| self.buffer_or_send(&cid, reply, allocations, transmits, now)),
                 };
 
-                result.context("handshake packet")
+                ControlFlow::Break(result.context("handshake packet"))
             }
             sanstun::ReceivedMessage::HandshakeResponse(response) => {
                 let result = match &mut self.agent {
@@ -2036,23 +2034,20 @@ where
                     self.restore_rekey_attempt_time();
                 }
 
-                result.context("handshake packet")
+                ControlFlow::Break(result.context("handshake packet"))
             }
-            sanstun::ReceivedMessage::CookieReply(reply) => self
-                .tunnel
-                .handle_cookie_reply(reply, now)
-                .context("cookie reply"),
+            sanstun::ReceivedMessage::CookieReply(reply) => ControlFlow::Break(
+                self.tunnel
+                    .handle_cookie_reply(reply, now)
+                    .context("cookie reply"),
+            ),
             sanstun::ReceivedMessage::TransportData(data) => {
-                return match self.tunnel.begin_decapsulate(data, now) {
+                match self.tunnel.begin_decapsulate(data, now) {
                     Ok(batch) => ControlFlow::Continue(batch),
                     Err(e) => ControlFlow::Break(Err(anyhow::Error::new(e).context("data packet"))),
-                };
+                }
             }
-        };
-
-        self.handle_tunnel_events(cid, allocations, transmits, pending_events, now);
-
-        ControlFlow::Break(result)
+        }
     }
 
     /// Hands the probes to the agent and returns the data packets.
