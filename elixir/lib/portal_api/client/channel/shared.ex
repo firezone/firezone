@@ -3198,7 +3198,7 @@ defmodule PortalAPI.Client.Channel.Shared do
 
   # The receiving gateway checks its authorization cache before it forwards the candidates.
   defp deliver_to_gateways(socket, gateway_ids, tag, candidates) when is_list(gateway_ids) do
-    candidates = PortalAPI.Sockets.limit_ice_candidates(candidates)
+    candidates = PortalAPI.Sockets.limit_ice_candidates(candidates, socket.assigns.client)
 
     if candidates != [] do
       for gateway_id <- Enum.uniq(gateway_ids), is_binary(gateway_id) do
@@ -3213,10 +3213,11 @@ defmodule PortalAPI.Client.Channel.Shared do
 
   # Unauthorized targets look offline so the reply does not reveal presence.
   defp deliver_to_client(socket, target_client_id, tag, candidates) do
-    candidates = PortalAPI.Sockets.limit_ice_candidates(candidates)
+    candidates = PortalAPI.Sockets.limit_ice_candidates(candidates, socket.assigns.client)
 
     cond do
       not client_peer?(socket, target_client_id) ->
+        Portal.Telemetry.ice_candidates_dropped(:client, :unauthorized, length(candidates))
         {:error, :not_found}
 
       candidates == [] ->

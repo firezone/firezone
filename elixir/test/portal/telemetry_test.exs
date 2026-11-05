@@ -567,6 +567,68 @@ defmodule Portal.TelemetryTest do
     end
   end
 
+  describe "ice_candidates_received/2 and ice_candidates_dropped/3" do
+    setup do
+      test_pid = self()
+      handler_id = "test-ice-candidates-#{System.unique_integer([:positive])}"
+
+      :telemetry.attach_many(
+        handler_id,
+        [[:portal, :ice_candidates, :received], [:portal, :ice_candidates, :dropped]],
+        fn event, measurements, metadata, _config ->
+          send(test_pid, {event, self(), measurements, metadata})
+        end,
+        nil
+      )
+
+      on_exit(fn -> :telemetry.detach(handler_id) end)
+
+      %{test_pid: test_pid}
+    end
+
+    test "emits the number of candidates in a message", %{test_pid: test_pid} do
+      assert :ok = Portal.Telemetry.ice_candidates_received(:gateway, 3)
+
+      assert_receive {[:portal, :ice_candidates, :received], ^test_pid, %{count: 3},
+                      %{sender: :gateway}}
+    end
+
+    test "emits dropped candidates with the reason", %{test_pid: test_pid} do
+      assert :ok = Portal.Telemetry.ice_candidates_dropped(:client, :unauthorized, 2)
+
+      assert_receive {[:portal, :ice_candidates, :dropped], ^test_pid, %{count: 2},
+                      %{sender: :client, reason: :unauthorized}}
+    end
+
+    test "emits nothing when no candidates were dropped", %{test_pid: test_pid} do
+      assert :ok = Portal.Telemetry.ice_candidates_dropped(:client, :oversized, 0)
+
+      refute_receive {[:portal, :ice_candidates, :dropped], ^test_pid, _, _}
+    end
+  end
+
+  describe "handle_ice_candidates_metric/4" do
+    test "returns :ok for a received event" do
+      assert :ok =
+               Portal.Telemetry.handle_ice_candidates_metric(
+                 [:portal, :ice_candidates, :received],
+                 %{count: 4},
+                 %{sender: :client},
+                 @config
+               )
+    end
+
+    test "returns :ok for a dropped event" do
+      assert :ok =
+               Portal.Telemetry.handle_ice_candidates_metric(
+                 [:portal, :ice_candidates, :dropped],
+                 %{count: 1},
+                 %{sender: :gateway, reason: :unauthorized},
+                 @config
+               )
+    end
+  end
+
   defp metric_names do
     Enum.map(Portal.Telemetry.metrics(), & &1.name)
   end

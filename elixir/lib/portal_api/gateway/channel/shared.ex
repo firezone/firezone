@@ -300,6 +300,8 @@ defmodule PortalAPI.Gateway.Channel.Shared do
         client_id: client_id,
         candidates: candidates
       })
+    else
+      Telemetry.ice_candidates_dropped(:client, :unauthorized, candidate_count(candidates))
     end
 
     {:noreply, socket}
@@ -312,6 +314,8 @@ defmodule PortalAPI.Gateway.Channel.Shared do
         client_id: client_id,
         candidates: candidates
       })
+    else
+      Telemetry.ice_candidates_dropped(:client, :unauthorized, candidate_count(candidates))
     end
 
     {:noreply, socket}
@@ -1213,19 +1217,29 @@ defmodule PortalAPI.Gateway.Channel.Shared do
   defp abnormal_exit?(_reason), do: true
 
   defp deliver_to_clients(socket, client_ids, tag, candidates) when is_list(client_ids) do
-    candidates = PortalAPI.Sockets.limit_ice_candidates(candidates)
+    candidates = PortalAPI.Sockets.limit_ice_candidates(candidates, socket.assigns.gateway)
 
     if candidates != [] do
-      for client_id <- Enum.uniq(client_ids),
-          Cache.Gateway.has_client?(socket.assigns.cache, client_id) do
-        PG.deliver(client_id, {tag, socket.assigns.gateway.id, candidates})
-      end
+      client_ids
+      |> Enum.uniq()
+      |> Enum.each(&deliver_to_client(socket, &1, tag, candidates))
     end
 
     {:noreply, socket}
   end
 
   defp deliver_to_clients(socket, _client_ids, _tag, _candidates), do: {:noreply, socket}
+
+  defp deliver_to_client(socket, client_id, tag, candidates) do
+    if Cache.Gateway.has_client?(socket.assigns.cache, client_id) do
+      PG.deliver(client_id, {tag, socket.assigns.gateway.id, candidates})
+    else
+      Telemetry.ice_candidates_dropped(:gateway, :unauthorized, length(candidates))
+    end
+  end
+
+  defp candidate_count(candidates) when is_list(candidates), do: length(candidates)
+  defp candidate_count(_candidates), do: 0
 
   defmodule Database do
     import Ecto.Query

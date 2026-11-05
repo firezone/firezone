@@ -228,14 +228,37 @@ defmodule PortalAPI.Sockets do
   @doc """
   Keeps at most #{@max_ice_candidates} ICE candidates that are strings of at most
   #{@max_ice_candidate_bytes} bytes. Returns an empty list for any other input.
+
+  Records the number of candidates and the dropped candidates as telemetry for the
+  `:client` or `:gateway` `device` that sent them.
   """
-  def limit_ice_candidates(candidates) when is_list(candidates) do
-    candidates
-    |> Enum.filter(&(is_binary(&1) and byte_size(&1) <= @max_ice_candidate_bytes))
-    |> Enum.take(@max_ice_candidates)
+  def limit_ice_candidates(candidates, %Portal.Device{type: sender} = device)
+      when is_list(candidates) do
+    Portal.Telemetry.ice_candidates_received(sender, length(candidates))
+
+    {strings, invalid} = Enum.split_with(candidates, &is_binary/1)
+    {valid, oversized} = Enum.split_with(strings, &(byte_size(&1) <= @max_ice_candidate_bytes))
+    {kept, over_limit} = Enum.split(valid, @max_ice_candidates)
+
+    if oversized != [] do
+      Logger.warning("Dropped oversized ICE candidates",
+        account_id: device.account_id,
+        device_id: device.id,
+        device_type: sender,
+        dropped_count: length(oversized),
+        max_bytes: @max_ice_candidate_bytes,
+        largest_bytes: oversized |> Enum.map(&byte_size/1) |> Enum.max()
+      )
+    end
+
+    Portal.Telemetry.ice_candidates_dropped(sender, :invalid, length(invalid))
+    Portal.Telemetry.ice_candidates_dropped(sender, :oversized, length(oversized))
+    Portal.Telemetry.ice_candidates_dropped(sender, :over_limit, length(over_limit))
+
+    kept
   end
 
-  def limit_ice_candidates(_candidates), do: []
+  def limit_ice_candidates(_candidates, %Portal.Device{}), do: []
 
   @doc """
   Tells every device holding an active policy authorization with `device` that it

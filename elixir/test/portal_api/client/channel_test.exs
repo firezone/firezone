@@ -3390,14 +3390,40 @@ defmodule PortalAPI.Client.ChannelTest do
 
       valid = for i <- 1..70, do: "cand#{i}"
       oversized = String.duplicate("a", 513)
+      test_pid = self()
+      handler_id = "test-ice-candidates-dropped-#{System.unique_integer([:positive])}"
 
-      push(socket, "new_client_ice_candidates", %{
-        "candidates" => [oversized, 1 | valid],
-        "client_id" => target_client.id
-      })
+      :telemetry.attach(
+        handler_id,
+        [:portal, :ice_candidates, :dropped],
+        fn _event, measurements, metadata, _config ->
+          send(test_pid, {:ice_candidates_dropped, measurements, metadata})
+        end,
+        nil
+      )
 
-      assert_receive {:client_ice_candidates, _sending_client_id, candidates}, 200
-      assert candidates == Enum.take(valid, 64)
+      on_exit(fn -> :telemetry.detach(handler_id) end)
+
+      log =
+        capture_log(fn ->
+          push(socket, "new_client_ice_candidates", %{
+            "candidates" => [oversized, 1 | valid],
+            "client_id" => target_client.id
+          })
+
+          assert_receive {:client_ice_candidates, _sending_client_id, candidates}, 200
+          assert candidates == Enum.take(valid, 64)
+        end)
+
+      assert log =~ "Dropped oversized ICE candidates"
+
+      assert_receive {:ice_candidates_dropped, %{count: 1},
+                      %{sender: :client, reason: :oversized}}
+
+      assert_receive {:ice_candidates_dropped, %{count: 1}, %{sender: :client, reason: :invalid}}
+
+      assert_receive {:ice_candidates_dropped, %{count: 6},
+                      %{sender: :client, reason: :over_limit}}
     end
   end
 
