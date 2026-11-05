@@ -1,6 +1,6 @@
 //! Adapt str0m candidates into frostlink's representation.
 //!
-//! Both the IceAgent (str0m's `Candidate`) and the PathAgent
+//! Both the IceAgent (str0m's `Candidate`) and the frostlink `Agent`
 //! (`frostlink::Candidate`) consume the same gathered candidate set; this
 //! conversion lets us feed both from a single source.
 //!

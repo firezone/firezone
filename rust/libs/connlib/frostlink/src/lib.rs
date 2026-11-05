@@ -1,7 +1,7 @@
 //! Like ICE but inside a tunnel.
 //!
 //! Frostlink is path selection for WireGuard connections, inspired by ICE but
-//! optimised for WireGuard. A [`PathAgent`] only *selects* a path (which
+//! optimised for WireGuard. An [`Agent`] only *selects* a path (which
 //! local/remote address pair a connection sends on: its *primary*); WireGuard
 //! owns the session and liveness.
 //!
@@ -55,7 +55,7 @@ mod retransmit;
 mod score;
 
 pub use agent::{
-    PRIMARY_KEEPALIVE, PROBE_BUDGET, PROBE_BURST_GAPS, PROBE_INTERVAL, PathAgent,
+    Agent, PRIMARY_KEEPALIVE, PROBE_BUDGET, PROBE_BURST_GAPS, PROBE_INTERVAL,
     REKEY_DISTRESS_ATTEMPTS, RESPONDER_DEDUP_TTL,
 };
 pub use candidate::{Candidate, CandidateKind, ParseCandidateError};

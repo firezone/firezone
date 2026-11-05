@@ -381,7 +381,7 @@ where
 
         let mut agent = if use_frostlink {
             tracing::debug!(%cid, "Using Frostlink for connection");
-            Agent::path()
+            Agent::frostlink()
         } else {
             tracing::debug!(%cid, "Using ICE agent for connection");
             Agent::ice(new_agent(ice_role))
@@ -426,7 +426,7 @@ where
         // Only Controlling fans out the init, so we don't burn
         // bandwidth and TURN channel bindings on a duplicate from
         // each side.
-        if let Agent::Path(agent) = &mut connection.agent
+        if let Agent::Frostlink(agent) = &mut connection.agent
             && matches!(ice_role, IceRole::Controlling)
             && let Some(init) = connection.tunnel.initiate_handshake(now)
         {
@@ -472,7 +472,7 @@ where
         let Ok(c) = self.connections.get_mut(&cid, now) else {
             return;
         };
-        let Agent::Path(agent) = &mut c.agent else {
+        let Agent::Frostlink(agent) = &mut c.agent else {
             return;
         };
         if c.remote_pub_key == remote
@@ -1736,7 +1736,7 @@ where
             }
         }
 
-        while let Some(event) = self.agent.poll_path_event() {
+        while let Some(event) = self.agent.poll_frostlink_event() {
             match event {
                 frostlink::Event::PrimaryChanged { local, remote } => {
                     let peer_socket = self.peer_socket_for_tuple(allocations, local, remote);
@@ -1754,7 +1754,7 @@ where
 
         // Plaintext payloads (probes) need encapsulation; ciphertext
         // goes straight to the wire.
-        while let Some(pt) = self.agent.poll_path_transmit() {
+        while let Some(pt) = self.agent.poll_frostlink_transmit() {
             let peer_socket = self.peer_socket_for_tuple(allocations, pt.local, pt.remote);
             match pt.payload {
                 frostlink::Payload::Ciphertext(ref bytes) => {
@@ -1835,7 +1835,7 @@ where
         while let Some(event) = self.tunnel.poll_event() {
             match event {
                 sanstun::Event::SendHandshakeInitiation(init) => match &mut self.agent {
-                    Agent::Path(agent) => agent.send_handshake_initiation(init, now),
+                    Agent::Frostlink(agent) => agent.send_handshake_initiation(init, now),
                     Agent::Ice(_) => self.buffer_or_send(&cid, init, allocations, transmits, now),
                 },
                 sanstun::Event::SendKeepalive(keepalive) => {
@@ -1996,7 +1996,7 @@ where
         match packet {
             sanstun::ReceivedMessage::HandshakeInitiation(init) => {
                 let result = match &mut self.agent {
-                    Agent::Path(agent) => {
+                    Agent::Frostlink(agent) => {
                         agent.handle_handshake_initiation(&mut self.tunnel, init, path, now)
                     }
                     Agent::Ice(_) => self
@@ -2009,7 +2009,7 @@ where
             }
             sanstun::ReceivedMessage::HandshakeResponse(response) => {
                 let result = match &mut self.agent {
-                    Agent::Path(agent) => agent.handle_handshake_response(
+                    Agent::Frostlink(agent) => agent.handle_handshake_response(
                         &mut self.tunnel,
                         response,
                         &datagram[offset..],
@@ -2149,7 +2149,7 @@ where
     where
         RId: Ord + Hash + fmt::Display + Copy,
     {
-        self.agent.rebuild_path(|_| true, now);
+        self.agent.rebuild_frostlink(|_| true, now);
     }
 
     /// Frostlink-only. Receiver rediscovers the connection by the
@@ -2173,7 +2173,7 @@ where
             .current_relay_candidates()
             .map(|c| crate::candidate::to_frostlink(&c))
             .collect::<SmallVec<[_; 2]>>();
-        self.agent.rebuild_path(|c| dropped.contains(c), now);
+        self.agent.rebuild_frostlink(|c| dropped.contains(c), now);
 
         tracing::info!(%cid, "Reset frostlink path-agent after relay invalidation");
     }

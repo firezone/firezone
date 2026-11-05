@@ -11,7 +11,7 @@ use crate::score::pair_score;
 
 /// Frostlink path selection for a single WireGuard connection.
 #[derive(Default)]
-pub struct PathAgent {
+pub struct Agent {
     locals: Vec<Candidate>,
     remotes: Vec<Candidate>,
     pairs: BTreeMap<(SocketAddr, SocketAddr), PairState>,
@@ -228,7 +228,7 @@ const MAX_REMOTE_PER_KIND: usize = 6;
 const PRIMARY_HYSTERESIS_FRACTION: f64 = 0.2;
 const PRIMARY_HYSTERESIS_FLOOR: Duration = Duration::from_millis(10);
 
-impl PathAgent {
+impl Agent {
     pub fn new() -> Self {
         Self::default()
     }
@@ -1017,7 +1017,7 @@ mod tests {
 
     #[test]
     fn inflight_probes_stay_capped_while_hunting_forever() {
-        let mut a = PathAgent {
+        let mut a = Agent {
             session_confirmed: true,
             ..Default::default()
         };
