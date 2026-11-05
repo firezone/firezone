@@ -19,6 +19,41 @@ defmodule PortalAPI.Client.SocketTest do
   @client_remote_ip {189, 172, 73, 153}
 
   describe "connect/3" do
+    test "only new device IDs consume the account registration bucket" do
+      Portal.Config.put_env_override(:portal, PortalAPI.Sockets.RateLimit,
+        refill_rate: 100_000,
+        capacity: 100_000
+      )
+
+      account = account_fixture(limits: %{users_count: 6, connected_devices_per_actor: 3})
+      token = client_token_fixture(account: account) |> encode_token()
+      attrs = connect_attrs(token: token)
+      info = build_connect_info(token: token)
+      assert {:ok, first} = connect(Socket, attrs, connect_info: info)
+      for _ <- 1..55, do: assert(:ok == Portal.Devices.RegistrationRateLimit.check(account))
+      assert {:error, {:rate_limit, _}} = Portal.Devices.RegistrationRateLimit.check(account)
+
+      rotated = Map.put(attrs, "public_key", generate_public_key())
+      assert {:ok, renewed} = connect(Socket, rotated, connect_info: info)
+      assert first.assigns.client.id == renewed.assigns.client.id
+      refute first.assigns.client.public_key == renewed.assigns.client.public_key
+
+      assert {:error, {:rate_limit, _}} =
+               connect(Socket, Map.put(attrs, "external_id", Ecto.UUID.generate()),
+                 connect_info: info
+               )
+
+      other_token = client_token_fixture(account: account) |> encode_token()
+      other_info = build_connect_info(token: other_token, ip: {198, 51, 100, 42})
+
+      assert {:error, {:rate_limit, _}} =
+               connect(Socket, connect_attrs(token: other_token), connect_info: other_info)
+
+      assert Repo.aggregate(Portal.Device, :count, :id) == 1
+      Repo.delete!(first.assigns.client)
+      assert {:error, {:rate_limit, _}} = connect(Socket, attrs, connect_info: info)
+    end
+
     test "returns error when token is missing" do
       connect_info = build_connect_info()
       assert connect(Socket, %{}, connect_info: connect_info) == {:error, :missing_token}
@@ -1436,6 +1471,36 @@ defmodule PortalAPI.Client.SocketTest do
                |> Portal.Safe.unscoped()
                |> Portal.Safe.insert()
     end
+  end
+
+  test "attested registrations use the same bucket while existing proofs remain free" do
+    account = account_fixture(limits: %{users_count: 6, connected_devices_per_actor: 3})
+    actor = actor_fixture(account: account)
+    subject = subject_fixture(account: account, actor: actor)
+
+    changeset =
+      device_trust_changeset(account, actor, %{"name" => "Attested", "firezone_id" => "fz"})
+
+    proof = %{
+      identifiers: %{last_attested_mdm_device_id: "mdm-1"},
+      last_attested_cert_serial: "AA",
+      last_attested_cert_fingerprint: "fp",
+      last_attested_cert_issuer: <<"issuer">>
+    }
+
+    assert {:ok, first, true} = resolve_with_proof(changeset, proof, subject)
+    for _ <- 1..55, do: assert(:ok == Portal.Devices.RegistrationRateLimit.check(account))
+    assert {:ok, existing, true} = resolve_with_proof(changeset, proof, subject)
+    assert first.id == existing.id
+
+    new_proof = %{
+      proof
+      | identifiers: %{last_attested_mdm_device_id: "mdm-2"},
+        last_attested_cert_serial: "BB",
+        last_attested_cert_fingerprint: "new-fp"
+    }
+
+    assert {:error, {:rate_limit, _}} = resolve_with_proof(changeset, new_proof, subject)
   end
 
   describe "resolve_client/4 device-trust proof" do

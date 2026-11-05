@@ -121,6 +121,75 @@ defmodule PortalAPI.Integrations.Stripe.WebhookControllerTest do
       assert response(conn, 400) == "Bad Request: expired signature"
     end
 
+    test "warns when the signature is invalid", %{conn: conn} do
+      now = System.system_time(:second)
+      signature = generate_signature(now, "foo")
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          conn =
+            conn
+            |> put_req_header("content-type", "application/json")
+            |> put_req_header("stripe-signature", create_signature_header(now, signature))
+            |> post("/integrations/stripe/webhooks", "bar")
+
+          assert response(conn, 400) == "Bad Request: invalid signature"
+        end)
+
+      assert log =~ "Stripe webhook failed authentication"
+      assert log =~ "invalid_signature"
+      assert log =~ "remote_ip=127.0.0.1"
+    end
+
+    test "warns when the signature header is missing", %{conn: conn} do
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          conn = post(conn, "/integrations/stripe/webhooks", %{"message" => "Hello, world!"})
+          assert response(conn, 400) == "Bad Request: missing signature header"
+        end)
+
+      assert log =~ "Stripe webhook failed authentication"
+      assert log =~ "missing_signature_header"
+    end
+
+    test "rejects repeated signature headers instead of crashing", %{conn: conn} do
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          conn =
+            conn
+            |> put_req_header("content-type", "application/json")
+            |> Map.update!(:req_headers, &[{"stripe-signature", "t=1,v1=a"}, {"stripe-signature", "t=1,v1=b"} | &1])
+            |> post("/integrations/stripe/webhooks", "bar")
+
+          assert response(conn, 400) == "Bad Request: invalid signature header"
+        end)
+
+      assert log =~ "multiple_signature_headers"
+    end
+
+    test "rejects a non-numeric timestamp instead of crashing", %{conn: conn} do
+      conn =
+        conn
+        |> put_req_header("content-type", "application/json")
+        |> put_req_header("stripe-signature", "t=abc,v1=deadbeef")
+        |> post("/integrations/stripe/webhooks", "bar")
+
+      assert response(conn, 400) == "Bad Request: missing timestamp"
+    end
+
+    test "rejects a timestamp from the future", %{conn: conn} do
+      signed_at = System.system_time(:second) + 301
+      signature = generate_signature(signed_at, "bar")
+
+      conn =
+        conn
+        |> put_req_header("content-type", "application/json")
+        |> put_req_header("stripe-signature", create_signature_header(signed_at, signature))
+        |> post("/integrations/stripe/webhooks", "bar")
+
+      assert response(conn, 400) == "Bad Request: expired signature"
+    end
+
     test "returns 500 when event handling fails so Stripe will retry", %{conn: conn} do
       customer_id = "cus_xxx"
       account = account_fixture()
@@ -157,6 +226,38 @@ defmodule PortalAPI.Integrations.Stripe.WebhookControllerTest do
         end)
 
       assert response(conn, 500) == "Internal Error"
+    end
+
+    test "returns 200 OK for an account that does not exist so Stripe stops retrying", %{
+      conn: conn
+    } do
+      customer_id = "cus_" <> Stripe.random_id()
+
+      customer =
+        Stripe.build_customer(id: customer_id, metadata: %{"account_id" => Ecto.UUID.generate()})
+
+      Stripe.stub(Stripe.fetch_customer_endpoint(customer))
+
+      payload =
+        Stripe.build_event(
+          "customer.subscription.deleted",
+          Stripe.subscription_object(customer_id, %{}, %{}, 1)
+        )
+        |> JSON.encode!()
+
+      signed_at = System.system_time(:second) - 15
+      signature = generate_signature(signed_at, payload)
+
+      {conn, log} =
+        ExUnit.CaptureLog.with_log(fn ->
+          conn
+          |> put_req_header("content-type", "application/json")
+          |> put_req_header("stripe-signature", create_signature_header(signed_at, signature))
+          |> post("/integrations/stripe/webhooks", payload)
+        end)
+
+      assert response(conn, 200) == ""
+      assert log =~ "Skipping stripe event for an account that does not exist"
     end
   end
 

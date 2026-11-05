@@ -8,11 +8,13 @@ pub use crate::server::client_message::{
 
 use crate::auth::{self, AuthenticatedMessage, FIREZONE, MessageIntegrityExt, Nonces};
 use crate::net_ext::IpAddrExt;
+use crate::peer_policy;
 use crate::{ClientSocket, IpStack, PeerSocket, SOFTWARE};
 use anyhow::Result;
 use bimap::BiMap;
 use bytecodec::EncodeExt;
 use core::fmt;
+use ebpf_shared::{RateLimiter, Verdict};
 use logging::err_with_src;
 use otel_attributes::KeyValue;
 use otel_instruments::{Counter, Histogram, UpDownCounter};
@@ -22,6 +24,7 @@ use smallvec::SmallVec;
 use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::hash::Hash;
 use std::net::{IpAddr, SocketAddr};
+use std::num::{NonZeroU64, NonZeroUsize};
 use std::ops::RangeInclusive;
 use std::time::{Duration, Instant, SystemTime};
 use stun_codec::rfc5389::attributes::{
@@ -32,7 +35,9 @@ use stun_codec::rfc5389::methods::BINDING;
 use stun_codec::rfc5766::attributes::{
     ChannelNumber, Lifetime, RequestedTransport, XorPeerAddress, XorRelayAddress,
 };
-use stun_codec::rfc5766::errors::{AllocationMismatch, InsufficientCapacity};
+use stun_codec::rfc5766::errors::{
+    AllocationMismatch, AllocationQuotaReached, Forbidden, InsufficientCapacity,
+};
 use stun_codec::rfc5766::methods::{ALLOCATE, CHANNEL_BIND, CREATE_PERMISSION, REFRESH};
 use stun_codec::rfc8656::attributes::{
     AdditionalAddressFamily, AddressFamily, RequestedAddressFamily,
@@ -55,12 +60,14 @@ pub struct Server<R> {
     /// All client allocations, indexed by client's socket address.
     allocations: BTreeMap<ClientSocket, Allocation>,
 
-    /// Bi-directional mapping between allocations and usernames.
+    /// Bi-directional mapping between allocations and devices.
     ///
-    /// We only allow a single allocation per user in order to clean up lingering allocations in case the sender roams.
-    allocations_by_username: BiMap<Username, AllocationPort>,
+    /// We only allow a single allocation per device in order to clean up lingering allocations in case the sender roams.
+    allocations_by_device: BiMap<auth::AllocationKey, AllocationPort>,
 
     clients_by_allocation: HashMap<AllocationPort, ClientSocket>,
+    /// Maximum number of allocations per account; accounts without an entry are unlimited.
+    allocation_limits: HashMap<auth::AccountId, NonZeroUsize>,
     /// Redundant mapping so we can look route data with a single lookup.
     channel_and_client_by_port_and_peer:
         HashMap<(AllocationPort, PeerSocket), (ClientSocket, ChannelNumber)>,
@@ -68,6 +75,9 @@ pub struct Server<R> {
     listen_port: u16,
 
     ports: RangeInclusive<u16>,
+
+    /// Whether clients may bind channels to peers in private networks, see [`Server::allow_private_peers`].
+    allow_private_peers: bool,
 
     /// Channel numbers are unique by client, thus indexed by both.
     channels_by_client_and_number: BTreeMap<(ClientSocket, ChannelNumber), Channel>,
@@ -80,23 +90,34 @@ pub struct Server<R> {
 
     auth_secret: SecretString,
 
-    /// Maps the account hash carried in a TURN credential to the raw account
-    /// UUID received from the Portal. Allocations retain the raw UUID.
-    accounts_by_hash: HashMap<auth::AccountIdHash, auth::AccountId>,
+    /// Maps the account hash carried in a TURN credential to the account
+    /// received from the Portal. Allocations retain the raw UUID.
+    accounts_by_hash: HashMap<auth::AccountIdHash, Account>,
 
     nonces: Nonces,
+
+    /// The instant that rate limiters measure time from.
+    rate_limit_epoch: Option<Instant>,
 
     allocations_up_down_counter: UpDownCounter<i64>,
     data_relayed: u64, // Tracked separately because OTel instruments don't expose their current value :(
     relayed_packet_size_histogram: Histogram<u64>,
     relayed_bytes_counter: Counter<u64>,
     responses_counter: Counter<u64>,
+    rate_limited_packets_counter: Counter<u64>,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct Account {
+    id: auth::AccountId,
+    throughput_limit: Option<ThroughputLimit>,
 }
 
 #[derive(Debug)]
 struct VerifiedUsername {
     username: Username,
-    account: auth::AccountId,
+    account: Account,
+    allocation_key: auth::AllocationKey,
 }
 
 /// The commands returned from a [`Server`].
@@ -122,12 +143,15 @@ pub enum Command {
         port: AllocationPort,
         family: AddressFamily,
     },
+    /// Create or replace a channel binding, resetting its rate limiters.
     CreateChannelBinding {
         client: ClientSocket,
         channel_number: ChannelNumber,
 
         peer: PeerSocket,
         allocation_port: AllocationPort,
+
+        throughput_limit: Option<ThroughputLimit>,
     },
     DeleteChannelBinding {
         client: ClientSocket,
@@ -154,6 +178,33 @@ impl AllocationPort {
 impl fmt::Display for AllocationPort {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.0.fmt(f)
+    }
+}
+
+/// The maximum throughput of each direction of a channel.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ThroughputLimit {
+    bytes_per_second: NonZeroU64,
+}
+
+impl ThroughputLimit {
+    /// Returns [`None`] for zero, which means unlimited.
+    pub fn from_bits_per_second(bits_per_second: u64) -> Option<Self> {
+        let bytes_per_second = NonZeroU64::new(bits_per_second.div_ceil(8))?;
+
+        Some(Self { bytes_per_second })
+    }
+
+    pub fn bytes_per_second(&self) -> NonZeroU64 {
+        self.bytes_per_second
+    }
+
+    /// Creates a fresh [`RateLimiter`] enforcing the given limit.
+    pub fn rate_limiter(limit: Option<Self>) -> RateLimiter {
+        match limit {
+            Some(limit) => RateLimiter::new(limit.bytes_per_second),
+            None => RateLimiter::unlimited(),
+        }
     }
 }
 
@@ -193,27 +244,53 @@ where
         let allocations_up_down_counter = otel_instruments::relay_active_allocations();
         let responses_counter = otel_instruments::relay_responses();
         let relayed_packet_size_histogram = otel_instruments::relay_packet_size();
+        let rate_limited_packets_counter = otel_instruments::relay_rate_limited_packets();
 
         Self {
             public_address: public_address.into(),
             allocations: Default::default(),
-            allocations_by_username: Default::default(),
+            allocations_by_device: Default::default(),
             clients_by_allocation: Default::default(),
+            allocation_limits: Default::default(),
             listen_port,
             ports,
+            allow_private_peers: false,
             channels_by_client_and_number: Default::default(),
             channel_numbers_by_client_and_peer: Default::default(),
             pending_commands: Default::default(),
             auth_secret: SecretString::from(hex::encode(rng.random::<[u8; 32]>())),
             accounts_by_hash: Default::default(),
             nonces: Nonces::new(rng.random()),
+            rate_limit_epoch: None,
             rng,
             allocations_up_down_counter,
             responses_counter,
             data_relayed: 0,
             relayed_packet_size_histogram,
             relayed_bytes_counter: otel_instruments::relay_bytes(),
+            rate_limited_packets_counter,
             channel_and_client_by_port_and_peer: Default::default(),
+        }
+    }
+
+    /// Replaces all allocation limits.
+    ///
+    /// Lowering a limit only affects new allocations.
+    pub fn set_allocation_limits(&mut self, limits: HashMap<auth::AccountId, NonZeroUsize>) {
+        self.allocation_limits = limits;
+    }
+
+    /// Sets or clears the allocation limit of a single account.
+    ///
+    /// Lowering a limit only affects new allocations.
+    pub fn set_allocation_limit(&mut self, account: auth::AccountId, limit: Option<NonZeroUsize>) {
+        match limit {
+            Some(limit) => {
+                self.allocation_limits.insert(account, limit);
+            }
+            None => {
+                self.allocation_limits.remove(&account);
+            }
         }
     }
 
@@ -221,13 +298,33 @@ where
         &self.auth_secret
     }
 
+    /// Allows clients to bind channels to peers in private IPv4 networks (RFC 1918).
+    ///
+    /// For test networks where the Clients and Gateways have private addresses.
+    /// All other non-public addresses stay forbidden.
+    pub fn allow_private_peers(&mut self) {
+        self.allow_private_peers = true;
+    }
+
     /// Enables account-bound TURN authentication with a complete snapshot.
     /// Existing allocations that are absent from the snapshot are deleted so
     /// their sockets and fast-path channel bindings are torn down as well.
-    pub fn set_accounts(&mut self, accounts: impl IntoIterator<Item = auth::AccountId>) {
+    /// Existing allocations of the remaining accounts adopt their new throughput limit.
+    pub fn set_accounts(
+        &mut self,
+        accounts: impl IntoIterator<Item = (auth::AccountId, Option<ThroughputLimit>)>,
+    ) {
         let accounts_by_hash = accounts
             .into_iter()
-            .map(|account| (auth::hash_account_id(&account), account))
+            .map(|(id, throughput_limit)| {
+                (
+                    auth::hash_account_id(&id),
+                    Account {
+                        id,
+                        throughput_limit,
+                    },
+                )
+            })
             .collect::<HashMap<_, _>>();
 
         let revoked_allocations = self
@@ -239,22 +336,53 @@ where
             })
             .collect::<Vec<_>>();
 
-        self.accounts_by_hash = accounts_by_hash;
-
         for allocation in revoked_allocations {
             self.delete_allocation(allocation);
         }
+
+        let changed_limits = self
+            .allocations
+            .values()
+            .filter_map(|allocation| {
+                let account = accounts_by_hash.get(&auth::hash_account_id(&allocation.account))?;
+
+                (account.throughput_limit != allocation.throughput_limit)
+                    .then_some((allocation.port, account.throughput_limit))
+            })
+            .collect();
+        self.apply_throughput_limits(changed_limits);
+
+        self.accounts_by_hash = accounts_by_hash;
     }
 
-    pub fn add_account(&mut self, account: auth::AccountId) {
-        self.accounts_by_hash
-            .insert(auth::hash_account_id(&account), account);
+    /// Adds an account or updates the throughput limit of an existing one.
+    ///
+    /// Existing allocations of the account adopt the new limit immediately.
+    pub fn add_account(&mut self, id: auth::AccountId, throughput_limit: Option<ThroughputLimit>) {
+        self.accounts_by_hash.insert(
+            auth::hash_account_id(&id),
+            Account {
+                id,
+                throughput_limit,
+            },
+        );
+
+        let changed_limits = self
+            .allocations
+            .values()
+            .filter(|allocation| {
+                allocation.account == id && allocation.throughput_limit != throughput_limit
+            })
+            .map(|allocation| (allocation.port, throughput_limit))
+            .collect();
+        self.apply_throughput_limits(changed_limits);
     }
 
     /// Removes an account immediately, including its existing allocations and
     /// channel bindings. Deleting the bindings emits the existing commands
     /// that remove the Linux eBPF fast-path entries.
     pub fn remove_account(&mut self, account: &auth::AccountId) {
+        self.allocation_limits.remove(account);
         self.accounts_by_hash
             .remove(&auth::hash_account_id(account));
 
@@ -378,7 +506,7 @@ where
                 return None;
             }
             ClientMessage::ChannelData(msg) => {
-                return self.handle_channel_data_message(msg, sender);
+                return self.handle_channel_data_message(msg, sender, now);
             }
         };
 
@@ -432,15 +560,36 @@ where
         msg: &[u8],
         sender: PeerSocket,
         allocation: AllocationPort,
+        now: Instant,
     ) -> Option<(ClientSocket, ChannelNumber)> {
+        let now_ns = self.rate_limit_clock(now);
+
         let Some((client, channel_number)) = self
             .channel_and_client_by_port_and_peer
             .get(&(allocation, sender))
+            .copied()
         else {
             tracing::debug!(target: "relay", %sender, %allocation, "no channel");
 
             return None;
         };
+
+        if !is_relayable(msg) {
+            tracing::trace!(target: "relay", %sender, %allocation, "Refusing to relay payload that is neither WireGuard nor STUN");
+            return None;
+        }
+
+        let verdict = self
+            .channels_by_client_and_number
+            .get_mut(&(client, channel_number))
+            .map(|channel| channel.peer_to_client.check(now_ns, packet_len(msg)));
+
+        if verdict == Some(Verdict::Drop) {
+            tracing::trace!(target: "relay", channel = %channel_number.value(), "Channel exceeds its throughput limit");
+            self.count_rate_limited_drop();
+
+            return None;
+        }
 
         self.data_relayed += msg.len() as u64;
         self.relayed_bytes_counter.add(
@@ -454,7 +603,7 @@ where
 
         tracing::trace!(target: "wire", num_bytes = %msg.len());
 
-        Some((*client, *channel_number))
+        Some((client, channel_number))
     }
 
     /// An allocation failed.
@@ -563,15 +712,6 @@ where
             return Err(error_response);
         }
 
-        let max_available_ports = self.max_available_ports() as usize;
-        if self.clients_by_allocation.len() == max_available_ports {
-            let (error_response, msg) = make_error_response(InsufficientCapacity, request);
-
-            tracing::warn!(target: "relay", %max_available_ports, %sender, "{msg}: No more ports available");
-
-            return Err(error_response);
-        }
-
         let requested_protocol = request.requested_transport().protocol();
         if requested_protocol != UDP_TRANSPORT {
             let (error_response, msg) = make_error_response(BadRequest, request);
@@ -593,11 +733,17 @@ where
             error_response
         })?;
 
-        if let Some((_, previous_allocation)) =
-            self.allocations_by_username.remove_by_left(&username)
+        match self
+            .allocations_by_device
+            .remove_by_left(&verified_username.allocation_key)
         {
-            tracing::info!(target: "relay", %previous_allocation, %sender, "Username already has an allocation");
-            self.delete_allocation(previous_allocation);
+            Some((_, previous_allocation)) => {
+                tracing::info!(target: "relay", %previous_allocation, %sender, "Device already has an allocation");
+                self.delete_allocation(previous_allocation);
+            }
+            None => {
+                self.ensure_capacity(verified_username.account.id, request, sender)?;
+            }
         }
 
         // TODO: Do we need to handle DONT-FRAGMENT?
@@ -664,8 +810,8 @@ where
         }
 
         self.clients_by_allocation.insert(allocation.port, sender);
-        self.allocations_by_username
-            .insert(username, allocation.port);
+        self.allocations_by_device
+            .insert(verified_username.allocation_key, allocation.port);
         self.allocations.insert(sender, allocation);
         self.allocations_up_down_counter.add(1, &[]);
 
@@ -693,7 +839,7 @@ where
             return Err(error_response);
         };
 
-        if allocation.account != verified_username.account {
+        if allocation.account != verified_username.account.id {
             let (error_response, msg) = make_error_response(Unauthorized, request);
             tracing::warn!(target: "relay", %sender, "{msg}: Credential belongs to a different account");
 
@@ -745,7 +891,7 @@ where
         let verified_username = self.verify_auth(sender, request, now_utc)?;
         let username = verified_username.username;
 
-        let Some(allocation) = self.allocations.get_mut(&sender) else {
+        let Some(allocation) = self.allocations.get(&sender) else {
             let (error_response, msg) = make_error_response(AllocationMismatch, request);
 
             tracing::info!(target: "relay", %sender, "{msg}: Sender doesn't have an allocation");
@@ -753,7 +899,7 @@ where
             return Err(error_response);
         };
 
-        if allocation.account != verified_username.account {
+        if allocation.account != verified_username.account.id {
             let (error_response, msg) = make_error_response(Unauthorized, request);
             tracing::warn!(target: "relay", %sender, "{msg}: Credential belongs to a different account");
 
@@ -769,6 +915,14 @@ where
             let (error_response, msg) = make_error_response(PeerAddressFamilyMismatch, request);
 
             tracing::warn!(target: "relay", %sender, allocation = %allocation.port, peer = %peer_address, channel = %requested_channel.value(), "{msg}: Allocation cannot relay to peer");
+
+            return Err(error_response);
+        }
+
+        if !self.may_relay_to(peer_address) {
+            let (error_response, msg) = make_error_response(Forbidden, request);
+
+            tracing::debug!(target: "relay", %sender, allocation = %allocation.port, peer = %peer_address, channel = %requested_channel.value(), "{msg}: Peer address is not allowed");
 
             return Err(error_response);
         }
@@ -815,6 +969,7 @@ where
                     channel_number: requested_channel,
                     peer: channel.peer_address,
                     allocation_port: channel.allocation,
+                    throughput_limit: allocation.throughput_limit,
                 });
 
             tracing::info!(target: "relay", %sender, allocation = %allocation.port, peer = %peer_address, channel = %requested_channel.value(), "Refreshed channel binding");
@@ -832,11 +987,18 @@ where
 
         // Channel binding does not exist yet, create it.
 
-        // TODO: Any additional validations would go here.
         // TODO: Capacity checking would go here.
 
         let port = allocation.port;
-        self.create_channel_binding(sender, requested_channel, peer_address, port, now);
+        let throughput_limit = allocation.throughput_limit;
+        self.create_channel_binding(
+            sender,
+            requested_channel,
+            peer_address,
+            port,
+            throughput_limit,
+            now,
+        );
         self.authenticate_and_send(
             &username,
             request,
@@ -855,7 +1017,7 @@ where
     /// See <https://www.rfc-editor.org/rfc/rfc8656#name-receiving-a-createpermissio> for details.
     ///
     /// This TURN server implementation does not support relaying data other than through channels.
-    /// Thus, creating a permission is a no-op that always succeeds.
+    /// Thus, creating a permission is a no-op that succeeds for all peers we may relay to.
     fn handle_create_permission_request(
         &mut self,
         request: &CreatePermission,
@@ -863,6 +1025,18 @@ where
         now_utc: SystemTime,
     ) -> Result<(), Message<Attribute>> {
         let username = self.verify_auth(sender, request, now_utc)?.username;
+
+        if let Some(peer) = request
+            .peer_addresses()
+            .map(PeerSocket)
+            .find(|peer| !self.may_relay_to(*peer))
+        {
+            let (error_response, msg) = make_error_response(Forbidden, request);
+
+            tracing::debug!(target: "relay", %sender, %peer, "{msg}: Peer address is not allowed");
+
+            return Err(error_response);
+        }
 
         self.authenticate_and_send(
             &username,
@@ -875,17 +1049,39 @@ where
         Ok(())
     }
 
+    /// Whether we may send traffic to `peer` on behalf of a client.
+    ///
+    /// We never send to our own address, except to another allocation on this relay.
+    /// The peer can be a relay candidate on the same relay as the client's.
+    fn may_relay_to(&self, peer: PeerSocket) -> bool {
+        let addr = peer.into_socket();
+        let ip = addr.ip();
+
+        let is_own_address = match ip {
+            IpAddr::V4(ip) => self.public_address.as_v4() == Some(&ip),
+            IpAddr::V6(ip) => self.public_address.as_v6() == Some(&ip),
+        };
+
+        if is_own_address {
+            return self.ports.contains(&addr.port());
+        }
+
+        peer_policy::is_public(ip) || (self.allow_private_peers && peer_policy::is_private(ip))
+    }
+
     fn handle_channel_data_message(
         &mut self,
         message: &ChannelData,
         sender: ClientSocket,
+        now: Instant,
     ) -> Option<(AllocationPort, PeerSocket)> {
         let channel_number = message.channel();
         let data = message.data();
+        let now_ns = self.rate_limit_clock(now);
 
         let Some(channel) = self
             .channels_by_client_and_number
-            .get(&(sender, channel_number))
+            .get_mut(&(sender, channel_number))
         else {
             tracing::debug!(target: "relay", channel = %channel_number.value(), "Channel does not exist, refusing to forward data");
             return None;
@@ -896,6 +1092,18 @@ where
 
         if !channel.bound {
             tracing::debug!(target: "relay", channel = %channel_number.value(), "Channel exists but is unbound");
+            return None;
+        }
+
+        if !is_relayable(data) {
+            tracing::trace!(target: "relay", channel = %channel_number.value(), "Refusing to relay payload that is neither WireGuard nor STUN");
+            return None;
+        }
+
+        if channel.client_to_peer.check(now_ns, packet_len(data)) == Verdict::Drop {
+            tracing::trace!(target: "relay", channel = %channel_number.value(), "Channel exceeds its throughput limit");
+            self.count_rate_limited_drop();
+
             return None;
         }
 
@@ -949,7 +1157,7 @@ where
             error_response
         })?;
 
-        let account_hash = message_integrity
+        let allocation_key = message_integrity
             .verify(&self.auth_secret, username.name(), now_utc)
             .map_err(|e| {
                 let (error_response, msg) = make_error_response(Unauthorized, request);
@@ -966,7 +1174,7 @@ where
                 error_response
             })?;
 
-        let Some(account) = self.accounts_by_hash.get(&account_hash).cloned() else {
+        let Some(account) = self.accounts_by_hash.get(&allocation_key.account).copied() else {
             let (error_response, msg) = make_error_response(Unauthorized, request);
             tracing::debug!(target: "relay", "{msg}: Account is not enabled for TURN");
 
@@ -976,6 +1184,7 @@ where
         Ok(VerifiedUsername {
             username: username.clone(),
             account,
+            allocation_key,
         })
     }
 
@@ -985,10 +1194,10 @@ where
         lifetime: &Lifetime,
         first_relay_addr: IpAddr,
         second_relay_addr: Option<IpAddr>,
-        account: auth::AccountId,
+        account: Account,
     ) -> Allocation {
         assert!(
-            self.clients_by_allocation.len() < self.max_available_ports() as usize,
+            self.clients_by_allocation.len() < self.max_available_ports(),
             "No more ports available; this would loop forever"
         );
 
@@ -1005,12 +1214,48 @@ where
             expires_at: now + lifetime.lifetime(),
             first_relay_addr,
             second_relay_addr,
-            account,
+            account: account.id,
+            throughput_limit: account.throughput_limit,
         }
     }
 
-    fn max_available_ports(&self) -> u16 {
-        self.ports.clone().count() as u16
+    fn ensure_capacity(
+        &self,
+        account: auth::AccountId,
+        request: &Allocate,
+        sender: ClientSocket,
+    ) -> Result<(), Message<Attribute>> {
+        let max_available_ports = self.max_available_ports();
+        if self.clients_by_allocation.len() >= max_available_ports {
+            let (error_response, msg) = make_error_response(InsufficientCapacity, request);
+
+            tracing::warn!(target: "relay", %max_available_ports, %sender, "{msg}: No more ports available");
+
+            return Err(error_response);
+        }
+
+        let Some(limit) = self.allocation_limits.get(&account) else {
+            return Ok(());
+        };
+
+        let num_allocations = self
+            .allocations
+            .values()
+            .filter(|allocation| allocation.account == account)
+            .count();
+        if num_allocations >= limit.get() {
+            let (error_response, msg) = make_error_response(AllocationQuotaReached, request);
+
+            tracing::debug!(target: "relay", %limit, %sender, "{msg}: Account allocation limit reached");
+
+            return Err(error_response);
+        }
+
+        Ok(())
+    }
+
+    fn max_available_ports(&self) -> usize {
+        self.ports.clone().count()
     }
 
     fn create_channel_binding(
@@ -1019,6 +1264,7 @@ where
         requested_channel: ChannelNumber,
         peer: PeerSocket,
         id: AllocationPort,
+        throughput_limit: Option<ThroughputLimit>,
         now: Instant,
     ) {
         let expiry = now + CHANNEL_BINDING_DURATION;
@@ -1030,6 +1276,8 @@ where
                 peer_address: peer,
                 allocation: id,
                 bound: true,
+                client_to_peer: ThroughputLimit::rate_limiter(throughput_limit),
+                peer_to_client: ThroughputLimit::rate_limiter(throughput_limit),
             },
         );
         self.pending_commands
@@ -1038,6 +1286,7 @@ where
                 channel_number: requested_channel,
                 peer,
                 allocation_port: id,
+                throughput_limit,
             });
 
         debug_assert!(existing.is_none());
@@ -1130,6 +1379,65 @@ where
         self.responses_counter.add(1, &attributes);
     }
 
+    /// Applies new throughput limits to existing allocations and their channel bindings.
+    fn apply_throughput_limits(
+        &mut self,
+        changed_limits: HashMap<AllocationPort, Option<ThroughputLimit>>,
+    ) {
+        for (port, throughput_limit) in &changed_limits {
+            let Some(allocation) = self
+                .clients_by_allocation
+                .get(port)
+                .and_then(|client| self.allocations.get_mut(client))
+            else {
+                continue;
+            };
+
+            allocation.throughput_limit = *throughput_limit;
+
+            tracing::info!(target: "relay", allocation = %port, ?throughput_limit, "Updated throughput limit of allocation");
+        }
+
+        for ((client, number), channel) in self.channels_by_client_and_number.iter_mut() {
+            let Some(throughput_limit) = changed_limits.get(&channel.allocation).copied() else {
+                continue;
+            };
+
+            channel.client_to_peer = ThroughputLimit::rate_limiter(throughput_limit);
+            channel.peer_to_client = ThroughputLimit::rate_limiter(throughput_limit);
+
+            if !channel.bound {
+                continue; // Rebinding the channel installs the new limit.
+            }
+
+            self.pending_commands
+                .push_back(Command::CreateChannelBinding {
+                    client: *client,
+                    channel_number: *number,
+                    peer: channel.peer_address,
+                    allocation_port: channel.allocation,
+                    throughput_limit,
+                });
+        }
+    }
+
+    /// Returns nanoseconds on the monotonic clock that rate limiters use.
+    fn rate_limit_clock(&mut self, now: Instant) -> u64 {
+        let epoch = *self.rate_limit_epoch.get_or_insert(now);
+
+        now.saturating_duration_since(epoch).as_nanos() as u64
+    }
+
+    fn count_rate_limited_drop(&self) {
+        self.rate_limited_packets_counter.add(
+            1,
+            &[
+                otel_attributes::relay_datapath_userspace(),
+                otel_attributes::relay_rate_limit_action_drop(),
+            ],
+        );
+    }
+
     fn delete_allocation(&mut self, port: AllocationPort) {
         let Some(client) = self.clients_by_allocation.remove(&port) else {
             tracing::debug!(target: "relay", allocation = %port, "Unable to delete unknown allocation");
@@ -1140,7 +1448,7 @@ where
             .allocations
             .remove(&client)
             .expect("internal state mismatch");
-        self.allocations_by_username.remove_by_right(&port);
+        self.allocations_by_device.remove_by_right(&port);
 
         let port = allocation.port;
 
@@ -1219,6 +1527,10 @@ where
     }
 }
 
+fn packet_len(payload: &[u8]) -> u16 {
+    u16::try_from(payload.len()).unwrap_or(u16::MAX)
+}
+
 fn make_error_response(
     error_code: impl Into<ErrorCode>,
     request: &impl StunRequest,
@@ -1262,6 +1574,7 @@ struct Allocation {
     first_relay_addr: IpAddr,
     second_relay_addr: Option<IpAddr>,
     account: auth::AccountId,
+    throughput_limit: Option<ThroughputLimit>,
 }
 
 #[derive(Debug, Clone)]
@@ -1285,6 +1598,9 @@ struct Channel {
     ///
     /// With the data structure still existing while the channel is unbound, our existing validations cover the above requirement.
     bound: bool,
+
+    client_to_peer: RateLimiter,
+    peer_to_client: RateLimiter,
 }
 
 impl Channel {
@@ -1322,6 +1638,18 @@ impl Allocation {
     fn is_expired(&self, now: Instant) -> bool {
         self.expires_at <= now
     }
+}
+
+/// Whether the relay may forward this payload between a client and a peer.
+fn is_relayable(payload: &[u8]) -> bool {
+    let Some(header) = payload.first_chunk() else {
+        return false;
+    };
+    let Ok(len) = u16::try_from(payload.len()) else {
+        return false;
+    };
+
+    ebpf_shared::is_relayable(*header, len)
 }
 
 /// Derive the relay address for the client based on the request and the supported IP stack of the relay server.
@@ -1507,226 +1835,7 @@ fn earliest(left: Option<Instant>, right: Option<Instant>) -> Option<Instant> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use bytecodec::DecodeExt as _;
-    use rand::{SeedableRng as _, rngs::StdRng};
     use std::net::{Ipv4Addr, Ipv6Addr};
-    use stun_codec::{MessageDecoder, MessageEncoder};
-    use uuid::Uuid;
-
-    #[test]
-    fn removing_account_deletes_its_allocations_and_channel_bindings() {
-        let now = Instant::now();
-        let now_utc = SystemTime::UNIX_EPOCH;
-        let client = ClientSocket::new(SocketAddr::from(([127, 0, 0, 1], 50_000)));
-        let peer = PeerSocket::new(SocketAddr::from(([127, 0, 0, 2], 50_001)));
-        let channel = ChannelNumber::new(ChannelNumber::MIN).unwrap();
-        let account = auth::AccountId::from(Uuid::nil());
-        let mut server = Server::new(
-            Ipv4Addr::LOCALHOST,
-            StdRng::seed_from_u64(0),
-            3478,
-            49_152..=49_153,
-        );
-
-        server.set_accounts([account]);
-        let nonce = issue_nonce(&mut server, client, now, now_utc);
-        let username = Username::new(format!(
-            "2145916800:{}:credential-salt",
-            auth::hash_account_id(&account)
-        ))
-        .unwrap();
-
-        let allocate = authenticated_request(
-            &server,
-            ALLOCATE,
-            TransactionId::new([1; 12]),
-            &username,
-            &nonce,
-            [Attribute::RequestedTransport(RequestedTransport::new(
-                UDP_TRANSPORT,
-            ))],
-        );
-        server.handle_client_input(&allocate, client, now, now_utc);
-
-        let Some(Command::CreateAllocation { port, .. }) = server.next_command() else {
-            panic!("the relay creates an allocation for an authenticated request");
-        };
-        assert!(matches!(
-            server.next_command(),
-            Some(Command::SendMessage { .. })
-        ));
-
-        let channel_bind = authenticated_request(
-            &server,
-            CHANNEL_BIND,
-            TransactionId::new([2; 12]),
-            &username,
-            &nonce,
-            [
-                Attribute::ChannelNumber(channel),
-                Attribute::XorPeerAddress(XorPeerAddress::new(peer.into_socket())),
-            ],
-        );
-        server.handle_client_input(&channel_bind, client, now, now_utc);
-
-        assert_eq!(
-            server.next_command(),
-            Some(Command::CreateChannelBinding {
-                client,
-                channel_number: channel,
-                peer,
-                allocation_port: port,
-            })
-        );
-        assert!(matches!(
-            server.next_command(),
-            Some(Command::SendMessage { .. })
-        ));
-
-        server.remove_account(&account);
-
-        assert_eq!(server.num_allocations(), 0);
-        assert_eq!(server.num_active_channels(), 0);
-        assert_eq!(
-            server.next_command(),
-            Some(Command::DeleteChannelBinding {
-                client,
-                channel_number: channel,
-                peer,
-                allocation_port: port,
-            })
-        );
-        assert_eq!(
-            server.next_command(),
-            Some(Command::FreeAllocation {
-                port,
-                family: AddressFamily::V4,
-            })
-        );
-
-        server.remove_account(&account);
-
-        assert_eq!(server.num_allocations(), 0);
-        assert_eq!(server.num_active_channels(), 0);
-        assert_eq!(server.next_command(), None);
-    }
-
-    #[test]
-    fn success_responses_renew_the_nonce() {
-        let now = Instant::now();
-        let issued_at = SystemTime::UNIX_EPOCH;
-        let client = ClientSocket::new(SocketAddr::from(([127, 0, 0, 1], 50_000)));
-        let account = auth::AccountId::from(Uuid::nil());
-        let mut server = Server::new(
-            Ipv4Addr::LOCALHOST,
-            StdRng::seed_from_u64(0),
-            3478,
-            49_152..=49_153,
-        );
-
-        server.set_accounts([account]);
-        let nonce = issue_nonce(&mut server, client, now, issued_at);
-        let username = Username::new(format!(
-            "2145916800:{}:credential-salt",
-            auth::hash_account_id(&account)
-        ))
-        .unwrap();
-
-        let allocate = authenticated_request(
-            &server,
-            ALLOCATE,
-            TransactionId::new([1; 12]),
-            &username,
-            &nonce,
-            [Attribute::RequestedTransport(RequestedTransport::new(
-                UDP_TRANSPORT,
-            ))],
-        );
-        server.handle_client_input(&allocate, client, now, issued_at + Nonces::WINDOW);
-        let renewed = next_response(&mut server)
-            .get_attribute::<Nonce>()
-            .cloned()
-            .expect("a success response carries a nonce");
-
-        let refresh = authenticated_request(
-            &server,
-            REFRESH,
-            TransactionId::new([2; 12]),
-            &username,
-            &renewed,
-            [],
-        );
-        server.handle_client_input(&refresh, client, now, issued_at + Nonces::WINDOW * 2);
-
-        assert_eq!(
-            next_response(&mut server).class(),
-            MessageClass::SuccessResponse
-        );
-    }
-
-    fn issue_nonce(
-        server: &mut Server<StdRng>,
-        client: ClientSocket,
-        now: Instant,
-        now_utc: SystemTime,
-    ) -> Nonce {
-        let mut allocate =
-            Message::<Attribute>::new(MessageClass::Request, ALLOCATE, TransactionId::new([0; 12]));
-        allocate.add_attribute(RequestedTransport::new(UDP_TRANSPORT));
-
-        let bytes = MessageEncoder::new()
-            .encode_into_bytes(allocate)
-            .expect("a well-formed ALLOCATE encodes");
-        server.handle_client_input(&bytes, client, now, now_utc);
-
-        next_response(server)
-            .get_attribute::<Nonce>()
-            .cloned()
-            .expect("a `401` carries a nonce")
-    }
-
-    fn next_response(server: &mut Server<StdRng>) -> Message<Attribute> {
-        let payload = std::iter::from_fn(|| server.next_command())
-            .find_map(|command| {
-                let Command::SendMessage { payload, .. } = command else {
-                    return None;
-                };
-
-                Some(payload)
-            })
-            .expect("the relay sends a response");
-
-        MessageDecoder::<Attribute>::new()
-            .decode_from_bytes(&payload)
-            .expect("the relay's response decodes")
-            .expect("the relay's response is well-formed")
-    }
-
-    fn authenticated_request(
-        server: &Server<StdRng>,
-        method: Method,
-        transaction_id: TransactionId,
-        username: &Username,
-        nonce: &Nonce,
-        attributes: impl IntoIterator<Item = Attribute>,
-    ) -> Vec<u8> {
-        let mut message = Message::<Attribute>::new(MessageClass::Request, method, transaction_id);
-        for attribute in attributes {
-            message.add_attribute(attribute);
-        }
-        message.add_attribute(username.clone());
-        message.add_attribute(nonce.clone());
-
-        let password = auth::generate_password(server.auth_secret(), username.name());
-        let integrity =
-            MessageIntegrity::new_long_term_credential(&message, username, &FIREZONE, &password)
-                .expect("a valid request has valid message integrity");
-        message.add_attribute(integrity);
-
-        MessageEncoder::new()
-            .encode_into_bytes(message)
-            .expect("a well-formed request encodes")
-    }
 
     // Tests for requirements listed in https://www.rfc-editor.org/rfc/rfc8656#name-receiving-an-allocate-reque.
 

@@ -47,6 +47,12 @@ defmodule Portal.Devices do
   @spec provision_gateway(Site.t(), String.t() | nil, Authentication.Subject.t()) ::
           {:ok, Device.t(), GatewayToken.t(), binary()} | {:error, term()}
   def provision_gateway(%Site{} = site, name, %Authentication.Subject{} = subject) do
+    with :ok <- Portal.Devices.RegistrationRateLimit.check(subject.account) do
+      do_provision_gateway(site, name, subject)
+    end
+  end
+
+  defp do_provision_gateway(site, name, subject) do
     Database.transact(fn ->
       with {:ok, gateway} <- Database.insert_gateway(site, name, subject),
            {:ok, token} <- Authentication.create_gateway_token(gateway, subject) do

@@ -210,7 +210,7 @@ impl Transition {
     /// TCP retransmits whatever the tunnel loses while it reconnects, so a connection
     /// survives as long as the client reaches its resource through the same Gateway with
     /// the same authorization.
-    pub(crate) fn retains_tcp_flow(&self, flow: &TcpFlow, iceless: bool) -> bool {
+    pub(crate) fn retains_tcp_flow(&self, flow: &TcpFlow, frostlink: bool) -> bool {
         let (client_id, route) = (flow.client_id, flow.route);
 
         match self {
@@ -247,7 +247,7 @@ impl Transition {
             Transition::RoamClient {
                 client_id: roamed, ..
             } => match &flow.dst {
-                Destination::DomainName { .. } => iceless || client_id != *roamed,
+                Destination::DomainName { .. } => frostlink || client_id != *roamed,
                 Destination::IpAddr(_) => true,
             },
             Transition::ReconnectPortal { .. } => true,
@@ -274,9 +274,9 @@ impl Transition {
         }
     }
 
-    // TODO: Remove the `iceless` parameter with classic ICE: every flow then survives roams and relay changes.
+    // TODO: Remove the `frostlink` parameter with classic ICE: every flow then survives roams and relay changes.
     /// Returns whether a flow remains predictable across this transition.
-    pub(crate) fn retains_flow(&self, client_id: ClientId, route: Route, iceless: bool) -> bool {
+    pub(crate) fn retains_flow(&self, client_id: ClientId, route: Route, frostlink: bool) -> bool {
         match self {
             Transition::AddResource(_) => match route {
                 Route::Resource { .. } => false,
@@ -313,8 +313,8 @@ impl Transition {
             Transition::RoamClient {
                 client_id: changed, ..
             } => match route {
-                Route::Resource { .. } => iceless || client_id != *changed,
-                Route::Peer(peer) => iceless || (client_id != *changed && peer != *changed),
+                Route::Resource { .. } => frostlink || client_id != *changed,
+                Route::Peer(peer) => frostlink || (client_id != *changed && peer != *changed),
             },
             Transition::ReconnectPortal { .. } => true,
             Transition::RestartClient {
@@ -324,7 +324,7 @@ impl Transition {
                 Route::Resource { .. } => client_id != *restarted,
                 Route::Peer(peer) => client_id != *restarted && peer != *restarted,
             },
-            Transition::DeployNewRelays(_) => iceless,
+            Transition::DeployNewRelays(_) => frostlink,
             Transition::PartitionRelaysFromPortal => false,
             Transition::Idle { .. } => true,
             Transition::RebootRelaysWhilePartitioned(_) => false,

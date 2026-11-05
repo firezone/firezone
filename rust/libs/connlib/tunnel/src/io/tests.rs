@@ -218,7 +218,8 @@ async fn dns_responses_flow_while_udp_and_tun_are_stalled() {
         Arc::new(socket_factory::tcp),
         Arc::new(socket_factory::udp),
         BTreeSet::new(),
-    );
+    )
+    .unwrap();
 
     stall_udp(&mut io, V4_PEER);
     stall_tun(&mut io);

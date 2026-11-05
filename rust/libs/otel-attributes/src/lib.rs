@@ -98,6 +98,16 @@ pub fn relay_datapath_xdp() -> KeyValue {
     KeyValue::new("relay.datapath", "xdp")
 }
 
+/// `relay.rate_limit.action = mark`: the packet was marked with ECN Congestion Experienced.
+pub fn relay_rate_limit_action_mark() -> KeyValue {
+    KeyValue::new("relay.rate_limit.action", "mark")
+}
+
+/// `relay.rate_limit.action = drop`: the packet was dropped.
+pub fn relay_rate_limit_action_drop() -> KeyValue {
+    KeyValue::new("relay.rate_limit.action", "drop")
+}
+
 /// Incoming OSI network-layer protocol for a raw IP version number.
 pub fn network_type_for_ip_version(version: u8) -> KeyValue {
     match version {

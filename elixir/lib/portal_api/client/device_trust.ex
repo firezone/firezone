@@ -452,8 +452,10 @@ defmodule PortalAPI.Client.DeviceTrust do
   # reliably say who issued it, and a serial means nothing without that.
   defp ensure_not_revoked(%{revoked?: true}, issuer, serial), do: refuse(issuer, serial)
 
-  # Nothing for a responder to add where the issuer publishes a list: absence
-  # from that list already means not revoked.
+  # Nothing for a responder to add where the issuer publishes a list we hold a
+  # current copy of: absence from that list already means not revoked. A list
+  # that is disabled, never fetched, or expired says nothing, so the responder
+  # is asked instead.
   defp ensure_not_revoked(%{crl_published?: true}, _issuer, _serial), do: :ok
 
   # Only consulted where the CA publishes no list, since a list covers every
@@ -1004,8 +1006,8 @@ defmodule PortalAPI.Client.DeviceTrust do
     }
 
     # Everything the connect needs to decide about this certificate, in one
-    # round trip: whether a list revoked it, whether its issuer publishes a
-    # list we can actually fetch, what its responder last said, and which
+    # round trip: whether a list revoked it, whether every list its issuer
+    # publishes is enabled and current, what its responder last said, and which
     # device row it belongs to. Read apart they also raced each other, so an
     # endpoint appearing between the coverage check and the responder read
     # could make the connect ignore an answer it had just decided to trust.
@@ -1015,6 +1017,7 @@ defmodule PortalAPI.Client.DeviceTrust do
     # is unknown to every one of these tables.
     def attestation_state(issuer, serial, mdm_device_id, subject) do
       actor_id = subject.actor.id
+      now = DateTime.utc_now() |> DateTime.truncate(:second)
 
       from(a in Portal.Account,
         left_join: r in Portal.CrlRevocation,
@@ -1049,9 +1052,25 @@ defmodule PortalAPI.Client.DeviceTrust do
                   WHERE u LIKE 'http://%' OR u LIKE 'https://%'
                 )
               )
+              AND NOT EXISTS (
+                SELECT 1 FROM revocation_endpoints e
+                WHERE e.account_id = ? AND e.issuer = ?
+                AND EXISTS (
+                  SELECT 1 FROM unnest(e.crl_urls) AS u
+                  WHERE u LIKE 'http://%' OR u LIKE 'https://%'
+                )
+                AND (
+                  e.is_disabled
+                  OR e.crl_next_update IS NULL
+                  OR e.crl_next_update <= ?
+                )
+              )
               """,
               a.id,
-              ^issuer
+              ^issuer,
+              a.id,
+              ^issuer,
+              type(^now, :utc_datetime)
             ),
           known_points:
             fragment(

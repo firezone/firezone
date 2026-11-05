@@ -7,6 +7,7 @@ services:
       FIREZONE_API_URL: ws://portal:8081
       OTLP_GRPC_ENDPOINT: otel:4317
       EBPF_OFFLOADING: eth0
+      ALLOW_PRIVATE_PEERS: "true"
     privileged: true
     init: true
     build:

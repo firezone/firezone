@@ -130,4 +130,12 @@ defmodule PortalWeb.SignInControllerTest do
       assert query["nonce"] == "retry-nonce"
     end
   end
+
+  describe "unknown account" do
+    test "returns 404 for every client page", %{conn: conn} do
+      for page <- ~w(client_redirect client_auth_error client_account_disabled) do
+        assert conn |> get("/does-not-exist/sign_in/#{page}") |> response(404)
+      end
+    end
+  end
 end

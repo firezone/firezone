@@ -190,7 +190,7 @@ pub(super) fn arb_stub_portal(g: &mut Generator, domain_tree: &[DomainName]) -> 
         upstream_doh,
     )
     // TODO: Remove with classic ICE.
-    .with_iceless(g.bool())
+    .with_frostlink(g.bool())
 }
 
 fn arb_cidr_resource(g: &mut Generator, site: &Site) -> CidrResource {

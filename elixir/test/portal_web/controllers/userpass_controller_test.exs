@@ -527,4 +527,52 @@ defmodule PortalWeb.UserpassControllerTest do
       assert flash(conn, :error) == "This authentication method is not available for your sign-in context."
     end
   end
+
+  describe "malformed input" do
+    test "rejects a non-string password before checking it", %{
+      conn: conn,
+      account: account,
+      provider: provider,
+      password_hash: password_hash
+    } do
+      actor =
+        actor_fixture(type: :account_admin_user, account: account, password_hash: password_hash)
+
+      conn =
+        post(conn, ~p"/#{account.id}/sign_in/userpass/#{provider.id}", %{
+          "userpass" => %{"idp_id" => actor.email, "secret" => %{"x" => "1"}}
+        })
+
+      assert redirected_to(conn) =~ account.id
+    end
+
+    test "rejects a userpass parameter that is not a map", %{
+      conn: conn,
+      account: account,
+      provider: provider
+    } do
+      conn = post(conn, ~p"/#{account.id}/sign_in/userpass/#{provider.id}", %{"userpass" => "abc"})
+
+      assert redirected_to(conn) =~ account.id
+    end
+
+    test "does not log the password of a malformed request", %{
+      conn: conn,
+      account: account,
+      provider: provider
+    } do
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          conn =
+            post(conn, ~p"/#{account.id}/sign_in/userpass/#{provider.id}", %{
+              "userpass" => %{"idp_id" => ["a@example.com"], "secret" => @password}
+            })
+
+          assert redirected_to(conn) =~ account.id
+        end)
+
+      assert log =~ "Invalid request parameters"
+      refute log =~ @password
+    end
+  end
 end

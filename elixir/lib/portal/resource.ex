@@ -238,9 +238,9 @@ defmodule Portal.Resource do
     changeset
     |> validate_format(
       :address,
-      ~r/^(?:[a-zA-Z0-9\p{L}*?](?:[a-zA-Z0-9\p{L}\-*?]*[a-zA-Z0-9\p{L}*?])?)(?:\.(?:[a-zA-Z0-9\p{L}*?](?:[a-zA-Z0-9\p{L}\-*?]*[a-zA-Z0-9\p{L}*?])?))*$/u,
+      ~r/^(?:[a-zA-Z0-9\p{L}_*?](?:[a-zA-Z0-9\p{L}_\-*?]*[a-zA-Z0-9\p{L}_*?])?)(?:\.(?:[a-zA-Z0-9\p{L}_*?](?:[a-zA-Z0-9\p{L}_\-*?]*[a-zA-Z0-9\p{L}_*?])?))*$/u,
       message:
-        "must be a valid hostname (letters, digits, hyphens, dots; wildcards *, ?, ** allowed)"
+        "must be a valid hostname (letters, digits, hyphens, underscores, dots; wildcards *, ?, ** allowed)"
     )
   end
 
