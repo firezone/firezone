@@ -282,17 +282,7 @@ impl PendingDecapsulate {
             )
         });
 
-        #[cfg(any(target_os = "linux", target_os = "android"))]
-        let parse = |buf, len| {
-            let mut packet = IpPacket::new(buf, len)?;
-            packet.strip_ipv4_options();
-
-            Ok(packet)
-        };
-        #[cfg(not(any(target_os = "linux", target_os = "android")))]
-        let parse = IpPacket::new;
-
-        let mut data = self.pending.decrypt(messages).map(parse);
+        let mut data = self.pending.decrypt(messages).map(IpPacket::new);
         let probes = data.extract_map(|packet| packet.as_ref().ok().and_then(Probe::try_parse));
 
         DecryptedBatch {
