@@ -145,8 +145,7 @@ impl UdpGsoTrain {
         DatagramOut {
             src: self.src,
             dst: self.dst,
-            // Skipped packets may leave only the shorter last segment.
-            segment_size: self.segment_size.min(packet.len()),
+            segment_size: self.segment_size,
             packet,
             ecn: self.ecn,
         }
