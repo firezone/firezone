@@ -196,20 +196,20 @@ impl DnsResourceNat {
 
     /// Handles an outgoing packet for a DNS resource.
     ///
-    /// Continues if the packet should be sent now. If the DNS resource NAT is still being created, a
-    /// copy of the packet gets buffered instead.
+    /// Continues with the packet if it should be sent now. If the DNS resource NAT is still being
+    /// created, the packet gets buffered instead.
     pub fn handle_outgoing(
         &mut self,
         gid: GatewayId,
         domain: &DnsResourceDomain,
         rid: ResourceId,
-        packet: &IpPacket,
+        packet: IpPacket,
         now: Instant,
-    ) -> ControlFlow<()> {
+    ) -> ControlFlow<(), IpPacket> {
         let Some((_, state, assigned_ips)) = self.inner.get_mut(&(gid, domain.id(), rid)) else {
             tracing::debug!(%gid, %domain, %rid, "No DNS resource NAT entry");
 
-            return ControlFlow::Continue(()); // Pass-through packet.
+            return ControlFlow::Continue(packet); // Pass-through packet.
         };
 
         match state {
@@ -218,7 +218,7 @@ impl DnsResourceNat {
                 buffered_packets,
                 sent_at,
             } => {
-                buffered_packets.push(packet.clone());
+                buffered_packets.push(packet);
 
                 if should_send_assigned_ips_packet(now, *sent_at) {
                     *sent_at = now;
@@ -247,7 +247,7 @@ impl DnsResourceNat {
                     ));
                 }
 
-                ControlFlow::Continue(())
+                ControlFlow::Continue(packet)
             }
             State::Evicted => {
                 tracing::debug!(%gid, %domain, %rid, "Setting up evicted DNS resource NAT again");
@@ -256,7 +256,7 @@ impl DnsResourceNat {
                     5, // 2^5 = 32
                     "dns-resource-nat-evicted",
                 );
-                buffered_packets.push(packet.clone());
+                buffered_packets.push(packet);
 
                 *state = State::Pending {
                     sent_at: now,
@@ -275,7 +275,7 @@ impl DnsResourceNat {
             State::Recreating { .. } | State::Confirmed | State::Failed => {
                 // Some of these might be black-holed on the Gateway (i.e. in `Failed`).
                 // But there isn't much we can do ...
-                ControlFlow::Continue(())
+                ControlFlow::Continue(packet)
             }
         }
     }
@@ -487,7 +487,7 @@ mod tests {
                 .unwrap();
 
         let control_flow =
-            dns_resource_nat.handle_outgoing(GID, &example_com(), RID, &packet, Instant::now());
+            dns_resource_nat.handle_outgoing(GID, &example_com(), RID, packet, Instant::now());
 
         assert!(control_flow.is_break());
     }
@@ -511,8 +511,13 @@ mod tests {
             ip_packet::make::udp_packet(Ipv4Addr::LOCALHOST, Ipv4Addr::LOCALHOST, 0, 0, &[])
                 .unwrap();
 
-        let control_flow =
-            dns_resource_nat.handle_outgoing(GID, &example_com(), RID, &packet, Instant::now());
+        let control_flow = dns_resource_nat.handle_outgoing(
+            GID,
+            &example_com(),
+            RID,
+            packet.clone(),
+            Instant::now(),
+        );
 
         assert!(control_flow.is_break());
 
@@ -570,7 +575,7 @@ mod tests {
                 .unwrap();
 
         let control_flow =
-            dns_resource_nat.handle_outgoing(GID, &example_com(), RID, &app_packet, Instant::now());
+            dns_resource_nat.handle_outgoing(GID, &example_com(), RID, app_packet, Instant::now());
 
         assert!(control_flow.is_continue());
         assert!(dns_resource_nat.poll_packet().is_some());
@@ -686,7 +691,7 @@ mod tests {
                 .unwrap();
 
         let control_flow =
-            dns_resource_nat.handle_outgoing(GID, &example_com(), RID, &app_packet, now);
+            dns_resource_nat.handle_outgoing(GID, &example_com(), RID, app_packet, now);
 
         assert!(control_flow.is_break());
         assert!(dns_resource_nat.poll_packet().is_some());
@@ -751,8 +756,13 @@ mod tests {
         assert!(dns_resource_nat.poll_packet().is_some());
 
         let packet2 = app_packet(2);
-        let control_flow =
-            dns_resource_nat.handle_outgoing(GID, &example_com(), RID, &packet2, Instant::now());
+        let control_flow = dns_resource_nat.handle_outgoing(
+            GID,
+            &example_com(),
+            RID,
+            packet2.clone(),
+            Instant::now(),
+        );
         assert!(control_flow.is_break());
 
         let buffered_packets = dns_resource_nat
@@ -784,7 +794,7 @@ mod tests {
             GID,
             &example_com(),
             RID,
-            &app_packet(1),
+            app_packet(1),
             Instant::now(),
         );
         assert!(control_flow.is_break());
@@ -804,8 +814,13 @@ mod tests {
             )
             .unwrap();
         let packet = app_packet(1);
-        let control_flow =
-            dns_resource_nat.handle_outgoing(GID, &example_com(), RID, &packet, Instant::now());
+        let control_flow = dns_resource_nat.handle_outgoing(
+            GID,
+            &example_com(),
+            RID,
+            packet.clone(),
+            Instant::now(),
+        );
         assert!(control_flow.is_break());
 
         dns_resource_nat.on_domain_status(GID, example_com(), domain_status(NatStatus::Evicted));

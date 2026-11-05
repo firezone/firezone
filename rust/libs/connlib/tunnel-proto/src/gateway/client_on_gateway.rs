@@ -68,7 +68,6 @@ pub struct ClientOnGateway {
 
 /// How [`ClientOnGateway::translate_inbound`] rewrote a packet.
 #[derive(Debug, Clone, Copy)]
-#[expect(dead_code, reason = "Nothing reads the translated source yet")]
 pub enum InboundRewrite {
     None,
     /// The source was translated from the resource's IP to the client's proxy IP.

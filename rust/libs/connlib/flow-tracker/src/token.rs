@@ -27,10 +27,6 @@ impl IngestToken {
     pub fn claims(&self) -> &IngestTokenClaims {
         &self.0.claims
     }
-
-    pub(crate) fn ptr_eq(&self, other: &Self) -> bool {
-        Arc::ptr_eq(&self.0, &other.0)
-    }
 }
 
 impl<'de> Deserialize<'de> for IngestToken {

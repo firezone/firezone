@@ -2,7 +2,6 @@
 //! `Agent::Frostlink`. Mode-irrelevant operations are no-ops on
 //! the wrong variant.
 
-use std::ops::ControlFlow;
 use std::time::Instant;
 
 use is::stun::StunPacket;
@@ -185,15 +184,22 @@ impl Agent {
         }
     }
 
-    pub(crate) fn handle_inbound_tun(
+    pub(crate) fn handle_inbound_data(&mut self, now: Instant) {
+        match self {
+            Self::Ice(_) => {}
+            Self::Frostlink(agent) => agent.handle_inbound_data(now),
+        }
+    }
+
+    pub(crate) fn handle_probe(
         &mut self,
-        packet: ip_packet::IpPacket,
+        probe: frostlink::Probe,
         path: (std::net::SocketAddr, std::net::SocketAddr),
         now: Instant,
-    ) -> ControlFlow<(), ip_packet::IpPacket> {
+    ) {
         match self {
-            Self::Ice(_) => ControlFlow::Continue(packet),
-            Self::Frostlink(agent) => agent.handle_inbound_tun(packet, path, now),
+            Self::Ice(_) => {}
+            Self::Frostlink(agent) => agent.handle_probe(probe, path, now),
         }
     }
 

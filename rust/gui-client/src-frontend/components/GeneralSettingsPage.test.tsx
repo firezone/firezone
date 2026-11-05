@@ -44,6 +44,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   root.unmount();
   container.remove();
 });
@@ -107,6 +108,44 @@ test("leaving a valid URL saves it", async () => {
   );
 });
 
+test("leaving a changed account slug shows that it was saved for two seconds", async () => {
+  vi.useFakeTimers();
+  const saveSettings = await render(usSettings);
+
+  await userEvent.fill(page.getByLabelText("Account slug"), "example");
+  await userEvent.click(page.getByLabelText("Control plane"));
+  expect(saveSettings).toHaveBeenCalledWith({ account_slug: "example" });
+
+  root.render(
+    <GeneralSettingsPage
+      settings={{ ...usSettings, account_slug: "example" }}
+      saveSettings={saveSettings}
+      resetSettings={vi.fn()}
+    />
+  );
+  await expect
+    .element(page.getByText("Saved", { exact: true }))
+    .toBeInTheDocument();
+
+  // Polling advances fake timers too, so a short timeout keeps it from passing late.
+  vi.advanceTimersByTime(2000);
+  await expect
+    .element(page.getByText("Saved", { exact: true }), { timeout: 100 })
+    .not.toBeInTheDocument();
+});
+
+test("leaving an unchanged account slug shows nothing as saved", async () => {
+  const saveSettings = await render({ ...usSettings, account_slug: "example" });
+
+  await userEvent.fill(page.getByLabelText("Account slug"), "example");
+  await userEvent.click(page.getByLabelText("Control plane"));
+
+  expect(saveSettings).not.toHaveBeenCalled();
+  await expect
+    .element(page.getByText("Saved", { exact: true }))
+    .not.toBeInTheDocument();
+});
+
 test("successive edits submit only the changed settings", async () => {
   const saveSettings = await render(customSettings);
 
@@ -168,6 +207,9 @@ test.each(["not a url", "ftp://x", "wss://api.firezone.example.com/"])(
       .element(page.getByLabelText("Auth URL"))
       .toHaveAttribute("aria-invalid", "true");
     await expect.element(page.getByLabelText("Auth URL")).toHaveValue(url);
+    await expect
+      .element(page.getByText("Saved", { exact: true }))
+      .not.toBeInTheDocument();
     expect(saveSettings).not.toHaveBeenCalled();
   }
 );

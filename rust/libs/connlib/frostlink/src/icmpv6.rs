@@ -14,15 +14,17 @@ pub(crate) enum Echo {
     Reply,
 }
 
+/// A path probe: an ICMPv6 echo request or reply between the magic probe addresses.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct Probe {
-    pub kind: Echo,
-    pub id: u16,
-    pub seq: u16,
+pub struct Probe {
+    pub(crate) kind: Echo,
+    pub(crate) id: u16,
+    pub(crate) seq: u16,
 }
 
 impl Probe {
-    pub(crate) fn try_parse(packet: &IpPacket) -> Option<Self> {
+    /// Parses `packet` as a probe, if it is one.
+    pub fn try_parse(packet: &IpPacket) -> Option<Self> {
         if packet.source() != IpAddr::V6(PROBE_SRC) || packet.destination() != IpAddr::V6(PROBE_DST)
         {
             return None;

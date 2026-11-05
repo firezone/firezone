@@ -183,12 +183,12 @@ where
 
             let encrypted = connection
                 .encapsulate(cid, socket, &goodbye.packet, now, allocations)
-                .and_then(|encapsulation| {
-                    let Some(encapsulation) = encapsulation else {
+                .and_then(|batch| {
+                    let Some(batch) = batch else {
                         return Ok(None);
                     };
 
-                    let transmit = encapsulation.encrypt(&goodbye.packet)?;
+                    let transmit = batch.encrypt_single(&goodbye.packet)?;
 
                     Ok(Some(transmit))
                 });
