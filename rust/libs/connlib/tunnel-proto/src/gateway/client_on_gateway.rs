@@ -245,10 +245,16 @@ impl ClientOnGateway {
 
     /// The domains we translate, with when we last set up their NAT.
     fn dns_domains(&self) -> HashMap<&DomainName, Instant, FastRandomState> {
-        self.permanent_translations
-            .values()
-            .map(|state| (&state.domain, state.set_up_at))
-            .collect()
+        let mut domains = HashMap::<_, Instant, FastRandomState>::default();
+
+        for state in self.permanent_translations.values() {
+            domains
+                .entry(&state.domain)
+                .and_modify(|set_up_at| *set_up_at = (*set_up_at).max(state.set_up_at))
+                .or_insert(state.set_up_at);
+        }
+
+        domains
     }
 
     /// Removes the matching translations and their routes and returns their resources.
