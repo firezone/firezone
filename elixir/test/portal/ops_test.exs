@@ -345,6 +345,14 @@ defmodule Portal.OpsTest do
       assert fetch_account!(account.id).metrics_export == :off
     end
 
+    test "sets the export interval, 60s by default" do
+      account = account_fixture()
+      assert fetch_account!(account.id).metrics_export_interval_secs == 60
+
+      assert :ok = set_metrics_export_interval(account.id, 15)
+      assert fetch_account!(account.id).metrics_export_interval_secs == 15
+    end
+
     test "rejects an empty list" do
       account = account_fixture()
 

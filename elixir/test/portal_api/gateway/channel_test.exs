@@ -422,7 +422,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       token: token
     } do
       socket = join_channel(gateway, site, token)
-      assert_push "init", %{metrics: nil}
+      assert_push "init", %{metrics: %{token: nil, export_interval_secs: 60}}
 
       send(socket.channel_pid, :refresh_metrics_token)
       send(socket.channel_pid, :metrics_token_key_rotated)
@@ -444,11 +444,11 @@ defmodule PortalAPI.Gateway.ChannelTest do
       assert account_id == account.id
 
       send(socket.channel_pid, :refresh_metrics_token)
-      assert_push "metrics_config", %{metrics: %{token: metrics_token}}
+      assert_push "metrics_config", %{token: metrics_token}
       assert {:ok, _claims} = Portal.MetricsToken.verify(metrics_token)
 
       send(socket.channel_pid, :metrics_token_key_rotated)
-      assert_push "metrics_config", %{metrics: %{token: metrics_token}}
+      assert_push "metrics_config", %{token: metrics_token}
       assert {:ok, _claims} = Portal.MetricsToken.verify(metrics_token)
     end
 
@@ -469,7 +469,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
         struct: some
       })
 
-      assert_push "metrics_config", %{metrics: %{token: metrics_token}}
+      assert_push "metrics_config", %{token: metrics_token}
       assert {:ok, %{"metrics" => %{"names" => ["a"]}}} = Portal.MetricsToken.verify(metrics_token)
 
       send(socket.channel_pid, %Changes.Change{
@@ -479,7 +479,16 @@ defmodule PortalAPI.Gateway.ChannelTest do
         struct: account
       })
 
-      assert_push "metrics_config", %{metrics: nil}
+      assert_push "metrics_config", %{token: nil}
+
+      send(socket.channel_pid, %Changes.Change{
+        lsn: System.unique_integer([:positive, :monotonic]),
+        op: :update,
+        old_struct: account,
+        struct: %{account | metrics_export_interval_secs: 10}
+      })
+
+      assert_push "metrics_config", %{token: nil, export_interval_secs: 10}
     end
 
     test "init includes inbound authorizations from the hydrated cache", %{

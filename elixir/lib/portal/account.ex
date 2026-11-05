@@ -29,8 +29,9 @@ defmodule Portal.Account do
 
     embeds_one :metadata, Portal.Account.Metadata, on_replace: :update
 
-    # Set by Firezone staff via `Portal.Ops.set_metrics_export/2`.
+    # Set by Firezone staff via `Portal.Ops`.
     field :metrics_export, Portal.Types.MetricsExport, default: :off, redact: true
+    field :metrics_export_interval_secs, :integer, default: 60, redact: true
 
     # We mention all schemas here to leverage Ecto compile-time reference checks,
     # because later we will have to shard data by account_id.

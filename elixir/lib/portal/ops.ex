@@ -241,7 +241,15 @@ defmodule Portal.Ops do
   """
   def set_metrics_export(account_id, export) do
     {:ok, export} = Portal.Types.MetricsExport.cast(export)
-    {1, _} = Database.set_metrics_export(account_id, export)
+    {1, _} = Database.update_account(account_id, metrics_export: export)
+    :ok
+  end
+
+  @doc """
+  Sets how often the account's Clients and Gateways export metrics.
+  """
+  def set_metrics_export_interval(account_id, secs) when is_integer(secs) and secs > 0 do
+    {1, _} = Database.update_account(account_id, metrics_export_interval_secs: secs)
     :ok
   end
 
@@ -859,10 +867,10 @@ defmodule Portal.Ops do
       key
     end
 
-    def set_metrics_export(account_id, export) do
+    def update_account(account_id, changes) do
       from(a in Account, where: a.id == ^account_id)
       |> Safe.unscoped()
-      |> Safe.update_all(set: [metrics_export: export])
+      |> Safe.update_all(set: changes)
     end
 
     defp maybe_filter_account_ids(query, :all) do

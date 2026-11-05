@@ -866,20 +866,30 @@ defmodule PortalAPI.Gateway.Channel.Shared do
   end
 
   defp push_metrics_config(socket) do
-    if metrics = metrics_config(socket.assigns.account) do
-      push(socket, "metrics_config", %{metrics: metrics})
+    account = socket.assigns.account
+
+    if account.metrics_export != :off do
+      push(socket, "metrics_config", metrics_config(account))
     end
 
     {:noreply, socket}
   end
 
-  defp metrics_config(%Portal.Account{metrics_export: :off}), do: nil
-
+  # A `nil` token means metrics export is off.
   defp metrics_config(account) do
     %{
       api_url: Portal.Config.fetch_env!(:portal, :otlp_metrics_api_url),
-      token: Portal.MetricsToken.mint(account, account.metrics_export)
+      export_interval_secs: account.metrics_export_interval_secs,
+      token:
+        if(account.metrics_export != :off,
+          do: Portal.MetricsToken.mint(account, account.metrics_export)
+        )
     }
+  end
+
+  defp metrics_config_changed?(old_account, account) do
+    old_account.metrics_export != account.metrics_export or
+      old_account.metrics_export_interval_secs != account.metrics_export_interval_secs
   end
 
   defp reinitialize_gateway(socket) do
@@ -914,8 +924,8 @@ defmodule PortalAPI.Gateway.Channel.Shared do
         {:ok, relays} = select_relays(socket)
         init(socket, account, relays)
 
-      old_account.metrics_export != account.metrics_export ->
-        push(socket, "metrics_config", %{metrics: metrics_config(account)})
+      metrics_config_changed?(old_account, account) ->
+        push(socket, "metrics_config", metrics_config(account))
 
       true ->
         :ok

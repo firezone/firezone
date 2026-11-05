@@ -539,7 +539,7 @@ defmodule PortalAPI.Client.ChannelTest do
       subject: subject
     } do
       socket = join_channel(client, subject)
-      assert_push "init", %{metrics: nil}
+      assert_push "init", %{metrics: %{token: nil, export_interval_secs: 60}}
 
       send(socket.channel_pid, :refresh_metrics_token)
       send(socket.channel_pid, :metrics_token_key_rotated)
@@ -560,11 +560,11 @@ defmodule PortalAPI.Client.ChannelTest do
       assert account_id == account.id
 
       send(socket.channel_pid, :refresh_metrics_token)
-      assert_push "metrics_config", %{metrics: %{token: token}}
+      assert_push "metrics_config", %{token: token}
       assert {:ok, _claims} = Portal.MetricsToken.verify(token)
 
       send(socket.channel_pid, :metrics_token_key_rotated)
-      assert_push "metrics_config", %{metrics: %{token: token}}
+      assert_push "metrics_config", %{token: token}
       assert {:ok, _claims} = Portal.MetricsToken.verify(token)
     end
 
@@ -584,7 +584,7 @@ defmodule PortalAPI.Client.ChannelTest do
         struct: some
       })
 
-      assert_push "metrics_config", %{metrics: %{token: token}}
+      assert_push "metrics_config", %{token: token}
       assert {:ok, %{"metrics" => %{"names" => ["a"]}}} = Portal.MetricsToken.verify(token)
 
       send(socket.channel_pid, %Changes.Change{
@@ -594,7 +594,16 @@ defmodule PortalAPI.Client.ChannelTest do
         struct: account
       })
 
-      assert_push "metrics_config", %{metrics: nil}
+      assert_push "metrics_config", %{token: nil}
+
+      send(socket.channel_pid, %Changes.Change{
+        lsn: 102,
+        op: :update,
+        old_struct: account,
+        struct: %{account | metrics_export_interval_secs: 10}
+      })
+
+      assert_push "metrics_config", %{token: nil, export_interval_secs: 10}
     end
 
     test "sends actor name in init message", %{
