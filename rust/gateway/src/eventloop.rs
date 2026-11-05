@@ -395,7 +395,7 @@ impl Eventloop {
                     msg.gateway_ice_credentials,
                     msg.expires_at,
                     msg.resource,
-                    msg.use_iceless,
+                    msg.use_frostlink,
                     now,
                     msg.flow_logs_ingest_token,
                 );

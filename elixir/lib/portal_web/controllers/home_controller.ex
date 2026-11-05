@@ -51,7 +51,8 @@ defmodule PortalWeb.HomeController do
   end
 
   @spec redirect_to_sign_in(Plug.Conn.t(), map()) :: Plug.Conn.t()
-  def redirect_to_sign_in(conn, %{"account_id_or_slug" => account_id_or_slug} = params) do
+  def redirect_to_sign_in(conn, %{"account_id_or_slug" => account_id_or_slug} = params)
+      when is_binary(account_id_or_slug) do
     params = PortalWeb.Authentication.take_sign_in_params(params)
 
     case validate_account_id_or_slug(account_id_or_slug) do

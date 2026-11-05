@@ -260,14 +260,14 @@ defmodule PortalAPI.Gateway.Channel.Shared do
         }
 
         relays = load_balance_relays(location, all_online_relays)
-        socket = cache_relays(socket, relays)
+        socket = cache_relays(socket, relays, disconnected_ids)
 
         push(socket, "relays_presence", %{
           disconnected_ids: disconnected_ids,
           connected:
             Views.Relay.render_many(
               relays,
-              socket.assigns.gateway.public_key,
+              socket.assigns.gateway,
               @relay_credentials_expire_at,
               socket.assigns.gateway.account_id
             )
@@ -729,7 +729,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
       connected:
         Views.Relay.render_many(
           relays,
-          socket.assigns.gateway.public_key,
+          socket.assigns.gateway,
           @relay_credentials_expire_at,
           socket.assigns.gateway.account_id
         )
@@ -800,8 +800,14 @@ defmodule PortalAPI.Gateway.Channel.Shared do
     {:ok, relays}
   end
 
-  defp cache_relays(socket, relays) do
-    cached_relay_ids = MapSet.new(relays, fn relay -> relay.id end)
+  # Every relay we handed out and did not report disconnected: connlib may still
+  # hold an allocation on any of them.
+  defp cache_relays(socket, relays, removed_ids \\ []) do
+    cached_relay_ids =
+      (socket.assigns[:cached_relay_ids] || MapSet.new())
+      |> MapSet.difference(MapSet.new(removed_ids))
+      |> MapSet.union(MapSet.new(relays, fn relay -> relay.id end))
+
     assign(socket, :cached_relay_ids, cached_relay_ids)
   end
 
@@ -825,7 +831,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
       relays:
         Views.Relay.render_many(
           relays,
-          socket.assigns.gateway.public_key,
+          socket.assigns.gateway,
           @relay_credentials_expire_at,
           socket.assigns.gateway.account_id
         ),
@@ -1106,6 +1112,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
 
   defp load_balance_relays({lat, lon}, relays) do
     relays
+    |> Enum.shuffle()
     |> Enum.map(fn relay ->
       case {relay.lat, relay.lon} do
         {nil, _} -> {nil, relay}

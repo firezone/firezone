@@ -89,22 +89,15 @@ defmodule Portal.Okta.Webhooks do
     end
   end
 
-  def handle_events(directory_id, authorization, events) when is_list(events) do
+  @doc """
+  Authenticates a delivery from its Authorization header alone, so the body is
+  neither read nor parsed for a caller that does not hold the secret.
+  """
+  def authenticate(directory_id, authorization) do
     with {:ok, id} <- Ecto.UUID.cast(directory_id || ""),
          %Okta.Directory{} = directory <- Database.get_directory(id),
          true <- authentic?(directory, authorization) do
-      Database.touch_received(directory)
-
-      events
-      |> Enum.flat_map(&parse_event(directory, &1))
-      |> Enum.uniq()
-      |> in_scope(directory)
-      |> Enum.uniq_by(fn {resource, resource_id, _new?} -> {resource, resource_id} end)
-      |> Enum.each(fn {resource, resource_id, _new?} ->
-        {:ok, _job} = Oban.insert(change_job(directory, resource, resource_id))
-      end)
-
-      :ok
+      {:ok, directory}
     else
       false ->
         Logger.warning("Refusing Okta events with a missing or invalid Authorization header",
@@ -114,12 +107,27 @@ defmodule Portal.Okta.Webhooks do
         {:error, :unauthorized}
 
       _ ->
-        Logger.warning("Refusing Okta events for an unknown directory",
+        Logger.info("Refusing Okta events for an unknown directory",
           okta_directory_id: directory_id
         )
 
         {:error, :unauthorized}
     end
+  end
+
+  def handle_events(%Okta.Directory{} = directory, events) when is_list(events) do
+    Database.touch_received(directory)
+
+    events
+    |> Enum.flat_map(&parse_event(directory, &1))
+    |> Enum.uniq()
+    |> in_scope(directory)
+    |> Enum.uniq_by(fn {resource, resource_id, _new?} -> {resource, resource_id} end)
+    |> Enum.each(fn {resource, resource_id, _new?} ->
+      {:ok, _job} = Oban.insert(change_job(directory, resource, resource_id))
+    end)
+
+    :ok
   end
 
   defp authentic?(directory, authorization) when is_binary(authorization) do

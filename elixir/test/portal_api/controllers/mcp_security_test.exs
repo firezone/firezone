@@ -98,6 +98,22 @@ defmodule PortalAPI.MCPSecurityTest do
     refute Repo.get_by(Portal.Actor, account_id: account.id, email: "delegated@example.com")
   end
 
+  test "actors:write cannot change or delete API clients", %{conn: conn, account: account, actor: actor} do
+    conn = authorize_mcp_conn(conn, actor, ["actors:write"])
+    api_client = actor_fixture(account: account, type: :api_client)
+
+    for {tool, args} <- [
+          {"update_actor", %{"id" => api_client.id, "actor" => %{"is_disabled" => true}}},
+          {"delete_actor", %{"id" => api_client.id}}
+        ] do
+      result = call_tool(conn, tool, args)
+      refute match?(%{"result" => %{"isError" => false}}, json_response(result, result.status))
+      assert result.assigns.api_request_log.mcp["rest_status"] == 403
+    end
+
+    refute Repo.get_by!(Portal.Actor, account_id: account.id, id: api_client.id).is_disabled
+  end
+
   test "credential issuance does not log its secret", %{conn: conn, actor: actor, account: account} do
     target = actor_fixture(account: account, type: :service_account)
     args = %{"actor_id" => target.id, "client_token" => %{"expires_at" => DateTime.add(DateTime.utc_now(), 3600) |> DateTime.to_iso8601()}}

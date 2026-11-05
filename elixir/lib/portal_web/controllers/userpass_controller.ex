@@ -17,11 +17,10 @@ defmodule PortalWeb.UserpassController do
         %{
           "account_id_or_slug" => account_id_or_slug,
           "auth_provider_id" => auth_provider_id,
-          "userpass" => userpass
+          "userpass" => %{"idp_id" => email, "secret" => password}
         } = params
-      ) do
-    email = userpass["idp_id"]
-    password = userpass["secret"]
+      )
+      when is_binary(email) and is_binary(password) do
     context_type = context_type(params)
 
     with %Portal.Account{} = account <- PortalWeb.Accounts.get_by_id_or_slug(account_id_or_slug),
@@ -41,7 +40,7 @@ defmodule PortalWeb.UserpassController do
   end
 
   def sign_in(conn, params) do
-    Logger.warning("Invalid request parameters", params: params)
+    Logger.warning("Invalid request parameters", params: Map.drop(params, ["userpass"]))
     handle_error(conn, :invalid_params, params)
   end
 

@@ -227,7 +227,16 @@ config :portal, Portal.Azure.ManagedIdentity,
     retry: :transient
   ]
 
-config :portal, Portal.Azure.MetricsExporter,
+config :portal, Portal.OTLP.MetricsExporter,
+  req_opts: [
+    connect_options: [timeout: 1_000],
+    receive_timeout: 5_000,
+    retry: :transient,
+    max_retries: 2
+  ]
+
+config :portal, Portal.OTLP.TracesExporter,
+  sample_ratio: 0.01,
   req_opts: [
     connect_options: [timeout: 1_000],
     receive_timeout: 5_000,
@@ -377,13 +386,15 @@ config :portal, Portal.Mailer.PostureProviderInterestEmail, recipient: nil
 
 config :portal, Portal.Workers.SignUpFollowUp, from_email: nil, bcc_email: nil
 
-config :portal, Portal.Splunk.APIClient, req_opts: []
+# Log sink deliveries are POSTs (S3: PUTs), which the default `:safe_transient`
+# retry strategy never retries. Redelivery is safe: destinations dedupe on log_id.
+config :portal, Portal.Splunk.APIClient, req_opts: [retry: :transient]
 
-config :portal, Portal.Datadog.APIClient, req_opts: []
+config :portal, Portal.Datadog.APIClient, req_opts: [retry: :transient]
 
-config :portal, Portal.NewRelic.APIClient, req_opts: []
+config :portal, Portal.NewRelic.APIClient, req_opts: [retry: :transient]
 
-config :portal, Portal.Elastic.APIClient, req_opts: []
+config :portal, Portal.Elastic.APIClient, req_opts: [retry: :transient]
 
 config :portal, Portal.Sentinel.APIClient,
   client_id: System.get_env("SENTINEL_SYNC_CLIENT_ID"),
@@ -391,17 +402,17 @@ config :portal, Portal.Sentinel.APIClient,
   token_base_url: "https://login.microsoftonline.com",
   discovery_document_uri:
     "https://login.microsoftonline.com/organizations/v2.0/.well-known/openid-configuration",
-  req_opts: []
+  req_opts: [retry: :transient]
 
 config :portal, Portal.S3.APIClient,
-  req_opts: [],
+  req_opts: [retry: :transient],
   access_key_id: nil,
   secret_access_key: nil,
   session_token: nil,
   aws_account_id: System.get_env("LOG_SINKS_AWS_ACCOUNT_ID", "000000000000")
 
-config :portal, Portal.QRadar.APIClient, req_opts: []
-config :portal, Portal.HTTP.APIClient, req_opts: []
+config :portal, Portal.QRadar.APIClient, req_opts: [retry: :transient]
+config :portal, Portal.HTTP.APIClient, req_opts: [retry: :transient]
 
 config :portal, Portal.Entra.AuthProvider,
   # Should match an external OAuth2 client in Azure
@@ -626,6 +637,10 @@ config :portal, PortalWeb.RateLimit,
   refill_rate: 10,
   capacity: 200
 
+config :portal, PortalWeb.PublicEmailRateLimit,
+  per_ip_per_hour: 10,
+  global_per_hour: 500
+
 ###############################
 ##### Third-party configs #####
 ###############################
@@ -639,9 +654,7 @@ config :mime, :types, %{
   "application/x-x509-ca-cert" => ["crt", "cer", "der"]
 }
 
-config :opentelemetry,
-  span_processor: :batch,
-  traces_exporter: :none
+config :opentelemetry, processors: []
 
 config :logger,
   level: System.get_env("LOG_LEVEL", "info") |> parse_log_level.()

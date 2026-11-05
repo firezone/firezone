@@ -53,7 +53,7 @@ mod benches {
     // so the Gateway's are counted too.
     #[library_benchmark]
     #[bench::ice(args = (Connectivity::Ice, CLIENTS), setup = seeded_idle)]
-    #[bench::iceless(args = (Connectivity::Iceless, CLIENTS), setup = seeded_idle)]
+    #[bench::frostlink(args = (Connectivity::Frostlink, CLIENTS), setup = seeded_idle)]
     fn idle(mut idle: Idle) -> Idle {
         measure(|| idle.run());
 

@@ -132,7 +132,11 @@ defmodule PortalAPI.GatewayController do
   @spec create(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def create(conn, %{"site_id" => site_id} = params) do
     subject = conn.assigns.subject
-    name = get_in(params, ["gateway", "name"])
+    name =
+      case params do
+        %{"gateway" => %{"name" => name}} -> name
+        _other -> nil
+      end
 
     with {:ok, site} <- Database.fetch_site(site_id, subject),
          {:ok, gateway, _token, encoded_token} <- Database.provision_gateway(site, name, subject) do

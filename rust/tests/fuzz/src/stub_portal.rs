@@ -66,10 +66,10 @@ pub struct StubPortal {
     relay_handouts: BTreeMap<ClientOrGatewayId, Vec<Instant>>,
 
     // TODO: Remove with classic ICE.
-    /// Whether the portal hands out ICE-less flows. Sampled once per test case
+    /// Whether the portal hands out Frostlink flows. Sampled once per test case
     /// and applied to every connection, modelling a portal-wide rollout toggle
     /// rather than a per-peer capability.
-    iceless: bool,
+    frostlink: bool,
 }
 
 /// Which clients a device pool admits.
@@ -202,7 +202,7 @@ impl StubPortal {
             search_domain,
             upstream_do53,
             upstream_doh,
-            iceless: false,
+            frostlink: false,
         }
     }
 
@@ -261,7 +261,7 @@ impl StubPortal {
             Transition::SendDnsResourcePtrQuery { .. } => {}
             Transition::UpdateSystemDnsServers { .. } => {}
             Transition::RoamClient { client_id, .. } => {
-                if !self.iceless {
+                if !self.frostlink {
                     self.forget_gateway_authorizations(*client_id);
                 }
             }
@@ -338,16 +338,16 @@ impl StubPortal {
     }
 
     // TODO: Remove with classic ICE.
-    /// Toggles whether the portal hands out ICE-less flows.
-    pub(crate) fn with_iceless(mut self, iceless: bool) -> Self {
-        self.iceless = iceless;
+    /// Toggles whether the portal hands out Frostlink flows.
+    pub(crate) fn with_frostlink(mut self, frostlink: bool) -> Self {
+        self.frostlink = frostlink;
         self
     }
 
     // TODO: Remove with classic ICE.
-    /// Whether the portal hands out ICE-less flows for every connection.
-    pub(crate) fn iceless(&self) -> bool {
-        self.iceless
+    /// Whether the portal hands out Frostlink flows for every connection.
+    pub(crate) fn frostlink(&self) -> bool {
+        self.frostlink
     }
 
     /// All device labels the portal knows about, in client order.

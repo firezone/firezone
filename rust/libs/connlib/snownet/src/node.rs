@@ -53,10 +53,10 @@ const DISCONNECT_TIMEOUT: Duration = Duration::from_secs(2);
 /// For how long we will at most try to re-key a WireGuard tunnel.
 const WG_REKEY_ATTEMPT_TIME: Duration = Duration::from_secs(20);
 
-/// For how long an ICE-less connection tries to re-key: WireGuard's default.
-const ICELESS_REKEY_ATTEMPT_TIME: Duration = Duration::from_secs(90);
+/// For how long a Frostlink connection tries to re-key: WireGuard's default.
+const FROSTLINK_REKEY_ATTEMPT_TIME: Duration = Duration::from_secs(90);
 
-/// For how long an ICE-less connection tries to re-key once its remote may have restarted.
+/// For how long a Frostlink connection tries to re-key once its remote may have restarted.
 const SUSPECTED_REKEY_ATTEMPT_TIME: Duration = Duration::from_secs(10);
 
 /// How often we record the number of connections per network path; metrics are exported every minute.
@@ -231,11 +231,11 @@ where
         self.buffered_candidates.clear();
         self.connections.remove_closing(|_| true, now);
 
-        if self.connections.all_iceless() {
-            let num_iceless = self.connections.reset_for_roam(now);
+        if self.connections.all_frostlink() {
+            let num_frostlink = self.connections.reset_for_roam(now);
             tracing::debug!(
-                %num_iceless,
-                "Soft-reset iceless connections (path-agent reset, key kept)"
+                %num_frostlink,
+                "Soft-reset frostlink connections (path-agent reset, key kept)"
             );
 
             for (cid, c) in self.connections.iter_mut() {
@@ -307,7 +307,7 @@ where
         ice_role: IceRole,
         default_ice_config: IceConfig,
         idle_ice_config: IceConfig,
-        use_iceless: bool,
+        use_frostlink: bool,
         now: Instant,
     ) {
         self.last_now = now;
@@ -323,7 +323,7 @@ where
                 &local_creds,
                 &remote_creds,
                 ice_role,
-                use_iceless,
+                use_frostlink,
             )
             && c.tunnel.remote_static_public() == remote
             && c.preshared_key.as_bytes() == preshared_key.as_bytes()
@@ -336,7 +336,7 @@ where
                 c.candidate_timeout = Some(now + CANDIDATE_TIMEOUT);
             }
 
-            let iceless = c.agent.is_iceless();
+            let frostlink = c.agent.is_frostlink();
 
             // Take all current candidates.
             let current_candidates = c.agent.local_candidates().collect::<SmallVec<[_; 16]>>();
@@ -355,7 +355,7 @@ where
                 std::iter::empty()
                     .chain(current_candidates)
                     .chain(new_candidates)
-                    .map(|candidate| new_ice_candidate_event(cid, candidate, iceless)),
+                    .map(|candidate| new_ice_candidate_event(cid, candidate, frostlink)),
             );
 
             // Initiate a new WG session.
@@ -379,9 +379,9 @@ where
             tracing::info!(local = ?local_creds, remote = ?remote_creds, "Creating new connection");
         }
 
-        let mut agent = if use_iceless {
-            tracing::debug!(%cid, "Using iceless path-agent for connection");
-            Agent::path()
+        let mut agent = if use_frostlink {
+            tracing::debug!(%cid, "Using Frostlink for connection");
+            Agent::frostlink()
         } else {
             tracing::debug!(%cid, "Using ICE agent for connection");
             Agent::ice(new_agent(ice_role))
@@ -426,7 +426,7 @@ where
         // Only Controlling fans out the init, so we don't burn
         // bandwidth and TURN channel bindings on a duplicate from
         // each side.
-        if let Agent::Path(agent) = &mut connection.agent
+        if let Agent::Frostlink(agent) = &mut connection.agent
             && matches!(ice_role, IceRole::Controlling)
             && let Some(init) = connection.tunnel.initiate_handshake(now)
         {
@@ -454,7 +454,7 @@ where
         tracing::info!("Connection removed ({reason})");
     }
 
-    /// Handles a hint that the remote of the ICE-less connection to `cid` restarted with the `remote` key.
+    /// Handles a hint that the remote of the Frostlink connection to `cid` restarted with the `remote` key.
     ///
     /// A remote that restarted has lost the WireGuard session of the existing connection. This
     /// starts a handshake and shortens how long the tunnel retries it, so the connection fails
@@ -472,7 +472,7 @@ where
         let Ok(c) = self.connections.get_mut(&cid, now) else {
             return;
         };
-        let Agent::Path(agent) = &mut c.agent else {
+        let Agent::Frostlink(agent) = &mut c.agent else {
             return;
         };
         if c.remote_pub_key == remote
@@ -541,7 +541,7 @@ where
             return;
         };
 
-        let Some(candidate) = crate::candidate::decode(c.agent.is_iceless(), &candidate) else {
+        let Some(candidate) = crate::candidate::decode(c.agent.is_frostlink(), &candidate) else {
             return;
         };
 
@@ -586,7 +586,7 @@ where
             return;
         };
 
-        let Some(candidate) = crate::candidate::decode(c.agent.is_iceless(), &candidate) else {
+        let Some(candidate) = crate::candidate::decode(c.agent.is_frostlink(), &candidate) else {
             return;
         };
 
@@ -952,7 +952,7 @@ where
         // the pair is fine while WireGuard is desynced and stuck, so we shorten
         // it to roughly our ICE timeout to fail fast and re-establish.
         //
-        // Iceless has no such gap — probes ride the session, so a stuck
+        // Frostlink has no such gap: probes ride the session, so a stuck
         // handshake means the path is genuinely down, and probe loss must not
         // retire a connection (WireGuard is the sole liveness authority). We
         // keep WireGuard's 90s rekey-attempt default so a transient outage (a
@@ -963,10 +963,10 @@ where
         // reverse path warm during one-way traffic), and a 2s rekey-timeout, so
         // an unanswered handshake init is retried every 2s and distress surfaces
         // within a couple of round trips.
-        if !agent.is_iceless() {
+        if !agent.is_frostlink() {
             tunnel.set_rekey_attempt_time(WG_REKEY_ATTEMPT_TIME);
         } else {
-            tunnel.set_rekey_attempt_time(ICELESS_REKEY_ATTEMPT_TIME);
+            tunnel.set_rekey_attempt_time(FROSTLINK_REKEY_ATTEMPT_TIME);
             tunnel.set_keepalive_timeout(Duration::from_secs(5));
             tunnel.set_rekey_timeout(Duration::from_secs(2));
         }
@@ -1362,9 +1362,9 @@ fn generate_optimistic_candidates(agent: &mut Agent, now: Instant) {
 fn new_ice_candidate_event<TId, RId>(
     id: TId,
     candidate: Candidate,
-    iceless: bool,
+    frostlink: bool,
 ) -> Event<TId, RId> {
-    let candidate = crate::candidate::encode(iceless, &candidate);
+    let candidate = crate::candidate::encode(frostlink, &candidate);
 
     tracing::debug!(%candidate, "Signalling candidate to remote");
 
@@ -1384,7 +1384,7 @@ fn invalidate_allocation_candidates<TId, RId>(
     RId: Copy + Eq + Hash + PartialEq + Ord + fmt::Debug + fmt::Display,
 {
     for (cid, c) in connections.iter_mut() {
-        if c.agent.is_iceless() {
+        if c.agent.is_frostlink() {
             c.reset_path_for_relay_replacement(cid, allocation, now);
         } else {
             for candidate in allocation.current_relay_candidates() {
@@ -1425,7 +1425,7 @@ impl From<is::IceCreds> for Credentials {
 pub enum Event<TId, RId> {
     /// We created a new candidate for this connection and ask to signal it to the remote party.
     ///
-    /// Already SDP-encoded (str0m for ICE, path-agent for ICE-less).
+    /// Already SDP-encoded (str0m for ICE, frostlink for Frostlink).
     NewIceCandidate {
         connection: TId,
         candidate: String,
@@ -1736,11 +1736,11 @@ where
             }
         }
 
-        while let Some(event) = self.agent.poll_path_event() {
+        while let Some(event) = self.agent.poll_frostlink_event() {
             match event {
-                path_agent::Event::PrimaryChanged { local, remote } => {
+                frostlink::Event::PrimaryChanged { local, remote } => {
                     let peer_socket = self.peer_socket_for_tuple(allocations, local, remote);
-                    self.adopt_iceless_peer_socket(
+                    self.adopt_frostlink_peer_socket(
                         peer_socket,
                         allocations,
                         transmits,
@@ -1754,17 +1754,17 @@ where
 
         // Plaintext payloads (probes) need encapsulation; ciphertext
         // goes straight to the wire.
-        while let Some(pt) = self.agent.poll_path_transmit() {
+        while let Some(pt) = self.agent.poll_frostlink_transmit() {
             let peer_socket = self.peer_socket_for_tuple(allocations, pt.local, pt.remote);
             match pt.payload {
-                path_agent::Payload::Ciphertext(ref bytes) => {
+                frostlink::Payload::Ciphertext(ref bytes) => {
                     if let Some(transmit) =
                         make_owned_transmit(self.relay, peer_socket, bytes, allocations, now)
                     {
                         transmits.push_back(transmit);
                     }
                 }
-                path_agent::Payload::Plaintext(ref ip) => {
+                frostlink::Payload::Plaintext(ref ip) => {
                     if let Ok(Some(encapsulation)) =
                         self.encapsulate(cid, peer_socket, ip, now, allocations)
                         && let Ok(transmit) = encapsulation.encrypt(ip)
@@ -1835,7 +1835,7 @@ where
         while let Some(event) = self.tunnel.poll_event() {
             match event {
                 sanstun::Event::SendHandshakeInitiation(init) => match &mut self.agent {
-                    Agent::Path(agent) => agent.send_handshake_initiation(init, now),
+                    Agent::Frostlink(agent) => agent.send_handshake_initiation(init, now),
                     Agent::Ice(_) => self.buffer_or_send(&cid, init, allocations, transmits, now),
                 },
                 sanstun::Event::SendKeepalive(keepalive) => {
@@ -1864,7 +1864,7 @@ where
         }
     }
 
-    fn adopt_iceless_peer_socket<TId>(
+    fn adopt_frostlink_peer_socket<TId>(
         &mut self,
         peer_socket: PeerSocket,
         allocations: &mut Allocations<RId>,
@@ -1880,7 +1880,7 @@ where
                 tracing::debug!(
                     %cid,
                     num_wg = wg_buffer.len(),
-                    "Iceless primary selected; flushing buffered packets",
+                    "Frostlink primary selected; flushing buffered packets",
                 );
                 transmits.extend(wg_buffer.into_iter().flat_map(|packet| {
                     make_owned_transmit(self.relay, peer_socket, &packet, allocations, now)
@@ -1996,7 +1996,7 @@ where
         match packet {
             sanstun::ReceivedMessage::HandshakeInitiation(init) => {
                 let result = match &mut self.agent {
-                    Agent::Path(agent) => {
+                    Agent::Frostlink(agent) => {
                         agent.handle_handshake_initiation(&mut self.tunnel, init, path, now)
                     }
                     Agent::Ice(_) => self
@@ -2009,7 +2009,7 @@ where
             }
             sanstun::ReceivedMessage::HandshakeResponse(response) => {
                 let result = match &mut self.agent {
-                    Agent::Path(agent) => agent.handle_handshake_response(
+                    Agent::Frostlink(agent) => agent.handle_handshake_response(
                         &mut self.tunnel,
                         response,
                         &datagram[offset..],
@@ -2085,7 +2085,7 @@ where
         }
 
         self.tunnel
-            .set_rekey_attempt_time(ICELESS_REKEY_ATTEMPT_TIME);
+            .set_rekey_attempt_time(FROSTLINK_REKEY_ATTEMPT_TIME);
     }
 
     fn buffer_or_send<TId>(
@@ -2149,10 +2149,10 @@ where
     where
         RId: Ord + Hash + fmt::Display + Copy,
     {
-        self.agent.rebuild_path(|_| true, now);
+        self.agent.rebuild_frostlink(|_| true, now);
     }
 
-    /// Iceless-only. Receiver rediscovers the connection by the
+    /// Frostlink-only. Receiver rediscovers the connection by the
     /// init's sender pubkey.
     fn reset_path_for_relay_replacement<TId>(
         &mut self,
@@ -2164,18 +2164,18 @@ where
         RId: Ord + Hash + fmt::Display + Copy,
     {
         debug_assert!(
-            self.agent.is_iceless(),
-            "reset_path_for_relay_replacement is iceless-only"
+            self.agent.is_frostlink(),
+            "reset_path_for_relay_replacement is frostlink-only"
         );
 
         // Host + reflexive per allocation.
         let dropped = allocation
             .current_relay_candidates()
-            .map(|c| crate::candidate::to_path_agent(&c))
+            .map(|c| crate::candidate::to_frostlink(&c))
             .collect::<SmallVec<[_; 2]>>();
-        self.agent.rebuild_path(|c| dropped.contains(c), now);
+        self.agent.rebuild_frostlink(|c| dropped.contains(c), now);
 
-        tracing::info!(%cid, "Reset iceless path-agent after relay invalidation");
+        tracing::info!(%cid, "Reset frostlink path-agent after relay invalidation");
     }
 
     fn initiate_wg_session(
@@ -2227,8 +2227,8 @@ where
         TId: fmt::Display + Copy,
     {
         if let Some(candidate) = self.agent.add_local_candidate(candidate.clone(), now) {
-            let iceless = self.agent.is_iceless();
-            pending_events.push_back(new_ice_candidate_event(cid, candidate, iceless));
+            let frostlink = self.agent.is_frostlink();
+            pending_events.push_back(new_ice_candidate_event(cid, candidate, frostlink));
         }
 
         self.state
@@ -2268,7 +2268,7 @@ where
         if was_present {
             pending_events.push_back(Event::InvalidateIceCandidate {
                 connection: id,
-                candidate: crate::candidate::encode(self.agent.is_iceless(), candidate),
+                candidate: crate::candidate::encode(self.agent.is_frostlink(), candidate),
             })
         }
     }

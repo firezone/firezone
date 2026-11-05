@@ -171,9 +171,9 @@ pub(super) fn generate(
         .filter(|relay| !state.recovering_relays.contains_key(relay))
         .count();
     // TODO: Remove the classic branch with classic ICE.
-    // An ICE-less connection without a relay for longer than a WireGuard handshake attempt
-    // expires, which the reference does not predict. ICE-less flows therefore keep a healthy relay.
-    let can_exhaust_relay = if portal.iceless() {
+    // A Frostlink connection without a relay for longer than a WireGuard handshake attempt
+    // expires, which the reference does not predict. Frostlink flows therefore keep a healthy relay.
+    let can_exhaust_relay = if portal.frostlink() {
         healthy_relays > 1
     } else {
         !accepting_relays.is_empty()
@@ -216,7 +216,7 @@ pub(super) fn generate(
         (!client_ids.is_empty()).then_some((K::CrashClient, 1)),
         // Classic ICE ignores `public_key_changed`, so its connections would only fail on
         // WireGuard's handshake timeout.
-        (portal.iceless() && !state.gateways.is_empty()).then_some((K::CrashGateway, 1)),
+        (portal.frostlink() && !state.gateways.is_empty()).then_some((K::CrashGateway, 1)),
         (!key_change_recipients.is_empty()).then_some((K::SpuriousPublicKeyChanged, 1)),
     ]
     .into_iter()
@@ -273,9 +273,9 @@ pub(super) fn generate(
             }
         }
         K::DeployNewRelays => {
-            // An ICEless connection survives relay deployment changes. Keeping one deployed
+            // A Frostlink connection survives relay deployment changes. Keeping one deployed
             // relay out of `connected` exercises refreshing an unmentioned live allocation.
-            let retained = if portal.iceless() && state.relays.len() >= 2 {
+            let retained = if portal.frostlink() && state.relays.len() >= 2 {
                 let index = g.choose_index(state.relays.len());
                 let (relay_id, relay) = state.relays.iter().nth(index).unwrap();
 
