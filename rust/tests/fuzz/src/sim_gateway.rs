@@ -19,7 +19,7 @@ use std::{
     net::{IpAddr, SocketAddr},
     time::Instant,
 };
-use tunnel_proto::{GatewayEvent, GatewayState, MIN_DNS_DOMAIN_AGE};
+use tunnel_proto::{GatewayEvent, GatewayState};
 
 /// Simulation state for a particular client.
 pub(crate) struct SimGateway {
@@ -31,10 +31,8 @@ pub(crate) struct SimGateway {
     dns_resolutions: BTreeMap<(ClientId, DomainName), Vec<DnsResolution>>,
     dns_nat_generations: BTreeMap<ClientId, u64>,
     dns_proxy_owners: BTreeMap<(ClientId, IpAddr), DomainName>,
-    /// When the Gateway last set up each domain for a client in its current DNS NAT generation.
-    dns_nat_set_up_at: BTreeMap<ClientId, BTreeMap<DomainName, Instant>>,
-    /// The domains whose NAT the Gateway may have refused or evicted for a client.
-    dns_nat_limited: BTreeSet<(ClientId, DomainName)>,
+    /// The domains the Gateway set up for each client in its current DNS NAT generation.
+    dns_nat_domains: BTreeMap<ClientId, BTreeSet<DomainName>>,
     max_dns_domains_per_client: Option<usize>,
     next_observation_order: u64,
 
@@ -77,8 +75,7 @@ impl SimGateway {
             dns_resolutions: Default::default(),
             dns_nat_generations: Default::default(),
             dns_proxy_owners: Default::default(),
-            dns_nat_set_up_at: Default::default(),
-            dns_nat_limited: Default::default(),
+            dns_nat_domains: Default::default(),
             max_dns_domains_per_client,
             next_observation_order: 0,
             authorized_resources: Default::default(),
@@ -246,7 +243,10 @@ impl SimGateway {
                 .insert((client, *proxy_ip), domain.clone());
         }
 
-        self.record_dns_nat_limit(client, &domain, at);
+        self.dns_nat_domains
+            .entry(client)
+            .or_default()
+            .insert(domain.clone());
 
         let dns_nat_generation = self.dns_nat_generation(client);
         let resolution = DnsResolution {
@@ -411,48 +411,15 @@ impl SimGateway {
             }));
     }
 
-    /// Whether the Gateway may have refused or evicted the NAT of `domain` for `client`.
+    /// Whether the Gateway may have evicted or refused the NAT of a domain for `client`.
     ///
-    /// Packets to that domain then get lost or rejected as prohibited.
-    pub(crate) fn dns_nat_may_be_limited(&self, client: ClientId, domain: &DomainName) -> bool {
-        self.dns_nat_limited.contains(&(client, domain.clone()))
-    }
-
-    /// Marks the domains the Gateway may refuse or evict as it sets up `domain` for `client`.
-    ///
-    /// The Gateway holds the NAT of at most `max_dns_domains_per_client` domains per client.
-    /// For a new domain over that, it evicts the least recently set up domain if that is at least
-    /// [`MIN_DNS_DOMAIN_AGE`] old, and refuses the new domain if not.
-    ///
-    /// The Gateway also forgets domains when the client loses access, so it can hold fewer domains
-    /// than we record here. We therefore mark every domain that it may refuse or evict.
-    fn record_dns_nat_limit(&mut self, client: ClientId, domain: &DomainName, now: Instant) {
-        let Some(max) = self.max_dns_domains_per_client else {
-            return;
-        };
-
-        let set_up_at = self.dns_nat_set_up_at.entry(client).or_default();
-        let others = set_up_at
-            .iter()
-            .filter(|(other, _)| *other != domain)
-            .map(|(other, at)| (other, now.duration_since(*at) >= MIN_DNS_DOMAIN_AGE))
-            .collect::<Vec<_>>();
-
-        if others.len() >= max {
-            let num_young = others.iter().filter(|(_, old)| !old).count();
-            if num_young >= max {
-                self.dns_nat_limited.insert((client, domain.clone()));
-            }
-
-            self.dns_nat_limited.extend(
-                others
-                    .iter()
-                    .filter(|(_, old)| *old)
-                    .map(|(other, _)| (client, (*other).clone())),
-            );
-        }
-
-        set_up_at.insert(domain.clone(), now);
+    /// Packets to the domains of that client may then get lost or rejected as prohibited.
+    pub(crate) fn dns_nat_may_be_limited(&self, client: ClientId) -> bool {
+        self.max_dns_domains_per_client.is_some_and(|max| {
+            self.dns_nat_domains
+                .get(&client)
+                .is_some_and(|domains| domains.len() > max)
+        })
     }
 
     pub(crate) fn dns_nat_generation(&self, client: ClientId) -> u64 {
@@ -465,11 +432,7 @@ impl SimGateway {
     fn start_new_dns_nat_generation(&mut self, client: ClientId) {
         let generation = self.dns_nat_generation(client) + 1;
         self.dns_nat_generations.insert(client, generation);
-        self.dns_nat_set_up_at.remove(&client);
-        for _ in self
-            .dns_nat_limited
-            .extract_if(.., |(owner, _)| *owner == client)
-        {}
+        self.dns_nat_domains.remove(&client);
         for _ in self
             .dns_proxy_owners
             .extract_if(.., |(owner, _), _| *owner == client)

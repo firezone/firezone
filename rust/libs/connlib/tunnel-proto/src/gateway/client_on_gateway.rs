@@ -34,7 +34,7 @@ pub(crate) const DEFAULT_MAX_DNS_DOMAINS: usize = 4096;
 /// How long we keep a domain before we evict it for a new one.
 ///
 /// This is longer than the client needs to send its first packets after we confirm the NAT.
-pub const MIN_DNS_DOMAIN_AGE: Duration = Duration::from_secs(60);
+const MIN_DNS_DOMAIN_AGE: Duration = Duration::from_secs(60);
 
 /// A domain that [`ClientOnGateway::setup_nat`] evicted, with the resources it was set up for.
 #[derive(Debug, PartialEq, Eq)]

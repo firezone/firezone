@@ -1,8 +1,6 @@
 mod client_on_gateway;
 mod nat_table;
 
-pub use client_on_gateway::MIN_DNS_DOMAIN_AGE;
-
 pub(crate) use crate::gateway::client_on_gateway::ClientOnGateway;
 
 use crate::authorization_rejections::AuthorizationRejections;

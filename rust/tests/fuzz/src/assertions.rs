@@ -159,9 +159,9 @@ fn assert_probes(
     }
 }
 
-/// Whether the Gateway of the probe may have refused or evicted the NAT of the probe's domain.
+/// Whether the Gateway of the probe may have evicted or refused the NAT of a domain for the probe's Client.
 fn gateway_may_limit_dns_nat(expected: &ExpectedProbe, state: &TunnelTest) -> bool {
-    let Destination::DomainName { name, .. } = expected.request.destination() else {
+    let Destination::DomainName { .. } = expected.request.destination() else {
         return false;
     };
     let gateway = match expected.outcome {
@@ -177,7 +177,7 @@ fn gateway_may_limit_dns_nat(expected: &ExpectedProbe, state: &TunnelTest) -> bo
 
     state
         .gateway(gateway)
-        .is_some_and(|gateway| gateway.dns_nat_may_be_limited(expected.origin, name))
+        .is_some_and(|gateway| gateway.dns_nat_may_be_limited(expected.origin))
 }
 
 /// Checks that nothing but the Client's own submission observed the probe.
