@@ -219,6 +219,16 @@ defmodule PortalAPI.MCP.ToolsTest do
     end
   end
 
+  test "creating a gateway is flagged as credential issuance and can skip the token", %{
+    tools: tools
+  } do
+    tool = fetch(tools, "create_site_gateway")
+
+    assert %Tool{method: :post, path_template: "/sites/{site_id}/gateways", entity: :gateways} = tool
+    assert tool.description =~ "returns a live credential"
+    assert tool.input_schema["properties"]["issue_token"]["type"] == "boolean"
+  end
+
   test "list_posture_fields carries the posture grammar", %{tools: tools} do
     tool = fetch(tools, "list_posture_fields")
 
