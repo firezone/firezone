@@ -282,7 +282,12 @@ impl PendingDecapsulate {
             )
         });
 
-        let mut data = self.pending.decrypt(messages).map(IpPacket::new);
+        let mut data = self.pending.decrypt(messages).map(|buf, len| {
+            let mut packet = IpPacket::new(buf, len)?;
+            packet.strip_ipv4_options();
+
+            Ok(packet)
+        });
         let probes = data.extract_map(|packet| packet.as_ref().ok().and_then(Probe::try_parse));
 
         DecryptedBatch {

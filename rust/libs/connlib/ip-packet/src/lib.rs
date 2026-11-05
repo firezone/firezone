@@ -1081,6 +1081,37 @@ impl IpPacket {
         self
     }
 
+    /// Removes all options from an IPv4 header; IPv6 packets are left as they are.
+    ///
+    /// Some Linux kernels mishandle IPv4 options on TCP handshakes (CVE-2026-98432).
+    #[inline]
+    pub fn strip_ipv4_options(&mut self) {
+        // `0x45` is IPv4 with the minimum header length, i.e. without options.
+        if matches!(self.version, IpVersion::V6) || self.buf[0] == 0x45 {
+            return;
+        }
+
+        self.strip_ipv4_options_slow();
+    }
+
+    #[cold]
+    fn strip_ipv4_options_slow(&mut self) {
+        let header_len = self.ip_header_length();
+        let len = self.len();
+        let new_len = len - (header_len - Ipv4HeaderSlice::MIN_LEN);
+
+        // The transport checksums do not cover IPv4 options, so they stay valid.
+        self.buf
+            .copy_within(header_len..len, Ipv4HeaderSlice::MIN_LEN);
+        self.buf[0] = 0x45;
+        self.buf[2..4].copy_from_slice(&(new_len as u16).to_be_bytes());
+
+        self.len = new_len as u16;
+        self.ip_header_length = Ipv4HeaderSlice::MIN_LEN as u16;
+
+        self.set_ipv4_checksum();
+    }
+
     #[inline]
     pub fn ecn(&self) -> Ecn {
         // Read the bits straight from the header: this is called for every packet and
@@ -1391,6 +1422,67 @@ mod tests {
 
             assert_eq!(padded.packet(), packet.packet());
         }
+    }
+
+    #[test]
+    fn strips_ipv4_options() {
+        let original = crate::make::tcp_packet(
+            Ipv4Addr::new(10, 0, 0, 1),
+            Ipv4Addr::new(10, 0, 0, 2),
+            1234,
+            443,
+            crate::make::TcpFlags {
+                syn: true,
+                ack: false,
+                rst: false,
+            },
+            b"foobar",
+        )
+        .unwrap();
+        let mut packet =
+            with_ipv4_options(&original, &[0x94, 0x04, 0x00, 0x00, 0x01, 0x01, 0x01, 0x00]);
+
+        packet.strip_ipv4_options();
+
+        assert_eq!(packet.packet(), original.packet());
+        assert!(packet.ipv4_header().unwrap().options().is_empty());
+        assert_eq!(packet.as_tcp().unwrap().payload(), b"foobar");
+        assert_eq!(
+            packet.calculate_ipv4_header_checksum().unwrap(),
+            packet.ipv4_header().unwrap().checksum()
+        );
+    }
+
+    #[test]
+    fn strip_ipv4_options_keeps_packets_without_options() {
+        for packet in [
+            crate::make::udp_packet(Ipv4Addr::LOCALHOST, Ipv4Addr::LOCALHOST, 0, 0, b"foobar"),
+            crate::make::udp_packet(Ipv6Addr::LOCALHOST, Ipv6Addr::LOCALHOST, 0, 0, b"foobar"),
+        ] {
+            let original = packet.unwrap();
+            let mut packet = original.clone();
+
+            packet.strip_ipv4_options();
+
+            assert_eq!(packet, original);
+        }
+    }
+
+    /// Inserts `options` after the fixed IPv4 header of `packet`.
+    fn with_ipv4_options(packet: &IpPacket, options: &[u8]) -> IpPacket {
+        let header_len = Ipv4HeaderSlice::MIN_LEN + options.len();
+        let len = packet.packet().len() + options.len();
+
+        let mut buf = packet_buffer();
+        buf[..20].copy_from_slice(&packet.packet()[..20]);
+        buf[20..header_len].copy_from_slice(options);
+        buf[header_len..len].copy_from_slice(packet.payload());
+        buf[0] = 0x40 | (header_len / 4) as u8;
+        buf[2..4].copy_from_slice(&(len as u16).to_be_bytes());
+        let checksum = checksum::ipv4_header_checksum(&buf[..header_len]);
+        buf[10..12].copy_from_slice(&checksum.to_be_bytes());
+
+        IpPacket::new(buf, len).unwrap()
     }
 
     #[test]
