@@ -334,8 +334,8 @@ impl Io {
     /// Their datagrams go to the UDP sockets when dropped. Create them only for the packets
     /// [`Io::poll`] read from the TUN device, which it does only while nothing waits for room in the
     /// UDP sockets.
-    pub fn new_encrypt_jobs(&mut self, num_packets: usize) -> EncryptJobs<'_> {
-        self.crypto.new_encrypt_jobs(&mut self.sockets, num_packets)
+    pub fn new_encrypt_jobs(&mut self) -> EncryptJobs<'_> {
+        self.crypto.new_encrypt_jobs(&mut self.sockets)
     }
 
     /// Creates the jobs that decrypt the batches of `received` off the main thread, yielding them

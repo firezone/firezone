@@ -107,17 +107,12 @@ impl CryptoWorkers {
         }
     }
 
-    /// Creates the jobs that encrypt `num_packets` packets, whose datagrams go to `sockets`.
-    pub fn new_encrypt_jobs<'a>(
-        &'a mut self,
-        sockets: &'a mut Sockets,
-        num_packets: usize,
-    ) -> EncryptJobs<'a> {
+    /// Creates the jobs that encrypt packets, whose datagrams go to `sockets`.
+    pub fn new_encrypt_jobs<'a>(&'a mut self, sockets: &'a mut Sockets) -> EncryptJobs<'a> {
         EncryptJobs {
             workers: &mut self.workers,
             gso_trains: &mut self.open_gso_trains,
             sockets,
-            remaining: num_packets,
             pending_v4: None,
             pending_v6: None,
         }
@@ -178,8 +173,6 @@ pub struct EncryptJobs<'a> {
     /// The open train to each destination.
     gso_trains: &'a mut Vec<UdpGsoTrain>,
     sockets: &'a mut Sockets,
-    /// How many of the packets have yet to be encrypted, at most.
-    remaining: usize,
     pending_v4: Option<PendingDatagrams>,
     pending_v6: Option<PendingDatagrams>,
 }
@@ -191,18 +184,14 @@ impl EncryptJobs<'_> {
         let (src, dst) = (encapsulation.src(), encapsulation.dst());
         let index = self.train_for(src, dst);
 
-        loop {
-            let num_packets = packets.len();
-            let rest = self.gso_trains[index].extend(encapsulation, packets);
-
-            let num_rest = rest.as_ref().map_or(0, |(_, rest)| rest.len());
-            self.remaining = self.remaining.saturating_sub(num_packets - num_rest);
-
-            let Some(rest) = rest else {
-                return;
-            };
+        while let Some(rest) = self.gso_trains[index].extend(encapsulation, packets) {
             let full = mem::replace(&mut self.gso_trains[index], UdpGsoTrain::new(src, dst));
-            self.dispatch(full);
+            dispatch(
+                self.workers,
+                &mut self.pending_v4,
+                &mut self.pending_v6,
+                full,
+            );
 
             (encapsulation, packets) = rest;
         }
@@ -223,33 +212,38 @@ impl EncryptJobs<'_> {
             }
         }
     }
+}
 
-    fn dispatch(&mut self, train: UdpGsoTrain) {
-        let (tx, rx) = oneshot::channel();
-        let pending = match train.dst() {
-            SocketAddr::V4(_) => &mut self.pending_v4,
-            SocketAddr::V6(_) => &mut self.pending_v6,
-        };
-        // Every train still open and every packet still to come may need a receiver.
-        let max_trains = self.gso_trains.len() + self.remaining + 1;
-        pending
-            .get_or_insert_with(|| Vec::with_capacity(max_trains))
-            .push(rx);
+/// Hands `train` to a worker, queueing its datagram to be sent after the ones before it.
+fn dispatch(
+    workers: &mut Workers,
+    pending_v4: &mut Option<PendingDatagrams>,
+    pending_v6: &mut Option<PendingDatagrams>,
+    train: UdpGsoTrain,
+) {
+    let (tx, rx) = oneshot::channel();
+    let pending = match train.dst() {
+        SocketAddr::V4(_) => pending_v4,
+        SocketAddr::V6(_) => pending_v6,
+    };
+    pending.get_or_insert_default().push(rx);
 
-        // A stopped worker drops the sender, so the socket skips the train.
-        self.workers.send(Job::Encrypt(EncryptJob {
-            train,
-            encrypted: tx,
-        }));
-    }
+    // A stopped worker drops the sender, so the socket skips the train.
+    workers.send(Job::Encrypt(EncryptJob {
+        train,
+        encrypted: tx,
+    }));
 }
 
 impl Drop for EncryptJobs<'_> {
     fn drop(&mut self) {
-        // In the order they were opened, so a flow whose destination changed mid-batch stays in order.
-        self.gso_trains.reverse();
-        while let Some(open) = self.gso_trains.pop() {
-            self.dispatch(open);
+        for open in self.gso_trains.drain(..) {
+            dispatch(
+                self.workers,
+                &mut self.pending_v4,
+                &mut self.pending_v6,
+                open,
+            );
         }
 
         if let Some(pending) = self.pending_v4.take() {

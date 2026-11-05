@@ -413,7 +413,7 @@ impl ClientTunnel {
                 }
 
                 if let Some(packets) = device.as_mut().map(|packets| packets.drain()) {
-                    let mut jobs = self.io.new_encrypt_jobs(packets.len());
+                    let mut jobs = self.io.new_encrypt_jobs();
 
                     let mut packets = packets
                         .prefetching()
@@ -670,7 +670,7 @@ impl GatewayTunnel {
                 }
 
                 if let Some(packets) = device.as_mut().map(|packets| packets.drain()) {
-                    let mut jobs = self.io.new_encrypt_jobs(packets.len());
+                    let mut jobs = self.io.new_encrypt_jobs();
 
                     let mut packets = packets
                         .prefetching()
