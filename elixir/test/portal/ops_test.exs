@@ -331,17 +331,14 @@ defmodule Portal.OpsTest do
   end
 
   describe "set_metrics_allowlist/2" do
-    test "stores the allowlist and notifies the account's channels" do
+    test "stores the allowlist" do
       account = account_fixture()
-      :ok = Portal.PubSub.Changes.subscribe(account.id)
 
       assert :ok = set_metrics_allowlist(account.id, ["a", "b"])
       assert fetch_account!(account.id).metrics_allowlist == ["a", "b"]
-      assert_receive {:metrics_allowlist_changed, ["a", "b"]}
 
       assert :ok = set_metrics_allowlist(account.id, :all)
       assert fetch_account!(account.id).metrics_allowlist == nil
-      assert_receive {:metrics_allowlist_changed, nil}
     end
   end
 

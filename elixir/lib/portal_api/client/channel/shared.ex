@@ -222,14 +222,6 @@ defmodule PortalAPI.Client.Channel.Shared do
     push_metrics_config(socket)
   end
 
-  def handle_info({:metrics_allowlist_changed, allowlist}, socket) do
-    account = %{socket.assigns.subject.account | metrics_allowlist: allowlist}
-
-    socket
-    |> assign(subject: %{socket.assigns.subject | account: account})
-    |> push_metrics_config()
-  end
-
   def handle_info(:prune_authorizations_cache, socket) do
     Process.send_after(
       self(),
@@ -2348,12 +2340,14 @@ defmodule PortalAPI.Client.Channel.Shared do
          },
          socket
        ) do
-    # Update our subject's account. The WAL decoder leaves text[] columns
-    # undecoded, so `metrics_allowlist` only arrives via `:metrics_allowlist_changed`.
-    account =
-      SchemaHelpers.merge_broadcast(socket.assigns.subject.account, account, [:metrics_allowlist])
+    # Update our subject's account
+    account = SchemaHelpers.merge_broadcast(socket.assigns.subject.account, account)
     subject = %{socket.assigns.subject | account: account}
     socket = assign(socket, subject: subject)
+
+    if old_account.metrics_allowlist != account.metrics_allowlist do
+      push(socket, "metrics_config", metrics_config(account))
+    end
 
     if old_account.config != account.config do
       client = %{socket.assigns.client | account: account}

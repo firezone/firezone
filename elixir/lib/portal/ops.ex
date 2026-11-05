@@ -1,6 +1,6 @@
 defmodule Portal.Ops do
   alias __MODULE__.Database
-  alias Portal.{Banner, Billing, EmailSuppression, Mailer, MetricsToken, PubSub, SlugRegistry}
+  alias Portal.{Banner, Billing, EmailSuppression, Mailer, MetricsToken, SlugRegistry}
   alias Portal.Workers.DeleteAccount
   alias Portal.Ops.AuthProviderNotices
 
@@ -236,13 +236,13 @@ defmodule Portal.Ops do
 
   @doc """
   Restricts the metrics the account's Clients and Gateways may forward to
-  `names`, or allows all of them with `:all`.
+  `names`, or allows all of them with `:all`. Their channels push a fresh token
+  once the change arrives through replication.
   """
   def set_metrics_allowlist(account_id, names) when names == :all or is_list(names) do
     allowlist = if names == :all, do: nil, else: names
     {1, _} = Database.set_metrics_allowlist(account_id, allowlist)
-
-    PubSub.Changes.broadcast_to_cluster(account_id, {:metrics_allowlist_changed, allowlist})
+    :ok
   end
 
   @doc"""

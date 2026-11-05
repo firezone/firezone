@@ -572,17 +572,15 @@ defmodule PortalAPI.Client.ChannelTest do
       socket = join_channel(client, subject)
       assert_push "init", _init_payload
 
-      :ok = Portal.Ops.set_metrics_allowlist(account.id, ["a"])
-
-      assert_push "metrics_config", %{token: token}
-      assert {:ok, %{"metrics" => %{"names" => ["a"]}}} = Portal.MetricsToken.verify(token)
-
       send(socket.channel_pid, %Changes.Change{
         lsn: 100,
         op: :update,
         old_struct: account,
-        struct: %{account | name: "New Name"}
+        struct: %{account | metrics_allowlist: ["a"]}
       })
+
+      assert_push "metrics_config", %{token: token}
+      assert {:ok, %{"metrics" => %{"names" => ["a"]}}} = Portal.MetricsToken.verify(token)
 
       send(socket.channel_pid, :refresh_metrics_token)
 

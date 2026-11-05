@@ -171,12 +171,6 @@ defmodule PortalAPI.Gateway.Channel.Shared do
     push_metrics_config(socket)
   end
 
-  def handle_info({:metrics_allowlist_changed, allowlist}, socket) do
-    socket
-    |> assign(:account, %{socket.assigns.account | metrics_allowlist: allowlist})
-    |> push_metrics_config()
-  end
-
   ####################################
   ##### Reacting to domain events ####
   ####################################
@@ -902,19 +896,24 @@ defmodule PortalAPI.Gateway.Channel.Shared do
   defp handle_change(
          %Change{
            op: :update,
-           old_struct: %Portal.Account{slug: old_slug},
+           old_struct: %Portal.Account{slug: old_slug} = old_account,
            struct: %Portal.Account{slug: slug} = account
          },
          socket
        ) do
-    # The WAL decoder leaves text[] columns undecoded, so `metrics_allowlist`
-    # only arrives via `:metrics_allowlist_changed`.
-    account = SchemaHelpers.merge_broadcast(socket.assigns.account, account, [:metrics_allowlist])
+    account = SchemaHelpers.merge_broadcast(socket.assigns.account, account)
     socket = assign(socket, :account, account)
 
-    if old_slug != slug do
-      {:ok, relays} = select_relays(socket)
-      init(socket, account, relays)
+    cond do
+      old_slug != slug ->
+        {:ok, relays} = select_relays(socket)
+        init(socket, account, relays)
+
+      old_account.metrics_allowlist != account.metrics_allowlist ->
+        push(socket, "metrics_config", metrics_config(account))
+
+      true ->
+        :ok
     end
 
     {:noreply, socket}

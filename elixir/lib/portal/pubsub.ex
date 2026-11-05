@@ -97,17 +97,6 @@ defmodule Portal.PubSub do
       :ok
     end
 
-    @doc """
-    Broadcasts to the account's subscribers on every node, for changes that do
-    not arrive through the regional replication streams.
-    """
-    @spec broadcast_to_cluster(String.t(), term()) :: :ok | {:error, term()}
-    def broadcast_to_cluster(account_id, payload) do
-      account_id
-      |> account_topic()
-      |> Portal.PubSub.broadcast(payload)
-    end
-
     @spec broadcast_account(term()) :: :ok
     def broadcast_account(payload) do
       region = Portal.Config.get_env(:portal, :region, "")
