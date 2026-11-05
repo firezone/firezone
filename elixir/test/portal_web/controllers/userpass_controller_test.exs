@@ -575,4 +575,168 @@ defmodule PortalWeb.UserpassControllerTest do
       refute log =~ @password
     end
   end
+
+  describe "account enumeration" do
+    setup %{account: account, provider: provider, password_hash: password_hash} do
+      sign_in_path = ~p"/#{account.id}/sign_in/userpass/#{provider.id}"
+
+      sign_in = fn conn, email, extra ->
+        post(
+          conn,
+          sign_in_path,
+          Map.merge(%{"userpass" => %{"idp_id" => email, "secret" => "wrong-password"}}, extra)
+        )
+      end
+
+      admin =
+        actor_fixture(type: :account_admin_user, account: account, password_hash: password_hash)
+
+      {:ok, sign_in: sign_in, sign_in_path: sign_in_path, admin: admin}
+    end
+
+    defp assert_generic_failure(conn, sign_in_path) do
+      assert redirected_to(conn) == sign_in_path
+      assert flash(conn, :error) == "Invalid username or password."
+    end
+
+    test "does not reveal that an email belongs to a non-admin", %{
+      conn: conn,
+      account: account,
+      password_hash: password_hash,
+      sign_in: sign_in,
+      sign_in_path: sign_in_path,
+      admin: admin
+    } do
+      user = actor_fixture(type: :account_user, account: account, password_hash: password_hash)
+
+      assert_generic_failure(sign_in.(conn, admin.email, %{}), sign_in_path)
+      assert_generic_failure(sign_in.(conn, user.email, %{}), sign_in_path)
+      assert_generic_failure(sign_in.(conn, "unknown@example.com", %{}), sign_in_path)
+    end
+
+    test "does not reveal disabled actors or actors without a password", %{
+      conn: conn,
+      account: account,
+      password_hash: password_hash,
+      sign_in: sign_in,
+      sign_in_path: sign_in_path
+    } do
+      disabled =
+        disabled_actor_fixture(
+          type: :account_admin_user,
+          account: account,
+          password_hash: password_hash
+        )
+
+      passwordless = actor_fixture(type: :account_admin_user, account: account)
+
+      assert_generic_failure(sign_in.(conn, disabled.email, %{}), sign_in_path)
+      assert_generic_failure(sign_in.(conn, passwordless.email, %{}), sign_in_path)
+    end
+
+    test "does not reveal seat restrictions before the password is verified", %{
+      conn: conn,
+      account: account,
+      password_hash: password_hash,
+      sign_in: sign_in,
+      sign_in_path: sign_in_path
+    } do
+      account =
+        update_account(account, %{
+          metadata: %{stripe: %{product_name: "Business"}},
+          limits: %{monthly_active_users_count: 1}
+        })
+
+      active = actor_fixture(type: :account_user, account: account, password_hash: password_hash)
+      client = Portal.DeviceFixtures.client_fixture(account: account, actor: active)
+
+      Portal.ClientSessionFixtures.client_session_fixture(
+        account: account,
+        actor: active,
+        client: client
+      )
+
+      new_user =
+        actor_fixture(type: :account_user, account: account, password_hash: password_hash)
+
+      client_params = %{"as" => "client", "state" => "test-state", "nonce" => "test-nonce"}
+
+      assert_generic_failure(sign_in.(conn, new_user.email, client_params), sign_in_path)
+    end
+  end
+
+  describe "failed attempt throttling" do
+    setup %{account: account, provider: provider, password_hash: password_hash} do
+      actor =
+        actor_fixture(type: :account_admin_user, account: account, password_hash: password_hash)
+
+      sign_in = fn conn, email, password ->
+        post(conn, ~p"/#{account.id}/sign_in/userpass/#{provider.id}", %{
+          "userpass" => %{"idp_id" => email, "secret" => password}
+        })
+      end
+
+      {:ok, actor: actor, sign_in: sign_in}
+    end
+
+    defp assert_throttled(conn) do
+      assert flash(conn, :error) == "Too many sign-in attempts. Please try again in a minute."
+    end
+
+    test "throttles an email after a burst of attempts, even with the right password", %{
+      conn: conn,
+      actor: actor,
+      sign_in: sign_in
+    } do
+      for _ <- 1..10 do
+        assert flash(sign_in.(conn, actor.email, "wrong-password"), :error) =~
+                 "Invalid username or password"
+      end
+
+      assert_throttled(sign_in.(conn, actor.email, "wrong-password"))
+      assert_throttled(sign_in.(conn, actor.email, @password))
+    end
+
+    test "throttles unknown emails the same way as known ones", %{conn: conn, sign_in: sign_in} do
+      for _ <- 1..10, do: sign_in.(conn, "unknown@example.com", "wrong-password")
+
+      assert_throttled(sign_in.(conn, "unknown@example.com", "wrong-password"))
+    end
+
+    test "case and whitespace variants of an email share one bucket", %{
+      conn: conn,
+      actor: actor,
+      sign_in: sign_in
+    } do
+      for _ <- 1..10, do: sign_in.(conn, actor.email, "wrong-password")
+
+      assert_throttled(sign_in.(conn, " " <> String.upcase(actor.email) <> " ", "wrong-password"))
+    end
+
+    test "buckets are independent per email and per account", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      sign_in: sign_in,
+      password_hash: password_hash
+    } do
+      for _ <- 1..10, do: sign_in.(conn, actor.email, "wrong-password")
+      assert_throttled(sign_in.(conn, actor.email, @password))
+
+      other =
+        actor_fixture(type: :account_admin_user, account: account, password_hash: password_hash)
+
+      assert redirected_to(sign_in.(conn, other.email, @password)) =~ "/sites"
+
+      other_account = account_fixture()
+      other_provider = userpass_provider_fixture(account: other_account, context: :clients_and_portal)
+
+      conn =
+        post(conn, ~p"/#{other_account.id}/sign_in/userpass/#{other_provider.id}", %{
+          "userpass" => %{"idp_id" => actor.email, "secret" => "wrong-password"}
+        })
+
+      assert flash(conn, :error) == "Invalid username or password."
+    end
+  end
 end
