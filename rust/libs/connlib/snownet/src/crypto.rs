@@ -303,7 +303,7 @@ pub struct DecryptedBatch {
     pub(crate) src: SocketAddr,
     pub(crate) dst: SocketAddr,
     pub(crate) data: sanstun::DecryptedBatch<Result<IpPacket>>,
-    /// The path agent's probes, which never reach the TUN device.
+    /// frostlink's probes, which never reach the TUN device.
     pub(crate) probes: sanstun::DecryptedBatch<Probe>,
 }
 
