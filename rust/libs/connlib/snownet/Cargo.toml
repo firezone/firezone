@@ -13,6 +13,7 @@ bytes = { workspace = true }
 deadline-map = { workspace = true }
 derive_more = { workspace = true, features = ["debug"] }
 fast-random-state = { workspace = true }
+frostlink = { workspace = true }
 hex = { workspace = true }
 hex-display = { workspace = true }
 ip-packet = { workspace = true }
@@ -22,7 +23,6 @@ logging = { workspace = true }
 opentelemetry = { workspace = true, features = ["metrics"] }
 otel-attributes = { workspace = true }
 otel-instruments = { workspace = true }
-path-agent = { workspace = true }
 prefetch = { workspace = true }
 rand = { workspace = true }
 ringbuffer = { workspace = true }

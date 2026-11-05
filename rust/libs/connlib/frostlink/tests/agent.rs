@@ -1,4 +1,4 @@
-//! Scenario coverage for the iceless path model.
+//! Scenario coverage for the frostlink path model.
 //!
 //! Layout follows the model's life-cycle: bootstrap via handshake fan-out,
 //! session establishment, probing and (promote-only) selection, and failure
@@ -8,11 +8,11 @@
 use std::net::{IpAddr, SocketAddr};
 use std::time::{Duration, Instant};
 
-use ip_packet::{Icmpv6Type, IpPacket};
-use path_agent::{
+use frostlink::{
     Candidate, CandidateKind, Event, PROBE_BUDGET, PROBE_BURST_GAPS, PROBE_DST, PROBE_SRC,
     PathAgent, Payload, REKEY_DISTRESS_ATTEMPTS, RESPONDER_DEDUP_TTL, Transmit,
 };
+use ip_packet::{Icmpv6Type, IpPacket};
 use zeroize::Zeroizing;
 
 // --- bootstrap: handshake fan-out ---

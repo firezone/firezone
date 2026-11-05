@@ -161,8 +161,8 @@ pub struct CreateAuthorization {
     #[serde_as(as = "Option<DurationSeconds<u64>>")]
     pub expires_at: Option<Duration>,
 
-    #[serde(default)]
-    pub use_iceless: bool,
+    #[serde(default, rename = "use_iceless")]
+    pub use_frostlink: bool,
 
     /// The responder-side ingest token for this flow's logs.
     pub flow_logs_ingest_token: IngestToken,
@@ -403,8 +403,24 @@ mod tests {
         let IngressMessages::CreateAuthorization(authorization) = message else {
             panic!("expected CreateAuthorization");
         };
-        assert!(!authorization.use_iceless);
+        assert!(!authorization.use_frostlink);
         assert_eq!(authorization.flow_logs_ingest_token.as_str(), token);
+    }
+
+    #[test]
+    fn create_authorization_picks_up_use_frostlink() {
+        let token = flow_tracker::TEST_INGEST_TOKEN;
+        let json = CREATE_AUTHORIZATION.replace(
+            r#""flow_id""#,
+            &format!(r#""use_iceless":true,"flow_logs_ingest_token":"{token}","flow_id""#),
+        );
+
+        let message = serde_json::from_str::<IngressMessages>(&json).unwrap();
+
+        let IngressMessages::CreateAuthorization(authorization) = message else {
+            panic!("expected CreateAuthorization");
+        };
+        assert!(authorization.use_frostlink);
     }
 
     #[test]

@@ -1,8 +1,9 @@
-//! Path selection for iceless WireGuard connections.
+//! Like ICE but inside a tunnel.
 //!
-//! ICEless is inspired by ICE but optimised for WireGuard. A [`PathAgent`]
-//! only *selects* a path (which local/remote address pair a connection sends
-//! on — its *primary*); WireGuard owns the session and liveness.
+//! Frostlink is path selection for WireGuard connections, inspired by ICE but
+//! optimised for WireGuard. A [`PathAgent`] only *selects* a path (which
+//! local/remote address pair a connection sends on: its *primary*); WireGuard
+//! owns the session and liveness.
 //!
 //! ## Bootstrap
 //!
@@ -31,7 +32,7 @@
 //!
 //! A pair goes quiet after [`PROBE_BUDGET`] probes — *unless* it is the primary
 //! (which keeps a slow [`PRIMARY_KEEPALIVE`] cadence so an idle connection's NAT
-//! bindings and tunnel stay alive; iceless runs no WireGuard persistent
+//! bindings and tunnel stay alive; frostlink runs no WireGuard persistent
 //! keepalive), or there is no primary at all (in which case every pair hunts
 //! forever until one is found). The agent never declares the connection broken;
 //! without a path WireGuard simply can't re-key and the connection is torn down
