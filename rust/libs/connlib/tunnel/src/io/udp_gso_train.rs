@@ -11,7 +11,7 @@ const MAX_SEGMENT_SIZE: usize =
 
 /// One encrypt job: the datagrams of one GSO send.
 ///
-/// They go to one connection and are all of the same size, except for a shorter last one.
+/// They go to one destination and are all of the same size, except for a shorter last one.
 pub struct UdpGsoTrain {
     src: Option<SocketAddr>,
     dst: SocketAddr,

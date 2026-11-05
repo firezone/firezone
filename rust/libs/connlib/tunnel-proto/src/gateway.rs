@@ -185,7 +185,7 @@ impl GatewayState {
     /// Handles UDP packets received on the network interface.
     ///
     /// Most of these packets will be WireGuard data messages and will thus yield a [`snownet::DecapsulateBatch`].
-    /// Add the further segments of the same datagram to it, decrypt it from `packet` and pass the result to [`GatewayState::handle_peer_batch`].
+    /// Add the further segments received on the same path to it, decrypt it and pass the result to [`GatewayState::handle_peer_batch`].
     /// Some of them will however be handled internally, for example, TURN control packets exchanged with relays.
     ///
     /// In case this function returns `None`, you should call [`GatewayState::handle_timeout`] next to fully advance the internal state.
@@ -204,7 +204,7 @@ impl GatewayState {
 
     /// Handles the WireGuard data messages decrypted from one [`snownet::PendingDecapsulate`].
     ///
-    /// `local` and `from` are the addresses the datagram was received on and from. Packets of
+    /// `local` and `from` are the addresses the segments were received on and from. Packets of
     /// one flow reuse the routing decision of the flow's first packet in the batch.
     ///
     /// In case an item is `None`, you should call [`GatewayState::handle_timeout`] next to fully advance the internal state.

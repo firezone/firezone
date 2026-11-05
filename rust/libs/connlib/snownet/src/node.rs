@@ -603,8 +603,8 @@ where
     /// - `Ok(None)` if the packet was handled internally, for example, a response from a TURN server.
     ///   Call [`Node::handle_timeout`] before suspending to send any replies.
     /// - `Ok(Some)` if the packet was an encrypted WireGuard data message from a peer.
-    ///   Add further segments of the same datagram with [`DecapsulateBatch::push`], finish the
-    ///   batch, decrypt it and pass the result to [`Node::commit_decrypted`].
+    ///   Add further segments received on the same path with [`DecapsulateBatch::push`], finish
+    ///   the batch, decrypt it and pass the result to [`Node::commit_decrypted`].
     pub fn begin_decapsulate(
         &mut self,
         local: SocketAddr,

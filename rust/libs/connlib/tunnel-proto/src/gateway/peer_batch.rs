@@ -16,7 +16,7 @@ pub(super) struct InboundDecision {
     pub(super) flow: flow_tracker::DetachedFlow,
 }
 
-/// The data messages of one received datagram being handled, in order.
+/// The data messages of one decrypted batch being handled, in order.
 ///
 /// Dropping it records the flows of the batch.
 #[must_use = "iterators are lazy and do nothing unless consumed"]

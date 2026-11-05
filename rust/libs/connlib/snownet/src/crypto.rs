@@ -172,8 +172,8 @@ fn channel_data_overhead(channel: Option<u16>) -> usize {
     }
 }
 
-/// The WireGuard data messages of one received datagram that passed the replay check, with the
-/// [`Node`](crate::Node) borrowed until [`DecapsulateBatch::finish`].
+/// The WireGuard data messages of one session, received on the same path, that passed the replay
+/// check, with the [`Node`](crate::Node) borrowed until [`DecapsulateBatch::finish`].
 #[must_use = "the data messages are not decrypted until the batch is finished"]
 pub struct DecapsulateBatch<'n> {
     interface: &'n mut sanstun::Interface,
@@ -243,8 +243,8 @@ impl<'n> DecapsulateBatch<'n> {
     }
 }
 
-/// The WireGuard data messages of one received datagram that passed the replay check and await
-/// decryption.
+/// The WireGuard data messages of one session, received on the same path, that passed the replay
+/// check and await decryption.
 ///
 /// Decrypting needs no access to the [`Node`](crate::Node), so it can happen on any thread.
 pub struct PendingDecapsulate {
