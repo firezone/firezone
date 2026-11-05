@@ -86,6 +86,7 @@ public struct SettingsView: View {
   public var body: some View {
     sizedContent
       .onChange(of: focusedField) { _ in commitTextFields() }
+      .onChange(of: viewModel.selectedTab) { _ in commitTextFields() }
       .onChange(of: viewModel.controlPlane) { _ in commit(.settings) }
       .onChange(of: viewModel.connectOnStart) { _ in commit(.settings) }
       .onChange(of: viewModel.startOnLogin) { _ in commit(.settings) }
@@ -258,6 +259,7 @@ public struct SettingsView: View {
         }
       }
       .formStyle(.grouped)
+      .endsEditingOnTap($focusedField)
       .scrollDisabled(true)
       .fixedSize(horizontal: false, vertical: true)
       .frame(width: Self.paneWidth)
@@ -373,6 +375,7 @@ public struct SettingsView: View {
               .padding(.bottom)
           }
         }
+        .endsEditingOnTap($focusedField)
       }
       .background(Color(uiColor: .secondarySystemBackground))
     #endif
@@ -466,6 +469,7 @@ public struct SettingsView: View {
             }
           }
         }
+        .endsEditingOnTap($focusedField)
       }
     #elseif os(macOS)
       Form {
@@ -508,6 +512,7 @@ public struct SettingsView: View {
         }
       }
       .formStyle(.grouped)
+      .endsEditingOnTap($focusedField)
       .scrollDisabled(true)
       .fixedSize(horizontal: false, vertical: true)
       .frame(width: Self.paneWidth)
@@ -695,6 +700,23 @@ public struct SettingsView: View {
         #endif
       }
     }
+  }
+}
+
+extension View {
+  /// A click or tap on a form's background does not take focus from its text fields. Only active
+  /// while a field is focused, so that it never competes with the form's controls otherwise.
+  fileprivate func endsEditingOnTap<Value: Hashable>(
+    _ focus: FocusState<Value?>.Binding
+  ) -> some View {
+    contentShape(Rectangle())
+      .gesture(
+        TapGesture().onEnded { focus.wrappedValue = nil },
+        including: focus.wrappedValue == nil ? .subviews : .all
+      )
+      #if os(iOS)
+        .scrollDismissesKeyboard(.interactively)
+      #endif
   }
 }
 
