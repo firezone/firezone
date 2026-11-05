@@ -3,7 +3,6 @@ use super::{
     dns_records::DnsRecords,
     dns_server_resource::DnsServers,
     probe::{ProbeId, ProbeObservation, ReceivedRequest, Remote},
-    ref_gateway::MAX_DNS_DOMAINS_PER_CLIENT,
     reference::PrivateKey,
     sim_net::{ExecMutScope, Host},
     sim_relay::{SimRelay, map_explode},
@@ -36,6 +35,7 @@ pub(crate) struct SimGateway {
     dns_nat_set_up_at: BTreeMap<ClientId, BTreeMap<DomainName, Instant>>,
     /// The domains whose NAT the Gateway may have refused or evicted for a client.
     dns_nat_limited: BTreeSet<(ClientId, DomainName)>,
+    max_dns_domains_per_client: Option<usize>,
     next_observation_order: u64,
 
     authorized_resources: BTreeMap<ClientId, BTreeSet<ResourceId>>,
@@ -63,6 +63,7 @@ impl SimGateway {
         mut sut: GatewayState,
         network: SiteNetwork,
         site_specific_dns_records: DnsRecords,
+        max_dns_domains_per_client: Option<usize>,
     ) -> Self {
         sut.set_flow_logs_enabled(true);
 
@@ -78,6 +79,7 @@ impl SimGateway {
             dns_proxy_owners: Default::default(),
             dns_nat_set_up_at: Default::default(),
             dns_nat_limited: Default::default(),
+            max_dns_domains_per_client,
             next_observation_order: 0,
             authorized_resources: Default::default(),
             client_keys: Default::default(),
@@ -102,7 +104,9 @@ impl SimGateway {
         );
         sut.update_tun_device(ip_config);
         sut.set_flow_logs_enabled(true);
-        sut.set_max_dns_domains_per_client(MAX_DNS_DOMAINS_PER_CLIENT);
+        if let Some(max) = self.max_dns_domains_per_client {
+            sut.set_max_dns_domains_per_client(max);
+        }
         self.tunnel = SimTunnel::new(sut);
 
         for client in self
@@ -416,13 +420,17 @@ impl SimGateway {
 
     /// Marks the domains the Gateway may refuse or evict as it sets up `domain` for `client`.
     ///
-    /// The Gateway holds the NAT of at most [`MAX_DNS_DOMAINS_PER_CLIENT`] domains per client.
+    /// The Gateway holds the NAT of at most `max_dns_domains_per_client` domains per client.
     /// For a new domain over that, it evicts the least recently set up domain if that is at least
     /// [`MIN_DNS_DOMAIN_AGE`] old, and refuses the new domain if not.
     ///
     /// The Gateway also forgets domains when the client loses access, so it can hold fewer domains
     /// than we record here. We therefore mark every domain that it may refuse or evict.
     fn record_dns_nat_limit(&mut self, client: ClientId, domain: &DomainName, now: Instant) {
+        let Some(max) = self.max_dns_domains_per_client else {
+            return;
+        };
+
         let set_up_at = self.dns_nat_set_up_at.entry(client).or_default();
         let others = set_up_at
             .iter()
@@ -430,9 +438,9 @@ impl SimGateway {
             .map(|(other, at)| (other, now.duration_since(*at) >= MIN_DNS_DOMAIN_AGE))
             .collect::<Vec<_>>();
 
-        if others.len() >= MAX_DNS_DOMAINS_PER_CLIENT {
+        if others.len() >= max {
             let num_young = others.iter().filter(|(_, old)| !old).count();
-            if num_young >= MAX_DNS_DOMAINS_PER_CLIENT {
+            if num_young >= max {
                 self.dns_nat_limited.insert((client, domain.clone()));
             }
 
@@ -458,6 +466,10 @@ impl SimGateway {
         let generation = self.dns_nat_generation(client) + 1;
         self.dns_nat_generations.insert(client, generation);
         self.dns_nat_set_up_at.remove(&client);
+        for _ in self
+            .dns_nat_limited
+            .extract_if(.., |(owner, _)| *owner == client)
+        {}
         for _ in self
             .dns_proxy_owners
             .extract_if(.., |(owner, _), _| *owner == client)

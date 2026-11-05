@@ -15,9 +15,6 @@ use std::{
 };
 use tunnel_proto::{GatewayState, IpConfig};
 
-/// Low enough that the Gateway refuses and evicts the NAT of DNS resource domains.
-pub(crate) const MAX_DNS_DOMAINS_PER_CLIENT: usize = 2;
-
 /// Reference state for a particular gateway.
 #[derive(Debug, Clone)]
 pub struct RefGateway {
@@ -30,6 +27,7 @@ pub struct RefGateway {
     site_specific_dns_records: DnsRecords,
     /// Names the Gateway's upstream resolver does not resolve.
     unresolvable_names: BTreeSet<DomainName>,
+    max_dns_domains_per_client: Option<usize>,
 }
 
 impl RefGateway {
@@ -41,6 +39,7 @@ impl RefGateway {
         routes: Routes,
         site_specific_dns_records: DnsRecords,
         unresolvable_names: BTreeSet<DomainName>,
+        max_dns_domains_per_client: Option<usize>,
     ) -> Self {
         Self {
             key,
@@ -49,6 +48,7 @@ impl RefGateway {
             routes,
             site_specific_dns_records,
             unresolvable_names,
+            max_dns_domains_per_client,
         }
     }
 
@@ -70,7 +70,9 @@ impl RefGateway {
                 .to_std()
                 .unwrap(),
         ); // Cheating a bit here by reusing the key as seed.
-        sut.set_max_dns_domains_per_client(MAX_DNS_DOMAINS_PER_CLIENT);
+        if let Some(max) = self.max_dns_domains_per_client {
+            sut.set_max_dns_domains_per_client(max);
+        }
         sut.update_tun_device(IpConfig {
             v4: self.tunnel_ip4,
             v6: self.tunnel_ip6,
@@ -78,7 +80,13 @@ impl RefGateway {
 
         let network = SiteNetwork::new(self.routes, tcp_services, now);
 
-        SimGateway::new(id, sut, network, self.site_specific_dns_records)
+        SimGateway::new(
+            id,
+            sut,
+            network,
+            self.site_specific_dns_records,
+            self.max_dns_domains_per_client,
+        )
     }
 
     pub fn dns_records(&self) -> &DnsRecords {
