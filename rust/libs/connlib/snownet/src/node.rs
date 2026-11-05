@@ -630,13 +630,13 @@ where
 
         let channel = relayed.map(|r| r.channel);
 
-        let pending = match self.connections_try_handle(from, destination, message, channel, now) {
-            ControlFlow::Continue(pending) => pending,
+        let batch = match self.connections_try_handle(from, destination, message, channel, now) {
+            ControlFlow::Continue(batch) => batch,
             ControlFlow::Break(Ok(())) => return Ok(None),
             ControlFlow::Break(Err(e)) => return Err(e),
         };
 
-        Ok(Some(pending))
+        Ok(Some(batch))
     }
 
     /// Commits the packets decrypted from a [`DecapsulateBatch`].
@@ -695,11 +695,11 @@ where
         let conn = self.connections.get_mut(&cid, now)?;
         let socket = conn.ready_socket(cid)?;
 
-        let pending = conn
+        let batch = conn
             .encapsulate(cid, socket, packet, now, &mut self.allocations)
             .with_context(|| format!("cid={cid}"))?;
 
-        Ok(pending)
+        Ok(batch)
     }
 
     /// Returns a pending [`Event`] from the pool.

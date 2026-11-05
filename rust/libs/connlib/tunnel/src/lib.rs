@@ -489,14 +489,13 @@ impl ClientTunnel {
                 }
 
                 if let Some(mut decrypted) = decrypted {
-                    for received in decrypted.drain() {
-                        let io::DecryptedBatch {
-                            local,
-                            from,
-                            ecn,
-                            packets,
-                        } = received;
-
+                    for io::DecryptedBatch {
+                        local,
+                        from,
+                        ecn,
+                        packets,
+                    } in decrypted.drain()
+                    {
                         let batch = match self
                             .role_state
                             .handle_peer_batch(packets, local, from, now)
@@ -746,14 +745,13 @@ impl GatewayTunnel {
                 }
 
                 if let Some(mut decrypted) = decrypted {
-                    for received in decrypted.drain() {
-                        let io::DecryptedBatch {
-                            local,
-                            from,
-                            ecn,
-                            packets,
-                        } = received;
-
+                    for io::DecryptedBatch {
+                        local,
+                        from,
+                        ecn,
+                        packets,
+                    } in decrypted.drain()
+                    {
                         let batch = match self
                             .role_state
                             .handle_peer_batch(packets, local, from, now)
