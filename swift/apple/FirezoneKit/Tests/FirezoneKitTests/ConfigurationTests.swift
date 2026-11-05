@@ -302,6 +302,23 @@ struct ConfigurationTests {
     #expect(viewModel.recentlySavedFields == [.accountSlug])
   }
 
+  @Test("Editing a text field makes it a draft until it is saved")
+  @MainActor
+  func editingMakesDraftUntilSaved() async throws {
+    let config = Configuration(userDefaults: UserDefaults.makeTestDefaults())
+    let viewModel = SettingsViewModel(configuration: config)
+
+    #expect(!viewModel.isDraft(.accountSlug))
+
+    viewModel.accountSlug = "example-corp"
+
+    #expect(viewModel.isDraft(.accountSlug))
+
+    try await viewModel.save(.settings)
+
+    #expect(!viewModel.isDraft(.accountSlug))
+  }
+
   // MARK: - ControlPlane
 
   @Test("Saved US URLs show Firezone Cloud (US)")

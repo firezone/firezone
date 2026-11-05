@@ -183,17 +183,25 @@ public struct SettingsView: View {
     #if os(macOS)
       Form {
         Section {
-          TextField(
-            text: $viewModel.accountSlug,
-            prompt: Text(PlaceholderText.accountSlug)
-          ) {
-            managedLabel(
-              "Account Slug", isManaged: configuration.isAccountSlugForced,
-              savedField: .accountSlug)
+          LabeledContent {
+            HStack {
+              TextField(
+                text: $viewModel.accountSlug,
+                prompt: Text(PlaceholderText.accountSlug)
+              ) {
+                managedLabel("Account Slug", isManaged: configuration.isAccountSlugForced)
+              }
+              .labelsHidden()
+              .multilineTextAlignment(.trailing)
+              .focused($focusedField, equals: .accountSlug)
+              .onSubmit { commit(.settings) }
+              .disabled(configuration.isAccountSlugForced)
+              saveStateSlot(.accountSlug, isManaged: configuration.isAccountSlugForced)
+            }
+          } label: {
+            managedLabel("Account Slug", isManaged: configuration.isAccountSlugForced)
+              .accessibilityHidden(true)
           }
-          .focused($focusedField, equals: .accountSlug)
-          .onSubmit { commit(.settings) }
-          .disabled(configuration.isAccountSlugForced)
 
           Picker(selection: controlPlaneSelection) {
             ForEach(ControlPlane.allCases) { controlPlane in
@@ -205,27 +213,46 @@ public struct SettingsView: View {
           .disabled(viewModel.isControlPlaneForced)
 
           if viewModel.controlPlane == .custom {
-            TextField(
-              text: $viewModel.authURL,
-              prompt: Text(PlaceholderText.authURL)
-            ) {
-              managedLabel(
-                "Auth URL", isManaged: configuration.isAuthURLForced, savedField: .authURL)
+            LabeledContent {
+              HStack {
+                TextField(
+                  text: $viewModel.authURL,
+                  prompt: Text(PlaceholderText.authURL)
+                ) {
+                  managedLabel("Auth URL", isManaged: configuration.isAuthURLForced)
+                }
+                .labelsHidden()
+                .multilineTextAlignment(.trailing)
+                .focused($focusedField, equals: .authURL)
+                .onSubmit { commit(.settings) }
+                .disabled(configuration.isAuthURLForced)
+                saveStateSlot(.authURL, isManaged: configuration.isAuthURLForced)
+              }
+            } label: {
+              managedLabel("Auth URL", isManaged: configuration.isAuthURLForced)
+                .accessibilityHidden(true)
             }
-            .focused($focusedField, equals: .authURL)
-            .onSubmit { commit(.settings) }
-            .disabled(configuration.isAuthURLForced)
             errorText(viewModel.authURLError)
 
-            TextField(
-              text: $viewModel.apiURL,
-              prompt: Text(PlaceholderText.apiURL)
-            ) {
-              managedLabel("API URL", isManaged: configuration.isApiURLForced, savedField: .apiURL)
+            LabeledContent {
+              HStack {
+                TextField(
+                  text: $viewModel.apiURL,
+                  prompt: Text(PlaceholderText.apiURL)
+                ) {
+                  managedLabel("API URL", isManaged: configuration.isApiURLForced)
+                }
+                .labelsHidden()
+                .multilineTextAlignment(.trailing)
+                .focused($focusedField, equals: .apiURL)
+                .onSubmit { commit(.settings) }
+                .disabled(configuration.isApiURLForced)
+                saveStateSlot(.apiURL, isManaged: configuration.isApiURLForced)
+              }
+            } label: {
+              managedLabel("API URL", isManaged: configuration.isApiURLForced)
+                .accessibilityHidden(true)
             }
-            .focused($focusedField, equals: .apiURL)
-            .onSubmit { commit(.settings) }
-            .disabled(configuration.isApiURLForced)
             errorText(viewModel.apiURLError)
           }
         } header: {
@@ -271,22 +298,22 @@ public struct SettingsView: View {
         Form {
           Section {
             VStack(alignment: .leading, spacing: 2) {
-              managedLabel(
-                "Account Slug", isManaged: configuration.isAccountSlugForced,
-                savedField: .accountSlug
-              )
-              .foregroundStyle(.secondary)
-              .font(.caption)
-              TextField(
-                PlaceholderText.accountSlug,
-                text: $viewModel.accountSlug
-              )
-              .autocorrectionDisabled()
-              .textInputAutocapitalization(.never)
-              .submitLabel(.done)
-              .focused($focusedField, equals: .accountSlug)
-              .onSubmit { commit(.settings) }
-              .disabled(configuration.isAccountSlugForced)
+              managedLabel("Account Slug", isManaged: configuration.isAccountSlugForced)
+                .foregroundStyle(.secondary)
+                .font(.caption)
+              HStack {
+                TextField(
+                  PlaceholderText.accountSlug,
+                  text: $viewModel.accountSlug
+                )
+                .autocorrectionDisabled()
+                .textInputAutocapitalization(.never)
+                .submitLabel(.done)
+                .focused($focusedField, equals: .accountSlug)
+                .onSubmit { commit(.settings) }
+                .disabled(configuration.isAccountSlugForced)
+                saveStateSlot(.accountSlug, isManaged: configuration.isAccountSlugForced)
+              }
             }
             .background {
               if #available(iOS 18, *), UIDevice.current.userInterfaceIdiom == .pad {
@@ -320,39 +347,41 @@ public struct SettingsView: View {
 
             if viewModel.controlPlane == .custom {
               VStack(alignment: .leading, spacing: 2) {
-                managedLabel(
-                  "Auth URL", isManaged: configuration.isAuthURLForced, savedField: .authURL
-                )
-                .foregroundStyle(.secondary)
-                .font(.caption)
-                TextField(
-                  PlaceholderText.authURL,
-                  text: $viewModel.authURL
-                )
-                .autocorrectionDisabled()
-                .textInputAutocapitalization(.never)
-                .submitLabel(.done)
-                .focused($focusedField, equals: .authURL)
-                .onSubmit { commit(.settings) }
-                .disabled(configuration.isAuthURLForced)
+                managedLabel("Auth URL", isManaged: configuration.isAuthURLForced)
+                  .foregroundStyle(.secondary)
+                  .font(.caption)
+                HStack {
+                  TextField(
+                    PlaceholderText.authURL,
+                    text: $viewModel.authURL
+                  )
+                  .autocorrectionDisabled()
+                  .textInputAutocapitalization(.never)
+                  .submitLabel(.done)
+                  .focused($focusedField, equals: .authURL)
+                  .onSubmit { commit(.settings) }
+                  .disabled(configuration.isAuthURLForced)
+                  saveStateSlot(.authURL, isManaged: configuration.isAuthURLForced)
+                }
                 errorText(viewModel.authURLError)
               }
               VStack(alignment: .leading, spacing: 2) {
-                managedLabel(
-                  "API URL", isManaged: configuration.isApiURLForced, savedField: .apiURL
-                )
-                .foregroundStyle(.secondary)
-                .font(.caption)
-                TextField(
-                  PlaceholderText.apiURL,
-                  text: $viewModel.apiURL
-                )
-                .autocorrectionDisabled()
-                .textInputAutocapitalization(.never)
-                .submitLabel(.done)
-                .focused($focusedField, equals: .apiURL)
-                .onSubmit { commit(.settings) }
-                .disabled(configuration.isApiURLForced)
+                managedLabel("API URL", isManaged: configuration.isApiURLForced)
+                  .foregroundStyle(.secondary)
+                  .font(.caption)
+                HStack {
+                  TextField(
+                    PlaceholderText.apiURL,
+                    text: $viewModel.apiURL
+                  )
+                  .autocorrectionDisabled()
+                  .textInputAutocapitalization(.never)
+                  .submitLabel(.done)
+                  .focused($focusedField, equals: .apiURL)
+                  .onSubmit { commit(.settings) }
+                  .disabled(configuration.isApiURLForced)
+                  saveStateSlot(.apiURL, isManaged: configuration.isApiURLForced)
+                }
                 errorText(viewModel.apiURLError)
               }
             }
@@ -397,21 +426,22 @@ public struct SettingsView: View {
         Form {
           Section {
             VStack(alignment: .leading, spacing: 2) {
-              managedLabel(
-                "Log Filter", isManaged: configuration.isLogFilterForced, savedField: .logFilter
-              )
-              .foregroundStyle(.secondary)
-              .font(.caption)
-              TextField(
-                PlaceholderText.logFilter,
-                text: $viewModel.logFilter
-              )
-              .autocorrectionDisabled()
-              .textInputAutocapitalization(.never)
-              .submitLabel(.done)
-              .focused($focusedField, equals: .logFilter)
-              .onSubmit { commit(.logs) }
-              .disabled(configuration.isLogFilterForced)
+              managedLabel("Log Filter", isManaged: configuration.isLogFilterForced)
+                .foregroundStyle(.secondary)
+                .font(.caption)
+              HStack {
+                TextField(
+                  PlaceholderText.logFilter,
+                  text: $viewModel.logFilter
+                )
+                .autocorrectionDisabled()
+                .textInputAutocapitalization(.never)
+                .submitLabel(.done)
+                .focused($focusedField, equals: .logFilter)
+                .onSubmit { commit(.logs) }
+                .disabled(configuration.isLogFilterForced)
+                saveStateSlot(.logFilter, isManaged: configuration.isLogFilterForced)
+              }
               errorText(viewModel.logFilterError)
             }
             LogFilesView(
@@ -486,16 +516,25 @@ public struct SettingsView: View {
     #elseif os(macOS)
       Form {
         Section {
-          TextField(
-            text: $viewModel.logFilter,
-            prompt: Text(PlaceholderText.logFilter)
-          ) {
-            managedLabel(
-              "Log Filter", isManaged: configuration.isLogFilterForced, savedField: .logFilter)
+          LabeledContent {
+            HStack {
+              TextField(
+                text: $viewModel.logFilter,
+                prompt: Text(PlaceholderText.logFilter)
+              ) {
+                managedLabel("Log Filter", isManaged: configuration.isLogFilterForced)
+              }
+              .labelsHidden()
+              .multilineTextAlignment(.trailing)
+              .focused($focusedField, equals: .logFilter)
+              .onSubmit { commit(.logs) }
+              .disabled(configuration.isLogFilterForced)
+              saveStateSlot(.logFilter, isManaged: configuration.isLogFilterForced)
+            }
+          } label: {
+            managedLabel("Log Filter", isManaged: configuration.isLogFilterForced)
+              .accessibilityHidden(true)
           }
-          .focused($focusedField, equals: .logFilter)
-          .onSubmit { commit(.logs) }
-          .disabled(configuration.isLogFilterForced)
           errorText(viewModel.logFilterError)
 
           LogFilesView(
@@ -590,9 +629,7 @@ public struct SettingsView: View {
       }
   }
 
-  private func managedLabel(
-    _ title: String, isManaged: Bool, savedField: Field? = nil
-  ) -> some View {
+  private func managedLabel(_ title: String, isManaged: Bool) -> some View {
     HStack(alignment: .firstTextBaseline, spacing: 4) {
       Text(LocalizedStringKey(title))
         .accessibilityHint(isManaged ? "Managed by your organization." : "")
@@ -602,20 +639,36 @@ public struct SettingsView: View {
           .foregroundStyle(.secondary)
           .accessibilityHidden(true)
       }
-      if let savedField, viewModel.recentlySavedFields.contains(savedField) {
-        Image(systemName: "checkmark.circle.fill")
-          .font(.caption)
-          .foregroundStyle(.green)
-          .transition(.opacity)
-          .accessibilityLabel("Saved")
-          .onAppear {
-            if #available(iOS 17, macOS 14, *) {
-              AccessibilityNotification.Announcement("Saved").post()
-            }
-          }
-      }
     }
-    .animation(.easeInOut, value: viewModel.recentlySavedFields)
+  }
+
+  /// Always takes up the same room, so that the text field does not shift when an icon appears.
+  private func saveStateSlot(_ field: Field, isManaged: Bool) -> some View {
+    let isDraft = !isManaged && viewModel.isDraft(field)
+    let isSaved = !isManaged && !isDraft && viewModel.recentlySavedFields.contains(field)
+
+    return Image(systemName: "checkmark.circle.fill")
+      .hidden()
+      .overlay {
+        if isDraft {
+          Image(systemName: "pencil.circle")
+            .foregroundStyle(.secondary)
+            .transition(.opacity)
+            .accessibilityHidden(true)
+        } else if isSaved {
+          Image(systemName: "checkmark.circle.fill")
+            .foregroundStyle(.green)
+            .transition(.opacity)
+            .accessibilityLabel("Saved")
+            .onAppear {
+              if #available(iOS 17, macOS 14, *) {
+                AccessibilityNotification.Announcement("Saved").post()
+              }
+            }
+        }
+      }
+      .animation(.easeInOut, value: isDraft)
+      .animation(.easeInOut, value: isSaved)
   }
 
   @ViewBuilder

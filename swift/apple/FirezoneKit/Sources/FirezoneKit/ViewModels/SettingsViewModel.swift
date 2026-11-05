@@ -189,6 +189,16 @@ class SettingsViewModel: ObservableObject {
     updateDerivedState()
   }
 
+  /// Whether `field` holds a value that differs from the saved one.
+  func isDraft(_ field: SettingsView.Field) -> Bool {
+    switch field {
+    case .accountSlug: return accountSlug != configuration.accountSlug
+    case .authURL: return authURL != configuration.authURL
+    case .apiURL: return apiURL != configuration.apiURL
+    case .logFilter: return logFilter != configuration.logFilter
+    }
+  }
+
   private var savedTextValues: [SettingsView.Field: String] {
     [
       .accountSlug: configuration.accountSlug,
