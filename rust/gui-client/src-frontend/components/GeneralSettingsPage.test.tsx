@@ -228,7 +228,7 @@ test("leaving an https:// API URL shows an error and saves nothing", async () =>
 });
 
 const pendingNote =
-  "Sign out and sign in again after changing the account slug or control plane.";
+  "Changes to account slug and control plane only take effect on the next sign-in.";
 
 const signedIn: GeneralSettingsViewModel = {
   ...usSettings,
