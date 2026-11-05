@@ -73,7 +73,6 @@ pub struct PendingEncapsulate {
     pending: sanstun::PendingEncapsulate,
 }
 
-#[expect(clippy::len_without_is_empty, reason = "a batch is never empty")]
 impl PendingEncapsulate {
     pub fn src(&self) -> Option<SocketAddr> {
         self.src
@@ -84,7 +83,7 @@ impl PendingEncapsulate {
     }
 
     /// Returns the number of reserved counters.
-    pub fn len(&self) -> usize {
+    pub(crate) fn len(&self) -> usize {
         self.pending.len()
     }
 
@@ -356,8 +355,6 @@ impl<TId: fmt::Display> Iterator for CommittedBatch<TId> {
         self.packets.size_hint()
     }
 }
-
-impl<TId: fmt::Display> ExactSizeIterator for CommittedBatch<TId> {}
 
 fn packet_bytes(committed: &CommittedPacket) -> &[u8] {
     match committed {

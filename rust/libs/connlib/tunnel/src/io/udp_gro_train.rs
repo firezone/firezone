@@ -34,7 +34,7 @@ pub struct ReceivedSegment<'a> {
 }
 
 /// Where a [`ReceivedSegment`] lies among the trains of one receive.
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone, Copy)]
 pub struct SegmentIndex {
     train: usize,
     segment: usize,
@@ -119,7 +119,7 @@ impl ReceivedSegment<'_> {
         self.datagram.from()
     }
 
-    pub(super) fn index(&self) -> SegmentIndex {
+    pub fn index(&self) -> SegmentIndex {
         self.index
     }
 

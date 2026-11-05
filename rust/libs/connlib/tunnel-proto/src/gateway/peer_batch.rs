@@ -4,11 +4,11 @@ use std::time::Instant;
 use anyhow::Result;
 use connlib_model::ClientId;
 use ip_packet::IpPacket;
+use smallvec::SmallVec;
 
 use super::{GatewayState, OutboundRewrite};
 use crate::batch::BatchingKey;
 use crate::{FailedToDecapsulate, packet_kind};
-use smallvec::SmallVec;
 
 /// The decision taken for the first packet of a flow in a [`PeerBatch`], reused for the rest.
 pub(super) struct Decision {
@@ -108,14 +108,6 @@ impl Iterator for PeerBatch<'_> {
         decision.flow.count_packet(&packet);
 
         Some(Ok(Some(packet)))
-    }
-
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        if self.closed {
-            return (0, Some(0));
-        }
-
-        (0, self.packets.size_hint().1)
     }
 }
 
