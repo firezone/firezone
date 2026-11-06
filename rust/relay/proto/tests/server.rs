@@ -213,7 +213,10 @@ fn success_responses_renew_the_nonce() {
 }
 
 #[test]
-fn channel_bind_to_non_public_peer_is_forbidden() {
+fn channel_bind_to_non_public_peer_is_ignored() {
+    let mut wireguard = [0u8; 32];
+    wireguard[0] = 4;
+
     for peer in [
         SocketAddr::from(([127, 0, 0, 1], 53)),
         SocketAddr::from(([169, 254, 169, 254], 53)),
@@ -226,13 +229,14 @@ fn channel_bind_to_non_public_peer_is_forbidden() {
 
         let response = relay.channel_bind(peer);
 
-        assert_eq!(
-            response.get_attribute::<ErrorCode>().map(|e| e.code()),
-            Some(Forbidden::CODEPOINT),
-            "{peer} is forbidden"
-        );
+        assert_eq!(response.class(), MessageClass::SuccessResponse, "{peer}");
         assert_eq!(relay.server.num_active_channels(), 0);
         assert_eq!(relay.next_command(), None);
+        assert_eq!(
+            relay.send_channel_data(ChannelNumber::new(ChannelNumber::MIN).unwrap(), &wireguard),
+            None,
+            "{peer} is not relayed to"
+        );
     }
 }
 
@@ -268,7 +272,7 @@ fn channel_bind_to_private_peer_succeeds_if_allowed() {
 }
 
 #[test]
-fn channel_bind_to_other_non_public_peer_is_forbidden_if_private_peers_are_allowed() {
+fn channel_bind_to_other_non_public_peer_is_ignored_if_private_peers_are_allowed() {
     for peer in [
         SocketAddr::from(([127, 0, 0, 1], 53)),
         SocketAddr::from(([169, 254, 169, 254], 53)),
@@ -279,11 +283,8 @@ fn channel_bind_to_other_non_public_peer_is_forbidden_if_private_peers_are_allow
 
         let response = relay.channel_bind(peer);
 
-        assert_eq!(
-            response.get_attribute::<ErrorCode>().map(|e| e.code()),
-            Some(Forbidden::CODEPOINT),
-            "{peer} is forbidden"
-        );
+        assert_eq!(response.class(), MessageClass::SuccessResponse, "{peer}");
+        assert_eq!(relay.server.num_active_channels(), 0);
     }
 }
 

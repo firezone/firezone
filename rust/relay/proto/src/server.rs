@@ -920,11 +920,19 @@ where
         }
 
         if !self.may_relay_to(peer_address) {
-            let (error_response, msg) = make_error_response(Forbidden, request);
+            // Clients bind channels to the private host candidates of their peers and log a warning for each refused bind.
+            // To keep them quiet, we pretend the bind succeeded but don't create a channel, so data sent on it is dropped.
+            tracing::debug!(target: "relay", %sender, allocation = %allocation.port, peer = %peer_address, channel = %requested_channel.value(), "Peer address is not allowed, ignoring channel bind");
 
-            tracing::debug!(target: "relay", %sender, allocation = %allocation.port, peer = %peer_address, channel = %requested_channel.value(), "{msg}: Peer address is not allowed");
+            self.authenticate_and_send(
+                &username,
+                request,
+                channel_bind_success_response(request.transaction_id()),
+                sender,
+                now_utc,
+            );
 
-            return Err(error_response);
+            return Ok(());
         }
 
         // Ensure the same address isn't already bound to a different channel.
