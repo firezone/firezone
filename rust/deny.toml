@@ -111,6 +111,10 @@ ignore = [
     # `basic-toml` only parses askama's config at build time, via `uniffi_bindgen`.
     "RUSTSEC-2026-0374",
 
+    # `jsonwebtoken`'s `rust_crypto` backend pulls in RSA and ECDSA, but `otel-ingest-proxy` only verifies EdDSA tokens.
+    "RUSTSEC-2023-0071", # rsa
+    "RUSTSEC-2026-0387", # crypto-bigint 0.5, via p256 and p384
+
     #"RUSTSEC-0000-0000",
     #{ id = "RUSTSEC-0000-0000", reason = "you can specify a reason the advisory is ignored" },
     #"a-crate-that-is-yanked@0.1.1", # you can also ignore yanked crate versions if you wish
@@ -259,9 +263,11 @@ skip = [
     "cargo-platform",
     "cargo_metadata",
     "cipher", # See `block-buffer`: chacha20 0.10 uses 0.5; aes and cbc (via dbus-secret-service) are on 0.4.
+    "const-oid", # See `block-buffer`: digest 0.11 uses 0.10; the RustCrypto 0.10 stack (via jsonwebtoken) is on 0.9.
     "core-foundation", # hickory 0.26 ships system-configuration 0.7 (core-foundation 0.9); tauri/reqwest/etc. are on 0.10.
     "cpufeatures", # See `block-buffer`: chacha20 0.10, sha2 0.11 and curve25519-dalek 5 use 0.3; aes and sha1 are on 0.2.
-    "crypto-common", # See `block-buffer`: pulled by sanstun's crypto crates (0.2 vs 0.1 elsewhere).
+    "crypto-common",
+    "curve25519-dalek", # See `block-buffer`: x25519-dalek 3 (via sanstun) uses 5; ed25519-dalek 2 (via jsonwebtoken) is on 4. # See `block-buffer`: pulled by sanstun's crypto crates (0.2 vs 0.1 elsewhere).
     "darling", # serde_with 3.23+ uses darling 0.24 (syn 3); ingot-macros 0.2 is on 0.23. Build-time only, as both are proc-macros.
     "darling_core",
     "darling_macro",
@@ -284,6 +290,7 @@ skip = [
     "png",
     "proc-macro-crate",
     "rand",
+    "rand_chacha",
     "rand_core",
     "serde_spanned",
     "sha2", # workspace is on 0.11; tauri (tauri-codegen, wry) and dbus-secret-service still pull 0.10.

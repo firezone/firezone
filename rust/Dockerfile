@@ -33,6 +33,10 @@ COPY ./docker-init-client.sh ./docker-init.sh
 FROM runtime_base AS runtime_http-test-server
 COPY ./docker-init-http-test-server.sh ./docker-init.sh
 
+# OTel ingest proxy specific runtime base image
+FROM runtime_base AS runtime_firezone-otel-ingest-proxy
+COPY ./docker-init-firezone-otel-ingest-proxy.sh ./docker-init.sh
+
 # Funnel package specific base image back into `runtime`
 ARG PACKAGE
 FROM runtime_${PACKAGE} AS runtime

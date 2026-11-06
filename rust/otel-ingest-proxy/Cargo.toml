@@ -1,0 +1,47 @@
+[package]
+name = "firezone-otel-ingest-proxy"
+version = "0.1.0"
+edition = { workspace = true }
+license = { workspace = true }
+
+[dependencies]
+anyhow = { workspace = true }
+axum = { workspace = true }
+bin-shared = { workspace = true }
+clap = { workspace = true, features = ["derive", "env"] }
+futures = { workspace = true }
+http-body-util = { workspace = true }
+hyper = { workspace = true, features = ["server", "http1"] }
+hyper-util = { workspace = true, features = ["server", "http1", "tokio", "service", "server-graceful"] }
+jsonwebtoken = { workspace = true, features = ["use_pem", "rust_crypto"] }
+logging = { workspace = true }
+mimalloc = { workspace = true }
+opentelemetry = { workspace = true, features = ["metrics"] }
+opentelemetry-proto = { workspace = true, features = ["gen-tonic-messages", "metrics"] }
+opentelemetry_sdk = { workspace = true, features = ["metrics"] }
+otel-azure-export = { workspace = true }
+otel-metric-patterns = { workspace = true }
+parking_lot = { workspace = true }
+prost = { workspace = true, features = ["std"] }
+reqwest = { workspace = true, features = ["rustls-no-provider"] }
+rustls = { workspace = true }
+rustls-pki-types = { workspace = true, features = ["std"] }
+serde = { workspace = true, features = ["derive"] }
+tokio = { workspace = true, features = ["rt-multi-thread", "net", "time"] }
+tokio-rustls = { workspace = true }
+tower = { workspace = true, features = ["limit"] }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+url = { workspace = true }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+mimalloc = { workspace = true, features = ["local_dynamic_tls"] } # `local_dynamic_tls` keeps the allocator's TLS model compatible with our static musl builds.
+
+[dev-dependencies]
+axum = { workspace = true, features = ["http1", "tokio"] }
+serde_json = { workspace = true }
+tokio = { workspace = true, features = ["macros", "sync"] }
+tower = { workspace = true, features = ["util"] }
+
+[lints]
+workspace = true

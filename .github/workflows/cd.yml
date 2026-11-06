@@ -169,6 +169,19 @@ jobs:
       profile: "release"
       stage: "release"
 
+  otel-ingest-proxy-prod-images:
+    uses: ./.github/workflows/_rust-docker-image.yml
+    secrets: inherit
+    permissions:
+      contents: read
+      packages: write # push Docker images to GHCR
+      security-events: write # upload Trivy SARIF results
+    with:
+      package: firezone-otel-ingest-proxy
+      image_name: otel-ingest-proxy
+      profile: "release"
+      stage: "release"
+
   # Build data-plane perf images for perf-tests
   client-perf-images:
     uses: ./.github/workflows/_client.yml
@@ -244,6 +257,7 @@ jobs:
         gateway-prod-images,
         relay-prod-images,
         http-test-server-prod-images,
+        otel-ingest-proxy-prod-images,
         control-plane-images,
         loadtest-binaries,
       ]
