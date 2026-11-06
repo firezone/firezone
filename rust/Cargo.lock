@@ -2964,6 +2964,41 @@ dependencies = [
 ]
 
 [[package]]
+name = "firezone-otel-ingest-proxy"
+version = "0.1.0"
+dependencies = [
+ "anyhow-ext",
+ "axum",
+ "bin-shared",
+ "clap",
+ "futures",
+ "http-body-util",
+ "hyper",
+ "hyper-util",
+ "jsonwebtoken",
+ "logging",
+ "mimalloc",
+ "opentelemetry",
+ "opentelemetry-proto",
+ "opentelemetry_sdk",
+ "otel-azure-export",
+ "otel-metric-patterns",
+ "parking_lot",
+ "prost",
+ "reqwest",
+ "rustls",
+ "rustls-pki-types",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tokio-rustls",
+ "tower",
+ "tracing",
+ "tracing-subscriber",
+ "url",
+]
+
+[[package]]
 name = "firezone-relay"
 version = "0.1.0"
 dependencies = [
@@ -6048,41 +6083,6 @@ dependencies = [
  "serde_with",
  "tokio",
  "tracing",
- "url",
-]
-
-[[package]]
-name = "otel-ingest-proxy"
-version = "0.1.0"
-dependencies = [
- "anyhow-ext",
- "axum",
- "bin-shared",
- "clap",
- "futures",
- "http-body-util",
- "hyper",
- "hyper-util",
- "jsonwebtoken",
- "logging",
- "mimalloc",
- "opentelemetry",
- "opentelemetry-proto",
- "opentelemetry_sdk",
- "otel-azure-export",
- "otel-metric-patterns",
- "parking_lot",
- "prost",
- "reqwest",
- "rustls",
- "rustls-pki-types",
- "serde",
- "serde_json",
- "tokio",
- "tokio-rustls",
- "tower",
- "tracing",
- "tracing-subscriber",
  "url",
 ]
 
