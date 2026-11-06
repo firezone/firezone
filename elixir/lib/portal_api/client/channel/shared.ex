@@ -2238,6 +2238,23 @@ defmodule PortalAPI.Client.Channel.Shared do
     handle_info(:disconnect, socket)
   end
 
+  # TRUST ANCHORS
+
+  # Editing or deleting a trust anchor deletes its certificate rows. A session
+  # that came in on a certificate reconnects, so Socket.connect/3 checks it
+  # against the anchors that remain.
+  defp handle_change(
+         %Change{op: :delete, old_struct: %Portal.TrustAnchorCertificate{}},
+         socket
+       ) do
+    if certificate_session?(socket) do
+      send(socket.transport_pid, :socket_drain)
+      {:stop, :shutdown, socket}
+    else
+      {:noreply, socket}
+    end
+  end
+
   # X.509 AUTH PROVIDERS
 
   defp handle_change(
@@ -3105,6 +3122,9 @@ defmodule PortalAPI.Client.Channel.Shared do
   end
 
   defp x509_session_enabled?(_socket), do: true
+
+  defp certificate_session?(%{assigns: %{subject: %{credential: %Credential.X509{}}}}), do: true
+  defp certificate_session?(socket), do: not is_nil(socket.assigns[:attestation])
 
   # Only enqueue + arm on the first successful registration; re-registrations
   # after a PG scope crash share the same channel and session row.
