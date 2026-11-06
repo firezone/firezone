@@ -1,0 +1,17 @@
+Account Transfer Complete
+
+Your Firezone account "<%= @account.slug %>" (<%= @account.id %>) is now in the <%= @region %> region and enabled.
+
+Sign in to the new portal:
+<%= @sign_in_url %>
+
+Next steps:
+- Ask users to sign in again. Links to the old portal redirect to the new one. Clients at macOS and iOS 1.5.24, Android 1.5.18, and Windows and Linux 1.5.20 or later switch to the new region on their own.
+- Older Clients need the new URLs. Under Settings > Advanced, set the auth URL to <%= @auth_url %> and the API URL to <%= @api_url %>. With an MDM, set the authURL and apiURL managed configuration keys instead.
+- Create a new token for each Gateway and set its API URL to <%= @api_url %> in the automation that deploys your Gateways.
+- Create new service account tokens for your headless Clients. Set their API URL to <%= @api_url %> too.
+- Recreate every API token.
+- Reconnect your MCP clients.
+
+Thanks,
+The Firezone Team
