@@ -156,7 +156,7 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
       |> load_trust_anchors_if_connected()
       |> assign(selected_trust_anchor: nil)
       |> assign(form: nil, input_mode: :paste)
-      |> assign(confirm_delete?: false)
+      |> assign(confirm_delete?: false, pending_update: nil)
       |> assign(revocation: [])
       |> assign(panel_tab: :overview, expanded_endpoint: nil)
       |> allow_upload(:cert_file,
@@ -187,7 +187,7 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
     socket =
       socket
       |> assign(selected_trust_anchor: trust_anchor, input_mode: :paste, confirm_delete?: false)
-      |> assign(form: to_form(changeset, as: "trust_anchor"))
+      |> assign(form: to_form(changeset, as: "trust_anchor"), pending_update: nil)
 
     {:noreply, socket}
   end
@@ -215,7 +215,8 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
        selected_trust_anchor: nil,
        form: nil,
        input_mode: :paste,
-       confirm_delete?: false
+       confirm_delete?: false,
+       pending_update: nil
      )}
   end
 
@@ -409,6 +410,26 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
               </Form.panel_footer_button>
             </Form.panel_footer>
           </.form>
+
+          <Form.modal
+            :if={@pending_update}
+            id="trust-anchor-remove-certificates-modal"
+            on_close="cancel_update_trust_anchor"
+            on_cancel="cancel_update_trust_anchor"
+            on_confirm="confirm_update_trust_anchor"
+            confirm_style="danger"
+          >
+            <:title>Remove certificates?</:title>
+            <:body>
+              <p>This change removes one or more certificates from this trust anchor.</p>
+              <p class="mt-2">
+                Devices that connected with a certificate will reconnect. If no trust anchor
+                trusts the certificate of a device after this change, that device is disconnected.
+              </p>
+            </:body>
+            <:cancel_button>Cancel</:cancel_button>
+            <:confirm_button>Save</:confirm_button>
+          </Form.modal>
         </div>
       </div>
     </div>
@@ -778,6 +799,8 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
             <p class="text-xs text-error">
               <span class="font-medium">Delete this trust anchor?</span>
               <br /> Certificates issued by it will no longer be trusted, and this cannot be undone.
+              Devices that connected with a certificate will reconnect, and devices that no
+              other trust anchor trusts are disconnected.
             </p>
             <div class="flex items-center gap-2">
               <Form.button type="button" phx-click="cancel_delete_trust_anchor" size="xs">
@@ -1002,27 +1025,38 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
 
   def handle_event("update_trust_anchor", %{"trust_anchor" => attrs}, socket) do
     attrs = resolve_certs_attrs(socket, attrs)
-    changeset =
-      build_edit_changeset(socket.assigns.selected_trust_anchor, attrs, socket.assigns.subject)
+    trust_anchor = socket.assigns.selected_trust_anchor
+    changeset = build_edit_changeset(trust_anchor, attrs, socket.assigns.subject)
 
-    case Safe.scoped(changeset, socket.assigns.subject) |> Safe.update() do
-      {:ok, trust_anchor} ->
-        clear_revocation_errors(trust_anchor, socket.assigns.subject)
-        trust_anchors = Database.list_trust_anchors(socket.assigns.subject)
+    if changeset.valid? and removes_certificates?(changeset, trust_anchor) do
+      {:noreply,
+       assign(socket, pending_update: attrs, form: to_form(changeset, as: "trust_anchor"))}
+    else
+      save_trust_anchor(socket, changeset)
+    end
+  end
 
-        socket =
-          socket
-          |> assign(trust_anchors: trust_anchors)
-          |> assign_revocation_health(trust_anchors)
-          |> put_flash(:success, "Trust anchor updated successfully")
-          |> push_patch(to: ~p"/#{socket.assigns.account}/settings/trust_anchors")
-
+  def handle_event("confirm_update_trust_anchor", _params, socket) do
+    case socket.assigns.pending_update do
+      nil ->
         {:noreply, socket}
 
-      {:error, changeset} ->
-        changeset = surface_certificate_errors(changeset)
-        {:noreply, assign(socket, form: to_form(changeset, as: "trust_anchor"))}
+      attrs ->
+        changeset =
+          build_edit_changeset(
+            socket.assigns.selected_trust_anchor,
+            attrs,
+            socket.assigns.subject
+          )
+
+        socket
+        |> assign(pending_update: nil)
+        |> save_trust_anchor(changeset)
     end
+  end
+
+  def handle_event("cancel_update_trust_anchor", _params, socket) do
+    {:noreply, assign(socket, pending_update: nil)}
   end
 
   def handle_event("confirm_delete_trust_anchor", _params, socket) do
@@ -1088,6 +1122,34 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
     end
   end
 
+  defp save_trust_anchor(socket, changeset) do
+    case Safe.scoped(changeset, socket.assigns.subject) |> Safe.update() do
+      {:ok, trust_anchor} ->
+        clear_revocation_errors(trust_anchor, socket.assigns.subject)
+        trust_anchors = Database.list_trust_anchors(socket.assigns.subject)
+
+        socket =
+          socket
+          |> assign(trust_anchors: trust_anchors)
+          |> assign_revocation_health(trust_anchors)
+          |> put_flash(:success, "Trust anchor updated successfully")
+          |> push_patch(to: ~p"/#{socket.assigns.account}/settings/trust_anchors")
+
+        {:noreply, socket}
+
+      {:error, changeset} ->
+        changeset = surface_certificate_errors(changeset)
+        {:noreply, assign(socket, form: to_form(changeset, as: "trust_anchor"))}
+    end
+  end
+
+  # Removing a certificate deletes its row, and every Client session in the
+  # account that came in on a certificate then reconnects.
+  defp removes_certificates?(changeset, trust_anchor) do
+    kept = changeset |> get_field(:certificates, []) |> MapSet.new(& &1.fingerprint)
+    Enum.any?(trust_anchor.certificates, &(not MapSet.member?(kept, &1.fingerprint)))
+  end
+
   defp build_edit_changeset(trust_anchor, attrs, subject) do
     trust_anchor
     |> cast(attrs, [:name, :certs])
@@ -1131,21 +1193,16 @@ defmodule PortalWeb.Settings.TrustAnchors.Index do
   # PEM/base64/DER text the admin typed with the normalized raw DER bytes
   # (see `normalize_certs/2` and the schema test asserting on that). Showing
   # those bytes back in the textarea would corrupt the field, so once
-  # normalization has produced `:certificates` changesets, read their
-  # already-armored `:pem` back for display instead of `@form[:certs].value`.
+  # normalization has succeeded, read the already-armored `:pem` of the
+  # certificates the anchor will hold instead of `@form[:certs].value`. Text that
+  # failed to normalize is shown as typed.
   defp certs_display_value(form) do
-    case Ecto.Changeset.get_change(form.source, :certificates) do
-      [_ | _] = certificate_changesets ->
-        certificate_changesets
-        # `put_assoc/3` can't match freshly-built cert changesets against the
-        # existing (unsaved-input) `:id`-less ones they replace, so editing
-        # always emits a `:replace` entry for the old row alongside the
-        # `:insert` for the new one. Only the surviving side belongs on screen.
-        |> Enum.reject(&(&1.action == :replace))
-        |> Enum.map_join(&Ecto.Changeset.get_field(&1, :pem))
+    certificates = Ecto.Changeset.get_field(form.source, :certificates)
 
-      _ ->
-        List.first(form[:certs].value || [], "")
+    if Keyword.has_key?(form.source.errors, :certs) or not is_list(certificates) do
+      List.first(form[:certs].value || [], "")
+    else
+      Enum.map_join(certificates, & &1.pem)
     end
   end
 

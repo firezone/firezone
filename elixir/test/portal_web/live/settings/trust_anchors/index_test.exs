@@ -985,6 +985,114 @@ defmodule PortalWeb.Settings.TrustAnchors.IndexTest do
       assert updated = Repo.get_by(TrustAnchor, account_id: account.id, id: trust_anchor.id)
       assert updated.name == "New Name"
     end
+
+    test "renaming keeps the certificate rows and shows no warning", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      trust_anchor = trust_anchor_fixture(account: account, name: "Old Name")
+      [certificate] = trust_anchor.certificates
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/trust_anchors/#{trust_anchor.id}/edit")
+
+      html =
+        lv
+        |> form("#trust-anchor-edit-form",
+          trust_anchor: %{name: "New Name", certs: [sample_cert_pem()]}
+        )
+        |> render_submit()
+
+      refute html =~ "Remove certificates?"
+      assert_patch(lv, ~p"/#{account}/settings/trust_anchors")
+      assert Repo.get_by(Portal.TrustAnchorCertificate, id: certificate.id)
+    end
+
+    test "warns before removing a certificate and saves on confirm", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      trust_anchor = trust_anchor_fixture(account: account, name: "Old Name")
+      [certificate] = trust_anchor.certificates
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/trust_anchors/#{trust_anchor.id}/edit")
+
+      html =
+        lv
+        |> form("#trust-anchor-edit-form",
+          trust_anchor: %{name: "Old Name", certs: [sample_additional_ca_pem()]}
+        )
+        |> render_submit()
+
+      assert html =~ "Remove certificates?"
+      assert Repo.get_by(Portal.TrustAnchorCertificate, id: certificate.id)
+
+      render_click(lv, "confirm_update_trust_anchor")
+
+      assert_patch(lv, ~p"/#{account}/settings/trust_anchors")
+      refute Repo.get_by(Portal.TrustAnchorCertificate, id: certificate.id)
+    end
+
+    test "keeps the certificates when the removal warning is cancelled", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      trust_anchor = trust_anchor_fixture(account: account, name: "Old Name")
+      [certificate] = trust_anchor.certificates
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/trust_anchors/#{trust_anchor.id}/edit")
+
+      lv
+      |> form("#trust-anchor-edit-form",
+        trust_anchor: %{name: "Old Name", certs: [sample_additional_ca_pem()]}
+      )
+      |> render_submit()
+
+      html = render_click(lv, "cancel_update_trust_anchor")
+
+      refute html =~ "Remove certificates?"
+      assert Repo.get_by(Portal.TrustAnchorCertificate, id: certificate.id)
+    end
+
+    test "adding a certificate shows no warning", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      trust_anchor = trust_anchor_fixture(account: account, name: "Old Name")
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/trust_anchors/#{trust_anchor.id}/edit")
+
+      html =
+        lv
+        |> form("#trust-anchor-edit-form",
+          trust_anchor: %{
+            name: "Old Name",
+            certs: [sample_cert_pem() <> sample_additional_ca_pem()]
+          }
+        )
+        |> render_submit()
+
+      refute html =~ "Remove certificates?"
+      assert_patch(lv, ~p"/#{account}/settings/trust_anchors")
+
+      updated = Repo.get_by!(TrustAnchor, account_id: account.id, id: trust_anchor.id)
+      assert length(Repo.preload(updated, :certificates).certificates) == 2
+    end
   end
 
   describe "delete" do

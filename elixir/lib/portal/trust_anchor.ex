@@ -220,20 +220,36 @@ defmodule Portal.TrustAnchor do
     add_error(changeset, field, "invalid certificate")
   end
 
+  # Certificates that are already on the anchor keep their rows, so an edit that
+  # does not remove a certificate does not delete one either.
   defp build_certificate_changesets(changeset, normalized_certs) do
     account_id = resolve_account_id(changeset)
+    existing = existing_certificates_by_fingerprint(changeset.data)
 
     Enum.map(normalized_certs, fn der ->
       fingerprint = Base.encode16(:crypto.hash(:sha256, der), case: :lower)
 
-      %TrustAnchorCertificate{}
-      |> cast(
-        %{pem: X509.pem_encode(der), fingerprint: fingerprint, account_id: account_id},
-        [:pem, :fingerprint, :account_id]
-      )
-      |> TrustAnchorCertificate.changeset()
+      case Map.fetch(existing, fingerprint) do
+        {:ok, certificate} ->
+          certificate
+
+        :error ->
+          %TrustAnchorCertificate{}
+          |> cast(
+            %{pem: X509.pem_encode(der), fingerprint: fingerprint, account_id: account_id},
+            [:pem, :fingerprint, :account_id]
+          )
+          |> TrustAnchorCertificate.changeset()
+      end
     end)
   end
+
+  defp existing_certificates_by_fingerprint(%__MODULE__{certificates: certificates})
+       when is_list(certificates) do
+    Map.new(certificates, &{&1.fingerprint, &1})
+  end
+
+  defp existing_certificates_by_fingerprint(_trust_anchor), do: %{}
 
   defp resolve_account_id(changeset) do
     case get_field(changeset, :account_id) do
