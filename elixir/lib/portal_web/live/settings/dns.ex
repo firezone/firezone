@@ -44,7 +44,7 @@ defmodule PortalWeb.Settings.DNS do
         <div class="flex items-center justify-between px-6 py-3 border-b border-border shrink-0">
           <h2 class="text-xs font-semibold text-heading">DNS Configuration</h2>
           <div class="flex items-center gap-2">
-            <Navigation.docs_action path="/deploy/dns" />
+            <Navigation.docs_action show_label path="/deploy/dns" />
             <Navigation.link
               patch={~p"/#{@account}/settings/dns/edit"}
               class="flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"

@@ -630,7 +630,7 @@ defmodule PortalWeb.Settings.DirectorySync do
               </span>
             </div>
             <div class="flex items-center gap-2">
-              <Navigation.docs_action path="/directory-sync" />
+              <Navigation.docs_action show_label path="/directory-sync" />
               <Navigation.link
                 patch={~p"/#{@account}/settings/directory_sync/new"}
                 class="flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"
@@ -941,7 +941,7 @@ defmodule PortalWeb.Settings.DirectorySync do
               <h2 class="text-xs font-semibold text-heading">Directories</h2>
             </div>
             <div class="flex items-center gap-2">
-              <Navigation.docs_action path="/directory-sync" />
+              <Navigation.docs_action show_label path="/directory-sync" />
             </div>
           </div>
 

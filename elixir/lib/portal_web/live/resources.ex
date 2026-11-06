@@ -390,7 +390,7 @@ defmodule PortalWeb.Resources do
           Network endpoints accessible through Firezone.
         </:description>
         <:action>
-          <Navigation.docs_action path="/deploy/resources" />
+          <Navigation.docs_action show_label size="md" path="/deploy/resources" />
           <Form.button style="primary" icon="ri-add-line" phx-click="open_new_form">
             New Resource
           </Form.button>

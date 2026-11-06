@@ -189,7 +189,7 @@ defmodule PortalWeb.Settings.ApiClients.Index do
             </span>
           </div>
           <div class="flex items-center gap-2">
-            <Navigation.docs_action path="/reference/rest-api" />
+            <Navigation.docs_action show_label path="/reference/rest-api" />
             <Navigation.link
               patch={~p"/#{@account}/settings/api_clients/new"}
               class="flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"

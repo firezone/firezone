@@ -809,7 +809,7 @@ defmodule PortalWeb.Settings.Authentication do
             </span>
           </div>
           <div class="flex items-center gap-2">
-            <Navigation.docs_action path="/authenticate" />
+            <Navigation.docs_action show_label path="/authenticate" />
             <Navigation.link
               patch={~p"/#{@account}/settings/authentication/new"}
               class="flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-border-strong text-body hover:text-heading hover:border-border-emphasis bg-surface transition-colors"

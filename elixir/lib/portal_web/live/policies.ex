@@ -208,7 +208,7 @@ defmodule PortalWeb.Policies do
           Rules that grant a group access to a resource.
         </:description>
         <:action>
-          <Navigation.docs_action path="/deploy/policies" />
+          <Navigation.docs_action show_label size="md" path="/deploy/policies" />
           <Form.button style="primary" icon="ri-add-line" phx-click="open_new_policy_form">
             New Policy
           </Form.button>

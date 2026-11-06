@@ -204,7 +204,7 @@ defmodule PortalWeb.Sites do
           Logical groupings of gateways - typically mapped to a network location or cloud region.
         </:description>
         <:action>
-          <Navigation.docs_action path="/deploy/sites" />
+          <Navigation.docs_action show_label size="md" path="/deploy/sites" />
           <Form.button style="primary" icon="ri-add-line" phx-click="open_new_site_panel">
             New Site
           </Form.button>

@@ -139,7 +139,7 @@ defmodule PortalWeb.Devices do
           End-user devices and servers that access your protected Resources.
         </:description>
         <:action>
-          <Navigation.docs_action path="/deploy/clients" />
+          <Navigation.docs_action show_label size="md" path="/deploy/clients" />
         </:action>
         <:stats>
           <.async_result :let={count} assign={@devices_count}>
