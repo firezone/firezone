@@ -424,7 +424,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       site: site,
       token: token
     } do
-      :ok = Portal.Ops.set_metrics_export(account.id, ["*"])
+      {:ok, _id} = Portal.Ops.add_account_metrics(account.id, ["*"])
       socket = join_channel(gateway, site, token, channel: PortalAPI.Gateway.V2.Channel)
 
       assert_push "init", init
@@ -435,7 +435,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       refute_push "metrics_config", _payload
     end
 
-    test "sends no metrics config while metrics export is off", %{
+    test "sends no metrics token while the account exports no metrics", %{
       gateway: gateway,
       site: site,
       token: token
@@ -446,9 +446,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       assert_push "metrics_config", %{token: nil, export_interval_secs: 60, patterns: []}
 
       send(socket.channel_pid, :refresh_metrics_token)
-      send(socket.channel_pid, :metrics_token_key_rotated)
-
-      refute_push "metrics_config", _payload
+      assert_push "metrics_config", %{token: nil, patterns: []}
     end
 
     test "sends a metrics token after init and refreshes it", %{
@@ -457,33 +455,34 @@ defmodule PortalAPI.Gateway.ChannelTest do
       site: site,
       token: token
     } do
-      :ok = Portal.Ops.set_metrics_export(account.id, ["*"])
+      {:ok, _id} = Portal.Ops.add_account_metrics(account.id, ["b"])
       socket = join_channel(gateway, site, token, channel: PortalAPI.Gateway.V3.Channel)
 
       assert_push "init", _init_payload
 
       assert_push "metrics_config", %{
         endpoint: "https://otlp.firezone.dev/v1/metrics",
-        patterns: ["*"],
+        export_interval_secs: 60,
+        patterns: ["b"],
         token: metrics_token
       }
 
-      assert {:ok, %{"account_id" => account_id, "device_type" => "gateway", "device_version" => version}} =
-               Portal.MetricsToken.verify(metrics_token)
+      claims = JOSE.JWT.peek_payload(metrics_token).fields
+      assert claims["account_id"] == account.id
+      assert claims["account_slug"] == account.slug
+      assert claims["device_id"] == gateway.id
+      assert claims["device_type"] == "gateway"
+      assert claims["device_version"] == fetch_device!(gateway).last_seen_version
+      assert claims["metrics"] == ["b"]
 
-      assert version == fetch_device!(gateway).last_seen_version
-      assert account_id == account.id
-
+      {:ok, _id} = Portal.Ops.add_plan_metrics(Portal.Billing.plan_type(account), ["a"])
       send(socket.channel_pid, :refresh_metrics_token)
-      assert_push "metrics_config", %{token: metrics_token}
-      assert {:ok, _claims} = Portal.MetricsToken.verify(metrics_token)
 
-      send(socket.channel_pid, :metrics_token_key_rotated)
-      assert_push "metrics_config", %{token: metrics_token}
-      assert {:ok, _claims} = Portal.MetricsToken.verify(metrics_token)
+      assert_push "metrics_config", %{patterns: ["a", "b"], token: metrics_token}
+      assert JOSE.JWT.peek_payload(metrics_token).fields["metrics"] == ["a", "b"]
     end
 
-    test "pushes the metrics config when the account's metrics export changes", %{
+    test "pushes the metrics config when the account's metric sets change", %{
       account: account,
       gateway: gateway,
       site: site,
@@ -492,35 +491,23 @@ defmodule PortalAPI.Gateway.ChannelTest do
       socket = join_channel(gateway, site, token, channel: PortalAPI.Gateway.V3.Channel)
       assert_push "init", _init_payload
       assert_push "metrics_config", %{token: nil}
-      some = %{account | metrics_export: ["a"]}
 
-      send(socket.channel_pid, %Changes.Change{
-        lsn: System.unique_integer([:positive, :monotonic]),
-        op: :update,
-        old_struct: account,
-        struct: some
-      })
+      {:ok, id} = Portal.Ops.add_account_metrics(account.id, ["a"])
+      metric_set = Repo.get!(Portal.AccountMetricSet, id)
+      lsn = System.unique_integer([:positive, :monotonic])
+      send(socket.channel_pid, %Changes.Change{lsn: lsn, op: :insert, struct: metric_set})
 
       assert_push "metrics_config", %{token: metrics_token, patterns: ["a"]}
-      assert {:ok, %{"metrics" => ["a"]}} = Portal.MetricsToken.verify(metrics_token)
+      assert JOSE.JWT.peek_payload(metrics_token).fields["metrics"] == ["a"]
 
-      send(socket.channel_pid, %Changes.Change{
-        lsn: System.unique_integer([:positive, :monotonic]),
-        op: :update,
-        old_struct: some,
-        struct: account
-      })
+      :ok = Portal.Ops.remove_account_metrics(id)
+      lsn = System.unique_integer([:positive, :monotonic])
+      send(socket.channel_pid, %Changes.Change{lsn: lsn, op: :delete, old_struct: metric_set})
 
-      assert_push "metrics_config", %{token: nil}
+      assert_push "metrics_config", %{token: nil, patterns: []}
 
-      send(socket.channel_pid, %Changes.Change{
-        lsn: System.unique_integer([:positive, :monotonic]),
-        op: :update,
-        old_struct: account,
-        struct: %{account | metrics_export_interval_secs: 10}
-      })
-
-      assert_push "metrics_config", %{token: nil, export_interval_secs: 10}
+      send(socket.channel_pid, %Changes.Change{lsn: lsn, op: :delete, old_struct: metric_set})
+      refute_push "metrics_config", _payload
     end
 
     test "init includes inbound authorizations from the hydrated cache", %{

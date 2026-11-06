@@ -46,6 +46,7 @@ defmodule Portal.PubSub do
     @type entity ::
             :accounts
             | :account_slugs
+            | :account_metric_sets
             | :actors
             | :client_tokens
             | :devices

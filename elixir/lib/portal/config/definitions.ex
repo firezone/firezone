@@ -254,6 +254,21 @@ defmodule Portal.Config.Definitions do
   )
 
   @doc """
+  How often Clients and Gateways export OTLP metrics.
+  """
+  defconfig(:otlp_metrics_export_interval_secs, :integer, default: 60)
+
+  @doc """
+  Base64-encoded PEM of the Ed25519 private key that signs the tokens Clients
+  and Gateways present to the OTLP ingest proxy. Metrics export is off while unset.
+  """
+  defconfig(:otel_ingest_jwt_private_key, :string,
+    default: nil,
+    sensitive: true,
+    changeset: &Portal.Changeset.validate_base64/2
+  )
+
+  @doc """
   Access key ID for Firezone's AWS account, used to assume customer IAM roles
   for Amazon S3 log sinks.
   """

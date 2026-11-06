@@ -2,11 +2,10 @@ defmodule PortalAPI.Gateway.V3.Channel do
   @moduledoc """
   The v3 gateway control protocol: v2 plus metrics export. Gateways on this
   channel receive `metrics_config` pushes after joining, when their token is
-  refreshed or the signing key rotates, and when the account's metrics settings
-  change.
+  refreshed, and when the account's metric sets change.
   """
   use PortalAPI, :channel
-  alias Portal.{Account, Changes.Change}
+  alias Portal.{AccountMetricSet, Changes.Change}
   alias PortalAPI.MetricsConfig
   alias PortalAPI.Gateway.Channel.Shared
 
@@ -23,7 +22,6 @@ defmodule PortalAPI.Gateway.V3.Channel do
   @impl true
   def handle_info(:after_join, socket) do
     with {:noreply, socket} <- Shared.handle_info(:after_join, socket) do
-      :ok = Portal.MetricsToken.subscribe_to_key_rotations()
       Process.send_after(self(), :refresh_metrics_token, MetricsConfig.refresh_every())
       push_metrics_config(socket)
 
@@ -33,24 +31,16 @@ defmodule PortalAPI.Gateway.V3.Channel do
 
   def handle_info(:refresh_metrics_token, socket) do
     Process.send_after(self(), :refresh_metrics_token, MetricsConfig.refresh_every())
-    if socket.assigns.account.metrics_export, do: push_metrics_config(socket)
+    push_metrics_config(socket)
 
     {:noreply, socket}
   end
 
-  def handle_info(:metrics_token_key_rotated, socket) do
-    if socket.assigns.account.metrics_export, do: push_metrics_config(socket)
+  def handle_info(%Change{} = change, socket) when is_struct(change.struct, AccountMetricSet) or is_struct(change.old_struct, AccountMetricSet) do
+    last_lsn = Map.get(socket.assigns, :last_lsn, 0)
 
-    {:noreply, socket}
-  end
-
-  def handle_info(
-        %Change{op: :update, old_struct: %Account{} = old_account, struct: %Account{} = account} =
-          change,
-        socket
-      ) do
     with {:noreply, socket} <- Shared.handle_info(change, socket) do
-      if MetricsConfig.changed?(old_account, account), do: push_metrics_config(socket)
+      if change.lsn > last_lsn, do: push_metrics_config(socket)
 
       {:noreply, socket}
     end

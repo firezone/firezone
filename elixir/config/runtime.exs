@@ -253,8 +253,8 @@ if config_env() == :prod do
 
   config :portal,
     otlp_metrics_ingest_url: env_var_to_config!(:otlp_metrics_ingest_url),
-    otlp_metrics_endpoint: otlp_metrics_endpoint,
-    otlp_auth: otlp_auth
+    otlp_metrics_export_interval_secs: env_var_to_config!(:otlp_metrics_export_interval_secs),
+    otel_ingest_jwt_private_key: env_var_to_config!(:otel_ingest_jwt_private_key)
 
   config :portal, Portal.S3.APIClient,
     access_key_id: env_var_to_config!(:log_sinks_aws_access_key_id),

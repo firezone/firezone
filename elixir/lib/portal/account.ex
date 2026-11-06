@@ -15,6 +15,7 @@ defmodule Portal.Account do
     field :key, :string
 
     has_many :slugs, Portal.AccountSlug
+    has_many :metric_sets, Portal.AccountMetricSet
 
     field :legal_name, :string
 
@@ -28,10 +29,6 @@ defmodule Portal.Account do
     embeds_one :config, Portal.Accounts.Config, on_replace: :update
 
     embeds_one :metadata, Portal.Account.Metadata, on_replace: :update
-
-    # Set by Firezone staff via `Portal.Ops`. Metric name patterns, `nil` meaning off.
-    field :metrics_export, {:array, :string}, redact: true
-    field :metrics_export_interval_secs, :integer, default: 60, redact: true
 
     # We mention all schemas here to leverage Ecto compile-time reference checks,
     # because later we will have to shard data by account_id.

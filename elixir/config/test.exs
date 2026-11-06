@@ -401,13 +401,9 @@ config :portal, PortalAPI.Plugs.IngestionRateLimit,
   refill_rate: 100_000,
   capacity: 1_000_000
 
-config :portal, PortalAPI.Plugs.MetricsRateLimit,
-  ip: [refill_rate: 100_000, capacity: 1_000_000],
-  account: [refill_rate: 100_000, capacity: 1_000_000]
-
 config :portal,
-  otlp_metrics_endpoint: "https://otlp.example.com/v1/metrics",
-  otlp_auth: :azure_managed_identity
+  otel_ingest_jwt_private_key:
+    "LS0tLS1CRUdJTiBQUklWQVRFIEtFWS0tLS0tCk1DNENBUUF3QlFZREsyVndCQ0lFSUZYellNWTBXekx0QmlrRkI4c2k2UkFaVjE1djB3UGhhajNQeDZLVlhXM1YKLS0tLS1FTkQgUFJJVkFURSBLRVktLS0tLQo="
 
 config :portal, PortalWeb.Plugs.PutSecurityHeaders,
   csp_policy: [

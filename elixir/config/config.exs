@@ -156,6 +156,7 @@ config :portal, Portal.Changes.Consumer,
   table_subscriptions: ~w[
     accounts
     account_slugs
+    account_metric_sets
     actors
     groups
     memberships
@@ -548,7 +549,8 @@ config :portal,
 
 config :portal,
   otlp_metrics_ingest_url: "https://otlp.firezone.dev/v1/metrics",
-  otlp_metrics_endpoint: nil
+  otlp_metrics_export_interval_secs: 60,
+  otel_ingest_jwt_private_key: nil
 
 config :portal, country_code_blocklist: []
 
@@ -636,12 +638,6 @@ config :portal, PortalAPI.Sockets.RateLimit,
 config :portal, PortalAPI.Plugs.IngestionRateLimit,
   refill_rate: 1,
   capacity: 1
-
-# OTLP metrics ingestion. Connlib exports once a minute, so the IP bucket
-# admits several hundred devices behind one NAT.
-config :portal, PortalAPI.Plugs.MetricsRateLimit,
-  ip: [refill_rate: 10, capacity: 100],
-  account: [refill_rate: 200, capacity: 2_000]
 
 config :portal, PortalWeb.RateLimit,
   refill_rate: 10,

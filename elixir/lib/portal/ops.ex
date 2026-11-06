@@ -1,6 +1,6 @@
 defmodule Portal.Ops do
   alias __MODULE__.Database
-  alias Portal.{Banner, Billing, EmailSuppression, Mailer, MetricsToken, SlugRegistry}
+  alias Portal.{Banner, Billing, EmailSuppression, Mailer, SlugRegistry}
   alias Portal.Workers.DeleteAccount
   alias Portal.Ops.AuthProviderNotices
 
@@ -213,51 +213,60 @@ defmodule Portal.Ops do
   end
 
   @doc """
-  Signs OTLP metrics tokens with a new key on every connected node, then
-  has each Client and Gateway channel push a fresh `metrics_config`. Tokens
-  signed with the old key stop verifying at once.
-
-  Returns `{:error, nodes}` naming the nodes that kept the old key.
+  Has the Clients and Gateways of every account on `plan` export the metrics
+  matching `patterns`, in which `*` matches any run of characters (`["*"]` for
+  all). `plan` is a `Portal.Billing.plan_type/1` value. Channels push the new
+  `metrics_config` on their next token refresh. Returns the new set's id.
   """
-  def rotate_metrics_token_key do
-    salt = Database.insert_metrics_token_signing_salt()
-    :ok = MetricsToken.activate_signing_salt(salt)
-    remote_nodes = Node.list()
+  def add_plan_metrics(plan, patterns, description \\ nil) when is_atom(plan) or is_binary(plan) do
+    attrs = %{plan: to_string(plan), patterns: patterns, description: description}
 
-    remote_nodes
-    |> :erpc.multicall(MetricsToken, :activate_signing_salt, [salt], 5_000)
-    |> Enum.zip(remote_nodes)
-    |> Enum.reject(&match?({{:ok, :ok}, _node}, &1))
-    |> case do
-      [] -> :ok
-      failed -> {:error, Enum.map(failed, fn {_result, node} -> node end)}
+    with {:ok, metric_set} <- Database.insert_plan_metric_set(attrs) do
+      {:ok, metric_set.id}
     end
   end
 
   @doc """
-  Sets which metrics the account's Clients and Gateways export: `nil` for none,
-  or a non-empty list of metric name patterns in which `*` matches any run of
-  characters (`["*"]` for all). Their channels push the new `metrics_config`
-  once the change arrives through replication.
+  Has the account's Clients and Gateways export the metrics matching `patterns`
+  on top of those of its plan. Their channels push the new `metrics_config` once
+  the change arrives through replication. Returns the new set's id.
   """
-  def set_metrics_export(account_id, nil), do: update_metrics_export(account_id, nil)
+  def add_account_metrics(account_id, patterns, description \\ nil) do
+    attrs = %{account_id: account_id, patterns: patterns, description: description}
 
-  def set_metrics_export(account_id, [_ | _] = patterns) do
-    true = Enum.all?(patterns, &is_binary/1)
-    update_metrics_export(account_id, patterns)
-  end
-
-  defp update_metrics_export(account_id, patterns) do
-    {1, _} = Database.update_account(account_id, metrics_export: patterns)
-    :ok
+    with {:ok, metric_set} <- Database.insert_account_metric_set(attrs) do
+      {:ok, metric_set.id}
+    end
   end
 
   @doc """
-  Sets how often the account's Clients and Gateways export metrics.
+  Removes a set added with `add_plan_metrics/3`.
   """
-  def set_metrics_export_interval(account_id, secs) when is_integer(secs) and secs > 0 do
-    {1, _} = Database.update_account(account_id, metrics_export_interval_secs: secs)
-    :ok
+  def remove_plan_metrics(id), do: Database.delete_metric_set(Portal.PlanMetricSet, id)
+
+  @doc """
+  Removes a set added with `add_account_metrics/3`.
+  """
+  def remove_account_metrics(id), do: Database.delete_metric_set(Portal.AccountMetricSet, id)
+
+  @doc """
+  The sets added with `add_plan_metrics/3` for `plan`.
+  """
+  def list_plan_metrics(plan) when is_atom(plan) or is_binary(plan),
+    do: Database.list_plan_metric_sets(to_string(plan))
+
+  @doc """
+  The sets added with `add_account_metrics/3` for the account.
+  """
+  def list_account_metrics(account_id), do: Database.list_account_metric_sets(account_id)
+
+  @doc """
+  The metric name patterns the account's Clients and Gateways export.
+  """
+  def effective_metrics(account_id) do
+    account_id
+    |> Database.fetch_account!()
+    |> Portal.AccountMetricSet.effective_patterns()
   end
 
   @doc"""
@@ -864,20 +873,43 @@ defmodule Portal.Ops do
       |> Safe.update_all([])
     end
 
-    def insert_metrics_token_signing_salt do
-      salt = :crypto.strong_rand_bytes(32)
-
-      {1, _} =
-        Safe.unscoped()
-        |> Safe.insert_all("metrics_token_signing_salts", [%{salt: salt}])
-
-      salt
+    def insert_plan_metric_set(attrs) do
+      %Portal.PlanMetricSet{}
+      |> Ecto.Changeset.cast(attrs, [:plan, :patterns, :description])
+      |> Safe.unscoped()
+      |> Safe.insert()
     end
 
-    def update_account(account_id, changes) do
+    def insert_account_metric_set(attrs) do
+      %Portal.AccountMetricSet{}
+      |> Ecto.Changeset.cast(attrs, [:account_id, :patterns, :description])
+      |> Safe.unscoped()
+      |> Safe.insert()
+    end
+
+    def delete_metric_set(schema, id) do
+      case from(s in schema, where: s.id == ^id) |> Safe.unscoped() |> Safe.delete_all() do
+        {1, _} -> :ok
+        {0, _} -> {:error, :not_found}
+      end
+    end
+
+    def list_plan_metric_sets(plan) do
+      from(s in Portal.PlanMetricSet, where: s.plan == ^plan, order_by: s.inserted_at)
+      |> Safe.unscoped()
+      |> Safe.all()
+    end
+
+    def list_account_metric_sets(account_id) do
+      from(s in Portal.AccountMetricSet, where: s.account_id == ^account_id, order_by: s.inserted_at)
+      |> Safe.unscoped()
+      |> Safe.all()
+    end
+
+    def fetch_account!(account_id) do
       from(a in Account, where: a.id == ^account_id)
       |> Safe.unscoped()
-      |> Safe.update_all(set: changes)
+      |> Safe.one!()
     end
 
     defp maybe_filter_account_ids(query, :all) do
