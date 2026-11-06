@@ -5,10 +5,6 @@ use std::io::Read as _;
 use std::time::{Duration, SystemTime};
 
 const TOKEN_URL: &str = "http://169.254.169.254/metadata/identity/oauth2/token";
-const TOKEN_QUERY: [(&str, &str); 2] = [
-    ("api-version", "2018-02-01"),
-    ("resource", "https://monitor.azure.com/"),
-];
 const MAX_RESPONSE_BYTES: usize = 64 * 1024;
 const REFRESH_BEFORE_EXPIRY: Duration = Duration::from_secs(60);
 
@@ -46,7 +42,7 @@ impl ManagedIdentity {
         let mut response = self
             .client
             .get(TOKEN_URL)
-            .query(&TOKEN_QUERY)
+            .query(&token_query())
             .header("Metadata", "true")
             .send()
             .await
@@ -80,6 +76,21 @@ impl ManagedIdentity {
     }
 }
 
+/// Selects the user-assigned identity in `AZURE_CLIENT_ID`, if set, as the Azure SDKs do.
+fn token_query() -> Vec<(&'static str, String)> {
+    let client_id = std::env::var("AZURE_CLIENT_ID")
+        .ok()
+        .filter(|client_id| !client_id.is_empty());
+
+    [
+        ("api-version", "2018-02-01".to_owned()),
+        ("resource", "https://monitor.azure.com/".to_owned()),
+    ]
+    .into_iter()
+    .chain(client_id.map(|client_id| ("client_id", client_id)))
+    .collect()
+}
+
 pub(crate) fn blocking_authorization(
     client: &reqwest::blocking::Client,
     token: &mut Option<Token>,
@@ -90,7 +101,7 @@ pub(crate) fn blocking_authorization(
 
     let response = client
         .get(TOKEN_URL)
-        .query(&TOKEN_QUERY)
+        .query(&token_query())
         .header("Metadata", "true")
         .send()
         .context("Failed to request Azure managed identity token")?
