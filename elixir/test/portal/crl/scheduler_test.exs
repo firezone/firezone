@@ -67,6 +67,25 @@ defmodule Portal.Crl.SchedulerTest do
       assert all_sync_jobs() == []
     end
 
+    test "keeps fetching a list whose responder was turned off", %{account: account, pki: pki} do
+      revocation_endpoint_fixture(
+        account: account,
+        issuer_der: pki.ca_der,
+        ocsp_urls: ["http://ocsp.example.test"],
+        ocsp_is_disabled: true
+      )
+
+      assert Scheduler.perform(%Oban.Job{}) == {:ok, :scheduled}
+      assert [_job] = all_sync_jobs()
+    end
+
+    test "skips a list that was turned off", %{account: account, pki: pki} do
+      revocation_endpoint_fixture(account: account, issuer_der: pki.ca_der, crl_is_disabled: true)
+
+      assert Scheduler.perform(%Oban.Job{}) == {:ok, :scheduled}
+      assert all_sync_jobs() == []
+    end
+
     test "skips a disabled account", %{account: account, pki: pki} do
       revocation_endpoint_fixture(account: account, issuer_der: pki.ca_der)
       Repo.update_all(Portal.Account, set: [is_disabled: true])
