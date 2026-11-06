@@ -26,4 +26,5 @@ jobs:
           bencher run \
             --project firezone-1l75jv1z \
             --job "$JOB" \
-            --github-actions "$GH_TOKEN"
+            --github-actions "$GH_TOKEN" \
+            --ci-only-thresholds
