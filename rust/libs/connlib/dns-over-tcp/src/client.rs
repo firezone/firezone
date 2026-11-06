@@ -373,16 +373,7 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
                 .entry((server, local_endpoint))
                 .or_default();
 
-            // First, attempt to send all pending queries on this socket.
-            send_pending_queries(
-                socket,
-                server,
-                pending_queries,
-                sent_queries,
-                &mut self.query_results,
-            );
-
-            // Second, attempt to receive responses.
+            // First, attempt to receive responses.
             recv_responses(
                 socket,
                 server,
@@ -391,7 +382,29 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
                 &mut self.query_results,
             );
 
-            // Third, if the socket got closed, reconnect it.
+            // Second, if the resolver closed the connection, it will not answer anything else on it.
+            // Resolvers close idle connections, so send the queries it did not answer again on a new connection.
+            if matches!(socket.state(), l3_tcp::State::CloseWait) {
+                tracing::debug!(%server, "DNS resolver closed the connection");
+
+                socket.abort();
+            }
+            if matches!(socket.state(), l3_tcp::State::Closed) {
+                for (_, query) in std::mem::take(sent_queries).into_iter().rev() {
+                    pending_queries.push_front(query);
+                }
+            }
+
+            // Third, attempt to send all pending queries on this socket.
+            send_pending_queries(
+                socket,
+                server,
+                pending_queries,
+                sent_queries,
+                &mut self.query_results,
+            );
+
+            // Fourth, if the socket got closed, reconnect it.
             if matches!(socket.state(), l3_tcp::State::Closed) && !pending_queries.is_empty() {
                 if let Err(error) = socket
                     .connect(self.interface.context(), server, local_endpoint)
@@ -794,6 +807,51 @@ mod tests {
         );
     }
 
+    #[test]
+    fn reconnects_after_server_closes_idle_connection() {
+        let _guard = logging::test("trace");
+
+        let mut now = Instant::now();
+        let mut client = create_test_client(now);
+        let server_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(10, 0, 0, 2)), 53);
+        let mut server = ClosingServer::new(server_addr, now);
+
+        client.send_query(server_addr, create_test_query()).unwrap();
+        let first = run_until_result(&mut client, &mut server, &mut now);
+        assert!(first.result.is_ok());
+
+        server.close_and_forget(&mut client, &mut now);
+
+        let start = now;
+        client.send_query(server_addr, create_test_query()).unwrap();
+        let second = run_until_result(&mut client, &mut server, &mut now);
+
+        assert!(second.result.is_ok(), "{:?}", second.result);
+        assert!(now - start < Duration::from_secs(1));
+    }
+
+    #[test]
+    fn resends_query_after_server_resets_connection() {
+        let _guard = logging::test("trace");
+
+        let mut now = Instant::now();
+        let mut client = create_test_client(now);
+        let server_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(10, 0, 0, 2)), 53);
+        let mut server = ClosingServer::new(server_addr, now);
+
+        client.send_query(server_addr, create_test_query()).unwrap();
+        run_until_result(&mut client, &mut server, &mut now);
+
+        server.forget();
+
+        let start = now;
+        client.send_query(server_addr, create_test_query()).unwrap();
+        let result = run_until_result(&mut client, &mut server, &mut now);
+
+        assert!(result.result.is_ok(), "{:?}", result.result);
+        assert!(now - start < Duration::from_secs(1));
+    }
+
     fn local_socket(packet: &IpPacket) -> SocketAddr {
         let tcp = packet.as_tcp().unwrap();
 
@@ -811,5 +869,124 @@ mod tests {
         use std::str::FromStr;
         let domain = dns_types::DomainName::from_str("example.com").unwrap();
         dns_types::Query::new(domain, dns_types::RecordType::A)
+    }
+
+    /// A DNS server that can close its connection and then forget about it, like an OS socket that the application closed.
+    struct ClosingServer {
+        addr: SocketAddr,
+        device: InMemoryDevice,
+        interface: Interface,
+        sockets: SocketSet<'static>,
+        handle: l3_tcp::SocketHandle,
+        created_at: Instant,
+    }
+
+    impl ClosingServer {
+        fn new(addr: SocketAddr, now: Instant) -> Self {
+            let mut device = InMemoryDevice::default();
+            let interface = create_interface(&mut device);
+            let mut sockets = SocketSet::new(Vec::default());
+            let handle = sockets.add(listening_socket(addr));
+
+            Self {
+                addr,
+                device,
+                interface,
+                sockets,
+                handle,
+                created_at: now,
+            }
+        }
+
+        fn handle_timeout(&mut self, now: Instant) {
+            self.interface.poll(
+                l3_tcp::now(self.created_at, now),
+                &mut self.device,
+                &mut self.sockets,
+            );
+
+            let socket = self.sockets.get_mut::<l3_tcp::Socket>(self.handle);
+
+            if !socket.can_send() {
+                return;
+            }
+
+            if let Some(query) = codec::try_recv::<dns_types::Query>(socket).unwrap() {
+                let response =
+                    dns_types::ResponseBuilder::for_query(&query, dns_types::ResponseCode::NOERROR)
+                        .build();
+
+                codec::try_send(socket, &response.into_bytes(u16::MAX)).unwrap();
+            }
+        }
+
+        /// Closes the connection and, once the client received the FIN, forgets the socket.
+        ///
+        /// Packets for the forgotten connection then get a RST, like they would from an OS.
+        fn close_and_forget(&mut self, client: &mut Client, now: &mut Instant) {
+            self.sockets.get_mut::<l3_tcp::Socket>(self.handle).close();
+
+            for _ in 0..100 {
+                exchange_packets(client, self, *now);
+                *now += Duration::from_millis(10);
+
+                if !matches!(
+                    self.sockets.get::<l3_tcp::Socket>(self.handle).state(),
+                    l3_tcp::State::Established | l3_tcp::State::FinWait1
+                ) {
+                    break;
+                }
+            }
+
+            self.forget();
+        }
+
+        /// Forgets the connection without closing it, like a restarted server.
+        fn forget(&mut self) {
+            self.sockets.remove(self.handle);
+            self.handle = self.sockets.add(listening_socket(self.addr));
+        }
+    }
+
+    fn run_until_result(
+        client: &mut Client,
+        server: &mut ClosingServer,
+        now: &mut Instant,
+    ) -> QueryResult {
+        let deadline = *now + Duration::from_secs(20);
+
+        while *now < deadline {
+            exchange_packets(client, server, *now);
+
+            if let Some(result) = client.poll_query_result() {
+                return result;
+            }
+
+            *now += Duration::from_millis(10);
+        }
+
+        panic!("No query result")
+    }
+
+    fn exchange_packets(client: &mut Client, server: &mut ClosingServer, now: Instant) {
+        client.handle_timeout(now);
+        server.handle_timeout(now);
+
+        while let Some(packet) = client.poll_outbound() {
+            server.device.receive(packet);
+        }
+        while let Some(packet) = server.device.next_send() {
+            client.handle_inbound(packet);
+        }
+
+        client.handle_timeout(now);
+        server.handle_timeout(now);
+    }
+
+    fn listening_socket(addr: SocketAddr) -> l3_tcp::Socket<'static> {
+        let mut socket = create_tcp_socket();
+        socket.listen(addr).unwrap();
+
+        socket
     }
 }
