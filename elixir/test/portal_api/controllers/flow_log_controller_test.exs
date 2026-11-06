@@ -232,6 +232,22 @@ defmodule PortalAPI.FlowLogControllerTest do
     end
   end
 
+  describe "row limit config" do
+    test "several devices are needed to block the smallest account" do
+      config = Application.fetch_env!(:portal, PortalAPI.FlowLogController)
+      devices = Portal.Accounts.Limits.device_allowance(%Portal.Accounts.Limits{
+        monthly_active_users_count: 0,
+        connected_devices_per_actor: 0,
+        adhoc_service_accounts_count: 0
+      })
+
+      assert devices * config[:account_rows_per_second_per_device] >=
+               5 * config[:device_rows_per_second]
+
+      assert devices * config[:account_row_burst_per_device] >= 5 * config[:device_row_burst]
+    end
+  end
+
   describe "create/2 row limits" do
     # Each device holds 10 rows and refills 1 row/s. Each account holds 1 row
     # and refills 1 row/s per device in its device allowance.
