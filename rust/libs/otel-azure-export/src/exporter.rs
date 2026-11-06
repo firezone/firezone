@@ -4,31 +4,28 @@ use opentelemetry_otlp::{Protocol, WithExportConfig as _, WithHttpConfig as _};
 use opentelemetry_sdk::metrics::{
     Aggregation, Instrument, InstrumentKind, MeterProviderBuilder, Stream, Temporality,
 };
-use reqwest::header::{AUTHORIZATION, HeaderValue};
-use serde::Deserialize;
+use reqwest::header::AUTHORIZATION;
 use std::fmt;
-use std::io::Read as _;
 use std::sync::Mutex;
-use std::time::{Duration, SystemTime};
+use std::time::Duration;
 use url::Url;
+
+use crate::managed_identity::{self, Token};
 
 #[derive(clap::ValueEnum, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OtlpAuth {
     AzureManagedIdentity,
 }
 
+/// Adds a periodic OTLP/HTTP exporter to `endpoint` that aggregates all histograms exponentially.
+///
+/// The exporter uses a blocking HTTP client, which starts its own runtime: call it outside of an async context.
 pub fn with_exporter(
     builder: MeterProviderBuilder,
     endpoint: &Url,
     auth: Option<OtlpAuth>,
 ) -> Result<MeterProviderBuilder> {
-    if endpoint.scheme() != "https"
-        || !endpoint.username().is_empty()
-        || endpoint.password().is_some()
-        || endpoint.fragment().is_some()
-    {
-        bail!("OTLP metrics endpoint must be an HTTPS URL without credentials or a fragment");
-    }
+    check_endpoint(endpoint)?;
 
     let client = ExportHttpClient::new(endpoint, auth)?;
     let exporter = opentelemetry_otlp::MetricExporter::builder()
@@ -44,9 +41,22 @@ pub fn with_exporter(
         .with_periodic_exporter(exporter)
         .with_view(exponential_histograms);
 
-    tracing::trace!(target: "relay", "Successfully initialized OTLP metrics exporter");
+    tracing::trace!("Successfully initialized OTLP metrics exporter");
 
     Ok(builder)
+}
+
+/// Ensures that `endpoint` is an HTTPS URL without credentials or a fragment.
+pub fn check_endpoint(endpoint: &Url) -> Result<()> {
+    if endpoint.scheme() != "https"
+        || !endpoint.username().is_empty()
+        || endpoint.password().is_some()
+        || endpoint.fragment().is_some()
+    {
+        bail!("OTLP metrics endpoint must be an HTTPS URL without credentials or a fragment");
+    }
+
+    Ok(())
 }
 
 fn exponential_histograms(instrument: &Instrument) -> Option<Stream> {
@@ -89,7 +99,9 @@ impl HttpClient for ExportHttpClient {
 
         match self.auth {
             Some(OtlpAuth::AzureManagedIdentity) => {
-                let authorization = self.authorization()?;
+                let mut token = self.token.lock().map_err(|_| "Azure token lock poisoned")?;
+                let authorization =
+                    managed_identity::blocking_authorization(&self.client, &mut token)?;
                 request.headers_mut().insert(AUTHORIZATION, authorization);
             }
             None => {}
@@ -122,67 +134,12 @@ impl ExportHttpClient {
             token: Mutex::new(None),
         })
     }
-
-    fn authorization(&self) -> Result<HeaderValue> {
-        let mut token = self
-            .token
-            .lock()
-            .map_err(|_| anyhow::anyhow!("Azure token lock poisoned"))?;
-        let now = SystemTime::now();
-
-        if let Some(token) = token.as_ref()
-            && token.expires_at > now + Duration::from_secs(60)
-        {
-            return Ok(token.authorization.clone());
-        }
-
-        let response = self
-            .client
-            .get("http://169.254.169.254/metadata/identity/oauth2/token")
-            .query(&[
-                ("api-version", "2018-02-01"),
-                ("resource", "https://monitor.azure.com/"),
-            ])
-            .header("Metadata", "true")
-            .send()
-            .context("Failed to request Azure managed identity token")?
-            .error_for_status()
-            .context("Azure managed identity token request failed")?;
-        let response = serde_json::from_reader::<_, TokenResponse>(response.take(64 * 1024))
-            .context("Invalid Azure managed identity token response")?;
-        if response.expires_on <= SystemTime::now() {
-            bail!("Azure managed identity returned an expired token");
-        }
-
-        let mut authorization =
-            HeaderValue::from_str(&format!("Bearer {}", response.access_token))?;
-        authorization.set_sensitive(true);
-        *token = Some(Token {
-            authorization: authorization.clone(),
-            expires_at: response.expires_on,
-        });
-
-        Ok(authorization)
-    }
-}
-
-struct Token {
-    authorization: HeaderValue,
-    expires_at: SystemTime,
-}
-
-#[serde_with::serde_as]
-#[derive(Deserialize)]
-struct TokenResponse {
-    access_token: String,
-    #[serde_as(as = "serde_with::TimestampSeconds<String>")]
-    expires_on: SystemTime,
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::Write as _;
+    use std::io::{Read as _, Write as _};
     use std::net::TcpListener;
 
     #[test]
