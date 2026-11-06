@@ -440,16 +440,15 @@ defmodule PortalWeb.Components.Form do
   attr :inline, :boolean, required: true
   attr :beside, :boolean, required: true
 
-  # The auth layout's left panel appears at lg and takes the gutter the error
-  # overflows into, so the input shrinks again at lg and stops shrinking at xl.
+  # Below xl there is no room beside the form, so the error sits next to the input,
+  # which shrinks to make room. From xl the auth layout leaves a gutter right of the
+  # form for the error to overflow into, which is why #auth-card only clips below lg.
   defp field_errors(%{beside: true} = assigns) do
     ~H"""
     <div
       :if={@errors != []}
       class={[
         "shrink-0 whitespace-nowrap",
-        "md:absolute md:left-full md:top-1/2 md:-translate-y-1/2",
-        "lg:static lg:translate-y-0",
         "xl:absolute xl:left-full xl:top-1/2 xl:-translate-y-1/2"
       ]}
     >

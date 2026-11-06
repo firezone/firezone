@@ -217,6 +217,26 @@ defmodule PortalWeb.Components.FormTest do
     |> Floki.find("input[type=password]")
   end
 
+  describe "input/1 with beside_errors" do
+    # Only the auth layout leaves room right of the form, and only from xl.
+    test "keeps the error next to the input below xl" do
+      form =
+        Phoenix.Component.to_form(%{"email" => "user@example.com"},
+          as: :registration,
+          errors: [email: {"domain not allowed", []}]
+        )
+
+      html =
+        render_component(&Form.input/1, %{field: form[:email], type: "email", beside_errors: true})
+        |> Floki.parse_fragment!()
+
+      assert Floki.text(html) =~ "domain not allowed"
+      assert [container] = Floki.find(html, "div.shrink-0")
+      assert "xl:absolute" in classes(container)
+      refute Enum.any?(classes(container), &String.starts_with?(&1, ["md:", "lg:"]))
+    end
+  end
+
   defp classes(element) do
     element
     |> Floki.attribute("class")

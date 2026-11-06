@@ -1251,6 +1251,52 @@ defmodule Portal.Config.Definitions do
   defconfig(:acs_event_grid_webhook_signing_secret, :string, sensitive: true, default: nil)
 
   ##############################################
+  ## Sign up
+  ##############################################
+
+  @doc """
+  URL of the list of confirmed disposable email domains. Sign-ups with a matching email are rejected.
+
+  The list is a text file with one domain per line. Blank lines and lines starting with `#` are
+  ignored. A domain also matches its subdomains and, when `SIGN_UP_DISPOSABLE_MX_CHECK_ENABLED`
+  is set, any email domain whose mail servers are under it. `https://` and `file://` URLs are
+  supported. Leave unset to disable.
+  """
+  defconfig(:sign_up_confirmed_disposable_domains_url, :string, default: nil, sensitive: true)
+
+  @doc """
+  URL of the list of suspected disposable email domains. Sign-ups with a matching email are allowed,
+  but logged with a warning.
+
+  Uses the same format as `SIGN_UP_CONFIRMED_DISPOSABLE_DOMAINS_URL`. Leave unset to disable.
+  """
+  defconfig(:sign_up_suspected_disposable_domains_url, :string, default: nil, sensitive: true)
+
+  @doc """
+  Authenticate `https://` requests for the disposable email domain lists with the Azure managed
+  identity selected by AZURE_CLIENT_ID, for lists in a private Azure Blob Storage container.
+  """
+  defconfig(:sign_up_disposable_domains_azure_managed_identity, :boolean, default: false)
+
+  @doc """
+  How often, in seconds, each node checks the disposable email domain lists for changes.
+  """
+  defconfig(:sign_up_disposable_domains_refresh_interval_secs, :integer,
+    default: 300,
+    changeset: fn changeset, key ->
+      Ecto.Changeset.validate_number(changeset, key, greater_than: 0)
+    end
+  )
+
+  @doc """
+  Enable or disable matching the mail servers of sign-up email domains against the disposable email
+  domain lists, checked with an MX record lookup on submit.
+
+  Sign-ups are allowed when the lookup fails or times out.
+  """
+  defconfig(:sign_up_disposable_mx_check_enabled, :boolean, default: false)
+
+  ##############################################
   ## Billing flags
   ##############################################
 

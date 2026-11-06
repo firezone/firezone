@@ -224,6 +224,15 @@ if config_env() == :prod do
     secondary_adapter_config: env_var_to_config!(:erlang_cluster_adapter_secondary_config)
 
   config :portal, sign_up_whitelisted_domains: env_var_to_config!(:sign_up_whitelisted_domains)
+  config :portal, Portal.DisposableEmail.Lists,
+    confirmed_url: env_var_to_config!(:sign_up_confirmed_disposable_domains_url),
+    suspected_url: env_var_to_config!(:sign_up_suspected_disposable_domains_url),
+    azure_managed_identity: env_var_to_config!(:sign_up_disposable_domains_azure_managed_identity),
+    refresh_interval: :timer.seconds(env_var_to_config!(:sign_up_disposable_domains_refresh_interval_secs))
+
+  config :portal,
+    sign_up_disposable_mx_check_enabled: env_var_to_config!(:sign_up_disposable_mx_check_enabled)
+
   config :portal, country_code_blocklist: env_var_to_config!(:country_code_blocklist)
 
   config :portal,
