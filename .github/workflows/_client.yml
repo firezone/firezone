@@ -1,0 +1,247 @@
+name: Build headless client
+run-name: Triggered from ${{ github.event_name }} by ${{ github.actor }}
+on:
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: "The Git SHA to build. Leave blank to build the tip of the selected branch/tag."
+        required: false
+        type: string
+        default: ""
+      image_prefix:
+        description: "The prefix to prepend to the image name to prevent SHA conflicts ('', debug or perf)"
+        required: false
+        type: string
+        default: ""
+      profile:
+        description: "The Rust profile to build the headless client with."
+        required: true
+        type: choice
+        default: release
+        options:
+          - release
+          - debug
+      stage:
+        description: "The stage of the client image to build."
+        required: true
+        type: choice
+        default: release
+        options:
+          - release
+          - debug
+          - dev
+  workflow_call:
+    inputs:
+      image_prefix:
+        description: |
+          The prefix to prepend to the image name to prevent SHA conflicts.
+          * Use "debug" to build debug binaries inside debug stage images + with debug tooling installed.
+          * Use "perf" to build release binaries inside debug stage images + with debug tooling installed.
+          * Leave blank to build release binaries inside release stage images.
+        required: false
+        type: string
+      sha:
+        required: false
+        type: string
+        default: ${{ github.sha }}
+      profile:
+        description: "The Rust profile to build the headless client with"
+        required: true
+        type: string
+      stage:
+        description: "The stage of the client image to build"
+        required: true
+        type: string
+    outputs:
+      client_image:
+        description: "The client image that was built"
+        value: ${{ jobs.image.outputs.image }}
+
+permissions:
+  contents: write # create/update GitHub releases
+  id-token: write # OIDC auth
+  packages: write # push Docker images to GHCR
+  security-events: write # upload Trivy SARIF results
+
+jobs:
+  update-release-draft:
+    runs-on: ubuntu-24.04
+    env:
+      RESOLVED_SHA: ${{ inputs.sha || github.sha }}
+      # mark:next-headless-version
+      RELEASE_NAME: headless-client-1.5.16
+    steps:
+      - uses: release-drafter/release-drafter@978bb0b30c5ee8cdd332ced253758157150d43f0 # v7.10.0
+        if: "${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}"
+        id: update-release-draft
+        with:
+          config-name: release-drafter-headless-client.yml
+          tag: ${{ env.RELEASE_NAME }}
+          version: ${{ env.RELEASE_NAME }}
+          name: ${{ env.RELEASE_NAME }}
+          commitish: ${{ env.RESOLVED_SHA }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  benchmark-linux:
+    needs: update-release-draft
+    if: >-
+      github.event_name == 'workflow_dispatch' && github.ref_name == 'main' &&
+      inputs.profile == 'release' && inputs.stage == 'release' && inputs.image_prefix == ''
+    runs-on: ubuntu-24.04
+    permissions: {}
+    strategy:
+      fail-fast: false
+      matrix:
+        protocol: [tcp, quic]
+    steps:
+      - uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        id: app-token
+        with:
+          client-id: ${{ vars.BOT_CLIENT_ID }}
+          private-key: ${{ secrets.BOT_PRIVATE_KEY }}
+          owner: firezone
+          repositories: infra
+          # repository_dispatch requires Contents: write.
+          permission-contents: write
+      - name: Dispatch Linux-to-Linux benchmarks
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          FIREZONE_SHA: ${{ inputs.sha || github.sha }}
+          BENCHMARK_PROTOCOL: ${{ matrix.protocol }}
+        run: |
+          gh api --method POST /repos/firezone/infra/dispatches \
+            --raw-field event_type=benchmark-release \
+            --raw-field "client_payload[git_sha]=$FIREZONE_SHA" \
+            --raw-field 'client_payload[device_pair]=Intel <> AMD' \
+            --raw-field "client_payload[protocol]=$BENCHMARK_PROTOCOL" \
+            --field 'client_payload[publish]=true'
+
+  windows:
+    name: client-windows-${{ matrix.target }}
+    if: ${{ inputs.image_prefix != 'perf' }} # Perf testing happens only on Linux
+    needs: update-release-draft
+    runs-on: windows-2022
+    defaults:
+      run:
+        working-directory: rust
+    strategy:
+      fail-fast: ${{ github.event_name == 'merge_group' }}
+      matrix:
+        # TODO: Add ARM64 support
+        artifact: [firezone-client-headless-windows]
+        arch: [x86_64]
+        target: [x86_64-pc-windows-msvc]
+        package: [firezone-headless-client]
+        # mark:next-headless-version
+        release_name: [headless-client-1.5.16]
+        # mark:next-headless-version
+        version: [1.5.16]
+    env:
+      ARTIFACT_PATH: ${{ matrix.artifact }}_${{ matrix.version }}_${{ matrix.arch }}.exe
+      RELEASE_NAME: ${{ matrix.release_name }}
+      RESOLVED_SHA: ${{ inputs.sha || github.sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.RESOLVED_SHA }}
+      - uses: ./.github/actions/setup-rust-binary-cache
+        id: binary-cache
+        with:
+          path: rust/target/${{ matrix.target }}/${{ inputs.profile }}/${{ matrix.package }}.exe
+          key: ${{ matrix.package }}-${{ matrix.target }}-${{ inputs.profile }}
+      # A restored binary skips the build below, so the toolchain that only
+      # exists to compile it is skipped too.
+      - uses: ./.github/actions/setup-rust-stable
+        if: steps.binary-cache.outputs.cache-hit != 'true'
+        with:
+          targets: ${{ matrix.target }}
+      - uses: ./.github/actions/setup-rust-sccache
+        if: steps.binary-cache.outputs.cache-hit != 'true'
+        with:
+          azure-connection-string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
+      - name: Build binaries
+        if: steps.binary-cache.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          set -xe
+
+          if [[ "${{ inputs.profile }}" == "release" ]]; then
+            PROFILE="--release"
+          else
+            PROFILE=""
+          fi
+
+          cargo build $PROFILE -p ${{ matrix.package }} --target ${{ matrix.target }} --verbose
+      - name: Package binary
+        shell: bash
+        run: cp target/${{ matrix.target }}/${{ inputs.profile }}/${{ matrix.package }}.exe "$ARTIFACT_PATH"
+      - uses: ./.github/actions/setup-azure-sign-tool
+        if: ${{ inputs.profile == 'release' }}
+        with:
+          client-id: ${{ vars.AZURE_CODESIGNING_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_CODESIGNING_TENANT_ID }}
+      - name: Sign the binary
+        if: ${{ inputs.profile == 'release' }}
+        shell: bash
+        env:
+          AZURE_KEY_VAULT_URI: ${{ vars.AZURE_CODESIGNING_KEY_VAULT_URI }}
+          AZURE_CERT_NAME: ${{ vars.AZURE_CODESIGNING_CERTIFICATE_NAME }}
+        run: ../scripts/build/sign.sh "$ARTIFACT_PATH"
+      - name: Upload Release Assets
+        if: ${{ inputs.profile == 'release' && inputs.stage == 'release' && matrix.release_name && github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: ../scripts/upload/github-release.sh
+
+  image:
+    needs: update-release-draft
+    uses: ./.github/workflows/_rust-docker-image.yml
+    secrets: inherit
+    permissions:
+      contents: read
+      packages: write # push Docker images to GHCR
+      security-events: write # upload Trivy SARIF results
+    with:
+      package: firezone-headless-client
+      image_name: client
+      image_prefix: ${{ inputs.image_prefix }}
+      sha: ${{ inputs.sha }}
+      profile: ${{ inputs.profile }}
+      stage: ${{ inputs.stage }}
+      upload_binary: ${{ inputs.profile == 'release' && inputs.stage == 'release' && github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}
+
+  linux-release-assets:
+    name: client-linux-${{ matrix.arch }}
+    needs: image
+    if: ${{ inputs.profile == 'release' && inputs.stage == 'release' && github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: rust
+    strategy:
+      fail-fast: ${{ github.event_name == 'merge_group' }}
+      matrix:
+        arch: [x86_64, aarch64, armv7]
+    env:
+      # mark:next-headless-version
+      ARTIFACT_PATH: firezone-client-headless-linux_1.5.16_${{ matrix.arch }}
+      # mark:next-headless-version
+      RELEASE_NAME: headless-client-1.5.16
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.sha || github.sha }}
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: ${{ needs.image.outputs.binary_artifact }}-${{ matrix.arch }}
+          path: rust
+      - name: Upload Release Assets
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -xe
+
+          cp firezone-headless-client "$ARTIFACT_PATH"
+          ../scripts/upload/github-release.sh

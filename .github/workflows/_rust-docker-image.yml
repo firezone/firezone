@@ -1,0 +1,306 @@
+name: Build Rust Docker image
+on:
+  workflow_call:
+    inputs:
+      package:
+        description: "The Cargo package to build and put into the image"
+        required: true
+        type: string
+      image_name:
+        description: "The name of the image, without registry and prefix"
+        required: true
+        type: string
+      image_prefix:
+        description: |
+          The prefix to prepend to the image name to prevent SHA conflicts.
+          * Use "debug" to build debug binaries inside debug stage images + with debug tooling installed.
+          * Use "perf" to build release binaries inside debug stage images + with debug tooling installed.
+          * Leave blank to build release binaries inside release stage images.
+        required: false
+        type: string
+      sha:
+        required: false
+        type: string
+        default: ${{ github.sha }}
+      profile:
+        description: "The Rust profile to build the binary with"
+        required: true
+        type: string
+      stage:
+        description: "The stage of the image to build"
+        required: true
+        type: string
+      upload_binary:
+        description: "Upload the binary and its checksum as the `binary_artifact`-<arch> artifact"
+        required: false
+        type: boolean
+        default: false
+    outputs:
+      image:
+        description: "The image that was built"
+        value: ${{ jobs.build.outputs.image }}
+      binary_artifact:
+        description: "The name of the binary artifact, without the `-<arch>` suffix"
+        value: ${{ format('{0}{1}-{2}-binary', inputs.image_prefix && format('{0}-', inputs.image_prefix) || '', inputs.image_name, inputs.sha || github.sha) }}
+
+permissions:
+  contents: read
+  packages: write # push Docker images to GHCR
+  security-events: write # upload Trivy SARIF results
+
+jobs:
+  build:
+    name: ${{ inputs.image_name }}-${{ matrix.arch.shortname }}
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: rust
+    strategy:
+      fail-fast: ${{ github.event_name == 'merge_group' }}
+      matrix:
+        # Copy input vars to matrix vars to conditionally exclude them
+        stage:
+          - ${{ inputs.stage }}
+
+        # Syntax is weird because https://github.com/actions/runner/issues/1512
+        exclude:
+          # Devs are either on amd64 or arm64
+          - { stage: debug, arch: { platform: linux/arm/v7 } }
+
+        arch:
+          - target: x86_64-unknown-linux-musl
+            shortname: x86_64
+            platform: linux/amd64
+          - target: aarch64-unknown-linux-musl # E.g. AWS Graviton
+            shortname: aarch64
+            platform: linux/arm64
+          - target: armv7-unknown-linux-musleabihf # E.g. Raspberry Pi
+            platform: linux/arm/v7
+            shortname: armv7
+    env:
+      SENTRY_ENVIRONMENT: "production"
+      RESOLVED_SHA: ${{ inputs.sha || github.sha }}
+    outputs:
+      image: ${{ steps.image-name.outputs.image }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.RESOLVED_SHA }}
+      - uses: ./.github/actions/ghcr-docker-login
+        id: login
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: ./.github/actions/setup-rust-binary-cache
+        id: binary-cache
+        with:
+          path: rust/target/${{ matrix.arch.target }}/${{ inputs.profile }}/${{ inputs.package }}
+          key: ${{ inputs.package }}-${{ matrix.arch.target }}-${{ inputs.profile }}
+      # Restored binaries skip the `cargo build` below, so the toolchains only
+      # needed to compile them are skipped too. The relay still needs mise to
+      # stamp in the commit SHA.
+      - uses: ./.github/actions/setup-musl
+        if: steps.binary-cache.outputs.cache-hit != 'true'
+        with:
+          target: ${{ matrix.arch.target }}
+      - uses: ./.github/actions/setup-rust-stable
+        if: steps.binary-cache.outputs.cache-hit != 'true'
+        with:
+          targets: ${{ matrix.arch.target }}
+      - uses: ./.github/actions/setup-rust-sccache
+        if: steps.binary-cache.outputs.cache-hit != 'true'
+        with:
+          azure-connection-string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
+      - uses: ./.github/actions/setup-mise
+        if: ${{ steps.binary-cache.outputs.cache-hit != 'true' || inputs.package == 'firezone-relay' }}
+        with:
+          # Stamping the SHA into the relay shells out to coreutils only, so a
+          # restored relay needs `mise` as a task runner but none of its tools.
+          install: ${{ steps.binary-cache.outputs.cache-hit != 'true' }}
+          install_args: --cd rust
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - run: mise run //rust:install-ebpf-toolchain
+        if: inputs.package == 'firezone-relay' && steps.binary-cache.outputs.cache-hit != 'true'
+      - name: Build binaries
+        if: steps.binary-cache.outputs.cache-hit != 'true'
+        run: |
+          set -xe
+
+          if [[ "${{ inputs.profile }}" == "release" ]]; then
+            PROFILE="--release"
+          else
+            PROFILE=""
+          fi
+
+          cargo build $PROFILE -p ${{ inputs.package }} --target ${{ matrix.arch.target }} --verbose
+      - name: Package binaries
+        run: |
+          set -xe
+
+          cp target/${{ matrix.arch.target }}/${{ inputs.profile }}/${{ inputs.package }} ${{ inputs.package }}
+
+          # Stamp the commit SHA into the relay's placeholder before checksum and
+          # upload; the binary is otherwise SHA-independent and cache-restorable.
+          if [[ "${{ inputs.package }}" == "firezone-relay" ]]; then
+            mise run //rust:patch-relay-release "$PWD/${{ inputs.package }}" "${{ env.RESOLVED_SHA }}"
+          fi
+
+          sha256sum ${{ inputs.package }} > ${{ inputs.package }}.sha256sum.txt
+      - name: Upload binary artifact
+        if: ${{ inputs.upload_binary }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ${{ inputs.image_prefix && format('{0}-', inputs.image_prefix) || '' }}${{ inputs.image_name }}-${{ env.RESOLVED_SHA }}-binary-${{ matrix.arch.shortname }}
+          path: |
+            rust/${{ inputs.package }}
+            rust/${{ inputs.package }}.sha256sum.txt
+          if-no-files-found: error
+          retention-days: 1
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+      - name: Set up Docker Buildx
+        uses: ./.github/actions/setup-buildx
+      - name: Docker meta
+        id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        with:
+          images: ${{ steps.login.outputs.registry }}/firezone/${{ inputs.image_prefix && format('{0}/', inputs.image_prefix) || '' }}${{ inputs.image_name }}
+          tags: |
+            type=raw,value={{branch}}
+            type=raw,value=${{ env.RESOLVED_SHA }}
+      - name: Sanitize github.ref_name
+        run: |
+          # `ref_name` contains `/`, '_' or '=' which is not a valid docker image tag
+          REF="${{ github.ref_name }}"
+          CACHE_TAG="${REF//[\/_=]/-}"
+          echo "CACHE_TAG=$CACHE_TAG" >> "$GITHUB_ENV"
+      # PRs & non-main branches: read-only cache
+      - name: Build Docker images (read-only cache)
+        if: ${{ github.ref != 'refs/heads/main' }}
+        id: build_ro
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          platforms: ${{ matrix.arch.platform }}
+          build-args: |
+            PACKAGE=${{ inputs.package }}
+            TARGET=${{ matrix.arch.target }}
+          context: rust
+          cache-from: |
+            type=gha,scope=${{ inputs.image_name }}:${{ env.CACHE_TAG }}
+            type=gha,scope=${{ inputs.image_name }}:main
+          # no cache-to -> read-only
+          target: ${{ inputs.stage }}
+          outputs: type=image,name=${{ steps.login.outputs.registry }}/firezone/${{ inputs.image_prefix && format('{0}/', inputs.image_prefix) || '' }}${{ inputs.image_name }},push-by-digest=true,name-canonical=true,push=true
+          labels: |
+            org.opencontainers.image.revision=${{ env.RESOLVED_SHA }}
+      # main: read/write cache
+      - name: Build Docker images (read/write cache)
+        if: ${{ github.ref == 'refs/heads/main' }}
+        id: build_rw
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          platforms: ${{ matrix.arch.platform }}
+          build-args: |
+            PACKAGE=${{ inputs.package }}
+            TARGET=${{ matrix.arch.target }}
+          context: rust
+          cache-from: |
+            type=gha,scope=${{ inputs.image_name }}:${{ env.CACHE_TAG }}
+            type=gha,scope=${{ inputs.image_name }}:main
+          cache-to: |
+            type=gha,scope=${{ inputs.image_name }}:${{ env.CACHE_TAG }},mode=max,ignore-error=true
+          target: ${{ inputs.stage }}
+          outputs: type=image,name=${{ steps.login.outputs.registry }}/firezone/${{ inputs.image_prefix && format('{0}/', inputs.image_prefix) || '' }}${{ inputs.image_name }},push-by-digest=true,name-canonical=true,push=true
+          labels: |
+            org.opencontainers.image.revision=${{ env.RESOLVED_SHA }}
+      - name: Export digest
+        run: |
+          mkdir -p /tmp/digests/${{ inputs.image_name }}
+          digest="${{ github.ref == 'refs/heads/main' && steps.build_rw.outputs.digest || steps.build_ro.outputs.digest }}"
+          touch "/tmp/digests/${{ inputs.image_name }}/${digest#sha256:}"
+      - name: Upload digest artifact
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          overwrite: true
+          name: ${{ inputs.image_prefix && format('{0}-', inputs.image_prefix) || '' }}${{ inputs.image_name }}-${{ env.RESOLVED_SHA }}-digest-${{ matrix.arch.shortname }}
+          path: /tmp/digests/${{ inputs.image_name }}
+          if-no-files-found: error
+          retention-days: 1
+      - name: Output image name
+        id: image-name
+        run: echo "image=${{ steps.login.outputs.registry }}/firezone/${{ inputs.image_prefix && format('{0}/', inputs.image_prefix) || '' }}${{ inputs.image_name }}" >> "$GITHUB_OUTPUT"
+
+  merge-docker-artifacts:
+    name: merge-${{ inputs.image_name }}
+    needs: build
+    if: ${{ always() }}
+    runs-on: ubuntu-24.04
+    env:
+      RESOLVED_SHA: ${{ inputs.sha || github.sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.RESOLVED_SHA }}
+      - uses: ./.github/actions/ghcr-docker-login
+        id: login
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Download digests
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: ${{ inputs.image_prefix && format('{0}-', inputs.image_prefix) || '' }}${{ inputs.image_name }}-${{ env.RESOLVED_SHA }}-digest-*
+          merge-multiple: true
+          path: /tmp/digests/${{ inputs.image_name }}
+      - name: Display structure of downloaded artifacts
+        run: ls -R /tmp/digests
+      - name: Set up Docker Buildx
+        uses: ./.github/actions/setup-buildx
+      - name: Docker meta
+        id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        with:
+          images: ${{ steps.login.outputs.registry }}/firezone/${{ inputs.image_prefix && format('{0}/', inputs.image_prefix) || '' }}${{ inputs.image_name }}
+          tags: |
+            type=raw,value={{branch}}
+            type=raw,value=${{ env.RESOLVED_SHA }}
+      - name: Create manifest list and push
+        id: manifest
+        working-directory: /tmp/digests/${{ inputs.image_name }}
+        run: |
+          image="${{ steps.login.outputs.registry }}/firezone/${{ inputs.image_prefix && format('{0}/', inputs.image_prefix) || '' }}${{ inputs.image_name }}"
+          tags=$(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON")
+          sources=$(printf "$image@sha256:%s " *)
+
+          echo "Tags: $tags"
+          echo "Sources: $sources"
+
+          # shellcheck disable=SC2086 # $tags and $sources must be split by whitespace
+          docker buildx imagetools create \
+            --annotation "index:org.opencontainers.image.revision=${{ env.RESOLVED_SHA }}" \
+            $tags $sources
+
+          first_tag=$(jq -r '.tags[0]' <<< "$DOCKER_METADATA_OUTPUT_JSON")
+          docker buildx imagetools inspect "$first_tag" | tee inspect.log
+
+          if ! [[ "$(cat inspect.log)" =~ Digest:[[:space:]]+(sha256:[a-f0-9]{64}) ]]; then
+            echo "Failed to parse index digest from imagetools inspect output" >&2
+            exit 1
+          fi
+          echo "ref=${image}@${BASH_REMATCH[1]}" >> "$GITHUB_OUTPUT"
+
+      - name: Run Trivy vulnerability scanner
+        if: ${{ inputs.image_name != 'http-test-server' }}
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ${{ steps.manifest.outputs.ref }}
+          format: sarif
+          output: trivy-results.sarif
+          ignore-unfixed: true
+          vuln-type: os,library
+          severity: CRITICAL,HIGH
+      - name: Upload Trivy scan results to GitHub Security tab
+        if: ${{ inputs.image_name != 'http-test-server' }}
+        uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
+        with:
+          sarif_file: trivy-results.sarif
+          category: trivy-${{ inputs.image_prefix && format('{0}-', inputs.image_prefix) || '' }}${{ inputs.image_name }}
