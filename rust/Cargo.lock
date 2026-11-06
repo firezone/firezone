@@ -5863,6 +5863,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "otel-metric-patterns"
+version = "0.1.0"
+
+[[package]]
 name = "output_vt100"
 version = "0.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
