@@ -111,7 +111,7 @@ jobs:
         with:
           azure-connection-string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
       - uses: ./.github/actions/setup-mise
-        if: ${{ steps.binary-cache.outputs.cache-hit != 'true' || inputs.package == 'firezone-relay' || inputs.package == 'otel-ingest-proxy' }}
+        if: ${{ steps.binary-cache.outputs.cache-hit != 'true' || inputs.package == 'firezone-relay' || inputs.package == 'firezone-otel-ingest-proxy' }}
         with:
           # Stamping the SHA shells out to coreutils only, so a restored
           # binary needs `mise` as a task runner but none of its tools.
@@ -141,7 +141,7 @@ jobs:
 
           # Stamp the commit SHA into the version placeholder before checksum and
           # upload; the binary is otherwise SHA-independent and cache-restorable.
-          if [[ "${{ inputs.package }}" == "firezone-relay" || "${{ inputs.package }}" == "otel-ingest-proxy" ]]; then
+          if [[ "${{ inputs.package }}" == "firezone-relay" || "${{ inputs.package }}" == "firezone-otel-ingest-proxy" ]]; then
             mise run //rust:patch-relay-release "$PWD/${{ inputs.package }}" "${{ env.RESOLVED_SHA }}"
           fi
 

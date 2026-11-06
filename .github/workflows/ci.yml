@@ -502,7 +502,7 @@ jobs:
       packages: write # push Docker images to GHCR
       security-events: write # upload Trivy SARIF results
     with:
-      package: otel-ingest-proxy
+      package: firezone-otel-ingest-proxy
       image_name: otel-ingest-proxy
       # Build debug/ on PRs and merge group, no prefix for production release images
       image_prefix: ${{ ((github.event_name == 'pull_request' || github.event_name == 'merge_group') && 'debug') || '' }}
