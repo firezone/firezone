@@ -68,6 +68,12 @@ pub(crate) struct PairState {
     /// has since been recreated (same addresses, fresh id) is ignored.
     id: u16,
     next_seq: u16,
+    /// The last keepalive probe sent while this pair was the primary.
+    keepalive_seq: Option<u16>,
+    /// Consecutive keepalive probes that got no reply by the time the next one
+    /// was due. Reaching [`PRIMARY_KEEPALIVE_DISTRESS_ATTEMPTS`] means the
+    /// primary is dead even if the peer's data still reaches us on another path.
+    unanswered_keepalives: u32,
 }
 
 impl PairState {
@@ -78,6 +84,8 @@ impl PairState {
         self.probes_sent = 0;
         self.rtt = None;
         self.inflight.clear();
+        self.keepalive_seq = None;
+        self.unanswered_keepalives = 0;
     }
 
     fn is_probing(&self) -> bool {
@@ -217,6 +225,12 @@ pub const PRIMARY_KEEPALIVE: Duration = Duration::from_secs(25);
 /// ordinary (it may still be answered); the second is the distress signal.
 pub const REKEY_DISTRESS_ATTEMPTS: u32 = 2;
 
+/// Consecutive unanswered keepalive probes on the primary that count as
+/// distress and clear it. Re-key distress misses a primary that only fails
+/// towards the peer: the peer's data and re-keys still reach us on another path
+/// (e.g. after its NAT moved the mapping), which keeps resetting the count.
+pub const PRIMARY_KEEPALIVE_DISTRESS_ATTEMPTS: u32 = 2;
+
 pub const RESPONDER_DEDUP_TTL: Duration = Duration::from_secs(10);
 
 const MAX_PEER_REFLEXIVE: usize = 4;
@@ -324,6 +338,8 @@ impl Agent {
             probes_sent: 0,
             id,
             next_seq: 0,
+            keepalive_seq: None,
+            unanswered_keepalives: 0,
         };
         if self.session_confirmed {
             state.restart(now);
@@ -672,6 +688,7 @@ impl Agent {
                 };
 
                 let inflight = state.inflight.remove(i);
+                state.unanswered_keepalives = 0;
                 let rtt = now.saturating_duration_since(inflight.sent_at);
 
                 state.rtt = Some(Rtt {
@@ -835,6 +852,7 @@ impl Agent {
 
         let primary = self.primary;
         let pending = &mut self.pending_transmits;
+        let mut primary_distress = false;
 
         for ((local, remote), state) in self.pairs.iter_mut() {
             let Some(deadline) = state.probes.due() else {
@@ -874,11 +892,31 @@ impl Agent {
 
             // The primary keepalives; every other pair goes quiet.
             if primary == Some((*local, *remote)) {
+                if state
+                    .keepalive_seq
+                    .is_some_and(|prev| state.inflight.iter().any(|p| p.seq == prev))
+                {
+                    state.unanswered_keepalives += 1;
+                }
+                state.keepalive_seq = Some(seq);
+
+                if state.unanswered_keepalives >= PRIMARY_KEEPALIVE_DISTRESS_ATTEMPTS {
+                    primary_distress = true;
+                }
+
                 state.probes.keepalive(now);
                 continue;
             }
 
             state.probes.stop();
+        }
+
+        if primary_distress {
+            tracing::debug!(
+                primary = ?self.primary,
+                "Primary stopped answering keepalive probes; clearing primary and re-probing"
+            );
+            self.clear_and_reprobe(now);
         }
     }
 
@@ -1032,6 +1070,8 @@ mod tests {
             probes_sent: 0,
             id: 0,
             next_seq: 0,
+            keepalive_seq: None,
+            unanswered_keepalives: 0,
         };
         state.restart(t0);
         a.pairs.insert(pair, state);

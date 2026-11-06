@@ -361,13 +361,23 @@ fn a_non_primary_pair_goes_quiet_after_its_probe_budget() {
     bootstrap_primary(&mut a, (addr(2), addr(4)), t0);
     a.drain_events();
 
-    // (1,3) never answers; with a primary in hand it hunts only PROBE_BUDGET
-    // times, then stops.
+    // (1,3) never answers; with a live primary in hand it hunts only
+    // PROBE_BUDGET times, then stops.
+    let primary = (addr(2), addr(4));
     let dead = (addr(1), addr(3));
-    let activity = a.advance(t0, t0 + secs(60));
+    let mut fired = 0;
+    let mut t = t0;
+    while t < t0 + secs(60) {
+        let next = t + secs(1);
+        let activity = a.advance(t, next);
+        for probe in activity.probes_for(primary) {
+            a.handle_probe(echo_reply(probe.id, probe.seq), primary, next);
+        }
+        fired += activity.probes_for(dead).len();
+        t = next;
+    }
     assert_eq!(
-        activity.probes_for(dead).len() as u32,
-        PROBE_BUDGET,
+        fired as u32, PROBE_BUDGET,
         "a non-primary pair fires exactly its budget then goes quiet",
     );
 }
