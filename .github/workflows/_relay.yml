@@ -1,0 +1,127 @@
+name: Build relay
+run-name: Triggered from ${{ github.event_name }} by ${{ github.actor }}
+on:
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: "The Git SHA to build. Leave blank to build the tip of the selected branch/tag."
+        required: false
+        type: string
+        default: ""
+      image_prefix:
+        description: "The prefix to prepend to the image name to prevent SHA conflicts ('', debug or perf)"
+        required: false
+        type: string
+        default: ""
+      profile:
+        description: "The Rust profile to build the relay with."
+        required: true
+        type: choice
+        default: release
+        options:
+          - release
+          - debug
+      stage:
+        description: "The stage of the relay image to build."
+        required: true
+        type: choice
+        default: release
+        options:
+          - release
+          - debug
+          - dev
+  workflow_call:
+    inputs:
+      image_prefix:
+        description: |
+          The prefix to prepend to the image name to prevent SHA conflicts.
+          * Use "debug" to build debug binaries inside debug stage images + with debug tooling installed.
+          * Use "perf" to build release binaries inside debug stage images + with debug tooling installed.
+          * Leave blank to build release binaries inside release stage images.
+        required: false
+        type: string
+      sha:
+        required: false
+        type: string
+        default: ${{ github.sha }}
+      profile:
+        description: "The Rust profile to build the relay with"
+        required: true
+        type: string
+      stage:
+        description: "The stage of the relay image to build"
+        required: true
+        type: string
+    outputs:
+      relay_image:
+        description: "The relay image that was built"
+        value: ${{ jobs.image.outputs.image }}
+
+permissions:
+  contents: read
+  id-token: write # OIDC auth
+  packages: write # push Docker images to GHCR
+  security-events: write # upload Trivy SARIF results
+
+jobs:
+  image:
+    uses: ./.github/workflows/_rust-docker-image.yml
+    secrets: inherit
+    permissions:
+      contents: read
+      packages: write # push Docker images to GHCR
+      security-events: write # upload Trivy SARIF results
+    with:
+      package: firezone-relay
+      image_name: relay
+      image_prefix: ${{ inputs.image_prefix }}
+      sha: ${{ inputs.sha }}
+      profile: ${{ inputs.profile }}
+      stage: ${{ inputs.stage }}
+      upload_binary: ${{ inputs.profile == 'release' && inputs.stage == 'release' }}
+
+  upload-binary:
+    name: upload-relay-${{ matrix.arch }}
+    needs: image
+    if: ${{ inputs.profile == 'release' && inputs.stage == 'release' }}
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: ${{ github.event_name == 'merge_group' }}
+      matrix:
+        arch: [x86_64, aarch64, armv7]
+    env:
+      RESOLVED_SHA: ${{ inputs.sha || github.sha }}
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: ${{ needs.image.outputs.binary_artifact }}-${{ matrix.arch }}
+      - name: Azure login (OIDC)
+        uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+        with:
+          client-id: ${{ secrets.AZURE_ARTIFACTS_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_ARTIFACTS_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_ARTIFACTS_SUBSCRIPTION_ID }}
+          # The artifacts principal holds only a data-plane role on the storage
+          # account, not subscription-wide Reader.
+          allow-no-subscriptions: true
+      - name: Copy binary to Azure Blob Storage
+        run: |
+          set -e
+
+          az storage blob upload \
+            --container-name binaries \
+            --name "relay/${{ env.RESOLVED_SHA }}/${{ matrix.arch }}" \
+            --file firezone-relay \
+            --overwrite true \
+            --no-progress \
+            --auth-mode login \
+            --account-name firezoneartifacts
+
+          az storage blob upload \
+            --container-name binaries \
+            --name "relay/${{ env.RESOLVED_SHA }}/${{ matrix.arch }}.sha256sum.txt" \
+            --file firezone-relay.sha256sum.txt \
+            --overwrite true \
+            --no-progress \
+            --auth-mode login \
+            --account-name firezoneartifacts
