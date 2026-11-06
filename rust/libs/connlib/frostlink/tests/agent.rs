@@ -601,6 +601,56 @@ fn unauthenticated_peer_data_does_not_reset_the_peer_rekey_count() {
     );
 }
 
+#[test]
+fn a_primary_that_stops_answering_keepalives_fails_over_while_peer_data_still_arrives() {
+    // The peer's NAT mapping moved: its data still reaches us from the new
+    // mapping, but whatever now sits behind the old one cannot answer our
+    // probes. Peer data keeps resetting re-key distress, so only the silent
+    // keepalives can reveal that the primary is one-way.
+    let (mut a, t0) = direct_primary_with_relay_fallback();
+
+    let relay = (addr(2), addr(4));
+    let mut t = t0 + secs(1);
+    while t < t0 + secs(180) {
+        let next = t + secs(1);
+        let activity = a.advance(t, next);
+        for probe in activity.probes_for(relay) {
+            a.handle_probe(echo_reply(probe.id, probe.seq), relay, next);
+        }
+        a.handle_inbound_data(next);
+        t = next;
+    }
+
+    assert_eq!(
+        a.primary(),
+        Some(relay),
+        "a primary whose keepalives go unanswered fails over to a pair that answers",
+    );
+}
+
+#[test]
+fn a_primary_that_answers_its_keepalives_stays() {
+    let (mut a, t0) = direct_primary_with_relay_fallback();
+    let primary = (addr(1), addr(3));
+
+    let mut t = t0 + secs(1);
+    while t < t0 + secs(300) {
+        let next = t + secs(1);
+        let activity = a.advance(t, next);
+        for probe in activity.probes_for(primary) {
+            a.handle_probe(echo_reply(probe.id, probe.seq), primary, t + ms(30));
+        }
+        assert!(
+            activity.events.is_empty(),
+            "an answering primary never changes: {:?}",
+            activity.events,
+        );
+        t = next;
+    }
+
+    assert_eq!(a.primary(), Some(primary));
+}
+
 // --- new candidate ---
 
 #[test]
