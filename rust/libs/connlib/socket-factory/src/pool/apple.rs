@@ -125,7 +125,7 @@ impl SocketPool {
                 flows: BTreeMap::new(),
                 sources: BTreeMap::new(),
                 rates: RateGate::default(),
-                flow_sockets_supported: false,
+                flow_sockets_supported: true,
                 buffer_sizes: None,
                 drained: VecDeque::new(),
                 recv_waker: None,
@@ -200,7 +200,14 @@ impl SocketPool {
     }
 
     pub(crate) fn set_buffer_sizes(&self, send: usize, recv: usize, port: u16) {
-        let _ = (send, recv, port);
+        self.wildcard.apply_buffer_sizes(send, recv, port);
+
+        let mut inner = self.lock();
+        inner.buffer_sizes = Some((send, recv));
+
+        for cached in inner.flows.values().chain(inner.sources.values()) {
+            cached.socket.apply_buffer_sizes(send, recv, port);
+        }
     }
 
     /// Returns a connected flow socket once the pair passes the promotion gates.

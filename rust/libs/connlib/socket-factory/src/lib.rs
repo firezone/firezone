@@ -603,8 +603,6 @@ impl PerfUdpSocket {
                     offset += sent_bytes;
                     attempt = 0; // Each batch gets its own retry budget.
                 }
-                #[cfg(apple)]
-                Err(e) if e.raw_os_error() == Some(libc::ENOBUFS) => return Ok(()),
                 // Connected sockets get a write-readiness wakeup from the kernel's flow advisory
                 // once the interface queue drains, so we park until then.
                 #[cfg(apple)]
