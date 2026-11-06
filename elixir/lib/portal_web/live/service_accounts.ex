@@ -618,7 +618,7 @@ defmodule PortalWeb.ServiceAccounts do
           Non-human accounts used for automated access to resources.
         </:description>
         <:action>
-          <Navigation.docs_action path="/deploy/service-accounts" />
+          <Navigation.docs_action show_label size="md" path="/deploy/service-accounts" />
         </:action>
         <:action>
           <Form.button style="primary" icon="ri-add-line" phx-click="open_new_actor_panel">

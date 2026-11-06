@@ -633,7 +633,7 @@ defmodule PortalWeb.Components.Navigation do
                 </p>
               </div>
               <div class="shrink-0 flex items-center gap-2">
-                <.docs_action path="/audit-logs" />
+                <.docs_action show_label size="md" path="/audit-logs" />
               </div>
             </div>
           </div>
@@ -807,22 +807,35 @@ defmodule PortalWeb.Components.Navigation do
 
   ## Examples
 
-    <Navigation.docs_action path="/kb/deploy/gateways">Deploy Gateway(s)</Navigation.docs_action>
+    <Navigation.docs_action path="/deploy/gateways" show_label />
   """
   attr :path, :string, required: true
   attr :fragment, :string, required: false, default: ""
+  attr :show_label, :boolean, default: false
+  attr :size, :string, default: "sm", values: ~w[sm md]
   attr :rest, :global
 
   def docs_action(assigns) do
     ~H"""
     <.link
       title="View documentation for this page"
+      aria-label="View documentation for this page"
+      class={[
+        "inline-flex items-center mr-2 text-body hover:text-heading",
+        @size == "sm" && "gap-1 text-xs",
+        @size == "md" && "gap-1.5 text-sm"
+      ]}
       href={"https://www.firezone.dev/kb#{@path}?utm_source=product##{@fragment}"}
       target="_blank"
       rel="noopener noreferrer"
       {@rest}
     >
-      <Core.icon name="ri-question-line" class="mr-2 w-5 h-5 text-body hover:text-heading" />
+      <Core.icon
+        name="ri-book-open-line"
+        class={["shrink-0", @size == "sm" && "w-3 h-3", @size == "md" && "w-4 h-4"]}
+        aria-hidden="true"
+      />
+      <span :if={@show_label}>Docs</span>
     </.link>
     """
   end

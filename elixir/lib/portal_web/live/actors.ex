@@ -1022,7 +1022,7 @@ defmodule PortalWeb.Actors do
           Admin users and regular users in this account.
         </:description>
         <:action>
-          <Navigation.docs_action path="/deploy/users" />
+          <Navigation.docs_action show_label size="md" path="/deploy/users" />
         </:action>
         <:action>
           <Form.button style="primary" icon="ri-add-line" phx-click="open_new_actor_panel">

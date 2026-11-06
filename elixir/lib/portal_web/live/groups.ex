@@ -810,7 +810,7 @@ defmodule PortalWeb.Groups do
           Collections of users.
         </:description>
         <:action>
-          <Navigation.docs_action path="/deploy/groups" />
+          <Navigation.docs_action show_label size="md" path="/deploy/groups" />
           <Form.button
             style="primary"
             icon="ri-add-line"
