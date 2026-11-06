@@ -1,0 +1,12 @@
+{
+    "account_id": "00000000-0000-0000-0000-000000000001",
+    "account_slug": "golden",
+    "device_id": "00000000-0000-0000-0000-000000000002",
+    "device_type": "client",
+    "device_version": "1.5.0",
+    "metrics": [
+        "connlib.*"
+    ],
+    "iat": 1700000000,
+    "exp": 4102444800
+}
