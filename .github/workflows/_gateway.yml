@@ -1,0 +1,223 @@
+name: Build gateway
+run-name: Triggered from ${{ github.event_name }} by ${{ github.actor }}
+on:
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: "The Git SHA to build. Leave blank to build the tip of the selected branch/tag."
+        required: false
+        type: string
+        default: ""
+      image_prefix:
+        description: "The prefix to prepend to the image name to prevent SHA conflicts ('', debug or perf)"
+        required: false
+        type: string
+        default: ""
+      profile:
+        description: "The Rust profile to build the gateway with."
+        required: true
+        type: choice
+        default: release
+        options:
+          - release
+          - debug
+      stage:
+        description: "The stage of the gateway image to build."
+        required: true
+        type: choice
+        default: release
+        options:
+          - release
+          - debug
+          - dev
+  workflow_call:
+    inputs:
+      image_prefix:
+        description: |
+          The prefix to prepend to the image name to prevent SHA conflicts.
+          * Use "debug" to build debug binaries inside debug stage images + with debug tooling installed.
+          * Use "perf" to build release binaries inside debug stage images + with debug tooling installed.
+          * Leave blank to build release binaries inside release stage images.
+        required: false
+        type: string
+      sha:
+        required: false
+        type: string
+        default: ${{ github.sha }}
+      profile:
+        description: "The Rust profile to build the gateway with"
+        required: true
+        type: string
+      stage:
+        description: "The stage of the gateway image to build"
+        required: true
+        type: string
+    outputs:
+      gateway_image:
+        description: "The gateway image that was built"
+        value: ${{ jobs.image.outputs.image }}
+
+permissions:
+  contents: write # create/update GitHub releases
+  id-token: write # OIDC auth
+  packages: write # push Docker images to GHCR
+  security-events: write # upload Trivy SARIF results
+
+jobs:
+  update-release-draft:
+    runs-on: ubuntu-24.04
+    env:
+      RESOLVED_SHA: ${{ inputs.sha || github.sha }}
+      # mark:next-gateway-version
+      RELEASE_NAME: gateway-1.6.5
+    steps:
+      - uses: release-drafter/release-drafter@978bb0b30c5ee8cdd332ced253758157150d43f0 # v7.10.0
+        if: "${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}"
+        id: update-release-draft
+        with:
+          config-name: release-drafter-gateway.yml
+          tag: ${{ env.RELEASE_NAME }}
+          version: ${{ env.RELEASE_NAME }}
+          name: ${{ env.RELEASE_NAME }}
+          commitish: ${{ env.RESOLVED_SHA }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  image:
+    needs: update-release-draft
+    uses: ./.github/workflows/_rust-docker-image.yml
+    secrets: inherit
+    permissions:
+      contents: read
+      packages: write # push Docker images to GHCR
+      security-events: write # upload Trivy SARIF results
+    with:
+      package: firezone-gateway
+      image_name: gateway
+      image_prefix: ${{ inputs.image_prefix }}
+      sha: ${{ inputs.sha }}
+      profile: ${{ inputs.profile }}
+      stage: ${{ inputs.stage }}
+      upload_binary: ${{ inputs.profile == 'release' && inputs.stage == 'release' }}
+
+  package:
+    name: package-gateway-${{ matrix.arch.shortname }}
+    needs: image
+    if: ${{ inputs.profile == 'release' && inputs.stage == 'release' }}
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: rust
+    strategy:
+      fail-fast: ${{ github.event_name == 'merge_group' }}
+      matrix:
+        arch:
+          - target: x86_64-unknown-linux-musl
+            shortname: x86_64
+          - target: aarch64-unknown-linux-musl
+            shortname: aarch64
+          - target: armv7-unknown-linux-musleabihf
+            shortname: armv7
+    env:
+      # mark:next-gateway-version
+      BINARY_DEST_PATH: firezone-gateway_1.6.5_${{ matrix.arch.shortname }}
+      RESOLVED_SHA: ${{ inputs.sha || github.sha }}
+      # Only a dispatched build publishes the `.deb`. On a push, it would just
+      # expire unread as an artifact.
+      BUILDS_DEB: ${{ github.event_name == 'workflow_dispatch' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.RESOLVED_SHA }}
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: ${{ needs.image.outputs.binary_artifact }}-${{ matrix.arch.shortname }}
+          path: rust
+      - uses: ./.github/actions/setup-rust-stable
+        if: ${{ env.BUILDS_DEB == 'true' }}
+        with:
+          targets: ${{ matrix.arch.target }}
+      - uses: ./.github/actions/setup-rust-sccache
+        if: ${{ env.BUILDS_DEB == 'true' }}
+        with:
+          azure-connection-string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
+      - uses: ./.github/actions/setup-mise
+        if: ${{ env.BUILDS_DEB == 'true' }}
+        with:
+          install_args: --cd rust
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Package binary
+        run: cp firezone-gateway "$BINARY_DEST_PATH"
+      - name: Azure login (OIDC)
+        uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+        with:
+          client-id: ${{ secrets.AZURE_ARTIFACTS_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_ARTIFACTS_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_ARTIFACTS_SUBSCRIPTION_ID }}
+          # The artifacts principal holds only a data-plane role on the storage
+          # account, not subscription-wide Reader.
+          allow-no-subscriptions: true
+      - name: Copy binary to Azure Blob Storage
+        run: |
+          set -e
+
+          az storage blob upload \
+            --container-name binaries \
+            --name "gateway/${{ env.RESOLVED_SHA }}/${{ matrix.arch.shortname }}" \
+            --file firezone-gateway \
+            --overwrite true \
+            --no-progress \
+            --auth-mode login \
+            --account-name firezoneartifacts
+
+          az storage blob upload \
+            --container-name binaries \
+            --name "gateway/${{ env.RESOLVED_SHA }}/${{ matrix.arch.shortname }}.sha256sum.txt" \
+            --file firezone-gateway.sha256sum.txt \
+            --overwrite true \
+            --no-progress \
+            --auth-mode login \
+            --account-name firezoneartifacts
+
+      - name: Create Firezone Gateway .deb package
+        if: ${{ env.BUILDS_DEB == 'true' }}
+        run: |
+          mkdir -p target/${{ matrix.arch.target }}/release
+          cp firezone-gateway target/${{ matrix.arch.target }}/release/firezone-gateway
+          cargo deb --package firezone-gateway --target ${{ matrix.arch.target }} --no-build --no-strip
+          cp target/debian/*.deb "$BINARY_DEST_PATH".deb
+      - name: Upload Release Assets
+        if: ${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # mark:next-gateway-version
+          RELEASE_NAME: gateway-1.6.5
+          ARTIFACT_PATH: ${{ env.BINARY_DEST_PATH }}
+        run: |
+          set -xe
+
+          ../scripts/upload/github-release.sh
+
+          az storage blob upload-batch \
+            --destination apt \
+            --source . \
+            --pattern "*.deb" \
+            --destination-path import-preview \
+            --overwrite \
+            --no-progress \
+            --auth-mode login \
+            --account-name firezoneartifacts
+      - name: Upload `.deb` artifact
+        if: ${{ env.BUILDS_DEB == 'true' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ${{ env.BINARY_DEST_PATH }}.deb
+          path: rust/${{ env.BINARY_DEST_PATH }}.deb
+          retention-days: 1
+
+  regenerate-apt-index:
+    needs: package
+    if: ${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}
+    uses: ./.github/workflows/_apt.yml
+    secrets: inherit
