@@ -1958,6 +1958,7 @@ defmodule PortalAPI.Client.SocketTest do
         proof.last_attested_cert_issuer,
         proof.last_attested_cert_serial,
         Map.get(proof.identifiers, :last_attested_mdm_device_id),
+        [],
         subject
       )
 

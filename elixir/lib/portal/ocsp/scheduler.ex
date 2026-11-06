@@ -2,9 +2,10 @@ defmodule Portal.Ocsp.Scheduler do
   @moduledoc """
   Worker to schedule OCSP status refreshes.
 
-  Only issuers that publish no CRL are scheduled. Where a CA offers both, the
-  list is one fetch covering every device while OCSP is one request per
-  certificate, and responders are commonly billed per query, so the list wins.
+  Only issuers whose CRLs do not cover them are scheduled: a CA that publishes
+  no list, or one whose list is off or expired. Where a list is current, it is
+  one fetch covering every device while OCSP is one request per certificate,
+  and responders are commonly billed per query, so the list wins.
   """
   use Oban.Worker, queue: :ocsp_scheduler, max_attempts: 1
   alias __MODULE__.Database
@@ -19,21 +20,21 @@ defmodule Portal.Ocsp.Scheduler do
 
   defmodule Database do
     import Ecto.Query
+    alias Portal.RevocationEndpoint
     alias Portal.Safe
+    require RevocationEndpoint
 
     def queue_sync_jobs do
+      now = DateTime.utc_now() |> DateTime.truncate(:second)
+
       Safe.transact(fn ->
-        from(e in Portal.RevocationEndpoint,
+        from(e in RevocationEndpoint,
           join: a in Portal.Account,
           on: a.id == e.account_id,
-          where:
-            not fragment(
-              "EXISTS (SELECT 1 FROM unnest(?) AS u WHERE u LIKE 'http://%' OR u LIKE 'https://%')",
-              e.crl_urls
-            ),
+          where: not RevocationEndpoint.crl_covered?(e.account_id, e.issuer, ^now),
           where: e.ocsp_urls != [],
           where: a.is_disabled == false,
-          where: e.is_disabled == false
+          where: e.ocsp_is_disabled == false
         )
         |> Safe.unscoped()
         |> Safe.stream()

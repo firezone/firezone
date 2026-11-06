@@ -47,9 +47,10 @@ defmodule Portal.RevocationEndpoint do
           delta_next_update: DateTime.t() | nil,
           delta_fetched_at: DateTime.t() | nil,
           delta_error: String.t() | nil,
-          errored_at: DateTime.t() | nil,
-          is_disabled: boolean(),
-          disabled_reason: String.t() | nil,
+          crl_errored_at: DateTime.t() | nil,
+          crl_is_disabled: boolean(),
+          ocsp_errored_at: DateTime.t() | nil,
+          ocsp_is_disabled: boolean(),
           inserted_at: DateTime.t(),
           updated_at: DateTime.t()
         }
@@ -82,14 +83,99 @@ defmodule Portal.RevocationEndpoint do
     field :delta_fetched_at, :utc_datetime_usec
     field :delta_error, :string
 
-    # Shared by the list and the responder: what gets reported is whether
-    # revocation works for this CA at all, so a streak ends only once both are
-    # healthy.
-    field :errored_at, :utc_datetime_usec
-    field :is_disabled, :boolean, default: false
-    field :disabled_reason, :string
+    # Kept apart for the list and the responder. Each is what the other falls
+    # back on, so a fault in one must never stop the other.
+    field :crl_errored_at, :utc_datetime_usec
+    field :crl_is_disabled, :boolean, default: false
+    field :ocsp_errored_at, :utc_datetime_usec
+    field :ocsp_is_disabled, :boolean, default: false
 
     timestamps()
+  end
+
+  @http_list_sql """
+  EXISTS (
+    SELECT 1 FROM unnest(e.crl_urls) AS u
+    WHERE u LIKE 'http://%' OR u LIKE 'https://%'
+  )
+  """
+
+  # A cached list can answer for its certificates only while it is enabled,
+  # unexpired, and so is any delta it names. A delta that was never read leaves
+  # delta_fetched_at set with no delta_next_update, so it fails the check too.
+  @current_list_sql """
+  NOT e.crl_is_disabled
+  AND e.crl_next_update > ?
+  AND (e.delta_fetched_at IS NULL OR e.delta_next_update > ?)
+  """
+
+  @doc """
+  True when every distribution point the certificate names has a current list.
+
+  A point we have no row for yet has never been fetched, so it covers nothing.
+  The caller passes only the points served over HTTP, since no other list is
+  ever fetched, and no such points means no coverage.
+  """
+  defmacro crl_covers_points?(account_id, issuer, points, now) do
+    sql = """
+    cardinality(?::text[]) > 0
+    AND NOT EXISTS (
+      SELECT 1 FROM unnest(?::text[]) AS p(point)
+      WHERE NOT EXISTS (
+        SELECT 1 FROM revocation_endpoints e
+        WHERE e.account_id = ? AND e.issuer = ? AND e.distribution_point = p.point
+        AND #{@current_list_sql}
+      )
+    )
+    """
+
+    quote do
+      fragment(
+        unquote(sql),
+        unquote(points),
+        unquote(points),
+        unquote(account_id),
+        unquote(issuer),
+        unquote(now),
+        unquote(now)
+      )
+    end
+  end
+
+  @doc """
+  True when every list the issuer publishes over HTTP is current.
+
+  For work that is not about one certificate, such as the scheduled responder
+  run, which asks about every device of the issuer. One partition that is off or
+  stale leaves the certificates bound to it uncovered, so any gap counts as no
+  coverage.
+  """
+  defmacro crl_covered?(account_id, issuer, now) do
+    sql = """
+    EXISTS (
+      SELECT 1 FROM revocation_endpoints e
+      WHERE e.account_id = ? AND e.issuer = ?
+      AND #{@http_list_sql}
+    )
+    AND NOT EXISTS (
+      SELECT 1 FROM revocation_endpoints e
+      WHERE e.account_id = ? AND e.issuer = ?
+      AND #{@http_list_sql}
+      AND NOT COALESCE((#{@current_list_sql}), false)
+    )
+    """
+
+    quote do
+      fragment(
+        unquote(sql),
+        unquote(account_id),
+        unquote(issuer),
+        unquote(account_id),
+        unquote(issuer),
+        unquote(now),
+        unquote(now)
+      )
+    end
   end
 
   def changeset(%Ecto.Changeset{} = changeset) do
@@ -102,7 +188,6 @@ defmodule Portal.RevocationEndpoint do
     |> validate_length(:crl_error, max: 255)
     |> validate_length(:ocsp_error, max: 255)
     |> validate_length(:delta_error, max: 255)
-    |> validate_length(:disabled_reason, max: 255)
     |> assoc_constraint(:account)
   end
 

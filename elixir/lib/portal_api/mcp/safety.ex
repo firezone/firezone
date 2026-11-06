@@ -36,6 +36,7 @@ defmodule PortalAPI.MCP.Safety do
     do: :identity_management
 
   defp category(:post, "/actors/{actor_id}/client_tokens"), do: :credential_issuance
+  defp category(:post, "/sites/{site_id}/gateways"), do: :credential_issuance
   defp category(:post, "/sites/{site_id}/gateways/{gateway_id}/token"), do: :credential_issuance
   defp category(:post, "/sites/{site_id}/gateways/{gateway_id}/token/rotate"), do: :credential_issuance
   defp category(_method, _path), do: nil

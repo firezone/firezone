@@ -292,20 +292,31 @@ defmodule PortalAPI.Gateway.Channel.Shared do
     {:noreply, socket}
   end
 
-  def handle_info({:ice_candidates, client_id, candidates}, socket) do
-    push(socket, "ice_candidates", %{
-      client_id: client_id,
-      candidates: candidates
-    })
+  # The legacy tags still arrive from portal nodes on the previous release during a deploy.
+  def handle_info({tag, client_id, candidates}, socket)
+      when tag in [:ice_candidates_from_client, :ice_candidates] do
+    if Cache.Gateway.has_client?(socket.assigns.cache, client_id) do
+      push(socket, "ice_candidates", %{
+        client_id: client_id,
+        candidates: candidates
+      })
+    else
+      Telemetry.ice_candidates_dropped(:client, :unauthorized, candidate_count(candidates))
+    end
 
     {:noreply, socket}
   end
 
-  def handle_info({:invalidate_ice_candidates, client_id, candidates}, socket) do
-    push(socket, "invalidate_ice_candidates", %{
-      client_id: client_id,
-      candidates: candidates
-    })
+  def handle_info({tag, client_id, candidates}, socket)
+      when tag in [:invalidate_ice_candidates_from_client, :invalidate_ice_candidates] do
+    if Cache.Gateway.has_client?(socket.assigns.cache, client_id) do
+      push(socket, "invalidate_ice_candidates", %{
+        client_id: client_id,
+        candidates: candidates
+      })
+    else
+      Telemetry.ice_candidates_dropped(:client, :unauthorized, candidate_count(candidates))
+    end
 
     {:noreply, socket}
   end
@@ -691,14 +702,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
         %{"candidates" => candidates, "client_ids" => client_ids},
         socket
       ) do
-    Enum.each(client_ids, fn client_id ->
-      PG.deliver(
-        client_id,
-        {:ice_candidates, socket.assigns.gateway.id, candidates}
-      )
-    end)
-
-    {:noreply, socket}
+    deliver_to_clients(socket, client_ids, :ice_candidates, candidates)
   end
 
   def handle_in(
@@ -706,14 +710,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
         %{"candidates" => candidates, "client_ids" => client_ids},
         socket
       ) do
-    Enum.each(client_ids, fn client_id ->
-      PG.deliver(
-        client_id,
-        {:invalidate_ice_candidates, socket.assigns.gateway.id, candidates}
-      )
-    end)
-
-    {:noreply, socket}
+    deliver_to_clients(socket, client_ids, :invalidate_ice_candidates, candidates)
   end
 
   def handle_in("set_snownet_capabilities", payload, socket) when is_map(payload) do
@@ -1218,6 +1215,31 @@ defmodule PortalAPI.Gateway.Channel.Shared do
   defp abnormal_exit?(:shutdown), do: false
   defp abnormal_exit?({:shutdown, _reason}), do: false
   defp abnormal_exit?(_reason), do: true
+
+  defp deliver_to_clients(socket, client_ids, tag, candidates) when is_list(client_ids) do
+    candidates = PortalAPI.Sockets.limit_ice_candidates(candidates, socket.assigns.gateway)
+
+    if candidates != [] do
+      client_ids
+      |> Enum.uniq()
+      |> Enum.each(&deliver_to_client(socket, &1, tag, candidates))
+    end
+
+    {:noreply, socket}
+  end
+
+  defp deliver_to_clients(socket, _client_ids, _tag, _candidates), do: {:noreply, socket}
+
+  defp deliver_to_client(socket, client_id, tag, candidates) do
+    if Cache.Gateway.has_client?(socket.assigns.cache, client_id) do
+      PG.deliver(client_id, {tag, socket.assigns.gateway.id, candidates})
+    else
+      Telemetry.ice_candidates_dropped(:gateway, :unauthorized, length(candidates))
+    end
+  end
+
+  defp candidate_count(candidates) when is_list(candidates), do: length(candidates)
+  defp candidate_count(_candidates), do: 0
 
   defmodule Database do
     import Ecto.Query

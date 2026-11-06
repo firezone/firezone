@@ -9,6 +9,9 @@ defmodule Portal.Cache.Client.Authorizations do
     pushes `reject_access` when it targets the authorization currently granting access. A delete for
     a superseded authorization is ignored.
 
+    The client channel keeps a second, outbound instance for the client-to-client authorizations
+    it holds as the `initiating_device_id`. There the key holds the receiving client.
+
     Data structure:
 
       %{{client_id:uuidv4:16, resource_id:uuidv4:16} =>
@@ -30,11 +33,13 @@ defmodule Portal.Cache.Client.Authorizations do
   @type t :: %{client_resource_key() => entry()}
 
   @doc """
-    Fetches relevant policy_authorizations from the DB and transforms them into the cache format.
-    When more than one non-expired authorization exists for a pair, the longest-expiring one is
-    kept to minimize unnecessary access churn.
+    Fetches the client's policy_authorizations with one query and returns two caches: inbound,
+    where the client is the receiving device, and outbound, where the client is the initiating
+    device and the receiving device is another client. When more than one non-expired
+    authorization exists for a pair, the longest-expiring one is kept to minimize unnecessary
+    access churn.
   """
-  @spec hydrate(Device.t()) :: t()
+  @spec hydrate(Device.t()) :: {inbound :: t(), outbound :: t()}
   def hydrate(client) do
     OpenTelemetry.Tracer.with_span "Portal.Cache.Client.Authorizations.hydrate",
       attributes: %{
@@ -42,20 +47,24 @@ defmodule Portal.Cache.Client.Authorizations do
         account_id: client.account_id
       } do
       Database.all_client_policy_authorizations_for_cache!(client)
-      |> Enum.reduce(%{}, &put_hydrated/2)
-    end
-  end
+      |> Enum.reduce({%{}, %{}}, fn {id, initiating_id, receiving_id, resource_id, expires_at},
+                                    {inbound, outbound} ->
+        inbound =
+          if receiving_id == client.id do
+            put_hydrated(inbound, id, initiating_id, resource_id, expires_at)
+          else
+            inbound
+          end
 
-  defp put_hydrated({id, client_id, resource_id, expires_at}, acc) do
-    key = {dump!(client_id), dump!(resource_id)}
-    expires_at_unix = DateTime.to_unix(expires_at, :second)
+        outbound =
+          if initiating_id == client.id do
+            put_hydrated(outbound, id, receiving_id, resource_id, expires_at)
+          else
+            outbound
+          end
 
-    case acc do
-      %{^key => {_pa_id, prev_expires_at}} when prev_expires_at >= expires_at_unix ->
-        acc
-
-      _ ->
-        Map.put(acc, key, {dump!(id), expires_at_unix})
+        {inbound, outbound}
+      end)
     end
   end
 
@@ -124,6 +133,19 @@ defmodule Portal.Cache.Client.Authorizations do
   end
 
   @doc """
+    Check if the cache has an authorization for the given client_id.
+  """
+  @spec has_client?(t(), String.t()) :: boolean()
+  def has_client?(%{} = cache, client_id) when is_binary(client_id) do
+    case Ecto.UUID.dump(client_id) do
+      {:ok, cid_bytes} -> Enum.any?(cache, fn {{cid, _rid}, _entry} -> cid == cid_bytes end)
+      :error -> false
+    end
+  end
+
+  def has_client?(%{}, _client_id), do: false
+
+  @doc """
     Return a list of all `{client_id, resource_id}` pairs matching the given resource ID.
   """
   @spec all_pairs_for_resource(t(), Ecto.UUID.t()) :: [{Ecto.UUID.t(), Ecto.UUID.t()}]
@@ -132,6 +154,19 @@ defmodule Portal.Cache.Client.Authorizations do
 
     for {{cid, rid}, _entry} <- cache, rid == rid_bytes do
       {load!(cid), load!(rid)}
+    end
+  end
+
+  defp put_hydrated(acc, id, client_id, resource_id, expires_at) do
+    key = {dump!(client_id), dump!(resource_id)}
+    expires_at_unix = DateTime.to_unix(expires_at, :second)
+
+    case acc do
+      %{^key => {_pa_id, prev_expires_at}} when prev_expires_at >= expires_at_unix ->
+        acc
+
+      _ ->
+        Map.put(acc, key, {dump!(id), expires_at_unix})
     end
   end
 
@@ -148,14 +183,22 @@ defmodule Portal.Cache.Client.Authorizations do
       now = DateTime.utc_now()
 
       from(pa in Portal.PolicyAuthorization, as: :policy_authorizations)
+      |> join(:inner, [policy_authorizations: pa], d in Portal.Device,
+        on: d.account_id == pa.account_id and d.id == pa.receiving_device_id,
+        as: :receiving_device
+      )
       |> where([policy_authorizations: pa], pa.account_id == ^client.account_id)
-      |> where([policy_authorizations: pa], pa.receiving_device_id == ^client.id)
+      |> where(
+        [policy_authorizations: pa, receiving_device: d],
+        pa.receiving_device_id == ^client.id or
+          (pa.initiating_device_id == ^client.id and d.type == :client)
+      )
       |> where([policy_authorizations: pa], pa.expires_at > ^now)
       # Longest-expiring first so the per-pair last-one-wins reduction is deterministic.
       |> order_by([policy_authorizations: pa], desc: pa.expires_at)
       |> select(
         [policy_authorizations: pa],
-        {pa.id, pa.initiating_device_id, pa.resource_id, pa.expires_at}
+        {pa.id, pa.initiating_device_id, pa.receiving_device_id, pa.resource_id, pa.expires_at}
       )
       |> Safe.unscoped()
       |> Safe.all()

@@ -3263,7 +3263,7 @@ defmodule PortalAPI.Client.ChannelTest do
         "gateway_id" => gateway.id
       })
 
-      assert_receive {:ice_candidates, client_id, ^candidates}, 200
+      assert_receive {:ice_candidates_from_client, client_id, ^candidates}, 200
       assert client_id == client.id
     end
   end
@@ -3289,7 +3289,7 @@ defmodule PortalAPI.Client.ChannelTest do
         "gateway_id" => gateway.id
       })
 
-      assert_receive {:invalidate_ice_candidates, client_id, ^candidates}, 200
+      assert_receive {:invalidate_ice_candidates_from_client, client_id, ^candidates}, 200
       assert client_id == client.id
     end
   end
@@ -3308,6 +3308,7 @@ defmodule PortalAPI.Client.ChannelTest do
       target_client = client_fixture(account: account, actor: target_actor) |> fetch_device!()
 
       :ok = PG.register(target_client.id)
+      put_inbound_authorization(socket, target_client.id)
 
       push(socket, "new_client_ice_candidates", %{
         "candidates" => candidates,
@@ -3337,6 +3338,88 @@ defmodule PortalAPI.Client.ChannelTest do
 
       refute_receive {:client_ice_candidates, _, _}
     end
+
+    test "does not forward to an online client without an authorization", %{
+      account: account,
+      client: client,
+      subject: subject
+    } do
+      socket = join_channel(client, subject)
+      assert_push "init", _
+
+      target_client = client_fixture(account: account) |> fetch_device!()
+      :ok = PG.register(target_client.id)
+
+      push(socket, "new_client_ice_candidates", %{
+        "candidates" => ["cand1"],
+        "client_id" => target_client.id
+      })
+
+      refute_receive {:client_ice_candidates, _, _}
+    end
+
+    test "does not forward to a client in another account", %{
+      client: client,
+      subject: subject
+    } do
+      socket = join_channel(client, subject)
+      assert_push "init", _
+
+      other_client = client_fixture() |> fetch_device!()
+      :ok = PG.register(other_client.id)
+
+      push(socket, "new_client_ice_candidates", %{
+        "candidates" => ["cand1"],
+        "client_id" => other_client.id
+      })
+
+      refute_receive {:client_ice_candidates, _, _}
+    end
+
+    test "drops oversized candidates and caps the count", %{
+      account: account,
+      client: client,
+      subject: subject
+    } do
+      socket = join_channel(client, subject)
+      assert_push "init", _
+
+      target_client = client_fixture(account: account) |> fetch_device!()
+      :ok = PG.register(target_client.id)
+      put_inbound_authorization(socket, target_client.id)
+
+      valid = for i <- 1..70, do: "cand#{i}"
+      oversized = String.duplicate("a", 513)
+      test_pid = self()
+      handler_id = "test-ice-candidates-dropped-#{System.unique_integer([:positive])}"
+
+      :telemetry.attach(
+        handler_id,
+        [:portal, :ice_candidates, :dropped],
+        fn _event, measurements, metadata, _config ->
+          send(test_pid, {:ice_candidates_dropped, measurements, metadata})
+        end,
+        nil
+      )
+
+      on_exit(fn -> :telemetry.detach(handler_id) end)
+
+      push(socket, "new_client_ice_candidates", %{
+        "candidates" => [oversized, 1 | valid],
+        "client_id" => target_client.id
+      })
+
+      assert_receive {:client_ice_candidates, _sending_client_id, candidates}, 200
+      assert candidates == Enum.take(valid, 64)
+
+      assert_receive {:ice_candidates_dropped, %{count: 1},
+                      %{sender: :client, reason: :oversized}}
+
+      assert_receive {:ice_candidates_dropped, %{count: 1}, %{sender: :client, reason: :invalid}}
+
+      assert_receive {:ice_candidates_dropped, %{count: 6},
+                      %{sender: :client, reason: :over_limit}}
+    end
   end
 
   describe "handle_in/3 invalidate_client_ice_candidates" do
@@ -3352,6 +3435,7 @@ defmodule PortalAPI.Client.ChannelTest do
       target_actor = actor_fixture(account: account)
       target_client = client_fixture(account: account, actor: target_actor) |> fetch_device!()
       :ok = PG.register(target_client.id)
+      put_outbound_authorization(socket, outbound_policy_authorization(account, client, target_client.id))
 
       push(socket, "invalidate_client_ice_candidates", %{
         "candidates" => candidates,
@@ -3374,6 +3458,7 @@ defmodule PortalAPI.Client.ChannelTest do
       target_client = client_fixture(account: account, actor: target_actor) |> fetch_device!()
       # Do NOT PG.register target_client.id
       target_client_id = target_client.id
+      put_inbound_authorization(socket, target_client_id)
 
       push(socket, "invalidate_client_ice_candidates", %{
         "candidates" => ["cand1"],
@@ -3384,6 +3469,191 @@ defmodule PortalAPI.Client.ChannelTest do
         client_id: ^target_client_id,
         reason: :offline
       }
+    end
+
+    test "reports an online client in another account as offline", %{
+      client: client,
+      subject: subject
+    } do
+      socket = join_channel(client, subject)
+      assert_push "init", _
+
+      other_client = client_fixture() |> fetch_device!()
+      other_client_id = other_client.id
+      :ok = PG.register(other_client_id)
+
+      push(socket, "invalidate_client_ice_candidates", %{
+        "candidates" => ["cand1"],
+        "client_id" => other_client_id
+      })
+
+      assert_push "client_ice_candidate_error", %{
+        client_id: ^other_client_id,
+        reason: :offline
+      }
+
+      refute_receive {:invalidate_client_ice_candidates, _, _}
+    end
+
+    test "stops forwarding after the outbound authorization is deleted", %{
+      account: account,
+      client: client,
+      subject: subject
+    } do
+      socket = join_channel(client, subject)
+      assert_push "init", _
+
+      target_client = client_fixture(account: account) |> fetch_device!()
+      :ok = PG.register(target_client.id)
+      pa = outbound_policy_authorization(account, client, target_client.id)
+      put_outbound_authorization(socket, pa)
+
+      send(socket.channel_pid, %Changes.Change{lsn: 100, op: :delete, old_struct: pa})
+
+      push(socket, "new_client_ice_candidates", %{
+        "candidates" => ["cand1"],
+        "client_id" => target_client.id
+      })
+
+      refute_receive {:client_ice_candidates, _, _}
+    end
+
+    test "keeps forwarding when a superseded outbound authorization is deleted", %{
+      account: account,
+      client: client,
+      subject: subject
+    } do
+      socket = join_channel(client, subject)
+      assert_push "init", _
+
+      target_client = client_fixture(account: account) |> fetch_device!()
+      :ok = PG.register(target_client.id)
+      old_pa = outbound_policy_authorization(account, client, target_client.id)
+      put_outbound_authorization(socket, old_pa)
+      put_outbound_authorization(socket, %{old_pa | id: Ecto.UUID.generate()})
+
+      send(socket.channel_pid, %Changes.Change{lsn: 100, op: :delete, old_struct: old_pa})
+
+      push(socket, "new_client_ice_candidates", %{
+        "candidates" => ["cand1"],
+        "client_id" => target_client.id
+      })
+
+      client_id = client.id
+      assert_receive {:client_ice_candidates, ^client_id, ["cand1"]}, 500
+    end
+
+    test "stops forwarding after the outbound authorization fails to persist", %{
+      account: account,
+      client: client,
+      subject: subject
+    } do
+      socket = join_channel(client, subject)
+      assert_push "init", _
+
+      target_client = client_fixture(account: account) |> fetch_device!()
+      :ok = PG.register(target_client.id)
+      pa = outbound_policy_authorization(account, client, target_client.id)
+      put_outbound_authorization(socket, pa)
+
+      send(socket.channel_pid, {:outbound_authorization_failed, pa})
+
+      push(socket, "new_client_ice_candidates", %{
+        "candidates" => ["cand1"],
+        "client_id" => target_client.id
+      })
+
+      refute_receive {:client_ice_candidates, _, _}
+    end
+
+    test "forwards to a client with an outbound authorization hydrated on join", %{
+      account: account,
+      client: client,
+      subject: subject
+    } do
+      target_client = client_fixture(account: account) |> fetch_device!()
+      Portal.PolicyAuthorizationFixtures.policy_authorization_fixture(
+        account: account,
+        client: client,
+        gateway: target_client
+      )
+      :ok = PG.register(target_client.id)
+
+      socket = join_channel(client, subject)
+      assert_push "init", _
+
+      push(socket, "new_client_ice_candidates", %{
+        "candidates" => ["cand1"],
+        "client_id" => target_client.id
+      })
+
+      client_id = client.id
+      assert_receive {:client_ice_candidates, ^client_id, ["cand1"]}, 500
+    end
+
+    test "stops forwarding after the outbound authorization expires and is pruned", %{
+      account: account,
+      client: client,
+      subject: subject
+    } do
+      socket = join_channel(client, subject)
+      assert_push "init", _
+
+      target_client = client_fixture(account: account) |> fetch_device!()
+      :ok = PG.register(target_client.id)
+      pa = outbound_policy_authorization(account, client, target_client.id)
+      put_outbound_authorization(socket, %{pa | expires_at: DateTime.add(DateTime.utc_now(), -1, :second)})
+
+      send(socket.channel_pid, :prune_authorizations_cache)
+
+      push(socket, "new_client_ice_candidates", %{
+        "candidates" => ["cand1"],
+        "client_id" => target_client.id
+      })
+
+      refute_receive {:client_ice_candidates, _, _}
+    end
+
+    test "stops forwarding to the initiator after the inbound authorization is deleted", %{
+      account: account,
+      client: client,
+      subject: subject
+    } do
+      socket = join_channel(client, subject)
+      assert_push "init", _
+
+      initiating_client = client_fixture(account: account) |> fetch_device!()
+      initiating_client_id = initiating_client.id
+      :ok = PG.register(initiating_client_id)
+
+      pa = %Portal.PolicyAuthorization{
+        id: Ecto.UUID.generate(),
+        account_id: account.id,
+        initiating_device_id: initiating_client_id,
+        receiving_device_id: client.id,
+        resource_id: Ecto.UUID.generate(),
+        expires_at: DateTime.add(DateTime.utc_now(), 3600, :second)
+      }
+
+      put_inbound_authorization(socket, pa)
+
+      push(socket, "new_client_ice_candidates", %{
+        "candidates" => ["before-delete"],
+        "client_id" => initiating_client_id
+      })
+
+      client_id = client.id
+      assert_receive {:client_ice_candidates, ^client_id, ["before-delete"]}, 500
+
+      send(socket.channel_pid, %Changes.Change{lsn: 100, op: :delete, old_struct: pa})
+      assert_push "reject_access", %{client_id: ^initiating_client_id}
+
+      push(socket, "new_client_ice_candidates", %{
+        "candidates" => ["after-delete"],
+        "client_id" => initiating_client_id
+      })
+
+      refute_receive {:client_ice_candidates, _, _}
     end
   end
 
@@ -5667,7 +5937,7 @@ defmodule PortalAPI.Client.ChannelTest do
       }
 
       push(socket, "broadcast_ice_candidates", attrs)
-      refute_receive {:ice_candidates, _client_id, _candidates}
+      refute_receive {:ice_candidates_from_client, _client_id, _candidates}
     end
 
     test "broadcasts :ice_candidates message to all gateways", %{
@@ -5694,7 +5964,7 @@ defmodule PortalAPI.Client.ChannelTest do
 
       push(socket, "broadcast_ice_candidates", attrs)
 
-      assert_receive {:ice_candidates, client_id, ^candidates}, 200
+      assert_receive {:ice_candidates_from_client, client_id, ^candidates}, 200
       assert client.id == client_id
     end
   end
@@ -5714,7 +5984,7 @@ defmodule PortalAPI.Client.ChannelTest do
       }
 
       push(socket, "broadcast_invalidated_ice_candidates", attrs)
-      refute_receive {:invalidate_ice_candidates, _client_id, _candidates}
+      refute_receive {:invalidate_ice_candidates_from_client, _client_id, _candidates}
     end
 
     test "broadcasts :invalidate_ice_candidates message to all gateways", %{
@@ -5740,7 +6010,7 @@ defmodule PortalAPI.Client.ChannelTest do
 
       push(socket, "broadcast_invalidated_ice_candidates", attrs)
 
-      assert_receive {:invalidate_ice_candidates, client_id, ^candidates}, 200
+      assert_receive {:invalidate_ice_candidates_from_client, client_id, ^candidates}, 200
       assert client.id == client_id
     end
   end
@@ -6882,6 +7152,122 @@ defmodule PortalAPI.Client.ChannelTest do
         client_slug: ^target_client_slug,
         ice_role: :controlling
       }
+    end
+
+    test "forwards the initiator's ICE candidates to the target only after the ack", %{
+      client: client,
+      subject: subject,
+      target_client: target_client,
+      target_subject: target_subject,
+      pool_resource: pool_resource
+    } do
+      target_client_id = target_client.id
+
+      session_meta = %{
+        ipv4: target_client.ipv4.address,
+        ipv6: target_client.ipv6.address,
+        name: target_client.name,
+        public_key: Portal.DeviceFixtures.generate_public_key(),
+        psk_base: target_client.psk_base,
+        remote_ip: %Postgrex.INET{address: {100, 64, 0, 99}},
+        version: "1.5.16",
+        user_agent: "Mac OS/14 apple-client/1.5.16",
+        group_ids: []
+      }
+
+      :ok = Presence.Devices.connect(target_client, target_subject.credential.id, session_meta)
+      :ok = PG.register(target_client_id)
+
+      initiating_socket = join_channel(client, subject, channel: PortalAPI.Client.V3.Channel)
+      assert_push "init", _
+
+      target_ip = Portal.Types.INET.to_string(target_client.ipv4)
+
+      push(initiating_socket, "request_access", %{"resource_ids" => [pool_resource.id], "ipv4" => target_ip})
+
+      assert_receive {:client_device_access_authorized, {ack_to, ref}, _payload}, 500
+
+      push(initiating_socket, "new_client_ice_candidates", %{
+        "candidates" => ["before-ack"],
+        "client_id" => target_client_id
+      })
+
+      refute_receive {:client_ice_candidates, _, _}, 200
+
+      send(ack_to, {:device_access_acked, ref, false, target_client.name, target_client.slug})
+      assert_push "client_device_access_authorized", %{client_id: ^target_client_id}
+
+      push(initiating_socket, "new_client_ice_candidates", %{
+        "candidates" => ["after-ack"],
+        "client_id" => target_client_id
+      })
+
+      client_id = client.id
+      assert_receive {:client_ice_candidates, ^client_id, ["after-ack"]}, 500
+    end
+
+    test "stops forwarding the initiator's ICE candidates when the authorization fails to persist",
+         %{
+           client: client,
+           subject: subject,
+           target_client: target_client,
+           target_subject: target_subject,
+           pool_resource: pool_resource
+         } do
+      target_client_id = target_client.id
+
+      session_meta = %{
+        ipv4: target_client.ipv4.address,
+        ipv6: target_client.ipv6.address,
+        name: target_client.name,
+        public_key: Portal.DeviceFixtures.generate_public_key(),
+        psk_base: target_client.psk_base,
+        remote_ip: %Postgrex.INET{address: {100, 64, 0, 99}},
+        version: "1.5.16",
+        user_agent: "Mac OS/14 apple-client/1.5.16",
+        group_ids: []
+      }
+
+      :ok = Presence.Devices.connect(target_client, target_subject.credential.id, session_meta)
+      :ok = PG.register(target_client_id)
+
+      initiating_socket = join_channel(client, subject, channel: PortalAPI.Client.V3.Channel)
+      assert_push "init", _
+
+      target_ip = Portal.Types.INET.to_string(target_client.ipv4)
+
+      push(initiating_socket, "request_access", %{
+        "resource_ids" => [pool_resource.id],
+        "ipv4" => target_ip
+      })
+
+      assert_receive {:client_device_access_authorized, {ack_to, ref}, _payload}, 500
+      send(ack_to, {:device_access_acked, ref, false, target_client.name, target_client.slug})
+      assert_push "client_device_access_authorized", %{client_id: ^target_client_id}
+
+      push(initiating_socket, "new_client_ice_candidates", %{
+        "candidates" => ["before-failure"],
+        "client_id" => target_client_id
+      })
+
+      client_id = client.id
+      assert_receive {:client_ice_candidates, ^client_id, ["before-failure"]}, 500
+
+      policy =
+        Portal.Repo.one!(from(p in Portal.Policy, where: p.resource_id == ^pool_resource.id))
+
+      Portal.Repo.delete!(policy)
+      Portal.Queue.flush(:policy_authorization_queue)
+
+      assert_receive {:reject_access, %Portal.PolicyAuthorization{initiating_device_id: ^client_id}},
+                     500
+
+      push(initiating_socket, "new_client_ice_candidates", %{
+        "candidates" => ["after-failure"],
+        "client_id" => target_client_id
+      })
+
+      refute_receive {:client_ice_candidates, _, _}
     end
 
     test "denies the initiator with :offline when the target never acks", %{
@@ -9251,5 +9637,55 @@ defmodule PortalAPI.Client.ChannelTest do
     push(socket, "browse_device_domain", %{"domain" => domain})
     assert_push ^event, %{domain: ^domain}
     System.monotonic_time(:millisecond) - started_at
+  end
+
+  defp put_inbound_authorization(socket, %Portal.PolicyAuthorization{} = pa) do
+    :sys.replace_state(socket.channel_pid, fn state ->
+      cache =
+        Portal.Cache.Client.Authorizations.put(
+          state.assigns.authorizations_cache,
+          pa.id,
+          pa.initiating_device_id,
+          pa.resource_id,
+          pa.expires_at
+        )
+
+      put_in(state.assigns.authorizations_cache, cache)
+    end)
+  end
+
+  defp put_inbound_authorization(socket, initiating_client_id) do
+    put_inbound_authorization(socket, %Portal.PolicyAuthorization{
+      id: Ecto.UUID.generate(),
+      initiating_device_id: initiating_client_id,
+      resource_id: Ecto.UUID.generate(),
+      expires_at: DateTime.add(DateTime.utc_now(), 3600, :second)
+    })
+  end
+
+  defp put_outbound_authorization(socket, %Portal.PolicyAuthorization{} = pa) do
+    :sys.replace_state(socket.channel_pid, fn state ->
+      cache =
+        Portal.Cache.Client.Authorizations.put(
+          state.assigns.outbound_authorizations_cache,
+          pa.id,
+          pa.receiving_device_id,
+          pa.resource_id,
+          pa.expires_at
+        )
+
+      put_in(state.assigns.outbound_authorizations_cache, cache)
+    end)
+  end
+
+  defp outbound_policy_authorization(account, client, target_client_id) do
+    %Portal.PolicyAuthorization{
+      id: Ecto.UUID.generate(),
+      account_id: account.id,
+      initiating_device_id: client.id,
+      receiving_device_id: target_client_id,
+      resource_id: Ecto.UUID.generate(),
+      expires_at: DateTime.add(DateTime.utc_now(), 3600, :second)
+    }
   end
 end

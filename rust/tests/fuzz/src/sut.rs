@@ -312,14 +312,14 @@ impl TunnelTest {
                     client::EditEffect::Metadata => (GatewayAction::None, None),
                     client::EditEffect::Filters { .. } => (GatewayAction::Update, None),
                     client::EditEffect::Access {
-                        forgets_dns_records_under,
+                        forgets_dns_records_matching,
                         ..
-                    } => (GatewayAction::RemoveAllAccess, forgets_dns_records_under),
+                    } => (GatewayAction::RemoveAllAccess, forgets_dns_records_matching),
                     client::EditEffect::DevicePoolRouting => (GatewayAction::None, None),
                     client::EditEffect::Type {
-                        forgets_dns_records_under,
+                        forgets_dns_records_matching,
                         ..
-                    } => (GatewayAction::RemoveAllAccess, forgets_dns_records_under),
+                    } => (GatewayAction::RemoveAllAccess, forgets_dns_records_matching),
                 };
 
                 match gateway_action {

@@ -225,7 +225,17 @@ impl Transition {
             Transition::AddResource(Resource::Internet(_)) => true,
             Transition::AddResource(Resource::DevicePool(_)) => true,
             Transition::RemoveResource(_) => self.retains_flow(client_id, route, false),
-            Transition::EditResource(_) => self.retains_flow(client_id, route, false),
+            // Resolved domains keep the resources they matched at resolution, so a resource
+            // edited onto a domain makes its flows unpredictable, as an added one does.
+            Transition::EditResource(edit) => {
+                self.retains_flow(client_id, route, false)
+                    && classify(&edit.old, &edit.new)
+                        .forgets_dns_records_matching()
+                        .is_none_or(|address| match &flow.dst {
+                            Destination::DomainName { name, .. } => !is_subdomain(name, address),
+                            Destination::IpAddr(_) => true,
+                        })
+            }
             Transition::UpdateDevicePoolMembers { .. } => true,
             Transition::SetInternetResourceState { .. } => {
                 self.retains_flow(client_id, route, false)
@@ -412,6 +422,22 @@ impl EditEffect<'_> {
             (EditEffect::Type { old, new, .. }, Route::Peer(_)) => {
                 !is_device_pool(old) && !is_device_pool(new)
             }
+        }
+    }
+
+    fn forgets_dns_records_matching(&self) -> Option<&str> {
+        match self {
+            EditEffect::Metadata => None,
+            EditEffect::Filters { .. } => None,
+            EditEffect::Access {
+                forgets_dns_records_matching,
+                ..
+            } => *forgets_dns_records_matching,
+            EditEffect::DevicePoolRouting => None,
+            EditEffect::Type {
+                forgets_dns_records_matching,
+                ..
+            } => *forgets_dns_records_matching,
         }
     }
 }

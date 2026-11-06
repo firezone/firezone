@@ -32,10 +32,11 @@ defmodule Portal.Crl.Sync do
         }
       }) do
     with {:ok, issuer} <- Base.decode64(encoded_issuer),
-         endpoint when not is_nil(endpoint) <-
+         %{crl_is_disabled: false} = endpoint <-
            Database.fetch_endpoint(account_id, issuer, distribution_point) do
       refresh(endpoint)
     else
+      %Portal.RevocationEndpoint{} -> {:ok, :disabled}
       _other -> {:ok, :deleted}
     end
   end
@@ -452,7 +453,7 @@ defmodule Portal.Crl.Sync do
         |> Safe.update_all(
           set:
             crl_fields(crl, now) ++
-              delta_fields(delta, now) ++ Failure.success_fields(endpoint, :crl)
+              delta_fields(delta, now) ++ Failure.success_fields(:crl)
         )
 
         {:ok, {length(rows), newly_revoked}}
@@ -489,7 +490,7 @@ defmodule Portal.Crl.Sync do
 
       fields =
         [crl_fetched_at: now, crl_error: to_message(reason), updated_at: now] ++
-          Failure.error_fields(endpoint, reason, now)
+          Failure.error_fields(endpoint, :crl, reason, now)
 
       endpoint
       |> endpoint_query()
