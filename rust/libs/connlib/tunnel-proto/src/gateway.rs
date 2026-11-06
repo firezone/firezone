@@ -10,7 +10,7 @@ use crate::authorization_rejections::AuthorizationRejections;
 use crate::batch::{BatchingKey, TunBatch};
 use crate::gateway::client_on_gateway::{
     InboundRewrite, OutboundRewrite, ProxyIpAlreadyAssigned, TooManyDnsDomains,
-    TranslateOutboundResult,
+    TooManyProxyIpsForDomain, TranslateOutboundResult,
 };
 use crate::messages::gateway::{Client, ResourceDescription};
 use crate::messages::{IceCredentials, IngestToken, Key};
@@ -525,7 +525,10 @@ impl GatewayState {
 
         let (nat_status, evicted) = match result {
             Ok(evicted) => (dns_resource_nat::NatStatus::Active, evicted),
-            Err(e) if e.any_is::<ProxyIpAlreadyAssigned>() => {
+            Err(e)
+                if e.any_is::<ProxyIpAlreadyAssigned>()
+                    || e.any_is::<TooManyProxyIpsForDomain>() =>
+            {
                 tracing::debug!("Conflicting proxy assignment; closing connection: {e:#}");
                 self.cleanup_connection(&client, now);
 

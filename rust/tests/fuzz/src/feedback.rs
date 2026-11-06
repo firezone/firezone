@@ -21,7 +21,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use connlib_model::{ClientId, ClientOrGatewayId, GatewayId, ResourceId};
+use connlib_model::{ClientId, ClientOrGatewayId, GatewayId, IpStack, ResourceId};
 use itertools::Itertools as _;
 use snownet::ConnectionPath;
 use tunnel_proto::dns;
@@ -33,7 +33,7 @@ use crate::{
         Route, SubmittedRequest,
     },
     reference::ReferenceState,
-    resource::{EditEffect, classify},
+    resource::{EditEffect, Resource, ResourceEdit, classify},
     sim_gateway::DnsResolution,
     sim_net::EdgeConfig,
     site_network::RouteType,
@@ -152,6 +152,9 @@ impl Recorder {
                 let change = match classify(&edit.old, &edit.new) {
                     EditEffect::Metadata => Change::ResourceMetadataEdited,
                     EditEffect::Filters { .. } => Change::ResourceFiltersEdited,
+                    EditEffect::Access { .. } if ip_stack_changed(edit) => {
+                        Change::ResourceIpStackEdited
+                    }
                     EditEffect::Access { .. } => Change::ResourceAccessEdited,
                     EditEffect::DevicePoolRouting => Change::DevicePoolRoutingEdited,
                     EditEffect::Type { .. } => Change::ResourceTypeEdited,
@@ -324,6 +327,8 @@ impl Recorder {
         record_translated_icmp_error_feedback(reference, state);
         record_site_network_feedback(reference, state);
         record_dns_refresh_feedback(reference, state);
+        record_dns_proxy_ip_subset_feedback(state);
+        record_shared_dns_resource_gateway_feedback(reference);
         record_live_dns_flow_feedback(reference, state);
         self.record_dns_query_feedback(reference, state, portal);
         for _ in self
@@ -579,6 +584,7 @@ enum Change {
     ResourceMetadataEdited,
     ResourceFiltersEdited,
     ResourceAccessEdited,
+    ResourceIpStackEdited,
     DevicePoolRoutingEdited,
     ResourceTypeEdited,
     Idled,
@@ -589,7 +595,7 @@ enum Change {
     SpuriousPublicKeyChanged,
 }
 
-const KINDS: u16 = 25;
+const KINDS: u16 = 26;
 
 #[derive(Clone, Copy)]
 enum Scope {
@@ -1042,4 +1048,76 @@ fn record_dns_refresh_session_feedback<'a>(
             }
         }
     }
+}
+
+/// Records the IP families of a domain's proxy IPs before and after a Client changes them.
+fn record_dns_proxy_ip_subset_feedback(state: &TunnelTest) {
+    for gateway in state.gateways.values() {
+        for (previous, next) in gateway
+            .inner()
+            .dns_resolutions
+            .values()
+            .flat_map(|resolutions| resolutions.iter().tuple_windows())
+        {
+            if previous.dns_nat_generation != next.dns_nat_generation {
+                continue;
+            }
+            let previous = previous.proxy_ips.iter().collect::<BTreeSet<_>>();
+            let next = next.proxy_ips.iter().collect::<BTreeSet<_>>();
+            if previous == next {
+                continue;
+            }
+
+            record!(
+                previous.iter().any(|ip| ip.is_ipv4()),
+                previous.iter().any(|ip| ip.is_ipv6()),
+                next.iter().any(|ip| ip.is_ipv4()),
+                next.iter().any(|ip| ip.is_ipv6()),
+            );
+        }
+    }
+}
+
+/// Records the IP stacks of DNS resources sharing a Gateway for a domain the Client resolved.
+fn record_shared_dns_resource_gateway_feedback(reference: &ReferenceState) {
+    for client in reference.clients.values() {
+        let client = client.inner();
+        let resources = client
+            .all_resources()
+            .into_iter()
+            .filter_map(Resource::into_dns)
+            .filter_map(|resource| Some((client.gateway_for_resource(resource.id)?, resource)))
+            .collect::<Vec<_>>();
+
+        for domain in client.dns_records.keys() {
+            let mut stacks_by_gateway = BTreeMap::<GatewayId, Vec<IpStack>>::new();
+            for (gateway, resource) in &resources {
+                if dns::is_subdomain(domain, &resource.address) {
+                    stacks_by_gateway
+                        .entry(*gateway)
+                        .or_default()
+                        .push(resource.ip_stack);
+                }
+            }
+
+            for stacks in stacks_by_gateway
+                .values()
+                .filter(|stacks| stacks.len() >= 2)
+            {
+                record!(
+                    stacks.contains(&IpStack::Dual),
+                    stacks.contains(&IpStack::Ipv4Only),
+                    stacks.contains(&IpStack::Ipv6Only),
+                );
+            }
+        }
+    }
+}
+
+fn ip_stack_changed(edit: &ResourceEdit) -> bool {
+    let (Resource::Dns(old), Resource::Dns(new)) = (&edit.old, &edit.new) else {
+        return false;
+    };
+
+    old.ip_stack != new.ip_stack
 }
