@@ -23,10 +23,16 @@ defmodule PortalAPI.Gateway.Channel.Shared do
 
   @session_durability_timeout :timer.seconds(15)
 
-  # Relay credentials must be stable across reconnects so that gateways
-  # don't see credential changes on every websocket connect. We use a fixed
-  # far-future date rather than a dynamic offset from now.
-  @relay_credentials_expire_at ~U[2038-01-01 00:00:00Z]
+  # Relay credentials must be stable across reconnects, so they expire at fixed
+  # weekly boundaries: Sunday 04:00 UTC (Saturday 8pm PST). Each boundary pushes
+  # new credentials; the old ones stay valid for a short grace period after it.
+  # Before the first boundary, Gateways keep the legacy expiry so the deploy
+  # itself does not replace relay allocations.
+  # TODO: Shorten this window when most gateways support this.
+  @relay_credentials_first_rotation ~U[2026-11-08 04:00:00Z]
+  @relay_credentials_rotate_every_seconds 7 * 24 * 60 * 60
+  @relay_credentials_grace_seconds 60 * 60
+  @legacy_relay_credentials_expire_at ~U[2038-01-01 00:00:00Z]
 
   @doc """
   Self-heal escape hatch. Pushes `reject_access` to a gateway's data plane
@@ -113,6 +119,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
       )
 
     Process.send_after(self(), :prune_cache, @prune_cache_every)
+    schedule_relay_credentials_rotation(DateTime.utc_now())
 
     # Track gateway's presence
     gateway = socket.assigns.gateway
@@ -156,6 +163,23 @@ defmodule PortalAPI.Gateway.Channel.Shared do
   def handle_info(:prune_cache, socket) do
     Process.send_after(self(), :prune_cache, @prune_cache_every)
     {:noreply, assign(socket, cache: Cache.Gateway.prune(socket.assigns.cache))}
+  end
+
+  def handle_info({:rotate_relay_credentials, rotate_at}, socket) do
+    schedule_relay_credentials_rotation(rotate_at)
+
+    cached_relay_ids = socket.assigns[:cached_relay_ids] || MapSet.new()
+    {:ok, online_relays} = Presence.Relays.all_connected_relays()
+    relays = Enum.filter(online_relays, &MapSet.member?(cached_relay_ids, &1.id))
+
+    if relays != [] do
+      push(socket, "relays_presence", %{
+        disconnected_ids: [],
+        connected: render_relays(relays, socket, rotate_at)
+      })
+    end
+
+    {:noreply, socket}
   end
 
   ####################################
@@ -265,12 +289,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
         push(socket, "relays_presence", %{
           disconnected_ids: disconnected_ids,
           connected:
-            Views.Relay.render_many(
-              relays,
-              socket.assigns.gateway,
-              @relay_credentials_expire_at,
-              socket.assigns.gateway.account_id
-            )
+            render_relays(relays, socket, DateTime.utc_now())
         })
 
         {:noreply, socket}
@@ -724,12 +743,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
     push(socket, "relays_presence", %{
       disconnected_ids: [],
       connected:
-        Views.Relay.render_many(
-          relays,
-          socket.assigns.gateway,
-          @relay_credentials_expire_at,
-          socket.assigns.gateway.account_id
-        )
+        render_relays(relays, socket, DateTime.utc_now())
     })
 
     {:noreply, socket}
@@ -826,12 +840,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
       account_slug: account.slug,
       interface: Views.Interface.render(socket.assigns.gateway),
       relays:
-        Views.Relay.render_many(
-          relays,
-          socket.assigns.gateway,
-          @relay_credentials_expire_at,
-          socket.assigns.gateway.account_id
-        ),
+        render_relays(relays, socket, DateTime.utc_now()),
       # These aren't used but needed for API compatibility
       config: %{
         ipv4_masquerade_enabled: true,
@@ -1240,6 +1249,46 @@ defmodule PortalAPI.Gateway.Channel.Shared do
 
   defp candidate_count(candidates) when is_list(candidates), do: length(candidates)
   defp candidate_count(_candidates), do: 0
+
+  defp render_relays(relays, socket, now) do
+    Views.Relay.render_many(
+      relays,
+      socket.assigns.gateway,
+      relay_credentials_expire_at(now),
+      socket.assigns.gateway.account_id
+    )
+  end
+
+  defp relay_credentials_expire_at(now) do
+    if DateTime.before?(now, @relay_credentials_first_rotation) do
+      @legacy_relay_credentials_expire_at
+    else
+      now
+      |> next_relay_credentials_rotation()
+      |> DateTime.add(@relay_credentials_grace_seconds, :second)
+    end
+  end
+
+  defp next_relay_credentials_rotation(now) do
+    if DateTime.before?(now, @relay_credentials_first_rotation) do
+      @relay_credentials_first_rotation
+    else
+      elapsed = DateTime.diff(now, @relay_credentials_first_rotation, :second)
+      windows = div(elapsed, @relay_credentials_rotate_every_seconds) + 1
+
+      DateTime.add(
+        @relay_credentials_first_rotation,
+        windows * @relay_credentials_rotate_every_seconds,
+        :second
+      )
+    end
+  end
+
+  defp schedule_relay_credentials_rotation(now) do
+    rotate_at = next_relay_credentials_rotation(now)
+    delay = DateTime.diff(rotate_at, now, :millisecond)
+    Process.send_after(self(), {:rotate_relay_credentials, rotate_at}, delay)
+  end
 
   defmodule Database do
     import Ecto.Query

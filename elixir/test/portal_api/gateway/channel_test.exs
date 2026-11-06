@@ -3001,6 +3001,53 @@ defmodule PortalAPI.Gateway.ChannelTest do
       assert relays1 == relays2
     end
 
+    test "rotates relay credentials at the first weekly boundary", %{
+      gateway: gateway,
+      site: site,
+      token: token
+    } do
+      relay = relay_fixture(%{lat: 37.0, lon: -120.0})
+      :ok = Portal.Presence.Relays.connect(relay)
+
+      socket = join_channel(gateway, site, token)
+      assert_push "init", %{relays: init_relays}
+
+      send(socket.channel_pid, {:rotate_relay_credentials, ~U[2026-11-08 04:00:00Z]})
+
+      assert_push "relays_presence", %{disconnected_ids: [], connected: connected}
+
+      expected_expires_at = DateTime.to_unix(~U[2026-11-15 05:00:00Z])
+
+      assert Enum.map(connected, & &1.id) == Enum.map(init_relays, & &1.id)
+      assert Enum.all?(connected, &(&1.expires_at == expected_expires_at))
+      assert Enum.all?(connected, &String.starts_with?(&1.username, "#{expected_expires_at}:"))
+    end
+
+    test "relay credentials rotated in the same week are identical", %{
+      gateway: gateway,
+      site: site,
+      token: token
+    } do
+      relay = relay_fixture(%{lat: 37.0, lon: -120.0})
+      :ok = Portal.Presence.Relays.connect(relay)
+
+      socket = join_channel(gateway, site, token)
+      assert_push "init", _init_payload
+
+      send(socket.channel_pid, {:rotate_relay_credentials, ~U[2026-12-06 04:00:00Z]})
+      assert_push "relays_presence", %{connected: connected1}
+
+      send(socket.channel_pid, {:rotate_relay_credentials, ~U[2026-12-12 23:59:59Z]})
+      assert_push "relays_presence", %{connected: connected2}
+
+      send(socket.channel_pid, {:rotate_relay_credentials, ~U[2026-12-13 04:00:00Z]})
+      assert_push "relays_presence", %{connected: connected3}
+
+      assert connected1 == connected2
+      assert Enum.all?(connected1, &(&1.expires_at == DateTime.to_unix(~U[2026-12-13 05:00:00Z])))
+      assert Enum.all?(connected3, &(&1.expires_at == DateTime.to_unix(~U[2026-12-20 05:00:00Z])))
+    end
+
     test "pushes ice_candidates message", %{
       client: client,
       gateway: gateway,
