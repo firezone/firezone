@@ -561,11 +561,11 @@ impl PerfUdpSocket {
             tracing::trace!(target: "wire::net::send", ?src, %dst, ecn = ?chunk.ecn, num_packets = %contents.len().div_ceil(segment_size), %segment_size, connected = %socket.connected);
 
             let result = if socket.connected {
-                // Connected sockets never return `EWOULDBLOCK` on Darwin; issue the syscall
-                // directly instead of going through tokio's (always-set) write-readiness.
-                socket
-                    .state
-                    .try_send(UdpSockRef::from(socket.inner), &chunk)
+                // Without `sendmsg_x`, `sendmsg` with a destination fails with `EISCONN` on a
+                // connected socket, so use plain `send(2)`. Chunks are single datagrams here.
+                socket2::SockRef::from(socket.inner)
+                    .send(contents)
+                    .map(|_| quinn_udp::SendCount::new(1).expect("1 is non-zero"))
             } else {
                 let mut send = std::pin::pin!(socket.inner.async_io(Interest::WRITABLE, || {
                     socket
