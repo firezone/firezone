@@ -309,7 +309,7 @@ defmodule PortalWeb.Policies.Postures do
 
   defmodule Database do
     import Ecto.Query
-    alias Portal.{Defender, Intune, Iru, Safe, Santa, SentinelOne, Sophos}
+    alias Portal.{Defender, GoogleEndpoint, Intune, Iru, Safe, Santa, SentinelOne, Sophos}
 
     @providers %{
       "intune" => {Intune.PostureProvider, :intune},
@@ -317,7 +317,8 @@ defmodule PortalWeb.Policies.Postures do
       "defender" => {Defender.PostureProvider, :defender},
       "santa" => {Santa.PostureProvider, :santa},
       "sentinelone" => {SentinelOne.PostureProvider, :sentinelone},
-      "sophos" => {Sophos.PostureProvider, :sophos}
+      "sophos" => {Sophos.PostureProvider, :sophos},
+      "google_endpoint" => {GoogleEndpoint.PostureProvider, :google_endpoint}
     }
 
     # A `limit` on any branch would apply to the whole union, so the branches

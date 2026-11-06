@@ -3,7 +3,18 @@ defmodule PortalWeb.Settings.DevicePosture do
 
   import Ecto.Changeset
 
-  alias Portal.{Changes.Change, Defender, PostureProvider, Intune, Iru, Santa, SentinelOne, Sophos, PubSub}
+  alias Portal.{
+    Changes.Change,
+    Defender,
+    GoogleEndpoint,
+    PostureProvider,
+    Intune,
+    Iru,
+    Santa,
+    SentinelOne,
+    Sophos,
+    PubSub
+  }
   alias Portal.Mailer.PostureProviderInterestEmail
   alias PortalWeb.Settings.Components, as: SettingsComponents
   alias __MODULE__.Database
@@ -12,7 +23,7 @@ defmodule PortalWeb.Settings.DevicePosture do
 
   @feature_disabled "Device posture is not enabled for your account."
 
-  @types ~w[intune iru defender santa sentinelone sophos]
+  @types ~w[intune iru defender santa sentinelone sophos google_endpoint]
 
   @coming_soon_providers [
     %{
@@ -57,7 +68,8 @@ defmodule PortalWeb.Settings.DevicePosture do
     "defender" => ~w[name]a,
     "santa" => ~w[name api_url api_key]a,
     "sentinelone" => ~w[name management_url api_token]a,
-    "sophos" => ~w[name client_id client_secret]a
+    "sophos" => ~w[name client_id client_secret]a,
+    "google_endpoint" => ~w[name]a
   }
 
   # Set by the verification flow rather than by an input, so they have to be
@@ -68,7 +80,8 @@ defmodule PortalWeb.Settings.DevicePosture do
     "defender" => ~w[tenant_id is_verified]a,
     "santa" => ~w[is_verified]a,
     "sentinelone" => ~w[is_verified]a,
-    "sophos" => ~w[tenant_id data_region_url is_verified]a
+    "sophos" => ~w[tenant_id data_region_url is_verified]a,
+    "google_endpoint" => ~w[impersonation_email domain is_verified]a
   }
 
   # What the Iru test call used, so a change to any of them means the tenant
@@ -329,7 +342,7 @@ defmodule PortalWeb.Settings.DevicePosture do
   end
 
   def handle_event("start_verification", _params, socket) do
-    verification_type = entra_verification_type(socket.assigns.type)
+    verification_type = oauth_verification_type(socket.assigns.type)
 
     with {:ok, %{config: config}} <-
            PortalWeb.OIDC.setup_verification(verification_type, []),
@@ -366,7 +379,7 @@ defmodule PortalWeb.Settings.DevicePosture do
        |> push_event("open_url", %{url: uri})}
     else
       {:error, reason} ->
-        Logger.info("Failed to start Microsoft admin consent",
+        Logger.info("Failed to start posture provider sign-in",
           type: socket.assigns.type,
           reason: inspect(reason)
         )
@@ -374,7 +387,7 @@ defmodule PortalWeb.Settings.DevicePosture do
         {:noreply,
          assign(socket,
            verifying: false,
-           verification_error: "Failed to start Microsoft admin consent. Please try again."
+           verification_error: oauth_start_error(socket.assigns.type)
          )}
     end
   end
@@ -666,6 +679,22 @@ defmodule PortalWeb.Settings.DevicePosture do
     complete_tenant_verification(socket, "defender", tenant_id, verification_ref, ack_to)
   end
 
+  # The sync acts as the administrator who signed in, so both come from the
+  # callback rather than from the form.
+  def handle_info(
+        {:google_endpoint_posture_provider_complete, impersonation_email, domain, verification_ref,
+         ack_to},
+        socket
+      ) do
+    complete_verification(
+      socket,
+      "google_endpoint",
+      %{impersonation_email: impersonation_email, domain: domain},
+      verification_ref,
+      ack_to
+    )
+  end
+
   def handle_info({:verification_failed, reason, verification_ref}, socket) do
     if active_verification?(socket, verification_ref) do
       {:noreply,
@@ -879,6 +908,22 @@ defmodule PortalWeb.Settings.DevicePosture do
                   </span>
                   <span class="text-xs text-body">
                     Sync endpoints and their health from a Sophos Central tenant.
+                  </span>
+                </Navigation.link>
+              </li>
+              <li>
+                <Navigation.link
+                  patch={~p"/#{@account}/settings/device_posture/google_endpoint/new"}
+                  class={select_type_classes()}
+                >
+                  <span class="flex items-center gap-3 w-2/5 shrink-0">
+                    <Core.provider_icon provider="google_endpoint" size="xl" />
+                    <span class="text-sm font-medium text-heading">
+                      Google Endpoint Management
+                    </span>
+                  </span>
+                  <span class="text-xs text-body">
+                    Sync devices from Google Workspace endpoint management.
                   </span>
                 </Navigation.link>
               </li>
@@ -1435,6 +1480,35 @@ defmodule PortalWeb.Settings.DevicePosture do
         </div>
       </div>
 
+      <div :if={@type == "google_endpoint"}>
+        <p class="text-xs text-body">
+          In the Google Admin console, go to Security > Access and data control > API controls >
+          Manage Domain Wide Delegation. Add a new client with this client ID and scope.
+        </p>
+        <div class="mt-2 rounded border border-border bg-raised px-3 py-2 space-y-2.5">
+          <div>
+            <p class="text-[10px] font-semibold tracking-widest uppercase text-subtle">
+              Client ID
+            </p>
+            <p id="google-endpoint-client-id" class="mt-1 text-xs font-mono text-body">
+              {GoogleEndpoint.APIClient.client_id() || "Not configured"}
+            </p>
+          </div>
+          <div>
+            <p class="text-[10px] font-semibold tracking-widest uppercase text-subtle">
+              OAuth scope
+            </p>
+            <p class="mt-1 text-xs font-mono text-body break-all">
+              {GoogleEndpoint.APIClient.scope()}
+            </p>
+          </div>
+        </div>
+        <p class="mt-2 text-xs text-subtle">
+          Then verify by signing in as a Workspace administrator who can manage devices.
+          Firezone reads devices as that administrator.
+        </p>
+      </div>
+
       <div :if={@type == "iru"}>
         <Form.input
           field={@form[:subdomain]}
@@ -1523,6 +1597,22 @@ defmodule PortalWeb.Settings.DevicePosture do
           </div>
           <.reset_verification_button form={@form} />
         </div>
+
+        <div :if={@type == "google_endpoint"} class="mt-4 pt-4 border-t border-border space-y-3">
+          <div class="flex justify-between items-center">
+            <label class="text-xs font-medium text-body">Workspace domain</label>
+            <p id="provider-google-domain" class="text-xs font-semibold text-heading">
+              {verified_field(@form, :domain)}
+            </p>
+          </div>
+          <div class="flex justify-between items-center">
+            <label class="text-xs font-medium text-body">Acts as</label>
+            <p id="provider-google-impersonation-email" class="text-xs font-semibold text-heading">
+              {verified_field(@form, :impersonation_email)}
+            </p>
+          </div>
+          <.reset_verification_button form={@form} />
+        </div>
       </div>
     </.form>
     """
@@ -1551,7 +1641,9 @@ defmodule PortalWeb.Settings.DevicePosture do
         type="button"
         style="primary"
         icon={
-          if @type in ~w[intune defender], do: "ri-external-link-line", else: "ri-plug-line"
+          if @type in ~w[intune defender google_endpoint],
+            do: "ri-external-link-line",
+            else: "ri-plug-line"
         }
         phx-click="start_verification"
       >
@@ -1601,14 +1693,19 @@ defmodule PortalWeb.Settings.DevicePosture do
       type == "sophos" ->
         "Check that the API credentials can read endpoints in the Sophos Central tenant."
 
+      type == "google_endpoint" ->
+        "Sign in as a Google Workspace administrator to check that Firezone can read devices."
+
       true ->
         "Check that the API key can read hosts in the Workshop tenant."
     end
   end
 
-  defp verification_tenant_id(form) do
+  defp verification_tenant_id(form), do: verified_field(form, :tenant_id)
+
+  defp verified_field(form, field) do
     if get_field(form.source, :is_verified) do
-      get_field(form.source, :tenant_id)
+      get_field(form.source, field)
     else
       "Awaiting verification..."
     end
@@ -1626,6 +1723,7 @@ defmodule PortalWeb.Settings.DevicePosture do
   defp provider_title("santa"), do: "Santa (Workshop)"
   defp provider_title("sentinelone"), do: "SentinelOne"
   defp provider_title("sophos"), do: "Sophos XDR"
+  defp provider_title("google_endpoint"), do: "Google Endpoint Management"
 
   defp coming_soon_provider(type) do
     Enum.find(@coming_soon_providers, &(&1.type == type))
@@ -1648,6 +1746,7 @@ defmodule PortalWeb.Settings.DevicePosture do
   defp new_provider("santa"), do: %Santa.PostureProvider{}
   defp new_provider("sentinelone"), do: %SentinelOne.PostureProvider{}
   defp new_provider("sophos"), do: %Sophos.PostureProvider{}
+  defp new_provider("google_endpoint"), do: %GoogleEndpoint.PostureProvider{}
 
   defp iru_region_options, do: [{"United States", "us"}, {"European Union", "eu"}]
 
@@ -1661,6 +1760,9 @@ defmodule PortalWeb.Settings.DevicePosture do
 
   defp reset_verification_attrs("sophos"),
     do: %{tenant_id: nil, data_region_url: nil, is_verified: false}
+
+  defp reset_verification_attrs("google_endpoint"),
+    do: %{impersonation_email: nil, domain: nil, is_verified: false}
 
   # Admin consent, or a successful call against the tenant, is what proves the
   # provider works, so the form refuses to save until one succeeded. The sync
@@ -1705,6 +1807,9 @@ defmodule PortalWeb.Settings.DevicePosture do
     do: SentinelOne.PostureProvider.changeset(changeset)
 
   defp base_changeset(changeset, "sophos"), do: Sophos.PostureProvider.changeset(changeset)
+
+  defp base_changeset(changeset, "google_endpoint"),
+    do: GoogleEndpoint.PostureProvider.changeset(changeset)
 
   defp clear_verification_if_trigger_fields_changed(changeset, "iru") do
     if Enum.any?(@iru_verification_fields, &get_change(changeset, &1)) do
@@ -1864,11 +1969,14 @@ defmodule PortalWeb.Settings.DevicePosture do
     santa_counts = Database.santa_device_counts(subject)
     sentinelone_counts = Database.sentinelone_device_counts(subject)
     sophos_counts = Database.sophos_device_counts(subject)
+    google_endpoint_counts = Database.google_endpoint_device_counts(subject)
 
     by_provider =
       Enum.reduce(
         intune_counts ++
-          iru_counts ++ defender_counts ++ santa_counts ++ sentinelone_counts ++ sophos_counts,
+          iru_counts ++
+          defender_counts ++
+          santa_counts ++ sentinelone_counts ++ sophos_counts ++ google_endpoint_counts,
         %{},
         fn {id, _key, n}, acc -> Map.update(acc, id, n, &(&1 + n)) end
       )
@@ -1903,12 +2011,16 @@ defmodule PortalWeb.Settings.DevicePosture do
   # Admin consent proves the tenant rather than the form, so the tenant id the
   # callback carries is what lands in the changeset.
   defp complete_tenant_verification(socket, type, tenant_id, verification_ref, ack_to) do
+    complete_verification(socket, type, %{tenant_id: tenant_id}, verification_ref, ack_to)
+  end
+
+  defp complete_verification(socket, type, verified_attrs, verification_ref, ack_to) do
     if active_verification?(socket, verification_ref) and socket.assigns.form do
       changeset = socket.assigns.form.source
 
       attrs =
         changeset.changes
-        |> Map.put(:tenant_id, tenant_id)
+        |> Map.merge(verified_attrs)
         |> Map.put(:is_verified, true)
 
       maybe_send_verification_ack(ack_to)
@@ -2058,6 +2170,7 @@ defmodule PortalWeb.Settings.DevicePosture do
   defp sync_worker("santa"), do: Santa.Sync
   defp sync_worker("sentinelone"), do: SentinelOne.Sync
   defp sync_worker("sophos"), do: Sophos.Sync
+  defp sync_worker("google_endpoint"), do: GoogleEndpoint.Sync
 
   defp provider_type_atom("intune"), do: :intune
   defp provider_type_atom("iru"), do: :iru
@@ -2065,9 +2178,16 @@ defmodule PortalWeb.Settings.DevicePosture do
   defp provider_type_atom("santa"), do: :santa
   defp provider_type_atom("sentinelone"), do: :sentinelone
   defp provider_type_atom("sophos"), do: :sophos
+  defp provider_type_atom("google_endpoint"), do: :google_endpoint
 
-  defp entra_verification_type("intune"), do: "intune_posture_provider"
-  defp entra_verification_type("defender"), do: "defender_posture_provider"
+  defp oauth_verification_type("intune"), do: "intune_posture_provider"
+  defp oauth_verification_type("defender"), do: "defender_posture_provider"
+  defp oauth_verification_type("google_endpoint"), do: "google_endpoint_posture_provider"
+
+  defp oauth_start_error("google_endpoint"),
+    do: "Failed to start Google sign-in. Please try again."
+
+  defp oauth_start_error(_type), do: "Failed to start Microsoft admin consent. Please try again."
 
   defp verification_fields("intune"), do: [:tenant_id]
   defp verification_fields("iru"), do: @iru_verification_fields
@@ -2075,6 +2195,7 @@ defmodule PortalWeb.Settings.DevicePosture do
   defp verification_fields("santa"), do: @santa_verification_fields
   defp verification_fields("sentinelone"), do: @sentinelone_verification_fields
   defp verification_fields("sophos"), do: @sophos_verification_fields
+  defp verification_fields("google_endpoint"), do: [:impersonation_email, :domain]
 
   # The worker resolves the provider by both ids, so the account has to ride
   # along with the row id rather than being trusted from the browser.
@@ -2155,7 +2276,7 @@ defmodule PortalWeb.Settings.DevicePosture do
   defmodule Database do
     import Ecto.Query
 
-    alias Portal.{Defender, PostureProvider, Intune, Iru, Santa, Safe, SentinelOne, Sophos}
+    alias Portal.{Defender, GoogleEndpoint, PostureProvider, Intune, Iru, Santa, Safe, SentinelOne, Sophos}
 
     def list_providers(subject, device_counts) do
       intune =
@@ -2212,7 +2333,16 @@ defmodule PortalWeb.Settings.DevicePosture do
           row(provider, "sophos", name, provider.tenant_id, device_counts)
         end)
 
-      Enum.sort_by(intune ++ iru ++ defender ++ santa ++ sentinelone ++ sophos, &{
+      google_endpoint =
+        GoogleEndpoint.PostureProvider
+        |> with_name()
+        |> Safe.scoped(subject)
+        |> Safe.all()
+        |> Enum.map(fn {provider, name} ->
+          row(provider, "google_endpoint", name, provider.domain, device_counts)
+        end)
+
+      Enum.sort_by(intune ++ iru ++ defender ++ santa ++ sentinelone ++ sophos ++ google_endpoint, &{
         String.downcase(&1.name),
         &1.type
       })
@@ -2295,6 +2425,16 @@ defmodule PortalWeb.Settings.DevicePosture do
       |> Safe.all()
     end
 
+    @doc "Counts synced Google Endpoint devices by provider and device type."
+    def google_endpoint_device_counts(subject) do
+      from(d in GoogleEndpoint.Device,
+        group_by: [d.posture_provider_id, d.device_type],
+        select: {d.posture_provider_id, d.device_type, count(d.google_id)}
+      )
+      |> Safe.scoped(subject)
+      |> Safe.all()
+    end
+
     def get_provider!(type, id, subject) do
       provider =
         from(p in schema(type), where: p.id == ^id, preload: [:posture_provider])
@@ -2345,6 +2485,7 @@ defmodule PortalWeb.Settings.DevicePosture do
     defp schema("santa"), do: Santa.PostureProvider
     defp schema("sentinelone"), do: SentinelOne.PostureProvider
     defp schema("sophos"), do: Sophos.PostureProvider
+    defp schema("google_endpoint"), do: GoogleEndpoint.PostureProvider
 
     defp row(provider, type, name, identifier, device_counts) do
       %{

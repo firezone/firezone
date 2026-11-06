@@ -108,6 +108,9 @@ defmodule PortalWeb.OIDCController do
           verification_ref
         )
 
+      {:google_endpoint_posture_provider, lv_pid_string, verification_ref} ->
+        handle_google_endpoint_verification(conn, code, lv_pid_string, verification_ref)
+
       {:sign_up, provider_type} ->
         handle_sign_up_callback(conn, code, iss, state, provider_type)
 
@@ -181,6 +184,9 @@ defmodule PortalWeb.OIDCController do
           lv_pid_string,
           verification_ref
         )
+
+      {:google_endpoint_posture_provider, lv_pid_string, verification_ref} ->
+        handle_google_endpoint_authorization_error(conn, params, lv_pid_string, verification_ref)
 
       {:sign_up, provider_type} ->
         handle_sign_up_authorization_error(conn, params, state, provider_type)
@@ -1499,6 +1505,125 @@ defmodule PortalWeb.OIDCController do
   defp google_directory_sync_api_error(status, body),
     do: token_exchange_error_message(status, body)
 
+  defp handle_google_endpoint_verification(conn, code, lv_pid_string, verification_ref) do
+    result =
+      lv_pid_string
+      |> PortalWeb.OIDC.deserialize_pid()
+      |> request_pending_verification(verification_ref)
+      |> verify_google_endpoint_callback(code, lv_pid_string, verification_ref)
+
+    redirect_with_oidc_verification_result(conn, result)
+  end
+
+  # Firezone's service account is delegated in every customer that connects,
+  # so the sync acts as the administrator who signed in here, never as an
+  # address typed into the form. An account can then only connect a Workspace
+  # whose administrator completed this sign-in.
+  defp verify_google_endpoint_callback(
+         {:ok, %{config: config, verifier: verifier}},
+         code,
+         lv_pid_string,
+         verification_ref
+       ) do
+    with {:ok, tokens} <- PortalWeb.OIDC.exchange_code_with_config(config, code, verifier),
+         {:ok, id_token} <- google_id_token(tokens),
+         {:ok, claims} <- PortalWeb.OIDC.verify_token_with_config(config, id_token, verifier),
+         {:ok, identity} <- google_workspace_identity(claims),
+         :ok <- Portal.GoogleEndpoint.APIClient.verify(identity.email) do
+      %{
+        ok: true,
+        type: "google-endpoint-posture-provider",
+        impersonation_email: identity.email,
+        domain: identity.hosted_domain,
+        lv_pid: lv_pid_string,
+        verification_ref: verification_ref
+      }
+    else
+      error ->
+        maybe_log_verification_error(error)
+        google_endpoint_failure(error, lv_pid_string, verification_ref)
+    end
+  end
+
+  defp verify_google_endpoint_callback({:error, reason}, _code, lv_pid_string, verification_ref) do
+    google_endpoint_failure(
+      pending_verification_error_message(reason),
+      lv_pid_string,
+      verification_ref
+    )
+  end
+
+  defp handle_google_endpoint_authorization_error(conn, params, lv_pid_string, verification_ref) do
+    error =
+      case params do
+        %{"error_description" => description} when is_binary(description) and description != "" ->
+          description
+
+        %{"error" => error} when is_binary(error) and error != "" ->
+          error
+
+        _ ->
+          "Google Workspace authorization failed. Please try again."
+      end
+
+    result =
+      case lv_pid_string
+           |> PortalWeb.OIDC.deserialize_pid()
+           |> request_pending_verification(verification_ref) do
+        {:ok, _pending} ->
+          google_endpoint_failure(error, lv_pid_string, verification_ref)
+
+        {:error, reason} ->
+          google_endpoint_failure(
+            pending_verification_error_message(reason),
+            lv_pid_string,
+            verification_ref
+          )
+      end
+
+    redirect_with_oidc_verification_result(conn, result)
+  end
+
+  defp google_endpoint_failure(reason, lv_pid_string, verification_ref) do
+    %{
+      ok: false,
+      type: "google-endpoint-posture-provider",
+      error: google_endpoint_error_message(reason),
+      lv_pid: lv_pid_string,
+      verification_ref: verification_ref
+    }
+  end
+
+  defp google_endpoint_error_message({:error, reason}), do: google_endpoint_error_message(reason)
+
+  defp google_endpoint_error_message(%Req.Response{body: %{"error" => "unauthorized_client"}}) do
+    "Google refused to let Firezone act as this administrator. In the Google Admin console, " <>
+      "add domain-wide delegation for client ID #{Portal.GoogleEndpoint.APIClient.client_id()} " <>
+      "with the scope #{Portal.GoogleEndpoint.APIClient.scope()}, then try again."
+  end
+
+  defp google_endpoint_error_message(%Req.Response{body: %{"error" => "invalid_grant"}}),
+    do: "Google refused to let Firezone act as this account. Sign in with an active Workspace administrator."
+
+  defp google_endpoint_error_message(%Req.Response{status: status}) when status in [401, 403],
+    do: "The signed-in account cannot read devices. Sign in with a Workspace administrator who can manage devices."
+
+  defp google_endpoint_error_message(%Req.Response{status: status}),
+    do: "Google returned HTTP #{status}. Please try again."
+
+  defp google_endpoint_error_message({stage, _reason})
+       when stage in [:managed_identity, :workload_identity_token_exchange, :service_account_sign_jwt],
+       do: "Firezone could not authenticate to Google. Please try again."
+
+  defp google_endpoint_error_message(reason)
+       when reason in [:service_account_not_configured, :incomplete_workload_identity_configuration],
+       do: "Google Endpoint Management is not configured for this Firezone deployment."
+
+  defp google_endpoint_error_message({:invalid_response, _message, _body}),
+    do: "Google returned an unexpected device list. Please try again."
+
+  defp google_endpoint_error_message(reason), do: google_directory_sync_error_message(reason)
+
   defp redirect_with_oidc_verification_result(conn, result) do
     token = Phoenix.Token.sign(PortalWeb.Endpoint, "oidc-verification-result", result)
     redirect(conn, to: ~p"/verification/oidc?result=#{token}")
@@ -2033,6 +2158,14 @@ defmodule PortalWeb.OIDCController do
        })
        when is_binary(verification_ref),
        do: {:google_directory_sync, lv_pid, verification_ref}
+
+  defp parse_verified_callback_state(%{
+         type: "google-endpoint-posture-provider",
+         lv_pid: lv_pid,
+         verification_ref: verification_ref
+       })
+       when is_binary(verification_ref),
+       do: {:google_endpoint_posture_provider, lv_pid, verification_ref}
 
   defp parse_verified_callback_state(%{
          type: "entra-auth-provider-tenant-proof",

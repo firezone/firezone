@@ -47,12 +47,14 @@ defmodule Portal.Changes.Consumer do
     "santa_posture_providers" => Hooks.SantaPostureProviders,
     "sentinelone_posture_providers" => Hooks.SentinelOnePostureProviders,
     "sophos_posture_providers" => Hooks.SophosPostureProviders,
+    "google_endpoint_posture_providers" => Hooks.GoogleEndpointPostureProviders,
     "intune_devices" => Hooks.IntuneDevices,
     "iru_devices" => Hooks.IruDevices,
     "defender_devices" => Hooks.DefenderDevices,
     "santa_devices" => Hooks.SantaDevices,
     "sentinelone_devices" => Hooks.SentinelOneDevices,
-    "sophos_devices" => Hooks.SophosDevices
+    "sophos_devices" => Hooks.SophosDevices,
+    "google_endpoint_devices" => Hooks.GoogleEndpointDevices
   }
 
   @impl true

@@ -1317,6 +1317,14 @@ defmodule PortalWeb.Components.Core do
     }
   end
 
+  defp provider_icon_spec("google_endpoint") do
+    %{
+      type: :image,
+      src: ~p"/images/logo-google.svg",
+      alt: "Google Endpoint Management"
+    }
+  end
+
   defp provider_icon_spec("sophos") do
     %{
       type: :image,

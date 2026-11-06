@@ -81,6 +81,20 @@ defmodule Portal.OSReleasesTest do
              %Portal.Sophos.Device{os_platform: "windows", os_major_version: 10, os_minor_version: 0, os_build: 26100},
              table
            ) == nil
+
+    assert OSReleases.row_up_to_date?(%Portal.GoogleEndpoint.Device{device_type: "MAC_OS", os_version: "MacOS 15.6.1"}, table)
+    refute OSReleases.row_up_to_date?(%Portal.GoogleEndpoint.Device{device_type: "MAC_OS", os_version: "MacOS 15.5"}, table)
+    assert OSReleases.row_up_to_date?(%Portal.GoogleEndpoint.Device{device_type: "IOS", os_version: "iOS 18.6"}, table)
+    assert OSReleases.row_up_to_date?(%Portal.GoogleEndpoint.Device{device_type: "MAC_OS", os_version: "MacOS"}, table) == nil
+
+    assert OSReleases.row_up_to_date?(
+             %Portal.GoogleEndpoint.Device{device_type: "WINDOWS", os_version: "Windows 10.0.26100.4652"},
+             table
+           ) == nil
+
+    google_android = %Portal.GoogleEndpoint.Device{device_type: "ANDROID", security_patch_at: ~U[2026-08-05 00:00:00Z]}
+    assert OSReleases.row_up_to_date?(google_android, table, before_bulletin)
+    refute OSReleases.row_up_to_date?(google_android, table, after_bulletin)
   end
 
   test "latest_android_bulletin/1 is this month once its first Monday has passed" do

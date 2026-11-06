@@ -46,19 +46,30 @@ defmodule PortalWeb.Policies.Postures.Checks do
     @moduledoc false
 
     # Saved policies keep the tree they were written with, so a check stays
-    # recognisable after Sophos joined its top-level `or`.
-    def of(%{"or" => nodes}, provider) do
-      case Enum.reject(nodes, &leaf_of?(&1, provider)) do
+    # recognisable after a provider joined its top-level `or`. Providers are
+    # given newest first, and each older tree drops one more of them.
+    def of(expansion, providers) do
+      providers
+      |> Enum.scan([], &[&1 | &2])
+      |> Enum.flat_map(&without(expansion, &1))
+      |> Enum.uniq()
+    end
+
+    defp without(%{"or" => nodes}, providers) do
+      case Enum.reject(nodes, &leaf_of?(&1, providers)) do
         ^nodes -> []
+        [] -> []
         [node] -> [node]
         rest -> [%{"or" => rest}]
       end
     end
 
-    def of(_expansion, _provider), do: []
+    defp without(_expansion, _providers), do: []
 
-    defp leaf_of?(%{"field" => field}, provider), do: String.starts_with?(field, "#{provider}.")
-    defp leaf_of?(_node, _provider), do: false
+    defp leaf_of?(%{"field" => field}, providers),
+      do: Enum.any?(providers, &String.starts_with?(field, "#{&1}."))
+
+    defp leaf_of?(_node, _providers), do: false
   end
 
   @checks [
@@ -73,13 +84,14 @@ defmodule PortalWeb.Policies.Postures.Checks do
       name: :disk_encryption,
       label: "Disk encryption",
       description: "FileVault, BitLocker or the mobile OS encryption is on.",
-      providers: [:intune, :iru, :sophos],
+      providers: [:intune, :iru, :sophos, :google_endpoint],
       expansion: %{
         "or" => [
           %{"field" => "intune.is_encrypted", "op" => "is", "value" => true},
           %{"field" => "intune.attestation_bit_locker_enabled", "op" => "is", "value" => true},
           %{"field" => "iru.filevault_enabled", "op" => "is", "value" => true},
-          %{"field" => "sophos.encryption_overall_status", "op" => "is", "value" => "encrypted"}
+          %{"field" => "sophos.encryption_overall_status", "op" => "is", "value" => "encrypted"},
+          %{"field" => "google_endpoint.encryption_state", "op" => "is", "value" => "ENCRYPTED"}
         ]
       }
     },
@@ -141,14 +153,19 @@ defmodule PortalWeb.Policies.Postures.Checks do
       name: :not_jailbroken,
       label: "Not jailbroken or rooted",
       description: "The MDM has not flagged the device as jailbroken or rooted.",
-      providers: [:intune],
-      expansion: %{"field" => "intune.jail_broken", "op" => "is", "value" => false}
+      providers: [:intune, :google_endpoint],
+      expansion: %{
+        "or" => [
+          %{"field" => "intune.jail_broken", "op" => "is", "value" => false},
+          %{"field" => "google_endpoint.compromised_state", "op" => "is", "value" => "UNCOMPROMISED"}
+        ]
+      }
     },
     %{
       name: :recently_seen,
       label: "Recently seen",
       description: "A provider has heard from the device within the last week.",
-      providers: [:intune, :iru, :defender, :santa, :sentinelone, :sophos],
+      providers: [:intune, :iru, :defender, :santa, :sentinelone, :sophos, :google_endpoint],
       expansion: %{
         "or" => [
           %{"field" => "intune.last_sync_at", "op" => "within_last", "value" => @within_a_week},
@@ -156,7 +173,8 @@ defmodule PortalWeb.Policies.Postures.Checks do
           %{"field" => "defender.last_seen_at", "op" => "within_last", "value" => @within_a_week},
           %{"field" => "santa.last_sync_at", "op" => "within_last", "value" => @within_a_week},
           %{"field" => "sentinelone.last_active_at", "op" => "within_last", "value" => @within_a_week},
-          %{"field" => "sophos.last_seen_at", "op" => "within_last", "value" => @within_a_week}
+          %{"field" => "sophos.last_seen_at", "op" => "within_last", "value" => @within_a_week},
+          %{"field" => "google_endpoint.last_sync_at", "op" => "within_last", "value" => @within_a_week}
         ]
       }
     },
@@ -189,8 +207,13 @@ defmodule PortalWeb.Policies.Postures.Checks do
       name: :corporate_owned,
       label: "Corporate owned",
       description: "The MDM records the device as company owned, not personal.",
-      providers: [:intune],
-      expansion: %{"field" => "intune.managed_device_owner_type", "op" => "is", "value" => "company"}
+      providers: [:intune, :google_endpoint],
+      expansion: %{
+        "or" => [
+          %{"field" => "intune.managed_device_owner_type", "op" => "is", "value" => "company"},
+          %{"field" => "google_endpoint.owner_type", "op" => "is", "value" => "COMPANY"}
+        ]
+      }
     },
     %{
       name: :supervised,
@@ -217,7 +240,7 @@ defmodule PortalWeb.Policies.Postures.Checks do
       name: :os_up_to_date,
       label: "OS up to date",
       description: "The OS runs the newest release of its line, or Android carries the latest security patch level.",
-      providers: [:intune, :iru, :defender, :santa, :sentinelone, :sophos],
+      providers: [:intune, :iru, :defender, :santa, :sentinelone, :sophos, :google_endpoint],
       expansion: %{
         "or" => [
           %{"field" => "intune.os_up_to_date", "op" => "is", "value" => true},
@@ -225,7 +248,8 @@ defmodule PortalWeb.Policies.Postures.Checks do
           %{"field" => "defender.os_up_to_date", "op" => "is", "value" => true},
           %{"field" => "santa.os_up_to_date", "op" => "is", "value" => true},
           %{"field" => "sentinelone.os_up_to_date", "op" => "is", "value" => true},
-          %{"field" => "sophos.os_up_to_date", "op" => "is", "value" => true}
+          %{"field" => "sophos.os_up_to_date", "op" => "is", "value" => true},
+          %{"field" => "google_endpoint.os_up_to_date", "op" => "is", "value" => true}
         ]
       }
     },
@@ -252,7 +276,7 @@ defmodule PortalWeb.Policies.Postures.Checks do
 
   @checks @checks
           |> Enum.map(&Map.put(&1, :platforms, Platforms.of(&1.expansion)))
-          |> Enum.map(&Map.put(&1, :previous, Previous.of(&1.expansion, :sophos)))
+          |> Enum.map(&Map.put(&1, :previous, Previous.of(&1.expansion, [:google_endpoint, :sophos])))
           |> Enum.sort_by(&String.downcase(&1.label))
 
   @by_name Map.new(@checks, &{&1.name, &1})

@@ -9,6 +9,7 @@ defmodule PortalWeb.Settings.DevicePostureTest do
   import Portal.DefenderFixtures
   import Portal.SantaFixtures
   import Portal.SentinelOneFixtures
+  import Portal.GoogleEndpointFixtures
 
   setup do
     Portal.Config.put_env_override(Portal.Mailer.PostureProviderInterestEmail,
@@ -1197,6 +1198,12 @@ defmodule PortalWeb.Settings.DevicePostureTest do
 
       assert has_element?(lv, ~s|a[href="/#{account.slug}/settings/device_posture/sophos/new"]|)
       assert has_element?(lv, ~s(img[src="/images/logo-sophos.svg"]))
+
+      assert has_element?(
+               lv,
+               ~s|a[href="/#{account.slug}/settings/device_posture/google_endpoint/new"]|,
+               "Google Endpoint Management"
+             )
     end
 
     test "raises on an unknown provider type", %{conn: conn, account: account, actor: actor} do
@@ -1916,6 +1923,145 @@ defmodule PortalWeb.Settings.DevicePostureTest do
 
       assert provider = Portal.Repo.get_by(Portal.Intune.PostureProvider, account_id: account.id)
       assert provider.tenant_id == verified
+    end
+  end
+
+  test "lists a Google Endpoint provider with its domain", %{
+    conn: conn,
+    account: account,
+    actor: actor
+  } do
+    provider =
+      google_endpoint_posture_provider_fixture(account: account, name: "Acme Google", domain: "acme.com")
+
+    google_endpoint_device_fixture(provider: provider)
+    google_endpoint_device_fixture(provider: provider, device_type: "ANDROID")
+
+    {:ok, lv, _html} =
+      conn |> authorize_conn(actor) |> live(~p"/#{account}/settings/device_posture")
+
+    html = render(lv)
+    assert html =~ "Acme Google"
+    assert html =~ "Google Endpoint Management"
+    assert html =~ "acme.com"
+  end
+
+  describe "Google Endpoint Management providers" do
+    setup %{conn: conn, account: account, actor: actor} do
+      PortalWeb.Mocks.OIDC.stub_discovery_document()
+
+      Portal.Config.put_env_override(:portal, Portal.Google.SyncAuthorization,
+        client_id: "google-sync-authz-client-id",
+        client_secret: "google-sync-authz-client-secret",
+        discovery_document_uri: PortalWeb.Mocks.OIDC.discovery_document_uri(),
+        req_opts: [retry: false, plug: {Req.Test, PortalWeb.OIDC}]
+      )
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/settings/device_posture/google_endpoint/new")
+
+      %{lv: lv}
+    end
+
+    test "shows the client ID and scope to delegate", %{lv: lv} do
+      assert has_element?(lv, "#google-endpoint-client-id", "123456789012345678901")
+      assert render(lv) =~ "https://www.googleapis.com/auth/cloud-identity.devices.readonly"
+      assert has_element?(lv, "#provider-google-domain", "Awaiting verification...")
+    end
+
+    test "verifies by Google sign-in and acts as the signed-in administrator", %{
+      lv: lv,
+      account: account
+    } do
+      ref = start_google_verification(lv)
+      complete_google_verification(lv, ref, "admin@acme.com", "acme.com")
+
+      assert has_element?(lv, "#provider-verification-status", "Verified")
+      assert has_element?(lv, "#provider-google-domain", "acme.com")
+      assert has_element?(lv, "#provider-google-impersonation-email", "admin@acme.com")
+
+      lv
+      |> form("#device-posture-form", provider: %{name: "Acme Google"})
+      |> render_submit()
+
+      assert_patch(lv, ~p"/#{account}/settings/device_posture")
+
+      provider = Portal.Repo.get_by!(Portal.GoogleEndpoint.PostureProvider, account_id: account.id)
+      assert provider_name(provider) == "Acme Google"
+      assert provider.impersonation_email == "admin@acme.com"
+      assert provider.domain == "acme.com"
+      assert provider.is_verified
+
+      assert_enqueued(
+        worker: Portal.GoogleEndpoint.Sync,
+        args: %{"account_id" => account.id, "posture_provider_id" => provider.id}
+      )
+    end
+
+    test "starts a Google sign-in with the sync authorization client", %{lv: lv} do
+      lv |> element("#provider-verification-button") |> render_click()
+      assert_push_event(lv, "open_url", %{url: url})
+
+      query = url |> URI.parse() |> Map.fetch!(:query) |> URI.decode_query()
+      assert query["client_id"] == "google-sync-authz-client-id"
+      assert query["prompt"] == "select_account"
+      assert query["code_challenge_method"] == "S256"
+
+      assert {:ok, %{type: "google-endpoint-posture-provider"}} =
+               PortalWeb.OIDC.verify_verification_state(query["state"])
+    end
+
+    test "ignores an administrator and domain posted by the browser", %{lv: lv, account: account} do
+      lv
+      |> form("#device-posture-form", provider: %{name: "Forged"})
+      |> render_submit(%{
+        provider: %{impersonation_email: "ceo@victim.com", domain: "victim.com", is_verified: "true"}
+      })
+
+      refute Portal.Repo.get_by(Portal.GoogleEndpoint.PostureProvider, account_id: account.id)
+    end
+
+    test "shows a failed verification", %{lv: lv} do
+      ref = start_google_verification(lv)
+
+      send(lv.pid, {:verification_failed, "The signed-in account cannot read devices.", ref})
+
+      assert render(lv) =~ "The signed-in account cannot read devices."
+      refute has_element?(lv, "#provider-verification-status")
+    end
+
+    test "refuses a second provider for the same Workspace", %{lv: lv, account: account} do
+      google_endpoint_posture_provider_fixture(account: account, domain: "acme.com")
+
+      ref = start_google_verification(lv)
+      complete_google_verification(lv, ref, "admin@acme.com", "acme.com")
+
+      lv
+      |> form("#device-posture-form", provider: %{name: "Duplicate Google"})
+      |> render_submit()
+
+      assert render(lv) =~ "This Google Workspace is already connected."
+      assert Portal.Repo.aggregate(Portal.GoogleEndpoint.PostureProvider, :count) == 1
+    end
+
+    defp start_google_verification(lv) do
+      lv |> element("#provider-verification-button") |> render_click()
+      assert_push_event(lv, "open_url", %{url: url})
+
+      state = url |> URI.parse() |> Map.fetch!(:query) |> URI.decode_query() |> Map.fetch!("state")
+      {:ok, %{verification_ref: ref}} = PortalWeb.OIDC.verify_verification_state(state)
+
+      send(lv.pid, {:get_pending_verification, ref, self()})
+      assert_receive {:pending_verification, %{verification_ref: ^ref}}
+      ref
+    end
+
+    defp complete_google_verification(lv, ref, email, domain) do
+      ack_ref = make_ref()
+      send(lv.pid, {:google_endpoint_posture_provider_complete, email, domain, ref, {self(), ack_ref}})
+      assert_receive {:verification_ack, ^ack_ref}
     end
   end
 end

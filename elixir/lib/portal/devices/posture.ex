@@ -19,7 +19,8 @@ defmodule Portal.Devices.Posture do
   the Intune row that led to it.
 
   A Sophos endpoint that reports no serial, which is common on Linux, matches
-  no client device.
+  no client device. Neither does a personal phone in Google Endpoint
+  Management, which reports none either.
 
   A reinstall or re-enrollment leaves the old record in the provider, so only
   the most recently seen record of each provider counts for a serial.
@@ -27,7 +28,7 @@ defmodule Portal.Devices.Posture do
 
   import Ecto.Query
 
-  alias Portal.{Defender, Device, Intune, Iru, Santa, SentinelOne, Sophos}
+  alias Portal.{Defender, Device, GoogleEndpoint, Intune, Iru, Santa, SentinelOne, Sophos}
   alias __MODULE__.Database
 
   @type rung :: :mdm_device_id | :attested_serial | :device_serial
@@ -100,8 +101,9 @@ defmodule Portal.Devices.Posture do
   def schema(:santa), do: Santa.Device
   def schema(:sentinelone), do: SentinelOne.Device
   def schema(:sophos), do: Sophos.Device
+  def schema(:google_endpoint), do: GoogleEndpoint.Device
 
-  @types ~w[intune iru defender santa sentinelone sophos]a
+  @types ~w[intune iru defender santa sentinelone sophos google_endpoint]a
 
   @spec types() :: [atom()]
   def types, do: @types
@@ -118,6 +120,7 @@ defmodule Portal.Devices.Posture do
   def type(Santa.Device), do: :santa
   def type(SentinelOne.Device), do: :sentinelone
   def type(Sophos.Device), do: :sophos
+  def type(GoogleEndpoint.Device), do: :google_endpoint
 
   @doc """
   The identifiers a provider row can be matched on, which are the keys its
@@ -169,6 +172,8 @@ defmodule Portal.Devices.Posture do
   def rung_fields(:sentinelone, _serial_rung), do: [:serial_number]
   def rung_fields(:sophos, :mdm_device_id), do: []
   def rung_fields(:sophos, _serial_rung), do: [:serial_number]
+  def rung_fields(:google_endpoint, :mdm_device_id), do: []
+  def rung_fields(:google_endpoint, _serial_rung), do: [:serial_number]
 
   # An attested device's reported serial is ignored, so it cannot claim another device's row.
   defp match_keys(%Device{} = device) do
@@ -191,7 +196,7 @@ defmodule Portal.Devices.Posture do
   defp matches(rows, keys) do
     provider_matches =
       latest(
-        for {type, index} <- [intune: 0, iru: 1, santa: 2, sentinelone: 3, sophos: 4],
+        for {type, index} <- [intune: 0, iru: 1, santa: 2, sentinelone: 3, sophos: 4, google_endpoint: 5],
             row <- rows |> Enum.map(&elem(&1, index)) |> Enum.reject(&is_nil/1) |> Enum.uniq_by(&Ecto.primary_key/1),
             rung = matched_rung(type, keys, row),
             not is_nil(rung),
@@ -201,7 +206,7 @@ defmodule Portal.Devices.Posture do
     kept_intune = MapSet.new(for {:intune, row, _rung, _via} <- provider_matches, do: Ecto.primary_key(row))
 
     defender_matches =
-      for {intune, _iru, _santa, _sentinelone, _sophos, defender} <- rows,
+      for {intune, _iru, _santa, _sentinelone, _sophos, _google_endpoint, defender} <- rows,
           not is_nil(intune) and not is_nil(defender),
           MapSet.member?(kept_intune, Ecto.primary_key(intune)),
           rung = matched_rung(:intune, keys, intune),
@@ -235,6 +240,7 @@ defmodule Portal.Devices.Posture do
   defp seen_field(:santa), do: :last_sync_at
   defp seen_field(:sentinelone), do: :last_active_at
   defp seen_field(:sophos), do: :last_seen_at
+  defp seen_field(:google_endpoint), do: :last_sync_at
 
   # Newest first, and a record that never reported sorts after every dated one.
   defp age(nil), do: :never
@@ -260,7 +266,7 @@ defmodule Portal.Devices.Posture do
   end
   defmodule Database do
     import Ecto.Query
-    alias Portal.{Defender, Device, Intune, Iru, Safe, Santa, SentinelOne, Sophos}
+    alias Portal.{Defender, Device, GoogleEndpoint, Intune, Iru, Safe, Santa, SentinelOne, Sophos}
 
     # Runs unscoped: a policy check must see the rows whatever the connecting
     # actor may read, and the account filter keeps them in bounds. The join
@@ -287,10 +293,15 @@ defmodule Portal.Devices.Posture do
       |> join_sentinelone()
       |> with_cte("sophos_candidates", as: ^candidates(Sophos.Device, Sophos.PostureProvider, nil, batch), materialized: true)
       |> join_sophos()
+      |> with_cte("google_endpoint_candidates",
+        as: ^candidates(GoogleEndpoint.Device, GoogleEndpoint.PostureProvider, nil, batch),
+        materialized: true
+      )
+      |> join_google_endpoint()
       |> join_defender(all?)
       |> select(
-        [device: d, intune: i, iru: r, santa: s, sentinelone: o, sophos: x, defender: f],
-        {d.id, i, r, s, o, x, f}
+        [device: d, intune: i, iru: r, santa: s, sentinelone: o, sophos: x, google_endpoint: g, defender: f],
+        {d.id, i, r, s, o, x, g, f}
       )
       |> Safe.unscoped()
       |> Safe.all()
@@ -342,6 +353,15 @@ defmodule Portal.Devices.Posture do
         on:
           x.account_id == d.account_id and
             (x.serial_number == d.last_attested_device_serial or x.serial_number == d.device_serial)
+      )
+    end
+
+    defp join_google_endpoint(query) do
+      join(query, :left, [device: d], g in {"google_endpoint_candidates", GoogleEndpoint.Device},
+        as: :google_endpoint,
+        on:
+          g.account_id == d.account_id and
+            (g.serial_number == d.last_attested_device_serial or g.serial_number == d.device_serial)
       )
     end
 

@@ -8,14 +8,14 @@ defmodule Portal.PostureProvider do
   @type t :: %__MODULE__{
           account_id: Ecto.UUID.t(),
           id: Ecto.UUID.t(),
-          type: :intune | :iru | :defender | :santa | :sentinelone | :sophos,
+          type: :intune | :iru | :defender | :santa | :sentinelone | :sophos | :google_endpoint,
           name: String.t()
         }
 
   schema "posture_providers" do
     belongs_to :account, Portal.Account, primary_key: true
     field :id, :binary_id, primary_key: true
-    field :type, Ecto.Enum, values: ~w[intune iru defender santa sentinelone sophos]a
+    field :type, Ecto.Enum, values: ~w[intune iru defender santa sentinelone sophos google_endpoint]a
 
     # Names the provider to an admin whatever its type, so it is unique across
     # the account rather than per type.
@@ -44,6 +44,10 @@ defmodule Portal.PostureProvider do
       foreign_key: :id
 
     has_one :sophos_posture_provider, Portal.Sophos.PostureProvider,
+      references: :id,
+      foreign_key: :id
+
+    has_one :google_endpoint_posture_provider, Portal.GoogleEndpoint.PostureProvider,
       references: :id,
       foreign_key: :id
   end

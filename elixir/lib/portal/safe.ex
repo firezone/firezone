@@ -925,6 +925,14 @@ defmodule Portal.Safe do
   def permit(action, Portal.Sophos.PostureProvider, :api_client) when action in [:read, :update], do: :ok
   def permit(:read, Portal.Sophos.Device, :account_admin_user), do: :ok
   def permit(:read, Portal.Sophos.Device, :api_client), do: :ok
+  def permit(_action, Portal.GoogleEndpoint.PostureProvider, :account_admin_user), do: :ok
+
+  def permit(action, Portal.GoogleEndpoint.PostureProvider, :api_client)
+      when action in [:read, :update],
+      do: :ok
+
+  def permit(:read, Portal.GoogleEndpoint.Device, :account_admin_user), do: :ok
+  def permit(:read, Portal.GoogleEndpoint.Device, :api_client), do: :ok
   def permit(_action, Portal.Google.Directory, :account_admin_user), do: :ok
   def permit(:read, Portal.Google.Directory, :api_client), do: :ok
   def permit(_action, Portal.Okta.Directory, :account_admin_user), do: :ok

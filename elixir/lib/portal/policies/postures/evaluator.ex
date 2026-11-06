@@ -41,7 +41,7 @@ defmodule Portal.Policies.Postures.Evaluator do
   @spec platform(Device.t()) :: atom() | nil
   def platform(%Device{} = device) do
     row_platform =
-      Enum.find_value(~w[intune iru defender santa sentinelone sophos]a, fn provider ->
+      Enum.find_value(~w[intune iru defender santa sentinelone sophos google_endpoint]a, fn provider ->
         device.posture |> Map.get(provider, []) |> Enum.find_value(&row_platform/1)
       end)
 
@@ -80,7 +80,15 @@ defmodule Portal.Policies.Postures.Evaluator do
   defp row_platform(%Portal.SentinelOne.Device{os_type: os}), do: os_name_platform(os)
   defp row_platform(%Portal.Sophos.Device{os_platform: os}), do: os_name_platform(os)
   defp row_platform(%Portal.Santa.Device{}), do: :macos
+  defp row_platform(%Portal.GoogleEndpoint.Device{device_type: type}), do: google_platform(type)
   defp row_platform(_row), do: nil
+
+  defp google_platform("WINDOWS"), do: :windows
+  defp google_platform("MAC_OS"), do: :macos
+  defp google_platform("LINUX"), do: :linux
+  defp google_platform("IOS"), do: :ios
+  defp google_platform("ANDROID"), do: :android
+  defp google_platform(_type), do: nil
 
   # Intune says "Windows", Defender "Windows10" or "WindowsServer2022", so a
   # prefix is what is shared.

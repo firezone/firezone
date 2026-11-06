@@ -10,7 +10,8 @@ defmodule PortalWeb.Policies.PostureComponents do
     "defender" => "Defender",
     "santa" => "Santa",
     "sentinelone" => "SentinelOne",
-    "sophos" => "Sophos"
+    "sophos" => "Sophos",
+    "google_endpoint" => "Google Endpoint"
   }
 
   @editor_class "font-mono text-xs leading-5 px-2 py-1.5 whitespace-pre"

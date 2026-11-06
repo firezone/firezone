@@ -40,18 +40,7 @@ defmodule Portal.GoogleAPIClientHelpers do
     Portal.Config.put_env_override(:portal, APIClient,
       endpoint: "https://test.googleapis.com",
       token_endpoint: "https://test.googleapis.com/token",
-      service_account_key:
-        JSON.encode!(%{
-          "type" => "service_account",
-          "project_id" => "test-project",
-          "private_key_id" => "test-key-id",
-          "private_key" => @test_private_key,
-          "client_email" => "test@test-project.iam.gserviceaccount.com",
-          "client_id" => "123456789",
-          "auth_uri" => "https://accounts.google.com/o/oauth2/auth",
-          "token_uri" => "https://oauth2.googleapis.com/token",
-          "auth_provider_x509_cert_url" => "https://www.googleapis.com/oauth2/v1/certs"
-        }),
+      service_account_key: service_account_key_json("test@test-project.iam.gserviceaccount.com"),
       req_opts: [plug: {Req.Test, APIClient}, retry: false]
     )
 
@@ -60,5 +49,20 @@ defmodule Portal.GoogleAPIClientHelpers do
     end)
 
     :ok
+  end
+
+  @doc "A JSON service account key for `client_email`, signed with the test key."
+  def service_account_key_json(client_email) do
+    JSON.encode!(%{
+      "type" => "service_account",
+      "project_id" => "test-project",
+      "private_key_id" => "test-key-id",
+      "private_key" => @test_private_key,
+      "client_email" => client_email,
+      "client_id" => "123456789",
+      "auth_uri" => "https://accounts.google.com/o/oauth2/auth",
+      "token_uri" => "https://oauth2.googleapis.com/token",
+      "auth_provider_x509_cert_url" => "https://www.googleapis.com/oauth2/v1/certs"
+    })
   end
 end

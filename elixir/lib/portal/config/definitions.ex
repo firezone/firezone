@@ -797,6 +797,14 @@ defmodule Portal.Config.Definitions do
   defconfig(:google_sync_authz_client_secret, :string, default: nil, sensitive: true)
 
   ##############################################
+  ## Device Posture
+  ##############################################
+
+  defconfig(:google_endpoint_service_account_email, :string, default: nil)
+  defconfig(:google_endpoint_service_account_key, :string, default: nil, sensitive: true)
+  defconfig(:google_endpoint_service_account_client_id, :string, default: nil)
+
+  ##############################################
   ## Google / GitHub / Entra / Okta authentication
   ##############################################
 

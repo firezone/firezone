@@ -82,6 +82,9 @@ defmodule Portal.Mailer.SyncEmail do
   defp provider_details_rows(%Portal.Sophos.PostureProvider{} = provider),
     do: [{"Tenant ID", provider.tenant_id}]
 
+  defp provider_details_rows(%Portal.GoogleEndpoint.PostureProvider{} = provider),
+    do: [{"Workspace domain", provider.domain}, {"Acts as", provider.impersonation_email}]
+
   defp provider_remediation(%Portal.Intune.PostureProvider{}),
     do: "Please verify the Firezone app registration still has admin consent in Microsoft Entra."
 
@@ -99,4 +102,8 @@ defmodule Portal.Mailer.SyncEmail do
 
   defp provider_remediation(%Portal.Sophos.PostureProvider{}),
     do: "Please verify the Sophos API credentials are still valid and can read endpoints."
+
+  defp provider_remediation(%Portal.GoogleEndpoint.PostureProvider{}),
+    do:
+      "Please verify Firezone still has domain-wide delegation in Google Workspace, then verify the provider again."
 end
