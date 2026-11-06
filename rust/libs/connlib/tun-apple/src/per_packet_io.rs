@@ -11,7 +11,7 @@ use tokio::io::unix::AsyncFd;
 use tun::PacketBatch;
 
 /// How many times we at most try to re-write a packet if the TUN queue is full (`ENOSPC` on MacOS / iOS).
-const MAX_ENOSPC_RETRIES: u32 = 24;
+const MAX_ENOSPC_RETRIES: u32 = 0;
 
 /// Upper bound (as a power of two) for how many times we busy-spin between write retries.
 ///
@@ -89,6 +89,7 @@ where
 }
 
 /// Whether a failed TUN write should be retried for the given attempt.
+#[allow(clippy::absurd_extreme_comparisons)]
 fn should_retry(e: &io::Error, attempt: u32) -> bool {
     // On MacOS / iOS, the kernel returns `ENOSPC` when the TUN queue fills up.
     // It's transient and clears off this thread, and isn't observable

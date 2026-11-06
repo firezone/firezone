@@ -62,10 +62,8 @@ impl Io {
     pub unsafe fn from_fd(fd: RawFd) -> io::Result<Self> {
         let name = name(fd)?;
         set_non_blocking(fd)?;
-        raise_recv_buffer(fd);
-        raise_max_pending_packets(fd);
         let max_coalesced_len = max_coalesced_len(fd);
-        let workers = match sys::batch_syscalls() {
+        let workers = match sys::batch_syscalls().filter(|_| false) {
             Some(syscalls) => tun::Workers::spawn(
                 move |outbound_rx| {
                     let open = move || bulk::Fd::open(fd, Interest::WRITABLE, syscalls);
@@ -162,6 +160,7 @@ fn set_non_blocking(fd: RawFd) -> io::Result<()> {
 
 /// Raises the limit of packets the kernel buffers on the utun socket so it can run
 /// ahead of our reads instead of in lock-step.
+#[allow(dead_code)]
 fn raise_max_pending_packets(fd: RawFd) {
     let current = match get_sockopt::<u32>(fd, libc::SYSPROTO_CONTROL, UTUN_OPT_MAX_PENDING_PACKETS)
     {
@@ -223,6 +222,7 @@ fn max_coalesced_len(fd: RawFd) -> Option<usize> {
 
 /// Raises the utun socket's receive buffer so the kernel can queue more inbound
 /// packets between our reads.
+#[allow(dead_code)]
 fn raise_recv_buffer(fd: RawFd) {
     if let Err(e) = set_sockopt(fd, libc::SOL_SOCKET, libc::SO_RCVBUF, &RECV_BUFFER_SIZE) {
         tracing::warn!(error = %e, "Failed to set TUN socket receive buffer");
