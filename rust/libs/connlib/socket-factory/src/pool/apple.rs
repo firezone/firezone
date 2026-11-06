@@ -494,6 +494,10 @@ fn create_socket(
     // Darwin attaches the destination-address control message when it enqueues a datagram, and
     // a connected socket captures its 4-tuple immediately, so the option must be on beforehand.
     let state = quinn_udp::UdpSocketState::new(UdpSockRef::from(&socket))?;
+    // SAFETY: All versions of MacOS / iOS that we tested support these APIs.
+    unsafe {
+        state.set_apple_fast_path();
+    }
 
     socket.bind(&bind_addr)?;
     // NECP can scope the socket to the primary interface during bind.

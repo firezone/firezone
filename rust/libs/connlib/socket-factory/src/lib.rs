@@ -310,6 +310,12 @@ impl UdpSocket {
     pub fn into_perf(self) -> io::Result<PerfUdpSocket> {
         let quinn_state = self.state;
 
+        #[cfg(apple)]
+        // SAFETY: All versions of MacOS / iOS that we tested support these APIs.
+        unsafe {
+            quinn_state.set_apple_fast_path();
+        }
+
         // A single `recv` may receive several datagrams coalesced into one buffer via
         // generic receive offload (GRO). The kernel coalesces up to `gro_segments`
         // datagrams of at most `MAX_FZ_PAYLOAD` bytes each, so the buffer must be large
