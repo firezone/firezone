@@ -251,6 +251,11 @@ if config_env() == :prod do
     flow_logs_api_url: env_var_to_config!(:flow_logs_api_url),
     flow_logs_upload_interval_secs: env_var_to_config!(:flow_logs_upload_interval_secs)
 
+  config :portal,
+    otlp_metrics_ingest_url: env_var_to_config!(:otlp_metrics_ingest_url),
+    otlp_metrics_export_interval_secs: env_var_to_config!(:otlp_metrics_export_interval_secs),
+    otel_ingest_jwt_private_key: env_var_to_config!(:otel_ingest_jwt_private_key)
+
   config :portal, Portal.S3.APIClient,
     access_key_id: env_var_to_config!(:log_sinks_aws_access_key_id),
     secret_access_key: env_var_to_config!(:log_sinks_aws_secret_access_key),

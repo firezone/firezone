@@ -30,6 +30,7 @@ defmodule PortalAPI.Client.ChannelTest do
     socket_module =
       case channel do
         PortalAPI.Client.V2.Channel -> PortalAPI.Client.V2.Socket
+        PortalAPI.Client.V4.Channel -> PortalAPI.Client.V4.Socket
         PortalAPI.Client.V3.Channel -> PortalAPI.Client.V3.Socket
         PortalAPI.Client.Channel -> PortalAPI.Client.Socket
       end
@@ -532,6 +533,93 @@ defmodule PortalAPI.Client.ChannelTest do
 
       assert_push "init", %{account_slug: account_slug}
       assert account_slug == account.slug
+    end
+
+    test "sends no metrics config on older channels", %{
+      account: account,
+      client: client,
+      subject: subject
+    } do
+      {:ok, _id} = Portal.Ops.add_account_metrics(account.id, ["*"])
+      socket = join_channel(client, subject, channel: PortalAPI.Client.V3.Channel)
+
+      assert_push "init", init
+      refute Map.has_key?(init, :metrics)
+      refute_push "metrics_config", _payload
+
+      send(socket.channel_pid, :refresh_metrics_token)
+      refute_push "metrics_config", _payload
+    end
+
+    test "sends no metrics token while the account exports no metrics", %{
+      client: client,
+      subject: subject
+    } do
+      socket = join_channel(client, subject, channel: PortalAPI.Client.V4.Channel)
+      assert_push "init", init
+      refute Map.has_key?(init, :metrics)
+      assert_push "metrics_config", %{token: nil, export_interval_secs: 60, patterns: []}
+
+      send(socket.channel_pid, :refresh_metrics_token)
+      assert_push "metrics_config", %{token: nil, patterns: []}
+    end
+
+    test "sends a metrics token after init and refreshes it", %{
+      account: account,
+      client: client,
+      subject: subject
+    } do
+      {:ok, _id} = Portal.Ops.add_account_metrics(account.id, ["b"])
+      socket = join_channel(client, subject, channel: PortalAPI.Client.V4.Channel)
+
+      assert_push "init", _init_payload
+
+      assert_push "metrics_config", %{
+        endpoint: "https://otlp.firezone.dev/v1/metrics",
+        export_interval_secs: 60,
+        patterns: ["b"],
+        token: token
+      }
+
+      claims = JOSE.JWT.peek_payload(token).fields
+      assert {:ok, version} = Portal.Version.fetch_version(subject.context.user_agent)
+      assert claims["account_id"] == account.id
+      assert claims["account_slug"] == account.slug
+      assert claims["device_id"] == client.id
+      assert claims["device_type"] == "client"
+      assert claims["device_version"] == version
+      assert claims["metrics"] == ["b"]
+
+      {:ok, _id} = Portal.Ops.add_plan_metrics(Portal.Billing.plan_type(account), ["a"])
+      send(socket.channel_pid, :refresh_metrics_token)
+
+      assert_push "metrics_config", %{patterns: ["a", "b"], token: token}
+      assert JOSE.JWT.peek_payload(token).fields["metrics"] == ["a", "b"]
+    end
+
+    test "pushes the metrics config when the account's metric sets change", %{
+      account: account,
+      client: client,
+      subject: subject
+    } do
+      socket = join_channel(client, subject, channel: PortalAPI.Client.V4.Channel)
+      assert_push "init", _init_payload
+      assert_push "metrics_config", %{token: nil}
+
+      {:ok, id} = Portal.Ops.add_account_metrics(account.id, ["a"])
+      metric_set = Repo.get!(Portal.AccountMetricSet, id)
+      send(socket.channel_pid, %Changes.Change{lsn: 100, op: :insert, struct: metric_set})
+
+      assert_push "metrics_config", %{token: token, patterns: ["a"]}
+      assert JOSE.JWT.peek_payload(token).fields["metrics"] == ["a"]
+
+      :ok = Portal.Ops.remove_account_metrics(id)
+      send(socket.channel_pid, %Changes.Change{lsn: 101, op: :delete, old_struct: metric_set})
+
+      assert_push "metrics_config", %{token: nil, patterns: []}
+
+      send(socket.channel_pid, %Changes.Change{lsn: 101, op: :delete, old_struct: metric_set})
+      refute_push "metrics_config", _payload
     end
 
     test "sends actor name in init message", %{
