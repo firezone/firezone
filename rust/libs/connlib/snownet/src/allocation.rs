@@ -14,7 +14,7 @@ use rand::{SeedableRng as _, rngs::StdRng};
 use ringbuffer::{AllocRingBuffer, RingBuffer as _};
 use smallvec::SmallVec;
 use std::{
-    collections::{HashMap, VecDeque},
+    collections::{HashMap, HashSet, VecDeque},
     iter,
     net::{SocketAddr, SocketAddrV4, SocketAddrV6},
     time::{Duration, Instant},
@@ -32,7 +32,7 @@ use stun_codec::{
         attributes::{
             ChannelNumber, Lifetime, RequestedTransport, XorPeerAddress, XorRelayAddress,
         },
-        errors::{AllocationMismatch, AllocationQuotaReached},
+        errors::{AllocationMismatch, AllocationQuotaReached, Forbidden},
         methods::{ALLOCATE, CHANNEL_BIND, REFRESH},
     },
     rfc8656::attributes::AdditionalAddressFamily,
@@ -51,6 +51,9 @@ const REQUEST_MAX_ELAPSED: Duration = Duration::from_secs(8);
 /// The binding interval here is chosen very conservatively to reflect these.
 /// It ain't much traffic and with a lower interval, these checks can also help in disconnecting from an unresponsive relay.
 const BINDING_INTERVAL: Duration = Duration::from_secs(25);
+
+/// How many peers refused by the relay we remember before we start over.
+const MAX_FORBIDDEN_PEERS: usize = 256;
 
 /// Represents a TURN allocation that refreshes itself.
 ///
@@ -99,6 +102,11 @@ pub struct Allocation {
 
     channel_bindings: ChannelBindings,
     buffered_channel_bindings: AllocRingBuffer<SocketAddr>,
+    /// Peers the relay refused to bind a channel to.
+    ///
+    /// The relay only relays to public addresses, so binding to a private host candidate fails.
+    /// We remember these peers so we don't ask again.
+    forbidden_peers: HashSet<SocketAddr, FastRandomState>,
 
     credentials: Option<Credentials>,
 
@@ -259,6 +267,7 @@ impl Allocation {
             allocation_lifetime: Default::default(),
             channel_bindings: Default::default(),
             buffered_channel_bindings: AllocRingBuffer::new(100),
+            forbidden_peers: Default::default(),
             software: Software::new("snownet".to_owned())
                 .expect("description has less then 128 chars"),
             explicit_failure: Default::default(),
@@ -560,6 +569,16 @@ impl Allocation {
                     };
 
                     self.channel_bindings.handle_failed_binding(channel);
+
+                    if error.code() == Forbidden::CODEPOINT {
+                        if self.forbidden_peers.len() >= MAX_FORBIDDEN_PEERS {
+                            self.forbidden_peers.clear();
+                        }
+                        self.forbidden_peers.insert(peer);
+
+                        tracing::debug!(%channel, %peer, "Relay refused to bind channel to peer");
+                        return true;
+                    }
 
                     // Duplicate log here because we want to attach "channel number" and "peer".
                     tracing::warn!(error = %error.reason_phrase(), %channel, %peer, "Channel bind failed");
@@ -931,6 +950,11 @@ impl Allocation {
 
         if !self.can_relay_to(peer) {
             tracing::debug!("Allocation cannot relay to this IP version");
+            return;
+        }
+
+        if self.forbidden_peers.contains(&peer) {
+            tracing::trace!(%peer, "Relay refused this peer before");
             return;
         }
 
@@ -2178,6 +2202,21 @@ mod tests {
     }
 
     #[test]
+    fn does_not_rebind_channel_to_forbidden_peer() {
+        let mut allocation = Allocation::for_test_ip4(Instant::now())
+            .with_binding_response(PEER1, Instant::now())
+            .with_allocate_response(&[RELAY_ADDR_IP4], Instant::now());
+        allocation.bind_channel(PEER2_IP4, Instant::now());
+
+        let channel_bind_msg = allocation.next_message().unwrap();
+        allocation.handle_test_input_ip4(channel_bind_forbidden(&channel_bind_msg), Instant::now());
+
+        allocation.bind_channel(PEER2_IP4, Instant::now());
+
+        assert!(allocation.next_message().is_none());
+    }
+
+    #[test]
     fn rebinding_existing_channel_send_no_message() {
         let mut allocation = Allocation::for_test_ip4(Instant::now())
             .with_binding_response(PEER1, Instant::now())
@@ -3203,6 +3242,17 @@ mod tests {
             request.transaction_id(),
         );
         message.add_attribute(ErrorCode::from(BadRequest));
+
+        message
+    }
+
+    fn channel_bind_forbidden(request: &Message<Attribute>) -> Message<Attribute> {
+        let mut message = Message::new(
+            MessageClass::ErrorResponse,
+            CHANNEL_BIND,
+            request.transaction_id(),
+        );
+        message.add_attribute(ErrorCode::from(Forbidden));
 
         message
     }
