@@ -1372,6 +1372,7 @@ dependencies = [
  "mimalloc",
  "opentelemetry",
  "oslog",
+ "otel-metrics-export",
  "parking_lot",
  "phoenix-channel",
  "rustls",
@@ -1429,6 +1430,7 @@ dependencies = [
  "opentelemetry",
  "otel-attributes",
  "otel-instruments",
+ "otel-metrics-export",
  "parking_lot",
  "phoenix-channel",
  "serde",
@@ -2643,10 +2645,9 @@ dependencies = [
  "nix 0.31.3",
  "opentelemetry",
  "opentelemetry-otlp",
- "opentelemetry-stdout",
- "opentelemetry_sdk",
  "otel-attributes",
  "otel-instruments",
+ "otel-metrics-export",
  "phoenix-channel",
  "resolv-conf",
  "rpassword",
@@ -2701,7 +2702,8 @@ dependencies = [
  "mimalloc",
  "native-dialog",
  "nix 0.31.3",
- "opentelemetry",
+ "otel-attributes",
+ "otel-metrics-export",
  "output_vt100",
  "parking_lot",
  "phoenix-channel",
@@ -2771,11 +2773,9 @@ dependencies = [
  "logging",
  "mimalloc",
  "nix 0.31.3",
- "opentelemetry",
  "opentelemetry-otlp",
- "opentelemetry-stdout",
- "opentelemetry_sdk",
  "otel-attributes",
+ "otel-metrics-export",
  "phoenix-channel",
  "rpassword",
  "rustls",
@@ -5756,17 +5756,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "opentelemetry-stdout"
-version = "0.33.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2afbc6661934787ce79bef1e35d0ffe9d62e945f07f664dc1283ce83292b908a"
-dependencies = [
- "chrono",
- "opentelemetry",
- "opentelemetry_sdk",
-]
-
-[[package]]
 name = "opentelemetry_sdk"
 version = "0.33.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5781,7 +5770,6 @@ dependencies = [
  "rand 0.9.4",
  "thiserror 2.0.21",
  "tokio",
- "tokio-stream",
 ]
 
 [[package]]
@@ -5842,6 +5830,28 @@ name = "otel-instruments"
 version = "0.1.0"
 dependencies = [
  "opentelemetry",
+]
+
+[[package]]
+name = "otel-metrics-export"
+version = "0.1.0"
+dependencies = [
+ "anyhow-ext",
+ "async-runtime",
+ "bytes",
+ "futures",
+ "http",
+ "http-client",
+ "opentelemetry",
+ "opentelemetry-proto",
+ "opentelemetry_sdk",
+ "prost",
+ "secrecy",
+ "socket-factory",
+ "tokio",
+ "tracing",
+ "tunnel-bypass-resolver",
+ "url",
 ]
 
 [[package]]
@@ -8357,7 +8367,6 @@ dependencies = [
  "opentelemetry",
  "opentelemetry_sdk",
  "parking_lot",
- "rand 0.10.3",
  "sentry",
  "serde",
  "serde_json",
@@ -9203,6 +9212,7 @@ dependencies = [
  "ip-packet",
  "libc",
  "mimalloc",
+ "otel-metrics-export",
  "rand 0.10.3",
  "relay-proto",
  "seeded-rng",

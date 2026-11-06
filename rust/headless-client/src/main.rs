@@ -17,7 +17,6 @@ use clap::Parser;
 use futures::StreamExt as _;
 use ip_network::IpNetwork;
 use opentelemetry_otlp::WithExportConfig as _;
-use opentelemetry_sdk::metrics::SdkMeterProvider;
 use phoenix_channel::PhoenixChannel;
 use phoenix_channel::get_user_agent;
 use phoenix_channel::{DeviceInfo, LoginUrl};
@@ -28,7 +27,7 @@ use std::{
     sync::Arc,
     time::Duration,
 };
-use telemetry::{SentryMeterProvider, analytics, otel};
+use telemetry::{analytics, otel};
 use tokio::time::Instant;
 use x509_keystore::ValidationError;
 
@@ -120,16 +119,7 @@ struct Cli {
     #[arg(long, env = "FIREZONE_NO_TELEMETRY", default_value_t = false)]
     no_telemetry: bool,
 
-    /// Dump internal metrics to stdout every 60s.
-    ///
-    /// This configuration option is private API and has no stability guarantees.
-    /// It may be removed / changed anytime.
-    #[arg(long, hide = true, env = "FIREZONE_METRICS", default_value = "sentry")]
-    metrics: Option<MetricsExporter>,
-
-    /// Send metrics to a custom OTLP collector.
-    ///
-    /// By default, Firezone's hosted OTLP collector is used.
+    /// Also send metrics to an OTLP collector over gRPC.
     ///
     /// This configuration option is private API and has no stability guarantees.
     /// It may be removed / changed anytime.
@@ -169,13 +159,6 @@ struct Cli {
     /// spooling and uploading them is always controlled by the portal.
     #[arg(long, env = "FIREZONE_FLOW_LOGS", default_value_t = false)]
     flow_logs: bool,
-}
-
-#[derive(Debug, Clone, Copy, clap::ValueEnum)]
-enum MetricsExporter {
-    Stdout,
-    OtelCollector,
-    Sentry,
 }
 
 impl Cli {
@@ -417,38 +400,20 @@ fn try_main() -> Result<()> {
     let mut last_connlib_start_instant = Some(Instant::now());
 
     rt.block_on(async {
-        if let Some(backend) = cli.metrics {
-            let resource = otel::default_resource_with([
-                otel_attributes::service_name!(),
-                otel_attributes::service_version!(),
-                otel::service_instance_id(firezone_id.clone()),
-            ]);
+        let resource = otel::default_resource_with([
+            otel_attributes::service_name!(),
+            otel_attributes::service_version!(),
+        ]);
 
-            match (backend, cli.otlp_grpc_endpoint) {
-                (MetricsExporter::Sentry, _) => {
-                    opentelemetry::global::set_meter_provider(SentryMeterProvider::default());
-                }
-                (MetricsExporter::Stdout, _) => opentelemetry::global::set_meter_provider(
-                    SdkMeterProvider::builder()
-                        .with_periodic_exporter(opentelemetry_stdout::MetricExporter::default())
-                        .with_resource(resource)
-                        .build(),
-                ),
-                (MetricsExporter::OtelCollector, Some(endpoint)) => {
-                    opentelemetry::global::set_meter_provider(
-                        SdkMeterProvider::builder()
-                            .with_periodic_exporter(tonic_otlp_exporter(endpoint)?)
-                            .with_resource(resource)
-                            .build(),
-                    )
-                }
-                (MetricsExporter::OtelCollector, None) => {
-                    opentelemetry::global::set_meter_provider(
-                        SdkMeterProvider::builder().with_resource(resource).build(),
-                    )
-                }
+        let otlp_exporter = cli.otlp_grpc_endpoint.map(tonic_otlp_exporter).transpose()?;
+        otel_metrics_export::install_meter_provider(|builder| {
+            let builder = builder.with_resource(resource);
+
+            match otlp_exporter {
+                Some(exporter) => builder.with_periodic_exporter(exporter),
+                None => builder,
             }
-        }
+        });
 
         // The Headless Client will bail out here if there's no Internet, because `PhoenixChannel` will try to
         // resolve the portal host and fail. This is intentional behavior. The Headless Client should always be running under a manager like `systemd` or Windows' Service Controller,
@@ -472,6 +437,10 @@ fn try_main() -> Result<()> {
             flow_log_upload::spawn(dir, Arc::new(tcp_socket_factory));
         }
 
+        let metrics_exporter =
+            otel_metrics_export::Exporter::spawn(Arc::new(tcp_socket_factory))
+                .context("Failed to spawn metrics exporter")?;
+
         let (session, mut event_stream) = client_shared::Session::connect(
             Arc::new(tcp_socket_factory),
             Arc::new(UdpSocketFactory::default()),
@@ -481,6 +450,7 @@ fn try_main() -> Result<()> {
             cli.additional_host_candidates.clone(),
             flow_logs_dir.clone(),
             cli.flow_logs,
+            metrics_exporter,
         )
         .context("Failed to start connlib")?;
 

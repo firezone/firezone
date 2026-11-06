@@ -19,6 +19,7 @@ logging = { workspace = true }
 opentelemetry = { workspace = true, features = ["metrics"] }
 otel-attributes = { workspace = true }
 otel-instruments = { workspace = true }
+otel-metrics-export = { workspace = true }
 parking_lot = { workspace = true }
 phoenix-channel = { workspace = true }
 serde = { workspace = true, features = ["derive"] }

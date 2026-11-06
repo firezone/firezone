@@ -1,8 +1,8 @@
 //! Client related messages that are needed within connlib
 
 use crate::messages::{
-    Filter, FlowLogsConfig, IceCredentials, IceRole, IngestToken, Interface, Key, Relay,
-    RelaysPresence, SecretKey, SnownetCapabilities, WarnOnInvalidFilter,
+    Filter, FlowLogsConfig, IceCredentials, IceRole, IngestToken, Interface, Key, MetricsConfig,
+    Relay, RelaysPresence, SecretKey, SnownetCapabilities, WarnOnInvalidFilter,
 };
 use connlib_model::{
     ClientId, GatewayId, IceCandidate, IpStack, RelayId, ResourceId, Site, SiteId,
@@ -395,6 +395,8 @@ pub enum IngressMessages {
 
     PublicKeyChanged(PublicKeyChanged),
 
+    MetricsConfig(MetricsConfig),
+
     /// OBSOLETE - safe to remove this when <https://github.com/firezone/firezone/pull/13714> is deployed to production.
     AccessAuthorizationExpiryUpdated(ClientAccessAuthorizationExpiryUpdated),
 }
@@ -480,6 +482,20 @@ mod tests {
         assert_eq!(init.flow_logs.upload_interval_secs, 60);
         assert_eq!(init.flow_logs.upload_batch_size, 1000);
         assert!(init.flow_logs.upload_enabled());
+    }
+
+    #[test]
+    fn can_deserialize_metrics_config_message_without_token() {
+        let json = r#"{"event":"metrics_config","ref":null,"topic":"client","payload":{"endpoint":"https://otlp.firezone.dev/v1/metrics","export_interval_secs":60,"token":null,"patterns":[]}}"#;
+
+        let message = serde_json::from_str::<IngressMessages>(json).unwrap();
+
+        let IngressMessages::MetricsConfig(config) = message else {
+            panic!("expected MetricsConfig");
+        };
+        assert_eq!(config.endpoint, "https://otlp.firezone.dev/v1/metrics");
+        assert!(config.token.is_none());
+        assert!(config.patterns.is_empty());
     }
 
     #[test]

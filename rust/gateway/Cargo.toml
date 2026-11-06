@@ -44,10 +44,9 @@ logging = { workspace = true }
 mimalloc = { workspace = true }
 opentelemetry = { workspace = true, features = ["metrics"] }
 opentelemetry-otlp = { workspace = true, features = ["metrics", "grpc-tonic"] }
-opentelemetry-stdout = { workspace = true, features = ["metrics"] }
-opentelemetry_sdk = { workspace = true, features = ["rt-tokio"] }
 otel-attributes = { workspace = true }
 otel-instruments = { workspace = true }
+otel-metrics-export = { workspace = true }
 phoenix-channel = { workspace = true }
 resolv-conf = { workspace = true }
 rpassword = { workspace = true }
