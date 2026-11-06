@@ -16,9 +16,11 @@ defmodule PortalAPI.Plugs.FlowLogAuth do
 
   def call(conn, _opts) do
     with ["Bearer " <> token] <- get_req_header(conn, "authorization"),
-         {:ok, claims} <- FlowLogToken.verify(token),
+         {:ok, claims, account} <- FlowLogToken.verify(token),
          :ok <- ensure_uploads_enabled(claims) do
-      assign(conn, :flow_log_claims, claims)
+      conn
+      |> assign(:flow_log_claims, claims)
+      |> assign(:flow_log_account, account)
     else
       {:error, :uploads_disabled} ->
         ProblemDetails.send(conn, 401, "Flow log uploads are not enabled for this authorization")

@@ -13,6 +13,7 @@ defmodule PortalAPI.FlowLogController do
   use OpenApiSpex.ControllerSpecs
   import Ecto.Changeset
   alias OpenApiSpex.Schema
+  alias Portal.Accounts.Limits
   alias Portal.FlowLog
   alias Portal.Types.LogId
   alias PortalAPI.ProblemDetails
@@ -82,7 +83,8 @@ defmodule PortalAPI.FlowLogController do
   def create(conn, %{"flow_logs" => records}) when is_list(records) do
     claims = conn.assigns.flow_log_claims
 
-    with :ok <- ensure_single_authorization(records, claims) do
+    with :ok <- charge_rows(conn.assigns.flow_log_account, claims, length(records)),
+         :ok <- ensure_single_authorization(records, claims) do
       now = DateTime.utc_now()
 
       {valid, errors} =
@@ -106,6 +108,13 @@ defmodule PortalAPI.FlowLogController do
         })
       end
     else
+      {:error, {:rate_limit, retry_after_ms}} ->
+        retry_after = max(ceil(retry_after_ms / 1000), 1)
+
+        conn
+        |> put_resp_header("retry-after", Integer.to_string(retry_after))
+        |> ProblemDetails.send(429, "Rate limit exceeded, retry after #{retry_after}s")
+
       {:error, :multiple_authorizations} ->
         ProblemDetails.send(
           conn,
@@ -118,6 +127,45 @@ defmodule PortalAPI.FlowLogController do
   def create(conn, _params) do
     ProblemDetails.send(conn, 400, "Expected a \"flow_logs\" array")
   end
+
+  # The device is charged first so a device over its own allowance never spends
+  # the account's. The account's allowance grows with its device allowance, the
+  # same sizing as relay allocations; an unlimited device allowance has no
+  # account bucket.
+  defp charge_rows(account, claims, rows) do
+    config = Portal.Config.fetch_env!(:portal, __MODULE__)
+
+    with :ok <-
+           hit(
+             "ingestion:device:#{reporting_device_id(claims)}",
+             Keyword.fetch!(config, :device_rows_per_second),
+             Keyword.fetch!(config, :device_row_burst),
+             rows
+           ) do
+      case Limits.device_allowance(account.limits) do
+        nil ->
+          :ok
+
+        devices ->
+          hit(
+            "ingestion:account:#{account.id}",
+            devices * Keyword.fetch!(config, :account_rows_per_second_per_device),
+            devices * Keyword.fetch!(config, :account_row_burst_per_device),
+            rows
+          )
+      end
+    end
+  end
+
+  defp hit(key, refill_rate, capacity, cost) do
+    case PortalAPI.RateLimit.hit(key, refill_rate, capacity, cost) do
+      {:allow, _remaining} -> :ok
+      {:deny, retry_after_ms} -> {:error, {:rate_limit, retry_after_ms}}
+    end
+  end
+
+  defp reporting_device_id(%{"role" => "responder", "responder_device_id" => id}), do: id
+  defp reporting_device_id(claims), do: claims["initiator_device_id"]
 
   # The token names exactly one policy authorization; a record that declares a
   # different one means the reporter mixed authorizations into one request, which
