@@ -4249,7 +4249,7 @@ defmodule PortalAPI.Client.ChannelTest do
       assert_receive {:create_authorization, {channel_pid, socket_ref}, payload}
       assert is_binary(payload.flow_logs_ingest_token)
 
-      assert {:ok, responder_claims} = Portal.FlowLogToken.verify(payload.flow_logs_ingest_token)
+      assert {:ok, responder_claims, _account} = Portal.FlowLogToken.verify(payload.flow_logs_ingest_token)
       assert responder_claims["uploads_enabled"] == true
       assert responder_claims["role"] == "responder"
 
@@ -4266,7 +4266,7 @@ defmodule PortalAPI.Client.ChannelTest do
       assert is_binary(initiator_token)
       assert initiator_token != payload.flow_logs_ingest_token
 
-      assert {:ok, initiator_claims} = Portal.FlowLogToken.verify(initiator_token)
+      assert {:ok, initiator_claims, _account} = Portal.FlowLogToken.verify(initiator_token)
       assert initiator_claims["uploads_enabled"] == true
       assert initiator_claims["role"] == "initiator"
     end
@@ -4304,7 +4304,7 @@ defmodule PortalAPI.Client.ChannelTest do
       assert_receive {:create_authorization, {channel_pid, socket_ref}, payload}
       assert is_binary(payload.flow_logs_ingest_token)
 
-      assert {:ok, responder_claims} = Portal.FlowLogToken.verify(payload.flow_logs_ingest_token)
+      assert {:ok, responder_claims, _account} = Portal.FlowLogToken.verify(payload.flow_logs_ingest_token)
       assert responder_claims["uploads_enabled"] == false
 
       rid_bytes = Ecto.UUID.dump!(resource.id)
@@ -4319,7 +4319,7 @@ defmodule PortalAPI.Client.ChannelTest do
       assert_push "flow_created", %{flow_logs_ingest_token: initiator_token}
       assert is_binary(initiator_token)
 
-      assert {:ok, initiator_claims} = Portal.FlowLogToken.verify(initiator_token)
+      assert {:ok, initiator_claims, _account} = Portal.FlowLogToken.verify(initiator_token)
       assert initiator_claims["uploads_enabled"] == false
     end
 
