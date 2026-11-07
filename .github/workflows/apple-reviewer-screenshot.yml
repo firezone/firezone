@@ -1,0 +1,99 @@
+---
+name: Apple reviewer screenshot
+run-name: Triggered from ${{ github.event_name }} on ${{ github.ref_name }}
+# Photographs the portal's sign-in page that App Review is shown (see
+# submit-apple-release.yml) and proposes it as a bot PR. It depends on the live
+# portal and Safari rather than on the code, so pull requests do not take it.
+"on":
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: apple-reviewer-screenshot
+  cancel-in-progress: true
+
+jobs:
+  render:
+    runs-on: macos-26
+    env:
+      XCODE_VERSION: "26.2"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: sudo xcode-select --switch "$(find /Applications -maxdepth 1 -name "Xcode*${XCODE_VERSION}*.app" | sort -V | tail -n 1)"
+      - uses: ./.github/actions/setup-mise
+        with:
+          install: false
+      - uses: ./.github/actions/setup-rust-stable
+        with:
+          targets: aarch64-apple-darwin
+      - uses: ./.github/actions/setup-rust-sccache
+        with:
+          azure-connection-string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
+      - uses: ./.github/actions/restore-xcode-build
+        with:
+          path: ${{ runner.temp }}/DerivedData
+          key: macos
+      - name: Build the macOS app and its UI tests
+        env:
+          DERIVED_DATA_PATH: ${{ runner.temp }}/DerivedData
+        run: mise run //swift/apple:build-macos-ui-tests
+      - name: Pin what is behind the windows
+        run: |
+          defaults -currentHost write com.apple.screensaver idleTime -int 0
+          osascript -e 'tell application "System Events" to tell appearance preferences to set dark mode to false'
+
+          osascript -e "tell application \"System Events\" to tell every desktop \
+            to set picture to \"${GITHUB_WORKSPACE}/swift/apple/FirezoneUITests/Resources/screenshot-backdrop.png\"" \
+            || echo "::warning::Could not set the desktop picture; the window corners stay at the mercy of the wallpaper"
+      - name: Take the reviewer screenshot
+        env:
+          DERIVED_DATA_PATH: ${{ runner.temp }}/DerivedData
+          RESULT_BUNDLE_DIR: ${{ runner.temp }}
+          ONLY_TESTING: FirezoneUITests/ReviewerScreenshotTests
+        run: mise run //swift/apple:macos-ui-tests
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: reviewer-screenshot
+          path: swift/apple/screenshots/macos/26/reviewer-sign-in-light.png
+          if-no-files-found: error
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: failure()
+        with:
+          name: reviewer-screenshot-xcresult
+          path: ${{ runner.temp }}/FirezoneUITests-*.xcresult
+
+  propose:
+    needs: render
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      security-events: write # trivy SARIF upload from setup-mise
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: reviewer-screenshot
+          path: swift/apple/screenshots/macos/26
+      - uses: ./.github/actions/setup-mise
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Prepare the store images
+        run: mise exec -- uv run scripts/prepare-store-screenshots.py
+      # Opened with the app's token so that the pull request's CI runs.
+      - uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        id: app-token
+        with:
+          client-id: ${{ vars.BOT_CLIENT_ID }}
+          private-key: ${{ secrets.BOT_PRIVATE_KEY }}
+          repositories: ${{ github.repository }}
+          permission-contents: write
+          permission-pull-requests: write
+      - uses: firezone/actions/create-pull-request@f92afb7395591f2205bdcfd42b975c8dcf51bb6b # main
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          branch: chore/apple-reviewer-screenshot
+          title: "chore(apple): update the App Store reviewer screenshot"
+          body: "Re-renders the sign-in page that App Review is shown, from the portal as it is today."
+          paths: swift/apple/screenshots/macos/26/reviewer-sign-in-light.png
