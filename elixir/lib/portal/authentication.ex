@@ -376,8 +376,7 @@ defmodule Portal.Authentication do
              "gateway",
              "gateway_group",
              &Database.fetch_gateway_token/2
-           ),
-         :ok <- ensure_gateway_account_enabled(token) do
+           ) do
       :ok = confirm_gateway_token_rotation(token)
       {:ok, token}
     end
@@ -546,15 +545,6 @@ defmodule Portal.Authentication do
     Portal.Config.fetch_env!(:portal, Portal.Tokens)
   end
 
-  # Not :invalid_token: deployed Gateways exit for good on that, even after re-enabling.
-  defp ensure_gateway_account_enabled(%Portal.GatewayToken{account_id: account_id}) do
-    if Database.account_enabled?(account_id) do
-      :ok
-    else
-      {:error, :account_disabled}
-    end
-  end
-
   defmodule Database do
     import Ecto.Query
     alias Portal.Safe
@@ -687,12 +677,6 @@ defmodule Portal.Authentication do
       |> Safe.insert()
     end
 
-    def account_enabled?(account_id) do
-      from(a in Account, where: a.id == ^account_id and a.is_disabled == false)
-      |> Safe.unscoped()
-      |> Safe.exists?()
-    end
-
     def fetch_gateway_token(account_id, id) do
       grace_hours = Portal.GatewayToken.rotation_grace_hours()
 
@@ -700,6 +684,8 @@ defmodule Portal.Authentication do
         where: gt.account_id == ^account_id,
         where: gt.id == ^id,
         where: is_nil(gt.rotated_at) or gt.rotated_at > ago(^grace_hours, "hour"),
+        join: account in Account,
+        on: account.id == gt.account_id and account.is_disabled == false,
         left_join: sibling in Portal.GatewayToken,
         on:
           sibling.account_id == gt.account_id and sibling.device_id == gt.device_id and

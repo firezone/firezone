@@ -297,7 +297,7 @@ defmodule PortalAPI.Gateway.SocketTest do
       token = gateway_token_fixture(account: account, site: site) |> encode_gateway_token()
 
       assert connect(Socket, connect_attrs(token: token), connect_info: build_connect_info(token: token)) ==
-               {:error, :account_disabled}
+               {:error, :invalid_token}
 
       assert Repo.aggregate(Portal.Device, :count, :id) == 0
     end

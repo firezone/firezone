@@ -139,7 +139,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
 
     # Disabled between connect and the subscription above, so no change will tell us.
     if account.is_disabled do
-      {:stop, :shutdown, socket}
+      handle_info(:disconnect, socket)
     else
       socket = assign(socket, :account, account)
 
@@ -868,14 +868,13 @@ defmodule PortalAPI.Gateway.Channel.Shared do
 
   # ACCOUNTS
 
-  # A disabled account arrives as a delete. Close without pushing "disconnect", which
-  # makes Gateways exit for good; they reconnect and are refused until it is enabled.
+  # A disabled account arrives as a delete.
   defp handle_change(%Change{op: :delete, old_struct: %Portal.Account{}}, socket) do
-    {:stop, :shutdown, socket}
+    handle_info(:disconnect, socket)
   end
 
   defp handle_change(%Change{op: :update, struct: %Portal.Account{is_disabled: true}}, socket) do
-    {:stop, :shutdown, socket}
+    handle_info(:disconnect, socket)
   end
 
   # Resend init when config changes so that new slug may be applied

@@ -1566,7 +1566,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       assert payload.account_slug == "new-slug"
     end
 
-    test "closes without pushing disconnect when the account is disabled", %{
+    test "disconnects when the account is disabled", %{
       account: account,
       gateway: gateway,
       site: site,
@@ -1582,11 +1582,11 @@ defmodule PortalAPI.Gateway.ChannelTest do
         old_struct: account
       })
 
+      assert_push "disconnect", %{reason: "token_expired"}
       assert_receive {:EXIT, _pid, :shutdown}
-      refute_push "disconnect", _
     end
 
-    test "closes without pushing disconnect on an update that disables the account", %{
+    test "disconnects on an update that disables the account", %{
       account: account,
       gateway: gateway,
       site: site,
@@ -1603,11 +1603,11 @@ defmodule PortalAPI.Gateway.ChannelTest do
         struct: %{account | is_disabled: true}
       })
 
+      assert_push "disconnect", %{reason: "token_expired"}
       assert_receive {:EXIT, _pid, :shutdown}
-      refute_push "disconnect", _
     end
 
-    test "closes before init when the account was disabled after connect", %{
+    test "disconnects before init when the account was disabled after connect", %{
       account: account,
       gateway: gateway,
       site: site,
@@ -1617,8 +1617,8 @@ defmodule PortalAPI.Gateway.ChannelTest do
       update_account(account, is_disabled: true)
 
       assert {:shutdown, _} = catch_exit(join_channel(gateway, site, token))
+      assert_push "disconnect", %{reason: "token_expired"}
       refute_push "init", _
-      refute_push "disconnect", _
     end
 
     test "resends init when gateway tunnel IPs change", %{
