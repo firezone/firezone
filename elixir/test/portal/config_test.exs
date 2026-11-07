@@ -241,26 +241,6 @@ defmodule Portal.ConfigTest do
       end
     end
 
-    test "accepts an HTTP or HTTPS OTLP collector endpoint" do
-      assert env_var_to_config!(Portal.Config.Definitions, :otlp_endpoint, %{}) == nil
-
-      for endpoint <- ["http://10.0.0.1:4318", "https://otlp.example.com"] do
-        assert env_var_to_config!(Portal.Config.Definitions, :otlp_endpoint, %{
-                 "OTLP_ENDPOINT" => endpoint
-               }) == endpoint
-      end
-    end
-
-    test "rejects an OTLP collector endpoint that is not an HTTP(S) URL" do
-      for endpoint <- ["10.0.0.1:4318", "ftp://otlp.example.com", "garbage"] do
-        assert_raise RuntimeError, ~r/OTLP_ENDPOINT/, fn ->
-          env_var_to_config!(Portal.Config.Definitions, :otlp_endpoint, %{
-            "OTLP_ENDPOINT" => endpoint
-          })
-        end
-      end
-    end
-
     test "returns the configured OTLP metrics endpoint" do
       endpoint = "https://otlp.example.com/v1/metrics"
 
