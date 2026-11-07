@@ -264,7 +264,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
           socket.assigns.gateway.last_seen_remote_ip_location_lon
         }
 
-        relays = load_balance_relays(location, all_online_relays)
+        relays = Portal.Routing.select_relays(all_online_relays, location)
         socket = cache_relays(socket, relays, disconnected_ids)
 
         push(socket, "relays_presence", %{
@@ -797,7 +797,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
       socket.assigns.gateway.last_seen_remote_ip_location_lon
     }
 
-    relays = load_balance_relays(location, relays)
+    relays = Portal.Routing.select_relays(relays, location)
 
     {:ok, relays}
   end
@@ -1114,31 +1114,6 @@ defmodule PortalAPI.Gateway.Channel.Shared do
         assign(socket, authz_durability: rest)
     end
   end
-
-  defp load_balance_relays({lat, lon}, relays) when is_nil(lat) or is_nil(lon) do
-    relays
-    |> Enum.shuffle()
-    |> Enum.take(2)
-  end
-
-  defp load_balance_relays({lat, lon}, relays) do
-    relays
-    |> Enum.shuffle()
-    |> Enum.map(fn relay ->
-      case {relay.lat, relay.lon} do
-        {nil, _} -> {nil, relay}
-        {_, nil} -> {nil, relay}
-        {relay_lat, relay_lon} -> {Portal.Geo.distance({lat, lon}, {relay_lat, relay_lon}), relay}
-      end
-    end)
-    |> Enum.sort_by(&elem(&1, 0), &nils_last/2)
-    |> Enum.take(2)
-    |> Enum.map(&elem(&1, 1))
-  end
-
-  defp nils_last(nil, _), do: false
-  defp nils_last(_, nil), do: true
-  defp nils_last(a, b), do: a <= b
 
   defp register(socket) do
     current_pid = socket.assigns[:pg_scope_pid]

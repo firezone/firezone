@@ -306,7 +306,7 @@ defmodule PortalAPI.Client.Channel.Shared do
           socket.assigns.subject.context.remote_ip_location_lon
         }
 
-        relays = load_balance_relays(location, all_online_relays)
+        relays = Portal.Routing.select_relays(all_online_relays, location)
         socket = cache_relays(socket, relays, disconnected_ids)
 
         push(socket, "relays_presence", %{
@@ -951,19 +951,8 @@ defmodule PortalAPI.Client.Channel.Shared do
              resource_id,
              socket.assigns.subject
            ),
-         {:ok, gateways} when gateways != [] <-
-           Portal.Routing.candidates(
-             resource,
-             socket.assigns.client_version,
-             socket.assigns.subject.account.id
-           ) do
-      location = {
-        socket.assigns.subject.context.remote_ip_location_lat,
-        socket.assigns.subject.context.remote_ip_location_lon
-      }
-
-      gateway = Portal.Routing.select_receiver(gateways, location, connected_gateway_ids)
-
+         {:ok, gateway} <-
+           Portal.Routing.select_receiver(resource, initiator(socket), connected_gateway_ids) do
       reply =
         {:ok,
          %{
@@ -978,7 +967,7 @@ defmodule PortalAPI.Client.Channel.Shared do
       {:error, :not_found} ->
         {:reply, {:error, %{reason: :not_found}}, socket}
 
-      {:ok, []} ->
+      {:error, :offline} ->
         {:reply, {:error, %{reason: :offline}}, socket}
 
       {:error, :version_mismatch} ->
@@ -1460,18 +1449,8 @@ defmodule PortalAPI.Client.Channel.Shared do
          socket,
          address
        ) do
-    case Portal.Routing.candidates(
-           resource,
-           socket.assigns.client_version,
-           socket.assigns.subject.account.id
-         ) do
-      {:ok, [_ | _] = gateways} ->
-        location = {
-          socket.assigns.subject.context.remote_ip_location_lat,
-          socket.assigns.subject.context.remote_ip_location_lon
-        }
-
-        gateway = Portal.Routing.select_receiver(gateways, location, connected_gateway_ids)
+    case Portal.Routing.select_receiver(resource, initiator(socket), connected_gateway_ids) do
+      {:ok, gateway} ->
         gateway_public_key = gateway.public_key
 
         policy_authorization_id = Ecto.UUID.generate()
@@ -1557,7 +1536,7 @@ defmodule PortalAPI.Client.Channel.Shared do
             {:noreply, socket}
         end
 
-      {:ok, []} ->
+      {:error, :offline} ->
         push_authorization_creation_failed(socket, resource_id, :offline, address)
         {:noreply, socket}
 
@@ -2103,9 +2082,19 @@ defmodule PortalAPI.Client.Channel.Shared do
       socket.assigns.subject.context.remote_ip_location_lon
     }
 
-    relays = load_balance_relays(location, relays)
+    relays = Portal.Routing.select_relays(relays, location)
 
     {:ok, relays}
+  end
+
+  defp initiator(socket) do
+    %{
+      account_id: socket.assigns.subject.account.id,
+      version: socket.assigns.client_version,
+      location:
+        {socket.assigns.subject.context.remote_ip_location_lat,
+         socket.assigns.subject.context.remote_ip_location_lon}
+    }
   end
 
   # Every relay we handed out and did not report disconnected: connlib may still
@@ -2865,31 +2854,6 @@ defmodule PortalAPI.Client.Channel.Shared do
 
     {:noreply, assign(socket, cache: cache)}
   end
-
-  defp load_balance_relays({lat, lon}, relays) when is_nil(lat) or is_nil(lon) do
-    relays
-    |> Enum.shuffle()
-    |> Enum.take(2)
-  end
-
-  defp load_balance_relays({lat, lon}, relays) do
-    relays
-    |> Enum.shuffle()
-    |> Enum.map(fn relay ->
-      case {relay.lat, relay.lon} do
-        {nil, _} -> {nil, relay}
-        {_, nil} -> {nil, relay}
-        {relay_lat, relay_lon} -> {Portal.Geo.distance({lat, lon}, {relay_lat, relay_lon}), relay}
-      end
-    end)
-    |> Enum.sort_by(&elem(&1, 0), &nils_last/2)
-    |> Enum.take(2)
-    |> Enum.map(&elem(&1, 1))
-  end
-
-  defp nils_last(nil, _), do: false
-  defp nils_last(_, nil), do: true
-  defp nils_last(a, b), do: a <= b
 
   # Builds the attrs map for a `Portal.PolicyAuthorization` row. The caller
   # passes this to `Portal.Queue.enqueue/3` with a `:dispatch` callback that

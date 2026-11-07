@@ -1,57 +1,105 @@
 defmodule Portal.Routing do
   @moduledoc """
-  Picks the device that serves a resource for an initiating device.
+  Selects which device serves a resource, and which relays a device uses.
 
-  Candidates are the online gateways in the resource's site whose version is
-  compatible with the initiator's. The receiver among them is the nearest,
-  then the newest, then one at random, preferring any the initiator is already
-  connected to. Every rule about who may serve what lives here so it has one
-  home when it changes.
+  Both pick the nearest candidates to a location, at random among equals.
   """
 
   alias Portal.Cache.Cacheable
   alias Portal.Device
   alias Portal.Presence
+  alias Portal.Relay
 
-  @typedoc "Where the initiator connects from, as the portal's geo lookup reported it."
+  @relays_per_device 2
+
   @type location :: {float() | nil, float() | nil}
+  @type initiator :: %{account_id: Ecto.UUID.t(), version: String.t() | nil, location: location()}
 
   @doc """
-  The online devices in the resource's site that can serve `resource` for an
-  initiator on `initiator_version`.
+  The online device that serves `resource` for `initiator`.
 
-  `{:error, :version_mismatch}` means the site has online devices but none
-  compatible, which the initiator is told apart from an empty site.
+  Only devices in the resource's site whose version is compatible with the
+  initiator's are considered, and any of `preferred_ids` among them are chosen
+  over the rest. Then the nearest, then the newest.
   """
-  @spec candidates(Cacheable.Resource.t(), String.t() | nil, Ecto.UUID.t()) ::
-          {:ok, [Device.t()]} | {:error, :version_mismatch}
-  def candidates(%Cacheable.Resource{site: site} = resource, initiator_version, account_id) do
+  @spec select_receiver(Cacheable.Resource.t(), initiator(), [Ecto.UUID.t()]) ::
+          {:ok, Device.t()} | {:error, :offline | :version_mismatch}
+  def select_receiver(%Cacheable.Resource{site: site} = resource, initiator, preferred_ids) do
     site_id = Ecto.UUID.load!(site.id)
 
-    site_devices =
-      account_id
+    online =
+      initiator.account_id
       |> Presence.Devices.all_connected_gateways()
       |> Enum.filter(&(&1.site_id == site_id))
 
-    compatible = compatible_devices(site_devices, resource, initiator_version)
+    case compatible_devices(online, resource, initiator.version) do
+      [] when online == [] ->
+        {:error, :offline}
 
-    cond do
-      compatible != [] -> {:ok, compatible}
-      site_devices != [] -> {:error, :version_mismatch}
-      true -> {:ok, []}
+      [] ->
+        {:error, :version_mismatch}
+
+      compatible ->
+        receiver =
+          compatible
+          |> prefer(preferred_ids)
+          |> rank(initiator.location, &device_coordinates/1, &parse_version(&1.last_seen_version))
+          |> hd()
+
+        {:ok, receiver}
     end
   end
 
   @doc """
-  The device among `candidates` that serves this request.
-
-  Nearest to `location` first, then the newest version, then at random. Any of
-  `preferred_ids` present among the candidates are chosen over the rest, so an
-  initiator keeps using a device it already has a connection to.
+  The relays among `relays` that a device at `location` uses.
   """
-  @spec select_receiver([Device.t()], location(), [Ecto.UUID.t()]) :: Device.t() | nil
-  def select_receiver(candidates, location, preferred_ids) do
-    Device.load_balance_gateways(location, candidates, preferred_ids)
+  @spec select_relays([Relay.t()], location()) :: [Relay.t()]
+  def select_relays(relays, location) do
+    relays
+    |> rank(location, &{&1.lat, &1.lon}, fn _relay -> nil end)
+    |> Enum.take(@relays_per_device)
+  end
+
+  defp prefer(devices, preferred_ids) do
+    case Enum.filter(devices, &(&1.id in preferred_ids)) do
+      [] -> devices
+      preferred -> preferred
+    end
+  end
+
+  # Shuffled first and sorted stably, so equals stay in random order.
+  defp rank(candidates, location, coordinates, version) do
+    candidates
+    |> Enum.shuffle()
+    |> Enum.sort_by(version, &newer_or_equal?/2)
+    |> Enum.sort_by(&distance(location, coordinates.(&1)), &nearer_or_equal?/2)
+  end
+
+  defp device_coordinates(device) do
+    {device.last_seen_remote_ip_location_lat, device.last_seen_remote_ip_location_lon}
+  end
+
+  defp distance({lat, lon}, {other_lat, other_lon})
+       when is_nil(lat) or is_nil(lon) or is_nil(other_lat) or is_nil(other_lon),
+       do: nil
+
+  defp distance(location, other), do: Portal.Geo.distance(location, other)
+
+  defp nearer_or_equal?(_distance, nil), do: true
+  defp nearer_or_equal?(nil, _distance), do: false
+  defp nearer_or_equal?(distance, other), do: distance <= other
+
+  defp newer_or_equal?(_version, nil), do: true
+  defp newer_or_equal?(nil, _version), do: false
+  defp newer_or_equal?(version, other), do: Version.compare(version, other) != :lt
+
+  defp parse_version(nil), do: nil
+
+  defp parse_version(version) do
+    case Version.parse(version) do
+      {:ok, parsed} -> parsed
+      :error -> nil
+    end
   end
 
   defp compatible_devices(devices, _resource, nil), do: devices
@@ -65,7 +113,7 @@ defmodule Portal.Routing do
 
   defp compatible_version?(%Device{last_seen_version: nil}, _resource, _version), do: false
 
-  defp compatible_version?(%Device{last_seen_version: device_version} = _device, resource, version) do
+  defp compatible_version?(%Device{last_seen_version: device_version}, resource, version) do
     case Version.parse(device_version) do
       {:ok, parsed} ->
         Version.match?(parsed, ">= #{version.major}.#{version.minor - 1}.0") and

@@ -322,46 +322,6 @@ defmodule Portal.Device do
 
   # Gateway device helpers
 
-  def load_balance_gateways({_lat, _lon}, []) do
-    nil
-  end
-
-  def load_balance_gateways({lat, lon}, gateways) when is_nil(lat) or is_nil(lon) do
-    Enum.random(gateways)
-  end
-
-  def load_balance_gateways({lat, lon}, gateways) do
-    gateways
-    |> Enum.group_by(fn gateway ->
-      {gateway.last_seen_remote_ip_location_lat, gateway.last_seen_remote_ip_location_lon}
-    end)
-    |> Enum.map(fn
-      {{gateway_lat, gateway_lon}, gateway} when is_nil(gateway_lat) or is_nil(gateway_lon) ->
-        {nil, gateway}
-
-      {{gateway_lat, gateway_lon}, gateway} ->
-        distance = Portal.Geo.distance({lat, lon}, {gateway_lat, gateway_lon})
-        {distance, gateway}
-    end)
-    |> Enum.sort_by(&elem(&1, 0))
-    |> List.first()
-    |> elem(1)
-    |> Enum.group_by(& &1.last_seen_version)
-    |> Enum.sort_by(&elem(&1, 0), :desc)
-    |> Enum.at(0)
-    |> elem(1)
-    |> Enum.random()
-  end
-
-  def load_balance_gateways({lat, lon}, gateways, preferred_gateway_ids) do
-    gateways
-    |> Enum.filter(&(&1.id in preferred_gateway_ids))
-    |> case do
-      [] -> load_balance_gateways({lat, lon}, gateways)
-      preferred_gateways -> load_balance_gateways({lat, lon}, preferred_gateways)
-    end
-  end
-
   def gateway_outdated?(gateway) do
     latest_release = Portal.ComponentVersions.gateway_version()
     version = gateway.last_seen_version

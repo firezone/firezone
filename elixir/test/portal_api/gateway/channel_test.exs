@@ -1776,7 +1776,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       site: site,
       token: token
     } do
-      # Mix of relays with and without lat/lon to exercise the nils_last comparator
+      # Mix of relays with and without lat/lon to exercise the ordering of unknown locations
       # in both pairwise orders during sort.
       relay_with_loc = relay_fixture(%{lat: 37.0, lon: -120.0})
       :ok = Portal.Presence.Relays.connect(relay_with_loc)
@@ -4862,7 +4862,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       assert length(relay_ids) <= 2
     end
 
-    test "load_balance_relays defers relays with lat but nil lon", %{
+    test "defers relays with lat but nil lon", %{
       account: account,
       site: site,
       token: token
