@@ -12,6 +12,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
     PubSub,
     Resource,
     Presence,
+    Routing,
     SchemaHelpers,
     Telemetry
   }
@@ -264,7 +265,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
           socket.assigns.gateway.last_seen_remote_ip_location_lon
         }
 
-        relays = Portal.Routing.select_relays(all_online_relays, location)
+        relays = Routing.select_relays(all_online_relays, location)
         socket = cache_relays(socket, relays, disconnected_ids)
 
         push(socket, "relays_presence", %{
@@ -797,7 +798,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
       socket.assigns.gateway.last_seen_remote_ip_location_lon
     }
 
-    relays = Portal.Routing.select_relays(relays, location)
+    relays = Routing.select_relays(relays, location)
 
     {:ok, relays}
   end

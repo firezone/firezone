@@ -12,6 +12,7 @@ defmodule PortalAPI.Client.Channel.Shared do
     Changes.Change,
     PubSub,
     Presence,
+    Routing,
     SchemaHelpers,
     Authentication
   }
@@ -306,7 +307,7 @@ defmodule PortalAPI.Client.Channel.Shared do
           socket.assigns.subject.context.remote_ip_location_lon
         }
 
-        relays = Portal.Routing.select_relays(all_online_relays, location)
+        relays = Routing.select_relays(all_online_relays, location)
         socket = cache_relays(socket, relays, disconnected_ids)
 
         push(socket, "relays_presence", %{
@@ -952,7 +953,7 @@ defmodule PortalAPI.Client.Channel.Shared do
              socket.assigns.subject
            ),
          {:ok, gateway} <-
-           Portal.Routing.select_receiver(resource, initiator(socket), connected_gateway_ids) do
+           Routing.select_receiver(resource, initiator(socket), connected_gateway_ids) do
       reply =
         {:ok,
          %{
@@ -1449,7 +1450,7 @@ defmodule PortalAPI.Client.Channel.Shared do
          socket,
          address
        ) do
-    case Portal.Routing.select_receiver(resource, initiator(socket), connected_gateway_ids) do
+    case Routing.select_receiver(resource, initiator(socket), connected_gateway_ids) do
       {:ok, gateway} ->
         gateway_public_key = gateway.public_key
 
@@ -2082,7 +2083,7 @@ defmodule PortalAPI.Client.Channel.Shared do
       socket.assigns.subject.context.remote_ip_location_lon
     }
 
-    relays = Portal.Routing.select_relays(relays, location)
+    relays = Routing.select_relays(relays, location)
 
     {:ok, relays}
   end

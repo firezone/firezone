@@ -7,8 +7,10 @@ defmodule Portal.Routing do
 
   alias Portal.Cache.Cacheable
   alias Portal.Device
+  alias Portal.Geo
   alias Portal.Presence
   alias Portal.Relay
+  alias Portal.Resource
 
   @relays_per_device 2
 
@@ -83,7 +85,7 @@ defmodule Portal.Routing do
        when is_nil(lat) or is_nil(lon) or is_nil(other_lat) or is_nil(other_lon),
        do: nil
 
-  defp distance(location, other), do: Portal.Geo.distance(location, other)
+  defp distance(location, other), do: Geo.distance(location, other)
 
   defp nearer_or_equal?(_distance, nil), do: true
   defp nearer_or_equal?(nil, _distance), do: false
@@ -118,7 +120,7 @@ defmodule Portal.Routing do
       {:ok, parsed} ->
         Version.match?(parsed, ">= #{version.major}.#{version.minor - 1}.0") and
           Version.match?(parsed, "< #{version.major}.#{version.minor + 2}.0") and
-          not is_nil(Portal.Resource.adapt_resource_for_version(resource, device_version))
+          not is_nil(Resource.adapt_resource_for_version(resource, device_version))
 
       :error ->
         false
