@@ -6,6 +6,7 @@ defmodule PortalAPI.ActorControllerTest do
   import Ecto.Query
   import Portal.AccountFixtures
   import Portal.ActorFixtures
+  import Portal.AuthProviderFixtures
   import Portal.DeviceFixtures
   import Portal.IdentityFixtures
   import Portal.OAuthFixtures
@@ -729,6 +730,57 @@ defmodule PortalAPI.ActorControllerTest do
 
       refute Repo.get_by(ExternalIdentity, id: identity1.id, account_id: account.id)
       refute Repo.get_by(ExternalIdentity, id: identity2.id, account_id: account.id)
+    end
+
+    test "deletes portal sessions and client tokens when email is changed", %{
+      conn: conn,
+      account: account,
+      actor: api_actor
+    } do
+      auth_provider = userpass_provider_fixture(account: account).auth_provider
+      target = actor_with_email_fixture(account: account)
+      portal_session = portal_session_fixture(account: account, actor: target, auth_provider: auth_provider)
+      client_token = client_token_fixture(account: account, actor: target)
+      other_actor = actor_with_email_fixture(account: account)
+
+      other_portal_session =
+        portal_session_fixture(account: account, actor: other_actor, auth_provider: auth_provider)
+
+      other_client_token = client_token_fixture(account: account, actor: other_actor)
+
+      conn =
+        conn
+        |> authorize_conn(api_actor)
+        |> put_req_header("content-type", "application/json")
+        |> put("/actors/#{target.id}", actor: %{"email" => "rotated-#{target.email}"})
+
+      assert json_response(conn, 200)
+
+      refute Repo.get_by(Portal.PortalSession, id: portal_session.id, account_id: account.id)
+      refute Repo.get_by(Portal.ClientToken, id: client_token.id, account_id: account.id)
+      assert Repo.get_by(Portal.PortalSession, id: other_portal_session.id, account_id: account.id)
+      assert Repo.get_by(Portal.ClientToken, id: other_client_token.id, account_id: account.id)
+    end
+
+    test "keeps portal sessions and client tokens when email is unchanged", %{
+      conn: conn,
+      account: account,
+      actor: api_actor
+    } do
+      target = actor_with_email_fixture(account: account)
+      portal_session = portal_session_fixture(account: account, actor: target)
+      client_token = client_token_fixture(account: account, actor: target)
+
+      conn =
+        conn
+        |> authorize_conn(api_actor)
+        |> put_req_header("content-type", "application/json")
+        |> put("/actors/#{target.id}", actor: %{"name" => "Renamed", "email" => target.email})
+
+      assert json_response(conn, 200)
+
+      assert Repo.get_by(Portal.PortalSession, id: portal_session.id, account_id: account.id)
+      assert Repo.get_by(Portal.ClientToken, id: client_token.id, account_id: account.id)
     end
 
     test "does not clear identities when email is unchanged", %{
