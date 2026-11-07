@@ -1566,6 +1566,61 @@ defmodule PortalAPI.Gateway.ChannelTest do
       assert payload.account_slug == "new-slug"
     end
 
+    test "disconnects when the account is disabled", %{
+      account: account,
+      gateway: gateway,
+      site: site,
+      token: token
+    } do
+      Process.flag(:trap_exit, true)
+      socket = join_channel(gateway, site, token)
+      assert_push "init", _init_payload
+
+      send(socket.channel_pid, %Changes.Change{
+        lsn: System.unique_integer([:positive, :monotonic]),
+        op: :delete,
+        old_struct: account
+      })
+
+      assert_push "disconnect", %{reason: "token_expired"}
+      assert_receive {:EXIT, _pid, :shutdown}
+    end
+
+    test "disconnects on an update that disables the account", %{
+      account: account,
+      gateway: gateway,
+      site: site,
+      token: token
+    } do
+      Process.flag(:trap_exit, true)
+      socket = join_channel(gateway, site, token)
+      assert_push "init", _init_payload
+
+      send(socket.channel_pid, %Changes.Change{
+        lsn: System.unique_integer([:positive, :monotonic]),
+        op: :update,
+        old_struct: account,
+        struct: %{account | is_disabled: true}
+      })
+
+      assert_push "disconnect", %{reason: "token_expired"}
+      assert_receive {:EXIT, _pid, :shutdown}
+    end
+
+    test "disconnects before init when the account was disabled after connect", %{
+      account: account,
+      gateway: gateway,
+      site: site,
+      token: token
+    } do
+      Process.flag(:trap_exit, true)
+      update_account(account, is_disabled: true)
+
+      assert {:shutdown, _} = catch_exit(join_channel(gateway, site, token))
+      assert_push "disconnect", %{reason: "token_expired"}
+      refute_push "init", _
+    end
+
     test "resends init when gateway tunnel IPs change", %{
       gateway: gateway,
       site: site,

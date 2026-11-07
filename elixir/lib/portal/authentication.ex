@@ -684,6 +684,8 @@ defmodule Portal.Authentication do
         where: gt.account_id == ^account_id,
         where: gt.id == ^id,
         where: is_nil(gt.rotated_at) or gt.rotated_at > ago(^grace_hours, "hour"),
+        join: account in Account,
+        on: account.id == gt.account_id and account.is_disabled == false,
         left_join: sibling in Portal.GatewayToken,
         on:
           sibling.account_id == gt.account_id and sibling.device_id == gt.device_id and

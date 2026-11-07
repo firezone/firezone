@@ -1250,7 +1250,7 @@ defmodule Portal.AuthenticationTest do
       assert verified_token.id == token.id
     end
 
-    test "gateway token verification succeeds for disabled account" do
+    test "gateway token verification fails for a disabled account" do
       account = account_fixture()
       site = site_fixture(account: account)
       token = gateway_token_fixture(account: account, site: site)
@@ -1260,8 +1260,7 @@ defmodule Portal.AuthenticationTest do
       |> Ecto.Changeset.change(is_disabled: true)
       |> Portal.Repo.update!()
 
-      assert {:ok, verified_token} = verify_gateway_token(encoded)
-      assert verified_token.id == token.id
+      assert verify_gateway_token(encoded) == {:error, :invalid_token}
     end
 
     test "returns error when fragment is wrong" do
