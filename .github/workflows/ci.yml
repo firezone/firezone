@@ -182,7 +182,10 @@ jobs:
         tauri,
         codeql,
         control-plane,
-        data-plane,
+        client,
+        gateway,
+        relay,
+        http-test-server,
         integration-tests,
         compatibility-tests,
         nix,
@@ -423,10 +426,10 @@ jobs:
       packages: write # push Docker images to GHCR
       security-events: write # upload Trivy SARIF results
 
-  data-plane:
+  client:
     needs: planner
     if: contains(needs.planner.outputs.jobs_to_run, 'data-plane')
-    uses: ./.github/workflows/_data-plane.yml
+    uses: ./.github/workflows/_client.yml
     secrets: inherit
     permissions:
       contents: write # create/update GitHub releases
@@ -434,6 +437,55 @@ jobs:
       packages: write # push Docker images to GHCR
       security-events: write # upload Trivy SARIF results
     with:
+      # Build debug/ on PRs and merge group, no prefix for production release images
+      image_prefix: ${{ ((github.event_name == 'pull_request' || github.event_name == 'merge_group') && 'debug') || '' }}
+      profile: ${{ inputs.profile || 'debug' }}
+      stage: ${{ inputs.stage || 'debug' }}
+
+  gateway:
+    needs: planner
+    if: contains(needs.planner.outputs.jobs_to_run, 'data-plane')
+    uses: ./.github/workflows/_gateway.yml
+    secrets: inherit
+    permissions:
+      contents: write # create/update GitHub releases
+      id-token: write # OIDC auth
+      packages: write # push Docker images to GHCR
+      security-events: write # upload Trivy SARIF results
+    with:
+      # Build debug/ on PRs and merge group, no prefix for production release images
+      image_prefix: ${{ ((github.event_name == 'pull_request' || github.event_name == 'merge_group') && 'debug') || '' }}
+      profile: ${{ inputs.profile || 'debug' }}
+      stage: ${{ inputs.stage || 'debug' }}
+
+  relay:
+    needs: planner
+    if: contains(needs.planner.outputs.jobs_to_run, 'data-plane')
+    uses: ./.github/workflows/_relay.yml
+    secrets: inherit
+    permissions:
+      contents: read
+      id-token: write # OIDC auth
+      packages: write # push Docker images to GHCR
+      security-events: write # upload Trivy SARIF results
+    with:
+      # Build debug/ on PRs and merge group, no prefix for production release images
+      image_prefix: ${{ ((github.event_name == 'pull_request' || github.event_name == 'merge_group') && 'debug') || '' }}
+      profile: ${{ inputs.profile || 'debug' }}
+      stage: ${{ inputs.stage || 'debug' }}
+
+  http-test-server:
+    needs: planner
+    if: contains(needs.planner.outputs.jobs_to_run, 'data-plane')
+    uses: ./.github/workflows/_rust-docker-image.yml
+    secrets: inherit
+    permissions:
+      contents: read
+      packages: write # push Docker images to GHCR
+      security-events: write # upload Trivy SARIF results
+    with:
+      package: http-test-server
+      image_name: http-test-server
       # Build debug/ on PRs and merge group, no prefix for production release images
       image_prefix: ${{ ((github.event_name == 'pull_request' || github.event_name == 'merge_group') && 'debug') || '' }}
       profile: ${{ inputs.profile || 'debug' }}
@@ -450,7 +502,7 @@ jobs:
 
   integration-tests:
     uses: ./.github/workflows/_integration_tests.yml
-    needs: [control-plane, data-plane]
+    needs: [control-plane, client, gateway, relay, http-test-server]
     secrets: inherit
     permissions:
       contents: read
@@ -459,24 +511,24 @@ jobs:
     with:
       id: integration
       api_fuzz: true
-      gateway_image: ${{ needs.data-plane.outputs.gateway_image }}
-      client_image: ${{ needs.data-plane.outputs.client_image }}
-      relay_image: ${{ needs.data-plane.outputs.relay_image }}
-      http_test_server_image: ${{ needs.data-plane.outputs.http_test_server_image }}
+      gateway_image: ${{ needs.gateway.outputs.gateway_image }}
+      client_image: ${{ needs.client.outputs.client_image }}
+      relay_image: ${{ needs.relay.outputs.relay_image }}
+      http_test_server_image: ${{ needs.http-test-server.outputs.image }}
 
   compatibility-tests:
     strategy:
       fail-fast: ${{ github.event_name == 'merge_group' }}
       matrix:
         client:
-          - image: ${{ needs.data-plane.outputs.client_image }}
+          - image: ${{ needs.client.outputs.client_image }}
             tag: ${{ github.sha }}
             ci-name: sha
           - image: "ghcr.io/firezone/client"
             tag: "latest"
             ci-name: latest
         gateway:
-          - image: ${{ needs.data-plane.outputs.gateway_image }}
+          - image: ${{ needs.gateway.outputs.gateway_image }}
             tag: ${{ github.sha }}
             ci-name: sha
           - image: "ghcr.io/firezone/gateway"
@@ -488,7 +540,7 @@ jobs:
     if: ${{ github.event_name == 'pull_request' || github.event_name == 'merge_group' }}
     name: compatibility-tests-client(${{ matrix.client.ci-name }})-gateway(${{ matrix.gateway.ci-name }})
     uses: ./.github/workflows/_integration_tests.yml
-    needs: [control-plane, data-plane]
+    needs: [control-plane, client, gateway, relay, http-test-server]
     secrets: inherit
     permissions:
       contents: read
