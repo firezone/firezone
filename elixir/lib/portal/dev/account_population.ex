@@ -776,6 +776,12 @@ defmodule Portal.Dev.AccountPopulation do
       |> Device.changeset()
       |> Repo.insert!()
 
+    Repo.insert!(%Portal.SiteDevice{
+      account_id: state.account.id,
+      site_id: site.id,
+      device_id: gateway.id
+    })
+
     {token, state} =
       case Map.fetch(state.gateway_tokens, site.id) do
         {:ok, token} ->

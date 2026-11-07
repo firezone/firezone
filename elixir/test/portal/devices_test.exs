@@ -12,6 +12,7 @@ defmodule Portal.DevicesTest do
   alias Portal.Device
   alias Portal.Devices
   alias Portal.GatewayToken
+  alias Portal.SiteDevice
 
   describe "provision_gateway/3" do
     test "creates a gateway and mints its single-owner token" do
@@ -27,6 +28,12 @@ defmodule Portal.DevicesTest do
       assert gateway.site_id == site.id
       assert gateway.account_id == site.account_id
       assert gateway.type == :gateway
+
+      assert Repo.get_by(SiteDevice,
+               account_id: account.id,
+               site_id: site.id,
+               device_id: gateway.id
+             )
 
       assert token.device_id == gateway.id
       assert is_nil(token.site_id)
@@ -57,6 +64,11 @@ defmodule Portal.DevicesTest do
 
       assert Repo.aggregate(
                from(t in GatewayToken, where: t.account_id == ^account.id),
+               :count
+             ) == 0
+
+      assert Repo.aggregate(
+               from(sd in SiteDevice, where: sd.account_id == ^account.id),
                :count
              ) == 0
     end

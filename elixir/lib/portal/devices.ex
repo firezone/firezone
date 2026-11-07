@@ -99,13 +99,22 @@ defmodule Portal.Devices do
     def insert_gateway(site, name, subject) do
       name = name || Portal.Crypto.random_token(5, encoder: :user_friendly)
 
-      %Device{}
-      |> Ecto.Changeset.cast(%{name: name}, [:name])
-      |> Ecto.Changeset.put_change(:type, :gateway)
-      |> Ecto.Changeset.put_change(:site_id, site.id)
-      |> put_free_slug(subject.account.id, nil)
-      |> Safe.scoped(subject)
-      |> Safe.insert()
+      Safe.transact(fn ->
+        with {:ok, gateway} <-
+               %Device{}
+               |> Ecto.Changeset.cast(%{name: name}, [:name])
+               |> Ecto.Changeset.put_change(:type, :gateway)
+               |> Ecto.Changeset.put_change(:site_id, site.id)
+               |> put_free_slug(subject.account.id, nil)
+               |> Safe.scoped(subject)
+               |> Safe.insert(),
+             {:ok, _site_device} <-
+               %Portal.SiteDevice{site_id: site.id, device_id: gateway.id}
+               |> Safe.scoped(subject)
+               |> Safe.insert() do
+          {:ok, gateway}
+        end
+      end)
     end
 
     def put_free_slug(changeset, account_id, owner_name) do

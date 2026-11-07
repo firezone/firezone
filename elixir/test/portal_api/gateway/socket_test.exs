@@ -150,6 +150,12 @@ defmodule PortalAPI.Gateway.SocketTest do
       assert is_nil(persisted.identifier_for_vendor)
       assert is_nil(persisted.firebase_installation_id)
 
+      assert Portal.Repo.get_by(Portal.SiteDevice,
+               account_id: gateway.account_id,
+               site_id: token.site_id,
+               device_id: gateway.id
+             )
+
       assert is_reference(Map.fetch!(socket.assigns, :session_ref))
       assert gateway.public_key == attrs["public_key"]
       assert gateway.last_seen_user_agent == connect_info.user_agent

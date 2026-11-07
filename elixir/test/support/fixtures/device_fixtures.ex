@@ -332,6 +332,12 @@ defmodule Portal.DeviceFixtures do
       |> Portal.Device.changeset()
       |> Portal.Repo.insert()
 
+    Portal.Repo.insert!(%Portal.SiteDevice{
+      account_id: account.id,
+      site_id: site.id,
+      device_id: gateway.id
+    })
+
     ipv4 =
       attrs
       |> Map.fetch(:ipv4_address)
