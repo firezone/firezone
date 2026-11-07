@@ -1724,13 +1724,27 @@ defmodule PortalWeb.Actors do
       actor_id = changeset.data.id
 
       with {:ok, actor} <- update_actor_changeset(changeset, subject),
-           {_count, _} <- clear_identities_for_actor(actor_id, subject) do
+           {count, _} when is_integer(count) <- clear_identities_for_actor(actor_id, subject),
+           {count, _} when is_integer(count) <- clear_portal_sessions_for_actor(actor_id, subject),
+           {count, _} when is_integer(count) <- clear_client_tokens_for_actor(actor_id, subject) do
         {:ok, actor}
       end
     end
 
     defp clear_identities_for_actor(actor_id, subject) do
       from(i in ExternalIdentity, where: i.actor_id == ^actor_id)
+      |> Safe.scoped(subject)
+      |> Safe.delete_all()
+    end
+
+    defp clear_portal_sessions_for_actor(actor_id, subject) do
+      from(s in PortalSession, where: s.actor_id == ^actor_id)
+      |> Safe.scoped(subject)
+      |> Safe.delete_all()
+    end
+
+    defp clear_client_tokens_for_actor(actor_id, subject) do
+      from(c in ClientToken, where: c.actor_id == ^actor_id)
       |> Safe.scoped(subject)
       |> Safe.delete_all()
     end

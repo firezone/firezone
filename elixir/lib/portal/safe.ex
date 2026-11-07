@@ -942,6 +942,7 @@ defmodule Portal.Safe do
   def permit(:read, Portal.LogSinkCursor, :account_admin_user), do: :ok
 
   def permit(_action, Portal.PortalSession, :account_admin_user), do: :ok
+  def permit(:delete_all, Portal.PortalSession, :api_client), do: :ok
 
   # Oban.Job permissions - admin only
   def permit(:read, Oban.Job, :account_admin_user), do: :ok

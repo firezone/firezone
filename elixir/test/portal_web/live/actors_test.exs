@@ -1201,6 +1201,41 @@ defmodule PortalWeb.ActorsTest do
                "changed-#{other_actor.email}"
     end
 
+    test "deletes portal sessions and client tokens when email change is confirmed", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      other_actor = actor_with_email_fixture(account: account)
+      auth_provider = userpass_provider_fixture(account: account).auth_provider
+
+      portal_session =
+        portal_session_fixture(account: account, actor: other_actor, auth_provider: auth_provider)
+
+      client_token = client_token_fixture(account: account, actor: other_actor)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/actors/#{other_actor}/edit")
+
+      lv
+      |> form("form[phx-submit='save']",
+        actor: %{
+          name: other_actor.name,
+          email: "changed-#{other_actor.email}",
+          type: "account_user",
+          allow_email_otp_sign_in: "true"
+        }
+      )
+      |> render_submit()
+
+      render_click(lv, "confirm_email_change")
+
+      refute Portal.Repo.get_by(Portal.PortalSession, id: portal_session.id, account_id: account.id)
+      refute Portal.Repo.get_by(Portal.ClientToken, id: client_token.id, account_id: account.id)
+    end
+
     test "re-runs role validation on confirmation (rejects if state changed mid-flow)", %{
       conn: conn,
       account: account,

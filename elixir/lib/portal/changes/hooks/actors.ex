@@ -14,6 +14,7 @@ defmodule Portal.Changes.Hooks.Actors do
   @impl true
   def on_update(lsn, old_data, data) do
     :ok = handle_update_side_effects(old_data, data)
+    :ok = handle_password_change(old_data, data)
 
     old_actor = struct_from_params(Portal.Actor, old_data)
     actor = struct_from_params(Portal.Actor, data)
@@ -64,6 +65,23 @@ defmodule Portal.Changes.Hooks.Actors do
   end
 
   defp handle_update_side_effects(_old_data, _new_data), do: :ok
+
+  defp handle_password_change(
+         %{"password_hash" => old_password_hash},
+         %{
+           "password_hash" => password_hash,
+           "account_id" => account_id,
+           "id" => actor_id
+         }
+       )
+       when old_password_hash != password_hash do
+    Database.delete_client_tokens_for_actor(account_id, actor_id)
+    Database.delete_portal_sessions_for_actor(account_id, actor_id)
+
+    :ok
+  end
+
+  defp handle_password_change(_old_data, _new_data), do: :ok
 
   defmodule Database do
     alias Portal.ClientToken

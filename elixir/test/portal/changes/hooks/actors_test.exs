@@ -164,6 +164,47 @@ defmodule Portal.Changes.Hooks.ActorsTest do
 
       assert Repo.get_by(Portal.OAuthToken, account_id: account.id, id: token.id)
     end
+
+    test "deletes client tokens and portal sessions when the password hash changes" do
+      account = account_fixture()
+      actor = actor_fixture(account: account)
+      client_token = client_token_fixture(account: account, actor: actor)
+      portal_session = portal_session_fixture(account: account, actor: actor)
+
+      old_data = %{
+        "id" => actor.id,
+        "account_id" => account.id,
+        "type" => "account_user",
+        "is_disabled" => false,
+        "password_hash" => "old-hash"
+      }
+
+      assert :ok == on_update(0, old_data, %{old_data | "password_hash" => "new-hash"})
+
+      refute Repo.get_by(Portal.ClientToken, account_id: account.id, id: client_token.id)
+      refute Repo.get_by(Portal.PortalSession, account_id: account.id, id: portal_session.id)
+    end
+
+    test "keeps client tokens and portal sessions when the password hash is unchanged" do
+      account = account_fixture()
+      actor = actor_fixture(account: account)
+      client_token = client_token_fixture(account: account, actor: actor)
+      portal_session = portal_session_fixture(account: account, actor: actor)
+
+      old_data = %{
+        "id" => actor.id,
+        "account_id" => account.id,
+        "name" => actor.name,
+        "type" => "account_user",
+        "is_disabled" => false,
+        "password_hash" => "same-hash"
+      }
+
+      assert :ok == on_update(0, old_data, %{old_data | "name" => "Renamed"})
+
+      assert Repo.get_by(Portal.ClientToken, account_id: account.id, id: client_token.id)
+      assert Repo.get_by(Portal.PortalSession, account_id: account.id, id: portal_session.id)
+    end
   end
 
   describe "on_delete/2" do
