@@ -37,6 +37,7 @@ defmodule Portal.Changes.Consumer do
     "email_otp_auth_providers" => Hooks.AuthProviders,
     "userpass_auth_providers" => Hooks.AuthProviders,
     "x509_auth_providers" => Hooks.X509AuthProviders,
+    "trust_anchor_certificates" => Hooks.TrustAnchorCertificates,
     "entra_directories" => Hooks.Directories,
     "okta_directories" => Hooks.Directories,
     "google_directories" => Hooks.Directories,

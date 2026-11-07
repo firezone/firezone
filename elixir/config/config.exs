@@ -192,6 +192,7 @@ config :portal, Portal.Changes.Consumer,
     sophos_devices
     relay_tokens
     portal_sessions
+    trust_anchor_certificates
   ],
   # Allow up to 60 seconds of lag before alerting
   warning_threshold: :timer.seconds(60),

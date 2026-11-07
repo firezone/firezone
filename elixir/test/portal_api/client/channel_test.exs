@@ -1241,6 +1241,70 @@ defmodule PortalAPI.Client.ChannelTest do
              )
     end
 
+    test "reconnects an X.509 session when a trust anchor certificate is deleted", %{
+      account: account,
+      client: client,
+      subject: subject
+    } do
+      Process.flag(:trap_exit, true)
+      provider = x509_provider_fixture(account: account, is_disabled: false)
+
+      credential = %Portal.Authentication.Credential.X509{
+        id: Ecto.UUID.generate(),
+        auth_provider_id: provider.id
+      }
+
+      join_channel(client, %{subject | credential: credential})
+      assert_push "init", _init_payload
+
+      assert :ok =
+               Portal.Changes.Hooks.TrustAnchorCertificates.on_delete(1, %{
+                 "id" => Ecto.UUID.generate(),
+                 "account_id" => account.id
+               })
+
+      refute_push "disconnect", %{}
+      assert_receive :socket_drain
+      assert_receive {:EXIT, _pid, :shutdown}
+    end
+
+    test "reconnects an attested session when a trust anchor certificate is deleted", %{
+      account: account,
+      client: client,
+      subject: subject
+    } do
+      Process.flag(:trap_exit, true)
+      join_channel(client, subject, attestation: %{issuer: <<"i">>, serial: "AABBCC"})
+      assert_push "init", _init_payload
+
+      assert :ok =
+               Portal.Changes.Hooks.TrustAnchorCertificates.on_delete(1, %{
+                 "id" => Ecto.UUID.generate(),
+                 "account_id" => account.id
+               })
+
+      assert_receive :socket_drain
+      assert_receive {:EXIT, _pid, :shutdown}
+    end
+
+    test "keeps a session without a certificate when a trust anchor certificate is deleted", %{
+      account: account,
+      client: client,
+      subject: subject
+    } do
+      socket = join_channel(client, subject, attestation: nil)
+      assert_push "init", _init_payload
+
+      assert :ok =
+               Portal.Changes.Hooks.TrustAnchorCertificates.on_delete(1, %{
+                 "id" => Ecto.UUID.generate(),
+                 "account_id" => account.id
+               })
+
+      refute_receive :socket_drain
+      assert Process.alive?(socket.channel_pid)
+    end
+
     test "ignores a revocation of a certificate this session is not using", %{
       client: client,
       subject: subject
