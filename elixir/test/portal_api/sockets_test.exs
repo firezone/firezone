@@ -112,12 +112,13 @@ defmodule PortalAPI.SocketsTest do
       assert_problem_json(result, "limits_exceeded")
     end
 
-    test "returns 403 for account_disabled" do
+    test "returns a retryable 503 for account_disabled" do
       conn = Plug.Test.conn(:get, "/")
 
       result = Sockets.handle_error(conn, :account_disabled)
 
-      assert result.status == 403
+      assert result.status == 503
+      assert Plug.Conn.get_resp_header(result, "retry-after") == ["60"]
       assert json_body(result)["detail"] == "The account is disabled"
       assert_problem_json(result, "account_disabled")
     end

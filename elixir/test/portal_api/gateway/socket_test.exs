@@ -291,6 +291,17 @@ defmodule PortalAPI.Gateway.SocketTest do
       assert connect(Socket, attrs, connect_info: connect_info) == {:error, :invalid_token}
     end
 
+    test "refuses a gateway of a disabled account without creating it" do
+      account = disabled_account_fixture()
+      site = site_fixture(account: account)
+      token = gateway_token_fixture(account: account, site: site) |> encode_gateway_token()
+
+      assert connect(Socket, connect_attrs(token: token), connect_info: build_connect_info(token: token)) ==
+               {:error, :account_disabled}
+
+      assert Repo.aggregate(Portal.Device, :count, :id) == 0
+    end
+
     test "connects a gateway with a single-owner token" do
       account = account_fixture()
       site = site_fixture(account: account)

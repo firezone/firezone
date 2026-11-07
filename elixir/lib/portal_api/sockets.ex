@@ -80,8 +80,12 @@ defmodule PortalAPI.Sockets do
           "Disconnect another device and try again."
       )
 
-  def handle_error(conn, :account_disabled),
-    do: ProblemDetails.send_with_code(conn, 403, :account_disabled, "The account is disabled")
+  # 503 so Gateways keep retrying: 401 and 403 make them exit for good, even after re-enabling.
+  def handle_error(conn, :account_disabled) do
+    conn
+    |> Plug.Conn.put_resp_header("retry-after", "60")
+    |> ProblemDetails.send_with_code(503, :account_disabled, "The account is disabled")
+  end
 
   def handle_error(conn, :unauthenticated),
     do: ProblemDetails.send_with_code(conn, 403, :unauthenticated, "Forbidden")
