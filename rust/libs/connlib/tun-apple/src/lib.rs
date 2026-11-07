@@ -63,7 +63,7 @@ impl Io {
         let name = name(fd)?;
         set_non_blocking(fd)?;
         let max_coalesced_len = max_coalesced_len(fd);
-        let workers = match sys::batch_syscalls().filter(|_| false) {
+        let workers = match sys::batch_syscalls() {
             Some(syscalls) => tun::Workers::spawn(
                 move |outbound_rx| {
                     let open = move || bulk::Fd::open(fd, Interest::WRITABLE, syscalls);
