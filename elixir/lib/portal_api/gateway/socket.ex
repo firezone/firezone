@@ -57,7 +57,6 @@ defmodule PortalAPI.Gateway.Socket do
     attrs = normalize_device_attrs(attrs)
 
     with {:ok, gateway_token} <- Authentication.verify_gateway_token(encoded_token),
-         :ok <- ensure_account_enabled(gateway_token.account_id),
          {:ok, public_key} <- validate_public_key(attrs),
          {:ok, site, gateway} <- resolve_gateway(gateway_token, attrs),
          :ok <- ensure_gateway_not_connected(gateway),
@@ -106,14 +105,6 @@ defmodule PortalAPI.Gateway.Socket do
         Logger.info("Gateway socket connection failed", error: error, stacktrace: trace)
 
         error
-    end
-  end
-
-  defp ensure_account_enabled(account_id) do
-    if Database.account_enabled?(account_id) do
-      :ok
-    else
-      {:error, :account_disabled}
     end
   end
 
@@ -414,12 +405,6 @@ defmodule PortalAPI.Gateway.Socket do
         nil -> {:error, :not_found}
         gateway -> {:ok, gateway}
       end
-    end
-
-    def account_enabled?(account_id) do
-      from(a in Portal.Account, where: a.id == ^account_id and a.is_disabled == false)
-      |> Safe.unscoped()
-      |> Safe.exists?()
     end
 
     def update_gateway(changeset) do

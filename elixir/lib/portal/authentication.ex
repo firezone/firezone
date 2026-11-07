@@ -376,7 +376,8 @@ defmodule Portal.Authentication do
              "gateway",
              "gateway_group",
              &Database.fetch_gateway_token/2
-           ) do
+           ),
+         :ok <- ensure_gateway_account_enabled(token) do
       :ok = confirm_gateway_token_rotation(token)
       {:ok, token}
     end
@@ -545,6 +546,15 @@ defmodule Portal.Authentication do
     Portal.Config.fetch_env!(:portal, Portal.Tokens)
   end
 
+  # Not :invalid_token: deployed Gateways exit for good on that, even after re-enabling.
+  defp ensure_gateway_account_enabled(%Portal.GatewayToken{account_id: account_id}) do
+    if Database.account_enabled?(account_id) do
+      :ok
+    else
+      {:error, :account_disabled}
+    end
+  end
+
   defmodule Database do
     import Ecto.Query
     alias Portal.Safe
@@ -675,6 +685,12 @@ defmodule Portal.Authentication do
       changeset
       |> Safe.scoped(subject)
       |> Safe.insert()
+    end
+
+    def account_enabled?(account_id) do
+      from(a in Account, where: a.id == ^account_id and a.is_disabled == false)
+      |> Safe.unscoped()
+      |> Safe.exists?()
     end
 
     def fetch_gateway_token(account_id, id) do
