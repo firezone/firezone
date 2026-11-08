@@ -92,7 +92,7 @@ defmodule Portal.Billing.EventHandlerTest do
       assert updated_account.legal_name == "Legal Corp Inc"
     end
 
-    test "updates account slug from metadata", %{account: account} do
+    test "ignores an account slug in the metadata", %{account: account} do
       original_slug = account.slug
 
       customer =
@@ -112,9 +112,7 @@ defmodule Portal.Billing.EventHandlerTest do
 
       assert {:ok, _event} = EventHandler.handle_event(event)
 
-      updated_account = Portal.Repo.get!(Portal.Account, account.id)
-      assert updated_account.slug == "new-custom-slug"
-      assert updated_account.slug != original_slug
+      assert Portal.Repo.get!(Portal.Account, account.id).slug == original_slug
     end
   end
 
@@ -956,7 +954,7 @@ defmodule Portal.Billing.EventHandlerTest do
   end
 
   describe "handle_event/1 with customer.created - slug generation" do
-    test "uses account_slug from metadata when provided" do
+    test "ignores account_slug in the metadata" do
       customer_id = "cus_" <> Stripe.random_id()
 
       customer =
@@ -981,8 +979,8 @@ defmodule Portal.Billing.EventHandlerTest do
 
       assert {:ok, _event} = EventHandler.handle_event(event)
 
-      account = Portal.Repo.get_by(Portal.Account, slug: "custom_provided_slug")
-      assert account != nil
+      assert Portal.Repo.get_by(Portal.Account, slug: "custom_provided_slug") == nil
+      assert Portal.Repo.get_by(Portal.Account, slug: "slugtest")
     end
 
     test "extracts slug from company website path when no host" do

@@ -301,7 +301,6 @@ defmodule Portal.Billing.EventHandler do
       legal_name: customer_name,
       metadata: %{stripe: %{billing_email: customer_email}}
     }
-    |> put_if_not_nil(:slug, customer_metadata["account_slug"])
   end
 
   defp build_subscription_update_attrs(subscription_data) do
@@ -491,15 +490,10 @@ defmodule Portal.Billing.EventHandler do
   end
 
   defp generate_account_slug(metadata) do
-    cond do
-      not is_nil(metadata["account_slug"]) ->
-        metadata["account_slug"]
-
-      company_website = metadata["company_website"] ->
-        extract_slug_from_uri(company_website)
-
-      true ->
-        generate_unique_slug()
+    if company_website = metadata["company_website"] do
+      extract_slug_from_uri(company_website)
+    else
+      generate_unique_slug()
     end
   end
 
@@ -512,14 +506,14 @@ defmodule Portal.Billing.EventHandler do
         |> String.split(".")
         |> List.delete_at(-1)
         |> Enum.join("_")
-        |> String.replace("-", "_")
+        |> Portal.AccountSlug.canonical()
 
       uri.path ->
         uri.path
         |> String.split(".")
         |> List.delete_at(-1)
         |> Enum.join("_")
-        |> String.replace("-", "_")
+        |> Portal.AccountSlug.canonical()
 
       true ->
         generate_unique_slug()
@@ -775,8 +769,6 @@ defmodule Portal.Billing.EventHandler do
   defp cast_limit("unlimited"), do: nil
   defp cast_limit(binary) when is_binary(binary), do: String.to_integer(binary)
 
-  defp put_if_not_nil(map, _key, nil), do: map
-  defp put_if_not_nil(map, key, value), do: Map.put(map, key, value)
 
   # The slug registry records the account ID at claim time, so a key retry
   # keeps the same ID.
@@ -912,7 +904,7 @@ defmodule Portal.Billing.EventHandler do
       |> case do
         %Account{} = account ->
           account
-          |> cast(attrs, [:name, :legal_name, :slug, :is_disabled, :disabled_reason])
+          |> cast(attrs, [:name, :legal_name, :is_disabled, :disabled_reason])
           |> cast_embed(:limits)
           |> cast_embed(:features)
           |> cast_embed(:metadata)

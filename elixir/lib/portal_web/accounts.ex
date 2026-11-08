@@ -4,12 +4,23 @@ defmodule PortalWeb.Accounts do
   it used before, and builds the path that an old slug moves to.
   """
   alias __MODULE__.Database
+  alias Portal.AccountSlug
 
   @spec get_by_id_or_slug(String.t()) :: Portal.Account.t() | nil
-  def get_by_id_or_slug(id_or_slug), do: Database.get_by_id_or_slug(id_or_slug)
+  def get_by_id_or_slug(id_or_slug) do
+    if AccountSlug.possible?(id_or_slug) do
+      Database.get_by_id_or_slug(id_or_slug)
+    end
+  end
 
   @spec get_by_id_or_slug!(String.t()) :: Portal.Account.t()
-  def get_by_id_or_slug!(id_or_slug), do: Database.get_by_id_or_slug!(id_or_slug)
+  def get_by_id_or_slug!(id_or_slug) do
+    if AccountSlug.possible?(id_or_slug) do
+      Database.get_by_id_or_slug!(id_or_slug)
+    else
+      raise Ecto.NoResultsError, queryable: Portal.Account
+    end
+  end
 
   @spec fetch_by_id_or_slug(String.t()) :: {:ok, Portal.Account.t()} | {:error, :not_found}
   def fetch_by_id_or_slug(id_or_slug) do
@@ -25,7 +36,8 @@ defmodule PortalWeb.Accounts do
   """
   @spec other_region_url(String.t(), [String.t()], String.t()) :: String.t() | nil
   def other_region_url(id_or_slug, rest, query_string) do
-    with false <- Portal.Repo.valid_uuid?(id_or_slug),
+    with true <- AccountSlug.possible?(id_or_slug),
+         false <- Portal.Repo.valid_uuid?(id_or_slug),
          {:ok, %{region: region}} <- Portal.SlugRegistry.Cache.lookup(String.downcase(id_or_slug)),
          true <- region != Atom.to_string(Portal.SlugRegistry.region()),
          {:ok, base} <- PortalWeb.Components.Page.cloud_url(region) do
