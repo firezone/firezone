@@ -253,6 +253,10 @@ updates:
       sentry:
         patterns:
           - "@sentry/*"
+      vitest:
+        patterns:
+          - "vitest"
+          - "@vitest/*"
       flowbite:
         patterns:
           - "flowbite"
