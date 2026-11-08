@@ -32,7 +32,5 @@ defmodule Portal.Repo.Migrations.CreateSiteDevices do
 
       timestamps(updated_at: false)
     end
-
-    create(index(:site_devices, [:account_id, :device_id]))
   end
 end
