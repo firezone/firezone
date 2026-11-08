@@ -1,5 +1,37 @@
 defmodule PortalWeb.PoliciesTest do
-  use PortalWeb.PoliciesCase
+  use PortalWeb.ConnCase, async: true
+
+  import Phoenix.LiveViewTest, except: [live: 2]
+
+  # The table loads in an async task, so wait for it before returning.
+  defp live(conn, path) do
+    case Phoenix.LiveViewTest.live(conn, path) do
+      {:ok, lv, _html} -> {:ok, lv, render_async(lv)}
+      other -> other
+    end
+  end
+
+  alias Portal.{Policy, Repo}
+  alias Portal.Changes.Change
+
+  import Portal.AccountFixtures
+  import Portal.DevicePostureFixtures
+  import Portal.ActorFixtures
+  import Portal.AuthProviderFixtures
+  import Portal.FeaturesFixtures
+  import Portal.GroupFixtures
+  import Portal.MembershipFixtures
+  import Portal.PolicyAuthorizationFixtures
+  import Portal.PolicyFixtures
+  import Portal.ResourceFixtures
+  import Portal.SiteFixtures
+  import Portal.TrustAnchorFixtures
+
+  setup do
+    account = account_fixture()
+    actor = admin_actor_fixture(account: account)
+    %{account: account, actor: actor}
+  end
 
   describe "unauthorized" do
     test "redirects to sign-in when not authenticated", %{conn: conn, account: account} do
@@ -368,10 +400,6 @@ defmodule PortalWeb.PoliciesTest do
       assert policy.flow_log_uploads_enabled == true
     end
   end
-end
-
-defmodule PortalWeb.PoliciesTest.Details do
-  use PortalWeb.PoliciesCase
 
   describe ":show action" do
     test "renders policy detail panel with group and resource names", %{
@@ -867,10 +895,6 @@ defmodule PortalWeb.PoliciesTest.Details do
              )
     end
   end
-end
-
-defmodule PortalWeb.PoliciesTest.Conditions do
-  use PortalWeb.PoliciesCase
 
   describe ":conditions" do
     test "saves time-of-day condition to DB", %{conn: conn, account: account, actor: actor} do
@@ -1621,10 +1645,6 @@ defmodule PortalWeb.PoliciesTest.Conditions do
       refute lv |> element("#policy-postures-require-attestation") |> render() =~ "disabled"
     end
   end
-end
-
-defmodule PortalWeb.PoliciesTest.Postures do
-  use PortalWeb.PoliciesCase
 
   describe ":device postures" do
     setup do
