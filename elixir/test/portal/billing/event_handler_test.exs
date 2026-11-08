@@ -92,27 +92,33 @@ defmodule Portal.Billing.EventHandlerTest do
       assert updated_account.legal_name == "Legal Corp Inc"
     end
 
-    test "ignores an account slug in the metadata", %{account: account} do
+    test "applies an account slug edited in Stripe", %{account: account} do
+      event = slug_event(account, " New-Custom-Slug ", %{"account_slug" => account.slug})
+
+      assert {:ok, _event} = EventHandler.handle_event(event)
+
+      assert Portal.Repo.get!(Portal.Account, account.id).slug == "new_custom_slug"
+    end
+
+    test "keeps the slug when the update did not edit it in Stripe", %{account: account} do
       original_slug = account.slug
-
-      customer =
-        Stripe.build_customer(
-          id: account.metadata.stripe.customer_id,
-          name: "Same Name",
-          email: "updated@example.com",
-          metadata: %{
-            "account_id" => account.id,
-            "account_slug" => "new-custom-slug"
-          }
-        )
-
-      event = Stripe.build_event("customer.updated", customer)
-
-      Stripe.stub(Stripe.fetch_customer_endpoint(customer))
+      event = slug_event(account, "stale_slug", %{"account_name" => "Old Name"})
 
       assert {:ok, _event} = EventHandler.handle_event(event)
 
       assert Portal.Repo.get!(Portal.Account, account.id).slug == original_slug
+    end
+
+    test "logs a slug it cannot apply and still applies the rest", %{account: account} do
+      original_slug = account.slug
+      event = slug_event(account, "bad slug!", %{"account_slug" => account.slug})
+
+      log = capture_log(fn -> assert {:ok, _event} = EventHandler.handle_event(event) end)
+
+      assert log =~ "Cannot set the account slug from Stripe"
+      updated_account = Portal.Repo.get!(Portal.Account, account.id)
+      assert updated_account.slug == original_slug
+      assert updated_account.legal_name == "Slug Corp"
     end
   end
 
@@ -1605,5 +1611,21 @@ defmodule Portal.Billing.EventHandlerTest do
       end
 
     update_in(subscription, ["items", "data"], &(items ++ &1))
+  end
+
+  defp slug_event(account, slug, previous_metadata) do
+    customer =
+      Stripe.build_customer(
+        id: account.metadata.stripe.customer_id,
+        name: "Slug Corp",
+        email: "updated@example.com",
+        metadata: %{"account_id" => account.id, "account_slug" => slug}
+      )
+
+    Stripe.stub(Stripe.fetch_customer_endpoint(customer))
+
+    "customer.updated"
+    |> Stripe.build_event(customer)
+    |> put_in(["data", "previous_attributes"], %{"metadata" => previous_metadata})
   end
 end

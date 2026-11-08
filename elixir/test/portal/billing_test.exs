@@ -1082,6 +1082,27 @@ defmodule Portal.BillingTest do
 
       assert :ok = Portal.Billing.on_account_name_or_slug_changed(account)
     end
+
+    test "sends the current slug even when called for an older change", %{account: account} do
+      stale_account =
+        update_account(account, %{
+          slug: "older_slug",
+          metadata: %{stripe: %{customer_id: "cus_test123"}}
+        })
+
+      update_account(stale_account, %{slug: "newer_slug"})
+      test_pid = self()
+
+      Req.Test.stub(Portal.Billing.Stripe.APIClient, fn conn ->
+        {:ok, body, conn} = Plug.Conn.read_body(conn)
+        send(test_pid, {:customer_update, URI.decode_query(body)})
+        Req.Test.json(conn, %{"id" => "cus_test123"})
+      end)
+
+      assert :ok = Portal.Billing.on_account_name_or_slug_changed(stale_account)
+
+      assert_received {:customer_update, %{"metadata[account_slug]" => "newer_slug"}}
+    end
   end
 
   describe "billing_portal_url/3" do

@@ -848,8 +848,7 @@ defmodule Portal.Billing do
         :ok
 
       true ->
-        {:ok, _customer} = update_stripe_customer(account)
-        :ok
+        push_current_account(account.metadata.stripe.customer_id)
     end
   end
 
@@ -889,6 +888,18 @@ defmodule Portal.Billing do
   defp fetch_config!(key) do
     Portal.Config.fetch_env!(:portal, __MODULE__)
     |> Keyword.fetch!(key)
+  end
+
+  # Each push reads the account again under the customer lock, so a slow push
+  # for an older change cannot land in Stripe after a newer one. A failed push
+  # is logged by update_stripe_customer/1.
+  defp push_current_account(customer_id) do
+    EventHandler.with_current_account(customer_id, fn
+      nil -> {:ok, nil}
+      account -> update_stripe_customer(account)
+    end)
+
+    :ok
   end
 
   defp update_account_metadata_changeset(account, stripe_metadata) do
