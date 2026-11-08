@@ -39,6 +39,38 @@ trap cleanup EXIT
 GPG_KEY_FINGERPRINT=$(gpg --list-secret-keys --with-colons "${GPG_KEY_ID}" | awk -F: '$1 == "fpr" { print $10; exit }')
 gpg --batch --quick-set-expire "${GPG_KEY_FINGERPRINT}" "${GPG_KEY_EXPIRY}"
 
+# Ship the key as a package so clients pick up a renewed key through a normal upgrade, before the old one expires.
+# The version follows the expiry, so a renewal publishes a new version and a re-run publishes nothing.
+KEYRING_PACKAGE="firezone-archive-keyring_${GPG_KEY_EXPIRY//-/.}_all.deb"
+KEYRING_DIR="${WORK_DIR}/keyring"
+
+mkdir --parents "${KEYRING_DIR}/DEBIAN" "${KEYRING_DIR}/usr/share/keyrings"
+gpg --export "${GPG_KEY_ID}" >"${KEYRING_DIR}/usr/share/keyrings/firezone-archive-keyring.gpg"
+chmod 0644 "${KEYRING_DIR}/usr/share/keyrings/firezone-archive-keyring.gpg"
+
+cat >"${KEYRING_DIR}/DEBIAN/control" <<EOF
+Package: firezone-archive-keyring
+Version: ${GPG_KEY_EXPIRY//-/.}
+Architecture: all
+Maintainer: Firezone, Inc. <support@firezone.dev>
+Section: misc
+Priority: optional
+Description: GnuPG key of the Firezone APT repository
+EOF
+
+# Our install docs point `signed-by` at /etc/apt/keyrings/firezone.gpg, so keep that copy current too.
+cat >"${KEYRING_DIR}/DEBIAN/postinst" <<'EOF'
+#!/bin/sh
+set -e
+
+if [ "$1" = "configure" ] && [ -e /etc/apt/keyrings/firezone.gpg ]; then
+    install --mode 0644 /usr/share/keyrings/firezone-archive-keyring.gpg /etc/apt/keyrings/firezone.gpg
+fi
+EOF
+chmod 0755 "${KEYRING_DIR}/DEBIAN/postinst"
+
+dpkg-deb --root-owner-group --build "${KEYRING_DIR}" "${WORK_DIR}/${KEYRING_PACKAGE}"
+
 for DISTRIBUTION in "stable" "preview"; do
     POOL_DIR="${WORK_DIR}/pool-${DISTRIBUTION}"
     IMPORT_DIR="${WORK_DIR}/import-${DISTRIBUTION}"
@@ -93,6 +125,11 @@ for DISTRIBUTION in "stable" "preview"; do
                 mv --force "$deb" "${POOL_DIR}/${NORMALIZED_NAME}"
             fi
         done
+    fi
+
+    if [ ! -f "${POOL_DIR}/${KEYRING_PACKAGE}" ]; then
+        echo "Adding ${KEYRING_PACKAGE}"
+        cp "${WORK_DIR}/${KEYRING_PACKAGE}" "${POOL_DIR}/"
     fi
 
     if [ -z "$(ls -A "${POOL_DIR}")" ]; then
