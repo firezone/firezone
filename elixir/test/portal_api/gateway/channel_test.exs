@@ -3729,7 +3729,7 @@ defmodule PortalAPI.Gateway.ChannelTest do
       expires_at = DateTime.utc_now() |> DateTime.add(30, :second)
       preshared_key = "PSK"
       public_key = Portal.DeviceFixtures.generate_public_key()
-      site_id = gateway.site_id
+      site_id = gateway.site.id
       gateway_id = gateway.id
       gateway_public_key = gateway.public_key
       gateway_ipv4 = gateway.ipv4

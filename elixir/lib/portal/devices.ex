@@ -104,7 +104,6 @@ defmodule Portal.Devices do
                %Device{}
                |> Ecto.Changeset.cast(%{name: name}, [:name])
                |> Ecto.Changeset.put_change(:type, :gateway)
-               |> Ecto.Changeset.put_change(:site_id, site.id)
                |> put_free_slug(subject.account.id, nil)
                |> Safe.scoped(subject)
                |> Safe.insert(),

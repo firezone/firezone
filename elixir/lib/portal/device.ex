@@ -56,7 +56,6 @@ defmodule Portal.Device do
           gateway_token_id: Ecto.UUID.t() | nil,
           account_id: Ecto.UUID.t(),
           actor_id: Ecto.UUID.t() | nil,
-          site_id: Ecto.UUID.t() | nil,
           device_serial: String.t() | nil,
           device_uuid: String.t() | nil,
           identifier_for_vendor: String.t() | nil,
@@ -120,7 +119,8 @@ defmodule Portal.Device do
     field :verified_at, :utc_datetime_usec
 
     # Gateway-only
-    belongs_to :site, Portal.Site
+    has_one :site_device, Portal.SiteDevice, foreign_key: :device_id, references: :id
+    has_one :site, through: [:site_device, :site]
 
     has_many :gateway_tokens, Portal.GatewayToken,
       foreign_key: :device_id,
@@ -185,11 +185,9 @@ defmodule Portal.Device do
     |> validate_length(:hostname, min: 3, max: 255)
     |> assoc_constraint(:account)
     |> assoc_constraint(:actor)
-    |> assoc_constraint(:site)
     |> validate_type_fields()
     |> check_constraint(:type, name: :devices_type_check)
     |> check_constraint(:actor_id, name: :device_type_client_fields)
-    |> check_constraint(:site_id, name: :device_type_gateway_fields)
     |> unique_firezone_id_constraint()
     |> unique_constraint(:ipv4, name: :devices_account_id_ipv4_index)
     |> unique_constraint(:ipv6, name: :devices_account_id_ipv6_index)
@@ -260,7 +258,6 @@ defmodule Portal.Device do
 
       :gateway ->
         changeset
-        |> validate_required([:site_id])
         |> validate_length(:device_serial, max: 255)
         |> validate_length(:device_uuid, max: 255)
         |> validate_gateway_verification()

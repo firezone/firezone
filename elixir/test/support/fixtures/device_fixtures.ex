@@ -325,10 +325,8 @@ defmodule Portal.DeviceFixtures do
       ])
       |> Ecto.Changeset.put_change(:type, :gateway)
       |> Ecto.Changeset.put_change(:account_id, account.id)
-      |> Ecto.Changeset.put_change(:site_id, site.id)
       |> Portal.Devices.put_free_slug(account.id, nil)
       |> Ecto.Changeset.put_assoc(:account, account)
-      |> Ecto.Changeset.put_assoc(:site, site)
       |> Portal.Device.changeset()
       |> Portal.Repo.insert()
 
@@ -337,6 +335,8 @@ defmodule Portal.DeviceFixtures do
       site_id: site.id,
       device_id: gateway.id
     })
+
+    gateway = %{gateway | site: site}
 
     ipv4 =
       attrs

@@ -148,7 +148,7 @@ defmodule PortalAPI.GatewayTokenControllerTest do
         conn
         |> authorize_conn(actor)
         |> put_req_header("content-type", "application/json")
-        |> post("/sites/#{other_gateway.site_id}/gateways/#{other_gateway.id}/token")
+        |> post("/sites/#{other_gateway.site.id}/gateways/#{other_gateway.id}/token")
 
       assert %{"status" => 404} = json_response(conn, 404)
     end

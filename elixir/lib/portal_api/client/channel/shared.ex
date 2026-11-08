@@ -801,6 +801,13 @@ defmodule PortalAPI.Client.Channel.Shared do
       )
   end
 
+  # A gateway serves a resource only from the resource's site.
+  defp fetch_resource_gateway(account_id, gateway_id, %{site: %{id: site_id}}) do
+    Presence.Devices.fetch_gateway(account_id, gateway_id, Ecto.UUID.load!(site_id))
+  end
+
+  defp fetch_resource_gateway(_account_id, _gateway_id, _resource), do: {:error, :offline}
+
   defp put_site_id(payload, site_id, client) do
     key =
       if Portal.Version.client_supports_sites_payload?(client) do
@@ -958,7 +965,7 @@ defmodule PortalAPI.Client.Channel.Shared do
         {:ok,
          %{
            resource_id: resource_id,
-           site_id: gateway.site_id,
+           site_id: Ecto.UUID.load!(resource.site.id),
            gateway_id: gateway.id,
            gateway_remote_ip: gateway.last_seen_remote_ip
          }}
@@ -1000,8 +1007,7 @@ defmodule PortalAPI.Client.Channel.Shared do
              socket.assigns.subject
            ),
          {:ok, gateway} <-
-           Presence.Devices.fetch_gateway(socket.assigns.subject.account.id, gateway_id),
-         true <- resource.site != nil and resource.site.id == Ecto.UUID.dump!(gateway.site_id) do
+           fetch_resource_gateway(socket.assigns.subject.account.id, gateway_id, resource) do
       policy_authorization_id = Ecto.UUID.generate()
 
       attrs =
@@ -1055,8 +1061,6 @@ defmodule PortalAPI.Client.Channel.Shared do
         {:reply, {:error, %{reason: :forbidden, violated_properties: violated_properties}},
          socket}
 
-      false ->
-        {:reply, {:error, %{reason: :offline}}, socket}
     end
   end
 
@@ -1082,8 +1086,7 @@ defmodule PortalAPI.Client.Channel.Shared do
              socket.assigns.subject
            ),
          {:ok, gateway} <-
-           Presence.Devices.fetch_gateway(socket.assigns.subject.account.id, gateway_id),
-         true <- resource.site != nil and resource.site.id == Ecto.UUID.dump!(gateway.site_id) do
+           fetch_resource_gateway(socket.assigns.subject.account.id, gateway_id, resource) do
       policy_authorization_id = Ecto.UUID.generate()
 
       attrs =
@@ -1140,8 +1143,6 @@ defmodule PortalAPI.Client.Channel.Shared do
         {:reply, {:error, %{reason: :forbidden, violated_properties: violated_properties}},
          socket}
 
-      false ->
-        {:reply, {:error, %{reason: :offline}}, socket}
     end
   end
 

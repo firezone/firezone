@@ -118,7 +118,7 @@ defmodule PortalAPI.GatewayControllerTest do
       end
 
       assert Repo.aggregate(
-               from(d in Portal.Device, where: d.site_id == ^site.id and d.type == :gateway),
+               from(sd in Portal.SiteDevice, where: sd.site_id == ^site.id),
                :count
              ) == 0
     end
@@ -212,7 +212,7 @@ defmodule PortalAPI.GatewayControllerTest do
       assert detail =~ "issue_token"
 
       assert Repo.aggregate(
-               from(d in Device, where: d.site_id == ^site.id and d.type == :gateway),
+               from(sd in Portal.SiteDevice, where: sd.site_id == ^site.id),
                :count
              ) == 0
     end
@@ -231,7 +231,8 @@ defmodule PortalAPI.GatewayControllerTest do
       assert %{"data" => %{"id" => id, "name" => "edge-nyc-1"} = data} = json_response(conn, 201)
       refute Map.has_key?(data, "token")
 
-      assert Repo.get_by(Device, id: id, site_id: site.id, type: :gateway)
+      assert Repo.get_by(Device, id: id, type: :gateway)
+      assert Repo.get_by(Portal.SiteDevice, device_id: id, site_id: site.id)
       refute Repo.exists?(from(t in Portal.GatewayToken, where: t.device_id == ^id))
 
       # Whoever deploys the gateway mints its token separately.
@@ -273,7 +274,7 @@ defmodule PortalAPI.GatewayControllerTest do
       assert detail =~ "issue_token"
 
       assert Repo.aggregate(
-               from(d in Device, where: d.site_id == ^site.id and d.type == :gateway),
+               from(sd in Portal.SiteDevice, where: sd.site_id == ^site.id),
                :count
              ) == 0
     end
@@ -486,6 +487,30 @@ defmodule PortalAPI.GatewayControllerTest do
       conn = get(conn, "/sites/#{site.id}/gateways/#{gateway.id}")
       assert %{"type" => "about:blank", "status" => 401, "title" => "Unauthorized"} =
                json_response(conn, 401)
+    end
+
+    test "finds the gateway under the site it is assigned to", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      site: site
+    } do
+      gateway = gateway_fixture(account: account, site: site)
+      other_site = site_fixture(account: account)
+
+      Repo.update_all(
+        from(sd in Portal.SiteDevice, where: sd.account_id == ^account.id and sd.device_id == ^gateway.id),
+        set: [site_id: other_site.id]
+      )
+
+      conn = authorize_conn(conn, actor)
+
+      assert %{"data" => %{"id" => id}} =
+               conn |> get("/sites/#{other_site.id}/gateways/#{gateway.id}") |> json_response(200)
+
+      assert id == gateway.id
+
+      assert conn |> get("/sites/#{site.id}/gateways/#{gateway.id}") |> json_response(404)
     end
 
     test "returns a single gateway", %{

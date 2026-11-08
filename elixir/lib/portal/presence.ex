@@ -32,7 +32,7 @@ defmodule Portal.Presence do
         ipv6: device.ipv6 && device.ipv6.address,
         public_key: device.public_key,
         psk_base: device.psk_base,
-        site_id: device.site_id,
+        site_id: loaded_site_id(device),
         version: device.last_seen_version,
         user_agent: device.last_seen_user_agent,
         remote_ip: device.last_seen_remote_ip,
@@ -148,9 +148,9 @@ defmodule Portal.Presence do
       |> Enum.any?(fn %{metas: metas} -> Enum.any?(metas, &(Map.get(&1, :actor_id) == actor_id)) end)
     end
 
-    def fetch_gateway(account_id, gateway_id) do
+    def fetch_gateway(account_id, gateway_id, site_id) do
       case __MODULE__.Account.get(account_id, gateway_id) do
-        %{metas: [%{type: :gateway} = meta | _]} ->
+        %{metas: [%{type: :gateway, site_id: ^site_id} = meta | _]} when not is_nil(site_id) ->
           {:ok, from_meta(gateway_id, account_id, meta)}
 
         _offline_or_not_a_gateway ->
@@ -158,13 +158,11 @@ defmodule Portal.Presence do
       end
     end
 
-    def all_connected_gateways(account_id) do
-      account_id
-      |> __MODULE__.Account.list()
-      |> Enum.flat_map(fn
-        {id, %{metas: [%{type: :gateway} = meta | _]}} -> [from_meta(id, account_id, meta)]
-        _other_kind -> []
-      end)
+    @doc "The gateways connected to `site_id`."
+    def connected_gateways_in_site(account_id, site_id) do
+      for {id, %{metas: [%{type: :gateway, site_id: ^site_id} = meta | _]}} <-
+            __MODULE__.Account.list(account_id),
+          do: from_meta(id, account_id, meta)
     end
 
     defp from_meta(id, account_id, meta) do
@@ -172,7 +170,6 @@ defmodule Portal.Presence do
         id: id,
         account_id: account_id,
         type: meta.type,
-        site_id: meta.site_id,
         psk_base: meta.psk_base,
         online?: true,
         public_key: meta.public_key,
@@ -182,6 +179,9 @@ defmodule Portal.Presence do
         last_seen_remote_ip_location_lon: meta.remote_ip_location_lon
       }
     end
+
+    defp loaded_site_id(%Device{site: %Portal.Site{id: id}}), do: id
+    defp loaded_site_id(_device), do: nil
 
     defp normalize_ip(%Postgrex.INET{} = inet), do: inet
     defp normalize_ip(tuple) when is_tuple(tuple), do: %Postgrex.INET{address: tuple}

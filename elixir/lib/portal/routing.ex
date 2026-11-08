@@ -29,10 +29,7 @@ defmodule Portal.Routing do
   def select_receiver(%Cacheable.Resource{site: site} = resource, initiator, preferred_ids) do
     site_id = Ecto.UUID.load!(site.id)
 
-    online =
-      initiator.account_id
-      |> Presence.Devices.all_connected_gateways()
-      |> Enum.filter(&(&1.site_id == site_id))
+    online = Presence.Devices.connected_gateways_in_site(initiator.account_id, site_id)
 
     case compatible_devices(online, resource, initiator.version) do
       [] when online == [] ->
