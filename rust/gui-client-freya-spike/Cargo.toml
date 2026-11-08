@@ -1,0 +1,29 @@
+[package]
+name = "gui-client-freya-spike"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+# Standalone: not part of the `rust/` workspace.
+[workspace]
+
+[features]
+default = ["tray"]
+tray = ["freya/tray"]
+gpu = ["freya/gpu"]
+
+[dependencies]
+desktop-notifications = { path = "../libs/desktop-notifications" }
+freya = { version = "=0.5.1", default-features = false, features = ["winit", "accessibility", "platform-text-gamma"] }
+open = "5.3"
+rfd = "0.17" # default features: xdg-portal + wayland, no GTK
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "macros"] }
+
+[dev-dependencies]
+accesskit = "0.25"
+copypasta = "0.10"
+freya-testing = "=0.5.1"
+sha2 = "0.10"
+
+[profile.release]
+strip = true
