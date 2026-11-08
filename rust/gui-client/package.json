@@ -34,6 +34,6 @@
     "@vitest/browser": "^4.1.12",
     "@vitest/browser-playwright": "^4.1.12",
     "playwright": "^1.63.0",
-    "vitest": "^4.1.12"
+    "vitest": "^5.0.5"
   }
 }
