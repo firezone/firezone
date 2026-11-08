@@ -769,7 +769,6 @@ defmodule Portal.Billing.EventHandler do
   defp cast_limit("unlimited"), do: nil
   defp cast_limit(binary) when is_binary(binary), do: String.to_integer(binary)
 
-
   # The slug registry records the account ID at claim time, so a key retry
   # keeps the same ID.
   defp create_account_changeset(attrs) do
