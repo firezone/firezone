@@ -10,7 +10,7 @@
     "shortDescription": "Firezone",
     "linux": {
       "deb": {
-        "recommends": ["p11-kit-modules"],
+        "recommends": ["p11-kit-modules", "firezone-archive-keyring"],
         "preInstallScript": "./linux_package/preinst",
         "postInstallScript": "./linux_package/postinst",
         "preRemoveScript": "./linux_package/prerm_deb",

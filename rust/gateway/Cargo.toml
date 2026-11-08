@@ -22,6 +22,7 @@ assets = [
     ["debian/firezone-gateway.tmpfiles", "usr/lib/tmpfiles.d/firezone-gateway.conf", "644"],
 ]
 depends = 'iptables,systemd'
+recommends = 'firezone-archive-keyring'
 
 [dependencies]
 anyhow = { workspace = true }
