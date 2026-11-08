@@ -180,7 +180,7 @@ defmodule PortalAPI.MCP.ToolsTest do
   end
 
   test "posture provider and device operations share one tool per operation", %{tools: tools} do
-    types = ~w[defender intune iru santa sentinelone sophos]
+    types = ~w[defender google_endpoint intune iru santa sentinelone sophos]
 
     for name <- ~w[list_posture_providers get_posture_provider update_posture_provider
                    delete_posture_provider list_posture_devices get_posture_device] do

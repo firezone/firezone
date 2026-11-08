@@ -24,6 +24,7 @@ defmodule Portal.Workers.SyncErrorNotification do
   alias Portal.Santa
   alias Portal.SentinelOne
   alias Portal.Sophos
+  alias Portal.GoogleEndpoint
   alias Portal.Okta
   alias Portal.Mailer
   alias __MODULE__.Database
@@ -41,6 +42,7 @@ defmodule Portal.Workers.SyncErrorNotification do
       "santa" -> check_santa_providers(args)
       "sentinelone" -> check_sentinelone_providers(args)
       "sophos" -> check_sophos_providers(args)
+      "google_endpoint" -> check_google_endpoint_providers(args)
       _ -> {:error, "Unknown provider: #{provider}"}
     end
   end
@@ -127,6 +129,15 @@ defmodule Portal.Workers.SyncErrorNotification do
     :ok
   end
 
+  defp check_google_endpoint_providers(%{"frequency" => frequency}) do
+    GoogleEndpoint.PostureProvider
+    |> Database.errored_disabled_providers(frequency)
+    |> Enum.filter(&Portal.Account.device_posture_enabled?(&1.account))
+    |> Enum.each(&send_notification(:google_endpoint, &1, frequency))
+
+    :ok
+  end
+
   defp send_notification(provider, directory, frequency) do
     Logger.info("Sending sync error notification",
       provider: provider,
@@ -194,7 +205,7 @@ defmodule Portal.Workers.SyncErrorNotification do
   end
 
   defp error_email(provider_type, provider, recipients)
-       when provider_type in [:intune, :iru, :defender, :santa, :sentinelone, :sophos],
+       when provider_type in [:intune, :iru, :defender, :santa, :sentinelone, :sophos, :google_endpoint],
     do: sync_email_module().posture_provider_error_email(provider, recipients)
 
   defp error_email(provider, directory, recipients) when provider in [:entra, :google, :okta],

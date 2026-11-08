@@ -23,6 +23,7 @@ defmodule PortalWeb.DevicesTest do
   import Portal.SantaFixtures
   import Portal.SentinelOneFixtures
   import Portal.SophosFixtures
+  import Portal.GoogleEndpointFixtures
   import Portal.DeviceFixtures
   import Portal.ClientSessionFixtures
   import Portal.GroupFixtures
@@ -1327,6 +1328,40 @@ defmodule PortalWeb.DevicesTest do
       assert html =~ "Sophos Prod"
       assert html =~ "sophos-mac-01"
       assert html =~ "suspicious"
+      assert html =~ "Attested serial"
+    end
+
+    test "shows the Google Endpoint record matched on serial", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      provider = google_endpoint_posture_provider_fixture(account: account, name: "Acme Google")
+
+      google_endpoint_device_fixture(
+        provider: provider,
+        hostname: "google-mac-01",
+        serial_number: "GOOGLE-1",
+        encryption_state: "NOT_ENCRYPTED"
+      )
+
+      client =
+        client_fixture(
+          account: account,
+          actor: actor,
+          last_attested_device_serial: "GOOGLE-1",
+          last_attested_cert_fingerprint: "fp-9"
+        )
+
+      {:ok, _lv, html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/devices/#{client.id}?tab=posture")
+
+      assert html =~ "Acme Google"
+      assert html =~ "Google Endpoint Management"
+      assert html =~ "google-mac-01"
+      assert html =~ "NOT_ENCRYPTED"
       assert html =~ "Attested serial"
     end
 

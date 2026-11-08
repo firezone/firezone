@@ -347,6 +347,7 @@ defmodule PortalWeb.OIDC do
   Provider types:
   - "google", "okta", "oidc" — OIDC authorization code + PKCE flow
   - "google_directory_sync" — OIDC code + PKCE identity proof for a Workspace admin probe
+  - "google_endpoint_posture_provider" — OIDC code + PKCE proof of the Workspace admin to impersonate
   - "entra" — Entra auth_provider admin consent + silent authorization code/PKCE proof
   - "entra_directory_sync" — Entra directory_sync admin consent + user-bound PKCE proof
   - "intune_posture_provider" — Intune admin consent + user-bound PKCE proof
@@ -411,6 +412,12 @@ defmodule PortalWeb.OIDC do
     {:ok, %{config: config}}
   end
 
+  # The signed-in administrator is the one the devices sync acts as, so the
+  # identity-only sync authorization client is enough here too.
+  def setup_verification("google_endpoint_posture_provider", _opts) do
+    setup_verification("google_directory_sync", [])
+  end
+
   def setup_verification("google_directory_sync", _opts) do
     config =
       Portal.Config.fetch_env!(:portal, Portal.Google.SyncAuthorization)
@@ -471,6 +478,10 @@ defmodule PortalWeb.OIDC do
   def verification_state_type("entra"), do: "entra-auth-provider"
   def verification_state_type("entra_directory_sync"), do: "entra-directory-sync"
   def verification_state_type("google_directory_sync"), do: "google-directory-sync"
+
+  def verification_state_type("google_endpoint_posture_provider"),
+    do: "google-endpoint-posture-provider"
+
   def verification_state_type("intune_posture_provider"), do: "intune-posture-provider"
   def verification_state_type("sentinel_log_sink"), do: "sentinel-log-sink"
 
@@ -554,7 +565,8 @@ defmodule PortalWeb.OIDC do
     PortalWeb.GitHub.authorization_uri(config, state_token, verifier, prompt: "select_account")
   end
 
-  def build_verification_uri("google_directory_sync", config, verifier, state_token) do
+  def build_verification_uri(type, config, verifier, state_token)
+      when type in ["google_directory_sync", "google_endpoint_posture_provider"] do
     challenge = :crypto.hash(:sha256, verifier) |> Base.url_encode64(padding: false)
 
     oauth_params = %{

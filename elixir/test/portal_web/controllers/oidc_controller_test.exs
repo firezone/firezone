@@ -1409,6 +1409,118 @@ defmodule PortalWeb.OIDCControllerTest do
     end
   end
 
+  describe "callback/2 with Google Endpoint verification state" do
+    setup do
+      Portal.GoogleEndpointFixtures.configure_google_endpoint_api_client()
+      test_pid = self()
+
+      Req.Test.stub(Portal.GoogleEndpoint.APIClient, fn conn ->
+        send(test_pid, {:devices_request, Plug.Conn.get_req_header(conn, "authorization")})
+        Req.Test.json(conn, %{"devices" => []})
+      end)
+
+      verification_ref = Ecto.UUID.generate()
+
+      pending = %{config: oidc_config(), verifier: "test-verifier", verification_ref: verification_ref}
+      lv_pid = spawn(fn -> pending_verification_loop(pending) end)
+
+      state =
+        PortalWeb.OIDC.sign_verification_state(
+          PortalWeb.OIDC.serialize_pid(lv_pid),
+          "google-endpoint-posture-provider",
+          %{verification_ref: verification_ref}
+        )
+
+      %{state: state, verification_ref: verification_ref}
+    end
+
+    test "acts as the administrator who signed in", %{conn: conn, state: state, verification_ref: ref} do
+      test_pid = self()
+
+      Req.Test.stub(Portal.Google.APIClient, fn %{request_path: "/token"} = conn ->
+        {:ok, body, conn} = Plug.Conn.read_body(conn)
+        send(test_pid, {:token_request, URI.decode_query(body)})
+        Req.Test.json(conn, %{"access_token" => "devices-token", "expires_in" => 3600})
+      end)
+
+      set_google_directory_id_token(%{"email" => "admin@acme.com", "hd" => "acme.com"})
+
+      conn = get(conn, ~p"/auth/oidc/callback", %{"state" => state, "code" => "test-code"})
+
+      assert {:ok,
+              %{
+                ok: true,
+                type: "google-endpoint-posture-provider",
+                impersonation_email: "admin@acme.com",
+                domain: "acme.com",
+                verification_ref: ^ref
+              }} = oidc_verification_result_from_redirect(redirected_to(conn))
+
+      assert_received {:token_request, %{"assertion" => assertion}}
+      [_header, payload, _signature] = String.split(assertion, ".")
+      assert %{"sub" => "admin@acme.com"} = payload |> Base.url_decode64!(padding: false) |> JSON.decode!()
+      assert_received {:devices_request, ["Bearer devices-token"]}
+    end
+
+    test "explains missing domain-wide delegation", %{conn: conn, state: state} do
+      Req.Test.stub(Portal.Google.APIClient, fn conn ->
+        conn |> Plug.Conn.put_status(401) |> Req.Test.json(%{"error" => "unauthorized_client"})
+      end)
+
+      set_google_directory_id_token(%{"email" => "admin@acme.com", "hd" => "acme.com"})
+
+      conn = get(conn, ~p"/auth/oidc/callback", %{"state" => state, "code" => "test-code"})
+
+      assert {:ok, %{ok: false, error: error}} = oidc_verification_result_from_redirect(redirected_to(conn))
+      assert error =~ "domain-wide delegation for client ID 123456789012345678901"
+      assert error =~ "cloud-identity.devices.readonly"
+      refute_received {:devices_request, _auth}
+    end
+
+    test "requires an administrator who can read devices", %{conn: conn, state: state} do
+      Req.Test.stub(Portal.GoogleEndpoint.APIClient, fn conn ->
+        conn
+        |> Plug.Conn.put_status(403)
+        |> Req.Test.json(%{"error" => %{"code" => 403, "message" => "Not Authorized"}})
+      end)
+
+      set_google_directory_id_token(%{"email" => "member@acme.com", "hd" => "acme.com"})
+
+      conn = get(conn, ~p"/auth/oidc/callback", %{"state" => state, "code" => "test-code"})
+
+      assert {:ok, %{ok: false, error: error}} = oidc_verification_result_from_redirect(redirected_to(conn))
+      assert error =~ "cannot read devices"
+    end
+
+    test "refuses an account outside Google Workspace before calling Google", %{conn: conn, state: state} do
+      claims = Mocks.OIDC.default_claims() |> Map.delete("hd") |> Map.put("email", "someone@gmail.com")
+      Mocks.OIDC.set_token_response(%{"id_token" => Mocks.OIDC.sign_openid_connect_token(claims)})
+
+      conn = get(conn, ~p"/auth/oidc/callback", %{"state" => state, "code" => "test-code"})
+
+      assert {:ok, %{ok: false, error: error}} = oidc_verification_result_from_redirect(redirected_to(conn))
+      assert error =~ "managed Google Workspace account"
+      refute_received {:devices_request, _auth}
+    end
+
+    test "reports an authorization error from Google", %{conn: conn, state: state, verification_ref: ref} do
+      conn =
+        get(conn, ~p"/auth/oidc/callback", %{
+          "state" => state,
+          "error" => "access_denied",
+          "error_description" => "The user denied access."
+        })
+
+      assert {:ok,
+              %{
+                ok: false,
+                type: "google-endpoint-posture-provider",
+                error: "The user denied access.",
+                verification_ref: ^ref
+              }} = oidc_verification_result_from_redirect(redirected_to(conn))
+    end
+  end
+
   describe "callback/2 (fallback with no recognized params)" do
     test "redirects with invalid callback params error when params don't match any pattern", %{
       conn: conn

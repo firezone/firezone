@@ -17,7 +17,7 @@ defmodule Portal.OSReleases do
   use GenServer
 
   alias __MODULE__.Database
-  alias Portal.{Defender, Intune, Iru, OSRelease, Santa, SentinelOne, Sophos}
+  alias Portal.{Defender, GoogleEndpoint, Intune, Iru, OSRelease, Santa, SentinelOne, Sophos}
   alias Portal.Policies.Postures
 
   @table __MODULE__.ETS
@@ -141,6 +141,19 @@ defmodule Portal.OSReleases do
        when is_integer(major) do
     version = [major, row.os_minor_version, row.os_build] |> Enum.reject(&is_nil/1) |> Enum.join(".")
     {:macos, version}
+  end
+
+  defp os_and_version(%GoogleEndpoint.Device{device_type: "ANDROID", security_patch_at: %DateTime{} = patch}),
+    do: {:android, DateTime.to_date(patch)}
+
+  # Google prefixes the version with the OS name, such as "iOS 17.4.1". Windows
+  # is left out as nothing documents whether its build carries the revision.
+  defp os_and_version(%GoogleEndpoint.Device{device_type: type, os_version: os_version})
+       when type in ["MAC_OS", "IOS"] and is_binary(os_version) do
+    case Regex.run(~r/\d+(?:\.\d+)*/, os_version) do
+      [version] -> {if(type == "IOS", do: :ios, else: :macos), version}
+      nil -> nil
+    end
   end
 
   defp os_and_version(_row), do: nil

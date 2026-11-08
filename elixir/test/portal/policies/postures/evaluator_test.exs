@@ -389,6 +389,16 @@ defmodule Portal.Policies.Postures.EvaluatorTest do
       assert evaluate(@jailbroken, device()) == @failed
     end
 
+    test "Google Endpoint names the platform by device type" do
+      android = struct!(Portal.GoogleEndpoint.Device, device_type: "ANDROID")
+      mac = struct!(Portal.GoogleEndpoint.Device, device_type: "MAC_OS")
+      chromebook = struct!(Portal.GoogleEndpoint.Device, device_type: "CHROME_OS")
+
+      assert Evaluator.platform(device(posture: %{google_endpoint: [android]})) == :android
+      assert Evaluator.platform(device(posture: %{google_endpoint: [mac]})) == :macos
+      assert Evaluator.platform(device(posture: %{google_endpoint: [chromebook]})) == nil
+    end
+
     test "Defender, SentinelOne and Sophos name the platform too" do
       defender = struct!(Portal.Defender.Device, os_platform: "WindowsServer2022")
       sentinelone = struct!(Portal.SentinelOne.Device, os_type: "linux")

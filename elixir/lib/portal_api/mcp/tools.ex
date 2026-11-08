@@ -87,7 +87,9 @@ defmodule PortalAPI.MCP.Tools do
     {:put, "/sentinelone_posture_providers/{id}"} => {true, true},
     {:delete, "/sentinelone_posture_providers/{id}"} => {true, true},
     {:put, "/sophos_posture_providers/{id}"} => {true, true},
-    {:delete, "/sophos_posture_providers/{id}"} => {true, true}
+    {:delete, "/sophos_posture_providers/{id}"} => {true, true},
+    {:put, "/google_endpoint_posture_providers/{id}"} => {true, true},
+    {:delete, "/google_endpoint_posture_providers/{id}"} => {true, true}
   }
 
   # The full posture grammar is about 160 KB per policy tool; list_posture_fields serves it on demand.
@@ -109,7 +111,7 @@ defmodule PortalAPI.MCP.Tools do
     }
   }
 
-  @posture_types ~w[intune iru defender santa sentinelone sophos]
+  @posture_types ~w[intune iru defender santa sentinelone sophos google_endpoint]
 
   @grouped_tools [
     %{
@@ -169,7 +171,9 @@ defmodule PortalAPI.MCP.Tools do
       variant: "get_TYPE_device",
       title: "Show Posture Device",
       description: "Shows one device synced from a posture provider of the given `type`.",
-      id: "Device ID. For `sentinelone`, the SentinelOne agent UUID."
+      id:
+        "Device ID. For `sentinelone`, the SentinelOne agent UUID. For `google_endpoint`, " <>
+          "the part of the Google device resource name after `devices/`."
     }
   ]
 

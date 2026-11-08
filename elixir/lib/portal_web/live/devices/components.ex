@@ -1439,6 +1439,7 @@ defmodule PortalWeb.Devices.Components do
   defp posture_provider_label(:santa), do: "Santa"
   defp posture_provider_label(:sentinelone), do: "SentinelOne"
   defp posture_provider_label(:sophos), do: "Sophos XDR"
+  defp posture_provider_label(:google_endpoint), do: "Google Endpoint Management"
 
   defp posture_match_label(:mdm_device_id), do: "Attested device ID"
   defp posture_match_label(:attested_serial), do: "Attested serial"
@@ -1550,6 +1551,23 @@ defmodule PortalWeb.Devices.Components do
       {"Group", device.group_name},
       {"Sophos ID", device.sophos_id},
       {"Last seen", device.last_seen_at},
+      {"Last synced", device.synced_at}
+    ])
+  end
+
+  defp posture_attributes(:google_endpoint, device) do
+    drop_empty([
+      {"Hostname", device.hostname},
+      {"Serial number", device.serial_number},
+      {"Model", join_present([device.manufacturer, device.model])},
+      {"Operating system", device.os_version},
+      {"Device type", device.device_type},
+      {"Ownership", device.owner_type},
+      {"Management", device.management_state},
+      {"Encryption", device.encryption_state},
+      {"Compromised", device.compromised_state},
+      {"Google ID", device.google_id},
+      {"Last sync", device.last_sync_at},
       {"Last synced", device.synced_at}
     ])
   end

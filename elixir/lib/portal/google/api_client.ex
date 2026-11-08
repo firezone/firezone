@@ -77,6 +77,34 @@ defmodule Portal.Google.APIClient do
     end
   end
 
+  @doc """
+  Gets a delegated Workspace access token for a deployment service account other
+  than the directory one. It federates through the same workload identity pool.
+  Its own key is used only when federation is not configured at all, and the
+  directory key never is, as that service account holds other delegated scopes.
+  """
+  def get_delegated_access_token(impersonation_email, scope, service_account) do
+    config = Portal.Config.fetch_env!(:portal, __MODULE__)
+    federation = Keyword.put(config, :service_account_email, service_account[:email])
+
+    case workload_identity_config(federation) do
+      {:ok, workload_identity_config} ->
+        get_federated_access_token(impersonation_email, scope, config, workload_identity_config)
+
+      :not_configured ->
+        case service_account[:key] do
+          key when is_binary(key) and key != "" ->
+            get_access_token_with_key(impersonation_email, JSON.decode!(key), scope, config)
+
+          _ ->
+            {:error, :service_account_not_configured}
+        end
+
+      {:error, _reason} = error ->
+        error
+    end
+  end
+
   defp generate_access_token(email, federated_token, scope, config) do
     endpoint = "#{config[:iam_credentials_endpoint]}/v1/projects/-/serviceAccounts/#{URI.encode(email)}:generateAccessToken"
 
