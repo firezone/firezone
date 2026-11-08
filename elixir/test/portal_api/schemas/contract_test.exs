@@ -12,11 +12,20 @@ defmodule PortalAPI.Schemas.ContractTest do
   alias OpenApiSpex.Schema
 
   # `aliases` map a property to the struct field it is read from. `attrs` give
-  # a bare struct whatever its mapper needs.
+  # a bare struct whatever its mapper needs. `unreturned` lists enum values the
+  # API never returns, such as the actor type the portal hides from admins.
   @contracts [
     %{schema: PortalAPI.Schemas.Account.Schema, struct: Portal.Account},
-    %{schema: PortalAPI.Schemas.Actor.Schema, struct: Portal.Actor},
-    %{schema: PortalAPI.Schemas.Membership.Schema, struct: Portal.Actor},
+    %{
+      schema: PortalAPI.Schemas.Actor.Schema,
+      struct: Portal.Actor,
+      unreturned: [type: ["legacy_gateway"]]
+    },
+    %{
+      schema: PortalAPI.Schemas.Membership.Schema,
+      struct: Portal.Actor,
+      unreturned: [type: ["legacy_gateway"]]
+    },
     %{schema: PortalAPI.Schemas.Site.Schema, struct: Portal.Site},
     %{schema: PortalAPI.Schemas.Group.Schema, struct: Portal.Group, attrs: %{sync_state: nil}},
     %{schema: PortalAPI.Schemas.Policy.Schema, struct: Portal.Policy},
@@ -105,7 +114,7 @@ defmodule PortalAPI.Schemas.ContractTest do
   ]
 
   for contract <- @contracts do
-    @contract Map.merge(%{aliases: [], attrs: %{}, omittable: []}, contract)
+    @contract Map.merge(%{aliases: [], attrs: %{}, omittable: [], unreturned: []}, contract)
 
     describe "#{inspect(contract.schema)} against #{inspect(contract.struct)}" do
       test "encodes exactly the documented properties" do
@@ -138,7 +147,11 @@ defmodule PortalAPI.Schemas.ContractTest do
                 @contract.schema.schema().properties,
               field = source(property, @contract),
               field in fields(struct),
-              expected = expected_type(ecto_type(struct, field)),
+              expected =
+                struct
+                |> ecto_type(field)
+                |> expected_type()
+                |> drop_unreturned(Keyword.get(@contract.unreturned, property, [])),
               problem = compare(expected, schema),
               do: {property, problem}
 
@@ -185,6 +198,9 @@ defmodule PortalAPI.Schemas.ContractTest do
   end
 
   defp expected_type(_other), do: nil
+
+  defp drop_unreturned({:enum, values}, unreturned), do: {:enum, values -- unreturned}
+  defp drop_unreturned(expected, _unreturned), do: expected
 
   defp compare({:enum, values}, %Schema{type: :string, enum: enum}) when is_list(enum) do
     if Enum.sort(enum) == values do

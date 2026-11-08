@@ -302,4 +302,54 @@ defmodule Portal.SafeTest do
 
     if account_id, do: Map.put(entry, :account_id, account_id), else: entry
   end
+
+  describe "legacy_gateway actor" do
+    setup do
+      account = account_fixture()
+      actor = Portal.ActorFixtures.legacy_gateway_actor_fixture(account: account)
+      %{account: account, actor: actor, subject: admin_subject_fixture(account: account)}
+    end
+
+    test "is hidden from scoped reads", %{actor: actor, subject: subject} do
+      assert from(a in Portal.Actor, where: a.id == ^actor.id) |> Safe.scoped(subject) |> Safe.one() == nil
+      refute actor.id in (from(a in Portal.Actor) |> Safe.scoped(subject) |> Safe.all() |> Enum.map(& &1.id))
+      assert from(a in Portal.Actor, where: a.id == ^actor.id) |> Safe.scoped(subject) |> Safe.aggregate(:count) == 0
+    end
+
+    test "stays visible to unscoped reads", %{actor: actor} do
+      assert %Portal.Actor{} = from(a in Portal.Actor, where: a.id == ^actor.id) |> Safe.unscoped() |> Safe.one()
+    end
+
+    test "cannot be deleted or bulk-changed by an admin", %{actor: actor, subject: subject} do
+      assert {:error, :unauthorized} = actor |> Safe.scoped(subject) |> Safe.delete()
+
+      assert {:error, :unauthorized} =
+               actor |> Ecto.Changeset.change() |> Safe.scoped(subject) |> Safe.delete()
+
+      assert {0, _} = from(a in Portal.Actor, where: a.id == ^actor.id) |> Safe.scoped(subject) |> Safe.delete_all()
+
+      assert {0, _} =
+               from(a in Portal.Actor, where: a.id == ^actor.id)
+               |> Safe.scoped(subject)
+               |> Safe.update_all(set: [name: "Renamed"])
+
+      assert %Portal.Actor{name: "Legacy Gateway"} = Repo.get_by(Portal.Actor, id: actor.id)
+    end
+
+    test "as a subject type it is granted nothing" do
+      for {action, schema} <- [
+            {:read, Portal.Site},
+            {:read, Portal.Resource},
+            {:read, Portal.Policy},
+            {:read, Portal.Membership},
+            {:read, Portal.PolicyAuthorization},
+            {:insert, Portal.PolicyAuthorization},
+            {:read, Portal.Account},
+            {:read, Portal.Actor},
+            {:insert, Portal.Device}
+          ] do
+        assert Safe.permit(action, schema, :legacy_gateway) == {:error, :unauthorized}
+      end
+    end
+  end
 end

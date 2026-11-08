@@ -320,4 +320,59 @@ defmodule Portal.ActorTest do
       assert Actor.email_meaningfully_changed?(changeset)
     end
   end
+
+  describe "legacy_gateway type" do
+    test "cannot be set by a cast" do
+      changeset = build_changeset(%{name: "Gateways", type: :legacy_gateway})
+      assert %{type: ["is invalid"]} = errors_on(changeset)
+    end
+
+    test "a user cannot become one" do
+      changeset = actor_fixture() |> cast(%{type: :legacy_gateway}, [:type]) |> Actor.changeset()
+      assert %{type: ["is invalid"]} = errors_on(changeset)
+    end
+
+    test "is created with no email" do
+      actor = legacy_gateway_actor_fixture()
+      assert actor.type == :legacy_gateway
+      assert is_nil(actor.email)
+    end
+
+    test "cannot have an email" do
+      account = account_fixture()
+
+      assert {:error, changeset} =
+               %Actor{account_id: account.id, type: :legacy_gateway, name: "Gateways", email: "g@example.com"}
+               |> change()
+               |> Actor.changeset()
+               |> Repo.insert()
+
+      assert %{type: ["is invalid"]} = errors_on(changeset)
+    end
+
+    test "exists at most once per account" do
+      account = account_fixture()
+      legacy_gateway_actor_fixture(account: account)
+
+      assert {:error, changeset} =
+               %Actor{account_id: account.id, type: :legacy_gateway, name: "Again"}
+               |> change()
+               |> Actor.changeset()
+               |> Repo.insert()
+
+      assert "has already been taken" in errors_on(changeset).type
+      assert legacy_gateway_actor_fixture(account: account_fixture()).type == :legacy_gateway
+    end
+
+    test "cannot be changed once stored" do
+      actor = legacy_gateway_actor_fixture()
+
+      for changes <- [%{name: "Renamed"}, %{is_disabled: true}, %{type: :service_account}] do
+        changeset = actor |> change(changes) |> Actor.changeset()
+        assert "legacy Gateway actors cannot be changed" in errors_on(changeset).type
+      end
+
+      assert actor |> change() |> Actor.changeset() |> Map.fetch!(:valid?)
+    end
+  end
 end

@@ -818,6 +818,22 @@ defmodule PortalWeb.ActorsTest do
       assert flash["error"] == "Actor not found"
     end
 
+    test "redirects to actor list for the legacy Gateway actor", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      legacy = legacy_gateway_actor_fixture(account: account)
+
+      assert {:error, {:live_redirect, %{to: path, flash: flash}}} =
+               conn
+               |> authorize_conn(actor)
+               |> live(~p"/#{account}/actors/#{legacy}")
+
+      assert path == ~p"/#{account}/actors"
+      assert flash["error"] == "Actor not found"
+    end
+
     test "redirects to actor list when actor belongs to a different account", %{
       conn: conn,
       account: account,
