@@ -1947,7 +1947,7 @@ defmodule PortalAPI.Client.ChannelTest do
       refute_push "relays_presence", %{disconnected_ids: [_]}, 200
     end
 
-    test "load_balance_relays defers relays with lat but nil lon", %{
+    test "defers relays with lat but nil lon", %{
       account: account,
       actor: actor,
       subject: subject

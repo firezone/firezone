@@ -12,6 +12,7 @@ defmodule PortalAPI.Client.Channel.Shared do
     Changes.Change,
     PubSub,
     Presence,
+    Routing,
     SchemaHelpers,
     Authentication
   }
@@ -306,7 +307,7 @@ defmodule PortalAPI.Client.Channel.Shared do
           socket.assigns.subject.context.remote_ip_location_lon
         }
 
-        relays = load_balance_relays(location, all_online_relays)
+        relays = Routing.select_relays(all_online_relays, location)
         socket = cache_relays(socket, relays, disconnected_ids)
 
         push(socket, "relays_presence", %{
@@ -951,19 +952,8 @@ defmodule PortalAPI.Client.Channel.Shared do
              resource_id,
              socket.assigns.subject
            ),
-         {:ok, gateways} when gateways != [] <-
-           Database.all_compatible_gateways_for_client_and_resource(
-             socket.assigns.client_version,
-             resource,
-             socket.assigns.subject.account.id
-           ) do
-      location = {
-        socket.assigns.subject.context.remote_ip_location_lat,
-        socket.assigns.subject.context.remote_ip_location_lon
-      }
-
-      gateway = Device.load_balance_gateways(location, gateways, connected_gateway_ids)
-
+         {:ok, gateway} <-
+           Routing.select_receiver(resource, initiator(socket), connected_gateway_ids) do
       reply =
         {:ok,
          %{
@@ -978,7 +968,7 @@ defmodule PortalAPI.Client.Channel.Shared do
       {:error, :not_found} ->
         {:reply, {:error, %{reason: :not_found}}, socket}
 
-      {:ok, []} ->
+      {:error, :offline} ->
         {:reply, {:error, %{reason: :offline}}, socket}
 
       {:error, :version_mismatch} ->
@@ -1460,18 +1450,8 @@ defmodule PortalAPI.Client.Channel.Shared do
          socket,
          address
        ) do
-    case Database.all_compatible_gateways_for_client_and_resource(
-           socket.assigns.client_version,
-           resource,
-           socket.assigns.subject.account.id
-         ) do
-      {:ok, [_ | _] = gateways} ->
-        location = {
-          socket.assigns.subject.context.remote_ip_location_lat,
-          socket.assigns.subject.context.remote_ip_location_lon
-        }
-
-        gateway = Device.load_balance_gateways(location, gateways, connected_gateway_ids)
+    case Routing.select_receiver(resource, initiator(socket), connected_gateway_ids) do
+      {:ok, gateway} ->
         gateway_public_key = gateway.public_key
 
         policy_authorization_id = Ecto.UUID.generate()
@@ -1557,7 +1537,7 @@ defmodule PortalAPI.Client.Channel.Shared do
             {:noreply, socket}
         end
 
-      {:ok, []} ->
+      {:error, :offline} ->
         push_authorization_creation_failed(socket, resource_id, :offline, address)
         {:noreply, socket}
 
@@ -2103,9 +2083,19 @@ defmodule PortalAPI.Client.Channel.Shared do
       socket.assigns.subject.context.remote_ip_location_lon
     }
 
-    relays = load_balance_relays(location, relays)
+    relays = Routing.select_relays(relays, location)
 
     {:ok, relays}
+  end
+
+  defp initiator(socket) do
+    %{
+      account_id: socket.assigns.subject.account.id,
+      version: socket.assigns.client_version,
+      location:
+        {socket.assigns.subject.context.remote_ip_location_lat,
+         socket.assigns.subject.context.remote_ip_location_lon}
+    }
   end
 
   # Every relay we handed out and did not report disconnected: connlib may still
@@ -2866,31 +2856,6 @@ defmodule PortalAPI.Client.Channel.Shared do
     {:noreply, assign(socket, cache: cache)}
   end
 
-  defp load_balance_relays({lat, lon}, relays) when is_nil(lat) or is_nil(lon) do
-    relays
-    |> Enum.shuffle()
-    |> Enum.take(2)
-  end
-
-  defp load_balance_relays({lat, lon}, relays) do
-    relays
-    |> Enum.shuffle()
-    |> Enum.map(fn relay ->
-      case {relay.lat, relay.lon} do
-        {nil, _} -> {nil, relay}
-        {_, nil} -> {nil, relay}
-        {relay_lat, relay_lon} -> {Portal.Geo.distance({lat, lon}, {relay_lat, relay_lon}), relay}
-      end
-    end)
-    |> Enum.sort_by(&elem(&1, 0), &nils_last/2)
-    |> Enum.take(2)
-    |> Enum.map(&elem(&1, 1))
-  end
-
-  defp nils_last(nil, _), do: false
-  defp nils_last(_, nil), do: true
-  defp nils_last(a, b), do: a <= b
-
   # Builds the attrs map for a `Portal.PolicyAuthorization` row. The caller
   # passes this to `Portal.Queue.enqueue/3` with a `:dispatch` callback that
   # delivers the corresponding `:allow_access` (or equivalent) message to the
@@ -3336,32 +3301,6 @@ defmodule PortalAPI.Client.Channel.Shared do
       |> Portal.Safe.delete_all()
     end
 
-    def all_compatible_gateways_for_client_and_resource(
-          client_version,
-          resource,
-          account_id
-        ) do
-      resource_site_id = site_id_from_resource(resource)
-
-      site_gateways =
-        Portal.Presence.Devices.all_connected_gateways(account_id)
-        |> Enum.filter(&(&1.site_id == resource_site_id))
-
-      compatible_gateways =
-        filter_compatible_gateways(site_gateways, resource, client_version)
-
-      cond do
-        compatible_gateways != [] ->
-          {:ok, compatible_gateways}
-
-        site_gateways != [] ->
-          {:error, :version_mismatch}
-
-        true ->
-          {:ok, []}
-      end
-    end
-
     @doc """
       Fetches the client device in the subject's account that answers at `slug`.
       Returns `{:error, :not_found}` for a miss or unauthorized read.
@@ -3469,35 +3408,5 @@ defmodule PortalAPI.Client.Channel.Shared do
       end
     end
 
-    # Filters gateways by the resource type, gateway version, and client version.
-    defp filter_compatible_gateways(gateways, _resource, nil), do: gateways
-
-    defp filter_compatible_gateways(gateways, resource, client_version) do
-      case Version.parse(client_version) do
-        {:ok, version} ->
-          Enum.filter(gateways, &compatible_gateway?(&1, resource, version))
-
-        :error ->
-          []
-      end
-    end
-
-    defp compatible_gateway?(gateway, resource, version) do
-      gateway_version_str = gateway.last_seen_version
-
-      case gateway_version_str && Version.parse(gateway_version_str) do
-        {:ok, gateway_version} ->
-          Version.match?(gateway_version, ">= #{version.major}.#{version.minor - 1}.0") and
-            Version.match?(gateway_version, "< #{version.major}.#{version.minor + 2}.0") and
-            not is_nil(Portal.Resource.adapt_resource_for_version(resource, gateway_version_str))
-
-        _ ->
-          false
-      end
-    end
-
-    defp site_id_from_resource(%Portal.Cache.Cacheable.Resource{site: site}) do
-      Ecto.UUID.load!(site.id)
-    end
   end
 end
