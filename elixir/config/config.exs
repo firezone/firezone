@@ -109,6 +109,7 @@ config :portal, Portal.ChangeLogs.Consumer,
     google_directories
     devices
     sites
+    site_devices
     gateway_tokens
     policies
     resources
