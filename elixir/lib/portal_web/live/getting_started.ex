@@ -1316,6 +1316,7 @@ defmodule PortalWeb.GettingStarted do
     alias Portal.Resource
     alias Portal.Safe
     alias Portal.Site
+    alias Portal.SiteDevice
 
     @default_site_name "Default Site"
 
@@ -1514,7 +1515,12 @@ defmodule PortalWeb.GettingStarted do
     defp pending_gateway(gateway_id, site_id, subject) do
       from(d in Device, as: :devices)
       |> where([devices: d], d.id == ^gateway_id and d.type == :gateway)
-      |> where([devices: d], d.site_id == ^site_id and is_nil(d.firezone_id))
+      |> join(:inner, [devices: d], sd in SiteDevice,
+        on: sd.account_id == d.account_id and sd.device_id == d.id,
+        as: :site_device
+      )
+      |> where([devices: d, site_device: sd], sd.site_id == ^site_id and is_nil(d.firezone_id))
+      |> select_merge([site_device: sd], %{site_id: sd.site_id})
       |> Safe.scoped(subject)
       |> Safe.one()
       |> case do
