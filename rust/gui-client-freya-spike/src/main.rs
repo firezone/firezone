@@ -37,7 +37,16 @@ fn main() {
         dark: std::env::var("DARK").is_ok(),
     };
 
+    // Build the event loop ourselves so "no display" is an error we handle, not a panic.
+    let event_loop = match freya::winit::event_loop::EventLoop::<NativeEvent>::with_user_event().build() {
+        Ok(event_loop) => event_loop,
+        Err(e) => {
+            eprintln!("cannot start GUI: {e}");
+            std::process::exit(2);
+        }
+    };
     let config = LaunchConfig::new()
+        .with_event_loop(event_loop)
         .with_exit_on_close(false)
         .with_font(ROBOTO, Bytes::from_static(ROBOTO_REGULAR))
         .with_font(ROBOTO, Bytes::from_static(ROBOTO_BOLD))
