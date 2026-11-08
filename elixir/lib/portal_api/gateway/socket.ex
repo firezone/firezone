@@ -124,7 +124,7 @@ defmodule PortalAPI.Gateway.Socket do
     with {:ok, site} <- Database.fetch_site(gateway_token.account_id, gateway_token.site_id),
          changeset = insert_changeset(site, attrs),
          {:ok, _} <- apply_action(changeset, :validate),
-         {:ok, gateway} <- Database.find_or_create_gateway(changeset) do
+         {:ok, gateway} <- Database.find_or_create_gateway(site, changeset) do
       {:ok, site, gateway}
     end
   end
@@ -134,7 +134,7 @@ defmodule PortalAPI.Gateway.Socket do
   defp resolve_gateway(%Portal.GatewayToken{} = gateway_token, _attrs) do
     with {:ok, gateway} <-
            Database.fetch_gateway(gateway_token.account_id, gateway_token.device_id) do
-      {:ok, gateway.site, gateway}
+      {:ok, gateway.site_device.site, gateway}
     end
   end
 
@@ -198,7 +198,6 @@ defmodule PortalAPI.Gateway.Socket do
     end)
     |> put_change(:type, :gateway)
     |> put_change(:account_id, site.account_id)
-    |> put_change(:site_id, site.id)
     |> Portal.Devices.put_free_slug(site.account_id, nil)
     |> validate_required(required_fields)
     |> Device.changeset()
@@ -397,8 +396,7 @@ defmodule PortalAPI.Gateway.Socket do
           on: sd.account_id == d.account_id and sd.device_id == d.id,
           join: s in Site,
           on: s.account_id == sd.account_id and s.id == sd.site_id,
-          select_merge: %{site_id: sd.site_id},
-          preload: [site: s]
+          preload: [site_device: {sd, site: s}]
         )
         |> Safe.unscoped()
         |> Safe.one()
@@ -430,55 +428,63 @@ defmodule PortalAPI.Gateway.Socket do
       end
     end
 
-    @dialyzer {:no_opaque, [find_or_create_gateway: 1]}
-    def find_or_create_gateway(changeset) do
-      account_id = Ecto.Changeset.get_field(changeset, :account_id)
-      site_id = Ecto.Changeset.get_field(changeset, :site_id)
+    # The lookup runs again under a lock so two first connects of one gateway
+    # cannot both insert it.
+    def find_or_create_gateway(site, changeset) do
       firezone_id = Ecto.Changeset.get_field(changeset, :firezone_id)
 
-      existing =
-        if firezone_id do
-          from(d in Device,
-            join: sd in SiteDevice,
-            on: sd.account_id == d.account_id and sd.device_id == d.id,
-            where: d.account_id == ^account_id,
-            where: sd.site_id == ^site_id,
-            where: d.firezone_id == ^firezone_id,
-            where: d.type == :gateway,
-            select_merge: %{site_id: sd.site_id}
-          )
-          |> Safe.unscoped()
-          |> Safe.one()
-        end
-
-      if existing do
-        {:ok, existing}
-      else
-        account =
-          from(a in Portal.Account, where: a.id == ^account_id)
-          |> Safe.unscoped()
-          |> Safe.one!()
-
-        with :ok <- Portal.Devices.RegistrationRateLimit.check(account) do
-          insert_gateway(changeset)
-        end
+      case find_gateway(site, firezone_id) do
+        nil -> Safe.transact(fn -> find_or_insert_locked(site, firezone_id, changeset) end)
+        gateway -> {:ok, gateway}
       end
     end
 
-    defp insert_gateway(changeset) do
-      Safe.transact(fn ->
-        with {:ok, gateway} <- changeset |> Safe.unscoped() |> Safe.insert(),
-             {:ok, _site_device} <-
-               %Portal.SiteDevice{
-                 account_id: gateway.account_id,
-                 site_id: gateway.site_id,
-                 device_id: gateway.id
-               }
-               |> Safe.unscoped()
-               |> Safe.insert() do
-          {:ok, gateway}
-        end
-      end)
+    defp find_or_insert_locked(site, firezone_id, changeset) do
+      {:ok, _} =
+        Safe.unscoped()
+        |> Safe.query("SELECT pg_advisory_xact_lock($1)", [registration_lock_key(site, firezone_id)])
+
+      case find_gateway(site, firezone_id) do
+        nil -> insert_gateway(site, changeset)
+        gateway -> {:ok, gateway}
+      end
+    end
+
+    defp find_gateway(site, firezone_id) do
+      from(d in Device,
+        join: sd in SiteDevice,
+        on: sd.account_id == d.account_id and sd.device_id == d.id,
+        where: d.account_id == ^site.account_id,
+        where: sd.site_id == ^site.id,
+        where: d.firezone_id == ^firezone_id,
+        where: d.type == :gateway
+      )
+      |> Safe.unscoped()
+      |> Safe.one()
+    end
+
+    @dialyzer {:no_opaque, [insert_gateway: 2]}
+    defp insert_gateway(site, changeset) do
+      account =
+        from(a in Portal.Account, where: a.id == ^site.account_id)
+        |> Safe.unscoped()
+        |> Safe.one!()
+
+      with :ok <- Portal.Devices.RegistrationRateLimit.check(account),
+           {:ok, gateway} <- changeset |> Safe.unscoped() |> Safe.insert(),
+           {:ok, _site_device} <-
+             %SiteDevice{account_id: site.account_id, site_id: site.id, device_id: gateway.id}
+             |> Safe.unscoped()
+             |> Safe.insert() do
+        {:ok, gateway}
+      end
+    end
+
+    defp registration_lock_key(site, firezone_id) do
+      <<key::signed-64, _::binary>> =
+        :crypto.hash(:sha256, "gateway_registration:" <> site.id <> ":" <> firezone_id)
+
+      key
     end
   end
 end

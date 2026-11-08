@@ -25,7 +25,7 @@ defmodule Portal.DevicesTest do
                Devices.provision_gateway(site, "edge-nyc-1", subject)
 
       assert gateway.name == "edge-nyc-1"
-      assert gateway.site_id == site.id
+      assert Repo.preload(gateway, :site).site.id == site.id
       assert gateway.account_id == site.account_id
       assert gateway.type == :gateway
 
@@ -58,7 +58,7 @@ defmodule Portal.DevicesTest do
       assert {:error, :unauthorized} = Devices.provision_gateway(site, "orphan-gw", subject)
 
       assert Repo.aggregate(
-               from(d in Device, where: d.site_id == ^site.id and d.type == :gateway),
+               from(sd in Portal.SiteDevice, where: sd.site_id == ^site.id),
                :count
              ) == 0
 

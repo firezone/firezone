@@ -1344,7 +1344,6 @@ defmodule PortalWeb.Sites do
         as: :site_device
       )
       |> where([site_device: sd], sd.site_id == ^site_id)
-      |> select_merge([site_device: sd], %{site_id: sd.site_id})
       |> order_by([devices: d], asc: d.name)
       |> Safe.scoped(subject)
       |> Safe.all()
@@ -1591,9 +1590,21 @@ defmodule PortalWeb.Sites do
 
     @spec delete_site(Site.t(), Portal.Authentication.Subject.t()) ::
             {:ok, Site.t()} | {:error, Ecto.Changeset.t()}
+    # A gateway serves one site for now, so it goes with it.
     def delete_site(site, subject) do
-      Safe.scoped(site, subject)
-      |> Safe.delete()
+      Safe.transact(fn ->
+        case from(d in Device, as: :devices)
+             |> join(:inner, [devices: d], sd in SiteDevice,
+               on: sd.account_id == d.account_id and sd.device_id == d.id,
+               as: :site_device
+             )
+             |> where([site_device: sd], sd.site_id == ^site.id)
+             |> Safe.scoped(subject)
+             |> Safe.delete_all() do
+          {:error, :unauthorized} -> {:error, :unauthorized}
+          {_count, _} -> site |> Safe.scoped(subject) |> Safe.delete()
+        end
+      end)
     end
 
     def get_internet_resource(subject) do

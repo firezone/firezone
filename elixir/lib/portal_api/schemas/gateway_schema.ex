@@ -32,7 +32,6 @@ defmodule PortalAPI.Schemas.Gateway do
                :last_attested_mdm_device_id,
                :online?,
                :provisioned_token,
-               :site_id,
                :type,
                :updated_at,
                :verified_at

@@ -23,7 +23,8 @@ defmodule Portal.Site do
 
     field :managed_by, Ecto.Enum, values: ~w[account system]a, default: :account
 
-    has_many :gateways, Portal.Device, where: [type: :gateway], references: :id
+    has_many :site_devices, Portal.SiteDevice, references: :id
+    has_many :gateways, through: [:site_devices, :device]
     has_many :gateway_tokens, Portal.GatewayToken, references: :id
     has_many :resources, Portal.Resource, references: :id
 

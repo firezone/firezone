@@ -118,7 +118,7 @@ defmodule PortalAPI.GatewayControllerTest do
       end
 
       assert Repo.aggregate(
-               from(d in Portal.Device, where: d.site_id == ^site.id and d.type == :gateway),
+               from(sd in Portal.SiteDevice, where: sd.site_id == ^site.id),
                :count
              ) == 0
     end
@@ -212,7 +212,7 @@ defmodule PortalAPI.GatewayControllerTest do
       assert detail =~ "issue_token"
 
       assert Repo.aggregate(
-               from(d in Device, where: d.site_id == ^site.id and d.type == :gateway),
+               from(sd in Portal.SiteDevice, where: sd.site_id == ^site.id),
                :count
              ) == 0
     end
@@ -231,7 +231,8 @@ defmodule PortalAPI.GatewayControllerTest do
       assert %{"data" => %{"id" => id, "name" => "edge-nyc-1"} = data} = json_response(conn, 201)
       refute Map.has_key?(data, "token")
 
-      assert Repo.get_by(Device, id: id, site_id: site.id, type: :gateway)
+      assert Repo.get_by(Device, id: id, type: :gateway)
+      assert Repo.get_by(Portal.SiteDevice, device_id: id, site_id: site.id)
       refute Repo.exists?(from(t in Portal.GatewayToken, where: t.device_id == ^id))
 
       # Whoever deploys the gateway mints its token separately.
@@ -273,7 +274,7 @@ defmodule PortalAPI.GatewayControllerTest do
       assert detail =~ "issue_token"
 
       assert Repo.aggregate(
-               from(d in Device, where: d.site_id == ^site.id and d.type == :gateway),
+               from(sd in Portal.SiteDevice, where: sd.site_id == ^site.id),
                :count
              ) == 0
     end

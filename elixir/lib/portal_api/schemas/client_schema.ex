@@ -19,7 +19,6 @@ defmodule PortalAPI.Schemas.Client do
                :last_attested_cert_issuer,
                :online?,
                :provisioned_token,
-               :site_id,
                :type
              ]}
     OpenApiSpex.schema(%{

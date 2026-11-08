@@ -493,7 +493,9 @@ defmodule PortalWeb.GettingStartedTest do
 
       assert resource_id == resource.id
       gateway = Portal.Repo.get_by!(Portal.Device, account_id: account.id, id: gateway_id)
-      assert gateway.site_id == site.id
+
+      assert Portal.Repo.get_by!(Portal.SiteDevice, account_id: account.id, device_id: gateway.id).site_id ==
+               site.id
 
       for {tab, icon} <- [
             {"debian", "icon-os-debian"},
@@ -511,7 +513,7 @@ defmodule PortalWeb.GettingStartedTest do
       assert has_element?(view, "#getting-started-gateway-systemd", "gateway-systemd-install.sh")
       refute render(view) =~ "FIREZONE_ID"
 
-      gateway |> Map.put(:site_id, site.id) |> online()
+      online(%{gateway | site: site})
       assert eventually(fn -> status_done?(view, "gateway") end)
       continue(view)
 

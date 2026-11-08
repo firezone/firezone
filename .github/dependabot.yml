@@ -253,6 +253,10 @@ updates:
       sentry:
         patterns:
           - "@sentry/*"
+      eslint:
+        patterns:
+          - "eslint"
+          - "@eslint/*"
       vitest:
         patterns:
           - "vitest"

@@ -7,7 +7,7 @@ defmodule Portal.GatewayTest do
   alias Portal.Device
 
   defp build_changeset(attrs) do
-    %Device{type: :gateway, site_id: Ecto.UUID.generate()}
+    %Device{type: :gateway}
     |> cast(attrs, [:name, :firezone_id])
     |> Device.changeset()
   end
