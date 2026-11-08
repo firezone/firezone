@@ -35,6 +35,8 @@ defmodule Portal.DevicesTest do
                device_id: gateway.id
              )
 
+      assert is_nil(Repo.get_by!(Device, account_id: account.id, id: gateway.id).site_id)
+
       assert token.device_id == gateway.id
       assert is_nil(token.site_id)
       # secret_fragment is scrubbed - only the encoded token carries the secret.

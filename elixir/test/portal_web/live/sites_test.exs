@@ -1,6 +1,7 @@
 defmodule PortalWeb.SitesTest do
   use PortalWeb.ConnCase, async: true
 
+  import Ecto.Query
   alias Portal.{Device, GatewayToken, Repo, Resource, Site}
 
   import Portal.AccountFixtures
@@ -594,8 +595,7 @@ defmodule PortalWeb.SitesTest do
         |> Floki.text()
         |> String.trim()
 
-      gateway =
-        Repo.get_by!(Device, account_id: account.id, site_id: site.id, type: :gateway)
+      gateway = site_gateway!(site)
 
       assert is_nil(gateway.firezone_id)
 
@@ -620,7 +620,7 @@ defmodule PortalWeb.SitesTest do
 
       assert render_click(lv, "deploy_gateway") =~ "Waiting for connection..."
 
-      gateway = Repo.get_by!(Device, account_id: account.id, site_id: site.id, type: :gateway)
+      gateway = site_gateway!(site)
       token = Repo.get_by!(GatewayToken, account_id: account.id, device_id: gateway.id)
 
       send(lv.pid, %Phoenix.Socket.Broadcast{
@@ -1706,9 +1706,14 @@ defmodule PortalWeb.SitesTest do
       assert row =~ ~r/·\s*1 offline/
 
       deployed =
-        Device
-        |> Repo.all()
-        |> Enum.find(&(&1.site_id == site.id and &1.id != online.id))
+        Repo.one!(
+          from(d in Device,
+            join: sd in Portal.SiteDevice,
+            on: sd.account_id == d.account_id and sd.device_id == d.id,
+            where: sd.site_id == ^site.id and d.id != ^online.id,
+            select_merge: %{site_id: sd.site_id}
+          )
+        )
 
       :ok = Portal.Presence.Devices.Account.track(deployed)
 
@@ -1752,5 +1757,15 @@ defmodule PortalWeb.SitesTest do
 
   defp badge_count(html) do
     html |> String.split("legacy token") |> length() |> Kernel.-(1)
+  end
+
+  defp site_gateway!(site) do
+    Repo.one!(
+      from(d in Device,
+        join: sd in Portal.SiteDevice,
+        on: sd.account_id == d.account_id and sd.device_id == d.id,
+        where: sd.account_id == ^site.account_id and sd.site_id == ^site.id
+      )
+    )
   end
 end

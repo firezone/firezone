@@ -771,7 +771,6 @@ defmodule Portal.Dev.AccountPopulation do
       )
       |> put_change(:type, :gateway)
       |> put_change(:account_id, state.account.id)
-      |> put_change(:site_id, site.id)
       |> Portal.Devices.put_free_slug(state.account.id, nil)
       |> Device.changeset()
       |> Repo.insert!()

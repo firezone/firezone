@@ -189,7 +189,6 @@ defmodule Portal.Device do
     |> validate_type_fields()
     |> check_constraint(:type, name: :devices_type_check)
     |> check_constraint(:actor_id, name: :device_type_client_fields)
-    |> check_constraint(:site_id, name: :device_type_gateway_fields)
     |> unique_firezone_id_constraint()
     |> unique_constraint(:ipv4, name: :devices_account_id_ipv4_index)
     |> unique_constraint(:ipv6, name: :devices_account_id_ipv6_index)
@@ -260,7 +259,6 @@ defmodule Portal.Device do
 
       :gateway ->
         changeset
-        |> validate_required([:site_id])
         |> validate_length(:device_serial, max: 255)
         |> validate_length(:device_uuid, max: 255)
         |> validate_gateway_verification()

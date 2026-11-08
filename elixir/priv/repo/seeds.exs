@@ -259,7 +259,6 @@ defmodule Portal.Repo.Seeds do
       )
       |> Ecto.Changeset.put_change(:type, :gateway)
       |> Ecto.Changeset.put_change(:account_id, site.account_id)
-      |> Ecto.Changeset.put_change(:site_id, site_id)
       |> Portal.Devices.put_free_slug(site.account_id, nil)
       |> Device.changeset()
       |> Safe.unscoped()
