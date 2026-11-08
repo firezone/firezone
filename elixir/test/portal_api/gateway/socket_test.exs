@@ -437,6 +437,95 @@ defmodule PortalAPI.Gateway.SocketTest do
       assert socket.assigns.gateway.firezone_id == gateway.firezone_id
     end
 
+    test "single-owner connect keeps its firezone_id when another gateway in the site holds the reported one" do
+      account = account_fixture()
+      site = site_fixture(account: account)
+      holder = gateway_fixture(account: account, site: site)
+      gateway = gateway_fixture(account: account, site: site)
+      token = gateway_token_fixture(gateway: gateway)
+
+      attrs = connect_attrs(token: encode_gateway_token(token), external_id: holder.firezone_id)
+
+      assert {:ok, socket} = connect(Socket, attrs, connect_info: build_connect_info())
+      assert socket.assigns.gateway.id == gateway.id
+      assert Repo.get_by!(Portal.Device, id: gateway.id).firezone_id == gateway.firezone_id
+
+      site_token = gateway_token_fixture(account: account, site: site)
+      attrs = connect_attrs(token: encode_gateway_token(site_token), external_id: holder.firezone_id)
+
+      assert {:ok, socket} = connect(Socket, attrs, connect_info: build_connect_info())
+      assert socket.assigns.gateway.id == holder.id
+    end
+
+    test "single-owner connect takes a firezone_id a gateway in another site holds" do
+      account = account_fixture()
+      other_gateway = gateway_fixture(account: account)
+      gateway = gateway_fixture(account: account)
+      token = gateway_token_fixture(gateway: gateway)
+
+      attrs =
+        connect_attrs(token: encode_gateway_token(token), external_id: other_gateway.firezone_id)
+
+      assert {:ok, socket} = connect(Socket, attrs, connect_info: build_connect_info())
+      assert socket.assigns.gateway.firezone_id == other_gateway.firezone_id
+    end
+
+    test "site-token connect picks the oldest gateway when two in the site share a firezone_id" do
+      account = account_fixture()
+      site = site_fixture(account: account)
+      oldest = gateway_fixture(account: account, site: site)
+      newest = gateway_fixture(account: account, site: site)
+
+      newest
+      |> Ecto.Changeset.change(
+        firezone_id: oldest.firezone_id,
+        inserted_at: DateTime.add(oldest.inserted_at, 1, :second)
+      )
+      |> Repo.update!()
+
+      token = gateway_token_fixture(account: account, site: site)
+      attrs = connect_attrs(token: encode_gateway_token(token), external_id: oldest.firezone_id)
+
+      assert {:ok, socket} = connect(Socket, attrs, connect_info: build_connect_info())
+      assert socket.assigns.gateway.id == oldest.id
+    end
+
+    test "site-token connect creates one gateway and one site assignment" do
+      account = account_fixture()
+      site = site_fixture(account: account)
+      token = gateway_token_fixture(account: account, site: site)
+      attrs = connect_attrs(token: encode_gateway_token(token), external_id: "new-host")
+
+      assert {:ok, first} = connect(Socket, attrs, connect_info: build_connect_info())
+      assert {:ok, second} = connect(Socket, attrs, connect_info: build_connect_info())
+      assert first.assigns.gateway.id == second.assigns.gateway.id
+      assert second.assigns.site.id == site.id
+
+      assert [%Portal.SiteDevice{site_id: site_id}] =
+               Repo.all(
+                 from(sd in Portal.SiteDevice,
+                   where: sd.account_id == ^account.id and sd.device_id == ^first.assigns.gateway.id
+                 )
+               )
+
+      assert site_id == site.id
+    end
+
+    test "rejects a single-owner token whose gateway has no site" do
+      account = account_fixture()
+      gateway = gateway_fixture(account: account)
+      token = gateway_token_fixture(gateway: gateway)
+
+      Repo.delete_all(
+        from(sd in Portal.SiteDevice, where: sd.account_id == ^account.id and sd.device_id == ^gateway.id)
+      )
+
+      attrs = connect_attrs(token: encode_gateway_token(token))
+
+      assert {:error, _reason} = connect(Socket, attrs, connect_info: build_connect_info())
+      assert Repo.get_by(Portal.Device, id: gateway.id)
+    end
+
     test "rejects a single-owner token rotated past the grace period" do
       gateway = gateway_fixture()
 

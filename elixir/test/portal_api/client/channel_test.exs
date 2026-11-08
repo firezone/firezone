@@ -5014,10 +5014,12 @@ defmodule PortalAPI.Client.ChannelTest do
       assert_reply ref, :ok, %{
         gateway_id: gateway_id,
         gateway_remote_ip: gateway_last_seen_remote_ip,
-        resource_id: ^resource_id
+        resource_id: ^resource_id,
+        site_id: site_id
       }
 
       assert gateway_id == gateway.id
+      assert site_id == gateway.site.id
       assert %Postgrex.INET{address: address} = gateway_last_seen_remote_ip
       assert address == {100, 64, 0, 1}
     end
@@ -6130,6 +6132,18 @@ defmodule PortalAPI.Client.ChannelTest do
         target_subject: target_subject,
         pool_resource: pool_resource
       }
+    end
+
+    test "prepare_connection replies offline for a pool", %{
+      client: client,
+      subject: subject,
+      pool_resource: pool_resource
+    } do
+      socket = join_channel(client, subject)
+      assert_push "init", _
+
+      ref = push(socket, "prepare_connection", %{"resource_id" => pool_resource.id})
+      assert_reply ref, :error, %{reason: :offline}
     end
 
     test "sends authorized to both clients when target ipv4 is found in presence", %{

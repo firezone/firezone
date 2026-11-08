@@ -252,19 +252,13 @@ defmodule PortalAPI.SiteController do
       |> Safe.update()
     end
 
-    # A gateway serves one site for now, so it goes with it.
+    # A gateway serves one site for now, so it goes with it. The site is locked
+    # first so a gateway registering into it is either seen here or refused.
     def delete_site(site, subject) do
       Safe.transact(fn ->
-        case from(d in Device, as: :devices)
-             |> join(:inner, [devices: d], sd in SiteDevice,
-               on: sd.account_id == d.account_id and sd.device_id == d.id,
-               as: :site_device
-             )
-             |> where([site_device: sd], sd.site_id == ^site.id)
-             |> Safe.scoped(subject)
-             |> Safe.delete_all() do
-          {:error, :unauthorized} -> {:error, :unauthorized}
-          {_count, _} -> site |> Safe.scoped(subject) |> Safe.delete()
+        with {:ok, site} <- lock_site(site, subject),
+             {count, _} when is_integer(count) <- delete_site_gateways(site, subject) do
+          site |> Safe.scoped(subject) |> Safe.delete()
         end
       end)
     end
@@ -298,6 +292,28 @@ defmodule PortalAPI.SiteController do
     defp filter_by_name(queryable, name) do
       dynamic = dynamic([sites: s], s.name == ^name)
       {queryable, dynamic}
+    end
+
+    defp lock_site(site, subject) do
+      from(s in Site, as: :sites, where: s.id == ^site.id, lock: "FOR UPDATE")
+      |> Safe.scoped(subject)
+      |> Safe.one()
+      |> case do
+        nil -> {:error, :not_found}
+        {:error, reason} -> {:error, reason}
+        site -> {:ok, site}
+      end
+    end
+
+    defp delete_site_gateways(site, subject) do
+      from(d in Device, as: :devices)
+      |> join(:inner, [devices: d], sd in SiteDevice,
+        on: sd.account_id == d.account_id and sd.device_id == d.id,
+        as: :site_device
+      )
+      |> where([site_device: sd], sd.site_id == ^site.id)
+      |> Safe.scoped(subject)
+      |> Safe.delete_all()
     end
   end
 end

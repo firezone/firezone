@@ -426,6 +426,28 @@ defmodule PortalAPI.SiteControllerTest do
       refute Repo.get_by(Portal.Device, id: gateway.id, account_id: account.id)
     end
 
+    test "keeps the gateways of other sites and other accounts", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      site = site_fixture(%{account: account})
+      gateway_fixture(account: account, site: site)
+      other_site = site_fixture(%{account: account})
+      other_gateway = gateway_fixture(account: account, site: other_site)
+      foreign_gateway = gateway_fixture()
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> delete("/sites/#{site.id}")
+
+      assert json_response(conn, 200)
+      assert Repo.get_by(Portal.Device, id: other_gateway.id, account_id: account.id)
+      assert Repo.get_by(Portal.Device, id: foreign_gateway.id, account_id: foreign_gateway.account_id)
+    end
+
     test "returns error when deleting system managed site", %{
       conn: conn,
       account: account,

@@ -181,6 +181,7 @@ defmodule Portal.Presence do
     end
 
     defp loaded_site_id(%Device{site: %Portal.Site{id: id}}), do: id
+    defp loaded_site_id(%Device{site_device: %Portal.SiteDevice{site_id: id}}), do: id
     defp loaded_site_id(_device), do: nil
 
     defp normalize_ip(%Postgrex.INET{} = inet), do: inet

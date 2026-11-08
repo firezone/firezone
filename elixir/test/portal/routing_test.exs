@@ -28,6 +28,21 @@ defmodule Portal.RoutingTest do
       assert Routing.select_receiver(resource, initiator(account), []) == {:error, :offline}
     end
 
+    test "is offline when only another site has a device online", %{account: account} = ctx do
+      other_site = site_fixture(account: account)
+      other = online_gateway(account, other_site, "1.5.0", @paris)
+
+      assert Routing.select_receiver(ctx.resource, initiator(account), [other.id]) ==
+               {:error, :offline}
+    end
+
+    test "is offline for a resource without a site", %{account: account, site: site} = ctx do
+      online_gateway(account, site, "1.5.0", @paris)
+
+      assert Routing.select_receiver(%{ctx.resource | site: nil}, initiator(account), []) ==
+               {:error, :offline}
+    end
+
     test "tells a version mismatch apart from offline", %{account: account, site: site} = ctx do
       online_gateway(account, site, "1.0.0", @berlin)
 
