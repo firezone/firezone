@@ -68,6 +68,7 @@ defmodule Portal.Actor do
     |> assoc_constraint(:disabling_directory, name: :actors_disabled_by_directory_id_fkey)
     |> check_constraint(:disabled_by_directory_id, name: :disabled_by_directory_requires_disabled)
     |> unique_constraint(:email, name: :actors_account_id_email_index)
+    |> unique_constraint(:type, name: :actors_account_id_legacy_gateway_index)
     |> check_constraint(:type, name: :type_is_valid)
   end
 

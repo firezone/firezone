@@ -344,10 +344,24 @@ defmodule Portal.ActorTest do
       assert {:error, changeset} =
                %Actor{account_id: account.id, type: :legacy_gateway, name: "Gateways", email: "g@example.com"}
                |> change()
-               |> Actor.changeset()
-               |> Repo.insert()
+               |> Portal.Safe.unscoped()
+               |> Portal.Safe.insert()
 
       assert %{type: ["is invalid"]} = errors_on(changeset)
+    end
+
+    test "exists at most once per account" do
+      account = account_fixture()
+      legacy_gateway_actor_fixture(account: account)
+
+      assert {:error, changeset} =
+               %Actor{account_id: account.id, type: :legacy_gateway, name: "Again"}
+               |> change()
+               |> Portal.Safe.unscoped()
+               |> Portal.Safe.insert()
+
+      assert "has already been taken" in errors_on(changeset).type
+      assert legacy_gateway_actor_fixture(account: account_fixture()).type == :legacy_gateway
     end
 
     test "cannot be changed once stored" do

@@ -103,10 +103,13 @@ defmodule Portal.ActorFixtures do
     attrs = Enum.into(attrs, %{})
     account = Map.get_lazy(attrs, :account, fn -> account_fixture() end)
 
-    %Portal.Actor{account_id: account.id, type: :legacy_gateway, name: "Legacy Gateway"}
-    |> Ecto.Changeset.change()
-    |> Portal.Actor.changeset()
-    |> Portal.Repo.insert!()
+    {:ok, actor} =
+      %Portal.Actor{account_id: account.id, type: :legacy_gateway, name: "Legacy Gateway"}
+      |> Ecto.Changeset.change()
+      |> Portal.Safe.unscoped()
+      |> Portal.Safe.insert()
+
+    actor
   end
 
   @doc """
