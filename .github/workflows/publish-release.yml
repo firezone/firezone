@@ -292,6 +292,11 @@ jobs:
 
   promote-deb-packages:
     runs-on: ubuntu-24.04
+    # Same group as the repository sync, so packages are never copied in while a sync runs.
+    concurrency:
+      group: "create-apt-repository"
+      cancel-in-progress: false
+      queue: max
     permissions:
       contents: read
       id-token: write # OIDC auth for Azure Storage
@@ -349,6 +354,11 @@ jobs:
   promote-rpm-packages:
     if: ${{ startsWith(inputs.release_name || github.event.release.name, 'gui-client') }}
     runs-on: ubuntu-24.04
+    # Same group as the repository sync, so packages are never copied in while a sync runs.
+    concurrency:
+      group: "create-rpm-repository"
+      cancel-in-progress: false
+      queue: max
     permissions:
       contents: read
       id-token: write # OIDC auth for Azure Storage
