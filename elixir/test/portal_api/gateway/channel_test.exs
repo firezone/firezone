@@ -1677,6 +1677,30 @@ defmodule PortalAPI.Gateway.ChannelTest do
                :sys.get_state(socket.channel_pid)
     end
 
+    test "keeps the gateway's site when a device update is broadcast", %{
+      gateway: gateway,
+      site: site,
+      token: token
+    } do
+      socket = join_channel(gateway, site, token)
+      assert_push "init", _init_payload
+
+      # The WAL row carries no site; it lives in site_devices.
+      updated_gateway = %{gateway | name: "Renamed gateway", site_id: nil}
+
+      send(socket.channel_pid, %Changes.Change{
+        lsn: System.unique_integer([:positive, :monotonic]),
+        op: :update,
+        old_struct: %{gateway | site_id: nil},
+        struct: updated_gateway
+      })
+
+      site_id = site.id
+
+      assert %{assigns: %{gateway: %{name: "Renamed gateway", site_id: ^site_id}}} =
+               :sys.get_state(socket.channel_pid)
+    end
+
     test "keeps this connection's session state when a device update is broadcast", %{
       account: account,
       actor: actor,

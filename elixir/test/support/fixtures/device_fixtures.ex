@@ -325,10 +325,8 @@ defmodule Portal.DeviceFixtures do
       ])
       |> Ecto.Changeset.put_change(:type, :gateway)
       |> Ecto.Changeset.put_change(:account_id, account.id)
-      |> Ecto.Changeset.put_change(:site_id, site.id)
       |> Portal.Devices.put_free_slug(account.id, nil)
       |> Ecto.Changeset.put_assoc(:account, account)
-      |> Ecto.Changeset.put_assoc(:site, site)
       |> Portal.Device.changeset()
       |> Portal.Repo.insert()
 
@@ -337,6 +335,9 @@ defmodule Portal.DeviceFixtures do
       site_id: site.id,
       device_id: gateway.id
     })
+
+    # Readers take the site from site_devices; the fixture returns it the same way.
+    gateway = %{gateway | site_id: site.id, site: site}
 
     ipv4 =
       attrs

@@ -212,7 +212,9 @@ defmodule PortalAPI.SiteController do
   defmodule Database do
     import Ecto.Query
     alias Portal.{Safe, Billing}
+    alias Portal.Device
     alias Portal.Site
+    alias Portal.SiteDevice
 
     def list_sites(subject, opts \\ []) do
       from(g in Site, as: :sites)
@@ -250,10 +252,21 @@ defmodule PortalAPI.SiteController do
       |> Safe.update()
     end
 
+    # A gateway serves one site for now, so it goes with it.
     def delete_site(site, subject) do
-      site
-      |> Safe.scoped(subject)
-      |> Safe.delete()
+      Safe.transact(fn ->
+        case from(d in Device, as: :devices)
+             |> join(:inner, [devices: d], sd in SiteDevice,
+               on: sd.account_id == d.account_id and sd.device_id == d.id,
+               as: :site_device
+             )
+             |> where([site_device: sd], sd.site_id == ^site.id)
+             |> Safe.scoped(subject)
+             |> Safe.delete_all() do
+          {:error, :unauthorized} -> {:error, :unauthorized}
+          {_count, _} -> site |> Safe.scoped(subject) |> Safe.delete()
+        end
+      end)
     end
 
     defp changeset(site, attrs, _subject) do

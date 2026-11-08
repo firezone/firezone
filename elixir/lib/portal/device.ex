@@ -189,7 +189,6 @@ defmodule Portal.Device do
     |> validate_type_fields()
     |> check_constraint(:type, name: :devices_type_check)
     |> check_constraint(:actor_id, name: :device_type_client_fields)
-    |> check_constraint(:site_id, name: :device_type_gateway_fields)
     |> unique_firezone_id_constraint()
     |> unique_constraint(:ipv4, name: :devices_account_id_ipv4_index)
     |> unique_constraint(:ipv6, name: :devices_account_id_ipv6_index)
@@ -222,10 +221,11 @@ defmodule Portal.Device do
     connect flush, so the WAL row still carries the previous session's values
     (or NULL) for the seconds between connect and flush. Taking the broadcast
     struct wholesale would drop this connection's public key, silently breaking
-    every payload derived from it.
+    every payload derived from it. The site is kept too: it comes from
+    site_devices, not from the device row the WAL carries.
   """
   def merge_broadcast(%__MODULE__{id: id} = current, %__MODULE__{id: id} = broadcast) do
-    Portal.SchemaHelpers.merge_broadcast(current, broadcast, @latest_session_fields)
+    Portal.SchemaHelpers.merge_broadcast(current, broadcast, [:site_id | @latest_session_fields])
   end
 
   def reserved_ipv4_cidr, do: @reserved_ipv4_cidr
@@ -260,7 +260,6 @@ defmodule Portal.Device do
 
       :gateway ->
         changeset
-        |> validate_required([:site_id])
         |> validate_length(:device_serial, max: 255)
         |> validate_length(:device_uuid, max: 255)
         |> validate_gateway_verification()

@@ -6,6 +6,7 @@ defmodule PortalAPI.SiteControllerTest do
   import Portal.ActorFixtures
   import Portal.PolicyFixtures
   import Portal.ResourceFixtures
+  import Portal.DeviceFixtures
   import Portal.SiteFixtures
 
   setup do
@@ -409,6 +410,20 @@ defmodule PortalAPI.SiteControllerTest do
       assert json_response(conn, 200)
       refute Repo.get_by(Portal.Resource, id: resource.id, account_id: account.id)
       refute Repo.get_by(Portal.Policy, id: policy.id, account_id: account.id)
+    end
+
+    test "deletes the site's gateways", %{conn: conn, account: account, actor: actor} do
+      site = site_fixture(%{account: account})
+      gateway = gateway_fixture(account: account, site: site)
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> delete("/sites/#{site.id}")
+
+      assert json_response(conn, 200)
+      refute Repo.get_by(Portal.Device, id: gateway.id, account_id: account.id)
     end
 
     test "returns error when deleting system managed site", %{
