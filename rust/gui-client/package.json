@@ -5,7 +5,7 @@
   "packageManager": "pnpm@10.33.0",
   "type": "module",
   "dependencies": {
-    "@eslint/js": "^9.39.5",
+    "@eslint/js": "^10.0.1",
     "@fontsource-variable/roboto": "^5.3.0",
     "@fontsource-variable/roboto-mono": "^5.3.0",
     "@sentry/core": "^10.75.0",
@@ -18,7 +18,7 @@
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.2",
-    "eslint": "^9.39.2",
+    "eslint": "^10.13.0",
     "eslint-plugin-react": "^7.37.5",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
