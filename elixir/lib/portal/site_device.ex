@@ -1,6 +1,6 @@
 defmodule Portal.SiteDevice do
   @moduledoc """
-  A device serves the resources of every site it is assigned to.
+  The site a device serves the resources of. One per device for now.
   """
   use Ecto.Schema
   import Ecto.Changeset
@@ -31,5 +31,6 @@ defmodule Portal.SiteDevice do
     |> assoc_constraint(:site)
     |> assoc_constraint(:device)
     |> unique_constraint([:account_id, :site_id, :device_id], name: :site_devices_pkey)
+    |> unique_constraint([:account_id, :device_id], name: :site_devices_account_id_device_id_index)
   end
 end

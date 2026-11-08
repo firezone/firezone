@@ -28,12 +28,20 @@ defmodule Portal.SiteDeviceTest do
     assert "has already been taken" in errors_on(changeset).account_id
   end
 
-  test "a device can be assigned to several sites", %{account: account, gateway: gateway} do
+  test "a device serves one site", %{account: account, gateway: gateway} do
     other_site = site_fixture(account: account)
 
-    Repo.insert!(%SiteDevice{account_id: account.id, site_id: other_site.id, device_id: gateway.id})
+    assert {:error, changeset} =
+             %SiteDevice{}
+             |> Ecto.Changeset.change(
+               account_id: account.id,
+               site_id: other_site.id,
+               device_id: gateway.id
+             )
+             |> SiteDevice.changeset()
+             |> Repo.insert()
 
-    assert Repo.aggregate(site_devices(gateway), :count) == 2
+    assert "has already been taken" in errors_on(changeset).account_id
   end
 
   test "is removed with the site", %{site: site, gateway: gateway} do
