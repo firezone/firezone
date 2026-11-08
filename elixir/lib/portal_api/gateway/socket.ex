@@ -61,7 +61,7 @@ defmodule PortalAPI.Gateway.Socket do
          {:ok, site, gateway} <- resolve_gateway(gateway_token, attrs),
          :ok <- ensure_gateway_not_connected(gateway),
          {:ok, gateway} <- put_reported_metadata(gateway, attrs),
-         {:ok, gateway} <- maybe_put_firezone_id(gateway, attrs) do
+         {:ok, gateway} <- maybe_put_firezone_id(gateway, site, attrs) do
       version = derive_version(context.user_agent)
       {context, version} = PortalAPI.Sockets.truncate_session_fields(context, version)
       previous_public_key = gateway.public_key
@@ -157,34 +157,32 @@ defmodule PortalAPI.Gateway.Socket do
   # Identity comes from the token, so the stored firezone_id is only a
   # telemetry hint: keep it in sync with whatever the gateway currently
   # reports (a rebuilt host generates a fresh one)
-  defp maybe_put_firezone_id(%Device{firezone_id: reported} = gateway, %{
+  defp maybe_put_firezone_id(%Device{firezone_id: reported} = gateway, _site, %{
          "firezone_id" => reported
        }) do
     {:ok, gateway}
   end
 
-  defp maybe_put_firezone_id(%Device{} = gateway, %{"firezone_id" => reported})
+  defp maybe_put_firezone_id(%Device{} = gateway, site, %{"firezone_id" => reported})
        when is_binary(reported) and reported != "" do
     changeset =
       gateway
       |> cast(%{firezone_id: reported}, [:firezone_id])
       |> Device.changeset()
 
-    case Database.update_gateway(changeset) do
+    case Database.update_firezone_id(site, changeset) do
       {:ok, gateway} ->
         {:ok, gateway}
 
-      {:error, changeset} ->
+      {:error, reason} ->
         # The telemetry hint is best-effort; never block the connection on it
-        Logger.info("Failed to persist reported gateway firezone_id",
-          error: {:error, changeset}
-        )
+        Logger.info("Failed to persist reported gateway firezone_id", error: {:error, reason})
 
         {:ok, gateway}
     end
   end
 
-  defp maybe_put_firezone_id(%Device{} = gateway, _attrs), do: {:ok, gateway}
+  defp maybe_put_firezone_id(%Device{} = gateway, _site, _attrs), do: {:ok, gateway}
 
   defp insert_changeset(site, attrs) do
     insert_fields = [:firezone_id, :name | @reported_metadata_fields]
@@ -412,6 +410,23 @@ defmodule PortalAPI.Gateway.Socket do
       |> Safe.update()
     end
 
+    # Site-token connects find a gateway by its firezone_id, so a gateway only
+    # takes one that no other gateway in its site holds.
+    def update_firezone_id(site, changeset) do
+      firezone_id = Ecto.Changeset.get_field(changeset, :firezone_id)
+
+      Safe.transact(fn ->
+        {:ok, _} =
+          Safe.unscoped()
+          |> Safe.query("SELECT pg_advisory_xact_lock($1)", [registration_lock_key(site, firezone_id)])
+
+        case find_gateway(site, firezone_id) do
+          nil -> update_gateway(changeset)
+          _gateway -> {:error, :firezone_id_taken}
+        end
+      end)
+    end
+
     def fetch_site(account_id, id) do
       result =
         from(s in Site,
@@ -456,7 +471,9 @@ defmodule PortalAPI.Gateway.Socket do
         where: d.account_id == ^site.account_id,
         where: sd.site_id == ^site.id,
         where: d.firezone_id == ^firezone_id,
-        where: d.type == :gateway
+        where: d.type == :gateway,
+        order_by: [asc: d.inserted_at, asc: d.id],
+        limit: 1
       )
       |> Safe.unscoped()
       |> Safe.one()
@@ -473,6 +490,7 @@ defmodule PortalAPI.Gateway.Socket do
            {:ok, gateway} <- changeset |> Safe.unscoped() |> Safe.insert(),
            {:ok, _site_device} <-
              %SiteDevice{account_id: site.account_id, site_id: site.id, device_id: gateway.id}
+             |> Ecto.Changeset.change()
              |> Safe.unscoped()
              |> Safe.insert() do
         {:ok, gateway}

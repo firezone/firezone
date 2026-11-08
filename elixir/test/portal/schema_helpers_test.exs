@@ -385,5 +385,27 @@ defmodule Portal.SchemaHelpersTest do
       assert merged.public_key == current.public_key
       assert merged.name == "After"
     end
+
+    test "takes a broadcast built by a node whose struct has other keys", %{
+      current: current,
+      broadcast: broadcast,
+      site: site
+    } do
+      site_device = %Portal.SiteDevice{site_id: site.id, device_id: current.id}
+      current = %{current | site_device: site_device}
+
+      broadcast =
+        broadcast
+        |> Map.delete(:site_device)
+        |> Map.delete(:firezone_id_merged?)
+        |> Map.put(:site_id, site.id)
+
+      merged = SchemaHelpers.merge_broadcast(current, broadcast, [:public_key])
+
+      assert merged.name == "After"
+      assert merged.site_device == site_device
+      assert merged.firezone_id_merged?
+      refute Map.has_key?(merged, :site_id)
+    end
   end
 end

@@ -273,6 +273,24 @@ defmodule PortalAPI.Gateway.ChannelTest do
       assert is_number(online_at)
     end
 
+    test "tracks presence in its site when the gateway's site is not loaded", %{
+      account: account,
+      gateway: gateway,
+      site: site,
+      token: token
+    } do
+      unloaded = Portal.Repo.get_by!(Portal.Device, account_id: account.id, id: gateway.id)
+
+      join_channel(unloaded, site, token)
+      assert_push "init", _init_payload
+
+      assert %{metas: [%{site_id: site_id}]} =
+               Map.fetch!(Portal.Presence.Devices.Account.list(account.id), gateway.id)
+
+      assert site_id == site.id
+      assert {:ok, _gateway} = Portal.Presence.Devices.fetch_gateway(account.id, gateway.id, site.id)
+    end
+
     test "after_join enqueues the session and a flush persists it", %{
       gateway: gateway,
       site: site,

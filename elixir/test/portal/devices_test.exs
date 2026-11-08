@@ -85,6 +85,18 @@ defmodule Portal.DevicesTest do
       refute is_nil(name)
       refute name == ""
     end
+
+    test "refuses a site deleted after it was loaded, leaving no gateway" do
+      account = account_fixture()
+      site = site_fixture(account: account)
+      subject =
+        subject_fixture(account: account, actor: %{type: :api_client, account: account})
+
+      Repo.delete!(site)
+
+      assert {:error, %Ecto.Changeset{}} = Devices.provision_gateway(site, "late-gw", subject)
+      refute Repo.get_by(Device, account_id: account.id, name: "late-gw")
+    end
   end
 
   describe "next_free_slug/3" do

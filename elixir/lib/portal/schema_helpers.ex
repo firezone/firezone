@@ -31,8 +31,13 @@ defmodule Portal.SchemaHelpers do
   nor associations (which arrive `NotLoaded`). Assigning one wholesale silently
   resets both. `preserve` names any persisted columns the holder also owns, for
   values written to the database later than they are known in memory.
+
+  The broadcast is rebuilt as this node's struct first: during a deploy it can
+  come from a node whose struct has other keys.
   """
   def merge_broadcast(%module{} = current, %module{} = broadcast, preserve \\ []) do
+    broadcast = struct(module, Map.from_struct(broadcast))
+
     broadcast =
       Enum.reduce(module.__schema__(:virtual_fields) ++ preserve, broadcast, fn field, struct ->
         Map.replace!(struct, field, Map.fetch!(current, field))

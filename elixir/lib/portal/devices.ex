@@ -109,6 +109,7 @@ defmodule Portal.Devices do
                |> Safe.insert(),
              {:ok, _site_device} <-
                %Portal.SiteDevice{site_id: site.id, device_id: gateway.id}
+               |> Ecto.Changeset.change()
                |> Safe.scoped(subject)
                |> Safe.insert() do
           {:ok, gateway}

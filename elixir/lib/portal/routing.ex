@@ -26,6 +26,9 @@ defmodule Portal.Routing do
   """
   @spec select_receiver(Cacheable.Resource.t(), initiator(), [Ecto.UUID.t()]) ::
           {:ok, Device.t()} | {:error, :offline | :version_mismatch}
+  def select_receiver(%Cacheable.Resource{site: nil}, _initiator, _preferred_ids),
+    do: {:error, :offline}
+
   def select_receiver(%Cacheable.Resource{site: site} = resource, initiator, preferred_ids) do
     site_id = Ecto.UUID.load!(site.id)
 

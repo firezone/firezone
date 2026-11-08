@@ -440,6 +440,71 @@ defmodule PortalWeb.SitesTest do
       assert is_nil(Repo.get_by(Device, account_id: account.id, id: gateway.id))
     end
 
+    test "deleting a site keeps the gateways of other sites", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      site = site_fixture(account: account)
+      gateway_fixture(account: account, site: site)
+      other_site = site_fixture(account: account)
+      other_gateway = gateway_fixture(account: account, site: other_site)
+      other_token = gateway_token_fixture(gateway: other_gateway)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/sites/#{site.id}")
+
+      render_click(lv, "confirm_delete_site")
+      render_click(lv, "delete_site")
+
+      assert Repo.get_by(Device, account_id: account.id, id: other_gateway.id)
+      assert Repo.get_by(GatewayToken, account_id: account.id, id: other_token.id)
+
+      assert Repo.get_by(Portal.SiteDevice,
+               account_id: account.id,
+               site_id: other_site.id,
+               device_id: other_gateway.id
+             )
+    end
+
+    test "deleting a site that is already gone shows an error", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      site = site_fixture(account: account)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/sites/#{site.id}")
+
+      Repo.delete!(site)
+
+      render_click(lv, "confirm_delete_site")
+      assert render_click(lv, "delete_site") =~ "Failed to delete site."
+    end
+
+    test "refuses to delete a system-managed site", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      site = system_site_fixture(%{account: account, name: "Internet"})
+      gateway = gateway_fixture(account: account, site: site)
+
+      {:ok, lv, _html} =
+        conn
+        |> authorize_conn(actor)
+        |> live(~p"/#{account}/sites/#{site.id}")
+
+      assert render_click(lv, "delete_site") =~ "Failed to delete site."
+      assert Repo.get_by(Site, account_id: account.id, id: site.id)
+      assert Repo.get_by(Device, account_id: account.id, id: gateway.id)
+    end
+
     test "hides account-only actions for system-managed sites", %{
       conn: conn,
       account: account,
