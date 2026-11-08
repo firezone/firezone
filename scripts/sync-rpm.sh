@@ -16,6 +16,7 @@ set -euo pipefail
 shopt -s globstar
 
 WORK_DIR="$(mktemp -d)"
+DOWNLOADED_IMPORTS=()
 PUBLIC_URL="https://artifacts.firezone.dev/rpm"
 
 if [ -z "${AZURE_STORAGE_ACCOUNT:-}" ]; then
@@ -77,6 +78,8 @@ for DISTRIBUTION in "stable" "preview"; do
             if [[ ! "$pkg" == *.rpm ]]; then
                 continue
             fi
+
+            DOWNLOADED_IMPORTS+=("${pkg#"${WORK_DIR}/"}")
 
             if [ -f "$pkg" ]; then
                 # Derive the canonical NEVRA filename from the package metadata.
@@ -181,10 +184,12 @@ for REPO_FILE in firezone.repo firezone-preview.repo; do
         --output table
 done
 
-# Delete import files
-az storage blob delete-batch \
-    --source rpm \
-    --pattern "import-*/*.rpm" \
-    --auth-mode login \
-    --account-name "${AZURE_STORAGE_ACCOUNT}" \
-    --output table
+# Delete only the import files this run downloaded. A release that copied its packages in after the download keeps them for the next sync.
+for BLOB in "${DOWNLOADED_IMPORTS[@]}"; do
+    az storage blob delete \
+        --container-name rpm \
+        --name "${BLOB}" \
+        --auth-mode login \
+        --account-name "${AZURE_STORAGE_ACCOUNT}" \
+        --output table
+done

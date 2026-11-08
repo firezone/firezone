@@ -12,6 +12,7 @@ shopt -s globstar
 
 COMPONENT="main"
 WORK_DIR="$(mktemp -d)"
+DOWNLOADED_IMPORTS=()
 DISTS_DIR="${WORK_DIR}/dists"
 
 if [ -z "${AZURE_STORAGE_ACCOUNT:-}" ]; then
@@ -73,6 +74,8 @@ for DISTRIBUTION in "stable" "preview"; do
             if [[ ! "$deb" == *.deb ]]; then
                 continue
             fi
+
+            DOWNLOADED_IMPORTS+=("${deb#"${WORK_DIR}/"}")
 
             if [ -f "$deb" ]; then
                 # Extract metadata from the .deb file
@@ -175,10 +178,12 @@ az storage blob upload \
     --overwrite \
     --output table
 
-# Delete import files
-az storage blob delete-batch \
-    --source apt \
-    --pattern "import-*/*.deb" \
-    --auth-mode login \
-    --account-name "${AZURE_STORAGE_ACCOUNT}" \
-    --output table
+# Delete only the import files this run downloaded. A release that copied its packages in after the download keeps them for the next sync.
+for BLOB in "${DOWNLOADED_IMPORTS[@]}"; do
+    az storage blob delete \
+        --container-name apt \
+        --name "${BLOB}" \
+        --auth-mode login \
+        --account-name "${AZURE_STORAGE_ACCOUNT}" \
+        --output table
+done
