@@ -257,6 +257,10 @@ updates:
         patterns:
           - "eslint"
           - "@eslint/*"
+      vitest:
+        patterns:
+          - "vitest"
+          - "@vitest/*"
       flowbite:
         patterns:
           - "flowbite"
