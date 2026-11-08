@@ -500,11 +500,13 @@ fn create_socket(
     }
 
     socket.bind(&bind_addr)?;
-    // NECP can scope the socket to the primary interface during bind.
-    // Clear that scope so routing can select the interface for the destination.
-    match local.ip() {
-        IpAddr::V4(_) => socket.bind_device_by_index_v4(None)?,
-        IpAddr::V6(_) => socket.bind_device_by_index_v6(None)?,
+    // NECP scopes the socket to the primary interface during bind, which keeps it out of our own tunnel.
+    // Only a pinned source address can take over that job, so only then may routing pick the interface.
+    if src.is_some() {
+        match local.ip() {
+            IpAddr::V4(_) => socket.bind_device_by_index_v4(None)?,
+            IpAddr::V6(_) => socket.bind_device_by_index_v6(None)?,
+        }
     }
     if let Some(dst) = dst {
         socket.connect(&socket2::SockAddr::from(dst))?;
