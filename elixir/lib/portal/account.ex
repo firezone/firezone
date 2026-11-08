@@ -112,17 +112,6 @@ defmodule Portal.Account do
     timestamps()
   end
 
-  # First path segments the router already uses.
-  # Top-level routes, static path prefixes, region names, and words that
-  # would make a sign-in URL or email look official.
-  @reserved_slugs ~w(
-    auth browser dev error find_account getting_started oauth sign_in sign_up try verification verify_sign_up
-    assets downloads fonts images
-    us eu
-    firezone admin administrator account accounts api app billing docs email help login logout mail mcp
-    official root security settings signin signup staff status support system www
-  )
-
   def changeset(changeset) do
     changeset
     |> validate_length(:name, min: 3, message: "too short")
@@ -131,7 +120,6 @@ defmodule Portal.Account do
     |> validate_format(:slug, Portal.AccountSlug.format(),
       message: "may only contain lowercase letters, numbers, and underscores"
     )
-    |> validate_exclusion(:slug, @reserved_slugs, message: "is reserved")
     |> validate_length(:key, is: 6)
     |> validate_key_format()
     |> validate_length(:legal_name, min: 1, max: 255)

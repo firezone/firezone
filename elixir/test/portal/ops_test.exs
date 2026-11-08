@@ -198,13 +198,6 @@ defmodule Portal.OpsTest do
       assert {:error, changeset} = set_account_slug(account.id, "new-slug")
       assert %{slug: ["may only contain lowercase letters, numbers, and underscores"]} = errors_on(changeset)
     end
-
-    test "rejects a reserved slug" do
-      account = account_fixture()
-
-      assert {:error, changeset} = set_account_slug(account.id, "sign_in")
-      assert %{slug: ["is reserved"]} = errors_on(changeset)
-    end
   end
 
   describe "backfill_slug_registry/0" do

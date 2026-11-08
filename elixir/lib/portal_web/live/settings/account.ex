@@ -12,6 +12,17 @@ defmodule PortalWeb.Settings.Account do
   @slug_changes_per_window 3
   @slug_change_window_days 30
 
+  # First path segments the router already uses.
+  # Top-level routes, static path prefixes, region names, and words that
+  # would make a sign-in URL or email look official.
+  @reserved_slugs ~w(
+    auth browser dev error find_account getting_started oauth sign_in sign_up try verification verify_sign_up
+    assets downloads fonts images
+    us eu
+    firezone admin administrator account accounts api app billing docs email help login logout mail mcp
+    official root security settings signin signup staff status support system www
+  )
+
   def mount(_params, session, socket) do
     account = socket.assigns.account
     slug_history = Database.list_account_slugs(socket.assigns.subject)
@@ -891,6 +902,7 @@ defmodule PortalWeb.Settings.Account do
     |> update_change(:slug, &normalize_slug/1)
     |> Account.changeset()
     |> validate_required([:name, :slug])
+    |> validate_exclusion(:slug, @reserved_slugs, message: "is reserved")
     |> validate_change(:slug, fn :slug, slug ->
       if Portal.Repo.valid_uuid?(slug), do: [slug: "may not look like an account ID"], else: []
     end)
