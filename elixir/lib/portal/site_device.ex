@@ -26,7 +26,7 @@ defmodule Portal.SiteDevice do
 
   def changeset(%Ecto.Changeset{} = changeset) do
     changeset
-    |> validate_required([:account_id, :site_id, :device_id])
+    |> validate_required([:account_id, :site_id])
     |> assoc_constraint(:account)
     |> assoc_constraint(:site)
     |> assoc_constraint(:device)

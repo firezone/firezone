@@ -772,14 +772,9 @@ defmodule Portal.Dev.AccountPopulation do
       |> put_change(:type, :gateway)
       |> put_change(:account_id, state.account.id)
       |> Portal.Devices.put_free_slug(state.account.id, nil)
+      |> put_assoc(:site_device, Portal.Devices.site_device_changeset(site))
       |> Device.changeset()
       |> Repo.insert!()
-
-    Repo.insert!(%Portal.SiteDevice{
-      account_id: state.account.id,
-      site_id: site.id,
-      device_id: gateway.id
-    })
 
     {token, state} =
       case Map.fetch(state.gateway_tokens, site.id) do

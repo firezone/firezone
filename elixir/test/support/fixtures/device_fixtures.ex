@@ -327,14 +327,9 @@ defmodule Portal.DeviceFixtures do
       |> Ecto.Changeset.put_change(:account_id, account.id)
       |> Portal.Devices.put_free_slug(account.id, nil)
       |> Ecto.Changeset.put_assoc(:account, account)
+      |> Ecto.Changeset.put_assoc(:site_device, Portal.Devices.site_device_changeset(site))
       |> Portal.Device.changeset()
       |> Portal.Repo.insert()
-
-    Portal.Repo.insert!(%Portal.SiteDevice{
-      account_id: account.id,
-      site_id: site.id,
-      device_id: gateway.id
-    })
 
     gateway = %{gateway | site: site}
 

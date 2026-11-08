@@ -196,6 +196,7 @@ defmodule PortalAPI.Gateway.Socket do
     |> put_change(:type, :gateway)
     |> put_change(:account_id, site.account_id)
     |> Portal.Devices.put_free_slug(site.account_id, nil)
+    |> put_assoc(:site_device, Portal.Devices.site_device_changeset(site))
     |> validate_required(required_fields)
     |> Device.changeset()
     |> public_socket_changeset()
@@ -486,14 +487,8 @@ defmodule PortalAPI.Gateway.Socket do
         |> Safe.unscoped()
         |> Safe.one!()
 
-      with :ok <- Portal.Devices.RegistrationRateLimit.check(account),
-           {:ok, gateway} <- changeset |> Safe.unscoped() |> Safe.insert(),
-           {:ok, _site_device} <-
-             %SiteDevice{account_id: site.account_id, site_id: site.id, device_id: gateway.id}
-             |> Ecto.Changeset.change()
-             |> Safe.unscoped()
-             |> Safe.insert() do
-        {:ok, gateway}
+      with :ok <- Portal.Devices.RegistrationRateLimit.check(account) do
+        changeset |> Safe.unscoped() |> Safe.insert()
       end
     end
 
