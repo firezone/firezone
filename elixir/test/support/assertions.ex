@@ -21,7 +21,8 @@ defmodule Portal.Test.Assertions do
         else
           time_spent
           |> div(10)
-          |> max(100)
+          |> max(5)
+          |> min(50)
           |> Process.sleep()
 
           wait_for(assertion_callback, wait_seconds, started_at)

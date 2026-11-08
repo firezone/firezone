@@ -11,6 +11,8 @@ defmodule Portal.CaseTemplate do
   defmacro __using__(_opts) do
     quote do
       setup tags do
+        # Tests use the sandbox pool; let child processes inherit it directly.
+        Portal.Repo.put_dynamic_repo(Portal.Repo)
         :ok = Ecto.Adapters.SQL.Sandbox.checkout(Portal.Repo)
 
         unless tags[:async] do

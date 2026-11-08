@@ -41,7 +41,7 @@ defmodule PortalAPI.Client.Socket do
   @doc false
   def client_session_queue_opts do
     [
-      name: :client_session_queue,
+      name: Portal.Queue.name(:client_session_queue),
       flush_interval: :timer.seconds(5),
       flush_threshold: 1_000,
       label: "client session",

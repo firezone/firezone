@@ -60,8 +60,8 @@ defmodule Portal.AccountFixtures do
     |> cast_embed(:limits)
     |> cast_embed(:metadata)
     |> Portal.Account.changeset()
-    |> Repo.insert!()
-    |> Repo.reload!()
+    |> Repo.insert!(returning: true)
+    |> Ecto.reset_fields([:slugs])
   end
 
   @doc """
