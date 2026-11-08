@@ -134,7 +134,7 @@ defmodule PortalAPI.Gateway.Socket do
   defp resolve_gateway(%Portal.GatewayToken{} = gateway_token, _attrs) do
     with {:ok, gateway} <-
            Database.fetch_gateway(gateway_token.account_id, gateway_token.device_id) do
-      {:ok, gateway.site, gateway}
+      {:ok, gateway.site_device.site, gateway}
     end
   end
 
@@ -397,7 +397,7 @@ defmodule PortalAPI.Gateway.Socket do
           join: s in Site,
           on: s.account_id == sd.account_id and s.id == sd.site_id,
           select_merge: %{site_id: sd.site_id},
-          preload: [site: s]
+          preload: [site_device: {sd, site: s}]
         )
         |> Safe.unscoped()
         |> Safe.one()

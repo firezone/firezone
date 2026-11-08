@@ -145,7 +145,6 @@ defmodule PortalAPI.Gateway.SocketTest do
       assert is_nil(gateway.firebase_installation_id)
 
       persisted = Portal.Repo.get_by!(Portal.Device, account_id: gateway.account_id, id: gateway.id)
-      assert is_nil(persisted.site_id)
       assert gateway.site_id == token.site_id
       assert persisted.name == "reported-name"
       assert persisted.device_serial == "reported-serial"
