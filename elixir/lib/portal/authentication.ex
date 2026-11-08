@@ -602,9 +602,12 @@ defmodule Portal.Authentication do
     end
 
     def insert_gateway_token(gateway_token, subject) do
-      gateway_token
-      |> Safe.scoped(subject)
-      |> Safe.insert()
+      Safe.transact(fn ->
+        with {:ok, token} <- gateway_token |> Safe.scoped(subject) |> Safe.insert() do
+          :ok = copy_gateway_tokens(token.account_id, copy_scope(token))
+          {:ok, token}
+        end
+      end)
     end
 
     # The unique index on (account_id, device_id, rotated_at IS NULL) permits
@@ -962,6 +965,72 @@ defmodule Portal.Authentication do
         {1, _} -> :ok
         {0, _} -> {:error, :not_found}
       end
+    end
+
+    # Copies the gateway tokens matching `filter` into device_tokens, owned by
+    # the account's legacy Gateway actor. Rotation stamps are copied before new
+    # rows, so a stamped token never sits beside a second active copy. Deletes
+    # need no copying: the copy's foreign key cascades from gateway_tokens.
+    defp copy_gateway_tokens(account_id, filter) do
+      :ok = ensure_legacy_gateway_actor(account_id)
+      now = DateTime.utc_now()
+
+      source =
+        from(gt in Portal.GatewayToken, where: gt.account_id == ^account_id, where: ^filter)
+
+      from(dt in Portal.DeviceToken,
+        join: gt in subquery(source),
+        on: gt.account_id == dt.account_id and gt.id == dt.id,
+        update: [set: [rotated_at: gt.rotated_at, updated_at: ^now]]
+      )
+      |> Safe.unscoped()
+      |> Safe.update_all([])
+
+      copies =
+        from(gt in source,
+          join: a in Actor,
+          on: a.account_id == gt.account_id and a.type == :legacy_gateway,
+          select: %{
+            account_id: gt.account_id,
+            id: gt.id,
+            actor_id: a.id,
+            device_id: gt.device_id,
+            site_id: gt.site_id,
+            secret_salt: gt.secret_salt,
+            secret_hash: gt.secret_hash,
+            rotated_at: gt.rotated_at,
+            inserted_at: gt.inserted_at,
+            updated_at: type(^now, :utc_datetime_usec)
+          }
+        )
+
+      Safe.unscoped()
+      |> Safe.insert_all(Portal.DeviceToken, copies,
+        on_conflict: :nothing,
+        conflict_target: [:account_id, :id]
+      )
+
+      :ok
+    end
+
+    # A device's tokens are copied together, so a stamp written without a copy
+    # is synced before the new active copy lands.
+    defp copy_scope(%Portal.GatewayToken{device_id: nil, id: id}), do: [id: id]
+    defp copy_scope(%Portal.GatewayToken{device_id: device_id}), do: [device_id: device_id]
+
+    # Created the first time an account's gateway token is copied; the unique
+    # index makes concurrent first copies settle on one actor.
+    defp ensure_legacy_gateway_actor(account_id) do
+      {:ok, _} =
+        %Actor{account_id: account_id, type: :legacy_gateway, name: "Legacy Gateway"}
+        |> Ecto.Changeset.change()
+        |> Safe.unscoped()
+        |> Safe.insert(
+          on_conflict: :nothing,
+          conflict_target: {:unsafe_fragment, ~s|("account_id") WHERE type = 'legacy_gateway'|}
+        )
+
+      :ok
     end
   end
 end
