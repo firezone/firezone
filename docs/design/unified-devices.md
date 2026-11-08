@@ -826,7 +826,7 @@ phase 5 has 12, phase 5b has 8, phase 6 has 8.
    rule for systemd-resolved, `resolv.conf` control documented as root-only.
 2. **Billing:** customer service accounts that own routing devices count as
    any actor does today; every plan gets one additional free service account
-   (step 1.4b). The System actor (decision 7) never counts.
+   (step 1.4b). The legacy Gateway actor (decision 7) never counts.
 3. **Binary shape:** one executable, `firezone`, with `run` as the daemon.
 4. **Site assignment:** explicit rows only; rules not planned.
 5. **Forwarding:** on Linux the daemon owns kernel forwarding (sysctls and
@@ -840,19 +840,22 @@ phase 5 has 12, phase 5b has 8, phase 6 has 8.
    device's policies, and the token's lifetime decides how long it stays
    connected. A user's laptop serves a Site only while that user is signed
    in; always-on infrastructure is deployed with a non-user token.
-7. **System actor, for legacy Gateways only.** Each account gets one actor
-   of a new type, `system`, named "System". Existing Gateway tokens move to
-   it. Because it is a new type, every allow-list on actor type leaves it
-   out by default: it takes no seat, is not a user or a service account for
+7. **Legacy Gateway actor.** Each account gets one actor of a new type,
+   `legacy_gateway`, that owns the existing Gateway tokens. "Legacy"
+   describes the credential, not the binary: a Gateway upgraded to the new
+   binary keeps its token and this owner. Admins never see the actor; the
+   Site's token list stays as today. Because it is a new type, every
+   allow-list on actor type leaves it out by default: it takes no seat, is not a user or a service account for
    any limit, is not in Everyone, cannot be added to groups, has no
    policies, cannot be edited, disabled or deleted, and no token can be
    minted for it. Its tokens never expire (deployed Gateways exit and stay
    down on any disconnect); rotation and revocation are the controls. Once
-   `/device/v1` ships, no new System tokens are minted, but existing ones
+   `/device/v1` ships, no new tokens are minted for it, but existing ones
    keep working on both `/gateway` and `/device/v1`, and rotating one keeps
-   System as the owner.
+   the owner. The narrow name keeps it from being reused for anything else,
+   and the type goes away once no token belongs to it.
 8. **A Gateway gets outbound access only through a service account.** A
-   System-owned device can only serve. To let a Gateway reach other devices
+   device whose token the legacy Gateway actor owns can only serve. To let a Gateway reach other devices
    or resources, the admin upgrades it to the `firezone` binary and uses
    "Move to service account" on the device. This changes the owner of the
    existing token: same secret, same file on the host, nothing to redeploy.
