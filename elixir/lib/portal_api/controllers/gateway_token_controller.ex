@@ -275,12 +275,18 @@ defmodule PortalAPI.GatewayTokenController do
     alias Portal.Safe
     alias Portal.Site
     alias Portal.GatewayToken
+    alias Portal.SiteDevice
 
     def fetch_gateway(site_id, id, subject) do
       result =
         from(d in Device, as: :gateways)
         |> where([gateways: d], d.id == ^id and d.type == :gateway)
-        |> where([gateways: d], d.site_id == ^site_id)
+        |> join(:inner, [gateways: d], sd in SiteDevice,
+          on: sd.account_id == d.account_id and sd.device_id == d.id,
+          as: :site_device
+        )
+        |> where([site_device: sd], sd.site_id == ^site_id)
+        |> select_merge([site_device: sd], %{site_id: sd.site_id})
         |> Safe.scoped(subject)
         |> Safe.one()
 
@@ -313,11 +319,11 @@ defmodule PortalAPI.GatewayTokenController do
       # (single-owner tokens, which have device_id set and site_id nil).
       result =
         from(t in GatewayToken, as: :tokens, where: t.id == ^id)
-        |> join(:left, [tokens: t], d in Device,
-          on: d.id == t.device_id and d.account_id == t.account_id,
-          as: :device
+        |> join(:left, [tokens: t], sd in SiteDevice,
+          on: sd.device_id == t.device_id and sd.account_id == t.account_id,
+          as: :site_device
         )
-        |> where([tokens: t, device: d], t.site_id == ^site_id or d.site_id == ^site_id)
+        |> where([tokens: t, site_device: sd], t.site_id == ^site_id or sd.site_id == ^site_id)
         |> Safe.scoped(subject)
         |> Safe.one()
 

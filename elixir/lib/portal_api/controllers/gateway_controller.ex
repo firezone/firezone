@@ -294,6 +294,7 @@ defmodule PortalAPI.GatewayController do
     alias Portal.Site
     alias Portal.Device
     alias Portal.Presence
+    alias Portal.SiteDevice
 
     def fetch_site(id, subject) do
       result =
@@ -318,9 +319,19 @@ defmodule PortalAPI.GatewayController do
     def list_gateways(subject, opts \\ []) do
       from(d in Device, as: :gateways)
       |> where([gateways: d], d.type == :gateway)
+      |> with_site()
       |> with_token_rotation()
       |> Safe.scoped(subject)
       |> Safe.list(__MODULE__, opts)
+    end
+
+    defp with_site(queryable) do
+      queryable
+      |> join(:inner, [gateways: d], sd in SiteDevice,
+        on: sd.account_id == d.account_id and sd.device_id == d.id,
+        as: :site_device
+      )
+      |> select_merge([site_device: sd], %{site_id: sd.site_id})
     end
 
     # Surfaces the rotation state of the token the gateway last connected
@@ -380,7 +391,7 @@ defmodule PortalAPI.GatewayController do
     end
 
     defp filter_by_site_id(queryable, site_id) do
-      dynamic = dynamic([gateways: d], d.site_id == ^site_id)
+      dynamic = dynamic([site_device: sd], sd.site_id == ^site_id)
       {queryable, dynamic}
     end
 
@@ -402,7 +413,9 @@ defmodule PortalAPI.GatewayController do
     def fetch_gateway(site_id, id, subject) do
       result =
         from(d in Device, as: :gateways)
-        |> where([gateways: d], d.id == ^id and d.type == :gateway and d.site_id == ^site_id)
+        |> where([gateways: d], d.id == ^id and d.type == :gateway)
+        |> with_site()
+        |> where([site_device: sd], sd.site_id == ^site_id)
         |> with_token_rotation()
         |> Safe.scoped(subject)
         |> Safe.one()

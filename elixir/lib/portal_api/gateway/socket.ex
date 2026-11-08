@@ -384,18 +384,20 @@ defmodule PortalAPI.Gateway.Socket do
 
     alias Portal.Safe
     alias Portal.Site
+    alias Portal.SiteDevice
 
-    # Connect hot path: the site rides along in the same query. Gateways
-    # always have a site (device_type_gateway_fields check constraint), so
-    # the inner join cannot drop rows.
+    # Connect hot path: the site rides along in the same query.
     def fetch_gateway(account_id, id) do
       result =
         from(d in Device,
           where: d.account_id == ^account_id,
           where: d.id == ^id,
           where: d.type == :gateway,
-          join: s in assoc(d, :site),
-          on: s.account_id == d.account_id,
+          join: sd in SiteDevice,
+          on: sd.account_id == d.account_id and sd.device_id == d.id,
+          join: s in Site,
+          on: s.account_id == sd.account_id and s.id == sd.site_id,
+          select_merge: %{site_id: sd.site_id},
           preload: [site: s]
         )
         |> Safe.unscoped()
@@ -437,10 +439,13 @@ defmodule PortalAPI.Gateway.Socket do
       existing =
         if firezone_id do
           from(d in Device,
+            join: sd in SiteDevice,
+            on: sd.account_id == d.account_id and sd.device_id == d.id,
             where: d.account_id == ^account_id,
-            where: d.site_id == ^site_id,
+            where: sd.site_id == ^site_id,
             where: d.firezone_id == ^firezone_id,
-            where: d.type == :gateway
+            where: d.type == :gateway,
+            select_merge: %{site_id: sd.site_id}
           )
           |> Safe.unscoped()
           |> Safe.one()

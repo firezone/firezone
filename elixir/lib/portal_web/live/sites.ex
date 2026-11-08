@@ -1307,7 +1307,7 @@ defmodule PortalWeb.Sites do
   defmodule Database do
     import Ecto.Query
     import Ecto.Changeset
-    alias Portal.{Safe, Site, Resource, Device, GatewayToken}
+    alias Portal.{Safe, Site, SiteDevice, Resource, Device, GatewayToken}
 
     @spec list_all_sites(Portal.Authentication.Subject.t()) :: [Site.t()]
     def list_all_sites(subject) do
@@ -1339,7 +1339,12 @@ defmodule PortalWeb.Sites do
     def list_gateways_for_site(site_id, subject) do
       from(d in Device, as: :devices)
       |> where([devices: d], d.type == :gateway)
-      |> where([devices: d], d.site_id == ^site_id)
+      |> join(:inner, [devices: d], sd in SiteDevice,
+        on: sd.account_id == d.account_id and sd.device_id == d.id,
+        as: :site_device
+      )
+      |> where([site_device: sd], sd.site_id == ^site_id)
+      |> select_merge([site_device: sd], %{site_id: sd.site_id})
       |> order_by([devices: d], asc: d.name)
       |> Safe.scoped(subject)
       |> Safe.all()
@@ -1383,9 +1388,13 @@ defmodule PortalWeb.Sites do
     def count_gateways_by_site(site_ids, subject) do
       from(d in Device, as: :devices)
       |> where([devices: d], d.type == :gateway)
-      |> where([devices: d], d.site_id in ^site_ids)
-      |> group_by([devices: d], d.site_id)
-      |> select([devices: d], {d.site_id, count(d.id)})
+      |> join(:inner, [devices: d], sd in SiteDevice,
+        on: sd.account_id == d.account_id and sd.device_id == d.id,
+        as: :site_device
+      )
+      |> where([site_device: sd], sd.site_id in ^site_ids)
+      |> group_by([site_device: sd], sd.site_id)
+      |> select([devices: d, site_device: sd], {sd.site_id, count(d.id)})
       |> Safe.scoped(subject)
       |> Safe.all()
       |> Map.new()
@@ -1464,7 +1473,11 @@ defmodule PortalWeb.Sites do
         on: d.account_id == t.account_id and d.id == t.device_id,
         as: :devices
       )
-      |> where([devices: d], d.site_id == ^site_id)
+      |> join(:inner, [devices: d], sd in SiteDevice,
+        on: sd.account_id == d.account_id and sd.device_id == d.id,
+        as: :site_device
+      )
+      |> where([site_device: sd], sd.site_id == ^site_id)
       |> Safe.scoped(subject)
       |> Safe.all()
     end
@@ -1479,9 +1492,13 @@ defmodule PortalWeb.Sites do
         on: d.account_id == t.account_id and d.id == t.device_id,
         as: :devices
       )
-      |> where([devices: d], d.site_id in ^site_ids)
+      |> join(:inner, [devices: d], sd in SiteDevice,
+        on: sd.account_id == d.account_id and sd.device_id == d.id,
+        as: :site_device
+      )
+      |> where([site_device: sd], sd.site_id in ^site_ids)
       |> distinct(true)
-      |> select([devices: d], {d.site_id, d.id})
+      |> select([devices: d, site_device: sd], {sd.site_id, d.id})
       |> Safe.scoped(subject)
       |> Safe.all()
       |> Enum.group_by(&elem(&1, 0), &elem(&1, 1))

@@ -1,5 +1,6 @@
 defmodule PortalAPI.Gateway.SocketTest do
   use PortalAPI.ChannelCase, async: true
+  import Ecto.Query
   import PortalAPI.Gateway.Socket, except: [connect: 3]
   import Portal.AccountFixtures
   import Portal.SiteFixtures
@@ -325,6 +326,24 @@ defmodule PortalAPI.Gateway.SocketTest do
       assert socket.assigns.gateway.id == gateway.id
       assert socket.assigns.site.id == site.id
       assert socket.assigns.gateway.gateway_token_id == token.id
+    end
+
+    test "takes a single-owner gateway's site from its assignment" do
+      account = account_fixture()
+      gateway = gateway_fixture(account: account)
+      other_site = site_fixture(account: account)
+
+      Portal.Repo.update_all(
+        from(sd in Portal.SiteDevice, where: sd.account_id == ^account.id and sd.device_id == ^gateway.id),
+        set: [site_id: other_site.id]
+      )
+
+      token = gateway_token_fixture(gateway: gateway)
+      attrs = connect_attrs(token: encode_gateway_token(token))
+
+      assert {:ok, socket} = connect(Socket, attrs, connect_info: build_connect_info())
+      assert socket.assigns.site.id == other_site.id
+      assert socket.assigns.gateway.site_id == other_site.id
     end
 
     test "single-owner connect persists the reported firezone_id when blank" do

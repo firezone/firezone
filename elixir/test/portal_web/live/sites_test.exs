@@ -982,6 +982,8 @@ defmodule PortalWeb.SitesTest do
           slug: "bare-gw"
         })
 
+      Repo.insert!(%Portal.SiteDevice{account_id: account.id, site_id: site.id, device_id: gateway.id})
+
       {:ok, lv, _html} =
         conn
         |> authorize_conn(actor)
@@ -1042,6 +1044,8 @@ defmodule PortalWeb.SitesTest do
           slug: "bare-gw"
         })
 
+      Repo.insert!(%Portal.SiteDevice{account_id: account.id, site_id: site.id, device_id: gateway.id})
+
       {:ok, lv, _html} =
         conn
         |> authorize_conn(actor)
@@ -1073,6 +1077,8 @@ defmodule PortalWeb.SitesTest do
           name: "deployed-gw",
           slug: "deployed-gw"
         })
+
+      Repo.insert!(%Portal.SiteDevice{account_id: account.id, site_id: site.id, device_id: gateway.id})
 
       token = gateway_token_fixture(gateway: gateway)
 

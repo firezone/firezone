@@ -488,6 +488,30 @@ defmodule PortalAPI.GatewayControllerTest do
                json_response(conn, 401)
     end
 
+    test "finds the gateway under the site it is assigned to", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      site: site
+    } do
+      gateway = gateway_fixture(account: account, site: site)
+      other_site = site_fixture(account: account)
+
+      Repo.update_all(
+        from(sd in Portal.SiteDevice, where: sd.account_id == ^account.id and sd.device_id == ^gateway.id),
+        set: [site_id: other_site.id]
+      )
+
+      conn = authorize_conn(conn, actor)
+
+      assert %{"data" => %{"id" => id}} =
+               conn |> get("/sites/#{other_site.id}/gateways/#{gateway.id}") |> json_response(200)
+
+      assert id == gateway.id
+
+      assert conn |> get("/sites/#{site.id}/gateways/#{gateway.id}") |> json_response(404)
+    end
+
     test "returns a single gateway", %{
       conn: conn,
       account: account,
