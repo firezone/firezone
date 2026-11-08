@@ -826,7 +826,7 @@ phase 5 has 12, phase 5b has 8, phase 6 has 8.
    rule for systemd-resolved, `resolv.conf` control documented as root-only.
 2. **Billing:** customer service accounts that own routing devices count as
    any actor does today; every plan gets one additional free service account
-   (step 1.4b). The Infrastructure actor never counts.
+   (step 1.4b). The System actor (decision 7) never counts.
 3. **Binary shape:** one executable, `firezone`, with `run` as the daemon.
 4. **Site assignment:** explicit rows only; rules not planned.
 5. **Forwarding:** on Linux the daemon owns kernel forwarding (sysctls and
@@ -834,6 +834,50 @@ phase 5 has 12, phase 5b has 8, phase 6 has 8.
    serve, with `--no-kernel-forwarding` as the opt-out; everywhere else, and
    as the Linux fallback, a userspace forwarder in smoltcp with ICMP echo
    through the platform ping APIs. Windows serves through userspace only.
+
+6. **One credential per device.** A device holds one token. There is no
+   device token with a user sign-in on top. The token's actor decides the
+   device's policies, and the token's lifetime decides how long it stays
+   connected. A user's laptop serves a Site only while that user is signed
+   in; always-on infrastructure is deployed with a non-user token.
+7. **System actor, for legacy Gateways only.** Each account gets one actor
+   of a new type, `system`, named "System". Existing Gateway tokens move to
+   it. Because it is a new type, every allow-list on actor type leaves it
+   out by default: it takes no seat, is not a user or a service account for
+   any limit, is not in Everyone, cannot be added to groups, has no
+   policies, cannot be edited, disabled or deleted, and no token can be
+   minted for it. Its tokens never expire (deployed Gateways exit and stay
+   down on any disconnect); rotation and revocation are the controls. Once
+   `/device/v1` ships, no new System tokens are minted, but existing ones
+   keep working on both `/gateway` and `/device/v1`, and rotating one keeps
+   System as the owner.
+8. **A Gateway gets outbound access only through a service account.** A
+   System-owned device can only serve. To let a Gateway reach other devices
+   or resources, the admin upgrades it to the `firezone` binary and uses
+   "Move to service account" on the device. This changes the owner of the
+   existing token: same secret, same file on the host, nothing to redeploy.
+   The service account's policies then apply, and serving its Site is not
+   affected. A shared Site token moves every Gateway that uses it, so the UI
+   lists them before the admin confirms; to move only one, that Gateway gets
+   its own device-bound token. New devices deployed through `/device/v1` use
+   a service account token from the start. Open: whether moving rotates the
+   secret (more secure, needs a host change) or keeps it (no host change).
+9. **Upgrading never needs a new token.** Existing Gateways upgrade the
+   package or image and keep their token, `FIREZONE_ID`, device row and
+   Site. Rolling back to the old binary keeps working because `/gateway`
+   stays served. Retiring `/gateway` later only asks for a binary upgrade.
+10. **Version compatibility by minor range, worked out by the portal.** Each
+    device gets a range of minors it is compatible with, from the version it
+    already reports: a legacy Client on minor `m` is `[m, m]`, a legacy
+    Gateway is `[m-1, m+1]`, and a `/device/v1` binary is `[m-2, m]`. Two
+    devices are compatible when their ranges overlap, which reproduces
+    today's rules for legacy devices. No new connect parameter. The pair
+    speaks the highest minor both share, sent with the connection details.
+    Message shapes change only with a new socket version, and optional
+    abilities are capabilities in presence; capabilities only decide what the
+    portal sends, never what a device may do. A minimum supported minor can
+    refuse `/device/v1` binaries at connect; legacy sockets are not refused,
+    since a refused Gateway stays down.
 
 ## 5. Risks
 
