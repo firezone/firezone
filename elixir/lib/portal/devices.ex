@@ -25,6 +25,18 @@ defmodule Portal.Devices do
   @spec next_free_slug(Ecto.UUID.t(), String.t(), String.t() | nil) :: String.t()
   defdelegate next_free_slug(account_id, name, owner_name), to: Database
 
+  @doc """
+  The `site_devices` row that puts a new Gateway in `site`, for `put_assoc/3`
+  on the Gateway's insert. The changeset turns a Site deleted in the meantime
+  into an error rather than a raise.
+  """
+  @spec site_device_changeset(Site.t()) :: Ecto.Changeset.t()
+  def site_device_changeset(%Site{} = site) do
+    %Portal.SiteDevice{account_id: site.account_id, site_id: site.id}
+    |> Ecto.Changeset.change()
+    |> Portal.SiteDevice.changeset()
+  end
+
   @doc "The name that prefixes a device slug: the owner's for people, nothing for service accounts."
   @spec owner_name(Portal.Actor.t() | nil) :: String.t() | nil
   def owner_name(%Portal.Actor{type: type, name: name})
@@ -99,22 +111,13 @@ defmodule Portal.Devices do
     def insert_gateway(site, name, subject) do
       name = name || Portal.Crypto.random_token(5, encoder: :user_friendly)
 
-      Safe.transact(fn ->
-        with {:ok, gateway} <-
-               %Device{}
-               |> Ecto.Changeset.cast(%{name: name}, [:name])
-               |> Ecto.Changeset.put_change(:type, :gateway)
-               |> put_free_slug(subject.account.id, nil)
-               |> Safe.scoped(subject)
-               |> Safe.insert(),
-             {:ok, _site_device} <-
-               %Portal.SiteDevice{site_id: site.id, device_id: gateway.id}
-               |> Ecto.Changeset.change()
-               |> Safe.scoped(subject)
-               |> Safe.insert() do
-          {:ok, gateway}
-        end
-      end)
+      %Device{}
+      |> Ecto.Changeset.cast(%{name: name}, [:name])
+      |> Ecto.Changeset.put_change(:type, :gateway)
+      |> put_free_slug(subject.account.id, nil)
+      |> Ecto.Changeset.put_assoc(:site_device, Portal.Devices.site_device_changeset(site))
+      |> Safe.scoped(subject)
+      |> Safe.insert()
     end
 
     def put_free_slug(changeset, account_id, owner_name) do
