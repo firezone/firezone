@@ -7822,12 +7822,12 @@ dependencies = [
 
 [[package]]
 name = "subprocess"
-version = "1.2.1"
+version = "1.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d5c2982c58b661c6509861bd3383870b6918030606e8b5afb0ade14b4a3cff12"
+checksum = "357bfac1d7af31600c3d45744ac453a4a25fc0f8b2ebe22db07d147745711cff"
 dependencies = [
  "libc",
- "winapi",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
