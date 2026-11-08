@@ -221,10 +221,11 @@ defmodule Portal.Device do
     connect flush, so the WAL row still carries the previous session's values
     (or NULL) for the seconds between connect and flush. Taking the broadcast
     struct wholesale would drop this connection's public key, silently breaking
-    every payload derived from it.
+    every payload derived from it. The site is kept too: it comes from
+    site_devices, not from the device row the WAL carries.
   """
   def merge_broadcast(%__MODULE__{id: id} = current, %__MODULE__{id: id} = broadcast) do
-    Portal.SchemaHelpers.merge_broadcast(current, broadcast, @latest_session_fields)
+    Portal.SchemaHelpers.merge_broadcast(current, broadcast, [:site_id | @latest_session_fields])
   end
 
   def reserved_ipv4_cidr, do: @reserved_ipv4_cidr
