@@ -21,12 +21,13 @@ defmodule Portal.Repo.DynamicRepoResolver do
   end
 
   defp find_in_hierarchy(repo_module, [pid | rest]) when is_pid(pid) do
-    case :erlang.process_info(pid, :dictionary) do
-      {:dictionary, dict} ->
-        case List.keyfind(dict, {repo_module, :dynamic_repo}, 0) do
-          {_, repo} -> repo
-          nil -> find_in_hierarchy(repo_module, rest)
-        end
+    key = {repo_module, :dynamic_repo}
+
+    # Reading the whole dictionary copies unrelated caller state on every
+    # lookup. OTP supports fetching just the dynamic repo entry.
+    case :erlang.process_info(pid, {:dictionary, key}) do
+      {{:dictionary, ^key}, :undefined} -> find_in_hierarchy(repo_module, rest)
+      {{:dictionary, ^key}, repo} -> repo
 
       :undefined ->
         find_in_hierarchy(repo_module, rest)

@@ -1,7 +1,5 @@
 defmodule PortalAPI.Client.ChannelTest do
-  # Registers the globally named client session/policy-authorization queues,
-  # so it must not run concurrently with other modules that do the same.
-  use PortalAPI.ChannelCase, async: true, group: :client_queues
+  use PortalAPI.ChannelCase, async: true
   import Ecto.Query, only: [from: 2]
   import ExUnit.CaptureLog
   alias Portal.Changes
@@ -171,7 +169,19 @@ defmodule PortalAPI.Client.ChannelTest do
     )
   end
 
-  setup do
+  setup tags do
+    for queue <- [:client_session_queue, :policy_authorization_queue] do
+      Portal.Config.put_env_override(queue,
+        name: {:via, Registry, {Portal.Test.QueueRegistry, {self(), queue}}}
+      )
+    end
+
+    if constant_time = tags[:device_lookup_constant_time] do
+      Portal.Config.put_env_override(PortalAPI.Client.Channel.Shared,
+        device_lookup_constant_time: constant_time
+      )
+    end
+
     start_supervised!(
       {Portal.Queue,
        Keyword.merge(PortalAPI.Client.Channel.policy_authorization_queue_opts(),
@@ -387,7 +397,7 @@ defmodule PortalAPI.Client.ChannelTest do
       socket = join_channel(client, subject, session_ref: session_ref)
       assert_push "init", _init_payload
 
-      Portal.Queue.flush(:client_session_queue)
+      Portal.Queue.flush(Portal.Queue.name(:client_session_queue))
 
       persisted =
         Portal.Repo.get_by!(Portal.Device, id: client.id, account_id: client.account_id)
@@ -407,7 +417,7 @@ defmodule PortalAPI.Client.ChannelTest do
 
       join_channel(client, subject)
       assert_push "init", _init_payload
-      Portal.Queue.flush(:client_session_queue)
+      Portal.Queue.flush(Portal.Queue.name(:client_session_queue))
 
       log = Portal.Repo.get_by!(Portal.SessionLog, account_id: client.account_id)
       assert log.subject["attested_device_serial"] == "SERIAL"
@@ -427,7 +437,7 @@ defmodule PortalAPI.Client.ChannelTest do
       assert {^session_ref, _timer_ref} =
                :sys.get_state(socket.channel_pid).assigns.session_durability
 
-      Portal.Queue.flush(:client_session_queue)
+      Portal.Queue.flush(Portal.Queue.name(:client_session_queue))
 
       refute :sys.get_state(socket.channel_pid).assigns.session_durability
     end
@@ -1982,6 +1992,7 @@ defmodule PortalAPI.Client.ChannelTest do
       refute relay_nil_lon.id in relay_ids
     end
   end
+
 
   describe "handle_info/2 for change events" do
     test "ignores out of order %Change{}", %{client: client, subject: subject} do
@@ -3721,6 +3732,7 @@ defmodule PortalAPI.Client.ChannelTest do
     end
   end
 
+
   describe "handle_in/3 create_flow" do
     test "uses authorization messages on the v2 channel", %{client: client, subject: subject} do
       socket = join_channel(client, subject, channel: PortalAPI.Client.V2.Channel)
@@ -3890,7 +3902,7 @@ defmodule PortalAPI.Client.ChannelTest do
       # gateway: if it did, flushing would create a row that can never be
       # revoked via the dispatched `:reject_access` path (because no
       # `:create_authorization` ever reached a gateway).
-      Portal.Queue.flush(:policy_authorization_queue)
+      Portal.Queue.flush(Portal.Queue.name(:policy_authorization_queue))
       assert Repo.all(Portal.PolicyAuthorization) == []
     end
 
@@ -4008,7 +4020,7 @@ defmodule PortalAPI.Client.ChannelTest do
       # Force the queued insert to fail by deleting the policy parent row.
       # After flush, on_failed must fire reject_access for the orphaned entry.
       Portal.Repo.delete!(policy)
-      Portal.Queue.flush(:policy_authorization_queue)
+      Portal.Queue.flush(Portal.Queue.name(:policy_authorization_queue))
 
       client_id = client.id
       resource_id = resource.id
@@ -4134,13 +4146,13 @@ defmodule PortalAPI.Client.ChannelTest do
                preshared_key: preshared_key
              } = payload
 
+      Portal.Queue.flush(Portal.Queue.name(:policy_authorization_queue))
+
       policy_authorization =
-        wait_for(fn ->
-          assert Repo.get_by(Portal.PolicyAuthorization,
-                   initiating_device_id: client.id,
-                   resource_id: resource.id
-                 )
-        end)
+        Repo.get_by!(Portal.PolicyAuthorization,
+          initiating_device_id: client.id,
+          resource_id: resource.id
+        )
 
       assert policy_authorization.initiating_device_id == client.id
       assert policy_authorization.resource_id == resource_id
@@ -4565,13 +4577,13 @@ defmodule PortalAPI.Client.ChannelTest do
 
       assert_receive {:create_authorization, {_channel_pid, _socket_ref}, %{}}
 
-      wait_for(fn ->
-        assert Repo.get_by(Portal.PolicyAuthorization,
-                 resource_id: resource.id,
-                 receiving_device_id: gateway2.id,
-                 account_id: account.id
-               )
-      end)
+      Portal.Queue.flush(Portal.Queue.name(:policy_authorization_queue))
+
+      assert Repo.get_by(Portal.PolicyAuthorization,
+               resource_id: resource.id,
+               receiving_device_id: gateway2.id,
+               account_id: account.id
+             )
 
       push(socket, "create_flow", %{
         "resource_id" => resource.id,
@@ -4580,13 +4592,13 @@ defmodule PortalAPI.Client.ChannelTest do
 
       assert_receive {:create_authorization, {_channel_pid, _socket_ref}, %{}}
 
-      wait_for(fn ->
-        assert Repo.get_by(Portal.PolicyAuthorization,
-                 resource_id: resource.id,
-                 receiving_device_id: gateway1.id,
-                 account_id: account.id
-               )
-      end)
+      Portal.Queue.flush(Portal.Queue.name(:policy_authorization_queue))
+
+      assert Repo.get_by(Portal.PolicyAuthorization,
+               resource_id: resource.id,
+               receiving_device_id: gateway1.id,
+               account_id: account.id
+             )
     end
   end
 
@@ -4911,6 +4923,7 @@ defmodule PortalAPI.Client.ChannelTest do
       assert resource_id == resource.id
     end
   end
+
 
   describe "handle_in/3 prepare_connection" do
     test "returns error when resource is not found", %{client: client, subject: subject} do
@@ -6079,6 +6092,7 @@ defmodule PortalAPI.Client.ChannelTest do
     end
   end
 
+
   describe "handle_in/3 create_flow for static_device_pool" do
     setup %{account: account, group: group, actor: actor, subject: subject} do
       # Override the default subject's user_agent so device pool resources
@@ -6503,7 +6517,7 @@ defmodule PortalAPI.Client.ChannelTest do
 
       # Queue must not buffer the row when the dispatch fails — flushing should
       # leave no `Portal.PolicyAuthorization` rows behind.
-      Portal.Queue.flush(:policy_authorization_queue)
+      Portal.Queue.flush(Portal.Queue.name(:policy_authorization_queue))
       assert Portal.Repo.all(Portal.PolicyAuthorization) == []
 
       _ = account
@@ -7003,6 +7017,7 @@ defmodule PortalAPI.Client.ChannelTest do
       }
     end
 
+    @tag device_lookup_constant_time: 500
     test "refuses at a constant time however much work the answer took", %{
       account: account,
       client: client,
@@ -7086,7 +7101,7 @@ defmodule PortalAPI.Client.ChannelTest do
       assert_push "client_device_access_authorized", _
 
       :sys.get_state(initiating_socket.channel_pid)
-      Portal.Queue.flush(:policy_authorization_queue)
+      Portal.Queue.flush(Portal.Queue.name(:policy_authorization_queue))
 
       pa =
         Portal.Repo.one(
@@ -7158,7 +7173,7 @@ defmodule PortalAPI.Client.ChannelTest do
         Portal.Repo.one!(from(p in Portal.Policy, where: p.resource_id == ^pool_resource.id))
 
       Portal.Repo.delete!(policy)
-      Portal.Queue.flush(:policy_authorization_queue)
+      Portal.Queue.flush(Portal.Queue.name(:policy_authorization_queue))
 
       client_id = client.id
       pool_resource_id = pool_resource.id
@@ -7321,7 +7336,7 @@ defmodule PortalAPI.Client.ChannelTest do
         Portal.Repo.one!(from(p in Portal.Policy, where: p.resource_id == ^pool_resource.id))
 
       Portal.Repo.delete!(policy)
-      Portal.Queue.flush(:policy_authorization_queue)
+      Portal.Queue.flush(Portal.Queue.name(:policy_authorization_queue))
 
       assert_receive {:reject_access, %Portal.PolicyAuthorization{initiating_device_id: ^client_id}},
                      500
@@ -7378,6 +7393,7 @@ defmodule PortalAPI.Client.ChannelTest do
       refute_push "client_device_access_authorized", _, 100
     end
   end
+
 
   describe "device pools by control protocol" do
     setup %{account: account, group: group, subject: subject} do
@@ -7610,7 +7626,7 @@ defmodule PortalAPI.Client.ChannelTest do
       refute_push "client_device_access_denied", _
 
       :sys.get_state(socket.channel_pid)
-      Portal.Queue.flush(:policy_authorization_queue)
+      Portal.Queue.flush(Portal.Queue.name(:policy_authorization_queue))
 
       refute Portal.Repo.exists?(
                from(p in Portal.PolicyAuthorization, where: p.initiating_device_id == ^client.id)
@@ -7659,6 +7675,7 @@ defmodule PortalAPI.Client.ChannelTest do
       assert_push "device_domain_resolution_failed", %{domain: ^unknown_domain, reason: :not_found}
     end
 
+    @tag device_lookup_constant_time: 500
     test "answers a name the client may not reach no faster than an unknown one", %{
       account: account,
       client: client,
@@ -7958,6 +7975,7 @@ defmodule PortalAPI.Client.ChannelTest do
       assert Enum.take(names, 2) == [Portal.Device.fqdn(seen_last), Portal.Device.fqdn(seen_before)]
     end
 
+    @tag device_lookup_constant_time: 500
     test "answers a name that lists nothing for the client no faster than an unknown one", %{
       account: account,
       client: client,
@@ -7979,6 +7997,7 @@ defmodule PortalAPI.Client.ChannelTest do
       assert nested >= 450
     end
   end
+
 
   describe "handle_in/3 no_relays" do
     test "sends relays_presence with 2 selected relays", %{
@@ -9677,6 +9696,7 @@ defmodule PortalAPI.Client.ChannelTest do
   end
 
   # Milliseconds between asking for an address and the refusal or offline answer landing.
+
   defp time_access(socket, resource_id, address) do
     ipv4 = if is_binary(address), do: address, else: Portal.Types.INET.to_string(address)
     started_at = System.monotonic_time(:millisecond)
