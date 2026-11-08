@@ -490,10 +490,15 @@ defmodule Portal.Billing.EventHandler do
   end
 
   defp generate_account_slug(metadata) do
-    if company_website = metadata["company_website"] do
-      extract_slug_from_uri(company_website)
-    else
-      generate_unique_slug()
+    cond do
+      slug = metadata["account_slug"] ->
+        slug |> String.trim() |> Portal.AccountSlug.canonical()
+
+      company_website = metadata["company_website"] ->
+        extract_slug_from_uri(company_website)
+
+      true ->
+        generate_unique_slug()
     end
   end
 

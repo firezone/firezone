@@ -954,7 +954,7 @@ defmodule Portal.Billing.EventHandlerTest do
   end
 
   describe "handle_event/1 with customer.created - slug generation" do
-    test "ignores account_slug in the metadata" do
+    test "uses account_slug from metadata in its canonical form" do
       customer_id = "cus_" <> Stripe.random_id()
 
       customer =
@@ -966,7 +966,7 @@ defmodule Portal.Billing.EventHandlerTest do
             "company_website" => "https://slugtest.com",
             "account_owner_first_name" => "Test",
             "account_owner_last_name" => "User",
-            "account_slug" => "custom_provided_slug"
+            "account_slug" => " Custom-Provided_Slug "
           }
         )
 
@@ -979,8 +979,34 @@ defmodule Portal.Billing.EventHandlerTest do
 
       assert {:ok, _event} = EventHandler.handle_event(event)
 
-      assert Portal.Repo.get_by(Portal.Account, slug: "custom_provided_slug") == nil
-      assert Portal.Repo.get_by(Portal.Account, slug: "slugtest")
+      assert Portal.Repo.get_by(Portal.Account, slug: "custom_provided_slug")
+    end
+
+    test "does not create the account for an account_slug with a bad format" do
+      customer_id = "cus_" <> Stripe.random_id()
+
+      customer =
+        Stripe.build_customer(
+          id: customer_id,
+          name: "Bad Slug Corp",
+          email: "admin@badslug.com",
+          metadata: %{
+            "company_website" => "https://badslug.com",
+            "account_owner_first_name" => "Test",
+            "account_owner_last_name" => "User",
+            "account_slug" => "bad slug!"
+          }
+        )
+
+      event = Stripe.build_event("customer.created", customer)
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          assert {:error, _reason} = EventHandler.handle_event(event)
+        end)
+
+      assert log =~ "Failed to create account from Stripe"
+      refute Portal.Repo.get_by(Portal.Account, legal_name: "Bad Slug Corp")
     end
 
     test "extracts slug from company website path when no host" do
