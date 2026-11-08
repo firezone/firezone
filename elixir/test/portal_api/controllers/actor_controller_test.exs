@@ -1063,4 +1063,41 @@ defmodule PortalAPI.ActorControllerTest do
     |> get("/actors/#{actor.id}")
     |> json_response(200)
   end
+
+  describe "legacy Gateway actor" do
+    setup %{account: account, actor: api_actor} do
+      %{legacy: legacy_gateway_actor_fixture(account: account), api_actor: api_actor}
+    end
+
+    test "is not listed", %{conn: conn, legacy: legacy, api_actor: api_actor} do
+      conn =
+        conn
+        |> authorize_conn(api_actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/actors")
+
+      refute legacy.id in Enum.map(json_response(conn, 200)["data"], & &1["id"])
+    end
+
+    test "cannot be shown, updated or deleted", %{conn: conn, legacy: legacy, api_actor: api_actor} do
+      conn = conn |> authorize_conn(api_actor) |> put_req_header("content-type", "application/json")
+
+      assert json_response(get(conn, "/actors/#{legacy.id}"), 404)
+      assert json_response(put(conn, "/actors/#{legacy.id}", actor: %{name: "Renamed"}), 404)
+      assert json_response(delete(conn, "/actors/#{legacy.id}"), 404)
+
+      assert %Actor{name: "Legacy Gateway", is_disabled: false} = Repo.get_by(Actor, id: legacy.id)
+    end
+
+    test "cannot be created", %{conn: conn, account: account, api_actor: api_actor} do
+      conn =
+        conn
+        |> authorize_conn(api_actor)
+        |> put_req_header("content-type", "application/json")
+        |> post("/actors", actor: %{name: "Gateways", type: "legacy_gateway"})
+
+      assert json_response(conn, 422)
+      refute Repo.exists?(from(a in Actor, where: a.account_id == ^account.id and a.type == :legacy_gateway and a.name == "Gateways"))
+    end
+  end
 end

@@ -14,8 +14,10 @@ defmodule Portal.Actor do
     belongs_to :account, Portal.Account, primary_key: true
     field :id, :binary_id, primary_key: true, autogenerate: true
 
+    # `legacy_gateway` owns the Gateway tokens issued before Gateways became
+    # devices. The portal creates it; admins never see or change it.
     field :type, Ecto.Enum,
-      values: [:account_user, :account_admin_user, :service_account, :api_client]
+      values: [:account_user, :account_admin_user, :service_account, :api_client, :legacy_gateway]
 
     field :email, :string
     field :password_hash, :string, redact: true
@@ -57,6 +59,7 @@ defmodule Portal.Actor do
     |> trim_change(~w[name email]a)
     |> validate_length(:name, max: 255)
     |> validate_type_transition()
+    |> validate_legacy_gateway()
     |> track_disabling_directory()
     |> normalize_email(:email)
     |> validate_email(:email)
@@ -98,6 +101,24 @@ defmodule Portal.Actor do
 
       true ->
         changeset
+    end
+  end
+
+  # Only the portal creates a legacy Gateway actor, by building the struct, so
+  # no cast can produce one and nothing may change one once stored.
+  defp validate_legacy_gateway(%Ecto.Changeset{data: %__MODULE__{type: :legacy_gateway}} = changeset) do
+    if changeset.data.__meta__.state == :loaded and changeset.changes != %{} do
+      add_error(changeset, :type, "legacy Gateway actors cannot be changed")
+    else
+      changeset
+    end
+  end
+
+  defp validate_legacy_gateway(changeset) do
+    if get_change(changeset, :type) == :legacy_gateway do
+      add_error(changeset, :type, "is invalid")
+    else
+      changeset
     end
   end
 

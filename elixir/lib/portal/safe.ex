@@ -567,6 +567,11 @@ defmodule Portal.Safe do
 
   @spec delete(Scoped.t()) ::
           {:ok, Ecto.Schema.t()} | {:error, Ecto.Changeset.t() | :unauthorized | :not_found}
+  def delete(%Scoped{queryable: %Portal.Actor{type: :legacy_gateway}}), do: {:error, :unauthorized}
+
+  def delete(%Scoped{queryable: %Ecto.Changeset{data: %Portal.Actor{type: :legacy_gateway}}}),
+    do: {:error, :unauthorized}
+
   def delete(%Scoped{
         subject: %Subject{account: %{id: account_id}} = subject,
         queryable: %Ecto.Changeset{data: %{account_id: account_id}} = changeset
@@ -716,6 +721,11 @@ defmodule Portal.Safe do
     where(queryable, id: ^account_id)
   end
 
+  # The legacy Gateway actor belongs to the portal, not to the account's admins.
+  defp apply_account_filter(queryable, Portal.Actor, account_id) do
+    where(queryable, [a], a.account_id == ^account_id and a.type != :legacy_gateway)
+  end
+
   defp apply_account_filter(queryable, _schema, account_id) do
     # For all other schemas, filter by account_id
     where(queryable, account_id: ^account_id)
@@ -852,6 +862,10 @@ defmodule Portal.Safe do
   def permit(action, schema, %Subject{} = subject) do
     permit(action, schema, subject.actor.type)
   end
+
+  # Ahead of the wildcard grants below, so this type gets nothing it is not
+  # given here.
+  def permit(_action, _schema, :legacy_gateway), do: {:error, :unauthorized}
 
   # Account permissions
   def permit(_action, Portal.Account, :account_admin_user), do: :ok

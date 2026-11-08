@@ -151,6 +151,16 @@ defmodule Portal.BillingTest do
   end
 
   describe "can_create_service_accounts?/1" do
+    test "does not count the legacy Gateway actor", %{account: account} do
+      account = update_account(account, %{limits: %{service_accounts_count: 1}})
+
+      legacy_gateway_actor_fixture(account: account)
+      assert can_create_service_accounts?(account) == true
+
+      actor_fixture(type: :service_account, account: account)
+      assert can_create_service_accounts?(account) == false
+    end
+
     test "returns true when service accounts limit is not exceeded", %{account: account} do
       account = update_account(account, %{limits: %{service_accounts_count: 3}})
 
@@ -1233,6 +1243,15 @@ defmodule Portal.BillingTest do
   end
 
   describe "count_monthly_active_users/1" do
+    test "never counts the legacy Gateway actor", %{account: account} do
+      actor = legacy_gateway_actor_fixture(account: account)
+      client = client_fixture(account: account, actor: actor)
+      client_session_fixture(account: account, actor: actor, client: client)
+
+      assert Portal.Billing.count_monthly_active_users(account) == 0
+      assert Portal.Billing.monthly_active_usage(account) == %{seats: 0, adhoc_service_accounts: 0}
+    end
+
     test "counts distinct active users within last month", %{account: account} do
       actor1 = actor_fixture(type: :account_user, account: account)
       actor2 = actor_fixture(type: :account_admin_user, account: account)
