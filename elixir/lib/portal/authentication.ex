@@ -612,8 +612,10 @@ defmodule Portal.Authentication do
 
     # The unique index on (account_id, device_id, rotated_at IS NULL) permits
     # at most one active token per gateway, so rotation is three set-based
-    # writes with no row lock: concurrent rotations race on the final insert
-    # and the loser surfaces the unique violation as a changeset error.
+    # writes to gateway_tokens with no row lock: concurrent rotations race on
+    # the final insert and the loser surfaces the unique violation as a
+    # changeset error. That insert also copies the gateway's tokens into
+    # device_tokens, locking the copies whose stamp it changes.
     def rotate_gateway_token(gateway, new_token, subject) do
       Safe.transact(fn ->
         with {:ok, _} <- delete_replaceable_active_token(gateway, subject),
@@ -981,6 +983,7 @@ defmodule Portal.Authentication do
       from(dt in Portal.DeviceToken,
         join: gt in subquery(source),
         on: gt.account_id == dt.account_id and gt.id == dt.id,
+        where: fragment("? IS DISTINCT FROM ?", dt.rotated_at, gt.rotated_at),
         update: [set: [rotated_at: gt.rotated_at, updated_at: ^now]]
       )
       |> Safe.unscoped()

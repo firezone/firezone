@@ -119,7 +119,8 @@ defmodule Portal.TokenFixtures do
       site_id: token.site_id,
       secret_salt: token.secret_salt,
       secret_hash: token.secret_hash,
-      rotated_at: token.rotated_at
+      rotated_at: token.rotated_at,
+      inserted_at: token.inserted_at
     })
   end
 

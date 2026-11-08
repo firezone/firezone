@@ -3591,6 +3591,23 @@ defmodule Portal.Repo.Seeds do
       }
       |> Repo.insert!()
 
+    # The copy the app writes beside every gateway token.
+    legacy_gateway_actor =
+      %Portal.Actor{account_id: gateway_token.account_id, type: :legacy_gateway, name: "Legacy Gateway"}
+      |> Ecto.Changeset.change()
+      |> Portal.Actor.changeset()
+      |> Repo.insert!()
+
+    Repo.insert!(%Portal.DeviceToken{
+      account_id: gateway_token.account_id,
+      id: gateway_token.id,
+      actor_id: legacy_gateway_actor.id,
+      site_id: gateway_token.site_id,
+      secret_salt: gateway_token.secret_salt,
+      secret_hash: gateway_token.secret_hash,
+      inserted_at: gateway_token.inserted_at
+    })
+
     gateway_encoded_token = Authentication.encode_fragment!(gateway_token)
 
     IO.puts("Created sites:")

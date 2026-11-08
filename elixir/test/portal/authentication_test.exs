@@ -1667,6 +1667,22 @@ defmodule Portal.AuthenticationTest do
       assert_copies_match(account)
     end
 
+    test "the legacy Gateway actor cannot be deleted while it owns copies", %{
+      account: account,
+      site: site,
+      subject: subject
+    } do
+      {:ok, token} = create_gateway_token(site, subject)
+      copy = Repo.get_by!(Portal.DeviceToken, account_id: account.id, id: token.id)
+      actor = Repo.get_by!(Portal.Actor, id: copy.actor_id)
+
+      assert_raise Ecto.ConstraintError, fn -> Repo.delete!(actor) end
+      assert_copies_match(account)
+
+      Repo.delete!(account)
+      refute Repo.get_by(Portal.DeviceToken, account_id: account.id, id: token.id)
+    end
+
     test "copies stay out of other accounts", %{site: site, subject: subject} do
       other_account = account_fixture()
       {:ok, _} = create_gateway_token(site_fixture(account: other_account), admin_subject_fixture(account: other_account))

@@ -25,9 +25,11 @@ defmodule Portal.Repo.Migrations.CreateDeviceTokens do
         primary_key: true
       )
 
+      # Deleting an actor that still owns tokens is refused rather than
+      # silently taking its tokens with it.
       add(
         :actor_id,
-        references(:actors, with: [account_id: :account_id], type: :binary_id, on_delete: :delete_all),
+        references(:actors, with: [account_id: :account_id], type: :binary_id, on_delete: :nothing),
         null: false
       )
 
