@@ -134,7 +134,7 @@ defmodule PortalAPI.Gateway.Socket do
   defp resolve_gateway(%Portal.GatewayToken{} = gateway_token, _attrs) do
     with {:ok, gateway} <-
            Database.fetch_gateway(gateway_token.account_id, gateway_token.device_id) do
-      {:ok, gateway.site, gateway}
+      {:ok, gateway.site_device.site, gateway}
     end
   end
 
@@ -396,8 +396,7 @@ defmodule PortalAPI.Gateway.Socket do
           on: sd.account_id == d.account_id and sd.device_id == d.id,
           join: s in Site,
           on: s.account_id == sd.account_id and s.id == sd.site_id,
-          select_merge: %{site_id: sd.site_id},
-          preload: [site: s]
+          preload: [site_device: {sd, site: s}]
         )
         |> Safe.unscoped()
         |> Safe.one()
@@ -458,8 +457,7 @@ defmodule PortalAPI.Gateway.Socket do
         where: d.account_id == ^site.account_id,
         where: sd.site_id == ^site.id,
         where: d.firezone_id == ^firezone_id,
-        where: d.type == :gateway,
-        select_merge: %{site_id: sd.site_id}
+        where: d.type == :gateway
       )
       |> Safe.unscoped()
       |> Safe.one()
@@ -478,7 +476,7 @@ defmodule PortalAPI.Gateway.Socket do
              %SiteDevice{account_id: site.account_id, site_id: site.id, device_id: gateway.id}
              |> Safe.unscoped()
              |> Safe.insert() do
-        {:ok, %{gateway | site_id: site.id}}
+        {:ok, gateway}
       end
     end
 

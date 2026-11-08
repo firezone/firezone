@@ -42,7 +42,6 @@ defmodule PortalAPI.Schemas.PoolMember do
                :online?,
                :provisioned_token,
                :public_key,
-               :site_id,
                :type,
                :updated_at,
                :verified_at

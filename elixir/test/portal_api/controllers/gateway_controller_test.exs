@@ -118,7 +118,7 @@ defmodule PortalAPI.GatewayControllerTest do
       end
 
       assert Repo.aggregate(
-               from(d in Portal.Device, where: d.site_id == ^site.id and d.type == :gateway),
+               from(sd in Portal.SiteDevice, where: sd.site_id == ^site.id),
                :count
              ) == 0
     end
@@ -212,7 +212,7 @@ defmodule PortalAPI.GatewayControllerTest do
       assert detail =~ "issue_token"
 
       assert Repo.aggregate(
-               from(d in Device, where: d.site_id == ^site.id and d.type == :gateway),
+               from(sd in Portal.SiteDevice, where: sd.site_id == ^site.id),
                :count
              ) == 0
     end
@@ -274,7 +274,7 @@ defmodule PortalAPI.GatewayControllerTest do
       assert detail =~ "issue_token"
 
       assert Repo.aggregate(
-               from(d in Device, where: d.site_id == ^site.id and d.type == :gateway),
+               from(sd in Portal.SiteDevice, where: sd.site_id == ^site.id),
                :count
              ) == 0
     end

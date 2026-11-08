@@ -513,7 +513,7 @@ defmodule PortalWeb.GettingStartedTest do
       assert has_element?(view, "#getting-started-gateway-systemd", "gateway-systemd-install.sh")
       refute render(view) =~ "FIREZONE_ID"
 
-      gateway |> Map.put(:site_id, site.id) |> online()
+      online(%{gateway | site: site})
       assert eventually(fn -> status_done?(view, "gateway") end)
       continue(view)
 

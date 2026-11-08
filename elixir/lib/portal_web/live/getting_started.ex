@@ -1520,7 +1520,6 @@ defmodule PortalWeb.GettingStarted do
         as: :site_device
       )
       |> where([devices: d, site_device: sd], sd.site_id == ^site_id and is_nil(d.firezone_id))
-      |> select_merge([site_device: sd], %{site_id: sd.site_id})
       |> Safe.scoped(subject)
       |> Safe.one()
       |> case do

@@ -286,7 +286,6 @@ defmodule PortalAPI.GatewayTokenController do
           as: :site_device
         )
         |> where([site_device: sd], sd.site_id == ^site_id)
-        |> select_merge([site_device: sd], %{site_id: sd.site_id})
         |> Safe.scoped(subject)
         |> Safe.one()
 

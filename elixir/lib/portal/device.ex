@@ -56,7 +56,6 @@ defmodule Portal.Device do
           gateway_token_id: Ecto.UUID.t() | nil,
           account_id: Ecto.UUID.t(),
           actor_id: Ecto.UUID.t() | nil,
-          site_id: Ecto.UUID.t() | nil,
           device_serial: String.t() | nil,
           device_uuid: String.t() | nil,
           identifier_for_vendor: String.t() | nil,
@@ -120,7 +119,8 @@ defmodule Portal.Device do
     field :verified_at, :utc_datetime_usec
 
     # Gateway-only
-    belongs_to :site, Portal.Site
+    has_one :site_device, Portal.SiteDevice, foreign_key: :device_id, references: :id
+    has_one :site, through: [:site_device, :site]
 
     has_many :gateway_tokens, Portal.GatewayToken,
       foreign_key: :device_id,
@@ -185,7 +185,6 @@ defmodule Portal.Device do
     |> validate_length(:hostname, min: 3, max: 255)
     |> assoc_constraint(:account)
     |> assoc_constraint(:actor)
-    |> assoc_constraint(:site)
     |> validate_type_fields()
     |> check_constraint(:type, name: :devices_type_check)
     |> check_constraint(:actor_id, name: :device_type_client_fields)
@@ -221,11 +220,10 @@ defmodule Portal.Device do
     connect flush, so the WAL row still carries the previous session's values
     (or NULL) for the seconds between connect and flush. Taking the broadcast
     struct wholesale would drop this connection's public key, silently breaking
-    every payload derived from it. The site is kept too: it comes from
-    site_devices, not from the device row the WAL carries.
+    every payload derived from it.
   """
   def merge_broadcast(%__MODULE__{id: id} = current, %__MODULE__{id: id} = broadcast) do
-    Portal.SchemaHelpers.merge_broadcast(current, broadcast, [:site_id | @latest_session_fields])
+    Portal.SchemaHelpers.merge_broadcast(current, broadcast, @latest_session_fields)
   end
 
   def reserved_ipv4_cidr, do: @reserved_ipv4_cidr
