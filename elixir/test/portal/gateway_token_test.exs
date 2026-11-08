@@ -75,7 +75,7 @@ defmodule Portal.GatewayTokenTest do
       attrs =
         attrs(%{
           account_id: gateway.account_id,
-          site_id: gateway.site_id,
+          site_id: gateway.site.id,
           device_id: gateway.id
         })
 
@@ -198,7 +198,6 @@ defmodule Portal.GatewayTokenTest do
       device =
         Repo.insert!(%Portal.Device{
           account_id: site.account_id,
-          site_id: site.id,
           type: :gateway,
           name: "pre-created",
           slug: "pre-created",

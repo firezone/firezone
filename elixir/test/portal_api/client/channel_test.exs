@@ -105,7 +105,7 @@ defmodule PortalAPI.Client.ChannelTest do
 
   defp connect_gateway_presence(gateway, token_id) do
     session_meta = %{
-      site_id: gateway.site_id,
+      site_id: gateway.site.id,
       public_key: gateway.public_key,
       psk_base: gateway.psk_base,
       version: gateway.last_seen_version,
@@ -4167,12 +4167,12 @@ defmodule PortalAPI.Client.ChannelTest do
 
       send(
         channel_pid,
-        {:connect, socket_ref, rid_bytes, gateway.site_id, gateway.id,
+        {:connect, socket_ref, rid_bytes, gateway.site.id, gateway.id,
          gateway.public_key, gateway.ipv4, gateway.ipv6, preshared_key,
          ice_credentials}
       )
 
-      gateway_group_id = gateway.site_id
+      gateway_group_id = gateway.site.id
       gateway_id = gateway.id
       gateway_public_key = gateway.public_key
       gateway_ipv4 = gateway.ipv4
@@ -4257,7 +4257,7 @@ defmodule PortalAPI.Client.ChannelTest do
 
       send(
         channel_pid,
-        {:connect, socket_ref, rid_bytes, gateway.site_id, gateway.id,
+        {:connect, socket_ref, rid_bytes, gateway.site.id, gateway.id,
          gateway.public_key, gateway.ipv4, gateway.ipv6, payload.preshared_key,
          payload.ice_credentials}
       )
@@ -4311,7 +4311,7 @@ defmodule PortalAPI.Client.ChannelTest do
 
       send(
         channel_pid,
-        {:connect, socket_ref, rid_bytes, gateway.site_id, gateway.id,
+        {:connect, socket_ref, rid_bytes, gateway.site.id, gateway.id,
          gateway.public_key, gateway.ipv4, gateway.ipv6, payload.preshared_key,
          payload.ice_credentials}
       )
@@ -4353,12 +4353,12 @@ defmodule PortalAPI.Client.ChannelTest do
 
       send(
         socket.channel_pid,
-        {:connect, make_ref(), Ecto.UUID.dump!(resource.id), gateway.site_id, gateway.id,
+        {:connect, make_ref(), Ecto.UUID.dump!(resource.id), gateway.site.id, gateway.id,
          gateway.public_key, gateway.ipv4, gateway.ipv6, preshared_key,
          ice_credentials}
       )
 
-      site_id = gateway.site_id
+      site_id = gateway.site.id
 
       assert_push "flow_created", payload
 
@@ -4700,7 +4700,7 @@ defmodule PortalAPI.Client.ChannelTest do
 
       send(
         channel_pid,
-        {:connect, socket_ref, rid_bytes, gateway.site_id, gateway.id,
+        {:connect, socket_ref, rid_bytes, gateway.site.id, gateway.id,
          gateway.public_key, gateway.ipv4, gateway.ipv6, payload.preshared_key,
          payload.ice_credentials}
       )
@@ -4756,7 +4756,7 @@ defmodule PortalAPI.Client.ChannelTest do
 
       send(
         channel_pid,
-        {:connect, socket_ref, rid_bytes, gateway.site_id, gateway.id,
+        {:connect, socket_ref, rid_bytes, gateway.site.id, gateway.id,
          gateway.public_key, gateway.ipv4, gateway.ipv6, payload.preshared_key,
          payload.ice_credentials}
       )
@@ -4807,7 +4807,7 @@ defmodule PortalAPI.Client.ChannelTest do
 
       send(
         channel_pid,
-        {:connect, socket_ref2, Ecto.UUID.dump!(resource.id), gateway.site_id, gateway.id,
+        {:connect, socket_ref2, Ecto.UUID.dump!(resource.id), gateway.site.id, gateway.id,
          gateway.public_key, gateway.ipv4, gateway.ipv6, payload2.preshared_key,
          payload2.ice_credentials}
       )
@@ -8202,7 +8202,7 @@ defmodule PortalAPI.Client.ChannelTest do
 
       send(
         channel_pid,
-        {:connect, socket_ref, Ecto.UUID.dump!(resource_id), gateway.site_id, gateway.id,
+        {:connect, socket_ref, Ecto.UUID.dump!(resource_id), gateway.site.id, gateway.id,
          gateway.public_key, gateway.ipv4, gateway.ipv6, preshared_key, ice_credentials}
       )
 

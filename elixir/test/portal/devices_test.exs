@@ -25,7 +25,7 @@ defmodule Portal.DevicesTest do
                Devices.provision_gateway(site, "edge-nyc-1", subject)
 
       assert gateway.name == "edge-nyc-1"
-      assert gateway.site_id == site.id
+      assert Repo.preload(gateway, :site).site.id == site.id
       assert gateway.account_id == site.account_id
       assert gateway.type == :gateway
 

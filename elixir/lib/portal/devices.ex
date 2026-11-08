@@ -111,7 +111,7 @@ defmodule Portal.Devices do
                %Portal.SiteDevice{site_id: site.id, device_id: gateway.id}
                |> Safe.scoped(subject)
                |> Safe.insert() do
-          {:ok, %{gateway | site_id: site.id}}
+          {:ok, gateway}
         end
       end)
     end

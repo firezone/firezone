@@ -145,7 +145,7 @@ defmodule PortalAPI.Gateway.SocketTest do
       assert is_nil(gateway.firebase_installation_id)
 
       persisted = Portal.Repo.get_by!(Portal.Device, account_id: gateway.account_id, id: gateway.id)
-      assert gateway.site_id == token.site_id
+      assert socket.assigns.site.id == token.site_id
       assert persisted.name == "reported-name"
       assert persisted.device_serial == "reported-serial"
       assert persisted.device_uuid == "reported-uuid"
@@ -344,7 +344,6 @@ defmodule PortalAPI.Gateway.SocketTest do
 
       assert {:ok, socket} = connect(Socket, attrs, connect_info: build_connect_info())
       assert socket.assigns.site.id == other_site.id
-      assert socket.assigns.gateway.site_id == other_site.id
     end
 
     test "single-owner connect persists the reported firezone_id when blank" do

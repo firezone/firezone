@@ -331,7 +331,6 @@ defmodule PortalAPI.GatewayController do
         on: sd.account_id == d.account_id and sd.device_id == d.id,
         as: :site_device
       )
-      |> select_merge([site_device: sd], %{site_id: sd.site_id})
     end
 
     # Surfaces the rotation state of the token the gateway last connected

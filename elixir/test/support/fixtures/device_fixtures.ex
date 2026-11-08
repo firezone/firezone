@@ -336,8 +336,7 @@ defmodule Portal.DeviceFixtures do
       device_id: gateway.id
     })
 
-    # Readers take the site from site_devices; the fixture returns it the same way.
-    gateway = %{gateway | site_id: site.id, site: site}
+    gateway = %{gateway | site: site}
 
     ipv4 =
       attrs

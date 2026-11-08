@@ -976,7 +976,6 @@ defmodule PortalWeb.SitesTest do
       gateway =
         Repo.insert!(%Device{
           account_id: account.id,
-          site_id: site.id,
           type: :gateway,
           name: "bare-gw",
           slug: "bare-gw"
@@ -1038,7 +1037,6 @@ defmodule PortalWeb.SitesTest do
       gateway =
         Repo.insert!(%Device{
           account_id: account.id,
-          site_id: site.id,
           type: :gateway,
           name: "bare-gw",
           slug: "bare-gw"
@@ -1072,7 +1070,6 @@ defmodule PortalWeb.SitesTest do
       gateway =
         Repo.insert!(%Device{
           account_id: account.id,
-          site_id: site.id,
           type: :gateway,
           name: "deployed-gw",
           slug: "deployed-gw"
@@ -1710,10 +1707,10 @@ defmodule PortalWeb.SitesTest do
           from(d in Device,
             join: sd in Portal.SiteDevice,
             on: sd.account_id == d.account_id and sd.device_id == d.id,
-            where: sd.site_id == ^site.id and d.id != ^online.id,
-            select_merge: %{site_id: sd.site_id}
+            where: sd.site_id == ^site.id and d.id != ^online.id
           )
         )
+        |> Repo.preload(:site)
 
       :ok = Portal.Presence.Devices.Account.track(deployed)
 

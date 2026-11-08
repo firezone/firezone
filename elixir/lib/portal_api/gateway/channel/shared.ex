@@ -120,7 +120,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
 
     Logger.debug("Tracking gateway presence",
       gateway_id: gateway.id,
-      site_id: gateway.site_id,
+      site_id: socket.assigns.site.id,
       account_id: gateway.account_id,
       token_id: socket.assigns.token_id
     )
@@ -655,7 +655,7 @@ defmodule PortalAPI.Gateway.Channel.Shared do
             :connect,
             socket_ref,
             resource_id,
-            socket.assigns.gateway.site_id,
+            socket.assigns.site.id,
             socket.assigns.gateway.id,
             socket.assigns.gateway.public_key,
             socket.assigns.gateway.ipv4,
@@ -1169,7 +1169,10 @@ defmodule PortalAPI.Gateway.Channel.Shared do
       sup_pid ->
         gateway = socket.assigns.gateway
 
-        :ok = Presence.Devices.connect(gateway, socket.assigns.token_id)
+        :ok =
+          Presence.Devices.connect(gateway, socket.assigns.token_id, %{
+            site_id: socket.assigns.site.id
+          })
 
         for {_pid, ref} <- socket.assigns[:presence_monitors] || [] do
           Process.demonitor(ref, [:flush])

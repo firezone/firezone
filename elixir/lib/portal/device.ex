@@ -56,7 +56,6 @@ defmodule Portal.Device do
           gateway_token_id: Ecto.UUID.t() | nil,
           account_id: Ecto.UUID.t(),
           actor_id: Ecto.UUID.t() | nil,
-          site_id: Ecto.UUID.t() | nil,
           device_serial: String.t() | nil,
           device_uuid: String.t() | nil,
           identifier_for_vendor: String.t() | nil,
@@ -119,9 +118,7 @@ defmodule Portal.Device do
     field :last_attested_at, :utc_datetime_usec
     field :verified_at, :utc_datetime_usec
 
-    # Gateway-only. The site lives in site_devices; queries that need the id
-    # select it from there into this field.
-    field :site_id, :binary_id, virtual: true
+    # Gateway-only
     has_one :site_device, Portal.SiteDevice, foreign_key: :device_id, references: :id
     has_one :site, through: [:site_device, :site]
 
