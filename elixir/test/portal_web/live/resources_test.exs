@@ -1,40 +1,5 @@
 defmodule PortalWeb.ResourcesTest do
-  use PortalWeb.ConnCase, async: true
-
-  import Phoenix.LiveViewTest, except: [live: 2]
-
-  # The table loads in an async task, so wait for it before returning.
-  defp live(conn, path) do
-    case Phoenix.LiveViewTest.live(conn, path) do
-      {:ok, lv, _html} -> {:ok, lv, render_async(lv)}
-      other -> other
-    end
-  end
-
-  alias Portal.{Policy, Repo}
-  alias Portal.Changes.Change
-  alias Portal.Resource
-  alias PortalWeb.Resources.Components.Database
-
-  import Portal.AccountFixtures
-  import Portal.DevicePostureFixtures
-  import Portal.ActorFixtures
-  import Portal.ClientSessionFixtures
-  import Portal.DeviceFixtures
-  import Portal.GroupFixtures
-  import Portal.MembershipFixtures
-  import Portal.PolicyAuthorizationFixtures
-  import Portal.PolicyFixtures
-  import Portal.SubjectFixtures
-  import Portal.TokenFixtures
-  import Portal.ResourceFixtures
-  import Portal.SiteFixtures
-
-  setup do
-    account = account_fixture()
-    actor = admin_actor_fixture(account: account)
-    %{account: account, actor: actor}
-  end
+  use PortalWeb.ResourcesCase
 
   describe "unauthorized" do
     test "redirects to sign-in when not authenticated", %{conn: conn, account: account} do
@@ -232,6 +197,10 @@ defmodule PortalWeb.ResourcesTest do
       refute html =~ "Network traffic outside defined resources"
     end
   end
+end
+
+defmodule PortalWeb.ResourcesTest.New do
+  use PortalWeb.ResourcesCase
 
   describe ":new action" do
     test "renders add resource form", %{conn: conn, account: account, actor: actor} do
@@ -503,6 +472,13 @@ defmodule PortalWeb.ResourcesTest do
              }
     end
 
+  end
+end
+
+defmodule PortalWeb.ResourcesTest.DevicePicker do
+  use PortalWeb.ResourcesCase
+
+  describe ":new action" do
     test "manages static device pool device picker", %{
       conn: conn,
       account: account,
@@ -723,6 +699,13 @@ defmodule PortalWeb.ResourcesTest do
       assert has_element?(lv, "button[phx-value-filter='recently_seen'] .ri-checkbox-blank-line")
     end
 
+  end
+end
+
+defmodule PortalWeb.ResourcesTest.DevicePickerUpdates do
+  use PortalWeb.ResourcesCase
+
+  describe ":new action" do
     test "adding a device drops it from the results without searching again", %{
       conn: conn,
       account: account,
@@ -964,6 +947,10 @@ defmodule PortalWeb.ResourcesTest do
       assert id == device.id
     end
   end
+end
+
+defmodule PortalWeb.ResourcesTest.Details do
+  use PortalWeb.ResourcesCase
 
   describe ":show action" do
     test "renders resource detail panel", %{conn: conn, account: account, actor: actor} do
@@ -1495,6 +1482,10 @@ defmodule PortalWeb.ResourcesTest do
       assert flash["error"] =~ "Resource does not exist"
     end
   end
+end
+
+defmodule PortalWeb.ResourcesTest.Edit do
+  use PortalWeb.ResourcesCase
 
   describe ":edit action" do
     test "renders edit resource form pre-populated", %{conn: conn, account: account, actor: actor} do
@@ -2489,50 +2480,6 @@ defmodule PortalWeb.ResourcesTest do
     end
   end
 
-  defp set_last_seen_at(device, last_seen_at) do
-    device
-    |> Ecto.Changeset.change(last_seen_at: last_seen_at)
-    |> Repo.update!()
-  end
-
-  defp search_devices_in(lv, term) do
-    lv
-    |> element("input[name='device_search']")
-    |> render_change(%{"device_search" => term})
-
-    render_async(lv)
-  end
-
-  defp click_and_await(lv, selector) do
-    lv |> element(selector) |> render_click()
-    render_async(lv)
-  end
-
-  defp result_ids(lv) do
-    lv
-    |> render()
-    |> Floki.parse_document!()
-    |> Floki.find("button[phx-click='add_device']")
-    |> Enum.flat_map(&Floki.attribute(&1, "phx-value-device_id"))
-  end
-
-  defp result_count(lv) do
-    lv
-    |> render()
-    |> Floki.parse_document!()
-    |> Floki.find("button[phx-click='add_device']")
-    |> length()
-  end
-
-  defp count_occurrences(haystack, needle) do
-    haystack
-    |> :binary.matches(needle)
-    |> length()
-  end
-
-  defp site_select(html) do
-    html |> Floki.parse_document!() |> Floki.find("#resource_site_id")
-  end
   describe "live table filters across panel operations" do
     setup %{account: account} do
       site = site_fixture(account: account)

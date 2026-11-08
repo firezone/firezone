@@ -54,7 +54,7 @@ defmodule PortalAPI.Client.Channel.Shared do
   @doc false
   def policy_authorization_queue_opts do
     [
-      name: :policy_authorization_queue,
+      name: Portal.Queue.name(:policy_authorization_queue),
       flush_interval: :timer.seconds(1),
       flush_threshold: 10_000,
       label: "policy authorization",
@@ -1030,7 +1030,7 @@ defmodule PortalAPI.Client.Channel.Shared do
 
       policy_authorization = struct(Portal.PolicyAuthorization, attrs)
 
-      case Portal.Queue.enqueue(:policy_authorization_queue, attrs,
+      case Portal.Queue.enqueue(Portal.Queue.name(:policy_authorization_queue), attrs,
              dispatch: fn ->
                PG.deliver(
                  gateway.id,
@@ -1115,7 +1115,7 @@ defmodule PortalAPI.Client.Channel.Shared do
 
       policy_authorization = struct(Portal.PolicyAuthorization, attrs)
 
-      case Portal.Queue.enqueue(:policy_authorization_queue, attrs,
+      case Portal.Queue.enqueue(Portal.Queue.name(:policy_authorization_queue), attrs,
              dispatch: fn ->
                PG.deliver(
                  gateway.id,
@@ -1419,10 +1419,14 @@ defmodule PortalAPI.Client.Channel.Shared do
   end
 
   defp schedule_after_constant_time(started_at, message) do
+    constant_time =
+      Portal.Config.get_env(:portal, __MODULE__, [])
+      |> Keyword.get(:device_lookup_constant_time, @device_lookup_constant_time)
+
     Process.send_after(
       self(),
       message,
-      Portal.Timing.remaining_constant_time(started_at, @device_lookup_constant_time)
+      Portal.Timing.remaining_constant_time(started_at, constant_time)
     )
   end
 
@@ -1520,7 +1524,7 @@ defmodule PortalAPI.Client.Channel.Shared do
 
         policy_authorization = struct(Portal.PolicyAuthorization, attrs)
 
-        case Portal.Queue.enqueue(:policy_authorization_queue, attrs,
+        case Portal.Queue.enqueue(Portal.Queue.name(:policy_authorization_queue), attrs,
                dispatch: fn ->
                  PG.deliver(
                    gateway.id,
@@ -1930,7 +1934,7 @@ defmodule PortalAPI.Client.Channel.Shared do
 
     policy_authorization = struct(Portal.PolicyAuthorization, attrs)
 
-    case Portal.Queue.enqueue(:policy_authorization_queue, attrs,
+    case Portal.Queue.enqueue(Portal.Queue.name(:policy_authorization_queue), attrs,
            dispatch: fn ->
              PG.deliver(
                target_client_id,
@@ -3096,7 +3100,7 @@ defmodule PortalAPI.Client.Channel.Shared do
   defp register_session(socket, current_pid) do
     if is_nil(current_pid) do
       Portal.Queue.enqueue(
-        :client_session_queue,
+        Portal.Queue.name(:client_session_queue),
         session_attrs(
           socket.assigns.client,
           socket.assigns.session_ref,

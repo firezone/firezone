@@ -47,6 +47,11 @@ defmodule Portal.Queue do
   @type dispatch :: (-> term())
   @type on_flush :: ([entry()] -> non_neg_integer() | :ok | {:ok, non_neg_integer()})
 
+  @doc false
+  def name(config_key) do
+    Portal.Config.get_env(:portal, config_key, []) |> Keyword.get(:name, config_key)
+  end
+
   defmodule Config do
     @moduledoc false
     @enforce_keys [

@@ -22,7 +22,9 @@ config :portal, run_manual_migrations: true
 config :portal, Portal.Repo,
   database: database,
   pool: Ecto.Adapters.SQL.Sandbox,
-  pool_size: 5,
+  # Support parallel test cases while leaving room for the other pools and
+  # replication connections under PostgreSQL's default connection limit.
+  pool_size: min(System.schedulers_online() * 2, 12),
   queue_target: 1000
 
 for repo <- [
@@ -413,6 +415,7 @@ config :portal, PortalWeb.Plugs.PutSecurityHeaders,
   ]
 
 config :portal, :constant_execution_time, 1
+config :portal, PortalAPI.Client.Channel.Shared, device_lookup_constant_time: 1
 config :portal, :pending_verification_timeout, 1_000
 
 ###############################
@@ -463,7 +466,11 @@ assert_receive_timeout =
 
 ex_unit_config = [
   formatters: [JUnitFormatter, ExUnit.CLIFormatter],
-  capture_log: true,
+  # Failure diagnostics need warnings/errors; explicit capture_log assertions
+  # can still capture info logs without copying them into every other test.
+  capture_log: [level: :warning],
+  # Let async work overlap while bounding contention on machines with many cores.
+  max_cases: min(System.schedulers_online() * 2, 24),
   assert_receive_timeout: assert_receive_timeout
 ]
 
@@ -471,6 +478,10 @@ config :ex_unit, ex_unit_config
 
 # Initialize plugs at runtime for faster development compilation
 config :phoenix, :plug_init_mode, :runtime
+
+# Request/channel logs are copied into every concurrent capture_log session.
+# Keep application logs available for assertions without that framework noise.
+config :phoenix, :logger, false
 
 config :sentry,
   environment_name: :test

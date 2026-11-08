@@ -1,35 +1,5 @@
 defmodule PortalWeb.ActorsTest do
-  use PortalWeb.ConnCase, async: true
-
-  import Phoenix.LiveViewTest, except: [live: 2]
-
-  # The table loads in an async task, so wait for it before returning.
-  defp live(conn, path) do
-    case Phoenix.LiveViewTest.live(conn, path) do
-      {:ok, lv, _html} -> {:ok, lv, render_async(lv)}
-      other -> other
-    end
-  end
-
-  alias Portal.Actor
-  alias Portal.Changes.Change
-
-  import Portal.AccountFixtures
-  import Portal.ActorFixtures
-  import Portal.AuthProviderFixtures
-  import Portal.ClientSessionFixtures
-  import Portal.DeviceFixtures
-  import Portal.GroupFixtures
-  import Portal.IdentityFixtures
-  import Portal.MembershipFixtures
-  import Portal.PortalSessionFixtures
-  import Portal.TokenFixtures
-
-  setup do
-    account = account_fixture()
-    actor = admin_actor_fixture(account: account)
-    %{account: account, actor: actor}
-  end
+  use PortalWeb.ActorsCase
 
   describe "unauthorized" do
     test "redirects to sign-in when not authenticated", %{conn: conn, account: account} do
@@ -368,6 +338,10 @@ defmodule PortalWeb.ActorsTest do
       refute Portal.Repo.get_by(Portal.Actor, name: "Over Limit SA", account_id: account.id)
     end
   end
+end
+
+defmodule PortalWeb.ActorsTest.Details do
+  use PortalWeb.ActorsCase
 
   describe ":show action" do
     test "renders actor detail panel", %{conn: conn, account: account, actor: actor} do
@@ -835,6 +809,10 @@ defmodule PortalWeb.ActorsTest do
       assert flash["error"] == "Actor not found"
     end
   end
+end
+
+defmodule PortalWeb.ActorsTest.Edit do
+  use PortalWeb.ActorsCase
 
   describe ":edit action" do
     test "renders edit form pre-populated with actor name", %{
@@ -1571,6 +1549,10 @@ defmodule PortalWeb.ActorsTest do
       assert flash["error"] == "Actor not found"
     end
   end
+end
+
+defmodule PortalWeb.ActorsTest.Lifecycle do
+  use PortalWeb.ActorsCase
 
   describe "keydown Escape" do
     test "pressing Escape while viewing actor detail closes the panel", %{

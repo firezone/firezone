@@ -1,90 +1,5 @@
 defmodule PortalWeb.Settings.LogSinksTest do
-  use PortalWeb.ConnCase, async: true
-  use Oban.Testing, repo: Portal.Repo
-
-  import Phoenix.LiveViewTest
-  import Portal.AccountFixtures
-  import Portal.ActorFixtures
-  import Portal.LogSinkFixtures
-
-  alias Portal.LogSinkCursor
-  alias Portal.Splunk
-
-  setup do
-    account = account_fixture(features: %{log_sinks: true})
-    actor = admin_actor_fixture(account: account)
-    %{account: account, actor: actor}
-  end
-
-  defp reload_sink(sink) do
-    Repo.get_by!(Splunk.LogSink, account_id: sink.account_id, id: sink.id)
-  end
-
-  # The Sentinel tenant has no input; it only ever arrives from the admin
-  # consent tenant proof.
-  defp verify_sentinel_tenant(lv, tenant_id) do
-    lv |> element("#sentinel-consent-link") |> render_click()
-    assert_push_event(lv, "open_url", %{url: consent_url})
-
-    {:ok, %{verification_ref: verification_ref}} =
-      consent_url
-      |> URI.parse()
-      |> Map.fetch!(:query)
-      |> URI.decode_query()
-      |> Map.fetch!("state")
-      |> PortalWeb.OIDC.verify_verification_state()
-
-    send(lv.pid, {:sentinel_log_sink_complete, tenant_id, verification_ref})
-    render(lv)
-
-    tenant_id
-  end
-
-  defp maybe_verify_tenant(lv, "sentinel"), do: verify_sentinel_tenant(lv, Ecto.UUID.generate())
-  defp maybe_verify_tenant(_lv, _type), do: :ok
-
-  defp sink_fixture(sink_type, attrs) do
-    apply(Portal.LogSinkFixtures, sink_type.fixture, [attrs])
-  end
-
-  defp name_field_error(html) do
-    html
-    |> Floki.parse_document!()
-    |> Floki.find(~s([data-validation-error-for="log_sink[name]"]))
-    |> Floki.text()
-  end
-
-  defp form_error_count(html, field) do
-    html
-    |> Floki.parse_document!()
-    |> Floki.find(~s([data-validation-error-for="log_sink[#{field}]"]))
-    |> length()
-  end
-
-  # Changes one field the way a browser does: inputs the admin has not touched
-  # carry an _unused_ marker, which keeps their errors hidden.
-  defp change_field(lv, sink, target, params, untouched) do
-    params =
-      untouched
-      |> Enum.reduce(params, &Map.put(&2, "_unused_#{&1}", ""))
-      |> Map.put_new("enabled_streams", sink.enabled_streams)
-
-    render_change(lv, "validate", %{"_target" => ["log_sink", target], "log_sink" => params})
-  end
-
-  defp submit_button_disabled?(html) do
-    html
-    |> Floki.parse_document!()
-    |> Floki.find("button[form=log-sink-form][type=submit]")
-    |> Floki.attribute("disabled")
-    |> Enum.any?()
-  end
-
-  defp open_sink_actions(lv, sink_id) do
-    lv
-    |> element("button[phx-click='toggle_sink_actions'][phx-value-id='#{sink_id}']")
-    |> render_click()
-  end
+  use PortalWeb.Settings.LogSinksCase
 
   describe "unauthorized" do
     test "redirects to sign-in when not authenticated", %{conn: conn, account: account} do
@@ -215,6 +130,10 @@ defmodule PortalWeb.Settings.LogSinksTest do
       refute html =~ "No log sinks yet"
     end
   end
+end
+
+defmodule PortalWeb.Settings.LogSinksTest.Create do
+  use PortalWeb.Settings.LogSinksCase
 
   describe "create" do
     test "creates a Splunk log sink with its base row", %{
@@ -917,6 +836,10 @@ defmodule PortalWeb.Settings.LogSinksTest do
       assert Repo.all(Splunk.LogSink) == []
     end
   end
+end
+
+defmodule PortalWeb.Settings.LogSinksTest.Edit do
+  use PortalWeb.Settings.LogSinksCase
 
   describe "edit" do
     test "updates the sink without resubmitting the token", %{
@@ -1251,6 +1174,10 @@ defmodule PortalWeb.Settings.LogSinksTest do
       assert updated.hec_token == sink.hec_token
     end
   end
+end
+
+defmodule PortalWeb.Settings.LogSinksTest.Actions do
+  use PortalWeb.Settings.LogSinksCase
 
   describe "actions" do
     test "deletes the sink and everything under it", %{
@@ -1572,6 +1499,10 @@ defmodule PortalWeb.Settings.LogSinksTest do
       end
     end
   end
+end
+
+defmodule PortalWeb.Settings.LogSinksTest.Verification do
+  use PortalWeb.Settings.LogSinksCase
 
   describe "Sentinel tenant" do
     test "has no input and shows the tenant only once consent is verified", %{
