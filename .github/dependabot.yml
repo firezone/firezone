@@ -54,28 +54,8 @@ updates:
     target-branch: main
     directories:
       - "/.github/workflows"
-      # Dependabot doesn't look in these by default
-      - "/.github/actions/apt-install"
-      - "/.github/actions/create-sentry-release"
-      - "/.github/actions/restore-mtime"
-      - "/.github/actions/free-disk-space"
-      - "/.github/actions/ghcr-docker-login"
-      - "/.github/actions/setup-android"
-      - "/.github/actions/setup-azure-cli"
-      - "/.github/actions/setup-azure-sign-tool"
-      - "/.github/actions/setup-buildx"
-      - "/.github/actions/setup-docker"
-      - "/.github/actions/setup-elixir"
-      - "/.github/actions/setup-gpg"
-      - "/.github/actions/setup-mise"
-      - "/.github/actions/setup-musl"
-      - "/.github/actions/setup-node"
-      - "/.github/actions/setup-postgres"
-      - "/.github/actions/setup-rust-binary-cache"
-      - "/.github/actions/setup-rust-sccache"
-      - "/.github/actions/setup-rust-stable"
-      - "/.github/actions/setup-tauri-v2"
-      - "/.github/actions/setup-scripts"
+      # Include all composite actions, including any added in the future.
+      - "/.github/actions/*"
     schedule:
       interval: weekly
     # Unfortunately the github-actions ecosystem doesn't support semver cooldowns, and because they update very frequently
