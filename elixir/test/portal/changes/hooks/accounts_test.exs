@@ -1,5 +1,6 @@
 defmodule Portal.Changes.Hooks.AccountsTest do
   use Portal.DataCase, async: true
+  use Oban.Testing, repo: Portal.Repo
   import Portal.AccountFixtures
   import Portal.PolicyAuthorizationFixtures
   import Portal.TokenFixtures
@@ -213,6 +214,28 @@ defmodule Portal.Changes.Hooks.AccountsTest do
 
       assert :ok == on_update(0, old_data, data)
       assert Repo.get_by(Portal.ClientToken, id: client_token.id) == nil
+    end
+  end
+
+  describe "update/2 Stripe sync" do
+    test "enqueues a Stripe sync when the slug or name changes" do
+      for {old, new} <- [{%{"slug" => "old_slug"}, %{"slug" => "new_slug"}}, {%{"name" => "Old"}, %{"name" => "New"}}] do
+        account_id = Ecto.UUID.generate()
+        base = %{"id" => account_id, "is_disabled" => false}
+
+        assert :ok == on_update(0, Map.merge(base, old), Map.merge(base, new))
+
+        assert_enqueued(worker: Portal.Workers.SyncStripeCustomer, args: %{account_id: account_id})
+      end
+    end
+
+    test "does not enqueue a Stripe sync for other changes" do
+      account_id = Ecto.UUID.generate()
+      base = %{"id" => account_id, "is_disabled" => false, "slug" => "same", "name" => "Same"}
+
+      assert :ok == on_update(0, Map.put(base, "legal_name", "Old"), Map.put(base, "legal_name", "New"))
+
+      refute_enqueued(worker: Portal.Workers.SyncStripeCustomer)
     end
   end
 
