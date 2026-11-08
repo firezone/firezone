@@ -185,19 +185,19 @@ impl tun::Tun for Io {
 /// Must be a power of two between [`wintun::MIN_RING_CAPACITY`] and [`wintun::MAX_RING_CAPACITY`];
 /// a session allocates one ring per direction, so the figure is charged twice.
 ///
-/// Sized for 10 Gbit/s: a ring bridges the
-/// gap between two turns of the thread draining it. The receive ring sets the requirement, because
-/// Wintun keeps filling it while our recv thread is descheduled or blocked on a full channel.
-/// [`MAX_EXPECTED_TUN_BITS_PER_SECOND`] for one [`RING_SERVICE_GAP`] is 12.5 MB, which rounds up to
-/// 16 MiB: about 13,000 packets at the 1280-byte TUN MTU, and therefore also more than the outbound
-/// TUN channel can hand to the send ring while the Windows network stack is not draining it.
+/// Sized for 30 Gbit/s: a ring bridges the gap between two turns of the thread draining it. The
+/// receive ring sets the requirement, because Wintun keeps filling it while our recv thread is
+/// descheduled or blocked on a full channel. [`MAX_EXPECTED_TUN_BITS_PER_SECOND`] for one
+/// [`RING_SERVICE_GAP`] is 37.5 MB, which rounds up to 64 MiB ([`wintun::MAX_RING_CAPACITY`]): about
+/// 52,000 packets at the 1280-byte TUN MTU, and therefore also more than the outbound TUN channel
+/// can hand to the send ring while the Windows network stack is not draining it.
 const RING_BUFFER_SIZE: u32 = ring_capacity_for_service_gap(RING_SERVICE_GAP);
 
 /// Largest traffic rate in either direction for which we size the ring buffers.
 ///
 /// Matches the rate the UDP socket buffers are sized for: the TUN device carries the same traffic,
 /// only decrypted.
-const MAX_EXPECTED_TUN_BITS_PER_SECOND: u64 = 10_000_000_000;
+const MAX_EXPECTED_TUN_BITS_PER_SECOND: u64 = 30_000_000_000;
 
 /// How long a normally-scheduled TUN worker thread may reasonably go without servicing its ring.
 const RING_SERVICE_GAP: Duration = Duration::from_millis(10);
@@ -543,14 +543,14 @@ mod tests {
 
         assert_eq!(
             ring_capacity_for_service_gap(Duration::from_millis(1)),
-            2 * MIB
+            4 * MIB
         );
         assert_eq!(
             ring_capacity_for_service_gap(Duration::from_millis(10)),
-            16 * MIB
+            64 * MIB
         );
 
-        assert_eq!(RING_BUFFER_SIZE, 16 * MIB);
+        assert_eq!(RING_BUFFER_SIZE, 64 * MIB);
     }
 
     #[test]
