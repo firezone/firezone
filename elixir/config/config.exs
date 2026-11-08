@@ -246,6 +246,8 @@ config :portal, Portal.OTLP.TracesExporter,
     max_retries: 2
   ]
 
+config :portal, Portal.SlugRegistry.Cache, max_entries: 10_000
+
 config :portal, Portal.SlugRegistry.AzureTable,
   req_opts: [
     connect_options: [timeout: 2_000],
