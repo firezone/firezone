@@ -31,9 +31,9 @@
     "vite": "^8.3.5"
   },
   "devDependencies": {
-    "@vitest/browser": "^4.1.12",
-    "@vitest/browser-playwright": "^4.1.12",
+    "@vitest/browser": "^5.1.0",
+    "@vitest/browser-playwright": "^5.1.0",
     "playwright": "^1.63.0",
-    "vitest": "^5.0.5"
+    "vitest": "^5.1.0"
   }
 }
