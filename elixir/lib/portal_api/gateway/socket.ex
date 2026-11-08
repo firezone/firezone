@@ -455,11 +455,25 @@ defmodule PortalAPI.Gateway.Socket do
           |> Safe.one!()
 
         with :ok <- Portal.Devices.RegistrationRateLimit.check(account) do
-          changeset
-          |> Safe.unscoped()
-          |> Safe.insert()
+          insert_gateway(changeset)
         end
       end
+    end
+
+    defp insert_gateway(changeset) do
+      Safe.transact(fn ->
+        with {:ok, gateway} <- changeset |> Safe.unscoped() |> Safe.insert(),
+             {:ok, _site_device} <-
+               %Portal.SiteDevice{
+                 account_id: gateway.account_id,
+                 site_id: gateway.site_id,
+                 device_id: gateway.id
+               }
+               |> Safe.unscoped()
+               |> Safe.insert() do
+          {:ok, gateway}
+        end
+      end)
     end
   end
 end

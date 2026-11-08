@@ -272,6 +272,11 @@ defmodule Portal.Repo.Seeds do
           raise Ecto.InvalidChangesetError, action: :insert, changeset: changeset
       end
 
+    {:ok, _site_device} =
+      %Portal.SiteDevice{account_id: site.account_id, site_id: site_id, device_id: gateway.id}
+      |> Safe.unscoped()
+      |> Safe.insert()
+
     # Find the latest gateway token for the site
     gateway_token =
       Repo.one!(
