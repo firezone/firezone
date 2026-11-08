@@ -344,8 +344,8 @@ defmodule Portal.ActorTest do
       assert {:error, changeset} =
                %Actor{account_id: account.id, type: :legacy_gateway, name: "Gateways", email: "g@example.com"}
                |> change()
-               |> Portal.Safe.unscoped()
-               |> Portal.Safe.insert()
+               |> Actor.changeset()
+               |> Repo.insert()
 
       assert %{type: ["is invalid"]} = errors_on(changeset)
     end
@@ -357,8 +357,8 @@ defmodule Portal.ActorTest do
       assert {:error, changeset} =
                %Actor{account_id: account.id, type: :legacy_gateway, name: "Again"}
                |> change()
-               |> Portal.Safe.unscoped()
-               |> Portal.Safe.insert()
+               |> Actor.changeset()
+               |> Repo.insert()
 
       assert "has already been taken" in errors_on(changeset).type
       assert legacy_gateway_actor_fixture(account: account_fixture()).type == :legacy_gateway
