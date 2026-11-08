@@ -42,10 +42,14 @@ defmodule Portal.SlugRegistry.AzureTable do
 
   @impl true
   def lookup(slug) do
-    case request(:get, entity_path(slug), []) do
-      {:ok, %{status: 200, body: body}} -> {:ok, entry(body)}
-      {:ok, %{status: 404}} -> :not_found
-      other -> unavailable(:lookup, slug, other)
+    if storable?(slug) do
+      case request(:get, entity_path(slug), []) do
+        {:ok, %{status: 200, body: body}} -> {:ok, entry(body)}
+        {:ok, %{status: 404}} -> :not_found
+        other -> unavailable(:lookup, slug, other)
+      end
+    else
+      :not_found
     end
   end
 
@@ -131,8 +135,14 @@ defmodule Portal.SlugRegistry.AzureTable do
     }
   end
 
+  # Azure rejects these characters in a row key, so no row can hold them.
+  defp storable?(slug) do
+    String.valid?(slug) and not String.match?(slug, ~r"[/\\#?[:cntrl:]]"u)
+  end
+
   defp entity_path(slug) do
-    "/#{@table}(PartitionKey='#{@partition}',RowKey='#{URI.encode(slug, &URI.char_unreserved?/1)}')"
+    key = slug |> String.replace("'", "''") |> URI.encode(&URI.char_unreserved?/1)
+    "/#{@table}(PartitionKey='#{@partition}',RowKey='#{key}')"
   end
 
   defp request(method, path, opts) do

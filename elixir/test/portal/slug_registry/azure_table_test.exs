@@ -95,6 +95,26 @@ defmodule Portal.SlugRegistry.AzureTableTest do
 
       assert SlugRegistry.lookup("nobody") == :not_found
     end
+
+    test "misses a key Azure cannot store without a request" do
+      stub_registry(fn _conn -> flunk("unexpected registry request") end)
+
+      for key <- ["/.aws/credentials", "a\\b", "a#b", "a?b", "a\nb", <<0xFF>>] do
+        assert SlugRegistry.lookup(key) == :not_found
+      end
+    end
+
+    test "escapes a single quote in the key" do
+      test_pid = self()
+
+      stub_registry(fn conn ->
+        send(test_pid, {:path, conn.request_path})
+        send_resp(conn, 404, "")
+      end)
+
+      assert SlugRegistry.lookup("o'brien") == :not_found
+      assert_received {:path, "/slugs(PartitionKey='slug',RowKey='o%27%27brien')"}
+    end
   end
 
   describe "release/2" do
