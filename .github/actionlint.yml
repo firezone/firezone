@@ -12,6 +12,6 @@ self-hosted-runner:
     - windows-latest-xlarge
 paths:
   # actionlint does not know `concurrency.queue` yet.
-  .github/workflows/_{apt,rpm}.yml:
+  .github/workflows/{_apt,_rpm,publish-release}.yml:
     ignore:
       - 'unexpected key "queue" for "concurrency" section'
