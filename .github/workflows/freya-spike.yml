@@ -1,0 +1,33 @@
+name: Freya spike
+on:
+  push:
+    branches: [freya-gui-spike]
+    paths:
+      - rust/gui-client-freya-spike/**
+      - .github/workflows/freya-spike.yml
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: rust/gui-client-freya-spike
+    steps:
+      - uses: actions/checkout@v4
+      - run: rustup toolchain install stable --profile minimal
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust/gui-client-freya-spike
+      - run: cargo test --locked -- --nocapture
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: screenshots-${{ matrix.os }}
+          path: rust/gui-client-freya-spike/screenshots/
