@@ -307,11 +307,6 @@ defmodule Portal.Device do
           name: :devices_account_id_actor_id_firezone_id_index
         )
 
-      :gateway ->
-        unique_constraint(changeset, :firezone_id,
-          name: :devices_account_id_site_id_firezone_id_index
-        )
-
       _ ->
         changeset
     end
