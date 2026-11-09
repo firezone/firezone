@@ -539,6 +539,19 @@ defmodule Portal.Authentication do
     do_build_subject(token, context, credential)
   end
 
+  # Gateway tokens never expire, so the subject has no expiry. The actor and
+  # account are loaded by verification.
+  def build_subject(%Portal.DeviceToken{} = token, %Context{} = context) do
+    {:ok,
+     %Subject{
+       actor: token.actor,
+       account: token.account,
+       expires_at: nil,
+       context: context,
+       credential: %Credential.GatewayToken{id: token.id}
+     }}
+  end
+
   def build_subject(%PortalSession{} = session, %Context{} = context) do
     credential = %Credential.PortalSession{
       id: session.id,
@@ -710,11 +723,16 @@ defmodule Portal.Authentication do
         where: is_nil(gt.rotated_at) or gt.rotated_at > ago(^grace_hours, "hour"),
         join: account in Account,
         on: account.id == gt.account_id and account.is_disabled == false,
+        join: actor in Actor,
+        on:
+          actor.account_id == gt.account_id and actor.id == gt.actor_id and
+            actor.is_disabled == false,
         left_join: sibling in Portal.DeviceToken,
         on:
           sibling.account_id == gt.account_id and sibling.device_id == gt.device_id and
             sibling.id != gt.id,
-        select_merge: %{rotated_sibling_id: sibling.id}
+        select_merge: %{rotated_sibling_id: sibling.id},
+        preload: [account: account, actor: actor]
       )
       |> Safe.unscoped()
       |> Safe.one()

@@ -11,6 +11,7 @@ defmodule Portal.Authentication.CredentialTest do
 
     test "no other kind does" do
       assert Credential.scopes(%Credential.ClientToken{id: id()}) == nil
+      assert Credential.scopes(%Credential.GatewayToken{id: id()}) == nil
       assert Credential.scopes(%Credential.PortalSession{id: id(), auth_provider_id: id()}) == nil
       assert Credential.scopes(%Credential.X509{id: id(), auth_provider_id: id()}) == nil
     end
@@ -19,6 +20,10 @@ defmodule Portal.Authentication.CredentialTest do
   describe "auth_provider_id/1" do
     test "an API token has none" do
       assert Credential.auth_provider_id(%Credential.APIToken{id: id(), scopes: []}) == nil
+    end
+
+    test "a Gateway token has none" do
+      assert Credential.auth_provider_id(%Credential.GatewayToken{id: id()}) == nil
     end
 
     test "a client token has one only when it was signed in through one" do

@@ -44,7 +44,7 @@ defmodule Portal.Authentication.Subject do
           actor: actor(),
           account: %Portal.Account{},
           credential: Credential.t(),
-          expires_at: DateTime.t(),
+          expires_at: DateTime.t() | nil,
           context: Context.t(),
           attestation: attestation()
         }

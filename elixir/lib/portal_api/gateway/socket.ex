@@ -57,6 +57,7 @@ defmodule PortalAPI.Gateway.Socket do
     attrs = normalize_device_attrs(attrs)
 
     with {:ok, gateway_token} <- Authentication.verify_gateway_token(encoded_token),
+         {:ok, subject} <- Authentication.build_subject(gateway_token, context),
          {:ok, public_key} <- validate_public_key(attrs),
          {:ok, site, gateway} <- resolve_gateway(gateway_token, attrs),
          :ok <- ensure_gateway_not_connected(gateway),
@@ -77,6 +78,7 @@ defmodule PortalAPI.Gateway.Socket do
       socket =
         socket
         |> assign(:token_id, gateway_token.id)
+        |> assign(:subject, subject)
         |> assign(:site, site)
         |> assign(:gateway, gateway)
         |> assign(:previous_public_key, previous_public_key)
