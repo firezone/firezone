@@ -24,12 +24,18 @@ $msi = (Resolve-Path "$($env:BINARY_DEST_PATH).msi").Path
 Write-Output "==> Uninstalling the build under test..."
 Invoke-Msiexec "/x", "`"$msi`"", "/qn"
 
-$tag = gh api "repos/$env:GITHUB_REPOSITORY/releases?per_page=100" `
-    --jq '[.[] | select(.draft | not) | select(.tag_name | startswith("gui-client-"))][0].tag_name'
+# Filtered here rather than with `--jq`: Windows PowerShell strips the double
+# quotes a jq string literal needs from native command arguments.
+$releases = (gh api "repos/$env:GITHUB_REPOSITORY/releases?per_page=100") -join "`n" | ConvertFrom-Json
+$tag = ($releases | Where-Object { -not $_.draft -and $_.tag_name -like "gui-client-*" } | Select-Object -First 1).tag_name
+if (-not $tag) {
+    Write-Error "No published GUI client release found"
+    exit 1
+}
 $version = $tag -replace '^gui-client-', ''
 $released = "${env:RUNNER_TEMP}\firezone-client-gui-windows_${version}_${env:ARCH}.msi"
 Write-Output "==> Installing the released $version..."
-Invoke-WebRequest -Uri "https://github.com/$env:GITHUB_REPOSITORY/releases/download/$tag/$(Split-Path -Leaf $released)" -OutFile $released
+Invoke-WebRequest -Uri "https://github.com/$env:GITHUB_REPOSITORY/releases/download/$tag/$(Split-Path -Leaf $released)" -OutFile $released -UseBasicParsing
 Invoke-Msiexec "/i", "`"$released`"", "/qn"
 
 Write-Output "==> Upgrading to the build under test..."
