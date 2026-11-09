@@ -109,8 +109,8 @@ defmodule Portal.Billing.Stripe.APIClient do
         url: url,
         headers: headers ++ idempotency_key_header(method),
         body: body,
-        retry: :transient,
-        max_retries: 3
+        retry: &retry?/2,
+        max_retries: 2
       ]
       |> Keyword.merge(fetch_config(:req_opts) || [])
 
@@ -128,6 +128,26 @@ defmodule Portal.Billing.Stripe.APIClient do
         {:error, reason}
     end
   end
+
+  # Stripe replays the saved result of a keyed POST, a 500 included, so only
+  # failures where Stripe did not answer, or says a retry can help, are retried.
+  # DELETE has no idempotency key and is never retried.
+  defp retry?(%Req.Request{method: method}, response_or_exception) when method in [:get, :post] do
+    retryable?(response_or_exception)
+  end
+
+  defp retry?(_request, _response_or_exception), do: false
+
+  defp retryable?(%Req.Response{status: status} = response) do
+    case Req.Response.get_header(response, "stripe-should-retry") do
+      ["true"] -> true
+      ["false"] -> false
+      _ -> status in [409, 429]
+    end
+  end
+
+  defp retryable?(%Req.TransportError{reason: reason}), do: reason in [:timeout, :econnrefused, :closed]
+  defp retryable?(_exception), do: false
 
   defp idempotency_key_header(:post), do: [{"idempotency-key", Ecto.UUID.generate()}]
   defp idempotency_key_header(_method), do: []
