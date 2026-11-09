@@ -1253,7 +1253,13 @@ impl ReferenceState {
             return TraceRequirement::Exact;
         };
 
-        if self.may_lose_to_nat_rebinding(origin, remote, sent_at) {
+        if let Remote::Gateway(gateway) = remote
+            && self
+                .clients
+                .get_mut(&origin)
+                .unwrap()
+                .exec_mut(|client| client.may_lose_to_nat_rebinding(gateway, sent_at))
+        {
             return TraceRequirement::ExactOrLoss(KnownLoss::NatRebinding);
         }
 
@@ -1282,23 +1288,6 @@ impl ReferenceState {
             Some(loss) => TraceRequirement::ExactOrLoss(loss),
             None => TraceRequirement::Exact,
         }
-    }
-
-    fn may_lose_to_nat_rebinding(&mut self, origin: ClientId, remote: Remote, at: Instant) -> bool {
-        let from_origin = self
-            .clients
-            .get_mut(&origin)
-            .unwrap()
-            .exec_mut(|client| client.may_lose_to_nat_rebinding(remote, at));
-        let from_peer =
-            match remote {
-                Remote::Client(peer) => self.clients.get_mut(&peer).unwrap().exec_mut(|client| {
-                    client.may_lose_to_nat_rebinding(Remote::Client(origin), at)
-                }),
-                Remote::Gateway(_) => false,
-            };
-
-        from_origin || from_peer
     }
 
     // TODO: Remove with classic ICE.

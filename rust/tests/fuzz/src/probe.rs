@@ -168,7 +168,7 @@ impl ProbeRequest {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Remote {
     Gateway(GatewayId),
     Client(ClientId),

@@ -106,10 +106,10 @@ pub struct RefClient {
     #[debug(skip)]
     connection_resets: Vec<Instant>,
 
-    /// Since its NAT last rebound a mapping, the exchanges with each remote that make the
+    /// Since its NAT last rebound a mapping, the exchanges with each Gateway that make the
     /// client re-key.
     #[debug(skip)]
-    nat_rebinding: Option<BTreeMap<Remote, (Instant, Option<Instant>)>>,
+    nat_rebinding: Option<BTreeMap<GatewayId, (Instant, Option<Instant>)>>,
 
     // TODO: Remove with classic ICE.
     /// Per Gateway, the instants at which this client sent a packet on that
@@ -1454,15 +1454,15 @@ impl RefClient {
         self.nat_rebinding = Some(BTreeMap::new());
     }
 
-    /// Whether traffic with `remote` at `at` may be lost to the last NAT rebinding.
+    /// Whether traffic with `gateway` at `at` may be lost to the last NAT rebinding.
     ///
     /// The path recovers once unanswered exchanges made the Client re-key twice within
     /// [`EARLY_REKEY_WINDOW`].
-    pub(crate) fn may_lose_to_nat_rebinding(&mut self, remote: Remote, at: Instant) -> bool {
+    pub(crate) fn may_lose_to_nat_rebinding(&mut self, gateway: GatewayId, at: Instant) -> bool {
         let Some(rekeys) = &mut self.nat_rebinding else {
             return false;
         };
-        let (first, second) = rekeys.entry(remote).or_insert((at, None));
+        let (first, second) = rekeys.entry(gateway).or_insert((at, None));
 
         if second.is_none() {
             if at >= *first + EARLY_REKEY_WINDOW {
