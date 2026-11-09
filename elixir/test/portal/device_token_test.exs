@@ -1,4 +1,4 @@
-defmodule Portal.GatewayTokenTest do
+defmodule Portal.DeviceTokenTest do
   use Portal.DataCase, async: true
   import Ecto.Changeset
   import Portal.TokenFixtures
@@ -6,7 +6,7 @@ defmodule Portal.GatewayTokenTest do
   import Portal.DeviceFixtures
   import Portal.SiteFixtures
 
-  alias Portal.GatewayToken
+  alias Portal.DeviceToken
 
   describe "changeset/1" do
     test "returns error when account_id does not match site's account" do
@@ -14,9 +14,9 @@ defmodule Portal.GatewayTokenTest do
       attrs = attrs(%{account_id: account_fixture().id, site_id: site.id})
 
       changeset =
-        %GatewayToken{}
+        %DeviceToken{}
         |> change(attrs)
-        |> GatewayToken.changeset()
+        |> DeviceToken.changeset()
 
       assert {:error, changeset} = Repo.insert(changeset)
 
@@ -30,9 +30,9 @@ defmodule Portal.GatewayTokenTest do
       attrs = attrs(%{account_id: account.id, site_id: Ecto.UUID.generate()})
 
       changeset =
-        %GatewayToken{}
+        %DeviceToken{}
         |> change(attrs)
-        |> GatewayToken.changeset()
+        |> DeviceToken.changeset()
 
       assert {:error, changeset} = Repo.insert(changeset)
       assert {:site, {"does not exist", _}} = hd(changeset.errors)
@@ -43,9 +43,9 @@ defmodule Portal.GatewayTokenTest do
       attrs = attrs(%{account_id: site.account_id, site_id: site.id})
 
       changeset =
-        %GatewayToken{}
+        %DeviceToken{}
         |> change(attrs)
-        |> GatewayToken.changeset()
+        |> DeviceToken.changeset()
 
       assert {:ok, token} = Repo.insert(changeset)
       assert token.account_id == site.account_id
@@ -59,14 +59,14 @@ defmodule Portal.GatewayTokenTest do
       attrs = attrs(%{account_id: gateway.account_id, device_id: gateway.id})
 
       changeset =
-        %GatewayToken{}
+        %DeviceToken{}
         |> change(attrs)
-        |> GatewayToken.changeset()
+        |> DeviceToken.changeset()
 
       assert {:ok, token} = Repo.insert(changeset)
       assert token.device_id == gateway.id
       assert is_nil(token.site_id)
-      assert GatewayToken.single_owner?(token)
+      assert DeviceToken.single_owner?(token)
     end
 
     test "returns error when both site_id and device_id are set" do
@@ -80,22 +80,9 @@ defmodule Portal.GatewayTokenTest do
         })
 
       changeset =
-        %GatewayToken{}
+        %DeviceToken{}
         |> change(attrs)
-        |> GatewayToken.changeset()
-
-      assert {:error, changeset} = Repo.insert(changeset)
-      assert {:site_id, {"is invalid", _}} = hd(changeset.errors)
-    end
-
-    test "returns error when neither site_id nor device_id is set" do
-      account = account_fixture()
-      attrs = attrs(%{account_id: account.id})
-
-      changeset =
-        %GatewayToken{}
-        |> change(attrs)
-        |> GatewayToken.changeset()
+        |> DeviceToken.changeset()
 
       assert {:error, changeset} = Repo.insert(changeset)
       assert {:site_id, {"is invalid", _}} = hd(changeset.errors)
@@ -106,9 +93,9 @@ defmodule Portal.GatewayTokenTest do
       attrs = attrs(%{account_id: account_fixture().id, device_id: gateway.id})
 
       changeset =
-        %GatewayToken{}
+        %DeviceToken{}
         |> change(attrs)
-        |> GatewayToken.changeset()
+        |> DeviceToken.changeset()
 
       assert {:error, changeset} = Repo.insert(changeset)
       assert {:device, {"does not exist", _}} = hd(changeset.errors)
@@ -119,9 +106,9 @@ defmodule Portal.GatewayTokenTest do
       gateway_token_fixture(gateway: gateway)
 
       changeset =
-        %GatewayToken{}
+        %DeviceToken{}
         |> change(attrs(%{account_id: gateway.account_id, device_id: gateway.id}))
-        |> GatewayToken.changeset()
+        |> DeviceToken.changeset()
 
       assert {:error, changeset} = Repo.insert(changeset)
       assert {:device_id, {"has already been taken", _}} = hd(changeset.errors)
@@ -132,9 +119,9 @@ defmodule Portal.GatewayTokenTest do
       gateway_token_fixture(gateway: gateway, rotated_at: DateTime.utc_now())
 
       changeset =
-        %GatewayToken{}
+        %DeviceToken{}
         |> change(attrs(%{account_id: gateway.account_id, device_id: gateway.id}))
-        |> GatewayToken.changeset()
+        |> DeviceToken.changeset()
 
       assert {:ok, _active_token} = Repo.insert(changeset)
     end
@@ -144,7 +131,7 @@ defmodule Portal.GatewayTokenTest do
       gateway_token_fixture(gateway: gateway, rotated_at: DateTime.utc_now())
 
       changeset =
-        %GatewayToken{}
+        %DeviceToken{}
         |> change(
           attrs(%{
             account_id: gateway.account_id,
@@ -152,7 +139,7 @@ defmodule Portal.GatewayTokenTest do
             rotated_at: DateTime.utc_now()
           })
         )
-        |> GatewayToken.changeset()
+        |> DeviceToken.changeset()
 
       assert {:error, changeset} = Repo.insert(changeset)
       assert {:device_id, {"has already been taken", _}} = hd(changeset.errors)
@@ -164,7 +151,7 @@ defmodule Portal.GatewayTokenTest do
 
       Repo.delete!(gateway)
 
-      refute Repo.get_by(GatewayToken, account_id: token.account_id, id: token.id)
+      refute Repo.get_by(DeviceToken, account_id: token.account_id, id: token.id)
     end
 
     test "tokens for different gateways do not conflict" do
@@ -182,9 +169,9 @@ defmodule Portal.GatewayTokenTest do
 
       for _ <- 1..2 do
         changeset =
-          %GatewayToken{}
+          %DeviceToken{}
           |> change(attrs(%{account_id: site.account_id, site_id: site.id}))
-          |> GatewayToken.changeset()
+          |> DeviceToken.changeset()
 
         assert {:ok, _token} = Repo.insert(changeset)
       end
@@ -209,6 +196,8 @@ defmodule Portal.GatewayTokenTest do
   end
 
   defp attrs(overrides) do
-    Map.merge(%{secret_hash: "test_hash", secret_salt: "test_salt"}, overrides)
+    %{secret_hash: "test_hash", secret_salt: "test_salt"}
+    |> Map.merge(overrides)
+    |> then(&Map.put(&1, :actor_id, legacy_gateway_actor_id(&1.account_id)))
   end
 end

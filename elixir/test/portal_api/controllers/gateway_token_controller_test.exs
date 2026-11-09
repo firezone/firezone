@@ -1,6 +1,6 @@
 defmodule PortalAPI.GatewayTokenControllerTest do
   use PortalAPI.ConnCase, async: true
-  alias Portal.GatewayToken
+  alias Portal.DeviceToken
 
   import Portal.AccountFixtures
   import Portal.ActorFixtures
@@ -90,7 +90,7 @@ defmodule PortalAPI.GatewayTokenControllerTest do
 
       assert %{"data" => %{"id" => id, "token" => _token}} = json_response(conn, 201)
 
-      token = Repo.get_by!(GatewayToken, account_id: account.id, id: id)
+      token = Repo.get_by!(DeviceToken, account_id: account.id, id: id)
       assert token.device_id == gateway.id
       assert is_nil(token.site_id)
     end
@@ -168,7 +168,7 @@ defmodule PortalAPI.GatewayTokenControllerTest do
       site = site_fixture(%{account: account})
       # The fixture session references the single-owner token, marking it in use
       gateway = gateway_fixture(account: account, site: site, token: :single_owner)
-      old_token = Repo.get_by!(GatewayToken, account_id: account.id, device_id: gateway.id)
+      old_token = Repo.get_by!(DeviceToken, account_id: account.id, device_id: gateway.id)
 
       conn =
         conn
@@ -179,10 +179,10 @@ defmodule PortalAPI.GatewayTokenControllerTest do
       assert %{"data" => %{"id" => new_id, "token" => _token}} = json_response(conn, 201)
       assert new_id != old_token.id
 
-      old_token = Repo.get_by!(GatewayToken, account_id: account.id, id: old_token.id)
+      old_token = Repo.get_by!(DeviceToken, account_id: account.id, id: old_token.id)
       assert old_token.rotated_at != nil
 
-      new_token = Repo.get_by!(GatewayToken, account_id: account.id, id: new_id)
+      new_token = Repo.get_by!(DeviceToken, account_id: account.id, id: new_id)
       assert is_nil(new_token.rotated_at)
     end
 
@@ -204,7 +204,7 @@ defmodule PortalAPI.GatewayTokenControllerTest do
       assert %{"data" => %{"id" => new_id, "token" => _token}} = json_response(conn, 201)
       assert new_id != old_token.id
 
-      refute Repo.get_by(GatewayToken, account_id: account.id, id: old_token.id)
+      refute Repo.get_by(DeviceToken, account_id: account.id, id: old_token.id)
     end
 
     test "rotating with no existing token mints one", %{
@@ -273,7 +273,7 @@ defmodule PortalAPI.GatewayTokenControllerTest do
 
       assert %{"data" => %{"id" => _id}} = json_response(conn, 200)
 
-      refute Repo.get_by(GatewayToken, id: token.id, account_id: token.account_id)
+      refute Repo.get_by(DeviceToken, id: token.id, account_id: token.account_id)
     end
 
     test "returns not found when token does not exist", %{
@@ -326,7 +326,7 @@ defmodule PortalAPI.GatewayTokenControllerTest do
       assert %{"type" => "about:blank", "status" => 404, "title" => "Not Found"} =
                json_response(conn, 404)
 
-      assert Repo.get_by(GatewayToken, id: token.id, account_id: token.account_id)
+      assert Repo.get_by(DeviceToken, id: token.id, account_id: token.account_id)
     end
   end
 
@@ -356,7 +356,7 @@ defmodule PortalAPI.GatewayTokenControllerTest do
       assert %{"data" => %{"deleted_count" => 3}} = json_response(conn, 200)
 
       Enum.each(tokens, fn token ->
-        refute Repo.get_by(GatewayToken, id: token.id, account_id: token.account_id)
+        refute Repo.get_by(DeviceToken, id: token.id, account_id: token.account_id)
       end)
     end
 

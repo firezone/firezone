@@ -1,4 +1,8 @@
 defmodule Portal.GatewayToken do
+  @moduledoc """
+  The old Gateway token table. Gateway tokens now live in `device_tokens`;
+  revokes still delete the matching rows here until the table is dropped.
+  """
   use Ecto.Schema
   import Ecto.Changeset
 
@@ -7,10 +11,6 @@ defmodule Portal.GatewayToken do
   @timestamps_opts [type: :utc_datetime_usec]
 
   @type t :: %__MODULE__{}
-
-  # How long a rotated single-owner token remains valid after rotation, unless
-  # the replacement token is used first
-  @rotation_grace_hours 4
 
   schema "gateway_tokens" do
     belongs_to :account, Portal.Account, primary_key: true
@@ -27,13 +27,6 @@ defmodule Portal.GatewayToken do
     # period until the replacement token is first used or the period elapses
     field :rotated_at, :utc_datetime_usec
 
-    # Used only during creation
-    field :secret_fragment, :string, virtual: true, redact: true
-
-    # Populated on fetch-for-verification: the id of this token's rotated
-    # sibling, if a rotation is pending confirmation
-    field :rotated_sibling_id, :binary_id, virtual: true
-
     timestamps(updated_at: false)
   end
 
@@ -45,10 +38,4 @@ defmodule Portal.GatewayToken do
     |> check_constraint(:site_id, name: :single_or_multi_owner)
     |> unique_constraint(:device_id, name: :gateway_tokens_device_rotated_state_idx)
   end
-
-  @spec single_owner?(t()) :: boolean()
-  def single_owner?(%__MODULE__{device_id: device_id}), do: not is_nil(device_id)
-
-  @spec rotation_grace_hours() :: pos_integer()
-  def rotation_grace_hours, do: @rotation_grace_hours
 end

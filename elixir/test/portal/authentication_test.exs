@@ -644,7 +644,7 @@ defmodule Portal.AuthenticationTest do
       assert is_nil(token.site_id)
       assert is_nil(token.rotated_at)
       assert token.secret_fragment != nil
-      assert Portal.GatewayToken.single_owner?(token)
+      assert Portal.DeviceToken.single_owner?(token)
     end
 
     test "returns error when the gateway already has an active token" do
@@ -691,7 +691,7 @@ defmodule Portal.AuthenticationTest do
       assert new_token.id != old_token.id
       assert is_nil(new_token.rotated_at)
 
-      old_token = Repo.get_by!(Portal.GatewayToken, account_id: account.id, id: old_token.id)
+      old_token = Repo.get_by!(Portal.DeviceToken, account_id: account.id, id: old_token.id)
       assert old_token.rotated_at != nil
     end
 
@@ -707,7 +707,7 @@ defmodule Portal.AuthenticationTest do
       assert is_nil(new_token.rotated_at)
 
       # No session ever referenced the old token, so it is gone outright
-      refute Repo.get_by(Portal.GatewayToken, account_id: account.id, id: old_token.id)
+      refute Repo.get_by(Portal.DeviceToken, account_id: account.id, id: old_token.id)
     end
 
     test "re-rotating replaces the pending token and keeps the rotated deadline" do
@@ -720,19 +720,19 @@ defmodule Portal.AuthenticationTest do
       {:ok, pending_token} = rotate_gateway_token(gateway, subject)
 
       in_use_token =
-        Repo.get_by!(Portal.GatewayToken, account_id: account.id, id: in_use_token.id)
+        Repo.get_by!(Portal.DeviceToken, account_id: account.id, id: in_use_token.id)
 
       original_rotated_at = in_use_token.rotated_at
 
       assert {:ok, replacement_token} = rotate_gateway_token(gateway, subject)
 
       # The unconfirmed pending token is gone, replaced by the new one
-      refute Repo.get_by(Portal.GatewayToken, account_id: account.id, id: pending_token.id)
+      refute Repo.get_by(Portal.DeviceToken, account_id: account.id, id: pending_token.id)
       assert is_nil(replacement_token.rotated_at)
 
       # The in-use rotated token keeps its original deadline
       in_use_token =
-        Repo.get_by!(Portal.GatewayToken, account_id: account.id, id: in_use_token.id)
+        Repo.get_by!(Portal.DeviceToken, account_id: account.id, id: in_use_token.id)
 
       assert in_use_token.rotated_at == original_rotated_at
     end
@@ -747,14 +747,14 @@ defmodule Portal.AuthenticationTest do
       {:ok, pending_token} = rotate_gateway_token(gateway, subject)
 
       # Simulate confirmation racing ahead: only the rotated token remains
-      Portal.GatewayToken
+      Portal.DeviceToken
       |> Repo.get_by!(account_id: account.id, id: pending_token.id)
       |> Repo.delete!()
 
       assert {:ok, new_token} = rotate_gateway_token(gateway, subject)
       assert is_nil(new_token.rotated_at)
 
-      old_token = Repo.get_by!(Portal.GatewayToken, account_id: account.id, id: old_token.id)
+      old_token = Repo.get_by!(Portal.DeviceToken, account_id: account.id, id: old_token.id)
       assert old_token.rotated_at != nil
     end
 
@@ -810,7 +810,7 @@ defmodule Portal.AuthenticationTest do
 
       assert {:ok, _verified} = verify_gateway_token(encode_fragment!(active))
 
-      refute Repo.get_by(Portal.GatewayToken, account_id: rotated.account_id, id: rotated.id)
+      refute Repo.get_by(Portal.DeviceToken, account_id: rotated.account_id, id: rotated.id)
     end
 
     test "using the rotated token does not delete the active sibling" do
@@ -820,8 +820,8 @@ defmodule Portal.AuthenticationTest do
 
       assert {:ok, _verified} = verify_gateway_token(encode_fragment!(rotated))
 
-      assert Repo.get_by(Portal.GatewayToken, account_id: active.account_id, id: active.id)
-      assert Repo.get_by(Portal.GatewayToken, account_id: rotated.account_id, id: rotated.id)
+      assert Repo.get_by(Portal.DeviceToken, account_id: active.account_id, id: active.id)
+      assert Repo.get_by(Portal.DeviceToken, account_id: rotated.account_id, id: rotated.id)
     end
 
     test "verifying an active token with no sibling reports none" do
@@ -841,7 +841,7 @@ defmodule Portal.AuthenticationTest do
       assert {:ok, verified} = verify_gateway_token(encode_fragment!(token_1))
       assert is_nil(verified.rotated_sibling_id)
 
-      assert Repo.get_by(Portal.GatewayToken, account_id: account.id, id: token_2.id)
+      assert Repo.get_by(Portal.DeviceToken, account_id: account.id, id: token_2.id)
     end
   end
 
@@ -1534,7 +1534,7 @@ defmodule Portal.AuthenticationTest do
     end
   end
 
-  describe "gateway token copies in device_tokens" do
+  describe "gateway tokens in device_tokens" do
     setup do
       account = account_fixture()
       site = site_fixture(account: account)
@@ -1543,19 +1543,18 @@ defmodule Portal.AuthenticationTest do
       %{account: account, site: site, gateway: gateway, subject: admin_subject_fixture(account: account)}
     end
 
-    test "a site token is copied, owned by the legacy Gateway actor", %{
+    test "a site token is written only to device_tokens, owned by the legacy Gateway actor", %{
       account: account,
       site: site,
       subject: subject
     } do
       {:ok, token} = create_gateway_token(site, subject)
 
-      copy = Repo.get_by!(Portal.DeviceToken, account_id: account.id, id: token.id)
-      assert copy.site_id == site.id
-      assert is_nil(copy.device_id)
-      assert is_nil(copy.expires_at)
-      assert %Portal.Actor{type: :legacy_gateway} = Repo.get_by!(Portal.Actor, id: copy.actor_id)
-      assert_copies_match(account)
+      assert token.site_id == site.id
+      assert is_nil(token.device_id)
+      assert is_nil(token.expires_at)
+      assert %Portal.Actor{type: :legacy_gateway} = Repo.get_by!(Portal.Actor, id: token.actor_id)
+      refute Repo.exists?(from(gt in Portal.GatewayToken, where: gt.account_id == ^account.id))
     end
 
     test "every token in an account shares one legacy Gateway actor", %{
@@ -1568,170 +1567,62 @@ defmodule Portal.AuthenticationTest do
       {:ok, _} = create_gateway_token(site, subject)
       {:ok, _} = create_gateway_token(gateway, subject)
 
-      assert [_] = device_tokens(account) |> Enum.map(& &1.actor_id) |> Enum.uniq()
+      assert [_] =
+               from(dt in Portal.DeviceToken, where: dt.account_id == ^account.id, select: dt.actor_id)
+               |> Repo.all()
+               |> Enum.uniq()
 
       assert Repo.aggregate(
                from(a in Portal.Actor, where: a.account_id == ^account.id and a.type == :legacy_gateway),
                :count
              ) == 1
-
-      assert_copies_match(account)
     end
 
-    test "a device-bound token is copied", %{account: account, gateway: gateway, subject: subject} do
-      {:ok, token} = create_gateway_token(gateway, subject)
-
-      assert Repo.get_by!(Portal.DeviceToken, account_id: account.id, id: token.id).device_id ==
-               gateway.id
-      assert_copies_match(account)
-    end
-
-    test "rotation stamps the old copy and copies the new token", %{
-      account: account,
-      gateway: gateway,
-      subject: subject
-    } do
-      {:ok, old_token} = create_gateway_token(gateway, subject)
-      gateway_session_fixture(account: account, gateway: gateway, token: old_token)
-      {:ok, pending} = rotate_gateway_token(gateway, subject)
-      assert_copies_match(account)
-
-      # Re-rotating deletes the unconfirmed token, and its copy with it.
-      {:ok, _replacement} = rotate_gateway_token(gateway, subject)
-      refute Repo.get_by(Portal.DeviceToken, account_id: account.id, id: pending.id)
-      assert_copies_match(account)
-    end
-
-    test "rotating copies a device's tokens issued before copying began", %{
-      account: account,
-      gateway: gateway,
-      subject: subject
-    } do
-      uncopied = gateway_token_fixture(gateway: gateway)
-      Repo.delete!(Repo.get_by!(Portal.DeviceToken, account_id: account.id, id: uncopied.id))
-      gateway_session_fixture(account: account, gateway: gateway, token: uncopied)
-
-      {:ok, _} = rotate_gateway_token(gateway, subject)
-
-      assert %Portal.DeviceToken{rotated_at: %DateTime{}} =
-               Repo.get_by(Portal.DeviceToken, account_id: account.id, id: uncopied.id)
-
-      assert_copies_match(account)
-    end
-
-    test "a stamp written without a copy is synced before a new active copy", %{
-      account: account,
-      gateway: gateway,
-      subject: subject
-    } do
-      {:ok, old_token} = create_gateway_token(gateway, subject)
-
-      # A node from before copying began stamps the token without its copy.
-      Repo.update_all(
-        from(gt in Portal.GatewayToken, where: gt.account_id == ^account.id and gt.id == ^old_token.id),
-        set: [rotated_at: DateTime.utc_now()]
-      )
-
-      assert {:ok, _new_token} = create_gateway_token(gateway, subject)
-      assert_copies_match(account)
-    end
-
-    test "confirming a rotation deletes the rotated copy", %{
-      account: account,
-      gateway: gateway,
-      subject: subject
-    } do
-      {:ok, old_token} = create_gateway_token(gateway, subject)
-      gateway_session_fixture(account: account, gateway: gateway, token: old_token)
-      {:ok, new_token} = rotate_gateway_token(gateway, subject)
-
-      assert {:ok, _} = verify_gateway_token(encode_fragment!(new_token))
-
-      refute Repo.get_by(Portal.DeviceToken, account_id: account.id, id: old_token.id)
-      assert_copies_match(account)
-    end
-
-    test "any delete of a gateway token deletes its copy", %{
-      account: account,
-      site: site,
-      gateway: gateway,
-      subject: subject
-    } do
-      {:ok, site_token} = create_gateway_token(site, subject)
-      {:ok, _device_token} = create_gateway_token(gateway, subject)
-
-      Repo.delete!(Repo.get_by!(Portal.GatewayToken, account_id: account.id, id: site_token.id))
-      assert_copies_match(account)
-
-      Repo.delete!(gateway)
-      assert_copies_match(account)
-    end
-
-    test "the legacy Gateway actor cannot be deleted while it owns copies", %{
+    test "the legacy Gateway actor cannot be deleted while it owns tokens", %{
       account: account,
       site: site,
       subject: subject
     } do
       {:ok, token} = create_gateway_token(site, subject)
-      copy = Repo.get_by!(Portal.DeviceToken, account_id: account.id, id: token.id)
-      actor = Repo.get_by!(Portal.Actor, id: copy.actor_id)
+      actor = Repo.get_by!(Portal.Actor, id: token.actor_id)
 
       assert_raise Ecto.ConstraintError, fn -> Repo.delete!(actor) end
-      assert_copies_match(account)
 
       Repo.delete!(account)
       refute Repo.get_by(Portal.DeviceToken, account_id: account.id, id: token.id)
     end
 
-    test "copies stay out of other accounts", %{site: site, subject: subject} do
+    test "tokens stay out of other accounts", %{site: site, subject: subject} do
       other_account = account_fixture()
       {:ok, _} = create_gateway_token(site_fixture(account: other_account), admin_subject_fixture(account: other_account))
       {:ok, _} = create_gateway_token(site, subject)
 
       for account_id <- [site.account_id, other_account.id] do
-        copies = Repo.all(from(dt in Portal.DeviceToken, where: dt.account_id == ^account_id))
-        assert copies != []
+        tokens = Repo.all(from(dt in Portal.DeviceToken, where: dt.account_id == ^account_id))
+        assert tokens != []
 
-        for copy <- copies do
-          assert Repo.get_by!(Portal.Actor, id: copy.actor_id).account_id == account_id
+        for token <- tokens do
+          assert Repo.get_by!(Portal.Actor, id: token.actor_id).account_id == account_id
         end
       end
     end
-  end
 
-  describe "gateway tokens read from device_tokens" do
-    setup do
-      account = account_fixture()
-      site = site_fixture(account: account)
-
-      %{account: account, site: site, subject: admin_subject_fixture(account: account)}
-    end
-
-    test "a token without a copy no longer verifies", %{account: account, site: site} do
-      token = gateway_token_fixture(account: account, site: site)
-      Repo.delete_all(from(dt in Portal.DeviceToken, where: dt.id == ^token.id))
-
-      assert {:error, :invalid_token} = verify_gateway_token(encode_fragment!(token))
-    end
-
-    test "verification uses the copy's rotation stamp", %{account: account} do
+    test "verification uses the token's rotation stamp", %{account: account} do
       token = gateway_token_fixture(gateway: gateway_fixture(account: account))
-      expired = DateTime.add(DateTime.utc_now(), -5, :hour)
-
-      Repo.update_all(from(dt in Portal.DeviceToken, where: dt.id == ^token.id),
-        set: [rotated_at: expired]
-      )
+      stamp_gateway_token(token, DateTime.add(DateTime.utc_now(), -5, :hour))
 
       assert {:error, :invalid_token} = verify_gateway_token(encode_fragment!(token))
     end
 
-    test "delete_gateway_tokens/2 deletes from both tables", %{
+    test "delete_gateway_tokens/2 also deletes the old gateway_tokens row", %{
       account: account,
       site: site,
       subject: subject
     } do
       revoked = gateway_token_fixture(account: account, site: site)
       kept = gateway_token_fixture(account: account, site: site)
+      insert_old_gateway_token_row(revoked)
+      insert_old_gateway_token_row(kept)
 
       assert {1, nil} =
                from(dt in Portal.DeviceToken, where: dt.id == ^revoked.id)
@@ -1752,7 +1643,6 @@ defmodule Portal.AuthenticationTest do
                from(dt in Portal.DeviceToken, where: dt.id == ^token.id)
                |> delete_gateway_tokens(subject)
 
-      assert Repo.get_by(Portal.GatewayToken, account_id: account.id, id: token.id)
       assert Repo.get_by(Portal.DeviceToken, account_id: account.id, id: token.id)
     end
 
@@ -1763,26 +1653,18 @@ defmodule Portal.AuthenticationTest do
                from(dt in Portal.DeviceToken, where: dt.id == ^other.id)
                |> delete_gateway_tokens(subject)
 
-      assert Repo.get_by(Portal.GatewayToken, account_id: other.account_id, id: other.id)
       assert Repo.get_by(Portal.DeviceToken, account_id: other.account_id, id: other.id)
     end
   end
 
-  defp device_tokens(account) do
-    Repo.all(from(dt in Portal.DeviceToken, where: dt.account_id == ^account.id))
-  end
-
-  defp assert_copies_match(account) do
-    fields = [:id, :device_id, :site_id, :secret_salt, :secret_hash, :rotated_at]
-
-    sources =
-      from(gt in Portal.GatewayToken, where: gt.account_id == ^account.id)
-      |> Repo.all()
-      |> Enum.map(&Map.take(&1, fields))
-      |> Enum.sort_by(& &1.id)
-
-    copies = account |> device_tokens() |> Enum.map(&Map.take(&1, fields)) |> Enum.sort_by(& &1.id)
-
-    assert copies == sources
+  defp insert_old_gateway_token_row(token) do
+    Repo.insert!(%Portal.GatewayToken{
+      account_id: token.account_id,
+      id: token.id,
+      site_id: token.site_id,
+      device_id: token.device_id,
+      secret_salt: token.secret_salt,
+      secret_hash: token.secret_hash
+    })
   end
 end

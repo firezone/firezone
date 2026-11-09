@@ -30,10 +30,9 @@ defmodule Portal.Workers.DeleteRotatedGatewayTokens do
   defmodule Database do
     import Ecto.Query
     alias Portal.DeviceToken
-    alias Portal.GatewayToken
 
     def delete_rotated_gateway_tokens do
-      grace_hours = GatewayToken.rotation_grace_hours()
+      grace_hours = DeviceToken.rotation_grace_hours()
       cutoff = DateTime.add(DateTime.utc_now(), -grace_hours, :hour)
 
       from(t in DeviceToken, as: :tokens)

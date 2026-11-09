@@ -6,14 +6,18 @@ defmodule PortalAPI.Schemas.GatewayToken do
     alias OpenApiSpex.Schema
 
     @derive {PortalAPI.JSON.Encoder,
-             for: Portal.GatewayToken,
+             for: Portal.DeviceToken,
              internal: [
                :account_id,
+               :actor_id,
+               :auth_provider_id,
                :device_id,
+               :expires_at,
                :inserted_at,
                :rotated_at,
                :rotated_sibling_id,
-               :site_id
+               :site_id,
+               :updated_at
              ]}
     OpenApiSpex.schema(%{
       title: "GatewayToken",
@@ -31,7 +35,7 @@ defmodule PortalAPI.Schemas.GatewayToken do
       required: [:id, :token]
     })
 
-    def map(%Portal.GatewayToken{} = token, _map) do
+    def map(%Portal.DeviceToken{} = token, _map) do
       %{token: Portal.Authentication.encode_fragment!(token)}
     end
   end

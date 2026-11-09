@@ -81,7 +81,7 @@ defmodule Portal.TokenFixtures do
   end
 
   @doc """
-  Generate a gateway token using Portal.GatewayToken schema.
+  Generate a gateway token, owned by the account's legacy Gateway actor.
 
   Pass `gateway: device` to build a single-owner token bound to that gateway
   instead of a multi-owner site token.
@@ -104,40 +104,24 @@ defmodule Portal.TokenFixtures do
         |> Map.put(:device_id, gateway.id)
     end
     |> infrastructure_token_secrets()
-    |> then(&struct!(Portal.GatewayToken, &1))
+    |> then(&Map.put(&1, :actor_id, legacy_gateway_actor_id(&1.account_id)))
+    |> then(&struct!(Portal.DeviceToken, &1))
     |> Portal.Repo.insert!()
-    |> tap(&copy_gateway_token/1)
   end
 
   @doc """
-  Sets `rotated_at` on a gateway token and its device_tokens copy, as a
-  rotation does.
+  Sets `rotated_at` on a gateway token, as a rotation does.
   """
-  def stamp_gateway_token(%Portal.GatewayToken{} = token, rotated_at) do
-    from(t in Portal.DeviceToken, where: t.account_id == ^token.account_id and t.id == ^token.id)
-    |> Portal.Repo.update_all(set: [rotated_at: rotated_at])
-
+  def stamp_gateway_token(%Portal.DeviceToken{} = token, rotated_at) do
     token
     |> change(rotated_at: rotated_at)
     |> Portal.Repo.update!()
   end
 
-  # Mirrors what the app writes while gateway_tokens is the source.
-  defp copy_gateway_token(token) do
-    Portal.Repo.insert!(%Portal.DeviceToken{
-      account_id: token.account_id,
-      id: token.id,
-      actor_id: legacy_gateway_actor_id(token.account_id),
-      device_id: token.device_id,
-      site_id: token.site_id,
-      secret_salt: token.secret_salt,
-      secret_hash: token.secret_hash,
-      rotated_at: token.rotated_at,
-      inserted_at: token.inserted_at
-    })
-  end
-
-  defp legacy_gateway_actor_id(account_id) do
+  @doc """
+  Returns the account's legacy Gateway actor id, creating the actor if needed.
+  """
+  def legacy_gateway_actor_id(account_id) do
     from(a in Portal.Actor,
       where: a.account_id == ^account_id and a.type == :legacy_gateway,
       select: a.id

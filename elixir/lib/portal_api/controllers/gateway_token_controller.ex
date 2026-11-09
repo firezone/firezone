@@ -51,7 +51,7 @@ defmodule PortalAPI.GatewayTokenController do
          {:ok, token} <- Authentication.create_gateway_token(site, subject) do
       conn
       |> put_status(:created)
-      |> json(JSON.encode(token))
+      |> json(JSON.encode(token, schema: PortalAPI.Schemas.GatewayToken.Schema))
     else
       error -> Error.handle(conn, error)
     end
@@ -114,7 +114,7 @@ defmodule PortalAPI.GatewayTokenController do
          {:ok, token} <- Authentication.create_gateway_token(gateway, subject) do
       conn
       |> put_status(:created)
-      |> json(JSON.encode(token))
+      |> json(JSON.encode(token, schema: PortalAPI.Schemas.GatewayToken.Schema))
     else
       {:error, %Ecto.Changeset{errors: errors} = changeset} ->
         if unique_violation?(errors) do
@@ -135,7 +135,7 @@ defmodule PortalAPI.GatewayTokenController do
       "Mints a replacement token for the gateway. A current token the gateway " <>
         "has connected with keeps working until the gateway first connects " <>
         "with the replacement or " <>
-        "#{Portal.GatewayToken.rotation_grace_hours()} hours elapse, whichever " <>
+        "#{Portal.DeviceToken.rotation_grace_hours()} hours elapse, whichever " <>
         "comes first; a token no gateway has ever connected with is replaced " <>
         "immediately. Rotating again before the gateway picks up the " <>
         "replacement replaces only the pending token and never invalidates the " <>
@@ -177,7 +177,7 @@ defmodule PortalAPI.GatewayTokenController do
          {:ok, token} <- Authentication.rotate_gateway_token(gateway, subject) do
       conn
       |> put_status(:created)
-      |> json(JSON.encode(token))
+      |> json(JSON.encode(token, schema: PortalAPI.Schemas.GatewayToken.Schema))
     else
       error -> Error.handle(conn, error)
     end

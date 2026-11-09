@@ -600,7 +600,7 @@ defmodule PortalAPI.Gateway.SocketTest do
 
       assert {:ok, _socket} = connect(Socket, attrs, connect_info: build_connect_info())
 
-      refute Portal.Repo.get_by(Portal.GatewayToken,
+      refute Portal.Repo.get_by(Portal.DeviceToken,
                account_id: rotated.account_id,
                id: rotated.id
              )
