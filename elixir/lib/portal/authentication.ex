@@ -5,7 +5,6 @@ defmodule Portal.Authentication do
   alias Portal.ClientToken
   alias Portal.OneTimePasscode
   alias Portal.PortalSession
-  alias Portal.Safe
   alias Portal.SessionLog
   alias Portal.Types.LogId
   alias Portal.Authentication.Context
@@ -168,18 +167,12 @@ defmodule Portal.Authentication do
   @spec delete_gateway_tokens(Ecto.Queryable.t(), Subject.t()) ::
           {non_neg_integer(), nil} | {:error, :unauthorized}
   def delete_gateway_tokens(queryable, %Subject{} = subject) do
-    queryable
-    |> select([t], {t.account_id, t.id})
-    |> Safe.scoped(subject)
-    |> Database.delete_gateway_tokens()
+    Database.delete_gateway_tokens(queryable, subject)
   end
 
   @spec delete_gateway_tokens(Ecto.Queryable.t()) :: {non_neg_integer(), nil}
   def delete_gateway_tokens(queryable) do
-    queryable
-    |> select([t], {t.account_id, t.id})
-    |> Safe.unscoped()
-    |> Database.delete_gateway_tokens()
+    Database.delete_gateway_tokens(queryable, nil)
   end
 
   @doc """
@@ -737,7 +730,10 @@ defmodule Portal.Authentication do
     # longer cascades from gateway_tokens. A refusal writes nothing, so it is
     # returned without a rollback, which would also abort a caller's
     # transaction.
-    def delete_gateway_tokens(scoped_or_unscoped) do
+    def delete_gateway_tokens(queryable, subject) do
+      keys = select(queryable, [t], {t.account_id, t.id})
+      scoped_or_unscoped = if subject, do: Safe.scoped(keys, subject), else: Safe.unscoped(keys)
+
       {:ok, result} =
         Safe.transact(fn ->
           case Safe.delete_all(scoped_or_unscoped) do
