@@ -281,7 +281,9 @@ jobs:
         shell: powershell
         run: ../../scripts/tests/gui-client-install-windows-msi.ps1
       - name: Test upgrade from the latest release (Windows)
-        if: "${{ runner.os == 'Windows' }}"
+        # Uninstalling fails on the ARM runner: `register-sparse deprovision`
+        # gets ERROR_NOT_FOUND after the package was already removed.
+        if: "${{ runner.os == 'Windows' && matrix.arch == 'x86_64' }}"
         shell: powershell
         env:
           ARCH: ${{ matrix.arch }}
