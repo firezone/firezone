@@ -97,7 +97,7 @@ impl OwnedSocket {
         let socket = socket2::SockRef::from(&self.socket);
 
         let (send_forced, recv_forced) = cfg_select! {
-            any(target_os = "linux", target_os = "android") => {(
+            target_os = "linux" => {(
                 force_buffer_size(&socket, libc::SO_SNDBUFFORCE, send),
                 force_buffer_size(&socket, libc::SO_RCVBUFFORCE, recv),
             )}
@@ -125,7 +125,7 @@ impl OwnedSocket {
 }
 
 /// Sets a buffer size past `net.core.{w,r}mem_max`, which requires `CAP_NET_ADMIN`.
-#[cfg(any(target_os = "linux", target_os = "android"))]
+#[cfg(target_os = "linux")]
 fn force_buffer_size(socket: &socket2::SockRef<'_>, option: libc::c_int, size: usize) -> bool {
     use std::os::fd::AsRawFd as _;
 
