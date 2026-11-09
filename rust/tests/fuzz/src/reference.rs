@@ -587,6 +587,12 @@ impl ReferenceState {
                     }
                 }
             }
+            Transition::RebindClientNat { client_id, .. } => {
+                self.clients
+                    .get_mut(client_id)
+                    .unwrap()
+                    .exec_mut(|client| client.rebind_nat());
+            }
             Transition::ReconnectPortal { client_id } => {
                 // Reconnecting to the portal should have no noticeable impact on the data plane.
                 // We do re-add all resources though so depending on the order they are added in, overlapping CIDR resources may change.
@@ -1223,21 +1229,26 @@ impl ReferenceState {
         Ok(PoolTowardsPeer::Granted(pool))
     }
 
-    // TODO: Remove with classic ICE: every trace is then exact.
     fn trace_requirement(
-        &self,
+        &mut self,
         portal: &StubPortal,
         origin: ClientId,
         outcome: ExpectedOutcome,
         sent_at: Instant,
     ) -> TraceRequirement {
+        let Some(remote) = outcome.remote() else {
+            return TraceRequirement::Exact;
+        };
+
+        if self.may_lose_to_nat_rebinding(origin, remote, sent_at) {
+            return TraceRequirement::ExactOrLoss(KnownLoss::NatRebinding);
+        }
+
+        // TODO: Remove with classic ICE: every other trace is then exact.
         if portal.frostlink() {
             return TraceRequirement::Exact;
         }
 
-        let Some(remote) = outcome.remote() else {
-            return TraceRequirement::Exact;
-        };
         let known_loss = match remote {
             Remote::Client(client)
                 if self.clients[&client]
@@ -1258,6 +1269,23 @@ impl ReferenceState {
             Some(loss) => TraceRequirement::ExactOrLoss(loss),
             None => TraceRequirement::Exact,
         }
+    }
+
+    fn may_lose_to_nat_rebinding(&mut self, origin: ClientId, remote: Remote, at: Instant) -> bool {
+        let from_origin = self
+            .clients
+            .get_mut(&origin)
+            .unwrap()
+            .exec_mut(|client| client.may_lose_to_nat_rebinding(remote, at));
+        let from_peer =
+            match remote {
+                Remote::Client(peer) => self.clients.get_mut(&peer).unwrap().exec_mut(|client| {
+                    client.may_lose_to_nat_rebinding(Remote::Client(origin), at)
+                }),
+                Remote::Gateway(_) => false,
+            };
+
+        from_origin || from_peer
     }
 
     // TODO: Remove with classic ICE.

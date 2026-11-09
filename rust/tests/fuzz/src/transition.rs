@@ -103,6 +103,12 @@ pub enum Transition {
         dead_window: Duration,
         portal_window: Duration,
     },
+    /// The Client's NAT moves one of its IPv4 mappings to a fresh public port, picked by
+    /// `mapping`.
+    RebindClientNat {
+        client_id: ClientId,
+        mapping: u32,
+    },
     ReconnectPortal {
         client_id: ClientId,
     },
@@ -186,6 +192,7 @@ impl Transition {
             Transition::UpdateUpstreamDoHServers(_) => false,
             Transition::UpdateUpstreamSearchDomain(_) => false,
             Transition::RoamClient { .. } => false,
+            Transition::RebindClientNat { .. } => false,
             Transition::ReconnectPortal { .. } => false,
             Transition::RestartClient { .. } => false,
             Transition::DeployNewRelays(_) => false,
@@ -260,6 +267,7 @@ impl Transition {
                 Destination::DomainName { .. } => frostlink || client_id != *roamed,
                 Destination::IpAddr(_) => true,
             },
+            Transition::RebindClientNat { .. } => true,
             Transition::ReconnectPortal { .. } => true,
             Transition::RestartClient { .. } => self.retains_flow(client_id, route, false),
             Transition::DeployNewRelays(_) => true,
@@ -326,6 +334,7 @@ impl Transition {
                 Route::Resource { .. } => frostlink || client_id != *changed,
                 Route::Peer(peer) => frostlink || (client_id != *changed && peer != *changed),
             },
+            Transition::RebindClientNat { .. } => true,
             Transition::ReconnectPortal { .. } => true,
             Transition::RestartClient {
                 client_id: restarted,

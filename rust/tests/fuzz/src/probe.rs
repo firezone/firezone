@@ -168,7 +168,7 @@ impl ProbeRequest {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) enum Remote {
     Gateway(GatewayId),
     Client(ClientId),
@@ -235,7 +235,6 @@ pub(crate) enum RejectionResponse {
     Unreachable,
 }
 
-// TODO: Remove with classic ICE, together with `KnownLoss`: every trace is then exact.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum TraceRequirement {
     Exact,
@@ -244,8 +243,12 @@ pub(crate) enum TraceRequirement {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum KnownLoss {
+    // TODO: Remove with classic ICE.
     ConnectionReset,
+    // TODO: Remove with classic ICE.
     WireGuardRekey,
+    /// A NAT moved the mapping a path uses; nothing notices until traffic goes unanswered.
+    NatRebinding,
 }
 
 #[derive(Debug, Clone)]

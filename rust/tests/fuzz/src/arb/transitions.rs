@@ -41,6 +41,7 @@ enum TransitionKind {
     RebootRelaysWhilePartitioned,
     Idle,
     // State-gated.
+    RebindClientNat,
     AddResource,
     EditResource,
     RemoveResource,
@@ -108,6 +109,12 @@ pub(super) fn generate(
         .cloned()
         .collect::<Vec<_>>();
     let client_ids = state.all_client_ids();
+    let natted_client_ids = state
+        .clients
+        .iter()
+        .filter(|(_, client)| client.nat_ip4().is_some())
+        .map(|(id, _)| *id)
+        .collect::<Vec<_>>();
     let dns_record_domains = state.dns_resource_domains();
     let key_change_recipients = key_change_recipients(state);
     let packet_targets = packets::targets(state, portal);
@@ -202,6 +209,8 @@ pub(super) fn generate(
         (!revocable_resources.is_empty()).then_some((K::RevokeGatewayAuthorization, 2)),
         (!expirable_peers.is_empty()).then_some((K::ExpirePeerAuthorizations, 2)),
         (!revocable_peers.is_empty()).then_some((K::RevokePeerAuthorization, 2)),
+        // TODO: Remove the `frostlink` condition with classic ICE.
+        (portal.frostlink() && !natted_client_ids.is_empty()).then_some((K::RebindClientNat, 1)),
         (!client_ids.is_empty()).then_some((K::ReconnectPortal, 1)),
         (!client_ids.is_empty()).then_some((K::RestartClient, 1)),
         (!client_ids.is_empty()).then_some((K::SetInternetResourceState, 1)),
@@ -272,6 +281,10 @@ pub(super) fn generate(
                 portal_window,
             }
         }
+        K::RebindClientNat => Transition::RebindClientNat {
+            client_id: natted_client_ids[g.choose_index(natted_client_ids.len())],
+            mapping: g.u32(),
+        },
         K::DeployNewRelays => {
             // A Frostlink connection survives relay deployment changes. Keeping one deployed
             // relay out of `connected` exercises refreshing an unmentioned live allocation.

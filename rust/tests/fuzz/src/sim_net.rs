@@ -299,6 +299,39 @@ impl Nat {
         Ok(destination)
     }
 
+    /// Moves one IPv4 mapping to a fresh public port. Nothing reaches the host through the old
+    /// port anymore.
+    fn rebind(&mut self, selector: u32, now: Instant) {
+        let Some(old) = self
+            .by_public
+            .keys()
+            .copied()
+            .nth(selector as usize % self.by_public.len().max(1))
+        else {
+            return;
+        };
+        let internal = self
+            .by_public
+            .remove(&old)
+            .expect("binding exists")
+            .internal;
+
+        let public = SocketAddr::new(self.ip4.into(), self.next_port);
+        self.next_port += 1;
+
+        for mapped in self.by_internal.values_mut().filter(|p| **p == old) {
+            *mapped = public;
+        }
+        self.by_public.insert(
+            public,
+            Binding {
+                internal,
+                sent_to: BTreeMap::new(),
+                refreshed_at: now,
+            },
+        );
+    }
+
     /// Moves this NAT to a new public address, e.g. because the host roamed to a different network.
     fn migrate(&mut self, ip4: Ipv4Addr) {
         self.ip4 = ip4;
@@ -391,6 +424,14 @@ impl<T> Host<T> {
         match &self.edge {
             Edge::Nat(nat) => Some(nat.ip4),
             Edge::Open => None,
+        }
+    }
+
+    /// Moves one of this host's NAT mappings to a fresh public port.
+    pub(crate) fn rebind_nat(&mut self, selector: u32, now: Instant) {
+        match &mut self.edge {
+            Edge::Open => {}
+            Edge::Nat(nat) => nat.rebind(selector, now),
         }
     }
 

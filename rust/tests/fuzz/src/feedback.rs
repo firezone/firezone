@@ -165,6 +165,10 @@ impl Recorder {
                 self.changes
                     .push((Scope::Client(*client_id), Change::Roamed));
             }
+            Transition::RebindClientNat { client_id, .. } => {
+                self.changes
+                    .push((Scope::Client(*client_id), Change::NatRebound));
+            }
             Transition::RestartClient { client_id, .. } => {
                 self.changes
                     .push((Scope::Client(*client_id), Change::Restarted));
@@ -593,9 +597,10 @@ enum Change {
     Crashed,
     GatewayCrashed,
     SpuriousPublicKeyChanged,
+    NatRebound,
 }
 
-const KINDS: u16 = 26;
+const KINDS: u16 = 27;
 
 #[derive(Clone, Copy)]
 enum Scope {

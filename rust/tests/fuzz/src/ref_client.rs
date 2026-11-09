@@ -31,6 +31,11 @@ use std::{
     time::{Duration, Instant},
 };
 
+/// How long after its first exchange following a NAT rebinding a path may lose traffic: the
+/// Client's WireGuard re-keys twice without hearing back (`KEEPALIVE_TIMEOUT + REKEY_TIMEOUT`
+/// each) before the Gateway re-probes, plus a margin.
+const NAT_REBINDING_RECOVERY: Duration = Duration::from_secs(30);
+
 /// Reference state for a particular client.
 ///
 /// The reference state machine is designed to be as abstract as possible over connlib's functionality.
@@ -96,6 +101,11 @@ pub struct RefClient {
     #[debug(skip)]
     connection_resets: Vec<Instant>,
 
+    /// Since its NAT last rebound a mapping, when this client first exchanged traffic with
+    /// each remote.
+    #[debug(skip)]
+    nat_rebinding: Option<BTreeMap<Remote, Instant>>,
+
     // TODO: Remove with classic ICE.
     /// Per Gateway, the instants at which this client sent a packet on that
     /// connection.
@@ -153,6 +163,7 @@ impl RefClient {
             routes: Default::default(),
             gateways_by_site: Default::default(),
             connection_resets: Default::default(),
+            nat_rebinding: Default::default(),
             gateway_send_times: Default::default(),
             client_send_times: Default::default(),
             outbound_peer_authorizations: Default::default(),
@@ -1432,6 +1443,21 @@ impl RefClient {
             .range(..at)
             .next_back()
             .copied()
+    }
+
+    pub(crate) fn rebind_nat(&mut self) {
+        self.nat_rebinding = Some(BTreeMap::new());
+    }
+
+    /// Whether traffic with `remote` at `at` may be lost to the last NAT rebinding: the
+    /// first exchange with `remote` afterwards goes unanswered and starts the recovery.
+    pub(crate) fn may_lose_to_nat_rebinding(&mut self, remote: Remote, at: Instant) -> bool {
+        let Some(first_exchanges) = &mut self.nat_rebinding else {
+            return false;
+        };
+        let first = *first_exchanges.entry(remote).or_insert(at);
+
+        at < first + NAT_REBINDING_RECOVERY
     }
 
     // TODO: Remove with classic ICE.

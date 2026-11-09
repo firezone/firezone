@@ -678,6 +678,12 @@ impl TunnelTest {
                 });
             }
 
+            Transition::RebindClientNat { client_id, mapping } => {
+                self.clients
+                    .get_mut(&client_id)
+                    .unwrap()
+                    .rebind_nat(mapping, now);
+            }
             Transition::ReconnectPortal { client_id } => {
                 let client = self.clients.get_mut(&client_id).unwrap();
                 let ref_client = &ref_state.clients[&client_id];
