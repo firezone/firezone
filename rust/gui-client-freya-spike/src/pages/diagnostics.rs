@@ -2,7 +2,10 @@ use freya::prelude::*;
 
 use crate::{
     Bridge, FileCount, LogFilter, Request,
-    components::{Icon, ScrollPage, TextSetting, card, confirmation_dialog, icon, icon_button, managed_notice, pal, section, setting_row, text},
+    components::{
+        Icon, ScrollPage, TextSetting, card, confirmation_dialog, icon, icon_button,
+        managed_notice, pal, section, setting_row, text,
+    },
 };
 
 #[derive(PartialEq)]
@@ -27,9 +30,20 @@ impl Component for Diagnostics {
             .horizontal()
             .cross_align(Alignment::Center)
             .spacing(4.)
-            .child(text(format!("{megabytes} MB"), 14.).font_tabular().margin((0., 8., 0., 0.)))
-            .child(icon_button(icon(Icon::ShareForward, 16., p.body), "Export Logs").on_press(send(Request::ExportLogs)))
-            .child(icon_button(icon(Icon::DeleteBin, 16., p.body), "Clear Logs").offset_x(4.).on_press(move |_| confirm_clear.set(true)));
+            .child(
+                text(format!("{megabytes} MB"), 14.)
+                    .font_tabular()
+                    .margin((0., 8., 0., 0.)),
+            )
+            .child(
+                icon_button(icon(Icon::ShareForward, 16., p.body), "Export Logs")
+                    .on_press(send(Request::ExportLogs)),
+            )
+            .child(
+                icon_button(icon(Icon::DeleteBin, 16., p.body), "Clear Logs")
+                    .offset_x(4.)
+                    .on_press(move |_| confirm_clear.set(true)),
+            );
         let rows = [
             TextSetting {
                 label: "Log Filter",

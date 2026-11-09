@@ -7,7 +7,7 @@ use tokio::sync::mpsc;
 /// What the Controller asks of the GUI, beyond view-model updates.
 #[derive(Debug)]
 enum UiCommand {
-    Update(ViewModel),
+    Update(Box<ViewModel>),
     Show,
     Hide,
     Close,
@@ -39,14 +39,19 @@ fn main() {
     };
 
     // Build the event loop ourselves so "no display" is an error we handle, not a panic.
-    let event_loop = match freya::winit::event_loop::EventLoop::<NativeEvent>::with_user_event().build() {
-        Ok(event_loop) => event_loop,
-        Err(e) => {
-            eprintln!("cannot start GUI: {e}");
-            std::process::exit(2);
-        }
-    };
-    let config = FONTS.iter().fold(LaunchConfig::new(), |config, (family, bytes)| config.with_font(*family, Bytes::from_static(bytes)));
+    let event_loop =
+        match freya::winit::event_loop::EventLoop::<NativeEvent>::with_user_event().build() {
+            Ok(event_loop) => event_loop,
+            Err(e) => {
+                eprintln!("cannot start GUI: {e}");
+                std::process::exit(2);
+            }
+        };
+    let config = FONTS
+        .iter()
+        .fold(LaunchConfig::new(), |config, (family, bytes)| {
+            config.with_font(*family, Bytes::from_static(bytes))
+        });
     let config = config
         .with_event_loop(event_loop)
         .with_exit_on_close(false)
@@ -62,7 +67,11 @@ fn main() {
 }
 
 /// Glue on the GUI thread: apply Controller commands to state and windows.
-async fn gui_loop(mut cmds: mpsc::UnboundedReceiver<UiCommand>, proxy: LaunchProxy, bridge: Bridge) {
+async fn gui_loop(
+    mut cmds: mpsc::UnboundedReceiver<UiCommand>,
+    proxy: LaunchProxy,
+    bridge: Bridge,
+) {
     let mut vm = bridge.vm;
     while let Some(cmd) = cmds.recv().await {
         let bridge = bridge.clone();
@@ -70,9 +79,11 @@ async fn gui_loop(mut cmds: mpsc::UnboundedReceiver<UiCommand>, proxy: LaunchPro
             .post_callback(move |r| {
                 let ids: Vec<WindowId> = r.windows().keys().copied().collect();
                 match cmd {
-                    UiCommand::Update(new) => vm.set(new),
+                    UiCommand::Update(new) => vm.set(*new),
                     UiCommand::Show => show_window(r, &bridge),
-                    UiCommand::Hide => ids.iter().for_each(|id| Platform::get().with_window(*id, |w| w.set_visible(false))),
+                    UiCommand::Hide => ids
+                        .iter()
+                        .for_each(|id| Platform::get().with_window(*id, |w| w.set_visible(false))),
                     UiCommand::Close => ids.iter().for_each(|id| Platform::get().close_window(*id)),
                     UiCommand::Quit => r.exit(),
                 }
@@ -100,7 +111,11 @@ fn show_window(r: &mut RendererContext, bridge: &Bridge) {
     }
 }
 
-async fn controller(ui: mpsc::UnboundedSender<UiCommand>, mut requests: mpsc::UnboundedReceiver<Request>, scripted: bool) {
+async fn controller(
+    ui: mpsc::UnboundedSender<UiCommand>,
+    mut requests: mpsc::UnboundedReceiver<Request>,
+    scripted: bool,
+) {
     if scripted {
         let step = |c: UiCommand| {
             println!("controller: {c:?}");
@@ -110,10 +125,13 @@ async fn controller(ui: mpsc::UnboundedSender<UiCommand>, mut requests: mpsc::Un
         pause().await;
         step(UiCommand::Show);
         pause().await;
-        step(UiCommand::Update(ViewModel {
-            session: Some(Session::SignedIn { account_slug: "example-corp".into(), actor_name: "Jane Doe".into() }),
+        step(UiCommand::Update(Box::new(ViewModel {
+            session: Some(Session::SignedIn {
+                account_slug: "example-corp".into(),
+                actor_name: "Jane Doe".into(),
+            }),
             ..Default::default()
-        }));
+        })));
         pause().await;
         step(UiCommand::Hide);
         pause().await;
@@ -131,27 +149,39 @@ async fn controller(ui: mpsc::UnboundedSender<UiCommand>, mut requests: mpsc::Un
         return;
     }
     ui.send(UiCommand::Show).unwrap();
-    let mut model = ViewModel { session: Some(Session::SignedOut), log_count: Some(FileCount { bytes: 0, files: 0 }), ..Default::default() };
-    ui.send(UiCommand::Update(model.clone())).unwrap();
+    let mut model = ViewModel {
+        session: Some(Session::SignedOut),
+        log_count: Some(FileCount { bytes: 0, files: 0 }),
+        ..Default::default()
+    };
+    ui.send(UiCommand::Update(Box::new(model.clone()))).unwrap();
     while let Some(req) = requests.recv().await {
         println!("controller: {req:?}");
         match req {
             Request::SignIn => {
-                model.session = Some(Session::SignedIn { account_slug: "example-corp".into(), actor_name: "Jane Doe".into() });
+                model.session = Some(Session::SignedIn {
+                    account_slug: "example-corp".into(),
+                    actor_name: "Jane Doe".into(),
+                });
             }
             Request::SignOut => model.session = Some(Session::SignedOut),
             Request::ApplySettings(_) | Request::ResetSettings | Request::ApplyLogFilter(_) => {
-                let _ = desktop_notifications::show("dev.firezone.spike", "Settings applied", "", None).await;
+                let _ =
+                    desktop_notifications::show("dev.firezone.spike", "Settings applied", "", None)
+                        .await;
             }
             Request::ClearLogs => model.log_count = Some(FileCount { bytes: 0, files: 0 }),
             Request::ExportLogs => {
-                let picked = rfd::AsyncFileDialog::new().set_file_name("logs.zip").save_file().await;
+                let picked = rfd::AsyncFileDialog::new()
+                    .set_file_name("logs.zip")
+                    .save_file()
+                    .await;
                 if let Some(path) = picked {
                     let _ = open::that(path.path());
                 }
             }
         }
-        ui.send(UiCommand::Update(model.clone())).unwrap();
+        ui.send(UiCommand::Update(Box::new(model.clone()))).unwrap();
     }
 }
 
@@ -170,8 +200,10 @@ mod tray {
         config.with_tray(
             || {
                 let menu = Menu::new();
-                menu.append(&MenuItem::with_id("open", "Open Firezone", true, None)).unwrap();
-                menu.append(&MenuItem::with_id("quit", "Quit", true, None)).unwrap();
+                menu.append(&MenuItem::with_id("open", "Open Firezone", true, None))
+                    .unwrap();
+                menu.append(&MenuItem::with_id("quit", "Quit", true, None))
+                    .unwrap();
                 let rgba = [255u8, 120, 34, 255].repeat(32 * 32);
                 TrayIconBuilder::new()
                     .with_menu(Box::new(menu))

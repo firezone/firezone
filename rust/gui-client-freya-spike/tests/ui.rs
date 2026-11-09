@@ -23,7 +23,12 @@ fn launch(page: Page, dark: bool, model: ViewModel) -> Ui {
         SIZE.into(),
         |r| {
             let vm = State::create_global(model);
-            r.provide_root_context(|| Bridge { vm, requests: tx, dark, start_page: page });
+            r.provide_root_context(|| Bridge {
+                vm,
+                requests: tx,
+                dark,
+                start_page: page,
+            });
             vm
         },
         1.,
@@ -33,7 +38,11 @@ fn launch(page: Page, dark: bool, model: ViewModel) -> Ui {
         t.set_fonts(HashMap::from([(family, bytes)]));
     }
     t.set_default_fonts(&[SANS.into()]);
-    t.run_in(|| GlobalContexts::get().insert_context(Clipboard::create(Some(Box::new(MemoryClipboard::default())))));
+    t.run_in(|| {
+        GlobalContexts::get().insert_context(Clipboard::create(Some(Box::new(
+            MemoryClipboard::default(),
+        ))))
+    });
     t.sync_and_update();
     settle(&mut t);
     Ui { t, vm, requests }
@@ -53,22 +62,33 @@ fn texts(t: &TestingRunner) -> Vec<String> {
     t.find_many(|_, el| {
         Label::try_downcast(el)
             .map(|l| l.text.to_string())
-            .or_else(|| Paragraph::try_downcast(el).map(|p| p.spans.iter().map(|s| s.text.as_ref()).collect()))
+            .or_else(|| {
+                Paragraph::try_downcast(el)
+                    .map(|p| p.spans.iter().map(|s| s.text.as_ref()).collect())
+            })
     })
 }
 
 /// The centre of the label showing `text`, like `getByText`.
 fn text_at(t: &TestingRunner, text: &str) -> (f64, f64) {
-    t.find(|n, el| Label::try_downcast(el).filter(|l| l.text == text).map(|_| n.layout().area.center()))
-        .map(|c| (c.x as f64, c.y as f64))
-        .unwrap_or_else(|| panic!("no {text:?} in {:?}", texts(t)))
+    t.find(|n, el| {
+        Label::try_downcast(el)
+            .filter(|l| l.text == text)
+            .map(|_| n.layout().area.center())
+    })
+    .map(|c| (c.x as f64, c.y as f64))
+    .unwrap_or_else(|| panic!("no {text:?} in {:?}", texts(t)))
 }
 
 /// The centre of the element named `name`, like `getByRole(_, { name })`.
 fn named_at(t: &TestingRunner, name: &str) -> (f64, f64) {
-    t.find(|n, el| Rect::try_downcast(el).filter(|r| r.accessibility.builder.label() == Some(name)).map(|_| n.layout().area.center()))
-        .map(|c| (c.x as f64, c.y as f64))
-        .unwrap_or_else(|| panic!("nothing named {name:?}"))
+    t.find(|n, el| {
+        Rect::try_downcast(el)
+            .filter(|r| r.accessibility.builder.label() == Some(name))
+            .map(|_| n.layout().area.center())
+    })
+    .map(|c| (c.x as f64, c.y as f64))
+    .unwrap_or_else(|| panic!("nothing named {name:?}"))
 }
 
 fn click(t: &mut TestingRunner, at: (f64, f64)) {
@@ -116,7 +136,10 @@ fn custom_settings() -> GeneralSettings {
 }
 
 fn log_filter() -> Option<LogFilter> {
-    Some(LogFilter { log_filter: "info".into(), log_filter_is_managed: false })
+    Some(LogFilter {
+        log_filter: "info".into(),
+        log_filter_is_managed: false,
+    })
 }
 
 fn certificate() -> Vec<CertField> {
@@ -151,28 +174,77 @@ struct Screen {
 /// Every screen of `screenshots.test.tsx`, in the same states.
 fn screens() -> Vec<(&'static str, Page, Screen)> {
     let vm = ViewModel::default;
-    let logs = Some(FileCount { bytes: 3_400_000, files: 12 });
+    let logs = Some(FileCount {
+        bytes: 3_400_000,
+        files: 12,
+    });
     vec![
-        ("overview-signed-out", Page::Overview, Screen { vm: ViewModel { session: Some(Session::SignedOut), ..vm() }, ..Default::default() }),
-        ("overview-loading", Page::Overview, Screen { vm: ViewModel { session: Some(Session::Loading), ..vm() }, ..Default::default() }),
         (
-            "overview-signed-in",
+            "overview-signed-out",
             Page::Overview,
             Screen {
                 vm: ViewModel {
-                    session: Some(Session::SignedIn { account_slug: "example-corp".into(), actor_name: "Jane Doe".into() }),
+                    session: Some(Session::SignedOut),
                     ..vm()
                 },
                 ..Default::default()
             },
         ),
-        ("general-settings", Page::Settings, Screen { vm: ViewModel { general_settings: Some(general_settings()), ..vm() }, ..Default::default() }),
-        ("general-settings-custom", Page::Settings, Screen { vm: ViewModel { general_settings: Some(custom_settings()), ..vm() }, ..Default::default() }),
+        (
+            "overview-loading",
+            Page::Overview,
+            Screen {
+                vm: ViewModel {
+                    session: Some(Session::Loading),
+                    ..vm()
+                },
+                ..Default::default()
+            },
+        ),
+        (
+            "overview-signed-in",
+            Page::Overview,
+            Screen {
+                vm: ViewModel {
+                    session: Some(Session::SignedIn {
+                        account_slug: "example-corp".into(),
+                        actor_name: "Jane Doe".into(),
+                    }),
+                    ..vm()
+                },
+                ..Default::default()
+            },
+        ),
+        (
+            "general-settings",
+            Page::Settings,
+            Screen {
+                vm: ViewModel {
+                    general_settings: Some(general_settings()),
+                    ..vm()
+                },
+                ..Default::default()
+            },
+        ),
+        (
+            "general-settings-custom",
+            Page::Settings,
+            Screen {
+                vm: ViewModel {
+                    general_settings: Some(custom_settings()),
+                    ..vm()
+                },
+                ..Default::default()
+            },
+        ),
         (
             "general-settings-invalid-url",
             Page::Settings,
             Screen {
-                vm: ViewModel { general_settings: Some(custom_settings()), ..vm() },
+                vm: ViewModel {
+                    general_settings: Some(custom_settings()),
+                    ..vm()
+                },
                 input: Some(("Auth URL", "firezone.example.com")),
                 ..Default::default()
             },
@@ -217,14 +289,42 @@ fn screens() -> Vec<(&'static str, Page, Screen)> {
                 ..Default::default()
             },
         ),
-        ("device-trust-happy", Page::DeviceTrust, Screen { vm: ViewModel { certificate: Some(certificate()), ..vm() }, ..Default::default() }),
+        (
+            "device-trust-happy",
+            Page::DeviceTrust,
+            Screen {
+                vm: ViewModel {
+                    certificate: Some(certificate()),
+                    ..vm()
+                },
+                ..Default::default()
+            },
+        ),
         ("diagnostics-no-logs", Page::Diagnostics, Screen::default()),
-        ("diagnostics", Page::Diagnostics, Screen { vm: ViewModel { log_count: logs, log_filter: log_filter(), ..vm() }, ..Default::default() }),
+        (
+            "diagnostics",
+            Page::Diagnostics,
+            Screen {
+                vm: ViewModel {
+                    log_count: logs,
+                    log_filter: log_filter(),
+                    ..vm()
+                },
+                ..Default::default()
+            },
+        ),
         (
             "diagnostics-clear-confirmation",
             Page::Diagnostics,
             Screen {
-                vm: ViewModel { log_count: Some(FileCount { bytes: 3_400_000, files: 17 }), log_filter: log_filter(), ..vm() },
+                vm: ViewModel {
+                    log_count: Some(FileCount {
+                        bytes: 3_400_000,
+                        files: 17,
+                    }),
+                    log_filter: log_filter(),
+                    ..vm()
+                },
                 click: Some("Clear Logs"),
                 ..Default::default()
             },
@@ -232,13 +332,27 @@ fn screens() -> Vec<(&'static str, Page, Screen)> {
         (
             "settings-reset-confirmation",
             Page::Settings,
-            Screen { vm: ViewModel { general_settings: Some(general_settings()), ..vm() }, click: Some("Reset to Defaults"), ..Default::default() },
+            Screen {
+                vm: ViewModel {
+                    general_settings: Some(general_settings()),
+                    ..vm()
+                },
+                click: Some("Reset to Defaults"),
+                ..Default::default()
+            },
         ),
         (
             "diagnostics-managed",
             Page::Diagnostics,
             Screen {
-                vm: ViewModel { log_count: logs, log_filter: Some(LogFilter { log_filter: "debug".into(), log_filter_is_managed: true }), ..vm() },
+                vm: ViewModel {
+                    log_count: logs,
+                    log_filter: Some(LogFilter {
+                        log_filter: "debug".into(),
+                        log_filter_is_managed: true,
+                    }),
+                    ..vm()
+                },
                 ..Default::default()
             },
         ),
@@ -265,7 +379,14 @@ fn screenshots() {
 
 #[test]
 fn rejected_url_is_not_saved_and_shows_why() {
-    let mut ui = launch(Page::Settings, false, ViewModel { general_settings: Some(custom_settings()), ..Default::default() });
+    let mut ui = launch(
+        Page::Settings,
+        false,
+        ViewModel {
+            general_settings: Some(custom_settings()),
+            ..Default::default()
+        },
+    );
     fill(&mut ui.t, "Auth URL", "firezone.example.com");
     assert!(texts(&ui.t).contains(&"Enter a valid http:// or https:// URL".to_owned()));
     assert!(ui.requests.try_recv().is_err());
@@ -284,12 +405,28 @@ fn rejected_url_is_not_saved_and_shows_why() {
 
 #[test]
 fn toggles_save_and_managed_ones_do_not() {
-    let settings = GeneralSettings { connect_on_start_is_managed: true, ..general_settings() };
-    let mut ui = launch(Page::Settings, false, ViewModel { general_settings: Some(settings), ..Default::default() });
+    let settings = GeneralSettings {
+        connect_on_start_is_managed: true,
+        ..general_settings()
+    };
+    let mut ui = launch(
+        Page::Settings,
+        false,
+        ViewModel {
+            general_settings: Some(settings),
+            ..Default::default()
+        },
+    );
     let toggle_x = 851.;
     let y = text_at(&ui.t, "Start on login").1;
     click(&mut ui.t, (toggle_x, y));
-    assert_eq!(ui.requests.try_recv().unwrap(), Request::ApplySettings(SettingsChange { start_on_login: Some(false), ..Default::default() }));
+    assert_eq!(
+        ui.requests.try_recv().unwrap(),
+        Request::ApplySettings(SettingsChange {
+            start_on_login: Some(false),
+            ..Default::default()
+        })
+    );
     let y = text_at(&ui.t, "Connect on start").1;
     click(&mut ui.t, (toggle_x, y));
     assert!(ui.requests.try_recv().is_err());
@@ -298,7 +435,14 @@ fn toggles_save_and_managed_ones_do_not() {
 
 #[test]
 fn picking_custom_shows_the_url_fields() {
-    let mut ui = launch(Page::Settings, false, ViewModel { general_settings: Some(general_settings()), ..Default::default() });
+    let mut ui = launch(
+        Page::Settings,
+        false,
+        ViewModel {
+            general_settings: Some(general_settings()),
+            ..Default::default()
+        },
+    );
     assert!(!texts(&ui.t).contains(&"Auth URL".to_owned()));
     let select = named_at(&ui.t, "Firezone Cloud (US)");
     click(&mut ui.t, select);
@@ -313,12 +457,22 @@ fn picking_custom_shows_the_url_fields() {
             ..Default::default()
         })
     );
-    assert!(texts(&ui.t).contains(&"Auth URL".to_owned()), "the page keeps Custom until the user enters URLs");
+    assert!(
+        texts(&ui.t).contains(&"Auth URL".to_owned()),
+        "the page keeps Custom until the user enters URLs"
+    );
 }
 
 #[test]
 fn reset_asks_first() {
-    let mut ui = launch(Page::Settings, false, ViewModel { general_settings: Some(general_settings()), ..Default::default() });
+    let mut ui = launch(
+        Page::Settings,
+        false,
+        ViewModel {
+            general_settings: Some(general_settings()),
+            ..Default::default()
+        },
+    );
     let reset = named_at(&ui.t, "Reset to Defaults");
     click(&mut ui.t, reset);
     let cancel = named_at(&ui.t, "Cancel");
@@ -340,26 +494,42 @@ fn sidebar_navigation_and_device_trust_tab() {
     click(&mut ui.t, diagnostics);
     assert!(texts(&ui.t).contains(&"Log Filter".to_owned()));
 
-    ui.vm.set(ViewModel { certificate: Some(certificate()), ..Default::default() });
+    ui.vm.set(ViewModel {
+        certificate: Some(certificate()),
+        ..Default::default()
+    });
     settle(&mut ui.t);
     let device_trust = named_at(&ui.t, "Device Trust");
     click(&mut ui.t, device_trust);
-    assert!(texts(&ui.t).contains(&"Issued by DC=com, DC=example, CN=Example Corp Issuing CA 1".to_owned()));
+    assert!(
+        texts(&ui.t)
+            .contains(&"Issued by DC=com, DC=example, CN=Example Corp Issuing CA 1".to_owned())
+    );
 }
 
 #[test]
 fn controller_roundtrip() {
     let rt = tokio::runtime::Runtime::new().unwrap();
-    let Ui { mut t, vm, mut requests } = launch(Page::Overview, false, ViewModel::default());
+    let Ui {
+        mut t,
+        vm,
+        mut requests,
+    } = launch(Page::Overview, false, ViewModel::default());
     let (vm_tx, vm_rx) = mpsc::unbounded_channel();
 
     // Controller: a tokio task outside the UI thread.
     rt.spawn(async move {
-        let mut model = ViewModel { session: Some(Session::SignedOut), ..Default::default() };
+        let mut model = ViewModel {
+            session: Some(Session::SignedOut),
+            ..Default::default()
+        };
         vm_tx.send(model.clone()).unwrap();
         while let Some(req) = requests.recv().await {
             if req == Request::SignIn {
-                model.session = Some(Session::SignedIn { account_slug: "example-corp".into(), actor_name: "Jane Doe".into() });
+                model.session = Some(Session::SignedIn {
+                    account_slug: "example-corp".into(),
+                    actor_name: "Jane Doe".into(),
+                });
                 vm_tx.send(model.clone()).unwrap();
             }
         }
@@ -397,4 +567,3 @@ impl copypasta::ClipboardProvider for MemoryClipboard {
         Ok(())
     }
 }
-

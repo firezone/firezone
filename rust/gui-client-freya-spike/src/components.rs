@@ -7,7 +7,11 @@ use freya::prelude::*;
 use crate::{Bridge, MONO, Page, theme};
 
 pub fn pal() -> &'static theme::Palette {
-    if consume_context::<Bridge>().dark { &theme::DARK } else { &theme::LIGHT }
+    if consume_context::<Bridge>().dark {
+        &theme::DARK
+    } else {
+        &theme::LIGHT
+    }
 }
 
 /// A label with Tailwind's line height for its font size.
@@ -22,15 +26,28 @@ pub fn text(text: impl Into<Cow<'static, str>>, size: f32) -> Label {
 }
 
 pub fn border(color: Color) -> Border {
-    Border::new().fill(color).width(1.).alignment(BorderAlignment::Inner)
+    Border::new()
+        .fill(color)
+        .width(1.)
+        .alignment(BorderAlignment::Inner)
 }
 
 pub fn border_bottom(color: Color) -> Border {
-    border(color).width(BorderWidth { top: 0., right: 0., bottom: 1., left: 0. })
+    border(color).width(BorderWidth {
+        top: 0.,
+        right: 0.,
+        bottom: 1.,
+        left: 0.,
+    })
 }
 
 pub fn border_top(color: Color) -> Border {
-    border(color).width(BorderWidth { top: 1., right: 0., bottom: 0., left: 0. })
+    border(color).width(BorderWidth {
+        top: 1.,
+        right: 0.,
+        bottom: 0.,
+        left: 0.,
+    })
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -67,7 +84,11 @@ pub fn icon(icon: Icon, size: f32, color: Color) -> SvgViewer {
         Icon::Settings => include_bytes!("../assets/icons/settings-3-line.svg"),
         Icon::ShareForward => include_bytes!("../assets/icons/share-forward-line.svg"),
     };
-    SvgViewer::new(svg).width(Size::px(size)).height(Size::px(size)).color(color).show_loader(false)
+    SvgViewer::new(svg)
+        .width(Size::px(size))
+        .height(Size::px(size))
+        .color(color)
+        .show_loader(false)
 }
 
 pub fn icon_button(child: impl IntoElement, name: &'static str) -> Rect {
@@ -109,10 +130,20 @@ pub fn button(label: &'static str, variant: Variant) -> Rect {
 /// `.panel` with `divide-y`.
 pub fn card(rows: impl IntoIterator<Item = Element>) -> Rect {
     let p = pal();
-    let mut card = rect().width(Size::fill()).padding(1.).corner_radius(4.).background(p.surface).border(border(p.border));
+    let mut card = rect()
+        .width(Size::fill())
+        .padding(1.)
+        .corner_radius(4.)
+        .background(p.surface)
+        .border(border(p.border));
     for (i, row) in rows.into_iter().enumerate() {
         if i > 0 {
-            card = card.child(rect().width(Size::fill()).height(Size::px(1.)).background(p.border));
+            card = card.child(
+                rect()
+                    .width(Size::fill())
+                    .height(Size::px(1.))
+                    .background(p.border),
+            );
         }
         card = card.child(row);
     }
@@ -124,7 +155,12 @@ pub fn section(title: &'static str, card: Rect, notes: impl IntoIterator<Item = 
     let p = pal();
     rect()
         .width(Size::fill())
-        .child(text(title, 12.).font_weight(FontWeight::SEMI_BOLD).color(p.body).margin((0., 0., 6., 0.)))
+        .child(
+            text(title, 12.)
+                .font_weight(FontWeight::SEMI_BOLD)
+                .color(p.body)
+                .margin((0., 0., 6., 0.)),
+        )
         .child(card)
         .children(notes)
 }
@@ -142,16 +178,29 @@ pub fn note(with: Icon, message: &'static str) -> Element {
 }
 
 pub fn managed_notice() -> Element {
-    note(Icon::Lock, "Some settings are managed by your organization.")
+    note(
+        Icon::Lock,
+        "Some settings are managed by your organization.",
+    )
 }
 
-pub fn setting_row(label: &'static str, managed: bool, field: bool, control: impl IntoElement, error: Option<&'static str>) -> Element {
+pub fn setting_row(
+    label: &'static str,
+    managed: bool,
+    field: bool,
+    control: impl IntoElement,
+    error: Option<&'static str>,
+) -> Element {
     let p = pal();
     let title = rect()
         .horizontal()
         .cross_align(Alignment::Center)
         .spacing(6.)
-        .child(text(label, 14.).font_weight(FontWeight::MEDIUM).color(p.heading))
+        .child(
+            text(label, 14.)
+                .font_weight(FontWeight::MEDIUM)
+                .color(p.heading),
+        )
         .maybe_child(managed.then(|| icon(Icon::Lock, 14., p.subtle)));
     let control: Element = if field {
         rect()
@@ -181,7 +230,12 @@ pub fn setting_row(label: &'static str, managed: bool, field: bool, control: imp
             rect()
                 .width(Size::fill())
                 .cross_align(Alignment::End)
-                .child(rect().width(Size::px(256.)).padding((4., 0., 4., 0.)).child(text(error, 12.).color(p.error)))
+                .child(
+                    rect()
+                        .width(Size::px(256.))
+                        .padding((4., 0., 4., 0.))
+                        .child(text(error, 12.).color(p.error)),
+                )
         }))
         .into()
 }
@@ -265,7 +319,11 @@ impl Component for Select {
                         })
                         .on_global_pointer_up(move |_| open.set_if_modified(false))
                     })
-                    .child(text(self.options[self.selected], 14.).color(p.heading).width(Size::flex(1.)))
+                    .child(
+                        text(self.options[self.selected], 14.)
+                            .color(p.heading)
+                            .width(Size::flex(1.)),
+                    )
                     .child(icon(Icon::ArrowDown, 16., p.subtle)),
             )
             .maybe_child(open().then(|| {
@@ -286,7 +344,9 @@ impl Component for Select {
 }
 
 pub fn is_url(value: &str, schemes: &[&str]) -> bool {
-    url::Url::parse(value).is_ok_and(|url| url.host_str().is_some_and(|h| !h.is_empty()) && schemes.contains(&url.scheme()))
+    url::Url::parse(value).is_ok_and(|url| {
+        url.host_str().is_some_and(|h| !h.is_empty()) && schemes.contains(&url.scheme())
+    })
 }
 
 /// A text field that saves on Enter and reverts on Escape.
@@ -340,19 +400,35 @@ impl Component for TextSetting {
         };
 
         let current = text.read().clone();
-        let problem = error.read().as_ref().filter(|(draft, _)| *draft == current).map(|(_, problem)| *problem);
+        let problem = error
+            .read()
+            .as_ref()
+            .filter(|(draft, _)| *draft == current)
+            .map(|(_, problem)| *problem);
         let is_draft = current != *value.read();
-        let outline = if problem.is_some() { p.error } else { p.control_border };
+        let outline = if problem.is_some() {
+            p.error
+        } else {
+            p.control_border
+        };
         let input = Input::new(text)
             .width(Size::fill())
             .height(Size::px(36.))
             .enabled(!self.managed)
             .on_submit(submit)
             .on_pre_key_down(revert)
-            .theme_layout(InputLayoutThemePartial::new().corner_radius(4.).padding((8., 0., 8., 12.)))
+            .theme_layout(
+                InputLayoutThemePartial::new()
+                    .corner_radius(4.)
+                    .padding((8., 0., 8., 12.)),
+            )
             .theme_colors(
                 InputColorsThemePartial::new()
-                    .background(if self.managed { Color::TRANSPARENT } else { p.control_bg })
+                    .background(if self.managed {
+                        Color::TRANSPARENT
+                    } else {
+                        p.control_bg
+                    })
                     .focus_background(p.control_bg)
                     .border_fill(outline)
                     .focus_border_fill(if problem.is_some() { p.error } else { p.focus })
@@ -365,7 +441,11 @@ impl Component for TextSetting {
                     .height(Size::px(8.))
                     .margin((0., 8., 0., 12.))
                     .corner_radius(4.)
-                    .background(if is_draft { p.brand } else { Color::TRANSPARENT }),
+                    .background(if is_draft {
+                        p.brand
+                    } else {
+                        Color::TRANSPARENT
+                    }),
             );
         let input = rect()
             .width(Size::fill())
@@ -384,7 +464,8 @@ pub fn confirmation_dialog(
     on_confirm: impl FnMut(Event<PressEventData>) + 'static,
 ) -> Rect {
     let p = pal();
-    let shadow = |y, blur, spread| Shadow::from((0., y, blur, spread, Color::from_argb(26, 0, 0, 0)));
+    let shadow =
+        |y, blur, spread| Shadow::from((0., y, blur, spread, Color::from_argb(26, 0, 0, 0)));
     rect()
         .position(Position::new_global())
         .layer(Layer::Overlay)
@@ -436,7 +517,11 @@ pub fn sidebar(mut page: State<Page>, device_trust: bool) -> impl IntoElement {
             .a11y_alt(label)
             .on_press(move |_| page.set(target))
             .child(icon(with, 16., color))
-            .child(text(label, 14.).font_weight(if active { FontWeight::MEDIUM } else { FontWeight::NORMAL }))
+            .child(text(label, 14.).font_weight(if active {
+                FontWeight::MEDIUM
+            } else {
+                FontWeight::NORMAL
+            }))
     };
     rect()
         .width(Size::px(224.))
@@ -444,10 +529,17 @@ pub fn sidebar(mut page: State<Page>, device_trust: bool) -> impl IntoElement {
         .padding((12., 9., 12., 8.))
         .spacing(2.)
         .background(p.surface)
-        .border(border(p.border).width(BorderWidth { top: 0., right: 1., bottom: 0., left: 0. }))
+        .border(border(p.border).width(BorderWidth {
+            top: 0.,
+            right: 1.,
+            bottom: 0.,
+            left: 0.,
+        }))
         .child(item(Icon::Home, "Overview", Page::Overview))
         .child(item(Icon::Settings, "Settings", Page::Settings))
-        .maybe_child(device_trust.then(|| item(Icon::Certificate, "Device Trust", Page::DeviceTrust)))
+        .maybe_child(
+            device_trust.then(|| item(Icon::Certificate, "Device Trust", Page::DeviceTrust)),
+        )
         .child(item(Icon::Database, "Diagnostics", Page::Diagnostics))
         .child(item(Icon::Information, "About", Page::About))
         .child(
@@ -476,8 +568,15 @@ impl Component for ScrollPage {
             .child(
                 rect()
                     .width(Size::fill())
-                    .padding((20., if content() > viewport() { 35. } else { 20. }, 20., 20.))
-                    .on_sized(move |e: Event<SizedEventData>| content.set_if_modified(e.area.height()))
+                    .padding((
+                        20.,
+                        if content() > viewport() { 35. } else { 20. },
+                        20.,
+                        20.,
+                    ))
+                    .on_sized(move |e: Event<SizedEventData>| {
+                        content.set_if_modified(e.area.height())
+                    })
                     .child(self.0.clone()),
             )
     }
@@ -494,8 +593,14 @@ fn scrollbar(context: ScrollBarContext) -> Element {
     let thumb = (track * viewport / content).max(20.);
     let progress = (-context.scroll_position.y / (content - viewport)).clamp(0., 1.);
     let arrow = |path: &str| {
-        let svg = format!(r#"<svg viewBox="0 0 15 15" xmlns="http://www.w3.org/2000/svg"><path d="{path}" fill="currentColor"/></svg>"#);
-        SvgViewer::new(Bytes::from(svg)).width(Size::px(ARROW)).height(Size::px(ARROW)).color(p.scroll_thumb).show_loader(false)
+        let svg = format!(
+            r#"<svg viewBox="0 0 15 15" xmlns="http://www.w3.org/2000/svg"><path d="{path}" fill="currentColor"/></svg>"#
+        );
+        SvgViewer::new(Bytes::from(svg))
+            .width(Size::px(ARROW))
+            .height(Size::px(ARROW))
+            .color(p.scroll_thumb)
+            .show_loader(false)
     };
     rect()
         .position(Position::new_absolute())

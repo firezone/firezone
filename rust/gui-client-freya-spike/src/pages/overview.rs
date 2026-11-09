@@ -12,12 +12,21 @@ impl Component for Overview {
     fn render(&self) -> impl IntoElement {
         let bridge = use_consume::<Bridge>();
         let p = pal();
-        let small = |s: &'static str| text(s, 12.).width(Size::fill()).color(p.subtle).text_align(TextAlign::Center);
+        let small = |s: &'static str| {
+            text(s, 12.)
+                .width(Size::fill())
+                .color(p.subtle)
+                .text_align(TextAlign::Center)
+        };
         let sign = |label, request: Request| {
             let bridge = bridge.clone();
             button(label, Variant::Primary).on_press(move |_| bridge.send(request.clone()))
         };
-        let strong = |s: &str| Span::new(s.to_owned()).font_weight(FontWeight::BOLD).color(p.heading);
+        let strong = |s: &str| {
+            Span::new(s.to_owned())
+                .font_weight(FontWeight::BOLD)
+                .color(p.heading)
+        };
         let session: Element = match &self.0 {
             None | Some(Session::SignedOut) => column()
                 .child(
@@ -52,14 +61,22 @@ impl Component for Overview {
             column()
                 .max_width(Size::px(512.))
                 .child(super::logo())
-                .child(text("Firezone", 20.).font_weight(FontWeight::SEMI_BOLD).color(p.heading).letter_spacing(-0.5))
+                .child(
+                    text("Firezone", 20.)
+                        .font_weight(FontWeight::SEMI_BOLD)
+                        .color(p.heading)
+                        .letter_spacing(-0.5),
+                )
                 .child(session),
         )
     }
 }
 
 fn column() -> Rect {
-    rect().width(Size::fill()).cross_align(Alignment::Center).spacing(16.)
+    rect()
+        .width(Size::fill())
+        .cross_align(Alignment::Center)
+        .spacing(16.)
 }
 
 /// The `animate-spin` ring, frozen like the screenshot tests freeze it.
@@ -73,5 +90,8 @@ fn spinner(track: Color, arc: Color) -> SvgViewer {
         track.a() as f32 / 255.,
         hex(arc)
     );
-    SvgViewer::new(Bytes::from(svg)).width(Size::px(20.)).height(Size::px(20.)).show_loader(false)
+    SvgViewer::new(Bytes::from(svg))
+        .width(Size::px(20.))
+        .height(Size::px(20.))
+        .show_loader(false)
 }

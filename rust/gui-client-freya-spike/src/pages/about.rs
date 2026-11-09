@@ -13,7 +13,11 @@ const GIT_VERSION: &str = match option_env!("GIT_SHA") {
 
 pub fn about() -> impl IntoElement {
     let p = pal();
-    let link = |label: &'static str, url: String| text(label, 14.).color(p.brand).on_press(move |_| Platform::get().open_url(url.clone()));
+    let link = |label: &'static str, url: String| {
+        text(label, 14.)
+            .color(p.brand)
+            .on_press(move |_| Platform::get().open_url(url.clone()))
+    };
     rect().expanded().center().padding(24.).child(
         rect()
             .cross_align(Alignment::Center)
@@ -28,17 +32,24 @@ pub fn about() -> impl IntoElement {
                     .color(p.heading)
                     .child(text(format!("{APP_VERSION} ("), 18.))
                     .child(
-                        link(&GIT_VERSION[..8], format!("https://github.com/firezone/firezone/commit/{GIT_VERSION}"))
-                            .font_size(18.)
-                            .font_family(MONO)
-                            .text_decoration(TextDecoration::Underline),
+                        link(
+                            &GIT_VERSION[..8],
+                            format!("https://github.com/firezone/firezone/commit/{GIT_VERSION}"),
+                        )
+                        .font_size(18.)
+                        .font_family(MONO)
+                        .text_decoration(TextDecoration::Underline),
                     )
                     .child(text(")", 18.)),
             )
             .child(
-                rect()
-                    .padding((6., 8.))
-                    .child(link("Documentation", "https://www.firezone.dev/kb?utm_source=product".into()).font_weight(FontWeight::MEDIUM)),
+                rect().padding((6., 8.)).child(
+                    link(
+                        "Documentation",
+                        "https://www.firezone.dev/kb?utm_source=product".into(),
+                    )
+                    .font_weight(FontWeight::MEDIUM),
+                ),
             ),
     )
 }

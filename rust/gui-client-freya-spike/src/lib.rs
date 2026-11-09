@@ -23,7 +23,10 @@ pub const FONTS: [(&str, &[u8]); 5] = [
 pub enum Session {
     SignedOut,
     Loading,
-    SignedIn { account_slug: String, actor_name: String },
+    SignedIn {
+        account_slug: String,
+        actor_name: String,
+    },
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -162,7 +165,10 @@ impl Bridge {
 }
 
 /// UI side of the glue: apply view-model updates from the Controller to the global state.
-pub async fn apply_updates(mut updates: mpsc::UnboundedReceiver<ViewModel>, mut vm: State<ViewModel>) {
+pub async fn apply_updates(
+    mut updates: mpsc::UnboundedReceiver<ViewModel>,
+    mut vm: State<ViewModel>,
+) {
     while let Some(new) = updates.recv().await {
         vm.set(new);
     }
@@ -188,36 +194,55 @@ pub fn app() -> impl IntoElement {
     };
     let content = match current {
         Page::Overview => pages::Overview(vm.session).into_element(),
-        Page::Settings => pages::GeneralSettingsPage(vm.general_settings.unwrap_or_default()).into_element(),
-        Page::DeviceTrust => pages::device_trust(&vm.certificate.unwrap_or_default()).into_element(),
-        Page::Diagnostics => pages::Diagnostics { log_count: vm.log_count, log_filter: vm.log_filter.unwrap_or_default() }.into_element(),
+        Page::Settings => {
+            pages::GeneralSettingsPage(vm.general_settings.unwrap_or_default()).into_element()
+        }
+        Page::DeviceTrust => {
+            pages::device_trust(&vm.certificate.unwrap_or_default()).into_element()
+        }
+        Page::Diagnostics => pages::Diagnostics {
+            log_count: vm.log_count,
+            log_filter: vm.log_filter.unwrap_or_default(),
+        }
+        .into_element(),
         Page::About => pages::about().into_element(),
         Page::ColorPalette => pages::color_palette().into_element(),
     };
 
     // A 1px frame of `border-strong` around the rounded `.app-shell`.
     rect().expanded().background(p.outside).child(
-        rect().expanded().corner_radius(8.).background(p.border_strong).padding(1.).child(
-            rect()
-                .expanded()
-                .corner_radius(7.)
-                .overflow(Overflow::Clip)
-                .background(p.surface)
-                .color(p.body)
-                .font_family(SANS)
-                .font_size(14.)
-                .text_height(TextHeightBehavior::All)
-                .child(titlebar(title))
-                .child(
-                    rect()
-                        .width(Size::fill())
-                        .height(Size::flex(1.))
-                        .content(Content::Flex)
-                        .horizontal()
-                        .child(components::sidebar(page, device_trust))
-                        .child(rect().width(Size::flex(1.)).height(Size::fill()).background(p.canvas).child(content)),
-                ),
-        ),
+        rect()
+            .expanded()
+            .corner_radius(8.)
+            .background(p.border_strong)
+            .padding(1.)
+            .child(
+                rect()
+                    .expanded()
+                    .corner_radius(7.)
+                    .overflow(Overflow::Clip)
+                    .background(p.surface)
+                    .color(p.body)
+                    .font_family(SANS)
+                    .font_size(14.)
+                    .text_height(TextHeightBehavior::All)
+                    .child(titlebar(title))
+                    .child(
+                        rect()
+                            .width(Size::fill())
+                            .height(Size::flex(1.))
+                            .content(Content::Flex)
+                            .horizontal()
+                            .child(components::sidebar(page, device_trust))
+                            .child(
+                                rect()
+                                    .width(Size::flex(1.))
+                                    .height(Size::fill())
+                                    .background(p.canvas)
+                                    .child(content),
+                            ),
+                    ),
+            ),
     )
 }
 
@@ -233,7 +258,11 @@ fn titlebar(title: &'static str) -> impl IntoElement {
         .background(p.surface)
         .border(components::border_bottom(p.border))
         .window_drag()
-        .child(text(title, 14.).font_weight(FontWeight::SEMI_BOLD).color(p.heading))
+        .child(
+            text(title, 14.)
+                .font_weight(FontWeight::SEMI_BOLD)
+                .color(p.heading),
+        )
         .child(
             components::icon_button(icon(Icon::Close, 16., p.body), "Close window")
                 .on_press(|_| Platform::get().close_window(Platform::window_id())),

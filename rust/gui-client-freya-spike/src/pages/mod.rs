@@ -17,5 +17,7 @@ use freya::prelude::*;
 const LOGO: &[u8] = include_bytes!("../../assets/logo.png");
 
 fn logo() -> ImageViewer {
-    ImageViewer::new(LOGO).width(Size::px(80.)).height(Size::px(80.))
+    ImageViewer::new(LOGO)
+        .width(Size::px(80.))
+        .height(Size::px(80.))
 }
