@@ -218,20 +218,21 @@ defmodule Portal.Changes.Hooks.AccountsTest do
   end
 
   describe "update/2 Stripe sync" do
-    test "enqueues a Stripe sync when the slug changes" do
-      account_id = Ecto.UUID.generate()
-      base = %{"id" => account_id, "is_disabled" => false}
+    test "enqueues a Stripe sync when the slug or name changes" do
+      for field <- ["slug", "name"] do
+        account_id = Ecto.UUID.generate()
+        base = %{"id" => account_id, "is_disabled" => false}
 
-      assert :ok == on_update(0, Map.put(base, "slug", "old_slug"), Map.put(base, "slug", "new_slug"))
+        assert :ok == on_update(0, Map.put(base, field, "old"), Map.put(base, field, "new"))
 
-      assert_enqueued(worker: Portal.Workers.SyncStripeCustomer, args: %{account_id: account_id})
+        assert_enqueued(worker: Portal.Workers.SyncStripeCustomer, args: %{account_id: account_id})
+      end
     end
 
     test "does not enqueue a Stripe sync for other changes" do
       account_id = Ecto.UUID.generate()
       base = %{"id" => account_id, "is_disabled" => false, "slug" => "same", "name" => "Same"}
 
-      assert :ok == on_update(0, Map.put(base, "name", "Old"), Map.put(base, "name", "New"))
       assert :ok == on_update(0, Map.put(base, "legal_name", "Old"), Map.put(base, "legal_name", "New"))
 
       refute_enqueued(worker: Portal.Workers.SyncStripeCustomer)

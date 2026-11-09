@@ -181,7 +181,7 @@ defmodule Portal.Ops do
 
   @doc """
   Queues a Stripe sync for every account with a Stripe customer, so each
-  customer gets the account ID and current slug of its account. The jobs are
+  customer gets the account ID, name and slug of its account. The jobs are
   spread out to stay under the Stripe rate limit. Run it once per region.
   Running it again only sends the same values again.
   """

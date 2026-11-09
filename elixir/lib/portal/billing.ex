@@ -497,6 +497,7 @@ defmodule Portal.Billing do
     with {:ok, _customer} <-
            APIClient.update_customer_metadata(secret_key, customer_id, %{
              account_id: account.id,
+             account_name: account.name,
              account_slug: account.slug
            }) do
       {:ok, account}
@@ -834,8 +835,8 @@ defmodule Portal.Billing do
   end
 
   @doc """
-  Sends the account ID and current slug of the account to the metadata of its
-  Stripe customer. Nothing else on the customer changes.
+  Sends the account ID, current name and current slug of the account to the
+  metadata of its Stripe customer. Nothing else on the customer changes.
 
   It reads the account again under the lock that Stripe events of the
   customer take, so a slow send for an older change cannot land in Stripe
