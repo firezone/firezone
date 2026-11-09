@@ -21,6 +21,8 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
 
   private var getLogFolderSizeTask: CancellableTask?
   private var logCleanupTask: CancellableTask?
+  /// The managed `allowedApplications` value the content filter policy is built from.
+  private var allowedApplications: String?
 
   private var logExportState: LogExportState = .idle
   // swiftlint:disable:next no_userdefaults_standard - NetworkExtension DI entry point uses shared UserDefaults store
@@ -157,6 +159,8 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
       ?? ConfigurationDefaults.additionalHostCandidates)
       .split(separator: ",")
       .map(String.init)
+    allowedApplications = providerConfiguration.withMDMOverride(
+      forKey: Configuration.Keys.allowedApplications)
 
     Telemetry.setEnvironmentOrClose(apiURL)
 
@@ -254,6 +258,10 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
 
     // Cancel command consumer - CancellableTask handles cancellation on deinit
     commandConsumerTask = nil
+
+    Self.publishAppFilterPolicy(
+      AppFilterPolicy(
+        allowedApplications: allowedApplications, protectedRoutes: [], exemptAddresses: []))
 
     // handles both connlib-initiated and user-initiated stops
     let adapter = self.adapter
@@ -594,9 +602,26 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
 
     case .applyNetworkSettings(let payload, let responseSender):
       let neSettings = payload.build()
-      setTunnelNetworkSettings(neSettings) { error in
+      setTunnelNetworkSettings(neSettings) { [allowedApplications] error in
+        if error == nil {
+          Self.publishAppFilterPolicy(
+            AppFilterPolicy(
+              allowedApplications: allowedApplications,
+              protectedRoutes: payload.routeCidrs,
+              exemptAddresses: payload.dnsServerAddresses
+            ))
+        }
         responseSender.send(error?.localizedDescription)
       }
+    }
+  }
+
+  /// Hands the content filter what the tunnel now routes; with no routes, nothing is filtered.
+  fileprivate static func publishAppFilterPolicy(_ policy: AppFilterPolicy) {
+    do {
+      try policy.save()
+    } catch {
+      Log.warning("Failed to publish the application filter policy: \(error)")
     }
   }
 }

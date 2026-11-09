@@ -170,16 +170,8 @@ class TunnelService : VpnService() {
         }
 
     private fun vpnBuilder(families: Set<AddressFamily>): Builder {
-        fun handleApplications(
-            appRestrictions: Bundle,
-            key: String,
-            action: (String) -> Unit,
-        ) {
-            appRestrictions.getString(key)?.takeIf { it.isNotBlank() }?.split(",")?.forEach { p ->
-                p.trim().takeIf { it.isNotBlank() }?.let(action)
-            }
-        }
-
+        val allowedApplications = managedApplicationList(appRestrictions, "allowedApplications")
+        val disallowedApplications = managedApplicationList(appRestrictions, "disallowedApplications")
         val routes = tunnelRoutes.filter { familyOf(it.address) in families }
 
         return Builder()
@@ -199,16 +191,18 @@ class TunnelService : VpnService() {
                 setSession(SESSION_NAME)
                 setMtu(MTU)
 
-                handleApplications(appRestrictions, "allowedApplications") { addAllowedApplication(it) }
-                handleApplications(
-                    appRestrictions,
-                    "disallowedApplications",
-                ) { addDisallowedApplication(it) }
+                // Android rejects a Builder that mixes allowed and disallowed applications, and an
+                // allow list already keeps every unlisted application, GMS included, off the tunnel.
+                if (allowedApplications.isNotEmpty()) {
+                    allowedApplications.forEach { addAllowedApplication(it) }
+                } else {
+                    disallowedApplications.forEach { addDisallowedApplication(it) }
 
-                // Never route GCM notifications through the tunnel.
-                addDisallowedApplication("com.google.android.gms") // Google Mobile Services
-                addDisallowedApplication("com.google.firebase.messaging") // Firebase Cloud Messaging
-                addDisallowedApplication("com.google.android.gsf") // Google Services Framework
+                    // Never route GCM notifications through the tunnel.
+                    addDisallowedApplication("com.google.android.gms") // Google Mobile Services
+                    addDisallowedApplication("com.google.firebase.messaging") // Firebase Cloud Messaging
+                    addDisallowedApplication("com.google.android.gsf") // Google Services Framework
+                }
 
                 routes.forEach {
                     addRoute(it.address, it.prefix)
@@ -918,6 +912,18 @@ class TunnelService : VpnService() {
 
         private val MANAGED_CONFIGURATIONS =
             arrayOf("token", "allowedApplications", "disallowedApplications", "deviceName")
+
+        /** The comma-separated package names a managed configuration lists under [key]. */
+        fun managedApplicationList(
+            appRestrictions: Bundle,
+            key: String,
+        ): List<String> =
+            appRestrictions
+                .getString(key)
+                .orEmpty()
+                .split(",")
+                .map { it.trim() }
+                .filter { it.isNotBlank() }
 
         @Volatile
         private var activeService: TunnelService? = null

@@ -397,6 +397,8 @@ public final class Store: ObservableObject {
           Log.debug("Startup: no VPN configuration, skipping the remaining startup")
           return
         }
+        Log.debug("Startup: syncContentFilter")
+        await syncContentFilter()
         Log.debug("Startup: loadDeviceTrustCertificateSummary")
         await loadDeviceTrustCertificateSummary()
         #if os(macOS)
@@ -558,9 +560,23 @@ public final class Store: ObservableObject {
 
     try await manager().loadConfiguration(into: configuration, userDefaults: userDefaults)
     await seedInitialSyncedSnapshot()
+    await syncContentFilter()
 
     try await setupTunnelObservers()
     SharedAccess.markAppRunning()
+  }
+
+  /// Installs the content filter while an application policy is configured, and removes it otherwise.
+  ///
+  /// A failure here is logged, not thrown: the tunnel must still come up for users without a policy.
+  private func syncContentFilter() async {
+    #if os(macOS)
+      do {
+        try await ContentFilterManager.sync(enabled: configuration.isApplicationFilterEnabled)
+      } catch {
+        Log.warning("Failed to sync the content filter: \(error)")
+      }
+    #endif
   }
 
   func manager() throws -> VPNConfigurationManager {

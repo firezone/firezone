@@ -14,6 +14,7 @@ pub fn load_mdm_settings() -> Result<MdmSettings> {
         start_on_login: registry_values.startOnLogin,
         check_for_updates: registry_values.checkForUpdates,
         support_url: registry_values.supportURL.and_then(|url| url.parse().ok()),
+        allowed_applications: registry_values.allowedApplications,
     })
 }
 
@@ -31,4 +32,5 @@ struct MdmRegistryValues {
     startOnLogin: Option<bool>,
     checkForUpdates: Option<bool>,
     supportURL: Option<String>,
+    allowedApplications: Option<String>,
 }

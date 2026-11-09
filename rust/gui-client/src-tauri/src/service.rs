@@ -6,6 +6,7 @@ use crate::{
     },
 };
 use anyhow::{Context as _, ErrorExt as _, Result, bail};
+use app_filter::{Policy, ProtectedDestinations};
 use backoff::ExponentialBackoffBuilder;
 use bin_shared::{
     DnsControlMethod, DnsController, ResumeNotifier, TunDeviceManager,
@@ -256,6 +257,8 @@ struct Handler<'a> {
     dns_notifier: BoxStream<'static, Result<()>>,
     network_notifier: BoxStream<'static, Result<()>>,
     resume_notifier: ResumeNotifier,
+    /// Lives exactly as long as the session it guards, so the OS never filters a tunnel that is down.
+    app_filter: Option<app_filter::Enforcer>,
 }
 
 #[derive(Default, Debug)]
@@ -532,6 +535,7 @@ impl<'a> Handler<'a> {
             dns_notifier,
             network_notifier,
             resume_notifier,
+            app_filter: None,
         })
     }
 
@@ -704,6 +708,7 @@ impl<'a> Handler<'a> {
         match msg {
             client_shared::Event::Disconnected(error) => {
                 self.session = Session::None;
+                self.app_filter = None;
                 telemetry::set_account_slug(None);
                 self.dns_controller.deactivate()?;
                 self.send_ipc(ServerMsg::OnDisconnect {
@@ -721,12 +726,23 @@ impl<'a> Handler<'a> {
                 self.dns_controller
                     .set_dns(config.dns_by_sentinel.sentinel_ips(), config.search_domain)
                     .await?;
-                self.tun_device
-                    .set_routes(config.routes.into_iter().filter(|r| match r {
+                let routes = config
+                    .routes
+                    .into_iter()
+                    .filter(|r| match r {
                         IpNetwork::V4(_) => tun_ip_stack.supports_ipv4(),
                         IpNetwork::V6(_) => tun_ip_stack.supports_ipv6(),
-                    }))
-                    .await?;
+                    })
+                    .collect::<Vec<_>>();
+                self.tun_device.set_routes(routes.iter().copied()).await?;
+                if let Some(app_filter) = self.app_filter.as_mut() {
+                    app_filter.apply(
+                        &ProtectedDestinations::new(routes, config.dns_by_sentinel.sentinel_ips()),
+                        &app_filter::Interface {
+                            luid: self.tun_device.luid(),
+                        },
+                    )?;
+                }
                 self.dns_controller.flush()?;
             }
             client_shared::Event::AllGatewaysOffline { resource_id } => {
@@ -808,6 +824,7 @@ impl<'a> Handler<'a> {
             }
             ClientMsg::Disconnect => {
                 self.session = Session::None;
+                self.app_filter = None;
                 telemetry::set_account_slug(None);
                 self.dns_controller.deactivate()?;
 
@@ -922,6 +939,12 @@ impl<'a> Handler<'a> {
     ) -> Result<Session> {
         let started_at = Instant::now();
 
+        // Refuse to bring up an unfiltered tunnel when a filter is required.
+        let app_filter = app_filter::Enforcer::new(&Policy::from_mdm_value(
+            self.mdm_settings.allowed_applications.as_deref(),
+        ))
+        .context("Failed to set up the application filter")?;
+
         let device_id =
             device_id::get_or_create_client().context("Failed to get-or-create device ID")?;
 
@@ -989,6 +1012,7 @@ impl<'a> Handler<'a> {
             .make_tun()
             .context("Failed to create TUN device")?;
         connlib.set_tun(tun);
+        self.app_filter = Some(app_filter);
 
         Ok(Session::Creating {
             event_stream,
