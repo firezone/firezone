@@ -64,7 +64,7 @@ impl Io {
         set_non_blocking(fd)?;
         raise_recv_buffer(fd);
         raise_max_pending_packets(fd);
-        let max_coalesced_len = max_coalesced_len(fd);
+        let max_coalesced_len: Option<usize> = None;
         let workers = match sys::batch_syscalls() {
             Some(syscalls) => tun::Workers::spawn(
                 move |outbound_rx| {
@@ -199,6 +199,7 @@ fn raise_max_pending_packets(fd: RawFd) {
 ///
 /// The utun's netif drops any injected packet larger than its slot size.
 /// NetworkExtension does not let us change the slot size, so we coalesce up to whatever it is.
+#[allow(dead_code)]
 fn max_coalesced_len(fd: RawFd) -> Option<usize> {
     let slot_size = match get_sockopt::<u32>(fd, libc::SYSPROTO_CONTROL, UTUN_OPT_SLOT_SIZE) {
         Ok(slot_size) => slot_size as usize,
