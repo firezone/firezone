@@ -31,7 +31,6 @@ defmodule Portal.Analytics.ConfigurationChanges do
     "actors" => "actor",
     "api_tokens" => "api_token",
     "device_tokens" => "device_token",
-    "gateway_tokens" => "gateway_token",
     "groups" => "group",
     "policies" => "policy",
     "resources" => "resource",

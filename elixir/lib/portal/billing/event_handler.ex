@@ -657,8 +657,7 @@ defmodule Portal.Billing.EventHandler do
 
     %Portal.Site{
       account_id: account.id,
-      managed_by: :account,
-      gateway_tokens: []
+      managed_by: :account
     }
     |> cast(attrs, [:name])
     |> validate_required([:name])
