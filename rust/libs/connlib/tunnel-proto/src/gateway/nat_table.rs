@@ -51,6 +51,14 @@ pub(crate) const ICMP_TTL: Duration = Duration::from_secs(60 * 2);
 
 pub(crate) const UNCONFIRMED_TTL: Duration = Duration::from_secs(60);
 
+/// How many NAT entries we keep at most for one client.
+///
+/// This is well below the 65535 ports of one protocol and IP, so the search for a free port always ends quickly.
+///
+/// When this limit is hit, we drop the packets of new flows until old entries expire.
+/// Packets of existing flows are not affected.
+const MAX_ENTRIES: usize = 8192;
+
 impl NatTable {
     pub(crate) fn poll_timeout(&self) -> Option<Instant> {
         self.state_by_inside
@@ -104,6 +112,8 @@ impl NatTable {
         let dst = packet.destination();
 
         let inside = Inside(src, dst);
+
+        anyhow::ensure!(self.table.len() < MAX_ENTRIES, "NAT table is full");
 
         // Find the first available public port, starting from the port of the to-be-mapped packet.
         // This will re-assign the same port in most cases, even after the mapping expires.
@@ -358,6 +368,50 @@ mod tests {
     use super::*;
     use ip_packet::{IpPacket, make::TcpFlags, proptest::*};
     use proptest::prelude::*;
+
+    #[test]
+    fn rejects_new_entries_when_full() {
+        let mut now = Instant::now();
+        let mut table = NatTable::default();
+        let outside_dst = IpAddr::from(Ipv4Addr::new(1, 1, 1, 1));
+
+        let udp_packet = |sport: usize| {
+            ip_packet::make::udp_packet(
+                Ipv4Addr::new(100, 64, 0, 1),
+                Ipv4Addr::new(100, 96, 0, 1),
+                u16::try_from(sport).unwrap(),
+                53,
+                &[],
+            )
+            .unwrap()
+        };
+
+        for sport in 1..=MAX_ENTRIES {
+            table
+                .translate_outgoing(&udp_packet(sport), outside_dst, now)
+                .unwrap();
+        }
+
+        assert!(
+            table
+                .translate_outgoing(&udp_packet(MAX_ENTRIES + 1), outside_dst, now)
+                .is_err()
+        );
+        assert!(
+            table
+                .translate_outgoing(&udp_packet(1), outside_dst, now)
+                .is_ok()
+        );
+
+        now += UNCONFIRMED_TTL;
+        table.handle_timeout(now);
+
+        assert!(
+            table
+                .translate_outgoing(&udp_packet(MAX_ENTRIES + 1), outside_dst, now)
+                .is_ok()
+        );
+    }
 
     #[test_strategy::proptest(ProptestConfig { max_local_rejects: 10_000, max_global_rejects: 10_000, ..ProptestConfig::default() })]
     fn translates_back_and_forth_packet(
