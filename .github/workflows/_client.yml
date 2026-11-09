@@ -210,7 +210,6 @@ jobs:
       sha: ${{ inputs.sha }}
       profile: ${{ inputs.profile }}
       stage: ${{ inputs.stage }}
-      upload_binary: ${{ inputs.profile == 'release' && inputs.stage == 'release' && github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}
 
   linux-release-assets:
     name: client-linux-${{ matrix.arch }}
