@@ -12,7 +12,7 @@ impl Component for Overview {
     fn render(&self) -> impl IntoElement {
         let bridge = use_consume::<Bridge>();
         let p = pal();
-        let small = |s: &'static str| text(s, 12.).color(p.subtle).text_align(TextAlign::Center);
+        let small = |s: &'static str| text(s, 12.).width(Size::fill()).color(p.subtle).text_align(TextAlign::Center);
         let sign = |label, request: Request| {
             let bridge = bridge.clone();
             button(label, Variant::Primary).on_press(move |_| bridge.send(request.clone()))
@@ -22,6 +22,7 @@ impl Component for Overview {
             None | Some(Session::SignedOut) => column()
                 .child(
                     text("You can sign in by clicking the Firezone icon in the taskbar or by clicking the button below.", 14.)
+                        .width(Size::fill())
                         .text_align(TextAlign::Center),
                 )
                 .child(sign("Sign in", Request::SignIn))

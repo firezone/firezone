@@ -453,8 +453,8 @@ pub fn sidebar(mut page: State<Page>, device_trust: bool) -> impl IntoElement {
         .child(
             rect()
                 .width(Size::fill())
-                .margin((12., 0., 0., 0.))
-                .padding((12., 0., 0., 0.))
+                .margin((10., 0., 0., 0.))
+                .padding((13., 0., 0., 0.))
                 .border(border_top(p.border))
                 .child(item(Icon::Palette, "Color Palette", Page::ColorPalette)),
         )
