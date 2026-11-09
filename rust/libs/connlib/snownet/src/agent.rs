@@ -7,6 +7,7 @@ use std::time::Instant;
 use is::stun::StunPacket;
 use is::{Candidate, IceAgent, IceAgentEvent, IceConnectionState, IceCreds};
 
+use crate::candidate::HostCandidatePreference;
 use crate::{IceConfig, IceRole};
 
 #[derive(derive_more::Debug)]
@@ -106,12 +107,24 @@ impl Agent {
         }
     }
 
-    pub(crate) fn add_local_candidate(&mut self, c: Candidate, now: Instant) -> Option<Candidate> {
+    /// The ICE agent consults its own copy of `preference` for the local preference.
+    pub(crate) fn add_local_candidate(
+        &mut self,
+        c: Candidate,
+        preference: &HostCandidatePreference,
+        now: Instant,
+    ) -> Option<Candidate> {
         match self {
             Self::Ice(a) => a.add_local_candidate(c).cloned(),
-            Self::Frostlink(agent) => agent
-                .add_local_candidate(crate::candidate::to_frostlink(&c), now)
-                .then_some(c),
+            Self::Frostlink(agent) => {
+                let candidate = crate::candidate::to_frostlink(&c)
+                    .with_local_preference(preference.frostlink_local_preference(&c));
+
+                agent
+                    .add_local_candidate(candidate, now)
+                    .then(|| crate::candidate::from_frostlink(&candidate))
+                    .flatten()
+            }
         }
     }
 
