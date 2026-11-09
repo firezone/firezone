@@ -96,12 +96,24 @@ impl OwnedSocket {
     pub(crate) fn apply_buffer_sizes(&self, send: usize, recv: usize, port: u16) {
         let socket = socket2::SockRef::from(&self.socket);
 
+        let (send_forced, recv_forced) = cfg_select! {
+            any(target_os = "linux", target_os = "android") => {(
+                force_buffer_size(&socket, libc::SO_SNDBUFFORCE, send),
+                force_buffer_size(&socket, libc::SO_RCVBUFFORCE, recv),
+            )}
+            _ => { (false, false) }
+        };
+
         // Apply each direction independently: failing to set one buffer size must not prevent the other from being applied.
-        if let Err(e) = apply_buffer_size(send, |size| socket.set_send_buffer_size(size)) {
+        if !send_forced
+            && let Err(e) = apply_buffer_size(send, |size| socket.set_send_buffer_size(size))
+        {
             tracing::warn!(requested_send_buffer_size = %send, "Failed to set send buffer size: {e}");
         }
 
-        if let Err(e) = apply_buffer_size(recv, |size| socket.set_recv_buffer_size(size)) {
+        if !recv_forced
+            && let Err(e) = apply_buffer_size(recv, |size| socket.set_recv_buffer_size(size))
+        {
             tracing::warn!(requested_recv_buffer_size = %recv, "Failed to set recv buffer size: {e}");
         }
 
@@ -110,6 +122,35 @@ impl OwnedSocket {
 
         tracing::debug!(requested_send_buffer_size = %send, %send_buffer_size, requested_recv_buffer_size = %recv, %recv_buffer_size, %port, "UDP socket buffer sizes");
     }
+}
+
+/// Sets a buffer size past `net.core.{w,r}mem_max`, which requires `CAP_NET_ADMIN`.
+#[cfg(any(target_os = "linux", target_os = "android"))]
+fn force_buffer_size(socket: &socket2::SockRef<'_>, option: libc::c_int, size: usize) -> bool {
+    use std::os::fd::AsRawFd as _;
+
+    let value = libc::c_int::try_from(size).unwrap_or(libc::c_int::MAX);
+
+    // SAFETY: `value` outlives the call and the option length matches its type.
+    let ret = unsafe {
+        libc::setsockopt(
+            socket.as_raw_fd(),
+            libc::SOL_SOCKET,
+            option,
+            &value as *const libc::c_int as *const libc::c_void,
+            std::mem::size_of::<libc::c_int>() as libc::socklen_t,
+        )
+    };
+
+    if ret != 0 {
+        let error = io::Error::last_os_error();
+
+        tracing::debug!(%error, %option, requested_size = %size, "Failed to force socket buffer size");
+
+        return false;
+    }
+
+    true
 }
 
 /// Opts a socket into URO unless broken coalescing has been observed (see [`crate::uro`]).

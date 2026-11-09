@@ -2793,7 +2793,6 @@ dependencies = [
  "rustls",
  "sd-notify",
  "secrecy",
- "socket-factory",
  "telemetry",
  "tokio",
  "tracing",

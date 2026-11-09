@@ -38,7 +38,6 @@ jobs:
       CLIENT_TAG: ${{ github.sha }}
       RELAY_IMAGE: "ghcr.io/firezone/perf/relay"
       RELAY_TAG: ${{ github.sha }}
-      FIREZONE_INC_BUF: true
     strategy:
       matrix:
         test:
@@ -64,8 +63,6 @@ jobs:
         run: docker compose run --pull never elixir /bin/sh -c 'mix ecto.migrate && mix ecto.seed'
       - name: Tune Linux kernel
         run: |
-          sudo sysctl -w net.core.wmem_max=2097152            # 2 MB
-          sudo sysctl -w net.core.rmem_max=16777216           # 16 MB
           sudo sysctl -w net.core.netdev_max_backlog=100000   # matches the netem limit
           sudo sysctl -w net.core.netdev_budget=5000          # drain more per softirq poll
       - name: Start docker compose in the background
