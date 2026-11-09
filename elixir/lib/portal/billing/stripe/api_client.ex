@@ -14,15 +14,11 @@ defmodule Portal.Billing.Stripe.APIClient do
     request(api_token, :post, "customers", body)
   end
 
-  def update_customer(api_token, customer_id, name, metadata) do
-    metadata_params =
+  def update_customer_metadata(api_token, customer_id, metadata) do
+    body =
       for {key, value} <- metadata, into: %{} do
         {"metadata[#{key}]", value}
       end
-
-    body =
-      metadata_params
-      |> Map.put("name", name)
       |> URI.encode_query(:www_form)
 
     request(api_token, :post, "customers/#{customer_id}", body)
@@ -104,8 +100,18 @@ defmodule Portal.Billing.Stripe.APIClient do
       {"stripe-version", "2023-10-16"}
     ]
 
+    # Every retry of this call sends the same idempotency key, so Stripe
+    # returns the saved result of a POST it already ran instead of running it
+    # again, and a retried POST cannot create a second customer or subscription.
     req_opts =
-      [method: method, url: url, headers: headers, body: body]
+      [
+        method: method,
+        url: url,
+        headers: headers ++ idempotency_key_header(method),
+        body: body,
+        retry: &retry?/2,
+        max_retries: 2
+      ]
       |> Keyword.merge(fetch_config(:req_opts) || [])
 
     case Req.request(req_opts) do
@@ -122,6 +128,29 @@ defmodule Portal.Billing.Stripe.APIClient do
         {:error, reason}
     end
   end
+
+  # Stripe replays the saved result of a keyed POST, a 500 included, so only
+  # failures where Stripe did not answer, or says a retry can help, are retried.
+  # DELETE has no idempotency key and is never retried.
+  defp retry?(%Req.Request{method: method}, response_or_exception) when method in [:get, :post] do
+    retryable?(response_or_exception)
+  end
+
+  defp retry?(_request, _response_or_exception), do: false
+
+  defp retryable?(%Req.Response{status: status} = response) do
+    case Req.Response.get_header(response, "stripe-should-retry") do
+      ["true"] -> true
+      ["false"] -> false
+      _ -> status in [409, 429]
+    end
+  end
+
+  defp retryable?(%Req.TransportError{reason: reason}), do: reason in [:timeout, :econnrefused, :closed]
+  defp retryable?(_exception), do: false
+
+  defp idempotency_key_header(:post), do: [{"idempotency-key", Ecto.UUID.generate()}]
+  defp idempotency_key_header(_method), do: []
 
   defp put_if_not_nil(map, _key, nil), do: map
   defp put_if_not_nil(map, key, value), do: Map.put(map, key, value)

@@ -177,10 +177,13 @@ defmodule Portal.Ops do
     end
   end
 
+  @stripe_syncs_per_second 10
+
   @doc """
   Queues a Stripe sync for every account with a Stripe customer, so each
-  customer gets the current name and slug of its account. Run it once per
-  region. Running it again only sends the same values again.
+  customer gets the account ID, name and slug of its account. The jobs are
+  spread out to stay under the Stripe rate limit. Run it once per region.
+  Running it again only sends the same values again.
   """
   def sync_stripe_customers do
     if Billing.enabled?() do
@@ -192,7 +195,8 @@ defmodule Portal.Ops do
 
       case IO.gets("") do
         answer when answer in ["y\n", "Y\n"] ->
-          count = account_ids |> Enum.map(&SyncStripeCustomer.new(%{account_id: &1})) |> Oban.insert_all() |> length()
+          count = queue_stripe_syncs(account_ids)
+
           IO.puts("Queued #{count} Stripe sync job(s).")
           {:ok, count}
 
@@ -607,6 +611,16 @@ defmodule Portal.Ops do
   defp send_window_job_opts(first_send_at, window_index) do
     scheduled_at = DateTime.add(first_send_at, window_index * @send_window_seconds, :second)
     [scheduled_at: scheduled_at]
+  end
+
+  defp queue_stripe_syncs(account_ids) do
+    account_ids
+    |> Enum.with_index()
+    |> Enum.map(fn {account_id, index} ->
+      SyncStripeCustomer.new(%{account_id: account_id}, schedule_in: div(index, @stripe_syncs_per_second))
+    end)
+    |> Oban.insert_all()
+    |> length()
   end
 
   defp claim_slugs(slugs) do
