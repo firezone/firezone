@@ -53,6 +53,7 @@ type InitId = (u32, u128);
 
 pub(crate) struct PairState {
     pub(crate) kinds: (crate::CandidateKind, crate::CandidateKind),
+    pub(crate) priorities: (u32, u32),
     pub(crate) local_family_matched: bool,
     pub(crate) rtt: Option<Rtt>,
     /// Probes awaiting a reply. Several can be outstanding on a high-RTT path
@@ -272,6 +273,7 @@ impl Agent {
             for ((_, remote_addr), state) in self.pairs.iter_mut() {
                 if *remote_addr == c.addr() {
                     state.kinds.1 = c.kind();
+                    state.priorities.1 = c.priority();
                 }
             }
             return;
@@ -317,6 +319,7 @@ impl Agent {
 
         let mut state = PairState {
             kinds: (local.kind(), remote.kind()),
+            priorities: (local.priority(), remote.priority()),
             local_family_matched: local.is_family_matched(),
             rtt: None,
             inflight: Vec::new(),
@@ -939,8 +942,8 @@ impl Agent {
 
     /// Runs on every probe reply. Probes can only *promote*: the best measured
     /// pair takes over an empty primary, or displaces the incumbent only when it
-    /// scores strictly better (a better tier, or the same tier by a clear RTT
-    /// margin). A worse pair never demotes a working primary.
+    /// scores strictly better (a better tier or priority, or the same of both by
+    /// a clear RTT margin). A worse pair never demotes a working primary.
     fn select_primary(&mut self) {
         let Some(best) = self
             .pairs
@@ -1025,6 +1028,7 @@ mod tests {
         let t0 = Instant::now();
         let mut state = PairState {
             kinds: (CandidateKind::Host, CandidateKind::Host),
+            priorities: (0, 0),
             local_family_matched: true,
             rtt: None,
             inflight: Vec::new(),
