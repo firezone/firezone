@@ -34,10 +34,8 @@ linux*)
     (cd .. && cargo generate-rpm --package gui-client/src-tauri --payload-compress gzip --output "${packages[1]}")
     ;;
 msys* | cygwin*)
-    cp "$release/firezone-gui-client.exe" "$release/Firezone.exe"
-
-    # Tauri signs `Firezone.exe` and the MSI itself, after patching the binary.
     ../../scripts/build/sign.sh \
+        "$release/firezone-gui-client.exe" \
         "$release/firezone-client-tunnel.exe" \
         "$release/register-sparse.exe" \
         "$release/firezone-cli.exe"
@@ -54,8 +52,22 @@ msys* | cygwin*)
     "$makeappx" pack //d "$staging" //p "$release/firezone.msix" //nv //o
     ../../scripts/build/sign.sh "$release/firezone.msix"
 
-    pnpm exec tauri bundle
-    packages=("$release"/bundle/msi/*.msi)
+    case "$(rustc -vV | sed -n 's/^host: //p')" in
+    aarch64-*) arch=arm64 ;;
+    *) arch=x64 ;;
+    esac
+    version=$(cargo pkgid -p firezone-gui-client)
+    target_dir=$(cygpath -aw "$release")
+    wixobj=$(mktemp -d)
+    # Tauri's bundler also ran WiX with only these environment variables.
+    wix() { env -i SYSTEMROOT="$SYSTEMROOT" TMP="$TMP" TEMP="$TEMP" "$(command -v "$1")" "${@:2}"; }
+    wix candle -nologo -arch "$arch" -ext WixUtilExtension \
+        -dVersion="${version##*@}" -dTargetDir="$target_dir" -I"$target_dir" \
+        -out "$(cygpath -aw "$wixobj")\\" src-tauri/win_files/*.wxs
+    wix light -nologo -ext WixUIExtension -ext WixUtilExtension -cultures:en-us \
+        -out "$release/firezone-client-gui.msi" "$wixobj"/*.wixobj
+    ../../scripts/build/sign.sh "$release/firezone-client-gui.msi"
+    packages=("$release/firezone-client-gui.msi")
     ;;
 esac
 

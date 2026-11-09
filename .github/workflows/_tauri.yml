@@ -231,7 +231,7 @@ jobs:
         timeout-minutes: 15
       - uses: ./.github/actions/setup-mise
         with:
-          install_args: ${{ runner.os == 'Linux' && '--cd rust/gui-client github:getsentry/sentry-cli cargo:cargo-deb cargo:cargo-generate-rpm' || '--cd rust/gui-client github:getsentry/sentry-cli' }}
+          install_args: ${{ runner.os == 'Linux' && '--cd rust/gui-client github:getsentry/sentry-cli cargo:cargo-deb cargo:cargo-generate-rpm' || '--cd rust/gui-client github:getsentry/sentry-cli github:wixtoolset/wix3' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Check sentry-cli runs
@@ -280,6 +280,15 @@ jobs:
         if: "${{ runner.os == 'Windows' }}"
         shell: powershell
         run: ../../scripts/tests/gui-client-install-windows-msi.ps1
+      - name: Test upgrade from the latest release (Windows)
+        # Uninstalling fails on the ARM runner: `register-sparse deprovision`
+        # gets ERROR_NOT_FOUND after the package was already removed.
+        if: "${{ runner.os == 'Windows' && matrix.arch == 'x86_64' }}"
+        shell: powershell
+        env:
+          ARCH: ${{ matrix.arch }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: ../../scripts/tests/gui-client-upgrade-windows-msi.ps1
 
       - name: Dump install.log
         # `always()` so the MSI's verbose log surfaces even when

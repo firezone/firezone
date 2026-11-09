@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
   WiX fragment for the Firezone sparse MSIX package. Pulled into the
-  main MSI via `tauri.conf.json:fragmentPaths`. Ships the sparse-MSIX
+  main MSI by `mise-tasks/build.sh`. Ships the sparse-MSIX
   payload and the `register-sparse.exe` custom-action helper into
   INSTALLDIR, then fires two deferred CAs against it. See the
   `register-sparse.rs` module doc for what each subcommand does to the
@@ -46,12 +46,12 @@
     <DirectoryRef Id="INSTALLDIR">
       <Component Id="SparsePackageMsix" Guid="34cca6d3-7b27-4d5e-b86b-3a3b4ee4dbe6">
         <File Id="FirezoneMsix" Name="firezone.msix"
-              Source="../../firezone.msix" KeyPath="yes" />
+              Source="$(var.TargetDir)\firezone.msix" KeyPath="yes" />
       </Component>
 
       <Component Id="RegisterSparseExe" Guid="92c9f54d-1ab8-4b30-93bf-94c8c0d58f0c">
         <File Id="RegisterSparseExeFile" Name="register-sparse.exe"
-              Source="../../register-sparse.exe" KeyPath="yes" />
+              Source="$(var.TargetDir)\register-sparse.exe" KeyPath="yes" />
       </Component>
     </DirectoryRef>
 

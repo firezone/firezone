@@ -12,3 +12,20 @@ backend = "github:russellbanks/Komac"
 checksum = "sha256:a97c002c5ffa15f232af117efac6774e755d27acc47eba00f1661033267d7438"
 url = "https://github.com/russellbanks/Komac/releases/download/v2.17.1/komac-2.17.1-x86_64-pc-windows-msvc.exe"
 url_api = "https://api.github.com/repos/russellbanks/Komac/releases/assets/642136229"
+
+[[tools."github:wixtoolset/wix3"]]
+version = "wix3141rtm"
+backend = "github:wixtoolset/wix3"
+
+[tools."github:wixtoolset/wix3".options]
+asset_pattern = "wix314-binaries.zip"
+
+[tools."github:wixtoolset/wix3"."platforms.windows-arm64"]
+checksum = "sha256:6ac824e1642d6f7277d0ed7ea09411a508f6116ba6fae0aa5f2c7daa2ff43d31"
+url = "https://github.com/wixtoolset/wix3/releases/download/wix3141rtm/wix314-binaries.zip"
+url_api = "https://api.github.com/repos/wixtoolset/wix3/releases/assets/158158052"
+
+[tools."github:wixtoolset/wix3"."platforms.windows-x64"]
+checksum = "sha256:6ac824e1642d6f7277d0ed7ea09411a508f6116ba6fae0aa5f2c7daa2ff43d31"
+url = "https://github.com/wixtoolset/wix3/releases/download/wix3141rtm/wix314-binaries.zip"
+url_api = "https://api.github.com/repos/wixtoolset/wix3/releases/assets/158158052"
