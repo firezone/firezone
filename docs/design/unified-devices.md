@@ -455,8 +455,9 @@ tables, and a migration in the next deploy copies what is missing.
 - **1.6 Code: Gateway writes scoped.** The `Safe.unscoped` calls in the
   Gateway socket and channel become `Safe.scoped(subject)`. `Safe.permit`
   grants the legacy Gateway actor only what the socket does: insert and
-  update its device, write its `site_devices` row, and insert and stamp its
-  `device_tokens` row. Everything else stays refused. Audit entries for
+  update its device and write its `site_devices` row. It writes no tokens:
+  rotation is an admin action, and confirming a rotation happens during
+  verification, before there is a subject. Everything else stays refused. Audit entries for
   these writes then show the actor. Old and new nodes write the same rows,
   so there is no rollout order. Depends 1.5.
 - **1.7 Stop writing `gateway_tokens`.** One deploy, after 1.4 runs on every
