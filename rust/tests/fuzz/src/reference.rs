@@ -397,43 +397,7 @@ impl ReferenceState {
                 }
             }
             Transition::SendUdpPacketOnExistingFlow { flow_id, probe_id } => {
-                let flow = self
-                    .udp_flows
-                    .get(flow_id)
-                    .expect("reused UDP flow must exist")
-                    .clone();
-
-                let request = ProbeRequest::Udp {
-                    src: flow.src,
-                    dst: flow.dst,
-                    sport: flow.sport,
-                    dport: flow.dport,
-                };
-
-                match self.record_flow_probe(
-                    portal,
-                    *probe_id,
-                    flow.client_id,
-                    flow.route,
-                    request,
-                    now,
-                ) {
-                    ExpectedOutcome::RoundTripCompleted { .. } => {
-                        if let Some(flow) = self.udp_flows.get_mut(flow_id) {
-                            flow.last_round_trip = now;
-                        }
-                    }
-                    ExpectedOutcome::Dropped => {
-                        panic!("reused UDP route must complete a round trip")
-                    }
-                    ExpectedOutcome::Rejected {
-                        by: RejectionRemote::Gateway(_),
-                        ..
-                    } => {}
-                    ExpectedOutcome::Rejected { .. } => {
-                        panic!("reused UDP route must complete a round trip")
-                    }
-                }
+                self.send_udp_packet_on_existing_flow(portal, *flow_id, *probe_id, now);
             }
             Transition::ConnectTcp {
                 flow_id,
@@ -587,11 +551,21 @@ impl ReferenceState {
                     }
                 }
             }
-            Transition::RebindClientNat { client_id, .. } => {
+            Transition::RebindClientNat {
+                client_id, stream, ..
+            } => {
                 self.clients
                     .get_mut(client_id)
                     .unwrap()
                     .exec_mut(|client| client.rebind_nat());
+
+                if let Some((flow_id, probes)) = stream {
+                    for (at, probe_id) in
+                        iter::successors(Some(now), |at| Some(*at + STREAM_INTERVAL)).zip(probes)
+                    {
+                        self.send_udp_packet_on_existing_flow(portal, *flow_id, *probe_id, at);
+                    }
+                }
             }
             Transition::ReconnectPortal { client_id } => {
                 // Reconnecting to the portal should have no noticeable impact on the data plane.
@@ -858,6 +832,45 @@ impl ReferenceState {
         self.record_probe(portal, id, origin, request, sent_at, outcome, authorization);
 
         outcome
+    }
+
+    fn send_udp_packet_on_existing_flow(
+        &mut self,
+        portal: &StubPortal,
+        flow_id: FlowId,
+        probe_id: ProbeId,
+        now: Instant,
+    ) {
+        let flow = self
+            .udp_flows
+            .get(&flow_id)
+            .expect("reused UDP flow must exist")
+            .clone();
+
+        let request = ProbeRequest::Udp {
+            src: flow.src,
+            dst: flow.dst,
+            sport: flow.sport,
+            dport: flow.dport,
+        };
+
+        match self.record_flow_probe(portal, probe_id, flow.client_id, flow.route, request, now) {
+            ExpectedOutcome::RoundTripCompleted { .. } => {
+                if let Some(flow) = self.udp_flows.get_mut(&flow_id) {
+                    flow.last_round_trip = now;
+                }
+            }
+            ExpectedOutcome::Dropped => {
+                panic!("reused UDP route must complete a round trip")
+            }
+            ExpectedOutcome::Rejected {
+                by: RejectionRemote::Gateway(_),
+                ..
+            } => {}
+            ExpectedOutcome::Rejected { .. } => {
+                panic!("reused UDP route must complete a round trip")
+            }
+        }
     }
 
     /// Records that `origin` sent `request`, the authorization it holds afterwards and the

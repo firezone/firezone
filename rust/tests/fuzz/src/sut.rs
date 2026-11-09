@@ -6,7 +6,7 @@ use super::sim_gateway::SimGateway;
 use super::sim_net::{Host, HostId, RoutingTable};
 use super::sim_relay::SimRelay;
 use super::stub_portal::StubPortal;
-use super::transition::{DPort, Destination, DnsQuery, Identifier, SPort, Seq};
+use super::transition::{DPort, Destination, DnsQuery, Identifier, SPort, STREAM_INTERVAL, Seq};
 use crate::flux_capacitor::FluxCapacitor;
 use crate::probe::{DnsNatObservation, FlowId, ProbeId, ProbeObservation, ProbeTrace, Remote};
 use crate::resource as client;
@@ -678,11 +678,27 @@ impl TunnelTest {
                 });
             }
 
-            Transition::RebindClientNat { client_id, mapping } => {
+            Transition::RebindClientNat {
+                client_id,
+                mapping,
+                stream,
+            } => {
                 self.clients
                     .get_mut(&client_id)
                     .unwrap()
                     .rebind_nat(mapping, now);
+
+                if let Some((flow_id, probes)) = stream {
+                    let flow = self.udp_flows[&flow_id];
+
+                    for (at, probe_id) in
+                        iter::successors(Some(now), |at| Some(*at + STREAM_INTERVAL)).zip(probes)
+                    {
+                        self.advance_to(ref_state, portal, &mut buffered_transmits, at);
+                        self.flux_capacitor.skip_to(at);
+                        self.send_udp_probe(flow, probe_id, at);
+                    }
+                }
             }
             Transition::ReconnectPortal { client_id } => {
                 let client = self.clients.get_mut(&client_id).unwrap();

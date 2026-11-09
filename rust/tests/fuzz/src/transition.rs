@@ -18,6 +18,10 @@ use std::{
     time::Duration,
 };
 
+/// The gap between the probes a Client streams; well below WireGuard's 7s of silence after which
+/// either side re-keys.
+pub(crate) const STREAM_INTERVAL: Duration = Duration::from_secs(1);
+
 #[allow(private_interfaces)]
 #[derive(Clone, Debug)]
 pub enum Transition {
@@ -103,11 +107,13 @@ pub enum Transition {
         dead_window: Duration,
         portal_window: Duration,
     },
-    /// The Client's NAT moves one of its IPv4 mappings to a fresh public port, picked by
-    /// `mapping`.
+    /// The Client's NAT moves one of its IPv4 mappings, picked by `mapping`, to a fresh public
+    /// port. Meanwhile, the Client may stream probes on one of its UDP flows, one every
+    /// [`STREAM_INTERVAL`].
     RebindClientNat {
         client_id: ClientId,
         mapping: u32,
+        stream: Option<(FlowId, Vec<ProbeId>)>,
     },
     ReconnectPortal {
         client_id: ClientId,

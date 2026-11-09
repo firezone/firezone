@@ -82,6 +82,9 @@ const LEGAL_WITHOUT_HEALTHY_RELAY: [TransitionKind; 9] = [
     TransitionKind::CrashGateway,
 ];
 
+/// Streamed for 30s, well past the recovery from a NAT rebinding.
+const STREAMED_PROBES: usize = 30;
+
 #[derive(Clone, Copy)]
 enum ExistingFlow<'a> {
     Udp(FlowId),
@@ -281,10 +284,29 @@ pub(super) fn generate(
                 portal_window,
             }
         }
-        K::RebindClientNat => Transition::RebindClientNat {
-            client_id: natted_client_ids[g.choose_index(natted_client_ids.len())],
-            mapping: g.u32(),
-        },
+        K::RebindClientNat => {
+            let client_id = natted_client_ids[g.choose_index(natted_client_ids.len())];
+            let flows = state
+                .udp_flows(now)
+                .into_iter()
+                .filter(|flow| state.udp_flows[flow].client_id == client_id)
+                .collect::<Vec<_>>();
+            let mapping = g.u32();
+            let stream = (!flows.is_empty() && g.bool()).then(|| {
+                let flow = flows[g.choose_index(flows.len())];
+                let probes = iter::repeat_with(|| g.fresh_probe_id())
+                    .take(STREAMED_PROBES)
+                    .collect();
+
+                (flow, probes)
+            });
+
+            Transition::RebindClientNat {
+                client_id,
+                mapping,
+                stream,
+            }
+        }
         K::DeployNewRelays => {
             // A Frostlink connection survives relay deployment changes. Keeping one deployed
             // relay out of `connected` exercises refreshing an unmentioned live allocation.
