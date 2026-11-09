@@ -1,7 +1,7 @@
 defmodule Portal.Workers.SyncStripeCustomer do
   @moduledoc """
-  Sends the current name and slug of an account to its Stripe customer, with
-  retries. Enqueued when either one changes.
+  Sends the account ID and current slug of an account to its Stripe customer,
+  with retries. Enqueued when the slug changes.
   """
 
   # A running job may have read the account before the change that enqueues

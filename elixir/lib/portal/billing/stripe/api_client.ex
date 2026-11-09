@@ -14,15 +14,11 @@ defmodule Portal.Billing.Stripe.APIClient do
     request(api_token, :post, "customers", body)
   end
 
-  def update_customer(api_token, customer_id, name, metadata) do
-    metadata_params =
+  def update_customer_metadata(api_token, customer_id, metadata) do
+    body =
       for {key, value} <- metadata, into: %{} do
         {"metadata[#{key}]", value}
       end
-
-    body =
-      metadata_params
-      |> Map.put("name", name)
       |> URI.encode_query(:www_form)
 
     request(api_token, :post, "customers/#{customer_id}", body)
@@ -104,8 +100,18 @@ defmodule Portal.Billing.Stripe.APIClient do
       {"stripe-version", "2023-10-16"}
     ]
 
+    # Stripe does not run a rate-limited request, so a 429 is safe to retry
+    # for any method. Other failures are not retried here, since a retried
+    # POST could create a second customer or subscription.
     req_opts =
-      [method: method, url: url, headers: headers, body: body]
+      [
+        method: method,
+        url: url,
+        headers: headers,
+        body: body,
+        retry: fn _request, response -> match?(%Req.Response{status: 429}, response) end,
+        max_retries: 3
+      ]
       |> Keyword.merge(fetch_config(:req_opts) || [])
 
     case Req.request(req_opts) do

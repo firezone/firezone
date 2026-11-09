@@ -1072,7 +1072,7 @@ defmodule Portal.BillingTest do
       assert :ok = Portal.Billing.sync_stripe_customer(Ecto.UUID.generate())
     end
 
-    test "sends the current name and slug", %{account: account} do
+    test "sends only the account ID and current slug", %{account: account} do
       account =
         update_account(account, %{
           slug: "current_slug",
@@ -1090,8 +1090,7 @@ defmodule Portal.BillingTest do
       assert :ok = Portal.Billing.sync_stripe_customer(account.id)
 
       assert_received {:customer_update, "/v1/customers/cus_test123", params}
-      assert params["metadata[account_slug]"] == "current_slug"
-      assert params["metadata[account_name]"] == account.name
+      assert params == %{"metadata[account_id]" => account.id, "metadata[account_slug]" => "current_slug"}
     end
 
     test "returns an error when Stripe fails, so the job retries", %{account: account} do

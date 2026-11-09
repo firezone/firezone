@@ -49,7 +49,7 @@ defmodule Portal.Changes.Hooks.Accounts do
     account = struct_from_params(Portal.Account, data)
     change = %Change{lsn: lsn, op: :update, old_struct: old_account, struct: account}
 
-    if old_data["name"] != data["name"] or old_data["slug"] != data["slug"] do
+    if old_data["slug"] != data["slug"] do
       {:ok, _job} = %{account_id: account.id} |> SyncStripeCustomer.new() |> Oban.insert()
     end
 

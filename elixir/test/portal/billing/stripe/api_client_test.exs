@@ -4,6 +4,29 @@ defmodule Portal.Billing.Stripe.APIClientTest do
   alias Portal.Billing.Stripe.APIClient
   alias Portal.Mocks.Stripe
 
+  describe "request/4" do
+    setup do
+      Portal.Config.put_env_override(APIClient,
+        endpoint: "https://api.stripe.com",
+        req_opts: [plug: {Req.Test, APIClient}, retry_delay: 0]
+      )
+    end
+
+    test "retries a rate-limited request" do
+      Req.Test.expect(APIClient, fn conn -> Plug.Conn.send_resp(conn, 429, "{}") end)
+      Req.Test.expect(APIClient, fn conn -> Req.Test.json(conn, %{"id" => "cus_retried"}) end)
+
+      assert {:ok, %{"id" => "cus_retried"}} =
+               APIClient.update_customer_metadata("test_token", "cus_retried", %{account_slug: "acme"})
+    end
+
+    test "does not retry a server error, so a POST never runs twice" do
+      Req.Test.expect(APIClient, fn conn -> Plug.Conn.send_resp(conn, 500, "{}") end)
+
+      assert {:error, :retry_later} = APIClient.create_customer("test_token", "Test", "test@example.com", %{})
+    end
+  end
+
   describe "create_customer/4" do
     test "returns customer on success" do
       account = account_fixture()
