@@ -2093,7 +2093,6 @@ where
         if let Some(packet) = committed.data().find_map(|packet| packet.as_ref().ok()) {
             self.state
                 .on_incoming(cid, &mut self.agent, self.default_ice_config, packet, now);
-            self.agent.handle_inbound_data(now);
         }
 
         Ok(committed)
