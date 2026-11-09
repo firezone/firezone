@@ -10,6 +10,7 @@ axum = { workspace = true }
 bin-shared = { workspace = true }
 clap = { workspace = true, features = ["derive", "env"] }
 futures = { workspace = true }
+git-sha = { workspace = true }
 http-body-util = { workspace = true }
 hyper = { workspace = true, features = ["server", "http1"] }
 hyper-util = { workspace = true, features = ["server", "http1", "tokio", "service", "server-graceful"] }

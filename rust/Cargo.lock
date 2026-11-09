@@ -2972,6 +2972,7 @@ dependencies = [
  "bin-shared",
  "clap",
  "futures",
+ "git-sha",
  "http-body-util",
  "hyper",
  "hyper-util",
